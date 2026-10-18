@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "Opgeschorte toegang",
+    "help": "Een verzoek dat een rol noemt die de aanroeper niet heeft, is een beveiligingsgebeurtenis. Een persoonlijk toegangstoken dat dit doet wordt opgeschort, net als de tokentoegang van een persoon via MCP, SQL (pgwire), Bolt, Arrow Flight en gRPC wanneer hun identiteitsprovider het token ondertekende. Een opschorting blijft staan tot een beheerder haar opheft.",
+    "colCredential": "Inloggegeven",
+    "colPerson": "Persoon",
+    "colEvent": "Gebeurtenis",
+    "colSince": "Opgeschort",
+    "colActions": "Acties",
+    "kindToken": "Toegangstoken",
+    "kindPrincipal": "Tokentoegang",
+    "eventSummary": "Noemde rol {{role}} via {{transport}} ({{endpoint}})",
+    "heldRoles": "Heeft: {{roles}}",
+    "client": "Van: {{client}}",
+    "recentStatements": "Recente statements:",
+    "statementNeedsRight": "Het lezen van een statement vereist het recht view_governance.",
+    "lift": "Opheffen",
+    "lifted": "Opschorting opgeheven",
+    "none": "Er is niets opgeschort."
+  }
+}

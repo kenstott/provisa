@@ -39,7 +39,8 @@
       "registration_basic_only": "पंजीकरण केवल basic ऑथ प्रोवाइडर के साथ उपलब्ध है",
       "role_not_assigned": "भूमिका '{{role_id}}' इस उपयोगकर्ता को असाइन नहीं है",
       "simple_provider_not_configured": "Simple ऑथ प्रोवाइडर कॉन्फ़िगर नहीं है",
-      "username_exists": "यूज़रनेम पहले से मौजूद है"
+      "username_exists": "यूज़रनेम पहले से मौजूद है",
+      "not_permitted": "अनुमति नहीं"
     },
     "authz": {
       "mutation_not_permitted": "म्यूटेशन '{{field_name}}' की अनुमति नहीं है: {{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "संगठन '{{org}}' की स्थिति '{{state}}' है, 'failed' नहीं — पुनः प्रयास के लिए कुछ नहीं है।",
       "self_role_change": "उपयोगकर्ता अपनी स्वयं की भूमिका नहीं बदल सकता। किसी अन्य प्रशासक से कहें।",
       "view_not_permitted": "इस संगठन को देखने की अनुमति नहीं है",
-      "org_id_sandbox_prefix": "{{prefix}} से शुरू होने वाली संगठन आईडी डेमो सैंडबॉक्स के लिए आरक्षित हैं।"
+      "org_id_sandbox_prefix": "{{prefix}} से शुरू होने वाली संगठन आईडी डेमो सैंडबॉक्स के लिए आरक्षित हैं।",
+      "no_suspension": "इस संगठन में ऐसा कोई निलंबन नहीं",
+      "suspension_target": "हटाने के लिए ठीक एक निलंबन बताएँ: एक टोकन या एक व्यक्ति"
     },
     "platform": {
       "control_plane_role_required": "प्लेटफ़ॉर्म एडमिनिस्ट्रेटर आवश्यक है।",

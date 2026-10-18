@@ -39,7 +39,8 @@
       "registration_basic_only": "El registro solo está disponible con el proveedor de autenticación basic",
       "role_not_assigned": "El rol '{{role_id}}' no está asignado a este usuario",
       "simple_provider_not_configured": "El proveedor de autenticación simple no está configurado",
-      "username_exists": "El nombre de usuario ya existe"
+      "username_exists": "El nombre de usuario ya existe",
+      "not_permitted": "No permitido"
     },
     "authz": {
       "mutation_not_permitted": "Mutación '{{field_name}}' no permitida: {{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "La organización '{{org}}' está en estado '{{state}}', no 'failed' — no hay nada que reintentar.",
       "self_role_change": "Un usuario no puede cambiar su propio rol. Solicite a otro administrador.",
       "view_not_permitted": "No tiene permiso para ver esta organización",
-      "org_id_sandbox_prefix": "Los identificadores de organización que empiezan por {{prefix}} están reservados para los sandboxes de demostración."
+      "org_id_sandbox_prefix": "Los identificadores de organización que empiezan por {{prefix}} están reservados para los sandboxes de demostración.",
+      "no_suspension": "No existe esa suspensión en esta organización",
+      "suspension_target": "Indique exactamente una suspensión que levantar: un token o una persona"
     },
     "platform": {
       "control_plane_role_required": "Se requiere un administrador de la plataforma.",

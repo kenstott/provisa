@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "Suspended access",
+    "help": "A request that names a role its caller does not hold is a security event. A personal access token that does it is suspended, and so is a person's token access over MCP, SQL (pgwire), Bolt, Arrow Flight and gRPC when their identity provider signed the token. A suspension stays until an administrator lifts it.",
+    "colCredential": "Credential",
+    "colPerson": "Person",
+    "colEvent": "Event",
+    "colSince": "Suspended",
+    "colActions": "Actions",
+    "kindToken": "Access token",
+    "kindPrincipal": "Token access",
+    "eventSummary": "Named role {{role}} over {{transport}} ({{endpoint}})",
+    "heldRoles": "Holds: {{roles}}",
+    "client": "From: {{client}}",
+    "recentStatements": "Recent statements:",
+    "statementNeedsRight": "Reading a statement needs the view_governance right.",
+    "lift": "Lift",
+    "lifted": "Suspension lifted",
+    "none": "Nothing is suspended."
+  }
+}

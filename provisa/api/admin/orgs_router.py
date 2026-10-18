@@ -1229,6 +1229,79 @@ async def leave_org(org_id: str, request: Request):  # REQ-1306
     return {"left": org_id, "user_id": user_id}
 
 
+@router.get("/{org_id}/suspensions")
+async def list_suspensions(org_id: str, request: Request):  # REQ-2076
+    """What is suspended in the org for naming a role that was not held: its personal access
+    tokens and its members' token access, each with the security event that suspended it (from
+    the org's admin trail). An event's recent statements are named by their audit row ids; their
+    text is read from the query audit log under its own right."""
+    from sqlalchemy import desc
+
+    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.auth.pat import PersonalAccessTokenStore
+    from provisa.core.org_membership import suspended_principals
+    from provisa.core.schema_org import admin_audit_log
+    from provisa.security.role_probe import ACTION
+
+    await _require_org_admin(request, org_id, allow_cross_org=False)
+    tokens = await PersonalAccessTokenStore(_admin_pool()).list_suspended(org_id)
+    principals = await suspended_principals(_admin_pool(), org_id)
+    async with (await _org_model_db(org_id)).acquire() as conn:
+        events = [
+            dict(r._mapping)
+            for r in (
+                await conn.execute_core(
+                    select(
+                        admin_audit_log.c.id,
+                        admin_audit_log.c.subject_id,
+                        admin_audit_log.c.detail,
+                        admin_audit_log.c.created_at,
+                    )
+                    .where(admin_audit_log.c.action == ACTION)
+                    .order_by(desc(admin_audit_log.c.created_at))
+                    .limit(200)
+                )
+            ).fetchall()
+        ]
+    return {"tokens": tokens, "principals": principals, "events": events}
+
+
+@router.post("/{org_id}/suspensions/lift")
+async def lift_suspension(org_id: str, request: Request):  # REQ-2076
+    """Lift one suspension -- a token's (``token_hash``) or a member's token access
+    (``user_id``) -- recorded in the org's admin trail. Only an administrator lifts one; nothing
+    lifts it on a timer."""
+    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.auth.pat import PersonalAccessTokenStore
+    from provisa.core.org_membership import lift_token_access_suspension, record_admin_action
+
+    await _require_org_admin(request, org_id, allow_cross_org=False)
+    body = await request.json()
+    token_hash, user_id = body.get("token_hash"), body.get("user_id")
+    if bool(token_hash) == bool(user_id):
+        raise ApiError(
+            400,
+            "orgs.suspension_target",
+            "Name exactly one suspension to lift: a token_hash or a user_id",
+        )
+    if token_hash:
+        lifted = await PersonalAccessTokenStore(_admin_pool()).lift_suspension(
+            token_hash=token_hash, org_id=org_id
+        )
+    else:
+        lifted = await lift_token_access_suspension(_admin_pool(), user_id=user_id, org_id=org_id)
+    if not lifted:
+        raise ApiError(404, "orgs.no_suspension", "No such suspension in this org")
+    await record_admin_action(
+        await _org_model_db(org_id),
+        action="security.suspension_lifted",
+        actor_id=_caller_user_id(request) or "anonymous",
+        subject_id=user_id or token_hash,
+        detail={"org_id": org_id, "token_hash": token_hash, "user_id": user_id},
+    )
+    return {"lifted": True, "token_hash": token_hash, "user_id": user_id}
+
+
 @router.post("/{org_id}/admins/{user_id}")
 async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # REQ-1303, REQ-1308
     """Grant org_admin in ``org_id``. Org_admin of that org, or platform_admin for any org.

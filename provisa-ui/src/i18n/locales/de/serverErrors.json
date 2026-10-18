@@ -39,7 +39,8 @@
       "registration_basic_only": "Registrierung nur mit dem Basic-Auth-Anbieter verfügbar",
       "role_not_assigned": "Rolle '{{role_id}}' ist diesem Benutzer nicht zugewiesen",
       "simple_provider_not_configured": "Simple-Auth-Anbieter nicht konfiguriert",
-      "username_exists": "Benutzername existiert bereits"
+      "username_exists": "Benutzername existiert bereits",
+      "not_permitted": "Nicht erlaubt"
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' nicht zulässig: {{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "Organisation '{{org}}' ist '{{state}}', nicht 'failed' — nichts zu wiederholen.",
       "self_role_change": "Ein Benutzer kann seine eigene Rolle nicht ändern. Bitten Sie einen anderen Administrator.",
       "view_not_permitted": "Keine Berechtigung, diese Organisation anzuzeigen",
-      "org_id_sandbox_prefix": "Org-IDs, die mit {{prefix}} beginnen, sind für Demo-Sandboxes reserviert."
+      "org_id_sandbox_prefix": "Org-IDs, die mit {{prefix}} beginnen, sind für Demo-Sandboxes reserviert.",
+      "no_suspension": "Keine solche Sperre in dieser Organisation",
+      "suspension_target": "Nennen Sie genau eine aufzuhebende Sperre: ein Token oder eine Person"
     },
     "platform": {
       "control_plane_role_required": "Ein Plattformadministrator ist erforderlich.",

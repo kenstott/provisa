@@ -464,6 +464,30 @@ Elle est active par défaut — cinq échecs en cinq minutes verrouillent le suj
 
 La clé est le principal que porte le protocole. Une surface uniquement bearer ne porte pas de principal, la clé est donc un condensé de l'identifiant lui-même ; ce que cela empêche, c'est qu'un mauvais jeton soit rejoué sans limite. Le magasin est par processus, donc un déploiement qui exécute plusieurs workers d'API autorise jusqu'à `max_attempts` par worker — la limitation freine la devinette, ce n'est pas un quota distribué.
 
+### Sondage de rôles {: #role-probing }
+
+Nommer un rôle que l'appelant ne détient pas est traité comme un événement de sécurité détecté de gravité élevée, sur chaque surface : l'API HTTP, MCP, pgwire, Bolt, Arrow Flight, le service Flight airport et gRPC. Un client légitime nomme les rôles qui lui ont été donnés ; celui qui en nomme un autre est soit défaillant, soit en train de sonder. (REQ-2076)
+
+La requête est refusée. L'appelant n'apprend que « not permitted », rien sur l'existence du rôle, et la connexion ou la session se termine là où il y en a une : la connexion pgwire, la session Bolt, l'appel gRPC, la session MCP. La seule exception est une session connectée sur l'API HTTP, qui garde le refus nommant le rôle.
+
+Le reste dépend de l'identifiant et du transport :
+
+| Identifiant | Transport | Suspendu |
+|---|---|---|
+| Jeton d'accès personnel | tout | le jeton |
+| Jeton signé par un fournisseur d'identité externe | MCP, pgwire, Bolt, Flight, gRPC | l'accès par jeton du principal à l'organisation |
+| Jeton signé par un fournisseur d'identité externe | l'API HTTP | rien |
+| Une session ou un mot de passe que ce déploiement vérifie | tout | rien |
+| Une session MCP locale (sans bearer) | MCP | rien ; l'événement va au journal de l'opérateur |
+
+L'API HTTP fait exception parce que le navigateur présente le même jeton bearer qu'un client d'API, si bien que le serveur ne peut pas les distinguer, et qu'un onglet qui nomme encore un rôle que l'utilisateur a perdu depuis (après qu'un administrateur a modifié ses rôles, ou un changement d'organisation) est courant. MCP et les autres transports ne sont jamais une session de navigateur. L'événement y est refusé, enregistré et notifié comme tout autre ; seule la suspension est omise.
+
+Un jeton suspendu est refusé comme un jeton révoqué. Un principal dont l'accès par jeton est suspendu est refusé sur MCP, pgwire, Bolt, Flight et gRPC dans cette organisation, et peut toujours se connecter à l'interface. Seul un administrateur lève une suspension ; rien ne la lève au bout d'un délai. Équipe → Accès suspendu liste chaque suspension avec l'événement qui l'a causée et la lève (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
+
+Chaque événement est écrit dans le journal d'administration de l'organisation (action `security.role_probe`) avec le principal, l'identifiant de l'identifiant, l'adresse du client, le transport, le point de terminaison ou l'outil, le rôle nommé, les rôles détenus, l'heure et les identifiants des instructions auditées les plus récentes du principal. Leur texte reste dans le journal d'audit des requêtes et se lit avec le droit `view_governance`.
+
+Les administrateurs de l'organisation reçoivent un e-mail là où le déploiement envoie du courrier. L'événement est aussi envoyé en JSON au webhook de sécurité de l'opérateur lorsque `security.webhook_url` est défini. Ce qui quitte l'organisation nomme le principal, l'identifiant de l'identifiant, le transport, le point de terminaison, le rôle nommé, l'heure et la gravité, avec un lien vers la vue d'administration ; il ne contient aucune instruction ni aucun rôle détenu. Un avis qui ne peut être livré est journalisé et n'annule jamais le refus ni la suspension.
+
 ### Nommer l'organisation {: #naming-the-org }
 
 En mode multi-tenant, chaque requête nomme l'organisation à laquelle elle est destinée. Appartenir à exactement une organisation ne la nomme pas : une requête qui n'en nomme aucune est refusée, et le refus indique quoi envoyer. (REQ-1235) Chaque surface nomme une organisation ainsi :

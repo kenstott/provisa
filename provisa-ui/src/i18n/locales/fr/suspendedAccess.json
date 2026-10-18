@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "Accès suspendu",
+    "help": "Une requête qui nomme un rôle que son appelant ne détient pas est un événement de sécurité. Un jeton d'accès personnel qui le fait est suspendu, tout comme l'accès par jeton d'une personne via MCP, SQL (pgwire), Bolt, Arrow Flight et gRPC lorsque son fournisseur d'identité a signé le jeton. Une suspension reste en place jusqu'à ce qu'un administrateur la lève.",
+    "colCredential": "Identifiant",
+    "colPerson": "Personne",
+    "colEvent": "Événement",
+    "colSince": "Suspendu",
+    "colActions": "Actions",
+    "kindToken": "Jeton d'accès",
+    "kindPrincipal": "Accès par jeton",
+    "eventSummary": "A nommé le rôle {{role}} via {{transport}} ({{endpoint}})",
+    "heldRoles": "Détient : {{roles}}",
+    "client": "Depuis : {{client}}",
+    "recentStatements": "Instructions récentes :",
+    "statementNeedsRight": "Lire une instruction requiert le droit view_governance.",
+    "lift": "Lever",
+    "lifted": "Suspension levée",
+    "none": "Rien n'est suspendu."
+  }
+}

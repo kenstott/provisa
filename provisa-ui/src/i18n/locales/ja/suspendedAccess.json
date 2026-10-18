@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "停止中のアクセス",
+    "help": "呼び出し元が保持していないロールを指定するリクエストはセキュリティイベントです。それを行った個人アクセストークンは停止され、ID プロバイダーが署名したトークンの場合は、その人の MCP、SQL (pgwire)、Bolt、Arrow Flight、gRPC でのトークンアクセスも停止されます。停止は管理者が解除するまで続きます。",
+    "colCredential": "認証情報",
+    "colPerson": "ユーザー",
+    "colEvent": "イベント",
+    "colSince": "停止日時",
+    "colActions": "操作",
+    "kindToken": "アクセストークン",
+    "kindPrincipal": "トークンアクセス",
+    "eventSummary": "{{transport}}（{{endpoint}}）でロール {{role}} を指定",
+    "heldRoles": "保持: {{roles}}",
+    "client": "接続元: {{client}}",
+    "recentStatements": "最近のステートメント:",
+    "statementNeedsRight": "ステートメントを読むには view_governance 権限が必要です。",
+    "lift": "解除",
+    "lifted": "停止を解除しました",
+    "none": "停止中のものはありません。"
+  }
+}

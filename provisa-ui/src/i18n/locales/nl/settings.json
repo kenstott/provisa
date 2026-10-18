@@ -201,6 +201,10 @@
           "label": "Wachtwoord van noodtoegangsaccount",
           "help": "Het wachtwoord van het noodtoegangsaccount. Geheim; opnieuw opstarten vereist; met bevestiging."
         }
+      },
+      "webhook_url": {
+        "label": "Webhook voor beveiligingsgebeurtenissen",
+        "help": "Waar een gedetecteerde beveiligingsgebeurtenis (een verzoek dat een rol noemt die de aanroeper niet heeft) als JSON naartoe wordt gestuurd, naast de e-mail aan de beheerders van de organisatie. De melding noemt geen statement en geen rol die iemand heeft. Geheim: alleen schrijven."
       }
     },
     "redis": {

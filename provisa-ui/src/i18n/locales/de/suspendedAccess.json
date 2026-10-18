@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "Gesperrter Zugriff",
+    "help": "Eine Anfrage, die eine Rolle nennt, die ihr Aufrufer nicht hält, ist ein Sicherheitsereignis. Ein persönliches Zugriffstoken, das dies tut, wird gesperrt, ebenso der Token-Zugriff einer Person über MCP, SQL (pgwire), Bolt, Arrow Flight und gRPC, wenn ihr Identitätsanbieter das Token signiert hat. Eine Sperre bleibt bestehen, bis ein Administrator sie aufhebt.",
+    "colCredential": "Anmeldedaten",
+    "colPerson": "Person",
+    "colEvent": "Ereignis",
+    "colSince": "Gesperrt",
+    "colActions": "Aktionen",
+    "kindToken": "Zugriffstoken",
+    "kindPrincipal": "Token-Zugriff",
+    "eventSummary": "Rolle {{role}} genannt über {{transport}} ({{endpoint}})",
+    "heldRoles": "Hält: {{roles}}",
+    "client": "Von: {{client}}",
+    "recentStatements": "Letzte Anweisungen:",
+    "statementNeedsRight": "Das Lesen einer Anweisung erfordert das Recht view_governance.",
+    "lift": "Aufheben",
+    "lifted": "Sperre aufgehoben",
+    "none": "Nichts ist gesperrt."
+  }
+}

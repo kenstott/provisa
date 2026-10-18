@@ -201,6 +201,10 @@
           "label": "Password dell'account di emergenza",
           "help": "La password dell'account di emergenza (break-glass). Segreta; richiede un riavvio; protetta da conferma."
         }
+      },
+      "webhook_url": {
+        "label": "Webhook degli eventi di sicurezza",
+        "help": "Dove viene inviato come JSON un evento di sicurezza rilevato (una richiesta che nomina un ruolo che il chiamante non detiene), oltre all'e-mail agli amministratori dell'organizzazione. L'avviso non nomina alcuna istruzione né alcun ruolo detenuto. Segreto: sola scrittura."
       }
     },
     "redis": {

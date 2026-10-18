@@ -109,3 +109,37 @@ def authorize_role(state, identity, requested: str | None) -> str:
     return resolve_requested_role(
         state, permitted, requested, lambda: principal_of(state, identity)[1]
     )
+
+
+def authorize_role_or_probe(
+    state,
+    identity,
+    requested: str | None,
+    *,
+    transport: str,
+    endpoint: str,
+    run,
+    client: str | None = None,
+) -> str:
+    """:func:`authorize_role`, for a transport that is never a browser session (REQ-2076): an
+    IdP-signed principal whose token access to the org is suspended is refused, and a role named
+    that the identity does not hold is recorded as a security event (security.role_probe) and
+    refused with nothing said about the role. ``run`` runs a coroutine on the transport's own loop
+    and returns its result; the org is the one bound to the call."""
+    from provisa.core.request_context import current_org
+    from provisa.security import role_probe
+    from provisa.security.meta_role import RoleNotHeld
+
+    org_id = current_org.get(None) or getattr(identity, "active_org_id", None)
+    if org_id is None and not getattr(state, "multitenancy", False):
+        org_id = state.org_id
+    if run(role_probe.suspended(identity, org_id, transport)):
+        raise PermissionError(role_probe.NOT_PERMITTED)
+    try:
+        return authorize_role(state, identity, requested)
+    except RoleNotHeld as refused:
+        probe = role_probe.probe_of(
+            identity, refused, org_id=org_id, transport=transport, endpoint=endpoint, client=client
+        )
+        run(role_probe.record(probe))
+        raise PermissionError(role_probe.NOT_PERMITTED) from refused

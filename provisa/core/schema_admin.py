@@ -200,6 +200,12 @@ user_org_memberships = Table(
     # instead of in the org's production data. Nullable because a pin is the exception: every
     # membership written before an open invite existed, and every ordinary member, has none.
     Column("env_name", Text),
+    # REQ-2076: an IdP-signed caller that named a role it does not hold, over MCP or a non-HTTP
+    # transport (pgwire, Bolt, Flight, gRPC), loses that token access in this org -- those
+    # transports, refused -- until an administrator lifts it. Nothing lifts it on a timer. The
+    # browser shares its bearer with the HTTP API, so that API is not suspended.
+    Column("token_access_suspended_at", DateTime(timezone=True)),
+    Column("token_access_suspended_reason", Text),
     PrimaryKeyConstraint("user_id", "org_id"),
 )
 
@@ -341,6 +347,11 @@ personal_access_tokens = Table(
     # sends, and a header naming another is refused. No default: a token addresses an environment
     # because somebody issued it into one.
     Column("env_name", Text, nullable=False),
+    # REQ-2076: a token that named a role its owner does not hold is suspended -- refused like a
+    # revoked one -- until an administrator lifts it. Nothing lifts it on a timer. The reason names
+    # the event (the org's admin trail holds its detail).
+    Column("suspended_at", DateTime(timezone=True)),
+    Column("suspended_reason", Text),
 )
 
 # REQ-2006: the demo sandboxes. Each is an org of its own (``orgs``, id ``sbx<hex>``) cloned from

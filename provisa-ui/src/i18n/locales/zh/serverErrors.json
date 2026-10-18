@@ -39,7 +39,8 @@
       "registration_basic_only": "仅在使用 basic 身份验证提供程序时可注册",
       "role_not_assigned": "角色 '{{role_id}}' 未分配给此用户",
       "simple_provider_not_configured": "未配置 Simple 身份验证提供程序",
-      "username_exists": "用户名已存在"
+      "username_exists": "用户名已存在",
+      "not_permitted": "不允许"
     },
     "authz": {
       "mutation_not_permitted": "不允许执行变更 '{{field_name}}'：{{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "组织 '{{org}}' 的状态为 '{{state}}'，不是 'failed'——无需重试。",
       "self_role_change": "用户不能更改自己的角色。请联系另一位管理员。",
       "view_not_permitted": "无权查看此组织",
-      "org_id_sandbox_prefix": "以 {{prefix}} 开头的组织 ID 保留给演示沙盒。"
+      "org_id_sandbox_prefix": "以 {{prefix}} 开头的组织 ID 保留给演示沙盒。",
+      "no_suspension": "此组织中没有这样的暂停",
+      "suspension_target": "请指定恰好一个要解除的暂停：一个令牌或一个人员"
     },
     "platform": {
       "control_plane_role_required": "需要平台管理员。",

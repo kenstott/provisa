@@ -592,6 +592,20 @@ DECLARED: list[Setting] = [
         unit="seconds",
         guard="confirm",  # loosening it weakens the brake on credential guessing
     ),
+    # REQ-2076: where a role-probing event is posted, beside the email to the org's administrators.
+    # Write-only: a webhook address usually carries its own secret.
+    Setting(
+        key="security.webhook_url",
+        card="security",
+        type="str",
+        effect="live",  # read when an event is posted
+        req="REQ-2076",
+        env="PROVISA_SECURITY_WEBHOOK_URL",
+        config_path=("security", "webhook_url"),
+        default=None,
+        nullable=True,
+        secret=True,
+    ),
     # --- Network: hostname, listeners, TLS -------------------------------------------------------
     # Ports and TLS files are guarded: a wrong one can leave the operator unable to reach the
     # deployment. 0 turns an optional listener off.

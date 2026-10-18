@@ -76,13 +76,43 @@ def held_role(request: Request, role_id: str) -> str:  # REQ-273
         return role_id
     held = {a.role_id for a in getattr(request.state, "assignments", None) or ()}
     if role_id not in held:
-        raise ApiError(
-            403,
-            "auth.role_not_assigned",
-            f"Role {role_id!r} is not assigned to this user",
-            role_id=role_id,
+        # REQ-2076: a security event, recorded and answered by the app's handler for it.
+        from provisa.security import role_probe
+
+        pseudo = getattr(identity, "pseudo_roles", None) or {}
+        raise RoleProbeRefused(
+            role_probe.Probe(
+                org_id=getattr(request.state, "active_org_id", None),
+                user_id=identity.user_id,
+                credential=getattr(identity, "credential", None),
+                credential_id=getattr(identity, "credential_id", None),
+                transport="http",
+                endpoint="",  # the route and peer are the app handler's to fill in
+                requested=role_id,
+                held=tuple(sorted(held | set(pseudo))),
+            )
         )
     return role_id
+
+
+class RoleProbeRefused(ApiError):  # REQ-2076
+    """A request named, in its path or query, a role its caller does not hold. Raised where the
+    route resolves the role (synchronously); the app's handler records the event
+    (security.role_probe) before it answers."""
+
+    def __init__(self, probe) -> None:
+        from provisa.security import role_probe
+
+        said = f"Role {probe.requested!r} is not assigned to this user"
+        refused = role_probe.refusal(probe, said)
+        params = {"role_id": probe.requested} if refused == said else {}
+        super().__init__(
+            403,
+            "auth.role_not_assigned" if refused == said else "auth.not_permitted",
+            refused,
+            **params,
+        )
+        self.probe = probe
 
 
 def named_role(request: Request, named: str) -> str:  # REQ-273, REQ-1620

@@ -201,6 +201,10 @@
           "label": "Mot de passe du compte de secours",
           "help": "Le mot de passe du compte de secours. Secret ; redémarrage requis ; confirmation demandée."
         }
+      },
+      "webhook_url": {
+        "label": "Webhook des événements de sécurité",
+        "help": "Où un événement de sécurité détecté (une requête nommant un rôle que son appelant ne détient pas) est envoyé en JSON, en plus de l'e-mail aux administrateurs de l'organisation. L'avis ne nomme aucune instruction ni aucun rôle détenu. Secret : écriture seule."
       }
     },
     "redis": {

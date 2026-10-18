@@ -1501,11 +1501,15 @@ class TestRoleSetOnPgwire:
         assert ctx.session.role_id == "meta:analyst+auditor"
         assert ctx.session.role_set == ("analyst", "auditor")
 
-    def test_a_set_with_a_role_not_held_is_refused_by_name(self, pgwire_loop):
+    def test_a_set_with_a_role_not_held_is_refused_saying_nothing_of_it(
+        self, pgwire_loop, _role_probe_events
+    ):
+        # REQ-2076: a security event; the connection ends and the client learns nothing of the role.
         ctx, handler = self._authenticate({"provisa.role": "analyst,org_admin"})
         handler.send_authentication_ok.assert_not_called()
-        assert handler._send_pg_error.call_args[0][:2] == ("FATAL", "28000")
-        assert "'org_admin'" in handler._send_pg_error.call_args[0][2]
+        assert handler._send_pg_error.call_args[0] == ("FATAL", "42501", "not permitted")
+        [event] = _role_probe_events
+        assert (event.transport, event.requested) == ("pgwire", "org_admin")
 
     def test_the_meta_role_is_made_again_in_the_sessions_org_before_each_statement(self):
         from provisa.core.request_context import current_org

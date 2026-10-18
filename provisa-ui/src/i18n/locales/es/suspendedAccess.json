@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "Acceso suspendido",
+    "help": "Una solicitud que nombra un rol que su autor no tiene es un evento de seguridad. Un token de acceso personal que lo hace queda suspendido, y también el acceso por token de una persona a través de MCP, SQL (pgwire), Bolt, Arrow Flight y gRPC cuando su proveedor de identidad firmó el token. Una suspensión se mantiene hasta que un administrador la levanta.",
+    "colCredential": "Credencial",
+    "colPerson": "Persona",
+    "colEvent": "Evento",
+    "colSince": "Suspendido",
+    "colActions": "Acciones",
+    "kindToken": "Token de acceso",
+    "kindPrincipal": "Acceso por token",
+    "eventSummary": "Nombró el rol {{role}} por {{transport}} ({{endpoint}})",
+    "heldRoles": "Tiene: {{roles}}",
+    "client": "Desde: {{client}}",
+    "recentStatements": "Sentencias recientes:",
+    "statementNeedsRight": "Leer una sentencia requiere el derecho view_governance.",
+    "lift": "Levantar",
+    "lifted": "Suspensión levantada",
+    "none": "No hay nada suspendido."
+  }
+}

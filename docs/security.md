@@ -468,6 +468,30 @@ It is on by default — five failures in five minutes locks the subject out for 
 
 The key is the principal the protocol carries. A bearer-only surface carries no principal, so the key is a digest of the credential itself; what that stops is one bad token being replayed without limit. The store is per process, so a deployment running several API workers allows up to `max_attempts` per worker — the throttle is a brake on guessing, not a distributed quota.
 
+### Role probing
+
+Naming a role the caller does not hold is treated as a detected security event of high severity, on every surface: the HTTP API, MCP, pgwire, Bolt, Arrow Flight, the airport Flight service and gRPC. A legitimate client names the roles it was given; one that names another is either broken or probing. (REQ-2076)
+
+The request is refused. The caller is told only "not permitted", nothing about whether the role exists, and the connection or session ends where there is one: the pgwire connection, the Bolt session, the gRPC call, the MCP session. The one exception is a signed-in session on the HTTP API, which keeps the refusal naming the role.
+
+What else happens depends on the credential and the transport:
+
+| Credential | Transport | Suspended |
+|---|---|---|
+| Personal access token | any | the token |
+| Token signed by an external identity provider | MCP, pgwire, Bolt, Flight, gRPC | the principal's token access to the org |
+| Token signed by an external identity provider | the HTTP API | nothing |
+| A session or password this deployment checks | any | nothing |
+| A local MCP session (no bearer) | MCP | nothing; the event goes to the operator's log |
+
+The HTTP API is the exception because the browser presents the same bearer token an API client would, so the server cannot tell them apart, and a tab still naming a role the user has since lost (after an administrator changes their roles, or an org switch) is routine. MCP and the other transports are never a browser session. There the event is refused, recorded and notified like any other, and only the suspension is withheld.
+
+A suspended token is refused as a revoked one is. A principal whose token access is suspended is refused on MCP, pgwire, Bolt, Flight and gRPC in that org, and can still sign in to the UI. Only an administrator lifts a suspension; nothing lifts it on a timer. Team → Suspended access lists each suspension with the event behind it and lifts it (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
+
+Each event is written to the org's admin trail (action `security.role_probe`) with the principal, the credential id, the client address, the transport, the endpoint or tool, the role named, the roles held, the time, and the ids of the principal's most recent audited statements. Their text stays in the query audit log and is read under the `view_governance` right.
+
+The org's administrators are emailed where the deployment sends mail. The event is also posted as JSON to the operator's security webhook when `security.webhook_url` is set. What leaves the org names the principal, credential id, transport, endpoint, role named, time and severity, with a link to the admin view; it carries no statement and no held role. A notice that cannot be delivered is logged and never undoes the refusal or the suspension.
+
 ### Naming the org
 
 Under multitenancy every request names the org it is for. Belonging to exactly one org does not name it: a request that names none is refused, and the refusal says what to send. (REQ-1235) Each surface names an org this way:

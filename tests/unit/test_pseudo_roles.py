@@ -136,6 +136,8 @@ class TestTheMetaRole:
 
 
 class _RegionProvider(AuthProvider):
+    provider_name = "test"  # a provider of this deployment's own, not IdP-signed
+
     async def validate_token(self, token: str) -> AuthIdentity:
         if token != "t":
             raise ValueError("Invalid token")

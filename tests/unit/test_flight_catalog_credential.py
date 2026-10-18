@@ -428,13 +428,14 @@ def test_over_the_wire_a_refusal_reaches_the_client_as_what_it_is(wire):
             wire.client.get_flight_info(descriptor, options)
     with pytest.raises(flight.FlightUnauthenticatedError):
         wire.client.do_get(flight.Ticket(b"{}")).read_all()
-    # A valid credential asking for a role it does not hold: permission denied, by name.
+    # A valid credential asking for a role it does not hold: permission denied, and nothing said
+    # about the role (REQ-2076).
     unheld = _options("sam", role="hr_reader")
-    with pytest.raises(flight.FlightUnauthorizedError, match="hr_reader"):
+    with pytest.raises(flight.FlightUnauthorizedError, match="not permitted"):
         list(wire.client.list_flights(b"", unheld))
-    with pytest.raises(flight.FlightUnauthorizedError, match="hr_reader"):
+    with pytest.raises(flight.FlightUnauthorizedError, match="not permitted"):
         wire.client.get_flight_info(descriptor, unheld)
-    with pytest.raises(flight.FlightUnauthorizedError, match="hr_reader"):
+    with pytest.raises(flight.FlightUnauthorizedError, match="not permitted"):
         wire.client.do_get(
             flight.Ticket(json.dumps({"token": "sam", "role": "hr_reader"}).encode())
         ).read_all()
@@ -451,7 +452,7 @@ def test_over_the_wire_get_schema_refuses_with_the_reason(wire):
     for options, reason in (
         (_options(), "a bearer credential is required"),
         (_options("forged"), "credential rejected"),
-        (_options("sam", role="hr_reader"), "'hr_reader' is not assigned"),
+        (_options("sam", role="hr_reader"), "not permitted"),  # REQ-2076
         (_options("sam"), "Table not found: hr.staff"),
     ):
         with pytest.raises(pa.ArrowException, match=reason):

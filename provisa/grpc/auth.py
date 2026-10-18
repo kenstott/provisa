@@ -33,7 +33,7 @@ import grpc
 
 from provisa.audit.context import AuditIdentity, set_audit_identity
 from provisa.auth import bearer
-from provisa.auth.bearer import authorize_role
+from provisa.auth.bearer import authorize_role_or_probe
 from provisa.auth.models import AuthIdentity
 from provisa.security.high_security import high_security_wire_reject, kms_key_in_pairs
 
@@ -146,11 +146,16 @@ class AuthInterceptor(grpc.ServerInterceptor):
                 self._state,
                 credential,
                 requested,
+                handler_call_details.method,
             )
-        return _with_principal(handler, self._state, credential, requested)
+        return _with_principal(
+            handler, self._state, credential, requested, handler_call_details.method
+        )
 
 
-def _authenticate(rpc, context, state, credential: str, requested: str | None) -> None:
+def _authenticate(
+    rpc, context, state, credential: str, requested: str | None, method: str = "grpc"
+) -> None:
     """Validate the credential and publish the principal in the RPC's context, or abort."""
     try:
         identity = rpc.run(validate_grpc_credential(state, credential))
@@ -158,7 +163,16 @@ def _authenticate(rpc, context, state, credential: str, requested: str | None) -
         context.abort(grpc.StatusCode.UNAUTHENTICATED, bearer.credential_refusal(exc))
         raise  # abort ends the RPC by raising; should it return, the rejection still propagates
     try:
-        role = authorize_role(state, identity, requested)
+        # REQ-2076: a suspended principal, or a role named that is not held, ends the RPC.
+        role = authorize_role_or_probe(
+            state,
+            identity,
+            requested,
+            transport="grpc",
+            endpoint=method,
+            run=rpc.run,
+            client=context.peer(),
+        )
     except PermissionError as exc:
         context.abort(grpc.StatusCode.PERMISSION_DENIED, str(exc))
         raise  # as above: never proceed as an unauthorized role
@@ -178,7 +192,11 @@ def _authenticate(rpc, context, state, credential: str, requested: str | None) -
 
 
 def _with_principal(
-    handler: grpc.RpcMethodHandler, state, credential: str, requested: str | None
+    handler: grpc.RpcMethodHandler,
+    state,
+    credential: str,
+    requested: str | None,
+    method: str = "grpc",
 ) -> grpc.RpcMethodHandler:
     """Rebuild ``handler`` so the credential is validated on the RPC's thread before it runs."""
     from provisa.grpc.rpc_scope import rpc_scope
@@ -190,14 +208,14 @@ def _with_principal(
 
     def streaming(request, context):
         with rpc_scope() as rpc:
-            _authenticate(rpc, context, state, credential, requested)
+            _authenticate(rpc, context, state, credential, requested, method)
             # The handler's declared behavior type is the union of all four RPC shapes; this branch
             # is taken only for a response-streaming handler, whose behavior is a generator.
             yield from behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
 
     def unary(request, context):
         with rpc_scope() as rpc:
-            _authenticate(rpc, context, state, credential, requested)
+            _authenticate(rpc, context, state, credential, requested, method)
             return behavior(request, context)  # pyright: ignore[reportGeneralTypeIssues]
 
     return _rebuild(handler, streaming if handler.response_streaming else unary)

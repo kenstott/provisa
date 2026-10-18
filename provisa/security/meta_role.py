@@ -56,6 +56,16 @@ META_PREFIX = "meta:"
 _LOCK = threading.Lock()
 
 
+class RoleNotHeld(PermissionError):  # REQ-2076
+    """A request named a role its identity does not hold. Every transport treats it as a detected
+    security event (security.role_probe)."""
+
+    def __init__(self, role: str, held: set[str] | frozenset[str] = frozenset()) -> None:
+        super().__init__(f"role {role!r} is not assigned to this identity")
+        self.role = role
+        self.held = tuple(sorted(held))
+
+
 class MetaRoleNamed(PermissionError):
     """A client named a meta-role directly; one is only ever made from roles the caller holds."""
 
@@ -503,7 +513,7 @@ def resolve_requested_role(
         elif name in held_pseudo:
             qualifiers.update(q for q in (name, held_pseudo[name]) if q)
         else:
-            raise PermissionError(f"role {name!r} is not assigned to this identity")
+            raise RoleNotHeld(name, set(permitted) | set(held_pseudo))
     distinct = sorted(set(data))
     if not qualifiers:
         return distinct[0] if len(distinct) == 1 else ensure_meta_role(state, distinct)

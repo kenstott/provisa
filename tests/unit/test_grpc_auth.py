@@ -74,6 +74,9 @@ class FakeContext:
         self.detail = detail
         raise _Aborted(code, detail)
 
+    def peer(self):
+        return "ipv4:127.0.0.1:50000"
+
 
 class _Aborted(Exception):
     def __init__(self, code, detail):

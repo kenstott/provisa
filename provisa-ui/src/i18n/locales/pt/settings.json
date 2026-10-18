@@ -201,6 +201,10 @@
           "label": "Senha da conta break-glass",
           "help": "A senha da conta break-glass. Segredo; requer reinicialização; pede confirmação antes de salvar."
         }
+      },
+      "webhook_url": {
+        "label": "Webhook de eventos de segurança",
+        "help": "Para onde um evento de segurança detectado (uma solicitação que nomeia um papel que seu autor não detém) é enviado como JSON, além do e-mail aos administradores da organização. O aviso não nomeia nenhuma instrução nem nenhum papel detido. Segredo: somente escrita."
       }
     },
     "redis": {

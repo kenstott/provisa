@@ -79,6 +79,11 @@ def pytest_configure(config: pytest.Config) -> None:
         "unbound: run with no org bound -- for the entrypoints that bind one themselves and for "
         "the refusal of work bound to none (REQ-1266)",
     )
+    config.addinivalue_line(
+        "markers",
+        "real_role_probe: record a role-probing event through security.role_probe.record itself, "
+        "not the unit stand-in (REQ-2076)",
+    )
 
 
 @pytest.fixture(autouse=True)
@@ -138,3 +143,25 @@ def _deployment_org_bound(request: pytest.FixtureRequest, monkeypatch):
     # A routed AppState attribute monkeypatch replaced is put back while the org is bound.
     monkeypatch.undo()
     reset_current_org(token)
+
+
+@pytest.fixture(autouse=True)
+def _role_probe_events(request):
+    """REQ-2076: a role named that the caller does not hold is recorded through the admin plane
+    (security.role_probe.record), which a unit test's state does not have. Here the events are
+    collected instead, for a test to read; tests/unit/test_role_probe.py tests the recording
+    itself (``@pytest.mark.real_role_probe``)."""
+    events: list = []
+    # Its own patcher: a test that undoes its ``monkeypatch`` (a wire fixture wanting the real
+    # streams) must not bring the admin-plane recording back with it.
+    patcher = pytest.MonkeyPatch()
+    if request.node.get_closest_marker("real_role_probe") is None:
+        from provisa.security import role_probe
+
+        async def _collect(probe):
+            events.append(probe)
+            return role_probe.suspension(probe)
+
+        patcher.setattr(role_probe, "record", _collect)
+    yield events
+    patcher.undo()

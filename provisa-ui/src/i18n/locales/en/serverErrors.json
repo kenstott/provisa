@@ -39,7 +39,8 @@
       "registration_basic_only": "Registration only available with basic auth provider",
       "role_not_assigned": "Role '{{role_id}}' is not assigned to this user",
       "simple_provider_not_configured": "Simple auth provider not configured",
-      "username_exists": "Username already exists"
+      "username_exists": "Username already exists",
+      "not_permitted": "Not permitted"
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' not permitted: {{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "Org '{{org}}' is '{{state}}', not 'failed' — nothing to retry.",
       "self_role_change": "A user cannot change their own role. Ask another administrator.",
       "view_not_permitted": "Not permitted to view this org",
-      "org_id_sandbox_prefix": "Org ids beginning {{prefix}} are reserved for demo sandboxes."
+      "org_id_sandbox_prefix": "Org ids beginning {{prefix}} are reserved for demo sandboxes.",
+      "no_suspension": "No such suspension in this org",
+      "suspension_target": "Name exactly one suspension to lift: a token or a person"
     },
     "platform": {
       "control_plane_role_required": "A platform administrator is required.",

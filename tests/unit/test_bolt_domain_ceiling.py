@@ -23,6 +23,10 @@ from __future__ import annotations
 import io
 from unittest.mock import patch
 
+import pytest
+
+from provisa.security.meta_role import RoleNotHeld
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -102,22 +106,22 @@ class TestResolveDb:
         assert result == ("analyst", True)
 
     def test_unknown_db_returns_none_not_fallback(self):
-        """REQ-808: Unknown db must return None — no silent fallback."""
+        """REQ-808: no silent fallback. REQ-2076: a role the user does not hold is a security event."""
         session, _ = _make_session(["analyst"])
-        result = session._resolve_db("provisa_unknown_role")
-        assert result is None
+        with pytest.raises(RoleNotHeld):
+            session._resolve_db("provisa_unknown_role")
 
     def test_unauthorized_ops_role_returns_none(self):
         """REQ-808: ops view for a role the user doesn't hold → None."""
         session, _ = _make_session(["analyst"])
-        result = session._resolve_db("provisa_ops_admin")
-        assert result is None
+        with pytest.raises(RoleNotHeld):  # REQ-2076
+            session._resolve_db("provisa_ops_admin")
 
     def test_unauthorized_business_role_returns_none(self):
         """REQ-808: business view for a role the user doesn't hold → None."""
         session, _ = _make_session(["analyst"])
-        result = session._resolve_db("provisa_admin")
-        assert result is None
+        with pytest.raises(RoleNotHeld):  # REQ-2076
+            session._resolve_db("provisa_admin")
 
     def test_no_roles_returns_none(self):
         """REQ-808: no roles means no valid db."""

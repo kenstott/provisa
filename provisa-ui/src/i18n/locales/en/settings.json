@@ -201,6 +201,10 @@
           "label": "Break-glass account password",
           "help": "The break-glass account's password. Secret; restart required; guarded."
         }
+      },
+      "webhook_url": {
+        "label": "Security event webhook",
+        "help": "Where a detected security event (a request naming a role its caller does not hold) is posted as JSON, beside the email to the org's administrators. The notice names no statement and no held role. Secret: write-only."
       }
     },
     "redis": {

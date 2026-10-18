@@ -39,7 +39,8 @@
       "registration_basic_only": "הרשמה זמינה רק עם ספק אימות basic",
       "role_not_assigned": "התפקיד '{{role_id}}' אינו מוקצה למשתמש זה",
       "simple_provider_not_configured": "ספק האימות הפשוט אינו מוגדר",
-      "username_exists": "שם המשתמש כבר קיים"
+      "username_exists": "שם המשתמש כבר קיים",
+      "not_permitted": "אין הרשאה"
     },
     "authz": {
       "mutation_not_permitted": "המוטציה '{{field_name}}' אינה מורשית: {{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "הארגון '{{org}}' נמצא במצב '{{state}}', לא 'failed' — אין מה לנסות שוב.",
       "self_role_change": "משתמש אינו יכול לשנות את התפקיד של עצמו. פנו למנהל אחר.",
       "view_not_permitted": "אין הרשאה לצפות בארגון זה",
-      "org_id_sandbox_prefix": "מזהי ארגון שמתחילים ב־{{prefix}} שמורים לארגזי חול של הדגמה."
+      "org_id_sandbox_prefix": "מזהי ארגון שמתחילים ב־{{prefix}} שמורים לארגזי חול של הדגמה.",
+      "no_suspension": "אין השעיה כזו בארגון זה",
+      "suspension_target": "ציין השעיה אחת בדיוק להסרה: אסימון או אדם"
     },
     "platform": {
       "control_plane_role_required": "נדרש מנהל פלטפורמה.",

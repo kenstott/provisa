@@ -350,6 +350,31 @@ class BoltSession:
 
         return principal_scope(app_state, self._identity, role_id)
 
+    async def _probed(self, refused: Any, database_org: Any) -> None:  # REQ-2076
+        """A role named that the session's principal does not hold: a security event. The session
+        ends, and the client is told nothing about the role."""
+        from provisa.api.org_resolve import OrgResolutionError
+        from provisa.security import role_probe
+
+        try:
+            await self._ensure_org(database_org)
+        except OrgResolutionError:
+            pass  # no org could be bound: the event is still recorded, in the operator's log
+        get_extra_info = getattr(self.writer, "get_extra_info", None)
+        peer = get_extra_info("peername") if get_extra_info is not None else None
+        await role_probe.record(
+            role_probe.probe_of(
+                self._identity,
+                refused,
+                org_id=self.org_id,
+                transport="bolt",
+                endpoint="RUN",
+                client=None if not peer else str(peer[0]),
+            )
+        )
+        self.send_failure("Neo.ClientError.Security.Forbidden", role_probe.NOT_PERMITTED)
+        self.state = State.DEFUNCT
+
     def _resolve_db(self, db: Any) -> tuple[str, bool] | None:
         """Map a Bolt `db` value to (role_id, include_ops), or None if unauthorized.
 
@@ -361,6 +386,8 @@ class BoltSession:
         (security/meta_role.py; resolved once the session's org is bound). Every role must be in
         the user's set; anything else → None.
         """
+        from provisa.security.meta_role import RoleNotHeld, is_meta_role_id
+
         if not self.roles:
             return None
         default = self.roles[0]
@@ -369,7 +396,13 @@ class BoltSession:
         for prefix, include_ops in (("provisa_ops_", True), ("provisa_", False)):
             if isinstance(db, str) and db.startswith(prefix):
                 named = [r.strip() for r in db[len(prefix) :].split(",") if r.strip()]
-                if named and all(r in self.roles for r in named):
+                if any(is_meta_role_id(r) for r in named):
+                    return None  # a meta-role is never named; the roles it is made of are
+                unheld = [r for r in named if r not in self.roles]
+                if named and unheld:
+                    # REQ-2076: a role named that the caller does not hold, not an unknown name.
+                    raise RoleNotHeld(unheld[0], set(self.roles))
+                if named:
                     return ",".join(named), include_ops
                 return None
         return None
@@ -577,7 +610,14 @@ class BoltSession:
         except OrgResolutionError as exc:
             self.send_failure("Neo.ClientError.Database.DatabaseNotFound", str(exc))
             return
-        resolved = self._resolve_db(db) if self.roles else None
+        from provisa.security import role_probe
+        from provisa.security.meta_role import RoleNotHeld
+
+        try:
+            resolved = self._resolve_db(db) if self.roles else None
+        except RoleNotHeld as refused:
+            await self._probed(refused, database_org)
+            return
 
         import logging as _logging
 
@@ -614,11 +654,19 @@ class BoltSession:
         except OrgResolutionError as exc:
             self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
             return
+        # REQ-2076: an IdP-signed principal whose token access to the org is suspended.
+        if await role_probe.suspended(self._identity, self.org_id, "bolt"):
+            self.send_failure("Neo.ClientError.Security.Forbidden", role_probe.NOT_PERMITTED)
+            self.state = State.DEFUNCT
+            return
 
         if "," in role_id:
             # A set of held roles acts as their meta-role, built in this session's org.
             try:
                 role_id = self._meta_role(_app_state, role_id)
+            except RoleNotHeld as refused:
+                await self._probed(refused, database_org)
+                return
             except PermissionError as exc:
                 self.send_failure("Neo.ClientError.Security.Forbidden", str(exc))
                 return

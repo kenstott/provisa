@@ -22,6 +22,10 @@ from __future__ import annotations
 import io
 from unittest.mock import patch
 
+import pytest
+
+from provisa.security.meta_role import RoleNotHeld
+
 
 # ---------------------------------------------------------------------------
 # Helpers (same pattern as test_bolt_domain_ceiling.py)
@@ -289,14 +293,14 @@ class TestUseSelectsRoleAndView:
     def test_use_role_not_held_by_user_is_rejected(self):
         """REQ-807: user cannot :use a role they do not hold."""
         session, _ = _make_session(["sales"])
-        result = session._resolve_db("provisa_finance")
-        assert result is None
+        with pytest.raises(RoleNotHeld):  # REQ-2076: a security event
+            session._resolve_db("provisa_finance")
 
     def test_use_ops_role_not_held_by_user_is_rejected(self):
         """REQ-807: user cannot :use ops view for a role they do not hold."""
         session, _ = _make_session(["sales"])
-        result = session._resolve_db("provisa_ops_finance")
-        assert result is None
+        with pytest.raises(RoleNotHeld):  # REQ-2076: a security event
+            session._resolve_db("provisa_ops_finance")
 
     def test_no_db_defaults_to_first_role_business_view(self):
         """REQ-807: no explicit db → first role, business view (home database)."""

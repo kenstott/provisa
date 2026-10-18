@@ -84760,3 +84760,44 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   stakeholders:
   - compliance
   - ops
+- id: REQ-2076
+  status: complete
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: MCP Authentication
+  feature: mcp-server-identity
+  priority: MUST
+  type: behavioral
+  description: "Naming a role the caller does not hold is a high-severity security event, detected on every transport (the HTTP API, MCP, pgwire, Bolt, Arrow Flight, the airport Flight service and gRPC). The caller is refused and, except a signed-in session on the HTTP API, told only 'not permitted', nothing about whether the role exists; the connection or session ends where there is one (pgwire, Bolt, the gRPC call, the MCP session). A personal access token that does it is suspended on any transport. A token an external identity provider signed (firebase, oauth, keycloak) suspends that principal's token access to the org when presented over MCP or a transport that is never a browser session (pgwire, Bolt, Flight, gRPC); on the HTTP API it is refused and recorded, not suspended, because the browser presents the same bearer and a tab still naming a role since lost is routine. A local MCP session (no bearer, the pinned posture) is refused, its session ended, and the event written to the operator's log. Only an administrator lifts a suspension; nothing lifts it on a timer. Each event is written to the org's admin trail (admin_audit_log, action security.role_probe, severity high: principal, credential id, client, transport, endpoint or tool, requested role, held roles, time, and the ids of the principal's most recent audited statements, whose text stays in the query audit log under its own right). The org's administrators are emailed where the deployment sends mail, and the event is posted to the operator's security webhook (security.webhook_url) where one is set; what leaves the org names the principal, credential id, transport, endpoint, requested role, time and severity with a link to the admin view, and no statement and no held role. Administrators see each suspension and its event, and lift it, on the team page (GET /admin/orgs/{org}/suspensions, POST /admin/orgs/{org}/suspensions/lift)."
+  use_case: "A stolen personal access token is used to try role names one after another; the first unheld name suspends the token and tells the org's administrators, who review the event and its recent statements before lifting it or revoking the token."
+  scenario: "Given a personal access token whose owner holds analyst\n\nWhen a pgwire connection presenting it names the role admin\n\nThen the connection ends with 'not permitted'\n\nAnd the token is suspended, so its next connection is refused as a revoked token is\n\nAnd the org's admin trail holds a high-severity security.role_probe event naming admin and the token\n\nAnd an administrator lifting the suspension on the team page restores the token"
+  code:
+  - provisa/security/role_probe.py
+  - provisa/security/meta_role.py
+  - provisa/auth/middleware.py
+  - provisa/auth/bearer.py
+  - provisa/auth/models.py
+  - provisa/auth/pat.py
+  - provisa/api/acting_role.py
+  - provisa/api/app.py
+  - provisa/api/mcp/server.py
+  - provisa/api/flight/server.py
+  - provisa/api/airport/server.py
+  - provisa/api/admin/orgs_router.py
+  - provisa/grpc/auth.py
+  - provisa/pgwire/server.py
+  - provisa/bolt/session.py
+  - provisa/core/org_membership.py
+  - provisa/core/schema_admin.py
+  - provisa/core/settings_catalog.py
+  - provisa-ui/src/components/admin/SuspendedAccess.tsx
+  - provisa-ui/src/pages/TeamPage.tsx
+  tests:
+  - tests/unit/test_role_probe.py
+  - tests/unit/test_client_role.py
+  - tests/unit/test_mcp_server.py
+  - tests/unit/test_pgwire_requirements.py
+  - provisa-ui/src/__tests__/SuspendedAccess.test.tsx
+  stakeholders:
+  - compliance
+  - ops

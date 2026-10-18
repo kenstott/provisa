@@ -39,7 +39,8 @@
       "registration_basic_only": "Registro disponível apenas com o provedor de autenticação basic",
       "role_not_assigned": "A função '{{role_id}}' não está atribuída a este usuário",
       "simple_provider_not_configured": "Provedor de autenticação simples não configurado",
-      "username_exists": "Nome de usuário já existe"
+      "username_exists": "Nome de usuário já existe",
+      "not_permitted": "Não permitido"
     },
     "authz": {
       "mutation_not_permitted": "Mutação '{{field_name}}' não permitida: {{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "A organização '{{org}}' está em '{{state}}', não em 'failed' — nada a repetir.",
       "self_role_change": "Um usuário não pode alterar a própria função. Peça a outro administrador.",
       "view_not_permitted": "Sem permissão para exibir esta organização",
-      "org_id_sandbox_prefix": "Ids de organização que começam com {{prefix}} são reservados para sandboxes de demonstração."
+      "org_id_sandbox_prefix": "Ids de organização que começam com {{prefix}} são reservados para sandboxes de demonstração.",
+      "no_suspension": "Nenhuma suspensão desse tipo nesta organização",
+      "suspension_target": "Indique exatamente uma suspensão a levantar: um token ou uma pessoa"
     },
     "platform": {
       "control_plane_role_required": "É necessário um administrador da plataforma.",

@@ -165,6 +165,7 @@ class PersonalAccessTokenStore:  # REQ-1263
                     personal_access_tokens.c.scopes,
                     personal_access_tokens.c.expires_at,
                     personal_access_tokens.c.revoked_at,
+                    personal_access_tokens.c.suspended_at,
                     personal_access_tokens.c.name,
                     personal_access_tokens.c.env_name,
                     user_profiles.c.email,
@@ -182,7 +183,8 @@ class PersonalAccessTokenStore:  # REQ-1263
             if fetched is None:
                 raise ValueError("Invalid token")
             row = dict(fetched._mapping)
-            if row["revoked_at"] is not None:
+            # REQ-2076: a suspended token is refused as a revoked one is, until an admin lifts it.
+            if row["revoked_at"] is not None or row["suspended_at"] is not None:
                 raise ValueError("Invalid token")
             if row["expires_at"] is not None and _as_aware(row["expires_at"]) <= _utcnow():
                 raise ValueError("Invalid token")
@@ -210,6 +212,8 @@ class PersonalAccessTokenStore:  # REQ-1263
             # demo sandbox's token addresses its whole org, which is its person's alone and thrown
             # away, so its visitor is served by whichever of its environments they switch to.
             credential_env=None if is_demo_sandbox(row["org_id"]) else row["env_name"],
+            credential="pat",
+            credential_id=token_hash,
         )
 
     async def list_for_user(self, user_id: str, org_id: str) -> list[dict]:
@@ -252,6 +256,56 @@ class PersonalAccessTokenStore:  # REQ-1263
                 .values(revoked_at=_utcnow())
             )
         return result.rowcount > 0
+
+    async def suspend(self, *, token_hash: str, reason: str) -> bool:  # REQ-2076
+        """Suspend one token: it is refused until an administrator lifts it. Returns False when
+        no live, unsuspended token has that hash."""
+        async with self._pool.acquire() as conn:
+            result = await conn.execute_core(
+                update(personal_access_tokens)
+                .where(
+                    personal_access_tokens.c.token_hash == token_hash,
+                    personal_access_tokens.c.revoked_at.is_(None),
+                    personal_access_tokens.c.suspended_at.is_(None),
+                )
+                .values(suspended_at=_utcnow(), suspended_reason=reason)
+            )
+        return result.rowcount > 0
+
+    async def lift_suspension(self, *, token_hash: str, org_id: str) -> bool:  # REQ-2076
+        """Lift the suspension of one of ``org_id``'s tokens. Returns False when it has none."""
+        async with self._pool.acquire() as conn:
+            result = await conn.execute_core(
+                update(personal_access_tokens)
+                .where(
+                    personal_access_tokens.c.token_hash == token_hash,
+                    personal_access_tokens.c.org_id == org_id,
+                    personal_access_tokens.c.suspended_at.is_not(None),
+                )
+                .values(suspended_at=None, suspended_reason=None)
+            )
+        return result.rowcount > 0
+
+    async def list_suspended(self, org_id: str) -> list[dict]:  # REQ-2076
+        """Every suspended, unrevoked token of ``org_id``, newest suspension first."""
+        async with self._pool.acquire() as conn:
+            result = await conn.execute_core(
+                select(
+                    personal_access_tokens.c.token_hash,
+                    personal_access_tokens.c.prefix,
+                    personal_access_tokens.c.name,
+                    personal_access_tokens.c.user_id,
+                    personal_access_tokens.c.suspended_at,
+                    personal_access_tokens.c.suspended_reason,
+                ).where(
+                    personal_access_tokens.c.org_id == org_id,
+                    personal_access_tokens.c.suspended_at.is_not(None),
+                    personal_access_tokens.c.revoked_at.is_(None),
+                )
+            )
+            rows = [dict(r._mapping) for r in result.fetchall()]
+        rows.sort(key=lambda r: _as_aware(r["suspended_at"]), reverse=True)
+        return rows
 
     async def revoke_all_for_user_in_org(self, *, user_id: str, org_id: str) -> int:
         """Revoke every token a user holds in one org. Called when their membership ends —

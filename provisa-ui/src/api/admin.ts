@@ -422,6 +422,74 @@ export async function addOrgMember(orgId: string, userId: string): Promise<void>
   if (!res.ok) throw httpError("addOrgMember", res.status);
 }
 
+// REQ-2076: what is suspended in an org for naming a role that was not held, and the events that
+// suspended it (the org's admin trail). An event names its recent statements by audit row id; their
+// text is read with fetchAuditedStatement, under the view_governance right.
+export interface SuspendedToken {
+  token_hash: string;
+  prefix: string;
+  name: string;
+  user_id: string;
+  suspended_at: string;
+  suspended_reason: string | null;
+}
+
+export interface SuspendedPrincipal {
+  user_id: string;
+  token_access_suspended_at: string;
+  token_access_suspended_reason: string | null;
+}
+
+export interface RoleProbeEvent {
+  id: number;
+  subject_id: string;
+  created_at: string;
+  detail: {
+    severity: string;
+    principal: string | null;
+    credential: string | null;
+    credential_id: string | null;
+    client: string | null;
+    transport: string;
+    endpoint: string;
+    requested_role: string;
+    held_roles: string[];
+    at: string;
+    suspended: "token" | "principal" | null;
+    recent_statement_ids: number[];
+  };
+}
+
+export interface OrgSuspensions {
+  tokens: SuspendedToken[];
+  principals: SuspendedPrincipal[];
+  events: RoleProbeEvent[];
+}
+
+export async function fetchOrgSuspensions(orgId: string): Promise<OrgSuspensions> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/suspensions`);
+  if (!res.ok) throw httpError("fetchOrgSuspensions", res.status);
+  return res.json();
+}
+
+export async function liftOrgSuspension(
+  orgId: string,
+  target: { token_hash: string } | { user_id: string },
+): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/suspensions/lift`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(target),
+  });
+  if (!res.ok) throw httpError("liftOrgSuspension", res.status);
+}
+
+export async function fetchAuditedStatement(auditId: number): Promise<string> {
+  const res = await fetch(`${API_BASE}/admin/audit/queries/${auditId}/text`);
+  if (!res.ok) throw httpError("fetchAuditedStatement", res.status);
+  return (await res.json()).query_text;
+}
+
 export async function removeOrgMember(orgId: string, userId: string): Promise<void> {
   const res = await fetch(`${API_BASE}/admin/orgs/${orgId}/members/${userId}`, {
     method: "DELETE",

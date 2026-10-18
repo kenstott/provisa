@@ -464,6 +464,30 @@ Está activada por defecto (cinco fallos en cinco minutos bloquean al sujeto dur
 
 La clave es el principal que lleva el protocolo. Una superficie solo bearer no lleva principal, así que la clave es un resumen de la propia credencial; lo que eso impide es que un token incorrecto se reproduzca sin límite. El almacén es por proceso, así que un despliegue con varios workers de API permite hasta `max_attempts` por worker: la limitación frena las adivinanzas, no es una cuota distribuida.
 
+### Sondeo de roles {: #role-probing }
+
+Nombrar un rol que el autor de la llamada no tiene se trata como un evento de seguridad detectado de gravedad alta, en todas las superficies: la API HTTP, MCP, pgwire, Bolt, Arrow Flight, el servicio Flight de airport y gRPC. Un cliente legítimo nombra los roles que se le dieron; uno que nombra otro está roto o está sondeando. (REQ-2076)
+
+La solicitud se rechaza. Al autor de la llamada solo se le dice «not permitted», nada sobre si el rol existe, y la conexión o sesión termina donde la hay: la conexión pgwire, la sesión Bolt, la llamada gRPC, la sesión MCP. La única excepción es una sesión iniciada en la API HTTP, que conserva el rechazo que nombra el rol.
+
+Lo demás depende de la credencial y del transporte:
+
+| Credencial | Transporte | Se suspende |
+|---|---|---|
+| Token de acceso personal | cualquiera | el token |
+| Token firmado por un proveedor de identidad externo | MCP, pgwire, Bolt, Flight, gRPC | el acceso por token del principal a la organización |
+| Token firmado por un proveedor de identidad externo | la API HTTP | nada |
+| Una sesión o contraseña que este despliegue comprueba | cualquiera | nada |
+| Una sesión MCP local (sin bearer) | MCP | nada; el evento va al registro del operador |
+
+La API HTTP es la excepción porque el navegador presenta el mismo token bearer que un cliente de API, de modo que el servidor no puede distinguirlos, y una pestaña que aún nombra un rol que el usuario ha perdido (después de que un administrador cambie sus roles, o tras cambiar de organización) es algo habitual. MCP y los demás transportes nunca son una sesión de navegador. Allí el evento se rechaza, se registra y se notifica como cualquier otro; solo se omite la suspensión.
+
+Un token suspendido se rechaza como uno revocado. Un principal cuyo acceso por token está suspendido se rechaza en MCP, pgwire, Bolt, Flight y gRPC en esa organización, y aún puede iniciar sesión en la interfaz. Solo un administrador levanta una suspensión; nada la levanta por tiempo. Equipo → Acceso suspendido enumera cada suspensión con el evento que la causó y la levanta (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
+
+Cada evento se escribe en el registro de administración de la organización (acción `security.role_probe`) con el principal, el identificador de la credencial, la dirección del cliente, el transporte, el endpoint o la herramienta, el rol nombrado, los roles que tiene, la hora y los identificadores de las sentencias auditadas más recientes del principal. Su texto permanece en el registro de auditoría de consultas y se lee con el derecho `view_governance`.
+
+Los administradores de la organización reciben un correo donde el despliegue envía correo. El evento también se envía como JSON al webhook de seguridad del operador cuando `security.webhook_url` está definido. Lo que sale de la organización nombra el principal, el identificador de la credencial, el transporte, el endpoint, el rol nombrado, la hora y la gravedad, con un enlace a la vista de administración; no incluye ninguna sentencia ni ningún rol que se tenga. Un aviso que no se puede entregar se registra y nunca deshace el rechazo ni la suspensión.
+
 ### Nombrar la organización {: #naming-the-org }
 
 En modo multiinquilino cada solicitud nombra la organización para la que es. Pertenecer exactamente a una organización no la nombra: una solicitud que no nombra ninguna se rechaza, y el rechazo dice qué enviar. (REQ-1235) Cada superficie nombra una organización así:

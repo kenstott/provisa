@@ -3802,6 +3802,29 @@ def create_app() -> FastAPI:
             headers=exc.headers,
         )
 
+    from provisa.api.acting_role import RoleProbeRefused as _RoleProbeRefused
+
+    @app.exception_handler(_RoleProbeRefused)
+    async def _role_probe_handler(_req: _Request, exc: _RoleProbeRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        """REQ-2076: a role named that the caller does not hold -- recorded, then refused."""
+        import dataclasses
+
+        from provisa.security import role_probe
+
+        host = _req.client.host if _req.client is not None else None
+        agent = _req.headers.get("user-agent")
+        await role_probe.record(
+            dataclasses.replace(
+                exc.probe,
+                endpoint=f"{_req.method} {_req.url.path}",
+                client=" ".join(p for p in (host, agent) if p) or None,
+            )
+        )
+        return _JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail, "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.json_refusal import JsonRefused as _JsonRefused
     from provisa.core.read_refusal import ReadRefused as _ReadRefused
 

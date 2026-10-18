@@ -464,6 +464,30 @@ Indovinare le password non dipende dal protocollo: lo stesso account può essere
 
 La chiave è il principal che il protocollo porta. Una superficie solo bearer non porta un principal, quindi la chiave è un digest della credenziale stessa; ciò che impedisce è che un token errato venga riprodotto senza limiti. L'archivio è per processo, quindi un deployment con più worker API consente fino a `max_attempts` per worker — la limitazione frena i tentativi, non è una quota distribuita.
 
+### Sondaggio dei ruoli {: #role-probing }
+
+Nominare un ruolo che il chiamante non detiene è trattato come un evento di sicurezza rilevato di gravità alta, su ogni superficie: l'API HTTP, MCP, pgwire, Bolt, Arrow Flight, il servizio Flight airport e gRPC. Un client legittimo nomina i ruoli che gli sono stati dati; uno che ne nomina un altro è guasto oppure sta sondando. (REQ-2076)
+
+La richiesta viene rifiutata. Al chiamante viene detto solo «not permitted», niente sull'esistenza del ruolo, e la connessione o la sessione termina dove ce n'è una: la connessione pgwire, la sessione Bolt, la chiamata gRPC, la sessione MCP. L'unica eccezione è una sessione autenticata sull'API HTTP, che mantiene il rifiuto che nomina il ruolo.
+
+Il resto dipende dalla credenziale e dal trasporto:
+
+| Credenziale | Trasporto | Sospeso |
+|---|---|---|
+| Token di accesso personale | qualsiasi | il token |
+| Token firmato da un provider di identità esterno | MCP, pgwire, Bolt, Flight, gRPC | l'accesso tramite token del principal all'organizzazione |
+| Token firmato da un provider di identità esterno | l'API HTTP | niente |
+| Una sessione o una password che questo deployment verifica | qualsiasi | niente |
+| Una sessione MCP locale (senza bearer) | MCP | niente; l'evento va nel log dell'operatore |
+
+L'API HTTP fa eccezione perché il browser presenta lo stesso token bearer di un client API, quindi il server non può distinguerli, e una scheda che nomina ancora un ruolo che l'utente ha perso (dopo che un amministratore ne ha cambiato i ruoli, o dopo un cambio di organizzazione) è normale. MCP e gli altri trasporti non sono mai una sessione del browser. Lì l'evento viene rifiutato, registrato e notificato come qualsiasi altro; si omette solo la sospensione.
+
+Un token sospeso viene rifiutato come uno revocato. Un principal il cui accesso tramite token è sospeso viene rifiutato su MCP, pgwire, Bolt, Flight e gRPC in quell'organizzazione, e può ancora accedere all'interfaccia. Solo un amministratore revoca una sospensione; niente la revoca allo scadere di un tempo. Team → Accesso sospeso elenca ogni sospensione con l'evento che l'ha causata e la revoca (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
+
+Ogni evento viene scritto nel registro amministrativo dell'organizzazione (azione `security.role_probe`) con il principal, l'identificativo della credenziale, l'indirizzo del client, il trasporto, l'endpoint o lo strumento, il ruolo nominato, i ruoli detenuti, l'ora e gli identificativi delle istruzioni sottoposte ad audit più recenti del principal. Il loro testo resta nel log di audit delle query e si legge con il diritto `view_governance`.
+
+Gli amministratori dell'organizzazione ricevono un'e-mail dove il deployment invia posta. L'evento viene anche inviato come JSON al webhook di sicurezza dell'operatore quando `security.webhook_url` è impostato. Ciò che lascia l'organizzazione nomina il principal, l'identificativo della credenziale, il trasporto, l'endpoint, il ruolo nominato, l'ora e la gravità, con un link alla vista di amministrazione; non contiene alcuna istruzione né alcun ruolo detenuto. Un avviso che non può essere consegnato viene registrato e non annulla mai il rifiuto né la sospensione.
+
 ### Nominare l'organizzazione {: #naming-the-org }
 
 In modalità multi-tenant ogni richiesta nomina l'organizzazione a cui è destinata. Appartenere esattamente a un'organizzazione non la nomina: una richiesta che non ne nomina nessuna viene rifiutata, e il rifiuto dice cosa inviare. (REQ-1235) Ogni superficie nomina un'organizzazione così:

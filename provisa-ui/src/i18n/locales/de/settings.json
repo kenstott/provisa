@@ -201,6 +201,10 @@
           "label": "Passwort des Break-Glass-Kontos",
           "help": "Das Passwort des Break-Glass-Kontos. Secret; Neustart erforderlich; bestätigungspflichtig."
         }
+      },
+      "webhook_url": {
+        "label": "Webhook für Sicherheitsereignisse",
+        "help": "Wohin ein erkanntes Sicherheitsereignis (eine Anfrage, die eine Rolle nennt, die ihr Aufrufer nicht hält) als JSON gesendet wird, zusätzlich zur E-Mail an die Administratoren der Organisation. Die Meldung nennt keine Anweisung und keine gehaltene Rolle. Geheim: nur schreibbar."
       }
     },
     "redis": {

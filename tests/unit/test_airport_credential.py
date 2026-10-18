@@ -137,12 +137,14 @@ def test_the_role_comes_from_the_validated_identity(monkeypatch):
         srv._role(_Call(bearer="both-token", role="seller,hr_reader"))
 
 
-def test_a_role_the_identity_does_not_hold_is_refused_by_name(monkeypatch):
+def test_a_role_the_identity_does_not_hold_is_refused_saying_nothing_of_it(monkeypatch):
+    # REQ-2076: naming a role not held is a security event; the caller learns nothing of the role.
     srv = _server(monkeypatch, auth=True)
-    for requested in ("org_admin", "seller,org_admin", "meta:hr_reader+seller"):
-        with pytest.raises(flight.FlightUnauthorizedError) as refused:
+    for requested in ("org_admin", "seller,org_admin"):
+        with pytest.raises(flight.FlightUnauthorizedError, match="^airport: not permitted$"):
             srv._role(_Call(bearer="sam-token", role=requested))
-        assert "org_admin" in str(refused.value) or "is not a role" in str(refused.value)
+    with pytest.raises(flight.FlightUnauthorizedError, match="is not a role"):
+        srv._role(_Call(bearer="sam-token", role="meta:hr_reader+seller"))
 
 
 def test_a_live_auth_layer_with_no_config_fails_closed(monkeypatch):
@@ -232,7 +234,7 @@ def test_no_rpc_serves_a_call_that_presents_no_valid_credential(secured, rpc, ca
     ["do_get (scan)", "get_flight_info", "do_exchange (insert/update/delete)"],
 )
 def test_a_valid_credential_cannot_read_or_write_as_a_role_it_does_not_hold(secured, rpc):
-    with pytest.raises(flight.FlightUnauthorizedError, match="org_admin"):
+    with pytest.raises(flight.FlightUnauthorizedError, match="not permitted"):  # REQ-2076
         _rpcs(secured)[rpc](_Call(bearer="sam-token", role="org_admin"))
     assert secured._reached == []
 

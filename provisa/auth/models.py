@@ -54,6 +54,12 @@ class AuthIdentity:  # REQ-120
     # REQ-2057: pseudo-role id -> its parent ('' for a parent), the roles the identity holds for
     # what its attributes say about a declared claim type. Bound with the attributes.
     pseudo_roles: dict[str, str] | None = None
+    # REQ-2076: the kind of credential the request presented -- "pat" (a personal access token),
+    # "idp" (a token an external identity provider signed), or None (a session or password this
+    # deployment checks itself) -- and, for a PAT, its id (the token's hash). Set where the
+    # credential is validated (AuthProvider.validate_credential).
+    credential: str | None = None
+    credential_id: str | None = None
 
 
 @dataclass
@@ -103,7 +109,12 @@ class AuthProvider(ABC):  # REQ-120
 
         if self.pat_store is not None and is_personal_access_token(token):
             return await self.pat_store.validate(token)
-        return await fallback(token)
+        identity = await fallback(token)
+        from provisa.security.role_probe import IDP_SIGNED
+
+        if self.provider_name in IDP_SIGNED:
+            identity.credential = "idp"  # REQ-2076
+        return identity
 
     @property
     def token_validators(self) -> dict:

@@ -124,7 +124,7 @@ class TestDoGetAuthentication:
     def test_a_requested_role_the_identity_lacks_is_refused(self, secured):
         # Authenticated, and refused what it asked to act as: permission denied, not
         # unauthenticated.
-        with pytest.raises(flight.FlightUnauthorizedError, match="not assigned to this identity"):
+        with pytest.raises(flight.FlightUnauthorizedError, match="not permitted"):
             secured.do_get(None, _ticket(query="SELECT 1", token="good-token", role="admin"))
 
     def test_the_ticket_cannot_assert_a_role_it_merely_names(self, secured):

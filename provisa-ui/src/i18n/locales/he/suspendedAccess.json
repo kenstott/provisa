@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "גישה מושעית",
+    "help": "בקשה שמציינת תפקיד שהמבקש אינו מחזיק היא אירוע אבטחה. אסימון גישה אישי שעושה זאת מושעה, וכך גם גישת האסימון של אדם דרך MCP,‏ SQL ‏(pgwire),‏ Bolt,‏ Arrow Flight ו-gRPC כשספק הזהות שלו חתם על האסימון. השעיה נשארת עד שמנהל מסיר אותה.",
+    "colCredential": "אישור גישה",
+    "colPerson": "אדם",
+    "colEvent": "אירוע",
+    "colSince": "הושעה",
+    "colActions": "פעולות",
+    "kindToken": "אסימון גישה",
+    "kindPrincipal": "גישת אסימון",
+    "eventSummary": "ציין את התפקיד {{role}} דרך {{transport}} ‏({{endpoint}})",
+    "heldRoles": "מחזיק: {{roles}}",
+    "client": "מאת: {{client}}",
+    "recentStatements": "משפטים אחרונים:",
+    "statementNeedsRight": "קריאת משפט דורשת את ההרשאה view_governance.",
+    "lift": "הסר",
+    "lifted": "ההשעיה הוסרה",
+    "none": "אין דבר מושעה."
+  }
+}

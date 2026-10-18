@@ -821,3 +821,50 @@ async def test_run_sql_forces_a_delivery_and_answers_its_handle(state, monkeypat
 
     with pytest.raises(RedirectFormatUnknown):
         await tools.run_sql(state, "analyst", "SELECT 1", redirect=True, redirect_format="xlsx")
+
+
+async def test_a_local_call_naming_a_role_beyond_its_pin_is_recorded_and_ends_its_session(
+    monkeypatch, _role_probe_events
+):  # REQ-2076
+    from provisa.api.mcp import server as mcp_server
+    from provisa.api.mcp.server import build_mcp_server
+
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")
+    fake_state = _make_state()
+    fake_state.org_id = "root"  # the deployment's org, which a local call is served in
+    monkeypatch.setattr("provisa.api.app.state", fake_state)
+    mcp = build_mcp_server(fake_state)
+    token = mcp_server._request_session.set("session-1")
+    try:
+        with pytest.raises(Exception, match="not among the roles this MCP server was given"):
+            await mcp.call_tool("list_schemas", {"role": "admin"})
+    finally:
+        mcp_server._request_session.reset(token)
+    [event] = _role_probe_events
+    assert (event.transport, event.requested, event.endpoint) == ("stdio", "admin", "list_schemas")
+    assert "session-1" in mcp_server._ended_sessions
+    mcp_server._ended_sessions.discard("session-1")
+
+
+async def test_a_request_in_an_ended_session_is_told_its_session_is_over():  # REQ-2076
+    from provisa.api.mcp import server as mcp_server
+
+    reached: list = []
+
+    async def _app(scope, receive, send):
+        reached.append(scope)
+
+    sent: list = []
+
+    async def _send(message):
+        sent.append(message)
+
+    mcp_server._ended_sessions.add("over")
+    try:
+        middleware = mcp_server._wrap_role_auth(
+            _app, SimpleNamespace(org_id="root"), require_token=False
+        )
+        await middleware({"type": "http", "headers": [(b"mcp-session-id", b"over")]}, None, _send)
+    finally:
+        mcp_server._ended_sessions.discard("over")
+    assert reached == [] and sent[0]["status"] == 404

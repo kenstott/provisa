@@ -260,7 +260,7 @@ class ProvisaAirportServer(
         from provisa.core.connection_loop import run_on_connection_loop
         from provisa.auth.bearer import (
             CREDENTIAL_ERRORS,
-            authorize_role,
+            authorize_role_or_probe,
             credential_refusal,
             validate_bearer_credential,
         )
@@ -278,7 +278,14 @@ class ProvisaAirportServer(
                 f"airport: {credential_refusal(exc)}"
             ) from exc
         try:
-            role_id = authorize_role(self._state, identity, requested)
+            role_id = authorize_role_or_probe(
+                self._state,
+                identity,
+                requested,
+                transport="airport",
+                endpoint="airport",
+                run=run_on_connection_loop,
+            )
         except PermissionError as exc:
             # The caller is authenticated; what it asked to act as is refused: permission denied.
             raise flight.FlightUnauthorizedError(f"airport: {exc}") from exc  # pyright: ignore[reportPrivateImportUsage]

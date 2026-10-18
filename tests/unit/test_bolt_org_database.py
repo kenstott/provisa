@@ -163,8 +163,11 @@ class TestRoleSetDatabase:
         assert session._resolve_db("provisa_ops_auditor, analyst") == ("auditor,analyst", True)
 
     def test_a_set_with_a_role_not_held_is_not_accessible(self):
+        from provisa.security.meta_role import RoleNotHeld
+
         session = self._session(["analyst"])
-        assert session._resolve_db("provisa_analyst,org_admin") is None
+        with pytest.raises(RoleNotHeld):  # REQ-2076: a security event, not an unknown name
+            session._resolve_db("provisa_analyst,org_admin")
 
     def test_a_meta_role_named_directly_is_not_accessible(self):
         session = self._session(["analyst", "auditor"])

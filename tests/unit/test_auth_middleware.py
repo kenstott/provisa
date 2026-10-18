@@ -31,6 +31,8 @@ def _deployment_org_is_root(serve_deployment_org):
 class MockProvider(AuthProvider):
     """Test provider that accepts 'valid-token' and rejects everything else."""
 
+    provider_name = "test"  # a provider of this deployment's own, not IdP-signed
+
     async def validate_token(self, token: str) -> AuthIdentity:
         if token == "valid-token":
             return AuthIdentity(
@@ -624,6 +626,8 @@ def test_superuser_single_org_deployment_ignores_the_host():
 
 class MultiRoleProvider(AuthProvider):
     """A user holding two data-plane roles, as the UI's "Role: All" acts for."""
+
+    provider_name = "test"  # a provider of this deployment's own, not IdP-signed
 
     async def validate_token(self, token: str) -> AuthIdentity:
         if token == "valid-token":

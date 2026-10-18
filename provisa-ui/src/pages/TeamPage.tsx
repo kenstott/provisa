@@ -52,6 +52,7 @@ import { useListSortGroup, type ListColumn } from "../components/list/useListSor
 import { Tip } from "../components/Tip";
 import { SplitPane } from "../components/list/SplitPane";
 import { MemberAttributes } from "../components/admin/MemberAttributes";
+import { SuspendedAccess } from "../components/admin/SuspendedAccess";
 
 // REQ-1266: org_admin self-service team management. The org_admin invites people into their
 // active org and picks the role each invitee is granted on redemption (the invite carries
@@ -604,6 +605,19 @@ export function TeamPage() {
             </ListTable>
           </div>
         </CollapsibleItem>
+
+        {/* REQ-2076: credentials suspended for naming a role that was not held, and the events
+            that suspended them. Only an administrator lifts one. */}
+        {activeOrgId && (
+          <CollapsibleItem
+            value="suspended"
+            defaultOpen={false}
+            controlTestId="team-section-suspended"
+            title={t("suspendedAccess.heading")}
+          >
+            <SuspendedAccess orgId={activeOrgId} onError={reportError} />
+          </CollapsibleItem>
+        )}
 
         {/* REQ-1569: the rule that decides who joins without an invitation, read and edited by the
             org_admin who owns it. */}

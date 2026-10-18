@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "已暂停的访问",
+    "help": "请求指名其调用方并不持有的角色属于安全事件。这样做的个人访问令牌会被暂停；若令牌由其身份提供方签发，该人通过 MCP、SQL (pgwire)、Bolt、Arrow Flight 和 gRPC 的令牌访问也会被暂停。暂停会一直保持，直到管理员解除。",
+    "colCredential": "凭据",
+    "colPerson": "人员",
+    "colEvent": "事件",
+    "colSince": "暂停时间",
+    "colActions": "操作",
+    "kindToken": "访问令牌",
+    "kindPrincipal": "令牌访问",
+    "eventSummary": "通过 {{transport}}（{{endpoint}}）指名角色 {{role}}",
+    "heldRoles": "持有：{{roles}}",
+    "client": "来源：{{client}}",
+    "recentStatements": "最近的语句：",
+    "statementNeedsRight": "读取语句需要 view_governance 权限。",
+    "lift": "解除",
+    "lifted": "已解除暂停",
+    "none": "没有被暂停的内容。"
+  }
+}

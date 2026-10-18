@@ -53,6 +53,13 @@ logger = logging.getLogger(__name__)
 ORG_SELECTION_REQUIRED = "auth.org_selection_required"
 
 
+def _client_of(request: Request) -> str | None:  # REQ-2076
+    """The peer address and user agent of ``request``, as an event records them."""
+    host = request.client.host if request.client is not None else None
+    agent = request.headers.get("user-agent")
+    return " ".join(p for p in (host, agent) if p) or None
+
+
 def _deny(
     request: Request,
     status: int,
@@ -1146,9 +1153,24 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                         if q and q not in qualifiers:
                             qualifiers.append(q)
                 else:
+                    # REQ-2076: naming a role the caller does not hold is a security event.
+                    from provisa.security import role_probe
+
+                    probe = role_probe.Probe(
+                        org_id=active_org_id,
+                        user_id=identity.user_id,
+                        credential=identity.credential,
+                        credential_id=identity.credential_id,
+                        transport="http",
+                        endpoint=f"{request.method} {request.url.path}",
+                        requested=requested_role,
+                        held=tuple(sorted(assigned_role_ids | set(held_pseudo))),
+                        client=_client_of(request),
+                    )
+                    await role_probe.record(probe)
+                    said = f"Role {requested_role!r} is not assigned to this user"
                     return JSONResponse(
-                        status_code=403,
-                        content={"detail": f"Role {requested_role!r} is not assigned to this user"},
+                        status_code=403, content={"detail": role_probe.refusal(probe, said)}
                     )
             if qualifiers:
                 # A set naming pseudo-roles acts as its meta-role even with one data role. Named

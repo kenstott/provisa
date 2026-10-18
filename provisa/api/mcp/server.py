@@ -60,6 +60,11 @@ _request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", d
 # so those admin-gate functions need a request-shaped shim built from these instead of a real Request.
 _request_identity: ContextVar[Any | None] = ContextVar("provisa_mcp_request_identity", default=None)
 _request_org_id: ContextVar[str | None] = ContextVar("provisa_mcp_request_org_id", default=None)
+# REQ-2076: the MCP session (``Mcp-Session-Id``) a tool call belongs to, and the sessions ended
+# because a call in them named a role the caller does not hold. A request in an ended session is
+# answered 404, which tells an MCP client its session is over.
+_request_session: ContextVar[str | None] = ContextVar("provisa_mcp_request_session", default=None)
+_ended_sessions: set[str] = set()
 
 
 async def _validate_mcp_token(token: str, state: Any):
@@ -213,10 +218,15 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
     pinned = {r.strip() for r in _pinned_stdio_role().split(",") if r.strip()}
     beyond = sorted(held - pinned)
     if beyond:
-        raise PermissionError(
+        from provisa.security.meta_role import RoleNotHeld
+
+        refused = RoleNotHeld(beyond[0], pinned)
+        # A local agent's own operator reads this: it says what the pin is.
+        refused.args = (
             f"role {beyond[0]!r} is not among the roles this MCP server was given "
-            f"(mcp.role / PROVISA_MCP_ROLE: {', '.join(sorted(pinned))})"
+            f"(mcp.role / PROVISA_MCP_ROLE: {', '.join(sorted(pinned))})",
         )
+        raise refused
     return resolve_requested_role(state, held, named)
 
 
@@ -297,6 +307,30 @@ def build_mcp_server(state: Any):
         ),
     )
 
+    from provisa.security.meta_role import RoleNotHeld
+
+    async def _probed(refused: RoleNotHeld, tool: str) -> PermissionError:
+        """REQ-2076: a role named that the caller does not hold. The event is recorded, the MCP
+        session ends, and the refusal is returned for the call to raise: a remote caller is told
+        nothing of the role, a local one (no principal: the pinned posture) what its pin is."""
+        from provisa.security import role_probe
+
+        identity = _request_identity.get()
+        transport = "mcp" if identity is not None else "stdio"
+        probe = role_probe.probe_of(
+            identity,
+            refused,
+            org_id=_request_org_id.get() or (None if identity is not None else state.org_id),
+            transport=transport,
+            endpoint=tool,
+        )
+        # On the call's own request thread, where its stores are bound (REQ-1882).
+        await run_on_request_thread(lambda: role_probe.record(probe))
+        session = _request_session.get()
+        if session:
+            _ended_sessions.add(session)
+        return PermissionError(role_probe.NOT_PERMITTED if identity is not None else str(refused))
+
     def _tool(fn):
         """Register ``fn`` as an MCP tool whose body runs on its own request thread (REQ-1882).
 
@@ -314,9 +348,14 @@ def build_mcp_server(state: Any):
             with _request_span(_tracer, f"mcp.{fn.__name__}", transport="mcp"):  # REQ-1910
                 # REQ-1350: what a tool's answers say about themselves goes in its result.
                 with collecting() as found:
-                    result = await run_on_request_thread(
-                        lambda: _within_request(lambda: fn(*args, **kwargs), f"MCP {fn.__name__}")
-                    )
+                    try:
+                        result = await run_on_request_thread(
+                            lambda: _within_request(
+                                lambda: fn(*args, **kwargs), f"MCP {fn.__name__}"
+                            )
+                        )
+                    except RoleNotHeld as refused:
+                        raise await _probed(refused, fn.__name__) from refused
                 return _with_warnings(result, found)
 
         return mcp.tool()(_on_request_thread)
@@ -814,6 +853,26 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             await app(scope, receive, send)
             return
         headers = dict(scope.get("headers") or [])
+        session = (headers.get(b"mcp-session-id") or b"").decode("latin-1") or None
+        if session is not None and session in _ended_sessions:
+            # REQ-2076: the session ended on a security event; the client must start another.
+            body = _json.dumps({"error": "session ended"}).encode("utf-8")
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+        session_reset = _request_session.set(session)
+        try:
+            await _authorized(scope, receive, send, headers)
+        finally:
+            _request_session.reset(session_reset)
+
+    async def _authorized(scope: dict, receive: Any, send: Any, headers: dict) -> None:
         auth = headers.get(b"authorization")
         token = None
         if auth and auth.lower().startswith(b"bearer "):
@@ -851,6 +910,12 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
         except OrgResolutionError as exc:
             # Authenticated but not resolvable to one permitted org — fail closed, no default.
             await _send_401(send, str(exc))
+            return
+        from provisa.security import role_probe
+
+        # REQ-2076: an IdP-signed principal whose token access to the org is suspended.
+        if await run_on_request_thread(lambda: role_probe.suspended(identity, org_id, "mcp")):
+            await _send_401(send, role_probe.NOT_PERMITTED)
             return
         reset = _request_role.set(role)
         # REQ-1857: see the ContextVar's own docstring — needed by the capability-gated tools.

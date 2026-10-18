@@ -464,6 +464,30 @@ Sie ist standardmäßig an — fünf Fehlschläge in fünf Minuten sperren das S
 
 Der Schlüssel ist der Principal, den das Protokoll trägt. Eine reine Bearer-Oberfläche trägt keinen Principal, daher ist der Schlüssel ein Digest des Credentials selbst; das verhindert, dass ein schlechtes Token unbegrenzt wiederholt wird. Der Speicher ist pro Prozess, daher erlaubt ein Deployment mit mehreren API-Workern bis zu `max_attempts` pro Worker — die Drosselung bremst das Raten, sie ist kein verteiltes Kontingent.
 
+### Rollen-Sondierung {: #role-probing }
+
+Das Nennen einer Rolle, die der Aufrufer nicht hält, wird auf jeder Oberfläche als erkanntes Sicherheitsereignis hoher Schwere behandelt: der HTTP-API, MCP, pgwire, Bolt, Arrow Flight, dem Airport-Flight-Dienst und gRPC. Ein legitimer Client nennt die Rollen, die ihm gegeben wurden; einer, der eine andere nennt, ist entweder fehlerhaft oder sondiert. (REQ-2076)
+
+Die Anfrage wird abgelehnt. Der Aufrufer erfährt nur „not permitted“, nichts darüber, ob die Rolle existiert, und die Verbindung oder Sitzung endet, wo es eine gibt: die pgwire-Verbindung, die Bolt-Sitzung, der gRPC-Aufruf, die MCP-Sitzung. Die einzige Ausnahme ist eine angemeldete Sitzung auf der HTTP-API, die die Ablehnung mit dem Rollennamen behält.
+
+Was sonst geschieht, hängt von Anmeldedaten und Transport ab:
+
+| Anmeldedaten | Transport | Gesperrt |
+|---|---|---|
+| Persönliches Zugriffstoken | jeder | das Token |
+| Von einem externen Identitätsanbieter signiertes Token | MCP, pgwire, Bolt, Flight, gRPC | der Token-Zugriff des Prinzipals auf die Organisation |
+| Von einem externen Identitätsanbieter signiertes Token | die HTTP-API | nichts |
+| Eine Sitzung oder ein Passwort, das dieses Deployment selbst prüft | jeder | nichts |
+| Eine lokale MCP-Sitzung (kein Bearer) | MCP | nichts; das Ereignis geht in das Protokoll des Betreibers |
+
+Die HTTP-API ist die Ausnahme, weil der Browser dasselbe Bearer-Token vorlegt wie ein API-Client, sodass der Server sie nicht unterscheiden kann, und ein Tab, der noch eine Rolle nennt, die der Benutzer inzwischen verloren hat (nachdem ein Administrator seine Rollen geändert hat oder nach einem Organisationswechsel), alltäglich ist. MCP und die anderen Transporte sind nie eine Browser-Sitzung. Dort wird das Ereignis wie jedes andere abgelehnt, aufgezeichnet und gemeldet; nur die Sperre entfällt.
+
+Ein gesperrtes Token wird wie ein widerrufenes abgelehnt. Ein Prinzipal, dessen Token-Zugriff gesperrt ist, wird in dieser Organisation auf MCP, pgwire, Bolt, Flight und gRPC abgelehnt und kann sich weiterhin in der UI anmelden. Nur ein Administrator hebt eine Sperre auf; nichts hebt sie nach Zeitablauf auf. Team → Gesperrter Zugriff listet jede Sperre mit dem Ereignis dahinter und hebt sie auf (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
+
+Jedes Ereignis wird in das Administrationsprotokoll der Organisation geschrieben (Aktion `security.role_probe`), mit dem Prinzipal, der Kennung der Anmeldedaten, der Client-Adresse, dem Transport, dem Endpunkt oder Werkzeug, der genannten Rolle, den gehaltenen Rollen, der Zeit und den Kennungen der jüngsten geprüften Anweisungen des Prinzipals. Ihr Text bleibt im Abfrage-Auditprotokoll und wird mit dem Recht `view_governance` gelesen.
+
+Die Administratoren der Organisation erhalten eine E-Mail, wo das Deployment E-Mails versendet. Das Ereignis wird außerdem als JSON an den Sicherheits-Webhook des Betreibers gesendet, wenn `security.webhook_url` gesetzt ist. Was die Organisation verlässt, nennt den Prinzipal, die Kennung der Anmeldedaten, den Transport, den Endpunkt, die genannte Rolle, die Zeit und die Schwere, mit einem Link zur Administrationsansicht; es enthält keine Anweisung und keine gehaltene Rolle. Eine Meldung, die nicht zugestellt werden kann, wird protokolliert und macht die Ablehnung oder die Sperre nie rückgängig.
+
 ### Die Org benennen {: #naming-the-org }
 
 Unter Mandantenfähigkeit nennt jede Anfrage die Org, für die sie ist. Genau einer Org anzugehören benennt sie nicht: Eine Anfrage, die keine nennt, wird abgelehnt, und die Ablehnung sagt, was zu senden ist. (REQ-1235) Jede Oberfläche nennt eine Org so:

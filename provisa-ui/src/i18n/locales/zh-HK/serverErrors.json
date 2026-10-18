@@ -39,7 +39,8 @@
       "registration_basic_only": "只有使用 basic 驗證提供者才可註冊",
       "role_not_assigned": "角色「{{role_id}}」未指派予此使用者",
       "simple_provider_not_configured": "未設定 Simple 驗證提供者",
-      "username_exists": "使用者名稱已存在"
+      "username_exists": "使用者名稱已存在",
+      "not_permitted": "不允許"
     },
     "authz": {
       "mutation_not_permitted": "不允許執行變更「{{field_name}}」：{{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "組織「{{org}}」的狀態為「{{state}}」，並非「failed」——無需重試。",
       "self_role_change": "使用者不可更改自己的角色。請要求另一位管理員處理。",
       "view_not_permitted": "不允許檢視此組織",
-      "org_id_sandbox_prefix": "以 {{prefix}} 開頭的組織 ID 保留給示範沙盒。"
+      "org_id_sandbox_prefix": "以 {{prefix}} 開頭的組織 ID 保留給示範沙盒。",
+      "no_suspension": "此組織中沒有這樣的暫停",
+      "suspension_target": "請指定恰好一個要解除的暫停：一個權杖或一個人員"
     },
     "platform": {
       "control_plane_role_required": "需要平台管理員。",

@@ -39,7 +39,8 @@
       "registration_basic_only": "Registratie is alleen beschikbaar met de basic-authenticatieprovider",
       "role_not_assigned": "Rol '{{role_id}}' is niet aan deze gebruiker toegewezen",
       "simple_provider_not_configured": "Simple-authenticatieprovider niet geconfigureerd",
-      "username_exists": "Gebruikersnaam bestaat al"
+      "username_exists": "Gebruikersnaam bestaat al",
+      "not_permitted": "Niet toegestaan"
     },
     "authz": {
       "mutation_not_permitted": "Mutatie '{{field_name}}' niet toegestaan: {{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "Organisatie '{{org}}' is '{{state}}', niet 'failed' — niets om opnieuw te proberen.",
       "self_role_change": "Een gebruiker kan de eigen rol niet wijzigen. Vraag een andere beheerder.",
       "view_not_permitted": "Geen toestemming om deze organisatie te bekijken",
-      "org_id_sandbox_prefix": "Organisatie-id's die met {{prefix}} beginnen, zijn gereserveerd voor demo-sandboxes."
+      "org_id_sandbox_prefix": "Organisatie-id's die met {{prefix}} beginnen, zijn gereserveerd voor demo-sandboxes.",
+      "no_suspension": "Geen zodanige opschorting in deze organisatie",
+      "suspension_target": "Noem precies één op te heffen opschorting: een token of een persoon"
     },
     "platform": {
       "control_plane_role_required": "Een platformbeheerder is vereist.",

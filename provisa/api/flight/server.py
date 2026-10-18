@@ -518,11 +518,18 @@ class ProvisaFlightServer(
         A ticket may REQUEST a role, and it is honored only when the identity's own assignments
         carry it; anything else is a privilege claim by the client and is refused. With no request,
         the identity's claims map to a role through the same rules every other surface uses."""
-        from provisa.auth.bearer import authorize_role
+        from provisa.auth.bearer import authorize_role_or_probe
 
         requested = request.get("role")
         try:
-            return authorize_role(self._state, identity, str(requested) if requested else None)
+            return authorize_role_or_probe(
+                self._state,
+                identity,
+                str(requested) if requested else None,
+                transport="flight",
+                endpoint=str(request.get("type") or request.get("command") or "flight"),
+                run=self._run_on_loop,
+            )
         except PermissionError as exc:
             # The caller is authenticated; what it asked to act as is refused: permission denied.
             raise flight.FlightUnauthorizedError(str(exc)) from exc  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

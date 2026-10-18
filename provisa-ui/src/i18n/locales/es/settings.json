@@ -201,6 +201,10 @@
           "label": "Contraseña de la cuenta de emergencia",
           "help": "La contraseña de la cuenta de emergencia. Secreto; requiere reinicio; requiere confirmación al guardar."
         }
+      },
+      "webhook_url": {
+        "label": "Webhook de eventos de seguridad",
+        "help": "Adónde se envía como JSON un evento de seguridad detectado (una solicitud que nombra un rol que su autor no tiene), además del correo a los administradores de la organización. El aviso no nombra ninguna sentencia ni ningún rol que se tenga. Secreto: solo escritura."
       }
     },
     "redis": {

@@ -39,7 +39,8 @@
       "registration_basic_only": "登録は basic 認証プロバイダーでのみ利用できます",
       "role_not_assigned": "ロール「{{role_id}}」はこのユーザーに割り当てられていません",
       "simple_provider_not_configured": "Simple 認証プロバイダーが設定されていません",
-      "username_exists": "ユーザー名は既に存在します"
+      "username_exists": "ユーザー名は既に存在します",
+      "not_permitted": "許可されていません"
     },
     "authz": {
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"
@@ -241,7 +242,9 @@
       "retry_not_failed": "組織「{{org}}」は「{{state}}」であり「failed」ではないため、再試行するものがありません。",
       "self_role_change": "ユーザーは自分自身のロールを変更できません。別の管理者に依頼してください。",
       "view_not_permitted": "この組織を表示する権限がありません",
-      "org_id_sandbox_prefix": "{{prefix}} で始まる組織 ID はデモサンドボックス用に予約されています。"
+      "org_id_sandbox_prefix": "{{prefix}} で始まる組織 ID はデモサンドボックス用に予約されています。",
+      "no_suspension": "この組織にそのような停止はありません",
+      "suspension_target": "解除する停止を 1 つだけ指定してください: トークンまたはユーザー"
     },
     "platform": {
       "control_plane_role_required": "プラットフォーム管理者が必要です。",

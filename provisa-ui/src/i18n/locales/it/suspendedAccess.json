@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "Accesso sospeso",
+    "help": "Una richiesta che nomina un ruolo che il chiamante non detiene è un evento di sicurezza. Un token di accesso personale che lo fa viene sospeso, così come l'accesso tramite token di una persona via MCP, SQL (pgwire), Bolt, Arrow Flight e gRPC quando il suo provider di identità ha firmato il token. Una sospensione resta finché un amministratore non la revoca.",
+    "colCredential": "Credenziale",
+    "colPerson": "Persona",
+    "colEvent": "Evento",
+    "colSince": "Sospeso",
+    "colActions": "Azioni",
+    "kindToken": "Token di accesso",
+    "kindPrincipal": "Accesso tramite token",
+    "eventSummary": "Ha nominato il ruolo {{role}} via {{transport}} ({{endpoint}})",
+    "heldRoles": "Detiene: {{roles}}",
+    "client": "Da: {{client}}",
+    "recentStatements": "Istruzioni recenti:",
+    "statementNeedsRight": "Leggere un'istruzione richiede il diritto view_governance.",
+    "lift": "Revoca",
+    "lifted": "Sospensione revocata",
+    "none": "Nulla è sospeso."
+  }
+}

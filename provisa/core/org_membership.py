@@ -365,6 +365,81 @@ async def assert_not_last_org_admin(  # REQ-1302
         raise LastOrgAdminError(org_id, user_id)
 
 
+async def suspend_token_access(  # REQ-2076
+    admin_db: "Database", *, user_id: str, org_id: str, reason: str
+) -> bool:
+    """Suspend ``user_id``'s token access to ``org_id`` -- MCP and the non-HTTP transports refuse
+    their IdP-signed credentials -- until an administrator lifts it. Returns False when they hold
+    no membership, or it is already suspended."""
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            update(user_org_memberships)
+            .where(
+                user_org_memberships.c.user_id == user_id,
+                user_org_memberships.c.org_id == org_id,
+                user_org_memberships.c.token_access_suspended_at.is_(None),
+            )
+            .values(
+                token_access_suspended_at=datetime.now(timezone.utc),
+                token_access_suspended_reason=reason,
+            )
+        )
+    return result.rowcount > 0
+
+
+async def lift_token_access_suspension(  # REQ-2076
+    admin_db: "Database", *, user_id: str, org_id: str
+) -> bool:
+    """Lift ``user_id``'s token-access suspension in ``org_id``. Returns False when there is none."""
+    async with admin_db.acquire() as conn:
+        result = await conn.execute_core(
+            update(user_org_memberships)
+            .where(
+                user_org_memberships.c.user_id == user_id,
+                user_org_memberships.c.org_id == org_id,
+                user_org_memberships.c.token_access_suspended_at.is_not(None),
+            )
+            .values(token_access_suspended_at=None, token_access_suspended_reason=None)
+        )
+    return result.rowcount > 0
+
+
+async def token_access_suspended(  # REQ-2076
+    admin_db: "Database", *, user_id: str, org_id: str
+) -> bool:
+    """Whether ``user_id``'s token access to ``org_id`` is suspended."""
+    async with admin_db.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(user_org_memberships.c.token_access_suspended_at).where(
+                    user_org_memberships.c.user_id == user_id,
+                    user_org_memberships.c.org_id == org_id,
+                )
+            )
+        ).fetchone()
+    return row is not None and row[0] is not None
+
+
+async def suspended_principals(admin_db: "Database", org_id: str) -> list[dict]:  # REQ-2076
+    """Every member of ``org_id`` whose token access is suspended, newest first."""
+    async with admin_db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(
+                    user_org_memberships.c.user_id,
+                    user_org_memberships.c.token_access_suspended_at,
+                    user_org_memberships.c.token_access_suspended_reason,
+                ).where(
+                    user_org_memberships.c.org_id == org_id,
+                    user_org_memberships.c.token_access_suspended_at.is_not(None),
+                )
+            )
+        ).fetchall()
+    out = [dict(r._mapping) for r in rows]
+    out.sort(key=lambda r: r["token_access_suspended_at"], reverse=True)
+    return out
+
+
 async def record_admin_action(  # REQ-1303, REQ-1308
     model_db: "Database", *, action: str, actor_id: str, subject_id: str, detail: dict
 ) -> None:

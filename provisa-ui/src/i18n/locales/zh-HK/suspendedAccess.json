@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "已暫停的存取",
+    "help": "請求指名其呼叫方並不持有的角色屬於安全事件。這樣做的個人存取權杖會被暫停；若權杖由其身分提供者簽發，該人透過 MCP、SQL (pgwire)、Bolt、Arrow Flight 和 gRPC 的權杖存取亦會被暫停。暫停會一直保持，直至管理員解除。",
+    "colCredential": "憑證",
+    "colPerson": "人員",
+    "colEvent": "事件",
+    "colSince": "暫停時間",
+    "colActions": "操作",
+    "kindToken": "存取權杖",
+    "kindPrincipal": "權杖存取",
+    "eventSummary": "透過 {{transport}}（{{endpoint}}）指名角色 {{role}}",
+    "heldRoles": "持有：{{roles}}",
+    "client": "來源：{{client}}",
+    "recentStatements": "最近的語句：",
+    "statementNeedsRight": "讀取語句需要 view_governance 權限。",
+    "lift": "解除",
+    "lifted": "已解除暫停",
+    "none": "沒有被暫停的內容。"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "suspendedAccess": {
+    "heading": "Acesso suspenso",
+    "help": "Uma solicitação que nomeia um papel que seu autor não detém é um evento de segurança. Um token de acesso pessoal que faz isso é suspenso, assim como o acesso por token de uma pessoa via MCP, SQL (pgwire), Bolt, Arrow Flight e gRPC quando seu provedor de identidade assinou o token. Uma suspensão permanece até que um administrador a levante.",
+    "colCredential": "Credencial",
+    "colPerson": "Pessoa",
+    "colEvent": "Evento",
+    "colSince": "Suspenso",
+    "colActions": "Ações",
+    "kindToken": "Token de acesso",
+    "kindPrincipal": "Acesso por token",
+    "eventSummary": "Nomeou o papel {{role}} via {{transport}} ({{endpoint}})",
+    "heldRoles": "Detém: {{roles}}",
+    "client": "De: {{client}}",
+    "recentStatements": "Instruções recentes:",
+    "statementNeedsRight": "Ler uma instrução exige o direito view_governance.",
+    "lift": "Levantar",
+    "lifted": "Suspensão levantada",
+    "none": "Nada está suspenso."
+  }
+}

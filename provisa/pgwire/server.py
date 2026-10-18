@@ -2111,6 +2111,15 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             ctx.session.org_id = _state.org_id  # type: ignore[attr-defined]
         # REQ-1452: attribute this connection's writes from here on.
         self._meter.bind_org(getattr(ctx.session, "org_id", None))
+        from provisa.core.connection_loop import run_on_connection_loop
+        from provisa.security import role_probe
+
+        # REQ-2076: an IdP-signed principal whose token access to the org is suspended.
+        if run_on_connection_loop(
+            role_probe.suspended(identity, getattr(ctx.session, "org_id", None), "pgwire")
+        ):
+            self._send_pg_error("FATAL", "42501", role_probe.NOT_PERMITTED)
+            return
         members: tuple[str, ...] = (role,)
         qualifiers: tuple[str, ...] = ()
         try:
@@ -2122,7 +2131,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
             # set acts as its meta-role, built in this session's org.
             from provisa.auth.role_mapping import resolve_assignments
-            from provisa.security.meta_role import acting_roles, resolve_requested_role
+            from provisa.security.meta_role import (
+                RoleNotHeld,
+                acting_roles,
+                resolve_requested_role,
+            )
 
             permitted = {a.role_id for a in resolve_assignments(identity)} | {role}
             org_token = None
@@ -2140,6 +2153,23 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
                 )
                 members = acting_roles(_state, role)
                 qualifiers = tuple(_state.meta_qualifiers.get(role, ()))
+            except RoleNotHeld as refused:
+                # REQ-2076: a security event; the connection ends with nothing said of the role.
+                peer = getattr(self, "client_address", None)
+                run_on_connection_loop(
+                    role_probe.record(
+                        role_probe.probe_of(
+                            identity,
+                            refused,
+                            org_id=org_id,
+                            transport="pgwire",
+                            endpoint="startup",
+                            client=None if peer is None else str(peer[0]),
+                        )
+                    )
+                )
+                self._send_pg_error("FATAL", "42501", role_probe.NOT_PERMITTED)
+                return
             except PermissionError as exc:
                 self._send_pg_error("FATAL", "28000", str(exc))
                 return

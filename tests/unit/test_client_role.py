@@ -165,6 +165,8 @@ class _Req:
     def __init__(self, headers):
         self.headers = headers
         self.url = _URL("/data/graphql")
+        self.method = "POST"
+        self.client = None
         self.state = _State()
 
 
@@ -275,6 +277,45 @@ async def test_secured_rejects_unassigned_requested_role():
     out = await _dispatch(mw, req)
     # a role the user does not hold is rejected, not honored
     assert getattr(out, "status_code", None) == 403
+
+
+@pytest.mark.asyncio
+async def test_a_session_naming_a_role_it_does_not_hold_is_recorded_and_told_by_name(
+    _role_probe_events,
+):
+    # REQ-2076: a signed-in session (a tab still naming a role since lost) keeps the named refusal.
+    import json
+
+    mw = AuthMiddleware(app=None, provider=_Provider(["analyst"]), default_role="analyst")
+    out = await _dispatch(mw, _Req({"authorization": "Bearer tok", "x-provisa-role": "admin"}))
+    assert json.loads(out.body)["detail"] == "Role 'admin' is not assigned to this user"
+    [event] = _role_probe_events
+    assert (event.transport, event.requested, event.endpoint) == (
+        "http",
+        "admin",
+        "POST /data/graphql",
+    )
+    assert event.credential is None
+
+
+@pytest.mark.asyncio
+async def test_a_personal_access_token_naming_a_role_it_does_not_hold_is_told_nothing(
+    _role_probe_events,
+):
+    # REQ-2076: a PAT is suspended on the event and learns nothing about the role.
+    import json
+
+    class _PatProvider(_Provider):
+        async def validate_token(self, _token):
+            identity = await super().validate_token(_token)
+            identity.credential, identity.credential_id = "pat", "h1"
+            return identity
+
+    mw = AuthMiddleware(app=None, provider=_PatProvider(["analyst"]), default_role="analyst")
+    out = await _dispatch(mw, _Req({"authorization": "Bearer tok", "x-provisa-role": "admin"}))
+    assert out.status_code == 403 and json.loads(out.body)["detail"] == "not permitted"
+    [event] = _role_probe_events
+    assert event.credential_id == "h1"
 
 
 # --- ProvisaClient / GraphQLDecryptClient / SQLAlchemy dialect ---

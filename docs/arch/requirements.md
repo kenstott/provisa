@@ -23904,6 +23904,20 @@ A hosted demo sandbox can carry two regions, so a regions demo ([REQ-2035](#REQ-
 
 **Tests:** —
 
+## 4. Source Connectors
+
+### REQ-2069 · Enterprise SaaS {#REQ-2069}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+Jira Cloud is a source type (jira) read and written through its own Apache Calcite adapter's bundled pgwire server, as ServiceNow is ([REQ-1954](#REQ-1954)): an API with a query language is read through Calcite, JQL taking what can be pushed down. The source names the site's full https:// address, the Atlassian account's email and an API token, each resolved at use. FORMS: a table of a Jira source is a form -- one project and one issue type (its arguments, [REQ-2061](#REQ-2061)) and the fields its columns read (each column's path a field id or name); every form has the columns key (its primary key), id, summary, status, created and updated, then one per chosen field, named by the field's name snake-cased, or by its field id where that name is already a column's. Register Table lists every form the account can create (the adapter's _jira_forms), grouped by project, and reads a form's fields only when it is selected (_jira_fields); a form registered from the admin gets its project, issue type and each column's field from those lists. The server serves only the forms registered from it (the forms operand), beside its form list, field list and links; registering, changing or removing one restarts it. CRUD: INSERT, UPDATE and DELETE on a form are written on the server on every engine, returning the written rows by key; rows are inserted in batches of 50, an update or delete is made issue by issue by key; setting status performs the workflow transition to that status, refused naming the reachable statuses where there is none; an issue with subtasks is not deleted. LINKS: the issue_links table (link_id, link_type, outward_key, inward_key), each link once, takes INSERT and DELETE (UPDATE refused: Jira has no link edit); relationships between forms ride it as junction edges ([REQ-1586](#REQ-1586)) discriminated by link_type. Attached live on DuckDB, PostgreSQL and ClickHouse; landed through its server on Trino. Site configuration is not offered. Jira Data Center (on-premises: REST v2, a personal access token, any host) follows as a second flavour of the same adapter. (Amended 2026-10-16, READ-ONLY COLUMNS:) A column Jira writes itself -- key, id, created, updated, a user field's display name (its own field, <id>.displayName), a field of a shape the adapter does not know -- is flagged read only (its description says so where it has none), not refused when a writer is registered on it; the server refuses a write that sets one, naming it.
+
+**Use case:** A support team's Jira incidents, problems and changes are tables in the governed model: an analyst reads which open P1 incidents trace to a problem whose fix is blocked, and an agent moves an incident to In Progress, which runs its workflow transition.
+
+**Code:** `provisa/federation/jira.py`, `provisa/federation/pgwire_replica.py`, `provisa/federation/served_tables.py`, `provisa/api/admin/introspect.py`, `provisa-ui/src/pages/sources/JiraFields.tsx`
+
+**Tests:** `tests/unit/test_jira_connector.py`, `provisa-ui/src/pages/sources/__tests__/jira.test.tsx`
+
 ## 8. Client Access & Protocols
 
 ### REQ-2070 · SQL & Multi-Protocol Client Access {#REQ-2070}
@@ -23985,3 +23999,15 @@ An MCP agent never acts beyond the roles it was given. Over the local stdio tran
 **Code:** `provisa/api/mcp/server.py`
 
 **Tests:** `tests/unit/test_path_role_is_held.py`, `tests/unit/test_mcp_glossary_protocol.py`
+
+### REQ-2076 · MCP Authentication {#REQ-2076}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Naming a role the caller does not hold is a high-severity security event, detected on every transport (the HTTP API, MCP, pgwire, Bolt, Arrow Flight, the airport Flight service and gRPC). The caller is refused and, except a signed-in session on the HTTP API, told only 'not permitted', nothing about whether the role exists; the connection or session ends where there is one (pgwire, Bolt, the gRPC call, the MCP session). A personal access token that does it is suspended on any transport. A token an external identity provider signed (firebase, oauth, keycloak) suspends that principal's token access to the org when presented over MCP or a transport that is never a browser session (pgwire, Bolt, Flight, gRPC); on the HTTP API it is refused and recorded, not suspended, because the browser presents the same bearer and a tab still naming a role since lost is routine. A local MCP session (no bearer, the pinned posture) is refused, its session ended, and the event written to the operator's log. Only an administrator lifts a suspension; nothing lifts it on a timer. Each event is written to the org's admin trail (admin_audit_log, action security.role_probe, severity high: principal, credential id, client, transport, endpoint or tool, requested role, held roles, time, and the ids of the principal's most recent audited statements, whose text stays in the query audit log under its own right). The org's administrators are emailed where the deployment sends mail, and the event is posted to the operator's security webhook (security.webhook_url) where one is set; what leaves the org names the principal, credential id, transport, endpoint, requested role, time and severity with a link to the admin view, and no statement and no held role. Administrators see each suspension and its event, and lift it, on the team page (GET /admin/orgs/{org}/suspensions, POST /admin/orgs/{org}/suspensions/lift).
+
+**Use case:** A stolen personal access token is used to try role names one after another; the first unheld name suspends the token and tells the org's administrators, who review the event and its recent statements before lifting it or revoking the token.
+
+**Code:** `provisa/security/role_probe.py`, `provisa/security/meta_role.py`, `provisa/auth/middleware.py`, `provisa/auth/bearer.py`, `provisa/auth/models.py`, `provisa/auth/pat.py`, `provisa/api/acting_role.py`, `provisa/api/app.py`, `provisa/api/mcp/server.py`, `provisa/api/flight/server.py`, `provisa/api/airport/server.py`, `provisa/api/admin/orgs_router.py`, `provisa/grpc/auth.py`, `provisa/pgwire/server.py`, `provisa/bolt/session.py`, `provisa/core/org_membership.py`, `provisa/core/schema_admin.py`, `provisa/core/settings_catalog.py`, `provisa-ui/src/components/admin/SuspendedAccess.tsx`, `provisa-ui/src/pages/TeamPage.tsx`
+
+**Tests:** `tests/unit/test_role_probe.py`, `tests/unit/test_client_role.py`, `tests/unit/test_mcp_server.py`, `tests/unit/test_pgwire_requirements.py`, `provisa-ui/src/__tests__/SuspendedAccess.test.tsx`
