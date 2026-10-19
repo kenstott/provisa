@@ -24,7 +24,7 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 | Obs | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **bundled into Core AppImage** |
 | Demo | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **not included** |
 
-Linux rationale: Linux installs are mostly servers run by technical users. (REQ-227) OTel
+Linux rationale: Linux users are usually server or technical installs. (REQ-227) OTel
 observability is useful in production; petstore/graphql demo services are not.
 One self-contained AppImage is simpler to distribute. (REQ-632)
 
