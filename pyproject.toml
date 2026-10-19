@@ -279,6 +279,8 @@ dev = [
     # REQ-2085: tests/integration/test_churn_demo.py runs the churn demo's notebook, which trains
     # a scikit-learn model, as a desktop Jupyter runs it.
     "scikit-learn>=1.9",
+    # REQ-2039: the agriculture demo's notebook plots its regression; its test runs the cells.
+    "matplotlib>=3.8",
     # Direct-driver libraries the unit suite exercises (test_drivers/routing/transpiler).
     # Declared so `uv sync` installs them and the driver tests run instead of skipping.
     "aiomysql",

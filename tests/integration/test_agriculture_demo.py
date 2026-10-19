@@ -29,8 +29,10 @@ there. A missing key fails the module by name.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -130,6 +132,8 @@ def server(stack, tmp_path_factory):
         engine="duckdb",
         config=str(_DEMO / "config.yaml"),
         control_plane="own",
+        # The demo's notebook reads the view over Arrow Flight, as a desktop Jupyter does.
+        await_flight=True,
         materialize_store_url=f"duckdb:///{home / 'store.duckdb'}",
         env={
             **stack.env,
@@ -283,3 +287,75 @@ def test_each_tour_rest_call_answers_rows(server, step):
     resp = httpx.get(f"{server.base_url}{path}", headers={"X-Provisa-Role": _ROLE}, timeout=300)
     assert resp.status_code == 200, resp.text
     assert resp.json()["data"], step["key"]
+
+
+def _notebook() -> str:
+    """The demo's notebook's code cells as one script, a magic line (``%pip``) left out: what a
+    desktop Jupyter with provisa-client installed runs (REQ-2084)."""
+    from provisa.core.demo import demo_notebook
+
+    return "\n\n".join(
+        "\n".join(line for line in cell.splitlines() if not line.lstrip().startswith("%"))
+        for cell in demo_notebook(_DEMO)
+    )
+
+
+def _capture(server, printed: str, found: dict) -> None:
+    """The answer the notebook reads, as the browser reads it (an Arrow stream over HTTP, as the
+    analyst), and what it printed, written where the warehouse lane uploads its results
+    (PROVISA_DEMO_CAPTURE_DIR): the render harness serves the demo's card from these real
+    answers, and the lane alone holds the govdata credential."""
+    out = Path(os.environ["PROVISA_DEMO_CAPTURE_DIR"]) / "agriculture"
+    out.mkdir(parents=True, exist_ok=True)
+    sql = (
+        "SELECT s.county_fips, s.county_name, s.state_abbr, s.year, s.premium, s.indemnity, "
+        "s.loss_ratio, s.season_rain_mm, s.hot_days, s.market_dry_share "
+        'FROM "agriculture"."view_losses_and_weather" AS s'
+    )
+    resp = httpx.post(
+        f"{server.base_url}/data/query",
+        json={"query": sql},
+        headers={"X-Provisa-Role": "analyst", "Accept": "application/vnd.apache.arrow.stream"},
+        timeout=900,
+    )
+    assert resp.status_code == 200, resp.text[:2000]
+    (out / "query-notebook.arrow").write_bytes(resp.content)
+    (out / "notebook-printed.txt").write_text(printed + "\n")
+    (out / "notebook-found.json").write_text(json.dumps(found, indent=1))
+
+
+@pytest.fixture(scope="module")
+def notebook(server) -> dict[str, Any]:
+    """The notebook run as the analyst over Arrow Flight, with what it found."""
+    report = (
+        "\nimport json\n"
+        "print(json.dumps({'seasons': len(seasons), 'r2': r2, 'expected_2012': expected_2012, "
+        "'actual_2012': actual_2012, 'expected_like_2012': expected}))"
+    )
+    run = subprocess.run(
+        [sys.executable, "-c", _notebook() + report],
+        env={
+            **os.environ,
+            "MPLBACKEND": "Agg",
+            "PROVISA_URL": server.base_url,
+            "PROVISA_FLIGHT_PORT": str(server.flight_port),
+        },
+        capture_output=True,
+        text=True,
+        timeout=900,
+    )
+    assert run.returncode == 0, run.stderr[-4000:]
+    lines = run.stdout.strip().splitlines()
+    found, printed = json.loads(lines[-1]), "\n".join(lines[:-1])
+    if os.environ.get("PROVISA_DEMO_CAPTURE_DIR"):
+        _capture(server, printed, found)
+    return {"found": found, "printed": printed}
+
+
+def test_the_weather_explains_the_portfolio_s_losses(notebook):
+    found = notebook["found"]
+    assert found["seasons"] >= _COUNTIES * (len(_YEARS) - 1), found
+    assert found["r2"] > 0, found
+    # Fitted without 2012, the model still expects a dry-year loss: a loss ratio above the book's.
+    assert found["expected_2012"] > 0 and found["actual_2012"] > 0, found
+    assert found["expected_like_2012"] > 0, found

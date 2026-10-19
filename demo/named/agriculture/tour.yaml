@@ -67,6 +67,11 @@ steps:
   route: /query
   capability: query_development
   example: 1-driest-seasons
+# How much the weather explains: the demo's notebook (notebook.ipynb), run in the Notebook tab.
+- key: agricultureNotebook
+  route: /notebook
+  capability: query_development
+  notebook: true
 - key: agricultureRest
   route: /openapi
   capability: query_development

@@ -936,13 +936,17 @@
         "title": "Die trockensten Saisons in GraphQL",
         "description": "Dieselbe Sicht in GraphQL, die Saisons mit dem wenigsten Regen zuerst: Es sind die mit den höchsten Schadenquoten und den niedrigsten Erträgen."
       },
+      "agricultureNotebook": {
+        "title": "Wie viel erklärt das Wetter?",
+        "description": "Das Notebook der Demo, in Ihrem Browser ausgeführt: jede County-Saison als analyst in pandas gelesen, die Schadenquote mit dem Regen der Saison, ihren Tagen über 32 °C und dem Anteil der Marktschäden durch Dürre und Hitze korreliert, eine Regression darauf angepasst und das Diagramm. Es zeigt, wie viel der Schadenquote das Wetter erklärt, was jede Größe beiträgt und welche Schadenquote eine Saison wie 2012 über den heutigen Bestand erwarten lässt."
+      },
       "agricultureRest": {
         "title": "Nach Jahr über REST",
         "description": "Die Sicht ist auch ein REST-Endpunkt, nach Anbaujahr gruppiert und auf dem Server summiert. Jeder Client, der HTTP spricht, erhält die Antwort, ohne SQL zu schreiben."
       },
       "agricultureRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Sie haben die eigenen Daten des Versicherers gesehen, live gelesen und nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, die einmal gelandet wurden, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST."
+        "description": "Sie haben die eigenen Daten des Versicherers gesehen, live gelesen und nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, die einmal gelandet wurden, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST. Das Notebook misst es: wie viel der Schadenquote das Wetter erklärt und was ein trockenes Jahr voraussichtlich kostet."
       },
       "retailScenario": {
         "title": "Ein Konzern, zwei Regionen",

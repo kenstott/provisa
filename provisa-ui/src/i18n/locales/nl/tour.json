@@ -936,13 +936,17 @@
         "title": "De droogste seizoenen, in GraphQL",
         "description": "Dezelfde weergave in GraphQL, de seizoenen met de minste regen eerst: het zijn de seizoenen met de hoogste schadequotes en de laagste opbrengsten."
       },
+      "agricultureNotebook": {
+        "title": "Hoeveel verklaart het weer?",
+        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek. Het laat zien hoeveel van de schadequote het weer verklaart, wat elke maat toevoegt en welke schadequote een seizoen als 2012 over de huidige portefeuille naar verwachting brengt."
+      },
       "agricultureRest": {
         "title": "Per jaar via REST",
         "description": "De weergave is ook een REST-eindpunt, gegroepeerd per gewasjaar en op de server opgeteld. Elke client die HTTP spreekt krijgt het antwoord zonder SQL te schrijven."
       },
       "agricultureRecap": {
         "title": "Wat u zag",
-        "description": "U zag de eigen data van de verzekeraar, live gelezen en per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata die één keer is geland, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST."
+        "description": "U zag de eigen data van de verzekeraar, live gelezen en per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata die één keer is geland, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: hoeveel van de schadequote het weer verklaart, en wat een droog jaar naar verwachting kost."
       },
       "retailScenario": {
         "title": "Eén concern, twee regio's",

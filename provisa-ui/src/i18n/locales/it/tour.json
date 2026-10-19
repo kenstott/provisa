@@ -936,13 +936,17 @@
         "title": "Le stagioni più secche, in GraphQL",
         "description": "La stessa vista in GraphQL, con le stagioni con meno pioggia per prime: sono quelle con i rapporti sinistri/premi più alti e le rese più basse."
       },
+      "agricultureNotebook": {
+        "title": "Quanto spiega il meteo?",
+        "description": "Il notebook della demo, eseguito nel tuo browser: ogni stagione di contea letta in pandas come analyst, il loss ratio correlato con la pioggia della stagione, i suoi giorni sopra i 32 °C e la quota delle perdite del mercato dovuta a siccità e caldo, una regressione adattata su di essi e il grafico. Dice quanto del loss ratio spiega il meteo, cosa aggiunge ogni misura e il loss ratio atteso da una stagione come il 2012 sul portafoglio di oggi."
+      },
       "agricultureRest": {
         "title": "Per anno tramite REST",
         "description": "La vista è anche un endpoint REST, raggruppata per anno colturale e sommata sul server. Qualsiasi client che parla HTTP ottiene la risposta senza scrivere SQL."
       },
       "agricultureRecap": {
         "title": "Che cosa hai visto",
-        "description": "Avete visto i dati propri dell'assicuratore, letti in diretta e abbinati per contea e anno di raccolto a dati pubblici su danni, meteo e rese caricati una volta, tutto in un unico modello governato. Una vista risponde se il meteo spiega i danni, in SQL, GraphQL e REST."
+        "description": "Avete visto i dati propri dell'assicuratore, letti in diretta e abbinati per contea e anno di raccolto a dati pubblici su danni, meteo e rese caricati una volta, tutto in un unico modello governato. Una vista risponde se il meteo spiega i danni, in SQL, GraphQL e REST. Il notebook lo misura: quanto del loss ratio spiega il meteo e quanto ci si aspetta che costi un anno secco."
       },
       "retailScenario": {
         "title": "Un gruppo, due regioni",

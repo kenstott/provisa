@@ -936,13 +936,17 @@
         "title": "Les saisons les plus sèches, en GraphQL",
         "description": "La même vue en GraphQL, les saisons les moins pluvieuses d'abord : ce sont celles aux ratios sinistres/primes les plus élevés et aux rendements les plus bas."
       },
+      "agricultureNotebook": {
+        "title": "Quelle part la météo explique-t-elle ?",
+        "description": "Le notebook de la démo, exécuté dans votre navigateur : chaque saison de comté lue dans pandas en tant qu'analyst, le ratio sinistres/primes corrélé à la pluie de la saison, à ses jours au-dessus de 32 °C et à la part des pertes du marché due à la sécheresse et à la chaleur, une régression ajustée sur ces mesures et le graphique. Il dit quelle part du ratio sinistres/primes la météo explique, ce qu'apporte chaque mesure et le ratio attendu d'une saison comme 2012 sur le portefeuille actuel."
+      },
       "agricultureRest": {
         "title": "Par année via REST",
         "description": "La vue est aussi un point de terminaison REST, groupé par année de récolte et totalisé sur le serveur. Tout client qui parle HTTP obtient la réponse sans écrire de SQL."
       },
       "agricultureRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Vous avez vu les données propres de l'assureur, lues en direct et rapprochées par comté et année de récolte de données publiques sur les sinistres, la météo et les rendements chargées une fois, le tout dans un modèle gouverné. Une vue indique si la météo explique les sinistres, en SQL, GraphQL et REST."
+        "description": "Vous avez vu les données propres de l'assureur, lues en direct et rapprochées par comté et année de récolte de données publiques sur les sinistres, la météo et les rendements chargées une fois, le tout dans un modèle gouverné. Une vue indique si la météo explique les sinistres, en SQL, GraphQL et REST. Le notebook le mesure : quelle part du ratio sinistres/primes la météo explique, et ce qu'une année sèche devrait coûter."
       },
       "retailScenario": {
         "title": "Un groupe, deux régions",

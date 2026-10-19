@@ -936,13 +936,17 @@
         "title": "As temporadas mais secas, em GraphQL",
         "description": "A mesma vista em GraphQL, com as temporadas de menos chuva primeiro: são as de maior sinistralidade e menor produtividade."
       },
+      "agricultureNotebook": {
+        "title": "Quanto o clima explica?",
+        "description": "O notebook da demo, executado no seu navegador: cada temporada de condado lida no pandas como analyst, a sinistralidade correlacionada com a chuva da temporada, os seus dias acima de 32 °C e a parte das perdas do mercado atribuída à seca e ao calor, uma regressão ajustada sobre elas e o gráfico. Diz quanto da sinistralidade o clima explica, o que cada medida acrescenta e a sinistralidade esperada de uma temporada como a de 2012 na carteira atual."
+      },
       "agricultureRest": {
         "title": "Por ano via REST",
         "description": "A vista também é um endpoint REST, agrupada por ano agrícola e somada no servidor. Qualquer cliente que fale HTTP obtém a resposta sem escrever SQL."
       },
       "agricultureRecap": {
         "title": "O que você viu",
-        "description": "Você viu os dados da própria seguradora, lidos ao vivo e cruzados por condado e ano de safra com dados públicos de perdas, clima e produtividade carregados uma vez, tudo em um modelo governado. Uma view responde se o clima explica as perdas, em SQL, GraphQL e REST."
+        "description": "Você viu os dados da própria seguradora, lidos ao vivo e cruzados por condado e ano de safra com dados públicos de perdas, clima e produtividade carregados uma vez, tudo em um modelo governado. Uma view responde se o clima explica as perdas, em SQL, GraphQL e REST. O notebook mede-o: quanto da sinistralidade o clima explica e quanto se espera que custe um ano seco."
       },
       "retailScenario": {
         "title": "Um grupo, duas regiões",

@@ -448,6 +448,9 @@ jobs:
       SYNAPSE_ADLS_URL: ${{ secrets.SYNAPSE_ADLS_URL }}
       # The Google Sheets read reaches the live sheet only when asked to.
       PROVISA_GSHEETS_LIVE: "1"
+      # Where a demo test writes the real answers its card is shot from (the agriculture
+      # notebook's): uploaded with the lane's results as lane-warehouse.
+      PROVISA_DEMO_CAPTURE_DIR: results/warehouse/captures
     steps:
       - uses: actions/checkout@v4
         with:

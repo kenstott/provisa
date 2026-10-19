@@ -936,13 +936,17 @@
         "title": "Las temporadas más secas, en GraphQL",
         "description": "La misma vista en GraphQL, con las temporadas de menos lluvia primero: son las de mayores ratios de siniestralidad y menores rendimientos."
       },
+      "agricultureNotebook": {
+        "title": "¿Cuánto explica el clima?",
+        "description": "El notebook de la demo, ejecutado en su navegador: cada temporada de condado leída en pandas como analyst, la siniestralidad correlacionada con la lluvia de la temporada, sus días por encima de 32 °C y la parte de las pérdidas del mercado debida a la sequía y el calor, una regresión ajustada sobre ellas y el gráfico. Indica cuánto de la siniestralidad explica el clima, qué aporta cada medida y la siniestralidad que se espera de una temporada como la de 2012 en la cartera actual."
+      },
       "agricultureRest": {
         "title": "Por año mediante REST",
         "description": "La vista también es un endpoint REST, agrupada por año agrícola y sumada en el servidor. Cualquier cliente que hable HTTP obtiene la respuesta sin escribir SQL."
       },
       "agricultureRecap": {
         "title": "Lo que ha visto",
-        "description": "Ha visto los datos propios de la aseguradora, leídos en vivo y cruzados por condado y año de cosecha con pérdidas, clima y rendimientos públicos que se cargaron una vez, todo en un modelo gobernado. Una vista responde si el clima explica las pérdidas, en SQL, GraphQL y REST."
+        "description": "Ha visto los datos propios de la aseguradora, leídos en vivo y cruzados por condado y año de cosecha con pérdidas, clima y rendimientos públicos que se cargaron una vez, todo en un modelo gobernado. Una vista responde si el clima explica las pérdidas, en SQL, GraphQL y REST. El notebook lo mide: cuánto de la siniestralidad explica el clima y lo que se espera que cueste un año seco."
       },
       "retailScenario": {
         "title": "Un grupo, dos regiones",
