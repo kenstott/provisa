@@ -1369,6 +1369,7 @@
   "es/federationEngineTab.json::federationEngineTab.saveButton": "Save engine selection",
   "es/federationEngineTab.json::federationEngineTab.saved": "Saved.",
   "es/federationEngineTab.json::federationEngineTab.savedRestartRequired": "Saved. Restart the service to apply the new federation engine.",
+  "es/federationEngineTab.json::federationEngineTab.unavailable": " (unavailable: {{reason}})",
   "es/filterInput.json::filterInput.clear": "Clear",
   "es/filterInput.json::filterInput.filter": "Filter",
   "es/glossaryTab.json::glossaryTab.abstract": "Abstract",

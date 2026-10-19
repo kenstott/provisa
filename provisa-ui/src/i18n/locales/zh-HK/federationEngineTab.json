@@ -4,6 +4,7 @@
     "loading": "載入中…",
     "engineLabel": "引擎",
     "current": "（執行中）",
+    "unavailable": "（無法使用：{{reason}}）",
     "pendingSelection": "已儲存的選擇：{{engine}}。服務目前仍在執行 {{running}}。",
     "envPinned": "已由 $PROVISA_ENGINE 固定為 {{engine}}。在此儲存的選擇會被保存，但重新啟動時以固定值為準。",
     "saveButton": "儲存引擎選擇",

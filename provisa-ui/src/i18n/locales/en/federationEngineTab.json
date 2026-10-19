@@ -4,6 +4,7 @@
     "loading": "Loading…",
     "engineLabel": "Engine",
     "current": " (running)",
+    "unavailable": " (unavailable: {{reason}})",
     "pendingSelection": "Saved selection: {{engine}}. The service is still running {{running}}.",
     "envPinned": "Pinned to {{engine}} by $PROVISA_ENGINE. A selection saved here is stored but the pin wins on restart.",
     "saveButton": "Save engine selection",

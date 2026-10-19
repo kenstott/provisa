@@ -4,6 +4,7 @@
     "loading": "Laden…",
     "engineLabel": "Engine",
     "current": " (actief)",
+    "unavailable": " (niet beschikbaar: {{reason}})",
     "pendingSelection": "Opgeslagen selectie: {{engine}}. De service draait nog steeds {{running}}.",
     "envPinned": "Vastgezet op {{engine}} door $PROVISA_ENGINE. Een hier opgeslagen selectie wordt bewaard, maar bij herstart wint de vastzetting.",
     "saveButton": "Engineselectie opslaan",

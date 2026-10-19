@@ -4,6 +4,7 @@
     "loading": "लोड हो रहा है…",
     "engineLabel": "इंजन",
     "current": " (चल रहा है)",
+    "unavailable": " (अनुपलब्ध: {{reason}})",
     "pendingSelection": "सहेजा गया चयन: {{engine}}। सेवा अभी भी {{running}} चला रही है।",
     "envPinned": "$PROVISA_ENGINE द्वारा {{engine}} पर पिन किया गया। यहाँ सहेजा गया चयन संग्रहीत होता है, लेकिन पुनरारंभ पर पिन ही लागू होता है।",
     "saveButton": "इंजन चयन सहेजें",

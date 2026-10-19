@@ -1588,15 +1588,23 @@ def engine_registry() -> list[dict]:
     """The selectable-engine registry (metadata + config schema + reach faces) for the admin UI.
     Per entry, ``reachable_source_types`` gates the source-creation dropdown to the selected engine
     and ``live_source_types`` distinguishes LIVE (attach) from REPLICA (landed) reach, educating on
-    the impact of the engine choice (REQ-947)."""
-    return [
-        {
-            **e,
-            "reachable_source_types": reachable_source_types(e["key"]),
-            "live_source_types": live_source_types(e["key"]),
+    the impact of the engine choice (REQ-947).
+
+    An engine whose driver library this install lacks (Fabric/Synapse without the ODBC driver
+    manager) reaches nothing here: it is listed with ``unavailable`` naming what failed to load, and
+    every other engine still answers. ``unavailable`` is ``None`` for an engine that builds."""
+    return [{**e, **_engine_reach(e["key"])} for e in ENGINE_REGISTRY]
+
+
+def _engine_reach(key: str) -> dict:
+    try:
+        return {
+            "reachable_source_types": reachable_source_types(key),
+            "live_source_types": live_source_types(key),
+            "unavailable": None,
         }
-        for e in ENGINE_REGISTRY
-    ]
+    except ImportError as exc:
+        return {"reachable_source_types": [], "live_source_types": [], "unavailable": str(exc)}
 
 
 def engine_addressing(key: str) -> str:

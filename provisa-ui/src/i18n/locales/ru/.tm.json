@@ -1373,6 +1373,7 @@
   "ru/federationEngineTab.json::federationEngineTab.saveButton": "Save engine selection",
   "ru/federationEngineTab.json::federationEngineTab.saved": "Saved.",
   "ru/federationEngineTab.json::federationEngineTab.savedRestartRequired": "Saved. Restart the service to apply the new federation engine.",
+  "ru/federationEngineTab.json::federationEngineTab.unavailable": " (unavailable: {{reason}})",
   "ru/filterInput.json::filterInput.clear": "Clear",
   "ru/filterInput.json::filterInput.filter": "Filter",
   "ru/glossaryTab.json::glossaryTab.abstract": "Abstract",

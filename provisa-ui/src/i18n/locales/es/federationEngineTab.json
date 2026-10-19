@@ -4,6 +4,7 @@
     "loading": "Cargando…",
     "engineLabel": "Motor",
     "current": " (en ejecución)",
+    "unavailable": " (no disponible: {{reason}})",
     "pendingSelection": "Selección guardada: {{engine}}. El servicio sigue ejecutando {{running}}.",
     "envPinned": "Fijado a {{engine}} por $PROVISA_ENGINE. Una selección guardada aquí se almacena, pero el valor fijado prevalece al reiniciar.",
     "saveButton": "Guardar selección del motor",

@@ -44,9 +44,46 @@ async def test_a_role_that_registers_sources_reads_the_reach_of_its_orgs_engine(
     reach = await kinds.source_reach(SimpleNamespace())
     assert reach["engine"] == "duckdb"
     duckdb = next(e for e in reach["engines"] if e["key"] == "duckdb")
-    assert set(duckdb) == {"key", "label", "live_source_types", "reachable_source_types"}
+    assert set(duckdb) == {
+        "key",
+        "label",
+        "live_source_types",
+        "reachable_source_types",
+        "unavailable",
+    }
+    assert duckdb["unavailable"] is None
     assert "postgresql" in duckdb["live_source_types"]
     assert set(duckdb["live_source_types"]) <= set(duckdb["reachable_source_types"])
+
+
+@pytest.mark.asyncio
+async def test_an_engine_whose_driver_library_is_absent_is_unavailable_and_the_rest_answer(
+    monkeypatch,
+):
+    """An image without the ODBC driver manager could not import Fabric/Synapse's driver
+    (pyodbc: libodbc.so.2), and the whole reach answered 500, so the Sources page of every sandbox
+    showed the error. That engine is reported unavailable, naming the library; the rest answer."""
+    import provisa.api.app as appmod
+    import provisa.federation.engine as engmod
+    from provisa.api.admin import source_kinds_router as kinds
+    from provisa.federation.engine import build_engine
+
+    missing = "libodbc.so.2: cannot open shared object file: No such file or directory"
+
+    def _no_driver(name):
+        raise ImportError(missing)
+
+    monkeypatch.setattr(engmod, "_build_mssql_warehouse_engine", _no_driver)
+    monkeypatch.setattr(kinds, "require_capability_request", _anyone({"source_registration"}))
+    monkeypatch.setattr(appmod.state, "federation_engine", build_engine("duckdb"), raising=False)
+    reach = await kinds.source_reach(SimpleNamespace())
+    engines = {e["key"]: e for e in reach["engines"]}
+    for key in ("fabric", "synapse"):
+        assert engines[key]["unavailable"] == missing
+        assert engines[key]["reachable_source_types"] == []
+        assert engines[key]["live_source_types"] == []
+    assert engines["duckdb"]["unavailable"] is None
+    assert "postgresql" in engines["duckdb"]["live_source_types"]
 
 
 @pytest.mark.asyncio

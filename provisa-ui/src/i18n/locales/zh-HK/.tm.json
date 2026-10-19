@@ -1373,6 +1373,7 @@
   "zh-HK/federationEngineTab.json::federationEngineTab.saveButton": "Save engine selection",
   "zh-HK/federationEngineTab.json::federationEngineTab.saved": "Saved.",
   "zh-HK/federationEngineTab.json::federationEngineTab.savedRestartRequired": "Saved. Restart the service to apply the new federation engine.",
+  "zh-HK/federationEngineTab.json::federationEngineTab.unavailable": " (unavailable: {{reason}})",
   "zh-HK/filterInput.json::filterInput.clear": "Clear",
   "zh-HK/filterInput.json::filterInput.filter": "Filter",
   "zh-HK/glossaryTab.json::glossaryTab.abstract": "Abstract",

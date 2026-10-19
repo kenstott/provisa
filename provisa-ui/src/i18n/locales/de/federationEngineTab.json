@@ -4,6 +4,7 @@
     "loading": "Wird geladen…",
     "engineLabel": "Engine",
     "current": " (läuft)",
+    "unavailable": " (nicht verfügbar: {{reason}})",
     "pendingSelection": "Gespeicherte Auswahl: {{engine}}. Der Dienst läuft noch mit {{running}}.",
     "envPinned": "Durch $PROVISA_ENGINE auf {{engine}} festgelegt. Eine hier gespeicherte Auswahl wird abgelegt, aber beim Neustart gewinnt die Festlegung.",
     "saveButton": "Engine-Auswahl speichern",

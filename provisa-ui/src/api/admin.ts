@@ -1002,6 +1002,9 @@ export interface EngineRegistryEntry {
   reachable_source_types?: string[];
   /** Every type configurable on this engine: live-attach ∪ landed-replica reach (REQ-947). */
   live_source_types?: string[];
+  /** What this install could not load for the engine (its driver library), or null: an
+   *  unavailable engine reaches nothing and cannot be selected. */
+  unavailable?: string | null;
 }
 
 export interface FederationEngineState {
@@ -1027,7 +1030,7 @@ export interface SourceReach {
   engine: string;
   engines: Pick<
     EngineRegistryEntry,
-    "key" | "label" | "live_source_types" | "reachable_source_types"
+    "key" | "label" | "live_source_types" | "reachable_source_types" | "unavailable"
   >[];
 }
 

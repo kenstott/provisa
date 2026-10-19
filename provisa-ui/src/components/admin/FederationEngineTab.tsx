@@ -121,7 +121,8 @@ export function FederationEngineTab() {
     value: e.key,
     label: `${e.label}${e.managed ? ` (${e.managed})` : ""}${
       e.key === state.current ? t("federationEngineTab.current") : ""
-    }`,
+    }${e.unavailable ? t("federationEngineTab.unavailable", { reason: e.unavailable }) : ""}`,
+    disabled: Boolean(e.unavailable),
   }));
 
   return (

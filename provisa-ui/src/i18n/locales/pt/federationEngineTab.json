@@ -4,6 +4,7 @@
     "loading": "Carregando…",
     "engineLabel": "Mecanismo",
     "current": " (em execução)",
+    "unavailable": " (indisponível: {{reason}})",
     "pendingSelection": "Seleção salva: {{engine}}. O serviço ainda está executando {{running}}.",
     "envPinned": "Fixado em {{engine}} por $PROVISA_ENGINE. Uma seleção salva aqui é armazenada, mas a fixação prevalece na reinicialização.",
     "saveButton": "Salvar seleção do mecanismo",

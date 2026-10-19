@@ -44,7 +44,8 @@ router = APIRouter(prefix="/admin/source-kinds", tags=["admin"])
 async def source_reach(request: Request) -> dict:
     """The engine serving the bound org, and each engine's reach faces (REQ-947): every kind it
     reads in place (``live_source_types``) and every kind it reaches at all
-    (``reachable_source_types``)."""
+    (``reachable_source_types``). An engine whose driver library is absent answers with
+    ``unavailable`` naming it and no reach; the others are unaffected."""
     require_capability_request(request, "source_registration")
     from provisa.api.app import state
     from provisa.federation.engine import engine_registry
@@ -57,6 +58,7 @@ async def source_reach(request: Request) -> dict:
                 "label": e["label"],
                 "live_source_types": e["live_source_types"],
                 "reachable_source_types": e["reachable_source_types"],
+                "unavailable": e["unavailable"],
             }
             for e in engine_registry()
         ],

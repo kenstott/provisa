@@ -4,6 +4,7 @@
     "loading": "読み込み中…",
     "engineLabel": "エンジン",
     "current": "（実行中）",
+    "unavailable": "（利用不可: {{reason}}）",
     "pendingSelection": "保存された選択: {{engine}}。サービスはまだ{{running}}を実行しています。",
     "envPinned": "$PROVISA_ENGINEにより{{engine}}に固定されています。ここで保存した選択は記録されますが、再起動時には固定が優先されます。",
     "saveButton": "エンジン選択を保存",
