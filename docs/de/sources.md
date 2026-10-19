@@ -428,24 +428,22 @@ Beim Speichern lautet der Code `schema.logs_path_refused`; bei der Vorschau ist 
 
 #### Kaggle-Datasets {: #kaggle-datasets }
 
-Kaggle ist eine Datei-Download-Plattform. Ein bereitgestellter Kaggle-Datensatz registriert sich als Quelle vom Typ `files` und wird über denselben pgwire-file-Connector abgefragt, den jede andere `files`-Quelle verwendet — es gibt keinen `kaggle`-SourceType im Enum.
+Kaggle ist ein Ort zum Herunterladen von Datendateien. Ein Kaggle-Datensatz, den Sie hinzufügen, wird als `files`-Quelle registriert, und Sie fragen ihn genauso ab wie jede andere `files`-Quelle.
 
-**Einen Datensatz hinzufügen.** Öffnen Sie Sources → Subscriptions → Kaggle. Das Formular durchläuft zwei sequenzielle Schritte, da Kaggles eigener Dataset-Suchendpunkt Auth erfordert — die Auswahl kann nicht erscheinen, bevor das Token validiert ist.
+**Einen Datensatz hinzufügen.** Öffnen Sie Sources → Subscriptions → Kaggle. Das Formular arbeitet in zwei Schritten, weil Kaggles eigene Datensatzsuche ein Token braucht; die Auswahl erscheint also erst, wenn Ihres geprüft ist.
 
-1. **Token** — geben Sie ein Kaggle-API-Token ein und klicken Sie auf „Validate". Die Validierung ruft `POST https://www.kaggle.com/api/v1/datasets/create/new` mit leerem Body auf. Ein `401` bedeutet ungültig; jede andere Antwort bedeutet gültig (Kaggles eigene Payload-Validierung greift, bevor irgendein Datensatz erstellt wird — nichts wird persistiert).
-2. **Auswahl** — ein Live-Search-as-you-type-Feld fragt `GET /api/v1/datasets/list` ab. Jedes Ergebnis zeigt Dataset-Titel und -Beschreibung. Wählen Sie eines aus und klicken Sie auf „Add Dataset".
+1. **Token.** Geben Sie ein Kaggle-API-Token ein und klicken Sie auf „Validate“. Die Prüfung ruft `POST https://www.kaggle.com/api/v1/datasets/create/new` mit leerem Body auf. Ein `401` bedeutet, dass das Token ungültig ist; jede andere Antwort bedeutet, dass es gültig ist. Kaggle prüft den leeren Body, bevor es etwas anlegt, daher wird nichts gespeichert.
+2. **Auswahl.** Ein Suchfeld fragt beim Tippen `GET /api/v1/datasets/list` ab, und jedes Ergebnis zeigt Titel und Beschreibung des Datensatzes. Wählen Sie einen aus und klicken Sie auf „Add Dataset“.
 
-Ein Klick auf „Add Dataset" lädt das Bundle von `GET /api/v1/datasets/download/{owner}/{ref}` herunter, entpackt CSV- und Parquet-Mitglieder nach `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` und erstellt **eine** Quelle vom Typ `files`, deren `path` dieses Wurzelverzeichnis ist. Das Token wird serverseitig nie gespeichert.
+„Add Dataset“ lädt das Paket von `GET /api/v1/datasets/download/{owner}/{ref}` herunter, entpackt seine CSV- und Parquet-Dateien nach `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` und legt **eine** `files`-Quelle an, deren `path` dieses Wurzelverzeichnis ist. Der Server speichert das Token nie.
 
-Nach dem Hinzufügen der Quelle registrieren Sie deren Tabellen über den normalen Register-Table-Bildschirm. Die rekursive Verzeichniserkennung des pgwire-file-Connectors listet jede Datei als eigene Tabelle — derselbe Mechanismus, den jede andere `files`-Quelle verwendet.
+Registrieren Sie dann die gewünschten Tabellen auf dem normalen Register-Table-Bildschirm. Jede Datei erscheint als eigene Tabelle, wie bei jeder anderen `files`-Quelle.
 
-**v1-Einschränkung.** Ein Bundle mit einer `.sqlite`- oder `.db`-Datei wird rundweg mit einer klaren Fehlermeldung abgelehnt. Nur CSV- und Parquet-Dateien werden bereitgestellt.
+**Nur CSV und Parquet.** Ein Paket mit einer `.sqlite`- oder `.db`-Datei wird mit einer Fehlermeldung abgelehnt, die das sagt. Bereitgestellt werden nur CSV- und Parquet-Dateien.
 
-**Tabellenbenennung.** Eine gecrawlte Tabelle heißt `<page>__<name>`: der Titel der Seite, dann die Beschriftung der Tabelle oder, wenn sie keine hat, die letzte Überschrift über der Tabelle, beides in der Spaltennamen-Schreibweise der Quelle. Zum Beispiel ist die Tabelle unter der Überschrift „Tallest buildings in the world" auf der Seite `List_of_tallest_buildings` die Tabelle `list_of_tallest_buildings__tallest_buildings_in_the_world`. Eine verlinkte Datendatei behält ihren eigenen Namen.
+**Aktualisieren.** Wenn Kaggle eine neue Version eines Datensatzes veröffentlicht, rufen Sie die GraphQL-Mutation `refreshKaggleSource` mit der Quell-ID und einem gültigen Token auf. Sie stellt die Dateien an Ort und Stelle neu bereit und leert den Cache des Datei-Endpunkts, sodass die nächste Abfrage jede Schemaänderung aufnimmt. `kaggle_owner` und `kaggle_ref`, beim Anlegen der Quelle in `federation_hints` abgelegt, sagen, welcher Datensatz geholt wird.
 
-**Aktualisieren.** Um einen Datensatz erneut abzurufen, nachdem Kaggle eine neue Version veröffentlicht hat, rufen Sie die GraphQL-Mutation `refreshKaggleSource` mit der Quell-ID und einem gültigen Token auf. Dies stellt die Dateien vor Ort erneut bereit und leert den pgwire-file-Endpunkt-Cache, sodass der Connector bei seiner nächsten Abfrage etwaige Schemaänderungen übernimmt. Die zur Erstellungszeit in `federation_hints` gespeicherten `kaggle_owner` und `kaggle_ref` identifizieren, welcher Datensatz erneut abgerufen werden soll.
-
-**Kein statischer YAML-Konfigurationspfad.** Kaggle-Quellen werden nur über das Sources-Formular erstellt. Eine nach YAML exportierte Kaggle-Quelle erscheint als `type: files` mit `kaggle_owner` und `kaggle_ref` in `federation_hints`. Ein erneuter Download von Kaggle erfordert den UI-Refresh-Flow oder die Mutation `refreshKaggleSource` — das Ausrichten des YAML-`path` auf ein vorab bereitgestelltes Verzeichnis ist die Alternative für air-gapped Umgebungen.
+**Kein eigenes YAML.** Eine Kaggle-Quelle legen Sie nur über das Sources-Formular an. Nach YAML exportiert erscheint sie als `type: files` mit `kaggle_owner` und `kaggle_ref` in `federation_hints`. Erneut von Kaggle holen geht über die Aktualisierung in der UI oder die Mutation `refreshKaggleSource`. In einer abgeschotteten Umgebung lassen Sie das YAML-`path` auf ein Verzeichnis zeigen, das Sie selbst bereitgestellt haben.
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Nur Tabellen, die Redakteure als Datentabellen markieren (`table.wikitable`), we
 | `max_html_size` | nicht gesetzt | Größte gelesene Seite, zum Beispiel `10MB` |
 | `max_data_file_size` | nicht gesetzt | Größte gelesene Datendatei, zum Beispiel `100MB` |
 
-**Tabellenbenennung.** Eine gecrawlte Tabelle heißt `<page>__<name>`. Der Name ist die eigene `id` der Tabelle, wenn sie eine hat, sonst ihre Beschriftung, sonst die nächste Überschrift darüber. Zum Beispiel wird eine Tabelle unter der Überschrift „Tallest buildings" auf der Seite `List_of_tallest_buildings` nach der Namensnormalisierung zu `list_of_tallest_buildings__tallest_buildings`.
+**Tabellennamen.** Eine gecrawlte Tabelle heißt `<page>__<name>`. Der Name ist die Beschriftung (caption) der Tabelle oder, wenn sie keine hat, die letzte Überschrift darüber; eine Tabelle ohne beides heißt `table_1`, `table_2` und so weiter. Beide Teile werden kleingeschrieben, und jede Folge anderer Zeichen wird zu `_`. Eine Tabelle unter der Überschrift „Tallest buildings“ auf der Seite `List_of_tallest_buildings` wird zum Beispiel zu `list_of_tallest_buildings__tallest_buildings`. Eine verlinkte Datendatei behält ihren eigenen Namen.
 
 **Aktualisieren.** Ein Crawl wird für die Cache-Dauer aufbewahrt, standardmäßig `1 days` (`html_cache_ttl`). Seiten werden erst nach Ablauf dieser Zeit erneut abgerufen.
 
@@ -971,20 +969,20 @@ Ein Data Profiler ist eine Quelle, die einen Namen, einen Zeitplan und Lauf-Stan
 
 ### Data-Quality-Checker {: #data-quality-checkers }
 
-Ein Data-Quality-Checker ist ein Quelltyp, kein Subsystem. Seine Scan-Ausgabe sind Daten: Ein Check-Ergebnis ist eine Beobachtung, sodass es über den gewöhnlichen Quellpfad landet und Kadenz, Freshness, Events, Lineage, Governance, RLS, Grid und Export von jeder anderen Quelle erbt.
+Ein Data-Quality-Checker ist einfach ein weiterer Quelltyp. Seine Scan-Ausgabe sind Daten: Jedes Prüfergebnis ist eine Beobachtung, landet also über den gewöhnlichen Quellpfad und bekommt alles, was jede andere Quelle bekommt, von Takt, Aktualität, Ereignissen und Lineage bis zu Governance, RLS, Grid und Export.
 
-Zwei werden unterstützt, und die Wahl ist ebenso eine Lizenzfrage wie eine Feature-Frage.
+Zwei Checker werden unterstützt, und die Wahl zwischen ihnen ist ebenso eine Lizenz- wie eine Funktionsfrage.
 
 | Quelltyp | Vertrags-Dialekt | Extra | Lizenz | Gehostete Cloud-Plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda-Contract-YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Abgelehnt — siehe unten |
 | `great_expectations` | Expectation-Suite-JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Erlaubt |
 
-Die Elastic License 2.0 verbietet, die Software Dritten als gehosteten oder verwalteten Dienst bereitzustellen, und Soda innerhalb der SaaS-Plane im Namen eines Mandanten laufen zu lassen ist genau das. `config/capabilities.yaml` trägt die Aufteilung als `cloud_eligible: false` auf der `soda`-Option, und die gehostete Plane liest dieses Flag. Ein gehostetes Deployment, das Soda möchte, erreicht einen vom Betreiber bereitgestellten Soda-Endpunkt, den der Betreiber selbst betreibt.
+Die Elastic License 2.0 verbietet, die Software Dritten als gehosteten oder verwalteten Dienst bereitzustellen, und Soda im SaaS-Plane im Auftrag eines Mandanten auszuführen wäre genau das. `config/capabilities.yaml` hält das als `cloud_eligible: false` an der Option `soda` fest, und das gehostete Plane liest dieses Flag. Ein gehostetes Deployment, das Soda will, verweist auf einen Soda-Endpunkt, den der Betreiber selbst betreibt.
 
-Provisa bündelt und verlinkt nichts. Der Scan läuft in einem Kind-Interpreter (`python -m provisa.dq.worker`), dem einzigen Ort, an dem `soda_core` oder `great_expectations` importiert wird, sodass ein source-available Checker den Serverprozess nie erreicht und ein Checker-Absturz einen Subprozess tötet statt die Event-Loop.
+Provisa liefert nichts mit und linkt nichts. Der Scan läuft in einem Kind-Interpreter (`python -m provisa.dq.worker`), dem einzigen Ort, an dem `soda_core` oder `great_expectations` importiert wird. Ein Source-Available-Checker erreicht den Serverprozess deshalb nie, und stürzt ein Checker ab, reißt er einen Unterprozess mit und lässt die Event-Loop in Ruhe.
 
-**Die Quelle zeigt auf Provisas eigenen pgwire-Endpunkt.** Das ist, was es einem Postgres-Treiber erlaubt, eine Snowflake- oder Iceberg-gestützte Tabelle zu prüfen: Der Checker scannt die föderierte Sicht, nicht das darunterliegende System. Weil Richtlinie auf diese Verbindung angewendet wird, wird die Scan-Identität deklariert statt geerbt — eine gefilterte Zeilenmenge darf nie einen stillschweigend bestehenden Check erzeugen.
+**Die Quelle zeigt auf Provisas eigenen pgwire-Endpunkt.** So kann ein einziger Postgres-Treiber eine Tabelle prüfen, hinter der Snowflake oder Iceberg steht: Der Checker scannt die föderierte Sicht, nie das System darunter. Auf dieser Verbindung gilt die Policy, deshalb deklarieren Sie die Scan-Identität ausdrücklich. Würde sie geerbt, könnte eine gefilterte Zeilenmenge eine Prüfung bestehen lassen, ohne dass es jemand merkt.
 
 ```yaml
 sources:
@@ -1001,7 +999,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Eine Ergebnistabelle pro Vertrag, und der Vertrag ist die gesamte Registrierung.** Die Tabelle trägt `dq_contract` — den Vertragstext wortwörtlich — und sonst nichts über ihre Form. Spalten, Watermark und Promotions werden alle abgeleitet.
+**Eine Ergebnistabelle pro Vertrag, und der Vertrag ist die ganze Registrierung.** Die Tabelle trägt `dq_contract`, den Vertragstext Wort für Wort, und sonst nichts über ihre Form. Spalten, Watermark und Promotions werden alle daraus abgeleitet.
 
 ```yaml
 tables:
@@ -1029,28 +1027,28 @@ tables:
             must_be_greater_than: 0
 ```
 
-Was die Registrierung aus diesem Text ableitet:
+Aus diesem Text leitet die Registrierung vier Dinge ab:
 
-- **Lineage.** Der Vertrag benennt bereits sein Zieldataset, sodass die Registrierung ihn so parst, wie `extract_inputs` SQL parst, und ihn auf die geregelte Tabelle auflöst. Eine Definition, keine zweite Kopie, die driften kann. Ein Vertrag, der ein ungeregeltes Dataset benennt, schlägt bei der Registrierung laut fehl, statt Zeilen zu landen, die niemand angefordert hat.
-- **Spalten.** Der Ergebnis-Umschlag gehört dem Checker, nicht dem Betreiber — 16 mitgelieferte Spalten von `scan_id` bis `diagnostics`. Deklarierte Spalten werden nur für ihr `visible_to` gelesen, das einstimmig sein muss, und dann ersetzt.
-- **Watermark.** `scan_time` wird zum Watermark, was das Landen zu einem Append macht. Scan-Historie akkumuliert ohne Historien-Subsystem.
-- **Promotions.** `freshness_max_timestamp` und `dataset_rows_tested` werden aus dem `diagnostics`-jsonb als typisierte Spalten hochgestuft. Fügen Sie weitere hinzu, wie Sie es bei jeder anderen jsonb-Spalte täten.
+- **Lineage.** Der Vertrag nennt sein Zieldataset bereits, also parst die Registrierung ihn so, wie `extract_inputs` SQL parst, und löst ihn auf die gesteuerte Tabelle auf. Es gibt eine Definition und keine zweite Kopie, die abweichen könnte. Ein Vertrag, der ein nicht gesteuertes Dataset nennt, scheitert bei der Registrierung lautstark und landet so nie Zeilen, die niemand angefordert hat.
+- **Spalten.** Der Ergebnis-Umschlag gehört dem Checker: 16 mitgelieferte Spalten, von `scan_id` bis `diagnostics`. Deklarierte Spalten werden nur auf ihr `visible_to` gelesen, das bei allen gleich sein muss, und dann ersetzt.
+- **Watermark.** `scan_time` wird zum Watermark, was das Landen zu einem Append macht. Die Scan-Historie wächst ohne eigenes Historien-Subsystem.
+- **Promotions.** `freshness_max_timestamp` und `dataset_rows_tested` werden aus dem `diagnostics`-jsonb als typisierte Spalten hervorgehoben. Weitere fügen Sie hinzu wie bei jeder anderen jsonb-Spalte.
 
-Timing führt keine neuen Felder ein. `change_signal` plus `cache_ttl` geben die Poll-Kadenz vor; `mv_debounce_quiet` und `mv_debounce_max_delay` fassen einen vorgelagerten Burst zu einem Scan zusammen; eine Kalendergranularität macht ihn periodisch; `expected_events` hält den Scan zurück, bis seine Eingaben durch das Fenster frisch sind. Die Poll-Schleife ist der Scan-Scheduler.
+Für das Timing braucht es keine neuen Felder. `change_signal` plus `cache_ttl` legen fest, wie oft abgefragt wird, `mv_debounce_quiet` und `mv_debounce_max_delay` fassen einen Schwall vorgelagerter Änderungen zu einem Scan zusammen, ein Kalenderraster macht ihn periodisch, und `expected_events` hält den Scan zurück, bis seine Eingaben über das Fenster aktuell sind. Die Poll-Schleife ist der Scan-Scheduler.
 
-`outcome` ist eines von `pass`, `fail`, `warn`, `error`, `skipped`. Keines davon ist ein Urteil — Durchsetzung, falls gewünscht, ist eine separate, spätere Deklaration: ein Preflight oder eine materialisierte Sicht über den gelandeten Ergebnissen. Weil eine gelandete Beobachtung keine Determinismus-Verpflichtung trägt, sind hier nichtdeterministische Checks zulässig, die auf einem Preflight-Gate nie sitzen könnten — Anomalie-Score, Trailing-Window-Änderung, Freshness gegen jetzt.
+`outcome` ist einer der Werte `pass`, `fail`, `warn`, `error` oder `skipped`. Keiner davon setzt von sich aus etwas durch. Wenn Sie Durchsetzung wollen, deklarieren Sie sie getrennt: als Preflight oder als MV über die gelandeten Ergebnisse. Eine gelandete Beobachtung muss nicht deterministisch sein, also sind hier Prüfungen in Ordnung, die nie einen Preflight steuern könnten, etwa ein Anomalie-Score, eine Veränderung über ein gleitendes Fenster oder Aktualität gemessen an jetzt.
 
-Der Vertrag wird in der UI verfasst, im Data-Quality-Panel der Tabellen-Bearbeitungsoberfläche, und der rohe Vertragstext dort ist immer die Source of Truth. Ein Trockenlauf führt den Vertrag gegen die Live-Tabelle aus und zeigt die Ergebnisse, ohne sie zu landen — so erwischen Sie einen Vertrag, dessen Datasetname an eine unerwartete Stelle aufgelöst wurde und der sonst nichts als bestehende Zeilen landen würde.
+Sie schreiben den Vertrag in der UI, im Data-Quality-Panel der Bearbeitungsseite der Tabelle, und der rohe Vertragstext dort ist immer die maßgebliche Quelle. Ein Probelauf führt den Vertrag gegen die Live-Tabelle aus und zeigt die Ergebnisse, ohne sie zu landen. Damit fangen Sie einen Vertrag ab, dessen Datasetname unerwartet aufgelöst wurde und der sonst nur bestandene Zeilen landen würde.
 
 ---
 
 ## Benutzerdefinierte Connectors {: #custom-connectors }
 
-Die nativen Federation-Engines — Postgres, DuckDB und ClickHouse — gewinnen Erreichbarkeit zu einem neuen Quelltyp, wenn ein Betreiber dafür einen Connector in `config/custom_connectors.yaml` deklariert. Kein Code erforderlich.
+Ein Betreiber kann den nativen Federation-Engines (Postgres, DuckDB und ClickHouse) Zugriff auf einen neuen Quelltyp geben, indem er in `config/custom_connectors.yaml` einen Connector dafür deklariert. Code ist nicht nötig.
 
-Connector-Erweiterbarkeit selbst geht dem voraus. Die Trino-Engine ist auf ihrer eigenen Schicht seit Langem erweiterbar — ein generischer JDBC-Connector, parametrisiert pro Quelltyp, ein Katalog-`.properties`-Body pro Typ, und Provisas eigene benutzerdefinierte Trino-Connector-Plugins (Splunk, SharePoint, Calcite). Eigene Connector-Deklarationen bringen dieselbe konfigurationsgesteuerte Erweiterbarkeit zu den zwei nativen, clusterlosen Engines, die zuvor eine feste Connector-Menge trugen.
+Damit bekommen die nativen Engines, die ohne Cluster laufen, dieselbe konfigurationsgesteuerte Erweiterbarkeit, die die Trino-Engine auf ihrer eigenen Ebene hat. Dort wird ein generischer JDBC-Connector pro Quelltyp parametrisiert, jeder Typ erhält einen Katalog-`.properties`-Rumpf, und Provisa ergänzt eigene Trino-Connector-Plugins (Splunk, SharePoint, Calcite).
 
-Die Konfiguration wird leer ausgeliefert. Eingebaute Connectors decken die Reichweite von Haus aus ab; alles in dieser Datei ist vom Betreiber verfasst. Setzen Sie `PROVISA_CUSTOM_CONNECTORS`, um auf einen anderen Pfad zu verweisen (nützlich für Tests).
+Die Datei wird leer ausgeliefert. Die eingebauten Connectors decken ab, was ohne Weiteres funktioniert, und alles in dieser Datei schreibt der Betreiber. Für einen anderen Pfad, etwa in Tests, setzen Sie `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Deskriptor-Arten {: #descriptor-kinds }
 
@@ -1494,11 +1492,11 @@ auth:
 
 ## Ausführungs-Routing {: #execution-routing }
 
-**Direkte Ausführung** — Einzelquellen-RDBMS-Abfragen routen zum nativen Treiber für Latenz unter 100 ms. Quellen benötigen sowohl einen `SOURCE_TO_DIALECT`-Eintrag als auch einen `SOURCE_TO_CONNECTOR`-Eintrag, um diesen Pfad zu unterstützen.
+**Direkte Ausführung.** Eine Abfrage, die nur eine relationale Quelle betrifft, geht direkt an deren eigenen Treiber, in unter 100 ms. Ein Quelltyp nimmt diesen Weg, wenn Provisa sowohl seinen SQL-Dialekt als auch seinen Connector kennt.
 
-**Föderierte Ausführung** — Mehrquellen-Abfragen und Quellen ohne direkten Treiber routen über die Federation-Engine. Provisa enthält eine eingebettete Federation-Engine; verweisen Sie für großangelegte Deployments auf Ihren eigenen kompatiblen Cluster.
+**Föderierte Ausführung.** Eine quellenübergreifende Abfrage oder eine Abfrage an eine Quelle ohne direkten Treiber läuft über die Federation-Engine. Provisa bringt eine eingebettete mit; für große Deployments lassen Sie sie auf Ihren eigenen kompatiblen Cluster zeigen.
 
-**Statistiken** — Bei der Registrierung führt Provisa `ANALYZE` gegen jede veröffentlichte Tabelle aus, um den kostenbasierten Optimizer zu initialisieren (Zeilenanzahlen, Null-Anteil, eindeutige Werte, Min/Max). Fehler werden protokolliert und blockieren die Registrierung nicht.
+**Statistiken.** Wenn eine Tabelle registriert wird, führt Provisa `ANALYZE` für jede veröffentlichte Tabelle aus, damit der kostenbasierte Optimierer Zeilenzahlen, Null-Anteile, eindeutige Werte und Min/Max hat. Schlägt das fehl, wird der Fehler protokolliert und die Registrierung läuft weiter.
 
 ---
 

@@ -428,24 +428,22 @@ Register Table 界面会列出这些列及其类型，并标出键。 读取行�
 
 #### Kaggle 数据集 {: #kaggle-datasets }
 
-Kaggle 是一个文件下载平台。暂存的 Kaggle 数据集会注册为一个 `files` 类型的 Source，并通过任何其他 `files` 数据源所使用的同一个 pgwire-file 连接器进行查询 — 枚举中并不存在 `kaggle` 这个 SourceType。
+Kaggle 是下载数据文件的平台。您添加的 Kaggle 数据集会注册为 `files` 数据源，查询方式与其他 `files` 数据源相同。
 
-**添加数据集。** 打开 Sources → Subscriptions → Kaggle。该表单运行两个连续的步骤，因为 Kaggle 自身的数据集搜索端点需要身份验证 — 选择器必须在令牌验证通过后才能出现。
+**添加数据集。** 打开 Sources → Subscriptions → Kaggle。表单分两步进行，因为 Kaggle 自己的数据集搜索需要令牌，所以要等您的令牌通过验证后才会出现选择器。
 
-1. **令牌** — 输入一个 Kaggle API 令牌并点击"Validate"。验证会向 `POST https://www.kaggle.com/api/v1/datasets/create/new` 发送一个空请求体。`401` 表示无效；任何其他响应都表示有效（Kaggle 自身的负载验证会先于任何数据集的创建触发 — 不会持久化任何内容）。
-2. **选择器** — 一个即时搜索字段查询 `GET /api/v1/datasets/list`。每个结果显示数据集标题和描述。选择一个，然后点击"Add Dataset"。
+1. **令牌。** 输入 Kaggle API 令牌并点击 "Validate"。验证会以空请求体调用 `POST https://www.kaggle.com/api/v1/datasets/create/new`。`401` 表示令牌无效，其他任何响应都表示有效。Kaggle 在创建任何东西之前就会检查空请求体，所以不会保存任何内容。
+2. **选择器。** 搜索框会在您输入时查询 `GET /api/v1/datasets/list`，每条结果显示数据集的标题和描述。选中一个，然后点击 "Add Dataset"。
 
-点击"Add Dataset"会从 `GET /api/v1/datasets/download/{owner}/{ref}` 下载数据包，将 CSV 和 Parquet 成员解压到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，并创建**一个** `files` 类型的 Source，其 `path` 指向该根目录。令牌不会在服务器端存储。
+"Add Dataset" 从 `GET /api/v1/datasets/download/{owner}/{ref}` 下载数据包，把其中的 CSV 和 Parquet 文件解压到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，并创建**一个** `files` 数据源，其 `path` 就是该根目录。服务器从不保存令牌。
 
-添加数据源后，通过常规的 Register Table 界面注册其表。pgwire-file 连接器的递归目录发现机制会将每个文件列为其自身的表 — 与其他任何 `files` 数据源所使用的机制相同。
+然后在常规的 Register Table 界面注册您需要的表。每个文件都列为一张独立的表，和其他 `files` 数据源一样。
 
-**v1 限制。** 包含 `.sqlite` 或 `.db` 文件的数据包会被直接拒绝并给出明确的错误提示。只有 CSV 和 Parquet 文件会被暂存。
+**仅限 CSV 和 Parquet。** 包含 `.sqlite` 或 `.db` 文件的数据包会被拒绝，并给出说明原因的错误。只会暂存 CSV 和 Parquet 文件。
 
-**表命名。** 抓取到的表命名为 `<page>__<name>`：先是页面标题，然后是表的标题（caption），表没有标题时则使用表上方最近的标题，两者都采用数据源的列名拼写。例如，页面 `List_of_tallest_buildings` 上标题"Tallest buildings in the world"下的表是 `list_of_tallest_buildings__tallest_buildings_in_the_world`。链接的数据文件保留其自身名称。
+**刷新。** Kaggle 发布数据集新版本后，用数据源 ID 和有效令牌调用 GraphQL 变更 `refreshKaggleSource`。它会就地重新暂存文件并清除文件端点的缓存，让下一次查询获取任何结构变化。创建数据源时保存在 `federation_hints` 中的 `kaggle_owner` 和 `kaggle_ref` 指明要获取哪个数据集。
 
-**刷新。** 要在 Kaggle 发布新版本后重新获取数据集，请调用 `refreshKaggleSource` GraphQL mutation，并提供数据源 ID 和有效令牌。这会就地重新暂存文件，并清除 pgwire-file 端点缓存，使连接器在下一次查询时能获取到任何 schema 变更。创建时存储在 `federation_hints` 中的 `kaggle_owner` 和 `kaggle_ref` 标识了要重新获取的数据集。
-
-**没有静态 YAML 配置路径。** Kaggle 数据源仅能通过 Sources 表单创建。导出为 YAML 的 Kaggle 数据源会显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。要从 Kaggle 重新下载，需要使用 UI 刷新流程或 `refreshKaggleSource` mutation — 对于隔离网络（air-gapped）环境，替代方案是将 YAML 中的 `path` 指向一个预先暂存好的目录。
+**没有专属的 YAML。** Kaggle 数据源只能通过数据源表单创建。导出为 YAML 时，它显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。要重新从 Kaggle 获取，需要使用界面中的刷新或 `refreshKaggleSource` 变更。在隔离环境中，把 YAML 的 `path` 指向您自己暂存的目录。
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Provisa 知道这些语言版本的"See also"标题：`en`、`de`、`es`、`it`�
 | `max_html_size` | 未设置 | 读取的最大页面，例如 `10MB` |
 | `max_data_file_size` | 未设置 | 读取的最大数据文件，例如 `100MB` |
 
-**表命名。** 抓取到的表命名为 `<page>__<name>`。名称是表自身的 `id`（若有），否则是其标题（caption），再否则是其上方最近的标题。例如，页面 `List_of_tallest_buildings` 上标题"Tallest buildings"下的表，在名称规范化后成为 `list_of_tallest_buildings__tallest_buildings`。
+**表命名。** 爬取到的表命名为 `<page>__<name>`。名称取表的标题（caption）；没有标题时，取它上方最近的一个小节标题；两者都没有的表命名为 `table_1`、`table_2`，依此类推。两部分都转为小写，其他字符组成的每一段都换成 `_`。例如，页面 `List_of_tallest_buildings` 上 "Tallest buildings" 小节下的表会成为 `list_of_tallest_buildings__tallest_buildings`。链接的数据文件保留自己的名称。
 
 **刷新。** 抓取结果会在缓存期内保留，默认为 `1 days`（`html_cache_ttl`）。只有在该时间过后才会重新获取页面。
 
@@ -933,7 +931,7 @@ sources:
 
 服务器在接受连接之前会从对象存储挂载其 schema，首次启动需要数分钟。它在数据源保存时启动；在就绪之前，Register Table 表单会报告该数据源仍在启动。
 
-### Where a source's password lives
+### 数据源的密码存放在哪里 {: #where-a-sources-password-lives }
 
 一个数据源的密码永远不会与其连接设置的其余部分存放在一起。控制平面
 `sources` 表的行携带一个 `password_ref` 列，其中存放的是为密码输入的内容：
@@ -959,26 +957,26 @@ sources:
 会提供自己的连接值，而引用所指向的保管库属于提供该引用的那个
 环境。
 
-### Data Profiler
+### 数据画像器 {: #data-profiler }
 
 数据剖析器（data profiler）是一种只保存名称、调度计划和运行默认值的数据源，别无其他。它从不进行内省。其他数据源的表被添加到它之下，每次运行都会对这些表进行度量，并将结果行写入组织的控制平面，在那里像读取其他数据源的表一样读取。创建剖析器并向其添加表的方法参见[测试数据](test-data.md)。
 
 ### Data Quality Checkers {: #data-quality-checkers }
 
-数据质量检查器是一种数据源类型，而不是一个子系统。其扫描输出即为数据：一条检查结果就是一次观测，因此它通过普通的数据源路径落地，并从其他任何数据源那里继承节奏、新鲜度、事件、血缘、治理、RLS、网格和导出能力。
+数据质量检查器只是另一种数据源类型。它的扫描输出就是数据：每个检查结果都是一次观测，所以它经由普通的数据源路径落地，并获得其他数据源都有的一切，从节奏、新鲜度、事件和血缘，到治理、RLS、表格视图和导出。
 
-支持两种，选择哪一种既是许可证的选择，也是功能的选择。
+支持两种检查器，在两者之间做选择，许可证和功能同样重要。
 
 | Source Type | Contract Dialect | Extra | Licence | Hosted cloud plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda contract YAML | `pip install .[soda]`（`soda-postgres`） | Elastic License 2.0 | 拒绝 — 见下文 |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]`（`great-expectations[postgresql]`） | Apache 2.0 | 允许 |
 
-Elastic License 2.0 禁止将该软件以托管或受管服务的形式提供给第三方，而在 SaaS 平面内为某个租户运行 Soda 正是这种情况。`config/capabilities.yaml` 将这一区别体现为 `soda` 选项上的 `cloud_eligible: false`，托管平面会读取该标志。想要使用 Soda 的托管部署，需要连接到由运营方自行运行的运营方提供的 Soda 端点。
+Elastic License 2.0 禁止把软件作为托管或受管服务提供给第三方，而代表租户在 SaaS 平面内运行 Soda 正是这种情况。`config/capabilities.yaml` 在 `soda` 选项上把这一点记为 `cloud_eligible: false`，托管平面会读取这个标志。需要 Soda 的托管部署指向运营方自己运行的 Soda 端点。
 
-Provisa 不打包也不链接任何东西。扫描在一个子解释器中运行（`python -m provisa.dq.worker`），这是唯一导入 `soda_core` 或 `great_expectations` 的地方，因此一个源码可用（source-available）的检查器永远不会进入服务器进程，检查器崩溃只会杀死一个子进程，而不会影响事件循环。
+Provisa 不内置也不链接任何东西。扫描在一个子解释器（`python -m provisa.dq.worker`）中运行，这是唯一导入 `soda_core` 或 `great_expectations` 的地方。因此源码可用的检查器永远不会进入服务器进程；检查器崩溃时，只会带走一个子进程，事件循环不受影响。
 
-**该数据源指向的是 Provisa 自身的 pgwire 端点。** 正是这一点使得一个 postgres 驱动就能检查一个由 Snowflake 或 Iceberg 支持的表：检查器扫描的是联邦视图，而不是底层系统。由于策略应用于该连接，扫描身份是显式声明的而非继承而来 — 一个被过滤过的行集绝不能产生一个静默通过的检查。
+**数据源指向 Provisa 自己的 pgwire 端点。** 正因如此，一个 postgres 驱动就能检查背后是 Snowflake 或 Iceberg 的表：检查器扫描的是联邦视图，从不扫描底层系统。策略作用于这个连接，所以扫描身份要显式声明。如果它是继承来的，一组被过滤的行可能会让检查悄悄通过，而没人察觉。
 
 ```yaml
 sources:
@@ -995,7 +993,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**每个契约一张结果表，而契约就是全部注册内容。** 该表携带 `dq_contract` — 契约原文本身 — 以及关于其结构的其他任何信息均由此推导。列、水位线和提升（promotion）都是派生出来的。
+**每个契约一张结果表，契约就是全部注册内容。** 这张表带有 `dq_contract`，即契约原文，此外不带任何关于其结构的信息。列、水位线和提升都由它推导而来。
 
 ```yaml
 tables:
@@ -1023,30 +1021,30 @@ tables:
             must_be_greater_than: 0
 ```
 
-注册过程从该文本中派生出的内容：
+注册会从这段文本中推导出四样东西：
 
-- **血缘。** 契约本身已经命名了其目标数据集，因此注册过程会按照 `extract_inputs` 解析 SQL 的方式解析它，并将其解析到已被治理的表。只有一份定义，不存在可能发生偏差的第二份副本。命名了一个未受治理数据集的契约会在注册时直接报错失败，而不会落地任何无人要求的行。
-- **列。** 结果信封（envelope）是检查器自身的，而不是运营方的 — 16 个内置列，从 `scan_id` 到 `diagnostics`。已声明的列仅会被读取其 `visible_to`，该值必须一致，随后会被替换。
-- **水位线。** `scan_time` 成为水位线，这使得落地成为一次追加操作。扫描历史在没有历史子系统的情况下不断累积。
-- **提升。** `freshness_max_timestamp` 和 `dataset_rows_tested` 从 `diagnostics` jsonb 中被提升为有类型的列。可以像对待其他任何 jsonb 列一样添加更多列。
+- **血缘。** 契约已经指明了目标数据集，所以注册会像 `extract_inputs` 解析 SQL 那样解析它，并解析到受治理的表。只有一份定义，没有可能偏离的第二份副本。指向未受治理数据集的契约会在注册时明确报错，因此永远不会落地没人要的行。
+- **列。** 结果信封属于检查器：16 个内置列，从 `scan_id` 到 `diagnostics`。已声明的列只读取其 `visible_to`，所有列上的值必须一致，之后这些列会被替换。
+- **水位线。** `scan_time` 成为水位线，这使落地成为追加。扫描历史不断累积，无需历史子系统。
+- **提升。** `freshness_max_timestamp` 和 `dataset_rows_tested` 从 `diagnostics` jsonb 中提升为有类型的列。您可以像对待其他 jsonb 列一样添加更多。
 
-时机（timing）不引入任何新字段。`change_signal` 加上 `cache_ttl` 给出轮询节奏；`mv_debounce_quiet` 和 `mv_debounce_max_delay` 将上游的一次突发合并为一次扫描；日历粒度使其成为周期性的；`expected_events` 会等待其输入在窗口内变新鲜后再执行扫描。轮询循环就是扫描调度器。
+时间安排不需要新字段。`change_signal` 加上 `cache_ttl` 决定轮询频率，`mv_debounce_quiet` 和 `mv_debounce_max_delay` 把上游的一阵变更合并为一次扫描，日历粒度让它周期性运行，`expected_events` 则把扫描推迟到其输入在整个窗口内都已新鲜为止。轮询循环就是扫描调度器。
 
-`outcome` 是 `pass`、`fail`、`warn`、`error`、`skipped` 之一。它们都不是一个裁定 — 如果需要强制执行，那是之后一个独立的声明：一个 preflight 或一个建立在落地结果之上的 MV。由于一次落地的观测不承担确定性义务，因此这里可以接受一些在 preflight 门控上永远无法存在的非确定性检查 — 异常分数、尾随窗口变化、相对于当前时刻的新鲜度。
+`outcome` 取 `pass`、`fail`、`warn`、`error` 或 `skipped` 之一。它们本身都不强制执行任何东西。如果需要强制执行，请另行声明：一个 preflight，或一个基于已落地结果的 MV。已落地的观测不必是确定性的，所以这里可以放那些永远无法作为 preflight 关卡的检查，例如异常分数、滑动窗口内的变化，或相对于当前时刻的新鲜度。
 
-契约在 UI 中编写，位于表编辑界面的数据质量面板中，那里的契约原文始终是事实来源。试运行（dry run）会针对实时表执行该契约并显示结果而不落地它们 — 这正是你捕获一个数据集名称解析到意外位置、否则只会落地全是通过结果的行的契约的方式。
+契约在界面中编写，位于表编辑页面的数据质量面板里，那里的原始契约文本始终是唯一依据。试运行会针对实时表执行契约并显示结果，但不落地。用它来发现数据集名称解析到了意外位置的契约，否则这种契约只会落地全部通过的行。
 
 ---
 
-## Custom Connectors
+## 自定义连接器 {: #custom-connectors }
 
-原生联邦引擎 — Postgres、DuckDB 和 ClickHouse — 在运营方于 `config/custom_connectors.yaml` 中为某个新数据源类型声明连接器时，获得对该类型的可达性。无需任何代码。
+运营方可以在 `config/custom_connectors.yaml` 中为新的数据源类型声明一个连接器，让原生联邦引擎（Postgres、DuckDB 和 ClickHouse）能够访问它。无需编写代码。
 
-连接器的可扩展性本身早已存在。Trino 引擎长期以来在其自身层面上是可扩展的 — 每种数据源类型对应一个通用的、参数化的 JDBC 连接器，每种类型对应一个目录（catalog）`.properties` 主体，以及 Provisa 自己的自定义 Trino 连接器插件（Splunk、SharePoint、Calcite）。自定义连接器声明将这种基于配置的可扩展性带给了这两个原生的、无集群的引擎，此前它们只有一套固定的连接器集合。
+这让无需集群即可运行的原生引擎，获得与 Trino 引擎在其自身层面相同的基于配置的可扩展性。在 Trino 那里，一个通用 JDBC 连接器按数据源类型参数化，每种类型有一个目录 `.properties` 主体，Provisa 还提供自己的 Trino 连接器插件（Splunk、SharePoint、Calcite）。
 
-该配置文件默认为空。内置连接器覆盖开箱即用的可达性；该文件中的一切都是由运营方自行编写的。 设置 `PROVISA_CUSTOM_CONNECTORS` 以指向一个不同的路径（对测试很有用）。
+该文件出厂为空。内置连接器覆盖开箱即用的部分，此文件中的一切都由运营方编写。如需使用其他路径（例如在测试中），请设置 `PROVISA_CUSTOM_CONNECTORS`。
 
-### Descriptor kinds
+### 描述符类型 {: #descriptor-kinds }
 
 | Engine | Kind | Mechanism | What the descriptor supplies |
 | --- | --- | --- | --- |
@@ -1065,7 +1063,7 @@ tables:
 
 一个未知的 `kind` 值会在启动时直接报错失败 — 一个 descriptor 拼写错误绝不能默默地使某个数据源类型不可达。
 
-### Probe gating
+### 探测把关 {: #probe-gating }
 
 可用性在 attach 时针对每个引擎的标准发现目录进行验证：
 
@@ -1075,7 +1073,7 @@ tables:
 
 一个已声明但无法安装的扩展会直接报错失败。没有静默跳过，没有回退。探测失败的连接器在该部署中就是未激活状态。
 
-### Template variables
+### 模板变量 {: #template-variables }
 
 每个 `server_options` 值、`user_mapping` 值、`attach_template` 和 `scan_template` 都可以使用 `{field}` 占位符。可用字段：
 
@@ -1083,7 +1081,7 @@ tables:
 
 引用未知字段的模板会在 attach 时直接报错失败，从而在损坏的 DDL 到达引擎之前，就暴露出 descriptor 与数据源之间的不匹配。
 
-### Examples
+### 示例 {: #examples }
 
 **Postgres — 通过 `mongo_fdw` 访问 MongoDB（无 schema 导入；按表提供列）**
 
@@ -1180,7 +1178,7 @@ sources:
 
 ---
 
-## Source Configuration Fields
+## 数据源配置字段 {: #source-configuration-fields }
 
 所有数据源共享一组公共字段。
 
@@ -1211,7 +1209,7 @@ sources:
 
 ---
 
-## Kafka Sources
+## Kafka 数据源 {: #kafka-sources }
 
 Kafka 主题在 `kafka_sources` 下单独配置，以已注册的 `kafka` 数据源的 `id` 作为键。
 
@@ -1246,7 +1244,7 @@ kafka_sources:
 
 ---
 
-## Column Visibility
+## 列可见性 {: #column-visibility }
 
 每列上的 `visible_to` 字段是一个可以看到该列的角色 ID 列表。
 
@@ -1264,7 +1262,7 @@ columns:
 
 ---
 
-## Relationships
+## 关系 {: #relationships }
 
 关系（Relationship）连接两张已注册的表，并作为嵌套字段出现在 GraphQL 中。
 
@@ -1302,7 +1300,7 @@ relationships:
 | `via_type_value` | No | 该边所固定绑定的判别值 |
 | `via_label_source` | No | 由哪种提名方式命名该 Cypher 类型：`column`（判别值）、`table`（中间表的表名）或 `fixed`（已声明的别名）。全部转换为大写下划线形式 |
 
-### Junction-backed relationships
+### 由关联表支撑的关系 {: #junction-backed-relationships }
 
 一张关联表可以被声明为一个一等公民的 Cypher 关系，而不是一个节点，从而使其
 自身的列成为该关系的属性：
@@ -1349,7 +1347,7 @@ relationships:
 
 ---
 
-## Row-Level Security Rules
+## 行级安全规则 {: #row-level-security-rules }
 
 RLS 规则在查询时注入 `WHERE` 子句，作用范围限定在某个角色，并可选地限定在某张表或某个域上。
 
@@ -1379,9 +1377,9 @@ rls_rules:
 
 ---
 
-## Functions and Webhooks
+## 函数与 Webhook {: #functions-and-webhooks }
 
-### DB Functions
+### 数据库函数 {: #db-functions }
 
 追踪一个数据库函数，并将其暴露为一个 GraphQL 查询或 mutation。
 
@@ -1418,7 +1416,7 @@ functions:
 | `description` | No | `null` | GraphQL 字段描述 |
 | `kind` | No | `mutation` | `"query"` 或 `"mutation"` |
 
-### Webhooks
+### Webhook {: #webhooks }
 
 将一个外部 HTTP 端点暴露为一个 GraphQL 查询或 mutation。
 
@@ -1455,7 +1453,7 @@ webhooks:
 
 ---
 
-## Authentication
+## 认证 {: #authentication }
 
 身份验证在 `auth` 键下配置。
 
@@ -1485,17 +1483,17 @@ auth:
 
 ---
 
-## Execution Routing
+## 执行路由 {: #execution-routing }
 
-**直接执行** — 单数据源 RDBMS 查询路由到原生驱动，以获得亚 100 毫秒的延迟。数据源需要同时具备 `SOURCE_TO_DIALECT` 条目和 `SOURCE_TO_CONNECTOR` 条目才能支持该路径。
+**直接执行。** 只涉及一个关系型数据源的查询直接交给该数据源自己的驱动，耗时不到 100 毫秒。当 Provisa 同时知道某种数据源类型的 SQL 方言和连接器时，它就走这条路径。
 
-**联邦执行** — 多数据源查询以及没有直连驱动的数据源通过联邦引擎路由。Provisa 内置了一个嵌入式联邦引擎；对于大规模部署，可指向你自己兼容的集群。
+**联邦执行。** 跨数据源的查询，或针对没有直连驱动的数据源的查询，会经过联邦引擎。Provisa 自带一个嵌入式引擎；大型部署可以把它指向您自己的兼容集群。
 
-**统计信息** — 在注册时，Provisa 会针对每张已发布的表运行 `ANALYZE`，以初始化基于成本的优化器（行数、null 比例、不同值数量、最小/最大值）。失败会被记录且不会阻止注册。
+**统计信息。** 注册表时，Provisa 会对每张已发布的表运行 `ANALYZE`，让基于成本的优化器拿到行数、空值比例、不同值数量和最小/最大值。如果失败，失败会记入日志，注册照常进行。
 
 ---
 
-## Graph & Semantic Sources
+## 图与语义数据源 {: #graph-semantic-sources }
 
 ### Neo4j
 
@@ -1503,7 +1501,7 @@ auth:
 
 Cypher 查询必须在 `RETURN` 子句中使用属性访问器（`RETURN n.id AS id, n.name AS name`）— 返回节点对象会在注册时被拒绝。
 
-#### Config-file registration
+#### 通过配置文件注册 {: #config-file-registration }
 
 在 YAML 中声明一个 `neo4j` 数据源及其表。每张表都需要一个 `query_template`（产生其行数据的 Cypher）以及有类型的列。`query_template` 键在任何其他数据源类型下都是非法的。
 
@@ -1548,7 +1546,7 @@ tables:
         data_type: integer
 ```
 
-#### Register Table in the UI
+#### 在界面中注册表 {: #register-table-in-the-ui }
 
 一个 neo4j 数据源没有可列出的表，因此 Register Table 表单会要求输入表，而不是提供一个供选择的表。
 
@@ -1559,7 +1557,7 @@ tables:
 
 该 Cypher 与表一同以 `queryTemplate` 的形式存储，显示在该表的只读视图中，其持久化方式与通过配置文件注册完全相同：一条 `api_sources` 行和一条下次启动时会被水合的 `api_endpoints` 行。编辑该表会重新持久化经过编辑的 Cypher。
 
-#### Admin REST registration
+#### 通过管理 REST 注册 {: #admin-rest-registration }
 
 ```bash
 # Register via admin API (no YAML config required)
@@ -1610,7 +1608,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 
 ---
 
-#### Config-file and UI registration
+#### 通过配置文件和界面注册 {: #config-file-and-ui-registration }
 
 一个 `sparql` 数据源的 `host` 就是其 SPARQL 端点 URL（Sources 表单以同样的方式存储它）。其下的每张表都携带 `query_template`，即一个变量即为列的 SELECT 语句；每个绑定都是 `text`。
 
@@ -1634,7 +1632,7 @@ tables:
 
 Register Table 的工作方式与 Neo4j 相同：选择数据源，输入一个表名和 SELECT 语句，点击 Preview（`sparqlPreview` 查询以 `LIMIT 5` 运行该语句并填充列列表），然后注册。注册过程会持久化一条 `api_sources` 行和一条 `api_endpoints` 行（对该端点路径进行表单编码的 POST，`sparql_bindings` normalizer），与配置文件注册写入的行相同，原生引擎通过与 Neo4j 相同的获取链路落地这些行。
 
-## Connection Examples
+## 连接示例 {: #connection-examples }
 
 ### PostgreSQL
 

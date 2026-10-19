@@ -428,24 +428,22 @@ Deux contrôles s'appliquent. La partie fixe du glob, jusqu'à son premier carac
 
 #### Jeux de données Kaggle {: #kaggle-datasets }
 
-Kaggle est une plateforme de téléchargement de fichiers. Un jeu de données Kaggle mis en scène s'enregistre comme une source de type `files` et est interrogé via le même connecteur pgwire-file que toute autre source `files` — il n'existe aucun `SourceType` `kaggle` dans l'énumération.
+Kaggle est un site de téléchargement de fichiers de données. Un jeu de données Kaggle que vous ajoutez s'enregistre comme source `files`, et vous l'interrogez comme n'importe quelle autre source `files`.
 
-**Ajouter un jeu de données.** Ouvrez Sources → Abonnements → Kaggle. Le formulaire exécute deux étapes séquentielles, car le point de terminaison de recherche de jeux de données de Kaggle exige une authentification — le sélecteur ne peut apparaître avant la validation du jeton.
+**Ajouter un jeu de données.** Ouvrez Sources → Abonnements → Kaggle. Le formulaire fonctionne en deux étapes, car la recherche de jeux de données de Kaggle exige un jeton : le sélecteur n'apparaît qu'une fois le vôtre validé.
 
-1. **Jeton** — saisissez un jeton API Kaggle et cliquez sur « Valider ». La validation appelle `POST https://www.kaggle.com/api/v1/datasets/create/new` avec un corps vide. Un `401` signifie invalide ; toute autre réponse signifie valide (la propre validation de charge utile de Kaggle se déclenche avant la création d'un quelconque jeu de données — rien n'est persisté).
-2. **Sélecteur** — un champ de recherche en direct interroge `GET /api/v1/datasets/list`. Chaque résultat affiche le titre et la description du jeu de données. Sélectionnez-en un, puis cliquez sur « Add Dataset ».
+1. **Jeton.** Saisissez un jeton d'API Kaggle et cliquez sur « Valider ». La validation appelle `POST https://www.kaggle.com/api/v1/datasets/create/new` avec un corps vide. Un `401` signifie que le jeton n'est pas valide, toute autre réponse qu'il l'est. Kaggle vérifie le corps vide avant de créer quoi que ce soit, donc rien n'est enregistré.
+2. **Sélecteur.** Un champ de recherche interroge `GET /api/v1/datasets/list` pendant la saisie, et chaque résultat montre le titre et la description du jeu de données. Choisissez-en un, puis cliquez sur « Add Dataset ».
 
-Cliquer sur « Add Dataset » télécharge le paquet depuis `GET /api/v1/datasets/download/{owner}/{ref}`, décompresse les membres CSV et Parquet dans `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, et crée **une seule** source de type `files` dont le `path` est ce répertoire racine. Le jeton n'est jamais stocké côté serveur.
+« Add Dataset » télécharge le paquet depuis `GET /api/v1/datasets/download/{owner}/{ref}`, décompresse ses fichiers CSV et Parquet dans `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` et crée **une** source `files` dont le `path` est ce répertoire racine. Le serveur ne stocke jamais le jeton.
 
-Après l'ajout de la source, enregistrez ses tables via l'écran normal Register Table. La découverte récursive de répertoires du connecteur pgwire-file liste chaque fichier comme sa propre table — le même mécanisme qu'utilise toute autre source `files`.
+Enregistrez ensuite les tables voulues sur l'écran Register Table habituel. Chaque fichier y figure comme sa propre table, comme pour toute autre source `files`.
 
-**Limitation v1.** Un paquet contenant un fichier `.sqlite` ou `.db` est rejeté d'emblée avec une erreur claire. Seuls les fichiers CSV et Parquet sont mis en scène.
+**CSV et Parquet seulement.** Un paquet qui contient un fichier `.sqlite` ou `.db` est refusé avec une erreur qui le dit. Seuls les fichiers CSV et Parquet sont préparés.
 
-**Nommage des tables.** Une table parcourue se nomme `<page>__<name>` : le titre de la page, puis la légende de la table ou, à défaut, le dernier intitulé au-dessus de la table, tous deux dans l'orthographe des noms de colonnes de la source. Par exemple, la table sous l'intitulé « Tallest buildings in the world » de la page `List_of_tallest_buildings` est `list_of_tallest_buildings__tallest_buildings_in_the_world`. Un fichier de données lié garde son propre nom.
+**Rafraîchir.** Quand Kaggle publie une nouvelle version d'un jeu de données, appelez la mutation GraphQL `refreshKaggleSource` avec l'ID de la source et un jeton valide. Elle prépare de nouveau les fichiers sur place et vide le cache du point de terminaison de fichiers, afin que la requête suivante prenne en compte tout changement de schéma. `kaggle_owner` et `kaggle_ref`, conservés dans `federation_hints` à la création de la source, indiquent quel jeu de données récupérer.
 
-**Rafraîchissement.** Pour retélécharger un jeu de données après que Kaggle publie une nouvelle version, appelez la mutation GraphQL `refreshKaggleSource` avec l'ID de la source et un jeton valide. Cela remet les fichiers en scène sur place et évince le cache de point de terminaison pgwire-file afin que le connecteur capte tout changement de schéma à sa prochaine requête. Les `kaggle_owner` et `kaggle_ref` stockés dans `federation_hints` à la création identifient quel jeu de données retélécharger.
-
-**Aucun chemin de configuration YAML statique.** Les sources Kaggle sont créées uniquement via le formulaire Sources. Une source Kaggle exportée en YAML apparaît comme `type: files` avec `kaggle_owner` et `kaggle_ref` dans `federation_hints`. Retélécharger depuis Kaggle nécessite le flux de rafraîchissement de l'interface ou la mutation `refreshKaggleSource` — pointer le `path` YAML vers un répertoire déjà mis en scène est l'alternative pour les environnements isolés (air-gapped).
+**Pas de YAML propre.** Une source Kaggle ne se crée que par le formulaire des sources. Exportée en YAML, elle apparaît comme `type: files` avec `kaggle_owner` et `kaggle_ref` dans `federation_hints`. Pour la récupérer à nouveau depuis Kaggle, il faut le rafraîchissement dans l'interface ou la mutation `refreshKaggleSource`. Dans un environnement isolé, faites pointer le `path` du YAML vers un répertoire que vous avez préparé vous-même.
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Seuls les tableaux que les éditeurs marquent comme tableaux de données (`table
 | `max_html_size` | non défini | Plus grande page lue, par exemple `10MB` |
 | `max_data_file_size` | non défini | Plus grand fichier de données lu, par exemple `100MB` |
 
-**Nommage des tables.** Une table parcourue se nomme `<page>__<name>`. Le nom est le propre `id` du tableau s'il en a un, sinon sa légende, sinon l'intitulé le plus proche au-dessus. Par exemple, un tableau sous l'intitulé « Tallest buildings » de la page `List_of_tallest_buildings` devient `list_of_tallest_buildings__tallest_buildings` après normalisation du nom.
+**Nommage des tables.** Une table explorée s'appelle `<page>__<name>`. Le nom est la légende (caption) de la table ou, à défaut, le dernier titre au-dessus d'elle ; une table sans l'un ni l'autre devient `table_1`, `table_2`, etc. Les deux parties passent en minuscules, et chaque suite d'autres caractères devient `_`. Par exemple, une table sous le titre « Tallest buildings » de la page `List_of_tallest_buildings` devient `list_of_tallest_buildings__tallest_buildings`. Un fichier de données lié garde son propre nom.
 
 **Rafraîchissement.** Un parcours est conservé pendant la période de cache, `1 days` par défaut (`html_cache_ttl`). Les pages ne sont récupérées de nouveau qu'une fois ce délai écoulé.
 
@@ -970,20 +968,20 @@ Un profileur de données est une source qui détient un nom, un calendrier et de
 
 ### Vérificateurs de qualité des données {: #data-quality-checkers }
 
-Un vérificateur de qualité des données est un type de source, non un sous-système. Sa sortie de balayage est une donnée : un résultat de contrôle est une observation, il atterrit donc par le chemin ordinaire des sources et hérite de la cadence, de la fraîcheur, des événements, de la traçabilité, de la gouvernance, du RLS, de la grille et de l'export comme toute autre source.
+Un vérificateur de qualité des données n'est qu'un type de source de plus. Ce qu'il produit en scannant, ce sont des données : chaque résultat de contrôle est une observation, déposée par le chemin ordinaire des sources, et elle reçoit ce que reçoit toute autre source, de la cadence, la fraîcheur, les événements et la traçabilité jusqu'à la gouvernance, la RLS, la grille et l'export.
 
-Deux sont pris en charge, et le choix relève autant de la licence que de la fonctionnalité.
+Deux vérificateurs sont pris en charge, et choisir entre eux relève autant de la licence que des fonctionnalités.
 
 | Type de source | Dialecte de contrat | Extra | Licence | Plan cloud hébergé |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | YAML de contrat Soda | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refusé — voir ci-dessous |
 | `great_expectations` | JSON de suite d'attentes | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Autorisé |
 
-La licence Elastic License 2.0 interdit de fournir le logiciel à des tiers comme service hébergé ou managé, et exécuter Soda dans le plan SaaS pour le compte d'un locataire est exactement cela. `config/capabilities.yaml` porte cette scission sous la forme `cloud_eligible: false` sur l'option `soda`, et le plan hébergé lit ce drapeau. Un déploiement hébergé qui souhaite Soda atteint un endpoint Soda fourni par l'exploitant, que celui-ci exécute lui-même.
+L'Elastic License 2.0 interdit de fournir le logiciel à des tiers comme service hébergé ou géré, et exécuter Soda dans le plan SaaS pour le compte d'un locataire serait exactement cela. `config/capabilities.yaml` le note par `cloud_eligible: false` sur l'option `soda`, et le plan hébergé lit cet indicateur. Un déploiement hébergé qui veut Soda pointe vers un endpoint Soda que l'exploitant fait tourner lui-même.
 
-Provisa n'intègre ni ne lie quoi que ce soit. Le balayage s'exécute dans un interpréteur enfant (`python -m provisa.dq.worker`), seul endroit où `soda_core` ou `great_expectations` est importé, de sorte qu'un vérificateur à source disponible n'atteint jamais le processus serveur et qu'un plantage du vérificateur tue un sous-processus plutôt que la boucle d'événements.
+Provisa n'embarque et ne lie rien. Le scan tourne dans un interpréteur enfant (`python -m provisa.dq.worker`), le seul endroit où `soda_core` ou `great_expectations` est importé. Un vérificateur à source disponible n'atteint donc jamais le processus serveur, et si un vérificateur plante, il emporte un sous-processus et laisse la boucle d'événements tranquille.
 
-**La source pointe vers l'endpoint pgwire de Provisa lui-même.** C'est ce qui permet à un unique pilote postgres de contrôler une table adossée à Snowflake ou à Iceberg : le vérificateur balaie la vue fédérée, non le système sous-jacent. Parce que la politique s'applique à cette connexion, l'identité de balayage est déclarée plutôt qu'héritée — un jeu de lignes filtré ne doit jamais produire un contrôle silencieusement réussi.
+**La source pointe vers l'endpoint pgwire de Provisa lui-même.** C'est ce qui permet à un seul pilote postgres de contrôler une table adossée à Snowflake ou à Iceberg : le vérificateur scanne la vue fédérée, jamais le système en dessous. La politique s'applique à cette connexion, donc vous déclarez explicitement l'identité du scan. Si elle était héritée, un ensemble de lignes filtré pourrait faire passer un contrôle sans que personne ne s'en aperçoive.
 
 ```yaml
 sources:
@@ -1000,7 +998,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Une table de résultats par contrat, et le contrat constitue tout l'enregistrement.** La table porte `dq_contract` — le texte du contrat tel quel — et rien d'autre quant à sa forme. Colonnes, filigrane et promotions en sont tous dérivés.
+**Une table de résultats par contrat, et le contrat est tout l'enregistrement.** La table porte `dq_contract`, le texte du contrat mot pour mot, et rien d'autre sur sa forme. Les colonnes, le filigrane et les promotions en sont tous dérivés.
 
 ```yaml
 tables:
@@ -1028,28 +1026,28 @@ tables:
             must_be_greater_than: 0
 ```
 
-Ce que l'enregistrement dérive de ce texte :
+L'enregistrement tire quatre choses de ce texte :
 
-- **Traçabilité.** Le contrat nomme déjà son jeu de données cible, si bien que l'enregistrement l'analyse comme `extract_inputs` analyse le SQL et le résout vers la table gouvernée. Une seule définition, aucune seconde copie susceptible de dériver. Un contrat nommant un jeu de données non gouverné échoue bruyamment à l'enregistrement plutôt que de déposer des lignes que personne n'a demandées.
-- **Colonnes.** L'enveloppe de résultat appartient au vérificateur, non à l'exploitant — 16 colonnes livrées, de `scan_id` à `diagnostics`. Les colonnes déclarées ne sont lues que pour leur `visible_to`, qui doit être unanime, puis elles sont remplacées.
-- **Filigrane.** `scan_time` devient le filigrane, ce qui fait du dépôt un ajout. L'historique des balayages s'accumule sans sous-système d'historique.
-- **Promotions.** `freshness_max_timestamp` et `dataset_rows_tested` sont promus hors du jsonb `diagnostics` comme colonnes typées. Ajoutez-en d'autres comme vous le feriez sur n'importe quelle autre colonne jsonb.
+- **Traçabilité.** Le contrat nomme déjà son jeu de données cible, donc l'enregistrement l'analyse comme `extract_inputs` analyse le SQL et le résout vers la table gouvernée. Il y a une seule définition et aucune seconde copie qui pourrait diverger. Un contrat qui nomme un jeu de données non gouverné échoue bruyamment à l'enregistrement, et ne dépose donc jamais de lignes que personne n'a demandées.
+- **Colonnes.** L'enveloppe de résultat appartient au vérificateur : 16 colonnes fournies, de `scan_id` à `diagnostics`. Les colonnes déclarées ne sont lues que pour leur `visible_to`, qui doit être identique sur toutes, puis remplacées.
+- **Filigrane.** `scan_time` devient le filigrane, ce qui fait du dépôt un ajout. L'historique des scans s'accumule sans sous-système d'historique.
+- **Promotions.** `freshness_max_timestamp` et `dataset_rows_tested` sont promus hors du jsonb `diagnostics` en colonnes typées. Vous pouvez en ajouter d'autres comme sur n'importe quelle colonne jsonb.
 
-Le calendrier n'introduit aucun champ nouveau. `change_signal` plus `cache_ttl` donnent la cadence d'interrogation ; `mv_debounce_quiet` et `mv_debounce_max_delay` regroupent une rafale amont en un seul balayage ; un grain calendaire le rend périodique ; `expected_events` retient le balayage jusqu'à ce que ses entrées soient fraîches sur toute la fenêtre. La boucle d'interrogation est l'ordonnanceur des balayages.
+Le rythme ne demande aucun nouveau champ. `change_signal` plus `cache_ttl` fixent la fréquence d'interrogation, `mv_debounce_quiet` et `mv_debounce_max_delay` regroupent une rafale de changements en amont en un seul scan, un grain calendaire le rend périodique, et `expected_events` retient le scan jusqu'à ce que ses entrées soient fraîches sur toute la fenêtre. La boucle d'interrogation est l'ordonnanceur des scans.
 
-`outcome` vaut `pass`, `fail`, `warn`, `error` ou `skipped`. Aucune de ces valeurs n'est un verdict — l'application, si elle est souhaitée, est une déclaration distincte, plus tard : un contrôle préalable ou une MV sur les résultats déposés. Parce qu'une observation déposée ne porte aucune obligation de déterminisme, des contrôles non déterministes sont admissibles ici alors qu'ils ne pourraient jamais tenir sur une barrière de contrôle préalable — score d'anomalie, variation sur fenêtre glissante, fraîcheur par rapport à maintenant.
+`outcome` vaut `pass`, `fail`, `warn`, `error` ou `skipped`. Aucune de ces valeurs n'impose quoi que ce soit à elle seule. Si vous voulez imposer, déclarez-le à part : un preflight, ou une MV sur les résultats déposés. Une observation déposée n'a pas à être déterministe, donc des contrôles qui ne pourraient jamais commander un preflight ont leur place ici, comme un score d'anomalie, une variation sur une fenêtre glissante ou une fraîcheur mesurée par rapport à maintenant.
 
-Le contrat est rédigé dans l'interface, dans le panneau de qualité des données de la surface d'édition de table, et le texte brut du contrat y fait toujours foi. Une exécution à blanc exécute le contrat contre la table vivante et montre les résultats sans les déposer — c'est ainsi que l'on attrape un contrat dont le nom de jeu de données s'est résolu vers un endroit inattendu et qui ne déposerait sinon que des lignes en réussite.
+Vous rédigez le contrat dans l'interface, dans le panneau qualité des données de la page d'édition de la table, et le texte brut du contrat qui s'y trouve fait toujours foi. Une exécution à blanc applique le contrat à la table en direct et montre les résultats sans les déposer. Servez-vous-en pour repérer un contrat dont le nom de jeu de données s'est résolu à un endroit inattendu et qui, sinon, ne déposerait que des lignes réussies.
 
 ---
 
 ## Connecteurs personnalisés {: #custom-connectors }
 
-Les moteurs de fédération natifs — Postgres, DuckDB et ClickHouse — gagnent l'accès à un nouveau type de source lorsqu'un exploitant déclare un connecteur pour ce type dans `config/custom_connectors.yaml`. Aucun code n'est requis.
+Un exploitant peut donner aux moteurs de fédération natifs (Postgres, DuckDB et ClickHouse) l'accès à un nouveau type de source en déclarant un connecteur pour lui dans `config/custom_connectors.yaml`. Aucun code n'est nécessaire.
 
-L'extensibilité des connecteurs elle-même est antérieure. Le moteur Trino est extensible de longue date à son propre niveau — un connecteur JDBC générique paramétré par type de source, un corps de catalogue `.properties` par type, et les greffons de connecteurs Trino personnalisés de Provisa (Splunk, SharePoint, Calcite). Les déclarations de connecteurs personnalisés apportent cette même extensibilité pilotée par configuration aux deux moteurs natifs sans cluster, qui portaient auparavant un jeu de connecteurs figé.
+Les moteurs natifs, qui tournent sans cluster, obtiennent ainsi la même extensibilité par configuration que le moteur Trino possède à son propre niveau. Là, un connecteur JDBC générique est paramétré par type de source, chaque type reçoit un corps `.properties` de catalogue, et Provisa ajoute ses propres plugins de connecteur Trino (Splunk, SharePoint, Calcite).
 
-La configuration est livrée vide. Les connecteurs intégrés couvrent la portée prête à l'emploi ; tout ce que contient ce fichier est rédigé par l'exploitant. Définissez `PROVISA_CUSTOM_CONNECTORS` pour pointer vers un autre chemin (utile pour les tests).
+Le fichier est livré vide. Les connecteurs intégrés couvrent ce qui fonctionne d'emblée, et tout ce qui se trouve dans ce fichier est écrit par l'exploitant. Pour utiliser un autre chemin, par exemple dans les tests, définissez `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Genres de descripteurs {: #descriptor-kinds }
 
@@ -1479,11 +1477,11 @@ auth:
 
 ## Routage d'exécution {: #execution-routing }
 
-**Exécution directe** — les requêtes SGBDR mono-source sont routées vers le pilote natif pour une latence inférieure à 100 ms. Les sources exigent à la fois une entrée `SOURCE_TO_DIALECT` et une entrée `SOURCE_TO_CONNECTOR` pour emprunter ce chemin.
+**Exécution directe.** Une requête qui ne touche qu'une source relationnelle va directement au pilote propre de cette source, en moins de 100 ms. Un type de source emprunte ce chemin quand Provisa connaît à la fois son dialecte SQL et son connecteur.
 
-**Exécution fédérée** — les requêtes multi-sources et les sources dépourvues de pilote direct passent par le moteur de fédération. Provisa embarque un moteur de fédération ; pointez vers votre propre cluster compatible pour les déploiements à grande échelle.
+**Exécution fédérée.** Une requête sur plusieurs sources, ou sur une source sans pilote direct, passe par le moteur de fédération. Provisa en fournit un embarqué ; pour les grands déploiements, faites-le pointer vers votre propre cluster compatible.
 
-**Statistiques** — à l'enregistrement, Provisa exécute `ANALYZE` contre chaque table publiée pour amorcer l'optimiseur fondé sur les coûts (nombre de lignes, fraction de valeurs nulles, valeurs distinctes, min/max). Les échecs sont journalisés et ne bloquent pas l'enregistrement.
+**Statistiques.** Quand une table est enregistrée, Provisa exécute `ANALYZE` sur chaque table publiée afin que l'optimiseur fondé sur les coûts dispose des nombres de lignes, des proportions de nulls, des valeurs distinctes et des min/max. En cas d'échec, l'échec est journalisé et l'enregistrement continue.
 
 ---
 

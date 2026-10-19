@@ -421,24 +421,22 @@ Register Table 畫面會列出這些資料行及其類型，並標出鍵。 讀�
 
 #### Kaggle 數據集 {: #kaggle-datasets }
 
-Kaggle 是一個檔案下載平台。已暫存的 Kaggle 數據集會註冊為一個 `files` 類型的 Source，並經任何其他 `files` 數據來源所用的同一個 pgwire-file 連接器查詢——列舉中並沒有 `kaggle` 這個 SourceType。
+Kaggle 是下載數據檔案的平台。您加入的 Kaggle 數據集會註冊為 `files` 數據來源，查詢方式與其他 `files` 數據來源相同。
 
-**新增數據集。** 開啟 Sources → Subscriptions → Kaggle。該表單分兩個連續步驟進行，因為 Kaggle 自己的數據集搜尋端點需要驗證——選取器必須在權杖驗證通過之後才能出現。
+**加入數據集。** 打開 Sources → Subscriptions → Kaggle。表單分兩步進行，因為 Kaggle 自己的數據集搜尋需要權杖，所以要等您的權杖通過驗證後才會出現選擇器。
 
-1. **權杖**——輸入 Kaggle API 權杖並按「Validate」。驗證會向 `POST https://www.kaggle.com/api/v1/datasets/create/new` 送出空的請求本文。`401` 表示無效；任何其他回應都表示有效（Kaggle 自己的負載驗證會在建立任何數據集之前觸發——不會持久化任何內容）。
-2. **選取器**——一個邊輸入邊搜尋的即時欄位查詢 `GET /api/v1/datasets/list`。每個結果顯示數據集標題與說明。選一個，然後按「Add Dataset」。
+1. **權杖。** 輸入 Kaggle API 權杖並點擊「Validate」。驗證會以空白請求主體呼叫 `POST https://www.kaggle.com/api/v1/datasets/create/new`。`401` 表示權杖無效，其他任何回應都表示有效。Kaggle 在建立任何東西之前就會檢查空白請求主體，所以不會儲存任何內容。
+2. **選擇器。** 搜尋欄會在您輸入時查詢 `GET /api/v1/datasets/list`，每項結果顯示數據集的標題及描述。選取一個，然後點擊「Add Dataset」。
 
-按「Add Dataset」會從 `GET /api/v1/datasets/download/{owner}/{ref}` 下載套件，把 CSV 與 Parquet 成員解壓到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，並建立**一個** `files` 類型的 Source，其 `path` 即該根目錄。權杖絕不會儲存在伺服器端。
+「Add Dataset」從 `GET /api/v1/datasets/download/{owner}/{ref}` 下載套件，把其中的 CSV 及 Parquet 檔案解壓到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，並建立**一個** `files` 數據來源，其 `path` 就是該根目錄。伺服器從不儲存權杖。
 
-新增數據來源後，經一般的 Register Table 畫面註冊其表。pgwire-file 連接器的遞迴目錄探索會把每個檔案列為各自的表——與任何其他 `files` 數據來源所用的機制相同。
+然後在一般的 Register Table 畫面註冊您需要的資料表。每個檔案都列為一個獨立的資料表，與其他 `files` 數據來源一樣。
 
-**v1 限制。** 含有 `.sqlite` 或 `.db` 檔案的套件會被直接拒絕，並給出明確的錯誤。只有 CSV 與 Parquet 檔案會被暫存。
+**只限 CSV 及 Parquet。** 包含 `.sqlite` 或 `.db` 檔案的套件會被拒絕，並給出說明原因的錯誤。只會暫存 CSV 及 Parquet 檔案。
 
-**表命名。** 爬取到的表命名為 `<page>__<name>`：頁面標題，然後是表的標題（caption），表沒有標題時則用表上方最近的標題，兩者都採用數據來源的資料行名稱拼寫。例如，頁面 `List_of_tallest_buildings` 上標題「Tallest buildings in the world」之下的表是 `list_of_tallest_buildings__tallest_buildings_in_the_world`。連結的數據檔案保留它自己的名稱。
+**重新整理。** Kaggle 發佈數據集新版本後，以數據來源 ID 及有效權杖呼叫 GraphQL 變更 `refreshKaggleSource`。它會就地重新暫存檔案並清除檔案端點的快取，讓下一次查詢取得任何結構變化。建立數據來源時保存在 `federation_hints` 中的 `kaggle_owner` 及 `kaggle_ref` 指明要取得哪個數據集。
 
-**重新整理。** 要在 Kaggle 發佈新版本後重新取得數據集，請以數據來源 ID 與有效權杖呼叫 `refreshKaggleSource` GraphQL mutation。這會就地重新暫存檔案，並清除 pgwire-file 端點快取，讓連接器在下一次查詢時採用任何結構描述變更。建立時儲存在 `federation_hints` 中的 `kaggle_owner` 與 `kaggle_ref` 指明要重新取得哪個數據集。
-
-**沒有靜態 YAML 設定路徑。** Kaggle 數據來源只能經 Sources 表單建立。匯出為 YAML 的 Kaggle 數據來源會顯示為 `type: files`，並在 `federation_hints` 中帶有 `kaggle_owner` 與 `kaggle_ref`。要重新從 Kaggle 下載，需要 UI 的重新整理流程或 `refreshKaggleSource` mutation——對於隔離網路（air-gapped）環境，替代做法是把 YAML 的 `path` 指向預先暫存好的目錄。
+**沒有專屬的 YAML。** Kaggle 數據來源只能透過數據來源表單建立。匯出為 YAML 時，它顯示為 `type: files`，並在 `federation_hints` 中帶有 `kaggle_owner` 及 `kaggle_ref`。要重新從 Kaggle 取得，需要使用介面中的重新整理或 `refreshKaggleSource` 變更。在隔離環境中，把 YAML 的 `path` 指向您自行暫存的目錄。
 
 #### Wikipedia {: #wikipedia }
 
@@ -492,7 +490,7 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 | `max_html_size` | 未設定 | 讀取的最大頁面，例如 `10MB` |
 | `max_data_file_size` | 未設定 | 讀取的最大數據檔案，例如 `100MB` |
 
-**表命名。** 爬取到的表命名為 `<page>__<name>`。名稱是表自己的 `id`（若有），否則是其標題（caption），再否則是其上方最近的標題。例如，頁面 `List_of_tallest_buildings` 上標題「Tallest buildings」之下的表，在名稱正規化後成為 `list_of_tallest_buildings__tallest_buildings`。
+**資料表命名。** 爬取到的資料表命名為 `<page>__<name>`。名稱取資料表的標題（caption）；沒有標題時，取它上方最近的一個小節標題；兩者都沒有的資料表命名為 `table_1`、`table_2`，如此類推。兩部分都轉為小寫，其他字元組成的每一段都換成 `_`。例如，頁面 `List_of_tallest_buildings` 上「Tallest buildings」小節下的資料表會成為 `list_of_tallest_buildings__tallest_buildings`。連結的數據檔案保留自己的名稱。
 
 **重新整理。** 爬取結果會在快取期內保留，預設為 `1 days`（`html_cache_ttl`）。只有在該時間過後才會重新取得頁面。
 
@@ -943,20 +941,21 @@ sources:
 數據剖析器是一種只保存名稱、排程與執行預設值的數據來源，別無其他。它從不被自省。其他數據來源的表被加到它之下，每次執行都會度量這些表，並把結果資料列寫入機構的控制平面，在那裡像讀取其他數據來源的表一樣讀取。建立剖析器並加入表的方法見[測試數據](test-data.md)。
 
 ### 數據品質檢查器 {: #data-quality-checkers }
-數據品質檢查器是一種數據來源類型，不是一個子系統。它的掃描輸出就是數據：一項檢查結果是一次觀測，因此它經一般的數據來源路徑落地，並與其他每一個數據來源一樣繼承節奏、鮮度、事件、族系、治理、RLS、格線與匯出。
 
-支援兩種，而這個選擇既是功能選擇，也同樣是授權選擇。
+數據質素檢查器只是另一種數據來源類型。它的掃描輸出就是數據：每個檢查結果都是一次觀測，所以它經由一般的數據來源路徑落地，並獲得其他數據來源都有的一切，由節奏、新鮮度、事件及族系，到治理、RLS、表格檢視及匯出。
+
+支援兩種檢查器，在兩者之間作選擇，授權與功能同樣重要。
 
 | 數據來源類型 | 契約方言 | 額外項 | 授權 | 託管雲端平面 |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda 契約 YAML | `pip install .[soda]`（`soda-postgres`） | Elastic License 2.0 | 拒絕——見下文 |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]`（`great-expectations[postgresql]`） | Apache 2.0 | 允許 |
 
-Elastic License 2.0 禁止把該軟體以託管或受管服務的形式提供給第三方，而在 SaaS 平面內代租用戶執行 Soda 正正是這件事。`config/capabilities.yaml` 以 `soda` 選項上的 `cloud_eligible: false` 承載這項區分，託管平面會讀取該旗標。想要 Soda 的託管部署，需觸及一個由營運者自行執行、由營運者提供的 Soda 端點。
+Elastic License 2.0 禁止把軟件作為託管或受管服務提供給第三方，而代表租戶在 SaaS 平面內執行 Soda 正是這種情況。`config/capabilities.yaml` 在 `soda` 選項上把這一點記為 `cloud_eligible: false`，託管平面會讀取這個旗標。需要 Soda 的託管部署指向營運者自行執行的 Soda 端點。
 
-Provisa 不隨附也不連結任何一者。掃描在子解譯器（`python -m provisa.dq.worker`）中執行，那是唯一匯入 `soda_core` 或 `great_expectations` 的地方，因此一個原始碼可得的檢查器絕不會進入伺服器處理程序，而檢查器當掉時殺掉的是一個子處理程序，不是事件迴圈。
+Provisa 不內置亦不連結任何東西。掃描在一個子直譯器（`python -m provisa.dq.worker`）中執行，這是唯一匯入 `soda_core` 或 `great_expectations` 的地方。因此原始碼可用的檢查器永遠不會進入伺服器程序；檢查器當機時，只會帶走一個子程序，事件迴圈不受影響。
 
-**該數據來源指向 Provisa 自己的 pgwire 端點。** 正是這一點讓單一個 postgres 驅動程式得以檢查以 Snowflake 或 Iceberg 為後盾的表：檢查器掃描的是聯邦檢視，不是底層系統。由於政策套用在該連線上，掃描身分是宣告出來的，而非繼承而來——一組被篩選過的資料列，絕不能產生一項悄然通過的檢查。
+**數據來源指向 Provisa 自己的 pgwire 端點。** 正因如此，一個 postgres 驅動程式就能檢查背後是 Snowflake 或 Iceberg 的資料表：檢查器掃描的是聯邦檢視，從不掃描底層系統。政策作用於這個連線，所以掃描身分要明確宣告。如果它是繼承而來的，一組被篩選的資料列可能令檢查悄悄通過，而沒人察覺。
 
 ```yaml
 sources:
@@ -973,7 +972,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**每份契約一張結果表，而契約就是整份註冊。** 該表承載 `dq_contract`——契約原文逐字——關於其形狀就再無其他。資料行、水位與晉升全部是推導出來的。
+**每份契約一個結果資料表，契約就是全部註冊內容。** 這個資料表帶有 `dq_contract`，即契約原文，此外不帶任何關於其結構的資訊。資料行、水位及晉升都由它推導而來。
 
 ```yaml
 tables:
@@ -1001,27 +1000,28 @@ tables:
             must_be_greater_than: 0
 ```
 
-註冊從那段文字推導出什麼：
+註冊會從這段文字推導出四樣東西：
 
-- **族系。** 契約本身已指名其目標數據集，因此註冊會以 `extract_inputs` 剖析 SQL 的方式剖析它，並解析到受治理的表。一份定義，沒有第二份可能漂移的副本。指名一個未受治理數據集的契約，會在註冊時大聲失敗，而不是落地一堆沒人要的資料列。
-- **資料行。** 結果封套屬於檢查器，不屬於營運者——自 `scan_id` 到 `diagnostics` 共 16 個隨附資料行。已宣告的資料行只被讀取其 `visible_to`（必須一致），之後即被取代。
-- **水位。** `scan_time` 成為水位，這使得落地成為附加。掃描歷史在沒有歷史子系統的情況下累積。
-- **晉升。** `freshness_max_timestamp` 與 `dataset_rows_tested` 自 `diagnostics` jsonb 晉升為具型別的資料行。要加更多，做法與任何其他 jsonb 資料行相同。
+- **族系。** 契約已指明目標數據集，所以註冊會以 `extract_inputs` 剖析 SQL 的方式剖析它，並解析到受治理的資料表。只有一份定義，沒有可能漂移的第二份副本。指向未受治理數據集的契約會在註冊時明確報錯，因此永遠不會落地沒人要求的資料列。
+- **資料行。** 結果封套屬於檢查器：16 個隨附資料行，由 `scan_id` 到 `diagnostics`。已宣告的資料行只讀取其 `visible_to`，所有資料行上的值必須一致，之後這些資料行會被取代。
+- **水位。** `scan_time` 成為水位，這使落地成為附加。掃描歷史不斷累積，無需歷史子系統。
+- **晉升。** `freshness_max_timestamp` 與 `dataset_rows_tested` 自 `diagnostics` jsonb 晉升為具型別的資料行。您可以像處理其他 jsonb 資料行一樣加入更多。
 
-時序不引入新欄位。`change_signal` 加上 `cache_ttl` 給出輪詢節奏；`mv_debounce_quiet` 與 `mv_debounce_max_delay` 把一波上游爆發收攏成一次掃描；一個日曆粒度使它變成週期性；`expected_events` 會扣住掃描，直到其輸入在該窗口內達到鮮度。輪詢迴圈就是掃描排程器。
+時間安排不需要新欄位。`change_signal` 加上 `cache_ttl` 決定輪詢頻率，`mv_debounce_quiet` 與 `mv_debounce_max_delay` 把上游的一陣變更合併為一次掃描，日曆粒度令它週期性執行，`expected_events` 則把掃描延後到其輸入在整個視窗內都已新鮮為止。輪詢迴圈就是掃描排程器。
 
-`outcome` 是 `pass`、`fail`、`warn`、`error`、`skipped` 之一。它們沒有一個是裁決——若想要強制執行，那是稍後的一項獨立宣告：一道預檢，或一個建於已落地結果之上的 MV。由於一次已落地的觀測不帶決定性義務，這裡容許放進絕不可能坐在預檢閘門上的非決定性檢查——異常分數、尾隨窗口變化、對照當下的鮮度。
+`outcome` 取 `pass`、`fail`、`warn`、`error` 或 `skipped` 之一。它們本身都不強制執行任何東西。如需強制執行，請另行宣告：一個 preflight，或一個建基於已落地結果的 MV。已落地的觀測不必是確定性的，所以這裏可以放那些永遠無法作為 preflight 關卡的檢查，例如異常分數、滑動視窗內的變化，或相對於當前時刻的新鮮度。
 
-契約在 UI 中、在表編輯介面的數據品質面板中撰寫，而那裡的契約原文永遠是真相來源。試跑會針對上線中的表執行該契約並顯示結果而不落地——這正是你如何抓到一份數據集名稱解析到意料之外的地方、否則只會落地一堆通過資料列的契約。
+契約在介面中編寫，位於資料表編輯頁面的數據質素面板裏，那裏的原始契約文字始終是唯一依據。試行會針對即時資料表執行契約並顯示結果，但不落地。用它來發現數據集名稱解析到意外位置的契約，否則這種契約只會落地全部通過的資料列。
 
 ---
 
 ## 自訂連接器 {: #custom-connectors }
-當營運者在 `config/custom_connectors.yaml` 中為某個新數據來源類型宣告一個連接器時，原生聯邦引擎——Postgres、DuckDB 與 ClickHouse——即取得對它的可達性。毋須任何程式碼。
 
-連接器可擴充性本身早於此。Trino 引擎長久以來在它自己那一層就是可擴充的——一個按數據來源類型參數化的通用 JDBC 連接器、一份逐類型的目錄 `.properties` 本體，以及 Provisa 自己的自訂 Trino 連接器外掛（Splunk、SharePoint、Calcite）。自訂連接器宣告把同樣的設定驅動可擴充性帶到那兩個原生、免叢集的引擎，它們先前只有一組固定的連接器。
+營運者可以在 `config/custom_connectors.yaml` 中為新的數據來源類型宣告一個連接器，令原生聯邦引擎（Postgres、DuckDB 及 ClickHouse）能夠觸及它。無需編寫程式碼。
 
-該設定檔出貨時是空的。內建連接器已涵蓋開箱即用的觸及範圍；此檔案中的一切都由營運者撰寫。 設定 `PROVISA_CUSTOM_CONNECTORS` 可指向另一個路徑（供測試使用時很有用）。
+這令無需叢集即可執行的原生引擎，獲得與 Trino 引擎在其自身層面相同的設定驅動擴充能力。在 Trino 那裏，一個通用 JDBC 連接器按數據來源類型參數化，每種類型有一個目錄 `.properties` 主體，Provisa 亦提供自己的 Trino 連接器外掛（Splunk、SharePoint、Calcite）。
+
+該檔案出廠時為空。內建連接器涵蓋開箱即用的部分，此檔案中的一切都由營運者編寫。如需使用其他路徑（例如在測試中），請設定 `PROVISA_CUSTOM_CONNECTORS`。
 
 ### 描述元種類 {: #descriptor-kinds }
 | 引擎 | 種類 | 機制 | 描述元提供什麼 |
@@ -1436,11 +1436,12 @@ auth:
 ---
 
 ## 執行路由 {: #execution-routing }
-**直接執行**——單一來源的 RDBMS 查詢路由到原生驅動程式，取得低於 100 毫秒的延遲。數據來源需同時具備 `SOURCE_TO_DIALECT` 項目與 `SOURCE_TO_CONNECTOR` 項目才能支援此路徑。
 
-**聯邦執行**——多來源查詢，以及沒有直接驅動程式的數據來源，經聯邦引擎路由。Provisa 內含一個內嵌聯邦引擎；大規模部署可指向你自己的相容叢集。
+**直接執行。** 只涉及一個關聯式數據來源的查詢直接交給該數據來源自己的驅動程式，耗時低於 100 毫秒。當 Provisa 同時知道某種數據來源類型的 SQL 方言及連接器時，它就走這條路徑。
 
-**統計**——註冊時，Provisa 對每張已發佈的表執行 `ANALYZE`，為成本式最佳化器預熱（資料列數、null 比例、相異值、最小／最大值）。失敗會被記錄，且不會阻擋註冊。
+**聯邦執行。** 跨數據來源的查詢，或針對沒有直接驅動程式的數據來源的查詢，會經過聯邦引擎。Provisa 附帶一個內嵌引擎；大型部署可以把它指向您自己的相容叢集。
+
+**統計資料。** 註冊資料表時，Provisa 會對每個已發佈的資料表執行 `ANALYZE`，讓以成本為基礎的最佳化器取得資料列數、空值比例、相異值數量及最小/最大值。如果失敗，失敗會記入日誌，註冊照常進行。
 
 ---
 

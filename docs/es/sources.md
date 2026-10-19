@@ -422,24 +422,22 @@ Al guardar, el código es `schema.logs_path_refused`; en la vista previa es un 4
 
 #### Conjuntos de datos de Kaggle {: #kaggle-datasets }
 
-Kaggle es una plataforma de descarga de archivos. Un conjunto de datos de Kaggle preparado se registra como un origen de tipo `files` y se consulta a través del mismo conector pgwire-file que usa cualquier otro origen `files` — no existe un `SourceType` `kaggle` en el enum.
+Kaggle es un sitio para descargar archivos de datos. Un conjunto de datos de Kaggle que usted añade se registra como origen `files`, y se consulta igual que cualquier otro origen `files`.
 
-**Agregar un conjunto de datos.** Abra Orígenes → Suscripciones → Kaggle. El formulario ejecuta dos pasos secuenciales, porque el propio endpoint de búsqueda de conjuntos de datos de Kaggle exige autenticación — el selector no puede aparecer antes de que el token se valide.
+**Añadir un conjunto de datos.** Abra Orígenes → Suscripciones → Kaggle. El formulario funciona en dos pasos, porque la búsqueda de conjuntos de datos de Kaggle necesita un token, así que el selector no aparece hasta que el suyo se valida.
 
-1. **Token** — ingrese un token de API de Kaggle y haga clic en "Validate". La validación llama a `POST https://www.kaggle.com/api/v1/datasets/create/new` con un cuerpo vacío. Un `401` significa inválido; cualquier otra respuesta significa válido (la propia validación de payload de Kaggle se dispara antes de crear ningún conjunto de datos — no se persiste nada).
-2. **Selector** — un campo de búsqueda en vivo mientras escribe consulta `GET /api/v1/datasets/list`. Cada resultado muestra el título y la descripción del conjunto de datos. Seleccione uno y haga clic en "Add Dataset".
+1. **Token.** Introduzca un token de la API de Kaggle y haga clic en "Validate". La validación llama a `POST https://www.kaggle.com/api/v1/datasets/create/new` con el cuerpo vacío. Un `401` significa que el token no es válido, y cualquier otra respuesta significa que sí lo es. Kaggle revisa el cuerpo vacío antes de crear nada, así que no se guarda nada.
+2. **Selector.** Un campo de búsqueda consulta `GET /api/v1/datasets/list` mientras escribe, y cada resultado muestra el título y la descripción del conjunto de datos. Elija uno y haga clic en "Add Dataset".
 
-Al hacer clic en "Add Dataset" se descarga el paquete desde `GET /api/v1/datasets/download/{owner}/{ref}`, se descomprimen los miembros CSV y Parquet en `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, y se crea **un** origen de tipo `files` cuyo `path` es ese directorio raíz. El token nunca se almacena del lado del servidor.
+"Add Dataset" descarga el paquete desde `GET /api/v1/datasets/download/{owner}/{ref}`, descomprime sus archivos CSV y Parquet en `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` y crea **un** origen `files` cuyo `path` es ese directorio raíz. El servidor nunca guarda el token.
 
-Después de agregar el origen, registre sus tablas mediante la pantalla normal de Register Table. El descubrimiento recursivo de directorios del conector pgwire-file lista cada archivo como su propia tabla — el mismo mecanismo que usa cualquier otro origen `files`.
+Después registre las tablas que quiera en la pantalla normal Register Table. Cada archivo aparece como su propia tabla, como en cualquier otro origen `files`.
 
-**Limitación en v1.** Un paquete que contenga un archivo `.sqlite` o `.db` se rechaza directamente con un error claro. Solo se preparan archivos CSV y Parquet.
+**Solo CSV y Parquet.** Un paquete que contiene un archivo `.sqlite` o `.db` se rechaza con un error que lo indica. Solo se preparan archivos CSV y Parquet.
 
-**Nomenclatura de tablas.** Una tabla rastreada se llama `<page>__<name>`: el título de la página y luego el pie de la tabla o, si no tiene, el último encabezado sobre la tabla, ambos con la grafía de nombres de columna del origen. Por ejemplo, la tabla bajo el encabezado "Tallest buildings in the world" en la página `List_of_tallest_buildings` es `list_of_tallest_buildings__tallest_buildings_in_the_world`. Un archivo de datos enlazado conserva su propio nombre.
+**Actualizar.** Cuando Kaggle publica una nueva versión de un conjunto de datos, llame a la mutación GraphQL `refreshKaggleSource` con el ID del origen y un token válido. Vuelve a preparar los archivos en su sitio y limpia la caché del endpoint de archivos, para que la siguiente consulta recoja cualquier cambio de esquema. Los `kaggle_owner` y `kaggle_ref` guardados en `federation_hints` al crear el origen indican qué conjunto de datos traer.
 
-**Actualización.** Para volver a obtener un conjunto de datos después de que Kaggle publique una nueva versión, llame a la mutación GraphQL `refreshKaggleSource` con el ID del origen y un token válido. Esto vuelve a preparar los archivos en el mismo lugar y desaloja la caché del endpoint pgwire-file para que el conector detecte cualquier cambio de esquema en su siguiente consulta. Los valores `kaggle_owner` y `kaggle_ref` almacenados en `federation_hints` al momento de la creación identifican qué conjunto de datos volver a obtener.
-
-**Sin ruta de configuración YAML estática.** Los orígenes de Kaggle se crean solo mediante el formulario de Orígenes. Un origen de Kaggle exportado a YAML aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Volver a descargar desde Kaggle requiere el flujo de actualización de la UI o la mutación `refreshKaggleSource` — apuntar el `path` del YAML a un directorio ya preparado es la alternativa para entornos aislados de la red (air-gapped).
+**Sin YAML propio.** Un origen de Kaggle solo se crea desde el formulario de orígenes. Exportado a YAML, aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Para volver a traerlo de Kaggle hace falta la actualización en la UI o la mutación `refreshKaggleSource`. En un entorno aislado, apunte el `path` del YAML a un directorio que haya preparado usted.
 
 #### Wikipedia {: #wikipedia }
 
@@ -493,7 +491,7 @@ Solo las tablas que los editores marcan como tablas de datos (`table.wikitable`)
 | `max_html_size` | sin definir | Página más grande que se lee, por ejemplo `10MB` |
 | `max_data_file_size` | sin definir | Archivo de datos más grande que se lee, por ejemplo `100MB` |
 
-**Nomenclatura de tablas.** Una tabla rastreada se llama `<page>__<name>`. El nombre es el `id` propio de la tabla si lo tiene; si no, su pie; si no, el encabezado más cercano por encima. Por ejemplo, una tabla bajo el encabezado "Tallest buildings" en la página `List_of_tallest_buildings` pasa a ser `list_of_tallest_buildings__tallest_buildings` tras la normalización del nombre.
+**Nombres de tabla.** Una tabla rastreada se llama `<page>__<name>`. El nombre es el título (caption) de la tabla o, si no tiene, el último encabezado por encima de ella; una tabla sin ninguno de los dos es `table_1`, `table_2` y así sucesivamente. Ambas partes pasan a minúsculas, y cada tramo de otros caracteres se convierte en `_`. Por ejemplo, una tabla bajo el encabezado "Tallest buildings" en la página `List_of_tallest_buildings` pasa a ser `list_of_tallest_buildings__tallest_buildings`. Un archivo de datos enlazado conserva su propio nombre.
 
 **Actualización.** Un rastreo se conserva durante el período de caché, `1 days` de forma predeterminada (`html_cache_ttl`). Las páginas solo se obtienen de nuevo cuando ha pasado ese tiempo.
 
@@ -944,20 +942,21 @@ Un valor escrito como valor se almacena en la base de datos del plano de control
 Un perfilador de datos es un origen que guarda un nombre, un horario y valores predeterminados de ejecución, y nada más. Nunca se introspecciona. Se le agregan tablas de otros orígenes, y cada ejecución las mide y escribe sus filas en el plano de control de la organización, donde se leen como las tablas de cualquier otro origen. Para crear un perfilador y agregarle tablas, véase [Datos de prueba](test-data.md).
 
 ### Verificadores de calidad de datos {: #data-quality-checkers }
-Un verificador de calidad de datos es un tipo de origen, no un subsistema. Su resultado de escaneo es dato: un resultado de verificación es una observación, así que ingresa por la ruta ordinaria de origen y hereda cadencia, frescura, eventos, linaje, gobierno, RLS, grid y exportación de cualquier otro origen.
 
-Se soportan dos, y la elección es tanto una elección de licencia como una elección de funcionalidad.
+Un verificador de calidad de datos es simplemente otro tipo de origen. Su salida de escaneo son datos: cada resultado de comprobación es una observación, así que se aterriza por la ruta normal de los orígenes y recibe lo mismo que cualquier otro origen, desde cadencia, frescura, eventos y linaje hasta gobernanza, RLS, la cuadrícula y la exportación.
+
+Se admiten dos verificadores, y elegir entre ellos es tanto una cuestión de licencia como de funciones.
 
 | Tipo de origen | Dialecto del contrato | Extra | Licencia | Plano cloud alojado |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | YAML de contrato Soda | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Rechazado — ver más abajo |
 | `great_expectations` | JSON de suite de expectativas | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Permitido |
 
-Elastic License 2.0 prohíbe ofrecer el software a terceros como servicio alojado o gestionado, y ejecutar Soda dentro del plano SaaS en nombre de un inquilino es exactamente eso. `config/capabilities.yaml` lleva esa división como `cloud_eligible: false` en la opción `soda`, y el plano alojado lee ese indicador. Un despliegue alojado que quiera Soda accede a un endpoint Soda provisto por el operador, que el operador mismo ejecuta.
+La Elastic License 2.0 prohíbe ofrecer el software a terceros como servicio alojado o gestionado, y ejecutar Soda dentro del plano SaaS en nombre de un inquilino sería exactamente eso. `config/capabilities.yaml` lo registra como `cloud_eligible: false` en la opción `soda`, y el plano alojado lee ese indicador. Un despliegue alojado que quiera Soda apunta a un endpoint de Soda que el propio operador ejecuta.
 
-Provisa no empaqueta ni enlaza nada. El escaneo se ejecuta en un intérprete hijo (`python -m provisa.dq.worker`), que es el único lugar donde se importa `soda_core` o `great_expectations`, de modo que un verificador source-available nunca llega al proceso del servidor y un fallo del verificador mata un subproceso en lugar del bucle de eventos.
+Provisa no incluye ni enlaza nada. El escaneo se ejecuta en un intérprete hijo (`python -m provisa.dq.worker`), el único lugar donde se importa `soda_core` o `great_expectations`. Por eso un verificador de código disponible nunca llega al proceso del servidor, y si un verificador falla, cae un subproceso y el bucle de eventos sigue intacto.
 
-**El origen apunta al propio endpoint pgwire de Provisa.** Eso es lo que permite que un solo controlador de postgres verifique una tabla respaldada por Snowflake o Iceberg: el verificador escanea la vista federada, no el sistema subyacente. Como la política se aplica a esa conexión, la identidad de escaneo se declara en lugar de heredarse — un conjunto de filas filtrado nunca debe producir una verificación que pase en silencio.
+**El origen apunta al propio endpoint pgwire de Provisa.** Así un solo driver de postgres puede comprobar una tabla respaldada por Snowflake o Iceberg: el verificador escanea la vista federada, nunca el sistema subyacente. La política se aplica a esa conexión, así que la identidad del escaneo se declara de forma explícita. Si se heredara, un conjunto de filas filtrado podría hacer que una comprobación pasara sin que nadie lo notara.
 
 ```yaml
 sources:
@@ -974,7 +973,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Una tabla de resultados por contrato, y el contrato es todo el registro.** La tabla lleva `dq_contract` — el texto del contrato tal cual — y nada más sobre su forma. Las columnas, la marca de agua y las promociones son todas derivadas.
+**Una tabla de resultados por contrato, y el contrato es todo el registro.** La tabla lleva `dq_contract`, el texto del contrato palabra por palabra, y nada más sobre su forma. Las columnas, la marca de agua y las promociones se derivan de él.
 
 ```yaml
 tables:
@@ -1002,27 +1001,28 @@ tables:
             must_be_greater_than: 0
 ```
 
-Lo que el registro deriva de ese texto:
+El registro deriva cuatro cosas de ese texto:
 
-- **Linaje.** El contrato ya nombra su conjunto de datos destino, así que el registro lo analiza de la misma forma en que `extract_inputs` analiza SQL y lo resuelve a la tabla gobernada. Una sola definición, sin una segunda copia que pueda divergir. Un contrato que nombra un conjunto de datos no gobernado falla de forma ruidosa en el registro en lugar de dejar filas que nadie pidió.
-- **Columnas.** El sobre de resultados es del verificador, no del operador — 16 columnas incluidas, desde `scan_id` hasta `diagnostics`. Las columnas declaradas se leen solo por su `visible_to`, que debe ser unánime, y luego se reemplazan.
-- **Marca de agua.** `scan_time` se convierte en la marca de agua, lo que hace que el aterrizaje sea un append. El historial de escaneos se acumula sin ningún subsistema de historial.
-- **Promociones.** `freshness_max_timestamp` y `dataset_rows_tested` se promueven desde el jsonb `diagnostics` como columnas tipadas. Agregue más de la misma forma en que lo haría en cualquier otra columna jsonb.
+- **Linaje.** El contrato ya nombra su conjunto de datos destino, así que el registro lo analiza como `extract_inputs` analiza SQL y lo resuelve a la tabla gobernada. Hay una sola definición y ninguna segunda copia que pueda divergir. Un contrato que nombra un conjunto de datos no gobernado falla de forma visible en el registro, de modo que nunca aterriza filas que nadie pidió.
+- **Columnas.** El sobre de resultados pertenece al verificador: 16 columnas incluidas, de `scan_id` a `diagnostics`. De las columnas declaradas solo se lee su `visible_to`, que debe ser igual en todas, y luego se reemplazan.
+- **Marca de agua.** `scan_time` se convierte en la marca de agua, lo que hace del aterrizaje un append. El historial de escaneos crece sin un subsistema de historial.
+- **Promociones.** `freshness_max_timestamp` y `dataset_rows_tested` se promueven desde el jsonb `diagnostics` como columnas con tipo. Puede añadir más como en cualquier otra columna jsonb.
 
-La temporización no introduce campos nuevos. `change_signal` junto con `cache_ttl` dan la cadencia de sondeo; `mv_debounce_quiet` y `mv_debounce_max_delay` colapsan una ráfaga ascendente en un solo escaneo; un grano de calendario lo vuelve periódico; `expected_events` retiene el escaneo hasta que sus entradas estén frescas dentro de la ventana. El bucle de sondeo es el programador de escaneos.
+El calendario no necesita campos nuevos. `change_signal` más `cache_ttl` fijan cada cuánto se consulta, `mv_debounce_quiet` y `mv_debounce_max_delay` agrupan una ráfaga de cambios previos en un solo escaneo, un grano de calendario lo hace periódico y `expected_events` retiene el escaneo hasta que sus entradas estén frescas en toda la ventana. El bucle de sondeo es el planificador de escaneos.
 
-`outcome` es uno de `pass`, `fail`, `warn`, `error`, `skipped`. Ninguno de ellos es un veredicto — la aplicación (enforcement), si se desea, es una declaración separada posterior: un preflight o una vista materializada sobre los resultados aterrizados. Como una observación aterrizada no lleva ninguna obligación de determinismo, aquí son admisibles verificaciones no deterministas que nunca podrían estar en una puerta de preflight — puntuación de anomalía, cambio de ventana móvil, frescura contra el momento actual.
+`outcome` es uno de `pass`, `fail`, `warn`, `error` o `skipped`. Ninguno impone nada por sí solo. Si quiere imponer algo, declárelo aparte: un preflight o una MV sobre los resultados aterrizados. Una observación aterrizada no tiene que ser determinista, así que aquí caben comprobaciones que nunca podrían controlar un preflight, como una puntuación de anomalía, un cambio en una ventana móvil o la frescura medida respecto a ahora.
 
-El contrato se redacta en la UI, en el panel de calidad de datos de la superficie de edición de tabla, y el texto crudo del contrato ahí es siempre la fuente de verdad. Una ejecución en seco (dry run) ejecuta el contrato contra la tabla en vivo y muestra los resultados sin aterrizarlos — así es como se detecta un contrato cuyo nombre de conjunto de datos se resolvió en un lugar inesperado y que de otro modo no aterrizaría más que filas que pasan.
+El contrato se escribe en la UI, en el panel de calidad de datos de la página de edición de la tabla, y el texto del contrato que hay ahí es siempre la fuente de verdad. Una ejecución de prueba aplica el contrato a la tabla en vivo y muestra los resultados sin aterrizarlos. Úsela para detectar un contrato cuyo nombre de conjunto de datos se resolvió en un sitio inesperado y que, de otro modo, solo aterrizaría filas que pasan.
 
 ---
 
 ## Conectores personalizados {: #custom-connectors }
-Los motores de federación nativos — Postgres, DuckDB y ClickHouse — obtienen accesibilidad a un nuevo tipo de origen cuando un operador declara un conector para él en `config/custom_connectors.yaml`. No se requiere código.
 
-La extensibilidad de conectores en sí misma es anterior a esto. El motor Trino lleva mucho tiempo siendo extensible en su propia capa — un conector JDBC genérico parametrizado por tipo de origen, un cuerpo `.properties` de catálogo por tipo, y los propios plugins de conector Trino personalizados de Provisa (Splunk, SharePoint, Calcite). Las declaraciones de conectores propios llevan esa misma extensibilidad basada en configuración a los dos motores nativos sin clúster, que antes tenían un conjunto de conectores fijo.
+Un operador puede dar a los motores de federación nativos (Postgres, DuckDB y ClickHouse) alcance a un nuevo tipo de origen declarando un conector para él en `config/custom_connectors.yaml`. No hace falta código.
 
-La configuración se distribuye vacía. Los conectores integrados cubren el alcance listo para usar; todo lo que hay en este archivo lo escribe el operador. Defina `PROVISA_CUSTOM_CONNECTORS` para apuntar a una ruta distinta (útil para pruebas).
+Así los motores nativos, que funcionan sin clúster, obtienen la misma extensibilidad por configuración que el motor Trino tiene en su propia capa. Allí, un conector JDBC genérico se parametriza por tipo de origen, cada tipo recibe un cuerpo `.properties` de catálogo, y Provisa añade sus propios plugins de conector de Trino (Splunk, SharePoint, Calcite).
+
+El archivo viene vacío. Los conectores incorporados cubren lo que funciona de serie, y todo lo que hay en este archivo lo escribe el operador. Para usar otra ruta, por ejemplo en pruebas, defina `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Tipos de descriptor {: #descriptor-kinds }
 | Motor | Tipo | Mecanismo | Qué proporciona el descriptor |
@@ -1438,11 +1438,12 @@ auth:
 ---
 
 ## Enrutamiento de ejecución {: #execution-routing }
-**Ejecución directa** — Las consultas RDBMS de un solo origen se enrutan al controlador nativo para lograr una latencia menor a 100 ms. Los orígenes requieren tanto una entrada en `SOURCE_TO_DIALECT` como una en `SOURCE_TO_CONNECTOR` para soportar esta ruta.
 
-**Ejecución federada** — Las consultas de varios orígenes y los orígenes sin controlador directo se enrutan a través del motor de federación. Provisa incluye un motor de federación embebido; apunte a su propio clúster compatible para despliegues a gran escala.
+**Ejecución directa.** Una consulta que toca un solo origen relacional va directa al driver propio de ese origen, en menos de 100 ms. Un tipo de origen toma este camino cuando Provisa conoce tanto su dialecto SQL como su conector.
 
-**Estadísticas** — Al registrar, Provisa ejecuta `ANALYZE` contra cada tabla publicada para preparar el optimizador basado en costos (conteo de filas, fracción de nulos, valores distintos, mínimo/máximo). Los fallos se registran en el log y no bloquean el registro.
+**Ejecución federada.** Una consulta entre orígenes, o sobre un origen sin driver directo, pasa por el motor de federación. Provisa incluye uno embebido; para despliegues grandes, apúntelo a su propio clúster compatible.
+
+**Estadísticas.** Cuando se registra una tabla, Provisa ejecuta `ANALYZE` sobre cada tabla publicada para que el optimizador basado en costes tenga recuentos de filas, fracciones de nulos, valores distintos y mín/máx. Si falla, el fallo se registra en el log y el registro sigue adelante.
 
 ---
 

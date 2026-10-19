@@ -428,24 +428,22 @@ On save the code is `schema.logs_path_refused`; on preview it is a 403 with `log
 
 #### Kaggle datasets {: #kaggle-datasets }
 
-Kaggle is a file-download platform. A staged Kaggle dataset registers as a `files`-type Source and is queried through the same pgwire-file connector any other `files` source uses — there is no `kaggle` SourceType in the enum.
+Kaggle is a place to download data files. A Kaggle dataset you add registers as a `files` source, and you query it the same way as any other `files` source.
 
-**Adding a dataset.** Open Sources → Subscriptions → Kaggle. The form runs two sequential steps, because Kaggle's own dataset-search endpoint requires auth — the picker cannot appear before the token validates.
+**Adding a dataset.** Open Sources → Subscriptions → Kaggle. The form works in two steps, because Kaggle's own dataset search needs a token, so the picker can't appear until yours checks out.
 
-1. **Token** — enter a Kaggle API token and click "Validate". Validation calls `POST https://www.kaggle.com/api/v1/datasets/create/new` with an empty body. A `401` means invalid; any other response means valid (Kaggle's own payload-validation fires before any dataset is created — nothing is persisted).
-2. **Picker** — a live search-as-you-type field queries `GET /api/v1/datasets/list`. Each result shows dataset title and description. Select one, then click "Add Dataset".
+1. **Token.** Enter a Kaggle API token and click "Validate". Validation calls `POST https://www.kaggle.com/api/v1/datasets/create/new` with an empty body. A `401` means the token is invalid, and any other response means it's valid. Kaggle checks the empty body before it creates anything, so nothing is saved.
+2. **Picker.** A search field queries `GET /api/v1/datasets/list` as you type, and each result shows the dataset's title and description. Select one, then click "Add Dataset".
 
-Clicking "Add Dataset" downloads the bundle from `GET /api/v1/datasets/download/{owner}/{ref}`, unzips CSV and Parquet members into `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, and creates **one** `files`-type Source whose `path` is that root directory. The token is never stored server-side.
+"Add Dataset" downloads the bundle from `GET /api/v1/datasets/download/{owner}/{ref}`, unzips its CSV and Parquet files into `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, and creates **one** `files` source whose `path` is that root directory. The server never stores the token.
 
-After adding the source, register its tables through the normal Register Table screen. The pgwire-file connector's recursive directory discovery lists each file as its own table — the same mechanism any other `files` source uses.
+Then register the tables you want on the normal Register Table screen. Each file is listed as its own table, as in any other `files` source.
 
-**v1 limitation.** A bundle containing a `.sqlite` or `.db` file is rejected outright with a clear error. Only CSV and Parquet files are staged.
+**Only CSV and Parquet.** A bundle that contains a `.sqlite` or `.db` file is refused with an error that says so. Only CSV and Parquet files are staged.
 
-**Table naming.** A crawled table is named `<page>__<name>`: the page's title, then the table's caption, or the last heading above the table when it has no caption, both in the source's column-name spelling. For example, the table under the heading "Tallest buildings in the world" on the page `List_of_tallest_buildings` is `list_of_tallest_buildings__tallest_buildings_in_the_world`. A linked data file keeps its own name.
+**Refreshing.** When Kaggle publishes a new version of a dataset, call the `refreshKaggleSource` GraphQL mutation with the source ID and a valid token. It stages the files again in place and clears the file endpoint's cache, so the next query picks up any schema change. The `kaggle_owner` and `kaggle_ref` kept in `federation_hints` when the source was created say which dataset to fetch.
 
-**Refreshing.** To re-fetch a dataset after Kaggle publishes a new version, call the `refreshKaggleSource` GraphQL mutation with the source ID and a valid token. This re-stages the files in place and evicts the pgwire-file endpoint cache so the connector picks up any schema changes on its next query. The `kaggle_owner` and `kaggle_ref` stored in `federation_hints` at creation time identify which dataset to re-fetch.
-
-**No static YAML config path.** Kaggle sources are created through the Sources form only. A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Re-downloading from Kaggle requires the UI refresh flow or the `refreshKaggleSource` mutation — pointing the YAML `path` at a pre-staged directory is the alternative for air-gapped environments.
+**No YAML of its own.** You create a Kaggle source only through the Sources form. Exported to YAML, it appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Fetching from Kaggle again takes the refresh in the UI or the `refreshKaggleSource` mutation. In an air-gapped environment, point the YAML `path` at a directory you staged yourself.
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Only tables that editors mark as data tables (`table.wikitable`) become tables, 
 | `max_html_size` | not set | Largest page read, for example `10MB` |
 | `max_data_file_size` | not set | Largest data file read, for example `100MB` |
 
-**Table naming.** A crawled table is named `<page>__<name>`. The name is the table's own `id` when it has one, otherwise its caption, otherwise the nearest heading above it. For example, a table under the heading "Tallest buildings" on the page `List_of_tallest_buildings` becomes `list_of_tallest_buildings__tallest_buildings` after name normalization.
+**Table naming.** A crawled table is named `<page>__<name>`. The name is the table's caption or, when it has none, the last heading above it; a table with neither is `table_1`, `table_2` and so on. Both parts are lowercased, with every run of other characters turned into `_`. For example, a table under the heading "Tallest buildings" on the page `List_of_tallest_buildings` becomes `list_of_tallest_buildings__tallest_buildings`. A linked data file keeps its own name.
 
 **Refreshing.** A crawl is kept for the cache period, `1 days` by default (`html_cache_ttl`). Pages are fetched again only after that time has passed.
 
@@ -982,20 +980,20 @@ A data profiler is a source that holds a name, a schedule and run defaults, and 
 
 ### Data Quality Checkers
 
-A data-quality checker is a source type, not a subsystem. Its scan output is data: a check result is an observation, so it lands through the ordinary source path and inherits cadence, freshness, events, lineage, governance, RLS, grid and export from every other source.
+A data-quality checker is just another source type. Its scan output is data: each check result is an observation, so it lands through the ordinary source path and gets what every other source gets, from cadence, freshness, events and lineage to governance, RLS, the grid and export.
 
-Two are supported, and the choice is a licence choice as much as a feature one.
+Two checkers are supported, and choosing between them is as much about the licence as about features.
 
 | Source Type | Contract Dialect | Extra | Licence | Hosted cloud plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refused — see below |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Allowed |
 
-Elastic License 2.0 prohibits providing the software to third parties as a hosted or managed service, and running Soda inside the SaaS plane on a tenant's behalf is exactly that. `config/capabilities.yaml` carries the split as `cloud_eligible: false` on the `soda` option, and the hosted plane reads that flag. A hosted deployment that wants Soda reaches an operator-supplied Soda endpoint the operator runs themselves.
+Elastic License 2.0 forbids providing the software to third parties as a hosted or managed service, and running Soda inside the SaaS plane on a tenant's behalf would be exactly that. `config/capabilities.yaml` records this as `cloud_eligible: false` on the `soda` option, and the hosted plane reads that flag. A hosted deployment that wants Soda points at a Soda endpoint the operator runs themselves.
 
-Provisa vendors and links nothing. The scan runs in a child interpreter (`python -m provisa.dq.worker`), which is the only place `soda_core` or `great_expectations` is imported, so a source-available checker never reaches the server process and a checker crash kills a subprocess rather than the event loop.
+Provisa vendors and links nothing. The scan runs in a child interpreter (`python -m provisa.dq.worker`), the only place `soda_core` or `great_expectations` is imported. A source-available checker therefore never reaches the server process, and if a checker crashes, it takes down a subprocess and leaves the event loop alone.
 
-**The source points at Provisa's own pgwire endpoint.** That is what lets one postgres driver check a Snowflake- or Iceberg-backed table: the checker scans the federated view, not the underlying system. Because policy applies to that connection, the scan identity is declared rather than inherited — a filtered row set must never produce a silently passing check.
+**The source points at Provisa's own pgwire endpoint.** That's how one postgres driver can check a table backed by Snowflake or Iceberg: the checker scans the federated view, never the system underneath. Policy applies to that connection, so you declare the scan identity explicitly. If it were inherited, a filtered set of rows could make a check pass without anyone noticing.
 
 ```yaml
 sources:
@@ -1012,7 +1010,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**One results table per contract, and the contract is the whole registration.** The table carries `dq_contract` — the contract text verbatim — and nothing else about its shape. Columns, watermark and promotions are all derived.
+**One results table per contract, and the contract is the whole registration.** The table carries `dq_contract`, the contract text word for word, and nothing else about its shape. Columns, watermark and promotions are all derived from it.
 
 ```yaml
 tables:
@@ -1040,28 +1038,28 @@ tables:
             must_be_greater_than: 0
 ```
 
-What the registration derives from that text:
+The registration derives four things from that text:
 
-- **Lineage.** The contract already names its target dataset, so the registration parses it the way `extract_inputs` parses SQL and resolves it to the governed table. One definition, no second copy that can drift. A contract naming an ungoverned dataset fails loud at registration rather than landing rows nobody asked for.
-- **Columns.** The result envelope is the checker's, not the operator's — 16 shipped columns from `scan_id` through `diagnostics`. Declared columns are read only for their `visible_to`, which must be unanimous, and are then replaced.
-- **Watermark.** `scan_time` becomes the watermark, which makes the landing an append. Scan history accumulates with no history subsystem.
-- **Promotions.** `freshness_max_timestamp` and `dataset_rows_tested` are promoted out of the `diagnostics` jsonb as typed columns. Add more the way you would on any other jsonb column.
+- **Lineage.** The contract already names its target dataset, so the registration parses it the way `extract_inputs` parses SQL and resolves it to the governed table. There's one definition and no second copy to drift. A contract that names an ungoverned dataset fails loudly at registration, so it never lands rows nobody asked for.
+- **Columns.** The result envelope belongs to the checker: 16 shipped columns, from `scan_id` through `diagnostics`. Declared columns are read only for their `visible_to`, which must be the same on all of them, and are then replaced.
+- **Watermark.** `scan_time` becomes the watermark, which makes the landing an append. Scan history builds up with no history subsystem.
+- **Promotions.** `freshness_max_timestamp` and `dataset_rows_tested` are promoted out of the `diagnostics` jsonb as typed columns. You can add more the way you would on any other jsonb column.
 
-Timing introduces no new fields. `change_signal` plus `cache_ttl` give the poll cadence; `mv_debounce_quiet` and `mv_debounce_max_delay` collapse an upstream burst into one scan; a calendar grain makes it periodic; `expected_events` holds the scan until its inputs are fresh through the window. The poll loop is the scan scheduler.
+Timing needs no new fields. `change_signal` plus `cache_ttl` set how often it polls, `mv_debounce_quiet` and `mv_debounce_max_delay` fold a burst of upstream changes into one scan, a calendar grain makes it periodic, and `expected_events` holds the scan until its inputs are fresh through the window. The poll loop is the scan scheduler.
 
-`outcome` is one of `pass`, `fail`, `warn`, `error`, `skipped`. None of them is a verdict — enforcement, if wanted, is a separate declaration later: a preflight or an MV over the landed results. Because a landed observation carries no determinism obligation, non-deterministic checks are admissible here that could never sit on a preflight gate — anomaly score, trailing-window change, freshness against now.
+`outcome` is one of `pass`, `fail`, `warn`, `error` or `skipped`. None of them enforces anything by itself. If you want enforcement, declare it separately: a preflight, or an MV over the landed results. A landed observation doesn't have to be deterministic, so checks that could never gate a preflight are fine here, such as an anomaly score, a change over a trailing window, or freshness measured against now.
 
-The contract is authored in the UI, in the table edit surface's data-quality panel, and the raw contract text there is always the source of truth. A dry run executes the contract against the live table and shows the outcomes without landing them — which is how you catch a contract whose dataset name resolved somewhere unexpected and would otherwise land nothing but passing rows.
+You write the contract in the UI, in the data-quality panel of the table's edit page, and the raw contract text there is always the source of truth. A dry run executes the contract against the live table and shows the outcomes without landing them. Use it to catch a contract whose dataset name resolved somewhere unexpected, which would otherwise land nothing but passing rows.
 
 ---
 
 ## Custom Connectors
 
-The native federation engines — Postgres, DuckDB, and ClickHouse — gain reachability to a new source type when an operator declares a connector for it in `config/custom_connectors.yaml`. No code is required.
+An operator can give the native federation engines (Postgres, DuckDB and ClickHouse) reach to a new source type by declaring a connector for it in `config/custom_connectors.yaml`. No code is needed.
 
-Connector extensibility itself predates this. The Trino engine has long been extensible at its own layer — one generic JDBC connector parametrized per source type, a catalog `.properties` body per type, and Provisa's own custom Trino connector plugins (Splunk, SharePoint, Calcite). Custom connector declarations bring that same config-driven extensibility to the two native, no-cluster engines, which previously carried a fixed connector set.
+This gives the native engines, which run without a cluster, the same config-driven extensibility the Trino engine has at its own layer. There, one generic JDBC connector is parametrized per source type, each type gets a catalog `.properties` body, and Provisa adds its own Trino connector plugins (Splunk, SharePoint, Calcite).
 
-The config ships empty. Built-in connectors cover out-of-the-box reach; everything in this file is operator-authored. Set `PROVISA_CUSTOM_CONNECTORS` to point at a different path (useful for tests).
+The file ships empty. The built-in connectors cover what works out of the box, and everything in this file is written by the operator. To use a different path, for example in tests, set `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Descriptor kinds
 
@@ -1505,11 +1503,11 @@ auth:
 
 ## Execution Routing
 
-**Direct execution** — Single-source RDBMS queries route to the native driver for sub-100ms latency. Sources require both a `SOURCE_TO_DIALECT` entry and a `SOURCE_TO_CONNECTOR` entry to support this path.
+**Direct execution.** A query that touches one relational source goes straight to that source's own driver, in under 100 ms. A source type takes this path when Provisa knows both its SQL dialect and its connector.
 
-**Federated execution** — Multi-source queries and sources without a direct driver route through the federation engine. Provisa includes an embedded federation engine; point to your own compatible cluster for large-scale deployments.
+**Federated execution.** A query across sources, or on a source with no direct driver, goes through the federation engine. Provisa ships an embedded one; for large deployments, point it at your own compatible cluster.
 
-**Statistics** — On registration, Provisa runs `ANALYZE` against each published table to prime the cost-based optimizer (row counts, null fraction, distinct values, min/max). Failures are logged and do not block registration.
+**Statistics.** When a table is registered, Provisa runs `ANALYZE` on each published table so the cost-based optimizer has row counts, null fractions, distinct values and min/max. If that fails, the failure is logged and the registration goes ahead.
 
 ---
 
