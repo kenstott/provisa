@@ -80,7 +80,7 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 
 ### Проводной протокол PostgreSQL / pgwire (настраиваемый порт) {: #postgresql-wire-protocol-pgwire-configurable-port }
 
-Реализует протокол frontend/backend PostgreSQL с использованием библиотеки `buenavista`. Любой PostgreSQL-совместимый клиент — `psql`, DBeaver, SQLAlchemy с `psycopg2`, JDBC — может подключиться без изменений. Принимает только SQL. Полный конвейер governance (RLS, маскирование, разрешения на домен) применяется к соединениям pgwire идентично. Включается установкой `PROVISA_PGWIRE_PORT` на ненулевой порт.
+Реализует протокол frontend/backend PostgreSQL с использованием библиотеки `buenavista`. Любой PostgreSQL-совместимый клиент (`psql`, DBeaver, SQLAlchemy с `psycopg2`, JDBC) может подключиться без изменений. Принимает только SQL. Полный конвейер governance (RLS, маскирование, разрешения на домен) применяется к соединениям pgwire идентично. Включается установкой `PROVISA_PGWIRE_PORT` на ненулевой порт.
 
 ## Конвейер запроса {: #request-pipeline }
 
@@ -205,11 +205,11 @@ DuckDB допускает только одного писателя на фай
 
 ### Нативный для Arrow транспорт чтения {: #arrow-native-read-transport }
 
-ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric и Synapse — все заявляют `EngineCapability.ARROW` и `EngineCapability.ARROW_STREAM`. Запросы к этим движкам возвращают RecordBatches Arrow напрямую — путь сериализации строк полностью минуется. Flight-сервер передаёт эти батчи клиентам потоково, не материализуя полный результат в памяти процесса Provisa. Для Trino потоковая передача Arrow опирается на прокси Zaychik; для движков хранилищ данных — на собственный Arrow-нативный API движка (Cloud Fetch для Databricks, Storage Read API для BigQuery, `fetch_arrow_table` для DuckDB и Snowflake), питающий поток Flight.
+ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric и Synapse; все заявляют `EngineCapability.ARROW` и `EngineCapability.ARROW_STREAM`. Запросы к этим движкам возвращают RecordBatches Arrow напрямую — путь сериализации строк полностью минуется. Flight-сервер передаёт эти батчи клиентам потоково, не материализуя полный результат в памяти процесса Provisa. Для Trino потоковая передача Arrow опирается на прокси Zaychik; для движков хранилищ данных — на собственный Arrow-нативный API движка (Cloud Fetch для Databricks, Storage Read API для BigQuery, `fetch_arrow_table` для DuckDB и Snowflake), питающий поток Flight.
 
 ### Внешние связи с данными (ATTACH) {: #external-data-links-attach }
 
-Каждый движок хранилища данных может сканировать облачные объектные/lake-данные на месте, не приземляя копию. Файлы Parquet, CSV, Iceberg и Delta Lake на S3, GCS или OneLake присоединяются к движку напрямую, как будто это нативные таблицы. Стратегия — ATTACH (сканирование на месте) или LAND (копирование в хранилище) — определяется объявленным `Mechanism` коннектора; в планировщике нет ветвления, специфичного для движка. Коннектор `Mechanism.ATTACH_R` запускает сканирование с нулевым копированием; `Mechanism.DIRECT` или отсутствие коннектора запускает приземление.
+Каждый движок хранилища данных может сканировать облачные объектные/lake-данные на месте, не приземляя копию. Файлы Parquet, CSV, Iceberg и Delta Lake на S3, GCS или OneLake присоединяются к движку напрямую, как будто это нативные таблицы. Стратегия (ATTACH (сканирование на месте) или LAND (копирование в хранилище)) определяется объявленным `Mechanism` коннектора; в планировщике нет ветвления, специфичного для движка. Коннектор `Mechanism.ATTACH_R` запускает сканирование с нулевым копированием; `Mechanism.DIRECT` или отсутствие коннектора запускает приземление.
 
 Attach автоматически подготавливает все предпосылки в момент присоединения:
 

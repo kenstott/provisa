@@ -1131,7 +1131,7 @@ All endpoints are under `/admin/invites`.
 
 Strawberry GraphQL endpoint for all admin operations: source and table CRUD, relationship management, domain configuration, RLS rules, cache control, naming conventions, scheduled task management, and query compilation.
 
-For the full schema reference — every Query field, Mutation field, and input/output type — see [Admin GraphQL API Reference](admin-graphql.md).
+For the full schema reference (every Query field, Mutation field, and input/output type), see [Admin GraphQL API Reference](admin-graphql.md).
 
 **Key mutations:**
 
@@ -1442,7 +1442,7 @@ Response:
 
 **`POST /admin/glossary/relationships/generate`**
 
-Sends the full term list to the org's AI model with a prompt that specifies the ten allowed edge types (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) and asks for only confident proposals. The model responds with a JSON array; each entry is validated before any write: unknown term names, self-edges, and edge types outside the closed enum are silently dropped. Valid proposals are upserted idempotently — re-running the action does not duplicate edges. One publish notification covers the batch. The endpoint returns `{"added": 0}` immediately when the glossary contains fewer than two non-deprecated terms.
+Sends the full term list to the org's AI model with a prompt that specifies the ten allowed edge types (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) and asks for only confident proposals. The model responds with a JSON array; each entry is validated before any write: unknown term names, self-edges, and edge types outside the closed enum are silently dropped. Valid proposals are upserted idempotently. Re-running the action does not duplicate edges. One publish notification covers the batch. The endpoint returns `{"added": 0}` immediately when the glossary contains fewer than two non-deprecated terms.
 
 Response:
 
@@ -1492,10 +1492,10 @@ The glossary term graph is included in every `MetadataSnapshot` built by `build_
 
 The export applies the same filters as the rest of the snapshot:
 
-- A term marked `export_excluded` is withheld outright — regardless of its physical refs, abstract status, or whether the org's catalog is configured.
+- A term marked `export_excluded` is withheld outright, regardless of its physical refs, abstract status, or whether the org's catalog is configured.
 - A rooted term publishes only when at least one of its physical refs belongs to a column that passes both the **Data Product** filter (the table's `data_product` flag must be `true`) and the **technical** column filter (columns tagged `technical` are withheld).
 - A rooted term whose refs are all withheld by those filters is withheld with them.
-- Abstract terms publish unconditionally — they are user vocabulary, not bound to physical columns.
+- Abstract terms publish unconditionally: they are user vocabulary, not bound to physical columns.
 - An edge between two terms publishes only when both endpoint terms publish.
 
 Every vendor adapter publishes the term graph natively, into a glossary container that Provisa owns and creates idempotently, and never into an existing catalog glossary:
@@ -1571,7 +1571,7 @@ mutation {
 }
 ```
 
-`create_data_product` upserts — calling it with an existing `id` updates the record. Requires `data_product_rw`.
+`create_data_product` upserts: calling it with an existing `id` updates the record. Requires `data_product_rw`.
 
 **Delete:**
 
@@ -1625,7 +1625,7 @@ A product with no exported members gets no snapshot entry, because a listing wit
 
 ### Data product support by catalog target
 
-`MetadataSnapshot.data_products` reaches every adapter, but only adapters whose platform has a native data-product concept publish it as a first-class entity; the rest publish the member tables (already filtered above) without a product grouping.
+`MetadataSnapshot.data_products` reaches every adapter, but only adapters whose platform has a native data-product concept publish it as an entity of its own; the rest publish the member tables (already filtered above) without a product grouping.
 
 | Target | Data product representation |
 | --- | --- |

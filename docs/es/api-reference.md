@@ -1133,7 +1133,7 @@ Todos los endpoints están bajo `/admin/invites`.
 
 Endpoint de Strawberry GraphQL para todas las operaciones de administración: CRUD de orígenes y tablas, gestión de relaciones, configuración de dominios, reglas de RLS, control de caché, convenciones de nomenclatura, gestión de tareas programadas y compilación de consultas.
 
-Para la referencia completa del esquema — cada campo de Query, campo de Mutation y tipo de entrada/salida — véase [Referencia de la API GraphQL de administración](admin-graphql.md).
+Para la referencia completa del esquema (cada campo de Query, campo de Mutation y tipo de entrada/salida) véase [Referencia de la API GraphQL de administración](admin-graphql.md).
 
 **Mutaciones clave:**
 
@@ -1444,7 +1444,7 @@ Respuesta:
 
 **`POST /admin/glossary/relationships/generate`**
 
-Envía la lista completa de términos al modelo de IA de la organización con un prompt que especifica los diez tipos de arista permitidos (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) y solicita solo propuestas seguras. El modelo responde con un arreglo JSON; cada entrada se valida antes de cualquier escritura: los nombres de término desconocidos, las auto-aristas y los tipos de arista fuera de la enumeración cerrada se descartan silenciosamente. Las propuestas válidas se insertan/actualizan (upsert) de forma idempotente — volver a ejecutar la acción no duplica aristas. Una sola notificación de publicación cubre el lote. El endpoint devuelve `{"added": 0}` de inmediato cuando el glosario contiene menos de dos términos no obsoletos.
+Envía la lista completa de términos al modelo de IA de la organización con un prompt que especifica los diez tipos de arista permitidos (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) y solicita solo propuestas seguras. El modelo responde con un arreglo JSON; cada entrada se valida antes de cualquier escritura: los nombres de término desconocidos, las auto-aristas y los tipos de arista fuera de la enumeración cerrada se descartan silenciosamente. Las propuestas válidas se insertan/actualizan (upsert) de forma idempotente. Volver a ejecutar la acción no duplica aristas. Una sola notificación de publicación cubre el lote. El endpoint devuelve `{"added": 0}` de inmediato cuando el glosario contiene menos de dos términos no obsoletos.
 
 Respuesta:
 
@@ -1494,10 +1494,10 @@ El grafo de términos del glosario se incluye en cada `MetadataSnapshot` constru
 
 La exportación aplica los mismos filtros que el resto del snapshot:
 
-- Un término marcado como `export_excluded` se retiene por completo — sin importar sus referencias físicas, su estado abstracto o si el catálogo de la organización está configurado.
+- Un término marcado como `export_excluded` se retiene por completo, sin importar sus referencias físicas, su estado abstracto o si el catálogo de la organización está configurado.
 - Un término enraizado se publica solo cuando al menos una de sus referencias físicas pertenece a una columna que pasa tanto el filtro de **Data Product** (el indicador `data_product` de la tabla debe ser `true`) como el filtro de columna **técnica** (las columnas etiquetadas `technical` se retienen).
 - Un término enraizado cuyas referencias están todas retenidas por esos filtros se retiene junto con ellas.
-- Los términos abstractos se publican incondicionalmente — son vocabulario de usuario, no están vinculados a columnas físicas.
+- Los términos abstractos se publican incondicionalmente: son vocabulario de usuario, no están vinculados a columnas físicas.
 - Una arista entre dos términos se publica solo cuando ambos términos extremos se publican.
 
 Cada adaptador de proveedor publica el grafo de términos de forma nativa, en un contenedor de glosario que es de Provisa y que crea de forma idempotente, nunca en un glosario de catálogo existente:
@@ -1573,7 +1573,7 @@ mutation {
 }
 ```
 
-`create_data_product` hace upsert — llamarlo con un `id` existente actualiza el registro. Requiere `data_product_rw`.
+`create_data_product` hace upsert: llamarlo con un `id` existente actualiza el registro. Requiere `data_product_rw`.
 
 **Eliminar:**
 

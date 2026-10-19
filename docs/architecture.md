@@ -2,7 +2,7 @@
 
 ## Overview
 
-Provisa is a config-driven data virtualization platform: federation, metrics, ontology and governance from a single model, for small teams and large enterprises alike. It provides a unified API over heterogeneous data sources with governance, security, and performance optimization. Clients query via SQL, GraphQL, or Cypher; all three are first-class interfaces with identical governance applied.
+Provisa is a config-driven data virtualization platform: federation, metrics, ontology and governance from a single model, for small teams and large enterprises alike. It provides a unified API over heterogeneous data sources with governance, security, and performance optimization. Clients query via SQL, GraphQL, or Cypher; all three get identical governance.
 
 The model is the only place meaning is added. To add to it, you register new data sources or aggregates in the data virtualization layer. That keeps a clean separation, since nothing can add semantics outside the platform, and it's what makes real data governance possible. The compiler enforces it: the approved relationship catalog is the source of truth, whichever query language is used.
 
@@ -80,7 +80,7 @@ Auto-generated `.proto` from the data schema, generated per role. Streaming quer
 
 ### PostgreSQL wire protocol / pgwire (configurable port)
 
-Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. Any PostgreSQL-compatible client — `psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC — can connect without modification. Accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
+Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. Any PostgreSQL-compatible client (`psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC) can connect without modification. Accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
 
 ## Request Pipeline
 
@@ -162,7 +162,7 @@ The federation engine does not natively support the Arrow Flight SQL protocol. [
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, enabling streaming Arrow end-to-end without materializing results.
+The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, so Arrow streams end to end and results are never materialized.
 
 ### Iceberg Results Catalog
 
@@ -205,11 +205,11 @@ DuckDB allows a single writer per file, so `store_connection.py` writes into the
 
 ### Arrow-native read transport
 
-ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, and Synapse all advertise `EngineCapability.ARROW` and `EngineCapability.ARROW_STREAM`. Queries against these engines return Arrow RecordBatches directly — the row-serialization path is bypassed entirely. The Flight server streams those batches to clients without materializing the full result in Provisa's process memory. For Trino, Arrow streaming relies on the Zaychik proxy; for the warehouse engines, the engine's own Arrow-native API (Cloud Fetch for Databricks, Storage Read API for BigQuery, `fetch_arrow_table` for DuckDB and Snowflake) feeds the Flight stream.
+ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, and Synapse all advertise `EngineCapability.ARROW` and `EngineCapability.ARROW_STREAM`. Queries against these engines return Arrow RecordBatches directly; the row-serialization path is bypassed entirely. The Flight server streams those batches to clients without materializing the full result in Provisa's process memory. For Trino, Arrow streaming relies on the Zaychik proxy; for the warehouse engines, the engine's own Arrow-native API (Cloud Fetch for Databricks, Storage Read API for BigQuery, `fetch_arrow_table` for DuckDB and Snowflake) feeds the Flight stream.
 
 ### External data links (ATTACH)
 
-Every warehouse engine can scan cloud object/lake data in place without landing a copy. Parquet, CSV, Iceberg, and Delta Lake files on S3, GCS, or OneLake attach directly to the engine as if they were native tables. The strategy — ATTACH (scan in place) or LAND (copy into the store) — is determined by the connector's declared `Mechanism`; no engine-specific branching exists in the planner. A `Mechanism.ATTACH_R` connector triggers zero-copy scan; a `Mechanism.DIRECT` or absent connector triggers a land.
+Every warehouse engine can scan cloud object/lake data in place without landing a copy. Parquet, CSV, Iceberg, and Delta Lake files on S3, GCS, or OneLake attach directly to the engine as if they were native tables. The strategy (ATTACH (scan in place) or LAND (copy into the store)) is determined by the connector's declared `Mechanism`; no engine-specific branching exists in the planner. A `Mechanism.ATTACH_R` connector triggers zero-copy scan; a `Mechanism.DIRECT` or absent connector triggers a land.
 
 Attach auto-provisions all prerequisites at attach time:
 
@@ -338,7 +338,7 @@ Useful when a source has received significant new data since registration.
 
 ## Materialized Views
 
-MVs transparently optimize expensive queries by pre-computing and caching results.
+MVs speed up expensive queries by computing their results ahead of time. Queries pick them up with no change.
 
 ### Relationships as MV Hints
 
@@ -647,7 +647,7 @@ A table's `write_grants` state, per role and operation, which columns a write ma
 
 ## GraphQL Voyager Schema Explorer
 
-The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager as an interactive schema visualization. It draws the role-scoped schema as an entity relationship diagram you can explore, with tables as nodes and relationships as edges. The schema it shows is always filtered to the role currently selected.
+The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager as an interactive schema visualization. It draws the role-scoped schema as an entity relationship diagram you can pan, zoom and click through, with tables as nodes and relationships as edges. The schema it shows is always filtered to the role currently selected.
 
 ## Security Enforcement Order
 

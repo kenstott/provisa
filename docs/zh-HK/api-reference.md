@@ -1133,7 +1133,7 @@ DSN 在被接受之前會先針對聯邦引擎驗證，所以不可用的 DSN �
 
 所有管理員操作的 Strawberry GraphQL 端點：數據來源與資料表 CRUD、關聯管理、網域組態、RLS 規則、快取控制、命名慣例、排程工作管理，以及查詢編譯。
 
-完整的結構描述參考——每個 Query 欄位、Mutation 欄位及輸入/輸出類型——請參閱[管理 GraphQL API 參考](admin-graphql.md)。
+完整的結構描述參考（每個 Query 欄位、Mutation 欄位及輸入/輸出類型）請參閱[管理 GraphQL API 參考](admin-graphql.md)。
 
 **主要變更操作：**
 
@@ -1444,7 +1444,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 
 **`POST /admin/glossary/relationships/generate`**
 
-將完整術語清單連同一段提示詞送給組織的 AI 模型，提示詞指定十種允許的邊類型（`KIND_OF`、`PART_OF`、`SYNONYM_OF`、`RELATED_TO`、`VALID_VALUE_OF`、`DERIVED_FROM`、`REPLACES`、`PREFERRED_TERM_FOR`、`TRANSLATION_OF`、`ANTONYM_OF`），並要求只提出有把握的建議。模型以 JSON 陣列回應；每一項在任何寫入之前都會經過驗證：未知的術語名稱、自我指向的邊，以及封閉列舉之外的邊類型都會被靜默丟棄。有效的建議會以冪等方式 upsert — 重新執行該動作不會產生重複的邊。整批只發出一次發佈通知。當詞彙表中未淘汰的術語少於兩個時，端點會立即傳回 `{"added": 0}`。
+將完整術語清單連同一段提示詞送給組織的 AI 模型，提示詞指定十種允許的邊類型（`KIND_OF`、`PART_OF`、`SYNONYM_OF`、`RELATED_TO`、`VALID_VALUE_OF`、`DERIVED_FROM`、`REPLACES`、`PREFERRED_TERM_FOR`、`TRANSLATION_OF`、`ANTONYM_OF`），並要求只提出有把握的建議。模型以 JSON 陣列回應；每一項在任何寫入之前都會經過驗證：未知的術語名稱、自我指向的邊，以及封閉列舉之外的邊類型都會被靜默丟棄。有效的建議會以冪等方式 upsert。重新執行該動作不會產生重複的邊。整批只發出一次發佈通知。當詞彙表中未淘汰的術語少於兩個時，端點會立即傳回 `{"added": 0}`。
 
 回應：
 
@@ -1494,10 +1494,10 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 
 匯出套用與快照其餘部分相同的篩選：
 
-- 標記 `export_excluded` 的術語會被整個保留不匯出 — 無論其實體參照、抽象狀態，或組織的目錄是否已設定。
+- 標記 `export_excluded` 的術語會被整個保留不匯出，無論其實體參照、抽象狀態，或組織的目錄是否已設定。
 - 已扎根的術語只在其至少一個實體參照所屬的欄位同時通過**數據產品**篩選（資料表的 `data_product` 旗標必須為 `true`）與**技術性**欄位篩選（標記為 `technical` 的欄位不匯出）時才會發佈。
 - 若某個已扎根術語的所有參照都被上述篩選攔下，該術語也一併不匯出。
-- 抽象術語無條件發佈 — 它們是使用者詞彙，不繫結於實體欄位。
+- 抽象術語無條件發佈：它們是使用者詞彙，不繫結於實體欄位。
 - 兩個術語之間的邊，只有在兩端術語都發佈時才會發佈。
 
 每個供應商配接器都以原生方式發佈術語圖，寫入一個歸 Provisa 所有、以冪等方式建立的詞彙表容器，從不寫入已有的目錄詞彙表：
@@ -1573,7 +1573,7 @@ mutation {
 }
 ```
 
-`create_data_product` 為 upsert 操作 —— 以既有 `id` 呼叫會更新該記錄。需要 `data_product_rw`。
+`create_data_product` 為 upsert 操作：以既有 `id` 呼叫會更新該記錄。需要 `data_product_rw`。
 
 **刪除：**
 

@@ -80,7 +80,7 @@ O resultado completo nunca fica na memória do Provisa: os lotes são repassados
 
 ### Protocolo de fio PostgreSQL / pgwire (porta configurável) {: #postgresql-wire-protocol-pgwire-configurable-port }
 
-Implementa o protocolo de fio frontend/backend do PostgreSQL usando a biblioteca `buenavista`. Qualquer cliente compatível com PostgreSQL — `psql`, DBeaver, SQLAlchemy com `psycopg2`, JDBC — pode se conectar sem modificação. Aceita apenas SQL. O pipeline de governança completo (RLS, mascaramento, permissões de domínio) se aplica identicamente às conexões pgwire. Habilitado definindo `PROVISA_PGWIRE_PORT` para uma porta diferente de zero.
+Implementa o protocolo de fio frontend/backend do PostgreSQL usando a biblioteca `buenavista`. Qualquer cliente compatível com PostgreSQL (`psql`, DBeaver, SQLAlchemy com `psycopg2`, JDBC) pode se conectar sem modificação. Aceita apenas SQL. O pipeline de governança completo (RLS, mascaramento, permissões de domínio) se aplica identicamente às conexões pgwire. Habilitado definindo `PROVISA_PGWIRE_PORT` para uma porta diferente de zero.
 
 ## Pipeline de Requisição {: #request-pipeline }
 
@@ -205,11 +205,11 @@ O DuckDB permite um único escritor por arquivo, então o `store_connection.py` 
 
 ### Transporte de leitura nativo Arrow {: #arrow-native-read-transport }
 
-ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, e Synapse todos anunciam `EngineCapability.ARROW` e `EngineCapability.ARROW_STREAM`. Consultas contra esses motores retornam RecordBatches Arrow diretamente — o caminho de serialização por linha é completamente contornado. O servidor Flight faz streaming desses batches para clientes sem materializar o resultado completo na memória do processo do Provisa. Para o Trino, o streaming Arrow depende do proxy Zaychik; para os motores de warehouse, a própria API Arrow-nativa do motor (Cloud Fetch para Databricks, Storage Read API para BigQuery, `fetch_arrow_table` para DuckDB e Snowflake) alimenta o stream Flight.
+ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, e Synapse todos anunciam `EngineCapability.ARROW` e `EngineCapability.ARROW_STREAM`. Consultas contra esses motores retornam RecordBatches Arrow diretamente; o caminho de serialização por linha é completamente contornado. O servidor Flight faz streaming desses batches para clientes sem materializar o resultado completo na memória do processo do Provisa. Para o Trino, o streaming Arrow depende do proxy Zaychik; para os motores de warehouse, a própria API Arrow-nativa do motor (Cloud Fetch para Databricks, Storage Read API para BigQuery, `fetch_arrow_table` para DuckDB e Snowflake) alimenta o stream Flight.
 
 ### Links de dados externos (ATTACH) {: #external-data-links-attach }
 
-Todo motor de warehouse pode escanear dados de objeto/lake em nuvem no lugar, sem pousar uma cópia. Arquivos Parquet, CSV, Iceberg e Delta Lake em S3, GCS, ou OneLake se conectam (attach) diretamente ao motor como se fossem tabelas nativas. A estratégia — ATTACH (escanear no lugar) ou LAND (copiar para o armazenamento) — é determinada pelo `Mechanism` declarado do conector; não existe ramificação específica de motor no planejador. Um conector `Mechanism.ATTACH_R` aciona escaneamento zero-cópia; um conector `Mechanism.DIRECT` ou ausente aciona um pouso.
+Todo motor de warehouse pode escanear dados de objeto/lake em nuvem no lugar, sem pousar uma cópia. Arquivos Parquet, CSV, Iceberg e Delta Lake em S3, GCS, ou OneLake se conectam (attach) diretamente ao motor como se fossem tabelas nativas. A estratégia (ATTACH (escanear no lugar) ou LAND (copiar para o armazenamento)) é determinada pelo `Mechanism` declarado do conector; não existe ramificação específica de motor no planejador. Um conector `Mechanism.ATTACH_R` aciona escaneamento zero-cópia; um conector `Mechanism.DIRECT` ou ausente aciona um pouso.
 
 O attach auto-provisiona todos os pré-requisitos no momento do attach:
 

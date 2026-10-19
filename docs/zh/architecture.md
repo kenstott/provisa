@@ -80,7 +80,7 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 
 ### PostgreSQL wire protocol / pgwire（可配置端口） {: #postgresql-wire-protocol-pgwire-configurable-port }
 
-使用 `buenavista` 库实现 PostgreSQL 前后端 wire protocol。 任何兼容 PostgreSQL 的客户端——`psql`、DBeaver、使用 `psycopg2` 的 SQLAlchemy、JDBC——无需修改即可连接。仅接受 SQL。完整的治理流水线（行级安全、脱敏、域权限）对 pgwire 连接同样适用。 通过将 `PROVISA_PGWIRE_PORT` 设置为非零端口来启用。
+使用 `buenavista` 库实现 PostgreSQL 前后端 wire protocol。 任何兼容 PostgreSQL 的客户端（`psql`、DBeaver、使用 `psycopg2` 的 SQLAlchemy、JDBC）无需修改即可连接。仅接受 SQL。完整的治理流水线（行级安全、脱敏、域权限）对 pgwire 连接同样适用。 通过将 `PROVISA_PGWIRE_PORT` 设置为非零端口来启用。
 
 ## 请求流水线 {: #request-pipeline }
 
@@ -205,11 +205,11 @@ DuckDB 每个文件只允许一个写入者，所以 `store_connection.py` 通�
 
 ### Arrow 原生读取传输 {: #arrow-native-read-transport }
 
-ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 和 Synapse 都声明了 `EngineCapability.ARROW` 和 `EngineCapability.ARROW_STREAM`。针对这些引擎的查询会直接返回 Arrow RecordBatches——完全绕过行序列化路径。Flight 服务器将这些批次流式传输给客户端，而不会在 Provisa 进程内存中物化完整结果。对于 Trino，Arrow 流依赖 Zaychik 代理；对于各仓库引擎，则由其自身的 Arrow 原生 API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 和 Snowflake 的 `fetch_arrow_table`）为 Flight 流供数。
+ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 和 Synapse 都声明了 `EngineCapability.ARROW` 和 `EngineCapability.ARROW_STREAM`。针对这些引擎的查询会直接返回 Arrow RecordBatches；完全绕过行序列化路径。Flight 服务器将这些批次流式传输给客户端，而不会在 Provisa 进程内存中物化完整结果。对于 Trino，Arrow 流依赖 Zaychik 代理；对于各仓库引擎，则由其自身的 Arrow 原生 API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 和 Snowflake 的 `fetch_arrow_table`）为 Flight 流供数。
 
 ### 外部数据链接（ATTACH） {: #external-data-links-attach }
 
-每个仓库引擎都能就地扫描云对象/湖数据，而无需复制一份。S3、GCS 或 OneLake 上的 Parquet、CSV、Iceberg 和 Delta Lake 文件可直接挂载到引擎中，如同原生表一样。策略——ATTACH（就地扫描）还是 LAND（复制进存储）——由连接器所声明的 `Mechanism` 决定；规划器中不存在特定引擎的分支逻辑。`Mechanism.ATTACH_R` 连接器会触发零拷贝扫描；`Mechanism.DIRECT` 或缺省连接器会触发落地。
+每个仓库引擎都能就地扫描云对象/湖数据，而无需复制一份。S3、GCS 或 OneLake 上的 Parquet、CSV、Iceberg 和 Delta Lake 文件可直接挂载到引擎中，如同原生表一样。策略（ATTACH（就地扫描）还是 LAND（复制进存储））由连接器所声明的 `Mechanism` 决定；规划器中不存在特定引擎的分支逻辑。`Mechanism.ATTACH_R` 连接器会触发零拷贝扫描；`Mechanism.DIRECT` 或缺省连接器会触发落地。
 
 Attach 会在挂载时自动预配所有前置条件：
 
@@ -647,7 +647,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## GraphQL Voyager 架构浏览器 {: #graphql-voyager-schema-explorer }
 
-管理界面（`provisa-ui/src/pages/SchemaExplorer.tsx`）嵌入了 GraphQL Voyager，作为交互式的模式可视化工具。它把按角色限定的模式绘制成可供探索的实体关系图，表是节点，关系是边。显示的模式始终按当前选中的角色过滤。
+管理界面（`provisa-ui/src/pages/SchemaExplorer.tsx`）嵌入了 GraphQL Voyager，作为交互式的模式可视化工具。它把按角色限定的模式绘制成可平移、缩放和点击浏览的实体关系图，表是节点，关系是边。显示的模式始终按当前选中的角色过滤。
 
 ## 安全强制执行顺序 {: #security-enforcement-order }
 

@@ -1133,7 +1133,7 @@ Tous les points de terminaison sont sous `/admin/invites`.
 
 Point de terminaison GraphQL Strawberry pour toutes les opérations admin : CRUD de source et de table, gestion des relations, configuration de domaine, règles RLS, contrôle du cache, conventions de nommage, gestion des tâches planifiées, et compilation de requêtes.
 
-Pour la référence complète du schéma — chaque champ Query, champ Mutation, et type d'entrée/sortie — voir la [Référence de l'API GraphQL admin](admin-graphql.md).
+Pour la référence complète du schéma (chaque champ Query, champ Mutation, et type d'entrée/sortie) voir la [Référence de l'API GraphQL admin](admin-graphql.md).
 
 **Mutations clés :**
 
@@ -1444,7 +1444,7 @@ Réponse :
 
 **`POST /admin/glossary/relationships/generate`**
 
-Envoie la liste complète des termes au modèle IA de l'organisation avec une invite qui spécifie les dix types d'arêtes autorisés (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) et demande uniquement des propositions sûres. Le modèle répond avec un tableau JSON ; chaque entrée est validée avant toute écriture : les noms de termes inconnus, les auto-arêtes, et les types d'arête en dehors de l'énumération fermée sont silencieusement rejetés. Les propositions valides sont insérées de façon idempotente — réexécuter l'action ne duplique pas les arêtes. Une seule notification de publication couvre le lot. Le point de terminaison renvoie `{"added": 0}` immédiatement lorsque le glossaire contient moins de deux termes non dépréciés.
+Envoie la liste complète des termes au modèle IA de l'organisation avec une invite qui spécifie les dix types d'arêtes autorisés (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) et demande uniquement des propositions sûres. Le modèle répond avec un tableau JSON ; chaque entrée est validée avant toute écriture : les noms de termes inconnus, les auto-arêtes, et les types d'arête en dehors de l'énumération fermée sont silencieusement rejetés. Les propositions valides sont insérées de façon idempotente. Réexécuter l'action ne duplique pas les arêtes. Une seule notification de publication couvre le lot. Le point de terminaison renvoie `{"added": 0}` immédiatement lorsque le glossaire contient moins de deux termes non dépréciés.
 
 Réponse :
 
@@ -1494,10 +1494,10 @@ Le graphe de termes du glossaire est inclus dans chaque `MetadataSnapshot` const
 
 L'export applique les mêmes filtres que le reste de l'instantané :
 
-- Un terme marqué `export_excluded` est retenu purement — indépendamment de ses références physiques, de son statut abstrait, ou du fait que le catalogue de l'organisation soit configuré.
+- Un terme marqué `export_excluded` est retenu purement, indépendamment de ses références physiques, de son statut abstrait, ou du fait que le catalogue de l'organisation soit configuré.
 - Un terme ancré ne publie que lorsqu'au moins une de ses références physiques appartient à une colonne qui passe à la fois le filtre **Produit de données** (le drapeau `data_product` de la table doit être `true`) et le filtre de colonne **technique** (les colonnes étiquetées `technical` sont retenues).
 - Un terme ancré dont toutes les références sont retenues par ces filtres est retenu avec elles.
-- Les termes abstraits publient sans condition — ce sont du vocabulaire utilisateur, non lié à des colonnes physiques.
+- Les termes abstraits publient sans condition: ce sont du vocabulaire utilisateur, non lié à des colonnes physiques.
 - Une arête entre deux termes ne publie que lorsque les deux termes aux extrémités publient.
 
 Chaque adaptateur de fournisseur publie le graphe des termes nativement, dans un conteneur de glossaire qui appartient à Provisa et qu'il crée de façon idempotente, jamais dans un glossaire de catalogue existant :
@@ -1573,7 +1573,7 @@ mutation {
 }
 ```
 
-`create_data_product` fait un upsert — l'appeler avec un `id` existant met à jour l'enregistrement. Requiert `data_product_rw`.
+`create_data_product` fait un upsert: l'appeler avec un `id` existant met à jour l'enregistrement. Requiert `data_product_rw`.
 
 **Supprimer :**
 

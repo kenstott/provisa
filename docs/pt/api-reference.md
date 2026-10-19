@@ -1133,7 +1133,7 @@ Todos os endpoints estão sob `/admin/invites`.
 
 Endpoint GraphQL Strawberry para todas as operações de administração: CRUD de fontes e tabelas, gerenciamento de relacionamentos, configuração de domínio, regras RLS, controle de cache, convenções de nomenclatura, gerenciamento de tarefas programadas, e compilação de consultas.
 
-Para a referência completa do esquema — todo campo Query, campo Mutation e tipo de entrada/saída — veja a [Referência da API GraphQL de administração](admin-graphql.md).
+Para a referência completa do esquema (todo campo Query, campo Mutation e tipo de entrada/saída) veja a [Referência da API GraphQL de administração](admin-graphql.md).
 
 **Mutações-chave:**
 
@@ -1444,7 +1444,7 @@ Resposta:
 
 **`POST /admin/glossary/relationships/generate`**
 
-Envia a lista completa de termos ao modelo de IA da organização com um prompt que especifica os dez tipos de aresta permitidos (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) e pede apenas propostas confiáveis. O modelo responde com um array JSON; cada entrada é validada antes de qualquer escrita: nomes de termo desconhecidos, auto-arestas, e tipos de aresta fora do enum fechado são descartados silenciosamente. Propostas válidas são inseridas/atualizadas (upsert) de forma idempotente — reexecutar a ação não duplica arestas. Uma notificação de publicação cobre o lote. O endpoint retorna `{"added": 0}` imediatamente quando o glossário contém menos de dois termos não depreciados.
+Envia a lista completa de termos ao modelo de IA da organização com um prompt que especifica os dez tipos de aresta permitidos (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) e pede apenas propostas confiáveis. O modelo responde com um array JSON; cada entrada é validada antes de qualquer escrita: nomes de termo desconhecidos, auto-arestas, e tipos de aresta fora do enum fechado são descartados silenciosamente. Propostas válidas são inseridas/atualizadas (upsert) de forma idempotente. Reexecutar a ação não duplica arestas. Uma notificação de publicação cobre o lote. O endpoint retorna `{"added": 0}` imediatamente quando o glossário contém menos de dois termos não depreciados.
 
 Resposta:
 
@@ -1494,10 +1494,10 @@ O grafo de termos do glossário é incluído em todo `MetadataSnapshot` constru�
 
 A exportação aplica os mesmos filtros que o restante do snapshot:
 
-- Um termo marcado `export_excluded` é retido completamente — independentemente de suas referências físicas, status abstrato, ou se o catálogo da organização está configurado.
+- Um termo marcado `export_excluded` é retido completamente, independentemente de suas referências físicas, status abstrato, ou se o catálogo da organização está configurado.
 - Um termo enraizado publica apenas quando pelo menos uma de suas referências físicas pertence a uma coluna que passa tanto pelo filtro de **Data Product** (a flag `data_product` da tabela deve ser `true`) quanto pelo filtro de coluna **técnica** (colunas marcadas como `technical` são retidas).
 - Um termo enraizado cujas referências são todas retidas por esses filtros é retido junto com elas.
-- Termos abstratos publicam incondicionalmente — eles são vocabulário de usuário, não vinculado a colunas físicas.
+- Termos abstratos publicam incondicionalmente: eles são vocabulário de usuário, não vinculado a colunas físicas.
 - Uma aresta entre dois termos publica apenas quando ambos os termos das extremidades publicam.
 
 Cada adaptador de fornecedor publica o grafo de termos de forma nativa, num contêiner de glossário que pertence ao Provisa e que ele cria de forma idempotente, nunca num glossário de catálogo existente:
@@ -1573,7 +1573,7 @@ mutation {
 }
 ```
 
-`create_data_product` faz upsert — chamá-lo com um `id` existente atualiza o registro. Exige `data_product_rw`.
+`create_data_product` faz upsert: chamá-lo com um `id` existente atualiza o registro. Exige `data_product_rw`.
 
 **Excluir:**
 

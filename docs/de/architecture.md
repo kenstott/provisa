@@ -80,7 +80,7 @@ Automatisch generierte `.proto`-Datei aus dem Datenschema, pro Rolle generiert. 
 
 ### PostgreSQL-Wire-Protokoll / pgwire (konfigurierbarer Port) {: #postgresql-wire-protocol-pgwire-configurable-port }
 
-Implementiert das PostgreSQL-Frontend-/Backend-Wire-Protokoll über die `buenavista`-Bibliothek. Jeder PostgreSQL-kompatible Client — `psql`, DBeaver, SQLAlchemy mit `psycopg2`, JDBC — kann sich ohne Änderung verbinden. Akzeptiert nur SQL. Die vollständige Governance-Pipeline (RLS, Maskierung, Domänenberechtigungen) gilt identisch für pgwire-Verbindungen. Aktiviert durch Setzen von `PROVISA_PGWIRE_PORT` auf einen Port ungleich null.
+Implementiert das PostgreSQL-Frontend-/Backend-Wire-Protokoll über die `buenavista`-Bibliothek. Jeder PostgreSQL-kompatible Client (`psql`, DBeaver, SQLAlchemy mit `psycopg2`, JDBC) kann sich ohne Änderung verbinden. Akzeptiert nur SQL. Die vollständige Governance-Pipeline (RLS, Maskierung, Domänenberechtigungen) gilt identisch für pgwire-Verbindungen. Aktiviert durch Setzen von `PROVISA_PGWIRE_PORT` auf einen Port ungleich null.
 
 ## Anfrage-Pipeline {: #request-pipeline }
 
@@ -205,11 +205,11 @@ DuckDB erlaubt pro Datei nur einen Schreiber, daher schreibt `store_connection.p
 
 ### Arrow-natives Lese-Transport {: #arrow-native-read-transport }
 
-ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric und Synapse bewerben alle `EngineCapability.ARROW` und `EngineCapability.ARROW_STREAM`. Abfragen gegen diese Engines geben Arrow-RecordBatches direkt zurück — der Zeilen-Serialisierungspfad wird vollständig umgangen. Der Flight-Server streamt diese Batches an Clients, ohne das vollständige Ergebnis im Prozessspeicher von Provisa zu materialisieren. Für Trino stützt sich Arrow-Streaming auf den Zaychik-Proxy; für die Warehouse-Engines speist die eigene Arrow-native API der Engine (Cloud Fetch für Databricks, Storage Read API für BigQuery, `fetch_arrow_table` für DuckDB und Snowflake) den Flight-Stream.
+ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric und Synapse bewerben alle `EngineCapability.ARROW` und `EngineCapability.ARROW_STREAM`. Abfragen gegen diese Engines geben Arrow-RecordBatches direkt zurück; der Zeilen-Serialisierungspfad wird vollständig umgangen. Der Flight-Server streamt diese Batches an Clients, ohne das vollständige Ergebnis im Prozessspeicher von Provisa zu materialisieren. Für Trino stützt sich Arrow-Streaming auf den Zaychik-Proxy; für die Warehouse-Engines speist die eigene Arrow-native API der Engine (Cloud Fetch für Databricks, Storage Read API für BigQuery, `fetch_arrow_table` für DuckDB und Snowflake) den Flight-Stream.
 
 ### Externe Datenverknüpfungen (ATTACH) {: #external-data-links-attach }
 
-Jede Warehouse-Engine kann Cloud-Objekt-/Lake-Daten vor Ort scannen, ohne eine Kopie zu landen. Parquet-, CSV-, Iceberg- und Delta-Lake-Dateien auf S3, GCS oder OneLake werden der Engine direkt angehängt, als wären sie native Tabellen. Die Strategie — ATTACH (vor Ort scannen) oder LAND (in den Store kopieren) — wird durch den deklarierten `Mechanism` des Connectors bestimmt; im Planner existiert kein Engine-spezifisches Branching. Ein `Mechanism.ATTACH_R`-Connector löst einen Zero-Copy-Scan aus; ein `Mechanism.DIRECT`- oder fehlender Connector löst ein Landen aus.
+Jede Warehouse-Engine kann Cloud-Objekt-/Lake-Daten vor Ort scannen, ohne eine Kopie zu landen. Parquet-, CSV-, Iceberg- und Delta-Lake-Dateien auf S3, GCS oder OneLake werden der Engine direkt angehängt, als wären sie native Tabellen. Die Strategie (ATTACH (vor Ort scannen) oder LAND (in den Store kopieren)) wird durch den deklarierten `Mechanism` des Connectors bestimmt; im Planner existiert kein Engine-spezifisches Branching. Ein `Mechanism.ATTACH_R`-Connector löst einen Zero-Copy-Scan aus; ein `Mechanism.DIRECT`- oder fehlender Connector löst ein Landen aus.
 
 Attach stellt alle Voraussetzungen zur Attach-Zeit automatisch bereit:
 

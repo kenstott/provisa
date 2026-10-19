@@ -1133,7 +1133,7 @@ DSN 在被接受之前会先针对联邦引擎校验，所以不可用的 DSN �
 
 用于所有管理操作的 Strawberry GraphQL 端点：数据源和表的增删改查、关系管理、域配置、行级安全规则、缓存控制、命名约定、计划任务管理和查询编译。
 
-完整的架构参考——每一个 Query 字段、Mutation 字段以及输入/输出类型——请参见[管理 GraphQL API 参考](admin-graphql.md)。
+完整的架构参考（每一个 Query 字段、Mutation 字段以及输入/输出类型）请参见[管理 GraphQL API 参考](admin-graphql.md)。
 
 **关键变更：**
 
@@ -1444,7 +1444,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 
 **`POST /admin/glossary/relationships/generate`**
 
-将完整的术语列表连同一段说明十种允许边类型（`KIND_OF`、`PART_OF`、`SYNONYM_OF`、`RELATED_TO`、`VALID_VALUE_OF`、`DERIVED_FROM`、`REPLACES`、`PREFERRED_TERM_FOR`、`TRANSLATION_OF`、`ANTONYM_OF`）的提示词发送给组织的 AI 模型，并要求只给出有把握的提案。模型返回一个 JSON 数组；每一条在写入前都会被校验：未知的术语名、自环边以及封闭枚举之外的边类型会被静默丢弃。有效提案会被幂等地更新插入（upsert）——重复运行该操作不会产生重复的边。一次发布通知覆盖整个批次。当术语表中未弃用的术语少于两个时，端点会立即返回 `{"added": 0}`。
+将完整的术语列表连同一段说明十种允许边类型（`KIND_OF`、`PART_OF`、`SYNONYM_OF`、`RELATED_TO`、`VALID_VALUE_OF`、`DERIVED_FROM`、`REPLACES`、`PREFERRED_TERM_FOR`、`TRANSLATION_OF`、`ANTONYM_OF`）的提示词发送给组织的 AI 模型，并要求只给出有把握的提案。模型返回一个 JSON 数组；每一条在写入前都会被校验：未知的术语名、自环边以及封闭枚举之外的边类型会被静默丢弃。有效提案会被幂等地更新插入（upsert）。重复运行该操作不会产生重复的边。一次发布通知覆盖整个批次。当术语表中未弃用的术语少于两个时，端点会立即返回 `{"added": 0}`。
 
 响应：
 
@@ -1494,10 +1494,10 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 
 导出应用与快照其余部分相同的过滤规则：
 
-- 标记为 `export_excluded` 的术语会被彻底排除——无论其物理引用、抽象状态，或组织的目录是否已配置。
+- 标记为 `export_excluded` 的术语会被彻底排除，无论其物理引用、抽象状态，或组织的目录是否已配置。
 - 只有当一个有根术语的至少一个物理引用属于同时通过**数据产品**过滤（表的 `data_product` 标志必须为 `true`）和**技术**列过滤（标记为 `technical` 的列被排除）的列时，该术语才会发布。
 - 一个所有引用都被这些过滤规则排除的有根术语，也随之被排除。
-- 抽象术语无条件发布——它们是用户词汇，不绑定到物理列。
+- 抽象术语无条件发布：它们是用户词汇，不绑定到物理列。
 - 两个术语之间的边只有在两端术语都发布时才会发布。
 
 每个供应商适配器都以原生方式发布术语图，写入一个归 Provisa 所有、以幂等方式创建的术语表容器，从不写入已有的目录术语表：
@@ -1573,7 +1573,7 @@ mutation {
 }
 ```
 
-`create_data_product` 执行更新插入（upsert）——以已存在的 `id` 调用会更新该记录。需要 `data_product_rw`。
+`create_data_product` 执行更新插入（upsert）：以已存在的 `id` 调用会更新该记录。需要 `data_product_rw`。
 
 **删除：**
 

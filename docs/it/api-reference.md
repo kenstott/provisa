@@ -1133,7 +1133,7 @@ Tutti gli endpoint sono sotto `/admin/invites`.
 
 Endpoint GraphQL Strawberry per tutte le operazioni admin: CRUD di origini dati e tabelle, gestione delle relazioni, configurazione dei domini, regole RLS, controllo cache, convenzioni di denominazione, gestione dei task pianificati e compilazione delle query.
 
-Per il riferimento completo dello schema — ogni campo Query, campo Mutation e tipo di input/output — vedere [Admin GraphQL API Reference](admin-graphql.md).
+Per il riferimento completo dello schema (ogni campo Query, campo Mutation e tipo di input/output) vedere [Admin GraphQL API Reference](admin-graphql.md).
 
 **Mutation chiave:**
 
@@ -1444,7 +1444,7 @@ Risposta:
 
 **`POST /admin/glossary/relationships/generate`**
 
-Invia l'elenco completo dei termini al modello IA dell'org con un prompt che specifica i dieci tipi di arco consentiti (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) e chiede solo proposte con alta confidenza. Il modello risponde con un array JSON; ogni voce viene validata prima di qualsiasi scrittura: nomi di termine sconosciuti, auto-archi e tipi di arco fuori dall'enum chiuso vengono scartati silenziosamente. Le proposte valide vengono upsertate in modo idempotente — rieseguire l'azione non duplica gli archi. Una singola notifica di pubblicazione copre il batch. L'endpoint restituisce `{"added": 0}` immediatamente quando il glossario contiene meno di due termini non deprecati.
+Invia l'elenco completo dei termini al modello IA dell'org con un prompt che specifica i dieci tipi di arco consentiti (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) e chiede solo proposte con alta confidenza. Il modello risponde con un array JSON; ogni voce viene validata prima di qualsiasi scrittura: nomi di termine sconosciuti, auto-archi e tipi di arco fuori dall'enum chiuso vengono scartati silenziosamente. Le proposte valide vengono upsertate in modo idempotente. Rieseguire l'azione non duplica gli archi. Una singola notifica di pubblicazione copre il batch. L'endpoint restituisce `{"added": 0}` immediatamente quando il glossario contiene meno di due termini non deprecati.
 
 Risposta:
 
@@ -1494,10 +1494,10 @@ Il grafo dei termini del glossario è incluso in ogni `MetadataSnapshot` costrui
 
 L'export applica gli stessi filtri del resto dello snapshot:
 
-- Un termine contrassegnato `export_excluded` viene trattenuto del tutto — indipendentemente dai suoi riferimenti fisici, dal suo stato astratto, o dal fatto che il catalogo dell'org sia configurato.
+- Un termine contrassegnato `export_excluded` viene trattenuto del tutto, indipendentemente dai suoi riferimenti fisici, dal suo stato astratto, o dal fatto che il catalogo dell'org sia configurato.
 - Un termine radicato viene pubblicato solo quando almeno uno dei suoi riferimenti fisici appartiene a una colonna che supera sia il filtro **Data Product** (il flag `data_product` della tabella deve essere `true`) sia il filtro colonna **technical** (le colonne taggate `technical` vengono trattenute).
 - Un termine radicato i cui riferimenti sono tutti trattenuti da quei filtri viene trattenuto con essi.
-- I termini astratti vengono pubblicati incondizionatamente — sono vocabolario utente, non vincolato a colonne fisiche.
+- I termini astratti vengono pubblicati incondizionatamente: sono vocabolario utente, non vincolato a colonne fisiche.
 - Un arco tra due termini viene pubblicato solo quando entrambi i termini endpoint vengono pubblicati.
 
 Ogni adattatore del fornitore pubblica il grafo dei termini in modo nativo, in un contenitore di glossario di proprietà di Provisa che crea in modo idempotente, mai in un glossario di catalogo esistente:
@@ -1573,7 +1573,7 @@ mutation {
 }
 ```
 
-`create_data_product` fa upsert — chiamarla con un `id` esistente aggiorna il record. Richiede `data_product_rw`.
+`create_data_product` fa upsert: chiamarla con un `id` esistente aggiorna il record. Richiede `data_product_rw`.
 
 **Elimina:**
 

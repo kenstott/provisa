@@ -1133,7 +1133,7 @@ Alle Endpunkte liegen unter `/admin/invites`.
 
 Strawberry-GraphQL-Endpunkt für alle Admin-Operationen: Quellen- und Tabellen-CRUD, Beziehungsverwaltung, Domänenkonfiguration, RLS-Regeln, Cache-Steuerung, Namenskonventionen, Verwaltung geplanter Tasks und Abfragekompilierung.
 
-Die vollständige Schemareferenz — jedes Query-Feld, Mutation-Feld und jeder Input-/Output-Typ — finden Sie in der [Admin-GraphQL-API-Referenz](admin-graphql.md).
+Die vollständige Schemareferenz (jedes Query-Feld, Mutation-Feld und jeder Input-/Output-Typ) finden Sie in der [Admin-GraphQL-API-Referenz](admin-graphql.md).
 
 **Schlüssel-Mutationen:**
 
@@ -1444,7 +1444,7 @@ Antwort:
 
 **`POST /admin/glossary/relationships/generate`**
 
-Sendet die vollständige Begriffsliste an das KI-Modell der Org mit einem Prompt, der die zehn erlaubten Kantentypen (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) spezifiziert und nur um sichere Vorschläge bittet. Das Modell antwortet mit einem JSON-Array; jeder Eintrag wird vor jedem Schreibvorgang validiert: unbekannte Begriffsnamen, Selbstkanten und Kantentypen außerhalb des geschlossenen Enums werden stillschweigend verworfen. Gültige Vorschläge werden idempotent upserted — ein erneuter Aufruf der Aktion dupliziert keine Kanten. Eine einzige Veröffentlichungsbenachrichtigung deckt den Batch ab. Der Endpunkt gibt sofort `{"added": 0}` zurück, wenn das Glossar weniger als zwei nicht veraltete Begriffe enthält.
+Sendet die vollständige Begriffsliste an das KI-Modell der Org mit einem Prompt, der die zehn erlaubten Kantentypen (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) spezifiziert und nur um sichere Vorschläge bittet. Das Modell antwortet mit einem JSON-Array; jeder Eintrag wird vor jedem Schreibvorgang validiert: unbekannte Begriffsnamen, Selbstkanten und Kantentypen außerhalb des geschlossenen Enums werden stillschweigend verworfen. Gültige Vorschläge werden idempotent upserted. Ein erneuter Aufruf der Aktion dupliziert keine Kanten. Eine einzige Veröffentlichungsbenachrichtigung deckt den Batch ab. Der Endpunkt gibt sofort `{"added": 0}` zurück, wenn das Glossar weniger als zwei nicht veraltete Begriffe enthält.
 
 Antwort:
 
@@ -1494,10 +1494,10 @@ Der Begriffsgraph des Glossars ist in jedem von `build_snapshot` erstellten `Met
 
 Der Export wendet dieselben Filter wie der Rest des Snapshots an:
 
-- Ein als `export_excluded` markierter Begriff wird vollständig zurückgehalten — unabhängig von seinen physischen Referenzen, seinem abstrakten Status oder ob der Katalog der Org konfiguriert ist.
+- Ein als `export_excluded` markierter Begriff wird vollständig zurückgehalten, unabhängig von seinen physischen Referenzen, seinem abstrakten Status oder ob der Katalog der Org konfiguriert ist.
 - Ein verwurzelter Begriff wird nur veröffentlicht, wenn mindestens eine seiner physischen Referenzen zu einer Spalte gehört, die sowohl den **Data-Product**-Filter (das `data_product`-Flag der Tabelle muss `true` sein) als auch den technischen Spaltenfilter (Spalten mit dem Tag `technical` werden zurückgehalten) besteht.
 - Ein verwurzelter Begriff, dessen Referenzen alle durch diese Filter zurückgehalten werden, wird mit ihnen zurückgehalten.
-- Abstrakte Begriffe werden bedingungslos veröffentlicht — sie sind Benutzervokabular, nicht an physische Spalten gebunden.
+- Abstrakte Begriffe werden bedingungslos veröffentlicht: sie sind Benutzervokabular, nicht an physische Spalten gebunden.
 - Eine Kante zwischen zwei Begriffen wird nur veröffentlicht, wenn beide Endpunkt-Begriffe veröffentlicht werden.
 
 Jeder Anbieter-Adapter veröffentlicht den Begriffsgraphen nativ, in einen Glossar-Container, der Provisa gehört und den es idempotent anlegt, nie in ein bestehendes Katalogglossar:
@@ -1573,7 +1573,7 @@ mutation {
 }
 ```
 
-`create_data_product` führt einen Upsert durch — der Aufruf mit einer bestehenden `id` aktualisiert den Datensatz. Erfordert `data_product_rw`.
+`create_data_product` führt einen Upsert durch: der Aufruf mit einer bestehenden `id` aktualisiert den Datensatz. Erfordert `data_product_rw`.
 
 **Löschen:**
 

@@ -80,7 +80,7 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 
 ### PostgreSQL 線路協定 / pgwire（可設定連接埠） {: #postgresql-wire-protocol-pgwire-configurable-port }
 
-使用 `buenavista` 程式庫，實作 PostgreSQL 前端/後端線路協定。任何相容 PostgreSQL 的用戶端——`psql`、DBeaver、搭配 `psycopg2` 的 SQLAlchemy、JDBC——都可以在不做任何修改的情況下連線。僅接受 SQL。完整的治理管線（RLS、遮罩、網域權限）同樣適用於 pgwire 連線。將 `PROVISA_PGWIRE_PORT` 設定為非零連接埠即可啟用。
+使用 `buenavista` 程式庫，實作 PostgreSQL 前端/後端線路協定。任何相容 PostgreSQL 的用戶端（`psql`、DBeaver、搭配 `psycopg2` 的 SQLAlchemy、JDBC）都可以在不做任何修改的情況下連線。僅接受 SQL。完整的治理管線（RLS、遮罩、網域權限）同樣適用於 pgwire 連線。將 `PROVISA_PGWIRE_PORT` 設定為非零連接埠即可啟用。
 
 ## 請求管線 {: #request-pipeline }
 
@@ -205,7 +205,7 @@ DuckDB 每個檔案只容許一個寫入者，所以 `store_connection.py` 經�
 
 ### Arrow 原生讀取傳輸 {: #arrow-native-read-transport }
 
-ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 及 Synapse 全部宣告支援 `EngineCapability.ARROW` 及 `EngineCapability.ARROW_STREAM`。針對這些引擎的查詢會直接傳回 Arrow RecordBatches——完全繞過資料列序列化路徑。Flight 伺服器會將這些批次串流給用戶端，而不會在 Provisa 的行程記憶體中具體化完整結果。對 Trino 而言，Arrow 串流依賴 Zaychik 代理伺服器；對數據倉庫引擎而言，則由該引擎自身原生的 Arrow API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 及 Snowflake 的 `fetch_arrow_table`）餵送 Flight 串流。
+ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 及 Synapse 全部宣告支援 `EngineCapability.ARROW` 及 `EngineCapability.ARROW_STREAM`。針對這些引擎的查詢會直接傳回 Arrow RecordBatches；完全繞過資料列序列化路徑。Flight 伺服器會將這些批次串流給用戶端，而不會在 Provisa 的行程記憶體中具體化完整結果。對 Trino 而言，Arrow 串流依賴 Zaychik 代理伺服器；對數據倉庫引擎而言，則由該引擎自身原生的 Arrow API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 及 Snowflake 的 `fetch_arrow_table`）餵送 Flight 串流。
 
 ### 外部數據連結（ATTACH） {: #external-data-links-attach }
 
@@ -647,7 +647,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## GraphQL Voyager 結構描述瀏覽器 {: #graphql-voyager-schema-explorer }
 
-管理介面（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌了 GraphQL Voyager，作為互動式的結構描述視覺化工具。它把按角色限定的結構描述繪製成可供探索的實體關係圖，資料表是節點，關係是邊。顯示的結構描述一律按目前選取的角色篩選。
+管理介面（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌了 GraphQL Voyager，作為互動式的結構描述視覺化工具。它把按角色限定的結構描述繪製成可平移、縮放及點擊瀏覽的實體關係圖，資料表是節點，關係是邊。顯示的結構描述一律按目前選取的角色篩選。
 
 ## 安全強制執行順序 {: #security-enforcement-order }
 
