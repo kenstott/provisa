@@ -10,7 +10,7 @@
 # The Start here demo: the standard demo (config/provisa-install.yaml) on its own two SQLite files
 # -- the pet store and its inquiries -- with the quality checkers and profiler, the derived pet
 # dimension and inquiry fact, the metric and the Pet Health data product: the objects every Deep
-# Dive is told with. Its data is the standard demo's own (data/ links demo/files). The folder is
+# Dive is told with. Its data is the standard demo's own (files/ links demo/files). The folder is
 # named by PROVISA_NAMED_DEMO_DIR.
 auth:
   assignments_source: provisa
@@ -81,12 +81,12 @@ sources:
 - description: Customer adoption inquiry records — prospective pet owner interest submissions tracked
     by the front-desk team, including inquiry type, message, and resolution status
   id: inquiries-sqlite
-  path: ${env:PROVISA_NAMED_DEMO_DIR}/data/inquiries.sqlite
+  path: ${env:PROVISA_NAMED_DEMO_DIR}/files/inquiries.sqlite
   type: sqlite
 - description: Internal pet store inventory — tracks animals available for sale, pricing, species, and
     breed assignments managed by the inventory department
   id: pet-store-sqlite
-  path: ${env:PROVISA_NAMED_DEMO_DIR}/data/pet_store.sqlite
+  path: ${env:PROVISA_NAMED_DEMO_DIR}/files/pet_store.sqlite
   type: sqlite
 tables:
 - columns:

@@ -11,7 +11,7 @@
 """The Start here demo is the standard demo's own objects (REQ-2006).
 
 demo/named/starthere is the standard demo (config/provisa-install.yaml) on its two SQLite files:
-its data/ links the standard demo's files, and every object its config holds is the standard
+its files/ links the standard demo's files, and every object its config holds is the standard
 config's object of the same id, each one over those sources held, so a change to the standard demo
 that is not made here fails."""
 
@@ -50,8 +50,8 @@ def test_its_sources_are_the_standard_demo_s_on_the_same_files():
             assert source == standard[sid]
             continue
         name = standard[sid]["path"].rsplit("/", 1)[1]
-        assert source == {**standard[sid], "path": f"${{env:PROVISA_NAMED_DEMO_DIR}}/data/{name}"}
-        assert (_HOME / "data" / name).resolve() == (_REPO / "demo" / "files" / name).resolve()
+        assert source == {**standard[sid], "path": f"${{env:PROVISA_NAMED_DEMO_DIR}}/files/{name}"}
+        assert (_HOME / "files" / name).resolve() == (_REPO / "demo" / "files" / name).resolve()
 
 
 def test_it_holds_every_standard_table_and_relationship_over_those_sources():

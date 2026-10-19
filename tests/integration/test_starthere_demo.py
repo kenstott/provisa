@@ -59,7 +59,7 @@ ANSWER_SQL = (
 
 @pytest.fixture(scope="module")
 def home(tmp_path_factory) -> Path:
-    """A copy of the demo's directory, its data/ links followed: the server reads its own files."""
+    """A copy of the demo's directory, its files/ links followed: the server reads its own files."""
     copy = tmp_path_factory.mktemp("starthere_demo") / "starthere"
     shutil.copytree(_DEMO, copy)
     return copy
