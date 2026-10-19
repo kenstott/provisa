@@ -938,7 +938,7 @@
       },
       "agricultureNotebook": {
         "title": "Wie viel erklärt das Wetter?",
-        "description": "Das Notebook der Demo, in Ihrem Browser ausgeführt: jede County-Saison als analyst in pandas gelesen, die Schadenquote mit dem Regen der Saison, ihren Tagen über 32 °C und dem Anteil der Marktschäden durch Dürre und Hitze korreliert, eine Regression darauf angepasst und das Diagramm. Es zeigt, wie viel der Schadenquote das Wetter erklärt, was jede Größe beiträgt und welche Schadenquote eine Saison wie 2012 über den heutigen Bestand erwarten lässt."
+        "description": "Das Notebook der Demo, in Ihrem Browser ausgeführt: jede County-Saison als analyst in pandas gelesen, die Schadenquote mit dem Regen der Saison, ihren Tagen über 32 °C und dem Anteil der Marktschäden durch Dürre und Hitze korreliert, eine Regression darauf angepasst und das Diagramm. Das Wetter erklärt 54 % der Schwankung der Schadenquote. Je 10 Tage über 32 °C kommen 20 Punkte Schadenquote hinzu, 100 mm weniger Regen 7 und 10 Punkte mehr der Marktschäden durch Dürre und Hitze 9. Über den heutigen Bestand lässt eine Saison wie 2012 eine Schadenquote von 1,75 erwarten."
       },
       "agricultureRest": {
         "title": "Nach Jahr über REST",
@@ -946,7 +946,7 @@
       },
       "agricultureRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Sie haben die eigenen Daten des Versicherers gesehen, live gelesen und nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, die einmal gelandet wurden, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST. Das Notebook misst es: wie viel der Schadenquote das Wetter erklärt und was ein trockenes Jahr voraussichtlich kostet."
+        "description": "Sie haben die eigenen Daten des Versicherers gesehen, live gelesen und nach County und Erntejahr mit öffentlichen Schäden, Wetter- und Ertragsdaten abgeglichen, die einmal gelandet wurden, alles in einem regulierten Modell. Eine View beantwortet, ob das Wetter die Schäden erklärt, in SQL, GraphQL und REST. Das Notebook misst es: Das Wetter erklärt 54 % der Schwankung der Schadenquote, und über den heutigen Bestand lässt eine Saison wie 2012 eine Schadenquote von 1,75 erwarten."
       },
       "retailScenario": {
         "title": "Ein Konzern, zwei Regionen",

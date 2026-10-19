@@ -938,7 +938,7 @@
       },
       "agricultureNotebook": {
         "title": "Hoeveel verklaart het weer?",
-        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek. Het laat zien hoeveel van de schadequote het weer verklaart, wat elke maat toevoegt en welke schadequote een seizoen als 2012 over de huidige portefeuille naar verwachting brengt."
+        "description": "Het notebook van de demo, uitgevoerd in je browser: elk countyseizoen als analyst in pandas gelezen, de schadequote gecorreleerd met de regen van het seizoen, de dagen boven 32 °C en het aandeel van de marktschade door droogte en hitte, een regressie daarop gefit en de grafiek. Het weer verklaart 54% van de variatie in de schadequote. Elke 10 dagen boven 32 °C voegen 20 punten schadequote toe, 100 mm minder regen voegt er 7 toe en 10 punten meer van de marktschade door droogte en hitte voegen er 9 toe. Over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
       },
       "agricultureRest": {
         "title": "Per jaar via REST",
@@ -946,7 +946,7 @@
       },
       "agricultureRecap": {
         "title": "Wat u zag",
-        "description": "U zag de eigen data van de verzekeraar, live gelezen en per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata die één keer is geland, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: hoeveel van de schadequote het weer verklaart, en wat een droog jaar naar verwachting kost."
+        "description": "U zag de eigen data van de verzekeraar, live gelezen en per county en oogstjaar afgestemd op openbare schade-, weer- en opbrengstdata die één keer is geland, allemaal in één beheerd model. Eén view beantwoordt of het weer de schade verklaart, in SQL, GraphQL en REST. Het notebook meet het: het weer verklaart 54% van de variatie in de schadequote, en over de huidige portefeuille heeft een seizoen als 2012 een verwachte schadequote van 1,75."
       },
       "retailScenario": {
         "title": "Eén concern, twee regio's",
