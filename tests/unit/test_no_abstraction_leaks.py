@@ -57,6 +57,10 @@ OWNERS: dict[str, set[str]] = {
         # REQ-2068: a scratch in-memory DuckDB ATTACHes a regions demo's seed file and a region's
         # PostgreSQL store and copies tables between them -- no engine, no org, no query path.
         "provisa/api/demo_region_seed.py",
+        # REQ-2091: a scratch in-memory DuckDB with the fake functions computes a sample's fakes
+        # by the faked projection, beside its real values, for the leak-rate check -- no engine,
+        # no store, nothing leaves the process.
+        "provisa/fakes/adequacy.py",
     },
     "trino": {
         "provisa/federation/trino_types.py",  # REQ-1678: the connection/exception alias leaf

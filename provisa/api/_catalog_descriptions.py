@@ -51,6 +51,9 @@ _META: dict[str, str] = {
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
+    # REQ-2091
+    "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
+    "rule it declares, and the latest adequacy checks on them",
     # REQ-1584: the business glossary as queryable metadata.
     "glossary_terms": "The business vocabulary — one row per term, with the ref count and the "
     "live flag the export's admission rule computes",
@@ -320,6 +323,34 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "status": "expired when the end date has passed, expiring while it is still ahead",
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged "
         "column",  # REQ-1585
+        "tenant_id": _TENANT,
+    },
+    # REQ-2091
+    "sensitive_coverage": {
+        "column_key": "Synthesized column identity (table_id:column_name) of the column",
+        "table_id": "Table the column belongs to",
+        "table_name": "Name of that table",
+        "domain_id": "Domain the table is governed under",
+        "column_name": "The sensitive column",
+        "tags": "The sensitive tags the column carries, comma-separated",
+        "has_fake": "True when the column declares a fake",
+        "has_synthetic_rule": "True when the column declares a synthetic rule",
+        "fake": "The fake as declared: its kind and parameters",
+        "fake_kind": "The kind of fake (a method such as email, or hash, truncate, sql, ...)",
+        "fake_deterministic": "True for every fake: one real value always gives one fake",
+        "fake_stable": "True when the fake is also the same on every engine",
+        "fake_derives_from_real": "True when the fake is computed from the real value itself "
+        "(truncate, prefix, bucket, hash, encrypt, a relative or sql fake)",
+        "synthetic_rule": "The synthetic rule as declared: the statement generation uses",
+        "status": "covered, no_fake, or inadequate (a fake or rule failed an adequacy check)",
+        "reason": "Why the column is not covered: no fake, or each failed check and its finding",
+        "leak_rate": "Latest leak-rate check: the share of sampled values faked as themselves",
+        "leak_rate_status": "passed, failed or not_run",
+        "kind_mismatch_status": "Latest kind check against the column's profiled plausible "
+        "type: passed, failed or not_run",
+        "copies_real_status": "Latest check that no fake or rule reads a sensitive column real: "
+        "passed, failed or not_run",
+        "checked_at": "When the latest adequacy check of the column ran",
         "tenant_id": _TENANT,
     },
     "derived_tags": {

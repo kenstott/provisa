@@ -848,6 +848,12 @@
         "label": "Plancher de disponibilité",
         "help": "La part des requêtes d'une organisation sur la dernière heure qui doit réussir. En dessous, une violation de disponibilité est ouverte et conservée dans le journal des violations du niveau de service jusqu'au rétablissement de la disponibilité."
       }
+    },
+    "fakes": {
+      "leak_rate_threshold": {
+        "label": "Seuil de taux de fuite des valeurs fictives",
+        "help": "La part des valeurs échantillonnées d'une colonne sensible que sa valeur fictive peut laisser égales à la valeur réelle avant que la vérification du taux de fuite ne la marque comme inadéquate. 0 fait échouer une valeur fictive qui laisse une valeur inchangée."
+      }
     }
   }
 }

@@ -848,6 +848,12 @@
         "label": "Availability floor",
         "help": "The share of an org's queries in the last hour that must succeed. Below it, an availability breach is opened and kept in the service-level breach log until availability recovers."
       }
+    },
+    "fakes": {
+      "leak_rate_threshold": {
+        "label": "Fake leak-rate threshold",
+        "help": "The share of a sensitive column's sampled values its fake may leave equal to the real value before the leak-rate check marks the fake inadequate. 0 fails a fake that leaves any value unchanged."
+      }
     }
   }
 }

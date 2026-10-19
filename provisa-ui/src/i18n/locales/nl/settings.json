@@ -848,6 +848,12 @@
         "label": "Minimale beschikbaarheid",
         "help": "Het aandeel van de queries van een organisatie in het laatste uur dat moet slagen. Daaronder wordt een beschikbaarheidsschending geopend en bijgehouden in het logboek van servicelevelschendingen tot de beschikbaarheid herstelt."
       }
+    },
+    "fakes": {
+      "leak_rate_threshold": {
+        "label": "Lekpercentagedrempel voor nepwaarden",
+        "help": "Het aandeel van de steekproefwaarden van een gevoelige kolom dat de nepwaarde gelijk aan de echte waarde mag laten voordat de lekpercentagecontrole haar als ontoereikend markeert. 0 laat een nepwaarde falen die een waarde ongewijzigd laat."
+      }
     }
   }
 }

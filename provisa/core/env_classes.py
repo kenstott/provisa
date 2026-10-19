@@ -159,6 +159,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "synthetic_source_bindings",
         # REQ-1942: how long its own generations took, in its own store.
         "synthetic_generations",
+        # REQ-2091: the adequacy checks run on its own fakes and rules, with their run times.
+        "fake_adequacy_checks",
     }
 )
 

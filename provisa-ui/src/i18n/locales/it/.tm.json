@@ -4513,6 +4513,8 @@
   "it/settings.json::settings.engine.trino_internal_subnet.label": "Engine network",
   "it/settings.json::settings.engine.trino_internal_tls.help": "Trino's coordinator and workers require HTTPS between them. Off by default: their traffic stays on the deployment's private network, authenticated by a shared secret. Turn it on where a compliance or zero-trust requirement asks for encryption inside the deployment; shuffle-heavy queries (joins, aggregations, window functions) run 10% to over 100% slower. Applies at the next start.",
   "it/settings.json::settings.engine.trino_internal_tls.label": "Encrypt traffic between engine nodes",
+  "it/settings.json::settings.fakes.leak_rate_threshold.help": "The share of a sensitive column's sampled values its fake may leave equal to the real value before the leak-rate check marks the fake inadequate. 0 fails a fake that leaves any value unchanged.",
+  "it/settings.json::settings.fakes.leak_rate_threshold.label": "Fake leak-rate threshold",
   "it/settings.json::settings.graphql_remote.max_list_depth.help": "How deep nested lists from a remote GraphQL source are followed.",
   "it/settings.json::settings.graphql_remote.max_list_depth.label": "Remote GraphQL list depth",
   "it/settings.json::settings.graphql_remote.max_list_items.help": "The most items read from one list of a remote GraphQL source.",

@@ -34,6 +34,9 @@ GOVERNANCE_META_COLUMNS: frozenset[str] = frozenset(
         "view_sql",
         "native_filter_type",
         "scope",
+        # REQ-2091: how a sensitive column is hidden, as its masks are.
+        "fake",
+        "synthetic_rule",
     }
 )
 

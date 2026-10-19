@@ -1916,6 +1916,7 @@ _META_TABLES = [
     "tag_param_values",  # REQ-1467: the closed value list a parameterized tag accepts
     "tag_expiry",  # REQ-1375: expiring/expired assignments report (view-only, like roles_domain_access)
     "derived_tags",  # REQ-1443: computed tags (fact/dimension/data_quality); view-only
+    "sensitive_coverage",  # REQ-2091: sensitive columns' fake coverage; view-only
     "glossary_terms",  # REQ-1584: the business vocabulary, with its admission rule as a column
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
     "glossary_term_edges",  # REQ-1584

@@ -130,3 +130,18 @@ async def propose_fakes(request: Request, body: ProposeIn) -> dict[str, Any]:
     pii = {c for c, tagged in tags.items() if "pii" in tagged}
     out = propose(run_id, facts, pii, declared)
     return {"runId": out.run_id, "columns": out.columns, "unmatchedPii": out.unmatched_pii}
+
+
+@router.post("/adequacy")
+async def check_adequacy(request: Request) -> dict[str, Any]:
+    """REQ-2091: run the adequacy checks on every sensitive column's fake and synthetic rule now,
+    as the daily schedule does. Answers how many checks passed, failed and did not run; the
+    findings are in the sensitive_coverage meta view."""
+    from provisa.core.request_context import current_env, require_current_org
+    from provisa.fakes.adequacy import run_org
+    from provisa.security.sensitive import SENSITIVE_DATA
+
+    require_capability_request(request, SENSITIVE_DATA)
+    if state.model_db is None:
+        raise ApiError(503, "fakes.database_unavailable", "Database unavailable")
+    return await run_org(state, require_current_org(), current_env.get())

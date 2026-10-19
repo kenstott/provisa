@@ -420,6 +420,10 @@ MCP 统计工具（`describe`、`correlate`、`regress`、`compare`、`forecast`
 
 限制智能体所能获知内容的是访问控制。要让身份信息不在智能体可及范围内，只向其角色授予不识别任何人的列；能读取某列的角色就能对其聚合，而对小分组的聚合仍可能识别出个人。
 
+## 敏感列覆盖 {: #sensitive-column-coverage }
+
+meta 域中的 `sensitive_coverage` 视图列出组织的每个敏感列，附上其声明的虚构值和合成规则，以及状态：`covered`、`no_fake`，或当 Provisa 的某项充分性检查未通过时为 `inadequate`。这些检查查找：让真实值保持不变的虚构值、种类与列中内容不符的虚构值，以及读取另一敏感列真实值的虚构值或规则。数据管家可在每个环境的详情中看到没有虚构值的列；在每个敏感列都有虚构值之前，Test (fake) 环境拒绝提供数据。检查和视图的说明见[构建测试环境](test-data.md#coverage-and-adequacy-checks)。
+
 ## 速率限制 {: #rate-limiting }
 
 按角色的限制在 `provisa.yaml` 中设置：每秒请求数、并发 SSE 订阅数和并发 Arrow Flight 流数。它们在 API 层检查，早于任何编译或执行；超出限制的请求会收到 HTTP 429 和 `Retry-After` 响应头。

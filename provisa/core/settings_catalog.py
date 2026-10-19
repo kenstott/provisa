@@ -554,6 +554,18 @@ DECLARED: list[Setting] = [
         secret=True,
         guard="confirm",
     ),
+    # REQ-2091: the share of a sensitive column's sampled values its fake may leave unchanged before
+    # the leak-rate adequacy check fails it.
+    Setting(
+        key="fakes.leak_rate_threshold",
+        card="security",
+        type="float",
+        effect="live",  # read on every check run
+        req="REQ-2091",
+        default=0.001,
+        min=0.0,
+        max=1.0,
+    ),
     # REQ-1393: the failed-login brake is on without configuration. Five attempts is above any
     # plausible typo count; a fifteen-minute lockout costs a guesser three orders of magnitude.
     Setting(

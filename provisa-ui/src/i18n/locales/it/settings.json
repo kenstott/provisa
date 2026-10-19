@@ -848,6 +848,12 @@
         "label": "Soglia minima di disponibilità",
         "help": "La quota di query di un'organizzazione nell'ultima ora che deve riuscire. Al di sotto, viene aperta una violazione di disponibilità, conservata nel registro delle violazioni del livello di servizio finché la disponibilità non si ripristina."
       }
+    },
+    "fakes": {
+      "leak_rate_threshold": {
+        "label": "Soglia del tasso di fuga dei valori fittizi",
+        "help": "La quota dei valori campionati di una colonna sensibile che il suo valore fittizio può lasciare uguali al valore reale prima che il controllo del tasso di fuga lo segni come inadeguato. 0 fa fallire un valore fittizio che lascia invariato qualsiasi valore."
+      }
     }
   }
 }

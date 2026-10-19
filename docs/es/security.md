@@ -420,6 +420,10 @@ Las herramientas de estadística MCP (`describe`, `correlate`, `regress`, `compa
 
 El control de acceso es lo que limita lo que un agente puede saber. Para mantener las identidades fuera del alcance de un agente, conceda a su rol solo las columnas que no identifican a nadie; un rol que puede leer una columna puede agregarla, y los agregados sobre grupos pequeños aún pueden identificar a personas.
 
+## Cobertura de columnas sensibles {: #sensitive-column-coverage }
+
+La vista `sensitive_coverage` del dominio meta enumera cada columna sensible de la organización con el valor ficticio y la regla sintética que declara y un estado: `covered`, `no_fake` o `inadequate` cuando falló una de las comprobaciones de adecuación de Provisa. Las comprobaciones buscan un valor ficticio que deja sin cambiar los valores reales, un valor ficticio cuyo tipo no encaja con lo que contiene la columna, y un valor ficticio o una regla que lee el valor real de otra columna sensible. Un responsable de datos ve las columnas sin valor ficticio en el detalle de cada entorno, y un entorno Test (fake) se niega a servir datos hasta que cada columna sensible tenga uno. Las comprobaciones y la vista se describen en [Crear entornos de prueba](test-data.md#coverage-and-adequacy-checks).
+
 ## Limitación de tasa {: #rate-limiting }
 
 Los límites por rol se fijan en `provisa.yaml`: peticiones por segundo, suscripciones SSE simultáneas y flujos de Arrow Flight simultáneos. Se comprueban en la API, antes de compilar o ejecutar nada, y una petición que supera el límite recibe HTTP 429 con una cabecera `Retry-After`.

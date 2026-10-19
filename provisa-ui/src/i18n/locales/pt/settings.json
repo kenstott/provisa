@@ -848,6 +848,12 @@
         "label": "Piso de disponibilidade",
         "help": "A parcela das consultas de uma organização na última hora que deve ter sucesso. Abaixo disso, uma violação de disponibilidade é aberta e mantida no registro de violações do nível de serviço até a disponibilidade se recuperar."
       }
+    },
+    "fakes": {
+      "leak_rate_threshold": {
+        "label": "Limite da taxa de vazamento dos valores fictícios",
+        "help": "A fração dos valores amostrados de uma coluna sensível que o valor fictício pode deixar igual ao valor real antes que a verificação da taxa de vazamento o marque como inadequado. 0 reprova um valor fictício que deixa qualquer valor inalterado."
+      }
     }
   }
 }
