@@ -180,7 +180,7 @@ A MotherDuck source is served by the DuckDB and Postgres engines only. No other 
 
 ### Data Lake / Open Table Formats
 
-These source types are federation-only — no direct driver, no dialect.
+These source types are federation-only. They have no direct driver and no dialect.
 
 | Source Type | Connector Name | Time Travel | Notes |
 | ------------ | ----------------- | ------------- | ------- |
@@ -525,7 +525,7 @@ SharePoint lists are enumerated as schemas and exposed as queryable tables. Two 
 | `mapping.certificate_path` | `certificate-path` | PFX path when `auth_type: CERTIFICATE` — must be ABSOLUTE |
 | `mapping.certificate_password` | `certificate-password` | PFX password — the key must be present, empty string for a password-less PFX |
 
-Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built. `certificate_path` must be absolute: the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string — the Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field.
+Certificate auth on the non-Trino engines carries two extra rules, both enforced when the Calcite pgwire server's `model.json` operand is built. `certificate_path` must be absolute: the server runs with its bundle directory as the working directory, so a relative path resolves inside the runtime-deps cache and the PFX is not found. `certificate_password` must be present in `mapping` even when the PFX has no password, in which case it is the empty string. The Calcite adapter rejects a null password outright, and an absent key is treated as a config error rather than silently read as an empty password. A missing or relative value raises `MissingConnectorConfig` naming the field.
 
 When the connector does not expose `information_schema.columns`, register the table with explicit column definitions (obtained from the Microsoft Graph API) via the `registerTable` mutation.
 
@@ -829,7 +829,7 @@ Register any HTTP endpoint as a queryable table.
 
 API responses are fetched, cached in PostgreSQL (configurable TTL), and exposed as GraphQL types. Cached tables participate in federated queries like any other source.
 
-**JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable. Sub-field access uses `->>` extraction in SQL. Relationships are declared between tables using scalar FK columns — JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed.
+**JSONB rules**: Complex columns (objects, arrays) stored as JSONB are not filterable. Sub-field access uses `->>` extraction in SQL. Relationships are declared between tables using scalar FK columns. JSONB blob columns are not join targets. Use JSONB promotion to convert nested fields into native scalar columns when filtering or joining on them is needed.
 
 #### GitHub and GitLab
 
@@ -1056,7 +1056,7 @@ An operator can give the native federation engines (Postgres, DuckDB and ClickHo
 
 This gives the native engines, which run without a cluster, the same config-driven extensibility the Trino engine has at its own layer. There, one generic JDBC connector is parametrized per source type, each type gets a catalog `.properties` body, and Provisa adds its own Trino connector plugins (Splunk, SharePoint, Calcite).
 
-The file ships empty. The built-in connectors cover what works out of the box, and everything in this file is written by the operator. To use a different path, for example in tests, set `PROVISA_CUSTOM_CONNECTORS`.
+The file ships empty. The built-in connectors cover the sources that work with no extra setup, and everything in this file is written by the operator. To use a different path, for example in tests, set `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Descriptor kinds
 
@@ -1069,11 +1069,11 @@ The file ships empty. The built-in connectors cover what works out of the box, a
 | `clickhouse` | `clickhouse_table` | per-table `CREATE TABLE ENGINE=…` (columns from the registry) | `ch_engine`, `engine_template` (may carry `{table}`) |
 | `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse infers the schema | `ch_engine`, `engine_template` |
 
-**Postgres is generic.** SQL/MED is an ISO standard, so every conforming FDW shares the same DDL shape: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, optional `CREATE USER MAPPING`, then either `IMPORT FOREIGN SCHEMA` (when `supports_import: true`) or an explicit `CREATE FOREIGN TABLE` per table (when `false`). A `pg_fdw` descriptor supplies only the per-FDW variance — extension name, server option keys, user-mapping keys, import flag, table options. Any standard-conforming FDW is therefore drivable from config alone.
+**Postgres is generic.** SQL/MED is an ISO standard, so every conforming FDW shares the same DDL shape: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, optional `CREATE USER MAPPING`, then either `IMPORT FOREIGN SCHEMA` (when `supports_import: true`) or an explicit `CREATE FOREIGN TABLE` per table (when `false`). A `pg_fdw` descriptor supplies only the per-FDW variance: extension name, server option keys, user-mapping keys, import flag, table options. Any standard-conforming FDW is therefore drivable from config alone.
 
 **DuckDB supports two mechanisms.** An extension exposing a catalog via ATTACH uses `duckdb_attach`; one exposing a read table-function uses `duckdb_scan`. An extension fitting neither pattern is not supported.
 
-**ClickHouse supports three mechanisms**, one per integration-engine shape: a relational DATABASE engine that auto-exposes every remote table (`clickhouse_database`, e.g. Redis/MySQL), a per-table engine whose columns the registry supplies (`clickhouse_table`, e.g. the JDBC/ODBC bridge — the `engine_template` may carry a `{table}` placeholder the runtime binds), and a file/lake/URL engine whose schema ClickHouse infers (`clickhouse_scan`, e.g. HDFS/URL). SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) ship OOTB.
+**ClickHouse supports three mechanisms**, one per integration-engine shape: a relational DATABASE engine that auto-exposes every remote table (`clickhouse_database`, e.g. Redis/MySQL), a per-table engine whose columns the registry supplies (`clickhouse_table`, e.g. the JDBC/ODBC bridge; the `engine_template` may carry a `{table}` placeholder the runtime binds), and a file/lake/URL engine whose schema ClickHouse infers (`clickhouse_scan`, e.g. HDFS/URL). SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) ship OOTB.
 
 An unknown `kind` value fails loudly at startup, so a typo in a descriptor never quietly leaves a source type unreachable.
 ### Probe gating
@@ -1603,7 +1603,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-Both connectors use the API source cache pipeline — results are stored in PostgreSQL with configurable TTL, making them available for cross-source federated JOINs.
+Both connectors use the API source cache pipeline. Results are stored in PostgreSQL with configurable TTL, making them available for cross-source federated JOINs.
 
 ---
 

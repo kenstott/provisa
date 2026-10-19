@@ -177,7 +177,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 | `pinot` | — | pinot | — | 否 | Trino `pinot` 連接器；`pinot.controller-urls` = Pinot 控制器的 host:port |
 
 ### 數據湖／開放表格式 {: #data-lake-open-table-formats }
-這些數據來源類型僅供聯邦使用——沒有直接驅動程式，沒有方言。
+這些數據來源類型僅供聯邦使用。它們沒有直接驅動程式，亦沒有方言。
 
 | 數據來源類型 | 連接器名稱 | 時間旅行 | 備註 |
 | ------------ | ----------------- | ------------- | ------- |
@@ -517,7 +517,7 @@ SharePoint 清單被列舉為結構描述，並以可查詢的表對外呈現。
 | `mapping.certificate_path` | `certificate-path` | `auth_type: CERTIFICATE` 時的 PFX 路徑——必須是絕對路徑 |
 | `mapping.certificate_password` | `certificate-password` | PFX 密碼——該索引鍵必須存在，沒有密碼的 PFX 用空字串 |
 
-在非 Trino 引擎上，憑證驗證還帶有兩條額外規則，兩者都在建構 Calcite pgwire 伺服器的 `model.json` operand 時強制執行。`certificate_path` 必須是絕對路徑：伺服器以其套件目錄作為工作目錄執行，因此相對路徑會在執行階段依賴快取內解析，導致找不到該 PFX。即使 PFX 沒有密碼，`certificate_password` 也必須存在於 `mapping` 中，此時其值為空字串——Calcite 配接器會直接拒絕 null 密碼，缺少該索引鍵會被視為設定錯誤，而不是被默默當作空密碼讀取。缺少或為相對路徑的值會拋出指明該欄位的 `MissingConnectorConfig`。
+在非 Trino 引擎上，憑證驗證還帶有兩條額外規則，兩者都在建構 Calcite pgwire 伺服器的 `model.json` operand 時強制執行。`certificate_path` 必須是絕對路徑：伺服器以其套件目錄作為工作目錄執行，因此相對路徑會在執行階段依賴快取內解析，導致找不到該 PFX。即使 PFX 沒有密碼，`certificate_password` 也必須存在於 `mapping` 中，此時其值為空字串。Calcite 配接器會直接拒絕 null 密碼，缺少該索引鍵會被視為設定錯誤，而不是被默默當作空密碼讀取。缺少或為相對路徑的值會拋出指明該欄位的 `MissingConnectorConfig`。
 
 當連接器不提供 `information_schema.columns` 時，請經 `registerTable` 變更操作以明確的資料行定義（自 Microsoft Graph API 取得）註冊該表。
 
@@ -820,7 +820,7 @@ Google 在 `gmail.metadata` 之下拒絕搜尋，因此把 `mail_content: header
 
 API 回應被取得、快取於 PostgreSQL（TTL 可設定），並以 GraphQL 類型對外呈現。已快取的表與任何其他數據來源一樣參與聯邦查詢。
 
-**JSONB 規則**：以 JSONB 儲存的複合資料行（物件、陣列）不可篩選。子欄位存取在 SQL 中使用 `->>` 抽取。表與表之間的關係以純量 FK 資料行宣告——JSONB blob 資料行不是聯結目標。當需要對巢狀欄位篩選或聯結時，請用 JSONB 晉升把它們轉為原生純量資料行。
+**JSONB 規則**：以 JSONB 儲存的複合資料行（物件、陣列）不可篩選。子欄位存取在 SQL 中使用 `->>` 抽取。表與表之間的關係以純量 FK 資料行宣告。JSONB blob 資料行不是聯結目標。當需要對巢狀欄位篩選或聯結時，請用 JSONB 晉升把它們轉為原生純量資料行。
 
 #### GitHub 與 GitLab {: #github-and-gitlab }
 
@@ -1031,11 +1031,11 @@ tables:
 | `clickhouse` | `clickhouse_table` | 逐表 `CREATE TABLE ENGINE=…`（資料行來自登錄） | `ch_engine`, `engine_template`（可帶 `{table}`） |
 | `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`，由 ClickHouse 推斷結構描述 | `ch_engine`, `engine_template` |
 
-**Postgres 是通用的。** SQL/MED 是 ISO 標準，因此每個符合標準的 FDW 都共用同一套 DDL 形狀：`CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`、選用的 `CREATE USER MAPPING`，然後是 `IMPORT FOREIGN SCHEMA`（當 `supports_import: true`）或逐表明確的 `CREATE FOREIGN TABLE`（當為 `false`）。一份 `pg_fdw` 描述元只提供逐 FDW 的差異——擴充名稱、伺服器選項索引鍵、使用者映射索引鍵、匯入旗標、表選項。因此任何符合標準的 FDW 都能單憑設定驅動。
+**Postgres 是通用的。** SQL/MED 是 ISO 標準，因此每個符合標準的 FDW 都共用同一套 DDL 形狀：`CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`、選用的 `CREATE USER MAPPING`，然後是 `IMPORT FOREIGN SCHEMA`（當 `supports_import: true`）或逐表明確的 `CREATE FOREIGN TABLE`（當為 `false`）。一份 `pg_fdw` 描述元只提供逐 FDW 的差異：擴充名稱、伺服器選項索引鍵、使用者映射索引鍵、匯入旗標、表選項。因此任何符合標準的 FDW 都能單憑設定驅動。
 
 **DuckDB 支援兩種機制。** 經 ATTACH 呈現目錄的擴充用 `duckdb_attach`；呈現讀取表函式的擴充用 `duckdb_scan`。兩種模式都不符合的擴充不受支援。
 
-**ClickHouse 支援三種機制**，各對應一種整合引擎形狀：一個自動呈現每張遠端表的關聯式 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、一個資料行由登錄提供的逐表引擎（`clickhouse_table`，例如 JDBC/ODBC 橋接——`engine_template` 可帶一個由執行階段繫結的 `{table}` 佔位符），以及一個由 ClickHouse 推斷結構描述的檔案／湖／URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、檔案、無伺服器）與 Hudi（湖倉、零複製）開箱即有。
+**ClickHouse 支援三種機制**，各對應一種整合引擎形狀：一個自動呈現每張遠端表的關聯式 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、一個資料行由登錄提供的逐表引擎（`clickhouse_table`，例如 JDBC/ODBC 橋接；`engine_template` 可帶一個由執行階段繫結的 `{table}` 佔位符），以及一個由 ClickHouse 推斷結構描述的檔案／湖／URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、檔案、無伺服器）與 Hudi（湖倉、零複製）開箱即有。
 
 未知的 `kind` 值會在啟動時明確報錯，所以描述元裏的拼寫錯誤永遠不會令某種數據來源類型悄悄變得無法觸及。
 ### 探測閘門 {: #probe-gating }
@@ -1551,7 +1551,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-兩個連接器都使用 API 數據來源快取管線——結果以可設定的 TTL 儲存在 PostgreSQL，使它們可用於跨來源的聯邦 JOIN。
+兩個連接器都使用 API 數據來源快取管線。結果以可設定的 TTL 儲存在 PostgreSQL，使它們可用於跨來源的聯邦 JOIN。
 
 ---
 

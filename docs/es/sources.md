@@ -177,7 +177,7 @@ Un origen MotherDuck solo lo sirven los motores DuckDB y Postgres. Ningún otro 
 | `pinot` | — | pinot | — | No | Conector `pinot` de Trino; `pinot.controller-urls` = host:port del controlador de Pinot |
 
 ### Data lake / Formatos de tabla abiertos {: #data-lake-open-table-formats }
-Estos tipos de origen son solo de federación — sin controlador directo, sin dialecto.
+Estos tipos de origen son solo de federación. No tienen controlador directo ni dialecto.
 
 | Tipo de origen | Nombre del conector | Viaje en el tiempo | Notas |
 | ------------ | ----------------- | ------------- | ------- |
@@ -518,7 +518,7 @@ Las listas de SharePoint se enumeran como esquemas y se exponen como tablas cons
 | `mapping.certificate_path` | `certificate-path` | Ruta del PFX cuando `auth_type: CERTIFICATE` — debe ser ABSOLUTA |
 | `mapping.certificate_password` | `certificate-password` | Contraseña del PFX — la clave debe estar presente, cadena vacía para un PFX sin contraseña |
 
-La autenticación por certificado en los motores que no son Trino conlleva dos reglas adicionales, ambas aplicadas al construir el operando `model.json` del servidor pgwire de Calcite. `certificate_path` debe ser absoluta: el servidor se ejecuta con su directorio de paquete como directorio de trabajo, de modo que una ruta relativa se resuelve dentro de la caché de runtime-deps y el PFX no se encuentra. `certificate_password` debe estar presente en `mapping` incluso cuando el PFX no tiene contraseña, en cuyo caso es la cadena vacía — el adaptador de Calcite rechaza una contraseña nula de plano, y una clave ausente se trata como un error de configuración en lugar de leerse silenciosamente como una contraseña vacía. Un valor ausente o relativo lanza `MissingConnectorConfig` nombrando el campo.
+La autenticación por certificado en los motores que no son Trino conlleva dos reglas adicionales, ambas aplicadas al construir el operando `model.json` del servidor pgwire de Calcite. `certificate_path` debe ser absoluta: el servidor se ejecuta con su directorio de paquete como directorio de trabajo, de modo que una ruta relativa se resuelve dentro de la caché de runtime-deps y el PFX no se encuentra. `certificate_password` debe estar presente en `mapping` incluso cuando el PFX no tiene contraseña, en cuyo caso es la cadena vacía. El adaptador de Calcite rechaza una contraseña nula de plano, y una clave ausente se trata como un error de configuración en lugar de leerse silenciosamente como una contraseña vacía. Un valor ausente o relativo lanza `MissingConnectorConfig` nombrando el campo.
 
 Cuando el conector no expone `information_schema.columns`, registre la tabla con definiciones de columna explícitas (obtenidas de la API de Microsoft Graph) mediante la mutación `registerTable`.
 
@@ -821,7 +821,7 @@ Registre cualquier endpoint HTTP como una tabla consultable.
 
 Las respuestas de la API se obtienen, se almacenan en caché en PostgreSQL (TTL configurable) y se exponen como tipos GraphQL. Las tablas en caché participan en consultas federadas como cualquier otro origen.
 
-**Reglas de JSONB**: Las columnas complejas (objetos, arreglos) almacenadas como JSONB no son filtrables. El acceso a subcampos usa la extracción `->>` en SQL. Las relaciones se declaran entre tablas usando columnas de clave foránea escalares — las columnas de blob JSONB no son destinos de join. Use la promoción de JSONB para convertir campos anidados en columnas escalares nativas cuando se necesite filtrar o hacer join sobre ellos.
+**Reglas de JSONB**: Las columnas complejas (objetos, arreglos) almacenadas como JSONB no son filtrables. El acceso a subcampos usa la extracción `->>` en SQL. Las relaciones se declaran entre tablas usando columnas de clave foránea escalares. Las columnas de blob JSONB no son destinos de join. Use la promoción de JSONB para convertir campos anidados en columnas escalares nativas cuando se necesite filtrar o hacer join sobre ellos.
 
 #### GitHub y GitLab {: #github-and-gitlab }
 
@@ -1032,11 +1032,11 @@ El archivo viene vacío. Los conectores incorporados cubren lo que funciona de s
 | `clickhouse` | `clickhouse_table` | `CREATE TABLE ENGINE=…` por tabla (columnas desde el registro) | `ch_engine`, `engine_template` (puede llevar `{table}`) |
 | `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse infiere el esquema | `ch_engine`, `engine_template` |
 
-**Postgres es genérico.** SQL/MED es un estándar ISO, por lo que todo FDW conforme comparte la misma forma de DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, opcionalmente `CREATE USER MAPPING`, y luego `IMPORT FOREIGN SCHEMA` (cuando `supports_import: true`) o una `CREATE FOREIGN TABLE` explícita por tabla (cuando es `false`). Un descriptor `pg_fdw` solo proporciona la variación específica del FDW — nombre de la extensión, claves de opciones del servidor, claves de mapeo de usuario, indicador de importación, opciones de tabla. Cualquier FDW conforme al estándar es, por lo tanto, manejable solo desde la configuración.
+**Postgres es genérico.** SQL/MED es un estándar ISO, por lo que todo FDW conforme comparte la misma forma de DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, opcionalmente `CREATE USER MAPPING`, y luego `IMPORT FOREIGN SCHEMA` (cuando `supports_import: true`) o una `CREATE FOREIGN TABLE` explícita por tabla (cuando es `false`). Un descriptor `pg_fdw` solo proporciona la variación específica del FDW: nombre de la extensión, claves de opciones del servidor, claves de mapeo de usuario, indicador de importación, opciones de tabla. Cualquier FDW conforme al estándar es, por lo tanto, manejable solo desde la configuración.
 
 **DuckDB soporta dos mecanismos.** Una extensión que expone un catálogo mediante ATTACH usa `duckdb_attach`; una que expone una función de tabla de lectura usa `duckdb_scan`. Una extensión que no encaja en ninguno de los dos patrones no es compatible.
 
-**ClickHouse soporta tres mecanismos**, uno por cada forma de motor de integración: un motor DATABASE relacional que expone automáticamente cada tabla remota (`clickhouse_database`, por ejemplo Redis/MySQL), un motor por tabla cuyas columnas provee el registro (`clickhouse_table`, por ejemplo el puente JDBC/ODBC — el `engine_template` puede llevar un marcador `{table}` que el runtime vincula), y un motor de archivo/lake/URL cuyo esquema infiere ClickHouse (`clickhouse_scan`, por ejemplo HDFS/URL). SQLite (motor DATABASE, archivo, sin servidor) y Hudi (lakehouse, sin copia) vienen listos para usar.
+**ClickHouse soporta tres mecanismos**, uno por cada forma de motor de integración: un motor DATABASE relacional que expone automáticamente cada tabla remota (`clickhouse_database`, por ejemplo Redis/MySQL), un motor por tabla cuyas columnas provee el registro (`clickhouse_table`, por ejemplo el puente JDBC/ODBC; el `engine_template` puede llevar un marcador `{table}` que el runtime vincula), y un motor de archivo/lake/URL cuyo esquema infiere ClickHouse (`clickhouse_scan`, por ejemplo HDFS/URL). SQLite (motor DATABASE, archivo, sin servidor) y Hudi (lakehouse, sin copia) vienen listos para usar.
 
 Un valor `kind` desconocido falla de forma visible al arrancar, así que una errata en un descriptor nunca deja un tipo de origen inalcanzable sin avisar.
 ### Verificación de disponibilidad {: #probe-gating }
@@ -1553,7 +1553,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-Ambos conectores usan el pipeline de caché de origen de API — los resultados se almacenan en PostgreSQL con TTL configurable, lo que los hace disponibles para JOIN federados entre orígenes.
+Ambos conectores usan el pipeline de caché de origen de API. Los resultados se almacenan en PostgreSQL con TTL configurable, lo que los hace disponibles para JOIN federados entre orígenes.
 
 #### Registro por archivo de configuración y por UI {: #config-file-and-ui-registration }
 

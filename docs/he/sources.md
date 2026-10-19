@@ -180,7 +180,7 @@ Amazon Athena הוא שירות שאילתות ללא שרת על נתונים �
 
 ### Data Lake / פורמטי טבלה פתוחים {: #data-lake-open-table-formats }
 
-סוגי המקור הבאים הם פדרציה-בלבד — ללא דרייבר ישיר, ללא דיאלקט.
+סוגי המקור הבאים הם פדרציה-בלבד. אין להם דרייבר ישיר ואין להם דיאלקט.
 
 | סוג מקור | שם המחבר | Time Travel | הערות |
 | ------------ | ----------------- | ------------- | ------- |
@@ -525,7 +525,7 @@ Google Workspace ו-Microsoft 365 נקראים על ידי טוענים משלה
 | `mapping.certificate_path` | `certificate-path` | נתיב PFX כאשר `auth_type: CERTIFICATE` — חייב להיות מוחלט |
 | `mapping.certificate_password` | `certificate-password` | סיסמת PFX — המפתח חייב להיות נוכח, מחרוזת ריקה עבור PFX ללא סיסמה |
 
-אימות תעודה (certificate) על המנועים שאינם Trino נושא שני כללים נוספים, שניהם נאכפים כאשר האופרנד `model.json` של שרת ה-Calcite pgwire נבנה. `certificate_path` חייב להיות מוחלט: השרת רץ עם תיקיית החבילה שלו כתיקיית העבודה, כך שנתיב יחסי נפתר בתוך מטמון runtime-deps והקובץ PFX אינו נמצא. `certificate_password` חייב להיות נוכח ב-`mapping` גם כאשר ל-PFX אין סיסמה, ובמקרה זה הוא מחרוזת ריקה — מתאם ה-Calcite דוחה סיסמת null באופן מוחלט, ומפתח נעדר מטופל כשגיאת הגדרות ולא נקרא בשקט כסיסמה ריקה. ערך חסר או יחסי מעלה `MissingConnectorConfig` הנוקב בשדה.
+אימות תעודה (certificate) על המנועים שאינם Trino נושא שני כללים נוספים, שניהם נאכפים כאשר האופרנד `model.json` של שרת ה-Calcite pgwire נבנה. `certificate_path` חייב להיות מוחלט: השרת רץ עם תיקיית החבילה שלו כתיקיית העבודה, כך שנתיב יחסי נפתר בתוך מטמון runtime-deps והקובץ PFX אינו נמצא. `certificate_password` חייב להיות נוכח ב-`mapping` גם כאשר ל-PFX אין סיסמה, ובמקרה זה הוא מחרוזת ריקה. מתאם ה-Calcite דוחה סיסמת null באופן מוחלט, ומפתח נעדר מטופל כשגיאת הגדרות ולא נקרא בשקט כסיסמה ריקה. ערך חסר או יחסי מעלה `MissingConnectorConfig` הנוקב בשדה.
 
 כאשר המחבר לא חושף `information_schema.columns`, יש לרשום את הטבלה עם הגדרות עמודה מפורשות (המתקבלות מ-Microsoft Graph API) דרך המוטציה `registerTable`.
 
@@ -829,7 +829,7 @@ Google דוחה חיפוש תחת `gmail.metadata`, ולכן `mail_content: head
 
 תגובות API נשלפות, נשמרות במטמון ב-PostgreSQL (TTL הניתן להגדרה), וחשופות כטיפוסי GraphQL. טבלאות שנשמרו במטמון משתתפות בשאילתות מפודררות כמו כל מקור אחר.
 
-**כללי JSONB**: עמודות מורכבות (אובייקטים, מערכים) המאוחסנות כ-JSONB אינן ניתנות לסינון. גישה לתת-שדה משתמשת בחילוץ `->>` ב-SQL. קשרים (relationships) מוצהרים בין טבלאות באמצעות עמודות FK סקלריות — עמודות blob מסוג JSONB אינן יעדי join. השתמשו בקידום JSONB (JSONB promotion) כדי להמיר שדות מקוננים לעמודות סקלריות ילידיות כאשר נדרש לסנן או להצטרף (join) אליהן.
+**כללי JSONB**: עמודות מורכבות (אובייקטים, מערכים) המאוחסנות כ-JSONB אינן ניתנות לסינון. גישה לתת-שדה משתמשת בחילוץ `->>` ב-SQL. קשרים (relationships) מוצהרים בין טבלאות באמצעות עמודות FK סקלריות. עמודות blob מסוג JSONB אינן יעדי join. השתמשו בקידום JSONB (JSONB promotion) כדי להמיר שדות מקוננים לעמודות סקלריות ילידיות כאשר נדרש לסנן או להצטרף (join) אליהן.
 
 #### GitHub ו-GitLab {: #github-and-gitlab }
 
@@ -1054,11 +1054,11 @@ tables:
 | `clickhouse` | `clickhouse_table` | `CREATE TABLE ENGINE=…` לכל טבלה (עמודות מהרישום) | `ch_engine`, `engine_template` (עשוי לשאת `{table}`) |
 | `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse מסיק את הסכמה | `ch_engine`, `engine_template` |
 
-**Postgres הוא גנרי.** SQL/MED הוא תקן ISO, כך שכל FDW תואם חולק את אותה צורת DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, אופציונלית `CREATE USER MAPPING`, ואז או `IMPORT FOREIGN SCHEMA` (כאשר `supports_import: true`) או `CREATE FOREIGN TABLE` מפורש לכל טבלה (כאשר `false`). מתאר `pg_fdw` מספק רק את השונות הספציפית ל-FDW — שם התוסף, מפתחות אפשרויות שרת, מפתחות user-mapping, דגל import, אפשרויות טבלה. כל FDW תואם-תקן ניתן אפוא להפעלה מקונפיגורציה בלבד.
+**Postgres הוא גנרי.** SQL/MED הוא תקן ISO, כך שכל FDW תואם חולק את אותה צורת DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, אופציונלית `CREATE USER MAPPING`, ואז או `IMPORT FOREIGN SCHEMA` (כאשר `supports_import: true`) או `CREATE FOREIGN TABLE` מפורש לכל טבלה (כאשר `false`). מתאר `pg_fdw` מספק רק את השונות הספציפית ל-FDW: שם התוסף, מפתחות אפשרויות שרת, מפתחות user-mapping, דגל import, אפשרויות טבלה. כל FDW תואם-תקן ניתן אפוא להפעלה מקונפיגורציה בלבד.
 
 **DuckDB תומך בשני מנגנונים.** תוסף החושף קטלוג דרך ATTACH משתמש ב-`duckdb_attach`; תוסף החושף פונקציית-טבלה לקריאה משתמש ב-`duckdb_scan`. תוסף שאינו מתאים לאף דפוס אינו נתמך.
 
-**ClickHouse תומך בשלושה מנגנונים**, אחד לכל צורת integration-engine: מנוע DATABASE יחסי החושף אוטומטית כל טבלה מרוחקת (`clickhouse_database`, למשל Redis/MySQL), מנוע לכל-טבלה שהעמודות שלו מסופקות מהרישום (`clickhouse_table`, למשל הגשר JDBC/ODBC — ה-`engine_template` עשוי לשאת placeholder בצורת `{table}` שהריצה (runtime) מקשרת), ומנוע file/lake/URL שהסכמה שלו מוסקת על ידי ClickHouse (`clickhouse_scan`, למשל HDFS/URL). SQLite (מנוע DATABASE, קובץ, ללא שרת) ו-Hudi (lakehouse, zero-copy) נשלחים מוכנים-מהקופסה.
+**ClickHouse תומך בשלושה מנגנונים**, אחד לכל צורת integration-engine: מנוע DATABASE יחסי החושף אוטומטית כל טבלה מרוחקת (`clickhouse_database`, למשל Redis/MySQL), מנוע לכל-טבלה שהעמודות שלו מסופקות מהרישום (`clickhouse_table`, למשל הגשר JDBC/ODBC; ה-`engine_template` עשוי לשאת placeholder בצורת `{table}` שהריצה (runtime) מקשרת), ומנוע file/lake/URL שהסכמה שלו מוסקת על ידי ClickHouse (`clickhouse_scan`, למשל HDFS/URL). SQLite (מנוע DATABASE, קובץ, ללא שרת) ו-Hudi (lakehouse, zero-copy) נשלחים מוכנים-מהקופסה.
 
 ערך `kind` לא מוכר נכשל בקול רם בעת ההפעלה, כך ששגיאת הקלדה במתאר לעולם לא משאירה בשקט סוג מקור בלתי נגיש.
 ### שערי בדיקה (Probe Gating) {: #probe-gating }
@@ -1588,7 +1588,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-שני המחברים משתמשים בצינור המטמון של מקור ה-API — התוצאות מאוחסנות ב-PostgreSQL עם TTL הניתן להגדרה, מה שהופך אותן לזמינות עבור joins מפודררים חוצי-מקורות.
+שני המחברים משתמשים בצינור המטמון של מקור ה-API. התוצאות מאוחסנות ב-PostgreSQL עם TTL הניתן להגדרה, מה שהופך אותן לזמינות עבור joins מפודררים חוצי-מקורות.
 
 ---
 

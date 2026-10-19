@@ -525,7 +525,7 @@ SharePoint 列表被枚举为 schema 并暴露为可查询的表。两种身份�
 | `mapping.certificate_path` | `certificate-path` | 当 `auth_type: CERTIFICATE` 时的 PFX 路径 — 必须是绝对路径 |
 | `mapping.certificate_password` | `certificate-password` | PFX 密码 — 该键必须存在，无密码的 PFX 使用空字符串 |
 
-在非 Trino 引擎上，证书身份验证还带有两条额外规则，均在构建 Calcite pgwire 服务器的 `model.json` operand 时强制执行。`certificate_path` 必须是绝对路径：服务器以其程序包目录作为工作目录运行，因此相对路径会在运行时依赖缓存内部解析，导致找不到该 PFX。即使 PFX 没有密码，`certificate_password` 也必须存在于 `mapping` 中，此时其值为空字符串 — Calcite 适配器会直接拒绝 null 密码，缺失该键会被视为配置错误，而不是被静默地当作空密码读取。缺失或相对路径的值会抛出命名该字段的 `MissingConnectorConfig`。
+在非 Trino 引擎上，证书身份验证还带有两条额外规则，均在构建 Calcite pgwire 服务器的 `model.json` operand 时强制执行。`certificate_path` 必须是绝对路径：服务器以其程序包目录作为工作目录运行，因此相对路径会在运行时依赖缓存内部解析，导致找不到该 PFX。即使 PFX 没有密码，`certificate_password` 也必须存在于 `mapping` 中，此时其值为空字符串。Calcite 适配器会直接拒绝 null 密码，缺失该键会被视为配置错误，而不是被静默地当作空密码读取。缺失或相对路径的值会抛出命名该字段的 `MissingConnectorConfig`。
 
 当连接器不暴露 `information_schema.columns` 时，通过 `registerTable` mutation 使用显式列定义（从 Microsoft Graph API 获取）注册该表。
 
@@ -829,7 +829,7 @@ Google 在 `gmail.metadata` 下拒绝搜索，因此将 `mail_content: headers` 
 
 API 响应会被获取、缓存在 PostgreSQL 中（TTL 可配置），并暴露为 GraphQL 类型。缓存的表与其他数据源一样参与联邦查询。
 
-**JSONB 规则**：以 JSONB 存储的复杂列（对象、数组）不可过滤。子字段访问在 SQL 中使用 `->>` 提取。表之间的关系通过标量外键列声明 — JSONB blob 列不能作为连接目标。当需要对嵌套字段进行过滤或连接时，使用 JSONB 提升（promotion）将其转换为原生标量列。
+**JSONB 规则**：以 JSONB 存储的复杂列（对象、数组）不可过滤。子字段访问在 SQL 中使用 `->>` 提取。表之间的关系通过标量外键列声明。JSONB blob 列不能作为连接目标。当需要对嵌套字段进行过滤或连接时，使用 JSONB 提升（promotion）将其转换为原生标量列。
 
 #### GitHub and GitLab {: #github-and-gitlab }
 
@@ -1052,11 +1052,11 @@ tables:
 | `clickhouse` | `clickhouse_table` | 每表一次 `CREATE TABLE ENGINE=…`（列来自注册表） | `ch_engine`、`engine_template`（可携带 `{table}`） |
 | `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`，由 ClickHouse 推断 schema | `ch_engine`、`engine_template` |
 
-**Postgres 是通用的。** SQL/MED 是一项 ISO 标准，因此每个符合标准的 FDW 都共享相同的 DDL 形式：`CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`，可选的 `CREATE USER MAPPING`，随后要么是 `IMPORT FOREIGN SCHEMA`（当 `supports_import: true` 时），要么是对每张表执行显式的 `CREATE FOREIGN TABLE`（当为 `false` 时）。一个 `pg_fdw` descriptor 只提供各 FDW 之间的差异部分 — 扩展名称、server option 键、user-mapping 键、import 标志、table option。因此任何符合标准的 FDW 都可以仅凭配置驱动。
+**Postgres 是通用的。** SQL/MED 是一项 ISO 标准，因此每个符合标准的 FDW 都共享相同的 DDL 形式：`CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`，可选的 `CREATE USER MAPPING`，随后要么是 `IMPORT FOREIGN SCHEMA`（当 `supports_import: true` 时），要么是对每张表执行显式的 `CREATE FOREIGN TABLE`（当为 `false` 时）。一个 `pg_fdw` descriptor 只提供各 FDW 之间的差异部分：扩展名称、server option 键、user-mapping 键、import 标志、table option。因此任何符合标准的 FDW 都可以仅凭配置驱动。
 
 **DuckDB 支持两种机制。** 通过 ATTACH 暴露目录的扩展使用 `duckdb_attach`；暴露一个只读 table-function 的扩展使用 `duckdb_scan`。不符合任一模式的扩展不受支持。
 
-**ClickHouse 支持三种机制**，各对应一种集成引擎（integration-engine）形态：自动暴露每张远程表的关系型 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、列由注册表提供的按表引擎（`clickhouse_table`，例如 JDBC/ODBC 桥接 — `engine_template` 可携带一个由运行时绑定的 `{table}` 占位符），以及由 ClickHouse 推断 schema 的文件/湖/URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、文件、无服务器）和 Hudi（湖仓一体、零拷贝）开箱即用。
+**ClickHouse 支持三种机制**，各对应一种集成引擎（integration-engine）形态：自动暴露每张远程表的关系型 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、列由注册表提供的按表引擎（`clickhouse_table`，例如 JDBC/ODBC 桥接；`engine_template` 可携带一个由运行时绑定的 `{table}` 占位符），以及由 ClickHouse 推断 schema 的文件/湖/URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、文件、无服务器）和 Hudi（湖仓一体、零拷贝）开箱即用。
 
 未知的 `kind` 值会在启动时明确报错，所以描述符里的拼写错误永远不会让某种数据源类型悄悄变得不可达。
 ### 探测把关 {: #probe-gating }
@@ -1586,7 +1586,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-两个连接器都使用 API 数据源缓存管道 — 结果存储在 PostgreSQL 中，TTL 可配置，从而可用于跨数据源的联邦 JOIN。
+两个连接器都使用 API 数据源缓存管道。结果存储在 PostgreSQL 中，TTL 可配置，从而可用于跨数据源的联邦 JOIN。
 
 ---
 
