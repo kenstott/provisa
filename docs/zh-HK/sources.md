@@ -96,9 +96,9 @@ SAP HANA 經它自己的驅動程式讀取，並複製到啟用中引擎的儲�
 
 #### `athena`
 
-Amazon Athena 是一項針對 S3 資料的無伺服器查詢服務，按掃描位元組計費。僅涉及 Athena 資料表的語句直接路由到 Athena 執行：篩選條件、欄位清單和 `LIMIT` 全部下推，因此只有 Athena 滿足該語句所需的位元組才會被掃描和計費。將 Athena 資料表與其他來源聯結的語句會先從 Athena 落地完整副本——讀取整張表並計費——然後聯結針對該副本執行。來源的 Replicate 和負載保護設定控制落地頻率；文件中的說明是唯一的規則。
+Amazon Athena 是建基於 S3 數據的無伺服器查詢服務，按掃描的位元組收費。只涉及 Athena 資料表的語句直接交給 Athena，篩選條件、資料行清單及 `LIMIT` 都會下推，所以 Athena 只掃描並收取該語句所需位元組的費用。把 Athena 資料表與其他任何數據來源聯結的語句，會先從 Athena 落地一份完整副本。這會讀取整個資料表，Athena 會為此收費；之後聯結針對該副本執行。數據來源的 Replicate 及負載保護設定決定落地的頻率，而本說明是關於這項費用的唯一提醒。
 
-**探索。** Register Table 呼叫 Athena 的中繼資料 API——`ListDatabases`、`ListTableMetadata`、`GetTableMetadata`。這些呼叫不執行任何查詢，因此列出資料庫和資料表以及讀取資料表的欄位不產生任何位元組費用。僅在選取某張資料表時才讀取其欄位。分區鍵跟在一般欄位之後。類型透過 `provisa/core/ir_types.py` 中的 `athena` 條目映射：`array<…>`、`map<…>` 和 `struct<…>` 映射為 `text`；未知類型被拒絕，並指明其名稱。
+**探索。** Register Table 呼叫 Athena 的中繼資料 API：`ListDatabases`、`ListTableMetadata` 及 `GetTableMetadata`。這些呼叫不執行任何查詢，所以列出資料庫及資料表、讀取資料表的資料行都不產生按位元組計的費用。只有在您選取某個資料表時才會取得它的資料行，分區鍵排在一般資料行之後。`array<…>`、`map<…>` 及 `struct<…>` 會變成 `text`，未知類型會被拒絕並指明其名稱。
 
 **來源欄位。**
 
@@ -115,7 +115,7 @@ Amazon Athena 是一項針對 S3 資料的無伺服器查詢服務，按掃描�
 
 `username` 和 `password` 均為空時，使用 boto3 的憑證鏈：執行個體角色、環境變數（`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`）或命名 profile。只填其中一個將被拒絕。
 
-**寫入。** 每張已登錄資料表均接受 `INSERT`。`UPDATE`、`DELETE` 和 `MERGE` 僅在 Iceberg 資料表上可用；格式在登錄時記錄（`registered_tables.table_format`）。對 Hive 資料表請求 `UPDATE`、`DELETE` 或 `MERGE` 的寫入將被拒絕，並指明資料表名稱和操作。Athena 不傳回已寫入的列——`RETURNING` 子句被拒絕，GraphQL 不為這些資料表提供 mutation 欄位；`INSERT`、`UPDATE`、`DELETE` 和 `COPY` 是寫入路徑。`INSERT … ON CONFLICT`、`UPDATE … FROM`、`DELETE … USING` 和 `TRUNCATE` 被拒絕，並指明形式。
+**寫入。** 每個已註冊的資料表都接受 `INSERT`。`UPDATE`、`DELETE` 及 `MERGE` 只適用於 Iceberg 資料表，格式在註冊時記錄（`registered_tables.table_format`）。在 Hive 資料表上，要求 `UPDATE`、`DELETE` 或 `MERGE` 的寫入會被拒絕，並指明資料表及操作。Athena 不傳回寫入的資料列，所以 `RETURNING` 子句會被拒絕，GraphQL 亦不為這些資料表提供變更欄位。寫入途徑是 `INSERT`、`UPDATE`、`DELETE` 及 `COPY`。`INSERT … ON CONFLICT`、`UPDATE … FROM`、`DELETE … USING` 及 `TRUNCATE` 會被拒絕，並指明其形式。
 
 ```yaml
 - id: analytics-athena

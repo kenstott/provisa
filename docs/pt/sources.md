@@ -98,9 +98,9 @@ Um endpoint HiveServer2 lido diretamente por Thrift, para uma implantação Hive
 
 #### `athena`
 
-Amazon Athena é um serviço de consulta sem servidor sobre dados no S3, cobrado por byte analisado. Uma instrução apenas sobre tabelas Athena é roteada diretamente para o Athena: filtros, listas de colunas e `LIMIT` são transmitidos integralmente, de modo que apenas os bytes necessários ao Athena para responder àquela instrução são analisados e cobrados. Uma instrução que une uma tabela Athena com outra fonte primeiro aterra uma réplica completa do Athena — toda a tabela é lida e o Athena a cobra — e então a junção é executada contra essa réplica. As configurações Replicate e proteção de carga da fonte regem a frequência dos aterramentos; a nota na documentação é a única regra.
+O Amazon Athena é um serviço de consulta serverless sobre dados no S3, cobrado por byte varrido. Uma instrução só sobre tabelas do Athena vai direto ao Athena, com filtros, listas de colunas e `LIMIT` empurrados até ele, então o Athena varre e cobra só os bytes de que essa instrução precisa. Uma instrução que une uma tabela do Athena a qualquer outra fonte primeiro pousa uma réplica completa vinda do Athena. Isso lê a tabela inteira, e o Athena cobra por isso; depois o join roda contra a réplica. As configurações Replicate e de proteção de carga da fonte decidem com que frequência um pouso acontece, e esta nota é o único aviso sobre esse custo.
 
-**Descoberta.** Register Table chama a API de metadados do Athena — `ListDatabases`, `ListTableMetadata`, `GetTableMetadata`. Essas chamadas não executam nenhuma consulta, portanto listar bancos de dados e tabelas e ler as colunas de uma tabela não tem custo por byte. As colunas de uma tabela são lidas apenas quando essa tabela é selecionada. Chaves de partição seguem as colunas regulares. Os tipos são mapeados através da entrada `athena` em `provisa/core/ir_types.py`: `array<…>`, `map<…>` e `struct<…>` tornam-se `text`; um tipo desconhecido é recusado, nomeando-o.
+**Descoberta.** O Register Table chama a API de metadados do Athena: `ListDatabases`, `ListTableMetadata` e `GetTableMetadata`. Essas chamadas não executam consulta nenhuma, então listar bancos e tabelas e ler as colunas de uma tabela não custa nada por byte. As colunas de uma tabela só são buscadas quando você seleciona essa tabela, com as chaves de partição depois das colunas normais. `array<…>`, `map<…>` e `struct<…>` viram `text`, e um tipo desconhecido é recusado pelo nome.
 
 **Campos da fonte.**
 
@@ -117,7 +117,7 @@ Amazon Athena é um serviço de consulta sem servidor sobre dados no S3, cobrado
 
 Ambos `username` e `password` vazios significa que a cadeia de credenciais do boto3 é usada: perfil de instância, variáveis de ambiente (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) ou um perfil nomeado. Um sem o outro é recusado.
 
-**Gravações.** Cada tabela registrada aceita `INSERT`. `UPDATE`, `DELETE` e `MERGE` estão disponíveis apenas em uma tabela Iceberg; o formato é registrado no momento do registro (`registered_tables.table_format`). Uma gravação em uma tabela Hive que solicite `UPDATE`, `DELETE` ou `MERGE` é recusada, nomeando a tabela e a operação. O Athena não retorna as linhas gravadas — uma cláusula `RETURNING` é recusada e o GraphQL não oferece campos de mutação para essas tabelas; `INSERT`, `UPDATE`, `DELETE` e `COPY` são os caminhos de gravação. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` e `TRUNCATE` são recusados, nomeando a forma.
+**Escritas.** Toda tabela registrada aceita `INSERT`. `UPDATE`, `DELETE` e `MERGE` só funcionam numa tabela Iceberg, e o formato é anotado no registro (`registered_tables.table_format`). Numa tabela Hive, uma escrita que pede `UPDATE`, `DELETE` ou `MERGE` é recusada, nomeando a tabela e a operação. O Athena não devolve linhas escritas, então uma cláusula `RETURNING` é recusada e o GraphQL não oferece campos de mutation para essas tabelas. Os caminhos de escrita são `INSERT`, `UPDATE`, `DELETE` e `COPY`. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` e `TRUNCATE` são recusados, nomeando a forma.
 
 ```yaml
 - id: analytics-athena

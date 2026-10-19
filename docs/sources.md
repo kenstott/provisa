@@ -98,9 +98,9 @@ A HiveServer2 endpoint read directly over Thrift, for a Hive deployment where th
 
 #### `athena`
 
-Amazon Athena is a serverless query service over data in S3, billed per byte scanned. A statement on Athena's tables alone routes directly to Athena: filters, column lists and `LIMIT` are pushed down, so only the bytes Athena needs to answer that statement are scanned and billed. A statement that joins an Athena table with any other source lands a full replica from Athena first — the whole table is read, and Athena bills it — then the join runs against that replica. The source's Replicate and load-protection settings govern how often a landing runs; the docs note is the only rule.
+Amazon Athena is a serverless query service over data in S3, billed per byte scanned. A statement on Athena's tables alone goes straight to Athena, with filters, column lists and `LIMIT` pushed down, so Athena scans and bills only the bytes that statement needs. A statement that joins an Athena table with any other source first lands a full replica from Athena. That reads the whole table, and Athena bills for it; the join then runs against the replica. The source's Replicate and load-protection settings decide how often a landing runs, and this note is the only warning about that cost.
 
-**Discovery.** Register Table calls Athena's metadata API — `ListDatabases`, `ListTableMetadata`, `GetTableMetadata`. These calls run no query, so listing databases and tables and reading a table's columns costs nothing per byte. A table's columns are fetched only when that table is selected. Partition keys follow the regular columns. Types map through the `athena` entry of `provisa/core/ir_types.py`: `array<…>`, `map<…>` and `struct<…>` become `text`; an unknown type is refused, naming it.
+**Discovery.** Register Table calls Athena's metadata API: `ListDatabases`, `ListTableMetadata` and `GetTableMetadata`. These calls run no query, so listing databases and tables and reading a table's columns cost nothing per byte. A table's columns are fetched only when you select that table, with partition keys after the regular columns. `array<…>`, `map<…>` and `struct<…>` become `text`, and an unknown type is refused by name.
 
 **Source fields.**
 
@@ -117,7 +117,7 @@ Amazon Athena is a serverless query service over data in S3, billed per byte sca
 
 Both `username` and `password` empty means boto3's own credential chain: instance role, environment variables (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`), or a named profile. One without the other is refused.
 
-**Writes.** Every registered table accepts `INSERT`. `UPDATE`, `DELETE` and `MERGE` are available only on an Iceberg table; the format is recorded at registration (`registered_tables.table_format`). A write against a Hive table that requests `UPDATE`, `DELETE` or `MERGE` is refused, naming the table and the operation. Athena returns no written rows — a `RETURNING` clause is refused, and GraphQL offers no mutation fields for these tables; `INSERT`, `UPDATE`, `DELETE` and `COPY` are the write paths. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` and `TRUNCATE` are refused, naming the form.
+**Writes.** Every registered table accepts `INSERT`. `UPDATE`, `DELETE` and `MERGE` work only on an Iceberg table, and the format is recorded at registration (`registered_tables.table_format`). On a Hive table, a write that asks for `UPDATE`, `DELETE` or `MERGE` is refused, naming the table and the operation. Athena returns no written rows, so a `RETURNING` clause is refused and GraphQL offers no mutation fields for these tables. The write paths are `INSERT`, `UPDATE`, `DELETE` and `COPY`. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` and `TRUNCATE` are refused, naming the form.
 
 ```yaml
 - id: analytics-athena

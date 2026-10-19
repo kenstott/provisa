@@ -98,9 +98,9 @@ SAP HANA 通过其自有驱动读取，并复制到活动引擎的存储中，�
 
 #### `athena`
 
-Amazon Athena 是一项针对 S3 数据的无服务器查询服务，按扫描字节计费。仅涉及 Athena 表的语句直接路由到 Athena 执行：过滤条件、列列表和 `LIMIT` 全部下推，因此只有 Athena 满足该语句所需的字节才会被扫描和计费。将 Athena 表与其他源联接的语句会先从 Athena 落地完整副本——读取整张表并计费——然后联接针对该副本执行。源的 Replicate 和负载保护设置控制落地频率；文档中的说明是唯一的规则。
+Amazon Athena 是基于 S3 数据的无服务器查询服务，按扫描的字节计费。只涉及 Athena 表的语句直接交给 Athena，过滤条件、列列表和 `LIMIT` 都会下推，所以 Athena 只扫描并收取该语句所需字节的费用。把 Athena 表与其他任何数据源联接的语句，会先从 Athena 落地一份完整副本。这会读取整张表，Athena 会为此计费；之后联接针对该副本执行。数据源的 Replicate 和负载保护设置决定落地的频率，而本说明是关于这项费用的唯一提醒。
 
-**发现。** Register Table 调用 Athena 的元数据 API——`ListDatabases`、`ListTableMetadata`、`GetTableMetadata`。这些调用不执行任何查询，因此列出数据库和表以及读取表的列不产生任何字节费用。仅在选择某张表时才读取其列。分区键跟在普通列之后。类型通过 `provisa/core/ir_types.py` 中的 `athena` 条目映射：`array<…>`、`map<…>` 和 `struct<…>` 映射为 `text`；未知类型被拒绝，并指明其名称。
+**发现。** Register Table 调用 Athena 的元数据 API：`ListDatabases`、`ListTableMetadata` 和 `GetTableMetadata`。这些调用不运行任何查询，所以列出数据库和表、读取表的列都不产生按字节计的费用。只有在您选中某张表时才会获取它的列，分区键排在普通列之后。`array<…>`、`map<…>` 和 `struct<…>` 会变成 `text`，未知类型会被拒绝并指明其名称。
 
 **源字段。**
 
@@ -117,7 +117,7 @@ Amazon Athena 是一项针对 S3 数据的无服务器查询服务，按扫描�
 
 `username` 和 `password` 均为空时，使用 boto3 的凭证链：实例角色、环境变量（`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`）或命名 profile。只填其中一个将被拒绝。
 
-**写入。** 每张注册表均接受 `INSERT`。`UPDATE`、`DELETE` 和 `MERGE` 仅在 Iceberg 表上可用；格式在注册时记录（`registered_tables.table_format`）。对 Hive 表请求 `UPDATE`、`DELETE` 或 `MERGE` 的写入将被拒绝，并指明表名和操作。Athena 不返回已写入的行——`RETURNING` 子句被拒绝，GraphQL 不为这些表提供 mutation 字段；`INSERT`、`UPDATE`、`DELETE` 和 `COPY` 是写入路径。`INSERT … ON CONFLICT`、`UPDATE … FROM`、`DELETE … USING` 和 `TRUNCATE` 被拒绝，并指明形式。
+**写入。** 每张已注册的表都接受 `INSERT`。`UPDATE`、`DELETE` 和 `MERGE` 只适用于 Iceberg 表，格式在注册时记录（`registered_tables.table_format`）。在 Hive 表上，请求 `UPDATE`、`DELETE` 或 `MERGE` 的写入会被拒绝，并指明表和操作。Athena 不返回写入的行，所以 `RETURNING` 子句会被拒绝，GraphQL 也不为这些表提供变更字段。写入途径是 `INSERT`、`UPDATE`、`DELETE` 和 `COPY`。`INSERT … ON CONFLICT`、`UPDATE … FROM`、`DELETE … USING` 和 `TRUNCATE` 会被拒绝，并指明其形式。
 
 ```yaml
 - id: analytics-athena
