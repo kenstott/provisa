@@ -1,0 +1,165 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 0cc6514d-77f7-4411-9488-46d478fc34ee
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""A code source on a remote host (REQ-2098): the Python remote host program, paired with and
+dialled by Provisa over mutual TLS, serving the same calls as a local worker."""
+
+# Requirements: REQ-2098
+
+from __future__ import annotations
+
+import os
+import socket
+import subprocess
+import sys
+import textwrap
+import time
+
+import pytest
+
+from provisa.codesource import remote
+from provisa.codesource.worker import WorkerFailed
+from provisa.python.source import HOST
+
+pytestmark = pytest.mark.unit
+
+REMOTE_HOST = HOST.with_name("remote_host.py")
+_CODE = textwrap.dedent(
+    '''
+    def orders(n: int) -> list[dict]:
+        """Orders.
+
+        @table
+        """
+        return [{"n": i} for i in range(n)]
+    '''
+)
+
+
+def _free_port() -> int:
+    with socket.socket() as s:
+        s.bind(("127.0.0.1", 0))
+        return s.getsockname()[1]
+
+
+@pytest.fixture
+def started(tmp_path):
+    """A remote host on a free port, its state in a directory of its own; its pairing code."""
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "shop.py").write_text(_CODE)
+    port = _free_port()
+    process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's host
+        [sys.executable, str(REMOTE_HOST), str(port), str(tmp_path / "state"), str(code), "shop"],
+        env={**os.environ, "PROVISA_CODE_HASH": "h1"},
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert process.stderr is not None
+    pairing = None
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        line = process.stderr.readline()
+        if line.startswith("pairing code: "):
+            pairing = line.removeprefix("pairing code: ").strip()
+        if line.startswith("remote host listening"):
+            break
+    assert pairing is not None, "the host printed no pairing code"
+    yield port, pairing
+    process.terminate()
+    process.wait(timeout=10)
+
+
+def _worker(port: int, pin: str, identity: remote.Identity, **kw) -> remote.RemoteWorker:
+    return remote.RemoteWorker(
+        "shop-src",
+        kw.pop("content_hash", "h1"),
+        address="127.0.0.1",
+        port=port,
+        pin=pin,
+        identity=identity,
+        **kw,
+    )
+
+
+def test_a_paired_host_serves_the_codes_tables_to_each_provisa_connection(started):
+    port, code = started
+    identity = remote.new_identity()
+    pin = remote.pair("127.0.0.1", port, code, identity)
+    first = _worker(port, pin, identity, exports=["orders"])
+    second = _worker(port, pin, identity, exports=["orders"])
+    first.start()
+    second.start()  # each Provisa process keeps a connection of its own
+    try:
+        assert first.exports == ["orders"]
+        assert [row for batch in first.rows("orders", "table", [3]) for row in batch] == [
+            {"n": 0},
+            {"n": 1},
+            {"n": 2},
+        ]
+        assert second.ping()
+    finally:
+        first.stop()
+        second.stop()
+
+
+def test_a_pairing_code_is_used_once_and_another_secret_is_refused(started):
+    port, code = started
+    fingerprint, _secret = remote.parse_pairing_code(code)
+    with pytest.raises(remote.PairingRefused, match="not this host's pairing code"):
+        remote.pair("127.0.0.1", port, f"{fingerprint}.wrong", remote.new_identity())
+    remote.pair("127.0.0.1", port, code, remote.new_identity())
+    # Paired: the host now takes only its Provisa's certificate.
+    with pytest.raises(remote.PairingRefused):
+        remote.pair("127.0.0.1", port, code, remote.new_identity())
+
+
+def test_a_provisa_the_host_is_not_paired_to_is_refused(started):
+    port, code = started
+    pin = remote.pair("127.0.0.1", port, code, remote.new_identity())
+    stranger = _worker(port, pin, remote.new_identity())
+    with pytest.raises(WorkerFailed):
+        stranger.start(timeout=5)
+
+
+def test_a_host_running_other_code_or_offering_other_exports_is_refused_by_name(started):
+    port, code = started
+    identity = remote.new_identity()
+    pin = remote.pair("127.0.0.1", port, code, identity)
+    with pytest.raises(WorkerFailed) as other_code:
+        _worker(port, pin, identity, content_hash="h2").start()
+    assert str(other_code.value) == (
+        f"source 'shop-src': remote host 127.0.0.1:{port}: its host runs code h1, "
+        "not the h2 the source registered"
+    )
+    with pytest.raises(WorkerFailed) as other_exports:
+        _worker(port, pin, identity, exports=["orders", "refunds"]).start()
+    assert "offers the exports ['orders'], not the ['orders', 'refunds']" in str(
+        other_exports.value
+    )
+
+
+def test_a_host_with_another_certificate_than_the_pin_is_refused(started):
+    port, code = started
+    identity = remote.new_identity()
+    remote.pair("127.0.0.1", port, code, identity)
+    with pytest.raises(WorkerFailed, match="presented certificate .*, not the paired 0+"):
+        _worker(port, "0" * 64, identity).start()
+
+
+def test_a_host_that_is_not_there_is_named():
+    port = _free_port()
+    with pytest.raises(WorkerFailed, match=f"remote host 127.0.0.1:{port} could not be reached"):
+        _worker(port, "0" * 64, remote.new_identity()).start(timeout=2)
+
+
+def test_a_pairing_code_that_is_not_one_is_refused_by_name():
+    with pytest.raises(remote.PairingRefused, match="the line the remote host printed"):
+        remote.parse_pairing_code("hello")

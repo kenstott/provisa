@@ -216,8 +216,7 @@ class Host:
 
 
 async def run(address: str, code: str, entry: str) -> None:
-    sys.path.insert(0, code)
-    module = importlib.import_module(entry)
+    module = load(code, entry)
     if address.startswith("fd:"):
         # The Linux sandbox refuses the host any new socket but TCP: Provisa hands it this one.
         sock = socket.socket(fileno=int(address[3:]))
@@ -225,6 +224,19 @@ async def run(address: str, code: str, entry: str) -> None:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(address)
     reader, writer = await asyncio.open_connection(sock=sock)
+    await serve(module, reader, writer)
+
+
+def load(code: str, entry: str) -> typing.Any:  # the code's entry module
+    sys.path.insert(0, code)
+    return importlib.import_module(entry)
+
+
+async def serve(
+    module: typing.Any, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
+) -> None:
+    """Say hello on one connection to Provisa and serve its calls until it closes. A remote host
+    serves one connection per Provisa process (remote_host.py), each with its own calls."""
     host = Host(module, writer)
     await host.send(
         {
@@ -239,11 +251,12 @@ async def run(address: str, code: str, entry: str) -> None:
             head = await reader.readexactly(_HEAD.size)
             message = json.loads(await reader.readexactly(_HEAD.unpack(head)[0]))
         except (asyncio.IncompleteReadError, ConnectionError):
+            for task in list(host.running.values()):
+                task.cancel()
             return  # the socket closed: Provisa stopped the worker
         op = message["op"]
         if op == "refused":
-            sys.stderr.write(f"provisa refused this host: {message['message']}\n")
-            raise SystemExit(2)
+            raise Refused(message["message"])
         if op == "ping":
             await host.send({"op": "pong", "id": message["id"]})
         elif op == "cancel":
@@ -262,11 +275,19 @@ async def run(address: str, code: str, entry: str) -> None:
             )
 
 
+class Refused(Exception):
+    """Provisa refused this host: its protocol or its code is not the source's."""
+
+
 def main(argv: list[str]) -> int:
     address, code, entry = argv
     # What the code prints goes to stderr, which Provisa keeps to name a crash.
     os.dup2(2, 1)
-    asyncio.run(run(address, code, entry))
+    try:
+        asyncio.run(run(address, code, entry))
+    except Refused as refused:
+        sys.stderr.write(f"provisa refused this host: {refused}\n")
+        return 2
     os._exit(0)  # threads still running a cancelled call do not hold the process open
 
 
