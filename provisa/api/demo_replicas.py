@@ -431,6 +431,25 @@ def _held_rows(org_id: str, tables: list[str], schema: str) -> dict[str, int]:
     }
 
 
+def store_counts(org_id: str) -> dict[str, dict[str, int]]:
+    """The rows each replica and each view of ``org_id`` holds in its store file, read without
+    its runtime: ``{"replicas": {table: rows}, "views": {table: rows}}``. A store not on disk
+    holds none."""
+    from provisa.federation.materialize_broker import get_broker
+
+    store = _store_path(org_id)
+    out: dict[str, dict[str, int]] = {"replicas": {}, "views": {}}
+    if not Path(store).exists():
+        return out
+    broker = get_broker(store)
+    for kind, schema in (("replicas", _replicas_schema(org_id)), ("views", _views_schema(org_id))):
+        out[kind] = {
+            name: int(broker.execute(f'SELECT count(*) FROM mat_store."{schema}"."{name}"')[0][0])
+            for name in broker.tables(schema)
+        }
+    return out
+
+
 async def adopt_seed(template_org: str, demo_directory: Path) -> bool:
     """Land the template's replicas from the demo's seed, when its bundle carries one: copied into
     the template's store, and recorded as built for it, over anything recorded before. Run within

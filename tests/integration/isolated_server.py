@@ -234,7 +234,8 @@ class IsolatedServer:
             return {}
         from tests.pg_control_plane import fresh_control_plane
 
-        self.plane = fresh_control_plane()
+        if self.plane is None:  # a restart keeps the control plane it had (see restart)
+            self.plane = fresh_control_plane()
         return {
             "TENANT_DATABASE_URL": self.plane.url,
             "PLATFORM_DATABASE_URL": self.plane.url,
@@ -355,6 +356,23 @@ class IsolatedServer:
         from pathlib import Path
 
         return Path(self._stderr_file.name).read_text(errors="replace")
+
+    def restart(self, *, timeout: float = 300.0) -> None:
+        """Stop the server and start it again on the same control plane and data: a deployment's
+        restart, or a sandbox tier waking from idle."""
+        if self._proc is not None:
+            self._proc.terminate()
+            try:
+                self._proc.wait(timeout=10)
+            except Exception:
+                self._proc.kill()
+            self._proc = None
+        _sf = getattr(self, "_stderr_file", None)
+        if _sf is not None:
+            _sf.close()
+            Path(_sf.name).unlink(missing_ok=True)
+            self._stderr_file = None
+        self.start(timeout=timeout)
 
     def stop_process(self) -> None:
         if self._proc is not None:
