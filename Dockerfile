@@ -61,23 +61,6 @@ WORKDIR /app
 RUN apt-get update \
  && apt-get install -y --no-install-recommends gocryptfs fuse3 \
  && rm -rf /var/lib/apt/lists/*
-# The Fabric and Synapse engines and the SQL Server warehouse replica target connect through
-# pyodbc, which loads the unixODBC driver manager (libodbc.so.2) and Microsoft's "ODBC Driver 18
-# for SQL Server" by name (federation/mssql_warehouse_runtime.py). Without the driver manager the
-# engine registry could not import them and every Sources page answered 500. Microsoft publishes
-# the driver only from its own apt repository; the same install as CI's mssql-odbc action.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends curl gnupg ca-certificates \
- && . /etc/os-release \
- && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-      | gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
- && curl -fsSL "https://packages.microsoft.com/config/debian/${VERSION_ID}/prod.list" \
-      > /etc/apt/sources.list.d/mssql-release.list \
- && apt-get update \
- && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc \
- && odbcinst -q -d -n "ODBC Driver 18 for SQL Server" \
- && apt-get purge -y curl gnupg && apt-get autoremove -y \
- && rm -rf /var/lib/apt/lists/*
 COPY --from=installer /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
 COPY --from=installer /usr/local/bin /usr/local/bin
 COPY main.py pyproject.toml ./
