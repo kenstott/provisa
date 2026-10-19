@@ -3111,24 +3111,12 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         # source landed via TrinoPgBackedConnector) would otherwise have no relation for
         # introspect_tables to read, and _build_visible_tables silently drops every table it can't
         # find column metadata for. DDL only, best-effort like the other two call sites.
-        if _stamped_runtime.env == PROD:
-            # REQ-2089: the replicas the org's config directory declares the rows of (a demo whose
-            # source has no tenant to read) land first, a demo template's from its demo's
-            # directory and the deployment org's from its launch config's. The routes published
-            # next then read them from those replicas: a source of them alone is kept (REQ-2031)
-            # and never contacted. Convergence finds them built.
-            from provisa.api.demo_templates import declared_rows_directory
-            from provisa.federation.declared_replica_rows import adopt_declared_rows
-
-            _rows_directory = declared_rows_directory(_stamped_runtime.org_id)
-            if _rows_directory is not None:
-                await adopt_declared_rows(state, _rows_directory)
-
         # REQ-1912: which tables are read from their replica, and where — published before the
-        # reconcile and before any statement is lowered against this registry.
-        from provisa.api.model_reload import publish_replica_routes
+        # reconcile and before any statement is lowered against this registry; the replicas its
+        # config declares the rows of land first (REQ-2089).
+        from provisa.api.model_reload import publish_routes_over_declared_rows
 
-        await publish_replica_routes(_stamped_runtime)
+        await publish_routes_over_declared_rows(_stamped_runtime)
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:
