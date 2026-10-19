@@ -246,7 +246,10 @@
 }
 .tour-step-image {
   display: block;
-  width: 100%;
+  max-width: 100%;
+  /* The popover's words and buttons stay in the window with the picture beside them. */
+  max-height: calc(100vh - 260px);
+  object-fit: contain;
   margin-top: 10px;
   border: 1px solid var(--mantine-color-default-border);
   border-radius: 6px;

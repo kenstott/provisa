@@ -840,6 +840,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
             // where it would be a no-op, and on a topic, whose card carries Deep Dives
             // instead: the way back to the core tour's start is the catalog's control.
             onPopoverRender: (popover) => {
+              // An image step's popover is placed before its picture loads; once it has, its
+              // height is known and the popover is placed again, inside the window.
+              const image =
+                popover.description.querySelector<HTMLImageElement>("img.tour-step-image");
+              if (image && !image.complete) {
+                image.addEventListener("load", () => driverRef.current?.refresh(), { once: true });
+              }
               if (!isFirst && scopeRef.current === "core") {
                 const startBtn = document.createElement("button");
                 startBtn.type = "button";
