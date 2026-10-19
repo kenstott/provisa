@@ -166,7 +166,7 @@ An agent asks which role it acts as with the MCP tool `describe_role`. The answe
 
 `+` appears in two places with different meanings in each.
 
-**In a grant entry.** `analyst+region__eu` in a `visible_to` or `to` list means the reader holds all of them — `analyst` AND `region__eu` simultaneously. An entry that is not a composite is a single role. Across a list's entries the rule is any one: a reader holds the grant if it holds any entry. AND-within, OR-across.
+**In a grant entry.** `analyst+region__eu` in a `visible_to` or `to` list means the reader holds all of them: `analyst` AND `region__eu` at once. An entry that is not a composite is a single role. Across a list's entries the rule is any one: a reader holds the grant if it holds any entry. AND-within, OR-across.
 
 **In a meta-role id.** `meta:analyst+engineer` is the server's identifier for the meta-role of the set {analyst, engineer}. Its rights are the union of both. A client never names the meta-role id directly; it names the roles it holds, and the server builds the meta-role.
 

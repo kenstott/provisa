@@ -33,7 +33,7 @@ orders.region ─╯
 - `orders.id`, `orders.region` y `orders.geo` son nodos **origen** (el contrato de entrada estrecho
   de `enrich_grpc_set` declara `id` y `region`; el cierre de contaminación (taint closure) completo
   conecta todas las entradas declaradas con todas las salidas).
-- `e.embedding` y `e.geo` son nodos **command** — el límite de `enrich_grpc_set`.
+- `e.embedding` y `e.geo` son nodos **command** en el límite de `enrich_grpc_set`.
 - `geo_u` es un nodo **derived** producido por la función SQL `UPPER`.
 
 El límite del comando **no es opaco**. Dado que `enrich_grpc_set` declara sus columnas de entrada

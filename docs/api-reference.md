@@ -1336,8 +1336,8 @@ Normalization applies five rules in sequence:
 1. Split on camelCase boundaries and separator characters (`_`, `-`, `.`, `/`, whitespace).
 2. Case-fold the result to lowercase.
 3. Expand a fixed abbreviation table (e.g. `cust` → `customer`, `amt` → `amount`, `dt` → `date`, `id` → `identifier`, `key` → `identifier`, `guid` → `identifier`).
-4. Strip a trailing **proxy token** (`identifier`, `code`, `index`, or `reference`) — a column named for its key or code is pointing at the underlying concept through a stand-in value, so the term should be the concept itself. The last remaining token is never stripped.
-5. Qualify a **too-generic phrase** with the table's concept. When the full normalized phrase is a bare attribute word (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, and similar), the term becomes `<table concept> <phrase>` — `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. One shared `name` term across unrelated tables would merge distinct meanings; qualification connects each column to its enclosing concept instead. The table concept is the table's business name, normalized with a singular head noun (`order_lines` → `order line`).
+4. Strip a trailing **proxy token** (`identifier`, `code`, `index`, or `reference`). A column named for its key or code is pointing at the underlying concept through a stand-in value, so the term should be the concept itself. The last remaining token is never stripped.
+5. Qualify a **too-generic phrase** with the table's concept. When the full normalized phrase is a bare attribute word (`name`, `identifier`, `date`, `location`, `message`, `first name`, `last name`, and similar), the term becomes `<table concept> <phrase>`: `employees.first_name` → `employee first name`, `orders.id` → `order identifier`. One shared `name` term across unrelated tables would merge distinct meanings; qualification connects each column to its enclosing concept instead. The table concept is the table's business name, normalized with a singular head noun (`order_lines` → `order line`).
 
 Native-filter pseudo-columns (`_nf_`-prefixed, or any column carrying `native_filter_type`) are query-parameter machinery, not business fields, and derive no terms.
 
@@ -1356,7 +1356,7 @@ The first three collapse to one term. `transaction amount` keeps both tokens bec
 
 Terms are **derived from semantic-layer membership**; users don't create them on demand. The table repository is the one write path: `sync_table_refs` runs inside every column-set upsert, and `sweep_refless_terms` runs after any deletion path.
 
-**When a column is added:** Provisa looks up the normalized term by name. If it already exists, the column gets a ref to it (and if the term was deprecated, it is revived — `deprecated` is set back to `False`). If no term exists yet, one is created.
+**When a column is added:** Provisa looks up the normalized term by name. If it already exists, the column gets a ref to it (and if the term was deprecated, it is revived, with `deprecated` set back to `False`). If no term exists yet, one is created.
 
 **When a column departs** (a schema change or a table removal), its ref is deleted and the term is **settled** under a remove-or-deprecate rule. A rooted term with no refs left is removed outright, with its edges and expert assignments, unless removing it would leave an abstract term with no path through the term graph to any rooted term. In that case the term is **deprecated** (marked `deprecated=True`) instead of deleted, so the abstract term keeps its anchor in the graph.
 

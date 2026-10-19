@@ -34,7 +34,7 @@ orders.region ─╯
 - `orders.id`, `orders.region` et `orders.geo` sont des nœuds **source** (le contrat d'entrée
   étroit d'`enrich_grpc_set` déclare `id` et `region` ; la clôture de contamination complète relie
   toutes les entrées déclarées à toutes les sorties).
-- `e.embedding` et `e.geo` sont des nœuds **command** — la frontière d'`enrich_grpc_set`.
+- `e.embedding` et `e.geo` sont des nœuds **command** à la frontière d'`enrich_grpc_set`.
 - `geo_u` est un nœud **derived** produit par la fonction SQL `UPPER`.
 
 La frontière de la commande n'est **pas opaque**. Parce qu'`enrich_grpc_set` déclare ses colonnes

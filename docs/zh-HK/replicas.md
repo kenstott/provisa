@@ -1,6 +1,6 @@
 # 複本 {: #replicas }
 
-複本是資料來源表的一份拷貝，Provisa 將它保存在引擎的具體化儲存區中，並讀取它來代替資料來源。本頁介紹複本按甚麼建立索引、複本應存放在何處，以及複本有多新鮮。一張表是否被複製，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能夠存取到的內容決定；請參閱 [What an engine changes](engines.md#what-an-engine-changes)。
+複本是資料來源表的一份拷貝，Provisa 將它保存在引擎的具體化儲存區中，並讀取它來代替資料來源。一張表是否被複製，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能夠存取到的內容決定；請參閱 [What an engine changes](engines.md#what-an-engine-changes)。
 
 ## 複本帶有索引 {: #replicas-are-indexed }
 

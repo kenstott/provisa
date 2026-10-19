@@ -33,7 +33,7 @@ orders.region ─╯
 - `orders.id`, `orders.region` e `orders.geo` são nós de **fonte** (o contrato de entrada estreito
   de `enrich_grpc_set` declara `id` e `region`; o fechamento de contaminação completo conecta todas
   as entradas declaradas a todas as saídas).
-- `e.embedding` e `e.geo` são nós de **command** — a fronteira `enrich_grpc_set`.
+- `e.embedding` e `e.geo` são nós de **command** na fronteira `enrich_grpc_set`.
 - `geo_u` é um nó **derivado** produzido pela função SQL `UPPER`.
 
 A fronteira do command **não é opaca**. Como `enrich_grpc_set` declara suas colunas de entrada

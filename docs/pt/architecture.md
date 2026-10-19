@@ -225,7 +225,7 @@ Credenciais para armazenamento em nuvem viajam em `federation_hints` da fonte (v
 
 ### Escritas de materialização colunar {: #columnar-materialization-writes }
 
-`Connection.bulk_copy` em `provisa/core/database.py` escolhe o caminho de ingestão em massa mais rápido por dialeto de armazenamento: `COPY` binário (`copy_records_to_table` do asyncpg) para armazenamentos PostgreSQL, e uma única declaração preparada `executemany` para todos os outros armazenamentos relacionais. O armazenamento embutido DuckDB pousa através de `land_duckdb_native` em `store_connection.py` — uma única chamada `executemany` para o lote inteiro, nunca um laço linha a linha.
+`Connection.bulk_copy` em `provisa/core/database.py` escolhe o caminho de ingestão em massa mais rápido por dialeto de armazenamento: `COPY` binário (`copy_records_to_table` do asyncpg) para armazenamentos PostgreSQL, e uma única declaração preparada `executemany` para todos os outros armazenamentos relacionais. O armazenamento embutido DuckDB pousa através de `land_duckdb_native` em `store_connection.py`: uma única chamada `executemany` para o lote inteiro, nunca um laço linha a linha.
 
 ## Redirecionamento de Resultado Grande {: #large-result-redirect }
 
@@ -654,7 +654,7 @@ A UI de administração (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora o 
 Consultar não tem barreira de capacidade; a governança vem inteiramente de controles na camada de dados. Uma requisição de SQL bruto é recusada (HTTP 403) para qualquer tabela fora do escopo de objetos do papel antes de a governança rodar.
 
 1. **Visibilidade de Objeto**: O esquema por função oculta tabelas/colunas não autorizadas; tabelas fora de escopo em SQL bruto são rejeitadas
-2. **Aplicação de relacionamento**: Travessias devem existir no catálogo de relacionamentos aprovado, a menos que a função possua `ignore_relationships` — entre as funções de sistema pré-carregadas, apenas `modeler` a possui. No modo de alta segurança a capacidade é ignorada e nenhuma travessia escapa do catálogo
+2. **Aplicação de relacionamento**: Travessias devem existir no catálogo de relacionamentos aprovado, a menos que a função possua `ignore_relationships`. Entre as funções de sistema pré-carregadas, apenas `modeler` a possui. No modo de alta segurança a capacidade é ignorada e nenhuma travessia escapa do catálogo
 3. **RLS**: Injeção de cláusula WHERE por tabela por função
 4. **Mascaramento de Coluna**: Transformação de dados por coluna por função
 5. **Limite de linhas (LIMIT)**: Limite de contagem de linhas para funções sem `full_results`; amostragem estatística aleatória é um recurso de consulta de usuário separado
@@ -679,8 +679,8 @@ Para redirecionamento baseado em limite, o Provisa injeta `LIMIT threshold + 1` 
 
 Para grandes cargas de trabalho analíticas, use:
 
-- **Arrow Flight** (porta 8815) para streaming para ferramentas de dados — os batches fluem pelo Provisa sem materializar
-- **Redirecionamento Parquet/ORC** para exportações baseadas em arquivo — o motor de federação grava diretamente no S3, o Provisa retorna uma URL pré-assinada
+- **Arrow Flight** (porta 8815) para streaming para ferramentas de dados; os batches fluem pelo Provisa sem materializar
+- **Redirecionamento Parquet/ORC** para exportações baseadas em arquivo: o motor de federação grava diretamente no S3, e o Provisa retorna uma URL pré-assinada
 
 ## Infraestrutura {: #infrastructure }
 

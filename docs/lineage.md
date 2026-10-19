@@ -33,7 +33,7 @@ orders.region ─╯
 - `orders.id`, `orders.region`, and `orders.geo` are **source** nodes (the narrow input contract
   of `enrich_grpc_set` declares `id` and `region`; the full taint-closure connects all declared
   inputs to all outputs).
-- `e.embedding` and `e.geo` are **command** nodes — the `enrich_grpc_set` boundary.
+- `e.embedding` and `e.geo` are **command** nodes at the `enrich_grpc_set` boundary.
 - `geo_u` is a **derived** node produced by the `UPPER` SQL function.
 
 The command boundary is **not opaque**. Because `enrich_grpc_set` declares its input columns

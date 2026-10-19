@@ -166,7 +166,7 @@ Um agente pergunta com qual função age por meio da ferramenta MCP `describe_ro
 
 `+` aparece em dois lugares, com significado diferente em cada um.
 
-**Em uma entrada de concessão.** `analyst+region__eu` em uma lista `visible_to` ou `to` significa que o leitor tem todas elas — `analyst` E `region__eu` ao mesmo tempo. Uma entrada que não é um composto é uma função única. Entre as entradas de uma lista a regra é qualquer uma: um leitor tem a concessão se tiver qualquer entrada. E dentro, OU entre elas.
+**Em uma entrada de concessão.** `analyst+region__eu` em uma lista `visible_to` ou `to` significa que o leitor tem todas elas: `analyst` E `region__eu` ao mesmo tempo. Uma entrada que não é um composto é uma função única. Entre as entradas de uma lista a regra é qualquer uma: um leitor tem a concessão se tiver qualquer entrada. E dentro, OU entre elas.
 
 **Em um id de meta-função.** `meta:analyst+engineer` é o identificador do servidor para a meta-função do conjunto {analyst, engineer}. Seus direitos são a união dos dois. Um cliente nunca nomeia diretamente o id da meta-função; ele nomeia as funções que tem, e o servidor monta a meta-função.
 

@@ -225,7 +225,7 @@ Le credenziali per lo storage cloud vengono passate in `federation_hints` dell'o
 
 ### Scritture di materializzazione colonnari {: #columnar-materialization-writes }
 
-`Connection.bulk_copy` in `provisa/core/database.py` seleziona il percorso di bulk ingest più veloce in base al dialetto dello store: `COPY` binario (`copy_records_to_table` di asyncpg) per gli store PostgreSQL, e una singola istruzione `executemany` preparata per tutti gli altri store relazionali. Lo store DuckDB embedded atterra i dati tramite `land_duckdb_native` in `store_connection.py` — una singola chiamata `executemany` per l'intero batch, mai un ciclo riga per riga.
+`Connection.bulk_copy` in `provisa/core/database.py` seleziona il percorso di bulk ingest più veloce in base al dialetto dello store: `COPY` binario (`copy_records_to_table` di asyncpg) per gli store PostgreSQL, e una singola istruzione `executemany` preparata per tutti gli altri store relazionali. Lo store DuckDB embedded atterra i dati tramite `land_duckdb_native` in `store_connection.py`: una singola chiamata `executemany` per l'intero batch, mai un ciclo riga per riga.
 
 ## Redirect dei risultati di grandi dimensioni {: #large-result-redirect }
 
@@ -654,7 +654,7 @@ La UI di amministrazione (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora G
 Interrogare non ha cancelli di capacità; la governance viene interamente da controlli a livello di dati. Una richiesta di SQL grezzo viene rifiutata (HTTP 403) per qualsiasi tabella fuori dall'ambito di oggetti del ruolo, prima che la governance giri.
 
 1. **Visibilità degli oggetti**: lo schema specifico per ruolo nasconde tabelle/colonne non autorizzate; le tabelle fuori ambito in SQL grezzo vengono rifiutate
-2. **Applicazione delle relazioni**: gli attraversamenti devono esistere nel catalogo delle relazioni approvate, a meno che il ruolo non abbia `ignore_relationships` — fra i ruoli di sistema precaricati solo `modeler` la possiede. In modalità alta sicurezza la capacità viene ignorata e nessun attraversamento sfugge al catalogo
+2. **Applicazione delle relazioni**: gli attraversamenti devono esistere nel catalogo delle relazioni approvate, a meno che il ruolo non abbia `ignore_relationships`. Fra i ruoli di sistema precaricati solo `modeler` la possiede. In modalità alta sicurezza la capacità viene ignorata e nessun attraversamento sfugge al catalogo
 3. **RLS**: iniezione di clausole WHERE per tabella e ruolo
 4. **Mascheramento delle colonne**: trasformazione dei dati per colonna e ruolo
 5. **Limite di righe (LIMIT)**: tetto sul numero di righe per i ruoli senza `full_results`; il sampling statistico casuale è una funzione separata di query utente
@@ -679,8 +679,8 @@ Per il redirect basato su soglia, Provisa inserisce `LIMIT threshold + 1` come s
 
 Per grandi workload analitici, usare una delle seguenti opzioni:
 
-- **Arrow Flight** (porta 8815) per lo streaming verso strumenti dati — i batch attraversano Provisa senza essere materializzati
-- **Redirect Parquet/ORC** per gli export basati su file — il motore di federazione scrive direttamente su S3, Provisa restituisce un URL presigned
+- **Arrow Flight** (porta 8815) per lo streaming verso strumenti dati; i batch attraversano Provisa senza essere materializzati
+- **Redirect Parquet/ORC** per gli export basati su file: il motore di federazione scrive direttamente su S3, e Provisa restituisce un URL presigned
 
 ## Infrastruttura {: #infrastructure }
 

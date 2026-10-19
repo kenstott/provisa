@@ -110,7 +110,7 @@ Le build senza questi secret vengono completate correttamente ma producono un DM
 ## Esportazione del certificato .p12 {: #exporting-the-p12-certificate }
 
 1. Aprire **Keychain Access** → portachiavi di accesso → **My Certificates**
-2. Cercare **Developer ID Application: Your Name (TEAMID)** — espandere per confermare che la chiave privata sia annidata sotto di esso
+2. Cercare **Developer ID Application: Your Name (TEAMID)** ed espanderlo per confermare che la chiave privata sia annidata sotto di esso
 3. Selezionare sia il certificato che la relativa chiave privata → clic destro → **Export 2 Items** → salvare come `.p12` → impostare una password sicura
 4. Codificare in Base64 e copiare negli appunti:
 

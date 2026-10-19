@@ -796,7 +796,7 @@
       The table's detail page shows the resulting policy in plain words.
   - id: replicas-and-freshness-materialized-views
     text: 'A materialized view stores the result of a view so queries that match it read the stored rows.
-      Matching is transparent: you query the same schema and Provisa rewrites to the stored result, including
+      You never name the view: you query the same schema and Provisa rewrites to the stored result, including
       when only part of a join pattern matches. A write to a source table marks affected views stale,
       and stale views are not used. Row security applies after the rewrite, so a stored result never widens
       what a role can see. Views are hidden from the schema by default and a steward can expose one. A
@@ -1274,7 +1274,7 @@
   - id: deployment-tls
     text: A cluster deployment serves every endpoint over TLS, web UI and API as well as pgwire, Bolt, Flight
       and the rest. If the operator supplies no certificates Provisa generates self-signed ones, so HTTPS
-      works out of the box. The Helm chart takes an existing certificate secret or a cert-manager issuer,
+      works from the first start. The Helm chart takes an existing certificate secret or a cert-manager issuer,
       and a wildcard certificate from ACME DNS-01 covers the per-org subdomains. Traffic between Trino's coordinator
       and workers can be put on HTTPS too, and the engine keeps its catalogs and their credentials in memory
       only, never on its disk.

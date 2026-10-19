@@ -110,7 +110,7 @@ Los builds sin estos secretos se completan correctamente pero producen un DMG si
 ## Exportar el certificado .p12 {: #exporting-the-p12-certificate }
 
 1. Abra **Keychain Access** → llavero de inicio de sesión → **My Certificates**
-2. Busque **Developer ID Application: Your Name (TEAMID)** — expándalo para confirmar que la clave privada está anidada debajo
+2. Busque **Developer ID Application: Your Name (TEAMID)** y expándalo para confirmar que la clave privada está anidada debajo
 3. Seleccione tanto el certificado como su clave privada → clic derecho → **Export 2 Items** → guarde como `.p12` → defina una contraseña segura
 4. Codifique en Base64 y copie al portapapeles:
 
