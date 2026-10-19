@@ -498,6 +498,7 @@ def _state_with_a_view_over_a_view(built: set[str], probed: list[str]):
             debounce_quiet=0.0,
             debounce_max_delay=None,
             region=None,
+            last_refresh_at=None,
         )
 
     margins = _mv("margins", "SELECT day AS d, count(*) AS n FROM orders GROUP BY day")
@@ -512,7 +513,7 @@ def _state_with_a_view_over_a_view(built: set[str], probed: list[str]):
         mv_registry=SimpleNamespace(
             get_enabled=lambda: [margins, close],
             get=views.get,
-            mark_refreshed=lambda *_a: None,
+            mark_refreshed=lambda mv_id, *_a: setattr(views[mv_id], "last_refresh_at", 1.0),
         ),
         tables=[
             {**row, "id": 1, "source_id": "pg", "schema_name": "public", "table_name": "orders"},
@@ -587,6 +588,51 @@ async def test_a_view_over_a_view_not_yet_built_is_wired_and_built_once_its_inpu
     }
     assert state.views_awaiting_input == {}
     assert posted == [("analytics.mv_view_margins", "replace"), (7, ["analytics.mv_view_close"])]
+
+
+@pytest.mark.asyncio
+async def test_a_view_over_an_unbuilt_view_is_not_probed_and_logs_no_error(monkeypatch, caplog):
+    """A view whose input view has never been built is not probed at boot: its build would read a
+    store table that does not exist yet. It goes straight to awaiting that input, with no query
+    and no error logged, and is probed once the input's first build lands."""
+    build_through_a_stand_in_pipeline(monkeypatch, lambda mv: f"SELECT d, n FROM {mv.id}")
+    monkeypatch.setattr("provisa.mv.coordination.ensure_mv_row", _noop_land_any)
+    monkeypatch.setattr("provisa.mv.coordination.record_build", _noop_land_any)
+    marked: list = []
+    real_specs = __import__("provisa.events.app_wiring", fromlist=["x"]).specs_from_config
+
+    def _specs(**kw):
+        marked.append(kw["mv_refreshed"])
+        return real_specs(**kw)
+
+    monkeypatch.setattr("provisa.events.app_wiring.specs_from_config", _specs)
+
+    async def _post_event(conn, *, source_table, event_type, payload):
+        return 7
+
+    async def _fan_out(conn, event_id, dependents):
+        return len(dependents)
+
+    monkeypatch.setattr("provisa.events.queue.post_event", _post_event)
+    monkeypatch.setattr("provisa.events.queue.fan_out", _fan_out)
+    built: set[str] = set()
+    probed: list[str] = []
+    state, margins = _state_with_a_view_over_a_view(built, probed)
+    sched = _RunnableSched()
+
+    with caplog.at_level(logging.INFO):
+        await wire_event_loop(sched, state=state, log=_LOG)
+
+    assert not [sql for sql in probed if "close" in sql]
+    assert not [r for r in caplog.records if r.levelno >= logging.ERROR]
+    assert state.views_awaiting_input == {"analytics.mv_view_close": {"analytics.mv_view_margins"}}
+
+    built.add("margins")
+    await marked[0](margins)(("replace", {"rows": 3}))  # margins' first build lands
+    await sched.fns["events:wire-awaiting:org_default"]()
+
+    assert [sql for sql in probed if "close" in sql]
+    assert "analytics.mv_view_close" in {p.node for p in state.event_loop_processors}
 
 
 async def _noop_land_any(*_a, **_kw):
