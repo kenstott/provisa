@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Faster queries but data may be stale by up to `refresh_interval` seconds.
 - **`materialize: false`**: Provisa creates a federated view. Queries always return live data but may be slower for complex aggregations.
 
-Views go through the same governance pipeline as tables — RLS, masking, sampling, and role-based visibility. This ensures no new semantics can be added to the platform without steward oversight.
+Views go through the same governance pipeline as tables: RLS, masking, sampling and role-based visibility. That way nothing can add new semantics to the platform without a steward's oversight.
 
 ### Views with history (time travel)
 
@@ -935,7 +935,7 @@ views:
 | `bitemporal_key` | Yes | The columns a version belongs to |
 | `bitemporal_source_time` | No | The column holding when each row changed in the source: the clock time travel reads on |
 
-**Choosing the clock.** With `bitemporal_source_time`, versions are ordered and read by the source's own time: "as of last Tuesday" is last Tuesday in the source. Without it, they are ordered and read by when Provisa landed each change, so they follow the refresh cadence rather than when the row changed in the source. Either is a choice. Load time suits a frequent refresh cadence, data whose source timing does not matter, and reads that are meant to be about load time, such as auditing what Provisa held and when.
+**Choosing the clock.** With `bitemporal_source_time`, versions are ordered and read by the source's own time: "as of last Tuesday" means last Tuesday in the source. Without it, they're ordered and read by when Provisa landed each change, which follows the refresh cadence and not the moment the row changed in the source. Both are valid choices. Load time suits a frequent refresh cadence, data whose timing in the source doesn't matter, and reads that are meant to be about load time, such as auditing what Provisa held and when.
 
 A version is in force from its time to the next version's. A delete has no source change time and takes effect when Provisa recorded it.
 
@@ -955,7 +955,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `X-Provisa-As-Recorded` alone, the read answers the version of each key in force as recorded then. It is one time, not a range; a range or a malformed value is refused with HTTP 400 (`data.invalid_as_recorded`). The same value is the `as_recorded` argument of `resolve`, the REST `as_recorded` query parameter and the `as_recorded` option of an Arrow Flight ticket. The audit record of each statement keeps both times it read with, `as_of` and `as_recorded`. The same value is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter, and the `as_of` option of an Arrow Flight ticket. A range given to `resolve` answers the row's `versions` in place of its `row`. Rights, masks and row rules apply as to any read. A malformed value, or a range whose end is not after its start, is refused with HTTP 400 (`data.invalid_as_of`).
+Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `X-Provisa-As-Recorded` alone, the read answers the version of each key in force as recorded then. It takes one time, not a range; a range or a malformed value is refused with HTTP 400 (`data.invalid_as_recorded`).
+
+Both times also reach Provisa without the headers. The as-of time is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter and the `as_of` option of an Arrow Flight ticket, and a range given to `resolve` answers the row's `versions` in place of its `row`. The as-recorded time is the `as_recorded` argument of `resolve`, the REST `as_recorded` query parameter and the `as_recorded` option of an Arrow Flight ticket. The audit record of each statement keeps both times it read with, `as_of` and `as_recorded`. Rights, masks and row rules apply as to any read. A malformed as-of value, or a range whose end isn't after its start, is refused with HTTP 400 (`data.invalid_as_of`).
 
 Every view with history answers three more columns, granted as its source-time column (else its first key column) is:
 

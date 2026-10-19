@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**: Provisa crea una tabla mediante CTAS y la actualiza según un horario. Consultas más rápidas, pero los datos pueden estar obsoletos hasta `refresh_interval` segundos.
 - **`materialize: false`**: Provisa crea una vista federada. Las consultas siempre devuelven datos en vivo, pero pueden ser más lentas para agregaciones complejas.
 
-Las vistas pasan por el mismo pipeline de gobierno que las tablas — RLS, enmascaramiento, muestreo y visibilidad basada en roles. Esto asegura que no pueda añadirse ninguna semántica nueva a la plataforma sin supervisión de un steward.
+Las vistas pasan por el mismo pipeline de gobernanza que las tablas: RLS, enmascaramiento, muestreo y visibilidad por rol. Así nada puede añadir semántica nueva a la plataforma sin la supervisión de un steward.
 
 ### Vistas con historial (viaje en el tiempo) {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | Sí | Las columnas a las que pertenece una versión |
 | `bitemporal_source_time` | No | La columna que indica cuándo cambió cada fila en el origen: el reloj con el que lee el viaje en el tiempo |
 
-**Elegir el reloj.** Con `bitemporal_source_time`, las versiones se ordenan y se leen según la hora propia del origen: "a fecha del martes pasado" es el martes pasado en el origen. Sin ella, se ordenan y se leen según cuándo aterrizó Provisa cada cambio, así que siguen la cadencia de actualización y no el momento en que la fila cambió en el origen. Ambas son una elección. La hora de carga conviene a una cadencia de actualización frecuente, a datos cuyo momento en el origen no importa y a lecturas que deben tratar de la hora de carga, como auditar qué tenía Provisa y cuándo.
+**Elegir el reloj.** Con `bitemporal_source_time`, las versiones se ordenan y leen por la hora del propio origen: "a fecha del martes pasado" significa el martes pasado en el origen. Sin él, se ordenan y leen por el momento en que Provisa aterrizó cada cambio, que sigue la cadencia de actualización y no el momento en que la fila cambió en el origen. Las dos opciones son válidas. La hora de carga va bien con una cadencia de actualización frecuente, con datos cuya hora en el origen no importa y con lecturas que deben referirse a la hora de carga, como auditar qué tenía Provisa y cuándo.
 
 Una versión rige desde su momento hasta el de la versión siguiente. Un borrado no tiene hora de cambio en el origen y surte efecto cuando Provisa lo registró.
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Toda versión registrada después de ese momento queda fuera, y el as-of elige entonces la versión vigente en su propio momento. Con `X-Provisa-As-Recorded` solo, la lectura responde la versión de cada clave vigente según lo registrado entonces. Es un instante, no un rango; un rango o un valor mal formado se rechaza con HTTP 400 (`data.invalid_as_recorded`). El mismo valor es el argumento `as_recorded` de `resolve`, el parámetro de consulta REST `as_recorded` y la opción `as_recorded` de un ticket de Arrow Flight. El registro de auditoría de cada sentencia guarda los dos momentos con que leyó, `as_of` y `as_recorded`. El mismo valor es el argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), el parámetro de consulta REST `as_of` y la opción `as_of` de un ticket de Arrow Flight. Un rango dado a `resolve` responde las `versions` de la fila en lugar de su `row`. Los derechos, las máscaras y las reglas de filas se aplican como en cualquier lectura. Un valor mal formado, o un rango cuyo fin no es posterior a su inicio, se rechaza con HTTP 400 (`data.invalid_as_of`).
+Toda versión registrada después de ese momento queda fuera, y el as-of elige entonces la versión vigente en su propio momento. Con `X-Provisa-As-Recorded` solo, la lectura responde con la versión de cada clave vigente según lo registrado entonces. Admite un momento, no un rango; un rango o un valor mal formado se rechaza con HTTP 400 (`data.invalid_as_recorded`).
+
+Los dos momentos llegan también a Provisa sin las cabeceras. El momento as-of es el argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), el parámetro de consulta REST `as_of` y la opción `as_of` de un ticket de Arrow Flight, y un rango pasado a `resolve` responde con las `versions` de la fila en lugar de su `row`. El momento as-recorded es el argumento `as_recorded` de `resolve`, el parámetro de consulta REST `as_recorded` y la opción `as_recorded` de un ticket de Arrow Flight. El registro de auditoría de cada instrucción guarda los dos momentos con que leyó, `as_of` y `as_recorded`. Los derechos, las máscaras y las reglas de fila se aplican como en cualquier lectura. Un valor as-of mal formado, o un rango cuyo final no es posterior a su inicio, se rechaza con HTTP 400 (`data.invalid_as_of`).
 
 Toda vista con historial responde tres columnas más, concedidas como lo está su columna de hora de origen (si no, su primera columna de clave):
 

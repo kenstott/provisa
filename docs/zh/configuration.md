@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**：Provisa 通过 CTAS 创建一张表，并按计划刷新它。查询更快，但数据可能会滞后至多 `refresh_interval` 秒。
 - **`materialize: false`**：Provisa 创建一个联邦视图。查询始终返回实时数据，但对于复杂聚合可能较慢。
 
-视图与表经过相同的治理流水线——行级安全（RLS）、脱敏、采样，以及基于角色的可见性。这确保了在没有数据管家（steward）监督的情况下，不会有新语义被加入平台。
+视图与表经过同样的治理管道：RLS、脱敏、采样和基于角色的可见性。这样，任何新语义都无法在没有数据管家监督的情况下进入平台。
 
 ### 带历史的视图（时间旅行） {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | 是 | 版本所属的列 |
 | `bitemporal_source_time` | 否 | 保存每一行在数据源中发生变化的时刻的列：时间旅行据以读取的时钟 |
 
-**选择时钟。** 有 `bitemporal_source_time` 时，版本按数据源自己的时间排序和读取：“上周二”就是数据源中的上周二。没有它时，版本按 Provisa 加载每次变化的时刻排序和读取，因此跟随刷新节奏，而不是行在数据源中发生变化的时刻。两者都是一种选择。加载时间适合频繁的刷新节奏、数据源时刻并不重要的数据，以及关心加载时间的读取，例如审计 Provisa 在何时保存了什么。
+**选择时钟。** 设置 `bitemporal_source_time` 时，版本按数据源自身的时间排序和读取：“截至上周二”指的是数据源中的上周二。不设置时，版本按 Provisa 落地每次变更的时间排序和读取，这跟随刷新节奏，而不是行在数据源中发生变化的时刻。两种选择都成立。加载时间适合刷新频繁的情况、数据源时间无关紧要的数据，以及本来就关心加载时间的读取，例如审计 Provisa 在什么时候持有什么数据。
 
 一个版本从它自己的时刻起有效，直到下一个版本的时刻。删除没有数据源变更时间，在 Provisa 记录它时生效。
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-在该时间之后记录的每个版本都会被排除，然后 as-of 选出在其自身时间点生效的版本。只用 `X-Provisa-As-Recorded` 时，读取返回按当时记录生效的每个键的版本。它是一个时间点而不是范围；范围或格式错误的值会以 HTTP 400 拒绝（`data.invalid_as_recorded`）。同一个值也是 `resolve` 的 `as_recorded` 参数、REST 的 `as_recorded` 查询参数，以及 Arrow Flight 票据的 `as_recorded` 选项。每条语句的审计记录会保存它读取时使用的两个时间，`as_of` 和 `as_recorded`。同一个值也是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 参数、REST 查询参数 `as_of`，以及 Arrow Flight ticket 的 `as_of` 选项。传给 `resolve` 的范围返回该行的 `versions`，而不是它的 `row`。权限、脱敏和行规则与任何读取一样适用。格式错误的值，或结束不晚于开始的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
+在该时间之后记录的所有版本都会被排除，然后 as-of 选出在其自身时间生效的版本。只使用 `X-Provisa-As-Recorded` 时，读取返回按当时记录各键生效的版本。它只接受一个时间点，不接受范围；范围或格式错误的值会以 HTTP 400（`data.invalid_as_recorded`）被拒绝。
+
+这两个时间也可以不通过请求头传给 Provisa。as-of 时间是 `resolve` 的 `as_of` 参数（GraphQL、gRPC、MCP）、REST 的 `as_of` 查询参数以及 Arrow Flight 票据的 `as_of` 选项；传给 `resolve` 的范围会返回行的 `versions`，而不是它的 `row`。as-recorded 时间是 `resolve` 的 `as_recorded` 参数、REST 的 `as_recorded` 查询参数以及 Arrow Flight 票据的 `as_recorded` 选项。每条语句的审计记录都会保存它读取时使用的两个时间，`as_of` 和 `as_recorded`。权限、掩码和行规则与任何读取一样适用。格式错误的 as-of 值，或结束时间不晚于开始时间的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
 
 每个带历史的视图还会返回三列，其授权方式与它的数据源时间列相同（没有时则与第一个键列相同）：
 

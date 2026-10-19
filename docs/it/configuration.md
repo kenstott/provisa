@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**: Provisa crea una tabella tramite CTAS e la aggiorna su pianificazione. Query più veloci ma i dati possono essere obsoleti fino a `refresh_interval` secondi.
 - **`materialize: false`**: Provisa crea una vista federata. Le query restituiscono sempre dati dal vivo ma possono essere più lente per aggregazioni complesse.
 
-Le viste passano attraverso la stessa pipeline di governance delle tabelle — RLS, mascheramento, campionamento e visibilità basata sul ruolo. Questo garantisce che nessuna nuova semantica possa essere aggiunta alla piattaforma senza supervisione dello steward.
+Le viste passano dalla stessa pipeline di governance delle tabelle: RLS, mascheramento, campionamento e visibilità per ruolo. Così niente può aggiungere nuova semantica alla piattaforma senza la supervisione di uno steward.
 
 ### Viste con cronologia (viaggio nel tempo) {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | Sì | Le colonne a cui appartiene una versione |
 | `bitemporal_source_time` | No | La colonna che indica quando ogni riga è cambiata nella sorgente: l'orologio su cui legge il viaggio nel tempo |
 
-**Scegliere l'orologio.** Con `bitemporal_source_time`, le versioni sono ordinate e lette secondo l'ora propria della sorgente: «alla data di martedì scorso» è martedì scorso nella sorgente. Senza di essa, sono ordinate e lette secondo quando Provisa ha atterrato ogni modifica, quindi seguono la cadenza di aggiornamento anziché il momento in cui la riga è cambiata nella sorgente. L'una e l'altra sono una scelta. L'ora di caricamento si adatta a una cadenza di aggiornamento frequente, a dati il cui momento nella sorgente non conta e a letture che riguardano l'ora di caricamento, come verificare cosa deteneva Provisa e quando.
+**Scegliere l'orologio.** Con `bitemporal_source_time`, le versioni sono ordinate e lette secondo l'ora dell'origine: "alla data di martedì scorso" significa martedì scorso nell'origine. Senza, sono ordinate e lette secondo il momento in cui Provisa ha depositato ogni modifica, che segue la cadenza di aggiornamento e non il momento in cui la riga è cambiata nell'origine. Entrambe le scelte sono valide. L'ora di caricamento va bene con una cadenza di aggiornamento frequente, con dati la cui ora nell'origine non conta, e con letture che devono riguardare l'ora di caricamento, come verificare cosa conteneva Provisa e quando.
 
 Una versione è in vigore dal suo istante fino a quello della versione successiva. Un'eliminazione non ha ora di modifica nella sorgente e ha effetto quando Provisa l'ha registrata.
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Ogni versione registrata dopo quel momento resta fuori, e l'as-of sceglie poi la versione in vigore al proprio momento. Con il solo `X-Provisa-As-Recorded`, la lettura restituisce la versione di ogni chiave in vigore come registrata allora. È un istante, non un intervallo; un intervallo o un valore malformato viene rifiutato con HTTP 400 (`data.invalid_as_recorded`). Lo stesso valore è l'argomento `as_recorded` di `resolve`, il parametro di query REST `as_recorded` e l'opzione `as_recorded` di un ticket Arrow Flight. Il record di audit di ogni istruzione conserva entrambi i momenti con cui ha letto, `as_of` e `as_recorded`. Lo stesso valore è l'argomento `as_of` di `resolve` (GraphQL, gRPC, MCP), il parametro di query REST `as_of` e l'opzione `as_of` di un ticket Arrow Flight. Un intervallo dato a `resolve` restituisce le `versions` della riga al posto della sua `row`. Diritti, maschere e regole di riga si applicano come a qualsiasi lettura. Un valore malformato, o un intervallo la cui fine non è successiva all'inizio, viene rifiutato con HTTP 400 (`data.invalid_as_of`).
+Ogni versione registrata dopo quel momento resta fuori, e l'as-of sceglie poi la versione in vigore al proprio momento. Con `X-Provisa-As-Recorded` da solo, la lettura restituisce la versione di ogni chiave in vigore secondo quanto registrato allora. Accetta un istante, non un intervallo; un intervallo o un valore malformato viene rifiutato con HTTP 400 (`data.invalid_as_recorded`).
+
+Entrambi gli istanti arrivano a Provisa anche senza le intestazioni. L'istante as-of è l'argomento `as_of` di `resolve` (GraphQL, gRPC, MCP), il parametro di query REST `as_of` e l'opzione `as_of` di un ticket Arrow Flight, e un intervallo passato a `resolve` restituisce le `versions` della riga al posto della sua `row`. L'istante as-recorded è l'argomento `as_recorded` di `resolve`, il parametro di query REST `as_recorded` e l'opzione `as_recorded` di un ticket Arrow Flight. Il record di audit di ogni istruzione conserva entrambi gli istanti con cui ha letto, `as_of` e `as_recorded`. Diritti, maschere e regole di riga si applicano come per qualsiasi lettura. Un valore as-of malformato, o un intervallo la cui fine non è dopo l'inizio, viene rifiutato con HTTP 400 (`data.invalid_as_of`).
 
 Ogni vista con cronologia restituisce tre colonne in più, concesse come lo è la sua colonna dell'ora di origine (altrimenti la sua prima colonna chiave):
 

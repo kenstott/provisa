@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**：Provisa 透過 CTAS 建立一個表，並依排程重新整理。 查詢較快，但數據最多可能過時 `refresh_interval` 秒。
 - **`materialize: false`**：Provisa 建立一個聯邦檢視。 查詢一律回傳即時數據，但複雜彙總可能較慢。
 
-檢視與表走同一條治理管線 — RLS、遮罩、抽樣與角色型可見性。 這確保平台上不會在缺乏數據管家監督的情況下加入新語意。
+檢視與資料表經過同樣的治理管道：RLS、遮罩、抽樣及基於角色的可見性。這樣，任何新語義都無法在沒有數據管家監督的情況下進入平台。
 
 ### 帶歷史的檢視（時間旅行） {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | 是 | 版本所屬的欄位 |
 | `bitemporal_source_time` | 否 | 保存每個資料列在數據來源中發生變化的時刻的欄位：時間旅行據以讀取的時鐘 |
 
-**選擇時鐘。** 有 `bitemporal_source_time` 時，版本按數據來源本身的時間排序及讀取：「上星期二」就是數據來源中的上星期二。沒有它時，版本按 Provisa 載入每次變化的時刻排序及讀取，因此跟隨重新整理的節奏，而不是資料列在數據來源中發生變化的時刻。兩者都是一種選擇。載入時間適合頻密的重新整理節奏、數據來源時刻並不重要的數據，以及關心載入時間的讀取，例如審計 Provisa 在何時保存了甚麼。
+**選擇時鐘。** 設定 `bitemporal_source_time` 時，版本按數據來源自身的時間排序及讀取：「截至上週二」指的是數據來源中的上週二。不設定時，版本按 Provisa 落地每次變更的時間排序及讀取，這跟隨重新整理節奏，而不是資料列在數據來源中發生變化的時刻。兩種選擇都成立。載入時間適合重新整理頻繁的情況、數據來源時間無關重要的數據，以及本來就關心載入時間的讀取，例如稽核 Provisa 在甚麼時候持有甚麼數據。
 
 一個版本由其本身的時刻起生效，直至下一個版本的時刻。刪除沒有數據來源的變更時間，在 Provisa 記錄它時生效。
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-在該時間之後記錄的每個版本都會被排除，然後 as-of 選出在其自身時間點生效的版本。只用 `X-Provisa-As-Recorded` 時，讀取傳回按當時記錄生效的每個鍵的版本。它是一個時間點而不是範圍；範圍或格式錯誤的值會以 HTTP 400 拒絕（`data.invalid_as_recorded`）。同一個值亦是 `resolve` 的 `as_recorded` 引數、REST 的 `as_recorded` 查詢參數，以及 Arrow Flight 票證的 `as_recorded` 選項。每條陳述式的稽核記錄會保存它讀取時使用的兩個時間，`as_of` 和 `as_recorded`。同一個值亦是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 引數、REST 查詢參數 `as_of`，以及 Arrow Flight ticket 的 `as_of` 選項。傳給 `resolve` 的範圍會傳回該資料列的 `versions`，而不是其 `row`。權限、遮罩及資料列規則與任何讀取一樣適用。格式錯誤的值，或結束不晚於開始的範圍，會以 HTTP 400（`data.invalid_as_of`）被拒絕。
+在該時間之後記錄的所有版本都會被排除，然後 as-of 選出在其自身時間生效的版本。只使用 `X-Provisa-As-Recorded` 時，讀取傳回按當時記錄各鍵生效的版本。它只接受一個時間點，不接受範圍；範圍或格式錯誤的值會以 HTTP 400（`data.invalid_as_recorded`）被拒絕。
+
+這兩個時間亦可以不經請求標頭傳給 Provisa。as-of 時間是 `resolve` 的 `as_of` 參數（GraphQL、gRPC、MCP）、REST 的 `as_of` 查詢參數以及 Arrow Flight 票證的 `as_of` 選項；傳給 `resolve` 的範圍會傳回資料列的 `versions`，而不是它的 `row`。as-recorded 時間是 `resolve` 的 `as_recorded` 參數、REST 的 `as_recorded` 查詢參數以及 Arrow Flight 票證的 `as_recorded` 選項。每條語句的稽核記錄都會保存它讀取時使用的兩個時間，`as_of` 及 `as_recorded`。權限、遮罩及資料列規則與任何讀取一樣適用。格式錯誤的 as-of 值，或結束時間不晚於開始時間的範圍，會以 HTTP 400（`data.invalid_as_of`）被拒絕。
 
 每個帶歷史的檢視還會傳回三個欄位，其授權方式與其數據來源時間欄位相同（沒有時則與第一個鍵欄位相同）：
 

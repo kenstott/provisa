@@ -908,7 +908,7 @@ views:
 - **`materialize: true`** : Provisa crée une table par CTAS et la rafraîchit selon une planification. Requêtes plus rapides, mais les données peuvent être périmées de `refresh_interval` secondes au plus.
 - **`materialize: false`** : Provisa crée une vue fédérée. Les requêtes renvoient toujours des données à jour, mais peuvent être plus lentes pour des agrégations complexes.
 
-Les vues passent par le même pipeline de gouvernance que les tables — RLS, masquage, échantillonnage et visibilité par rôle. Cela garantit qu'aucune sémantique nouvelle ne peut être ajoutée à la plateforme sans la supervision d'un intendant.
+Les vues passent par le même pipeline de gouvernance que les tables : RLS, masquage, échantillonnage et visibilité par rôle. Ainsi, rien ne peut ajouter de sémantique nouvelle à la plateforme sans la supervision d'un intendant.
 
 ### Vues avec historique (voyage dans le temps) {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | Oui | Les colonnes auxquelles appartient une version |
 | `bitemporal_source_time` | Non | La colonne qui indique quand chaque ligne a changé dans la source : l'horloge sur laquelle lit le voyage dans le temps |
 
-**Choisir l'horloge.** Avec `bitemporal_source_time`, les versions sont ordonnées et lues selon l'heure propre de la source : « à la date de mardi dernier » est mardi dernier dans la source. Sans elle, elles sont ordonnées et lues selon le moment où Provisa a atterri chaque changement, elles suivent donc la cadence de rafraîchissement plutôt que le moment où la ligne a changé dans la source. L'un comme l'autre est un choix. L'heure de chargement convient à une cadence de rafraîchissement fréquente, à des données dont le moment dans la source importe peu, et à des lectures qui portent sur l'heure de chargement, comme l'audit de ce que Provisa détenait et quand.
+**Choisir l'horloge.** Avec `bitemporal_source_time`, les versions sont ordonnées et lues selon l'heure de la source : « au mardi dernier » veut dire mardi dernier dans la source. Sans lui, elles sont ordonnées et lues selon le moment où Provisa a déposé chaque changement, ce qui suit la cadence de rafraîchissement et non l'instant où la ligne a changé dans la source. Les deux choix sont valables. L'heure de chargement convient à une cadence de rafraîchissement fréquente, à des données dont l'heure dans la source importe peu, et aux lectures censées porter sur l'heure de chargement, comme vérifier ce que Provisa détenait et quand.
 
 Une version est en vigueur de son instant jusqu'à celui de la version suivante. Une suppression n'a pas d'heure de changement dans la source et prend effet au moment où Provisa l'a enregistrée.
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Toute version enregistrée après cet instant est écartée, et l'as-of choisit alors la version en vigueur à son propre instant. Avec `X-Provisa-As-Recorded` seul, la lecture renvoie la version de chaque clé en vigueur telle qu'enregistrée alors. C'est un instant, pas une plage ; une plage ou une valeur mal formée est refusée avec HTTP 400 (`data.invalid_as_recorded`). La même valeur est l'argument `as_recorded` de `resolve`, le paramètre de requête REST `as_recorded` et l'option `as_recorded` d'un ticket Arrow Flight. L'enregistrement d'audit de chaque instruction garde les deux instants avec lesquels elle a lu, `as_of` et `as_recorded`. La même valeur est l'argument `as_of` de `resolve` (GraphQL, gRPC, MCP), le paramètre de requête REST `as_of` et l'option `as_of` d'un ticket Arrow Flight. Une plage donnée à `resolve` renvoie les `versions` de la ligne à la place de sa `row`. Les droits, les masques et les règles de lignes s'appliquent comme à toute lecture. Une valeur mal formée, ou une plage dont la fin n'est pas postérieure au début, est refusée avec HTTP 400 (`data.invalid_as_of`).
+Toute version enregistrée après ce moment est laissée de côté, et l'as-of choisit alors la version en vigueur à son propre moment. Avec `X-Provisa-As-Recorded` seul, la lecture renvoie la version de chaque clé en vigueur telle qu'enregistrée alors. Il prend un instant, pas une plage ; une plage ou une valeur mal formée est refusée avec HTTP 400 (`data.invalid_as_recorded`).
+
+Les deux instants parviennent aussi à Provisa sans les en-têtes. L'instant as-of est l'argument `as_of` de `resolve` (GraphQL, gRPC, MCP), le paramètre de requête REST `as_of` et l'option `as_of` d'un ticket Arrow Flight, et une plage passée à `resolve` renvoie les `versions` de la ligne à la place de sa `row`. L'instant as-recorded est l'argument `as_recorded` de `resolve`, le paramètre de requête REST `as_recorded` et l'option `as_recorded` d'un ticket Arrow Flight. L'enregistrement d'audit de chaque instruction garde les deux instants avec lesquels elle a lu, `as_of` et `as_recorded`. Droits, masques et règles de ligne s'appliquent comme pour toute lecture. Une valeur as-of mal formée, ou une plage dont la fin n'est pas après le début, est refusée avec HTTP 400 (`data.invalid_as_of`).
 
 Toute vue avec historique renvoie trois colonnes supplémentaires, accordées comme l'est sa colonne d'heure source (sinon sa première colonne de clé) :
 

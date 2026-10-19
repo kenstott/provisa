@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**: Provisa erstellt eine Tabelle via CTAS und aktualisiert sie nach Zeitplan. Schnellere Abfragen, aber die Daten können bis zu `refresh_interval` Sekunden veraltet sein.
 - **`materialize: false`**: Provisa erstellt eine föderierte Sicht. Abfragen liefern immer Live-Daten, können aber bei komplexen Aggregationen langsamer sein.
 
-Sichten durchlaufen dieselbe Governance-Pipeline wie Tabellen — RLS, Maskierung, Sampling und rollenbasierte Sichtbarkeit. Dies stellt sicher, dass keine neue Semantik ohne Steward-Aufsicht zur Plattform hinzugefügt werden kann.
+Sichten durchlaufen dieselbe Governance-Pipeline wie Tabellen: RLS, Maskierung, Stichproben und rollenbasierte Sichtbarkeit. So kann nichts der Plattform neue Semantik hinzufügen, ohne dass ein Steward darüber wacht.
 
 ### Sichten mit Historie (Zeitreise) {: #views-with-history-time-travel }
 
@@ -935,7 +935,7 @@ views:
 | `bitemporal_key` | Ja | Die Spalten, zu denen eine Version gehört |
 | `bitemporal_source_time` | Nein | Die Spalte, die festhält, wann sich jede Zeile in der Quelle geändert hat: die Uhr, nach der die Zeitreise liest |
 
-**Die Uhr wählen.** Mit `bitemporal_source_time` werden Versionen nach der eigenen Zeit der Quelle geordnet und gelesen: „Stand letzten Dienstag" ist der letzte Dienstag in der Quelle. Ohne sie werden sie danach geordnet und gelesen, wann Provisa jede Änderung gelandet hat, folgen also dem Refresh-Takt und nicht dem Zeitpunkt, zu dem sich die Zeile in der Quelle geändert hat. Beides ist eine Wahl. Die Ladezeit eignet sich für einen häufigen Refresh-Takt, für Daten, deren Zeitpunkt in der Quelle keine Rolle spielt, und für Lesevorgänge, die die Ladezeit betreffen sollen, etwa die Prüfung, was Provisa wann gehalten hat.
+**Die Uhr wählen.** Mit `bitemporal_source_time` werden Versionen nach der Zeit der Quelle geordnet und gelesen: „Stand letzter Dienstag“ heißt letzter Dienstag in der Quelle. Ohne sie werden sie danach geordnet und gelesen, wann Provisa jede Änderung gelandet hat; das folgt dem Aktualisierungstakt und nicht dem Moment, in dem sich die Zeile in der Quelle geändert hat. Beides ist eine gültige Wahl. Die Ladezeit passt zu einem häufigen Aktualisierungstakt, zu Daten, bei denen der Zeitpunkt in der Quelle keine Rolle spielt, und zu Abfragen, die sich auf die Ladezeit beziehen sollen, etwa um zu prüfen, was Provisa wann gehalten hat.
 
 Eine Version gilt von ihrem Zeitpunkt bis zu dem der nächsten Version. Ein Löschen hat keine Änderungszeit in der Quelle und wirkt ab dem Zeitpunkt, zu dem Provisa es erfasst hat.
 
@@ -955,7 +955,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Jede nach diesem Zeitpunkt erfasste Version bleibt außen vor, und das As-of wählt dann die Version, die zu seinem eigenen Zeitpunkt galt. Mit `X-Provisa-As-Recorded` allein liefert der Lesevorgang die Version jedes Schlüssels, die nach damaligem Erfassungsstand galt. Es ist ein Zeitpunkt, kein Bereich; ein Bereich oder ein fehlerhafter Wert wird mit HTTP 400 abgelehnt (`data.invalid_as_recorded`). Derselbe Wert ist das Argument `as_recorded` von `resolve`, der REST-Abfrageparameter `as_recorded` und die Option `as_recorded` eines Arrow-Flight-Tickets. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest, mit denen sie gelesen hat, `as_of` und `as_recorded`. Derselbe Wert ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets. Ein an `resolve` übergebener Bereich liefert die `versions` der Zeile anstelle ihrer `row`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesevorgang. Ein fehlerhafter Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 abgelehnt (`data.invalid_as_of`).
+Jede danach aufgezeichnete Version bleibt weg, und das As-of wählt dann die Version, die zu seiner eigenen Zeit galt. Mit `X-Provisa-As-Recorded` allein liefert der Lesezugriff die Version jedes Schlüssels, die laut damaliger Aufzeichnung galt. Es nimmt einen Zeitpunkt, keinen Bereich; ein Bereich oder ein fehlerhafter Wert wird mit HTTP 400 (`data.invalid_as_recorded`) abgelehnt.
+
+Beide Zeiten erreichen Provisa auch ohne die Header. Die As-of-Zeit ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets, und ein an `resolve` übergebener Bereich liefert die `versions` der Zeile statt ihrer `row`. Die As-recorded-Zeit ist das Argument `as_recorded` von `resolve`, der REST-Abfrageparameter `as_recorded` und die Option `as_recorded` eines Arrow-Flight-Tickets. Der Audit-Eintrag jeder Anweisung hält beide Zeiten fest, mit denen sie gelesen hat, `as_of` und `as_recorded`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesezugriff. Ein fehlerhafter As-of-Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 (`data.invalid_as_of`) abgelehnt.
 
 Jede Sicht mit Historie liefert drei weitere Spalten, freigegeben wie ihre Quellzeit-Spalte (sonst ihre erste Schlüsselspalte):
 
