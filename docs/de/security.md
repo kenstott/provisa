@@ -414,6 +414,12 @@ Telemetrie und Client-Fehler sind beim Schreiben keiner einzelnen Organisation z
 
 Eine föderierte Quelle führt ihre eigenen Logs, die Provisa weder schreibt noch erreicht. Aufzeichnungen einer Quelle über die Anweisungen, die Provisa an sie sendet, sind von dieser Quelle zu schützen.
 
+## Statistik über MCP {: #statistics-over-mcp }
+
+Die MCP-Statistik-Tools (`describe`, `correlate`, `regress`, `compare`, `forecast`) führen das SQL, das ein Agent definiert, in der Rolle des Agenten durch die gesteuerte Pipeline, sodass Zeilenregeln, Maskierung und Schwärzung für das gelten, was sie analysieren. Statistik-Tools geben nur Ergebnisse zurück, sodass die Zeilen hinter einer Analyse nie in den Kontext des Modells gelangen: Datenminimierung standardmäßig.
+
+Die Zugriffskontrolle begrenzt, was ein Agent erfahren kann. Um nur Aggregate freizugeben, veröffentlichen Sie Aggregat-Views und erteilen Sie Rollen diese Views, nicht die zugrunde liegenden Tabellen. Aggregate über kleine Gruppen können Einzelpersonen identifizieren, daher legt die Aggregat-View die Gruppierung und die kleinste Gruppe fest, die eine Rolle liest.
+
 ## Ratenbegrenzung {: #rate-limiting }
 
 Limits pro Rolle legen Sie in `provisa.yaml` fest: Anfragen pro Sekunde, gleichzeitige SSE-Abonnements und gleichzeitige Arrow-Flight-Streams. Sie werden an der API geprüft, bevor irgendetwas kompiliert oder ausgeführt wird, und eine Anfrage über dem Limit bekommt HTTP 429 mit einem `Retry-After`-Header.

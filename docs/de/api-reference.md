@@ -1464,6 +1464,30 @@ Durchsucht Begriffsnamen und Definitionen mit einer Groß-/Kleinschreibung ignor
 
 Verwenden Sie `search_terms` vor dem Schreiben von SQL, um jedes physische Feld zu finden, das ein Konzept namentlich repräsentiert. Zum Beispiel gibt die Suche nach `"order date"` den Begriff und alle Spalten `order_dt`, `orderDate`, `ORDER_DATE` über jede registrierte Tabelle hinweg zurück.
 
+### MCP-Statistik-Tools {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+Jedes Tool nimmt einen durch `sql` definierten Datensatz und führt ihn durch dieselbe gesteuerte Pipeline wie `run_sql`, in der Rolle des Aufrufers: Zeilenregeln, Maskierung und Schwärzung gelten, SQL, das die Pipeline ablehnt, scheitert wie bei `run_sql`, und eine Rolle, die der Aufrufer nicht innehat, wird abgelehnt. Jedes gibt Ergebnisse zurück, nie die Zeilen, mit der verwendeten Methode und dem gezählten `n`.
+
+| Tool | Gibt zurück |
+| --- | --- |
+| `describe` | Pro Spalte: `count`, `missing`, `distinct`; bei einer Zahl `mean`, `sd`, `min`, `max` und `quantiles` (p0, p5, p25, p50, p75, p95, p100); `top_values` (die fünf häufigsten) |
+| `correlate` | Die `pearson`- oder `spearman`-Korrelations`matrix` der numerischen `columns`, über die in allen vollständigen Zeilen, und dieses `n` |
+| `regress` | `kind="linear"`: Kleinste-Quadrate-`coefficients` (`estimate`, `se`, `p_value`), `r_squared`, `adj_r_squared`. `kind="logistic"`: ein `target` mit zwei Werten, Maximum-Likelihood-`coefficients`, `pseudo_r_squared`, `auc` und der `positive_value`. Ein Text-Feature wird zu einem Indikator je Wert außer dem ersten |
+| `compare` | `n`, `mean` und `sd` jeder Gruppe; bei zwei Gruppen Welchs t-Test (`t`, `df`, `p_value`) und Cohens d; bei mehr einfaktorielle ANOVA (`f`, `df_between`, `df_within`, `p_value`) und Eta-Quadrat |
+| `forecast` | `horizon` Punkte nach der letzten `time`, jeder mit `value`, `lower` und `upper` (95-%-Prognoseintervall), durch exponentielle Glättung (ETS) mit additivem Fehler, additivem Trend ab 10 Punkten und additiver Saisonalität, wenn `seasonal_periods` angegeben ist |
+
+Die Engine berechnet, was sie kann, über jede Zeile, die die Rolle liest: die Anzahlen, distinkten Anzahlen, Mittelwerte, Standardabweichungen, Minima und Maxima von `describe` sowie `n`, Mittelwert und Varianz jeder Gruppe für `compare`. Ein angepasstes Modell sowie die Quantile und häufigsten Werte von `describe` lesen höchstens `mcp.stats_max_rows` Zeilen (Admin → Settings → Limits; standardmäßig 100.000). Jede Antwort, die Zeilen liest, nennt `rows_read`, `row_cap` und `truncated`, und das eigene Zeilenlimit einer Rolle wird wie bei `run_sql` unter `warnings` gemeldet.
+
+Statistik-Tools geben nur Ergebnisse zurück, sodass die Zeilen hinter einer Analyse nie in den Kontext des Modells gelangen: Datenminimierung standardmäßig. Die Zugriffskontrolle begrenzt, was ein Agent erfahren kann. Um nur Aggregate freizugeben, veröffentlichen Sie Aggregat-Views und erteilen Sie Rollen diese Views, nicht die zugrunde liegenden Tabellen; Aggregate über kleine Gruppen können Einzelpersonen identifizieren, und eine Aggregat-View legt die Gruppierung fest, die eine Rolle liest. Siehe [Sicherheit](security.md#statistics-over-mcp).
+
 ### Metadaten-Export {: #metadata-export }
 
 Der Begriffsgraph des Glossars ist in jedem von `build_snapshot` erstellten `MetadataSnapshot` enthalten.

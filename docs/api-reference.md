@@ -1472,7 +1472,7 @@ compare(sql, value, group, role=None)
 forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 ```
 
-Each tool takes a dataset defined by `sql` and runs it through the same governed pipeline as `run_sql`, as the caller's role: row rules, masks and redaction apply, SQL the pipeline refuses fails as it fails for `run_sql`, and a role the caller does not hold is refused. Each returns results, never the rows, with the method it used and the `n` it counted. (REQ-2089) [tool-verified: `provisa/api/mcp/tools.py` `stats_describe` … `stats_forecast`, `provisa/api/mcp/stats.py`]
+Each tool takes a dataset defined by `sql` and runs it through the same governed pipeline as `run_sql`, as the caller's role: row rules, masks and redaction apply, SQL the pipeline refuses fails as it fails for `run_sql`, and a role the caller does not hold is refused. Each returns results, never the rows, with the method it used and the `n` it counted.
 
 | Tool | Returns |
 | --- | --- |

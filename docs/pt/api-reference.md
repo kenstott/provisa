@@ -1464,6 +1464,30 @@ Busca nomes e definições de termos com correspondência de substring sem disti
 
 Use `search_terms` antes de escrever SQL para encontrar todo campo físico que representa um conceito por nome. Por exemplo, buscar `"order date"` retorna o termo e todas as colunas `order_dt`, `orderDate`, `ORDER_DATE` em toda tabela registrada.
 
+### Ferramentas de estatística do MCP {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+Cada ferramenta recebe um conjunto de dados definido por `sql` e o executa pelo mesmo pipeline governado que `run_sql`, com o papel de quem chama: aplicam-se as regras de linha, o mascaramento e a ocultação, o SQL que o pipeline recusa falha como em `run_sql`, e um papel que quem chama não detém é recusado. Cada uma devolve resultados, nunca as linhas, com o método usado e o `n` contado.
+
+| Ferramenta | Devolve |
+| --- | --- |
+| `describe` | Por coluna: `count`, `missing`, `distinct`; para um número `mean`, `sd`, `min`, `max` e `quantiles` (p0, p5, p25, p50, p75, p95, p100); `top_values` (os cinco mais frequentes) |
+| `correlate` | A `matrix` de correlação `pearson` ou `spearman` das `columns` numéricas, sobre as linhas completas em todas elas, e esse `n` |
+| `regress` | `kind="linear"`: `coefficients` de mínimos quadrados (`estimate`, `se`, `p_value`), `r_squared`, `adj_r_squared`. `kind="logistic"`: um `target` de dois valores, `coefficients` de máxima verossimilhança, `pseudo_r_squared`, `auc` e o `positive_value`. Uma variável de texto vira um indicador por valor, exceto o primeiro |
+| `compare` | O `n`, a `mean` e o `sd` de cada grupo; para dois grupos, o teste t de Welch (`t`, `df`, `p_value`) e o d de Cohen; para mais, ANOVA de um fator (`f`, `df_between`, `df_within`, `p_value`) e eta ao quadrado |
+| `forecast` | `horizon` pontos após o último `time`, cada um com `value`, `lower` e `upper` (intervalo de predição de 95%), por suavização exponencial (ETS) com erro aditivo, tendência aditiva a partir de 10 pontos e sazonalidade aditiva quando `seasonal_periods` é informado |
+
+O mecanismo calcula o que pode sobre cada linha que o papel lê: as contagens, contagens distintas, médias, desvios-padrão, mínimos e máximos de `describe`, e o `n`, a média e a variância de cada grupo para `compare`. Um modelo ajustado e os quantis e valores mais frequentes de `describe` leem no máximo `mcp.stats_max_rows` linhas (Admin → Settings → Limits; 100.000 por padrão). Toda resposta que lê linhas informa `rows_read`, `row_cap` e `truncated`, e o limite de linhas do próprio papel é relatado em `warnings`, como em `run_sql`.
+
+As ferramentas de estatística devolvem apenas resultados, então as linhas por trás de uma análise nunca entram no contexto do modelo: minimização de dados por padrão. É o controle de acesso que limita o que um agente pode saber. Para expor apenas agregados, publique views de agregados e conceda aos papéis essas views, não as tabelas subjacentes; agregados sobre grupos pequenos podem identificar pessoas, e uma view de agregados decide o agrupamento que um papel lê. Veja [Segurança](security.md#statistics-over-mcp).
+
 ### Exportação de Metadados {: #metadata-export }
 
 O grafo de termos do glossário é incluído em todo `MetadataSnapshot` construído por `build_snapshot`.

@@ -414,6 +414,12 @@ La telemetría y los errores de cliente no están ligados a una sola organizaci�
 
 Una fuente federada mantiene sus propios logs, que Provisa no escribe ni puede alcanzar. Los registros que una fuente hace de las sentencias que Provisa le envía le corresponde protegerlos a esa fuente.
 
+## Estadística por MCP {: #statistics-over-mcp }
+
+Las herramientas de estadística MCP (`describe`, `correlate`, `regress`, `compare`, `forecast`) ejecutan el SQL que define un agente por la canalización gobernada con el rol del agente, así que las reglas de filas, el enmascaramiento y la redacción se aplican a lo que analizan. Las herramientas de estadística devuelven solo resultados, así que las filas detrás de un análisis nunca entran en el contexto del modelo: minimización de datos por defecto.
+
+El control de acceso es lo que limita lo que un agente puede saber. Para exponer solo agregados, publique vistas de agregados y conceda a los roles esas vistas, no las tablas subyacentes. Los agregados sobre grupos pequeños pueden identificar a personas, así que la vista de agregados decide la agrupación y el grupo más pequeño que lee un rol.
+
 ## Limitación de tasa {: #rate-limiting }
 
 Los límites por rol se fijan en `provisa.yaml`: peticiones por segundo, suscripciones SSE simultáneas y flujos de Arrow Flight simultáneos. Se comprueban en la API, antes de compilar o ejecutar nada, y una petición que supera el límite recibe HTTP 429 con una cabecera `Retry-After`.

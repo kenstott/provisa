@@ -1464,6 +1464,30 @@ Busca en nombres y definiciones de términos con una coincidencia de subcadena s
 
 Use `search_terms` antes de escribir SQL para encontrar cada campo físico que representa un concepto por nombre. Por ejemplo, buscar `"order date"` devuelve el término y todas las columnas `order_dt`, `orderDate`, `ORDER_DATE` en cada tabla registrada.
 
+### Herramientas de estadística MCP {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+Cada herramienta toma un conjunto de datos definido por `sql` y lo ejecuta por la misma canalización gobernada que `run_sql`, con el rol del llamante: se aplican las reglas de filas, el enmascaramiento y la redacción, el SQL que la canalización rechaza falla igual que en `run_sql`, y un rol que el llamante no tiene se rechaza. Cada una devuelve resultados, nunca las filas, con el método usado y el `n` contado.
+
+| Herramienta | Devuelve |
+| --- | --- |
+| `describe` | Por columna: `count`, `missing`, `distinct`; para un número `mean`, `sd`, `min`, `max` y `quantiles` (p0, p5, p25, p50, p75, p95, p100); `top_values` (los cinco más frecuentes) |
+| `correlate` | La `matrix` de correlación `pearson` o `spearman` de las `columns` numéricas, sobre las filas completas en todas ellas, y ese `n` |
+| `regress` | `kind="linear"`: `coefficients` de mínimos cuadrados (`estimate`, `se`, `p_value`), `r_squared`, `adj_r_squared`. `kind="logistic"`: un `target` de dos valores, `coefficients` de máxima verosimilitud, `pseudo_r_squared`, `auc` y el `positive_value`. Una variable de texto se convierte en un indicador por valor salvo el primero |
+| `compare` | El `n`, `mean` y `sd` de cada grupo; para dos grupos, la prueba t de Welch (`t`, `df`, `p_value`) y la d de Cohen; para más, ANOVA de un factor (`f`, `df_between`, `df_within`, `p_value`) y eta cuadrado |
+| `forecast` | `horizon` puntos tras el último `time`, cada uno con `value`, `lower` y `upper` (intervalo de predicción del 95 %), por suavizado exponencial (ETS) con error aditivo, tendencia aditiva a partir de 10 puntos y estacionalidad aditiva cuando se indica `seasonal_periods` |
+
+El motor calcula lo que puede sobre cada fila que lee el rol: los recuentos, recuentos distintos, medias, desviaciones estándar, mínimos y máximos de `describe`, y el `n`, la media y la varianza de cada grupo para `compare`. Un modelo ajustado y los cuantiles y valores más frecuentes de `describe` leen como máximo `mcp.stats_max_rows` filas (Admin → Settings → Limits; 100.000 por defecto). Cada respuesta que lee filas indica `rows_read`, `row_cap` y `truncated`, y el límite de filas propio de un rol se informa en `warnings`, como en `run_sql`.
+
+Las herramientas de estadística devuelven solo resultados, así que las filas detrás de un análisis nunca entran en el contexto del modelo: minimización de datos por defecto. El control de acceso es lo que limita lo que un agente puede saber. Para exponer solo agregados, publique vistas de agregados y conceda a los roles esas vistas, no las tablas subyacentes; los agregados sobre grupos pequeños pueden identificar a personas, y una vista de agregados decide la agrupación que lee un rol. Consulte [Seguridad](security.md#statistics-over-mcp).
+
 ### Exportación de metadatos {: #metadata-export }
 
 El grafo de términos del glosario se incluye en cada `MetadataSnapshot` construido por `build_snapshot`.

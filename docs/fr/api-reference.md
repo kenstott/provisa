@@ -1464,6 +1464,30 @@ Recherche les noms et définitions de termes avec une correspondance de sous-cha
 
 Utilisez `search_terms` avant d'écrire du SQL pour trouver chaque champ physique qui représente un concept par nom. Par exemple, rechercher `"order date"` renvoie le terme et toutes les colonnes `order_dt`, `orderDate`, `ORDER_DATE` à travers chaque table enregistrée.
 
+### Outils statistiques MCP {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+Chaque outil prend un jeu de données défini par `sql` et l'exécute par le même pipeline gouverné que `run_sql`, sous le rôle de l'appelant : les règles de lignes, le masquage et l'expurgation s'appliquent, un SQL que le pipeline refuse échoue comme pour `run_sql`, et un rôle que l'appelant ne détient pas est refusé. Chacun renvoie des résultats, jamais les lignes, avec la méthode utilisée et le `n` compté.
+
+| Outil | Renvoie |
+| --- | --- |
+| `describe` | Par colonne : `count`, `missing`, `distinct` ; pour un nombre `mean`, `sd`, `min`, `max` et `quantiles` (p0, p5, p25, p50, p75, p95, p100) ; `top_values` (les cinq plus fréquentes) |
+| `correlate` | La `matrix` de corrélation `pearson` ou `spearman` des `columns` numériques, sur les lignes complètes dans toutes, et ce `n` |
+| `regress` | `kind="linear"` : `coefficients` des moindres carrés (`estimate`, `se`, `p_value`), `r_squared`, `adj_r_squared`. `kind="logistic"` : une `target` à deux valeurs, `coefficients` du maximum de vraisemblance, `pseudo_r_squared`, `auc` et la `positive_value`. Une variable texte devient un indicateur par valeur sauf la première |
+| `compare` | Le `n`, la `mean` et le `sd` de chaque groupe ; pour deux groupes, le test t de Welch (`t`, `df`, `p_value`) et le d de Cohen ; au-delà, l'ANOVA à un facteur (`f`, `df_between`, `df_within`, `p_value`) et l'êta carré |
+| `forecast` | `horizon` points après le dernier `time`, chacun avec `value`, `lower` et `upper` (intervalle de prévision à 95 %), par lissage exponentiel (ETS) à erreur additive, avec une tendance additive à partir de 10 points et une saisonnalité additive quand `seasonal_periods` est donné |
+
+Le moteur calcule ce qu'il peut sur chaque ligne que lit le rôle : les comptages, comptages distincts, moyennes, écarts-types, minimums et maximums de `describe`, et le `n`, la moyenne et la variance de chaque groupe pour `compare`. Un modèle ajusté ainsi que les quantiles et valeurs les plus fréquentes de `describe` lisent au plus `mcp.stats_max_rows` lignes (Admin → Settings → Limits ; 100 000 par défaut). Chaque réponse qui lit des lignes donne `rows_read`, `row_cap` et `truncated`, et la limite de lignes propre à un rôle est signalée sous `warnings`, comme pour `run_sql`.
+
+Les outils statistiques ne renvoient que des résultats, donc les lignes derrière une analyse n'entrent jamais dans le contexte du modèle : minimisation des données par défaut. Le contrôle d'accès est ce qui limite ce qu'un agent peut apprendre. Pour n'exposer que des agrégats, publiez des vues d'agrégats et accordez aux rôles ces vues, pas les tables sous-jacentes ; des agrégats sur de petits groupes peuvent identifier des individus, et une vue d'agrégats fixe le regroupement que lit un rôle. Voir [Sécurité](security.md#statistics-over-mcp).
+
 ### Export de métadonnées {: #metadata-export }
 
 Le graphe de termes du glossaire est inclus dans chaque `MetadataSnapshot` construit par `build_snapshot`.

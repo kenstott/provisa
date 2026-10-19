@@ -1464,6 +1464,30 @@ search_terms(query, role=None, limit=25)
 
 在编写 SQL 之前使用 `search_terms`，按名称查找代表某个概念的每一个物理字段。例如，搜索 `"order date"` 会返回该术语以及所有已注册表中的 `order_dt`、`orderDate`、`ORDER_DATE` 等列。
 
+### MCP 统计工具 {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+每个工具接收由 `sql` 定义的数据集，并以调用方的角色，通过与 `run_sql` 相同的受治理流水线运行它：行规则、脱敏和涂黑都会生效，流水线拒绝的 SQL 会像在 `run_sql` 中一样失败，调用方不持有的角色会被拒绝。每个工具只返回结果，从不返回行，并附上所用的方法和统计的 `n`。
+
+| 工具 | 返回 |
+| --- | --- |
+| `describe` | 每列：`count`、`missing`、`distinct`；数值列还有 `mean`、`sd`、`min`、`max` 和 `quantiles`（p0、p5、p25、p50、p75、p95、p100）；`top_values`（最常见的五个值） |
+| `correlate` | 数值 `columns` 的 `pearson` 或 `spearman` 相关 `matrix`，基于在所有这些列中都完整的行，以及该 `n` |
+| `regress` | `kind="linear"`：最小二乘 `coefficients`（`estimate`、`se`、`p_value`）、`r_squared`、`adj_r_squared`。`kind="logistic"`：取两个值的 `target`，最大似然 `coefficients`、`pseudo_r_squared`、`auc` 和 `positive_value`。文本特征按除第一个值外的每个值各变为一个指示变量 |
+| `compare` | 每组的 `n`、`mean` 和 `sd`；两组时为 Welch t 检验（`t`、`df`、`p_value`）和 Cohen's d；更多组时为单因素方差分析（`f`、`df_between`、`df_within`、`p_value`）和 eta 平方 |
+| `forecast` | 最后一个 `time` 之后的 `horizon` 个点，每个点带 `value`、`lower` 和 `upper`（95% 预测区间），采用加性误差的指数平滑（ETS），10 个点起带加性趋势，给出 `seasonal_periods` 时带加性季节性 |
+
+引擎在角色读取的每一行上计算它能计算的内容：`describe` 的计数、去重计数、均值、标准差、最小值和最大值，以及 `compare` 所需的每组 `n`、均值和方差。拟合的模型以及 `describe` 的分位数和最常见值最多读取 `mcp.stats_max_rows` 行（Admin → Settings → Limits；默认 100,000）。每个读取行的答案都会给出 `rows_read`、`row_cap` 和 `truncated`，角色自身的行数上限会像 `run_sql` 一样在 `warnings` 中报告。
+
+统计工具只返回结果，因此分析背后的行永远不会进入模型的上下文：默认即数据最小化。限制智能体所能获知内容的是访问控制。若只公开聚合，请发布聚合视图，并把这些视图而不是底层表授予角色；对小分组的聚合可能识别出个人，而聚合视图决定了角色读取的分组方式。参见[安全](security.md#statistics-over-mcp)。
+
 ### 元数据导出 {: #metadata-export }
 
 术语图被包含在 `build_snapshot` 构建的每个 `MetadataSnapshot` 中。
