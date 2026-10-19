@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 63c27d63-ce47-4cc3-b619-76fdd43817bd
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -21,7 +22,7 @@ carriage return and a backslash. A cell is read as its column's type: an integer
 whole number, a floating column's as a number, a boolean column's as ``true`` or ``false``, and
 every other cell as its text (ISO-8601 for a date or timestamp, JSON text for a json column).
 
-When the org's runtime is built, before its replica convergence is wired, each declared table is
+When the org's model is built, before its replicas converge to it, each declared table is
 written into the org's own replica store, as a build of it would write it, and recorded as built
 (``replica_state.record_adopted``, as a seed is adopted): convergence then finds it built and
 asks for no build, so the source is never read -- not by a bundle build's setup, not by its
@@ -161,7 +162,7 @@ def declared_files(directory: Path) -> list[Path]:
 async def adopt_declared_rows(state: Any, directory: Path) -> list[tuple[str, str, str]]:
     """Land each table declared under ``directory``'s ``replica_rows`` as the bound org's replica
     and record it built; a table already landed here from these very rows is left as it is.
-    Run within the org's runtime build, before its replica convergence is wired. The keys
+    Run within the org's model build, before its replicas converge to it. The keys
     landed."""
     from provisa.core.ir_arrow import arrow_schema, rows_to_batch
     from provisa.events.content_hash import RowSetHash
