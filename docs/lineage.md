@@ -6,7 +6,7 @@ federation-wide provenance graph spanning all registered views and materialized 
 
 ## The lineage explorer
 
-Navigate to **Lineage** in the UI (`/lineage`). Paste a SQL statement and click **Build statement
+Open **Lineage** in the UI (`/lineage`). Paste a SQL statement and click **Build statement
 graph** to see its column-level DAG. Click **Federation graph** to load the provenance graph over
 every MV in the registry. [tool-verified: LineagePage.tsx:28-119]
 

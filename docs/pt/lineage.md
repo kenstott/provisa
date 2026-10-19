@@ -7,7 +7,7 @@ materializadas (MVs) registradas.
 
 ## O explorador de lineage {: #the-lineage-explorer }
 
-Navegue até **Lineage** na UI (`/lineage`). Cole uma declaração SQL e clique em **Build statement
+Abra **Lineage** na UI (`/lineage`). Cole uma declaração SQL e clique em **Build statement
 graph** para ver seu DAG em nível de coluna. Clique em **Federation graph** para carregar o grafo de
 proveniência sobre todas as MVs no registro. [tool-verified: LineagePage.tsx:28-119]
 

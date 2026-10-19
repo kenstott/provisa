@@ -7,7 +7,7 @@ todas las vistas y vistas materializadas (MV) registradas.
 
 ## El explorador de linaje {: #the-lineage-explorer }
 
-Navegue a **Lineage** en la interfaz (`/lineage`). Pegue una sentencia SQL y haga clic en **Build
+Abra **Lineage** en la interfaz (`/lineage`). Pegue una sentencia SQL y haga clic en **Build
 statement graph** para ver su DAG a nivel de columna. Haga clic en **Federation graph** para cargar
 el grafo de procedencia sobre cada MV del registro. [tool-verified: LineagePage.tsx:28-119]
 

@@ -7,7 +7,7 @@ registrierten Views und materialisierten Views (MVs).
 
 ## Der Lineage-Explorer {: #the-lineage-explorer }
 
-Navigieren Sie in der UI zu **Lineage** (`/lineage`). Fügen Sie ein SQL-Statement ein und klicken
+Öffnen Sie in der UI **Lineage** (`/lineage`). Fügen Sie ein SQL-Statement ein und klicken
 Sie auf **Build statement graph**, um dessen Column-Level-DAG zu sehen. Klicken Sie auf
 **Federation graph**, um den Provenance-Graphen über alle MVs in der Registry zu laden.
 [tool-verified: LineagePage.tsx:28-119]

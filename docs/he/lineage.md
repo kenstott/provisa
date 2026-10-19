@@ -6,7 +6,7 @@ Provisa עוקבת אחר Data Lineage של נתונים ברמת העמודה �
 
 ## סייר ה-Data Lineage {: #the-lineage-explorer }
 
-נווטו אל **Lineage** בממשק המשתמש (`/lineage`). הדביקו משפט SQL ולחצו על **Build statement
+פתחו את **Lineage** בממשק המשתמש (`/lineage`). הדביקו משפט SQL ולחצו על **Build statement
 graph** כדי לראות את ה-DAG שלו ברמת העמודה. לחצו על **Federation graph** כדי לטעון את גרף המקור על פני
 כל MV ברישום. [tool-verified: LineagePage.tsx:28-119]
 
