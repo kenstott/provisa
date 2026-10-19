@@ -81709,7 +81709,7 @@
     ordinary org created with the deployment''s demo holds the demo''s sources, which the operator wrote as a
     template''s are: those sources reach the destinations the demo declares, private ones included, as a
     sandbox''s demo sources do. Every other source of that org -- one its members add, at the demo''s own host
-    or anywhere else -- is held to public destinations, when it is saved and at each connection.'
+    or anywhere else -- is held to public destinations, when it is saved and at each connection. (Amended 2026-10-18, TEMPLATE BUILDS A FEW AT A TIME:) The tier builds its demos'' templates through a queue, sandbox.template_builds_at_once of them together (an operator setting, default 2, read when the tier starts): built all at once after a restart, a 2-vCPU tier was too busy to serve visitors. A visitor who opens a demo whose template is still waiting is told it is still being prepared (sandbox.demo_not_ready) and the demo is built next. A template that cannot be built is logged with its cause and leaves the others to build.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true

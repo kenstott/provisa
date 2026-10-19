@@ -796,6 +796,10 @@
         "label": "Sandbox demo aperte contemporaneamente",
         "help": "Quante sandbox demo possono essere aperte insieme. Oltre, a chi apre una demo viene chiesto di riprovare a breve."
       },
+      "template_builds_at_once": {
+        "label": "Modelli demo creati insieme",
+        "help": "Quanti modelli demo il livello sandbox crea insieme dopo l'avvio; gli altri attendono il loro turno, e una demo aperta da un visitatore viene creata subito dopo. Su una macchina più grande ne finiscono di più prima; su una piccola, crearli tutti insieme la lascia troppo occupata per servire i visitatori. Ha effetto al prossimo avvio."
+      },
       "memory_limit": {
         "label": "Memoria per sandbox demo",
         "help": "La memoria massima che il motore di una sandbox demo può usare. Una query che ne richiede di più viene rifiutata."

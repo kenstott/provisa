@@ -41,6 +41,7 @@ from __future__ import annotations
 import asyncio
 import os
 import re
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Awaitable, Callable
@@ -492,6 +493,7 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
     A bundled demo's template built from another version than the ready one is replaced. What
     each demo's template did: ``"ready"`` (built before; its runtime is built now) or
     ``"building"``."""
+    from provisa.core import settings_registry
     from provisa.core.connection_loop import spawn_background
 
     outcome: dict[str, str] = {}
@@ -500,11 +502,63 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
             await _retire_template(demo.name)
         build = await _template_row(pool, demo)
         _mark_templated(demo)
-        task = spawn_background(_prepare(demo, build), name=f"demo-template-{demo.name}")
-        _build_tasks.add(task)
-        task.add_done_callback(_build_tasks.discard)
+        template_builds.add(demo, build=build)
         outcome[demo.name] = "building" if build else "ready"
+    # A few at a time (sandbox.template_builds_at_once): all at once, a small tier's machine was
+    # too busy to serve the visitors it was preparing for.
+    at_once = int(settings_registry.value("sandbox.template_builds_at_once"))
+    task = spawn_background(template_builds.run(at_once, _prepare), name="demo-templates")
+    _build_tasks.add(task)
+    task.add_done_callback(_build_tasks.discard)
     return outcome
+
+
+class TemplateBuilds:
+    """The templates waiting to be built (or loaded), in order, and the workers that take them:
+    ``at_once`` of them, each building the next waiting template until none is left. A visitor's
+    open of a demo still waiting moves it to the front (:meth:`prefer`). Visitors' requests run on
+    threads of their own, so the waiting list is guarded by a thread lock."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._waiting: list[tuple[Any, bool]] = []
+
+    def add(self, demo: Any, *, build: bool) -> None:
+        with self._lock:
+            self._waiting.append((demo, build))
+
+    def prefer(self, name: str) -> bool:
+        """Move demo ``name`` to the front when it is still waiting; whether it was."""
+        with self._lock:
+            for i, (demo, _build) in enumerate(self._waiting):
+                if demo.name == name:
+                    self._waiting.insert(0, self._waiting.pop(i))
+                    return True
+        return False
+
+    def _next(self) -> tuple[Any, bool] | None:
+        with self._lock:
+            return self._waiting.pop(0) if self._waiting else None
+
+    async def run(self, at_once: int, prepare: Callable[[Any, bool], Awaitable[None]]) -> None:
+        """Build every waiting template, ``at_once`` at a time."""
+        import logging
+
+        log = logging.getLogger(__name__)
+
+        async def _work() -> None:
+            while (waiting := self._next()) is not None:
+                demo, build = waiting
+                try:
+                    await prepare(demo, build)
+                except Exception:  # allow-ble: one template that cannot be built leaves the others to build; logged with its cause, and its demo is refused as not ready by name
+                    log.exception("demo template %s could not be prepared", demo.name)
+
+        await asyncio.gather(*(_work() for _ in range(max(at_once, 1))))
+
+
+#: The tier's template builds (ensure_demo_templates); a visitor's open moves its demo forward.
+template_builds = TemplateBuilds()
 
 
 def _templated(name: str) -> str | None:

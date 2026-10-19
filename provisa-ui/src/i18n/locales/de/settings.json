@@ -796,6 +796,10 @@
         "label": "Gleichzeitig offene Demo-Sandboxes",
         "help": "Wie viele Demo-Sandboxes gleichzeitig offen sein dürfen. Darüber hinaus wird ein Besucher, der eine Demo öffnet, gebeten, es gleich noch einmal zu versuchen."
       },
+      "template_builds_at_once": {
+        "label": "Gleichzeitig erstellte Demovorlagen",
+        "help": "Wie viele Demovorlagen die Sandbox-Ebene nach dem Start gleichzeitig erstellt; die übrigen warten, und eine Demo, die ein Besucher öffnet, wird als Nächstes erstellt. Auf einem größeren Rechner sind mehr schneller fertig; auf einem kleinen ist er zu ausgelastet, um Besucher zu bedienen, wenn alle gleichzeitig erstellt werden. Wirkt beim nächsten Start."
+      },
       "memory_limit": {
         "label": "Arbeitsspeicher je Demo-Sandbox",
         "help": "Der meiste Arbeitsspeicher, den die Engine einer Demo-Sandbox nutzen darf. Eine Abfrage, die mehr braucht, wird abgelehnt."

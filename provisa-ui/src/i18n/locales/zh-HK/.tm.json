@@ -7033,5 +7033,7 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/settings.json::settings.sandbox.template_builds_at_once.label": "Demo templates built at once",
+  "zh-HK/settings.json::settings.sandbox.template_builds_at_once.help": "How many demo templates the sandbox tier builds together after it starts; the rest wait their turn, and a demo a visitor opens is built next. More finish sooner on a larger machine; on a small one, building them all at once leaves it too busy to serve visitors. Takes effect at the next start."
 }

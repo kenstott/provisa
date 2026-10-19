@@ -796,6 +796,10 @@
         "label": "Sandboxes de demonstração abertos ao mesmo tempo",
         "help": "Quantos sandboxes de demonstração podem estar abertos juntos. Acima disso, quem abre uma demonstração é convidado a tentar novamente em instantes."
       },
+      "template_builds_at_once": {
+        "label": "Modelos de demonstração criados ao mesmo tempo",
+        "help": "Quantos modelos de demonstração a camada de sandbox cria juntos depois de iniciar; os demais aguardam a vez, e uma demonstração que um visitante abre é criada em seguida. Numa máquina maior, mais terminam antes; numa pequena, criar todos ao mesmo tempo a deixa ocupada demais para atender os visitantes. Vale a partir da próxima inicialização."
+      },
       "memory_limit": {
         "label": "Memória por sandbox de demonstração",
         "help": "A memória máxima que o motor de um sandbox de demonstração pode usar. Uma consulta que precise de mais é recusada."

@@ -796,6 +796,10 @@
         "label": "Tegelijk geopende demo-sandboxes",
         "help": "Hoeveel demo-sandboxes tegelijk open mogen zijn. Daarboven wordt een bezoeker die een demo opent gevraagd het zo meteen opnieuw te proberen."
       },
+      "template_builds_at_once": {
+        "label": "Demosjablonen tegelijk gebouwd",
+        "help": "Hoeveel demosjablonen de sandboxlaag na het starten tegelijk bouwt; de rest wacht op zijn beurt, en een demo die een bezoeker opent wordt als volgende gebouwd. Op een grotere machine zijn er meer eerder klaar; op een kleine maakt alles tegelijk bouwen haar te druk om bezoekers te bedienen. Geldt vanaf de volgende start."
+      },
       "memory_limit": {
         "label": "Geheugen per demo-sandbox",
         "help": "Het meeste geheugen dat de engine van één demo-sandbox mag gebruiken. Een query die meer nodig heeft, wordt geweigerd."

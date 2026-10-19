@@ -22,6 +22,7 @@ It is a lightweight version of Provisa. The same product, with these limits:
 | Disk | 512 MB for the sandbox's data and uploaded files together; a write past that is refused | `sandbox.disk_limit` |
 | Inactivity | Deleted, with everything in it, after 1 hour without use | `sandbox.idle_ttl` |
 | Open at once | 10 sandboxes; past that, a visitor is asked to try again shortly | `sandbox.max_concurrent` |
+| Demos being prepared | 2 demos' templates are built at a time after the tier starts; a demo still waiting is built next when a visitor opens it, and the visitor is told it is still being prepared | `sandbox.template_builds_at_once` |
 
 The sandbox also holds back what reaches past it:
 
