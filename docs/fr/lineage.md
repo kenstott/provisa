@@ -10,9 +10,9 @@ couvrant toutes les vues et vues matérialisées (MV) enregistrées.
 Rendez-vous sur **Traçabilité** dans l'interface (`/lineage`). Collez une instruction SQL et
 cliquez sur **Construire le graphe de l'instruction** pour voir son DAG au niveau des colonnes.
 Cliquez sur **Graphe de fédération** pour charger le graphe de provenance couvrant toutes les MV du
-registre. [tool-verified: LineagePage.tsx:28-119]
+registre.
 
-## DAG au niveau de l'instruction (REQ-1160) {: #statement-level-dag-req-1160 }
+## DAG au niveau de l'instruction {: #statement-level-dag }
 
 Chaque colonne de sortie nommée de votre SQL devient un nœud. Le constructeur la retrace à travers
 chaque CTE, sous-requête, jointure et appel de commande en ligne jusqu'à ses colonnes sources, en
@@ -36,7 +36,7 @@ orders.region ─╯
 
 - `orders.id`, `orders.region` et `orders.geo` sont des nœuds **source** (le contrat d'entrée
   étroit d'`enrich_grpc_set` déclare `id` et `region` ; la clôture de contamination complète relie
-  toutes les entrées déclarées à toutes les sorties). [tool-verified: `_splice_commands` in graph.py:223-242]
+  toutes les entrées déclarées à toutes les sorties).
 - `e.embedding` et `e.geo` sont des nœuds **command** — la frontière d'`enrich_grpc_set`.
 - `geo_u` est un nœud **derived** produit par la fonction SQL `UPPER`.
 
@@ -44,11 +44,8 @@ La frontière de la commande n'est **pas opaque**. Parce qu'`enrich_grpc_set` d�
 d'entrée (`id`, `region`) et ses colonnes de sortie (`id`, `embedding`, `geo`), le moteur de
 traçabilité épisse la clôture de contamination sans rupture, des colonnes déclarées de la relation
 source jusqu'à chaque sortie.
-[tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
 ### Genres de nœuds et repères visuels {: #node-kinds-and-visual-cues }
-
-[tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants ; LineagePage.tsx:21-26 LEGEND]
 
 | Genre de nœud | Couleur | Signification |
 | --- | --- | --- |
@@ -63,43 +60,36 @@ Anneaux supplémentaires sur un nœud :
 - **Anneau rouge** — membre d'un cycle classé comme erreur.
 - **Anneau jaune** — membre d'un cycle classé comme boucle de rétroaction.
 
-[tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
-
 ### Transformations nommées sur les arêtes {: #named-transforms-on-edges }
 
 Chaque arête porte l'expression SQL brute qui produit la colonne cible, ainsi qu'une liste
 d'opérations nommées : fonctions SQL (`sql_function`), opérateurs arithmétiques et logiques
 (`operator`), commandes enregistrées (`command`), références de colonnes nues (`identity`) et
 littéraux (`constant`).
-[tool-verified: TransformOp and name_transform in graph.py:36-145]
 
 Une arête issue d'un appel de commande est rendue dans l'interface par une ligne violette en
 pointillés.
-[tool-verified: LineageDag.tsx:122-124]
 
-## Graphe à l'échelle de la fédération (REQ-1161) {: #federation-wide-graph-req-1161 }
+## Graphe à l'échelle de la fédération {: #federation-wide-graph }
 
 Le graphe de fédération fusionne la traçabilité par instruction de chaque MV enregistrée en un seul
 graphe de provenance. L'identité d'un nœud est `relation.column` — la colonne de sortie d'une vue
 et la référence d'entrée d'une autre vue vers la même colonne se rabattent sur un seul nœud. Le
 résultat est un DAG unique allant des colonnes sources de base à chaque jeu de données dérivé de la
-plateforme. [tool-verified: `build_federation_graph` in merge.py:205-229
-and `qualify_outputs` in graph.py:275-299]
+plateforme.
 
 Servez-vous de `focus`, `direction` et `depth` pour cadrer la vue à l'échelle de la fédération sans
-recalculer le graphe. [tool-verified: `slice_graph` in merge.py:160-189]
+recalculer le graphe.
 
-## Cycles (REQ-1161)
+## Cycles
 
 Les cycles sont décrits, non rejetés. Le moteur de traçabilité détecte chaque cycle orienté et le
-**classe**. [tool-verified: `Cycle.classification` property in merge.py:43-46]
+**classe**.
 
 | Classement | Couleur de bordure | Signification |
 | --- | --- | --- |
 | `feedback` | Jaune | Le cycle traverse un nœud matérialisé — une boucle de rétroaction licite, décalée dans le temps. L'instantané de la MV est la frontière de version qui la rend bien définie. |
 | `error` | Rouge | Aucune frontière de matérialisation sur la boucle — une définition circulaire sans ordre d'évaluation stable. Probablement une erreur de conception. |
-
-[tool-verified: LineagePage.tsx:83-98 cycle alert rendering ; merge.py:38-48]
 
 Un cycle `feedback` n'est pas un échec. Une MV d'enrichissement qui réinjecte une colonne dérivée
 dans sa propre relation source est un patron valide tant qu'un nœud de la boucle est matérialisé —
@@ -126,10 +116,7 @@ Content-Type: application/json
 }
 ```
 
-[tool-verified: `lineage_graph` endpoint at lineage_router.py:45-54, LineageGraphRequest model at
-lineage_router.py:29-31]
-
-Forme de la réponse [tool-verified: `LineageGraph.to_dict` in graph.py:82-105] :
+Forme de la réponse :
 
 ```json
 {
@@ -149,7 +136,6 @@ Forme de la réponse [tool-verified: `LineageGraph.to_dict` in graph.py:82-105]�
 ```
 
 Renvoie un HTTP 422 lorsque le SQL ne peut pas être analysé.
-[tool-verified: lineage_router.py:51-54]
 
 ### GET /admin/lineage/federation
 
@@ -160,9 +146,7 @@ GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
 
-[tool-verified: `federation_graph` endpoint at lineage_router.py:73-98]
-
-Paramètres de requête [tool-verified: function signature at lineage_router.py:73-76] :
+Paramètres de requête :
 
 | Paramètre | Valeurs | Défaut | Effet |
 | --- | --- | --- | --- |
@@ -171,7 +155,7 @@ Paramètres de requête [tool-verified: function signature at lineage_router.py:
 | `depth` | entier | non borné | Distance maximale en sauts depuis `focus` |
 
 La réponse a la même forme que le graphe d'instruction, avec un champ `cycles` en plus
-[tool-verified: `MergedGraph.to_dict` in merge.py:60-64] :
+ :
 
 ```json
 {
@@ -188,7 +172,7 @@ La réponse a la même forme que le graphe d'instruction, avec un champ `cycles`
 }
 ```
 
-## À partir de quoi chaque rafraîchissement a été construit (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+## À partir de quoi chaque rafraîchissement a été construit {: #what-each-refresh-was-built-from }
 
 Chaque rafraîchissement d'une vue matérialisée enregistre à partir de quoi il a été construit : la version de la définition de la vue, la version de ses entrées et la manière dont cette version a été établie, ainsi que les colonnes sources et l'expression de chaque colonne de sortie. La vue opérationnelle `"ops"."mv_refresh_lineage"` renvoie une ligne par rafraîchissement :
 
@@ -211,7 +195,7 @@ ORDER BY refreshed_at
 
 La vue lit les enregistrements de rafraîchissement dans `"ops"."traces"` et répond sur tout moteur qui les conserve. Sur Trino, ce sont les tables Iceberg du catalogue `otel`. Sur DuckDB, le serveur écrit ses propres enregistrements de traces en fichiers Parquet dans son dossier de télémétrie (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` par défaut), un fichier par lot d'export dans un dossier par jour. La compaction planifiée de la télémétrie (`otel.compact_cron`) fusionne les petits fichiers de chaque jour en fichiers d'au plus 64 Mo. Chaque organisation ne lit que ses propres rafraîchissements, et les enregistrements sont conservés indéfiniment. Les spans ne sont enregistrés que tant que le SDK OpenTelemetry est activé (`OTEL_SDK_DISABLED` non défini ou false).
 
-## Une vue telle qu'elle était, et telle qu'elle a été enregistrée (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+## Une vue telle qu'elle était, et telle qu'elle a été enregistrée {: #a-view-as-it-stood-and-as-it-was-recorded }
 
 Une vue déclarée bitemporelle conserve chaque version qu'elle a eue : chaque rafraîchissement ajoute, et aucune version n'est réécrite, sur n'importe quel stockage. Une lecture simple répond avec l'état actuel. Deux en-têtes de requête lisent son passé :
 
@@ -220,13 +204,12 @@ Une vue déclarée bitemporelle conserve chaque version qu'elle a eue : chaque r
 
 Au 30 septembre et enregistrée le 1er octobre donne le chiffre d'origine ; enregistrée le 5 octobre donne la correction. L'enregistrement d'audit de chaque instruction conserve les deux dates (`as_of`, `as_recorded`), de sorte qu'un rapport peut être reproduit tel qu'il a été produit la première fois. [Vues avec historique](configuration.md#views-with-history-time-travel) décrit la déclaration d'une vue bitemporelle et chaque surface qui accepte les deux valeurs.
 
-## Ce que renommer ou supprimer une colonne casserait (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
+## Ce que renommer ou supprimer une colonne casserait {: #what-a-column-rename-or-drop-would-break }
 
 Une colonne porte deux noms, et chacun est stocké par un ensemble d'artefacts différent.
 
 Le **nom exposé** est celui que montrent les surfaces SQL et GraphQL : `table_columns.alias`, à
-défaut la valeur snake_case par défaut lorsqu'aucun alias n'est posé [tool-verified: `computed_sql_alias` at
-`schema_helpers.py:317`]. Les vues, vues matérialisées, expressions de métriques, prédicats RLS,
+défaut la valeur snake_case par défaut lorsqu'aucun alias n'est posé. Les vues, vues matérialisées, expressions de métriques, prédicats RLS,
 contrats de qualité des données, grains de vues de métriques et clés de ligne des MV sont tous
 écrits contre ce nom : **renommer un alias les casse donc aussi sûrement que supprimer la colonne**.
 
@@ -237,8 +220,7 @@ cassent donc que lorsque la colonne est **supprimée**.
 
 `columnDependents` rapporte les deux. Les vues et MV en aval proviennent d'une coupe du graphe de
 fédération sur le nom exposé de la colonne ; les artefacts que ce graphe ne couvre pas proviennent
-d'un balayage direct du registre [tool-verified: `graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
-`provisa/api/admin/column_dependents.py`].
+d'un balayage direct du registre.
 
 ```graphql
 query {
@@ -257,8 +239,7 @@ qu'elle porte encore dans le registre ; une fois l'alias posé, l'ancien nom a 
 ne trouve rien.
 
 La page Tables exécute automatiquement la requête lorsqu'une modification en attente change un
-alias ou réduit l'ensemble des colonnes, et liste ce qu'elle trouve [tool-verified: `diffEditedColumns` in
-`provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]. L'avertissement est
+alias ou réduit l'ensemble des colonnes, et liste ce qu'elle trouve. L'avertissement est
 consultatif : il nomme les artefacts concernés et c'est l'administrateur qui décide. Il ne bloque
 pas l'enregistrement, car les consommateurs du parc ne peuvent pas tous être atteints — un tableau
 de bord extérieur ou une application cliente qui interroge la colonne par son nom échappe à la

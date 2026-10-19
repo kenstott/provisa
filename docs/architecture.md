@@ -2,9 +2,9 @@
 
 ## Overview
 
-Provisa is a config-driven data virtualization platform: federation, metrics, ontology and governance from a single model, for small teams and large enterprises alike. It provides a unified API over heterogeneous data sources with governance, security, and performance optimization. Clients query via SQL, GraphQL, or Cypher; all three are first-class interfaces with identical governance applied. (REQ-002, REQ-038)
+Provisa is a config-driven data virtualization platform: federation, metrics, ontology and governance from a single model, for small teams and large enterprises alike. It provides a unified API over heterogeneous data sources with governance, security, and performance optimization. Clients query via SQL, GraphQL, or Cypher; all three are first-class interfaces with identical governance applied.
 
-The model is the only place meaning is added. To add to the model you register new data sources or aggregates within the data virtualization layer. This creates a clean separation — no new additions to the semantics can be made outside the platform, enabling true data governance. (REQ-136) Enforcement is at the compiler level: the approved relationship catalog is the source of truth regardless of which query language is used. (REQ-002)
+The model is the only place meaning is added. To add to the model you register new data sources or aggregates within the data virtualization layer. This creates a clean separation — no new additions to the semantics can be made outside the platform, enabling true data governance. Enforcement is at the compiler level: the approved relationship catalog is the source of truth regardless of which query language is used.
 
 Provisa is designed to be highly performant for operational needs and highly scalable for enterprise analytical needs. A single platform serves both without sacrificing speed or scalability.
 
@@ -31,7 +31,7 @@ Config YAML → PG Metadata → Federation Catalogs
 
 ## Query Interfaces
 
-Each interface is a distinct transport. All four apply the same security pipeline (RLS, masking, sampling, role checks). (REQ-002, REQ-038) Clients never talk directly to the federation engine. (REQ-266) "Query language" (SQL / GraphQL / Cypher) is orthogonal to transport — multiple languages can arrive over the same transport.
+Each interface is a distinct transport. All four apply the same security pipeline (RLS, masking, sampling, role checks). Clients never talk directly to the federation engine. "Query language" (SQL / GraphQL / Cypher) is orthogonal to transport — multiple languages can arrive over the same transport.
 
 | Port | Transport | Accepted query languages | Use case |
 | ------ | ----------- | -------------------------- | ---------- |
@@ -49,47 +49,47 @@ Multiple endpoints under the same port, distinguished by path:
 | Path | Language | Notes |
 | ------ | ---------- | ------- |
 | `POST /data/graphql` | GraphQL | Reads and mutations; APQ hash accepted via `extensions.persistedQuery` |
-| `POST /data/sql` | SQL | Read-only; no capability gate — governed by object visibility + RLS + masking (REQ-001, REQ-267) |
+| `POST /data/sql` | SQL | Read-only; no capability gate — governed by object visibility + RLS + masking |
 | `POST /data/query` | Cypher | Read-only; standard role |
 | `GET /data/nl` | Natural language | Translates to SQL/GraphQL/Cypher based on source type |
 | `GET /data/subscribe/{table}` | GraphQL | SSE subscription stream |
 | `GET /neo4j/...` | Cypher (Neo4j compat) | Neo4j HTTP API compatibility shim |
 | `POST /admin/graphql` | GraphQL | Admin API (superuser/admin role required) |
 
-All paths return JSON by default. `Accept: text/csv`, `application/vnd.apache.parquet`, `application/vnd.apache.arrow.stream`, and `application/octet-stream` (raw binary) are supported via content negotiation. Results exceeding the configured size threshold are automatically redirected to a signed S3 URL. (REQ-029, REQ-137)
+All paths return JSON by default. `Accept: text/csv`, `application/vnd.apache.parquet`, `application/vnd.apache.arrow.stream`, and `application/octet-stream` (raw binary) are supported via content negotiation. Results exceeding the configured size threshold are automatically redirected to a signed S3 URL.
 
 ### Arrow Flight (port 8815)
 
-Native Arrow columnar transport over gRPC. (REQ-045, REQ-143) Clients send a JSON ticket:
+Native Arrow columnar transport over gRPC. Clients send a JSON ticket:
 
 ```json
 {"query": "SELECT name, email FROM customers", "role": "analyst"}
 ```
 
-and receive Arrow RecordBatches streamed lazily. When the Zaychik Flight SQL proxy is available, data flows as a stream of Arrow record batches end-to-end: (REQ-144)
+and receive Arrow RecordBatches streamed lazily. When the Zaychik Flight SQL proxy is available, data flows as a stream of Arrow record batches end-to-end:
 
 ```text
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
-The full result is never materialized in Provisa memory — batches are forwarded as they arrive. (REQ-145) This makes Arrow Flight an unbounded path suitable for arbitrarily large results.
+The full result is never materialized in Provisa memory — batches are forwarded as they arrive. This makes Arrow Flight an unbounded path suitable for arbitrarily large results.
 
 ### Protobuf gRPC (port 50051)
 
-Auto-generated `.proto` from the data schema, generated per role. (REQ-525) Streaming queries (one message per row), unary mutations. Server reflection enabled; it describes each caller the service of its own role. (REQ-526) Role via `x-provisa-role` metadata key.
+Auto-generated `.proto` from the data schema, generated per role. Streaming queries (one message per row), unary mutations. Server reflection enabled; it describes each caller the service of its own role. Role via `x-provisa-role` metadata key.
 
 ### PostgreSQL wire protocol / pgwire (configurable port)
 
-Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. (REQ-527) Any PostgreSQL-compatible client — `psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC — can connect without modification. Accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. (REQ-266, REQ-002) Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
+Implements the PostgreSQL frontend/backend wire protocol using the `buenavista` library. Any PostgreSQL-compatible client — `psql`, DBeaver, SQLAlchemy with `psycopg2`, JDBC — can connect without modification. Accepts SQL only. The full governance pipeline (RLS, masking, domain permissions) applies identically to pgwire connections. Enabled by setting `PROVISA_PGWIRE_PORT` to a non-zero port.
 
 ## Request Pipeline
 
-Three query languages are accepted. All converge at governance after their respective parse/compile steps. (REQ-262, REQ-263) Only GraphQL supports writes. (REQ-037) There is no capability gate on querying itself — any authenticated identity may query in any language, and data is governed solely by object visibility, RLS, and masking. (REQ-001)
+Three query languages are accepted. All converge at governance after their respective parse/compile steps. Only GraphQL supports writes. There is no capability gate on querying itself — any authenticated identity may query in any language, and data is governed solely by object visibility, RLS, and masking.
 
 | Interface | Reads | Writes | Query gate |
 | --- | --- | --- | --- |
 | GraphQL (`/data/graphql`) | Yes | Yes (mutations) | None — data-layer governance only |
-| SQL (`/data/sql`) | Yes | No | None — data-layer governance only (REQ-267) |
+| SQL (`/data/sql`) | Yes | No | None — data-layer governance only |
 | Cypher (`/data/query`) | Yes | No | None — data-layer governance only |
 
 ```mermaid
@@ -129,18 +129,18 @@ flowchart TD
 
 | Route | When |
 | --- | --- |
-| **Cache** | Result cache hit — evaluated first, serves the stored result with no execution (REQ-865) |
-| **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count — routed to the native count call instead of materializing to count (REQ-875) |
+| **Cache** | Result cache hit — evaluated first, serves the stored result with no execution |
+| **Cheap-count** | `count(*)`-shaped query over an unmaterialized source that exposes an exact native count — routed to the native count call instead of materializing to count |
 | **Direct** | Single source + has native driver + has federation connector |
 | **Federation** | Multi-source federation, or source has connector but no driver |
 | **Materialize** | Source has no federation connector — fetch and cache to S3/PG first |
-| **Mutation** | A write: the source's own driver when it has one; otherwise the engine, through a connector that writes the source (REQ-031, REQ-910) |
+| **Mutation** | A write: the source's own driver when it has one; otherwise the engine, through a connector that writes the source |
 
-Routing consumes the output of the post-governance optimization stage, never the pre-optimization governed SQL. Governance may ADD sources (RLS subquery predicates); the optimization stage may REMOVE them (hot-table VALUES-CTE inlining, API-cache rewrites, union-branch pruning). A federated query that collapses to a single live source after inlining is therefore re-routed as direct. (REQ-863)
+Routing consumes the output of the post-governance optimization stage, never the pre-optimization governed SQL. Governance may ADD sources (RLS subquery predicates); the optimization stage may REMOVE them (hot-table VALUES-CTE inlining, API-cache rewrites, union-branch pruning). A federated query that collapses to a single live source after inlining is therefore re-routed as direct.
 
 ### Multi-Root Queries
 
-GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { name } }`) are compiled into separate SQL queries and executed independently. (REQ-534) SQL and Cypher requests are single-root by definition. Results are merged into a single response:
+GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { name } }`) are compiled into separate SQL queries and executed independently. SQL and Cypher requests are single-root by definition. Results are merged into a single response:
 
 - Fields below the redirect threshold are returned inline in `data`
 - Fields above the threshold are redirected, with per-field entries in `redirects`
@@ -156,25 +156,25 @@ GraphQL queries with multiple root fields (e.g., `{ orders { id } customers { na
 
 ### Zaychik Arrow Flight SQL Proxy
 
-The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to JDBC queries, and streams results back as Arrow record batches. (REQ-144)
+The federation engine does not natively support the Arrow Flight SQL protocol. [Zaychik](https://github.com/Raiffeisen-DGTL/zaychik-trino-proxy) is a Java proxy that implements the Arrow Flight SQL gRPC interface, translates requests to JDBC queries, and streams results back as Arrow record batches.
 
 ```text
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, enabling streaming Arrow end-to-end without materializing results. (REQ-145)
+The Provisa Flight server (port 8815) connects to Zaychik as an ADBC client, enabling streaming Arrow end-to-end without materializing results.
 
 ### Iceberg Results Catalog
 
-CTAS redirect uses an Iceberg connector (`results` catalog) backed by a JDBC catalog on the existing PostgreSQL instance. (REQ-169) Iceberg writes Parquet/ORC files directly to MinIO/S3 via the native S3 filesystem (`fs.native-s3.enabled=true`).
+CTAS redirect uses an Iceberg connector (`results` catalog) backed by a JDBC catalog on the existing PostgreSQL instance. Iceberg writes Parquet/ORC files directly to MinIO/S3 via the native S3 filesystem (`fs.native-s3.enabled=true`).
 
 ## Federation Engines
 
-Provisa selects a federation engine at startup via the `PROVISA_ENGINE` environment variable, the persisted admin-UI config, or the default. When nothing is set, DuckDB is the default — fully in-process, no external service (REQ-989). See [Configuration](configuration.md#federation-engine) for selection details.
+Provisa selects a federation engine at startup via the `PROVISA_ENGINE` environment variable, the persisted admin-UI config, or the default. When nothing is set, DuckDB is the default — fully in-process, no external service. See [Configuration](configuration.md#federation-engine) for selection details.
 
-Every engine is a `FederationEngine` instance defined in `provisa/federation/engine.py`. The instance owns a connector collection that determines which source types the engine can read live (ATTACH) versus which must land into the engine's materialization store first. [tool-verified: `engine.py` `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`]
+Every engine is a `FederationEngine` instance defined in `provisa/federation/engine.py`. The instance owns a connector collection that determines which source types the engine can read live (ATTACH) versus which must land into the engine's materialization store first.
 
-### Driver classes (REQ-840) [tool-verified: `engine.py` `DriverClass`]
+### Driver classes
 
 | Class | Meaning | Examples |
 | ------- | --------- | --------- |
@@ -182,38 +182,38 @@ Every engine is a `FederationEngine` instance defined in `provisa/federation/eng
 | `PARTIAL` | Reaches a subset (relational, files, cloud object/lake) plus lands everything else | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Reaches only its own store; every other source lands in | SQLAlchemy |
 
-### Available engines [tool-verified: `engine.py` `_ENGINE_BUILDERS`]
+### Available engines
 
 | Engine key | Dialect | MPP | External-link mechanism | Auth |
 | ----------- | --------- | ----- | ------------------------ | ------ |
 | `trino` / `trino-byo` | Trino SQL | Yes | Trino catalogs (broad connector set) | JDBC credentials |
 | `pg` | PostgreSQL | No | FDW / pg_duckdb | PostgreSQL credentials |
 | `duckdb` | DuckDB | No | Extension-native ATTACH | None (in-process) |
-| `clickhouse` / `clickhouse-server` | ClickHouse | Yes (shards) | S3 / IcebergS3 / DeltaLake table engines (REQ-986) | ClickHouse credentials |
-| `snowflake` | Snowflake | Yes | External stage + external table (REQ-988) | `PROVISA_ENGINE_URL` |
-| `databricks` | Databricks SQL | Yes | Unity Catalog external tables via REST (REQ-987) | Bearer token (`http_path` in `federation_hints`) |
+| `clickhouse` / `clickhouse-server` | ClickHouse | Yes (shards) | S3 / IcebergS3 / DeltaLake table engines | ClickHouse credentials |
+| `snowflake` | Snowflake | Yes | External stage + external table | `PROVISA_ENGINE_URL` |
+| `databricks` | Databricks SQL | Yes | Unity Catalog external tables via REST | Bearer token (`http_path` in `federation_hints`) |
 | `bigquery` | BigQuery | Yes (Dremel) | BigQuery external / BigLake tables | `GOOGLE_APPLICATION_CREDENTIALS` service-account key |
 | `fabric` | T-SQL | Yes | OneLake shortcuts → OPENROWSET | Azure AD (`az login` / managed identity) |
 | `synapse` | T-SQL | Yes | ADLS OPENROWSET / external tables | Azure AD |
 | `sqlalchemy` | Any SQLAlchemy dialect | No | None (land-only) | Per-dialect credentials |
 
-### Zero-config default: DuckDB (REQ-989) [tool-verified: `engine.py` `build_duckdb_engine`, `_embedded_duckdb_materialize_default`]
+### Zero-config default: DuckDB
 
 When `PROVISA_ENGINE` is unset, Provisa uses the fully embedded in-process DuckDB engine. DuckDB's materialization store is an embedded DuckDB file at `$PROVISA_DATA_DIR/materialize.duckdb` (defaulting to `~/.provisa/materialize.duckdb`). No external database or service is required.
 
-Because DuckDB enforces a single writer per file, `store_connection.py` writes into the embedded store through the engine's own connection — never a second independent connection. This is the one case where the engine and the materialization store share a file handle by design. [tool-verified: `store_connection.py` module docstring]
+Because DuckDB enforces a single writer per file, `store_connection.py` writes into the embedded store through the engine's own connection — never a second independent connection. This is the one case where the engine and the materialization store share a file handle by design.
 
-### Arrow-native read transport (REQ-986, REQ-987, REQ-988) [tool-verified: `engine.py` `build_*_engine` `capabilities=`]
+### Arrow-native read transport
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, and Synapse all advertise `EngineCapability.ARROW` and `EngineCapability.ARROW_STREAM`. Queries against these engines return Arrow RecordBatches directly — the row-serialization path is bypassed entirely. The Flight server streams those batches to clients without materializing the full result in Provisa's process memory. For Trino, Arrow streaming relies on the Zaychik proxy; for the warehouse engines, the engine's own Arrow-native API (Cloud Fetch for Databricks, Storage Read API for BigQuery, `fetch_arrow_table` for DuckDB and Snowflake) feeds the Flight stream.
 
-### External data links (ATTACH) [tool-verified: `engine.py` `_warehouse_connectors`]
+### External data links (ATTACH)
 
-Every warehouse engine can scan cloud object/lake data in place without landing a copy. Parquet, CSV, Iceberg, and Delta Lake files on S3, GCS, or OneLake attach directly to the engine as if they were native tables. The strategy — ATTACH (scan in place) or LAND (copy into the store) — is determined by the connector's declared `Mechanism`; no engine-specific branching exists in the planner. A `Mechanism.ATTACH_R` connector triggers zero-copy scan; a `Mechanism.DIRECT` or absent connector triggers a land. [tool-verified: `connector_base.py` `Mechanism`, `engine.py` `_warehouse_connectors`]
+Every warehouse engine can scan cloud object/lake data in place without landing a copy. Parquet, CSV, Iceberg, and Delta Lake files on S3, GCS, or OneLake attach directly to the engine as if they were native tables. The strategy — ATTACH (scan in place) or LAND (copy into the store) — is determined by the connector's declared `Mechanism`; no engine-specific branching exists in the planner. A `Mechanism.ATTACH_R` connector triggers zero-copy scan; a `Mechanism.DIRECT` or absent connector triggers a land.
 
 Attach auto-provisions all prerequisites at attach time:
 
-| Engine | Object/lake formats | Mechanism | Auto-provisioning [tool-verified] |
+| Engine | Object/lake formats | Mechanism | Auto-provisioning |
 | -------- | ------------------- | ---------- | ---------------------------------- |
 | Databricks | parquet, csv, iceberg, delta_lake | UC external table (`ATTACH_R`) | REST installs Unity Catalog storage credential + external location, then `CREATE TABLE … USING <format> LOCATION …` — live-verified over Cloudflare R2 |
 | BigQuery | parquet, csv, json, iceberg, delta_lake | BigQuery external / BigLake table (`ATTACH_R`) | `CREATE OR REPLACE EXTERNAL TABLE … OPTIONS(format=…, uris=[…])` — live-verified |
@@ -223,13 +223,13 @@ Attach auto-provisions all prerequisites at attach time:
 
 Credentials for cloud storage travel in the source's `federation_hints` (see [Sources](sources.md#warehouses-as-named-sources)). Any source type that cannot ATTACH lands into the engine's materialization store first.
 
-### Columnar materialization writes (REQ-990) [tool-verified: `core/database.py:436`, `store_connection.py:99`]
+### Columnar materialization writes
 
 `Connection.bulk_copy` in `provisa/core/database.py` chooses the fastest bulk-ingest path per store dialect: binary `COPY` (asyncpg `copy_records_to_table`) for PostgreSQL stores, and a single `executemany` prepared statement for all other relational stores. The DuckDB embedded store lands through `land_duckdb_native` in `store_connection.py` — one `executemany` call for the whole batch, never a per-row loop.
 
 ## Large Result Redirect
 
-Results exceeding a row threshold are redirected to S3-compatible storage (MinIO) instead of being returned inline. (REQ-029)
+Results exceeding a row threshold are redirected to S3-compatible storage (MinIO) instead of being returned inline.
 
 ### Redirect Modes
 
@@ -238,11 +238,11 @@ Results exceeding a row threshold are redirected to S3-compatible storage (MinIO
 | **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
 | **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
 
-For CTAS-native formats, Provisa never handles the data — the federation engine writes files directly to MinIO/S3. (REQ-138) This is the preferred path for large analytical exports.
+For CTAS-native formats, Provisa never handles the data — the federation engine writes files directly to MinIO/S3. This is the preferred path for large analytical exports.
 
 ### With no object store
 
-A result goes to the object store when one is configured (an endpoint, or credentials for AWS S3) and the engine writes the requested format to it itself. Otherwise it is written to a file in the org's folder, `<data directory>/orgs/<org>/results/`. [tool-verified: `provisa/executor/redirect.py` `uses_object_store`, `run_materialize`] (REQ-1195) A configured store that the engine writes to but cannot reach fails the request by name. The result is not written to the folder instead.
+A result goes to the object store when one is configured (an endpoint, or credentials for AWS S3) and the engine writes the requested format to it itself. Otherwise it is written to a file in the org's folder, `<data directory>/orgs/<org>/results/`. A configured store that the engine writes to but cannot reach fails the request by name. The result is not written to the folder instead.
 
 | Engine | Writes the file itself | Formats |
 | ------ | ---------------------- | ------- |
@@ -250,11 +250,9 @@ A result goes to the object store when one is configured (an endpoint, or creden
 | PostgreSQL | `COPY (query) TO STDOUT`, streamed into the file on Provisa's host | csv |
 | Any other format or engine | Provisa writes it from the rows | parquet, orc, csv, arrow, json, ndjson |
 
-[tool-verified: `provisa/federation/result_sink.py` `DUCKDB_FILE_FORMATS`; `provisa/federation/pg_backend.py`; `provisa/executor/local_results.py` `FILE_FORMATS`]
+The handle has the same keys as the object store's, with `"sink": "local"` and a `redirect_url` of `/data/redirect-file/<name>`, a path on the server that answered. Only the user who asked for the result may fetch it. Each fetch compares the request's own identity with the owner recorded beside the file, and answers 403 to anyone else and 401 to a request with no identity.
 
-The handle has the same keys as the object store's, with `"sink": "local"` and a `redirect_url` of `/data/redirect-file/<name>`, a path on the server that answered. (REQ-1191) Only the user who asked for the result may fetch it. Each fetch compares the request's own identity with the owner recorded beside the file, and answers 403 to anyone else and 401 to a request with no identity. (REQ-1192) [tool-verified: `provisa/api/data/redirect_file.py`; `tests/unit/test_local_result_sink.py`]
-
-A file older than `redirect.ttl` is answered 404 and deleted. A timer deletes it at its expiry, as the object store's results are deleted. Each new result also sweeps the org's results folder, which removes files whose timer a restart ended. (REQ-1193) [tool-verified: `provisa/executor/local_results.py` `schedule_removal`, `reap_expired`]
+A file older than `redirect.ttl` is answered 404 and deleted. A timer deletes it at its expiry, as the object store's results are deleted. Each new result also sweeps the org's results folder, which removes files whose timer a restart ended.
 
 ### Redirect Headers
 
@@ -264,7 +262,7 @@ A file older than `redirect.ttl` is answered 404 and deleted. A timer deletes it
 | `X-Provisa-Redirect-Threshold: N` | Only redirect if result exceeds N rows |
 | `X-Provisa-Redirect: true` | Force redirect using default format |
 
-These headers implement client-controlled redirect. (REQ-137)
+These headers implement client-controlled redirect.
 
 **Response:**
 
@@ -304,30 +302,28 @@ Steward hint "direct"? → Direct (if possible)
 Redirect to Parquet/ORC? → Federation engine (CTAS, regardless of source count)
 ```
 
-(REQ-027, REQ-028, REQ-030, REQ-279)
-
 ## Federation Query Optimization
 
 Provisa primes the federation engine's cost-based optimizer automatically so cross-source query plans are based on real data distribution, not hardcoded defaults.
 
 ### Automatic Statistics (`ANALYZE`)
 
-On source registration, Provisa runs `ANALYZE catalog.schema.table` for every published table. (REQ-275) This collects:
+On source registration, Provisa runs `ANALYZE catalog.schema.table` for every published table. This collects:
 
 - Row count
 - Per-column: null fraction, distinct value count, min/max, histograms (connector-dependent)
 
 The optimizer uses these to estimate selectivity for filtered queries. Without statistics, it falls back to fixed defaults (e.g., 10% selectivity for equality predicates) which produce poor join plans on skewed or high-cardinality data. With statistics, estimates are accurate enough to make correct broadcast vs. partitioned join decisions for most workloads.
 
-**Coverage**: statistics support varies by connector. PostgreSQL, MySQL, Hive, Iceberg, and Delta Lake fully support `ANALYZE`. MongoDB and Cassandra connectors have partial or no support. Provisa swallows `ANALYZE` failures silently — registration is never blocked. (REQ-275)
+**Coverage**: statistics support varies by connector. PostgreSQL, MySQL, Hive, Iceberg, and Delta Lake fully support `ANALYZE`. MongoDB and Cassandra connectors have partial or no support. Provisa swallows `ANALYZE` failures silently — registration is never blocked.
 
 **Selectivity limits**: statistics provide per-column estimates. For correlated predicates (`WHERE region = 'US' AND city = 'Seattle'`), the optimizer assumes column independence, which may underestimate row counts. This is a known limitation of column-level statistics in all cost-based optimizers.
 
-**API sources**: `api_cache_{table_name}` tables in PostgreSQL are analyzed automatically after each cache refresh cycle, so the optimizer has current row estimates when joining API-backed sources with relational sources. (REQ-280)
+**API sources**: `api_cache_{table_name}` tables in PostgreSQL are analyzed automatically after each cache refresh cycle, so the optimizer has current row estimates when joining API-backed sources with relational sources.
 
 ### Admin: Refresh Statistics
 
-Re-run statistics collection on demand via the admin API: (REQ-276)
+Re-run statistics collection on demand via the admin API:
 
 ```graphql
 mutation {
@@ -348,9 +344,9 @@ MVs transparently optimize expensive queries by pre-computing and caching result
 
 A relationship declaration is not only a governance artifact — it is also the structural description of a join shape. That shape is exactly what the MV optimizer needs: the tables, the columns, the join type. This means a relationship can directly drive materialization.
 
-For **cross-source relationships**, this happens automatically at startup: every relationship carrying `materialize: true` whose legs land in more than one source generates a `JoinPattern` MV (`auto-mv-<rel_id>`). (REQ-158) No separate MV config is required. When the compiler sees that join in a query, the rewriter substitutes the pre-materialized result transparently. Same-source relationships generate nothing — those JOINs are already fast via direct execution. (REQ-159) [tool-verified: `provisa/api/app_loaders.py`]
+For **cross-source relationships**, this happens automatically at startup: every relationship carrying `materialize: true` whose legs land in more than one source generates a `JoinPattern` MV (`auto-mv-<rel_id>`). No separate MV config is required. When the compiler sees that join in a query, the rewriter substitutes the pre-materialized result transparently. Same-source relationships generate nothing — those JOINs are already fast via direct execution.
 
-A **junction-backed relationship** materializes its traversal rather than a direct join: the associative table is a third leg, so the pattern carries the source hop, the junction hop, and the discriminator that pins the row set to one edge type, with the junction's own columns landing in the view beside the target's. (REQ-1586) Because the junction counts as a leg, an edge whose junction sits in a different source from the two tables it links is cross-source even when those two agree. The rewriter matches the two hops as a chain — the second must start from the alias the first introduced — so a query reaching the same two tables without passing through the junction reads the base tables, and a view built for one discriminator value never answers a traversal filtered to another.
+A **junction-backed relationship** materializes its traversal rather than a direct join: the associative table is a third leg, so the pattern carries the source hop, the junction hop, and the discriminator that pins the row set to one edge type, with the junction's own columns landing in the view beside the target's. Because the junction counts as a leg, an edge whose junction sits in a different source from the two tables it links is cross-source even when those two agree. The rewriter matches the two hops as a chain — the second must start from the alias the first introduced — so a query reaching the same two tables without passing through the junction reads the base tables, and a view built for one discriminator value never answers a traversal filtered to another.
 
 The practical consequence: stewards who approve a relationship are implicitly deciding whether the join is a good candidate for materialization. The governance act and the optimization hint are the same declaration.
 
@@ -365,7 +361,7 @@ The practical consequence: stewards who approve a relationship are implicitly de
 
 ### Auto-Materialization
 
-Cross-source JOINs are the most expensive queries (always federated). Cross-source relationships automatically generate MV definitions at startup: (REQ-158)
+Cross-source JOINs are the most expensive queries (always federated). Cross-source relationships automatically generate MV definitions at startup:
 
 ```yaml
 relationships:
@@ -379,7 +375,7 @@ relationships:
     refresh_interval: 600          # refresh every 10 minutes
 ```
 
-Only cross-source relationships generate MVs (same-source JOINs are already fast via direct execution). (REQ-159) The MV starts in `STALE` status and is refreshed by the background refresh loop before being used by the query optimizer. (REQ-160)
+Only cross-source relationships generate MVs (same-source JOINs are already fast via direct execution). The MV starts in `STALE` status and is refreshed by the background refresh loop before being used by the query optimizer.
 
 ### Refresh Lifecycle
 
@@ -389,7 +385,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
   └──── mutation hits source table ────────────────┘
 ```
 
-The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and executes `CREATE TABLE AS SELECT` (first run) or `DELETE + INSERT` (subsequent) against the MV target table via the federation engine. (REQ-160, REQ-234)
+The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and executes `CREATE TABLE AS SELECT` (first run) or `DELETE + INSERT` (subsequent) against the MV target table via the federation engine.
 
 ## Module Map
 
@@ -402,9 +398,9 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `api/jsonapi/` | Auto-generated JSON:API endpoints with pagination and error handling |
 | `api/data/subscribe.py` | SSE subscriptions — LISTEN/NOTIFY, polling, Debezium CDC |
 | `compiler/` | GraphQL/SQL parsers, semantic SQL generator, RLS, masking, sampling, two-stage governance (`stage2.py`) |
-| `cypher/` | Cypher → SQL translator, parser, label map (REQ-351), write translator for Cypher mutations |
-| `pgwire/` | PostgreSQL wire-protocol server; `catalog.py` intercepts pg_catalog/information_schema for per-role object visibility (REQ-527, REQ-883, REQ-891) |
-| `vector/` | Vector search — model registry, embedding providers (openai/ollama/huggingface), `cosine_similarity()` translation, HNSW index on a replica's embedding column, declarative embedding generation (REQ-419–431) |
+| `cypher/` | Cypher → SQL translator, parser, label map, write translator for Cypher mutations |
+| `pgwire/` | PostgreSQL wire-protocol server; `catalog.py` intercepts pg_catalog/information_schema for per-role object visibility |
+| `vector/` | Vector search — model registry, embedding providers (openai/ollama/huggingface), `cosine_similarity()` translation, HNSW index on a replica's embedding column, declarative embedding generation |
 | `compiler/federation.py` | Apollo Federation v2 subgraph support |
 | `transpiler/` | Dialect transpilation, routing logic |
 | `executor/` | Federated/direct execution, serialization, output formats |
@@ -415,8 +411,8 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `federation/engine.py` | `FederationEngine`, `DriverClass`, `_ENGINE_BUILDERS`, `ENGINE_REGISTRY`, `build_engine` |
 | `federation/connector.py` | Connector abstractions — Trino, ClickHouse; `Mechanism`, `WarehouseNativeConnector` |
 | `federation/connector_duckdb.py` | DuckDB and PostgreSQL FDW connector definitions |
-| `federation/snowflake_connectors.py` | Snowflake external stage + external table ATTACH connectors (REQ-988) |
-| `federation/databricks_connectors.py` | Databricks UC external table ATTACH connectors (REQ-987) |
+| `federation/snowflake_connectors.py` | Snowflake external stage + external table ATTACH connectors |
+| `federation/databricks_connectors.py` | Databricks UC external table ATTACH connectors |
 | `federation/bigquery_connectors.py` | BigQuery external / BigLake ATTACH connectors |
 | `federation/databricks_uc.py` | Unity Catalog credential + external location auto-provisioning |
 | `federation/databricks_backend.py` | Databricks SQL warehouse execution backend |
@@ -428,7 +424,7 @@ The refresh loop runs every 30 seconds, checks `get_due_for_refresh()`, and exec
 | `federation/clickhouse_backend.py` | ClickHouse execution backend |
 | `federation/duckdb_backend.py` | DuckDB in-process execution backend |
 | `federation/pg_backend.py` | PostgreSQL execution backend |
-| `federation/store_connection.py` | DuckDB-native materialization store write face (REQ-989, REQ-990) |
+| `federation/store_connection.py` | DuckDB-native materialization store write face |
 | `registry/` | Persisted query registry, governance |
 | `security/` | Visibility, rights, column masking |
 | `cache/` | Redis-backed query result caching (hot tier) |
@@ -470,13 +466,11 @@ The admin Strawberry GraphQL API is mounted at `/admin/graphql` (HTTP port 8001)
 | Schema introspection | Browse published tables, columns, and roles |
 | View management | Register and manage materialized view definitions |
 
-(REQ-164, REQ-165, REQ-166, REQ-167)
-
 ## AI Models Configuration
 
-`GET /admin/ai-models` and `PUT /admin/ai-models` configure the LLM pipeline for each org. (REQ-464, REQ-419, REQ-500, REQ-370, REQ-1349)
+`GET /admin/ai-models` and `PUT /admin/ai-models` configure the LLM pipeline for each org.
 
-Settings are **org-scoped**: each org's choices layer over the deployment config and take effect on the next request — no restart required. (REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
+Settings are **org-scoped**: each org's choices layer over the deployment config and take effect on the next request — no restart required.
 
 **Per-operation model assignments.** Six operations each have a configurable vendor and model string:
 
@@ -487,40 +481,40 @@ Settings are **org-scoped**: each org's choices layer over the deployment config
 | `relationship_inference` | FK candidate discovery |
 | `sql_generation` | NL → SQL generation |
 | `table_selection` | Choosing which tables to include in the NL prompt |
-| `mcp_chat` | The chat assistant panel's tool-use loop (REQ-1794) |
+| `mcp_chat` | The chat assistant panel's tool-use loop |
 
-The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default. [tool-verified: `provisa/api/admin/ai_models_router.py:29-35`, `provisa-ui/src/components/admin/AiModelsTab.tsx:43-60`]
+The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`, `groq`, `mistral`, `cohere`, and others) or a local endpoint (`ollama`, `lmstudio`). Blank model string removes the org's override and reverts to the deployment default.
 
-**NL rate limit.** An optional requests-per-period cap applied per role. Excess requests return `429` with `Retry-After`. [tool-verified: `provisa-ui/src/components/admin/AiModelsTab.tsx:306-313`]
+**NL rate limit.** An optional requests-per-period cap applied per role. Excess requests return `429` with `Retry-After`.
 
-**Vector model registry.** A list of embedding models (fields: `id`, `provider`, `dimensions`, optional `api_key_env` and `base_url`, `enabled` flag). Full-list replacement: every entry must have `id`, `provider`, and `dimensions` or the write is rejected `400`. [tool-verified: `provisa/api/admin/ai_models_router.py:122-131`]
+**Vector model registry.** A list of embedding models (fields: `id`, `provider`, `dimensions`, optional `api_key_env` and `base_url`, `enabled` flag). Full-list replacement: every entry must have `id`, `provider`, and `dimensions` or the write is rejected `400`.
 
-**API keys.** Per-vendor LLM API keys are stored encrypted via `provisa.core.org_secrets` (see below). The `GET` response reports only whether a key is set for each vendor — the value is never returned. Sending a blank string for a vendor clears that key, reverting LLM calls for that vendor to the deployment's environment-variable credential. (REQ-1395, REQ-1398) [tool-verified: `provisa/api/admin/ai_models_router.py:76-78`, `provisa/api/admin/ai_models_router.py:149-165`]
+**API keys.** Per-vendor LLM API keys are stored encrypted via `provisa.core.org_secrets` (see below). The `GET` response reports only whether a key is set for each vendor — the value is never returned. Sending a blank string for a vendor clears that key, reverting LLM calls for that vendor to the deployment's environment-variable credential.
 
 ## Per-Org Encrypted Secrets
 
-`provisa/core/org_secrets.py` stores credentials that must never appear as plaintext in the database. Currently restricted to LLM vendor API keys (`{vendor}_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
+`provisa/core/org_secrets.py` stores credentials that must never appear as plaintext in the database. Currently restricted to LLM vendor API keys (`{vendor}_api_key`).
 
-Values are encrypted via the process-wide `encryption_service` from `provisa.encryption.runtime` — the same mechanism as `api_sources.auth`. [tool-verified: `provisa/core/org_secrets.py:16-17`]
+Values are encrypted via the process-wide `encryption_service` from `provisa.encryption.runtime` — the same mechanism as `api_sources.auth`.
 
-Twelve `aisuite`-compatible vendors are supported: `anthropic`, `openai`, `cohere`, `groq`, `mistral`, `xai`, `deepseek`, `together`, `fireworks`, `nebius`, `sambanova`, and `inception`. Google, AWS, and Azure are excluded because they require configuration beyond a plain API key (project IDs, IAM roles, region). Local-endpoint vendors (`ollama`, `lmstudio`) have no key and are excluded for the same reason. [tool-verified: `provisa/core/org_secrets.py:33-53`]
+Twelve `aisuite`-compatible vendors are supported: `anthropic`, `openai`, `cohere`, `groq`, `mistral`, `xai`, `deepseek`, `together`, `fireworks`, `nebius`, `sambanova`, and `inception`. Google, AWS, and Azure are excluded because they require configuration beyond a plain API key (project IDs, IAM roles, region). Local-endpoint vendors (`ollama`, `lmstudio`) have no key and are excluded for the same reason.
 
-Passing `value=None` to `write_org_secret` deletes the row. Callers that read a secret consume it immediately (e.g. to construct an LLM client) and must not echo it in any API response. [tool-verified: `provisa/core/org_secrets.py:97-117`]
+Passing `value=None` to `write_org_secret` deletes the row. Callers that read a secret consume it immediately (e.g. to construct an LLM client) and must not echo it in any API response.
 
 ## Auto-Generated REST & JSON:API Endpoints
 
-Registered tables are exposed as REST and JSON:API endpoints alongside the GraphQL interface. (REQ-256, REQ-257)
+Registered tables are exposed as REST and JSON:API endpoints alongside the GraphQL interface.
 
 | Interface | Mount path | Spec |
 | ----------- | ----------- | ------ |
 | REST | `/rest/<table-id>` | Simple GET/POST with query parameters |
 | JSON:API | `/jsonapi/<table-id>` | [jsonapi.org](https://jsonapi.org) compliant — pagination, relationships, error objects |
 
-These endpoints apply the same security pipeline (RLS, masking, role checks) as the GraphQL endpoint. (REQ-002, REQ-038)
+These endpoints apply the same security pipeline (RLS, masking, role checks) as the GraphQL endpoint.
 
 ## Subscriptions
 
-SSE subscriptions are served at `GET /data/subscribe/{table}`. Three delivery modes: (REQ-258)
+SSE subscriptions are served at `GET /data/subscribe/{table}`. Three delivery modes:
 
 | Mode | Mechanism | When used |
 | ------ | ----------- | ----------- |
@@ -528,13 +522,11 @@ SSE subscriptions are served at `GET /data/subscribe/{table}`. Three delivery mo
 | **Polling** | Re-execute query on interval | Non-PG sources, or when CDC unavailable |
 | **Debezium CDC** | Kafka topic from Debezium connector | High-frequency change streams |
 
-(REQ-258, REQ-260, REQ-261)
-
 The client receives `text/event-stream` with one JSON event per changed row or diff.
 
 ## Event & Webhook System
 
-Database mutations (INSERT/UPDATE/DELETE) can trigger outbound events via the `events/` and `webhooks/` modules. (REQ-172, REQ-173, REQ-220)
+Database mutations (INSERT/UPDATE/DELETE) can trigger outbound events via the `events/` and `webhooks/` modules.
 
 ```text
 Mutation executed → EventDispatcher → match event trigger rules
@@ -555,8 +547,6 @@ Four background loops start during app lifespan (`api/app.py`):
 | Hot table loader | Configurable | Loads small reference tables into in-memory cache for sub-millisecond access |
 | API source poller | Per-source interval | Re-fetches and re-caches remote REST/GraphQL/gRPC sources |
 
-(REQ-160, REQ-238, REQ-239, REQ-236)
-
 ### Hot Tables and Replicated-When-Busy Tables
 
 | Tier | Storage | Promotion criteria | Access latency |
@@ -565,26 +555,26 @@ Four background loops start during app lifespan (`api/app.py`):
 | Replicated when busy | Replica in the engine's store | `replicate` is Default or Hot-N and the governed statements reading the table passed its threshold | The engine's own read of its store |
 | Cold | Remote source | Default | 50–500 ms |
 
-A table lives in at most one of the two: a table the hot tier manages is not replicated for being busy. (REQ-230, REQ-236, REQ-238, REQ-241, REQ-826)
+A table lives in at most one of the two: a table the hot tier manages is not replicated for being busy.
 
 ## Metadata Import (Hasura v2 / DDN)
 
-Existing Hasura deployments can be converted to Provisa config without manual rewriting. (REQ-182, REQ-183)
+Existing Hasura deployments can be converted to Provisa config without manual rewriting.
 
 | Module | Input | Output |
 | -------- | ------- | -------- |
 | `hasura_v2/` | Hasura v2 `metadata.yaml` | Provisa `config.yaml` |
 | `ddn/` | Hasura DDN supergraph JSON | Provisa `config.yaml` |
 
-Both converters map tracked tables, relationships, permissions, and remote schemas. The result is a complete Provisa config ready for deployment. (REQ-182, REQ-183)
+Both converters map tracked tables, relationships, permissions, and remote schemas. The result is a complete Provisa config ready for deployment.
 
 ## Apollo Federation
 
-`compiler/federation.py` exposes Provisa as an Apollo Federation v2 subgraph. (REQ-259) The subgraph SDL is auto-generated from the published schema with `@key` directives on primary-key columns and `@external`/`@provides` annotations on cross-subgraph relationships. Provisa responds to `_entities` and `_service` queries required by the federation gateway. (REQ-259)
+`compiler/federation.py` exposes Provisa as an Apollo Federation v2 subgraph. The subgraph SDL is auto-generated from the published schema with `@key` directives on primary-key columns and `@external`/`@provides` annotations on cross-subgraph relationships. Provisa responds to `_entities` and `_service` queries required by the federation gateway.
 
 ## Cursor-Based Pagination
 
-All list queries support Relay-style cursor pagination via `compiler/cursor.py`. (REQ-218) Clients pass `first`/`after` (forward) or `last`/`before` (backward) arguments. The compiler encodes row position as an opaque base64 cursor and injects the appropriate `WHERE`/`LIMIT` clauses. Every list query returns a `pageInfo` object:
+All list queries support Relay-style cursor pagination via `compiler/cursor.py`. Clients pass `first`/`after` (forward) or `last`/`before` (backward) arguments. The compiler encodes row position as an opaque base64 cursor and injects the appropriate `WHERE`/`LIMIT` clauses. Every list query returns a `pageInfo` object:
 
 | Field | Type | Description |
 | ------- | ------ | ------------- |
@@ -595,19 +585,19 @@ All list queries support Relay-style cursor pagination via `compiler/cursor.py`.
 
 ## Aggregate Queries
 
-Every registered table gets an auto-generated `{table}_aggregate` root field (`compiler/aggregate_gen.py`). (REQ-196) The aggregate type exposes `count`, `sum`, `avg`, `min`, `max` per numeric column, and `nodes` for filtered row access with full field selection (same RLS/masking as the base query). (REQ-196, REQ-198) An aggregate over one table, from any surface (SQL or compiled), is answered from a fresh materialized view that pre-aggregates it, with nothing declared: a view whose SQL is a single-table `GROUP BY` of named `SUM`, `COUNT`, `MIN` and `MAX` serves the aggregates that group by a subset of its grouping columns and filter only on them. Each aggregate is re-aggregated over the stored ones (`COUNT` as the sum of the stored counts, `AVG` from a stored sum and count of the same column); anything the view cannot answer exactly is left to the table. The rewrite runs after governance, so a row filter on one of the view's grouping columns is carried onto the view, and a row filter on any other column, or a mask over a summed column, leaves the read to the table. (REQ-198, REQ-882) [tool-verified: `provisa/mv/aggregate_catalog.py`, `provisa/mv/view_reinject.py` `reinject`, `provisa/pgwire/_pipeline.py` `_view_answering`]
+Every registered table gets an auto-generated `{table}_aggregate` root field (`compiler/aggregate_gen.py`). The aggregate type exposes `count`, `sum`, `avg`, `min`, `max` per numeric column, and `nodes` for filtered row access with full field selection (same RLS/masking as the base query). An aggregate over one table, from any surface (SQL or compiled), is answered from a fresh materialized view that pre-aggregates it, with nothing declared: a view whose SQL is a single-table `GROUP BY` of named `SUM`, `COUNT`, `MIN` and `MAX` serves the aggregates that group by a subset of its grouping columns and filter only on them. Each aggregate is re-aggregated over the stored ones (`COUNT` as the sum of the stored counts, `AVG` from a stored sum and count of the same column); anything the view cannot answer exactly is left to the table. The rewrite runs after governance, so a row filter on one of the view's grouping columns is carried onto the view, and a row filter on any other column, or a mask over a summed column, leaves the read to the table.
 
 ## Automatic Persisted Queries (APQ)
 
-`apq/cache.py` implements the Apollo APQ wire protocol. (REQ-288) When a client sends only a query hash (`extensions.persistedQuery`), Provisa looks it up in Redis. (REQ-289) On a miss it returns a `PersistedQueryNotFound` error; the client retries with the full query body, which Provisa stores. (REQ-288) This is separate from result caching (`cache/`).
+`apq/cache.py` implements the Apollo APQ wire protocol. When a client sends only a query hash (`extensions.persistedQuery`), Provisa looks it up in Redis. On a miss it returns a `PersistedQueryNotFound` error; the client retries with the full query body, which Provisa stores. This is separate from result caching (`cache/`).
 
 ## Inherited Roles
 
-A role names at most one parent through `parent_role_id`. (REQ-215) At runtime build, `security/inheritance.py` walks each role's chain from the child up and folds it into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. (REQ-1677) Capabilities and domain access are the union of the chain. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. A table's write grants resolve per operation the same way: a role without a grant for an operation takes the nearest ancestor's, its own first. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table, its own table rule before its domain rule, supplies the one predicate that runs; an ancestor's rule is never combined with it. A role inherits its parent's rate limit when it sets none. A parent must exist, may not be the role itself and may not close a cycle; a role other roles inherit from cannot be deleted until they are reparented. (REQ-1677)
+A role names at most one parent through `parent_role_id`. At runtime build, `security/inheritance.py` walks each role's chain from the child up and folds it into the build's own copies of the loaded data, so every later lookup stays keyed by the acting role id. Capabilities and domain access are the union of the chain. A column's `visible_to`, each entry of its mask list, and a metric's, function's or webhook's `visible_to`, hold for a role when they name it or an ancestor. A table's write grants resolve per operation the same way: a role without a grant for an operation takes the nearest ancestor's, its own first. RLS resolves per table with the child taking precedence: the nearest role in the chain that has a rule for the table, its own table rule before its domain rule, supplies the one predicate that runs; an ancestor's rule is never combined with it. A role inherits its parent's rate limit when it sets none. A parent must exist, may not be the role itself and may not close a cycle; a role other roles inherit from cannot be deleted until they are reparented.
 
 ## ABAC Approval Hook
 
-`auth/approval_hook.py` is a pluggable authorization hook invoked before query execution, after RLS and masking. (REQ-203) It integrates with external policy engines (OPA, custom ABAC services).
+`auth/approval_hook.py` is a pluggable authorization hook invoked before query execution, after RLS and masking. It integrates with external policy engines (OPA, custom ABAC services).
 
 | Setting | Description |
 | --------- | ------------- |
@@ -615,19 +605,17 @@ A role names at most one parent through `parent_role_id`. (REQ-215) At runtime b
 | Scope | Per-table, per-source, or global |
 | Fallback policy | `allow` or `deny` when the hook endpoint is unreachable |
 
-(REQ-246, REQ-247, REQ-204)
-
 ## Enum Type Auto-Detection
 
-`compiler/enum_detect.py` introspects PostgreSQL native enum types (`pg_enum`) at schema generation time. (REQ-221) Columns using a PostgreSQL user-defined enum type are promoted to GraphQL enum types — their values become enum members rather than string scalars.
+`compiler/enum_detect.py` introspects PostgreSQL native enum types (`pg_enum`) at schema generation time. Columns using a PostgreSQL user-defined enum type are promoted to GraphQL enum types — their values become enum members rather than string scalars.
 
 ## Scheduled Triggers
 
-`scheduler/jobs.py` uses APScheduler to run background jobs defined as cron or interval triggers. (REQ-216) Each job can POST to a webhook URL or execute a mutation against the data endpoint; a table's live Kafka output (`live.outputs`) is polled on the same scheduler. Triggers are configured via the admin API (`scheduledTrigger` mutations) or the `scheduled_triggers` key in the YAML config. (REQ-216)
+`scheduler/jobs.py` uses APScheduler to run background jobs defined as cron or interval triggers. Each job can POST to a webhook URL or execute a mutation against the data endpoint; a table's live Kafka output (`live.outputs`) is polled on the same scheduler. Triggers are configured via the admin API (`scheduledTrigger` mutations) or the `scheduled_triggers` key in the YAML config.
 
 ## Federation Performance Hints
 
-`compiler/hints.py` parses steward hints embedded in queries as comments using Provisa's comment syntax. (REQ-279) The hint format varies by query language:
+`compiler/hints.py` parses steward hints embedded in queries as comments using Provisa's comment syntax. The hint format varies by query language:
 
 ```graphql
 # @provisa route=federated
@@ -651,29 +639,27 @@ MATCH (o:Order) RETURN o.id, o.amount
 | `cache=true` | Opt this query into the response cache (SQL comment form: `-- @provisa cache=true`) |
 | `cache_ttl=N` | Opt in, and keep the cached result for N seconds (`-- @provisa cache_ttl=N`) |
 
-(REQ-279, REQ-277, REQ-278)
-
-The response cache is opt-in per request: GraphQL uses the `@cached(ttl: Int)` directive, SQL and Cypher use the `cache`/`cache_ttl` comment, gRPC uses the `x-provisa-cache` / `x-provisa-cache-ttl` call metadata. The hint applies on every transport that carries the language (Cypher over HTTP, Bolt and Arrow Flight; GraphQL over HTTP and Arrow Flight). A request without one never reads or writes the cache, and neither form reads fresher data than the operator's source and table settings allow. See [Cache](configuration.md#per-request-opt-in). (REQ-544)
+The response cache is opt-in per request: GraphQL uses the `@cached(ttl: Int)` directive, SQL and Cypher use the `cache`/`cache_ttl` comment, gRPC uses the `x-provisa-cache` / `x-provisa-cache-ttl` call metadata. The hint applies on every transport that carries the language (Cypher over HTTP, Bolt and Arrow Flight; GraphQL over HTTP and Arrow Flight). A request without one never reads or writes the cache, and neither form reads fresher data than the operator's source and table settings allow. See [Cache](configuration.md#per-request-opt-in).
 
 ## Write Grants and Presets in Mutations
 
-A table's `write_grants` state, per role and operation, which columns a write may name, which rows it may touch, and which values the grant sets itself. (REQ-2074) `compiler/write_admission.py` admits every write in the governance stage, so GraphQL, SQL, Cypher and the other surfaces get the same answer: the `write` right, the role's grant for the operation, the columns, the presets added to the statement, the `rows` predicate ANDed into the `WHERE`, and the `check` evaluated on the new rows before anything reaches a source. (REQ-214) Presets come from a session variable, a literal or the time of the write. The statement may not supply a preset column, so presets are not in the generated GraphQL mutation input type. (REQ-214) [tool-verified: `provisa/compiler/write_admission.py`, `provisa/core/models.py` `WriteGrant`, `ColumnPreset`]
+A table's `write_grants` state, per role and operation, which columns a write may name, which rows it may touch, and which values the grant sets itself. `compiler/write_admission.py` admits every write in the governance stage, so GraphQL, SQL, Cypher and the other surfaces get the same answer: the `write` right, the role's grant for the operation, the columns, the presets added to the statement, the `rows` predicate ANDed into the `WHERE`, and the `check` evaluated on the new rows before anything reaches a source. Presets come from a session variable, a literal or the time of the write. The statement may not supply a preset column, so presets are not in the generated GraphQL mutation input type.
 
 ## GraphQL Voyager Schema Explorer
 
-The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager as an interactive schema visualization tool. (REQ-248) It renders the role-scoped schema as a navigable entity relationship diagram — tables as nodes, relationships as edges. The schema shown is always filtered to the currently selected role.
+The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager as an interactive schema visualization tool. It renders the role-scoped schema as a navigable entity relationship diagram — tables as nodes, relationships as edges. The schema shown is always filtered to the currently selected role.
 
 ## Security Enforcement Order
 
-There is no capability gate on querying — governance is expressed entirely through data-layer controls. (REQ-001) A raw-SQL request rejects (HTTP 403) any table outside the role's object scope before governance runs. (REQ-267)
+There is no capability gate on querying — governance is expressed entirely through data-layer controls. A raw-SQL request rejects (HTTP 403) any table outside the role's object scope before governance runs.
 
-1. **Object Visibility**: Per-role schema hides unauthorized tables/columns; out-of-scope tables in raw SQL are rejected (REQ-039, REQ-267)
-2. **Relationship enforcement**: Traversals must exist in the approved relationship catalog, unless the role holds `ignore_relationships` — among the seeded system roles, only `modeler` does (REQ-001, REQ-1297). In high-security mode the capability is ignored and no traversal escapes the catalog (REQ-693)
-3. **RLS**: Per-table per-role WHERE clause injection (REQ-040, REQ-041, REQ-263)
-4. **Column Masking**: Per-column per-role data transformation (REQ-263)
-5. **Row cap (LIMIT)**: Row-count cap for roles without `full_results`; random statistical sampling is a separate user query feature (REQ-263, REQ-478)
+1. **Object Visibility**: Per-role schema hides unauthorized tables/columns; out-of-scope tables in raw SQL are rejected
+2. **Relationship enforcement**: Traversals must exist in the approved relationship catalog, unless the role holds `ignore_relationships` — among the seeded system roles, only `modeler` does. In high-security mode the capability is ignored and no traversal escapes the catalog
+3. **RLS**: Per-table per-role WHERE clause injection
+4. **Column Masking**: Per-column per-role data transformation
+5. **Row cap (LIMIT)**: Row-count cap for roles without `full_results`; random statistical sampling is a separate user query feature
 
-All four query interfaces (HTTP, Flight, gRPC, pgwire) enforce the same Stage 2 governance pipeline; no client path can bypass it without bypassing the server. (REQ-002, REQ-038, REQ-266)
+All four query interfaces (HTTP, Flight, gRPC, pgwire) enforce the same Stage 2 governance pipeline; no client path can bypass it without bypassing the server.
 
 ## Scalability Limits
 
@@ -687,16 +673,14 @@ Provisa is a thin compilation and routing layer — it adds single-digit millise
 | Redirect: Provisa upload (JSON, CSV, NDJSON, Arrow IPC) | Yes | Medium results, file download |
 | **Redirect: CTAS (Parquet, ORC)** | **No** | **Unbounded — federation engine writes to S3** |
 
-(REQ-145, REQ-138)
-
 ### Threshold Probing
 
-For threshold-based redirect, Provisa injects `LIMIT threshold + 1` into the query as a probe. (REQ-140) If the result has fewer rows, it returns inline (complete result, no wasted work). If the result hits the limit, the probe is discarded and the full query is re-executed via CTAS or Provisa upload. This avoids `SELECT COUNT(*)` (which some sources don't optimize) and works on every source.
+For threshold-based redirect, Provisa injects `LIMIT threshold + 1` into the query as a probe. If the result has fewer rows, it returns inline (complete result, no wasted work). If the result hits the limit, the probe is discarded and the full query is re-executed via CTAS or Provisa upload. This avoids `SELECT COUNT(*)` (which some sources don't optimize) and works on every source.
 
 For large analytical workloads, use either:
 
-- **Arrow Flight** (port 8815) for streaming to data tools — batches flow through Provisa without materializing (REQ-145)
-- **Parquet/ORC redirect** for file-based exports — the federation engine writes directly to S3, Provisa returns a presigned URL (REQ-138, REQ-044)
+- **Arrow Flight** (port 8815) for streaming to data tools — batches flow through Provisa without materializing
+- **Parquet/ORC redirect** for file-based exports — the federation engine writes directly to S3, Provisa returns a presigned URL
 
 ## Infrastructure
 
@@ -714,5 +698,3 @@ For large analytical workloads, use either:
 | PgBouncer | `edoburu/pgbouncer` | 6432 | Connection pooling for PG |
 | Kafka | `confluentinc/cp-kafka:7.6.0` | 9092 | Streaming data sources |
 | Schema Registry | `confluentinc/cp-schema-registry:7.6.0` | 8081 | Avro/Protobuf schema management |
-
-(REQ-055, REQ-169)

@@ -1,23 +1,23 @@
 # Provisa pgwire Server
 
-Provisa exposes a PostgreSQL wire protocol (pgwire) endpoint. Any tool that speaks the PostgreSQL client protocol — psycopg2, asyncpg, DBeaver, Tableau, JDBC — can connect and query Provisa data through the same governance pipeline that governs the HTTP API. (REQ-266)
+Provisa exposes a PostgreSQL wire protocol (pgwire) endpoint. Any tool that speaks the PostgreSQL client protocol — psycopg2, asyncpg, DBeaver, Tableau, JDBC — can connect and query Provisa data through the same governance pipeline that governs the HTTP API.
 
-Queries go through the full governance stack: RLS enforcement, masking rules, relationship guards, domain-access checks. (REQ-001, REQ-002, REQ-263) The pgwire interface is not a bypass. (REQ-002, REQ-266)
+Queries go through the full governance stack: RLS enforcement, masking rules, relationship guards, domain-access checks. The pgwire interface is not a bypass.
 
 ---
 
 ## Connection Details
 
-The server starts when `PROVISA_PGWIRE_PORT` is set to a non-zero integer. It is disabled by default. (REQ-527) [tool-verified: `app.py:1739`]
+The server starts when `PROVISA_PGWIRE_PORT` is set to a non-zero integer. It is disabled by default.
 
 ```yaml
 Host: 0.0.0.0  (all interfaces)
 Port: $PROVISA_PGWIRE_PORT
 ```
 
-**TLS.** Set `PROVISA_PGWIRE_CERT` and `PROVISA_PGWIRE_KEY` to the paths of a PEM certificate and key. When both are present, the server wraps incoming connections in TLS. When absent, TLS is off and the server replies `N` to SSL negotiation requests. (REQ-530) [tool-verified: `server.py:1746-1750`]
+**TLS.** Set `PROVISA_PGWIRE_CERT` and `PROVISA_PGWIRE_KEY` to the paths of a PEM certificate and key. When both are present, the server wraps incoming connections in TLS. When absent, TLS is off and the server replies `N` to SSL negotiation requests.
 
-**Reported server version.** Clients see `14.0.provisa`. Tools that gate features on the version number may behave as though connected to PostgreSQL 14. (REQ-579) [tool-verified: `server.py:208`]
+**Reported server version.** Clients see `14.0.provisa`. Tools that gate features on the version number may behave as though connected to PostgreSQL 14.
 
 ---
 
@@ -27,21 +27,21 @@ The startup packet carries a username and one secret field, and no scheme to say
 
 | The secret is | Recognized by | Resolves to |
 | --------------- | --------------- | ------------- |
-| A personal access token | its `provisa_pat_` prefix | the token's owner and role (REQ-1263) |
-| An OIDC / provider bearer token | the configured provider being a token provider | the identity the token asserts (REQ-890) |
+| A personal access token | its `provisa_pat_` prefix | the token's owner and role |
+| An OIDC / provider bearer token | the configured provider being a token provider | the identity the token asserts |
 | A password | anything else | the account in the configured provider (`basic` or `simple`) |
 
 The decision is made once. A credential the chosen validator refuses is not retried against another, so one rejection does not become a second guess.
 
 Trust mode (`provider: none`, or auth middleware inactive) is the exception: the username is used directly as the `role_id` and the secret is ignored. Do not use it over an unencrypted connection.
 
-**SCRAM-SHA-256.** Under `provider: basic` with `auth.scram: true`, the server advertises SASL (authentication code 10) with `SCRAM-SHA-256` and the password is proved rather than sent. (REQ-1394) `SCRAM-SHA-256-PLUS` is not offered. A user whose verifier has not been written yet — verifiers cannot be derived from bcrypt hashes — is answered with a mock exchange, so the wire does not reveal who has migrated; that user authenticates by cleartext password over TLS until their next password entry writes one. With `auth.scram` off, the server uses PG auth type 3 (cleartext password). MD5 is not supported in either case.
+**SCRAM-SHA-256.** Under `provider: basic` with `auth.scram: true`, the server advertises SASL (authentication code 10) with `SCRAM-SHA-256` and the password is proved rather than sent. `SCRAM-SHA-256-PLUS` is not offered. A user whose verifier has not been written yet — verifiers cannot be derived from bcrypt hashes — is answered with a mock exchange, so the wire does not reveal who has migrated; that user authenticates by cleartext password over TLS until their next password entry writes one. With `auth.scram` off, the server uses PG auth type 3 (cleartext password). MD5 is not supported in either case.
 
-**Client certificates.** Set `PROVISA_MTLS_CLIENT_CA` and the server verifies a client certificate during the handshake, before any credential is examined. (REQ-1228) With `PROVISA_MTLS_BIND_PRINCIPAL` the certificate's common name must equal the `user` the connection then authenticates as. See [Configuration](configuration.md#mutual-tls).
+**Client certificates.** Set `PROVISA_MTLS_CLIENT_CA` and the server verifies a client certificate during the handshake, before any credential is examined. With `PROVISA_MTLS_BIND_PRINCIPAL` the certificate's common name must equal the `user` the connection then authenticates as. See [Configuration](configuration.md#mutual-tls).
 
-**Failed attempts are counted.** Five failures in five minutes locks the account out for fifteen minutes, and the counter is shared with HTTP and Bolt — a lockout earned on any surface holds on all of them. (REQ-1393)
+**Failed attempts are counted.** Five failures in five minutes locks the account out for fifteen minutes, and the counter is shared with HTTP and Bolt — a lockout earned on any surface holds on all of them.
 
-**Choosing an org.** On a multi-org deployment, connect to `<org>.<your-domain>` and pgwire reads the org from the hostname in the TLS ClientHello, the same way HTTP reads it from the `Host` header. (REQ-1234) The hostname requests an org; it does not grant one, and a principal with no membership there is refused. Connecting by IP address requests no org.
+**Choosing an org.** On a multi-org deployment, connect to `<org>.<your-domain>` and pgwire reads the org from the hostname in the TLS ClientHello, the same way HTTP reads it from the `Host` header. The hostname requests an org; it does not grant one, and a principal with no membership there is refused. Connecting by IP address requests no org.
 
 ---
 
@@ -49,22 +49,22 @@ Trust mode (`provider: none`, or auth middleware inactive) is the exception: the
 
 ### SELECT
 
-All SELECT statements go through the governance pipeline (`_pipeline.py`). (REQ-001, REQ-262, REQ-266) The pipeline:
+All SELECT statements go through the governance pipeline (`_pipeline.py`). The pipeline:
 
 1. Rewrites semantic SQL to physical SQL (`rewrite_semantic_to_physical`)
-2. Applies governance (RLS, masking, domain access) (REQ-263)
-3. Validates against registered schema (REQ-011)
-4. Routes to Trino or direct source pool (REQ-027, REQ-028)
+2. Applies governance (RLS, masking, domain access)
+3. Validates against registered schema
+4. Routes to Trino or direct source pool
 
-Multi-statement simple queries are supported. Semicolon-separated statements are split and executed in order. (REQ-580) [tool-verified: `server.py:318-381`]
+Multi-statement simple queries are supported. Semicolon-separated statements are split and executed in order.
 
-Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. Parameters are substituted as literals before execution. (REQ-581) [tool-verified: `server.py:78-85`]
+Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. Parameters are substituted as literals before execution.
 
-`SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. Command assignment (`visible_to`), the `write` right for a mutation and governance rules are enforced inside the executor. (REQ-1156) [tool-verified: `provisa/pgwire/function_call.py:74-88`]
+`SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. Command assignment (`visible_to`), the `write` right for a mutation and governance rules are enforced inside the executor.
 
 ### Cursors (DECLARE / FETCH / MOVE / CLOSE)
 
-Provisa handles textual SQL cursor syntax over the simple-query protocol. (REQ-1862) Clients that send `DECLARE`/`FETCH`/`MOVE`/`CLOSE` as plain SQL statements get real server-side streaming rather than a protocol error or a full-result buffer loaded into client memory.
+Provisa handles textual SQL cursor syntax over the simple-query protocol. Clients that send `DECLARE`/`FETCH`/`MOVE`/`CLOSE` as plain SQL statements get real server-side streaming rather than a protocol error or a full-result buffer loaded into client memory.
 
 **This is separate from portal-based streaming.** The extended-query protocol — Bind/Execute with a row-limit field — is a different wire mechanism. asyncpg and most modern PostgreSQL drivers use it automatically without any cursor SQL. If your driver already uses portals, you don't need this syntax. `DECLARE CURSOR` is for clients that send cursor SQL literally: psycopg2's named/server-side cursor feature (`conn.cursor(name="...")`), certain BI tools, and some legacy JDBC drivers.
 
@@ -76,7 +76,7 @@ DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
 
-The inner SELECT runs through Provisa's normal governed pipeline — the same RLS enforcement, masking, and domain-access checks that apply to any standalone SELECT. [tool-verified: `server.py:1367` — `ctx.execute_sql(inner_sql)`, the same call path as a plain SELECT] Declaring a cursor is not a governance bypass.
+The inner SELECT runs through Provisa's normal governed pipeline — the same RLS enforcement, masking, and domain-access checks that apply to any standalone SELECT. Declaring a cursor is not a governance bypass.
 
 The `SCROLL` keyword controls both what navigation is allowed and how much memory the cursor uses:
 
@@ -86,9 +86,9 @@ The `SCROLL` keyword controls both what navigation is allowed and how much memor
 | `DECLARE c NO SCROLL CURSOR FOR ...` | Not allowed | Bounded to one FETCH batch |
 | `DECLARE c SCROLL CURSOR FOR ...` | Allowed | Full result buffered in Python memory |
 
-When neither `SCROLL` nor `NO SCROLL` is written, the default is `NO SCROLL` — matching PostgreSQL's own default. [tool-verified: `server.py:1361-1362`] A `NO SCROLL` cursor trims consumed rows from its internal buffer after each forward step, so a `FETCH FORWARD` scan through a large result never holds more than roughly one batch in Python memory at a time. [tool-verified: `server.py:443-447`] A `SCROLL` cursor retains every row it has ever pulled — that's the cost of supporting `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST`. Before declaring a `SCROLL` cursor against a large result, budget the full result size as Python heap. [tool-verified: `server.py:383-389`]
+When neither `SCROLL` nor `NO SCROLL` is written, the default is `NO SCROLL` — matching PostgreSQL's own default. A `NO SCROLL` cursor trims consumed rows from its internal buffer after each forward step, so a `FETCH FORWARD` scan through a large result never holds more than roughly one batch in Python memory at a time. A `SCROLL` cursor retains every row it has ever pulled — that's the cost of supporting `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST`. Before declaring a `SCROLL` cursor against a large result, budget the full result size as Python heap.
 
-Re-declaring a cursor name that is already open closes the previous cursor first. [tool-verified: `server.py:1369-1371`] `WITH HOLD` and `WITHOUT HOLD` are accepted in the syntax; see Cursor Lifetime below.
+Re-declaring a cursor name that is already open closes the previous cursor first. `WITH HOLD` and `WITHOUT HOLD` are accepted in the syntax; see Cursor Lifetime below.
 
 **FETCH and MOVE**
 
@@ -104,11 +104,11 @@ FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
 
-`FETCH` returns rows and sends command tag `FETCH <n>`, where `n` is the actual count returned — which may be less than requested when the cursor reaches the end. `MOVE` advances the position without returning rows and sends `MOVE <n>`. [tool-verified: `server.py:1417`, `server.py:1419`]
+`FETCH` returns rows and sends command tag `FETCH <n>`, where `n` is the actual count returned — which may be less than requested when the cursor reaches the end. `MOVE` advances the position without returning rows and sends `MOVE <n>`.
 
-`FROM` and `IN` are interchangeable as the cursor name introducer. Unquoted cursor names are case-folded to lowercase; quoted names (`"CaseSensitive"`) preserve case. [tool-verified: `test_cursor.py:74-79`]
+`FROM` and `IN` are interchangeable as the cursor name introducer. Unquoted cursor names are case-folded to lowercase; quoted names (`"CaseSensitive"`) preserve case.
 
-Backward navigation (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, negative `RELATIVE`) against a `NO SCROLL` cursor returns SQLSTATE 55000 (`object_not_in_prerequisite_state`), matching real PostgreSQL's own rejection. [tool-verified: `server.py:1402-1406`] A FETCH or MOVE naming a cursor that was never declared returns SQLSTATE 34000 (`invalid_cursor_name`). [tool-verified: `server.py:1398-1400`]
+Backward navigation (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, negative `RELATIVE`) against a `NO SCROLL` cursor returns SQLSTATE 55000 (`object_not_in_prerequisite_state`), matching real PostgreSQL's own rejection. A FETCH or MOVE naming a cursor that was never declared returns SQLSTATE 34000 (`invalid_cursor_name`).
 
 **CLOSE**
 
@@ -117,13 +117,13 @@ CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
 
-`CLOSE` releases the underlying result stream and removes the cursor from the session. [tool-verified: `server.py:1421-1436`] Disconnecting without issuing `CLOSE` is safe: `ProvisaSession.close()` releases all still-open cursors automatically on disconnect. [tool-verified: `test_cursor.py:335-346`]
+`CLOSE` releases the underlying result stream and removes the cursor from the session. Disconnecting without issuing `CLOSE` is safe: `ProvisaSession.close()` releases all still-open cursors automatically on disconnect.
 
-**Cursor lifetime.** Provisa's pgwire server has no transaction state machine (`ProvisaSession.in_transaction()` is hardcoded `False`). Every cursor therefore behaves as if declared `WITH HOLD`: it lives for the duration of the connection, not until `COMMIT`. [tool-verified: `server.py:200` — `in_transaction()` always returns `False`] The `WITH HOLD` and `WITHOUT HOLD` keywords are accepted and silently ignored — there is no per-transaction cursor lifecycle to enforce.
+**Cursor lifetime.** Provisa's pgwire server has no transaction state machine (`ProvisaSession.in_transaction()` is hardcoded `False`). Every cursor therefore behaves as if declared `WITH HOLD`: it lives for the duration of the connection, not until `COMMIT`. The `WITH HOLD` and `WITHOUT HOLD` keywords are accepted and silently ignored — there is no per-transaction cursor lifecycle to enforce.
 
 ### Definitions (CREATE, ALTER, DROP)
 
-Nothing is defined through pgwire. A statement that creates, alters or drops an object (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, an index, a sequence or a schema) is refused with SQLSTATE 0A000, whatever the role holds; a session's own temporary table is the exception (see [Temporary tables](#temporary-tables)). A table or view is a model object: create it in the model (admin pages, admin API or config), or create it in the data source and admit it into the model. `TRUNCATE` defines nothing: it is a data write (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)). [tool-verified: `provisa/compiler/definitions.py`]
+Nothing is defined through pgwire. A statement that creates, alters or drops an object (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, an index, a sequence or a schema) is refused with SQLSTATE 0A000, whatever the role holds; a session's own temporary table is the exception (see [Temporary tables](#temporary-tables)). A table or view is a model object: create it in the model (admin pages, admin API or config), or create it in the data source and admit it into the model. `TRUNCATE` defines nothing: it is a data write (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)).
 
 The refusal is made once, in the pipeline every SQL surface passes through, so SQL over HTTP, Flight and MCP refuse the same statements with the same message.
 
@@ -148,25 +148,25 @@ DROP TABLE busy;
 - **Lifetime.** A temporary table is not a model object, no other session sees it, and it ends with the session. On pgwire a session is the connection. On a surface with no connection of its own (SQL over HTTP, Flight, MCP) a session is one request, so a temporary table lives for the statements sent together in that request.
 - **Storage.** The rows are held in a schema of the session's own in the engine's store and dropped when the session ends. An `INSERT`, `UPDATE` or `DELETE` rewrites the whole table through the engine, so a temporary table suits scratch data, not large tables written row by row. A process that stops without ending its sessions leaves their schemas in the store; they are removed when the environment is retired.
 
-The same statements work on every SQL surface: they are handled in the pipeline all of them share. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+The same statements work on every SQL surface: they are handled in the pipeline all of them share.
 
 ### Data writes (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN)
 
 Rows of an existing registered table are written through pgwire as on every other SQL surface, through the one write admission (`provisa/compiler/write_admission.py`):
 
-1. **The right.** The role holds `write`. (REQ-868)
-2. **The grant.** The role holds a write grant on the table for the operation: an `INSERT` needs an `insert` grant, an `UPDATE` an `update` grant, a `DELETE` a `delete` grant. A `MERGE` needs an `insert` and an `update` grant over every row, and an `INSERT ... ON CONFLICT DO UPDATE` an `update` grant over every row. (REQ-2074)
-3. **The columns.** Every column the statement writes is one the grant names. A column the grant presets is the grant's to set: the statement may not supply it, and the grant's value (a session variable, a literal or the time of the write) is added. (REQ-663, REQ-2074)
+1. **The right.** The role holds `write`.
+2. **The grant.** The role holds a write grant on the table for the operation: an `INSERT` needs an `insert` grant, an `UPDATE` an `update` grant, a `DELETE` a `delete` grant. A `MERGE` needs an `insert` and an `update` grant over every row, and an `INSERT ... ON CONFLICT DO UPDATE` an `update` grant over every row.
+3. **The columns.** Every column the statement writes is one the grant names. A column the grant presets is the grant's to set: the statement may not supply it, and the grant's value (a session variable, a literal or the time of the write) is added.
 4. **The rows it may touch.** The grant's `rows` predicate is added to the `WHERE` of an `UPDATE` or `DELETE`. A grant that states none takes the role's row filter, the same predicate its reads carry.
 5. **The rows it leaves behind.** An `INSERT`'s rows, and the new values of an `UPDATE` that sets a column the grant's `check` reads, are checked against the `check` before anything is sent to the source. A grant that states no `check` takes the role's row filter.
 
-`TRUNCATE` is a data write too, run as itself and never rewritten to a `DELETE`. It needs the `write` right, a `delete` grant over every row of the table, and a source that takes deletes. It empties one table at a time, and a role whose grant limits the rows (a `rows` predicate, or the role's row filter where the grant states none) is refused it, since a `TRUNCATE` cannot apply the predicate: use `DELETE`, which does. (REQ-1942) [tool-verified: `provisa/compiler/write_admission.py` `admit_write`]
+`TRUNCATE` is a data write too, run as itself and never rewritten to a `DELETE`. It needs the `write` right, a `delete` grant over every row of the table, and a source that takes deletes. It empties one table at a time, and a role whose grant limits the rows (a `rows` predicate, or the role's row filter where the grant states none) is refused it, since a `TRUNCATE` cannot apply the predicate: use `DELETE`, which does.
 
-Whatever cannot be decided is refused by name rather than admitted on doubt (an `INSERT … SELECT`, a value that is neither a literal nor a bound parameter, a filter that reads a column the statement does not supply). [tool-verified: `provisa/compiler/write_admission.py`, `provisa/pgwire/copy_handler.py`]
+Whatever cannot be decided is refused by name rather than admitted on doubt (an `INSERT … SELECT`, a value that is neither a literal nor a bound parameter, a filter that reads a column the statement does not supply).
 
 ### COPY
 
-`COPY ... TO STDOUT` and `COPY ... FROM STDIN` are both supported. (REQ-585)
+`COPY ... TO STDOUT` and `COPY ... FROM STDIN` are both supported.
 
 **COPY TO STDOUT** — exports query results in PG COPY wire format. Two forms work:
 
@@ -178,19 +178,19 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
 
-Supported formats: `text` (tab-delimited, default), `csv` and `binary`, PostgreSQL's binary COPY format, which DuckDB's postgres extension reads with. (REQ-883) [tool-verified: `provisa/pgwire/copy_handler.py`, `provisa/pgwire/copy_binary.py`]
+Supported formats: `text` (tab-delimited, default), `csv` and `binary`, PostgreSQL's binary COPY format, which DuckDB's postgres extension reads with.
 
-**COPY FROM STDIN** is a data write into an existing registered table: it is admitted by the same write admission as an `INSERT` of the same rows, with the added condition that the `insert` grant has no presets (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)). It reads `text` (default) and `csv`. Any other format is refused with SQLSTATE 0A000, naming it, before any data is sent. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY FROM STDIN** is a data write into an existing registered table: it is admitted by the same write admission as an `INSERT` of the same rows, with the added condition that the `insert` grant has no presets (see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin)). It reads `text` (default) and `csv`. Any other format is refused with SQLSTATE 0A000, naming it, before any data is sent.
 
 ### Transactions and Session Commands
 
-SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, and DEALLOCATE are intercepted and return an empty success response. (REQ-587) The server is stateless with respect to transactions — there is no transaction isolation or rollback support. (REQ-587) [tool-verified: `catalog.py:27-31`, `catalog.py:1129-1132`]
+SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, and DEALLOCATE are intercepted and return an empty success response. The server is stateless with respect to transactions — there is no transaction isolation or rollback support.
 
 ---
 
 ## Catalog Intercept
 
-Queries against `information_schema` and `pg_catalog` are answered locally without a Trino round-trip. (REQ-532) The intercept layer builds an in-memory DuckDB database per request, populated from the role's compilation context. (REQ-532) [tool-verified: `catalog.py:210-213`]
+Queries against `information_schema` and `pg_catalog` are answered locally without a Trino round-trip. The intercept layer builds an in-memory DuckDB database per request, populated from the role's compilation context.
 
 Intercepted tables:
 
@@ -198,15 +198,13 @@ Intercepted tables:
 
 **pg_catalog:** `pg_namespace`, `pg_class`, `pg_attribute`, `pg_type`, `pg_attrdef`, `pg_description`, `pg_index`, `pg_constraint`, `pg_proc`, `pg_roles`, `pg_auth_members`, `pg_database`, `pg_settings`, `pg_tables`, `pg_stat_user_tables`, `pg_statio_user_tables`, `pg_am`, `pg_extension`, `pg_enum`, `pg_stat_activity`
 
-[tool-verified: `catalog.py:39-67`]
+`pg_constraint` is populated with real PK and FK data derived from the domain model's `pk_columns` and `joins`. BI tools that inspect foreign-key relationships (Tableau, DBeaver, etc.) will see the join graph Provisa knows about. Single-column joins between the same source/target pair whose target columns together form the target's composite primary key are collapsed into one FK row with multi-element `conkey`/`confkey` arrays.
 
-`pg_constraint` is populated with real PK and FK data derived from the domain model's `pk_columns` and `joins`. (REQ-392, REQ-399) BI tools that inspect foreign-key relationships (Tableau, DBeaver, etc.) will see the join graph Provisa knows about. [tool-verified: `catalog.py:551-632`] Single-column joins between the same source/target pair whose target columns together form the target's composite primary key are collapsed into one FK row with multi-element `conkey`/`confkey` arrays. (REQ-1094) [tool-verified: `catalog_constraints.py`]
+A junction-backed relationship produces no FK row. It is an edge through an associative table, not a column pair, and `pg_constraint` has no shape for two hops — so the domain model leaves it out of `joins` and the junction table appears as an ordinary table with its own foreign keys to each endpoint. SQL clients reach it by joining that table; Cypher clients traverse it as a single relationship.
 
-A junction-backed relationship (REQ-1586) produces no FK row. It is an edge through an associative table, not a column pair, and `pg_constraint` has no shape for two hops — so the domain model leaves it out of `joins` and the junction table appears as an ordinary table with its own foreign keys to each endpoint. SQL clients reach it by joining that table; Cypher clients traverse it as a single relationship. [tool-verified: `provisa/compiler/schema_gen.py:302-306`]
+`pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint` — DataGrip, for example — discover the correct columns through the standard `pg_index` → `pg_attribute` join.
 
-`pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint` — DataGrip, for example — discover the correct columns through the standard `pg_index` → `pg_attribute` join. (REQ-1095) [tool-verified: `catalog_constraints.py:340-384`]
-
-The following scalar expressions are also intercepted: (REQ-588)
+The following scalar expressions are also intercepted:
 
 - `current_user`, `session_user` → the authenticated `role_id`
 - `current_database()` → `"provisa"`
@@ -216,13 +214,11 @@ The following scalar expressions are also intercepted: (REQ-588)
 - `current_setting(...)` → returns from a fixed settings table
 - `SHOW <setting>` → returns from the same settings table
 
-[tool-verified: `catalog.py:168-207`, `catalog.py:1076-1120`]
-
 ---
 
 ## Binary Parameter Encoding
 
-The extended-query protocol (Bind/Execute) supports binary-encoded parameters. (REQ-589) The following type OIDs are decoded from binary: [tool-verified: `postgres.py:69-97`]
+The extended-query protocol (Bind/Execute) supports binary-encoded parameters. The following type OIDs are decoded from binary:
 
 | OID | PG type | Python type |
 | ----- | --------- | ------------- |
@@ -241,9 +237,9 @@ The extended-query protocol (Bind/Execute) supports binary-encoded parameters. (
 | 1700 | numeric | decimal.Decimal |
 | 2950 | uuid | str |
 
-Any OID not in this table raises `"Unsupported binary parameter type: <oid>"`. (REQ-589) [tool-verified: `postgres.py:579`]
+Any OID not in this table raises `"Unsupported binary parameter type: <oid>"`.
 
-Result columns are also sent in binary when the client requests it, for the same type set plus ARRAY, JSON, INTERVAL, and BIGINT. (REQ-589) [tool-verified: `postgres.py:191-244`]
+Result columns are also sent in binary when the client requests it, for the same type set plus ARRAY, JSON, INTERVAL, and BIGINT.
 
 ---
 
@@ -257,7 +253,7 @@ Result columns are also sent in binary when the client requests it, for the same
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` queries on connect to populate their schema browser. These are all answered by the catalog intercept layer — no Trino traffic is generated during schema inspection. (REQ-532)
+Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` queries on connect to populate their schema browser. These are all answered by the catalog intercept layer — no Trino traffic is generated during schema inspection.
 
 **When to prefer one over the other.** If the client is Python, use psycopg2 or asyncpg for better type handling. If the client is a BI tool or any JVM application, use JDBC. Avoid mixing binary and text protocol expectations in the same connection if you observe type conversion surprises — JDBC's text-mode behavior is simpler to reason about.
 
@@ -265,18 +261,18 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 ## Caveats and Constraints
 
-**SQL only.** The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. (REQ-614) Data writes to existing tables are admitted by the role's rights, its column grants and its row filter; see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin).
+**SQL only.** The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. Data writes to existing tables are admitted by the role's rights, its column grants and its row filter; see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
-**No definitions.** `CREATE`, `ALTER` and `DROP` are refused with SQLSTATE 0A000 whatever the role holds, except a session's own temporary table; see [Temporary tables](#temporary-tables). `TRUNCATE` is a data write. (REQ-615, REQ-616)
+**No definitions.** `CREATE`, `ALTER` and `DROP` are refused with SQLSTATE 0A000 whatever the role holds, except a session's own temporary table; see [Temporary tables](#temporary-tables). `TRUNCATE` is a data write.
 
-**No real transaction support.** BEGIN/COMMIT/ROLLBACK are accepted and silently ignored. Each statement runs independently. (REQ-587) [tool-verified: `server.py:146-158` — `in_transaction()` always returns `False`]
+**No real transaction support.** BEGIN/COMMIT/ROLLBACK are accepted and silently ignored. Each statement runs independently.
 
-**Query timeout.** A statement may take pgwire's own request timeout, `limits.request_timeouts.pgwire`, or the shared `limits.request_timeout` when that is unset; both are operator settings. (REQ-590, REQ-1905) [tool-verified: `provisa/core/limits.py`, `server.py`]
+**Query timeout.** A statement may take pgwire's own request timeout, `limits.request_timeouts.pgwire`, or the shared `limits.request_timeout` when that is unset; both are operator settings.
 
-**COPY input is text or csv.** `COPY ... TO STDOUT` writes `text`, `csv` and `binary`; `COPY ... FROM STDIN` reads `text` and `csv`. [tool-verified: `_parse_copy_data`, `provisa/pgwire/copy_handler.py`]
+**COPY input is text or csv.** `COPY ... TO STDOUT` writes `text`, `csv` and `binary`; `COPY ... FROM STDIN` reads `text` and `csv`.
 
-**Parameter substitution is literal.** `$1`, `$2`, ... parameters are substituted as SQL literals before execution, not sent as bind parameters to the upstream engine. This means the upstream engine never sees a prepared statement. For Trino this has no practical impact; for direct-pool sources it bypasses prepared-statement caching. (REQ-581) [tool-verified: `server.py:78-85`]
+**Parameter substitution is literal.** `$1`, `$2`, ... parameters are substituted as SQL literals before execution, not sent as bind parameters to the upstream engine. This means the upstream engine never sees a prepared statement. For Trino this has no practical impact; for direct-pool sources it bypasses prepared-statement caching.
 
-**DECLARE SCROLL buffers the full result.** A `SCROLL` cursor accumulates every row it pulls from the engine into Python heap so `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST` can be served on demand. Against a large result this means the whole result lives in memory for as long as the cursor is open. Use the default `NO SCROLL` for forward-only streaming. (REQ-1862) [tool-verified: `server.py:383-389`]
+**DECLARE SCROLL buffers the full result.** A `SCROLL` cursor accumulates every row it pulls from the engine into Python heap so `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST` can be served on demand. Against a large result this means the whole result lives in memory for as long as the cursor is open. Use the default `NO SCROLL` for forward-only streaming.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (REQ-532) [tool-verified: `catalog.py:519-535`, `catalog.py:639-934`] (`pg_index` is populated — see Catalog Intercept.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (`pg_index` is populated — see Catalog Intercept.)

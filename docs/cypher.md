@@ -1,6 +1,6 @@
 # Cypher Query Support
 
-Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` module. (REQ-345, REQ-347) Queries are parsed by a custom recursive-descent parser (no external Cypher library) (REQ-571), schema-resolved against the model (REQ-351), and emitted as SQL, then routed to the target execution engine. (REQ-066, REQ-067, REQ-347)
+Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` module. Queries are parsed by a custom recursive-descent parser (no external Cypher library), schema-resolved against the model, and emitted as SQL, then routed to the target execution engine.
 
 ## Implemented Features
 
@@ -19,9 +19,9 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | `UNION` / `UNION ALL` | ✓ | Recursive union across sub-ASTs |
 | `CALL { … }` | ✓ | Top-level call subquery decomposition via `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Correlated subquery → `CROSS JOIN LATERAL`; see §Correlated CALL |
-| `CALL db.labels()` | ✓ | Returns node labels from the model; no SQL translation (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Returns relationship types from the model (REQ-572) |
-| `CALL db.propertyKeys()` | ✓ | Returns all property key names across all node types (REQ-572) |
+| `CALL db.labels()` | ✓ | Returns node labels from the model; no SQL translation |
+| `CALL db.relationshipTypes()` | ✓ | Returns relationship types from the model |
+| `CALL db.propertyKeys()` | ✓ | Returns all property key names across all node types |
 | `UNWIND` | ✓ | Array-to-rows expansion; first item becomes FROM, subsequent become CROSS JOIN UNNEST |
 
 ### Match Patterns
@@ -78,7 +78,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 | `n { .*, extra: expr }` | All schema props plus named key; combined MAP |
 | `n { key: expr }` | `MAP(ARRAY['key'], ARRAY[expr])` |
 
-**Object properties.** A column holding a declared object (a remote GraphQL type's embedded object, or any column registered with object fields) is a map property: `RETURN n.address` gives it as a map, whatever form the engine returns it in, and the node `n` carries it among its properties. A remote GraphQL field pointing at a registered type, one object or a list, is not a property; it is reached over its relationship. (REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
+**Object properties.** A column holding a declared object (a remote GraphQL type's embedded object, or any column registered with object fields) is a map property: `RETURN n.address` gives it as a map, whatever form the engine returns it in, and the node `n` carries it among its properties. A remote GraphQL field pointing at a registered type, one object or a list, is not a property; it is reached over its relationship.
 
 ### Aggregation Functions
 
@@ -159,7 +159,7 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 
 ### Correlated CALL Subqueries
 
-`CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` translates to `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Rules:
+`CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` translates to `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. Rules:
 
 - The outer-scope variable (`x`) must appear in `WITH`
 - Multiple imported vars (`WITH a, b`) are supported
@@ -170,26 +170,26 @@ Provisa translates a subset of openCypher to SQL via the `provisa/cypher/` modul
 
 ## Writes
 
-Cypher supports three write patterns through the `/data/cypher` endpoint, executed by `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
+Cypher supports three write patterns through the `/data/cypher` endpoint, executed by `provisa/cypher/write_translator.py`.
 
-| Cypher | SQL | Req |
-| -------- | ----- | ----- |
-| `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
-| `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
-| `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |
+| Cypher | SQL |
+|---|---|
+| `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` |
+| `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` |
+| `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` |
 
-Property names map to columns via domain-prefix stripping and alias resolution; Cypher scalar values are coerced to the target column type. (REQ-666, REQ-668) The response body carries an `affected_rows` count. (REQ-670)
+Property names map to columns via domain-prefix stripping and alias resolution; Cypher scalar values are coerced to the target column type. The response body carries an `affected_rows` count.
 
-A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it -- the name GraphQL and SQL read it by -- in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike. (REQ-471)
+A node's property is its column's published name: the column's alias when it has one, else the naming convention's name for it -- the name GraphQL and SQL read it by -- in `MATCH`, `RETURN`, `CREATE`, `SET` and `MERGE` alike.
 
 Rules:
 
-- The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. (REQ-661) New labels or types cannot be created through Cypher. (REQ-662)
-- Every write is gated on the target table's write grants: the role needs the `write` right and a grant for the operation, and the columns written must be in the grant. A role without them is rejected at compile time. (REQ-663)
-- The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time. (REQ-664)
-- Relationships cannot be written — they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. (REQ-665) A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge. (REQ-1586)
-- Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload). (REQ-798)
-- `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time. (REQ-671)
+- The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. New labels or types cannot be created through Cypher.
+- Every write is gated on the target table's write grants: the role needs the `write` right and a grant for the operation, and the columns written must be in the grant. A role without them is rejected at compile time.
+- The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time.
+- Relationships cannot be written — they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge.
+- Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload).
+- `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time.
 
 ---
 
@@ -197,12 +197,12 @@ Rules:
 
 Cypher reaches the same governed pipeline over two transports:
 
-- **HTTP** — `POST /data/cypher` with a JSON body (`{"query": "...", "params": {...}}`). Returns typed rows, or `affected_rows` for writes. Graph variables in the `RETURN` clause serialize as JSON: nodes carry `id`, `label`, `tableLabel`, and `properties`; edges carry `identity`, `start`, `end`, `type`, `properties`, `startNode`, and `endNode`; paths carry `nodes`, `edges`, and `length`/`hops`. (REQ-750) Registered commands are also callable here via `CALL fn(args) YIELD col1, col2` — positional args map to the command's declared argument names in order. (REQ-1156) [tool-verified: `provisa/api/rest/registered_call.py:113-143`]
-- **Bolt** — a Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. (REQ-802) It starts when `PROVISA_BOLT_PORT` is set to a non-zero value and is disabled by default; set `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` for TLS. [tool-verified: `provisa/api/app_startup.py:317-338`] Bolt auth maps principal to user and database to role: `SHOW DATABASES` lists one entry per (view × role) pair, named `provisa_<role>` (business domains) or `provisa_ops_<role>` (with system/meta/ops domains); `:use` selects the active role and view. (REQ-807) Relationships receive durable integer IDs via a `rel_ids` table, mirroring the `node_ids` design. (REQ-806) Registered commands are callable with `CALL command(args)` — positional args map to declared argument names in order; `CALL dbms.*` / `CALL db.*` procedures take precedence. (REQ-1156) [tool-verified: `provisa/bolt/session.py:722-749`]
+- **HTTP** — `POST /data/cypher` with a JSON body (`{"query": "...", "params": {...}}`). Returns typed rows, or `affected_rows` for writes. Graph variables in the `RETURN` clause serialize as JSON: nodes carry `id`, `label`, `tableLabel`, and `properties`; edges carry `identity`, `start`, `end`, `type`, `properties`, `startNode`, and `endNode`; paths carry `nodes`, `edges`, and `length`/`hops`. Registered commands are also callable here via `CALL fn(args) YIELD col1, col2` — positional args map to the command's declared argument names in order.
+- **Bolt** — a Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. It starts when `PROVISA_BOLT_PORT` is set to a non-zero value and is disabled by default; set `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` for TLS. Bolt auth maps principal to user and database to role: `SHOW DATABASES` lists one entry per (view × role) pair, named `provisa_<role>` (business domains) or `provisa_ops_<role>` (with system/meta/ops domains); `:use` selects the active role and view. Relationships receive durable integer IDs via a `rel_ids` table, mirroring the `node_ids` design. Registered commands are callable with `CALL command(args)` — positional args map to declared argument names in order; `CALL dbms.*` / `CALL db.*` procedures take precedence.
 
 ### Graph Analytics
 
-`POST /data/graph-analytics` runs a Cypher query, builds an in-memory NetworkX graph from the resulting nodes and edges, executes a named algorithm, and merges a `_analytics` dict into each node and edge before returning them as JSON with an `elapsed_ms` field. (REQ-642) The `_analytics` keys vary by algorithm: centrality yields `score`; community detection yields `cluster`; k-core yields `core_number`; degree centrality adds `in_degree` and `out_degree`. (REQ-643) The endpoint rejects graphs above a configurable size (default 10,000 nodes / 50,000 edges) with HTTP 413; Girvan-Newman is capped at 500 nodes unless the caller passes `force=true`. (REQ-650, REQ-651)
+`POST /data/graph-analytics` runs a Cypher query, builds an in-memory NetworkX graph from the resulting nodes and edges, executes a named algorithm, and merges a `_analytics` dict into each node and edge before returning them as JSON with an `elapsed_ms` field. The `_analytics` keys vary by algorithm: centrality yields `score`; community detection yields `cluster`; k-core yields `core_number`; degree centrality adds `in_degree` and `out_degree`. The endpoint rejects graphs above a configurable size (default 10,000 nodes / 50,000 edges) with HTTP 413; Girvan-Newman is capped at 500 nodes unless the caller passes `force=true`.
 
 ---
 
@@ -210,29 +210,29 @@ Cypher reaches the same governed pipeline over two transports:
 
 ### Design constraints
 
-1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. (REQ-818, REQ-666, REQ-667, REQ-668) See §Writes below. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. (REQ-671, REQ-818) APOC procedures are also rejected.
+1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. See §Writes below. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. APOC procedures are also rejected.
 
-2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists solely as join metadata in the model (REQ-574) and carries no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning on it. An edge declared over a junction table does carry them: the associative table's remaining columns are the relationship's properties, `RETURN r` returns them, and a `WHERE` on one compiles to a predicate on the junction alias — so it restricts the traversal rather than filtering assembled rows. (REQ-1586) The junction table itself is dropped from the node side of the graph schema; it is an edge here and a table everywhere else.
+2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists solely as join metadata in the model and carries no stored attributes, so `WHERE r.since > 2020` or `RETURN r.weight` has no meaning on it. An edge declared over a junction table does carry them: the associative table's remaining columns are the relationship's properties, `RETURN r` returns them, and a `WHERE` on one compiles to a predicate on the junction alias — so it restricts the traversal rather than filtering assembled rows. The junction table itself is dropped from the node side of the graph schema; it is an edge here and a table everywhere else.
 
-3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward+backward UNION ALL of all matching directed relationships from the model. (REQ-575) Every relationship in the model is directional; bidirectional syntax is sugar that expands to both directions. Extra branches are emitted at the outermost query level — subsequent MATCH patterns in the same query are not duplicated across branches (limitation for multi-MATCH bidirectional).
+3. **Bidirectional traversal** `(a)-[]-(b)` rewrites to the forward+backward UNION ALL of all matching directed relationships from the model. Every relationship in the model is directional; bidirectional syntax is sugar that expands to both directions. Extra branches are emitted at the outermost query level — subsequent MATCH patterns in the same query are not duplicated across branches (limitation for multi-MATCH bidirectional).
 
-4. **Recursive paths require a bound.** Variable-length patterns (`[*]`) must include an upper bound (e.g. `[*..10]`). (REQ-348) Unbounded traversal is rejected at parse time to prevent runaway recursive CTEs.
+4. **Recursive paths require a bound.** Variable-length patterns (`[*]`) must include an upper bound (e.g. `[*..10]`). Unbounded traversal is rejected at parse time to prevent runaway recursive CTEs.
 
 ### Behaviour notes
 
-5. **`shortestPath` on non-self-referential paths uses flat JOIN, not hops ordering.** When start and end types differ and no self-referential relationship exists in the schema, the translator emits a flat JOIN chain (the shortest schema path). (REQ-576) It does not emit `ORDER BY hops` because hops are not tracked in that code path. The result is the structurally shortest schema path, not the data-shortest path across multiple rows.
+5. **`shortestPath` on non-self-referential paths uses flat JOIN, not hops ordering.** When start and end types differ and no self-referential relationship exists in the schema, the translator emits a flat JOIN chain (the shortest schema path). It does not emit `ORDER BY hops` because hops are not tracked in that code path. The result is the structurally shortest schema path, not the data-shortest path across multiple rows.
 
-6. **Multiple schema paths produce `UNION ALL`.** When two schema paths of equal hop count connect the same start and end types (e.g. `Person -[WORKS_AT]-> Company` and `Person -[MANAGES]-> Company`), both are emitted as `UNION ALL` branches. (REQ-577) Deduplication of rows that appear in both branches is not performed.
+6. **Multiple schema paths produce `UNION ALL`.** When two schema paths of equal hop count connect the same start and end types (e.g. `Person -[WORKS_AT]-> Company` and `Person -[MANAGES]-> Company`), both are emitted as `UNION ALL` branches. Deduplication of rows that appear in both branches is not performed.
 
 7. **One `RelationshipMapping` per source→target pair and rel\_type combination.** If two GraphQL fields on the same source type produce the same `rel_type` string (after uppercasing) to the same target type, the second registration overwrites the first in `CypherLabelMap.relationships`. The relationship key includes source and target type names, so distinct source/target pairs with the same type name each get their own entry and are not affected.
 
-8. **`WITH` clause CTEs are named `_w0`, `_w1`, …** (REQ-578) Names are assigned positionally within a single translation call. Composing multiple translated queries (e.g. in a batch) can produce colliding CTE names if they are concatenated naively.
+8. **`WITH` clause CTEs are named `_w0`, `_w1`, …** Names are assigned positionally within a single translation call. Composing multiple translated queries (e.g. in a batch) can produce colliding CTE names if they are concatenated naively.
 
-### Expression and pattern coverage (REQ-913)
+### Expression and pattern coverage
 
 Cypher expressions are parsed into an AST and lowered node-to-node to SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). The grammar follows the openCypher `oC_Expression` precedence tower. Supported: literals, parameters, property access, `n.prop`, index and slice, arithmetic (`+ - * / % ^`), comparison, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, boolean `AND` / `OR` / `XOR` / `NOT`, `CASE`, list and map literals, list and pattern comprehensions (including the `p = (…)` path binding), map projection, `reduce`, the `all` / `any` / `none` / `single` quantifiers, existential subqueries, and function calls.
 
-9. **Labels are fixed; you cannot create object types through Cypher.** A label resolves to a known domain, a known object type, or a qualified `domain:object_type` — the closed set defined by the registered schema. Cypher never introduces a new label or type. Instance creation is possible only for types already defined within a writable data source; `CREATE` writes rows into such a table (see §Writes) but cannot define a new label or type. (REQ-662) Both label forms are accepted and mean the same test: the postfix `n:Label` and the verbose `n IS :Label` (and their negation `n IS NOT :Label`). A qualified label is written `n:domain:object_type`.
+9. **Labels are fixed; you cannot create object types through Cypher.** A label resolves to a known domain, a known object type, or a qualified `domain:object_type` — the closed set defined by the registered schema. Cypher never introduces a new label or type. Instance creation is possible only for types already defined within a writable data source; `CREATE` writes rows into such a table (see §Writes) but cannot define a new label or type. Both label forms are accepted and mean the same test: the postfix `n:Label` and the verbose `n IS :Label` (and their negation `n IS NOT :Label`). A qualified label is written `n:domain:object_type`.
 
 10. **`shortestPath` and `allShortestPaths` are supported only inside `MATCH`, not as expressions.** In a pattern (`MATCH p = shortestPath((a:Person)-[:KNOWS*..5]->(b:Person))`) they translate to a `WITH RECURSIVE` CTE and require labeled source and target nodes. Used in expression position — for example `RETURN shortestPath((a)-[*]->(b))` or `WHERE length(shortestPath((a)-[*]->(b))) < 5` — they are not supported, because the recursive rewrite is driven off the `MATCH` clause rather than a correlated subquery.
 

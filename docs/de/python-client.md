@@ -5,9 +5,9 @@ Python-Client für Provisa. Stellt vier Schnittstellen bereit:
 | Schnittstelle | Anwendungsfall |
 | ----------- | ---------- |
 | `ProvisaClient` | GraphQL-Abfragen, Arrow Flight, DataFrame-Ausgabe |
-| DB-API 2.0 (`connect`) | Standard-Python-Datenbankschnittstelle (PEP 249) (REQ-268) |
-| SQLAlchemy-Dialekt | BI-Tools, ORM, Pandas `read_sql` (REQ-270) |
-| ADBC | Arrow-natives spaltenorientiertes Streaming über Flight (REQ-271) |
+| DB-API 2.0 (`connect`) | Standard-Python-Datenbankschnittstelle (PEP 249) |
+| SQLAlchemy-Dialekt | BI-Tools, ORM, Pandas `read_sql` |
+| ADBC | Arrow-natives spaltenorientiertes Streaming über Flight |
 
 ## Installation {: #install }
 
@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` nimmt ein Credential entgegen, keinen Benutzernamen mit Passwort: Der Client kennt keinen eigenen Login-Schritt. Ein Personal Access Token ist das Credential der Wahl, wenn ein Skript unbeaufsichtigt laufen soll — es wird aus dem eigenen Profil des Benutzers ausgestellt, hat ein Ablaufdatum und lässt sich widerrufen, ohne das Konto anzufassen. (REQ-1263) Ein Provider-Bearer-Token funktioniert genauso. Beides gehört in `token`, und der Client legt es sowohl auf dem HTTP- als auch auf dem Arrow-Flight-Pfad vor.
+`ProvisaClient` nimmt ein Credential entgegen, keinen Benutzernamen mit Passwort: Der Client kennt keinen eigenen Login-Schritt. Ein Personal Access Token ist das Credential der Wahl, wenn ein Skript unbeaufsichtigt laufen soll — es wird aus dem eigenen Profil des Benutzers ausgestellt, hat ein Ablaufdatum und lässt sich widerrufen, ohne das Konto anzufassen. Ein Provider-Bearer-Token funktioniert genauso. Beides gehört in `token`, und der Client legt es sowohl auf dem HTTP- als auch auf dem Arrow-Flight-Pfad vor.
 
 Um ein Passwort gegen ein Token einzutauschen, senden Sie ein POST an `/auth/login` und lesen `access_token`:
 
@@ -74,7 +74,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight (Hochdurchsatz, spaltenorientiert) {: #arrow-flight-high-throughput-columnar }
 
-Verwenden Sie Flight für große Ergebnismengen — Daten strömen als Arrow-Record-Batches, ohne serverseitig materialisiert zu werden. (REQ-143, REQ-145)
+Verwenden Sie Flight für große Ergebnismengen — Daten strömen als Arrow-Record-Batches, ohne serverseitig materialisiert zu werden.
 
 ```python
 import pyarrow as pa
@@ -83,7 +83,7 @@ table: pa.Table = client.flight("{ orders { id amount region } }")
 df = client.flight_df("{ orders { id amount region } }")
 ```
 
-Flight verbindet sich standardmäßig mit Port 8815. (REQ-143) Überschreiben mit `flight_port=`:
+Flight verbindet sich standardmäßig mit Port 8815. Überschreiben mit `flight_port=`:
 
 ```python
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
@@ -100,14 +100,14 @@ tables_df = client.list_tables()
 | Parameter | Standard | Beschreibung |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Basis-URL des Provisa-Servers |
-| `token` | `None` | Bearer-Credential — ein Provider-Token oder ein Personal Access Token; bei Passwort-Auth weglassen (REQ-606, REQ-1263) |
-| `role` | `None` | Rolle, unter der gehandelt wird; als `X-Provisa-Role` gesendet und nur berücksichtigt, wenn sie dem Benutzer zugewiesen ist; ohne Angabe läuft die Anfrage unter der eigenen Rolle der Identität (REQ-273) |
-| `flight_port` | `8815` | Arrow-Flight-gRPC-Port (REQ-143) |
+| `token` | `None` | Bearer-Credential — ein Provider-Token oder ein Personal Access Token; bei Passwort-Auth weglassen |
+| `role` | `None` | Rolle, unter der gehandelt wird; als `X-Provisa-Role` gesendet und nur berücksichtigt, wenn sie dem Benutzer zugewiesen ist; ohne Angabe läuft die Anfrage unter der eigenen Rolle der Identität |
+| `flight_port` | `8815` | Arrow-Flight-gRPC-Port |
 
 ### Fehlerbehandlung {: #error-handling }
 
-`query()` wirft `httpx.HTTPStatusError` bei HTTP-Fehlern. (REQ-607)
-`query_df()` wirft `RuntimeError`, wenn die Antwort GraphQL-Fehler enthält. (REQ-607)
+`query()` wirft `httpx.HTTPStatusError` bei HTTP-Fehlern.
+`query_df()` wirft `RuntimeError`, wenn die Antwort GraphQL-Fehler enthält.
 
 ---
 
@@ -256,7 +256,7 @@ Der Dialekt sendet Benutzername und Passwort an `/auth/login` und hält das erha
 
 ## DB-API 2.0
 
-Standard-[PEP-249](https://peps.python.org/pep-0249/)-Schnittstelle. (REQ-268) Funktioniert mit jedem Tool, das eine DB-API-Verbindung akzeptiert.
+Standard-[PEP-249](https://peps.python.org/pep-0249/)-Schnittstelle. Funktioniert mit jedem Tool, das eine DB-API-Verbindung akzeptiert.
 
 ```python
 from provisa_client import connect
@@ -269,11 +269,11 @@ conn = connect(
 )
 ```
 
-`connect` sendet Benutzernamen und Passwort per POST an `/auth/login` und behält das zurückgegebene `access_token`, sodass die Verbindung ein echtes Credential führt und nicht bloß einen Namen. `role` *fordert* eine Rolle an, und der Server erfüllt die Anfrage nur, wenn der Identität diese Rolle zugewiesen ist (REQ-273); ohne Angabe läuft die Verbindung unter der Rolle, die der Login aufgelöst hat.
+`connect` sendet Benutzernamen und Passwort per POST an `/auth/login` und behält das zurückgegebene `access_token`, sodass die Verbindung ein echtes Credential führt und nicht bloß einen Namen. `role` *fordert* eine Rolle an, und der Server erfüllt die Anfrage nur, wenn der Identität diese Rolle zugewiesen ist; ohne Angabe läuft die Verbindung unter der Rolle, die der Login aufgelöst hat.
 
 ### Abfragen ausführen {: #executing-queries }
 
-Der Cursor akzeptiert entweder GraphQL oder SQL — automatisch erkannt. (REQ-268, REQ-274)
+Der Cursor akzeptiert entweder GraphQL oder SQL — automatisch erkannt.
 
 ```python
 cur = conn.cursor()
@@ -324,7 +324,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 pip install "provisa-client[sqlalchemy]"
 ```
 
-URL-Schema: `provisa+http://` oder `provisa+https://` (REQ-270)
+URL-Schema: `provisa+http://` oder `provisa+https://`
 
 ```python
 from sqlalchemy import create_engine, text
@@ -349,7 +349,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | Parameter | Beschreibung | Standard |
 | ----------- | ------------- | --------- |
-| `role` | Anzufordernde Rolle; serverseitig validiert (REQ-273) | die Rolle, die der Login auflöst |
+| `role` | Anzufordernde Rolle; serverseitig validiert | die Rolle, die der Login auflöst |
 
 ```python
 engine = create_engine(
@@ -359,13 +359,13 @@ engine = create_engine(
 
 ### Schemaerkennung {: #schema-introspection }
 
-Der Dialekt bildet den Katalog ab, der Ihrer Rolle ausgeliefert wird, gelesen von `GET /data/catalog` als Benutzer, Rolle und Organisation der Verbindung. Jede Domain ist ein Schema, und jede Tabelle liegt in einem: `get_schema_names()` listet die Domains, `get_table_names(schema="shop")` listet die Tabellen dieser Domain unter ihren SQL-Namen, und `get_columns("orders", schema="shop")` liefert Typ, Nullbarkeit und Beschreibung jeder Spalte. Ohne genanntes Schema listet `get_table_names()` keine. Eine unbekannte Tabelle löst `NoSuchTableError` aus; ein vom Server verweigerter Katalog löst einen Fehler aus. (REQ-363, REQ-270, REQ-2070)
+Der Dialekt bildet den Katalog ab, der Ihrer Rolle ausgeliefert wird, gelesen von `GET /data/catalog` als Benutzer, Rolle und Organisation der Verbindung. Jede Domain ist ein Schema, und jede Tabelle liegt in einem: `get_schema_names()` listet die Domains, `get_table_names(schema="shop")` listet die Tabellen dieser Domain unter ihren SQL-Namen, und `get_columns("orders", schema="shop")` liefert Typ, Nullbarkeit und Beschreibung jeder Spalte. Ohne genanntes Schema listet `get_table_names()` keine. Eine unbekannte Tabelle löst `NoSuchTableError` aus; ein vom Server verweigerter Katalog löst einen Fehler aus.
 
 ---
 
 ## ADBC
 
-Arrow Database Connectivity, gestützt auf Arrow Flight. (REQ-271) Gibt direkt `pyarrow.Table` zurück — keine JSON-Deserialisierung. (REQ-271)
+Arrow Database Connectivity, gestützt auf Arrow Flight. Gibt direkt `pyarrow.Table` zurück — keine JSON-Deserialisierung.
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -379,11 +379,11 @@ conn = adbc_connect(
     user="alice",
     password="secret",
     role="analyst",   # optional; server validates the requested role
-    port=8815,        # Arrow Flight port (REQ-711)
+    port=8815,        # Arrow Flight port
 )
 ```
 
-`adbc_connect` meldet sich zunächst über HTTP an und legt das erhaltene Token in jedes Flight-Ticket, sodass der Flight-Server die Verbindung genauso authentifiziert wie die REST-Oberfläche. (REQ-1263) Das Argument `role` ist eine Anfrage, die serverseitig gegen die Zuweisungen der Identität geprüft wird — es wird niemals zur Identität. (REQ-273)
+`adbc_connect` meldet sich zunächst über HTTP an und legt das erhaltene Token in jedes Flight-Ticket, sodass der Flight-Server die Verbindung genauso authentifiziert wie die REST-Oberfläche. Das Argument `role` ist eine Anfrage, die serverseitig gegen die Zuweisungen der Identität geprüft wird — es wird niemals zur Identität.
 
 ### Als Arrow Table abrufen {: #fetch-as-arrow-table }
 
@@ -420,4 +420,4 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
         table = cur.fetch_arrow_table()
 ```
 
-ADBC verbindet sich standardmäßig mit dem Flight-Server auf Port 8815. (REQ-143) Übergeben Sie `port=`, um einen Flight-Server auf einem nicht standardmäßigen Port zu erreichen. (REQ-711)
+ADBC verbindet sich standardmäßig mit dem Flight-Server auf Port 8815. Übergeben Sie `port=`, um einen Flight-Server auf einem nicht standardmäßigen Port zu erreichen.

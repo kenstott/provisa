@@ -1,6 +1,6 @@
 # SSE Subscriptions
 
-Provisa supports real-time push over Server-Sent Events (SSE). Clients receive a stream of change events without polling. (REQ-258)
+Provisa supports real-time push over Server-Sent Events (SSE). Clients receive a stream of change events without polling.
 
 ## Sources
 
@@ -14,13 +14,13 @@ Subscriptions target a **registered table**:
 
 ### PostgreSQL trigger auto-installation
 
-Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. (REQ-565) These triggers call `pg_notify('provisa_{table}', ...)` so that raw DML (not just Provisa mutations) is picked up by subscriptions. (REQ-565)
+Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. These triggers call `pg_notify('provisa_{table}', ...)` so that raw DML (not just Provisa mutations) is picked up by subscriptions.
 
-If trigger installation fails (e.g. insufficient privilege — the database role must own the table), Provisa falls back to watermark polling for that table, provided a `watermark_column` is configured. (REQ-566) A warning is logged. (REQ-566)
+If trigger installation fails (e.g. insufficient privilege — the database role must own the table), Provisa falls back to watermark polling for that table, provided a `watermark_column` is configured. A warning is logged.
 
 ### Cross-datasource view subscriptions
 
-For views that join multiple datasources via the federation engine, add a `watermark_column` to the table registration. (REQ-260, REQ-283) The column must exist in the view SQL (it need not appear in the GraphQL schema):
+For views that join multiple datasources via the federation engine, add a `watermark_column` to the table registration. The column must exist in the view SQL (it need not appear in the GraphQL schema):
 
 ```sql
 -- Example: federated view with derived watermark
@@ -31,11 +31,11 @@ FROM postgresql.public.orders o
 JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
 ```
 
-Register with `watermark_column: _watermark`. Provisa polls using `WHERE _watermark > <last_seen>`. (REQ-260)
+Register with `watermark_column: _watermark`. Provisa polls using `WHERE _watermark > <last_seen>`.
 
 ### Nested relationship subscriptions
 
-When the subscription field selects fields from joined tables (via registered relationships), Provisa watches **all** involved physical tables simultaneously. (REQ-567) A change to any joined table re-fires the subscription query. (REQ-567)
+When the subscription field selects fields from joined tables (via registered relationships), Provisa watches **all** involved physical tables simultaneously. A change to any joined table re-fires the subscription query.
 
 ## Endpoint
 
@@ -46,7 +46,7 @@ GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
-The connection stays open and emits one JSON event per change: (REQ-258, REQ-568)
+The connection stays open and emits one JSON event per change:
 
 ```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
@@ -56,7 +56,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 
 ## Delivery Modes
 
-Delivery is selected by `live.strategy` on the table config: (REQ-813, REQ-814)
+Delivery is selected by `live.strategy` on the table config:
 
 | `strategy` | Mechanism | Available for | Requires |
 | ------------ | ----------- | --------------- | --------- |
@@ -67,11 +67,11 @@ Delivery is selected by `live.strategy` on the table config: (REQ-813, REQ-814)
 
 ### LISTEN/NOTIFY
 
-Provisa issues `LISTEN <channel>` on a persistent PG connection. (REQ-258) Provisa mutations fire `NOTIFY` automatically. (REQ-565) External writers must call `NOTIFY <channel>, '<payload>'` after writes. No additional infrastructure required.
+Provisa issues `LISTEN <channel>` on a persistent PG connection. Provisa mutations fire `NOTIFY` automatically. External writers must call `NOTIFY <channel>, '<payload>'` after writes. No additional infrastructure required.
 
 ### Polling
 
-Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. (REQ-260) Diffs are emitted as SSE events. Poll cannot see hard deletes — a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker. (REQ-260)
+Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. Diffs are emitted as SSE events. Poll cannot see hard deletes — a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker.
 
 Table poll config (in `provisa.yaml`):
 
@@ -89,9 +89,9 @@ tables:
 
 ### Debezium CDC
 
-Requires a running Debezium connector writing to Kafka. (REQ-261) Provisa consumes the Kafka topic and forwards change events to connected SSE clients. (REQ-261)
+Requires a running Debezium connector writing to Kafka. Provisa consumes the Kafka topic and forwards change events to connected SSE clients.
 
-CDC transport is configured once per source in a `cdc` block; topics are derived as `{topic_prefix}.{schema}.{table}` and never repeated per table. (REQ-824) Each table then selects `strategy: debezium`:
+CDC transport is configured once per source in a `cdc` block; topics are derived as `{topic_prefix}.{schema}.{table}` and never repeated per table. Each table then selects `strategy: debezium`:
 
 ```yaml
 sources:
@@ -108,7 +108,7 @@ sources:
 
 #### Message encodings
 
-A Debezium topic is read in one of two encodings, and each message says which it is. (REQ-1951)
+A Debezium topic is read in one of two encodings, and each message says which it is.
 
 | Encoding | What the topic carries | What the source needs |
 |---|---|---|
@@ -197,7 +197,7 @@ One case does not end a GraphQL subscription: when the re-read after a single ch
 
 ## Kafka Sink Redirect
 
-Any GraphQL subscription can be redirected to a Kafka topic instead of streaming back to the client. (REQ-812) Add the `X-Provisa-Sink` header to the subscription request:
+Any GraphQL subscription can be redirected to a Kafka topic instead of streaming back to the client. Add the `X-Provisa-Sink` header to the subscription request:
 
 ```yaml
 POST /data/graphql
@@ -206,17 +206,17 @@ Content-Type: application/json
 X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
-The server responds `202 Accepted` immediately and starts a background task that: (REQ-812)
+The server responds `202 Accepted` immediately and starts a background task that:
 
 1. Watches for table changes using the same provider resolution as SSE (LISTEN/NOTIFY → asyncpg poll → federated poll)
 2. Re-executes the equivalent query on each change
 3. Publishes the result as a JSON message to the named Kafka topic
 
-The sink runs for the lifetime of the server process. (REQ-812) Restart the server to stop it.
+The sink runs for the lifetime of the server process. Restart the server to stop it.
 
 **URI format:** `kafka://[broker:port]/topic`
 
-- If `broker:port` is omitted, `KAFKA_BOOTSTRAP_SERVERS` env var is used (default: `localhost:9092`) (REQ-812)
+- If `broker:port` is omitted, `KAFKA_BOOTSTRAP_SERVERS` env var is used (default: `localhost:9092`)
 - `topic` is required
 
 **Example (curl):**
@@ -232,7 +232,7 @@ curl -X POST http://localhost:8000/data/graphql \
 
 ### Kafka Sink as a Config-Level Second Output
 
-A poll-based table subscription can simultaneously publish to a Kafka topic via `provisa.yaml`. (REQ-282, REQ-286) SSE subscription and Kafka sink are both outputs of the same Live Query Engine. (REQ-282) Each output tracks its watermark independently. (REQ-286)
+A poll-based table subscription can simultaneously publish to a Kafka topic via `provisa.yaml`. SSE subscription and Kafka sink are both outputs of the same Live Query Engine. Each output tracks its watermark independently.
 
 ```yaml
 tables:
@@ -250,15 +250,15 @@ tables:
           role: analyst           # required: the rows are published governed as this role
 ```
 
-A Kafka output publishes the table's rows governed as the role it names: its row rules, column visibility and masks apply as to a read by that role. An output without `role` is refused when the configuration loads. (REQ-565) [tool-verified: `provisa/core/models.py` `LiveOutputConfig`]
+A Kafka output publishes the table's rows governed as the role it names: its row rules, column visibility and masks apply as to a read by that role. An output without `role` is refused when the configuration loads.
 
 ## Security
 
-All subscription modes enforce the same security pipeline as regular queries: (REQ-258, REQ-038)
+All subscription modes enforce the same security pipeline as regular queries:
 
-- RLS filters are applied to every emitted row (REQ-040)
-- Masked columns appear masked in events (REQ-040)
-- Role authorization is checked at connection time (REQ-258)
+- RLS filters are applied to every emitted row
+- Masked columns appear masked in events
+- Role authorization is checked at connection time
 
 ## Client Example
 

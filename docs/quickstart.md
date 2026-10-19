@@ -1,6 +1,6 @@
 # Developer Quick Start
 
-For evaluating Provisa without building from source, see the [Quick Start](index.md) — download the macOS, Windows, or Linux installer and run `provisa start`. (REQ-223, REQ-224, REQ-227)
+For evaluating Provisa without building from source, see the [Quick Start](index.md) — download the macOS, Windows, or Linux installer and run `provisa start`.
 
 This guide is for running Provisa **from the repository** — active development, debugging, or contributing.
 
@@ -23,7 +23,7 @@ cd provisa
 ./setup.sh
 ```
 
-`setup.sh` creates `.venv/`, installs all Python dependencies via `pip install -e ".[dev]"`, and configures git hooks to `.githooks/`. [tool-verified: setup.sh lines 5–9]
+`setup.sh` creates `.venv/`, installs all Python dependencies via `pip install -e ".[dev]"`, and configures git hooks to `.githooks/`.
 
 ---
 
@@ -41,33 +41,33 @@ Provisa running:
   UI:      http://localhost:3000
 ```
 
-**What it starts:** [tool-verified: start-ui.sh]
+**What it starts:**
 
-- Docker Compose core services (`docker-compose.core.yml`) — PostgreSQL, PgBouncer, Trino, Redis (REQ-055)
-- Docker Compose dev overlay (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry (REQ-055)
-- Backend API on port 8001 (hot-reload on changes to `provisa/` and `config/`) (REQ-618)
+- Docker Compose core services (`docker-compose.core.yml`) — PostgreSQL, PgBouncer, Trino, Redis
+- Docker Compose dev overlay (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
+- Backend API on port 8001 (hot-reload on changes to `provisa/` and `config/`)
 - Vite UI dev server on port 3000 (HMR)
-- OpenTelemetry tracing and Grafana at `http://localhost:3100`. The observability stack is an opt-in docker-compose `observability` profile (OTel Collector, Prometheus, Tempo, Grafana), not on by default at the platform level; `start-ui.sh` enables it as a dev-script convenience unless you pass `--no-observability`. (REQ-302, REQ-303, REQ-330)
+- OpenTelemetry tracing and Grafana at `http://localhost:3100`. The observability stack is an opt-in docker-compose `observability` profile (OTel Collector, Prometheus, Tempo, Grafana), not on by default at the platform level; `start-ui.sh` enables it as a dev-script convenience unless you pass `--no-observability`.
 
-**Ctrl+C** stops everything — backend, UI, and all Docker services — and reverts any config patches. (REQ-619)
+**Ctrl+C** stops everything — backend, UI, and all Docker services — and reverts any config patches.
 
-**Ctrl+R** restarts only the backend (useful after a config change that hot-reload misses). (REQ-619)
+**Ctrl+R** restarts only the backend (useful after a config change that hot-reload misses).
 
 ### Options
 
-`--no-observability` — Disables distributed tracing. By default, `start-ui.sh` downloads the OpenTelemetry Java agent if not already present, patches Trino's `jvm.config` to load it, and starts the OTel collector, Prometheus, Tempo, and Grafana. Pass `--no-observability` to skip all of that. The `jvm.config` patch is reverted on Ctrl+C. [tool-verified: start-ui.sh lines 15, 67–82] (REQ-330)
+`--no-observability` — Disables distributed tracing. By default, `start-ui.sh` downloads the OpenTelemetry Java agent if not already present, patches Trino's `jvm.config` to load it, and starts the OTel collector, Prometheus, Tempo, and Grafana. Pass `--no-observability` to skip all of that. The `jvm.config` patch is reverted on Ctrl+C.
 
-`--seed-data` — Seeds Kafka with demo data after Docker services are healthy. Not run by default. [tool-verified: start-ui.sh lines 14, 173–178]
+`--seed-data` — Seeds Kafka with demo data after Docker services are healthy. Not run by default.
 
-`--keep-docker` — Leaves Docker Compose services running after Ctrl+C instead of calling `docker compose down`. [tool-verified: start-ui.sh lines 16, 301–306] (REQ-619)
+`--keep-docker` — Leaves Docker Compose services running after Ctrl+C instead of calling `docker compose down`.
 
-`--reset-volumes` — Wipes all Docker volumes and restarts with a clean state. Useful for Docker crash recovery. [tool-verified: start-ui.sh line 19] (REQ-170)
+`--reset-volumes` — Wipes all Docker volumes and restarts with a clean state. Useful for Docker crash recovery.
 
-`--demo` — Starts additional demo data sources (PostgreSQL pet-store schema, OpenAPI petstore mock, SQLite, and a GraphQL remote). Seeds petstore users and orders automatically. [tool-verified: start-ui.sh lines 17, 55–171]
+`--demo` — Starts additional demo data sources (PostgreSQL pet-store schema, OpenAPI petstore mock, SQLite, and a GraphQL remote). Seeds petstore users and orders automatically.
 
-`--source=<name>` (`start-ui-install.sh` only, repeatable) — Provisions an optional data source alongside `--demo`. Each name maps to `demo/sources/<name>/`. The start calls `demo/sources/provision.py up`, which starts the source's `compose.yml` as its own Docker Compose project (`provisa-demo-<name>`), waits for its health check, and runs `prime.py` when the source has one to seed data. The start then writes a wrapper config at `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` that includes the base config plus each source's `fragment.yaml`, and boots from it. [tool-verified: `start-ui-install.sh` (search `SOURCES`), `demo/sources/provision.py`] (REQ-1669)
+`--source=<name>` (`start-ui-install.sh` only, repeatable) — Provisions an optional data source alongside `--demo`. Each name maps to `demo/sources/<name>/`. The start calls `demo/sources/provision.py up`, which starts the source's `compose.yml` as its own Docker Compose project (`provisa-demo-<name>`), waits for its health check, and runs `prime.py` when the source has one to seed data. The start then writes a wrapper config at `${PROVISA_HOME:-~/.provisa}/demo/provisa-with-sources.yaml` that includes the base config plus each source's `fragment.yaml`, and boots from it.
 
-The same `provision.py` is what the UI end-to-end suite calls to stand up these sources (under the `provisa-e2e-<name>` project prefix on its own ports), so the seed data a demo shows and the rows the suite asserts on are defined once. [tool-verified: `provisa-ui/e2e/demo-source-containers.ts`] (REQ-1671)
+The same `provision.py` is what the UI end-to-end suite calls to stand up these sources (under the `provisa-e2e-<name>` project prefix on its own ports), so the seed data a demo shows and the rows the suite asserts on are defined once.
 
 Under a Docker start (no `--demo`/`--native`) the coordinator is a container, so each source is joined to the core stack's network and registered at `<name>:<container port>`; under a native start it is registered at `localhost:<published port>`. A source whose `demo/sources/<name>/engine` file names an engine the start does not run is refused.
 
@@ -77,15 +77,15 @@ Shipped sources:
 |------|---------|-------|
 | `neo4j` | HTTP 27474, Bolt 27687 | Two Cypher tables (`adopter`, `adopter_referral`); graph seeded by `seed.cypher`; tables registered from the fragment |
 | `mongodb` | 27117 | Source registered; `product_reviews` collection seeded by `db/mongo-init.js`; register tables by hand through Register Table |
-| `redis` | 26379 | Source registered; `support_agent:*` and `agent_status:*` hashes seeded by `prime.py`; each prefix registers as a table through Register Table (REQ-1675) |
-| `cassandra` | 29042 | Source registered; `shelter_ops.intake_events` seeded by `prime.py` (needs the `cassandra` extra); the keyspace registers as a schema through Register Table (REQ-1676) |
-| `sparql` | 23030 | Apache Jena Fuseki; source and one query-backed table (`volunteer`) registered from the fragment, graph seeded by `prime.py`; more tables through Register Table (query + Preview) (REQ-1683) |
-| `prometheus` | 29090 | Source registered; the server scrapes itself, so `up` and the `prometheus_*` metrics register as tables through Register Table (REQ-1689) |
-| `elasticsearch` | 29200 | Source and index mapping registered; `support_tickets` index seeded by `prime.py`; read over HTTP by the native engine (REQ-1672), through the connector on Trino |
-| `splunk` | mgmt 8089, HEC 8088 | Source registered with token auth and `disable_ssl_validation` (the container's certificate is self-signed); an index, seven shelter-alert events and the `shelter_alerts` Data Model seeded by `prime.py`, which also mints the API token the fragment reads as `PROVISA_DEMO_SPLUNK_TOKEN`. Data Models register as tables through Register Table — on Trino through the `splunk` catalog, on every other engine through the bundled Calcite pgwire server the engine attaches (REQ-1694) |
-| `chinook` | 25433 | Postgres holding the snake_case Chinook subset Hasura's metadata sample tracks, seeded by `prime.py` from `tests/fixtures/hasura_v2_t1_seed.sql`; source registered from the fragment, and the source a Hasura v2 import of `tests/fixtures/hasura_v2_t1_metadata.json` lands on (REQ-1687) |
+| `redis` | 26379 | Source registered; `support_agent:*` and `agent_status:*` hashes seeded by `prime.py`; each prefix registers as a table through Register Table |
+| `cassandra` | 29042 | Source registered; `shelter_ops.intake_events` seeded by `prime.py` (needs the `cassandra` extra); the keyspace registers as a schema through Register Table |
+| `sparql` | 23030 | Apache Jena Fuseki; source and one query-backed table (`volunteer`) registered from the fragment, graph seeded by `prime.py`; more tables through Register Table (query + Preview) |
+| `prometheus` | 29090 | Source registered; the server scrapes itself, so `up` and the `prometheus_*` metrics register as tables through Register Table |
+| `elasticsearch` | 29200 | Source and index mapping registered; `support_tickets` index seeded by `prime.py`; read over HTTP by the native engine, through the connector on Trino |
+| `splunk` | mgmt 8089, HEC 8088 | Source registered with token auth and `disable_ssl_validation` (the container's certificate is self-signed); an index, seven shelter-alert events and the `shelter_alerts` Data Model seeded by `prime.py`, which also mints the API token the fragment reads as `PROVISA_DEMO_SPLUNK_TOKEN`. Data Models register as tables through Register Table — on Trino through the `splunk` catalog, on every other engine through the bundled Calcite pgwire server the engine attaches |
+| `chinook` | 25433 | Postgres holding the snake_case Chinook subset Hasura's metadata sample tracks, seeded by `prime.py` from `tests/fixtures/hasura_v2_t1_seed.sql`; source registered from the fragment, and the source a Hasura v2 import of `tests/fixtures/hasura_v2_t1_metadata.json` lands on |
 
-`--idp=basic|firebase` — Enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`. [tool-verified: start-ui.sh line 18; provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 57–68] (REQ-120, REQ-124)
+`--idp=basic|firebase` — Enables an identity provider for auth. Without this flag, the backend runs with no auth provider and all requests are treated as `admin`.
 
 ---
 
@@ -136,7 +136,7 @@ curl -s -X POST http://localhost:8001/data/sql \
   -d '{"sql": "SELECT id, amount, region FROM orders LIMIT 5"}' | jq
 ```
 
-No auth is required when no `auth` section is present in `config/provisa.yaml` (the default in dev). The role defaults to `admin`. [tool-verified: provisa/auth/wiring.py lines 57–60; provisa/auth/middleware.py lines 56–68] (REQ-120, REQ-267)
+No auth is required when no `auth` section is present in `config/provisa.yaml` (the default in dev). The role defaults to `admin`.
 
 ---
 
@@ -144,26 +144,26 @@ No auth is required when no `auth` section is present in `config/provisa.yaml` (
 
 Open `http://localhost:3000` in a browser.
 
-The nav bar has four top-level menus: [tool-verified: provisa-ui/src/components/NavBar.tsx lines 39–80]
+The nav bar has four top-level menus:
 
 - **Explore** — Schema Explorer (`/schema`), GraphQL editor (`/query`), Cypher editor (`/graph`), SQL editor (`/sql`)
 - **Model** — Views and Commands
-- **Security** — Row-level security and column masking policies (REQ-038, REQ-041)
+- **Security** — Row-level security and column masking policies
 - **Admin** — Overview, domains, cache, scheduled tasks, system health, observability, users, orgs, roles
 
-The admin GraphQL API is at `http://localhost:8001/admin/graphql`. [tool-verified: provisa/api/app.py line 3389] (REQ-620)
+The admin GraphQL API is at `http://localhost:8001/admin/graphql`.
 
 ---
 
 ## Troubleshooting
 
-**Backend won't start** — check `.logs/server.log`. Most common cause is a missing env var or a port conflict on 8001. [tool-verified: start-ui.sh line 202] (REQ-618)
+**Backend won't start** — check `.logs/server.log`. Most common cause is a missing env var or a port conflict on 8001.
 
-**Docker services not healthy** — run `docker compose -f docker-compose.core.yml -f docker-compose.dev.yml ps` to see which service is stuck. The federation engine takes ~30 seconds on first start. (REQ-055)
+**Docker services not healthy** — run `docker compose -f docker-compose.core.yml -f docker-compose.dev.yml ps` to see which service is stuck. The federation engine takes ~30 seconds on first start.
 
-**Port conflict on 3000 or 8001** — `start-ui.sh` kills stale processes on those ports before starting. If something else owns the port, stop it manually first. [tool-verified: start-ui.sh lines 197–199] (REQ-619)
+**Port conflict on 3000 or 8001** — `start-ui.sh` kills stale processes on those ports before starting. If something else owns the port, stop it manually first.
 
-**Fresh start** — stop the script, then run `./start-ui.sh --reset-volumes` to wipe all volumes and restart. [tool-verified: start-ui.sh line 19] (REQ-170)
+**Fresh start** — stop the script, then run `./start-ui.sh --reset-volumes` to wipe all volumes and restart.
 
 ---
 

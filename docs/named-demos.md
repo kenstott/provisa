@@ -2,7 +2,7 @@
 
 A named demo is a self-contained, reusable demo environment you drop into `demo/named/<name>/`.
 Once the directory exists, `start-ui-install.sh --demo <name>` picks it up with no change to
-the launcher script and no developer involvement required (REQ-1858). This is the mechanism for
+the launcher script and no developer involvement required. This is the mechanism for
 client-specific and vertical demo scenarios — a future `--demo banking` or `--demo healthcare`
 is just a new directory in this shape.
 
@@ -32,7 +32,7 @@ demo/named/<name>/
 ```
 
 `start-ui-install.sh` picks the demo's config generically, from `demo/named/$DEMO_NAME/`
-[tool-verified]:
+:
 
 ```bash
 # start-ui-install.sh, after the directory check
@@ -62,7 +62,7 @@ itself is not in any registry or allowlist.
 manual commands. No host-side scripts to run before it works.
 
 This does **not** mean the demo must be a single process or single container. The `perf` demo
-runs five containers (four engines plus a seeder) [tool-verified]. A demo may also reference
+runs five containers (four engines plus a seeder). A demo may also reference
 external managed resources it does not containerize — a live Databricks or Snowflake source
 reached by connection string, registered in `config.yaml` with no corresponding compose
 service. Those are implementation details behind the single entry point.
@@ -73,7 +73,7 @@ databases manually, or issue commands in a specific order. One command, fully au
 ## The seeder pattern
 
 Heavy data generation must not re-run on every container restart. The `perf` demo uses a
-`seeder` service that writes a marker file on a bind-mounted directory [tool-verified]:
+`seeder` service that writes a marker file on a bind-mounted directory:
 
 ```python
 # demo/named/perf/seed.py:29,42-43
@@ -89,10 +89,10 @@ When the seeder container starts, it checks for the marker. If present, it exits
 absent, it runs all generation scripts in sequence, then writes the marker. Because the marker
 lives on the bind-mounted `data/` directory, it survives container restarts but not `data/`
 being deleted. A start without `--keep-data` deletes it, so the marker only matters to a demo started
-with `--keep-data`. [tool-verified]
+with `--keep-data`.
 
 The seeder service in `docker-compose.yml` gates on every other service's healthcheck
-[tool-verified]:
+:
 
 ```yaml
 # demo/named/perf/docker-compose.yml:129-137
@@ -116,13 +116,12 @@ takes minutes or writes gigabytes.
 A database's storage is a named volume of the compose project (`weblogs_pg`, `sonnets_pg`,
 `sonnets_qdrant`). `docker compose down -v` removes it, so a test that runs the demo's compose
 file under its own project starts from an empty database every run and leaves nothing in the
-checkout [tool-verified: `demo/named/weblogs/docker-compose.yml`,
-`demo/named/sonnets/docker-compose.yml`, `tests/integration/test_sonnets_demo.py`].
+checkout.
 
 What the demo's own tooling reads or writes as files -- the seeder's marker, log files a Logs
 source reads -- goes under `${PROVISA_NAMED_DEMO_DIR:-.}`: the demo's directory when
 `start-ui-install.sh` runs it, a temporary directory when a test sets the variable
-[tool-verified: `demo/named/weblogs/docker-compose.yml`]:
+:
 
 ```yaml
 # demo/named/weblogs/docker-compose.yml (excerpt)
@@ -140,7 +139,7 @@ source reads -- goes under `${PROVISA_NAMED_DEMO_DIR:-.}`: the demo's directory 
 
 ## Container labels
 
-Every service in `docker-compose.yml` carries two labels [tool-verified]:
+Every service in `docker-compose.yml` carries two labels:
 
 ```yaml
 # demo/named/perf/docker-compose.yml:36-37, 43-44
@@ -157,7 +156,7 @@ services:
 `docker ps --filter label=com.provisa.demo=<name>` lists exactly those containers without
 needing the compose file open. `com.provisa.demo.role` identifies each service's part.
 
-The role value determines what the bundle build does with each store: [tool-verified: `scripts/demo_bundle.py` `Stores.dump`]
+The role value determines what the bundle build does with each store:
 
 - `rdb` — a Postgres service: dumped to `dump/<service>.sql` at build.
 - `vector` — a Qdrant service: each collection saved as `dump/<service>/<collection>.snapshot` at build.
@@ -171,8 +170,7 @@ The role value determines what the bundle build does with each store: [tool-veri
 - `seeder` — run once during the build (and during development starts); never in a bundle.
 - `client` — a client of the demo's own that reads the Provisa a start runs on (the provisioning
   demo's `consumer`). The build does not start it: it runs a client a `client:` step of
-  `setup.yaml` names against its own setup server instead. [tool-verified: `scripts/demo_bundle.py`
-  `Stores.up`]
+  `setup.yaml` names against its own setup server instead.
 
 ## config.yaml — the demo's whole config
 
@@ -188,7 +186,7 @@ appended.
 
 Register each source and then list every table it exposes. A bare `sources:` entry never
 produces tables in the SQL catalog, for any connector type, because the catalog is built from the
-registered tables [tool-verified from the notes in `demo/named/perf/config.yaml`]:
+registered tables:
 
 ```yaml
 # demo/named/perf/config.yaml, the bench-postgresql source
@@ -204,7 +202,7 @@ registered tables [tool-verified from the notes in `demo/named/perf/config.yaml`
 Use env-var interpolation with a `:-` default for every host and port. The seeder uses the
 in-container service name as the host; the host-side generate scripts use `localhost` plus the
 published port. The config uses the same env-var names so both work without editing the file
-[tool-verified from `generate_postgres.py:29-30`]:
+:
 
 ```python
 HOST = os.environ.get("PROVISA_BENCH_POSTGRESQL_HOST", "localhost")
@@ -239,11 +237,9 @@ schema your generation scripts produce, not from an assumed schema. Each column 
 Provisa's `Column` model shape: `name`, `data_type`, optional `is_primary_key`, and
 `visible_to` (list of role names).
 
-
-
 ### Relationships
 
-Cross-table relationships go in a top-level `relationships:` block [tool-verified]:
+Cross-table relationships go in a top-level `relationships:` block:
 
 ```yaml
 # demo/named/perf/config.yaml (excerpt)
@@ -263,7 +259,7 @@ connectors (use the actual table name as the ID for those).
 ## demo.yaml — bundle metadata and page card
 
 `demo.yaml` is required for any demo that will be published as a bundle. It holds three kinds of
-fields [tool-verified: `demo/named/weblogs/demo.yaml`, `demo/named/sonnets/demo.yaml`]:
+fields:
 
 ```yaml
 # demo/named/weblogs/demo.yaml
@@ -287,17 +283,16 @@ requires_provisa: 0.1.0a483
 
 The `extras` field installs additional Provisa optional dependencies before the demo's setup
 runs. The `sonnets` demo uses `[vector]` to install the sentence-transformers package needed to
-embed its lines. [tool-verified: `demo/named/sonnets/demo.yaml`]
+embed its lines.
 
 ## setup.yaml — run once, on first start and at bundle build
 
 `setup.yaml` names what the demo needs run after the server is up. The launcher runs it on a
 demo's first start (a new control plane). The bundle build runs it before dumping the stores, so
-the setup's effects are in the dumps from the start. [tool-verified: `start-ui-install.sh:875-878`,
-`scripts/demo_bundle.py:417-418`]
+the setup's effects are in the dumps from the start.
 
 The file is a list of steps, each one `command`, `refresh`, `profile`, `environment` or `client`
-[tool-verified: `scripts/run_demo_setup.py`]:
+:
 
 ```yaml
 # demo/named/sonnets/setup.yaml
@@ -336,30 +331,27 @@ steps:
 ```
 
 The launcher passes the server's Flight address (`--flight grpc://localhost:${FLIGHT_PORT:-8815}`),
-and the bundle build gives its setup server a Flight port of its own. [tool-verified:
-`start-ui-install.sh`, `scripts/demo_bundle.py` `_set_up`]
+and the bundle build gives its setup server a Flight port of its own.
 
 The first step that fails stops the run and names the step. Nothing is retried.
 
 The launcher marks a demo set up by adding its name to the operator setting
 `demo.setup_completed`. A demo already listed there is not set up again against the same control
-plane. [tool-verified: `scripts/run_demo_setup.py`, `SETTING = "demo.setup_completed"`]
+plane.
 
 A bundled demo's `command`, `refresh` and `client` steps do not run again where it runs: what they wrote is
 already in the bundle's dumps. Its `environment` steps do run there (`--environments-only`),
 because an environment is a branch of the model in the control plane, and every start builds the
-control plane anew. [tool-verified: `start-ui-install.sh`, `scripts/run_demo_setup.py`]
+control plane anew.
 
 ## docker-compose.run.yml — the run-time stores
 
 A bundle does not run `docker-compose.yml` (the authoring compose, with the seeder). It runs
 `docker-compose.run.yml`, which brings up only what reading the bundle needs: the stores loaded
-from the build's dumps. [tool-verified: `start-ui-install.sh:359-365`, comments in
-`demo/named/weblogs/docker-compose.run.yml`]
+from the build's dumps.
 
 Every service in `docker-compose.run.yml` carries the standard labels plus three that the
-node's sync script reads to build `stores.env` [tool-verified: `demo/named/weblogs/docker-compose.run.yml`,
-`demo/named/sonnets/docker-compose.run.yml`]:
+node's sync script reads to build `stores.env`:
 
 ```yaml
 # demo/named/weblogs/docker-compose.run.yml (excerpt)
@@ -393,10 +385,10 @@ Four things to get right:
 - **Read-only roles.** Give each store a reader credential and use it in `config.yaml`. The store
   is shared by every sandbox of its version, so Provisa should never write to it. The sonnets
   demo's Qdrant store grants Provisa only its read-only key
-  [tool-verified: `demo/named/sonnets/docker-compose.run.yml:QDRANT__SERVICE__READ_ONLY_API_KEY`].
+.
 
 The reviews demo's run-time compose file loads its three stores the first time each starts
-[tool-verified: `demo/named/reviews/docker-compose.run.yml`, `demo/named/reviews/db/`]:
+:
 
 - MongoDB restores the archive from an init script (`db/mongo-restore.sh` in
   `/docker-entrypoint-initdb.d/`); Provisa reads as `reviews_reader`, whose role reads every database and writes none.
@@ -406,7 +398,7 @@ The reviews demo's run-time compose file loads its three stores the first time e
   database yet; `NEO4J_dbms_databases_default__to__read__only` makes every database read only.
 
 A Qdrant store's run-time compose file recovers its collections from the build's snapshots at
-start [tool-verified: `demo/named/sonnets/docker-compose.run.yml`]:
+start:
 
 ```yaml
 # demo/named/sonnets/docker-compose.run.yml (excerpt)
@@ -423,7 +415,7 @@ start [tool-verified: `demo/named/sonnets/docker-compose.run.yml`]:
 A demo reads its **own** sources live wherever it runs: the Postgres database loaded from the
 dump, the Qdrant store recovered from the snapshot, the log files shipped in the bundle, the
 file sources in the bundle's directory. These are the sources in its `docker-compose.run.yml`,
-or files bundled with it. [tool-verified: `scripts/demo_bundle.py:381-394`, `_replicates()`]
+or files bundled with it.
 
 Only external SaaS-account sources — a Snowflake table, a Databricks dataset, anything the demo
 cannot ship in a container — are served from replicas: landed once at bundle build time (when
@@ -436,8 +428,7 @@ of only local or file sources has no seed to write and no replica to serve.
 
 Every published demo has a `tour.yaml`. It describes the demo step by step — what it is, how
 its pieces fit, and then the answer it shows. The UI renders it as an interactive tour, with each
-step's words in `tour.json` (per locale, in `provisa-ui/src/i18n/`). [tool-verified: comments in
-`demo/named/weblogs/tour.yaml`, `demo/named/sonnets/tour.yaml`]
+step's words in `tour.json` (per locale, in `provisa-ui/src/i18n/`).
 
 ### Structure
 
@@ -455,8 +446,7 @@ steps:
 
 `landing` is where "Look around on my own" leaves the visitor. Give it a `route` (a path in the
 UI) and the `capability` that gates it. Every published demo must have a `landing`. Provisa
-format 2 added this field; a bundle built without it is refused [tool-verified:
-`provisa/core/demo_bundles.py:91`, `DEMO_FORMAT = 2`].
+format 2 added this field; a bundle built without it is refused.
 
 Each step has:
 
@@ -468,8 +458,6 @@ Each step has:
 | step type | yes | One of the types below |
 
 ### Step types
-
-[tool-verified: `tests/unit/test_named_demo_tour.py:26-37`]
 
 | Type | Value | Page |
 |---|---|---|
@@ -505,24 +493,21 @@ answered. The setup status sends the cells as `demo_notebook`, and the Notebook 
 them to a visitor who skipped the tour ("Add the demo's notebook"). The tour test refuses the step
 when the demo ships no notebook, when its first code cell does not import `provisa_client` and
 call `provisa_client.sign_in()`, and when a statement it reads (`provisa_client.query("...")`)
-names anything but the demo's own tables and views. [tool-verified: `provisa/core/demo.py`
-`demo_notebook`, `provisa-ui/src/tour/demoTour.ts`, `tests/unit/test_named_demo_tour.py`
-`_check_notebook`]
+names anything but the demo's own tables and views.
 
 An `as_recorded_from` step is for a time Provisa stamps, which the tour cannot know when it is
 written: a recording time, read from the answer of a `sql` step before it. The tour runner runs
 that statement again as it ran (the role and the time travel the steps before it set) and takes
 row `row`'s `column`. The `reproduce` demo takes the time its correcting rebuild began from
 `"ops"."mv_refresh_lineage"`: after the filed figures were recorded and before the correction was.
-Nothing in the tour stamps a recording time. (REQ-2083)
+Nothing in the tour stamps a recording time.
 
 ### Track
 
 The tour follows a settled track: the scenario and the features it shows, then how sources and
 tables and relationships fit — each step on its real object — then the solution as predesigned
 queries and views, then the `landing` page. The `weblogs` demo ends on `/sql`; the `sonnets`
-demo ends on `/graph`, the echo network. [tool-verified: `demo/named/weblogs/tour.yaml`,
-`demo/named/sonnets/tour.yaml`]
+demo ends on `/graph`, the echo network.
 
 `tests/unit/test_named_demo_tour.py` checks every step: the step type is valid, the named
 object exists in `config.yaml`, the route is a real UI route, and the capability is one the UI
@@ -538,15 +523,13 @@ wrote, and — for a demo with replicated external sources — the seed the sand
 is built from (`seeded/`). A demo with bitemporal views also carries their history
 (`seeded/views.duckdb`) and the records of the setup's refreshes that built it
 (`seeded/refresh_lineage.parquet`). The template and each sandbox land those records as their own,
-so `ops.mv_refresh_lineage` in a sandbox lists the refreshes its history came from. [tool-verified: `scripts/demo_bundle.py` module docstring,
-`provisa/core/demo_bundles.py` module docstring]
+so `ops.mv_refresh_lineage` in a sandbox lists the refreshes its history came from.
 
 The Demo bundles workflow (`.github/workflows/demo-bundles.yml`) builds a demo on a push to
 `main` that touches `demo/named/<name>/`, or on a dispatch naming it. It publishes the bundle
 to `ghcr.io/kenstott/provisa-demos` — one repository, every demo — under two tags: `<name>-<version>`
 and `<name>-latest`. The version is the build's UTC minute and commit, for example
-`202610141530-1a2b3c4d5`. A version is never published twice. [tool-verified:
-`provisa/core/demo_bundles.py:166-169`, `scripts/demo_bundle.py:409-410`, `.github/workflows/demo-bundles.yml`]
+`202610141530-1a2b3c4d5`. A version is never published twice.
 
 ### Pulling and running a published demo
 
@@ -567,7 +550,6 @@ python -m provisa.core.demo_bundles pull weblogs --into ~/.provisa/demos
 The launcher pulls the bundle into `$PROVISA_HOME/demos/<name>/<version>` (`~/.provisa` by
 default). A version already there is not fetched again. `PROVISA_DEMO_REGISTRY` names another
 registry; bundles come from `ghcr.io/kenstott` otherwise.
-[tool-verified: `provisa/core/demo_bundles.py:510-514`]
 
 `--from-source` runs `demo/named/<name>/` through the full build-everything path. Combining
 `--from-source` with `@<version>` is refused. Use it while authoring.
@@ -577,11 +559,11 @@ registry; bundles come from `ghcr.io/kenstott` otherwise.
 When `start-ui-install.sh --demo <name>` starts, it stops every other named demo's stores first
 — containers removed, volumes kept — so the ports they hold are free. The current demo's own
 stores are not touched. A bundle build's compose projects (`provisa-demo-bundle-*`) are left
-alone. [tool-verified: `start-ui-install.sh:312-356`, `stop_other_demo_stores()`]
+alone.
 
 ### The demo format version
 
-`DEMO_FORMAT = 2` [tool-verified: `provisa/core/demo_bundles.py:91`]. Format 2 added the tour's
+`DEMO_FORMAT = 2`. Format 2 added the tour's
 `landing` field. A bundle built in format 1 (no `landing`) is refused with:
 
 ```
@@ -595,8 +577,7 @@ A bundle whose `requires_provisa` is newer than the running Provisa is refused w
 demo weblogs <version> needs Provisa <required> or newer; this is Provisa <running>
 ```
 
-Both refusals happen before the bundle's layer is fetched. [tool-verified:
-`provisa/core/demo_bundles.py:62-88`, `check_runs_here()`]
+Both refusals happen before the bundle's layer is fetched.
 
 ### Updating a published demo
 
@@ -614,12 +595,10 @@ land.
 For every named demo the launcher exports `PROVISA_NAMED_DEMO_DIR`, the demo's directory. When the
 demo has a `logs/` directory, the launcher also adds it to `PROVISA_LOGS_ALLOWED_ROOTS`, the
 directories a Logs source may read. A pristine start deletes the files under `logs/` and keeps the
-`.gitignore` files; `--keep-data` keeps the logs with the data. [tool-verified:
-`start-ui-install.sh`]
+`.gitignore` files; `--keep-data` keeps the logs with the data.
 
 A Logs source's glob is a full path. Name it under the demo's directory with the variable, which
-the source keeps as written and resolves each time it reads the files [tool-verified:
-`provisa/logs/settings.py` `parse`]:
+the source keeps as written and resolves each time it reads the files:
 
 ```yaml
 # demo/named/weblogs/config.yaml (excerpt)
@@ -649,11 +628,11 @@ views join the two logs and the shop's tables: the slowest pages and their SQL, 
 failed in the database, the customers served a server error, the products viewed but never
 bought, and the slow statements by table. The join between the two logs is on
 `application_name`, a column of the database log, because tables are joined only on their columns
-along a relationship. [tool-verified: `demo/named/weblogs/`; `tests/integration/test_weblogs_demo.py`]
+along a relationship.
 
 ## Current published demos
 
-Three demos are published [tool-verified: `demo/named/*/demo.yaml`]:
+Three demos are published:
 
 | Name | Title | Data stores |
 |---|---|---|
@@ -920,7 +899,7 @@ builds and publishes the bundle automatically.
 
 ## Log files for Logs sources
 
-A demo whose containers write log files can read them into tables with Logs sources (REQ-1996).
+A demo whose containers write log files can read them into tables with Logs sources.
 Give the demo a `logs/` directory, one subdirectory per container, each holding a `.gitignore`
 that ignores everything but itself, so the directories are checked in empty. The containers bind
 mount their subdirectory and write there; Provisa runs on the host and reads the files where they
@@ -929,12 +908,10 @@ land.
 For every named demo the launcher exports `PROVISA_NAMED_DEMO_DIR`, the demo's directory. When the
 demo has a `logs/` directory, the launcher also adds it to `PROVISA_LOGS_ALLOWED_ROOTS`, the
 directories a Logs source may read. A pristine start deletes the files under `logs/` and keeps the
-`.gitignore` files; `--keep-data` keeps the logs with the data. [tool-verified:
-`start-ui-install.sh`]
+`.gitignore` files; `--keep-data` keeps the logs with the data.
 
 A Logs source's glob is a full path. Name it under the demo's directory with the variable, which
-the source keeps as written and resolves each time it reads the files [tool-verified:
-`provisa/logs/settings.py` `parse`]:
+the source keeps as written and resolves each time it reads the files:
 
 ```yaml
 # demo/named/weblogs/config.yaml (excerpt)
@@ -960,7 +937,7 @@ them elsewhere:
 
 `--source=<name>` adds a single source from `demo/sources/<name>/` to the standard demo. Each
 source in that directory carries its own `fragment.yaml` and a `prime.py` that seeds a small
-toy dataset. The launcher starts and stops those containers. [tool-verified, start-ui-install.sh:37]
+toy dataset. The launcher starts and stops those containers.
 
 Named demos deliberately do not follow that pattern. Their data is large, meant to persist
 across restarts, and they manage their own compose lifecycle. `start-ui-install.sh --demo <name>`
@@ -968,7 +945,7 @@ starts the named demo's stack on every launch. By default it first removes the s
 volumes and deletes its `data/` directory (`docker compose down -v`), so the seeder reseeds from
 empty; `--keep-data` skips that and reuses the data from the last seeding. The launcher never stops
 the stack: stopping it is yours to do. See [Running and building demos on your
-laptop](sales-engineer-demos.md#stop-and-reset) [tool-verified from `start-ui-install.sh:285-310`].
+laptop](sales-engineer-demos.md#stop-and-reset).
 
 You can combine both: `./start-ui-install.sh --demo perf --source=cassandra` adds a toy
 Cassandra source on top of the perf demo. The two mechanisms are additive.

@@ -9,9 +9,9 @@ todas las vistas y vistas materializadas (MV) registradas.
 
 Abra **Lineage** en la interfaz (`/lineage`). Pegue una sentencia SQL y haga clic en **Build
 statement graph** para ver su DAG a nivel de columna. Haga clic en **Federation graph** para cargar
-el grafo de procedencia sobre cada MV del registro. [tool-verified: LineagePage.tsx:28-119]
+el grafo de procedencia sobre cada MV del registro.
 
-## DAG a nivel de sentencia (REQ-1160) {: #statement-level-dag-req-1160 }
+## DAG a nivel de sentencia {: #statement-level-dag }
 
 Cada columna de salida nombrada en su SQL se convierte en un nodo. El constructor la rastrea hacia
 atrás a través de cada CTE, subconsulta, join y llamada de comando en línea hasta sus columnas de
@@ -35,19 +35,16 @@ orders.region ─╯
 
 - `orders.id`, `orders.region` y `orders.geo` son nodos **origen** (el contrato de entrada estrecho
   de `enrich_grpc_set` declara `id` y `region`; el cierre de contaminación (taint closure) completo
-  conecta todas las entradas declaradas con todas las salidas). [tool-verified: `_splice_commands`
-  en graph.py:223-242]
+  conecta todas las entradas declaradas con todas las salidas).
 - `e.embedding` y `e.geo` son nodos **command** — el límite de `enrich_grpc_set`.
 - `geo_u` es un nodo **derived** producido por la función SQL `UPPER`.
 
 El límite del comando **no es opaco**. Dado que `enrich_grpc_set` declara sus columnas de entrada
 (`id`, `region`) y columnas de salida (`id`, `embedding`, `geo`), el motor de linaje empalma el
 cierre de contaminación de forma continua desde las columnas declaradas de la relación de origen
-hasta cada salida. [tool-verified: `_splice_commands` y `_input_relation` en graph.py:245-271]
+hasta cada salida.
 
 ### Tipos de nodo y señales visuales {: #node-kinds-and-visual-cues }
-
-[tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Tipo de nodo | Color | Significado |
 | --- | --- | --- |
@@ -62,41 +59,35 @@ Anillos adicionales en un nodo:
 - **Anillo rojo** — miembro de un ciclo clasificado como error.
 - **Anillo amarillo** — miembro de un ciclo clasificado como bucle de retroalimentación.
 
-[tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
-
 ### Transformaciones nombradas en las aristas {: #named-transforms-on-edges }
 
 Cada arista lleva la expresión SQL cruda que produce la columna de destino, además de una lista de
 operaciones nombradas: funciones SQL (`sql_function`), operadores aritméticos/lógicos
 (`operator`), comandos registrados (`command`), referencias de columna simples (`identity`) y
-literales (`constant`). [tool-verified: TransformOp and name_transform en graph.py:36-145]
+literales (`constant`).
 
 Una arista proveniente de una llamada de comando se representa como una línea púrpura discontinua
-en la interfaz. [tool-verified: LineageDag.tsx:122-124]
+en la interfaz.
 
-## Grafo a escala de la federación (REQ-1161) {: #federation-wide-graph-req-1161 }
+## Grafo a escala de la federación {: #federation-wide-graph }
 
 El grafo de federación combina el linaje por sentencia de cada MV registrada en un único grafo de
 procedencia. La identidad del nodo es `relation.column` — la columna de salida de una vista y la
 referencia de entrada de otra vista a la misma columna colapsan en un solo nodo. El resultado es un
 único DAG desde las columnas de origen base hasta cada conjunto de datos derivado en la plataforma.
-[tool-verified: `build_federation_graph` en merge.py:205-229 y `qualify_outputs` en
-graph.py:275-299]
 
 Use `focus`, `direction` y `depth` para acotar la vista a escala de federación sin recalcular el
-grafo. [tool-verified: `slice_graph` en merge.py:160-189]
+grafo.
 
-## Ciclos (REQ-1161) {: #cycles-req-1161 }
+## Ciclos {: #cycles }
 
 Los ciclos se describen, no se rechazan. El motor de linaje detecta cada ciclo dirigido y lo
-**clasifica**. [tool-verified: `Cycle.classification` property en merge.py:43-46]
+**clasifica**.
 
 | Clasificación | Color de borde | Significado |
 | --- | --- | --- |
 | `feedback` | Amarillo | El ciclo atraviesa un nodo materializado — un bucle de retroalimentación legítimo y desfasado en el tiempo. La instantánea de la MV es el límite de versión que lo hace bien definido. |
 | `error` | Rojo | No hay límite de materialización en el bucle — una definición circular sin un orden de evaluación estable. Probablemente un error de diseño. |
-
-[tool-verified: LineagePage.tsx:83-98 cycle alert rendering; merge.py:38-48]
 
 Un ciclo `feedback` no es un fallo. Una MV de enriquecimiento que retroalimenta una columna
 derivada hacia su propia relación de origen es un patrón válido siempre que un nodo del bucle esté
@@ -122,10 +113,7 @@ Content-Type: application/json
 }
 ```
 
-[tool-verified: `lineage_graph` endpoint at lineage_router.py:45-54, LineageGraphRequest model at
-lineage_router.py:29-31]
-
-Forma de la respuesta [tool-verified: `LineageGraph.to_dict` en graph.py:82-105]:
+Forma de la respuesta:
 
 ```json
 {
@@ -145,7 +133,6 @@ Forma de la respuesta [tool-verified: `LineageGraph.to_dict` en graph.py:82-105]
 ```
 
 Devuelve HTTP 422 cuando el SQL no se puede analizar (parsear).
-[tool-verified: lineage_router.py:51-54]
 
 ### GET /admin/lineage/federation
 
@@ -156,9 +143,7 @@ GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
 
-[tool-verified: `federation_graph` endpoint at lineage_router.py:73-98]
-
-Parámetros de consulta [tool-verified: function signature at lineage_router.py:73-76]:
+Parámetros de consulta:
 
 | Parámetro | Valores | Predeterminado | Efecto |
 | --- | --- | --- | --- |
@@ -167,7 +152,7 @@ Parámetros de consulta [tool-verified: function signature at lineage_router.py:
 | `depth` | entero | sin límite | Distancia máxima de saltos desde `focus` |
 
 La respuesta tiene la misma forma que el grafo de sentencia, con un campo `cycles` añadido
-[tool-verified: `MergedGraph.to_dict` en merge.py:60-64]:
+:
 
 ```json
 {
@@ -184,7 +169,7 @@ La respuesta tiene la misma forma que el grafo de sentencia, con un campo `cycle
 }
 ```
 
-## De qué se construyó cada refresco (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+## De qué se construyó cada refresco {: #what-each-refresh-was-built-from }
 
 Cada refresco de una vista materializada registra de qué se construyó: la versión de la definición de la vista, la versión de sus entradas y cómo se estableció esa versión, y las columnas de origen y la expresión de cada columna de salida. La vista operativa `"ops"."mv_refresh_lineage"` devuelve una fila por refresco:
 
@@ -207,7 +192,7 @@ ORDER BY refreshed_at
 
 La vista lee los registros de refresco de `"ops"."traces"` y responde en todo motor que los conserve. En Trino son las tablas Iceberg del catálogo `otel`. En DuckDB el servidor escribe sus propios registros de traza como archivos Parquet en su carpeta de telemetría (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` por defecto), un archivo por lote exportado en una carpeta por día. La compactación programada de telemetría (`otel.compact_cron`) une los archivos pequeños de cada día en archivos de hasta 64 MB. Cada organización lee solo sus propios refrescos, y los registros se conservan indefinidamente. Los spans solo se registran mientras el SDK de OpenTelemetry está activado (`OTEL_SDK_DISABLED` sin definir o false).
 
-## Una vista tal como estaba y tal como se registró (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+## Una vista tal como estaba y tal como se registró {: #a-view-as-it-stood-and-as-it-was-recorded }
 
 Una vista declarada bitemporal conserva cada versión que ha tenido: cada refresco añade, y ninguna versión se reescribe, en cualquier almacén. Una lectura simple responde con el estado actual. Dos cabeceras de la petición leen su pasado:
 
@@ -216,13 +201,12 @@ Una vista declarada bitemporal conserva cada versión que ha tenido: cada refres
 
 A 30 de septiembre y registrada el 1 de octubre da la cifra original; registrada el 5 de octubre da la corrección. El registro de auditoría de cada sentencia guarda ambos tiempos (`as_of`, `as_recorded`), de modo que un informe se puede reproducir tal como se produjo por primera vez. [Vistas con historial](configuration.md#views-with-history-time-travel) explica cómo declarar una vista bitemporal y cada superficie que acepta los dos valores.
 
-## Qué rompería un renombrado o una eliminación de columna (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
+## Qué rompería un renombrado o una eliminación de columna {: #what-a-column-rename-or-drop-would-break }
 
 Una columna lleva dos nombres, y cada uno lo almacena un conjunto distinto de artefactos.
 
 El **nombre expuesto** es lo que muestran las superficies SQL y GraphQL: `table_columns.alias`, con
-respaldo en el valor predeterminado snake_case cuando no hay alias definido [tool-verified:
-`computed_sql_alias` en `schema_helpers.py:317`]. Las vistas, vistas materializadas, expresiones de
+respaldo en el valor predeterminado snake_case cuando no hay alias definido. Las vistas, vistas materializadas, expresiones de
 métricas, predicados de RLS, contratos de DQ, granularidades de vistas de métricas y claves de fila
 de MV se escriben todos contra ese nombre, así que **renombrar un alias los rompe con la misma
 certeza que eliminar la columna**.
@@ -234,9 +218,7 @@ columna almacenan este, así que solo se rompen cuando la columna se **elimina**
 
 `columnDependents` reporta ambos casos. Las vistas y MV descendientes provienen de recortar el
 grafo de federación en el nombre expuesto de la columna; los artefactos que ese grafo no cubre
-provienen de un escaneo directo del registro [tool-verified: `graph_dependents` en
-`provisa/lineage/dependents.py`, escaneos del registro en
-`provisa/api/admin/column_dependents.py`].
+provienen de un escaneo directo del registro.
 
 ```graphql
 query {
@@ -256,8 +238,7 @@ aún conserva en el registro; una vez que el alias se ha aplicado, el nombre ant
 la consulta no encuentra nada.
 
 La página Tables ejecuta la consulta automáticamente cuando una edición pendiente cambia un alias o
-reduce el conjunto de columnas, y enumera lo que encuentra [tool-verified: `diffEditedColumns` en
-`provisa-ui/src/pages/tables/columnDiff.ts`, diálogo en `TablesPage.tsx`]. La advertencia es
+reduce el conjunto de columnas, y enumera lo que encuentra. La advertencia es
 informativa: nombra los artefactos afectados y el administrador decide. No bloquea el guardado,
 porque no se puede llegar a todos los consumidores del estado — un panel externo o una aplicación
 cliente que consulta la columna por nombre queda fuera del conocimiento del registro. Por la misma

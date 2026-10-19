@@ -2,17 +2,17 @@
 
 ## סקירה כללית {: #overview }
 
-Provisa חושפת נקודות קצה REST תחת שתי קידומות: `/data` לביצוע שאילתות ולבדיקת Schema (Introspection), ו-`/admin` לניהול תצורה. (REQ-043) רוב נקודות הקצה של הנתונים דורשות מזהה תפקיד (Role). פעולות תצורת ניהול משתמשות ב-API של Strawberry GraphQL בכתובת `/admin/graphql`. (REQ-164)
+Provisa חושפת נקודות קצה REST תחת שתי קידומות: `/data` לביצוע שאילתות ולבדיקת Schema (Introspection), ו-`/admin` לניהול תצורה. רוב נקודות הקצה של הנתונים דורשות מזהה תפקיד (Role). פעולות תצורת ניהול משתמשות ב-API של Strawberry GraphQL בכתובת `/admin/graphql`.
 
 ---
 
 ## אימות (Authentication)
 
-כאשר `auth.provider` מוגדר ב-`provisa.yaml`, כל נקודות הקצה מלבד `/health` ו-`/setup/status` דורשות כותרת `Authorization: Bearer <token>`. (REQ-120) [tool-verified: `provisa/api/app.py`, `provisa/auth/wiring.py`]
+כאשר `auth.provider` מוגדר ב-`provisa.yaml`, כל נקודות הקצה מלבד `/health` ו-`/setup/status` דורשות כותרת `Authorization: Bearer <token>`.
 
-ללא תצורת אימות, השרת פועל במצב פיתוח (dev mode). כל בקשה מטופלת כזהות `anonymous`, המשויכת לכל התפקידים המוגדרים עם גישת Wildcard לתחומים. (REQ-535)
+ללא תצורת אימות, השרת פועל במצב פיתוח (dev mode). כל בקשה מטופלת כזהות `anonymous`, המשויכת לכל התפקידים המוגדרים עם גישת Wildcard לתחומים.
 
-**התחברות (`POST /auth/login`)** מסופקת על-ידי ספק האימות הפעיל כאשר `provider: basic` מוגדר. (REQ-124) פורמט ההרשאות והתגובה תלויים בספק.
+**התחברות (`POST /auth/login`)** מסופקת על-ידי ספק האימות הפעיל כאשר `provider: basic` מוגדר. פורמט ההרשאות והתגובה תלויים בספק.
 
 **בדיקת זהות (Introspection):**
 
@@ -20,13 +20,13 @@ Provisa חושפת נקודות קצה REST תחת שתי קידומות: `/data
 GET /auth/me
 ```
 
-מחזיר את מזהה המשתמש המאומת, אימייל, שם תצוגה, חברויות ארגון, ושיוכי תפקיד. במצב פיתוח מחזיר `dev_mode: true` עם כל מזהי התפקידים רשומים. [tool-verified: `provisa/api/auth_router.py`]
+מחזיר את מזהה המשתמש המאומת, אימייל, שם תצוגה, חברויות ארגון, ושיוכי תפקיד. במצב פיתוח מחזיר `dev_mode: true` עם כל מזהי התפקידים רשומים.
 
 ```http
 GET /auth/provider-type
 ```
 
-מחזיר `{"provider": "<name>"}` או `{"provider": null}` כאשר האימות אינו מוגדר. [tool-verified: `provisa/api/auth_router.py`]
+מחזיר `{"provider": "<name>"}` או `{"provider": null}` כאשר האימות אינו מוגדר.
 
 ---
 
@@ -34,7 +34,7 @@ GET /auth/provider-type
 
 ### `POST /data/graphql`
 
-ביצוע שאילתת או מוטציית GraphQL. (REQ-043) [tool-verified: `provisa/api/data/endpoint.py:151`]
+ביצוע שאילתת או מוטציית GraphQL.
 
 **גוף הבקשה:**
 
@@ -47,9 +47,9 @@ GET /auth/provider-type
 }
 ```
 
-בקשה רצה בתפקיד הפועל שלה: התפקיד של המשתמש המאומת, או, במצב פיתוח (ללא אימות), הכותרת `X-Provisa-Role`, ובהיעדרה `org_admin`. השדה `role` בגוף אינו בוחר תפקיד. כשהוא קיים, הוא חייב להתאים לתפקיד הפועל; ערך אחר מחזיר `400` עם הקוד `data.role_mismatch`, שנוקב בשני התפקידים. אותו כלל חל על `POST /data/sql`, `POST /data/query` ו-`POST /query/nl`. (REQ-273) [tool-verified: `provisa/api/acting_role.py`]
+בקשה רצה בתפקיד הפועל שלה: התפקיד של המשתמש המאומת, או, במצב פיתוח (ללא אימות), הכותרת `X-Provisa-Role`, ובהיעדרה `org_admin`. השדה `role` בגוף אינו בוחר תפקיד. כשהוא קיים, הוא חייב להתאים לתפקיד הפועל; ערך אחר מחזיר `400` עם הקוד `data.role_mismatch`, שנוקב בשני התפקידים. אותו כלל חל על `POST /data/sql`, `POST /data/query` ו-`POST /query/nl`.
 
-השדה `extensions` תומך בפרוטוקול Automatic Persisted Query (APQ): (REQ-288)
+השדה `extensions` תומך בפרוטוקול Automatic Persisted Query (APQ):
 
 ```json
 {
@@ -62,17 +62,17 @@ GET /auth/provider-type
 - `X-Provisa-Role` — התפקיד שבו לפעול (מצב פיתוח); עם אימות — בקשת תפקיד שמכובדת רק אם התפקיד מוקצה למשתמש
 - `Accept` — פורמט תגובה (ראו משא-ומתן תוכן)
 - `Authorization` — `Bearer <token>` כאשר האימות פעיל
-- `X-Provisa-Redirect-Format` — סוג MIME לפלט הפניית S3 (REQ-137)
-- `X-Provisa-Redirect-Threshold` — מספר שורות שמעליו מופעלת הפניה (REQ-137)
-- `X-Provisa-Redirect` — `true` לכפיית הפניה ללא תנאי (REQ-029)
+- `X-Provisa-Redirect-Format` — סוג MIME לפלט הפניית S3
+- `X-Provisa-Redirect-Threshold` — מספר שורות שמעליו מופעלת הפניה
+- `X-Provisa-Redirect` — `true` לכפיית הפניה ללא תנאי
 
-**מטמון תגובות:** הצטרפות לפי בקשה באמצעות הנחיית הפעולה `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` אופציונלי); אותה הנחיה חלה על GraphQL הנשלח דרך Arrow Flight. Cypher מצטרף בשורה `// @provisa cache=true` או `// @provisa cache_ttl=N`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache: true` או `x-provisa-cache-ttl: N`. בלעדיה הבקשה אינה קוראת ממטמון התגובות ואינה כותבת אליו. כותרת התגובה `X-Provisa-Cache` מדווחת `HIT` או `MISS`. ראו [מטמון](configuration.md#per-request-opt-in). (REQ-544)
+**מטמון תגובות:** הצטרפות לפי בקשה באמצעות הנחיית הפעולה `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` אופציונלי); אותה הנחיה חלה על GraphQL הנשלח דרך Arrow Flight. Cypher מצטרף בשורה `// @provisa cache=true` או `// @provisa cache_ttl=N`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache: true` או `x-provisa-cache-ttl: N`. בלעדיה הבקשה אינה קוראת ממטמון התגובות ואינה כותבת אליו. כותרת התגובה `X-Provisa-Cache` מדווחת `HIT` או `MISS`. ראו [מטמון](configuration.md#per-request-opt-in).
 
 <a id="response-cache-request-headers"></a>
 
 #### כותרות בקשה למטמון התגובות {: #response-cache-request-headers }
 
-`/data/graphql`, `/data/cypher`, ה-Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` ו-`/data/jsonapi` מקבלים את ההצטרפות גם ככותרת בקשה. כל אחת מהצורות שלהלן מתנהגת כמו `@cached(ttl: N)`: (REQ-544)
+`/data/graphql`, `/data/cypher`, ה-Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` ו-`/data/jsonapi` מקבלים את ההצטרפות גם ככותרת בקשה. כל אחת מהצורות שלהלן מתנהגת כמו `@cached(ttl: N)`:
 
 | כותרת | שווה ערך ל |
 | --- | --- |
@@ -82,7 +82,7 @@ GET /auth/provider-type
 | `x-provisa-cache: true` | `@cached` |
 | `x-provisa-cache-ttl: N` | `@cached(ttl: N)` |
 
-בקשה ללא אחת מהכותרות האלה וללא רמז בטקסט שלה אינה נשמרת במטמון, אף ש-cache רגיל של HTTP שומר כברירת מחדל. הגדרות המטמון של המפעיל עדיין חלות כמו ב-`@cached`: כותרת לעולם אינה הופכת קריאה לטרייה יותר ממה שההגדרות מתירות, ולעולם אינה נדחית בשל בקשת `ttl` ארוך יותר. הנחיות `Cache-Control` אחרות (`no-transform`, `min-fresh`, ...) מתעלמים מהן, כפי ש-RFC 9111 דורש ממטמון. [tool-verified: `provisa/compiler/directives.py` `request_cache_hint`]
+בקשה ללא אחת מהכותרות האלה וללא רמז בטקסט שלה אינה נשמרת במטמון, אף ש-cache רגיל של HTTP שומר כברירת מחדל. הגדרות המטמון של המפעיל עדיין חלות כמו ב-`@cached`: כותרת לעולם אינה הופכת קריאה לטרייה יותר ממה שההגדרות מתירות, ולעולם אינה נדחית בשל בקשת `ttl` ארוך יותר. הנחיות `Cache-Control` אחרות (`no-transform`, `min-fresh`, ...) מתעלמים מהן, כפי ש-RFC 9111 דורש ממטמון.
 
 בקשה יכולה לציין את ההצטרפות יותר מפעם אחת: בטקסט שלה ובכותרת, או בשתי כותרות. אם הן מסכימות, הבקשה נשמרת במטמון פעם אחת כפי שנתבקש. אם הן סותרות (למשל `@cached(ttl: 60)` עם `Cache-Control: max-age=5`, או `x-provisa-cache-ttl: 10` עם `Cache-Control: max-age=20`), הבקשה נכשלת עם `400` והקוד `data.invalid_cache_control`, ומציינת כל צורה שנשלחה. ערך `N` שאינו מספר שלם של שניות נכשל באותו אופן. אף צורה אינה מועדפת על האחרת.
 
@@ -136,14 +136,14 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 }
 ```
 
-שאילתות Multi-Root מריצות כל שדה שורש (Root Field) באופן עצמאי. שדות מתחת לסף ההפניה מוחזרים מוטבעים; שדות מעל מוסטים בהפניה. המפתח `redirects` (רבים) ממפה שמות שדות למידע הפניה. (REQ-029) [tool-verified: `provisa/api/data/endpoint.py`]
+שאילתות Multi-Root מריצות כל שדה שורש (Root Field) באופן עצמאי. שדות מתחת לסף ההפניה מוחזרים מוטבעים; שדות מעל מוסטים בהפניה. המפתח `redirects` (רבים) ממפה שמות שדות למידע הפניה.
 
 **כותרות מטמון:**
 
-- `X-Provisa-Cache: HIT|MISS` (REQ-536)
-- `X-Provisa-Cache-Age: <seconds>` (ב-HIT) (REQ-536)
+- `X-Provisa-Cache: HIT|MISS`
+- `X-Provisa-Cache-Age: <seconds>` (ב-HIT)
 
-**יכולות נדרשות:** `QUERY_DEVELOPMENT` לכל הבקשות כולל Introspection. [tool-verified: `provisa/api/data/endpoint.py:186-283`]
+**יכולות נדרשות:** `QUERY_DEVELOPMENT` לכל הבקשות כולל Introspection.
 
 ---
 
@@ -157,13 +157,11 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 | `application/vnd.apache.parquet` | Parquet |
 | `application/vnd.apache.arrow.stream` | Arrow IPC |
 
-(REQ-047, REQ-048, REQ-049, REQ-050) [tool-verified: `provisa/api/data/endpoint.py:84-90`]
-
 ---
 
 ### הפניה (Redirect)
 
-תוצאות מעל סף שורות מוגדר (או כאשר `X-Provisa-Redirect: true`) נכתבות ל-S3 ומוחזר כתובת URL חתומה מראש (Presigned). (REQ-029, REQ-044)
+תוצאות מעל סף שורות מוגדר (או כאשר `X-Provisa-Redirect: true`) נכתבות ל-S3 ומוחזר כתובת URL חתומה מראש (Presigned).
 
 | פורמט הפניה | נכתב על-ידי | זיכרון |
 | --- | --- | --- |
@@ -174,7 +172,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 | `text/csv` | Provisa | תלוי-זיכרון |
 | `application/vnd.apache.arrow.stream` | Provisa | תלוי-זיכרון |
 
-לייצוא אנליטי גדול, השתמשו בהפניית Parquet או ORC. מנוע הפדרציה כותב ישירות ל-S3 במקביל — ללא מעבר נתונים דרך Provisa. (REQ-138)
+לייצוא אנליטי גדול, השתמשו בהפניית Parquet או ORC. מנוע הפדרציה כותב ישירות ל-S3 במקביל — ללא מעבר נתונים דרך Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -185,7 +183,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/sql`
 
-ביצוע SQL גולמי דרך Pipeline הממשל בשלב 2. (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:62`]
+ביצוע SQL גולמי דרך Pipeline הממשל בשלב 2.
 
 **גוף הבקשה:**
 
@@ -205,11 +203,11 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-הערכים נקשרים כשההצהרה רצה — על ידי המנוע או הדרייבר של המקור — ולעולם אינם נכתבים לתוך ההצהרה, ולכן ערך אינו יכול לשנות את מה שההצהרה היא. הם שייכים להצהרה אחת בדיוק, שמצייני המקום שלה ממספרים אותם בדיוק: אצוות הצהרות, מציין מקום בלי ערך, או ערך שאף מציין מקום אינו לוקח, נדחים עם `400` והקוד `data.sql_parameters_do_not_fit` לפני שההצהרה מנוהלת או רצה. הצהרה בלי מצייני מקום נשלחת בלי `params`, כמו קודם. (REQ-1937)
+הערכים נקשרים כשההצהרה רצה — על ידי המנוע או הדרייבר של המקור — ולעולם אינם נכתבים לתוך ההצהרה, ולכן ערך אינו יכול לשנות את מה שההצהרה היא. הם שייכים להצהרה אחת בדיוק, שמצייני המקום שלה ממספרים אותם בדיוק: אצוות הצהרות, מציין מקום בלי ערך, או ערך שאף מציין מקום אינו לוקח, נדחים עם `400` והקוד `data.sql_parameters_do_not_fit` לפני שההצהרה מנוהלת או רצה. הצהרה בלי מצייני מקום נשלחת בלי `params`, כמו קודם.
 
 **יכולות נדרשות:** `QUERY_DEVELOPMENT`.
 
-הפרות ממשל ב-`POST /data/sql` מחזירות HTTP 403. (REQ-002, REQ-266)
+הפרות ממשל ב-`POST /data/sql` מחזירות HTTP 403.
 
 **תגובה:** אותו פורמט כמו `/data/graphql` (שורות JSON כברירת מחדל, לפי משא-ומתן תוכן דרך `Accept`).
 
@@ -217,9 +215,9 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/query`
 
-נקודת קצה שאילתה מאוחדת. מקבלת GraphQL, SQL, או Cypher — התחביר מזוהה אוטומטית. (REQ-267) [tool-verified: `provisa/api/data/endpoint_dev.py:509`]
+נקודת קצה שאילתה מאוחדת. מקבלת GraphQL, SQL, או Cypher — התחביר מזוהה אוטומטית.
 
-שאילתות Cypher יכולות להישלח גם לנקודת הקצה הייעודית `POST /query/cypher`. (REQ-345)
+שאילתות Cypher יכולות להישלח גם לנקודת הקצה הייעודית `POST /query/cypher`.
 
 **גוף הבקשה:**
 
@@ -238,7 +236,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/sql/explain`
 
-הסבר (Explain) או ניתוח (Analyze) של הצהרת SQL דרך ה-Pipeline המְמוּשְל. (REQ-1519) [tool-verified: `provisa/api/data/endpoint_dev.py:328`]
+הסבר (Explain) או ניתוח (Analyze) של הצהרת SQL דרך ה-Pipeline המְמוּשְל.
 
 נקודת הקצה עוטפת את ה-SQL **המְמוּשְל** — ההצהרה שרצה בפועל תחת התפקיד של הקורא, לאחר אבטחה ברמת שורה ומיסוך — בתחביר EXPLAIN של הדיאלקט. מה שהתוכנית (Plan) מציגה הוא הגרסה המורשית של השאילתה, לא הקלט הגולמי.
 
@@ -256,13 +254,13 @@ X-Provisa-Redirect-Threshold: 1000
 
 **תגובה:** `{"plan": "<plan text or JSON>", "dialect": "trino", "analyzed": false}`
 
-`400` כאשר לדיאלקט אין תמיכת EXPLAIN, או כאשר `analyze: true` מתבקש בדיאלקט שאינו תומך בכך (למשל SQLite). [tool-verified: `provisa/executor/explain.py:wrap_explain`, `analyze_sql`]
+`400` כאשר לדיאלקט אין תמיכת EXPLAIN, או כאשר `analyze: true` מתבקש בדיאלקט שאינו תומך בכך (למשל SQLite).
 
 ---
 
 ### `GET /data/engine/state`
 
-מחזיר את המצב הנוכחי של Shard המנוע ללא הערתו (Waking). (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:892`]
+מחזיר את המצב הנוכחי של Shard המנוע ללא הערתו (Waking).
 
 ה-UI סוקר (Polls) נקודת קצה זו כדי להציג באנר עלייה בזמן שהמנוע מתחיל בקור (Cold-Starting). היא לעולם אינה מפעילה הערה — סקירה בטוחה ואינה נחשבת פעילות עבור ה-Idle Reaper.
 
@@ -281,74 +279,70 @@ X-Provisa-Redirect-Threshold: 1000
 | `starting` | עלייה בקור בתהליך |
 | `stopped` | ה-Shard סולם לאפס (Scaled to Zero) |
 
-[tool-verified: `provisa/federation/engine_wake.py:engine_state`]
-
 ---
 
 ### `POST /data/engine/prewarm`
 
-הפעלת הערת מנוע ללא הרצת שאילתה. (REQ-1516) [tool-verified: `provisa/api/data/endpoint_dev.py:913`]
+הפעלת הערת מנוע ללא הרצת שאילתה.
 
 מחזיר `202 Accepted` מיידית. ההערה רצה ברקע. השתמשו בכך אם אתם רוצים שהמנוע יהיה מוכן לפני הגעת השאילתה הראשונה — לדוגמה, ממתזמן (Scheduler) שמריץ שאילתות כמה דקות מאוחר יותר.
 
 **תגובה:** `202 Accepted`, גוף `{"started": true}`
 
-[tool-verified: `provisa/federation/engine_wake.py:prewarm_engine`]
-
 ---
 
 ### `GET /data/rest/{domain_id}/{table_name}`
 
-נקודת קצה REST פשוטה, נוצרת אוטומטית עבור כל טבלה רשומה. מחרוזת השאילתה ממופה לארגומנטים של GraphQL והבקשה מהודרת ומתבצעת דרך אותו Pipeline (RLS, מיסוך, ניתוב) כמו GraphQL. (REQ-256) [tool-verified: `provisa/api/rest/generator.py:153`]
+נקודת קצה REST פשוטה, נוצרת אוטומטית עבור כל טבלה רשומה. מחרוזת השאילתה ממופה לארגומנטים של GraphQL והבקשה מהודרת ומתבצעת דרך אותו Pipeline (RLS, מיסוך, ניתוב) כמו GraphQL.
 
 **פרמטרי שאילתה:**
 
 - `limit` — מספר שורות מרבי (≥ 1)
 - `offset` — דילוג שורות (≥ 0)
-- `fields` — שמות שדות מופרדים בפסיקים בכתיב של סכמת GraphQL, ב-camelCase תחת מוסכמת השמות ברירת המחדל, למשל `?fields=orderId,amount` (ברירת מחדל: כל השדות הסקלריים). שמות השדות ב-`filter` וב-`orderBy` עוקבים אחר אותו כתיב. JSON:API מקבל במקום זאת את שם העמודה הפיזי (`fields[orders]=order_id`). [tool-verified: `provisa/api/rest/generator.py:547`]
+- `fields` — שמות שדות מופרדים בפסיקים בכתיב של סכמת GraphQL, ב-camelCase תחת מוסכמת השמות ברירת המחדל, למשל `?fields=orderId,amount` (ברירת מחדל: כל השדות הסקלריים). שמות השדות ב-`filter` וב-`orderBy` עוקבים אחר אותו כתיב. JSON:API מקבל במקום זאת את שם העמודה הפיזי (`fields[orders]=order_id`).
 - `filter` — מערך JSON של אובייקטי סינון `{"field", "comparator", "value"}`. ערך נקרא לפי סוג העמודה שלו, כך ש-`"100"` בעמודה מספרית מושווה כ-100; ערך שסוג העמודה אינו יכול להכיל מחזיר `400`.
 - `orderBy` — מערך JSON של אובייקטי מיון `{"field", "direction"}`
-- `params` — הפרמטרים של הטבלה כאובייקט JSON אחד לפי שם פרמטר, למשל `?params={"region":"EU"}`. לטבלה שנרשמה מעל API, או לטבלת שאילתה, יש פרמטר לכל קלט שהמקור שלה מקבל. קריאה שחסר בה פרמטר חובה מחזירה `400` ומציינת את שמו, וכך גם שם שאין לטבלה פרמטר בשמו. כל ערך נבדק מול סוג הפרמטר שלו. (REQ-1986) [tool-verified: `provisa/api/_query_helpers.py`]
+- `params` — הפרמטרים של הטבלה כאובייקט JSON אחד לפי שם פרמטר, למשל `?params={"region":"EU"}`. לטבלה שנרשמה מעל API, או לטבלת שאילתה, יש פרמטר לכל קלט שהמקור שלה מקבל. קריאה שחסר בה פרמטר חובה מחזירה `400` ומציינת את שמו, וכך גם שם שאין לטבלה פרמטר בשמו. כל ערך נבדק מול סוג הפרמטר שלו.
 
-ערכי סינון וערכי פרמטרים נשלחים כמשתנים לצד טקסט ה-GraphQL שנקודת הקצה בונה, ולכן ערך שמכיל מירכאות מושווה כפי שנכתב. [tool-verified: `provisa/api/_query_helpers.py`]
+ערכי סינון וערכי פרמטרים נשלחים כמשתנים לצד טקסט ה-GraphQL שנקודת הקצה בונה, ולכן ערך שמכיל מירכאות מושווה כפי שנכתב.
 
 התפקיד המאומת נדרש; בקשות לא מאומתות מחזירות `401`. מפרט OpenAPI עבור נתיבים אלה מוגש בכתובת `GET /data/rest/openapi.json` עם Swagger UI בכתובת `GET /data/rest/docs`.
 
-**מטמון תגובות:** הצטרפות באמצעות כותרת בקשה, `Cache-Control: max-age=N` או `x-provisa-cache: true` (ראו [כותרות בקשה למטמון התגובות](#response-cache-request-headers)). כל תגובה נושאת `X-Provisa-Cache: HIT|MISS`, ובפגיעה גם `X-Provisa-Cache-Age`. (REQ-544, REQ-536) [tool-verified: `provisa/api/rest/generator.py`]
+**מטמון תגובות:** הצטרפות באמצעות כותרת בקשה, `Cache-Control: max-age=N` או `x-provisa-cache: true` (ראו [כותרות בקשה למטמון התגובות](#response-cache-request-headers)). כל תגובה נושאת `X-Provisa-Cache: HIT|MISS`, ובפגיעה גם `X-Provisa-Cache-Age`.
 
 #### חוקר OpenAPI / Swagger UI {: #openapi-swagger-ui-explorer }
 
-עמוד חוקר ה-OpenAPI (`/app/openapi`) מטביע את Swagger UI ב-iframe מבודד (Sandboxed). המפרט מוגבל-תפקיד — רק טבלאות ועמודות הנראות לתפקיד הנוכחי מופיעות — ובאופן אופציונלי מסונן לפי תחום דרך בורר התחום. ה-UI עובר בין ערכות נושא בהירה וכהה אוטומטית. [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:20-34`]
+עמוד חוקר ה-OpenAPI (`/app/openapi`) מטביע את Swagger UI ב-iframe מבודד (Sandboxed). המפרט מוגבל-תפקיד — רק טבלאות ועמודות הנראות לתפקיד הנוכחי מופיעות — ובאופן אופציונלי מסונן לפי תחום דרך בורר התחום. ה-UI עובר בין ערכות נושא בהירה וכהה אוטומטית.
 
-העמוד טוען את ה-HTML של המפרט דרך `fetch()` ולא דרך `src` ישיר של iframe, כך שהבקשה נושאת את אסימון ה-Bearer של ה-Session ובקשות היחסיות (Relative) של Swagger UI עצמו נפתרות נכון מול אותו מקור (Origin). [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:44-69`]
+העמוד טוען את ה-HTML של המפרט דרך `fetch()` ולא דרך `src` ישיר של iframe, כך שהבקשה נושאת את אסימון ה-Bearer של ה-Session ובקשות היחסיות (Relative) של Swagger UI עצמו נפתרות נכון מול אותו מקור (Origin).
 
-כאשר מנווטים מקישור NL "פתח ב-OpenAPI", העמוד מרחיב אוטומטית את נקודת הקצה היעד, ממלא פרמטרי שאילתה מכתובת ה-URL שנוצרה על-ידי NL (למשל `aggregate`, `groupBy`), ולוחץ Execute — תוך שימוש בסקירה (Polling) של DOM כדי להבטיח שכל שלב מסתיים לפני שהבא מופעל. (REQ-1359) [tool-verified: `provisa-ui/src/pages/OpenApiPage.tsx:94-171`]
+כאשר מנווטים מקישור NL "פתח ב-OpenAPI", העמוד מרחיב אוטומטית את נקודת הקצה היעד, ממלא פרמטרי שאילתה מכתובת ה-URL שנוצרה על-ידי NL (למשל `aggregate`, `groupBy`), ולוחץ Execute — תוך שימוש בסקירה (Polling) של DOM כדי להבטיח שכל שלב מסתיים לפני שהבא מופעל.
 
 ---
 
 ### `GET /data/jsonapi/{domain_id}/{table_name}`
 
-נקודת קצה תואמת [JSON:API](https://jsonapi.org) הנוצרת אוטומטית עבור כל טבלה רשומה. אותה אבטחה ברמת שורה, מיסוך, וניתוב כמו GraphQL. (REQ-257) [tool-verified: `provisa/api/jsonapi/generator.py:284`]
+נקודת קצה תואמת [JSON:API](https://jsonapi.org) הנוצרת אוטומטית עבור כל טבלה רשומה. אותה אבטחה ברמת שורה, מיסוך, וניתוב כמו GraphQL.
 
 **כותרת `Accept`:** חייבת לכלול `application/vnd.api+json` (סוג המדיה של JSON:API) אחרת הבקשה מחזירה `406`.
 
 **פרמטרי שאילתה:**
 
-- `fields[<type>]` — קבוצות שדות דלילות, למשל `?fields[orders]=amount`. השמות הם שמות העמודות הפיזיים, למשל `fields[orders]=order_id`, כמו ב-`filter[...]`, ב-`sort` ובמפתחות התכונות המוחזרות (REQ-1417). REST מקבל במקום זאת את כתיב ה-GraphQL (`fields=orderId`). [tool-verified: `provisa/api/jsonapi/generator.py:674`]
+- `fields[<type>]` — קבוצות שדות דלילות, למשל `?fields[orders]=amount`. השמות הם שמות העמודות הפיזיים, למשל `fields[orders]=order_id`, כמו ב-`filter[...]`, ב-`sort` ובמפתחות התכונות המוחזרות. REST מקבל במקום זאת את כתיב ה-GraphQL (`fields=orderId`).
 - `filter[<col>]` / `filter[<col>][<op>]` — למשל `?filter[region]=US`, `?filter[amount][gt]=100`. ערך נקרא לפי סוג העמודה שלו; ערך שהסוג אינו יכול להכיל מחזיר `400`.
-- `params` — הפרמטרים של הטבלה כאובייקט JSON אחד לפי שם פרמטר, למשל `?params={"region":"EU"}`, כמו בנקודת הקצה של REST. פרמטר חובה חסר מחזיר `400` ומציין את שמו; שם לא מוכר או ערך מסוג שגוי מחזיר `400` עם `source.parameter` שערכו `params`. קישורי העימוד שומרים על הפרמטר. (REQ-1986) [tool-verified: `provisa/api/jsonapi/generator.py`]
+- `params` — הפרמטרים של הטבלה כאובייקט JSON אחד לפי שם פרמטר, למשל `?params={"region":"EU"}`, כמו בנקודת הקצה של REST. פרמטר חובה חסר מחזיר `400` ומציין את שמו; שם לא מוכר או ערך מסוג שגוי מחזיר `400` עם `source.parameter` שערכו `params`. קישורי העימוד שומרים על הפרמטר.
 - `sort` — מופרד בפסיק, קידומת `-` לסדר יורד, למשל `?sort=-created_at,amount`
 - `page[number]` / `page[size]` — עימוד (Pagination)
-- `page[total]` — `true` סופר את השורות שתואמות למסנן ומחזיר `meta.total` ו-`links.last`. בלעדיו התגובה נושאת רק `links.self`, `links.first`, `links.prev` ו-`links.next`, ומסד הנתונים אינו מריץ ספירה. כל ערך שאינו `true` או `false` מחזיר `400`. הקישורים בתגובה שומרים על הפרמטר. (REQ-1197) [tool-verified: `provisa/api/jsonapi/pagination.py:58`]
-- `aggregate` — פונקציות אגרגציה מופרדות בפסיק להרצה במקום שליפת שורות: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. השתמשו ב-`?aggregate=count,sum` לבקשת תת-קבוצה. תגובות אגרגציה מחזירות `data: null` עם תוצאות ב-`meta.aggregate`. (REQ-1359) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:238`]
-- `groupBy` — שמות עמודות מופרדים בפסיק; משמש עם `?aggregate=` לקיבוץ תוצאות. רק עמודות ב-Enum `DistinctOnColumn` של הטבלה תקפות; השרת מחזיר `400` עבור כל עמודה שהתפקיד אינו יכול לראות. (REQ-1361) [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:447`]
-- `includeNodes` — `true` לכלול עמודות סקלריות של טבלת הבסיס (וסקלרים של ממדים מצורפים (Joined) הנקובים ב-`include=`) בתוך מערך `nodes` של כל שורת קבוצה. נדרש כאשר שאילתת קיבוץ NL מבקשת גם פרטי ממד. (REQ-1405)
+- `page[total]` — `true` סופר את השורות שתואמות למסנן ומחזיר `meta.total` ו-`links.last`. בלעדיו התגובה נושאת רק `links.self`, `links.first`, `links.prev` ו-`links.next`, ומסד הנתונים אינו מריץ ספירה. כל ערך שאינו `true` או `false` מחזיר `400`. הקישורים בתגובה שומרים על הפרמטר.
+- `aggregate` — פונקציות אגרגציה מופרדות בפסיק להרצה במקום שליפת שורות: `count`, `sum`, `avg`, `stddev`, `variance`, `min`, `max`. השתמשו ב-`?aggregate=count,sum` לבקשת תת-קבוצה. תגובות אגרגציה מחזירות `data: null` עם תוצאות ב-`meta.aggregate`.
+- `groupBy` — שמות עמודות מופרדים בפסיק; משמש עם `?aggregate=` לקיבוץ תוצאות. רק עמודות ב-Enum `DistinctOnColumn` של הטבלה תקפות; השרת מחזיר `400` עבור כל עמודה שהתפקיד אינו יכול לראות.
+- `includeNodes` — `true` לכלול עמודות סקלריות של טבלת הבסיס (וסקלרים של ממדים מצורפים (Joined) הנקובים ב-`include=`) בתוך מערך `nodes` של כל שורת קבוצה. נדרש כאשר שאילתת קיבוץ NL מבקשת גם פרטי ממד.
 
-- `include` — שמות קשרים מופרדים בפסיקים, באיות הפיזי, למשל `?include=order_items,shipment`: כל משאב קשור מוחזר פעם אחת ב-`included`, וכל משאב ראשי מקשר את מה שהוא כולל תחת `relationships.<name>.data` (רשימת מזהי משאבים לקשר אחד-לרבים, מזהה אחד או `null` לקשר אחד-לאחד). (REQ-257) [tool-verified: `provisa/api/jsonapi/generator.py`]
+- `include` — שמות קשרים מופרדים בפסיקים, באיות הפיזי, למשל `?include=order_items,shipment`: כל משאב קשור מוחזר פעם אחת ב-`included`, וכל משאב ראשי מקשר את מה שהוא כולל תחת `relationships.<name>.data` (רשימת מזהי משאבים לקשר אחד-לרבים, מזהה אחד או `null` לקשר אחד-לאחד).
 
-התשובות הן אובייקטי משאב עם `type`/`id`/`attributes`. ה-`id` של משאב הוא המפתח הראשי של הטבלה שלו: הערך של עמודת המפתח או, במפתח מורכב, ערכי העמודות שלו בסדר המפתח מחוברים ב-`:` (שורה 2 של הזמנה 7 בטבלה עם המפתח `(order_id, line)` היא `7:2`). `:` או `\` בתוך ערך מוברחים עם `\`. טבלה בלי מפתח ראשי מוצהר משתמשת בעמודת `id` שלה; טבלה בלי אף אחד מהם מחזירה `400`, וכך גם `include` שמגיע לטבלה כזו. [tool-verified: `provisa/api/jsonapi/serializer.py`] השגיאות עוקבות אחר מבנה אובייקט השגיאה של JSON:API.
+התשובות הן אובייקטי משאב עם `type`/`id`/`attributes`. ה-`id` של משאב הוא המפתח הראשי של הטבלה שלו: הערך של עמודת המפתח או, במפתח מורכב, ערכי העמודות שלו בסדר המפתח מחוברים ב-`:` (שורה 2 של הזמנה 7 בטבלה עם המפתח `(order_id, line)` היא `7:2`). `:` או `\` בתוך ערך מוברחים עם `\`. טבלה בלי מפתח ראשי מוצהר משתמשת בעמודת `id` שלה; טבלה בלי אף אחד מהם מחזירה `400`, וכך גם `include` שמגיע לטבלה כזו. השגיאות עוקבות אחר מבנה אובייקט השגיאה של JSON:API.
 
-**מטמון תגובות:** הצטרפות באמצעות כותרת בקשה, `Cache-Control: max-age=N` או `x-provisa-cache: true` (ראו [כותרות בקשה למטמון התגובות](#response-cache-request-headers)). כל תגובה נושאת `X-Provisa-Cache: HIT|MISS`, ובפגיעה גם `X-Provisa-Cache-Age`. שתי צורות סותרות מחזירות `400` כאובייקט שגיאה של JSON:API. (REQ-544, REQ-536) [tool-verified: `provisa/api/jsonapi/generator.py`]
+**מטמון תגובות:** הצטרפות באמצעות כותרת בקשה, `Cache-Control: max-age=N` או `x-provisa-cache: true` (ראו [כותרות בקשה למטמון התגובות](#response-cache-request-headers)). כל תגובה נושאת `X-Provisa-Cache: HIT|MISS`, ובפגיעה גם `X-Provisa-Cache-Age`. שתי צורות סותרות מחזירות `400` כאובייקט שגיאה של JSON:API.
 
 #### חוקר JSON:API {: #jsonapi-explorer }
 
@@ -361,15 +355,15 @@ X-Provisa-Redirect-Threshold: 1000
 - **אגרגציה** — בחרו עמודות קיבוץ מהרשימה המאומתת בשרת, ואז סמנו פונקציית אגרגציה אחת או יותר; כאשר עמודות קיבוץ נבחרות, תיבת סימון "כלול Nodes" מוסיפה עמודות סקלריות של טבלת הבסיס לכל שורה
 - **גודל עמוד** — משאבים לעמוד, עם ניווט ראשון/קודם/הבא/אחרון
 
-התוצאות מוצגות בתצוגת סיכום מעוצבת (כרטיסי משאב עם עוגני קשר הניתנים ללחיצה) או בלשונית JSON גולמית. כתובת ה-URL של הבקשה החיה מוצגת וניתנת להעתקה. בחירת טבלה וגודל עמוד נשמרים בין Sessions ב-`localStorage`. [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx`]
+התוצאות מוצגות בתצוגת סיכום מעוצבת (כרטיסי משאב עם עוגני קשר הניתנים ללחיצה) או בלשונית JSON גולמית. כתובת ה-URL של הבקשה החיה מוצגת וניתנת להעתקה. בחירת טבלה וגודל עמוד נשמרים בין Sessions ב-`localStorage`.
 
-כאשר מנווטים מקישור NL "פתח ב-JSON:API", החוקר בוחר מראש את הטבלה וזורע את בורר האגרגציה מפרמטרי השאילתה שנוצרו על-ידי NL, ואז מריץ אוטומטית את הבקשה. [tool-verified: `provisa-ui/src/pages/JsonApiPage.tsx:460-479`]
+כאשר מנווטים מקישור NL "פתח ב-JSON:API", החוקר בוחר מראש את הטבלה וזורע את בורר האגרגציה מפרמטרי השאילתה שנוצרו על-ידי NL, ואז מריץ אוטומטית את הבקשה.
 
 ---
 
 ### `POST /query/nl`
 
-שליחת שאלה בשפה טבעית. השירות מתחיל עבודה אסינכרונית ומחזיר `202 Accepted` עם `job_id` מיידית. דורש ספק LLM מוגדר תחת סעיף התצורה `ai_models`. (REQ-354) [tool-verified: `provisa/api/rest/nl_router.py:50`]
+שליחת שאלה בשפה טבעית. השירות מתחיל עבודה אסינכרונית ומחזיר `202 Accepted` עם `job_id` מיידית. דורש ספק LLM מוגדר תחת סעיף התצורה `ai_models`.
 
 **גוף הבקשה:**
 
@@ -377,14 +371,14 @@ X-Provisa-Redirect-Threshold: 1000
 {"q": "How many orders were placed last month?", "role": "org_admin"}
 ```
 
-מחזיר `{"job_id": "<id>"}`. חריגה ממגבלת קצב NL לתפקיד מחזירה `429` עם כותרת `Retry-After`. (REQ-370)
+מחזיר `{"job_id": "<id>"}`. חריגה ממגבלת קצב NL לתפקיד מחזירה `429` עם כותרת `Retry-After`.
 
 **אחזור התוצאה:**
 
 - `GET /query/nl/{job_id}` — סקירה (Poll). מחזיר את מסמך העבודה.
-- `GET /query/nl/{job_id}/stream` — SSE. אירוע `branch` אחד לכל יעד יצירה (Generation Target) עם השלמתו, ואז אירוע `done`. (REQ-357, REQ-358)
+- `GET /query/nl/{job_id}/stream` — SSE. אירוע `branch` אחד לכל יעד יצירה (Generation Target) עם השלמתו, ואז אירוע `done`.
 
-שלוש לולאות יצירה (Cypher, GraphQL, SQL) רצות במקביל, כל אחת מאומתת דרך המהדר ומחודדת בעת שגיאה. (REQ-355) ה-Prompt מוגבל ל-Schema הנראה של התפקיד. (REQ-356) מסמך התוצאה מפתח כל ענף (Branch) לפי יעד: (REQ-357) [tool-verified: `provisa/nl/job.py:69`]
+שלוש לולאות יצירה (Cypher, GraphQL, SQL) רצות במקביל, כל אחת מאומתת דרך המהדר ומחודדת בעת שגיאה. ה-Prompt מוגבל ל-Schema הנראה של התפקיד. מסמך התוצאה מפתח כל ענף (Branch) לפי יעד:
 
 ```json
 {
@@ -398,19 +392,19 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-ענף שממצה את מגבלת האיטרציות שלו מחזיר `query: null`, `result: null`, ומחרוזת `error`. כל שאילתה שנוצרת מתבצעת תחת זכויות הצרכן עם ממשל שלב 2 מיושם — השירות לעולם אינו עוקף את הממשל. (REQ-359)
+ענף שממצה את מגבלת האיטרציות שלו מחזיר `query: null`, `result: null`, ומחרוזת `error`. כל שאילתה שנוצרת מתבצעת תחת זכויות הצרכן עם ממשל שלב 2 מיושם — השירות לעולם אינו עוקף את הממשל.
 
-#### קיבוץ NL עם פרטי ממד (REQ-1405) {: #nl-group-by-with-dimension-details-req-1405 }
+#### קיבוץ NL עם פרטי ממד {: #nl-group-by-with-dimension-details }
 
-כאשר שאילתת קיבוץ NL גם מקרינה (Projects) עמודות מטבלת ממד מצורפת — לדוגמה, "ספירת פניות לפי משתמש עם שם משתמש ואימייל" — הרץ (Runner) גוזר נתיבי-נקודה (Dot-Paths) לכל שדה (`dim_paths`) מעמודות הממד המוקרנות ב-SELECT. נתיבים אלה ממלאים את הפרמטר `includeNodes=` בכתובות ה-URL שנוצרו של חלוניות JSON:API ו-OpenAPI, כך שחלוניות אלה מבקשות את אותם שדות ממד מצורף שענפי SQL ו-GraphQL פתרו. ללא זאת, `includeNodes=true` היה מחזיר רק את השדות הסקלריים של טבלת האגרגט הבסיסית עצמה. (REQ-1405) [tool-verified: `docs/arch/requirements.md:REQ-1405`]
+כאשר שאילתת קיבוץ NL גם מקרינה (Projects) עמודות מטבלת ממד מצורפת — לדוגמה, "ספירת פניות לפי משתמש עם שם משתמש ואימייל" — הרץ (Runner) גוזר נתיבי-נקודה (Dot-Paths) לכל שדה (`dim_paths`) מעמודות הממד המוקרנות ב-SELECT. נתיבים אלה ממלאים את הפרמטר `includeNodes=` בכתובות ה-URL שנוצרו של חלוניות JSON:API ו-OpenAPI, כך שחלוניות אלה מבקשות את אותם שדות ממד מצורף שענפי SQL ו-GraphQL פתרו. ללא זאת, `includeNodes=true` היה מחזיר רק את השדות הסקלריים של טבלת האגרגט הבסיסית עצמה.
 
-בחלונית ה-gRPC, `{Type}GroupByRequest` שנוצר נושא `include_nodes` (Bool) ו-`include` (מחרוזת חוזרת של שמות שדות קשר). `{Type}GroupByRow` המוחזר כולל שדה `nodes` מוקלד עם שורות פרטי הממד. [tool-verified: `provisa/grpc/query_ir.py:168-196`]
+בחלונית ה-gRPC, `{Type}GroupByRequest` שנוצר נושא `include_nodes` (Bool) ו-`include` (מחרוזת חוזרת של שמות שדות קשר). `{Type}GroupByRow` המוחזר כולל שדה `nodes` מוקלד עם שורות פרטי הממד.
 
 ---
 
 ### `GET /data/sdl`
 
-מחזיר את ה-GraphQL SDL עבור Schema של תפקיד. (REQ-008) [tool-verified: `provisa/api/data/sdl.py:137`]
+מחזיר את ה-GraphQL SDL עבור Schema של תפקיד.
 
 **כותרות:** `X-Provisa-Role: <role_id>` (נדרש)
 
@@ -424,7 +418,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `GET /data/introspection`
 
-מחזיר JSON של Introspection של GraphQL, אופציונלית מסונן לפי תחום. [tool-verified: `provisa/api/data/sdl.py:200`]
+מחזיר JSON של Introspection של GraphQL, אופציונלית מסונן לפי תחום.
 
 **כותרות:** `X-Provisa-Role: <role_id>` (נדרש)
 
@@ -436,17 +430,17 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `GET /data/graph-schema`
 
-מחזיר את תצוגת הגרף של Schema התפקיד: תוויות Node וסוגי הקשרים שלהן, עבור לקוחות Cypher/גרף. כולל `pk_columns` לכל תווית Node כדי שהקוראים יוכלו לקבוע עמודות מפתח ראשי. (REQ-398) [tool-verified: `provisa/api/rest/cypher_router.py:689`]
+מחזיר את תצוגת הגרף של Schema התפקיד: תוויות Node וסוגי הקשרים שלהן, עבור לקוחות Cypher/גרף. כולל `pk_columns` לכל תווית Node כדי שהקוראים יוכלו לקבוע עמודות מפתח ראשי.
 
 **תגובה:** `application/json` עם `node_labels` (כל אחת נושאת `pk`/`pk_columns`) ו-`relationship_types`.
 
-כל סוג קשר נושא גם `junction_table_name` ו-`properties` (REQ-1586). בקצה המבוסס על טבלת חיבור (Junction), הראשון נוקב בשם הטבלה האסוציאטיבית שהוא חוצה והשני מפרט את עמודות אותה טבלה, קריאות כ-`r.attr` וניתנות לסינון ב-`WHERE`; בקצה המבוסס על FK, השם הוא `null` ורשימת המאפיינים ריקה, וכך לקוח מבחין בין השניים. טבלת החיבור עצמה לעולם אינה תווית Node — היא הקשת (Edge) עצמה, ולכן אין לה כפתור (Pill) בלקוח גרף ואין לה שורה ב-`node_labels`. [tool-verified: `provisa/api/rest/cypher_router.py:797-805`, `provisa/cypher/label_map.py:378-397`]
+כל סוג קשר נושא גם `junction_table_name` ו-`properties`. בקצה המבוסס על טבלת חיבור (Junction), הראשון נוקב בשם הטבלה האסוציאטיבית שהוא חוצה והשני מפרט את עמודות אותה טבלה, קריאות כ-`r.attr` וניתנות לסינון ב-`WHERE`; בקצה המבוסס על FK, השם הוא `null` ורשימת המאפיינים ריקה, וכך לקוח מבחין בין השניים. טבלת החיבור עצמה לעולם אינה תווית Node — היא הקשת (Edge) עצמה, ולכן אין לה כפתור (Pill) בלקוח גרף ואין לה שורה ב-`node_labels`.
 
 ---
 
 ### `GET /data/domains`
 
-מחזיר מזהי תחום נגישים לתפקיד המבקש. [tool-verified: `provisa/api/data/sdl.py:116`]
+מחזיר מזהי תחום נגישים לתפקיד המבקש.
 
 **כותרות:** `X-Provisa-Role: <role_id>` (נדרש)
 
@@ -456,7 +450,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `GET /data/schema-version`
 
-מחזיר את מחרוזת גרסת ה-Schema הנוכחית. משלב Nonce לכל אתחול עם מונה בנייה מחדש. לקוחות משתמשים בכך לביטול תוקף מטמוני Schema לאחר הפעלה מחדש של השרת. (REQ-537) [tool-verified: `provisa/api/data/sdl.py:102`]
+מחזיר את מחרוזת גרסת ה-Schema הנוכחית. משלב Nonce לכל אתחול עם מונה בנייה מחדש. לקוחות משתמשים בכך לביטול תוקף מטמוני Schema לאחר הפעלה מחדש של השרת.
 
 **תגובה:** `{"version": "<boot-id>-<counter>"}`
 
@@ -464,7 +458,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `GET /data/catalog`
 
-מחזיר את הקטלוג של התפקיד שבו הבקשה רצה: הטבלאות שמוגשות לתפקיד הזה, כפי שרשימת Arrow Flight נותנת אותן. (REQ-128) [tool-verified: `provisa/api/data/endpoint_dev.py`]
+מחזיר את הקטלוג של התפקיד שבו הבקשה רצה: הטבלאות שמוגשות לתפקיד הזה, כפי שרשימת Arrow Flight נותנת אותן.
 
 **תגובה:** `{"tables": [{"path": ["<domain>", "<table>"], "schema": "<base64>"}]}`. `schema` היא סכמת ה-Arrow של הטבלה בקידוד Arrow IPC: כל עמודה תחת השם ש-SQL קורא אותה בו, עם הסוג הרשום, התיאור ומטא-דאטת המפתחות שלה (`primary_key`, `references`) במטא-דאטה של השדה. פקודות ומדדים אינם מפורטים.
 
@@ -474,31 +468,31 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `GET /data/proto/{role_id}`
 
-מחזיר את קובץ `.proto` שנוצר אוטומטית עבור תפקיד. [tool-verified: `provisa/api/data/endpoint_dev.py:49`]
+מחזיר את קובץ `.proto` שנוצר אוטומטית עבור תפקיד.
 
 **תגובה:** Schema פרוטובאף מסוג `text/plain`.
 
-`{role_id}` הוא תפקיד שהקורא מחזיק בו, או קבוצה מופרדת בפסיקים של תפקידים מוחזקים (`analyst,org_admin`), המוגשת כמטא-תפקיד של הקבוצה: איחוד ההרשאות של חבריה. תפקיד שהקורא אינו מחזיק בו נדחה עם `403 auth.role_not_assigned`, ומזהה מטא-תפקיד שצוין ישירות נדחה עם `403 auth.meta_role_named`. `?domains=a,b` מצמצם את ה-proto לתחומים אלה; תחום שהתפקיד אינו מגיע אליו נדחה עם `403 data.domain_not_accessible`. תפקיד ללא משטח נתונים מחזיר `404 data.no_proto_for_role`, תפקיד לא מוכר `404 data.no_role`, ומודל שטרם נבנה `503 data.schema_cache_not_ready`. (REQ-1620, REQ-273) [tool-verified: `provisa/api/data/endpoint_dev.py`, `provisa/api/acting_role.py`]
+`{role_id}` הוא תפקיד שהקורא מחזיק בו, או קבוצה מופרדת בפסיקים של תפקידים מוחזקים (`analyst,org_admin`), המוגשת כמטא-תפקיד של הקבוצה: איחוד ההרשאות של חבריה. תפקיד שהקורא אינו מחזיק בו נדחה עם `403 auth.role_not_assigned`, ומזהה מטא-תפקיד שצוין ישירות נדחה עם `403 auth.meta_role_named`. `?domains=a,b` מצמצם את ה-proto לתחומים אלה; תחום שהתפקיד אינו מגיע אליו נדחה עם `403 data.domain_not_accessible`. תפקיד ללא משטח נתונים מחזיר `404 data.no_proto_for_role`, תפקיד לא מוכר `404 data.no_role`, ומודל שטרם נבנה `503 data.schema_cache_not_ready`.
 
-כל טבלה בסכמת התפקיד מייצרת `message` של proto. קשרים מייצרים שדות הודעה מקוננים. השירות מפרט קריאות RPC רק לטבלאות שבשורש הסכמה של התפקיד, אותן טבלאות שבטיפוס `Query` של GraphQL שלו; לטבלה מקושרת יש הודעה משלה והיא נגישה דרך הקשר שלה. [tool-verified: `provisa/grpc/proto_gen.py`]
+כל טבלה בסכמת התפקיד מייצרת `message` של proto. קשרים מייצרים שדות הודעה מקוננים. השירות מפרט קריאות RPC רק לטבלאות שבשורש הסכמה של התפקיד, אותן טבלאות שבטיפוס `Query` של GraphQL שלו; לטבלה מקושרת יש הודעה משלה והיא נגישה דרך הקשר שלה.
 
-הוסיפו `?domains=a,b` כדי להגביל את הקובץ לדומיינים האלה. השירות מפרט אז קריאות RPC לטבלאות של הדומיינים שנבחרו עצמם; טבלאות המקושרות אליהן מופיעות כהודעות. [tool-verified: `provisa/api/data/endpoint_dev.py`]
+הוסיפו `?domains=a,b` כדי להגביל את הקובץ לדומיינים האלה. השירות מפרט אז קריאות RPC לטבלאות של הדומיינים שנבחרו עצמם; טבלאות המקושרות אליהן מופיעות כהודעות.
 
-הקובץ עוקב אחר המודל. הוא נבנה מחדש יחד עם הסכמה של התפקיד בכל שינוי במודל או בתפקיד, גם עבור מטא-תפקיד. מיפוי סוגים: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`. (REQ-538)
+הקובץ עוקב אחר המודל. הוא נבנה מחדש יחד עם הסכמה של התפקיד בכל שינוי במודל או בתפקיד, גם עבור מטא-תפקיד. מיפוי סוגים: `integer → int32`, `bigint → int64`, `varchar → string`, `decimal → double`, `boolean → bool`, `timestamp → google.protobuf.Timestamp`.
 
 ---
 
 ### `GET /data/subscribe/{table}`
 
-זרם Server-Sent Events עבור התראות שינוי בזמן אמת מטבלה. (REQ-219, REQ-258) [tool-verified: `provisa/api/data/subscribe.py:239`]
+זרם Server-Sent Events עבור התראות שינוי בזמן אמת מטבלה.
 
-מסירת ההתראות משתמשת בספק ניתן-להתקנה (Pluggable) הנבחר לפי סוג מקור: מקורות PostgreSQL משתמשים ב-`LISTEN/NOTIFY` (דרך asyncpg), מקורות MongoDB משתמשים ב-Change Streams (`collection.watch()`), ומקורות Kafka משתמשים בקבוצות צרכנים (Consumer Groups). כל ספק מיישם ממשק Watch אסינכרוני משותף. סינון RLS ואימות Schema חלים ללא תלות בספק. (REQ-258) מקורות WebSocket ו-RSS נתמכים גם הם. (REQ-338, REQ-342)
+מסירת ההתראות משתמשת בספק ניתן-להתקנה (Pluggable) הנבחר לפי סוג מקור: מקורות PostgreSQL משתמשים ב-`LISTEN/NOTIFY` (דרך asyncpg), מקורות MongoDB משתמשים ב-Change Streams (`collection.watch()`), ומקורות Kafka משתמשים בקבוצות צרכנים (Consumer Groups). כל ספק מיישם ממשק Watch אסינכרוני משותף. סינון RLS ואימות Schema חלים ללא תלות בספק. מקורות WebSocket ו-RSS נתמכים גם הם.
 
-**כותרת — `X-Provisa-Sink`:** הגדירו ליעד Kafka (למשל `kafka://broker:9092/topic`) כדי להפנות אירועי שינוי ל-Sink של Kafka במקום לתגובת SSE. השרת מפעיל צרכן Sink ומחזיר `202 Accepted` במקום זרם פתוח. (REQ-812) [tool-verified: `provisa/api/data/subscription_sse.py:137`]
+**כותרת — `X-Provisa-Sink`:** הגדירו ליעד Kafka (למשל `kafka://broker:9092/topic`) כדי להפנות אירועי שינוי ל-Sink של Kafka במקום לתגובת SSE. השרת מפעיל צרכן Sink ומחזיר `202 Accepted` במקום זרם פתוח.
 
 ### `POST /data/sources/{source_id}/signal`
 
-מודיע ל-Provisa שמקור השתנה, בלי שורות: המקבל של אות השינוי `signal`. כל טבלה של המקור שאות השינוי שלה הוא `signal` (משלה, או, כשאין לה, של המקור) נחשבת כנכתבה, כמו בכתיבה דרך Provisa: התגובות השמורות שלה במטמון מושלכות, התצוגות הממומשות מעליה מתיישנות, ונבקשת בניית העותק שלה. בנייה של טבלה מוגנת מעומס ממתינה לחלון שמחוץ לשיא שלה. `?table=schema.table` מאותת טבלה אחת. (REQ-1149) [tool-verified: `provisa/api/data/signal.py`, `provisa/api/data/table_written.py`]
+מודיע ל-Provisa שמקור השתנה, בלי שורות: המקבל של אות השינוי `signal`. כל טבלה של המקור שאות השינוי שלה הוא `signal` (משלה, או, כשאין לה, של המקור) נחשבת כנכתבה, כמו בכתיבה דרך Provisa: התגובות השמורות שלה במטמון מושלכות, התצוגות הממומשות מעליה מתיישנות, ונבקשת בניית העותק שלה. בנייה של טבלה מוגנת מעומס ממתינה לחלון שמחוץ לשיא שלה. `?table=schema.table` מאותת טבלה אחת.
 
 התפקיד של הקורא צריך זכות כתיבה, והוא חייב להגיע לתחום של כל טבלה שהוא מאותת. התגובה היא `202 Accepted` עם הטבלאות שאותתו:
 
@@ -506,7 +500,7 @@ X-Provisa-Redirect-Threshold: 1000
 {"signalled": ["public.orders"]}
 ```
 
-מקור שאינו קיים, או `table` שאין לו, עונים `404`; מקור בלי טבלאות על אות השינוי `signal` עונה `409`, כי לא היה מה לרענן. [tool-verified: `tests/unit/test_signal_webhook.py`]
+מקור שאינו קיים, או `table` שאין לו, עונים `404`; מקור בלי טבלאות על אות השינוי `signal` עונה `409`, כי לא היה מה לרענן.
 
 ---
 
@@ -516,11 +510,11 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/config`
 
-הורדת ה-`provisa.yaml` הנוכחי כ-`application/x-yaml` עם כותרת `Content-Disposition: attachment`. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:19`]
+הורדת ה-`provisa.yaml` הנוכחי כ-`application/x-yaml` עם כותרת `Content-Disposition: attachment`.
 
 #### `PUT /admin/config`
 
-מעלה YAML קונפיגורציה מתוקן. השרת כותב גיבוי `.bak`, שומר את הקובץ החדש, טוען ממנו מחדש את הגדרות הפריסה, ומחיל אותו על מאגר המודל כאכלוס חד-פעמי מפורש: מה שהקובץ מצהיר מתווסף או מתעדכן דרך מאגר המודל, ודבר אינו מוסר. אתחול מאוחר יותר קורא את הגדרות הקובץ ולעולם אינו מחיל שוב את המודל שלו; אחרי ההפעלה הראשונה רק מאגר המודל הוא בעל המודל. (REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/settings_router.py` `upload_config`]
+מעלה YAML קונפיגורציה מתוקן. השרת כותב גיבוי `.bak`, שומר את הקובץ החדש, טוען ממנו מחדש את הגדרות הפריסה, ומחיל אותו על מאגר המודל כאכלוס חד-פעמי מפורש: מה שהקובץ מצהיר מתווסף או מתעדכן דרך מאגר המודל, ודבר אינו מוסר. אתחול מאוחר יותר קורא את הגדרות הקובץ ולעולם אינו מחיל שוב את המודל שלו; אחרי ההפעלה הראשונה רק מאגר המודל הוא בעל המודל.
 
 **גוף הבקשה:** תוכן YAML גולמי.
 
@@ -534,7 +528,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/config/live`
 
-מוריד את המודל כפי שהוא עכשיו, כתוב כקובץ קונפיגורציה: הגדרות קובץ הפריסה עם כל חלק של המודל כפי שנקרא ממאגר המודל — מאגרים, אזורים, מקורות, תחומים, תפקידים, מוצרי נתונים, מונחי מילון, טבלאות והעמודות שלהן, קשרים, מדדים, תגים וההקצאות שלהם, מסנני שורות, פקודות, webhooks, טריגרים מתוזמנים וכללי שמות. כשהוא מוחל על מאגר מודל ריק, הקובץ בונה את אותו מודל. מה שהפריסה מוסיפה לכל מאגר (מקורות מובנים והטבלאות שלהם, תחומי מערכת, `org_admin` ו-`platform_admin`) אינו נכלל. (REQ-164, REQ-1919) [tool-verified: `provisa/api/admin/config_export.py` `build_live_config`, `provisa/core/store_config.py`]
+מוריד את המודל כפי שהוא עכשיו, כתוב כקובץ קונפיגורציה: הגדרות קובץ הפריסה עם כל חלק של המודל כפי שנקרא ממאגר המודל — מאגרים, אזורים, מקורות, תחומים, תפקידים, מוצרי נתונים, מונחי מילון, טבלאות והעמודות שלהן, קשרים, מדדים, תגים וההקצאות שלהם, מסנני שורות, פקודות, webhooks, טריגרים מתוזמנים וכללי שמות. כשהוא מוחל על מאגר מודל ריק, הקובץ בונה את אותו מודל. מה שהפריסה מוסיפה לכל מאגר (מקורות מובנים והטבלאות שלהם, תחומי מערכת, `org_admin` ו-`platform_admin`) אינו נכלל.
 
 **פרמטר שאילתה:** `sections` (אופציונלי) — רשימה מופרדת בפסיקים של חלקי מודל, למשל `sources,tables`. רק החלקים האלה נכתבים; שם לא ידוע עונה 400 `settings.export_unknown_section`.
 
@@ -544,7 +538,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/config/diff`
 
-מחזיר את שני צדדי ההשוואה (Diff) של התצורה — `original` (קו הבסיס בהפעלה) ו-`current` (מצב Live) — מנורמלים באופן זהה, כך שההשוואה מציגה רק שינויים אמיתיים, לא סידור מחדש או סחיפת הערות. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:82`]
+מחזיר את שני צדדי ההשוואה (Diff) של התצורה — `original` (קו הבסיס בהפעלה) ו-`current` (מצב Live) — מנורמלים באופן זהה, כך שההשוואה מציגה רק שינויים אמיתיים, לא סידור מחדש או סחיפת הערות.
 
 **תגובה:**
 
@@ -554,7 +548,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/config/patch`
 
-יצירת Patch מסוג Unified-Diff מקו הבסיס לתצורה שנשלחה. (REQ-164) [tool-verified: `provisa/api/admin/settings_router.py:93`]
+יצירת Patch מסוג Unified-Diff מקו הבסיס לתצורה שנשלחה.
 
 שלחו את ה-YAML המתוקן כגוף הבקשה. התגובה היא קובץ `text/x-patch` (`provisa.config.patch`) ש-`git apply` או `patch` יכולים לצרוך ישירות — שימושי להזנת שינויי תצורה שמקורם ב-UI דרך Pipeline של CI/CD.
 
@@ -564,7 +558,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/settings`
 
-מחזיר את הגדרות הפלטפורמה הנוכחיות כ-JSON. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:50`]
+מחזיר את הגדרות הפלטפורמה הנוכחיות כ-JSON.
 
 **תגובה:**
 
@@ -602,7 +596,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `PUT /admin/settings`
 
-עדכון הגדרות פלטפורמה בזמן ריצה. כל השדות אופציונליים — רק מפתחות הנוכחים בגוף מתעדכנים. (REQ-165) [tool-verified: `provisa/api/admin/settings_router.py:100`]
+עדכון הגדרות פלטפורמה בזמן ריצה. כל השדות אופציונליים — רק מפתחות הנוכחים בגוף מתעדכנים.
 
 **גוף הבקשה (דוגמה חלקית):**
 
@@ -622,8 +616,8 @@ X-Provisa-Redirect-Threshold: 1000
 - `redirect`: `enabled`, `threshold`, `default_format`, `ttl`
 - `sampling`: `default_sample_size`
 - `cache`: `default_ttl`
-- `naming`: `domain_prefix`, `convention` — כותב לקובץ תצורה ומפעיל טעינה מחדש של Schema (REQ-253)
-- `relationships`: `auto_track_fk` — שולט רק במעקב מפתח זר (FK). קשר המבוסס על טבלת חיבור (Junction) מוצהר בעת רישום הטבלה ולעולם אינו מוסק, כך שהגדרה זו אינה מגיעה אליו. (REQ-1586)
+- `naming`: `domain_prefix`, `convention` — כותב לקובץ תצורה ומפעיל טעינה מחדש של Schema
+- `relationships`: `auto_track_fk` — שולט רק במעקב מפתח זר (FK). קשר המבוסס על טבלת חיבור (Junction) מוצהר בעת רישום הטבלה ולעולם אינו מוסק, כך שהגדרה זו אינה מגיעה אליו.
 - `otel`: `endpoint`, `service_name`, `sample_rate`, `support_endpoint`, `support_redact_sql_literals`, `support_redact_attributes`
 
 **תגובה:**
@@ -638,7 +632,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/ai-models`
 
-מחזיר את שיוכי מודל ה-AI של הארגון הפועל, רישום מודלי הווקטור, ומגבלת קצב NL. (REQ-464, REQ-1349) [tool-verified: `provisa/api/admin/ai_models_router.py:58`]
+מחזיר את שיוכי מודל ה-AI של הארגון הפועל, רישום מודלי הווקטור, ומגבלת קצב NL.
 
 **תגובה:**
 
@@ -654,19 +648,19 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-מפתחות API לעולם אינם מוחזרים חזרה — `api_keys_set` מדווח רק האם לכל ספק יש מפתח מוגדר. שינויים נכנסים לתוקף בבקשה הבאה; אין צורך באתחול מחדש. (REQ-1349)
+מפתחות API לעולם אינם מוחזרים חזרה — `api_keys_set` מדווח רק האם לכל ספק יש מפתח מוגדר. שינויים נכנסים לתוקף בבקשה הבאה; אין צורך באתחול מחדש.
 
 #### `PUT /admin/ai-models`
 
-עדכון שיוכי מודל ה-AI של הארגון, רישום מודלי הווקטור, או מגבלת קצב NL. נכנס לתוקף בבקשה הבאה. [tool-verified: `provisa/api/admin/ai_models_router.py:148`]
+עדכון שיוכי מודל ה-AI של הארגון, רישום מודלי הווקטור, או מגבלת קצב NL. נכנס לתוקף בבקשה הבאה.
 
 #### `GET /admin/ai-models/vendors/{vendor}/models`
 
-מחזיר את שמות המודלים שספק מציע כרגע, עבור בורר המודלים. (REQ-1395, REQ-1398, REQ-1409) [tool-verified: `provisa/api/admin/ai_models_router.py:89`]
+מחזיר את שמות המודלים שספק מציע כרגע, עבור בורר המודלים.
 
 הרשימה נקראת חי (Live) מ-API רשימת-המודלים של הספק עצמו, באמצעות המפתח המוגדר של הארגון — או Credential הפריסה כאשר לא הוגדר מפתח ארגוני. מודל שפורסם לאחר בניית גרסה זו ניתן לבחירה באותו יום שבו הספק מציע אותו.
 
-מחזיר `400` כאשר לספק אין API רשימת-מודלים (הזינו את שם המודל ישירות במקרה זה) או כאשר אין מפתח זמין. [tool-verified: `provisa/api/admin/ai_models_router.py:109-128`]
+מחזיר `400` כאשר לספק אין API רשימת-מודלים (הזינו את שם המודל ישירות במקרה זה) או כאשר אין מפתח זמין.
 
 ---
 
@@ -674,7 +668,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/federation-engine`
 
-מחזיר את בחירת מנוע הפדרציה הנוכחית, תצורת החיבור שלה, ואת מרשם המנועים הבחירים המלא. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:730`]
+מחזיר את בחירת מנוע הפדרציה הנוכחית, תצורת החיבור שלה, ואת מרשם המנועים הבחירים המלא.
 
 **תגובה:**
 
@@ -694,7 +688,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `PUT /admin/federation-engine`
 
-שמירה קבועה של בחירת מנוע פדרציה. (REQ-916) [tool-verified: `provisa/api/admin/settings_router.py:774`]
+שמירה קבועה של בחירת מנוע פדרציה.
 
 **גוף הבקשה:**
 
@@ -710,9 +704,9 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/domain-policy`
 
-שינוי מדיניות התחום של הארגון הפועל (`use_domains` / `default_domain`). (REQ-165, REQ-1266, REQ-1349) [tool-verified: `provisa/api/admin/settings_router.py:632`]
+שינוי מדיניות התחום של הארגון הפועל (`use_domains` / `default_domain`).
 
-ההחלפה אינה מוחקת דבר. היא נדחית עם `409` והקוד `settings.domain_policy_catalog_exists` כל עוד לארגון הפעיל יש קטלוג: טבלה, מקור או תחום רשומים שהפריסה לא הוסיפה בעצמה. ה-`params` של הדחייה סופרים כל סוג (`tables`, `sources`, `domains`). הסירו קודם את האובייקטים האלה, כל אחד בפעולה שלו, ואז החליפו. כשקובץ הקונפיגורציה מצהיר על חלק מהקטלוג הזה, הקוד הוא `settings.domain_policy_catalog_in_config`: הטעינה הבאה הייתה משחזרת אותו, ולכן המדיניות נקבעת בקובץ הקונפיגורציה. (REQ-1919)
+ההחלפה אינה מוחקת דבר. היא נדחית עם `409` והקוד `settings.domain_policy_catalog_exists` כל עוד לארגון הפעיל יש קטלוג: טבלה, מקור או תחום רשומים שהפריסה לא הוסיפה בעצמה. ה-`params` של הדחייה סופרים כל סוג (`tables`, `sources`, `domains`). הסירו קודם את האובייקטים האלה, כל אחד בפעולה שלו, ואז החליפו. כשקובץ הקונפיגורציה מצהיר על חלק מהקטלוג הזה, הקוד הוא `settings.domain_policy_catalog_in_config`: הטעינה הבאה הייתה משחזרת אותו, ולכן המדיניות נקבעת בקובץ הקונפיגורציה.
 
 **גוף הבקשה:**
 
@@ -731,7 +725,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/traces/recent`
 
-מחזיר עד N Spans שהושלמו לאחרונה ממאגר ה-Span בזיכרון. (REQ-302) [tool-verified: `provisa/api/admin/settings_router.py:317`]
+מחזיר עד N Spans שהושלמו לאחרונה ממאגר ה-Span בזיכרון.
 
 **פרמטרי שאילתה:** `limit` (ברירת מחדל 50, מקסימום 200)
 
@@ -739,7 +733,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/query-engine/reload-catalog`
 
-טעינה מחדש חמה (Hot-Reload) של קטלוג בעל שם במתאם מנוע הפדרציה דרך ה-API של REST שלו. מחבר מחדש את החיבור הפנימי של Provisa ומריץ מחדש OTel DDL. [tool-verified: `provisa/api/admin/settings_router.py:208`]
+טעינה מחדש חמה (Hot-Reload) של קטלוג בעל שם במתאם מנוע הפדרציה דרך ה-API של REST שלו. מחבר מחדש את החיבור הפנימי של Provisa ומריץ מחדש OTel DDL.
 
 **פרמטרי שאילתה:** `catalog` (ברירת מחדל `"otel"`)
 
@@ -751,7 +745,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/query-engine/restart`
 
-הפעלה מחדש של מיכל (Container) מנוע הפדרציה (Single-Node dev בלבד). [tool-verified: `provisa/api/admin/settings_router.py:287`]
+הפעלה מחדש של מיכל (Container) מנוע הפדרציה (Single-Node dev בלבד).
 
 **פרמטרי שאילתה:** `container` (ברירת מחדל למשתנה סביבה `QUERY_ENGINE_CONTAINER`, ואז `"trino"`)
 
@@ -761,7 +755,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/discover/relationships`
 
-הפעלת גילוי קשרים. תמיד מריץ Introspection של FK ממנוע הפדרציה. (REQ-018) מריץ הסקת LLM אם `ANTHROPIC_API_KEY` מוגדר. (REQ-167) [tool-verified: `provisa/api/admin/discovery.py:55`]
+הפעלת גילוי קשרים. תמיד מריץ Introspection של FK ממנוע הפדרציה. מריץ הסקת LLM אם `ANTHROPIC_API_KEY` מוגדר.
 
 **גוף הבקשה:**
 
@@ -778,27 +772,27 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/discover/candidates`
 
-רשימת מועמדי קשר ממתינים. [tool-verified: `provisa/api/admin/discovery.py:96`]
+רשימת מועמדי קשר ממתינים.
 
 #### `POST /admin/discover/candidates/{candidate_id}/accept`
 
-אישור מועמד ורישומו כקשר. [tool-verified: `provisa/api/admin/discovery.py:103`]
+אישור מועמד ורישומו כקשר.
 
 **גוף הבקשה (אופציונלי):** `{"name": "custom-relationship-name"}`
 
 #### `POST /admin/discover/candidates/{candidate_id}/reject`
 
-דחיית מועמד. [tool-verified: `provisa/api/admin/discovery.py:110`]
+דחיית מועמד.
 
 **גוף הבקשה:** `{"reason": "Not a real join"}`
 
 #### `GET /admin/discover/candidates/rejected/count`
 
-מחזיר ספירת מועמדים שנדחו. [tool-verified: `provisa/api/admin/discovery.py:118`]
+מחזיר ספירת מועמדים שנדחו.
 
 #### `DELETE /admin/discover/candidates/rejected`
 
-מחיקת כל המועמדים שנדחו. [tool-verified: `provisa/api/admin/discovery.py:128`]
+מחיקת כל המועמדים שנדחו.
 
 ---
 
@@ -806,7 +800,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/sources/crawl`
 
-סריקת מקור נתונים כדי לבצע Introspection ל-Schema שלו ולרשום טבלאות. (REQ-012) [tool-verified: `provisa/api/admin/crawl_router.py:36`]
+סריקת מקור נתונים כדי לבצע Introspection ל-Schema שלו ולרשום טבלאות.
 
 ---
 
@@ -814,7 +808,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/sources/{source_id}/tables/search`
 
-חיפוש טבלאות זמינות (עדיין לא רשומות) במקור לפי שם. [tool-verified: `provisa/api/admin/table_search_router.py:103`]
+חיפוש טבלאות זמינות (עדיין לא רשומות) במקור לפי שם.
 
 ---
 
@@ -822,7 +816,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/tables/{table_id}/profile`
 
-הרצת פרופיל עמודה על טבלה רשומה — קרדינליות, min/max, שיעורי Null. [tool-verified: `provisa/api/admin/table_profile_router.py:28`]
+הרצת פרופיל עמודה על טבלה רשומה — קרדינליות, min/max, שיעורי Null.
 
 ---
 
@@ -830,21 +824,21 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/source-meta/db-description`
 
-יצירת תיאורים בסיוע LLM עבור טבלאות ועמודות של מקור. [tool-verified: `provisa/api/admin/source_meta_router.py:48`]
+יצירת תיאורים בסיוע LLM עבור טבלאות ועמודות של מקור.
 
 ---
 
-### אחסון אובייקטים (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
+### אחסון אובייקטים {: #object-storage }
 
 #### `GET /admin/org-storage`
 
-דיווח על טביעת רגל האחסון של הארגון הפועל מול מכסת הפלטפורמה שלו, והאם הארגון רשם אחסון משלו. [tool-verified: `provisa/api/admin/org_storage_router.py:69`]
+דיווח על טביעת רגל האחסון של הארגון הפועל מול מכסת הפלטפורמה שלו, והאם הארגון רשם אחסון משלו.
 
 כאשר לארגון רשום DSN משלו, ה-Materializations שלו הולכים לשם ואינם נספרים עוד כנגד המכסה. ה-DSN עצמו לעולם אינו מוחזר.
 
 #### `PUT /admin/org-storage`
 
-רישום (או ניקוי) אחסון Materialization משלו של הארגון. [tool-verified: `provisa/api/admin/org_storage_router.py:81`]
+רישום (או ניקוי) אחסון Materialization משלו של הארגון.
 
 **גוף הבקשה:**
 
@@ -854,21 +848,21 @@ X-Provisa-Redirect-Threshold: 1000
 
 ה-DSN מאומת מול מנוע הפדרציה לפני קבלתו — DSN לא שמיש נכשל ברישום, לא שעות מאוחר יותר במהלך רענון. הערך מוצפן במנוחה (At Rest) ולעולם אינו מוחזר על-ידי GET.
 
-שלחו `storage_url: null` כדי לנקות את האחסון העצמי של הארגון ולהחזיר את ה-Materializations שלו לאחסון הפלטפורמה (ולמכסה). זמן הריצה (Runtime) של הארגון נבנה מחדש באותה קריאה, כך שהאחסון החדש בתוקף מיידית. [tool-verified: `provisa/api/admin/org_storage_router.py:123-138`]
+שלחו `storage_url: null` כדי לנקות את האחסון העצמי של הארגון ולהחזיר את ה-Materializations שלו לאחסון הפלטפורמה (ולמכסה). זמן הריצה (Runtime) של הארגון נבנה מחדש באותה קריאה, כך שהאחסון החדש בתוקף מיידית.
 
 ---
 
-### הצפנת ארגון (REQ-1574) {: #org-encryption-req-1574 }
+### הצפנת ארגון {: #org-encryption }
 
 #### `GET /admin/org-encryption`
 
-מחזיר את מצב המפתח הנוכחי של הארגון: טביעת אצבע (Fingerprint), מזהה, ומקור. לעולם אינו מחזיר חומר מפתח. [tool-verified: `provisa/api/admin/org_encryption_router.py:53`]
+מחזיר את מצב המפתח הנוכחי של הארגון: טביעת אצבע (Fingerprint), מזהה, ומקור. לעולם אינו מחזיר חומר מפתח.
 
 כאשר לארגון לא הוגדר מפתח, מחזיר `{"configured": false}`. כל ארגון מתחיל במצב זה ויורש את מפתח הפריסה.
 
 #### `PUT /admin/org-encryption`
 
-הגדרה או סבב (Rotation) של מפתח ההצפנה במנוחה של הארגון. [tool-verified: `provisa/api/admin/org_encryption_router.py:68`]
+הגדרה או סבב (Rotation) של מפתח ההצפנה במנוחה של הארגון.
 
 **גוף הבקשה:**
 
@@ -878,17 +872,17 @@ X-Provisa-Redirect-Threshold: 1000
 
 השמיטו `key_b64` כדי ש-Provisa תייצר מפתח — הנתיב הבטוח ביותר, שכן המפתח לעולם אינו מופיע בלוח (Clipboard) או ביומן בקשה. אספקת `key_b64` מביאה מפתח משלכם.
 
-סבב מוסיף רשומה פעילה חדשה לטבעת המפתחות (Key Ring) ושומר את הישנה, כך שנתונים שנכתבו תחת המפתח הקודם נשארים קריאים. סבב אינו הצפנה מחדש. אין נקודת קצה למחיקה: פרישת המפתח האחרון הייתה הופכת כל מטען עטוף (Wrapped) לבלתי קריא. [tool-verified: `provisa/api/admin/org_encryption_router.py:75`]
+סבב מוסיף רשומה פעילה חדשה לטבעת המפתחות (Key Ring) ושומר את הישנה, כך שנתונים שנכתבו תחת המפתח הקודם נשארים קריאים. סבב אינו הצפנה מחדש. אין נקודת קצה למחיקה: פרישת המפתח האחרון הייתה הופכת כל מטען עטוף (Wrapped) לבלתי קריא.
 
 טבעת ה-Live נקשרת מחדש באותה קריאה, כך שהכתיבה המוצפנת הבאה משתמשת במפתח החדש מיידית.
 
 ---
 
-### ייבוא Hasura / DDN (REQ-1483) {: #hasura-ddn-import-req-1483 }
+### ייבוא Hasura / DDN {: #hasura-ddn-import }
 
 #### `POST /admin/import/hasura/preview`
 
-המרת ארכיון פרויקט Hasura v2 או DDN לתצורת Provisa מוצעת ללא כתיבה. [tool-verified: `provisa/api/admin/import_router.py`]
+המרת ארכיון פרויקט Hasura v2 או DDN לתצורת Provisa מוצעת ללא כתיבה.
 
 **גוף הבקשה:**
 
@@ -921,7 +915,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/import/hasura/apply`
 
-טעינת תצורה שנבדקה מראש לארגון הפועל. [tool-verified: `provisa/api/admin/import_router.py`]
+טעינת תצורה שנבדקה מראש לארגון הפועל.
 
 **גוף הבקשה:**
 
@@ -929,17 +923,17 @@ X-Provisa-Redirect-Threshold: 1000
 {"config_yaml": "<yaml string>"}
 ```
 
-ייבוא הוא אכלוס חד-פעמי מפורש של מאגר המודל של הארגון הפעיל, אותה החלה כמו `PUT /admin/config`: הוא מוסיף ומעדכן דרך מאגר המודל את מה שהקונפיגורציה המיובאת מצהירה, עם הגנות וגרסאות, ואינו מוחק דבר שאינו מוזכר בה. אין שדה `replace`. קטלוגי המנוע של המקורות המוצהרים, המאגרים של הארגון והסכמות שלו נבנים מחדש לפני שהתגובה חוזרת. (REQ-1919) [tool-verified: `provisa/api/app_loaders.py` `apply_configuration`]
+ייבוא הוא אכלוס חד-פעמי מפורש של מאגר המודל של הארגון הפעיל, אותה החלה כמו `PUT /admin/config`: הוא מוסיף ומעדכן דרך מאגר המודל את מה שהקונפיגורציה המיובאת מצהירה, עם הגנות וגרסאות, ואינו מוחק דבר שאינו מוזכר בה. אין שדה `replace`. קטלוגי המנוע של המקורות המוצהרים, המאגרים של הארגון והסכמות שלו נבנים מחדש לפני שהתגובה חוזרת.
 
 **תגובה:** `{"summary": {...}}` — ספירות של מה שהקונפיגורציה המיובאת מצהירה.
 
 ---
 
-### חליפין Apache Ossie (REQ-1316, REQ-1321) {: #apache-ossie-interchange-req-1316-req-1321 }
+### חליפין Apache Ossie {: #apache-ossie-interchange }
 
 #### `GET /admin/ossie`
 
-ייצוא המודל המְמוּשְל של הארגון כמסמך YAML של Apache Ossie (incubating). (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py`]
+ייצוא המודל המְמוּשְל של הארגון כמסמך YAML של Apache Ossie (incubating).
 
 המסמך נגזר ממצב Live בכל בקשה — לעולם אינו נשמר במטמון — כך שהוא לעולם אינו יכול להיות לא-עדכני. טבלאות הופכות לאובייקטי `dataset`, עמודות הופכות לאובייקטי `field`, וקשרים ממופים לאובייקטי `relationship` של Ossie.
 
@@ -947,15 +941,15 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `GET /admin/dbt/sources`
 
-מוריד את הקטלוג המנוהל כ-`sources.yml` של dbt, כפי שהוא מוגש לתפקיד אחד. (REQ-1967) [tool-verified: `provisa/api/admin/ossie_router.py`]
+מוריד את הקטלוג המנוהל כ-`sources.yml` של dbt, כפי שהוא מוגש לתפקיד אחד.
 
 **פרמטר שאילתה:** `role` — תפקיד שהקורא מחזיק, או כל תפקיד למחזיק `access_config`.
 
-מחזיר `text/yaml` עם `Content-Disposition: attachment; filename=provisa.sources.yml`. תפקיד לא ידוע הוא `404` עם הקוד `dbt_sources.unknown_role`. מה הקובץ מכיל, ראו [אינטגרציות](integrations.md#dbt-sources-file-req-1967).
+מחזיר `text/yaml` עם `Content-Disposition: attachment; filename=provisa.sources.yml`. תפקיד לא ידוע הוא `404` עם הקוד `dbt_sources.unknown_role`. מה הקובץ מכיל, ראו [אינטגרציות](integrations.md#dbt-sources-file).
 
 #### `POST /admin/ossie/import`
 
-ניתוח מסמך YAML או JSON של Ossie והחזרת הצעות רישום טבלה וקשר. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py`]
+ניתוח מסמך YAML או JSON של Ossie והחזרת הצעות רישום טבלה וקשר.
 
 **גוף הבקשה:** YAML או JSON גולמי של Ossie. הפורמט מזוהה אוטומטית.
 
@@ -976,13 +970,13 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### פעולות (Functions ו-Webhooks) {: #actions-functions-and-webhooks }
 
-כל נקודות הקצה תחת הקידומת `/admin/actions`. (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:24`]
+כל נקודות הקצה תחת הקידומת `/admin/actions`.
 
-כל הפעלה — מ-GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, ו-Provisa gRPC — עוברת דרך מבצע (Executor) מְמוּשְל יחיד האוכף את שיוך ה-command (`visible_to`), את הזכות `write` למוטציה וממשל באופן אחיד. (REQ-1156) [tool-verified: `provisa/api/data/action_exec.py`] ראו [docs/integrations.md](integrations.md#invoking-commands-across-protocols) לתחביר הקריאה לכל פרוטוקול.
+כל הפעלה — מ-GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, ו-Provisa gRPC — עוברת דרך מבצע (Executor) מְמוּשְל יחיד האוכף את שיוך ה-command (`visible_to`), את הזכות `write` למוטציה וממשל באופן אחיד. ראו [docs/integrations.md](integrations.md#invoking-commands-across-protocols) לתחביר הקריאה לכל פרוטוקול.
 
 #### `GET /admin/actions`
 
-מחזיר את כל ה-Functions וה-Webhooks של מסד הנתונים במעקב. (REQ-242) [tool-verified: `provisa/api/admin/actions_router.py:104`]
+מחזיר את כל ה-Functions וה-Webhooks של מסד הנתונים במעקב.
 
 **תגובה:**
 
@@ -1017,11 +1011,11 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-כל אובייקט Webhook נושא Boolean בשם `approved`. Webhook מאושר ברגע ש-Steward מבצע את בקשת היצירה שלו (REQ-209); Webhooks המוצהרים בתצורה מאושרים אוטומטית. Webhook לא מאושר רשום אך אינו חשוף בשום משטח. [tool-verified: `provisa/api/admin/actions_router.py:124-131`]
+כל אובייקט Webhook נושא Boolean בשם `approved`. Webhook מאושר ברגע ש-Steward מבצע את בקשת היצירה שלו; Webhooks המוצהרים בתצורה מאושרים אוטומטית. Webhook לא מאושר רשום אך אינו חשוף בשום משטח.
 
 #### `POST /admin/actions/functions`
 
-רישום Function במעקב (פקודה). (REQ-205) [tool-verified: `provisa/api/admin/actions_router.py:117`]
+רישום Function במעקב (פקודה).
 
 **שדות מפתח:**
 
@@ -1044,39 +1038,39 @@ X-Provisa-Redirect-Threshold: 1000
 | `script` | סקריפט צד-שרת | `script` |
 | `http` | קריאת HTTP יוצאת | `url`, `method` |
 | `grpc` | קריאת gRPC יוצאת לשרת חיצוני | `target`, `method` |
-| `python` | Callable של Python המתארח על-ידי Provisa (REQ-885) | `callable` (למשל `"demo.py_functions:random_dataset"`) |
+| `python` | Callable של Python המתארח על-ידי Provisa | `callable` (למשל `"demo.py_functions:random_dataset"`) |
 
-פקודות ההדגמה `random_python_set` (`implKind: python`) ו-`random_grpc_set` (`implKind: grpc`) מדגימות פקודות מחזירות-קבוצה עם `returnSchema` בפועל; שתיהן ב-`config/provisa-install.yaml`. [tool-verified: `config/provisa-install.yaml:809-856`]
+פקודות ההדגמה `random_python_set` (`implKind: python`) ו-`random_grpc_set` (`implKind: grpc`) מדגימות פקודות מחזירות-קבוצה עם `returnSchema` בפועל; שתיהן ב-`config/provisa-install.yaml`.
 
 #### `PUT /admin/actions/functions/{name}`
 
-עדכון Function במעקב לפי שם. [tool-verified: `provisa/api/admin/actions_router.py:182`]
+עדכון Function במעקב לפי שם.
 
 #### `DELETE /admin/actions/functions/{name}`
 
-מחיקת Function במעקב לפי שם. [tool-verified: `provisa/api/admin/actions_router.py:233`]
+מחיקת Function במעקב לפי שם.
 
 #### `POST /admin/actions/webhooks`
 
-רישום Webhook במעקב. (REQ-209) רישום או עדכון Webhook מוסיף לתור בקשת אישור Steward — ה-Webhook הופך פעיל בכל המשטחים רק לאחר שה-Steward מאשר אותו. Webhooks המוצהרים בתצורה מאושרים אוטומטית. **שדות גוף הבקשה:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`. [tool-verified: `provisa/api/admin/actions_router.py:132`, `provisa/api/admin/actions_router.py:325-331`]
+רישום Webhook במעקב. רישום או עדכון Webhook מוסיף לתור בקשת אישור Steward — ה-Webhook הופך פעיל בכל המשטחים רק לאחר שה-Steward מאשר אותו. Webhooks המוצהרים בתצורה מאושרים אוטומטית. **שדות גוף הבקשה:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
 
 #### `PUT /admin/actions/webhooks/{name}`
 
-עדכון Webhook במעקב לפי שם. כל עריכה מאפסת את האישור למצב ממתין עד לאישור מחדש. [tool-verified: `provisa/api/admin/actions_router.py:306`]
+עדכון Webhook במעקב לפי שם. כל עריכה מאפסת את האישור למצב ממתין עד לאישור מחדש.
 
 #### `DELETE /admin/actions/webhooks/{name}`
 
-מחיקת Webhook במעקב לפי שם. [tool-verified: `provisa/api/admin/actions_router.py:355`]
+מחיקת Webhook במעקב לפי שם.
 
 #### `POST /admin/actions/test`
 
-בדיקת פעולה (Function או Webhook) לפי שם. (REQ-245) [tool-verified: `provisa/api/admin/actions_router.py:384`]
+בדיקת פעולה (Function או Webhook) לפי שם.
 
 ---
 
 ### תפקידים (Roles)
 
-כל נקודות הקצה תחת הקידומת `/admin/roles`. [tool-verified: `provisa/api/admin/roles_router.py:18`]
+כל נקודות הקצה תחת הקידומת `/admin/roles`.
 
 | שיטה | נתיב | תיאור |
 | --- | --- | --- |
@@ -1085,13 +1079,11 @@ X-Provisa-Redirect-Threshold: 1000
 | `PUT` | `/admin/roles/{role_id}` | עדכון תפקיד |
 | `DELETE` | `/admin/roles/{role_id}` | מחיקת תפקיד |
 
-[tool-verified: `provisa/api/admin/roles_router.py`]
-
 ---
 
 ### משתמשים (Users)
 
-כל נקודות הקצה תחת הקידומת `/admin/users`. [tool-verified: `provisa/api/admin/local_users_router.py:21`]
+כל נקודות הקצה תחת הקידומת `/admin/users`.
 
 | שיטה | נתיב | תיאור |
 | --- | --- | --- |
@@ -1109,7 +1101,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### ארגונים (Organizations)
 
-כל נקודות הקצה תחת `/admin/orgs`. [tool-verified: `provisa/api/admin/orgs_router.py:18`]
+כל נקודות הקצה תחת `/admin/orgs`.
 
 | שיטה | נתיב | תיאור |
 | --- | --- | --- |
@@ -1125,7 +1117,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### הזמנות (Invites)
 
-כל נקודות הקצה תחת `/admin/invites`. [tool-verified: `provisa/api/admin/invites_router.py:18`]
+כל נקודות הקצה תחת `/admin/invites`.
 
 | שיטה | נתיב | תיאור |
 | --- | --- | --- |
@@ -1139,7 +1131,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 #### `POST /admin/graphql`
 
-נקודת קצה Strawberry GraphQL עבור כל פעולות הניהול: CRUD של מקורות וטבלאות, ניהול קשרים, תצורת תחום, כללי RLS, בקרת מטמון, מוסכמות שמות, ניהול משימות מתוזמנות, והידור שאילתה. (REQ-164) [tool-verified: `provisa/api/app.py:2171`]
+נקודת קצה Strawberry GraphQL עבור כל פעולות הניהול: CRUD של מקורות וטבלאות, ניהול קשרים, תצורת תחום, כללי RLS, בקרת מטמון, מוסכמות שמות, ניהול משימות מתוזמנות, והידור שאילתה.
 
 להפניה המלאה לסכמה — כל שדה Query, שדה Mutation, וטיפוס קלט/פלט — ראו [הפניית Admin GraphQL API](admin-graphql.md).
 
@@ -1166,19 +1158,17 @@ mutation {
 }
 ```
 
-[tool-verified: `provisa/api/admin/schema.py`, `provisa/api/admin/actions_router.py`]
-
 ---
 
 ### הגדרה ראשונית (Setup)
 
 #### `GET /setup/status`
 
-מחזיר את מצב ההגדרה של ריצה ראשונה. תמיד לא מאומת. (REQ-539) [tool-verified: `provisa/api/setup_router.py:100`]
+מחזיר את מצב ההגדרה של ריצה ראשונה. תמיד לא מאומת.
 
 #### `POST /setup/`
 
-השלמת הגדרת ריצה ראשונה. [tool-verified: `provisa/api/setup_router.py:142`]
+השלמת הגדרת ריצה ראשונה.
 
 ---
 
@@ -1186,7 +1176,7 @@ mutation {
 
 #### `GET /health` או `HEAD /health` {: #get-health-or-head-health }
 
-מחזיר `{"status": "ok"}`. תמיד לא מאומת. (REQ-539) [tool-verified: `provisa/api/app.py:2258`]
+מחזיר `{"status": "ok"}`. תמיד לא מאומת.
 
 ---
 
@@ -1202,7 +1192,7 @@ mutation {
 | 503 | מסד נתונים או מקור לא מחובר; תלות לא זמינה |
 | 504 | הבקשה עברה Timeout |
 
-הפרות ממשל ב-`POST /data/sql` מחזירות HTTP 403 עם גוף מובנה: (REQ-002) [tool-verified: `provisa/api/data/endpoint_dev.py:184-190`]
+הפרות ממשל ב-`POST /data/sql` מחזירות HTTP 403 עם גוף מובנה:
 
 ```json
 {
@@ -1220,11 +1210,11 @@ mutation {
 
 ## נקודת קצה Arrow Flight {: #arrow-flight-endpoint }
 
-פורט `8815`. תעבורה עמודתית (Columnar) ילידית של Arrow מעל gRPC. (REQ-143, REQ-045) [tool-verified: `provisa/api/flight/server.py`]
+פורט `8815`. תעבורה עמודתית (Columnar) ילידית של Arrow מעל gRPC.
 
-שאילתות וגילוי קטלוג שניהם זמינים על אותו חיבור. Pipeline הממשל המלא (RLS, מיסוך, Sampling) מיושם על כל שאילתה. (REQ-130, REQ-143)
+שאילתות וגילוי קטלוג שניהם זמינים על אותו חיבור. Pipeline הממשל המלא (RLS, מיסוך, Sampling) מיושם על כל שאילתה.
 
-גילוי הקטלוג (`list_flights`, `get_flight_info`, `get_schema` וכרטיס בלי `query`) מפרט את מה שהוענק לתפקיד של הקורא. כשהאימות פעיל, שלוש הקריאות שבלי כרטיס לוקחות את האישורים מכותרת הקריאה `authorization: Bearer` ואת התפקיד מ-`x-provisa-role`, ונדחות בלי אישורים; ראו [אינטגרציות](integrations.md). (REQ-1263, REQ-127) [tool-verified: `provisa/api/flight/server.py`]
+גילוי הקטלוג (`list_flights`, `get_flight_info`, `get_schema` וכרטיס בלי `query`) מפרט את מה שהוענק לתפקיד של הקורא. כשהאימות פעיל, שלוש הקריאות שבלי כרטיס לוקחות את האישורים מכותרת הקריאה `authorization: Bearer` ואת התפקיד מ-`x-provisa-role`, ונדחות בלי אישורים; ראו [אינטגרציות](integrations.md).
 
 **פורמט כרטיס (Ticket)** (JSON):
 
@@ -1246,19 +1236,19 @@ for batch in client.do_get(ticket):
 table = client.do_get(ticket).read_all()
 ```
 
-כאשר Proxy מסוג Zaychik Flight SQL זמין (פורט 8480), אצוות (Batches) של רשומות זורמות מקצה-לקצה ללא Materialization מלא. (REQ-144) חוזר ל-Materializing דרך שכבת השאילתה הפדרטיבית כאשר Zaychik אינו זמין. (REQ-146)
+כאשר Proxy מסוג Zaychik Flight SQL זמין (פורט 8480), אצוות (Batches) של רשומות זורמות מקצה-לקצה ללא Materialization מלא. חוזר ל-Materializing דרך שכבת השאילתה הפדרטיבית כאשר Zaychik אינו זמין.
 
-**אזהרות.** מה שתגובה מדווחת על עצמה עובר בזרם כ-`app_metadata` של אצווה בלי שורות: `{"provisa_warnings": [{"code", "params", "message"}]}`. אזהרות שידועות לפני קריאת השורות מגיעות באצווה בלי שורות לפניהן. אזהרה שידועה רק אחרי קריאת השורות מגיעה באצווה שנייה בלי שורות, האחרונה בזרם: `statement.rows_cut` אומרת שהתגובה נקטעה במגבלת השורות ושורות נוספות תואמות (REQ-1949). קראו את `app_metadata` בכל אצווה, כולל האחרונה. [tool-verified: `provisa/api/flight/compression.py`]
+**אזהרות.** מה שתגובה מדווחת על עצמה עובר בזרם כ-`app_metadata` של אצווה בלי שורות: `{"provisa_warnings": [{"code", "params", "message"}]}`. אזהרות שידועות לפני קריאת השורות מגיעות באצווה בלי שורות לפניהן. אזהרה שידועה רק אחרי קריאת השורות מגיעה באצווה שנייה בלי שורות, האחרונה בזרם: `statement.rows_cut` אומרת שהתגובה נקטעה במגבלת השורות ושורות נוספות תואמות. קראו את `app_metadata` בכל אצווה, כולל האחרונה.
 
 ---
 
 ## נקודת קצה Protobuf gRPC {: #protobuf-grpc-endpoint }
 
-פורט `50051` (עקיפה עם משתנה סביבה `GRPC_PORT` או תצורת `server.grpc_port`). (REQ-529) [tool-verified: `provisa/grpc/server.py`, `provisa/api/app.py`]
+פורט `50051` (עקיפה עם משתנה סביבה `GRPC_PORT` או תצורת `server.grpc_port`).
 
-העבירו את התפקיד במפתח המטא-דאטה של gRPC `x-provisa-role`. אם חסר, השרת מבטל (Aborts) עם `UNAUTHENTICATED`. [tool-verified: `provisa/grpc/server.py`]
+העבירו את התפקיד במפתח המטא-דאטה של gRPC `x-provisa-role`. אם חסר, השרת מבטל (Aborts) עם `UNAUTHENTICATED`.
 
-הורידו את ה-Proto הספציפי-תפקיד מ-`GET /data/proto/{role_id}`. רק טבלאות ועמודות הנראות לאותו תפקיד מופיעות. (REQ-039)
+הורידו את ה-Proto הספציפי-תפקיד מ-`GET /data/proto/{role_id}`. רק טבלאות ועמודות הנראות לאותו תפקיד מופיעות.
 
 ```proto
 service ProvisaService {
@@ -1267,15 +1257,15 @@ service ProvisaService {
 }
 ```
 
-כל טבלה בשורש הסכמה של התפקיד מייצרת RPC זורם `Query{TypeName}`. אלה הטבלאות שהטיפוס `Query` של GraphQL של התפקיד מפרט. לטבלה שהתפקיד מגיע אליה רק דרך קשר אין RPC משלה, כשם שאין לה שדה שורש ב-GraphQL. קריאות `Insert{TypeName}` קיימות לשם סימטריית הסכמה אך נכשלות עם `UNIMPLEMENTED`. [tool-verified: `provisa/grpc/proto_gen.py`, `provisa/grpc/server.py`]
+כל טבלה בשורש הסכמה של התפקיד מייצרת RPC זורם `Query{TypeName}`. אלה הטבלאות שהטיפוס `Query` של GraphQL של התפקיד מפרט. לטבלה שהתפקיד מגיע אליה רק דרך קשר אין RPC משלה, כשם שאין לה שדה שורש ב-GraphQL. קריאות `Insert{TypeName}` קיימות לשם סימטריית הסכמה אך נכשלות עם `UNIMPLEMENTED`.
 
-**פרמטרים.** לטבלה עם פרמטרים (טבלה שנרשמה מעל API, או טבלת שאילתה) יש הודעה `{TypeName}Params`, שדה אופציונלי לכל פרמטר, בשמו ללא הקידומת `_nf_`, ו-`Query{TypeName}Request` נושא אותה כ-`params`. כל ערך שנקבע שם מגיע למקור כפרמטר, כשהוא קשור בהוראה; שם שאינו פרמטר של הטבלה נדחה עם `INVALID_ARGUMENT`, וקריאה שחסר בה פרמטר חובה נדחית ומציינת את שמו. ה-proxy של gRPC מעל HTTP מקבל את אותם ערכים באובייקט `params` של הגוף (HTTP 400, קוד `data.invalid_parameter`, לשם לא מוכר או לערך מסוג JSON שגוי). (REQ-1986, REQ-1991) [tool-verified: `provisa/grpc/proto_gen.py`, `provisa/grpc/query_ir.py`]
+**פרמטרים.** לטבלה עם פרמטרים (טבלה שנרשמה מעל API, או טבלת שאילתה) יש הודעה `{TypeName}Params`, שדה אופציונלי לכל פרמטר, בשמו ללא הקידומת `_nf_`, ו-`Query{TypeName}Request` נושא אותה כ-`params`. כל ערך שנקבע שם מגיע למקור כפרמטר, כשהוא קשור בהוראה; שם שאינו פרמטר של הטבלה נדחה עם `INVALID_ARGUMENT`, וקריאה שחסר בה פרמטר חובה נדחית ומציינת את שמו. ה-proxy של gRPC מעל HTTP מקבל את אותם ערכים באובייקט `params` של הגוף (HTTP 400, קוד `data.invalid_parameter`, לשם לא מוכר או לערך מסוג JSON שגוי).
 
-מתודה שאינה חלק מהשירות של תפקיד הקורא משיבה `UNIMPLEMENTED`. [tool-verified: `provisa/grpc/server.py`]
+מתודה שאינה חלק מהשירות של תפקיד הקורא משיבה `UNIMPLEMENTED`.
 
-`grpc_reflection.v1alpha` מופעל לגילוי שירותים ללא proto מקומפל מראש. (REQ-529) הרפלקציה מתארת לכל קורא את השירות של התפקיד שבשמו הוא פועל: אותו `.proto` שהתפקיד מוריד מ-`GET /data/proto/{role_id}`. היא מפרטת בשמם את שירות Provisa ואת שירות הרפלקציה, ומתארת את הקובץ של שירות Provisa. [tool-verified: `provisa/grpc/server.py`]
+`grpc_reflection.v1alpha` מופעל לגילוי שירותים ללא proto מקומפל מראש. הרפלקציה מתארת לכל קורא את השירות של התפקיד שבשמו הוא פועל: אותו `.proto` שהתפקיד מוריד מ-`GET /data/proto/{role_id}`. היא מפרטת בשמם את שירות Provisa ואת שירות הרפלקציה, ומתארת את הקובץ של שירות Provisa.
 
-קריאת רפלקציה מזוהה כמו כל קריאת gRPC אחרת. כשהאימות פעיל, התפקיד נגזר מאישורי הקורא. כשהאימות כבוי, ציינו את התפקיד ב-`x-provisa-role`; בפריסה שמשרתת יותר מארגון אחד, ציינו גם את הארגון ב-`x-provisa-org`. קריאה בלעדיהם נדחית עם `UNAUTHENTICATED`. כשהאימות כבוי, הרפלקציה נשארת מושבתת אלא אם הוגדר `server.grpc_allow_unsecured_reflection`. [tool-verified: `provisa/grpc/server.py`]
+קריאת רפלקציה מזוהה כמו כל קריאת gRPC אחרת. כשהאימות פעיל, התפקיד נגזר מאישורי הקורא. כשהאימות כבוי, ציינו את התפקיד ב-`x-provisa-role`; בפריסה שמשרתת יותר מארגון אחד, ציינו גם את הארגון ב-`x-provisa-org`. קריאה בלעדיהם נדחית עם `UNAUTHENTICATED`. כשהאימות כבוי, הרפלקציה נשארת מושבתת אלא אם הוגדר `server.grpc_allow_unsecured_reflection`.
 
 ```bash
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
@@ -1283,40 +1273,40 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
   -d '{}' localhost:50051 provisa.v1.ProvisaService/QueryOrders
 ```
 
-שרת ה-gRPC עולה כאשר המודל שנטען בעת ההפעלה מגדיר שירות gRPC. (REQ-529) מכאן כל קריאה מוגשת מהמודל כפי שהוא: טבלה שנרשמה או שונתה בזמן שהשרת פועל מוגשת ומתוארת כבר בקריאה הבאה, ללא הפעלה מחדש. [tool-verified: `provisa/api/app_startup.py`, `provisa/grpc/descriptor.py`]
+שרת ה-gRPC עולה כאשר המודל שנטען בעת ההפעלה מגדיר שירות gRPC. מכאן כל קריאה מוגשת מהמודל כפי שהוא: טבלה שנרשמה או שונתה בזמן שהשרת פועל מוגשת ומתוארת כבר בקריאה הבאה, ללא הפעלה מחדש.
 
-#### RPCs לאגרגציה וקיבוץ (REQ-1359, REQ-1361, REQ-1405) {: #aggregate-and-group-by-rpcs-req-1359-req-1361-req-1405 }
+#### RPCs לאגרגציה וקיבוץ {: #aggregate-and-group-by-rpcs }
 
 כאשר לטבלה מוגדר `enable_aggregates`, ה-Proto שנוצר כולל שני RPCs נוספים לצד `Query{TypeName}`:
 
 - **`Query{TypeName}Aggregate`** — מחזיר סקלרים אגרגטיביים עבור הטבלה (`count`; `sum`, `avg`, `stddev`, `variance` לכל עמודה מספרית; `min`, `max` לכל עמודה בת-השוואה)
 - **`Query{TypeName}GroupBy`** — מחזיר שורה אחת לכל מפתח קיבוץ עם תת-שדות אגרגטיביים ובאופן אופציונלי, סקלרים של טבלת הבסיס ושורות ממד מצורף בשדה `nodes`
 
-שניהם עוברים דרך אותו Pipeline מהדר-אגרגציה כמו שדות השורש `{field}_aggregate` ו-`{field}_group_by` של GraphQL — ללא מימוש אגרגציה נפרד. (REQ-1359) [tool-verified: `provisa/grpc/query_ir.py:133-196`]
+שניהם עוברים דרך אותו Pipeline מהדר-אגרגציה כמו שדות השורש `{field}_aggregate` ו-`{field}_group_by` של GraphQL — ללא מימוש אגרגציה נפרד.
 
-**שדה `funcs` (REQ-1361).** הודעת הבקשה מקבלת שדה מחרוזת-חוזרת בשם `funcs`. ערכים תקפים הם `count`, `sum`, `avg`, `stddev`, `variance`, `min`, ו-`max`. כאשר `funcs` מושמט, כל פונקציה ש-Schema חושף עבור אותה טבלה מתבקשת. כאשר מוגדר, רק הפונקציות הנקובות מופיעות. אם אף אחת מהפונקציות הנקובות אינה חלה על סוגי העמודות של הטבלה, השאילתה חוזרת ל-`count`. [tool-verified: `provisa/grpc/query_ir.py:66`, `provisa/grpc/query_ir.py:75-97`]
+**שדה `funcs`.** הודעת הבקשה מקבלת שדה מחרוזת-חוזרת בשם `funcs`. ערכים תקפים הם `count`, `sum`, `avg`, `stddev`, `variance`, `min`, ו-`max`. כאשר `funcs` מושמט, כל פונקציה ש-Schema חושף עבור אותה טבלה מתבקשת. כאשר מוגדר, רק הפונקציות הנקובות מופיעות. אם אף אחת מהפונקציות הנקובות אינה חלה על סוגי העמודות של הטבלה, השאילתה חוזרת ל-`count`.
 
-**שדות `include_nodes` ו-`include` (REQ-1405).** בקשות `Query{TypeName}GroupBy` יכולות להגדיר `include_nodes: true` כדי לכלול עמודות סקלריות של טבלת הבסיס בשדה `nodes` של כל שורה. השדה החוזר `include` נוקב בשמות שדות קשר Many-to-One שהעמודות הסקלריות שלהם מקוננות גם הן בתוך `nodes`. זה תואם את התנהגות `?includeNodes=` / `?include=` של JSON:API. [tool-verified: `provisa/grpc/query_ir.py:168-195`]
+**שדות `include_nodes` ו-`include`.** בקשות `Query{TypeName}GroupBy` יכולות להגדיר `include_nodes: true` כדי לכלול עמודות סקלריות של טבלת הבסיס בשדה `nodes` של כל שורה. השדה החוזר `include` נוקב בשמות שדות קשר Many-to-One שהעמודות הסקלריות שלהם מקוננות גם הן בתוך `nodes`. זה תואם את התנהגות `?includeNodes=` / `?include=` של JSON:API.
 
 ---
 
 ## מנהל התקן JDBC {: #jdbc-driver }
 
-מנהל התקן ה-JDBC של Provisa (`provisa-jdbc-<release>.jar`) חושף את הקטלוג הסמנטי לכלי BI (Tableau, PowerBI, DBeaver). (REQ-126)
+מנהל התקן ה-JDBC של Provisa (`provisa-jdbc-<release>.jar`) חושף את הקטלוג הסמנטי לכלי BI (Tableau, PowerBI, DBeaver).
 
-**כתובת חיבור (Connection URL):** `jdbc:provisa://host:port` (REQ-131)
+**כתובת חיבור (Connection URL):** `jdbc:provisa://host:port`
 
-תחומים ממופים ל-Schema-ים של JDBC. (REQ-127) טבלאות משתמשות בכינוים (Aliases) הרשומים שלהן. עמודות משתמשות בכינויים וחושפות תיאורים כ-`REMARKS`. (REQ-128) שיטות מטא-דאטה סטנדרטיות (`getPrimaryKeys`, `getImportedKeys`, `getExportedKeys`) חושפות קשרים סמנטיים כמטא-דאטה של PK/FK.
+תחומים ממופים ל-Schema-ים של JDBC. טבלאות משתמשות בכינוים (Aliases) הרשומים שלהן. עמודות משתמשות בכינויים וחושפות תיאורים כ-`REMARKS`. שיטות מטא-דאטה סטנדרטיות (`getPrimaryKeys`, `getImportedKeys`, `getExportedKeys`) חושפות קשרים סמנטיים כמטא-דאטה של PK/FK.
 
-**תמיכת SQL:** `SELECT * FROM <alias> [WHERE col = 'value']`. (REQ-129)
+**תמיכת SQL:** `SELECT * FROM <alias> [WHERE col = 'value']`.
 
-מנהל ההתקן מבקש הפניית Arrow IPC כברירת מחדל. תוצאות זורמות אצווה-אחר-אצווה (Batch-by-Batch) דרך `ArrowStreamReader`, מוגבל לאצווה אחת של רשומות בזיכרון. (REQ-293)
+מנהל ההתקן מבקש הפניית Arrow IPC כברירת מחדל. תוצאות זורמות אצווה-אחר-אצווה (Batch-by-Batch) דרך `ArrowStreamReader`, מוגבל לאצווה אחת של רשומות בזיכרון.
 
 ---
 
 ## פורמט ארגומנט `orderBy` {: #orderby-argument-format }
 
-הארגומנט `order_by` משתמש באובייקטי `{column: direction}` עם Enum כיוון בעל 6 ערכים: (REQ-200)
+הארגומנט `order_by` משתמש באובייקטי `{column: direction}` עם Enum כיוון בעל 6 ערכים:
 
 ```json
 {
@@ -1325,23 +1315,23 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 }
 ```
 
-כיוונים נתמכים: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_nulls_first`, `desc_nulls_last`. (REQ-201)
+כיוונים נתמכים: `asc`, `desc`, `asc_nulls_first`, `asc_nulls_last`, `desc_nulls_first`, `desc_nulls_last`.
 
 ---
 
 ## Subscriptions
 
-Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table}`. (REQ-219, REQ-258) מסירת ההתראות משתמשת בספק ניתן-להתקנה הנבחר לפי סוג מקור: מקורות PostgreSQL משתמשים ב-`LISTEN/NOTIFY`, מקורות MongoDB משתמשים ב-Change Streams, ומקורות Kafka משתמשים בקבוצות צרכנים. סינון RLS ואימות Schema חלים ללא תלות בספק. מקורות WebSocket ו-RSS נתמכים גם הם דרך אותה נקודת קצה. (REQ-338, REQ-342) [tool-verified: `provisa/api/data/subscribe.py:239`, `provisa/subscriptions/registry.py`, `provisa/api/app.py` `_rebuild_schemas`]
+Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table}`. מסירת ההתראות משתמשת בספק ניתן-להתקנה הנבחר לפי סוג מקור: מקורות PostgreSQL משתמשים ב-`LISTEN/NOTIFY`, מקורות MongoDB משתמשים ב-Change Streams, ומקורות Kafka משתמשים בקבוצות צרכנים. סינון RLS ואימות Schema חלים ללא תלות בספק. מקורות WebSocket ו-RSS נתמכים גם הם דרך אותה נקודת קצה.
 
 ---
 
-## מילון עסקי (REQ-1387) {: #business-glossary-req-1387 }
+## מילון עסקי {: #business-glossary }
 
 המילון העסקי ממפה שמות שדה פיזיים — כפי שהם קיימים במסדי הנתונים המקור — לאוצר מילים אנושי משותף. כל עמודה הרשומה במודל מקבלת מונח אוטומטית. לא נדרשת הזנה ידנית לאכלוס המילון; אוצרים (Curators) מוסיפים הגדרות, קשרים, ומומחים מעל מה שהמערכת גוזרת.
 
 ### כיצד מונחים נגזרים {: #how-terms-are-derived }
 
-כאשר Provisa רושמת או מעדכנת עמודות של טבלה, `normalize_term` (`provisa/core/glossary.py`) רץ על כל שם עמודה ומייצר ביטוי קנוני. [tool-verified: `provisa/core/repositories/glossary.py:sync_table_refs`]
+כאשר Provisa רושמת או מעדכנת עמודות של טבלה, `normalize_term` (`provisa/core/glossary.py`) רץ על כל שם עמודה ומייצר ביטוי קנוני.
 
 הנרמול מיישם חמישה כללים ברצף:
 
@@ -1362,11 +1352,11 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 | `CUSTOMER_KEY` | `customer` |
 | `txn_amt` | `transaction amount` |
 
-השלושה הראשונים מתמזגים למונח אחד. `transaction amount` שומר על שני האסימונים כי `amount` אינו Proxy. עמודת `id` חשופה — ללא אסימונים קודמים — לא ניתנת להסרה; היא מנורמלת ל-`identifier` כך שהמונח אינו ריק. [tool-verified: `provisa/core/glossary.py:normalize_term`]
+השלושה הראשונים מתמזגים למונח אחד. `transaction amount` שומר על שני האסימונים כי `amount` אינו Proxy. עמודת `id` חשופה — ללא אסימונים קודמים — לא ניתנת להסרה; היא מנורמלת ל-`identifier` כך שהמונח אינו ריק.
 
 ### מחזור חיים {: #lifecycle }
 
-מונחים **נגזרים מחברות במודל**, לא נוצרים לפי דרישה על-ידי משתמשים. מאגר הטבלה (Repository) הוא נתיב הכתיבה היחיד: `sync_table_refs` רץ בתוך כל Upsert של קבוצת עמודות, ו-`sweep_refless_terms` רץ לאחר כל נתיב מחיקה. [tool-verified: `provisa/core/repositories/glossary.py`]
+מונחים **נגזרים מחברות במודל**, לא נוצרים לפי דרישה על-ידי משתמשים. מאגר הטבלה (Repository) הוא נתיב הכתיבה היחיד: `sync_table_refs` רץ בתוך כל Upsert של קבוצת עמודות, ו-`sweep_refless_terms` רץ לאחר כל נתיב מחיקה.
 
 **כאשר עמודה מתווספת:** Provisa מחפשת את המונח המנורמל לפי שם. אם הוא כבר קיים, העמודה מקבלת הפניה (Ref) אליו (ואם המונח היה מוצא משימוש (Deprecated), הוא מוחיה — `deprecated` מוגדר בחזרה ל-`False`). אם לא קיים מונח עדיין, אחד נוצר.
 
@@ -1378,7 +1368,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 
 ### נקודות קצה לאצירה (Curation) {: #curation-endpoints }
 
-כל נקודות הקצה תחת `/admin/glossary`. הן דורשות גישת `org_admin` וארגון מוגדר. כל מוטציה מפעילה פרסום מטא-דאטה. [tool-verified: `provisa/api/admin/glossary_router.py`]
+כל נקודות הקצה תחת `/admin/glossary`. הן דורשות גישת `org_admin` וארגון מוגדר. כל מוטציה מפעילה פרסום מטא-דאטה.
 
 | שיטה | נתיב | תיאור |
 | --- | --- | --- |
@@ -1408,7 +1398,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 {"to_term_id": 42, "rel_type": "KIND_OF"}
 ```
 
-ערכי `rel_type` תקפים: `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`. [tool-verified: `provisa/core/glossary.py:TERM_EDGE_TYPES`]
+ערכי `rel_type` תקפים: `KIND_OF`, `RELATED_TO`, `PART_OF`, `SYNONYM_OF`.
 
 **גוף `POST /admin/glossary/terms/{term_id}/experts`:**
 
@@ -1416,7 +1406,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 {"user_id": "alice@example.com", "kind": "author"}
 ```
 
-ערכי `kind` תקפים: `expert`, `author`. [tool-verified: `provisa/core/repositories/glossary.py:add_expert`]
+ערכי `kind` תקפים: `expert`, `author`.
 
 **גוף `POST /admin/glossary/refs/move`:**
 
@@ -1434,7 +1424,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 {"export_excluded": true}
 ```
 
-הגדרת `export_excluded` ל-`true` שומרת את המונח בחוץ מכל תמונות מצב (Snapshots) של ייצוא מטא-דאטה, ללא תלות ב-Refs הפיזיים או במעמד המופשט שלו. הגדרתו בחזרה ל-`false` משיבה את המונח לתמונת המצב בפרסום הבא. נתוני אצירה (הגדרה, קשתות, מומחים) אינם מושפעים. [tool-verified: `provisa/core/repositories/glossary.py:set_export_excluded`, `provisa/api/admin/glossary_router.py:update_term`]
+הגדרת `export_excluded` ל-`true` שומרת את המונח בחוץ מכל תמונות מצב (Snapshots) של ייצוא מטא-דאטה, ללא תלות ב-Refs הפיזיים או במעמד המופשט שלו. הגדרתו בחזרה ל-`false` משיבה את המונח לתמונת המצב בפרסום הבא. נתוני אצירה (הגדרה, קשתות, מומחים) אינם מושפעים.
 
 ### אצירה בסיוע AI {: #ai-assisted-curation }
 
@@ -1442,7 +1432,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 
 **`POST /admin/glossary/definitions/generate`**
 
-עובר על כל מונח במילון, מדלג על כל מונח שכבר יש לו הגדרה, וקורא למודל ה-AI של הארגון לנסח אחת עבור כל מונח נותר. הטיוטה נשמרת מיידית — בניגוד לנקודת הקצה של טיוטה-לכל-מונח (`POST /admin/glossary/terms/{term_id}/definition/generate`), אין שלב עורך. הגדרות שנכתבו על-ידי אדם לעולם אינן נדרסות: השומר הוא `if summary["definition"]: continue` לפני כל קריאה למודל. התראת פרסום אחת מכסה את כל האצווה. [tool-verified: `provisa/api/admin/glossary_router.py:generate_all_definitions`]
+עובר על כל מונח במילון, מדלג על כל מונח שכבר יש לו הגדרה, וקורא למודל ה-AI של הארגון לנסח אחת עבור כל מונח נותר. הטיוטה נשמרת מיידית — בניגוד לנקודת הקצה של טיוטה-לכל-מונח (`POST /admin/glossary/terms/{term_id}/definition/generate`), אין שלב עורך. הגדרות שנכתבו על-ידי אדם לעולם אינן נדרסות: השומר הוא `if summary["definition"]: continue` לפני כל קריאה למודל. התראת פרסום אחת מכסה את כל האצווה.
 
 תגובה:
 
@@ -1454,7 +1444,7 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 
 **`POST /admin/glossary/relationships/generate`**
 
-שולח את רשימת המונחים המלאה למודל ה-AI של הארגון עם Prompt המפרט את עשרת סוגי הקשת המותרים (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) ומבקש רק הצעות בטוחות. המודל מגיב עם מערך JSON; כל רשומה מאומתת לפני כל כתיבה: שמות מונח לא ידועים, קשתות-עצמיות (Self-Edges), וסוגי קשת מחוץ ל-Enum הסגור נשמטים בשקט. הצעות תקפות מוכנסות (Upserted) באופן אידמפוטנטי — הרצה חוזרת של הפעולה אינה משכפלת קשתות. התראת פרסום אחת מכסה את האצווה. נקודת הקצה מחזירה `{"added": 0}` מיידית כאשר המילון מכיל פחות משני מונחים לא-מוצאים-משימוש. [tool-verified: `provisa/api/admin/glossary_router.py:generate_relationships`]
+שולח את רשימת המונחים המלאה למודל ה-AI של הארגון עם Prompt המפרט את עשרת סוגי הקשת המותרים (`KIND_OF`, `PART_OF`, `SYNONYM_OF`, `RELATED_TO`, `VALID_VALUE_OF`, `DERIVED_FROM`, `REPLACES`, `PREFERRED_TERM_FOR`, `TRANSLATION_OF`, `ANTONYM_OF`) ומבקש רק הצעות בטוחות. המודל מגיב עם מערך JSON; כל רשומה מאומתת לפני כל כתיבה: שמות מונח לא ידועים, קשתות-עצמיות (Self-Edges), וסוגי קשת מחוץ ל-Enum הסגור נשמטים בשקט. הצעות תקפות מוכנסות (Upserted) באופן אידמפוטנטי — הרצה חוזרת של הפעולה אינה משכפלת קשתות. התראת פרסום אחת מכסה את האצווה. נקודת הקצה מחזירה `{"added": 0}` מיידית כאשר המילון מכיל פחות משני מונחים לא-מוצאים-משימוש.
 
 תגובה:
 
@@ -1470,17 +1460,17 @@ Subscriptions מסוג SSE זמינים בכתובת `GET /data/subscribe/{table
 search_terms(query, role=None, limit=25)
 ```
 
-מחפש שמות ודיוגי מונחים עם התאמת תת-מחרוזת לא-תלוית-רישיות, עד `limit` תוצאות. כל תוצאה היא פרט המונח המלא: `name`, `definition`, `is_abstract`, `deprecated`, Refs פיזיים (עם `source_id`, `schema_name`, `table_name`, `column_name`), קשתות מוקלדות, ושיוכי מומחה. [tool-verified: `provisa/api/mcp/server.py:236-244`, `provisa/core/repositories/glossary.py:search_terms`]
+מחפש שמות ודיוגי מונחים עם התאמת תת-מחרוזת לא-תלוית-רישיות, עד `limit` תוצאות. כל תוצאה היא פרט המונח המלא: `name`, `definition`, `is_abstract`, `deprecated`, Refs פיזיים (עם `source_id`, `schema_name`, `table_name`, `column_name`), קשתות מוקלדות, ושיוכי מומחה.
 
 השתמשו ב-`search_terms` לפני כתיבת SQL כדי למצוא כל שדה פיזי המייצג מושג לפי שם. לדוגמה, חיפוש `"order date"` מחזיר את המונח וכל עמודות `order_dt`, `orderDate`, `ORDER_DATE` על-פני כל טבלה רשומה.
 
 ### ייצוא מטא-דאטה {: #metadata-export }
 
-גרף מונחי המילון נכלל בכל `MetadataSnapshot` שנבנה על-ידי `build_snapshot`. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
+גרף מונחי המילון נכלל בכל `MetadataSnapshot` שנבנה על-ידי `build_snapshot`.
 
 הייצוא מיישם את אותם מסננים כמו שאר תמונת המצב:
 
-- מונח המסומן `export_excluded` נשמר בחוץ לחלוטין — ללא תלות ב-Refs הפיזיים שלו, במעמד המופשט, או האם קטלוג הארגון מוגדר. [tool-verified: `provisa/api/metadata_export/builder.py:_glossary_assets`]
+- מונח המסומן `export_excluded` נשמר בחוץ לחלוטין — ללא תלות ב-Refs הפיזיים שלו, במעמד המופשט, או האם קטלוג הארגון מוגדר.
 - מונח מושרש מתפרסם רק כאשר לפחות אחד מה-Refs הפיזיים שלו שייך לעמודה שעוברת גם את מסנן **Data Product** (דגל `data_product` של הטבלה חייב להיות `true`) וגם את מסנן העמודה **הטכנית** (עמודות המתויגות `technical` נשמרות בחוץ).
 - מונח מושרש שכל ה-Refs שלו נשמרים בחוץ על-ידי מסננים אלה נשמר בחוץ יחד איתם.
 - מונחים מופשטים מתפרסמים ללא תנאי — הם אוצר מילים משתמש, לא מחוברים לעמודות פיזיות.
@@ -1496,13 +1486,13 @@ search_terms(query, role=None, limit=25)
 | OpenMetadata | מילון Provisa דרך `/v1/glossaries` | PUT ממופתח-fqn, שינויי שם PATCH-מקושרים-מחדש לפי UUID שמור | KIND_OF → היררכיית הורה ילידית, SYNONYM_OF → `synonyms`, אחרים → `relatedTerms` | `entityStatus` |
 | Collibra | תחום מסוג-מילון "Provisa Glossary" | נכסי Business Term דרך Import API | סוגי יחס Business Term ילידיים | סטטוס נכס |
 
-הבעלות היא הקישור, לא השם: המזהה של כל ספק לכל מונח מפורסם נלכד תחת `catalog_bindings` תחת ה-URN של המונח (`provisa://<org>/terms/<name>`), ו-Provisa משנה או מוחקת פריט מילון בצד הספק רק כאשר היא מחזיקה קישור זה (או שהפריט חי במכל בבעלות Provisa שהיא יצרה). פריט מילון ללא קישור Provisa מקורו במערכת החיצונית ולעולם אינו נגע בו; עדכונים בקריאה-מיזוג כך ששדות שנוספו על-ידי Steward על מונחי Provisa עצמם שורדים; דבר אינו נמחק כאשר מונח עוזב את תמונת המצב. שיוכי מונח-לנכס של Steward נשארים בבעלות חיצונית — אף מתאם אינו כותב שיוכי מונח-לנכס (פרסום שיוכים שנכתבו על-ידי Provisa הוא המשך עתידי מפורש). ב-Collibra ספציפית, הבטיחות תחת סמנטיקת REPLACE של Import API נשענת על הכלה: המטען מזכיר רק נכסים בתוך תחום מילון Provisa ומופעי יחס רק בין מונחי Provisa, כך שמילוני Steward והיחסים שלהם לעולם אינם ניתנים להגעה. [tool-verified: `provisa/api/metadata_export/atlan.py`, `provisa/api/metadata_export/datahub.py`, `provisa/api/metadata_export/atlas.py`, `provisa/api/metadata_export/openmetadata.py`]
+הבעלות היא הקישור, לא השם: המזהה של כל ספק לכל מונח מפורסם נלכד תחת `catalog_bindings` תחת ה-URN של המונח (`provisa://<org>/terms/<name>`), ו-Provisa משנה או מוחקת פריט מילון בצד הספק רק כאשר היא מחזיקה קישור זה (או שהפריט חי במכל בבעלות Provisa שהיא יצרה). פריט מילון ללא קישור Provisa מקורו במערכת החיצונית ולעולם אינו נגע בו; עדכונים בקריאה-מיזוג כך ששדות שנוספו על-ידי Steward על מונחי Provisa עצמם שורדים; דבר אינו נמחק כאשר מונח עוזב את תמונת המצב. שיוכי מונח-לנכס של Steward נשארים בבעלות חיצונית — אף מתאם אינו כותב שיוכי מונח-לנכס (פרסום שיוכים שנכתבו על-ידי Provisa הוא המשך עתידי מפורש). ב-Collibra ספציפית, הבטיחות תחת סמנטיקת REPLACE של Import API נשענת על הכלה: המטען מזכיר רק נכסים בתוך תחום מילון Provisa ומופעי יחס רק בין מונחי Provisa, כך שמילוני Steward והיחסים שלהם לעולם אינם ניתנים להגעה.
 
 ---
 
-## מוצרי נתונים (REQ-1634) {: #data-products-req-1634 }
+## מוצרי נתונים {: #data-products }
 
-מוצר נתונים מקבץ טבלאות המתפרסמות יחד לצריכה, בבעלות תחום אחד בלבד. שדות עוקבים אחר אוצר המילים של ODPS (Open Data Product Standard) במקום שבו כבר קיים ל-Provisa מקור האמת. ה-UI המנהל חושף מוצרי נתונים תחת **Admin → Data Products**. [tool-verified: `provisa/core/models.py:318-342`, `provisa/api/admin/schema_mutation.py:949-1017`, `provisa/api/admin/schema_query.py:352-362`]
+מוצר נתונים מקבץ טבלאות המתפרסמות יחד לצריכה, בבעלות תחום אחד בלבד. שדות עוקבים אחר אוצר המילים של ODPS (Open Data Product Standard) במקום שבו כבר קיים ל-Provisa מקור האמת. ה-UI המנהל חושף מוצרי נתונים תחת **Admin → Data Products**.
 
 ### יכולות {: #capabilities }
 
@@ -1510,8 +1500,6 @@ search_terms(query, role=None, limit=25)
 | --- | --- |
 | `data_product_read` | גישת קריאה לשדה השאילתה `data_products` ולעמוד הניהול של מוצרי נתונים. מוזרע כברירת מחדל ל-`org_admin`, `analyst`, `developer`, ו-`modeler`. |
 | `data_product_rw` | מוטציות יצירה ומחיקה. מפעיל את בקרות New / Edit / Delete ב-UI. |
-
-[tool-verified: `provisa/api/admin/schema_mutation.py:959,1001`, `provisa/api/admin/schema_query.py:357`]
 
 ### Admin GraphQL
 
@@ -1574,7 +1562,7 @@ mutation {
 }
 ```
 
-מחיקת מוצר מנקה את `product_id` מכל טבלת חבר, ומסירה את חברותן. דורש `data_product_rw`. [tool-verified: `provisa/api/admin/schema_mutation.py:995-1017`]
+מחיקת מוצר מנקה את `product_id` מכל טבלת חבר, ומסירה את חברותן. דורש `data_product_rw`.
 
 ### Schema של שדות {: #field-schema }
 
@@ -1594,26 +1582,24 @@ mutation {
 | `support` | `String` | לא | הנחיית תמיכה בטקסט חופשי |
 | `custom_properties` | `JSON` | לא | מטא-דאטה במפתח-ערך שרירותי שאינו מכוסה על-ידי השדות הסטנדרטיים |
 
-שני שדות נוספים קיימים במודל אך אינם חשופים ב-`DataProductType` / `DataProductInput` של Strawberry — הם ספציפיים ל-Snowflake Horizon Catalog (REQ-1635):
+שני שדות נוספים קיימים במודל אך אינם חשופים ב-`DataProductType` / `DataProductInput` של Strawberry — הם ספציפיים ל-Snowflake Horizon Catalog:
 
 | שדה | הערות |
 | --- | --- |
 | `support_contact` | אימייל או כתובת URL; נדרש עבור קובצי רשימת ארגון של Horizon Catalog |
 | `publish` | `true` לפרסום רשימות Horizon מיידית; רשימות חדשות ברירת מחדל DRAFT |
 
-[tool-verified: `provisa/core/models.py:338-341`, `provisa/api/admin/types.py:104-118,538-551`]
-
 ### חברות טבלה {: #table-membership }
 
-טבלה מצטרפת למוצר נתונים על-ידי הגדרת שדה ה-`product_id` שלה בטופס עריכת הטבלה. הבורר מוגבל למוצרים ש-`domain_id` שלהם תואם לתחום של הטבלה עצמה — טבלה בתחום `marketing` לעולם אינה מוצעת מוצר בתחום `sales`. [tool-verified: `provisa/api/admin/actions_router.py:244-260`, `docs/arch/requirements.yaml:54585-54586`]
+טבלה מצטרפת למוצר נתונים על-ידי הגדרת שדה ה-`product_id` שלה בטופס עריכת הטבלה. הבורר מוגבל למוצרים ש-`domain_id` שלהם תואם לתחום של הטבלה עצמה — טבלה בתחום `marketing` לעולם אינה מוצעת מוצר בתחום `sales`.
 
-פקודות באותו תחום יכולות להיות משויכות גם הן כחברות. [tool-verified: `provisa-ui/src/i18n/locales/en/dataProductsTab.json:commandsLabel`]
+פקודות באותו תחום יכולות להיות משויכות גם הן כחברות.
 
 ### מסנן ייצוא מטא-דאטה {: #metadata-export-filter }
 
-`build_snapshot` מיישם `data_products_only=True` עבור כל פרסום קטלוג. טבלאות ללא `product_id` נשמרות בחוץ מתמונת המצב, יחד עם קשתות הקשר, קשתות ה-Lineage, ותגי הממשל שלהן. מקורות ותחומים מתפרסמים תמיד. מונחי מילון מתפרסמים רק כאשר לפחות אחד מה-Refs הפיזיים שלהם שייך לטבלה מיוצאת (חברת-מוצר). [tool-verified: `provisa/api/metadata_export/builder.py:594,609,641`]
+`build_snapshot` מיישם `data_products_only=True` עבור כל פרסום קטלוג. טבלאות ללא `product_id` נשמרות בחוץ מתמונת המצב, יחד עם קשתות הקשר, קשתות ה-Lineage, ותגי הממשל שלהן. מקורות ותחומים מתפרסמים תמיד. מונחי מילון מתפרסמים רק כאשר לפחות אחד מה-Refs הפיזיים שלהם שייך לטבלה מיוצאת (חברת-מוצר).
 
-מוצר ללא חברים מיוצאים אינו בונה רשומת תמונת מצב — רשימה ללא חברים הייתה מציגה מצג שווא של המוצר לקטלוג. [tool-verified: `provisa/api/metadata_export/model.py:106-113`]
+מוצר ללא חברים מיוצאים אינו בונה רשומת תמונת מצב — רשימה ללא חברים הייתה מציגה מצג שווא של המוצר לקטלוג.
 
 ### תמיכת מוצר נתונים לפי יעד קטלוג {: #data-product-support-by-catalog-target }
 
@@ -1621,11 +1607,11 @@ mutation {
 
 | יעד | ייצוג מוצר נתונים |
 | --- | --- |
-| Snowflake Horizon | כל מוצר הופך ל-`SHARE` מעל הכתובות הפיזיות של טבלאות החבר שלו, עטוף ב-`CREATE ORGANIZATION LISTING` פנימי — Data Product ילידי של Horizon Catalog. `publish=true` מפעיל את הרשימה מיידית; אחרת היא נוחתת כ-DRAFT. [tool-verified: `provisa/api/metadata_export/snowflake_horizon.py:21-34,389-418`] |
-| BigQuery Dataplex | כל מוצר הופך לרשימת Analytics Hub דרך `/v1/dataProducts`. [tool-verified: `provisa/api/metadata_export/bigquery_dataplex.py:100,136,159`] |
-| OpenMetadata | כל מוצר הופך לישות `DataProduct` ילידית (`/api/v1/dataProducts`), עם בעלות נגזרת-תחום. [tool-verified: `provisa/api/metadata_export/openmetadata.py:326-344,635`] |
-| DataHub | כל מוצר הופך לישות `dataProduct` ילידית (`urn:li:dataProduct:...`) עם Aspects `dataProductProperties`/בעלות משלה. [tool-verified: `provisa/api/metadata_export/datahub.py:133-136,443-483`] |
-| Collibra | כל מוצר הופך לנכס מסוג קהילת `Data Product`, מקושר לטבלאות החבר שלו דרך יחס `Data Product groups Table`. [tool-verified: `provisa/api/metadata_export/collibra.py:129-133,371-388`] |
-| Atlan | מתפרסם כניחוש typedef מותאם `DataProduct` — ל-Atlan אין שם סוג יציב מתועד למושג זה, כך שהמיפוי הוא במיטב המאמץ. [tool-verified: `provisa/api/metadata_export/atlan.py:60`] |
-| Apache Atlas | מתפרסם כ-typedef מותאם `provisa_data_product` עם יחס `provisa_data_product_members` — ל-Atlas אין סוג ישות מוצר-נתונים ילידי. [tool-verified: `provisa/api/metadata_export/atlas.py:134-147,191,256-260`] |
-| OpenLineage | לא ישות מדרגה ראשונה — טבלאות חבר נושאות Facet מותאם `provisa_data_product` הנוקב במוצר הבעלים. [tool-verified: `provisa/api/metadata_export/openlineage.py:243,348`] |
+| Snowflake Horizon | כל מוצר הופך ל-`SHARE` מעל הכתובות הפיזיות של טבלאות החבר שלו, עטוף ב-`CREATE ORGANIZATION LISTING` פנימי — Data Product ילידי של Horizon Catalog. `publish=true` מפעיל את הרשימה מיידית; אחרת היא נוחתת כ-DRAFT. |
+| BigQuery Dataplex | כל מוצר הופך לרשימת Analytics Hub דרך `/v1/dataProducts`. |
+| OpenMetadata | כל מוצר הופך לישות `DataProduct` ילידית (`/api/v1/dataProducts`), עם בעלות נגזרת-תחום. |
+| DataHub | כל מוצר הופך לישות `dataProduct` ילידית (`urn:li:dataProduct:...`) עם Aspects `dataProductProperties`/בעלות משלה. |
+| Collibra | כל מוצר הופך לנכס מסוג קהילת `Data Product`, מקושר לטבלאות החבר שלו דרך יחס `Data Product groups Table`. |
+| Atlan | מתפרסם כניחוש typedef מותאם `DataProduct` — ל-Atlan אין שם סוג יציב מתועד למושג זה, כך שהמיפוי הוא במיטב המאמץ. |
+| Apache Atlas | מתפרסם כ-typedef מותאם `provisa_data_product` עם יחס `provisa_data_product_members` — ל-Atlas אין סוג ישות מוצר-נתונים ילידי. |
+| OpenLineage | לא ישות מדרגה ראשונה — טבלאות חבר נושאות Facet מותאם `provisa_data_product` הנוקב במוצר הבעלים. |

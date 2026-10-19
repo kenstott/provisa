@@ -10,9 +10,8 @@ registrierten Views und materialisierten Views (MVs).
 Öffnen Sie in der UI **Lineage** (`/lineage`). Fügen Sie ein SQL-Statement ein und klicken
 Sie auf **Build statement graph**, um dessen Column-Level-DAG zu sehen. Klicken Sie auf
 **Federation graph**, um den Provenance-Graphen über alle MVs in der Registry zu laden.
-[tool-verified: LineagePage.tsx:28-119]
 
-## DAG auf Statement-Ebene (REQ-1160) {: #statement-level-dag-req-1160 }
+## DAG auf Statement-Ebene {: #statement-level-dag }
 
 Jede benannte Ausgabespalte in Ihrem SQL wird zu einem Knoten. Der Builder verfolgt sie durch
 jede CTE, Subquery, jeden Join und jeden Inline-Command-Aufruf zurück bis zu ihren Quellspalten
@@ -37,18 +36,16 @@ orders.region ─╯
 - `orders.id`, `orders.region` und `orders.geo` sind **source**-Knoten (der schmale
   Eingabe-Contract von `enrich_grpc_set` deklariert `id` und `region`; die vollständige
   Taint-Closure verbindet alle deklarierten Eingaben mit allen Ausgaben).
-  [tool-verified: `_splice_commands` in graph.py:223-242]
+
 - `e.embedding` und `e.geo` sind **command**-Knoten — die Grenze von `enrich_grpc_set`.
 - `geo_u` ist ein **derived**-Knoten, erzeugt durch die SQL-Funktion `UPPER`.
 
 Die Command-Grenze ist **nicht undurchsichtig**. Weil `enrich_grpc_set` seine Eingabespalten
 (`id`, `region`) und Ausgabespalten (`id`, `embedding`, `geo`) deklariert, verbindet die
 Lineage-Engine die Taint-Closure durchgehend von den deklarierten Spalten der Quellrelation bis
-zu jeder Ausgabe. [tool-verified: `_splice_commands` und `_input_relation` in graph.py:245-271]
+zu jeder Ausgabe.
 
 ### Knotenarten und visuelle Hinweise {: #node-kinds-and-visual-cues }
-
-[tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | Knotenart | Farbe | Bedeutung |
 | --- | --- | --- |
@@ -63,41 +60,34 @@ Zusätzliche Ringe an einem Knoten:
 - **Roter Ring** — Mitglied eines als Fehler klassifizierten Zyklus.
 - **Gelber Ring** — Mitglied eines als Feedback-Loop klassifizierten Zyklus.
 
-[tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
-
 ### Benannte Transforms an Kanten {: #named-transforms-on-edges }
 
 Jede Kante trägt den rohen SQL-Ausdruck, der die Zielspalte erzeugt, plus eine Liste benannter
 Operationen: SQL-Funktionen (`sql_function`), arithmetische/logische Operatoren (`operator`),
 registrierte Commands (`command`), reine Spaltenreferenzen (`identity`) und Literale (`constant`).
-[tool-verified: TransformOp and name_transform in graph.py:36-145]
 
 Eine Kante aus einem Command-Aufruf wird in der UI als gestrichelte violette Linie dargestellt.
-[tool-verified: LineageDag.tsx:122-124]
 
-## Föderationsweiter Graph (REQ-1161) {: #federation-wide-graph-req-1161 }
+## Föderationsweiter Graph {: #federation-wide-graph }
 
 Der Föderationsgraph führt die Per-Statement-Lineage jeder registrierten MV zu einem einzigen
 Provenance-Graphen zusammen. Die Knotenidentität ist `relation.column` — die Ausgabespalte einer
 View und die Eingabereferenz einer anderen View auf dieselbe Spalte fallen zu einem Knoten
 zusammen. Das Ergebnis ist ein einziger DAG von Basis-Quellspalten zu jedem abgeleiteten Dataset
-in der Plattform. [tool-verified: `build_federation_graph` in merge.py:205-229 and
-`qualify_outputs` in graph.py:275-299]
+in der Plattform.
 
 Verwenden Sie `focus`, `direction` und `depth`, um die Ansicht auf Föderationsebene einzugrenzen,
-ohne den Graphen neu zu berechnen. [tool-verified: `slice_graph` in merge.py:160-189]
+ohne den Graphen neu zu berechnen.
 
-## Zyklen (REQ-1161) {: #cycles-req-1161 }
+## Zyklen {: #cycles }
 
 Zyklen werden beschrieben, nicht abgelehnt. Die Lineage-Engine erkennt jeden gerichteten Zyklus
-und **klassifiziert** ihn. [tool-verified: `Cycle.classification` property in merge.py:43-46]
+und **klassifiziert** ihn.
 
 | Klassifikation | Randfarbe | Bedeutung |
 | --- | --- | --- |
 | `feedback` | Gelb | Der Zyklus durchquert einen materialisierten Knoten — ein legaler, zeitversetzter Feedback-Loop. Der MV-Snapshot ist die Versionsgrenze, die ihn wohldefiniert macht. |
 | `error` | Rot | Keine Materialisierungsgrenze im Loop — eine zirkuläre Definition ohne stabile Auswertungsreihenfolge. Vermutlich ein Designfehler. |
-
-[tool-verified: LineagePage.tsx:83-98 cycle alert rendering; merge.py:38-48]
 
 Ein `feedback`-Zyklus ist kein Fehler. Eine Enrichment-MV, die eine abgeleitete Spalte zurück in
 ihre eigene Quellrelation einspeist, ist ein gültiges Muster, solange ein Knoten im Loop
@@ -123,10 +113,7 @@ Content-Type: application/json
 }
 ```
 
-[tool-verified: `lineage_graph` endpoint at lineage_router.py:45-54, LineageGraphRequest model at
-lineage_router.py:29-31]
-
-Form der Antwort [tool-verified: `LineageGraph.to_dict` in graph.py:82-105]:
+Form der Antwort:
 
 ```json
 {
@@ -146,7 +133,6 @@ Form der Antwort [tool-verified: `LineageGraph.to_dict` in graph.py:82-105]:
 ```
 
 Liefert HTTP 422, wenn das SQL nicht geparst werden kann.
-[tool-verified: lineage_router.py:51-54]
 
 ### GET /admin/lineage/federation
 
@@ -157,9 +143,7 @@ GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
 
-[tool-verified: `federation_graph` endpoint at lineage_router.py:73-98]
-
-Query-Parameter [tool-verified: function signature at lineage_router.py:73-76]:
+Query-Parameter:
 
 | Parameter | Werte | Standard | Effekt |
 | --- | --- | --- | --- |
@@ -168,7 +152,7 @@ Query-Parameter [tool-verified: function signature at lineage_router.py:73-76]:
 | `depth` | Ganzzahl | unbegrenzt | Maximale Hop-Distanz von `focus` |
 
 Die Antwort hat dieselbe Form wie der Statement-Graph, mit einem zusätzlichen Feld `cycles`
-[tool-verified: `MergedGraph.to_dict` in merge.py:60-64]:
+:
 
 ```json
 {
@@ -185,7 +169,7 @@ Die Antwort hat dieselbe Form wie der Statement-Graph, mit einem zusätzlichen F
 }
 ```
 
-## Woraus jede Aktualisierung gebaut wurde (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+## Woraus jede Aktualisierung gebaut wurde {: #what-each-refresh-was-built-from }
 
 Jede Aktualisierung einer materialisierten Sicht hält fest, woraus sie gebaut wurde: die Version der Definition der Sicht, die Version ihrer Eingaben und wie diese Version ermittelt wurde, sowie die Quellspalten und den Ausdruck jeder Ausgabespalte. Die Betriebssicht `"ops"."mv_refresh_lineage"` liefert eine Zeile pro Aktualisierung:
 
@@ -208,7 +192,7 @@ ORDER BY refreshed_at
 
 Die Sicht liest die Aktualisierungsdatensätze in `"ops"."traces"` und antwortet auf jeder Engine, die sie aufbewahrt. Auf Trino sind das die Iceberg-Tabellen des Katalogs `otel`. Auf DuckDB schreibt der Server seine eigenen Trace-Datensätze als Parquet-Dateien in seinen Telemetrie-Ordner (`PROVISA_TELEMETRY_DIR`, standardmäßig `~/.provisa/telemetry`), eine Datei pro Export-Batch in einem Ordner pro Tag. Die geplante Telemetrie-Kompaktierung (`otel.compact_cron`) fasst die kleinen Dateien jedes Tages zu Dateien von bis zu 64 MB zusammen. Jede Organisation liest nur ihre eigenen Aktualisierungen, und die Datensätze werden unbegrenzt aufbewahrt. Spans werden nur erfasst, solange das OpenTelemetry-SDK aktiviert ist (`OTEL_SDK_DISABLED` nicht gesetzt oder false).
 
-## Eine Sicht, wie sie stand und wie sie erfasst wurde (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+## Eine Sicht, wie sie stand und wie sie erfasst wurde {: #a-view-as-it-stood-and-as-it-was-recorded }
 
 Eine als bitemporal deklarierte Sicht behält jede Version, die sie je hatte: Jede Aktualisierung hängt an, und keine Version wird überschrieben, auf jedem Speicher. Ein einfacher Lesezugriff liefert den aktuellen Stand. Zwei Request-Header lesen ihre Vergangenheit:
 
@@ -217,13 +201,12 @@ Eine als bitemporal deklarierte Sicht behält jede Version, die sie je hatte: Je
 
 Stand 30. September, erfasst am 1. Oktober, ergibt den ursprünglichen Wert; erfasst am 5. Oktober ergibt die Korrektur. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest (`as_of`, `as_recorded`), sodass sich ein Bericht so reproduzieren lässt, wie er zuerst erstellt wurde. [Sichten mit Historie](configuration.md#views-with-history-time-travel) beschreibt, wie eine bitemporale Sicht deklariert wird, und jede Oberfläche, die die beiden Werte annimmt.
 
-## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
+## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde {: #what-a-column-rename-or-drop-would-break }
 
 Eine Spalte trägt zwei Namen, und jeder wird von einer anderen Gruppe von Artefakten gespeichert.
 
 Der **exponierte Name** ist das, was die SQL- und GraphQL-Oberflächen zeigen: `table_columns.alias`,
-mit Rückfall auf den snake_case-Standard, wenn kein Alias gesetzt ist [tool-verified:
-`computed_sql_alias` at `schema_helpers.py:317`]. Views, materialisierte Views,
+mit Rückfall auf den snake_case-Standard, wenn kein Alias gesetzt ist. Views, materialisierte Views,
 Metrik-Ausdrücke, RLS-Prädikate, DQ-Contracts, Metric-View-Granularitäten und MV-Row-Keys sind
 alle gegen diesen Namen geschrieben, sodass **das Umbenennen eines Alias sie genauso sicher
 bricht wie das Löschen der Spalte**.
@@ -235,8 +218,7 @@ brechen, wenn die Spalte **entfernt** wird.
 
 `columnDependents` meldet beides. Nachgelagerte Views und MVs stammen aus dem Slicing des
 Föderationsgraphen am exponierten Namen der Spalte; die Artefakte, die dieser Graph nicht
-abdeckt, stammen aus einem direkten Scan der Registry [tool-verified: `graph_dependents` in
-`provisa/lineage/dependents.py`, registry scans in `provisa/api/admin/column_dependents.py`].
+abdeckt, stammen aus einem direkten Scan der Registry.
 
 ```graphql
 query {
@@ -256,8 +238,7 @@ exponierten Namen gefunden, den sie in der Registry noch trägt; sobald der Alia
 wurde, ist der alte Name verschwunden und die Abfrage findet nichts.
 
 Die Tables-Seite führt die Abfrage automatisch aus, wenn eine ausstehende Änderung einen Alias
-ändert oder die Spaltenmenge verkleinert, und listet die Ergebnisse auf [tool-verified:
-`diffEditedColumns` in `provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`].
+ändert oder die Spaltenmenge verkleinert, und listet die Ergebnisse auf.
 Die Warnung ist beratend: Sie nennt die betroffenen Artefakte, und der Administrator entscheidet.
 Sie blockiert das Speichern nicht, weil nicht alle Verbraucher des Bestands erreichbar sind — ein
 externes Dashboard oder eine Client-Anwendung, die die Spalte namentlich abfragt, liegt außerhalb

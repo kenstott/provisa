@@ -1,20 +1,20 @@
 # Admin API
 
-La Admin API es un endpoint de Strawberry GraphQL en `POST /admin/graphql` (REQ-533). Requiere un rol de superusuario o admin (REQ-125, REQ-060) y es independiente del endpoint de GraphQL de datos (REQ-533).
+La Admin API es un endpoint de Strawberry GraphQL en `POST /admin/graphql`. Requiere un rol de superusuario o admin y es independiente del endpoint de GraphQL de datos.
 
 ## Autenticación {: #authentication }
 
-Pase sus credenciales en el encabezado `Authorization` usando el proveedor de autenticación estándar de Provisa (REQ-120):
+Pase sus credenciales en el encabezado `Authorization` usando el proveedor de autenticación estándar de Provisa:
 
 ```yaml
 Authorization: Bearer <token>
 ```
 
-El acceso admin se rige por la capacidad `admin` asignada a un rol (REQ-060, REQ-042).
+El acceso admin se rige por la capacidad `admin` asignada a un rol.
 
 ### Tokens de acceso personal {: #personal-access-tokens }
 
-Un token de acceso personal se acepta en todos los sitios donde se acepta un token bearer, incluido este endpoint. Emitirlo y revocarlo es autoservicio: es la credencial propia de quien lo posee, así que vive en el perfil del usuario dentro de la interfaz de administración y no bajo una página de administrador, junto a abandonar una organización y eliminar la cuenta. Un administrador no acuña tokens en nombre de otra persona. (REQ-1263)
+Un token de acceso personal se acepta en todos los sitios donde se acepta un token bearer, incluido este endpoint. Emitirlo y revocarlo es autoservicio: es la credencial propia de quien lo posee, así que vive en el perfil del usuario dentro de la interfaz de administración y no bajo una página de administrador, junto a abandonar una organización y eliminar la cuenta. Un administrador no acuña tokens en nombre de otra persona.
 
 | Ruta | Efecto |
 | ------- | -------- |
@@ -28,65 +28,65 @@ Omitir `role_id` deja que el token se resuelva al rol que tenga su propietario; 
 
 ### Gestión de Configuración {: #config-management }
 
-Descargue la configuración en ejecución actual (REQ-164):
+Descargue la configuración en ejecución actual:
 
 ```http
 GET /admin/config
 ```
 
-Devuelve el `config.yaml` completo como archivo YAML. Suba una nueva configuración (REQ-164):
+Devuelve el `config.yaml` completo como archivo YAML. Suba una nueva configuración:
 
 ```http
 PUT /admin/config
 ```
 
-Provisa valida el YAML, recarga los catálogos y regenera los esquemas (REQ-012, REQ-253). No requiere reinicio.
+Provisa valida el YAML, recarga los catálogos y regenera los esquemas. No requiere reinicio.
 
 ### Configuración en Tiempo de Ejecución {: #runtime-settings }
 
-Lea y escriba la configuración de la plataforma en tiempo de ejecución sin editar el archivo de configuración (REQ-165):
+Lea y escriba la configuración de la plataforma en tiempo de ejecución sin editar el archivo de configuración:
 
 ```http
 GET  /admin/settings
 PUT  /admin/settings
 ```
 
-La superficie de configuración abarca la redirección de resultados grandes, el muestreo predeterminado y el límite de filas, el TTL de la caché de respuestas, la convención de nomenclatura, el auto-rastreo de FK de relaciones, el DSN del almacén de materialización, la memoria del motor de federación (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`) y toda la superficie de ajuste del pipeline de trazas de OpenTelemetry (REQ-1082). Los límites de recorrido de GraphQL remoto y la configuración de nivel cálido/caché de lectura también se exponen (REQ-1081, REQ-1083).
+La superficie de configuración abarca la redirección de resultados grandes, el muestreo predeterminado y el límite de filas, el TTL de la caché de respuestas, la convención de nomenclatura, el auto-rastreo de FK de relaciones, el DSN del almacén de materialización, la memoria del motor de federación (`jvm_heap_gb`, `query_max_memory`, `query_max_memory_per_node`, `query_max_total_memory`, `fault_tolerant_execution`, `fault_tolerant_task_memory`, `exchange_spool_dir`) y toda la superficie de ajuste del pipeline de trazas de OpenTelemetry. Los límites de recorrido de GraphQL remoto y la configuración de nivel cálido/caché de lectura también se exponen.
 
-La tarjeta **Servidores de conectores** nombra, para cada conector con un servidor incluido (File Crawler, SharePoint, Salesforce, ServiceNow, Cloud Inventory, Splunk, AskAmerica), una carpeta que contiene un paquete de servidor construido para este host (`connectors.<connector>.bundle_dir`, variable de entorno `PROVISA_PGWIRE_BUNDLE_<CONNECTOR>`). Vacía, el servidor del conector se obtiene desde la versión fijada de `kenstott/calcite`. Establecida, la carpeta se usa tal como está: su lanzador debe estar en `bin/pgwire-<connector>`, y una carpeta sin él impide que el servidor del conector arranque con un error que nombra la configuración; la versión nunca se obtiene en su lugar. La configuración se lee cada vez que el servidor de un conector arranca (REQ-1954). [tool-verified: `provisa/core/settings_catalog_connectors.py`; `provisa/runtime_deps/pgwire_bundles.py` `BundleResolver.resolve`]
+La tarjeta **Servidores de conectores** nombra, para cada conector con un servidor incluido (File Crawler, SharePoint, Salesforce, ServiceNow, Cloud Inventory, Splunk, AskAmerica), una carpeta que contiene un paquete de servidor construido para este host (`connectors.<connector>.bundle_dir`, variable de entorno `PROVISA_PGWIRE_BUNDLE_<CONNECTOR>`). Vacía, el servidor del conector se obtiene desde la versión fijada de `kenstott/calcite`. Establecida, la carpeta se usa tal como está: su lanzador debe estar en `bin/pgwire-<connector>`, y una carpeta sin él impide que el servidor del conector arranque con un error que nombra la configuración; la versión nunca se obtiene en su lugar. La configuración se lee cada vez que el servidor de un conector arranca.
 
-Postura de seguridad — `security.mode` (`standard` | `high`) — aplicada al reiniciar (REQ-1079):
+Postura de seguridad — `security.mode` (`standard` | `high`) — aplicada al reiniciar:
 
 ```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
-Asignaciones de modelos de IA, el registro de modelos de embeddings/vectores, y el límite de tasa de NL — surten efecto en la siguiente solicitud, sin necesidad de reiniciar (REQ-1349): [tool-verified: `provisa/api/admin/ai_models_router.py:38-39`]
+Asignaciones de modelos de IA, el registro de modelos de embeddings/vectores, y el límite de tasa de NL — surten efecto en la siguiente solicitud, sin necesidad de reiniciar:
 
 ```http
 GET  /admin/ai-models
 PUT  /admin/ai-models
 ```
 
-La pestaña de cifrado del admin deriva su lista de proveedores en vivo desde el registro de cifrado; los proveedores no disponibles aparecen pero no son seleccionables (REQ-1091).
+La pestaña de cifrado del admin deriva su lista de proveedores en vivo desde el registro de cifrado; los proveedores no disponibles aparecen pero no son seleccionables.
 
-`GET`/`HEAD /health` y `GET /setup/status` siempre están sin autenticar — eluden el requisito de `Authorization: Bearer` incluso cuando hay un proveedor de autenticación configurado (REQ-539).
+`GET`/`HEAD /health` y `GET /setup/status` siempre están sin autenticar — eluden el requisito de `Authorization: Bearer` incluso cuando hay un proveedor de autenticación configurado.
 
 ### Motor de federación {: #federation-engine }
 
-Lea o cambie qué motor usa el despliegue (REQ-916):
+Lea o cambie qué motor usa el despliegue:
 
 ```http
 GET  /admin/federation-engine
 PUT  /admin/federation-engine
 ```
 
-`GET` devuelve la clave del motor activo y los campos de configuración que necesita. `PUT` acepta un cuerpo con `engine` (la clave) y cualquier campo específico del motor; la selección se persiste en la configuración de la plataforma y se vincula en el siguiente reinicio del servicio. [tool-verified: `provisa/api/admin/settings_router.py:730-829`]
+`GET` devuelve la clave del motor activo y los campos de configuración que necesita. `PUT` acepta un cuerpo con `engine` (la clave) y cualquier campo específico del motor; la selección se persiste en la configuración de la plataforma y se vincula en el siguiente reinicio del servicio.
 
 ### Editor de Relaciones {: #relationship-editor }
 
-Liste las relaciones (REQ-166):
+Liste las relaciones:
 
 ```graphql
 query {
@@ -102,7 +102,7 @@ query {
 }
 ```
 
-Cree una relación (REQ-019). Un id que ya existe se rechaza; una relación se cambia con `updateRelationship`, que toma la misma entrada:
+Cree una relación. Un id que ya existe se rechaza; una relación se cambia con `updateRelationship`, que toma la misma entrada:
 
 ```graphql
 mutation {
@@ -119,7 +119,7 @@ mutation {
 }
 ```
 
-Declare una relación respaldada por una tabla de unión (REQ-1586):
+Declare una relación respaldada por una tabla de unión:
 
 ```graphql
 mutation {
@@ -144,11 +144,11 @@ mutation {
 
 Una tabla asociativa se declara como arista, nunca se descubre. `viaTable` nombra una tabla registrada; sus dos columnas clave llevan la arista, y cada columna restante pasa a ser un atributo de la relación, filtrable como cualquier otro campo. `viaTypeColumn` / `viaTypeValue` dividen una misma tabla de unión en varios tipos de arista — tres filas de `pet_companions` con `companion_type` igual a `bonded pair`, `littermate` y `shares enclosure` son tres relaciones distintas sobre el mismo par de tablas.
 
-`viaLabelSource` designa de dónde procede el nombre expuesto, y las tres formas se pasan a UPPER_SNAKE_CASE para Cypher: `column` usa `viaTypeValue` (`BONDED_PAIR`), `table` usa el nombre propio de la tabla de unión (`PET_COMPANIONS`), `fixed` usa el `alias` declarado. Una tabla de unión declarada así es una arista y no una entidad — desaparece de las etiquetas de nodo, por lo que nunca aparece como píldora de nodo en la interfaz del grafo. [tool-verified: `provisa/api/admin/types.py:606-611`, `provisa/api/admin/db_queries.py:47-82`]
+`viaLabelSource` designa de dónde procede el nombre expuesto, y las tres formas se pasan a UPPER_SNAKE_CASE para Cypher: `column` usa `viaTypeValue` (`BONDED_PAIR`), `table` usa el nombre propio de la tabla de unión (`PET_COMPANIONS`), `fixed` usa el `alias` declarado. Una tabla de unión declarada así es una arista y no una entidad — desaparece de las etiquetas de nodo, por lo que nunca aparece como píldora de nodo en la interfaz del grafo.
 
 ### Descubrimiento de Relaciones con IA {: #ai-relationship-discovery }
 
-Active el análisis de FK impulsado por Claude vía REST (REQ-167, REQ-018):
+Active el análisis de FK impulsado por Claude vía REST:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -166,7 +166,7 @@ curl -X POST http://localhost:8001/admin/discover/candidates/{id}/accept \
 
 ### Introspección de Esquemas {: #schema-introspection }
 
-Explore las tablas publicadas en todos los orígenes (REQ-008):
+Explore las tablas publicadas en todos los orígenes:
 
 ```graphql
 query {
@@ -189,7 +189,7 @@ query {
 }
 ```
 
-### Verificación de dependencias de columnas (REQ-1484) {: #column-dependency-check-req-1484 }
+### Verificación de dependencias de columnas {: #column-dependency-check }
 
 Antes de guardar una edición de tabla que renombra el alias SQL de una columna o elimina una
 columna, pregunte qué más la referencia:
@@ -212,7 +212,7 @@ verificación al guardar y muestra el resultado como un diálogo consultivo. Con
 
 ### Gestión de Vistas {: #view-management }
 
-Registre una vista materializada (REQ-133, REQ-135):
+Registre una vista materializada:
 
 ```graphql
 mutation {
@@ -226,7 +226,7 @@ mutation {
 }
 ```
 
-Active una actualización manual (REQ-135):
+Active una actualización manual:
 
 ```graphql
 mutation {
@@ -238,7 +238,7 @@ mutation {
 
 ### Registro de Orígenes de Grafo {: #graph-source-registration }
 
-Los orígenes Neo4j y SPARQL se registran mediante endpoints REST (no la Admin API de GraphQL) (REQ-295, REQ-297):
+Los orígenes Neo4j y SPARQL se registran mediante endpoints REST (no la Admin API de GraphQL):
 
 **Neo4j:**
 
@@ -273,9 +273,9 @@ curl -X POST http://localhost:8001/admin/sources/sparql/kg/tables \
   -d '{"table_name": "products", "sparql_query": "SELECT ?name ?category WHERE { ?p a :Product ; :name ?name ; :category ?category . }", "ttl": 600}'
 ```
 
-Una vez registradas, las tablas aparecen en el esquema de GraphQL y son consultables como cualquier otro origen (REQ-016).
+Una vez registradas, las tablas aparecen en el esquema de GraphQL y son consultables como cualquier otro origen.
 
-### Importación de Hasura / DDN (REQ-1483) {: #hasura-ddn-import-req-1483 }
+### Importación de Hasura / DDN {: #hasura-ddn-import }
 
 Convierta un proyecto existente de Hasura v2 o de Hasura DDN en configuración de Provisa desde la interfaz de administración o la API, sin que nada aterrice hasta que usted lo apruebe.
 
@@ -300,9 +300,9 @@ POST /admin/import/hasura/apply
 
 **La aplicación** toma el YAML que usted revisó (y editó, si procede) y lo carga en la organización que actúa, por la misma ruta de recarga en caliente que `PUT /admin/config`. Cuerpo de la solicitud: `{"config_yaml": "<yaml string>"}`.
 
-La vista previa nunca almacena en caché el YAML convertido en el servidor; la aplicación toma el YAML que usted proporciona, así que lo que se aplica es exactamente lo que se revisó. [tool-verified: `provisa/api/admin/import_router.py`]
+La vista previa nunca almacena en caché el YAML convertido en el servidor; la aplicación toma el YAML que usted proporciona, así que lo que se aplica es exactamente lo que se revisó.
 
-### Intercambio con Apache Ossie (REQ-1316, REQ-1321) {: #apache-ossie-interchange-req-1316-req-1321 }
+### Intercambio con Apache Ossie {: #apache-ossie-interchange }
 
 Provisa interopera con Apache Ossie (en incubación) como frontera de importación y exportación.
 
@@ -311,11 +311,11 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**La exportación** (`GET /admin/ossie`) deriva el documento YAML de Ossie del modelo gobernado en vivo en cada solicitud: nunca se almacena en caché, así que no puede quedar obsoleto. La respuesta es `text/yaml` con una cabecera `Content-Disposition: attachment`. El documento es un modelo con `version`, `name`, `datasets`, `relationships` y `metrics` en su raíz: las tablas se convierten en objetos `dataset`, las columnas en objetos `field`, y las relaciones se asignan a objetos `relationship` de Ossie. Un modelo sin ninguna tabla se rechaza con `422`. (REQ-1321) [tool-verified: `provisa/api/admin/ossie_router.py:download_ossie`]
+**La exportación** (`GET /admin/ossie`) deriva el documento YAML de Ossie del modelo gobernado en vivo en cada solicitud: nunca se almacena en caché, así que no puede quedar obsoleto. La respuesta es `text/yaml` con una cabecera `Content-Disposition: attachment`. El documento es un modelo con `version`, `name`, `datasets`, `relationships` y `metrics` en su raíz: las tablas se convierten en objetos `dataset`, las columnas en objetos `field`, y las relaciones se asignan a objetos `relationship` de Ossie. Un modelo sin ninguna tabla se rechaza con `422`.
 
-**La importación** (`POST /admin/ossie/import`) acepta un documento YAML o JSON de Ossie (el formato se detecta automáticamente). Analiza el documento y devuelve los registros propuestos de tablas, relaciones y métricas como un objeto JSON; no se registra nada. Solo lee la forma plana del documento; un documento que envuelve su modelo en `semantic_model` se rechaza por su nombre. La pantalla de revisión de la interfaz de administración le permite aceptar o recortar las propuestas antes de que se dispare ninguna mutación. (REQ-1316) [tool-verified: `provisa/api/admin/ossie_router.py:import_ossie`]
+**La importación** (`POST /admin/ossie/import`) acepta un documento YAML o JSON de Ossie (el formato se detecta automáticamente). Analiza el documento y devuelve los registros propuestos de tablas, relaciones y métricas como un objeto JSON; no se registra nada. Solo lee la forma plana del documento; un documento que envuelve su modelo en `semantic_model` se rechaza por su nombre. La pantalla de revisión de la interfaz de administración le permite aceptar o recortar las propuestas antes de que se dispare ninguna mutación.
 
-### Almacenamiento de objetos (REQ-1046, REQ-1048, REQ-1049) {: #object-storage-req-1046-req-1048-req-1049 }
+### Almacenamiento de objetos {: #object-storage }
 
 Lea o configure el almacenamiento de materialización de la organización:
 
@@ -324,9 +324,9 @@ GET  /admin/org-storage
 PUT  /admin/org-storage
 ```
 
-`GET` informa de cuánta asignación de almacenamiento de la plataforma usa la organización. `PUT` registra el DSN de almacenamiento propio de la organización (cifrado en reposo; nunca lo devuelve GET). Una vez establecido, las materializaciones de la organización aterrizan en su propio bucket y dejan de contar contra la asignación de la plataforma. Enviar `storage_url: null` lo borra y devuelve la organización al almacén de la plataforma. [tool-verified: `provisa/api/admin/org_storage_router.py`]
+`GET` informa de cuánta asignación de almacenamiento de la plataforma usa la organización. `PUT` registra el DSN de almacenamiento propio de la organización (cifrado en reposo; nunca lo devuelve GET). Una vez establecido, las materializaciones de la organización aterrizan en su propio bucket y dejan de contar contra la asignación de la plataforma. Enviar `storage_url: null` lo borra y devuelve la organización al almacén de la plataforma.
 
-### Cifrado de la organización (REQ-1574) {: #org-encryption-req-1574 }
+### Cifrado de la organización {: #org-encryption }
 
 Establezca o rote la clave de cifrado en reposo de la organización:
 
@@ -335,17 +335,17 @@ GET  /admin/org-encryption
 PUT  /admin/org-encryption
 ```
 
-`GET` devuelve la huella, el id y la procedencia de la clave; nunca el material de la clave. `PUT` establece o rota la clave. Proporcione `key_b64` (32 bytes en bruto, codificados en base64) para aportar su propia clave, u omítalo para que Provisa genere una. No hay eliminación: retirar la última clave dejaría ilegible toda carga que hubiera envuelto. [tool-verified: `provisa/api/admin/org_encryption_router.py`]
+`GET` devuelve la huella, el id y la procedencia de la clave; nunca el material de la clave. `PUT` establece o rota la clave. Proporcione `key_b64` (32 bytes en bruto, codificados en base64) para aportar su propia clave, u omítalo para que Provisa genere una. No hay eliminación: retirar la última clave dejaría ilegible toda carga que hubiera envuelto.
 
 ## GraphiQL
 
-La Admin API incluye GraphiQL en `GET /admin/graphql` en el navegador (REQ-622). Úselo para explorar el esquema admin completo de forma interactiva.
+La Admin API incluye GraphiQL en `GET /admin/graphql` en el navegador. Úselo para explorar el esquema admin completo de forma interactiva.
 
-## Vistas de gestión del dominio ops (REQ-1386) {: #ops-domain-management-views-req-1386 }
+## Vistas de gestión del dominio ops {: #ops-domain-management-views }
 
-En cada instalación se siembran ocho vistas SQL en el dominio integrado `ops`. [tool-verified: `provisa/api/startup_seed.py:225-331` `_seed_ops_domain`] Exponen el registro de auditoría de consultas como tablas gobernadas, consultables mediante SQL (pgwire), GraphQL y Cypher bajo las mismas reglas de acceso de dominio, RLS y enmascaramiento que cualquier tabla de negocio.
+En cada instalación se siembran ocho vistas SQL en el dominio integrado `ops`. Exponen el registro de auditoría de consultas como tablas gobernadas, consultables mediante SQL (pgwire), GraphQL y Cypher bajo las mismas reglas de acceso de dominio, RLS y enmascaramiento que cualquier tabla de negocio.
 
-`org_admin` queda designado como responsable del dominio ops en el momento de la siembra, de modo que el dominio nunca aparece como una laguna de gobernanza en `stale_metadata`. [tool-verified: `startup_seed.py:326-331`]
+`org_admin` queda designado como responsable del dominio ops en el momento de la siembra, de modo que el dominio nunca aparece como una laguna de gobernanza en `stale_metadata`.
 
 | Vista | A qué responde |
 | --- | --- |
@@ -358,7 +358,7 @@ En cada instalación se siembran ocho vistas SQL en el dominio integrado `ops`. 
 | `stale_metadata` | Tablas y columnas sin descripción; dominios sin responsable |
 | `join_hotspots` | Pares de tablas consultadas juntas con más frecuencia: candidatas a materialización o caché |
 
-Hoy se aplican dos límites. La granularidad es de tabla: el registro de auditoría anota `table_ids`, no las columnas concretas a las que se accede. El texto de la consulta está cifrado (REQ-689) y queda excluido de todas estas vistas; solo es accesible por la vía de descifrado administrativa autorizada. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+Hoy se aplican dos límites. La granularidad es de tabla: el registro de auditoría anota `table_ids`, no las columnas concretas a las que se accede. El texto de la consulta está cifrado y queda excluido de todas estas vistas; solo es accesible por la vía de descifrado administrativa autorizada.
 
 Un rol necesita acceso al dominio `ops` para que estas vistas sean visibles. Concédalo igual que concede el acceso a cualquier otro dominio.
 
@@ -380,34 +380,34 @@ FROM ops.surface_mix
 ORDER BY day DESC, query_count DESC;
 ```
 
-Las mismas consultas se ejecutan como GraphQL o Cypher sobre cualquier transporte gobernado: pgwire, Arrow Flight o Bolt. [inferred from governed-surface design]
+Las mismas consultas se ejecutan como GraphQL o Cypher sobre cualquier transporte gobernado: pgwire, Arrow Flight o Bolt.
 
-## Visor de informes (REQ-1390) {: #reports-viewer-req-1390 }
+## Visor de informes {: #reports-viewer }
 
 El visor de informes está en `/admin/reports`. Los roles sin la capacidad `observability` no pueden llegar a él.
 
-El panel izquierdo lista cada tabla registrada del dominio `ops`, ordenada por alias. [tool-verified: `ReportsTab.tsx:46-52` — filters `tables` to `domainId === "ops"`] Las ocho vistas de gestión sembradas aparecen ahí automáticamente. Haga clic en cualquier informe para cargarlo en el visor de datos gobernado de la derecha.
+El panel izquierdo lista cada tabla registrada del dominio `ops`, ordenada por alias. Las ocho vistas de gestión sembradas aparecen ahí automáticamente. Haga clic en cualquier informe para cargarlo en el visor de datos gobernado de la derecha.
 
-**Añadir un informe propio.** El botón «Añadir informe» abre un diálogo. Indique un nombre, una descripción opcional y una sentencia SELECT. Al guardar, la vista se registra como tabla derivada gobernada en el dominio `ops`: catalogada, con control de acceso y consultable por todas las superficies junto a las vistas sembradas. [tool-verified: `ReportsTab.tsx:70-96` — `registerTable` called with `sourceId: DERIVED_SOURCE_ID, domainId: "ops"`]
+**Añadir un informe propio.** El botón «Añadir informe» abre un diálogo. Indique un nombre, una descripción opcional y una sentencia SELECT. Al guardar, la vista se registra como tabla derivada gobernada en el dominio `ops`: catalogada, con control de acceso y consultable por todas las superficies junto a las vistas sembradas.
 
-**Eliminar.** El icono de papelera solo aparece en los informes propios. Las vistas de gestión sembradas no se pueden eliminar desde esta interfaz. [tool-verified: `ReportsTab.tsx:151` — `const custom = report.sourceId === DERIVED_SOURCE_ID` gates the delete button]
+**Eliminar.** El icono de papelera solo aparece en los informes propios. Las vistas de gestión sembradas no se pueden eliminar desde esta interfaz.
 
-## Vista previa de tabla (REQ-1392) {: #table-preview-req-1392 }
+## Vista previa de tabla {: #table-preview }
 
-Despliegue cualquier fila de tabla en la página Tablas. El botón **Vista previa** abre un modal al 90 % de ancho con los datos gobernados en vivo de la tabla. [tool-verified: `TablePreviewModal.tsx:24` — `size="90%"`; `GovernedTableViewer.tsx` is the underlying viewer]
+Despliegue cualquier fila de tabla en la página Tablas. El botón **Vista previa** abre un modal al 90 % de ancho con los datos gobernados en vivo de la tabla.
 
-Las tablas respaldadas por APIs con parámetros de ruta obligatorios bloquean la vista previa hasta que se suministran esos valores. Un formulario en línea recoge cada parámetro obligatorio antes de que se ejecute la primera consulta; los parámetros de consulta opcionales aparecen en el mismo formulario. [tool-verified: `GovernedTableViewer.tsx:51-55, 153-155` — `requiredParamColumns` check; "paramsRequired" message shown when `activeParams == null`]
+Las tablas respaldadas por APIs con parámetros de ruta obligatorios bloquean la vista previa hasta que se suministran esos valores. Un formulario en línea recoge cada parámetro obligatorio antes de que se ejecute la primera consulta; los parámetros de consulta opcionales aparecen en el mismo formulario.
 
-## Visor de datos gobernado (REQ-1391) {: #governed-data-viewer-req-1391 }
+## Visor de datos gobernado {: #governed-data-viewer }
 
 El mismo componente de visor impulsa el modal de vista previa y el visor de informes. Su comportamiento es idéntico en ambos contextos.
 
-**Paginación en el servidor.** Cada página es su propio `SELECT *` gobernado con `LIMIT 101 OFFSET n`. Aparecen 100 filas por página; la número 101 indica si hay más. El conjunto de datos completo nunca se carga en el navegador. [tool-verified: `nativeParams.ts:72` — `LIMIT ${pageSize + 1} OFFSET ${page * pageSize}`; `types.ts:74` — `PAGE_SIZE = 100`]
+**Paginación en el servidor.** Cada página es su propio `SELECT *` gobernado con `LIMIT 101 OFFSET n`. Aparecen 100 filas por página; la número 101 indica si hay más. El conjunto de datos completo nunca se carga en el navegador.
 
-**Filtros y ordenaciones empujados a la fuente.** Cada cabecera de columna tiene un campo de filtro. Los términos de filtro se convierten en predicados `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`; los clics de ordenación producen cláusulas `ORDER BY`. Ambos van a la base de datos: un filtro sobre una tabla de mil millones de filas recorre la fuente, no las 100 filas que tiene delante. [tool-verified: `nativeParams.ts:53-70`]
+**Filtros y ordenaciones empujados a la fuente.** Cada cabecera de columna tiene un campo de filtro. Los términos de filtro se convierten en predicados `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`; los clics de ordenación producen cláusulas `ORDER BY`. Ambos van a la base de datos: un filtro sobre una tabla de mil millones de filas recorre la fuente, no las 100 filas que tiene delante.
 
-**Agrupación de varios niveles.** El icono de capas de cualquier cabecera de columna incorpora esa columna a la agrupación. Las columnas de agrupación encabezan el `ORDER BY`, de modo que los miembros de un grupo caen en la misma página que su cabecera al cruzar los límites de página. Las columnas de clave primaria se añaden al final como desempate estable. [tool-verified: `nativeParams.ts:61-70` — group columns first, then explicit sorts, then PKs] Las filas de cabecera de grupo se pueden contraer; contraerlas oculta los miembros sin lanzar una nueva consulta. [tool-verified: `useResultsGrid.ts:150-171` — `collapsedGroups` set gates the `build()` recursion]
+**Agrupación de varios niveles.** El icono de capas de cualquier cabecera de columna incorpora esa columna a la agrupación. Las columnas de agrupación encabezan el `ORDER BY`, de modo que los miembros de un grupo caen en la misma página que su cabecera al cruzar los límites de página. Las columnas de clave primaria se añaden al final como desempate estable. Las filas de cabecera de grupo se pueden contraer; contraerlas oculta los miembros sin lanzar una nueva consulta.
 
-**Preferencias persistentes.** Los ajustes de filtro, orden y agrupación se guardan en `localStorage` bajo `provisa.grid.table:<domain>.<table>` y se restauran en la siguiente visita. [tool-verified: `useResultsGrid.ts:95-98`, `GovernedTableViewer.tsx:66`]
+**Preferencias persistentes.** Los ajustes de filtro, orden y agrupación se guardan en `localStorage` bajo `provisa.grid.table:<domain>.<table>` y se restauran en la siguiente visita.
 
-**Exportación.** Descargue la página actual como CSV o cópiela al portapapeles como texto separado por tabuladores. La exportación abarca solo la página visible. [tool-verified: `useResultsGrid.ts:247-274` — both handlers iterate `displayRows`, which in server-paged mode is the current page]
+**Exportación.** Descargue la página actual como CSV o cópiela al portapapeles como texto separado por tabuladores. La exportación abarca solo la página visible.

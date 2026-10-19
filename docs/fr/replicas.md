@@ -1,10 +1,10 @@
 # Répliques {: #replicas }
 
-Une réplique est une copie d'une table source que Provisa conserve dans le magasin de matérialisation du moteur et lit à la place de la source. Cette page traite de ce sur quoi une réplique est indexée, de l'endroit où conserver les répliques et de leur fraîcheur. Qu'une table soit répliquée ou non est déterminé par [`replicate`](configuration.md#the-replicate-setting) et par ce que le moteur peut atteindre ; voir [Ce qu'un moteur change](engines.md#what-an-engine-changes). (REQ-826)
+Une réplique est une copie d'une table source que Provisa conserve dans le magasin de matérialisation du moteur et lit à la place de la source. Cette page traite de ce sur quoi une réplique est indexée, de l'endroit où conserver les répliques et de leur fraîcheur. Qu'une table soit répliquée ou non est déterminé par [`replicate`](configuration.md#the-replicate-setting) et par ce que le moteur peut atteindre ; voir [Ce qu'un moteur change](engines.md#what-an-engine-changes).
 
 ## Les répliques sont indexées {: #replicas-are-indexed }
 
-Provisa indexe une réplique selon la façon dont le modèle utilise sa table. (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
+Provisa indexe une réplique selon la façon dont le modèle utilise sa table.
 
 - **La clé primaire déclarée**, appliquée comme clé.
 - **Les colonnes sur lesquelles les relations déclarées font la jointure** :
@@ -24,22 +24,22 @@ relationships:
     cardinality: many-to-one
 ```
 
-La réplique de `orders` reçoit sa clé et un index sur `customer_id`. La réplique de `customers` reçoit sa clé et, lorsque `id` est cette clé, n'a besoin de rien de plus. Une jointure des deux lit alors un index de chaque côté, dans un magasin qui utilise les index pour les jointures (voir [Ce que construit chaque magasin](#what-each-store-builds)). Une relation portant sur une colonne calculée que la réplique ne contient pas ne reçoit aucun index. [tool-verified: `provisa/federation/replica_indexes.py` `plan`]
+La réplique de `orders` reçoit sa clé et un index sur `customer_id`. La réplique de `customers` reçoit sa clé et, lorsque `id` est cette clé, n'a besoin de rien de plus. Une jointure des deux lit alors un index de chaque côté, dans un magasin qui utilise les index pour les jointures (voir [Ce que construit chaque magasin](#what-each-store-builds)). Une relation portant sur une colonne calculée que la réplique ne contient pas ne reçoit aucun index.
 
-Déclarez la clé avec `is_primary_key: true` sur la colonne. Une réplique sans clé déclarée ne reçoit que ses index de jointure. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
+Déclarez la clé avec `is_primary_key: true` sur la colonne. Une réplique sans clé déclarée ne reçoit que ses index de jointure.
 
 ### Lisible d'abord, indexée ensuite {: #readable-first-indexed-after }
 
-Un atterrissage n'attend jamais les index. La réplique est lue dès l'instant où elle est substituée ; le runner de répliques construit ensuite ses index un par un, dans une passe distincte, sous un verrou d'index par réplique. [tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] Attendez-vous à ce que les premières requêtes après un atterrissage s'exécutent sans eux.
+Un atterrissage n'attend jamais les index. La réplique est lue dès l'instant où elle est substituée ; le runner de répliques construit ensuite ses index un par un, dans une passe distincte, sous un verrou d'index par réplique. Attendez-vous à ce que les premières requêtes après un atterrissage s'exécutent sans eux.
 
-Chaque atterrissage consigne les index qu'il a demandés, ceux qui ont été construits et ceux qui ont échoué, par nom, dans l'enregistrement de la réplique dans le plan de contrôle (`replica_state.index_state`). [tool-verified: `provisa/federation/replica_state.py` `record_index_plan`, `settle_index_state`]
+Chaque atterrissage consigne les index qu'il a demandés, ceux qui ont été construits et ceux qui ont échoué, par nom, dans l'enregistrement de la réplique dans le plan de contrôle (`replica_state.index_state`).
 
-- **Un index en échec ne fait jamais échouer l'atterrissage.** Il est journalisé avec sa cause et redemandé par l'atterrissage suivant. La ligne du journal est `replica of <source>.<schema>.<table>: index <name> on (<columns>) failed: <cause>`. [tool-verified: `provisa/federation/replica_indexes.py` `build_due`]
-- **Des lignes qui répètent une clé déclarée constituent un échec à part**, code `replica.index_duplicate_key`, qui nomme les colonnes de la clé. La source contient des doublons d'un ensemble de colonnes que le modèle déclare unique. Une nouvelle tentative n'y change rien : corrigez les données à la source, ou corrigez la clé déclarée. [tool-verified: `provisa/federation/replica_indexes.py` `DuplicateKey`, `DUPLICATE_KEY`]
-- **Un atterrissage qui remplace la table en cours de construction** laisse derrière lui les constructions antérieures ; elles s'arrêtent et ne consignent rien, et la nouvelle table reçoit les siennes. Sur un magasin PostgreSQL, la substitution annule une construction encore en cours sur la table qu'elle remplace. [tool-verified: `provisa/federation/replica_target.py` `_pg_swap`; `provisa/federation/replica_indexes.py` `build_due`]
-- **Le plan suit le modèle à chaque atterrissage.** Une relation ajoutée plus tard reçoit son index au prochain atterrissage de la réplique. [tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
+- **Un index en échec ne fait jamais échouer l'atterrissage.** Il est journalisé avec sa cause et redemandé par l'atterrissage suivant. La ligne du journal est `replica of <source>.<schema>.<table>: index <name> on (<columns>) failed: <cause>`.
+- **Des lignes qui répètent une clé déclarée constituent un échec à part**, code `replica.index_duplicate_key`, qui nomme les colonnes de la clé. La source contient des doublons d'un ensemble de colonnes que le modèle déclare unique. Une nouvelle tentative n'y change rien : corrigez les données à la source, ou corrigez la clé déclarée.
+- **Un atterrissage qui remplace la table en cours de construction** laisse derrière lui les constructions antérieures ; elles s'arrêtent et ne consignent rien, et la nouvelle table reçoit les siennes. Sur un magasin PostgreSQL, la substitution annule une construction encore en cours sur la table qu'elle remplace.
+- **Le plan suit le modèle à chaque atterrissage.** Une relation ajoutée plus tard reçoit son index au prochain atterrissage de la réplique.
 
-L'interface d'administration n'affiche pas l'enregistrement des index. Lisez le journal du serveur, ou la colonne `index_state` de la ligne de la réplique. [tool-verified: no reader of `index_state` outside `provisa/federation/replica_state.py` and `replica_indexes.py`]
+L'interface d'administration n'affiche pas l'enregistrement des index. Lisez le journal du serveur, ou la colonne `index_state` de la ligne de la réplique.
 
 ### Ce que construit chaque magasin {: #what-each-store-builds }
 
@@ -51,24 +51,22 @@ L'interface d'administration n'affiche pas l'enregistrement des index. Lisez le 
 | ClickHouse | La clé de tri uniquement | Une réplique ClickHouse est ordonnée par sa clé déclarée (`ORDER BY`), fixée à l'atterrissage. ClickHouse n'a pas d'index B-tree secondaire à construire. |
 | Snowflake, BigQuery, Databricks, Fabric, Synapse | Rien | L'entrepôt de données organise lui-même la table. |
 
-[tool-verified: `provisa/federation/replica_target.py` `PostgresIndexer`, `SqlAlchemyIndexer`, `DuckDBStoreIndexer`; `provisa/federation/materialize_broker.py` `_SyncedStore.replica_index`; `provisa/federation/clickhouse_store.py` `create_ddl`; `replica_indexer` in `backend.py`, `pg_backend.py`, `duckdb_backend.py`, `sqlalchemy_backend.py`, `clickhouse_backend.py`, `snowflake_backend.py`, `bigquery_backend.py`, `databricks_backend.py`, `mssql_warehouse_backend.py`]
-
 Un index n'aide qu'une jointure qui s'exécute là où il se trouve. Deux moteurs lisent leur magasin sans se servir de ses index pour les jointures :
 
-- **DuckDB avec son fichier embarqué.** Le moteur n'attache jamais le fichier. Chaque instruction lit sa propre copie locale de chaque table du magasin qu'elle nomme, refaite chaque fois que le magasin a changé. Les jointures s'exécutent comme des jointures par hachage sur cette copie ; les index de jointure ne les accélèrent donc pas ; les index du fichier appliquent la clé et servent tout ce qui lit le fichier sur place. [tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`, `_copy_store_table`; `provisa/federation/replica_target.py` `DuckDBStoreIndexer`]
-- **DuckDB avec un magasin PostgreSQL.** DuckDB lit le magasin via son extension `postgres` avec le pushdown de filtres désactivé (bogue amont duckdb/duckdb-postgres#564) ; il parcourt donc la réplique, puis filtre et joint dans DuckDB. Les index du magasin sont construits, mais ces lectures ne s'en servent pas. [tool-verified: `provisa/federation/duckdb_extensions.py` `_EXTENSION_SETTINGS`]
+- **DuckDB avec son fichier embarqué.** Le moteur n'attache jamais le fichier. Chaque instruction lit sa propre copie locale de chaque table du magasin qu'elle nomme, refaite chaque fois que le magasin a changé. Les jointures s'exécutent comme des jointures par hachage sur cette copie ; les index de jointure ne les accélèrent donc pas ; les index du fichier appliquent la clé et servent tout ce qui lit le fichier sur place.
+- **DuckDB avec un magasin PostgreSQL.** DuckDB lit le magasin via son extension `postgres` avec le pushdown de filtres désactivé (bogue amont duckdb/duckdb-postgres#564) ; il parcourt donc la réplique, puis filtre et joint dans DuckDB. Les index du magasin sont construits, mais ces lectures ne s'en servent pas.
 
-Un magasin MotherDuck est attaché et lu sur place. [tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`]
+Un magasin MotherDuck est attaché et lu sur place.
 
 ## Utiliser une base relationnelle comme magasin de répliques là où le moteur y exécute le SQL {: #use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it }
 
 Quand le moteur exécute ses jointures à l'intérieur d'une base relationnelle, conservez-y les répliques. Les jointures lisent alors les index ci-dessus. Trois configurations le font :
 
-- **Le moteur `pg`.** Les répliques atterrissent dans la base PostgreSQL propre du moteur et chaque instruction s'y exécute, via leurs index. [tool-verified: `provisa/federation/pg_backend.py` `replica_target`, `replica_indexer`]
-- **Un moteur relationnel** (`mysql`, `oracle`, `mssql`, le fourre-tout `sqlalchemy` et les autres). Chaque source atterrit dans cette base et y est interrogée. [tool-verified: `provisa/federation/sqlalchemy_backend.py` `replica_indexer`; [Référence des moteurs](configuration.md#engine-reference)]
-- **Trino avec son magasin PostgreSQL.** PostgreSQL est le seul magasin que Trino prend en charge ; Trino lit les répliques par son connecteur PostgreSQL. [tool-verified: `provisa/federation/engine.py` `build_trino_engine` `supported_materialize_stores`; `provisa/federation/backend.py` `TrinoBackend.materialize_store_target`] Un filtre ou une jointure que Trino délègue à PostgreSQL utilise les index ; le travail que Trino fait lui-même, non. [inferred]
+- **Le moteur `pg`.** Les répliques atterrissent dans la base PostgreSQL propre du moteur et chaque instruction s'y exécute, via leurs index.
+- **Un moteur relationnel** (`mysql`, `oracle`, `mssql`, le fourre-tout `sqlalchemy` et les autres). Chaque source atterrit dans cette base et y est interrogée.
+- **Trino avec son magasin PostgreSQL.** PostgreSQL est le seul magasin que Trino prend en charge ; Trino lit les répliques par son connecteur PostgreSQL. Un filtre ou une jointure que Trino délègue à PostgreSQL utilise les index ; le travail que Trino fait lui-même, non.
 
-Dirigez un moteur vers un magasin avec `PROVISA_MATERIALIZE_URL` ou `materialize_store_url` ; le magasin enregistré par l'organisation elle-même est prioritaire sur les deux. [tool-verified: `provisa/federation/engine.py` `materialize_store`, `configured_materialize_url`]
+Dirigez un moteur vers un magasin avec `PROVISA_MATERIALIZE_URL` ou `materialize_store_url` ; le magasin enregistré par l'organisation elle-même est prioritaire sur les deux.
 
 ```bash
 PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/replicas"
@@ -76,10 +74,10 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 Il s'agit d'une recommandation générale, pas d'une règle. Son intérêt dépend du moteur, des sources, du magasin et de la taille des tables. Pesez les points suivants :
 
-- **Portée par requête.** Un magasin que le moteur atteint par le réseau ajoute un aller-retour et un transfert à chaque lecture. Le fichier DuckDB embarqué est local et en colonnes, et se parcourt vite. [inferred]
-- **Coût de l'atterrissage.** Écrire une réplique dans une base relationnelle, puis construire ses index, coûte plus cher qu'écrire un fichier local. [inferred]
-- **La charge propre de la base.** Les lectures de répliques, les atterrissages et les constructions d'index s'exécutent tous sur cette base. Dimensionnez-la en conséquence. [inferred]
-- **Grands parcours.** Un index n'apporte rien à une requête qui lit l'essentiel d'une grande table. Un magasin en colonnes la parcourt plus vite qu'un magasin en lignes. [inferred]
+- **Portée par requête.** Un magasin que le moteur atteint par le réseau ajoute un aller-retour et un transfert à chaque lecture. Le fichier DuckDB embarqué est local et en colonnes, et se parcourt vite.
+- **Coût de l'atterrissage.** Écrire une réplique dans une base relationnelle, puis construire ses index, coûte plus cher qu'écrire un fichier local.
+- **La charge propre de la base.** Les lectures de répliques, les atterrissages et les constructions d'index s'exécutent tous sur cette base. Dimensionnez-la en conséquence.
+- **Grands parcours.** Un index n'apporte rien à une requête qui lit l'essentiel d'une grande table. Un magasin en colonnes la parcourt plus vite qu'un magasin en lignes.
 
 ## Choisir où vivent les répliques {: #choosing-where-replicas-live }
 
@@ -87,12 +85,12 @@ Le magasin est un levier parmi plusieurs, et ils se recoupent. Réglez d'abord l
 
 | Levier | Ce qu'il fait | Où il aide |
 | --- | --- | --- |
-| Tables hot | Une petite table de référence est conservée dans Redis et insérée dans chaque requête qui la lit sous forme de CTE (expression de table commune) `VALUES` en ligne. [tool-verified: `provisa/compiler/sql_gen.py`, `provisa/cache/hot_tables.py`] | Jointures vers de petites tables de référence, sur n'importe quel magasin : les lignes voyagent dans la requête. La cible d'une relation plusieurs-à-un, ou une table d'au plus `hot_tables.auto_threshold` lignes (1 000 par défaut), devient hot à sa première lecture. `hot: true` force l'inclusion d'une table et `hot: false` la maintient dehors. [tool-verified: `provisa/cache/hot_tables.py` `promote_on_read` and the loader that registers candidates; `provisa/core/models.py` `HotTablesConfig`, `Table.hot`] |
-| Vues matérialisées que vous définissez | Une vue avec `materialize: true` est stockée et rafraîchie. Une requête qui lit la vue est servie depuis les lignes stockées quand elle est fraîche et que le lecteur la voit en entier : aucune entrée ne porte une règle de lignes plus étroite que tout. [tool-verified: `provisa/mv/view_read.py` module docstring] | Agrégats sur de grandes tables. Vous décidez lesquelles existent ; aucune n'est créée pour vous. Voir [Vues](configuration.md#views-governed-computed-datasets). |
-| Relation avec `materialize: true` | Une relation entre sources reçoit une vue parent-enfant stockée et pré-jointe. Une requête dont la jointure correspond au motif, en totalité ou en partie, est réécrite pour la lire, qu'elle arrive en SQL ou soit construite par le compilateur. [tool-verified: `provisa/api/app_loaders.py` `_load_mv_and_views_config`; `provisa/mv/view_reinject.py` `reinject`; `provisa/pgwire/_pipeline.py` `_view_answering`] | Jointures sur un magasin qui ne construit pas d'index de jointure. Voir [Matérialisation automatique](configuration.md#auto-materialization). |
-| Placement | Les sources que le moteur peut lire en direct sont lues en direct ; les autres sont répliquées. Ce qui finit dans le magasin découle du moteur que vous choisissez. [tool-verified: `provisa/federation/replica_routing.py`] | Le choix du moteur décide de l'essentiel de ce que le magasin doit contenir. |
+| Tables hot | Une petite table de référence est conservée dans Redis et insérée dans chaque requête qui la lit sous forme de CTE (expression de table commune) `VALUES` en ligne. | Jointures vers de petites tables de référence, sur n'importe quel magasin : les lignes voyagent dans la requête. La cible d'une relation plusieurs-à-un, ou une table d'au plus `hot_tables.auto_threshold` lignes (1 000 par défaut), devient hot à sa première lecture. `hot: true` force l'inclusion d'une table et `hot: false` la maintient dehors. |
+| Vues matérialisées que vous définissez | Une vue avec `materialize: true` est stockée et rafraîchie. Une requête qui lit la vue est servie depuis les lignes stockées quand elle est fraîche et que le lecteur la voit en entier : aucune entrée ne porte une règle de lignes plus étroite que tout. | Agrégats sur de grandes tables. Vous décidez lesquelles existent ; aucune n'est créée pour vous. Voir [Vues](configuration.md#views-governed-computed-datasets). |
+| Relation avec `materialize: true` | Une relation entre sources reçoit une vue parent-enfant stockée et pré-jointe. Une requête dont la jointure correspond au motif, en totalité ou en partie, est réécrite pour la lire, qu'elle arrive en SQL ou soit construite par le compilateur. | Jointures sur un magasin qui ne construit pas d'index de jointure. Voir [Matérialisation automatique](configuration.md#auto-materialization). |
+| Placement | Les sources que le moteur peut lire en direct sont lues en direct ; les autres sont répliquées. Ce qui finit dans le magasin découle du moteur que vous choisissez. | Le choix du moteur décide de l'essentiel de ce que le magasin doit contenir. |
 
-La matérialisation de relations et les jointures indexées répondent au même besoin de deux façons. Sur un magasin en colonnes ou d'entrepôt (le fichier DuckDB, ClickHouse, Snowflake, BigQuery, Databricks, Fabric, Synapse), aucun index de jointure n'est construit ; une vue pré-jointe est donc le moyen d'alléger une jointure fréquente. Sur un magasin relationnel, les colonnes de jointure sont déjà indexées, et les mêmes jointures peuvent s'exécuter vite sans être matérialisées. [inferred]
+La matérialisation de relations et les jointures indexées répondent au même besoin de deux façons. Sur un magasin en colonnes ou d'entrepôt (le fichier DuckDB, ClickHouse, Snowflake, BigQuery, Databricks, Fabric, Synapse), aucun index de jointure n'est construit ; une vue pré-jointe est donc le moyen d'alléger une jointure fréquente. Sur un magasin relationnel, les colonnes de jointure sont déjà indexées, et les mêmes jointures peuvent s'exécuter vite sans être matérialisées.
 
 Ce qui dépend encore du magasin : les parcours et jointures ad hoc sur de grandes tables qu'aucune vue matérialisée ne couvre et qu'aucune table hot ne sert. Ceux-ci s'appuient sur les index du magasin dans une base relationnelle, ou sur sa vitesse de parcours dans une base en colonnes.
 
@@ -116,17 +114,15 @@ Les sources d'entreprise prennent rarement en charge le temps réel. Les donnée
 | Porte de fraîcheur | `freshness_gate: true` sur une source | Chaque lecture est d'abord vérifiée par rapport au `change_signal` et au `cache_ttl` de la source ; un verdict périmé rafraîchit avant la lecture | Un rafraîchissement dans le chemin de lecture quand elle est périmée |
 | N'expire jamais | `cache_ttl: -1` sur une source ou une table | Chargée une fois ; chaque lecture est servie par la réplique, et la lecture d'une table pas encore chargée est refusée en la nommant | Seulement ce chargement : une source dont toutes les tables sont chargées n'est plus jamais attachée, sondée ni lue, et n'a besoin d'aucun identifiant |
 
-[tool-verified: `provisa/core/replicate.py`; `provisa/federation/replica_builds.py` `_next_refresh_at`, `_probe_decides`; `provisa/federation/query_residency.py` `freshness_verdict`, `is_stale_of`; `provisa/federation/role_ttl.py` `effective_ttl`; `provisa/freshness/source_gate.py` `gate_source`; `provisa/events/push_wiring.py` `wire_push_listeners`, `_run_change_stream`]
-
-Une sonde qui n'a rien à comparer (ni filigrane, ni sentinelle, ni requête de sonde) se rabat sur le TTL. [tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
+Une sonde qui n'a rien à comparer (ni filigrane, ni sentinelle, ni requête de sonde) se rabat sur le TTL.
 
 ### Quasi temps réel depuis un flux de changements {: #near-real-time-from-a-change-feed }
 
-Lorsqu'une source ne peut pas supporter de charge de requêtes en direct mais publie déjà ses changements, un flux de changements donne des données quasi temps réel sans toucher la source au moment de la requête. Les requêtes lisent la réplique locale, rapide et sans charge pour la source, tandis que la boucle d'événements applique les changements à mesure qu'ils arrivent. Les données ne sont en retard que du retard du flux, typiquement quelques secondes. [inferred: the lag figure]
+Lorsqu'une source ne peut pas supporter de charge de requêtes en direct mais publie déjà ses changements, un flux de changements donne des données quasi temps réel sans toucher la source au moment de la requête. Les requêtes lisent la réplique locale, rapide et sans charge pour la source, tandis que la boucle d'événements applique les changements à mesure qu'ils arrivent. Les données ne sont en retard que du retard du flux, typiquement quelques secondes.
 
 Que le flux existe ne suffit pas. Provisa ne le suit que pour une table qui y est raccordée :
 
-- **Une source Kafka.** La table nomme son topic, et chaque changement est appliqué à la réplique par clé primaire, suppressions comprises. [tool-verified: `provisa/events/push_wiring.py` `_build_provider`, `_run_listener`; `provisa/subscriptions/cdc_landing.py`]
+- **Une source Kafka.** La table nomme son topic, et chaque changement est appliqué à la réplique par clé primaire, suppressions comprises.
 
   ```yaml
   live:
@@ -137,12 +133,12 @@ Que le flux existe ne suffit pas. Provisa ne le suit que pour une table qui y es
   push_debounce_max_delay: 5  # a batch never waits longer than this
   ```
 
-- **Une source WebSocket.** Son flux est appliqué de la même façon. [tool-verified: `provisa/events/push_wiring.py` `_build_provider`]
-- **Une table avec `change_signal: debezium`** (sur la table ou sa source) sur une source dont le bloc `cdc` indique le transport Kafka et le préfixe de topic du connecteur. La première lecture construit le réplica ; ensuite, chaque événement de changement du topic `{topic_prefix}.{schema}.{table}` est appliqué par clé primaire, suppressions comprises, et l'offset n'est validé qu'une fois le changement chargé. [tool-verified: `provisa/events/push_wiring.py` `_captured_by_cdc`, `_cdc_provider`; `provisa/subscriptions/debezium_provider.py` `ack`]
-- **Une table d'une telle source avec `change_signal: kafka`**. Ses changements sont lus depuis le topic de deltas que nomme son `live.kafka.topic`, sur le même transport, et appliqués de la même façon ; une table sur ce signal qui ne nomme aucun topic est refusée nommément à l'enregistrement de la table ou de sa source et au chargement de la configuration. [tool-verified: `provisa/events/push_wiring.py` `_cdc_provider`; `provisa/core/change_signal.py` `kafka_topic_refusal`]
-- **Une table MongoDB ou Cosmos DB avec `change_signal: native`** (sur la table ou sur sa source). Chaque rafale de changements sur le flux de changements demande une reconstruction de la réplique. [tool-verified: `provisa/events/push_wiring.py` `_change_feed_opted_in`, `_run_change_stream`]
-- **Une table PostgreSQL avec `change_signal: native`** (sur la table ou sa source). Provisa lit la réplication logique de la base depuis un slot qui lui est propre, `provisa_<source id>`, sur une publication du même nom qui liste les tables natives de la source. Kafka n'intervient pas. Chaque rafale de changements sur une table demande une reconstruction de son réplica. La base a besoin de ce dont Debezium a besoin : `wal_level` à `logical`, un rôle doté du droit de réplication qui peut créer la publication, et un primaire plutôt qu'un réplica en lecture ; une source à laquelle il manque l'un d'eux est refusée nommément à l'enregistrement et au chargement de la configuration. Le slot et la publication sont créés quand la première table les suit et supprimés quand la dernière cesse de le faire ou que la source est supprimée. Au démarrage, un serveur vérifie chaque source PostgreSQL enregistrée et supprime un slot Provisa qu'aucune table native ne suit : un slot laissé par une configuration modifiée alors qu'aucun serveur ne tournait ne retient donc plus le WAL de la source. [tool-verified: `provisa/subscriptions/pg_logical.py`; `provisa/events/push_wiring.py` `_run_logical_stream`, `_drop_unfollowed_slots`]
+- **Une source WebSocket.** Son flux est appliqué de la même façon.
+- **Une table avec `change_signal: debezium`** (sur la table ou sa source) sur une source dont le bloc `cdc` indique le transport Kafka et le préfixe de topic du connecteur. La première lecture construit le réplica ; ensuite, chaque événement de changement du topic `{topic_prefix}.{schema}.{table}` est appliqué par clé primaire, suppressions comprises, et l'offset n'est validé qu'une fois le changement chargé.
+- **Une table d'une telle source avec `change_signal: kafka`**. Ses changements sont lus depuis le topic de deltas que nomme son `live.kafka.topic`, sur le même transport, et appliqués de la même façon ; une table sur ce signal qui ne nomme aucun topic est refusée nommément à l'enregistrement de la table ou de sa source et au chargement de la configuration.
+- **Une table MongoDB ou Cosmos DB avec `change_signal: native`** (sur la table ou sur sa source). Chaque rafale de changements sur le flux de changements demande une reconstruction de la réplique.
+- **Une table PostgreSQL avec `change_signal: native`** (sur la table ou sa source). Provisa lit la réplication logique de la base depuis un slot qui lui est propre, `provisa_<source id>`, sur une publication du même nom qui liste les tables natives de la source. Kafka n'intervient pas. Chaque rafale de changements sur une table demande une reconstruction de son réplica. La base a besoin de ce dont Debezium a besoin : `wal_level` à `logical`, un rôle doté du droit de réplication qui peut créer la publication, et un primaire plutôt qu'un réplica en lecture ; une source à laquelle il manque l'un d'eux est refusée nommément à l'enregistrement et au chargement de la configuration. Le slot et la publication sont créés quand la première table les suit et supprimés quand la dernière cesse de le faire ou que la source est supprimée. Au démarrage, un serveur vérifie chaque source PostgreSQL enregistrée et supprime un slot Provisa qu'aucune table native ne suit : un slot laissé par une configuration modifiée alors qu'aucun serveur ne tournait ne retient donc plus le WAL de la source.
 
-Une table alimentée en push a besoin d'une clé primaire déclarée ; celle qui n'en a pas est ignorée et journalisée. [tool-verified: `provisa/events/push_wiring.py` `wire_push_listeners`]
+Une table alimentée en push a besoin d'une clé primaire déclarée ; celle qui n'en a pas est ignorée et journalisée.
 
-Une table dotée d'un signal de changement push est considérée comme fraîche sur le chemin de lecture, parce que son flux est son contrôle de fraîcheur. [tool-verified: `provisa/federation/query_residency.py` `freshness_verdict`] Un signal push que rien ne recevrait est donc refusé : `change_signal: native` sur tout type autre que Kafka, WebSocket, ingest, PostgreSQL, MongoDB ou Cosmos DB est refusé à l'enregistrement de la source ou de la table et au chargement de la configuration, de même que `debezium` sur une source sans bloc `cdc`. [tool-verified: `provisa/core/change_signal.py` `native_signal_refusal`; `provisa/core/config_loader.py` `_validate_change_signal`; `provisa/api/admin/_change_feed.py` `table_change_feed_refusal`]
+Une table dotée d'un signal de changement push est considérée comme fraîche sur le chemin de lecture, parce que son flux est son contrôle de fraîcheur. Un signal push que rien ne recevrait est donc refusé : `change_signal: native` sur tout type autre que Kafka, WebSocket, ingest, PostgreSQL, MongoDB ou Cosmos DB est refusé à l'enregistrement de la source ou de la table et au chargement de la configuration, de même que `debezium` sur une source sans bloc `cdc`.

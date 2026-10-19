@@ -62,7 +62,7 @@ Poiché la riduzione è pura — una specifica `entity`/`fact` diventa esattamen
 
 ### Time travel
 
-Il time travel è un'idea semplice — mantenere ogni versione di una riga invece di sovrascriverla, così puoi chiedere quale fosse il dato in un qualsiasi momento passato. Ciò che differisce è quanto efficientemente ogni motore possa farlo, ed è esattamente per questo che Provisa lo rende una proprietà della **definizione** della vista materializzata anziché del motore di storage (REQ-1162). Dichiaralo una volta; funziona su qualsiasi backend che materializza.
+Il time travel è un'idea semplice — mantenere ogni versione di una riga invece di sovrascriverla, così puoi chiedere quale fosse il dato in un qualsiasi momento passato. Ciò che differisce è quanto efficientemente ogni motore possa farlo, ed è esattamente per questo che Provisa lo rende una proprietà della **definizione** della vista materializzata anziché del motore di storage. Dichiaralo una volta; funziona su qualsiasi backend che materializza.
 
 La regola che lo mantiene portabile è **append-only**: una versione, una volta scritta, non viene mai aggiornata né eliminata. Ritirare una riga scrivendo una data "valid-to" — il consueto trucco bitemporale — richiede un UPDATE, che molti motori non possono fare a basso costo (o non possono fare affatto) su uno store federato, quindi Provisa non lo fa. Invece ogni refresh **aggiunge**, e "quale versione era in vigore al tempo T" viene derivato al momento della lettura dal log immutabile. Ci sono esattamente due modi di aggiungere:
 

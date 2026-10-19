@@ -77,7 +77,7 @@ Une relation est un chemin de parcours approuvé entre deux actifs. Les frontiè
 
 **Approbation :**
 
-- Une demande de relation est tranchée par les domaines qu'elle touche : le domaine de sa table source et le domaine de sa table cible (REQ-1948)
+- Une demande de relation est tranchée par les domaines qu'elle touche : le domaine de sa table source et le domaine de sa table cible
 - Une approbation ne compte que si elle vient d'un utilisateur dont le droit de créer des relations atteint l'un de ces domaines ; tout utilisateur de ce type peut la rejeter
 - La demande est exécutée dès que deux utilisateurs différents, dont aucun n'est le demandeur, l'ont approuvée et que chaque domaine concerné a un approbateur : une relation entre deux domaines a besoin d'un oui de chaque côté, et une relation à l'intérieur d'un domaine a besoin de deux approbateurs de ce domaine
 - Approuver une relation construit le graphe de dépendances de chaque steward, permettant des notifications proactives d'évolution de schéma
@@ -262,5 +262,3 @@ Le rapport d'historique des requêtes du steward est une vue agrégée sur ce jo
 
 - **Poussée** — notifications a posteriori pour les actes structurels (une nouvelle vue a été créée en utilisant vos champs)
 - **Extraction** — historique des requêtes pour les schémas d'usage à l'exécution
-
-

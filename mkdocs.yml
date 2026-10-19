@@ -184,22 +184,43 @@ nav:
 # an anchored, searchable section); only the raw requirements.yaml source stays
 # repo-only.
 exclude_docs: |
-  competitive_analysis.md
-  marketing.md
-  arch/requirements.yaml
-  arch/features.yaml
-  exports/
-
-not_in_nav: |
-  testing-plan.md
-  dataset-handling-standards.md
-  domain-principles.md
-  arch/adr/**
-  arch/requirements.yaml
-  arch/features.yaml
+  # Design notes, ADRs and spikes are for the people who build Provisa: they reason in
+  # requirement ids, which are never client-facing, and record work in progress.
+  arch/adr/0001-federation-engine-statelessness-and-fleet-scaling.md
+  arch/array-of-primitives-addendum.md
+  arch/array-types-design.md
+  arch/chonk-concerns.md
+  arch/code-sources.md
+  arch/cosmosdb-nosql.md
   arch/dataset-handling-standards.md
   arch/deployment.md
   arch/jdbc-client-side-encryption.md
+  arch/json-columns-design.md
+  arch/json-columns-v3-note.md
+  arch/metadata-export.md
+  arch/mongodb-native-queries.md
+  arch/node-connector.md
+  arch/rag-features.md
+  arch/row_level_materializer_design.md
+  arch/singlestore-bulk-probe.md
+  arch/spikes/0001-time-travel-as-connector-capability.md
+  arch/spikes/0002-deep-linking-convention.md
+  arch/streaming-uniformity-gap.md
+  arch/work-in-progress-2026-10.md
+  competitive_analysis.md
+  marketing.md
+  testing-plan.md
+  pricing/
+  arch/requirements.yaml
+  arch/features.yaml
+  arch/groups.yaml
+  exports/
+
+not_in_nav: |
+  dataset-handling-standards.md
+  domain-principles.md
+  arch/requirements.yaml
+  arch/features.yaml
 
 validation:
   omitted_files: ignore

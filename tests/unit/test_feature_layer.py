@@ -191,17 +191,14 @@ def model():
     return ff, rf
 
 
-def test_features_md_anchors_each_paragraph_and_traces_its_requirements(model):
-    text = _script("gen_features_doc").render(*model)
+def test_features_md_anchors_each_paragraph_and_names_no_requirement(model):
+    text = _script("gen_features_doc").render(model[0])
     # Docs describe the target state: no feature carries a status (shipped or in development).
     assert "### Regions\n\nData stays where it is placed." in text
     assert "In development" not in text and "**Available**" not in text
     assert "Data stays where it is placed. More.\n{ #regions-placement }" in text
-    assert (
-        "    - [Data stays where it is placed.](#regions-placement): "
-        "[REQ-3](arch/requirements.md#REQ-3), [REQ-12](arch/requirements.md#REQ-12)"
-    ) in text
-    assert "REQ-" not in text.split('??? note "Requirements"')[0].split("### Regions")[1]
+    # A customer page: the requirements behind a paragraph are traced in requirements.yaml only.
+    assert "REQ-" not in text and "Requirements" not in text
     assert "Internal" not in text and "ci-" not in text
 
 

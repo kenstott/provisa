@@ -1,6 +1,6 @@
 # Modelo de segurança {: #security-model }
 
-O Provisa aplica um modelo de segurança em várias camadas em toda linguagem de consulta (GraphQL, SQL, Cypher) e todo transporte (REST, gRPC, Arrow Flight, JDBC, WebSocket). (REQ-001, REQ-266) A governança é aplicada de forma uniforme — não existe caminho de consulta que a contorne. (REQ-002, REQ-266)
+O Provisa aplica um modelo de segurança em várias camadas em toda linguagem de consulta (GraphQL, SQL, Cypher) e todo transporte (REST, gRPC, Arrow Flight, JDBC, WebSocket). A governança é aplicada de forma uniforme — não existe caminho de consulta que a contorne.
 
 As camadas se aplicam em ordem. Uma requisição precisa passar por cada camada antes que a próxima seja avaliada.
 
@@ -8,41 +8,41 @@ As camadas se aplicam em ordem. Uma requisição precisa passar por cada camada 
 
 ### Camada 0 — Filtragem da introspecção {: #layer-0-introspection-filtering }
 
-O esquema e o catálogo apresentados a uma função contêm apenas as tabelas da sua lista `domain_access` e as colunas que passam pelas regras `visible_to` de cada coluna. (REQ-039) Objetos fora do acesso de uma função são invisíveis no momento da descoberta — não podem ser consultados, autocompletados nem ter sua existência deduzida. (REQ-039) Isso vale para o esquema GraphQL, o catálogo SQL e o navegador de esquema do editor de consultas. (REQ-039, REQ-363)
+O esquema e o catálogo apresentados a uma função contêm apenas as tabelas da sua lista `domain_access` e as colunas que passam pelas regras `visible_to` de cada coluna. Objetos fora do acesso de uma função são invisíveis no momento da descoberta — não podem ser consultados, autocompletados nem ter sua existência deduzida. Isso vale para o esquema GraphQL, o catálogo SQL e o navegador de esquema do editor de consultas.
 
 Veja [Visibilidade do esquema](#schema-visibility).
 
 ### Camada 1 — Acesso público {: #layer-1-public-access }
 
-Uma coluna publicada com o escopo `public` é servida a toda função da organização, inclusive funções cujo `domain_access` não alcança o domínio da tabela; uma função assim vê a tabela apenas com suas colunas públicas. Nada é público a menos que quem registra uma tabela diga isso. (REQ-1959) Veja [Colunas públicas](#public-columns).
+Uma coluna publicada com o escopo `public` é servida a toda função da organização, inclusive funções cujo `domain_access` não alcança o domínio da tabela; uma função assim vê a tabela apenas com suas colunas públicas. Nada é público a menos que quem registra uma tabela diga isso. Veja [Colunas públicas](#public-columns).
 
 ### Camada 2 — Acesso a domínios {: #layer-2-domain-access }
 
-Cada função traz uma lista `domain_access` de ids de domínio. Uma consulta que toca uma tabela fora desses domínios é recusada antes da execução. (REQ-038, REQ-039) Essa é a fronteira grossa de propriedade — uma função de RH não alcança tabelas financeiras, seja como for escrito o SQL. (REQ-002)
+Cada função traz uma lista `domain_access` de ids de domínio. Uma consulta que toca uma tabela fora desses domínios é recusada antes da execução. Essa é a fronteira grossa de propriedade — uma função de RH não alcança tabelas financeiras, seja como for escrito o SQL.
 
 Veja [Modelo de direitos](#rights-model).
 
 ### Camada 3 — Segurança em nível de linha {: #layer-3-row-level-security }
 
-Depois que o acesso ao domínio é confirmado, predicados `WHERE` por tabela e por função são injetados em cada `SELECT` no momento da execução. (REQ-041, REQ-263) Os predicados são avaliados sobre os dados brutos. Um gerente regional que consulta uma tabela de pedidos compartilhada vê apenas as linhas da sua região, mesmo com `SELECT *`. (REQ-264)
+Depois que o acesso ao domínio é confirmado, predicados `WHERE` por tabela e por função são injetados em cada `SELECT` no momento da execução. Os predicados são avaliados sobre os dados brutos. Um gerente regional que consulta uma tabela de pedidos compartilhada vê apenas as linhas da sua região, mesmo com `SELECT *`.
 
 Veja [Segurança em nível de linha (RLS)](#row-level-security-rls).
 
 ### Camada 4 — Visibilidade e mascaramento de colunas {: #layer-4-column-visibility-and-masking }
 
-Colunas com uma lista `visible_to` que exclui a função solicitante são removidas da saída da consulta. (REQ-040, REQ-263) Colunas com uma regra de mascaramento têm seus valores substituídos — supressão por regex, substituição por constante ou truncamento — antes que os resultados deixem o servidor. (REQ-263) O mascaramento se aplica em todas as linguagens de consulta e formatos de saída. (REQ-263)
+Colunas com uma lista `visible_to` que exclui a função solicitante são removidas da saída da consulta. Colunas com uma regra de mascaramento têm seus valores substituídos — supressão por regex, substituição por constante ou truncamento — antes que os resultados deixem o servidor. O mascaramento se aplica em todas as linguagens de consulta e formatos de saída.
 
 Veja [Modelo de permissões de coluna](#column-permission-model) e [Mascaramento em nível de coluna](#column-level-masking).
 
 ### Camada 5 — Proteção de predicados {: #layer-5-predicate-guard }
 
-Colunas mascaradas são recusadas em cláusulas `WHERE` e `HAVING`. (REQ-263) Sem isso, um chamador poderia deduzir o valor não mascarado buscando-o por bisseção em um filtro, mesmo com a saída mascarada. A recusa é aplicada na análise da consulta, antes da execução. (REQ-531)
+Colunas mascaradas são recusadas em cláusulas `WHERE` e `HAVING`. Sem isso, um chamador poderia deduzir o valor não mascarado buscando-o por bisseção em um filtro, mesmo com a saída mascarada. A recusa é aplicada na análise da consulta, antes da execução.
 
 ### Governança de relacionamentos (V002) {: #relationship-governance-v002 }
 
-Condições JOIN em SQL precisam corresponder a um relacionamento registrado e aprovado entre tabelas. (REQ-001) Joins não aprovados são recusados. Cada relacionamento traz um motivo e uma descrição legíveis — uma orientação para usuários e agentes autônomos sobre por que um caminho de travessia existe. Isso é uma política de governança, não uma fronteira rígida de segurança: as camadas 2–5 valem independentemente da estrutura do join, então um contorno deliberado não expõe dados que a função não pudesse alcançar com duas consultas separadas. Tentativas de contorno são registradas e auditáveis.
+Condições JOIN em SQL precisam corresponder a um relacionamento registrado e aprovado entre tabelas. Joins não aprovados são recusados. Cada relacionamento traz um motivo e uma descrição legíveis — uma orientação para usuários e agentes autônomos sobre por que um caminho de travessia existe. Isso é uma política de governança, não uma fronteira rígida de segurança: as camadas 2–5 valem independentemente da estrutura do join, então um contorno deliberado não expõe dados que a função não pudesse alcançar com duas consultas separadas. Tentativas de contorno são registradas e auditáveis.
 
-**Mecanismos de contorno** — o V002 pode ser contornado de duas formas. A primeira é uma capacidade: uma função que tem `ignore_relationships` faz joins entre relações que o catálogo não cobre. Entre as funções de sistema pré-criadas, só `modeler` a tem — a função de descoberta, cujo trabalho é determinar o modelo em vez de aplicá-lo. (REQ-1297) `analyst` não a tem.
+**Mecanismos de contorno** — o V002 pode ser contornado de duas formas. A primeira é uma capacidade: uma função que tem `ignore_relationships` faz joins entre relações que o catálogo não cobre. Entre as funções de sistema pré-criadas, só `modeler` a tem — a função de descoberta, cujo trabalho é determinar o modelo em vez de aplicá-lo. `analyst` não a tem.
 
 A segunda é uma exclusão com duas condições, que precisam ser verdadeiras ambas:
 
@@ -51,7 +51,7 @@ A segunda é uma exclusão com duas condições, que precisam ser verdadeiras am
 
 A flag da função sozinha não contorna o V002; o comentário sozinho não contorna o V002.
 
-**O modo de alta segurança fixa a proteção.** Com `security.mode: high` nenhum contorno se aplica: `ignore_relationships` é ignorado, `relationship_guard: false` é ignorado, e todo join precisa existir no catálogo de relacionamentos aprovados. (REQ-693) É uma redundância deliberada — uma função de produção que recebeu a capacidade por engano ainda não consegue sair do modelo.
+**O modo de alta segurança fixa a proteção.** Com `security.mode: high` nenhum contorno se aplica: `ignore_relationships` é ignorado, `relationship_guard: false` é ignorado, e todo join precisa existir no catálogo de relacionamentos aprovados. É uma redundância deliberada — uma função de produção que recebeu a capacidade por engano ainda não consegue sair do modelo.
 
 **Caminho GraphQL** — o V002 é sempre ignorado em consultas GraphQL. Relacionamentos definidos no SDL são pré-aprovados por concepção; a verificação é redundante e não é aplicada.
 
@@ -67,7 +67,7 @@ Essas camadas se combinam. Uma função com acesso a domínios, RLS e colunas ma
 
 ## Modelo de direitos {: #rights-model }
 
-Capacidades atribuídas de forma independente, com uma hierarquia de funções opcional via `parent_role_id`. `admin` concede tudo. (REQ-042)
+Capacidades atribuídas de forma independente, com uma hierarquia de funções opcional via `parent_role_id`. `admin` concede tudo.
 
 | Capacidade | Descrição |
 | ----------- | ------------- |
@@ -83,7 +83,7 @@ Capacidades atribuídas de forma independente, com uma hierarquia de funções o
 
 ### Herança de funções {: #role-inheritance }
 
-Funções podem herdar de uma função pai via `parent_role_id`, definida na configuração ou na página Segurança como "Herda de". (REQ-215) A cadeia é dobrada na inicialização: um filho tem a união das capacidades e do acesso a domínios dos seus ancestrais, cada concessão de coluna, métrica, função e webhook que nomeia um ancestral, e as regras RLS dos ancestrais por tabela, com precedência do filho — a função mais próxima na cadeia com uma regra para uma tabela fornece o predicado dessa tabela, e uma regra salva para o filho substitui a do pai para essa tabela. (REQ-1677)
+Funções podem herdar de uma função pai via `parent_role_id`, definida na configuração ou na página Segurança como "Herda de". A cadeia é dobrada na inicialização: um filho tem a união das capacidades e do acesso a domínios dos seus ancestrais, cada concessão de coluna, métrica, função e webhook que nomeia um ancestral, e as regras RLS dos ancestrais por tabela, com precedência do filho — a função mais próxima na cadeia com uma regra para uma tabela fornece o predicado dessa tabela, e uma regra salva para o filho substitui a do pai para essa tabela.
 
 ```yaml
 roles:
@@ -103,11 +103,11 @@ Três tipos de função trabalham juntos no modelo de acesso do Provisa. A pági
 
 ### Funções concedidas {: #granted-roles }
 
-Uma função concedida é atribuída diretamente a um usuário. Ela tem direitos: capacidades, acesso a domínios, entradas de mascaramento, filtros de linha. A herança (`parent_role_id`) dobra na inicialização os direitos de um ancestral no filho. Direitos só se somam; não há subtração. Para restringir um leitor, conceda a um composto que nomeie tanto a função quanto uma condição, ou coloque uma entrada de máscara antes da permissiva. (REQ-215, REQ-1677)
+Uma função concedida é atribuída diretamente a um usuário. Ela tem direitos: capacidades, acesso a domínios, entradas de mascaramento, filtros de linha. A herança (`parent_role_id`) dobra na inicialização os direitos de um ancestral no filho. Direitos só se somam; não há subtração. Para restringir um leitor, conceda a um composto que nomeie tanto a função quanto uma condição, ou coloque uma entrada de máscara antes da permissiva.
 
 ### Atribuições que expiram e sem uso {: #expiring-and-unused-grants }
 
-Uma atribuição que o Provisa mantém pode terminar. Uma atribuição concedida com expiração deixa de ser mantida a partir desse instante, em cada solicitação. Uma função pode indicar `inactivity_days`: uma atribuição dessa função da qual nenhuma solicitação dependeu por mais tempo, contado a partir do mais recente entre o último uso e a criação, é removida. As funções que vêm das reivindicações ou dos mapeamentos de funções de um provedor de identidade são limitadas no tempo pelo provedor; defina lá a expiração delas. Funções derivadas e meta-funções nunca expiram. (REQ-2077)
+Uma atribuição que o Provisa mantém pode terminar. Uma atribuição concedida com expiração deixa de ser mantida a partir desse instante, em cada solicitação. Uma função pode indicar `inactivity_days`: uma atribuição dessa função da qual nenhuma solicitação dependeu por mais tempo, contado a partir do mais recente entre o último uso e a criação, é removida. As funções que vêm das reivindicações ou dos mapeamentos de funções de um provedor de identidade são limitadas no tempo pelo provedor; defina lá a expiração delas. Funções derivadas e meta-funções nunca expiram.
 
 Uma solicitação dependeu de uma função quando essa função a atendeu sozinha ou, quando a solicitação atua como várias funções, quando à função é concedida uma tabela que a instrução leu. Atuar como «Todas» não conta como usada cada função mantida. O último uso de uma atribuição é registrado no máximo uma vez por dia.
 
@@ -119,9 +119,9 @@ Uma função derivada vem dos atributos de um usuário. A organização declara 
 
 A resolução dos atributos importa. O registro próprio da organização sobre um membro prevalece sobre o que o provedor de identidade fornece: quando os dois nomeiam o mesmo atributo, o valor da organização é usado e o do provedor é marcado como substituído.
 
-Funções derivadas não trazem direitos e nunca são atribuídas à mão. Uma lista de concessão, uma máscara ou uma regra de linha as nomeia exatamente como nomeia uma função concedida; uma requisição as nomeia em `X-Provisa-Role` e age como elas. (REQ-2057)
+Funções derivadas não trazem direitos e nunca são atribuídas à mão. Uma lista de concessão, uma máscara ou uma regra de linha as nomeia exatamente como nomeia uma função concedida; uma requisição as nomeia em `X-Provisa-Role` e age como elas.
 
-Na página Funções, cada atributo declarado é uma função pai marcada como *derivada*, com suas funções de valor listadas abaixo à medida que seus valores aparecem. **+ Função → Derivada de um atributo** declara uma. O painel dela mostra o atributo, sua descrição, os valores vistos até agora e cada máscara, regra de linha e concessão que nomeia ela ou uma de suas funções de valor. Ela não tem controles de concessão. A descrição de uma função de valor é gerada: "Mantida quando o region do usuário é eu". (REQ-2078, REQ-2079)
+Na página Funções, cada atributo declarado é uma função pai marcada como *derivada*, com suas funções de valor listadas abaixo à medida que seus valores aparecem. **+ Função → Derivada de um atributo** declara uma. O painel dela mostra o atributo, sua descrição, os valores vistos até agora e cada máscara, regra de linha e concessão que nomeia ela ou uma de suas funções de valor. Ela não tem controles de concessão. A descrição de uma função de valor é gerada: "Mantida quando o region do usuário é eu".
 
 Declare-as na configuração como uma lista:
 
@@ -137,15 +137,15 @@ Pense em um JWT: seus claims são fatos sobre a pessoa. Funções derivadas tran
 
 Quando uma requisição nomeia mais de uma função, o Provisa monta uma meta-função efêmera identificada como `meta:<ids sorted, joined by +>`. Ela é um único filho de cada função do conjunto nomeado. O pipeline inteiro então roda com ela como uma função única comum.
 
-Os direitos são a união dos de cada membro. Os filtros de linha são o OR do filtro resolvido de cada membro; se algum membro que lê uma tabela não tem filtro, a meta-função também não tem — sem filtro significa todas as linhas. Uma meta-função nunca é armazenada, listada nem exportada. Ela é remontada a partir dos seus membros quando o modelo muda. (REQ-1620)
+Os direitos são a união dos de cada membro. Os filtros de linha são o OR do filtro resolvido de cada membro; se algum membro que lê uma tabela não tem filtro, a meta-função também não tem — sem filtro significa todas as linhas. Uma meta-função nunca é armazenada, listada nem exportada. Ela é remontada a partir dos seus membros quando o modelo muda.
 
-As colunas de cada linha são mascaradas e exibidas conforme os papéis cujo filtro de linhas admitiu essa linha: desses papéis, aplica-se a leitura menos restritiva da coluna, e um papel que não admitiu a linha não contribui em nada para como ela é lida. As máscaras se aplicam onde a tabela é lida, antes de qualquer join ou agregação, de modo que uma agregação lê os valores mascarados. As escritas são verificadas da mesma forma: uma coluna é escrita em uma linha apenas onde um papel que concede essa coluna admite a linha. (REQ-1620)
+As colunas de cada linha são mascaradas e exibidas conforme os papéis cujo filtro de linhas admitiu essa linha: desses papéis, aplica-se a leitura menos restritiva da coluna, e um papel que não admitiu a linha não contribui em nada para como ela é lida. As máscaras se aplicam onde a tabela é lida, antes de qualquer join ou agregação, de modo que uma agregação lê os valores mascarados. As escritas são verificadas da mesma forma: uma coluna é escrita em uma linha apenas onde um papel que concede essa coluna admite a linha.
 
-O registro de auditoria nomeia cada função atuante, não o id da meta-função. Como uma meta-função nunca é armazenada, ela não tem descrição própria: onde quer que uma seja mostrada, sua descrição é a de seus membros, cada id com a sua. (REQ-2080)
+O registro de auditoria nomeia cada função atuante, não o id da meta-função. Como uma meta-função nunca é armazenada, ela não tem descrição própria: onde quer que uma seja mostrada, sua descrição é a de seus membros, cada id com a sua.
 
 ### Descrições {: #descriptions }
 
-Toda função e toda regra de linha diz para que serve. Uma revisão de acesso lê quem pode ver o quê e por quê. Uma função ou regra que ninguém sabe explicar é uma que ninguém pode revisar, então a descrição é obrigatória: uma função, uma função pai derivada ou uma regra de linha com descrição vazia é recusada pelo carregamento da configuração, pela API de administração e pela UI, com o motivo. As listas Funções e Regras de linha mostram cada descrição, e seus painéis de detalhe a mostram e editam. (REQ-2080, REQ-2081)
+Toda função e toda regra de linha diz para que serve. Uma revisão de acesso lê quem pode ver o quê e por quê. Uma função ou regra que ninguém sabe explicar é uma que ninguém pode revisar, então a descrição é obrigatória: uma função, uma função pai derivada ou uma regra de linha com descrição vazia é recusada pelo carregamento da configuração, pela API de administração e pela UI, com o motivo. As listas Funções e Regras de linha mostram cada descrição, e seus painéis de detalhe a mostram e editam.
 
 Uma função tem uma descrição, não uma por domínio. Uma função geral que não descreve suas responsabilidades dentro de um domínio específico significa que esse domínio precisa de uma função própria, geralmente uma filha da função geral (`parent_role_id`), que herda seus direitos e descreve o que faz ali.
 
@@ -155,11 +155,11 @@ Um cliente envia uma função, ou um conjunto separado por vírgulas, em `X-Prov
 
 Direitos e dados seguem apenas as funções com que a requisição age: ter uma função não é agir como ela. Uma função é essa função; duas ou mais agem como sua meta-função. Uma função atuante que trouxesse junto os direitos de cada função tida não significaria nada, então uma requisição recebe o menor privilégio e o registro de auditoria nomeia exatamente o que agiu.
 
-Funções derivadas nomeadas entram como qualificadores. Um qualificador não tem direitos, acesso a domínios, máscaras ou filtros de linha próprios, então não é membro dos direitos da meta-função: como membro sem máscaras, desmascararia toda coluna, e como membro que não lê nenhuma tabela, encerraria todo OR de filtros de linha. Ele entra só nas concessões: uma concessão ou entrada de máscara que nomeia `region__eu` alcança uma requisição que nomeia esse qualificador junto com uma função concedida. (REQ-2057)
+Funções derivadas nomeadas entram como qualificadores. Um qualificador não tem direitos, acesso a domínios, máscaras ou filtros de linha próprios, então não é membro dos direitos da meta-função: como membro sem máscaras, desmascararia toda coluna, e como membro que não lê nenhuma tabela, encerraria todo OR de filtros de linha. Ele entra só nas concessões: uma concessão ou entrada de máscara que nomeia `region__eu` alcança uma requisição que nomeia esse qualificador junto com uma função concedida.
 
-Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto só nomeia papéis que o principal do seu token detém. Um agente stdio local só nomeia papéis dentro do conjunto fixado em `mcp.role` (`PROVISA_MCP_ROLE`), e age como esse conjunto quando não nomeia nenhum; qualquer outro papel é recusado pelo nome. (REQ-2075)
+Um agente MCP nunca age além dos papéis que lhe foram dados. Um agente remoto só nomeia papéis que o principal do seu token detém. Um agente stdio local só nomeia papéis dentro do conjunto fixado em `mcp.role` (`PROVISA_MCP_ROLE`), e age como esse conjunto quando não nomeia nenhum; qualquer outro papel é recusado pelo nome.
 
-Um agente pergunta com qual função age por meio da ferramenta MCP `describe_role`. A resposta é essa função e para que ela serve (uma meta-função com cada um de seus membros), e as funções para as quais o agente pode mudar, cada uma com sua descrição. Ela nunca traz uma regra de linha, máscara, concessão ou condição. O Provisa nunca diz a um agente por que um resultado foi restringido, e um resultado não traz nenhum indicador de "filtrado": os dados de uma função são toda a sua visão, e um motivo para o que falta convidaria a sondá-lo. (REQ-2082)
+Um agente pergunta com qual função age por meio da ferramenta MCP `describe_role`. A resposta é essa função e para que ela serve (uma meta-função com cada um de seus membros), e as funções para as quais o agente pode mudar, cada uma com sua descrição. Ela nunca traz uma regra de linha, máscara, concessão ou condição. O Provisa nunca diz a um agente por que um resultado foi restringido, e um resultado não traz nenhum indicador de "filtrado": os dados de uma função são toda a sua visão, e um motivo para o que falta convidaria a sondá-lo.
 
 ### O que `+` significa {: #what-means }
 
@@ -193,7 +193,7 @@ A troca é cálculo em vez de enumeração. Um catálogo de funções pequeno ma
 
 ## Modelo de permissões de coluna {: #column-permission-model }
 
-Cada coluna tem um modelo de permissões que controla o acesso de leitura, escrita e mascaramento por função. (REQ-042, REQ-249)
+Cada coluna tem um modelo de permissões que controla o acesso de leitura, escrita e mascaramento por função.
 
 ### Visibilidade em três níveis {: #three-tier-visibility }
 
@@ -205,7 +205,7 @@ Cada coluna tem um modelo de permissões que controla o acesso de leitura, escri
 
 ### Colunas públicas {: #public-columns }
 
-Toda coluna tem um `scope`, definido no arquivo do modelo, na API de administração ou na página Tabelas. Os três escopos são ordenados por quem atendem: `restricted`, depois `domain`, depois `public`. Um editor de tabela (`table_registration` no domínio da tabela) pode restringir o escopo de uma coluna. Ampliá-lo — de `restricted` para `domain` ou `public`, de `domain` para `public` — serve a coluna a mais funções e exige o direito que concedê-la exige: `column_grant` ou `access_config` no domínio da tabela. Uma coluna sendo registrada é comparada com `domain`, então registrá-la como `public` é uma ampliação. Em uma coluna com uma tag sensível, qualquer mudança de escopo exige `sensitive_data`. Uma mudança recusada nomeia a coluna e o direito. (REQ-1959, REQ-1943, REQ-1944)
+Toda coluna tem um `scope`, definido no arquivo do modelo, na API de administração ou na página Tabelas. Os três escopos são ordenados por quem atendem: `restricted`, depois `domain`, depois `public`. Um editor de tabela (`table_registration` no domínio da tabela) pode restringir o escopo de uma coluna. Ampliá-lo — de `restricted` para `domain` ou `public`, de `domain` para `public` — serve a coluna a mais funções e exige o direito que concedê-la exige: `column_grant` ou `access_config` no domínio da tabela. Uma coluna sendo registrada é comparada com `domain`, então registrá-la como `public` é uma ampliação. Em uma coluna com uma tag sensível, qualquer mudança de escopo exige `sensitive_data`. Uma mudança recusada nomeia a coluna e o direito.
 
 | Escopo | Servida a |
 | ------- | ----------- |
@@ -220,13 +220,13 @@ Publicar uma coluna remove a condição de domínio para essa coluna e nada mais
 - Máscaras, filtros de linha, limites de linha e a proteção de relacionamentos se aplicam como dentro do domínio. Sem filtro de linha para a função, as colunas publicadas são lidas sem filtro; um filtro de linha na tabela ou no seu domínio continua valendo.
 - Um relacionamento é servido quando as colunas das suas duas pontas são.
 - Uma coluna de parâmetro de uma tabela de API (um argumento de caminho ou de consulta) não é dado e não publica nada.
-- O domínio `ops` exige uma concessão explícita para cada coluna (REQ-1133); nada nele é servido entre domínios, seja qual for o escopo.
+- O domínio `ops` exige uma concessão explícita para cada coluna; nada nele é servido entre domínios, seja qual for o escopo.
 
 A regra é a mesma em toda superfície, porque cada uma lê o esquema compilado da função: GraphQL, SQL (HTTP, pgwire, Flight, JDBC), Cypher e Bolt, gRPC, REST e JSON:API, os catálogos de Flight e MCP e as listagens de administração. Um escopo que não é um dos três valores é recusado quando uma coluna é salva.
 
 ### Permissões de escrita {: #write-grants }
 
-`visible_to` controla a leitura de uma coluna (vazio significa que todas as funções podem ler). A escrita é controlada por tabela com `write_grants`, não por coluna. Por padrão, uma tabela não tem nenhuma permissão, então nenhuma função pode escrever nela. (REQ-2074)
+`visible_to` controla a leitura de uma coluna (vazio significa que todas as funções podem ler). A escrita é controlada por tabela com `write_grants`, não por coluna. Por padrão, uma tabela não tem nenhuma permissão, então nenhuma função pode escrever nela.
 
 Uma permissão de escrita indica o que uma função pode escrever em uma tabela por uma operação (`insert`, `update` ou `delete`):
 
@@ -239,7 +239,7 @@ Uma permissão de escrita indica o que uma função pode escrever em uma tabela 
 
 Se você omitir `rows` ou `check`, a permissão assume o filtro de linhas de leitura da função sobre a tabela, de modo que uma função escreve as linhas que lê. `"TRUE"` significa todas as linhas.
 
-Uma única admissão decide cada escrita em cada superfície, nesta ordem: a função tem o direito `write`; tem uma permissão para a operação sobre a tabela; cada coluna que a instrução escreve está na permissão; os presets são adicionados; `rows` é combinado com AND no `WHERE`; e `check` é avaliado sobre as novas linhas antes de qualquer coisa ser enviada à fonte. Uma recusa nomeia a tabela, a função e a operação. (REQ-2074)
+Uma única admissão decide cada escrita em cada superfície, nesta ordem: a função tem o direito `write`; tem uma permissão para a operação sobre a tabela; cada coluna que a instrução escreve está na permissão; os presets são adicionados; `rows` é combinado com AND no `WHERE`; e `check` é avaliado sobre as novas linhas antes de qualquer coisa ser enviada à fonte. Uma recusa nomeia a tabela, a função e a operação.
 
 Instruções mais amplas exigem permissões mais amplas. `TRUNCATE` exige uma permissão `delete` sobre todas as linhas. `MERGE` exige uma permissão `insert` e uma `update` sobre todas as linhas. `INSERT ... ON CONFLICT DO UPDATE` exige uma permissão `update` sobre todas as linhas sem presets. `COPY` exige uma permissão `insert` sem presets.
 
@@ -293,21 +293,21 @@ Neste exemplo:
 
 ## Autorização de mutações {: #mutation-authorization }
 
-As mutações registradas (GraphQL remoto, OpenAPI, gRPC, Hasura) são protegidas por duas verificações independentes. (REQ-868) Uma função só pode invocar uma mutação se tiver a capacidade global `write` E o comando estiver atribuído a ela por `visible_to` (uma lista vazia o atribui a todas as funções). (REQ-868) Um comando não tem lista `writable_by`; a configuração recusa uma pelo nome. [tool-verified: `provisa/security/mutation_authz.py` `command_assigned`, `admit_command`; `provisa/core/models.py` `_one_role_list`]
+As mutações registradas (GraphQL remoto, OpenAPI, gRPC, Hasura) são protegidas por duas verificações independentes. Uma função só pode invocar uma mutação se tiver a capacidade global `write` E o comando estiver atribuído a ela por `visible_to` (uma lista vazia o atribui a todas as funções). Um comando não tem lista `writable_by`; a configuração recusa uma pelo nome.
 
-Mutações são classificadas como escritas por contrato, não pela declaração do chamador. (REQ-869) Um `SELECT` que referencia uma função do tipo mutação é promovido a escrita e sujeito à mesma verificação de duas portas, então um chamador não consegue invocar uma mutação disfarçando-a de leitura. (REQ-869) Reclassificar uma mutação como segura para leitura exige a capacidade `access_config` e é registrado como uma decisão de governança; não há exclusão por requisição. (REQ-870)
+Mutações são classificadas como escritas por contrato, não pela declaração do chamador. Um `SELECT` que referencia uma função do tipo mutação é promovido a escrita e sujeito à mesma verificação de duas portas, então um chamador não consegue invocar uma mutação disfarçando-a de leitura. Reclassificar uma mutação como segura para leitura exige a capacidade `access_config` e é registrado como uma decisão de governança; não há exclusão por requisição.
 
 ## Visibilidade do esquema {: #schema-visibility }
 
-Esquemas GraphQL por função ocultam conteúdo não autorizado: (REQ-039)
+Esquemas GraphQL por função ocultam conteúdo não autorizado:
 
-- **Acesso a domínios**: uma função vê tabelas apenas nos seus domínios `domain_access` (`"*"` = todos) (REQ-039)
-- **Visibilidade de colunas**: colunas fora de `visible_to` para uma função são omitidas do SDL (REQ-039)
-- Tabelas/colunas não autorizadas não aparecem no esquema (REQ-039)
+- **Acesso a domínios**: uma função vê tabelas apenas nos seus domínios `domain_access` (`"*"` = todos)
+- **Visibilidade de colunas**: colunas fora de `visible_to` para uma função são omitidas do SDL
+- Tabelas/colunas não autorizadas não aparecem no esquema
 
 ## Segurança em nível de linha (RLS) {: #row-level-security-rls }
 
-Injeção de cláusulas SQL WHERE por tabela e por função. Aplicada depois da compilação, antes da execução. (REQ-041, REQ-263)
+Injeção de cláusulas SQL WHERE por tabela e por função. Aplicada depois da compilação, antes da execução.
 
 ```yaml
 rls_rules:
@@ -316,15 +316,15 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
     description: Analysts read only their own region's orders.
 ```
-O filtro é combinado com AND na cláusula WHERE da consulta. Funciona para consultas e mutações (UPDATE/DELETE). (REQ-035, REQ-041)
+O filtro é combinado com AND na cláusula WHERE da consulta. Funciona para consultas e mutações (UPDATE/DELETE).
 
-Um termo `current_setting('provisa.<name>')` é resolvido contra as variáveis de sessão que a requisição vincula: `user_id` a partir da identidade autenticada, `role` a partir da função atuante, e cada claim escalar do token pelo seu nome em minúsculas, com hifens como sublinhados. Uma variável de sessão do Hasura mantém o próprio nome: `X-Hasura-User-Id` é `hasura_user_id`, lida do claim `x-hasura-user-id` do token (no nível superior ou dentro do objeto de claims do Hasura, como `https://hasura.io/jwt/claims`) ou registrada para o membro como o atributo `hasura_user_id`. Por isso um filtro Hasura importado sobre `X-Hasura-User-Id` lê `provisa.hasura_user_id`. `provisa.user_id` é sempre a identidade autenticada; nenhum claim a substitui. As `session_vars` configuradas de uma função são as constantes de base; os vínculos da requisição as sobrepõem. Um papel que herda de outro recebe as constantes dos seus ancestrais por baixo das suas, com o valor do papel mais próximo para cada nome. `user_id`, `role`, `region` e `org` são vinculados pela requisição ou pelo nó e não podem ser configurados como constantes. No modo sem segurança, um cabeçalho `x-provisa-session-<name>` vincula `<name>`. Uma variável não vinculada em lugar nenhum resolve para NULL e não corresponde a nenhuma linha. (REQ-1682)
+Um termo `current_setting('provisa.<name>')` é resolvido contra as variáveis de sessão que a requisição vincula: `user_id` a partir da identidade autenticada, `role` a partir da função atuante, e cada claim escalar do token pelo seu nome em minúsculas, com hifens como sublinhados. Uma variável de sessão do Hasura mantém o próprio nome: `X-Hasura-User-Id` é `hasura_user_id`, lida do claim `x-hasura-user-id` do token (no nível superior ou dentro do objeto de claims do Hasura, como `https://hasura.io/jwt/claims`) ou registrada para o membro como o atributo `hasura_user_id`. Por isso um filtro Hasura importado sobre `X-Hasura-User-Id` lê `provisa.hasura_user_id`. `provisa.user_id` é sempre a identidade autenticada; nenhum claim a substitui. As `session_vars` configuradas de uma função são as constantes de base; os vínculos da requisição as sobrepõem. Um papel que herda de outro recebe as constantes dos seus ancestrais por baixo das suas, com o valor do papel mais próximo para cada nome. `user_id`, `role`, `region` e `org` são vinculados pela requisição ou pelo nó e não podem ser configurados como constantes. No modo sem segurança, um cabeçalho `x-provisa-session-<name>` vincula `<name>`. Uma variável não vinculada em lugar nenhum resolve para NULL e não corresponde a nenhuma linha.
 
-Uma constante de papel é o inverso de um papel derivado. Um papel derivado transforma em papel um valor que um membro tem; uma constante de papel dá a cada requisição que age como o papel um valor, que uma regra de linha lê como lê um claim. Uma constante de papel pode ser uma referência `${env:NAME}` ou `${secret:NAME}`, resolvida pelo mesmo resolvedor de qualquer outra referência quando uma consulta a usa; o modelo mantém a referência, nunca o valor resolvido, e uma referência que não se resolve em nada faz a consulta falhar, nomeando a constante. Uma constante resolvida faz parte da consulta. Os registros que o próprio Provisa faz da consulta são cobertos pela ocultação central; os logs da própria fonte federada estão fora do alcance do Provisa. (REQ-2086)
+Uma constante de papel é o inverso de um papel derivado. Um papel derivado transforma em papel um valor que um membro tem; uma constante de papel dá a cada requisição que age como o papel um valor, que uma regra de linha lê como lê um claim. Uma constante de papel pode ser uma referência `${env:NAME}` ou `${secret:NAME}`, resolvida pelo mesmo resolvedor de qualquer outra referência quando uma consulta a usa; o modelo mantém a referência, nunca o valor resolvido, e uma referência que não se resolve em nada faz a consulta falhar, nomeando a constante. Uma constante resolvida faz parte da consulta. Os registros que o próprio Provisa faz da consulta são cobertos pela ocultação central; os logs da própria fonte federada estão fora do alcance do Provisa.
 
 ## Mascaramento em nível de coluna {: #column-level-masking }
 
-O mascaramento é definido como uma lista ordenada em cada coluna. A primeira entrada que o leitor tem decide o que ele vê. (REQ-2059, REQ-263)
+O mascaramento é definido como uma lista ordenada em cada coluna. A primeira entrada que o leitor tem decide o que ele vê.
 
 | Tipo de máscara | Tipos de coluna suportados | Expressão SQL |
 | ----------- | ----------------------- | --------------- |
@@ -334,9 +334,9 @@ O mascaramento é definido como uma lista ordenada em cada coluna. A primeira en
 
 Cada entrada tem uma lista `to` que nomeia os leitores a que se dirige, e uma `mask` opcional. Uma entrada sem `mask` significa sem máscara para esses leitores. `*` em `to` corresponde a qualquer leitor.
 
-A expressão de máscara é levada para a projeção SQL SELECT. O banco de dados retorna o valor mascarado; dados sem máscara nunca atravessam a rede para funções mascaradas. (REQ-263) Colunas mascaradas também são bloqueadas em cláusulas `WHERE` e `HAVING` (proteção de predicados da camada 5) para impedir a dedução de valores por filtragem. (REQ-263, REQ-531)
+A expressão de máscara é levada para a projeção SQL SELECT. O banco de dados retorna o valor mascarado; dados sem máscara nunca atravessam a rede para funções mascaradas. Colunas mascaradas também são bloqueadas em cláusulas `WHERE` e `HAVING` (proteção de predicados da camada 5) para impedir a dedução de valores por filtragem.
 
-**Uma máscara cobre todos os nomes da coluna, não uma coluna relacionada.** Uma coluna lida pelo seu alias ou pelo seu nome físico é mascarada da mesma forma. Uma máscara não oculta uma chave que um relacionamento aprovado une a uma coluna que o papel pode ver: o join compara os valores reais, então a coluna relacionada mostra o que a chave mascarada contém. Mascare também a coluna relacionada, ou não aprove o relacionamento para esse papel. (REQ-263, REQ-019)
+**Uma máscara cobre todos os nomes da coluna, não uma coluna relacionada.** Uma coluna lida pelo seu alias ou pelo seu nome físico é mascarada da mesma forma. Uma máscara não oculta uma chave que um relacionamento aprovado une a uma coluna que o papel pode ver: o join compara os valores reais, então a coluna relacionada mostra o que a chave mascarada contém. Mascare também a coluna relacionada, ou não aprove o relacionamento para esse papel.
 
 **Nenhuma entrada tida significa sem máscara.** Um leitor que não tem nenhuma entrada lê a coluna sem máscara. Termine uma lista com uma entrada `*` quando todo leitor deve receber alguma máscara. O editor de colunas avisa quando falta uma entrada `*` em uma lista (`unlisted_unmasked`).
 
@@ -361,33 +361,33 @@ masks:
 ```
 ## Governança das respostas de ações {: #governing-action-responses }
 
-A resposta de uma função rastreada ou de um webhook é governada como as linhas de uma tabela. (REQ-1679) As linhas que uma ação retorna são vinculadas como uma relação cujas colunas são o contrato de saída declarado da ação — `output_columns` para uma função, `inline_return_type` para um webhook, ou as propriedades de objeto do `return_schema` de tipo array de uma função — e essa relação passa pela mesma etapa de governança que toda leitura de tabela, sobre uma CTE VALUES com as linhas. (REQ-1679) Nada de RLS, mascaramento ou visibilidade é reimplementado para as ações.
+A resposta de uma função rastreada ou de um webhook é governada como as linhas de uma tabela. As linhas que uma ação retorna são vinculadas como uma relação cujas colunas são o contrato de saída declarado da ação — `output_columns` para uma função, `inline_return_type` para um webhook, ou as propriedades de objeto do `return_schema` de tipo array de uma função — e essa relação passa pela mesma etapa de governança que toda leitura de tabela, sobre uma CTE VALUES com as linhas. Nada de RLS, mascaramento ou visibilidade é reimplementado para as ações.
 
-Três coisas se aplicam, na mesma ordem que para uma tabela. (REQ-1679)
+Três coisas se aplicam, na mesma ordem que para uma tabela.
 
-- Um filtro de linha: a regra RLS da função salva contra a ação pelo nome (`upsertRlsRule` com `actionName`), ou, quando a ação não tem uma própria, a regra de domínio do domínio da ação. O predicado é validado contra o contrato ao salvar, como uma regra de tabela. (REQ-1676)
+- Um filtro de linha: a regra RLS da função salva contra a ação pelo nome (`upsertRlsRule` com `actionName`), ou, quando a ação não tem uma própria, a regra de domínio do domínio da ação. O predicado é validado contra o contrato ao salvar, como uma regra de tabela.
 - Visibilidade de colunas: uma coluna do contrato que declara `visible_to` é removida para uma função que a lista não nomeia; uma coluna que não declara nenhum faz parte da forma pública da ação e fica.
-- Máscaras: uma coluna do contrato traz `masks`, a mesma lista ordenada de máscaras que uma coluna de tabela. (REQ-2059)
+- Máscaras: uma coluna do contrato traz `masks`, a mesma lista ordenada de máscaras que uma coluna de tabela.
 
-A herança de funções resolve a cadeia para as três. (REQ-1677) Uma resposta que retorna uma coluna fora do contrato declarado é recusada com um 502 em vez de passar sem governança. Uma ação que não declara contrato de colunas retorna um escalar e não tem nada a vincular; ela é retornada como está. A invocação de teste da administração informa os filtros, as exclusões e as máscaras aplicados, e a instrução governada é gravada no log de auditoria de consultas.
+A herança de funções resolve a cadeia para as três. Uma resposta que retorna uma coluna fora do contrato declarado é recusada com um 502 em vez de passar sem governança. Uma ação que não declara contrato de colunas retorna um escalar e não tem nada a vincular; ela é retornada como está. A invocação de teste da administração informa os filtros, as exclusões e as máscaras aplicados, e a instrução governada é gravada no log de auditoria de consultas.
 
 ## Amostragem {: #sampling }
 
-Todas as funções veem resultados amostrados (padrão: 100 linhas) a menos que tenham a capacidade `full_results`. (REQ-554) Controlado pela variável de ambiente `PROVISA_SAMPLE_SIZE`. (REQ-554)
+Todas as funções veem resultados amostrados (padrão: 100 linhas) a menos que tenham a capacidade `full_results`. Controlado pela variável de ambiente `PROVISA_SAMPLE_SIZE`.
 
 ## Registro de auditoria {: #audit-logging }
 
-Toda consulta que toca um ativo de domínio é registrada em `query_audit_log`. (REQ-596, REQ-613) O log de auditoria pertence à organização, não à plataforma: o registro próprio da plataforma de organizações, usuários e convites não contém registros de auditoria. (REQ-1922) O `query_audit_log` de cada organização é uma tabela no schema próprio da organização, no store que a organização nomeia para o seu registro em cada região que seleciona. Uma organização que não declara regiões mantém esse schema no banco de dados do control plane da implantação, junto ao seu modelo.
+Toda consulta que toca um ativo de domínio é registrada em `query_audit_log`. O log de auditoria pertence à organização, não à plataforma: o registro próprio da plataforma de organizações, usuários e convites não contém registros de auditoria. O `query_audit_log` de cada organização é uma tabela no schema próprio da organização, no store que a organização nomeia para o seu registro em cada região que seleciona. Uma organização que não declara regiões mantém esse schema no banco de dados do control plane da implantação, junto ao seu modelo.
 
-Cada linha guarda `tenant_id` (a organização), `user_id`, `role_id`, um hash SHA-256 do texto da consulta, o próprio texto da consulta cifrado (REQ-689), `table_ids` e `table_names`, `source`, `status_code`, `duration_ms`, a rota e a contagem de linhas, o que foi imposto à instrução, e `logged_at`. O texto da consulta é cifrado com a chave da organização quando a organização definiu uma, caso contrário com a chave da implantação (REQ-1574). Uma implantação que não configura nenhum provedor de cifragem o armazena sem cifrar. O texto nunca é exposto nas tabelas ops consultáveis e é decifrado apenas em leituras de administração autorizadas.
+Cada linha guarda `tenant_id` (a organização), `user_id`, `role_id`, um hash SHA-256 do texto da consulta, o próprio texto da consulta cifrado, `table_ids` e `table_names`, `source`, `status_code`, `duration_ms`, a rota e a contagem de linhas, o que foi imposto à instrução, e `logged_at`. O texto da consulta é cifrado com a chave da organização quando a organização definiu uma, caso contrário com a chave da implantação. Uma implantação que não configura nenhum provedor de cifragem o armazena sem cifrar. O texto nunca é exposto nas tabelas ops consultáveis e é decifrado apenas em leituras de administração autorizadas.
 
-O log é somente de acréscimo no nível do banco de dados: regras do PostgreSQL transformam `DELETE` e `UPDATE` em `query_audit_log` em operações nulas. (REQ-596, REQ-613) Dois índices, `(tenant_id, logged_at)` e `(user_id, logged_at)`, dão suporte a consultas de conformidade por organização e por usuário em intervalos de tempo. (REQ-596, REQ-613)
+O log é somente de acréscimo no nível do banco de dados: regras do PostgreSQL transformam `DELETE` e `UPDATE` em `query_audit_log` em operações nulas. Dois índices, `(tenant_id, logged_at)` e `(user_id, logged_at)`, dão suporte a consultas de conformidade por organização e por usuário em intervalos de tempo.
 
 Retenção: as linhas são mantidas indefinidamente. O Provisa não tem configuração de retenção e nunca apaga o log de auditoria; como `DELETE` é uma operação nula, remover linhas antigas significa que um operador descarta ou arquiva os dados da tabela fora do Provisa.
 
 ## Ocultação {: #redaction }
 
-O que o Provisa registra sobre o próprio trabalho passa por uma lista de regras de ocultação antes de ser escrito em qualquer lugar. O texto que uma regra reconhece é substituído por `[REDACTED:<rule>]`, que nomeia a regra correspondente. (REQ-2087)
+O que o Provisa registra sobre o próprio trabalho passa por uma lista de regras de ocultação antes de ser escrito em qualquer lugar. O texto que uma regra reconhece é substituído por `[REDACTED:<rule>]`, que nomeia a regra correspondente.
 
 A lista tem quatro partes:
 
@@ -415,15 +415,15 @@ Uma fonte federada mantém os próprios logs, que o Provisa não escreve e não 
 
 ## Limitação de taxa {: #rate-limiting }
 
-Limites de taxa por função são configurados em `provisa.yaml`: máximo de requisições por segundo, máximo de assinaturas SSE simultâneas e máximo de fluxos Arrow Flight simultâneos. (REQ-369) Os limites são aplicados na camada de API antes da compilação ou execução; requisições acima do limite são recusadas com HTTP 429 e um cabeçalho `Retry-After`. (REQ-369)
+Limites de taxa por função são configurados em `provisa.yaml`: máximo de requisições por segundo, máximo de assinaturas SSE simultâneas e máximo de fluxos Arrow Flight simultâneos. Os limites são aplicados na camada de API antes da compilação ou execução; requisições acima do limite são recusadas com HTTP 429 e um cabeçalho `Retry-After`.
 
-O serviço de consultas NL (`POST /query/nl`) tem um limite independente via `nl.rate_limit` (requisições por minuto por função). Requisições acima do limite são recusadas antes de qualquer chamada a um LLM. (REQ-370)
+O serviço de consultas NL (`POST /query/nl`) tem um limite independente via `nl.rate_limit` (requisições por minuto por função). Requisições acima do limite são recusadas antes de qualquer chamada a um LLM.
 
-O estado dos limites de taxa fica no Redis (`cache.redis_url`) como um contador de janela deslizante — sem estado por instância — então os limites valem em todas as instâncias horizontais do Provisa. (REQ-371)
+O estado dos limites de taxa fica no Redis (`cache.redis_url`) como um contador de janela deslizante — sem estado por instância — então os limites valem em todas as instâncias horizontais do Provisa.
 
 ## Limite de complexidade de consulta {: #query-complexity-limit }
 
-Um limite de taxa limita quantas requisições uma função envia. O limite de complexidade limita o que uma instrução pode pedir. (REQ-1174)
+Um limite de taxa limita quantas requisições uma função envia. O limite de complexidade limita o que uma instrução pode pedir.
 
 Toda instrução tem uma pontuação de complexidade: as relações que lê, seus joins, as colunas que seleciona (um `*` conta como as colunas que representa) e as consultas aninhadas nela. Uma relação lida de uma fonte de API remota (OpenAPI, GraphQL remoto, gRPC remoto) conta 10, porque cada leitura gasta um orçamento que o sistema remoto define para todos que usam essa fonte.
 
@@ -439,7 +439,7 @@ A pontuação é medida depois que uma requisição é analisada e antes de ser 
 
 ## Autenticação {: #authentication }
 
-Provedores de autenticação plugáveis: (REQ-120)
+Provedores de autenticação plugáveis:
 
 | Provedor | Credencial | Caso de uso |
 | ---------- | ----------- | ---------- |
@@ -448,21 +448,21 @@ Provedores de autenticação plugáveis: (REQ-120)
 | `firebase` | Token de ID do Firebase | Produção |
 | `keycloak` | JWT do Keycloak | Empresa |
 | `oauth` / `oidc` | JWT OIDC | PingFed, Okta, Azure AD, Auth0 |
-| `ldap` | Nome de usuário e senha do diretório (LDAP ou Active Directory) | Diretórios corporativos (REQ-1265) |
-| `saml` | Asserção assinada SAML 2.0, depois um JWT de sessão | Single sign-on corporativo (REQ-1265) |
+| `ldap` | Nome de usuário e senha do diretório (LDAP ou Active Directory) | Diretórios corporativos |
+| `saml` | Asserção assinada SAML 2.0, depois um JWT de sessão | Single sign-on corporativo |
 | `simple` | bcrypt + JWT | Testes |
 
 O `ldap` autentica um usuário por search-then-bind: o Provisa se conecta como uma conta de serviço, encontra a única entrada que o nome de usuário indica, depois se conecta como essa entrada com a senha apresentada, de modo que o diretório a verifica. Os grupos do usuário se tornam suas funções. A conta e seus grupos são lidos de novo toda vez que um token de sessão retorna, então um usuário removido do diretório, ou de um grupo, perde esse acesso antes de o token expirar. `ldaps://` e StartTLS são ambos suportados.
 
 O `saml` é o Web Browser SSO iniciado pelo SP. A assinatura XML da resposta é verificada contra os metadados do provedor de identidade, e os claims são lidos apenas do elemento assinado. Issuer, Audience, a URL do ACS, a expiração e `InResponseTo` são todos verificados. Respostas não solicitadas (iniciadas pelo IdP), asserções cifradas, documentos com DOCTYPE, múltiplas asserções e assinaturas SHA-1 são recusados. Uma sessão SAML não é verificada de novo com o provedor de identidade: um usuário removido ali mantém o acesso até o token de sessão expirar.
 
-Mapeamento de funções: claims de identidade → função do Provisa via regras configuráveis. (REQ-120) O campo `assignments_source` controla de onde vêm as atribuições de funções: `claims` as lê dos claims do token JWT (padrão), `provisa` as lê do armazenamento interno de atribuições do Provisa. (REQ-551) Uma implantação multi-tenant (`multitenancy: true`) concede as funções ela mesma, por organização, então precisa usar `assignments_source: provisa`: com `claims` ela não inicia, e uma mudança de configuração que produziria essa combinação é recusada. Uma implantação single-tenant pode usar qualquer uma.
+Mapeamento de funções: claims de identidade → função do Provisa via regras configuráveis. O campo `assignments_source` controla de onde vêm as atribuições de funções: `claims` as lê dos claims do token JWT (padrão), `provisa` as lê do armazenamento interno de atribuições do Provisa. Uma implantação multi-tenant (`multitenancy: true`) concede as funções ela mesma, por organização, então precisa usar `assignments_source: provisa`: com `claims` ela não inicia, e uma mudança de configuração que produziria essa combinação é recusada. Uma implantação single-tenant pode usar qualquer uma.
 
-Um superusuário configurado em `provisa.yaml` (nome de usuário mais uma senha de um segredo de ambiente) sempre recebe a função admin e todas as capacidades, seja qual for o provedor configurado — um caminho de bootstrap para a configuração inicial. (REQ-125)
+Um superusuário configurado em `provisa.yaml` (nome de usuário mais uma senha de um segredo de ambiente) sempre recebe a função admin e todas as capacidades, seja qual for o provedor configurado — um caminho de bootstrap para a configuração inicial.
 
 ### Superfícies e credenciais {: #surfaces-and-credentials }
 
-Toda superfície se autentica pelo mesmo contrato de provedor, então uma credencial que funciona em uma funciona em todas, onde quer que o protocolo possa levá-la. (REQ-124, REQ-1263) Esta tabela é a única referência; a documentação de cada superfície não a repete.
+Toda superfície se autentica pelo mesmo contrato de provedor, então uma credencial que funciona em uma funciona em todas, onde quer que o protocolo possa levá-la. Esta tabela é a única referência; a documentação de cada superfície não a repete.
 
 | Superfície | Senha | Token do provedor | Token de acesso pessoal | Certificado de cliente (mTLS) |
 | --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
@@ -474,9 +474,9 @@ Toda superfície se autentica pelo mesmo contrato de provedor, então uma creden
 | Airport (extensão `airport` do DuckDB, opcional) | — | `authorization: Bearer` (o `auth_token` do segredo) | o mesmo | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | via proxy de terminação |
 
-A única opção de autenticação da extensão `airport` do DuckDB é o `auth_token` bearer do seu segredo, então um cliente DuckDB apresenta ali um token do provedor ou um token de acesso pessoal e age como a função para a qual sua identidade se resolve. Um cliente que pode definir cabeçalhos de chamada pode pedir uma função tida, ou um conjunto separado por vírgulas, em `x-provisa-role`. (REQ-1120, REQ-1263)
+A única opção de autenticação da extensão `airport` do DuckDB é o `auth_token` bearer do seu segredo, então um cliente DuckDB apresenta ali um token do provedor ou um token de acesso pessoal e age como a função para a qual sua identidade se resolve. Um cliente que pode definir cabeçalhos de chamada pode pedir uma função tida, ou um conjunto separado por vírgulas, em `x-provisa-role`.
 
-Uma recusa diz de que tipo é em cada uma dessas superfícies. Uma credencial ausente, rejeitada ou inutilizável é uma recusa de autenticação: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight e Airport `Unauthenticated`. Uma credencial válida que pede para agir como uma função que sua identidade não tem é uma recusa de autorização, com a função nomeada: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight e Airport `Unauthorized`. (REQ-273, REQ-1263) Uma exceção está na biblioteca cliente do Arrow, não no servidor: uma recusa da chamada `get_schema` do Flight chega a um cliente Python como um erro genérico do Arrow com o motivo do servidor, sem o seu tipo; `list_flights`, `get_flight_info` e `do_get` entregam o tipo.
+Uma recusa diz de que tipo é em cada uma dessas superfícies. Uma credencial ausente, rejeitada ou inutilizável é uma recusa de autenticação: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight e Airport `Unauthenticated`. Uma credencial válida que pede para agir como uma função que sua identidade não tem é uma recusa de autorização, com a função nomeada: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight e Airport `Unauthorized`. Uma exceção está na biblioteca cliente do Arrow, não no servidor: uma recusa da chamada `get_schema` do Flight chega a um cliente Python como um erro genérico do Arrow com o motivo do servidor, sem o seu tipo; `list_flights`, `get_flight_info` e `do_get` entregam o tipo.
 
 Onde uma célula mostra `—`, o protocolo não traz um campo de nome de usuário para parear com uma senha; as formas de token cobrem isso. O pgwire é o caso inverso: o pacote de inicialização tem um campo secreto e nenhum esquema, então o que o segredo *é* escolhe o método — um PAT é reconhecido pelo prefixo, o segredo é lido como token bearer quando o provedor configurado é um provedor de tokens, e qualquer outra coisa é uma senha. A escolha é feita uma vez — uma credencial que o validador escolhido recusa não é tentada de novo com outro.
 
@@ -484,7 +484,7 @@ A matriz é imposta por `tests/unit/test_auth_surface_conformance.py`, que exerc
 
 ### Tokens de acesso pessoal {: #personal-access-tokens }
 
-Um PAT é um segredo bearer de longa duração que um usuário gera para um cliente que não consegue concluir um login interativo — um script, uma ferramenta de BI, um driver. (REQ-1263) Ele traz sua própria organização e função, e toda superfície o resolve pelo mesmo validador, então nenhuma superfície precisa saber o que é um PAT.
+Um PAT é um segredo bearer de longa duração que um usuário gera para um cliente que não consegue concluir um login interativo — um script, uma ferramenta de BI, um driver. Ele traz sua própria organização e função, e toda superfície o resolve pelo mesmo validador, então nenhuma superfície precisa saber o que é um PAT.
 
 A forma de transmissão é `provisa_pat_` seguido de 43 caracteres base64 seguros para URL. O prefixo é o que direciona um segredo apresentado ao armazenamento de tokens em vez do provedor de identidade, e torna um token vazado localizável em logs e repositórios.
 
@@ -495,13 +495,13 @@ A forma de transmissão é `provisa_pat_` seguido de 43 caracteres base64 seguro
 
 ### SCRAM-SHA-256 no pgwire {: #scram-sha-256-on-pgwire }
 
-Com o provedor `basic`, definir `auth.scram: true` faz o pgwire anunciar SASL (código de autenticação 10) com o mecanismo `SCRAM-SHA-256`, para que uma senha seja provada em vez de enviada. (REQ-1394) O channel binding (`SCRAM-SHA-256-PLUS`) não é oferecido.
+Com o provedor `basic`, definir `auth.scram: true` faz o pgwire anunciar SASL (código de autenticação 10) com o mecanismo `SCRAM-SHA-256`, para que uma senha seja provada em vez de enviada. O channel binding (`SCRAM-SHA-256-PLUS`) não é oferecido.
 
 O SCRAM precisa de um verificador RFC 5802, que não pode ser derivado de um hash bcrypt. Um verificador é gravado sempre que uma senha passa em texto puro — cadastro, login, troca de senha, redefinição por administrador — então uma implantação que ativa o SCRAM coleta verificadores à medida que seus usuários se autenticam, e a primeira conexão SCRAM de cada usuário vem depois da sua próxima digitação de senha. Um usuário ainda sem verificador recebe uma troca simulada indistinguível de uma real, para que a rede não revele quem já migrou.
 
 ### TLS mútuo {: #mutual-tls }
 
-A verificação do certificado do cliente move a primeira checagem para o handshake TLS: um chamador sem um certificado assinado pela CA da implantação nunca chega à camada de credenciais. (REQ-1228) Está disponível no pgwire, Bolt, gRPC e Arrow Flight — os quatro transportes que terminam o próprio TLS.
+A verificação do certificado do cliente move a primeira checagem para o handshake TLS: um chamador sem um certificado assinado pela CA da implantação nunca chega à camada de credenciais. Está disponível no pgwire, Bolt, gRPC e Arrow Flight — os quatro transportes que terminam o próprio TLS.
 
 | Variável | Significado |
 | ---------- | --------- |
@@ -517,7 +517,7 @@ Todo listener que o Provisa termina (a API HTTP e a UI, pgwire, Bolt, MCP, gRPC 
 
 ### Limitação de logins {: #login-throttling }
 
-Adivinhar senhas não depende do protocolo: a mesma conta pode ser atacada por HTTP, pgwire e Bolt. O contador fica, portanto, na camada de validação de credenciais, não em uma superfície específica, de modo que um bloqueio obtido em qualquer lugar é aplicado em todo lugar. (REQ-1393)
+Adivinhar senhas não depende do protocolo: a mesma conta pode ser atacada por HTTP, pgwire e Bolt. O contador fica, portanto, na camada de validação de credenciais, não em uma superfície específica, de modo que um bloqueio obtido em qualquer lugar é aplicado em todo lugar.
 
 Ela fica ligada por padrão — cinco falhas em cinco minutos bloqueiam o sujeito por quinze minutos — e é ajustada em `auth.login_throttle`. Um sujeito bloqueado é recusado antes mesmo de a credencial ser examinada, e uma autenticação bem-sucedida apaga o histórico desse sujeito.
 
@@ -525,7 +525,7 @@ A chave é o principal que o protocolo traz. Uma superfície só de bearer não 
 
 ### Sondagem de papéis {: #role-probing }
 
-Nomear um papel que o autor da chamada não detém é tratado como um evento de segurança detectado de gravidade alta, em todas as superfícies: a API HTTP, MCP, pgwire, Bolt, Arrow Flight, o serviço Flight do airport e gRPC. Um cliente legítimo nomeia os papéis que lhe foram dados; um que nomeia outro está com defeito ou sondando. (REQ-2076)
+Nomear um papel que o autor da chamada não detém é tratado como um evento de segurança detectado de gravidade alta, em todas as superfícies: a API HTTP, MCP, pgwire, Bolt, Arrow Flight, o serviço Flight do airport e gRPC. Um cliente legítimo nomeia os papéis que lhe foram dados; um que nomeia outro está com defeito ou sondando.
 
 A solicitação é recusada. O autor da chamada recebe apenas "not permitted", nada sobre a existência do papel, e a conexão ou sessão termina onde houver uma: a conexão pgwire, a sessão Bolt, a chamada gRPC, a sessão MCP. A exceção é a API HTTP com qualquer credencial que não seja um token de acesso pessoal: ali o navegador apresenta sua sessão ou o token do seu provedor de identidade, por isso a recusa continua nomeando o papel.
 
@@ -550,7 +550,7 @@ Os administradores da organização recebem um e-mail onde a implantação envia
 
 ### Nomear a organização {: #naming-the-org }
 
-Em multi-tenant, toda requisição nomeia a organização a que se destina. Pertencer a exatamente uma organização não a nomeia: uma requisição que não nomeia nenhuma é recusada, e a recusa diz o que enviar. (REQ-1235) Cada superfície nomeia uma organização assim:
+Em multi-tenant, toda requisição nomeia a organização a que se destina. Pertencer a exatamente uma organização não a nomeia: uma requisição que não nomeia nenhuma é recusada, e a recusa diz o que enviar. Cada superfície nomeia uma organização assim:
 
 | Superfície | Como um cliente nomeia a organização |
 | ------- | -------------------------- |
@@ -562,7 +562,7 @@ Em multi-tenant, toda requisição nomeia a organização a que se destina. Pert
 | MCP (transporte HTTP) | O nome de host próprio da organização, ou o cabeçalho `X-Org-Provisa` |
 | Cliente Python | `org=` em `ProvisaClient`, `connect()` e `adbc_connect()`; `?org=` em uma URL do SQLAlchemy |
 
-Um cliente pgwire que disca um nome de host via TLS o envia no ClientHello do TLS, e o Provisa lê a organização dali (REQ-1234). Quando o nome de host e o nome do banco de dados nomeiam ambos uma organização e diferem, a conexão é recusada; nenhum dos dois tem preferência. O nome de banco de dados `provisa`, o padrão, não nomeia nenhuma organização, e uma ferramenta de BI conectada a uma organização mostra
+Um cliente pgwire que disca um nome de host via TLS o envia no ClientHello do TLS, e o Provisa lê a organização dali. Quando o nome de host e o nome do banco de dados nomeiam ambos uma organização e diferem, a conexão é recusada; nenhum dos dois tem preferência. O nome de banco de dados `provisa`, o padrão, não nomeia nenhuma organização, e uma ferramenta de BI conectada a uma organização mostra
 essa organização como seu banco de dados. No Bolt, `SHOW DATABASES` lista um `<org>.provisa_<role>` por organização a que
 o usuário pertence; um `provisa_<role>` sozinho é recusado em multi-tenant, e uma sessão permanece na
 organização que nomeou primeiro.
@@ -575,13 +575,13 @@ Uma implantação single-tenant não tem organização a nomear. Nenhuma superf�
 
 ## Segredos entre organizações {: #secrets-across-organizations }
 
-Os segredos de uma organização são lidos só por essa organização. No armazenamento próprio do Provisa cada segredo fica sob a sua organização. Em um serviço central (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) de uma implantação de muitas organizações, toda leitura é feita dentro do prefixo da organização que lê, e uma referência que sairia dele é recusada. (REQ-1557) Os prefixos e os passos para mover os segredos existentes para debaixo deles estão em [Segredos](secrets.md#one-organizations-secrets-in-a-central-service).
+Os segredos de uma organização são lidos só por essa organização. No armazenamento próprio do Provisa cada segredo fica sob a sua organização. Em um serviço central (Vault, AWS Secrets Manager, GCP Secret Manager, Azure Key Vault) de uma implantação de muitas organizações, toda leitura é feita dentro do prefixo da organização que lê, e uma referência que sairia dele é recusada. Os prefixos e os passos para mover os segredos existentes para debaixo deles estão em [Segredos](secrets.md#one-organizations-secrets-in-a-central-service).
 
 ## Telemetria entre organizações {: #telemetry-across-organizations }
 
-Numa implantação compartilhada por muitas organizações, os sinais operacionais (`"ops"."traces"` e, no motor Trino, as métricas e os logs ao lado) são um único armazenamento onde chega o trabalho de todas as organizações. Cada span registra a organização para a qual foi iniciado, guardada como `tenant_id`, e toda leitura dos sinais responde apenas as linhas da organização que lê, seja qual for o papel. Um span iniciado fora do trabalho de qualquer organização (a inicialização do servidor, por exemplo) não pertence a nenhuma e nenhuma o lê. O administrador da plataforma não tem acesso a dados em nenhuma organização e não lê nenhuma pelo Provisa. (REQ-1349, REQ-1327)
+Numa implantação compartilhada por muitas organizações, os sinais operacionais (`"ops"."traces"` e, no motor Trino, as métricas e os logs ao lado) são um único armazenamento onde chega o trabalho de todas as organizações. Cada span registra a organização para a qual foi iniciado, guardada como `tenant_id`, e toda leitura dos sinais responde apenas as linhas da organização que lê, seja qual for o papel. Um span iniciado fora do trabalho de qualquer organização (a inicialização do servidor, por exemplo) não pertence a nenhuma e nenhuma o lê. O administrador da plataforma não tem acesso a dados em nenhuma organização e não lê nenhuma pelo Provisa.
 
-Os sinais operacionais são mantidos indefinidamente nos dois motores, como o log de auditoria: a compactação reescreve os arquivos em que estão guardados e não remove nenhuma de suas linhas. No Trino eles são as tabelas Iceberg do catálogo `otel`. Num motor nativo (DuckDB) o servidor grava os próprios registros de trace como arquivos Parquet na sua pasta de telemetria e o motor os lê com o mesmo nome, `"ops"."traces"`, com a visão de linhagem de atualizações `"ops"."mv_refresh_lineage"` sobre eles; ambos são lidos pela mesma regra por organização. (REQ-862)
+Os sinais operacionais são mantidos indefinidamente nos dois motores, como o log de auditoria: a compactação reescreve os arquivos em que estão guardados e não remove nenhuma de suas linhas. No Trino eles são as tabelas Iceberg do catálogo `otel`. Num motor nativo (DuckDB) o servidor grava os próprios registros de trace como arquivos Parquet na sua pasta de telemetria e o motor os lê com o mesmo nome, `"ops"."traces"`, com a visão de linhagem de atualizações `"ops"."mv_refresh_lineage"` sobre eles; ambos são lidos pela mesma regra por organização.
 
 Os sinais são mantidos em claro no seu armazenamento. Uma carga de trabalho que precise de mais do que um limite por organização dentro de uma implantação roda numa implantação dedicada; uma muito sensível ou regulada é auto-hospedada.
 
@@ -591,7 +591,7 @@ Um processo que atende muitas organizações executa o trabalho em segundo plano
 
 ## Residência de dados {: #data-residency }
 
-Numa implantação com regiões, uma tabela pode nomear uma região como sua casa, e seus dados pessoais são armazenados e processados lá. (REQ-1921, REQ-1922)
+Numa implantação com regiões, uma tabela pode nomear uma região como sua casa, e seus dados pessoais são armazenados e processados lá.
 
 - Só a região de casa constrói e atualiza a réplica da tabela. Qualquer outra região lê essa réplica no lugar, com as regras de linha e coluna do leitor aplicadas na região de casa, de modo que só sai dela o que o leitor pode ver.
 - Uma região de casa cuja réplica não foi construída, ou cujos armazenamentos não podem ser alcançados, recusa a leitura (`query.home_region_unavailable`). A fonte nunca é lida ao vivo de outra região no lugar.
@@ -622,7 +622,7 @@ As camadas desktop e nativa executam o PostgreSQL embarcado. No macOS e no Linux
 
 ### O motor de federação (Trino) {: #the-federation-engine-trino }
 
-- **Entre nós.** Um coordenador e seus workers se autenticam mutuamente com o segredo compartilhado gerado da implantação (`internal-communication.shared-secret`). Criptografar o tráfego entre eles é uma opção do operador, desativada por padrão: desativada, o tráfego fica dentro da rede privada ou do cluster da implantação. Ative-a onde um requisito de conformidade ou de zero-trust peça criptografia dentro da implantação. O Trino documenta que ela torna mais lentas as consultas com muito shuffle (joins distribuídos, agregações, funções de janela) de 10% a mais de 100%. Em uma implantação compose é a configuração `engine.trino_internal_tls` (Configurações da implantação → Engine), com a rede do motor e o endereço fixado do coordenador ao lado, e vale a partir do próximo início. Com o chart Helm é o valor `trino.internalTls`; o chart gera a CA e o certificado que os nós usam, mantém-nos entre atualizações e endereça cada nó pelo nome DNS do seu pod. Os motores da plataforma hospedada são coordenadores de nó único, sem tráfego entre nós, e a recusam. (REQ-2072)
+- **Entre nós.** Um coordenador e seus workers se autenticam mutuamente com o segredo compartilhado gerado da implantação (`internal-communication.shared-secret`). Criptografar o tráfego entre eles é uma opção do operador, desativada por padrão: desativada, o tráfego fica dentro da rede privada ou do cluster da implantação. Ative-a onde um requisito de conformidade ou de zero-trust peça criptografia dentro da implantação. O Trino documenta que ela torna mais lentas as consultas com muito shuffle (joins distribuídos, agregações, funções de janela) de 10% a mais de 100%. Em uma implantação compose é a configuração `engine.trino_internal_tls` (Configurações da implantação → Engine), com a rede do motor e o endereço fixado do coordenador ao lado, e vale a partir do próximo início. Com o chart Helm é o valor `trino.internalTls`; o chart gera a CA e o certificado que os nós usam, mantém-nos entre atualizações e endereça cada nó pelo nome DNS do seu pod. Os motores da plataforma hospedada são coordenadores de nó único, sem tráfego entre nós, e a recusam.
 - **Dados em spool.** A execução tolerante a falhas criptografa os dados de exchange que grava em spool com uma chave gerada para cada consulta e descartada quando ela termina (`fault-tolerant-execution.exchange-encryption-enabled=true`, definido explicitamente). O spill legado em disco não é usado.
 - **Organizações em um só motor.** Os catálogos de cada organização são dela, nomeados com a organização, e as instruções de cada organização são executadas em seu próprio resource group.
 - **Os catálogos, e as credenciais neles, vivem só na memória do motor.** O Provisa cria cada catálogo do Trino em tempo de execução, e cada um guarda as propriedades de conexão da sua fonte, senhas incluídas. Todo motor que o Provisa executa os mantém em memória (`catalog.store=memory`): nenhum catálogo é gravado no disco do motor, e nenhum é montado a partir de um arquivo. Um coordenador que reinicia volta sem catálogos; cada processo do Provisa percebe na sua próxima consulta, e o observador do motor em até um minuto, e recria os catálogos que serve. Uma fonte Kafka com credenciais SASL precisa de um arquivo: o conector Kafka do Trino lê as configurações de cliente apenas de um arquivo, então o Provisa as grava, senha incluída, em `kafka-client/<catalog>.properties`. O arquivo é legível só pelo usuário do Trino (modo 0600 num diretório 0700). Na pilha de contêineres o diretório é um volume em memória compartilhado pela API e pelo motor. Nos motores da plataforma hospedada é o próprio Secret do Kubernetes do motor, mantido na memória do nó e legível só pelo grupo do Trino (modo 0440). De qualquer forma, o arquivo nunca chega a um disco. Nos motores hospedados uma fonte Kafka deve nomear um registro de esquemas: uma cujas colunas dos tópicos só o modelo declara é recusada pelo nome ao ser salva ou aplicada, pois suas descrições de tabela exigiriam um diretório que não pode ser dado ao motor em execução. Iniciar a pilha remove os arquivos de catálogo e de cliente Kafka que versões anteriores deixaram em disco.
@@ -635,9 +635,9 @@ Em uma implantação que abriga muitas organizações, as fontes de uma organiza
 
 A criptografia sob uma chave da própria organização está disponível e fica desativada até que a organização a ative. Nada é criptografado sob uma chave da organização a menos que um administrador da organização crie uma.
 
-**A chave de criptografia da organização** (REQ-1574) envolve os segredos da organização, suas colunas criptografadas e o texto de suas consultas de auditoria. Um administrador da organização a cria em **Admin → Org Secrets → Org Key**, ou com `PUT /admin/org-encryption`: sem corpo o Provisa gera a chave, que nunca é exibida, e um corpo `key_b64` fornece 32 bytes seus. `GET /admin/org-encryption` informa só a sua impressão digital. Sem uma chave da organização, os dados da organização são envolvidos pela chave da implantação (`encryption.provider` em `provisa.yaml`). Uma implantação que não configura nenhum provedor de criptografia guarda colunas criptografadas e texto de consultas de auditoria sem criptografia; segredos nunca são guardados em texto claro (veja [Segredos](secrets.md#provisas-built-in-store)).
+**A chave de criptografia da organização** envolve os segredos da organização, suas colunas criptografadas e o texto de suas consultas de auditoria. Um administrador da organização a cria em **Admin → Org Secrets → Org Key**, ou com `PUT /admin/org-encryption`: sem corpo o Provisa gera a chave, que nunca é exibida, e um corpo `key_b64` fornece 32 bytes seus. `GET /admin/org-encryption` informa só a sua impressão digital. Sem uma chave da organização, os dados da organização são envolvidos pela chave da implantação (`encryption.provider` em `provisa.yaml`). Uma implantação que não configura nenhum provedor de criptografia guarda colunas criptografadas e texto de consultas de auditoria sem criptografia; segredos nunca são guardados em texto claro (veja [Segredos](secrets.md#provisas-built-in-store)).
 
-**A pasta da organização** (REQ-1992) guarda seus arquivos enviados e aterrissados, os arquivos de spill do seu motor e seus arquivos temporários. Um administrador da organização ativa a criptografia dela em **Admin → Org Secrets → File folder encryption**, ou com `PUT /admin/org-files` (`{"encrypted": true, "key_reference": "${secret:NAME}"}`). `POST /admin/org-files/generate-key` responde uma só vez com uma nova chave de 256 bits, para ser guardada no cofre. A chave fica no cofre da própria organização (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault ou HashiCorp Vault): o Provisa guarda só a referência, e o gocryptfs mantém os arquivos da pasta criptografados em disco sob a chave. Isso exige FUSE, portanto um host Linux ou contêiner com `/dev/fuse`; no macOS a configuração é recusada.
+**A pasta da organização** guarda seus arquivos enviados e aterrissados, os arquivos de spill do seu motor e seus arquivos temporários. Um administrador da organização ativa a criptografia dela em **Admin → Org Secrets → File folder encryption**, ou com `PUT /admin/org-files` (`{"encrypted": true, "key_reference": "${secret:NAME}"}`). `POST /admin/org-files/generate-key` responde uma só vez com uma nova chave de 256 bits, para ser guardada no cofre. A chave fica no cofre da própria organização (AWS Secrets Manager, GCP Secret Manager, Azure Key Vault ou HashiCorp Vault): o Provisa guarda só a referência, e o gocryptfs mantém os arquivos da pasta criptografados em disco sob a chave. Isso exige FUSE, portanto um host Linux ou contêiner com `/dev/fuse`; no macOS a configuração é recusada.
 
 Em uma implantação auto-hospedada, que normalmente executa uma organização em motores próprios, ativar as duas criptografa os segredos, arquivos, arquivos de spill e arquivos temporários dessa organização sob as suas chaves:
 
@@ -657,7 +657,7 @@ As abas Python e Notebook do Explore executam Python no navegador do visitante. 
 
 ## Modo de alta segurança {: #high-security-mode }
 
-`security.mode: high` em `provisa.yaml` afirma uma garantia: o backend do Provisa nunca manipula dados em texto puro. (REQ-693) Toda coluna que importa é cifrada na fonte, e só um cliente que tem a chave de decifração pode lê-la. Essa garantia tem consequências que uma implantação precisa planejar.
+`security.mode: high` em `provisa.yaml` afirma uma garantia: o backend do Provisa nunca manipula dados em texto puro. Toda coluna que importa é cifrada na fonte, e só um cliente que tem a chave de decifração pode lê-la. Essa garantia tem consequências que uma implantação precisa planejar.
 
 **O que o modo faz:**
 
@@ -667,15 +667,15 @@ As abas Python e Notebook do Explore executam Python no navegador do visitante. 
 - **pgwire, Bolt e MCP não iniciam.** Nenhum dos três tem um handshake por conexão capaz de levar um contexto de decifração: um conjunto de linhas do pgwire e um resultado Cypher trafegam em texto puro, e uma chamada de ferramenta MCP entrega seus resultados a um modelo como texto. Uma porta configurada para qualquer um deles é recusada na inicialização em vez de servida.
 - **A proteção de relacionamentos não pode ser contornada.** `ignore_relationships` e `relationship_guard: false` são ambos ignorados; veja [Governança de relacionamentos](#relationship-governance-v002).
 
-**Verificar se uma implantação está no modo:** o log de inicialização o nomeia, uma requisição `/data/sql` sem chave KMS responde 403 com uma mensagem que nomeia REQ-693, e as portas do pgwire, Bolt e MCP não estão escutando.
+**Verificar se uma implantação está no modo:** o log de inicialização o nomeia, uma requisição `/data/sql` sem chave KMS responde 403 com uma mensagem que nomeia o modo de alta segurança, e as portas do pgwire, Bolt e MCP não estão escutando.
 
 ## Hook de aprovação ABAC {: #abac-approval-hook }
 
-Um hook de política externo opcional que dispara antes da execução da consulta. (REQ-203) Quando configurado, o Provisa chama o seu motor de políticas com a identidade do usuário, as funções, as tabelas, as colunas e a operação. A resposta determina se a consulta prossegue. (REQ-203) Um comando registrado com **Requer aprovação** é submetido ao mesmo hook antes de cada chamada; veja [Chamadas de comandos](#command-calls). (REQ-1924)
+Um hook de política externo opcional que dispara antes da execução da consulta. Quando configurado, o Provisa chama o seu motor de políticas com a identidade do usuário, as funções, as tabelas, as colunas e a operação. A resposta determina se a consulta prossegue. Um comando registrado com **Requer aprovação** é submetido ao mesmo hook antes de cada chamada; veja [Chamadas de comandos](#command-calls).
 
 ### Escopo {: #scoping }
 
-O hook só dispara quando a consulta toca uma tabela ou fonte incluída — nenhum custo extra para todo o resto. (REQ-204)
+O hook só dispara quando a consulta toca uma tabela ou fonte incluída — nenhum custo extra para todo o resto.
 
 | Configuração | Efeito |
 | -------- | -------- |
@@ -685,7 +685,7 @@ O hook só dispara quando a consulta toca uma tabela ou fonte incluída — nenh
 
 ### Protocolos {: #protocols }
 
-Três transportes são suportados: (REQ-246)
+Três transportes são suportados:
 
 | Tipo | Caso de uso | Campo de configuração |
 | ------ | ---------- | ------------- |
@@ -693,7 +693,7 @@ Três transportes são suportados: (REQ-246)
 | `unix_socket` | OPA ou sidecar de política na mesma máquina | `socket_path` + `url` |
 | `grpc` | Serviço de política co-localizado de alto throughput | `url` (host:port) |
 
-O transporte gRPC usa o contrato `provisa.auth.ApprovalService` definido em `provisa/auth/approval.proto`. Implemente este serviço no seu motor de políticas: (REQ-246)
+O transporte gRPC usa o contrato `provisa.auth.ApprovalService` definido em `provisa/auth/approval.proto`. Implemente este serviço no seu motor de políticas:
 
 ```proto
 service ApprovalService {
@@ -716,11 +716,11 @@ message ApprovalResponse {
   string reason = 2;
 }
 ```
-O canal gRPC é persistente — um canal por instância do Provisa, reutilizado em todas as chamadas a esse endpoint do hook. (REQ-555)
+O canal gRPC é persistente — um canal por instância do Provisa, reutilizado em todas as chamadas a esse endpoint do hook.
 
 ### Requisição / resposta {: #request-response }
 
-Os três transportes levam o mesmo payload: (REQ-246)
+Os três transportes levam o mesmo payload:
 
 | Campo | Tipo | Descrição |
 | ------- | ------ | ------------- |
@@ -732,11 +732,11 @@ Os três transportes levam o mesmo payload: (REQ-246)
 | `command` | string | O nome do comando em uma chamada de comando; vazio em uma consulta |
 | `arguments` | object | Os argumentos com que um comando é chamado; vazio em uma consulta |
 
-Os transportes webhook e socket Unix trocam JSON, com `command` e `arguments` como chaves. No gRPC os argumentos viajam como o texto JSON `arguments_json`. A resposta precisa incluir `approved` (bool) e, opcionalmente, `reason` (string). (REQ-246)
+Os transportes webhook e socket Unix trocam JSON, com `command` e `arguments` como chaves. No gRPC os argumentos viajam como o texto JSON `arguments_json`. A resposta precisa incluir `approved` (bool) e, opcionalmente, `reason` (string).
 
 ### Chamadas de comandos {: #command-calls }
 
-Um comando com `requires_approval` definido (a chave **Requer aprovação** no formulário do comando) vai ao hook antes de cada chamada, em toda superfície. Ele só executa se o hook aprovar. A requisição leva `operation: "command"`, o nome do comando e seus argumentos; `tables` e `columns` ficam vazios. (REQ-1924) [tool-verified: `provisa/api/data/action_exec.py` `_require_approval` (`operation="command"`, `tables=[]`, `columns=[]`, `command=fn["name"]`, `arguments=args`)]
+Um comando com `requires_approval` definido (a chave **Requer aprovação** no formulário do comando) vai ao hook antes de cada chamada, em toda superfície. Ele só executa se o hook aprovar. A requisição leva `operation: "command"`, o nome do comando e seus argumentos; `tables` e `columns` ficam vazios.
 
 ```json
 {
@@ -749,7 +749,6 @@ Um comando com `requires_approval` definido (a chave **Requer aprovação** no f
   "arguments": {"input": {"title": "Crash on save"}}
 }
 ```
-[inferred: the payload also carries `session_vars`; values shown are placeholders]
 
 Duas recusas, ambas 403:
 
@@ -767,7 +766,7 @@ auth:
     fallback: deny      # allow | deny — applied on timeout or error
     scope: ""           # "" = use per-table/per-source flags; "all" = every query
 ```
-Em caso de timeout ou erro de transporte, a política `fallback` se aplica. (REQ-247) Um circuit breaker (padrão: abre após 5 falhas consecutivas, meio aberto após 30 s) evita falhas em cascata por um endpoint de hook lento. (REQ-556)
+Em caso de timeout ou erro de transporte, a política `fallback` se aplica. Um circuit breaker (padrão: abre após 5 falhas consecutivas, meio aberto após 30 s) evita falhas em cascata por um endpoint de hook lento.
 
 ### Exemplo de configuração {: #configuration-example }
 
@@ -789,6 +788,6 @@ tables:
 ```
 ## Segredos {: #secrets }
 
-As credenciais usam a sintaxe `${env:VAR_NAME}`, resolvida em tempo de execução. (REQ-557) Senhas nunca são armazenadas no banco de dados de configuração. (REQ-557)
+As credenciais usam a sintaxe `${env:VAR_NAME}`, resolvida em tempo de execução. Senhas nunca são armazenadas no banco de dados de configuração.
 
 Para o serviço completo de segredos — cofres, sintaxe de referência e provedores — veja [Segredos](secrets.md).

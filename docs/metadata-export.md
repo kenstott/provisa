@@ -14,17 +14,16 @@ matches each one's ingestion API.
 
 | `provider` | Target | Protocol |
 | --- | --- | --- |
-| `openlineage` | Marquez, or any OpenLineage consumer | OpenLineage events posted to `/api/v1/lineage` [tool-verified: provisa/api/metadata_export/openlineage.py:343-345] |
-| `openmetadata` | OpenMetadata | Entity upsert by fully-qualified name, then lineage edges by the server-assigned UUID [tool-verified: provisa/api/metadata_export/openmetadata.py:460-540] |
-| `atlas` | Apache Atlas, and Microsoft Purview | Atlas RDBMS entities posted to `/api/atlas/v2/entity/bulk` [tool-verified: provisa/api/metadata_export/atlas.py:409] |
-| `atlan` | Atlan | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types [tool-verified: provisa/api/metadata_export/atlan.py:62-65] |
-| `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` [tool-verified: provisa/api/metadata_export/datahub.py:340] |
-| `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` [tool-verified: provisa/api/metadata_export/collibra.py:229] |
-| `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` [tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27] |
-| `bigquery_dataplex` | BigQuery Analytics Hub (Dataplex) | REST calls to `{endpoint}/v1/dataProducts...` [tool-verified: provisa/api/metadata_export/bigquery_dataplex.py:123-164] |
+| `openlineage` | Marquez, or any OpenLineage consumer | OpenLineage events posted to `/api/v1/lineage` |
+| `openmetadata` | OpenMetadata | Entity upsert by fully-qualified name, then lineage edges by the server-assigned UUID |
+| `atlas` | Apache Atlas, and Microsoft Purview | Atlas RDBMS entities posted to `/api/atlas/v2/entity/bulk` |
+| `atlan` | Atlan | The same Atlas-shaped transport, mounted at `/api/meta` and typed by Atlan's own asset types |
+| `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
+| `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
+| `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
+| `bigquery_dataplex` | BigQuery Analytics Hub (Dataplex) | REST calls to `{endpoint}/v1/dataProducts...` |
 
-Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** (REQ-1592,
-REQ-1634, REQ-1636) — see [Data Products](data-products.md#metadata-export) — not the general
+Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
 publishes nothing to either.
 
@@ -32,45 +31,42 @@ publishes nothing to either.
 catalog reached over `endpoint`/`api_key` — it lives inside the same Snowflake account the engine
 already runs governed SQL against, so the adapter opens its own connection off the engine's
 configured DSN instead. `endpoint` and `api_key` are not settings this provider has, and the config
-validator does not require them for it (REQ-1635's validation is asserted below). Each Data Product
+validator does not require them for it. Each Data Product
 becomes a Snowflake `SHARE` over its member tables' physical addresses, wrapped in an internal
 `CREATE ORGANIZATION LISTING` (`distribution: ORGANIZATION`, not `EXTERNAL` — Marketplace-shaped
 listings never surface in the account's own Horizon Catalog / Data sharing UI). `publish=false` on
 the Data Product keeps the listing DRAFT; `publish=true` takes it live immediately.
-[tool-verified: provisa/api/metadata_export/snowflake_horizon.py:11-27]
 
 The listing's data dictionary is Snowflake's own, generated from the share: every member the share
-grants appears with its columns and the COMMENTs the landing reconcile wrote (REQ-1654). Provisa
+grants appears with its columns and the COMMENTs the landing reconcile wrote. Provisa
 keeps the grants equal to the membership on each publish, revoking a former member's `SELECT`. The
-manifest adds what the dictionary cannot infer (REQ-1656): the first five members in the share's
+manifest adds what the dictionary cannot infer: the first five members in the share's
 primary database as `data_dictionary.featured` (Snowflake caps featured objects at five, under one
 database), each with its real object kind, and `data_preview.has_pii` plus `pii_columns` from the
 masking rules on member columns. Provisa owns the manifest. After the `CREATE`, the live manifest is
 read back and replaced with `ALTER LISTING` when it differs, so a change made in Snowsight's listing
 wizard does not survive the next publish.
-[tool-verified: provisa/api/metadata_export/snowflake_horizon.py:listing_manifest,_publish_product]
 
 The listing's documentation link is the product's own page in Provisa, at the org's public origin
 (`mail.base_url`, by the invitation's host rule) plus `/data-products?product=<id>`; the Analytics
-Hub listing carries the same link as its documentation (REQ-1659). The Data Products page opens
+Hub listing carries the same link as its documentation. The Data Products page opens
 the product that parameter names. A loopback origin, the install default, links to the hosted
 Provisa front door at `cloud.provisa.dev` instead.
 
 Keys are not part of the catalog publish. A landed table's `PRIMARY KEY` and the `FOREIGN KEY`s its
 relationships imply belong to the landed model and converge with the tables in the landing
-reconcile, for every landed table whether or not a Data Product names it (REQ-1652). On Snowflake
+reconcile, for every landed table whether or not a Data Product names it. On Snowflake
 the constraints live on the `_landing` replicas and are mirrored onto the per-source views as
 `PROVISA_GOVERNANCE.PRIMARY_KEY` / `FOREIGN_KEY` column tags, which is what Horizon Catalog renders
 as keys and join paths. The same reconcile writes each landed table's description and column descriptions as COMMENTs and
 the stewards' tag assignments as `PROVISA_GOVERNANCE` tags onto the replica, its backing view and
-an MV's store table when it is converged (REQ-1654, REQ-1655). Databricks and BigQuery hold the
+an MV's store table when it is converged. Databricks and BigQuery hold the
 same facts on the landed table itself, which is the compiler's physical name there (no view layer):
 Unity Catalog informational constraints, COMMENTs and `provisa_governance:<tag>` tags on Databricks
-(REQ-1657); `NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
-BigQuery, where a column tag has no counterpart and is reported withheld (REQ-1658). `snowflake_horizon` therefore
+; `NOT ENFORCED` constraints, descriptions and `provisa_governance_<tag>` labels on
+BigQuery, where a column tag has no counterpart and is reported withheld. `snowflake_horizon` therefore
 publishes no constraints and no model tags of its own; it still appends governance facts to the
 descriptions of the Data Product tables it publishes.
-[tool-verified: provisa/federation/landed_keys.py, provisa/federation/snowflake_store.py]
 
 `bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but — like
 `snowflake_horizon` — cannot be a pure payload builder: an Analytics Hub listing identifies a table
@@ -78,13 +74,12 @@ by its `project.dataset.table` in the org's real BigQuery project, which `Metada
 `(source_id, schema_name, table_name)` asset refs don't carry, so the adapter resolves real
 identity from the org's live BigQuery federation runtime. One Data Product becomes one Analytics
 Hub listing backed by a dataset containing the product's member tables. Until the org's BigQuery
-source has a landing terminal attached (REQ-1633), `publish` finds no usable runtime and reports
+source has a landing terminal attached, `publish` finds no usable runtime and reports
 nothing published — the documented "otherwise skipped" state, not an error.
-[tool-verified: provisa/api/metadata_export/bigquery_dataplex.py:11-30]
 
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
-Purview endpoint with `auth_mode: entra`. [tool-verified: provisa/api/metadata_export/atlas.py:11-16]
+Purview endpoint with `auth_mode: entra`.
 
 Atlas publishes a source as an `rdbms_instance` with one `rdbms_db` beneath it, tables and columns
 as `rdbms_table` and `rdbms_column`, and one `Process` per derived table carrying its inputs,
@@ -93,23 +88,20 @@ ride in `userDescription` as one JSON document; Atlas drops an attribute its typ
 rather than refusing it. Governance signals become Atlas classifications, whose typedefs are
 registered first — an existing typedef is left alone rather than updated, because an update would
 overwrite what a catalog admin has since added to it.
-[tool-verified: provisa/api/metadata_export/atlas.py:231-336, 455-481]
 
 DataHub is aspect-oriented rather than entity-oriented: each asset is a URN, and Provisa proposes
 only the aspects it owns — `tagProperties` for each governance tag, then `datasetProperties`,
 `schemaMetadata`, `globalTags`, `ownership` and `upsimplifiesage`, the last carrying the
 column-level `fineGrainedLineages`. Aspects Provisa does
-not own are never touched. [tool-verified: provisa/api/metadata_export/datahub.py:13-16, 181-330]
+not own are never touched.
 
 Collibra identifies an asset by its name inside a domain inside a community, and its import job
 takes the payload as a multipart file part rather than as a JSON body.
-[tool-verified: provisa/api/metadata_export/collibra.py:224-263]
 
 The OpenLineage adapter emits one `DatasetEvent` per governed table plus one `RunEvent` per
 derived view carrying its column-level lineage. The OpenMetadata adapter upserts database
 services, databases, schemas, tables, a user per steward, and domains, creates a classification
 and tags for the governance signals, and then adds the lineage edges.
-[tool-verified: provisa/api/metadata_export/openmetadata.py:161-221, 259-350]
 
 Two things there are OpenMetadata's own addressing rules rather than Provisa's choices. A domain's
 owner is an entity reference the server resolves by the UUID it assigned, so each steward is
@@ -120,7 +112,6 @@ synthesized address can reach a real mailbox. Approved relationships ride in a c
 carries one — OpenMetadata rejects an extension field its entity type has not declared. The
 property is a `string` holding a JSON array because OpenMetadata's own tabular property type caps a
 table at three columns and an approved relationship carries far more than that.
-[tool-verified: provisa/api/metadata_export/openmetadata.py:71-80, 223-258, 431-459]
 
 ## Configuration
 
@@ -139,8 +130,6 @@ metadata_export:
   timeout_seconds: 30
 ```
 
-[tool-verified: `MetadataExportConfig`, provisa/core/models.py:953-983]
-
 | Setting | Meaning |
 | --- | --- |
 | `enabled` | Whether this org publishes at all. An enabled target with no `provider` or no `endpoint` is refused when it is saved, not at the next publish. |
@@ -153,7 +142,7 @@ metadata_export:
 
 Credentials are **write-only through the UI**. The admin surface reports each one as set or not
 set and never returns a stored value, so leaving a credential field blank keeps the stored one and
-clearing it removes it. [tool-verified: metadata_export_router.py:131-187]
+clearing it removes it.
 
 ### Operating it from the Admin tab
 
@@ -161,7 +150,7 @@ clearing it removes it. [tool-verified: metadata_export_router.py:131-187]
   separates a wrong URL from a rejected credential.
 - **Publish now** pushes a full snapshot and shows the outcome, including the per-asset reasons
   behind a partial publish. A catalog that rejects one table does not cost the publish the rest:
-  each rejection is reported against the asset it belongs to. [tool-verified: provider.py:46-63]
+  each rejection is reported against the asset it belongs to.
 
 The tab is available to holders of the `org_settings` right, and only for organizations whose
 plan includes metadata export. Both the tab and every endpoint behind it enforce that.
@@ -169,10 +158,8 @@ plan includes metadata export. Both the tab and every endpoint behind it enforce
 ### From the command line
 
 `provisa metadata export` posts to the same `/admin/metadata-export/publish` endpoint that
-**Publish now** uses — the single publish path (REQ-1072). Run it from cron or CI when you need
-a timed export outside the `reconcile_cron` schedule. [tool-verified: `_cmd_metadata_export` in
-provisa/cli.py:272-310; `publish_metadata_export` in
-provisa/api/admin/metadata_export_router.py:210-234]
+**Publish now** uses — the single publish path. Run it from cron or CI when you need
+a timed export outside the `reconcile_cron` schedule.
 
 ```bash
 provisa metadata export \
@@ -183,13 +170,13 @@ provisa metadata export \
 
 | Flag | Default | Notes |
 | --- | --- | --- |
-| `--api` | `$PROVISA_API_URL`, then `http://127.0.0.1:8000` | Under multitenancy, the host names the org (`acme.provisa.org`). [tool-verified: cli.py:284, 413-416] |
-| `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments — no `Authorization` header is sent when the token is empty. [tool-verified: cli.py:285, 289-290] |
-| `--timeout` | `300` | Seconds before the HTTP call is abandoned. [tool-verified: cli.py:425] |
+| `--api` | `$PROVISA_API_URL`, then `http://127.0.0.1:8000` | Under multitenancy, the host names the org (`acme.provisa.org`). |
+| `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments — no `Authorization` header is sent when the token is empty. |
+| `--timeout` | `300` | Seconds before the HTTP call is abandoned. |
 
 Exit code 0 means every asset published. Exit code 1 means partial publish or a connection
 failure. Per-asset errors print to stderr alongside the summary line, so a cron job records them
-in the mail log without obscuring the exit code. [tool-verified: cli.py:303-310]
+in the mail log without obscuring the exit code.
 
 A daily export at 06:00:
 
@@ -199,13 +186,11 @@ A daily export at 06:00:
 
 ## What is published
 
-[tool-verified: `MetadataSnapshot`, provisa/api/metadata_export/model.py:160-176]
-
 - **Sources, tables and columns** — names, data types, descriptions and aliases. Only tables
   marked **Data Product** in their registration are published; a relationship, lineage edge or
   governance tag that touches an unmarked table is withheld with it, so the catalog never
   receives a reference to a table that was not sent.
-  [tool-verified: `build_snapshot`, provisa/api/metadata_export/builder.py]
+
 - **Domains** — each domain's description and its steward. A domain with no steward publishes
   without one rather than with an invented owner.
 - **Approved relationships** — the modeled joins, with cardinality, alias, owner and version. Each
@@ -213,9 +198,9 @@ A daily export at 06:00:
   rather than a column pair, so its `sourceColumn`/`targetColumn` are the two endpoint keys and a
   catalog that read them as a join condition would invent a foreign key that does not exist; the
   junction table, its two key columns, and the discriminator that splits it into several edge types
-  publish alongside as `via`. (REQ-1586)
-  [tool-verified: `provisa/api/metadata_export/model.py:110-145`]
-- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra` — each publishes terms into one Provisa-owned glossary/namespace (REQ-1387). Not supported by `openlineage`, `snowflake_horizon` or `bigquery_dataplex`; glossary terms are silently omitted from their publishes. [tool-verified: provisa/api/metadata_export/openmetadata.py:51-58, provisa/api/metadata_export/atlas.py:806-811, provisa/api/metadata_export/atlan.py:26-28, provisa/api/metadata_export/datahub.py:50-54, provisa/api/metadata_export/collibra.py:61-63]
+  publish alongside as `via`.
+
+- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra` — each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `bigquery_dataplex`; glossary terms are silently omitted from their publishes.
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,
@@ -226,7 +211,6 @@ publishes both edges, along with the functions applied.
 
 Three enforcement facts are projected onto the assets they govern, as OpenLineage run/dataset metadata and as
 classification tags in OpenMetadata: `masked`, `rls_restricted` and `visibility_restricted`.
-[tool-verified: `GovernanceSignal`, provisa/api/metadata_export/model.py:131-137]
 
 Each signal names the governed asset, the rule that governs it, the roles it restricts, and the
 roles exempt from it. A consumer reading the external catalog can see that a column is masked, and
@@ -235,11 +219,10 @@ for whom, without opening Provisa.
 **Rule bodies are never published.** A mask pattern or an RLS predicate is the policy itself, and
 storing it in an external catalog beside the asset it restricts would hand a reader the shape of
 the data the policy exists to withhold. Only the fact and the rule's identity leave Provisa.
-[tool-verified: governance.py:11-22]
 
 ## How the target stays current
 
-Three paths publish, and all three send the same full snapshot (REQ-1072).
+Three paths publish, and all three send the same full snapshot.
 
 - **Change-driven.** A governed model change queues a publish for the org and a drain sends it
   within about fifteen seconds. The work item is *claimed*, so two Provisa processes never
@@ -248,7 +231,6 @@ Three paths publish, and all three send the same full snapshot (REQ-1072).
   drift from an event that never arrived or a catalog restored from a backup.
 - **On demand.** **Publish now** in the Admin tab, or `provisa metadata export` from the
   command line — both call the same endpoint and return the same result.
-[tool-verified: provisa/api/metadata_export/sync.py:76-200]
 
 They send the same snapshot because a delta on the change path would need its own builder and
 its own correctness argument, while the full snapshot already has one: every adapter upserts by
@@ -258,12 +240,10 @@ it, and the paths converge on the same catalog state instead of racing into diff
 A publish the catalog rejected is not marked done. The work item stays claimed, the lease
 lapses, and the next drain retries it — so a target that was briefly unreachable catches up on
 its own rather than waiting for the reconcile.
-[tool-verified: provisa/api/metadata_export/sync.py:169-200]
 
 Both scheduled paths are armed per org and re-armed when an admin saves the settings, so a
 changed `reconcile_cron` takes effect without a restart. An org that is disabled or below the
-REQ-1073 tier has both jobs removed rather than left firing.
-[tool-verified: provisa/api/metadata_export/sync.py:225-300]
+Premium tier has both jobs removed rather than left firing.
 
 ## Related
 

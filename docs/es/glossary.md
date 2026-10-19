@@ -16,7 +16,7 @@ resuelven al mismo término, y el término lleva la definición.
 ## Cómo se derivan los términos {: #how-terms-are-derived }
 
 Provisa deriva automáticamente un término de cada nombre de columna mediante una regla de
-normalización determinista (REQ-1387): plegado de mayúsculas y minúsculas, tokenización por
+normalización determinista: plegado de mayúsculas y minúsculas, tokenización por
 separadores y camelCase, expansión de abreviaturas y eliminación de los tokens proxy finales.
 
 **La expansión de abreviaturas** asigna las abreviaturas empresariales habituales a su forma
@@ -56,7 +56,7 @@ unas cuantas más que aparecen en casi todas las tablas.
 ### El nombre de negocio, no el nombre físico {: #the-business-name-not-the-physical-name }
 
 Un término derivado sigue el **nombre de negocio** de la columna: su alias cuando el modelador
-estableció uno, y su nombre físico cuando no lo hizo (REQ-1581). Cuando `usr_nm` lleva el alias
+estableció uno, y su nombre físico cuando no lo hizo. Cuando `usr_nm` lleva el alias
 `user name`, el término derivado es `user name`, no `user number` ni alguna expansión de `usr_nm`.
 
 Poner un alias a una columna es la corrección más fuerte. Un alias viaja a todas las superficies que
@@ -76,7 +76,7 @@ ese trabajo es del curador, y se queda.
 Algunos nombres de tabla describen una ruta de acceso en vez de un concepto: `user_by_name` es un
 usuario alcanzado mediante una búsqueda por nombre, no una clase distinta de entidad. Cuando Provisa
 deriva el concepto de tabla para calificar una frase genérica, corta el nombre en el conector
-(REQ-1582). `user_by_name` se convierte en `user`; `orders_by_customer` se convierte en `order`.
+. `user_by_name` se convierte en `user`; `orders_by_customer` se convierte en `order`.
 
 Sin ese corte, la clave sustituta de `user_by_name` se normalizaría a `user name` y chocaría con el
 atributo genuino `users.name`: un solo término conteniendo una cosa y uno de sus propios campos. El
@@ -136,12 +136,11 @@ otro) como las entrantes (otro término → este término), y etiqueta cada dire
 frase en lenguaje llano.
 
 Las aristas viven en `glossary_term_edges`, una tabla asociativa declarada como relación de unión
-(junction) (REQ-1586): su columna `rel_type` es el discriminador, de modo que cada uno de los tipos
+(junction): su columna `rel_type` es el discriminador, de modo que cada uno de los tipos
 anteriores es un tipo de relación Cypher distinto entre dos nodos `GlossaryTerm`, y no una propiedad
 de un nodo reificado. La tabla se aprovisiona con el resto del esquema de metadatos y no se muestra como
 nodo en los clientes de grafo — es la arista. Nada en ella es específico del glosario: se declara igual que
 declararías una unión sobre tus propias tablas, y la lee el mismo código.
-[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
 ## Términos abstractos {: #abstract-terms }
 
@@ -156,7 +155,7 @@ metadatos: un término que no nombra datos no puede responder nada.
 
 ## La regla de admisión para las superficies de consumo {: #the-admission-rule-for-consuming-surfaces }
 
-Un término que una superficie de consumo puede ofrecer debe cumplir tres condiciones (REQ-1387):
+Un término que una superficie de consumo puede ofrecer debe cumplir tres condiciones:
 
 1. **En servicio**: ni retirado (un curador lo sacó de servicio) ni obsoleto (perdió su última
    columna y se conservó solo porque eliminarlo dejaría algo colgando).
@@ -189,7 +188,7 @@ los datos subyacentes.
 
 Algunas columnas llevan fontanería en vez de datos de negocio: identificadores de lote de ETL,
 versiones de fila, marcas de tiempo de ingesta. Un término derivado de una columna así puede tener
-una definición perfectamente exacta que sencillamente no es vocabulario de negocio (REQ-1583). El
+una definición perfectamente exacta que sencillamente no es vocabulario de negocio. El
 control **Excluir de la exportación de metadatos** retiene el término, y cualquier arista de
 relación que termine en él, frente a los catálogos en los que publica Provisa, mientras que las
 columnas en sí siguen exportándose como activos.

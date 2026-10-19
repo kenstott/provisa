@@ -6,31 +6,25 @@
 
 Provisa 提供两个声明式基元——`entity` 和 `fact`——涵盖了每个星型模式（star schema）和
 Data Vault 赖以构建的所有构建块。声明规格，Provisa 会将其精确转换为具体化视图、双时态
-（bitemporal）和关系定义，无需你手工编写（REQ-1164）。[tool-verified: modeling.py module
-docstring lines 11-28]
+（bitemporal）和关系定义，无需你手工编写。
 
 ## Entity 与 Fact 是什么 {: #what-entities-and-facts-are }
 
 **entity** 是源关系的一个带键、去重、可选历史化的投影。你为其命名、指向一个数据源、
 声明 entity key 和要保留的属性，并选择一种历史模式。Provisa 会编写视图的 SQL 并注册该
-物化视图。启用历史时，该物化视图为双时态。[tool-verified: `Entity` dataclass, modeling.py
-lines 53-69; `entity_registration` function, modeling.py lines 105-120]
+物化视图。启用历史时，该物化视图为双时态。
 
 **fact** 是对 entity key 的连接（join），归约到一个声明的粒度（grain），并带有聚合的
 度量（measures）。Provisa 会编写一个聚合物化视图查询（按粒度 + FK 列的 `GROUP BY`），
 并为每个声明的维度链接注册一个关系。没有度量的 fact 是一个纯键集合——即 Data Vault 的
-link 模式。[tool-verified: `Fact` dataclass, modeling.py lines 91-102; `fact_registration`
-function, modeling.py lines 123-141; comment at line 130 "a measureless fact is a pure
-key-set (DV link)"]
+link 模式。
 
 这两种构造都是 IR（中间表示）。所生成的定义可以在不同引擎之间重新定向——在 Oracle、
-Databricks 中物化，或者在 MPP 引擎之上保持虚拟——而无需重新建模。[tool-verified:
-modeling.py docstring lines 25-28]
+Databricks 中物化，或者在 MPP 引擎之上保持虚拟——而无需重新建模。
 
 ## 历史模式 {: #history-modes }
 
-entity 有三种可用模式 [tool-verified: `_HISTORY` constant at modeling.py line 38,
-`_HISTORY_MODE` dict at modeling.py line 40]：
+entity 有三种可用模式：
 
 | 模式 | 含义 | 双时态模式 |
 | --- | --- | --- |
@@ -46,12 +40,11 @@ fact 没有历史模式——时态覆盖范围由底层 entity 的历史提供�
 
 ## 度量与聚合 {: #measures-and-aggregations }
 
-度量以 `column:agg` 对的形式声明。支持的聚合方式 [tool-verified: `_AGGS` at modeling.py
-line 41]：
+度量以 `column:agg` 对的形式声明。支持的聚合方式：
 
 `sum` &nbsp;`avg` &nbsp;`min` &nbsp;`max` &nbsp;`count`
 
-默认聚合方式为 `sum` [tool-verified: `Measure.agg` default at modeling.py line 75]。
+默认聚合方式为 `sum`。
 
 ## 实例演练：Customer entity + Sales fact {: #worked-example-customer-entity-sales-fact }
 
@@ -93,8 +86,7 @@ line 41]：
     }
     ```
 
-Provisa 会生成并注册这个双时态物化视图 [tool-verified: `entity_registration` in
-modeling.py lines 105-120]：
+Provisa 会生成并注册这个双时态物化视图：
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -139,7 +131,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
     }
     ```
 
-Provisa 会生成并注册 [tool-verified: `fact_registration` in modeling.py lines 123-141]：
+Provisa 会生成并注册：
 
 ```sql
 SELECT "order_id", "customer_id",
@@ -150,20 +142,15 @@ GROUP BY "order_id", "customer_id"
 ```
 
 外加一个注册的关系：`Sales.customer_id → Customer`（基数：many-to-one）。
-[tool-verified: `fact_table_input` in modeling_register.py lines 89-98, cardinality at
-line 95]
 
 ## Model 表单（管理界面） {: #the-model-form-admin-ui }
 
 **+ Model** 按钮出现在 **Tables** 页面（提示："Model an entity or fact (star schema /
-Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 441-450]
+Data Vault)"）。
 
 弹窗顶部的分段控件在 **Entity (dimension)** 和 **Fact** 之间切换。
-[tool-verified: ModelingForm.tsx lines 102-110]
 
 ### Entity 字段 {: #entity-fields }
-
-[tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
@@ -176,8 +163,6 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 
 ### Fact 字段 {: #fact-fields }
 
-[tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
-
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
 | Name | 是 | 目录中的物化视图名称 |
@@ -188,11 +173,10 @@ Data Vault)"）。[tool-verified: tablesPage.json line 13; TablesPage.tsx lines 
 | Dimensions | 否 | 逗号分隔的 `Entity:fk_column` 对，例如 `Customer:customer_id` |
 
 当度量中省略 `agg`（写 `amount` 而非 `amount:sum`）时，默认值为 `sum`。
-[tool-verified: ModelingForm.tsx line 73 `agg: agg || "sum"`]
 
 ## GraphQL API {: #the-graphql-api }
 
-两个 mutation 都位于管理 schema 中。[tool-verified: schema_mutation.py lines 449-472]
+两个 mutation 都位于管理 schema 中。
 
 ### `registerEntity`
 
@@ -205,7 +189,7 @@ mutation RegisterEntity($input: EntityInput!) {
 }
 ```
 
-`EntityInput` 字段 [tool-verified: types.py lines 449-456]：
+`EntityInput` 字段：
 
 | 字段 | 类型 | 默认值 | 描述 |
 | --- | --- | --- | --- |
@@ -228,7 +212,7 @@ mutation RegisterFact($input: FactInput!) {
 }
 ```
 
-`FactInput` 字段 [tool-verified: types.py lines 472-479]：
+`FactInput` 字段：
 
 | 字段 | 类型 | 默认值 | 描述 |
 | --- | --- | --- | --- |
@@ -241,15 +225,12 @@ mutation RegisterFact($input: FactInput!) {
 | `visibleTo` | [String] | `["public"]` | 角色可见性列表 |
 
 `MeasureInput`：`{ column: String, agg: String }`——agg 默认为 `"sum"`。
-[tool-verified: types.py lines 460-462]
 
 `DimRefInput`：`{ entity: String, via: String }`——`entity` 是被引用的 entity 名称；
 `via` 是 fact 数据源上的 FK 列。
-[tool-verified: types.py lines 465-468]
 
 成功时，`registerFact` 返回如下形式的消息：
 `Fact 'Sales' registered with 1 dimension link(s)`。
-[tool-verified: schema_mutation.py line 471]
 
 ## Kimball 星型模式与 Data Vault {: #kimball-star-schema-and-data-vault }
 
@@ -259,12 +240,10 @@ mutation RegisterFact($input: FactInput!) {
 
 本演练构建一个三维度的星型模式。新增两张源表：
 
-- `raw.products`——`product_id`、`name`、`category`、`list_price` [inferred: introduced
-  for this example]
-- `raw.date_spine`——`date_key`、`year`、`quarter`、`month` [inferred: introduced for this
-  example]
+- `raw.products`——`product_id`、`name`、`category`、`list_price`
+- `raw.date_spine`——`date_key`、`year`、`quarter`、`month`
 
-此处 `raw.orders` 也新增了 `product_id` 和 `order_date` 列。[inferred]
+此处 `raw.orders` 也新增了 `product_id` 和 `order_date` 列。
 
 #### 选择 SCD 类型 {: #choosing-scd-type }
 
@@ -274,9 +253,6 @@ mutation RegisterFact($input: FactInput!) {
 | --- | --- | --- |
 | Type 1（仅当前） | `none` | 每次刷新时重建物化视图；无行历史 |
 | Type 2（版本化） | `scd2` | 双时态 delta 物化视图；每次变更都追加一行新记录，以 entity key 为键 |
-
-[tool-verified: `_HISTORY_MODE` at modeling.py line 40; `entity_registration` history branch
-at lines 115-119]
 
 当下游查询需要按事务发生时的状态连接一个维度时——例如客户在购买那一刻的 tier，而非其
 当前 tier——使用 `scd2`。对于稳定的查找表，使用 `none`。日期基准表（date spine）永远
@@ -306,8 +282,7 @@ mutation {
 }
 ```
 
-生成一个以 `id` 为键的双时态 delta 物化视图 [tool-verified: entity_registration
-modeling.py lines 105-120]：
+生成一个以 `id` 为键的双时态 delta 物化视图：
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -329,8 +304,7 @@ mutation {
 }
 ```
 
-生成一个每次刷新都重建的普通物化视图 [tool-verified: entity_registration modeling.py
-lines 105-114; `mv_bitemporal_mode` is only added when `history != "none"`, line 115]：
+生成一个每次刷新都重建的普通物化视图：
 
 ```sql
 SELECT "product_id", "name", "category", "list_price" FROM "raw"."products"
@@ -383,7 +357,7 @@ mutation {
 
 Provisa 计算 `group_cols = dedup([grain] + [dim FKs])`
 = `["order_id", "customer_id", "product_id", "order_date"]`，并生成
-[tool-verified: fact_registration modeling.py lines 125-131]：
+：
 
 ```sql
 SELECT "order_id", "customer_id", "product_id", "order_date",
@@ -393,8 +367,7 @@ FROM   "raw"."orders"
 GROUP BY "order_id", "customer_id", "product_id", "order_date"
 ```
 
-系统会自动注册三个关系 [tool-verified: modeling_register.py lines 89-98, cardinality
-`"many_to_one"` at line 95]：
+系统会自动注册三个关系：
 
 | 关系 | 基数 |
 | --- | --- |
@@ -425,9 +398,7 @@ mutation {
 ```
 
 `Sales` 和 `Returns` 都指向同一组 `Customer` 和 `Product` entity。Provisa 的连接路径
-保证通过任一 fact 的查询都会经过同一个维度定义 [tool-verified: fact_registration uses
-entity name as `target_table` at modeling.py lines 138-140; fact_table_input wires
-`target_table_id` from that name at modeling_register.py lines 91-93]。
+保证通过任一 fact 的查询都会经过同一个维度定义。
 
 ---
 
@@ -462,8 +433,7 @@ mutation {
 }
 ```
 
-生成 [tool-verified: entity_registration modeling.py lines 107-108;
-`cols = dedup([*key, *attributes])` = `["id"]` when `attributes=[]`]：
+生成：
 
 ```sql
 SELECT "id" FROM "raw"."customers"
@@ -506,8 +476,7 @@ mutation {
 }
 ```
 
-生成 [tool-verified: entity_registration modeling.py lines 115-119;
-`_HISTORY_MODE["scd2"]` = `"delta"` at modeling.py line 40]：
+生成：
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -520,8 +489,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 #### Link（无度量的 fact） {: #link-measureless-fact }
 
 Link 记录哪些 hub key 曾经共同出现——仅键，无度量。当 `measures` 为空时，Provisa 会
-省略 `GROUP BY` [tool-verified: modeling.py lines 130-131: `if f.measures: view_sql +=
-" GROUP BY ..."`]。
+省略 `GROUP BY`。
 
 ```graphql
 mutation {
@@ -540,8 +508,7 @@ mutation {
 ```
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`。
-无度量，因此无 `GROUP BY`。生成 [tool-verified: fact_registration
-modeling.py lines 125-131]：
+无度量，因此无 `GROUP BY`。生成：
 
 ```sql
 SELECT "order_id", "customer_id" FROM "raw"."orders"
@@ -549,7 +516,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 
 系统会注册两个关系：`OrderCustomerLink.customer_id → CustomerHub` 和
 `OrderCustomerLink.order_id → OrderHub`，两者均为 many-to-one
-[tool-verified: modeling_register.py lines 89-98]。
+。
 
 #### Bridge / 聚合 link {: #bridge-aggregate-link }
 
@@ -574,7 +541,7 @@ mutation {
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
 （维度列表中重复的 `order_id` 被 `_dedup` 剔除）。生成
-[tool-verified: fact_registration modeling.py lines 125-131]：
+：
 
 ```sql
 SELECT "order_id", "customer_id", SUM("amount") AS "amount"
@@ -583,19 +550,15 @@ GROUP BY "order_id", "customer_id"
 ```
 
 模型本身不决定方法论。粒度、一致性、SCD 选择以及 hub/satellite 拆分仍然是建模者的
-决定。Provisa 只负责执行。[tool-verified: modeling.py docstring lines 25-26]
+决定。Provisa 只负责执行。
 
-## 指标（Metrics）（REQ-1317、REQ-1318、REQ-1320） {: #metrics-req-1317-req-1318-req-1320 }
+## 指标（Metrics） {: #metrics }
 
 **指标**（metric）是一个具名、受治理的聚合定义，本身没有粒度。粒度——即聚合所按的
 维度——在查询时由调用方绑定，而非在定义时绑定。这正是指标与视图的区别：视图在创建时
-锁定粒度；指标在被查询之前始终保持开放。[tool-verified: `Metric` class comment,
-`provisa/core/models.py` lines 452–455: "A named, governed aggregate definition with no
-grain of its own... grain is bound at query time by the requested dimension set"]
+锁定粒度；指标在被查询之前始终保持开放。
 
 ### Metric 对象 {: #the-metric-object }
-
-[tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
 
 | 字段 | 必填 | 说明 |
 | --- | --- | --- |
@@ -609,11 +572,9 @@ grain of its own... grain is bound at query time by the requested dimension set"
 
 表达式中的列引用必须以表名限定（例如 `orders.amount`，而非 `amount`）。未限定的列在
 展开时属于硬性错误，而非警告。
-[tool-verified: `_expression_tables`, `provisa/compiler/metric_expand.py` lines 83–96]
 
 指标仓库在每次写入时都会校验表达式。无法解析或不含任何聚合函数的表达式会被拒绝，
 永远不会被存储。
-[tool-verified: `validate_expression`, `provisa/core/repositories/metric.py` lines 34–43]
 
 配置条目示例：
 
@@ -628,8 +589,7 @@ metrics:
 
 ### 查询一个指标 {: #querying-a-metric }
 
-编译器保留了 `metrics` schema。[tool-verified: `METRICS_SCHEMA = "metrics"`,
-`provisa/compiler/metric_expand.py` line 43] 每个指标都可以在该 schema 中以虚拟关系的
+编译器保留了 `metrics` schema。 每个指标都可以在该 schema 中以虚拟关系的
 形式被寻址。可以像查询表一样查询它——所选的列成为维度集合和 GROUP BY：
 
 ```sql
@@ -642,37 +602,26 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 
 编译器会在治理（governance）执行之前，将该查询重写为针对底层语义表的真正分组聚合，
 使 RLS 和脱敏得以作用于真实列。
-[tool-verified: `expand_metric_query` docstring, `provisa/compiler/metric_expand.py` lines
-263–276: "BEFORE governance, so RLS/masking apply to the real columns (REQ-1317)"]
 
 对指标关系使用 `SELECT *` 会被拒绝——需要显式指定维度列和 `value`。
-[tool-verified: `expand_metric_query`, `provisa/compiler/metric_expand.py` lines 302–306]
 
 当一个指标的表达式跨越多张表时，编译器会通过已注册的关系将它们连接起来。若一个维度是
 被直接引用表的一列，则解析到该表。若一个维度距离一步关系之遥，则自动连接。两跳以上或
 存在歧义的维度是一个会指明责任方的硬性错误。
-[tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines
-190–228]
 
-### 由 fact 规格生成的指标（REQ-1320） {: #metrics-from-fact-specs-req-1320 }
+### 由 fact 规格生成的指标 {: #metrics-from-fact-specs }
 
 注册一个 fact 时，每个声明的度量都会自动注册一个对应的 Metric 对象。指标的
 `from_fact` 字段记录来源 fact 表的名称，有效的分组维度是通过该 fact 的 FK 关系可达的
 entity 属性。
-[tool-verified: `Metric.from_fact` comment, `provisa/core/models.py` line 466–467: "set
-when this metric was auto-registered from a fact spec's measure"; `from_fact` stored in
-`provisa/core/repositories/metric.py` line 57]
 
 自动注册的指标会在 Metrics 页面上显示一个 **fact** 徽章。可以像编辑其他指标一样编辑
-它们。[tool-verified: `MetricsPage.tsx` lines 405–408: `{m.fromFact && <Badge ...
-data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
+它们。
 
-### 由指标组成的视图（view_metrics，REQ-1318） {: #metric-composed-views-view_metrics-req-1318 }
+### 由指标组成的视图（view_metrics） {: #metric-composed-views-view_metrics-req-1318 }
 
 `view_metrics` 视图在定义时锁定一个指标的粒度。声明指标名称、维度列和可选的过滤条件；
 编译器生成对应的 SELECT。
-
-[tool-verified: `ViewMetricsSpec`, `provisa/core/models.py` lines 479–492]
 
 ```yaml
 tables:
@@ -697,47 +646,33 @@ GROUP BY orders.region, orders.month
 ```
 
 `view_metrics` 与 `view_sql` 在同一张表上互斥。
-[tool-verified: `Table` model validator, `provisa/core/models.py` lines 614–617:
-`if self.view_sql is not None and self.view_metrics is not None: raise ValueError(...)`]
 
 **指标变更时的自动重新生成。** 当一个指标的表达式被更新时，每一个引用它的
 `view_metrics` 视图都会重新编译，新 SQL 会立即被持久化。视图在结构上不可能与指标定义
 出现偏差。
-[tool-verified: `regenerate_metric_views`, `provisa/api/admin/_metric_views.py` lines
-79–117: "each dependent view_metrics spec recompiles against the UPDATED metric set and the
-fresh SQL is persisted"]
 
 **手写视图 SQL 中的内联 `metric()` 调用。** 手写的 `view_sql` 也可以通过
 `metric('name')` 引用指标。编译器会用指标的表达式替换每个调用，并记录一条血缘边
 （lineage edge）。这使手写视图在引用指标而非复制其公式时，同样具有变更即重新编译的
 特性。
-[tool-verified: `expand_metric_calls_in_sql`, `provisa/compiler/metric_expand.py` lines
-393–429]
 
 注意：使用内联 `metric()` 调用的配置路径视图，会在配置重新加载时重新生成，而非在指标
-upsert 时。[tool-verified: `regenerate_metric_views` docstring, `_metric_views.py` lines
-84–86: "Free-hand view_sql born from inline metric() calls carries no stored provenance, so
-it is not regenerated here (config-path views regenerate on config reload)"]
+upsert 时。
 
-### Metrics 管理页面（REQ-1323、REQ-1324） {: #the-metrics-admin-page-req-1323-req-1324 }
+### Metrics 管理页面 {: #the-metrics-admin-page }
 
 打开 **Metrics** 导航项以管理受治理的指标。点击一行以展开一个只读详情面板；在面板中
 点击 **Edit** 即可切换到内联编辑（无弹窗）。**New Metric** 会在表格上方打开一张内联
 创建卡片。删除确认是本页面上唯一的弹窗。
-[tool-verified: `MetricsPage.tsx` lines 214–216 comment: "REQ-1317: registered-metrics
-management page (list / create / edit / delete). REQ-1323: detail-then-edit"]
 
 创建/编辑表单为来源于 fact 的指标提供了一个三步选择器构建器：选择来源 fact 表（已按
 `modelingRole=fact` 过滤）、一个度量列，以及一个聚合函数（`SUM`、`AVG`、`COUNT`、
 `MIN`、`MAX`）。数据类型自动推导：`COUNT → bigint`、`AVG → numeric`、`SUM/MIN/MAX → the measure column's type`（度量列本身的类型）。
 表达式文本区仍是任意表达式的逃生出口。
-[tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
-`applyBuilder`, `MetricsPage.tsx` lines 273–285]
 
 ## IR 带来的收益 {: #the-ir-payoff }
 
 每次注册调用都经过与手写物化视图相同的路径。entity/fact 规格是一种中间表示——不是
 模板，也不是宏。它所指向的数据仓库是部署的一个属性，而非模型的属性。更换目标引擎，
 同一组 `entity` / `fact` 声明依然会在该引擎中物化，因为所生成的 SQL 和双时态模式在
-结构上就是引擎中立的。[tool-verified: modeling.py docstring lines 25-28;
-modeling_register.py lines 56-66, 80-88]
+结构上就是引擎中立的。

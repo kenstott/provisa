@@ -16,7 +16,7 @@ stesso termine, e il termine porta con sé la definizione.
 ## Come vengono derivati i termini {: #how-terms-are-derived }
 
 Provisa deriva automaticamente un termine da ogni nome di colonna, con una regola di normalizzazione
-deterministica (REQ-1387): normalizzazione delle maiuscole, tokenizzazione per separatori e
+deterministica: normalizzazione delle maiuscole, tokenizzazione per separatori e
 camelCase, espansione delle abbreviazioni e rimozione dei token proxy finali.
 
 **L'espansione delle abbreviazioni** mappa le sigle aziendali più comuni sulla loro forma estesa:
@@ -56,7 +56,7 @@ una manciata di altre che compaiono su quasi ogni tabella.
 ### Il nome di business, non il nome fisico {: #the-business-name-not-the-physical-name }
 
 Un termine derivato segue il **nome di business** della colonna — il suo alias quando chi modella ne
-ha impostato uno, il suo nome fisico quando non l'ha fatto (REQ-1581). Quando `usr_nm` ha come alias
+ha impostato uno, il suo nome fisico quando non l'ha fatto. Quando `usr_nm` ha come alias
 `user name`, il termine derivato è `user name`, non `user number` né una qualche espansione di
 `usr_nm`.
 
@@ -77,7 +77,7 @@ quel lavoro appartiene al curatore, e resta.
 Alcuni nomi di tabella descrivono un percorso di accesso anziché un concetto: `user_by_name` è un
 utente raggiunto attraverso una ricerca per nome, non un tipo di entità distinto. Quando Provisa
 deriva il concetto della tabella per qualificare le frasi generiche, taglia il nome in
-corrispondenza del connettivo (REQ-1582). `user_by_name` diventa `user`; `orders_by_customer`
+corrispondenza del connettivo. `user_by_name` diventa `user`; `orders_by_customer`
 diventa `order`.
 
 Senza il taglio, la chiave surrogata di `user_by_name` si normalizzerebbe in `user name` e
@@ -140,12 +140,11 @@ quelli in entrata (un altro termine → questo termine), etichettando ogni direz
 linguaggio corrente.
 
 Gli archi vivono in `glossary_term_edges`, una tabella associativa dichiarata come relazione di giunzione
-(junction) (REQ-1586): la sua colonna `rel_type` è il discriminatore, quindi ciascuno dei tipi qui sopra
+(junction): la sua colonna `rel_type` è il discriminatore, quindi ciascuno dei tipi qui sopra
 è un tipo di relazione Cypher distinto fra due nodi `GlossaryTerm`, non una proprietà su un nodo reificato.
 La tabella viene provisionata con il resto dello schema di metadati e non è mostrata come nodo nei client
 grafo — è l'arco. Nulla in essa è specifico del glossario: si dichiara esattamente come dichiareresti una
 giunzione sulle tue tabelle, ed è letta dallo stesso codice.
-[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
 ## Termini astratti {: #abstract-terms }
 
@@ -160,7 +159,7 @@ nell'esportazione dei metadati — un termine che non nomina alcun dato non può
 
 ## La regola di ammissione per le superfici consumatrici {: #the-admission-rule-for-consuming-surfaces }
 
-Un termine che una superficie consumatrice può offrire deve soddisfare tre condizioni (REQ-1387):
+Un termine che una superficie consumatrice può offrire deve soddisfare tre condizioni:
 
 1. **In servizio** — non ritirato (un curatore lo ha tolto dal servizio) e non deprecato (ha perso
    l'ultima colonna ed è stato mantenuto solo perché eliminarlo avrebbe lasciato qualcosa in
@@ -195,7 +194,7 @@ i dati sottostanti.
 
 Alcune colonne trasportano dettagli tecnici anziché dati di business: identificatori di batch ETL,
 versioni di riga, timestamp di acquisizione. Un termine derivato da una colonna del genere può avere
-una definizione perfettamente accurata che semplicemente non è vocabolario di business (REQ-1583).
+una definizione perfettamente accurata che semplicemente non è vocabolario di business.
 Il controllo **Escludi dall'esportazione dei metadati** trattiene il termine, e ogni arco di
 relazione che termina su di esso, dai cataloghi verso cui Provisa pubblica, mentre le colonne stesse
 continuano a essere esportate come asset.

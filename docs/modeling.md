@@ -7,30 +7,25 @@
 Provisa gives you two declarative primitives — `entity` and `fact` — that cover the building
 blocks every star schema and Data Vault is assembled from. Declare the spec; Provisa lowers it to
 exactly the materialized-view, bitemporal, and relationship definitions you would otherwise
-hand-write (REQ-1164). [tool-verified: modeling.py module docstring lines 11-28]
+hand-write.
 
 ## What entities and facts are
 
 An **entity** is a keyed, deduplicated, optionally-historized projection of a source relation. You
 name it, point it at a source, declare the entity key and the attributes you want to carry,
 and choose a history mode. Provisa writes the view SQL and registers the MV. When history is
-enabled, the MV is bitemporal. [tool-verified: `Entity` dataclass, modeling.py lines 53-69;
-`entity_registration` function, modeling.py lines 105-120]
+enabled, the MV is bitemporal.
 
 A **fact** is a join to entity keys, reduced to a declared grain, with aggregated measures. Provisa
 writes an aggregate-MV query (`GROUP BY` grain + FK columns) and registers a relationship for each
 declared dimension link. A fact with no measures is a pure key-set — the Data Vault link pattern.
-[tool-verified: `Fact` dataclass, modeling.py lines 91-102; `fact_registration` function, modeling.py
-lines 123-141; comment at line 130 "a measureless fact is a pure key-set (DV link)"]
 
 Both constructs are IR. The generated definitions retarget across engines — materialized in Oracle,
-Databricks, or left virtual over an MPP engine — without remodeling. [tool-verified: modeling.py
-docstring lines 25-28]
+Databricks, or left virtual over an MPP engine — without remodeling.
 
 ## History modes
 
-Three modes are available on an entity [tool-verified: `_HISTORY` constant at modeling.py line 38,
-`_HISTORY_MODE` dict at modeling.py line 40]:
+Three modes are available on an entity:
 
 | Mode | Meaning | Bitemporal mode |
 | --- | --- | --- |
@@ -46,12 +41,11 @@ Facts have no history mode — temporal coverage comes from the underlying entit
 
 ## Measures and aggregations
 
-Measures are declared as `column:agg` pairs. Supported aggregations [tool-verified: `_AGGS`
-at modeling.py line 41]:
+Measures are declared as `column:agg` pairs. Supported aggregations:
 
 `sum` &nbsp;`avg` &nbsp;`min` &nbsp;`max` &nbsp;`count`
 
-The default aggregation is `sum` [tool-verified: `Measure.agg` default at modeling.py line 75].
+The default aggregation is `sum`.
 
 ## Worked example: Customer entity + Sales fact
 
@@ -93,8 +87,7 @@ The default aggregation is `sum` [tool-verified: `Measure.agg` default at modeli
     }
     ```
 
-Provisa generates and registers this bitemporal MV [tool-verified: `entity_registration` in
-modeling.py lines 105-120]:
+Provisa generates and registers this bitemporal MV:
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -139,7 +132,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
     }
     ```
 
-Provisa generates and registers [tool-verified: `fact_registration` in modeling.py lines 123-141]:
+Provisa generates and registers:
 
 ```sql
 SELECT "order_id", "customer_id",
@@ -150,19 +143,15 @@ GROUP BY "order_id", "customer_id"
 ```
 
 Plus one registered relationship: `Sales.customer_id → Customer` (cardinality: many-to-one).
-[tool-verified: `fact_table_input` in modeling_register.py lines 89-98, cardinality at line 95]
 
 ## The Model form (admin UI)
 
 The **+ Model** button appears on the **Tables** page (tooltip: "Model an entity or fact (star
-schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx lines 441-450]
+schema / Data Vault)").
 
 A segmented control at the top of the modal switches between **Entity (dimension)** and **Fact**.
-[tool-verified: ModelingForm.tsx lines 102-110]
 
 ### Entity fields
-
-[tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -175,8 +164,6 @@ A segmented control at the top of the modal switches between **Entity (dimension
 
 ### Fact fields
 
-[tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
-
 | Field | Required | Notes |
 | --- | --- | --- |
 | Name | yes | The MV name in the catalog |
@@ -187,11 +174,10 @@ A segmented control at the top of the modal switches between **Entity (dimension
 | Dimensions | no | `Entity:fk_column` pairs, comma-separated, e.g. `Customer:customer_id` |
 
 When `agg` is omitted in a measure (`amount` instead of `amount:sum`), it defaults to `sum`.
-[tool-verified: ModelingForm.tsx line 73 `agg: agg || "sum"`]
 
 ## The GraphQL API
 
-Both mutations live in the admin schema. [tool-verified: schema_mutation.py lines 449-472]
+Both mutations live in the admin schema.
 
 ### `registerEntity`
 
@@ -204,7 +190,7 @@ mutation RegisterEntity($input: EntityInput!) {
 }
 ```
 
-`EntityInput` fields [tool-verified: types.py lines 449-456]:
+`EntityInput` fields:
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -227,7 +213,7 @@ mutation RegisterFact($input: FactInput!) {
 }
 ```
 
-`FactInput` fields [tool-verified: types.py lines 472-479]:
+`FactInput` fields:
 
 | Field | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -240,15 +226,12 @@ mutation RegisterFact($input: FactInput!) {
 | `visibleTo` | [String] | `["public"]` | Role visibility list |
 
 `MeasureInput`: `{ column: String, agg: String }` — agg defaults to `"sum"`.
-[tool-verified: types.py lines 460-462]
 
 `DimRefInput`: `{ entity: String, via: String }` — `entity` is the referenced entity name;
 `via` is the FK column on the fact source.
-[tool-verified: types.py lines 465-468]
 
 On success, `registerFact` returns a message of the form:
 `Fact 'Sales' registered with 1 dimension link(s)`.
-[tool-verified: schema_mutation.py line 471]
 
 ## Kimball star schema and Data Vault
 
@@ -258,10 +241,10 @@ Neither pattern requires separate tooling. The same two primitives compose into 
 
 This walkthrough builds a three-dimension star. Two source tables are new:
 
-- `raw.products` — `product_id`, `name`, `category`, `list_price` [inferred: introduced for this example]
-- `raw.date_spine` — `date_key`, `year`, `quarter`, `month` [inferred: introduced for this example]
+- `raw.products` — `product_id`, `name`, `category`, `list_price`
+- `raw.date_spine` — `date_key`, `year`, `quarter`, `month`
 
-`raw.orders` also gains `product_id` and `order_date` columns here. [inferred]
+`raw.orders` also gains `product_id` and `order_date` columns here.
 
 #### Choosing SCD type
 
@@ -271,9 +254,6 @@ History mode is the only dial between SCD Type 1 and Type 2:
 | --- | --- | --- |
 | Type 1 (current only) | `none` | MV rebuilt on refresh; no row history |
 | Type 2 (versioned) | `scd2` | Bitemporal delta MV; each change appends a new row keyed on the entity key |
-
-[tool-verified: `_HISTORY_MODE` at modeling.py line 40; `entity_registration` history branch at
-lines 115-119]
 
 Use `scd2` when downstream queries need to join a dimension as it existed at transaction time — a
 customer's tier at the moment of purchase, not their current tier. Use `none` for stable lookups.
@@ -305,8 +285,7 @@ mutation {
 }
 ```
 
-Generates a bitemporal delta MV keyed on `id` [tool-verified: entity_registration modeling.py
-lines 105-120]:
+Generates a bitemporal delta MV keyed on `id`:
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -328,8 +307,7 @@ mutation {
 }
 ```
 
-Generates an ordinary MV rebuilt on refresh [tool-verified: entity_registration modeling.py
-lines 105-114; `mv_bitemporal_mode` is only added when `history != "none"`, line 115]:
+Generates an ordinary MV rebuilt on refresh:
 
 ```sql
 SELECT "product_id", "name", "category", "list_price" FROM "raw"."products"
@@ -382,7 +360,7 @@ mutation {
 
 Provisa computes `group_cols = dedup([grain] + [dim FKs])`
 = `["order_id", "customer_id", "product_id", "order_date"]` and generates
-[tool-verified: fact_registration modeling.py lines 125-131]:
+:
 
 ```sql
 SELECT "order_id", "customer_id", "product_id", "order_date",
@@ -392,8 +370,7 @@ FROM   "raw"."orders"
 GROUP BY "order_id", "customer_id", "product_id", "order_date"
 ```
 
-Three relationships are registered automatically [tool-verified: modeling_register.py lines 89-98,
-cardinality `"many_to_one"` at line 95]:
+Three relationships are registered automatically:
 
 | Relationship | Cardinality |
 | --- | --- |
@@ -425,8 +402,7 @@ mutation {
 
 Both `Sales` and `Returns` point to the same `Customer` and `Product` entities. Provisa's join
 paths enforce that queries through either fact traverse the same dimension definition
-[tool-verified: fact_registration uses entity name as `target_table` at modeling.py lines 138-140;
-fact_table_input wires `target_table_id` from that name at modeling_register.py lines 91-93].
+.
 
 ---
 
@@ -461,8 +437,7 @@ mutation {
 }
 ```
 
-Generates [tool-verified: entity_registration modeling.py lines 107-108;
-`cols = dedup([*key, *attributes])` = `["id"]` when `attributes=[]`]:
+Generates:
 
 ```sql
 SELECT "id" FROM "raw"."customers"
@@ -505,8 +480,7 @@ mutation {
 }
 ```
 
-Generates [tool-verified: entity_registration modeling.py lines 115-119;
-`_HISTORY_MODE["scd2"]` = `"delta"` at modeling.py line 40]:
+Generates:
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -519,8 +493,7 @@ provides point-in-time attribute access through the bitemporal layer.
 #### Link (measureless fact)
 
 A link records which hub keys co-occurred — keys only, no measures. Provisa omits the `GROUP BY`
-when `measures` is empty [tool-verified: modeling.py lines 130-131:
-`if f.measures: view_sql += " GROUP BY ..."`].
+when `measures` is empty.
 
 ```graphql
 mutation {
@@ -539,8 +512,7 @@ mutation {
 ```
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`.
-No measures, so no `GROUP BY`. Generates [tool-verified: fact_registration modeling.py lines
-125-131]:
+No measures, so no `GROUP BY`. Generates:
 
 ```sql
 SELECT "order_id", "customer_id" FROM "raw"."orders"
@@ -548,7 +520,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 
 Two relationships registered: `OrderCustomerLink.customer_id → CustomerHub` and
 `OrderCustomerLink.order_id → OrderHub`, both many-to-one
-[tool-verified: modeling_register.py lines 89-98].
+.
 
 #### Bridge / aggregate link
 
@@ -573,7 +545,7 @@ mutation {
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
 (the duplicate `order_id` from the dimension list is dropped by `_dedup`). Generates
-[tool-verified: fact_registration modeling.py lines 125-131]:
+:
 
 ```sql
 SELECT "order_id", "customer_id", SUM("amount") AS "amount"
@@ -582,21 +554,16 @@ GROUP BY "order_id", "customer_id"
 ```
 
 The model does not decide the methodology. Grain, conformance, SCD choice, and the hub/satellite
-split remain the modeler's decisions. Provisa executes them. [tool-verified: modeling.py
-docstring lines 25-26]
+split remain the modeler's decisions. Provisa executes them.
 
-## Metrics (REQ-1317, REQ-1318, REQ-1320)
+## Metrics
 
 A **metric** is a named, governed aggregate definition with no grain of its own. The grain — the
 dimensions the aggregate is broken out by — is bound at query time by the caller, not at definition
 time. That is what distinguishes a metric from a view: a view locks the grain at creation; a metric
-stays open until queried. [tool-verified: `Metric` class comment, `provisa/core/models.py` lines
-452–455: "A named, governed aggregate definition with no grain of its own... grain is bound at
-query time by the requested dimension set"]
+stays open until queried.
 
 ### The Metric object
-
-[tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
 
 | Field | Required | Notes |
 | --- | --- | --- |
@@ -610,11 +577,9 @@ query time by the requested dimension set"]
 
 Column references inside the expression must be table-qualified (`orders.amount`, not `amount`).
 An unqualified column is a hard error at expansion time, not a warning.
-[tool-verified: `_expression_tables`, `provisa/compiler/metric_expand.py` lines 83–96]
 
 The metric repository validates the expression on every write. An expression that does not parse or
 contains no aggregate function is rejected; it is never stored.
-[tool-verified: `validate_expression`, `provisa/core/repositories/metric.py` lines 34–43]
 
 Example config entry:
 
@@ -629,8 +594,7 @@ metrics:
 
 ### Querying a metric
 
-The compiler reserves the `metrics` schema. [tool-verified: `METRICS_SCHEMA = "metrics"`,
-`provisa/compiler/metric_expand.py` line 43] Every metric is addressable as a virtual relation
+The compiler reserves the `metrics` schema. Every metric is addressable as a virtual relation
 inside that schema. Query it like a table — the columns you select become the dimension set and
 the GROUP BY:
 
@@ -644,37 +608,28 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 
 The compiler rewrites this into a real grouped aggregate over the underlying semantic tables before
 governance runs, so RLS and masking apply to the actual columns.
-[tool-verified: `expand_metric_query` docstring, `provisa/compiler/metric_expand.py` lines 263–276:
-"BEFORE governance, so RLS/masking apply to the real columns (REQ-1317)"]
 
 `SELECT *` against a metric relation is rejected — name the dimension columns and `value`
-explicitly. [tool-verified: `expand_metric_query`, `provisa/compiler/metric_expand.py` lines 302–306]
+explicitly.
 
 When a metric's expression spans multiple tables, the compiler joins them through registered
 relationships. A dimension that is a column of a directly-referenced table resolves to that table.
 A dimension one relationship hop away is joined in automatically. Two hops or an ambiguous
 dimension is a hard error naming the offender.
-[tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines 190–228]
 
-### Metrics from fact specs (REQ-1320)
+### Metrics from fact specs
 
 When you register a fact, each declared measure auto-registers a corresponding Metric object.
 The metric's `from_fact` field records the source fact table name, and the valid grouping
 dimensions are the entity attributes reachable over the fact's FK relationships.
-[tool-verified: `Metric.from_fact` comment, `provisa/core/models.py` line 466–467:
-"set when this metric was auto-registered from a fact spec's measure";
-`from_fact` stored in `provisa/core/repositories/metric.py` line 57]
 
 Auto-registered metrics appear on the Metrics page with a **fact** badge. You can edit them like
-any other metric. [tool-verified: `MetricsPage.tsx` lines 405–408:
-`{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
+any other metric.
 
-### Metric-composed views (view_metrics, REQ-1318)
+### Metric-composed views (view_metrics)
 
 A `view_metrics` view closes a metric's grain at definition time. Declare the metric names,
 dimension columns, and optional filters; the compiler generates the SELECT.
-
-[tool-verified: `ViewMetricsSpec`, `provisa/core/models.py` lines 479–492]
 
 ```yaml
 tables:
@@ -699,42 +654,30 @@ GROUP BY orders.region, orders.month
 ```
 
 `view_metrics` and `view_sql` are mutually exclusive on the same table.
-[tool-verified: `Table` model validator, `provisa/core/models.py` lines 614–617:
-`if self.view_sql is not None and self.view_metrics is not None: raise ValueError(...)`]
 
 **Auto-regeneration on metric change.** When a metric's expression is updated, every
 `view_metrics` view that references it recompiles and the new SQL is persisted immediately.
 The view cannot drift from the metric definition by construction.
-[tool-verified: `regenerate_metric_views`, `provisa/api/admin/_metric_views.py` lines 79–117:
-"each dependent view_metrics spec recompiles against the UPDATED metric set and the fresh SQL
-is persisted"]
 
 **Inline `metric()` calls in free-hand view SQL.** Hand-written `view_sql` can also reference
 metrics via `metric('name')`. The compiler replaces each call with the metric's expression and
 records a lineage edge. This gives free-hand views the same recompile-on-change property when
 they reference a metric rather than copy its formula.
-[tool-verified: `expand_metric_calls_in_sql`, `provisa/compiler/metric_expand.py` lines 393–429]
 
 Note: config-path views using inline `metric()` calls regenerate on config reload, not on metric
-upsert. [tool-verified: `regenerate_metric_views` docstring, `_metric_views.py` lines 84–86:
-"Free-hand view_sql born from inline metric() calls carries no stored provenance, so it is not
-regenerated here (config-path views regenerate on config reload)"]
+upsert.
 
-### The Metrics admin page (REQ-1323, REQ-1324)
+### The Metrics admin page
 
 Open the **Metrics** nav item to manage governed metrics. Click a row to expand a read-only detail
 panel; click **Edit** inside it to switch to inline editing (no modal). **New Metric** opens an
 inline creation card above the table. The delete confirmation is the only modal on the page.
-[tool-verified: `MetricsPage.tsx` lines 214–216 comment: "REQ-1317: registered-metrics management
-page (list / create / edit / delete). REQ-1323: detail-then-edit"]
 
 The create/edit form offers a three-picker builder for fact-sourced metrics: choose the source
 fact table (filtered to `modelingRole=fact`), a measure column, and an aggregate function
 (`SUM`, `AVG`, `COUNT`, `MIN`, `MAX`). The datatype is derived automatically:
 `COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → the measure column's type`.
 The expression textarea remains the escape hatch for arbitrary expressions.
-[tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
-`applyBuilder`, `MetricsPage.tsx` lines 273–285]
 
 ## The IR payoff
 
@@ -742,5 +685,4 @@ Every registration call goes through the same path as a hand-written MV. The ent
 is an intermediate representation — not a template, not a macro. The warehouse it targets is a
 property of the deployment, not of the model. Change the target engine and the same `entity` /
 `fact` declarations materialize there, because the generated SQL and bitemporal modes are
-engine-neutral by construction. [tool-verified: modeling.py docstring lines 25-28;
-modeling_register.py lines 56-66, 80-88]
+engine-neutral by construction.

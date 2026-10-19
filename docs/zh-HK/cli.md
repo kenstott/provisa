@@ -1,6 +1,6 @@
 # CLI 參考 {: #cli-reference }
 
-`provisa` 命令是透過 pip 安裝的內嵌層級的唯一入口點（REQ-1128）。
+`provisa` 命令是透過 pip 安裝的內嵌層級的唯一入口點。
 它啟動執行時、管理授權、觸發中繼資料發佈、部署模型，並控制維護橫幅——無需 Docker、Node 或任何外部服務。
 
 使用 `embedded` extra 安裝它，該 extra 還會引入離線 DuckDB 擴充
@@ -13,15 +13,13 @@ pip install 'provisa[embedded]'
 **平台要求。** `provisa run` 需要 Python 3.12 以及具有 pgserver wheel 的平台：
 linux x86_64、macOS 或 Windows x86_64。Linux aarch64 既沒有 pgserver wheel 也沒有原始碼分發包，
 因此內嵌層無法在該平台上執行。在 aarch64 上請使用容器層級。
-[tool-verified: `_require_supported_interpreter()` at cli.py:513-546]
 
 ---
 
 ## 共享選項 {: #shared-options }
 
 多個子命令會呼叫 Provisa HTTP API。它們共享三個旗標和兩個環境
-變數。[tool-verified: `_api_call()` at cli.py:345-376; each subcommand's argparse block
-at cli.py:653-773]
+變數。
 
 | 旗標 | 預設值 | 環境變數退回 |
 | --- | --- | --- |
@@ -32,7 +30,7 @@ at cli.py:653-773]
 `--api` 是正在執行的 Provisa 執行個體的基礎 URL。在多租戶模式下，主機名稱識別
 組織——`https://acme.provisa.org` 路由到 acme 的租戶。`--token` 是一個 Bearer 權杖；
 當它為空時不發送 `Authorization` 標頭，這對於未啟用身分驗證的
-部署是正確的行為。[tool-verified: cli.py:314-316, 357-365]
+部署是正確的行為。
 
 在你的 CI 環境中同時設定這兩個變數，以避免每次呼叫都重複輸入：
 
@@ -50,8 +48,7 @@ export PROVISA_API_TOKEN=<token>
 ## provisa run
 
 在單一程序中啟動內嵌 Provisa 系統——API 伺服器和 UI 靜態/代理伺服器。
-無需 Docker、無需 Node、無需外部服務。[tool-verified: cli.py module docstring lines 11-23;
-`_cmd_run()` at cli.py:549-602]
+無需 Docker、無需 Node、無需外部服務。
 
 ```
 provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
@@ -62,7 +59,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 
 | 旗標 | 預設值 | 說明 |
 | --- | --- | --- |
-| `--demo` | 關閉 | 載入內建示範——透過內嵌 SQLite 提供的 pet-store 和 shelter 範例網域（REQ-414） |
+| `--demo` | 關閉 | 載入內建示範——透過內嵌 SQLite 提供的 pet-store 和 shelter 範例網域 |
 | `--host` | `127.0.0.1` | 兩個伺服器的綁定位址 |
 | `--api-port` | `8000` | API 伺服器連接埠 |
 | `--ui-port` | `3000` | UI 靜態/代理伺服器連接埠 |
@@ -70,24 +67,19 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 | `--reset` | 關閉 | 在啟動前刪除並重建內嵌控制平面儲存；在 Provisa 升級後如果啟動報告結構描述不匹配，請使用此選項 |
 | `--data-dir` | `~/.provisa/native` | 儲存內嵌 PostgreSQL 叢集和 DuckDB 擴充快取的目錄 |
 
-[tool-verified: run subparser at cli.py:609-634]
-
 ### 環境變數 {: #environment-variables }
 
 `provisa run` 在啟動 HTTP 伺服器之前會讀取若干附加變數。
 設定它們可覆蓋 `load_profile("native", ...)` 原本會應用的預設值。
-[tool-verified: `_apply_embedded_env()` at cli.py:83-116]
 
 | 變數 | 作用 |
 | --- | --- |
-| `TRINO_HOST` / `TRINO_PORT` | 用客戶提供的 Trino 協調器替換內嵌 DuckDB 引擎（REQ-1129） |
+| `TRINO_HOST` / `TRINO_PORT` | 用客戶提供的 Trino 協調器替換內嵌 DuckDB 引擎 |
 | `PROVISA_ENGINE_URL` | 指向外部聯邦引擎的另一種方式 |
-| `PROVISA_CONFIG` | 要載入的設定檔；`--demo` 會將其設定為內建示範設定（REQ-1127） |
+| `PROVISA_CONFIG` | 要載入的設定檔；`--demo` 會將其設定為內建示範設定 |
 | `PROVISA_DEMO` | 由 `--demo` 設定為 `1`；將工作階段標記為示範執行 |
 | `PROVISA_DEMO_DIR` | 示範範例數據目錄的路徑；由 `--demo` 設定 |
 | `PROVISA_DUCKDB_EXT_DIR` | 預先準備好的 DuckDB 擴充目錄；如果存在 `provisa-duckdb-ext` 包，會自動從中設定；不存在則 DuckDB 會在首次使用時從網絡下載 |
-
-[tool-verified: `_apply_demo_config()` at cli.py:67-80; `_apply_embedded_env()` at cli.py:83-116]
 
 ### 啟動順序 {: #startup-sequence }
 
@@ -98,10 +90,10 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
    `provisa-duckdb-ext` 時預先準備離線 DuckDB 擴充。
 5. 結構描述漂移檢查——掃描即時控制平面以查找缺失的欄位。如果發現任何缺失，
    會印出 `--reset` 提示並以結束代碼 1 結束。V1 沒有遷移；較新版本中新增的欄位
-   需要重設。[tool-verified: `_control_plane_drift()` at cli.py:119-162]
+   需要重設。
 6. 兩個伺服器同時啟動。就緒通知器輪詢 `GET /ready`（而不是 `/health`——
    `/ready` 端點確認儲存已連線且引擎已預熱），並在其傳回 200 時開啟
-   瀏覽器。[tool-verified: `_announce_ready()` at cli.py:182-224]
+   瀏覽器。
 
 ### 結束代碼 {: #exit-codes }
 
@@ -130,8 +122,8 @@ TRINO_HOST=trino.internal TRINO_PORT=8080 provisa run
 
 ## provisa license apply
 
-離線驗證並安裝授權檔案（REQ-1139）。該檔案是由
-provisa.dev 頒發的 `license.json`。[tool-verified: `_cmd_license_apply()` at cli.py:271-280]
+離線驗證並安裝授權檔案。該檔案是由
+provisa.dev 頒發的 `license.json`。
 
 ```
 provisa license apply <file>
@@ -142,7 +134,7 @@ provisa license apply <file>
 | `file` | 授權檔案的路徑；會應用 `~` 展開 |
 
 結束代碼 0 表示授權有效且已安裝。結束代碼 1 表示授權被拒絕；
-原因會印出到 stderr。[tool-verified: cli.py:276-280]
+原因會印出到 stderr。
 
 ```bash
 provisa license apply ~/Downloads/license.json
@@ -152,15 +144,14 @@ provisa license apply ~/Downloads/license.json
 
 ## provisa license status
 
-顯示機器 ID、試用狀態、經過天數以及授權有效性（REQ-1139）。
-[tool-verified: `_cmd_license_status()` at cli.py:283-299]
+顯示機器 ID、試用狀態、經過天數以及授權有效性。
 
 ```
 provisa license status
 ```
 
 無旗標。印出四行——機器 ID、首次發現日期、經過天數、試用狀態，以及
-授權狀態——然後以結束代碼 0 結束。[tool-verified: cli.py:293-299]
+授權狀態——然後以結束代碼 0 結束。
 
 ```
 Machine ID:   a1b2c3d4e5f6...
@@ -174,11 +165,9 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-觸發正在執行的伺服器進行按需中繼資料發佈（REQ-1072/REQ-1074）。向
+觸發正在執行的伺服器進行按需中繼資料發佈。向
 `POST /admin/metadata-export/publish` 發起請求——與管理分頁的**立即發佈**
 按鈕所呼叫的端點相同，因此兩條路徑發送的都是同一份完整快照。
-[tool-verified: `_cmd_metadata_export()`
-at cli.py:302-342]
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -190,14 +179,10 @@ provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
 | `--token` | `$PROVISA_API_TOKEN` | 持有 `org_settings` 的身份的 Bearer 權杖；在未啟用身分驗證的部署中可省略 |
 | `--timeout` | `300` | 放棄 HTTP 呼叫前等待的秒數 |
 
-[tool-verified: cli.py:654-669]
-
 | 結束代碼 | 含義 |
 | --- | --- |
 | 0 | 每項資產都已發佈 |
 | 1 | 部分發佈或連線失敗；逐項資產的錯誤會印出到 stderr |
-
-[tool-verified: cli.py:335-342]
 
 ```bash
 provisa metadata export \
@@ -215,9 +200,9 @@ provisa metadata export \
 
 ## provisa env
 
-針對正在執行的 Provisa 執行環境生命週期（REQ-1498）。每個子命令都是介面所發起的同一個管理 API
+針對正在執行的 Provisa 執行環境生命週期。每個子命令都是介面所發起的同一個管理 API
 呼叫；CLI 不做任何決定。副本攜帶內容的清單、合併與移除規則、綁定、保護以及呼叫方的權利
-都屬於伺服器，因此無論以何種方式呼叫該操作，它們都同樣適用。[tool-verified: cli_envs.py:11-28]
+都屬於伺服器，因此無論以何種方式呼叫該操作，它們都同樣適用。
 
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
@@ -234,7 +219,6 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 
 作用於單一環境的子命令還接受 `--env ENV`（必填）。`list`、`diff`、
 `merge` 和 `fetch` 不接受；`diff` 和 `merge` 用 `--from` 和 `--into` 指定它們的環境。
-[tool-verified: cli_envs.py:349-374, `_command()`]
 
 ### 結束代碼 {: #exit-codes_1 }
 
@@ -245,12 +229,11 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 | 2 | 已提議，未應用：目標環境受保護，變更正在等待批准 |
 
 結束代碼 2 是有意為之。把等待中的批准當作已發出的部署的管線
-會出錯。[tool-verified: cli_envs.py:21-28, 40-41, 64-78, 120-135]
+會出錯。
 
 ### provisa env list
 
 列出組織的環境以及每個環境所在的建構。除共享旗標外沒有其他旗標。
-[tool-verified: cli_envs.py:141-149]
 
 ```
 provisa env list --org ORG [--json]
@@ -258,15 +241,15 @@ provisa env list --org ORG [--json]
 ### provisa env show
 
 顯示一個環境及其目前建構。如果
-環境不存在，以 1 和 `environments.unknown` 結束。[tool-verified: cli_envs.py:163-183]
+環境不存在，以 1 和 `environments.unknown` 結束。
 
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
 ### provisa env create
 
-建立一個持有另一個環境模型的環境，其數據在建立時選定（REQ-1942）。由 API
-決定呼叫方可以做出哪些選擇。[tool-verified: cli_envs.py:197-216]
+建立一個持有另一個環境模型的環境，其數據在建立時選定。由 API
+決定呼叫方可以做出哪些選擇。
 
 ```
 provisa env create --org ORG --env NAME --data-mode MODE
@@ -280,14 +263,12 @@ provisa env create --org ORG --env NAME --data-mode MODE
 | `--mutation-handling` | 否 | `refused`、`reversible` 或 `direct`；預設 `refused` |
 | `--expires-at` | 否 | ISO-8601 時刻，此後環境被移除 |
 
-[tool-verified: cli_envs.py:391-416]
-
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
 ### provisa env delete
 
-停用一個環境。只有點名時才刪除其分支。[tool-verified: cli_envs.py:219-232]
+停用一個環境。只有點名時才刪除其分支。
 
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
@@ -297,13 +278,10 @@ provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch
 | `--delete-branch` | 同時刪除其分支 |
 | `--delete-remote-branch` | 同時刪除其在遠端儲存庫上的分支 |
 
-[tool-verified: cli_envs.py:418-424]
-
 ### provisa env diff
 
 報告將一個環境合併到另一個環境會做什麼。它是 `merge-preview` 的 GET，因此
-它不能寫入；把它交給不應更改任何內容的執行器。[tool-verified:
-cli_envs.py:186-191]
+它不能寫入；把它交給不應更改任何內容的執行器。
 
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
@@ -313,13 +291,11 @@ provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PA
 | `--from` | 是 | 合併來源環境 |
 | `--into` | 是 | 合併目標環境 |
 | `--removals` | 否 | 同時從目標中移除來源已不再持有的內容 |
-| `--select PATH` | 否 | 將合併限制為該物件，按其在模型中的路徑（`metrics/revenue.yaml`）；重複以添加其他物件。它所需而目標缺少的內容隨之帶入並列出（REQ-1506） |
-
-[tool-verified: cli_envs.py:426-439]
+| `--select PATH` | 否 | 將合併限制為該物件，按其在模型中的路徑（`metrics/revenue.yaml`）；重複以添加其他物件。它所需而目標缺少的內容隨之帶入並列出 |
 
 ### provisa env merge
 
-按身份將一個環境合併到另一個環境（REQ-1490）。[tool-verified: cli_envs.py:235-250]
+按身份將一個環境合併到另一個環境。
 
 ```
 provisa env merge --org ORG --from SOURCE --into TARGET
@@ -331,20 +307,17 @@ provisa env merge --org ORG --from SOURCE --into TARGET
 | `--from` | 是 | 合併來源環境 |
 | `--into` | 是 | 合併目標環境 |
 | `--removals` | 否 | 同時從目標中移除來源已不再持有的內容 |
-| `--select PATH` | 否 | 將合併限制為該物件，按其在模型中的路徑（`metrics/revenue.yaml`）；重複以添加其他物件。它所需而目標缺少的內容隨之帶入並列出（REQ-1506） |
+| `--select PATH` | 否 | 將合併限制為該物件，按其在模型中的路徑（`metrics/revenue.yaml`）；重複以添加其他物件。它所需而目標缺少的內容隨之帶入並列出 |
 | `--dry-run` | 否 | 印出合併報告，不應用任何內容 |
 | `--message` | 否 | 合併做了什麼；應用時必填 |
 | `--retire-source` | 否 | 當來源的工作已進入目標時移除來源 |
 | `--retire-remote` | 否 | 配合 `--retire-source`，同時刪除來源在遠端儲存庫上的分支 |
 
-[tool-verified: cli_envs.py:429-451]
-
 ### provisa env deploy
 
 將某個 git 引用處的模型部署到環境中，使該樹成為環境的目前模型
-（REQ-1496）。這是部署管線執行的命令；部署始終是
-針對指定控制平面、帶身份的呼叫。[tool-verified:
-cli_envs.py:253-267]
+。這是部署管線執行的命令；部署始終是
+針對指定控制平面、帶身份的呼叫。
 
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
@@ -355,8 +328,6 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--ref` | 是 | 組織儲存庫中的分支或提交 |
 | `--dry-run` | 否 | 報告部署會做什麼；不應用任何內容 |
 | `--message` | 否 | 目標受保護時隨批准請求攜帶的說明 |
-
-[tool-verified: cli_envs.py:453-468]
 
 載入到已有環境中時絕不應用角色。`--seed` 已不存在：API 以
 `environments.seed_only_at_creation` 拒絕 seed。
@@ -372,9 +343,8 @@ provisa env deploy \
 ```
 ### provisa env revert
 
-將環境退回到之前的建構（REQ-1543）。不帶 `--to` 時，它在環境自己的歷史中
+將環境退回到之前的建構。不帶 `--to` 時，它在環境自己的歷史中
 後退一個提交。帶 `--to` 時，它就是對該建構的普通部署。
-[tool-verified: cli_envs.py:270-284]
 
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
@@ -385,21 +355,17 @@ provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 | `--to` | 否 | 要部署的建構；預設為目前建構之前的那個 |
 | `--message` | 否 | 隨批准請求攜帶的說明 |
 
-[tool-verified: cli_envs.py:470-480]
-
 ### provisa env redo
 
-再次前進到退回所離開的建構。[tool-verified:
-cli_envs.py:287-301]
+再次前進到退回所離開的建構。
 
 ```
 provisa env redo --org ORG --env ENV
 ```
 ### provisa env fetch
 
-將組織的遠端分支拉取到其 Provisa 儲存庫中（REQ-1541）。當你想指定 `origin/<branch>` 時，
-在部署之前執行它。Provisa 從不按計時器執行它。[tool-verified:
-cli_envs.py:307-320]
+將組織的遠端分支拉取到其 Provisa 儲存庫中。當你想指定 `origin/<branch>` 時，
+在部署之前執行它。Provisa 從不按計時器執行它。
 
 ```
 provisa env fetch --org ORG
@@ -413,17 +379,17 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 ```
 ### provisa env push
 
-將環境的分支發送到組織的遠端儲存庫（REQ-1546）。沒有可發送的內容時
-印出 `nothing to send`。[tool-verified: cli_envs.py:323-331]
+將環境的分支發送到組織的遠端儲存庫。沒有可發送的內容時
+印出 `nothing to send`。
 
 ```
 provisa env push --org ORG --env ENV
 ```
 ### provisa env pull
 
-應用遠端儲存庫為某個環境持有的內容（REQ-1547）。沒有可應用的內容時印出
+應用遠端儲存庫為某個環境持有的內容。沒有可應用的內容時印出
 `<env> already holds what the remote does`。結束代碼 2 的含義與
-deploy 相同。[tool-verified: cli_envs.py:334-343]
+deploy 相同。
 
 ```
 provisa env pull --org ORG --env ENV
@@ -435,10 +401,9 @@ provisa env pull --org ORG --env ENV
 
 ## provisa maintenance on
 
-在部署環境上升起計劃維護橫幅（REQ-1466）。在進行會使數據平面下線的
+在部署環境上升起計劃維護橫幅。在進行會使數據平面下線的
 計劃性工作之前執行此命令——例如在切換
-`var.engine_cluster_mode`（這會替換整個引擎叢集及其上的每個分片）之前（REQ-1465）。
-[tool-verified: `_cmd_maintenance_on()` at cli.py:483-495]
+`var.engine_cluster_mode`（這會替換整個引擎叢集及其上的每個分片）之前。
 
 ```
 provisa maintenance on [--message MSG] [--ends-at ISO8601]
@@ -453,8 +418,6 @@ provisa maintenance on [--message MSG] [--ends-at ISO8601]
 | `--token` | 持有 `platform_settings` 的身份的 Bearer 權杖 |
 | `--timeout` | 預設 30 秒 |
 
-[tool-verified: cli.py:743-773]
-
 印出結果橫幅狀態並以結束代碼 0 結束。在 HTTP 或連線失敗時擲回 `SystemExit`。
 
 ```bash
@@ -468,8 +431,7 @@ provisa maintenance on \
 
 ## provisa maintenance off
 
-在工作完成後清除維護橫幅（REQ-1466）。
-[tool-verified: `_cmd_maintenance_off()` at cli.py:498-501]
+在工作完成後清除維護橫幅。
 
 ```
 provisa maintenance off [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -486,8 +448,7 @@ provisa maintenance off --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 
 ## provisa maintenance status
 
-在不改變維護橫幅的情況下顯示其目前狀態（REQ-1466）。
-[tool-verified: `_cmd_maintenance_status()` at cli.py:504-507]
+在不改變維護橫幅的情況下顯示其目前狀態。
 
 ```
 provisa maintenance status [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -506,29 +467,29 @@ Maintenance notice: ON
 
 ## 快速參考 {: #quick-reference }
 
-| 命令 | REQ | 作用 |
-| --- | --- | --- |
-| `provisa run` | REQ-1128 | 啟動內嵌 API + UI |
-| `provisa run --demo` | REQ-414 | 使用 pet-store / shelter 範例數據啟動 |
-| `provisa run --reset` | REQ-1535 | 在啟動前重建控制平面 |
-| `provisa license apply <file>` | REQ-1139 | 離線安裝授權檔案 |
-| `provisa license status` | REQ-1139 | 顯示機器 ID 及試用/授權狀態 |
-| `provisa metadata export` | REQ-1072 | 按需發佈中繼資料快照 |
-| `provisa env list --org ORG` | REQ-1498 | 列出組織的環境及其建構 |
-| `provisa env show --org ORG --env ENV` | REQ-1498 | 顯示一個環境 |
-| `provisa env create --org ORG --env ENV --data-mode MODE` | REQ-1942 | 從另一個環境建立環境 |
-| `provisa env delete --org ORG --env ENV` | REQ-1498 | 停用一個環境 |
-| `provisa env diff --org ORG --from A --into B` | REQ-1490 | 預覽合併（唯讀） |
-| `provisa env merge --org ORG --from A --into B` | REQ-1490 | 將一個環境合併到另一個環境 |
-| `provisa env deploy --org ORG --env ENV --ref REF` | REQ-1496 | 將引用部署到環境中 |
-| `provisa env revert --org ORG --env ENV [--to BUILD]` | REQ-1543 | 後退一個提交，或部署某個建構 |
-| `provisa env redo --org ORG --env ENV` | REQ-1543 | 再次前進 |
-| `provisa env fetch --org ORG` | REQ-1541 | 將遠端分支拉取到 Provisa 儲存庫 |
-| `provisa env push --org ORG --env ENV` | REQ-1546 | 將環境的分支發送到遠端儲存庫 |
-| `provisa env pull --org ORG --env ENV` | REQ-1547 | 應用遠端儲存庫持有的內容 |
-| `provisa maintenance on` | REQ-1466 | 升起維護橫幅 |
-| `provisa maintenance off` | REQ-1466 | 清除維護橫幅 |
-| `provisa maintenance status` | REQ-1466 | 顯示目前橫幅狀態 |
+| 命令 | 作用 |
+|---|---|
+| `provisa run` | 啟動內嵌 API + UI |
+| `provisa run --demo` | 使用 pet-store / shelter 範例數據啟動 |
+| `provisa run --reset` | 在啟動前重建控制平面 |
+| `provisa license apply <file>` | 離線安裝授權檔案 |
+| `provisa license status` | 顯示機器 ID 及試用/授權狀態 |
+| `provisa metadata export` | 按需發佈中繼資料快照 |
+| `provisa env list --org ORG` | 列出組織的環境及其建構 |
+| `provisa env show --org ORG --env ENV` | 顯示一個環境 |
+| `provisa env create --org ORG --env ENV --data-mode MODE` | 從另一個環境建立環境 |
+| `provisa env delete --org ORG --env ENV` | 停用一個環境 |
+| `provisa env diff --org ORG --from A --into B` | 預覽合併（唯讀） |
+| `provisa env merge --org ORG --from A --into B` | 將一個環境合併到另一個環境 |
+| `provisa env deploy --org ORG --env ENV --ref REF` | 將引用部署到環境中 |
+| `provisa env revert --org ORG --env ENV [--to BUILD]` | 後退一個提交，或部署某個建構 |
+| `provisa env redo --org ORG --env ENV` | 再次前進 |
+| `provisa env fetch --org ORG` | 將遠端分支拉取到 Provisa 儲存庫 |
+| `provisa env push --org ORG --env ENV` | 將環境的分支發送到遠端儲存庫 |
+| `provisa env pull --org ORG --env ENV` | 應用遠端儲存庫持有的內容 |
+| `provisa maintenance on` | 升起維護橫幅 |
+| `provisa maintenance off` | 清除維護橫幅 |
+| `provisa maintenance status` | 顯示目前橫幅狀態 |
 
 ## 另請參閱 {: #see-also }
 

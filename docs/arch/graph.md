@@ -2,7 +2,7 @@
 
 ## Overview
 
-Graph analytics runs as a server-side Python pipeline. REQ-642 The browser submits a Cypher query and an algorithm name; the backend executes the query, builds an in-memory graph, runs the algorithm via NetworkX or igraph, and returns augmented node/edge data with algorithm output merged into properties. REQ-642
+Graph analytics runs as a server-side Python pipeline. The browser submits a Cypher query and an algorithm name; the backend executes the query, builds an in-memory graph, runs the algorithm via NetworkX or igraph, and returns augmented node/edge data with algorithm output merged into properties.
 
 ---
 
@@ -32,7 +32,7 @@ Content-Type: application/json
 }
 ```
 
-The `_analytics` object is merged into each node/edge. REQ-643 Keys vary by algorithm (see table below).
+The `_analytics` object is merged into each node/edge. Keys vary by algorithm (see table below).
 
 ---
 
@@ -50,8 +50,6 @@ The `_analytics` object is merged into each node/edge. REQ-643 Keys vary by algo
 | Girvan-Newman communities | `girvan_newman` | `cluster` | NetworkX |
 | K-core decomposition | `kcore` | `core_number` | NetworkX |
 | Local clustering coefficient | `clustering` | `score` | NetworkX |
-
-(REQ-643)
 
 ---
 
@@ -138,13 +136,13 @@ analyticsOverrides: Record<string, { color?: string; size?: number }>
 
 ### Core Principle
 
-Grouping is a **view transform**, not a data transform. REQ-644 The underlying nodes and edges are unchanged; the rendering layer applies a grouping function `node → groupKey` derived from any attribute. REQ-644 This keeps the model clean and composable across arbitrary attributes — data properties, injected metadata (`domain`), or analytics output (`cluster`).
+Grouping is a **view transform**, not a data transform. The underlying nodes and edges are unchanged; the rendering layer applies a grouping function `node → groupKey` derived from any attribute. This keeps the model clean and composable across arbitrary attributes — data properties, injected metadata (`domain`), or analytics output (`cluster`).
 
 ---
 
 ### Attribute Discovery
 
-After any query result or analytics pass, scan all node properties to build a per-label map of groupable attributes (categorical fields: strings, low-cardinality integers). REQ-645 `domain` is always available as a grouping attribute (derived from the node label prefix set by the semantic layer). REQ-645 `cluster` appears after community detection analytics. REQ-645 Schema cluster attributes (`schema_L1`, `schema_L2`, `schema_L3`) are available when schema clustering has run. (REQ-645) All other attributes come from the data itself.
+After any query result or analytics pass, scan all node properties to build a per-label map of groupable attributes (categorical fields: strings, low-cardinality integers). `domain` is always available as a grouping attribute (derived from the node label prefix set by the semantic layer). `cluster` appears after community detection analytics. Schema cluster attributes (`schema_L1`, `schema_L2`, `schema_L3`) are available when schema clustering has run. All other attributes come from the data itself.
 
 ```ts
 // Derived from frame nodes after each result
@@ -153,7 +151,7 @@ type GroupableAttributes = Record<string, string[]>
 //   "Company": ["domain", "sector", "cluster", "region"] }
 ```
 
-The UI builds the grouping controls dynamically from this map — no hardcoding of attribute names. REQ-645
+The UI builds the grouping controls dynamically from this map — no hardcoding of attribute names.
 
 ---
 
@@ -184,10 +182,10 @@ Multiple layers are supported simultaneously, each using a different visual chan
 
 One active grouping attribute at a time. The attribute drives two simultaneous encodings:
 
-- **Color**: node `background-color` overridden by `colorMap[node.properties[attribute]]` REQ-646
-- **Hull**: translucent filled SVG ellipse drawn around each group's node positions, labeled with the group value REQ-647
+- **Color**: node `background-color` overridden by `colorMap[node.properties[attribute]]`
+- **Hull**: translucent filled SVG ellipse drawn around each group's node positions, labeled with the group value
 
-Hulls render in an SVG layer overlaid on the Cytoscape canvas. REQ-647 Node positions are read from `cy.nodes().positions()` after layout stabilizes. REQ-647 Hulls recompute on pan/zoom via a Cytoscape `viewport` event listener. REQ-647
+Hulls render in an SVG layer overlaid on the Cytoscape canvas. Node positions are read from `cy.nodes().positions()` after layout stabilizes. Hulls recompute on pan/zoom via a Cytoscape `viewport` event listener.
 
 #### Phase 2 — Multiple simultaneous groupings
 
@@ -203,14 +201,14 @@ Only one layer may use `color`; only one may use `ring`. Multiple `hull` layers 
 
 #### Phase 3 — Collapse groups
 
-A "collapse" toggle per group in the legend. When collapsed: REQ-648
+A "collapse" toggle per group in the legend. When collapsed:
 
-1. All nodes in the group are hidden from view in Cytoscape REQ-648
-2. A synthetic supernode is added representing the group (count badge, group label) REQ-648
-3. Edges to/from hidden members are rewritten to point to/from the supernode REQ-648
-4. Clicking the supernode expands the group and restores original nodes/edges REQ-648
+1. All nodes in the group are hidden from view in Cytoscape
+2. A synthetic supernode is added representing the group (count badge, group label)
+3. Edges to/from hidden members are rewritten to point to/from the supernode
+4. Clicking the supernode expands the group and restores original nodes/edges
 
-Supernode ids use a reserved prefix to avoid collision with real node ids. REQ-648
+Supernode ids use a reserved prefix to avoid collision with real node ids.
 
 ---
 
@@ -248,24 +246,24 @@ GraphFrame
         └── Inspector
 ```
 
-`GroupingState` is held in `GraphFrame` state and passed down to both `GraphCanvas` (for color encoding) and `HullOverlay` (for SVG hull drawing). REQ-644 `gf-attr-select` receives the `groupableAttributes` map derived from the current frame's nodes. REQ-645
+`GroupingState` is held in `GraphFrame` state and passed down to both `GraphCanvas` (for color encoding) and `HullOverlay` (for SVG hull drawing). `gf-attr-select` receives the `groupableAttributes` map derived from the current frame's nodes.
 
 ---
 
 ### Interaction with Analytics
 
-Analytics output (`_analytics.cluster`, `_analytics.score`) is just more node data. The grouping system treats it identically to any other attribute: REQ-644
+Analytics output (`_analytics.cluster`, `_analytics.score`) is just more node data. The grouping system treats it identically to any other attribute:
 
-- After a community detection run, `cluster` appears in `groupableAttributes` (REQ-643)
+- After a community detection run, `cluster` appears in `groupableAttributes`
 - The user can immediately select "Group by cluster" in the controls bar
-- Nodes are colored and hulled by cluster ID automatically REQ-646
-- Centrality `score` is not groupable (continuous, not categorical) — it drives size encoding instead REQ-649
+- Nodes are colored and hulled by cluster ID automatically
+- Centrality `score` is not groupable (continuous, not categorical) — it drives size encoding instead
 
 ---
 
 ## Constraints
 
-- Max graph size for analytics: 10,000 nodes / 50,000 edges (configurable). REQ-650 Return 413 if exceeded. REQ-650
+- Max graph size for analytics: 10,000 nodes / 50,000 edges (configurable). Return 413 if exceeded.
 - Algorithms run synchronously in the request thread for now. Move to background task if p99 > 5s.
 - Leiden requires `igraph` C extension — document build dependency in `Dockerfile`.
-- Girvan-Newman is O(n³); restrict to graphs < 500 nodes or require explicit `force=true` param. REQ-651
+- Girvan-Newman is O(n³); restrict to graphs < 500 nodes or require explicit `force=true` param.

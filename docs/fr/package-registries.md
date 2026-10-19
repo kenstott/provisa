@@ -1,6 +1,6 @@
 # Registres de paquets
 
-Les sources Node et Python installent leur propre code et leurs dépendances. **Admin → Registres de paquets** indique d'où elles installent : les registres npm, les index PyPI et les hôtes Git de l'organisation. Un administrateur de l'organisation les saisit une fois, et chaque installation Node et Python de l'organisation les utilise. Le registre npm public et le PyPI public n'ont besoin d'aucune entrée. (REQ-1984, REQ-1993)
+Les sources Node et Python installent leur propre code et leurs dépendances. **Admin → Registres de paquets** indique d'où elles installent : les registres npm, les index PyPI et les hôtes Git de l'organisation. Un administrateur de l'organisation les saisit une fois, et chaque installation Node et Python de l'organisation les utilise. Le registre npm public et le PyPI public n'ont besoin d'aucune entrée.
 
 Chaque champ contient ce qui a été saisi : une valeur, ou une référence comme `${secret:npm_token}` ou `${env:NPM_TOKEN}`, résolue dans le coffre propre à l'organisation à chaque installation. Une référence qui ne se résout en rien arrête l'installation et nomme le registre et le champ. Provisa n'écrit jamais dans le coffre et n'invente jamais le nom d'un secret. Voir [Secrets](secrets.md).
 
@@ -16,7 +16,7 @@ Chaque champ contient ce qui a été saisi : une valeur, ou une référence comm
 | Miroir de chaque installation | Tout paquet sans portée propre est installé par ce registre. Un par organisation |
 | Autorité de certification (PEM) | Voir [Une autorité de certification privée](#a-private-certificate-authority) |
 
-Un jeton est écrit dans le `.npmrc` de l'installation comme `_authToken` et envoyé comme jeton bearer. `user:password`, par exemple un utilisateur Artifactory et sa clé d'API, est écrit comme `_auth` (base64) et envoyé en Basic. L'un comme l'autre ne va qu'à l'hôte du registre. (REQ-2088)
+Un jeton est écrit dans le `.npmrc` de l'installation comme `_authToken` et envoyé comme jeton bearer. `user:password`, par exemple un utilisateur Artifactory et sa clé d'API, est écrit comme `_auth` (base64) et envoyé en Basic. L'un comme l'autre ne va qu'à l'hôte du registre.
 
 ## Index PyPI {: #pypi-indexes }
 
@@ -39,7 +39,7 @@ Une entrée d'hôte Git couvre les dépôts d'où sont récupérés le code d'un
 | Jeton ou utilisateur:jeton | Un jeton, ou `user:token` |
 | Autorité de certification (PEM) | Voir [Une autorité de certification privée](#a-private-certificate-authority) |
 
-Une URL de dépôt est associée à l'entrée dont l'hôte, le port et le préfixe de chemin la commencent. Quand plusieurs correspondent, la plus longue l'emporte : une entrée pour `bitbucket.example.com:7990/bitbucket/scm/data` couvre ce projet et une pour `bitbucket.example.com:7990/bitbucket` couvre le reste. (REQ-2088)
+Une URL de dépôt est associée à l'entrée dont l'hôte, le port et le préfixe de chemin la commencent. Quand plusieurs correspondent, la plus longue l'emporte : une entrée pour `bitbucket.example.com:7990/bitbucket/scm/data` couvre ce projet et une pour `bitbucket.example.com:7990/bitbucket` couvre le reste.
 
 Un jeton seul est envoyé avec l'utilisateur `x-access-token`. D'autres fournisseurs attendent un utilisateur ; saisissez alors `user:token` :
 
@@ -52,7 +52,7 @@ Un jeton seul est envoyé avec l'utilisateur `x-access-token`. D'autres fourniss
 
 ## Une autorité de certification privée {: #a-private-certificate-authority }
 
-Un registre, un index ou un serveur Git derrière votre propre autorité de certification, comme un proxy Artifactory dans votre réseau, a besoin que cette autorité soit approuvée. Collez son certificat PEM dans le champ **Autorité de certification (PEM)** de l'entrée, ou une référence à un secret qui le contient. Laissez le champ vide pour un serveur dont le certificat est approuvé publiquement. Une valeur sans certificat PEM est refusée à l'enregistrement de l'entrée, et une référence qui ne se résout en aucun est refusée à l'installation. (REQ-2088)
+Un registre, un index ou un serveur Git derrière votre propre autorité de certification, comme un proxy Artifactory dans votre réseau, a besoin que cette autorité soit approuvée. Collez son certificat PEM dans le champ **Autorité de certification (PEM)** de l'entrée, ou une référence à un secret qui le contient. Laissez le champ vide pour un serveur dont le certificat est approuvé publiquement. Une valeur sans certificat PEM est refusée à l'enregistrement de l'entrée, et une référence qui ne se résout en aucun est refusée à l'installation.
 
 L'autorité est approuvée en plus des autorités publiques, jamais à leur place :
 

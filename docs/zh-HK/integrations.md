@@ -73,9 +73,9 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 
 Provisa JDBC 驅動程式以 Arrow Flight 作為其底層傳輸方式。對於具有 JDBC 連線精靈的 BI 工具，這是建議使用的路徑。
 
-當開啟連線時 Flight 連接埠有回應，查詢便會經由 Arrow Flight 進行，結果連同欄位類型逐批到達。Flight 連接埠被視為 HTTP 連接埠旁邊的那一個（8001 旁的 8815）；並非如此時請設定 `flight_port` 屬性。若連線時 Flight 連接埠無法連上，連線會把 HTTP API 用於其查詢，並在 INFO 層級記錄這一點。當連線已經在使用 Flight 時，伺服器錯誤——被拒絕的憑證、使用者並不持有的角色、失敗的陳述式——會連同伺服器的訊息傳給呼叫者；它不會再經由 HTTP 重試。（REQ-293）
+當開啟連線時 Flight 連接埠有回應，查詢便會經由 Arrow Flight 進行，結果連同欄位類型逐批到達。Flight 連接埠被視為 HTTP 連接埠旁邊的那一個（8001 旁的 8815）；並非如此時請設定 `flight_port` 屬性。若連線時 Flight 連接埠無法連上，連線會把 HTTP API 用於其查詢，並在 INFO 層級記錄這一點。當連線已經在使用 Flight 時，伺服器錯誤——被拒絕的憑證、使用者並不持有的角色、失敗的陳述式——會連同伺服器的訊息傳給呼叫者；它不會再經由 HTTP 重試。
 
-瀏覽結構描述（`getTables`、`getColumns`、主鍵及外鍵）以登入憑證經由同一個 Flight 連接埠讀取：驅動程式列出它所代為執行的角色的目錄，因此未授予該角色的資料表或欄位不會出現。參照未授予該角色的資料表或欄位的鍵亦不會列出。在連線時 Flight 連接埠無法連上的連線上，驅動程式經由 HTTP（`GET /data/catalog`）讀取同一個目錄：伺服器以同一個函數建構兩份清單，因此資料表、欄位名稱、類型及鍵與哪個連接埠回應無關。（REQ-128）
+瀏覽結構描述（`getTables`、`getColumns`、主鍵及外鍵）以登入憑證經由同一個 Flight 連接埠讀取：驅動程式列出它所代為執行的角色的目錄，因此未授予該角色的資料表或欄位不會出現。參照未授予該角色的資料表或欄位的鍵亦不會列出。在連線時 Flight 連接埠無法連上的連線上，驅動程式經由 HTTP（`GET /data/catalog`）讀取同一個目錄：伺服器以同一個函數建構兩份清單，因此資料表、欄位名稱、類型及鍵與哪個連接埠回應無關。
 
 ### 連線 {: #connection }
 
@@ -87,7 +87,7 @@ JDBC 網址：
 jdbc:provisa://<host>:8815
 ```
 
-身分驗證使用標準的 JDBC `user` / `password` 屬性。驅動程式以它們換取一個工作階段權杖，並隨每個請求傳送；被拒絕的登入會以伺服器的狀態及原因令連線失敗。Provisa 從登入的身份推導角色。可選屬性 `role`（或 URL 中的 `?role=`）要求以使用者持有的一個角色執行，或以這類角色的逗號分隔集合執行；使用者並不持有的角色會被拒絕。在沒有身分驗證提供者的部署中沒有登入，使用者名稱會被當作所要求的角色。（REQ-131、REQ-273）
+身分驗證使用標準的 JDBC `user` / `password` 屬性。驅動程式以它們換取一個工作階段權杖，並隨每個請求傳送；被拒絕的登入會以伺服器的狀態及原因令連線失敗。Provisa 從登入的身份推導角色。可選屬性 `role`（或 URL 中的 `?role=`）要求以使用者持有的一個角色執行，或以這類角色的逗號分隔集合執行；使用者並不持有的角色會被拒絕。在沒有身分驗證提供者的部署中沒有登入，使用者名稱會被當作所要求的角色。
 
 ### BI 工具設定 {: #bi-tool-setup }
 
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight 會將其憑證帶在 JSON 承載內容中的 `token` 欄位——可以是供應商 bearer token，也可以是個人存取權杖。握手階段及每一張票證都接受它，且兩者的驗證方式相同，因此在握手階段已通過驗證的用戶端，仍需要在每次 `do_get` 時提交該權杖。與之並列的 `role` 欄位是*請求*一個角色；伺服器會推導出該身分獲准使用的角色，並代入經授權的值，因此票證中的角色字串絕不能視為身分本身。（REQ-1263）請參閱[安全模型](security.md#surfaces-and-credentials)。
+Flight 會將其憑證帶在 JSON 承載內容中的 `token` 欄位——可以是供應商 bearer token，也可以是個人存取權杖。握手階段及每一張票證都接受它，且兩者的驗證方式相同，因此在握手階段已通過驗證的用戶端，仍需要在每次 `do_get` 時提交該權杖。與之並列的 `role` 欄位是*請求*一個角色；伺服器會推導出該身分獲准使用的角色，並代入經授權的值，因此票證中的角色字串絕不能視為身分本身。請參閱[安全模型](security.md#surfaces-and-credentials)。
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -158,7 +158,7 @@ ticket = flight.Ticket(json.dumps({
 }).encode())
 ```
 
-瀏覽同樣需要憑證。`list_flights`、`get_flight_info` 及 `get_schema` 不攜帶 ticket，因此它們從呼叫的 `authorization: Bearer <token>` 標頭讀取憑證，並從 `x-provisa-role`（一個角色，或已持有角色的逗號分隔集合）讀取所要求的角色。啟用身分驗證時，沒有憑證的瀏覽呼叫會被拒絕，它傳回的目錄是已授權角色的目錄：授予該角色的資料表、欄位及命令，僅此而已。目錄 ticket（不帶 `query` 的 ticket）以同樣方式，根據其本身的 `token` 及 `role` 回應。因此用戶端必須在瀏覽之前傳送其憑證；`provisa-client` 在 `list_tables()` 中這樣做。在沒有身分驗證提供者的部署中，這些呼叫會列出整個目錄，且不接受憑證。（REQ-1263、REQ-127）
+瀏覽同樣需要憑證。`list_flights`、`get_flight_info` 及 `get_schema` 不攜帶 ticket，因此它們從呼叫的 `authorization: Bearer <token>` 標頭讀取憑證，並從 `x-provisa-role`（一個角色，或已持有角色的逗號分隔集合）讀取所要求的角色。啟用身分驗證時，沒有憑證的瀏覽呼叫會被拒絕，它傳回的目錄是已授權角色的目錄：授予該角色的資料表、欄位及命令，僅此而已。目錄 ticket（不帶 `query` 的 ticket）以同樣方式，根據其本身的 `token` 及 `role` 回應。因此用戶端必須在瀏覽之前傳送其憑證；`provisa-client` 在 `list_tables()` 中這樣做。在沒有身分驗證提供者的部署中，這些呼叫會列出整個目錄，且不接受憑證。
 
 ```python
 options = flight.FlightCallOptions(headers=[
@@ -230,7 +230,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 
 ## 跨通訊協定呼叫 Command {: #invoking-commands-across-protocols }
 
-**Command** 是一個已註冊的追蹤函式或 webhook——一個在 Provisa 模型中註冊的可呼叫項目，帶有 `kind`（`query` 或 `mutation`）及描述其運行方式的 `impl_kind`。每個介面都會透過單一受治理的執行器（`invoke_tracked_function`）路由呼叫，統一強制執行 指令的分配（`visible_to`）、變更所需的 `write` 權利 及治理規則（REQ-1156）。[tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+**Command** 是一個已註冊的追蹤函式或 webhook——一個在 Provisa 模型中註冊的可呼叫項目，帶有 `kind`（`query` 或 `mutation`）及描述其運行方式的 `impl_kind`。每個介面都會透過單一受治理的執行器（`invoke_tracked_function`）路由呼叫，統一強制執行 指令的分配（`visible_to`）、變更所需的 `write` 權利 及治理規則。
 
 | `impl_kind` | 運行內容 | 綁定欄位 |
 | ------------ | ----------- | --------------- |
@@ -238,9 +238,9 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | `script` | 伺服器端指令碼 | `script` |
 | `http` | 對外 HTTP 呼叫 | `url`、`method` |
 | `grpc` | 對外呼叫外部伺服器的 gRPC | `target`、`method` |
-| `python` | 由 Provisa 代管的 Python 可呼叫項目（REQ-885） | `callable`（例如 `demo.py_functions:random_dataset`） |
+| `python` | 由 Provisa 代管的 Python 可呼叫項目 | `callable`（例如 `demo.py_functions:random_dataset`） |
 
-當一個 command 聲明了 `return_schema`（`type: array, items: object` 的 JSON Schema）時，即代表它會傳回一個集合——每個介面都會將其投影為具型別的資料列集。示範用的 `random_python_set`（impl_kind 為 `python`）及 `random_grpc_set`（impl_kind 為 `grpc`）示範了代管可呼叫項目及外部 gRPC 橋接兩種傳回隨機值資料列的方式；兩者皆在 `config/provisa-install.yaml` 中註冊。[tool-verified: `config/provisa-install.yaml:809-856`]
+當一個 command 聲明了 `return_schema`（`type: array, items: object` 的 JSON Schema）時，即代表它會傳回一個集合——每個介面都會將其投影為具型別的資料列集。示範用的 `random_python_set`（impl_kind 為 `python`）及 `random_grpc_set`（impl_kind 為 `grpc`）示範了代管可呼叫項目及外部 gRPC 橋接兩種傳回隨機值資料列的方式；兩者皆在 `config/provisa-install.yaml` 中註冊。
 
 ### 通訊協定對照表 {: #protocol-matrix }
 
@@ -304,17 +304,17 @@ Provisa 會回應 `_entities` 查詢以進行跨子圖 join。任何具有主索
 
 ---
 
-## 數據品質檢查工具（REQ-1443） {: #data-quality-checkers-req-1443 }
+## 數據品質檢查工具 {: #data-quality-checkers }
 
-Soda Core 及 Great Expectations 連接 Provisa 的方式，與任何其他 postgres 用戶端相同——都是透過 pgwire。這就是整個整合方式的全部：檢查工具只需一個 postgres 驅動程式即可掃描聯邦檢視，因此無論是 Snowflake 資料表、Iceberg 資料表還是 Mongo 集合 (collection)，都由同一套合約方言檢查，不需要為每個系統各自建立檢查工具。[tool-verified: `provisa/events/source_loader.py` `make_dq_loader`]
+Soda Core 及 Great Expectations 連接 Provisa 的方式，與任何其他 postgres 用戶端相同——都是透過 pgwire。這就是整個整合方式的全部：檢查工具只需一個 postgres 驅動程式即可掃描聯邦檢視，因此無論是 Snowflake 資料表、Iceberg 資料表還是 Mongo 集合 (collection)，都由同一套合約方言檢查，不需要為每個系統各自建立檢查工具。
 
-掃描運行於一個子直譯器中——`python -m provisa.dq.worker`——這是唯一匯入 `soda_core` 或 `great_expectations` 的地方。伺服器行程中不會連結任何相關程式庫，檢查工具發生崩潰時只會拖垮一個子行程，而不會影響事件迴圈。[tool-verified: `provisa/dq/runner.py` `build_command`]
+掃描運行於一個子直譯器中——`python -m provisa.dq.worker`——這是唯一匯入 `soda_core` 或 `great_expectations` 的地方。伺服器行程中不會連結任何相關程式庫，檢查工具發生崩潰時只會拖垮一個子行程，而不會影響事件迴圈。
 
-掃描結果會以一般來源資料列的形式落地，因此頻率 (cadence)、新鮮度、事件、數據血緣、治理、RLS、資料格線 (grid) 及匯出功能，全部無需第二套機制即可套用。合約撰寫、結果封裝格式及衍生註冊，請見 [docs/sources.md](sources.md#data-quality-checkers-req-1443)。
+掃描結果會以一般來源資料列的形式落地，因此頻率 (cadence)、新鮮度、事件、數據血緣、治理、RLS、資料格線 (grid) 及匯出功能，全部無需第二套機制即可套用。合約撰寫、結果封裝格式及衍生註冊，請見 [docs/sources.md](sources.md#data-quality-checkers)。
 
 ### 安裝檢查工具 {: #installing-a-checker }
 
-兩個程式庫預設皆不隨附。安裝程式會詢問你想使用哪一個，並將答案寫入 `~/.provisa/config.yaml` 中的 `dq_checker: none|soda|gx`。在 Docker 層，`scripts/provisa` 會將其轉換為 `PROVISA_EXTRAS` 建置引數；在原生層，`first-launch.sh` 會將相符的 pyproject extra 安裝至虛擬環境中。[tool-verified: `scripts/provisa:69-79`, `packaging/linux/first-launch.sh` `_native_extras`]
+兩個程式庫預設皆不隨附。安裝程式會詢問你想使用哪一個，並將答案寫入 `~/.provisa/config.yaml` 中的 `dq_checker: none|soda|gx`。在 Docker 層，`scripts/provisa` 會將其轉換為 `PROVISA_EXTRAS` 建置引數；在原生層，`first-launch.sh` 會將相符的 pyproject extra 安裝至虛擬環境中。
 
 | `dq_checker` | 程式庫 | 授權條款 | 代管雲端平面 |
 | -------------- | --------- | --------- | -------------------- |
@@ -325,20 +325,17 @@ Elastic License 2.0 禁止以代管服務的形式向第三方提供該軟件，
 
 ---
 
-## Apache Ossie 語義交換（REQ-1316） {: #apache-ossie-semantic-interchange-req-1316 }
+## Apache Ossie 語義交換 {: #apache-ossie-semantic-interchange }
 
 Provisa 透過一個邊界轉接器與 Apache Ossie（規格 0.2.0.dev0，孵化中；前稱 Open
 Semantic Interchange）交換語義模型。Provisa 的內部詞彙從不改名為
 Ossie 的詞彙——該規格聲明可能出現破壞性變更，因此耦合只限於轉接器之內。
-[tool-verified: `provisa/ossie/convert.py` module docstring; `OSSIE_VERSION = "0.2.0.dev0"`]
 
 草案規格曾在不更改版本字串的情況下改變形態。轉接器遵循
 `apache/ossie` 提交 `642cb894`（2026-10-10）時的規格：每份文件一個模型，
 文件根部包含 `version`、`name`、`datasets`、`relationships` 及 `metrics`，以及
 列舉的 `datatype`。匯出在單元測試中按該提交的
 `core-spec/ossie-schema.json` 驗證。
-[tool-verified: `OSSIE_SPEC_COMMIT`, `provisa/ossie/convert.py`;
-`test_the_export_is_valid_against_ossies_own_schema`, `tests/unit/test_ossie_convert.py`]
 
 ### 匯出 {: #export }
 
@@ -349,12 +346,9 @@ Ossie 的詞彙——該規格聲明可能出現破壞性變更，因此耦合�
 GET /admin/ossie
 ```
 回應是一份 YAML 文件，帶有 `Content-Disposition: attachment; filename=provisa.ossie.yaml`。
-[tool-verified: `ossie_router.py` lines 20–33: "THE canonical live Ossie endpoint: the semantic
-model derived from live state on every read — no caching, no regeneration step"]
 
 指標頁面在 Ossie Interchange 面板上亦提供一個**下載**按鈕及可複製的端點 URL，
 兩者都指向同一個端點。
-[tool-verified: `OssieInterchangePanel.tsx` lines 64–79: `endpointUrl = window.location.origin + OSSIE_ENDPOINT_PATH`]
 
 #### 匯出的內容 {: #what-is-exported }
 
@@ -368,27 +362,17 @@ model derived from live state on every read — no caching, no regeneration step
 | `Metric` | `metric` | `name`、`expression`（ANSI_SQL）、`datatype`（按欄位的方式對映）、`description`、`ai_context` |
 | `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | 僅供往返；其他工具可以忽略 |
 
-[tool-verified: `_table_to_dataset`, `build_ossie_model`, `provisa/ossie/convert.py`: "Computed
-(function-target) relationships have no dataset target — not representable in Ossie; skipping
-is the defined export boundary"]
-
 跨多個欄位的關係會在 `from_columns` 及 `to_columns` 中列出每個欄位。
 沒有資料表的模型會以 `422` 被拒絕：Ossie 文件至少有一個 dataset。
-[tool-verified: `test_a_relationship_over_several_columns_lists_each_column`,
-`test_a_model_with_no_table_is_refused_by_name`, `tests/unit/test_ossie_convert.py`]
 
 治理、行層級安全、血緣及圖語義不會匯出。為了往返的保真度，它們可以放在可選的
 `provisa` custom_extensions 槽位中傳遞，但交換從不依賴其他工具是否讀取它。
-[tool-verified: `provisa/ossie/convert.py` docstring lines 13–15]
 
 Ossie 詞彙以外的欄位類型寫作 `Opaque`，並在欄位的 `provisa` 擴充中
 寫入其本身的類型名稱——這正是規格對沒有對應成員的已知類型所規定的做法。
 沒有記錄類型的欄位不指定 `datatype`。轉接器從不對映至欄位並不具有的類型。
-[tool-verified: `_map_datatype`, `_typed`, `provisa/ossie/convert.py`]
 
 #### 類型對映 {: #type-mapping }
-
-[tool-verified: `_DATATYPE_MAP`, `provisa/ossie/convert.py`]
 
 | Provisa / 數據來源類型 | Ossie `datatype` |
 | --- | --- |
@@ -405,7 +389,6 @@ Ossie 詞彙以外的欄位類型寫作 `Opaque`，並在欄位的 `provisa` 擴
 
 Ossie 的 `Decimal` 不攜帶精度及小數位數，因此 `numeric(10,2)` 匯出為 `Decimal`，
 從匯入傳回時為 `decimal`。
-[tool-verified: `test_parse_round_trips_export`, `tests/unit/test_ossie_convert.py`]
 
 ### 匯入 {: #import }
 
@@ -422,8 +405,6 @@ Content-Type: text/yaml   (or application/json)
 `OssieImport` dataclass，其中建議的資料表、關係及指標以一般字典表示。
 任何結構問題都是一個 `400`，其錯誤按路徑指名，例如
 `ossie import: missing $.datasets[1].source`。
-[tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py`:
-"Nothing is registered here — imported definitions never bypass registration review"]
 
 匯入器只讀取文件的扁平形態。三種情況會被點名拒絕：
 
@@ -441,8 +422,6 @@ Content-Type: text/yaml   (or application/json)
 不會被建議；審查畫面會在其資料表之下把它列為未匯入。重新命名其欄位的欄位會被建議為該欄位，
 並以欄位名稱作為欄位的別名。dataset 的 `source` 必須由三部分組成，
 即 `source.schema.table`；查詢或較短的名稱會被拒絕，錯誤會如此說明。
-[tool-verified: `parse_ossie_model`, `_parse_dataset`, `_proposed_type`, `_ai_context`,
-`provisa/ossie/convert.py`; `tests/unit/test_ossie_convert.py`]
 
 #### 來自 dbt、Cube、Snowflake 及其他語義層 {: #coming-from-dbt-cube-snowflake-and-other-semantic-layers }
 
@@ -455,19 +434,15 @@ Apache Ossie 專案維護 Ossie 與其他工具模型格式之間的轉換器。
 | dbt（語義層） | `ossie-dbt msi-to-ossie -i target/semantic_manifest.json -o semantic_model.yaml` | dbt 為 MetricFlow 寫出的 `semantic_manifest.json` |
 | Cube | `ossie-cube import -i model/ -o model.yaml` | Cube 模型目錄，或個別的 cube 及 view 檔案 |
 
-[tool-verified: `converters/dbt/README.md` and `converters/cube/README.md` in the
-`apache/ossie` repository, read 2026-10-10]
-
 同一個儲存庫亦有面向 Snowflake、Databricks、Microsoft、Salesforce、
 ThoughtSpot、Sigma、Omni、Hex、GoodData 等的轉換器；每個都有自己的 README。
-[tool-verified: directory listing of `converters/` in `apache/ossie`, 2026-10-10]
 
 轉換之前值得知道的兩項限制：
 
 - dbt 轉換器只讀取語義層清單。沒有語義
   模型的 dbt 專案沒有可供它轉換的內容。它會捨棄轉化指標、私有指標及
   自然鍵實體，並為每一項印出警告。
-  [tool-verified: `converters/dbt/README.md`, the "MSI → Ossie is lossy" table]
+
 - 轉換器的輸出遵循該轉換器本身提交時的規格。Provisa 讀取
   `apache/ossie` 提交 `642cb894` 的扁平形態；早於 2026 年 9 月的轉換器
   會寫出 `semantic_model` 包裝，Provisa 會點名拒絕它。
@@ -484,13 +459,8 @@ ThoughtSpot、Sigma、Omni、Hex、GoodData 等的轉換器；每個都有自己
 | Cube 模型 → Ossie → Provisa | 已讀取。資料表、鍵、欄位類型、關係及指標都回來了；關係名稱是轉換器的名稱（`orders_to_customers`）。 |
 | dbt 語義清單 → Ossie → Provisa | 已讀取。資料表、主鍵及指標回來了。欄位類型沒有（轉換器的輸出不指定它們），而關係以轉換器從 dbt 實體推斷出的形式回來，並非已註冊的那一個。套用之前請檢查關係。 |
 
-[tool-verified: both runs, 2026-10-10, `apache/ossie` commit `642cb894`, `ossie-dbt` and
-`ossie-cube` 0.2.0.dev0, metricflow 0.213.0; inputs were files those converters had written
-from a Provisa export, not files authored in dbt or Cube]
-
 當任何資料表具有跨多個欄位的唯一約束時，dbt 轉換器會拒絕該模型
 （「MetricFlow entities cannot represent composite keys losslessly」）。
-[tool-verified: `ossie-dbt ossie-to-msi` on the same export with such a constraint, 2026-10-10]
 
 #### 審查畫面 {: #the-review-screen }
 
@@ -499,15 +469,10 @@ from a Provisa export, not files authored in dbt or Cube]
 關係及指標都以已勾選的項目列出。建模者可以取消勾選任何內容以將其排除。
 **套用**會透過現有的註冊變更註冊已勾選的項目——先註冊
 資料表，再註冊關係（它們參照資料表），然後註冊指標。
-[tool-verified: `OssieInterchangePanel.tsx` lines 88–165: "Review screen opens with everything
-checked; trimming = unchecking"; "Tables first, then relationships... then metrics — each through
-the EXISTING registration mutations（REQ-1316）"]
 
 保存在 Provisa 匯出的 Ossie 文件中的建模角色及歷史，在匯入時能正確往返。
-[tool-verified: `_parse_dataset` custom_extensions handling,
-`provisa/ossie/convert.py` lines 287–300: "REQ-1320: round-trip the provisa modeling metadata slot"]
 
-### dbt sources 檔案（REQ-1967） {: #dbt-sources-file-req-1967 }
+### dbt sources 檔案 {: #dbt-sources-file }
 
 對於不使用語義層的 dbt 專案，Provisa 直接寫出 dbt 的 `sources.yml`。
 它在每次請求時從即時模型推導。
@@ -519,8 +484,6 @@ GET /admin/dbt/sources?role=<role id>
 呼叫者需要 `org_settings`，而 `role` 必須是其持有的角色；持有
 `access_config` 者可以指名任何角色。指標頁面上的交換面板為正在使用的角色
 提供相同的下載。
-[tool-verified: `download_dbt_sources`, `provisa/api/admin/ossie_router.py`; `TestTheEndpoint`,
-`tests/unit/test_dbt_sources.py`]
 
 該檔案在每個數據來源及結構描述所對應的 dbt source 之下，列出角色可取得的每張資料表（以
 數據來源 id 命名，當數據來源的資料表分佈於多個結構描述時為 `<source>_<schema>`），
@@ -538,23 +501,17 @@ GET /admin/dbt/sources?role=<role id>
 不會為其寫入測試。模型不記錄可否為空，因此 `not_null` 只出現在鍵欄位上。
 該檔案不攜帶指標、行層級安全、遮罩、角色或血緣，其開頭註解
 亦如此說明。
-[tool-verified: `build_dbt_sources`, `provisa/dbt/sources.py`; `tests/unit/test_dbt_sources.py`]
 
 由兩張資料表及一個關係的模型產生的檔案，已由 dbt-core 1.12.5 配合
 dbt-duckdb 1.11.0 剖析：兩個 source、五個測試，沒有警告。dbt-core 1.9.11 無法讀取
 其 `relationships` 測試，這些測試把引數巢狀於 `arguments` 之下；中間版本
-未經測試。[tool-verified: `dbt parse` and `dbt ls` on both versions, 2026-10-10; `dbt test`
-against data was not run]
+未經測試。
 
 ---
 
-## 跨通訊協定的指標（REQ-1319） {: #metrics-across-protocols-req-1319 }
+## 跨通訊協定的指標 {: #metrics-across-protocols }
 
 一個受治理指標的定義——其運算式、描述及 `ai_context`——會透過單一編譯器展開，隨著其值一同傳遞至每一個查詢介面。不存在任何副本。編譯器為 SQL 存取保留了 `metrics` 結構描述；每個通訊協定再各自加上自己的中繼資料通道。
-
-[tool-verified: `METRICS_SCHEMA = "metrics"`, `provisa/compiler/metric_expand.py` line 43;
-REQ-1319 requirement text: "the definition (description, ai_context) travels with the value
-everywhere, with no copies"]
 
 ### SQL / pgwire
 
@@ -574,19 +531,15 @@ WHERE net_revenue.status = 'completed'
 GROUP BY region, month;
 ```
 
-編譯器會在治理機制運行之前，將 `metrics.<name>` 形式展開為實際的分組聚合。欄描述會以 `pg_description` 項目的形式呈現，因此 DBeaver 及 psql 的 `\d+` 都能顯示它們。[tool-verified: `metric_semantic_sql`, `provisa/compiler/metric_expand.py` lines 52–70;
-REQ-1319: "description surfaced via pg_description"]
+編譯器會在治理機制運行之前，將 `metrics.<name>` 形式展開為實際的分組聚合。欄描述會以 `pg_description` 項目的形式呈現，因此 DBeaver 及 psql 的 `\d+` 都能顯示它們。
 
 `SELECT *` 會被拒絕——請明確指名欄。
-[tool-verified: `expand_metric_query`, `provisa/compiler/metric_expand.py` lines 302–306]
 
 ### GraphQL
 
 指標會在 `_aggregate` 根欄位內以 `metrics` 區塊的形式投影。
-[inferred: per REQ-1319; aggregate_gen.py not read in this session]
 
 定義文字（`description`、`ai_context`）會出現在 GraphQL introspection 文件中，因此具結構描述感知能力的工具及程式碼產生器可以自動取得這些內容。
-[inferred: per REQ-1319: "definition in introspection docs"]
 
 ### MCP（AI 代理程式） {: #mcp-ai-agents }
 
@@ -595,17 +548,11 @@ REQ-1319: "description surfaced via pg_description"]
 - **`list_metrics`**——傳回該工作階段可見的所有受治理指標，包含 `name`、`description` 及 `ai_context`。
 - **`query_metric`**——接受一個指標名稱及一份維度清單，並呼叫編譯器的語義 SQL 路徑，傳回聚合結果。
 
-[inferred: per REQ-1319: "MCP: list_metrics and query_metric tools carrying ai_context, so agents
-select governed meanings instead of composing aggregation SQL"; `provisa/api/mcp/tools.py` not
-read in this session]
-
 在建構查詢之前先呼叫 `list_metrics` 的代理程式，會依名稱選取一個受治理指標，而非自行手寫聚合 SQL。`ai_context` 欄位正是用來放置引導正確選取的定義文字之處。
 
 ### Arrow Flight {: #arrow-flight }
 
 指標可作為傳回 Arrow 資料表的指標 flight descriptor 來定址。
-[inferred: per REQ-1319: "Arrow Flight: metric flight descriptors returning Arrow tables";
-`provisa/api/flight/catalog.py` not read in this session]
 
 透過標準 Flight SQL 票證路徑，使用同樣的 `metrics.<name>` SQL 形式。
 
@@ -617,32 +564,18 @@ read in this session]
 CALL provisa.metric('net_revenue', ['region']) YIELD region, value
 ```
 
-[inferred: per REQ-1319: "Bolt/Cypher: a provisa.metric() procedure"; the procedure signature
-is inferred from the REQ text and not verified against provisa/bolt/session.py in this session]
-
 Fact 及 Dimension 資料表在聯邦圖中帶有 `:Fact` 及 `:Dimension` 節點標籤，因此 Bloom 能自動繪製出星形結構。
-[inferred: per REQ-1319 and REQ-1320: "federated graph labels nodes :Fact/:Dimension so Bloom
-renders the star"; provisa/cypher/label_map.py not read in this session]
 
 ### 自然語言查詢 {: #natural-language-queries }
 
-自然語言結構描述比對器 (NL schema matcher) 會將自然語言問題中的指標詞彙，直接解析為一個指標加上維度，然後產生語義 SQL。[tool-verified: `resolve_metric`,
-`provisa/nl/schema_matcher.py` is exercised in `test_nl_metrics.py` lines 76–78:
-`sql = matcher.resolve_metric("What is the total revenue by region?")` →
-`"SELECT region, value FROM metrics.total_revenue GROUP BY region"`]
+自然語言結構描述比對器 (NL schema matcher) 會將自然語言問題中的指標詞彙，直接解析為一個指標加上維度，然後產生語義 SQL。
 
 Fact 資料表在自然語言提示中會標記為 `[fact]`；Dimension 資料表則標記為 `[dimension]`。此比對器在解析問題時，會偏向選擇由 fact 指向 dimension 的 join 路徑。
-[tool-verified: `test_format_entities_tags_star_roles`, `tests/unit/test_nl_metrics.py` lines 129–132:
-`assert "table: orders [fact]  fields: amount" in block`]
 
 ### 串流 {: #streaming }
 
 將 `view_metrics` 與 `materialize` 結合，即可利用既有的具體化機制，在輸入變化時令指標視圖保持最新。不需要新的管線。
-[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
-table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### 可觀測性（OTel） {: #observability-otel }
 
 指標評估過程會被追蹤，並可匯出為 OpenTelemetry 指標。
-[inferred: per REQ-1319: "Observability: metric evaluations traced and exportable as OTel metrics";
-OTel integration code not read in this session]

@@ -1,9 +1,5 @@
 # Canonical mail, calendar and task tables
 
-Status: agreed by both source teammates on 2026-10-09 and approved by the maintainer as the
-basis of the mail tables. The tables and enumerations below are generated from
-`provisa/core/canonical_mail.py`, which both loaders import; change that module, then this file.
-
 The Google Workspace source and the Microsoft 365 source each produce every table below with the
 same column names, types, order and meaning, so `UNION ALL` of the two needs no cast or rename.
 
@@ -32,7 +28,7 @@ same column names, types, order and meaning, so `UNION ALL` of the two needs no 
    (`ir_types.py:116`, `:151`). Where rows are needed for a join, a child table carries the
    same fact as rows (`message_folders`, `message_recipients`, `event_attendees`).
    The shape in brackets after `json`, as in `json (text list)`, is a note for the reader;
-   nothing reads it (REQ-1965: no JSON Schema is carried).
+   nothing reads it, and no JSON Schema is carried.
 9. An enumeration column holds a canonical value. Each provider declares a table from its
    values to the canonical ones; a provider value the table does not list fails the build of
    that table by name. A row in a table below that maps to NULL is a declared mapping. The

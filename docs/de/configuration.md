@@ -1,8 +1,8 @@
 # Konfigurationsreferenz {: #configuration-reference }
 
-Provisa wird über eine YAML-Datei konfiguriert (Standard: `config/provisa.yaml`). (REQ-528)
+Provisa wird über eine YAML-Datei konfiguriert (Standard: `config/provisa.yaml`).
 
-## Includes (REQ-1669)
+## Includes
 
 Teilen Sie eine Konfiguration mit `includes:` auf mehrere Dateien auf. Die einbindende Datei listet Fragmentpfade unter diesem Schlüssel auf; Provisa führt sie vor der Validierung zusammen, was zum gleichen Ergebnis führt wie das Schreiben von allem in einer einzigen Datei.
 
@@ -13,9 +13,9 @@ includes:
   - /path/to/demo/sources/neo4j/fragment.yaml
 ```
 
-Eine Wrapper-Datei, die nur `includes:` enthält, ist gültig. `load_control_plane` liest durch Includes hindurch, sodass der Abschnitt `control_plane:` aus derjenigen eingebundenen Datei stammt, die ihn setzt. [tool-verified: `provisa/core/config_loader.py:154-166`]
+Eine Wrapper-Datei, die nur `includes:` enthält, ist gültig. `load_control_plane` liest durch Includes hindurch, sodass der Abschnitt `control_plane:` aus derjenigen eingebundenen Datei stammt, die ihn setzt.
 
-**Merge-Regeln** [tool-verified: `provisa/core/config_loader.py:104-146`]
+**Merge-Regeln**
 
 - Pfade werden relativ zur einbindenden Datei aufgelöst. Absolute Pfade werden unverändert übernommen.
 - Listenabschnitte (`sources`, `tables`, `domains`, `relationships`, `roles`, …) werden angehängt — Fragmenteinträge folgen auf die Einträge der einbindenden Datei.
@@ -42,7 +42,7 @@ sources:
     pgbouncer_port: 6432
 ```
 
-Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/core/models.py:129-212`]
+Alle Quellen teilen sich einen gemeinsamen Feldsatz.
 
 | Feld | Standard | Hinweise |
 | ------- | --------- | ------- |
@@ -58,12 +58,12 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | `pool_min` / `pool_max` | `1` / `5` | Grenzen des Connection-Pools |
 | `cache_enabled` | `true` | Caching für alle Tabellen dieser Quelle umschalten |
 | `cache_ttl` | `null` | Sekunden; `null` erbt den globalen Standard; `-1` läuft nie ab |
-| `federation_hints` | `{}` | Pro-Connector erweiterte Parameter (dict[str,str]); siehe Typreferenz unten. REQ-281 |
-| `mapping` | `{}` | Mapping-DSL für redis, elasticsearch, prometheus. REQ-251 |
+| `federation_hints` | `{}` | Pro-Connector erweiterte Parameter (dict[str,str]); siehe Typreferenz unten. |
+| `mapping` | `{}` | Mapping-DSL für redis, elasticsearch, prometheus. |
 | `allowed_domains` | `[]` | Beschränkt diese Quelle auf bestimmte Domänen-IDs; leer = uneingeschränkt |
 | `description` | `""` | |
 
-### Unterstützte Quellentypen [tool-verified: `provisa/core/models.py:36-101`] {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### Unterstützte Quellentypen {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
 
 | Typ | Verbindungsstil | Hinweise |
 | ------ | ----------------- | ------- |
@@ -74,12 +74,12 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | `singlestore` | host/port | |
 | `sqlserver` | host/port | |
 | `oracle` | host/port | |
-| `firebird` | host + `path` (DB-Datei) | DuckDB-Firebird-Community-Extension (REQ-899) |
+| `firebird` | host + `path` (DB-Datei) | DuckDB-Firebird-Community-Extension |
 | `duckdb` | host/port | |
-| `cockroachdb` | host/port | Nutzt den PostgreSQL-Treiber/-Dialekt wieder (REQ-950) |
-| `yugabytedb` | host/port | Nutzt den PostgreSQL-Treiber/-Dialekt wieder (REQ-950) |
-| `greenplum` | host/port | Nutzt den PostgreSQL-Treiber/-Dialekt wieder (REQ-950) |
-| `tidb` | host/port | Nutzt den MySQL-Treiber/-Dialekt wieder (REQ-950) |
+| `cockroachdb` | host/port | Nutzt den PostgreSQL-Treiber/-Dialekt wieder |
+| `yugabytedb` | host/port | Nutzt den PostgreSQL-Treiber/-Dialekt wieder |
+| `greenplum` | host/port | Nutzt den PostgreSQL-Treiber/-Dialekt wieder |
+| `tidb` | host/port | Nutzt den MySQL-Treiber/-Dialekt wieder |
 | **Cloud DW** | | |
 | `snowflake` | host/port + `federation_hints` | `account` in den Hints erforderlich |
 | `bigquery` | `federation_hints` | `project` erforderlich; Auth über `GOOGLE_APPLICATION_CREDENTIALS` |
@@ -96,9 +96,9 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | **Data Lake** | | |
 | `delta_lake` | `path` (Tabellen-URI) | DuckDB `delta_scan`; Objektspeicherzugriff über `federation_hints` |
 | `iceberg` | `path` (Tabellen-URI) | DuckDB `iceberg_scan`; Objektspeicherzugriff über `federation_hints` |
-| `hudi` | `path` (Tabellen-URI) | ClickHouse-Hudi-Engine, Zero-Copy (REQ-1178) |
+| `hudi` | `path` (Tabellen-URI) | ClickHouse-Hudi-Engine, Zero-Copy |
 | `hive` | host/port (Metastore) + `mapping.storage` | Storage-Backend in `mapping["storage"]`: hadoop/hdfs/local/s3/azure/adls |
-| `hive_s3` | host/port (Metastore) + `mapping` S3-Schlüssel | Eigenständiger Typ; immer S3-Storage (REQ-229) |
+| `hive_s3` | host/port (Metastore) + `mapping` S3-Schlüssel | Eigenständiger Typ; immer S3-Storage |
 | **NoSQL** | | |
 | `mongodb` | host/port | Einfache Verbindungsfelder; keine Mapping-DSL |
 | `cassandra` | host/port | Einfache Verbindungsfelder; keine Mapping-DSL |
@@ -121,7 +121,7 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | `graphql_remote` | `base_url` + optionales `mapping` | Header, forward-client-headers, Timeout in `mapping` |
 | `openapi` | `base_url` | |
 | `grpc_remote` | [UNVERIFIED end-to-end mapping] | |
-| `airport` | `base_url` (Flight-Location) | DuckDB-Airport-Extension (REQ-899) |
+| `airport` | `base_url` (Flight-Location) | DuckDB-Airport-Extension |
 | `ingest` | Push-Receiver | Externe Dienste senden JSON-Ereignisse per POST |
 | **SaaS** | | |
 | `sharepoint` | `base_url` oder `host` + `mapping` | Auth über `mapping.auth_type` |
@@ -129,16 +129,16 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz. [tool-verified: `provisa/co
 | **GovData** | | |
 | `govdata` | subject + `domain_id` | Separates `GovDataSource`-Modell; siehe §GovData unten |
 | **Data Quality** | | |
-| `soda` | host/port, zielt auf Provisas pgwire | Benötigt das `soda`-Extra; Elastic License 2.0, nur selbst gehostet (REQ-1443) |
-| `great_expectations` | host/port, zielt auf Provisas pgwire | Benötigt das `gx`-Extra; Apache 2.0 (REQ-1443) |
+| `soda` | host/port, zielt auf Provisas pgwire | Benötigt das `soda`-Extra; Elastic License 2.0, nur selbst gehostet |
+| `great_expectations` | host/port, zielt auf Provisas pgwire | Benötigt das `gx`-Extra; Apache 2.0 |
 
 ### Quellentyp-Referenz {: #source-type-reference }
 
 Typen, die eine nicht offensichtliche Konfiguration benötigen, haben jeweils einen kurzen Eintrag unten. RDBMS-Typen (postgresql, mysql usw.) verwenden nur die obigen gemeinsamen Felder — kein zusätzlicher Abschnitt nötig.
 
-#### GovData [tool-verified: `provisa/core/models.py:953-983`]
+#### GovData
 
-`govdata`-Quellen verwenden ein separates Top-Level-Modell, `GovDataSource`, nicht den generischen `Source`. (REQ-540) Der Zugriff ist nach Subject-Gruppierung partitioniert.
+`govdata`-Quellen verwenden ein separates Top-Level-Modell, `GovDataSource`, nicht den generischen `Source`. Der Zugriff ist nach Subject-Gruppierung partitioniert.
 
 ```yaml
 sources:
@@ -151,7 +151,7 @@ sources:
     end_year: 2024                     # optional year filter
 ```
 
-Jedes Subject bildet auf ein oder mehrere GovData-Schemas ab. Die Konfiguration einer `govdata`-Quelle mit einem Subject stellt automatisch alle Schemas für dieses Subject bereit. (REQ-540)
+Jedes Subject bildet auf ein oder mehrere GovData-Schemas ab. Die Konfiguration einer `govdata`-Quelle mit einem Subject stellt automatisch alle Schemas für dieses Subject bereit.
 
 | Subject | Schemas |
 | --------- | --------- |
@@ -166,11 +166,11 @@ Jedes Subject bildet auf ein oder mehrere GovData-Schemas ab. Die Konfiguration 
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-Die Schemas `ref` und `geo` sind immer als Linker-Schemas enthalten — nicht konfigurierbar und oben nicht aufgeführt. (REQ-541) Verwenden Sie das Subject `ALL`, um Zugriff auf jedes Schema zu gewähren. [tool-verified: `provisa/core/models.py:961-963`]
+Die Schemas `ref` und `geo` sind immer als Linker-Schemas enthalten — nicht konfigurierbar und oben nicht aufgeführt. Verwenden Sie das Subject `ALL`, um Zugriff auf jedes Schema zu gewähren.
 
-#### Kafka [tool-verified: `provisa/federation/trino_connectors.py:497-502`, `provisa/api/app_loaders.py:113-118`]
+#### Kafka
 
-Die `kafka`-Zeile in `sources:` dient nur der Registrierung. Ihr `details()` des Connectors gibt `{}` zurück — die tatsächliche Konfiguration liegt im Top-Level-Block `kafka_sources[]`, nicht in einer `sources:`-Zeile. Kafka ist immer eine VIRTUAL_SOURCE (läuft über die Engine; kein direkter Pool). [tool-verified: `provisa/transpiler/router.py:44-63`]
+Die `kafka`-Zeile in `sources:` dient nur der Registrierung. Ihr `details()` des Connectors gibt `{}` zurück — die tatsächliche Konfiguration liegt im Top-Level-Block `kafka_sources[]`, nicht in einer `sources:`-Zeile. Kafka ist immer eine VIRTUAL_SOURCE (läuft über die Engine; kein direkter Pool).
 
 ```yaml
 kafka_sources:
@@ -210,9 +210,9 @@ kafka_sources:
             type: timestamp
 ```
 
-**Zeitfenster** — `default_window` begrenzt jede Abfrage auf einen kürzlichen Zeitraum und verhindert unbegrenzte Lesevorgänge aus hochvolumigen Topics. (REQ-148) Format: `1h`, `30m`, `7d`, `60s`. Standard ist `1h`. Automatisch injiziert als `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clients können dies mit ihrem eigenen `_timestamp`-Filter im GraphQL-`where`-Argument überschreiben.
+**Zeitfenster** — `default_window` begrenzt jede Abfrage auf einen kürzlichen Zeitraum und verhindert unbegrenzte Lesevorgänge aus hochvolumigen Topics. Format: `1h`, `30m`, `7d`, `60s`. Standard ist `1h`. Automatisch injiziert als `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clients können dies mit ihrem eigenen `_timestamp`-Filter im GraphQL-`where`-Argument überschreiben.
 
-**Discriminator** — Mehrere Topic-Konfigurationen können auf dasselbe physische Kafka-Topic mit unterschiedlichen `discriminator`-Werten zeigen und erzeugen so separate GraphQL-Typen. (REQ-149) Der Discriminator wird automatisch als WHERE-Klausel injiziert.
+**Discriminator** — Mehrere Topic-Konfigurationen können auf dasselbe physische Kafka-Topic mit unterschiedlichen `discriminator`-Werten zeigen und erzeugen so separate GraphQL-Typen. Der Discriminator wird automatisch als WHERE-Klausel injiziert.
 
 **Schema Source**
 
@@ -222,7 +222,7 @@ kafka_sources:
 | `manual` | Spalten inline in der Konfiguration definieren (keine Schema Registry nötig) |
 | `sample` | Automatische Erkennung aus Beispielnachrichten |
 
-#### Snowflake [tool-verified: `provisa/executor/drivers/snowflake.py:48-62`]
+#### Snowflake
 
 `account` in `federation_hints` ist erforderlich. `warehouse`, `role` und `schema` sind optional.
 
@@ -241,7 +241,7 @@ sources:
       schema: PUBLIC               # remote schema override
 ```
 
-#### Databricks [tool-verified: `provisa/executor/drivers/databricks.py:34-52`]
+#### Databricks
 
 `http_path` in `federation_hints` ist erforderlich. `password` trägt das Personal Access Token. `catalog` ist optional (in SQL/Hints geführt, nicht im Feld `database`).
 
@@ -256,7 +256,7 @@ sources:
       catalog: my_unity_catalog              # optional
 ```
 
-#### BigQuery [tool-verified: `provisa/federation/connector_duckdb.py:238`]
+#### BigQuery
 
 `project` in `federation_hints` ist erforderlich. Die Authentifizierung nutzt `GOOGLE_APPLICATION_CREDENTIALS` (Pfad zu einer Service-Account-Schlüsseldatei) oder Application Default Credentials in der Engine-Umgebung.
 
@@ -268,7 +268,7 @@ sources:
       project: my-gcp-project     # required
 ```
 
-#### Fabric / Synapse [tool-verified: `provisa/core/models.py:56-57`]
+#### Fabric / Synapse
 
 Beide nutzen T-SQL über TDS mit Azure-AD-Authentifizierung. Authentifizieren Sie sich mit `az login` (Entwicklung) oder einer Managed Identity (Produktion) — die Engine liest Anmeldedaten über die `DefaultAzureCredential` von `azure-identity`. Verbindungsdetails stammen aus Umgebungsvariablen: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) oder `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), oder über `PROVISA_ENGINE_URL`.
 
@@ -279,9 +279,9 @@ sources:
     # host/database read from FABRIC_SQL_SERVER / FABRIC_DATABASE when not set here
 ```
 
-#### ClickHouse [tool-verified: `provisa/executor/drivers/clickhouse.py:49-59`]
+#### ClickHouse
 
-`secure` in `federation_hints` aktiviert TLS auf der HTTP-Schnittstelle. Der Port ist standardmäßig `8123` (unverschlüsselt) oder `8443` (wenn `secure: "true"`). `schema` in `federation_hints` überschreibt das Remote-Schema. [tool-verified: `provisa/federation/connector_duckdb.py:378-379`]
+`secure` in `federation_hints` aktiviert TLS auf der HTTP-Schnittstelle. Der Port ist standardmäßig `8123` (unverschlüsselt) oder `8443` (wenn `secure: "true"`). `schema` in `federation_hints` überschreibt das Remote-Schema.
 
 ```yaml
 sources:
@@ -294,7 +294,7 @@ sources:
       schema: analytics
 ```
 
-#### Delta Lake / Iceberg [tool-verified: `provisa/federation/connector_duckdb.py:291-327`]
+#### Delta Lake / Iceberg
 
 `path` ist die Tabellen-URI (S3, GCS, ADLS oder lokal). Objektspeicherzugriff benötigt `federation_hints`-Anmeldedaten. Für Cloudflare R2 fügen Sie `account_id` hinzu.
 
@@ -316,11 +316,11 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-#### Hive / Hive S3 [tool-verified: `provisa/federation/trino_connectors.py:244-363`]
+#### Hive / Hive S3
 
-`host` und `port` zeigen auf den Hive-Thrift-Metastore (Standardport 9083). Für `hive` setzen Sie `mapping["storage"]`, um das Objektspeicher-Backend zu wählen. Fehlende erforderliche Schlüssel schlagen laut fehl — kein Fallback. [tool-verified: `provisa/federation/trino_connectors.py:328-331`]
+`host` und `port` zeigen auf den Hive-Thrift-Metastore (Standardport 9083). Für `hive` setzen Sie `mapping["storage"]`, um das Objektspeicher-Backend zu wählen. Fehlende erforderliche Schlüssel schlagen laut fehl — kein Fallback.
 
-`hive_s3` ist ein eigenständiger Typ, der immer S3-Storage deklariert (REQ-229); kein `mapping.storage` nötig.
+`hive_s3` ist ein eigenständiger Typ, der immer S3-Storage deklariert; kein `mapping.storage` nötig.
 
 ```yaml
 sources:
@@ -349,7 +349,7 @@ sources:
 
 `mapping.storage` akzeptierte Werte: `hadoop` (Standard), `hdfs`, `local`, `s3`, `azure`, `adls`. S3-Mapping-Schlüssel: `endpoint`, `access_key_id`, `secret_access_key`, `region`, `path_style`. ADLS-Mapping-Schlüssel: `storage_account`, `access_key` oder `sas_token`.
 
-#### Redis [tool-verified: `provisa/core/trino_catalog_files.py:54-75`]
+#### Redis
 
 Nutzt die `mapping`-DSL. `mongodb` und `cassandra` verwenden einfache Verbindungsfelder und NICHT die Mapping-DSL.
 
@@ -375,7 +375,7 @@ sources:
               field: expires_at
 ```
 
-#### Elasticsearch [tool-verified: `provisa/core/trino_catalog_files.py:78-104`]
+#### Elasticsearch
 
 ```yaml
 sources:
@@ -403,7 +403,7 @@ sources:
               path: message
 ```
 
-#### Prometheus [tool-verified: `provisa/core/trino_catalog_files.py:107-124`]
+#### Prometheus
 
 `mapping.url` überschreibt `host:port`, wenn beide vorhanden sind.
 
@@ -421,7 +421,7 @@ sources:
           default_range: 1h        # default "1h"
 ```
 
-#### Google Sheets [tool-verified: `provisa/federation/connector_duckdb.py:273-275`]
+#### Google Sheets
 
 `spreadsheet_id` in `federation_hints` ist erforderlich. Auth nutzt ein DuckDB-`gsheet`-SECRET, das zum Zeitpunkt des Attach bereitgestellt wird.
 
@@ -435,7 +435,7 @@ sources:
 
 #### Dateiquellen (csv / parquet / sqlite / files) {: #file-sources-csv-parquet-sqlite-files }
 
-`path` ist erforderlich. `files` durchsucht ein Verzeichnis nach CSV-, Parquet-, XLSX- und JSON-Dateien und stellt jede als Tabelle bereit. Alle dateibasierten Quellen sind VIRTUAL (laufen über die Engine; kein direkter Pool). [tool-verified: `provisa/transpiler/router.py:44-48`]
+`path` ist erforderlich. `files` durchsucht ein Verzeichnis nach CSV-, Parquet-, XLSX- und JSON-Dateien und stellt jede als Tabelle bereit. Alle dateibasierten Quellen sind VIRTUAL (laufen über die Engine; kein direkter Pool).
 
 ```yaml
 sources:
@@ -461,7 +461,7 @@ sources:
     base_url: https://api.payments.example.com/v1
 ```
 
-**graphql_remote** — setzen Sie `base_url`. Optionale `mapping`-Schlüssel: `headers` (Dict statischer Header), `forward_client_headers` (bool), `timeout_seconds` (int). [tool-verified: `provisa/hasura_v2/mapper.py:129-152`]
+**graphql_remote** — setzen Sie `base_url`. Optionale `mapping`-Schlüssel: `headers` (Dict statischer Header), `forward_client_headers` (bool), `timeout_seconds` (int).
 
 ```yaml
 sources:
@@ -475,7 +475,7 @@ sources:
       timeout_seconds: 30
 ```
 
-**airport** — `base_url` ist der Arrow-Flight-Server-Standort. DuckDB-Airport-Extension (REQ-899). [tool-verified: `provisa/federation/connector_duckdb.py:285-288`]
+**airport** — `base_url` ist der Arrow-Flight-Server-Standort. DuckDB-Airport-Extension.
 
 ```yaml
 sources:
@@ -484,7 +484,7 @@ sources:
     base_url: grpc://flight.internal:8815
 ```
 
-**websocket / rss** — verwenden Sie `host`, `port`, `path` und `federation_hints`. [tool-verified: `provisa/api/data/subscribe.py:85-129`]
+**websocket / rss** — verwenden Sie `host`, `port`, `path` und `federation_hints`.
 
 ```yaml
 sources:
@@ -509,7 +509,7 @@ sources:
       # feed_url: https://...  # overrides host/port/path when set
 ```
 
-**sharepoint** [tool-verified: `provisa/federation/trino_connectors.py:394-423`]
+**sharepoint**
 
 ```yaml
 sources:
@@ -525,7 +525,7 @@ sources:
       # certificate_password: ${env:CERT_PASSWORD}
 ```
 
-**splunk** [tool-verified: `provisa/federation/trino_connectors.py:426-457`]
+**splunk**
 
 ```yaml
 sources:
@@ -543,8 +543,6 @@ sources:
 
 #### Data-Quality-Checker (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
-[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
-
 Eine Checker-Quelle zeigt auf Provisas eigenen pgwire-Endpunkt, sodass ein Postgres-Treiber die föderierte Sicht auf eine Snowflake- oder Iceberg-gestützte Tabelle scannt. Die Scan-Identität wird deklariert, nie vererbt — die Richtlinie gilt für diese Verbindung, und ein gefilterter Zeilensatz darf keinen stillschweigend bestandenen Check erzeugen. Verbindungsschlüssel kommen aus `mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
@@ -560,7 +558,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Jede Ergebnistabelle trägt `dq_contract` — Soda-Contract-YAML oder eine Great-Expectations-Suite-JSON, unverändert. Spalten, Wasserzeichen und Promotions werden daraus abgeleitet; siehe [Data Quality Checkers](sources.md#data-quality-checkers-req-1443) für die vollständige Ableitung.
+Jede Ergebnistabelle trägt `dq_contract` — Soda-Contract-YAML oder eine Great-Expectations-Suite-JSON, unverändert. Spalten, Wasserzeichen und Promotions werden daraus abgeleitet; siehe [Data Quality Checkers](sources.md#data-quality-checkers) für die vollständige Ableitung.
 
 **Auswahl zur Installationszeit.** Der Checker ist nicht fest eingebunden — der Scan läuft in einem Kindinterpreter, und die Bibliothek wird nur installiert, wenn ein Betreiber sie benennt. Jeder Installationspfad (`install.sh`, `packaging/linux/first-launch.sh` und der macOS-Wizard über `PROVISA_DQ_CHECKER`) schreibt die Wahl nach `~/.provisa/config.yaml`:
 
@@ -568,7 +566,7 @@ Jede Ergebnistabelle trägt `dq_contract` — Soda-Contract-YAML oder eine Great
 dq_checker: none        # none | soda | gx
 ```
 
-`scripts/provisa` liest diesen Schlüssel und exportiert `PROVISA_EXTRAS`, das `docker-compose.app.yml` als Build-Argument an `ARG PROVISA_EXTRAS` im `Dockerfile` übergibt: [tool-verified: `scripts/provisa:69-79`]
+`scripts/provisa` liest diesen Schlüssel und exportiert `PROVISA_EXTRAS`, das `docker-compose.app.yml` als Build-Argument an `ARG PROVISA_EXTRAS` im `Dockerfile` übergibt:
 
 | `dq_checker` | `PROVISA_EXTRAS` (Docker-Tier) | Native venv-Installation |
 | -------------- | -------------------------------- | --------------------- |
@@ -603,9 +601,9 @@ naming:
 
 ### Namenskonvention {: #naming-convention }
 
-Die Namensautorität ist die einzige Quelle der Wahrheit für clientseitige Namen; physische Backend-Spaltennamen werden Clients nie offengelegt. (REQ-194) Jede Abfragesprache leitet den Namen einer Spalte aus ihrem `column.alias` ab, falls gesetzt, andernfalls aus dem physischen Spaltennamen über die konfigurierte Konvention. (REQ-194)
+Die Namensautorität ist die einzige Quelle der Wahrheit für clientseitige Namen; physische Backend-Spaltennamen werden Clients nie offengelegt. Jede Abfragesprache leitet den Namen einer Spalte aus ihrem `column.alias` ab, falls gesetzt, andernfalls aus dem physischen Spaltennamen über die konfigurierte Konvention.
 
-Die GraphQL-Konvention ist eines von drei voreingestellten Enums. (REQ-416) Alte Freiform-Strings (`none`, `snake_case`, `camelCase`, `PascalCase`) sind veraltet. (REQ-416)
+Die GraphQL-Konvention ist eines von drei voreingestellten Enums. Alte Freiform-Strings (`none`, `snake_case`, `camelCase`, `PascalCase`) sind veraltet.
 
 | Preset | Standard | Typnamen | Feldnamen | Mutationsnamen |
 | -------- | --------- | ------------ | ------------- | ---------------- |
@@ -613,11 +611,11 @@ Die GraphQL-Konvention ist eines von drei voreingestellten Enums. (REQ-416) Alte
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
 
-Die Standard-GraphQL-Konvention ist `apollo_graphql`, was camelCase-Feld- und -Mutationsnamen erzeugt. (REQ-194, REQ-416) Die SQL-Konvention ist separat, mit Standard `snake_case`, angewendet über `apply_sql_name()`; die GraphQL-Konvention wird über `apply_gql_name()` angewendet, und der CQL-Name wird vom GraphQL-Namen abgeleitet. (REQ-194)
+Die Standard-GraphQL-Konvention ist `apollo_graphql`, was camelCase-Feld- und -Mutationsnamen erzeugt. Die SQL-Konvention ist separat, mit Standard `snake_case`, angewendet über `apply_sql_name()`; die GraphQL-Konvention wird über `apply_gql_name()` angewendet, und der CQL-Name wird vom GraphQL-Namen abgeleitet.
 
-`domain_prefix: bool` ist eine orthogonale Option, die unabhängig vom gewählten Preset gilt. (REQ-416)
+`domain_prefix: bool` ist eine orthogonale Option, die unabhängig vom gewählten Preset gilt.
 
-Ein explizites `column.alias` ist der kanonische Name: SQL verwendet ihn unverändert ohne angewendete Konvention, GraphQL wendet seine Konvention darauf an, und CQL leitet sich vom GraphQL-Namen ab. (REQ-194)
+Ein explizites `column.alias` ist der kanonische Name: SQL verwendet ihn unverändert ohne angewendete Konvention, GraphQL wendet seine Konvention darauf an, und CQL leitet sich vom GraphQL-Namen ab.
 
 Pro-Quelle-Override:
 
@@ -638,7 +636,7 @@ tables:
 
 ### Domänen-Präfix {: #domain-prefix }
 
-Wenn `domain_prefix: true`, werden alle GraphQL-Feld- und Typnamen mit der Domänen-ID unter Verwendung eines doppelten Unterstrichs als Trenner präfixiert: (REQ-154)
+Wenn `domain_prefix: true`, werden alle GraphQL-Feld- und Typnamen mit der Domänen-ID unter Verwendung eines doppelten Unterstrichs als Trenner präfixiert:
 
 | Tabelle | Domäne | Feldname |
 | ------- | -------- | ----------- |
@@ -649,7 +647,7 @@ Dies verhindert Namenskollisionen, wenn unterschiedliche Domänen Tabellen mit d
 
 ### Namensregeln {: #naming-rules }
 
-Regex-Regeln, die auf Tabellennamen angewendet werden, wenn GraphQL-Feldnamen generiert werden. Angewendet der Reihe nach vor der Eindeutigkeitsauflösung. (REQ-542)
+Regex-Regeln, die auf Tabellennamen angewendet werden, wenn GraphQL-Feldnamen generiert werden. Angewendet der Reihe nach vor der Eindeutigkeitsauflösung.
 
 ## Tabellen {: #tables }
 
@@ -701,7 +699,7 @@ tables:
         check: "TRUE"
 ```
 
-Eine Tabelle trägt standardmäßig keine Schreibberechtigung, daher kann keine Rolle in sie schreiben. Eine Schreibberechtigung gibt einer Rolle eine Operation (`insert`, `update` oder `delete`) auf der Tabelle. Eine Tabelle enthält höchstens eine Berechtigung je Rolle und Operation. (REQ-2074)
+Eine Tabelle trägt standardmäßig keine Schreibberechtigung, daher kann keine Rolle in sie schreiben. Eine Schreibberechtigung gibt einer Rolle eine Operation (`insert`, `update` oder `delete`) auf der Tabelle. Eine Tabelle enthält höchstens eine Berechtigung je Rolle und Operation.
 
 | Feld der Berechtigung | Bedeutung |
 | ----------- | ------- |
@@ -722,7 +720,7 @@ In der Admin-Oberfläche listet der Abschnitt **Schreibrechte** einer Tabelle di
 
 ### Aliase {: #aliases }
 
-Tabellen- und Spaltenaliase überschreiben den Standard-GraphQL-Namen. (REQ-155) Nützlich für:
+Tabellen- und Spaltenaliase überschreiben den Standard-GraphQL-Namen. Nützlich für:
 
 - Umbenennung kryptischer Datenbanknamen (z. B. `tbl_cust_seg` → `customer_segments`)
 - Vermeidung von Abkürzungen in der API-Schicht
@@ -730,11 +728,11 @@ Tabellen- und Spaltenaliase überschreiben den Standard-GraphQL-Namen. (REQ-155)
 
 ### Beschreibungen {: #descriptions }
 
-Tabellen- und Spaltenbeschreibungen sind im generierten GraphQL-SDL enthalten. (REQ-156) Sie erscheinen im Dokumentations-Explorer von GraphiQL und in Introspektionsabfragen. Setzen Sie sie in der Konfigurations-YAML oder über die Admin-UI.
+Tabellen- und Spaltenbeschreibungen sind im generierten GraphQL-SDL enthalten. Sie erscheinen im Dokumentations-Explorer von GraphiQL und in Introspektionsabfragen. Setzen Sie sie in der Konfigurations-YAML oder über die Admin-UI.
 
 ### Pfad (Berechnete JSON-Extraktion) {: #path-computed-json-extraction }
 
-Spalten können Werte aus einer JSON-/JSONB-Quellspalte mithilfe eines Punktnotation-`path` extrahieren. (REQ-151) Dies ist nützlich für semistrukturierte Daten in Kafka-Nachrichten, MongoDB-Dokumenten oder PostgreSQL-JSONB-Spalten.
+Spalten können Werte aus einer JSON-/JSONB-Quellspalte mithilfe eines Punktnotation-`path` extrahieren. Dies ist nützlich für semistrukturierte Daten in Kafka-Nachrichten, MongoDB-Dokumenten oder PostgreSQL-JSONB-Spalten.
 
 ```yaml
 columns:
@@ -751,9 +749,9 @@ columns:
     visible_to: [admin, analyst]
 ```
 
-Das Pfadformat ist `source_column.key1.key2...`. Der Compiler generiert `json_extract_scalar(source_column, '$.key1.key2')` im SQL. (REQ-151)
+Das Pfadformat ist `source_column.key1.key2...`. Der Compiler generiert `json_extract_scalar(source_column, '$.key1.key2')` im SQL.
 
-**Routing-Auswirkung:** Pfad-Spalten verwenden PostgreSQL-JSON-Operatoren (`->>`), die vom direkten PG-Routing nativ unterstützt werden. (REQ-152) Für Nicht-PostgreSQL-Quellen (MySQL, SQL Server usw.) werden Abfragen mit Pfad-Spalten automatisch über die Föderations-Engine geroutet. (REQ-152) Mutationen sind davon nicht betroffen, da Pfad-Spalten schreibgeschützte berechnete Felder sind. (REQ-153)
+**Routing-Auswirkung:** Pfad-Spalten verwenden PostgreSQL-JSON-Operatoren (`->>`), die vom direkten PG-Routing nativ unterstützt werden. Für Nicht-PostgreSQL-Quellen (MySQL, SQL Server usw.) werden Abfragen mit Pfad-Spalten automatisch über die Föderations-Engine geroutet. Mutationen sind davon nicht betroffen, da Pfad-Spalten schreibgeschützte berechnete Felder sind.
 
 ### Maskierungstypen {: #masking-types }
 
@@ -786,13 +784,13 @@ relationships:
 
 ### Auto-Materialisierung {: #auto-materialization }
 
-Setzen Sie `materialize: true` auf einer Beziehung, um automatisch eine materialisierte Sicht für quellenübergreifende JOINs zu generieren. (REQ-158) Dies vermeidet teure föderierte Abfragen, indem das JOIN-Ergebnis vorab berechnet wird.
+Setzen Sie `materialize: true` auf einer Beziehung, um automatisch eine materialisierte Sicht für quellenübergreifende JOINs zu generieren. Dies vermeidet teure föderierte Abfragen, indem das JOIN-Ergebnis vorab berechnet wird.
 
-- Nur quellenübergreifende Beziehungen generieren MVs (Joins innerhalb derselben Quelle sind bereits schnell) (REQ-159)
-- Bei einer Junction-gestützten Beziehung deckt die MV die Zwei-Sprung-Traversierung ab — Quellsprung, Junction-Sprung, Diskriminator und die eigenen Spalten der Junction als Kantenattribute. Die Junction zählt als Bein, eine Kante ist also quellenübergreifend, sobald eine der drei Tabellen in einer anderen Quelle liegt (REQ-1586)
-- Die MV startet veraltet und wird von der Hintergrund-Refresh-Schleife befüllt (REQ-160)
-- Mutationen an einer der beiden Quelltabellen markieren die MV zur erneuten Aktualisierung als veraltet (REQ-543)
-- `refresh_interval` ist standardmäßig 300 Sekunden (5 Minuten) (REQ-543)
+- Nur quellenübergreifende Beziehungen generieren MVs (Joins innerhalb derselben Quelle sind bereits schnell)
+- Bei einer Junction-gestützten Beziehung deckt die MV die Zwei-Sprung-Traversierung ab — Quellsprung, Junction-Sprung, Diskriminator und die eigenen Spalten der Junction als Kantenattribute. Die Junction zählt als Bein, eine Kante ist also quellenübergreifend, sobald eine der drei Tabellen in einer anderen Quelle liegt
+- Die MV startet veraltet und wird von der Hintergrund-Refresh-Schleife befüllt
+- Mutationen an einer der beiden Quelltabellen markieren die MV zur erneuten Aktualisierung als veraltet
+- `refresh_interval` ist standardmäßig 300 Sekunden (5 Minuten)
 
 ## Rollen {: #roles }
 
@@ -820,7 +818,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Rollen mit `parent_role_id` erben Capabilities, Domänenzugriff, Spalten- und Objektfreigaben sowie RLS-Regeln von der übergeordneten Rolle, wobei die eigene RLS-Regel des Kindes für eine Tabelle Vorrang hat. (REQ-215, REQ-1677) Die Kette wird beim Start flach aufgelöst. (REQ-215)
+Rollen mit `parent_role_id` erben Capabilities, Domänenzugriff, Spalten- und Objektfreigaben sowie RLS-Regeln von der übergeordneten Rolle, wobei die eigene RLS-Regel des Kindes für eine Tabelle Vorrang hat. Die Kette wird beim Start flach aufgelöst.
 
 ### Capabilities
 
@@ -856,7 +854,7 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
-      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # Add via_table with via_left_column/via_right_column (and
       # via_type_column/via_type_value when the junction is discriminated) to
       # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
@@ -867,7 +865,7 @@ materialized_views:
 
 ## Sichten (Regierte berechnete Datasets) {: #views-governed-computed-datasets }
 
-Sichten sind SQL-definierte berechnete Datasets mit vollständiger spaltenweiser Governance. (REQ-133) Sie sind der regierte Mechanismus zum Hinzufügen von Aggregationen, Transformationen und abgeleiteten Kennzahlen zum Modell. (REQ-136)
+Sichten sind SQL-definierte berechnete Datasets mit vollständiger spaltenweiser Governance. Sie sind der regierte Mechanismus zum Hinzufügen von Aggregationen, Transformationen und abgeleiteten Kennzahlen zum Modell.
 
 ```yaml
 views:
@@ -907,14 +905,14 @@ views:
 
 ### Materialisiert vs. Live {: #materialized-vs-live }
 
-- **`materialize: true`**: Provisa erstellt eine Tabelle via CTAS und aktualisiert sie nach Zeitplan. (REQ-135) Schnellere Abfragen, aber die Daten können bis zu `refresh_interval` Sekunden veraltet sein.
-- **`materialize: false`**: Provisa erstellt eine föderierte Sicht. (REQ-135) Abfragen liefern immer Live-Daten, können aber bei komplexen Aggregationen langsamer sein.
+- **`materialize: true`**: Provisa erstellt eine Tabelle via CTAS und aktualisiert sie nach Zeitplan. Schnellere Abfragen, aber die Daten können bis zu `refresh_interval` Sekunden veraltet sein.
+- **`materialize: false`**: Provisa erstellt eine föderierte Sicht. Abfragen liefern immer Live-Daten, können aber bei komplexen Aggregationen langsamer sein.
 
-Sichten durchlaufen dieselbe Governance-Pipeline wie Tabellen — RLS, Maskierung, Sampling und rollenbasierte Sichtbarkeit. (REQ-134) Dies stellt sicher, dass keine neue Semantik ohne Steward-Aufsicht zur Plattform hinzugefügt werden kann. (REQ-136)
+Sichten durchlaufen dieselbe Governance-Pipeline wie Tabellen — RLS, Maskierung, Sampling und rollenbasierte Sichtbarkeit. Dies stellt sicher, dass keine neue Semantik ohne Steward-Aufsicht zur Plattform hinzugefügt werden kann.
 
 ### Sichten mit Historie (Zeitreise) {: #views-with-history-time-travel }
 
-Eine materialisierte Sicht kann jede Version ihrer Zeilen behalten und zu einem vergangenen Zeitpunkt gelesen werden. (REQ-1162, REQ-1163) Sie deklariert, wie sie sie behält und zu welchem Schlüssel eine Version gehört:
+Eine materialisierte Sicht kann jede Version ihrer Zeilen behalten und zu einem vergangenen Zeitpunkt gelesen werden. Sie deklariert, wie sie sie behält und zu welchem Schlüssel eine Version gehört:
 
 ```yaml
 views:
@@ -937,9 +935,9 @@ views:
 | `bitemporal_key` | Ja | Die Spalten, zu denen eine Version gehört |
 | `bitemporal_source_time` | Nein | Die Spalte, die festhält, wann sich jede Zeile in der Quelle geändert hat: die Uhr, nach der die Zeitreise liest |
 
-**Die Uhr wählen.** Mit `bitemporal_source_time` werden Versionen nach der eigenen Zeit der Quelle geordnet und gelesen: „Stand letzten Dienstag" ist der letzte Dienstag in der Quelle. Ohne sie werden sie danach geordnet und gelesen, wann Provisa jede Änderung gelandet hat, folgen also dem Refresh-Takt und nicht dem Zeitpunkt, zu dem sich die Zeile in der Quelle geändert hat. Beides ist eine Wahl. Die Ladezeit eignet sich für einen häufigen Refresh-Takt, für Daten, deren Zeitpunkt in der Quelle keine Rolle spielt, und für Lesevorgänge, die die Ladezeit betreffen sollen, etwa die Prüfung, was Provisa wann gehalten hat. (REQ-1163)
+**Die Uhr wählen.** Mit `bitemporal_source_time` werden Versionen nach der eigenen Zeit der Quelle geordnet und gelesen: „Stand letzten Dienstag" ist der letzte Dienstag in der Quelle. Ohne sie werden sie danach geordnet und gelesen, wann Provisa jede Änderung gelandet hat, folgen also dem Refresh-Takt und nicht dem Zeitpunkt, zu dem sich die Zeile in der Quelle geändert hat. Beides ist eine Wahl. Die Ladezeit eignet sich für einen häufigen Refresh-Takt, für Daten, deren Zeitpunkt in der Quelle keine Rolle spielt, und für Lesevorgänge, die die Ladezeit betreffen sollen, etwa die Prüfung, was Provisa wann gehalten hat.
 
-Eine Version gilt von ihrem Zeitpunkt bis zu dem der nächsten Version. Ein Löschen hat keine Änderungszeit in der Quelle und wirkt ab dem Zeitpunkt, zu dem Provisa es erfasst hat. (REQ-2064)
+Eine Version gilt von ihrem Zeitpunkt bis zu dem der nächsten Version. Ein Löschen hat keine Änderungszeit in der Quelle und wirkt ab dem Zeitpunkt, zu dem Provisa es erfasst hat.
 
 **Lesen.** Ein einfacher Lesevorgang liefert die jetzt geltende Version jedes Schlüssels. Der Header `X-Provisa-As-Of` liest zu einem Zeitpunkt oder über einen Bereich, angegeben als ISO-8601-Intervall `start/end`:
 
@@ -948,7 +946,7 @@ X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
 
-Ein Zeitpunkt liefert die damals geltende Version jedes Schlüssels. Ein Bereich liefert jede Version, die zu irgendeinem Zeitpunkt darin galt, eine Zeile pro Version. (REQ-2064)
+Ein Zeitpunkt liefert die damals geltende Version jedes Schlüssels. Ein Bereich liefert jede Version, die zu irgendeinem Zeitpunkt darin galt, eine Zeile pro Version.
 
 **Wie erfasst.** Eine später erfasste Korrektur ändert, was eine Sicht über die Vergangenheit sagt: Die am 30. September geltende Version ist die korrigierte, sobald die Korrektur erfasst ist. Um die Sicht so zu lesen, wie Provisa sie zu einem Zeitpunkt erfasst hatte, vor jeder späteren Korrektur, fügen Sie `X-Provisa-As-Recorded` hinzu, einen ISO-8601-Zeitpunkt:
 
@@ -957,7 +955,7 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Jede nach diesem Zeitpunkt erfasste Version bleibt außen vor, und das As-of wählt dann die Version, die zu seinem eigenen Zeitpunkt galt. Mit `X-Provisa-As-Recorded` allein liefert der Lesevorgang die Version jedes Schlüssels, die nach damaligem Erfassungsstand galt. Es ist ein Zeitpunkt, kein Bereich; ein Bereich oder ein fehlerhafter Wert wird mit HTTP 400 abgelehnt (`data.invalid_as_recorded`). Derselbe Wert ist das Argument `as_recorded` von `resolve`, der REST-Abfrageparameter `as_recorded` und die Option `as_recorded` eines Arrow-Flight-Tickets. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest, mit denen sie gelesen hat, `as_of` und `as_recorded`. (REQ-1163) Derselbe Wert ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets. Ein an `resolve` übergebener Bereich liefert die `versions` der Zeile anstelle ihrer `row`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesevorgang. Ein fehlerhafter Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 abgelehnt (`data.invalid_as_of`).
+Jede nach diesem Zeitpunkt erfasste Version bleibt außen vor, und das As-of wählt dann die Version, die zu seinem eigenen Zeitpunkt galt. Mit `X-Provisa-As-Recorded` allein liefert der Lesevorgang die Version jedes Schlüssels, die nach damaligem Erfassungsstand galt. Es ist ein Zeitpunkt, kein Bereich; ein Bereich oder ein fehlerhafter Wert wird mit HTTP 400 abgelehnt (`data.invalid_as_recorded`). Derselbe Wert ist das Argument `as_recorded` von `resolve`, der REST-Abfrageparameter `as_recorded` und die Option `as_recorded` eines Arrow-Flight-Tickets. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest, mit denen sie gelesen hat, `as_of` und `as_recorded`. Derselbe Wert ist das Argument `as_of` von `resolve` (GraphQL, gRPC, MCP), der REST-Abfrageparameter `as_of` und die Option `as_of` eines Arrow-Flight-Tickets. Ein an `resolve` übergebener Bereich liefert die `versions` der Zeile anstelle ihrer `row`. Rechte, Masken und Zeilenregeln gelten wie bei jedem Lesevorgang. Ein fehlerhafter Wert oder ein Bereich, dessen Ende nicht nach seinem Anfang liegt, wird mit HTTP 400 abgelehnt (`data.invalid_as_of`).
 
 Jede Sicht mit Historie liefert drei weitere Spalten, freigegeben wie ihre Quellzeit-Spalte (sonst ihre erste Schlüsselspalte):
 
@@ -976,7 +974,7 @@ Kafka-Topics ohne Debezium-Hülle tragen keine Commit-Zeit.
 
 ### Nur abfragbare Sichten {: #query-only-views }
 
-Sowohl `materialize: true`- als auch `materialize: false`-Sichten exponieren ihren GraphQL-Typ als nur abfragbar. Für `view_sql`-basierte Relationen werden keine Insert-, Upsert-, Update- oder Delete-Mutationen generiert. (REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
+Sowohl `materialize: true`- als auch `materialize: false`-Sichten exponieren ihren GraphQL-Typ als nur abfragbar. Für `view_sql`-basierte Relationen werden keine Insert-, Upsert-, Update- oder Delete-Mutationen generiert.
 
 ## Cache
 
@@ -989,7 +987,7 @@ cache:
 
 ### Cache-Hierarchie {: #cache-hierarchy }
 
-TTL-Auflösungsreihenfolge (spezifischster gewinnt): **Tabelle** > **Quelle** > **globaler Standard**. (REQ-544) Der erste nicht-null-Wert wird verwendet.
+TTL-Auflösungsreihenfolge (spezifischster gewinnt): **Tabelle** > **Quelle** > **globaler Standard**. Der erste nicht-null-Wert wird verwendet.
 
 ```yaml
 cache:
@@ -1011,11 +1009,11 @@ tables:
     # no cache_ttl → inherits source TTL (600s)
 ```
 
-Das Setzen von `cache_enabled: false` auf einer Quelle deaktiviert das Caching für alle Tabellen dieser Quelle, unabhängig von der Tabellen-TTL. (REQ-544) Cache-Schlüssel enthalten immer `role_id` + RLS-Kontextwerte zur Sicherheitspartitionierung. (REQ-544)
+Das Setzen von `cache_enabled: false` auf einer Quelle deaktiviert das Caching für alle Tabellen dieser Quelle, unabhängig von der Tabellen-TTL. Cache-Schlüssel enthalten immer `role_id` + RLS-Kontextwerte zur Sicherheitspartitionierung.
 
 ### Opt-in pro Anfrage {: #per-request-opt-in }
 
-Der Antwort-Cache ist für jede Anfrage aus, die ihn nicht anfordert. (REQ-544) Eine Anfrage meldet sich so an:
+Der Antwort-Cache ist für jede Anfrage aus, die ihn nicht anfordert. Eine Anfrage meldet sich so an:
 
 | Oberfläche | Opt-in |
 | --- | --- |
@@ -1025,19 +1023,19 @@ Der Antwort-Cache ist für jede Anfrage aus, die ihn nicht anfordert. (REQ-544) 
 | gRPC (und der HTTP-gRPC-Proxy) | Aufruf-Metadaten (beim Proxy Header) `x-provisa-cache: true` oder `x-provisa-cache-ttl: 60` |
 | REST, JSON:API und, alternativ zum Hinweis im Text: GraphQL über HTTP, `/data/cypher`, die Neo4j Query API | der Request-Header `Cache-Control: max-age=60` (oder `max-stale=60`) oder `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
 
-Ein `ttl`, der keine Ganzzahl ist, lässt die Anfrage fehlschlagen. Eine Anfrage, die das Opt-in zweimal angibt (in ihrem Text und in einem Header oder in zwei Headern) und dabei verschiedene Werte nennt, schlägt mit `400` fehl; keiner der Werte wird bevorzugt. `Cache-Control: no-cache` oder `no-store` bedeutet kein Cache, wie ohne Header. [tool-verified: `provisa/compiler/directives.py` `cache_hint_for`, `cache_hint_from_grpc_metadata`, `request_cache_hint`]
+Ein `ttl`, der keine Ganzzahl ist, lässt die Anfrage fehlschlagen. Eine Anfrage, die das Opt-in zweimal angibt (in ihrem Text und in einem Header oder in zwei Headern) und dabei verschiedene Werte nennt, schlägt mit `400` fehl; keiner der Werte wird bevorzugt. `Cache-Control: no-cache` oder `no-store` bedeutet kein Cache, wie ohne Header.
 
-Ohne den Hinweis liest und schreibt die Anfrage den Cache nicht. Mit ihm entscheiden weiterhin die obigen Einstellungen: Das Ergebnis wird nur gecacht, wenn jede gelesene Quelle `cache_enabled: true` hat und die aufgelöste TTL jeder Tabelle über 0 liegt. Der Eintrag lebt so lange wie die `ttl` der Anfrage, falls sie eine angibt, sonst so lange wie die kürzeste aufgelöste TTL der gelesenen Tabellen. (REQ-544)
+Ohne den Hinweis liest und schreibt die Anfrage den Cache nicht. Mit ihm entscheiden weiterhin die obigen Einstellungen: Das Ergebnis wird nur gecacht, wenn jede gelesene Quelle `cache_enabled: true` hat und die aufgelöste TTL jeder Tabelle über 0 liegt. Der Eintrag lebt so lange wie die `ttl` der Anfrage, falls sie eine angibt, sonst so lange wie die kürzeste aufgelöste TTL der gelesenen Tabellen.
 
-Der Hinweis nimmt nur ältere Daten im Tausch gegen Geschwindigkeit in Kauf. Er macht einen Lesevorgang nie aktueller, als die Einstellungen des Betreibers erlauben: Landungs- und Replikat-Aktualität (`cache_ttl`, `change_signal`), `row_materialize`, `load_protected`-Snapshots und Aktualitätsprüfungen gelten für eine Anfrage mit Hinweis genauso wie für eine ohne. Siehe [Aktualität und Last: wer entscheidet](#freshness-and-load-who-decides). (REQ-544)
+Der Hinweis nimmt nur ältere Daten im Tausch gegen Geschwindigkeit in Kauf. Er macht einen Lesevorgang nie aktueller, als die Einstellungen des Betreibers erlauben: Landungs- und Replikat-Aktualität (`cache_ttl`, `change_signal`), `row_materialize`, `load_protected`-Snapshots und Aktualitätsprüfungen gelten für eine Anfrage mit Hinweis genauso wie für eine ohne. Siehe [Aktualität und Last: wer entscheidet](#freshness-and-load-who-decides).
 
 `@noCache` und `-- @provisa no_cache=true` gibt es nicht mehr: Da Caching standardmäßig aus ist, gibt es nichts zu umgehen.
 
-Ein Schreibvorgang invalidiert jeden Cache-Eintrag, den die schreibende Organisation für die geschriebenen Tabellen hält; die Einträge einer anderen Organisation für dieselbe Tabelle bleiben unberührt. Schlägt die Invalidierung fehl, schlägt die Anfrage fehl, statt veraltete Einträge zurückzulassen. (REQ-544, REQ-595)
+Ein Schreibvorgang invalidiert jeden Cache-Eintrag, den die schreibende Organisation für die geschriebenen Tabellen hält; die Einträge einer anderen Organisation für dieselbe Tabelle bleiben unberührt. Schlägt die Invalidierung fehl, schlägt die Anfrage fehl, statt veraltete Einträge zurückzulassen.
 
 ## Aktualität und Last: wer entscheidet {: #freshness-and-load-who-decides }
 
-Drei Parteien bestimmen mit, wie aktuell ein Ergebnis ist und wie viel Last eine Abfrage auf den Systemen dahinter erzeugt. (REQ-030)
+Drei Parteien bestimmen mit, wie aktuell ein Ergebnis ist und wie viel Last eine Abfrage auf den Systemen dahinter erzeugt.
 
 - **Die Upstream-Quelle.** Idealerweise regelt sie ihren Rückstau selbst: Verbindungslimits, Statement-Timeouts, Lesereplikate.
 - **Der Betreiber.** Schützt die Plattform, also Provisa selbst, vor Rückstau. Kann sich eine Quelle nicht selbst schützen, schützt der Betreiber auch sie. Die Einstellungen dafür liegen an Quellen und Tabellen: `load_protected`, `replicate`, `federation_hints` der Quelle, der Schwellenwert für die Umleitung großer Ergebnisse, der Kafka-Cluster, in den Sinks schreiben, und das registrierte Watermark jeder Tabelle.
@@ -1054,13 +1052,13 @@ Die Einstellungen des Betreibers sind die Untergrenze. Eine Anfrage kann darübe
 | `@watermark` in einer Subscription | Das registrierte Watermark der Tabelle wiederholen | eine andere Spalte genannt wird oder die Tabelle keines hat |
 | `@cached`, `-- @provisa cache=true` | Ein älteres Ergebnis aus dem Cache liefern | nie; ein Cache-Eintrag ist nie aktueller als der Lesevorgang, der ihn gespeichert hat |
 
-Ablehnungen liefern HTTP 403 mit dem Code `query.operator_floor`, SQLSTATE `42501` über pgwire und `PERMISSION_DENIED` über Flight und gRPC. (REQ-030)
+Ablehnungen liefern HTTP 403 mit dem Code `query.operator_floor`, SQLSTATE `42501` über pgwire und `PERMISSION_DENIED` über Flight und gRPC.
 
-Eine Tabelle mit `load_protected` oder `replicate: 0` wird von keiner Abfrage über irgendeinen Transport live gelesen. Abfragen lesen ihr Replikat. Nur die Replikation und ihre Refreshes lesen die Quelle: Ein Refresh läuft, wenn `cache_ttl` oder eine Aktualitätsprüfung es verlangt; ohne beides wird das Replikat einmal aufgebaut und danach nur über einen Change-Feed oder den Scheduler aktualisiert. (REQ-1907) (REQ-1141, REQ-826) [tool-verified: `tests/integration/test_operator_floor_e2e.py`] Hat eine solche Tabelle ein `off_peak_window` (an der Tabelle oder ihrer Quelle, gelesen in `off_peak_tz`), läuft eine Aktualisierung nur, solange das Fenster offen ist: Eine, die außerhalb fällig wird oder angefordert wird, wartet auf die nächste Öffnung des Fensters, und ein Fenster ohne `cache_ttl` aktualisiert einmal pro Öffnung. Der erste Aufbau wird nie zurückgehalten, weil Lesevorgänge der Tabelle auf ihn warten. [tool-verified: `provisa/federation/replica_builds.py` `_deferred_until`, `_next_refresh_at`; `tests/integration/test_off_peak_window_refresh_e2e.py`]
+Eine Tabelle mit `load_protected` oder `replicate: 0` wird von keiner Abfrage über irgendeinen Transport live gelesen. Abfragen lesen ihr Replikat. Nur die Replikation und ihre Refreshes lesen die Quelle: Ein Refresh läuft, wenn `cache_ttl` oder eine Aktualitätsprüfung es verlangt; ohne beides wird das Replikat einmal aufgebaut und danach nur über einen Change-Feed oder den Scheduler aktualisiert. Hat eine solche Tabelle ein `off_peak_window` (an der Tabelle oder ihrer Quelle, gelesen in `off_peak_tz`), läuft eine Aktualisierung nur, solange das Fenster offen ist: Eine, die außerhalb fällig wird oder angefordert wird, wartet auf die nächste Öffnung des Fensters, und ein Fenster ohne `cache_ttl` aktualisiert einmal pro Öffnung. Der erste Aufbau wird nie zurückgehalten, weil Lesevorgänge der Tabelle auf ihn warten.
 
 ### Die Einstellung `replicate` {: #the-replicate-setting }
 
-`replicate` ist eine Ganzzahl an einer Tabelle. Eine Tabelle ohne Wert übernimmt den ihrer Quelle; ist keiner von beiden gesetzt, gilt der globale Schwellenwert. Ein Replikat ist eine Kopie einer Quelltabelle, die im Store der Engine liegt und nach den Aktualitätseinstellungen der Tabelle aktualisiert wird; es ist kein kontinuierlicher Änderungsstrom. (REQ-826) [tool-verified: `provisa/core/replicate.py`]
+`replicate` ist eine Ganzzahl an einer Tabelle. Eine Tabelle ohne Wert übernimmt den ihrer Quelle; ist keiner von beiden gesetzt, gilt der globale Schwellenwert. Ein Replikat ist eine Kopie einer Quelltabelle, die im Store der Engine liegt und nach den Aktualitätseinstellungen der Tabelle aktualisiert wird; es ist kein kontinuierlicher Änderungsstrom.
 
 | Wert | Name | Bedeutung |
 | --- | --- | --- |
@@ -1071,9 +1069,9 @@ Eine Tabelle mit `load_protected` oder `replicate: 0` wird von keiner Abfrage ü
 
 Nur „Immer“ ist eine Garantie. „Nie“ und die Hot-Werte sind Best Effort. `load_protected` mit `replicate: -1` wird beim Laden und beim Speichern der Konfiguration abgelehnt. Eine Quelle mit `replicate: 0` hat auf keiner Engine ein Live-Attach, daher wird jede ihrer Tabellen aus ihrem Replikat bedient.
 
-Der Floor wird anhand der Tabellen beurteilt, die eine Anweisung liest. Eine Anweisung, die keine aus einem Replikat bediente Tabelle liest, behält ihre direkte Route, auch wenn die Quelle andere replizierte Tabellen hat. [tool-verified: `provisa/federation/registry_view.py` `operator_floor`]
+Der Floor wird anhand der Tabellen beurteilt, die eine Anweisung liest. Eine Anweisung, die keine aus einem Replikat bediente Tabelle liest, behält ihre direkte Route, auch wenn die Quelle andere replizierte Tabellen hat.
 
-Ein Replikat wird auf seinem deklarierten Primärschlüssel und auf den Spalten indiziert, über die seine deklarierten Beziehungen joinen; die Indizes werden nach dem Landen aufgebaut. Wo diese Indizes Joins beschleunigen, wo Replikate abzulegen sind und wie ihre Aktualität zu wählen ist, steht unter [Replikate](replicas.md). (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py`]
+Ein Replikat wird auf seinem deklarierten Primärschlüssel und auf den Spalten indiziert, über die seine deklarierten Beziehungen joinen; die Indizes werden nach dem Landen aufgebaut. Wo diese Indizes Joins beschleunigen, wo Replikate abzulegen sind und wie ihre Aktualität zu wählen ist, steht unter [Replikate](replicas.md).
 
 ### Hot-Replikation {: #hot-replication }
 
@@ -1104,7 +1102,7 @@ Eine Tabelle wird befördert, wenn ihr Zähler ihren Schwellenwert erreicht (ihr
 
 Eine Tabelle wird nicht befördert, wenn sie mehr Zeilen enthält als `hot_max_rows`, wenn ihr Änderungssignal `ttl` oder `ttl_probe` ist und weder sie noch ihre Quelle ein `cache_ttl` deklariert, oder wenn die Redis-Hot-Stufe sie bereits verwaltet. Die Zusammenfassung der Tabelle in der Admin-UI nennt, welcher Fall zutrifft.
 
-Die Zähler liegen in Redis. Mit einem gemeinsamen Redis (`cache.redis_url`) umfassen sie jeden Prozess des Deployments. Mit dem eingebetteten Redis gelten sie pro Prozess, daher läuft die Beförderung nur, wenn ein einziger Worker Anfragen bedient; bei mehreren Workern und ohne gemeinsames Redis wird nichts befördert, und die Zusammenfassung weist darauf hin. [tool-verified: `provisa/federation/replica_hot.py`]
+Die Zähler liegen in Redis. Mit einem gemeinsamen Redis (`cache.redis_url`) umfassen sie jeden Prozess des Deployments. Mit dem eingebetteten Redis gelten sie pro Prozess, daher läuft die Beförderung nur, wenn ein einziger Worker Anfragen bedient; bei mehreren Workern und ohne gemeinsames Redis wird nichts befördert, und die Zusammenfassung weist darauf hin.
 
 ## Authentifizierung {: #authentication }
 
@@ -1138,7 +1136,7 @@ auth:
 | `oauth` | Generisches OIDC (Okta, Azure AD, Auth0, PingFederate). | JWKS von der Discovery-URL |
 | `basic` | Eigenständige Deployments. Konten liegen in Provisas eigenem Speicher. | bcrypt-Passwort oder SCRAM-SHA-256 auf pgwire |
 
-Superuser-Anmeldedaten (Block `superuser`) funktionieren mit jedem Provider und lösen immer zur Admin-Rolle mit allen Capabilities auf. (REQ-125) Wird für die Ersteinrichtung verwendet, bevor externe Auth konfiguriert ist.
+Superuser-Anmeldedaten (Block `superuser`) funktionieren mit jedem Provider und lösen immer zur Admin-Rolle mit allen Capabilities auf. Wird für die Ersteinrichtung verwendet, bevor externe Auth konfiguriert ist.
 
 ### SCRAM-SHA-256 (`auth.scram`)
 
@@ -1148,7 +1146,7 @@ auth:
   scram: true
 ```
 
-Lässt pgwire SASL mit `SCRAM-SHA-256` ankündigen, sodass ein Passwort bewiesen statt im Klartext gesendet wird. (REQ-1394) Es gilt nur für den Provider `basic` — kein anderer Provider hält die von SCRAM benötigten RFC-5802-Verifier — und Channel Binding wird nicht angeboten.
+Lässt pgwire SASL mit `SCRAM-SHA-256` ankündigen, sodass ein Passwort bewiesen statt im Klartext gesendet wird. Es gilt nur für den Provider `basic` — kein anderer Provider hält die von SCRAM benötigten RFC-5802-Verifier — und Channel Binding wird nicht angeboten.
 
 Verifier lassen sich nicht aus vorhandenen bcrypt-Hashes ableiten. Einer wird immer dann geschrieben, wenn ein Passwort im Klartext durchläuft, sodass die erste SCRAM-Verbindung jedes Nutzers auf dessen nächste Registrierung, Anmeldung, Passwortänderung oder Admin-Zurücksetzung folgt. Bis dahin fallen die Verbindungen dieses Nutzers auf den Klartext-Austausch über TLS zurück; die Leitung verrät nicht, wer bereits migriert ist.
 
@@ -1162,15 +1160,15 @@ auth:
     lockout_seconds: 900 # how long a locked-out subject is refused
 ```
 
-Standardmäßig aktiv mit den gezeigten Werten; der Block justiert sie lediglich. (REQ-1393) Der Zähler sitzt auf der Ebene der Anmeldedatenprüfung, sodass Fehlversuche über HTTP, pgwire und Bolt sich auf dasselbe Subjekt summieren und eine Sperre auf jeder Schnittstelle greift. Er gilt pro Prozess: mehrere API-Worker erlauben jeweils bis zu `max_attempts`.
+Standardmäßig aktiv mit den gezeigten Werten; der Block justiert sie lediglich. Der Zähler sitzt auf der Ebene der Anmeldedatenprüfung, sodass Fehlversuche über HTTP, pgwire und Bolt sich auf dasselbe Subjekt summieren und eine Sperre auf jeder Schnittstelle greift. Er gilt pro Prozess: mehrere API-Worker erlauben jeweils bis zu `max_attempts`.
 
 ### Persönliche Zugriffstoken {: #personal-access-tokens }
 
-PATs benötigen keinen Konfigurationsblock — sie werden stets akzeptiert, und der Speicher wird mit dem übrigen Control-Plane-Schema angelegt. (REQ-1263) Konfigurierbar ist die Gültigkeitsdauer, die ein Nutzer bei der Ausstellung anfordern darf: 1 bis 366 Tage oder keine für ein Token ohne Ablauf. Siehe [Sicherheitsmodell](security.md#personal-access-tokens).
+PATs benötigen keinen Konfigurationsblock — sie werden stets akzeptiert, und der Speicher wird mit dem übrigen Control-Plane-Schema angelegt. Konfigurierbar ist die Gültigkeitsdauer, die ein Nutzer bei der Ausstellung anfordern darf: 1 bis 366 Tage oder keine für ein Token ohne Ablauf. Siehe [Sicherheitsmodell](security.md#personal-access-tokens).
 
 ### Gegenseitiges TLS {: #mutual-tls }
 
-Die Client-Zertifikatsprüfung wird über Umgebungsvariablen konfiguriert statt in `provisa.yaml`, neben den TLS-Zertifikatseinstellungen, die sie erweitert. (REQ-1228)
+Die Client-Zertifikatsprüfung wird über Umgebungsvariablen konfiguriert statt in `provisa.yaml`, neben den TLS-Zertifikatseinstellungen, die sie erweitert.
 
 | Variable | Standard | Bedeutung |
 | ---------- | --------- | --------- |
@@ -1182,7 +1180,7 @@ Jede besitzt eine Pro-Protokoll-Überschreibung unter derselben Namensgebung wie
 
 ### Eine Org über TLS adressieren {: #addressing-an-org-over-tls }
 
-Nichts zu konfigurieren. In einem Multi-Org-Deployment lesen pgwire und Bolt die Org aus dem Hostnamen, den der Client gewählt hat, übertragen im TLS ClientHello — genau so, wie HTTP sie aus dem `Host`-Header liest. (REQ-1234) Ein Client, der sich mit `acme.provisa.dev` verbindet, fordert die Org `acme` an; die Anfrage wird abgelehnt, sofern das authentifizierte Principal kein Mitglied ist. Eine Verbindung über die IP-Adresse fordert keine Org an — das ist jede Verbindung in einem Single-Org-Deployment.
+Nichts zu konfigurieren. In einem Multi-Org-Deployment lesen pgwire und Bolt die Org aus dem Hostnamen, den der Client gewählt hat, übertragen im TLS ClientHello — genau so, wie HTTP sie aus dem `Host`-Header liest. Ein Client, der sich mit `acme.provisa.dev` verbindet, fordert die Org `acme` an; die Anfrage wird abgelehnt, sofern das authentifizierte Principal kein Mitglied ist. Eine Verbindung über die IP-Adresse fordert keine Org an — das ist jede Verbindung in einem Single-Org-Deployment.
 
 ### Vollständiges Auth-Konfigurationsbeispiel (auskommentiert) {: #full-auth-config-example-commented-out }
 
@@ -1223,7 +1221,7 @@ Nichts zu konfigurieren. In einem Multi-Org-Deployment lesen pgwire und Bolt die
 
 ## Upsert-Mutationen {: #upsert-mutations }
 
-Für Tabellen mit einem Primärschlüssel generiert Provisa automatisch `upsert_<table>`-Mutationsfelder. (REQ-212) Diese kompilieren zu einem Upsert im Zieldialekt — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` bei PostgreSQL, `ON DUPLICATE KEY UPDATE` bei MySQL. (REQ-212)
+Für Tabellen mit einem Primärschlüssel generiert Provisa automatisch `upsert_<table>`-Mutationsfelder. Diese kompilieren zu einem Upsert im Zieldialekt — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` bei PostgreSQL, `ON DUPLICATE KEY UPDATE` bei MySQL.
 
 ```graphql
 mutation {
@@ -1233,11 +1231,11 @@ mutation {
 }
 ```
 
-Konfliktspalten werden aus den PK-Metadaten abgeleitet. (REQ-212) Alle Regeln zur Spaltensichtbarkeit und Schreibberechtigung gelten.
+Konfliktspalten werden aus den PK-Metadaten abgeleitet. Alle Regeln zur Spaltensichtbarkeit und Schreibberechtigung gelten.
 
 ## Distinct On
 
-Das Argument `distinct_on` wählt die erste Zeile für jeden eindeutigen Wert der angegebenen Spalten aus. (REQ-213) Verfügbar auf Root-Abfragefeldern.
+Das Argument `distinct_on` wählt die erste Zeile für jeden eindeutigen Wert der angegebenen Spalten aus. Verfügbar auf Root-Abfragefeldern.
 
 ```graphql
 {
@@ -1249,11 +1247,11 @@ Das Argument `distinct_on` wählt die erste Zeile für jeden eindeutigen Wert de
 }
 ```
 
-Kompiliert zu `SELECT DISTINCT ON (region) ...` in PostgreSQL. (REQ-213) Für Nicht-PG-Dialekte wird ein Fensterfunktions-Fallback verwendet. (REQ-213)
+Kompiliert zu `SELECT DISTINCT ON (region) ...` in PostgreSQL. Für Nicht-PG-Dialekte wird ein Fensterfunktions-Fallback verwendet.
 
 ## Presets der Schreibberechtigung {: #write-grant-presets }
 
-Eine Schreibberechtigung setzt Spalten bei Insert und Update selbst. (REQ-214, REQ-2074) Presets werden in der Liste `presets` der Berechtigung deklariert, je Rolle und Operation.
+Eine Schreibberechtigung setzt Spalten bei Insert und Update selbst. Presets werden in der Liste `presets` der Berechtigung deklariert, je Rolle und Operation.
 
 ```yaml
 tables:
@@ -1282,11 +1280,11 @@ tables:
 | `now` | Fügt den Zeitpunkt des Schreibvorgangs ein |
 | `literal` | Fügt eine Konstante (`value`) ein |
 
-Presets werden bei der Kompilierung vor der SQL-Generierung zur Anweisung hinzugefügt. (REQ-214) Die Anweisung darf eine Preset-Spalte nicht liefern, und eine Preset-Spalte steht nicht im Mutations-Eingabetyp. (REQ-214)
+Presets werden bei der Kompilierung vor der SQL-Generierung zur Anweisung hinzugefügt. Die Anweisung darf eine Preset-Spalte nicht liefern, und eine Preset-Spalte steht nicht im Mutations-Eingabetyp.
 
 ## Vererbte Rollen {: #inherited-roles }
 
-Rollen können über `parent_role_id` von einer übergeordneten Rolle erben. (REQ-215) Die Kette wird beim Start flach aufgelöst. (REQ-215) Ein Kind hält die Vereinigung der Capabilities und des Domänenzugriffs seiner Vorfahren; eine Spalte, Metrik, Funktion oder ein Webhook, die einem Vorfahren freigegeben sind, sind dem Kind freigegeben; und die RLS-Regeln eines Vorfahren gelten für das Kind pro Tabelle, die nächstgelegene Rolle zuerst, wobei die eigene Regel des Kindes für eine Tabelle die des Elternteils ersetzt. (REQ-1677)
+Rollen können über `parent_role_id` von einer übergeordneten Rolle erben. Die Kette wird beim Start flach aufgelöst. Ein Kind hält die Vereinigung der Capabilities und des Domänenzugriffs seiner Vorfahren; eine Spalte, Metrik, Funktion oder ein Webhook, die einem Vorfahren freigegeben sind, sind dem Kind freigegeben; und die RLS-Regeln eines Vorfahren gelten für das Kind pro Tabelle, die nächstgelegene Rolle zuerst, wobei die eigene Regel des Kindes für eine Tabelle die des Elternteils ersetzt.
 
 ```yaml
 roles:
@@ -1310,11 +1308,11 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-Mehrstufige Vererbung wird unterstützt. (REQ-215) Die expliziten Capabilities und der domain_access der untergeordneten Rolle werden mit denen der übergeordneten Rolle zusammengeführt. (REQ-215) Eine übergeordnete Rolle muss eine bestehende Rolle sein, darf nicht die Rolle selbst sein und keinen Zyklus schließen; jeder dieser Fälle wird beim Speichern abgelehnt. (REQ-1677)
+Mehrstufige Vererbung wird unterstützt. Die expliziten Capabilities und der domain_access der untergeordneten Rolle werden mit denen der übergeordneten Rolle zusammengeführt. Eine übergeordnete Rolle muss eine bestehende Rolle sein, darf nicht die Rolle selbst sein und keinen Zyklus schließen; jeder dieser Fälle wird beim Speichern abgelehnt.
 
 ## Geplante Trigger {: #scheduled-triggers }
 
-Cron-basierte Trigger, die nach Zeitplan eine Webhook-URL aufrufen. (REQ-216) Nutzt APScheduler. (REQ-216)
+Cron-basierte Trigger, die nach Zeitplan eine Webhook-URL aufrufen. Nutzt APScheduler.
 
 ```yaml
 scheduled_triggers:
@@ -1328,9 +1326,9 @@ scheduled_triggers:
     enabled: false
 ```
 
-Geplante Aufgaben werden über die Admin-UI (Umschalter zum Aktivieren/Deaktivieren) oder die Admin-Mutation `toggle_scheduled_task` verwaltet. (REQ-216)
+Geplante Aufgaben werden über die Admin-UI (Umschalter zum Aktivieren/Deaktivieren) oder die Admin-Mutation `toggle_scheduled_task` verwaltet.
 
-Ein Trigger kann statt nach Zeitplan bei einer registrierten Tabelle auslösen: `on: {table, event}` nennt die Tabelle als `source_id.schema.table` und das Ereignis, `change`, `error` oder `quarantine`. Ein `command`-Trigger führt einen registrierten Befehl als seine `role` aus, über die eigene gesteuerte Ausführung des Befehls, und übergibt ihm als Argumente, was ihn ausgelöst hat. Eine Änderung übergibt `table` und, wo das Änderungssignal ihn mitführt (Kafka, Debezium), den geladenen Stapel als `changes`. Ein `error`- oder `quarantine`-Ereignis übergibt `table`, `event`, `reason` und `error`. Ein Trigger, dessen Befehl ein Argument deklariert, das der Trigger nicht übergibt, wird beim Speichern abgelehnt. Eine Änderung löst einmal pro Schub aus, den ihr Änderungssignal meldet, oder sobald ein über Provisa geschriebener Schreibvorgang ankommt; eine aus ihrem Replikat bediente Tabelle löst aus, wenn ein Aufbau Zeilen lädt, die sich vom letzten unterscheiden. Der eigene Schreibvorgang eines Befehls ist eine Änderung, daher verketten sich Trigger. Jeder Lauf wird mit Zeit, Ergebnis (`succeeded`, `refused` oder `failed`), Fehler und Auslöser aufgezeichnet, und die Admin-Abfrage `scheduledTasks` listet ihn. Nur die Trigger von prod lösen aus, und in einer Quelldatenbank wird nichts installiert. (REQ-2054) [tool-verified: `provisa/scheduler/table_triggers.py`, `provisa/scheduler/trigger_runs.py`]
+Ein Trigger kann statt nach Zeitplan bei einer registrierten Tabelle auslösen: `on: {table, event}` nennt die Tabelle als `source_id.schema.table` und das Ereignis, `change`, `error` oder `quarantine`. Ein `command`-Trigger führt einen registrierten Befehl als seine `role` aus, über die eigene gesteuerte Ausführung des Befehls, und übergibt ihm als Argumente, was ihn ausgelöst hat. Eine Änderung übergibt `table` und, wo das Änderungssignal ihn mitführt (Kafka, Debezium), den geladenen Stapel als `changes`. Ein `error`- oder `quarantine`-Ereignis übergibt `table`, `event`, `reason` und `error`. Ein Trigger, dessen Befehl ein Argument deklariert, das der Trigger nicht übergibt, wird beim Speichern abgelehnt. Eine Änderung löst einmal pro Schub aus, den ihr Änderungssignal meldet, oder sobald ein über Provisa geschriebener Schreibvorgang ankommt; eine aus ihrem Replikat bediente Tabelle löst aus, wenn ein Aufbau Zeilen lädt, die sich vom letzten unterscheiden. Der eigene Schreibvorgang eines Befehls ist eine Änderung, daher verketten sich Trigger. Jeder Lauf wird mit Zeit, Ergebnis (`succeeded`, `refused` oder `failed`), Fehler und Auslöser aufgezeichnet, und die Admin-Abfrage `scheduledTasks` listet ihn. Nur die Trigger von prod lösen aus, und in einer Quelldatenbank wird nichts installiert.
 
 ```yaml
 scheduled_triggers:
@@ -1346,7 +1344,7 @@ scheduled_triggers:
 
 ## OrderBy-Format
 
-OrderBy verwendet das Format `{column: direction}` mit einem 6-wertigen Richtungs-Enum: (REQ-200, REQ-201)
+OrderBy verwendet das Format `{column: direction}` mit einem 6-wertigen Richtungs-Enum:
 
 ```graphql
 {
@@ -1367,7 +1365,7 @@ OrderBy verwendet das Format `{column: direction}` mit einem 6-wertigen Richtung
 | `desc_nulls_first` | `DESC NULLS FIRST` |
 | `desc_nulls_last` | `DESC NULLS LAST` |
 
-Beziehungssortierung wird über verschachtelte Objekte unterstützt: (REQ-202)
+Beziehungssortierung wird über verschachtelte Objekte unterstützt:
 
 ```graphql
 {
@@ -1396,9 +1394,9 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### Telemetriefilter [tool-verified] {: #telemetry-filters-tool-verified }
+### Telemetriefilter {: #telemetry-filters-tool-verified }
 
-Provisa betreibt zwei unabhängige OTLP-Exportpfade: Ihren internen Collector und den optionalen Provisa-Support-Endpunkt. (REQ-545) Jeder Pfad hat seinen eigenen Filter. Filter laufen innerhalb eines umschließenden `_FilteringExporter`, bevor Spans den Prozess verlassen — ursprüngliche Span-Objekte werden nie mutiert. (REQ-546) [tool-verified: `provisa/api/otel_setup.py` Zeilen 156–207]
+Provisa betreibt zwei unabhängige OTLP-Exportpfade: Ihren internen Collector und den optionalen Provisa-Support-Endpunkt. Jeder Pfad hat seinen eigenen Filter. Filter laufen innerhalb eines umschließenden `_FilteringExporter`, bevor Spans den Prozess verlassen — ursprüngliche Span-Objekte werden nie mutiert.
 
 **`telemetry_filter`** — steuert, was Ihren internen Collector erreicht.
 
@@ -1407,7 +1405,7 @@ Provisa betreibt zwei unabhängige OTLP-Exportpfade: Ihren internen Collector un
 | `redact_sql_literals` | bool | `false` | Ersetzt String- und numerische Literale in `db.statement` durch `?` |
 | `redact_attributes` | list[str] | `[]` | Attributschlüssel, die vollständig aus jedem Span entfernt werden |
 
-**`support_telemetry_filter`** — steuert, was den Provisa-Support-Endpunkt erreicht. Die SQL-Literal-Schwärzung ist auf diesem Pfad standardmäßig `true`, da Abfragedaten Ihnen gehören. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` Zeile 240]
+**`support_telemetry_filter`** — steuert, was den Provisa-Support-Endpunkt erreicht. Die SQL-Literal-Schwärzung ist auf diesem Pfad standardmäßig `true`, da Abfragedaten Ihnen gehören.
 
 | Schlüssel | Typ | Standard | Beschreibung |
 | ----- | ------ | --------- | -------------- |
@@ -1426,21 +1424,21 @@ zu:
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### Support-Endpunkt [tool-verified] {: #support-endpoint-tool-verified }
+### Support-Endpunkt {: #support-endpoint-tool-verified }
 
-`support_endpoint` (oder env `PROVISA_SUPPORT_OTLP_ENDPOINT`) leitet Telemetriedaten zu Provisa-Support für Diagnosezwecke weiter. (REQ-548) Wenn nicht gesetzt, verlässt über diesen Pfad keine Daten Ihre Infrastruktur. (REQ-548) Der Support-Filter gilt unabhängig vom internen Filter — Sie können SQL-Literale bei beiden Exports schwärzen und dennoch Span-Timing- und Fehlerdaten mit dem Support teilen. (REQ-545) [tool-verified: `provisa/api/otel_setup.py` Zeilen 238–288]
+`support_endpoint` (oder env `PROVISA_SUPPORT_OTLP_ENDPOINT`) leitet Telemetriedaten zu Provisa-Support für Diagnosezwecke weiter. Wenn nicht gesetzt, verlässt über diesen Pfad keine Daten Ihre Infrastruktur. Der Support-Filter gilt unabhängig vom internen Filter — Sie können SQL-Literale bei beiden Exports schwärzen und dennoch Span-Timing- und Fehlerdaten mit dem Support teilen.
 
-### Endpunkt-Protokollerkennung [tool-verified] {: #endpoint-protocol-detection-tool-verified }
+### Endpunkt-Protokollerkennung {: #endpoint-protocol-detection-tool-verified }
 
-Provisa wählt OTLP/HTTP oder OTLP/gRPC anhand des URL-Schemas des Endpunkts. (REQ-549) URLs, die mit `http://` oder `https://` beginnen, verwenden OTLP/HTTP, wobei `/v1/traces`, `/v1/metrics` und `/v1/logs` automatisch angehängt werden. (REQ-549) Jedes andere Schema verwendet OTLP/gRPC mit `insecure=True`. (REQ-549) [tool-verified: `provisa/api/otel_setup.py` Zeilen 60–70]
+Provisa wählt OTLP/HTTP oder OTLP/gRPC anhand des URL-Schemas des Endpunkts. URLs, die mit `http://` oder `https://` beginnen, verwenden OTLP/HTTP, wobei `/v1/traces`, `/v1/metrics` und `/v1/logs` automatisch angehängt werden. Jedes andere Schema verwendet OTLP/gRPC mit `insecure=True`.
 
 ## Föderations-Engine {: #federation-engine }
 
-Die Konfiguration einer Föderations-Engine ist optional. Der Standard ist `duckdb` — keine Konfiguration nötig, In-Process, kein externer Dienst erforderlich (REQ-989). Wählen Sie eine andere Engine, wenn Sie MPP-Skalierung benötigen oder ein bestehendes Warehouse wiederverwenden möchten.
+Die Konfiguration einer Föderations-Engine ist optional. Der Standard ist `duckdb` — keine Konfiguration nötig, In-Process, kein externer Dienst erforderlich. Wählen Sie eine andere Engine, wenn Sie MPP-Skalierung benötigen oder ein bestehendes Warehouse wiederverwenden möchten.
 
-Vorrang: `PROVISA_ENGINE`-Umgebungsvariable → persistiertes Admin-UI-Konfigurationsfeld `federation_engine` → `duckdb`. Änderungen werden beim Neustart des Dienstes wirksam. [tool-verified: `engine.py` `build_engine`]
+Vorrang: `PROVISA_ENGINE`-Umgebungsvariable → persistiertes Admin-UI-Konfigurationsfeld `federation_engine` → `duckdb`. Änderungen werden beim Neustart des Dienstes wirksam.
 
-### Engine-Übersicht [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### Engine-Übersicht {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | Engine-Schlüssel | Bezeichnung | Dialekt | MPP | Externer-Link-Mechanismus | Auth |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
@@ -1504,7 +1502,7 @@ Der Materialisierungs-Store ist standardmäßig `TENANT_DATABASE_URL`.
 
 #### duckdb
 
-In-Process; kein externer Dienst. Die Standard-Engine (REQ-989). `PROVISA_DATA_DIR` steuert, wo der eingebettete Store liegt (`~/.provisa` standardmäßig).
+In-Process; kein externer Dienst. Die Standard-Engine. `PROVISA_DATA_DIR` steuert, wo der eingebettete Store liegt (`~/.provisa` standardmäßig).
 
 ```bash
 PROVISA_ENGINE=duckdb   # or omit — this is the default
@@ -1586,11 +1584,11 @@ Der Materialisierungs-Store ist standardmäßig `TENANT_DATABASE_URL`.
 
 ### Materialisierungs-Store {: #materialization-store }
 
-Wenn eine Quelle nicht live angehängt werden kann (kein ATTACH-Connector für die gewählte Engine), landet sie im Materialisierungs-Store der Engine. Auflösungsreihenfolge: explizites `PROVISA_MATERIALIZE_URL` → deklarierter Standard der Engine → harter Fehler (kein stiller Fallback). [tool-verified: `engine.py` `materialize_store`]
+Wenn eine Quelle nicht live angehängt werden kann (kein ATTACH-Connector für die gewählte Engine), landet sie im Materialisierungs-Store der Engine. Auflösungsreihenfolge: explizites `PROVISA_MATERIALIZE_URL` → deklarierter Standard der Engine → harter Fehler (kein stiller Fallback).
 
 DuckDB deklariert seine eingebettete Datei (`~/.provisa/materialize.duckdb`) als Standard. Alle anderen Engines nutzen standardmäßig `TENANT_DATABASE_URL` (PostgreSQL). Überschreiben Sie jede Engine mit `PROVISA_MATERIALIZE_URL`.
 
-Der Store bestimmt, was die Indizes eines Replikats für Joins bewirken: Ein PostgreSQL-Store indiziert Replikate, und eine Engine, die SQL darin ausführt, liest diese Indizes, während DuckDB die Replikate seiner eingebetteten Datei über eine Kopie pro Anweisung joint. Siehe [Replikate](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it). (REQ-2015)
+Der Store bestimmt, was die Indizes eines Replikats für Joins bewirken: Ein PostgreSQL-Store indiziert Replikate, und eine Engine, die SQL darin ausführt, liest diese Indizes, während DuckDB die Replikate seiner eingebetteten Datei über eine Kopie pro Anweisung joint. Siehe [Replikate](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it).
 
 ### Pro-Quelle-Föderations-Hints {: #per-source-federation-hints }
 
@@ -1638,18 +1636,18 @@ Setzen Sie für Google-Cloud-Quellen `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | Variable | Standard | Beschreibung |
 | ---------- | --------- | -------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Pfad zur Konfigurationsdatei |
-| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | Control-Plane-Store-URI (SQLAlchemy async); akzeptiert `sqlite+pysqlite://…` / `duckdb://…` für den eingebetteten Desktop-Store (REQ-828, REQ-850) |
-| `PLATFORM_DATABASE_URL` | — | Plattform-Registry-URI (Mandantenverzeichnis, Engine-Registry); beim Start erforderlich, kein Fallback (REQ-837) |
-| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` nutzt eingebettetes fakeredis statt eines Redis-Servers — kein Docker (REQ-829) |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | Control-Plane-Store-URI (SQLAlchemy async); akzeptiert `sqlite+pysqlite://…` / `duckdb://…` für den eingebetteten Desktop-Store |
+| `PLATFORM_DATABASE_URL` | — | Plattform-Registry-URI (Mandantenverzeichnis, Engine-Registry); beim Start erforderlich, kein Fallback |
+| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` nutzt eingebettetes fakeredis statt eines Redis-Servers — kein Docker |
 | `PG_HOST` | `localhost` | PostgreSQL-Host |
 | `PG_PORT` | `5432` | PostgreSQL-Port |
 | `PG_DATABASE` | `provisa` | PostgreSQL-Datenbank |
 | `PG_USER` | `provisa` | PostgreSQL-Benutzer |
 | `PG_PASSWORD` | `provisa` | PostgreSQL-Passwort |
-| `PROVISA_ENGINE` | `duckdb` | Föderations-Engine-Schlüssel (REQ-989, REQ-916) |
+| `PROVISA_ENGINE` | `duckdb` | Föderations-Engine-Schlüssel |
 | `PROVISA_ENGINE_URL` | — | Verbindungs-URL für URL-gesteuerte Engines (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
 | `PROVISA_MATERIALIZE_URL` | — | Materialisierungs-Store-DSN überschreiben (Standard ist der deklarierte Standard der Engine) |
-| `PROVISA_DATA_DIR` | `~/.provisa` | Datenverzeichnis für den eingebetteten DuckDB-Store (REQ-989) |
+| `PROVISA_DATA_DIR` | `~/.provisa` | Datenverzeichnis für den eingebetteten DuckDB-Store |
 | `TRINO_HOST` | `localhost` | Trino-Coordinator-Host |
 | `TRINO_PORT` | `8080` | Trino-Coordinator-HTTP-Port |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Pfad zur GCP-Service-Account-Schlüssel-JSON (BigQuery-Engine/-Quelle) |
@@ -1661,7 +1659,7 @@ Setzen Sie für Google-Cloud-Quellen `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `REDIS_URL` | — | Redis-Verbindungs-URL |
 | `PROVISA_SAMPLE_SIZE` | `10000` | Standard-Sampling-Grenzwert |
 | `PROVISA_DEFAULT_ROW_LIMIT` | `100` | Zeilenobergrenze, wenn eine Abfrage kein explizites `LIMIT` liefert |
-| `PROVISA_RETRY_BUDGET_SECS` | `30` | Tier-1-Read-Retry-Budget in Sekunden; exponentielles Backoff mit vollem Jitter (REQ-703) |
+| `PROVISA_RETRY_BUDGET_SECS` | `30` | Tier-1-Read-Retry-Budget in Sekunden; exponentielles Backoff mit vollem Jitter |
 | `ZAYCHIK_PORT` | `8480` | Port des Zaychik-Flight-SQL-Proxys |
 | `FLIGHT_PORT` | `8815` | Port des Provisa-Arrow-Flight-Servers |
 | `GRPC_PORT` | `50051` | Port des Provisa-Protobuf-gRPC-Servers |
@@ -1673,12 +1671,12 @@ Setzen Sie für Google-Cloud-Quellen `GOOGLE_APPLICATION_CREDENTIALS` auf den Pf
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | S3-Zugriffsschlüssel |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | S3-Geheimschlüssel |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL der Presigned-URL (Sekunden) |
-| `PROVISA_MTLS_CLIENT_CA` | — | PEM-Bundle der CA(s), die Client-Zertifikate signieren dürfen; Setzen aktiviert die Client-Zertifikatsprüfung auf pgwire, Bolt, gRPC und Flight (REQ-1228) |
-| `PROVISA_MTLS_MODE` | `required`, sobald eine CA gesetzt ist | `required` oder `optional`; jeder andere Wert verweigert den Start (REQ-1228) |
-| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Verlangt, dass der Common Name des Zertifikats dem authentifizierenden Benutzernamen entspricht (REQ-1228) |
-| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Kommagetrennte Sites, die einen Bolt-WebSocket aus einem Browser öffnen dürfen; nicht gesetzt weist jede Browser-Origin ab (REQ-802) |
-| `PROVISA_EXTRAS` | `firebase,vector` | Pyproject-Extras, die ins App-Image eingebacken werden; `scripts/provisa` leitet den Wert aus `dq_checker` in `~/.provisa/config.yaml` ab (REQ-1443) |
-| `PROVISA_DQ_CHECKER` | `none` | Nur Installer: `none`/`soda`/`gx`, gelesen von `first-launch.sh` im nicht-interaktiven Modus und als `dq_checker` in `config.yaml` geschrieben (REQ-1443) |
+| `PROVISA_MTLS_CLIENT_CA` | — | PEM-Bundle der CA(s), die Client-Zertifikate signieren dürfen; Setzen aktiviert die Client-Zertifikatsprüfung auf pgwire, Bolt, gRPC und Flight |
+| `PROVISA_MTLS_MODE` | `required`, sobald eine CA gesetzt ist | `required` oder `optional`; jeder andere Wert verweigert den Start |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Verlangt, dass der Common Name des Zertifikats dem authentifizierenden Benutzernamen entspricht |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Kommagetrennte Sites, die einen Bolt-WebSocket aus einem Browser öffnen dürfen; nicht gesetzt weist jede Browser-Origin ab |
+| `PROVISA_EXTRAS` | `firebase,vector` | Pyproject-Extras, die ins App-Image eingebacken werden; `scripts/provisa` leitet den Wert aus `dq_checker` in `~/.provisa/config.yaml` ab |
+| `PROVISA_DQ_CHECKER` | `none` | Nur Installer: `none`/`soda`/`gx`, gelesen von `first-launch.sh` im nicht-interaktiven Modus und als `dq_checker` in `config.yaml` geschrieben |
 | `ANTHROPIC_API_KEY` | — | Claude-API-Schlüssel (Discovery) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Überschreibt `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Überschreibt `observability.service_name` |

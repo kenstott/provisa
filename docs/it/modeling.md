@@ -7,8 +7,7 @@
 Provisa offre due primitive dichiarative — `entity` e `fact` — che coprono i blocchi costitutivi
 con cui viene assemblato ogni star schema e ogni Data Vault. Dichiarare la specifica; Provisa la
 riduce esattamente alle definizioni di vista materializzata, bitemporali e di relazione che
-altrimenti si dovrebbero scrivere a mano (REQ-1164). [tool-verified: modeling.py module
-docstring lines 11-28]
+altrimenti si dovrebbero scrivere a mano.
 
 ## Cosa sono le entity e i fact {: #what-entities-and-facts-are }
 
@@ -16,24 +15,20 @@ Una **entity** è una proiezione con chiave, deduplicata e opzionalmente storici
 relazione di origine. Si assegna un nome, la si punta a un'origine, si dichiara la chiave
 dell'entity e gli attributi da portare, e si sceglie una modalità di storicizzazione (history).
 Provisa scrive l'SQL della vista e registra la MV (vista materializzata). Quando la history è
-abilitata, la MV è bitemporale. [tool-verified: `Entity` dataclass, modeling.py lines 53-69;
-`entity_registration` function, modeling.py lines 105-120]
+abilitata, la MV è bitemporale.
 
 Un **fact** è una join verso chiavi di entity, ridotta a un grain dichiarato, con misure
 aggregate. Provisa scrive una query di MV aggregata (`GROUP BY` sul grain + colonne FK) e
 registra una relazione per ciascun collegamento a dimensione dichiarato. Un fact senza misure è
-un puro insieme di chiavi — il pattern link del Data Vault. [tool-verified: `Fact` dataclass,
-modeling.py lines 91-102; `fact_registration` function, modeling.py lines 123-141; comment at
-line 130 "a measureless fact is a pure key-set (DV link)"]
+un puro insieme di chiavi — il pattern link del Data Vault.
 
 Entrambi i costrutti sono IR (rappresentazione intermedia). Le definizioni generate si
 ridirigono tra motori diversi — materializzate in Oracle, Databricks, oppure lasciate virtuali
-sopra un motore MPP — senza rimodellare. [tool-verified: modeling.py docstring lines 25-28]
+sopra un motore MPP — senza rimodellare.
 
 ## Modalità di history {: #history-modes }
 
-Su un'entity sono disponibili tre modalità [tool-verified: `_HISTORY` constant at modeling.py
-line 38, `_HISTORY_MODE` dict at modeling.py line 40]:
+Su un'entity sono disponibili tre modalità:
 
 | Modalità | Significato | Modalità bitemporale |
 | --- | --- | --- |
@@ -51,12 +46,11 @@ sottostante.
 
 ## Misure e aggregazioni {: #measures-and-aggregations }
 
-Le misure si dichiarano come coppie `column:agg`. Aggregazioni supportate [tool-verified:
-`_AGGS` at modeling.py line 41]:
+Le misure si dichiarano come coppie `column:agg`. Aggregazioni supportate:
 
 `sum` &nbsp;`avg` &nbsp;`min` &nbsp;`max` &nbsp;`count`
 
-L'aggregazione predefinita è `sum` [tool-verified: `Measure.agg` default at modeling.py line 75].
+L'aggregazione predefinita è `sum`.
 
 ## Esempio pratico: entity Customer + fact Sales {: #worked-example-customer-entity-sales-fact }
 
@@ -98,8 +92,7 @@ L'aggregazione predefinita è `sum` [tool-verified: `Measure.agg` default at mod
     }
     ```
 
-Provisa genera e registra questa MV bitemporale [tool-verified: `entity_registration` in
-modeling.py lines 105-120]:
+Provisa genera e registra questa MV bitemporale:
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -144,7 +137,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
     }
     ```
 
-Provisa genera e registra [tool-verified: `fact_registration` in modeling.py lines 123-141]:
+Provisa genera e registra:
 
 ```sql
 SELECT "order_id", "customer_id",
@@ -155,21 +148,17 @@ GROUP BY "order_id", "customer_id"
 ```
 
 In più, viene registrata una relazione: `Sales.customer_id → Customer` (cardinalità:
-many-to-one). [tool-verified: `fact_table_input` in modeling_register.py lines 89-98,
-cardinality at line 95]
+many-to-one).
 
 ## Il modulo Model (Admin UI) {: #the-model-form-admin-ui }
 
 Il pulsante **+ Model** compare nella pagina **Tables** (tooltip: "Model an entity or fact
-(star schema / Data Vault)"). [tool-verified: tablesPage.json line 13; TablesPage.tsx lines
-441-450]
+(star schema / Data Vault)").
 
 Un controllo segmentato in cima alla finestra modale alterna tra **Entity (dimension)** e
-**Fact**. [tool-verified: ModelingForm.tsx lines 102-110]
+**Fact**.
 
 ### Campi Entity {: #entity-fields }
-
-[tool-verified: ModelingForm.tsx lines 141-171; modelingForm.json]
 
 | Campo | Obbligatorio | Note |
 | --- | --- | --- |
@@ -182,8 +171,6 @@ Un controllo segmentato in cima alla finestra modale alterna tra **Entity (dimen
 
 ### Campi Fact {: #fact-fields }
 
-[tool-verified: ModelingForm.tsx lines 172-196; modelingForm.json]
-
 | Campo | Obbligatorio | Note |
 | --- | --- | --- |
 | Name | sì | Il nome della MV nel catalogo |
@@ -194,12 +181,11 @@ Un controllo segmentato in cima alla finestra modale alterna tra **Entity (dimen
 | Dimensions | no | Coppie `Entity:fk_column` separate da virgole, es. `Customer:customer_id` |
 
 Quando `agg` viene omesso in una misura (`amount` invece di `amount:sum`), il valore
-predefinito è `sum`. [tool-verified: ModelingForm.tsx line 73 `agg: agg || "sum"`]
+predefinito è `sum`.
 
 ## L'API GraphQL {: #the-graphql-api }
 
-Entrambe le mutation risiedono nello schema di amministrazione. [tool-verified:
-schema_mutation.py lines 449-472]
+Entrambe le mutation risiedono nello schema di amministrazione.
 
 ### `registerEntity`
 
@@ -212,7 +198,7 @@ mutation RegisterEntity($input: EntityInput!) {
 }
 ```
 
-Campi di `EntityInput` [tool-verified: types.py lines 449-456]:
+Campi di `EntityInput`:
 
 | Campo | Tipo | Predefinito | Descrizione |
 | --- | --- | --- | --- |
@@ -235,7 +221,7 @@ mutation RegisterFact($input: FactInput!) {
 }
 ```
 
-Campi di `FactInput` [tool-verified: types.py lines 472-479]:
+Campi di `FactInput`:
 
 | Campo | Tipo | Predefinito | Descrizione |
 | --- | --- | --- | --- |
@@ -248,15 +234,12 @@ Campi di `FactInput` [tool-verified: types.py lines 472-479]:
 | `visibleTo` | [String] | `["public"]` | Elenco di visibilità per ruolo |
 
 `MeasureInput`: `{ column: String, agg: String }` — agg è `"sum"` per impostazione predefinita.
-[tool-verified: types.py lines 460-462]
 
 `DimRefInput`: `{ entity: String, via: String }` — `entity` è il nome dell'entity referenziata;
 `via` è la colonna FK sull'origine del fact.
-[tool-verified: types.py lines 465-468]
 
 In caso di successo, `registerFact` restituisce un messaggio nella forma:
 `Fact 'Sales' registered with 1 dimension link(s)`.
-[tool-verified: schema_mutation.py line 471]
 
 ## Star schema di Kimball e Data Vault {: #kimball-star-schema-and-data-vault }
 
@@ -267,12 +250,10 @@ formare entrambi.
 
 Questo percorso costruisce una stella a tre dimensioni. Due tabelle di origine sono nuove:
 
-- `raw.products` — `product_id`, `name`, `category`, `list_price` [inferred: introduced for
-  this example]
-- `raw.date_spine` — `date_key`, `year`, `quarter`, `month` [inferred: introduced for this
-  example]
+- `raw.products` — `product_id`, `name`, `category`, `list_price`
+- `raw.date_spine` — `date_key`, `year`, `quarter`, `month`
 
-Anche `raw.orders` acquisisce qui le colonne `product_id` e `order_date`. [inferred]
+Anche `raw.orders` acquisisce qui le colonne `product_id` e `order_date`.
 
 #### Scegliere il tipo di SCD {: #choosing-scd-type }
 
@@ -282,9 +263,6 @@ La modalità di history è l'unico parametro che distingue SCD Type 1 da Type 2:
 | --- | --- | --- |
 | Type 1 (solo corrente) | `none` | La MV viene ricostruita a ogni aggiornamento; nessuna history delle righe |
 | Type 2 (versionato) | `scd2` | MV delta bitemporale; ogni modifica aggiunge una nuova riga, con chiave sulla chiave dell'entity |
-
-[tool-verified: `_HISTORY_MODE` at modeling.py line 40; `entity_registration` history branch at
-lines 115-119]
 
 Usare `scd2` quando le query a valle devono unire una dimensione così com'era al momento della
 transazione — il tier di un cliente al momento dell'acquisto, non il tier attuale. Usare `none`
@@ -317,8 +295,7 @@ mutation {
 }
 ```
 
-Genera una MV delta bitemporale con chiave su `id` [tool-verified: entity_registration
-modeling.py lines 105-120]:
+Genera una MV delta bitemporale con chiave su `id`:
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -340,9 +317,7 @@ mutation {
 }
 ```
 
-Genera una MV ordinaria ricostruita a ogni aggiornamento [tool-verified: entity_registration
-modeling.py lines 105-114; `mv_bitemporal_mode` is only added when `history != "none"`, line
-115]:
+Genera una MV ordinaria ricostruita a ogni aggiornamento:
 
 ```sql
 SELECT "product_id", "name", "category", "list_price" FROM "raw"."products"
@@ -396,7 +371,7 @@ mutation {
 
 Provisa calcola `group_cols = dedup([grain] + [dim FKs])`
 = `["order_id", "customer_id", "product_id", "order_date"]` e genera
-[tool-verified: fact_registration modeling.py lines 125-131]:
+:
 
 ```sql
 SELECT "order_id", "customer_id", "product_id", "order_date",
@@ -406,8 +381,7 @@ FROM   "raw"."orders"
 GROUP BY "order_id", "customer_id", "product_id", "order_date"
 ```
 
-Vengono registrate automaticamente tre relazioni [tool-verified: modeling_register.py lines
-89-98, cardinality `"many_to_one"` at line 95]:
+Vengono registrate automaticamente tre relazioni:
 
 | Relazione | Cardinalità |
 | --- | --- |
@@ -440,9 +414,7 @@ mutation {
 
 Sia `Sales` sia `Returns` puntano alle stesse entity `Customer` e `Product`. I percorsi di join
 di Provisa garantiscono che le query attraverso l'uno o l'altro fact attraversino la stessa
-definizione di dimensione [tool-verified: fact_registration uses entity name as `target_table`
-at modeling.py lines 138-140; fact_table_input wires `target_table_id` from that name at
-modeling_register.py lines 91-93].
+definizione di dimensione.
 
 ---
 
@@ -478,8 +450,7 @@ mutation {
 }
 ```
 
-Genera [tool-verified: entity_registration modeling.py lines 107-108;
-`cols = dedup([*key, *attributes])` = `["id"]` when `attributes=[]`]:
+Genera:
 
 ```sql
 SELECT "id" FROM "raw"."customers"
@@ -523,8 +494,7 @@ mutation {
 }
 ```
 
-Genera [tool-verified: entity_registration modeling.py lines 115-119;
-`_HISTORY_MODE["scd2"]` = `"delta"` at modeling.py line 40]:
+Genera:
 
 ```sql
 SELECT "id", "name", "region", "tier" FROM "raw"."customers"
@@ -538,8 +508,7 @@ bitemporale.
 #### Link (fact senza misure) {: #link-measureless-fact }
 
 Un link registra quali chiavi dell'hub sono coesistite — solo chiavi, nessuna misura. Provisa
-omette la `GROUP BY` quando `measures` è vuoto [tool-verified: modeling.py lines 130-131:
-`if f.measures: view_sql += " GROUP BY ..."`].
+omette la `GROUP BY` quando `measures` è vuoto.
 
 ```graphql
 mutation {
@@ -558,8 +527,7 @@ mutation {
 ```
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`.
-Nessuna misura, quindi nessuna `GROUP BY`. Genera [tool-verified:
-fact_registration modeling.py lines 125-131]:
+Nessuna misura, quindi nessuna `GROUP BY`. Genera:
 
 ```sql
 SELECT "order_id", "customer_id" FROM "raw"."orders"
@@ -567,7 +535,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 
 Vengono registrate due relazioni: `OrderCustomerLink.customer_id → CustomerHub` e
 `OrderCustomerLink.order_id → OrderHub`, entrambe many-to-one
-[tool-verified: modeling_register.py lines 89-98].
+.
 
 #### Bridge / link aggregato {: #bridge-aggregate-link }
 
@@ -592,7 +560,7 @@ mutation {
 
 `group_cols = dedup(["order_id"] + ["customer_id", "order_id"])` = `["order_id", "customer_id"]`
 (l'`order_id` duplicato dell'elenco delle dimensioni viene scartato da
-`_dedup`). Genera [tool-verified: fact_registration modeling.py lines 125-131]:
+`_dedup`). Genera:
 
 ```sql
 SELECT "order_id", "customer_id", SUM("amount") AS "amount"
@@ -601,22 +569,17 @@ GROUP BY "order_id", "customer_id"
 ```
 
 Il modello non decide la metodologia. Grain, conformità, scelta dello SCD e suddivisione
-hub/satellite restano decisioni del modellatore. Provisa le esegue. [tool-verified: modeling.py
-docstring lines 25-26]
+hub/satellite restano decisioni del modellatore. Provisa le esegue.
 
-## Metriche (REQ-1317, REQ-1318, REQ-1320) {: #metrics-req-1317-req-1318-req-1320 }
+## Metriche {: #metrics }
 
 Una **metrica** (metric) è una definizione di aggregato con nome e governata, senza un proprio
 grain. Il grain — le dimensioni secondo cui l'aggregato viene scomposto — viene associato al
 momento della query dal chiamante, non al momento della definizione. È questo che distingue una
 metrica da una vista: una vista fissa il grain alla creazione; una metrica resta aperta finché
-non viene interrogata. [tool-verified: `Metric` class comment, `provisa/core/models.py` lines
-452–455: "A named, governed aggregate definition with no grain of its own... grain is bound at
-query time by the requested dimension set"]
+non viene interrogata.
 
 ### L'oggetto Metric {: #the-metric-object }
-
-[tool-verified: `Metric` class, `provisa/core/models.py` lines 451–476]
 
 | Campo | Obbligatorio | Note |
 | --- | --- | --- |
@@ -631,12 +594,10 @@ query time by the requested dimension set"]
 I riferimenti a colonne all'interno dell'espressione devono essere qualificati con la tabella
 (`orders.amount`, non `amount`). Una colonna non qualificata è un errore bloccante al momento
 dell'espansione, non un avviso.
-[tool-verified: `_expression_tables`, `provisa/compiler/metric_expand.py` lines 83–96]
 
 Il repository delle metriche valida l'espressione a ogni scrittura. Un'espressione che non
 viene analizzata correttamente o che non contiene alcuna funzione di aggregazione viene
 rifiutata; non viene mai memorizzata.
-[tool-verified: `validate_expression`, `provisa/core/repositories/metric.py` lines 34–43]
 
 Esempio di voce di configurazione:
 
@@ -651,8 +612,7 @@ metrics:
 
 ### Interrogare una metrica {: #querying-a-metric }
 
-Il compilatore riserva lo schema `metrics`. [tool-verified: `METRICS_SCHEMA = "metrics"`,
-`provisa/compiler/metric_expand.py` line 43] Ogni metrica è indirizzabile come relazione
+Il compilatore riserva lo schema `metrics`. Ogni metrica è indirizzabile come relazione
 virtuale all'interno di quello schema. Interrogarla come una tabella — le colonne selezionate
 diventano il set di dimensioni e la GROUP BY:
 
@@ -667,42 +627,31 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 Il compilatore riscrive questo in un vero aggregato raggruppato sulle tabelle semantiche
 sottostanti prima che venga eseguita la governance, in modo che RLS e mascheramento si
 applichino alle colonne reali.
-[tool-verified: `expand_metric_query` docstring, `provisa/compiler/metric_expand.py` lines
-263–276: "BEFORE governance, so RLS/masking apply to the real columns (REQ-1317)"]
 
 `SELECT *` contro una relazione di metrica viene rifiutato — indicare esplicitamente le colonne
-di dimensione e `value`. [tool-verified: `expand_metric_query`,
-`provisa/compiler/metric_expand.py` lines 302–306]
+di dimensione e `value`.
 
 Quando l'espressione di una metrica si estende su più tabelle, il compilatore le unisce
 attraverso le relazioni registrate. Una dimensione che è una colonna di una tabella
 referenziata direttamente si risolve verso quella tabella. Una dimensione a un salto di
 relazione di distanza viene unita automaticamente. Due salti o una dimensione ambigua sono un
 errore bloccante che nomina il responsabile.
-[tool-verified: `_JoinPlan.resolve_dimension`, `provisa/compiler/metric_expand.py` lines
-190–228]
 
-### Metriche da specifiche di fact (REQ-1320) {: #metrics-from-fact-specs-req-1320 }
+### Metriche da specifiche di fact {: #metrics-from-fact-specs }
 
 Quando si registra un fact, ogni misura dichiarata registra automaticamente un oggetto Metric
 corrispondente. Il campo `from_fact` della metrica registra il nome della tabella di fact di
 origine, e le dimensioni di raggruppamento valide sono gli attributi dell'entity raggiungibili
 attraverso le relazioni FK del fact.
-[tool-verified: `Metric.from_fact` comment, `provisa/core/models.py` line 466–467:
-"set when this metric was auto-registered from a fact spec's measure";
-`from_fact` stored in `provisa/core/repositories/metric.py` line 57]
 
 Le metriche registrate automaticamente compaiono nella pagina Metrics con un badge **fact**.
-Possono essere modificate come qualsiasi altra metrica. [tool-verified: `MetricsPage.tsx` lines
-405–408: `{m.fromFact && <Badge ... data-testid={`metrics-from-fact-${m.name}`}>...</Badge>}`]
+Possono essere modificate come qualsiasi altra metrica.
 
-### Viste composte da metriche (view_metrics, REQ-1318) {: #metric-composed-views-view_metrics-req-1318 }
+### Viste composte da metriche (view_metrics) {: #metric-composed-views-view_metrics-req-1318 }
 
 Una vista `view_metrics` fissa il grain di una metrica al momento della definizione.
 Dichiarare i nomi delle metriche, le colonne di dimensione e i filtri opzionali; il compilatore
 genera il SELECT.
-
-[tool-verified: `ViewMetricsSpec`, `provisa/core/models.py` lines 479–492]
 
 ```yaml
 tables:
@@ -727,48 +676,34 @@ GROUP BY orders.region, orders.month
 ```
 
 `view_metrics` e `view_sql` si escludono a vicenda sulla stessa tabella.
-[tool-verified: `Table` model validator, `provisa/core/models.py` lines 614–617:
-`if self.view_sql is not None and self.view_metrics is not None: raise ValueError(...)`]
 
 **Rigenerazione automatica al cambio di una metrica.** Quando l'espressione di una metrica
 viene aggiornata, ogni vista `view_metrics` che la referenzia viene ricompilata e il nuovo SQL
 viene persistito immediatamente. La vista non può divergere dalla definizione della metrica per
 costruzione.
-[tool-verified: `regenerate_metric_views`, `provisa/api/admin/_metric_views.py` lines 79–117:
-"each dependent view_metrics spec recompiles against the UPDATED metric set and the fresh SQL
-is persisted"]
 
 **Chiamate `metric()` inline in SQL di vista scritto a mano.** Un `view_sql` scritto a mano può
 anche referenziare metriche tramite `metric('name')`. Il compilatore sostituisce ogni chiamata
 con l'espressione della metrica e registra un edge di lineage. Questo dà alle viste scritte a
 mano la stessa proprietà di ricompilazione al cambiamento quando referenziano una metrica
 invece di copiarne la formula.
-[tool-verified: `expand_metric_calls_in_sql`, `provisa/compiler/metric_expand.py` lines
-393–429]
 
 Nota: le viste del percorso di configurazione che usano chiamate `metric()` inline si
-rigenerano al ricaricamento della configurazione, non all'upsert della metrica. [tool-verified:
-`regenerate_metric_views` docstring, `_metric_views.py` lines 84–86: "Free-hand view_sql born
-from inline metric() calls carries no stored provenance, so it is not regenerated here
-(config-path views regenerate on config reload)"]
+rigenerano al ricaricamento della configurazione, non all'upsert della metrica.
 
-### La pagina di amministrazione Metrics (REQ-1323, REQ-1324) {: #the-metrics-admin-page-req-1323-req-1324 }
+### La pagina di amministrazione Metrics {: #the-metrics-admin-page }
 
 Aprire la voce di navigazione **Metrics** per gestire le metriche governate. Fare clic su una
 riga per espandere un pannello di dettaglio in sola lettura; fare clic su **Edit** al suo
 interno per passare alla modifica inline (nessuna finestra modale). **New Metric** apre una
 scheda di creazione inline sopra la tabella. La conferma di eliminazione è l'unica finestra
 modale della pagina.
-[tool-verified: `MetricsPage.tsx` lines 214–216 comment: "REQ-1317: registered-metrics
-management page (list / create / edit / delete). REQ-1323: detail-then-edit"]
 
 Il modulo di creazione/modifica offre un builder a tre selettori per le metriche originate da
 fact: scegliere la tabella di fact di origine (filtrata su `modelingRole=fact`), una colonna di
 misura e una funzione di aggregazione (`SUM`, `AVG`, `COUNT`, `MIN`, `MAX`). Il datatype viene
 derivato automaticamente: `COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX → the measure column's type` (il tipo della colonna di misura). L'area di testo dell'espressione resta la via di fuga per espressioni
 arbitrarie.
-[tool-verified: `deriveDatatype` function, `MetricsPage.tsx` lines 66–70;
-`applyBuilder`, `MetricsPage.tsx` lines 273–285]
 
 ## Il vantaggio dell'IR {: #the-ir-payoff }
 
@@ -777,4 +712,3 @@ specifica entity/fact è una rappresentazione intermedia — non un template, no
 warehouse a cui è destinata è una proprietà del deployment, non del modello. Cambiare il motore
 di destinazione, e le stesse dichiarazioni `entity` / `fact` si materializzano lì, perché l'SQL
 generato e le modalità bitemporali sono neutrali rispetto al motore per costruzione.
-[tool-verified: modeling.py docstring lines 25-28; modeling_register.py lines 56-66, 80-88]

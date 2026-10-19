@@ -2,7 +2,7 @@
 
 **I nomi entrano. I valori non escono mai.**
 
-Nessun endpoint API restituisce il valore di un segreto memorizzato. Nessuna interfaccia offre un pulsante «mostra». Chi ha perso un valore lo sostituisce — è la stessa chiamata che lo ha creato, attraverso lo stesso modulo. Non è una decisione di policy: nel codice il percorso di lettura semplicemente non esiste. (REQ-1558)
+Nessun endpoint API restituisce il valore di un segreto memorizzato. Nessuna interfaccia offre un pulsante «mostra». Chi ha perso un valore lo sostituisce — è la stessa chiamata che lo ha creato, attraverso lo stesso modulo. Non è una decisione di policy: nel codice il percorso di lettura semplicemente non esiste.
 
 ---
 
@@ -18,21 +18,21 @@ Tre forme di riferimento sono valide ovunque Provisa risolva credenziali:
 
 In un deployment multi-tenant, conservate le credenziali della piattaforma in un servizio di segreti anziché in variabili d'ambiente. Un amministratore di tenant può scrivere `${env:...}` in un proprio campo credenziale, quindi qualsiasi valore nell'ambiente del processo è alla portata di ogni tenant. Lasciate nell'ambiente solo la credenziale propria del backend dei segreti.
 
-La risoluzione è fail-closed ovunque. Un nome di provider sconosciuto, un nome non impostato e un backend irraggiungibile sollevano tutti un errore. Un riferimento che non è stato possibile risolvere non viene mai sostituito silenziosamente con una stringa vuota. (REQ-1557) [tool-verified: `provisa/core/secrets.py:92-117`]
+La risoluzione è fail-closed ovunque. Un nome di provider sconosciuto, un nome non impostato e un backend irraggiungibile sollevano tutti un errore. Un riferimento che non è stato possibile risolvere non viene mai sostituito silenziosamente con una stringa vuota.
 
 ### Formato del nome {: #name-format }
 
-I nomi dei segreti devono corrispondere a `[A-Za-z_][A-Za-z0-9_]*` — lettere, cifre e trattini bassi, con lettera o trattino basso iniziale. Il vincolo è pratico: `${secret:NAME}` viene analizzato dalla grammatica dei riferimenti, che legge fino alla `}` di chiusura. Un nome contenente una parentesi graffa, uno spazio o due punti produrrebbe un riferimento che viene interpretato come qualcos'altro. [tool-verified: `provisa/core/secrets_store.py:61`]
+I nomi dei segreti devono corrispondere a `[A-Za-z_][A-Za-z0-9_]*` — lettere, cifre e trattini bassi, con lettera o trattino basso iniziale. Il vincolo è pratico: `${secret:NAME}` viene analizzato dalla grammatica dei riferimenti, che legge fino alla `}` di chiusura. Un nome contenente una parentesi graffa, uno spazio o due punti produrrebbe un riferimento che viene interpretato come qualcos'altro.
 
 ---
 
 ## Due vault, un solo servizio {: #two-vaults-one-service }
 
-Ogni org ha due vault. Entrambi risiedono all'interno dello stesso servizio dei segreti. (REQ-1560)
+Ogni org ha due vault. Entrambi risiedono all'interno dello stesso servizio dei segreti.
 
 **Vault dell'org** — La credenziale che un amministratore dell'org memorizza qui è condivisa. Ogni membro che fa riferimento a `${secret:DATABASE_TOKEN}` ottiene lo stesso valore. È pensato per le credenziali di proprietà dell'*organizzazione*: una password di database condivisa, la chiave di un account di servizio, un token di deployment. Il vault dell'org richiede la capability `org_settings` in lettura e in scrittura.
 
-**Vault personale** — Una credenziale memorizzata qui appartiene a una sola persona. Quando due persone detengono ciascuna un `GIT_TOKEN`, `${user:GIT_TOKEN}` si risolve in quello di chi sta agendo. Lo stesso testo di riferimento consegna a ciascuna persona la propria credenziale. Chi non ha memorizzato nulla riceve un errore, non il valore di qualcun altro. Nessuna capability protegge il vault personale — detenere una credenziale propria non è un privilegio concesso da un amministratore. E non esiste alcuna sintassi di richiesta per nominare il vault di un'altra persona. [tool-verified: `provisa/api/admin/secrets_router.py:86-103`]
+**Vault personale** — Una credenziale memorizzata qui appartiene a una sola persona. Quando due persone detengono ciascuna un `GIT_TOKEN`, `${user:GIT_TOKEN}` si risolve in quello di chi sta agendo. Lo stesso testo di riferimento consegna a ciascuna persona la propria credenziale. Chi non ha memorizzato nulla riceve un errore, non il valore di qualcun altro. Nessuna capability protegge il vault personale — detenere una credenziale propria non è un privilegio concesso da un amministratore. E non esiste alcuna sintassi di richiesta per nominare il vault di un'altra persona.
 
 L'ambito fa parte del riferimento, non è un'autorizzazione che lo circonda. `${secret:NAME}` e `${user:NAME}` non rispondono mai l'uno per l'altro.
 
@@ -52,13 +52,11 @@ Cinque backend sono inclusi:
 | `gcp_secret_manager` | Google Secret Manager | `google-cloud-secret-manager` |
 | `azure_key_vault` | Azure Key Vault (secrets) | `azure-keyvault-secrets` |
 
-[tool-verified: `provisa/core/secrets_registry.py:161-299`]
-
-La selezione è fail-closed: un backend sconosciuto o non disponibile solleva un errore all'avvio invece di ripiegare silenziosamente su un altro. (REQ-1557)
+La selezione è fail-closed: un backend sconosciuto o non disponibile solleva un errore all'avvio invece di ripiegare silenziosamente su un altro.
 
 ### La credenziale del backend stesso {: #the-backends-own-credential }
 
-La credenziale di connessione di un backend centrale è configurazione di processo. Proviene solo da `${env:...}` — mai da `${secret:...}`. Un servizio dei segreti la cui credenziale risiede al suo interno non può essere aperto, quindi per progettazione la catena di fiducia termina nell'ambiente host. Il registro lo impone: qualsiasi valore di configurazione in una specifica di backend viene risolto con `providers=("env",)` prima che il backend venga costruito. [tool-verified: `provisa/core/secrets_registry.py:128-141`]
+La credenziale di connessione di un backend centrale è configurazione di processo. Proviene solo da `${env:...}` — mai da `${secret:...}`. Un servizio dei segreti la cui credenziale risiede al suo interno non può essere aperto, quindi per progettazione la catena di fiducia termina nell'ambiente host. Il registro lo impone: qualsiasi valore di configurazione in una specifica di backend viene risolto con `providers=("env",)` prima che il backend venga costruito.
 
 Esempio — configurazione di Vault in `provisa.yaml`:
 
@@ -73,7 +71,7 @@ secrets:
 
 ### Servizio centrale e store integrato {: #central-service-vs-built-in }
 
-Quando è configurato un servizio centrale, Provisa vi legge ma non vi scrive. La creazione e l'eliminazione delle voci appartengono al servizio centrale — quelle operazioni spettano ai suoi strumenti. La pagina Segreti lo dichiara e non offre un pulsante di creazione. (REQ-1557)
+Quando è configurato un servizio centrale, Provisa vi legge ma non vi scrive. La creazione e l'eliminazione delle voci appartengono al servizio centrale — quelle operazioni spettano ai suoi strumenti. La pagina Segreti lo dichiara e non offre un pulsante di creazione.
 
 Quando è attivo il backend integrato `provisa`, la pagina Segreti è completamente scrivibile: creazione, sostituzione ed eliminazione dalla UI o tramite l'API.
 
@@ -81,7 +79,7 @@ Quando è attivo il backend integrato `provisa`, la pagina Segreti è completame
 
 ### I segreti di un'organizzazione in un servizio centrale {: #one-organizations-secrets-in-a-central-service }
 
-Un deployment che ospita molte organizzazioni e legge un servizio centrale lo legge, per ogni organizzazione, all'interno del prefisso proprio di quell'organizzazione. Un riferimento resta il nome breve (`${secret:db#password}`); il prefisso viene aggiunto in lettura. (REQ-1557) [tool-verified: `provisa/core/secrets_providers.py`, `org_namespace`]
+Un deployment che ospita molte organizzazioni e legge un servizio centrale lo legge, per ogni organizzazione, all'interno del prefisso proprio di quell'organizzazione. Un riferimento resta il nome breve (`${secret:db#password}`); il prefisso viene aggiunto in lettura.
 
 | Servizio | Dove è conservato il segreto `db` dell'organizzazione `acme` |
 |---|---|
@@ -102,11 +100,11 @@ Un deployment con una sola organizzazione legge un riferimento esattamente come 
 
 ## Lo store integrato di Provisa {: #provisas-built-in-store }
 
-È l'impostazione predefinita quando non è configurato alcun servizio centrale. Ogni riga di `secrets_store` contiene un blob di busta cifrato — la colonna `value` è binaria, non testuale, e la chiave di decifratura risiede nell'ambiente del processo, non nel database. Una copia del control plane priva della chiave master del deployment contiene testo cifrato e nient'altro. (REQ-1558)
+È l'impostazione predefinita quando non è configurato alcun servizio centrale. Ogni riga di `secrets_store` contiene un blob di busta cifrato — la colonna `value` è binaria, non testuale, e la chiave di decifratura risiede nell'ambiente del processo, non nel database. Una copia del control plane priva della chiave master del deployment contiene testo cifrato e nient'altro.
 
-La cifratura non è mai facoltativa. Quando non è configurata alcuna chiave di cifratura a livello di processo, lo store ricorre a un portachiavi locale. Se l'host non dispone di un portachiavi in cui custodire una chiave, lo store rifiuta di scrivere anziché memorizzare il valore in chiaro. [tool-verified: `provisa/core/secrets_store.py:130-159`]
+La cifratura non è mai facoltativa. Quando non è configurata alcuna chiave di cifratura a livello di processo, lo store ricorre a un portachiavi locale. Se l'host non dispone di un portachiavi in cui custodire una chiave, lo store rifiuta di scrivere anziché memorizzare il valore in chiaro.
 
-**Forma di archiviazione** [tool-verified: `provisa/core/schema_admin.py:493-505`]:
+**Forma di archiviazione**:
 
 | Colonna | Tipo | Scopo |
 | -------- | ------ | --------- |
@@ -119,7 +117,7 @@ La cifratura non è mai facoltativa. Quando non è configurata alcuna chiave di 
 
 Un'organizzazione che ha creato la propria chiave di cifratura ha i propri segreti avvolti sotto quella chiave; altrimenti sono avvolti sotto quella del deployment. Vedi [Cifratura a riposo](security.md#encryption-at-rest-and-the-organizations-own-keys).
 
-La colonna `value` non viene selezionata in nessuna query di elenco. [tool-verified: `provisa/core/secrets_store.py:214-235`]
+La colonna `value` non viene selezionata in nessuna query di elenco.
 
 ---
 
@@ -138,25 +136,25 @@ Tutte le route si trovano sotto `/admin/orgs/{org_id}`. Il vault dell'org richie
 
 Ogni risposta restituisce metadati — nome, descrizione, `updated_at`, `updated_by` e la stringa `reference` da incollare — ma mai il valore. Il corpo del `PUT` porta `value` (obbligatorio) e `description` (facoltativo). Una sostituzione è la stessa chiamata di una creazione: l'identità è il nome, non un ID separato.
 
-Ogni scrittura viene registrata nel log di audit. La voce di log nomina l'attore e il nome del segreto. Il valore non viene registrato, nemmeno la sua lunghezza. [tool-verified: `provisa/api/admin/secrets_router.py:106-117`]
+Ogni scrittura viene registrata nel log di audit. La voce di log nomina l'attore e il nome del segreto. Il valore non viene registrato, nemmeno la sua lunghezza.
 
 ---
 
 ## Dove si risolve `${secret:NAME}` {: #where-secretname-resolves }
 
-La risoluzione avviene all'interno di un'operazione legata a un contesto, non al momento dell'import né all'avvio. Lo store legge e decifra i segreti dell'org una sola volta all'inizio di quell'operazione e mantiene la mappa in una `ContextVar` per tutta la sua durata. Al di fuori di un'operazione legata a un contesto, `${secret:NAME}` solleva un errore. (REQ-1557) [tool-verified: `provisa/core/secrets_store.py:269-290`]
+La risoluzione avviene all'interno di un'operazione legata a un contesto, non al momento dell'import né all'avvio. Lo store legge e decifra i segreti dell'org una sola volta all'inizio di quell'operazione e mantiene la mappa in una `ContextVar` per tutta la sua durata. Al di fuori di un'operazione legata a un contesto, `${secret:NAME}` solleva un errore.
 
 Due punti di chiamata stabiliscono il legame:
 
-**Operazioni sul remote Git.** Quando l'URL del remote del repository di un'org contiene un riferimento `${secret:...}` o `${user:...}` — per esempio un token di push incorporato nell'URL — il router degli ambienti lega sia il vault dell'org sia il vault personale dell'utente che sta agendo attorno alla chiamata git. La forma `${user:GIT_TOKEN}` fa sì che un commit venga registrato sotto la credenziale di chi lo ha inviato, non sotto un account di servizio condiviso. [tool-verified: `provisa/api/admin/environments_router.py:1263`]
+**Operazioni sul remote Git.** Quando l'URL del remote del repository di un'org contiene un riferimento `${secret:...}` o `${user:...}` — per esempio un token di push incorporato nell'URL — il router degli ambienti lega sia il vault dell'org sia il vault personale dell'utente che sta agendo attorno alla chiamata git. La forma `${user:GIT_TOKEN}` fa sì che un commit venga registrato sotto la credenziale di chi lo ha inviato, non sotto un account di servizio condiviso.
 
-**Letture della chiave API del fornitore AI.** Quando Provisa legge la chiave del fornitore LLM di un'org e quella chiave è memorizzata come riferimento `${secret:NAME}`, `bound_to_request_org` stabilisce il vault dell'org per quella richiesta. Il riferimento viene risolto in uscita; il testo del riferimento stesso non viene mai inviato al fornitore. (REQ-1580) [tool-verified: `provisa/core/org_secrets.py:76-79`]
+**Letture della chiave API del fornitore AI.** Quando Provisa legge la chiave del fornitore LLM di un'org e quella chiave è memorizzata come riferimento `${secret:NAME}`, `bound_to_request_org` stabilisce il vault dell'org per quella richiesta. Il riferimento viene risolto in uscita; il testo del riferimento stesso non viene mai inviato al fornitore.
 
 ---
 
 ## Chiavi dei fornitori AI dell'org come riferimenti a segreti {: #org-ai-vendor-keys-as-secret-references }
 
-La chiave di un fornitore AI dell'org (Anthropic, OpenAI e altri) può essere memorizzata come riferimento `${secret:NAME}` invece che come chiave letterale. (REQ-1580)
+La chiave di un fornitore AI dell'org (Anthropic, OpenAI e altri) può essere memorizzata come riferimento `${secret:NAME}` invece che come chiave letterale.
 
 Memorizzare prima la chiave nel vault dell'org:
 
@@ -171,7 +169,7 @@ Poi impostare la configurazione AI dell'org perché vi faccia riferimento:
 vendor key field → ${secret:OPENAI_KEY}
 ```
 
-Il riferimento viene memorizzato cifrato in `org_secrets`. Al momento della query Provisa risolve `${secret:OPENAI_KEY}` sul vault dell'org e consegna la chiave letterale all'SDK del fornitore. La rotazione della voce nel vault ha effetto immediato — nessuna modifica di configurazione sul lato impostazioni dell'org. [tool-verified: `provisa/core/org_secrets.py:64-79`]
+Il riferimento viene memorizzato cifrato in `org_secrets`. Al momento della query Provisa risolve `${secret:OPENAI_KEY}` sul vault dell'org e consegna la chiave letterale all'SDK del fornitore. La rotazione della voce nel vault ha effetto immediato — nessuna modifica di configurazione sul lato impostazioni dell'org.
 
 ---
 
@@ -183,7 +181,7 @@ Le password degli store che Provisa esegue (PostgreSQL, Redis, MinIO, l'account 
 
 ## Accesso dell'amministratore di piattaforma {: #platform-admin-access }
 
-Un amministratore di piattaforma che gestisce il control plane non ha alcuna lettura dei valori dei segreti di nessuna org. La protezione `org_settings` rifiuta esplicitamente `cross_org` e il bypass di piattaforma: amministrare il ciclo di vita di un'org non è una lettura delle credenziali che quell'org custodisce. Il server lo impone indipendentemente dalla UI. (REQ-1361) [tool-verified: `provisa/api/admin/secrets_router.py:53-83`]
+Un amministratore di piattaforma che gestisce il control plane non ha alcuna lettura dei valori dei segreti di nessuna org. La protezione `org_settings` rifiuta esplicitamente `cross_org` e il bypass di piattaforma: amministrare il ciclo di vita di un'org non è una lettura delle credenziali che quell'org custodisce. Il server lo impone indipendentemente dalla UI.
 
 ---
 

@@ -1,6 +1,6 @@
 # Prise en charge des requêtes Cypher {: #cypher-query-support }
 
-Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cypher/`. (REQ-345, REQ-347) Les requêtes sont analysées par un analyseur syntaxique à descente récursive maison (sans bibliothèque Cypher externe) (REQ-571), résolues au niveau du schéma par rapport au modèle (REQ-351), puis émises en SQL avant d'être acheminées vers le moteur d'exécution cible. (REQ-066, REQ-067, REQ-347)
+Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cypher/`. Les requêtes sont analysées par un analyseur syntaxique à descente récursive maison (sans bibliothèque Cypher externe), résolues au niveau du schéma par rapport au modèle, puis émises en SQL avant d'être acheminées vers le moteur d'exécution cible.
 
 ## Fonctionnalités implémentées {: #implemented-features }
 
@@ -19,9 +19,9 @@ Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cyph
 | `UNION` / `UNION ALL` | ✓ | Union récursive entre sous-AST |
 | `CALL { … }` | ✓ | Décomposition de sous-requête CALL de premier niveau via `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Sous-requête corrélée → `CROSS JOIN LATERAL` ; voir §CALL corrélé |
-| `CALL db.labels()` | ✓ | Renvoie les étiquettes de nœud du modèle ; aucune traduction SQL (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Renvoie les types de relation du modèle (REQ-572) |
-| `CALL db.propertyKeys()` | ✓ | Renvoie tous les noms de clés de propriété pour tous les types de nœud (REQ-572) |
+| `CALL db.labels()` | ✓ | Renvoie les étiquettes de nœud du modèle ; aucune traduction SQL |
+| `CALL db.relationshipTypes()` | ✓ | Renvoie les types de relation du modèle |
+| `CALL db.propertyKeys()` | ✓ | Renvoie tous les noms de clés de propriété pour tous les types de nœud |
 | `UNWIND` | ✓ | Expansion d'un tableau en lignes ; le premier élément devient le FROM, les suivants deviennent des CROSS JOIN UNNEST |
 
 ### Modèles de correspondance {: #match-patterns }
@@ -78,7 +78,7 @@ Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cyph
 | `n { .*, extra: expr }` | Toutes les propriétés du schéma plus la clé nommée ; MAP combinée |
 | `n { key: expr }` | `MAP(ARRAY['key'], ARRAY[expr])` |
 
-**Propriétés objet.** Une colonne contenant un objet déclaré (l'objet imbriqué d'un type GraphQL distant, ou toute colonne enregistrée avec des champs d'objet) est une propriété de type map : `RETURN n.address` la donne comme une map, quelle que soit la forme sous laquelle le moteur la renvoie, et le nœud `n` la porte parmi ses propriétés. Un champ GraphQL distant qui pointe vers un type enregistré, un objet ou une liste, n'est pas une propriété ; on l'atteint par sa relation. (REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
+**Propriétés objet.** Une colonne contenant un objet déclaré (l'objet imbriqué d'un type GraphQL distant, ou toute colonne enregistrée avec des champs d'objet) est une propriété de type map : `RETURN n.address` la donne comme une map, quelle que soit la forme sous laquelle le moteur la renvoie, et le nœud `n` la porte parmi ses propriétés. Un champ GraphQL distant qui pointe vers un type enregistré, un objet ou une liste, n'est pas une propriété ; on l'atteint par sa relation.
 
 ### Fonctions d'agrégation {: #aggregation-functions }
 
@@ -159,7 +159,7 @@ Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cyph
 
 ### Sous-requêtes CALL corrélées {: #correlated-call-subqueries }
 
-`CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` se traduit par `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Règles :
+`CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` se traduit par `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. Règles :
 
 - La variable de portée externe (`x`) doit apparaître dans `WITH`
 - Plusieurs variables importées (`WITH a, b`) sont prises en charge
@@ -170,26 +170,26 @@ Provisa traduit un sous-ensemble d'openCypher en SQL via le module `provisa/cyph
 
 ## Écritures {: #writes }
 
-Cypher prend en charge trois modèles d'écriture via le endpoint `/data/cypher`, exécutés par `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified : `provisa/api/rest/cypher_router.py:415-545`]
+Cypher prend en charge trois modèles d'écriture via le endpoint `/data/cypher`, exécutés par `provisa/cypher/write_translator.py`.
 
-| Cypher | SQL | Exigence |
-| -------- | ----- | ----- |
-| `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
-| `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
-| `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |
+| Cypher | SQL |
+|---|---|
+| `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` |
+| `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` |
+| `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` |
 
-Les noms de propriété sont mappés aux colonnes par suppression du préfixe de domaine et résolution d'alias ; les valeurs scalaires Cypher sont converties vers le type de colonne cible. (REQ-666, REQ-668) Le corps de la réponse contient un compteur `affected_rows`. (REQ-670)
+Les noms de propriété sont mappés aux colonnes par suppression du préfixe de domaine et résolution d'alias ; les valeurs scalaires Cypher sont converties vers le type de colonne cible. Le corps de la réponse contient un compteur `affected_rows`.
 
-La propriété d'un nœud est le nom publié de sa colonne : l'alias de la colonne quand elle en a un, sinon le nom selon la convention de nommage — le nom sous lequel GraphQL et SQL la lisent — dans `MATCH`, `RETURN`, `CREATE`, `SET` et `MERGE` de la même façon. (REQ-471)
+La propriété d'un nœud est le nom publié de sa colonne : l'alias de la colonne quand elle en a un, sinon le nom selon la convention de nommage — le nom sous lequel GraphQL et SQL la lisent — dans `MATCH`, `RETURN`, `CREATE`, `SET` et `MERGE` de la même façon.
 
 Règles :
 
-- L'étiquette doit correspondre à exactement une table enregistrée. Les étiquettes ambiguës ou inconnues provoquent des erreurs bloquantes ; aucune correspondance approximative. (REQ-661) Aucune nouvelle étiquette ni aucun nouveau type ne peut être créé via Cypher. (REQ-662)
-- Chaque écriture est conditionnée par les autorisations d'écriture de la table cible : le rôle a besoin du droit `write` et d'une autorisation pour l'opération, et les colonnes écrites doivent figurer dans l'autorisation. Un rôle qui ne les a pas est rejeté au moment de la compilation. (REQ-663)
-- Le connecteur de la source sous-jacente doit prendre en charge le DML. Les sources en lecture seule (fédérées via Trino, Iceberg sans connecteur Delta) rejettent les écritures au moment de la traduction. (REQ-664)
-- Les relations ne peuvent pas être écrites — elles sont dérivées des jointures déclarées dans le modèle, et non stockées comme des arêtes. Cibler une relation constitue une erreur bloquante. (REQ-665) Une arête adossée à une jonction ne fait pas exception : la table associative qui la porte est elle-même une table enregistrée, et les lignes sont écrites dans cette table, non dans l'arête. (REQ-1586)
-- Les écritures traversent l'intégralité du pipeline d'écriture : injection RLS et hooks post-mutation (invalidation du cache de réponse, marquage des vues matérialisées comme obsolètes, événements de changement Kafka, rechargement des tables actives). (REQ-798)
-- `MERGE`, `DETACH DELETE` et `REMOVE` ne sont pas pris en charge et sont rejetés au moment de l'analyse. (REQ-671)
+- L'étiquette doit correspondre à exactement une table enregistrée. Les étiquettes ambiguës ou inconnues provoquent des erreurs bloquantes ; aucune correspondance approximative. Aucune nouvelle étiquette ni aucun nouveau type ne peut être créé via Cypher.
+- Chaque écriture est conditionnée par les autorisations d'écriture de la table cible : le rôle a besoin du droit `write` et d'une autorisation pour l'opération, et les colonnes écrites doivent figurer dans l'autorisation. Un rôle qui ne les a pas est rejeté au moment de la compilation.
+- Le connecteur de la source sous-jacente doit prendre en charge le DML. Les sources en lecture seule (fédérées via Trino, Iceberg sans connecteur Delta) rejettent les écritures au moment de la traduction.
+- Les relations ne peuvent pas être écrites — elles sont dérivées des jointures déclarées dans le modèle, et non stockées comme des arêtes. Cibler une relation constitue une erreur bloquante. Une arête adossée à une jonction ne fait pas exception : la table associative qui la porte est elle-même une table enregistrée, et les lignes sont écrites dans cette table, non dans l'arête.
+- Les écritures traversent l'intégralité du pipeline d'écriture : injection RLS et hooks post-mutation (invalidation du cache de réponse, marquage des vues matérialisées comme obsolètes, événements de changement Kafka, rechargement des tables actives).
+- `MERGE`, `DETACH DELETE` et `REMOVE` ne sont pas pris en charge et sont rejetés au moment de l'analyse.
 
 ---
 
@@ -197,12 +197,12 @@ Règles :
 
 Cypher atteint le même pipeline gouverné via deux transports :
 
-- **HTTP** — `POST /data/cypher` avec un corps JSON (`{"query": "...", "params": {...}}`). Renvoie des lignes typées, ou `affected_rows` pour les écritures. Les variables de graphe de la clause `RETURN` sont sérialisées en JSON : les nœuds portent `id`, `label`, `tableLabel` et `properties` ; les arêtes portent `identity`, `start`, `end`, `type`, `properties`, `startNode` et `endNode` ; les chemins portent `nodes`, `edges` et `length`/`hops`. (REQ-750) Les commandes enregistrées sont également appelables ici via `CALL fn(args) YIELD col1, col2` — les arguments positionnels correspondent aux noms d'arguments déclarés de la commande, dans l'ordre. (REQ-1156) [tool-verified : `provisa/api/rest/registered_call.py:113-143`]
-- **Bolt** — un serveur de protocole binaire compatible Neo4j (codec PackStream, découpage en trames) qui permet à Neo4j Browser, Bloom et aux pilotes Bolt d'exécuter des requêtes Cypher sur le graphe fédéré. (REQ-802) Il démarre lorsque `PROVISA_BOLT_PORT` est défini avec une valeur non nulle et est désactivé par défaut ; définissez `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` pour le TLS. [tool-verified : `provisa/api/app_startup.py:317-338`] L'authentification Bolt fait correspondre le principal à un utilisateur et la base de données à un rôle : `SHOW DATABASES` liste une entrée par paire (vue × rôle), nommée `provisa_<role>` (domaines métier) ou `provisa_ops_<role>` (avec les domaines system/meta/ops) ; `:use` sélectionne le rôle et la vue actifs. (REQ-807) Les relations reçoivent des ID entiers durables via une table `rel_ids`, sur le modèle de `node_ids`. (REQ-806) Les commandes enregistrées sont appelables avec `CALL command(args)` — les arguments positionnels correspondent aux noms d'arguments déclarés, dans l'ordre ; les procédures `CALL dbms.*` / `CALL db.*` sont prioritaires. (REQ-1156) [tool-verified : `provisa/bolt/session.py:722-749`]
+- **HTTP** — `POST /data/cypher` avec un corps JSON (`{"query": "...", "params": {...}}`). Renvoie des lignes typées, ou `affected_rows` pour les écritures. Les variables de graphe de la clause `RETURN` sont sérialisées en JSON : les nœuds portent `id`, `label`, `tableLabel` et `properties` ; les arêtes portent `identity`, `start`, `end`, `type`, `properties`, `startNode` et `endNode` ; les chemins portent `nodes`, `edges` et `length`/`hops`. Les commandes enregistrées sont également appelables ici via `CALL fn(args) YIELD col1, col2` — les arguments positionnels correspondent aux noms d'arguments déclarés de la commande, dans l'ordre.
+- **Bolt** — un serveur de protocole binaire compatible Neo4j (codec PackStream, découpage en trames) qui permet à Neo4j Browser, Bloom et aux pilotes Bolt d'exécuter des requêtes Cypher sur le graphe fédéré. Il démarre lorsque `PROVISA_BOLT_PORT` est défini avec une valeur non nulle et est désactivé par défaut ; définissez `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` pour le TLS. L'authentification Bolt fait correspondre le principal à un utilisateur et la base de données à un rôle : `SHOW DATABASES` liste une entrée par paire (vue × rôle), nommée `provisa_<role>` (domaines métier) ou `provisa_ops_<role>` (avec les domaines system/meta/ops) ; `:use` sélectionne le rôle et la vue actifs. Les relations reçoivent des ID entiers durables via une table `rel_ids`, sur le modèle de `node_ids`. Les commandes enregistrées sont appelables avec `CALL command(args)` — les arguments positionnels correspondent aux noms d'arguments déclarés, dans l'ordre ; les procédures `CALL dbms.*` / `CALL db.*` sont prioritaires.
 
 ### Analytique de graphe {: #graph-analytics }
 
-`POST /data/graph-analytics` exécute une requête Cypher, construit un graphe NetworkX en mémoire à partir des nœuds et arêtes obtenus, exécute un algorithme nommé, puis fusionne un dictionnaire `_analytics` dans chaque nœud et arête avant de les renvoyer en JSON avec un champ `elapsed_ms`. (REQ-642) Les clés de `_analytics` varient selon l'algorithme : la centralité produit `score` ; la détection de communautés produit `cluster` ; le k-core produit `core_number` ; la centralité de degré ajoute `in_degree` et `out_degree`. (REQ-643) Le endpoint rejette les graphes dépassant une taille configurable (10 000 nœuds / 50 000 arêtes par défaut) avec un code HTTP 413 ; Girvan-Newman est plafonné à 500 nœuds sauf si l'appelant transmet `force=true`. (REQ-650, REQ-651)
+`POST /data/graph-analytics` exécute une requête Cypher, construit un graphe NetworkX en mémoire à partir des nœuds et arêtes obtenus, exécute un algorithme nommé, puis fusionne un dictionnaire `_analytics` dans chaque nœud et arête avant de les renvoyer en JSON avec un champ `elapsed_ms`. Les clés de `_analytics` varient selon l'algorithme : la centralité produit `score` ; la détection de communautés produit `cluster` ; le k-core produit `core_number` ; la centralité de degré ajoute `in_degree` et `out_degree`. Le endpoint rejette les graphes dépassant une taille configurable (10 000 nœuds / 50 000 arêtes par défaut) avec un code HTTP 413 ; Girvan-Newman est plafonné à 500 nœuds sauf si l'appelant transmet `force=true`.
 
 ---
 
@@ -210,29 +210,29 @@ Cypher atteint le même pipeline gouverné via deux transports :
 
 ### Contraintes de conception {: #design-constraints }
 
-1. **Les écritures se limitent à `CREATE`, `SET` et `DELETE`.** Elles s'exécutent comme des écritures directes en table via le même pipeline que les mutations GraphQL et SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Voir §Écritures ci-dessus. `MERGE`, `DETACH DELETE` et `REMOVE` sont rejetés au moment de l'analyse. (REQ-671, REQ-818) Les procédures APOC sont également rejetées.
+1. **Les écritures se limitent à `CREATE`, `SET` et `DELETE`.** Elles s'exécutent comme des écritures directes en table via le même pipeline que les mutations GraphQL et SQL. Voir §Écritures ci-dessus. `MERGE`, `DETACH DELETE` et `REMOVE` sont rejetés au moment de l'analyse. Les procédures APOC sont également rejetées.
 
-2. **Les propriétés de relation n'existent que sur les arêtes adossées à une jonction.** Une arête déclarée sur une paire de colonnes de clé étrangère existe uniquement comme métadonnées de jointure dans le modèle (REQ-574) et ne porte aucun attribut stocké, si bien que `WHERE r.since > 2020` ou `RETURN r.weight` n'ont aucun sens sur elle. Une arête déclarée sur une table de jonction en porte bel et bien : les colonnes restantes de la table associative sont les propriétés de la relation, `RETURN r` les renvoie, et un `WHERE` sur l'une d'elles se compile en un prédicat sur l'alias de la jonction — il restreint donc le parcours au lieu de filtrer des lignes déjà assemblées. (REQ-1586) La table de jonction elle-même disparaît du côté nœuds du schéma du graphe ; c'est une arête ici et une table partout ailleurs.
+2. **Les propriétés de relation n'existent que sur les arêtes adossées à une jonction.** Une arête déclarée sur une paire de colonnes de clé étrangère existe uniquement comme métadonnées de jointure dans le modèle et ne porte aucun attribut stocké, si bien que `WHERE r.since > 2020` ou `RETURN r.weight` n'ont aucun sens sur elle. Une arête déclarée sur une table de jonction en porte bel et bien : les colonnes restantes de la table associative sont les propriétés de la relation, `RETURN r` les renvoie, et un `WHERE` sur l'une d'elles se compile en un prédicat sur l'alias de la jonction — il restreint donc le parcours au lieu de filtrer des lignes déjà assemblées. La table de jonction elle-même disparaît du côté nœuds du schéma du graphe ; c'est une arête ici et une table partout ailleurs.
 
-3. **Le parcours bidirectionnel** `(a)-[]-(b)` est réécrit sous forme d'UNION ALL direct + inverse de toutes les relations dirigées correspondantes du modèle. (REQ-575) Chaque relation du modèle est directionnelle ; la syntaxe bidirectionnelle est un sucre syntaxique qui se développe dans les deux directions. Les branches supplémentaires sont émises au niveau le plus externe de la requête — les modèles MATCH suivants dans la même requête ne sont pas dupliqués entre les branches (limitation pour le cas bidirectionnel multi-MATCH).
+3. **Le parcours bidirectionnel** `(a)-[]-(b)` est réécrit sous forme d'UNION ALL direct + inverse de toutes les relations dirigées correspondantes du modèle. Chaque relation du modèle est directionnelle ; la syntaxe bidirectionnelle est un sucre syntaxique qui se développe dans les deux directions. Les branches supplémentaires sont émises au niveau le plus externe de la requête — les modèles MATCH suivants dans la même requête ne sont pas dupliqués entre les branches (limitation pour le cas bidirectionnel multi-MATCH).
 
-4. **Les chemins récursifs nécessitent une borne.** Les modèles de longueur variable (`[*]`) doivent inclure une borne supérieure (par exemple `[*..10]`). (REQ-348) Le parcours non borné est rejeté au moment de l'analyse afin d'éviter des CTE récursives incontrôlées.
+4. **Les chemins récursifs nécessitent une borne.** Les modèles de longueur variable (`[*]`) doivent inclure une borne supérieure (par exemple `[*..10]`). Le parcours non borné est rejeté au moment de l'analyse afin d'éviter des CTE récursives incontrôlées.
 
 ### Notes de comportement {: #behaviour-notes }
 
-5. **`shortestPath` sur des chemins non autoréférentiels utilise un JOIN simple, pas un tri par nombre de sauts.** Lorsque les types de départ et d'arrivée diffèrent et qu'aucune relation autoréférentielle n'existe dans le schéma, le traducteur émet une chaîne de JOIN simple (le chemin de schéma le plus court). (REQ-576) Il n'émet pas de `ORDER BY hops`, car les sauts ne sont pas suivis dans ce chemin de code. Le résultat est le chemin de schéma structurellement le plus court, et non le chemin le plus court en données parmi plusieurs lignes.
+5. **`shortestPath` sur des chemins non autoréférentiels utilise un JOIN simple, pas un tri par nombre de sauts.** Lorsque les types de départ et d'arrivée diffèrent et qu'aucune relation autoréférentielle n'existe dans le schéma, le traducteur émet une chaîne de JOIN simple (le chemin de schéma le plus court). Il n'émet pas de `ORDER BY hops`, car les sauts ne sont pas suivis dans ce chemin de code. Le résultat est le chemin de schéma structurellement le plus court, et non le chemin le plus court en données parmi plusieurs lignes.
 
-6. **Plusieurs chemins de schéma produisent un `UNION ALL`.** Lorsque deux chemins de schéma comportant le même nombre de sauts relient les mêmes types de départ et d'arrivée (par exemple `Person -[WORKS_AT]-> Company` et `Person -[MANAGES]-> Company`), les deux sont émis sous forme de branches `UNION ALL`. (REQ-577) La déduplication des lignes apparaissant dans les deux branches n'est pas effectuée.
+6. **Plusieurs chemins de schéma produisent un `UNION ALL`.** Lorsque deux chemins de schéma comportant le même nombre de sauts relient les mêmes types de départ et d'arrivée (par exemple `Person -[WORKS_AT]-> Company` et `Person -[MANAGES]-> Company`), les deux sont émis sous forme de branches `UNION ALL`. La déduplication des lignes apparaissant dans les deux branches n'est pas effectuée.
 
 7. **Un seul `RelationshipMapping` par combinaison de paire source→cible et de rel\_type.** Si deux champs GraphQL du même type source produisent la même chaîne `rel_type` (après mise en majuscules) vers le même type cible, le second enregistrement écrase le premier dans `CypherLabelMap.relationships`. La clé de la relation inclut les noms des types source et cible ; des paires source/cible distinctes portant le même nom de type obtiennent donc chacune leur propre entrée et ne sont pas affectées.
 
-8. **Les CTE de la clause `WITH` sont nommées `_w0`, `_w1`, …** (REQ-578) Les noms sont attribués de manière positionnelle au sein d'un seul appel de traduction. La composition de plusieurs requêtes traduites (par exemple dans un lot) peut produire des collisions de noms de CTE si elles sont concaténées sans précaution.
+8. **Les CTE de la clause `WITH` sont nommées `_w0`, `_w1`, …** Les noms sont attribués de manière positionnelle au sein d'un seul appel de traduction. La composition de plusieurs requêtes traduites (par exemple dans un lot) peut produire des collisions de noms de CTE si elles sont concaténées sans précaution.
 
-### Couverture des expressions et des modèles (REQ-913) {: #expression-and-pattern-coverage-req-913 }
+### Couverture des expressions et des modèles {: #expression-and-pattern-coverage }
 
 Les expressions Cypher sont analysées en un AST puis réduites nœud par nœud en SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). La grammaire suit la tour de précédence `oC_Expression` d'openCypher. Pris en charge : littéraux, paramètres, accès aux propriétés, `n.prop`, index et découpe (slice), arithmétique (`+ - * / % ^`), comparaison, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, booléens `AND` / `OR` / `XOR` / `NOT`, `CASE`, littéraux de liste et de carte, compréhensions de liste et de modèle (y compris la liaison de chemin `p = (…)`), projection de carte, `reduce`, les quantificateurs `all` / `any` / `none` / `single`, les sous-requêtes existentielles et les appels de fonction.
 
-9. **Les étiquettes sont fixes ; il est impossible de créer des types d'objet via Cypher.** Une étiquette se résout vers un domaine connu, un type d'objet connu, ou un `domain:object_type` qualifié — l'ensemble fermé défini par le schéma enregistré. Cypher n'introduit jamais de nouvelle étiquette ni de nouveau type. La création d'instances n'est possible que pour des types déjà définis dans une source de données inscriptible ; `CREATE` écrit des lignes dans une telle table (voir §Écritures) mais ne peut pas définir de nouvelle étiquette ni de nouveau type. (REQ-662) Les deux formes d'étiquette sont acceptées et représentent le même test : la forme postfixée `n:Label` et la forme longue `n IS :Label` (ainsi que leur négation `n IS NOT :Label`). Une étiquette qualifiée s'écrit `n:domain:object_type`.
+9. **Les étiquettes sont fixes ; il est impossible de créer des types d'objet via Cypher.** Une étiquette se résout vers un domaine connu, un type d'objet connu, ou un `domain:object_type` qualifié — l'ensemble fermé défini par le schéma enregistré. Cypher n'introduit jamais de nouvelle étiquette ni de nouveau type. La création d'instances n'est possible que pour des types déjà définis dans une source de données inscriptible ; `CREATE` écrit des lignes dans une telle table (voir §Écritures) mais ne peut pas définir de nouvelle étiquette ni de nouveau type. Les deux formes d'étiquette sont acceptées et représentent le même test : la forme postfixée `n:Label` et la forme longue `n IS :Label` (ainsi que leur négation `n IS NOT :Label`). Une étiquette qualifiée s'écrit `n:domain:object_type`.
 
 10. **`shortestPath` et `allShortestPaths` ne sont pris en charge qu'à l'intérieur de `MATCH`, pas en tant qu'expressions.** Dans un modèle (`MATCH p = shortestPath((a:Person)-[:KNOWS*..5]->(b:Person))`), ils se traduisent par une CTE `WITH RECURSIVE` et exigent des nœuds source et cible étiquetés. Utilisés en position d'expression — par exemple `RETURN shortestPath((a)-[*]->(b))` ou `WHERE length(shortestPath((a)-[*]->(b))) < 5` — ils ne sont pas pris en charge, car la réécriture récursive est pilotée par la clause `MATCH` plutôt que par une sous-requête corrélée.
 

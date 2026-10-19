@@ -62,7 +62,7 @@ Como la reducción es pura — una especificación `entity`/`fact` se convierte 
 
 ### Viaje en el tiempo {: #time-travel }
 
-El viaje en el tiempo es una idea simple — conservar cada versión de una fila en lugar de sobrescribirla, de modo que pueda preguntar cómo *era* el dato en cualquier momento pasado. Lo que difiere es cuán eficientemente puede hacerlo cada motor, y es exactamente por eso que Provisa lo convierte en una propiedad de la **definición** de la vista materializada en lugar de del motor de almacenamiento (REQ-1162). Declárelo una vez; funciona sobre cualquier backend que materialice.
+El viaje en el tiempo es una idea simple — conservar cada versión de una fila en lugar de sobrescribirla, de modo que pueda preguntar cómo *era* el dato en cualquier momento pasado. Lo que difiere es cuán eficientemente puede hacerlo cada motor, y es exactamente por eso que Provisa lo convierte en una propiedad de la **definición** de la vista materializada en lugar de del motor de almacenamiento. Declárelo una vez; funciona sobre cualquier backend que materialice.
 
 La regla que lo mantiene portable es **solo-anexar**: una versión, una vez escrita, nunca se actualiza ni se elimina. Retirar una fila escribiendo una fecha "válido-hasta" — el truco bitemporal habitual — necesita un UPDATE, que muchos motores no pueden hacer de forma económica (o en absoluto) sobre un almacén federado, así que Provisa no lo hace. En su lugar, cada actualización **anexa**, y "qué versión estaba vigente en el momento T" se deriva en tiempo de lectura a partir del registro inmutable. Hay exactamente dos formas de anexar:
 

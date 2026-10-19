@@ -91,8 +91,8 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | 已跟踪的表 | 原样带过来 | 一张已注册的表。其自定义名称（或其 `select` 根字段）成为表别名。 |
 | 自定义列名（`column_config`，或较旧的 `custom_column_names`） | 原样带过来 | 列的 `alias`。 |
 | `select` 之外的根字段名（`select_by_pk`、`select_aggregate`、`insert` 等） | 映射 | 按名称报告。Provisa 把一张表作为一个字段提供：按键读取是对它的过滤，聚合是它的 `_aggregate` 字段，写入是它的变更。请确认应用的查询采用这种形态。 |
-| Object 和 array relationship | 原样带过来 | 一个已批准的关系（object 对应 `many-to-one`，array 对应 `one-to-many`），其 GraphQL 字段是 Hasura relationship 的名称。不同的情形见下文。（REQ-1680） |
-| select 权限 | 原样带过来 | 列权限（`visible_to`）和一条行规则。带会话变量的项（`X-Hasura-User-Id`）变为 `current_setting('provisa.hasura_user_id')`，请求在查询时根据身份的 claims 或成员的属性绑定它。Hasura 会话变量保留自己的名称；`provisa.user_id` 仍是已登录的身份。（REQ-1682） |
+| Object 和 array relationship | 原样带过来 | 一个已批准的关系（object 对应 `many-to-one`，array 对应 `one-to-many`），其 GraphQL 字段是 Hasura relationship 的名称。不同的情形见下文。 |
+| select 权限 | 原样带过来 | 列权限（`visible_to`）和一条行规则。带会话变量的项（`X-Hasura-User-Id`）变为 `current_setting('provisa.hasura_user_id')`，请求在查询时根据身份的 claims 或成员的属性绑定它。Hasura 会话变量保留自己的名称；`provisa.user_id` 仍是已登录的身份。 |
 | 穿过 relationship 的行规则 | 原样带过来 | 对关联表的 `EXISTS` 子查询。 |
 | insert、update 和 delete 权限 | 原样带过来 | 表上的写入授权：每个角色和操作一条。`columns` 成为授权的列，`filter` 成为其 `rows`，`check` 成为其 `check`，`set` 成为其预设。 |
 | 继承自一个角色的角色 | 原样带过来 | 该角色作为 `parent_role_id`。 |
@@ -102,7 +102,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | Action | 映射 | 调用 action 处理程序的命令。 |
 | Cron 触发器 | 原样带过来 | 一个计划触发器。 |
 | Event 触发器 | 映射 | 一个针对表变更的触发器。 |
-| Remote schema | 映射 | 一个 `graphql_remote` 数据源，其根字段落地为受治理的表。（REQ-1681） |
+| Remote schema | 映射 | 一个 `graphql_remote` 数据源，其根字段落地为受治理的表。 |
 
 relationship 的情形：
 
@@ -115,7 +115,7 @@ relationship 的情形：
 
 - 空的 `filter` 或 `check` 表示所有行，写作 `TRUE`。
 - 属于会话变量的 `set` 值（`X-Hasura-User-Id`）成为对应会话变量的 `session` 预设（`X-Hasura-User-Id` 成为 `hasura_user_id`）。其他任何值成为 `literal` 预设。预设列不会同时出现在授权的列中。
-- Hasura 隐含的 admin 持有每一项权限。它成为角色 `org_admin`，持有覆盖所有列和所有行的 insert、update 和 delete 授权，并在每个导入的列上被指名。（REQ-1684）
+- Hasura 隐含的 admin 持有每一项权限。它成为角色 `org_admin`，持有覆盖所有列和所有行的 insert、update 和 delete 授权，并在每个导入的列上被指名。
 - 每个具有 insert、update 或 delete 权限的角色还会获得 `write` 权利。
 
 命令详情：
@@ -129,16 +129,16 @@ relationship 的情形：
 
 ### 导入标签页上的连接与域 {: #connections-and-domains-on-the-import-tab }
 
-导出明文写出的连接按原样转换。当导出从环境变量读取数据库 URL（`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`）时，变量的值不在导出中，因此转换不会猜测任何值。该数据源会以空的连接字段注册，报告会要求重做：在导入的数据源设置中输入该数据源的 host、port、数据库、用户和密码，然后再次转换。只有你修改过的字段会随之传递，作为数据源覆盖。域行涵盖上传内容携带的每个 schema、subgraph 和 remote schema；每一行是对组织现有域的选择器，也接受键入的名称，不匹配任何现有域时标记为“新域”。应用会合并到组织已有的内容中。（REQ-1687）
+导出明文写出的连接按原样转换。当导出从环境变量读取数据库 URL（`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`）时，变量的值不在导出中，因此转换不会猜测任何值。该数据源会以空的连接字段注册，报告会要求重做：在导入的数据源设置中输入该数据源的 host、port、数据库、用户和密码，然后再次转换。只有你修改过的字段会随之传递，作为数据源覆盖。域行涵盖上传内容携带的每个 schema、subgraph 和 remote schema；每一行是对组织现有域的选择器，也接受键入的名称，不匹配任何现有域时标记为“新域”。应用会合并到组织已有的内容中。
 
 ### 类型在预览时来自数据源 {: #types-come-from-the-source-at-preview }
 
-Hasura 导出为列命名时不带类型，而没有权限的已跟踪表则不带任何列名。预览使用你提供的数据源连接运行，因此它会读取每个可达 SQL 数据源的 `information_schema.columns`：每个无类型的列都会得到该数据源类型映射到 IR 词汇后的类型，而没有列的表会获取该数据源拥有的每一列，且仅对 `org_admin` 可见，因为 Hasura 未将其暴露给任何其他角色。预览无法访问的数据源会被报告为 `[sources]` 警告，其列在应用前会保持无类型，等待你自行完成。(REQ-1691, REQ-1684)
+Hasura 导出为列命名时不带类型，而没有权限的已跟踪表则不带任何列名。预览使用你提供的数据源连接运行，因此它会读取每个可达 SQL 数据源的 `information_schema.columns`：每个无类型的列都会得到该数据源类型映射到 IR 词汇后的类型，而没有列的表会获取该数据源拥有的每一列，且仅对 `org_admin` 可见，因为 Hasura 未将其暴露给任何其他角色。预览无法访问的数据源会被报告为 `[sources]` 警告，其列在应用前会保持无类型，等待你自行完成。
 
 ### 局限性 {: #limitations }
 
 - **Computed field** 需手工重做：导出指明了数据库函数但没有定义它。把它添加为基于该表的视图中的一列，或在应用中计算。
-- **Remote schema** 根据角色权限 SDL 落地为表。没有权限的 remote schema 不会落地任何内容，因为导出没有其他关于其形态的陈述。（REQ-1681）
+- **Remote schema** 根据角色权限 SDL 落地为表。没有权限的 remote schema 不会落地任何内容，因为导出没有其他关于其形态的陈述。
 - **已跟踪的函数** 需要在预览时访问数据库来读取其签名；离线时，在 Commands 页面重做。
 - **event 和 cron 触发器的重试** 不会被带过来。
 

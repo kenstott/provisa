@@ -1,6 +1,6 @@
 # Справочник CLI {: #cli-reference }
 
-Команда `provisa` — единая точка входа для встраиваемого уровня, устанавливаемого через pip (REQ-1128).
+Команда `provisa` — единая точка входа для встраиваемого уровня, устанавливаемого через pip.
 Она запускает среду выполнения, управляет лицензиями, инициирует публикацию метаданных, разворачивает модели и
 управляет баннером обслуживания — без Docker, Node или каких-либо внешних сервисов.
 
@@ -14,15 +14,13 @@ pip install 'provisa[embedded]'
 **Требования к платформе.** `provisa run` требует Python 3.12 и платформу с колесом (wheel) pgserver:
 linux x86_64, macOS или Windows x86_64. У Linux aarch64 нет ни колеса pgserver, ни исходного
 дистрибутива, поэтому встраиваемый уровень там не работает. Используйте контейнерный уровень на aarch64.
-[tool-verified: `_require_supported_interpreter()` at cli.py:513-546]
 
 ---
 
 ## Общие параметры {: #shared-options }
 
 Несколько подкоманд вызывают HTTP API Provisa. Они разделяют три флага и две переменные
-окружения. [tool-verified: `_api_call()` at cli.py:345-376; each subcommand's argparse block
-at cli.py:653-773]
+окружения.
 
 | Флаг | По умолчанию | Резервная переменная окружения |
 | --- | --- | --- |
@@ -33,7 +31,7 @@ at cli.py:653-773]
 `--api` — это базовый URL работающего экземпляра Provisa. В условиях многоарендности имя хоста
 называет организацию — `https://acme.provisa.org` направляет к тенанту acme. `--token` — это
 Bearer-токен; когда он пуст, заголовок `Authorization` не отправляется, что верно для
-неавторизованных развёртываний. [tool-verified: cli.py:314-316, 357-365]
+неавторизованных развёртываний.
 
 Задайте обе переменные в вашем окружении CI, чтобы не повторять их при каждом вызове:
 
@@ -51,8 +49,7 @@ export PROVISA_API_TOKEN=<token>
 ## provisa run
 
 Запустить встраиваемую систему Provisa — API-сервер и статический/прокси-сервер интерфейса — в одном
-процессе. Без Docker, без Node, без внешних сервисов. [tool-verified: cli.py module docstring lines 11-23;
-`_cmd_run()` at cli.py:549-602]
+процессе. Без Docker, без Node, без внешних сервисов.
 
 ```
 provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
@@ -63,7 +60,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 
 | Флаг | По умолчанию | Примечания |
 | --- | --- | --- |
-| `--demo` | выкл | Загрузить встроенную демонстрацию — примеры доменов pet-store и shelter поверх встроенного SQLite (REQ-414) |
+| `--demo` | выкл | Загрузить встроенную демонстрацию — примеры доменов pet-store и shelter поверх встроенного SQLite |
 | `--host` | `127.0.0.1` | Адрес привязки для обоих серверов |
 | `--api-port` | `8000` | Порт API-сервера |
 | `--ui-port` | `3000` | Порт статического/прокси-сервера интерфейса |
@@ -71,24 +68,19 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 | `--reset` | выкл | Удалить и пересоздать хранилище встроенной плоскости управления перед запуском; используйте после обновления Provisa, если запуск сообщает о несоответствии схемы |
 | `--data-dir` | `~/.provisa/native` | Каталог, содержащий встроенный кластер PostgreSQL и кеш расширений DuckDB |
 
-[tool-verified: run subparser at cli.py:609-634]
-
 ### Переменные окружения {: #environment-variables }
 
 `provisa run` читает несколько дополнительных переменных перед запуском HTTP-серверов.
 Задайте их, чтобы переопределить значения по умолчанию, которые иначе применил бы `load_profile("native", ...)`.
-[tool-verified: `_apply_embedded_env()` at cli.py:83-116]
 
 | Переменная | Эффект |
 | --- | --- |
-| `TRINO_HOST` / `TRINO_PORT` | Заменяет встроенный движок DuckDB на предоставленный клиентом координатор Trino (REQ-1129) |
+| `TRINO_HOST` / `TRINO_PORT` | Заменяет встроенный движок DuckDB на предоставленный клиентом координатор Trino |
 | `PROVISA_ENGINE_URL` | Альтернативный способ указать на внешний федеративный движок |
-| `PROVISA_CONFIG` | Файл конфигурации для загрузки; `--demo` устанавливает его во встроенную демонстрационную конфигурацию (REQ-1127) |
+| `PROVISA_CONFIG` | Файл конфигурации для загрузки; `--demo` устанавливает его во встроенную демонстрационную конфигурацию |
 | `PROVISA_DEMO` | Устанавливается в `1` флагом `--demo`; помечает сессию как демонстрационный запуск |
 | `PROVISA_DEMO_DIR` | Путь к каталогу примеров данных для демонстрации; устанавливается флагом `--demo` |
 | `PROVISA_DUCKDB_EXT_DIR` | Заранее подготовленный каталог расширений DuckDB; устанавливается автоматически из пакета `provisa-duckdb-ext`, если он присутствует; отсутствие означает, что DuckDB загрузится из сети при первом использовании |
-
-[tool-verified: `_apply_demo_config()` at cli.py:67-80; `_apply_embedded_env()` at cli.py:83-116]
 
 ### Последовательность запуска {: #startup-sequence }
 
@@ -99,10 +91,10 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
    подготавливает офлайн-расширения DuckDB, если установлен `provisa-duckdb-ext`.
 5. Проверка расхождения схемы — сканирует действующую плоскость управления на предмет отсутствующих столбцов. Если такие найдены,
    выводится подсказка о `--reset`, и работа завершается с кодом 1. В V1 нет миграций; столбец, добавленный в
-   более новом релизе, требует сброса. [tool-verified: `_control_plane_drift()` at cli.py:119-162]
+   более новом релизе, требует сброса.
 6. Оба сервера запускаются одновременно. Индикатор готовности опрашивает `GET /ready` (не `/health` — конечная точка
    `/ready` подтверждает, что хранилище подключено и движок прогрет) и открывает браузер,
-   когда получает 200. [tool-verified: `_announce_ready()` at cli.py:182-224]
+   когда получает 200.
 
 ### Коды завершения {: #exit-codes }
 
@@ -131,8 +123,8 @@ TRINO_HOST=trino.internal TRINO_PORT=8080 provisa run
 
 ## provisa license apply
 
-Проверить и установить файл лицензии офлайн (REQ-1139). Файл — это `license.json`, выданный
-provisa.dev. [tool-verified: `_cmd_license_apply()` at cli.py:271-280]
+Проверить и установить файл лицензии офлайн. Файл — это `license.json`, выданный
+provisa.dev.
 
 ```
 provisa license apply <file>
@@ -143,7 +135,7 @@ provisa license apply <file>
 | `file` | Путь к файлу лицензии; применяется раскрытие `~` |
 
 Код завершения 0 означает, что лицензия действительна и установлена. Код завершения 1 означает, что она была отклонена;
-причина выводится в stderr. [tool-verified: cli.py:276-280]
+причина выводится в stderr.
 
 ```bash
 provisa license apply ~/Downloads/license.json
@@ -153,15 +145,14 @@ provisa license apply ~/Downloads/license.json
 
 ## provisa license status
 
-Показать идентификатор машины, состояние пробного периода, прошедшие дни и действительность лицензии (REQ-1139).
-[tool-verified: `_cmd_license_status()` at cli.py:283-299]
+Показать идентификатор машины, состояние пробного периода, прошедшие дни и действительность лицензии.
 
 ```
 provisa license status
 ```
 
 Без флагов. Выводит четыре строки — идентификатор машины, дату первого обнаружения, прошедшие дни, состояние пробного периода
-и состояние лицензии — и завершается с кодом 0. [tool-verified: cli.py:293-299]
+и состояние лицензии — и завершается с кодом 0.
 
 ```
 Machine ID:   a1b2c3d4e5f6...
@@ -175,10 +166,9 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Инициировать публикацию метаданных по требованию на работающем сервере (REQ-1072/REQ-1074). Отправляет POST на
+Инициировать публикацию метаданных по требованию на работающем сервере. Отправляет POST на
 `POST /admin/metadata-export/publish` — ту же конечную точку, которую вызывает кнопка **Publish now**
-на вкладке Admin, поэтому оба пути отправляют один и тот же полный снимок. [tool-verified: `_cmd_metadata_export()`
-at cli.py:302-342]
+на вкладке Admin, поэтому оба пути отправляют один и тот же полный снимок.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -190,14 +180,10 @@ provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
 | `--token` | `$PROVISA_API_TOKEN` | Bearer-токен для идентификации, обладающей `org_settings`; опустите на неавторизованных развёртываниях |
 | `--timeout` | `300` | Секунды до отмены HTTP-вызова |
 
-[tool-verified: cli.py:654-669]
-
 | Код завершения | Значение |
 | --- | --- |
 | 0 | Все активы опубликованы |
 | 1 | Частичная публикация или сбой подключения; ошибки по каждому активу выводятся в stderr |
-
-[tool-verified: cli.py:335-342]
 
 ```bash
 provisa metadata export \
@@ -215,10 +201,10 @@ provisa metadata export \
 
 ## provisa env
 
-Выполняет жизненный цикл окружений против работающего Provisa (REQ-1498). Каждая подкоманда — это вызов
+Выполняет жизненный цикл окружений против работающего Provisa. Каждая подкоманда — это вызов
 API администратора, который вызывает интерфейс; CLI ничего не решает. Список того, что переносит копия, правила
 слияния и удаления, привязка, защита и права вызывающего принадлежат серверу, поэтому действуют
-независимо от того, как вызвана операция. [tool-verified: cli_envs.py:11-28]
+независимо от того, как вызвана операция.
 
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
@@ -235,7 +221,6 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 
 Подкоманды, действующие на одно окружение, также принимают `--env ENV` (обязательно). `list`, `diff`,
 `merge` и `fetch` — нет; `diff` и `merge` называют свои окружения через `--from` и `--into`.
-[tool-verified: cli_envs.py:349-374, `_command()`]
 
 ### Коды выхода {: #exit-codes_1 }
 
@@ -246,12 +231,11 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 | 2 | Предложено, не применено: целевое окружение защищено, и изменение ждёт одобрения |
 
 Код выхода 2 намеренный. Конвейер, который считал бы ожидающее одобрение выпущенным развёртыванием,
-ошибался бы. [tool-verified: cli_envs.py:21-28, 40-41, 64-78, 120-135]
+ошибался бы.
 
 ### provisa env list
 
 Перечисляет окружения организации и сборку, на которой находится каждое. Никаких флагов, кроме общих.
-[tool-verified: cli_envs.py:141-149]
 
 ```
 provisa env list --org ORG [--json]
@@ -259,15 +243,15 @@ provisa env list --org ORG [--json]
 ### provisa env show
 
 Показывает одно окружение и его текущую сборку. Завершается с 1 и `environments.unknown`, если
-окружение не существует. [tool-verified: cli_envs.py:163-183]
+окружение не существует.
 
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
 ### provisa env create
 
-Создаёт окружение, содержащее модель другого, с данными, выбранными при создании (REQ-1942). API
-решает, какой выбор может сделать вызывающий. [tool-verified: cli_envs.py:197-216]
+Создаёт окружение, содержащее модель другого, с данными, выбранными при создании. API
+решает, какой выбор может сделать вызывающий.
 
 ```
 provisa env create --org ORG --env NAME --data-mode MODE
@@ -281,14 +265,12 @@ provisa env create --org ORG --env NAME --data-mode MODE
 | `--mutation-handling` | нет | `refused`, `reversible` или `direct`; по умолчанию `refused` |
 | `--expires-at` | нет | Момент ISO-8601, после которого окружение удаляется |
 
-[tool-verified: cli_envs.py:391-416]
-
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
 ### provisa env delete
 
-Выводит окружение из эксплуатации. Его ветки удаляются, только если названы. [tool-verified: cli_envs.py:219-232]
+Выводит окружение из эксплуатации. Его ветки удаляются, только если названы.
 
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
@@ -298,13 +280,10 @@ provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch
 | `--delete-branch` | Удаляет также его ветку |
 | `--delete-remote-branch` | Удаляет также его ветку на удалённом репозитории |
 
-[tool-verified: cli_envs.py:418-424]
-
 ### provisa env diff
 
 Сообщает, что сделало бы слияние одного окружения в другое. Это GET `merge-preview`, поэтому
-он не может писать; отдайте его раннеру, который не должен ничего менять. [tool-verified:
-cli_envs.py:186-191]
+он не может писать; отдайте его раннеру, который не должен ничего менять.
 
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
@@ -314,13 +293,11 @@ provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PA
 | `--from` | да | Окружение, из которого сливают |
 | `--into` | да | Окружение, в которое сливают |
 | `--removals` | нет | Удаляет также из цели то, чего больше нет в источнике |
-| `--select PATH` | нет | Ограничивает слияние этим объектом по его пути в модели (`metrics/revenue.yaml`); повторите для других. То, что ему нужно и чего нет в цели, переносится вместе с ним и перечисляется (REQ-1506) |
-
-[tool-verified: cli_envs.py:426-439]
+| `--select PATH` | нет | Ограничивает слияние этим объектом по его пути в модели (`metrics/revenue.yaml`); повторите для других. То, что ему нужно и чего нет в цели, переносится вместе с ним и перечисляется |
 
 ### provisa env merge
 
-Сливает одно окружение в другое, по идентичности (REQ-1490). [tool-verified: cli_envs.py:235-250]
+Сливает одно окружение в другое, по идентичности.
 
 ```
 provisa env merge --org ORG --from SOURCE --into TARGET
@@ -332,20 +309,17 @@ provisa env merge --org ORG --from SOURCE --into TARGET
 | `--from` | да | Окружение, из которого сливают |
 | `--into` | да | Окружение, в которое сливают |
 | `--removals` | нет | Удаляет также из цели то, чего больше нет в источнике |
-| `--select PATH` | нет | Ограничивает слияние этим объектом по его пути в модели (`metrics/revenue.yaml`); повторите для других. То, что ему нужно и чего нет в цели, переносится вместе с ним и перечисляется (REQ-1506) |
+| `--select PATH` | нет | Ограничивает слияние этим объектом по его пути в модели (`metrics/revenue.yaml`); повторите для других. То, что ему нужно и чего нет в цели, переносится вместе с ним и перечисляется |
 | `--dry-run` | нет | Печатает отчёт о слиянии и ничего не применяет |
 | `--message` | нет | Что делает слияние; обязательно для применения |
 | `--retire-source` | нет | Удаляет источник, когда его работа попала в цель |
 | `--retire-remote` | нет | С `--retire-source` удаляет также ветку источника на удалённом репозитории |
 
-[tool-verified: cli_envs.py:429-451]
-
 ### provisa env deploy
 
 Развёртывает модель по ссылке git в окружение, делая это дерево текущей моделью окружения
-(REQ-1496). Это команда, которую запускает конвейер развёртывания; развёртывание — всегда
-вызов с идентичностью против названной плоскости управления. [tool-verified:
-cli_envs.py:253-267]
+. Это команда, которую запускает конвейер развёртывания; развёртывание — всегда
+вызов с идентичностью против названной плоскости управления.
 
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
@@ -356,8 +330,6 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--ref` | да | Ветка или коммит в репозитории организации |
 | `--dry-run` | нет | Сообщает, что сделало бы развёртывание; ничего не применяет |
 | `--message` | нет | Заметка, переносимая в запрос на одобрение, когда цель защищена |
-
-[tool-verified: cli_envs.py:453-468]
 
 Загрузка в существующее окружение никогда не применяет роли. `--seed` больше нет: API отклоняет seed
 с `environments.seed_only_at_creation`.
@@ -373,9 +345,8 @@ provisa env deploy \
 ```
 ### provisa env revert
 
-Возвращает окружение к предыдущей сборке (REQ-1543). Без `--to` отступает на один коммит
+Возвращает окружение к предыдущей сборке. Без `--to` отступает на один коммит
 в собственной истории окружения. С `--to` это обычное развёртывание этой сборки.
-[tool-verified: cli_envs.py:270-284]
 
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
@@ -386,21 +357,17 @@ provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 | `--to` | нет | Сборка для развёртывания; по умолчанию предшествующая текущей |
 | `--message` | нет | Заметка, переносимая в запрос на одобрение |
 
-[tool-verified: cli_envs.py:470-480]
-
 ### provisa env redo
 
-Снова идёт вперёд к сборке, от которой ушёл возврат. [tool-verified:
-cli_envs.py:287-301]
+Снова идёт вперёд к сборке, от которой ушёл возврат.
 
 ```
 provisa env redo --org ORG --env ENV
 ```
 ### provisa env fetch
 
-Получает удалённые ветки организации в её репозиторий Provisa (REQ-1541). Запускайте перед развёртыванием,
-когда хотите указать `origin/<branch>`. Provisa никогда не запускает его по таймеру. [tool-verified:
-cli_envs.py:307-320]
+Получает удалённые ветки организации в её репозиторий Provisa. Запускайте перед развёртыванием,
+когда хотите указать `origin/<branch>`. Provisa никогда не запускает его по таймеру.
 
 ```
 provisa env fetch --org ORG
@@ -414,17 +381,17 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 ```
 ### provisa env push
 
-Отправляет ветку окружения в удалённый репозиторий организации (REQ-1546). Печатает `nothing to send`, когда
-отправлять нечего. [tool-verified: cli_envs.py:323-331]
+Отправляет ветку окружения в удалённый репозиторий организации. Печатает `nothing to send`, когда
+отправлять нечего.
 
 ```
 provisa env push --org ORG --env ENV
 ```
 ### provisa env pull
 
-Применяет то, что удалённый репозиторий содержит для окружения (REQ-1547). Печатает
+Применяет то, что удалённый репозиторий содержит для окружения. Печатает
 `<env> already holds what the remote does`, когда применять нечего. Код выхода 2 действует так же,
-как для deploy. [tool-verified: cli_envs.py:334-343]
+как для deploy.
 
 ```
 provisa env pull --org ORG --env ENV
@@ -436,10 +403,9 @@ provisa env pull --org ORG --env ENV
 
 ## provisa maintenance on
 
-Поднять баннер запланированного обслуживания на развёртывании (REQ-1466). Выполните это перед плановыми
+Поднять баннер запланированного обслуживания на развёртывании. Выполните это перед плановыми
 работами, которые останавливают плоскость данных — например, перед изменением
-`var.engine_cluster_mode`, что заменяет кластер движка и каждый его шард (REQ-1465).
-[tool-verified: `_cmd_maintenance_on()` at cli.py:483-495]
+`var.engine_cluster_mode`, что заменяет кластер движка и каждый его шард.
 
 ```
 provisa maintenance on [--message MSG] [--ends-at ISO8601]
@@ -454,8 +420,6 @@ provisa maintenance on [--message MSG] [--ends-at ISO8601]
 | `--token` | Bearer-токен для идентификации, обладающей `platform_settings` |
 | `--timeout` | По умолчанию 30 с |
 
-[tool-verified: cli.py:743-773]
-
 Выводит итоговое состояние баннера и завершается с кодом 0. Вызывает `SystemExit` при сбое HTTP или подключения.
 
 ```bash
@@ -469,8 +433,7 @@ provisa maintenance on \
 
 ## provisa maintenance off
 
-Очистить баннер обслуживания по завершении работ (REQ-1466).
-[tool-verified: `_cmd_maintenance_off()` at cli.py:498-501]
+Очистить баннер обслуживания по завершении работ.
 
 ```
 provisa maintenance off [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -487,7 +450,7 @@ provisa maintenance off --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 
 ## provisa maintenance status
 
-Показать текущее состояние баннера обслуживания, не изменяя его (REQ-1466).
+Показать текущее состояние баннера обслуживания, не изменяя его.
 
 ```
 provisa maintenance status [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -506,29 +469,29 @@ Maintenance notice: ON
 
 ## Краткий справочник {: #quick-reference }
 
-| Команда | REQ | Что делает |
-| --- | --- | --- |
-| `provisa run` | REQ-1128 | Запустить встроенные API + интерфейс |
-| `provisa run --demo` | REQ-414 | Запустить с примерами данных pet-store / shelter |
-| `provisa run --reset` | REQ-1535 | Пересобрать плоскость управления перед запуском |
-| `provisa license apply <file>` | REQ-1139 | Установить файл лицензии офлайн |
-| `provisa license status` | REQ-1139 | Показать идентификатор машины и состояние пробного периода / лицензии |
-| `provisa metadata export` | REQ-1072 | Опубликовать снимок метаданных по требованию |
-| `provisa env list --org ORG` | REQ-1498 | Перечисляет окружения организации и их сборки |
-| `provisa env show --org ORG --env ENV` | REQ-1498 | Показывает одно окружение |
-| `provisa env create --org ORG --env ENV --data-mode MODE` | REQ-1942 | Создаёт окружение из другого |
-| `provisa env delete --org ORG --env ENV` | REQ-1498 | Выводит окружение из эксплуатации |
-| `provisa env diff --org ORG --from A --into B` | REQ-1490 | Предпросмотр слияния (только чтение) |
-| `provisa env merge --org ORG --from A --into B` | REQ-1490 | Сливает одно окружение в другое |
-| `provisa env deploy --org ORG --env ENV --ref REF` | REQ-1496 | Развёртывает ссылку в окружение |
-| `provisa env revert --org ORG --env ENV [--to BUILD]` | REQ-1543 | Отступает на один коммит или развёртывает сборку |
-| `provisa env redo --org ORG --env ENV` | REQ-1543 | Снова идёт вперёд |
-| `provisa env fetch --org ORG` | REQ-1541 | Получает удалённые ветки в репозиторий Provisa |
-| `provisa env push --org ORG --env ENV` | REQ-1546 | Отправляет ветку окружения в удалённый репозиторий |
-| `provisa env pull --org ORG --env ENV` | REQ-1547 | Применяет то, что содержит удалённый репозиторий |
-| `provisa maintenance on` | REQ-1466 | Поднять баннер обслуживания |
-| `provisa maintenance off` | REQ-1466 | Очистить баннер обслуживания |
-| `provisa maintenance status` | REQ-1466 | Показать текущее состояние баннера |
+| Команда | Что делает |
+|---|---|
+| `provisa run` | Запустить встроенные API + интерфейс |
+| `provisa run --demo` | Запустить с примерами данных pet-store / shelter |
+| `provisa run --reset` | Пересобрать плоскость управления перед запуском |
+| `provisa license apply <file>` | Установить файл лицензии офлайн |
+| `provisa license status` | Показать идентификатор машины и состояние пробного периода / лицензии |
+| `provisa metadata export` | Опубликовать снимок метаданных по требованию |
+| `provisa env list --org ORG` | Перечисляет окружения организации и их сборки |
+| `provisa env show --org ORG --env ENV` | Показывает одно окружение |
+| `provisa env create --org ORG --env ENV --data-mode MODE` | Создаёт окружение из другого |
+| `provisa env delete --org ORG --env ENV` | Выводит окружение из эксплуатации |
+| `provisa env diff --org ORG --from A --into B` | Предпросмотр слияния (только чтение) |
+| `provisa env merge --org ORG --from A --into B` | Сливает одно окружение в другое |
+| `provisa env deploy --org ORG --env ENV --ref REF` | Развёртывает ссылку в окружение |
+| `provisa env revert --org ORG --env ENV [--to BUILD]` | Отступает на один коммит или развёртывает сборку |
+| `provisa env redo --org ORG --env ENV` | Снова идёт вперёд |
+| `provisa env fetch --org ORG` | Получает удалённые ветки в репозиторий Provisa |
+| `provisa env push --org ORG --env ENV` | Отправляет ветку окружения в удалённый репозиторий |
+| `provisa env pull --org ORG --env ENV` | Применяет то, что содержит удалённый репозиторий |
+| `provisa maintenance on` | Поднять баннер обслуживания |
+| `provisa maintenance off` | Очистить баннер обслуживания |
+| `provisa maintenance status` | Показать текущее состояние баннера |
 
 ## См. также {: #see-also }
 

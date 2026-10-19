@@ -1,7 +1,5 @@
 # Change Signal Unification
 
-Status: implemented (REQ-932, 2026-07). Tracked in `docs/arch/requirements.yaml`.
-
 ## Problem
 
 The inbound question "how do we learn a source changed" is encoded in three places
@@ -77,7 +75,7 @@ applied by the DB-agnostic Core ops in `federation/materialize_exec.py` (driven 
 - Append: `INSERT ... WHERE watermark > cursor` — poll signal with a `watermark_column` set.
 - CDC-apply: consume the debezium/kafka provider and upsert/tombstone by primary key into the
   landed table via the dialect-agnostic `Connection.upsert`. This is what makes landed deletes work.
-  (Subscription *delivery* grain remains insert/update only per REQ-928.)
+  (A subscription still delivers inserts and updates only.)
 
 ## Migration
 

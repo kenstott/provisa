@@ -100,6 +100,10 @@ def generate(rf: RequirementsFile) -> str:
             "",
             f"**Tests:** {_code_list(req.tests)}",
         ]
+        if req.docs:
+            # The pages that describe it: the docs name no requirement in their text.
+            pages = ", ".join(f"[{p}](../{p})" for p in req.docs)
+            lines += ["", f"**Docs:** {pages}"]
 
     return "\n".join(lines) + "\n"
 

@@ -105,6 +105,11 @@ class Requirement(BaseModel):
     # The feature paragraph (docs/arch/features.yaml) this requirement serves; checked against
     # that file by scripts/validate_requirements.py.
     feature: Optional[str] = None
+    # The published pages (paths under docs/, English) that describe this requirement. The docs
+    # name no requirement in their text -- a requirement id is never client-facing -- so this is
+    # where a page and the requirements behind it are traced; checked by
+    # scripts/validate_requirements.py.
+    docs: Optional[list[str]] = None
 
     @field_validator("id")
     @classmethod

@@ -5,9 +5,9 @@ Python client for Provisa. Provides four interfaces:
 | Interface | Use case |
 | ----------- | ---------- |
 | `ProvisaClient` | GraphQL queries, Arrow Flight, DataFrame output |
-| DB-API 2.0 (`connect`) | Standard Python database interface (PEP 249) (REQ-268) |
-| SQLAlchemy dialect | BI tools, ORM, Pandas `read_sql` (REQ-270) |
-| ADBC | Arrow-native columnar streaming via Flight (REQ-271) |
+| DB-API 2.0 (`connect`) | Standard Python database interface (PEP 249) |
+| SQLAlchemy dialect | BI tools, ORM, Pandas `read_sql` |
+| ADBC | Arrow-native columnar streaming via Flight |
 
 ## Install
 
@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` takes a credential, not a username and password: it holds no login step of its own. A personal access token is the credential to reach for when a script needs to run unattended — it is issued from the user's own profile, carries an expiry, and is revocable without touching the account. (REQ-1263) A provider bearer token works identically. Either goes in `token`, and the client presents it on both the HTTP and the Arrow Flight path.
+`ProvisaClient` takes a credential, not a username and password: it holds no login step of its own. A personal access token is the credential to reach for when a script needs to run unattended — it is issued from the user's own profile, carries an expiry, and is revocable without touching the account. A provider bearer token works identically. Either goes in `token`, and the client presents it on both the HTTP and the Arrow Flight path.
 
 To exchange a password for a token, POST to `/auth/login` and read `access_token`:
 
@@ -74,7 +74,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight (high-throughput columnar)
 
-Use Flight for large result sets — data streams as Arrow record batches without materializing on the server. (REQ-143, REQ-145)
+Use Flight for large result sets — data streams as Arrow record batches without materializing on the server.
 
 ```python
 import pyarrow as pa
@@ -83,7 +83,7 @@ table: pa.Table = client.flight("{ orders { id amount region } }")
 df = client.flight_df("{ orders { id amount region } }")
 ```
 
-Flight connects to port 8815 by default. (REQ-143) Override with `flight_port=`:
+Flight connects to port 8815 by default. Override with `flight_port=`:
 
 ```python
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
@@ -100,14 +100,14 @@ tables_df = client.list_tables()
 | Parameter | Default | Description |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa server base URL |
-| `token` | `None` | Bearer credential — a provider token or a personal access token; omit for password auth (REQ-606, REQ-1263) |
-| `role` | `None` | Role to act as, sent as `X-Provisa-Role` and honored only when assigned to the user; omit to run as the identity's own role (REQ-273) |
-| `flight_port` | `8815` | Arrow Flight gRPC port (REQ-143) |
+| `token` | `None` | Bearer credential — a provider token or a personal access token; omit for password auth |
+| `role` | `None` | Role to act as, sent as `X-Provisa-Role` and honored only when assigned to the user; omit to run as the identity's own role |
+| `flight_port` | `8815` | Arrow Flight gRPC port |
 
 ### Error Handling
 
-`query()` raises `httpx.HTTPStatusError` on HTTP errors. (REQ-607)  
-`query_df()` raises `RuntimeError` if the response contains GraphQL errors. (REQ-607)
+`query()` raises `httpx.HTTPStatusError` on HTTP errors.
+`query_df()` raises `RuntimeError` if the response contains GraphQL errors.
 
 ---
 
@@ -123,7 +123,7 @@ Install into the running kernel before importing. The `pandas` extra covers Data
 
 Notebooks persist cell output to the `.ipynb` file. Type a token into a cell and it will be saved to disk alongside your code. Don't do that.
 
-`ProvisaClient` reads no environment: pass its credentials in explicitly, from environment variables. (`provisa_client.query()`, below, reads them for you.) [tool-verified]
+`ProvisaClient` reads no environment: pass its credentials in explicitly, from environment variables. (`provisa_client.query()`, below, reads them for you.)
 
 ```python
 import os
@@ -141,7 +141,7 @@ Set those variables in your shell before starting Jupyter, or load a `.env` file
 
 ### One call: `query()`
 
-`provisa_client.query()` takes a SQL, GraphQL or Cypher statement and returns a pandas DataFrame. The server works out which language it is. Nothing is constructed first: the connection comes from the environment or a profile file. [tool-verified]
+`provisa_client.query()` takes a SQL, GraphQL or Cypher statement and returns a pandas DataFrame. The server works out which language it is. Nothing is constructed first: the connection comes from the environment or a profile file.
 
 ```python
 import provisa_client
@@ -150,9 +150,9 @@ df = provisa_client.query("SELECT region, amount FROM shop.orders")
 admin_view = provisa_client.query("SELECT region, amount FROM shop.orders", role="org_admin")
 ```
 
-`role=` acts as that role for one read, sent as `X-Provisa-Role`. The server honours it only for a role you hold. The read goes over Arrow Flight; set `transport` to `http` to send it to `/data/query` instead. `await provisa_client.aquery(...)` is the awaitable form. [tool-verified]
+`role=` acts as that role for one read, sent as `X-Provisa-Role`. The server honours it only for a role you hold. The read goes over Arrow Flight; set `transport` to `http` to send it to `/data/query` instead. `await provisa_client.aquery(...)` is the awaitable form.
 
-The connection is read from the first place that names each setting: [tool-verified]
+The connection is read from the first place that names each setting:
 
 1. keywords to `provisa_client.sign_in(...)`, which resolves the connection once for every later read;
 2. environment variables: `PROVISA_URL`, `PROVISA_TOKEN`, `PROVISA_USERNAME`, `PROVISA_PASSWORD`, `PROVISA_ROLE`, `PROVISA_ORG`, `PROVISA_FLIGHT_PORT`, `PROVISA_TRANSPORT`;
@@ -169,7 +169,7 @@ url = https://staging.provisa.example.com
 username = ana
 ```
 
-A `token` is a personal access token or a session token. Give a `username` and `password` instead and the client exchanges them for a session token at `POST /auth/login`. That works on a deployment whose sign-in provider takes a password (basic, simple, LDAP). Keep the password in `PROVISA_PASSWORD` rather than the file. A refused sign-in, a missing URL, or a named profile that isn't in the file raises with the reason. Provisa has no sign-in flow a notebook can drive through a browser, so for single sign-on deployments use a personal access token. [tool-verified]
+A `token` is a personal access token or a session token. Give a `username` and `password` instead and the client exchanges them for a session token at `POST /auth/login`. That works on a deployment whose sign-in provider takes a password (basic, simple, LDAP). Keep the password in `PROVISA_PASSWORD` rather than the file. A refused sign-in, a missing URL, or a named profile that isn't in the file raises with the reason. Provisa has no sign-in flow a notebook can drive through a browser, so for single sign-on deployments use a personal access token.
 
 ### Cell magics
 
@@ -183,9 +183,9 @@ A `token` is a personal access token or a session token. Give a `username` and `
 SELECT region, customer_email FROM shop.orders
 ```
 
-`%%sql`, `%%graphql` and `%%cypher` answer the cell with `query()`. The DataFrame is the cell's result. A name after the magic also binds it in the notebook (`eu` above); `--role` acts as that role for the cell. [tool-verified]
+`%%sql`, `%%graphql` and `%%cypher` answer the cell with `query()`. The DataFrame is the cell's result. A name after the magic also binds it in the notebook (`eu` above); `--role` acts as that role for the cell.
 
-JupySQL (`%load_ext sql`) defines a `%%sql` as well. Load both and `%%sql` belongs to whichever extension loaded last. Provisa's takes `--role` and reads over Arrow Flight. JupySQL works too, through the SQLAlchemy dialect: `%sql provisa+http://user:password@host:port` connects, `%sql`/`%%sql` run governed statements, and `%sqlcmd tables -s <domain>` and `%sqlcmd columns -t <table> -s <domain>` list the catalog. [tool-verified]
+JupySQL (`%load_ext sql`) defines a `%%sql` as well. Load both and `%%sql` belongs to whichever extension loaded last. Provisa's takes `--role` and reads over Arrow Flight. JupySQL works too, through the SQLAlchemy dialect: `%sql provisa+http://user:password@host:port` connects, `%sql`/`%%sql` run governed statements, and `%sqlcmd tables -s <domain>` and `%sqlcmd columns -t <table> -s <domain>` list the catalog.
 
 ### In the browser (Pyodide)
 
@@ -195,11 +195,11 @@ Under Pyodide, `query()` reads from the server that served the page, as the page
 self.provisaAuth = { baseUrl: "", role: "analyst_eu", bearer: "<token>", org: null };
 ```
 
-`baseUrl` is empty for the page's own origin. The client reads `provisaAuth` on every request, so a rotated token takes effect without a restart. Results arrive as Arrow when `pyarrow` is loaded; without it they come as JSON. A Cypher statement always comes back as JSON. `query()` blocks, which a Web Worker (where a notebook kernel runs) can do; on the page's main thread it raises and `await provisa_client.aquery(...)` is the call to use. [tool-verified]
+`baseUrl` is empty for the page's own origin. The client reads `provisaAuth` on every request, so a rotated token takes effect without a restart. Results arrive as Arrow when `pyarrow` is loaded; without it they come as JSON. A Cypher statement always comes back as JSON. `query()` blocks, which a Web Worker (where a notebook kernel runs) can do; on the page's main thread it raises and `await provisa_client.aquery(...)` is the call to use.
 
 ### DataFrames from GraphQL, SQL, and Cypher
 
-`query_df()` accepts all three query languages and returns a pandas DataFrame. [tool-verified]
+`query_df()` accepts all three query languages and returns a pandas DataFrame.
 
 ```python
 # GraphQL — first root field is extracted automatically
@@ -212,11 +212,11 @@ df = client.query_df("SELECT id, amount, region FROM orders WHERE region = 'west
 df = client.query_df("MATCH (o:Order) RETURN o.id, o.amount, o.region")
 ```
 
-GraphQL responses carry the data under a root field name; `query_df()` extracts it. SQL and Cypher responses carry explicit column names from the server and are mapped directly. [tool-verified]
+GraphQL responses carry the data under a root field name; `query_df()` extracts it. SQL and Cypher responses carry explicit column names from the server and are mapped directly.
 
 ### Arrow Flight for large pulls
 
-`flight_df()` streams data as Arrow record batches instead of deserializing JSON. For wide tables or result sets over a few hundred thousand rows, it is faster and uses less memory. [tool-verified]
+`flight_df()` streams data as Arrow record batches instead of deserializing JSON. For wide tables or result sets over a few hundred thousand rows, it is faster and uses less memory.
 
 ```python
 df = client.flight_df("SELECT * FROM events")
@@ -234,7 +234,7 @@ Install the `sqlalchemy` extra into the kernel:
 %pip install "provisa-client[sqlalchemy]"
 ```
 
-Then build an engine with a `provisa+http://` URL. Put credentials in environment variables, not in the URL string. [tool-verified]
+Then build an engine with a `provisa+http://` URL. Put credentials in environment variables, not in the URL string.
 
 ```python
 import os
@@ -250,13 +250,13 @@ engine = create_engine(f"provisa+http://{user}:{pwd}@{host}")
 df = pd.read_sql("SELECT id, amount FROM orders", engine)
 ```
 
-The dialect posts the username and password to `/auth/login` and holds the resulting token for the life of the engine — the credentials are not retransmitted on each query. [tool-verified]
+The dialect posts the username and password to `/auth/login` and holds the resulting token for the life of the engine — the credentials are not retransmitted on each query.
 
 ---
 
 ## DB-API 2.0
 
-Standard [PEP 249](https://peps.python.org/pep-0249/) interface. (REQ-268) Works with any tool that accepts a DB-API connection.
+Standard [PEP 249](https://peps.python.org/pep-0249/) interface. Works with any tool that accepts a DB-API connection.
 
 ```python
 from provisa_client import connect
@@ -269,11 +269,11 @@ conn = connect(
 )
 ```
 
-`connect` posts the username and password to `/auth/login` and holds the `access_token` it gets back, so the connection carries a real credential rather than a name. `role` *requests* a role and the server honours it only if the identity is assigned it (REQ-273); omitted, the connection runs as the role the login resolved.
+`connect` posts the username and password to `/auth/login` and holds the `access_token` it gets back, so the connection carries a real credential rather than a name. `role` *requests* a role and the server honours it only if the identity is assigned it; omitted, the connection runs as the role the login resolved.
 
 ### Executing queries
 
-The cursor accepts either GraphQL or SQL — detected automatically. (REQ-268, REQ-274)
+The cursor accepts either GraphQL or SQL — detected automatically.
 
 ```python
 cur = conn.cursor()
@@ -324,7 +324,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 pip install "provisa-client[sqlalchemy]"
 ```
 
-URL scheme: `provisa+http://` or `provisa+https://` (REQ-270)
+URL scheme: `provisa+http://` or `provisa+https://`
 
 ```python
 from sqlalchemy import create_engine, text
@@ -349,7 +349,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | Parameter | Description | Default |
 | ----------- | ------------- | --------- |
-| `role` | Role to request; validated server-side (REQ-273) | the role the login resolves |
+| `role` | Role to request; validated server-side | the role the login resolves |
 
 ```python
 engine = create_engine(
@@ -359,13 +359,13 @@ engine = create_engine(
 
 ### Schema introspection
 
-The dialect reflects the catalog your role is served, read from `GET /data/catalog` as the connection's user, role and org. Each domain is a schema, and every table lives in one: `get_schema_names()` lists the domains, `get_table_names(schema="shop")` lists that domain's tables by their SQL names, and `get_columns("orders", schema="shop")` gives each column's type, nullability and description. With no schema named, `get_table_names()` lists none. An unknown table raises `NoSuchTableError`; a catalog the server refuses raises. (REQ-363, REQ-270, REQ-2070) [tool-verified]
+The dialect reflects the catalog your role is served, read from `GET /data/catalog` as the connection's user, role and org. Each domain is a schema, and every table lives in one: `get_schema_names()` lists the domains, `get_table_names(schema="shop")` lists that domain's tables by their SQL names, and `get_columns("orders", schema="shop")` gives each column's type, nullability and description. With no schema named, `get_table_names()` lists none. An unknown table raises `NoSuchTableError`; a catalog the server refuses raises.
 
 ---
 
 ## ADBC
 
-Arrow Database Connectivity backed by Arrow Flight. (REQ-271) Returns `pyarrow.Table` directly — no JSON deserialization. (REQ-271)
+Arrow Database Connectivity backed by Arrow Flight. Returns `pyarrow.Table` directly — no JSON deserialization.
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -379,11 +379,11 @@ conn = adbc_connect(
     user="alice",
     password="secret",
     role="analyst",   # optional; server validates the requested role
-    port=8815,        # Arrow Flight port (REQ-711)
+    port=8815,        # Arrow Flight port
 )
 ```
 
-`adbc_connect` logs in over HTTP first and puts the resulting token in every Flight ticket, so the Flight server authenticates the connection the same way the REST surface does. (REQ-1263) The `role` argument is a request, validated server-side against the identity's assignments — it never becomes the identity. (REQ-273)
+`adbc_connect` logs in over HTTP first and puts the resulting token in every Flight ticket, so the Flight server authenticates the connection the same way the REST surface does. The `role` argument is a request, validated server-side against the identity's assignments — it never becomes the identity.
 
 ### Fetch as Arrow Table
 
@@ -420,4 +420,4 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
         table = cur.fetch_arrow_table()
 ```
 
-ADBC connects to the Flight server on port 8815 by default. (REQ-143) Pass `port=` to reach a Flight server bound to a non-default port. (REQ-711)
+ADBC connects to the Flight server on port 8815 by default. Pass `port=` to reach a Flight server bound to a non-default port.

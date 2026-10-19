@@ -5,9 +5,9 @@
 | ממשק | מקרה שימוש |
 | ----------- | ---------- |
 | `ProvisaClient` | שאילתות GraphQL, Arrow Flight, פלט DataFrame |
-| DB-API 2.0 (`connect`) | ממשק מסד נתונים סטנדרטי של Python (PEP 249) (REQ-268) |
-| דיאלקט SQLAlchemy | כלי BI, ORM, `read_sql`‏ Pandas (REQ-270) |
-| ADBC | סטרימינג עמודתי ילידי-Arrow דרך Flight (REQ-271) |
+| DB-API 2.0 (`connect`) | ממשק מסד נתונים סטנדרטי של Python (PEP 249) |
+| דיאלקט SQLAlchemy | כלי BI, ORM, `read_sql`‏ Pandas |
+| ADBC | סטרימינג עמודתי ילידי-Arrow דרך Flight |
 
 ## התקנה {: #install }
 
@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` מקבל אישור, ולא שם משתמש וסיסמה: אין בו שלב התחברות משלו. אסימון גישה אישי הוא האישור המתאים כששריפט אמור לרוץ ללא השגחה — הוא מונפק מהפרופיל של המשתמש עצמו, נושא תפוגה, וניתן לביטול בלי לגעת בחשבון. (REQ-1263) אסימון bearer של הספק פועל באותו אופן. כל אחד מהם נמסר ב-`token`, והלקוח מציג אותו גם בנתיב ה-HTTP וגם בנתיב Arrow Flight.
+`ProvisaClient` מקבל אישור, ולא שם משתמש וסיסמה: אין בו שלב התחברות משלו. אסימון גישה אישי הוא האישור המתאים כששריפט אמור לרוץ ללא השגחה — הוא מונפק מהפרופיל של המשתמש עצמו, נושא תפוגה, וניתן לביטול בלי לגעת בחשבון. אסימון bearer של הספק פועל באותו אופן. כל אחד מהם נמסר ב-`token`, והלקוח מציג אותו גם בנתיב ה-HTTP וגם בנתיב Arrow Flight.
 
 כדי להמיר סיסמה לאסימון, שלחו POST אל `/auth/login` וקראו את `access_token`:
 
@@ -74,7 +74,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight (עמודתי בעל-תפוקה-גבוהה) {: #arrow-flight-high-throughput-columnar }
 
-השתמשו ב-Flight עבור סטי תוצאות גדולים — נתונים זורמים בסטרימינג כ-batches‏ רשומה של Arrow ללא מימוש בשרת. (REQ-143, REQ-145)
+השתמשו ב-Flight עבור סטי תוצאות גדולים — נתונים זורמים בסטרימינג כ-batches‏ רשומה של Arrow ללא מימוש בשרת.
 
 ```python
 import pyarrow as pa
@@ -83,7 +83,7 @@ table: pa.Table = client.flight("{ orders { id amount region } }")
 df = client.flight_df("{ orders { id amount region } }")
 ```
 
-Flight מתחבר לפורט 8815 כברירת מחדל. (REQ-143) עקפו עם `flight_port=`:
+Flight מתחבר לפורט 8815 כברירת מחדל. עקפו עם `flight_port=`:
 
 ```python
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
@@ -100,14 +100,14 @@ tables_df = client.list_tables()
 | פרמטר | ברירת מחדל | תיאור |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | URL בסיס של שרת Provisa |
-| `token` | `None` | אישור bearer — אסימון של הספק או אסימון גישה אישי; השמיטו עבור אימות סיסמה (REQ-606, REQ-1263) |
-| `role` | `None` | התפקיד שבשמו לפעול, נשלח כ-`X-Provisa-Role` ומכובד רק אם הוא מוקצה למשתמש; אם הוא מושמט, הבקשה רצה בתפקיד של הזהות עצמה (REQ-273) |
-| `flight_port` | `8815` | פורט gRPC של Arrow Flight (REQ-143) |
+| `token` | `None` | אישור bearer — אסימון של הספק או אסימון גישה אישי; השמיטו עבור אימות סיסמה |
+| `role` | `None` | התפקיד שבשמו לפעול, נשלח כ-`X-Provisa-Role` ומכובד רק אם הוא מוקצה למשתמש; אם הוא מושמט, הבקשה רצה בתפקיד של הזהות עצמה |
+| `flight_port` | `8815` | פורט gRPC של Arrow Flight |
 
 ### טיפול בשגיאות {: #error-handling }
 
-`query()` מעלה `httpx.HTTPStatusError` על שגיאות HTTP. (REQ-607)
-`query_df()` מעלה `RuntimeError` אם התגובה מכילה שגיאות GraphQL. (REQ-607)
+`query()` מעלה `httpx.HTTPStatusError` על שגיאות HTTP.
+`query_df()` מעלה `RuntimeError` אם התגובה מכילה שגיאות GraphQL.
 
 ---
 
@@ -256,7 +256,7 @@ df = pd.read_sql("SELECT id, amount FROM orders", engine)
 
 ## DB-API 2.0
 
-ממשק [PEP 249](https://peps.python.org/pep-0249/) סטנדרטי. (REQ-268) עובד עם כל כלי המקבל חיבור DB-API.
+ממשק [PEP 249](https://peps.python.org/pep-0249/) סטנדרטי. עובד עם כל כלי המקבל חיבור DB-API.
 
 ```python
 from provisa_client import connect
@@ -269,11 +269,11 @@ conn = connect(
 )
 ```
 
-`connect` שולח את שם המשתמש והסיסמה ב-POST אל `/auth/login` ושומר את ה-`access_token` שחוזר, כך שהחיבור נושא אישור אמיתי ולא רק שם. `role` *מבקש* תפקיד, והשרת נעתר רק אם התפקיד מוקצה לזהות (REQ-273); בהשמטה, החיבור רץ בתפקיד שההתחברות פתרה.
+`connect` שולח את שם המשתמש והסיסמה ב-POST אל `/auth/login` ושומר את ה-`access_token` שחוזר, כך שהחיבור נושא אישור אמיתי ולא רק שם. `role` *מבקש* תפקיד, והשרת נעתר רק אם התפקיד מוקצה לזהות; בהשמטה, החיבור רץ בתפקיד שההתחברות פתרה.
 
 ### ביצוע שאילתות {: #executing-queries }
 
-הסמן מקבל GraphQL או SQL — מזוהה אוטומטית. (REQ-268, REQ-274)
+הסמן מקבל GraphQL או SQL — מזוהה אוטומטית.
 
 ```python
 cur = conn.cursor()
@@ -324,7 +324,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 pip install "provisa-client[sqlalchemy]"
 ```
 
-סכמת URL: `provisa+http://` או `provisa+https://` (REQ-270)
+סכמת URL: `provisa+http://` או `provisa+https://`
 
 ```python
 from sqlalchemy import create_engine, text
@@ -349,7 +349,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | פרמטר | תיאור | ברירת מחדל |
 | ----------- | ------------- | --------- |
-| `role` | התפקיד המבוקש; מאומת בצד השרת (REQ-273) | התפקיד שההתחברות פותרת |
+| `role` | התפקיד המבוקש; מאומת בצד השרת | התפקיד שההתחברות פותרת |
 
 ```python
 engine = create_engine(
@@ -359,13 +359,13 @@ engine = create_engine(
 
 ### Introspection סכמה {: #schema-introspection }
 
-הדיאלקט משקף את הקטלוג שמוגש לתפקיד שלכם, נקרא מ-`GET /data/catalog` כמשתמש, התפקיד והארגון של החיבור. כל דומיין הוא סכימה, וכל טבלה נמצאת באחת: `get_schema_names()` מציג את הדומיינים, `get_table_names(schema="shop")` מציג את טבלאות הדומיין לפי שמות ה-SQL שלהן, ו-`get_columns("orders", schema="shop")` נותן את הסוג, האפשרות ל-NULL והתיאור של כל עמודה. בלי סכימה שצוינה, `get_table_names()` אינו מציג אף אחת. טבלה לא מוכרת מעלה `NoSuchTableError`; קטלוג שהשרת מסרב לו מעלה שגיאה. (REQ-363, REQ-270, REQ-2070)
+הדיאלקט משקף את הקטלוג שמוגש לתפקיד שלכם, נקרא מ-`GET /data/catalog` כמשתמש, התפקיד והארגון של החיבור. כל דומיין הוא סכימה, וכל טבלה נמצאת באחת: `get_schema_names()` מציג את הדומיינים, `get_table_names(schema="shop")` מציג את טבלאות הדומיין לפי שמות ה-SQL שלהן, ו-`get_columns("orders", schema="shop")` נותן את הסוג, האפשרות ל-NULL והתיאור של כל עמודה. בלי סכימה שצוינה, `get_table_names()` אינו מציג אף אחת. טבלה לא מוכרת מעלה `NoSuchTableError`; קטלוג שהשרת מסרב לו מעלה שגיאה.
 
 ---
 
 ## ADBC
 
-Arrow Database Connectivity מגובה Arrow Flight. (REQ-271) מחזיר `pyarrow.Table` ישירות — ללא דה-סריאליזציית JSON. (REQ-271)
+Arrow Database Connectivity מגובה Arrow Flight. מחזיר `pyarrow.Table` ישירות — ללא דה-סריאליזציית JSON.
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -379,11 +379,11 @@ conn = adbc_connect(
     user="alice",
     password="secret",
     role="analyst",   # optional; server validates the requested role
-    port=8815,        # Arrow Flight port (REQ-711)
+    port=8815,        # Arrow Flight port
 )
 ```
 
-`adbc_connect` מתחבר תחילה מעל HTTP ומשבץ את האסימון שהתקבל בכל כרטיס Flight, כך ששרת ה-Flight מאמת את החיבור בדיוק כפי שממשק ה-REST עושה זאת. (REQ-1263) הארגומנט `role` הוא בקשה, המאומתת בצד השרת מול ההקצאות של הזהות — הוא לעולם אינו הופך לזהות. (REQ-273)
+`adbc_connect` מתחבר תחילה מעל HTTP ומשבץ את האסימון שהתקבל בכל כרטיס Flight, כך ששרת ה-Flight מאמת את החיבור בדיוק כפי שממשק ה-REST עושה זאת. הארגומנט `role` הוא בקשה, המאומתת בצד השרת מול ההקצאות של הזהות — הוא לעולם אינו הופך לזהות.
 
 ### שליפה כטבלת Arrow {: #fetch-as-arrow-table }
 
@@ -420,4 +420,4 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
         table = cur.fetch_arrow_table()
 ```
 
-ADBC מתחבר לשרת ה-Flight על פורט 8815 כברירת מחדל. (REQ-143) העבירו `port=` כדי להגיע לשרת Flight המקושר לפורט לא-ברירת-מחדל. (REQ-711)
+ADBC מתחבר לשרת ה-Flight על פורט 8815 כברירת מחדל. העבירו `port=` כדי להגיע לשרת Flight המקושר לפורט לא-ברירת-מחדל.

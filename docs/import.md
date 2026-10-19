@@ -100,8 +100,8 @@ The preview returns the three parts as lists. The command-line converter prints 
 | Tracked table | carried | A registered table. Its custom name (or its `select` root field) becomes the table alias. |
 | Custom column names (`column_config`, or the older `custom_column_names`) | carried | Column `alias`. |
 | Root field names beyond `select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | mapped | Reported by name. Provisa serves a table as one field: a by-key read is a filter on it, an aggregate its `_aggregate` field, a write its mutation. Check that the app's queries take that shape. |
-| Object and array relationship | carried | An approved relationship (`many-to-one` for object, `one-to-many` for array) whose GraphQL field is the Hasura relationship name. See below for the cases that differ. (REQ-1680) |
-| Select permission | carried | Column grants (`visible_to`) and a row rule. A session-variable term (`X-Hasura-User-Id`) becomes `current_setting('provisa.hasura_user_id')`, which the request binds at query time from the identity's claims or the member's attributes. A Hasura session variable keeps its own name; `provisa.user_id` stays the signed-in identity. (REQ-1682) |
+| Object and array relationship | carried | An approved relationship (`many-to-one` for object, `one-to-many` for array) whose GraphQL field is the Hasura relationship name. See below for the cases that differ. |
+| Select permission | carried | Column grants (`visible_to`) and a row rule. A session-variable term (`X-Hasura-User-Id`) becomes `current_setting('provisa.hasura_user_id')`, which the request binds at query time from the identity's claims or the member's attributes. A Hasura session variable keeps its own name; `provisa.user_id` stays the signed-in identity. |
 | Row rule through a relationship | carried | An `EXISTS` subquery over the related table. |
 | Insert, update and delete permission | carried | Write grants on the table: one per role and operation. `columns` become the grant's columns, `filter` its `rows`, `check` its `check`, and `set` its presets. |
 | Inherited role of one role | carried | That role as `parent_role_id`. |
@@ -111,7 +111,7 @@ The preview returns the three parts as lists. The command-line converter prints 
 | Action | mapped | A command calling the action's handler. |
 | Cron trigger | carried | A scheduled trigger. |
 | Event trigger | mapped | A trigger on changes to the table. |
-| Remote schema | mapped | A `graphql_remote` source whose root fields land as governed tables. (REQ-1681) |
+| Remote schema | mapped | A `graphql_remote` source whose root fields land as governed tables. |
 
 Relationship cases:
 
@@ -124,7 +124,7 @@ Write grant details:
 
 - An empty `filter` or `check` is every row, written `TRUE`.
 - A `set` value that is a session variable (`X-Hasura-User-Id`) becomes a `session` preset of the matching session variable (`X-Hasura-User-Id` becomes `hasura_user_id`). Any other value becomes a `literal` preset. A preset column is not also in the grant's columns.
-- Hasura's implicit admin holds every permission. It becomes the role `org_admin`, which holds an insert, update and delete grant over every column and every row, and is named on every imported column. (REQ-1684)
+- Hasura's implicit admin holds every permission. It becomes the role `org_admin`, which holds an insert, update and delete grant over every column and every row, and is named on every imported column.
 - Each role with an insert, update or delete permission also receives the `write` right.
 
 Command details:
@@ -138,16 +138,16 @@ A consolidated document also holds sections the converter has no target for: `qu
 
 ### Connections and domains on the import tab
 
-A connection the export spells out converts as written. When the export reads a database URL from an environment variable (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), the variable's value is not in the export, so the conversion does not guess one. The source is registered with empty connection fields, and the report says to redo it: enter the source's host, port, database, user and password in the import's source settings and convert again. Only the fields you change travel, as source overrides. The domain rows cover every schema, subgraph and remote schema the upload carries; each is a picker over the organization's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply merges into what the organization already has. (REQ-1687)
+A connection the export spells out converts as written. When the export reads a database URL from an environment variable (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), the variable's value is not in the export, so the conversion does not guess one. The source is registered with empty connection fields, and the report says to redo it: enter the source's host, port, database, user and password in the import's source settings and convert again. Only the fields you change travel, as source overrides. The domain rows cover every schema, subgraph and remote schema the upload carries; each is a picker over the organization's existing domains that also accepts a typed name, marked "new domain" when it matches none. Apply merges into what the organization already has.
 
 ### Types come from the source at preview
 
-A Hasura export names columns without types, and a tracked table with no permission names no columns. The preview runs with the source connections you supply, so it reads each reachable SQL source's `information_schema.columns`: every untyped column gets the source's type mapped to the IR vocabulary, and a table with no columns takes every column the source has, visible to `org_admin` alone, since Hasura exposed it to no other role. A source the preview cannot reach is reported as a `[sources]` warning and its columns stay untyped for you to finish before apply. (REQ-1691, REQ-1684)
+A Hasura export names columns without types, and a tracked table with no permission names no columns. The preview runs with the source connections you supply, so it reads each reachable SQL source's `information_schema.columns`: every untyped column gets the source's type mapped to the IR vocabulary, and a table with no columns takes every column the source has, visible to `org_admin` alone, since Hasura exposed it to no other role. A source the preview cannot reach is reported as a `[sources]` warning and its columns stay untyped for you to finish before apply.
 
 ### Limitations
 
 - **Computed fields** are redone by hand: the export names the database function but does not define it. Add it as a column of a view over the table, or compute it in the app.
-- **Remote schemas** land as tables from the role permission SDLs. A remote schema with no permissions lands nothing, since the export carries no other statement of its shape. (REQ-1681)
+- **Remote schemas** land as tables from the role permission SDLs. A remote schema with no permissions lands nothing, since the export carries no other statement of its shape.
 - **Tracked functions** need the database at preview time to read their signature; offline, they are redone on the Commands page.
 - **Event and cron trigger retries** are not carried.
 
