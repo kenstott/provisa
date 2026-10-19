@@ -421,6 +421,9 @@ class OrgRegistry:
         # connection threads' own loops, so the per-org lock must work across loops and threads;
         # setdefault is atomic, so two threads never each install a different lock for one org.
         self._locks: dict[str, CrossLoopLock] = {}
+        # The orgs whose runtime a builder is building now: registered before the build finishes
+        # (see get_or_build), with databases not bound yet, so no background job walks them.
+        self._building: set[str] = set()
 
     def _lock_for(self, org_id: str) -> CrossLoopLock:
         return self._locks.setdefault(org_id, CrossLoopLock())
@@ -464,9 +467,23 @@ class OrgRegistry:
         return list(self._runtimes.keys())
 
     def runtimes(self) -> list["OrgRuntime"]:
-        """Every runtime this process holds, each an org environment (REQ-1926: a worker's
-        keeper of temporary tables walks them)."""
-        return list(self._runtimes.values())
+        """Every runtime this process holds that is built, each an org environment (REQ-1926: a
+        worker's keeper of temporary tables walks them). One being built is left out: it is
+        registered before its databases are bound."""
+        return [rt for org_id, rt in list(self._runtimes.items()) if org_id not in self._building]
+
+    async def _build(
+        self, org_id: str, builder: Callable[[str], Awaitable[OrgRuntime]]
+    ) -> OrgRuntime:
+        """Run ``builder`` for ``org_id`` (its lock held by the caller), hidden from
+        :meth:`runtimes` until it is built."""
+        self._building.add(org_id)
+        try:
+            runtime = await builder(org_id)
+            self._runtimes[org_id] = runtime
+            return runtime
+        finally:
+            self._building.discard(org_id)
 
     async def get_or_build(
         self, org_id: str, builder: Callable[[str], Awaitable[OrgRuntime]]
@@ -481,9 +498,7 @@ class OrgRegistry:
             existing = self._runtimes.get(org_id)
             if existing is not None:
                 return existing
-            runtime = await builder(org_id)
-            self._runtimes[org_id] = runtime
-            return runtime
+            return await self._build(org_id, builder)
 
     async def rebuild(
         self, org_id: str, builder: Callable[[str], Awaitable[OrgRuntime]]
@@ -498,9 +513,7 @@ class OrgRegistry:
         site.
         """
         async with self._lock_for(org_id):
-            runtime = await builder(org_id)
-            self._runtimes[org_id] = runtime
-            return runtime
+            return await self._build(org_id, builder)
 
 
 class ActiveOrgPool:  # REQ-1266
