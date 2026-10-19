@@ -1129,7 +1129,7 @@ Con l'uno o l'altro descrittore in atto, registrare un'origine con il `source_ty
 
 Snowflake, Databricks e ClickHouse possono essere registrati come origini nominate indipendentemente da quale motore di federazione è attivo.
 
-Una volta registrato, Provisa legge il warehouse tramite il DirectDriver dell'origine e atterra una replica nello store di materializzazione del motore attivo. La query poi gira contro quella replica. Questo differisce dal percorso direct-capable tradizionale (asyncpg, aiomysql) dove il motore viene bypassato completamente — qui il motore esegue comunque la query, ma contro una replica locale piuttosto che sul wire verso il warehouse a ogni richiesta.
+Una volta registrato, il warehouse viene letto tramite il DirectDriver dell'origine, che atterra una replica nello store di materializzazione del motore attivo, e la query gira contro quella replica. Sul consueto percorso diretto (asyncpg, aiomysql) il motore viene saltato del tutto. Qui il motore esegue comunque la query, ma contro una replica locale invece di passare in rete fino al warehouse a ogni richiesta.
 
 Le letture sono Arrow-native dove il warehouse lo supporta: Databricks usa Cloud Fetch, Snowflake usa `fetch_arrow_table`, e ClickHouse usa l'interfaccia HTTP columnar nativa.
 
@@ -1167,7 +1167,7 @@ sources:
 
 La registrazione come origine nominata è indipendente dalla selezione dello stesso warehouse come motore di federazione. Un'origine Snowflake su un motore DuckDB atterra una replica in DuckDB, non in Snowflake.
 
-I dati cloud object/lake (file parquet, csv, iceberg, delta_lake su S3 / GCS / R2) sono un tipo di origine separato che si attacca in loco quando il motore attivo ha un connettore ATTACH per quel tipo. Nessuna replica viene atterrata — il motore esegue la scansione dell'object storage direttamente. Anche le credenziali per queste origini vanno in `federation_hints`:
+I dati oggetto e lake nel cloud (file parquet, csv, iceberg e delta_lake su S3, GCS o R2) sono un tipo di origine a parte. Si collegano sul posto quando il motore attivo ha un connettore ATTACH per quel tipo, quindi non si atterra alcuna replica e il motore scansiona direttamente l'object storage. Anche le credenziali di queste origini vanno in `federation_hints`:
 
 ```yaml
 sources:

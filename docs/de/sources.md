@@ -1130,7 +1130,7 @@ Sobald einer der beiden Deskriptoren vorhanden ist, routet die Registrierung ein
 
 Snowflake, Databricks und ClickHouse können unabhängig davon, welche Federation-Engine aktiv ist, als benannte Quellen registriert werden.
 
-Bei Registrierung liest Provisa das Warehouse über den DirectDriver der Quelle und landet ein Replikat im Materialisierungs-Store der aktiven Engine. Die Abfrage läuft dann gegen dieses Replikat. Das unterscheidet sich vom traditionellen direktfähigen Pfad (asyncpg, aiomysql), bei dem die Engine vollständig umgangen wird — hier führt die Engine die Abfrage weiterhin aus, aber gegen ein lokales Replikat statt bei jeder Anfrage über die Leitung zum Warehouse.
+Nach der Registrierung wird das Warehouse über den DirectDriver der Quelle gelesen, der ein Replikat im Materialisierungs-Store der aktiven Engine landet, und die Abfrage läuft gegen dieses Replikat. Auf dem üblichen direkten Weg (asyncpg, aiomysql) wird die Engine ganz übersprungen. Hier führt die Engine die Abfrage weiterhin aus, aber gegen ein lokales Replikat, statt bei jeder Anfrage über die Leitung zum Warehouse zu gehen.
 
 Reads sind Arrow-nativ, wo das Warehouse es unterstützt: Databricks verwendet Cloud Fetch, Snowflake verwendet `fetch_arrow_table`, und ClickHouse verwendet die native columnar HTTP-Schnittstelle.
 
@@ -1168,7 +1168,7 @@ sources:
 
 Die Registrierung als benannte Quelle ist unabhängig davon, ob dasselbe Warehouse als Federation-Engine gewählt wird. Eine Snowflake-Quelle auf einer DuckDB-Engine landet ein Replikat in DuckDB, nicht in Snowflake.
 
-Cloud-Objekt-/Lake-Daten (Parquet-, CSV-, Iceberg-, Delta-Lake-Dateien auf S3 / GCS / R2) sind ein separater Quelltyp, der vor Ort angehängt wird, wenn die aktive Engine einen ATTACH-Connector für diesen Typ hat. Kein Replikat wird gelandet — die Engine scannt den Objektspeicher direkt. Zugangsdaten für diese Quellen gehen ebenfalls in `federation_hints`:
+Cloud-Objekt- und Lake-Daten (parquet-, csv-, iceberg- und delta_lake-Dateien auf S3, GCS oder R2) sind ein eigener Quelltyp. Sie werden an Ort und Stelle angebunden, wenn die aktive Engine einen ATTACH-Connector für diesen Typ hat; es wird also kein Replikat gelandet, und die Engine scannt den Objektspeicher direkt. Auch die Anmeldedaten dieser Quellen gehören in `federation_hints`:
 
 ```yaml
 sources:

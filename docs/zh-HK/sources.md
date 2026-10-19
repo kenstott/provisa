@@ -1098,7 +1098,7 @@ connectors:
 ## 作為具名數據來源的倉庫 {: #warehouses-as-named-sources }
 Snowflake、Databricks 與 ClickHouse 可註冊為具名數據來源，與哪個聯邦引擎啟用中無關。
 
-註冊後，Provisa 經該數據來源的 DirectDriver 讀取倉庫，並把一份副本落地到啟用中引擎的具體化儲存區。查詢隨後針對該副本執行。這有別於傳統的可直接執行路徑（asyncpg、aiomysql），後者完全繞過引擎——這裡引擎仍然執行查詢，但針對的是一份本地副本，而不是每次請求都經網路連往倉庫。
+註冊後，倉庫經數據來源的 DirectDriver 讀取，它把副本落地到啟用中引擎的具體化儲存區，查詢針對該副本執行。在一般的直接路徑上（asyncpg、aiomysql），引擎被完全略過。而這裏仍由引擎執行查詢，只是針對本機副本，而不是每次請求都經網絡存取倉庫。
 
 在倉庫支援之處，讀取是 Arrow 原生的：Databricks 用 Cloud Fetch，Snowflake 用 `fetch_arrow_table`，ClickHouse 用原生資料行式 HTTP 介面。
 
@@ -1136,7 +1136,7 @@ sources:
 
 註冊為具名數據來源，與把同一個倉庫選為聯邦引擎是彼此獨立的。在 DuckDB 引擎上的一個 Snowflake 數據來源，把副本落地到 DuckDB，不是落到 Snowflake。
 
-雲端物件／湖數據（S3／GCS／R2 上的 parquet、csv、iceberg、delta_lake 檔案）是另一種數據來源類型，當啟用中的引擎有該類型的 ATTACH 連接器時，就地附掛。不落地副本——引擎直接掃描物件儲存。那些數據來源的憑證同樣放進 `federation_hints`：
+雲端物件與數據湖數據（S3、GCS 或 R2 上的 parquet、csv、iceberg 及 delta_lake 檔案）是一種獨立的數據來源類型。當啟用中的引擎有該類型的 ATTACH 連接器時，它就地掛載，因此不落地副本，引擎直接掃描物件儲存。這些數據來源的憑證同樣放在 `federation_hints` 中：
 
 ```yaml
 sources:

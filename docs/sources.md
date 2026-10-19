@@ -1141,7 +1141,7 @@ With either descriptor in place, registering a source with the declared `source_
 
 Snowflake, Databricks, and ClickHouse can be registered as named sources independently of which federation engine is active.
 
-When registered, Provisa reads the warehouse via the source's DirectDriver and lands a replica into the active engine's materialization store. The query then runs against that replica. This differs from the traditional direct-capable path (asyncpg, aiomysql) where the engine is bypassed entirely — here the engine still executes the query, but against a local replica rather than over the wire to the warehouse on every request.
+Once registered, the warehouse is read through the source's DirectDriver, which lands a replica in the active engine's materialization store, and the query runs against that replica. On the usual direct path (asyncpg, aiomysql) the engine is skipped entirely. Here the engine still runs the query, but against a local replica instead of going over the wire to the warehouse on every request.
 
 Reads are Arrow-native where the warehouse supports it: Databricks uses Cloud Fetch, Snowflake uses `fetch_arrow_table`, and ClickHouse uses the native columnar HTTP interface.
 
@@ -1179,7 +1179,7 @@ sources:
 
 Registration as a named source is independent of selecting the same warehouse as the federation engine. A Snowflake source on a DuckDB engine lands a replica into DuckDB, not into Snowflake.
 
-Cloud object/lake data (parquet, csv, iceberg, delta_lake files on S3 / GCS / R2) is a separate source type that attaches in place when the active engine has an ATTACH connector for that type. No replica is landed — the engine scans the object storage directly. Credentials for those sources also go in `federation_hints`:
+Cloud object and lake data (parquet, csv, iceberg and delta_lake files on S3, GCS or R2) is a separate source type. It attaches in place when the active engine has an ATTACH connector for that type, so no replica is landed and the engine scans the object storage directly. Credentials for these sources also go in `federation_hints`:
 
 ```yaml
 sources:

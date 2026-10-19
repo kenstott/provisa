@@ -1129,7 +1129,7 @@ Avec l'un ou l'autre descripteur en place, l'enregistrement d'une source portant
 
 Snowflake, Databricks et ClickHouse peuvent être enregistrés comme sources nommées indépendamment du moteur de fédération actif.
 
-Une fois enregistré, Provisa lit l'entrepôt via le DirectDriver de la source et dépose un réplica dans le magasin de matérialisation du moteur actif. La requête s'exécute ensuite contre ce réplica. Cela diffère du chemin traditionnel « capable en direct » (asyncpg, aiomysql) où le moteur est entièrement contourné — ici le moteur exécute toujours la requête, mais contre un réplica local plutôt qu'à travers le réseau vers l'entrepôt à chaque demande.
+Une fois enregistré, l'entrepôt est lu par le DirectDriver de la source, qui dépose un réplica dans le magasin de matérialisation du moteur actif, et la requête s'exécute contre ce réplica. Sur le chemin direct habituel (asyncpg, aiomysql), le moteur est entièrement contourné. Ici, le moteur exécute toujours la requête, mais contre un réplica local au lieu de passer par le réseau jusqu'à l'entrepôt à chaque requête.
 
 Les lectures sont nativement Arrow lorsque l'entrepôt le permet : Databricks utilise Cloud Fetch, Snowflake utilise `fetch_arrow_table`, et ClickHouse utilise l'interface HTTP colonnaire native.
 
@@ -1167,7 +1167,7 @@ sources:
 
 L'enregistrement comme source nommée est indépendant du choix du même entrepôt comme moteur de fédération. Une source Snowflake sur un moteur DuckDB dépose un réplica dans DuckDB, non dans Snowflake.
 
-Les données cloud d'objets ou de lac (fichiers parquet, csv, iceberg, delta_lake sur S3 / GCS / R2) constituent un type de source distinct qui s'attache sur place lorsque le moteur actif dispose d'un connecteur ATTACH pour ce type. Aucun réplica n'est déposé — le moteur balaie directement le stockage objet. Les identifiants de ces sources vont eux aussi dans `federation_hints` :
+Les données objet et lac dans le cloud (fichiers parquet, csv, iceberg et delta_lake sur S3, GCS ou R2) forment un type de source distinct. Elles s'attachent sur place quand le moteur actif a un connecteur ATTACH pour ce type ; aucun réplica n'est donc déposé et le moteur scanne directement le stockage objet. Les identifiants de ces sources vont aussi dans `federation_hints` :
 
 ```yaml
 sources:

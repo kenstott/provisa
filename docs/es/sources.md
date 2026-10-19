@@ -1099,7 +1099,7 @@ Con cualquiera de los dos descriptores en su lugar, registrar un origen con el `
 ## Almacenes de datos como orígenes con nombre {: #warehouses-as-named-sources }
 Snowflake, Databricks y ClickHouse se pueden registrar como orígenes con nombre independientemente de cuál motor de federación esté activo.
 
-Una vez registrado, Provisa lee el almacén de datos mediante el DirectDriver del origen y crea una réplica en el almacén de materialización del motor activo. La consulta se ejecuta luego contra esa réplica. Esto difiere de la ruta tradicional con capacidad directa (asyncpg, aiomysql), donde el motor se evita por completo — aquí el motor sigue ejecutando la consulta, pero contra una réplica local en lugar de por cable hacia el almacén de datos en cada solicitud.
+Una vez registrado, el almacén de datos se lee a través del DirectDriver del origen, que crea una réplica en el almacén de materialización del motor activo, y la consulta se ejecuta contra esa réplica. En la ruta directa habitual (asyncpg, aiomysql) el motor se salta por completo. Aquí el motor sigue ejecutando la consulta, pero contra una réplica local en lugar de ir por la red al almacén de datos en cada petición.
 
 Las lecturas son nativas en Arrow cuando el almacén de datos lo soporta: Databricks usa Cloud Fetch, Snowflake usa `fetch_arrow_table`, y ClickHouse usa la interfaz HTTP columnar nativa.
 
@@ -1137,7 +1137,7 @@ sources:
 
 El registro como origen con nombre es independiente de seleccionar ese mismo almacén de datos como motor de federación. Un origen Snowflake sobre un motor DuckDB crea una réplica en DuckDB, no en Snowflake.
 
-Los datos de objeto/lake en la nube (archivos parquet, csv, iceberg, delta_lake en S3 / GCS / R2) son un tipo de origen independiente que se adjunta en el lugar cuando el motor activo tiene un conector ATTACH para ese tipo. No se crea réplica alguna — el motor escanea el almacenamiento de objetos directamente. Las credenciales de esos orígenes también van en `federation_hints`:
+Los datos de objetos en la nube y de lago (archivos parquet, csv, iceberg y delta_lake en S3, GCS o R2) son un tipo de origen aparte. Se adjuntan en su sitio cuando el motor activo tiene un conector ATTACH para ese tipo, así que no se crea ninguna réplica y el motor escanea el almacenamiento de objetos directamente. Las credenciales de estos orígenes también van en `federation_hints`:
 
 ```yaml
 sources:

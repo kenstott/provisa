@@ -1124,7 +1124,7 @@ connectors:
 
 Snowflake、Databricks 和 ClickHouse 可以注册为命名数据源，与哪个联邦引擎处于活动状态无关。
 
-注册后，Provisa 通过该数据源的 DirectDriver 读取仓库数据，并将副本落地到活动引擎的物化存储中。随后查询针对该副本执行。这与传统的直连型路径（asyncpg、aiomysql）不同，后者完全绕过了引擎 — 而这里，引擎仍然执行查询，但针对的是本地副本，而不是每次请求都通过网络连接到仓库。
+注册后，仓库通过数据源的 DirectDriver 读取，它把副本落地到活动引擎的物化存储中，查询针对该副本执行。在常规的直连路径上（asyncpg、aiomysql），引擎被完全跳过。而这里仍由引擎执行查询，只是针对本地副本，而不是每次请求都通过网络访问仓库。
 
 在仓库支持的情况下，读取采用 Arrow 原生方式：Databricks 使用 Cloud Fetch，Snowflake 使用 `fetch_arrow_table`，ClickHouse 使用原生列式 HTTP 接口。
 
@@ -1162,7 +1162,7 @@ sources:
 
 将某个仓库注册为命名数据源，与是否选择该同一仓库作为联邦引擎相互独立。一个基于 DuckDB 引擎的 Snowflake 数据源会将副本落地到 DuckDB 中，而不是 Snowflake 中。
 
-云端对象/湖数据（S3 / GCS / R2 上的 parquet、csv、iceberg、delta_lake 文件）是一种独立的数据源类型，当活动引擎为该类型拥有 ATTACH 连接器时，会就地挂载。不会落地任何副本 — 引擎直接扫描对象存储。这些数据源的凭据同样放在 `federation_hints` 中：
+云端对象与数据湖数据（S3、GCS 或 R2 上的 parquet、csv、iceberg 和 delta_lake 文件）是一种单独的数据源类型。当活动引擎有该类型的 ATTACH 连接器时，它就地挂载，因此不落地副本，引擎直接扫描对象存储。这些数据源的凭据同样放在 `federation_hints` 中：
 
 ```yaml
 sources:

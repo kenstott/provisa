@@ -1129,7 +1129,7 @@ Com qualquer um dos descritores em vigor, registrar uma fonte com o `source_type
 
 Snowflake, Databricks, e ClickHouse podem ser registrados como fontes nomeadas independentemente de qual motor de federação está ativo.
 
-Quando registrado, o Provisa lê o warehouse via o DirectDriver da fonte e pousa uma réplica no armazenamento de materialização do motor ativo. A consulta então roda contra essa réplica. Isso difere do caminho tradicional direta-capaz (asyncpg, aiomysql), onde o motor é totalmente contornado — aqui o motor ainda executa a consulta, mas contra uma réplica local em vez de pela rede até o warehouse em cada requisição.
+Depois de registrado, o warehouse é lido pelo DirectDriver da fonte, que pousa uma réplica no armazenamento de materialização do motor ativo, e a consulta roda contra essa réplica. No caminho direto usual (asyncpg, aiomysql) o motor é pulado por completo. Aqui o motor ainda executa a consulta, mas contra uma réplica local em vez de ir pela rede até o warehouse a cada requisição.
 
 As leituras são Arrow-nativas onde o warehouse suporta: Databricks usa Cloud Fetch, Snowflake usa `fetch_arrow_table`, e ClickHouse usa a interface HTTP colunar nativa.
 
@@ -1167,7 +1167,7 @@ sources:
 
 O registro como fonte nomeada é independente de selecionar o mesmo warehouse como o motor de federação. Uma fonte Snowflake em um motor DuckDB pousa uma réplica no DuckDB, não no Snowflake.
 
-Dados de objeto/lake em nuvem (arquivos parquet, csv, iceberg, delta_lake em S3 / GCS / R2) são um tipo de fonte separado que faz attach no local quando o motor ativo tem um conector ATTACH para esse tipo. Nenhuma réplica é pousada — o motor escaneia o armazenamento de objeto diretamente. Credenciais para essas fontes também vão em `federation_hints`:
+Dados de objetos e de lake na nuvem (arquivos parquet, csv, iceberg e delta_lake no S3, GCS ou R2) são um tipo de fonte à parte. Eles são anexados no lugar quando o motor ativo tem um conector ATTACH para esse tipo, então nenhuma réplica é pousada e o motor varre o armazenamento de objetos diretamente. As credenciais dessas fontes também vão em `federation_hints`:
 
 ```yaml
 sources:
