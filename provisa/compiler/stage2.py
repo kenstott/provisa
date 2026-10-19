@@ -300,12 +300,21 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     gov.public_tables = frozenset(_public)
 
     # table_map from compilation context — semantic refs only
-    from provisa.compiler.naming import semantic_relation_names, stored_relation_names
+    from provisa.compiler.naming import (
+        physical_relation_name,
+        semantic_relation_names,
+        stored_relation_names,
+    )
     from provisa.compiler.sql_rewrite import semantic_table_name
 
     for meta in ctx.tables.values():
         for said in semantic_relation_names(meta.domain_id, semantic_table_name(meta)):
             gov.table_map[said] = meta.table_id
+        # And its catalog-physical name: a view's body is read into a statement lowered to it,
+        # and two sources may hold tables of one schema.table (naming.table_id_of).
+        gov.table_map[
+            physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)
+        ] = meta.table_id
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")
@@ -428,14 +437,10 @@ def _bind_fakes(gov: GovernanceContext) -> None:  # REQ-1494
 
 
 def _table_id_for_node(table_node: exp.Table, gov_ctx: GovernanceContext) -> int | None:
-    """Resolve a SQLGlot Table node to a table_id."""
-    db = table_node.db
-    name = table_node.name
-    if db:
-        full = f"{db}.{name}"
-        if full in gov_ctx.table_map:
-            return gov_ctx.table_map[full]
-    return gov_ctx.table_map.get(name)
+    """Resolve a SQLGlot Table node to a table_id (``naming.table_id_of``)."""
+    from provisa.compiler.naming import table_id_of
+
+    return table_id_of(table_node, gov_ctx.table_map)
 
 
 def _get_tables_from_select(
@@ -1425,11 +1430,7 @@ def extract_sources(
 
     sources: set[str] = set()
     for tbl in physical_tables(tree):
-        name = tbl.name
-        db = tbl.db
-        full = f"{db}.{name}" if db else name
-
-        tid = gov_ctx.table_map.get(full) or gov_ctx.table_map.get(name)
+        tid = _table_id_for_node(tbl, gov_ctx)
         if tid is None:
             continue
         for meta in ctx.tables.values():
@@ -1477,10 +1478,7 @@ def reduce_sources_for_routing(  # REQ-863
 
     live: set[str] = set()
     for tbl in physical_tables(tree):
-        name = tbl.name
-        db = tbl.db
-        full = f"{db}.{name}" if db else name
-        tid = gov_ctx.table_map.get(full) or gov_ctx.table_map.get(name)
+        tid = _table_id_for_node(tbl, gov_ctx)
         if tid is None or tid in inlined_tids:
             continue
         for meta in ctx.tables.values():

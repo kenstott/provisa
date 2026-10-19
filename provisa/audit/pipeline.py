@@ -78,12 +78,11 @@ def resolve_table_ids(tree: "exp.Expr", gov_ctx: "GovernanceContext") -> list[in
     """
     import sqlglot.expressions as exp_mod
 
+    from provisa.compiler.naming import table_id_of
+
     ids: list[int] = []
     for tbl in tree.find_all(exp_mod.Table):
-        qualified = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
-        table_id = gov_ctx.table_map.get(qualified)
-        if table_id is None:
-            table_id = gov_ctx.table_map.get(tbl.name)
+        table_id = table_id_of(tbl, gov_ctx.table_map)
         if table_id is not None and table_id not in ids:
             ids.append(table_id)
     return ids

@@ -32,6 +32,12 @@ regions:
   - { id: us, engine: us_engine, replicas: us_data, views: us_data, cache: cache, state: us_data, record: us_data }
 
 auth:
+  # As the sandbox tier's (config/provisa-install.yaml): its provider is the one the deployment's
+  # setup or Admin › Settings writes here.
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
   provider: none
 
 naming:

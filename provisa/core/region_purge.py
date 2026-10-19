@@ -44,6 +44,8 @@ _CLICKHOUSE_KINDS = frozenset({"clickhouse", "clickhouse-server"})
 
 #: The stores of a region that hold an environment's schemas.
 _SQL_ROLES = ("engine", "state", "record", "replicas", "views")
+#: The region stores that hold the org's schemas whatever its engine is.
+_DATA_ROLES = ("state", "record", "replicas", "views")
 
 
 class RegionStoreUnreachable(RuntimeError):
@@ -162,7 +164,12 @@ async def _plan(control_plane: "Database", org_id: str, envs: list[str]) -> _Pur
                 plan.reach.setdefault(engine_url, (region.id, "engine"))
                 plan.clickhouse.setdefault(engine_url, set()).update(catalog_prefixes)
             names = {org_schema(org_id, env, s, region=region.id) for s in SCHEMA_SUFFIXES}
-            for role in _SQL_ROLES:
+            # The region's schemas are kept in its data stores; its engine holds them only when it
+            # is a PostgreSQL database. An in-process engine (DuckDB) keeps none of them -- and its
+            # file belongs to that region's own nodes, which a node of another region never opens
+            # (a regions sandbox tier has no node of the other region at all).
+            roles = _SQL_ROLES if kinds[region.engine] == "pg" else _DATA_ROLES
+            for role in roles:
                 url = declared[getattr(region, role)]
                 if not _is_sql(url):
                     continue

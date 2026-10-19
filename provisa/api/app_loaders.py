@@ -715,7 +715,9 @@ def _load_mv_and_views_config(
             )
         # Default the target to the store the ACTIVE engine materializes into (DuckDB → mat_store,
         # not postgresql); an explicit config value still wins.
-        _def_cat, _def_schema = state.federation_engine.materialize_store_target(state.org_id)
+        _def_cat, _def_schema = state.federation_engine.materialize_store_target(
+            state.active_org_id
+        )
         # A view with SQL names its inputs in it; a join-pattern view's are bound here — the
         # tables it lists and any its pattern joins that the list leaves out.
         inputs = (
@@ -821,7 +823,9 @@ def _load_mv_and_views_config(
                 source_tables.insert(1, via_table)
             # The store the ACTIVE engine materializes into — never a hardcoded catalog
             # (Trino → provisa_admin, DuckDB → mat_store).
-            _rel_cat, _rel_schema = state.federation_engine.materialize_store_target(state.org_id)
+            _rel_cat, _rel_schema = state.federation_engine.materialize_store_target(
+                state.active_org_id
+            )
             mv = MVDefinition(
                 id=mv_id,
                 source_tables=source_tables,

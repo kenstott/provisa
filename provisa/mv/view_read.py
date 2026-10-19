@@ -36,10 +36,14 @@ if TYPE_CHECKING:
     from provisa.compiler.stage2 import GovernanceContext
 
 
-def _input_names(sql: str) -> set[str]:
-    from provisa.events.lineage import extract_inputs  # noqa: PLC0415
+def _input_tables(sql: str) -> list[Any]:
+    """The tables ``sql`` reads, as references (a CTE it names is no input)."""
+    import sqlglot  # noqa: PLC0415
+    from sqlglot import exp  # noqa: PLC0415
 
-    return {name.rsplit(".", 1)[-1] for name in extract_inputs(sql, "postgres")}
+    tree = sqlglot.parse_one(sql, read="postgres")
+    ctes = {cte.alias_or_name for cte in tree.find_all(exp.CTE)}
+    return [t for t in tree.find_all(exp.Table) if t.name and t.name not in ctes]
 
 
 def _narrowed(table_id: int, gov: "GovernanceContext") -> bool:
@@ -65,12 +69,16 @@ def sees_everything(
     input that is neither a registered table nor a view cannot be judged, so it does not qualify."""
     if view in _seen:
         return False
-    for name in _input_names(view_sql_map[view]):
-        if name in view_sql_map:
-            if not sees_everything(name, view_sql_map, gov, _seen | {view}):
+    for table in _input_tables(view_sql_map[view]):
+        if table.name in view_sql_map:
+            if not sees_everything(table.name, view_sql_map, gov, _seen | {view}):
                 return False
             continue
-        table_id = gov.table_map.get(name)
+        # By its catalog-physical name: the view's body is lowered, and two sources may hold
+        # tables of one name (naming.table_id_of).
+        from provisa.compiler.naming import table_id_of  # noqa: PLC0415
+
+        table_id = table_id_of(table, gov.table_map)
         if table_id is None or _narrowed(table_id, gov):
             return False
     return True
@@ -169,10 +177,12 @@ def require_inputs_reached(view_sql: str, gov: "GovernanceContext") -> None:
     import sqlglot  # noqa: PLC0415
     from sqlglot import exp  # noqa: PLC0415
 
+    from provisa.compiler.naming import table_id_of  # noqa: PLC0415
+
     tree = sqlglot.parse_one(view_sql, read="postgres")
     for table in tree.find_all(exp.Table):
         named = f"{table.db}.{table.name}" if table.db else table.name
-        table_id = gov.table_map.get(named, gov.table_map.get(table.name))
+        table_id = table_id_of(table, gov.table_map)
         if table_id is None or table_id in gov.public_tables:
             continue
         if gov.visible_columns.get(table_id) == frozenset():

@@ -887,7 +887,9 @@ async def _sync_view_mv(
     # Target the store the ACTIVE engine actually materializes into — a DuckDB engine attaches its
     # store as ``mat_store``, not ``postgresql``. Hardcoding the latter fails the refresh with
     # "Catalog with name postgresql does not exist".
-    target_catalog, target_schema = state.federation_engine.materialize_store_target(state.org_id)
+    target_catalog, target_schema = state.federation_engine.materialize_store_target(
+        state.active_org_id
+    )
     mv = MVDefinition(
         id=mv_id,
         source_tables=[],

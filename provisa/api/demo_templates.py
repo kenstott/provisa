@@ -522,9 +522,13 @@ async def land_from_seed(org_id: str) -> None:
         logging.getLogger(__name__).info(
             "demo template %s: views' history from its seed", demo.name
         )
-    from provisa.api.demo_region_seed import kept_here
+    from provisa.api.demo_region_seed import kept_here, landed_elsewhere, regional
 
-    if await landed_here(org_id) >= len(kept_here(replicated_tables(template_seed(org_id)))):
+    landed = await landed_here(org_id) >= len(kept_here(replicated_tables(template_seed(org_id))))
+    # REQ-2068: on a regions tier, the other regions' seeds too -- a node whose own region keeps
+    # nothing of the demo once took that for the whole template landed, and no other region's
+    # seed was ever adopted (every sandbox of it failed reading that region's record).
+    if landed and (not regional() or await landed_elsewhere(org_id, demo.directory)):
         return
     if await adopt_seed(org_id, demo.directory):
         logging.getLogger(__name__).info("demo template %s: landed from its seed", demo.name)

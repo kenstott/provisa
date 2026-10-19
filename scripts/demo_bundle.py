@@ -261,19 +261,41 @@ class Stores:
             env = service["environment"]
             target = self.demo / "dump" / f"{name}.sql"
             target.parent.mkdir(exist_ok=True)
+            user = env["POSTGRES_USER"]
+            # Its POSTGRES_DB, which the run-time container creates, then every other database the
+            # store holds, each with the statement that creates it: the retail demo keeps its data
+            # in three databases of one server, and a dump of POSTGRES_DB alone restored none.
+            listed = self._compose(
+                "exec",
+                "-T",
+                name,
+                "psql",
+                "-U",
+                user,
+                "-d",
+                env["POSTGRES_DB"],
+                "-Atc",
+                "SELECT datname FROM pg_database WHERE NOT datistemplate ORDER BY datname",
+                capture_output=True,
+                text=True,
+            ).stdout.split()
+            others = [db for db in listed if db not in (env["POSTGRES_DB"], "postgres")]
             with target.open("w") as out:
-                self._compose(
-                    "exec",
-                    "-T",
-                    name,
-                    "pg_dump",
-                    "-U",
-                    env["POSTGRES_USER"],
-                    "--no-owner",
-                    "--no-acl",
-                    env["POSTGRES_DB"],
-                    stdout=out,
-                )
+                for database, create in [(env["POSTGRES_DB"], False), *((d, True) for d in others)]:
+                    out.flush()
+                    self._compose(
+                        "exec",
+                        "-T",
+                        name,
+                        "pg_dump",
+                        "-U",
+                        user,
+                        "--no-owner",
+                        "--no-acl",
+                        *(["--create"] if create else []),
+                        database,
+                        stdout=out,
+                    )
             dumped.append(name)
         for name, service in graphs:
             dumped.append(self._neo4j_dump(name, service))

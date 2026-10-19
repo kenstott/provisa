@@ -39,6 +39,7 @@ services:
     volumes:
       - retail_run_pg:/var/lib/postgresql/data
       - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-retail.sql:ro
+      - ./run/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "test -f /var/lib/postgresql/data/.provisa-init-complete && pg_isready -U postgres -d group_ref"]
