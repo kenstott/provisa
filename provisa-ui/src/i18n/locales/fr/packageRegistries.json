@@ -18,18 +18,21 @@
     "gitHost": "Hôte",
     "scope": "Portée",
     "scopeHelp": "Par exemple @acme. Laissez vide pour un registre sans portée.",
-    "npmCredential": "Jeton",
-    "npmCredentialHelp": "Le jeton d'accès du registre.",
-    "pypiCredential": "Jeton",
-    "pypiCredentialHelp": "Le jeton d'accès de l'index, ou utilisateur:mot de passe.",
-    "gitCredential": "Jeton HTTPS",
-    "gitCredentialHelp": "Un jeton avec accès en lecture aux dépôts.",
+    "npmCredential": "Jeton ou utilisateur:mot de passe",
+    "npmCredentialHelp": "Un jeton d'accès, ou utilisateur:mot de passe, par exemple un utilisateur Artifactory et sa clé d'API.",
+    "pypiCredential": "Jeton ou utilisateur:mot de passe",
+    "pypiCredentialHelp": "Un jeton d'accès, ou utilisateur:mot de passe, par exemple un utilisateur Artifactory et sa clé d'API.",
+    "gitCredential": "Jeton ou utilisateur:jeton",
+    "gitCredentialHelp": "Un jeton seul est envoyé comme x-access-token, comme l'attend GitHub. Sinon, saisissez utilisateur:jeton. GitLab : n'importe quel nom d'utilisateur. Bitbucket Cloud : x-token-auth pour les jetons d'accès de dépôt ou d'espace de travail, ou votre nom d'utilisateur ou e-mail pour les jetons d'API. Bitbucket Data Center : votre nom d'utilisateur, ou x-token-auth pour les jetons de projet ou de dépôt.",
     "mirror": "Miroir de chaque installation",
     "mirrorHelp": "Tout paquet sans portée propre est installé via ce registre. Une organisation a un miroir npm.",
     "pypiMirror": "Index par défaut pour chaque installation",
     "pypiMirrorHelp": "Chaque paquet Python est installé depuis cet index au lieu du PyPI public. Une organisation a un index par défaut.",
     "saved": "Enregistré",
     "removed": "Supprimé",
-    "remove": "Supprimer"
+    "remove": "Supprimer",
+    "gitHostHelp": "L'hôte, avec son port et son chemin quand le serveur en a, par exemple bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "Autorité de certification (PEM)",
+    "caBundleHelp": "Uniquement pour un serveur dont le certificat est signé par votre propre autorité, comme un proxy Artifactory dans votre réseau : son certificat PEM ou une référence de secret. Elle est approuvée en plus des autorités publiques. Sinon, laissez vide."
   }
 }

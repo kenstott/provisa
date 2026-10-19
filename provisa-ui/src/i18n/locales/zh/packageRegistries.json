@@ -18,18 +18,21 @@
     "gitHost": "主机",
     "scope": "作用域",
     "scopeHelp": "例如 @acme。没有作用域的注册表请留空。",
-    "npmCredential": "令牌",
-    "npmCredentialHelp": "注册表的访问令牌。",
-    "pypiCredential": "令牌",
-    "pypiCredentialHelp": "索引的访问令牌，或 用户名:密码。",
-    "gitCredential": "HTTPS 令牌",
-    "gitCredentialHelp": "对仓库有读取权限的令牌。",
+    "npmCredential": "令牌或 user:password",
+    "npmCredentialHelp": "访问令牌，或 user:password，例如 Artifactory 用户及其 API 密钥。",
+    "pypiCredential": "令牌或 user:password",
+    "pypiCredentialHelp": "访问令牌，或 user:password，例如 Artifactory 用户及其 API 密钥。",
+    "gitCredential": "令牌或 user:token",
+    "gitCredentialHelp": "单独的令牌会按 GitHub 的要求以 x-access-token 发送。否则请输入 user:token。GitLab：任意用户名。Bitbucket Cloud：仓库或工作区访问令牌用 x-token-auth，API 令牌用您的用户名或电子邮件。Bitbucket Data Center：您的用户名，或项目、仓库令牌用 x-token-auth。",
     "mirror": "所有安装的镜像",
     "mirrorHelp": "没有自身作用域的每个包都通过此注册表安装。一个组织有一个 npm 镜像。",
     "pypiMirror": "每次安装的默认索引",
     "pypiMirrorHelp": "每个 Python 包都从此索引安装，而不是从公共 PyPI。一个组织有一个默认索引。",
     "saved": "已保存",
     "removed": "已删除",
-    "remove": "删除"
+    "remove": "删除",
+    "gitHostHelp": "主机，服务器有端口和路径时一并填写，例如 bitbucket.example.com:7990/bitbucket。",
+    "caBundle": "证书颁发机构 (PEM)",
+    "caBundleHelp": "仅适用于证书由您自己的证书颁发机构签发的服务器，例如您网络内的 Artifactory 代理：填写其 PEM 证书或密钥引用。它会与公共证书颁发机构一起被信任。否则请留空。"
   }
 }

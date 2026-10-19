@@ -18,18 +18,21 @@
     "gitHost": "होस्ट",
     "scope": "स्कोप",
     "scopeHelp": "उदाहरण के लिए @acme। बिना स्कोप वाली रजिस्ट्री के लिए खाली छोड़ें।",
-    "npmCredential": "टोकन",
-    "npmCredentialHelp": "रजिस्ट्री का एक्सेस टोकन।",
-    "pypiCredential": "टोकन",
-    "pypiCredentialHelp": "इंडेक्स का एक्सेस टोकन, या उपयोगकर्ता:पासवर्ड।",
-    "gitCredential": "HTTPS टोकन",
-    "gitCredentialHelp": "रिपॉज़िटरी पढ़ने की अनुमति वाला टोकन।",
+    "npmCredential": "टोकन या user:password",
+    "npmCredentialHelp": "एक एक्सेस टोकन, या user:password, उदाहरण के लिए एक Artifactory उपयोगकर्ता और उसकी API कुंजी।",
+    "pypiCredential": "टोकन या user:password",
+    "pypiCredentialHelp": "एक एक्सेस टोकन, या user:password, उदाहरण के लिए एक Artifactory उपयोगकर्ता और उसकी API कुंजी।",
+    "gitCredential": "टोकन या user:token",
+    "gitCredentialHelp": "अकेला टोकन x-access-token के रूप में भेजा जाता है, जैसा GitHub चाहता है। अन्यथा user:token दर्ज करें। GitLab: कोई भी उपयोगकर्ता नाम। Bitbucket Cloud: रिपॉज़िटरी या वर्कस्पेस एक्सेस टोकन के लिए x-token-auth, या API टोकन के लिए आपका उपयोगकर्ता नाम या ईमेल। Bitbucket Data Center: आपका उपयोगकर्ता नाम, या प्रोजेक्ट या रिपॉज़िटरी टोकन के लिए x-token-auth।",
     "mirror": "हर इंस्टॉल का मिरर",
     "mirrorHelp": "बिना अपने स्कोप वाला हर पैकेज इस रजिस्ट्री से इंस्टॉल होता है। एक संगठन का एक npm मिरर होता है।",
     "pypiMirror": "हर इंस्टॉल के लिए डिफ़ॉल्ट इंडेक्स",
     "pypiMirrorHelp": "हर Python पैकेज सार्वजनिक PyPI के बजाय इस इंडेक्स से इंस्टॉल होता है। एक संगठन का एक डिफ़ॉल्ट इंडेक्स होता है।",
     "saved": "सहेजा गया",
     "removed": "हटाया गया",
-    "remove": "हटाएँ"
+    "remove": "हटाएँ",
+    "gitHostHelp": "होस्ट, सर्वर में हों तो उसके पोर्ट और पथ के साथ, उदाहरण के लिए bitbucket.example.com:7990/bitbucket।",
+    "caBundle": "प्रमाणपत्र प्राधिकरण (PEM)",
+    "caBundleHelp": "केवल ऐसे सर्वर के लिए जिसका प्रमाणपत्र आपके अपने प्राधिकरण ने हस्ताक्षरित किया है, जैसे आपके नेटवर्क के भीतर Artifactory प्रॉक्सी: उसका PEM प्रमाणपत्र, या एक सीक्रेट संदर्भ। सार्वजनिक प्राधिकरणों के साथ इस पर भी भरोसा किया जाता है। अन्यथा खाली छोड़ें।"
   }
 }

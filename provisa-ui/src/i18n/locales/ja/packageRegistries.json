@@ -18,18 +18,21 @@
     "gitHost": "ホスト",
     "scope": "スコープ",
     "scopeHelp": "例: @acme。スコープのないレジストリは空のままにします。",
-    "npmCredential": "トークン",
-    "npmCredentialHelp": "レジストリのアクセストークンです。",
-    "pypiCredential": "トークン",
-    "pypiCredentialHelp": "インデックスのアクセストークン、または ユーザー:パスワード。",
-    "gitCredential": "HTTPS トークン",
-    "gitCredentialHelp": "リポジトリの読み取り権限を持つトークンです。",
+    "npmCredential": "トークンまたは user:password",
+    "npmCredentialHelp": "アクセストークン、または user:password（例: Artifactory のユーザーとその API キー）。",
+    "pypiCredential": "トークンまたは user:password",
+    "pypiCredentialHelp": "アクセストークン、または user:password（例: Artifactory のユーザーとその API キー）。",
+    "gitCredential": "トークンまたは user:token",
+    "gitCredentialHelp": "トークンだけの場合は、GitHub の想定どおり x-access-token として送信されます。それ以外は user:token を入力します。GitLab: 任意のユーザー名。Bitbucket Cloud: リポジトリまたはワークスペースのアクセストークンには x-token-auth、API トークンにはご自身のユーザー名またはメールアドレス。Bitbucket Data Center: ご自身のユーザー名、またはプロジェクトやリポジトリのトークンには x-token-auth。",
     "mirror": "すべてのインストールのミラー",
     "mirrorHelp": "独自のスコープを持たないすべてのパッケージは、このレジストリ経由でインストールされます。組織の npm ミラーは 1 つです。",
     "pypiMirror": "すべてのインストールの既定のインデックス",
     "pypiMirrorHelp": "すべての Python パッケージは、公開 PyPI の代わりにこのインデックスからインストールされます。組織の既定のインデックスは 1 つです。",
     "saved": "保存しました",
     "removed": "削除しました",
-    "remove": "削除"
+    "remove": "削除",
+    "gitHostHelp": "ホスト。サーバーにポートやパスがある場合はそれも含めます（例: bitbucket.example.com:7990/bitbucket）。",
+    "caBundle": "認証局 (PEM)",
+    "caBundleHelp": "社内ネットワークの Artifactory プロキシなど、自社の認証局が署名した証明書を持つサーバーの場合のみ: その PEM 証明書、またはシークレット参照。公開認証局に加えて信頼されます。それ以外は空欄のままにします。"
   }
 }

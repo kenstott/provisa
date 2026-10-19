@@ -18,18 +18,21 @@
     "gitHost": "Host",
     "scope": "Scope",
     "scopeHelp": "Zum Beispiel @acme. Leer lassen für eine Registry ohne Scope.",
-    "npmCredential": "Token",
-    "npmCredentialHelp": "Das Zugriffstoken der Registry.",
-    "pypiCredential": "Token",
-    "pypiCredentialHelp": "Das Zugriffstoken des Index oder Benutzer:Passwort.",
-    "gitCredential": "HTTPS-Token",
-    "gitCredentialHelp": "Ein Token mit Lesezugriff auf die Repositories.",
+    "npmCredential": "Token oder Benutzer:Passwort",
+    "npmCredentialHelp": "Ein Zugriffstoken oder Benutzer:Passwort, zum Beispiel ein Artifactory-Benutzer und sein API-Schlüssel.",
+    "pypiCredential": "Token oder Benutzer:Passwort",
+    "pypiCredentialHelp": "Ein Zugriffstoken oder Benutzer:Passwort, zum Beispiel ein Artifactory-Benutzer und sein API-Schlüssel.",
+    "gitCredential": "Token oder Benutzer:Token",
+    "gitCredentialHelp": "Ein Token allein wird als x-access-token gesendet, wie GitHub es erwartet. Sonst geben Sie Benutzer:Token ein. GitLab: ein beliebiger Benutzername. Bitbucket Cloud: x-token-auth für Repository- oder Workspace-Zugriffstoken, oder Ihr Benutzername bzw. Ihre E-Mail-Adresse für API-Token. Bitbucket Data Center: Ihr Benutzername, oder x-token-auth für Projekt- oder Repository-Token.",
     "mirror": "Jede Installation spiegeln",
     "mirrorHelp": "Jedes Paket ohne eigenen Scope wird über diese Registry installiert. Eine Organisation hat einen npm-Mirror.",
     "pypiMirror": "Standardindex für jede Installation",
     "pypiMirrorHelp": "Jedes Python-Paket wird aus diesem Index statt aus dem öffentlichen PyPI installiert. Eine Organisation hat einen Standardindex.",
     "saved": "Gespeichert",
     "removed": "Entfernt",
-    "remove": "Entfernen"
+    "remove": "Entfernen",
+    "gitHostHelp": "Der Host, mit Port und Pfad, wo der Server sie hat, zum Beispiel bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "Zertifizierungsstelle (PEM)",
+    "caBundleHelp": "Nur für einen Server, dessen Zertifikat von Ihrer eigenen Zertifizierungsstelle signiert ist, etwa ein Artifactory-Proxy in Ihrem Netz: ihr PEM-Zertifikat oder eine Secret-Referenz. Sie wird neben den öffentlichen Zertifizierungsstellen vertraut. Sonst leer lassen."
   }
 }

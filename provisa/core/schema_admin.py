@@ -910,6 +910,10 @@ org_package_registries = Table(
     # Whether this npm registry (or PyPI index) is the mirror every npm (or Python) install goes
     # through: at most one of each kind per organisation (core/package_registries.put).
     Column("mirror", Boolean, nullable=False, server_default=false()),
+    # REQ-2088: the PEM certificate authority the entry's TLS certificate chains to (a private
+    # proxy's or Git server's own CA), as entered: the PEM or a reference to one. NULL: the
+    # publicly trusted authorities alone.
+    Column("ca_bundle", Text, nullable=True),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("updated_by", Text, nullable=True),
 )

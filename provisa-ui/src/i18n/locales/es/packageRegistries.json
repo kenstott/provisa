@@ -18,18 +18,21 @@
     "gitHost": "Host",
     "scope": "Ámbito",
     "scopeHelp": "Por ejemplo @acme. Déjelo vacío para un registro sin ámbito.",
-    "npmCredential": "Token",
-    "npmCredentialHelp": "El token de acceso del registro.",
-    "pypiCredential": "Token",
-    "pypiCredentialHelp": "El token de acceso del índice, o usuario:contraseña.",
-    "gitCredential": "Token HTTPS",
-    "gitCredentialHelp": "Un token con acceso de lectura a los repositorios.",
+    "npmCredential": "Token o usuario:contraseña",
+    "npmCredentialHelp": "Un token de acceso, o usuario:contraseña, por ejemplo un usuario de Artifactory y su clave de API.",
+    "pypiCredential": "Token o usuario:contraseña",
+    "pypiCredentialHelp": "Un token de acceso, o usuario:contraseña, por ejemplo un usuario de Artifactory y su clave de API.",
+    "gitCredential": "Token o usuario:token",
+    "gitCredentialHelp": "Un token solo se envía como x-access-token, como espera GitHub. Si no, escriba usuario:token. GitLab: cualquier nombre de usuario. Bitbucket Cloud: x-token-auth para tokens de acceso de repositorio o de workspace, o su nombre de usuario o correo electrónico para tokens de API. Bitbucket Data Center: su nombre de usuario, o x-token-auth para tokens de proyecto o de repositorio.",
     "mirror": "Espejo de cada instalación",
     "mirrorHelp": "Todo paquete sin ámbito propio se instala a través de este registro. Una organización tiene un espejo de npm.",
     "pypiMirror": "Índice predeterminado para cada instalación",
     "pypiMirrorHelp": "Cada paquete de Python se instala desde este índice en lugar del PyPI público. Una organización tiene un índice predeterminado.",
     "saved": "Guardado",
     "removed": "Eliminado",
-    "remove": "Eliminar"
+    "remove": "Eliminar",
+    "gitHostHelp": "El host, con su puerto y su ruta cuando el servidor los tiene, por ejemplo bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "Autoridad de certificación (PEM)",
+    "caBundleHelp": "Solo para un servidor cuyo certificado firma su propia autoridad, como un proxy de Artifactory dentro de su red: su certificado PEM o una referencia a un secreto. Se confía en ella junto a las autoridades públicas. Déjelo vacío en otro caso."
   }
 }

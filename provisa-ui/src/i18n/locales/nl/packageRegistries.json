@@ -18,18 +18,21 @@
     "gitHost": "Host",
     "scope": "Scope",
     "scopeHelp": "Bijvoorbeeld @acme. Laat leeg voor een register zonder scope.",
-    "npmCredential": "Token",
-    "npmCredentialHelp": "Het toegangstoken van het register.",
-    "pypiCredential": "Token",
-    "pypiCredentialHelp": "Het toegangstoken van de index, of gebruiker:wachtwoord.",
-    "gitCredential": "HTTPS-token",
-    "gitCredentialHelp": "Een token met leestoegang tot de repositories.",
+    "npmCredential": "Token of gebruiker:wachtwoord",
+    "npmCredentialHelp": "Een toegangstoken, of gebruiker:wachtwoord, bijvoorbeeld een Artifactory-gebruiker en zijn API-sleutel.",
+    "pypiCredential": "Token of gebruiker:wachtwoord",
+    "pypiCredentialHelp": "Een toegangstoken, of gebruiker:wachtwoord, bijvoorbeeld een Artifactory-gebruiker en zijn API-sleutel.",
+    "gitCredential": "Token of gebruiker:token",
+    "gitCredentialHelp": "Een token alleen wordt verzonden als x-access-token, zoals GitHub verwacht. Voer anders gebruiker:token in. GitLab: elke gebruikersnaam. Bitbucket Cloud: x-token-auth voor repository- of workspace-toegangstokens, of uw gebruikersnaam of e-mailadres voor API-tokens. Bitbucket Data Center: uw gebruikersnaam, of x-token-auth voor project- of repositorytokens.",
     "mirror": "Mirror voor elke installatie",
     "mirrorHelp": "Elk pakket zonder eigen scope wordt via deze registry geïnstalleerd. Een organisatie heeft één npm-mirror.",
     "pypiMirror": "Standaardindex voor elke installatie",
     "pypiMirrorHelp": "Elk Python-pakket wordt uit deze index geïnstalleerd in plaats van uit de openbare PyPI. Een organisatie heeft één standaardindex.",
     "saved": "Opgeslagen",
     "removed": "Verwijderd",
-    "remove": "Verwijderen"
+    "remove": "Verwijderen",
+    "gitHostHelp": "De host, met poort en pad als de server die heeft, bijvoorbeeld bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "Certificeringsinstantie (PEM)",
+    "caBundleHelp": "Alleen voor een server waarvan het certificaat door uw eigen certificeringsinstantie is ondertekend, zoals een Artifactory-proxy in uw netwerk: het PEM-certificaat ervan of een secretverwijzing. Het wordt vertrouwd naast de publieke certificeringsinstanties. Laat het anders leeg."
   }
 }

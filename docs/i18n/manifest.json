@@ -32,6 +32,7 @@
     "glossary.md",
     "environments.md",
     "cli.md",
-    "admin-graphql.md"
+    "admin-graphql.md",
+    "package-registries.md"
   ]
 }

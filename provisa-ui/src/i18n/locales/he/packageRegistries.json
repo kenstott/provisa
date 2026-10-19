@@ -18,18 +18,21 @@
     "gitHost": "שרת",
     "scope": "תחום",
     "scopeHelp": "לדוגמה ‎@acme. השאירו ריק עבור מאגר ללא תחום.",
-    "npmCredential": "אסימון",
-    "npmCredentialHelp": "אסימון הגישה של המאגר.",
-    "pypiCredential": "אסימון",
-    "pypiCredentialHelp": "אסימון הגישה של האינדקס, או משתמש:סיסמה.",
-    "gitCredential": "אסימון HTTPS",
-    "gitCredentialHelp": "אסימון עם הרשאת קריאה למאגרים.",
+    "npmCredential": "אסימון או user:password",
+    "npmCredentialHelp": "אסימון גישה, או user:password, למשל משתמש Artifactory ומפתח ה-API שלו.",
+    "pypiCredential": "אסימון או user:password",
+    "pypiCredentialHelp": "אסימון גישה, או user:password, למשל משתמש Artifactory ומפתח ה-API שלו.",
+    "gitCredential": "אסימון או user:token",
+    "gitCredentialHelp": "אסימון לבדו נשלח כ-x-access-token, כפי ש-GitHub מצפה. אחרת הזינו user:token. GitLab: כל שם משתמש. Bitbucket Cloud: x-token-auth לאסימוני גישה של מאגר או של workspace, או שם המשתמש או הדוא\"ל שלכם לאסימוני API. Bitbucket Data Center: שם המשתמש שלכם, או x-token-auth לאסימוני פרויקט או מאגר.",
     "mirror": "מראה לכל התקנה",
     "mirrorHelp": "כל חבילה ללא היקף משלה מותקנת דרך המאגר הזה. לארגון יש מראה npm אחת.",
     "pypiMirror": "אינדקס ברירת מחדל לכל התקנה",
     "pypiMirrorHelp": "כל חבילת Python מותקנת מהאינדקס הזה במקום מ-PyPI הציבורי. לארגון יש אינדקס ברירת מחדל אחד.",
     "saved": "נשמר",
     "removed": "הוסר",
-    "remove": "הסרה"
+    "remove": "הסרה",
+    "gitHostHelp": "המארח, עם הפורט והנתיב כשיש לשרת כאלה, למשל bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "רשות אישורים (PEM)",
+    "caBundleHelp": "רק לשרת שהאישור שלו חתום על ידי רשות אישורים משלכם, כמו פרוקסי Artifactory בתוך הרשת שלכם: אישור ה-PEM שלה או הפניה לסוד. סומכים עליה לצד הרשויות הציבוריות. אחרת השאירו ריק."
   }
 }
