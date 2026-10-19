@@ -500,6 +500,8 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 | `google_sheets` | —（經具體化） | 否 |
 | `prometheus` | prometheus | 否 | 一個指標即為一張表，一個樣本即為一列（`timestamp`、`value`，每個標籤一個資料行）；在沒有即時連接器的每個引擎上，Provisa 讀取 HTTP API——Register Table 取得指標名稱與標籤，落地時對該表的範圍使用 `query_range`
 
+### 企業 SaaS 連接器 {: #enterprise-saas-connectors }
+
 Google Workspace 及 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 及 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、雲端資源清單及 Splunk 經以獨立程序執行、使用 PostgreSQL 協定通訊的驅動程式讀取（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），所以它們都沒有直接驅動程式。在 DuckDB 引擎上，驅動程式的端點透過 postgres 擴充功能即時掛載：Register Table 從已掛載的目錄中列出連接器的資料表，查詢就地讀取連接器，篩選及投影會下推給它。其他所有引擎都把資料列落地到具體化儲存區以用於聯邦。驅動程式套件按作業系統及架構從固定版本的 release 中取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）。營運者亦可以在 Admin → 設定 → 連接器伺服器中，按連接器指定一個為本主機建構的套件資料夾（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。五個 Trino 連接器（Jira 沒有）一律以不分大小寫的方式比對名稱，與各產品自身一致。
 #### `sharepoint`
 

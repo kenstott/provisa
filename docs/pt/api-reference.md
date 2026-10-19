@@ -528,7 +528,7 @@ Em falha de recarregamento: `{"success": false, "message": "<error>"}`.
 
 #### `GET /admin/config/live`
 
-Baixa o modelo como está, escrito como arquivo de configuração: as configurações do arquivo da implantação com cada seção do modelo lida do model store — stores, regiões, fontes, domínios, funções, produtos de dados, termos do glossário, tabelas e suas colunas, relacionamentos, métricas, tags e suas atribuições, filtros de linha, comandos, webhooks, gatilhos agendados e regras de nomenclatura. Aplicado a um model store vazio, o arquivo constrói o mesmo modelo. O que a implantação semeia em todo store (as fontes embutidas e suas tabelas, os domínios de sistema, `org_admin` e `platform_admin`) fica de fora.
+Baixa o modelo como está, escrito como arquivo de configuração. Ele traz as configurações do arquivo de deployment, com cada seção do modelo lida do model store: stores, regiões, fontes, domínios, papéis, data products, termos do glossário, tabelas e suas colunas, relacionamentos, métricas, tags e suas atribuições, filtros de linha, commands, webhooks, gatilhos agendados e regras de nomes. Aplicado a um model store vazio, o arquivo constrói o mesmo modelo. O que o deployment semeia em todo store (as fontes embutidas e suas tabelas, os domínios de sistema, `org_admin` e `platform_admin`) fica de fora.
 
 **Parâmetro de consulta:** `sections` (opcional) — uma lista de seções do modelo separadas por vírgulas, por exemplo `sources,tables`. Só essas seções são escritas; um nome desconhecido responde 400 `settings.export_unknown_section`.
 
@@ -538,7 +538,7 @@ Retorna `application/x-yaml` com `Content-Disposition: attachment; filename=prov
 
 #### `GET /admin/config/diff`
 
-Retorna os dois lados do diff de configuração — `original` (a linha de base da inicialização) e `current` (o estado vivo) — normalizados de forma idêntica, de modo que a comparação mostre apenas mudanças genuínas, não reordenação ou variação de comentários.
+Devolve os dois lados do diff de configuração, `original` (a base na inicialização) e `current` (o estado ao vivo), normalizados do mesmo jeito, para que a comparação mostre só mudanças reais e ignore reordenações e alterações de comentários.
 
 **Resposta:**
 
@@ -550,7 +550,7 @@ Retorna os dois lados do diff de configuração — `original` (a linha de base 
 
 Gera um patch em diff unificado da linha de base para a configuração enviada.
 
-Envie o YAML revisado como corpo da requisição. A resposta é um arquivo `text/x-patch` (`provisa.config.patch`) que `git apply` ou `patch` consegue consumir diretamente — útil para submeter mudanças de configuração feitas pela UI através de um pipeline de CI/CD.
+Envie o YAML revisado como corpo da requisição. A resposta é um arquivo `text/x-patch` (`provisa.config.patch`) que `git apply` ou `patch` aplicam como está, útil para fazer commit, por um pipeline de CI/CD, de mudanças de configuração feitas na UI.
 
 ---
 
@@ -596,7 +596,7 @@ Retorna as configurações atuais da plataforma como JSON.
 
 #### `PUT /admin/settings`
 
-Atualiza as configurações da plataforma em tempo de execução. Todos os campos são opcionais — apenas chaves presentes no corpo são atualizadas.
+Atualiza as configurações da plataforma em tempo de execução. Todo campo é opcional, e só mudam as chaves presentes no corpo.
 
 **Corpo da requisição (exemplo parcial):**
 
@@ -648,7 +648,7 @@ Retorna as atribuições de modelo de IA da organização atuante, o registro de
 }
 ```
 
-Chaves de API nunca são devolvidas — `api_keys_set` informa apenas se cada fornecedor tem uma chave configurada. As mudanças entram em vigor na próxima requisição; nenhuma reinicialização é necessária.
+As chaves de API nunca são devolvidas: `api_keys_set` só diz se cada fornecedor tem uma chave configurada. As mudanças valem a partir da próxima requisição, sem reiniciar.
 
 #### `PUT /admin/ai-models`
 
@@ -658,7 +658,7 @@ Atualiza as atribuições de modelo de IA da organização, o registro de modelo
 
 Retorna os nomes de modelo que um fornecedor serve no momento, para o seletor de modelos.
 
-A lista é lida ao vivo da própria API de listagem de modelos do fornecedor usando a chave configurada da organização — ou a credencial da implantação, quando nenhuma chave da organização está definida. Um modelo lançado depois deste build é selecionável no mesmo dia em que o fornecedor o serve.
+A lista é lida ao vivo da própria API de listagem de modelos do fornecedor, com a chave configurada da organização, ou com a credencial do deployment quando a organização não tem chave. Um modelo lançado depois desta build pode ser escolhido no mesmo dia em que o fornecedor começa a servi-lo.
 
 Retorna `400` quando o fornecedor não publica uma API de listagem de modelos (nesse caso, digite o nome do modelo diretamente) ou quando nenhuma chave está disponível.
 
@@ -696,7 +696,7 @@ Persiste uma seleção de motor de federação.
 {"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
 ```
 
-A seleção é escrita na configuração da plataforma. Ela entra em vigor após a próxima reinicialização do serviço — o motor é escolhido uma vez, na inicialização.
+A seleção é gravada na configuração da plataforma e vale após o próximo reinício do serviço, porque o motor é escolhido uma vez na inicialização.
 
 ---
 
@@ -816,7 +816,7 @@ Busca tabelas disponíveis (ainda não registradas) em uma fonte por nome.
 
 #### `POST /admin/tables/{table_id}/profile`
 
-Executa um perfil de coluna em uma tabela registrada — cardinalidade, mín/máx, taxas de nulo.
+Roda um perfil de colunas numa tabela registrada: cardinalidade, mín/máx e taxas de nulos.
 
 ---
 
@@ -846,7 +846,7 @@ Registra (ou limpa) o armazenamento de materialização da própria organizaçã
 {"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
 ```
 
-O DSN é validado contra o motor de federação antes de ser aceito — um DSN inutilizável falha no registro, e não horas depois durante uma atualização. O valor é criptografado em repouso e nunca é devolvido pelo GET.
+O DSN é verificado contra o motor de federação antes de ser aceito, então um DSN inutilizável falha no registro e não horas depois numa atualização. O valor fica criptografado em repouso e nunca é devolvido pelo GET.
 
 Envie `storage_url: null` para limpar o armazenamento próprio da organização e devolver suas materializações ao armazenamento da plataforma (e à cota). O runtime da organização é reconstruído na mesma chamada, então o novo armazenamento passa a valer imediatamente.
 
@@ -870,7 +870,7 @@ Define ou rotaciona a chave de criptografia em repouso da organização.
 {"key_b64": "<32 raw bytes, base64-encoded>"}
 ```
 
-Omita `key_b64` para que o Provisa gere uma chave — o caminho mais seguro, já que a chave nunca aparece em uma área de transferência ou log de requisição. Fornecer `key_b64` traz sua própria chave.
+Omita `key_b64` para o Provisa gerar uma chave. É a opção mais segura, porque a chave nunca aparece numa área de transferência nem num log de requisições. Informar `key_b64` traz a sua própria chave.
 
 A rotação adiciona uma nova entrada ativa ao chaveiro e mantém a antiga, de modo que dados escritos sob a chave anterior seguem legíveis. Rotação não é recriptografia. Não há endpoint de exclusão: aposentar a última chave tornaria ilegível todo payload envolvido por ela.
 
@@ -935,7 +935,7 @@ Uma importação é um seed explícito e único do model store da organização 
 
 Exporta o modelo governado da organização como um documento YAML do Apache Ossie (incubating).
 
-O documento é derivado do estado vivo a cada requisição — nunca armazenado em cache — portanto não pode ficar desatualizado. Tabelas viram objetos `dataset`, colunas viram objetos `field` e relacionamentos mapeiam para objetos `relationship` do Ossie.
+O documento é montado a partir do estado ao vivo a cada requisição e nunca vai para cache, então não pode ficar desatualizado. Tabelas viram objetos `dataset`, colunas viram objetos `field`, e relacionamentos são mapeados para objetos `relationship` do Ossie.
 
 Retorna `text/yaml` com `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 
@@ -972,7 +972,7 @@ Nada é registrado. Use a tela de revisão da interface de administração para 
 
 Todos os endpoints estão sob o prefixo `/admin/actions`.
 
-Toda invocação — de GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, e gRPC Provisa — passa por um único executor governado que aplica a atribuição do comando (`visible_to`), o direito `write` para uma mutação e governança de forma uniforme. Veja [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para a sintaxe de chamada por protocolo.
+Toda chamada, venha de GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` ou Provisa gRPC, passa por um único executor governado. Ele impõe a atribuição de commands (`visible_to`), o direito `write` para uma mutation e a governança, sempre do mesmo jeito. Veja [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para a sintaxe de chamada de cada protocolo.
 
 #### `GET /admin/actions`
 
@@ -1052,7 +1052,7 @@ Exclui uma função rastreada pelo nome.
 
 #### `POST /admin/actions/webhooks`
 
-Registra um webhook rastreado. Registrar ou atualizar um webhook enfileira uma requisição de aprovação de steward — o webhook se torna ativo em todas as superfícies apenas após um steward aprová-lo. Webhooks declarados em config são auto-aprovados. **Campos do corpo da requisição:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
+Registra um webhook rastreado. Registrar ou atualizar um webhook coloca na fila um pedido de aprovação para o steward, e o webhook só fica ativo em todas as superfícies depois que um steward o aprova. Webhooks declarados na configuração são aprovados automaticamente. **Campos do corpo da requisição:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
 
 #### `PUT /admin/actions/webhooks/{name}`
 
@@ -1282,7 +1282,7 @@ Quando uma tabela tem `enable_aggregates` definido, o proto gerado inclui dois R
 - **`Query{TypeName}Aggregate`** — retorna escalares de agregação para a tabela (`count`; `sum`, `avg`, `stddev`, `variance` por coluna numérica; `min`, `max` por coluna comparável)
 - **`Query{TypeName}GroupBy`** — retorna uma linha por chave de grupo com subcampos de agregação e, opcionalmente, escalares da tabela base e linhas de dimensão unida em um campo `nodes`
 
-Ambos passam pelo mesmo pipeline de agregação do compilador que os campos raiz `{field}_aggregate` e `{field}_group_by` do GraphQL — sem implementação de agregação separada.
+Ambos passam pelo mesmo pipeline de agregação do compilador que os campos raiz `{field}_aggregate` e `{field}_group_by` do GraphQL, então não há uma implementação de agregação separada.
 
 **Campo `funcs`.** A mensagem de requisição aceita um campo `funcs` de string repetida. Os valores válidos são `count`, `sum`, `avg`, `stddev`, `variance`, `min`, e `max`. Quando `funcs` é omitido, toda função que o esquema expõe para essa tabela é solicitada. Quando definido, apenas as funções nomeadas aparecem. Se nenhuma das funções nomeadas se aplicar aos tipos de coluna da tabela, a consulta recorre a `count`.
 
@@ -1327,7 +1327,7 @@ Subscriptions SSE estão disponíveis em `GET /data/subscribe/{table}`. A entreg
 
 ## Glossário de Negócios {: #business-glossary }
 
-O glossário de negócios mapeia nomes de campo físicos — como existem nos bancos de dados de origem — para um vocabulário humano compartilhado. Toda coluna registrada no modelo recebe um termo automaticamente. Nenhuma entrada manual é necessária para popular o glossário; curadores adicionam definições, relacionamentos e especialistas sobre o que o sistema deriva.
+O glossário de negócios mapeia os nomes físicos dos campos, como aparecem nos bancos de origem, para um vocabulário humano compartilhado. Toda coluna registrada no modelo recebe um termo automaticamente, então ninguém precisa digitar nada para preencher o glossário. Os curadores acrescentam definições, relacionamentos e especialistas sobre o que o sistema deriva.
 
 ### Como os Termos São Derivados {: #how-terms-are-derived }
 
@@ -1352,15 +1352,15 @@ Como `id`, `key`, `pk`, e `sk` todos se expandem para `identifier` antes da veri
 | `CUSTOMER_KEY` | `customer` |
 | `txn_amt` | `transaction amount` |
 
-Os três primeiros colapsam em um termo. `transaction amount` mantém ambos os tokens porque `amount` não é um proxy. Uma coluna `id` simples — sem tokens precedentes — não pode ser removida; ela normaliza para `identifier` para que o termo não fique vazio.
+Os três primeiros se reduzem a um único termo. `transaction amount` mantém os dois tokens porque `amount` não é um substituto. Uma coluna `id` sozinha, sem tokens antes, não pode ser cortada, então é normalizada para `identifier` e o termo não fica vazio.
 
 ### Ciclo de Vida {: #lifecycle }
 
-Termos são **derivados da associação ao modelo**, não criados sob demanda por usuários. O repositório de tabela é o único caminho de escrita: `sync_table_refs` roda dentro de todo upsert de conjunto de colunas, e `sweep_refless_terms` roda após qualquer caminho de exclusão.
+Os termos são **derivados da participação na camada semântica**; os usuários não os criam sob demanda. O repositório de tabelas é o único caminho de escrita: `sync_table_refs` roda dentro de cada upsert de conjunto de colunas, e `sweep_refless_terms` roda depois de qualquer caminho de exclusão.
 
 **Quando uma coluna é adicionada:** o Provisa busca o termo normalizado pelo nome. Se ele já existir, a coluna recebe uma referência a ele (e se o termo estava depreciado, ele é revivido — `deprecated` é definido de volta para `False`). Se nenhum termo existir ainda, um é criado.
 
-**Quando uma coluna sai** (mudança de esquema ou remoção de tabela): sua referência é excluída e o termo é **resolvido** sob uma regra de remover-ou-depreciar. Um termo enraizado sem referências restantes é removido completamente — junto com suas arestas e atribuições de especialista — a menos que removê-lo deixasse um termo abstrato desconectado de todos os termos enraizados (sem caminho através do grafo de termos). Nesse caso, o termo é **depreciado** (marcado `deprecated=True`) em vez de excluído, para que a âncora de grafo do termo abstrato sobreviva.
+**Quando uma coluna sai** (uma mudança de esquema ou a remoção de uma tabela), a referência dela é apagada e o termo é **resolvido** por uma regra de remover ou depreciar. Um termo enraizado sem referências restantes é removido de vez, com suas arestas e atribuições de especialistas, a menos que removê-lo deixe um termo abstrato sem caminho no grafo de termos até algum termo enraizado. Nesse caso o termo é **depreciado** (marcado `deprecated=True`) em vez de apagado, para que o termo abstrato mantenha sua âncora no grafo.
 
 Termos abstratos nunca são removidos automaticamente; eles existem fora do ciclo de vida físico e são excluídos apenas explicitamente via a API de administração.
 
