@@ -25126,8 +25126,7 @@
     contract.'
   use_case: 'Decouples Provisa''s governed semantic layer from any single execution vendor. The same semantic
     layer, execution pipeline, governance, IR, and multi-protocol query surface run on an embedded desktop
-    engine (DuckDB, no Trino), the Trino federation engine, or a customer''s existing warehouse (Snowflake/Databricks/Dremio)
-    — making the engine a swappable deployment choice and concentrating Provisa''s IP in the semantic
+    engine (DuckDB, no Trino), the Trino federation engine, or a customer''s existing warehouse (Snowflake/Databricks/Dremio), making the engine a swappable deployment choice and concentrating Provisa''s IP in the semantic
     layer, pipeline, governance, and federation-strategy logic rather than the engine. Intended model:
     develop on DuckDB (laptop, zero infra, full governance and full source reach), then scale out to Trino/Snowflake/Databricks
     in production, unchanged.'
@@ -26367,8 +26366,7 @@
     for volatile pull-through sources and materialized views where lag is unacceptable, cheap TTL for
     static ones — inside the one materialization_store gate (REQ-845) rather than a per-protocol bolt-on.
     view targets (REQ-844 derivation role) may carry both a TTL/refresh interval and a freshness gate;
-    the gate suppresses needless CTAS rebuilds when the upstream token is unchanged. DONE (2026-07): the
-    centralized gate is implemented — provisa/federation/freshness_gate.py:: evaluate_freshness(mode,
+    the gate suppresses needless CTAS rebuilds when the upstream token is unchanged. DONE (2026-07): the centralized gate is implemented in provisa/federation/freshness_gate.py: evaluate_freshness(mode,
     now, last_refresh_at, ttl, stored_token, probe) returns a FreshnessDecision (fresh + new_token) for
     the three modes: TTL (bounded staleness), PROBE (probe every access, ignore TTL), TTL_PROBE (probe
     only past the TTL floor). The probe yields an opaque token compared by equality — unchanged keeps
@@ -27266,8 +27264,7 @@
     re-pull on every refresh is expensive and unnecessary. Delta fetch via monotonic watermark keeps replicas
     fresh with zero lag (REQ-855 probe) without repeated full upstream fetches. Primary use: remote-schema
     sources (graphql_remote/openapi/gRPC) avoid full-relation re-fetch and re-materialize. Also benefits
-    RDB sources presently using watermark_column only for subscriptions (REQ-260) — they gain incremental
-    replica refresh: keyed upsert instead of full re-pull, no full-CTAS + mutation-triggered staleness
+    RDB sources presently using watermark_column only for subscriptions (REQ-260). They gain incremental replica refresh: keyed upsert instead of full re-pull, no full-CTAS + mutation-triggered staleness
     cycle. Strategy-agnostic scope avoids VIRTUAL (live) and SCAN (in-place read) per REQ-826. Replicas
     in mutable stores absorb deltas; views cannot.'
   code:
@@ -30372,7 +30369,7 @@
     only in 2.18.4. The classloader resolved YAMLParser against the older jackson-core, which is missing
     the method jackson-dataformat-yaml calls. Confirmed live via pgwire-server.log: CalciteBackend._connect()''s
     DriverManager.getConnection("jdbc:calcite:", ...) failed with NoSuchMethodError on every server start,
-    so the JVM never established its Calcite connection at all — the TCP health check still passed (it
+    so the JVM never established its Calcite connection at all. The TCP health check still passed (it
     only probes the port), so Register Table waited through a full JVM boot and then silently returned
     an empty table list for every pgwire-replica source (files/sharepoint/splunk), REQ-1690''s ATTACH
     included. Confirmed fixed in engine-v0.94.4''s bundle: single 2.18.4.x line for every jackson-* jar,
@@ -31072,7 +31069,7 @@
     per-fire cost for large or hot derived nodes. Conflict to declare around: an incrementally-maintained
     MV cannot freely drop intermediate deltas the way recompute-to-current can, so it partially conflicts with debounce (REQ-963); the operator chooses per node.'
   use_case: Large or high-churn derived nodes refresh by applying upstream deltas instead of full recomputation,
-    making delta emission affordable and incremental propagation real — declared per MV where feasible,
+    making delta emission affordable and incremental propagation real. It is declared per MV where feasible,
     erroring explicitly where not, never silently degrading.
   code:
   - provisa/events/handlers.py
@@ -34882,11 +34879,9 @@
     (live vs zaychik), google_sheets (opt-in gated: DuckDB gsheets extension SA-auth, PROVISA_GSHEETS_LIVE=1);
     Calcite/Trino — splunk (live, self-provisioned). Fixed a product bug found while covering exasol:
     Source.jdbc_url() omitted exasol/redshift, silently no-op''ing catalog creation. Filed issue #74 (zaychik
-    Arrow-Flight auth/protocol gap, found via airport; the Provisa Flight→Trino transport itself is verified
-    working — tests/integration/test_trino_flight_engine_e2e.py). The heavy multi-container analytics/lake
+    Arrow-Flight auth/protocol gap, found via airport; the Provisa Flight→Trino transport itself is verified working; see tests/integration/test_trino_flight_engine_e2e.py). The heavy multi-container analytics/lake
     ecosystems are now covered by self-provisioning e2e: pinot and druid (Trino catalog), hive and hive_s3
-    (Trino hive connector + HMS, S3 on MinIO). kudu and accumulo were removed from SourceType — neither
-    is a SQL-variant with a downloadable driver testable in this harness (Trino 481 ships no kudu/accumulo
+    (Trino hive connector + HMS, S3 on MinIO). kudu and accumulo were removed from SourceType; neither is a SQL-variant with a downloadable driver testable in this harness (Trino 481 ships no kudu/accumulo
     connector).'
   code:
   - provisa/core/models.py
@@ -36271,7 +36266,7 @@
     and the gate machinery are untouched. Selected via change_signal in {probe, ttl_probe} with probe_type=hash
     pointed at the sentinel.'
   use_case: Lets a steward detect upstream readiness from a published sentinel marker (a near-free poll)
-    instead of scanning or querying the source -- and, combined with REQ-1141 load protection, the cheap
+    instead of scanning or querying the source. Combined with REQ-1141 load protection, the cheap
     sentinel poll replaces hammering the operational source while the heavy re-pull still defers to the
     off-peak window.
   code:
@@ -36323,8 +36318,7 @@
     REQ-1141 the signal is the change-detector and the load-protected scheduler still owns WHEN the heavy
     pull runs (deferred to the off-peak window), which decouples the cheap control signal from the data pull.'
   use_case: Lets an upstream system announce a change over Kafka/webhook without Provisa polling or the
-    message carrying data; Provisa invalidates and re-pulls from the source on its own schedule -- ideal
-    for load-protected operational sources (REQ-1141) where a control-plane signal must not translate
+    message carrying data; Provisa invalidates and re-pulls from the source on its own schedule, which suits load-protected operational sources (REQ-1141) where a control-plane signal must not translate
     into immediate source load.
   code:
   - provisa/core/change_signal.py
@@ -36458,8 +36452,7 @@
     / gRPC). It rejects any INSERT/UPSERT/UPDATE/DELETE/MERGE whose TARGET is a view_sql_map relation;
     a view read in the FROM/USING of a write, and all base-table writes, are unaffected.'
   use_case: A steward composes an MV over a Provisa-hosted function (REQ-885) and it appears in GraphQL
-    for querying, but insert/update/delete mutations are no longer generated for it -- so a client cannot
-    issue a write that would be lost on the next refresh. The relation reads like any table; it just cannot
+    for querying, but insert/update/delete mutations are no longer generated for it, so a client cannot issue a write that would be lost on the next refresh. The relation reads like any table; it just cannot
     be written.
   code:
   - provisa/api/admin/db_queries.py
@@ -42392,7 +42385,7 @@
     fallback applies only where auth is not enforced (dev mode).
   use_case: The server honors X-Provisa-Role only for roles the user is assigned (provisa/auth/middleware.py),
     so handing an org_admin a client-side admin role makes every subsequent request 403 "Role 'admin'
-    is not assigned to this user" — the exact failure a self-service org creator hit when a roles query
+    is not assigned to this user", the exact failure a self-service org creator hit when a roles query
     failed and the client fabricated a fallback.
   code:
   - provisa-ui/src/context/AuthContext.tsx
@@ -42541,13 +42534,7 @@
     Kept here for history; do not implement against it.] All five are system roles (org_id NULL, identical
     capability sets in every org) and are not editable through the roles admin surface. [END SUPERSEDED
     BLOCK]'
-  use_case: The seeded catalog was ad hoc — 'admin' and 'analyst' existed by accident of the boot seed
-    and 'org_admin' was added later for self-service org creation, leaving no role for a person who builds
-    views and relationships but must not administer anything. A fixed four-role catalog gives every fresh
-    org and every fresh deployment the same starting vocabulary. Separating platform_admin (control-plane,
-    no data access) from org_admin (all data-plane administration, including in root) makes the platform/org
-    administration split explicit in the role id and capability set, enabling auditable recovery and preventing
-    silent data access.
+  use_case: 'The seeded catalog was ad hoc: ''admin'' and ''analyst'' existed by accident of the boot seed and ''org_admin'' was added later for self-service org creation, leaving no role for a person who builds views and relationships but must not administer anything. A fixed four-role catalog gives every fresh org and every fresh deployment the same starting vocabulary. Separating platform_admin (control-plane, no data access) from org_admin (all data-plane administration, including in root) makes the platform/org administration split explicit in the role id and capability set, enabling auditable recovery and preventing silent data access.'
   code:
   - provisa/core/schema.sql
   - provisa/core/db.py
@@ -50739,7 +50726,7 @@
     is load_config full-replace semantics.'
   use_case: An administrator migrating off Hasura converts their metadata export in the admin UI, reads
     what the conversion produced and what it could not convert, corrects the connection details in place,
-    and applies it to their org -- without a shell on the deployment.
+    and applies it to their org, without a shell on the deployment.
   related_reqs:
   - REQ-183
   - REQ-417
@@ -50792,8 +50779,7 @@
     consumers cannot all be reached and a block would strand the edit. Free-SQL-text scans match the column
     as an identifier token rather than resolving scope: over-reporting is the safe direction for a warning.'
   use_case: An administrator renaming a column's SQL alias or dropping a column is told, before the save
-    lands, which views, materialized views, metrics, policies and bindings name that column -- and saves
-    anyway if that is the intent.
+    lands, which views, materialized views, metrics, policies and bindings name that column, and saves anyway if that is the intent.
   related_reqs:
   - REQ-1160
   - REQ-1161
@@ -52796,8 +52782,7 @@
     succeeded but whose engine move failed leaves the organization on the lane it can still serve from
     and reports the failure, rather than stranding it on a lane with no engine.'
   use_case: An organization that upgrades to Pro M is running on a dedicated engine of that size within
-    the same session, and one that returns to Starter is back on the shared shard it started from with
-    its dedicated engine released -- neither having chosen a lane, and neither able to end up paying for
+    the same session, and one that returns to Starter is back on the shared shard it started from with its dedicated engine released. Neither has chosen a lane, and neither able to end up paying for
     one thing while running on another.
   code:
   - provisa/federation/k8s_provisioner.py
@@ -52884,8 +52869,7 @@
     will not take the change over the API and returns a hosted-portal address instead, the page sends
     the administrator there rather than reporting a change that did not happen.'
   use_case: An administrator comparing Pro sizes sees the machine and the price of each, changes to the
-    one they want, is told what will be charged now, and watches their new engine come up -- without leaving
-    the product, contacting sales, or entering a card a second time.
+    one they want, is told what will be charged now, and watches their new engine come up, without leaving the product, contacting sales, or entering a card a second time.
   code:
   - provisa-ui/src/components/admin/BillingTab.tsx
   - provisa-ui/src/api/billing.ts
@@ -52958,7 +52942,7 @@
     runs, so the surface could only report a setting nobody may change or accept one that the next deploy
     overwrites. It stays where it belongs, on installed deployments, gated as it already is.'
   use_case: A hosted organization's administrator opening the engine page learns which engine their queries
-    run on and whether it is up, and is sent to Billing to change it -- never faced with a lane or an
+    run on and whether it is up, and is sent to Billing to change it. They are never faced with a lane or an
     engine kind their plan does not sell, and never able to put their organization on a lane it is not
     paying for.
   code:
@@ -53754,8 +53738,7 @@
   type: behavioral
   target: 2026-Q4
   use_case: A developer writes a webhook URL with the API token pasted into the query string, and is told
-    at the moment of writing that the token must be a ${env:...} reference -- rather than discovering
-    months later that it is in the org's git history, in every clone of it, and must be rotated.
+    at the moment of writing that the token must be a ${env:...} reference, rather than discovering months later that it is in the org's git history, in every clone of it, and must be rotated.
   scenario: 'Given a carried class field whose value contains a literal credential
 
     When an author saves the change to the environment''s governed model
@@ -53983,8 +53966,7 @@
     runner that got the flag wrong would APPLY the merge it meant to inspect, and a method that cannot
     write is the one to hand a CI job.'
   use_case: An organization's existing GitHub Actions pipeline runs on every push of its Provisa model
-    and fails the check when a proposed dev-to-prod merge would delete an RLS rule -- using the same dry
-    run the merge itself would perform, and without Provisa running any pipeline of its own.
+    and fails the check when a proposed dev-to-prod merge would delete an RLS rule, using the same dry run the merge itself would perform, and without Provisa running any pipeline of its own.
   scenario: 'Given an organization whose environment repository has a remote configured
 
     When a carried class changes and the projection is pushed
@@ -62556,8 +62538,7 @@
     \ doc (engine-swap.spec.ts). A real fix needs physical schema names resolved per-engine at query-compile\
     \ time — the same kind of indirection `catalog_name_for_source` already does for CATALOG names (this\
     \ REQ's original bug 1) — not attempted in this pass.) [END SUPERSEDED BLOCK]\n(Amended 2026-09-17,\
-    \ SPLUNK FIXED: the schema-naming mismatch above is fixed for real, upstream — 30th->31st Trino-reachable\
-    \ type. Two commits in the `kenstott/calcite` fork (a SEPARATE repo this session's local checkout\
+    \ SPLUNK FIXED: the schema-naming mismatch above is fixed for real, upstream: 30th->31st Trino-reachable type. Two commits in the `kenstott/calcite` fork (a SEPARATE repo this session's local checkout\
     \ lives in at /Volumes/main/Users/kennethstott/IdeaProjects/calcite, not tracked by provisa's own\
     \ git history): 1. `28db96ca1` (splunk module): `SplunkDriver` now registers its Calcite schema under\
     \ a\n   configurable `schema`/`currentSchema` connection property (defaulting to \"splunk\"), instead\n\
@@ -62952,8 +62933,7 @@
     for exactly this reason, confirmed live before settling on it.
 
     (Amended 2026-09-15, hiveserver2 Register-Table gap:) the driver and pool registration this requirement
-    shipped were real, but the SourcesPage form submit itself (createSource) worked fine end-to-end when
-    correctly filled out — provisa/api/admin/introspect.py''s ``native_schemas``/``_native_tables_rdbms``/``native_columns``
+    shipped were real, but the SourcesPage form submit itself (createSource) worked fine end-to-end when correctly filled out. provisa/api/admin/introspect.py''s ``native_schemas``/``_native_tables_rdbms``/``native_columns``
     dispatch functions, which every other RDBMS-shaped DIRECT driver (postgresql/mysql/sqlserver/saphana/trino/snowflake/...)
     has an explicit branch in, had NO ``hiveserver2`` branch at all. Falling through to ``return None``
     sends the Register Table schema/table/column pickers to the generic engine-catalog fallback, which
@@ -63031,8 +63011,7 @@
     had no branch for either, so the Register Table picker showed nothing; both now return a fixed "main"
     schema and the source id as the one table, matching column resolution (which already worked via a
     different seam, `introspect_columns`, unaffected by this). (2) trino-as-a-source has a real DIRECT
-    driver (executor/drivers/registry.py''s `_make_trino`, hence a live SourcePool) but no engine attaches
-    it live except another Trino — the pre-registration schema/table/column picker (`available_schemas`/`available_tables`/
+    driver (executor/drivers/registry.py''s `_make_trino`, hence a live SourcePool) but no engine attaches it live except another Trino. The pre-registration schema/table/column picker (`available_schemas`/`available_tables`/
     `availableColumnsMetadata`) fell through to the generic engine-catalog query, which finds nothing until a table is registered: a circular dependency. Added a `native_columns` function (introspect.py,
     mirroring native_schemas/native_tables'' existing dispatch shape) plus trino branches in all three,
     backed by the SourcePool''s live connection rather than the (nonexistent, pre-registration) engine
@@ -63146,11 +63125,7 @@
   - tests/unit/test_cdc_landing_debounce.py
   - tests/unit/test_push_wiring.py
   - tests/unit/test_push_wiring_orchestration.py
-  use_case: Reviewing kafka/websocket/ingest's actual landing semantics (a working assumption that "messages
-    are appended to a materialized store" turned out to be an oversimplification — kafka/ websocket are
-    CDC upsert/delete-by-PK, not append) surfaced that neither was actually wired into the running app at all. That was a documented, acknowledged gap in app_wiring.py's own docstring, never closed. The user asked
-    to wire the real fetch path first, then fold in debounce with an operator-facing latency/throughput
-    UI control, in that order.
+  use_case: 'Reviewing kafka/websocket/ingest''s actual landing semantics (a working assumption that "messages are appended to a materialized store" turned out to be an oversimplification: kafka/websocket are CDC upsert/delete-by-PK, not append) surfaced that neither was actually wired into the running app at all. That was a documented, acknowledged gap in app_wiring.py''s own docstring, never closed. The user asked to wire the real fetch path first, then fold in debounce with an operator-facing latency/throughput UI control, in that order.'
   scenario: 'Given a kafka source registered with a table whose live.kafka.topic is set
 
     When the app boots or re-wires
@@ -63207,7 +63182,7 @@
   - tests/unit/test_cdc_landing_debounce.py
   - tests/unit/test_materialize_landing.py
   - tests/unit/test_subscription_providers.py
-  use_case: User asked to "fix the kafka auto-commit issue" — the limitation REQ-1733 explicitly flagged
+  use_case: User asked to "fix the kafka auto-commit issue", the limitation REQ-1733 explicitly flagged
     as out of scope rather than silently glossing over.
   scenario: 'Given a debounce buffer holding several landed-but-not-yet-committed Kafka events
 
@@ -63672,8 +63647,7 @@
     (trino_connectors.py) still has no UI field. It is deferred as a minor, purely-additive gap, not a correctness
     bug (splunk works without it, just can''t restrict to one CIM data model). sparql/neo4j auth (bearer/basic
     token or username/password) is rendered in the Sources form but does not appear to reach persistence
-    through the real (generic-flow) registration path either — `_handle_neo4j_table`/`_handle_sparql_table`
-    pass no auth-related argument to their respective `persist_*` functions. This is a materially larger gap than a dead field and was intentionally left for a dedicated follow-up rather than folded into
+    through the real (generic-flow) registration path either. `_handle_neo4j_table`/`_handle_sparql_table` pass no auth-related argument to their respective `persist_*` functions. This is a materially larger gap than a dead field and was intentionally left for a dedicated follow-up rather than folded into
     this pass silently.'
   code:
   - provisa-ui/src/pages/sources/SourceFormFields.tsx
@@ -63733,7 +63707,7 @@
     impyla connection read them back correctly.
 
     pinot and hive_s3 have NO direct driver, only a Trino connector (TrinoPinotConnector/ TrinoHiveS3Connector,
-    provisa/federation/trino_connectors.py) -- so register_source() is a no-op against the DuckDB backend
+    provisa/federation/trino_connectors.py), so register_source() is a no-op against the DuckDB backend
     and the schema dropdown can never populate there; the test file routes both to the Trino-backed webServer
     at the network layer (page.route rewriting /admin, /data, /query, /health to TRINO_BACKEND_URL), the
     same technique splunk-connector.spec.ts and sharepoint-connector.spec.ts already use for the identical
@@ -63872,12 +63846,12 @@
     The browser-driven Register Table flow itself is NOT independently confirmed. The run that reached
     this test came after the google_sheets crash above.
 
-    grpc_remote — TWO real bugs fixed, both blocking every real grpc_remote registration in this environment,
+    grpc_remote: TWO real bugs fixed, both blocking every real grpc_remote registration in this environment,
     not just this test: (1) provisa/grpc_remote/loader.py''s compile_proto_stubs imported `pkg_resources`,
     which setuptools >= 81 no longer installs by default (ModuleNotFoundError on every proto compile). It was fixed to resolve grpc_tools'' bundled well-known protos from the module''s own `__file__` location
     instead; (2) EVERY handler in provisa/api/admin/grpc_remote_router.py read `request.app.state` (Starlette''s
     bare per-request state object, which has none of provisa''s attributes) instead of provisa''s own
-    app-state singleton (`from provisa.api.app import state` — the pattern every sibling router, e.g. graphql_remote_router.py, already uses), so register/refresh/list/get-proto/put-proto could never have completed (''State'' object has no attribute ''catalog_for''). Fixed across all 5 handlers. A new
+    app-state singleton (`from provisa.api.app import state`, the pattern every sibling router, e.g. graphql_remote_router.py, already uses), so register/refresh/list/get-proto/put-proto could never have completed (''State'' object has no attribute ''catalog_for''). Fixed across all 5 handlers. A new
     minimal proto-based demo fixture was added (demo/grpc_remote_server/{animal_catalog.proto,server.py}, a genuine .proto + a grpc.aio server compiled via the SAME grpc_tools path the connector itself
     uses, unlike the pre-existing demo/grpc_server/server.py, which is deliberately proto-less and cannot
     exercise this connector at all). The full proto -> compile -> register -> query pipeline was verified
@@ -64454,8 +64428,7 @@
   priority: MUST
   type: behavioral
   description: 'Second real bug found in the same "systemic Register Table picker" investigation as REQ-1749:
-    native_columns (provisa/api/admin/introspect.py) had no branch for SourceType.duckdb — its own docstring
-    incorrectly claimed duckdb "never needed this" because it is ATTACH-mechanism, but that assumption
+    native_columns (provisa/api/admin/introspect.py) had no branch for SourceType.duckdb. Its own docstring incorrectly claimed duckdb "never needed this" because it is ATTACH-mechanism, but that assumption
     only holds once a table is registered (REQ-1673: the engine attaches a source lazily, on first table
     registration). Pre-registration, native_columns returning None fell through to the engine''s own ATTACH
     seam (introspect_columns), which sees nothing yet. The Register Table form''s column checkboxes never
@@ -64698,8 +64671,7 @@
     duplicating it. (4) Any engine-specific catalog-generation logic living outside that engine''s own
     Connector implementation must fold into it. (5) The registry docstring must accurately describe both
     contracts once (1)-(4) make that description true.'
-  use_case: Two contracts cleanly separates "how does an engine reach this source" from "how does Provisa
-    itself read this source" — each gets exactly one implementation surface per source type. Consolidating
+  use_case: Two contracts cleanly separates "how does an engine reach this source" from "how does Provisa itself read this source"; each gets exactly one implementation surface per source type. Consolidating
     onto two contracts is what makes "add a new source type" or "add a new engine" a bounded, reviewable
     change instead of a search for every place a source type's name is hardcoded.
   implementation_scratchpad: Non-binding notes on the current state, for whoever picks this up — not part
@@ -65175,7 +65147,7 @@
   - provisa-ui/e2e/source-to-query-olap-lake.spec.ts
   - provisa-ui/e2e/source-to-query-olap-lake-trino.spec.ts
   - tests/unit/test_hive_exasol_drivers.py
-  use_case: '"wire all 5 into the github action" — closing the gap between fixtures that were built and
+  use_case: '"wire all 5 into the github action": closing the gap between fixtures that were built and
     verified against a real amd64 host this session (saphana, greenplum, plus hive/druid/exasol handled
     separately) and CI actually exercising them, rather than leaving verified-but-skipped tests as the
     permanent state.'
@@ -65483,8 +65455,7 @@
   - demo/sources/kafka/compose.yml
   tests:
   - provisa-ui/e2e/source-to-query-streaming.spec.ts
-  use_case: '"wire in the kafka schema registry client and test it e2e" — closing the gap between a fully-
-    built, zero-caller Confluent Schema Registry client and any actual product surface that uses it, discovered
+  use_case: '"wire in the kafka schema registry client and test it e2e": closing the gap between a fully-built, zero-caller Confluent Schema Registry client and any actual product surface that uses it, discovered
     while extending kafka''s e2e coverage (REQ-1766).'
   scenario: 'Given a JSON Schema registered in Confluent Schema Registry for subject "<topic>-value"
 
@@ -65727,7 +65698,7 @@
   tests:
   - provisa-ui/e2e/source-to-query-streaming.spec.ts
   use_case: A row POSTed to an ingest source's HTTP push endpoint must be queryable from the SQL page
-    immediately (ingest is a synchronous push receiver, not a poll/CDC source) — landing a row that then
+    immediately (ingest is a synchronous push receiver, not a poll/CDC source). Landing a row that then
     silently never resolves defeats the entire point of a push-ingest source, on both a fresh server and
     one that has already processed substantial write volume.
   scenario: 'Given an ingest source and table registered through the Sources/Register Table UI
@@ -65818,8 +65789,7 @@
   unit_test_reason: Only observable end to end against a real Kafka broker (sample_topic_records consumes
     real messages via aiokafka) — not unit-mockable in a way that would exercise the real discovery wiring
     rather than restate it.
-  description: 'provisa/kafka/source.py''s sample_topic_records/infer_columns_from_records (REQ-150, SchemaSource.SAMPLE
-    — infer a topic''s columns from real sampled messages instead of querying Confluent Schema Registry)
+  description: 'provisa/kafka/source.py''s sample_topic_records/infer_columns_from_records (REQ-150, SchemaSource.SAMPLE: infer a topic''s columns from real sampled messages instead of querying Confluent Schema Registry)
     had ZERO callers, the same starting shape schema_registry.py had before REQ-1767 wired its REGISTRY-mode
     sibling. This closes the follow-up REQ-1767 explicitly left open: "(a) provisa.kafka.source.sample_topic_records
     ... remains unwired."
@@ -66184,10 +66154,9 @@
     pattern.'
   use_case: 'Found via the grpc_remote e2e test (REQ-1742): grpc_remote_router.py''s auto-registered columns
     start with visible_to: [] (zero-trust default) and the UI''s own grant flow (updateTable mutation)
-    sets visible_to: ["*"] -- the grant call itself succeeded and persisted ["*"] correctly (table_repo.upsert
+    sets visible_to: ["*"]. The grant call itself succeeded and persisted ["*"] correctly (table_repo.upsert
     has no "*" mishandling), but the VERY NEXT query against that column was rejected by the V003 check,
-    proving the read-side (not write-side) was broken. This bug was not specific to grpc_remote -- it
-    affects ANY column anywhere in the app ever granted visible_to: ["*"] through the normal UI grant
+    proving the read-side (not write-side) was broken. This bug was not specific to grpc_remote. It affects ANY column anywhere in the app ever granted visible_to: ["*"] through the normal UI grant
     flow, a long-standing, broad-impact access-control correctness bug: columns granted "visible to everyone"
     were actually visible to no one. GAP: no dedicated regression test exists yet for either fixed code
     path (stage2.py''s build_governance_context or schema_gen.py''s per-role column filter); both fixes
@@ -68502,7 +68471,7 @@
   feature: chat-assistant-actions
   priority: SHOULD
   type: behavioral
-  description: 'Polly could not manage the glossary at all — no tool let her create, rename, redefine,
+  description: 'Polly could not manage the glossary at all: no tool let her create, rename, redefine,
     retire, delete, or relate a glossary term. Added list_glossary_terms, create_glossary_term, update_glossary_term,
     delete_glossary_term, add_glossary_term_edge, and remove_glossary_term_edge, each reusing the exact
     capability checks (glossary_read/glossary_rw, per-term curatability, declared-domain validation) the
@@ -68710,8 +68679,7 @@
     the separate tool-call log did, whose own comment incorrectly assumed the message list "would" do
     the same). A long streamed reply just grew below the current scroll position, so the visible text
     looked permanently frozen on the first sentence even though the full reply had already arrived; fixed
-    by adding the identical auto-scroll effect the tool log already had, keyed on `messages`. (2) resp now comes from stream.get_final_message() (ParsedMessage), whose text blocks are ParsedTextBlock
-    — carrying an extra parsed_output field (always None; only meaningful with a structured-output param
+    by adding the identical auto-scroll effect the tool log already had, keyed on `messages`. (2) resp now comes from stream.get_final_message() (ParsedMessage), whose text blocks are ParsedTextBlock, carrying an extra parsed_output field (always None; only meaningful with a structured-output param
     never passed here) the SDK itself marks `__api_exclude__` but plain model_dump() doesn''t know to
     drop. Sent back verbatim in a client-tool-pause resume POST''s assistant_content, Anthropic''s API
     rejected it outright with a 400 invalid_request_error ("messages.N.content. M.text.parsed_output:
@@ -69280,7 +69248,7 @@
   type: behavioral
   description: 'Following a design discussion: every MCP tool call (Polly''s or the standalone MCP server''s)
     is scoped to the calling identity''s own real capabilities via require_capability_request/require_capability. An agent can never exceed what the underlying authenticated identity could already do. Given that,
-    there was no security reason to keep this session''s new tools (naming lookups, generate_explore_queries, native-schema discovery, glossary/data-product/metric CRUD) Polly-only — registered them on the real
+    there was no security reason to keep this session''s new tools (naming lookups, generate_explore_queries, native-schema discovery, glossary/data-product/metric CRUD) Polly-only, so they were registered on the real
     standalone MCP server (provisa/api/mcp/server.py) too, excluding only the browser-actuation client tools (navigate/present_choice/refresh_mv), which have no meaning for a headless MCP client.
 
     The capability-gated tools (glossary/data-product/metric writes) needed new plumbing: require_capability_request/require_active_org_id
@@ -70266,14 +70234,7 @@
   feature: installation-python-package
   priority: SHOULD
   type: infrastructure
-  description: An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages provisa_pg_ext's
-    bundled FDW/extension binaries into an OPERATOR-SUPPLIED, external Postgres instance — the same manual
-    sequence performed live this session (pip install provisa-pg-ext; docker cp the platform-matched lib/*.so
-    + share/extension/* files into the target's pg_config --pkglibdir/--sharedir; ALTER SYSTEM SET shared_preload_libraries
-    for pg_duckdb; restart; CREATE EXTENSION). Today _stage_bundled_extensions() (provisa/core/control_plane_pg.py:47)
-    only stages into Provisa's OWN embedded pgserver instance. There is no equivalent path for a customer's
-    own Postgres (Docker, RDS-with-filesystem-access, bare-metal, etc.), which is the common real-world
-    "point Provisa at your existing Postgres" deployment shape.
+  description: 'An end-user-facing script (scripts/install-pg-ext.sh or similar) that stages provisa_pg_ext''s bundled FDW/extension binaries into an OPERATOR-SUPPLIED, external Postgres instance: the same manual sequence performed live this session (pip install provisa-pg-ext; docker cp the platform-matched lib/*.so + share/extension/* files into the target''s pg_config --pkglibdir/--sharedir; ALTER SYSTEM SET shared_preload_libraries for pg_duckdb; restart; CREATE EXTENSION). Today _stage_bundled_extensions() (provisa/core/control_plane_pg.py:47) only stages into Provisa''s OWN embedded pgserver instance. There is no equivalent path for a customer''s own Postgres (Docker, RDS-with-filesystem-access, bare-metal, etc.), which is the common real-world "point Provisa at your existing Postgres" deployment shape.'
   use_case: Every operator who wants live FDW-attach reach (postgres_fdw/pg_duckdb and, once REQ-1869/1870
     land, mongo_fdw/pg_clickhouse) against their OWN Postgres today has to hand-copy files and run ALTER
     SYSTEM manually, exactly as this session did by hand against perf-postgresql-1. A packaged script turns that into a one-command operation and is the natural companion to REQ-1872's startup probe (probe
@@ -71569,7 +71530,7 @@
     `QueryResult` gained a `cache_pass: Literal["nocache", "cache"]` field; `summary()` branches on it
     (full sample set vs. `ok_samples[1:]`) instead of computing one blended percentile set. `run_all`/`main()`
     run the whole matrix twice (`no_cache=True` then `no_cache=False`), concatenating both passes'' `QueryResult`s
-    into one report — every query/transport pair appears twice, tagged by `cache_pass`, not as a single
+    into one report. Every query/transport pair appears twice, tagged by `cache_pass`, not as a single
     ambiguous row. `summary()` also now reports `ops_per_hour` (`qps * 3600`) alongside `qps`, a more
     directly comparable throughput unit for a results table.
 
@@ -72109,7 +72070,7 @@
     is documented SYNCHRONOUS-for-a-worker-thread: it drives its cursor via `asyncio.run_coroutine_threadsafe(coro,
     loop).result()`, which is how Flight''s `do_get` (running on Flight''s own thread pool, off the event
     loop) and pgwire''s socketserver worker can call it safely. gRPC''s `_handle_query_bound` is a native
-    `grpc.aio` async generator already running ON the event loop — calling `.result()` on a coroutine
+    `grpc.aio` async generator already running ON the event loop. Calling `.result()` on a coroutine
     scheduled back onto that same loop from inside itself would deadlock. `execute_native` is a plain
     coroutine and is the correct terminal for gRPC''s dispatch shape.
 
@@ -72225,8 +72186,7 @@
     the pg engine''s per-query cost as dominated by connection setup rather than query execution itself. It was traced to `run_sync`/`run_arrow` opening a fresh connection on every call instead of reusing one
     across a session, unlike the duckdb engine. (Amended 2026-09-28: fixed a stale assertion this change''s own verification run surfaced in `tests/integration/test_pg_runtime_e2e.py`. The test queried the
     source''s bare `"sales"."orders"` name, predating `attach_source`''s REQ-1730 schema fold (`"{source_to_catalog(source.id)}_{schema_name}"`
-    = `"ord_sales"`), so every `run_sync`/ `run_arrow`/`run_arrow_stream` call in that test hit `UndefinedTable`
-    — reproduced identically against unmodified pre-REQ-1895 `pg_runtime.py`, which confirmed it as a preexisting test bug, not a pooling regression. Test now computes the folded name via `source_to_catalog` and
+    = `"ord_sales"`), so every `run_sync`/ `run_arrow`/`run_arrow_stream` call in that test hit `UndefinedTable`, reproduced identically against unmodified pre-REQ-1895 `pg_runtime.py`, which confirmed it as a preexisting test bug, not a pooling regression. Test now computes the folded name via `source_to_catalog` and
     queries it, same as `attach_source` does; full e2e run is green.)'
   code:
   - provisa/federation/pg_runtime.py
@@ -72566,7 +72526,7 @@
     client, not something to do unilaterally without the maintainer''s decision. Tracked as an open follow-up,
     not implemented here.'
   use_case: Found running this session's live duckdb-engine benchmark on the perf-bench VM immediately
-    after landing REQ-1896/1897 (shared response cache) — the maintainer flagged the 190s `large_scan
+    after landing REQ-1896/1897 (shared response cache). The maintainer flagged the 190s `large_scan
     via grpc` result as "not an acceptable result" and asked for it to be investigated rather than reported
     as-is.
   code:
@@ -79562,7 +79522,7 @@
     can see how close they are. The report also gives named privacy measures: each generated row''s distance
     to its closest real row and the nearest-neighbour distance ratio, each beside the real rows'' own,
     and the result of a membership-inference test. A dataset not declared private is reported as carrying
-    no privacy guarantee. A column''s synthetic rule, where declared, decides its generated values; else its fake; else its profile (REQ-1494). A column tagged pii with neither a fake nor a synthetic rule refuses the generation by name. A private dataset reads nothing from a profile run''s recorded values, which were measured without noise: every statistic it generates from is measured at generation, from the tables, as the organisation''s administrator, by a mechanism of bounded sensitivity charged to the dataset''s privacy budget, the profile supplying only the structure -- columns, their families and relationships. Numeric and date ranges come from bounds the operator declares, or from noisy quantile estimates charged to the budget, and values are clipped to them. Because no observed value may be released, a private dataset refuses by name a categories() fake, asking for its values to be declared, a pattern() fake, and a text column that declares neither a fake nor a synthetic rule, asking for one, every refused column named in one refusal. The charges across every statistic sum to the dataset''s budget, and the report shows the sum.'
+    no privacy guarantee. A column''s synthetic rule, where declared, decides its generated values; else its fake; else its profile (REQ-1494). A column tagged pii with neither a fake nor a synthetic rule refuses the generation by name. A private dataset reads nothing from a profile run''s recorded values, which were measured without noise: every statistic it generates from is measured at generation, from the tables, as the organisation''s administrator, by a mechanism of bounded sensitivity charged to the dataset''s privacy budget, the profile supplying only the structure: columns, their families and relationships. Numeric and date ranges come from bounds the operator declares, or from noisy quantile estimates charged to the budget, and values are clipped to them. Because no observed value may be released, a private dataset refuses by name a categories() fake, asking for its values to be declared, a pattern() fake, and a text column that declares neither a fake nor a synthetic rule, asking for one, every refused column named in one refusal. The charges across every statistic sum to the dataset''s budget, and the report shows the sum.'
   use_case: 'A team tests a reporting workload against ten times production volume: it points a synthetic
     dataset at the orders, customers and products profiles with scale 10, and the dev environment fills
     with data whose join fan-out, skew and value shapes match production, with no personal data in it.'
@@ -79795,7 +79755,7 @@
   feature: product-tour-and-demos-guided-tour
   priority: SHOULD
   type: ui
-  description: 'The product tour is a short core tour followed by a menu of topics. The core tour -- welcome, Polly, connecting a source, querying it -- starts on its own for a new user and ends on the topic menu. Every step of the core tour carries a Deep Dives button that leaves it for the topic menu at once. The menu, called Deep Dives, shows one card per topic, each with its title, one sentence on what it covers, its number of steps and a mark once the viewer has completed it; the tour button opens the menu once the core tour has been seen. Each topic is a tour of its own, and Done, or leaving it, returns to the menu rather than continuing into another topic. The topics are: Connect your data (source types, registering tables, replicas and live reads); Relationships (a headline choice of its own: the relationships the model declares between tables, whether or not a source declares them, within a source and across sources, which every surface -- joins, GraphQL fields, the graph -- follows); Model it (the derivations and extensions Provisa adds beyond what the sources provide: views, calculated columns, metrics and commands, ending with lineage -- the dependencies those derivations generate, what each is built from and what depends on it, as the lineage page shows); Govern it (roles and domains, row rules, masks, sensitive data, the data steward); Query it everywhere (SQL, GraphQL, Cypher, REST and MCP through one governed pipeline); Test data and environments (the profiler and the checks it exports to Soda and Great Expectations, fakes, synthetic data, environments, data modes, mutation handling); Publish it (data products -- with the glossary terms that define them and the data-quality results they publish -- data catalogs and lineage, published to the external tools an organisation uses, each target receiving what it supports -- catalog entries, data products, lineage -- since a catalog need not hold data products (Apache Atlas) and a data product registry need not be a full catalog (BigQuery Dataplex); lineage also goes over OpenLineage); and Operate it (caching, observability, settings, releases, and exporting the model''s configuration). Which topics a viewer has completed is remembered for that viewer. Each topic is written to the product as it stands, so a feature that changes rewrites one topic. A step that refers to Polly opens Polly as the step is shown, through the control a user opens it with, so the step points at Polly itself and never at a closed launcher. (Amended 2026-10-07, maintainer: the tour opens Polly when referencing it.) The core tour explains querying in one step, in general terms: the same governed model answers in whichever language or tool the user asks. What each query surface offers is in the Query it everywhere topic, not the core tour. (Amended 2026-10-07, maintainer: two query panels in the core tour were awkward; one card, the rest in the deep dive.) Every card of the tour, a topic''s steps as well as the core tour''s, carries the Deep Dives button, and the Deep Dives side offers a way back to the first step of the core tour. (Amended 2026-10-07, maintainer: start from a deep dive card goes back to the core start; a deep dive button on every card goes to the catalog.) A Deep Dive topic has at least four cards, each on a feature the product has and anchored on it. (Amended 2026-10-07, maintainer: deep dives have room for more detail; target 4+ cards per deep dive, otherwise it is not deep.) (Amended 2026-10-08, maintainer: data quality is its own Deep Dive; this supersedes the topic list above where it puts quality checks under test data:) The Deep Dives are Connect your data, Relationships, Model it, Govern it, Data quality, Query it everywhere, Test data and environments, Publish it and Operate it. Data quality answers whether the real data is good: a quality checker registered as a source, its contract, profiling a table, drift and exported checks. Test data and environments answers how to get safe, realistic data to build against, and opens with a card saying how its parts fit: an environment is a branch of the model, its data mode decides what its sources read, the profiler measures real tables, fakes replace identifying values, synthetic generation builds tables from profiles, and mutation handling decides what a write does. The profiler appears in both topics, for what it does in each.'
+  description: 'The product tour is a short core tour followed by a menu of topics. The core tour -- welcome, Polly, connecting a source, querying it -- starts on its own for a new user and ends on the topic menu. Every step of the core tour carries a Deep Dives button that leaves it for the topic menu at once. The menu, called Deep Dives, shows one card per topic, each with its title, one sentence on what it covers, its number of steps and a mark once the viewer has completed it; the tour button opens the menu once the core tour has been seen. Each topic is a tour of its own, and Done, or leaving it, returns to the menu rather than continuing into another topic. The topics are: Connect your data (source types, registering tables, replicas and live reads); Relationships (a headline choice of its own: the relationships the model declares between tables, whether or not a source declares them, within a source and across sources, which every surface (joins, GraphQL fields, the graph) follows); Model it (the derivations and extensions Provisa adds beyond what the sources provide: views, calculated columns, metrics and commands, ending with lineage: the dependencies those derivations generate, what each is built from and what depends on it, as the lineage page shows); Govern it (roles and domains, row rules, masks, sensitive data, the data steward); Query it everywhere (SQL, GraphQL, Cypher, REST and MCP through one governed pipeline); Test data and environments (the profiler and the checks it exports to Soda and Great Expectations, fakes, synthetic data, environments, data modes, mutation handling); Publish it (data products, with the glossary terms that define them and the data-quality results they publish; data catalogs and lineage, published to the external tools an organisation uses, each target receiving what it supports (catalog entries, data products, lineage), since a catalog need not hold data products (Apache Atlas) and a data product registry need not be a full catalog (BigQuery Dataplex); lineage also goes over OpenLineage); and Operate it (caching, observability, settings, releases, and exporting the model''s configuration). Which topics a viewer has completed is remembered for that viewer. Each topic is written to the product as it stands, so a feature that changes rewrites one topic. A step that refers to Polly opens Polly as the step is shown, through the control a user opens it with, so the step points at Polly itself and never at a closed launcher. (Amended 2026-10-07, maintainer: the tour opens Polly when referencing it.) The core tour explains querying in one step, in general terms: the same governed model answers in whichever language or tool the user asks. What each query surface offers is in the Query it everywhere topic, not the core tour. (Amended 2026-10-07, maintainer: two query panels in the core tour were awkward; one card, the rest in the deep dive.) Every card of the tour, a topic''s steps as well as the core tour''s, carries the Deep Dives button, and the Deep Dives side offers a way back to the first step of the core tour. (Amended 2026-10-07, maintainer: start from a deep dive card goes back to the core start; a deep dive button on every card goes to the catalog.) A Deep Dive topic has at least four cards, each on a feature the product has and anchored on it. (Amended 2026-10-07, maintainer: deep dives have room for more detail; target 4+ cards per deep dive, otherwise it is not deep.) (Amended 2026-10-08, maintainer: data quality is its own Deep Dive; this supersedes the topic list above where it puts quality checks under test data:) The Deep Dives are Connect your data, Relationships, Model it, Govern it, Data quality, Query it everywhere, Test data and environments, Publish it and Operate it. Data quality answers whether the real data is good: a quality checker registered as a source, its contract, profiling a table, drift and exported checks. Test data and environments answers how to get safe, realistic data to build against, and opens with a card saying how its parts fit: an environment is a branch of the model, its data mode decides what its sources read, the profiler measures real tables, fakes replace identifying values, synthetic generation builds tables from profiles, and mutation handling decides what a write does. The profiler appears in both topics, for what it does in each.'
   use_case: A new analyst takes the five-minute core tour, then opens only Query it everywhere and Data products
     and glossary from the menu.
   related_reqs:
@@ -81090,15 +81050,7 @@
   feature: mcp-server-tools
   priority: SHOULD
   type: behavioral
-  description: The external MCP server reaches the graph surface as the UI does. run_cypher runs Cypher
-    under the caller's role through the pipeline every Cypher surface uses and answers its rows and the
-    graph they hold as Cytoscape elements (nodes and edges with the graph page's ids and only the properties
-    the role is served). render_graph draws those elements as the graph page draws them and answers a PNG
-    as MCP image content -- the page's own Cytoscape stylesheet and its force (fcose) or hierarchy (breadthfirst)
-    layout, or the ERD's ELK layout, on the page's light background by default or its dark one when the
-    caller passes theme=dark. Node draws it on the server, one process per call within the operator setting
-    mcp.render_timeout_s; a host without Node or the built renderer refuses the call by name. generate_explore_queries
-    answers all six query surfaces under the caller's role.
+  description: 'The external MCP server reaches the graph surface as the UI does. run_cypher runs Cypher under the caller''s role through the pipeline every Cypher surface uses and answers its rows and the graph they hold as Cytoscape elements (nodes and edges with the graph page''s ids and only the properties the role is served). render_graph draws those elements as the graph page draws them and answers a PNG as MCP image content: the page''s own Cytoscape stylesheet and its force (fcose) or hierarchy (breadthfirst) layout, or the ERD''s ELK layout, on the page''s light background by default or its dark one when the caller passes theme=dark. Node draws it on the server, one process per call within the operator setting mcp.render_timeout_s; a host without Node or the built renderer refuses the call by name. generate_explore_queries answers all six query surfaces under the caller''s role.'
   use_case: An agent connected to Provisa over MCP asks a graph question and gets back the graph as rows,
     as elements, and as a picture that matches what the Provisa graph page would show.
   notes: 'Maintainer rulings, 2026-10-12, through the lead: "add node to the image and render PNG" (replacing
