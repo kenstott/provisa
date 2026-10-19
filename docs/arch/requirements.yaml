@@ -33914,7 +33914,7 @@
   type: behavioral
   target: 2026-Q3
   description: 'Website-to-SaaS entry-point wiring: the marketing site''s primary CTAs (calls-to-action)
-    map to the specified onboarding paths — "Try it now" initiates an anonymous ephemeral sandbox session
+    map to the specified onboarding paths: "Try it now" initiates an anonymous ephemeral sandbox session
     (REQ-1034/1036, no signup required); [SUPERSEDED by REQ-1476, 2026-10-03 -- REQ-1017 is superseded;
     on a deployment that sells the org, org creation waits at awaiting_checkout until a subscription pays
     for it. Kept here for history; do not implement against it.] "Sign up free" routes to Firebase self-serve
@@ -41048,7 +41048,7 @@
   target: 2026-Q4
   description: 'Helm chart cert provisioning must be a values.yaml toggle: supply an existing TLS Secret
     name, or specify cert-manager issuer configuration to auto-provision certificates. Self-signed generation
-    via openssl is NOT used — certificate source is Kubernetes-native (Secret or cert-manager).'
+    via openssl is NOT used; the certificate source is Kubernetes-native (Secret or cert-manager).'
   use_case: Provides enterprise-grade certificate management without requiring manual self-signed generation,
     enabling operators to integrate their PKI (cert-manager, external CA) directly into the Helm values
     configuration.
@@ -41328,8 +41328,7 @@
     via simple auth provider), created at install with an installation-generated random password. Password
     is not static (never admin/admin) and is surfaced via Terraform output or GCP cloud-init console log,
     never persisted in config. First login enforces password rotation. This account is SSO-independent
-    and works when Firebase/OAuth is broken — the exclusive recovery/emergency access path for platform
-    operators.
+    and works when Firebase/OAuth is broken. It is the exclusive recovery/emergency access path for platform operators.
   use_case: Ensures platform operators can always access the system for emergency recovery and initial
     setup, independent of external identity provider availability or misconfiguration. Seeded local admin
     provides break-glass access without relying on Firebase/OAuth uptime.
@@ -42825,7 +42824,7 @@
   type: behavioral
   since: 2026-07
   description: A claimed platform-admin slot lands the administrator in a populated deployment, not an
-    empty one. The bootstrap org id is 'root' and its tenant schema is org_root — this is the value the
+    empty one. The bootstrap org id is 'root' and its tenant schema is org_root. This is the value the
     control-plane resolver returns (REQ-1286), not a literal layered over it, so there is still one source
     of truth for the default org id. It is provisioned with the demo assets (registered sources, tables,
     the ops and meta domains, relationships and views) before the first sign-in completes. The claiming
@@ -43105,11 +43104,11 @@
   description: The deployment can never be left with zero platform_admins. Revoking the platform_admin
     role from the last holder, and deleting or disabling that holder's account, are both rejected. While
     exactly one platform_admin exists the admin overview and the health endpoint carry a standing warning
-    naming the risk and the two-step fix (REQ-1298) — a warning, not a block, because a solo operator
+    naming the risk and the two-step fix (REQ-1298). It is a warning, not a block, because a solo operator
     forced to invent a second account produces ceremony rather than redundancy. Recovery when the sole
     holder is unreachable runs at the infrastructure boundary that already exists - a grant command executed
     on the host, plus the SSO-independent break-glass account of REQ-1264. No long-lived recovery code
-    is minted at claim time — a bearer secret conferring permanent deployment-wide administration is a
+    is minted at claim time, because a bearer secret conferring permanent deployment-wide administration is a
     larger standing risk than the outage it insures against.
   use_case: A platform_admin who revokes their own role, or an operator who deletes the only administrator's
     account, bricks the deployment - nobody can grant the role back through the product because granting
@@ -43379,17 +43378,7 @@
   priority: MUST
   type: behavioral
   since: 2026-07
-  description: When an org's administrators are unreachable, recovery runs through the platform_admin
-    via an explicit, audited operation. It never runs through a silent platform bypass that leaves no trace, nor through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org
-    at their own discretion; whatever verification satisfies them that the request is legitimate is a
-    business process outside the product, not an automated check. The grant is a named operation, distinct
-    from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT
-    org's audit trail so the intervention is visible to the org afterward. The same authority runs the
-    other way — a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin
-    invariant (REQ-1302), and that revocation is audited into the org's trail identically. No per-org
-    break-glass key is ever minted — platform_admin holds zero standing data capabilities in any org (REQ-1327),
-    so a customer-held token would add a permanent bearer secret. Tokens of that kind belong to vendors
-    who are cryptographically unable to recover a customer's data; Provisa is not one.
+  description: 'When an org''s administrators are unreachable, recovery runs through the platform_admin via an explicit, audited operation. It never runs through a silent platform bypass that leaves no trace, nor through a secret the org was supposed to keep. A platform_admin may grant org_admin in any org at their own discretion; whatever verification satisfies them that the request is legitimate is a business process outside the product, not an automated check. The grant is a named operation, distinct from ordinary querying, and it writes an entry naming the platform_admin and the grantee into THAT org''s audit trail so the intervention is visible to the org afterward. The same authority runs the other way: a platform_admin may revoke org_admin from any user in any org, subject only to the last-org_admin invariant (REQ-1302), and that revocation is audited into the org''s trail identically. No per-org break-glass key is ever minted, because platform_admin holds zero standing data capabilities in any org (REQ-1327), so a customer-held token would add a permanent bearer secret. Tokens of that kind belong to vendors who are cryptographically unable to recover a customer''s data; Provisa is not one.'
   use_case: This is the contact-the-vendor path every SaaS platform ends up with. Google Workspace, Atlassian
     and GitHub all resolve an orphaned org through an out-of-band proof to the provider, and for a Provisa
     deployment the provider is the platform_admin. Separation of control-plane (platform_admin) from data-plane
@@ -46383,7 +46372,7 @@
   type: constraint
   description: 'Provisa''s thesis: with sufficient rigor, every aspect of a data environment EXCEPT the
     systems of origin can be described declaratively, and then PROVEN compliant to policy and to operate
-    as declared. Systems of origin are excluded by design — Provisa proves properties of its projection
+    as declared. Systems of origin are excluded by design: Provisa proves properties of its projection
     of a source, never of the external system itself. "Proven" means operational proof, not formal verification:
     (1) compliance-by-construction where a single enforcement choke point exists (governance defined in
     the semantic layer, enforced once at the governed-IR stage — REQ-825 stage 3, one pipeline); (2) certification
@@ -46873,13 +46862,11 @@
     by its registered name) — reserved plural kind keywords extend to future registries. Fragments carry
     attribute kinds: #field:<column> for a column; #rel:<alias> for a relationship (a navigational field
     anchored at its source table; registry id when the edge has no alias). Instance (row) addressing:
-    ?<key>=<value>[&...] query-string predicate — composite keys compose; a primary-key predicate denotes
+    ?<key>=<value>[&...] query-string predicate. Composite keys compose; a primary-key predicate denotes
     exactly one instance; requires a declared row identity (mvPrimaryKey, unique constraint REQ-1093,
-    or introspected pk), no declared key = no instance form. Composition: instance + fragment — ?id=123#field:amount
-    is a cell, ?id=123#rel:customer the governed traversal from one instance. Dereferencing any instance/traversal
+    or introspected pk), no declared key = no instance form. Composition: instance + fragment. ?id=123#field:amount is a cell, ?id=123#rel:customer the governed traversal from one instance. Dereferencing any instance/traversal
     URI is a GOVERNED query: RLS and masking apply to the resolver''s role. Reserved words: kind keywords
-    (tables, sources, tags, roles, and future registry keywords) are illegal as domain names — refused
-    at domain creation (schema.domain_reserved_word). Correspondence: the URI is the compressed form of
+    (tables, sources, tags, roles, and future registry keywords) are illegal as domain names and are refused at domain creation (schema.domain_reserved_word). Correspondence: the URI is the compressed form of
     the semantic-model JSON Pointer grammar (domain nesting implied, kind stated at the leaf): provisa://acme/sales/emea/tables/orders
     maps to #/children/sales/children/emea/definitions/orders; conversion is mechanical. Metadata export
     emits concept/attribute/relationship URIs only; the instance grammar serves citations, audit trails,
@@ -46951,8 +46938,7 @@
     remain live views. Implemented so far: all eight views live (seed-time DDL via _OPS_REPORT_VIEWS +
     ops_table_usage unnest spine, per-dialect only at the seed layer), registration under provisa-admin/ops,
     org_admin steward seeding. Outstanding prerequisites: element_ids/masking-outcome/denying-rule-id
-    captured at log-write time (query text is encrypted per REQ-689, so these cannot be derived post-hoc
-    — until then the reports are table-level), the daily rollup job, and the deferred resource-usage (metrics
+    captured at log-write time (query text is encrypted per REQ-689, so these cannot be derived post-hoc; until then the reports are table-level), the daily rollup job, and the deferred resource-usage (metrics
     sampler) and source-freshness (sync timestamps) views. [AMENDED 2026-10-01: the audit row''s INSERT
     is off the request path on every transport. The request thread enqueues its finished record at the
     one audit seam (write_audit / enqueue_audit) and returns; one writer thread per worker process inserts
@@ -47239,8 +47225,7 @@
   type: constraint
   description: 'Catalog upsert preserves human enrichment: an attribute-ownership contract for every exporter.
     Publishing is an UPSERT on the vendor''s stable key (Atlas/Atlan: typeName + qualifiedName via /entity/bulk,
-    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT) — never a
-    delete-and-recreate, and entities absent from a later snapshot are never pruned by publish. Every
+    which merges at attribute level; DataHub: per-aspect URN upsert; OpenMetadata: fqn PUT), never a delete-and-recreate, and entities absent from a later snapshot are never pruned by publish. Every
     attribute is classified as either PROVISA-OWNED (identity, physical binding, technical facts, governance
     projections, provisa_* classifications — written on every publish and drift-corrected by the REQ-1072
     reconcile) or HUMAN-OWNED (Atlas userDescription, human-added classifications, glossary term assignments,
@@ -47248,21 +47233,19 @@
     every publish and reconcile). Consequence: the Atlas governance document moves OFF userDescription
     — the exact field the Atlas UI edits for human descriptions, clobbered today on every publish — onto
     a Provisa-owned typed attribute (REQ-1388 native typedefs). The reconcile''s drift correction applies
-    to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides — if Provisa authored
-    a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
+    to Provisa-owned attributes only. OWNERSHIP RULE (settled): authorship decides. If Provisa authored a value (typed provisa* attributes, the fields it writes, provisa_-prefixed classifications) Provisa
     overwrites it on every publish; if the value originated in the catalog (userDescription, human-added
     classifications, terms, labels, drawn lineage) the catalog wins and Provisa never writes it. This
     is a single-writer MERGE, not a sync: nothing flows back into Provisa (publication is outbound-only),
     each data element has exactly ONE owning system, and the read step exists only because replace-style
     catalog APIs force carrying the catalog-owned fields through unchanged. The merge is NOT optional:
-    the classification read-merge and attribute drift-correction ride the single publish path, so all
-    three triggers get them — Publish now, the event drain, and the scheduled reconcile (reconcile_cron,
+    the classification read-merge and attribute drift-correction ride the single publish path, so all three triggers get them: Publish now, the event drain, and the scheduled reconcile (reconcile_cron,
     default hourly). URN-CANONICAL UPSERT: the Provisa URN (REQ-1385, published as the provisaUri attribute)
     is the canonical identity, not the physical qualifiedName. Before publishing, the exporter indexes
     live entities by URN; an entity Provisa published before whose physical address changed (re-platform,
     physical rename) takes the live guid and is UPDATED in place — same catalog entity, new binding, enrichment
     and lineage intact — never duplicated-and-orphaned. UPDATES MERGE: Atlas bulk createOrUpdate replaces
-    the full attribute map (empirically verified — an update wiped a steward-written userDescription),
+    the full attribute map (empirically verified: an update wiped a steward-written userDescription),
     so every update starts from the LIVE attributes and overlays only the fields Provisa authors; fields
     Provisa never populates survive verbatim. VENDOR-ID TRACKING (settled: "track their guids and use
     them to sync"): every successful publish CAPTURES the vendor''s own id per published asset — Atlas
@@ -47273,14 +47256,13 @@
     stored id to rebind on a physical re-address instead of trusting the vendor''s name-keyed upsert:
     Atlas prefers the STORED guid over the laggy basic-search index (the index only covers URIs with no
     binding); OpenMetadata cannot rename by PATCH (name/databaseSchema are not PATCH-updatable and TableRepository
-    never opts into renameAllowed), so the rebind is SUCCESSION — the predecessor is read by its stored
+    never opts into renameAllowed), so the rebind is SUCCESSION: the predecessor is read by its stored
     UUID, its steward enrichment carried onto the successor''s first publish, and its description marked
     superseded with a pointer to the new FQN and the Provisa URN; Collibra PATCH-renames the live asset
     by stored UUID BEFORE the name-keyed import so the job matches the SAME asset; DataHub URNs are immutable
     identity, so the successor publishes as a new URN and the OLD bound URN gets the deprecation aspect
     naming the successor and the Provisa URN. The binding lifecycle (load before publish, persist capture
-    and prune departed-asset bindings after) rides the single publish path, so all triggers get it — Publish
-    now, the event drain, the scheduled reconcile and the CLI publish.'
+    and prune departed-asset bindings after) rides the single publish path, so all triggers get it: Publish now, the event drain, the scheduled reconcile and the CLI publish.'
   use_case: Stewards enrich published assets inside the catalog (descriptions, terms, extra classifications);
     a publish or scheduled reconcile that overwrote that work would make the catalog write-once and untrustworthy.
     The ownership split lets Provisa keep its facts current while human curation accumulates safely.
@@ -49752,8 +49734,7 @@
   priority: MUST
   type: behavioral
   description: 'The published price list is set by the comparables, not derived from cost. Starter bills
-    $1.30 per ACTIVE HOUR with a $25/mo minimum and 25 GB of included egress -- the same rate AND the
-    same meter shape as Hasura Cloud v2 Professional, which charges $1.30 per hour in which the project
+    $1.30 per ACTIVE HOUR with a $25/mo minimum and 25 GB of included egress. That is the same rate AND the same meter shape as Hasura Cloud v2 Professional, which charges $1.30 per hour in which the project
     served at least one request and carries no base fee. [SUPERSEDED by REQ-1509, 2026-10-03 -- REQ-1509
     (complete) rules the plan variant carries the active hour on all four orderable plans; code posts
     active hours for Pro too. Kept here for history; do not implement against it.] Pro bills per ENGINE
@@ -50119,7 +50100,7 @@
     keeps running at the published rate and a negotiated arrangement replaces it, because cutting off
     the largest customer at the exact moment they commit is the one outcome worth engineering against.
     The two kinds of ceiling convert differently, and the difference is the point. Starter''s converts
-    SELF-SERVE, straight to Pro, with no negotiation -- a growing Starter org is the funnel working, not
+    SELF-SERVE, straight to Pro, with no negotiation. A growing Starter org is the funnel working, not
     an exception to it. Pro''s and Enterprise''s convert to a CONTRACT, because past those points the
     customer is buying an operational commitment -- multiple regions, private networking, a support tier,
     an SLA tighter than the recovery targets REQ-1459 publishes -- which no hourly rate can express and
@@ -50166,8 +50147,7 @@
     a zone guarantee; they publish about 99.9% and so can this platform. The standby is therefore DEFERRED,
     not rejected: it goes in when the first Pro or Enterprise account lands, at $98/mo plus $4 of disk,
     and it stops being idle capacity at that point because MULTIPLE control planes are already a first-class
-    idea here and REQ-1451''s one-writer rule is per ORG rather than per fleet -- so the second plane
-    takes live org ownership and failover becomes reassignment between two warm planes. The REGIONAL DATABASE
+    idea here and REQ-1451''s one-writer rule is per ORG rather than per fleet, so the second plane takes live org ownership and failover becomes reassignment between two warm planes. The REGIONAL DATABASE
     is the half that is NOT optional, because it buys against DATA LOSS rather than downtime: losing an
     f1-micro''s zone rolls org config, users, compiled models and governance rules back to a backup, which
     is the failure the market does not forgive. Cloud SQL HA cannot use db-f1-micro at all -- shared-core
@@ -50183,22 +50163,19 @@
     Cloud SQL replica, and continuous replication egress -- which is a NEGOTIATED Enterprise item under
     REQ-1458 and never a line on the shared floor. THE EXPECTATIONS ARE PART OF THE PRODUCT AND MUST BE
     PUBLISHED, not buried. A failover KILLS IN-FLIGHT QUERIES: HA does not mean a query cannot burp. The
-    contract is exactly the one a database gives a client whose transaction lost its connection -- the
-    query fails cleanly and THE CLIENT RETRIES. Promising more would mean claiming an OSS Trino coordinator
+    contract is exactly the one a database gives a client whose transaction lost its connection: the query fails cleanly and THE CLIENT RETRIES. Promising more would mean claiming an OSS Trino coordinator
     can hand off a running query, which it cannot. A customer whose real requirement is continuous availability
     runs Enterprise/BYO (REQ-1412) on their own engine, their own redundancy and their own operators;
     that is a truthful answer to a real requirement and a better one than selling a managed SLO the architecture
     would break. STARTER GETS NO ENGINE HA, deliberately. A shared shard is one coordinator, so if it
-    restarts every Starter org on it takes a cold start. That is the right trade at a $25 minimum -- the
-    tier is SMBs and tinkerers, and a pinned standby shard would cost more than the orgs sitting on it
+    restarts every Starter org on it takes a cold start. That is the right trade at a $25 minimum. The tier is SMBs and tinkerers, and a pinned standby shard would cost more than the orgs sitting on it
     pay. PRO HA IS AN ADD-ON priced at 2x the size''s published engine-hour rate (Pro S $3.00/hr, Pro
     M $5.50/hr, Pro L $11.00/hr), because it is a primary plus a PINNED standby and a scale-to-zero standby
     is not a standby. It is cheap to build -- a coordinator holds no data and reissues its catalogs from
     the org''s config on every runtime build, so a standby is a second pod plus a repoint, with no replication
     and no state to move -- and it buys exactly one thing: engine recovery time, seconds instead of a
     cold start. It does not shorten the control-plane target and does not stop a query dying on failover;
-    marketing it as zero downtime is the one claim to refuse. ENTERPRISE may take its own CONTROL PLANE
-    -- a dedicated VM, a dedicated Cloud SQL instance and its own GKE cluster, none of it shared. What
+    marketing it as zero downtime is the one claim to refuse. ENTERPRISE may take its own CONTROL PLANE: a dedicated VM, a dedicated Cloud SQL instance and its own GKE cluster, none of it shared. What
     that buys is ISOLATION, not a different availability class: the recovery targets are the ones every
     tier already gets. It is the only configuration in which the customer shares NOTHING with another
     org, which is the actual question behind most enterprise security review, and it lifts that org clear
@@ -50250,16 +50227,14 @@
     region A. Full warm standby of the lane is therefore about $613/mo, taking the live floor from $211
     to $824/mo (3.9x); the asymmetric form takes it to $442/mo (2.1x). What each buys is stated as the
     recovery target it changes. Today a regional outage is a restore from cross-region backups measured
-    in HOURS. With a warm plane and a cold engine it is about 10 minutes -- the plane reschedules and
-    rebuilds, the shard scales 0 to 1. With the full warm lane it is about 5 minutes, the plane alone.
+    in HOURS. With a warm plane and a cold engine it is about 10 minutes: the plane reschedules and rebuilds, the shard scales 0 to 1. With the full warm lane it is about 5 minutes, the plane alone.
     The asymmetric form buys most of the benefit for 38% of the cost, and the roughly 5 minutes it concedes
     are a cold shard start, which is exactly what Starter already accepts every day under REQ-1450''s
     scale-to-zero. Regional standby is NOT folded into the shared floor and is sold as a NEGOTIATED Enterprise
     item under REQ-1458. Recovered at the 4x markup, the asymmetric form needs 37 Starter minimums to
     pay for itself and the full warm lane needs 98; the shared lane cannot absorb the engine half, and
     the customers who require regional continuity are not the ones on the $25 minimum. A customer who
-    needs better than the asymmetric target runs BYO (REQ-1412) -- their engine, their regions, their
-    redundancy.'
+    needs better than the asymmetric target runs BYO (REQ-1412), with their engine, their regions and their redundancy.'
   use_case: An operator can state what a regional outage costs in recovery time at each of three spend
     levels, and sell the standby to the accounts that need it instead of taxing every Starter org for
     it.
@@ -52583,8 +52558,7 @@
   type: behavioral
   description: 'Every environment operation is available from the provisa command line, because an environment
     change is rarely the only thing happening: it lands beside a schema change in a source, a deployment,
-    a data load or a test run, and those are scripted. The environment subcommands cover the whole lifecycle
-    -- listing environments, creating and deleting one, binding its sources, showing an environment''s
+    a data load or a test run, and those are scripted. The environment subcommands cover the whole lifecycle: listing environments, creating and deleting one, binding its sources, showing an environment''s
     current build, diffing two builds, merging one environment or build into another, and reverting an
     environment to a previous build. Each runs the same code the API runs, so the allow-list of REQ-1489,
     the merge and removal rules of REQ-1490 and the binding and write-authority rules of REQ-1491 and
@@ -52635,7 +52609,7 @@
     must be a non-prod environment and never prod, which takes merges only; it is an org_admin act carrying
     an explicit acknowledgement that the target will hold production credentials, recorded in the org''s
     admin audit log with who, when and from where; and the target environment is thereafter marked as
-    replicated, which means it is governed as production -- every grant in it reaches production data,
+    replicated, which means it is governed as production. Every grant in it reaches production data,
     so it is neither a safe place for developers nor a substitute for the masked extract of REQ-1493.
     Only replicate into an environment whose members already hold the production access it confers. (Amended
     2026-08-21:) A replicate targets an environment that ALREADY EXISTS and never creates one, because
@@ -52686,8 +52660,7 @@
     store: landed extracts, generated sets and materialized views are data, and an environment holding
     large ones is not reasonable to move through a file. The export states what it left behind and how
     large it was, so the developer knows the difference between an environment that exported whole and
-    one whose queries will find nothing materialized. Exporting prod is refused -- the desktop is a separate
-    instance with no org governance around it, and a production export is a production credential in a
+    one whose queries will find nothing materialized. Exporting prod is refused, because the desktop is a separate instance with no org governance around it, and a production export is a production credential in a
     file.'
   use_case: A developer takes their dev environment onto a laptop, works offline against the model, and
     knows which materialized views did not come with it.
@@ -52724,7 +52697,7 @@
   description: 'Environments take their shape from two exemplars, and which one governs is decided per
     half of the design rather than argued case by case. Structure follows Hasura: the governed model is
     a metadata artifact that is exported, diffed and applied, versioned as a build, and moved between
-    environments by an explicit apply rather than by editing the target -- so an environment''s model
+    environments by an explicit apply rather than by editing the target, so an environment''s model
     is reproducible from something a person can read and a pipeline can hold. Per-environment state follows
     LaunchDarkly: what an environment points at, what it may write, who is in it, what it has materialized
     and which keys address it are environment-scoped facts that a promotion never carries, so promoting
@@ -52831,7 +52804,7 @@
     is what makes an environment safe to hand out -- an application configured with a dev environment''s
     key reaches dev whatever it sends -- and it is why keys are never carried by a copy or a merge. Rotating
     or revoking an environment''s keys affects that environment alone, and deleting an environment revokes
-    its keys with it. (Amended 2026-10-15, REQ-2053: one exception -- a demo sandbox''s token addresses its
+    its keys with it. (Amended 2026-10-15, REQ-2053: one exception. A demo sandbox''s token addresses its
     whole sandbox org, which is its visitor''s alone and thrown away, so the visitor is served by whichever
     of its environments they switch to.)'
   use_case: A staging application is configured with a staging key and cannot reach production data even
@@ -52981,7 +52954,7 @@
     of objects and carries them alone. The selection closes over what the chosen objects require: a metric
     brought without the column it reads, or a relationship without the table on its other side, would
     land inconsistent, so the merge report names the objects pulled in by the selection and the merge
-    either carries them or refuses. A scoped merge is a merge in every other respect -- the same exclusions,
+    either carries them or refuses. A scoped merge is a merge in every other respect: the same exclusions,
     the same untouched target state, the same all-or-nothing application, the same approval where the
     target is protected.'
   use_case: An administrator promotes a single corrected metric to production while the rest of the dev
@@ -53023,8 +52996,7 @@
     same way every other gated capability is; which packaged product carries that tier is a price-list
     decision recorded in REQ-1452 and may change without touching this gate. The minimum tier is premium,
     because the tiers describe different customers rather than different sizes of the same one. The standard
-    tier is bought by a reporting team, an analytics group, a data-science team -- people who model and
-    query what already exists, for whom one governed model and its history is the whole need. The premium
+    tier is bought by a reporting team, an analytics group, a data-science team, people who model and query what already exists, for whom one governed model and its history is the whole need. The premium
     tier is bought by a business whose systems depend on this one: a model change there is a change to
     something in production, so it is developed somewhere else, reviewed and promoted, which is exactly
     what an environment is for. An org below the minimum tier has prod and cannot create another environment;
@@ -53033,8 +53005,7 @@
     whatever the current product name for that tier is. A developer below the gate is not left without
     a local copy: the file export of REQ-1502 carries the model to a desktop install, where they bind
     their own sources, so the model travels and no credential does. When an org that has environments
-    moves below the minimum tier, its non-prod environments are frozen rather than deleted -- no queries
-    run in them and nothing merges out of them, while their models stay readable and exportable until
+    moves below the minimum tier, its non-prod environments are frozen rather than deleted. No queries run in them and nothing merges out of them, while their models stay readable and exportable until
     the org deletes them or is entitled again. Billing changes may not destroy a customer''s work.'
   use_case: A reporting team on the standard tier gets one governed model with its history; a business
     on the premium tier develops changes in a dev environment before they reach production.
@@ -56894,13 +56865,12 @@
   type: behavioral
   description: 'A HOSTED DEPLOY ALSO ASSERTS THAT THE COMMERCIAL SEAM ACTUALLY LOADED. The settings REQ-1562
     preflights are only half of what signup needs; the other half is the plugin that reads them. provisa.core.commerce
-    imports provisa_commercial inside a try and every hook degrades to a no-op when that import fails
-    (REQ-1473) -- correct for a self-hosted install, wrong for a hosted node, where a silent seam mounts
+    imports provisa_commercial inside a try and every hook degrades to a no-op when that import fails (REQ-1473). That is correct for a self-hosted install and wrong for a hosted node, where a silent seam mounts
     no /billing routes at all and the signup page''s GET /billing/catalog has no route to answer it. The
     seam is silent by design, so the deploy is what speaks: after the restart it reads commerce.enabled()
     from the running container and fails the deploy when it is False. It is asserted AFTER the restart
     because the plugin push is what lands the tree and the import resolves once per process, and only
-    when the checkout carries the plugin -- a checkout without it is a deliberate no-billing deploy, the
+    when the checkout carries the plugin. A checkout without it is a deliberate no-billing deploy, the
     same rule the plugin push holds.'
   use_case: A stack recreate replaces the containers and drops the hot-pushed plugin; the next deploy
     stops rather than leaving a hosted node whose "Get started" cannot reach a plan catalog.
@@ -56930,8 +56900,7 @@
   description: 'THE BILLING KEY IS ASSERTED FOR THE STORE THE DEPLOYMENT ACTUALLY TRANSACTS AGAINST, AND
     A BLANK KEY IS A MISSING KEY. LEMONSQUEEZY_MODE selects which credential signs every Lemon Squeezy
     call (REQ-1455): test mode reads TEST_LEMONSQUEEZY_API_KEY and leaves LEMONSQUEEZY_API_KEY inert.
-    Two consequences follow. First, the reader raises a named error when the selected key is empty rather
-    than signing with it -- docker compose forwards every declared variable, so an unset key reaches the
+    Two consequences follow. First, the reader raises a named error when the selected key is empty rather than signing with it. Docker compose forwards every declared variable, so an unset key reaches the
     process as an empty string that os.environ hands back happily, and the request then carries "Authorization:
     Bearer " for the transport to reject; the operator must see the setting they never wrote, not a protocol
     error from inside httpx. Second, the deploy preflight asserts the mode-selected key rather than a
@@ -60155,7 +60124,7 @@
     column metadata already exists in the target federation engine''s store. If so, skip creation (idempotent
     no-op). Only when no existing matching replica is found should a DDL-only CREATE TABLE be issued.
     Actual row population remains under the existing poll/push refresh cadence, not boot. Applies uniformly
-    to any federation engine (Snowflake, Databricks, BigQuery, Postgres, DuckDB, etc.) — the fix belongs
+    to any federation engine (Snowflake, Databricks, BigQuery, Postgres, DuckDB, etc.). The fix belongs
     in the engine-agnostic boot_create()/ land_source_table() path, not in per-engine connector code,
     since Strategy.MATERIALIZED resolution and boot-time landing are already engine-agnostic.
 
@@ -60163,8 +60132,7 @@
     as one whole-table metadata write (update_table), which already triggers reconcile_landed_tables()
     -> reconcile_duckdb_native() synchronously before the mutation returns (provisa/api/app.py:_rebuild_schemas
     -> app.py:1691). The reconciler always receives the complete new column list in a single call, never
-    a per-column diff, and on drift RECREATES the landed table (DDL only, zero rows) rather than re-inserting
-    data — data reland remains the refresh cadence''s job, not the edit''s.'
+    a per-column diff, and on drift RECREATES the landed table (DDL only, zero rows) rather than re-inserting data; data reland remains the refresh cadence''s job, not the edit''s.'
   use_case: Boot-time replica landing currently pulls entire MATERIALIZED source tables into memory as
     list[dict] with no row-count check, chunking, or concurrency limit, risking large memory consumption
     and event-loop monopolization at every boot. Schema-only replicas with idempotent creation bound boot
@@ -60543,7 +60511,7 @@
   description: 'The Data Product detail panel shows a computed, read-only "Related Tables" section: tables
     one approved relationship away from the product''s member tables (source or target of a relationships-table
     row where exactly one end is a current member), each annotated with the connecting relationship''s
-    alias or cardinality. Purely informational — derived at render time from existing relationships +
+    alias or cardinality. Purely informational: it is derived at render time from existing relationships +
     registered_tables, never written into product_id membership or any new stored field, so a curated
     consuming view can pull in the related data, or the product''s owner can see how to extend the product,
     without requiring a view to be created first for every approved relationship.'
@@ -64553,8 +64521,7 @@
   description: 'New e2e coverage (provisa-ui/e2e/source-to-query-special-cases.spec.ts) for five SourceTypes
     that don''t fit the plain register-a-table-and-SELECT shape well enough to share source-to-query.spec.ts:
     google_sheets, govdata, grpc_remote, soda, great_expectations. Each was investigated before writing
-    a test. Several real, previously-undetected bugs were found and fixed along the way — every one of
-    them blocked EVERY real invocation of the affected path, not just this test. [SUPERSEDED by REQ-1742
+    a test. Several real, previously-undetected bugs were found and fixed along the way. Every one of them blocked EVERY real invocation of the affected path, not just this test. [SUPERSEDED by REQ-1742
     amendment, 2026-10-03 -- No later requirement; the spec itself was un-skipped 2026-09-15 (source-to-query-special-cases.spec.ts:117-120,161-165,223-225,274-276).
     Only credential-gated skips remain (lines 103, 152). Kept here for history; do not implement against
     it.] None of the five tests is currently passing through the browser; all are `test.skip(true, "<reason>")`''d
@@ -64573,8 +64540,7 @@
     csv/parquet SCAN-mechanism pattern. Despite all three fixes, the one full Playwright run that reached
     the UI flow (attaching a LIVE google_sheets source via the real durable fixture sheet, gsheets-e2e-fixture
     project memory) crashed the shared single-worker backend process outright, ~29s into registration,
-    with no further diagnostic captured before this session''s time budget was called — every subsequent
-    request in that run then failed with ERR_CONNECTION_REFUSED, which is why govdata/ grpc_remote/soda/great_expectations
+    with no further diagnostic captured before this session''s time budget was called. Every subsequent request in that run then failed with ERR_CONNECTION_REFUSED, which is why govdata/ grpc_remote/soda/great_expectations
     below also show no browser-verified result from that same run. [SUPERSEDED by REQ-1742 amendment,
     2026-10-03 -- The spec records the google_sheets crash as root-caused and fixed (source-to-query-special-cases.spec.ts:161-165:
     attach_source''s view_ddl branch never loaded the scanner extension; native_backend merges dropped
@@ -64582,7 +64548,7 @@
     SUPERSEDED BLOCK] Remaining gap: reproduce with the backend run in the foreground (not via playwright''s
     webServer, which swallows the crash''s own stack trace) to get a real traceback.
 
-    govdata — the askamerica connection itself is real and independently confirmed working (outside Playwright):
+    govdata: the askamerica connection itself is real and independently confirmed working (outside Playwright):
     `fetch_tables`/`fetch_columns` against a `GovDataSource` scoped to the "weather" schema returned real
     NOAA/NWS tables (nws_stations, cdo_stations, ghcnd_daily, etc.) and correctly typed columns, in ~19s
     cold (JVM start + catalog-credential fetch from api.askamerica.ai) then near-instant on a warm cache.
@@ -64598,8 +64564,7 @@
     app-state singleton (`from provisa.api.app import state` — the pattern every sibling router, e.g.
     graphql_remote_router.py, already uses) — register/refresh/list/get-proto/put-proto could never have
     completed (''State'' object has no attribute ''catalog_for''). Fixed across all 5 handlers. A new
-    minimal proto-based demo fixture was added (demo/grpc_remote_server/{animal_catalog.proto,server.py}
-    — a genuine .proto + a grpc.aio server compiled via the SAME grpc_tools path the connector itself
+    minimal proto-based demo fixture was added (demo/grpc_remote_server/{animal_catalog.proto,server.py}, a genuine .proto + a grpc.aio server compiled via the SAME grpc_tools path the connector itself
     uses, unlike the pre-existing demo/grpc_server/server.py, which is deliberately proto-less and cannot
     exercise this connector at all). The full proto -> compile -> register -> query pipeline was verified
     end to end via a standalone Python script driving provisa.grpc_remote.{loader,mapper,executor} directly
@@ -64621,13 +64586,12 @@
     above.
 
     (Amended 2026-09-17, GRPC-REMOTE ENGINE-SWAP: the reachability question for any source type under
-    Trino reduces to two cases — does Trino have a native connector for it (and is that connector correctly
+    Trino reduces to two cases. Does Trino have a native connector for it (and is that connector correctly
     instantiated), or, if not, is Provisa correctly landing its rows into the Postgres-backed materialize
-    store Trino reads (`provisa_admin` catalog)? grpc_remote has no Trino connector, so it''s the second
-    case — the same landing path graphql_remote/openapi already use, which REQ-1730''s bug 3 fix (Trino
+    store Trino reads (`provisa_admin` catalog)? grpc_remote has no Trino connector, so it''s the second case, the same landing path graphql_remote/openapi already use, which REQ-1730''s bug 3 fix (Trino
     `ensure_cache_schema` NOT_SUPPORTED) made work. engine-swap.spec.ts now spawns this entry''s demo/grpc_remote_server/server.py
     fixture itself (same subprocess-and-waitForPort pattern as this REQ''s own special-cases.spec.ts case)
-    and adds grpc_remote to the DuckDB->Trino swap harness — see REQ-1730''s own code list and source-e2e-coverage-audit
+    and adds grpc_remote to the DuckDB->Trino swap harness; see REQ-1730''s own code list and source-e2e-coverage-audit
     memory for the harness-wide status. This is additive test coverage of the SAME fixture and connector
     this REQ already covers, not a new investigation.)'
   code:
@@ -65621,16 +65585,14 @@
   priority: MUST
   type: constraint
   description: 'Every call to provisa/federation/runtime.py''s execute_engine (and any other physical
-    execution primitive) MUST pass an explicit, typed authorization argument — never a bare SQL string
+    execution primitive) MUST pass an explicit, typed authorization argument, never a bare SQL string
     with no accountability. There is no unauthorized call, including internal/privileged ones: a call
     that lands data for later governed reads (e.g. MV refresh) still names what authorizes it and is still
     checked, just against a DIFFERENT test than a call returning rows to an external caller. At minimum
-    three authorization types, each with its own verification: (a) a governed query response — requires
-    a valid pipeline stamp (require_governed_plan, REQ-1176); (b) a privileged landing execution (MV refresh,
-    cache warming) — requires the SQL being executed to be exactly the reviewed/registered definition
+    three authorization types, each with its own verification: (a) a governed query response requires a valid pipeline stamp (require_governed_plan, REQ-1176); (b) a privileged landing execution (MV refresh, cache warming) requires the SQL being executed to be exactly the reviewed/registered definition
     it claims to run (e.g. the MV''s own stored view_sql, not an arbitrary string a caller constructed),
     so authority to land data can never be reused to run a different query than the one that was actually
-    registered and reviewed; (c) a metadata/catalog read — requires the statement to be read-only against
+    registered and reviewed; (c) a metadata/catalog read requires the statement to be read-only against
     catalog/information objects, never a table a role''s data rights would otherwise gate. No fourth path
     exists: a call that fits none of these three is refused, not defaulted to trusted.
 
@@ -67013,7 +66975,7 @@
   type: infrastructure
   description: 'The front-door proxy (terraform/gcp-saas/front-door/proxy.py, the always-on e2-micro that
     owns the shared static IP and wakes/idle-stops the coordinator instance) is resilient to more than
-    a process crash. Process-level: already covered — a systemd unit with Restart=always recovers the
+    a process crash. Process-level: already covered by a systemd unit with Restart=always recovers the
     proxy itself. Host/VM-level: the instance recovers automatically from a host failure or maintenance
     event without operator intervention, and — if replaced by a managed instance group with health-check-triggered
     auto-healing — a replacement instance comes back on the SAME shared static IP, since a front door
@@ -67191,11 +67153,9 @@
     dataset-search endpoint itself requires auth: (1) token entry, validated live via kaggleTokenValid
     before unlocking step 2, with a clear error on an invalid token; (2) a searchable (search-as-you-type)
     dataset picker enabled only after step 1 succeeds, showing name + description per result, backed by
-    the kaggleDatasets GraphQL query wrapping Kaggle''s datasets/list with a search query param — the
-    fixed-schema-picker pattern (available_schemas/available_tables) does not fit Kaggle''s live full-catalog
+    the kaggleDatasets GraphQL query wrapping Kaggle''s datasets/list with a search query param. The fixed-schema-picker pattern (available_schemas/available_tables) does not fit Kaggle''s live full-catalog
     search and is not reused for it. On select, KaggleFormSection.tsx stages the dataset (stageKaggleDataset
-    mutation) then creates each returned file via the EXISTING useCreateSource hook — no new bulk-registration
-    mutation.
+    mutation) then creates each returned file via the EXISTING useCreateSource hook, with no new bulk-registration mutation.
 
     [SUPERSEDED by this amendment, 2026-09-19: "...then registers each returned file via the EXISTING
     useCreateSource/useRegisterTable hooks" — kept here for history; do not implement against it.]
@@ -67206,12 +67166,12 @@
 
     (Amended 2026-09-19, no eager registerTable:) "Add Dataset" only creates each file''s Source; it does
     NOT also call registerTable. Registering the table (domain, alias, columns) is left to the normal
-    Register Table screen, exactly like every other connector — a staged Kaggle file is a plain csv/parquet
+    Register Table screen, exactly like every other connector. A staged Kaggle file is a plain csv/parquet
     Source (REQ-1780), introspected live through the same pgwire-file path any other files source uses,
     so pre-registering here with Kaggle''s own column preview served no purpose it couldn''t get for free
     later. Confirmed live as a real bug, not a hypothetical: eager registration meant a same-effective-name
     collision in the target domain (`_domain_table_conflict`, schema_helpers.py) surfaced as a dead-end
-    error on the "Add Dataset" screen, which has no alias field to resolve it with — the only place an
+    error on the "Add Dataset" screen, which has no alias field to resolve it with. The only place an
     alias CAN be entered is the Register Table form this flow was skipping. The domain picker is removed
     from KaggleFormSection.tsx entirely for the same reason: domain is a Register-Table-time concept everywhere
     else in the app, never a Source-creation-time one.
@@ -67220,7 +67180,7 @@
     per dataset — type `files`, path = the staged directory — not one Source per bundle file. See REQ-1780/REQ-1781''s
     matching amendments for why (the per-file design predates, and is strictly inferior to, this session''s
     `files`/pgwire-file recursive directory discovery, REQ-1690). Everything else this REQ already established
-    (no eager registerTable, no domain picker here) still holds unchanged — only the number and type of
+    (no eager registerTable, no domain picker here) still holds unchanged; only the number and type of
     Source(s) created changed.'
   use_case: An operator adding a Kaggle source cannot search datasets before entering a valid token (Kaggle's
     own search endpoint requires it), so the form must gate the picker step on live token validation rather
@@ -67337,8 +67297,7 @@
     existing `POST /admin/sources/crawl` REST endpoint has zero frontend consumers and every other admin
     operation goes through GraphQL. The admin UI''s file-connector source form (provisa-ui/src/pages/sources/SourceFormFields.tsx,
     the `isFile` block) shall conditionally render fields for these three settings ONLY when the source''s
-    `type` is csv/parquet and its `path` begins with `http://` or `https://` — hidden for local/S3/FTP/SFTP
-    paths and for sqlite. Persisted settings ride in `SourceInput.federation_hints_json` (no new typed
+    `type` is csv/parquet and its `path` begins with `http://` or `https://`. They are hidden for local/S3/FTP/SFTP paths and for sqlite. Persisted settings ride in `SourceInput.federation_hints_json` (no new typed
     columns), matching the existing convention for connector-specific extras.'
   use_case: 'An admin registering a csv/parquet source backed by an HTML index page (REQ-1784) needs to
     control crawl scope: avoid following off-domain links from a scraped page, avoid picking up non-anchor-tag
@@ -67446,7 +67405,7 @@
   description: The files connector's Calcite operand builder (provisa/federation/pgwire_replica.py, _files_operand)
     shall pass through an optional `mapping.refresh_interval` (a duration string such as "5 minutes",
     matching Calcite FileSchema's own RefreshInterval.parse format) as the `refreshInterval` operand key.
-    Unlike `executionEngine`/`recursive` above, this has no default -- it is omitted from the operand
+    Unlike `executionEngine`/`recursive` above, this has no default. It is omitted from the operand
     entirely unless a source's mapping sets it, so FileSchema's own null-check (`if (refreshInterval !=
     null)`) leaves its background periodic- refresh thread (startPeriodicRefresh/refreshAllTables) off
     for the common case of a static files source. When set, the underlying JVM's own FileSchema layer
@@ -70241,8 +70200,7 @@
 
     (Amended 2026-09-27, filter support confirmed live:) `{Type}Request.filter`/ `{Type}GroupByRequest.filter`
     ARE read server-side (provisa/grpc/server.py:422-423,667-675 -> query_ir.grpc_table_to_semantic_sql
-    / grpc_table_to_group_by_graphql_text, both take a filter_msg param and apply it) — the CONFIRMED
-    GAP above was accurate when written but is stale. The benchmark tooling (demo/named/perf/bench/run_benchmark.py''s
+    / grpc_table_to_group_by_graphql_text, both take a filter_msg param and apply it). The CONFIRMED GAP above was accurate when written but is stale. The benchmark tooling (demo/named/perf/bench/run_benchmark.py''s
     GrpcTransport, queries.py''s point_lookup) now builds and attaches a `{Type}Filter` sub-message from
     a spec''s `filter` dict. This RPC surface remains single-table only (no join capability), so federated_join/large_federated_join/the
     cypher_* queries correctly keep `grpc=None` regardless of filter support.'
@@ -70995,27 +70953,23 @@
   feature: federation-and-routing-engines
   priority: SHOULD
   type: structural
-  description: '(Amended 2026-09-28, LIVE-TESTED — mixed, per-source verdict:) Evaluate Supabase''s `wrappers`
+  description: '(Amended 2026-09-28, LIVE-TESTED, mixed per-source verdict:) Evaluate Supabase''s `wrappers`
     framework (github.com/supabase/wrappers, Apache-2.0, pgrx/Rust) as a SUPPLEMENT to, not a wholesale
     replacement of, REQ-1869/REQ-1870''s dedicated per-source FDWs. Installs as a single prebuilt .deb
-    per PG major version (github.com/supabase/wrappers/releases, wrappers-v0.6.3-pg16-amd64-linux-gnu.deb
-    — no build step, confirmed live) covering many source types at once. LIVE RESULTS: (1) its MongoDB
+    per PG major version (github.com/supabase/wrappers/releases, wrappers-v0.6.3-pg16-amd64-linux-gnu.deb; no build step, confirmed live) covering many source types at once. LIVE RESULTS: (1) its MongoDB
     wrapper (`mongodb_wrapper`/ `mongodb_fdw_handler`) WORKS CORRECTLY against the exact MongoDB 7.0.43
     instance mongo_fdw (REQ-1869) failed against — real data, correct values, exact filtered count — a
     genuinely superior, working alternative for MongoDB specifically, since it''s a distinct Rust implementation
     not sharing mongo_fdw''s upstream bug. (2) its ClickHouse wrapper (`clickhouse_wrapper`/`click_house_fdw_handler`)
     is LESS mature than REQ-1870''s pg_clickhouse: `count(*)` works, but selecting an actual `LowCardinality(String)`
-    column fails ("column data type ''LowCardinality(String)'' is not supported") — a real type-mapping
-    gap pg_clickhouse doesn''t have; also no IMPORT FOREIGN SCHEMA and only native TCP ports (9000/9440,
-    not HTTP 8123/8443). Verdict: use `wrappers` per-source where it''s the best/only working option (MongoDB
-    is the clear case now), not as a blanket replacement — REQ-1870''s pg_clickhouse stays the better
+    column fails ("column data type ''LowCardinality(String)'' is not supported"). That is a real type-mapping gap pg_clickhouse doesn''t have; also no IMPORT FOREIGN SCHEMA and only native TCP ports (9000/9440,
+    not HTTP 8123/8443). Verdict: use `wrappers` per-source where it''s the best/only working option (MongoDB is the clear case now), not as a blanket replacement. REQ-1870''s pg_clickhouse stays the better
     ClickHouse choice. Also covers source types Provisa has NO live reach for at all today (Airtable,
-    Stripe, HubSpot, Notion, Auth0, AWS Cognito, Cloudflare D1, S3, Logflare, Calendly) — untested this
-    session, worth a follow-up pass.
+    Stripe, HubSpot, Notion, Auth0, AWS Cognito, Cloudflare D1, S3, Logflare, Calendly), untested this session and worth a follow-up pass.
 
     POLICY DECISION (amended 2026-09-28, supersedes bundling `wrappers` into the pg engine directly):
     `wrappers` should NOT be bundled into the engine''s own serving Postgres the way pg_clickhouse (REQ-1870)
-    is. The split — official, single-purpose, vendor-maintained C extensions bundle directly in the engine;
+    is. The split: official, single-purpose, vendor-maintained C extensions bundle directly in the engine;
     generalized multi-source third-party frameworks run in a captive sidecar Postgres reached as an ordinary
     `postgresql` source (REQ-1874''s pattern). Reasoning: pg_clickhouse is maintained by ClickHouse itself,
     single-purpose, C, and live-verified with real pushdown and no crash. `wrappers` is a generalized
@@ -71031,14 +70985,14 @@
     Do not remove the already-working connector code without first setting up the captive path; this is
     a migration target, not an immediate rip-out. [END SUPERSEDED BLOCK]
 
-    (Amended 2026-09-29, REMOVED — maintainer decision, no captive-sidecar migration needed:) `PgWrappersMongoDbConnector`
+    (Amended 2026-09-29, REMOVED by maintainer decision, no captive-sidecar migration needed:) `PgWrappersMongoDbConnector`
     is deleted outright (provisa/federation/connector_duckdb.py, unregistered from provisa/federation/engine.py''s
     build_pg_engine candidate list). Trigger: a live perf-bench run of `large_federated_join` (pg engine,
     orders JOIN order_events JOIN order_docs, 1M-row range) against this connector did not return within
-    6+ minutes and had to be killed — consistent with, and now confirming at real scale, the connector''s
+    6+ minutes and had to be killed. That is consistent with, and now confirms at real scale, the connector''s
     own capability() finding that it supports no join-pushdown at all (empty "Wrappers: quals" on every
     join-derived predicate, live-verified 2026-09-28). The maintainer''s call: don''t carry a connector
-    whose only reach mode degrades this badly under a real federated join, migration path or not — row_materialize
+    whose only reach mode degrades this badly under a real federated join, migration path or not. row_materialize
     (make_mongodb_keyed_loader, REQ-1865) remains the sole supported mongodb reach for the pg engine.
     The captive-sidecar migration this REQ previously proposed as the next step is dropped along with
     it; if wrappers-based mongodb reach is wanted again later, it needs a fresh REQ, not a revival of
@@ -71092,12 +71046,11 @@
     discover() drops the WHOLE connector from engine.connectors — including the dependency-free DIRECT/FETCH
     mechanism that should always survive. Today this is silent because discover() is never called, so
     nothing gets pruned; the moment it IS wired in (this REQ), those 5 source types regress from "gracefully
-    materializes" to "genuinely unreachable" whenever their extension isn''t installed — the opposite
-    of this REQ''s own goal. Fix options to evaluate: (a) make probe()/discover() mechanism-aware instead
+    materializes" to "genuinely unreachable" whenever their extension isn''t installed, the opposite of this REQ''s own goal. Fix options to evaluate: (a) make probe()/discover() mechanism-aware instead
     of connector-object-aware, so a failed ATTACH probe narrows a connector''s active mechanisms rather
     than removing it outright, or (b) have complete_reach() re-run (or run its per-mechanism check) AFTER
     discover(), keyed on which mechanisms survived rather than slot occupancy. Must land together with
-    the startup wiring, not as a follow-up — wiring discover() in without this fix is a regression, not
+    the startup wiring, not as a follow-up. Wiring discover() in without this fix is a regression, not
     an improvement.'
   use_case: 'Confirmed live this session: pointing PROVISA_ENGINE_URL at a real external Postgres with
     no FDWs installed produced no startup warning at all. The pg engine reported every candidate connector
@@ -71149,8 +71102,7 @@
   description: '(Amended 2026-09-28, scope widened to include mongodb; see REQ-1871''s policy decision)
     A captive-Postgres pattern for source types reached via Supabase `wrappers`: SaaS-API types (Stripe,
     HubSpot, Airtable, Notion, Auth0, etc.) AND mongodb specifically. Each such source gets a small dedicated Postgres+wrappers container, with `wrappers`'' relevant FDW attaching the remote system live inside it. That captive instance is registered with Provisa as an ordinary `postgresql` source type and reached through the EXISTING PostgresFdwConnector/native postgres driver, with no new pg-engine connector code. Policy: this pattern is specifically for `wrappers` (a generalized multi-source Rust framework,
-    no macOS build, one confirmed upstream-adjacent crash-bug class found this session via mongo_fdw)
-    — pg_clickhouse (REQ-1870), an official single-purpose vendor-maintained C extension, correctly stays
+    no macOS build, one confirmed upstream-adjacent crash-bug class found this session via mongo_fdw). pg_clickhouse (REQ-1870), an official single-purpose vendor-maintained C extension, correctly stays
     bundled directly in the engine and is NOT part of this pattern''s scope. This is the SAME shape Provisa
     already uses for files/sharepoint/splunk (REQ-954/955/956, provisa/federation/pgwire_replica.py) —
     a bundled server speaking the Postgres wire protocol that the engine reaches as a generic PostgreSQL
@@ -71159,10 +71111,9 @@
     SOURCE — never shared across two sources (e.g. Stripe and HubSpot each get their own container, not
     one container running both foreign servers). `wrappers` is a single shared `.so` per Postgres backend
     process; sharing one captive instance across sources would mean a crash or resource issue tied to
-    ONE source''s connection can take down every OTHER source sharing that same process too — defeating
-    the entire point of isolating `wrappers` out of the engine in the first place. Migration note: `PgWrappersMongoDbConnector`
+    ONE source''s connection can take down every OTHER source sharing that same process too, which defeats the entire point of isolating `wrappers` out of the engine in the first place. Migration note: `PgWrappersMongoDbConnector`
     (implemented this session, live-verified working, bundled directly in the engine) should be superseded
-    by this pattern for mongodb once it exists — not removed until the captive path is available.
+    by this pattern for mongodb once it exists, and not removed until the captive path is available.
 
     (Amended 2026-09-28, simplified — follow the splunk/sharepoint model, full stop, no separate SaaS-vs-CE
     split:) reuse provisa/federation/pgwire_replica.py''s EXACT existing mechanism (REQ-954/955/956) uniformly
@@ -71171,7 +71122,7 @@
     path and no docker-compose-specific path as separate requirements; the SAME lifecycle code already
     running files/sharepoint/splunk in both SaaS and self-hosted deployments today handles this too. An
     operator MAY still run their own captive instance independently and register it as a plain `postgresql`
-    source (Provisa then only PROBES it, per REQ-1872) — that is the existing BYO option every `postgresql`-type
+    source (Provisa then only PROBES it, per REQ-1872). That is the existing BYO option every `postgresql`-type
     source already has, not a second mechanism to build.
 
     TWO REAL GAPS, not free with the SourceType stubs added for the full wrappers catalog (provisa/core/models.py,
@@ -71188,20 +71139,19 @@
 
     UX CONSTRAINT, applies to all copy/labels/errors for this whole pattern: the implementation mechanism
     (Supabase `wrappers`, the captive Postgres instance, FDW internals) is an implementation detail and
-    MUST NEVER be surfaced to the end user anywhere — not in the source picker, not in prereq/badge text,
+    MUST NEVER be surfaced to the end user anywhere: not in the source picker, not in prereq/badge text,
     not in error messages, not in docs written for end users. A user configuring a Stripe source sees
     "Stripe" as an ordinary source type, the same as configuring Postgres or MongoDB; they never see "wrappers,"
     "FDW," or "captive instance." The Docker prereq badge (above) needs end-user-appropriate wording ("requires
     a local container runtime" or similar), not an internals-revealing one. Internal code/comments/requirements
-    can and should keep naming the real mechanism (as this REQ does) — the constraint is user-facing surfaces
-    only.
+    can and should keep naming the real mechanism (as this REQ does); the constraint is user-facing surfaces only.
 
     (Amended 2026-10-02, SCOPE NARROWED) This pattern is no longer the default route for the `wrappers`
     catalog. A system whose vendor publishes a usable OpenAPI spec is reached as a branded preset over
     the OpenAPI source (REQ-1923), and a system better reached through its own SDK or protocol gets a
     direct loader. The captive instance is kept for a system with neither. Each system is investigated
     on its own and given one verdict; the use_case list below is superseded by those verdicts. The `s3`
-    SourceType stub named above is removed -- S3 objects are already reached by csv and parquet (s3://
+    SourceType stub named above is removed. S3 objects are already reached by csv and parquet (s3://
     paths) and by files (mapping.storage_type "s3").'
   use_case: Gives access to wrappers' whole catalog (mongodb, Stripe, HubSpot, Airtable, Notion, Auth0,
     AWS Cognito, Cloudflare D1, Logflare, Calendly) without hand-rolling a bespoke Calcite adapter per
@@ -75939,11 +75889,9 @@
     tags, glossary terms and the other objects held in the control plane -- is created, read, changed
     and deleted in one place, the model store, and nowhere else. The model store is the control plane''s
     create, read, update and delete for every kind of object, and it carries four things with every change.
-    Dependency guards -- a deletion or a change of domain is refused while something depends on the object,
-    under the rule of REQ-1918 and REQ-1917. Versioning -- each object carries its own version, and an
-    update made against a stale or missing version is refused (REQ-1914). Syncing -- every change advances
-    the stamp that tells every process to reload, in the same transaction as the change (REQ-1914). One
-    transaction -- a change that touches several rows is applied whole or not at all, so no other process
+    Dependency guards: a deletion or a change of domain is refused while something depends on the object,
+    under the rule of REQ-1918 and REQ-1917. Versioning: each object carries its own version, and an
+    update made against a stale or missing version is refused (REQ-1914). Syncing: every change advances the stamp that tells every process to reload, in the same transaction as the change (REQ-1914). One transaction: a change that touches several rows is applied whole or not at all, so no other process
     ever reloads a half-made change. A change is also recorded in the audit trail. The admin API, the
     configuration loader, the startup seed and every other caller change the model only by calling the
     model store; no other code writes a model table, and a test fails the build when one does. The model
@@ -76266,112 +76214,7 @@
   priority: SHOULD
   type: structural
   target: 2027-Q1
-  description: Branded source types implemented over the generic API sources. A branded source is a named
-    source type (Stripe, HubSpot, GitHub and so on) that adds only what is specific to that system on
-    top of a generic source Provisa already has, and never a connector of its own. Two generic sources
-    carry them. One, the remote GraphQL source, for a system whose API is GraphQL -- GitHub is the
-    first, reached by the generic connector with its schema loaded from a baked artifact (REQ-1875).
-    Two, the OpenAPI source (REQ-314..321), for a system whose vendor publishes a usable OpenAPI
-    spec -- the preset is a pinned spec, an auth template, the
-    pagination of each list operation, and, where the API offers one, the parameter a refresh uses to
-    pull only what changed. A preset chooses no subset of the API. Adding a branded source makes every
-    table the system offers available and registers none of them; the steward registers the tables
-    wanted, as for any source, and that registration is the curation.
-    A spec is usable only when it is well typed -- every list operation chosen as a table declares a
-    response schema with named, typed properties, since the table's columns are read from it (REQ-316).
-    A spec whose responses are untyped objects, or absent, does not qualify, and a preset never
-    patches the gap with a hand-written schema of its own.
-    The steward picks the brand name and supplies credentials; nothing else is asked. A branded source
-    is always a replica, like every OpenAPI and remote GraphQL source. This is the preferred route for
-    the Supabase `wrappers` catalog whose SourceType stubs exist (provisa/core/models.py) -- the captive
-    Postgres pattern of REQ-1874 is kept for a system with neither a GraphQL API nor a usable spec, and
-    a system better reached through its own SDK or protocol gets a direct loader. Each system in that
-    catalog is investigated on its own and given one verdict -- GraphQL preset, OpenAPI preset, wrapper,
-    direct loader, already covered, or dropped. The mechanism is never shown to the user; they see the
-    brand name as an ordinary source type. (Amended 2026-10-02, GITHUB AS BUILT) GitHub is the first
-    brand. It is picked as GitHub in the source list, asks for an access token and an optional table
-    name prefix, and is shown as GitHub afterwards; the source row is a remote GraphQL source that
-    records its brand. The token goes to the org's secrets vault and the row carries the reference, so
-    a restarted process reads the source again without the token being re-entered. The tables on offer
-    are listed by the Register Table picker from the schema that ships with Provisa (REQ-1875), and a
-    table is registered through the same mutation every source uses. Three things are particular to
-    a brand and declared by it, never inferred. One, the error type its remote returns, before running
-    a query, for a field outside the credential's grant -- when a table is registered its query is
-    offered to the remote once, each field so refused is left out of the table, and the registration
-    names what was left out; a table the credential may not read at all is refused with the remote's
-    reason. Two, the error types its remote returns beside the data for one field of one row -- that
-    field is null in that row, as the remote returned it, the read stands, and the error is logged;
-    an error naming the table itself fails the read. Three, the error types that mean a page asked
-    for more than the remote computes in one query -- the page is asked for again at half the size.
-    A brand also sets how deep a nested object column is selected, since its schema is larger and more
-    cross-referenced than the deployment-wide setting is sized for.
-    (Amended 2026-10-02, PRICED QUERIES AND GITLAB) Some systems price a query and refuse one over a
-    price -- GitLab allows 200 points to an anonymous caller and 250 with a token, and refuses a query
-    over 10,000 characters. Such a system cannot serve a wide table whole, so its tables are registered
-    with the columns wanted. A count of columns is not the measure -- what a column costs depends on
-    its kind and on the page size -- so the system's own answer is. When a table is registered, its
-    query with the columns chosen is offered to the remote once at the page size a read asks for; a
-    brand declares how its remote's message starts when it refuses a query as too costly or too
-    large, and a registration so refused fails, changes nothing, and carries the remote's message
-    with its numbers. GitLab is the second brand, reaching gitlab.com. A brand's credential check
-    treats a null answer to its who-am-I query as a refusal, since a remote that also serves
-    anonymous callers answers an unrecognized credential that way and not with an error.
-    (Amended 2026-10-07, ROUTE BY QUERY LANGUAGE) Which route a system takes follows from what its
-    API can be asked. A system with a rich query language of its own -- Salesforce, Splunk,
-    SharePoint -- is reached by a Calcite adapter, read in place with filters and projections pushed
-    to it, on every engine that attaches the adapter and through a native connector on Trino, so
-    no engine replicates it. A system whose API is list operations with few filters -- Stripe,
-    Bitbucket, Confluence -- is an API preset as described above and is always a replica. The
-    brand the steward picks is the same either way, and a system may move from one route to the
-    other without the steward seeing a different source type.
-    (Amended 2026-10-07, PER-USER RESOURCES ARE MULTI-ACCOUNT) A source of per-user resources -- a
-    mail system first, and a calendar or a personal file store likewise -- always serves many
-    accounts. It is given either one credential that reaches every account, or one credential per
-    account. The account is a column of each of its tables, so one table holds every account's
-    rows and row-level rules decide which accounts a role reads. A source of this kind that serves
-    one account only is not offered.
-    (Amended 2026-10-07, ONE BRAND, CLOUD OR DATA CENTER) A system offered both as a cloud service
-    and as a self-hosted product is one brand. Jira, Confluence and Bitbucket are each picked once,
-    and the steward says which deployment the source is -- Cloud or Data Center, and for Data Center
-    its version. That choice selects the pinned spec, since the two are different APIs, and the
-    tables and commands on offer follow from it.
-    (Amended 2026-10-07, STRIPE AS BUILT) Stripe is the first brand carried by the OpenAPI source.
-    It is picked as Stripe in the datasource picker, asks for a secret key and nothing else, and is
-    shown as Stripe afterwards; the source row is an OpenAPI source that records its brand and
-    names the brand's shipped spec. The spec is Stripe's published one, pinned and shipped with
-    Provisa under its MIT notice, and moved to a newer API version by baking it again. Adding the
-    source checks the key with one call to Stripe, stores it as every OpenAPI source's credential
-    is stored, and registers nothing. Each list is offered with the paging the spec declares
-    (REQ-316) -- after the last row's id for a list, the answered cursor for a search. Two lists
-    whose rows are one of several object kinds are offered as their page wrapper and not as rows.
-    Not yet read against a live Stripe account.
-    (Amended 2026-10-08, THE API VERSION) Every call to Stripe -- the key check, each read of a
-    table, each command -- carries a Stripe-Version header naming the version of the shipped
-    spec, so an answer has the shape the spec describes whatever version the account defaults
-    to. The header is derived from the shipped spec when the source is loaded and is never
-    stored, so baking a newer spec moves every Stripe source to it. A brand declares the header
-    that names its version; a source of a spec of the steward's own sends none.
-    (Amended 2026-10-08, STRIPE READ LIVE) Stripe was read against a sandbox account, which replaces
-    the statement above that it had not been. Checked there -- the key check, the version header,
-    commands with form bodies, a file upload, paging after the last row, search paging by cursor, and
-    tables read with rows of customers, products, prices, payment intents, charges, balance
-    transactions, invoices, invoice items, subscriptions, files, events, payment methods and a
-    customer's sources. The two lists whose rows are one of several object kinds are now tables
-    (REQ-316), which replaces the statement above that they are offered as their page wrapper. Stripe
-    answers a few fields its own spec does not declare, such as a charge's source; they are not
-    columns.
-    (Amended 2026-10-08, FIELDS BEYOND THE PUBLISHED SPEC, maintainer ruling) A brand may add to its
-    shipped spec the fields its remote answers and the published spec does not declare, which replaces
-    the statements above that a preset never patches a gap with a schema of its own and that such
-    Stripe fields are not columns. The additions are a file of the brand's kept beside the vendor's
-    spec, naming each field by the schema it belongs to; the vendor's file stays as published and is
-    baked again unchanged. They are applied when the spec is loaded. An addition the published spec
-    has come to declare, or one for a schema it no longer has, fails the load until it is removed.
-    Only fields seen in live answers are added. Stripe's first additions are a charge's destination,
-    dispute, order and source, a payment intent's source and shared_payment_granted_token, a payment
-    method's shared_payment_granted_token, a product's attributes and type, and a subscription's plan
-    and quantity.
-    Amended 2026-10-08 -- the Stripe brand offers the Payment Intents, Payment Methods and Setup Intents family and does not offer Stripe's deprecated token and inline-source payment inputs (the Charges-create, Tokens and Sources operations, and the source, card, bank_account and default_card arguments of customer and invoice-payment writes), which it removes through its exclusion list (REQ-1957). Reading and removing a customer's existing legacy sources stays, since that is how one migrates off them. Amended 2026-10-08 (maintainer ruling) -- a brand is given no credential by default. Each brand states the credential its own service takes, and its setup asks for that and nothing else; a brand read without a credential (Wikipedia, REQ-1960) asks for none.
+  description: 'Branded source types implemented over the generic API sources. A branded source is a named source type (Stripe, HubSpot, GitHub and so on) that adds only what is specific to that system on top of a generic source Provisa already has, and never a connector of its own. Two generic sources carry them. One, the remote GraphQL source, for a system whose API is GraphQL. GitHub is the first, reached by the generic connector with its schema loaded from a baked artifact (REQ-1875). Two, the OpenAPI source (REQ-314..321), for a system whose vendor publishes a usable OpenAPI spec. The preset is a pinned spec, an auth template, the pagination of each list operation, and, where the API offers one, the parameter a refresh uses to pull only what changed. A preset chooses no subset of the API. Adding a branded source makes every table the system offers available and registers none of them; the steward registers the tables wanted, as for any source, and that registration is the curation. A spec is usable only when it is well typed: every list operation chosen as a table declares a response schema with named, typed properties, since the table''s columns are read from it (REQ-316). A spec whose responses are untyped objects, or absent, does not qualify, and a preset never patches the gap with a hand-written schema of its own. The steward picks the brand name and supplies credentials; nothing else is asked. A branded source is always a replica, like every OpenAPI and remote GraphQL source. This is the preferred route for the Supabase `wrappers` catalog whose SourceType stubs exist (provisa/core/models.py). The captive Postgres pattern of REQ-1874 is kept for a system with neither a GraphQL API nor a usable spec, and a system better reached through its own SDK or protocol gets a direct loader. Each system in that catalog is investigated on its own and given one verdict: GraphQL preset, OpenAPI preset, wrapper, direct loader, already covered, or dropped. The mechanism is never shown to the user; they see the brand name as an ordinary source type. (Amended 2026-10-02, GITHUB AS BUILT) GitHub is the first brand. It is picked as GitHub in the source list, asks for an access token and an optional table name prefix, and is shown as GitHub afterwards; the source row is a remote GraphQL source that records its brand. The token goes to the org''s secrets vault and the row carries the reference, so a restarted process reads the source again without the token being re-entered. The tables on offer are listed by the Register Table picker from the schema that ships with Provisa (REQ-1875), and a table is registered through the same mutation every source uses. Three things are particular to a brand and declared by it, never inferred. One, the error type its remote returns, before running a query, for a field outside the credential''s grant. When a table is registered its query is offered to the remote once, each field so refused is left out of the table, and the registration names what was left out; a table the credential may not read at all is refused with the remote''s reason. Two, the error types its remote returns beside the data for one field of one row. That field is null in that row, as the remote returned it, the read stands, and the error is logged; an error naming the table itself fails the read. Three, the error types that mean a page asked for more than the remote computes in one query. The page is asked for again at half the size. A brand also sets how deep a nested object column is selected, since its schema is larger and more cross-referenced than the deployment-wide setting is sized for. (Amended 2026-10-02, PRICED QUERIES AND GITLAB) Some systems price a query and refuse one over a price. GitLab allows 200 points to an anonymous caller and 250 with a token, and refuses a query over 10,000 characters. Such a system cannot serve a wide table whole, so its tables are registered with the columns wanted. A count of columns is not the measure -- what a column costs depends on its kind and on the page size -- so the system''s own answer is. When a table is registered, its query with the columns chosen is offered to the remote once at the page size a read asks for; a brand declares how its remote''s message starts when it refuses a query as too costly or too large, and a registration so refused fails, changes nothing, and carries the remote''s message with its numbers. GitLab is the second brand, reaching gitlab.com. A brand''s credential check treats a null answer to its who-am-I query as a refusal, since a remote that also serves anonymous callers answers an unrecognized credential that way and not with an error. (Amended 2026-10-07, ROUTE BY QUERY LANGUAGE) Which route a system takes follows from what its API can be asked. A system with a rich query language of its own -- Salesforce, Splunk, SharePoint -- is reached by a Calcite adapter, read in place with filters and projections pushed to it, on every engine that attaches the adapter and through a native connector on Trino, so no engine replicates it. A system whose API is list operations with few filters -- Stripe, Bitbucket, Confluence -- is an API preset as described above and is always a replica. The brand the steward picks is the same either way, and a system may move from one route to the other without the steward seeing a different source type. (Amended 2026-10-07, PER-USER RESOURCES ARE MULTI-ACCOUNT) A source of per-user resources -- a mail system first, and a calendar or a personal file store likewise -- always serves many accounts. It is given either one credential that reaches every account, or one credential per account. The account is a column of each of its tables, so one table holds every account''s rows and row-level rules decide which accounts a role reads. A source of this kind that serves one account only is not offered. (Amended 2026-10-07, ONE BRAND, CLOUD OR DATA CENTER) A system offered both as a cloud service and as a self-hosted product is one brand. Jira, Confluence and Bitbucket are each picked once, and the steward says which deployment the source is: Cloud or Data Center, and for Data Center its version. That choice selects the pinned spec, since the two are different APIs, and the tables and commands on offer follow from it. (Amended 2026-10-07, STRIPE AS BUILT) Stripe is the first brand carried by the OpenAPI source. It is picked as Stripe in the datasource picker, asks for a secret key and nothing else, and is shown as Stripe afterwards; the source row is an OpenAPI source that records its brand and names the brand''s shipped spec. The spec is Stripe''s published one, pinned and shipped with Provisa under its MIT notice, and moved to a newer API version by baking it again. Adding the source checks the key with one call to Stripe, stores it as every OpenAPI source''s credential is stored, and registers nothing. Each list is offered with the paging the spec declares (REQ-316): after the last row''s id for a list, the answered cursor for a search. Two lists whose rows are one of several object kinds are offered as their page wrapper and not as rows. Not yet read against a live Stripe account. (Amended 2026-10-08, THE API VERSION) Every call to Stripe -- the key check, each read of a table, each command -- carries a Stripe-Version header naming the version of the shipped spec, so an answer has the shape the spec describes whatever version the account defaults to. The header is derived from the shipped spec when the source is loaded and is never stored, so baking a newer spec moves every Stripe source to it. A brand declares the header that names its version; a source of a spec of the steward''s own sends none. (Amended 2026-10-08, STRIPE READ LIVE) Stripe was read against a sandbox account, which replaces the statement above that it had not been. Checked there: the key check, the version header, commands with form bodies, a file upload, paging after the last row, search paging by cursor, and tables read with rows of customers, products, prices, payment intents, charges, balance transactions, invoices, invoice items, subscriptions, files, events, payment methods and a customer''s sources. The two lists whose rows are one of several object kinds are now tables (REQ-316), which replaces the statement above that they are offered as their page wrapper. Stripe answers a few fields its own spec does not declare, such as a charge''s source; they are not columns. (Amended 2026-10-08, FIELDS BEYOND THE PUBLISHED SPEC, maintainer ruling) A brand may add to its shipped spec the fields its remote answers and the published spec does not declare, which replaces the statements above that a preset never patches a gap with a schema of its own and that such Stripe fields are not columns. The additions are a file of the brand''s kept beside the vendor''s spec, naming each field by the schema it belongs to; the vendor''s file stays as published and is baked again unchanged. They are applied when the spec is loaded. An addition the published spec has come to declare, or one for a schema it no longer has, fails the load until it is removed. Only fields seen in live answers are added. Stripe''s first additions are a charge''s destination, dispute, order and source, a payment intent''s source and shared_payment_granted_token, a payment method''s shared_payment_granted_token, a product''s attributes and type, and a subscription''s plan and quantity. Amended 2026-10-08: the Stripe brand offers the Payment Intents, Payment Methods and Setup Intents family and does not offer Stripe''s deprecated token and inline-source payment inputs (the Charges-create, Tokens and Sources operations, and the source, card, bank_account and default_card arguments of customer and invoice-payment writes), which it removes through its exclusion list (REQ-1957). Reading and removing a customer''s existing legacy sources stays, since that is how one migrates off them. Amended 2026-10-08 (maintainer ruling): a brand is given no credential by default. Each brand states the credential its own service takes, and its setup asks for that and nothing else; a brand read without a credential (Wikipedia, REQ-1960) asks for none.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
@@ -77683,8 +77526,7 @@
   type: behavioral
   description: Catalog preparation is centralized per query language. SQL catalog (pg_catalog served via
     pgwire/DBeaver), GraphQL SDL (schema introspection), and Cypher catalog (Nodes/Relationships schema)
-    are each the responsibility of a single dedicated module. No transport implements catalog logic directly
-    — transports consume the output of the centralized catalog module for their language.
+    are each the responsibility of a single dedicated module. No transport implements catalog logic directly; transports consume the output of the centralized catalog module for their language.
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was written on 2026-06-11 under the heading ''Data & Storage''; it was dropped when requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: SQL catalog is in provisa/pgwire/catalog.py and Cypher label_map is in provisa/cypher/label_map.py, but provisa/bolt/session.py:899-915 answers db.labels()/db.relationshipTypes() inside the Bolt transport itself, so catalog logic is not fully centralized; no test asserts the centralization. Roadmap audit 2026-10-13: partly built. Missing: SQL and Cypher catalogs have dedicated modules; GraphQL introspection has no single catalog module (_detect_introspection in endpoint_helpers.py only); no test.'
   code:
   - provisa/pgwire/catalog.py
@@ -81843,7 +81685,7 @@
   - tests/unit/test_proto_gen.py
   - tests/integration/test_native_json_postgres.py
   - tests/integration/test_native_json_trino.py
-  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is the type every catalog and every wire lists for it, on every federation engine and every source read directly, so a registration answers the same on every engine. A datasource hands a native array, struct or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON -- JSON is the type registration suggests for it, never text -- and registering one is never an error, though reading one from a backend with no verified way to produce JSON is refused by name. A column carries three hidden attributes, recorded from the source at registration, stored with the column, not offered in the registration form and available to every translator: its array depth as an integer -- 0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost element with precision and scale where it has them, and the native type of the source in its own spelling. A backend does not need a JSON type to carry such a column, only JSON functions: where a backend has no JSON type the value is held and passed as text, and what makes a backend supported is that it can produce JSON from a native value and operate on JSON text with its own functions. Only an array whose innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded, and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted as the same operations, and translated to the dialect of the backend a statement is routed to from one rule table covering every operation on every backend class. For an array of a primitive, at any depth, the attributes are an input to that translation: an innermost element that is extracted or unnested is cast to the element type and a literal compared with one is cast to it, inside the generated statement, and where the statement runs on the source and its column is natively an array, element access, length, contains and unnest use the native operation -- except that on the PostgreSQL family, whose array type does not record its dimensions, unnest always goes through JSON, so its answer never depends on the dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused when the statement is compiled, naming the column and its depth. The native type is recorded for casting in: its being recorded is what tells a translator the column must be converted to JSON on the way out, a conversion that is the same whatever the type, and its content is what a value is cast into on the way in. That holds for a predicate as for a write. In a predicate that runs on the source, the JSON or literal a statement compares with such a column -- with the whole value or with an element -- is cast into the native type, so that the comparison is made on the native column by the source and can use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a statement gives for a column that is natively an array, struct or map is cast into the recorded native type by the source that stores it, inside the generated statement, through the one write path; a value the source cannot cast is refused with the error of the source, and a backend with no verified way to build its native value from JSON refuses the write by name. A decimal element with a declared precision is written into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa does not parse, convert or re-encode it on any route; the translation is derived once with the governed statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation that is correct but slow is allowed and runs -- the user is responsible for what will not perform, and the product says so: the query plan notes, for each JSON operation that the backend it is routed to cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend and the documented alternative, as advice that never blocks or changes the statement and is shown with the plan only; the documentation states the same per backend class from the same rule table. When the type of a source column no longer matches what was recorded, reads of that column are refused, naming the column and both types, until it is registered again. The hidden attributes are standard metadata that a surface able to state a list may read: GraphQL declares a column whose depth is above 0 as a list, nested to that depth, of the GraphQL type of its element, from the attributes alone and never from the spelling of a source type, and declares every other JSON column as the opaque JSON value; the value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON string. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers as JSON with its three hidden attributes recorded from the source (depth, element type, native type, and whose spelling that is), and registering it as any other type is refused by name; a read of such a column is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one transpile step every route takes; a replica lands it as JSON the source or engine produces (jsonb on PostgreSQL); GraphQL declares a column of depth above 0 as a list of its element type from the attributes alone, a decimal element with a declared precision as String, and every other such column as the opaque JSON value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter (a query vector, REQ-1986) stays a list of its element type on GraphQL and gRPC. An embedding column (REQ-424) is exempt end to end: registered as the native array it is with no hidden attribute, landed as a vector where the engine indexes it and as text elsewhere, read without a JSON conversion, and a list of its components in GraphQL. Not yet delivered: the portable JSON operations and their rule table, typed extraction and its compile-time depth check, native element operations on the source, the plan notes, the cast into the native type in predicates and writes, refusing reads of a column whose source type drifted, and Bolt''s JSON string.'
+  description: 'Semantic SQL has no array, struct or map type; nested data is a JSON column, and JSON is the type every catalog and every wire lists for it, on every federation engine and every source read directly, so a registration answers the same on every engine. A datasource hands a native array, struct or map over as JSON, by a cast the source or engine executes; such a column is registered as JSON -- JSON is the type registration suggests for it, never text -- and registering one is never an error, though reading one from a backend with no verified way to produce JSON is refused by name. A column carries three hidden attributes, recorded from the source at registration, stored with the column, not offered in the registration form and available to every translator: its array depth as an integer -- 0 for a column that is not an array of a primitive, 1 for an array of a primitive, 2 for an array of arrays of a primitive, and so on for each level of nesting -- the semantic SQL type of its innermost element with precision and scale where it has them, and the native type of the source in its own spelling. A backend does not need a JSON type to carry such a column, only JSON functions: where a backend has no JSON type the value is held and passed as text, and what makes a backend supported is that it can produce JSON from a native value and operate on JSON text with its own functions. Only an array whose innermost element is one primitive type has a depth above 0; a struct, a map, an array of structs or an array whose elements are of mixed types is a plain JSON column of depth 0 with its native type recorded, and a column that is JSON at its source carries none of the three. Semantic SQL offers one portable set of JSON operations -- element and field access, length, contains, unnest, construct, and aggregate into a JSON array -- spelled as the SQL standard JSON functions, with the PostgreSQL operators accepted as the same operations, and translated to the dialect of the backend a statement is routed to from one rule table covering every operation on every backend class. For an array of a primitive, at any depth, the attributes are an input to that translation: an innermost element that is extracted or unnested is cast to the element type and a literal compared with one is cast to it, inside the generated statement, and where the statement runs on the source and its column is natively an array, element access, length, contains and unnest use the native operation, except that on the PostgreSQL family, whose array type does not record its dimensions, unnest always goes through JSON, so its answer never depends on the dimensions of the value. A typed extraction that goes fewer levels into an array than its depth is refused when the statement is compiled, naming the column and its depth. The native type is recorded for casting in: its being recorded is what tells a translator the column must be converted to JSON on the way out, a conversion that is the same whatever the type, and its content is what a value is cast into on the way in. That holds for a predicate as for a write. In a predicate that runs on the source, the JSON or literal a statement compares with such a column -- with the whole value or with an element -- is cast into the native type, so that the comparison is made on the native column by the source and can use its indexes, and the column is not converted to JSON to be compared. In a write, the JSON a statement gives for a column that is natively an array, struct or map is cast into the recorded native type by the source that stores it, inside the generated statement, through the one write path; a value the source cannot cast is refused with the error of the source, and a backend with no verified way to build its native value from JSON refuses the write by name. A decimal element with a declared precision is written into the JSON as a string and cast back, so it is exact on every engine; a timestamp element keeps its instant; an element that is not a number or is infinite is refused by name. Inside a struct, a map or an array of structs nothing is typed: the whole value and the untyped operations work, and a typed value from inside one needs a cast the user writes. Once a source or an engine has produced a value, Provisa does not parse, convert or re-encode it on any route; the translation is derived once with the governed statement, not per request. An operation a backend cannot perform correctly is refused by name; an operation that is correct but slow is allowed and runs. The user is responsible for what will not perform, and the product says so: the query plan notes, for each JSON operation that the backend it is routed to cannot serve from an index or that is not known to be pushed down, the column, the operation, the backend and the documented alternative, as advice that never blocks or changes the statement and is shown with the plan only; the documentation states the same per backend class from the same rule table. When the type of a source column no longer matches what was recorded, reads of that column are refused, naming the column and both types, until it is registered again. The hidden attributes are standard metadata that a surface able to state a list may read: GraphQL declares a column whose depth is above 0 as a list, nested to that depth, of the GraphQL type of its element, from the attributes alone and never from the spelling of a source type, and declares every other JSON column as the opaque JSON value; the value it serves is the JSON the source or engine produced. Bolt carries a JSON column as a JSON string. (Amended 2026-10-13, WHAT IS DELIVERED:) Delivered: a native array, struct or map registers as JSON with its three hidden attributes recorded from the source (depth, element type, native type, and whose spelling that is), and registering it as any other type is refused by name; a read of such a column is the backend''s own to-JSON expression on DuckDB, PostgreSQL and Trino, resolved in the one transpile step every route takes; a replica lands it as JSON the source or engine produces (jsonb on PostgreSQL); GraphQL declares a column of depth above 0 as a list of its element type from the attributes alone, a decimal element with a declared precision as String, and every other such column as the opaque JSON value; gRPC carries it as a JSON string. A parameter is an argument, not a column: an array parameter (a query vector, REQ-1986) stays a list of its element type on GraphQL and gRPC. An embedding column (REQ-424) is exempt end to end: registered as the native array it is with no hidden attribute, landed as a vector where the engine indexes it and as text elsewhere, read without a JSON conversion, and a list of its components in GraphQL. Not yet delivered: the portable JSON operations and their rule table, typed extraction and its compile-time depth check, native element operations on the source, the plan notes, the cast into the native type in predicates and writes, refusing reads of a column whose source type drifted, and Bolt''s JSON string.'
   scenario: 'Given a PostgreSQL source with a column tags of type text[]
 
     When the column is registered
@@ -81951,7 +81793,7 @@
   feature: semantic-model-governed-changes
   priority: MUST
   type: behavioral
-  description: 'Every save of a model object passes one consequences gate on the server before it reaches the model store (REQ-1919). A save is a create, an update or a delete, whatever asks for it: the UI, the API, a config load or an agent. The gate has ONE contract for every object type and answers with one of three verdicts. HARMLESS: the change is saved at once, with no prompt. CONSEQUENTIAL: the change is feasible and has consequences; the answer lists each affected object and what becomes of it (returned to draft, flagged needs review, rebuilt), and the save proceeds only on confirmation of exactly that list. NOT FEASIBLE: the change is refused; the answer says why and names what blocks it. Each object type supplies its own judgement of a proposed change -- which fields changed, what depends on them, what becomes of each dependent; the contract, the format of the list, the confirmation and the marking of dependents are shared. A field no judgement has classified is treated as consequential, never as harmless. Affected tables and views are returned to draft (REQ-1921) and affected relationships, rules and metrics are flagged needs review (REQ-020), in the same transaction as the save; nothing is deleted on the caller''s behalf and nothing keeps serving on a guess. The verdict states what it cannot see: clients outside the product that call an object by name. The existing refused-delete lists, the column-dependents confirmation and the needs-review flagging are instances of this gate. With the gate in place every field of an object is editable, identity fields included; until an object type has its judgement, the fields whose change the server cannot reason about are read-only. Acceptance: a guard fails any save path that does not pass the gate, and any object type that has no judgement.'
+  description: 'Every save of a model object passes one consequences gate on the server before it reaches the model store (REQ-1919). A save is a create, an update or a delete, whatever asks for it: the UI, the API, a config load or an agent. The gate has ONE contract for every object type and answers with one of three verdicts. HARMLESS: the change is saved at once, with no prompt. CONSEQUENTIAL: the change is feasible and has consequences; the answer lists each affected object and what becomes of it (returned to draft, flagged needs review, rebuilt), and the save proceeds only on confirmation of exactly that list. NOT FEASIBLE: the change is refused; the answer says why and names what blocks it. Each object type supplies its own judgement of a proposed change (which fields changed, what depends on them, what becomes of each dependent); the contract, the format of the list, the confirmation and the marking of dependents are shared. A field no judgement has classified is treated as consequential, never as harmless. Affected tables and views are returned to draft (REQ-1921) and affected relationships, rules and metrics are flagged needs review (REQ-020), in the same transaction as the save; nothing is deleted on the caller''s behalf and nothing keeps serving on a guess. The verdict states what it cannot see: clients outside the product that call an object by name. The existing refused-delete lists, the column-dependents confirmation and the needs-review flagging are instances of this gate. With the gate in place every field of an object is editable, identity fields included; until an object type has its judgement, the fields whose change the server cannot reason about are read-only. Acceptance: a guard fails any save path that does not pass the gate, and any object type that has no judgement.'
   use_case: 'An operator opens a source''s detail panel and changes its type, or renames a table other objects are built on. Before anything is written the server says which of three things the change is: nothing depends on it and it is saved; these named tables go back to draft and these relationships need review, confirm to proceed; or it cannot be done, and this is what stands in the way. No dependent object is left serving against a definition that no longer exists, and no change is refused without its reason.'
   related_reqs:
   - REQ-1919
@@ -83457,8 +83299,7 @@
     No other control-plane store exists: SQLite, DuckDB, MySQL, MariaDB, SingleStore, SQL Server and Oracle are
     removed, and a PLATFORM_DATABASE_URL or TENANT_DATABASE_URL naming any of them is refused by name. The DuckDB
     engine reads provisa_admin live through its postgres extension; no snapshot of the control plane is taken.
-    schema_org.py stays as the query metadata the repositories build their statements from, guarded against
-    schema.sql by the parity test; it builds no DDL -- schema.sql does. Native Linux arm64, for which pgserver ships
+    schema_org.py stays as the query metadata the repositories build their statements from, guarded against schema.sql by the parity test. It builds no DDL; schema.sql does. Native Linux arm64, for which pgserver ships
     no wheel, refuses by name to start without an external PostgreSQL URL; Docker installs and every other platform
     are unaffected.'
   use_case: 'An operator starts a native install with no control-plane URL and gets an embedded PostgreSQL; a
@@ -84475,7 +84316,7 @@
     returns different rows per reader, the per-request record shows serving region and rules, no copy of EU rows
     exists outside the EU, and a cross-region read is served from the home region''s replica or refused naming it.
     Its tour states that legal requirements can be met with these features, but meeting them takes active design
-    by people who understand the data protection and cross-border transfer rules that apply -- the lawful basis,
+    by people who understand the data protection and cross-border transfer rules that apply. The lawful basis,
     impact assessment, retention and works-council agreement remain the group''s legal process; it never claims
     the features make an organization compliant. Its tour follows the settled demo tour shape: the scenario and the
     features it exercises; how its sources, tables, commands, views and relationships fit, each step on its real
@@ -85531,8 +85372,7 @@
     and an employee mailbox (messages with sender, recipients, sent time and body) whose tables would sit equally over
     a real mail source. Every outbound message is scored against every watch-list deal: entity match (legal name and
     aliases fuzzily, ticker, project code name) and semantic similarity of the message to the deal''s description through
-    the demo''s own local embedding model, so a paraphrase that avoids every name still scores; the score is weighted
-    by context -- a sender not on that deal''s team, a recipient outside the bank''s domains or a personal address, and
+    the demo''s own local embedding model, so a paraphrase that avoids every name still scores; the score is weighted by context: a sender not on that deal''s team, a recipient outside the bank''s domains or a personal address, and
     a message sent before the deal''s announcement each raise it; a deal-team member writing to the deal''s own counterparties
     lowers it. The same messages are checked for customer PII by SQL pattern checks, joined to the bank''s customer-data access log (who
     read customer data, and when) so a sender who read customer data that week and then mailed it out ranks high.
@@ -85684,7 +85524,7 @@ And a reviewer without it sees the pseudonym, and anyone else the mask'
   status: proposed
   since: 2026-10
   group: 6. Execution, Routing, Caching & Performance
-  category: Warm Tables (Replica Profile — Low-Latency Placement)
+  category: Materialization Store
   feature: replicas-and-freshness-warm-placement
   priority: SHOULD
   type: behavioral
@@ -85705,7 +85545,7 @@ Then it lands whole and reads are served from the replica without calling the so
   status: proposed
   since: 2026-10
   group: 6. Execution, Routing, Caching & Performance
-  category: Warm Tables (Replica Profile — Low-Latency Placement)
+  category: Materialization Store
   feature: replicas-and-freshness-warm-placement
   priority: SHOULD
   type: behavioral
@@ -85894,7 +85734,7 @@ Then the read is served from the EU regions store in place and the record names 
   feature: connector-catalog-saas-and-enterprise
   priority: SHOULD
   type: behavioral
-  description: 'Jira Cloud is a source type (jira) read and written through its own Apache Calcite adapter''s bundled pgwire server, as ServiceNow is (REQ-1954): an API with a query language is read through Calcite, JQL taking what can be pushed down. The source names the site''s full https:// address, the Atlassian account''s email and an API token, each resolved at use. FORMS: a table of a Jira source is a form -- one project and one issue type (its arguments, REQ-2061) and the fields its columns read (each column''s path a field id or name); every form has the columns key (its primary key), id, summary, status, created and updated, then one per chosen field, named by the field''s name snake-cased, or by its field id where that name is already a column''s. Register Table lists every form the account can create (the adapter''s _jira_forms), grouped by project, and reads a form''s fields only when it is selected (_jira_fields); a form registered from the admin gets its project, issue type and each column''s field from those lists. The server serves only the forms registered from it (the forms operand), beside its form list, field list and links; registering, changing or removing one restarts it. CRUD: INSERT, UPDATE and DELETE on a form are written on the server on every engine, returning the written rows by key; rows are inserted in batches of 50, an update or delete is made issue by issue by key; setting status performs the workflow transition to that status, refused naming the reachable statuses where there is none; an issue with subtasks is not deleted. LINKS: the issue_links table (link_id, link_type, outward_key, inward_key), each link once, takes INSERT and DELETE (UPDATE refused: Jira has no link edit); relationships between forms ride it as junction edges (REQ-1586) discriminated by link_type. Attached live on DuckDB, PostgreSQL and ClickHouse; landed through its server on Trino. Site configuration is not offered. Jira Data Center (on-premises: REST v2, a personal access token, any host) follows as a second flavour of the same adapter. (Amended 2026-10-16, READ-ONLY COLUMNS:) A column Jira writes itself -- key, id, created, updated, a user field''s display name (its own field, <id>.displayName), a field of a shape the adapter does not know -- is flagged read only (its description says so where it has none), not refused when a writer is registered on it; the server refuses a write that sets one, naming it.'
+  description: 'Jira Cloud is a source type (jira) read and written through its own Apache Calcite adapter''s bundled pgwire server, as ServiceNow is (REQ-1954): an API with a query language is read through Calcite, JQL taking what can be pushed down. The source names the site''s full https:// address, the Atlassian account''s email and an API token, each resolved at use. FORMS: a table of a Jira source is a form: one project and one issue type (its arguments, REQ-2061) and the fields its columns read (each column''s path a field id or name); every form has the columns key (its primary key), id, summary, status, created and updated, then one per chosen field, named by the field''s name snake-cased, or by its field id where that name is already a column''s. Register Table lists every form the account can create (the adapter''s _jira_forms), grouped by project, and reads a form''s fields only when it is selected (_jira_fields); a form registered from the admin gets its project, issue type and each column''s field from those lists. The server serves only the forms registered from it (the forms operand), beside its form list, field list and links; registering, changing or removing one restarts it. CRUD: INSERT, UPDATE and DELETE on a form are written on the server on every engine, returning the written rows by key; rows are inserted in batches of 50, an update or delete is made issue by issue by key; setting status performs the workflow transition to that status, refused naming the reachable statuses where there is none; an issue with subtasks is not deleted. LINKS: the issue_links table (link_id, link_type, outward_key, inward_key), each link once, takes INSERT and DELETE (UPDATE refused: Jira has no link edit); relationships between forms ride it as junction edges (REQ-1586) discriminated by link_type. Attached live on DuckDB, PostgreSQL and ClickHouse; landed through its server on Trino. Site configuration is not offered. Jira Data Center (on-premises: REST v2, a personal access token, any host) follows as a second flavour of the same adapter. (Amended 2026-10-16, READ-ONLY COLUMNS:) A column Jira writes itself -- key, id, created, updated, a user field''s display name (its own field, <id>.displayName), a field of a shape the adapter does not know -- is flagged read only (its description says so where it has none), not refused when a writer is registered on it; the server refuses a write that sets one, naming it.'
   use_case: 'A support team''s Jira incidents, problems and changes are tables in the governed model: an analyst reads which open P1 incidents trace to a problem whose fix is blocked, and an agent moves an incident to In Progress, which runs its workflow transition.'
   scenario: 'Given a Jira source with the forms Incident, Problem and Change registered and a relationship over its links
 
