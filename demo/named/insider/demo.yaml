@@ -12,8 +12,8 @@
 # Provisa, is beside it.
 title: Insider review
 description: >-
-  A bank's outbound mail matched against its control room's watch list of deals in discussion --
-  by name, ticker, code name and, through a local embedding model, by meaning -- and checked for
+  A bank's outbound mail matched against its control room's watch list of deals in discussion, by
+  name, ticker and code name and, through a local embedding model, by meaning, and checked for
   customer data: one ranked review queue, with the watch list itself never shown to the reviewer.
 screenshot: card.png
 published: true

@@ -14,7 +14,7 @@ title: What is actually in this data?
 description: >-
   The customer and order tables an outdoor retailer received when it bought a smaller one, profiled
   by Provisa's built-in Data Profiler: nulls, distinct values, ranges, formats, plausible types and
-  duplicates, landed as governed tables. What is actually in this data?
+  duplicates, landed as governed tables.
 screenshot: card.png
 published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
