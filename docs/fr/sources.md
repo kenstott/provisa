@@ -2,7 +2,7 @@
 
 ## Modèle d'exécution {: #execution-model }
 
-Toute requête finit par s'exécuter à travers le moteur de fédération, qui assure la fédération sur l'ensemble des sources. Les sources se répartissent en trois catégories selon leur connectivité.
+Toute requête finit par passer par le moteur de fédération, et c'est lui qui permet de joindre n'importe quelle source à n'importe quelle autre. La façon dont une source y arrive dépend de la manière dont Provisa l'atteint, ce qui range chaque source dans l'un de cinq groupes.
 
 | Catégorie | Pilote direct | Connecteur fédéré | Exemples |
 | --- | --- | --- | --- |
@@ -12,15 +12,15 @@ Toute requête finit par s'exécuter à travers le moteur de fédération, qui a
 | **Direct (sans connecteur inter-sources)** | Oui | Non | Athena — les instructions mono-source s'exécutent entièrement dans Athena ; les jointures inter-sources déposent un réplica complet |
 | **Matérialisation → fédération** | Non | Non | REST/OpenAPI, GraphQL distant, gRPC, Cypher Neo4j, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (récepteur push), GovData, SharePoint, Salesforce, ServiceNow, inventaire cloud, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-Les sources **capables en direct** exécutent les requêtes mono-source via leur pilote natif (moins de 100 ms), en contournant le moteur de fédération. Elles conservent la prise en charge complète des connecteurs et participent à la fédération lorsqu'elles sont jointes à d'autres sources.
+Les sources **capables en direct** répondent à une requête qui ne touche qu'elles par leur propre pilote, en moins de 100 ms, sans passer par le moteur de fédération. Elles gardent leur connecteur complet, donc elles se joignent toujours à d'autres sources par le moteur.
 
-Les sources en **fédération seule** sont toujours interrogées à travers la couche de fédération. Aucun pilote direct n'existe.
+Les sources en **fédération seule** n'ont pas de pilote direct. Toute requête les atteint par la couche de fédération.
 
-Les sources en **lecture directe (réplica)** disposent d'un DirectDriver qui lit depuis l'entrepôt nativement (nativement Arrow lorsque c'est possible), dépose un réplica dans le magasin de matérialisation du moteur actif, puis les requêtes s'exécutent contre ce réplica. Voir [Entrepôts de données comme sources nommées](#warehouses-as-named-sources).
+Les sources en **lecture directe (réplica)** disposent d'un DirectDriver qui lit depuis l'entrepôt nativement (nativement Arrow quand c'est possible) et dépose un réplica dans le magasin de matérialisation du moteur actif. Les requêtes s'exécutent ensuite contre ce réplica. Voir [Entrepôts de données comme sources nommées](#warehouses-as-named-sources).
 
-Les sources **directes (sans connecteur inter-sources)** disposent d'un DirectDriver qui exécute les instructions mono-source entièrement dans la source — chaque filtre, chaque colonne et chaque limite est poussé vers elle. Lorsqu'une instruction joint la source à une autre, le pilote lit les données et dépose un réplica ; la jointure s'exécute contre ce réplica dans le moteur actif. Aucun connecteur Trino n'existe pour ces sources.
+Les sources **directes (sans connecteur inter-sources)** disposent d'un DirectDriver qui exécute une instruction mono-source entièrement dans la source, chaque filtre, colonne et limite y étant poussé. Il n'existe pas de connecteur Trino pour elles : quand une instruction en joint une à une autre source, le pilote lit les données et dépose un réplica, et la jointure s'exécute contre ce réplica dans le moteur actif.
 
-Les sources à **matérialisation** n'ont pas de connecteur fédéré. Provisa récupère leurs données (au démarrage ou au moment de la requête) et les met en cache en Parquet sur S3 ou dans PostgreSQL, les rendant atteignables par le moteur de fédération pour des requêtes inter-sources.
+Les sources à **matérialisation** n'ont pas non plus de connecteur fédéré. Provisa récupère leurs données, au démarrage ou au moment de la requête, et les met en cache en Parquet sur S3 ou dans PostgreSQL. De là, le moteur de fédération les atteint pour les requêtes inter-sources.
 
 ---
 
@@ -35,7 +35,7 @@ Provisa enregistre **73** types de sources, ceux que propose le formulaire Sourc
 | 25–29 | [Analytique / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [Lac de données / formats de tables ouverts](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | Sources de code | `node`, `python` |
+| 39–40 | [Sources de code](code-sources.md) | `node`, `python` |
 | 41–43 | [Flux (streaming)](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [Récepteur push](#push-receiver) | `ingest` |
 | 45–46 | [Graphe et sémantique](#graph-semantic) | `neo4j`, `sparql` |

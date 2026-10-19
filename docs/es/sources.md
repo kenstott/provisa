@@ -1,6 +1,7 @@
 # Tipos de origen {: #source-types }
 ## Modelo de ejecución {: #execution-model }
-Toda consulta se ejecuta en última instancia a través del motor de federación, que provee federación entre todos los orígenes. Los orígenes se dividen en tres categorías según su conectividad.
+
+Toda consulta acaba ejecutándose a través del motor de federación, que es lo que permite unir cualquier origen con cualquier otro. Cómo llega un origen hasta ahí depende de cómo lo alcanza Provisa, y eso coloca cada origen en uno de cinco grupos.
 
 | Categoría | Tiene controlador directo | Tiene conector federado | Ejemplos |
 | --- | --- | --- | --- |
@@ -10,15 +11,15 @@ Toda consulta se ejecuta en última instancia a través del motor de federación
 | **Directo (sin conector entre orígenes)** | Sí | No | Athena — las instrucciones de un solo origen se ejecutan íntegras en Athena; las uniones entre orígenes crean una réplica completa |
 | **Materializar → Federación** | No | No | REST/OpenAPI, GraphQL remoto, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (receptor push), GovData, SharePoint, Salesforce, ServiceNow, inventario de nube, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-Los orígenes **con capacidad directa** ejecutan consultas de un solo origen mediante su controlador nativo (menos de 100 ms), evitando el motor de federación. Conservan el soporte completo del conector y participan en la federación cuando se combinan con otros orígenes.
+Los orígenes **con capacidad directa** responden una consulta que solo los toca a ellos mediante su propio controlador, en menos de 100 ms y sin pasar por el motor de federación. Conservan su conector completo, así que se siguen uniendo con otros orígenes a través del motor.
 
-Los orígenes **solo federación** siempre se consultan a través de la capa de federación. No existe un controlador directo.
+Los orígenes **solo federación** no tienen controlador directo. Toda consulta les llega a través de la capa de federación.
 
-Los orígenes de **lectura directa (réplica)** tienen un DirectDriver que lee del almacén de datos de forma nativa (nativo en Arrow cuando está disponible), crea una réplica en el almacén de materialización del motor activo, y luego las consultas se ejecutan contra esa réplica. Consulte [Almacenes de datos como orígenes con nombre](#warehouses-as-named-sources).
+Los orígenes de **lectura directa (réplica)** tienen un DirectDriver que lee del almacén de datos de forma nativa (nativo en Arrow cuando se puede) y crea una réplica en el almacén de materialización del motor activo. Las consultas se ejecutan luego contra esa réplica. Consulte [Almacenes de datos como orígenes con nombre](#warehouses-as-named-sources).
 
-Los orígenes **directos (sin conector entre orígenes)** tienen un DirectDriver que ejecuta las instrucciones de un solo origen íntegras en el origen — cada filtro, columna y límite se traslada. Cuando una instrucción une el origen con cualquier otro, el controlador lee los datos y crea una réplica; la unión se ejecuta contra esa réplica en el motor activo. No existe ningún conector de Trino para estos orígenes.
+Los orígenes **directos (sin conector entre orígenes)** tienen un DirectDriver que ejecuta una instrucción de un solo origen íntegra en el origen, con cada filtro, columna y límite trasladado. No hay conector de Trino para ellos, así que cuando una instrucción une uno de ellos con otro origen, el controlador lee los datos y crea una réplica, y la unión se ejecuta contra esa réplica en el motor activo.
 
-Los orígenes de **materialización** no tienen conector federado. Provisa obtiene sus datos (al inicio o en el momento de la consulta) y los almacena en caché como Parquet en S3 o en PostgreSQL, haciéndolos accesibles para el motor de federación en consultas entre orígenes.
+Los orígenes de **materialización** tampoco tienen conector federado. Provisa obtiene sus datos, al inicio o en el momento de la consulta, y los guarda en caché como Parquet en S3 o en PostgreSQL. Desde ahí el motor de federación los alcanza para consultas entre orígenes.
 
 ---
 
@@ -32,7 +33,7 @@ Provisa registra **73** tipos de origen, los que ofrece el formulario de Orígen
 | 25–29 | [Analítica / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [Data lake / Formatos de tabla abiertos](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | Fuentes de código | `node`, `python` |
+| 39–40 | [Fuentes de código](code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [Receptor push](#push-receiver) | `ingest` |
 | 45–46 | [Grafo y semántica](#graph-semantic) | `neo4j`, `sparql` |

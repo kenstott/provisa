@@ -2,7 +2,7 @@
 
 ## Modello di esecuzione {: #execution-model }
 
-Ogni query viene infine eseguita attraverso il motore di federazione, che fornisce federazione su tutte le origini. Le origini rientrano in tre categorie in base alla loro connettività.
+Ogni query finisce per passare dal motore di federazione, ed è questo che permette di unire qualsiasi origine a qualsiasi altra. Come un'origine ci arriva dipende da come Provisa la raggiunge, e questo mette ogni origine in uno di cinque gruppi.
 
 | Categoria | Ha driver diretto | Ha connettore federato | Esempi |
 | --- | --- | --- | --- |
@@ -12,15 +12,15 @@ Ogni query viene infine eseguita attraverso il motore di federazione, che fornis
 | **Direct (nessun connettore cross-source)** | Sì | No | Athena — le istruzioni su singola origine vengono eseguite interamente in Athena; i join tra origini diverse atterrano una replica completa |
 | **Materializza → Federazione** | No | No | REST/OpenAPI, GraphQL remoto, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (ricevitore push), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-Le origini **Direct-capable** eseguono query a singola origine tramite il loro driver nativo (sub-100ms), bypassando il motore di federazione. Mantengono il pieno supporto del connettore e partecipano alla federazione quando unite ad altre origini.
+Le origini **Direct-capable** rispondono a una query che tocca solo loro tramite il proprio driver, in meno di 100 ms, senza passare dal motore di federazione. Mantengono il connettore completo, quindi si uniscono ancora ad altre origini tramite il motore.
 
-Le origini **Solo federazione** vengono sempre interrogate attraverso il layer di federazione. Non esiste un driver diretto.
+Le origini **Solo federazione** non hanno un driver diretto. Ogni query le raggiunge attraverso il layer di federazione.
 
-Le origini **Direct-read (replica)** hanno un DirectDriver che legge dal warehouse nativamente (Arrow-native dove disponibile), atterra una replica nello store di materializzazione del motore attivo, e poi le query girano contro quella replica. Vedi [Warehouse come origini nominate](#warehouses-as-named-sources).
+Le origini **Direct-read (replica)** hanno un DirectDriver che legge dal warehouse nativamente (Arrow-native dove possibile) e atterra una replica nello store di materializzazione del motore attivo. Le query girano poi contro quella replica. Vedi [Warehouse come origini nominate](#warehouses-as-named-sources).
 
-Le origini **Direct (nessun connettore cross-source)** hanno un DirectDriver che esegue le istruzioni su singola origine interamente nell'origine — ogni filtro, colonna e limite viene spinto fino ad essa. Quando un'istruzione unisce l'origine a qualsiasi altra, il driver legge i dati e atterra una replica; il join viene eseguito contro quella replica nel motore attivo. Per queste origini non esiste alcun connettore Trino.
+Le origini **Direct (nessun connettore cross-source)** hanno un DirectDriver che esegue un'istruzione su singola origine interamente nell'origine, con ogni filtro, colonna e limite spinto fino a essa. Non esiste un connettore Trino per loro, quindi quando un'istruzione ne unisce una a un'altra origine, il driver legge i dati e atterra una replica, e il join gira contro quella replica nel motore attivo.
 
-Le origini **Materialize** non hanno un connettore federato. Provisa recupera i loro dati (all'avvio o al momento della query) e li mette in cache come Parquet su S3 o in PostgreSQL, rendendoli raggiungibili dal motore di federazione per query cross-source.
+Nemmeno le origini **Materialize** hanno un connettore federato. Provisa recupera i loro dati, all'avvio o al momento della query, e li mette in cache come Parquet su S3 o in PostgreSQL. Da lì il motore di federazione li raggiunge per le query cross-source.
 
 ---
 
@@ -35,7 +35,7 @@ Provisa registra **73** tipi di origine, quelli che il modulo Sources offre. Le 
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [Data Lake / formati tabella aperti](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | Sorgenti di codice | `node`, `python` |
+| 39–40 | [Sorgenti di codice](code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [Ricevitore push](#push-receiver) | `ingest` |
 | 45–46 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |

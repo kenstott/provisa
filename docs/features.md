@@ -11,7 +11,7 @@ What Provisa does, feature by feature.
 You add a source by naming its type and giving the connection details. Provisa checks the connection before it saves anything, and the source is live without a restart. The same registration path serves the Sources page, the chat assistant and approved requests, so a source behaves the same whichever way it arrived. For a file-based source you can upload the file on the form instead of typing a path.
 { #source-registration-connect }
 
-Connecting a source exposes nothing. A table can be queried only after someone with the right registers it, and an unregistered table is invisible: it does not appear in the schema browser and cannot be named in a query. Registering a table puts it straight into the generated schema, and the schema reflects what the business chose to publish rather than the raw layout of the database. Some sources need extra care at this step. A graph source has no table list to browse, so you supply the query, and a table that takes parameters declares them so callers know what to pass.
+Connecting a source exposes nothing. A table can be queried only after someone with the right registers it. Until then it's invisible: it doesn't appear in the schema browser and can't be named in a query. Registering a table puts it straight into the generated schema, so the schema shows what the business chose to publish, whatever the database's own layout. Some sources need extra care at this step. A graph source has no table list to browse, so you supply the query, and a table that takes parameters declares them so callers know what to pass.
 { #source-registration-explicit-tables }
 
 Register Table lists the schemas and tables the source actually offers, using the source's own names for them. Internal namespaces such as engine catalogs or cache schemas never show up. Columns arrive with a data type, including the precision and scale of numbers, and a column is never saved without one. Where the source has a native catalog that tells more, Provisa asks it; otherwise it asks the engine.
@@ -51,7 +51,7 @@ Relationships describe how tables join, and they turn into nested fields in Grap
 Domains group tables by business area. Each domain has a steward, can nest under a parent, and decides which other domains may read its tables. Views, relationships and grants that cross a domain boundary are approved by the domain that owns the data, and cross-domain access is enforced in GraphQL and in SQL alike. A deployment that does not want domains can turn them off.
 { #semantic-model-domains }
 
-The model is stored once in a model store: sources, tables, columns, relationships, roles, rules and views. Every save goes through a check that shows what the change would affect before it lands. You can also review the whole model as a workbook, not only as JSON.
+The model is stored once in a model store: sources, tables, columns, relationships, roles, rules and views. Every save goes through a check that shows what the change would affect before it lands. You can review the whole model as JSON or as a workbook.
 { #semantic-model-governed-changes }
 
 The entity relationship diagram opens as a dialog from the Tables and Relationships pages and draws every registered table and its relationships. Tables sit inside a box for their domain, and a domain can be collapsed to hide its tables. A toggle picks how much of each table to show: all columns, only key columns, or none. Hovering a domain, table or column shows its description. The diagram follows the domain filter on the page, draws a relationship backed by a junction table through that table's own node, and exports as SVG, PNG or JSON.
@@ -81,7 +81,7 @@ A metric is a named, governed aggregate with its own definition. You write it on
 The business glossary maps plain-language terms to the physical fields behind them. Terms can be derived from column names or written by hand, scoped to one or more domains, related to other terms, and owned by a curator. A term with relationships cannot be deleted. Reading the glossary and administering it are separate rights.
 { #glossary-tags-ontology-terms }
 
-Tags come from one org-wide registry. A tag can apply to sources, tables, columns or relationships, can take a parameter such as the entity a column holds, and is assigned by people rather than automatically. A few system tags have fixed meaning, and the deprecated tag works on any model object. Tags travel with metadata exports and show up in catalog comments.
+Tags come from one org-wide registry. A tag can apply to sources, tables, columns or relationships, and can take a parameter such as the entity a column holds. People assign tags; nothing assigns them automatically. A few system tags have fixed meaning, and the deprecated tag works on any model object. Tags travel with metadata exports and show up in catalog comments.
 { #glossary-tags-ontology-tags }
 
 The glossary and the tag graph are data. Terms, their physical references and relationships, and every tag assignment can be queried like any other table in the meta domain, so a report or an agent can ask what a column means or what is tagged sensitive.
@@ -154,7 +154,7 @@ A write goes to the one source that owns the table. What a role may write is sta
 Writes take the best available path for the source: its native driver, a generic SQLAlchemy driver, the source's own bundled PostgreSQL-wire server for Salesforce, SharePoint and ServiceNow, the engine's write-capable connector, or the application's API for calendar and task writes. A statement over a Qdrant collection is written to Qdrant directly. Every write on every surface passes through one admission step.
 { #writes-write-routing }
 
-Mutations are classified as writes by contract, not by what the caller says. A global write capability and per-mutation grants decide who may run them, and only an admin can reclassify one as read-safe. At registration, Provisa suggests which table a mutation belongs to.
+Whether a mutation is a write is settled by its contract. What the caller says doesn't change it. A global write capability and per-mutation grants decide who may run mutations, and only an admin can reclassify one as read-safe. At registration, Provisa suggests which table a mutation belongs to.
 { #writes-classification }
 
 ## Govern access
@@ -215,7 +215,7 @@ Provisa traces any column back to its sources. From one SQL statement, including
 A table can record row-level changes into an append-only delta ledger, and a materialized view can be declared bitemporal: each refresh appends a version and never rewrites one, on any store. A plain read returns the current state. A request can read as of a time, measured on the source's own change time where the view declares one and on Provisa's load time where it does not. It can also read as recorded at a time, which reads the view as Provisa had recorded it then, so a correction recorded later does not change a replay of the past. The audit record keeps both times, so a report can be reproduced exactly.
 { #lineage-and-provenance-point-in-time }
 
-Because every change is an event and every derived dataset is a view over those events, the platform describes itself. Quality scorecards, history and operational facts are views over streams the system already emits, not separate subsystems.
+Because every change is an event and every derived dataset is a view over those events, the platform describes itself. Quality scorecards, history and operational facts are just more views over streams the system already emits. None of them needs a subsystem of its own.
 { #lineage-and-provenance-self-describing }
 
 ### Audit
@@ -254,7 +254,7 @@ Bulk results written to S3 or Iceberg can be encrypted with a key only the clien
 An organization sets and changes its own encryption key and can never read it back. The deployment's own secrets follow the same rule: set, change, never read.
 { #encryption-and-secrets-org-keys }
 
-Credentials in config are references, not values. A reference such as an environment variable or a secret name is resolved at the moment of use. An org admin creates a secret by name and value, the value never comes back out, and a secret can belong to one developer. A vendor API key can be held as a reference to the secrets service.
+Config holds references to credentials, never the credentials themselves. A reference such as an environment variable or a secret name is resolved at the moment of use. An org admin creates a secret by name and value, the value never comes back out, and a secret can belong to one developer. A vendor API key can be held as a reference to the secrets service.
 { #encryption-and-secrets-secrets }
 
 ## Query it any way
@@ -272,13 +272,13 @@ Provisa supports Apollo automatic persisted queries. A client can send the hash 
 
 ### SQL over HTTP
 
-Send PostgreSQL-compatible SQL to a REST endpoint and get governed results back. The SQL runs against the model's names, not the physical tables, and goes through the same governance as every other surface. The role comes from the credentials, never from the request body. A test endpoint offers the same guards for trying queries.
+Send PostgreSQL-compatible SQL to a REST endpoint and get governed results back. The SQL uses the model's names for tables and columns, and goes through the same governance as every other surface. The role comes from the credentials, never from the request body. A test endpoint offers the same guards for trying queries.
 { #sql-over-http-endpoint }
 
 A compile-only route returns the SQL Provisa would run, with row filters and masks applied, along with the routing decision and parameters, without executing anything. It helps when checking what a role would actually be allowed to see.
 { #sql-over-http-compile }
 
-Semantic SQL is the one dialect used throughout. It has no array, struct or map type, and nested data comes back as JSON on every engine. Objects are defined in the model, not by SQL, so CREATE, DROP, ALTER and TRUNCATE are refused on every surface.
+Semantic SQL is the one dialect used throughout. It has no array, struct or map type, and nested data comes back as JSON on every engine. Objects are defined in the model, so CREATE, ALTER and DROP are refused on every surface. TRUNCATE is a data write, and the write right admits it like any other.
 { #sql-over-http-semantic-sql }
 
 ### Cypher and graph analytics
@@ -348,7 +348,7 @@ Tools such as DBeaver browse through the usual catalog queries, and Provisa answ
 The simple and extended query protocols both work, including multiple statements, positional parameters, binary parameters, cursors and COPY. Session commands such as BEGIN and SET are accepted without effect. Writes to existing tables go through the single write admission, and definitions are not accepted over the wire.
 { #postgres-wire-protocol-queries }
 
-Provisa ships client libraries for the places where a standard driver is not enough. The JDBC driver lists the tables and views a role can see and moves results as Arrow over Flight. The Python client offers DB-API, pandas and SQLAlchemy, and one call, query, reads a governed SQL, GraphQL or Cypher statement into a pandas DataFrame, the same on a desktop and in the browser. The server decides the role, not the client.
+Provisa ships client libraries for the places where a standard driver is not enough. The JDBC driver lists the tables and views a role can see and moves results as Arrow over Flight. The Python client offers DB-API, pandas and SQLAlchemy, and one call, query, reads a governed SQL, GraphQL or Cypher statement into a pandas DataFrame, the same on a desktop and in the browser. Either way, the server decides the role.
 { #postgres-wire-protocol-client-drivers }
 
 ### Arrow Flight
@@ -405,10 +405,10 @@ Embedding columns obey the same governance as other columns: row filters, domain
 Every query takes one of a few routes, and Provisa picks it for you. A query that touches a single source goes straight to it over its native driver. A query that joins across sources goes to the federation engine. A source the engine cannot reach directly is read through a replica. When the default is wrong for a particular table or view, a steward can override the route. A write goes to the source that owns the table, through its own driver wherever it has one.
 { #federation-and-routing-routes }
 
-The engine that runs cross-source joins is a choice, not a fixture. Trino, DuckDB, MotherDuck, PostgreSQL, ClickHouse, the cloud warehouses and a generic SQLAlchemy engine all sit behind one contract, and you pick one in the admin console. MotherDuck is the production counterpart of the embedded DuckDB engine: the same DuckDB SQL runs there, with the organization's replicas kept in its own MotherDuck account. Each engine declares what it can do, and the planner reads those declarations when it decides what to push down and what to pull back. A source an engine reaches through a connector is queried live. Anything else lands in the engine's own store first. The same model answers the same question whichever engine you choose, because governance runs the same way on all of them.
+You choose the engine that runs cross-source joins. Trino, DuckDB, MotherDuck, PostgreSQL, ClickHouse, the cloud warehouses and a generic SQLAlchemy engine all sit behind one contract, and you pick one in the admin console. MotherDuck is the production counterpart of the embedded DuckDB engine: the same DuckDB SQL runs there, with the organization's replicas kept in its own MotherDuck account. Each engine declares what it can do, and the planner reads those declarations when it decides what to push down and what to pull back. A source an engine reaches through a connector is queried live. Anything else lands in the engine's own store first. Pick any engine and the same model gives the same answer, because governance runs the same way on all of them.
 { #federation-and-routing-engines }
 
-Provisa compiles every request to one canonical PostgreSQL-style statement, then translates it into the dialect of wherever it will run: the source database, or the engine. Dialect is decided by the source type recorded when the table was registered, so you never write dialect-specific SQL. Translation belongs to the compiler, not to the protocol you connected with, so pgwire, Flight, GraphQL and the rest produce the same SQL for the same question. Joins across sources get their column types coerced to match automatically.
+Provisa compiles every request to one canonical PostgreSQL-style statement, then translates it into the dialect of wherever it will run: the source database, or the engine. The dialect follows from the source type recorded when the table was registered, so you never write dialect-specific SQL. The compiler does the translating, and the protocol you connected with has no say, so pgwire, Flight, GraphQL and the rest produce the same SQL for the same question. Joins across sources get their column types coerced to match automatically.
 { #federation-and-routing-transpilation }
 
 Compilation happens in two stages. The first turns your request into plain SQL against the semantic model. The second rewrites that SQL under the caller's role, applying row filters, masking and column visibility, whatever shape the SQL takes: subqueries, CTEs, joins, star expansion. Because the second stage only needs SQL and a role, every client path gets the same governance.
@@ -419,7 +419,7 @@ Compilation happens in two stages. The first turns your request into plain SQL a
 Small lookup tables that many queries join against can be held hot in Redis and injected into queries as an inline set of rows, so the join never leaves memory. A table becomes hot automatically when it is the target of a many-to-one relationship or its row count is under a threshold, and you can opt any table out or force it in. Size limits keep a hot table from growing without bound, and governance still applies to the cached rows.
 { #replicas-and-freshness-hot-tables }
 
-A replica is a copy of a source table that Provisa keeps in a store the engine can read quickly. Sources the engine can attach live are read live. Sources it cannot reach are replicated, and the same applies to a table you ask to be replicated for speed. The choice follows from what the engine can reach, not from a setting you tune. Replicas land at boot as empty tables and fill when first needed. A table can also opt in to replicating only the rows a query asks for by primary key. If a replica cannot be built, the read is refused with a message naming the table and the cause, rather than answered from nothing.
+A replica is a copy of a source table that Provisa keeps in a store the engine can read quickly. Sources the engine can attach live are read live. Sources it can't reach are replicated, and so is any table you ask to have replicated for speed. What the engine can reach decides this; there's no setting to tune. Replicas land at boot as empty tables and fill when first needed. A table can also opt in to replicating only the rows a query asks for by primary key. If a replica can't be built, the read is refused with a message naming the table and the cause. It is never answered from nothing.
 { #replicas-and-freshness-warm-placement }
 
 A landed replica carries the shape of the model it came from. Column names, types, primary keys, descriptions and steward tags travel with it, and the landing step reconciles an existing table instead of blindly recreating it. Incoming rows are matched to target columns by name, and bulk-load paths are used wherever the target store has them. Once a replica lands it is indexed on its primary key, enforced as a key, and on the columns its declared relationships join on, so joins in a relational store read an index. The indexes are built after the landing, so the replica is readable at once. An index that fails is recorded by name and tried again at the next landing, and rows that repeat a declared key are reported as such.
@@ -436,7 +436,7 @@ Some sources, such as files, SharePoint and Splunk, are reached through a bundle
 
 ### Response caching
 
-Provisa can serve a repeated request from a stored result, but only when the request asks for it. A GraphQL query opts in with a directive, a Cypher query with a comment line, and a gRPC call with request metadata. Without it, the request neither reads nor writes the cache. Every response says whether it was a hit or a miss. A hit is a real route in the planner, not a side check, so a cached answer skips execution entirely. The store is Redis when configured and an embedded fallback otherwise.
+Provisa can serve a repeated request from a stored result, but only when the request asks for it. A GraphQL query opts in with a directive, a Cypher query with a comment line, and a gRPC call with request metadata. Without it, the request neither reads nor writes the cache. Every response says whether it was a hit or a miss. A hit is a real route in the planner, so a cached answer skips execution entirely. The store is Redis when configured and an embedded fallback otherwise.
 { #response-caching-store-and-opt-in }
 
 How long a result lives is set at the most specific level that has an opinion: the table, then the source, then the deployment. A table can also set a different tolerance per role, so a trader sees live data while an analyst accepts a few minutes of staleness. Any mutation to a table drops the cached results that read it.
@@ -447,10 +447,10 @@ A cache hit can never show one person another person's data. The key is built fr
 
 ### Large results
 
-Results come back in the shape the consumer needs. JSON keeps the nested structure of the query, and newline-delimited JSON streams one object per line. Tabular exports come as a single flattened table or as normalized tables with their foreign keys, in Parquet or CSV. Normalizing is done on the query itself, not by reshaping a serialized response afterward.
+Results come back in the shape the consumer needs. JSON keeps the nested structure of the query, and newline-delimited JSON streams one object per line. Tabular exports come as a single flattened table or as normalized tables with their foreign keys, in Parquet or CSV. The query itself is normalized, so nothing reshapes a serialized response afterward.
 { #large-results-formats }
 
-When a result is too big to send inline, Provisa can write it to object storage and return a presigned link that expires. The caller sets the format and the size threshold with request headers, and the operator sets the defaults. Parquet and ORC are written by the engine straight to the store, so the data never passes through Provisa. Other formats are produced by Provisa and uploaded. The decision is automatic at the point where the query runs, not something each protocol has to implement. Files are readable only by the user who asked for them and are cleaned up after the link expires. Without a cloud bucket, results can be served from local disk with the same scoping and expiry.
+When a result is too big to send inline, Provisa can write it to object storage and return a presigned link that expires. The caller sets the format and the size threshold with request headers, and the operator sets the defaults. Parquet and ORC are written by the engine straight to the store, so the data never passes through Provisa. Other formats are produced by Provisa and uploaded. The decision is made automatically where the query runs, so no protocol has to implement it. Files are readable only by the user who asked for them and are cleaned up after the link expires. Without a cloud bucket, results can be served from local disk with the same scoping and expiry.
 { #large-results-redirect }
 
 Protocols that stream, such as pgwire, Flight SQL and gRPC, receive rows as the engine produces them instead of waiting for the full set. Direct reads use a server-side cursor or an Arrow reader, and each engine's runtime streams in batches. A million-row scan therefore starts returning almost at once and holds only a batch in memory.
@@ -580,7 +580,7 @@ On the hosted service, a prospect can try Provisa with no signup in an ephemeral
 The interface is translated into many languages and picks yours from the browser's language setting. No user-facing string is hard-coded. Translations are produced in a working session by the agent and kept in catalogs, with English as the source. Server errors carry stable codes and parameters, so the interface can show them in your language, and the guided tour is translated too.
 { #i18n-and-accessibility-locales }
 
-Languages written right to left, such as Hebrew, get a mirrored layout, not just translated text.
+Languages written right to left, such as Hebrew, get a mirrored layout as well as translated text.
 { #i18n-and-accessibility-rtl }
 
 The interface targets WCAG Level AA, including focus management and keyboard operation. Automated axe-core checks run in the browser tests, so a regression fails the build.
@@ -666,15 +666,15 @@ On a cloud VM, Terraform modules for GCP, AWS and Azure provision the stack, sta
 A cluster deployment serves every endpoint over TLS, web UI and API as well as pgwire, Bolt, Flight and the rest. If the operator supplies no certificates Provisa generates self-signed ones, so HTTPS works out of the box. The Helm chart takes an existing certificate secret or a cert-manager issuer, and a wildcard certificate from ACME DNS-01 covers the per-org subdomains. Traffic between Trino's coordinator and workers can be put on HTTPS too, and the engine keeps its catalogs and their credentials in memory only, never on its disk.
 { #deployment-tls }
 
-Clustered deployments run one primary and any number of secondaries. Only the primary may write the shared configuration, and secondaries load a byte-identical copy and serve the application tier. Every engine in a fleet runs the same container image, and control-plane state sits in a database that all instances share, not in memory.
+Clustered deployments run one primary and any number of secondaries. Only the primary may write the shared configuration, and secondaries load a byte-identical copy and serve the application tier. Every engine in a fleet runs the same container image, and control-plane state lives in a database that all instances share. Nothing is held only in memory.
 { #deployment-clustered }
 
-Provisa keeps its model, its operating state and platform state in PostgreSQL: an embedded PostgreSQL on the desktop, in demos and in tests, and the operator's own PostgreSQL elsewhere. The embedded DuckDB engine is for desktop, edge and development, not for multi-user production, and its extensions ship offline.
+Provisa keeps its model, its operating state and platform state in PostgreSQL: an embedded PostgreSQL on the desktop, in demos and in tests, and the operator's own PostgreSQL elsewhere. The embedded DuckDB engine is for desktop, edge and development. It isn't meant for multi-user production, and its extensions ship offline.
 { #deployment-state-and-engine }
 
 ### Operator settings and configuration
 
-Operators configure a deployment from one config file, its fragments and environment variables. A config file can include other files, resolved relative to the including file, so a large estate stays in readable pieces. The config path comes from an explicit environment variable with no default, so an unset one is an error rather than a guess. Every setting an operator can change has a place in the admin settings pages and the settings API, not only in a file.
+Operators configure a deployment from one config file, its fragments and environment variables. A config file can include other files, resolved relative to the including file, so a large estate stays in readable pieces. The config path comes from an explicit environment variable with no default, so leaving it unset is an error and Provisa never guesses. Every setting an operator can change also has a place in the admin settings pages and the settings API.
 { #operator-settings-config }
 
 Each organization tier has a storage quota for what it keeps in the relational materialization store. An operation that would push an org past its ceiling is rejected with a clear error instead of being cut short. Usage is metered per org on demand, and an org may register its own materialization store in its own cloud account.

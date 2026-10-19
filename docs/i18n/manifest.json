@@ -33,6 +33,7 @@
     "environments.md",
     "cli.md",
     "admin-graphql.md",
-    "package-registries.md"
+    "package-registries.md",
+    "code-sources.md"
   ]
 }

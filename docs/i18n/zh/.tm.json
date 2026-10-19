@@ -4,7 +4,7 @@
   "architecture.md": "c34de61124cca24178b904dd113b45d4ca1e96b7cb8b74861f491e5ccdba1f36",
   "security.md": "b2bed85d3a67e0432f896c8f12caf3c09c7f18eb55a8fb1fafd36f5814e8a0fb",
   "subscriptions.md": "3beaa9e9bcf028a9fa82bc64bb57ca31dbdbd130acebfd037a390fd936ab6351",
-  "integrations.md": "e01b589f34d48f14abde0414d30b5c06e4feb40ce06a289d1eeaa4a3c60091e9",
+  "integrations.md": "ad4dfa908171ec5908bc907f93cf264e869e39a977c5f048ee940e447ed64ade",
   "admin.md": "43e16d7ff027da1e94a9eff916cdc6fdd1e75cf52ba635fa72762c64d75294ce",
   "import.md": "5fc6688c5c90f1025d6f1c920e2edd4c62cecd8cd8e43d78f26ddcd9f85096b6",
   "releasing.md": "9eab172c5c9688f324fb0c948025eae39e8a52d839f12594b9a00baa8fe66384",
@@ -17,7 +17,7 @@
   "migration/hasura-v2.md": "41481ef03ad22d1d2af20ee6d7437bdfcb5a2ac0360258af0d4d5f0e26179227",
   "configuration.md": "5a2055be05803e184b976d847a00f738deb157c8f951f65b482195c5492c080f",
   "api-reference.md": "db234b0564a15d373773bf975c19c0243070a213268e147f3cbe19337233093f",
-  "sources.md": "499f1ec2f1634e848b8d620db346b0bb571715a9b8567d91e6c8cb0a51957a20",
+  "sources.md": "04196a351bf967cc43760e7d4ed0be4d839d3e7ea763650de8baf2319ddf9108",
   "python-client.md": "7e90614bee16902987103d3e9f97c4d591a475e1c87c48c4fb354894361d012f",
   "deployment.md": "d91611b376bf5e2940fbceaf3696cf644b814a72228ac9b9f168db5e9353d4ff",
   "commands.md": "9a55994444b4e5fc92254ecc01f6174998328f677302dff4287714dea5beb3b1",
@@ -30,6 +30,7 @@
   "admin-graphql.md": "d301a01ef4bf52df340b8ef86b3e6f2a25e06e57c08620d6b0c3e9ff4cde43be",
   "replicas.md": "f9326d844d219633c8768fddc9c439fba4409f7935af00b3fb64d1b2bb754e8d",
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
-  "regions.md": "b3f3be8a28a9946434e087b4ce5080f9df4742f1c46188c79d8816c2a3c01b1a",
-  "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff"
+  "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
+  "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
+  "code-sources.md": "a6257cda81c05a73dc45bd57314de1be68262b511e9fc87aad911ed1a2fcab0d"
 }

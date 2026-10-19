@@ -2,7 +2,7 @@
 
 ## Execution Model
 
-Every query ultimately executes through the federation engine, which provides federation across all sources. Sources fall into three categories based on their connectivity.
+Every query ends up running through the federation engine, which is what lets any source join any other. How a source gets there depends on how Provisa can reach it, and that puts each source in one of five groups.
 
 | Category | Has Direct Driver | Has Federated Connector | Examples |
 | --- | --- | --- | --- |
@@ -12,15 +12,15 @@ Every query ultimately executes through the federation engine, which provides fe
 | **Direct (no cross-source connector)** | Yes | No | Athena — single-source statements run whole in Athena; cross-source joins land a full replica |
 | **Materialize → Federation** | No | No | REST/OpenAPI, remote GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (push receiver), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-**Direct-capable** sources execute single-source queries via their native driver (sub-100ms), bypassing the federation engine. They retain full connector support and participate in federation when joined with other sources.
+**Direct-capable** sources answer a query that touches only them through their own driver, in under 100 ms, without going through the federation engine. They keep their full connector, so they still join other sources through the engine.
 
-**Federation only** sources are always queried through the federation layer. No direct driver exists.
+**Federation only** sources have no direct driver. Every query reaches them through the federation layer.
 
-**Direct-read (replica)** sources have a DirectDriver that reads from the warehouse natively (Arrow-native where available), lands a replica into the active engine's materialization store, and then queries run against that replica. See [Warehouses as Named Sources](#warehouses-as-named-sources).
+**Direct-read (replica)** sources have a DirectDriver that reads from the warehouse natively (Arrow-native where it can) and lands a replica in the active engine's materialization store. Queries then run against that replica. See [Warehouses as Named Sources](#warehouses-as-named-sources).
 
-**Direct (no cross-source connector)** sources have a DirectDriver that runs single-source statements whole in the source — every filter, column and limit is pushed down. When a statement joins the source with any other, the driver reads the data and lands a replica; the join runs against that replica in the active engine. No Trino connector exists for these sources.
+**Direct (no cross-source connector)** sources have a DirectDriver that runs a single-source statement whole in the source, with every filter, column and limit pushed down. There's no Trino connector for them, so when a statement joins one with another source, the driver reads the data and lands a replica, and the join runs against that replica in the active engine.
 
-**Materialize** sources have no federated connector. Provisa fetches their data (on startup or at query time) and caches it as Parquet in S3 or in PostgreSQL, making it reachable by the federation engine for cross-source queries.
+**Materialize** sources have no federated connector either. Provisa fetches their data, on startup or at query time, and caches it as Parquet in S3 or in PostgreSQL. From there the federation engine can reach it for cross-source queries.
 
 ---
 
@@ -35,7 +35,7 @@ Provisa registers **73** source types, the ones the Sources form offers. The tab
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [Data lake / open table formats](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | Code sources | `node`, `python` |
+| 39–40 | [Code sources](code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [Push receiver](#push-receiver) | `ingest` |
 | 45–46 | [Graph & semantic](#graph-semantic) | `neo4j`, `sparql` |

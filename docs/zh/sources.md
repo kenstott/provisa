@@ -2,7 +2,7 @@
 
 ## 执行模型 {: #execution-model }
 
-每个查询最终都通过联邦引擎执行，联邦引擎提供跨所有数据源的联邦能力。数据源根据其连接方式分为三类。
+每个查询最终都要经过联邦引擎，正是它让任意数据源都能与其他数据源联接。数据源怎样到达那里，取决于 Provisa 怎样访问它，据此每个数据源归入五组之一。
 
 | 类别 | 拥有直连驱动 | 拥有联邦连接器 | 示例 |
 | --- | --- | --- | --- |
@@ -12,15 +12,15 @@
 | **直连（无跨源连接器）** | 是 | 否 | Athena — 单数据源语句在 Athena 中整体执行；跨源联接会落地完整副本 |
 | **物化 → 联邦** | 否 | 否 | REST/OpenAPI、远程 GraphQL、gRPC、Neo4j Cypher、SPARQL、WebSocket、RSS、CSV、SQLite、Parquet、Ingest（推送接收器）、GovData、SharePoint、Salesforce、ServiceNow、云资源清单、Splunk、Qdrant、Azure Cosmos DB、Logs、Google Workspace、Microsoft 365 |
 
-**直连型**数据源通过其原生驱动执行单数据源查询（亚 100 毫秒），绕过联邦引擎。它们保留完整的连接器支持，并在与其他数据源联接时参与联邦。
+**直连型**数据源通过自己的驱动回答只涉及它们的查询，耗时不到 100 毫秒，也不经过联邦引擎。它们保留完整的连接器，所以仍然通过引擎与其他数据源联接。
 
-**仅联邦型**数据源始终通过联邦层查询。不存在直连驱动。
+**仅联邦型**数据源没有直连驱动。每个查询都通过联邦层到达它们。
 
-**直读型（副本）**数据源拥有一个 DirectDriver，可原生读取仓库数据（在可用的情况下采用 Arrow 原生方式），将副本落地到活动引擎的物化存储中，随后查询针对该副本执行。参见[作为命名数据源的仓库](#warehouses-as-named-sources)。
+**直读型（副本）**数据源有一个 DirectDriver，原生读取仓库数据（能用 Arrow 原生方式时就用），并把副本落地到活动引擎的物化存储中。之后查询针对该副本执行。参见[作为命名数据源的仓库](#warehouses-as-named-sources)。
 
-**直连（无跨源连接器）**数据源拥有一个 DirectDriver，它在数据源内整体执行单数据源语句 — 所有过滤条件、列和限制都会下推。当语句将该数据源与任何其他数据源联接时，驱动会读取数据并落地一份副本；联接在活动引擎中针对该副本执行。这些数据源不存在 Trino 连接器。
+**直连（无跨源连接器）**数据源有一个 DirectDriver，在数据源内整体执行单数据源语句，所有过滤条件、列和限制都会下推。它们没有 Trino 连接器，所以当语句把其中一个与其他数据源联接时，驱动会读取数据并落地一份副本，联接在活动引擎中针对该副本执行。
 
-**物化**数据源没有联邦连接器。Provisa 获取其数据（在启动时或查询时），并将其缓存为 S3 或 PostgreSQL 中的 Parquet，使联邦引擎可以进行跨数据源查询。
+**物化**数据源同样没有联邦连接器。Provisa 在启动时或查询时获取其数据，并缓存为 S3 或 PostgreSQL 中的 Parquet。联邦引擎从那里访问它们，进行跨数据源查询。
 
 ---
 
@@ -35,7 +35,7 @@ Provisa 注册了 **73** 种数据源类型，即 Sources 表单所提供的类�
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`、`druid`、`exasol`、`elasticsearch`、`pinot` |
 | 30–33 | [数据湖 / 开放表格式](#data-lake-open-table-formats) | `iceberg`、`delta_lake`、`hive`、`hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`、`cosmosdb`、`qdrant`、`cassandra`、`redis` |
-| 39–40 | 代码源 | `node`, `python` |
+| 39–40 | [代码源](code-sources.md) | `node`, `python` |
 | 41–43 | [流式处理](#streaming) | `kafka`、`websocket`、`rss` |
 | 44 | [推送接收器](#push-receiver) | `ingest` |
 | 45–46 | [图与语义](#graph-semantic) | `neo4j`、`sparql` |

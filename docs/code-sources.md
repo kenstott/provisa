@@ -1,0 +1,109 @@
+# Node and Python Sources
+
+Sometimes the data you need sits behind code your team already wrote: a scoring model, a client for an internal service, a script that tidies an export. A Node or Python source lets you serve that code as tables. You tag the functions you want to share, point Provisa at the code, and each tagged function becomes a table that every role reads under the same rules as any other table.
+
+## What a function becomes {: #what-a-function-becomes }
+
+Provisa reads your code's own declarations: JSDoc tags and TypeScript types for Node, docstrings and type hints for Python. Three tags count.
+
+| Tag | Becomes |
+|---|---|
+| `@table` | A table. The function returns a list or an iterable, and each element is a row |
+| `@command` | A command, run on request |
+| `@stream` | A live table. The function is a generator, and each row is sent as it is yielded |
+
+A function without a tag is ignored. A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal names the function and lists every problem at once, so you fix them in one pass.
+
+The row type gives the columns. Text, numbers, booleans, dates and timestamps map to their column types, lists stay lists, and nested objects become named types. When a row's type is loose (`any`, `unknown` or a `Record` in TypeScript, `Any` or a `dict` in Python), Provisa calls the function once, with no arguments, and suggests columns from the rows that come back. If the function has a required parameter it can't be called that way, so you type the columns yourself when you register the table.
+
+The function's parameters become the table's parameters. A parameter without a default is required, so a read that leaves it out is refused before your code runs. A parameter with a default is optional; leave it out and your default applies. A steward can still make an optional one required.
+
+## Where the code comes from {: #where-the-code-comes-from }
+
+The code is pinned, so a source always runs exactly what was registered:
+
+- **A package**: an npm package for Node or a PyPI package for Python, at an exact version.
+- **A Git repository**: a full 40-character commit, with a subdirectory if the code isn't at the top.
+- **An upload**: a `.zip`, `.tgz` or `.tar.gz` of the code.
+
+Node code runs on Node.js, Bun or Deno, whichever you pick. Python code runs on the Python Provisa ships. When the code has more than one top-level Python module, name the one to enter by in **Entry module**.
+
+## Installing dependencies {: #installing-dependencies }
+
+Code with dependencies needs a lockfile, and every install follows it exactly. Without one, a package that declares dependencies is refused, and the refusal tells you to add one.
+
+| Runtime | Lockfile |
+|---|---|
+| Node.js | `package-lock.json` or `npm-shrinkwrap.json` |
+| Bun | `bun.lock` or `bun.lockb` |
+| Deno | `deno.lock` |
+| Python | `uv.lock` (with its `pyproject.toml`), `pylock.toml`, or a `requirements.txt` with `--hash` on every line |
+
+A published package rarely carries its lockfile, so the form takes one beside the package reference.
+
+No package gets to run its own install scripts: npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution.
+
+Packages come from your organization's own registries when you have them. An administrator enters your npm registries, PyPI indexes and Git hosts once under **Admin → Package registries**, and every Node and Python source of the organization installs through them. The public npm registry and the public PyPI need no entry. See [Package Registries](package-registries.md).
+
+An install is cached by the code's content hash, so the same code installs once.
+
+## The sandbox {: #the-sandbox }
+
+Your code runs in its own worker process, in a sandbox. It can read its own installed code and nothing else on disk. It can reach only the hosts on the deployment's egress allow-list, through a proxy Provisa runs, and never Provisa's own ports. A host that can't provide the sandbox refuses to start the worker and names what is missing, rather than running the code unconfined. On Windows, code sources are refused.
+
+## Reading a table {: #reading-a-table }
+
+A code source's table is landed, never read in place. Provisa calls the function with the read's arguments, checks each row against the columns, and keeps the rows under those arguments for the table's cache TTL. Visibility, masks and row rules then apply to the landed rows, as they do for any table.
+
+You pass arguments the way you pass any table parameter: as `_nf_` conditions in SQL and as field arguments in GraphQL.
+
+## An example {: #an-example }
+
+This Python module scores how likely an account is to leave:
+
+```python
+from dataclasses import dataclass
+from datetime import datetime
+
+
+@dataclass
+class RiskRow:
+    account_id: str
+    score: float
+    computed_at: datetime
+    reasons: list[str]
+
+
+def churn_risk(account_id: str, as_of: datetime | None = None) -> list[RiskRow]:
+    """Churn risk of one account.
+
+    @table
+    """
+    ...
+```
+
+Register it as a `python` source from its PyPI package, Git commit or upload. Discovery then offers `churn_risk` as a table with four columns (`account_id`, `score`, `computed_at`, `reasons`), a required parameter `account_id` and an optional one, `as_of`. Once a steward registers the table, read it in SQL:
+
+```sql
+SELECT score, reasons
+FROM churn_risk
+WHERE _nf_account_id = 'A-1042'
+```
+
+The same function in TypeScript reads like this:
+
+```typescript
+export interface RiskRow {
+  account_id: string;
+  score: number;
+  computed_at: Date;
+  reasons: string[];
+}
+
+/** Churn risk of one account.
+ * @table
+ */
+export async function churnRisk(accountId: string, asOf?: Date): Promise<RiskRow[]> {
+  // ...
+}
+```

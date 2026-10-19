@@ -22,9 +22,9 @@ Abilitalo impostando `PROVISA_PGWIRE_PORT` (ad esempio `5433`) prima di avviare 
 
 ### Perché pgwire invece di JDBC? {: #why-pgwire-instead-of-jdbc }
 
-Il driver JDBC usa Arrow Flight come trasporto e richiede la distribuzione di `provisa-jdbc.jar`. pgwire non richiede nulla — se hai già `psql`, DBeaver, SQLAlchemy o un driver JDBC PG, hai finito. È il percorso a minor attrito per i carichi di lavoro solo SQL.
+Il driver JDBC porta le sue query su Arrow Flight, e per usarlo dovete distribuire `provisa-jdbc.jar`. pgwire non ha bisogno di altro. Se avete già `psql`, DBeaver, SQLAlchemy o un driver JDBC PG, siete pronti, e per questo è la strada più semplice quando inviate solo SQL.
 
-JDBC è la scelta giusta per gli strumenti di BI che dispongono di una procedura guidata di connessione JDBC integrata e beneficiano dello streaming columnar di Arrow Flight per grandi set di risultati. pgwire accetta SQL libero sull'intero schema pubblicato — le stesse query, con un costo di configurazione inferiore.
+Scegliete JDBC per gli strumenti di BI con una procedura guidata di connessione JDBC integrata che scaricano grandi set di risultati, dove lo streaming columnar di Arrow Flight ripaga. pgwire accetta lo stesso SQL libero sull'intero schema pubblicato, con meno da configurare.
 
 ### psql
 
