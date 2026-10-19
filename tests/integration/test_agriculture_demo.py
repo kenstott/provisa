@@ -300,13 +300,21 @@ def _notebook() -> str:
     )
 
 
-def _capture(server, printed: str, found: dict) -> None:
-    """The answer the notebook reads, as the browser reads it (an Arrow stream over HTTP, as the
-    analyst), and what it printed, written where the warehouse lane uploads its results
-    (PROVISA_DEMO_CAPTURE_DIR): the render harness serves the demo's card from these real
-    answers, and the lane alone holds the govdata credential."""
-    out = Path(os.environ["PROVISA_DEMO_CAPTURE_DIR"]) / "agriculture"
+def _capture_dir() -> Path | None:
+    """Where the warehouse lane uploads its results (PROVISA_DEMO_CAPTURE_DIR), when it is set:
+    the render harness serves the demo's card from these real answers, and the lane alone holds
+    the govdata credential."""
+    root = os.environ.get("PROVISA_DEMO_CAPTURE_DIR")
+    if not root:
+        return None
+    out = Path(root) / "agriculture"
     out.mkdir(parents=True, exist_ok=True)
+    return out
+
+
+def _capture_answer(server, out: Path) -> None:
+    """The answer the notebook reads, as the browser reads it (an Arrow stream over HTTP, as the
+    analyst). Written before the notebook runs, so a run that fails still leaves its rows."""
     sql = (
         "SELECT s.county_fips, s.county_name, s.state_abbr, s.year, s.premium, s.indemnity, "
         "s.loss_ratio, s.season_rain_mm, s.hot_days, s.market_dry_share "
@@ -320,17 +328,18 @@ def _capture(server, printed: str, found: dict) -> None:
     )
     assert resp.status_code == 200, resp.text[:2000]
     (out / "query-notebook.arrow").write_bytes(resp.content)
-    (out / "notebook-printed.txt").write_text(printed + "\n")
-    (out / "notebook-found.json").write_text(json.dumps(found, indent=1))
 
 
 @pytest.fixture(scope="module")
 def notebook(server) -> dict[str, Any]:
     """The notebook run as the analyst over Arrow Flight, with what it found."""
+    out = _capture_dir()
+    if out is not None:
+        _capture_answer(server, out)
     report = (
         "\nimport json\n"
-        "print(json.dumps({'seasons': len(seasons), 'r2': r2, 'expected_2012': expected_2012, "
-        "'actual_2012': actual_2012, 'expected_like_2012': expected}))"
+        "print(json.dumps({'seasons': len(seasons), 'r2': r2, 'dry_year': dry_year, "
+        "'expected_dry': expected_dry, 'actual_dry': actual_dry, 'expected_like_dry': expected}))"
     )
     run = subprocess.run(
         [sys.executable, "-c", _notebook() + report],
@@ -344,11 +353,15 @@ def notebook(server) -> dict[str, Any]:
         text=True,
         timeout=900,
     )
+    if out is not None:
+        (out / "notebook-stdout.txt").write_text(run.stdout)
+        (out / "notebook-stderr.txt").write_text(run.stderr)
     assert run.returncode == 0, run.stderr[-4000:]
     lines = run.stdout.strip().splitlines()
     found, printed = json.loads(lines[-1]), "\n".join(lines[:-1])
-    if os.environ.get("PROVISA_DEMO_CAPTURE_DIR"):
-        _capture(server, printed, found)
+    if out is not None:
+        (out / "notebook-printed.txt").write_text(printed + "\n")
+        (out / "notebook-found.json").write_text(json.dumps(found, indent=1))
     return {"found": found, "printed": printed}
 
 
@@ -356,6 +369,8 @@ def test_the_weather_explains_the_portfolio_s_losses(notebook):
     found = notebook["found"]
     assert found["seasons"] >= _COUNTIES * (len(_YEARS) - 1), found
     assert found["r2"] > 0, found
-    # Fitted without 2012, the model still expects a dry-year loss: a loss ratio above the book's.
-    assert found["expected_2012"] > 0 and found["actual_2012"] > 0, found
-    assert found["expected_like_2012"] > 0, found
+    # The driest season the data holds is 2012, as test_2012_is_the_dry_year_the_losses_follow
+    # reads it; fitted without it, the model still expects a dry-year loss.
+    assert found["dry_year"] == 2012, found
+    assert found["expected_dry"] > 0 and found["actual_dry"] > 0, found
+    assert found["expected_like_dry"] > 0, found
