@@ -1,8 +1,6 @@
 # Référence CLI {: #cli-reference }
 
-La commande `provisa` est le point d'entrée unique du palier embarqué installé via pip.
-Elle démarre le runtime, gère les licences, déclenche la publication de métadonnées, déploie des modèles, et
-contrôle la bannière de maintenance — sans Docker, Node, ni aucun service externe.
+La commande `provisa` est le point d'entrée unique du niveau embarqué installé par pip. Elle démarre le runtime, gère les licences, déclenche la publication des métadonnées, déploie les modèles et pilote la bannière de maintenance. Vous n'avez besoin ni de Docker, ni de Node, ni de services externes.
 
 Installez-la avec l'extra `embedded`, qui apporte également les extensions DuckDB hors ligne
 et le plan de contrôle PostgreSQL embarqué :
@@ -28,10 +26,7 @@ d'environnement.
 | `--token <token>` | _(aucun)_ | `PROVISA_API_TOKEN` |
 | `--timeout <seconds>` | 300 (30 pour `maintenance`) | _(aucune)_ |
 
-`--api` est l'URL de base d'une instance Provisa en cours d'exécution. En multilocation, le nom d'hôte nomme
-l'organisation — `https://acme.provisa.org` route vers le locataire acme. `--token` est un jeton Bearer ;
-lorsqu'il est vide, aucun en-tête `Authorization` n'est envoyé, ce qui est correct pour les déploiements
-non authentifiés.
+`--api` est l'URL de base d'une instance Provisa en cours d'exécution. En multi-location, l'hôte nomme l'organisation : `https://acme.provisa.org` mène au locataire acme. `--token` est un jeton Bearer. Quand il est vide, aucun en-tête `Authorization` n'est envoyé, ce qu'attend un déploiement sans authentification.
 
 Définissez les deux variables dans votre environnement CI pour éviter de les répéter à chaque appel :
 
@@ -48,8 +43,7 @@ Sous-commandes acceptant ces indicateurs : `metadata export`, chaque sous-comman
 
 ## provisa run
 
-Démarre le système Provisa embarqué — serveur API et serveur statique/proxy de l'interface — dans un
-processus unique. Pas de Docker, pas de Node, pas de services externes.
+Démarre le système Provisa embarqué dans un seul processus : le serveur d'API et le serveur des fichiers statiques et du proxy de l'interface. Ni Docker, ni Node, ni services externes n'interviennent.
 
 ```
 provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
@@ -151,8 +145,7 @@ Affiche l'ID de la machine, l'état d'essai, les jours écoulés, et la validit�
 provisa license status
 ```
 
-Aucun indicateur. Affiche quatre lignes — ID de la machine, date de première observation, jours écoulés, état d'essai, et
-état de licence — et sort avec le code 0.
+Aucun flag. Affiche cinq lignes (ID de machine, date de première détection, jours écoulés, état de l'essai et état de la licence) et se termine avec 0.
 
 ```
 Machine ID:   a1b2c3d4e5f6...
@@ -166,9 +159,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Déclenche la publication de métadonnées à la demande du serveur en cours d'exécution. Envoie une requête POST à
-`POST /admin/metadata-export/publish` — le même point d'entrée que le bouton **Publish now** de l'onglet Admin
-appelle, de sorte que les deux chemins envoient le même instantané complet.
+Déclenche la publication des métadonnées à la demande du serveur en cours d'exécution. La commande envoie à `POST /admin/metadata-export/publish`, le point de terminaison qu'appelle le bouton **Publish now** de l'onglet Admin ; les deux chemins envoient donc le même instantané complet.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -194,8 +185,7 @@ provisa metadata export \
 # 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
 
-La référence de configuration complète — fournisseurs, identifiants, `reconcile_cron`, et ce que
-l'instantané contient — se trouve dans [Export de métadonnées](metadata-export.md#from-the-command-line).
+[Export de métadonnées](metadata-export.md#from-the-command-line) donne la référence de configuration complète : fournisseurs, identifiants, `reconcile_cron` et contenu de l'instantané.
 
 ---
 
@@ -403,9 +393,7 @@ cycle de vie des approbations, voir [Environnements](environments.md#the-env-cli
 
 ## provisa maintenance on
 
-Lève la bannière de maintenance planifiée sur le déploiement. Exécutez ceci avant un
-travail planifié qui met le plan de données hors service — par exemple, avant de changer
-`var.engine_cluster_mode`, ce qui remplace le cluster de moteur et chaque fragment qui s'y trouve.
+Affiche la bannière de maintenance planifiée sur le déploiement. Lancez-la avant tout travail planifié qui arrête le plan de données. Changer `var.engine_cluster_mode` en est un exemple, car cela remplace le cluster du moteur et chaque shard qu'il porte.
 
 ```
 provisa maintenance on [--message MSG] [--ends-at ISO8601]

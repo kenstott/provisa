@@ -1,7 +1,6 @@
 # CLI 參考 {: #cli-reference }
 
-`provisa` 命令是透過 pip 安裝的內嵌層級的唯一入口點。
-它啟動執行時、管理授權、觸發中繼資料發佈、部署模型，並控制維護橫幅——無需 Docker、Node 或任何外部服務。
+`provisa` 指令是透過 pip 安裝的嵌入式層級的唯一入口。它啟動執行環境、管理授權、觸發中繼資料發佈、部署模型並控制維護橫幅。你不需要 Docker、Node 或任何外部服務。
 
 使用 `embedded` extra 安裝它，該 extra 還會引入離線 DuckDB 擴充
 和內嵌 PostgreSQL 控制平面：
@@ -27,10 +26,7 @@ linux x86_64、macOS 或 Windows x86_64。Linux aarch64 既沒有 pgserver wheel
 | `--token <token>` | _（無）_ | `PROVISA_API_TOKEN` |
 | `--timeout <seconds>` | 300（`maintenance` 為 30） | _（無）_ |
 
-`--api` 是正在執行的 Provisa 執行個體的基礎 URL。在多租戶模式下，主機名稱識別
-組織——`https://acme.provisa.org` 路由到 acme 的租戶。`--token` 是一個 Bearer 權杖；
-當它為空時不發送 `Authorization` 標頭，這對於未啟用身分驗證的
-部署是正確的行為。
+`--api` 是正在執行的 Provisa 實例的基礎 URL。在多租戶模式下，主機名稱指定組織，所以 `https://acme.provisa.org` 會路由到 acme 的租戶。`--token` 是 Bearer 權杖。它為空時不傳送 `Authorization` 標頭，這正是未啟用認證的部署所需要的。
 
 在你的 CI 環境中同時設定這兩個變數，以避免每次呼叫都重複輸入：
 
@@ -47,8 +43,7 @@ export PROVISA_API_TOKEN=<token>
 
 ## provisa run
 
-在單一程序中啟動內嵌 Provisa 系統——API 伺服器和 UI 靜態/代理伺服器。
-無需 Docker、無需 Node、無需外部服務。
+在單一程序中啟動嵌入式 Provisa 系統：API 伺服器，以及提供介面靜態檔案及代理的伺服器。不涉及 Docker、Node 或外部服務。
 
 ```
 provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
@@ -150,8 +145,7 @@ provisa license apply ~/Downloads/license.json
 provisa license status
 ```
 
-無旗標。印出四行——機器 ID、首次發現日期、經過天數、試用狀態，以及
-授權狀態——然後以結束代碼 0 結束。
+沒有旗標。列印五行（機器 ID、首次記錄日期、已過天數、試用狀態及授權狀態），並以 0 結束。
 
 ```
 Machine ID:   a1b2c3d4e5f6...
@@ -165,9 +159,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-觸發正在執行的伺服器進行按需中繼資料發佈。向
-`POST /admin/metadata-export/publish` 發起請求——與管理分頁的**立即發佈**
-按鈕所呼叫的端點相同，因此兩條路徑發送的都是同一份完整快照。
+觸發正在執行的伺服器按需發佈中繼資料。該指令向 `POST /admin/metadata-export/publish` 傳送請求，也就是 Admin 分頁中 **立即發佈** 按鈕呼叫的端點，所以兩條路徑傳送的是同一份完整快照。
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -193,8 +185,7 @@ provisa metadata export \
 # 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
 
-完整的設定參考——提供者、憑證、`reconcile_cron`，以及快照包含的內容——
-參見[中繼資料匯出](metadata-export.md#from-the-command-line)。
+完整的設定參考見 [中繼資料匯出](metadata-export.md#from-the-command-line)，涵蓋提供者、憑證、`reconcile_cron` 以及快照內容。
 
 ---
 
@@ -401,9 +392,7 @@ provisa env pull --org ORG --env ENV
 
 ## provisa maintenance on
 
-在部署環境上升起計劃維護橫幅。在進行會使數據平面下線的
-計劃性工作之前執行此命令——例如在切換
-`var.engine_cluster_mode`（這會替換整個引擎叢集及其上的每個分片）之前。
+在部署上升起計劃維護橫幅。在會令資料平面停機的計劃工作之前執行它。切換 `var.engine_cluster_mode` 就是一例，因為它會取代引擎叢集及其上的每個分片。
 
 ```
 provisa maintenance on [--message MSG] [--ends-at ISO8601]

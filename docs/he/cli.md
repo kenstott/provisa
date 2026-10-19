@@ -1,8 +1,6 @@
 # מדריך CLI {: #cli-reference }
 
-הפקודה `provisa` היא נקודת הכניסה היחידה לשכבה המוטבעת (embedded) המותקנת דרך pip.
-היא מפעילה את הריצה, מנהלת רישיונות, מפעילה פרסום מטא-דאטה, פורסת מודלים, ושולטת
-בבאנר התחזוקה — ללא Docker, Node, או שירותים חיצוניים כלשהם.
+הפקודה `provisa` היא נקודת הכניסה היחידה לשכבה המוטמעת שמותקנת ב-pip. היא מפעילה את סביבת הריצה, מנהלת רישיונות, מפעילה פרסום מטא-דאטה, פורסת מודלים ושולטת בבאנר התחזוקה. אינכם צריכים Docker, Node או שירותים חיצוניים.
 
 התקן אותה עם התוסף `embedded`, שגם מושך את תוספי DuckDB האופליין
 ואת מישור הבקרה המוטבע של PostgreSQL:
@@ -28,9 +26,7 @@ linux x86_64, macOS, או Windows x86_64. ל-Linux aarch64 אין wheel של pgs
 | `--token <token>` | _(ללא)_ | `PROVISA_API_TOKEN` |
 | `--timeout <seconds>` | 300 (30 עבור `maintenance`) | _(ללא)_ |
 
-`--api` היא כתובת ה-URL הבסיסית של מופע Provisa פעיל. תחת ריבוי-דיירים (multitenancy) שם המארח
-נוקב את הארגון — `https://acme.provisa.org` מנתב לדייר של acme. `--token` הוא אסימון Bearer;
-כשהוא ריק לא נשלחת כותרת `Authorization`, וזה נכון לפריסות ללא אימות.
+`--api` היא כתובת הבסיס של מופע Provisa פועל. בריבוי דיירים, המארח מציין את הארגון, כך ש-`https://acme.provisa.org` מנותב לדייר של acme. `--token` הוא אסימון Bearer. כשהוא ריק, לא נשלחת כותרת `Authorization`, וזה מה שפריסה ללא אימות מצפה לו.
 
 הגדר את שני המשתנים בסביבת ה-CI שלך כדי להימנע מחזרה עליהם בכל קריאה:
 
@@ -47,8 +43,7 @@ export PROVISA_API_TOKEN=<token>
 
 ## provisa run
 
-הפעל את מערכת Provisa המוטבעת — שרת API ושרת UI static/proxy — בתהליך יחיד.
-ללא Docker, ללא Node, ללא שירותים חיצוניים.
+מפעיל את מערכת Provisa המוטמעת בתהליך יחיד: שרת ה-API והשרת של הקבצים הסטטיים וה-proxy של הממשק. Docker, Node ושירותים חיצוניים אינם מעורבים.
 
 ```
 provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
@@ -149,8 +144,7 @@ provisa license apply ~/Downloads/license.json
 provisa license status
 ```
 
-ללא דגלים. מדפיס ארבע שורות — מזהה מכונה, תאריך ראשון שנצפה, ימים שחלפו, מצב ניסיון —
-ומצב רישיון — ויוצא עם 0.
+אין דגלים. מדפיס חמש שורות (מזהה מכונה, תאריך הופעה ראשונה, ימים שחלפו, מצב תקופת הניסיון ומצב הרישיון) ומסתיים ב-0.
 
 ```
 Machine ID:   a1b2c3d4e5f6...
@@ -164,9 +158,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-הפעל את פרסום המטא-דאטה על-פי דרישה של השרת הרץ. שולח בקשת POST אל
-`POST /admin/metadata-export/publish` — אותה נקודת קצה שכפתור **פרסם כעת** בכרטיסיית הניהול
-קורא לה, כך ששני הנתיבים שולחים את אותו תמונת מצב (snapshot) מלאה.
+מפעיל את פרסום המטא-דאטה לפי דרישה של השרת הפועל. הפקודה שולחת אל `POST /admin/metadata-export/publish`, נקודת הקצה שהכפתור **פרסם כעת** בלשונית Admin קורא לה, כך ששני הנתיבים שולחים את אותה תמונת מצב מלאה.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -192,8 +184,7 @@ provisa metadata export \
 # 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
 
-הפניה המלאה להגדרות — ספקים, אישורים, `reconcile_cron`, ומה מכיל תמונת המצב —
-נמצאת ב-[ייצוא מטא-דאטה](metadata-export.md#from-the-command-line).
+ב-[ייצוא מטא-דאטה](metadata-export.md#from-the-command-line) נמצא מדריך התצורה המלא, כולל ספקים, פרטי התחברות, `reconcile_cron` ותוכן תמונת המצב.
 
 ---
 
@@ -401,9 +392,7 @@ provisa env pull --org ORG --env ENV
 
 ## provisa maintenance on
 
-הרם את באנר התחזוקה המתוזמנת בפריסה. הרץ פקודה זו לפני עבודה
-מתוכננת שמורידה את מישור הנתונים — למשל, לפני החלפת
-`var.engine_cluster_mode`, שמחליפה את אשכול המנוע וכל שברד (shard) עליו.
+מציג את באנר התחזוקה המתוכננת בפריסה. הריצו זאת לפני עבודה מתוכננת שמורידה את מישור הנתונים. החלפת `var.engine_cluster_mode` היא דוגמה, כי היא מחליפה את אשכול המנוע ואת כל ה-shard שעליו.
 
 ```
 provisa maintenance on [--message MSG] [--ends-at ISO8601]

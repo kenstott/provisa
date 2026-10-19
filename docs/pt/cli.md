@@ -1,8 +1,6 @@
 # Referência da CLI {: #cli-reference }
 
-O comando `provisa` é o único ponto de entrada para o nível embutido instalado via pip.
-Ele inicia o runtime, gerencia licenças, aciona a publicação de metadados, implanta modelos e
-controla o banner de manutenção — sem Docker, Node ou qualquer serviço externo.
+O comando `provisa` é o único ponto de entrada do nível embarcado instalado via pip. Ele inicia o runtime, gerencia licenças, dispara a publicação de metadados, implanta modelos e controla o banner de manutenção. Você não precisa de Docker, Node nem serviços externos.
 
 Instale-o com o extra `embedded`, que também traz as extensões DuckDB offline
 e o plano de controle PostgreSQL embutido:
@@ -29,10 +27,7 @@ de ambiente.
 | `--token <token>` | _(nenhum)_ | `PROVISA_API_TOKEN` |
 | `--timeout <seconds>` | 300 (30 para `maintenance`) | _(nenhum)_ |
 
-`--api` é a URL base de uma instância do Provisa em execução. Sob multilocação o nome do host
-nomeia a organização — `https://acme.provisa.org` roteia para o locatário da acme. `--token` é
-um token Bearer; quando está vazio nenhum cabeçalho `Authorization` é enviado, o que é correto
-para implantações não autenticadas.
+`--api` é a URL base de uma instância do Provisa em execução. Com multi-inquilino, o host nomeia a organização, então `https://acme.provisa.org` leva ao inquilino acme. `--token` é um token Bearer. Quando vazio, nenhum cabeçalho `Authorization` é enviado, que é o que um deployment sem autenticação espera.
 
 Defina ambas as variáveis no seu ambiente de CI para evitar repeti-las a cada chamada:
 
@@ -49,8 +44,7 @@ Subcomandos que aceitam essas flags: `metadata export`, todo subcomando `env` (`
 
 ## provisa run
 
-Inicia o sistema Provisa embutido — servidor de API e servidor estático/proxy da UI — em um
-único processo. Sem Docker, sem Node, sem serviços externos.
+Inicia o sistema Provisa embarcado num único processo: o servidor da API e o servidor dos arquivos estáticos e do proxy da UI. Docker, Node e serviços externos não participam.
 
 ```
 provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
@@ -152,8 +146,7 @@ Mostra o ID da máquina, o estado do trial, os dias decorridos e a validade da l
 provisa license status
 ```
 
-Sem flags. Imprime quatro linhas — ID da máquina, data de primeiro uso, dias decorridos, estado
-do trial — e estado da licença — e sai com 0.
+Sem flags. Imprime cinco linhas (ID da máquina, data do primeiro registro, dias decorridos, estado do teste e estado da licença) e sai com 0.
 
 ```
 Machine ID:   a1b2c3d4e5f6...
@@ -167,9 +160,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Aciona a publicação de metadados sob demanda do servidor em execução. Envia
-um POST para `POST /admin/metadata-export/publish` — o mesmo endpoint que o botão **Publish now**
-da aba Admin chama, então ambos os caminhos enviam o mesmo snapshot completo.
+Dispara a publicação de metadados sob demanda do servidor em execução. O comando envia para `POST /admin/metadata-export/publish`, o endpoint que o botão **Publish now** da aba Admin chama, então os dois caminhos enviam o mesmo snapshot completo.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -195,8 +186,7 @@ provisa metadata export \
 # 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
 
-A referência completa de configuração — provedores, credenciais, `reconcile_cron`, e o que o
-snapshot contém — está em [Exportação de Metadados](metadata-export.md#from-the-command-line).
+[Exportação de Metadados](metadata-export.md#from-the-command-line) traz a referência completa de configuração, com provedores, credenciais, `reconcile_cron` e o conteúdo do snapshot.
 
 ---
 
@@ -404,9 +394,7 @@ ciclo de vida das aprovações, veja [Ambientes](environments.md#the-env-cli-com
 
 ## provisa maintenance on
 
-Ativa o banner de manutenção programada na implantação. Execute isso antes de um
-trabalho planejado que derrube o plano de dados — por exemplo, antes de alterar
-`var.engine_cluster_mode`, o que substitui o cluster do motor e cada shard nele.
+Exibe o banner de manutenção programada no deployment. Rode isto antes de um trabalho planejado que derrube o plano de dados. Trocar `var.engine_cluster_mode` é um exemplo, porque substitui o cluster do motor e cada shard nele.
 
 ```
 provisa maintenance on [--message MSG] [--ends-at ISO8601]

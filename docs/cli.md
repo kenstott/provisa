@@ -1,8 +1,6 @@
 # CLI Reference
 
-The `provisa` command is the single entry point for the pip-installed embedded tier.
-It starts the runtime, manages licenses, triggers metadata publishing, deploys models, and
-controls the maintenance banner — without Docker, Node, or any external services.
+The `provisa` command is the single entry point for the pip-installed embedded tier. It starts the runtime, manages licenses, triggers metadata publishing, deploys models and controls the maintenance banner. You need no Docker, no Node and no external services.
 
 Install it with the `embedded` extra, which also pulls in the offline DuckDB extensions
 and the embedded PostgreSQL control plane:
@@ -28,10 +26,7 @@ variables.
 | `--token <token>` | _(none)_ | `PROVISA_API_TOKEN` |
 | `--timeout <seconds>` | 300 (30 for `maintenance`) | _(none)_ |
 
-`--api` is the base URL of a running Provisa instance. Under multitenancy the host names the
-organization — `https://acme.provisa.org` routes to acme's tenant. `--token` is a Bearer token;
-when it is empty no `Authorization` header is sent, which is correct for unauthenticated
-deployments.
+`--api` is the base URL of a running Provisa instance. Under multitenancy the host names the organization, so `https://acme.provisa.org` routes to acme's tenant. `--token` is a Bearer token. When it is empty, no `Authorization` header is sent, which is what an unauthenticated deployment expects.
 
 Set both variables in your CI environment to avoid repeating them on every call:
 
@@ -48,8 +43,7 @@ Subcommands that accept these flags: `metadata export`, every `env` subcommand (
 
 ## provisa run
 
-Start the embedded Provisa system — API server and UI static/proxy server — in a single process.
-No Docker, no Node, no external services.
+Start the embedded Provisa system in a single process: the API server plus the server for the UI's static files and proxy. No Docker, no Node and no external services are involved.
 
 ```
 provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
@@ -151,8 +145,7 @@ Show the machine ID, trial state, elapsed days, and license validity.
 provisa license status
 ```
 
-No flags. Prints four lines — machine ID, first-seen date, elapsed days, trial state, and
-license state — and exits 0.
+No flags. It prints five lines (machine ID, first-seen date, elapsed days, trial state and license state) and exits 0.
 
 ```
 Machine ID:   a1b2c3d4e5f6...
@@ -166,9 +159,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Trigger the running server's on-demand metadata publish. Posts to
-`POST /admin/metadata-export/publish` — the same endpoint the Admin tab's **Publish now**
-button calls, so both paths send the same full snapshot.
+Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/metadata-export/publish`, the endpoint the Admin tab's **Publish now** button calls, so both paths send the same full snapshot.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -194,8 +185,7 @@ provisa metadata export \
 # 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
 
-The full configuration reference — providers, credentials, `reconcile_cron`, and what the
-snapshot contains — is in [Metadata Export](metadata-export.md#from-the-command-line).
+[Metadata Export](metadata-export.md#from-the-command-line) has the full configuration reference, covering providers, credentials, `reconcile_cron` and the snapshot's contents.
 
 ---
 
@@ -419,9 +409,7 @@ approval lifecycle, see [Environments](environments.md#the-env-cli-commands).
 
 ## provisa maintenance on
 
-Raise the scheduled-maintenance banner on the deployment. Run this before planned
-work that takes the data plane down — for example, before switching
-`var.engine_cluster_mode`, which replaces the engine cluster and every shard on it.
+Raise the scheduled-maintenance banner on the deployment. Run this before planned work that takes the data plane down. Switching `var.engine_cluster_mode` is one example, because it replaces the engine cluster and every shard on it.
 
 ```
 provisa maintenance on [--message MSG] [--ends-at ISO8601]
