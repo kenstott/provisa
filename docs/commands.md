@@ -1,15 +1,8 @@
 # Commands
 
-A command is a registered, governed function that brings external computation under Provisa's
-governance, audit, and lineage system. Where the federation engine handles SQL natively, a command
-is the seam for computation it cannot express: an enrichment microservice, a Python model, a shell
-script, a native database stored procedure. Register it once; every client surface — GraphQL,
-pgwire SQL, REST, Arrow Flight, gRPC, Bolt/Cypher — can invoke it with identical governance
-.
+A command is a registered, governed function that brings outside computation under Provisa's governance, audit and lineage. The federation engine handles SQL natively. A command covers the computation SQL can't express, such as an enrichment microservice, a Python model, a shell script or a native database stored procedure. You register it once, and every client surface (GraphQL, pgwire SQL, REST, Arrow Flight, gRPC, Bolt/Cypher) can call it under identical governance.
 
-The key distinction: a command is a **governed RPC**, not ad-hoc ETL. Its inputs and outputs are
-declared, typed, validated, traced, and wired into lineage. An ungoverned curl call or subprocess
-is none of those things.
+A command is a **governed RPC**. Its inputs and outputs are declared, typed, validated, traced and wired into lineage. An ad-hoc ETL step, an ungoverned curl call or a subprocess has none of that.
 
 ## Implementation kinds
 
@@ -63,8 +56,7 @@ Both contracts are validated fail-loud at every invocation:
 
 ### The IR type vocabulary
 
-Contract column types use the canonical IR type system, not GraphQL scalars or
-source-native spellings. The valid names are:
+Contract column types use the canonical IR type names:
 
 `smallint` `integer` `bigint` `text` `boolean` `float` `double` `numeric`
 `date` `timestamp` `time` `uuid` `bytea` `json`
@@ -72,9 +64,7 @@ source-native spellings. The valid names are:
 Common aliases resolve automatically (`varchar` → `text`, `int4` → `integer`, `jsonb` → `json`,
 etc.).
 
-`return_schema` is the **GraphQL projection** of `output_columns`, not the source of truth.
-Declare `output_columns` for validation and lineage; add `return_schema` for GraphQL type
-generation.
+`return_schema` is the **GraphQL projection** of `output_columns`. The source of truth is `output_columns`, so declare it for validation and lineage, and add `return_schema` for GraphQL type generation.
 
 ## Authoring a command
 
@@ -144,8 +134,7 @@ register or update the command without a config reload.
 
 ## Inline composition
 
-Commands may appear **inside** a larger SQL statement — joined, sub-queried, or projected. You
-are not limited to `SELECT * FROM fn(args)`. The exception is a remote source's write operation, which is called on its own (see [Why it cannot be composed](#why-it-cannot-be-composed)).
+Commands can appear **inside** a larger SQL statement, where you join, subquery or project them; `SELECT * FROM fn(args)` is only the simplest form. A remote source's write operation is the exception, because it's called on its own (see [Why it cannot be composed](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -186,7 +175,7 @@ What a source offers:
 
 Through the admin GraphQL API, `availableFunctions(sourceId, schemaName)` lists the operations. The schema name is `openapi`, `graphql` or `grpc_remote`, by source type.
 
-Everything else follows from the operation, not from what the form sends. `_as_source_operation` overwrites these fields:
+Everything else follows from the operation, whatever the form sends. Provisa overwrites these fields:
 
 ```python
 body.implKind = "source_operation"
@@ -264,7 +253,7 @@ When the table is read from its whole-table replica (the operator's settings put
 
 ### Why it cannot be composed
 
-A write operation is an action, not a transform of data. A view or materialized view that held one would perform the write each time it was read or refreshed. So the call stands alone: `SELECT * FROM create_issue(...)` on its own runs it, and the same call inside a larger statement is refused, wherever it sits -- in a join, a subquery or a projection.
+A write operation is an action. It doesn't transform data, and a view or materialized view that held one would perform the write each time it was read or refreshed. So the call stands alone. `SELECT * FROM create_issue(...)` on its own runs it, and the same call inside a larger statement is refused wherever it sits, whether in a join, a subquery or a projection.
 
 A view or materialized view whose definition calls one is refused when it is saved. A definition that does not parse is refused too while any write operation is registered, since it cannot be shown to call none.
 
@@ -272,7 +261,7 @@ A view or materialized view whose definition calls one is refused when it is sav
 command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view
 ```
 
-A source operation is also not a lineage node: lineage is read from the SQL of views and queries, where a command appears as a node, and no saved definition can call a source operation.
+A source operation isn't a lineage node either. Lineage is read from the SQL of views and queries, where a command appears as a node, and no saved definition can call a source operation.
 
 ## Commands and lineage
 
@@ -280,35 +269,23 @@ Because every command declares its input and output columns, column-level lineag
 the opaque command boundary**. The lineage engine applies a taint closure: each declared output
 column derives from every declared input column.
 
-**The actionable consequence:** the width of your input contract determines the precision of that
-closure. A narrow input — only the columns the command actually needs — produces a tight,
-readable lineage cone. Declaring every column in the source relation fans in widely across every
-output, which is still sound (no lineage is lost) but blurs traceability.
+**The actionable consequence:** the width of your input contract sets the precision of that closure. A narrow input, holding only the columns the command needs, produces a tight, readable lineage cone. Declaring every column of the source relation fans in widely across every output. That's still sound, since no lineage is lost, but it blurs traceability.
 
-**Rule of thumb:** pass the minimum projection the command needs, and return only derived columns
-(not echoed-through inputs unchanged). This keeps the taint cone accurate.
+**Rule of thumb:** pass the minimum projection the command needs, and return only derived columns. Inputs echoed through unchanged widen the taint cone, so leave them out.
 
 See [Lineage](lineage.md) for how command nodes appear in the DAG and how to read them.
 
 ## Egress allowlist
 
-`http` and `grpc` commands call external endpoints. Every target host must appear on the
-deployment's `udf_egress_allowlist`. Loopback (`localhost`, `127.0.0.1`, `::1`) is always
-permitted. An absent allowlist denies all external egress with HTTP 403 — there is no silent
-default.
+`http` and `grpc` commands call external endpoints. Every target host must appear on the deployment's `udf_egress_allowlist`. Loopback (`localhost`, `127.0.0.1`, `::1`) is always permitted. Without an allowlist, all external egress is denied with HTTP 403, and there's no silent default.
 
 ## Invocation tracing
 
-Every invocation emits a trace regardless of outcome. The trace includes the command name,
-transport kind, identity model (DEFINER or INVOKER), input relation references, role id, and
-output cardinality. The dispatcher emits the trace — no `impl_kind` can bypass it.
+Every invocation emits a trace, whatever the outcome. The trace holds the command name, transport kind, identity model (DEFINER or INVOKER), input relation references, role id and output cardinality. The dispatcher emits it, so no `impl_kind` can skip it.
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` is a shell-tier job, not a governed RPC. It triggers the running
-server's on-demand metadata publish by posting to
-`/admin/metadata-export/publish` — the same endpoint the Admin tab's **Publish now** button
-calls.
+`provisa metadata export` is a shell-tier job and runs outside the governed RPC path. It triggers the running server's on-demand metadata publish by posting to `/admin/metadata-export/publish`, the endpoint the Admin tab's **Publish now** button calls.
 
 Use it to drive timed exports from cron or CI when the configured `reconcile_cron` schedule is
 not granular enough:

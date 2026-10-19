@@ -1,15 +1,8 @@
 # Comandos {: #commands }
 
-Un comando es una función registrada y gobernada que trae la computación externa bajo el sistema
-de gobierno, auditoría y linaje de Provisa. Donde el motor de federación maneja SQL de forma
-nativa, un comando es la costura para la computación que este no puede expresar: un microservicio
-de enriquecimiento, un modelo de Python, un script de shell, un procedimiento almacenado nativo de
-base de datos. Regístrelo una vez; cada superficie cliente — GraphQL, SQL por pgwire, REST, Arrow
-Flight, gRPC, Bolt/Cypher — puede invocarlo con el mismo gobierno.
+Un comando es una función registrada y gobernada que pone el cómputo externo bajo la gobernanza, la auditoría y el linaje de Provisa. El motor de federación maneja SQL de forma nativa. Un comando cubre el cómputo que SQL no puede expresar, como un microservicio de enriquecimiento, un modelo de Python, un script de shell o un procedimiento almacenado nativo de la base de datos. Lo registra una vez, y cada superficie de cliente (GraphQL, SQL por pgwire, REST, Arrow Flight, gRPC, Bolt/Cypher) puede invocarlo con idéntica gobernanza.
 
-La distinción clave: un comando es un **RPC gobernado**, no un ETL ad hoc. Sus entradas y salidas
-están declaradas, tipadas, validadas, trazadas y conectadas al linaje. Una llamada curl no
-gobernada o un subproceso no son nada de eso.
+Un comando es un **RPC gobernado**. Sus entradas y salidas están declaradas, tipadas, validadas, trazadas y conectadas al linaje. Un paso de ETL improvisado, una llamada curl sin gobierno o un subproceso no tienen nada de eso.
 
 ## Tipos de implementación {: #implementation-kinds }
 
@@ -63,8 +56,7 @@ Ambos contratos se validan de forma estricta (fail-loud) en cada invocación:
 
 ### El vocabulario de tipos IR {: #the-ir-type-vocabulary }
 
-Los tipos de columna del contrato usan el sistema canónico de tipos IR, no los
-escalares de GraphQL ni las grafías nativas del origen. Los nombres válidos son:
+Los tipos de columna de los contratos usan los nombres de tipo IR canónicos:
 
 `smallint` `integer` `bigint` `text` `boolean` `float` `double` `numeric`
 `date` `timestamp` `time` `uuid` `bytea` `json`
@@ -72,9 +64,7 @@ escalares de GraphQL ni las grafías nativas del origen. Los nombres válidos so
 Los alias comunes se resuelven automáticamente (`varchar` → `text`, `int4` → `integer`,
 `jsonb` → `json`, etc.).
 
-`return_schema` es la **proyección GraphQL** de `output_columns`, no la fuente de verdad. Declare
-`output_columns` para la validación y el linaje; agregue `return_schema` para la generación de
-tipos GraphQL.
+`return_schema` es la **proyección GraphQL** de `output_columns`. La fuente de verdad es `output_columns`, así que declárelo para la validación y el linaje, y añada `return_schema` para generar los tipos GraphQL.
 
 ## Cómo crear un comando {: #authoring-a-command }
 
@@ -145,8 +135,7 @@ recargar la configuración.
 
 ## Composición inline {: #inline-composition }
 
-Los comandos pueden aparecer **dentro** de una instrucción SQL más amplia — unidos, en
-subconsultas o proyectados. No está limitado a `SELECT * FROM fn(args)`. La excepción es la operación de escritura de un origen remoto, que se invoca por sí sola (véase [Por qué no se puede componer](#why-it-cannot-be-composed)).
+Los comandos pueden aparecer **dentro** de una sentencia SQL mayor, donde los une, los usa en subconsultas o los proyecta; `SELECT * FROM fn(args)` es solo la forma más simple. La excepción es la operación de escritura de una fuente remota, porque se invoca sola (vea [Por qué no se puede componer](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -189,7 +178,7 @@ Qué ofrece un origen:
 
 A través de la API GraphQL de administración, `availableFunctions(sourceId, schemaName)` lista las operaciones. El nombre del esquema es `openapi`, `graphql` o `grpc_remote`, según el tipo de origen.
 
-Todo lo demás se deriva de la operación, no de lo que envía el formulario. `_as_source_operation` sobrescribe estos campos:
+Todo lo demás se deriva de la operación, envíe lo que envíe el formulario. Provisa sobrescribe estos campos:
 
 ```python
 body.implKind = "source_operation"
@@ -267,7 +256,7 @@ Cuando la tabla se lee de su réplica completa (la configuración del operador l
 
 ### Por qué no se puede componer {: #why-it-cannot-be-composed }
 
-Una operación de escritura es una acción, no una transformación de datos. Una vista o vista materializada que contuviera una ejecutaría la escritura cada vez que se leyera o actualizara. Por eso la llamada va sola: `SELECT * FROM create_issue(...)` por sí sola la ejecuta, y la misma llamada dentro de una sentencia mayor se rechaza, dondequiera que esté -- en un join, una subconsulta o una proyección.
+Una operación de escritura es una acción. No transforma datos, y una vista o vista materializada que contuviera una ejecutaría la escritura cada vez que se leyera o refrescara. Por eso la llamada va sola. `SELECT * FROM create_issue(...)` por sí sola la ejecuta, y la misma llamada dentro de una sentencia mayor se rechaza esté donde esté, ya sea en un join, una subconsulta o una proyección.
 
 Una vista o vista materializada cuya definición invoca una se rechaza al guardarla. Una definición que no se puede analizar también se rechaza mientras haya alguna operación de escritura registrada, ya que no se puede demostrar que no invoca ninguna.
 
@@ -275,7 +264,7 @@ Una vista o vista materializada cuya definición invoca una se rechaza al guarda
 command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view
 ```
 
-Una operación de origen tampoco es un nodo de linaje: el linaje se lee del SQL de vistas y consultas, donde un comando aparece como nodo, y ninguna definición guardada puede invocar una operación de origen.
+Una operación de fuente tampoco es un nodo de linaje. El linaje se lee del SQL de vistas y consultas, donde un comando aparece como nodo, y ninguna definición guardada puede llamar a una operación de fuente.
 
 ## Comandos y linaje {: #commands-and-lineage }
 
@@ -284,39 +273,24 @@ Dado que cada comando declara sus columnas de entrada y salida, el linaje a nive
 contaminación (taint closure): cada columna de salida declarada se deriva de cada columna de
 entrada declarada.
 
-**La consecuencia práctica:** el ancho de su contrato de entrada determina la precisión de ese
-cierre. Una entrada estrecha — solo las columnas que el comando realmente necesita — produce un
-cono de linaje ajustado y legible. Declarar cada columna de la relación de origen se propaga
-ampliamente a través de cada salida, lo cual sigue siendo correcto (no se pierde ningún linaje)
-pero difumina la trazabilidad.
+**La consecuencia práctica:** la anchura de su contrato de entrada fija la precisión de ese cierre. Una entrada estrecha, con solo las columnas que el comando necesita, produce un cono de linaje ajustado y legible. Declarar cada columna de la relación de origen abre el abanico sobre cada salida. Sigue siendo correcto, porque no se pierde linaje, pero difumina la trazabilidad.
 
-**Regla general:** pase la proyección mínima que el comando necesita y devuelva solo columnas
-derivadas (no las de entrada repetidas sin cambios). Esto mantiene preciso el cono de
-contaminación.
+**Regla general:** pase la proyección mínima que el comando necesita y devuelva solo columnas derivadas. Las entradas devueltas sin cambios ensanchan el cono de contaminación, así que déjelas fuera.
 
 Consulte [Linaje](lineage.md) para saber cómo aparecen los nodos de comando en el DAG y cómo
 interpretarlos.
 
 ## Lista de permitidos de salida (egress) {: #egress-allowlist }
 
-Los comandos `http` y `grpc` llaman a endpoints externos. Cada host de destino debe figurar en el
-`udf_egress_allowlist` de la implementación. El loopback (`localhost`, `127.0.0.1`, `::1`) siempre
-está permitido. Una lista de permitidos ausente deniega toda salida externa con HTTP 403 — no hay
-un valor predeterminado silencioso.
+Los comandos `http` y `grpc` llaman a endpoints externos. Cada host de destino debe figurar en la `udf_egress_allowlist` del despliegue. El loopback (`localhost`, `127.0.0.1`, `::1`) siempre está permitido. Sin lista de permitidos, toda salida externa se deniega con HTTP 403, y no hay ningún valor por defecto silencioso.
 
 ## Trazado de invocaciones {: #invocation-tracing }
 
-Cada invocación emite una traza sin importar el resultado. La traza incluye el nombre del comando,
-el tipo de transporte, el modelo de identidad (DEFINER o INVOKER), las referencias de relación de
-entrada, el id de rol y la cardinalidad de salida. El dispatcher emite la traza — ningún
-`impl_kind` puede omitirla.
+Cada invocación emite una traza, sea cual sea el resultado. La traza contiene el nombre del comando, el tipo de transporte, el modelo de identidad (DEFINER o INVOKER), las referencias a relaciones de entrada, el id de rol y la cardinalidad de salida. La emite el despachador, así que ningún `impl_kind` puede saltársela.
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` es un trabajo de nivel shell, no un RPC gobernado. Dispara la publicación
-de metadatos bajo demanda del servidor en ejecución enviando un POST a
-`/admin/metadata-export/publish` — el mismo endpoint que invoca el botón **Publicar ahora** de la
-pestaña de administración.
+`provisa metadata export` es un trabajo del nivel de shell y se ejecuta fuera de la vía de RPC gobernado. Lanza la publicación de metadatos bajo demanda del servidor en ejecución enviando a `/admin/metadata-export/publish`, el endpoint que llama el botón **Publicar ahora** de la pestaña Admin.
 
 Úselo para lanzar exportaciones programadas desde cron o CI cuando la planificación configurada en
 `reconcile_cron` no tenga suficiente granularidad:

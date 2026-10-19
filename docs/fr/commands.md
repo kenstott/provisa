@@ -1,16 +1,8 @@
 # Commandes {: #commands }
 
-Une commande est une fonction enregistrée et gouvernée qui place un calcul externe sous le système
-de gouvernance, d'audit et de traçabilité de Provisa. Là où le moteur de fédération traite le SQL
-nativement, une commande est la couture réservée au calcul qu'il ne sait pas exprimer : un
-microservice d'enrichissement, un modèle Python, un script shell, une procédure stockée native
-d'une base de données. Enregistrez-la une fois ; toutes les surfaces client — GraphQL, SQL pgwire,
-REST, Arrow Flight, gRPC, Bolt/Cypher — peuvent l'invoquer avec une gouvernance identique
-.
+Une commande est une fonction enregistrée et gouvernée qui place un calcul externe sous la gouvernance, l'audit et la traçabilité de Provisa. Le moteur de fédération traite SQL nativement. Une commande couvre le calcul que SQL ne peut pas exprimer, comme un microservice d'enrichissement, un modèle Python, un script shell ou une procédure stockée native de la base. Vous l'enregistrez une fois, et chaque surface cliente (GraphQL, SQL via pgwire, REST, Arrow Flight, gRPC, Bolt/Cypher) peut l'appeler sous une gouvernance identique.
 
-La distinction essentielle : une commande est un **RPC gouverné**, pas un ETL ad hoc. Ses entrées
-et ses sorties sont déclarées, typées, validées, tracées et câblées dans la traçabilité. Un appel
-curl ou un sous-processus non gouvernés ne sont rien de tout cela.
+Une commande est un **RPC gouverné**. Ses entrées et sorties sont déclarées, typées, validées, tracées et reliées à la traçabilité. Une étape ETL improvisée, un appel curl non gouverné ou un sous-processus n'ont rien de tout cela.
 
 ## Genres d'implémentation {: #implementation-kinds }
 
@@ -65,9 +57,7 @@ Les deux contrats sont validés en mode « échec bruyant » à chaque invocatio
 
 ### Le vocabulaire de types de l'IR {: #the-ir-type-vocabulary }
 
-Les types de colonnes des contrats utilisent le système de types canonique de l'IR, et
-non les scalaires GraphQL ou les orthographes natives des sources. Les noms valides sont
- :
+Les types de colonne des contrats utilisent les noms de types IR canoniques :
 
 `smallint` `integer` `bigint` `text` `boolean` `float` `double` `numeric`
 `date` `timestamp` `time` `uuid` `bytea` `json`
@@ -75,9 +65,7 @@ non les scalaires GraphQL ou les orthographes natives des sources. Les noms vali
 Les alias courants se résolvent automatiquement (`varchar` → `text`, `int4` → `integer`, `jsonb` →
 `json`, etc.).
 
-`return_schema` est la **projection GraphQL** d'`output_columns`, pas la source de vérité.
-Déclarez `output_columns` pour la validation et la traçabilité ; ajoutez `return_schema` pour la
-génération des types GraphQL.
+`return_schema` est la **projection GraphQL** de `output_columns`. La source de vérité est `output_columns` : déclarez-le pour la validation et la traçabilité, et ajoutez `return_schema` pour générer les types GraphQL.
 
 ## Écrire une commande {: #authoring-a-command }
 
@@ -148,8 +136,7 @@ recharger la configuration.
 
 ## Composition en ligne {: #inline-composition }
 
-Les commandes peuvent apparaître **à l'intérieur** d'une instruction SQL plus large — jointes,
-placées en sous-requête ou projetées. Vous n'êtes pas limité à `SELECT * FROM fn(args)`. L'exception est l'opération d'écriture d'une source distante, qui est appelée seule (voir [Pourquoi elle ne peut pas être composée](#why-it-cannot-be-composed)).
+Les commandes peuvent figurer **à l'intérieur** d'une instruction SQL plus large, où vous les joignez, les placez en sous-requête ou les projetez ; `SELECT * FROM fn(args)` n'en est que la forme la plus simple. L'exception est l'opération d'écriture d'une source distante, appelée seule (voir [Pourquoi elle ne peut pas être composée](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -192,7 +179,7 @@ Ce qu'une source propose :
 
 Via l'API GraphQL d'administration, `availableFunctions(sourceId, schemaName)` liste les opérations. Le nom de schéma est `openapi`, `graphql` ou `grpc_remote`, selon le type de source.
 
-Tout le reste découle de l'opération, non de ce que le formulaire envoie. `_as_source_operation` écrase ces champs :
+Tout le reste découle de l'opération, quoi qu'envoie le formulaire. Provisa écrase ces champs :
 
 ```python
 body.implKind = "source_operation"
@@ -270,7 +257,7 @@ Lorsque la table est lue depuis son réplica de table entière (les paramètres 
 
 ### Pourquoi elle ne peut pas être composée {: #why-it-cannot-be-composed }
 
-Une opération d'écriture est une action, pas une transformation de données. Une vue ou vue matérialisée qui en contiendrait une effectuerait l'écriture à chaque lecture ou rafraîchissement. L'appel reste donc seul : `SELECT * FROM create_issue(...)` seule l'exécute, et le même appel dans une instruction plus grande est refusé, où qu'il se trouve -- dans une jointure, une sous-requête ou une projection.
+Une opération d'écriture est une action. Elle ne transforme pas de données, et une vue ou vue matérialisée qui en contiendrait une effectuerait l'écriture à chaque lecture ou rafraîchissement. L'appel reste donc seul. `SELECT * FROM create_issue(...)` seul l'exécute, et le même appel dans une instruction plus large est refusé où qu'il se trouve, dans une jointure, une sous-requête ou une projection.
 
 Une vue ou vue matérialisée dont la définition en appelle une est refusée à l'enregistrement. Une définition qui ne s'analyse pas est également refusée tant qu'une opération d'écriture est enregistrée, car on ne peut pas montrer qu'elle n'en appelle aucune.
 
@@ -278,7 +265,7 @@ Une vue ou vue matérialisée dont la définition en appelle une est refusée à
 command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view
 ```
 
-Une opération de source n'est pas non plus un nœud de traçabilité : la traçabilité est lue dans le SQL des vues et des requêtes, où une commande apparaît comme un nœud, et aucune définition enregistrée ne peut appeler une opération de source.
+Une opération de source n'est pas non plus un nœud de traçabilité. La traçabilité se lit dans le SQL des vues et des requêtes, où une commande apparaît comme un nœud, et aucune définition enregistrée ne peut appeler une opération de source.
 
 ## Commandes et traçabilité {: #commands-and-lineage }
 
@@ -287,38 +274,23 @@ colonnes **se referme par-dessus la frontière opaque de la commande**. Le moteu
 applique une clôture de contamination : chaque colonne de sortie déclarée dérive de chaque colonne
 d'entrée déclarée.
 
-**La conséquence pratique :** la largeur de votre contrat d'entrée détermine la précision de cette
-clôture. Une entrée étroite — seulement les colonnes dont la commande a réellement besoin — produit
-un cône de traçabilité serré et lisible. Déclarer toutes les colonnes de la relation source
-engendre un éventail large vers chaque sortie, ce qui reste correct (aucune traçabilité n'est
-perdue) mais brouille la traçabilité.
+**La conséquence pratique :** la largeur de votre contrat d'entrée fixe la précision de cette fermeture. Une entrée étroite, limitée aux colonnes dont la commande a besoin, donne un cône de traçabilité serré et lisible. Déclarer chaque colonne de la relation source ouvre largement l'éventail sur chaque sortie. Cela reste correct, aucune traçabilité n'est perdue, mais la lisibilité en souffre.
 
-**Règle empirique :** transmettez la projection minimale dont la commande a besoin, et ne renvoyez
-que les colonnes dérivées (pas les entrées renvoyées telles quelles). Cela garde le cône de
-contamination exact.
+**Règle empirique :** passez la projection minimale dont la commande a besoin et ne renvoyez que des colonnes dérivées. Les entrées renvoyées telles quelles élargissent le cône de contamination ; laissez-les de côté.
 
 Voir [Traçabilité](lineage.md) pour savoir comment les nœuds de commande apparaissent dans le DAG et comment les lire.
 
 ## Liste d'autorisation de sortie {: #egress-allowlist }
 
-Les commandes `http` et `grpc` appellent des endpoints externes. Chaque hôte cible doit figurer
-dans l'`udf_egress_allowlist` du déploiement. Le bouclage local (`localhost`, `127.0.0.1`, `::1`)
-est toujours permis. Une liste d'autorisation absente refuse toute sortie externe avec un HTTP 403
-— il n'y a pas de valeur par défaut silencieuse.
+Les commandes `http` et `grpc` appellent des points de terminaison externes. Chaque hôte cible doit figurer dans la `udf_egress_allowlist` du déploiement. Le loopback (`localhost`, `127.0.0.1`, `::1`) est toujours autorisé. Sans liste d'autorisation, toute sortie externe est refusée avec HTTP 403, sans valeur par défaut silencieuse.
 
 ## Traçage des invocations {: #invocation-tracing }
 
-Chaque invocation émet une trace, quelle qu'en soit l'issue. La trace comprend le nom de la
-commande, le genre de transport, le modèle d'identité (DEFINER ou INVOKER), les références de
-relations d'entrée, l'identifiant de rôle et la cardinalité de sortie. C'est le répartiteur qui
-émet la trace — aucun `impl_kind` ne peut la contourner.
+Chaque invocation émet une trace, quel que soit le résultat. La trace contient le nom de la commande, le type de transport, le modèle d'identité (DEFINER ou INVOKER), les références aux relations d'entrée, l'id du rôle et la cardinalité de sortie. C'est le répartiteur qui l'émet ; aucun `impl_kind` ne peut donc y échapper.
 
 ## CLI : provisa metadata export
 
-`provisa metadata export` est une tâche de niveau shell, pas un RPC gouverné. Elle déclenche la
-publication de métadonnées à la demande du serveur en cours d'exécution en
-postant sur `/admin/metadata-export/publish` — le même endpoint qu'appelle le bouton **Publier
-maintenant** de l'onglet Admin.
+`provisa metadata export` est une tâche du niveau shell, exécutée hors du chemin RPC gouverné. Elle déclenche la publication des métadonnées à la demande du serveur en cours d'exécution en envoyant à `/admin/metadata-export/publish`, le point de terminaison qu'appelle le bouton **Publier maintenant** de l'onglet Admin.
 
 Utilisez-la pour piloter des exports minutés depuis cron ou la CI lorsque la planification
 `reconcile_cron` configurée n'est pas assez fine :

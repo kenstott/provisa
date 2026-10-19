@@ -1,8 +1,8 @@
 # 命令 {: #commands }
 
-命令是一个已注册的、受治理的函数，它把外部计算纳入 Provisa 的治理、审计与血缘体系。联邦引擎原生处理 SQL，而命令则是它无法表达的那部分计算的接缝：一个数据增强微服务、一个 Python 模型、一段 shell 脚本、一个数据库原生的存储过程。注册一次；每一个客户端界面——GraphQL、pgwire SQL、REST、Arrow Flight、gRPC、Bolt/Cypher——都能以完全相同的治理去调用它。
+命令是一个已注册、受治理的函数，它把外部计算纳入 Provisa 的治理、审计与血缘之中。联邦引擎原生处理 SQL。命令涵盖 SQL 无法表达的计算，例如数据增强微服务、Python 模型、shell 脚本或数据库原生存储过程。你只需注册一次，每个客户端接口（GraphQL、pgwire SQL、REST、Arrow Flight、gRPC、Bolt/Cypher）都能在完全相同的治理下调用它。
 
-关键区别在于：命令是一次**受治理的 RPC**，而不是临时凑的 ETL。它的输入和输出经过声明、定型、校验、追踪，并接入血缘。一次不受治理的 curl 调用或子进程一样都不占。
+命令是一次**受治理的 RPC**。它的输入和输出都经过声明、定型、校验、追踪，并接入血缘。临时拼凑的 ETL 步骤、不受治理的 curl 调用或子进程，这些都不具备。
 
 ## 实现种类 {: #implementation-kinds }
 
@@ -47,14 +47,14 @@
 
 ### IR 类型词汇表 {: #the-ir-type-vocabulary }
 
-契约中的列类型使用规范的 IR 类型体系，而不是 GraphQL 标量或数据源原生的写法。有效名称为：
+契约中的列类型使用规范的 IR 类型名称：
 
 `smallint` `integer` `bigint` `text` `boolean` `float` `double` `numeric`
 `date` `timestamp` `time` `uuid` `bytea` `json`
 
 常见别名会自动解析（`varchar` → `text`、`int4` → `integer`、`jsonb` → `json` 等）。
 
-`return_schema` 是 `output_columns` 的 **GraphQL 投影**，不是事实来源。为校验和血缘声明 `output_columns`；为生成 GraphQL 类型再加上 `return_schema`。
+`return_schema` 是 `output_columns` 的 **GraphQL 投影**。真正的依据是 `output_columns`，所以请为校验和血缘声明它，再为生成 GraphQL 类型添加 `return_schema`。
 
 ## 编写命令 {: #authoring-a-command }
 
@@ -121,7 +121,7 @@ gRPC 变体（`enrich_grpc_set`）遵循同样的模式，只是指定 `impl_kin
 
 ## 内联组合 {: #inline-composition }
 
-命令可以出现在更大的 SQL 语句**内部**——被联接、被作为子查询、或被投影。你不必局限于 `SELECT * FROM fn(args)`。例外是远程来源的写入操作，它只能单独调用（见[为何不能被组合](#why-it-cannot-be-composed)）。
+命令可以出现在更大的 SQL 语句**内部**，你可以对它做连接、子查询或投影；`SELECT * FROM fn(args)` 只是最简单的形式。例外是远程数据源的写操作，因为它只能单独调用（见[为何不能被组合](#why-it-cannot-be-composed)）。
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -158,7 +158,7 @@ OpenAPI、远程 GraphQL 或 gRPC 来源会提供写入操作。将其中一个�
 
 通过管理 GraphQL API，`availableFunctions(sourceId, schemaName)` 会列出这些操作。模式名称依来源类型而定，为 `openapi`、`graphql` 或 `grpc_remote`。
 
-其余一切均由操作决定，而非由表单所发送的内容决定。`_as_source_operation` 会覆盖以下字段：
+其余一切都由该操作决定，与表单发送的内容无关。Provisa 会覆盖以下字段：
 
 ```python
 body.implKind = "source_operation"
@@ -236,7 +236,7 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 
 ### 为何不能被组合 {: #why-it-cannot-be-composed }
 
-写入操作是一个动作，而不是对数据的转换。包含它的视图或物化视图会在每次被读取或刷新时执行该写入。因此该调用必须单独存在：单独的 `SELECT * FROM create_issue(...)` 会运行它，而同一调用出现在更大的语句内则会被拒绝，无论位于何处——联接、子查询或投影中。
+写操作是一个动作，它不转换数据；包含写操作的视图或物化视图会在每次读取或刷新时执行一次写入。因此这个调用只能单独出现。单独的 `SELECT * FROM create_issue(...)` 会执行它，而同一调用放在更大的语句中，无论位于连接、子查询还是投影中，都会被拒绝。
 
 若视图或物化视图的定义调用了它，保存时会被拒绝。只要注册了任何写入操作，无法解析的定义也会被拒绝，因为无法证明它没有调用任何一个。
 
@@ -244,29 +244,29 @@ curl -X POST https://acme.provisa.org/data/rest/engineering/commands/create_issu
 command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view
 ```
 
-来源操作也不是血缘节点：血缘读取自视图和查询的 SQL，命令在其中表现为节点，而任何已保存的定义都无法调用来源操作。
+源操作也不是血缘节点。血缘是从视图和查询的 SQL 中读取的，命令在其中作为节点出现，而任何已保存的定义都不能调用源操作。
 
 ## 命令与血缘 {: #commands-and-lineage }
 
 由于每个命令都声明了自己的输入列和输出列，列级血缘得以**跨越不透明的命令边界闭合**。血缘引擎会施加一次污点闭包：每个已声明的输出列都派生自每个已声明的输入列。
 
-**由此带来的实际后果：** 输入契约的宽度决定了那次闭包的精度。窄输入——只包含命令确实需要的列——产出一个紧凑、可读的血缘锥。把源关系中的每一列都声明进去，则会在每个输出上大幅扇入，这依然是可靠的（不会丢失任何血缘），但会模糊可追溯性。
+**由此带来的实际后果：**输入契约的宽度决定了这一闭包的精度。窄的输入只包含命令真正需要的列，会得到紧凑、易读的血缘锥。声明源关系中的每一列，则会在每个输出上大面积扇入。这样依然正确，因为不会丢失血缘，但会模糊可追溯性。
 
-**经验法则：** 传入命令所需的最小投影，并且只返回派生出来的列（不要把原样透传的输入也带回来）。这样能让污点锥保持准确。
+**经验法则：**只传入命令所需的最小投影，只返回派生列。原样回传的输入会扩大污染锥，所以不要返回它们。
 
 命令节点如何出现在 DAG 中以及如何解读它们，参见[血缘](lineage.md)。
 
 ## 出口允许列表 {: #egress-allowlist }
 
-`http` 和 `grpc` 命令会调用外部终结点。每一个目标主机都必须出现在该部署的 `udf_egress_allowlist` 中。回环地址（`localhost`、`127.0.0.1`、`::1`）始终被放行。允许列表缺失时，所有外部出口一律以 HTTP 403 拒绝——不存在悄悄生效的默认值。
+`http` 和 `grpc` 命令会调用外部端点。每个目标主机都必须出现在部署的 `udf_egress_allowlist` 中。回环地址（`localhost`、`127.0.0.1`、`::1`）始终允许。没有允许列表时，所有外部出站都会以 HTTP 403 拒绝，不存在静默的默认值。
 
 ## 调用追踪 {: #invocation-tracing }
 
-无论结果如何，每一次调用都会发出一条追踪记录。追踪内容包括命令名称、传输种类、身份模型（DEFINER 或 INVOKER）、输入关系引用、角色 id 以及输出基数。追踪由分发器发出——没有哪种 `impl_kind` 能绕过它。
+每次调用都会产生一条追踪，无论结果如何。追踪包含命令名称、传输类型、身份模型（DEFINER 或 INVOKER）、输入关系引用、角色 id 和输出基数。它由分发器产生，所以任何 `impl_kind` 都无法绕过。
 
 ## CLI：provisa metadata export {: #cli-provisa-metadata-export }
 
-`provisa metadata export` 是一个 shell 层的作业，而不是受治理的 RPC。它通过向 `/admin/metadata-export/publish` 发送 POST 请求，触发正在运行的服务器按需发布元数据——与管理选项卡上**立即发布**按钮所调用的终结点相同。
+`provisa metadata export` 是 shell 层的作业，运行在受治理的 RPC 路径之外。它向 `/admin/metadata-export/publish` 发送请求，触发正在运行的服务器按需发布元数据，也就是 Admin 选项卡中 **立即发布** 按钮调用的端点。
 
 当配置的 `reconcile_cron` 计划粒度不够时，可用它从 cron 或 CI 驱动定时导出：
 

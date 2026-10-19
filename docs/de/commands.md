@@ -1,15 +1,8 @@
 # Commands
 
-Ein Command ist eine registrierte, regierte Funktion, die externe Berechnung unter Provisas
-Governance-, Audit- und Lineage-System bringt. Während die Föderations-Engine SQL nativ verarbeitet, ist ein Command
-die Nahtstelle für Berechnungen, die sie nicht ausdrücken kann: ein Anreicherungs-Microservice, ein Python-Modell, ein Shell-
-Skript, eine native Datenbank-Stored-Procedure. Einmal registrieren; jede Client-Oberfläche — GraphQL,
-pgwire-SQL, REST, Arrow Flight, gRPC, Bolt/Cypher — kann ihn mit identischer Governance aufrufen
-.
+Ein Befehl ist eine registrierte, gesteuerte Funktion, die externe Berechnung unter die Governance, das Audit und die Lineage von Provisa bringt. Die Federation-Engine verarbeitet SQL nativ. Ein Befehl deckt die Berechnung ab, die SQL nicht ausdrücken kann, etwa einen Anreicherungs-Microservice, ein Python-Modell, ein Shell-Skript oder eine native gespeicherte Prozedur der Datenbank. Sie registrieren ihn einmal, und jede Client-Oberfläche (GraphQL, pgwire-SQL, REST, Arrow Flight, gRPC, Bolt/Cypher) kann ihn unter identischer Governance aufrufen.
 
-Der entscheidende Unterschied: Ein Command ist ein **geregeltes RPC**, kein ad-hoc-ETL. Seine Eingaben und Ausgaben sind
-deklariert, typisiert, validiert, verfolgt (traced) und in die Lineage verdrahtet. Ein ungeregelter curl-Aufruf oder Subprozess
-ist nichts davon.
+Ein Befehl ist ein **geregeltes RPC**. Seine Ein- und Ausgaben sind deklariert, typisiert, validiert, verfolgt und in die Lineage eingebunden. Ein Ad-hoc-ETL-Schritt, ein ungesteuerter curl-Aufruf oder ein Subprozess hat nichts davon.
 
 ## Implementierungsarten {: #implementation-kinds }
 
@@ -64,8 +57,7 @@ Beide Verträge werden bei jedem Aufruf laut fehlschlagend validiert:
 
 ### Das IR-Typvokabular {: #the-ir-type-vocabulary }
 
-Vertragsspaltentypen verwenden das kanonische IR-Typsystem, nicht GraphQL-Skalare oder
-quellennative Schreibweisen. Die gültigen Namen sind:
+Spaltentypen in Verträgen verwenden die kanonischen IR-Typnamen:
 
 `smallint` `integer` `bigint` `text` `boolean` `float` `double` `numeric`
 `date` `timestamp` `time` `uuid` `bytea` `json`
@@ -73,9 +65,7 @@ quellennative Schreibweisen. Die gültigen Namen sind:
 Gängige Aliase werden automatisch aufgelöst (`varchar` → `text`, `int4` → `integer`, `jsonb` → `json`,
 usw.).
 
-`return_schema` ist die **GraphQL-Projektion** von `output_columns`, nicht die Quelle der Wahrheit.
-Deklarieren Sie `output_columns` für Validierung und Lineage; fügen Sie `return_schema` für die GraphQL-Typ-
-Generierung hinzu.
+`return_schema` ist die **GraphQL-Projektion** von `output_columns`. Maßgeblich ist `output_columns`, also deklarieren Sie es für Validierung und Lineage und ergänzen `return_schema` für die Erzeugung der GraphQL-Typen.
 
 ## Einen Command verfassen {: #authoring-a-command }
 
@@ -145,8 +135,7 @@ den Command ohne Konfigurations-Neuladen zu registrieren oder zu aktualisieren. 
 
 ## Inline-Komposition {: #inline-composition }
 
-Commands können **innerhalb** einer größeren SQL-Anweisung erscheinen — gejoint, als Subquery oder projiziert. Sie
-sind nicht auf `SELECT * FROM fn(args)` beschränkt. Die Ausnahme ist die Schreiboperation einer externen Quelle, die für sich allein aufgerufen wird (siehe [Warum er nicht komponierbar ist](#why-it-cannot-be-composed)).
+Befehle können **innerhalb** einer größeren SQL-Anweisung stehen, wo Sie sie joinen, in Unterabfragen nutzen oder projizieren; `SELECT * FROM fn(args)` ist nur die einfachste Form. Die Ausnahme ist die Schreiboperation einer Remote-Quelle, denn sie wird für sich allein aufgerufen (siehe [Warum er nicht komponierbar ist](#why-it-cannot-be-composed)).
 
 ```sql
 -- Enrich the orders relation and join the result back inline.
@@ -187,7 +176,7 @@ Was eine Quelle anbietet:
 
 Über die Admin-GraphQL-API listet `availableFunctions(sourceId, schemaName)` die Operationen auf. Der Schemaname ist je nach Quellentyp `openapi`, `graphql` oder `grpc_remote`.
 
-Alles Weitere ergibt sich aus der Operation, nicht aus dem, was das Formular sendet. `_as_source_operation` überschreibt diese Felder:
+Alles Weitere ergibt sich aus der Operation, was immer das Formular sendet. Provisa überschreibt diese Felder:
 
 ```python
 body.implKind = "source_operation"
@@ -265,7 +254,7 @@ Wird die Tabelle aus ihrem Replikat der ganzen Tabelle gelesen (die Einstellunge
 
 ### Warum er nicht komponierbar ist {: #why-it-cannot-be-composed }
 
-Eine Schreiboperation ist eine Aktion, keine Transformation von Daten. Eine View oder materialisierte View, die eine enthielte, würde den Schreibvorgang bei jedem Lesen oder Aktualisieren ausführen. Der Aufruf steht daher allein: `SELECT * FROM create_issue(...)` für sich führt ihn aus, und derselbe Aufruf innerhalb einer größeren Anweisung wird abgelehnt, wo immer er steht -- in einem Join, einer Subquery oder einer Projektion.
+Eine Schreiboperation ist eine Aktion. Sie transformiert keine Daten, und eine View oder materialisierte View, die eine enthielte, führte den Schreibvorgang bei jedem Lesen oder Aktualisieren aus. Deshalb steht der Aufruf allein. `SELECT * FROM create_issue(...)` für sich allein führt ihn aus, und derselbe Aufruf innerhalb einer größeren Anweisung wird abgelehnt, wo immer er steht, ob in einem Join, einer Unterabfrage oder einer Projektion.
 
 Eine View oder materialisierte View, deren Definition eine aufruft, wird beim Speichern abgelehnt. Eine Definition, die sich nicht parsen lässt, wird ebenfalls abgelehnt, solange irgendeine Schreiboperation registriert ist, da sich nicht zeigen lässt, dass sie keine aufruft.
 
@@ -273,7 +262,7 @@ Eine View oder materialisierte View, deren Definition eine aufruft, wird beim Sp
 command 'create_issue' writes to its source and is called on its own: it cannot be composed in a query, a view or a materialized view
 ```
 
-Eine Quellenoperation ist außerdem kein Lineage-Knoten: Lineage wird aus dem SQL von Views und Abfragen gelesen, wo ein Command als Knoten erscheint, und keine gespeicherte Definition kann eine Quellenoperation aufrufen.
+Eine Quelloperation ist auch kein Lineage-Knoten. Lineage wird aus dem SQL von Views und Abfragen gelesen, wo ein Befehl als Knoten erscheint, und keine gespeicherte Definition kann eine Quelloperation aufrufen.
 
 ## Commands und Lineage {: #commands-and-lineage }
 
@@ -281,36 +270,23 @@ Weil jeder Command seine Eingabe- und Ausgabespalten deklariert, schließt sich 
 die undurchsichtige Command-Grenze hinweg**. Die Lineage-Engine wendet einen Taint-Closure an: jede deklarierte Ausgabe-
 spalte leitet sich von jeder deklarierten Eingabespalte ab.
 
-**Die handlungsrelevante Konsequenz:** Die Breite Ihres Eingabevertrags bestimmt die Präzision dieses
-Closures. Eine enge Eingabe — nur die Spalten, die der Command tatsächlich benötigt — erzeugt einen engen,
-lesbaren Lineage-Kegel. Die Deklaration jeder Spalte in der Quellrelation fächert sich breit über jede
-Ausgabe auf, was weiterhin korrekt ist (keine Lineage geht verloren), aber die Nachverfolgbarkeit verwischt.
+**Die handlungsrelevante Konsequenz:** Die Breite Ihres Eingabevertrags bestimmt die Präzision dieses Abschlusses. Eine schmale Eingabe, die nur die Spalten enthält, die der Befehl braucht, ergibt einen engen, lesbaren Lineage-Kegel. Wer jede Spalte der Quellrelation deklariert, fächert breit über jede Ausgabe auf. Das bleibt korrekt, denn keine Lineage geht verloren, verwischt aber die Nachvollziehbarkeit.
 
-**Faustregel:** Übergeben Sie die minimale Projektion, die der Command benötigt, und geben Sie nur abgeleitete Spalten
-zurück (nicht unverändert durchgereichte Eingaben). Das hält den Taint-Kegel akkurat. [abgeleitet aus dem
-Verhalten von _splice_commands in graph.py und der engen Projektion in _materialize_relation in function_dispatch.py:161]
+**Faustregel:** Übergeben Sie die kleinste Projektion, die der Befehl braucht, und geben Sie nur abgeleitete Spalten zurück. Unverändert durchgereichte Eingaben weiten den Taint-Kegel, also lassen Sie sie weg.
 
 Siehe [Lineage](lineage.md), um zu erfahren, wie Command-Knoten im DAG erscheinen und wie man sie liest.
 
 ## Egress-Allowlist
 
-`http`- und `grpc`-Commands rufen externe Endpunkte auf. Jeder Zielhost muss in der `udf_egress_allowlist`
-der Bereitstellung aufgeführt sein. Loopback (`localhost`, `127.0.0.1`, `::1`) ist immer
-erlaubt. Eine fehlende Allowlist verweigert jeden externen Egress mit HTTP 403 — es gibt keinen stillen
-Standard.
+Befehle vom Typ `http` und `grpc` rufen externe Endpunkte auf. Jeder Zielhost muss auf der `udf_egress_allowlist` des Deployments stehen. Loopback (`localhost`, `127.0.0.1`, `::1`) ist immer erlaubt. Ohne Allowlist wird jeder externe Ausgang mit HTTP 403 verweigert, und es gibt keinen stillen Standardwert.
 
 ## Aufruf-Tracing {: #invocation-tracing }
 
-Jeder Aufruf erzeugt einen Trace, unabhängig vom Ergebnis. Der Trace enthält den Command-Namen,
-die Transportart, das Identitätsmodell (DEFINER oder INVOKER), Eingabe-Relationsreferenzen, die Rollen-ID und
-die Ausgabe-Kardinalität. Der Dispatcher erzeugt den Trace — kein `impl_kind` kann ihn umgehen.
+Jeder Aufruf erzeugt einen Trace, unabhängig vom Ergebnis. Der Trace enthält Befehlsname, Transportart, Identitätsmodell (DEFINER oder INVOKER), Referenzen auf Eingaberelationen, Rollen-ID und Ausgabekardinalität. Der Dispatcher erzeugt ihn, also kann kein `impl_kind` ihn umgehen.
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` ist ein Job der Shell-Ebene, kein geregeltes RPC. Der Befehl stößt die
-bedarfsgesteuerte Metadatenveröffentlichung des laufenden Servers an, indem er
-an `/admin/metadata-export/publish` postet — denselben Endpunkt, den die Schaltfläche **Jetzt
-veröffentlichen** im Admin-Tab aufruft.
+`provisa metadata export` ist ein Job der Shell-Ebene und läuft außerhalb des geregelten RPC-Wegs. Er stößt die bedarfsgesteuerte Metadaten-Veröffentlichung des laufenden Servers an, indem er an `/admin/metadata-export/publish` sendet, den Endpunkt, den die Schaltfläche **Jetzt veröffentlichen** im Admin-Tab aufruft.
 
 Nutzen Sie ihn für zeitgesteuerte Exporte aus cron oder CI, wenn der konfigurierte Zeitplan
 `reconcile_cron` nicht feingranular genug ist:
