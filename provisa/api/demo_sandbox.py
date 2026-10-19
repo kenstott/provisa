@@ -96,6 +96,10 @@ async def _template_ready(demo: PublishedDemo) -> None:
         landed, failed, declared = await _replica_progress(rt)
         ready = landed >= declared and not failed
     if not ready:
+        from provisa.api.demo_templates import template_builds
+
+        # The demo a visitor asks for is built next, when its template is still waiting.
+        template_builds.prefer(demo.name)
         raise ApiError(
             503,
             "sandbox.demo_not_ready",

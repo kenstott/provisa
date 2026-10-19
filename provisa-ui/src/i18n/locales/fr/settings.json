@@ -796,6 +796,10 @@
         "label": "Bacs à sable de démo ouverts en même temps",
         "help": "Le nombre de bacs à sable de démo qui peuvent être ouverts ensemble. Au-delà, un visiteur qui ouvre une démo est invité à réessayer sous peu."
       },
+      "template_builds_at_once": {
+        "label": "Modèles de démo construits à la fois",
+        "help": "Combien de modèles de démo le niveau sandbox construit ensemble après son démarrage ; les autres attendent leur tour, et une démo qu'un visiteur ouvre est construite ensuite. Sur une machine plus grande, davantage finissent plus tôt ; sur une petite, les construire tous à la fois la rend trop occupée pour servir les visiteurs. Prend effet au prochain démarrage."
+      },
       "memory_limit": {
         "label": "Mémoire par bac à sable de démo",
         "help": "La mémoire maximale que le moteur d'un bac à sable de démo peut utiliser. Une requête qui en demande davantage est refusée."

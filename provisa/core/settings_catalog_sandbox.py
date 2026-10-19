@@ -35,6 +35,18 @@ DECLARED: list[Setting] = [
         unit="sandboxes",
     ),
     Setting(
+        key="sandbox.template_builds_at_once",
+        card="limits",
+        type="int",
+        effect="restart",  # read when the tier starts building its demos' templates
+        # REQ-2006: every template at once kept a 2-vCPU tier too busy to serve its visitors.
+        req="REQ-2006",
+        env="PROVISA_SANDBOX_TEMPLATE_BUILDS_AT_ONCE",
+        default=2,
+        min=1,
+        unit="builds",
+    ),
+    Setting(
         key="sandbox.memory_limit",
         card="limits",
         type="int",

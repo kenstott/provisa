@@ -796,6 +796,10 @@
         "label": "Sandboxes de demostración abiertos a la vez",
         "help": "Cuántos sandboxes de demostración pueden estar abiertos a la vez. Superado ese número, a quien abra una demostración se le pide que lo intente de nuevo en breve."
       },
+      "template_builds_at_once": {
+        "label": "Plantillas de demo creadas a la vez",
+        "help": "Cuántas plantillas de demo crea a la vez el nivel de sandbox tras arrancar; las demás esperan su turno, y una demo que abre un visitante se crea a continuación. En una máquina mayor, más terminan antes; en una pequeña, crearlas todas a la vez la deja demasiado ocupada para atender a los visitantes. Se aplica en el siguiente arranque."
+      },
       "memory_limit": {
         "label": "Memoria por sandbox de demostración",
         "help": "La memoria máxima que puede usar el motor de un sandbox de demostración. Una consulta que necesite más se rechaza."

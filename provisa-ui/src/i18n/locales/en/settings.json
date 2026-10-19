@@ -796,6 +796,10 @@
         "label": "Demo sandboxes open at once",
         "help": "How many demo sandboxes may be open together. Past it, a visitor opening a demo is asked to try again shortly."
       },
+      "template_builds_at_once": {
+        "label": "Demo templates built at once",
+        "help": "How many demo templates the sandbox tier builds together after it starts; the rest wait their turn, and a demo a visitor opens is built next. More finish sooner on a larger machine; on a small one, building them all at once leaves it too busy to serve visitors. Takes effect at the next start."
+      },
       "memory_limit": {
         "label": "Memory per demo sandbox",
         "help": "The most memory one demo sandbox's engine may use. A query that needs more is refused."
