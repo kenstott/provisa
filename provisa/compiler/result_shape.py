@@ -119,11 +119,9 @@ def table_columns(table_id: int, ctx: Any, column_types: dict) -> dict[str, str]
 
 
 def _resolve_table(tbl: exp.Table, table_map: dict[str, int]) -> int | None:
-    qualified = f"{tbl.db}.{tbl.name}" if tbl.db else tbl.name
-    table_id = table_map.get(qualified)
-    if table_id is None:
-        table_id = table_map.get(tbl.name)
-    return table_id
+    from provisa.compiler.naming import table_id_of
+
+    return table_id_of(tbl, table_map)
 
 
 def _lookup(columns: dict[str, str], name: str) -> str | None:

@@ -17,7 +17,8 @@ Names must be valid GraphQL identifiers: [_A-Za-z][_0-9A-Za-z]*.
 
 import functools
 import re
-from typing import TYPE_CHECKING, cast
+from collections.abc import Mapping
+from typing import TYPE_CHECKING, Any, cast
 
 if TYPE_CHECKING:
     from inflect import Word
@@ -266,6 +267,29 @@ def attach_catalog(source: object) -> str:  # REQ-1266, REQ-1529
     source its caller builds (``native_backend._walk_registry``, ``pg_backend``) from the org's
     ``source_catalogs``. A source that was not handed over that way has none (KeyError)."""
     return vars(source)["catalog"]
+
+
+def physical_relation_name(catalog: str, schema: str, table: str) -> str:
+    """The key a table's catalog-physical reference (``catalog.schema.table``, as a statement is
+    lowered to, ``sql_rewrite._table_ref``) is resolved by in a governance table map."""
+    return f"{catalog}.{schema}.{table}"
+
+
+def table_id_of(table: Any, table_map: Mapping[str, int]) -> int | None:
+    """The registered table a statement's reference names: by its catalog-physical name when it
+    carries a catalog, else its ``schema.table`` or ``domain.table`` name, else its bare name.
+    A view's body is lowered to catalog-physical names before it is read into a statement, and
+    two sources may hold tables of one name (an EU and a US ``public.customers``): only the
+    catalog tells them apart, and resolved without it the one reference names the other table."""
+    if table.catalog and table.db:
+        found = table_map.get(physical_relation_name(table.catalog, table.db, table.name))
+        if found is not None:
+            return found
+    if table.db:
+        found = table_map.get(f"{table.db}.{table.name}")
+        if found is not None:
+            return found
+    return table_map.get(table.name)
 
 
 def region_read_catalog(

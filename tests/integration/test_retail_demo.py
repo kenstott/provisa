@@ -211,3 +211,30 @@ def test_the_sender_is_revealed_only_to_a_reviewer_in_the_eu(nodes):
     assert {r["sender_email"] for r in withheld} == {"withheld"}
     revealed = _rows(nodes["us"], _QUEUE, "reviewer,region__eu")
     assert all(r["sender_email"].endswith("@eu.retailgroup.example") for r in revealed)
+
+
+def test_a_view_reading_both_subsidiaries_answers_on_us(nodes):
+    """The access request's view joins the requests to the EU and the US customers, both a
+    ``public.customers`` of their own source. Read into the statement lowered to physical names,
+    the EU one once resolved to the US table: the EU replica was never attached and the read
+    failed (Binder Error: Catalog "region_eu" does not exist)."""
+    rows = _rows(
+        nodes["us"],
+        'SELECT subsidiary, customer_id, full_name FROM "retail"."view_subject_access"',
+        "dpo",
+        deadline_s=600,
+    )
+    assert {r["subsidiary"] for r in rows} == {"eu", "us"}, rows
+
+
+def test_the_example_query_answers_on_us(nodes):
+    query = (_DEMO / "queries" / "1-group-customers.graphql").read_text()
+    resp = httpx.post(
+        f"{nodes['us'].base_url}/data/graphql",
+        json={"query": query},
+        headers={"X-Provisa-Role": _ADMIN},
+        timeout=nodes["us"].request_timeout + 10,
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert not body.get("errors") and body["data"], body
