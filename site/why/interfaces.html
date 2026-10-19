@@ -51,13 +51,12 @@
         <h1>Three languages. Nine protocols. One model.</h1>
         <p class="lead">
           The query language and the wire protocol are independent choices. Every entry
-          point resolves against the same federated model and passes through the same
-          governance — there is no path in that skips it.
+          point resolves against the same federated model and passes through the same governance. No path in skips it.
         </p>
         <p class="lead">
           One model does not mean one namespace. You divide sources into
-          <strong>domains</strong>, and a domain is what a SQL client sees as a schema —
-          so <code>sales.orders</code> and <code>finance.orders</code> stay distinct
+          <strong>domains</strong>, and a domain is what a SQL client sees as a schema, so
+          <code>sales.orders</code> and <code>finance.orders</code> stay distinct
           while resolving through the same governed model.
         </p>
       </div>
@@ -68,9 +67,8 @@
         <h3>GraphQL</h3>
         <p>
           Per-role schemas with field-level visibility, cursor pagination, and aggregates.
-          The schema is constrained to registered relationships, so a query that traverses
-          an unapproved path cannot be expressed — it is <em>valid by construction</em>
-          rather than rejected at runtime. Apollo Automatic Persisted Queries are included.
+          The schema is constrained to registered relationships, so a query that traverses an unapproved path cannot be expressed at all; it is
+          never written to be rejected. Apollo Automatic Persisted Queries are included.
         </p>
 
         <h3>SQL</h3>
@@ -83,8 +81,7 @@
         <h3>Cypher</h3>
         <p>
           Graph queries over the same federated model. Traverse relationships as edges,
-          union sources into a single node label, and walk variable-length paths — under
-          identical governance to the SQL and GraphQL paths.
+          union sources into a single node label, and walk variable-length paths, under the same governance as SQL and GraphQL.
         </p>
 
         <h2>Wire protocols</h2>
@@ -106,7 +103,7 @@
 
         <h3>Arrow Flight</h3>
         <p>
-          Arrow record batches streamed over gRPC — columnar all the way out, with no
+          Arrow record batches streamed over gRPC, columnar all the way out, with no
           row-by-row serialization between the engine and the client. Accepts GraphQL or
           SQL. Result sets are unbounded: nothing is materialized server-side while the
           client reads.
@@ -121,7 +118,7 @@
 
         <h3>JDBC, REST, and JSON:API</h3>
         <p>
-          BI tools — Tableau, Power BI, DBeaver — connect over JDBC. Applications get two
+          BI tools such as Tableau, Power BI and DBeaver connect over JDBC. Applications get two
           HTTP shapes over the same model: plain REST at
           <code>/data/rest/{table}</code>, with filter, ordering, pagination, and field
           selection as query parameters, and JSON:API 1.1 at
@@ -133,7 +130,8 @@
         <h3>Airport (DuckDB)</h3>
         <p>
           Any DuckDB client attaches Provisa as a database —
-          <code>ATTACH 'grpc://host' AS p (TYPE AIRPORT)</code> — and queries the governed
+          <code>ATTACH 'grpc://host' AS p (TYPE AIRPORT)</code>, and queries the
+          governed
           federated model from local DuckDB. Filters and projections push down; writes
           update by primary key.
         </p>
@@ -141,7 +139,7 @@
         <h3>WebSocket and SSE</h3>
         <p>
           Subscriptions stream near-real-time change events. The backend is your choice:
-          Postgres native notification, MongoDB change streams, CDC, or polling — and
+          Postgres native notification, MongoDB change streams, CDC or polling, and
           events can fan out over Kafka.
         </p>
 
@@ -149,15 +147,16 @@
 
         <h3>MCP server</h3>
         <p>
-          A Model Context Protocol server — stdio and remote Streamable HTTP — exposes your
-          governed, federated data to agents like Claude as tools. The OAuth token maps to
+          A Model Context Protocol server, over stdio or remote Streamable HTTP, exposes
+          your governed, federated data to agents as tools. The OAuth token maps to
           a role, so every agent call is governed by the same six layers as a human query.
           Agents get no bypass, and no separate policy to keep in sync.
         </p>
 
         <h3>Natural language</h3>
         <p>
-          NL→SQL, Cypher, or GraphQL powered by Claude, with an interactive validation loop
+          Natural language to SQL, Cypher or GraphQL, on the language model you
+          configure, with an interactive validation loop
           so a generated query is reviewed before anything executes.
         </p>
       </div>

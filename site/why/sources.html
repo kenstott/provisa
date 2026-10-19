@@ -48,7 +48,7 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Sources</span></p>
-        <h1>Seventy-three connectors, and one of them is a secret weapon.</h1>
+        <h1>Seventy-three connectors, and one of them finds the rest of your data.</h1>
         <p class="lead">
           Seventy-two of them connect to a system you already know you have. The seventy-third
           is a crawler, and it tends to find the half of your estate nobody put on the
@@ -71,9 +71,9 @@
           for any other source.
         </p>
         <p>
-          Which is a wider net than it sounds. Not just CSV and Parquet —
-          <strong>Excel workbooks</strong>, and even <strong>Word, PowerPoint, HTML, XML,
-          and Markdown documents</strong>, each converted to tables on the way in.
+          Besides CSV and Parquet, it reads <strong>Excel workbooks</strong> and
+          <strong>Word, PowerPoint, HTML, XML and Markdown documents</strong>, each
+          converted to tables on the way in.
         </p>
 
         <div class="src-all">
@@ -91,30 +91,27 @@
           </div>
         </div>
         <p>
-          The reason it earns the description: the data that runs a department is very
-          often sitting in a share drive, and it has never been anywhere near a governance
-          program. Discovery is the part that used to be a project — after that, what you
-          register lands under the same row-level security, masking, and relationship rules
-          as the databases.
+          The data that runs a department often sits in a share drive and has never been
+          near a governance program. Finding it used to be a project. Once found, what
+          you register lands under the same row-level security, masking and relationship
+          rules as the databases.
         </p>
 
         <h2>Systems that aren't databases</h2>
         <p>
           Connect <strong>SharePoint</strong> and its lists enumerate as schemas you can
           query. Run a <strong>Splunk</strong> search and the results come back as a table
-          you can JOIN to your business data. A live <strong>Google Sheet</strong> is just
-          another table — and so is a REST, GraphQL, gRPC, WebSocket, or RSS endpoint,
-          registered as a governed table that federated joins reach transparently.
+          you can JOIN to your business data. A live <strong>Google Sheet</strong> is a table, and so is a REST, GraphQL,
+          gRPC, WebSocket or RSS endpoint, registered as a governed table that federated
+          joins reach like any other.
         </p>
 
         <h2>Shaping is a declaration, not a program</h2>
         <p>
           Non-relational data is where pipelines are born: the response is nested, the
           document has an array inside it, the location is a pile of files, so somebody
-          writes code to flatten it and a procedure enters the path permanently. We start
-          from the premise that the variety is smaller than it looks — a modest set of
-          structure types, each with a short declarative rule for projecting it into rows
-          and columns. The path to the collection and the fields to lift from it. A
+          writes code to flatten it and a procedure enters the path permanently. The variety is smaller than it looks: a modest set of structure types, each
+          with a short declarative rule for projecting it into rows and columns. The path to the collection and the fields to lift from it. A
           sampled document schema, with the steward's explicit types overriding what was
           inferred. A crawled location that catalogs what it finds. Once it's flat,
           everything after it is SQL, and SQL is a thing a machine can read back.
@@ -123,11 +120,10 @@
 
         <h2>Graph and RDF are first-class</h2>
         <p>
-          Neo4j and SPARQL sources are not adapters bolted onto a relational core. They
-          participate in the same federated model, the same relationship registry, and the
-          same access-control layers — which is what makes a Cypher traversal across a
-          relational source and a graph source a single legal query rather than two
-          queries and a join in application code.
+          Neo4j and SPARQL sources take part in the same federated model, the same
+          relationship registry and the same access-control layers as the relational
+          ones. So a Cypher traversal across a relational source and a graph source is
+          one legal query, not two queries and a join in application code.
         </p>
 
         <h2 id="the-73">The 73</h2>
@@ -180,8 +176,8 @@
         <h2>Observability as data</h2>
         <p>
           Traces, metrics, and logs are collected via OpenTelemetry, compacted into
-          Iceberg, and registered as queryable tables — so the audit trail is a source like
-          any other, joinable to the business data it describes.
+          Iceberg, and registered as queryable tables, so the audit trail is a source
+          like any other, joinable to the business data it describes.
         </p>
       </div>
 

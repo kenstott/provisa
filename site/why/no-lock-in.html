@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>No lock-in — engine, source, or us — Provisa</title>
-  <meta name="description" content="Your semantics live above the infrastructure: swap engines and re-point sources without rewriting a query or a policy — and take your declarative model with you if you leave Provisa." />
+  <meta name="description" content="Your semantics live above the infrastructure: swap engines and re-point sources without rewriting a query or a policy, and take your declarative model with you if you leave Provisa." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -47,22 +47,22 @@
   <main id="main" class="doc">
     <div class="container">
       <div class="doc-head">
-        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Vendor leverage</span></p>
-        <h1>Locked-in ecosystems become replaceable execution engines.</h1>
+        <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>No lock-in</span></p>
+        <h1>The platforms you're locked into become engines you can replace.</h1>
         <p class="lead">
-          Provisa front-ends your disparate systems so your semantics live with
-          <em>you</em>, not your vendors — turning the platforms you're currently stuck
-          inside into components you can swap without rewriting a query or a policy.
+          Provisa sits in front of your systems, so your semantics live with
+          <em>you</em>, not with your vendors. The platforms you're stuck inside become
+          components you can swap without rewriting a query or a policy.
         </p>
       </div>
 
       <div class="doc-body">
         <h2>No lock-in to an engine or a source</h2>
         <p>
-          Your model, semantics, and governance live <em>above</em> the infrastructure
-          rather than inside it, which insulates your data consumers from infrastructure
-          churn. Swap the engine — embedded, to Trino, to your warehouse; new CTO, new
-          strategy, switch it to Databricks — and the queries and policies don't change.
+          Your model, semantics and governance live <em>above</em> the infrastructure,
+          not inside it, so changes there don't reach the people using the data. Swap
+          the engine from embedded to Trino, or to your warehouse, or to Databricks when
+          a new CTO brings a new strategy, and the queries and policies don't change.
           Re-point a table from Oracle to Postgres, or MongoDB to Snowflake, and consumers
           never see it move.
         </p>
@@ -70,20 +70,19 @@
           That turns <strong>data modernization</strong> into an incremental effort instead
           of a big-bang cutover. Migrate sources table by table behind a stable governed
           API, with one uniform governance model applying to legacy and modern sources
-          alike throughout the transition — which is the part that usually kills these
-          programs, since the interim state normally means two governance models and a
+          alike throughout the transition. That is the part that usually kills these
+          programs: the interim state normally means two governance models and a
           spreadsheet reconciling them.
         </p>
         <p>
-          Your warehouse should be a replaceable component, not a place you get stranded.
-          When your semantics live above the engine, vendors compete for your workloads
-          instead of holding them hostage.
+          When your semantics live above the engine, vendors compete for your workloads,
+          and your warehouse is a component you can replace.
         </p>
 
         <h2>We don't lock you in either</h2>
         <p>
-          Provisa is a handful of primitives — domains, tables, relationships, masking,
-          views — compiled deterministically. There is no proprietary modeling universe to
+          Provisa is a handful of primitives (domains, tables, relationships, masking,
+          views) compiled deterministically. There is no proprietary modeling universe to
           learn and no black box: your model is portable declarative config, and the SQL it
           compiles is yours to read, export, and keep.
         </p>
@@ -97,45 +96,40 @@
         <h2>Physical fragmentation, logical coherence</h2>
         <p>
           Performance needs fragmentation: the right engine per workload, materialized
-          copies at the right granularity. Consumers need one coherent model. The old cost
-          of fragmenting the physical was fragmenting the <em>logical</em> too — a pile of
-          models with clashing objectives and granularity, physical detail bleeding into
-          logical design.
+          copies at the right granularity. Consumers need one coherent model. Fragmenting the physical used to fragment the <em>logical</em> too: a pile of
+          models with clashing objectives and granularity, and physical detail bleeding
+          into logical design.
         </p>
         <p>
           Provisa splits them. Specialized engines and materialized views underneath, one
           governed logical model on top, and the physical never bleeds into the contract
-          your consumers see. The knobs that fragment for speed live in the same
-          declarative model that keeps you coherent, so going faster never spawns a second
-          modeling mess.
+          your consumers see. The settings that split work across engines for speed live in the same
+          declarative model, so going faster never creates a second model.
         </p>
 
-        <h2>Domains as products — delegated, not centralized</h2>
+        <h2>Domains as products, delegated</h2>
         <p>
-          Give a domain its own owner and scoped rights to build it: register sources,
-          publish tables, wire relationships, ship views — all inside their domain, none of
-          it reaching another. Central policy still governs every query. Authorship is
-          federated; enforcement stays absolute. It's optional — off by default, on when
-          you need it.
+          Give a domain its own owner, with rights scoped to it: register sources,
+          publish tables, wire relationships and ship views inside that domain, and none
+          of it reaches another. Central policy still governs every query. Authorship is
+          federated; enforcement is shared.
         </p>
 
         <h2 id="promote-config">Promote config like code</h2>
         <p>
-          Analysts and developers work freely in an isolated replica: register sources,
-          publish tables, wire relationships. Their changes export as a patch that can be
-          approved, and flow through your own designed release process — Provisa fits the
-          process you already run, not the other way round, from a manual eyeball-and-apply
-          all the way to a fully automated pipeline. Because the estate is declarative,
-          metadata promotion is a simple patch.
+          Analysts and developers work in an environment of their own, a branch of the
+          model: they register sources, publish tables and wire relationships there.
+          Their changes merge back through a request that someone approves, and an
+          environment can push to your own git repository. So changes go through the
+          release process you already run, whether that is a manual review or a fully
+          automated pipeline.
         </p>
 
-        <h2>The economic takeaway — you set the compute bill</h2>
+        <h2>You set the compute bill</h2>
         <p>
-          Pair semantic governance with intelligent query routing and the value shifts from
-          merely <em>managing access</em> to actively optimizing compute economics. Provisa
-          becomes a single point of leverage to optimize execution speed, minimize network
-          egress, and dictate exactly how much you pay vendor compute engines on any given
-          query.
+          Because every query passes through one model, Provisa also decides where each
+          one runs: how fast it is, how much data crosses the network, and which
+          vendor's engine you pay for it.
         </p>
         <p>
           Single-source queries bypass federation entirely and route direct to the driver.

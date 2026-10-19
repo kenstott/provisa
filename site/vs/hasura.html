@@ -51,11 +51,12 @@
         <h1>Where the v2 idea kept going.</h1>
         <p class="lead">
           Instant, per-role, metadata-driven APIs over your own databases was the right
-          idea. Provisa takes it further rather than sideways — same premise, more
-          languages, more ways in, and governance that holds on all of them. Bring your
-          metadata with you: the converter reads a Hasura v2 metadata directory and emits
-          a Provisa config, tables, permissions, relationships, remote schemas, actions,
-          and triggers included.
+          idea. Provisa keeps the premise and adds more languages, more ways in, and
+          governance that holds on all of them. Bring your metadata with you: the
+          converter reads a Hasura v2 metadata directory and writes a Provisa config,
+          tables, permissions, relationships, remote schemas, actions and triggers
+          included. Admin › Import does the same from an upload and shows what each
+          piece became before it applies anything.
         </p>
       </div>
 
@@ -78,14 +79,14 @@
           <li><strong>Row permissions</strong> — Hasura boolean expressions convert to SQL row-level security rules.</li>
           <li><strong>Relationships</strong> — object and array relationships become registered, governed relationships.</li>
           <li><strong>Remote schemas</strong> — mapped to GraphQL remote sources.</li>
-          <li><strong>Actions</strong> — HTTP-handler actions become webhooks; others land as function placeholders.</li>
+          <li><strong>Actions</strong> — each becomes a command that calls the same
+          handler, with its arguments and output.</li>
           <li><strong>Event triggers and cron triggers</strong> — carried across as event and scheduled triggers.</li>
           <li><strong>Roles and rate limits</strong> — preserved as Provisa roles.</li>
         </ul>
         <p>
-          Anything the converter can't map cleanly is reported as a warning rather than
-          silently dropped, so the gaps are a list you work through, not a surprise you
-          find in production.
+          Anything the converter can't map cleanly is reported as a warning, so the gaps
+          are a list you work through.
         </p>
 
         <h2>What you keep</h2>
@@ -140,8 +141,8 @@
 
         <h2>On staying put</h2>
         <p>
-          Provisa is a handful of primitives compiled deterministically — domains, tables,
-          relationships, masking, views. Your model is portable declarative config and the
+          Provisa is a handful of primitives (domains, tables, relationships, masking,
+          views) compiled deterministically. Your model is portable declarative config and the
           SQL it compiles is yours to read and export, so the next migration, whenever it
           comes and wherever it goes, starts from a file you already own.
         </p>
