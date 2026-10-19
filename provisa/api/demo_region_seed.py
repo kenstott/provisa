@@ -353,6 +353,29 @@ async def adopt_seed(template_org: str, demo_directory: Path) -> bool:
     return adopted
 
 
+async def landed_elsewhere(template_org: str, demo_directory: Path) -> bool:
+    """Whether every other region's seed the bundle carries is landed for the template: that
+    region's state for it laid out and recording as many completed replicas as its seed lists.
+    A regions tier runs no node of those regions, so this node lands them (adopt_seed) -- and a
+    node whose own region keeps nothing of the demo has nothing of its own to judge it by."""
+    for store in await org_region_stores(template_org):
+        if store.region == here():
+            continue
+        record_path = seed_dir(demo_directory, store.region) / _RECORD
+        if not record_path.exists():
+            continue
+        expected = len(json.loads(record_path.read_text())["replicas"])
+        db = state_db(template_org, store)
+        async with db.acquire() as conn:
+            laid_out = await conn.fetchval("SELECT to_regclass('replica_state')")
+        if laid_out is None:
+            return False
+        rows, _views = await _records(db)
+        if len(rows) < expected:
+            return False
+    return True
+
+
 async def landed_here(template_org: str) -> int:
     """How many of the template's replicas in this node's region are landed in its store:
     recorded as built for it, and held there with the rows recorded (demo_replicas.landed_here)."""
