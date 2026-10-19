@@ -1045,11 +1045,11 @@ Il contratto si scrive nella UI, nel pannello qualità dei dati della pagina di 
 
 ## Connettori personalizzati {: #custom-connectors }
 
-I motori di federazione nativi — Postgres, DuckDB e ClickHouse — guadagnano raggiungibilità verso un nuovo tipo di origine quando un operatore dichiara un connettore per esso in `config/custom_connectors.yaml`. Non è richiesto codice.
+Un operatore può dare ai motori di federazione nativi (Postgres, DuckDB e ClickHouse) accesso a un nuovo tipo di origine dichiarando un connettore per esso in `config/custom_connectors.yaml`. Non serve codice.
 
-L'estensibilità dei connettori di per sé precede questo. Il motore Trino è da tempo estensibile al proprio livello — un connettore JDBC generico parametrizzato per tipo di origine, un corpo `.properties` di catalogo per tipo, e i plugin connettore Trino personalizzati propri di Provisa (Splunk, SharePoint, Calcite). Le dichiarazioni di connettori personalizzati portano la stessa estensibilità config-driven ai due motori nativi senza cluster, che in precedenza portavano un insieme fisso di connettori.
+Così i motori nativi, che girano senza cluster, ottengono la stessa estensibilità guidata dalla configurazione che il motore Trino ha al proprio livello. Lì un connettore JDBC generico viene parametrizzato per tipo di origine, ogni tipo riceve un corpo `.properties` di catalogo e Provisa aggiunge i propri plugin di connettore Trino (Splunk, SharePoint, Calcite).
 
-La configurazione viene fornita vuota. I connettori integrati coprono la raggiungibilità out-of-the-box; tutto in questo file è scritto dall'operatore. Imposta `PROVISA_CUSTOM_CONNECTORS` per puntare a un percorso diverso (utile per i test).
+Il file viene fornito vuoto. I connettori integrati coprono ciò che funziona subito, e tutto ciò che sta in questo file lo scrive l'operatore. Per usare un altro percorso, per esempio nei test, impostate `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Tipi di descrittore {: #descriptor-kinds }
 

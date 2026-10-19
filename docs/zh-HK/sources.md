@@ -1018,11 +1018,12 @@ tables:
 ---
 
 ## 自訂連接器 {: #custom-connectors }
-當營運者在 `config/custom_connectors.yaml` 中為某個新數據來源類型宣告一個連接器時，原生聯邦引擎——Postgres、DuckDB 與 ClickHouse——即取得對它的可達性。毋須任何程式碼。
 
-連接器可擴充性本身早於此。Trino 引擎長久以來在它自己那一層就是可擴充的——一個按數據來源類型參數化的通用 JDBC 連接器、一份逐類型的目錄 `.properties` 本體，以及 Provisa 自己的自訂 Trino 連接器外掛（Splunk、SharePoint、Calcite）。自訂連接器宣告把同樣的設定驅動可擴充性帶到那兩個原生、免叢集的引擎，它們先前只有一組固定的連接器。
+營運者可以在 `config/custom_connectors.yaml` 中為新的數據來源類型宣告一個連接器，令原生聯邦引擎（Postgres、DuckDB 及 ClickHouse）能夠觸及它。無需編寫程式碼。
 
-該設定檔出貨時是空的。內建連接器已涵蓋開箱即用的觸及範圍；此檔案中的一切都由營運者撰寫。 設定 `PROVISA_CUSTOM_CONNECTORS` 可指向另一個路徑（供測試使用時很有用）。
+這令無需叢集即可執行的原生引擎，獲得與 Trino 引擎在其自身層面相同的設定驅動擴充能力。在 Trino 那裏，一個通用 JDBC 連接器按數據來源類型參數化，每種類型有一個目錄 `.properties` 主體，Provisa 亦提供自己的 Trino 連接器外掛（Splunk、SharePoint、Calcite）。
+
+該檔案出廠時為空。內建連接器涵蓋開箱即用的部分，此檔案中的一切都由營運者編寫。如需使用其他路徑（例如在測試中），請設定 `PROVISA_CUSTOM_CONNECTORS`。
 
 ### 描述元種類 {: #descriptor-kinds }
 | 引擎 | 種類 | 機制 | 描述元提供什麼 |

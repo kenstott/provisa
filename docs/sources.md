@@ -1057,11 +1057,11 @@ You write the contract in the UI, in the data-quality panel of the table's edit 
 
 ## Custom Connectors
 
-The native federation engines — Postgres, DuckDB, and ClickHouse — gain reachability to a new source type when an operator declares a connector for it in `config/custom_connectors.yaml`. No code is required.
+An operator can give the native federation engines (Postgres, DuckDB and ClickHouse) reach to a new source type by declaring a connector for it in `config/custom_connectors.yaml`. No code is needed.
 
-Connector extensibility itself predates this. The Trino engine has long been extensible at its own layer — one generic JDBC connector parametrized per source type, a catalog `.properties` body per type, and Provisa's own custom Trino connector plugins (Splunk, SharePoint, Calcite). Custom connector declarations bring that same config-driven extensibility to the two native, no-cluster engines, which previously carried a fixed connector set.
+This gives the native engines, which run without a cluster, the same config-driven extensibility the Trino engine has at its own layer. There, one generic JDBC connector is parametrized per source type, each type gets a catalog `.properties` body, and Provisa adds its own Trino connector plugins (Splunk, SharePoint, Calcite).
 
-The config ships empty. Built-in connectors cover out-of-the-box reach; everything in this file is operator-authored. Set `PROVISA_CUSTOM_CONNECTORS` to point at a different path (useful for tests).
+The file ships empty. The built-in connectors cover what works out of the box, and everything in this file is written by the operator. To use a different path, for example in tests, set `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Descriptor kinds
 

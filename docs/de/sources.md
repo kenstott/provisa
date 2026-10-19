@@ -1046,11 +1046,11 @@ Sie schreiben den Vertrag in der UI, im Data-Quality-Panel der Bearbeitungsseite
 
 ## Benutzerdefinierte Connectors {: #custom-connectors }
 
-Die nativen Federation-Engines — Postgres, DuckDB und ClickHouse — gewinnen Erreichbarkeit zu einem neuen Quelltyp, wenn ein Betreiber dafür einen Connector in `config/custom_connectors.yaml` deklariert. Kein Code erforderlich.
+Ein Betreiber kann den nativen Federation-Engines (Postgres, DuckDB und ClickHouse) Zugriff auf einen neuen Quelltyp geben, indem er in `config/custom_connectors.yaml` einen Connector dafür deklariert. Code ist nicht nötig.
 
-Connector-Erweiterbarkeit selbst geht dem voraus. Die Trino-Engine ist auf ihrer eigenen Schicht seit Langem erweiterbar — ein generischer JDBC-Connector, parametrisiert pro Quelltyp, ein Katalog-`.properties`-Body pro Typ, und Provisas eigene benutzerdefinierte Trino-Connector-Plugins (Splunk, SharePoint, Calcite). Eigene Connector-Deklarationen bringen dieselbe konfigurationsgesteuerte Erweiterbarkeit zu den zwei nativen, clusterlosen Engines, die zuvor eine feste Connector-Menge trugen.
+Damit bekommen die nativen Engines, die ohne Cluster laufen, dieselbe konfigurationsgesteuerte Erweiterbarkeit, die die Trino-Engine auf ihrer eigenen Ebene hat. Dort wird ein generischer JDBC-Connector pro Quelltyp parametrisiert, jeder Typ erhält einen Katalog-`.properties`-Rumpf, und Provisa ergänzt eigene Trino-Connector-Plugins (Splunk, SharePoint, Calcite).
 
-Die Konfiguration wird leer ausgeliefert. Eingebaute Connectors decken die Reichweite von Haus aus ab; alles in dieser Datei ist vom Betreiber verfasst. Setzen Sie `PROVISA_CUSTOM_CONNECTORS`, um auf einen anderen Pfad zu verweisen (nützlich für Tests).
+Die Datei wird leer ausgeliefert. Die eingebauten Connectors decken ab, was ohne Weiteres funktioniert, und alles in dieser Datei schreibt der Betreiber. Für einen anderen Pfad, etwa in Tests, setzen Sie `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Deskriptor-Arten {: #descriptor-kinds }
 

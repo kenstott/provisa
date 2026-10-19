@@ -1019,11 +1019,12 @@ El contrato se escribe en la UI, en el panel de calidad de datos de la página d
 ---
 
 ## Conectores personalizados {: #custom-connectors }
-Los motores de federación nativos — Postgres, DuckDB y ClickHouse — obtienen accesibilidad a un nuevo tipo de origen cuando un operador declara un conector para él en `config/custom_connectors.yaml`. No se requiere código.
 
-La extensibilidad de conectores en sí misma es anterior a esto. El motor Trino lleva mucho tiempo siendo extensible en su propia capa — un conector JDBC genérico parametrizado por tipo de origen, un cuerpo `.properties` de catálogo por tipo, y los propios plugins de conector Trino personalizados de Provisa (Splunk, SharePoint, Calcite). Las declaraciones de conectores propios llevan esa misma extensibilidad basada en configuración a los dos motores nativos sin clúster, que antes tenían un conjunto de conectores fijo.
+Un operador puede dar a los motores de federación nativos (Postgres, DuckDB y ClickHouse) alcance a un nuevo tipo de origen declarando un conector para él en `config/custom_connectors.yaml`. No hace falta código.
 
-La configuración se distribuye vacía. Los conectores integrados cubren el alcance listo para usar; todo lo que hay en este archivo lo escribe el operador. Defina `PROVISA_CUSTOM_CONNECTORS` para apuntar a una ruta distinta (útil para pruebas).
+Así los motores nativos, que funcionan sin clúster, obtienen la misma extensibilidad por configuración que el motor Trino tiene en su propia capa. Allí, un conector JDBC genérico se parametriza por tipo de origen, cada tipo recibe un cuerpo `.properties` de catálogo, y Provisa añade sus propios plugins de conector de Trino (Splunk, SharePoint, Calcite).
+
+El archivo viene vacío. Los conectores incorporados cubren lo que funciona de serie, y todo lo que hay en este archivo lo escribe el operador. Para usar otra ruta, por ejemplo en pruebas, defina `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Tipos de descriptor {: #descriptor-kinds }
 | Motor | Tipo | Mecanismo | Qué proporciona el descriptor |

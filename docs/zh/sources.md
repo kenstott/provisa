@@ -933,7 +933,7 @@ sources:
 
 服务器在接受连接之前会从对象存储挂载其 schema，首次启动需要数分钟。它在数据源保存时启动；在就绪之前，Register Table 表单会报告该数据源仍在启动。
 
-### Where a source's password lives
+### 数据源的密码存放在哪里 {: #where-a-sources-password-lives }
 
 一个数据源的密码永远不会与其连接设置的其余部分存放在一起。控制平面
 `sources` 表的行携带一个 `password_ref` 列，其中存放的是为密码输入的内容：
@@ -959,7 +959,7 @@ sources:
 会提供自己的连接值，而引用所指向的保管库属于提供该引用的那个
 环境。
 
-### Data Profiler
+### 数据画像器 {: #data-profiler }
 
 数据剖析器（data profiler）是一种只保存名称、调度计划和运行默认值的数据源，别无其他。它从不进行内省。其他数据源的表被添加到它之下，每次运行都会对这些表进行度量，并将结果行写入组织的控制平面，在那里像读取其他数据源的表一样读取。创建剖析器并向其添加表的方法参见[测试数据](test-data.md)。
 
@@ -1038,15 +1038,15 @@ tables:
 
 ---
 
-## Custom Connectors
+## 自定义连接器 {: #custom-connectors }
 
-原生联邦引擎 — Postgres、DuckDB 和 ClickHouse — 在运营方于 `config/custom_connectors.yaml` 中为某个新数据源类型声明连接器时，获得对该类型的可达性。无需任何代码。
+运营方可以在 `config/custom_connectors.yaml` 中为新的数据源类型声明一个连接器，让原生联邦引擎（Postgres、DuckDB 和 ClickHouse）能够访问它。无需编写代码。
 
-连接器的可扩展性本身早已存在。Trino 引擎长期以来在其自身层面上是可扩展的 — 每种数据源类型对应一个通用的、参数化的 JDBC 连接器，每种类型对应一个目录（catalog）`.properties` 主体，以及 Provisa 自己的自定义 Trino 连接器插件（Splunk、SharePoint、Calcite）。自定义连接器声明将这种基于配置的可扩展性带给了这两个原生的、无集群的引擎，此前它们只有一套固定的连接器集合。
+这让无需集群即可运行的原生引擎，获得与 Trino 引擎在其自身层面相同的基于配置的可扩展性。在 Trino 那里，一个通用 JDBC 连接器按数据源类型参数化，每种类型有一个目录 `.properties` 主体，Provisa 还提供自己的 Trino 连接器插件（Splunk、SharePoint、Calcite）。
 
-该配置文件默认为空。内置连接器覆盖开箱即用的可达性；该文件中的一切都是由运营方自行编写的。 设置 `PROVISA_CUSTOM_CONNECTORS` 以指向一个不同的路径（对测试很有用）。
+该文件出厂为空。内置连接器覆盖开箱即用的部分，此文件中的一切都由运营方编写。如需使用其他路径（例如在测试中），请设置 `PROVISA_CUSTOM_CONNECTORS`。
 
-### Descriptor kinds
+### 描述符类型 {: #descriptor-kinds }
 
 | Engine | Kind | Mechanism | What the descriptor supplies |
 | --- | --- | --- | --- |
@@ -1065,7 +1065,7 @@ tables:
 
 一个未知的 `kind` 值会在启动时直接报错失败 — 一个 descriptor 拼写错误绝不能默默地使某个数据源类型不可达。
 
-### Probe gating
+### 探测把关 {: #probe-gating }
 
 可用性在 attach 时针对每个引擎的标准发现目录进行验证：
 
@@ -1075,7 +1075,7 @@ tables:
 
 一个已声明但无法安装的扩展会直接报错失败。没有静默跳过，没有回退。探测失败的连接器在该部署中就是未激活状态。
 
-### Template variables
+### 模板变量 {: #template-variables }
 
 每个 `server_options` 值、`user_mapping` 值、`attach_template` 和 `scan_template` 都可以使用 `{field}` 占位符。可用字段：
 
@@ -1083,7 +1083,7 @@ tables:
 
 引用未知字段的模板会在 attach 时直接报错失败，从而在损坏的 DDL 到达引擎之前，就暴露出 descriptor 与数据源之间的不匹配。
 
-### Examples
+### 示例 {: #examples }
 
 **Postgres — 通过 `mongo_fdw` 访问 MongoDB（无 schema 导入；按表提供列）**
 
@@ -1180,7 +1180,7 @@ sources:
 
 ---
 
-## Source Configuration Fields
+## 数据源配置字段 {: #source-configuration-fields }
 
 所有数据源共享一组公共字段。
 
@@ -1211,7 +1211,7 @@ sources:
 
 ---
 
-## Kafka Sources
+## Kafka 数据源 {: #kafka-sources }
 
 Kafka 主题在 `kafka_sources` 下单独配置，以已注册的 `kafka` 数据源的 `id` 作为键。
 
@@ -1246,7 +1246,7 @@ kafka_sources:
 
 ---
 
-## Column Visibility
+## 列可见性 {: #column-visibility }
 
 每列上的 `visible_to` 字段是一个可以看到该列的角色 ID 列表。
 
@@ -1264,7 +1264,7 @@ columns:
 
 ---
 
-## Relationships
+## 关系 {: #relationships }
 
 关系（Relationship）连接两张已注册的表，并作为嵌套字段出现在 GraphQL 中。
 
@@ -1302,7 +1302,7 @@ relationships:
 | `via_type_value` | No | 该边所固定绑定的判别值 |
 | `via_label_source` | No | 由哪种提名方式命名该 Cypher 类型：`column`（判别值）、`table`（中间表的表名）或 `fixed`（已声明的别名）。全部转换为大写下划线形式 |
 
-### Junction-backed relationships
+### 由关联表支撑的关系 {: #junction-backed-relationships }
 
 一张关联表可以被声明为一个一等公民的 Cypher 关系，而不是一个节点，从而使其
 自身的列成为该关系的属性：
@@ -1349,7 +1349,7 @@ relationships:
 
 ---
 
-## Row-Level Security Rules
+## 行级安全规则 {: #row-level-security-rules }
 
 RLS 规则在查询时注入 `WHERE` 子句，作用范围限定在某个角色，并可选地限定在某张表或某个域上。
 
@@ -1379,9 +1379,9 @@ rls_rules:
 
 ---
 
-## Functions and Webhooks
+## 函数与 Webhook {: #functions-and-webhooks }
 
-### DB Functions
+### 数据库函数 {: #db-functions }
 
 追踪一个数据库函数，并将其暴露为一个 GraphQL 查询或 mutation。
 
@@ -1418,7 +1418,7 @@ functions:
 | `description` | No | `null` | GraphQL 字段描述 |
 | `kind` | No | `mutation` | `"query"` 或 `"mutation"` |
 
-### Webhooks
+### Webhook {: #webhooks }
 
 将一个外部 HTTP 端点暴露为一个 GraphQL 查询或 mutation。
 
@@ -1455,7 +1455,7 @@ webhooks:
 
 ---
 
-## Authentication
+## 认证 {: #authentication }
 
 身份验证在 `auth` 键下配置。
 
@@ -1485,7 +1485,7 @@ auth:
 
 ---
 
-## Execution Routing
+## 执行路由 {: #execution-routing }
 
 **直接执行** — 单数据源 RDBMS 查询路由到原生驱动，以获得亚 100 毫秒的延迟。数据源需要同时具备 `SOURCE_TO_DIALECT` 条目和 `SOURCE_TO_CONNECTOR` 条目才能支持该路径。
 
@@ -1495,7 +1495,7 @@ auth:
 
 ---
 
-## Graph & Semantic Sources
+## 图与语义数据源 {: #graph-semantic-sources }
 
 ### Neo4j
 
@@ -1503,7 +1503,7 @@ auth:
 
 Cypher 查询必须在 `RETURN` 子句中使用属性访问器（`RETURN n.id AS id, n.name AS name`）— 返回节点对象会在注册时被拒绝。
 
-#### Config-file registration
+#### 通过配置文件注册 {: #config-file-registration }
 
 在 YAML 中声明一个 `neo4j` 数据源及其表。每张表都需要一个 `query_template`（产生其行数据的 Cypher）以及有类型的列。`query_template` 键在任何其他数据源类型下都是非法的。
 
@@ -1548,7 +1548,7 @@ tables:
         data_type: integer
 ```
 
-#### Register Table in the UI
+#### 在界面中注册表 {: #register-table-in-the-ui }
 
 一个 neo4j 数据源没有可列出的表，因此 Register Table 表单会要求输入表，而不是提供一个供选择的表。
 
@@ -1559,7 +1559,7 @@ tables:
 
 该 Cypher 与表一同以 `queryTemplate` 的形式存储，显示在该表的只读视图中，其持久化方式与通过配置文件注册完全相同：一条 `api_sources` 行和一条下次启动时会被水合的 `api_endpoints` 行。编辑该表会重新持久化经过编辑的 Cypher。
 
-#### Admin REST registration
+#### 通过管理 REST 注册 {: #admin-rest-registration }
 
 ```bash
 # Register via admin API (no YAML config required)
@@ -1610,7 +1610,7 @@ POST /admin/sources/sparql/knowledge-graph/tables
 
 ---
 
-#### Config-file and UI registration
+#### 通过配置文件和界面注册 {: #config-file-and-ui-registration }
 
 一个 `sparql` 数据源的 `host` 就是其 SPARQL 端点 URL（Sources 表单以同样的方式存储它）。其下的每张表都携带 `query_template`，即一个变量即为列的 SELECT 语句；每个绑定都是 `text`。
 
@@ -1634,7 +1634,7 @@ tables:
 
 Register Table 的工作方式与 Neo4j 相同：选择数据源，输入一个表名和 SELECT 语句，点击 Preview（`sparqlPreview` 查询以 `LIMIT 5` 运行该语句并填充列列表），然后注册。注册过程会持久化一条 `api_sources` 行和一条 `api_endpoints` 行（对该端点路径进行表单编码的 POST，`sparql_bindings` normalizer），与配置文件注册写入的行相同，原生引擎通过与 Neo4j 相同的获取链路落地这些行。
 
-## Connection Examples
+## 连接示例 {: #connection-examples }
 
 ### PostgreSQL
 

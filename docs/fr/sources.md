@@ -1045,11 +1045,11 @@ Vous rédigez le contrat dans l'interface, dans le panneau qualité des données
 
 ## Connecteurs personnalisés {: #custom-connectors }
 
-Les moteurs de fédération natifs — Postgres, DuckDB et ClickHouse — gagnent l'accès à un nouveau type de source lorsqu'un exploitant déclare un connecteur pour ce type dans `config/custom_connectors.yaml`. Aucun code n'est requis.
+Un exploitant peut donner aux moteurs de fédération natifs (Postgres, DuckDB et ClickHouse) l'accès à un nouveau type de source en déclarant un connecteur pour lui dans `config/custom_connectors.yaml`. Aucun code n'est nécessaire.
 
-L'extensibilité des connecteurs elle-même est antérieure. Le moteur Trino est extensible de longue date à son propre niveau — un connecteur JDBC générique paramétré par type de source, un corps de catalogue `.properties` par type, et les greffons de connecteurs Trino personnalisés de Provisa (Splunk, SharePoint, Calcite). Les déclarations de connecteurs personnalisés apportent cette même extensibilité pilotée par configuration aux deux moteurs natifs sans cluster, qui portaient auparavant un jeu de connecteurs figé.
+Les moteurs natifs, qui tournent sans cluster, obtiennent ainsi la même extensibilité par configuration que le moteur Trino possède à son propre niveau. Là, un connecteur JDBC générique est paramétré par type de source, chaque type reçoit un corps `.properties` de catalogue, et Provisa ajoute ses propres plugins de connecteur Trino (Splunk, SharePoint, Calcite).
 
-La configuration est livrée vide. Les connecteurs intégrés couvrent la portée prête à l'emploi ; tout ce que contient ce fichier est rédigé par l'exploitant. Définissez `PROVISA_CUSTOM_CONNECTORS` pour pointer vers un autre chemin (utile pour les tests).
+Le fichier est livré vide. Les connecteurs intégrés couvrent ce qui fonctionne d'emblée, et tout ce qui se trouve dans ce fichier est écrit par l'exploitant. Pour utiliser un autre chemin, par exemple dans les tests, définissez `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Genres de descripteurs {: #descriptor-kinds }
 
