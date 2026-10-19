@@ -786,6 +786,10 @@ class TagAssignment(BaseModel):  # REQ-1377
     # ISO date the assignment stops being intended — for 'deprecated', the planned removal
     # date. Typed (not prose) so management reporting can query it.
     expires_on: str | None = None
+    # REQ-2094: the rest of the assignment's why -- purpose, bases, review_on given; who decided
+    # it, when and on what evidence set by the server (exported read-only, recomputed on import).
+    # None: a save that does not restate it keeps the stored one.
+    why: dict[str, Any] | None = None
     # Qualified table address "source.schema.table" — the config-vocabulary identity used by
     # the export builder (TableIndex resolves names, not DB serials). Filled from a DB join on
     # hydration; a YAML config may provide it instead of table_id and the loader resolves it.
@@ -889,6 +893,8 @@ class MaskEntry(BaseModel):  # REQ-2059
 
     to: list[str]
     mask: Mask | None = None
+    # REQ-2094: why this entry is what it is (provisa.judgments.why); optional.
+    why: dict[str, Any] | None = None
 
 
 class ObjectField(BaseModel):
@@ -1031,6 +1037,9 @@ class Column(
     # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake and used by synthetic
     # generation only -- generation uses the rule, else the fake, else the column's profile.
     synthetic_rule: str | None = None
+    # REQ-2094: why the fake and synthetic rule are what they are (provisa.judgments.why). Given:
+    # reason, purpose, bases, review_on; the server sets who decided it, when and on what evidence.
+    fake_why: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _fake_is_a_kind(self) -> "Column":
@@ -1106,6 +1115,9 @@ class WriteGrant(BaseModel):  # REQ-2074
     rows: str | None = None
     check: str | None = None
     presets: list[ColumnPreset] = Field(default_factory=list)
+    # REQ-2094: reason, purpose, bases and review_on given; who decided it, when and on what
+    # evidence set by the server. None: a save that does not restate it keeps the stored one.
+    why: dict[str, Any] | None = None
 
     @model_validator(mode="after")
     def _fits_its_operation(self) -> "WriteGrant":
@@ -1916,6 +1928,9 @@ class RLSRule(BaseModel):  # REQ-041, REQ-402, REQ-1679
     # REQ-1384: a user tag, by its base id — the rule applies to every table carrying the tag,
     # AND-ed with the table's own (or its domain's) rule.
     tag_id: str | None = None
+    # REQ-2094: reason, bases and review_on given (the description is its purpose); who decided it,
+    # when and on what evidence set by the server. None: a save that does not restate it keeps it.
+    why: dict[str, Any] | None = None
     role_id: str
     filter: str
     # REQ-2081: what the rule is for, as an access review reads it. Required, as a role's is.

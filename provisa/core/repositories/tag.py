@@ -19,6 +19,8 @@ it. System-tag immutability is enforced at the mutation layer.
 
 # Requirements: REQ-1373, REQ-1375, REQ-1377
 
+import datetime as _dt
+
 from provisa.core import model_change
 from typing import TYPE_CHECKING
 
@@ -164,8 +166,10 @@ async def assignment_count(conn: "Connection", tag_id: str) -> int:
 async def assign(  # REQ-1377, REQ-1919
     conn: "Connection", assignment: TagAssignment
 ) -> None:
-    """Put the tag on the object, or change that assignment."""
+    """Put the tag on the object, or change that assignment. REQ-2094: its why is stamped with
+    who decided it, when and on what evidence when the tag or its why changes."""
     model_change.name("assign", "tag", assignment.tag_id)  # REQ-1524
+    why = await _stamped_why(conn, assignment)
     await conn.upsert(
         tag_assignments,
         {
@@ -180,11 +184,87 @@ async def assign(  # REQ-1377, REQ-1919
             "object_key": assignment.object_key(),
             "reason": assignment.reason,
             "expires_on": assignment.expires_on,
+            "purpose": why.get("purpose"),
+            "bases": why.get("bases"),
+            "review_on": why.get("review_on"),
+            "decided_by": why.get("decided_by"),
+            "decided_at": _dt.datetime.fromisoformat(why["decided_at"])
+            if why.get("decided_at")
+            else None,
+            "evidence": why.get("evidence"),
         },
         index_elements=["base_tag_id", "object_key"],
         # tag_id updates: re-assigning entity:employee where entity:customer sat is a
         # correction of the parameter, which is the only way to change one (REQ-1467).
-        update_columns=["tag_id", "object_type", "reason", "expires_on"],
+        update_columns=[
+            "tag_id",
+            "object_type",
+            "reason",
+            "expires_on",
+            "purpose",
+            "bases",
+            "review_on",
+            "decided_by",
+            "decided_at",
+            "evidence",
+        ],
+    )
+
+
+async def _stamped_why(conn: "Connection", assignment: TagAssignment) -> dict:
+    """The assignment's why to store (REQ-2094): its reason (the ``reason`` column), and the given
+    purpose, bases and review-by date -- the stored ones when the save does not restate them --
+    with the decider, time and evidence moved when the tag or its why changes."""
+    from provisa.core.schema_org import registered_tables as rt
+    from provisa.judgments.evidence import evidence
+    from provisa.judgments.why import given_part, parse, stamp_for
+
+    held = (
+        await conn.execute_core(
+            select(tag_assignments).where(
+                (tag_assignments.c.base_tag_id == assignment.base_tag_id())
+                & (tag_assignments.c.object_key == assignment.object_key())
+            )
+        )
+    ).fetchone()
+    previous = None
+    if held is not None:
+        h = held._mapping
+        previous = {
+            "reason": h["reason"],
+            "purpose": h["purpose"],
+            "bases": h["bases"],
+            "review_on": h["review_on"],
+            "decided_by": h["decided_by"],
+            "decided_at": h["decided_at"].isoformat() if h["decided_at"] else None,
+            "evidence": h["evidence"],
+        }
+    where = f"tag {assignment.tag_id} on {assignment.object_key()}"
+    given = given_part(previous) if assignment.why is None else parse(assignment.why, where)
+    given = {k: v for k, v in given.items() if k != "reason"}
+    if assignment.reason:
+        given["reason"] = assignment.reason
+
+    async def _evidence() -> dict:
+        if assignment.table_id is None:
+            return {}
+        reg = (await conn.execute_core(select(rt).where(rt.c.id == assignment.table_id))).fetchone()
+        if reg is None:
+            return {}
+        return await evidence(
+            conn,
+            None,
+            dict(reg._mapping),
+            assignment.column_name if assignment.object_type == "column" else None,
+        )
+
+    return await stamp_for(
+        conn,
+        previous,
+        given,
+        changed=held is None or held._mapping["tag_id"] != assignment.tag_id,
+        where=where,
+        evidence=_evidence,
     )
 
 
@@ -280,8 +360,25 @@ async def list_assignments(conn: "Connection") -> list[dict]:
         schema = row.pop("ref_schema_name", None)
         table = row.pop("ref_table_name", None)
         row["table_ref"] = f"{src}.{schema}.{table}" if src is not None else None
+        row["why"] = why_of(row)  # REQ-2094
         rows.append(row)
     return rows
+
+
+def why_of(row: dict) -> dict | None:
+    """An assignment row's why beyond its ``reason`` (REQ-2094), or None when nothing is
+    recorded."""
+    decided_at = row.get("decided_at")
+    why = {
+        "purpose": row.get("purpose"),
+        "bases": row.get("bases") or None,
+        "review_on": row.get("review_on"),
+        "decided_by": row.get("decided_by"),
+        "decided_at": decided_at.isoformat() if decided_at else None,
+        "evidence": row.get("evidence") or None,
+    }
+    why = {k: v for k, v in why.items() if v is not None}
+    return why or None
 
 
 async def resolve_table_id(

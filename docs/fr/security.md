@@ -426,6 +426,24 @@ Le contrôle d'accès est ce qui limite ce qu'un agent peut apprendre. Pour gard
 
 La vue `sensitive_coverage` du domaine meta liste chaque colonne sensible de l'organisation avec la valeur fictive et la règle synthétique qu'elle déclare et un statut : `covered`, `no_fake`, ou `inadequate` quand l'une des vérifications d'adéquation de Provisa a échoué. Les vérifications cherchent une valeur fictive qui laisse les valeurs réelles inchangées, une valeur fictive dont le type ne correspond pas à ce que contient la colonne, et une valeur fictive ou une règle qui lit la valeur réelle d'une autre colonne sensible. Un data steward voit les colonnes sans valeur fictive dans le détail de chaque environnement, et un environnement Test (fake) refuse de servir des données tant que chaque colonne sensible n'en a pas une. Les vérifications et la vue sont décrites dans [Construire des environnements de test](test-data.md#coverage-and-adequacy-checks).
 
+## Jugements en revue {: #judgments-under-review }
+
+Les choix de gouvernance reposent sur le jugement, et un jugement peut être faux ou devenir obsolète quand les faits sur lesquels il reposait changent. Chaque jugement de gouvernance peut porter un **pourquoi** : un tag sur un objet, la valeur fictive et la règle synthétique d'une colonne, une entrée de masque, une règle de lignes et un droit d'écriture. Un pourquoi contient la raison retenue, le but, les bases nommées citées et une date de revue, le tout facultatif. Sur une attribution de tag, la raison est son propre `reason` ; sur une règle de lignes, le but est sa description obligatoire. Provisa enregistre qui a pris la décision, quand, et sur quelle preuve de profil : la dernière exécution de profil de la table et un résumé de celle-ci. Il les enregistre à chaque sauvegarde qui modifie la décision ou son pourquoi. Une sauvegarde qui omet le pourquoi conserve celui qui est stocké, et un fichier de modèle porte chaque pourquoi dans un bloc `why:`.
+
+Les **bases nommées** sont le contexte que les données ne peuvent pas montrer : une réglementation, une politique, une stratégie. Un jugement les cite par id dans une courte liste (`/admin/judgments/bases`). Un détenteur de `access_config` déclare une base modifiée avec une note, et chaque jugement qui la cite et a été décidé avant devient aussitôt obsolète.
+
+La revue s'exécute toutes les heures pour chaque organisation, à la fin de chaque exécution de profil pour la table profilée, et aussitôt qu'une base est déclarée modifiée. Elle place ce qu'elle trouve dans une seule file :
+
+| Catégorie | Constaté quand |
+|---|---|
+| Faux | une vérification d'adéquation de la valeur fictive d'une colonne sensible échoue, ou la règle synthétique d'une colonne sensible copie des valeurs réelles |
+| Obsolète par les données | le profil a dérivé sur la colonne décidée (selon les seuils propres au profileur), son type plausible, sa famille ou son type de données a changé, une colonne a été ajoutée à la table, la colonne décidée a été supprimée ou retypée, ou l'auteur de la décision n'est plus membre |
+| Obsolète par le contexte | une base citée a été déclarée modifiée après la décision, la date de revue est arrivée, ou le `expires_on` d'une attribution de tag est passé |
+| Non décidé | une colonne sensible n'a pas de valeur fictive, ou une colonne a été ajoutée à une table qui porte un tag sensible ou une valeur fictive |
+| À examiner | un identifiant de source est stocké comme valeur et non comme référence ; la source d'un environnement de test lit la connexion de prod ; aucune authentification n'est configurée ; l'administrateur d'amorçage n'est pas réclamé ; un listener sert sans TLS ; un rôle ou une source atteint tous les domaines ; une attribution de tag expirée est toujours en vigueur |
+
+La dernière catégorie est observée, pas imposée : rien dans la revue ne refuse quoi que ce soit. `GET /admin/judgments/findings` liste les constats ouverts qu'un appelant peut voir ; un constat sur une colonne sensible exige `sensitive_data`, tout autre `view_governance`. *Réaffirmer* (`POST /admin/judgments/findings/{id}/reaffirm`) enregistre de nouveau le jugement avec la preuve du jour et exige le droit qui modifie la décision. Un constat de posture est écarté avec une note (`.../dismiss`, `access_config`). Un constat que la revue ne voit plus est levé. Comme preuve d'audit, la vue `judgment_review` du domaine ops relie chaque constat au pourquoi de son jugement et s'interroge sous l'accès par rôle et par domaine.
+
 ## Limitation de débit {: #rate-limiting }
 
 Les limites par rôle se règlent dans `provisa.yaml` : requêtes par seconde, abonnements SSE simultanés et flux Arrow Flight simultanés. Elles sont vérifiées à l'API, avant toute compilation ou exécution, et une requête au-delà de la limite reçoit HTTP 429 avec un en-tête `Retry-After`.

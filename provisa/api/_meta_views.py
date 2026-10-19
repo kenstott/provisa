@@ -421,6 +421,55 @@ def _ops_table_usage_ddl() -> str:
 # Table-level granularity throughout: the audit log records table_ids and the
 # query text is encrypted (REQ-689), so element-level usage, masking outcome,
 # and denying-rule id await the REQ-1386 log-write prerequisites.
+def _judgment_review_sql() -> str:
+    """REQ-2094: every finding of the review queue, joined to its judgment's why -- what was
+    relied on, what for, the bases cited, the review-by date, who decided it and when -- and to
+    the domain of the table it is on, so audit evidence is queried under role and domain access."""
+
+    def why(field: str) -> str:
+        return (
+            "CASE f.object_type"
+            f" WHEN 'column' THEN tc.fake_why ->> '{field}'"
+            f" WHEN 'mask_entry' THEN tc.masks -> CAST(SPLIT_PART(f.object_key, '#', 2) AS INTEGER)"
+            f" -> 'why' ->> '{field}'"
+            f" WHEN 'row_rule' THEN rr.why ->> '{field}'"
+            f" WHEN 'write_grant' THEN wg.why ->> '{field}' END"
+        )
+
+    return f"""
+        CREATE OR REPLACE VIEW judgment_review AS
+        SELECT f.id, f.object_type, f.object_key, f.judgment, f.category, f.finding,
+               CAST(f.observed AS TEXT) AS observed, f.first_seen, f.last_seen,
+               f.resolved_at, f.resolved_by, f.resolution,
+               CASE WHEN f.object_type = 'tag_assignment' THEN ta.reason
+                    ELSE {why("reason")} END AS reason,
+               CASE WHEN f.object_type = 'tag_assignment' THEN ta.purpose
+                    WHEN f.object_type = 'row_rule' THEN rr.description
+                    ELSE {why("purpose")} END AS purpose,
+               CASE WHEN f.object_type = 'tag_assignment' THEN CAST(ta.bases AS TEXT)
+                    ELSE {why("bases")} END AS bases,
+               CASE WHEN f.object_type = 'tag_assignment' THEN ta.review_on
+                    ELSE {why("review_on")} END AS review_on,
+               CASE WHEN f.object_type = 'tag_assignment' THEN ta.decided_by
+                    ELSE {why("decided_by")} END AS decided_by,
+               CASE WHEN f.object_type = 'tag_assignment' THEN CAST(ta.decided_at AS TEXT)
+                    ELSE {why("decided_at")} END AS decided_at,
+               rt.domain_id
+        FROM judgment_findings f
+        LEFT JOIN tag_assignments ta
+          ON f.object_type = 'tag_assignment' AND ta.base_tag_id || '@' || ta.object_key = f.object_key
+        LEFT JOIN table_columns tc
+          ON f.object_type IN ('column', 'mask_entry')
+         AND CAST(tc.table_id AS TEXT) || ':' || tc.column_name = SPLIT_PART(f.object_key, '#', 1)
+        LEFT JOIN rls_rules rr
+          ON f.object_type = 'row_rule' AND CAST(rr.id AS TEXT) = f.object_key
+        LEFT JOIN table_write_grants wg
+          ON f.object_type = 'write_grant' AND CAST(wg.id AS TEXT) = f.object_key
+        LEFT JOIN registered_tables rt
+          ON rt.id = COALESCE(ta.table_id, tc.table_id, rr.table_id, wg.table_id)
+    """
+
+
 _OPS_REPORT_VIEWS: dict[str, str] = {
     # Query count and distinct consumers per registered table; never-queried
     # tables surface with query_count = 0 (deprecation candidates).
@@ -452,6 +501,8 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
     """,
     # One row per access to a table carrying (or containing a column carrying)
     # the 'pii' system tag: who, under which role, over which surface.
+    # REQ-2094: the review queue joined to each judgment's why, as audit evidence.
+    "judgment_review": _judgment_review_sql(),
     "pii_access": """
         CREATE OR REPLACE VIEW pii_access AS
         SELECT CAST(u.id AS TEXT) || ':' || CAST(ta.id AS TEXT) AS id,

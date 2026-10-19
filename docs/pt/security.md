@@ -426,6 +426,24 @@ As ferramentas de estatística do MCP (`describe`, `correlate`, `regress`, `comp
 
 A view `sensitive_coverage` no domínio meta lista cada coluna sensível da organização com o valor fictício e a regra sintética que declara e um status: `covered`, `no_fake`, ou `inadequate` quando uma das verificações de adequação do Provisa falhou. As verificações procuram um valor fictício que deixa os valores reais inalterados, um valor fictício cujo tipo não corresponde ao que a coluna contém, e um valor fictício ou uma regra que lê o valor real de outra coluna sensível. Um data steward vê as colunas sem valor fictício no detalhe de cada ambiente, e um ambiente Test (fake) se recusa a servir dados até que cada coluna sensível tenha um. As verificações e a view são descritas em [Construir ambientes de teste](test-data.md#coverage-and-adequacy-checks).
 
+## Julgamentos em revisão {: #judgments-under-review }
+
+As escolhas de governança dependem de julgamento, e um julgamento pode estar errado ou ficar desatualizado quando mudam os fatos em que se apoiava. Todo julgamento de governança pode levar um **porquê**: uma tag em um objeto, o valor fictício e a regra sintética de uma coluna, uma entrada de máscara, uma regra de linhas e uma permissão de escrita. Um porquê contém a razão em que se apoiou, o propósito, as bases nomeadas citadas e uma data de revisão, tudo opcional. Em uma atribuição de tag a razão é o próprio `reason` da atribuição; em uma regra de linhas o propósito é sua descrição obrigatória. O Provisa registra quem tomou a decisão, quando e com base em qual evidência de perfil: a última execução de perfil da tabela e um resumo dela. Ele registra isso a cada gravação que muda a decisão ou o seu porquê. Uma gravação que omite o porquê mantém o armazenado, e um arquivo de modelo leva cada porquê em um bloco `why:`.
+
+As **bases nomeadas** são o contexto que os dados não conseguem mostrar: uma regulação, uma política, uma estratégia. Um julgamento as cita por id a partir de uma lista curta (`/admin/judgments/bases`). Quem tem `access_config` declara uma base alterada com uma nota, e todo julgamento que a cita e foi decidido antes fica desatualizado na hora.
+
+A revisão roda a cada hora para cada organização, ao fim de cada execução de perfil para a tabela perfilada e na hora em que uma base é declarada alterada. Ela coloca o que encontra em uma única fila:
+
+| Categoria | Encontrado quando |
+|---|---|
+| Errado | uma verificação de adequação do valor fictício de uma coluna sensível falha, ou a regra sintética de uma coluna sensível copia valores reais |
+| Desatualizado pelos dados | o perfil derivou na coluna decidida (pelos limites do próprio profiler), seu tipo plausível, família ou tipo de dados mudou, uma coluna foi adicionada à tabela, a coluna decidida foi removida ou teve o tipo alterado, ou quem decidiu não é mais membro |
+| Desatualizado pelo contexto | uma base citada foi declarada alterada depois da decisão, chegou a data de revisão, ou passou o `expires_on` de uma atribuição de tag |
+| Não decidido | uma coluna sensível não tem valor fictício, ou uma coluna foi adicionada a uma tabela que tem uma tag sensível ou um valor fictício |
+| Vale uma olhada | uma credencial de fonte está armazenada como valor e não como referência; a fonte de um ambiente de teste lê a conexão de prod; nenhuma autenticação está configurada; o administrador de bootstrap não foi reivindicado; um listener serve sem TLS; um papel ou fonte alcança todos os domínios; uma atribuição de tag expirada ainda está em vigor |
+
+A última categoria é observada, não imposta: nada na revisão recusa coisa alguma. `GET /admin/judgments/findings` lista os achados abertos que quem chama pode ver; um achado sobre uma coluna sensível exige `sensitive_data`, e qualquer outro `view_governance`. *Reafirmar* (`POST /admin/judgments/findings/{id}/reaffirm`) registra de novo o julgamento com a evidência de hoje e exige o direito que edita a decisão. Um achado de postura é dispensado com uma nota (`.../dismiss`, `access_config`). Um achado que a revisão não vê mais é encerrado. Como evidência de auditoria, a view `judgment_review` no domínio ops liga cada achado ao porquê do seu julgamento e é consultada sob o acesso por papel e domínio.
+
 ## Limitação de taxa {: #rate-limiting }
 
 Você define limites por papel em `provisa.yaml`: requisições por segundo, assinaturas SSE simultâneas e fluxos Arrow Flight simultâneos. Eles são verificados na API, antes de qualquer compilação ou execução, e uma requisição acima do limite recebe HTTP 429 com um cabeçalho `Retry-After`.

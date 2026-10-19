@@ -248,6 +248,7 @@ class TestOpsGovernance:
 # --------------------------------------------------------------------------- #
 
 _REPORT_VIEW_NAMES = {
+    "judgment_review",  # REQ-2094
     "usage_ranking",
     "deprecated_usage",
     "pii_access",

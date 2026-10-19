@@ -213,6 +213,8 @@ class TagAssignmentType:  # REQ-1377
     table_ref: str | None = None  # qualified "source.schema.table" for table/column targets
     reason: str | None = None  # required for 'deprecated'
     expires_on: str | None = None  # ISO date; planned removal for 'deprecated'
+    # REQ-2094: purpose, bases and review-by date, and who decided it, when and on what evidence.
+    why: JsonScalar | None = None
 
 
 @strawberry.type
@@ -252,6 +254,7 @@ class WriteGrantType:  # REQ-2074
     rows: str | None
     check: str | None
     presets: list[WritePresetType]
+    why: JsonScalar | None = None  # REQ-2094: why the grant is what it is, who decided it and when
 
 
 @strawberry.type
@@ -563,6 +566,7 @@ class MaskSpecType:  # REQ-2059: how a mask entry masks the value
 class MaskEntryType:  # REQ-2059: one entry of a column's ordered mask list
     to: list[str]  # grant entries, composites included; "*" is everyone
     mask: MaskSpecType | None = None  # None: the readers it is for read the column unmasked
+    why: JsonScalar | None = None  # REQ-2094: why the entry is what it is
 
 
 @strawberry.input
@@ -578,13 +582,16 @@ class MaskSpecInput:  # REQ-2059
 class MaskEntryInput:  # REQ-2059
     to: list[str]
     mask: MaskSpecInput | None = None
+    why: JsonScalar | None = None  # REQ-2094: the reason, purpose, bases and review-by date given
 
 
 def mask_entry_types(masks: list[dict]) -> list[MaskEntryType]:
     """A stored mask list (REQ-2059) as the admin API answers it."""
     return [
         MaskEntryType(
-            to=list(e["to"]), mask=None if e["mask"] is None else MaskSpecType(**e["mask"])
+            to=list(e["to"]),
+            mask=None if e["mask"] is None else MaskSpecType(**e["mask"]),
+            why=e.get("why"),
         )
         for e in masks
     ]
@@ -604,6 +611,7 @@ def mask_entries_of(masks: list[MaskEntryInput]) -> list[dict]:
                 "value": e.mask.value,
                 "precision": e.mask.precision,
             },
+            **({"why": e.why} if e.why else {}),  # REQ-2094
         }
         for e in masks
     ]
@@ -654,6 +662,8 @@ class TableColumnType:  # REQ-040, REQ-041, REQ-393, REQ-399
     fake_stable_version: int | None = None
     # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake for generation only.
     synthetic_rule: str | None = None
+    # REQ-2094: why the fake and synthetic rule are what they are, with who decided and when.
+    fake_why: JsonScalar | None = None
     # REQ-1494: the column is tagged pii.
     is_pii: bool = False
 
@@ -879,6 +889,7 @@ class RLSRuleType:  # REQ-041, REQ-402, REQ-1679
     description: str  # REQ-2081: what the rule is for
     action_name: str | None = None  # REQ-1679
     tag_id: str | None = None  # REQ-1384: the rule applies to every table carrying this tag
+    why: JsonScalar | None = None  # REQ-2094: reason, bases, review_on; who decided it and when
 
 
 # --- Input types for mutations ---
@@ -1022,6 +1033,9 @@ class TagAssignmentInput:  # REQ-1377
     command_name: str | None = None
     reason: str | None = None
     expires_on: str | None = None  # ISO date
+    # REQ-2094: purpose, bases (ids) and review_on given; reason is the field above. Left out,
+    # the stored ones stand.
+    why: JsonScalar | None = None
 
 
 @strawberry.input
@@ -1061,6 +1075,8 @@ class ColumnInput:  # REQ-040, REQ-041, REQ-393, REQ-399
     fake_stable: bool = False
     # REQ-1494, REQ-1939: the column's synthetic rule, laid over its fake for generation only.
     synthetic_rule: str | None = None
+    # REQ-2094: the reason, purpose, bases and review-by date given for the fake and rule.
+    fake_why: JsonScalar | None = None
 
 
 @strawberry.input
@@ -1505,6 +1521,8 @@ class WriteGrantInput:  # REQ-2074
     rows: str | None = None
     check: str | None = None
     presets: list[WritePresetInput] = strawberry.field(default_factory=list)
+    # REQ-2094: reason, purpose, bases and review_on given; left out, the stored ones stand.
+    why: JsonScalar | None = None
 
 
 @strawberry.input
@@ -1516,6 +1534,8 @@ class RLSRuleInput:  # REQ-041, REQ-402
     role_id: str = ""
     filter_expr: str = ""
     description: str = ""  # REQ-2081: required; an empty one is refused
+    # REQ-2094: reason, bases and review_on given; left out, the stored ones stand.
+    why: JsonScalar | None = None
 
 
 @strawberry.type

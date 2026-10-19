@@ -121,10 +121,14 @@ def mask_entry_dict(entry: Any) -> dict:
     from pydantic import BaseModel
 
     if isinstance(entry, dict):
-        return entry
-    if isinstance(entry, BaseModel):
-        return entry.model_dump()
-    return dataclasses.asdict(entry)
+        raw = entry
+    elif isinstance(entry, BaseModel):
+        raw = entry.model_dump()
+    else:
+        raw = dataclasses.asdict(entry)
+    # REQ-2094: an entry with no why is stored without the key, so a why absent and a why empty
+    # are the same entry.
+    return {k: v for k, v in raw.items() if k != "why" or v}
 
 
 def _value(column: Any, field: str) -> Any:
@@ -132,7 +136,8 @@ def _value(column: Any, field: str) -> Any:
     if field == "visible_to":
         return sorted(raw or [])
     if field == "masks":  # REQ-2059: the list in its order, each entry as stored
-        return [mask_entry_dict(e) for e in raw]
+        # REQ-2094: an entry's why says why it hides as it does; it is not how it hides.
+        return [{k: v for k, v in mask_entry_dict(e).items() if k != "why"} for e in raw]
     if field == "fake_stable":
         return bool(raw)
     if field == "scope":

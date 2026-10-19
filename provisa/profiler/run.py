@@ -873,4 +873,10 @@ async def profile_table(
     outcome = RunOutcome(run_id, run_time, status, error, row_count, profiled)
     if error is not None:
         raise ProfileError(f"profile of table {table_name!r} failed: {error}")
+    # REQ-2094: the table's judgments are reviewed against the run at once, so drift is seen as
+    # soon as it is measured.
+    from provisa.core.request_context import current_env, require_current_org
+    from provisa.judgments.review import review_org
+
+    await review_org(state, require_current_org(), current_env.get(), table_id=table_id)
     return outcome

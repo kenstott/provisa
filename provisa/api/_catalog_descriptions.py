@@ -71,6 +71,8 @@ _OPS: dict[str, str] = {
     "zero queries is a deprecation candidate",
     "deprecated_usage": "Accesses to objects tagged deprecated — the consumers who must migrate "
     "before the object can be removed",
+    "judgment_review": "Every finding of the judgment review queue with the judgment's why -- "
+    "reason, purpose, bases, review-by date, who decided it and when -- as audit evidence",
     "pii_access": "Accesses to objects tagged pii: who read them, under which role, over which "
     "surface",
     "policy_denials": "Statements governance refused (401 unauthenticated, 403 denied)",
@@ -222,6 +224,9 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the rule is for, as an access review reads it",
         "action_name": "Tracked function or webhook whose response rows the predicate filters",
         "tag_id": "Tag whose tables the predicate is applied to, beside each table's own rule",
+        # REQ-2094
+        "why": "Why the rule is what it is: reason, bases, review-by date, who decided it, when "
+        "and on what profile evidence (JSON)",
         "tenant_id": _TENANT,
     },
     "roles": {
@@ -462,6 +467,28 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "role_id": "Role the read executed under",
         "source": "Protocol surface the read arrived on",
         "logged_at": "When the read happened",
+    },
+    "judgment_review": {
+        "id": "The finding",
+        "object_type": "What the judgment is on: tag_assignment, column, mask_entry, row_rule, "
+        "write_grant, posture",
+        "object_key": "Which one",
+        "judgment": "The kind of judgment: tag, fake, mask, row_rule, write_grant, posture",
+        "category": "wrong, dated_by_data, dated_by_context, undecided or worth_a_look",
+        "finding": "What was found (profile_drift, type_changed, basis_changed, review_due, ...)",
+        "observed": "What changed, then and now, as JSON",
+        "first_seen": "When the finding was first seen",
+        "last_seen": "When a review last saw it",
+        "resolved_at": "When it was resolved; null while open",
+        "resolved_by": "Who resolved it",
+        "resolution": "How: reaffirmed, dismissed with a note, or cleared when no longer seen",
+        "reason": "The facts the decider relied on",
+        "purpose": "What the decision is for",
+        "bases": "The named bases it cites",
+        "review_on": "Its review-by date",
+        "decided_by": "Who made the decision",
+        "decided_at": "When it was made",
+        "domain_id": "The domain of the table it is on",
     },
     "pii_access": {
         "id": "Composite key of the audit row and the pii tag it hit",

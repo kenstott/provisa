@@ -426,6 +426,24 @@ Die Zugriffskontrolle begrenzt, was ein Agent erfahren kann. Um Identitäten au�
 
 Die View `sensitive_coverage` in der Meta-Domäne listet jede sensible Spalte der Organisation mit dem Fake-Wert und der Syntheseregel, die sie deklariert, und einem Status: `covered`, `no_fake` oder `inadequate`, wenn eine der Angemessenheitsprüfungen von Provisa fehlgeschlagen ist. Die Prüfungen suchen nach einem Fake-Wert, der echte Werte unverändert lässt, einem Fake-Wert, dessen Art nicht zu dem passt, was die Spalte enthält, und einem Fake-Wert oder einer Regel, die den echten Wert einer anderen sensiblen Spalte liest. Ein Data Steward sieht die Spalten ohne Fake-Wert in den Details jeder Umgebung, und eine Test-(fake)-Umgebung verweigert die Auslieferung von Daten, bis jede sensible Spalte einen hat. Die Prüfungen und die View sind unter [Testumgebungen aufbauen](test-data.md#coverage-and-adequacy-checks) beschrieben.
 
+## Prüfung von Ermessensentscheidungen {: #judgments-under-review }
+
+Governance-Entscheidungen beruhen auf Ermessen, und Ermessen kann falsch sein oder veralten, wenn sich die Tatsachen ändern, auf denen es beruhte. Jede Governance-Entscheidung kann ein **Warum** tragen: ein Tag an einem Objekt, der Fake-Wert und die Syntheseregel einer Spalte, ein Maskeneintrag, eine Zeilenregel und eine Schreibberechtigung. Ein Warum enthält die zugrunde gelegte Begründung, den Zweck, die zitierten benannten Grundlagen und ein Prüfdatum, alles optional. Bei einer Tag-Zuweisung ist die Begründung der eigene `reason` der Zuweisung; bei einer Zeilenregel ist der Zweck ihre erforderliche Beschreibung. Provisa hält fest, wer die Entscheidung getroffen hat, wann und auf welche Profilevidenz hin: den letzten Profillauf der Tabelle und eine Zusammenfassung davon. Es hält dies bei jedem Speichern fest, das die Entscheidung oder ihr Warum ändert. Ein Speichern ohne Warum behält das gespeicherte, und eine Modelldatei trägt jedes Warum in einem `why:`-Block.
+
+**Benannte Grundlagen** sind der Kontext, den die Daten nicht zeigen können: eine Vorschrift, eine Richtlinie, eine Strategie. Eine Entscheidung zitiert sie per ID aus einer kurzen Liste (`/admin/judgments/bases`). Ein Inhaber von `access_config` erklärt eine Grundlage mit einer Notiz für geändert, und jede Entscheidung, die sie zitiert und früher getroffen wurde, gilt sofort als veraltet.
+
+Die Prüfung läuft stündlich für jede Organisation, am Ende jedes Profillaufs für die profilierte Tabelle und sofort, wenn eine Grundlage für geändert erklärt wird. Sie legt ihre Befunde in eine Warteschlange:
+
+| Kategorie | Befund, wenn |
+|---|---|
+| Falsch | eine Angemessenheitsprüfung des Fake-Werts einer sensiblen Spalte fehlschlägt oder die Syntheseregel einer sensiblen Spalte echte Werte kopiert |
+| Durch Daten veraltet | das Profil auf der entschiedenen Spalte gedriftet ist (nach den eigenen Schwellen des Profilers), ihr plausibler Typ, ihre Familie oder ihr Datentyp sich geändert hat, der Tabelle eine Spalte hinzugefügt wurde, die entschiedene Spalte entfernt oder umtypisiert wurde oder der Entscheider kein Mitglied mehr ist |
+| Durch Kontext veraltet | eine zitierte Grundlage nach der Entscheidung für geändert erklärt wurde, das Prüfdatum erreicht ist oder das `expires_on` einer Tag-Zuweisung verstrichen ist |
+| Unentschieden | eine sensible Spalte keinen Fake-Wert hat oder einer Tabelle mit einem sensiblen Tag oder einem Fake-Wert eine Spalte hinzugefügt wurde |
+| Einen Blick wert | ein Quell-Zugangsdatum als Wert statt als Referenz gespeichert ist; die Quelle einer Testumgebung die Verbindung von prod liest; keine Authentifizierung konfiguriert ist; der Bootstrap-Administrator nicht beansprucht ist; ein Listener ohne TLS dient; eine Rolle oder Quelle jede Domäne erreicht; eine abgelaufene Tag-Zuweisung noch gilt |
+
+Die letzte Kategorie wird beobachtet, nicht durchgesetzt: Nichts in der Prüfung verweigert etwas. `GET /admin/judgments/findings` listet die offenen Befunde, die ein Aufrufer sehen darf; ein Befund auf einer sensiblen Spalte erfordert `sensitive_data`, jeder andere `view_governance`. *Bekräftigen* (`POST /admin/judgments/findings/{id}/reaffirm`) hält die Entscheidung erneut mit der heutigen Evidenz fest und erfordert das Recht, das die Entscheidung bearbeitet. Ein Haltungsbefund wird mit einer Notiz verworfen (`.../dismiss`, `access_config`). Ein Befund, den die Prüfung nicht mehr sieht, wird aufgehoben. Als Prüfnachweis verbindet die View `judgment_review` in der ops-Domäne jeden Befund mit dem Warum seiner Entscheidung und wird unter Rollen- und Domänenzugriff abgefragt.
+
 ## Ratenbegrenzung {: #rate-limiting }
 
 Limits pro Rolle legen Sie in `provisa.yaml` fest: Anfragen pro Sekunde, gleichzeitige SSE-Abonnements und gleichzeitige Arrow-Flight-Streams. Sie werden an der API geprüft, bevor irgendetwas kompiliert oder ausgeführt wird, und eine Anfrage über dem Limit bekommt HTTP 429 mit einem `Retry-After`-Header.

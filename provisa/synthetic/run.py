@@ -1294,6 +1294,27 @@ async def _private_condition(
     return None if all(v == 0 for v in sketch) else sketch
 
 
+async def _record_copied(state: Any, copying: list) -> None:
+    """Each sensitive column whose rule copies real values, as a ``wrong`` finding (REQ-2094)."""
+    import datetime as dt
+
+    from provisa.judgments import findings as fq
+
+    at = dt.datetime.now(dt.timezone.utc)
+    async with state.model_db.acquire() as conn:
+        for table, column in copying:
+            await fq.record_finding(
+                conn,
+                object_type="column",
+                object_key=f"{table.table_id}:{column}",
+                judgment=fq.FAKE,
+                category=fq.WRONG,
+                finding="copies_real_values",
+                observed={"table": table.name, "column": column, "rule": "copies real values"},
+                at=at,
+            )
+
+
 async def generate(state: Any, dataset_id: str, *, bind: Any = None) -> None:
     """Generate (or regenerate) ``dataset_id`` in the bound environment, then report on it.
     ``bind``: awaited once the rows are written, in place of republishing the routes, by a
@@ -1310,9 +1331,14 @@ async def generate(state: Any, dataset_id: str, *, bind: Any = None) -> None:
     try:
         tables, relationships, registered = await _dataset_tables(state, row)
         from provisa.core.env_classes import TEST_SYNTHETIC
-        from provisa.synthetic.plan import refuse_copied_sensitive
+        from provisa.synthetic.plan import copied_sensitive, refuse_copied_sensitive
 
         if state._active_runtime().data_mode == TEST_SYNTHETIC:
+            # REQ-2094: what is refused is recorded in the review queue first, on a connection of
+            # its own, so the refusal does not take the record with it.
+            copying = copied_sensitive(tables)
+            if copying:
+                await _record_copied(state, copying)
             refuse_copied_sensitive(tables)  # REQ-1943
         edges = edges_of(relationships)
         measured_conditions = [c for c in row.fanout_conditions if c.count == {"measured": True}]
