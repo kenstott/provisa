@@ -65047,15 +65047,14 @@
   description: 'saphana and greenplum (source-to-query-generic-rdbms.spec.ts) were both verified end to
     end against a real amd64 Docker host earlier this session (saphana: REQ-1753, a temporary Vultr instance;
     greenplum: datagrip/greenplum:6.8 is amd64-only, never runnable under this repo''s arm64 local dev)
-    but both test cases carried an unconditional test.skip(true, ...) — meaning neither ever ran anywhere,
+    but both test cases carried an unconditional test.skip(true, ...), so neither ever ran anywhere,
     including in CI, even though ui-e2e-core.yml''s ubuntu-latest runner is itself a genuine amd64 Linux
     host and could run both for real. Replaced the unconditional skip with a `RUNNING_IN_CI = process.env.CI
     === "true"` gate (CI is set by ui-e2e-core.yml''s own env block) on each: locally (Docker Desktop''s
     Apple Silicon VM, where saphana''s hdbindexserver never starts and greenplum''s cluster boot under
     QEMU emulation is unreasonably slow) both still skip; in CI both provision for real via provision()''s
     existing SOURCES list (extended with a CI_SOURCES entry) and run their full source-create/register/query
-    assertions. Added the `saphana` pyproject extra (hdbcli + sqlalchemy-hana) to ui-e2e-core.yml''s Python
-    install step — the fixture''s own prime.py and the product''s hana+hdbcli driver both need it, and
+    assertions. Added the `saphana` pyproject extra (hdbcli + sqlalchemy-hana) to ui-e2e-core.yml''s Python install step. The fixture''s own prime.py and the product''s hana+hdbcli driver both need it, and
     it was previously only ever installed ad hoc on the Vultr verification host. Raised ui-e2e-core.yml''s
     timeout-minutes from 60 to 90: saphana''s HXE tenant DB can take up to 15 minutes past container-healthy
     before prime.py''s own retry loop succeeds, serially on top of every other fixture this file''s beforeAll
@@ -65072,8 +65071,7 @@
     Building exasol''s real e2e surfaced two further latent gaps in REQ-1731''s own DIRECT driver, both
     fixed here since they block the very test this REQ exists to un-skip: (1) ``ExasolDriver`` (executor/drivers/exasol.py)
     never overrode ``configure()``, so the ``tls_fingerprint`` the UI form''s exasol auth-mode collects
-    into ``Source.federation_hints`` was silently never applied — ``connect()`` always built the plain,
-    unpinned DSN, which fails PKIX validation against Exasol 8''s self-signed per-boot certificate. Fixed
+    into ``Source.federation_hints`` was silently never applied. ``connect()`` always built the plain, unpinned DSN, which fails PKIX validation against Exasol 8''s self-signed per-boot certificate. Fixed
     by reading ``tls_fingerprint`` in a new ``configure()`` override and building pyexasol''s own ``<host>:<port>/<FINGERPRINT>``
     pinned DSN form when set (unit-tested: ``test_exasol_driver_honors_configured_tls_fingerprint``).
     (2) exasol had the exact same missing-introspection-dispatch-branch gap this REQ''s own hiveserver2
@@ -65087,33 +65085,30 @@
     fingerprint it observes to a file (``PROVISA_DEMO_EXASOL_FINGERPRINT_FILE``) the e2e test reads back
     and types into the form, rather than a hardcoded constant.
 
-    hive (plain, local/Hadoop-storage lakehouse read — distinct SourceType from hive_s3, which already
-    runs) stays test.skip(true, ...) unconditionally, INCLUDING in CI: unlike druid/ exasol, its blocker
+    hive (plain, local/Hadoop-storage lakehouse read; a distinct SourceType from hive_s3, which already runs) stays test.skip(true, ...) unconditionally, INCLUDING in CI: unlike druid/ exasol, its blocker
     is not amd64-arch/resource, so RUNNING_IN_CI does not fix it. TrinoHiveConnector''s default (non-S3)
     storage backend reads table data through Trino''s OWN local filesystem at whatever path the metastore
     recorded, which only works when Trino and hive-metastore are in the SAME compose project sharing one
     named volume at the same container path (docker-compose.test.yml''s own itest stack does exactly this,
     merging core.yml + test.yml into one project). demo/sources/hive is a SEPARATE compose project from
     docker-compose.core.yml''s shared `trino` service (the one ui-e2e-core.yml''s Trino lane starts) and
-    joined to it only post-hoc via `--network` — Docker named volumes cannot be shared across separately-started
+    joined to it only post-hoc via `--network`. Docker named volumes cannot be shared across separately-started
     compose projects that way, only real containers reached over a network can. The actual fix needs core.yml''s
     own `trino` service and demo/sources/hive/compose.yml''s hive-metastore to mount the SAME literal
-    volume, which means marking that volume external (pre-created, not compose-auto-created) in core.yml
-    — a change to SHARED core infrastructure every instance''s compose stack reads (three-instance-isolation:
+    volume, which means marking that volume external (pre-created, not compose-auto-created) in core.yml. That is a change to SHARED core infrastructure every instance''s compose stack reads (three-instance-isolation:
     local-dev also boots from docker-compose.core.yml), not a self-contained new fixture directory. Deliberately
     not attempted blind in this session; left as the concrete next step for whoever picks it up.
 
     (Amended 2026-09-15, hive wired without touching docker-compose.core.yml:) resolved the deferred blocker
     above WITHOUT the risky path it flagged. docker-compose.core.yml already declares `hive_warehouse`
-    as a plain (non-external) named volume and mounts it into `trino`/`trino-worker` — no change needed
-    there, so local-dev''s own ./start-ui-install.sh --demo invocation of that file is untouched. The
+    as a plain (non-external) named volume and mounts it into `trino`/`trino-worker`, so no change is needed there, so local-dev''s own ./start-ui-install.sh --demo invocation of that file is untouched. The
     fix instead lives entirely in demo/sources/hive/compose.yml (owned by this fixture, not shared infra):
     its `hive_warehouse` volume is now declared `external: true`, naming the ACTUAL live volume docker-compose.core.yml''s
     `trino` container mounts at /opt/hive/data/warehouse — resolved at provision time by `docker inspect`-ing
     that running container''s own mounts (resolveHiveWarehouseVolume() in provisa-ui/e2e/source-to-query-olap-lake.spec.ts),
     never guessed or hardcoded (no fallback — an unresolved/wrong name would silently mount an unshared
     volume, defeating the fix). Passed in as `PROVISA_HIVE_WAREHOUSE_VOLUME`, required with no default
-    (`${VAR:?message}` compose interpolation — fails loud if unset/unresolved).
+    (`${VAR:?message}` compose interpolation, which fails loud if unset/unresolved).
 
     Un-skipped the `hive` test the same RUNNING_IN_CI-gated way druid/exasol are, with one difference
     their gate doesn''t need: hive''s beforeAll additionally needs a LIVE docker-compose.core.yml `trino`
@@ -65122,22 +65117,19 @@
     `PROVISA_E2E_LANE=core`, which per playwright.config.ts''s `RUNS_TRINO` gate means docker-compose.core.yml
     is never started in that workflow at all — the same unstated precondition hive_s3/pinot/druid above
     already carry via `routeToTrinoBackend()`. Rather than hard-failing the core lane over a precondition
-    this describe block doesn''t control, resolveHiveWarehouseVolume() failure is caught and degrades
-    to a real Playwright skip (never a CI error) — so today this still effectively skips under ui-e2e-core.yml
+    this describe block doesn''t control, resolveHiveWarehouseVolume() failure is caught and degrades to a real Playwright skip (never a CI error). So today this still effectively skips under ui-e2e-core.yml
     exactly as before, until that lane''s Trino-container wiring is addressed separately (affects hive_s3/pinot/druid
     identically, not unique to hive). Verified locally: `docker compose -f demo/sources/hive/compose.yml
     config` fails loud without PROVISA_HIVE_WAREHOUSE_VOLUME set and parses cleanly with it set; `npx
     playwright test source-to-query-olap-lake --project=core --list` lists the new hive test correctly-placed;
-    `tsc --noEmit` and `eslint` clean on the spec file. NOT verified live end-to-end (arm64 host, no live
-    core Trino container in this session) — that requires the CI-lane gap above to be closed first, same
+    `tsc --noEmit` and `eslint` clean on the spec file. NOT verified live end-to-end (arm64 host, no live core Trino container in this session); that requires the CI-lane gap above to be closed first, same
     situation druid/exasol were left in.
 
     (Amended 2026-09-15, KNOWN GAP above closed:) the "hive_s3/pinot/druid above already carry via routeToTrinoBackend()"
     precondition this amendment flagged and deferred was real and reproduced live: with PROVISA_E2E_LANE=core
     (the literal env .github/workflows/ui-e2e-core.yml sets), playwright.config.ts''s own webServer list
     has no entry for the Trino-backed backend (E2E_TRINO_API_PORT/8990) at all, while `--project=core
-    -g pinot` still selects source-to-query-olap-lake.spec.ts''s pinot test — every routeToTrinoBackend()
-    call in that file was redirecting to a backend the real core-lane workflow never started. Root cause:
+    -g pinot` still selects source-to-query-olap-lake.spec.ts''s pinot test. Every routeToTrinoBackend() call in that file was redirecting to a backend the real core-lane workflow never started. Root cause:
     the four Trino-connector-only cases (pinot, hive_s3, hive, druid — no direct driver, EngineBackend.register_source
     is a no-op on native/DuckDB) lived in the same FILE as hiveserver2 (a real direct driver, correctly
     core-lane), and playwright.config.ts''s TRINO_SPECS/testIgnore split operates at file granularity
@@ -65162,8 +65154,7 @@
     from the new file. Did NOT boot a live Trino coordinator against pinot/hive_s3 in this session: the
     shared dev checkout''s docker-compose.core.yml project (project name "provisa") is already running
     other agents'' containers on an 11.7 GiB Docker VM already near capacity (test-infra-docker-memory-limits),
-    and a 7g Trino coordinator cold boot on top of that risked OOM-ing concurrent agents'' unrelated runs
-    — left for ui-e2e-trino.yml''s own isolated CI runner (this lane''s designed venue per REQ-1759; it
+    and a 7g Trino coordinator cold boot on top of that risked OOM-ing concurrent agents'' unrelated runs. It was left for ui-e2e-trino.yml''s own isolated CI runner (this lane''s designed venue per REQ-1759; it
     already runs on-demand, not on every push) to confirm end-to-end.'
   code:
   - provisa-ui/e2e/source-to-query-generic-rdbms.spec.ts
@@ -65223,23 +65214,20 @@
     on `EngineRuntime` (provisa/federation/runtime.py): `engine.materialize_store()` (only `materialize_store_dsn()`
     exists) and `engine.backend.landing_target(...)` (`EngineRuntime` exposes no public `backend` attribute,
     only the private `_backend`). Both raised AttributeError on every real call, swallowed by the broad
-    `try/except Exception` every caller (app.py''s boot path and `_rebuild_schemas_impl`) wraps `wire_push_listeners`
-    in — so a push listener was NEVER started for any kafka/websocket table, on any boot, ever. Fixed:
+    `try/except Exception` every caller (app.py''s boot path and `_rebuild_schemas_impl`) wraps `wire_push_listeners` in, so a push listener was NEVER started for any kafka/websocket table, on any boot, ever. Fixed:
     use `materialize_store_dsn()`; added `EngineRuntime.landing_target` delegating to the backend.
 
     (2) Once (1) was fixed and CDC landing actually ran, a second, latent bug surfaced live: `push_wiring._run_listener`
     held its own long-lived `store_writer.store_connection()` for the whole listener lifetime. For the
     embedded DuckDB materialize store (this "core" e2e project''s default, REQ-989), that is a SECOND
-    connection onto a file the federation engine''s own connection already has ATTACHed, which DuckDB
-    refuses (single-writer-per-file) — reproduced live as `IOException: Could not set lock on file ...
+    connection onto a file the federation engine''s own connection already has ATTACHed, which DuckDB refuses (single-writer-per-file); reproduced live as `IOException: Could not set lock on file ...
     Conflicting lock is held`. Every other landing/persistence write face (`land_source_table`, `attach_landed_source`,
     `persist_mv_table`) already dispatches through the engine''s own connection for an embedded DuckDB
-    store instead of opening a second one (REQ-989''s existing pattern) — CDC landing was the one path
-    that didn''t. Fixed by adding the same dispatch for CDC: `EngineRuntime.apply_cdc_events` -> `NativeEngineBackend.apply_cdc_events`
+    store instead of opening a second one (REQ-989''s existing pattern). CDC landing was the one path that didn''t. Fixed by adding the same dispatch for CDC: `EngineRuntime.apply_cdc_events` -> `NativeEngineBackend.apply_cdc_events`
     -> `DuckDBFederationRuntime.apply_cdc_events` (new; writes through the engine''s own `self._con` via
     `store_connection.apply_cdc_duckdb_native`, new), falling back to the base backend''s per-call `store_connection()`
     for every non-DuckDB materialize store. `consume_cdc_into_store` (provisa/subscriptions/cdc_landing.py)
-    no longer holds a connection itself — it now applies each flushed batch through a caller-supplied
+    no longer holds a connection itself. It now applies each flushed batch through a caller-supplied
     `land_fn`, so the caller (push_wiring) decides the write face per store type instead of the consumer
     owning one connection for its whole lifetime.'
   code:
@@ -65299,24 +65287,20 @@
     is required")` for an empty password. A trust/peer-auth control-plane Postgres (docker-assigned test
     instances) and any SQLite control plane both legitimately have no password, so this raised for EVERY
     ingest source on such a deployment. `_init_ingest_engines` (`provisa/api/app_loaders.py`) calls `get_engine`
-    inside `with tolerate_startup_failure(...)`, which logs-and-skips the exception — aborting that function''s
-    per-source loop BEFORE `state.ingest_tables`/`state.ingest_engines` were ever populated for the source.
-    Every POST to `/data/ingest` then 404''d "source not found" no matter how many times the schema rebuilt
-    afterward — not a race, 100% reproducible, confirmed live via the swallowed traceback. Fixed: a missing
+    inside `with tolerate_startup_failure(...)`, which logs-and-skips the exception, aborting that function''s per-source loop BEFORE `state.ingest_tables`/`state.ingest_engines` were ever populated for the source.
+    Every POST to `/data/ingest` then 404''d "source not found" no matter how many times the schema rebuilt afterward. It was not a race; 100% reproducible, confirmed live via the swallowed traceback. Fixed: a missing
     password no longer pre-emptively rejects the URL; a DB that genuinely requires one still fails, from
     the driver''s own auth error at connect time.
 
     (2) Once (1) stopped masking it, a second bug surfaced live: REQ-1745''s "mirror state.tenant_db"
-    NO_CONNECTION default decomposed the tenant engine''s URL into host/port/username/password and opened
-    a SEPARATE engine with `get_engine` — correct for Postgres, but wrong for SQLite (no host/port to
+    NO_CONNECTION default decomposed the tenant engine''s URL into host/port/username/password and opened a SEPARATE engine with `get_engine`. That is correct for Postgres, but wrong for SQLite (no host/port to
     decompose; the `else` branch fell back to a hardcoded, unreachable `localhost:5432`), and even pointed
     at the real file, a second engine connecting to the SAME SQLite file the control plane is writing
     deadlocks/misbehaves (DuckDB''s sqlite extension corrupts a file a second connection concurrently
     writes — see `duckdb_runtime.py`''s `_refresh_control_plane_snapshot` — and SQLAlchemy''s default
     rollback-journal pool has neither the WAL pragma nor the busy_timeout `_on_sqlite_connect` sets on
     `state.tenant_db`''s own engine). Reproduced live as an indefinite hang on the POST. Fixed: the SQLite/embedded
-    case now reuses `state.tenant_db.engine` directly instead of opening a second engine onto the same
-    file at all — "the SAME tenant database" taken literally. The Postgres mirroring path is unchanged
+    case now reuses `state.tenant_db.engine` directly instead of opening a second engine onto the same file at all: "the SAME tenant database" taken literally. The Postgres mirroring path is unchanged
     (still a separate pool, as before).
 
     [SUPERSEDED by REQ-1771, 2026-10-03 -- catalog_name_for_source now routes ingest to provisa_admin
@@ -65327,8 +65311,7 @@
     FROM pet_store.<table>` never resolves it. `catalog_name_for_source` (`provisa/api/app_loaders.py`)
     gives every DuckDB-native source (the "core" e2e lane''s engine) its own per-source-id ATTACH catalog
     for physical resolution, but nothing in `native_backend.py`/`duckdb_runtime.py` (grepped for "ingest":
-    no hits) ever attaches or maps an ingest source''s physical table into a catalog the compiler can
-    reach — only the ingest WRITE side (REQ-1745''s `_init_ingest_engines` default) was ever wired: [SUPERSEDED
+    no hits) ever attaches or maps an ingest source''s physical table into a catalog the compiler can reach. Only the ingest WRITE side (REQ-1745''s `_init_ingest_engines` default) was ever wired: [SUPERSEDED
     by REQ-1771, 2026-10-03 -- The read side exists: provisa/api/app_loaders.py:316-325 returns the provisa_admin
     catalog for ingest sources. Kept here for history; do not implement against it.] there is no corresponding
     READ side for the DuckDB-native engine [END SUPERSEDED BLOCK]. The tenant SQLite file is already exposed
@@ -65385,22 +65368,18 @@
     or the CDC listener would not have caught the real defects here (a missing form-field set, a missing
     host:port join, a data-model gap between two registration paths, a UI-only checkbox gate), all only
     observable end to end.
-  description: 'kafka was in none of the Sources form''s three field-group sets (SIMPLE_RDBMS/HOST_PORT_ONLY/
-    NO_CONNECTION_TYPES, provisa-ui/src/pages/sources/constants.ts) — the form rendered ZERO connection
-    fields for it, the same class of defect REQ-1753 fixed for saphana, so a kafka source could never
+  description: 'kafka was in none of the Sources form''s three field-group sets (SIMPLE_RDBMS/HOST_PORT_ONLY/NO_CONNECTION_TYPES, provisa-ui/src/pages/sources/constants.ts). The form rendered ZERO connection fields for it, the same class of defect REQ-1753 fixed for saphana, so a kafka source could never
     even be filled in. Fixed by adding kafka to HOST_PORT_ONLY (host+port fields, matching websocket''s
     shape). That uncovered a second bug: push_wiring.py''s kafka branch built bootstrap_servers from Source.host
-    ALONE, discarding Source.port entirely — once registration was even possible, the listener would have
+    ALONE, discarding Source.port entirely. Once registration was even possible, the listener would have
     silently used aiokafka''s default port (9092) regardless of what was actually registered. Fixed to
     combine host:port, the same shape websocket''s own ws://host:port derivation already used. A third,
     deeper issue: kafka already had a separate, pre-existing dispatch in introspect.py''s native_schemas/_native_tables_kafka
-    (REQ-147, backed by the kafka_topics/kafka_sources catalog tables) that unconditionally intercepted
-    every kafka source''s schema/table picker — but that REQ-147 catalog is populated ONLY by app_loaders.py''s
+    (REQ-147, backed by the kafka_topics/kafka_sources catalog tables) that unconditionally intercepted every kafka source''s schema/table picker. But that REQ-147 catalog is populated ONLY by app_loaders.py''s
     _process_kafka_sources at boot from static config, and nothing in the codebase (verified: zero INSERT
     statements anywhere) ever writes to kafka_topics/kafka_sources dynamically, so a UI-registered kafka
     source always had zero rows there and its picker stayed permanently empty. Fixed DATA-DRIVEN, not
-    engine-gated (an engine-gated fix was proposed and explicitly rejected during review — a datasource
-    must stay engine-agnostic; the correct discriminant is real registration-path data, not which engine
+    engine-gated (an engine-gated fix was proposed and explicitly rejected during review: a datasource must stay engine-agnostic; the correct discriminant is real registration-path data, not which engine
     runs the query): native_schemas now checks whether kafka_topics actually has rows for the source_id
     and falls through to the same "default" placeholder schema rss/websocket/ingest already use (REQ-1745)
     when it doesn''t; _native_tables_kafka and schema_query.py''s resolve_available_columns_metadata mirror
@@ -65408,7 +65387,7 @@
     writer (see REQ-1767''s schema-registry-discovery note). Also found and fixed in the e2e test itself
     while verifying live: LiveDeliveryFieldset.tsx gates every outbound-delivery field (including the
     topic-to-consume input) behind its OWN separate "Enable Live Delivery" checkbox ({live && (...)}),
-    independent of the Change Signal selector — the test was filling the topic field before ever checking
+    independent of the Change Signal selector. The test was filling the topic field before ever checking
     that box, so the field genuinely did not exist in the DOM yet (not a locator-naming issue, confirmed
     via a live DOM dump before changing anything).'
   code:
@@ -65462,8 +65441,7 @@
     any mutation, loader, or UI entry point. Wired into the SAME discover/edit/register flow mongodb/elasticsearch/cassandra/prometheus
     already use (SourcesPage''s "Discover" button -> SchemaDiscovery.tsx, DISCOVERABLE_TYPES) rather than
     inventing a new one: added "kafka" to DISCOVERABLE_TYPES and source_adapters/registry.py''s _ADAPTER_MAP;
-    discovery_schema.py''s _call_discover (made async — the first adapter branch here whose real fetch
-    is genuinely async) gets a kafka branch taking topic/value_format/schema_registry_url hints and calling
+    discovery_schema.py''s _call_discover (made async; the first adapter branch here whose real fetch is genuinely async) gets a kafka branch taking topic/value_format/schema_registry_url hints and calling
     discover_topic_columns(); provisa/kafka/source.py gets a discover_schema() adapter-contract function
     mapping KafkaColumn -> the generic discovery dict shape; SchemaDiscovery.tsx gets a kafka DiscoverHints
     branch (topic + optional registry URL, falling back to the source''s own federation_hints.schema_registry_url);
@@ -65479,12 +65457,11 @@
     not in si.column_types: skip` branch fired, since no role''s column set ever included a column visible
     only to the literal non-existent role "*"). Setting visible_to to an empty list `[]` fixes THAT layer
     but not query-time authorization: stage2.py''s V003 gate checks `visible_to is None` specifically
-    (not falsy) to mean unrestricted, so `[]` still reads there as "granted to nobody" — live- traced
-    as "[V003] Column ''id'' is not visible to this role" at query time even once the table became compile-visible.
+    (not falsy) to mean unrestricted, so `[]` still reads there as "granted to nobody"; live-traced as "[V003] Column ''id'' is not visible to this role" at query time even once the table became compile-visible.
     The row always existed in the database; it was silently unqueryable and absent from every schema,
     for every role, permanently, for every Discover-flow registration ever made (mongodb/elasticsearch/cassandra/prometheus
     included) until this fix. Fixed by passing the real current role-id list (via the existing useRoles()
-    hook) instead of either ambiguous sentinel — the same convention RegisterTableForm''s own column-selection
+    hook) instead of either ambiguous sentinel, the same convention RegisterTableForm''s own column-selection
     UI already uses successfully, satisfying both enforcement layers unambiguously rather than depending
     on either file''s specific empty/null special-casing.
 
@@ -65593,18 +65570,15 @@
     — the defect this uncovered was a hardcoded schema-exclusion set only observable by actually registering
     a real external PostgreSQL source through the UI and driving the Register Table form's schema picker;
     unit-level mocking of native_schemas would not exercise the real query against a live Postgres server.
-  description: 'postgresql is the single most-used SourceType in the product but had zero e2e coverage
-    of its own registration flow — every existing e2e test only exercised it indirectly through the pre-seeded
+  description: 'postgresql is the single most-used SourceType in the product but had zero e2e coverage of its own registration flow. Every existing e2e test only exercised it indirectly through the pre-seeded
     pet_store baseline fixture, never by driving the Sources form -> Register Table form -> SQL page round
     trip for a freshly-registered postgresql source. Added that coverage (source-to-query-generic-rdbms.spec.ts,
     a new demo/sources/postgresql fixture) and found a real defect: introspect.py''s native_schemas dispatch
-    for source_type=="postgresql" excludes _PG_SYSTEM_SCHEMAS from its schema list, and that set included
-    "public" — Postgres''s default schema, where the overwhelming majority of real installations keep
+    for source_type=="postgresql" excludes _PG_SYSTEM_SCHEMAS from its schema list, and that set included "public", Postgres''s default schema, where the overwhelming majority of real installations keep
     their tables. The exclusion was added 2026-06-07 to hide Provisa''s own control-plane schema when
     its backing Postgres was also registered as a postgresql-type data source, but the 2026-06-26 multi-tenancy
     migration moved Provisa''s own tables into "platform"/"audit" and per-org "org_<id>" schemas, and
-    is_provisa_internal() already excludes those from every native_schemas caller (schema_query.py) —
-    the "public" exclusion was stale and, for any newly-registered external postgresql source, left the
+    is_provisa_internal() already excludes those from every native_schemas caller (schema_query.py). The "public" exclusion was stale and, for any newly-registered external postgresql source, left the
     Register Table form''s schema picker permanently empty. Fixed by dropping "public" from _PG_SYSTEM_SCHEMAS;
     is_provisa_internal() continues to hide the real Provisa-internal schemas.'
   code:
@@ -65644,10 +65618,7 @@
   unit_test_reason: Verified live end-to-end via the rss e2e test against a real running server (the exact
     already-running-runtime scenario this fix targets); the scoped-rewire/list-mutation mechanism is APScheduler
     + live-state plumbing not meaningfully unit-testable in isolation.
-  description: 'A table on a POLL-only adapter-fetch source (rss is the current example — REQ-1745''s
-    make_rss_loader) registered against an ALREADY-RUNNING runtime never got its poll job started: `wire_event_loop`
-    (provisa/events/app_wiring.py) — the only place a poll node''s cadence is registered on the embedded
-    scheduler — is called ONLY from `register_runtime`''s per-org boot build (provisa/api/app.py), never
+  description: 'A table on a POLL-only adapter-fetch source (rss is the current example; REQ-1745''s make_rss_loader) registered against an ALREADY-RUNNING runtime never got its poll job started: `wire_event_loop` (provisa/events/app_wiring.py), the only place a poll node''s cadence is registered on the embedded scheduler, is called ONLY from `register_runtime`''s per-org boot build (provisa/api/app.py), never
     from `_rebuild_schemas_impl`, which is what registerTable''s mutation (and any subsequent table edit)
     actually invokes on the default/single-tenant runtime a live server runs. An rss table registered
     post-boot therefore polled nothing, forever, on a server that never restarts.
@@ -65660,16 +65631,14 @@
     Fixed with a per-node-scoped rewire instead, mirroring `wire_push_listeners`''s own per-node idempotency
     (`state.push_listener_disconnects`): `wire_event_loop` now publishes the live `processors` list and
     a `state.poll_jobs_registered` set (which nodes already have a poll job, seeded from its own initial
-    wiring). The new `wire_new_poll_jobs` (provisa/events/ app_wiring.py), called from `_rebuild_schemas_impl`
+    wiring). The new `wire_new_poll_jobs` (provisa/events/app_wiring.py), called from `_rebuild_schemas_impl`
     alongside `wire_push_listeners`, finds registered tables not yet in that set, builds ONLY those nodes''
     specs via a new `build_source_node_spec` helper (extracted from `specs_from_config`''s per-table loop
     in provisa/events/boot.py so both call sites share one implementation), and appends each new node''s
-    processor into the SAME list object the running tick job''s closure already holds — mutating that
-    list is what lets the new node''s landed events actually get drained without re-registering the tick
+    processor into the SAME list object the running tick job''s closure already holds. Mutating that list is what lets the new node''s landed events actually get drained without re-registering the tick
     job or re-deriving/re-walking any other source''s spec. Verified live: the rss e2e test (previously
     `test.skip`) now registers an rss source/table against the already-running "core" e2e server, sets
-    a Cache TTL through the Tables edit form, and the poll job lands the fixture feed''s two items within
-    the cadence — confirmed passing in isolation and alongside the ingest/websocket tests in the same
+    a Cache TTL through the Tables edit form, and the poll job lands the fixture feed''s two items within the cadence; confirmed passing in isolation and alongside the ingest/websocket tests in the same
     file (no regression to the already-registered sqlite source the prior attempt broke).'
   code:
   - provisa/events/app_wiring.py
@@ -65722,17 +65691,13 @@
 
     Root cause #1: provisa/api/app_loaders.py''s `catalog_name_for_source` gave every DuckDB-native source
     its own per-source-id ATTACH catalog for physical resolution, but nothing (native_backend.py/duckdb_runtime.py
-    have zero "ingest" references) ever attaches or maps an ingest source''s physical table into a catalog
-    the compiler can reach — ingest has no live connector on any engine (no TRINO_CONNECTORS entry either).
-    Fixed: `catalog_name_for_source` now routes `source_type == "ingest"` to the `provisa_admin` catalog
-    — the same one duckdb_runtime.py''s `_rebuild_control_plane` already exposes the tenant DB''s tables
+    have zero "ingest" references) ever attaches or maps an ingest source''s physical table into a catalog the compiler can reach. Ingest has no live connector on any engine (no TRINO_CONNECTORS entry either).
+    Fixed: `catalog_name_for_source` now routes `source_type == "ingest"` to the `provisa_admin` catalog, the same one duckdb_runtime.py''s `_rebuild_control_plane` already exposes the tenant DB''s tables
     under on the native tier, and the one Trino''s own control-plane catalog (`PROVISA_ADMIN_CATALOG`) names
     on that tier.
 
     Root cause #2: `provisa_admin` exposes the tenant DB under the org''s REAL control-plane schema (`org_<org_id>`),
-    but ingest''s registered_tables row carried the "default" schema its Register-Table picker offers (a
-    REQ-1745 UI-symmetry placeholder mirroring redis/ elasticsearch/prometheus, never a real physical location)
-    — a catalog/schema mismatch that left the compiler emitting a physical reference nothing backed. Fixed:
+    but ingest''s registered_tables row carried the "default" schema its Register-Table picker offers (a REQ-1745 UI-symmetry placeholder mirroring redis/elasticsearch/prometheus, never a real physical location), a catalog/schema mismatch that left the compiler emitting a physical reference nothing backed. Fixed:
     `register_table` (provisa/api/admin/schema_mutation_ops.py) now overrides an ingest table''s stored
     schema_name to the org''s real control-plane schema at registration time, the same way it already overrides
     a materialized view''s schema to its actual refresh target.
@@ -65814,7 +65779,7 @@
     existing caller (CI, a single local run) behaves identically to before. This addresses the container/network-identity
     collision specifically; simultaneous runs can still contend for host memory and CPU (a separate, resource-budget
     concern, not an identity-collision one) and for the DEMO_SOURCE_ENV/NEO4J_*_PORT host ports if two
-    runs both omit an override (left fixed deliberately — see neo4j-container.ts''s own comment on why
+    runs both omit an override (left fixed deliberately; see neo4j-container.ts''s own comment on why
     widening port isolation too was not worth the added blast radius for a fixture only ever driven by
     one spec file''s own setup/teardown).'
   code:
@@ -65861,7 +65826,7 @@
 
     Wired into the SAME kafka branch of discovery_schema.py''s _call_discover REQ-1767 added: when no
     schema_registry_url is available (neither the hint nor the source''s stored federation_hints.schema_registry_url),
-    discovery falls through to sample mode instead of raising 400 — the empty registry-url field is itself
+    discovery falls through to sample mode instead of raising 400. The empty registry-url field is itself
     the mode switch, no separate toggle. A new optional bootstrap_servers hint overrides the broker address
     used for sampling; default is the source''s own host:port (push_wiring.py''s existing `f"{src.host}:{src.port}"
     if src.port else src.host` convention). The already-generic sample_limit hint doubles as sample_topic_records''
@@ -65869,8 +65834,7 @@
     adapter.discover_schema() conversion the registry path already uses.
 
     SchemaDiscovery.tsx''s kafka DiscoverHints branch gets a third field, "Bootstrap Servers (optional)",
-    with a description telling the steward that leaving Schema Registry URL blank triggers sampling —
-    reachable through the real UI, not backend-only.'
+    with a description telling the steward that leaving Schema Registry URL blank triggers sampling, reachable through the real UI, not backend-only.'
   code:
   - provisa/api/admin/discovery_schema.py
   - provisa/kafka/source.py
@@ -65915,7 +65879,7 @@
     present in type_map.py but missing from proto_gen.py). Registering a BigQuery table through the Sources
     → Register Table UI flow (REQ-1747) surfaced this live: an INT64 column raised "Unmapped the engine
     type: ''int64''" in type_map.py, and after that map was fixed, the identical class of gap in proto_gen.py
-    surfaced next as "Unmapped column type for proto: ''int64''" — the same defect duplicated across two
+    surfaced next as "Unmapped column type for proto: ''int64''", the same defect duplicated across two
     parallel type maps. Both maps now carry BigQuery''s native type names alongside their existing bigint/int8,
     float8/double, decimal/numeric, and varbinary/bytea/blob entries.'
   code:
@@ -65957,11 +65921,9 @@
     or code defect: a SQL warehouse built on a non-Active capacity rejects the connection outright, the
     same class of problem tests/integration/databricks_warehouse.py''s ensure_warehouse_running() already
     solves for a suspended Databricks serverless warehouse. Added tests/integration/fabric_capacity.py
-    with ensure_capacity_resumed() (resumes the capacity via the ARM control-plane API — Microsoft.Fabric/capacities
-    resume/get, api-version 2023-11-01 — polling until properties.state is Active, retrying a resume call
+    with ensure_capacity_resumed() (resumes the capacity via the ARM control-plane API, Microsoft.Fabric/capacities resume/get, api-version 2023-11-01, polling until properties.state is Active, retrying a resume call
     on 4xx while the capacity is still settling out of a prior transition, mirroring ensure_warehouse_running()''s
-    retry-on-4xx shape) and suspend_capacity() (best-effort resume of the paused state on teardown — a
-    suspend failure is logged, never raised, since leaving a capacity briefly running is a cost concern,
+    retry-on-4xx shape) and suspend_capacity() (best-effort resume of the paused state on teardown; a suspend failure is logged, never raised, since leaving a capacity briefly running is a cost concern,
     not a correctness one). Both read FABRIC_RESOURCE_GROUP/FABRIC_CAPACITY_NAME from the environment
     [SUPERSEDED by REQ-1775 amendment, 2026-10-03 -- The 2026-09-30 amendment replaced this: the subscription
     is found by listing the subscriptions the credential can read, no az CLI (provisa/federation/fabric_capacity.py:69-93).
@@ -65970,7 +65932,7 @@
     same lookup tests/integration/synapse_provision.py already uses for its own ARM calls -- no separate
     subscription-id env var) [END SUPERSEDED BLOCK] and raise a clear error if either is missing (no silent
     fallback, per this repo''s CLAUDE.md). Auth is DefaultAzureCredential (az login / managed identity)
-    against the https://management.azure.com/.default ARM scope — a different scope from fabric_shortcuts.py''s
+    against the https://management.azure.com/.default ARM scope, a different scope from fabric_shortcuts.py''s
     own https://api.fabric.microsoft.com/.default data-plane Fabric API scope used for OneLake shortcut
     provisioning, since capacity management is a control-plane operation on a different resource. Wired
     into provisa-ui/e2e/cloud_warehouse_seed.py''s _fabric(): ensure_capacity_resumed() runs before MssqlWarehouseRuntime
@@ -65983,8 +65945,7 @@
     this environment yet (no Fabric capacity has been created) [END SUPERSEDED BLOCK], so the test still
     skips cleanly today with a message pointing at fabric_capacity.py''s docstring, which documents the
     one-time `az fabric capacity create` command for whoever creates the capacity. Live verification of
-    ensure_capacity_resumed()/suspend_capacity() against a real capacity is therefore pending that one-time
-    manual step — not performed here, since creating billable Azure infrastructure is a subscription-owner
+    ensure_capacity_resumed()/suspend_capacity() against a real capacity is therefore pending that one-time manual step, not performed here, since creating billable Azure infrastructure is a subscription-owner
     decision, not this task''s to make.
 
     (Amended 2026-09-30, the engine resumes its own capacity:) Resuming the capacity is a product behavior,
@@ -66071,9 +66032,7 @@
     empty/skip. Mapping: engine-swap.spec.ts needs a fixed set (neo4j/mongodb/elasticsearch/redis/cassandra/
     sparql/prometheus, no chinook/splunk); hasura-import.spec.ts needs only chinook; source-to-query.spec.ts''s
     needed subset is derived per the -g pattern (or all of them if no -g given); any other file (including
-    the three previously in NO_SHARED_SOURCES_SPECS, and new ones not yet written) contributes nothing
-    unless it appears in one of these maps, so the hardcoded skip-list no longer needs updating when a
-    new no-dependency spec file is added — it falls out of the design by default. global-teardown.ts is
+    the three previously in NO_SHARED_SOURCES_SPECS, and new ones not yet written) contributes nothing unless it appears in one of these maps, so the hardcoded skip-list no longer needs updating when a new no-dependency spec file is added. It falls out of the design by default. global-teardown.ts is
     unchanged: removeDemoSources()/ removeNeo4jContainer() already unconditionally attempt removal of
     everything, a safe no-op for whatever subset was never started, so no new state needs to flow from
     setup to teardown.'
@@ -66211,13 +66170,11 @@
   feature: row-security-and-masking-two-layers
   priority: MUST
   type: constraint
-  description: '"*" is the codebase''s established "visible to everyone" sentinel for visible_to grants
-    -- Metric.visible_to (provisa/core/models.py) defaults to ["*"], and schema_gen.py''s metrics-visibility
-    branch (~line 109) already special-cased "*" not in vt correctly -- but the COLUMN-visibility checks
+  description: '"*" is the codebase''s established "visible to everyone" sentinel for visible_to grants: Metric.visible_to (provisa/core/models.py) defaults to ["*"], and schema_gen.py''s metrics-visibility
+    branch (~line 109) already special-cased "*" not in vt correctly, but the COLUMN-visibility checks
     never got the same treatment. provisa/compiler/stage2.py''s build_governance_context (~line 174-184)
     computed each role''s visible-columns set via a literal `role_id in visible_to` membership test with
-    no "*" case, so a column granted visible_to: ["*"] was treated as visible only to a role literally
-    named "*" -- invisible to every real role. This is read by provisa/compiler/sql_validator.py''s _check_column_visibility
+    no "*" case, so a column granted visible_to: ["*"] was treated as visible only to a role literally named "*", invisible to every real role. This is read by provisa/compiler/sql_validator.py''s _check_column_visibility
     (V003 check), so a query against such a column was rejected with "Column ... is not visible to this
     role" even immediately after a successful grant. provisa/compiler/schema_gen.py''s per-role visible-columns
     filter (~line 149-154, the GraphQL/other-surface schema projection) had the same gap: `role["id"]
@@ -66313,8 +66270,7 @@
     (Amended 2026-09-19, FINAL DESIGN — no bespoke Connector/SourceType:) Kaggle is not a live query engine
     and not its own federation SourceType. A dataset bundle is downloaded and unzipped server-side (provisa/kaggle/downloader.py),
     its CSV/Parquet members discovered via the EXISTING provisa/file_source/crawler.py, and each file
-    registers as a plain csv/parquet Source, ATTACHed live by the existing TrinoCsvConnector/TrinoParquetConnector
-    — zero changes to federation/trino_connectors.py, strategy.py, source_loader.py, app_wiring.py, source_adapters/registry.py,
+    registers as a plain csv/parquet Source, ATTACHed live by the existing TrinoCsvConnector/TrinoParquetConnector, with zero changes to federation/trino_connectors.py, strategy.py, source_loader.py, app_wiring.py, source_adapters/registry.py,
     or core/models.py. A dataset bundle containing a .sqlite/.db file is rejected whole (UnsupportedKaggleDataset)
     — v1 scope is CSV/Parquet only. [SUPERSEDED by this amendment: the original TrinoKaggleConnector/Mechanism.FETCH/land_replace
     design below was reverted before implementation — never built.]
@@ -66322,8 +66278,8 @@
     (Amended 2026-09-19, one `files` Source per dataset:) a staged bundle now registers as exactly ONE
     `files`-type Source (path = the staged directory), not one plain csv/parquet Source per file. This
     session''s other work (REQ-1690) made the `files`/pgwire-file connector discover every file in a directory
-    as its own table, recursively, single- or multi-file alike — the per-file-Source design above predates
-    that capability and became strictly worse once it existed: confirmed live, an 11-file Chinook dataset
+    as its own table, recursively, single- or multi-file alike. The per-file-Source design above predates
+    that capability and became strictly worse once it existed. Confirmed live: an 11-file Chinook dataset
     produced 11 separate raw `csv`-typed rows in the Sources list (`d_Album`, `d_Artist`, ...) needing
     11 separate Register Table trips, instead of one `files` source whose Register Table screen lists
     all 11 tables at once. See REQ-1781''s matching amendment for the table-level consequence.'
@@ -66367,16 +66323,16 @@
     (Amended 2026-09-19, FINAL DESIGN:) Source-level config for a Kaggle source is one Kaggle dataset
     bundle (owner/ref). Table-level config is one file within that bundle. A bundle''s files carry no
     declared relational metadata, so each CSV/Parquet file discovered via datasets/list/{owner}/{ref}
-    (NOT datasets/view, which always returns an empty file list — verified live) becomes an independent
+    (NOT datasets/view, which always returns an empty file list; verified live) becomes an independent
     Provisa csv/parquet Source. A bundle containing a .sqlite/.db file is rejected whole by provisa/kaggle/downloader.py''s
-    stage_dataset (UnsupportedKaggleDataset) — v1 scope cut, not implemented. [SUPERSEDED by this amendment:
+    stage_dataset (UnsupportedKaggleDataset), a v1 scope cut, not implemented. [SUPERSEDED by this amendment:
     the original "SQLite-bundle maps to internal Provisa tables" exception below was never built — scope-cut
     to CSV/Parquet only before implementation.]
 
-    (Amended 2026-09-19, one `files` Source per dataset — see REQ-1780''s matching amendment for the source-level
+    (Amended 2026-09-19, one `files` Source per dataset; see REQ-1780''s matching amendment for the source-level
     rationale:) table-level config is no longer per-file at all. The whole staged directory registers
     as one `files` Source, and each of its files becomes its own table via the pgwire-file connector''s
-    own directory discovery (REQ-1690) — the same mechanism any other multi-file `files` source uses,
+    own directory discovery (REQ-1690), the same mechanism any other multi-file `files` source uses,
     not a Kaggle-specific enumeration. stage_kaggle_dataset (schema_mutation.py) no longer crawls the
     directory or returns per-file column previews; it only stages the bundle and returns the directory
     path.'
@@ -66412,9 +66368,9 @@
     token pattern), never a raw os.environ read. Auth against the Kaggle v1 API is Authorization: Bearer
     {token} (verified live against https://www.kaggle.com/api/v1/datasets/list, HTTP 200 with real dataset
     JSON). (Amended 2026-09-19, TOKEN VALIDATION ENDPOINT CORRECTED:) datasets/list returns HTTP 200 for
-    ANY token including garbage or a missing Authorization header — it cannot validate a token. Token
+    ANY token including garbage or a missing Authorization header; it cannot validate a token. Token
     validation instead uses POST /datasets/create/new with an empty body (401 on bad auth; a harmless
-    payload-validation error on good auth, nothing ever created) — verified live.'
+    payload-validation error on good auth, nothing ever created); verified live.'
   use_case: Kaggle credentials follow the same secrets-provider indirection every other source's credentials
     do, so they are never hardcoded or read straight from process environment.
   code:
@@ -66527,7 +66483,7 @@
     and `requests`/`aiohttp` (its runtime deps) are already installed in this repo. `HTTPFileSystem.ls()`
     performs real HTML link-parsing to enumerate files at a URL. `provisa/file_source/crawler.py`''s existing
     `_is_fsspec_uri`/`_walk_fsspec` path already matches and routes `http://`/`https://` URIs through
-    this behavior with zero code changes required — `_is_fsspec_uri` only excludes `file://`. The prior
+    this behavior with zero code changes required; `_is_fsspec_uri` only excludes `file://`. The prior
     claim that this needs a bespoke Calcite/pgwire bridge is superseded: this requirement is now DOCUMENTATION
     + verification/test coverage of the existing fsspec http path through `crawl_directory`, not new integration
     code. The Calcite `HtmlCrawler`/pgwire_replica.py path remains the SharePoint/Splunk-specific mechanism
@@ -66968,7 +66924,7 @@
   description: 'Client-side tools (navigate, refresh_mv) pause the model''s tool-use loop mid-turn. The
     server yields awaiting_client_tools with the assistant''s content so far plus any already-computed
     server tool results. The frontend executes the client tool(s) itself, appends the assistant message
-    and tool_result(s), and POSTs the full history back to resume — all within one send() call, so the user sees the exchange complete without a break. Also fixes an async-event-loop catalog bug: _catalog()
+    and tool_result(s), and POSTs the full history back to resume, all within one send() call, so the user sees the exchange complete without a break. Also fixes an async-event-loop catalog bug: _catalog()
     now calls _build_catalog_tables_async directly (not via sync wrapper) so state.tenant_db''s pool is
     used on the caller''s own loop, never shared across event loops.'
   use_case: App navigation and mutation triggers (refresh materialized view, future admin actions) integrate
@@ -67076,7 +67032,7 @@
   priority: SHOULD
   type: behavioral
   description: For topical data requests, the chat assistant checks this org's subscribed/preferred sources
-    (GovData via askamerica, Kaggle) BEFORE web_search or propose_source — both tools called unconditionally
+    (GovData via askamerica, Kaggle) BEFORE web_search or propose_source, both tools called unconditionally
     (never asking permission to check the second). search_govdata_subjects keyword-matches a static catalog
     snapshot (built by scripts/build_govdata_catalog.py from govdata engine's real schema/table YAML descriptions),
     reports matches and whether the org is subscribed. search_kaggle_datasets reads the Kaggle API token
@@ -68209,8 +68165,7 @@
   description: 'Found by REQ-1825''s e2e test: the MCP chat preflight check (_llm_configured, backs both
     ChatPanel''s "isn''t configured yet" modal and run_chat''s own mid-stream check) resolved a custom
     endpoint''s api_key_env field via a bare os.environ.get(key_env) call, which can never succeed for
-    a ${secret:NAME}/${env:NAME} reference (that string is never itself a real env var name) — so Polly
-    permanently reported "isn''t configured yet" for the exact vault- reference pattern the AI Models
+    a ${secret:NAME}/${env:NAME} reference (that string is never itself a real env var name), so Polly permanently reported "isn''t configured yet" for the exact vault-reference pattern the AI Models
     UI itself recommends as the safe way to hold a credential. Fixed to resolve through the same grammar
     the actual chat-execution path already used (_resolve_api_key_field) instead of a separate, narrower
     bare-env-var check. A resolution failure''s real exception is now surfaced in the reported reason
@@ -68259,8 +68214,7 @@
     than the generalized secret-vault-reference pattern the backend actually supports and recommends.
     Relabeled to "API key" with a ${secret:NAME} example placeholder on both fields. A separate, NOT-yet-fixed
     instance of the same narrow bug was also found in provisa/llm/client.py (used by table_description,
-    column_description, relationship_inference, sql_generation, table_selection) — flagged as a follow-up,
-    not fixed here, since that code path is synchronous and needs an architecture decision rather than
+    column_description, relationship_inference, sql_generation, table_selection). It is flagged as a follow-up, not fixed here, since that code path is synchronous and needs an architecture decision rather than
     a drop-in fix.'
   use_case: Every credential config field across the app (chat endpoints, embedding models) should share
     one resolution implementation for the ${secret:}/${env:}/${user:} grammar, and the admin UI should
@@ -68328,8 +68282,7 @@
   type: behavioral
   description: The Register Table form, when opened while the Tables page was scrolled down (e.g. after
     Polly's register_table_now left the page scrolled into the table list), rendered below the current
-    scroll position with its own top fields (Source/Domain) clipped under the sticky header — only visible
-    by scrolling up manually. Fixed by scrolling the form into view the moment it opens.
+    scroll position with its own top fields (Source/Domain) clipped under the sticky header, only visible by scrolling up manually. Fixed by scrolling the form into view the moment it opens.
   use_case: Opening the Register Table form should bring its full contents into view immediately, regardless
     of where the page happened to be scrolled beforehand.
   code:
@@ -68356,8 +68309,7 @@
   description: 'Even after REQ-1829''s scroll-into-view fix, the Register Table form still appeared truncated:
     its shared CSS layout rule (.page-sticky-head > .page-aux, also used by the Sources and Relationships
     pages'' own add-forms) had min-height: 0, letting the flex algorithm squeeze an open form down to
-    a sliver whenever the table list below it was tall enough to claim the remaining space — verified
-    live: the Schema/Table fields were cut off mid-row, only reachable by scrolling inside a barely-visible
+    a sliver whenever the table list below it was tall enough to claim the remaining space. Verified live: the Schema/Table fields were cut off mid-row, only reachable by scrolling inside a barely-visible
     internal scrollport nobody would think to look for. Fixed by giving .page-aux a generous min-height
     floor (60vh, capped at 520px) so an open form always gets a real, usable share of the viewport before
     the table below it claims the rest; it can still shrink (and scroll internally) below that floor on
@@ -68394,14 +68346,12 @@
   description: 'The Register Table form''s auto-suggested SQL alias came out camelCase (e.g. "irisIris"
     for a table named "Iris") instead of snake_case. Root cause: suggest_table_alias''s own docstring
     promised "a plain snake_case alias", but the implementation actually read the SOURCE''s gql_naming_convention
-    column (default "apollo_graphql", a camelCase GraphQL convention) — the exact GraphQL-vs-SQL-plane
-    mixup register_table''s own auto-gen had already been fixed to avoid (its own comment: "deriving the
+    column (default "apollo_graphql", a camelCase GraphQL convention), the exact GraphQL-vs-SQL-plane mixup register_table''s own auto-gen had already been fixed to avoid (its own comment: "deriving the
     alias from a source''s gql_naming_convention put camelCase into the SQL plane, e.g. dim_pet -> dimPet"),
     left unfixed in this separate resolver. Fixed to read the deployment''s global_sql_naming_convention
     (default "snake"), matching register_table''s own correct behavior exactly, instead of a per-source
     GraphQL setting. Separately, propose_table/register_table_now''s MCP tool schema never documented
-    an `alias` field, but a model can still infer/set arbitrary TableInput fields from general knowledge
-    of the shape — Polly was observed setting one herself in camelCase (an ordinary JSON/API habit), bypassing
+    an `alias` field, but a model can still infer/set arbitrary TableInput fields from general knowledge of the shape. Polly was observed setting one herself in camelCase (an ordinary JSON/API habit), bypassing
     the backend''s correct snake_case auto-generation entirely. Fixed the system prompt to explicitly
     instruct never setting `alias` on a table proposal.'
   use_case: The Register Table form's suggested SQL alias should always be snake_case by the SQL-plane
@@ -68448,13 +68398,10 @@
     propose_source returned confirm_required ("Create the X source now?") — effectively asking the same
     permission twice in different words; observed live as Polly narrating "let me propose the source first
     and then create it" right after the user had already said yes once. Fixed by removing the pre-propose
-    confirmation for the single- candidate case entirely: propose_source/propose_table only ever queues
-    a low-stakes, reversible pending request at that stage, so calling it needs no permission — the ONE
-    real confirmation that matters is still required before the actually irreversible create_source_now/register_table_now
+    confirmation for the single-candidate case entirely: propose_source/propose_table only ever queues a low-stakes, reversible pending request at that stage, so calling it needs no permission. The ONE real confirmation that matters is still required before the actually irreversible create_source_now/register_table_now
     call, unchanged. For a multi-candidate result, the user''s present_choice pick is now explicitly treated
     as the go-ahead to propose that one candidate, with no separate follow-up question either. (2) After
-    create_source_now actually created the source, Polly gave no completion message at all — the turn
-    ended silently right after the tool call, leaving the user unsure whether anything happened despite
+    create_source_now actually created the source, Polly gave no completion message at all. The turn ended silently right after the tool call, leaving the user unsure whether anything happened despite
     the source row actually appearing. (3) She also gave no proactive suggestion for the natural next
     step (e.g. registering a table from the source she just created). Fixed by requiring an explicit outcome
     message after every propose/create action completes, and a proactive next-step suggestion after a
@@ -68498,13 +68445,10 @@
   type: behavioral
   description: 'Polly could not register a table from a brand-new source at all: her only schema-reading
     tools (search_catalog, list_tables, describe_table) read the already-registered governed catalog,
-    which is empty for a source with nothing registered on it yet — observed live as Polly repeatedly
-    calling those tools against a just-created source, finding nothing, and giving up silently, when a
+    which is empty for a source with nothing registered on it yet. It was observed live as Polly repeatedly calling those tools against a just-created source, finding nothing, and giving up silently, when a
     table on that source manifestly existed natively. Added two new tools, list_native_tables and describe_native_table,
     that introspect a source''s real native schema directly (the same available_tables/resolve_available_columns_metadata
-    seam the admin UI''s Register Table form already uses before showing a table picker) — and required
-    the system prompt to call them, not the governed-catalog tools, before propose_table/ register_table_now
-    for a source not yet in the catalog.'
+    seam the admin UI''s Register Table form already uses before showing a table picker), and required the system prompt to call them, not the governed-catalog tools, before propose_table/register_table_now for a source not yet in the catalog.'
   use_case: Registering a table from a source Polly (or the user) just created should work the first time,
     without Polly wasting tool calls searching a catalog that cannot possibly contain it.
   code:
@@ -68534,7 +68478,7 @@
   type: behavioral
   description: When Polly performs an action tied to a specific admin page (creating or registering a
     source/table, or any other action with a dedicated screen), she now navigates the user's browser to
-    that page first, then performs the action — so the user sees the same page she's acting on, not just
+    that page first, then performs the action, so the user sees the same page she's acting on, not just
     a chat transcript, even when the underlying tool doesn't itself require the user to be on that page.
   use_case: A user watching Polly work should see the app follow along on their own screen, not have to
     take Polly's word for what happened somewhere off-screen.
@@ -68560,14 +68504,12 @@
   type: behavioral
   description: 'Polly could not manage the glossary at all — no tool let her create, rename, redefine,
     retire, delete, or relate a glossary term. Added list_glossary_terms, create_glossary_term, update_glossary_term,
-    delete_glossary_term, add_glossary_term_edge, and remove_glossary_ term_edge, each reusing the exact
+    delete_glossary_term, add_glossary_term_edge, and remove_glossary_term_edge, each reusing the exact
     capability checks (glossary_read/glossary_rw, per-term curatability, declared-domain validation) the
-    /admin/glossary REST router applies to the same real, AuthMiddleware-verified request — so a permission
-    denial through Polly matches what the identical router call would have denied. "Proposed" vs. "live"
+    /admin/glossary REST router applies to the same real, AuthMiddleware-verified request, so a permission denial through Polly matches what the identical router call would have denied. "Proposed" vs. "live"
     in this catalog is a derived state (grounded to a real column, or edge-connected to something grounded),
     not a settable flag, so there is no direct "finalize" action: a proposed term is admitted either automatically
-    (a column registration lands on it) or by connecting it to an already-live term via add_glossary_term_edge
-    — the system prompt documents this so Polly explains it correctly rather than claiming a flag exists.'
+    (a column registration lands on it) or by connecting it to an already-live term via add_glossary_term_edge. The system prompt documents this so Polly explains it correctly rather than claiming a flag exists.'
   use_case: A user should be able to ask Polly to define, correct, retire, or relate glossary terms without
     switching to the Glossary admin page for every edit.
   code:
@@ -68605,8 +68547,7 @@
     docked chat panel scrolled away with the page instead of staying put. Root cause: `main` set `min-height:
     0` but no `overflow`, so a plain `.page` (most admin tabs, unlike the `.page-sticky-head` pages which
     already manage their own internal scroll) grew `main` past its flex height instead of clipping to
-    it, growing `#root` past its 100vh and pushing the scroll onto the document — dragging every flex
-    sibling in `.app-body`, including ChatPanel, along with it. Fixed by giving `main` `overflow-y: auto`
+    it, growing `#root` past its 100vh and pushing the scroll onto the document, dragging every flex sibling in `.app-body`, including ChatPanel, along with it. Fixed by giving `main` `overflow-y: auto`
     so it clips and scrolls its own content, leaving the admin rail and chat panel (each already self-contained)
     to scroll independently.'
   use_case: Scrolling a long admin form should never move the chat panel out of view.
@@ -68633,8 +68574,7 @@
   priority: MUST
   type: infrastructure
   description: 'quay.io/minio/minio and docker.io/minio/minio both now deny anonymous pulls on every tag
-    (verified live 2026-09-24 against quay.io''s own anonymous pull-scoped token endpoint — not a rate
-    limit or a :latest-only issue, the whole repo is gated), breaking the release build''s obs-image packaging
+    (verified live 2026-09-24 against quay.io''s own anonymous pull-scoped token endpoint; not a rate limit or a :latest-only issue, the whole repo is gated), breaking the release build''s obs-image packaging
     job and the docker-compose.core.yml / helm chart MinIO services used by the test harness and the self-hosted
     quickstart default. Repointed all three to docker.io/bitnamilegacy/minio (and bitnamilegacy/minio-client
     for `mc`) — Bitnami''s still-anonymous mirror, verified live (both amd64/arm64 manifests, container
@@ -68673,9 +68613,8 @@
   feature: chat-assistant-actions
   priority: MUST
   type: behavioral
-  description: 'Polly (Anthropic vendor) would say she was about to do something, then silently stop —
-    reproduced live with Opus 4.6, reproducible on retry. Root cause: the Anthropic call set max_tokens=8192
-    alongside thinking={"type": "adaptive"}, which shares that same budget — a heavily-reasoning turn
+  description: 'Polly (Anthropic vendor) would say she was about to do something, then silently stop; reproduced live with Opus 4.6, reproducible on retry. Root cause: the Anthropic call set max_tokens=8192
+    alongside thinking={"type": "adaptive"}, which shares that same budget. A heavily-reasoning turn
     (many tools + a long system prompt) could exhaust it mid-thought, before the model ever emitted its
     tool_use block, returning stop_reason "max_tokens". The loop treated that identically to a deliberate
     "end_turn" (`if resp.stop_reason != "tool_use": break`), silently ending the turn with whatever text
@@ -68683,8 +68622,7 @@
     32000 fixes the exhaustion, and stop_reason == "max_tokens" is now handled explicitly, appending a
     visible "ran out of response budget" notice instead of ending silently either way. Raising max_tokens
     that far also pushed the SDK''s own non-streaming generation-time estimate over its 10-minute ceiling
-    ("Streaming is required for operations that may take longer than 10 minutes"), also hit live — forcing
-    the same call onto `client.messages.stream(...)` (see REQ-1839, done in the same change) rather than
+    ("Streaming is required for operations that may take longer than 10 minutes"), also hit live, forcing the same call onto `client.messages.stream(...)` (see REQ-1839, done in the same change) rather than
     `.create()`.'
   use_case: Polly must never go silent mid-turn with no explanation, regardless of whether the cause is
     a truncated tool call, a truncated final answer, or something else recoverable only by retrying or
@@ -68711,16 +68649,12 @@
   feature: chat-assistant-models
   priority: SHOULD
   type: behavioral
-  description: 'The Anthropic chat path now streams real token-by-token text (and hosted web_search/ web_fetch
-    tool badges) to the browser as they arrive, walking the raw content_block_delta/content_block_stop
-    event stream rather than waiting for get_final_message() and yielding everything at once — required
-    anyway once REQ-1838''s max_tokens increase pushed non-streaming calls over the SDK''s 10-minute ceiling,
+  description: 'The Anthropic chat path now streams real token-by-token text (and hosted web_search/web_fetch tool badges) to the browser as they arrive, walking the raw content_block_delta/content_block_stop
+    event stream rather than waiting for get_final_message() and yielding everything at once. That was required anyway once REQ-1838''s max_tokens increase pushed non-streaming calls over the SDK''s 10-minute ceiling,
     and matches how the browser already expects to receive an assistant turn: useMcpChat.ts''s beginAssistantTurn
     already appends chunks incrementally (built for REQ-1795''s tool-loop rounds), so no frontend change
-    was needed. Ordering matters: a response with a web_search before its answer text must surface the
-    search badge BEFORE that text, not after — reading only `.text_stream` and appending hosted-tool badges
-    afterward would collapse everything to "all text first" regardless of the real block order, so this
-    reads `current_message_ snapshot` at each block''s stop event instead.'
+    was needed. Ordering matters: a response with a web_search before its answer text must surface the search badge BEFORE that text, not after. Reading only `.text_stream` and appending hosted-tool badges
+    afterward would collapse everything to "all text first" regardless of the real block order, so this reads `current_message_snapshot` at each block''s stop event instead.'
   use_case: Polly's replies should appear incrementally as the model generates them, in the same order
     the model actually produced its text and any hosted-tool activity.
   code:
@@ -68774,15 +68708,14 @@
   description: 'Two further bugs in the same live-streaming path REQ-1838/1839 introduced, both reproduced
     live and fixed. (1) ChatPanel''s message ScrollArea never auto-scrolled to follow new content (only
     the separate tool-call log did, whose own comment incorrectly assumed the message list "would" do
-    the same) — a long streamed reply just grew below the current scroll position, so the visible text
+    the same). A long streamed reply just grew below the current scroll position, so the visible text
     looked permanently frozen on the first sentence even though the full reply had already arrived; fixed
-    by adding the identical auto-scroll effect the tool log already had, keyed on `messages`. (2) resp
-    now comes from stream. get_final_message() (ParsedMessage), whose text blocks are ParsedTextBlock
+    by adding the identical auto-scroll effect the tool log already had, keyed on `messages`. (2) resp now comes from stream.get_final_message() (ParsedMessage), whose text blocks are ParsedTextBlock
     — carrying an extra parsed_output field (always None; only meaningful with a structured-output param
     never passed here) the SDK itself marks `__api_exclude__` but plain model_dump() doesn''t know to
     drop. Sent back verbatim in a client-tool-pause resume POST''s assistant_content, Anthropic''s API
     rejected it outright with a 400 invalid_request_error ("messages.N.content. M.text.parsed_output:
-    Extra inputs are not permitted") — reproduced live on every turn that paused for a client tool (e.g.
+    Extra inputs are not permitted"); reproduced live on every turn that paused for a client tool (e.g.
     present_choice) after the switch to streaming; fixed by passing `exclude=getattr(b, "__api_exclude__",
     None)` to model_dump().'
   use_case: A long streamed Polly reply must stay visible as it grows, and pausing for a client tool (present_choice,
@@ -68813,7 +68746,7 @@
   priority: MUST
   type: behavioral
   description: 'Found the actual root cause of the "frozen after the first word" symptom REQ-1841''s auto-scroll
-    and parsed_output fixes didn''t resolve — confirmed via live console logging of every parsed SSE event
+    and parsed_output fixes didn''t resolve, confirmed via live console logging of every parsed SSE event
     and every beginAssistantTurn update: the FIRST chunk always applied correctly (indexOf found the placeholder),
     but every chunk after that logged indexOf === -1 forever, one hundred percent deterministically, while
     the server kept delivering dozens of further real, distinct chunks underneath (confirmed via the EventStream
@@ -68847,8 +68780,7 @@
   feature: chat-assistant-panel
   priority: SHOULD
   type: ui
-  description: The present_choice dialog (REQ-1812) defaulted to dead center in the chat panel, which
-    reliably covered the very message the choice was about — reported live for a glossary- update confirmation,
+  description: The present_choice dialog (REQ-1812) defaulted to dead center in the chat panel, which reliably covered the very message the choice was about. It was reported live for a glossary-update confirmation,
     where the dialog sat directly over the term list it was asking about. Re-anchored to the top of the
     panel by default (the newest content sits at the bottom, since REQ-1841's auto-scroll follows it there,
     so a top anchor is least likely to cover it), and the backdrop lightened from a near-opaque scrim
@@ -68885,7 +68817,7 @@
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: Every glossary term name in this catalog is lowercase — auto-derived ones already are (normalize_term
+  description: Every glossary term name in this catalog is lowercase. Auto-derived ones already are (normalize_term
     case-folds physical column/table names), but the manual-naming entry points (create_abstract_term,
     upsert_declared_term, rename_term) only stripped whitespace, so a curator or Polly could mint "Sepal
     Length" alongside an existing "sepal length" as an effectively-duplicate, differently-cased entry.
@@ -68919,7 +68851,7 @@
     (REQ-1820), the glossary tools mutate through the REST /admin/glossary/* router, never GraphQL, so
     Apollo''s refetchQueries does nothing for it. ChatPanel now dispatches a plain `window` CustomEvent
     ("provisa:glossary-changed") after any of the five glossary-mutating tools completes, and GlossaryTab
-    listens for it to refetch its list (and the currently-open term''s detail, if any) — a generic mechanism
+    listens for it to refetch its list (and the currently-open term''s detail, if any), a generic mechanism
     any other REST-backed admin page can opt into the same way, without ChatPanel needing to know which
     page, if any, is currently mounted.'
   use_case: An already-open Glossary page should reconcile with whatever Polly actually did, the same
@@ -68950,12 +68882,11 @@
   feature: chat-assistant-actions
   priority: SHOULD
   type: behavioral
-  description: 'Reported live: asked to query the iris table via GraphQL, Polly navigated to a nonexistent
-    route (/admin/explorer — the real GraphQL Explorer is /query) and, even had the route been right,
+  description: 'Reported live: asked to query the iris table via GraphQL, Polly navigated to a nonexistent route (/admin/explorer; the real GraphQL Explorer is /query) and, even had the route been right,
     had no way to actually get a prepared query into the page short of printing it in chat and asking
     the user to paste it. The navigate client tool''s route catalog in its own description now names the
     real routes explicitly (including the two wrong guesses it must NOT use), and the tool gained an optional
-    `state` payload passed straight through as react-router''s `navigate(route, {state})` — the SAME mechanism
+    `state` payload passed straight through as react-router''s `navigate(route, {state})`, the SAME mechanism
     an in-app hyperlink to /query already uses (QueryPage.tsx''s AutoRunFromNav reads `state.query`/`state.autoRun`)
     to land a query in the editor, and run it, with no copy-paste. Generic passthrough, not hardcoded
     to one page, so any route that already reads its own location.state keys works here too.'
@@ -68987,13 +68918,12 @@
   type: behavioral
   description: 'Even with REQ-1846''s navigate+state fix landing a query in the Explorer, the query itself
     failed schema validation: Polly wrote field `irisIris` for registered table `iris_iris` in domain
-    `shelter`, but the compiled GraphQL schema''s real field is `s__irisIris` — the GraphQL and SQL planes
+    `shelter`, but the compiled GraphQL schema''s real field is `s__irisIris`. The GraphQL and SQL planes
     apply different naming conventions, and the table name additionally gets a domain-uniqueness prefix
     only the compiled schema itself can resolve (the same algorithm needs every sibling table name in
     the domain, so it can''t be guessed or re-derived client-side). Added graphql_field_names, reusing
     the existing resolve_graphql_field_name naming-authority lookup (REQ-1634, state.table_path_maps)
-    for the table field and the same apply_gql_name every column field already goes through for columns
-    — never a parallel reimplementation. The system prompt now requires calling it for every table before
+    for the table field and the same apply_gql_name every column field already goes through for columns, never a parallel reimplementation. The system prompt now requires calling it for every table before
     writing any GraphQL query.'
   use_case: A GraphQL query Polly builds for a table should use that table's REAL exposed field names,
     not a guessed transform that fails schema validation.
@@ -69028,8 +68958,7 @@
     prefix; PascalCase labels; property names via apply_cql_property) — and just as unguessable. Added
     cypher_field_names, reusing the exact same CypherLabelMap (_build_label_map/CypherLabelMap.from_schema)
     that the real /data/graph-schema endpoint, the Bolt/Cypher execution path, AND the NL query pipeline''s
-    own SQL-to-Cypher derivation (best_effort_cypher_for_sql) all build from — confirmed to be the same
-    rule set the NL page already uses to go SQL -> Cypher, not a parallel reimplementation. The system
+    own SQL-to-Cypher derivation (best_effort_cypher_for_sql) all build from, confirmed to be the same rule set the NL page already uses to go SQL -> Cypher, not a parallel reimplementation. The system
     prompt (REQ-1846/1847/1848) now documents all seven Explore query surfaces together: SQL needs no
     extra lookup (describe_table''s names are already the real ones), GraphQL and Cypher each need their
     own naming-authority tool call, and gRPC/JSON:API/OpenAPI derive from the same compiled schema GraphQL
@@ -69066,11 +68995,9 @@
   type: behavioral
   description: 'Reported live: a gRPC query built from Polly navigating to /grpc failed. gRPC''s rpc method
     name was documented as merely a "best-effort, unverified" derivation from GraphQL''s table_field,
-    but it is in fact fully deterministic: provisa/grpc/proto_gen.py builds it as `Query` + to_type_name(table_field)
-    re-cased to proto3 convention (_to_proto_type_name — e.g. s__irisIris -> S__IrisIris -> SIrisIris).
+    but it is in fact fully deterministic: provisa/grpc/proto_gen.py builds it as `Query` + to_type_name(table_field) re-cased to proto3 convention (_to_proto_type_name, e.g. s__irisIris -> S__IrisIris -> SIrisIris).
     graphql_field_names now also returns grpc_query_method/grpc_aggregate_method computed via those exact
-    same functions, so gRPC has a real naming-authority answer, not a guess. Also corrected: JSON:API
-    and OpenAPI need no derived name at all — their routes key off the plain schema/table names directly
+    same functions, so gRPC has a real naming-authority answer, not a guess. Also corrected: JSON:API and OpenAPI need no derived name at all. Their routes key off the plain schema/table names directly
     (/data/jsonapi/{schema}/{table}, "GET /data/rest/{schema}/{table}"), confirmed by reading their router
     definitions (create_jsonapi_router, create_rest_router) and the existing "Open in gRPC/JSON:API/OpenAPI"
     deep-link buttons in DataProductDetailPanel.tsx (buildGrpcMethod/buildJsonApiUrl/buildOpenApiUrl),
@@ -69116,8 +69043,7 @@
     pausing round — every earlier round''s assistant/tool_result messages, appended to the server''s own
     local `convo` copy, never reached the frontend, which reconstructs its own `convo` for the resume
     POST from only what the event gives it. The resumed conversation therefore had no memory of the search_catalog/graphql_field_names
-    calls the model had already made and correctly reasoned it needed to redo them — which triggered another
-    navigate, another pause, another reset, forever. Fixed in both _run_chat_anthropic and _run_chat_aisuite
+    calls the model had already made and correctly reasoned it needed to redo them, which triggered another navigate, another pause, another reset, forever. Fixed in both _run_chat_anthropic and _run_chat_aisuite
     (provisa/api/mcp/ chat.py) by accumulating a `prior_messages` list of every server-only round completed
     so far in the turn and including it in the awaiting_client_tools payload; useMcpChat.ts splices `prior_messages`
     into its resumed `convo` ahead of the pausing round''s own assistant_content/ tool_results.'
@@ -69148,18 +69074,15 @@
   feature: chat-assistant-actions
   priority: MUST
   type: behavioral
-  description: 'Reported live: OpenAPI deep links Polly built never scrolled to, selected, or executed
-    the right endpoint — total silence, the exact symptom of OpenApiPage.tsx''s autoRun logic finding
+  description: 'Reported live: OpenAPI deep links Polly built never scrolled to, selected, or executed the right endpoint: total silence, the exact symptom of OpenApiPage.tsx''s autoRun logic finding
     no matching .opblock and timing out quietly. Root cause: JSON:API/OpenAPI routes key on the table''s
     RAW domain id (create_jsonapi_router''s /{domain_id}/{table_name}, openapi_spec.py''s path_key using
-    meta["domain_id"] straight from schema_gen''s table_path_maps, which is never transformed) — e.g.
-    "pet-store" — while describe_table/list_tables/graphql_field_names'' own `schema` parameter is the
+    meta["domain_id"] straight from schema_gen''s table_path_maps, which is never transformed), e.g.
+    "pet-store", while describe_table/list_tables/graphql_field_names'' own `schema` parameter is the
     SQL-safe name (domain_to_sql_name applied, e.g. "pet_store"). Reassembling `/data/jsonapi/{schema}/{table}`
     or `GET /data/rest/{schema}/{table}` from Polly''s own schema/table names therefore 404s for any domain
-    id containing a character domain_to_sql_name changes (hyphen, space, ...) — which the demo''s own
-    "pet-store" domain has. Fixed by having graphql_field_names also return jsonapi_path/openapi_path,
-    built from the same TableMeta (meta.domain_id/meta.table_name) it already resolves via _find_role_table
-    — those attributes hold the raw, untransformed names throughout the compiler, the same ones schema_gen''s
+    id containing a character domain_to_sql_name changes (hyphen, space, ...), which the demo''s own "pet-store" domain has. Fixed by having graphql_field_names also return jsonapi_path/openapi_path,
+    built from the same TableMeta (meta.domain_id/meta.table_name) it already resolves via _find_role_table. Those attributes hold the raw, untransformed names throughout the compiler, the same ones schema_gen''s
     table_path_maps embed. The system prompt now tells Polly to always use these two fields verbatim rather
     than reassembling the path herself, correcting the REQ-1846/1847/1848 "no lookup needed" guidance
     for these two surfaces.'
@@ -69190,8 +69113,7 @@
   feature: chat-assistant-actions
   priority: MUST
   type: behavioral
-  description: 'Corrected framing after user pushback: Polly is not limited to per-table naming lookups
-    — she should be able to answer any complex question the NL Explore page can (joins, aggregation, GROUP
+  description: 'Corrected framing after user pushback: Polly is not limited to per-table naming lookups. She should be able to answer any complex question the NL Explore page can (joins, aggregation, GROUP
     BY, business-term filters), across all six query surfaces. The per-table naming-authority tools (graphql_field_names,
     cypher_field_names, REQ-1847/1848/1849/1851) only ever produce a flat single-table query; they have
     no notion of an AggregationPlan, join resolution, or table selection from a natural-language question.
@@ -69236,8 +69158,7 @@
   description: 'Reported live via Polly: an OpenAPI deep link for a plain table browse navigated correctly
     but showed no query params filled in, fetching every row unbounded. Root cause: _generate_openapi_query''s
     no-plan (plain browse) branch returned a bare "GET /data/rest/{domain}/{table}" with no params, while
-    _generate_jsonapi_query''s identical no-plan branch, just above it in the same file, caps the same
-    case at "?page[size]=20" — an inconsistency between the two REST-family generators for the exact same
+    _generate_jsonapi_query''s identical no-plan branch, just above it in the same file, caps the same case at "?page[size]=20", an inconsistency between the two REST-family generators for the exact same
     input shape. Fixed by adding the equivalent "?limit=20" to the OpenAPI branch (REST''s own param name,
     per provisa/api/rest/generator.py''s rest_table_endpoint), matching JSON:API''s default.'
   use_case: An OpenAPI deep link for a plain table browse should show a sane default page size, the same
@@ -69293,7 +69214,7 @@
     mirroring the admin GraphQL mutations (create_data_product/delete_data_product, schema_mutation.py)
     and reusing the same data_product_repo + DataProduct model. create_data_product is an upsert by id,
     matching the real mutation''s own semantics. Gated on data_product_read/data_product_rw via require_capability_request
-    against the real, verified request identity — Polly can never do anything the calling user''s own
+    against the real, verified request identity. Polly can never do anything the calling user''s own
     identity couldn''t already do through the admin UI.'
   use_case: A user should be able to ask Polly to create, list, or delete a data product instead of doing
     it by hand on the Data Products admin page.
@@ -69326,7 +69247,7 @@
     from the compiled state.metrics). Added upsert_metric/delete_metric, mirroring the admin GraphQL mutations
     (upsert_metric/delete_metric, schema_mutation.py) and reusing the same metric_repo + Metric model
     + regenerate_metric_views + _rebuild_schemas so a metric edit republishes state.metrics and any dependent
-    view_metrics-spec view exactly as the admin mutation does — no partial/silent divergence from the
+    view_metrics-spec view exactly as the admin mutation does, with no partial/silent divergence from the
     real write path. Gated on table_registration (the same capability the real mutation checks) via require_capability_request.'
   use_case: A user should be able to ask Polly to define or remove a governed metric instead of doing
     it by hand on the admin UI.
@@ -69358,12 +69279,9 @@
   priority: MUST
   type: behavioral
   description: 'Following a design discussion: every MCP tool call (Polly''s or the standalone MCP server''s)
-    is scoped to the calling identity''s own real capabilities via require_capability_request/ require_capability
-    — an agent can never exceed what the underlying authenticated identity could already do. Given that,
-    there was no security reason to keep this session''s new tools (naming lookups, generate_explore_queries,
-    native-schema discovery, glossary/data-product/ metric CRUD) Polly-only — registered them on the real
-    standalone MCP server (provisa/api/mcp/server.py) too, excluded only the browser-actuation client
-    tools (navigate/ present_choice/refresh_mv), which have no meaning for a headless MCP client.
+    is scoped to the calling identity''s own real capabilities via require_capability_request/require_capability. An agent can never exceed what the underlying authenticated identity could already do. Given that,
+    there was no security reason to keep this session''s new tools (naming lookups, generate_explore_queries, native-schema discovery, glossary/data-product/metric CRUD) Polly-only — registered them on the real
+    standalone MCP server (provisa/api/mcp/server.py) too, excluding only the browser-actuation client tools (navigate/present_choice/refresh_mv), which have no meaning for a headless MCP client.
 
     The capability-gated tools (glossary/data-product/metric writes) needed new plumbing: require_capability_request/require_active_org_id
     read request.state.identity/ request.state.active_org_id off a Starlette Request, but the MCP server
@@ -69426,13 +69344,12 @@
     fragment.yaml), not scripts/bench-data/. The design intent: a solutions engineer can build a predictable,
     reusable demo for a specific client or vertical (e.g. a future `--demo banking`) by adding one demo/named/<name>/
     directory in this shape, with no dev involvement and no change to the launcher script. (Amended 2026-09-24,
-    ONE START POINT, NOT ONE PROCESS:) The invariant a named demo must satisfy is a single standard start
-    point — its docker-compose.yml is the one thing a solutions engineer invokes, and `docker compose
+    ONE START POINT, NOT ONE PROCESS:) The invariant a named demo must satisfy is a single standard start point. Its docker-compose.yml is the one thing a solutions engineer invokes, and `docker compose
     up -d` against it is the whole setup+seed story. It is NOT a requirement that the demo run as one
     container/process: services may be split across multiple containers (as perf''s 4 engines + seeder
     are), and a named demo may reference external managed resources it doesn''t containerize at all (e.g.
     a live Databricks/Snowflake source reached by connection string/secret, registered in fragment.yaml
-    with no corresponding compose service) — those are implementation details behind the one entry point,
+    with no corresponding compose service). Those are implementation details behind the one entry point,
     not exceptions to it. (Amended 2026-10-06, A NAMED DEMO IS A WHOLE CONFIG) A named demo''s configuration is a whole configuration, not an overlay on the standard demo: demo/named/<name>/config.yaml is the demo, and the standard demo''s own definitions are in it only where it includes them. It is typically the model exported from a running demo after building in the UI, saved as is. Since every demo start rebuilds the control plane from the demo''s configuration, the demo starts with exactly what the file lists -- what it lists is added or updated and nothing else remains. Alternatively, as a shortcut for a small addition, a named demo may ship a fragment.yaml instead, overlaid on the standard demo configuration; a demo with neither, or with both, is refused by name. A --source toy source still adds its source on top. The demo''s data stores start and seed through its docker-compose.yml and seeder as before; a named demo reseeds them on every start for a pristine demo, and --keep-data reuses what is already seeded. (Amended 2026-10-13, A DEMO''S DIRECTORY AND ITS LOGS) For any named demo the launcher exports PROVISA_NAMED_DEMO_DIR, the demo''s directory, for its config.yaml and docker-compose.yml to name paths under (a Logs source''s glob is a full path, REQ-1996). A named demo may ship a logs/ directory: its containers write their log files there, and the launcher adds it to PROVISA_LOGS_ALLOWED_ROOTS so the demo''s Logs sources may read them. A pristine start empties logs/ of everything but the files the demo ships in it (its .gitignore files); --keep-data keeps the logs with the data. This is generic, for every named demo, with no per-name branch. The first demo to use it is weblogs (demo/named/weblogs/): a web shop behind nginx with its Postgres, nginx''s JSON access log and the database''s jsonlog read as Logs sources and joined to the shop''s tables and to each other by the request id nginx generates.'
   use_case: Lets the demo installer stand up scenario-specific demo environments (starting with a cross-engine
     performance/load-test benchmark) without branching the standard demo path, and lets solutions engineers
