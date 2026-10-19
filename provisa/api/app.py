@@ -2426,7 +2426,8 @@ async def _build_org_runtime(
     # REQ-1048: recorded before anything below can materialize, since materialize_store() reads it
     # off the bound runtime to decide whose disk the org's bytes land on.
     rt.storage_url = storage_url
-    state.org_registry.set(key, rt)
+    # Resolved to this runtime by this build alone until it is complete (OrgRegistry.begin_build).
+    build = state.org_registry.begin_build(key, rt)
     token = set_current_org(org_id)
     env_token = set_current_env(env)
     try:
@@ -2746,17 +2747,17 @@ async def _build_org_runtime(
                     )
 
         await run_lifecycle_work(_wire_org_lifecycle(), name=f"org-lifecycle:{key}")
-    except Exception:
-        # The runtime was registered before this body ran (materialize_store() and the catalog-name
-        # map are read off the registry while it builds), so a failure part-way leaves a runtime
-        # whose catalogs, schemas or pools are incomplete cached under the org — and every later
-        # query reads it as healthy. Drop it: the next request rebuilds from scratch, which is also
-        # what makes a failed wake retry instead of sticking.
+    except BaseException:
+        # A failed (or cancelled) build registers nothing, and the runtime it was to replace is
+        # dropped too: the next request rebuilds from scratch, which is also what makes a failed
+        # wake retry instead of sticking.
+        state.org_registry.end_build(build, built=False)
         state.org_registry.invalidate(key)
         raise
     finally:
         reset_current_env(env_token)
         reset_current_org(token)
+    state.org_registry.end_build(build, built=True)
     return rt
 
 
