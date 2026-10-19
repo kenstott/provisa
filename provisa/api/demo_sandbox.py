@@ -246,6 +246,10 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     await clone_model(_pool(), org_schema(demo.template_org), org_schema(org_id), landing=COPIED)
     # Uploads are the organisation's, outside its schema: its code sources name the template's.
     await uploads.copy(_admin_pool(), demo.template_org, org_id)
+    # REQ-2095: the secrets its cloned model names, in its own vault before its runtime is built.
+    from provisa.core.demo_secrets import seed as seed_secrets
+
+    await seed_secrets(_admin_pool(), org_id, demo.directory)
     await org_files.prepare(org_id, state.admin_db, _stop_org_servers)
     # The demo version it is opened from: its examples and tour are that version's, whatever is
     # published after (demo_directory_of).

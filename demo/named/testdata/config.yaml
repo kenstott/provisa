@@ -18,7 +18,8 @@
 # nothing real, a categorical column's values drawn from its synthetic rule. The keys are faked
 # alike (hash), so a join through a relationship still matches.
 #
-#   shop-db        the shop's Postgres, read live as provisa_reader (db/init.sql)
+#   shop-db        the shop's Postgres, read live as provisa_reader (db/init.sql), its password
+#                  Provisa's own secret SHOP_DB_PASSWORD (secrets.yaml, written to the org's vault)
 #   shop-profiler  the profile of its tables, which dev is generated from
 auth:
   assignments_source: provisa
@@ -56,7 +57,7 @@ sources:
   port: ${env:TESTDATA_PG_PORT:-29432}
   database: testdata
   username: provisa_reader
-  password: provisa_reader
+  password: ${secret:SHOP_DB_PASSWORD}
   description: The shop's production database
 - id: shop-profiler
   type: data_profiler
