@@ -71,10 +71,9 @@ Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bed
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | Nein |
 | `hiveserver2` | impyla (HiveServer2 über Thrift) | — | hive | Nein |
 
-Wire-kompatible Datenbanken verwenden den JDBC-Treiber, den nativen Async-Treiber und den Dialekt eines Basis-Wire-Protokolls wieder — CockroachDB, YugabyteDB und Greenplum reiten auf dem PostgreSQL-Wire; TiDB reitet auf dem MySQL-Wire. Sie benötigen nur Registry-Einträge, keinen neuen Connector-Code.
+Wire-kompatible Datenbanken nutzen den JDBC-Treiber, den nativen Async-Treiber und den Dialekt eines Basisprotokolls mit. CockroachDB, YugabyteDB und Greenplum laufen über das PostgreSQL-Protokoll, TiDB über das MySQL-Protokoll. Sie brauchen nur Registry-Einträge und keinen neuen Connector-Code.
 
-`firebird` (Firebird 3/4/5) und `airport` (Arrow-Flight-Server) sind registrierte Quelltypen, die vor Ort über DuckDB-Community-Erweiterungen erreicht werden, wenn DuckDB die aktive Engine ist — kein direkter Treiber, kein föderierter Connector.
-
+`firebird` (Firebird 3/4/5) und `airport` (Arrow-Flight-Server) sind registrierte Quelltypen, die DuckDB-Community-Erweiterungen an Ort und Stelle erreichen, wenn DuckDB die aktive Engine ist. Sie haben weder einen direkten Treiber noch einen föderierten Connector.
 #### `saphana`
 
 SAP HANA wird über einen eigenen Treiber gelesen und in den Store der aktiven Engine repliziert, ist also auf jeder Engine erreichbar. Das Formular verlangt Host, Port (Standard 39015), Benutzername, Passwort und Datenbank; bei einem Multi-Tenant-System benennt die Datenbank den Tenant. Register Table listet die Schemas auf, die der Benutzer lesen darf; die Systemschemas von HANA bleiben außen vor.
@@ -608,7 +607,7 @@ Benutzername-Passwort-Flow:
 
 #### `servicenow`
 
-Jede Tabelle der Instanz steht zur Registrierung bereit; nichts wird automatisch registriert. Auf einer vollen Instanz können es Tausende Tabellen sein; Register Table gruppiert sie daher nach Thema — jedes Thema ist der Anzeigename eines ServiceNow-Pakets oder „(kein Paket)", wenn eine Tabelle keinem Paket angehört. Jede Tabelle wird als `name — label` angezeigt. Die Auswahl einer Tabelle liest deren Spalten aus der Instanz; das bloße Auflisten liest keine.
+Jede Tabelle der Instanz steht zur Registrierung bereit, und nichts wird automatisch registriert. Eine viel genutzte Instanz hat Tausende Tabellen, daher gruppiert Register Table sie nach Thema. Jedes Thema ist der Anzeigename eines ServiceNow-Pakets oder „(no package)“ für eine Tabelle, die zu keinem gehört. Jede Tabelle wird als `name — label` aufgeführt. Die Auswahl einer Tabelle liest deren Spalten von der Instanz; das Auflisten der Tabellen tut das nicht.
 
 Eine ServiceNow-Quelle nennt die vollständige `https://…`-URL der Instanz sowie Benutzername und Passwort. Die URL stammt aus `base_url` oder `host`; ein blosser Host oder ein anderes Schema wird abgelehnt und das Feld benannt (`instanceUrl`). Ein fehlender Benutzername oder ein fehlendes Passwort wird abgelehnt und das jeweilige Feld benannt. Jeder Wert kann eine `${secret:…}`- oder `${env:…}`-Referenz sein. Ein als Literal eingegebenes Geheimnis wird im Tresor der Organisation abgelegt, und die Quelle behält ihre Referenz.
 
@@ -730,7 +729,7 @@ Splunk-Suchergebnisse sind als Tabellen abfragbar (z. B. `internal_server`). Die
 | `mapping.datamodel_filter` | `datamodel-filter` | auf ein Data Model filtern |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | für selbstsignierte Zertifikate |
 
-Auf dem pgwire-Replica-Pfad (jede Engine außer Trino) werden dieselben vier optionalen Einstellungen zu den Calcite-`model.json`-Operanden-Keys `app`, `token`/`username`+`password`, `datamodelFilter` und `disableSslValidation` — die letzten beiden in den Typen, in die `SplunkSchemaFactory` sie castet, ein String und ein Boolean.
+Auf dem pgwire-Replikat-Pfad (jede Engine außer Trino) werden dieselben vier optionalen Einstellungen zu den Calcite-`model.json`-Operandenschlüsseln `app`, `token`/`username`+`password`, `datamodelFilter` und `disableSslValidation`. Die letzten beiden haben die Typen, in die `SplunkSchemaFactory` sie umwandelt: einen String und einen Boolean.
 
 ```yaml
 - id: ops-splunk
@@ -1066,8 +1065,7 @@ Die Datei wird leer ausgeliefert. Die eingebauten Connectors decken ab, was ohne
 
 **ClickHouse unterstützt drei Mechanismen**, einen pro Integrations-Engine-Form: eine relationale DATABASE-Engine, die automatisch jede entfernte Tabelle offenlegt (`clickhouse_database`, z. B. Redis/MySQL), eine Pro-Tabelle-Engine, deren Spalten die Registry liefert (`clickhouse_table`, z. B. die JDBC-/ODBC-Brücke — der `engine_template` kann einen `{table}`-Platzhalter tragen, den die Laufzeit bindet), und eine Datei-/Lake-/URL-Engine, deren Schema ClickHouse ableitet (`clickhouse_scan`, z. B. HDFS/URL). SQLite (DATABASE-Engine, Datei, kein Server) und Hudi (Lakehouse, Zero-Copy) werden OOTB ausgeliefert.
 
-Ein unbekannter `kind`-Wert schlägt beim Start laut fehl — ein Deskriptor-Tippfehler darf einen Quelltyp nicht stillschweigend unerreichbar machen.
-
+Ein unbekannter `kind`-Wert scheitert beim Start lautstark, sodass ein Tippfehler in einem Deskriptor einen Quelltyp nie stillschweigend unerreichbar lässt.
 ### Probe-Gating
 
 Verfügbarkeit wird zur Attach-Zeit gegen den Standard-Discovery-Katalog jeder Engine geprüft:
@@ -1082,7 +1080,7 @@ Eine deklarierte Erweiterung, die nicht installierbar ist, schlägt laut fehl. K
 
 Jeder `server_options`-Wert, `user_mapping`-Wert, `attach_template` und `scan_template` kann `{field}`-Platzhalter verwenden. Verfügbare Felder:
 
-`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus jeder Key aus `federation_hints`. DuckDB-Attach-Templates erhalten außerdem `{alias}` — den internen Katalog-Alias, den Provisa der angehängten Datenbank zuweist.
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}` sowie jeder Schlüssel aus `federation_hints`. DuckDB-Attach-Templates erhalten außerdem `{alias}`, den internen Katalog-Alias, den Provisa der angebundenen Datenbank gibt.
 
 Ein Template, das ein unbekanntes Feld referenziert, schlägt zur Attach-Zeit laut fehl und macht eine Deskriptor-/Quell-Fehlpassung sichtbar, bevor defektes DDL die Engine erreicht.
 
@@ -1491,8 +1489,7 @@ auth:
 
 Registrieren Sie eine Neo4j-Graphdatenbank als abfragbare Quelle. Stewards verfassen Cypher-Abfragen, die skalare Werte projizieren; Provisa cacht Ergebnisse und legt sie als GraphQL-Typen offen.
 
-Cypher-Abfragen müssen Property-Zugriffe in der `RETURN`-Klausel verwenden (`RETURN n.id AS id, n.name AS name`) — die Rückgabe von Knotenobjekten wird bei der Registrierung abgelehnt.
-
+Cypher-Abfragen müssen in der `RETURN`-Klausel Eigenschaftszugriffe verwenden (`RETURN n.id AS id, n.name AS name`). Die Registrierung lehnt eine Abfrage ab, die Knotenobjekte zurückgibt.
 #### Konfigurationsdatei-Registrierung {: #config-file-registration }
 
 Deklarieren Sie eine `neo4j`-Quelle und ihre Tabellen in YAML. Jede Tabelle benötigt ein `query_template` (das Cypher, das ihre Zeilen erzeugt) und typisierte Spalten. Der Key `query_template` ist unter jedem anderen Quelltyp ungültig.
@@ -1509,7 +1506,7 @@ Jede Spalte benötigt `data_type`. Der Loader bildet Konfigurationstypen auf den
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` und `decimal(10,2)` werden akzeptiert — der Basistyp vor der Klammer wird verwendet.
+`varchar(N)` und `decimal(10,2)` werden akzeptiert, und der Basistyp vor der Klammer wird verwendet.
 
 Die Registrierung persistiert eine `api_sources`-Zeile und eine `api_endpoints`-Zeile pro Tabelle, sodass die Tabellen einen Neustart überstehen, ohne die Datei erneut zu lesen. Die Admin-REST-Endpunkte unter `/admin/sources/neo4j` schreiben dieselben Zeilen.
 

@@ -69,10 +69,9 @@ Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」
 | `saphana` | SQLAlchemy（`hana+hdbcli`） | — | — | 否 |
 | `hiveserver2` | impyla（HiveServer2 over Thrift） | — | hive | 否 |
 
-wire 相容的資料庫重用基礎 wire 的 JDBC 驅動程式、原生非同步驅動程式與方言——CockroachDB、YugabyteDB 與 Greenplum 走 PostgreSQL wire；TiDB 走 MySQL wire。它們只需要登錄項目，毋須新的連接器程式碼。
+協定相容的資料庫重用某個基礎協定的 JDBC 驅動程式、原生非同步驅動程式及方言。CockroachDB、YugabyteDB 及 Greenplum 使用 PostgreSQL 協定，TiDB 使用 MySQL 協定。它們只需要登錄項目，不需要新的連接器程式碼。
 
-`firebird`（Firebird 3/4/5）與 `airport`（Arrow Flight 伺服器）是已註冊的數據來源類型，當 DuckDB 為啟用中的引擎時，經 DuckDB 社群擴充就地觸及——沒有直接驅動程式，也沒有聯邦連接器。
-
+`firebird`（Firebird 3/4/5）及 `airport`（Arrow Flight 伺服器）是已登記的數據來源類型，當 DuckDB 是啟用中的引擎時，由 DuckDB 社群擴充功能就地觸及。它們沒有直接驅動程式，亦沒有聯邦連接器。
 #### `saphana`
 
 SAP HANA 經它自己的驅動程式讀取，並複製到啟用中引擎的儲存區，因此在每個引擎上都可觸及。表單需要主機、連接埠（預設 39015）、使用者名稱、密碼與資料庫；在多租用戶系統中，資料庫指定租用戶。Register Table 列出使用者可讀取的結構描述，不含 HANA 的系統結構描述。
@@ -599,7 +598,7 @@ Salesforce 數據來源需要指定機構的「我的網域」登入 URL 和一�
 
 #### `servicenow`
 
-執行個體的每張資料表均可供註冊；不會自動註冊任何內容。完整執行個體可能有數千張資料表；Register Table 按主題將它們分組——每個主題是 ServiceNow 套件的顯示名稱，當資料表不屬於任何套件時顯示「(無套件)」。每張資料表以 `name — label` 的形式列出。選取一張資料表會從執行個體讀取其欄位；列出資料表不會這樣做。
+實例中的每個資料表都可以註冊，不會自動註冊任何資料表。繁忙的實例有成千上萬個資料表，所以 Register Table 按主題分組。每個主題是一個 ServiceNow 套件的顯示名稱；不屬於任何套件的資料表歸入「(no package)」。每個資料表顯示為 `name — label`。選取一個資料表時才會從實例讀取它的資料行，列出資料表時不會。
 
 ServiceNow 數據來源指定執行個體的完整 `https://…` URL 以及使用者名稱和密碼。URL 從 `base_url` 或 `host` 取得；裸主機或其他配置（scheme）將被拒絕，並指出欄位名稱（`instanceUrl`）。缺少使用者名稱或密碼時將被拒絕，並指出欄位名稱。每個值都可以是 `${secret:…}` 或 `${env:…}` 參考。以字面值輸入的密鑰會存入機構的保管庫，數據來源保留其參考。
 
@@ -721,7 +720,7 @@ Splunk 搜尋結果可作為表查詢（例如 `internal_server`）。連接器 
 | `mapping.datamodel_filter` | `datamodel-filter` | 篩選至某個數據模型 |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | 供自簽憑證使用 |
 
-在 pgwire-replica 路徑上（除 Trino 以外的每個引擎），同樣這四個選用設定會成為 Calcite `model.json` operand 的索引鍵 `app`、`token`/`username`+`password`、`datamodelFilter` 與 `disableSslValidation`——後兩者依 `SplunkSchemaFactory` 轉換的類型，分別為字串與布林值。
+在 pgwire 副本路徑上（除 Trino 外的所有引擎），同樣這四項可選設定會成為 Calcite `model.json` 的運算元鍵 `app`、`token`/`username`+`password`、`datamodelFilter` 及 `disableSslValidation`。後兩項採用 `SplunkSchemaFactory` 轉換後的類型，即字串及布林值。
 
 ```yaml
 - id: ops-splunk
@@ -1038,8 +1037,7 @@ tables:
 
 **ClickHouse 支援三種機制**，各對應一種整合引擎形狀：一個自動呈現每張遠端表的關聯式 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、一個資料行由登錄提供的逐表引擎（`clickhouse_table`，例如 JDBC/ODBC 橋接——`engine_template` 可帶一個由執行階段繫結的 `{table}` 佔位符），以及一個由 ClickHouse 推斷結構描述的檔案／湖／URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、檔案、無伺服器）與 Hudi（湖倉、零複製）開箱即有。
 
-未知的 `kind` 值會在啟動時大聲失敗——描述元的一個錯字絕不可悄悄讓某個數據來源類型變成不可達。
-
+未知的 `kind` 值會在啟動時明確報錯，所以描述元裏的拼寫錯誤永遠不會令某種數據來源類型悄悄變得無法觸及。
 ### 探測閘門 {: #probe-gating }
 可用性在附掛時針對各引擎的標準探索目錄驗證：
 
@@ -1052,7 +1050,7 @@ tables:
 ### 樣板變數 {: #template-variables }
 每個 `server_options` 值、`user_mapping` 值、`attach_template` 與 `scan_template` 都可使用 `{field}` 佔位符。可用欄位：
 
-`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，加上 `federation_hints` 中的任何索引鍵。DuckDB 的 attach 樣板另外收到 `{alias}`——Provisa 指派給所附掛資料庫的內部目錄別名。
+`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，以及 `federation_hints` 中的任何鍵。DuckDB 的 attach 範本亦會收到 `{alias}`，即 Provisa 為掛載的資料庫指派的內部目錄別名。
 
 引用未知欄位的樣板會在附掛時大聲失敗，讓描述元與數據來源的不相符在損壞的 DDL 抵達引擎之前浮現。
 
@@ -1449,8 +1447,7 @@ auth:
 
 把一個 Neo4j 圖形資料庫註冊為可查詢的數據來源。管理員撰寫投影出純量值的 Cypher 查詢；Provisa 快取結果並把它們呈現為 GraphQL 類型。
 
-Cypher 查詢必須在 `RETURN` 子句中使用屬性存取子（`RETURN n.id AS id, n.name AS name`）——回傳節點物件在註冊時即被拒絕。
-
+Cypher 查詢必須在 `RETURN` 子句中使用屬性存取（`RETURN n.id AS id, n.name AS name`）。傳回節點物件的查詢會在註冊時被拒絕。
 #### 以設定檔註冊 {: #config-file-registration }
 
 在 YAML 中宣告一個 `neo4j` 數據來源及其表。每張表需要一個 `query_template`（產生其資料列的 Cypher）與具型別的資料行。`query_template` 索引鍵在任何其他數據來源類型下都無效。
@@ -1467,7 +1464,7 @@ Cypher 查詢必須在 `RETURN` 子句中使用屬性存取子（`RETURN n.id AS
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` 與 `decimal(10,2)` 可被接受——使用括號之前的基底類型。
+接受 `varchar(N)` 及 `decimal(10,2)`，使用括號前的基礎類型。
 
 註冊會持久化一列 `api_sources` 與每張表一列 `api_endpoints`，因此這些表在重新啟動後仍在，毋須重新讀取該檔案。`/admin/sources/neo4j` 之下的 admin REST 端點會寫入相同的資料列。
 

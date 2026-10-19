@@ -71,10 +71,9 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
 
-Wire-compatible databases reuse a base wire's JDBC driver, native async driver, and dialect — CockroachDB, YugabyteDB, and Greenplum ride the PostgreSQL wire; TiDB rides the MySQL wire. They need only registry entries, no new connector code.
+Wire-compatible databases reuse a base wire's JDBC driver, native async driver and dialect. CockroachDB, YugabyteDB and Greenplum ride the PostgreSQL wire, and TiDB rides the MySQL wire. They need only registry entries and no new connector code.
 
-`firebird` (Firebird 3/4/5) and `airport` (Arrow Flight server) are registered source types reached in place via DuckDB community extensions when DuckDB is the active engine — no direct driver, no federated connector.
-
+`firebird` (Firebird 3/4/5) and `airport` (Arrow Flight server) are registered source types that DuckDB community extensions reach in place when DuckDB is the active engine. They have no direct driver and no federated connector.
 #### `saphana`
 
 SAP HANA is read through its own driver and replicated into the active engine's store, so it is reachable on every engine. The form takes host, port (default 39015), username, password and database; on a multi-tenant system the database names the tenant. Register Table lists the schemas the user can read, with HANA's system schemas left out.
@@ -608,7 +607,7 @@ Username-password flow:
 
 #### `servicenow`
 
-Every table of the instance is available for registration; nothing is registered automatically. Tables number in the thousands on a busy instance, so Register Table groups them by theme — each theme is a ServiceNow package's display name, or "(no package)" when a table belongs to none. Each table is listed as `name — label`. Selecting a table reads that table's columns from the instance; listing the tables does not.
+Every table of the instance is available for registration, and nothing is registered automatically. A busy instance has thousands of tables, so Register Table groups them by theme. Each theme is a ServiceNow package's display name, or "(no package)" for a table that belongs to none. Each table is listed as `name — label`. Selecting a table reads that table's columns from the instance; listing the tables does not.
 
 A ServiceNow source names the instance's full `https://…` URL and a username and password. The URL is taken from `base_url` or `host`; a bare host or any other scheme is refused, naming the field (`instanceUrl`). A missing username or password is refused, naming it. Each value may be a `${secret:…}` or `${env:…}` reference. A secret typed as a literal is stored in the org vault and the source keeps its reference.
 
@@ -730,7 +729,7 @@ Splunk search results are queryable as tables (e.g. `internal_server`). The conn
 | `mapping.datamodel_filter` | `datamodel-filter` | filter to a data model |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | for self-signed certs |
 
-On the pgwire-replica path (every engine but Trino) the same four optional settings become the Calcite `model.json` operand keys `app`, `token`/`username`+`password`, `datamodelFilter` and `disableSslValidation` — the last two as the types `SplunkSchemaFactory` casts them to, a string and a boolean.
+On the pgwire-replica path (every engine but Trino) the same four optional settings become the Calcite `model.json` operand keys `app`, `token`/`username`+`password`, `datamodelFilter` and `disableSslValidation`. The last two take the types `SplunkSchemaFactory` casts them to, a string and a boolean.
 
 ```yaml
 - id: ops-splunk
@@ -1077,8 +1076,7 @@ The file ships empty. The built-in connectors cover what works out of the box, a
 
 **ClickHouse supports three mechanisms**, one per integration-engine shape: a relational DATABASE engine that auto-exposes every remote table (`clickhouse_database`, e.g. Redis/MySQL), a per-table engine whose columns the registry supplies (`clickhouse_table`, e.g. the JDBC/ODBC bridge — the `engine_template` may carry a `{table}` placeholder the runtime binds), and a file/lake/URL engine whose schema ClickHouse infers (`clickhouse_scan`, e.g. HDFS/URL). SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) ship OOTB.
 
-An unknown `kind` value fails loud at startup — a descriptor typo must not silently leave a source type unreachable.
-
+An unknown `kind` value fails loudly at startup, so a typo in a descriptor never quietly leaves a source type unreachable.
 ### Probe gating
 
 Availability is verified at attach time against each engine's standard discovery catalog:
@@ -1093,7 +1091,7 @@ A declared extension that is not installable fails loud. No silent skip, no fall
 
 Every `server_options` value, `user_mapping` value, `attach_template`, and `scan_template` may use `{field}` placeholders. Available fields:
 
-`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}` — the internal catalog alias Provisa assigns to the attached database.
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus any key from `federation_hints`. DuckDB attach templates also receive `{alias}`, the internal catalog alias Provisa gives the attached database.
 
 A template referencing an unknown field fails loud at attach time, surfacing a descriptor/source mismatch before broken DDL reaches the engine.
 
@@ -1502,8 +1500,7 @@ auth:
 
 Register a Neo4j graph database as a queryable source. Stewards author Cypher queries that project scalar values; Provisa caches results and exposes them as GraphQL types.
 
-Cypher queries must use property accessors in the `RETURN` clause (`RETURN n.id AS id, n.name AS name`) — returning node objects is rejected at registration time.
-
+Cypher queries must use property accessors in the `RETURN` clause (`RETURN n.id AS id, n.name AS name`). Registration refuses a query that returns node objects.
 #### Config-file registration
 
 Declare a `neo4j` source and its tables in YAML. Each table requires a `query_template` (the Cypher that produces its rows) and typed columns. The `query_template` key is invalid under any other source type.
@@ -1520,7 +1517,7 @@ Each column requires `data_type`. The loader maps config types to the API column
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` and `decimal(10,2)` are accepted — the base type before the parenthesis is used.
+`varchar(N)` and `decimal(10,2)` are accepted, and the base type before the parenthesis is used.
 
 Registration persists an `api_sources` row and one `api_endpoints` row per table, so the tables survive a restart without re-reading the file. The admin REST endpoints under `/admin/sources/neo4j` write the same rows.
 

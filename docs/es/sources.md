@@ -69,10 +69,9 @@ Referencia de todos los tipos de origen que soporta Provisa. "Controlador direct
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 sobre Thrift) | — | hive | No |
 
-Las bases de datos compatibles a nivel de wire reutilizan el controlador JDBC, el controlador nativo asíncrono y el dialecto de un wire base — CockroachDB, YugabyteDB y Greenplum usan el wire de PostgreSQL; TiDB usa el wire de MySQL. Solo necesitan entradas de registro, sin código de conector nuevo.
+Las bases de datos compatibles a nivel de protocolo reutilizan el driver JDBC, el driver asíncrono nativo y el dialecto de un protocolo base. CockroachDB, YugabyteDB y Greenplum usan el protocolo de PostgreSQL, y TiDB el de MySQL. Solo necesitan entradas en el registro y ningún código de conector nuevo.
 
-`firebird` (Firebird 3/4/5) y `airport` (servidor Arrow Flight) son tipos de origen registrados a los que se accede en el lugar a través de extensiones de la comunidad de DuckDB cuando DuckDB es el motor activo — sin controlador directo, sin conector federado.
-
+`firebird` (Firebird 3/4/5) y `airport` (servidor Arrow Flight) son tipos de origen registrados a los que las extensiones de la comunidad de DuckDB llegan en su sitio cuando DuckDB es el motor activo. No tienen driver directo ni conector federado.
 #### `saphana`
 
 SAP HANA se lee con su propio controlador y se replica en el almacén del motor activo, de modo que es accesible en todos los motores. El formulario pide host, puerto (predeterminado 39015), usuario, contraseña y base de datos; en un sistema multi-tenant la base de datos nombra el tenant. Register Table lista los esquemas que el usuario puede leer, sin los esquemas de sistema de HANA.
@@ -600,7 +599,7 @@ Flujo de usuario y contraseña:
 
 #### `servicenow`
 
-Cada tabla de la instancia está disponible para su registro; nada se registra automáticamente. Una instancia completa puede tener miles de tablas; Register Table las agrupa por tema — cada tema es el nombre para mostrar de un paquete de ServiceNow, o "(sin paquete)" cuando una tabla no pertenece a ninguno. Cada tabla aparece como `name — label`. Al seleccionar una tabla se leen sus columnas de la instancia; listar las tablas no lo hace.
+Todas las tablas de la instancia están disponibles para registrarse, y nada se registra automáticamente. Una instancia con mucho uso tiene miles de tablas, así que Register Table las agrupa por tema. Cada tema es el nombre visible de un paquete de ServiceNow, o "(no package)" para una tabla que no pertenece a ninguno. Cada tabla aparece como `name — label`. Seleccionar una tabla lee sus columnas de la instancia; listar las tablas no.
 
 Una fuente ServiceNow nombra la URL `https://…` completa de la instancia junto con un nombre de usuario y contraseña. La URL se toma de `base_url` o `host`; un host simple o cualquier otro esquema se rechaza, nombrando el campo (`instanceUrl`). Un nombre de usuario o contraseña ausente se rechaza, nombrando el campo. Cada valor puede ser una referencia `${secret:…}` o `${env:…}`. Un secreto escrito como literal se guarda en la bóveda de la organización y la fuente conserva su referencia.
 
@@ -722,7 +721,7 @@ Los resultados de búsqueda de Splunk son consultables como tablas (por ejemplo,
 | `mapping.datamodel_filter` | `datamodel-filter` | filtra a un modelo de datos |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | para certificados autofirmados |
 
-En la ruta pgwire-replica (cualquier motor salvo Trino) los mismos cuatro ajustes opcionales se convierten en las claves del operando `model.json` de Calcite `app`, `token`/`username`+`password`, `datamodelFilter` y `disableSslValidation` — las dos últimas con los tipos a los que `SplunkSchemaFactory` las convierte, una cadena y un booleano.
+En la ruta de réplica pgwire (todos los motores salvo Trino) los mismos cuatro ajustes opcionales se convierten en las claves de operando de Calcite `model.json` `app`, `token`/`username`+`password`, `datamodelFilter` y `disableSslValidation`. Las dos últimas toman los tipos a los que `SplunkSchemaFactory` las convierte: una cadena y un booleano.
 
 ```yaml
 - id: ops-splunk
@@ -1039,8 +1038,7 @@ El archivo viene vacío. Los conectores incorporados cubren lo que funciona de s
 
 **ClickHouse soporta tres mecanismos**, uno por cada forma de motor de integración: un motor DATABASE relacional que expone automáticamente cada tabla remota (`clickhouse_database`, por ejemplo Redis/MySQL), un motor por tabla cuyas columnas provee el registro (`clickhouse_table`, por ejemplo el puente JDBC/ODBC — el `engine_template` puede llevar un marcador `{table}` que el runtime vincula), y un motor de archivo/lake/URL cuyo esquema infiere ClickHouse (`clickhouse_scan`, por ejemplo HDFS/URL). SQLite (motor DATABASE, archivo, sin servidor) y Hudi (lakehouse, sin copia) vienen listos para usar.
 
-Un valor `kind` desconocido falla de forma ruidosa al inicio — un error tipográfico en el descriptor no debe dejar un tipo de origen inalcanzable en silencio.
-
+Un valor `kind` desconocido falla de forma visible al arrancar, así que una errata en un descriptor nunca deja un tipo de origen inalcanzable sin avisar.
 ### Verificación de disponibilidad {: #probe-gating }
 La disponibilidad se verifica en el momento del attach contra el catálogo de detección estándar de cada motor:
 
@@ -1053,7 +1051,7 @@ Una extensión declarada que no se puede instalar falla de forma ruidosa. Sin om
 ### Variables de plantilla {: #template-variables }
 Todo valor de `server_options`, valor de `user_mapping`, `attach_template` y `scan_template` puede usar marcadores `{field}`. Campos disponibles:
 
-`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, además de cualquier clave de `federation_hints`. Las plantillas de attach de DuckDB también reciben `{alias}` — el alias de catálogo interno que Provisa asigna a la base de datos adjunta.
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, más cualquier clave de `federation_hints`. Las plantillas de attach de DuckDB reciben además `{alias}`, el alias de catálogo interno que Provisa da a la base de datos adjunta.
 
 Una plantilla que referencia un campo desconocido falla de forma ruidosa en el momento del attach, exponiendo un desajuste entre descriptor y origen antes de que un DDL roto llegue al motor.
 
@@ -1451,8 +1449,7 @@ auth:
 
 Registre una base de datos de grafos Neo4j como un origen consultable. Los stewards escriben consultas Cypher que proyectan valores escalares; Provisa almacena en caché los resultados y los expone como tipos GraphQL.
 
-Las consultas Cypher deben usar accesores de propiedad en la cláusula `RETURN` (`RETURN n.id AS id, n.name AS name`) — devolver objetos de nodo se rechaza en el momento del registro.
-
+Las consultas Cypher deben usar accesos a propiedades en la cláusula `RETURN` (`RETURN n.id AS id, n.name AS name`). El registro rechaza una consulta que devuelve objetos nodo.
 #### Registro por archivo de configuración {: #config-file-registration }
 
 Declare un origen `neo4j` y sus tablas en YAML. Cada tabla requiere un `query_template` (el Cypher que produce sus filas) y columnas tipadas. La clave `query_template` no es válida bajo ningún otro tipo de origen.
@@ -1469,7 +1466,7 @@ Cada columna requiere `data_type`. El cargador convierte los tipos de configurac
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-Se aceptan `varchar(N)` y `decimal(10,2)` — se usa el tipo base anterior al paréntesis.
+Se aceptan `varchar(N)` y `decimal(10,2)`, y se usa el tipo base anterior al paréntesis.
 
 El registro persiste una fila `api_sources` y una fila `api_endpoints` por tabla, de modo que las tablas sobreviven a un reinicio sin volver a leer el archivo. Los endpoints REST de administración bajo `/admin/sources/neo4j` escriben las mismas filas.
 

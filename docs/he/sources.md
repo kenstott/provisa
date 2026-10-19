@@ -71,10 +71,9 @@ Provisa רושמת **73** סוגי מקור, אלה שטופס המקורות מ
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | לא |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | לא |
 
-מסדי נתונים תואמי-wire עושים שימוש חוזר ב-JDBC driver, בדרייבר האסינכרוני הילידי ובדיאלקט של ה-wire הבסיסי — CockroachDB, YugabyteDB ו-Greenplum רוכבים על ה-wire של PostgreSQL; TiDB רוכב על ה-wire של MySQL. הם זקוקים רק לרשומות רישום, ללא קוד מחבר חדש.
+מסדי נתונים תואמי-פרוטוקול משתמשים מחדש בדרייבר ה-JDBC, בדרייבר האסינכרוני המקורי ובניב של פרוטוקול בסיס. CockroachDB, YugabyteDB ו-Greenplum רוכבים על פרוטוקול PostgreSQL, ו-TiDB על פרוטוקול MySQL. הם צריכים רק רשומות ברישום, בלי קוד מחבר חדש.
 
-`firebird` (Firebird 3/4/5) ו-`airport` (Arrow Flight server) הם סוגי מקור רשומים המושגים במקום דרך תוספי הקהילה של DuckDB כאשר DuckDB הוא המנוע הפעיל — ללא דרייבר ישיר, ללא מחבר מפודרר.
-
+`firebird` (Firebird 3/4/5) ו-`airport` (שרת Arrow Flight) הם סוגי מקור רשומים שתוספי הקהילה של DuckDB מגיעים אליהם במקומם כש-DuckDB הוא המנוע הפעיל. אין להם דרייבר ישיר ואין להם מחבר מפודרר.
 #### `saphana`
 
 SAP HANA נקרא דרך הדרייבר שלו ומשוכפל אל מחסן המנוע הפעיל, ולכן הוא נגיש בכל מנוע. הטופס מקבל host, פורט (ברירת מחדל 39015), שם משתמש, סיסמה ומסד נתונים; במערכת מרובת-דיירים שם מסד הנתונים מציין את הדייר (tenant). Register Table מציג את הסכמות שהמשתמש יכול לקרוא, ללא סכמות המערכת של HANA.
@@ -255,7 +254,7 @@ Amazon Athena הוא שירות שאילתות ללא שרת על נתונים �
 
 **Kafka במנועים המתארחים.** במנועים המוקצים של הפלטפורמה המתארחת, מקור Kafka חייב לציין מאגר סכימות (`schema_registry_url`). מקור שרק המודל מצהיר על עמודות ה-topics שלו נדחה בשמו בעת שמירה או החלה (HTTP 422, `sources.kafka_needs_schema_registry`), משום שתיאורי הטבלאות שלו היו דורשים תיקייה שלא ניתן לתת למנוע בזמן ריצה. אישורי SASL מגיעים למנועים האלה בזיכרון (ראו [אבטחה](security.md#the-federation-engine-trino)).
 
-### Push Receiver
+### מקבל דחיפה (Push Receiver) {: #push-receiver }
 
 | סוג מקור | מנגנון | מוטציות |
 | ------------ | ----------- | ----------- |
@@ -608,7 +607,7 @@ Google Workspace ו-Microsoft 365 נקראים על ידי טוענים משלה
 
 #### `servicenow`
 
-כל טבלה של ה-instance זמינה לרישום; דבר אינו נרשם אוטומטית. ב-instance מלא יכולות להיות אלפי טבלאות; Register Table מקבצת אותן לפי נושא — כל נושא הוא שם התצוגה של חבילת ServiceNow, או "(ללא חבילה)" כשטבלה אינה שייכת לאף אחת. כל טבלה מוצגת כ-`name — label`. בחירת טבלה קוראת את העמודות שלה מה-instance; פשוט לרשום את הטבלאות אינו עושה זאת.
+כל טבלה של המופע זמינה לרישום, ושום דבר לא נרשם אוטומטית. במופע עמוס יש אלפי טבלאות, ולכן Register Table מקבץ אותן לפי נושא. כל נושא הוא שם התצוגה של חבילת ServiceNow, או "(no package)" לטבלה שאינה שייכת לאף חבילה. כל טבלה מוצגת כ-`name — label`. בחירת טבלה קוראת את העמודות שלה מהמופע; רישום הטבלאות לא עושה זאת.
 
 מקור ServiceNow מציין את כתובת ה-`https://…` המלאה של ה-instance יחד עם שם משתמש וסיסמה. הכתובת נלקחת מ-`base_url` או `host`; מארח בלבד או כל פרוטוקול אחר נדחה תוך ציון השדה (`instanceUrl`). שם משתמש או סיסמה חסרים נדחים תוך ציון השדה. כל ערך יכול להיות הפניה `${secret:…}` או `${env:…}`.
 
@@ -730,7 +729,7 @@ tables:
 | `mapping.datamodel_filter` | `datamodel-filter` | סינון למודל נתונים מסוים |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | עבור תעודות בחתימה עצמית |
 
-במסלול pgwire-replica (כל מנוע מלבד Trino) אותן ארבע ההגדרות האופציונליות הופכות למפתחות האופרנד `app`, `token`/`username`+`password`, `datamodelFilter` ו-`disableSslValidation` של `model.json` ב-Calcite — שתי האחרונות כטיפוסים ש-`SplunkSchemaFactory` ממיר אליהם, מחרוזת ובוליאני.
+בנתיב העותק המשוכפל של pgwire (כל מנוע מלבד Trino) אותן ארבע הגדרות אופציונליות הופכות למפתחות האופרנד של Calcite `model.json`: `app`, `token`/`username`+`password`, `datamodelFilter` ו-`disableSslValidation`. שני האחרונים מקבלים את הטיפוסים ש-`SplunkSchemaFactory` ממיר אותם אליהם, מחרוזת ובוליאני.
 
 ```yaml
 - id: ops-splunk
@@ -1062,9 +1061,8 @@ tables:
 
 **ClickHouse תומך בשלושה מנגנונים**, אחד לכל צורת integration-engine: מנוע DATABASE יחסי החושף אוטומטית כל טבלה מרוחקת (`clickhouse_database`, למשל Redis/MySQL), מנוע לכל-טבלה שהעמודות שלו מסופקות מהרישום (`clickhouse_table`, למשל הגשר JDBC/ODBC — ה-`engine_template` עשוי לשאת placeholder בצורת `{table}` שהריצה (runtime) מקשרת), ומנוע file/lake/URL שהסכמה שלו מוסקת על ידי ClickHouse (`clickhouse_scan`, למשל HDFS/URL). SQLite (מנוע DATABASE, קובץ, ללא שרת) ו-Hudi (lakehouse, zero-copy) נשלחים מוכנים-מהקופסה.
 
-ערך `kind` לא מוכר נכשל בקול רם בעת ההפעלה — טעות הקלדה במתאר אסור לה להשאיר בשקט סוג מקור בלתי נגיש.
-
-### שערי בדיקה (Probe Gating)
+ערך `kind` לא מוכר נכשל בקול רם בעת ההפעלה, כך ששגיאת הקלדה במתאר לעולם לא משאירה בשקט סוג מקור בלתי נגיש.
+### שערי בדיקה (Probe Gating) {: #probe-gating }
 
 הזמינות מאומתת בזמן ה-attach מול קטלוג הגילוי הסטנדרטי של כל מנוע:
 
@@ -1078,7 +1076,7 @@ tables:
 
 כל ערך `server_options`, ערך `user_mapping`, `attach_template`, ו-`scan_template` יכולים להשתמש ב-placeholders מסוג `{field}`. שדות זמינים:
 
-`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, בתוספת כל מפתח מ-`federation_hints`. תבניות attach של DuckDB מקבלות גם `{alias}` — כינוי הקטלוג הפנימי ש-Provisa מקצה למסד הנתונים המצורף.
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, ועוד כל מפתח מ-`federation_hints`. תבניות attach של DuckDB מקבלות גם את `{alias}`, הכינוי הפנימי של הקטלוג ש-Provisa נותן למסד הנתונים המחובר.
 
 תבנית המפנה לשדה לא מוכר נכשלת בקול רם בזמן ה-attach, וחושפת אי-התאמה בין מתאר למקור לפני ש-DDL שבור מגיע למנוע.
 
@@ -1263,7 +1261,7 @@ columns:
 
 ---
 
-## קשרים (Relationships)
+## קשרים (Relationships) {: #relationships }
 
 קשרים מחברים שתי טבלאות רשומות ומופיעים כשדות מקוננים ב-GraphQL.
 
@@ -1441,7 +1439,7 @@ webhooks:
 
 ---
 
-## אימות (Authentication)
+## אימות (Authentication) {: #authentication }
 
 האימות מוגדר תחת המפתח `auth`.
 
@@ -1487,8 +1485,7 @@ auth:
 
 רישום מסד נתוני גרף Neo4j כמקור ניתן לשאילתה. Stewards כותבים שאילתות Cypher המקרינות ערכים סקלריים; Provisa שומרת את התוצאות במטמון וחושפת אותן כטיפוסי GraphQL.
 
-שאילתות Cypher חייבות להשתמש בגישה למאפיין (property accessor) במשפט `RETURN` (`RETURN n.id AS id, n.name AS name`) — החזרת אובייקטי node נדחית בזמן הרישום.
-
+שאילתות Cypher חייבות להשתמש בגישה למאפיינים בפסוקית `RETURN` (`RETURN n.id AS id, n.name AS name`). הרישום דוחה שאילתה שמחזירה אובייקטי צומת.
 #### רישום מקובץ הגדרות {: #config-file-registration }
 
 הצהר על מקור `neo4j` והטבלאות שלו ב-YAML. כל טבלה דורשת `query_template` (ה-Cypher שמפיק את שורותיה) ועמודות מוקלדות. המפתח `query_template` אינו תקף תחת כל סוג מקור אחר.
@@ -1505,7 +1502,7 @@ auth:
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` ו-`decimal(10,2)` מתקבלים — הטיפוס הבסיסי לפני הסוגריים הוא הנמצא בשימוש.
+`varchar(N)` ו-`decimal(10,2)` מתקבלים, ומשתמשים בטיפוס הבסיס שלפני הסוגריים.
 
 הרישום שומר שורת `api_sources` ושורת `api_endpoints` אחת לכל טבלה, כך שהטבלאות שורדות הפעלה מחדש ללא קריאה חוזרת של הקובץ. נקודות הקצה של REST הניהול תחת `/admin/sources/neo4j` כותבות את אותן שורות.
 

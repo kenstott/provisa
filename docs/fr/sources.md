@@ -71,10 +71,9 @@ Référence de chaque type de source pris en charge par Provisa. « Pilote direc
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | Non |
 | `hiveserver2` | impyla (HiveServer2 sur Thrift) | — | hive | Non |
 
-Les bases compatibles au niveau du protocole réutilisent le pilote JDBC, le pilote asynchrone natif et le dialecte du protocole de base — CockroachDB, YugabyteDB et Greenplum empruntent le protocole PostgreSQL ; TiDB emprunte le protocole MySQL. Ils n'exigent que des entrées de registre, aucun nouveau code de connecteur.
+Les bases compatibles au niveau du protocole réutilisent le pilote JDBC, le pilote asynchrone natif et le dialecte d'un protocole de base. CockroachDB, YugabyteDB et Greenplum passent par le protocole PostgreSQL, et TiDB par celui de MySQL. Il leur suffit d'entrées de registre, sans nouveau code de connecteur.
 
-`firebird` (Firebird 3/4/5) et `airport` (serveur Arrow Flight) sont des types de sources enregistrés atteints sur place via des extensions communautaires DuckDB lorsque DuckDB est le moteur actif — aucun pilote direct, aucun connecteur fédéré.
-
+`firebird` (Firebird 3/4/5) et `airport` (serveur Arrow Flight) sont des types de source enregistrés que les extensions communautaires de DuckDB atteignent sur place quand DuckDB est le moteur actif. Ils n'ont ni pilote direct ni connecteur fédéré.
 #### `saphana`
 
 SAP HANA est lu par son propre pilote et répliqué dans le magasin du moteur actif ; il est donc atteignable sur tous les moteurs. Le formulaire demande l'hôte, le port (39015 par défaut), le nom d'utilisateur, le mot de passe et la base ; sur un système multi-tenant, la base désigne le tenant. Register Table liste les schémas que l'utilisateur peut lire, les schémas système de HANA étant exclus.
@@ -608,7 +607,7 @@ Flux nom d'utilisateur et mot de passe :
 
 #### `servicenow`
 
-Chaque table de l'instance est disponible pour l'enregistrement ; rien n'est enregistré automatiquement. Une instance complète peut en compter des milliers ; Register Table les regroupe donc par thème — chaque thème est le nom d'affichage d'un paquet ServiceNow, ou « (sans paquet) » quand une table n'appartient à aucun. Chaque table est présentée comme `name — label`. Sélectionner une table lit ses colonnes depuis l'instance ; lister les tables ne le fait pas.
+Toutes les tables de l'instance peuvent être enregistrées, et rien ne l'est automatiquement. Une instance très utilisée compte des milliers de tables, donc Register Table les regroupe par thème. Chaque thème est le nom d'affichage d'un paquet ServiceNow, ou « (no package) » pour une table qui n'appartient à aucun. Chaque table est listée sous la forme `name — label`. Sélectionner une table lit ses colonnes depuis l'instance ; lister les tables ne le fait pas.
 
 Une source ServiceNow indique l'URL complète `https://…` de l'instance ainsi qu'un nom d'utilisateur et un mot de passe. L'URL est prise depuis `base_url` ou `host` ; un hôte nu ou tout autre schéma est refusé, en nommant le champ (`instanceUrl`). Un nom d'utilisateur ou un mot de passe absent est refusé, en nommant le champ. Chaque valeur peut être une référence `${secret:…}` ou `${env:…}`. Un secret saisi en clair est stocké dans le coffre-fort de l'organisation, et la source conserve sa référence.
 
@@ -730,7 +729,7 @@ Les résultats de recherche Splunk sont interrogeables comme des tables (par exe
 | `mapping.datamodel_filter` | `datamodel-filter` | filtrer sur un modèle de données |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | pour les certificats autosignés |
 
-Sur le chemin pgwire-replica (tout moteur sauf Trino), les quatre mêmes réglages optionnels deviennent les clés d'opérande `model.json` de Calcite `app`, `token`/`username`+`password`, `datamodelFilter` et `disableSslValidation` — les deux derniers dans les types vers lesquels `SplunkSchemaFactory` les convertit, une chaîne et un booléen.
+Sur le chemin de réplica pgwire (tous les moteurs sauf Trino), les mêmes quatre réglages facultatifs deviennent les clés d'opérande Calcite `model.json` `app`, `token`/`username`+`password`, `datamodelFilter` et `disableSslValidation`. Les deux dernières prennent les types vers lesquels `SplunkSchemaFactory` les convertit : une chaîne et un booléen.
 
 ```yaml
 - id: ops-splunk
@@ -1065,8 +1064,7 @@ Le fichier est livré vide. Les connecteurs intégrés couvrent ce qui fonctionn
 
 **ClickHouse prend en charge trois mécanismes**, un par forme de moteur d'intégration : un moteur DATABASE relationnel qui expose automatiquement toutes les tables distantes (`clickhouse_database`, par exemple Redis/MySQL), un moteur par table dont le registre fournit les colonnes (`clickhouse_table`, par exemple le pont JDBC/ODBC — le `engine_template` peut porter un caractère de remplacement `{table}` que le runtime lie), et un moteur fichier/lac/URL dont ClickHouse infère le schéma (`clickhouse_scan`, par exemple HDFS/URL). SQLite (moteur DATABASE, fichier, sans serveur) et Hudi (lakehouse, sans copie) sont livrés d'origine.
 
-Une valeur de `kind` inconnue échoue bruyamment au démarrage — une faute de frappe dans un descripteur ne doit pas laisser silencieusement un type de source hors d'atteinte.
-
+Une valeur `kind` inconnue échoue bruyamment au démarrage, si bien qu'une coquille dans un descripteur ne laisse jamais un type de source inaccessible en silence.
 ### Contrôle par sondage {: #probe-gating }
 
 La disponibilité est vérifiée au moment de l'attachement contre le catalogue de découverte standard de chaque moteur :
@@ -1081,7 +1079,7 @@ Une extension déclarée mais non installable échoue bruyamment. Aucun saut sil
 
 Chaque valeur de `server_options`, chaque valeur de `user_mapping`, chaque `attach_template` et chaque `scan_template` peut employer des caractères de remplacement `{field}`. Champs disponibles :
 
-`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus toute clé issue de `federation_hints`. Les gabarits d'attachement DuckDB reçoivent également `{alias}` — l'alias de catalogue interne que Provisa attribue à la base attachée.
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus toute clé de `federation_hints`. Les modèles d'attach DuckDB reçoivent aussi `{alias}`, l'alias de catalogue interne que Provisa donne à la base attachée.
 
 Un gabarit référençant un champ inconnu échoue bruyamment au moment de l'attachement, faisant apparaître une discordance descripteur/source avant qu'un DDL cassé n'atteigne le moteur.
 
@@ -1490,8 +1488,7 @@ auth:
 
 Enregistrez une base de données graphe Neo4j comme source interrogeable. Les intendants rédigent des requêtes Cypher qui projettent des valeurs scalaires ; Provisa met les résultats en cache et les expose comme types GraphQL.
 
-Les requêtes Cypher doivent employer des accesseurs de propriétés dans la clause `RETURN` (`RETURN n.id AS id, n.name AS name`) — retourner des objets nœuds est rejeté au moment de l'enregistrement.
-
+Les requêtes Cypher doivent utiliser des accès aux propriétés dans la clause `RETURN` (`RETURN n.id AS id, n.name AS name`). L'enregistrement refuse une requête qui renvoie des objets nœuds.
 #### Enregistrement par fichier de configuration {: #config-file-registration }
 
 Déclarez une source `neo4j` et ses tables en YAML. Chaque table exige un `query_template` (le Cypher qui produit ses lignes) et des colonnes typées. La clé `query_template` est invalide pour tout autre type de source.
@@ -1508,7 +1505,7 @@ Chaque colonne exige `data_type`. Le chargeur fait correspondre les types de con
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` et `decimal(10,2)` sont acceptés — le type de base avant la parenthèse est utilisé.
+`varchar(N)` et `decimal(10,2)` sont acceptés, et c'est le type de base avant la parenthèse qui est utilisé.
 
 L'enregistrement persiste une ligne `api_sources` et une ligne `api_endpoints` par table, de sorte que les tables survivent à un redémarrage sans relire le fichier. Les points d'entrée REST d'administration sous `/admin/sources/neo4j` écrivent les mêmes lignes.
 

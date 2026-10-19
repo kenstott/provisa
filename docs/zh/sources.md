@@ -71,10 +71,9 @@ Provisa 支持的每种数据源类型的参考。"Direct driver"（直连驱动
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
 
-线协议兼容的数据库复用基础线协议的 JDBC 驱动、原生异步驱动和方言 — CockroachDB、YugabyteDB 和 Greenplum 复用 PostgreSQL 线协议；TiDB 复用 MySQL 线协议。它们只需要注册表条目，无需新的连接器代码。
+协议兼容的数据库复用某个基础协议的 JDBC 驱动、原生异步驱动和方言。CockroachDB、YugabyteDB 和 Greenplum 使用 PostgreSQL 协议，TiDB 使用 MySQL 协议。它们只需要注册表条目，不需要新的连接器代码。
 
-`firebird`（Firebird 3/4/5）和 `airport`（Arrow Flight 服务器）是已注册的数据源类型，当 DuckDB 为活动引擎时，通过 DuckDB 社区扩展就地访问 — 没有直连驱动，也没有联邦连接器。
-
+`firebird`（Firebird 3/4/5）和 `airport`（Arrow Flight 服务器）是已登记的数据源类型，当 DuckDB 是活动引擎时，由 DuckDB 社区扩展就地访问。它们没有直连驱动，也没有联邦连接器。
 #### `saphana`
 
 SAP HANA 通过其自有驱动读取，并复制到活动引擎的存储中，因此在每个引擎上都可访问。表单需要主机、端口（默认 39015）、用户名、密码和数据库；在多租户系统中，数据库指定租户。Register Table 列出用户可读取的 schema，不包括 HANA 的系统 schema。
@@ -608,7 +607,7 @@ Salesforce 数据源需要指定组织的“我的域”登录 URL 和一套完�
 
 #### `servicenow`
 
-实例的每张表均可供注册；不会自动注册任何内容。完整实例可能有数千张表；Register Table 按主题对它们分组——每个主题是 ServiceNow 包的显示名称，当表不属于任何包时显示"(无包)"。每张表以 `name — label` 的形式列出。选择一张表会从实例读取其列；列出表格不会这样做。
+实例中的每张表都可以注册，不会自动注册任何表。繁忙的实例有成千上万张表，所以 Register Table 按主题分组。每个主题是一个 ServiceNow 包的显示名称；不属于任何包的表归入 "(no package)"。每张表显示为 `name — label`。选中一张表时才会从实例读取它的列，列出表时不会。
 
 ServiceNow 数据源指定实例的完整 `https://…` URL 以及用户名和密码。URL 从 `base_url` 或 `host` 获取；裸主机或其他方案将被拒绝，并指出字段名称（`instanceUrl`）。缺少用户名或密码时将被拒绝，并指出字段名称。每个值都可以是 `${secret:…}` 或 `${env:…}` 引用。以字面值输入的密钥会存入组织保管库，数据源保留其引用。
 
@@ -730,7 +729,7 @@ Splunk 的搜索结果可作为表查询（例如 `internal_server`）。连接�
 | `mapping.datamodel_filter` | `datamodel-filter` | 过滤到某个数据模型 |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | 用于自签名证书 |
 
-在 pgwire-replica 路径上（除 Trino 以外的每个引擎），这四个可选设置会成为 Calcite `model.json` operand 键 `app`、`token`/`username`+`password`、`datamodelFilter` 和 `disableSslValidation` — 后两者按 `SplunkSchemaFactory` 转换的类型，分别为字符串和布尔值。
+在 pgwire 副本路径上（除 Trino 外的所有引擎），同样这四项可选设置会成为 Calcite `model.json` 的操作数键 `app`、`token`/`username`+`password`、`datamodelFilter` 和 `disableSslValidation`。后两项采用 `SplunkSchemaFactory` 转换后的类型，即字符串和布尔值。
 
 ```yaml
 - id: ops-splunk
@@ -1060,8 +1059,7 @@ tables:
 
 **ClickHouse 支持三种机制**，各对应一种集成引擎（integration-engine）形态：自动暴露每张远程表的关系型 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、列由注册表提供的按表引擎（`clickhouse_table`，例如 JDBC/ODBC 桥接 — `engine_template` 可携带一个由运行时绑定的 `{table}` 占位符），以及由 ClickHouse 推断 schema 的文件/湖/URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、文件、无服务器）和 Hudi（湖仓一体、零拷贝）开箱即用。
 
-一个未知的 `kind` 值会在启动时直接报错失败 — 一个 descriptor 拼写错误绝不能默默地使某个数据源类型不可达。
-
+未知的 `kind` 值会在启动时明确报错，所以描述符里的拼写错误永远不会让某种数据源类型悄悄变得不可达。
 ### 探测把关 {: #probe-gating }
 
 可用性在 attach 时针对每个引擎的标准发现目录进行验证：
@@ -1076,7 +1074,7 @@ tables:
 
 每个 `server_options` 值、`user_mapping` 值、`attach_template` 和 `scan_template` 都可以使用 `{field}` 占位符。可用字段：
 
-`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，以及来自 `federation_hints` 的任意键。DuckDB 的 attach 模板还会收到 `{alias}` — Provisa 为已挂载数据库分配的内部目录别名。
+`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，以及 `federation_hints` 中的任意键。DuckDB 的 attach 模板还会收到 `{alias}`，即 Provisa 为挂载的数据库分配的内部目录别名。
 
 引用未知字段的模板会在 attach 时直接报错失败，从而在损坏的 DDL 到达引擎之前，就暴露出 descriptor 与数据源之间的不匹配。
 
@@ -1485,8 +1483,7 @@ auth:
 
 将一个 Neo4j 图数据库注册为一个可查询的数据源。数据管家编写投影标量值的 Cypher 查询；Provisa 缓存结果并将其暴露为 GraphQL 类型。
 
-Cypher 查询必须在 `RETURN` 子句中使用属性访问器（`RETURN n.id AS id, n.name AS name`）— 返回节点对象会在注册时被拒绝。
-
+Cypher 查询必须在 `RETURN` 子句中使用属性访问（`RETURN n.id AS id, n.name AS name`）。返回节点对象的查询会在注册时被拒绝。
 #### 通过配置文件注册 {: #config-file-registration }
 
 在 YAML 中声明一个 `neo4j` 数据源及其表。每张表都需要一个 `query_template`（产生其行数据的 Cypher）以及有类型的列。`query_template` 键在任何其他数据源类型下都是非法的。
@@ -1503,7 +1500,7 @@ Cypher 查询必须在 `RETURN` 子句中使用属性访问器（`RETURN n.id AS
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` 和 `decimal(10,2)` 都是可接受的 — 使用括号之前的基础类型。
+接受 `varchar(N)` 和 `decimal(10,2)`，使用括号前的基础类型。
 
 注册会持久化一条 `api_sources` 行以及每张表一条 `api_endpoints` 行，因此这些表在重启后依然存在，无需重新读取配置文件。`/admin/sources/neo4j` 下的 admin REST 端点写入的是相同的行。
 
@@ -1670,7 +1667,7 @@ Register Table 的工作方式与 Neo4j 相同：选择数据源，输入一个�
   password: ""
 ```
 
-### Cross-Source Query
+### 跨数据源查询 {: #cross-source-query }
 
 ```graphql
 {
