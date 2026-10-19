@@ -202,9 +202,13 @@ class RequestGenerator:
             filters=self._draw_filters(table, n_filters),
             joins=self._draw_joins(source, table, n_same, n_cross, klass),
             route=self._route(source),
-            role=self._role_rng.choices(
-                [r.role for r in self._roles], weights=[r.weight for r in self._roles]
-            )[0],
+            # REQ-2092: under governance, the role the setup created below the drawn one
+            role=self._setup.request_role(
+                self._transport,
+                self._role_rng.choices(
+                    [r.role for r in self._roles], weights=[r.weight for r in self._roles]
+                )[0],
+            ),
         )
 
     def _route(self, source: str) -> str | None:
@@ -301,5 +305,10 @@ class RequestGenerator:
         """The request when no knob applies, on this client's transport, sent as ``role``."""
         source, table = sc.base_table(self._setup, self._transport)
         return RequestSpec(
-            source, table.name, (table.base_column,), self._base_rows, cached, role=role
+            source,
+            table.name,
+            (table.base_column,),
+            self._base_rows,
+            cached,
+            role=self._setup.request_role(self._transport, role),
         )

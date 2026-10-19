@@ -25522,7 +25522,7 @@ The MCP server offers five statistics tools over a dataset the caller defines in
 
 ### REQ-2092 · Performance Benchmark {#REQ-2092}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
 
 The benchmark contract has governance knobs: row rules per table, the share of columns masked, central redaction on or off, role inheritance depth (derived roles included) and telemetry on or off. With every knob at zero the request is the optimistic request. A local pass measures, with request counters and per-stage thread CPU, the per-request cost of derived roles, masks by admitting role, central redaction, recording which role granted each read, time-limited grants and the per-org event loop and slots, and gives per-request figures for REST, JSON:API, Flight SQL and MCP. The local four-source proof runs. The publishable benchmark runs only after the harness is feature complete and has run on low-cost infrastructure (a Spot VM).
 

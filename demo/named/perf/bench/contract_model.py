@@ -236,6 +236,66 @@ class JoinReplication:
     weights: Mapping[str, float]
 
 
+#: The prefix of every object the governance setup creates in the deployment (roles, tags,
+#: derived-role attributes), so one left by an interrupted run is recognised and refused by name.
+GOVERNANCE_PREFIX = "bench_gov"
+
+
+@dataclass(frozen=True)
+class Governance:
+    """The governance a run is measured under (REQ-2092). Every value at zero is the optimistic
+    request, on the deployment as it stands: nothing is created or changed in it.
+
+    Each is set up in the deployment for the run through its admin API and removed afterwards
+    (``governance.AdminGovernance``), for the request's own role:
+
+    - ``row_rules_per_table``: that many row rules on every table of the contract, each keeping
+      every row (``<base column> IS NOT NULL``) and ANDed with the others, so the cost is the
+      rules' and the answer is unchanged;
+    - ``masked_column_share``: that share of each table's columns masked (a constant NULL, a
+      projection rewrite on any type that keeps every row), taken from its nullable columns that
+      no filter or join reads;
+    - ``central_redaction``: the org's redaction rules extended with the bench's for the run (the
+      built-in rules are always in force; off leaves the deployment's own as they are);
+    - ``role_depth``: the request acts as a role that many inheritance levels below the contract's
+      role, each level a role of its own;
+    - ``derived_roles``: the request also holds that many derived roles (a declared attribute and
+      one value each), named beside its data role;
+    - ``telemetry``: whether the server exports traces and metrics. It is set when the server
+      starts (``three_device.py serve-env --telemetry``), so it is stated here, checked against the
+      run's device facts, and the same for every transport."""
+
+    row_rules_per_table: int
+    masked_column_share: float
+    central_redaction: bool
+    role_depth: int
+    derived_roles: int
+    telemetry: bool
+
+    @property
+    def changes_deployment(self) -> bool:
+        """Whether the run sets anything up in the deployment (telemetry is the server's own)."""
+        return bool(
+            self.row_rules_per_table
+            or self.masked_column_share
+            or self.central_redaction
+            or self.role_depth
+            or self.derived_roles
+        )
+
+
+GOVERNANCE_KNOBS = (
+    "row_rules_per_table",
+    "masked_column_share",
+    "central_redaction",
+    "role_depth",
+    "derived_roles",
+    "telemetry",
+)
+
+OPTIMISTIC_GOVERNANCE = Governance(0, 0.0, False, 0, 0, False)
+
+
 @dataclass(frozen=True)
 class Knobs:
     distributions: Mapping[str, Knob]
@@ -243,6 +303,7 @@ class Knobs:
     route: Mapping[str, RouteMode]
     cache_probability: float  # share of requests that opt into the response cache
     join_replication: JoinReplication
+    governance: Governance = OPTIMISTIC_GOVERNANCE
 
 
 @dataclass(frozen=True)
@@ -252,6 +313,7 @@ class TransportOverride:
     cache_probability: float | None
     route: Mapping[str, RouteMode] | None
     join_replication: JoinReplication | None = None
+    governance: Governance | None = None  # its telemetry is always the global one
 
 
 @dataclass(frozen=True)
@@ -331,6 +393,17 @@ class Setup:
             return "both_replica"
         return "mixed"
 
+    def governance(self, transport: str) -> Governance:
+        """The governance ``transport`` is measured under (its override, else the global one)."""
+        override = self.transports[transport].governance
+        return self.knobs.governance if override is None else override
+
+    def request_role(self, transport: str, role: str) -> str:
+        """What a request drawn as the contract's ``role`` is sent as on ``transport``: the role
+        itself, or under governance the role ``role_depth`` levels below it, with the derived
+        roles beside it (``governance.governed_role``)."""
+        return governed_role(role, self.governance(transport))
+
     def cache_probability(self, transport: str) -> float:
         """Share of this transport's requests that opt into the response cache."""
         override = self.transports[transport].cache_probability
@@ -353,3 +426,26 @@ TRANSPORT_LANGUAGE = {
 
 # Transports whose request language can express a join (gRPC, REST and JSON:API read one table).
 JOIN_TRANSPORTS = ("graphql", "data_sql", "cypher_http", "pgwire", "flight_sql", "bolt")
+
+
+def chain_role(role: str, level: int) -> str:
+    """The role ``level`` inheritance levels below ``role`` (level 0 is ``role`` itself)."""
+    return role if level == 0 else f"{GOVERNANCE_PREFIX}_{role}_d{level}"
+
+
+def derived_attribute(index: int) -> str:
+    """The attribute the ``index``-th derived role is declared on (from 1)."""
+    return f"{GOVERNANCE_PREFIX}_attr{index}"
+
+
+DERIVED_VALUE = "v"
+
+
+def governed_role(role: str, governance: Governance) -> str:
+    """The role a request is sent as: the data role ``role_depth`` levels below ``role``, and each
+    derived role beside it (``<data role>,<attribute>__<value>``, as a request names a meta-role)."""
+    data = chain_role(role, governance.role_depth)
+    derived = [
+        f"{derived_attribute(i)}__{DERIVED_VALUE}" for i in range(1, governance.derived_roles + 1)
+    ]
+    return ",".join([data, *derived])

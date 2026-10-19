@@ -32,6 +32,7 @@ the same figure from ``server_cpu_agent.py`` running on the server's host.
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import json
 import math
 import multiprocessing
@@ -40,13 +41,15 @@ import resource
 import sys
 import threading
 import time
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager, nullcontext
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
 import contract_model
 import credential as credential_module
+import governance
 import lookup
 import measurements
 import replication
@@ -858,8 +861,9 @@ def verify(transport: str, ep: Endpoints) -> dict:
     client = CLIENTS[transport](ep)
     try:
         query = request_render.build_query(ep.setup, transport, cached=True)
-        client.call(query, ep.role)
-        rows, cols, hit = client.call(query, ep.role)
+        role = ep.setup.request_role(transport, ep.role)
+        client.call(query, role)
+        rows, cols, hit = client.call(query, role)
     finally:
         client.close()
     return {"rows": rows, "columns": cols, "second_request_hit": hit}
@@ -920,8 +924,9 @@ def run_transport(
         try:
             import httpx
 
+            role = ep.setup.request_role(transport, ep.role)
             headers = {
-                "X-Provisa-Role": ep.role,
+                "X-Provisa-Role": role,
                 **(ep.credential.auth_header() if ep.credential else {}),
             }
             with httpx.Client(base_url=ep.http_base_url, timeout=60, headers=headers) as client:
@@ -929,7 +934,7 @@ def run_transport(
                     ep.setup,
                     transport,
                     client,
-                    role=ep.role,
+                    role=role,
                     requests=ep.setup.load.profile_requests,
                 )
         except Exception as exc:  # noqa: BLE001 - reported with the transport, like a failed step
@@ -979,13 +984,23 @@ def run_all(
     max_processes: int,
     server_pid: int | str | None,  # a pid on this host, or a server_cpu_agent URL
     audit: Any = None,
+    govern: Callable[[str], AbstractContextManager[dict[str, Any]]] | None = None,
 ) -> list[dict]:
+    """Run each transport. ``govern(transport)`` sets up the transport's governance for its run and
+    removes it after (``governance.AdminGovernance.applied``); None: the contract sets none up."""
     output_dir.mkdir(parents=True, exist_ok=True)
     if ep.setup.load.idle_window_s and server_pid is None:
         raise contract_model.SetupError("load.idle_window_s needs --server-pid or --server-cpu-url")
     reports = []
     for transport in transports:
-        report = run_transport(transport, ep, steps, window_s, max_processes, server_pid, audit)
+        governed_by = ep.setup.governance(transport)
+        if governed_by.changes_deployment and govern is None:
+            raise contract_model.SetupError(
+                f"transports.{transport}: its governance is set up through the admin API"
+            )
+        with nullcontext({}) if govern is None else govern(transport) as governed:
+            report = run_transport(transport, ep, steps, window_s, max_processes, server_pid, audit)
+        report["governance"] = {**dataclasses.asdict(governed_by), **governed}
         (output_dir / f"{transport}.json").write_text(json.dumps(report, indent=2))
         print(summary_line(report), flush=True)
         reports.append(report)
@@ -1252,9 +1267,11 @@ def run_from_args(
         docker_stats_url=args.source_cpu_url,
         backend_containers=tuple(args.backend_container),
     )
+    devices = None
     if args.device:
         devices = collect_devices(dict(_device(d) for d in args.device))
         (output_dir / "devices.json").write_text(json.dumps(devices, indent=2))
+    print(governance.check_telemetry(setup, devices), flush=True)
     audit = None
     if args.skip_route_verification:
         print("routes: NOT verified (--skip-route-verification)", flush=True)
@@ -1273,24 +1290,27 @@ def run_from_args(
         domains = sorted({d for d in resolved_domains(setup, resolved)})
         audit = replication.audit_reader(conn, domains)
 
-    def run() -> list[dict]:
-        return run_all(
-            ep,
-            output_dir,
-            list(setup.transports),
-            setup.load.steps,
-            setup.load.window_s,
-            processes,
-            server_cpu_source(args),
-            audit=audit,
-        )
-
-    if not args.apply_replication:
-        return run()
     import httpx
 
     headers = ep.credential.auth_header() if ep.credential else {}
     with httpx.Client(base_url=ep.http_base_url, timeout=120, headers=headers) as client:
+        admin = governance.AdminGovernance(client, ep.role)
+
+        def run() -> list[dict]:
+            return run_all(
+                ep,
+                output_dir,
+                list(setup.transports),
+                setup.load.steps,
+                setup.load.window_s,
+                processes,
+                server_cpu_source(args),
+                audit=audit,
+                govern=lambda transport: admin.applied(setup, transport, resolved),
+            )
+
+        if not args.apply_replication:
+            return run()
         with replication.AdminReplication(client, ep.role).applied(setup, resolved):
             print("replication: set as declared for this run (restored afterwards)", flush=True)
             return run()

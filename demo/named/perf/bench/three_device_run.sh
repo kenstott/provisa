@@ -95,10 +95,13 @@ run_one() {  # run_one <rep> <telemetry>
   # serving once the server's agent answers: serve_three_device.sh starts it after every worker
   # is ready
   on "$CLIENT" "for i in \$(seq 1 210); do curl -sf http://$PERF_SERVER_IP:$AGENT_PORT/host >/dev/null && exit 0; sleep 2; done; exit 1"
+  # the contract as this run states it: its telemetry the server's (REQ-2092)
+  on "$CLIENT" "cd $BENCH && mkdir -p $OUT/$name && $PY three_device.py contract --setup $PERF_CONTRACT --telemetry $2 \
+    --out $OUT/$name/setup.yaml"
   on "$CLIENT" "cd $BENCH && PROVISA_BENCH_SERVER_HOST=$PERF_SERVER_IP \
     PROVISA_HTTP_BASE_URL=http://$PERF_SERVER_IP:8001 \
     $PY run_benchmark.py --engine $ENGINE --optimistic \
-    --setup $PERF_CONTRACT \
+    --setup $OUT/$name/setup.yaml \
     --server-cpu-url http://$PERF_SERVER_IP:$AGENT_PORT/cpu \
     --source-cpu-url http://$PERF_BACKENDS_IP:$AGENT_PORT/docker-stats $_containers \
     --device server=http://$PERF_SERVER_IP:$AGENT_PORT \
