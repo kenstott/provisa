@@ -36,6 +36,7 @@ import psycopg
 from psycopg import sql
 import pytest
 
+from tests.integration.test_demo_sandboxes_e2e import _JWT_SECRET
 from tests.integration.test_region_read_in_place_e2e import _MASTER_KEY, _Stack
 
 # The setup builds the bundle (up to 2400 s, the build itself bounded at 900 s) and boots the tier
@@ -88,6 +89,9 @@ def tier(tmp_path_factory):
             engine="duckdb",
             config=str(_TIER_CONFIG),
             control_plane="postgres",
+            # A visitor's token is read only by a configured provider: unsecured, every request
+            # is the anonymous principal on the boot org, never the visitor's sandbox.
+            auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
             env={
                 "PLATFORM_DATABASE_URL": control_plane,
                 "TENANT_DATABASE_URL": control_plane,
