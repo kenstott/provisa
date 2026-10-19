@@ -273,5 +273,3 @@ source.onmessage = (e) => {
   console.log(event.event, event.row);
 };
 ```
-
-</content>

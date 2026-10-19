@@ -329,7 +329,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | não | Informa o que o deploy faria; não aplica nada |
 | `--message` | não | Nota levada para uma solicitação de aprovação quando o destino está protegido |
 
-Uma carga em um ambiente existente nunca aplica funções. `--seed` não existe mais: a API recusa um seed
+Uma carga em um ambiente existente nunca aplica funções. Não há `--seed`: a API recusa um seed
 com `environments.seed_only_at_creation`.
 
 ```bash

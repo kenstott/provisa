@@ -156,8 +156,8 @@ erneut.
 ### Platzhalterspalten {: #wildcard-columns }
 
 Wenn eine Berechtigung `columns: "*"` gewährt, erstellt der Konverter einen einzelnen
-Platzhalter-Spalteneintrag. Nach der Konvertierung möchten Sie diesen möglicherweise durch explizite
-Spaltenlisten ersetzen, indem Sie das tatsächliche Datenbankschema prüfen.
+Platzhalter-Spalteneintrag. Ersetzen Sie ihn nach der Konvertierung durch eine explizite Spaltenliste
+aus dem Datenbankschema.
 
 ### Genauigkeit von Event-Triggern {: #event-trigger-fidelity }
 

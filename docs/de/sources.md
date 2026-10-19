@@ -74,6 +74,7 @@ Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bed
 Wire-kompatible Datenbanken nutzen den JDBC-Treiber, den nativen Async-Treiber und den Dialekt eines Basisprotokolls mit. CockroachDB, YugabyteDB und Greenplum laufen über das PostgreSQL-Protokoll, TiDB über das MySQL-Protokoll. Sie brauchen nur Registry-Einträge und keinen neuen Connector-Code.
 
 `firebird` (Firebird 3/4/5) und `airport` (Arrow-Flight-Server) sind registrierte Quelltypen, die DuckDB-Community-Erweiterungen an Ort und Stelle erreichen, wenn DuckDB die aktive Engine ist. Sie haben weder einen direkten Treiber noch einen föderierten Connector.
+
 #### `saphana`
 
 SAP HANA wird über einen eigenen Treiber gelesen und in den Store der aktiven Engine repliziert, ist also auf jeder Engine erreichbar. Das Formular verlangt Host, Port (Standard 39015), Benutzername, Passwort und Datenbank; bei einem Multi-Tenant-System benennt die Datenbank den Tenant. Register Table listet die Schemas auf, die der Benutzer lesen darf; die Systemschemas von HANA bleiben außen vor.
@@ -326,6 +327,7 @@ Ein ohne Verschlüsselung gemeinsam genutzter Ordner muss mit Sperren gemountet 
 Jede `files`-Quelle kann in ihrem Mapping auch ein `crawl` deklarieren, mit denselben Einstellungen, die unter [Wikipedia](#wikipedia) aufgeführt sind: Die Quelle liest dann zuerst Webseiten und landet jede HTML-Datentabelle und jede verlinkte Datendatei in ihrem Verzeichnis als Tabelle.
 
 Auf der DuckDB-Engine wird `files` nativ gelesen, mit einer `read_csv_auto`-Scanner-View pro `<table>.csv` unter dem aufgelösten Verzeichnis. Auf einer Engine ohne eigenen `files`-Connector landen die Zeilen über denselben mit dem Connector gebündelten Calcite-pgwire-Server (`pgwire-file`), den auch sharepoint und splunk nutzen. Siehe [Enterprise-SaaS-Connectors](#enterprise-saas-connectors) unten.
+
 #### Logs {: #logs }
 
 Eine `logs`-Quelle macht Logdateien auf dem Provisa-Server zu einer Tabelle. Sie benennen die Dateien mit einem vollständigen Pfad oder einem Glob und wählen das Format, in dem die Einträge geschrieben sind. Jeder Eintrag wird zu einer Zeile. Ein Eintrag, den das Format nicht lesen kann, bleibt mit seinem Rohtext und dem Grund erhalten und wird nie verworfen.
@@ -511,6 +513,7 @@ Nur Tabellen, die Redakteure als Datentabellen markieren (`table.wikitable`), we
 ### Enterprise-SaaS-Connectors
 
 Google Workspace und Microsoft 365 werden von eigenen Loadern gelesen; siehe [Google Workspace und Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, Cloud-Inventar und Splunk werden über Treiber gelesen, die als eigener Prozess laufen und das PostgreSQL-Wire-Protokoll sprechen (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`); keiner von ihnen hat also einen direkten Treiber. Auf der DuckDB-Engine wird der Endpunkt des Treibers über die postgres-Erweiterung live angebunden: Register Table listet die Tabellen des Connectors aus dem angebundenen Katalog, Abfragen lesen den Connector an Ort und Stelle, und Filter und Projektionen werden an ihn weitergereicht. Jede andere Engine landet die Zeilen für die Federation im Materialisierungs-Store. Die Treiberpakete werden pro Betriebssystem und Architektur aus einem festgelegten Release geholt (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64). Ein Betreiber kann stattdessen pro Connector einen für diesen Host gebauten Paketordner unter Admin → Einstellungen → Connector-Server angeben (`connectors.<connector>.bundle_dir`); siehe [Admin](admin.md). Alle fünf Trino-Connectors (Jira hat keinen) vergleichen Namen immer ohne Rücksicht auf Groß- und Kleinschreibung, wie es jedes Produkt selbst tut.
+
 #### `sharepoint`
 
 SharePoint-Listen werden als Schemas aufgezählt und als abfragbare Tabellen offengelegt. Zwei Auth-Methoden: `CLIENT_CREDENTIALS` (Standard) und zertifikatbasiert über ein PFX-Zertifikat. Secret-Werte in `mapping` werden über die Secrets-Engine aufgelöst, bevor sie den Connector erreichen.
@@ -1045,7 +1048,7 @@ Ein Betreiber kann den nativen Federation-Engines (Postgres, DuckDB und ClickHou
 
 Damit bekommen die nativen Engines, die ohne Cluster laufen, dieselbe konfigurationsgesteuerte Erweiterbarkeit, die die Trino-Engine auf ihrer eigenen Ebene hat. Dort wird ein generischer JDBC-Connector pro Quelltyp parametrisiert, jeder Typ erhält einen Katalog-`.properties`-Rumpf, und Provisa ergänzt eigene Trino-Connector-Plugins (Splunk, SharePoint, Calcite).
 
-Die Datei wird leer ausgeliefert. Die eingebauten Connectors decken ab, was ohne Weiteres funktioniert, und alles in dieser Datei schreibt der Betreiber. Für einen anderen Pfad, etwa in Tests, setzen Sie `PROVISA_CUSTOM_CONNECTORS`.
+Die Datei wird leer ausgeliefert. Die eingebauten Connectors decken die Quellen ab, die ohne zusätzliche Einrichtung funktionieren, und alles in dieser Datei schreibt der Betreiber. Für einen anderen Pfad, etwa in Tests, setzen Sie `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Deskriptor-Arten {: #descriptor-kinds }
 
@@ -1065,6 +1068,7 @@ Die Datei wird leer ausgeliefert. Die eingebauten Connectors decken ab, was ohne
 **ClickHouse unterstützt drei Mechanismen**, einen pro Integrations-Engine-Form: eine relationale DATABASE-Engine, die automatisch jede entfernte Tabelle offenlegt (`clickhouse_database`, z. B. Redis/MySQL), eine Pro-Tabelle-Engine, deren Spalten die Registry liefert (`clickhouse_table`, z. B. die JDBC-/ODBC-Brücke; der `engine_template` kann einen `{table}`-Platzhalter tragen, den die Laufzeit bindet), und eine Datei-/Lake-/URL-Engine, deren Schema ClickHouse ableitet (`clickhouse_scan`, z. B. HDFS/URL). SQLite (DATABASE-Engine, Datei, kein Server) und Hudi (Lakehouse, Zero-Copy) werden OOTB ausgeliefert.
 
 Ein unbekannter `kind`-Wert scheitert beim Start lautstark, sodass ein Tippfehler in einem Deskriptor einen Quelltyp nie stillschweigend unerreichbar lässt.
+
 ### Probe-Gating
 
 Verfügbarkeit wird zur Attach-Zeit gegen den Standard-Discovery-Katalog jeder Engine geprüft:
@@ -1489,6 +1493,7 @@ auth:
 Registrieren Sie eine Neo4j-Graphdatenbank als abfragbare Quelle. Stewards verfassen Cypher-Abfragen, die skalare Werte projizieren; Provisa cacht Ergebnisse und legt sie als GraphQL-Typen offen.
 
 Cypher-Abfragen müssen in der `RETURN`-Klausel Eigenschaftszugriffe verwenden (`RETURN n.id AS id, n.name AS name`). Die Registrierung lehnt eine Abfrage ab, die Knotenobjekte zurückgibt.
+
 #### Konfigurationsdatei-Registrierung {: #config-file-registration }
 
 Deklarieren Sie eine `neo4j`-Quelle und ihre Tabellen in YAML. Jede Tabelle benötigt ein `query_template` (das Cypher, das ihre Zeilen erzeugt) und typisierte Spalten. Der Key `query_template` ist unter jedem anderen Quelltyp ungültig.

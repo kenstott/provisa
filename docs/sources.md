@@ -74,6 +74,7 @@ Reference for every source type Provisa supports. "Direct driver" means single-s
 Wire-compatible databases reuse a base wire's JDBC driver, native async driver and dialect. CockroachDB, YugabyteDB and Greenplum ride the PostgreSQL wire, and TiDB rides the MySQL wire. They need only registry entries and no new connector code.
 
 `firebird` (Firebird 3/4/5) and `airport` (Arrow Flight server) are registered source types that DuckDB community extensions reach in place when DuckDB is the active engine. They have no direct driver and no federated connector.
+
 #### `saphana`
 
 SAP HANA is read through its own driver and replicated into the active engine's store, so it is reachable on every engine. The form takes host, port (default 39015), username, password and database; on a multi-tenant system the database names the tenant. Register Table lists the schemas the user can read, with HANA's system schemas left out.
@@ -326,6 +327,7 @@ A folder shared without encryption must be mounted with locks that reach every n
 Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia): the source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table.
 
 On the DuckDB engine, `files` is read natively, with a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory. On an engine with no `files` connector of its own, rows land through the same Calcite pgwire server bundled with the connector (`pgwire-file`) that sharepoint and splunk use. See [Enterprise SaaS Connectors](#enterprise-saas-connectors) below.
+
 #### Logs {: #logs }
 
 A `logs` source turns log files on the Provisa server into one table. You name the files by a full path or a glob, and pick the format their records are written in. Each record becomes a row. A record the format cannot read is kept, with its raw text and the reason, never dropped.
@@ -511,6 +513,7 @@ Only tables that editors mark as data tables (`table.wikitable`) become tables, 
 ### Enterprise SaaS Connectors
 
 Google Workspace and Microsoft 365 are read by loaders of their own; see [Google Workspace and Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, cloud inventory and Splunk are read through drivers that run as their own process and speak the PostgreSQL wire protocol (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`), so none of them has a direct driver. On the DuckDB engine the driver's endpoint is attached live through the postgres extension: Register Table lists the connector's tables from the attached catalog, queries read the connector in place, and filters and projections are pushed down to it. Every other engine lands the rows in the materialize store for federation. The driver bundles are fetched per OS and architecture from a pinned release (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64). An operator can instead name a bundle folder built for this host, per connector, under Admin → Settings → Connector servers (`connectors.<connector>.bundle_dir`); see [Admin](admin.md). All five Trino connectors (Jira has none) always match names case-insensitively, as each product itself does.
+
 #### `sharepoint`
 
 SharePoint lists are enumerated as schemas and exposed as queryable tables. Two auth methods: `CLIENT_CREDENTIALS` (default) and certificate-based via a PFX certificate. Secret values in `mapping` are resolved through the secrets engine before reaching the connector.
@@ -1076,6 +1079,7 @@ The file ships empty. The built-in connectors cover the sources that work with n
 **ClickHouse supports three mechanisms**, one per integration-engine shape: a relational DATABASE engine that auto-exposes every remote table (`clickhouse_database`, e.g. Redis/MySQL), a per-table engine whose columns the registry supplies (`clickhouse_table`, e.g. the JDBC/ODBC bridge; the `engine_template` may carry a `{table}` placeholder the runtime binds), and a file/lake/URL engine whose schema ClickHouse infers (`clickhouse_scan`, e.g. HDFS/URL). SQLite (DATABASE engine, file, no server) and Hudi (lakehouse, zero-copy) ship OOTB.
 
 An unknown `kind` value fails loudly at startup, so a typo in a descriptor never quietly leaves a source type unreachable.
+
 ### Probe gating
 
 Availability is verified at attach time against each engine's standard discovery catalog:
@@ -1500,6 +1504,7 @@ auth:
 Register a Neo4j graph database as a queryable source. Stewards author Cypher queries that project scalar values; Provisa caches results and exposes them as GraphQL types.
 
 Cypher queries must use property accessors in the `RETURN` clause (`RETURN n.id AS id, n.name AS name`). Registration refuses a query that returns node objects.
+
 #### Config-file registration
 
 Declare a `neo4j` source and its tables in YAML. Each table requires a `query_template` (the Cypher that produces its rows) and typed columns. The `query_template` key is invalid under any other source type.

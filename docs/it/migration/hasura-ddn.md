@@ -98,8 +98,8 @@ e imposta `columns[].alias` sul nome del campo GraphQL quando differiscono.
    directory (il primo componente di directory sotto la root del progetto). Senza `--domain-map`, ogni
    nome di subgraph diventa direttamente un ID di domain. Usare `--domain-map` per rinominarli.
 4. **Controllare le regole RLS.** I predicati di filtro DDN vengono convertiti in approssimazioni SQL.
-   La logica booleana annidata (`_and`/`_or`/`_not`) è supportata, ma i filtri complessi che
-   attraversano le relazioni potrebbero richiedere una revisione manuale.
+   La logica booleana annidata (`_and`/`_or`/`_not`) viene convertita; rivedere a mano i filtri che
+   attraversano le relazioni.
 5. **Rivedere la configurazione di aggregazione.** Le espressioni di aggregazione vengono scritte in un
    file collaterale `provisa-aggregates.yaml` e convertite nella configurazione di aggregazione di Provisa.
 6. **Rivedere gli avvisi.** Il convertitore stampa su stderr un riepilogo che elenca i tipi DDN ignorati
@@ -135,7 +135,7 @@ Model). Se nessun Model utilizza l'ObjectType indicato, la relazione viene ignor
 ### Alias di colonna ovunque {: #column-aliases-everywhere }
 
 Se il proprio progetto DDN utilizza `fieldMapping` in modo estensivo, ci si può aspettare che la
-maggior parte delle colonne abbia un `alias` nell'output. Questo è un comportamento corretto -- `name`
+maggior parte delle colonne abbia un `alias` nell'output. È previsto: `name`
 è la colonna fisica, `alias` è il nome GraphQL utilizzato dall'applicazione.
 
 ### Espressioni di aggregazione {: #aggregate-expressions }

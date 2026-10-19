@@ -1627,7 +1627,7 @@ mutation {
 
 ### 按目录目标的数据产品支持 {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` 会传递给每个适配器，但只有平台具备原生数据产品概念的适配器会将其作为一等实体发布；其余适配器只发布成员表（已如上过滤），不带产品分组。
+`MetadataSnapshot.data_products` 会传递给每个适配器，但只有平台具备原生数据产品概念的适配器会将其作为独立实体发布；其余适配器只发布成员表（已如上过滤），不带产品分组。
 
 | 目标 | 数据产品表示方式 |
 | --- | --- |
@@ -1638,4 +1638,4 @@ mutation {
 | Collibra | 每个产品变为一个 `Data Product` 社区类型的资产，通过 `Data Product groups Table` 关系与其成员表关联。 |
 | Atlan | 以自定义的 `DataProduct` 类型定义猜测方式发布——Atlan 对此概念没有文档化的稳定类型名，因此该映射是尽力而为的。 |
 | Apache Atlas | 以自定义的 `provisa_data_product` 类型定义发布，并带有 `provisa_data_product_members` 关系——Atlas 没有原生的数据产品实体类型。 |
-| OpenLineage | 不是一等实体——成员表携带一个命名所属产品的 `provisa_data_product` 自定义面。 |
+| OpenLineage | 没有独立实体；成员表携带一个命名所属产品的 `provisa_data_product` 自定义面。 |

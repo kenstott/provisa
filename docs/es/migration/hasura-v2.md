@@ -156,8 +156,8 @@ de nuevo.
 ### Columnas comodín {: #wildcard-columns }
 
 Cuando un permiso otorga `columns: "*"`, el convertidor crea una única entrada de columna
-comodín. Después de la conversión, quizás quiera reemplazarla con listas de columnas explícitas
-inspeccionando el esquema real de la base de datos.
+comodín. Después de la conversión, reemplácela con una lista de columnas explícita
+leída del esquema de la base de datos.
 
 ### Fidelidad de los event triggers {: #event-trigger-fidelity }
 

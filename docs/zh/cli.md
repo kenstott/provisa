@@ -327,7 +327,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | 否 | 报告部署会做什么；不应用任何内容 |
 | `--message` | 否 | 目标受保护时随批准请求携带的说明 |
 
-加载到已有环境中时绝不应用角色。`--seed` 已不存在：API 以
+加载到已有环境中时绝不应用角色。没有 `--seed`：API 以
 `environments.seed_only_at_creation` 拒绝 seed。
 
 ```bash

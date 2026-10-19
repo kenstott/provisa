@@ -98,8 +98,8 @@ DDN 透過 ObjectType 上的 `dataConnectorTypeMapping`，將 GraphQL 結構描�
    （即專案根目錄下的第一層目錄名稱）。若未使用 `--domain-map`，每個
    subgraph 名稱會直接成為 domain ID。可使用 `--domain-map` 為其重新命名。
 4. **檢查 RLS 規則。** DDN 的篩選條件會轉換為近似的 SQL 語句。
-   支援巢狀布林邏輯（`_and`/`_or`/`_not`），但複雜的
-   跨關聯篩選可能需要人手覆核。
+   巢狀布林邏輯（`_and`/`_or`/`_not`）會被轉換；跨關聯的
+   篩選請人手覆核。
 5. **檢查聚合設定。** 聚合運算式會寫入附屬檔案
    `provisa-aggregates.yaml`，並轉換為 Provisa 的聚合設定。
 6. **檢查警告。** 轉換工具會在 stderr 輸出摘要，列出略過的
@@ -135,7 +135,7 @@ Subgraph 是根據目錄結構推斷：專案根目錄下的第一層目錄名�
 ### 隨處可見的資料表欄別名 {: #column-aliases-everywhere }
 
 若你的 DDN 專案廣泛使用 `fieldMapping`，可預期大部分資料表欄在輸出中
-都會有 `alias`。這是正常的行為 —— `name` 是實際的資料表欄，
+都會有 `alias`。這是預期的：`name` 是實際的資料表欄，
 `alias` 則是應用程式所使用的 GraphQL 名稱。
 
 ### 聚合運算式 {: #aggregate-expressions }

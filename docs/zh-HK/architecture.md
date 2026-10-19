@@ -2,7 +2,7 @@
 
 ## 概覽 {: #overview }
 
-Provisa 是一個以設定驅動的數據虛擬化平台：聯邦、指標、本體與管治出自單一模型，適用於小型團隊與大型企業。它為異質數據來源提供統一的 API，並具備治理、安全性及效能優化。用戶端可透過 SQL、GraphQL 或 Cypher 查詢；三者均為一等介面，套用完全相同的治理規則。
+Provisa 是一個以設定驅動的數據虛擬化平台：聯邦、指標、本體與管治出自單一模型，適用於小型團隊與大型企業。它為異質數據來源提供統一的 API，並具備治理、安全性及效能優化。用戶端可透過 SQL、GraphQL 或 Cypher 查詢；三者套用完全相同的治理規則。
 
 模型是唯一加入語義的地方。要擴充模型，就在數據虛擬化層註冊新的數據來源或彙總。這保持了清晰的分隔：平台之外的任何東西都無法加入語義，亦正因如此才能實現真正的數據治理。由編譯器強制執行：無論使用哪種查詢語言，已批准的關係目錄都是唯一依據。
 
@@ -162,7 +162,7 @@ flowchart TD
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-Provisa 的 Flight 伺服器（連接埠 8815）以 ADBC 用戶端的身分連接至 Zaychik，實現端對端的 Arrow 串流，而不需具體化結果。
+Provisa 的 Flight 伺服器（連接埠 8815）以 ADBC 用戶端的身分連接至 Zaychik，因此 Arrow 端對端串流，結果從不具體化。
 
 ### Iceberg 結果目錄 {: #iceberg-results-catalog }
 
@@ -225,7 +225,7 @@ Attach 會在附加時自動佈建所有先決條件：
 
 ### 欄式具體化寫入 {: #columnar-materialization-writes }
 
-`provisa/core/database.py` 中的 `Connection.bulk_copy`，會依儲存區方言選擇最快的批量匯入路徑：PostgreSQL 儲存區使用二進位 `COPY`（asyncpg 的 `copy_records_to_table`），其餘所有關聯式儲存區則使用單一個 `executemany` 預備陳述式。DuckDB 內嵌儲存區則透過 `store_connection.py` 中的 `land_duckdb_native` 落地——整批僅呼叫一次 `executemany`，絕不逐列迴圈處理。
+`provisa/core/database.py` 中的 `Connection.bulk_copy`，會依儲存區方言選擇最快的批量匯入路徑：PostgreSQL 儲存區使用二進位 `COPY`（asyncpg 的 `copy_records_to_table`），其餘所有關聯式儲存區則使用單一個 `executemany` 預備陳述式。DuckDB 內嵌儲存區則透過 `store_connection.py` 中的 `land_duckdb_native` 落地：整批僅呼叫一次 `executemany`，絕不逐列迴圈處理。
 
 ## 大型結果重新導向 {: #large-result-redirect }
 
@@ -338,7 +338,7 @@ mutation {
 
 ## 具體化檢視 (Materialized Views) {: #materialized-views }
 
-MV 藉由預先運算並快取結果，透明地優化昂貴的查詢。
+MV 預先運算昂貴查詢的結果，從而加快這些查詢。查詢無需任何修改即可使用它們。
 
 ### 作為 MV 提示的關聯 {: #relationships-as-mv-hints }
 

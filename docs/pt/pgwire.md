@@ -292,7 +292,7 @@ conjunto de tipos mais ARRAY, JSON, INTERVAL, e BIGINT.
 
 **Drivers Python nativos (psycopg2, asyncpg).** Estes negociam o protocolo de consulta estendida por padrão e usam codificação binária para a maioria dos tipos. A fidelidade de tipo é mais alta aqui: colunas `NUMERIC` chegam como `Decimal`, `TIMESTAMP` como `datetime`, e assim por diante. Use estes para ETL baseado em Python, scripts, ou integração direta.
 
-**JDBC (driver JDBC PostgreSQL).** Use este para ferramentas do ecossistema Java: DBeaver, Tableau,
+**JDBC (driver JDBC PostgreSQL).** Use este para ferramentas Java: DBeaver, Tableau,
 Power BI, Metabase, operadores JDBC do Airflow. JDBC assume por padrão o protocolo de consulta
 simples, o que evita complicações de codificação binária. String de conexão:
 

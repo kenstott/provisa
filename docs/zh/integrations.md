@@ -252,7 +252,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | Bolt（Neo4j Browser / 驱动程序） | `CALL fn(args)` —— 位置参数会对应到已声明的参数名称 | `CALL random_python_set(3, 7)` |
 | Provisa gRPC（端口 50051） | 一元 `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
 
-`kind` 字段仅控制在 GraphQL 中的放置位置 —— SQL、Cypher、Bolt 及 gRPC 接口均同样接受 `query` 及 `mutation` 命令。
+`kind` 字段仅控制在 GraphQL 中的放置位置。SQL、Cypher、Bolt 及 gRPC 接口均同样接受 `query` 及 `mutation` 命令。
 
 ---
 
@@ -367,7 +367,7 @@ GET /admin/ossie
 `provisa` custom_extensions 槽位中传递，但互操作从不依赖其他工具是否读取它。
 
 Ossie 词汇之外的列类型写作 `Opaque`，并在字段的 `provisa` 扩展中
-写入其自身的类型名——这正是规范对其没有成员的已知类型所规定的做法。
+写入其自身的类型名，这正是规范对其没有成员的已知类型所规定的做法。
 没有记录类型的列不指定 `datatype`。适配器从不映射到列并不具有的类型。
 
 #### 类型映射 {: #type-mapping }
@@ -406,7 +406,7 @@ Content-Type: text/yaml   (or application/json)
 
 导入器只读取文档的扁平形态。三种情况会被点名拒绝：
 
-- 将其模型包裹在 `semantic_model` 中的文档——这是草案规范在
+- 将其模型包裹在 `semantic_model` 中的文档，这是草案规范在
   2026 年 9 月之前的形态。错误会说明该文档早于扁平形态，以及如何转换。
 - 不是 `0.2.0.dev0` 的 `version`。
 - 不属于 Ossie 词汇成员的 `datatype`；错误会指明路径并列出

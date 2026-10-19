@@ -252,7 +252,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | Bolt（Neo4j Browser／驅動程式） | `CALL fn(args)`——位置參數對應至已聲明的引數名稱 | `CALL random_python_set(3, 7)` |
 | Provisa gRPC（連接埠 50051） | 單一呼叫 `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
 
-`kind` 欄位只控制其在 GraphQL 中的位置——SQL、Cypher、Bolt 及 gRPC 介面對 `query` 與 `mutation` 兩種 command 的接受方式完全相同。
+`kind` 欄位只控制其在 GraphQL 中的位置。SQL、Cypher、Bolt 及 gRPC 介面對 `query` 與 `mutation` 兩種 command 的接受方式完全相同。
 
 ---
 
@@ -337,8 +337,8 @@ Provisa 透過一個邊界轉接器與 Apache Ossie（規格 0.2.0.dev0，孵化
 
 ### 匯出 {: #export }
 
-正式的匯出介面是一個即時 HTTP 端點。它在每次請求時從即時狀態推導出 Ossie 文件
-——沒有快取，也沒有產生步驟。
+正式的匯出介面是一個即時 HTTP 端點。它在每次請求時從即時狀態推導出 Ossie 文件，
+沒有快取，也沒有產生步驟。
 
 ```http
 GET /admin/ossie
@@ -368,7 +368,7 @@ GET /admin/ossie
 `provisa` custom_extensions 槽位中傳遞，但交換從不依賴其他工具是否讀取它。
 
 Ossie 詞彙以外的欄位類型寫作 `Opaque`，並在欄位的 `provisa` 擴充中
-寫入其本身的類型名稱——這正是規格對沒有對應成員的已知類型所規定的做法。
+寫入其本身的類型名稱，這正是規格對沒有對應成員的已知類型所規定的做法。
 沒有記錄類型的欄位不指定 `datatype`。轉接器從不對映至欄位並不具有的類型。
 
 #### 類型對映 {: #type-mapping }
@@ -407,7 +407,7 @@ Content-Type: text/yaml   (or application/json)
 
 匯入器只讀取文件的扁平形態。三種情況會被點名拒絕：
 
-- 把其模型包裹於 `semantic_model` 之內的文件——這是草案規格在
+- 把其模型包裹於 `semantic_model` 之內的文件，這是草案規格在
   2026 年 9 月之前的形態。錯誤會說明該文件早於扁平形態，以及如何轉換。
 - 不是 `0.2.0.dev0` 的 `version`。
 - 不屬於 Ossie 詞彙成員的 `datatype`；錯誤會指名路徑並列出

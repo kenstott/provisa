@@ -32,7 +32,7 @@ Por padrão, somente tabelas atribuídas a um produto são publicadas em catálo
 
 Um produto sem membros exportados não é publicado. Uma listagem vazia afirmaria que um produto existe sem nada por trás dele.
 
-Somente catálogos com um conceito nativo de produto de dados o publicam como entidade de primeira classe; os demais publicam as tabelas membro (já filtradas) sem agrupamento por produto:
+Somente catálogos com um conceito nativo de produto de dados o publicam como entidade própria; os demais publicam as tabelas membro (já filtradas) sem agrupamento por produto:
 
 | Catálogo | Publicado como |
 | --- | --- |

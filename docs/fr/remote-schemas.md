@@ -288,7 +288,7 @@ Ordre de priorité de la classification : `operation_overrides` (payload) est pr
 
 ## Impact de l'enregistrement d'une table distante {: #impact-of-registering-a-remote-table }
 
-Une table enregistrée depuis n'importe quelle source de schéma distant est une table Provisa de première classe. Rien ne la distingue, au moment de l'exécution, d'une table relationnelle connectée localement.
+Une table enregistrée depuis n'importe quelle source de schéma distant est une table Provisa ordinaire. Rien ne la distingue, au moment de l'exécution, d'une table relationnelle connectée localement.
 
 **Interfaces de requête.** La table est immédiatement interrogeable via GraphQL, SQL (pgwire ou direct), Cypher (GQL), JSON:API et Arrow Flight. La génération de schéma synthétise `ColumnMetadata` pour les tables distantes, puisqu'elles n'ont pas de catalogue ; la correspondance des types est appliquée au moment de la construction du schéma.
 

@@ -1627,7 +1627,7 @@ Un produit sans membre exporté n'a pas d'entrée dans l'instantané, car une fi
 
 ### Prise en charge des produits de données par cible de catalogue {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` atteint chaque adaptateur, mais seuls les adaptateurs dont la plateforme a un concept natif de produit de données le publient comme entité de premier ordre ; les autres publient les tables membres (déjà filtrées ci-dessus) sans regroupement en produit.
+`MetadataSnapshot.data_products` atteint chaque adaptateur, mais seuls les adaptateurs dont la plateforme a un concept natif de produit de données le publient comme entité à part entière ; les autres publient les tables membres (déjà filtrées ci-dessus) sans regroupement en produit.
 
 | Cible | Représentation du produit de données |
 | --- | --- |
@@ -1638,4 +1638,4 @@ Un produit sans membre exporté n'a pas d'entrée dans l'instantané, car une fi
 | Collibra | Chaque produit devient un actif d'un type de communauté `Data Product`, lié à ses tables membres via une relation `Data Product groups Table`. |
 | Atlan | Publié comme une estimation de typedef personnalisé `DataProduct` — Atlan n'a pas de nom de type stable documenté pour ce concept, donc le mappage est au mieux. |
 | Apache Atlas | Publié comme un typedef personnalisé `provisa_data_product` avec une relation `provisa_data_product_members` — Atlas n'a pas de type d'entité de produit de données natif. |
-| OpenLineage | Pas une entité de premier ordre — les tables membres portent une facette personnalisée `provisa_data_product` nommant le produit propriétaire. |
+| OpenLineage | Pas d'entité propre ; les tables membres portent une facette personnalisée `provisa_data_product` nommant le produit propriétaire. |

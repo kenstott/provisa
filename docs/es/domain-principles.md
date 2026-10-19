@@ -18,7 +18,7 @@
 
 Una tabla y una vista solo se diferencian en su origen: una tabla se reclama de un origen y una vista la define un steward. En cuanto cualquiera de las dos es un activo del dominio, el modelo de gobernanza las trata igual:
 
-- Ambas son activos de dominio de primera clase, visibles en el catálogo
+- Ambas son activos de dominio por derecho propio, visibles en el catálogo
 - Ambas pueden ser el destino de una relación
 - Ambas pueden concederse bajo el Principio 6
 - Ambas están sujetas al mismo pipeline de gobierno
@@ -80,7 +80,7 @@ Una relación es un camino de recorrido aprobado entre dos activos. Las frontera
 - Una solicitud de relación la deciden los dominios que toca: el dominio de su tabla de origen y el dominio de su tabla de destino
 - Una aprobación solo cuenta si viene de un usuario cuyo derecho a crear relaciones alcanza uno de esos dominios; cualquier usuario así puede rechazarla
 - La solicitud se ejecuta cuando dos usuarios distintos, ninguno de ellos el solicitante, la han aprobado y cada dominio implicado tiene un aprobador: una relación entre dos dominios necesita un sí de cada lado, y una relación dentro de un dominio necesita dos aprobadores de ese dominio
-- Aprobar una relación construye el grafo de dependencias de cada steward, lo que permite notificaciones proactivas de evolución del esquema
+- Aprobar una relación construye el grafo de dependencias de cada steward, de modo que los stewards se enteran de los cambios de esquema antes de que se apliquen
 
 Las relaciones se crean cuando alguien las necesita, nunca por si acaso. El primer equipo con la necesidad de negocio hace el trabajo y los equipos posteriores lo heredan.
 
@@ -112,10 +112,10 @@ Tres etapas, en orden.
 
 **Etapa 1 — Modelado exploratorio (descubrimiento SQL, desde la página de Relaciones):**
 
-- El analista abre la herramienta de modelado exploratorio desde la página de Relaciones para explorar posibles rutas de unión en SQL sin procesar
+- El analista abre la herramienta de modelado exploratorio desde la página de Relaciones para probar rutas de unión en SQL sin procesar
 - El SQL se ejecuta contra los datos accesibles, sujeto a la RLS y al enmascaramiento de columnas existentes
 - Las cláusulas JOIN del SQL se analizan y se presentan como propuestas de Relación candidatas
-- Los candidatos sugeridos por máquina (inferencia de claves foráneas, inferencia semántica) se muestran junto a la exploración SQL del analista en la misma vista
+- Los candidatos sugeridos por máquina (inferencia de claves foráneas, inferencia semántica) se muestran junto al SQL del analista en la misma vista
 - El analista selecciona candidatos para promoverlos a una solicitud formal de Relación
 
 **Etapa 2 — Aprobación de la relación** (consecuente: estructural y permanente):
@@ -238,7 +238,7 @@ Se abre como ventana modal desde la página de relaciones. Su propósito es cons
 4. El analista promueve los candidatos seleccionados a solicitudes formales de Relación
 5. Las relaciones aprobadas se agregan al catálogo y se vuelven recorribles en las consultas
 
-Para la exploración estructural, la herramienta de modelado puede mostrar todas las tablas registradas, incluso aquellas cuyos datos el analista no puede ver. La visibilidad del esquema es otra cuestión; lo que rige el acceso a los datos en sí es la aprobación del steward.
+Mientras define la estructura, la herramienta de modelado puede mostrar todas las tablas registradas, incluso aquellas cuyos datos el analista no puede ver. La visibilidad del esquema es otra cuestión; lo que rige el acceso a los datos en sí es la aprobación del steward.
 
 ---
 

@@ -148,7 +148,7 @@ Una tabla asociativa se declara como arista; Provisa nunca la descubre. `viaTabl
 
 ### Descubrimiento de Relaciones con IA {: #ai-relationship-discovery }
 
-Active el análisis de FK impulsado por Claude vía REST:
+Pida a Claude candidatos de FK por REST:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-La Admin API incluye GraphiQL en `GET /admin/graphql` en el navegador. Úselo para explorar el esquema admin completo de forma interactiva.
+La Admin API incluye GraphiQL en `GET /admin/graphql` en el navegador. Úselo para recorrer el esquema admin completo y probar llamadas.
 
 ## Vistas de gestión del dominio ops {: #ops-domain-management-views }
 

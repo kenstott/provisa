@@ -103,9 +103,9 @@ Die Flags `can_undo` und `can_redo` kommen mit der Antwort der Umgebungsliste. B
 
 ## Autorisierung {: #authorization }
 
-Umgebungen werden von zwei Rechten regiert. Keines gehört standardmäßig einer Analystin.
+Umgebungen werden durch zwei Rechte geregelt. Keines gehört standardmäßig einer Analystin.
 
-| Recht | Wer es hält (angesät) | Was es regiert |
+| Recht | Wer es hält (angesät) | Was es regelt |
 | --- | --- | --- |
 | `environment_management` | org_admin, developer | Umgebungen anlegen und löschen |
 | `environment_switch` | org_admin, developer | Von einer anderen Umgebung als prod bedient werden |

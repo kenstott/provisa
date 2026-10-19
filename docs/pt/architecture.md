@@ -2,7 +2,7 @@
 
 ## Visão geral {: #overview }
 
-O Provisa é uma plataforma de virtualização de dados orientada por configuração: federação, métricas, ontologia e governança a partir de um único modelo, para pequenas equipes e grandes empresas. Ele fornece uma API unificada sobre fontes de dados heterogêneas com governança, segurança e otimização de desempenho. Clientes consultam via SQL, GraphQL ou Cypher; todas as três são interfaces de primeira classe com a mesma governança aplicada.
+O Provisa é uma plataforma de virtualização de dados orientada por configuração: federação, métricas, ontologia e governança a partir de um único modelo, para pequenas equipes e grandes empresas. Ele fornece uma API unificada sobre fontes de dados heterogêneas com governança, segurança e otimização de desempenho. Clientes consultam via SQL, GraphQL ou Cypher; as três recebem a mesma governança.
 
 O modelo é o único lugar onde se acrescenta significado. Para ampliá-lo, você registra novas fontes de dados ou agregados na camada de virtualização de dados. Isso mantém uma separação limpa, porque nada pode acrescentar semântica fora da plataforma, e é isso que torna possível uma governança de dados de verdade. Quem impõe é o compilador: o catálogo de relacionamentos aprovados é a fonte da verdade, seja qual for a linguagem de consulta.
 
@@ -162,7 +162,7 @@ O motor de federação não suporta nativamente o protocolo Arrow Flight SQL. O 
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-O servidor Flight do Provisa (porta 8815) se conecta ao Zaychik como um cliente ADBC, permitindo streaming Arrow de ponta a ponta sem materializar resultados.
+O servidor Flight do Provisa (porta 8815) se conecta ao Zaychik como um cliente ADBC, de modo que o Arrow trafega de ponta a ponta e os resultados nunca são materializados.
 
 ### Catálogo de Resultados Iceberg {: #iceberg-results-catalog }
 
@@ -338,7 +338,7 @@ mutation {
 
 ## Views Materializadas {: #materialized-views }
 
-As MVs otimizam de forma transparente consultas custosas pré-computando e armazenando resultados em cache.
+As MVs aceleram consultas custosas calculando seus resultados com antecedência. As consultas passam a usá-las sem nenhuma alteração.
 
 ### Relacionamentos como Hints de MV {: #relationships-as-mv-hints }
 
@@ -647,7 +647,7 @@ Os `write_grants` de uma tabela indicam, por função e operação, quais coluna
 
 ## Explorador de Esquema GraphQL Voyager {: #graphql-voyager-schema-explorer }
 
-A UI de administração (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora o GraphQL Voyager como visualização interativa do esquema. Ele desenha o esquema limitado ao papel como um diagrama entidade-relacionamento navegável, com tabelas como nós e relacionamentos como arestas. O esquema mostrado é sempre filtrado pelo papel selecionado no momento.
+A UI de administração (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora o GraphQL Voyager como visualização interativa do esquema. Ele desenha o esquema limitado ao papel como um diagrama entidade-relacionamento que se pode arrastar, ampliar e clicar, com tabelas como nós e relacionamentos como arestas. O esquema mostrado é sempre filtrado pelo papel selecionado no momento.
 
 ## Ordem de Aplicação de Segurança {: #security-enforcement-order }
 

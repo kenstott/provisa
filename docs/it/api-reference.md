@@ -1627,7 +1627,7 @@ Un prodotto senza membri esportati non ottiene una voce nello snapshot, perché 
 
 ### Supporto data product per catalogo target {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` raggiunge ogni adapter, ma solo gli adapter la cui piattaforma ha un concetto nativo di data product lo pubblicano come entità di prima classe; gli altri pubblicano le tabelle membro (già filtrate sopra) senza un raggruppamento di prodotto.
+`MetadataSnapshot.data_products` raggiunge ogni adapter, ma solo gli adapter la cui piattaforma ha un concetto nativo di data product lo pubblicano come entità a sé; gli altri pubblicano le tabelle membro (già filtrate sopra) senza un raggruppamento di prodotto.
 
 | Target | Rappresentazione del data product |
 | --- | --- |
@@ -1638,4 +1638,4 @@ Un prodotto senza membri esportati non ottiene una voce nello snapshot, perché 
 | Collibra | Ogni prodotto diventa un asset di un community type `Data Product`, correlato alle sue tabelle membro tramite una relazione `Data Product groups Table`. |
 | Atlan | Pubblicato come ipotesi di typedef personalizzato `DataProduct` — Atlan non ha un nome di tipo stabile documentato per questo concetto, quindi il mapping è best-effort. |
 | Apache Atlas | Pubblicato come typedef personalizzato `provisa_data_product` con una relazione `provisa_data_product_members` — Atlas non ha un tipo di entità data product nativo. |
-| OpenLineage | Non è un'entità di prima classe — le tabelle membro portano un facet personalizzato `provisa_data_product` che nomina il prodotto proprietario. |
+| OpenLineage | Nessuna entità propria; le tabelle membro portano un facet personalizzato `provisa_data_product` che nomina il prodotto proprietario. |

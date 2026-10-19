@@ -1,4 +1,5 @@
 # 數據來源類型 {: #source-types }
+
 ## 執行模型 {: #execution-model }
 
 每個查詢最終都要經過聯邦引擎，正是它令任何數據來源都能與其他數據來源聯結。數據來源怎樣到達那裏，取決於 Provisa 怎樣觸及它，據此每個數據來源歸入五組之一。
@@ -24,6 +25,7 @@
 ---
 
 ## 所有數據來源 {: #all-sources }
+
 Provisa 註冊了 **73** 種數據來源類型，即 Sources 表單所提供的類型。下方表格涵蓋全部 73 種；索引即為計數。
 
 | # | 群組 | 數據來源類型 |
@@ -72,6 +74,7 @@ Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」
 協定相容的資料庫重用某個基礎協定的 JDBC 驅動程式、原生非同步驅動程式及方言。CockroachDB、YugabyteDB 及 Greenplum 使用 PostgreSQL 協定，TiDB 使用 MySQL 協定。它們只需要登錄項目，不需要新的連接器程式碼。
 
 `firebird`（Firebird 3/4/5）及 `airport`（Arrow Flight 伺服器）是已登記的數據來源類型，當 DuckDB 是啟用中的引擎時，由 DuckDB 社群擴充功能就地觸及。它們沒有直接驅動程式，亦沒有聯邦連接器。
+
 #### `saphana`
 
 SAP HANA 經它自己的驅動程式讀取，並複製到啟用中引擎的儲存區，因此在每個引擎上都可觸及。表單需要主機、連接埠（預設 39015）、使用者名稱、密碼與資料庫；在多租用戶系統中，資料庫指定租用戶。Register Table 列出使用者可讀取的結構描述，不含 HANA 的系統結構描述。
@@ -177,6 +180,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 | `pinot` | — | pinot | — | 否 | Trino `pinot` 連接器；`pinot.controller-urls` = Pinot 控制器的 host:port |
 
 ### 數據湖／開放表格式 {: #data-lake-open-table-formats }
+
 這些數據來源類型僅供聯邦使用。它們沒有直接驅動程式，亦沒有方言。
 
 | 數據來源類型 | 連接器名稱 | 時間旅行 | 備註 |
@@ -242,6 +246,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 搜尋按每條語句、在其參數下讀取，其列在這些參數下保留一個表格 TTL 的時間。搜尋表格是唯讀的。
 
 ### 串流 {: #streaming }
+
 | 數據來源類型 | 機制 | 變更操作 |
 | ------------ | ----------- | ----------- |
 | `kafka` | 聯邦 Kafka 連接器；結構描述經 Confluent Schema Registry（Avro、Protobuf、JSON Schema）、手動定義或樣本推斷取得 | 否；資料表的即時輸出會發佈至 Kafka |
@@ -251,17 +256,20 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 **託管引擎上的 Kafka。** 在託管平台預置的引擎上，Kafka 數據來源必須指定一個結構描述登錄（`schema_registry_url`）。主題欄位只由模型宣告的數據來源在儲存或套用時會被按名稱拒絕（HTTP 422，`sources.kafka_needs_schema_registry`），因為它的資料表描述需要一個無法交給執行中引擎的資料夾。SASL 憑證以記憶體方式送達這些引擎（參見[安全](security.md#the-federation-engine-trino)）。
 
 ### 推送接收器 {: #push-receiver }
+
 | 數據來源類型 | 機制 | 變更操作 |
 | ------------ | ----------- | ----------- |
 | `ingest` | 外部服務 POST JSON 事件；結果經具體化 | 否 |
 
 ### 圖形與語意 {: #graph-semantic }
+
 | 數據來源類型 | 機制 | 變更操作 |
 | ------------ | ----------- | ----------- |
 | `neo4j` | 經 HTTP API 的 Cypher，結果快取於 PostgreSQL | 否 |
 | `sparql` | SPARQL 1.1 POST，結果快取於 PostgreSQL | 否 |
 
 ### 檔案式 {: #file-based }
+
 三種機制涵蓋檔案。單一檔案數據來源與檔案爬取器使用 `path` 欄位而非 `host`／`port`。 第三種 [Logs](#logs) 在其 `mapping` 中以萬用字元（glob）指定檔案，而且只讀取 Provisa 伺服器上的檔案。
 
 **檔案數據庫與單一檔案數據來源。** `sqlite`、`duckdb`、`csv` 或 `parquet` 數據來源把 `path` 指向單一檔案。（`duckdb` 數據來源把位置保存在表單的 `database` 欄位中。）
@@ -319,6 +327,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 任何 `files` 數據來源也可以在其 mapping 中宣告 `crawl`，設定與 [Wikipedia](#wikipedia) 下列出的相同：此時數據來源會先讀取網頁，並把每個 HTML 數據表與每個連結的數據檔案作為表落地到其目錄中。
 
 在 DuckDB 引擎上，`files` 以原生方式讀取，解析出的目錄下每個 `<table>.csv` 對應一個 `read_csv_auto` 掃描器檢視。在沒有自帶 `files` 連接器的引擎上，資料列經 sharepoint 及 splunk 所用、隨連接器提供的同一個 Calcite pgwire 伺服器（`pgwire-file`）落地。見下方的[企業 SaaS 連接器](#enterprise-saas-connectors)。
+
 #### Logs {: #logs }
 
 `logs` 數據來源把 Provisa 伺服器上的日誌檔案變成一張表。你以完整路徑或萬用字元（glob）指定檔案，並選擇其記錄所用的格式。每條記錄成為一個資料列。格式無法讀取的記錄會連同原始文字與原因一併保留，絕不丟棄。
@@ -493,6 +502,7 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 **重新整理。** 爬取結果會在快取期內保留，預設為 `1 days`（`html_cache_ttl`）。只有在該時間過後才會重新取得頁面。
 
 ### 可觀測性與其他 {: #observability-other }
+
 `prometheus` 有 Trino 連接器（屬性自該類型的映射 DSL 建構）。`google_sheets` 是已註冊的數據來源類型，沒有 Trino 連接器，經 API 快取管線具體化。
 
 | 數據來源類型 | 連接器名稱 | 變更操作 |
@@ -503,6 +513,7 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 ### 企業 SaaS 連接器 {: #enterprise-saas-connectors }
 
 Google Workspace 及 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 及 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、雲端資源清單及 Splunk 經以獨立程序執行、使用 PostgreSQL 協定通訊的驅動程式讀取（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），所以它們都沒有直接驅動程式。在 DuckDB 引擎上，驅動程式的端點透過 postgres 擴充功能即時掛載：Register Table 從已掛載的目錄中列出連接器的資料表，查詢就地讀取連接器，篩選及投影會下推給它。其他所有引擎都把資料列落地到具體化儲存區以用於聯邦。驅動程式套件按作業系統及架構從固定版本的 release 中取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）。營運者亦可以在 Admin → 設定 → 連接器伺服器中，按連接器指定一個為本主機建構的套件資料夾（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。五個 Trino 連接器（Jira 沒有）一律以不分大小寫的方式比對名稱，與各產品自身一致。
+
 #### `sharepoint`
 
 SharePoint 清單被列舉為結構描述，並以可查詢的表對外呈現。兩種驗證方式：`CLIENT_CREDENTIALS`（預設）與經 PFX 憑證的憑證式驗證。`mapping` 中的密鑰值在抵達連接器之前，先經密鑰引擎解析。
@@ -810,6 +821,7 @@ Google 在 `gmail.metadata` 之下拒絕搜尋，因此把 `mail_content: header
 **排除項。** 郵件只讀；沒有任何語句會更改郵箱。`calendars`、`task_lists` 與所有郵件表都不接受寫入。除非開啟 `mail_include_spam_trash`，否則 Gmail 的 Spam 與 Trash 會被排除。Google 的 Tasks API 只保存工作的到期日期，沒有提醒。
 
 ### API 數據來源 {: #api-sources }
+
 把任何 HTTP 端點註冊為可查詢的表。
 
 | API 類型 | 探索 | 資料行推斷 |
@@ -1022,6 +1034,7 @@ tables:
 該檔案出廠時為空。內建連接器涵蓋開箱即用的部分，此檔案中的一切都由營運者編寫。如需使用其他路徑（例如在測試中），請設定 `PROVISA_CUSTOM_CONNECTORS`。
 
 ### 描述元種類 {: #descriptor-kinds }
+
 | 引擎 | 種類 | 機制 | 描述元提供什麼 |
 | --- | --- | --- | --- |
 | `postgres` | `pg_fdw` | SQL/MED（ISO 標準） | `extension`, `server_options`, `user_mapping`, `supports_import`, `table_options`, `remote_schema` |
@@ -1038,7 +1051,9 @@ tables:
 **ClickHouse 支援三種機制**，各對應一種整合引擎形狀：一個自動呈現每張遠端表的關聯式 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、一個資料行由登錄提供的逐表引擎（`clickhouse_table`，例如 JDBC/ODBC 橋接；`engine_template` 可帶一個由執行階段繫結的 `{table}` 佔位符），以及一個由 ClickHouse 推斷結構描述的檔案／湖／URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、檔案、無伺服器）與 Hudi（湖倉、零複製）開箱即有。
 
 未知的 `kind` 值會在啟動時明確報錯，所以描述元裏的拼寫錯誤永遠不會令某種數據來源類型悄悄變得無法觸及。
+
 ### 探測閘門 {: #probe-gating }
+
 可用性在附掛時針對各引擎的標準探索目錄驗證：
 
 - **Postgres**——檢查 `pg_extension`，然後 `pg_available_extensions`。
@@ -1048,6 +1063,7 @@ tables:
 一個已宣告但無法安裝的擴充會大聲失敗。沒有默默略過，沒有備援。探測失敗的連接器，在該部署中就是不啟用。
 
 ### 樣板變數 {: #template-variables }
+
 每個 `server_options` 值、`user_mapping` 值、`attach_template` 與 `scan_template` 都可使用 `{field}` 佔位符。可用欄位：
 
 `{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，以及 `federation_hints` 中的任何鍵。DuckDB 的 attach 範本亦會收到 `{alias}`，即 Provisa 為掛載的資料庫指派的內部目錄別名。
@@ -1055,6 +1071,7 @@ tables:
 引用未知欄位的樣板會在附掛時大聲失敗，讓描述元與數據來源的不相符在損壞的 DDL 抵達引擎之前浮現。
 
 ### 例子 {: #examples }
+
 **Postgres——經 `mongo_fdw` 的 MongoDB（無結構描述匯入；資料行逐表提供）**
 
 ```yaml
@@ -1094,6 +1111,7 @@ connectors:
 ---
 
 ## 作為具名數據來源的倉庫 {: #warehouses-as-named-sources }
+
 Snowflake、Databricks 與 ClickHouse 可註冊為具名數據來源，與哪個聯邦引擎啟用中無關。
 
 註冊後，倉庫經數據來源的 DirectDriver 讀取，它把副本落地到啟用中引擎的具體化儲存區，查詢針對該副本執行。在一般的直接路徑上（asyncpg、aiomysql），引擎被完全略過。而這裏仍由引擎執行查詢，只是針對本機副本，而不是每次請求都經網絡存取倉庫。
@@ -1150,6 +1168,7 @@ sources:
 ---
 
 ## 數據來源設定欄位 {: #source-configuration-fields }
+
 所有數據來源共用一組共通欄位。
 
 | 欄位 | 必填 | 預設 | 說明 |
@@ -1180,6 +1199,7 @@ sources:
 ---
 
 ## Kafka 數據來源 {: #kafka-sources }
+
 Kafka 主題另外設定於 `kafka_sources` 之下，以某個已註冊 `kafka` 數據來源的 `id` 為索引鍵。
 
 ```yaml
@@ -1214,6 +1234,7 @@ kafka_sources:
 ---
 
 ## 資料行可見性 {: #column-visibility }
+
 每個資料行上的 `visible_to` 欄位，是能看見該資料行的角色 ID 清單。
 
 ```yaml
@@ -1231,6 +1252,7 @@ columns:
 ---
 
 ## 關係 {: #relationships }
+
 關係連接兩張已註冊的表，並在 GraphQL 中呈現為巢狀欄位。
 
 ```yaml
@@ -1302,6 +1324,7 @@ relationships:
 ---
 
 ## 資料列層級安全規則 {: #row-level-security-rules }
+
 RLS 規則在查詢時注入 `WHERE` 子句，範圍限定於某個角色，並可選擇限定於某張表或某個網域。
 
 ```yaml
@@ -1331,7 +1354,9 @@ rls_rules:
 ---
 
 ## 函式與 Webhook {: #functions-and-webhooks }
+
 ### DB 函式 {: #db-functions }
+
 追蹤一個資料庫函式，並把它呈現為 GraphQL 查詢或變更操作。
 
 資料庫數據來源也能自供應商目錄（`pg_proc`、`information_schema.routines` 或供應商對應物）自動探索其預存程序與函式，免去逐一手動註冊。探索會讀取 `prokind` 與 `provolatile`：immutable／stable 的函式註冊為參數化關聯（程序引數變成查詢參數，形狀與 OpenAPI GET 表相同），而 volatile 的程序註冊為變更操作／受追蹤函式。已探索的常式流經 Stage-2 治理的方式，與手動註冊者完全相同。
@@ -1368,6 +1393,7 @@ functions:
 | `kind` | 否 | `mutation` | `"query"` 或 `"mutation"` |
 
 ### Webhook {: #webhooks }
+
 把一個外部 HTTP 端點呈現為 GraphQL 查詢或變更操作。
 
 ```yaml
@@ -1404,6 +1430,7 @@ webhooks:
 ---
 
 ## 驗證 {: #authentication }
+
 驗證設定於 `auth` 索引鍵之下。
 
 | 提供者 | 說明 |
@@ -1443,11 +1470,13 @@ auth:
 ---
 
 ## 圖形與語意數據來源 {: #graph-semantic-sources }
+
 ### Neo4j
 
 把一個 Neo4j 圖形資料庫註冊為可查詢的數據來源。管理員撰寫投影出純量值的 Cypher 查詢；Provisa 快取結果並把它們呈現為 GraphQL 類型。
 
 Cypher 查詢必須在 `RETURN` 子句中使用屬性存取（`RETURN n.id AS id, n.name AS name`）。傳回節點物件的查詢會在註冊時被拒絕。
+
 #### 以設定檔註冊 {: #config-file-registration }
 
 在 YAML 中宣告一個 `neo4j` 數據來源及其表。每張表需要一個 `query_template`（產生其資料列的 Cypher）與具型別的資料行。`query_template` 索引鍵在任何其他數據來源類型下都無效。
@@ -1580,6 +1609,7 @@ tables:
 Register Table 的運作方式與 Neo4j 相同：選擇數據來源，輸入表名稱與 SELECT，按 Preview（`sparqlPreview` 查詢以 `LIMIT 5` 執行它並填入資料行清單），然後註冊。註冊會持久化一列 `api_sources` 與一列 `api_endpoints`（以表單編碼 POST 到端點路徑，`sparql_bindings` 正規化器），與設定檔註冊寫入的資料列相同，而原生引擎經與 Neo4j 相同的取得鏈落地資料列。
 
 ## 連線範例 {: #connection-examples }
+
 ### PostgreSQL
 
 ```yaml

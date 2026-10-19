@@ -101,7 +101,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 #### `crawlSource(path, depth, pattern, recursive, simpleLinks, sameDomain, excludePattern) → CrawlResultType`
 
-在创建数据源之前，预览文件连接器爬取将会发现的内容——文件、表和列。仅限 HTTP 的设置（`simpleLinks`、`sameDomain`、`excludePattern`）在本地、S3、FTP 和 SFTP 根目录下会被忽略。
+在创建数据源之前，预览文件连接器爬取将会发现的内容：文件、表和列。仅限 HTTP 的设置（`simpleLinks`、`sameDomain`、`excludePattern`）在本地、S3、FTP 和 SFTP 根目录下会被忽略。
 
 #### `suggestTableAlias(tableName: String!, domainId: String!, sourceId: String!) → String!`
 
@@ -364,7 +364,7 @@ query {
 
 #### `updateSourceReplicate(sourceId: String!, replicate: Int) → MutationResult`
 
-设置数据源的表何时从其副本提供服务：`null` Default、`-1` Never、大于 0 的 `N`——一旦表在一个间隔内超过 N 条受治理语句、`0` Always。没有自身值的表继承它。如果会把 `load_protected` 与 `-1` 组合，或让它所复制的 `ttl` 表没有 `cache_ttl`，则被拒绝。需要 `source_registration`。
+设置数据源的表何时从其副本提供服务：`null` Default、`-1` Never、大于 0 的 `N`：一旦表在一个间隔内超过 N 条受治理语句、`0` Always。没有自身值的表继承它。如果会把 `load_protected` 与 `-1` 组合，或让它所复制的 `ttl` 表没有 `cache_ttl`，则被拒绝。需要 `source_registration`。
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -650,7 +650,7 @@ query {
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-通过直接变更所用的同一代码，执行已获得批准的创建请求——关系、视图、表、数据源或 webhook。在请求所需的批准（一个，关系为两个）由请求者以外的用户给出之前，以 `requests.approvals_incomplete` 拒绝；关系请求在其涉及的每个域都有批准者之前，还会以 `requests.waiting_on_domains` 拒绝。批准通过 `POST /admin/creation-requests/{id}/approve` 给出，使计数完成的批准会执行创建，因此此变更用于重试失败的创建。失败的创建会让请求保持待处理，并以其自身的错误代码应答。
+通过直接变更所用的同一代码，执行已获得批准的创建请求：关系、视图、表、数据源或 webhook。在请求所需的批准（一个，关系为两个）由请求者以外的用户给出之前，以 `requests.approvals_incomplete` 拒绝；关系请求在其涉及的每个域都有批准者之前，还会以 `requests.waiting_on_domains` 拒绝。批准通过 `POST /admin/creation-requests/{id}/approve` 给出，使计数完成的批准会执行创建，因此此变更用于重试失败的创建。失败的创建会让请求保持待处理，并以其自身的错误代码应答。
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 

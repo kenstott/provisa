@@ -247,7 +247,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET и DEALLOCATE �
 
 **Нативные драйверы Python (psycopg2, asyncpg).** Они по умолчанию согласовывают протокол расширенного запроса и используют бинарную кодировку для большинства типов. Точность типов здесь наивысшая: столбцы `NUMERIC` приходят как `Decimal`, `TIMESTAMP` как `datetime` и так далее. Используйте их для ETL на Python, скриптов или прямой интеграции.
 
-**JDBC (драйвер PostgreSQL JDBC).** Используйте его для инструментов Java-экосистемы: DBeaver, Tableau, Power BI, Metabase, операторов Airflow JDBC. JDBC по умолчанию использует протокол простого запроса, что избегает сложностей бинарной кодировки. Строка подключения:
+**JDBC (драйвер PostgreSQL JDBC).** Используйте его для Java-инструментов: DBeaver, Tableau, Power BI, Metabase, операторов Airflow JDBC. JDBC по умолчанию использует протокол простого запроса, что избегает сложностей бинарной кодировки. Строка подключения:
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>

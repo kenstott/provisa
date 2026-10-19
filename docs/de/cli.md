@@ -328,7 +328,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | nein | Berichtet, was das Deploy tun würde; wendet nichts an |
 | `--message` | nein | Notiz, die auf eine Genehmigungsanfrage übertragen wird, wenn das Ziel geschützt ist |
 
-Ein Laden in eine bestehende Umgebung wendet nie Rollen an. `--seed` gibt es nicht mehr: Die API lehnt ein Seed
+Ein Laden in eine bestehende Umgebung wendet nie Rollen an. Es gibt kein `--seed`: Die API lehnt ein Seed
 mit `environments.seed_only_at_creation` ab.
 
 ```bash

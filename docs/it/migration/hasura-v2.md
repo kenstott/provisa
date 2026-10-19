@@ -156,8 +156,8 @@ di nuovo.
 ### Colonne con carattere jolly {: #wildcard-columns }
 
 Quando un'autorizzazione concede `columns: "*"`, il convertitore crea una singola voce di
-colonna con carattere jolly. Dopo la conversione, potrebbe essere opportuno sostituirla con elenchi
-di colonne espliciti ispezionando lo schema effettivo del database.
+colonna con carattere jolly. Dopo la conversione, sostituirla con un elenco
+di colonne esplicito letto dallo schema del database.
 
 ### Fedeltà degli event trigger {: #event-trigger-fidelity }
 

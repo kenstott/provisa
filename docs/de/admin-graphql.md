@@ -306,7 +306,7 @@ Alle registrierten Snapshot-Grenz-Kalenderversionen. Speist den Konfigurationspi
 
 #### `metrics → [MetricType!]!`
 
-Alle regierten Metrikdefinitionen. Fakt-abgeleitete Metriken tragen `fromFact`.
+Alle governten Metrikdefinitionen. Fakt-abgeleitete Metriken tragen `fromFact`.
 
 ---
 
@@ -440,7 +440,7 @@ Zucker für die Registrierung einer Dimensions-/Hub-Entität. Reduziert sich zu 
 
 #### `registerFact(input: FactInput!) → MutationResult`
 
-Zucker für die Registrierung eines Star-Schema-Fakts. Reduziert sich zu einer aggregierten MV, erstellt Dimensionsbeziehungen und registriert Fakt-Kennzahlen automatisch als regierte Metriken.
+Zucker für die Registrierung eines Star-Schema-Fakts. Reduziert sich zu einer aggregierten MV, erstellt Dimensionsbeziehungen und registriert Fakt-Kennzahlen automatisch als governte Metriken.
 
 ---
 
@@ -558,7 +558,7 @@ Entfernt einen zulässigen Wert. Wird abgelehnt, solange eine Zuweisung ihn noch
 
 #### `createMetric(input: MetricInput!) → MutationResult`
 
-Erstellt eine regierte Metrikdefinition. Ein bereits vorhandener Name wird abgelehnt (`schema.metric_name_taken`). Der Ausdruck muss unter sqlglot parsen und mindestens eine Aggregatfunktion enthalten. Regeneriert alle metrik-komponierten Sichten, die diese Metrik referenzieren. Erfordert `table_registration`.
+Erstellt eine governte Metrikdefinition. Ein bereits vorhandener Name wird abgelehnt (`schema.metric_name_taken`). Der Ausdruck muss unter sqlglot parsen und mindestens eine Aggregatfunktion enthalten. Regeneriert alle metrik-komponierten Sichten, die diese Metrik referenzieren. Erfordert `table_registration`.
 
 #### `updateMetric(input: MetricInput!) → MutationResult`
 
@@ -566,7 +566,7 @@ Ersetzt die Definition einer bestehenden Metrik, mit denselben Prüfungen wie `c
 
 #### `deleteMetric(name: String!) → MutationResult`
 
-Löscht eine regierte Metrik. Baut Schemas neu auf. Erfordert `table_registration`.
+Löscht eine governte Metrik. Baut Schemas neu auf. Erfordert `table_registration`.
 
 ---
 
@@ -626,7 +626,7 @@ Aktiviert oder deaktiviert einen geplanten Task in der Konfigurationsdatei.
 
 #### `dryRunDqContract(sourceId: String!, contractText: String!) → DqDryRunType`
 
-Führt einen Vertrag gegen die Live-Tabelle aus und gibt Ergebnisse zurück, ohne etwas zu landen. Eine Mutation statt einer Query, weil dies einen echten Scan kostet. Was sie beweist, ist, ob sich der Dataset-Bezeichner zur regierten Tabelle auflöst, die der Betreiber meint.
+Führt einen Vertrag gegen die Live-Tabelle aus und gibt Ergebnisse zurück, ohne etwas zu landen. Eine Mutation statt einer Query, weil dies einen echten Scan kostet. Was sie beweist, ist, ob sich der Dataset-Bezeichner zur governten Tabelle auflöst, die der Betreiber meint.
 
 #### `runDqCheckNow(schemaName: String!, tableName: String!) → MutationResult`
 

@@ -15,7 +15,7 @@ Provisa 支持六种部署路径。请根据受众和运维场景进行选择：
 
 ### 虚拟机 vs Kubernetes {: #vm-vs-kubernetes }
 
-两者均为企业级方案。虚拟机/AppImage 路径更简单：无需预配集群，无需配置 CNI 或 RBAC 策略，AppImage 本身完全自包含。它可以自然地融入现有的服务器管理工具链（Ansible、Puppet、Datadog agent、Splunk forwarder 等）。
+两者都适用于生产环境。虚拟机/AppImage 路径更简单：无需预配集群，无需配置 CNI 或 RBAC 策略，AppImage 本身完全自包含。它可以自然地融入现有的服务器管理工具链（Ansible、Puppet、Datadog agent、Splunk forwarder 等）。
 
 只有当团队已经在运维 K8s 集群、并希望 Provisa 融入这套运维方式（滚动部署、HPA、统一可观测性）时，才选择 Kubernetes。两者能力相同；Kubernetes 只会增加运维负担。
 
@@ -37,7 +37,7 @@ Provisa 支持六种部署路径。请根据受众和运维场景进行选择：
 
 ### 推荐方式：`start-ui.sh` {: #recommended-start-uish }
 
-从源码运行 Provisa 最简单的方式。一条命令即可启动所有基础设施、后端 API 和 UI 开发服务器。Ctrl+C 可以干净地关闭一切。
+这是从源码运行 Provisa 最简单的方式。一条命令即可启动所有基础设施、后端 API 和 UI 开发服务器。Ctrl+C 可以干净地关闭一切。
 
 **前置条件：** Docker Desktop、Node.js、位于 `.venv/` 的 Python 虚拟环境
 

@@ -328,7 +328,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | non | Indique ce que ferait le déploiement ; n'applique rien |
 | `--message` | non | Note reportée sur une demande d'approbation lorsque la cible est protégée |
 
-Un chargement dans un environnement existant n'applique jamais de rôles. `--seed` n'existe plus : l'API refuse un amorçage
+Un chargement dans un environnement existant n'applique jamais de rôles. Il n'y a pas de `--seed` : l'API refuse un amorçage
 avec `environments.seed_only_at_creation`.
 
 ```bash

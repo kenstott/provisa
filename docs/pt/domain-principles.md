@@ -21,7 +21,7 @@
 
 Uma tabela e uma view só diferem na origem: uma tabela é reivindicada de uma fonte, e uma view é definida por um steward. Assim que qualquer uma delas é um ativo de domínio, o modelo de governança as trata da mesma forma:
 
-- Ambas são ativos de domínio de primeira classe visíveis no catálogo
+- Ambas são ativos de domínio por direito próprio, visíveis no catálogo
 - Ambas podem ser o alvo de um relacionamento
 - Ambas podem ser concedidas sob o Princípio 6
 - Ambas estão sujeitas ao mesmo pipeline de governança
@@ -89,8 +89,8 @@ Um relacionamento é um caminho de travessia aprovado entre dois ativos. As fron
 - Uma solicitação de relacionamento é decidida pelos domínios que ela toca: o domínio da sua tabela de origem e o domínio da sua tabela de destino
 - Uma aprovação só conta se vier de um usuário cujo direito de criar relacionamentos alcança um desses domínios; qualquer usuário assim pode rejeitá-la
 - A solicitação é executada quando dois usuários diferentes, nenhum deles o solicitante, a aprovaram e cada domínio envolvido tem um aprovador: um relacionamento entre dois domínios precisa de um sim de cada lado, e um relacionamento dentro de um domínio precisa de dois aprovadores desse domínio
-- Aprovar um relacionamento constrói o grafo de dependência de cada steward, habilitando
-  notificações proativas de evolução de esquema
+- Aprovar um relacionamento constrói o grafo de dependência de cada steward, de modo que
+  os stewards ficam sabendo das mudanças de esquema antes que entrem em vigor
 
 Relacionamentos são criados quando alguém precisa deles, nunca por especulação. A primeira equipe com a necessidade de negócio faz o trabalho, e as equipes seguintes o herdam.
 
@@ -124,12 +124,12 @@ Três estágios, em ordem.
 
 **Estágio 1 — Modelagem (shaping) (descoberta SQL, a partir da página Relationships):**
 
-- O analista abre a ferramenta de Shaping a partir da página Relationships para explorar caminhos
-  de join potenciais em SQL bruto
+- O analista abre a ferramenta de Shaping a partir da página Relationships para testar caminhos
+  de join em SQL bruto
 - SQL é executado contra dados acessíveis, sujeito a RLS e mascaramento de coluna existentes
 - JOINs no SQL são analisados e expostos como propostas de Relationship candidatas
 - Candidatos sugeridos por máquina (inferência de FK, inferência semântica) são mostrados ao lado
-  da exploração SQL do analista na mesma view
+  do SQL do analista na mesma view
 - O analista seleciona candidatos para promover a uma solicitação de Relationship formal
 
 **Estágio 2 — Aprovação de relacionamento** (consequencial — estrutural e permanente):
@@ -266,7 +266,7 @@ Ele abre como modal na página de relacionamentos. O propósito é construir o m
 4. O analista promove candidatos selecionados a solicitações de Relationship formais
 5. Relationships aprovados são adicionados ao catálogo e se tornam percorríveis em Queries
 
-Para a exploração estrutural, a ferramenta de modelagem pode mostrar toda tabela registrada, inclusive aquelas cujos dados o analista não pode ver. A visibilidade do esquema é outra questão; o acesso aos dados em si é regido pela aprovação do steward.
+Enquanto você define a estrutura, a ferramenta de modelagem pode mostrar toda tabela registrada, inclusive aquelas cujos dados o analista não pode ver. A visibilidade do esquema é outra questão; o acesso aos dados em si é regido pela aprovação do steward.
 
 ---
 

@@ -148,7 +148,7 @@ Una tabella associativa si dichiara come arco; Provisa non ne scopre mai una. `v
 
 ### Scoperta delle relazioni con l'AI {: #ai-relationship-discovery }
 
-Avviare l'analisi delle FK basata su Claude via REST:
+Chiedere a Claude le FK candidate via REST:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-L'API Admin include GraphiQL su `GET /admin/graphql` nel browser. Serve a esplorare in modo interattivo l'intero schema admin.
+L'API Admin include GraphiQL su `GET /admin/graphql` nel browser. Serve a consultare l'intero schema admin e a provare le chiamate.
 
 ## Viste di gestione del dominio ops {: #ops-domain-management-views }
 

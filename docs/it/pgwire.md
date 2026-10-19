@@ -247,7 +247,7 @@ Anche le colonne dei risultati vengono inviate in binario quando il client lo ri
 
 **Driver Python nativi (psycopg2, asyncpg).** Questi negoziano il protocollo di query estesa per impostazione predefinita e utilizzano la codifica binaria per la maggior parte dei tipi. La fedeltà dei tipi qui è massima: le colonne `NUMERIC` arrivano come `Decimal`, `TIMESTAMP` come `datetime`, e così via. Usarli per ETL basati su Python, script o integrazione diretta.
 
-**JDBC (driver JDBC di PostgreSQL).** Usarlo per gli strumenti dell'ecosistema Java: DBeaver, Tableau, Power BI, Metabase, operatori JDBC di Airflow. JDBC utilizza per impostazione predefinita il protocollo di query semplice, che evita complicazioni legate alla codifica binaria. Stringa di connessione:
+**JDBC (driver JDBC di PostgreSQL).** Usarlo per gli strumenti Java: DBeaver, Tableau, Power BI, Metabase, operatori JDBC di Airflow. JDBC utilizza per impostazione predefinita il protocollo di query semplice, che evita complicazioni legate alla codifica binaria. Stringa di connessione:
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>

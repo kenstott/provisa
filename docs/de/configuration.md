@@ -865,7 +865,7 @@ materialized_views:
 
 ## Sichten (Regierte berechnete Datasets) {: #views-governed-computed-datasets }
 
-Sichten sind SQL-definierte berechnete Datasets mit vollständiger spaltenweiser Governance. Sie sind der regierte Mechanismus zum Hinzufügen von Aggregationen, Transformationen und abgeleiteten Kennzahlen zum Modell.
+Sichten sind SQL-definierte berechnete Datasets mit vollständiger spaltenweiser Governance. Sie sind der governte Mechanismus zum Hinzufügen von Aggregationen, Transformationen und abgeleiteten Kennzahlen zum Modell.
 
 ```yaml
 views:
@@ -1066,7 +1066,7 @@ Eine Tabelle mit `load_protected` oder `replicate: 0` wird von keiner Abfrage ü
 | --- | --- | --- |
 | nicht gesetzt | Standard | Der globale Schwellenwert gilt |
 | `-1` | Nie | Live gelesen, wo immer ein Live-Pfad existiert. Nur repliziert auf einer Engine, die die Quelle nicht an Ort und Stelle lesen kann |
-| `N` über 0 | Hot-N | Live gelesen, bis die Tabelle N regierte Anweisungen pro Intervall überschreitet; danach aus ihrem Replikat bedient |
+| `N` über 0 | Hot-N | Live gelesen, bis die Tabelle N governte Anweisungen pro Intervall überschreitet; danach aus ihrem Replikat bedient |
 | `0` | Immer | Lesezugriffe kommen aus dem Replikat |
 
 Nur „Immer“ ist eine Garantie. „Nie“ und die Hot-Werte sind Best Effort. `load_protected` mit `replicate: -1` wird beim Laden und beim Speichern der Konfiguration abgelehnt. Eine Quelle mit `replicate: 0` hat auf keiner Engine ein Live-Attach, daher wird jede ihrer Tabellen aus ihrem Replikat bedient.
@@ -1096,7 +1096,7 @@ Alle drei sind Betreibereinstellungen: Die Admin-UI zeigt sie unter „Hot Table
 
 So wird eine Tabelle gezählt:
 
-- Eine regierte Anweisung zählt jede Tabelle, die sie liest, einmal, egal wie oft sie sie liest.
+- Eine governte Anweisung zählt jede Tabelle, die sie liest, einmal, egal wie oft sie sie liest.
 - Eine Anweisung, die aus dem Antwort-Cache beantwortet wird, zählt nicht. Sie hat die Quelle nicht belastet.
 - Eine Anweisung, die die Governance abgelehnt hat, zählt nicht.
 
@@ -1182,7 +1182,7 @@ Jede nimmt eine protokollspezifische Überschreibung an, benannt wie die TLS-Ein
 
 ### Eine Org über TLS adressieren {: #addressing-an-org-over-tls }
 
-Nichts zu konfigurieren. In einem Multi-Org-Deployment lesen pgwire und Bolt die Org aus dem Hostnamen, den der Client gewählt hat, übertragen im TLS ClientHello — genau so, wie HTTP sie aus dem `Host`-Header liest. Ein Client, der sich mit `acme.provisa.dev` verbindet, fordert die Org `acme` an; die Anfrage wird abgelehnt, sofern das authentifizierte Principal kein Mitglied ist. Eine Verbindung über die IP-Adresse fordert keine Org an — das ist jede Verbindung in einem Single-Org-Deployment.
+Nichts zu konfigurieren. In einem Multi-Org-Deployment lesen pgwire und Bolt die Org aus dem Hostnamen, den der Client gewählt hat, übertragen im TLS ClientHello, genau so, wie HTTP sie aus dem `Host`-Header liest. Ein Client, der sich mit `acme.provisa.dev` verbindet, fordert die Org `acme` an; die Anfrage wird abgelehnt, sofern das authentifizierte Principal kein Mitglied ist. Eine Verbindung über die IP-Adresse fordert keine Org an. Das ist jede Verbindung in einem Single-Org-Deployment.
 
 ### Vollständiges Auth-Konfigurationsbeispiel (auskommentiert) {: #full-auth-config-example-commented-out }
 

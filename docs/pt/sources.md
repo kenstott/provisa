@@ -74,6 +74,7 @@ Referência para todo tipo de fonte que o Provisa suporta. "Driver direto" signi
 Bancos compatíveis no protocolo reaproveitam o driver JDBC, o driver assíncrono nativo e o dialeto de um protocolo base. CockroachDB, YugabyteDB e Greenplum usam o protocolo do PostgreSQL, e o TiDB o do MySQL. Eles só precisam de entradas no registro, sem código de conector novo.
 
 `firebird` (Firebird 3/4/5) e `airport` (servidor Arrow Flight) são tipos de fonte registrados que as extensões da comunidade do DuckDB alcançam no lugar quando o DuckDB é o motor ativo. Eles não têm driver direto nem conector federado.
+
 #### `saphana`
 
 O SAP HANA é lido por seu próprio driver e replicado no armazenamento do motor ativo, então é alcançável em todo motor. O formulário pede host, porta (padrão 39015), nome de usuário, senha e banco de dados; em um sistema multi-tenant o banco de dados indica o tenant. Register Table lista os esquemas que o usuário pode ler, deixando de fora os esquemas de sistema do HANA.
@@ -326,6 +327,7 @@ Uma pasta compartilhada sem criptografia deve ser montada com bloqueios que alca
 Qualquer fonte `files` também pode declarar um `crawl` em seu mapping, com as mesmas configurações listadas em [Wikipedia](#wikipedia): a fonte então lê páginas web primeiro e pousa cada tabela de dados HTML e cada arquivo de dados vinculado em seu diretório como uma tabela.
 
 No motor DuckDB, `files` é lido de forma nativa, com uma visão de varredura `read_csv_auto` por `<table>.csv` sob o diretório resolvido. Num motor sem conector `files` próprio, as linhas pousam pelo mesmo servidor pgwire do Calcite que vem com o conector (`pgwire-file`) e que sharepoint e splunk usam. Veja [Conectores SaaS Empresariais](#enterprise-saas-connectors) abaixo.
+
 #### Logs {: #logs }
 
 Uma fonte `logs` transforma arquivos de log do servidor Provisa em uma tabela. Você indica os arquivos por um caminho completo ou por um glob, e escolhe o formato em que seus registros são escritos. Cada registro vira uma linha. Um registro que o formato não consegue ler é mantido, com seu texto bruto e o motivo, nunca descartado.
@@ -511,6 +513,7 @@ Apenas tabelas que os editores marcam como tabelas de dados (`table.wikitable`) 
 ### Conectores SaaS Empresariais {: #enterprise-saas-connectors }
 
 Google Workspace e Microsoft 365 são lidos por carregadores próprios; veja [Google Workspace e Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, o inventário de nuvem e o Splunk são lidos por drivers que rodam como processo próprio e falam o protocolo do PostgreSQL (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`), então nenhum deles tem driver direto. No motor DuckDB o endpoint do driver é anexado ao vivo pela extensão postgres: o Register Table lista as tabelas do conector a partir do catálogo anexado, as consultas leem o conector no lugar, e filtros e projeções são empurrados até ele. Todo outro motor pousa as linhas no armazenamento de materialização para a federação. Os pacotes de drivers são baixados por sistema operacional e arquitetura de uma release fixada (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64). Um operador pode, em vez disso, indicar por conector uma pasta de pacote compilada para este host em Admin → Configurações → Servidores de conectores (`connectors.<connector>.bundle_dir`); veja [Admin](admin.md). Os cinco conectores Trino (o Jira não tem) sempre comparam nomes sem diferenciar maiúsculas e minúsculas, como cada produto faz.
+
 #### `sharepoint`
 
 Listas do SharePoint são enumeradas como esquemas e expostas como tabelas consultáveis. Dois métodos de autenticação: `CLIENT_CREDENTIALS` (padrão) e baseado em certificado via um certificado PFX. Valores secretos em `mapping` são resolvidos através do motor de segredos antes de alcançar o conector.
@@ -1044,7 +1047,7 @@ Um operador pode dar aos motores de federação nativos (Postgres, DuckDB e Clic
 
 Assim os motores nativos, que rodam sem cluster, ganham a mesma extensibilidade por configuração que o motor Trino tem na própria camada. Lá, um conector JDBC genérico é parametrizado por tipo de fonte, cada tipo recebe um corpo `.properties` de catálogo, e o Provisa acrescenta seus próprios plugins de conector Trino (Splunk, SharePoint, Calcite).
 
-O arquivo vem vazio. Os conectores embutidos cobrem o que funciona de fábrica, e tudo neste arquivo é escrito pelo operador. Para usar outro caminho, por exemplo em testes, defina `PROVISA_CUSTOM_CONNECTORS`.
+O arquivo vem vazio. Os conectores embutidos cobrem as fontes que funcionam sem configuração extra, e tudo neste arquivo é escrito pelo operador. Para usar outro caminho, por exemplo em testes, defina `PROVISA_CUSTOM_CONNECTORS`.
 
 ### Tipos de descritor {: #descriptor-kinds }
 
@@ -1064,6 +1067,7 @@ O arquivo vem vazio. Os conectores embutidos cobrem o que funciona de fábrica, 
 **ClickHouse suporta três mecanismos**, um por forma de motor de integração: um motor DATABASE relacional que expõe automaticamente toda tabela remota (`clickhouse_database`, ex.: Redis/MySQL), um motor por tabela cujas colunas o registro fornece (`clickhouse_table`, ex.: a ponte JDBC/ODBC; o `engine_template` pode carregar um placeholder `{table}` que o runtime vincula), e um motor de arquivo/lake/URL cujo esquema o ClickHouse infere (`clickhouse_scan`, ex.: HDFS/URL). SQLite (motor DATABASE, arquivo, sem servidor) e Hudi (lakehouse, zero-cópia) são entregues prontos para uso.
 
 Um valor `kind` desconhecido falha de forma visível na inicialização, então um erro de digitação num descritor nunca deixa um tipo de fonte inalcançável em silêncio.
+
 ### Gate de sondagem {: #probe-gating }
 
 A disponibilidade é verificada no momento do attach contra o catálogo de descoberta padrão de cada motor:
@@ -1488,6 +1492,7 @@ auth:
 Registre um banco de dados de grafo Neo4j como uma fonte consultável. Stewards escrevem consultas Cypher que projetam valores escalares; o Provisa armazena os resultados em cache e os expõe como tipos GraphQL.
 
 Consultas Cypher precisam usar acessos a propriedades na cláusula `RETURN` (`RETURN n.id AS id, n.name AS name`). O registro recusa uma consulta que devolve objetos de nó.
+
 #### Registro via arquivo de config {: #config-file-registration }
 
 Declare uma fonte `neo4j` e suas tabelas em YAML. Cada tabela exige um `query_template` (o Cypher que produz suas linhas) e colunas tipadas. A chave `query_template` é inválida sob qualquer outro tipo de fonte.

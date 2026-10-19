@@ -247,7 +247,7 @@ Las columnas de resultado también se envían en binario cuando el cliente lo so
 
 **Drivers nativos de Python (psycopg2, asyncpg).** Estos negocian el protocolo de consulta extendida de forma predeterminada y usan codificación binaria para la mayoría de los tipos. La fidelidad de tipos es máxima aquí: las columnas `NUMERIC` llegan como `Decimal`, `TIMESTAMP` como `datetime`, y así sucesivamente. Úselos para ETL basado en Python, scripts o integración directa.
 
-**JDBC (driver JDBC de PostgreSQL).** Úselo para herramientas del ecosistema Java: DBeaver, Tableau, Power BI, Metabase, operadores JDBC de Airflow. JDBC usa por defecto el protocolo de consulta simple, lo que evita complicaciones de codificación binaria. Cadena de conexión:
+**JDBC (driver JDBC de PostgreSQL).** Úselo para herramientas Java: DBeaver, Tableau, Power BI, Metabase, operadores JDBC de Airflow. JDBC usa por defecto el protocolo de consulta simple, lo que evita complicaciones de codificación binaria. Cadena de conexión:
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>

@@ -155,8 +155,8 @@ novamente.
 ### Colunas curinga {: #wildcard-columns }
 
 Quando uma permissão concede `columns: "*"`, o conversor cria uma única entrada de coluna curinga.
-Após a conversão, você pode querer substituí-la por listas de coluna explícitas inspecionando o
-esquema real do banco de dados.
+Após a conversão, substitua-a por uma lista de colunas explícita lida do
+esquema do banco de dados.
 
 ### Fidelidade dos event triggers {: #event-trigger-fidelity }
 

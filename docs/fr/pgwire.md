@@ -247,7 +247,7 @@ Les colonnes de résultat sont également envoyées en binaire lorsque le client
 
 **Pilotes Python natifs (psycopg2, asyncpg).** Ceux-ci négocient le protocole de requête étendue par défaut et utilisent l'encodage binaire pour la plupart des types. La fidélité des types est maximale ici : les colonnes `NUMERIC` arrivent en tant que `Decimal`, `TIMESTAMP` en tant que `datetime`, et ainsi de suite. Utilisez-les pour l'ETL basé sur Python, les scripts ou l'intégration directe.
 
-**JDBC (pilote JDBC PostgreSQL).** Utilisez-le pour les outils de l'écosystème Java : DBeaver, Tableau, Power BI, Metabase, opérateurs JDBC d'Airflow. JDBC utilise par défaut le protocole de requête simple, ce qui évite les complications liées à l'encodage binaire. Chaîne de connexion :
+**JDBC (pilote JDBC PostgreSQL).** Utilisez-le pour les outils Java : DBeaver, Tableau, Power BI, Metabase, opérateurs JDBC d'Airflow. JDBC utilise par défaut le protocole de requête simple, ce qui évite les complications liées à l'encodage binaire. Chaîne de connexion :
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>

@@ -1636,4 +1636,4 @@ A product with no exported members gets no snapshot entry, because a listing wit
 | Collibra | Each product becomes an asset of a `Data Product` community type, related to its member tables via a `Data Product groups Table` relation. |
 | Atlan | Published as a custom `DataProduct` typedef guess — Atlan has no documented stable type name for this concept, so the mapping is best-effort. |
 | Apache Atlas | Published as a custom `provisa_data_product` typedef with a `provisa_data_product_members` relation — Atlas has no native data-product entity type. |
-| OpenLineage | Not a first-class entity — member tables carry a `provisa_data_product` custom facet naming the owning product. |
+| OpenLineage | No entity of its own; member tables carry a `provisa_data_product` custom facet naming the owning product. |

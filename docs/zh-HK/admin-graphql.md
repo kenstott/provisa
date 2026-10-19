@@ -101,7 +101,7 @@ OpenAPI 數據來源的非 GET 操作（POST、PUT、PATCH、DELETE）。對於�
 
 #### `crawlSource(path, depth, pattern, recursive, simpleLinks, sameDomain, excludePattern) → CrawlResultType`
 
-在建立數據來源之前，預覽檔案連接器爬取將會發現的內容——檔案、資料表和欄位。僅限 HTTP 的設定（`simpleLinks`、`sameDomain`、`excludePattern`）在本機、S3、FTP 和 SFTP 根目錄下會被忽略。
+在建立數據來源之前，預覽檔案連接器爬取將會發現的內容：檔案、資料表和欄位。僅限 HTTP 的設定（`simpleLinks`、`sameDomain`、`excludePattern`）在本機、S3、FTP 和 SFTP 根目錄下會被忽略。
 
 #### `suggestTableAlias(tableName: String!, domainId: String!, sourceId: String!) → String!`
 
@@ -364,7 +364,7 @@ query {
 
 #### `updateSourceReplicate(sourceId: String!, replicate: Int) → MutationResult`
 
-設定數據來源的資料表何時從其副本提供服務：`null` Default、`-1` Never、大於 0 的 `N`——一旦資料表在一個間隔內超過 N 條受治理語句、`0` Always。沒有自身值的資料表繼承它。如果會把 `load_protected` 與 `-1` 組合，或讓它所複製的 `ttl` 資料表沒有 `cache_ttl`，則被拒絕。需要 `source_registration`。
+設定數據來源的資料表何時從其副本提供服務：`null` Default、`-1` Never、大於 0 的 `N`：一旦資料表在一個間隔內超過 N 條受治理語句、`0` Always。沒有自身值的資料表繼承它。如果會把 `load_protected` 與 `-1` 組合，或讓它所複製的 `ttl` 資料表沒有 `cache_ttl`，則被拒絕。需要 `source_registration`。
 
 #### `updateSourceLoadProtection(sourceId, loadProtected, offPeakWindow, offPeakTz) → MutationResult`
 
@@ -650,7 +650,7 @@ query {
 
 #### `executeCreationRequest(requestId: Int!) → MutationResult`
 
-透過直接變更所用的同一程式碼，執行已獲得批准的建立請求——關係、檢視、資料表、數據來源或 webhook。在請求所需的批准（一個，關係為兩個）由請求者以外的使用者給出之前，以 `requests.approvals_incomplete` 拒絕；關係請求在其涉及的每個網域都有批准者之前，還會以 `requests.waiting_on_domains` 拒絕。批准透過 `POST /admin/creation-requests/{id}/approve` 給出，使計數完成的批准會執行建立，因此此變更用於重試失敗的建立。失敗的建立會讓請求保持待處理，並以其自身的錯誤代碼應答。
+透過直接變更所用的同一程式碼，執行已獲得批准的建立請求：關係、檢視、資料表、數據來源或 webhook。在請求所需的批准（一個，關係為兩個）由請求者以外的使用者給出之前，以 `requests.approvals_incomplete` 拒絕；關係請求在其涉及的每個網域都有批准者之前，還會以 `requests.waiting_on_domains` 拒絕。批准透過 `POST /admin/creation-requests/{id}/approve` 給出，使計數完成的批准會執行建立，因此此變更用於重試失敗的建立。失敗的建立會讓請求保持待處理，並以其自身的錯誤代碼應答。
 
 #### `rejectCreationRequest(requestId: Int!, reason: String!) → MutationResult`
 

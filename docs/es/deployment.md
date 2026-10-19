@@ -15,7 +15,7 @@ Provisa admite seis rutas de despliegue. Elija según su audiencia y su contexto
 
 ### VM vs. Kubernetes
 
-Ambas son de nivel empresarial. La ruta VM/AppImage es más simple: no hay que aprovisionar un clúster, no hay que configurar políticas de CNI o RBAC, y el AppImage es totalmente autocontenido. Se integra de forma natural en las herramientas de administración de servidores existentes (Ansible, Puppet, agentes de Datadog, forwarders de Splunk, etc.).
+Ambas sirven para producción. La ruta VM/AppImage es más simple: no hay que aprovisionar un clúster, no hay que configurar políticas de CNI o RBAC, y el AppImage es totalmente autocontenido. Se integra de forma natural en las herramientas de administración de servidores existentes (Ansible, Puppet, agentes de Datadog, forwarders de Splunk, etc.).
 
 Elija Kubernetes solo si su equipo ya opera un clúster K8s y quiere que Provisa encaje en esa forma de operar (despliegues graduales, HPA, observabilidad unificada). Ambos ofrecen las mismas capacidades; Kubernetes añade carga operativa.
 
@@ -37,7 +37,7 @@ Toda ruta de producción necesita los artefactos de Provisa antes de que pueda e
 
 ### Recomendado: `start-ui.sh` {: #recommended-start-uish }
 
-La forma más sencilla de ejecutar Provisa desde el código fuente. Inicia toda la infraestructura, la API del backend y el servidor de desarrollo de la UI en un solo comando. Ctrl+C detiene todo de forma ordenada.
+Es la forma más sencilla de ejecutar Provisa desde el código fuente. Un solo comando inicia toda la infraestructura, la API del backend y el servidor de desarrollo de la UI. Ctrl+C detiene todo de forma ordenada.
 
 **Requisitos previos:** Docker Desktop, Node.js, entorno virtual de Python en `.venv/`
 

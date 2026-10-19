@@ -148,7 +148,7 @@ Eine Assoziationstabelle deklarieren Sie als Kante; Provisa entdeckt nie eine. `
 
 ### KI-gestützte Relationship-Erkennung {: #ai-relationship-discovery }
 
-Claude-gestützte FK-Analyse über REST auslösen:
+Claude über REST nach FK-Kandidaten fragen:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-Die Admin API wird mit GraphiQL unter `GET /admin/graphql` im Browser ausgeliefert. Nutzen Sie es, um das vollständige Admin-Schema interaktiv zu erkunden.
+Die Admin API wird mit GraphiQL unter `GET /admin/graphql` im Browser ausgeliefert. Damit durchsuchen Sie das vollständige Admin-Schema und probieren Aufrufe aus.
 
 ## Verwaltungsviews der Ops-Domäne {: #ops-domain-management-views }
 

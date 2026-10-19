@@ -18,7 +18,7 @@
 
 Una tabella e una vista differiscono solo per l'origine: una tabella viene rivendicata da un'origine, una vista viene definita da uno steward. Appena una delle due è un asset di dominio, il modello di governance le tratta allo stesso modo:
 
-- Entrambe sono asset di dominio di prima classe visibili nel catalogo
+- Entrambe sono asset di dominio a pieno titolo, visibili nel catalogo
 - Entrambe possono essere il target di una relazione
 - Entrambe possono essere concesse secondo il Principio 6
 - Entrambe sono soggette alla stessa pipeline di governance
@@ -80,7 +80,7 @@ Una relazione è un cammino di attraversamento approvato tra due asset. I confin
 - Una richiesta di relazione la decidono i domini che tocca: il dominio della sua tabella di origine e il dominio della sua tabella di destinazione
 - Un'approvazione conta solo se viene da un utente il cui diritto di creare relazioni raggiunge uno di quei domini; qualsiasi utente di questo tipo può rifiutarla
 - La richiesta viene eseguita quando due utenti diversi, nessuno dei quali il richiedente, l'hanno approvata e ogni dominio coinvolto ha un approvatore: una relazione tra due domini ha bisogno di un sì da ciascun lato, e una relazione all'interno di un dominio ha bisogno di due approvatori di quel dominio
-- Approvare una relazione costruisce il grafo delle dipendenze di ciascuno steward, abilitando notifiche proattive sull'evoluzione dello schema
+- Approvare una relazione costruisce il grafo delle dipendenze di ciascuno steward, così gli steward vengono a sapere delle modifiche allo schema prima che entrino in vigore
 
 Le relazioni si creano quando qualcuno ne ha bisogno, mai per ipotesi. Il primo team con l'esigenza di business fa il lavoro, e i team successivi lo ereditano.
 
@@ -112,10 +112,10 @@ Tre fasi, in ordine.
 
 **Fase 1 — Shaping (esplorazione SQL, dalla pagina Relationships):**
 
-- L'analista apre lo strumento di Shaping dalla pagina Relationships per esplorare potenziali percorsi di join in SQL grezzo
+- L'analista apre lo strumento di Shaping dalla pagina Relationships per provare percorsi di join in SQL grezzo
 - L'SQL viene eseguito sui dati accessibili, soggetto a RLS e mascheramento delle colonne esistenti
 - I JOIN nell'SQL vengono analizzati e presentati come proposte candidate di Relationship
-- I candidati suggeriti dalla macchina (inferenza FK, inferenza semantica) sono mostrati insieme all'esplorazione SQL dell'analista nella stessa vista
+- I candidati suggeriti dalla macchina (inferenza FK, inferenza semantica) sono mostrati insieme all'SQL dell'analista nella stessa vista
 - L'analista seleziona i candidati da promuovere a una richiesta formale di Relationship
 
 **Fase 2 — Approvazione della relazione** (conseguente — strutturale e permanente):
@@ -238,7 +238,7 @@ Si apre come finestra modale dalla pagina Relazioni. Serve a costruire il modell
 4. L'analista promuove i candidati selezionati a richieste formali di Relationship
 5. Le Relationship approvate vengono aggiunte al catalogo e diventano attraversabili nelle Query
 
-Per l'esplorazione strutturale, lo strumento di modellazione può mostrare ogni tabella registrata, anche quelle di cui l'analista non vede i dati. La visibilità dello schema è un'altra questione; è l'approvazione dello steward a governare l'accesso ai dati stessi.
+Mentre definite la struttura, lo strumento di modellazione può mostrare ogni tabella registrata, anche quelle di cui l'analista non vede i dati. La visibilità dello schema è un'altra questione; è l'approvazione dello steward a governare l'accesso ai dati stessi.
 
 ---
 

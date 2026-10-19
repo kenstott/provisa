@@ -2,7 +2,7 @@
 
 ## Panoramica {: #overview }
 
-Provisa è una piattaforma di data virtualization guidata dalla configurazione: federazione, metriche, ontologia e governance da un unico modello, per piccoli team e grandi aziende. Fornisce un'API unificata su fonti dati eterogenee, con governance, sicurezza e ottimizzazione delle prestazioni integrate. I client interrogano tramite SQL, GraphQL o Cypher; tutte e tre sono interfacce di prima classe con la stessa governance applicata.
+Provisa è una piattaforma di data virtualization guidata dalla configurazione: federazione, metriche, ontologia e governance da un unico modello, per piccoli team e grandi aziende. Fornisce un'API unificata su fonti dati eterogenee, con governance, sicurezza e ottimizzazione delle prestazioni integrate. I client interrogano tramite SQL, GraphQL o Cypher; a tutte e tre si applica la stessa governance.
 
 Il modello è l'unico posto in cui si aggiunge significato. Per ampliarlo, registrate nuove origini di dati o aggregati nel livello di virtualizzazione dei dati. Questo mantiene una separazione pulita, perché nulla può aggiungere semantica fuori dalla piattaforma, ed è ciò che rende possibile una vera governance dei dati. Lo impone il compilatore: il catalogo delle relazioni approvate è la fonte di verità, qualunque sia il linguaggio di query.
 
@@ -162,7 +162,7 @@ Il motore di federazione non supporta nativamente il protocollo Arrow Flight SQL
 ADBC client → gRPC :8480 → Zaychik → JDBC :8080 → Federation Engine → results → Arrow batches → client
 ```
 
-Il Provisa Flight Server (porta 8815) si connette a Zaychik come client ADBC, consentendo lo streaming Arrow end-to-end senza materializzare i risultati.
+Il Provisa Flight Server (porta 8815) si connette a Zaychik come client ADBC, così Arrow scorre end-to-end e i risultati non vengono mai materializzati.
 
 ### Catalogo dei risultati Iceberg {: #iceberg-results-catalog }
 
@@ -338,7 +338,7 @@ Utile quando un'origine ha ricevuto dati nuovi significativi dopo la registrazio
 
 ## Viste materializzate {: #materialized-views }
 
-Le viste materializzate (MV) ottimizzano in modo trasparente le query costose precalcolando e memorizzando i risultati.
+Le viste materializzate (MV) accelerano le query costose calcolandone i risultati in anticipo. Le query le usano senza alcuna modifica.
 
 ### Relazioni come hint per le MV {: #relationships-as-mv-hints }
 
@@ -647,7 +647,7 @@ I `write_grants` di una tabella indicano, per ruolo e operazione, quali colonne 
 
 ## Esploratore di schema GraphQL Voyager {: #graphql-voyager-schema-explorer }
 
-La UI di amministrazione (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora GraphQL Voyager come visualizzazione interattiva dello schema. Disegna lo schema limitato al ruolo come un diagramma entità-relazione navigabile, con le tabelle come nodi e le relazioni come archi. Lo schema mostrato è sempre filtrato sul ruolo selezionato in quel momento.
+La UI di amministrazione (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora GraphQL Voyager come visualizzazione interattiva dello schema. Disegna lo schema limitato al ruolo come un diagramma entità-relazione che si può spostare, ingrandire e cliccare, con le tabelle come nodi e le relazioni come archi. Lo schema mostrato è sempre filtrato sul ruolo selezionato in quel momento.
 
 ## Ordine di applicazione della sicurezza {: #security-enforcement-order }
 

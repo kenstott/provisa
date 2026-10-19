@@ -247,7 +247,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 
 **原生 Python 驅動程式（psycopg2、asyncpg）。** 這些驅動程式預設會協商擴展查詢協定，並對大多數類型使用二進制編碼。類型保真度在此最高：`NUMERIC` 欄位以 `Decimal` 形式送達，`TIMESTAMP` 則以 `datetime` 形式送達，如此類推。適用於以 Python 為基礎的 ETL、腳本或直接整合。
 
-**JDBC（PostgreSQL JDBC 驅動程式）。** 適用於 Java 生態系統工具：DBeaver、Tableau、Power BI、Metabase、Airflow 的 JDBC 運算子。JDBC 預設使用簡單查詢協定，可避免二進制編碼帶來的複雜情況。連接字串：
+**JDBC（PostgreSQL JDBC 驅動程式）。** 適用於 Java 工具：DBeaver、Tableau、Power BI、Metabase、Airflow 的 JDBC 運算子。JDBC 預設使用簡單查詢協定，可避免二進制編碼帶來的複雜情況。連接字串：
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>

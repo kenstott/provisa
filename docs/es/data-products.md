@@ -32,7 +32,7 @@ Solo las tablas asignadas a un producto se publican en catálogos externos de fo
 
 Un producto sin miembros exportados no se publica: una ficha vacía afirmaría que existe un producto sin nada detrás.
 
-Solo los catálogos con un concepto nativo de producto de datos lo publican como entidad de primer orden; el resto publica las tablas miembro (ya filtradas) sin agrupación de producto:
+Solo los catálogos con un concepto nativo de producto de datos lo publican como entidad propia; el resto publica las tablas miembro (ya filtradas) sin agrupación de producto:
 
 | Catálogo | Publicado como |
 | --- | --- |

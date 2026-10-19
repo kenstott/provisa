@@ -327,7 +327,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | לא | מדווח מה הפריסה הייתה עושה; אינו מחיל דבר |
 | `--message` | לא | הערה שנישאת לבקשת האישור כשהיעד מוגן |
 
-טעינה לתוך סביבה קיימת לעולם אינה מחילה תפקידים. `--seed` כבר אינו קיים: ה-API דוחה seed
+טעינה לתוך סביבה קיימת לעולם אינה מחילה תפקידים. אין `--seed`: ה-API דוחה seed
 עם `environments.seed_only_at_creation`.
 
 ```bash

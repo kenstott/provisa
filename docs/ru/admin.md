@@ -148,7 +148,7 @@ mutation {
 
 ### Обнаружение связей с помощью ИИ {: #ai-relationship-discovery }
 
-Запустить анализ внешних ключей на базе Claude через REST:
+Запросить у Claude кандидатов во внешние ключи через REST:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-Административный API поставляется с GraphiQL по адресу `GET /admin/graphql` в браузере. Используйте его для интерактивного изучения полной административной схемы.
+Административный API поставляется с GraphiQL по адресу `GET /admin/graphql` в браузере. В нём можно просмотреть всю административную схему и попробовать вызовы.
 
 ## Управленческие представления домена ops {: #ops-domain-management-views }
 

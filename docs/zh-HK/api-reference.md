@@ -1627,7 +1627,7 @@ mutation {
 
 ### 依目錄目標劃分的數據產品支援 {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` 會抵達每個配接器，但只有其平台具備原生數據產品概念的配接器，才會將其發佈為一級實體；其餘配接器只發佈成員資料表（已依上述篩選），不含產品分組。
+`MetadataSnapshot.data_products` 會抵達每個配接器，但只有其平台具備原生數據產品概念的配接器，才會將其發佈為獨立實體；其餘配接器只發佈成員資料表（已依上述篩選），不含產品分組。
 
 | 目標 | 數據產品呈現方式 |
 | --- | --- |
@@ -1638,4 +1638,4 @@ mutation {
 | Collibra | 每個產品成為 `Data Product` 社群類型的資產，透過 `Data Product groups Table` 關係連結至其成員資料表。 |
 | Atlan | 以自訂 `DataProduct` typedef 猜測方式發佈 —— Atlan 對此概念並無文件化的穩定類型名稱，因此此對映屬盡力而為。 |
 | Apache Atlas | 以自訂 `provisa_data_product` typedef 及 `provisa_data_product_members` 關係發佈 —— Atlas 並無原生數據產品實體類型。 |
-| OpenLineage | 並非一級實體 —— 成員資料表帶有一個指名擁有產品的 `provisa_data_product` 自訂面向。 |
+| OpenLineage | 沒有獨立實體；成員資料表帶有一個指名擁有產品的 `provisa_data_product` 自訂面向。 |

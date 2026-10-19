@@ -1627,7 +1627,7 @@ Un producto sin miembros exportados no recibe entrada en la instantánea, porque
 
 ### Soporte de productos de datos por destino de catálogo {: #data-product-support-by-catalog-target }
 
-`MetadataSnapshot.data_products` llega a cada adaptador, pero solo los adaptadores cuya plataforma tiene un concepto nativo de producto de datos lo publican como entidad de primer orden; el resto publica las tablas miembro (ya filtradas arriba) sin agrupación de producto.
+`MetadataSnapshot.data_products` llega a cada adaptador, pero solo los adaptadores cuya plataforma tiene un concepto nativo de producto de datos lo publican como entidad propia; el resto publica las tablas miembro (ya filtradas arriba) sin agrupación de producto.
 
 | Destino | Representación del producto de datos |
 | --- | --- |
@@ -1638,4 +1638,4 @@ Un producto sin miembros exportados no recibe entrada en la instantánea, porque
 | Collibra | Cada producto se convierte en un activo de tipo de comunidad `Data Product`, relacionado con sus tablas miembro mediante una relación `Data Product groups Table`. |
 | Atlan | Publicado como una suposición de typedef personalizado `DataProduct` — Atlan no tiene un nombre de tipo estable documentado para este concepto, por lo que la asignación es con mejor esfuerzo. |
 | Apache Atlas | Publicado como un typedef personalizado `provisa_data_product` con una relación `provisa_data_product_members` — Atlas no tiene tipo de entidad nativo para productos de datos. |
-| OpenLineage | No es una entidad de primer orden — las tablas miembro llevan una faceta personalizada `provisa_data_product` que nombra el producto propietario. |
+| OpenLineage | Sin entidad propia; las tablas miembro llevan una faceta personalizada `provisa_data_product` que nombra el producto propietario. |
