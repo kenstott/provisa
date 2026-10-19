@@ -16,7 +16,7 @@ le même terme, et le terme porte la définition.
 ## Comment les termes sont dérivés {: #how-terms-are-derived }
 
 Provisa dérive automatiquement un terme de chaque nom de colonne, à l'aide d'une règle de
-normalisation déterministe (REQ-1387) : mise en casse uniforme, découpage sur les séparateurs et le
+normalisation déterministe : mise en casse uniforme, découpage sur les séparateurs et le
 camelCase, expansion des abréviations et retrait des jetons de substitution finaux.
 
 **L'expansion des abréviations** fait correspondre les raccourcis d'entreprise courants à leur
@@ -56,7 +56,7 @@ L'ensemble générique couvre les noms d'attributs (`name`, `date`, `status`, `t
 ### Le nom métier, pas le nom physique {: #the-business-name-not-the-physical-name }
 
 Un terme dérivé suit le **nom métier** de la colonne — son alias lorsque le modélisateur en a posé
-un, son nom physique sinon (REQ-1581). Lorsque `usr_nm` est aliasé en `user name`, le terme dérivé
+un, son nom physique sinon. Lorsque `usr_nm` est aliasé en `user name`, le terme dérivé
 est `user name`, et non `user number` ni une expansion quelconque de `usr_nm`.
 
 Aliaser une colonne est la correction la plus forte. Un alias voyage vers toutes les surfaces qui
@@ -76,7 +76,7 @@ appartient au curateur, et il reste.
 Certains noms de table décrivent un chemin d'accès plutôt qu'un concept : `user_by_name` est un
 utilisateur atteint par une recherche sur le nom, pas un genre d'entité distinct. Lorsque Provisa
 dérive le concept de table pour qualifier une expression générique, il coupe le nom au connecteur
-(REQ-1582). `user_by_name` devient `user` ; `orders_by_customer` devient `order`.
+. `user_by_name` devient `user` ; `orders_by_customer` devient `order`.
 
 Sans cette coupe, la clé de substitution de `user_by_name` se normaliserait en `user name` et
 entrerait en collision avec le véritable attribut `users.name` — un seul terme portant une chose et
@@ -137,12 +137,11 @@ autre) et les arêtes entrantes (un autre terme → ce terme), en étiquetant ch
 propre formulation en langage courant.
 
 Les arêtes vivent dans `glossary_term_edges`, une table associative déclarée comme relation de jonction
-(REQ-1586) : sa colonne `rel_type` est le discriminant, de sorte que chacun des types ci-dessus est un
+ : sa colonne `rel_type` est le discriminant, de sorte que chacun des types ci-dessus est un
 type de relation Cypher distinct entre deux nœuds `GlossaryTerm`, et non une propriété portée par un nœud
 réifié. La table est provisionnée avec le reste du schéma de métadonnées et n'apparaît pas comme un nœud
 dans les clients graphe — elle est l'arête. Rien en elle n'est spécifique au glossaire : elle se déclare
 exactement comme vous déclareriez une jonction sur vos propres tables, et elle est lue par le même code.
-[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
 ## Termes abstraits {: #abstract-terms }
 
@@ -158,7 +157,7 @@ l'export de métadonnées — un terme qui ne nomme aucune donnée ne peut répo
 
 ## La règle d'admission pour les surfaces consommatrices {: #the-admission-rule-for-consuming-surfaces }
 
-Un terme qu'une surface consommatrice peut proposer doit satisfaire trois conditions (REQ-1387) :
+Un terme qu'une surface consommatrice peut proposer doit satisfaire trois conditions :
 
 1. **En service** — ni retiré (un curateur l'a sorti du service) ni déprécié (il a perdu sa
    dernière colonne et n'était conservé que parce que le supprimer laisserait quelque chose en
@@ -192,7 +191,7 @@ sous-jacentes.
 
 Certaines colonnes portent de la tuyauterie plutôt que des données métier : identifiants de lot
 ETL, versions de ligne, horodatages d'ingestion. Un terme dérivé d'une telle colonne peut avoir une
-définition parfaitement exacte qui n'est simplement pas du vocabulaire métier (REQ-1583). Le
+définition parfaitement exacte qui n'est simplement pas du vocabulaire métier. Le
 contrôle **Exclure de l'export de métadonnées** retient le terme, ainsi que toute arête de relation
 qui s'y termine, hors des catalogues vers lesquels Provisa publie, tandis que les colonnes
 elles-mêmes continuent de s'exporter comme actifs.

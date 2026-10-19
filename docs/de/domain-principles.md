@@ -77,7 +77,7 @@ Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Dom�
 
 **Genehmigung:**
 
-- Über einen Beziehungsantrag entscheiden die Domänen, die er berührt: die Domäne seiner Quelltabelle und die Domäne seiner Zieltabelle (REQ-1948)
+- Über einen Beziehungsantrag entscheiden die Domänen, die er berührt: die Domäne seiner Quelltabelle und die Domäne seiner Zieltabelle
 - Eine Genehmigung zählt nur von einem Benutzer, dessen Recht, Beziehungen anzulegen, eine dieser Domänen erreicht; ablehnen kann jeder solche Benutzer
 - Der Antrag wird ausgeführt, sobald zwei verschiedene Benutzer, keiner davon der Antragsteller, zugestimmt haben und jede beteiligte Domäne einen Genehmiger hat: Eine Beziehung über zwei Domänen braucht ein Ja von jeder Seite, eine Beziehung innerhalb einer Domäne zwei Genehmiger dieser Domäne
 - Die Genehmigung einer Beziehung baut den Abhängigkeitsgraphen jedes Stewards auf und ermöglicht proaktive Benachrichtigungen über Schemaentwicklung
@@ -262,5 +262,3 @@ Der Abfrageverlaufsbericht des Stewards ist eine aggregierte Sicht über dieses 
 
 - **Push** — Benachrichtigungen nach Nutzung für strukturelle Akte (eine neue Sicht wurde unter Verwendung Ihrer Felder erstellt)
 - **Pull** — Abfrageverlauf für Laufzeit-Nutzungsmuster
-
-

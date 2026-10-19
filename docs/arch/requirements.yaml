@@ -47,6 +47,11 @@
       across all query protocols (GraphQL, SQL, pgwire, Arrow Flight) with no capability gate on querying
       itself. Competitors like Hasura and Denodo still use protocol-specific access control lists or query
       whitelists that must be managed per-endpoint.
+  docs:
+  - architecture.md
+  - pgwire.md
+  - remote-schemas.md
+  - security.md
 - id: REQ-002
   status: superseded
   superseded_by: REQ-266
@@ -84,6 +89,11 @@
       Flight, gRPC) means no client path can bypass governance without bypassing the server. Trino and
       Hasura enforce governance at query execution time per connector, leaving compile-time bypass vectors
       open in some edge cases.
+  docs:
+  - api-reference.md
+  - architecture.md
+  - pgwire.md
+  - security.md
 - id: REQ-003
   status: superseded
   superseded_by: REQ-001
@@ -122,6 +132,8 @@
     rationale: Rights-based governance without query approval registries is standard in Denodo and Dremio.
       Trino also uses role-based access without requiring query pre-approval, making this table-stakes
       for serious federation platforms.
+  docs:
+  - remote-schemas.md
 - id: REQ-004
   status: complete
   group: 1. Access Governance & Security
@@ -268,6 +280,11 @@
       on every request provides defense-in-depth. Hasura applies schema visibility but its SQL enforcement
       layer is connector-dependent; Trino relies on a single connector-level authorization plugin rather
       than two independent layers.
+  docs:
+  - architecture.md
+  - quickstart.md
+  - security.md
+  - subscriptions.md
 - id: REQ-039
   status: complete
   group: 1. Access Governance & Security
@@ -312,6 +329,12 @@
     rationale: Schema-level visibility enforcement (unauthorized tables/columns absent from SDL) is a
       standard feature in Hasura, Denodo, and Dremio. All serious federation platforms hide unauthorized
       objects at design time.
+  docs:
+  - api-reference.md
+  - architecture.md
+  - remote-schemas.md
+  - security.md
+  - sources.md
 - id: REQ-040
   status: complete
   group: 1. Access Governance & Security
@@ -356,6 +379,11 @@
     rationale: Executor-level RLS WHERE clause injection and column stripping via AST rewrite on every
       request — without relying on the underlying data source to implement RLS — is a differentiator over
       Trino and Dremio, which delegate row filtering to connector-level policies that vary per source.
+  docs:
+  - architecture.md
+  - remote-schemas.md
+  - security.md
+  - subscriptions.md
 - id: REQ-041
   status: complete
   group: 1. Access Governance & Security
@@ -390,6 +418,13 @@
       time, work uniformly across all federated sources (PostgreSQL, MySQL, REST, S3, etc.). Competitors
       like Trino require source-specific row filter plugins; Denodo uses source-native policies that don't
       unify across heterogeneous sources.
+  docs:
+  - admin-graphql.md
+  - architecture.md
+  - quickstart.md
+  - remote-schemas.md
+  - security.md
+  - sources.md
 - id: REQ-042
   status: superseded
   superseded_by: REQ-746
@@ -425,6 +460,10 @@
       definition, security configuration, query development, query authorization, ignore-relationships)
       are more granular than Trino's coarse role model or Hasura's admin/role dichotomy, reducing privilege
       creep in multi-team environments.
+  docs:
+  - admin-graphql.md
+  - admin.md
+  - security.md
 - id: REQ-203
   status: complete
   group: 1. Access Governance & Security
@@ -472,6 +511,9 @@
       tables, columns, and operation — is not offered by Trino, Hasura, or Dremio out of the box. Denodo
       has an external security plugin but it is not as composable with the RLS pipeline (post-injection,
       pre-execution positioning).
+  docs:
+  - architecture.md
+  - security.md
 - id: REQ-204
   status: complete
   group: 1. Access Governance & Security
@@ -513,6 +555,9 @@
     rationale: Compile-time hook scoping that skips the approval call entirely for unscoped tables (zero
       overhead) is a performance design competitors do not replicate. Hasura's event/action hooks fire
       per-operation without selective skip logic based on which tables are referenced.
+  docs:
+  - architecture.md
+  - security.md
 - id: REQ-246
   status: complete
   group: 1. Access Governance & Security
@@ -549,6 +594,9 @@
     rationale: Three approval hook transports (HTTP webhook ~50ms, gRPC ~5ms, Unix domain socket <0.5ms)
       let enterprises choose latency tier to match co-location of the ABAC sidecar. No comparable multi-transport
       ABAC hook is offered by Trino, Hasura, Dremio, or Denodo.
+  docs:
+  - architecture.md
+  - security.md
 - id: REQ-247
   status: complete
   group: 1. Access Governance & Security
@@ -581,6 +629,9 @@
     status: ahead
     rationale: Pluggable approval hooks (webhook/gRPC/unix socket) with per-table/per-source scoping is
       more granular than Hasura's action/permission model and not available in Trino or Dremio.
+  docs:
+  - architecture.md
+  - security.md
 - id: REQ-262
   status: complete
   group: 1. Access Governance & Security
@@ -616,6 +667,9 @@
       SQL + role, returns governed SQL) is architecturally unique among open-source federation engines.
       Trino's authorizer and Hasura's permission system are tightly coupled to their query planners and
       cannot be reused as standalone transformers by external SQL clients.
+  docs:
+  - architecture.md
+  - pgwire.md
 - id: REQ-263
   status: complete
   group: 1. Access Governance & Security
@@ -670,6 +724,11 @@
     rationale: AST-level rewrite enforcing all four governance concerns (RLS, column masking, column visibility,
       row cap) in a single Stage 2 pass, uniformly across every SQL-speaking transport, is more complete
       than Hasura (no column masking) or Trino (no built-in column masking; RLS is connector-specific).
+  docs:
+  - architecture.md
+  - pgwire.md
+  - remote-schemas.md
+  - security.md
 - id: REQ-264
   status: complete
   group: 1. Access Governance & Security
@@ -714,6 +773,8 @@
       and SELECT * (with schema introspection expansion) prevents governance bypass via SQL structural
       tricks. Trino's row filters and Hasura's permissions do not guarantee injection into every AST node
       of complex nested queries.
+  docs:
+  - security.md
 - id: REQ-265
   status: complete
   group: 1. Access Governance & Security
@@ -810,6 +871,11 @@
       DB-API, SQLAlchemy) means there is no privileged back door. Hasura's raw SQL passthrough (run_sql)
       historically bypassed row-level permissions; Trino's JDBC path does not add governance beyond what
       connectors provide.
+  docs:
+  - api-reference.md
+  - architecture.md
+  - pgwire.md
+  - security.md
 - id: REQ-267
   status: complete
   group: 1. Access Governance & Security
@@ -857,6 +923,11 @@
       visibility, row cap) to arbitrary PG-compatible SQL is not offered by Hasura or Trino in a governed
       form. Dremio's SQL endpoint is governed only by its own catalog permissions, not by a cross-source
       federation governance layer.
+  docs:
+  - api-reference.md
+  - architecture.md
+  - quickstart.md
+  - remote-schemas.md
 - id: REQ-369
   status: complete
   group: 1. Access Governance & Security
@@ -899,6 +970,8 @@
     rationale: Per-role API rate limiting with HTTP 429 and Retry-After headers is standard practice.
       Hasura Cloud and Denodo's API layer both support per-role rate limiting; this is expected by enterprise
       buyers and does not differentiate.
+  docs:
+  - security.md
 - id: REQ-370
   status: complete
   group: 1. Access Governance & Security
@@ -941,6 +1014,10 @@
     rationale: An independent, pre-LLM-call rate limit on the NL query service per role is a governance
       feature tied to Provisa's built-in AI-assisted query capability. Competitors (Trino, Hasura, Denodo,
       Dremio) do not have a governed NL-to-SQL endpoint with cost-protecting rate limits built in.
+  docs:
+  - api-reference.md
+  - architecture.md
+  - security.md
 - id: REQ-371
   status: complete
   group: 1. Access Governance & Security
@@ -970,6 +1047,9 @@
     rationale: Redis sliding-window rate limit state shared across stateless instances is a well-understood
       pattern used by Hasura Cloud and API gateway layers. This is an implementation correctness requirement,
       not a differentiator.
+  docs:
+  - deployment.md
+  - security.md
 - id: REQ-402
   status: complete
   group: 1. Access Governance & Security
@@ -1002,6 +1082,9 @@
     rationale: Domain-scoped RLS rules (a single rule applying to all tables in a domain unless overridden
       by a table-specific rule) reduce governance configuration overhead at scale. Trino, Hasura, and
       Dremio require per-table row filter policies with no concept of domain-level inheritance.
+  docs:
+  - admin-graphql.md
+  - sources.md
 - id: REQ-531
   status: complete
   group: 1. Access Governance & Security
@@ -1044,6 +1127,9 @@
       inference of unmasked values via binary search filtering. Hasura and Dremio do not perform this
       inference-blocking validation; Snowflake's dynamic data masking similarly does not block filtered
       predicate inference.
+  docs:
+  - remote-schemas.md
+  - security.md
 - id: REQ-554
   status: complete
   group: 1. Access Governance & Security
@@ -1084,6 +1170,9 @@
     rationale: Default result size caps enforced per role are standard in Snowflake (resource monitors),
       BigQuery (slot limits), and Denodo (result limits). This is expected enterprise behavior and does
       not differentiate.
+  docs:
+  - remote-schemas.md
+  - security.md
 - id: REQ-555
   status: complete
   group: 1. Access Governance & Security
@@ -1127,6 +1216,9 @@
       overhead to near zero for co-located policy services. Hasura's action/event system opens new HTTP
       connections per request; no competitor exposes a reusable gRPC policy channel at this architectural
       level.
+  docs:
+  - remote-schemas.md
+  - security.md
 - id: REQ-556
   status: complete
   group: 1. Access Governance & Security
@@ -1167,6 +1259,9 @@
       hook client prevents cascading failures from slow or unavailable external policy services. This
       resilience pattern is not included in Hasura's remote schema or action hooks, nor in Trino's authorization
       plugins.
+  docs:
+  - remote-schemas.md
+  - security.md
 - id: REQ-557
   status: complete
   group: 1. Access Governance & Security
@@ -1203,6 +1298,9 @@
     rationale: Environment variable interpolation for secrets in config files is standard across Trino,
       Hasura, Dremio, and Denodo. All serious platforms avoid plaintext credentials in config; this is
       a baseline security hygiene requirement.
+  docs:
+  - remote-schemas.md
+  - security.md
 - id: REQ-591
   status: complete
   group: 1. Access Governance & Security
@@ -1342,6 +1440,8 @@
       query hashing (no verbatim query text stored) and tenant-scoped/per-user indexes satisfies SOC2
       requirements out of the box. Trino and Dremio offer audit logging but do not enforce append-only
       at the database level or hash query text by default.
+  docs:
+  - security.md
 - id: REQ-603
   status: complete
   group: 1. Access Governance & Security
@@ -1405,6 +1505,8 @@
       enforcement) enforces referential governance across SQL and Cypher queries. Trino and Hasura do
       not validate JOIN conditions against a registered relationship registry; Denodo's relationship model
       is advisory rather than enforced at compile time.
+  docs:
+  - remote-schemas.md
 - id: REQ-613
   status: superseded
   superseded_by: REQ-596
@@ -1448,6 +1550,8 @@
       (PostgreSQL rules block DELETE/UPDATE), indexed for compliance reporting. This SOC2-ready audit
       trail is built into the federation layer itself, unlike Trino (logs to files/plugins) or Dremio
       (job history, not append-only at DB level).
+  docs:
+  - security.md
 - id: REQ-120
   status: complete
   group: 2. Authentication & Identity
@@ -1486,6 +1590,12 @@
     rationale: A pluggable auth provider interface is standard for enterprise platforms — Hasura, Denodo,
       and Dremio all support configurable identity backends. The single-provider-at-a-time constraint
       is a simplification relative to Denodo's multi-provider federation.
+  docs:
+  - admin.md
+  - api-reference.md
+  - quickstart.md
+  - security.md
+  - sources.md
 - id: REQ-121
   status: complete
   group: 2. Authentication & Identity
@@ -1530,6 +1640,8 @@
       Denodo, and Dremio offer no first-class Firebase integration. This positions Provisa for mobile/web
       app developer audiences that Hasura targets but addresses at the federation SQL/GraphQL/Flight layer
       rather than just GraphQL.
+  docs:
+  - sources.md
 - id: REQ-122
   status: complete
   group: 2. Authentication & Identity
@@ -1573,6 +1685,8 @@
     status: parity
     rationale: Keycloak OIDC with realm/client role mapping is standard enterprise capability — Hasura,
       Dremio, and Denodo all support Keycloak or generic OIDC with role claim mapping.
+  docs:
+  - sources.md
 - id: REQ-123
   status: complete
   group: 2. Authentication & Identity
@@ -1617,6 +1731,8 @@
     rationale: Generic OIDC/OAuth 2.0 support covering Okta, Azure AD, Auth0, and PingFederate is table-stakes
       for enterprise platforms — Trino (via LDAP/custom plugins), Hasura, Denodo, and Dremio all offer
       equivalent generic OIDC integration.
+  docs:
+  - sources.md
 - id: REQ-124
   status: complete
   group: 2. Authentication & Identity
@@ -1652,6 +1768,11 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - api-reference.md
+  - quickstart.md
+  - security.md
+  - sources.md
 - id: REQ-125
   status: superseded
   superseded_by: REQ-1264
@@ -1691,6 +1812,10 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - admin.md
+  - configuration.md
+  - security.md
 - id: REQ-535
   status: superseded
   superseded_by: REQ-1327
@@ -1731,6 +1856,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - api-reference.md
 - id: REQ-551
   status: complete
   group: 2. Authentication & Identity
@@ -1769,6 +1896,9 @@
       an auth provider change is uncommon — Trino and Dremio bind roles exclusively to the IdP token,
       while Denodo requires separate entitlement configuration. This lets organizations migrate role governance
       from IdP to Provisa-managed RBAC incrementally.
+  docs:
+  - security.md
+  - sources.md
 - id: REQ-012
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -1814,6 +1944,10 @@
     rationale: Live, no-restart source registration via Trino dynamic catalog API is unique among federation
       platforms. Denodo and Dremio require restart or admin-heavy reconfiguration; Trino itself has no
       native governance layer wrapping dynamic catalog registration.
+  docs:
+  - admin-graphql.md
+  - admin.md
+  - api-reference.md
 - id: REQ-013
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -1855,6 +1989,8 @@
       default than Trino/Presto, Dremio, or Hasura, where all tables in a connected source are queryable
       by default subject to ACLs. Denodo has catalog publication but not this strict default-invisible
       posture.
+  docs:
+  - admin-graphql.md
 - id: REQ-014
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -1967,6 +2103,9 @@
     status: parity
     rationale: Immediate schema availability after table publication is expected behavior in Hasura and
       Denodo; none require restart for schema propagation.
+  docs:
+  - admin-graphql.md
+  - admin.md
 - id: REQ-017
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2007,6 +2146,8 @@
       Redis connectors) and Dremio; no differentiation here.
   related_reqs:
   - REQ-825
+  docs:
+  - sources.md
 - id: REQ-018
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2041,6 +2182,9 @@
     status: parity
     rationale: FK-inferred relationship suggestions exist in Hasura (auto-track FK relationships) and
       Denodo (relationship discovery from catalog); this is table-stakes for a federation platform.
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-019
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2096,6 +2240,11 @@
     rationale: Manual cross-source relationship definition with explicit cardinality (and a principled
       removal of 1:1 as a distinct mode) is more rigorous than Hasura DDN or Denodo, which allow ad-hoc
       cross-source joins without steward-governed cardinality declaration.
+  docs:
+  - admin-graphql.md
+  - admin.md
+  - security.md
+  - sources.md
 - id: REQ-020
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2136,6 +2285,8 @@
     rationale: Versioned, owner-tracked relationships flagged for re-review on schema changes is a differentiator;
       Hasura, Dremio, and Trino offer no built-in mechanism to flag stale cross-source joins when underlying
       schema changes.
+  docs:
+  - admin-graphql.md
 - id: REQ-021
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2170,6 +2321,8 @@
     rationale: GraphQL schema generated from business registration model (not raw DB structure) is Provisa's
       core value proposition. Hasura exposes physical table/column names by default; Denodo requires manual
       alias configuration layer-by-layer.
+  docs:
+  - admin-graphql.md
 - id: REQ-119
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2207,6 +2360,8 @@
     rationale: Steward-driven JSONB field promotion to PostgreSQL generated columns (filterable, indexable,
       relationship-eligible) is not available in Hasura, Trino, or Denodo as a first-class governed operation.
       Competitors leave nested JSON flattening to ETL or ad-hoc SQL views.
+  docs:
+  - sources.md
 - id: REQ-133
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2244,6 +2399,10 @@
     rationale: SQL-defined views with full column-level governance (visibility, masking, descriptions,
       aliases) applied uniformly is stronger than Hasura (no native masking on views) and Trino/Dremio
       (no column-level governance on virtual views without external policy engines).
+  docs:
+  - admin-graphql.md
+  - admin.md
+  - configuration.md
 - id: REQ-134
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2283,6 +2442,8 @@
     rationale: Views through the identical governance pipeline as tables (RLS, masking, sampling, approval)
       is not the default in any major competitor; Hasura separates view and table permission models, Denodo
       applies governance via separate policy objects.
+  docs:
+  - configuration.md
 - id: REQ-135
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2327,6 +2488,9 @@
   - REQ-844
   - REQ-843
   - REQ-848
+  docs:
+  - admin.md
+  - configuration.md
 - id: REQ-136
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2364,6 +2528,9 @@
     rationale: Enforcing views as the only governed mechanism for computed semantics (no escape hatch)
       is a stricter governance contract than any competitor. Hasura, Denodo, and Trino all allow out-of-band
       transformations that bypass the platform's audit trail.
+  docs:
+  - architecture.md
+  - configuration.md
 - id: REQ-151
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2399,6 +2566,9 @@
     status: parity
     rationale: JSON path column extraction with dialect-aware transpilation (PG `>>` vs Trino `json_extract_scalar`)
       is internal query compiler logic; Dremio and Trino handle similar JSON path extraction natively.
+  docs:
+  - configuration.md
+  - sources.md
 - id: REQ-152
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2432,6 +2602,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
 - id: REQ-153
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2461,6 +2633,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
 - id: REQ-154
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2493,6 +2667,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
 - id: REQ-155
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2527,6 +2703,8 @@
     status: parity
     rationale: Table and column aliasing for GraphQL names exists in Hasura (custom field names) and Denodo
       (alias layers); this is standard catalog metadata capability.
+  docs:
+  - configuration.md
 - id: REQ-156
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2559,6 +2737,8 @@
     status: parity
     rationale: Description fields in GraphQL SDL are standard in Hasura and Postgraphile; no competitive
       differentiation.
+  docs:
+  - configuration.md
 - id: REQ-157
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2630,6 +2810,11 @@
   related_reqs:
   - REQ-826
   - REQ-844
+  docs:
+  - admin-graphql.md
+  - architecture.md
+  - configuration.md
+  - sources.md
 - id: REQ-159
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2665,6 +2850,9 @@
       materialization overhead — Denodo and Dremio materialize more aggressively.
   related_reqs:
   - REQ-826
+  docs:
+  - architecture.md
+  - configuration.md
 - id: REQ-160
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2698,6 +2886,9 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - architecture.md
+  - configuration.md
 - id: REQ-194
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2740,6 +2931,9 @@
     rationale: A single naming authority governing SQL, GQL, and CQL names with configurable per-language
       conventions (hiding physical names entirely) is not matched by any competitor. Trino exposes physical
       names; Hasura applies naming conventions only to GraphQL, not SQL or other protocols.
+  docs:
+  - configuration.md
+  - sources.md
 - id: REQ-195
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2859,6 +3053,10 @@
       on top of standard connector capability.
   related_reqs:
   - REQ-825
+  docs:
+  - configuration.md
+  - dataset-handling-standards.md
+  - sources.md
 - id: REQ-363
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2908,6 +3106,9 @@
     rationale: SQLAlchemy dialect introspection routed through the governed GraphQL endpoint (role-filtered
       results) is unique. Hasura's SQLAlchemy adapter exposes unfiltered catalog; Trino/Dremio JDBC drivers
       return all visible objects without governance-layer filtering.
+  docs:
+  - python-client.md
+  - security.md
 - id: REQ-366
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -2952,6 +3153,8 @@
     rationale: View creation gated by approval workflow or originator rights (with join-level approval)
       is a governance contract not available in any competitor. Hasura, Dremio, and Denodo allow view
       creation based on ACLs but have no formal approval queue enforcing steward sign-off.
+  docs:
+  - admin-graphql.md
 - id: REQ-367
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3035,6 +3238,8 @@
     status: ahead
     rationale: Exposing pk per node label in the schema endpoint to drive graph UI exclusion queries is
       a unique integration between the semantic layer and graph visualization not present in competitors.
+  docs:
+  - pgwire.md
 - id: REQ-393
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3140,6 +3345,8 @@
   competitive_position:
     status: parity
     rationale: Automatic FK/PK marking on relationship save is standard in Hasura and most ORMs.
+  docs:
+  - pgwire.md
 - id: REQ-400
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3253,6 +3460,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - cli.md
 - id: REQ-415
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3500,6 +3709,8 @@
     rationale: A persisted creation-request queue (rather than an error) for governed operations is a
       unique workflow primitive; competitors return permission errors and leave the coordination problem
       to external processes.
+  docs:
+  - admin-graphql.md
 - id: REQ-542
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3543,6 +3754,8 @@
     status: ahead
     rationale: Ordered regex naming rules applied before GraphQL name generation give stewards fine-grained
       control over schema shape not available in Hasura or Trino.
+  docs:
+  - configuration.md
 - id: REQ-543
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3583,6 +3796,8 @@
     rationale: Mutation-triggered MV staleness marking with configurable refresh interval for cross-source
       materialized relationships is not available in any direct competitor. Dremio reflections are time-based
       only; Denodo caches have no mutation-aware invalidation.
+  docs:
+  - configuration.md
 - id: REQ-604
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3619,6 +3834,8 @@
     status: ahead
     rationale: Per-relationship graphql_alias overrides for SDL field naming provide schema control beyond
       what Hasura v2 offers and not present in Trino or Dremio.
+  docs:
+  - remote-schemas.md
 - id: REQ-605
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -3658,6 +3875,8 @@
     rationale: Type-def-only table exposure (queryable only via relationship traversal, not as root query
       fields) as a first-class registration feature is unique; Hasura and Denodo expose all registered
       tables as top-level queryable objects with no traversal-only mode.
+  docs:
+  - remote-schemas.md
 - id: REQ-609
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -4039,6 +4258,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - dataset-handling-standards.md
 - id: REQ-641
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -4114,6 +4335,8 @@
     rationale: Kafka topic querying via Trino is a standard capability Trino/Presto natively support through
       the Kafka connector. Hasura and Denodo also support Kafka as a source; routing through Trino is
       an established pattern.
+  docs:
+  - sources.md
 - id: REQ-148
   status: complete
   group: 4. Source Connectors
@@ -4150,6 +4373,9 @@
     rationale: Auto-injected time-window filter on _timestamp to prevent unbounded Kafka reads is a built-in
       safety guard that Trino, Hasura, and Denodo do not provide automatically — operators must configure
       scan limits manually in those platforms.
+  docs:
+  - configuration.md
+  - sources.md
 - id: REQ-149
   status: complete
   group: 4. Source Connectors
@@ -4188,6 +4414,8 @@
     rationale: Discriminator-based multi-type topic partitioning (multiple logical tables on one physical
       topic filtered by a discriminator field) is not natively supported by Trino Kafka connector or Hasura;
       it requires custom schema configuration in those platforms.
+  docs:
+  - configuration.md
 - id: REQ-150
   status: complete
   group: 4. Source Connectors
@@ -4212,6 +4440,8 @@
     status: parity
     rationale: Manual schema definition for topics without Schema Registry is standard in Trino Kafka
       connector and Hasura CDC pipelines. Most federation tools expose this capability.
+  docs:
+  - sources.md
 - id: REQ-229
   status: complete
   group: 4. Source Connectors
@@ -4247,6 +4477,9 @@
       of RDBMS dialects.
   related_reqs:
   - REQ-825
+  docs:
+  - configuration.md
+  - sources.md
 - id: REQ-295
   status: complete
   group: 4. Source Connectors
@@ -4289,6 +4522,9 @@
     rationale: Neo4j as a governed API source using Cypher queries surfaced as GraphQL tables is not natively
       supported by Trino, Hasura, Denodo, or Dremio without custom development. Provisa wraps Neo4j HTTP
       API v2 with a built-in normalizer and governance enforcement.
+  docs:
+  - admin.md
+  - sources.md
 - id: REQ-296
   status: complete
   group: 4. Source Connectors
@@ -4340,6 +4576,8 @@
     rationale: Registration-time Cypher query preview with shape validation (blocking non-scalar projections)
       is a developer experience safety guard not present in Hasura, Trino, or Denodo Neo4j integrations,
       which expose raw response errors at runtime.
+  docs:
+  - sources.md
 - id: REQ-297
   status: complete
   group: 4. Source Connectors
@@ -4374,6 +4612,9 @@
     rationale: SPARQL 1.1 triplestore support (Fuseki, GraphDB, Stardog, Blazegraph, Virtuoso) as a governed
       data source is absent from Trino, Hasura, Denodo, and Dremio in a first-class, spec-compliant way;
       semantic web data federation is a differentiator.
+  docs:
+  - admin.md
+  - sources.md
 - id: REQ-298
   status: complete
   group: 4. Source Connectors
@@ -4451,6 +4692,8 @@
     rationale: Remote GraphQL schema introspection and registration is Hasura's core capability. Trino
       lacks it natively; Denodo supports it. Provisa is at parity with Hasura for basic remote schema
       connectivity.
+  docs:
+  - sources.md
 - id: REQ-307
   status: complete
   group: 4. Source Connectors
@@ -4484,6 +4727,9 @@
     rationale: Remote GraphQL schema introspection and registration is Hasura's core capability. Trino
       lacks it natively; Denodo supports it. Provisa is at parity with Hasura for basic remote schema
       connectivity.
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-308
   status: complete
   group: 4. Source Connectors
@@ -4560,6 +4806,9 @@
     status: parity
     rationale: Auto-registering Query fields as tables and Mutation fields as tracked functions is exactly
       what Hasura's Remote Schemas feature does. This is direct parity with Hasura.
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-309
   status: complete
   group: 4. Source Connectors
@@ -4626,6 +4875,9 @@
   - REQ-825
   - REQ-844
   - REQ-845
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-310
   status: complete
   group: 4. Source Connectors
@@ -4668,6 +4920,8 @@
     rationale: Applying full Stage 2 governance (RLS, masking, domain access control) to remote GraphQL
       schema results uniformly is a differentiator versus Hasura, which requires separate permission configuration
       per remote schema field and does not apply unified row-level security across local and remote sources.
+  docs:
+  - remote-schemas.md
 - id: REQ-311
   status: complete
   group: 4. Source Connectors
@@ -4716,6 +4970,8 @@
     status: parity
     rationale: On-demand schema refresh preserving governance rules is standard in Hasura (metadata reload)
       and Denodo (data model refresh). Most federation platforms expose a refresh mechanism.
+  docs:
+  - remote-schemas.md
 - id: REQ-312
   status: complete
   group: 4. Source Connectors
@@ -4756,6 +5012,8 @@
     status: parity
     rationale: Namespace prefixing to prevent type name collisions is also implemented in Hasura Remote
       Schemas (namespace prefix option). This is standard practice for federated GraphQL composition.
+  docs:
+  - remote-schemas.md
 - id: REQ-313
   status: complete
   group: 4. Source Connectors
@@ -4802,6 +5060,9 @@
       absent in Trino and Denodo without manual ETL. Provisa provides transparent federation.
   related_reqs:
   - REQ-826
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-314
   status: complete
   group: 4. Source Connectors
@@ -4833,6 +5094,9 @@
       OpenAPI discovery.
   related_reqs:
   - REQ-826
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-315
   status: complete
   group: 4. Source Connectors
@@ -4969,6 +5233,9 @@
     rationale: Auto-registering all GET operations from an OpenAPI spec as virtual query tables with path/query
       params as GraphQL arguments is not natively supported in Trino or Dremio; Hasura requires manual
       Action definition per endpoint. Provisa provides full auto-discovery.
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-317
   status: complete
   group: 4. Source Connectors
@@ -5024,6 +5291,8 @@
     rationale: Auto-registering non-GET operations (POST/PUT/PATCH/DELETE) as tracked GraphQL mutations
       from an OpenAPI spec is not natively supported in Trino, Denodo, or Dremio; Hasura requires individual
       Action definitions. Full spec-driven write mutation registration is a differentiator.
+  docs:
+  - remote-schemas.md
 - id: REQ-318
   status: complete
   group: 4. Source Connectors
@@ -5118,6 +5387,9 @@
   - REQ-825
   - REQ-844
   - REQ-845
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-319
   status: complete
   group: 4. Source Connectors
@@ -5154,6 +5426,8 @@
     rationale: Applying Stage 2 governance (RLS, masking, domain access control) uniformly to OpenAPI
       source results is a gap for Hasura Actions (no row-level security on action results) and Denodo
       (governance applied at the virtual view layer, not uniformly at source).
+  docs:
+  - remote-schemas.md
 - id: REQ-320
   status: complete
   group: 4. Source Connectors
@@ -5238,6 +5512,8 @@
     status: parity
     rationale: On-demand spec refresh preserving governance rules is standard in Hasura (reload metadata)
       and Denodo. This is an expected operational capability for any federation platform.
+  docs:
+  - remote-schemas.md
 - id: REQ-322
   status: complete
   group: 4. Source Connectors
@@ -5278,6 +5554,9 @@
     rationale: First-class gRPC as a registered source type with proto-based auto-registration is absent
       from Trino, Hasura, Denodo, and Dremio which have no native gRPC connector. This is a genuine differentiator
       for microservice-heavy architectures.
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-323
   status: complete
   group: 4. Source Connectors
@@ -5322,6 +5601,8 @@
     rationale: Name-prefix heuristic for auto-classifying gRPC methods as queries vs. mutations (Get/List/Find
       → query, else mutation) is a Provisa-specific design with no equivalent in competitors, none of
       which support gRPC as a first-class source.
+  docs:
+  - remote-schemas.md
 - id: REQ-324
   status: complete
   group: 4. Source Connectors
@@ -5352,6 +5633,8 @@
   competitive_position:
     status: parity
     rationale: Proto scalar type mapping to SQL/GraphQL is a standard requirement for any gRPC connector.
+  docs:
+  - remote-schemas.md
 - id: REQ-325
   status: complete
   group: 4. Source Connectors
@@ -5396,6 +5679,9 @@
     rationale: gRPC query methods exposed as virtual read-only tables with server-streaming collection
       is not available in any major competitor. Trino, Hasura, Denodo, and Dremio have no native gRPC
       source connector.
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-326
   status: complete
   group: 4. Source Connectors
@@ -5437,6 +5723,8 @@
     status: ahead
     rationale: gRPC mutation methods exposed as tracked GraphQL functions is unique to Provisa among the
       listed competitors; no major federation platform supports gRPC write-path methods as governed mutations.
+  docs:
+  - remote-schemas.md
 - id: REQ-327
   status: complete
   group: 4. Source Connectors
@@ -5513,6 +5801,9 @@
   - REQ-825
   - REQ-844
   - REQ-845
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-328
   status: complete
   group: 4. Source Connectors
@@ -5550,6 +5841,8 @@
     status: ahead
     rationale: Applying full Stage 2 governance (RLS, masking, domain control) to gRPC remote source results
       is unique to Provisa; no competitor has a gRPC source connector with governance enforcement.
+  docs:
+  - remote-schemas.md
 - id: REQ-329
   status: complete
   group: 4. Source Connectors
@@ -5594,6 +5887,8 @@
     status: ahead
     rationale: On-demand proto refresh with governance rule preservation is specific to Provisa's gRPC
       source type; competitors do not support gRPC sources and therefore have no equivalent capability.
+  docs:
+  - remote-schemas.md
 - id: REQ-331
   status: complete
   group: 4. Source Connectors
@@ -5637,6 +5932,8 @@
     rationale: A governed HTTP push receiver (ingest source) that writes external events from OTEL Collector,
       Fluentd, and webhooks into Provisa's governed data fabric is not present in Trino, Hasura, Denodo,
       or Dremio. These platforms are read-only federation engines; Provisa uniquely owns the write path.
+  docs:
+  - sources.md
 - id: REQ-332
   status: complete
   group: 4. Source Connectors
@@ -5723,6 +6020,8 @@
     rationale: Auto-generated DDL with system audit columns (_received_at, _updated_at) at startup from
       steward-declared column definitions is not present in Trino or Hasura; Denodo requires external
       DDL management. Provisa treats governance schema creation as a first-class operation.
+  docs:
+  - dataset-handling-standards.md
 - id: REQ-334
   status: complete
   group: 4. Source Connectors
@@ -5803,6 +6102,8 @@
     rationale: Batch JSON ingestion endpoint with HTTP 202 and inserted count is a standard webhook receiver
       pattern available in many platforms including Hasura Event Triggers and generic HTTP sinks for Kafka/Flink
       pipelines.
+  docs:
+  - sources.md
 - id: REQ-336
   status: complete
   group: 4. Source Connectors
@@ -5912,6 +6213,9 @@
     rationale: WebSocket as a native governed source type feeding the query fabric is not present in Trino,
       Hasura, Denodo, or Dremio. These platforms handle streaming data through separate pipeline infrastructure
       (Kafka, Flink); Provisa natively subscribes to WebSocket streams.
+  docs:
+  - api-reference.md
+  - sources.md
 - id: REQ-339
   status: complete
   group: 4. Source Connectors
@@ -6039,6 +6343,9 @@
     rationale: RSS/Atom as a native governed polling source is not present in Trino, Hasura, Denodo, or
       Dremio. This is a unique low-barrier connector for content, alerting, and changelog data that requires
       no external pipeline tooling.
+  docs:
+  - api-reference.md
+  - sources.md
 - id: REQ-343
   status: complete
   group: 4. Source Connectors
@@ -6078,6 +6385,8 @@
     status: ahead
     rationale: Native RSS/Atom connector with normalized field extraction is not available in Trino, Hasura,
       Dremio, or Snowflake without custom code.
+  docs:
+  - sources.md
 - id: REQ-344
   status: complete
   group: 4. Source Connectors
@@ -6146,6 +6455,9 @@
   related_reqs:
   - REQ-826
   - REQ-825
+  docs:
+  - dataset-handling-standards.md
+  - sources.md
 - id: REQ-419
   status: complete
   group: 4. Source Connectors
@@ -6173,6 +6485,9 @@
     rationale: An explicit model registry for embedding models with air-gapped deployment support and
       audit-trail integration is not present in Trino, Hasura, Denodo, or Dremio. Snowflake Cortex has
       a similar concept but is cloud-only; Provisa's registry enables on-premise regulated deployments.
+  docs:
+  - arch/vectors.md
+  - architecture.md
 - id: REQ-420
   status: complete
   group: 4. Source Connectors
@@ -6201,6 +6516,8 @@
     rationale: Multi-provider embedding model support (OpenAI, Ollama local, HuggingFace local paths)
       within a federation platform is unique. Denodo, Trino, and Dremio have no embedding model integration;
       Snowflake Cortex is locked to Snowflake-hosted models only.
+  docs:
+  - arch/vectors.md
 - id: REQ-421
   status: complete
   group: 4. Source Connectors
@@ -6227,6 +6544,8 @@
     rationale: Schema-level embedding column declarations as first-class citizens in a federation layer
       are not present in Trino, Hasura, Denodo, or Dremio. Snowflake supports embedding columns only within
       Snowflake tables, not across federated sources.
+  docs:
+  - arch/vectors.md
 - id: REQ-422
   status: complete
   since: 2026-10
@@ -6264,6 +6583,8 @@
       Vector Search, Snowflake Cortex) with planned fallback materialization strategy is not present in
       any competitor federation platform; vector search is only available within individual source silos.
   notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Detection is never run at source registration and nothing flags a source as requiring fallback. native_vector_capability / supports_native_vectors / has_pgvector (provisa/vector/capability.py:26,31,35) and check_native_vector_support (provisa/vector/support.py:20) have no caller outside provisa/vector/; no registration path (provisa/api/admin, provisa/core) references them. Maintainer 2026-10-03: finish it; accepted for build. Maintainer 2026-10-12, through the lead, approving the design for wiring cosine_similarity through the one pipeline (GitHub #251: REQ-423/424/425 were marked complete but not wired): "A1: over a query-form-native collection table, the engine computes it exactly. B1: the fallback is the replica plus an HNSW index; invalidation is the replica''s freshness; REQ-424/425 amended; fallback_cache.py and cache_invalidation.py removed. C1: the index only for top-k over a replica-served table, with the ''approximate index'' warning." Also: "wire REQ-422 detection, remove governance.py''s mask rule per REQ-652 (with registration refusing a mask on an embedding column), set the statuses back to in-progress until built". The wording of this amendment beyond the quoted rulings is the teammate''s. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-423
   status: complete
   group: 4. Source Connectors
@@ -6302,6 +6623,8 @@
       <=>), Snowflake VECTOR_COSINE_SIMILARITY, or fallback cache is a unique federation-layer abstraction;
       no competitor provides a cross-source unified vector search UDF.
   notes: 'Maintainer 2026-10-12, through the lead, approving the design for wiring cosine_similarity through the one pipeline (GitHub #251: REQ-423/424/425 were marked complete but not wired): "A1: over a query-form-native collection table, the engine computes it exactly. B1: the fallback is the replica plus an HNSW index; invalidation is the replica''s freshness; REQ-424/425 amended; fallback_cache.py and cache_invalidation.py removed. C1: the index only for top-k over a replica-served table, with the ''approximate index'' warning." Also: "wire REQ-422 detection, remove governance.py''s mask rule per REQ-652 (with registration refusing a mask on an embedding column), set the statuses back to in-progress until built". The wording of this amendment beyond the quoted rulings is the teammate''s. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-424
   status: complete
   group: 4. Source Connectors
@@ -6351,6 +6674,8 @@
     rationale: An HNSW index on the replica of any source makes vector search available over sources
       lacking native vector capability; competitors require vector search within the native source.
   notes: 'Maintainer 2026-10-12, through the lead, approving the design for wiring cosine_similarity through the one pipeline (GitHub #251: REQ-423/424/425 were marked complete but not wired): "A1: over a query-form-native collection table, the engine computes it exactly. B1: the fallback is the replica plus an HNSW index; invalidation is the replica''s freshness; REQ-424/425 amended; fallback_cache.py and cache_invalidation.py removed. C1: the index only for top-k over a replica-served table, with the ''approximate index'' warning." Also: "wire REQ-422 detection, remove governance.py''s mask rule per REQ-652 (with registration refusing a mask on an embedding column), set the statuses back to in-progress until built". Lead 2026-10-12, on the engines: "A. The index applies only when the engine reads its own store; on Trino the computation is exact with no index and no warning. Record that in REQ-424." The wording of this amendment beyond the quoted rulings is the teammate''s. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-425
   status: complete
   group: 4. Source Connectors
@@ -6391,6 +6716,8 @@
   - REQ-844
   - REQ-856
   notes: 'Maintainer 2026-10-12, through the lead, approving the design for wiring cosine_similarity through the one pipeline (GitHub #251: REQ-423/424/425 were marked complete but not wired): "A1: over a query-form-native collection table, the engine computes it exactly. B1: the fallback is the replica plus an HNSW index; invalidation is the replica''s freshness; REQ-424/425 amended; fallback_cache.py and cache_invalidation.py removed. C1: the index only for top-k over a replica-served table, with the ''approximate index'' warning." Also: "wire REQ-422 detection, remove governance.py''s mask rule per REQ-652 (with registration refusing a mask on an embedding column), set the statuses back to in-progress until built". The wording of this amendment beyond the quoted rulings is the teammate''s. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-426
   status: complete
   group: 4. Source Connectors
@@ -6426,6 +6753,8 @@
       tiers, domain boundaries) with all-or-nothing access enforcement prevents privacy bypass through
       vector search — a governance gap in all competitor platforms that expose vector search.
   notes: 'Maintainer 2026-10-12, through the lead, approving the design for wiring cosine_similarity through the one pipeline (GitHub #251: REQ-423/424/425 were marked complete but not wired): "A1: over a query-form-native collection table, the engine computes it exactly. B1: the fallback is the replica plus an HNSW index; invalidation is the replica''s freshness; REQ-424/425 amended; fallback_cache.py and cache_invalidation.py removed. C1: the index only for top-k over a replica-served table, with the ''approximate index'' warning." Also: "wire REQ-422 detection, remove governance.py''s mask rule per REQ-652 (with registration refusing a mask on an embedding column), set the statuses back to in-progress until built". The wording of this amendment beyond the quoted rulings is the teammate''s. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-427
   status: complete
   group: 4. Source Connectors
@@ -6464,6 +6793,8 @@
     rationale: Virtual embedding columns with generated_from subquery (computed from multi-column transformations
       and cross-table joins, validated at declaration time) are not present in Trino, Hasura, Denodo,
       Dremio, or Snowflake Cortex, which require pre-computed vectors stored in source tables.
+  docs:
+  - arch/vectors.md
 - id: REQ-428
   status: complete
   group: 4. Source Connectors
@@ -6500,6 +6831,8 @@
     rationale: Scheduled incremental embedding refresh (re-embed only changed rows, full rebuild on model/schema
       change) is a unique operational capability; no competitor federation platform manages embedding
       lifecycle — they rely on external ETL pipelines.
+  docs:
+  - arch/vectors.md
 - id: REQ-429
   status: complete
   group: 4. Source Connectors
@@ -6533,6 +6866,9 @@
     rationale: Compile-time model locking and dimension mismatch rejection for vector searches prevents
       silent semantic errors from mismatched embedding spaces — a correctness guarantee not present in
       any competitor federation platform.
+  docs:
+  - arch/vectors.md
+  - sources.md
 - id: REQ-430
   status: complete
   since: 2026-10
@@ -6574,6 +6910,9 @@
       operation in a federation platform is unique; Snowflake Cortex supports it only within Snowflake;
       no cross-source federation platform offers this capability.
   notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: The text-or-vector resolver exists but no similarity-search query path calls it: resolve_query_vector (provisa/vector/query.py:82) and cosine_similarity_sql (provisa/vector/query.py:36) have no caller outside provisa/vector/ and tests. The only production use of vectorize_text is MCP catalog search (provisa/api/mcp/search.py:179), which is not a similarity search over a declared embedding column. Maintainer 2026-10-03: finish it; accepted for build. Maintainer 2026-10-12, through the lead: the GraphQL form is "one object argument, similar: {column: <embedding column>, text: ''…''} or {column, vector: [...]}, on every table with an embedding column, with limit as usual and a _similarity Float score field". Built on the cosine_similarity pipeline (REQ-423). Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
+  - sources.md
 - id: REQ-431
   status: complete
   group: 4. Source Connectors
@@ -6602,6 +6941,8 @@
     status: ahead
     rationale: Three-phase vector search with native cosine_similarity UDF translation and non-native
       fallback is more comprehensive than Hasura's nascent vector support and not in Trino/Dremio.
+  docs:
+  - arch/vectors.md
 - id: REQ-673
   status: complete
   since: 2026-07
@@ -6692,6 +7033,8 @@
     rationale: Subject-grouped U.S. government open data (GovData) as a native source type is a domain-specific
       connector absent from Trino, Hasura, Denodo, and Dremio. This targets regulated government data
       consumers with automated schema exposure.
+  docs:
+  - configuration.md
 - id: REQ-541
   status: complete
   group: 4. Source Connectors
@@ -6726,6 +7069,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
 - id: REQ-550
   status: complete
   group: 4. Source Connectors
@@ -6756,6 +7101,8 @@
     status: ahead
     rationale: Three-way source execution classification (direct-capable, federation-only, write-only)
       with automatic routing is more nuanced than Hasura's single-connector model or Trino's uniform federation.
+  docs:
+  - sources.md
 - id: REQ-553
   status: complete
   group: 4. Source Connectors
@@ -6787,6 +7134,8 @@
     rationale: File-based source registration (CSV, Parquet, SQLite) via path config is standard in Trino
       (file connector, Parquet on S3) and Dremio (local file sources). All serious federation platforms
       support file-based sources.
+  docs:
+  - sources.md
 - id: REQ-597
   status: complete
   group: 4. Source Connectors
@@ -7011,6 +7360,8 @@
     rationale: Consumer-friendly alias derivation (verb-stripped, singularized noun) from OpenAPI operationId
       is automatic in Provisa; Hasura requires manual Action naming and Denodo exposes raw path-based
       identifiers.
+  docs:
+  - remote-schemas.md
 - id: REQ-602
   status: complete
   group: 4. Source Connectors
@@ -7059,6 +7410,8 @@
     rationale: Synthesized ColumnMetadata at schema build time for remote schema sources (GQL, gRPC, OpenAPI)
       that participates identically in query compilation is a unified schema model not present in Hasura
       (separate remote schema type system) or Trino (no remote schema concept).
+  docs:
+  - remote-schemas.md
 - id: REQ-652
   status: complete
   group: 4. Source Connectors
@@ -7094,6 +7447,8 @@
       or entirely absent) is a principled vector access control model not present in any competitor; Snowflake
       Cortex has no cross-source governance enforcement on embeddings.
   notes: 'Maintainer 2026-10-12, through the lead, approving the design for wiring cosine_similarity through the one pipeline (GitHub #251: REQ-423/424/425 were marked complete but not wired): "A1: over a query-form-native collection table, the engine computes it exactly. B1: the fallback is the replica plus an HNSW index; invalidation is the replica''s freshness; REQ-424/425 amended; fallback_cache.py and cache_invalidation.py removed. C1: the index only for top-k over a replica-served table, with the ''approximate index'' warning." Also: "wire REQ-422 detection, remove governance.py''s mask rule per REQ-652 (with registration refusing a mask on an embedding column), set the statuses back to in-progress until built". The wording of this amendment beyond the quoted rulings is the teammate''s. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-007
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7169,6 +7524,9 @@
     rationale: Schema generation at registration time with role-based column visibility is standard in
       Hasura v2 and Denodo. Integrating RLS into schema generation is expected of any serious data virtualization
       platform.
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-009
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7283,6 +7641,8 @@
     rationale: Compile-time validation of schema references is standard in Hasura and any typed GraphQL
       layer. Denodo and Trino also reject references to unregistered/unknown objects at parse or plan
       time.
+  docs:
+  - pgwire.md
 - id: REQ-032
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7431,6 +7791,8 @@
       on all write paths; Hasura v2 supports RLS-equivalent check constraints but requires explicit per-permission
       row filters, making Provisa's automatic injection harder to misconfigure. Trino has no mutation
       layer.
+  docs:
+  - security.md
 - id: REQ-036
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7500,6 +7862,8 @@
     rationale: No cross-source transactions is a well-known limitation of all data virtualization and
       federation platforms including Trino, Denodo, and Hasura — none provide distributed transactions
       across heterogeneous sources.
+  docs:
+  - architecture.md
 - id: REQ-066
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7538,6 +7902,8 @@
     status: parity
     rationale: PG-canonical SQL with SQLGlot transpilation is the standard approach for multi-dialect
       support, used by dbt and others.
+  docs:
+  - cypher.md
 - id: REQ-067
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7573,6 +7939,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - cypher.md
 - id: REQ-068
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7651,6 +8019,8 @@
     rationale: Auto-generated aggregate root fields following Hasura v2 pattern is explicitly Hasura parity,
       not differentiation. Trino supports aggregation natively in SQL but has no auto-generated GraphQL
       aggregate layer.
+  docs:
+  - architecture.md
 - id: REQ-197
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7732,6 +8102,8 @@
       concept) but requires manual configuration; Provisa's catalog-driven automatic rewrite is more transparent.
   related_reqs:
   - REQ-826
+  docs:
+  - architecture.md
 - id: REQ-199
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7814,6 +8186,9 @@
     status: parity
     rationale: Column-keyed order_by schema following Hasura v2 convention is explicit Hasura parity.
       No competitive differentiation — this is a catch-up requirement.
+  docs:
+  - api-reference.md
+  - configuration.md
 - id: REQ-201
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7849,6 +8224,9 @@
     status: parity
     rationale: Six-value direction enum with NULL ordering matches Hasura v2 and standard SQL semantics
       available across all serious SQL-over-GraphQL platforms.
+  docs:
+  - api-reference.md
+  - configuration.md
 - id: REQ-202
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7885,6 +8263,8 @@
     status: parity
     rationale: Relationship ordering matching Hasura v2 default behavior is explicit parity. Hasura has
       offered this since v2; it is a catch-up requirement for Provisa.
+  docs:
+  - configuration.md
 - id: REQ-205
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -7927,6 +8307,9 @@
     status: parity
     rationale: Tracked DB functions exposed as GraphQL mutations following Hasura v2's pg_track_function
       pattern is explicit Hasura parity; Hasura has had this since v2 GA.
+  docs:
+  - api-reference.md
+  - sources.md
 - id: REQ-206
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8005,6 +8388,8 @@
     rationale: Requiring function return types to reference registered tables so that results pass through
       the same RLS, masking, and column-visibility pipeline is not enforced by Hasura (functions can return
       arbitrary types without governance re-application). This is a meaningful security-by-design differentiator.
+  docs:
+  - sources.md
 - id: REQ-208
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8091,6 +8476,9 @@
     rationale: Webhook-backed mutations with steward approval governance (registry-required gate) combine
       API orchestration with data governance in a single layer; Hasura Actions support webhook mutations
       but have no built-in registry approval workflow. Denodo has no equivalent webhook mutation concept.
+  docs:
+  - api-reference.md
+  - sources.md
 - id: REQ-210
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8131,6 +8519,8 @@
     status: parity
     rationale: Inline return type definitions for webhooks (not backed by a registered table) match Hasura
       Actions' custom type capability. No meaningful competitive differentiation.
+  docs:
+  - sources.md
 - id: REQ-211
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8170,6 +8560,8 @@
     status: parity
     rationale: Argument validation at parse time with parameterized calls for SQL injection prevention
       is baseline security practice present in Hasura, Denodo, and all production data API layers.
+  docs:
+  - sources.md
 - id: REQ-252
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8216,6 +8608,8 @@
       it but does not uniquely differentiate Provisa.
   related_reqs:
   - REQ-825
+  docs:
+  - admin-graphql.md
 - id: REQ-253
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8262,6 +8656,10 @@
     status: parity
     rationale: Immediate in-memory schema rebuild on config changes is offered by Hasura (hasura metadata
       reload) and Denodo (hot reload). The no-client-caching guarantee is a sensible default but not unique.
+  docs:
+  - admin-graphql.md
+  - admin.md
+  - api-reference.md
 - id: REQ-259
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8309,6 +8707,8 @@
       during entity resolution is not available in Hasura (which is a supergraph consumer, not a subgraph),
       Trino, or Denodo. Provisa is the only governed data federation layer that can participate as an
       Apollo subgraph.
+  docs:
+  - architecture.md
 - id: REQ-300
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8545,6 +8945,10 @@
     rationale: A Cypher-to-SQL compiler with full Stage 2 governance (RLS, masking, domain visibility)
       on a data federation platform is unique — no competitor (Trino, Hasura, Denodo, Dremio) supports
       Cypher as a query frontend over federated relational data with automatic governance enforcement.
+  docs:
+  - api-reference.md
+  - cypher.md
+  - remote-schemas.md
 - id: REQ-346
   status: superseded
   superseded_by: REQ-818
@@ -8628,6 +9032,8 @@
     rationale: Cypher clause-to-SQL translation (MATCH→JOIN, OPTIONAL MATCH→LEFT JOIN, etc.) executed
       over Trino-federated sources is not available in any mainstream competitor; Denodo, Hasura, and
       Dremio have no Cypher compiler.
+  docs:
+  - cypher.md
 - id: REQ-348
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8669,6 +9075,8 @@
     rationale: Path queries and variable-length traversals compiled to Trino recursive CTEs over federated
       relational data is entirely novel — no competitor combines graph path syntax, recursive SQL, and
       federated execution with governance enforcement.
+  docs:
+  - cypher.md
 - id: REQ-349
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8788,6 +9196,10 @@
     rationale: Cypher label map derived automatically from the existing compilation context (no extra
       registration) means Cypher is zero-configuration for existing GraphQL schema users; competitors
       with any Cypher support (none over federated data) require separate graph schema definition.
+  docs:
+  - architecture.md
+  - cypher.md
+  - dataset-handling-standards.md
 - id: REQ-352
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8909,6 +9321,8 @@
     rationale: A governed NL query endpoint (async job, SSE result) over a federated multi-source data
       platform is not offered by Trino, Hasura, or Denodo in their core product; Dremio has a limited
       NL-to-SQL preview but without governance integration.
+  docs:
+  - api-reference.md
 - id: REQ-355
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8956,6 +9370,8 @@
     rationale: Parallel three-target LLM generation (SQL, GraphQL, Cypher) with compiler-driven refinement
       loops is unique — no competitor generates all three query forms from a natural language input, and
       none use the compiler as a deterministic validation oracle to refine LLM output.
+  docs:
+  - api-reference.md
 - id: REQ-356
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -8995,6 +9411,8 @@
     rationale: Role-scoped LLM prompt construction (supplying only the schema visible to the requesting
       role) enforces data governance at the AI layer; no competitor's NL query feature applies role-based
       schema scoping to the LLM context, creating a double-enforcement model (prompt + compiler).
+  docs:
+  - api-reference.md
 - id: REQ-357
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9037,6 +9455,8 @@
     status: ahead
     rationale: Returning all three query forms (Cypher, GraphQL, SQL) with results in a single NL response
       is unique; no competitor NL product returns multiple query language outputs with governed results.
+  docs:
+  - api-reference.md
 - id: REQ-358
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9081,6 +9501,8 @@
       role-scoped prompts, and compiler-driven refinement together constitute a capability set not offered
       by any comparable platform (Dremio NL preview, BigQuery Duet AI, Snowflake Cortex all lack at least
       two of the three properties).'
+  docs:
+  - api-reference.md
 - id: REQ-359
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9119,6 +9541,8 @@
     rationale: NL-generated queries executing under the consumer's rights with full Stage 2 governance
       — never bypassed — is stronger than Dremio and Snowflake Cortex, which do not apply row-level security
       to AI-generated queries at the same enforcement layer as hand-written queries.
+  docs:
+  - api-reference.md
 - id: REQ-360
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9292,6 +9716,8 @@
       is a governance hierarchy not offered by Hasura (single-level per-table RLS filter) or Trino (no
       domain-level policy layer); it gives stewards more precise override control without duplicating
       config.
+  docs:
+  - sources.md
 - id: REQ-409
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9441,6 +9867,9 @@
     rationale: Three preset naming conventions (snake, hasura_graphql, apollo_graphql) with orthogonal
       domain_prefix option is more configurable than Hasura's fixed naming and Trino's no-naming-control
       model.
+  docs:
+  - admin-graphql.md
+  - configuration.md
 - id: REQ-478
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9485,6 +9914,8 @@
       the row cap, and transparently dialect-transpiled is not offered by Hasura or Denodo; Trino supports
       TABLESAMPLE natively in SQL but has no GraphQL or governance layer. Provisa makes statistical sampling
       a first-class governed data feature.
+  docs:
+  - architecture.md
 - id: REQ-525
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9522,6 +9953,8 @@
     rationale: Per-role auto-generated .proto definitions for gRPC — where each role receives only its
       visible tables and columns — is not offered by any mainstream competitor; Trino, Hasura, and Denodo
       have no governed gRPC/Protobuf schema generation.
+  docs:
+  - architecture.md
 - id: REQ-526
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9563,6 +9996,8 @@
     status: parity
     rationale: gRPC server reflection is a standard gRPC feature (part of the grpc-reflection spec) enabled
       by most gRPC server implementations. Competitive parity with any platform offering gRPC.
+  docs:
+  - architecture.md
 - id: REQ-534
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9607,6 +10042,8 @@
     rationale: Multi-root GraphQL query execution with per-field redirect thresholds is a practical scalability
       feature; Hasura supports batched queries and DataLoader patterns. The per-field redirect threshold
       is Provisa-specific but addresses the same concern as Hasura's stream and defer directives.
+  docs:
+  - architecture.md
 - id: REQ-537
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9649,6 +10086,8 @@
     status: parity
     rationale: A schema version endpoint for client cache invalidation is a developer-convenience feature;
       Hasura exposes a catalog metadata version hash for the same purpose. Not a differentiator.
+  docs:
+  - api-reference.md
 - id: REQ-571
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9683,6 +10122,8 @@
     status: ahead
     rationale: Custom recursive-descent Cypher parser with no external library dependency enables full
       governance injection during Cypher-to-SQL compilation — no competitor provides governed Cypher federation.
+  docs:
+  - cypher.md
 - id: REQ-572
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9721,6 +10162,8 @@
     rationale: Handling CALL db.labels(), db.relationshipTypes(), and db.propertyKeys() as semantic-layer
       introspection procedures (returning data from CypherLabelMap, not from the database) gives Neo4j-compatible
       clients a familiar discovery API over federated relational data; no competitor offers this.
+  docs:
+  - cypher.md
 - id: REQ-573
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9761,6 +10204,8 @@
     status: ahead
     rationale: Correlated CALL subqueries translated to CROSS JOIN LATERAL over Trino is a sophisticated
       graph-to-SQL translation feature not available in any competitor's relational data federation layer.
+  docs:
+  - cypher.md
 - id: REQ-574
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9796,6 +10241,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - cypher.md
 - id: REQ-575
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9836,6 +10283,8 @@
     status: ahead
     rationale: Bidirectional Cypher traversal syntax expanded at compile time to UNION ALL of directed
       join pairs is a graph-query convenience that no competitor offers over federated relational data.
+  docs:
+  - cypher.md
 - id: REQ-576
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9877,6 +10326,8 @@
     rationale: Flat JOIN chain optimization for heterogeneous shortestPath (avoiding unnecessary recursive
       CTE overhead) over federated relational data is unique; competitors with Cypher support (none over
       federated data) do not perform this structural optimization.
+  docs:
+  - cypher.md
 - id: REQ-577
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9916,6 +10367,8 @@
     rationale: Emitting all equal-hop schema paths as UNION ALL branches for shortestPath over multiple
       relationship types is a correctness and completeness property not matched by any competitor's graph-over-relational
       solution.
+  docs:
+  - cypher.md
 - id: REQ-578
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -9950,6 +10403,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - cypher.md
 - id: REQ-642
   status: complete
   group: 10. UI & Admin Surfaces
@@ -9980,6 +10435,9 @@
     over a query result), which was never built and is out of scope. Implementation: provisa-ui/src/components/graph/GraphStatsModal.tsx
     (statistics at :55-92, components and path lengths at :124-181). No test names the panel.'
   since: 2026-09
+  docs:
+  - arch/graph.md
+  - cypher.md
 - id: REQ-643
   status: complete
   group: 10. UI & Admin Surfaces
@@ -10009,6 +10467,9 @@
     The earlier text described a server endpoint (POST /data/graph-analytics running NetworkX algorithms
     over a query result), which was never built and is out of scope. Implementation: provisa-ui/src/components/graph/frame/use-frame-derived-data.ts:75-78.'
   since: 2026-09
+  docs:
+  - arch/graph.md
+  - cypher.md
 - id: REQ-650
   status: superseded
   group: 5. Query Languages, Compilation & Operations
@@ -10044,6 +10505,9 @@
     over a query result), which was never built and is out of scope. This limit applied to that endpoint
     only; the rescoped REQ-642 replaces it.
   superseded_by: REQ-642
+  docs:
+  - arch/graph.md
+  - cypher.md
 - id: REQ-651
   status: superseded
   group: 5. Query Languages, Compilation & Operations
@@ -10080,6 +10544,9 @@
     over a query result), which was never built and is out of scope. This limit applied to that endpoint
     only; the rescoped REQ-642 replaces it.
   superseded_by: REQ-642
+  docs:
+  - arch/graph.md
+  - cypher.md
 - id: REQ-653
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -10237,6 +10704,8 @@
     rationale: Cypher mutations (CREATE/SET/DELETE via Cypher syntax) are in-progress. No competitor offers
       governed Cypher writes over federated relational data either, but this is a planned capability gap
       until implementation is complete.
+  docs:
+  - cypher.md
 - id: REQ-662
   status: superseded
   superseded_by: REQ-661
@@ -10268,6 +10737,8 @@
     rationale: 'In-progress: restricting Cypher writes to pre-registered tables is not yet implemented.
       Until complete this is a gap in a planned feature, though competitors also lack this (Cypher writes
       over federated relational data).'
+  docs:
+  - cypher.md
 - id: REQ-663
   status: superseded
   superseded_by: REQ-2074
@@ -10304,6 +10775,9 @@
     status: ahead
     rationale: Cypher writes are gated on the same writable_by column ACL as GraphQL/SQL mutations, enforced
       before execution — no competitor governs Cypher writes over federated relational data.
+  docs:
+  - cypher.md
+  - pgwire.md
 - id: REQ-664
   status: complete
   since: 2026-07
@@ -10332,6 +10806,8 @@
     status: gap
     rationale: 'In-progress: DML-capability checking to gate Cypher writes on connector support is not
       yet implemented.'
+  docs:
+  - cypher.md
 - id: REQ-665
   status: complete
   since: 2026-07
@@ -10363,6 +10839,8 @@
     status: gap
     rationale: 'In-progress: relationship immutability enforcement in Cypher write translation is not
       yet implemented.'
+  docs:
+  - cypher.md
 - id: REQ-666
   status: complete
   since: 2026-07
@@ -10405,6 +10883,8 @@
   competitive_position:
     status: gap
     rationale: 'In-progress: CREATE→INSERT translation with property-to-column mapping is not yet implemented.'
+  docs:
+  - cypher.md
 - id: REQ-667
   status: complete
   since: 2026-07
@@ -10444,6 +10924,8 @@
   competitive_position:
     status: gap
     rationale: 'In-progress: MATCH-DELETE→SQL DELETE translation is not yet implemented.'
+  docs:
+  - cypher.md
 - id: REQ-668
   status: complete
   since: 2026-07
@@ -10487,6 +10969,8 @@
     status: gap
     rationale: 'In-progress: MATCH-SET→SQL UPDATE translation with multi-assignment composition is not
       yet implemented.'
+  docs:
+  - cypher.md
 - id: REQ-669
   status: complete
   since: 2026-07
@@ -10556,6 +11040,8 @@
   competitive_position:
     status: gap
     rationale: 'In-progress: affected_rows response field for Cypher write operations is not yet implemented.'
+  docs:
+  - cypher.md
 - id: REQ-671
   status: complete
   since: 2026-07
@@ -10584,6 +11070,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - cypher.md
 - id: REQ-027
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10628,6 +11116,10 @@
     rationale: Direct single-source routing with dialect transpilation is table stakes for any federation
       engine. Trino, Denodo, and Dremio all route single-source queries to native connectors with sub-100ms
       targets.
+  docs:
+  - architecture.md
+  - pgwire.md
+  - sources.md
 - id: REQ-028
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10671,6 +11163,11 @@
       for open-source federation; Trino/Presto pioneered this and Dremio uses a similar Arrow-based planner.
   related_reqs:
   - REQ-825
+  docs:
+  - architecture.md
+  - deployment.md
+  - pgwire.md
+  - sources.md
 - id: REQ-029
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10726,6 +11223,10 @@
     status: parity
     rationale: Large-result offload to blob storage with presigned URLs is a standard pattern; Dremio
       and Snowflake both support result spilling and staged offload for oversized result sets.
+  docs:
+  - api-reference.md
+  - architecture.md
+  - deployment.md
 - id: REQ-030
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10789,6 +11290,10 @@
     status: parity
     rationale: Per-table routing overrides are available in Denodo as custom wrappers and in Dremio via
       reflection policies; this is a standard operator escape hatch.
+  docs:
+  - arch/vectors.md
+  - architecture.md
+  - configuration.md
 - id: REQ-031
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10840,6 +11345,8 @@
     rationale: Routing writes exclusively to direct RDBMS connections (bypassing the federation engine)
       is the standard safe approach; Denodo and Trino both prohibit mutation through the federated query
       layer.
+  docs:
+  - architecture.md
 - id: REQ-052
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10899,6 +11406,8 @@
     status: parity
     rationale: Warm connection pools with configurable minimums are standard in any production data gateway;
       Hasura, Denodo, and Dremio all maintain persistent connector pools.
+  docs:
+  - sources.md
 - id: REQ-053
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10946,6 +11455,9 @@
     rationale: PgBouncer opt-in per source is standard practice for PostgreSQL connection pooling.
   related_reqs:
   - REQ-828
+  docs:
+  - deployment.md
+  - sources.md
 - id: REQ-054
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -10979,6 +11491,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - deployment.md
 - id: REQ-230
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11035,6 +11549,8 @@
       round-trips that Provisa eliminates.
   related_reqs:
   - REQ-826
+  docs:
+  - architecture.md
 - id: REQ-231
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11199,6 +11715,8 @@
       differentiation.
   related_reqs:
   - REQ-826
+  docs:
+  - architecture.md
 - id: REQ-235
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11270,6 +11788,8 @@
       those require explicit manual designation of cached lookup tables.
   related_reqs:
   - REQ-826
+  docs:
+  - architecture.md
 - id: REQ-237
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11376,6 +11896,8 @@
   - REQ-826
   - REQ-825
   - REQ-844
+  docs:
+  - architecture.md
 - id: REQ-239
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11439,6 +11961,9 @@
   related_reqs:
   - REQ-826
   - REQ-825
+  docs:
+  - architecture.md
+  - regions.md
 - id: REQ-240
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11520,6 +12045,9 @@
   related_reqs:
   - REQ-826
   - REQ-825
+  docs:
+  - admin-graphql.md
+  - architecture.md
 - id: REQ-275
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11561,6 +12089,9 @@
     status: parity
     rationale: Running ANALYZE on source registration to prime the cost-based optimizer is standard Trino/Presto
       practice; Dremio performs similar statistics collection on connector registration.
+  docs:
+  - architecture.md
+  - sources.md
 - id: REQ-276
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11604,6 +12135,9 @@
     status: parity
     rationale: On-demand statistics refresh via an admin API is available in Dremio (Refresh Reflection)
       and Snowflake (SYSTEM$REFRESH_TABLE_STATS); this is expected enterprise functionality.
+  docs:
+  - admin-graphql.md
+  - architecture.md
 - id: REQ-277
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11645,6 +12179,8 @@
     status: parity
     rationale: Per-query session property hints for join strategy are native Trino functionality; exposing
       them through Provisa config does not add competitive differentiation beyond what Trino already provides.
+  docs:
+  - architecture.md
 - id: REQ-278
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11677,6 +12213,9 @@
     status: parity
     rationale: Per-source Trino session properties via federation_hints are available in Trino's native
       session property mechanism.
+  docs:
+  - architecture.md
+  - sources.md
 - id: REQ-279
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11722,6 +12261,8 @@
     rationale: A portable, engine-agnostic hint syntax (/*+ BROADCAST(...) */) that Provisa strips and
       translates to engine-specific session properties decouples query authors from Trino internals; Denodo
       and Hasura have no equivalent abstraction layer for federation engine hints.
+  docs:
+  - architecture.md
 - id: REQ-280
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11761,6 +12302,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - architecture.md
 - id: REQ-281
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11812,6 +12355,9 @@
   stakeholders:
   - data-engineer
   - app-developer
+  docs:
+  - configuration.md
+  - sources.md
 - id: REQ-397
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -11896,6 +12442,8 @@
   stakeholders:
   - app-developer
   - ops
+  docs:
+  - api-reference.md
 - id: REQ-544
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -12010,6 +12558,10 @@
   - REQ-864
   - REQ-865
   - REQ-866
+  docs:
+  - api-reference.md
+  - architecture.md
+  - configuration.md
 - id: REQ-552
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -12049,6 +12601,8 @@
   stakeholders:
   - app-developer
   - data-engineer
+  docs:
+  - sources.md
 - id: REQ-595
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -12089,6 +12643,8 @@
   stakeholders:
   - ops
   - compliance
+  docs:
+  - configuration.md
 - id: REQ-047
   status: complete
   group: 7. Result Delivery
@@ -12121,6 +12677,8 @@
       and any GraphQL gateway. No competitive differentiation here.
   stakeholders:
   - app-developer
+  docs:
+  - api-reference.md
 - id: REQ-048
   status: complete
   group: 7. Result Delivery
@@ -12155,6 +12713,8 @@
       and most REST-based query engines. Standard capability.
   stakeholders:
   - app-developer
+  docs:
+  - api-reference.md
 - id: REQ-049
   status: complete
   group: 7. Result Delivery
@@ -12193,6 +12753,8 @@
   stakeholders:
   - app-developer
   - data-engineer
+  docs:
+  - api-reference.md
 - id: REQ-050
   status: complete
   group: 7. Result Delivery
@@ -12229,6 +12791,8 @@
   stakeholders:
   - app-developer
   - data-engineer
+  docs:
+  - api-reference.md
 - id: REQ-051
   status: superseded
   superseded_by: REQ-045
@@ -12270,6 +12834,8 @@
       sources, removing serialization overhead that every competitor still imposes.
   stakeholders:
   - app-developer
+  docs:
+  - remote-schemas.md
 - id: REQ-137
   status: complete
   group: 7. Result Delivery
@@ -12317,6 +12883,10 @@
   stakeholders:
   - app-developer
   - ops
+  docs:
+  - api-reference.md
+  - architecture.md
+  - deployment.md
 - id: REQ-138
   status: complete
   group: 7. Result Delivery
@@ -12355,6 +12925,9 @@
   stakeholders:
   - app-developer
   - ops
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-139
   status: complete
   group: 7. Result Delivery
@@ -12430,6 +13003,8 @@
       approach halves execution cost at the redirect decision boundary.
   stakeholders:
   - ops
+  docs:
+  - architecture.md
 - id: REQ-141
   status: complete
   group: 7. Result Delivery
@@ -12466,6 +13041,8 @@
   stakeholders:
   - ops
   - compliance
+  docs:
+  - deployment.md
 - id: REQ-142
   status: complete
   group: 7. Result Delivery
@@ -12535,6 +13112,11 @@
       heterogeneous sources.
   stakeholders:
   - app-developer
+  docs:
+  - api-reference.md
+  - architecture.md
+  - deployment.md
+  - python-client.md
 - id: REQ-144
   status: complete
   group: 7. Result Delivery
@@ -12571,6 +13153,9 @@
       Provisa exposes the same protocol across all federated sources.
   stakeholders:
   - app-developer
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-145
   status: complete
   group: 7. Result Delivery
@@ -12607,6 +13192,9 @@
       coordinator-side buffering.
   stakeholders:
   - ops
+  docs:
+  - architecture.md
+  - python-client.md
 - id: REQ-146
   status: complete
   group: 7. Result Delivery
@@ -12641,6 +13229,8 @@
       resilience pattern present in Dremio and Trino client libraries. Not a differentiator.
   stakeholders:
   - ops
+  docs:
+  - api-reference.md
 - id: REQ-043
   status: complete
   group: 8. Client Access & Protocols
@@ -12678,6 +13268,8 @@
       supported by Dgraph and others. Provisa offering this is expected, not differentiating.
   stakeholders:
   - app-developer
+  docs:
+  - api-reference.md
 - id: REQ-044
   status: superseded
   superseded_by: REQ-029
@@ -12719,6 +13311,9 @@
   stakeholders:
   - app-developer
   - ops
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-045
   status: complete
   group: 8. Client Access & Protocols
@@ -12759,6 +13354,9 @@
   stakeholders:
   - app-developer
   - ops
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-126
   status: complete
   group: 8. Client Access & Protocols
@@ -12797,6 +13395,8 @@
   stakeholders:
   - app-developer
   - ops
+  docs:
+  - api-reference.md
 - id: REQ-127
   status: complete
   group: 8. Client Access & Protocols
@@ -12831,6 +13431,9 @@
       Dremio, and Snowflake all implement it correctly.
   stakeholders:
   - app-developer
+  docs:
+  - api-reference.md
+  - integrations.md
 - id: REQ-128
   status: complete
   group: 8. Client Access & Protocols
@@ -12868,6 +13471,9 @@
       query-time enforcement. Provisa surfaces governance at the metadata layer.
   stakeholders:
   - app-developer
+  docs:
+  - api-reference.md
+  - integrations.md
 - id: REQ-129
   status: complete
   group: 8. Client Access & Protocols
@@ -12907,6 +13513,8 @@
     rationale: JDBC executeQuery routing through Stage 2 governance (RLS, masking) with Arrow IPC streaming
       is not offered by Trino or Dremio JDBC — they stream JDBC ResultSets without inline masking applied
       at driver transport time.
+  docs:
+  - api-reference.md
 - id: REQ-130
   status: superseded
   superseded_by: REQ-272
@@ -12944,6 +13552,8 @@
       stronger than Denodo or Dremio, where governance is typically enforced at view or policy definition
       time and can be bypassed via direct source connections. Snowflake enforces masking at column policy
       level but does not support cross-source RLS across federated tables.
+  docs:
+  - api-reference.md
 - id: REQ-131
   status: complete
   group: 8. Client Access & Protocols
@@ -12968,6 +13578,9 @@
   competitive_position:
     status: parity
     rationale: Standard JDBC connection string format is table stakes for enterprise data platforms.
+  docs:
+  - api-reference.md
+  - integrations.md
 - id: REQ-132
   status: complete
   group: 8. Client Access & Protocols
@@ -13034,6 +13647,8 @@
     rationale: A compile endpoint that returns governed SQL with RLS/masking applied, routing decision,
       and params without executing is not offered by Trino, Hasura, or Denodo. It lets developers inspect
       and audit governance output before execution — a unique developer-transparency feature.
+  docs:
+  - admin-graphql.md
 - id: REQ-163
   status: complete
   group: 8. Client Access & Protocols
@@ -13104,6 +13719,9 @@
     rationale: Auto-generated REST endpoints for every registered table are available in Hasura (REST
       endpoints on GraphQL queries) and PostgREST-style systems. This is increasingly standard for developer-facing
       API layers.
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-257
   status: complete
   group: 8. Client Access & Protocols
@@ -13154,6 +13772,10 @@
     rationale: Auto-generated JSON:API compliant endpoints (with sparse fieldsets, includes, compound
       documents) run through the full governance pipeline are not offered by Trino, Dremio, or Hasura.
       Hasura can expose REST but does not implement the JSON:API spec.
+  docs:
+  - api-reference.md
+  - architecture.md
+  - remote-schemas.md
 - id: REQ-258
   status: complete
   group: 8. Client Access & Protocols
@@ -13203,6 +13825,10 @@
       model (PostgreSQL-only) and not available at all in Trino, Dremio, or Denodo.
   related_reqs:
   - REQ-828
+  docs:
+  - api-reference.md
+  - architecture.md
+  - subscriptions.md
 - id: REQ-268
   status: complete
   group: 8. Client Access & Protocols
@@ -13246,6 +13872,8 @@
     rationale: Python DB-API 2.0 (PEP 249) is a standard interface; Trino, Snowflake, and BigQuery all
       ship PEP 249-compliant connectors. The dual GraphQL/SQL detection on cursor.execute() is modest
       differentiation but not materially ahead.
+  docs:
+  - python-client.md
 - id: REQ-269
   status: complete
   group: 8. Client Access & Protocols
@@ -13322,6 +13950,8 @@
     status: parity
     rationale: SQLAlchemy dialects exist for Trino (trino-sqlalchemy), Snowflake (snowflake-sqlalchemy),
       and BigQuery (sqlalchemy-bigquery). Provisa having one is expected parity, not a differentiator.
+  docs:
+  - python-client.md
 - id: REQ-271
   status: complete
   group: 8. Client Access & Protocols
@@ -13364,6 +13994,8 @@
     rationale: ADBC (Arrow Database Connectivity) over Arrow Flight as a native client interface is not
       yet offered by Trino, Hasura, or Denodo. Dremio has Arrow Flight but no ADBC client library. Provisa
       is ahead on this emerging standard.
+  docs:
+  - python-client.md
 - id: REQ-272
   status: complete
   group: 8. Client Access & Protocols
@@ -13462,6 +14094,11 @@
     rationale: Server-assigned roles with no client-supplied role parameter accepted is a governance-by-design
       constraint that Trino and Dremio do not enforce — both allow clients to pass role or session overrides.
       This prevents privilege escalation at the protocol level.
+  docs:
+  - api-reference.md
+  - integrations.md
+  - python-client.md
+  - security.md
 - id: REQ-274
   status: complete
   group: 8. Client Access & Protocols
@@ -13502,6 +14139,8 @@
     rationale: Per-call query language selection (GraphQL routes through Stage 1+2; SQL routes through
       Stage 2 only) with the same client is not offered by Hasura, Trino, or Dremio — each provides a
       single query language per connection type.
+  docs:
+  - python-client.md
 - id: REQ-288
   status: complete
   group: 8. Client Access & Protocols
@@ -13539,6 +14178,9 @@
     rationale: Apollo APQ wire protocol is supported by Hasura and any Apollo Server-based GraphQL endpoint.
       For GraphQL platforms this is standard; for a data federation layer it is mildly differentiating
       but Hasura already has it.
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-289
   status: complete
   group: 8. Client Access & Protocols
@@ -13568,6 +14210,8 @@
     status: parity
     rationale: Redis-backed APQ cache with configurable TTL is the standard Apollo APQ implementation
       pattern; Hasura uses the same approach. No meaningful competitive distinction.
+  docs:
+  - architecture.md
 - id: REQ-290
   status: complete
   group: 8. Client Access & Protocols
@@ -13681,6 +14325,9 @@
       competitor's JDBC driver — Trino, Snowflake, and Dremio JDBC drivers use their own binary or HTTP/2
       protocols, not Arrow Flight. This gives Provisa's JDBC driver zero-copy streaming capability unique
       in the space.
+  docs:
+  - api-reference.md
+  - integrations.md
 - id: REQ-398
   status: superseded
   superseded_by: REQ-392
@@ -13716,6 +14363,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - api-reference.md
 - id: REQ-405
   status: complete
   group: 8. Client Access & Protocols
@@ -13851,6 +14500,8 @@
       operation classification is a Provisa-specific extension not present in Hasura's OpenAPI import
       or Trino's REST catalog. It enables stewards to correctly federate non-standard REST APIs without
       modifying the upstream spec.
+  docs:
+  - remote-schemas.md
 - id: REQ-527
   status: complete
   group: 8. Client Access & Protocols
@@ -13884,6 +14535,9 @@
       is not available in Trino/Presto, Hasura, or Dremio. Denodo has a JDBC layer but no pgwire endpoint.
       This lets any PostgreSQL-compatible tool (psql, DBeaver, Tableau) connect to Provisa without a special
       driver.
+  docs:
+  - architecture.md
+  - pgwire.md
 - id: REQ-529
   status: complete
   group: 8. Client Access & Protocols
@@ -13950,6 +14604,8 @@
     status: parity
     rationale: Standard PostgreSQL cleartext/bcrypt auth over pgwire is expected for any Postgres-compatible
       wire protocol implementation.
+  docs:
+  - api-reference.md
 - id: REQ-530
   status: complete
   group: 8. Client Access & Protocols
@@ -13987,6 +14643,8 @@
   competitive_position:
     status: parity
     rationale: TLS support via cert/key env vars is standard operational practice.
+  docs:
+  - pgwire.md
 - id: REQ-532
   status: complete
   group: 8. Client Access & Protocols
@@ -14032,6 +14690,8 @@
       DuckDB built from the role's compilation context — with role-filtered visibility — is not done by
       any competitor. Trino has a pseudo-catalog but it is not role-scoped; Denodo does not expose pgwire
       at all.
+  docs:
+  - pgwire.md
 - id: REQ-538
   status: complete
   group: 8. Client Access & Protocols
@@ -14058,6 +14718,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - api-reference.md
 - id: REQ-579
   status: complete
   group: 8. Client Access & Protocols
@@ -14096,6 +14758,8 @@
     status: parity
     rationale: Reporting server version 14.0 for PostgreSQL wire compatibility is standard practice for
       pg-compatible systems (e.g., CockroachDB, AlloyDB).
+  docs:
+  - pgwire.md
 - id: REQ-580
   status: complete
   group: 8. Client Access & Protocols
@@ -14132,6 +14796,8 @@
     status: parity
     rationale: Multi-statement simple-query support is standard in PostgreSQL wire protocol implementations;
       Buenavista and similar pgwire shims all handle this. No meaningful competitive dimension.
+  docs:
+  - pgwire.md
 - id: REQ-581
   status: complete
   group: 8. Client Access & Protocols
@@ -14171,6 +14837,8 @@
     rationale: Parameterized query support ($1, $2) via literal substitution is required for JDBC/psycopg2
       compatibility and implemented by all pgwire-compatible endpoints. The literal substitution strategy
       (vs. real prepared statements) is a design choice, not a differentiator.
+  docs:
+  - pgwire.md
 - id: REQ-582
   status: superseded
   group: 8. Client Access & Protocols
@@ -14323,6 +14991,8 @@
     rationale: COPY TO STDOUT and COPY FROM STDIN via pgwire with RLS enforcement at copy time is not
       available in Trino, Dremio, Hasura, or Denodo's client access layers. This enables psql/pg_dump
       workflows against federated data.
+  docs:
+  - pgwire.md
 - id: REQ-586
   status: complete
   group: 8. Client Access & Protocols
@@ -14408,6 +15078,8 @@
     rationale: Accepting and ignoring transaction control commands (BEGIN/COMMIT/ROLLBACK) to satisfy
       JDBC/ORM compatibility is a well-known workaround used by PrestoDB, Trino's JDBC driver, and Buenavista-based
       systems. Not a differentiator.
+  docs:
+  - pgwire.md
 - id: REQ-588
   status: complete
   group: 8. Client Access & Protocols
@@ -14452,6 +15124,8 @@
       returning role-aware values (current_user → role_id) from the catalog layer is more governance-aware
       than generic pgwire shims like Buenavista, which return static or passthrough values not tied to
       the authenticated role.
+  docs:
+  - pgwire.md
 - id: REQ-589
   status: complete
   group: 8. Client Access & Protocols
@@ -14576,6 +15250,8 @@
       handle this.
   related_reqs:
   - REQ-828
+  docs:
+  - pgwire.md
 - id: REQ-590
   status: complete
   group: 8. Client Access & Protocols
@@ -14634,6 +15310,8 @@
     rationale: Timeout enforcement on DDL and query operations is basic operational hygiene present in
       Trino (query.max-run-time), Snowflake (STATEMENT_TIMEOUT_IN_SECONDS), and all production federation
       engines.
+  docs:
+  - pgwire.md
 - id: REQ-606
   status: complete
   group: 8. Client Access & Protocols
@@ -14673,6 +15351,8 @@
     status: parity
     rationale: Bearer token authentication in a client library is standard across Snowflake, Dremio, and
       Hasura clients. No meaningful competitive dimension.
+  docs:
+  - python-client.md
 - id: REQ-607
   status: complete
   group: 8. Client Access & Protocols
@@ -14708,6 +15388,8 @@
     rationale: Distinct error types for transport (HTTP 4xx/5xx) vs. application-level (GraphQL errors)
       errors are standard client library design; Hasura, Apollo Client, and similar clients all distinguish
       these layers.
+  docs:
+  - python-client.md
 - id: REQ-608
   status: superseded
   superseded_by: REQ-711
@@ -14774,6 +15456,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - pgwire.md
 - id: REQ-615
   status: complete
   group: 8. Client Access & Protocols
@@ -14817,6 +15501,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - pgwire.md
 - id: REQ-616
   status: complete
   group: 8. Client Access & Protocols
@@ -14863,6 +15549,8 @@
   notes: 'Audit 2026-10-03: the 2026-10-03 amendment (COPY FROM STDIN admitted as a write) is not built
     yet; the code refuses it with 0A000 (provisa/pgwire/copy_handler.py:190-196). It is built with REQ-1925.
     The `ddl` right is still a member of the rights vocabulary, checked by nothing (provisa/security/rights.py:118).'
+  docs:
+  - pgwire.md
 - id: REQ-617
   status: complete
   group: 8. Client Access & Protocols
@@ -14943,6 +15631,8 @@
     status: parity
     rationale: Dataset change events on mutation are available in Hasura (event triggers) and Debezium-based
       stacks.
+  docs:
+  - architecture.md
 - id: REQ-173
   status: complete
   group: 9. Live Data & Events
@@ -14980,6 +15670,8 @@
       view systems.
   related_reqs:
   - REQ-826
+  docs:
+  - architecture.md
 - id: REQ-174
   status: complete
   group: 9. Live Data & Events
@@ -15075,6 +15767,8 @@
     rationale: Kafka sinks on registered tables/views with multiple trigger modes (change_event, schedule,
       manual, poll) is more flexible than Hasura's event trigger model and not native to Dremio or Trino.
   notes: 'Superseded 2026-10-16 (maintainer, #274): the table Kafka sink is retired; a table publishes its new rows to Kafka through a live output (live.outputs, REQ-565), governed as a role. A subscription redirected to Kafka (X-Provisa-Sink) is REQ-812.'
+  docs:
+  - integrations.md
 - id: REQ-177
   status: superseded
   superseded_by: REQ-565
@@ -15250,6 +15944,9 @@
     status: parity
     rationale: Watermark-based polling subscription for sources without CDC is available in Hasura's polling
       subscriptions and Debezium.
+  docs:
+  - architecture.md
+  - subscriptions.md
 - id: REQ-261
   status: complete
   group: 9. Live Data & Events
@@ -15287,6 +15984,9 @@
     status: parity
     rationale: Debezium CDC for non-PG RDBMS is a well-established pattern available in Hasura and standalone
       Kafka Connect setups.
+  docs:
+  - architecture.md
+  - subscriptions.md
 - id: REQ-282
   status: complete
   group: 9. Live Data & Events
@@ -15329,6 +16029,8 @@
     rationale: Unified Live Query Engine powering both SSE subscriptions and Kafka sinks from one poll
       loop avoids duplicated delivery infrastructure — more efficient than Hasura's separate subscription
       and event trigger systems.
+  docs:
+  - subscriptions.md
 - id: REQ-283
   status: superseded
   superseded_by: REQ-260
@@ -15360,6 +16062,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - subscriptions.md
 - id: REQ-285
   status: superseded
   superseded_by: REQ-813
@@ -15443,6 +16147,8 @@
     status: ahead
     rationale: A single live definition producing both SSE and Kafka output simultaneously from one poll
       is not available in Hasura or Dremio.
+  docs:
+  - subscriptions.md
 - id: REQ-287
   status: complete
   group: 9. Live Data & Events
@@ -15514,6 +16220,11 @@
       is the standard pattern used by Hasura and others.
   related_reqs:
   - REQ-828
+  docs:
+  - admin-graphql.md
+  - integrations.md
+  - sources.md
+  - subscriptions.md
 - id: REQ-566
   status: complete
   group: 9. Live Data & Events
@@ -15553,6 +16264,8 @@
     status: parity
     rationale: Graceful fallback to watermark polling when trigger installation fails is defensive practice
       available in Hasura's subscription model.
+  docs:
+  - subscriptions.md
 - id: REQ-567
   status: complete
   group: 9. Live Data & Events
@@ -15592,6 +16305,8 @@
     status: ahead
     rationale: Multi-table watch via joined relationship traversal for subscription change detection is
       more complete than Hasura's single-table subscription model.
+  docs:
+  - subscriptions.md
 - id: REQ-568
   status: complete
   group: 9. Live Data & Events
@@ -15619,6 +16334,8 @@
   competitive_position:
     status: parity
     rationale: JSON event shape {event, table, row} with op field is standard for CDC event formats.
+  docs:
+  - subscriptions.md
 - id: REQ-058
   status: complete
   group: 10. UI & Admin Surfaces
@@ -15697,6 +16414,8 @@
     status: ahead
     rationale: Composable role system where capabilities are independently assignable building blocks
       is more flexible than Hasura's preset permission model.
+  docs:
+  - admin-graphql.md
 - id: REQ-060
   status: complete
   group: 10. UI & Admin Surfaces
@@ -15737,6 +16456,9 @@
     status: ahead
     rationale: Fine-grained capability set (Source/Table/Relationship/Security/Query/Admin) with create-implies-approve
       semantics is more granular than Hasura's coarser admin/non-admin split.
+  docs:
+  - admin-graphql.md
+  - admin.md
 - id: REQ-061
   status: complete
   group: 10. UI & Admin Surfaces
@@ -15851,6 +16573,8 @@
     status: ahead
     rationale: Creation-request queue for users lacking create authority is a governed self-service pattern
       not present in Hasura, Dremio, or Denodo.
+  docs:
+  - admin-graphql.md
 - id: REQ-164
   status: complete
   group: 10. UI & Admin Surfaces
@@ -15887,6 +16611,11 @@
   competitive_position:
     status: parity
     rationale: Config download/upload with backup is standard admin functionality in enterprise platforms.
+  docs:
+  - admin.md
+  - api-reference.md
+  - architecture.md
+  - deployment.md
 - id: REQ-165
   status: complete
   group: 10. UI & Admin Surfaces
@@ -15920,6 +16649,10 @@
   competitive_position:
     status: parity
     rationale: Runtime settings API is standard in enterprise data platforms.
+  docs:
+  - admin.md
+  - api-reference.md
+  - architecture.md
 - id: REQ-166
   status: complete
   group: 10. UI & Admin Surfaces
@@ -15957,6 +16690,9 @@
   competitive_position:
     status: parity
     rationale: Editable relationships UI is standard in Hasura console and Denodo admin.
+  docs:
+  - admin.md
+  - architecture.md
 - id: REQ-167
   status: complete
   group: 10. UI & Admin Surfaces
@@ -15992,6 +16728,10 @@
     status: ahead
     rationale: LLM-suggested relationships via AI discovery on the relationships page is not available
       in Hasura console, Denodo, Dremio, or Trino.
+  docs:
+  - admin.md
+  - api-reference.md
+  - architecture.md
 - id: REQ-242
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16034,6 +16774,8 @@
     status: parity
     rationale: Commands/functions page listing registered procedures and webhooks is available in Hasura
       console (Actions, Functions).
+  docs:
+  - api-reference.md
 - id: REQ-243
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16150,6 +16892,8 @@
     status: ahead
     rationale: Test command execution showing governance pipeline applied (masked columns, RLS, role)
       is more transparent than Hasura's action test tool.
+  docs:
+  - api-reference.md
 - id: REQ-248
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16178,6 +16922,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - architecture.md
 - id: REQ-249
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16208,6 +16954,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - security.md
 - id: REQ-395
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16421,6 +17169,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - admin.md
 - id: REQ-620
   status: superseded
   superseded_by: REQ-533
@@ -16453,6 +17203,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - quickstart.md
 - id: REQ-622
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16490,6 +17242,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - admin.md
 - id: REQ-644
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16520,6 +17274,8 @@
     status: ahead
     rationale: Client-side view transform for graph grouping (no server-side data mutation) with hull
       overlays and supernode collapse is beyond what Hasura, Dremio, or Denodo offer in their UIs.
+  docs:
+  - arch/graph.md
 - id: REQ-645
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16560,6 +17316,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - arch/graph.md
 - id: REQ-646
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16595,6 +17353,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - arch/graph.md
 - id: REQ-647
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16631,6 +17391,8 @@
     status: ahead
     rationale: SVG ellipse hull overlay computed from Cytoscape node positions for group visualization
       is a unique graph UI capability not available in any competitor's built-in console.
+  docs:
+  - arch/graph.md
 - id: REQ-648
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16672,6 +17434,8 @@
     status: ahead
     rationale: Supernode collapse with aggregate display (member count, icon sampling) in the graph UI
       is a unique visualization feature not present in Hasura console, Dremio, or Denodo.
+  docs:
+  - arch/graph.md
 - id: REQ-649
   status: complete
   group: 10. UI & Admin Surfaces
@@ -16709,6 +17473,8 @@
     status: ahead
     rationale: Dynamic node size encoding driven by any numeric property with per-label min/max scaling
       is a unique graph analytics UX feature not available in competitor platforms.
+  docs:
+  - arch/graph.md
 - id: REQ-055
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -16748,6 +17514,10 @@
   competitive_position:
     status: parity
     rationale: Docker Compose for development is standard practice across all modern data platforms.
+  docs:
+  - architecture.md
+  - deployment.md
+  - quickstart.md
 - id: REQ-056
   status: complete
   since: 2026-10
@@ -16786,6 +17556,8 @@
     status: parity
     rationale: Helm chart for Kubernetes with HPA is standard for enterprise data platform deployment.
   notes: 'Audit 2026-10-03: was marked complete; partly built. Missing: Trino resource groups are not in the Helm chart. A case-insensitive search of helm/provisa for ''resource-groups''/''resourceGroups''/''group'' (excluding apiGroup/fsGroup) returns nothing; trino-configmap.yaml ships no resource-groups.properties/json. Resource groups exist only for Docker Compose (docker-compose.core.yml:97-98 mounting trino/etc/resource-groups.json and .properties). Worker scaling and HPA are present. Maintainer 2026-10-03: finish it; accepted for build. 2026-10-04: the chart ships Trino resource groups (helm/provisa/files/resource-groups.*, a copy of trino/etc/resource-groups.*, kept equal by tests/unit/test_helm_trino_resource_groups.py), mounted on the coordinator, which rolls when the Trino config changes. Every engine statement carries its org in the Trino source ("provisa/<org>") and runs in global.tenant-<org>; an engine statement with no org is rejected; other Trino users run in global.adhoc. Gap, by decision: the Arrow Flight proxy (Zaychik) opens its own Trino connection with the JDBC default source and cannot name the org, so all Flight-path statements share one group, global.flight. Per-tier limits (REQ-1040) are not part of this: every org gets the same tenant limits. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - deployment.md
 - id: REQ-057
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -16824,6 +17596,8 @@
   competitive_position:
     status: parity
     rationale: Stateless application containers are standard deployment practice.
+  docs:
+  - deployment.md
 - id: REQ-064
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17108,6 +17882,9 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - architecture.md
+  - deployment.md
 - id: REQ-170
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17139,6 +17916,9 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - deployment.md
+  - quickstart.md
 - id: REQ-171
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17193,6 +17973,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - deployment.md
 - id: REQ-223
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17234,6 +18016,9 @@
     rationale: Single-executable installer bundling all platform components (Python server, PG, Trino,
       React UI) into one download is more accessible than Hasura's Docker-required deployment or Dremio's
       multi-component install.
+  docs:
+  - deployment.md
+  - quickstart.md
 - id: REQ-224
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17272,6 +18057,9 @@
     status: ahead
     rationale: Hidden ~/.provisa/ layout with provisa start/stop/status/open CLI is a consumer-grade DX
       not present in Hasura, Trino, Dremio, or Denodo.
+  docs:
+  - deployment.md
+  - quickstart.md
 - id: REQ-225
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17343,6 +18131,8 @@
   competitive_position:
     status: parity
     rationale: External Trino/Spark/auth/PG swap-in via config is standard enterprise extensibility.
+  docs:
+  - sources.md
 - id: REQ-227
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17378,6 +18168,9 @@
     status: ahead
     rationale: Phased native app delivery (macOS DMG → Linux AppImage → Windows EXE) with signing and
       notarization is more polished than Hasura's Docker-only distribution or Dremio's installer.
+  docs:
+  - deployment.md
+  - quickstart.md
 - id: REQ-228
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17413,6 +18206,8 @@
     status: ahead
     rationale: Airgapped native app bundle (Lima + containerd, no Docker required) removes the Docker
       prerequisite that blocks enterprise adoption of Hasura and other container-based platforms.
+  docs:
+  - deployment.md
 - id: REQ-254
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17511,6 +18306,8 @@
     status: ahead
     rationale: Full airgap capability with all images bundled and loaded via ctr images import at install
       time is not available in Hasura Cloud, Dremio Cloud, or standard Starburst/Trino distributions.
+  docs:
+  - deployment.md
 - id: REQ-302
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17563,6 +18360,10 @@
     status: parity
     rationale: OpenTelemetry instrumentation across all components is now standard in enterprise platforms
       (Hasura, Dremio, Starburst all offer OTEL support).
+  docs:
+  - api-reference.md
+  - deployment.md
+  - quickstart.md
 - id: REQ-303
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17602,6 +18403,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - quickstart.md
 - id: REQ-330
   status: superseded
   superseded_by: REQ-815
@@ -17643,6 +18446,9 @@
     status: parity
     rationale: Dev observability stack (OTel Collector + Prometheus + Tempo + Grafana) in Docker Compose
       is standard developer tooling.
+  docs:
+  - deployment.md
+  - quickstart.md
 - id: REQ-528
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17684,6 +18490,9 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
+  - deployment.md
 - id: REQ-539
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17726,6 +18535,9 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-545
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17760,6 +18572,8 @@
     status: ahead
     rationale: Dual OTLP export paths (operator's collector + optional Provisa support endpoint) with
       independent filter configs is more flexible than single-path telemetry in Hasura or Dremio.
+  docs:
+  - configuration.md
 - id: REQ-546
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17791,6 +18605,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
 - id: REQ-547
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17825,6 +18641,8 @@
     rationale: SQL literal redaction defaulting to true on the support telemetry path protects query data
       from leaving the operator's infrastructure by default — a privacy-forward default not explicitly
       documented by Hasura or Dremio.
+  docs:
+  - configuration.md
 - id: REQ-548
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17857,6 +18675,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
 - id: REQ-549
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17895,6 +18715,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - configuration.md
 - id: REQ-558
   status: superseded
   superseded_by: REQ-618
@@ -17934,6 +18756,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - deployment.md
 - id: REQ-559
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -17971,6 +18795,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - deployment.md
 - id: REQ-560
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -18009,6 +18835,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - deployment.md
 - id: REQ-561
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -18046,6 +18874,8 @@
     status: ahead
     rationale: Multi-node AppImage deployment with stateless secondary API nodes and singleton services
       on primary node is a production HA pattern not available in Hasura's self-hosted model without Kubernetes.
+  docs:
+  - deployment.md
 - id: REQ-562
   status: superseded
   superseded_by: REQ-1229
@@ -18084,6 +18914,8 @@
     status: ahead
     rationale: Config-at-startup propagation from primary PG to secondary API nodes eliminates a separate
       config service or etcd dependency seen in competing distributed deployments.
+  docs:
+  - deployment.md
 - id: REQ-563
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -18120,6 +18952,8 @@
     status: ahead
     rationale: Systemd unit auto-install in non-interactive mode with credential generation is more production-ready
       than Hasura's shell script or Dremio's manual systemd setup.
+  docs:
+  - deployment.md
 - id: REQ-564
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -18156,6 +18990,8 @@
     status: parity
     rationale: Terraform AWS deployment with VPC, EC2, ALB, and NLB is standard IaC for enterprise SaaS
       platforms.
+  docs:
+  - deployment.md
 - id: REQ-592
   status: superseded
   superseded_by: REQ-695
@@ -18264,6 +19100,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - quickstart.md
 - id: REQ-619
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -18304,6 +19142,8 @@
   competitive_position:
     status: neutral
     rationale: ''
+  docs:
+  - quickstart.md
 - id: REQ-630
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -18548,6 +19388,8 @@
     status: ahead
     rationale: Automated Hasura v2 metadata converter is a unique migration accelerator — no competitor
       provides a tool to convert from Hasura to their platform.
+  docs:
+  - architecture.md
 - id: REQ-183
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -18590,6 +19432,8 @@
     status: ahead
     rationale: Hasura DDN (v3) HML converter covering ObjectTypes, Models, Relationships, and Permissions
       is unique — no other platform has invested in DDN migration tooling.
+  docs:
+  - architecture.md
 - id: REQ-184
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -19025,6 +19869,8 @@
     status: parity
     rationale: Upsert mutations (INSERT ON CONFLICT DO UPDATE) are supported by Hasura and most GraphQL
       data layers.
+  docs:
+  - configuration.md
 - id: REQ-213
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -19064,6 +19910,8 @@
     status: parity
     rationale: DISTINCT ON as a query argument is available in Hasura and standard PostgreSQL GraphQL
       layers.
+  docs:
+  - configuration.md
 - id: REQ-214
   status: superseded
   superseded_by: REQ-2074
@@ -19104,6 +19952,9 @@
   competitive_position:
     status: parity
     rationale: Column presets from session variables are available in Hasura (column presets feature).
+  docs:
+  - architecture.md
+  - configuration.md
 - id: REQ-215
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -19144,6 +19995,11 @@
     status: parity
     rationale: Inherited roles with capability/domain merging are available in Hasura v2 and enterprise
       Denodo.
+  docs:
+  - admin-graphql.md
+  - architecture.md
+  - configuration.md
+  - security.md
 - id: REQ-216
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -19185,6 +20041,9 @@
     status: parity
     rationale: Scheduled triggers via APScheduler are available in Hasura (cron triggers) and Dremio (scheduled
       reflections).
+  docs:
+  - architecture.md
+  - configuration.md
 - id: REQ-217
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -19261,6 +20120,8 @@
   competitive_position:
     status: parity
     rationale: Cursor-based pagination (edges/pageInfo/Relay spec) is standard in Hasura and Apollo Federation.
+  docs:
+  - architecture.md
 - id: REQ-219
   status: superseded
   superseded_by: REQ-258
@@ -19306,6 +20167,8 @@
     rationale: SSE subscriptions with PostgreSQL LISTEN/NOTIFY are available in Hasura's live queries.
   related_reqs:
   - REQ-828
+  docs:
+  - api-reference.md
 - id: REQ-220
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -19348,6 +20211,8 @@
     rationale: Database event triggers firing webhooks on table changes are a core Hasura feature.
   related_reqs:
   - REQ-828
+  docs:
+  - architecture.md
 - id: REQ-221
   status: complete
   group: 12. Migration & Compatibility (Hasura)
@@ -19388,6 +20253,8 @@
   competitive_position:
     status: parity
     rationale: PostgreSQL enum auto-detection and GraphQL enum type generation is available in Hasura.
+  docs:
+  - architecture.md
 - id: REQ-222
   status: superseded
   superseded_by: REQ-256
@@ -19844,6 +20711,8 @@
     status: ahead
     rationale: Application-layer column encryption for source credentials, API keys, and RLS rules (not
       just data) protects the semantic layer metadata itself — not available in Hasura, Dremio, or Denodo.
+  docs:
+  - admin-graphql.md
 - id: REQ-687
   status: complete
   since: 2026-07
@@ -19951,6 +20820,9 @@
     status: ahead
     rationale: Audit log query text column encryption protects schema shape and data intent from unauthorized
       audit log readers — not available in Hasura, Dremio, or Denodo audit logs.
+  docs:
+  - admin.md
+  - security.md
 - id: REQ-690
   status: complete
   since: 2026-07
@@ -20184,6 +21056,9 @@
   - tests/unit/test_flight_auth.py
   - tests/unit/test_mcp_server.py
   - tests/integration/test_high_security_surfaces.py
+  docs:
+  - architecture.md
+  - security.md
 - id: REQ-694
   status: complete
   since: 2026-07
@@ -20542,6 +21417,9 @@
       address removes a manual ops step competitors leave to the customer; write-safety guarantee (never
       retry writes internally) is a correctness property that naive client retry implementations routinely
       miss.'
+  docs:
+  - configuration.md
+  - deployment.md
 - id: REQ-711
   status: complete
   since: 2026-07
@@ -20574,6 +21452,8 @@
     it.
   tests:
   - provisa-client/tests/test_adbc.py
+  docs:
+  - python-client.md
 - id: REQ-712
   status: superseded
   superseded_by: REQ-595
@@ -20846,6 +21726,8 @@
     '
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-722
   status: complete
   group: 4. Source Connectors
@@ -20875,6 +21757,8 @@
     '
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-723
   status: complete
   group: 4. Source Connectors
@@ -20901,6 +21785,8 @@
     '
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-724
   status: complete
   group: 4. Source Connectors
@@ -20927,6 +21813,8 @@
     '
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-725
   status: complete
   group: 4. Source Connectors
@@ -20950,6 +21838,8 @@
     '
   tests:
   - tests/unit/test_splunk_connector.py
+  docs:
+  - sources.md
 - id: REQ-726
   status: complete
   group: 4. Source Connectors
@@ -20979,6 +21869,8 @@
     through the full GraphQL stack.
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-727
   status: complete
   group: 4. Source Connectors
@@ -21009,6 +21901,8 @@
     '
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-728
   status: complete
   group: 4. Source Connectors
@@ -21064,6 +21958,8 @@
     Then certificate-path in props contains the resolved value from the env var
 
     '
+  docs:
+  - sources.md
 - id: REQ-730
   status: complete
   group: 4. Source Connectors
@@ -21087,6 +21983,8 @@
     '
   tests:
   - tests/unit/test_sharepoint_connector.py
+  docs:
+  - sources.md
 - id: REQ-731
   status: complete
   group: 4. Source Connectors
@@ -21120,6 +22018,8 @@
     not in CI stack]'
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-732
   status: complete
   group: 4. Source Connectors
@@ -21153,6 +22053,8 @@
     not in CI stack]'
   bdd: true
   bdd_reason: Behavior expressed as stakeholder-readable Gherkin acceptance criteria.
+  docs:
+  - sources.md
 - id: REQ-733
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -21627,6 +22529,8 @@
     status: parity
     rationale: Neo4j driver libraries provide graph object serialization; Provisa's JSON serialization
       matches the Neo4j wire protocol format for compatibility.
+  docs:
+  - cypher.md
 - id: REQ-751
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -23343,6 +24247,8 @@
   stakeholders:
   - app-developer
   - data-engineer
+  docs:
+  - cypher.md
 - id: REQ-799
   status: complete
   group: 10. UI & Admin Surfaces
@@ -23532,6 +24438,9 @@
   stakeholders:
   - app-developer
   - data-engineer
+  docs:
+  - configuration.md
+  - cypher.md
 - id: REQ-803
   status: complete
   group: 8. Client Access & Protocols
@@ -23727,6 +24636,8 @@
     And subsequent queries return the same numeric id for that relationship edge
 
     '
+  docs:
+  - cypher.md
 - id: REQ-807
   status: complete
   group: 1. Access Governance & Security
@@ -23760,6 +24671,8 @@
     Then subsequent queries execute in the ops view with finance role
 
     '
+  docs:
+  - cypher.md
 - id: REQ-808
   status: complete
   group: 1. Access Governance & Security
@@ -23928,6 +24841,9 @@
   stakeholders:
   - data-engineer
   - app-developer
+  docs:
+  - api-reference.md
+  - subscriptions.md
 - id: REQ-813
   status: complete
   group: 9. Live Data & Events
@@ -23964,6 +24880,9 @@
   stakeholders:
   - data-engineer
   - ops
+  docs:
+  - admin-graphql.md
+  - subscriptions.md
 - id: REQ-814
   status: complete
   group: 9. Live Data & Events
@@ -24007,6 +24926,8 @@
   stakeholders:
   - data-engineer
   - ops
+  docs:
+  - subscriptions.md
 - id: REQ-815
   status: complete
   since: 2026-07
@@ -24147,6 +25068,8 @@
   stakeholders:
   - data-engineer
   - compliance
+  docs:
+  - cypher.md
 - id: REQ-819
   status: complete
   group: 9. Live Data & Events
@@ -24386,6 +25309,9 @@
   - REQ-821
   - REQ-822
   - REQ-565
+  docs:
+  - admin-graphql.md
+  - subscriptions.md
 - id: REQ-825
   status: complete
   since: 2026-07
@@ -24630,6 +25556,12 @@
   - REQ-825
   - REQ-827
   - REQ-830
+  docs:
+  - admin-graphql.md
+  - arch/vectors.md
+  - architecture.md
+  - configuration.md
+  - replicas.md
 - id: REQ-827
   status: complete
   since: 2026-07
@@ -24773,6 +25705,8 @@
   - REQ-827
   - REQ-830
   - REQ-1882
+  docs:
+  - configuration.md
 - id: REQ-829
   status: complete
   since: 2026-07
@@ -24836,6 +25770,8 @@
   - REQ-828
   - REQ-830
   - REQ-831
+  docs:
+  - configuration.md
 - id: REQ-830
   status: complete
   since: 2026-07
@@ -25074,6 +26010,8 @@
   - provisa/auth/providers/basic.py
   tests:
   - tests/unit/test_platform_tenant_engines.py
+  docs:
+  - configuration.md
 - id: REQ-838
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -25174,6 +26112,8 @@
   related_reqs:
   - REQ-841
   - REQ-842
+  docs:
+  - architecture.md
 - id: REQ-841
   status: complete
   since: 2026-07
@@ -25420,6 +26360,8 @@
   related_reqs:
   - REQ-844
   - REQ-840
+  docs:
+  - commands.md
 - id: REQ-847
   status: complete
   since: 2026-07
@@ -25550,6 +26492,8 @@
     '
   tests:
   - tests/unit/test_schema_metadata_parity.py
+  docs:
+  - configuration.md
 - id: REQ-851
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -26007,6 +26951,9 @@
     (joined to the data snapshot via as_of) — the system resolves no lineage itself
 
     '
+  docs:
+  - lineage.md
+  - security.md
 - id: REQ-863
   status: complete
   since: 2026-07
@@ -26059,6 +27006,8 @@
     And the VALUES CTE is lowered in source A''s dialect for direct pushdown
 
     '
+  docs:
+  - architecture.md
 - id: REQ-864
   status: complete
   since: 2026-07
@@ -26145,6 +27094,8 @@
   - REQ-866
   tests:
   - tests/unit/test_routing.py
+  docs:
+  - architecture.md
 - id: REQ-866
   status: complete
   since: 2026-07
@@ -26254,6 +27205,9 @@
   - REQ-867
   - REQ-869
   - REQ-870
+  docs:
+  - pgwire.md
+  - security.md
 - id: REQ-869
   status: complete
   since: 2026-07
@@ -26287,6 +27241,8 @@
   - REQ-867
   - REQ-868
   - REQ-870
+  docs:
+  - security.md
 - id: REQ-870
   status: complete
   since: 2026-07
@@ -26358,6 +27314,8 @@
   - REQ-868
   - REQ-869
   - REQ-871
+  docs:
+  - security.md
 - id: REQ-871
   status: complete
   since: 2026-07
@@ -26690,6 +27648,8 @@
     status: ahead
     rationale: Routing an unmaterialized-source count(*) to a native count call — gated by shape, exactness,
       and RLS — is a federation execution optimization absent in Hasura and Dremio.
+  docs:
+  - architecture.md
 - id: REQ-876
   status: complete
   since: 2026-07
@@ -26892,6 +27852,8 @@
   - REQ-855
   - REQ-862
   - REQ-844
+  docs:
+  - admin-graphql.md
 - id: REQ-880
   status: complete
   since: 2026-07
@@ -27048,6 +28010,8 @@
   - REQ-198
   - REQ-199
   - REQ-849
+  docs:
+  - architecture.md
 - id: REQ-883
   status: complete
   since: 2026-07
@@ -27127,6 +28091,9 @@
   - REQ-826
   - REQ-842
   - REQ-527
+  docs:
+  - architecture.md
+  - pgwire.md
 - id: REQ-884
   status: complete
   since: 2026-07
@@ -27255,6 +28222,10 @@
   - REQ-879
   - REQ-884
   - REQ-886
+  docs:
+  - api-reference.md
+  - commands.md
+  - integrations.md
 - id: REQ-886
   status: complete
   since: 2026-07
@@ -27300,6 +28271,8 @@
   related_reqs:
   - REQ-884
   - REQ-885
+  docs:
+  - commands.md
 - id: REQ-887
   status: complete
   since: 2026-07
@@ -27363,6 +28336,8 @@
     rationale: Cloud data warehouses (Snowflake, BigQuery) auto-discover and expose stored procedures
       in their catalogs. This requirement brings Provisa to parity for legacy database sources that rely
       on stored procedures as a primary abstraction.
+  docs:
+  - sources.md
 - id: REQ-888
   status: complete
   since: 2026-07
@@ -27519,6 +28494,8 @@
   - REQ-883
   - REQ-527
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - pgwire.md
 - id: REQ-891
   status: complete
   since: 2026-07
@@ -27559,6 +28536,8 @@
   - provisa/pgwire/_pipeline.py
   related_reqs:
   - REQ-883
+  docs:
+  - architecture.md
 - id: REQ-892
   status: complete
   since: 2026-07
@@ -27692,6 +28671,8 @@
   - REQ-251
   - REQ-894
   - REQ-897
+  docs:
+  - arch/fdw_catalog.md
 - id: REQ-894
   status: complete
   since: 2026-07
@@ -27728,6 +28709,8 @@
   - REQ-888
   - REQ-889
   - REQ-893
+  docs:
+  - arch/fdw_catalog.md
 - id: REQ-895
   status: complete
   unit_test: false
@@ -27871,6 +28854,8 @@
   - REQ-893
   - REQ-894
   - REQ-895
+  docs:
+  - arch/fdw_catalog.md
 - id: REQ-899
   status: complete
   tests:
@@ -28026,6 +29011,9 @@
   - REQ-840
   - REQ-1865
   - REQ-1880
+  docs:
+  - configuration.md
+  - sources.md
 - id: REQ-900
   status: complete
   since: 2026-07
@@ -28234,6 +29222,8 @@
   - REQ-826
   tests:
   - tests/unit/test_promote.py
+  docs:
+  - engines.md
 - id: REQ-906
   status: complete
   since: 2026-07
@@ -28399,6 +29389,8 @@
   tests:
   - tests/unit/test_writable.py
   - tests/unit/test_drivers.py
+  docs:
+  - engines.md
 - id: REQ-910
   status: complete
   since: 2026-07
@@ -28439,6 +29431,8 @@
   - REQ-909
   - REQ-842
   - REQ-229
+  docs:
+  - architecture.md
 - id: REQ-911
   status: complete
   since: 2026-07
@@ -28566,6 +29560,8 @@
   - REQ-087
   - REQ-263
   - REQ-264
+  docs:
+  - cypher.md
 - id: REQ-914
   status: complete
   since: 2026-07
@@ -28842,6 +29838,8 @@
   - tests/unit/test_change_signal.py
   related_reqs:
   - REQ-926
+  docs:
+  - arch/change-signal-unification.md
 - id: REQ-929
   status: complete
   since: 2026-07
@@ -28880,6 +29878,8 @@
   - tests/unit/federation/test_replica_builds.py
   related_reqs:
   - REQ-1907
+  docs:
+  - admin-graphql.md
 - id: REQ-930
   status: complete
   since: 2026-07
@@ -28969,6 +29969,8 @@
   related_reqs:
   - REQ-931
   - REQ-929
+  docs:
+  - arch/change-signal-unification.md
 - id: REQ-933
   status: complete
   since: 2026-07
@@ -29143,6 +30145,8 @@
     and schema declaration authoritative; tiers enable plugging any compute backend.
   tests:
   - tests/unit/test_lineage.py
+  docs:
+  - sources.md
 - id: REQ-940
   status: complete
   since: 2026-07
@@ -29508,6 +30512,9 @@
   tests:
   - tests/unit/test_wire_compatible_rdbs.py
   since: 2026-07
+  docs:
+  - configuration.md
+  - sources.md
 - id: REQ-951
   status: complete
   since: 2026-07
@@ -29647,6 +30654,8 @@
     '
   related_reqs:
   - REQ-947
+  docs:
+  - sources.md
 - id: REQ-955
   status: complete
   since: 2026-07
@@ -29985,6 +30994,8 @@
   - REQ-958
   - REQ-962
   - REQ-932
+  docs:
+  - sources.md
 - id: REQ-962
   status: complete
   since: 2026-07
@@ -30043,6 +31054,9 @@
   - REQ-958
   - REQ-961
   - REQ-959
+  docs:
+  - admin-graphql.md
+  - sources.md
 - id: REQ-963
   status: complete
   since: 2026-07
@@ -30100,6 +31114,8 @@
   - REQ-959
   - REQ-961
   - REQ-958
+  docs:
+  - sources.md
 - id: REQ-964
   status: complete
   since: 2026-07
@@ -30145,6 +31161,8 @@
   - REQ-960
   - REQ-961
   - REQ-962
+  docs:
+  - sources.md
 - id: REQ-965
   status: complete
   since: 2026-07
@@ -30237,6 +31255,8 @@
   - REQ-958
   - REQ-964
   - REQ-983
+  docs:
+  - admin-graphql.md
 - id: REQ-966
   status: complete
   since: 2026-07
@@ -30399,6 +31419,8 @@
   - REQ-960
   - REQ-965
   - REQ-967
+  docs:
+  - admin-graphql.md
 - id: REQ-969
   status: complete
   since: 2026-07
@@ -30448,6 +31470,8 @@
   - REQ-963
   - REQ-964
   - REQ-932
+  docs:
+  - admin-graphql.md
 - id: REQ-970
   status: complete
   since: 2026-07
@@ -30597,6 +31621,8 @@
   - provisa/core/desktop_profile.py
   tests:
   - tests/unit/test_desktop_profile.py
+  docs:
+  - deployment.md
 - id: REQ-973
   status: complete
   since: 2026-07
@@ -30617,6 +31643,8 @@
   - packaging/windows/first-launch-native.ps1
   tests:
   - tests/unit/test_desktop_profile.py
+  docs:
+  - deployment.md
 - id: REQ-974
   status: complete
   since: 2026-07
@@ -30653,6 +31681,8 @@
   - provisa/core/desktop_profile.py
   tests:
   - tests/unit/test_desktop_profile.py
+  docs:
+  - deployment.md
 - id: REQ-976
   status: complete
   since: 2026-07
@@ -30688,6 +31718,8 @@
   - packaging/macos/first-launch.sh
   tests:
   - tests/unit/test_desktop_install.py
+  docs:
+  - deployment.md
 - id: REQ-978
   status: complete
   since: 2026-07
@@ -30724,6 +31756,8 @@
     And tour mode is active at ?tour=1
 
     '
+  docs:
+  - deployment.md
 - id: REQ-979
   status: complete
   since: 2026-07
@@ -30753,6 +31787,8 @@
     runs the two uvicorn processes (API factory + ui_server). The Windows base installer ships NO VirtualBox,
     OVA, or Trino; the container/compute tier (WSL2 + containerd, Trino image) is a separate on-demand
     download per REQ-889 (additive, reversible tier toggle).
+  docs:
+  - deployment.md
 - id: REQ-980
   status: complete
   since: 2026-07
@@ -30911,6 +31947,8 @@
     Then validation rejects it because file sources do not support the watermark probe type
 
     '
+  docs:
+  - sources.md
 - id: REQ-983
   status: complete
   since: 2026-07
@@ -31063,6 +32101,10 @@
     rationale: Trino natively streams Arrow over Flight; ClickHouse as a standalone system does not expose
       Arrow Flight. Once implemented, Provisa matches Trino's federated Arrow capability, providing parity
       with the industry standard for columnar transport in federated query engines.
+  docs:
+  - architecture.md
+  - deployment.md
+  - sources.md
 - id: REQ-987
   status: complete
   since: 2026-07
@@ -31125,6 +32167,11 @@
   related_reqs:
   - REQ-986
   - REQ-988
+  docs:
+  - architecture.md
+  - deployment.md
+  - engines.md
+  - sources.md
 - id: REQ-988
   status: complete
   since: 2026-07
@@ -31184,6 +32231,11 @@
   related_reqs:
   - REQ-986
   - REQ-987
+  docs:
+  - architecture.md
+  - deployment.md
+  - engines.md
+  - sources.md
 - id: REQ-989
   status: complete
   tests:
@@ -31226,6 +32278,10 @@
   - REQ-986
   - REQ-987
   - REQ-988
+  docs:
+  - architecture.md
+  - configuration.md
+  - deployment.md
 - id: REQ-990
   status: complete
   since: 2026-07
@@ -31279,6 +32335,8 @@
   Kafka broker and an object store reachable from the workspace. Iceberg on S3 is refused by name unless the workspace
   enables enable_iceberg_ingest; it ships unproven. Maintainer 2026-10-05: GCS via HMAC keys, Azure via account
   key (SAS later).'
+  docs:
+  - architecture.md
 - id: REQ-991
   status: complete
   since: 2026-07
@@ -31385,6 +32443,8 @@
   - provisa-ui/src/pages/sources/constants.ts
   tests:
   - tests/unit/test_trino_source_driver.py
+  docs:
+  - sources.md
 - id: REQ-995
   status: complete
   tests:
@@ -31419,6 +32479,8 @@
     Then the table is materialized as a REPLICA instead of attached live
 
     '
+  docs:
+  - sources.md
 - id: REQ-996
   status: superseded
   since: 2026-07
@@ -31718,6 +32780,8 @@
     And the result (table creation, inserts, etc.) persists in the target source
 
     '
+  docs:
+  - admin-graphql.md
 - id: REQ-1004
   status: complete
   since: 2026-07
@@ -31763,6 +32827,8 @@
     And both archive.orders_20260712 and archive.orders_20260713 exist in the model with distinct names
 
     '
+  docs:
+  - admin-graphql.md
 - id: REQ-1005
   status: complete
   since: 2026-07
@@ -31791,6 +32857,8 @@
   - REQ-979
   - REQ-889
   - REQ-633
+  docs:
+  - deployment.md
 - id: REQ-1006
   status: complete
   since: 2026-07
@@ -31880,6 +32948,8 @@
   - REQ-977
   - REQ-978
   - REQ-979
+  docs:
+  - deployment.md
 - id: REQ-1008
   status: complete
   since: 2026-07
@@ -32762,6 +33832,9 @@
   - REQ-696
   - REQ-942
   - REQ-966
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-1047
   status: complete
   since: 2026-08
@@ -32823,6 +33896,9 @@
   relates_to:
   - REQ-1027
   - REQ-1046
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-1049
   status: complete
   since: 2026-08
@@ -32857,6 +33933,9 @@
   - REQ-1046
   - REQ-1047
   - REQ-1048
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-1050
   status: complete
   since: 2026-07
@@ -33569,6 +34648,10 @@
 
     '
   since: 2026-08
+  docs:
+  - cli.md
+  - commands.md
+  - metadata-export.md
 - id: REQ-1073
   status: complete
   since: 2026-10
@@ -33600,6 +34683,8 @@
   - tests/unit/test_metadata_export_admin_surface.py
   - tests/unit/test_metadata_export_gate.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - metadata-export.md
 - id: REQ-1074
   status: complete
   since: 2026-10
@@ -33630,6 +34715,9 @@
   - REQ-1072
   - REQ-1073
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - cli.md
+  - commands.md
 - id: REQ-1368
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -33688,6 +34776,8 @@
   use_case: Enables operators to adjust security enforcement level without code deployment.
   relates_to:
   - REQ-693
+  docs:
+  - admin.md
 - id: REQ-1080
   status: complete
   tests:
@@ -33724,6 +34814,8 @@
   relates_to:
   - REQ-240
   - REQ-543
+  docs:
+  - admin.md
 - id: REQ-1082
   status: complete
   tests:
@@ -33740,6 +34832,8 @@
   use_case: Operators can fine-tune telemetry collection and export without redeployment.
   relates_to:
   - REQ-545
+  docs:
+  - admin.md
 - id: REQ-1083
   status: complete
   tests:
@@ -33755,6 +34849,8 @@
   use_case: Operators can constrain GraphQL complexity and adjust sampling without redeployment.
   relates_to:
   - REQ-165
+  docs:
+  - admin.md
 - id: REQ-1084
   status: complete
   tests:
@@ -33907,6 +35003,8 @@
     in the UI without redeploy.
   relates_to:
   - REQ-1086
+  docs:
+  - admin.md
 - id: REQ-1092
   status: complete
   tests:
@@ -34041,6 +35139,8 @@
     And a single-column FK from S to target on a different column remains one separate pg_constraint row
 
     '
+  docs:
+  - pgwire.md
 - id: REQ-1095
   status: complete
   tests:
@@ -34071,6 +35171,8 @@
     And clients resolving key columns via pg_index → pg_attribute get the correct columns
 
     '
+  docs:
+  - pgwire.md
 - id: REQ-1096
   status: complete
   group: 10. UI & Admin Surfaces
@@ -34219,6 +35321,9 @@
     integration or e2e test per SourceType; a unit test that only references the type name explicitly
     does not satisfy it.
   target: 2026-Q4
+  docs:
+  - dataset-handling-standards.md
+  - sources.md
 - id: REQ-1098
   status: complete
   since: 2026-07
@@ -34466,6 +35571,8 @@
   target: 2026-Q4
   relates_to:
   - REQ-1097
+  docs:
+  - security.md
 - id: REQ-1121
   status: complete
   group: 8. Client Access & Protocols
@@ -34671,6 +35778,8 @@
   unit_test: false
   unit_test_reason: UI/config packaging is verified against built wheel contents (python -m build artifact),
     a packaging-marked flow deselected from the default lane, not by unit tests.
+  docs:
+  - cli.md
 - id: REQ-1128
   status: complete
   since: 2026-07
@@ -34693,6 +35802,8 @@
   unit_test: false
   unit_test_reason: The console-script wiring is a pyproject/entry_points declaration verified in the
     built-wheel packaging flow, deselected from the default lane.
+  docs:
+  - cli.md
 - id: REQ-1129
   status: complete
   since: 2026-07
@@ -34721,6 +35832,8 @@
   unit_test: false
   unit_test_reason: The [embedded] extra + bring-your-own-engine env are a packaging/config contract verified
     in the built-wheel packaging flow and embedded-env resolution test, deselected from the default lane.
+  docs:
+  - cli.md
 - id: REQ-1130
   status: complete
   since: 2026-07
@@ -34829,6 +35942,8 @@
     Then the query is rejected; ops domain acts as a standard domain requiring explicit grants
 
     '
+  docs:
+  - security.md
 - id: REQ-1134
   status: complete
   since: 2026-07
@@ -35049,6 +36164,8 @@
     Then it is rejected and the nag continues
 
     '
+  docs:
+  - cli.md
 - id: REQ-1140
   status: complete
   since: 2026-07
@@ -35242,6 +36359,9 @@
   - REQ-826
   - REQ-847
   - REQ-855
+  docs:
+  - admin-graphql.md
+  - configuration.md
 - id: REQ-1142
   status: complete
   since: 2026-07
@@ -35346,6 +36466,8 @@
   - REQ-826
   - REQ-855
   - REQ-847
+  docs:
+  - admin-graphql.md
 - id: REQ-1144
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -35632,6 +36754,8 @@
   - REQ-932
   - REQ-855
   - REQ-1141
+  docs:
+  - api-reference.md
 - id: REQ-1156
   status: complete
   since: 2026-07
@@ -35713,6 +36837,12 @@
   - REQ-869
   - REQ-872
   - REQ-885
+  docs:
+  - api-reference.md
+  - commands.md
+  - cypher.md
+  - integrations.md
+  - pgwire.md
 - id: REQ-1157
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -35762,6 +36892,8 @@
   - REQ-543
   - REQ-879
   - REQ-032
+  docs:
+  - configuration.md
 - id: REQ-1158
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -35961,6 +37093,8 @@
   - REQ-1156
   - REQ-862
   - REQ-940
+  docs:
+  - commands.md
 - id: REQ-1160
   status: complete
   group: 1. Access Governance & Security
@@ -36028,6 +37162,8 @@
   related_reqs:
   - REQ-1159
   - REQ-862
+  docs:
+  - lineage.md
 - id: REQ-1161
   status: complete
   group: 1. Access Governance & Security
@@ -36089,6 +37225,8 @@
   - REQ-1160
   - REQ-640
   - REQ-372
+  docs:
+  - lineage.md
 - id: REQ-1162
   status: complete
   group: 4. Source Connectors
@@ -36157,6 +37295,9 @@
   - REQ-372
   - REQ-844
   - REQ-874
+  docs:
+  - admin-graphql.md
+  - configuration.md
 - id: REQ-1163
   status: complete
   group: 4. Source Connectors
@@ -36209,6 +37350,9 @@
   - REQ-1162
   - REQ-372
   - REQ-844
+  docs:
+  - configuration.md
+  - lineage.md
 - id: REQ-1164
   status: complete
   group: 4. Source Connectors
@@ -36246,6 +37390,9 @@
   - REQ-1162
   - REQ-1160
   - REQ-844
+  docs:
+  - admin-graphql.md
+  - modeling.md
 - id: REQ-1165
   status: complete
   group: 9. Live Data & Events
@@ -36657,6 +37804,8 @@
   e2e: true
   e2e_reason: 'Verification requires end-to-end validation: configuring limits via admin API (REST/GraphQL),
     then executing queries through the data endpoint to confirm 413 rejection when limits are exceeded.'
+  docs:
+  - security.md
 - id: REQ-1175
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -36822,6 +37971,8 @@
   - REQ-898
   - REQ-1158
   - REQ-1142
+  docs:
+  - sources.md
 - id: REQ-1178
   status: complete
   since: 2026-07
@@ -36870,6 +38021,10 @@
   - REQ-904
   - REQ-899
   - REQ-904
+  docs:
+  - configuration.md
+  - engines.md
+  - sources.md
 - id: REQ-1179
   status: complete
   since: 2026-07
@@ -37351,6 +38506,8 @@
   e2e: true
   e2e_reason: HTTP endpoint behavior and file serve correctness are only verifiable through a live server
     and HTTP transport.
+  docs:
+  - architecture.md
 - id: REQ-1192
   status: complete
   since: 2026-10
@@ -37378,6 +38535,8 @@
     Then the request is rejected with 403 Forbidden
 
     '
+  docs:
+  - architecture.md
 - id: REQ-1193
   status: complete
   since: 2026-10
@@ -37403,6 +38562,8 @@
     Then the file is deleted from disk
 
     '
+  docs:
+  - architecture.md
 - id: REQ-1194
   status: complete
   since: 2026-10
@@ -37485,6 +38646,8 @@
   - provisa/executor/redirect.py
   tests:
   - tests/unit/test_result_sink.py
+  docs:
+  - architecture.md
 - id: REQ-1196
   status: complete
   group: 7. Result Delivery
@@ -37575,6 +38738,8 @@
   e2e: true
   e2e_reason: COUNT(*) push-down behavior is only verifiable end-to-end through the API transport with
     actual governance rules applied and result materialization monitored.
+  docs:
+  - api-reference.md
 - id: REQ-1198
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -38673,6 +39838,10 @@
     Then startup fails rather than serving unverified connections
 
     '
+  docs:
+  - configuration.md
+  - pgwire.md
+  - security.md
 - id: REQ-1229
   status: complete
   since: 2026-07
@@ -38967,6 +40136,10 @@
   - REQ-1276
   - REQ-1309
   - REQ-1266
+  docs:
+  - configuration.md
+  - pgwire.md
+  - security.md
 - id: REQ-1235
   status: complete
   since: 2026-10
@@ -39024,6 +40197,8 @@
 
     '
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - security.md
 - id: REQ-1236
   status: superseded
   superseded_by: REQ-1235
@@ -40228,6 +41403,14 @@
   - tests/unit/test_grpc_auth.py
   - provisa-ui/src/__tests__/PersonalAccessTokens.test.tsx
   - provisa-client/tests/test_client.py
+  docs:
+  - admin.md
+  - api-reference.md
+  - configuration.md
+  - integrations.md
+  - pgwire.md
+  - python-client.md
+  - security.md
 - id: REQ-1264
   status: in-progress
   group: 2. Authentication & Identity
@@ -40326,6 +41509,8 @@
   notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: delivered; verified against the code'
   tests:
   - tests/unit/test_helm_auth.py
+  docs:
+  - security.md
 - id: REQ-1266
   status: superseded
   superseded_by: REQ-1290
@@ -40376,6 +41561,8 @@
   - tests/integration/test_org_creator_role_request.py
   - tests/unit/test_source_catalog_refresh.py
   notes: 'Roadmap audit 2026-10-13: superseded by REQ-1290. Explicit POST /auth/claim-bootstrap replaces first-sign-in capture.'
+  docs:
+  - api-reference.md
 - id: REQ-1267
   status: complete
   group: 2. Authentication & Identity
@@ -41640,6 +42827,8 @@
   e2e: true
   e2e_reason: Schema routing, query failure handling, and UI error rendering are only verifiable end-to-end
     through a request from UI to server with real schema isolation.
+  docs:
+  - admin-graphql.md
 - id: REQ-1294
   status: complete
   group: 1. Access Governance & Security
@@ -41928,6 +43117,10 @@
   impact_note: 'Corrected 2026-07-29. Prior recording conflated platform_admin''s control-plane operations
     with standing data access in all orgs. Corrected text reflects the settled design: platform_admin
     is control-plane only with zero data capabilities. platform-bypass is control-plane only.'
+  docs:
+  - admin-graphql.md
+  - architecture.md
+  - security.md
 - id: REQ-1298
   status: complete
   group: 1. Access Governance & Security
@@ -43197,6 +44390,10 @@
   e2e: false
   related_reqs:
   - REQ-1321
+  docs:
+  - admin.md
+  - api-reference.md
+  - integrations.md
 - id: REQ-1317
   status: complete
   target: 2026-Q4
@@ -43253,6 +44450,9 @@
   e2e: false
   related_reqs:
   - REQ-1316
+  docs:
+  - admin-graphql.md
+  - modeling.md
 - id: REQ-1318
   status: complete
   target: 2026-Q4
@@ -43315,6 +44515,9 @@
   e2e: false
   related_reqs:
   - REQ-1317
+  docs:
+  - admin-graphql.md
+  - modeling.md
 - id: REQ-1319
   status: complete
   target: 2026-Q4
@@ -43382,6 +44585,8 @@
   - REQ-1317
   - REQ-1318
   - REQ-1316
+  docs:
+  - integrations.md
 - id: REQ-1320
   status: complete
   target: 2026-Q4
@@ -43447,6 +44652,10 @@
   - REQ-1316
   - REQ-1317
   - REQ-1319
+  docs:
+  - admin-graphql.md
+  - integrations.md
+  - modeling.md
 - id: REQ-1321
   status: complete
   target: 2026-Q4
@@ -43497,6 +44706,9 @@
   - REQ-1318
   - REQ-1319
   - REQ-1320
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-1322
   status: complete
   target: 2026-Q4
@@ -43577,6 +44789,8 @@
   related_reqs:
   - REQ-1317
   - REQ-1320
+  docs:
+  - modeling.md
 - id: REQ-1324
   status: complete
   group: 10. UI & Admin Surfaces
@@ -43607,6 +44821,8 @@
   - REQ-1317
   - REQ-1320
   - REQ-1323
+  docs:
+  - modeling.md
 - id: REQ-1325
   status: complete
   group: 2. Authentication & Identity
@@ -43784,6 +45000,8 @@
     refined constraint: capability-set changes (no admin/superadmin data wildcards), bootstrap dual-role
     grant, visible_to lists never naming platform_admin, role non-merging in single-tenant. Invite-escalation
     validation must ensure platform-level invites never resolve to org_admin (REQ-1298 area).'
+  docs:
+  - security.md
 - id: REQ-471
   status: complete
   since: 2026-07
@@ -43807,6 +45025,9 @@
   tests:
   - tests/unit/test_naming.py
   - tests/integration/test_schema_mutation_api.py
+  docs:
+  - admin-graphql.md
+  - cypher.md
 - id: REQ-1328
   status: complete
   since: 2026-07
@@ -44630,6 +45851,11 @@
     And traces are scoped to the acting org only (observability capability)
 
     '
+  docs:
+  - admin.md
+  - api-reference.md
+  - architecture.md
+  - security.md
 - id: REQ-1350
   status: complete
   group: 10. UI & Admin Surfaces
@@ -44675,6 +45901,8 @@
   related_reqs:
   - REQ-1341
   - REQ-1342
+  docs:
+  - admin-graphql.md
 - id: REQ-1351
   status: complete
   group: 10. UI & Admin Surfaces
@@ -44949,6 +46177,8 @@
     And gRPC/JSON:API/OpenAPI surfaces feature the same aggregate capabilities as GraphQL/SQL/Cypher
 
     '
+  docs:
+  - api-reference.md
 - id: REQ-1360
   status: complete
   group: 3. Source Registration & Data Modeling
@@ -45026,6 +46256,9 @@
   related_reqs:
   - REQ-1320
   - REQ-1360
+  docs:
+  - api-reference.md
+  - secrets.md
 - id: REQ-1362
   status: complete
   since: 2026-08
@@ -45451,6 +46684,8 @@
   - provisa/core/repositories/tag.py
   tests:
   - tests/unit/test_schema_metadata_parity.py
+  docs:
+  - admin-graphql.md
 - id: REQ-1374
   status: complete
   since: 2026-08
@@ -45535,6 +46770,8 @@
   tests:
   - tests/unit/test_metadata_export_model_tags.py
   - tests/unit/test_sdl_deprecation.py
+  docs:
+  - admin-graphql.md
 - id: REQ-1376
   status: complete
   group: 1. Access Governance & Security
@@ -45556,6 +46793,8 @@
   - provisa-ui/src/__tests__/TagControl.test.tsx
   - tests/unit/test_derived_tags.py
   - tests/unit/test_config_loader_tag_assignment_ref.py
+  docs:
+  - admin-graphql.md
 - id: REQ-1377
   status: complete
   since: 2026-08
@@ -45576,6 +46815,8 @@
   - provisa-ui/src/__tests__/TagControl.test.tsx
   - tests/unit/test_metadata_export_model_tags.py
   - tests/unit/test_config_loader_tag_assignment_ref.py
+  docs:
+  - admin-graphql.md
 - id: REQ-1378
   status: complete
   since: 2026-08
@@ -45790,6 +47031,8 @@
   - REQ-1070
   - REQ-1372
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Domain, table, source, tag, role, command, field and rel URIs and per-vendor carriage exist; instance (?key=value) addressing, governed dereference and previous-URI aliasing on rename are not built.'
+  docs:
+  - environments.md
 - id: REQ-1386
   status: in-progress
   scenario: 'Given a Provisa install with audit-log records and pii/deprecated tag assignments
@@ -45881,6 +47124,8 @@
   - REQ-884
   - REQ-609
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: All eight report views exist; daily rollup tables, element-level capture at log-write time, and the resource-usage and source-freshness views are outstanding.'
+  docs:
+  - admin.md
 - id: REQ-1387
   status: complete
   since: 2026-08
@@ -46072,6 +47317,10 @@
   - REQ-1068
   - REQ-1373
   - REQ-1377
+  docs:
+  - api-reference.md
+  - glossary.md
+  - metadata-export.md
 - id: REQ-1388
   status: complete
   since: 2026-08
@@ -46217,6 +47466,8 @@
   - provisa-ui/src/__tests__/adminNavCapabilities.test.ts
   relates_to:
   - REQ-1386
+  docs:
+  - admin.md
 - id: REQ-1391
   status: complete
   since: 2026-08
@@ -46247,6 +47498,8 @@
   - provisa-ui/src/pages/sql/ResultsGrid.tsx
   tests:
   - provisa-ui/src/pages/sql/__tests__/useResultsGrid.test.tsx
+  docs:
+  - admin.md
 - id: REQ-1392
   status: complete
   since: 2026-08
@@ -46284,6 +47537,8 @@
   - provisa-ui/src/pages/TablesPage.tsx
   tests:
   - provisa-ui/src/components/__tests__/nativeParams.test.ts
+  docs:
+  - admin.md
 - id: REQ-1393
   status: complete
   group: 1. Access Governance & Security
@@ -46338,6 +47593,10 @@
   - REQ-124
   - REQ-693
   - REQ-1263
+  docs:
+  - configuration.md
+  - pgwire.md
+  - security.md
 - id: REQ-1394
   status: complete
   group: 1. Access Governance & Security
@@ -46400,6 +47659,10 @@
   - REQ-693
   - REQ-1393
   - REQ-1228
+  docs:
+  - configuration.md
+  - pgwire.md
+  - security.md
 - id: REQ-1395
   status: complete
   since: 2026-08
@@ -46414,6 +47677,9 @@
   use_case: Organizations with distinct governance or compliance needs can use different LLM providers
     or models, enabling flexible multi-tenant deployments where each org controls its own AI surface.
   target: 2026-Q4
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-1402
   status: complete
   since: 2026-08
@@ -46530,6 +47796,8 @@
     call is shown with include_nodes=true, include=[user]
 
     '
+  docs:
+  - api-reference.md
 - id: REQ-1406
   status: complete
   since: 2026-08
@@ -46662,6 +47930,8 @@
     And a vendor with no list-models API or no usable key leaves the field typeable with the reason shown
 
     '
+  docs:
+  - api-reference.md
 - id: REQ-1410
   status: complete
   since: 2026-08
@@ -47007,6 +48277,9 @@
   - REQ-471
   - REQ-1361
   - REQ-1408
+  docs:
+  - admin-graphql.md
+  - api-reference.md
 - id: REQ-1418
   status: complete
   since: 2026-08
@@ -47097,6 +48370,8 @@
   - REQ-905
   - REQ-916
   - REQ-1418
+  docs:
+  - engines.md
 - id: REQ-1422
   status: complete
   since: 2026-08
@@ -48156,6 +49431,11 @@
   - REQ-963
   - REQ-1358
   - REQ-972
+  docs:
+  - admin-graphql.md
+  - configuration.md
+  - integrations.md
+  - sources.md
 - id: REQ-1444
   status: complete
   since: 2026-08
@@ -48405,6 +49685,8 @@
   - tests/unit/test_k8s_engine_provisioner.py
   - tests/unit/test_engine_wake.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - engines.md
 - id: REQ-1449
   status: complete
   since: 2026-10
@@ -49288,6 +50570,8 @@
   - REQ-1451
   - REQ-1453
   - REQ-1463
+  docs:
+  - engines.md
 - id: REQ-1465
   status: complete
   since: 2026-08
@@ -49338,6 +50622,9 @@
   - REQ-1448
   - REQ-1464
   - REQ-1466
+  docs:
+  - cli.md
+  - deployment/engine-mode-cutover.md
 - id: REQ-1466
   status: complete
   since: 2026-08
@@ -49389,6 +50676,9 @@
   related_reqs:
   - REQ-1337
   - REQ-1465
+  docs:
+  - cli.md
+  - deployment/engine-mode-cutover.md
 - id: REQ-1467
   status: complete
   since: 2026-08
@@ -49454,6 +50744,8 @@
   - REQ-1375
   - REQ-1377
   - REQ-1443
+  docs:
+  - admin-graphql.md
 - id: REQ-1468
   status: complete
   since: 2026-08
@@ -49603,6 +50895,8 @@
   since: 2026-08
   tests:
   - tests/unit/test_engine_wake.py
+  docs:
+  - engines.md
 - id: REQ-1472
   status: complete
   since: 2026-10
@@ -50053,6 +51347,9 @@
     And an upload that is neither Hasura v2 metadata nor a DDN project is refused with a 400
 
     And a caller without org_settings is refused with a 403'
+  docs:
+  - admin.md
+  - api-reference.md
 - id: REQ-1484
   status: complete
   since: 2026-08
@@ -50102,6 +51399,10 @@
 
     And a column whose removal only breaks physical-name references reports those on removal, not on a
     rename'
+  docs:
+  - admin-graphql.md
+  - admin.md
+  - lineage.md
 - id: REQ-1485
   status: complete
   since: 2026-08
@@ -50292,6 +51593,8 @@
     - 2026-10-06 WRITTEN TABLES: in a read-write environment a written table reads its rows plus its change log, the latest version per key.
 
     - 2026-10-06: scenarios aligned with the consolidated description. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1488
   status: complete
   since: 2026-10
@@ -50360,6 +51663,8 @@
   - REQ-1523
   - REQ-1524
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1489
   status: complete
   since: 2026-10
@@ -50427,6 +51732,8 @@
   - REQ-1492
   - REQ-1524
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1490
   status: complete
   since: 2026-10
@@ -50472,6 +51779,9 @@
   - REQ-1491
   - REQ-1492
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - cli.md
+  - environments.md
 - id: REQ-1491
   status: complete
   since: 2026-10
@@ -50627,6 +51937,8 @@
   - REQ-1529
   - REQ-1528
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - sources.md
 - id: REQ-1492
   status: proposed
   target: 2026-Q4
@@ -51340,6 +52652,8 @@
   - REQ-1504
   - REQ-1524
   notes: 'Roadmap audit 2026-10-13: superseded by REQ-1524. A build is a commit in the org repository (REQ-1524); deploy, undo and redo operate on commits; env_builds.py and EnvironmentBuilds.tsx do not exist.'
+  docs:
+  - cli.md
 - id: REQ-1497
   status: complete
   since: 2026-08
@@ -51431,6 +52745,8 @@
   - REQ-1492
   - REQ-1496
   notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: partly built. Missing: Only env deploy and env fetch exist; list, create, delete, bind, show, diff, merge and revert subcommands and JSON/exit-code reporting for them are missing (cli_envs.py absent).'
+  docs:
+  - cli.md
 - id: REQ-1499
   status: proposed
   group: 13. Multi-Tenancy & Organizations
@@ -51732,6 +53048,8 @@
   - REQ-1525
   - REQ-1528
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1505
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -51815,6 +53133,8 @@
   - REQ-1502
   - REQ-1504
   notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
+  docs:
+  - cli.md
 - id: REQ-1507
   status: accepted
   target: 2026-Q4
@@ -51875,6 +53195,8 @@
   - REQ-1452
   - REQ-1502
   notes: Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built.
+  docs:
+  - environments.md
 - id: REQ-1508
   status: in-progress
   target: 2026-Q4
@@ -52501,6 +53823,9 @@
   - REQ-1471
   - REQ-1510
   - REQ-1514
+  docs:
+  - api-reference.md
+  - engines.md
 - id: REQ-1515
   status: complete
   group: 8. Client Access & Protocols
@@ -52586,6 +53911,8 @@
   - app-developer
   related_reqs:
   - REQ-1516
+  docs:
+  - engines.md
 - id: REQ-1518
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -52674,6 +54001,8 @@
   - app-developer
   related_reqs:
   - REQ-1517
+  docs:
+  - api-reference.md
 - id: REQ-1520
   status: complete
   group: 10. UI & Admin Surfaces
@@ -53039,6 +54368,9 @@
   - REQ-1525
   - REQ-294
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - admin-graphql.md
+  - environments.md
 - id: REQ-1525
   group: 13. Multi-Tenancy & Organizations
   category: Environments
@@ -53236,6 +54568,8 @@
   - tests/unit/test_env_files.py
   - tests/integration/test_env_project.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1527
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -53492,6 +54826,8 @@
   - REQ-1524
   - REQ-1529
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1529
   status: complete
   since: 2026-10
@@ -53811,6 +55147,9 @@
   - tests/unit/test_domain_guard.py
   - tests/unit/test_data_steward_domain_scope.py
   - tests/unit/test_env_authority.py
+  docs:
+  - admin-graphql.md
+  - environments.md
 - id: REQ-1531
   status: complete
   since: 2026-10
@@ -53890,6 +55229,8 @@
   - tests/unit/test_admin_tag_needs_the_domain.py
   - tests/unit/test_admin_metric_needs_the_domain.py
   - tests/unit/test_domain_guard.py
+  docs:
+  - admin-graphql.md
 - id: REQ-1532
   status: complete
   since: 2026-10
@@ -54197,6 +55538,8 @@
   - tests/unit/test_native_control_plane_dsn.py
   - tests/unit/test_arch_invariants.py
   - tests/e2e/test_pypi_packaging.py
+  docs:
+  - cli.md
 - id: REQ-1536
   group: 11. Platform, Infrastructure & Delivery
   category: Control Plane
@@ -54574,6 +55917,8 @@
   - REQ-125
   - REQ-1524
   since: 2026-08
+  docs:
+  - cli.md
 - id: REQ-1542
   status: complete
   since: 2026-10
@@ -54700,6 +56045,8 @@
   - REQ-1496
   - REQ-1544
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - cli.md
 - id: REQ-1544
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -54839,6 +56186,8 @@
   - REQ-1541
   - REQ-1542
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - cli.md
 - id: REQ-1547
   status: complete
   since: 2026-10
@@ -54879,6 +56228,8 @@
   - REQ-1544
   - REQ-1546
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - cli.md
 - id: REQ-1548
   status: complete
   since: 2026-10
@@ -55203,6 +56554,8 @@
   tests:
   - tests/unit/test_env_sync.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1555
   status: complete
   since: 2026-10
@@ -55264,6 +56617,8 @@
   - tests/unit/test_env_conflicts.py
   - tests/integration/test_env_copy.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1554
   status: complete
   group: 13. Multi-Tenancy & Organizations
@@ -55384,6 +56739,9 @@
   tests:
   - tests/unit/test_secrets_service.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - secrets.md
+  - security.md
 - id: REQ-1558
   status: complete
   since: 2026-10
@@ -55461,6 +56819,8 @@
   - tests/unit/test_secrets_router.py
   - provisa-ui/src/__tests__/SecretsTab.test.tsx
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - secrets.md
 - id: REQ-1559
   status: complete
   group: 10. UI & Admin Surfaces
@@ -55579,6 +56939,8 @@
   - tests/unit/test_secrets_store_cipher.py
   - tests/unit/test_secrets_service.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - secrets.md
 - id: REQ-1561
   status: complete
   since: 2026-10
@@ -55616,6 +56978,8 @@
   tests:
   - tests/unit/test_env_undo_redo.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - environments.md
 - id: REQ-1562
   status: in-progress
   target: 2026-Q4
@@ -56111,6 +57475,8 @@
   - REQ-1488
   - REQ-1528
   notes: '2026-10-07: a third environment right, environment_data, governs an environment''s data choices (REQ-1942); the pii right is REQ-1943.'
+  docs:
+  - environments.md
 - id: REQ-1574
   status: complete
   since: 2026-08
@@ -56191,6 +57557,10 @@
   - REQ-1337
   - REQ-1557
   - REQ-1558
+  docs:
+  - admin.md
+  - api-reference.md
+  - security.md
 - id: REQ-1575
   status: complete
   since: 2026-08
@@ -56535,6 +57905,8 @@
   - REQ-1398
   - REQ-1557
   - REQ-1560
+  docs:
+  - secrets.md
 - id: REQ-1583
   status: complete
   since: 2026-08
@@ -56564,6 +57936,8 @@
   - provisa-ui/src/i18n/locales/en/glossaryTab.json
   depends_on:
   - REQ-1387
+  docs:
+  - glossary.md
 - id: REQ-1582
   status: complete
   since: 2026-08
@@ -56596,6 +57970,8 @@
   - provisa/core/glossary.py
   depends_on:
   - REQ-1387
+  docs:
+  - glossary.md
 - id: REQ-1581
   status: complete
   since: 2026-08
@@ -56640,6 +58016,8 @@
     But a term a curator has defined keeps the column when the alias changes'
   depends_on:
   - REQ-1387
+  docs:
+  - glossary.md
 - id: REQ-1584
   status: complete
   since: 2026-08
@@ -56902,6 +58280,17 @@
   - REQ-1584
   - REQ-575
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - admin-graphql.md
+  - admin.md
+  - api-reference.md
+  - architecture.md
+  - configuration.md
+  - cypher.md
+  - glossary.md
+  - metadata-export.md
+  - pgwire.md
+  - sources.md
 - id: REQ-1587
   status: complete
   since: 2026-08
@@ -57241,6 +58630,8 @@
   depends_on:
   - REQ-1387
   - REQ-1530
+  docs:
+  - metadata-export.md
 - id: REQ-1593
   status: complete
   since: 2026-08
@@ -58462,6 +59853,9 @@
   - REQ-1487
   - REQ-1491
   - REQ-1602
+  docs:
+  - api-reference.md
+  - security.md
 - id: REQ-1621
   status: complete
   since: 2026-09
@@ -59021,6 +60415,8 @@
     only that table unqueryable
 
     '
+  docs:
+  - metadata-export.md
 - id: REQ-1634
   status: complete
   since: 2026-10
@@ -59073,6 +60469,11 @@
   - tests/steps/steps_data_products.py
   - tests/unit/test_data_product_repository.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - admin-graphql.md
+  - api-reference.md
+  - data-products.md
+  - metadata-export.md
 - id: REQ-1635
   status: complete
   group: 1. Access Governance & Security
@@ -59116,6 +60517,10 @@
   - tests/unit/test_snowflake_horizon_export.py
   - tests/steps/steps_data_products.py
   since: 2026-09
+  docs:
+  - api-reference.md
+  - data-products.md
+  - metadata-export.md
 - id: REQ-1636
   status: complete
   since: 2026-10
@@ -59155,6 +60560,8 @@
   - tests/steps/steps_data_products.py
   - tests/unit/test_metadata_export_engine_native.py
   notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - metadata-export.md
 - id: REQ-1637
   status: complete
   since: 2026-09
@@ -59665,6 +61072,8 @@
     tags, and a second reconcile emits nothing
 
     '
+  docs:
+  - metadata-export.md
 - id: REQ-1653
   status: complete
   since: 2026-09
@@ -59731,6 +61140,8 @@
     and a second reconcile emits none
 
     '
+  docs:
+  - metadata-export.md
 - id: REQ-1655
   status: complete
   since: 2026-09
@@ -59763,6 +61174,8 @@
     on both, and removing the assignment withdraws the tag on the next reconcile
 
     '
+  docs:
+  - metadata-export.md
 - id: REQ-1656
   status: complete
   since: 2026-09
@@ -59799,6 +61212,9 @@
     publish
 
     '
+  docs:
+  - data-products.md
+  - metadata-export.md
 - id: REQ-1657
   status: complete
   since: 2026-09
@@ -59837,6 +61253,8 @@
     COMMENT and provisa_governance:gold, and a second reconcile applies no statement
 
     '
+  docs:
+  - metadata-export.md
 - id: REQ-1658
   status: complete
   since: 2026-09
@@ -59874,6 +61292,8 @@
     reconcile applies nothing
 
     '
+  docs:
+  - metadata-export.md
 - id: REQ-1659
   status: complete
   since: 2026-09
@@ -59919,6 +61339,8 @@
     and opening that link shows pet_health expanded on the Data Products page
 
     '
+  docs:
+  - metadata-export.md
 - id: REQ-1660
   status: complete
   since: 2026-09
@@ -60297,6 +61719,8 @@
     and flatten the response with the neo4j_tabular normalizer
 
     '
+  docs:
+  - sources.md
 - id: REQ-1669
   status: complete
   since: 2026-09
@@ -60325,6 +61749,9 @@
   - tests/unit/test_config_includes.py
   use_case: Composable config files allow users to provision and test against live instances of different
     source types without recreating configuration or managing multiple config files.
+  docs:
+  - configuration.md
+  - quickstart.md
 - id: REQ-1670
   status: complete
   since: 2026-09
@@ -60361,6 +61788,9 @@
   use_case: 'Before this the UI could register a neo4j source but no table on it: introspection listed
     an empty schema and there was no Cypher input, so a steward had to hand-write config or call the REST
     router.'
+  docs:
+  - admin-graphql.md
+  - sources.md
 - id: REQ-1671
   status: complete
   since: 2026-09
@@ -60401,6 +61831,8 @@
     Then the results grid shows exactly the rows the seed put in the source
 
     '
+  docs:
+  - quickstart.md
 - id: REQ-1672
   status: complete
   since: 2026-09
@@ -60440,6 +61872,9 @@
     of the index
 
     '
+  docs:
+  - quickstart.md
+  - sources.md
 - id: REQ-1673
   status: complete
   since: 2026-09
@@ -60559,6 +61994,9 @@
     row per key
 
     '
+  docs:
+  - quickstart.md
+  - sources.md
 - id: REQ-1676
   status: complete
   since: 2026-09
@@ -60596,6 +62034,11 @@
     a rule with filter_expr "region = current_setting(''provisa.region'')" saves successfully
 
     '
+  docs:
+  - admin-graphql.md
+  - quickstart.md
+  - security.md
+  - sources.md
 - id: REQ-1677
   status: complete
   since: 2026-09
@@ -60648,6 +62091,11 @@
     on orders replaces the analyst rule for that role
 
     '
+  docs:
+  - admin-graphql.md
+  - architecture.md
+  - configuration.md
+  - security.md
 - id: REQ-1678
   status: complete
   since: 2026-09
@@ -60737,6 +62185,9 @@
     rule and the mask applied
 
     '
+  docs:
+  - admin-graphql.md
+  - security.md
 - id: REQ-1680
   status: complete
   since: 2026-09
@@ -60771,6 +62222,8 @@
     with no inverse is dropped with a warning
 
     '
+  docs:
+  - import.md
 - id: REQ-1681
   status: complete
   since: 2026-09
@@ -60811,6 +62264,8 @@
     for continent, and one warning names continent as not landed
 
     '
+  docs:
+  - import.md
 - id: REQ-1682
   status: complete
   since: 2026-09
@@ -60850,6 +62305,9 @@
     Then only the album with id 3 is returned, and a request with no user id bound returns none
 
     '
+  docs:
+  - import.md
+  - security.md
 - id: REQ-1684
   status: complete
   since: 2026-09
@@ -60883,6 +62341,8 @@
     Then user queries albums through the data GraphQL endpoint, and org_admin sees every column of albums
 
     '
+  docs:
+  - import.md
 - id: REQ-1683
   status: complete
   since: 2026-09
@@ -60923,6 +62383,10 @@
     Then the rows are the seeded volunteers
 
     '
+  docs:
+  - admin-graphql.md
+  - quickstart.md
+  - sources.md
 - id: REQ-1685
   status: complete
   since: 2026-09
@@ -61022,6 +62486,9 @@
     row
 
     '
+  docs:
+  - import.md
+  - quickstart.md
 - id: REQ-1688
   status: complete
   since: 2026-09
@@ -61100,6 +62567,9 @@
     returns its samples with job "prometheus"
 
     '
+  docs:
+  - quickstart.md
+  - sources.md
 - id: REQ-1690
   status: complete
   since: 2026-09
@@ -61197,6 +62667,8 @@
     and no replica is landed
 
     '
+  docs:
+  - sources.md
 - id: REQ-1691
   status: complete
   since: 2026-09
@@ -61232,6 +62704,8 @@
     permissions carries every column of the source table visible to org_admin alone
 
     '
+  docs:
+  - import.md
 - id: REQ-1692
   status: complete
   since: 2026-09
@@ -61305,6 +62779,8 @@
     Then the site''s documents library is listed as a table and its columns and rows are read live
 
     '
+  docs:
+  - sources.md
 - id: REQ-1694
   status: complete
   since: 2026-09
@@ -61350,6 +62826,9 @@
     succeeds against the self-signed instance, and only the named Data Model is listed as a table
 
     '
+  docs:
+  - quickstart.md
+  - sources.md
 - id: REQ-1695
   status: complete
   since: 2026-09
@@ -62269,6 +63748,8 @@
     Then querying it under Trino returns the same rows, in the same order, DuckDB did
 
     '
+  docs:
+  - admin-graphql.md
 - id: REQ-1731
   status: complete
   since: 2026-09
@@ -62359,6 +63840,8 @@
     UnreachableSource
 
     '
+  docs:
+  - sources.md
 - id: REQ-1732
   status: complete
   since: 2026-09
@@ -64012,6 +65495,8 @@
     against the registered table returns real rows
 
     '
+  docs:
+  - sources.md
 - id: REQ-1755
   status: complete
   since: 2026-09
@@ -65769,6 +67254,9 @@
     every file in it as its own table with no Kaggle-specific federation code
 
     '
+  docs:
+  - admin-graphql.md
+  - sources.md
 - id: REQ-1781
   status: complete
   since: 2026-09
@@ -65815,6 +67303,8 @@
     tables, and each is queryable against real landed rows once registered
 
     '
+  docs:
+  - sources.md
 - id: REQ-1782
   status: complete
   since: 2026-09
@@ -65847,6 +67337,8 @@
 
     '
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - sources.md
 - id: REQ-1783
   status: in-progress
   since: 2026-09
@@ -65917,6 +67409,9 @@
 
     '
   notes: 'Roadmap audit 2026-10-13: built, but not complete until it has a test: no unit test'
+  docs:
+  - admin-graphql.md
+  - sources.md
 - id: REQ-1784
   status: complete
   since: 2026-10
@@ -66027,6 +67522,8 @@
   tests:
   - tests/unit/test_http_crawl_settings.py
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Backend parameters and crawlSource query exist, but the source form has no simple_links, same_domain or exclude_pattern fields.'
+  docs:
+  - admin-graphql.md
 - id: REQ-1786
   status: proposed
   target: 2026-Q4
@@ -66097,6 +67594,8 @@
 
     '
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: behaviour present, no test'
+  docs:
+  - admin-graphql.md
 - id: REQ-1788
   status: in-progress
   target: 2026-Q4
@@ -66364,6 +67863,8 @@
     And the conversation proceeds normally
 
     '
+  docs:
+  - architecture.md
 - id: REQ-1795
   status: complete
   since: 2026-09
@@ -68854,6 +70355,8 @@
   tests:
   - tests/unit/test_start_ui_install_named_demo.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - named-demos.md
 - id: REQ-1859
   status: in-progress
   group: 11. Platform, Infrastructure & Delivery
@@ -69037,6 +70540,8 @@
     Then ProvisaSession.close() releases it without requiring an explicit CLOSE
 
     '
+  docs:
+  - pgwire.md
 - id: REQ-1863
   status: complete
   group: 8. Client Access & Protocols
@@ -69562,6 +71067,8 @@
     When a statement reads or writes one of its tables
 
     Then the pg engine reaches the MotherDuck database live through an attached connection using the source''s token'
+  docs:
+  - sources.md
 - id: REQ-1869
   status: rejected
   group: 4. Source Connectors
@@ -69797,6 +71304,8 @@
   notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line. Roadmap audit 2026-10-13: delivered; verified against the code'
   tests:
   - tests/unit/test_pg_ext_install.py
+  docs:
+  - engines.md
 - id: REQ-1874
   status: accepted
   group: 4. Source Connectors
@@ -69930,6 +71439,8 @@
     Then full live introspection and schema mapping is performed
 
     '
+  docs:
+  - remote-schemas.md
 - id: REQ-1876
   status: superseded
   group: 6. Execution, Routing, Caching & Performance
@@ -73459,6 +74970,8 @@
     naming the request deadline and request_timeout, and a stream inside its deadline is unaffected
 
     '
+  docs:
+  - pgwire.md
 - id: REQ-1906
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -73593,6 +75106,9 @@
   - tests/unit/test_role_ttl.py
   - provisa-ui/src/pages/__tests__/tables-role-ttl-save.test.tsx
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - admin-graphql.md
+  - configuration.md
 - id: REQ-1908
   status: complete
   group: 5. Query Languages, Compilation & Operations
@@ -74066,6 +75582,8 @@
   tests:
   - tests/unit/test_store_sides.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-1913
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -74212,6 +75730,8 @@
   tests:
   - tests/unit/test_config_stamp.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - regions.md
 - id: REQ-1915
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -74436,6 +75956,8 @@
   - tests/integration/test_replica_build_locks_pg.py
   - tests/unit/test_query_residency.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  docs:
+  - arch/vectors.md
 - id: REQ-1916
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -74673,6 +76195,8 @@
   - tests/unit/test_model_store_owns_writes.py
   - tests/unit/test_model_store_guard.py
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Model store has converted only deletes (and domain change) for some kinds; creates and updates still write outside it, so the no-other-writer test covers deletes only and one-transaction/version/stamp/audit per change is not yet in the store for every kind.'
+  docs:
+  - api-reference.md
 - id: REQ-1920
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -74852,6 +76376,9 @@
   - tests/unit/test_regions_model.py
   - tests/unit/test_region_defaults.py
   - provisa-ui/src/hooks/__tests__/useRegionChoice.test.tsx
+  docs:
+  - regions.md
+  - security.md
 - id: REQ-1922
   status: complete
   group: 11. Platform, Infrastructure & Delivery
@@ -74946,6 +76473,9 @@
   - provisa-ui/src/components/__tests__/RegionSelector.test.tsx
   - tests/unit/test_mv_governed_build.py
   - tests/unit/test_mv_refresh_reads_upstream_view.py
+  docs:
+  - regions.md
+  - security.md
 - id: REQ-1923
   status: in-progress
   group: 4. Source Connectors
@@ -75092,6 +76622,9 @@
   - REQ-309
   since: 2026-10
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Mechanism built; only Stripe, GitHub and GitLab brands exist, HubSpot and the rest of the catalog are absent (ongoing by design).'
+  docs:
+  - remote-schemas.md
+  - sources.md
 - id: REQ-1924
   status: complete
   group: 4. Source Connectors
@@ -75217,6 +76750,10 @@
   - tests/unit/test_replica_build_after_write.py
   - provisa-ui/src/__tests__/CommandFormFields.test.tsx
   - provisa-ui/e2e/source-operation-commands.spec.ts
+  docs:
+  - commands.md
+  - remote-schemas.md
+  - security.md
 - id: REQ-1909
   status: complete
   group: 6. Execution, Routing, Caching & Performance
@@ -76262,6 +77799,9 @@
     And candidates are surfaced for the steward to choose, never registered automatically
 
     '
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-465
   status: superseded
   superseded_by: REQ-194
@@ -77154,6 +78694,8 @@
     exists but is the registry/capability/fallback/generation design of REQ-419..431; no `_vector_near`
     operator (grep of provisa/ finds none); the similarity operator is cosine_similarity (REQ-423).'
   superseded_by: REQ-431
+  docs:
+  - architecture.md
 - id: REQ-501
   status: complete
   group: 4. Source Connectors
@@ -78079,6 +79621,11 @@
     the surface is gated to platform administrators and sizing keys are stored in the control plane, not
     the node config file. REQ-1512: the deployment-wide surface is not offered on hosted deployments.
     REQ-1421: registry additionally carries one kind per relational database plus sqlalchemy catch-all.'
+  docs:
+  - admin.md
+  - api-reference.md
+  - configuration.md
+  - engines.md
 - id: REQ-918
   status: complete
   group: 1. Access Governance & Security
@@ -78235,6 +79782,9 @@
     governs deleting an org VAULT secret, and treats org_secrets rows (secret_references.py:56) as referrers
     that can block that delete. Nothing refers to an AI key by name, so none is blocked, but a vault secret
     named by an AI key reference is refused deletion.'
+  docs:
+  - api-reference.md
+  - architecture.md
 - id: REQ-1401
   status: complete
   group: 8. Client Access & Protocols
@@ -79299,6 +80849,8 @@
   tests:
   - tests/unit/test_profiler_statement.py
   - tests/unit/test_profiler_plausible.py
+  docs:
+  - sources.md
 - id: REQ-1935
   status: complete
   since: 2026-10
@@ -79478,6 +81030,8 @@
   - provisa-ui/src/pages/sql/ColumnFilterMenu.tsx
   tests:
   - provisa-ui/src/components/__tests__/columnFilterSql.test.ts
+  docs:
+  - api-reference.md
 - id: REQ-1938
   status: complete
   since: 2026-10
@@ -79797,6 +81351,9 @@
     Then the parent''s real rows are returned with that column read through its fake
 
     And the environment''s data mode can be changed afterwards to Inherit, Unbound or Test (synthetic)'
+  docs:
+  - cli.md
+  - pgwire.md
 - id: REQ-1943
   status: complete
   since: 2026-10
@@ -79827,6 +81384,8 @@
     Then the change is refused in every environment, production included
 
     And a user holding sensitive_data can make the change'
+  docs:
+  - security.md
 - id: REQ-1944
   status: complete
   since: 2026-10
@@ -79858,6 +81417,8 @@
     And an edit to a domain the role does not reach is refused naming the domain
 
     And operational actions such as source registration, table registration and user management are refused'
+  docs:
+  - security.md
 - id: REQ-1945
   status: complete
   since: 2026-10
@@ -79915,6 +81476,9 @@
     And on Trino the registered tables are read-only
 
     And on every other engine insert, update and delete on a registered sObject run as governed, audited mutations'
+  docs:
+  - deployment.md
+  - sources.md
 - id: REQ-1947
   status: complete
   since: 2026-10
@@ -79944,6 +81508,8 @@
     Then compute, storage, Kubernetes cluster, database, network, IAM and container registry tables are offered, each with the same columns for all three clouds and a column naming the cloud of each row
 
     And the tables are read-only'
+  docs:
+  - sources.md
 - id: REQ-1948
   status: complete
   since: 2026-10
@@ -79983,6 +81549,9 @@
     Then the request becomes executable
 
     And an approval from a user whose right reaches neither domain is refused with the reason'
+  docs:
+  - admin-graphql.md
+  - domain-principles.md
 - id: REQ-1949
   status: complete
   since: 2026-10
@@ -80014,6 +81583,8 @@
     And a query that returns 100 rows or fewer carries no warning
 
     And the returned rows are the same with or without the warning'
+  docs:
+  - api-reference.md
 - id: REQ-1950
   status: complete
   since: 2026-10
@@ -80072,6 +81643,9 @@
     And inserts, updates and deletes arrive as rows as they do from a JSON topic
 
     And a registry that cannot be reached, or an unknown schema id, is refused by name'
+  docs:
+  - admin-graphql.md
+  - subscriptions.md
 - id: REQ-1952
   status: complete
   since: 2026-10
@@ -80153,6 +81727,9 @@
     And a table''s columns are read from the instance only when the steward selects it
 
     And a registered table takes inserts, updates and deletes, and a write returns the record the instance holds afterwards'
+  docs:
+  - admin.md
+  - sources.md
 - id: REQ-1955
   status: proposed
   since: 2026-10
@@ -80212,6 +81789,8 @@
     And the excluded argument is not shown and is never sent
 
     And a registered item that a later exclusion covers is reported by name, not silently dropped'
+  docs:
+  - sources.md
 - id: REQ-1958
   status: complete
   since: 2026-10
@@ -80276,6 +81855,8 @@
     And masks, row rules and row limits still apply to the public column
 
     And nothing is public unless someone with the right marked it'
+  docs:
+  - security.md
 - id: REQ-1960
   status: complete
   since: 2026-10
@@ -80340,6 +81921,8 @@
     And nothing is registered until a steward registers it
 
     And links in the See also section are followed only if that option is turned on'
+  docs:
+  - sources.md
 - id: REQ-1961
   status: in-progress
   since: 2026-10
@@ -80548,6 +82131,9 @@
     And it carries unique and not_null tests for the primary key, not_null for the not-null column and a relationships test for the relationship
 
     And it carries no metrics, row security, masking, roles or lineage'
+  docs:
+  - api-reference.md
+  - integrations.md
 - id: REQ-1968
   status: complete
   since: 2026-10
@@ -80838,6 +82424,8 @@
   tests:
   - tests/unit/test_athena_source.py
   - tests/integration/test_athena_pipeline_e2e.py
+  docs:
+  - sources.md
 - id: REQ-1982
   status: complete
   since: 2026-10
@@ -80915,6 +82503,8 @@
   tests:
   - tests/unit/test_qdrant_source.py
   - provisa-ui/src/pages/sources/__tests__/qdrant.test.tsx
+  docs:
+  - sources.md
 - id: REQ-1984
   status: complete
   since: 2026-10
@@ -80946,6 +82536,8 @@
     And the untagged function is ignored
 
     And a tagged function whose types cannot be mapped is reported by name'
+  docs:
+  - package-registries.md
 - id: REQ-1980
   status: complete
   since: 2026-10
@@ -81073,6 +82665,9 @@
   tests:
   - tests/unit/test_native_filter_required.py
   - provisa-ui/src/components/__tests__/nativeParams.test.ts
+  docs:
+  - api-reference.md
+  - sources.md
 - id: REQ-1987
   status: proposed
   since: 2026-10
@@ -81220,6 +82815,9 @@
   - provisa/cypher/translator_types.py
   tests:
   - tests/unit/test_cypher_label_map.py
+  docs:
+  - api-reference.md
+  - cypher.md
 - id: REQ-1992
   status: in-progress
   since: 2026-10
@@ -81267,6 +82865,8 @@
   tests:
   - tests/unit/test_org_files.py
   - tests/unit/test_org_folder_crypt.py
+  docs:
+  - security.md
 - id: REQ-1993
   status: complete
   since: 2026-10
@@ -81297,6 +82897,8 @@
   - tests/unit/test_python_source.py
   - tests/unit/test_code_worker.py
   - provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx
+  docs:
+  - package-registries.md
 - id: REQ-1994
   status: complete
   since: 2026-10
@@ -81352,6 +82954,8 @@
   - tests/unit/test_calendar_task_rows.py
   - tests/unit/test_google_workspace_settings.py
   - tests/unit/test_microsoft365_source.py
+  docs:
+  - sources.md
 - id: REQ-1995
   status: proposed
   since: 2026-10
@@ -81470,6 +83074,9 @@
   - tests/unit/test_logparse_web.py
   - tests/unit/test_logs_source.py
   - provisa-ui/src/pages/sources/__tests__/logs.test.tsx
+  docs:
+  - named-demos.md
+  - sources.md
 - id: REQ-1997
   status: complete
   since: 2026-10
@@ -81519,6 +83126,8 @@
   - tests/unit/test_org_path_tokens.py
   - tests/unit/test_source_uploads.py
   - provisa-ui/src/pages/sources/__tests__/sourceUpload.test.tsx
+  docs:
+  - sources.md
 - id: REQ-2000
   status: complete
   since: 2026-10
@@ -81557,6 +83166,8 @@
   - provisa/core/config_loader.py
   tests:
   - tests/unit/test_qdrant_direct.py
+  docs:
+  - sources.md
 - id: REQ-2001
   status: complete
   since: 2026-10
@@ -81811,6 +83422,8 @@
   - REQ-1868
   - REQ-1997
   notes: 'Maintainer 2026-10-12, through the lead: "does duckdb datasource support motherduck + local file?", then "yes" to adding md: attach on the DuckDB engine and a hybrid option. The lead''s ruling: hybrid needs no new source setting, the shared engine connection does it; writes stay on the engine route, as the Postgres connector has them; the note on data moving into the MotherDuck account goes in the docs and here. Measured live with duckdb 1.5.5 against the maintainer''s account (2026-10-12): the motherduck extension installs from the core repository; SET motherduck_token takes the token as a bound parameter (the documented md:db?motherduck_token= form was ignored); with no token the extension begins an interactive single sign-on and waits a minute; motherduck_token is per DuckDB instance; a local DuckDB file attached read-only and the MotherDuck workspace on one connection ran a join as one statement, its plan showing dual-execution operators.'
+  docs:
+  - sources.md
 - id: REQ-1999
   status: complete
   since: 2026-10
@@ -82151,6 +83764,10 @@
     local copy, so join indexes there do not speed joins (ruling (a): index the store file, leave the copy).
     Measured: a 2,000,000-row DuckDB replica takes 0.87 s for its key and 0.55 s for a join index (one broker
     operation each).'
+  docs:
+  - configuration.md
+  - engines.md
+  - replicas.md
 - id: REQ-2017
   status: in-progress
   since: 2026-10
@@ -84078,6 +85695,8 @@
   notes: 'Maintainer 2026-10-15, via the lead: commands run on change signals, and on error/quarantine events;
     the trigger says when, the code is an ordinary command. The old EventTrigger (REQ-565 event_triggers, events/triggers.py
     EventTriggerManager) is never constructed and is left in place for now.'
+  docs:
+  - configuration.md
 - id: REQ-2055
   status: complete
   since: 2026-10
@@ -84226,6 +85845,9 @@ And a user whose record says us cannot act as region__eu'
   - REQ-1382
   - REQ-1383
   notes: 'Maintainer 2026-10-15, in conversation with ui: "a parent role for the claim type and then a sub role for its stringified value"; "region would have to be injected as a claim"; "org record should win"; double-underscore naming "like graphql paths"; "pseudo-roles must be named too"; "mainly it simplifies a traditional ABAC column issue into a simpler RBAC solution"; docs explain meta-roles and pseudo-roles; no subtraction of parent rights ("it gets really complicated"). Built as part of REQ-2035 (ui), with the user-attributes port.'
+  docs:
+  - regions.md
+  - security.md
 - id: REQ-2058
   status: proposed
   since: 2026-10
@@ -84274,6 +85896,8 @@ And a reviewer without it sees the pseudonym, and anyone else the mask'
   - REQ-2057
   - REQ-2058
   notes: 'Maintainer 2026-10-15: "just list the masks in an enumerated list and the enumeration is the precedence". Built as part of REQ-2035 (ui).'
+  docs:
+  - security.md
 - id: REQ-2061
   status: proposed
   since: 2026-10
@@ -84372,6 +85996,8 @@ And the same read with a single time answers the one version in force then'
   - REQ-1163
   - REQ-2063
   notes: 'Maintainer 2026-10-16: we should allow the as-of date header to request a range.'
+  docs:
+  - configuration.md
 - id: REQ-2065
   status: complete
   since: 2026-10
@@ -84513,6 +86139,8 @@ And setting a status the issue''s workflow cannot reach from its current one is 
   - tests/unit/test_jira_connector.py
   - provisa-ui/src/pages/sources/__tests__/jira.test.tsx
   notes: 'Maintainer 2026-10-16: ServiceNow is down -- think about Atlassian/Jira; forms (form types, custom forms), limited to reading and entering form content; the content of forms needs CRUD; links need CRUD, as an associative table; on-prem enterprise Jira has significant customization; it is important to update workflow status. Then, via the lead: Jira becomes a Calcite pgwire connector (an API with a query language means Calcite; JQL pushdown), built by the calcite teammate; the OpenAPI brand first drafted for it was stopped (branch feat/jira-brand, kept for reference).'
+  docs:
+  - sources.md
 - id: REQ-2070
   status: complete
   since: 2026-10
@@ -84553,6 +86181,8 @@ And the same cell on a desktop Python, signed in from ~/.provisa/credentials, an
   - provisa-client/tests/test_sqlalchemy.py
   - provisa-client/tests/test_sqlalchemy_edge_cases.py
   notes: "Maintainer 2026-10-17: Explore gets an embedded JupyterLite notebook; the client is its read path. The server offers no flow for a client to sign in through a browser, so none is attempted. JupySQL's %%sql shares the name; whichever extension loads last answers it."
+  docs:
+  - python-client.md
 - id: REQ-2071
   status: in-progress
   since: 2026-10
@@ -84641,6 +86271,9 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   tests:
   - tests/unit/test_trino_internal_tls.py
   - tests/e2e/test_helm_minikube.py
+  docs:
+  - deployment.md
+  - security.md
 - id: REQ-2073
   status: complete
   since: 2026-10
@@ -84683,6 +86316,8 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_kafka_on_engine_shard.py
   - tests/unit/test_redis_on_engine_shard.py
   - tests/integration/test_trino_memory_catalog_store.py
+  docs:
+  - sources.md
 - id: REQ-2074
   status: complete
   since: 2026-10
@@ -84741,6 +86376,11 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   stakeholders:
   - compliance
   - data-engineer
+  docs:
+  - architecture.md
+  - configuration.md
+  - pgwire.md
+  - security.md
 - id: REQ-2075
   status: complete
   since: 2026-10
@@ -84760,6 +86400,8 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   stakeholders:
   - compliance
   - ops
+  docs:
+  - security.md
 - id: REQ-2076
   status: complete
   since: 2026-10
@@ -84798,6 +86440,8 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_mcp_server.py
   - tests/unit/test_pgwire_requirements.py
   - provisa-ui/src/__tests__/SuspendedAccess.test.tsx
+  docs:
+  - security.md
 - id: REQ-2077
   status: complete
   since: 2026-10
@@ -84834,6 +86478,8 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   stakeholders:
   - compliance
   - ops
+  docs:
+  - security.md
 - id: REQ-2078
   status: proposed
   since: 2026-10
@@ -84868,6 +86514,8 @@ Then the Roles list shows region marked derived, with region__eu and region__us 
   - provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx
   stakeholders:
   - compliance
+  docs:
+  - security.md
 - id: REQ-2079
   status: proposed
   since: 2026-10
@@ -84898,6 +86546,8 @@ Then its panel lists the values seen and the column whose mask names it, and off
   - provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx
   stakeholders:
   - compliance
+  docs:
+  - security.md
 - id: REQ-2080
   status: proposed
   since: 2026-10
@@ -84935,6 +86585,8 @@ Then it is refused, naming the role and saying it needs a description'
   - provisa-ui/src/pages/__tests__/SecurityPage.derivedRoles.test.tsx
   stakeholders:
   - compliance
+  docs:
+  - security.md
 - id: REQ-2081
   status: proposed
   since: 2026-10
@@ -84966,6 +86618,9 @@ Then it is refused, saying a row rule needs a description'
   - provisa-ui/src/pages/__tests__/SecurityPage.actionRule.test.tsx
   stakeholders:
   - compliance
+  docs:
+  - security.md
+  - sources.md
 - id: REQ-2082
   status: proposed
   since: 2026-10
@@ -84999,6 +86654,8 @@ And a role its token does not hold is not listed'
   stakeholders:
   - compliance
   - app-developer
+  docs:
+  - security.md
 - id: REQ-2083
   status: proposed
   since: 2026-10
@@ -85033,6 +86690,8 @@ Then the SQL explorer reads the report as Provisa had recorded it then, and the 
   stakeholders:
   - compliance
   - app-developer
+  docs:
+  - named-demos.md
 - id: REQ-2084
   status: proposed
   since: 2026-10
@@ -85132,6 +86791,8 @@ And a constant naming a secret that does not exist fails the query, naming the c
   stakeholders:
   - compliance
   - ops
+  docs:
+  - security.md
 - id: REQ-2087
   status: complete
   since: 2026-10
@@ -85170,6 +86831,8 @@ And the Secrets page lists warehouse_pw under the automatic rule by name, with n
   stakeholders:
   - compliance
   - ops
+  docs:
+  - security.md
 - id: REQ-2088
   status: complete
   since: 2026-10
@@ -85203,3 +86866,5 @@ And the file is gone when the install ends"
   stakeholders:
   - ops
   - app-developer
+  docs:
+  - package-registries.md

@@ -1,9 +1,9 @@
-# Engine cluster mode cutover (REQ-1465)
+# Engine cluster mode cutover
 
 Switching `var.engine_cluster_mode` between `autopilot` and `standard` **replaces the GKE cluster**:
 `enable_autopilot` and `dns_config` are creation-time settings, and Autopilot must be regional while
 the Standard cluster is zonal. Every shard on the old cluster is destroyed with it. This is a
-scheduled maintenance window announced through the maintenance banner (REQ-1466), not a rolling
+scheduled maintenance window announced through the maintenance banner, not a rolling
 change.
 
 ## When to switch

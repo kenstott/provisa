@@ -17,15 +17,15 @@
 | 複製執行 | 資料來源先即時讀取，再從複本讀取 | 高於該速率時複本成本較低 |
 | 工作行程執行 | 工作行程數，以及每個工作行程的並行處理中請求數 | 每個實體核心的工作行程數、每個工作行程的並行處理中請求數、一個核心能提供的能力 |
 
-旋鈕執行、快取執行和複製執行按傳輸和資料來源進行，並對你指定的每個聯邦引擎各進行一次。工作行程執行按傳輸進行。[tool-verified: `demo/named/perf/bench/sweeps.py:plan_sweeps,plan_worker_sweep`]
+旋鈕執行、快取執行和複製執行按傳輸和資料來源進行，並對你指定的每個聯邦引擎各進行一次。工作行程執行按傳輸進行。
 
-這裡的成本指 Provisa 處理每個請求的 CPU 時間，單位為毫秒。旋鈕執行不使用快取，因此旋鈕的成本從不包含快取的影響。[tool-verified: `demo/named/perf/bench/sweeps.py:_baseline` sets `k["cache"] = {"probability": 0.0}`]
+這裡的成本指 Provisa 處理每個請求的 CPU 時間，單位為毫秒。旋鈕執行不使用快取，因此旋鈕的成本從不包含快取的影響。
 
-根據這些執行，`bench_report.py` 為每個引擎、傳輸和資料來源擬合一個成本模型：基本成本，加上每個欄位、篩選、列和聯結的成本，其中跨資料來源聯結按其兩端的讀取方式計成本。當引擎作為獨立伺服器執行且其容器的 CPU 被量度時，引擎也會得到一個成本模型。[tool-verified: `demo/named/perf/bench/cost_model.py:fit`] `sizing_guide.py` 把報告轉換為指南。如果給它一份描述你工作負載的合約，它還會為該工作負載做容量規劃。
+根據這些執行，`bench_report.py` 為每個引擎、傳輸和資料來源擬合一個成本模型：基本成本，加上每個欄位、篩選、列和聯結的成本，其中跨資料來源聯結按其兩端的讀取方式計成本。當引擎作為獨立伺服器執行且其容器的 CPU 被量度時，引擎也會得到一個成本模型。 `sizing_guide.py` 把報告轉換為指南。如果給它一份描述你工作負載的合約，它還會為該工作負載做容量規劃。
 
 ## 編寫設定合約 {: #write-a-setup-contract }
 
-設定合約是一個 YAML 檔案。它列出你的部署的端點、基準測試可以讀取的表、請求的形態以及負載。基準測試在執行前會對照部署檢查合約，並拒絕部署未公開的表、欄或聯結。[tool-verified: `demo/named/perf/bench/setup_contract.py:setup_from_dict`]
+設定合約是一個 YAML 檔案。它列出你的部署的端點、基準測試可以讀取的表、請求的形態以及負載。基準測試在執行前會對照部署檢查合約，並拒絕部署未公開的表、欄或聯結。
 
 表和欄使用你的部署登記時的名稱。各傳輸如何稱呼它們（SQL 名稱、GraphQL 欄位、Cypher 標籤、REST 路徑、gRPC 類型），會在執行開始時從部署中查詢。
 
@@ -129,22 +129,22 @@ workload:
   transport_weights: {graphql: 0.7, pgwire: 0.3}
 ```
 
-合約格式由 `setup_contract.py` 和 `contract_parse.py` 定義；無效的合約會被拒絕，並給出指明欄位的訊息。[tool-verified: `demo/named/perf/bench/contract_parse.py`, `SetupError`] `workload` 的權重總和必須為 1，且其中列出的每個傳輸都必須是合約會執行的傳輸。[tool-verified: `demo/named/perf/bench/contract_parse.py:_workload`]
+合約格式由 `setup_contract.py` 和 `contract_parse.py` 定義；無效的合約會被拒絕，並給出指明欄位的訊息。 `workload` 的權重總和必須為 1，且其中列出的每個傳輸都必須是合約會執行的傳輸。
 
-按請求的真實情況來描述它們。指南恰好針對該合約產生的請求做容量規劃：規劃使用與執行相同的帶種子產生器來抽取請求。[tool-verified: `demo/named/perf/bench/sizing.py:_transport` uses `request_mix.RequestGenerator`]
+按請求的真實情況來描述它們。指南恰好針對該合約產生的請求做容量規劃：規劃使用與執行相同的帶種子產生器來抽取請求。
 
 ## 執行 {: #run-it }
 
 ### 1. 一次性解析名稱 {: #1-resolve-the-names-once }
 
-先執行一次基線合約。該執行會向部署查詢各傳輸如何稱呼你的表，並把 `resolved-names.json` 寫在其結果旁邊。[tool-verified: `demo/named/perf/bench/optimistic_load.py:resolve_names`]
+先執行一次基線合約。該執行會向部署查詢各傳輸如何稱呼你的表，並把 `resolved-names.json` 寫在其結果旁邊。
 
 ```bash
 ../../../../.venv/bin/python3 run_benchmark.py --engine pg --optimistic \
   --setup acme.yaml --server-pid "$PROVISA_PID" --output-dir results/first
 ```
 
-`--engine` 指明你的部署所執行的聯邦引擎（`duckdb`、`pg` 或 `trino`）。`--server-pid` 是伺服器的行程 ID；執行會讀取該行程及其子行程（工作行程）的 CPU 時間。它直接讀取行程，因此僅當負載產生器執行於伺服器所在主機上時才有效。[tool-verified: `demo/named/perf/bench/optimistic_load.py:_server_cpu_seconds`]
+`--engine` 指明你的部署所執行的聯邦引擎（`duckdb`、`pg` 或 `trino`）。`--server-pid` 是伺服器的行程 ID；執行會讀取該行程及其子行程（工作行程）的 CPU 時間。它直接讀取行程，因此僅當負載產生器執行於伺服器所在主機上時才有效。
 
 ### 從另一部主機量度伺服器的 CPU {: #measuring-the-servers-cpu-from-another-host }
 
@@ -159,7 +159,7 @@ workload:
   --setup acme.yaml --server-cpu-url http://10.0.0.5:9555/ --output-dir results/first
 ```
 
-代理只回答一個數字，與 `--server-pid` 讀取的相同：`GET /` 傳回 `{"pid": ..., "cpu_seconds": ...}`，即伺服器行程及其工作行程累計的 CPU 秒數。其他所有路徑都傳回 404，其他所有方法都會被拒絕。[tool-verified: `demo/named/perf/bench/server_cpu_agent.py:handler`] 每次執行在 `--server-pid` 與 `--server-cpu-url` 中只給一個，切勿同時給兩個。[tool-verified: `demo/named/perf/bench/optimistic_load.py:server_cpu_source`]
+代理只回答一個數字，與 `--server-pid` 讀取的相同：`GET /` 傳回 `{"pid": ..., "cpu_seconds": ...}`，即伺服器行程及其工作行程累計的 CPU 秒數。其他所有路徑都傳回 404，其他所有方法都會被拒絕。 每次執行在 `--server-pid` 與 `--server-cpu-url` 中只給一個，切勿同時給兩個。
 
 `--listen` 為必填：代理沒有預設位址。把它繫結到只有負載產生器能夠存取的私有位址，絕不要繫結到公共介面，並在執行結束後停止它（Ctrl+C）。
 
@@ -181,9 +181,9 @@ workload:
 - `--engines`：要量度的聯邦引擎，預設為 `pg`。每個旋鈕執行對每個引擎各規劃一次；引擎在伺服器啟動時設定，因此每個引擎的執行都需要以該引擎重新啟動伺服器。
 - `--engine-container`：對於在自己的容器中作為伺服器執行的引擎，用 `ENGINE=CONTAINER`，之後每次執行都會報告其 CPU。在 Provisa 內部執行的引擎（DuckDB）則省略。
 
-規劃會為每次執行寫出一份合約，並寫出 `manifest.json`。部署無法服務的執行，例如經由 gRPC 的聯結，或傳輸未公開的表，會連同原因列在清單中。它絕不會被悄悄丟棄。[tool-verified: `demo/named/perf/bench/sweeps.py:_validate`, `write_plan`]
+規劃會為每次執行寫出一份合約，並寫出 `manifest.json`。部署無法服務的執行，例如經由 gRPC 的聯結，或傳輸未公開的表，會連同原因列在清單中。它絕不會被悄悄丟棄。
 
-複本執行會在無負載的時段內量度複本的刷新成本。在規劃它們之前，先在合約中設定 `load.idle_window_s`（例如 `120`）。否則報告會以 `no idle.json` 拒絕給出損益平衡點。[tool-verified: `demo/named/perf/bench/bench_report.py:_break_even`]
+複本執行會在無負載的時段內量度複本的刷新成本。在規劃它們之前，先在合約中設定 `load.idle_window_s`（例如 `120`）。否則報告會以 `no idle.json` 拒絕給出損益平衡點。
 
 ### 3. 執行每份已規劃的合約 {: #3-run-every-planned-contract }
 
@@ -198,9 +198,9 @@ workload:
 
 從另一部主機執行時，用 `--server-cpu-url` 取代 `--server-pid`。工作行程執行會重新啟動伺服器，因此其行程 ID 會變化：也要用新的 `--pid` 重新啟動代理。
 
-對清單項目含有 `"apply_replication": true` 的每次執行（複製執行和跨資料來源聯結執行），都加上 `--apply-replication`。它會設定該執行的合約所宣告的複製，並在執行後還原。[tool-verified: `demo/named/perf/bench/optimistic_load.py:add_arguments`]
+對清單項目含有 `"apply_replication": true` 的每次執行（複製執行和跨資料來源聯結執行），都加上 `--apply-replication`。它會設定該執行的合約所宣告的複製，並在執行後還原。
 
-每次執行在清單中都帶有一個 `server_env`：伺服器必須帶著它執行。旋鈕執行的是其引擎，`{"PROVISA_ENGINE": "duckdb"}`；先執行同一引擎的所有執行，再以下一個引擎重新啟動伺服器。工作行程執行的還要加上其工作行程數和並行處理中上限，例如 `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`：`PROVISA_WORKERS` 是工作行程數，`PROVISA_REQUEST_THREADS` 設定 `concurrency.request_threads`，即每個工作行程同時處理的請求數。[tool-verified: `provisa/core/settings_catalog.py` `concurrency.request_threads`, `env="PROVISA_REQUEST_THREADS"`] 在開始執行之前，等到每個工作行程都在提供服務（`/health` 報告 `workers.ready` 達到 `workers.expected`）。
+每次執行在清單中都帶有一個 `server_env`：伺服器必須帶著它執行。旋鈕執行的是其引擎，`{"PROVISA_ENGINE": "duckdb"}`；先執行同一引擎的所有執行，再以下一個引擎重新啟動伺服器。工作行程執行的還要加上其工作行程數和並行處理中上限，例如 `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`：`PROVISA_WORKERS` 是工作行程數，`PROVISA_REQUEST_THREADS` 設定 `concurrency.request_threads`，即每個工作行程同時處理的請求數。 在開始執行之前，等到每個工作行程都在提供服務（`/health` 報告 `workers.ready` 達到 `workers.expected`）。
 
 ### 4. 建立報告 {: #4-build-the-report }
 
@@ -208,7 +208,7 @@ workload:
 ../../../../.venv/bin/python3 bench_report.py --root results/sizing --out results/sizing/report.json
 ```
 
-`--tolerance`（預設 `0.05`）設定工作行程設定要多接近最佳實測吞吐量才算足夠。[tool-verified: `demo/named/perf/bench/bench_report.py:DEFAULT_TOLERANCE`]
+`--tolerance`（預設 `0.05`）設定工作行程設定要多接近最佳實測吞吐量才算足夠。
 
 ### 5. 產生指南 {: #5-generate-the-guide }
 
@@ -225,9 +225,9 @@ workload:
 
 指南用一行結束本節，例如：**12 個實體核心、24 個工作行程、每個工作行程 2 個並行處理中請求。** 在它上方，一張表列出每個傳輸和資料來源：請求佔比、欄位、篩選、列和聯結的平均數、快取命中的佔比，以及一個請求的 CPU 成本。
 
-未命中的請求，其成本取成本模型在各旋鈕平均值處的值；命中的請求，則取實測的命中成本。一個傳輸每秒的 Provisa CPU 除以一個實體核心的產出，即得到其實體核心數。指南把各傳輸相加並向上取整。工作行程數是核心數乘以任一傳輸所需的最大每核心工作行程數。每個工作行程的並行處理中請求數同樣取任一傳輸所需的最大值。一項設定服務所有傳輸。[tool-verified: `demo/named/perf/bench/sizing.py:size`]
+未命中的請求，其成本取成本模型在各旋鈕平均值處的值；命中的請求，則取實測的命中成本。一個傳輸每秒的 Provisa CPU 除以一個實體核心的產出，即得到其實體核心數。指南把各傳輸相加並向上取整。工作行程數是核心數乘以任一傳輸所需的最大每核心工作行程數。每個工作行程的並行處理中請求數同樣取任一傳輸所需的最大值。一項設定服務所有傳輸。
 
-工具不會為它沒有量度過的內容做容量規劃。工作負載中執行沒有模型的部分，會令規劃停止，並給出指明它的訊息 [tool-verified: `demo/named/perf/bench/sizing.py:SizingRefused`]：
+工具不會為它沒有量度過的內容做容量規劃。工作負載中執行沒有模型的部分，會令規劃停止，並給出指明它的訊息：
 
 - 執行未量度的引擎
 - 沒有工作行程執行的傳輸
@@ -241,7 +241,7 @@ workload:
 
 對每個傳輸，指南給出峰值吞吐量落在最佳值容差範圍內的最少工作行程數。在該工作行程數下，再選出同樣達標的每個工作行程最少並行處理中請求數。它用兩種形式給出該設定：每個實體核心的工作行程數，以及每個工作行程的並行處理中請求數。兩者任何一個再多都不會增加吞吐量；再少則會令核心閒置。表中還給出峰值每秒請求數及其 p99 延遲。其下列出了每個量度點。
 
-容量係數等於一個實體核心每秒提供的請求數，乘以單獨一個請求所需的 CPU，再除以 1000。高於 1 表示該核心處理的請求多於一個執行緒的量，當它的兩個硬件執行緒都在服務時就是如此。[tool-verified: `demo/named/perf/bench/bench_report.py:_server`]
+容量係數等於一個實體核心每秒提供的請求數，乘以單獨一個請求所需的 CPU，再除以 1000。高於 1 表示該核心處理的請求多於一個執行緒的量，當它的兩個硬件執行緒都在服務時就是如此。
 
 ### 一個請求的成本 {: #what-a-request-costs }
 
@@ -249,11 +249,11 @@ workload:
 
 ### 回應快取的啟用 {: #the-response-cache-opt-in }
 
-對每個傳輸和資料來源：未命中的 CPU、命中的 CPU，以及命中節省的部分。請求只有在啟用快取並重複了較早的請求時才會從快取應答，所以節省適用於重複的請求。請把重複的請求啟用快取。[tool-verified: `demo/named/perf/bench/bench_report.py:_cache`]
+對每個傳輸和資料來源：未命中的 CPU、命中的 CPU，以及命中節省的部分。請求只有在啟用快取並重複了較早的請求時才會從快取應答，所以節省適用於重複的請求。請把重複的請求啟用快取。
 
 ### 即時讀取還是複本讀取，以及 TTL {: #live-or-replica-reads-and-the-ttl }
 
-對每個有複製執行的引擎、傳輸和資料來源：即時讀取的成本、複本讀取的成本、一次刷新的 CPU、TTL 以及損益平衡速率。高於損益平衡速率時，複本消耗的 CPU（Provisa、資料來源和引擎合計）比即時讀取更少。低於它則即時讀取。第二張表按請求中的聯結數給出跨資料來源聯結的同樣數據：兩端即時讀取對比兩端來自複本，其中刷新計入切換後改用複本的每個資料來源。[tool-verified: `demo/named/perf/bench/cost_model.py:break_even`]
+對每個有複製執行的引擎、傳輸和資料來源：即時讀取的成本、複本讀取的成本、一次刷新的 CPU、TTL 以及損益平衡速率。高於損益平衡速率時，複本消耗的 CPU（Provisa、資料來源和引擎合計）比即時讀取更少。低於它則即時讀取。第二張表按請求中的聯結數給出跨資料來源聯結的同樣數據：兩端即時讀取對比兩端來自複本，其中刷新計入切換後改用複本的每個資料來源。
 
 損益平衡點是每秒刷新的 CPU 除以一次讀取所節省的量：
 

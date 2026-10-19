@@ -1,8 +1,8 @@
 # 配置参考 {: #configuration-reference }
 
-Provisa 通过 YAML 文件进行配置（默认：`config/provisa.yaml`）。（REQ-528）
+Provisa 通过 YAML 文件进行配置（默认：`config/provisa.yaml`）。
 
-## 包含文件（REQ-1669） {: #includes-req-1669 }
+## 包含文件 {: #includes }
 
 使用 `includes:` 将一份配置拆分到多个文件中。包含文件在此键下列出片段路径；Provisa 会在校验前合并它们，产生与将所有内容写在单个文件中相同的结果。
 
@@ -13,9 +13,9 @@ includes:
   - /path/to/demo/sources/neo4j/fragment.yaml
 ```
 
-仅包含 `includes:` 的包装文件是合法的。`load_control_plane` 会遍历这些包含项，因此 `control_plane:` 部分取自设置了该项的那个被包含文件。[tool-verified: `provisa/core/config_loader.py:154-166`]
+仅包含 `includes:` 的包装文件是合法的。`load_control_plane` 会遍历这些包含项，因此 `control_plane:` 部分取自设置了该项的那个被包含文件。
 
-**合并规则** [tool-verified: `provisa/core/config_loader.py:104-146`]
+**合并规则**
 
 - 路径相对于包含文件解析。绝对路径按原样使用。
 - 列表类小节（`sources`、`tables`、`domains`、`relationships`、`roles` 等）采用追加方式——片段中的条目跟在包含文件的条目之后。
@@ -24,7 +24,6 @@ includes:
 - 两个文件中的相同值不视为冲突。
 - `includes` 可以嵌套。一个文件——无论是直接还是通过另一个片段——包含自身会被拒绝。
 - `includes` 在加载时被消费，永远不会出现在校验后的配置中。
-
 
 ## 数据源 {: #sources }
 
@@ -43,7 +42,7 @@ sources:
     pgbouncer_port: 6432
 ```
 
-所有数据源共享同一组通用字段。[tool-verified: `provisa/core/models.py:129-212`]
+所有数据源共享同一组通用字段。
 
 | 字段 | 默认值 | 说明 |
 | ------- | --------- | ------- |
@@ -59,12 +58,12 @@ sources:
 | `pool_min` / `pool_max` | `1` / `5` | 连接池边界 |
 | `cache_enabled` | `true` | 切换此数据源下所有表的缓存 |
 | `cache_ttl` | `null` | 秒；`null` 表示继承全局默认值；`-1` 永不过期 |
-| `federation_hints` | `{}` | 每种连接器的扩展参数（dict[str,str]）；参见下方的类型参考。REQ-281 |
-| `mapping` | `{}` | 用于 redis、elasticsearch、prometheus 的映射 DSL。REQ-251 |
+| `federation_hints` | `{}` | 每种连接器的扩展参数（dict[str,str]）；参见下方的类型参考。 |
+| `mapping` | `{}` | 用于 redis、elasticsearch、prometheus 的映射 DSL。 |
 | `allowed_domains` | `[]` | 将此数据源限制在特定的域 ID 内；为空表示不受限制 |
 | `description` | `""` | |
 
-### 支持的数据源类型 [tool-verified: `provisa/core/models.py:36-101`] {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### 支持的数据源类型 {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
 
 | 类型 | 连接方式 | 说明 |
 | ------ | ----------------- | ------- |
@@ -75,12 +74,12 @@ sources:
 | `singlestore` | host/port | |
 | `sqlserver` | host/port | |
 | `oracle` | host/port | |
-| `firebird` | host + `path`（数据库文件） | DuckDB firebird 社区扩展（REQ-899） |
+| `firebird` | host + `path`（数据库文件） | DuckDB firebird 社区扩展 |
 | `duckdb` | host/port | |
-| `cockroachdb` | host/port | 复用 PostgreSQL 驱动/方言（REQ-950） |
-| `yugabytedb` | host/port | 复用 PostgreSQL 驱动/方言（REQ-950） |
-| `greenplum` | host/port | 复用 PostgreSQL 驱动/方言（REQ-950） |
-| `tidb` | host/port | 复用 MySQL 驱动/方言（REQ-950） |
+| `cockroachdb` | host/port | 复用 PostgreSQL 驱动/方言 |
+| `yugabytedb` | host/port | 复用 PostgreSQL 驱动/方言 |
+| `greenplum` | host/port | 复用 PostgreSQL 驱动/方言 |
+| `tidb` | host/port | 复用 MySQL 驱动/方言 |
 | **云数据仓库** | | |
 | `snowflake` | host/port + `federation_hints` | 提示中必须包含 `account` |
 | `bigquery` | `federation_hints` | 必须包含 `project`；通过 `GOOGLE_APPLICATION_CREDENTIALS` 认证 |
@@ -97,9 +96,9 @@ sources:
 | **数据湖** | | |
 | `delta_lake` | `path`（表 URI） | DuckDB `delta_scan`；对象存储访问通过 `federation_hints` |
 | `iceberg` | `path`（表 URI） | DuckDB `iceberg_scan`；对象存储访问通过 `federation_hints` |
-| `hudi` | `path`（表 URI） | ClickHouse Hudi 引擎，零拷贝（REQ-1178） |
+| `hudi` | `path`（表 URI） | ClickHouse Hudi 引擎，零拷贝 |
 | `hive` | host/port（元存储）+ `mapping.storage` | 存储后端在 `mapping["storage"]` 中：hadoop/hdfs/local/s3/azure/adls |
-| `hive_s3` | host/port（元存储）+ `mapping` S3 键 | 独立类型；始终使用 S3 存储（REQ-229） |
+| `hive_s3` | host/port（元存储）+ `mapping` S3 键 | 独立类型；始终使用 S3 存储 |
 | **NoSQL** | | |
 | `mongodb` | host/port | 普通连接字段；没有映射 DSL |
 | `cassandra` | host/port | 普通连接字段；没有映射 DSL |
@@ -122,7 +121,7 @@ sources:
 | `graphql_remote` | `base_url` + 可选 `mapping` | 请求头、转发客户端请求头、超时均在 `mapping` 中 |
 | `openapi` | `base_url` | |
 | `grpc_remote` | [端到端映射未验证] | |
-| `airport` | `base_url`（Flight 位置） | DuckDB airport 扩展（REQ-899） |
+| `airport` | `base_url`（Flight 位置） | DuckDB airport 扩展 |
 | `ingest` | 推送接收器 | 外部服务通过 POST 提交 JSON 事件 |
 | **SaaS** | | |
 | `sharepoint` | `base_url` 或 `host` + `mapping` | 通过 `mapping.auth_type` 认证 |
@@ -130,16 +129,16 @@ sources:
 | **政府数据** | | |
 | `govdata` | subject + `domain_id` | 独立的 `GovDataSource` 模型；参见下方的 §GovData |
 | **数据质量** | | |
-| `soda` | 指向 Provisa pgwire 的 host/port | 需要 `soda` 扩展；Elastic License 2.0，仅限自托管（REQ-1443） |
-| `great_expectations` | 指向 Provisa pgwire 的 host/port | 需要 `gx` 扩展；Apache 2.0（REQ-1443） |
+| `soda` | 指向 Provisa pgwire 的 host/port | 需要 `soda` 扩展；Elastic License 2.0，仅限自托管 |
+| `great_expectations` | 指向 Provisa pgwire 的 host/port | 需要 `gx` 扩展；Apache 2.0 |
 
 ### 数据源类型参考 {: #source-type-reference }
 
 需要非显而易见配置的类型各自在下方有简短条目。关系型数据库类型（postgresql、mysql 等）仅使用上面的通用字段——无需额外小节。
 
-#### GovData [tool-verified: `provisa/core/models.py:953-983`]
+#### GovData
 
-`govdata` 数据源使用独立的顶层模型 `GovDataSource`，而非通用的 `Source`。（REQ-540）访问权限按主题分组进行分区。
+`govdata` 数据源使用独立的顶层模型 `GovDataSource`，而非通用的 `Source`。访问权限按主题分组进行分区。
 
 ```yaml
 sources:
@@ -152,7 +151,7 @@ sources:
     end_year: 2024                     # optional year filter
 ```
 
-每个 subject 对应一个或多个 GovData 架构（schema）。配置一个带有 subject 的 `govdata` 数据源会自动暴露该 subject 的所有架构。（REQ-540）
+每个 subject 对应一个或多个 GovData 架构（schema）。配置一个带有 subject 的 `govdata` 数据源会自动暴露该 subject 的所有架构。
 
 | Subject | 架构（Schema） |
 | --------- | --------- |
@@ -167,11 +166,11 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`、`fec` |
 
-`ref` 和 `geo` 架构始终作为关联架构被包含在内——不可配置，也未在上表中列出。（REQ-541）使用 subject `ALL` 可授予对所有架构的访问权限。[tool-verified: `provisa/core/models.py:961-963`]
+`ref` 和 `geo` 架构始终作为关联架构被包含在内——不可配置，也未在上表中列出。使用 subject `ALL` 可授予对所有架构的访问权限。
 
-#### Kafka [tool-verified: `provisa/federation/trino_connectors.py:497-502`, `provisa/api/app_loaders.py:113-118`]
+#### Kafka
 
-`sources:` 中的 `kafka` 行仅用于注册。其连接器的 `details()` 返回 `{}`——真实配置位于顶层的 `kafka_sources[]` 块中，而不在 `sources:` 行中。Kafka 始终是 VIRTUAL_SOURCE（通过引擎路由；无直接连接池）。[tool-verified: `provisa/transpiler/router.py:44-63`]
+`sources:` 中的 `kafka` 行仅用于注册。其连接器的 `details()` 返回 `{}`——真实配置位于顶层的 `kafka_sources[]` 块中，而不在 `sources:` 行中。Kafka 始终是 VIRTUAL_SOURCE（通过引擎路由；无直接连接池）。
 
 ```yaml
 kafka_sources:
@@ -211,9 +210,9 @@ kafka_sources:
             type: timestamp
 ```
 
-**时间窗口** —— `default_window` 将每次查询限定在一个最近的时间段内，防止对高吞吐量主题进行无边界读取。（REQ-148）格式：`1h`、`30m`、`7d`、`60s`。默认为 `1h`。自动注入为 `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`。客户端可以在 GraphQL 的 `where` 参数中提供自己的 `_timestamp` 过滤条件来覆盖它。
+**时间窗口** —— `default_window` 将每次查询限定在一个最近的时间段内，防止对高吞吐量主题进行无边界读取。格式：`1h`、`30m`、`7d`、`60s`。默认为 `1h`。自动注入为 `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`。客户端可以在 GraphQL 的 `where` 参数中提供自己的 `_timestamp` 过滤条件来覆盖它。
 
-**判别器（Discriminator）** —— 多个主题配置可以指向同一个物理 Kafka 主题，通过不同的 `discriminator` 值生成不同的 GraphQL 类型。（REQ-149）判别器会自动注入为 WHERE 子句。
+**判别器（Discriminator）** —— 多个主题配置可以指向同一个物理 Kafka 主题，通过不同的 `discriminator` 值生成不同的 GraphQL 类型。判别器会自动注入为 WHERE 子句。
 
 **架构来源（Schema Source）**
 
@@ -223,7 +222,7 @@ kafka_sources:
 | `manual` | 在配置中内联定义列（无需 Schema Registry） |
 | `sample` | 从样本消息中自动发现 |
 
-#### Snowflake [tool-verified: `provisa/executor/drivers/snowflake.py:48-62`]
+#### Snowflake
 
 `federation_hints` 中的 `account` 为必填项。`warehouse`、`role` 和 `schema` 为可选项。
 
@@ -242,7 +241,7 @@ sources:
       schema: PUBLIC               # remote schema override
 ```
 
-#### Databricks [tool-verified: `provisa/executor/drivers/databricks.py:34-52`]
+#### Databricks
 
 `federation_hints` 中的 `http_path` 为必填项。`password` 携带个人访问令牌。`catalog` 为可选项（携带在 SQL/提示中，而非 `database` 字段）。
 
@@ -257,7 +256,7 @@ sources:
       catalog: my_unity_catalog              # optional
 ```
 
-#### BigQuery [tool-verified: `provisa/federation/connector_duckdb.py:238`]
+#### BigQuery
 
 `federation_hints` 中的 `project` 为必填项。认证使用 `GOOGLE_APPLICATION_CREDENTIALS`（服务账号密钥文件的路径）或引擎环境中的应用默认凭据。
 
@@ -269,7 +268,7 @@ sources:
       project: my-gcp-project     # required
 ```
 
-#### Fabric / Synapse [tool-verified: `provisa/core/models.py:56-57`]
+#### Fabric / Synapse
 
 两者都使用基于 TDS 的 T-SQL，并采用 Azure AD 认证。使用 `az login`（开发环境）或托管身份（生产环境）进行认证——引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。连接详情来自环境变量：`FABRIC_SQL_SERVER` / `FABRIC_DATABASE`（Fabric）或 `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE`（Synapse），或通过 `PROVISA_ENGINE_URL`。
 
@@ -280,9 +279,9 @@ sources:
     # host/database read from FABRIC_SQL_SERVER / FABRIC_DATABASE when not set here
 ```
 
-#### ClickHouse [tool-verified: `provisa/executor/drivers/clickhouse.py:49-59`]
+#### ClickHouse
 
-`federation_hints` 中的 `secure` 用于在 HTTP 接口上启用 TLS。端口默认为 `8123`（明文）或 `8443`（当 `secure: "true"` 时）。`federation_hints` 中的 `schema` 会覆盖远程架构。[tool-verified: `provisa/federation/connector_duckdb.py:378-379`]
+`federation_hints` 中的 `secure` 用于在 HTTP 接口上启用 TLS。端口默认为 `8123`（明文）或 `8443`（当 `secure: "true"` 时）。`federation_hints` 中的 `schema` 会覆盖远程架构。
 
 ```yaml
 sources:
@@ -295,7 +294,7 @@ sources:
       schema: analytics
 ```
 
-#### Delta Lake / Iceberg [tool-verified: `provisa/federation/connector_duckdb.py:291-327`]
+#### Delta Lake / Iceberg
 
 `path` 是表的 URI（S3、GCS、ADLS 或本地）。对象存储访问需要 `federation_hints` 中的凭据。对于 Cloudflare R2，需添加 `account_id`。
 
@@ -317,11 +316,11 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-#### Hive / Hive S3 [tool-verified: `provisa/federation/trino_connectors.py:244-363`]
+#### Hive / Hive S3
 
-`host` 和 `port` 指向 Hive Thrift 元存储（默认端口 9083）。对于 `hive`，设置 `mapping["storage"]` 以选择对象存储后端。缺失必填键会明确失败——没有回退值。[tool-verified: `provisa/federation/trino_connectors.py:328-331`]
+`host` 和 `port` 指向 Hive Thrift 元存储（默认端口 9083）。对于 `hive`，设置 `mapping["storage"]` 以选择对象存储后端。缺失必填键会明确失败——没有回退值。
 
-`hive_s3` 是一个独立类型，始终声明 S3 存储（REQ-229）；无需 `mapping.storage`。
+`hive_s3` 是一个独立类型，始终声明 S3 存储；无需 `mapping.storage`。
 
 ```yaml
 sources:
@@ -350,7 +349,7 @@ sources:
 
 `mapping.storage` 接受的值：`hadoop`（默认）、`hdfs`、`local`、`s3`、`azure`、`adls`。S3 映射键：`endpoint`、`access_key_id`、`secret_access_key`、`region`、`path_style`。ADLS 映射键：`storage_account`、`access_key` 或 `sas_token`。
 
-#### Redis [tool-verified: `provisa/core/trino_catalog_files.py:54-75`]
+#### Redis
 
 使用 `mapping` DSL。`mongodb` 和 `cassandra` 使用普通连接字段，不使用映射 DSL。
 
@@ -376,7 +375,7 @@ sources:
               field: expires_at
 ```
 
-#### Elasticsearch [tool-verified: `provisa/core/trino_catalog_files.py:78-104`]
+#### Elasticsearch
 
 ```yaml
 sources:
@@ -404,7 +403,7 @@ sources:
               path: message
 ```
 
-#### Prometheus [tool-verified: `provisa/core/trino_catalog_files.py:107-124`]
+#### Prometheus
 
 当 `host:port` 和 `mapping.url` 同时存在时，`mapping.url` 优先。
 
@@ -422,7 +421,7 @@ sources:
           default_range: 1h        # default "1h"
 ```
 
-#### Google Sheets [tool-verified: `provisa/federation/connector_duckdb.py:273-275`]
+#### Google Sheets
 
 `federation_hints` 中的 `spreadsheet_id` 为必填项。认证在挂载（attach）时使用 DuckDB 的 `gsheet` SECRET。
 
@@ -436,7 +435,7 @@ sources:
 
 #### 文件数据源（csv / parquet / sqlite / files） {: #file-sources-csv-parquet-sqlite-files }
 
-`path` 为必填项。`files` 会爬取一个目录中的 CSV、Parquet、XLSX 和 JSON 文件，将每个文件呈现为一张表。所有基于文件的数据源都是 VIRTUAL（通过引擎路由；无直接连接池）。[tool-verified: `provisa/transpiler/router.py:44-48`]
+`path` 为必填项。`files` 会爬取一个目录中的 CSV、Parquet、XLSX 和 JSON 文件，将每个文件呈现为一张表。所有基于文件的数据源都是 VIRTUAL（通过引擎路由；无直接连接池）。
 
 ```yaml
 sources:
@@ -462,7 +461,7 @@ sources:
     base_url: https://api.payments.example.com/v1
 ```
 
-**graphql_remote** —— 设置 `base_url`。可选的 `mapping` 键：`headers`（静态请求头的字典）、`forward_client_headers`（布尔值）、`timeout_seconds`（整数）。[tool-verified: `provisa/hasura_v2/mapper.py:129-152`]
+**graphql_remote** —— 设置 `base_url`。可选的 `mapping` 键：`headers`（静态请求头的字典）、`forward_client_headers`（布尔值）、`timeout_seconds`（整数）。
 
 ```yaml
 sources:
@@ -476,7 +475,7 @@ sources:
       timeout_seconds: 30
 ```
 
-**airport** —— `base_url` 是 Arrow Flight 服务器的位置。DuckDB airport 扩展（REQ-899）。[tool-verified: `provisa/federation/connector_duckdb.py:285-288`]
+**airport** —— `base_url` 是 Arrow Flight 服务器的位置。DuckDB airport 扩展。
 
 ```yaml
 sources:
@@ -485,7 +484,7 @@ sources:
     base_url: grpc://flight.internal:8815
 ```
 
-**websocket / rss** —— 使用 `host`、`port`、`path` 和 `federation_hints`。[tool-verified: `provisa/api/data/subscribe.py:85-129`]
+**websocket / rss** —— 使用 `host`、`port`、`path` 和 `federation_hints`。
 
 ```yaml
 sources:
@@ -510,7 +509,7 @@ sources:
       # feed_url: https://...  # overrides host/port/path when set
 ```
 
-**sharepoint** [tool-verified: `provisa/federation/trino_connectors.py:394-423`]
+**sharepoint**
 
 ```yaml
 sources:
@@ -526,7 +525,7 @@ sources:
       # certificate_password: ${env:CERT_PASSWORD}
 ```
 
-**splunk** [tool-verified: `provisa/federation/trino_connectors.py:426-457`]
+**splunk**
 
 ```yaml
 sources:
@@ -544,8 +543,6 @@ sources:
 
 #### 数据质量检查器（soda / great_expectations） {: #data-quality-checkers-soda-great_expectations }
 
-[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
-
 检查器数据源指向 Provisa 自身的 pgwire 端点，因此一个 postgres 驱动就能扫描由 Snowflake 或 Iceberg 支撑的表的联邦视图。扫描所用的身份是显式声明的，而非隐式继承——策略应用于该连接，经过过滤的行集不得产生静默通过的检查。连接键来自 `mapping`：`host`、`port`、`database`、`user`、`password`。
 
 ```yaml
@@ -561,7 +558,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-每个结果表都携带 `dq_contract`——原样保存的 Soda 契约 YAML 或 Great Expectations 套件 JSON。列、水位线（watermark）和推广（promotion）均由此派生；完整的派生过程参见[数据质量检查器](sources.md#data-quality-checkers-req-1443)。
+每个结果表都携带 `dq_contract`——原样保存的 Soda 契约 YAML 或 Great Expectations 套件 JSON。列、水位线（watermark）和推广（promotion）均由此派生；完整的派生过程参见[数据质量检查器](sources.md#data-quality-checkers)。
 
 **安装期选择。**检查器不会被链接进来——扫描运行在一个子解释器中，只有在运维人员指定其名称时才会安装该库。每条安装路径（`install.sh`、`packaging/linux/first-launch.sh`，以及通过 `PROVISA_DQ_CHECKER` 的 macOS 向导）都会将选择写入 `~/.provisa/config.yaml`：
 
@@ -569,7 +566,7 @@ sources:
 dq_checker: none        # none | soda | gx
 ```
 
-`scripts/provisa` 读取该键并导出 `PROVISA_EXTRAS`，`docker-compose.app.yml` 将其作为构建参数传给 `Dockerfile` 的 `ARG PROVISA_EXTRAS`：[tool-verified: `scripts/provisa:69-79`]
+`scripts/provisa` 读取该键并导出 `PROVISA_EXTRAS`，`docker-compose.app.yml` 将其作为构建参数传给 `Dockerfile` 的 `ARG PROVISA_EXTRAS`：
 
 | `dq_checker` | `PROVISA_EXTRAS`（Docker 层级） | 原生 venv 安装 |
 | -------------- | -------------------------------- | --------------------- |
@@ -604,9 +601,9 @@ naming:
 
 ### 命名约定 {: #naming-convention }
 
-命名权威是面向客户端名称的唯一真实来源；物理后端列名永远不会暴露给客户端。（REQ-194）每种查询语言依据 `column.alias`（如已设置）来推导列名，否则通过其配置的约定从物理列名推导。（REQ-194）
+命名权威是面向客户端名称的唯一真实来源；物理后端列名永远不会暴露给客户端。每种查询语言依据 `column.alias`（如已设置）来推导列名，否则通过其配置的约定从物理列名推导。
 
-GraphQL 约定是三种预设枚举之一。（REQ-416）旧的自由格式字符串（`none`、`snake_case`、`camelCase`、`PascalCase`）已废弃。（REQ-416）
+GraphQL 约定是三种预设枚举之一。旧的自由格式字符串（`none`、`snake_case`、`camelCase`、`PascalCase`）已废弃。
 
 | 预设 | 默认 | 类型名 | 字段名 | 变更（Mutation）名 |
 | -------- | --------- | ------------ | ------------- | ---------------- |
@@ -614,11 +611,11 @@ GraphQL 约定是三种预设枚举之一。（REQ-416）旧的自由格式字�
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
 
-默认的 GraphQL 约定是 `apollo_graphql`，它产生 camelCase 的字段名和变更名。（REQ-194、REQ-416）SQL 约定是独立的，默认值为 `snake_case`，通过 `apply_sql_name()` 应用；GraphQL 约定通过 `apply_gql_name()` 应用，CQL 名称由 GraphQL 名称派生。（REQ-194）
+默认的 GraphQL 约定是 `apollo_graphql`，它产生 camelCase 的字段名和变更名。SQL 约定是独立的，默认值为 `snake_case`，通过 `apply_sql_name()` 应用；GraphQL 约定通过 `apply_gql_name()` 应用，CQL 名称由 GraphQL 名称派生。
 
-`domain_prefix: bool` 是一个与所选预设无关的正交选项。（REQ-416）
+`domain_prefix: bool` 是一个与所选预设无关的正交选项。
 
-显式的 `column.alias` 是权威名称：SQL 会原样使用它，不应用任何约定；GraphQL 会对它应用其约定；CQL 由 GraphQL 名称派生。（REQ-194）
+显式的 `column.alias` 是权威名称：SQL 会原样使用它，不应用任何约定；GraphQL 会对它应用其约定；CQL 由 GraphQL 名称派生。
 
 按数据源覆盖：
 
@@ -639,7 +636,7 @@ tables:
 
 ### 域前缀 {: #domain-prefix }
 
-当 `domain_prefix: true` 时，所有 GraphQL 字段名和类型名都会以域 ID 为前缀，并用双下划线分隔：（REQ-154）
+当 `domain_prefix: true` 时，所有 GraphQL 字段名和类型名都会以域 ID 为前缀，并用双下划线分隔：
 
 | 表 | 域 | 字段名 |
 | ------- | -------- | ----------- |
@@ -650,7 +647,7 @@ tables:
 
 ### 命名规则 {: #naming-rules }
 
-在生成 GraphQL 字段名时对表名应用的正则规则。按顺序应用，在唯一性解析之前执行。（REQ-542）
+在生成 GraphQL 字段名时对表名应用的正则规则。按顺序应用，在唯一性解析之前执行。
 
 ## 表 {: #tables }
 
@@ -702,7 +699,7 @@ tables:
         check: "TRUE"
 ```
 
-表默认没有任何写入授权，因此任何角色都不能写入它。一条授权给某个角色表上的一种操作（`insert`、`update` 或 `delete`）。一张表对每个角色和操作最多保存一条授权。（REQ-2074）
+表默认没有任何写入授权，因此任何角色都不能写入它。一条授权给某个角色表上的一种操作（`insert`、`update` 或 `delete`）。一张表对每个角色和操作最多保存一条授权。
 
 | 授权字段 | 含义 |
 | ----------- | ------- |
@@ -723,7 +720,7 @@ tables:
 
 ### 别名 {: #aliases }
 
-表和列别名会覆盖默认的 GraphQL 名称。（REQ-155）适用场景：
+表和列别名会覆盖默认的 GraphQL 名称。适用场景：
 
 - 重命名晦涩的数据库名称（例如 `tbl_cust_seg` → `customer_segments`）
 - 避免在 API 层出现缩写
@@ -731,11 +728,11 @@ tables:
 
 ### 描述 {: #descriptions }
 
-表和列的描述会包含在生成的 GraphQL SDL 中。（REQ-156）它们会出现在 GraphiQL 的文档浏览器和内省（introspection）查询中。可以在配置 YAML 中设置，也可以通过管理界面设置。
+表和列的描述会包含在生成的 GraphQL SDL 中。它们会出现在 GraphiQL 的文档浏览器和内省（introspection）查询中。可以在配置 YAML 中设置，也可以通过管理界面设置。
 
 ### Path（计算型 JSON 提取） {: #path-computed-json-extraction }
 
-列可以使用点号表示法的 `path` 从 JSON/JSONB 源列中提取值。（REQ-151）这对 Kafka 消息、MongoDB 文档或 PostgreSQL JSONB 列中的半结构化数据很有用。
+列可以使用点号表示法的 `path` 从 JSON/JSONB 源列中提取值。这对 Kafka 消息、MongoDB 文档或 PostgreSQL JSONB 列中的半结构化数据很有用。
 
 ```yaml
 columns:
@@ -752,9 +749,9 @@ columns:
     visible_to: [admin, analyst]
 ```
 
-path 格式为 `source_column.key1.key2...`。编译器会在 SQL 中生成 `json_extract_scalar(source_column, '$.key1.key2')`。（REQ-151）
+path 格式为 `source_column.key1.key2...`。编译器会在 SQL 中生成 `json_extract_scalar(source_column, '$.key1.key2')`。
 
-**路由影响：**Path 列使用 PostgreSQL 的 JSON 运算符（`->>`），直接 PG 路由天然支持它。（REQ-152）对于非 PostgreSQL 数据源（MySQL、SQL Server 等），带 path 列的查询会自动通过联邦引擎路由。（REQ-152）由于 path 列是只读的计算字段，变更（Mutation）不受影响。（REQ-153）
+**路由影响：**Path 列使用 PostgreSQL 的 JSON 运算符（`->>`），直接 PG 路由天然支持它。对于非 PostgreSQL 数据源（MySQL、SQL Server 等），带 path 列的查询会自动通过联邦引擎路由。由于 path 列是只读的计算字段，变更（Mutation）不受影响。
 
 ### 脱敏类型 {: #masking-types }
 
@@ -787,13 +784,13 @@ relationships:
 
 ### 自动物化 {: #auto-materialization }
 
-在关系上设置 `materialize: true`，可为跨数据源 JOIN 自动生成物化视图。（REQ-158）这可以避免昂贵的联邦查询，通过预先计算 JOIN 结果实现。
+在关系上设置 `materialize: true`，可为跨数据源 JOIN 自动生成物化视图。这可以避免昂贵的联邦查询，通过预先计算 JOIN 结果实现。
 
-- 只有跨数据源的关系才会生成物化视图（同数据源的 JOIN 本身已经很快）（REQ-159）
-- 对于以关联表（junction）为支撑的关系，物化视图覆盖的是两跳遍历——源表这一跳、关联表这一跳、判别器，以及关联表自身的列作为边属性。关联表本身也算一跳，因此只要三张表中任意一张位于不同的数据源，该边就算跨数据源（REQ-1586）
-- 物化视图起始状态为过期（stale），由后台刷新循环负责填充（REQ-160）
-- 对任一源表的变更（Mutation）会将该物化视图标记为过期，等待重新刷新（REQ-543）
-- `refresh_interval` 默认值为 300 秒（5 分钟）（REQ-543）
+- 只有跨数据源的关系才会生成物化视图（同数据源的 JOIN 本身已经很快）
+- 对于以关联表（junction）为支撑的关系，物化视图覆盖的是两跳遍历——源表这一跳、关联表这一跳、判别器，以及关联表自身的列作为边属性。关联表本身也算一跳，因此只要三张表中任意一张位于不同的数据源，该边就算跨数据源
+- 物化视图起始状态为过期（stale），由后台刷新循环负责填充
+- 对任一源表的变更（Mutation）会将该物化视图标记为过期，等待重新刷新
+- `refresh_interval` 默认值为 300 秒（5 分钟）
 
 ## 角色 {: #roles }
 
@@ -821,7 +818,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-带有 `parent_role_id` 的角色会继承父角色的能力（capabilities）、域访问权限、列和对象授权，以及行级安全（RLS）规则，子角色针对某张表自定义的 RLS 规则优先于父角色的规则。（REQ-215、REQ-1677）继承链在启动时被展平。（REQ-215）
+带有 `parent_role_id` 的角色会继承父角色的能力（capabilities）、域访问权限、列和对象授权，以及行级安全（RLS）规则，子角色针对某张表自定义的 RLS 规则优先于父角色的规则。继承链在启动时被展平。
 
 ### 能力 {: #capabilities }
 
@@ -857,7 +854,7 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
-      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # Add via_table with via_left_column/via_right_column (and
       # via_type_column/via_type_value when the junction is discriminated) to
       # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
@@ -868,7 +865,7 @@ materialized_views:
 
 ## 视图（受治理的计算数据集） {: #views-governed-computed-datasets }
 
-视图是具有完整列级治理能力的、由 SQL 定义的计算数据集。（REQ-133）它们是向模型添加聚合、转换和派生指标的受治理机制。（REQ-136）
+视图是具有完整列级治理能力的、由 SQL 定义的计算数据集。它们是向模型添加聚合、转换和派生指标的受治理机制。
 
 ```yaml
 views:
@@ -908,14 +905,14 @@ views:
 
 ### 物化 vs 实时 {: #materialized-vs-live }
 
-- **`materialize: true`**：Provisa 通过 CTAS 创建一张表，并按计划刷新它。（REQ-135）查询更快，但数据可能会滞后至多 `refresh_interval` 秒。
-- **`materialize: false`**：Provisa 创建一个联邦视图。（REQ-135）查询始终返回实时数据，但对于复杂聚合可能较慢。
+- **`materialize: true`**：Provisa 通过 CTAS 创建一张表，并按计划刷新它。查询更快，但数据可能会滞后至多 `refresh_interval` 秒。
+- **`materialize: false`**：Provisa 创建一个联邦视图。查询始终返回实时数据，但对于复杂聚合可能较慢。
 
-视图与表经过相同的治理流水线——行级安全（RLS）、脱敏、采样，以及基于角色的可见性。（REQ-134）这确保了在没有数据管家（steward）监督的情况下，不会有新语义被加入平台。（REQ-136）
+视图与表经过相同的治理流水线——行级安全（RLS）、脱敏、采样，以及基于角色的可见性。这确保了在没有数据管家（steward）监督的情况下，不会有新语义被加入平台。
 
 ### 带历史的视图（时间旅行） {: #views-with-history-time-travel }
 
-物化视图可以保存其行的每一个版本，并按过去的某个时刻读取。（REQ-1162、REQ-1163） 它声明如何保存这些版本，以及版本属于哪个键：
+物化视图可以保存其行的每一个版本，并按过去的某个时刻读取。 它声明如何保存这些版本，以及版本属于哪个键：
 
 ```yaml
 views:
@@ -937,9 +934,9 @@ views:
 | `bitemporal_key` | 是 | 版本所属的列 |
 | `bitemporal_source_time` | 否 | 保存每一行在数据源中发生变化的时刻的列：时间旅行据以读取的时钟 |
 
-**选择时钟。** 有 `bitemporal_source_time` 时，版本按数据源自己的时间排序和读取：“上周二”就是数据源中的上周二。没有它时，版本按 Provisa 加载每次变化的时刻排序和读取，因此跟随刷新节奏，而不是行在数据源中发生变化的时刻。两者都是一种选择。加载时间适合频繁的刷新节奏、数据源时刻并不重要的数据，以及关心加载时间的读取，例如审计 Provisa 在何时保存了什么。（REQ-1163）
+**选择时钟。** 有 `bitemporal_source_time` 时，版本按数据源自己的时间排序和读取：“上周二”就是数据源中的上周二。没有它时，版本按 Provisa 加载每次变化的时刻排序和读取，因此跟随刷新节奏，而不是行在数据源中发生变化的时刻。两者都是一种选择。加载时间适合频繁的刷新节奏、数据源时刻并不重要的数据，以及关心加载时间的读取，例如审计 Provisa 在何时保存了什么。
 
-一个版本从它自己的时刻起有效，直到下一个版本的时刻。删除没有数据源变更时间，在 Provisa 记录它时生效。（REQ-2064）
+一个版本从它自己的时刻起有效，直到下一个版本的时刻。删除没有数据源变更时间，在 Provisa 记录它时生效。
 
 **读取。** 普通读取返回每个键当前有效的版本。标头 `X-Provisa-As-Of` 按某一时刻或某一范围读取，范围以 ISO 8601 区间 `start/end` 给出：
 
@@ -947,7 +944,7 @@ views:
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-时刻返回每个键在当时有效的版本。范围返回在其中任一时点有效的每个版本，每个版本一行。（REQ-2064）
+时刻返回每个键在当时有效的版本。范围返回在其中任一时点有效的每个版本，每个版本一行。
 
 **按记录时间。** 之后记录的更正会改变视图对过去的描述：一旦更正被记录，9 月 30 日生效的版本就是更正后的版本。若要按 Provisa 在某个时间点记录的样子读取视图（早于之后的任何更正），请加上 `X-Provisa-As-Recorded`，即一个 ISO 8601 时间：
 
@@ -956,7 +953,7 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-在该时间之后记录的每个版本都会被排除，然后 as-of 选出在其自身时间点生效的版本。只用 `X-Provisa-As-Recorded` 时，读取返回按当时记录生效的每个键的版本。它是一个时间点而不是范围；范围或格式错误的值会以 HTTP 400 拒绝（`data.invalid_as_recorded`）。同一个值也是 `resolve` 的 `as_recorded` 参数、REST 的 `as_recorded` 查询参数，以及 Arrow Flight 票据的 `as_recorded` 选项。每条语句的审计记录会保存它读取时使用的两个时间，`as_of` 和 `as_recorded`。（REQ-1163）同一个值也是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 参数、REST 查询参数 `as_of`，以及 Arrow Flight ticket 的 `as_of` 选项。传给 `resolve` 的范围返回该行的 `versions`，而不是它的 `row`。权限、脱敏和行规则与任何读取一样适用。格式错误的值，或结束不晚于开始的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
+在该时间之后记录的每个版本都会被排除，然后 as-of 选出在其自身时间点生效的版本。只用 `X-Provisa-As-Recorded` 时，读取返回按当时记录生效的每个键的版本。它是一个时间点而不是范围；范围或格式错误的值会以 HTTP 400 拒绝（`data.invalid_as_recorded`）。同一个值也是 `resolve` 的 `as_recorded` 参数、REST 的 `as_recorded` 查询参数，以及 Arrow Flight 票据的 `as_recorded` 选项。每条语句的审计记录会保存它读取时使用的两个时间，`as_of` 和 `as_recorded`。同一个值也是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 参数、REST 查询参数 `as_of`，以及 Arrow Flight ticket 的 `as_of` 选项。传给 `resolve` 的范围返回该行的 `versions`，而不是它的 `row`。权限、脱敏和行规则与任何读取一样适用。格式错误的值，或结束不晚于开始的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
 
 每个带历史的视图还会返回三列，其授权方式与它的数据源时间列相同（没有时则与第一个键列相同）：
 
@@ -975,7 +972,7 @@ X-Provisa-As-Recorded: 2026-10-01T00:00:00
 
 ### 只读查询视图 {: #query-only-views }
 
-无论 `materialize: true` 还是 `materialize: false`，视图暴露的 GraphQL 类型都是只读查询的。不会为 `view_sql` 支撑的关系生成 insert、upsert、update 或 delete 变更（Mutation）。（REQ-1157）[tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
+无论 `materialize: true` 还是 `materialize: false`，视图暴露的 GraphQL 类型都是只读查询的。不会为 `view_sql` 支撑的关系生成 insert、upsert、update 或 delete 变更（Mutation）。
 
 ## 缓存 {: #cache }
 
@@ -988,7 +985,7 @@ cache:
 
 ### 缓存层级 {: #cache-hierarchy }
 
-TTL 解析顺序（最具体者优先）：**表** > **数据源** > **全局默认值**。（REQ-544）取第一个非空值。
+TTL 解析顺序（最具体者优先）：**表** > **数据源** > **全局默认值**。取第一个非空值。
 
 ```yaml
 cache:
@@ -1010,11 +1007,11 @@ tables:
     # no cache_ttl → inherits source TTL (600s)
 ```
 
-在数据源上设置 `cache_enabled: false` 会为该数据源下的所有表禁用缓存，无论表级 TTL 如何设置。（REQ-544）缓存键始终包含 `role_id` 以及行级安全（RLS）上下文值，用于安全分区。（REQ-544）
+在数据源上设置 `cache_enabled: false` 会为该数据源下的所有表禁用缓存，无论表级 TTL 如何设置。缓存键始终包含 `role_id` 以及行级安全（RLS）上下文值，用于安全分区。
 
 ### 按请求选择启用 {: #per-request-opt-in }
 
-对于未请求响应缓存的请求，响应缓存处于关闭状态。（REQ-544）请求通过以下方式选择启用：
+对于未请求响应缓存的请求，响应缓存处于关闭状态。请求通过以下方式选择启用：
 
 | 接口 | 启用方式 |
 | --- | --- |
@@ -1024,19 +1021,19 @@ tables:
 | gRPC（以及 HTTP gRPC 代理） | 调用元数据（代理上为请求头）`x-provisa-cache: true` 或 `x-provisa-cache-ttl: 60` |
 | REST、JSON:API，以及作为文本中提示的替代方式：HTTP 上的 GraphQL、`/data/cypher`、Neo4j Query API | 请求头 `Cache-Control: max-age=60`（或 `max-stale=60`），或 `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
 
-非整数的 `ttl` 会使请求失败。在文本中和请求头中，或在两个请求头中两次声明选择启用且值不同的请求，会以 `400` 失败；不会偏向任何一个。`Cache-Control: no-cache` 或 `no-store` 表示不缓存，与没有请求头相同。 [tool-verified: `provisa/compiler/directives.py` `cache_hint_for`, `cache_hint_from_grpc_metadata`, `request_cache_hint`]
+非整数的 `ttl` 会使请求失败。在文本中和请求头中，或在两个请求头中两次声明选择启用且值不同的请求，会以 `400` 失败；不会偏向任何一个。`Cache-Control: no-cache` 或 `no-store` 表示不缓存，与没有请求头相同。
 
-没有该提示时，请求既不读取也不写入缓存。有提示时，仍由上述设置决定：只有当读取的每个数据源都设置了 `cache_enabled: true`，且每张表解析出的 TTL 大于 0 时，结果才会被缓存。若请求给出了 `ttl`，条目的存活时间即为该值；否则为所读取各表中最短的解析 TTL。（REQ-544）
+没有该提示时，请求既不读取也不写入缓存。有提示时，仍由上述设置决定：只有当读取的每个数据源都设置了 `cache_enabled: true`，且每张表解析出的 TTL 大于 0 时，结果才会被缓存。若请求给出了 `ttl`，条目的存活时间即为该值；否则为所读取各表中最短的解析 TTL。
 
-该提示只是以接受较旧的数据来换取速度。它绝不会使读取比运营方设置允许的更新：落地与副本的新鲜度（`cache_ttl`、`change_signal`）、`row_materialize`、`load_protected` 快照以及新鲜度检查，对带提示的请求与不带提示的请求完全相同地适用。请参阅[新鲜度与负载：由谁决定](#freshness-and-load-who-decides)。（REQ-544）
+该提示只是以接受较旧的数据来换取速度。它绝不会使读取比运营方设置允许的更新：落地与副本的新鲜度（`cache_ttl`、`change_signal`）、`row_materialize`、`load_protected` 快照以及新鲜度检查，对带提示的请求与不带提示的请求完全相同地适用。请参阅[新鲜度与负载：由谁决定](#freshness-and-load-who-decides)。
 
 `@noCache` 和 `-- @provisa no_cache=true` 已不再存在：缓存默认关闭，因此无需绕过。
 
-写入会使写入方组织为其写入的表所持有的所有缓存条目失效；其他组织对同一表的条目不受影响。若失效操作失败，请求会失败，而不会留下过期条目。（REQ-544, REQ-595）
+写入会使写入方组织为其写入的表所持有的所有缓存条目失效；其他组织对同一表的条目不受影响。若失效操作失败，请求会失败，而不会留下过期条目。
 
 ## 新鲜度与负载：由谁决定 {: #freshness-and-load-who-decides }
 
-有三方共同决定结果有多新，以及一次查询给其后端系统带来多大负载。(REQ-030)
+有三方共同决定结果有多新，以及一次查询给其后端系统带来多大负载。
 
 - **上游数据源。** 理想情况下它自行管理背压：连接数上限、语句超时、只读副本。
 - **运维方。** 保护平台（即 Provisa 本身）免受背压。上游无法自我保护时，运维方也保护上游。相关设置位于数据源和表上：`load_protected`、`replicate`、数据源的 `federation_hints`、大结果重定向阈值、sink 写入的 Kafka 集群，以及每张表注册的 watermark。
@@ -1053,13 +1050,13 @@ tables:
 | 订阅中的 `@watermark` | 重复该表注册的 watermark | 指定了其他列，或该表没有 watermark |
 | `@cached`、`-- @provisa cache=true` | 返回更旧的缓存结果 | 从不；缓存条目不会比写入它的那次读取更新 |
 
-拒绝时返回 HTTP 403 及代码 `query.operator_floor`，pgwire 上返回 SQLSTATE `42501`，Flight 和 gRPC 上返回 `PERMISSION_DENIED`。(REQ-030)
+拒绝时返回 HTTP 403 及代码 `query.operator_floor`，pgwire 上返回 SQLSTATE `42501`，Flight 和 gRPC 上返回 `PERMISSION_DENIED`。
 
-`load_protected` 或 `replicate: 0` 的表，在任何传输上都不会被查询实时读取。查询读取的是它的副本。只有复制及其刷新会读取数据源：当 `cache_ttl` 或新鲜度检查要求时才刷新；两者都没有时，副本只构建一次，之后仅通过变更流或调度器刷新。(REQ-1907)(REQ-1141, REQ-826) [tool-verified: `tests/integration/test_operator_floor_e2e.py`] 对于带有 `off_peak_window`（在表或其数据源上，按 `off_peak_tz` 解读）的此类表，刷新只在窗口打开时运行：在窗口之外到期或被请求的刷新会等到窗口下一次打开，没有 `cache_ttl` 的窗口每次打开刷新一次。首次构建从不被推迟，因为对该表的读取在等待它。 [tool-verified: `provisa/federation/replica_builds.py` `_deferred_until`, `_next_refresh_at`; `tests/integration/test_off_peak_window_refresh_e2e.py`]
+`load_protected` 或 `replicate: 0` 的表，在任何传输上都不会被查询实时读取。查询读取的是它的副本。只有复制及其刷新会读取数据源：当 `cache_ttl` 或新鲜度检查要求时才刷新；两者都没有时，副本只构建一次，之后仅通过变更流或调度器刷新。 对于带有 `off_peak_window`（在表或其数据源上，按 `off_peak_tz` 解读）的此类表，刷新只在窗口打开时运行：在窗口之外到期或被请求的刷新会等到窗口下一次打开，没有 `cache_ttl` 的窗口每次打开刷新一次。首次构建从不被推迟，因为对该表的读取在等待它。
 
 ### `replicate` 设置 {: #the-replicate-setting }
 
-`replicate` 是表上的一个整数。未设置值的表沿用其数据源的值；两者都未设置时，适用全局阈值。副本是数据源表的一份拷贝，保存在引擎的存储中，并按表的时效性设置刷新；它不是持续的变更流。(REQ-826) [tool-verified: `provisa/core/replicate.py`]
+`replicate` 是表上的一个整数。未设置值的表沿用其数据源的值；两者都未设置时，适用全局阈值。副本是数据源表的一份拷贝，保存在引擎的存储中，并按表的时效性设置刷新；它不是持续的变更流。
 
 | 值 | 名称 | 含义 |
 | --- | --- | --- |
@@ -1070,9 +1067,9 @@ tables:
 
 只有“始终”是保证。“从不”和 Hot 值都是尽力而为。`load_protected` 与 `replicate: -1` 同时出现时，会在配置加载和保存时被拒绝。`replicate: 0` 的数据源在任何引擎上都没有实时挂载，因此它的每张表都由其副本提供服务。
 
-下限按语句所读取的表来判断。不读取任何由副本提供服务的表的语句，即使其数据源还有其他被复制的表，也保留直连路由。[tool-verified: `provisa/federation/registry_view.py` `operator_floor`]
+下限按语句所读取的表来判断。不读取任何由副本提供服务的表的语句，即使其数据源还有其他被复制的表，也保留直连路由。
 
-副本按其声明的主键，以及其声明的关系所连接的列建立索引，索引在副本落地后构建。这些索引在哪些情况下加速联接、副本应存放何处以及如何选择其新鲜度，参见 [Replicas](replicas.md)。(REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py`]
+副本按其声明的主键，以及其声明的关系所连接的列建立索引，索引在副本落地后构建。这些索引在哪些情况下加速联接、副本应存放何处以及如何选择其新鲜度，参见 [Replicas](replicas.md)。
 
 ### Hot 复制 {: #hot-replication }
 
@@ -1103,7 +1100,7 @@ replication:
 
 表在下列情况下不会被提升：行数超过 `hot_max_rows`；其变更信号为 `ttl` 或 `ttl_probe`，而它和它的数据源都没有声明 `cache_ttl`；或 Redis 热层已经在管理它。管理界面中该表的摘要会说明是哪一种情况。
 
-计数保存在 Redis 中。使用共享 Redis（`cache.redis_url`）时，计数覆盖部署的所有进程。使用内嵌 Redis 时，计数按进程各自统计，因此只有在单个工作进程处理请求时才会提升；有多个工作进程且没有共享 Redis 时不会提升任何表，摘要中会说明这一点。[tool-verified: `provisa/federation/replica_hot.py`]
+计数保存在 Redis 中。使用共享 Redis（`cache.redis_url`）时，计数覆盖部署的所有进程。使用内嵌 Redis 时，计数按进程各自统计，因此只有在单个工作进程处理请求时才会提升；有多个工作进程且没有共享 Redis 时不会提升任何表，摘要中会说明这一点。
 
 ## 认证 {: #authentication }
 
@@ -1137,7 +1134,7 @@ auth:
 | `oauth` | 通用 OIDC（Okta、Azure AD、Auth0、PingFederate）。 | 来自发现 URL 的 JWKS |
 | `basic` | 自包含部署。账户存储在 Provisa 自身的存储中。 | bcrypt 密码，或 pgwire 上的 SCRAM-SHA-256 |
 
-超级用户凭据（`superuser` 块）适用于任何提供方，并始终解析为拥有全部能力的 admin 角色。（REQ-125）用于在配置外部认证之前进行初始设置。
+超级用户凭据（`superuser` 块）适用于任何提供方，并始终解析为拥有全部能力的 admin 角色。用于在配置外部认证之前进行初始设置。
 
 ### SCRAM-SHA-256（`auth.scram`） {: #scram-sha-256-authscram }
 
@@ -1147,7 +1144,7 @@ auth:
   scram: true
 ```
 
-使 pgwire 通过 `SCRAM-SHA-256` 播发 SASL，从而以证明的方式验证密码，而不是以明文发送。（REQ-1394）它仅适用于 `basic` 提供方——没有其他提供方持有 SCRAM 所需的 RFC 5802 验证器——且不提供通道绑定（channel binding）。
+使 pgwire 通过 `SCRAM-SHA-256` 播发 SASL，从而以证明的方式验证密码，而不是以明文发送。它仅适用于 `basic` 提供方——没有其他提供方持有 SCRAM 所需的 RFC 5802 验证器——且不提供通道绑定（channel binding）。
 
 验证器无法从现有的 bcrypt 哈希派生。每当密码以明文形式经过一次，就会写入一个验证器，因此每个用户的首次 SCRAM 连接紧随其下一次注册、登录、修改密码或管理员重置之后。在此之前，该用户的连接会回退为通过 TLS 的明文交换；线路上不会暴露谁已经完成了迁移。
 
@@ -1161,15 +1158,15 @@ auth:
     lockout_seconds: 900 # how long a locked-out subject is refused
 ```
 
-默认按图示值开启；该配置块仅用于调整这些值。（REQ-1393）计数器位于凭据校验层，因此通过 HTTP、pgwire 和 Bolt 发生的失败会累计到同一主体上，一次锁定会在每个接口上都生效。它是按进程隔离的：多个 API 工作进程各自都允许最多 `max_attempts` 次尝试。
+默认按图示值开启；该配置块仅用于调整这些值。计数器位于凭据校验层，因此通过 HTTP、pgwire 和 Bolt 发生的失败会累计到同一主体上，一次锁定会在每个接口上都生效。它是按进程隔离的：多个 API 工作进程各自都允许最多 `max_attempts` 次尝试。
 
 ### 个人访问令牌 {: #personal-access-tokens }
 
-个人访问令牌（PAT）不需要任何配置块——它们始终被接受，其存储与其余控制平面架构一同创建。（REQ-1263）可配置的是用户在签发时可以请求的有效期：1 到 366 天，或者选择永不过期。参见[安全模型](security.md#personal-access-tokens)。
+个人访问令牌（PAT）不需要任何配置块——它们始终被接受，其存储与其余控制平面架构一同创建。可配置的是用户在签发时可以请求的有效期：1 到 366 天，或者选择永不过期。参见[安全模型](security.md#personal-access-tokens)。
 
 ### 双向 TLS（Mutual TLS） {: #mutual-tls }
 
-客户端证书校验是通过环境变量配置的，而非在 `provisa.yaml` 中，它扩展自 TLS 证书设置所在的同一组环境变量。（REQ-1228）
+客户端证书校验是通过环境变量配置的，而非在 `provisa.yaml` 中，它扩展自 TLS 证书设置所在的同一组环境变量。
 
 | 变量 | 默认值 | 含义 |
 | ---------- | --------- | --------- |
@@ -1181,7 +1178,7 @@ auth:
 
 ### 通过 TLS 寻址组织 {: #addressing-an-org-over-tls }
 
-无需配置任何内容。在多组织部署中，pgwire 和 Bolt 会从客户端拨号所用的主机名中读取组织信息，该主机名携带在 TLS ClientHello 中，与 HTTP 从 `Host` 请求头中读取的方式完全一致。（REQ-1234）连接到 `acme.provisa.dev` 的客户端请求的是组织 `acme`；除非已认证的主体是该组织的成员，否则请求会被拒绝。通过 IP 地址连接则不请求任何组织，这在单组织部署中适用于每一条连接。
+无需配置任何内容。在多组织部署中，pgwire 和 Bolt 会从客户端拨号所用的主机名中读取组织信息，该主机名携带在 TLS ClientHello 中，与 HTTP 从 `Host` 请求头中读取的方式完全一致。连接到 `acme.provisa.dev` 的客户端请求的是组织 `acme`；除非已认证的主体是该组织的成员，否则请求会被拒绝。通过 IP 地址连接则不请求任何组织，这在单组织部署中适用于每一条连接。
 
 ### 完整认证配置示例（已注释） {: #full-auth-config-example-commented-out }
 
@@ -1222,7 +1219,7 @@ auth:
 
 ## Upsert 变更（Mutation） {: #upsert-mutations }
 
-对于拥有主键的表，Provisa 会自动生成 `upsert_<table>` 变更字段。（REQ-212）它们会编译为目标方言中的 upsert 语句——在 PostgreSQL 上是 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，在 MySQL 上是 `ON DUPLICATE KEY UPDATE`。（REQ-212）
+对于拥有主键的表，Provisa 会自动生成 `upsert_<table>` 变更字段。它们会编译为目标方言中的 upsert 语句——在 PostgreSQL 上是 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，在 MySQL 上是 `ON DUPLICATE KEY UPDATE`。
 
 ```graphql
 mutation {
@@ -1232,11 +1229,11 @@ mutation {
 }
 ```
 
-冲突列由主键元数据派生。（REQ-212）所有列可见性和写权限规则均适用。
+冲突列由主键元数据派生。所有列可见性和写权限规则均适用。
 
 ## Distinct On
 
-`distinct_on` 参数会为指定列的每个不同取值选取第一行。（REQ-213）在根查询字段上可用。
+`distinct_on` 参数会为指定列的每个不同取值选取第一行。在根查询字段上可用。
 
 ```graphql
 {
@@ -1248,11 +1245,11 @@ mutation {
 }
 ```
 
-在 PostgreSQL 中编译为 `SELECT DISTINCT ON (region) ...`。（REQ-213）对于非 PG 方言，使用基于窗口函数的回退方案。（REQ-213）
+在 PostgreSQL 中编译为 `SELECT DISTINCT ON (region) ...`。对于非 PG 方言，使用基于窗口函数的回退方案。
 
 ## 写入授权的预设 {: #write-grant-presets }
 
-写入授权在插入和更新时自行设置列。（REQ-214、REQ-2074）预设在授权的 `presets` 列表中声明，按角色和操作区分。
+写入授权在插入和更新时自行设置列。预设在授权的 `presets` 列表中声明，按角色和操作区分。
 
 ```yaml
 tables:
@@ -1281,11 +1278,11 @@ tables:
 | `now` | 注入写入发生的时间 |
 | `literal` | 注入一个常量（`value`） |
 
-预设在编译期间、生成 SQL 之前添加到语句中。（REQ-214）语句不得提供预设列，预设列也不会出现在变更的输入类型中。（REQ-214）
+预设在编译期间、生成 SQL 之前添加到语句中。语句不得提供预设列，预设列也不会出现在变更的输入类型中。
 
 ## 继承角色 {: #inherited-roles }
 
-角色可以通过 `parent_role_id` 继承自一个父角色。（REQ-215）继承链在启动时被展平。（REQ-215）子角色拥有其所有祖先角色能力和域访问权限的并集；授予某个祖先角色的列、指标、函数或 webhook 也会授予该子角色；祖先角色的行级安全（RLS）规则会按表逐一应用于子角色，遵循就近优先原则，子角色针对某张表的自有规则会替换父角色的规则。（REQ-1677）
+角色可以通过 `parent_role_id` 继承自一个父角色。继承链在启动时被展平。子角色拥有其所有祖先角色能力和域访问权限的并集；授予某个祖先角色的列、指标、函数或 webhook 也会授予该子角色；祖先角色的行级安全（RLS）规则会按表逐一应用于子角色，遵循就近优先原则，子角色针对某张表的自有规则会替换父角色的规则。
 
 ```yaml
 roles:
@@ -1309,11 +1306,11 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-支持多级继承。（REQ-215）子角色显式设置的能力和 domain_access 会与父角色的合并。（REQ-215）父角色必须是已存在的角色，不能是自身，也不能形成循环；任何违反都会在保存时被拒绝。（REQ-1677）
+支持多级继承。子角色显式设置的能力和 domain_access 会与父角色的合并。父角色必须是已存在的角色，不能是自身，也不能形成循环；任何违反都会在保存时被拒绝。
 
 ## 计划触发器 {: #scheduled-triggers }
 
-按 cron 计划调用 webhook URL 的触发器。（REQ-216）使用 APScheduler。（REQ-216）
+按 cron 计划调用 webhook URL 的触发器。使用 APScheduler。
 
 ```yaml
 scheduled_triggers:
@@ -1327,9 +1324,9 @@ scheduled_triggers:
     enabled: false
 ```
 
-计划任务通过管理界面（启用/禁用开关）或 `toggle_scheduled_task` 管理变更（Mutation）进行管理。（REQ-216）
+计划任务通过管理界面（启用/禁用开关）或 `toggle_scheduled_task` 管理变更（Mutation）进行管理。
 
-触发器可以在已注册的表上触发，而不是按计划：`on: {table, event}` 以 `source_id.schema.table` 形式指定表，并指定事件 `change`、`error` 或 `quarantine`。`command` 触发器以其 `role` 运行一个已注册的命令，经由该命令自身的受治理调度，并把触发它的内容作为参数传入。变更传入 `table`，以及在变更信号携带时（Kafka、Debezium）作为 `changes` 的已落地批次。`error` 或 `quarantine` 事件传入 `table`、`event`、`reason` 和 `error`。若触发器的命令声明了触发器不提供的参数，保存时会被拒绝。变更在其变更信号报告的每一批变更时触发一次，或在经由 Provisa 写入完成时触发；由副本提供的表在构建落地了与上次不同的行时触发。命令自身的写入也是一次变更，因此触发器可以链式触发。每次运行都会记录时间、结果（`succeeded`、`refused` 或 `failed`）、错误以及触发来源，`scheduledTasks` 管理查询会列出它。只有 prod 的触发器会触发，且不会在任何源数据库中安装任何东西。（REQ-2054）[tool-verified: `provisa/scheduler/table_triggers.py`, `provisa/scheduler/trigger_runs.py`]
+触发器可以在已注册的表上触发，而不是按计划：`on: {table, event}` 以 `source_id.schema.table` 形式指定表，并指定事件 `change`、`error` 或 `quarantine`。`command` 触发器以其 `role` 运行一个已注册的命令，经由该命令自身的受治理调度，并把触发它的内容作为参数传入。变更传入 `table`，以及在变更信号携带时（Kafka、Debezium）作为 `changes` 的已落地批次。`error` 或 `quarantine` 事件传入 `table`、`event`、`reason` 和 `error`。若触发器的命令声明了触发器不提供的参数，保存时会被拒绝。变更在其变更信号报告的每一批变更时触发一次，或在经由 Provisa 写入完成时触发；由副本提供的表在构建落地了与上次不同的行时触发。命令自身的写入也是一次变更，因此触发器可以链式触发。每次运行都会记录时间、结果（`succeeded`、`refused` 或 `failed`）、错误以及触发来源，`scheduledTasks` 管理查询会列出它。只有 prod 的触发器会触发，且不会在任何源数据库中安装任何东西。
 
 ```yaml
 scheduled_triggers:
@@ -1345,7 +1342,7 @@ scheduled_triggers:
 
 ## OrderBy 格式 {: #orderby-format }
 
-OrderBy 使用 `{column: direction}` 格式，direction 是一个含 6 个取值的枚举：（REQ-200、REQ-201）
+OrderBy 使用 `{column: direction}` 格式，direction 是一个含 6 个取值的枚举：
 
 ```graphql
 {
@@ -1366,7 +1363,7 @@ OrderBy 使用 `{column: direction}` 格式，direction 是一个含 6 个取值
 | `desc_nulls_first` | `DESC NULLS FIRST` |
 | `desc_nulls_last` | `DESC NULLS LAST` |
 
-关系排序通过嵌套对象支持：（REQ-202）
+关系排序通过嵌套对象支持：
 
 ```graphql
 {
@@ -1395,9 +1392,9 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### 遥测过滤器 [tool-verified] {: #telemetry-filters-tool-verified }
+### 遥测过滤器 {: #telemetry-filters-tool-verified }
 
-Provisa 运行两条独立的 OTLP 导出路径：你自己的内部采集器和可选的 Provisa 支持端点。（REQ-545）每条路径都有各自的过滤器。过滤器在跨度（span）离开进程之前，运行在一个包裹层 `_FilteringExporter` 内部——原始的跨度对象永远不会被修改。（REQ-546）[tool-verified: `provisa/api/otel_setup.py` lines 156–207]
+Provisa 运行两条独立的 OTLP 导出路径：你自己的内部采集器和可选的 Provisa 支持端点。每条路径都有各自的过滤器。过滤器在跨度（span）离开进程之前，运行在一个包裹层 `_FilteringExporter` 内部——原始的跨度对象永远不会被修改。
 
 **`telemetry_filter`** —— 控制哪些数据到达你的内部采集器。
 
@@ -1406,7 +1403,7 @@ Provisa 运行两条独立的 OTLP 导出路径：你自己的内部采集器和
 | `redact_sql_literals` | bool | `false` | 将 `db.statement` 中的字符串和数字字面值替换为 `?` |
 | `redact_attributes` | list[str] | `[]` | 从每个跨度中完全删除的属性键 |
 
-**`support_telemetry_filter`** —— 控制哪些数据到达 Provisa 支持端点。在此路径上，SQL 字面值涂黑默认开启为 `true`，因为查询数据归你所有。（REQ-547）[tool-verified: `provisa/api/otel_setup.py` line 240]
+**`support_telemetry_filter`** —— 控制哪些数据到达 Provisa 支持端点。在此路径上，SQL 字面值涂黑默认开启为 `true`，因为查询数据归你所有。
 
 | 键 | 类型 | 默认值 | 说明 |
 | ----- | ------ | --------- | ------------- |
@@ -1425,21 +1422,21 @@ db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### 支持端点 [tool-verified] {: #support-endpoint-tool-verified }
+### 支持端点 {: #support-endpoint-tool-verified }
 
-`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会将遥测数据转发给 Provisa 支持团队用于诊断。（REQ-548）未设置时，不会有任何数据通过此路径离开你的基础设施。（REQ-548）支持端点的过滤器独立于内部过滤器生效——你可以对两条导出路径都做 SQL 字面值涂黑，同时仍与支持团队共享跨度的时间和错误数据。（REQ-545）[tool-verified: `provisa/api/otel_setup.py` lines 238–288]
+`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会将遥测数据转发给 Provisa 支持团队用于诊断。未设置时，不会有任何数据通过此路径离开你的基础设施。支持端点的过滤器独立于内部过滤器生效——你可以对两条导出路径都做 SQL 字面值涂黑，同时仍与支持团队共享跨度的时间和错误数据。
 
-### 端点协议探测 [tool-verified] {: #endpoint-protocol-detection-tool-verified }
+### 端点协议探测 {: #endpoint-protocol-detection-tool-verified }
 
-Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。（REQ-549）以 `http://` 或 `https://` 开头的 URL 使用 OTLP/HTTP，并自动附加 `/v1/traces`、`/v1/metrics`、`/v1/logs`。（REQ-549）其他任何 scheme 都使用 `insecure=True` 的 OTLP/gRPC。（REQ-549）[tool-verified: `provisa/api/otel_setup.py` lines 60–70]
+Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。以 `http://` 或 `https://` 开头的 URL 使用 OTLP/HTTP，并自动附加 `/v1/traces`、`/v1/metrics`、`/v1/logs`。其他任何 scheme 都使用 `insecure=True` 的 OTLP/gRPC。
 
 ## 联邦引擎 {: #federation-engine }
 
-配置联邦引擎是可选的。默认值为 `duckdb`——零配置、进程内运行、无需外部服务（REQ-989）。当你需要 MPP 规模，或想复用现有数据仓库时，可选择其他引擎。
+配置联邦引擎是可选的。默认值为 `duckdb`——零配置、进程内运行、无需外部服务。当你需要 MPP 规模，或想复用现有数据仓库时，可选择其他引擎。
 
-优先级：`PROVISA_ENGINE` 环境变量 → 持久化的管理界面 `federation_engine` 配置字段 → `duckdb`。更改在服务重启后生效。[tool-verified: `engine.py` `build_engine`]
+优先级：`PROVISA_ENGINE` 环境变量 → 持久化的管理界面 `federation_engine` 配置字段 → `duckdb`。更改在服务重启后生效。
 
-### 引擎概览 [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### 引擎概览 {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | 引擎键 | 标签 | 方言 | MPP | 外部链接机制 | 认证 |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
@@ -1503,7 +1500,7 @@ PROVISA_ENGINE=pg
 
 #### duckdb
 
-进程内运行；无需外部服务。默认引擎（REQ-989）。`PROVISA_DATA_DIR` 控制嵌入式存储的位置（默认为 `~/.provisa`）。
+进程内运行；无需外部服务。默认引擎。`PROVISA_DATA_DIR` 控制嵌入式存储的位置（默认为 `~/.provisa`）。
 
 ```bash
 PROVISA_ENGINE=duckdb   # or omit — this is the default
@@ -1585,11 +1582,11 @@ PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 
 ### 物化存储 {: #materialization-store }
 
-当数据源无法实时挂载（所选引擎没有对应的 ATTACH 连接器）时，它会落地到该引擎的物化存储中。解析顺序：显式的 `PROVISA_MATERIALIZE_URL` → 引擎声明的默认值 → 硬性报错（无静默回退）。[tool-verified: `engine.py` `materialize_store`]
+当数据源无法实时挂载（所选引擎没有对应的 ATTACH 连接器）时，它会落地到该引擎的物化存储中。解析顺序：显式的 `PROVISA_MATERIALIZE_URL` → 引擎声明的默认值 → 硬性报错（无静默回退）。
 
 DuckDB 将其嵌入式文件（`~/.provisa/materialize.duckdb`）声明为默认值。所有其他引擎默认使用 `TENANT_DATABASE_URL`（PostgreSQL）。可以用 `PROVISA_MATERIALIZE_URL` 覆盖任意引擎的默认值。
 
-存储决定副本的索引对联接起什么作用：PostgreSQL 存储会为副本建立索引，在其中运行 SQL 的引擎会读取这些索引；而 DuckDB 则在每条语句的副本拷贝之上联接其内嵌文件中的副本。参见 [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it)。(REQ-2015)
+存储决定副本的索引对联接起什么作用：PostgreSQL 存储会为副本建立索引，在其中运行 SQL 的引擎会读取这些索引；而 DuckDB 则在每条语句的副本拷贝之上联接其内嵌文件中的副本。参见 [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it)。
 
 ### 按数据源的联邦提示 {: #per-source-federation-hints }
 
@@ -1637,18 +1634,18 @@ sources:
 | 变量 | 默认值 | 说明 |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | 配置文件路径 |
-| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | 控制平面存储 URI（SQLAlchemy 异步）；对于嵌入式桌面存储，可接受 `sqlite+pysqlite://…` / `duckdb://…`（REQ-828、REQ-850） |
-| `PLATFORM_DATABASE_URL` | — | 平台注册表 URI（租户目录、引擎注册表）；启动时必需，无回退（REQ-837） |
-| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` 使用嵌入式 fakeredis 而非 Redis 服务器——无需 Docker（REQ-829） |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | 控制平面存储 URI（SQLAlchemy 异步）；对于嵌入式桌面存储，可接受 `sqlite+pysqlite://…` / `duckdb://…` |
+| `PLATFORM_DATABASE_URL` | — | 平台注册表 URI（租户目录、引擎注册表）；启动时必需，无回退 |
+| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` 使用嵌入式 fakeredis 而非 Redis 服务器——无需 Docker |
 | `PG_HOST` | `localhost` | PostgreSQL 主机 |
 | `PG_PORT` | `5432` | PostgreSQL 端口 |
 | `PG_DATABASE` | `provisa` | PostgreSQL 数据库 |
 | `PG_USER` | `provisa` | PostgreSQL 用户 |
 | `PG_PASSWORD` | `provisa` | PostgreSQL 密码 |
-| `PROVISA_ENGINE` | `duckdb` | 联邦引擎键（REQ-989、REQ-916） |
+| `PROVISA_ENGINE` | `duckdb` | 联邦引擎键 |
 | `PROVISA_ENGINE_URL` | — | 由 URL 驱动的引擎的连接 URL（Snowflake、Databricks、ClickHouse Server、BigQuery、SQLAlchemy） |
 | `PROVISA_MATERIALIZE_URL` | — | 覆盖物化存储的 DSN（默认为引擎声明的默认值） |
-| `PROVISA_DATA_DIR` | `~/.provisa` | 嵌入式 DuckDB 存储的数据目录（REQ-989） |
+| `PROVISA_DATA_DIR` | `~/.provisa` | 嵌入式 DuckDB 存储的数据目录 |
 | `TRINO_HOST` | `localhost` | Trino 协调器主机 |
 | `TRINO_PORT` | `8080` | Trino 协调器 HTTP 端口 |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | GCP 服务账号密钥 JSON 的路径（BigQuery 引擎/数据源） |
@@ -1660,7 +1657,7 @@ sources:
 | `REDIS_URL` | — | Redis 连接 URL |
 | `PROVISA_SAMPLE_SIZE` | `10000` | 默认采样上限 |
 | `PROVISA_DEFAULT_ROW_LIMIT` | `100` | 当查询未提供显式 `LIMIT` 时的行数上限 |
-| `PROVISA_RETRY_BUDGET_SECS` | `30` | 一级读重试预算（秒）；采用全抖动（full jitter）的指数退避（REQ-703） |
+| `PROVISA_RETRY_BUDGET_SECS` | `30` | 一级读重试预算（秒）；采用全抖动（full jitter）的指数退避 |
 | `ZAYCHIK_PORT` | `8480` | Zaychik Flight SQL 代理端口 |
 | `FLIGHT_PORT` | `8815` | Provisa Arrow Flight 服务器端口 |
 | `GRPC_PORT` | `50051` | Provisa Protobuf gRPC 服务器端口 |
@@ -1672,12 +1669,12 @@ sources:
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | S3 访问密钥 |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | S3 秘密密钥 |
 | `PROVISA_REDIRECT_TTL` | `3600` | 预签名 URL 的 TTL（秒） |
-| `PROVISA_MTLS_CLIENT_CA` | — | 允许签发客户端证书的 CA 的 PEM 包；设置它会在 pgwire、Bolt、gRPC 和 Flight 上开启客户端证书校验（REQ-1228） |
-| `PROVISA_MTLS_MODE` | 一旦设置了 CA 则为 `required` | `required` 或 `optional`；任何其他值都会拒绝启动（REQ-1228） |
-| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求证书的通用名称与认证用户名一致（REQ-1228） |
-| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | 允许从浏览器打开 Bolt WebSocket 的站点，逗号分隔；未设置时拒绝所有浏览器来源（REQ-802） |
-| `PROVISA_EXTRAS` | `firebase,vector` | 内置到应用镜像中的 pyproject extras；`scripts/provisa` 根据 `~/.provisa/config.yaml` 中的 `dq_checker` 推导（REQ-1443） |
-| `PROVISA_DQ_CHECKER` | `none` | 仅供安装程序使用：`none`/`soda`/`gx`，在非交互模式下由 `first-launch.sh` 读取，并作为 `dq_checker` 写入 `config.yaml`（REQ-1443） |
+| `PROVISA_MTLS_CLIENT_CA` | — | 允许签发客户端证书的 CA 的 PEM 包；设置它会在 pgwire、Bolt、gRPC 和 Flight 上开启客户端证书校验 |
+| `PROVISA_MTLS_MODE` | 一旦设置了 CA 则为 `required` | `required` 或 `optional`；任何其他值都会拒绝启动 |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求证书的通用名称与认证用户名一致 |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | 允许从浏览器打开 Bolt WebSocket 的站点，逗号分隔；未设置时拒绝所有浏览器来源 |
+| `PROVISA_EXTRAS` | `firebase,vector` | 内置到应用镜像中的 pyproject extras；`scripts/provisa` 根据 `~/.provisa/config.yaml` 中的 `dq_checker` 推导 |
+| `PROVISA_DQ_CHECKER` | `none` | 仅供安装程序使用：`none`/`soda`/`gx`，在非交互模式下由 `first-launch.sh` 读取，并作为 `dq_checker` 写入 `config.yaml` |
 | `ANTHROPIC_API_KEY` | — | Claude API 密钥（发现用途） |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | 覆盖 `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | 覆盖 `observability.service_name` |

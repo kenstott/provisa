@@ -16,7 +16,7 @@ termo, e o termo carrega a definição.
 ## Como os termos são derivados {: #how-terms-are-derived }
 
 O Provisa deriva um termo de cada nome de coluna automaticamente, usando uma regra de normalização
-determinística (REQ-1387): dobra de maiúsculas e minúsculas, tokenização por separador e camelCase,
+determinística: dobra de maiúsculas e minúsculas, tokenização por separador e camelCase,
 expansão de abreviações e remoção de tokens de proxy ao final.
 
 **Expansão de abreviações** mapeia abreviações corporativas comuns para suas formas completas: `cust` →
@@ -54,7 +54,7 @@ que aparecem em quase toda tabela.
 ### O nome de negócio, não o nome físico {: #the-business-name-not-the-physical-name }
 
 Um termo derivado segue o **nome de negócio** da coluna — seu alias quando o modelador definiu um, seu
-nome físico quando não definiu (REQ-1581). Quando `usr_nm` recebe o alias `user name`, o termo derivado
+nome físico quando não definiu. Quando `usr_nm` recebe o alias `user name`, o termo derivado
 é `user name`, não `user number` nem alguma expansão de `usr_nm`.
 
 Dar alias a uma coluna é a correção mais forte. Um alias viaja para toda interface que lê a
@@ -71,7 +71,7 @@ especialista a um termo, uma edição de alias não move o ref — aquele trabal
 
 Alguns nomes de tabela descrevem um caminho de acesso em vez de um conceito: `user_by_name` é um usuário alcançado
 através de uma busca por nome, não um tipo distinto de entidade. Quando o Provisa deriva o conceito da tabela para
-qualificação de frase genérica, ele corta o nome no conectivo (REQ-1582). `user_by_name` vira
+qualificação de frase genérica, ele corta o nome no conectivo. `user_by_name` vira
 `user`; `orders_by_customer` vira `order`.
 
 Sem o corte, a chave substituta em `user_by_name` normalizaria para `user name` e colidiria
@@ -128,12 +128,11 @@ Relacionamentos são direcionais. A UI mostra tanto arestas de saída (este term
 de entrada (outro termo → este termo), rotulando cada direção com sua própria frase em linguagem simples.
 
 As arestas vivem em `glossary_term_edges`, uma tabela associativa declarada como relação de junção
-(REQ-1586): a coluna `rel_type` é o discriminador, de modo que cada um dos tipos acima é um tipo de
+: a coluna `rel_type` é o discriminador, de modo que cada um dos tipos acima é um tipo de
 relação Cypher distinto entre dois nós `GlossaryTerm`, e não uma propriedade de um nó reificado. A tabela
 é provisionada com o restante do esquema de metadados e não aparece como nó nos clientes de grafo — ela
 é a aresta. Nada nela é específico do glossário: é declarada do mesmo modo que você declararia uma junção
 sobre as suas próprias tabelas, e é lida pelo mesmo código.
-[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
 ## Termos abstratos {: #abstract-terms }
 
@@ -148,7 +147,7 @@ não pode responder nada.
 
 ## A regra de admissão para interfaces consumidoras {: #the-admission-rule-for-consuming-surfaces }
 
-Um termo que uma interface consumidora pode oferecer precisa satisfazer três condições (REQ-1387):
+Um termo que uma interface consumidora pode oferecer precisa satisfazer três condições:
 
 1. **Em serviço** — não aposentado (um curador o retirou de serviço) e não depreciado (perdeu sua
    última coluna e foi mantido apenas porque excluí-lo deixaria algo solto).
@@ -179,7 +178,7 @@ Ativos de coluna exportam independentemente. Um termo ser excluído não esconde
 
 Algumas colunas carregam encanamento em vez de dados de negócio: identificadores de lote de ETL, versões de linha,
 timestamps de ingestão. Um termo derivado de tal coluna pode ter uma definição perfeitamente precisa
-que simplesmente não é vocabulário de negócios (REQ-1583). O controle **Excluir da exportação de metadados**
+que simplesmente não é vocabulário de negócios. O controle **Excluir da exportação de metadados**
 retém o termo e quaisquer arestas de relacionamento que terminem nele dos catálogos em que o Provisa publica,
 enquanto as próprias colunas ainda exportam como ativos.
 

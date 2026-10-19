@@ -8,9 +8,9 @@ Provisa עוקבת אחר Data Lineage של נתונים ברמת העמודה �
 
 פתחו את **Lineage** בממשק המשתמש (`/lineage`). הדביקו משפט SQL ולחצו על **Build statement
 graph** כדי לראות את ה-DAG שלו ברמת העמודה. לחצו על **Federation graph** כדי לטעון את גרף המקור על פני
-כל MV ברישום. [tool-verified: LineagePage.tsx:28-119]
+כל MV ברישום.
 
-## DAG ברמת המשפט (REQ-1160) {: #statement-level-dag-req-1160 }
+## DAG ברמת המשפט {: #statement-level-dag }
 
 כל עמודת פלט בעלת שם ב-SQL שלכם הופכת לצומת. הבונה עוקב אחריה לאחור דרך כל
 CTE, תת-שאילתה, join וקריאת פקודה מוטבעת אל עמודות המקור שלה, ובונה גרף מכוון
@@ -34,18 +34,15 @@ orders.region ─╯
 
 - ‏`orders.id`, `orders.region` ו-`orders.geo` הם צמתי **source** ‏(חוזה הקלט הצר
   של `enrich_grpc_set` מצהיר על `id` ועל `region`; סגור הזיהום המלא מחבר את כל הקלטים
-  המוצהרים לכל הפלטים). [tool-verified: `_splice_commands` in graph.py:223-242]
+  המוצהרים לכל הפלטים).
 - ‏`e.embedding` ו-`e.geo` הם צמתי **command** — גבול ה-`enrich_grpc_set`.
 - ‏`geo_u` הוא צומת **derived** המיוצר על ידי פונקציית ה-SQL `UPPER`.
 
 גבול הפקודה **אינו אטום**. משום ש-`enrich_grpc_set` מצהיר על עמודות הקלט שלו
 (`id`, `region`) ועל עמודות הפלט שלו (`id`, `embedding`, `geo`), מנוע ה-Data Lineage משחיל את
 סגור הזיהום ברציפות מהעמודות המוצהרות של יחס המקור אל כל פלט.
-[tool-verified: `_splice_commands` and `_input_relation` in graph.py:245-271]
 
 ### סוגי צמתים ורמזים חזותיים {: #node-kinds-and-visual-cues }
-
-[tool-verified: LineageDag.tsx:25-29, KIND_COLOR constants; LineagePage.tsx:21-26 LEGEND]
 
 | סוג צומת | צבע | משמעות |
 | --- | --- | --- |
@@ -60,40 +57,33 @@ orders.region ─╯
 - **טבעת אדומה** — חבר במעגל המסווג כשגיאה.
 - **טבעת צהובה** — חבר במעגל המסווג כלולאת משוב.
 
-[tool-verified: LineageDag.tsx:88-103 Cytoscape style selectors]
-
 ### טרנספורמציות בעלות שם על קשתות {: #named-transforms-on-edges }
 
 כל קשת נושאת את ביטוי ה-SQL הגולמי המייצר את עמודת היעד, בתוספת רשימת פעולות
 בעלות שם: פונקציות SQL ‏(`sql_function`), אופרטורים אריתמטיים/לוגיים (`operator`), פקודות
 רשומות (`command`), הפניות עמודה חשופות (`identity`) וליטרלים (`constant`).
-[tool-verified: TransformOp and name_transform in graph.py:36-145]
 
 קשת מקריאת פקודה מוצגת כקו סגול מקווקו בממשק המשתמש.
-[tool-verified: LineageDag.tsx:122-124]
 
-## גרף ברוחב הפדרציה (REQ-1161) {: #federation-wide-graph-req-1161 }
+## גרף ברוחב הפדרציה {: #federation-wide-graph }
 
 גרף הפדרציה ממזג את ה-Data Lineage לכל משפט של כל MV רשום לגרף מקור אחד.
 זהות הצומת היא `relation.column` — עמודת פלט של תצוגה אחת והפניית קלט של תצוגה אחרת
 לאותה עמודה מתקרסות לצומת אחד. התוצאה היא DAG יחיד מעמודות מקור בסיסיות אל
-כל ערכת נתונים נגזרת בפלטפורמה. [tool-verified: `build_federation_graph` in merge.py:205-229
-and `qualify_outputs` in graph.py:275-299]
+כל ערכת נתונים נגזרת בפלטפורמה.
 
 השתמשו ב-`focus`, `direction` ו-`depth` כדי לתחום את התצוגה בקנה מידה של פדרציה מבלי לחשב מחדש
-את הגרף. [tool-verified: `slice_graph` in merge.py:160-189]
+את הגרף.
 
-## מעגלים (REQ-1161) {: #cycles-req-1161 }
+## מעגלים {: #cycles }
 
 מעגלים מתוארים, לא נדחים. מנוע ה-Data Lineage מזהה כל מעגל מכוון
-ו**מסווג** אותו. [tool-verified: `Cycle.classification` property in merge.py:43-46]
+ו**מסווג** אותו.
 
 | סיווג | צבע מסגרת | משמעות |
 | --- | --- | --- |
 | `feedback` | צהוב | המעגל חוצה צומת ממוטריאל — לולאת משוב חוקית ומושהית בזמן. תצלום ה-MV הוא גבול הגרסה שהופך אותה למוגדרת היטב. |
 | `error` | אדום | אין גבול מטריאליזציה על הלולאה — הגדרה מעגלית ללא סדר הערכה יציב. סביר להניח ששגיאת תכנון. |
-
-[tool-verified: LineagePage.tsx:83-98 cycle alert rendering; merge.py:38-48]
 
 מעגל `feedback` אינו כשל. ‏MV של העשרה המזין בחזרה עמודה נגזרת אל יחס המקור
 שלו עצמו הוא דפוס תקף כל עוד צומת אחד על הלולאה ממוטריאל —
@@ -118,10 +108,7 @@ Content-Type: application/json
 }
 ```
 
-[tool-verified: `lineage_graph` endpoint at lineage_router.py:45-54, LineageGraphRequest model at
-lineage_router.py:29-31]
-
-צורת התגובה [tool-verified: `LineageGraph.to_dict` in graph.py:82-105]:
+צורת התגובה:
 
 ```json
 {
@@ -141,7 +128,6 @@ lineage_router.py:29-31]
 ```
 
 מחזירה HTTP 422 כשלא ניתן לנתח את ה-SQL.
-[tool-verified: lineage_router.py:51-54]
 
 ### GET /admin/lineage/federation
 
@@ -152,9 +138,7 @@ GET /admin/lineage/federation
 GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 ```
 
-[tool-verified: `federation_graph` endpoint at lineage_router.py:73-98]
-
-פרמטרי שאילתה [tool-verified: function signature at lineage_router.py:73-76]:
+פרמטרי שאילתה:
 
 | פרמטר | ערכים | ברירת מחדל | השפעה |
 | --- | --- | --- | --- |
@@ -163,7 +147,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 | `depth` | מספר שלם | ללא הגבלה | מרחק הקפיצות המרבי מ-`focus` |
 
 התגובה היא באותה צורה כמו גרף המשפט, עם שדה `cycles` נוסף
-[tool-verified: `MergedGraph.to_dict` in merge.py:60-64]:
+:
 
 ```json
 {
@@ -180,7 +164,7 @@ GET /admin/lineage/federation?focus=orders.id&direction=downstream&depth=3
 }
 ```
 
-## ממה נבנה כל רענון (REQ-862) {: #what-each-refresh-was-built-from-req-862 }
+## ממה נבנה כל רענון {: #what-each-refresh-was-built-from }
 
 כל רענון של תצוגה ממומשת רושם ממה הוא נבנה: הגרסה של הגדרת התצוגה, הגרסה של הקלטים שלה ואיך נקבעה הגרסה הזו, ועמודות המקור והביטוי של כל עמודת פלט. תצוגת התפעול `"ops"."mv_refresh_lineage"` מחזירה שורה אחת לכל רענון:
 
@@ -203,7 +187,7 @@ ORDER BY refreshed_at
 
 התצוגה קוראת את רשומות הרענון ב-`"ops"."traces"` ועונה בכל מנוע ששומר אותן. ב-Trino אלה טבלאות ה-Iceberg של הקטלוג `otel`. ב-DuckDB השרת כותב את רשומות ה-trace שלו כקובצי Parquet בתיקיית הטלמטריה שלו (`PROVISA_TELEMETRY_DIR`, כברירת מחדל `~/.provisa/telemetry`), קובץ אחד לכל אצוות ייצוא בתיקייה לכל יום. דחיסת הטלמטריה המתוזמנת (`otel.compact_cron`) ממזגת את הקבצים הקטנים של כל יום לקבצים של עד 64 MB. כל ארגון קורא רק את הרענונים שלו, והרשומות נשמרות ללא הגבלת זמן. spans נרשמים רק כל עוד ה-SDK של OpenTelemetry מופעל (`OTEL_SDK_DISABLED` לא מוגדר או false).
 
-## תצוגה כפי שהייתה, וכפי שנרשמה (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+## תצוגה כפי שהייתה, וכפי שנרשמה {: #a-view-as-it-stood-and-as-it-was-recorded }
 
 תצוגה שהוגדרה כביטמפורלית שומרת כל גרסה שהייתה לה: כל רענון מוסיף, ואף גרסה אינה נכתבת מחדש, בכל מאגר. קריאה רגילה עונה במצב הנוכחי. שתי כותרות בקשה קוראות את עברה:
 
@@ -212,13 +196,12 @@ ORDER BY refreshed_at
 
 נכון ל-30 בספטמבר וכפי שנרשם ב-1 באוקטובר נותן את הנתון המקורי; כפי שנרשם ב-5 באוקטובר נותן את התיקון. רשומת הביקורת של כל משפט שומרת את שני הזמנים (`as_of`, `as_recorded`), כך שאפשר לשחזר דוח כפי שהופק לראשונה. [תצוגות עם היסטוריה](configuration.md#views-with-history-time-travel) מתאר הגדרת תצוגה ביטמפורלית וכל ממשק שמקבל את שני הערכים.
 
-## מה שינוי שם או מחיקה של עמודה היו שוברים (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
+## מה שינוי שם או מחיקה של עמודה היו שוברים {: #what-a-column-rename-or-drop-would-break }
 
 עמודה נושאת שני שמות, וכל אחד מהם מאוחסן על ידי קבוצת ארטיפקטים אחרת.
 
 **השם החשוף** הוא מה שמשטחי ה-SQL וה-GraphQL מציגים: ‏`table_columns.alias`, עם נפילה
-לברירת המחדל ב-snake_case כשלא נקבע כינוי [tool-verified: `computed_sql_alias` at
-`schema_helpers.py:317`]. תצוגות, Materialized Views, ביטויי מדדים, פרדיקטים של RLS, חוזי
+לברירת המחדל ב-snake_case כשלא נקבע כינוי. תצוגות, Materialized Views, ביטויי מדדים, פרדיקטים של RLS, חוזי
 DQ, גרעיני metric-view ומפתחות שורה של MV נכתבים כולם מול השם ההוא, ולכן **שינוי שם של
 כינוי שובר אותם בדיוק כפי שמחיקת העמודה עושה**.
 
@@ -228,8 +211,7 @@ DQ, גרעיני metric-view ומפתחות שורה של MV נכתבים כול
 
 ‏`columnDependents` מדווח על שניהם. תצוגות ו-MV במורד הזרם מגיעות מפריסת גרף הפדרציה
 בשם החשוף של העמודה; הארטיפקטים שהגרף אינו מכסה מגיעים מסריקה ישירה של
-הרישום [tool-verified: `graph_dependents` in `provisa/lineage/dependents.py`, registry scans in
-`provisa/api/admin/column_dependents.py`].
+הרישום.
 
 ```graphql
 query {
@@ -247,8 +229,7 @@ query {
 ברישום; ברגע שהכינוי נחת, השם הישן נעלם והשאילתה אינה מוצאת דבר.
 
 עמוד הטבלאות מריץ את השאילתה אוטומטית כשעריכה ממתינה משנה כינוי או מכווצת את
-קבוצת העמודות, ומונה את מה שהוא מוצא [tool-verified: `diffEditedColumns` in
-`provisa-ui/src/pages/tables/columnDiff.ts`, dialog in `TablesPage.tsx`]. האזהרה היא ייעוצית:
+קבוצת העמודות, ומונה את מה שהוא מוצא. האזהרה היא ייעוצית:
 היא נוקבת בשמות הארטיפקטים המושפעים והמנהל מחליט. היא אינה חוסמת את השמירה, משום
 שלא ניתן להגיע לכל צרכני האחוזה — לוח מחוונים חיצוני או יישום לקוח
 השואל את העמודה בשמה נמצאים מעבר לידיעת הרישום. מאותה סיבה, סריקות על טקסט

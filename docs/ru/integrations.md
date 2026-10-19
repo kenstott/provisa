@@ -77,9 +77,9 @@ SCRAM-SHA-256, а не отправляется напрямую. Клиентс
 
 Драйвер JDBC Provisa использует Arrow Flight в качестве базового транспорта. Это рекомендуемый путь для BI-инструментов с мастером подключения JDBC.
 
-Запросы идут через Arrow Flight, если порт Flight отвечает при открытии соединения, и результаты поступают по одной партии вместе с типами колонок. Портом Flight считается порт рядом с портом HTTP (8815 рядом с 8001); задайте свойство `flight_port`, если это не так. Если порт Flight недоступен при подключении, соединение использует для своих запросов HTTP API и записывает это в журнал на уровне INFO. Когда соединение уже работает через Flight, ошибка сервера — отклонённые учётные данные, роль, которой у пользователя нет, неудавшаяся инструкция — передаётся вызывающему с сообщением сервера; повторно через HTTP она не выполняется. (REQ-293)
+Запросы идут через Arrow Flight, если порт Flight отвечает при открытии соединения, и результаты поступают по одной партии вместе с типами колонок. Портом Flight считается порт рядом с портом HTTP (8815 рядом с 8001); задайте свойство `flight_port`, если это не так. Если порт Flight недоступен при подключении, соединение использует для своих запросов HTTP API и записывает это в журнал на уровне INFO. Когда соединение уже работает через Flight, ошибка сервера — отклонённые учётные данные, роль, которой у пользователя нет, неудавшаяся инструкция — передаётся вызывающему с сообщением сервера; повторно через HTTP она не выполняется.
 
-Просмотр схемы (`getTables`, `getColumns`, первичные и внешние ключи) читается через тот же порт Flight с учётными данными входа: драйвер перечисляет каталог роли, от имени которой действует, поэтому таблица или колонка, не предоставленная этой роли, не появляется. Ключ, который ссылается на не предоставленную роли таблицу или колонку, тоже не перечисляется. В соединении, у которого порт Flight был недоступен при подключении, драйвер читает тот же каталог по HTTP (`GET /data/catalog`): сервер строит оба перечня одной функцией, поэтому таблицы, имена колонок, типы и ключи не зависят от того, какой порт ответил. (REQ-128)
+Просмотр схемы (`getTables`, `getColumns`, первичные и внешние ключи) читается через тот же порт Flight с учётными данными входа: драйвер перечисляет каталог роли, от имени которой действует, поэтому таблица или колонка, не предоставленная этой роли, не появляется. Ключ, который ссылается на не предоставленную роли таблицу или колонку, тоже не перечисляется. В соединении, у которого порт Flight был недоступен при подключении, драйвер читает тот же каталог по HTTP (`GET /data/catalog`): сервер строит оба перечня одной функцией, поэтому таблицы, имена колонок, типы и ключи не зависят от того, какой порт ответил.
 
 ### Подключение {: #connection }
 
@@ -91,7 +91,7 @@ URL JDBC:
 jdbc:provisa://<host>:8815
 ```
 
-Аутентификация использует стандартные свойства JDBC `user` / `password`. Драйвер обменивает их на токен сеанса и отправляет его с каждым запросом; отклонённый вход приводит к ошибке соединения со статусом и причиной сервера. Provisa выводит роль из идентичности, выполнившей вход. Необязательное свойство `role` (или `?role=` в URL) просит действовать от одной роли, которую имеет пользователь, или от набора таких ролей через запятую; роль, которой у пользователя нет, отклоняется. В развёртывании без провайдера аутентификации входа нет, и имя пользователя принимается как запрошенная роль. (REQ-131, REQ-273)
+Аутентификация использует стандартные свойства JDBC `user` / `password`. Драйвер обменивает их на токен сеанса и отправляет его с каждым запросом; отклонённый вход приводит к ошибке соединения со статусом и причиной сервера. Provisa выводит роль из идентичности, выполнившей вход. Необязательное свойство `role` (или `?role=` в URL) просит действовать от одной роли, которую имеет пользователь, или от набора таких ролей через запятую; роль, которой у пользователя нет, отклоняется. В развёртывании без провайдера аутентификации входа нет, и имя пользователя принимается как запрошенная роль.
 
 ### Настройка BI-инструментов {: #bi-tool-setup }
 
@@ -157,7 +157,7 @@ Flight несёт свои учётные данные в полезной на�
 проверяют его одинаково, поэтому клиент, аутентифицировавшийся при рукопожатии, всё равно
 предъявляет токен при каждом `do_get`. Поле `role` рядом с ним *запрашивает* роль; сервер выводит
 разрешённые для идентичности роли и подставляет авторизованное значение, поэтому строка роли в
-ticket никогда не является идентичностью. (REQ-1263) См. [Security Model](security.md#surfaces-and-credentials).
+ticket никогда не является идентичностью. См. [Security Model](security.md#surfaces-and-credentials).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -167,7 +167,7 @@ ticket = flight.Ticket(json.dumps({
 }).encode())
 ```
 
-Просмотру тоже нужны учётные данные. `list_flights`, `get_flight_info` и `get_schema` не несут тикета, поэтому они читают учётные данные из заголовка вызова `authorization: Bearer <token>`, а запрошенную роль — из `x-provisa-role` (одна роль или набор имеющихся ролей через запятую). При включённой аутентификации вызов просмотра без учётных данных отклоняется, а возвращаемый каталог — это каталог авторизованной роли: таблицы, колонки и команды, предоставленные этой роли, и ничего больше. Тикет каталога (тикет без `query`) обслуживается так же, по его собственным `token` и `role`. Поэтому клиент должен отправить свои учётные данные до просмотра; `provisa-client` делает это в `list_tables()`. В развёртывании без провайдера аутентификации эти вызовы перечисляют весь каталог и не принимают учётных данных. (REQ-1263, REQ-127)
+Просмотру тоже нужны учётные данные. `list_flights`, `get_flight_info` и `get_schema` не несут тикета, поэтому они читают учётные данные из заголовка вызова `authorization: Bearer <token>`, а запрошенную роль — из `x-provisa-role` (одна роль или набор имеющихся ролей через запятую). При включённой аутентификации вызов просмотра без учётных данных отклоняется, а возвращаемый каталог — это каталог авторизованной роли: таблицы, колонки и команды, предоставленные этой роли, и ничего больше. Тикет каталога (тикет без `query`) обслуживается так же, по его собственным `token` и `role`. Поэтому клиент должен отправить свои учётные данные до просмотра; `provisa-client` делает это в `list_tables()`. В развёртывании без провайдера аутентификации эти вызовы перечисляют весь каталог и не принимают учётных данных.
 
 ```python
 options = flight.FlightCallOptions(headers=[
@@ -243,9 +243,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 объект, зарегистрированный в модели Provisa, с полем `kind` (`query` или `mutation`) и
 `impl_kind`, описывающим, как он выполняется. Каждая поверхность направляет вызовы через единый
 управляемый исполнитель (`invoke_tracked_function`), который единообразно применяет назначение команды (`visible_to`), право `write` для мутации
-и governance (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`,
-`provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`,
-`provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+и governance.
 
 | `impl_kind` | Что выполняется | Поля привязки |
 | ------------ | ----------- | --------------- |
@@ -253,14 +251,13 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | `script` | Скрипт на стороне сервера | `script` |
 | `http` | Исходящий HTTP-вызов | `url`, `method` |
 | `grpc` | Исходящий gRPC-вызов к внешнему серверу | `target`, `method` |
-| `python` | Python-вызываемый объект, размещённый в Provisa (REQ-885) | `callable` (напр., `demo.py_functions:random_dataset`) |
+| `python` | Python-вызываемый объект, размещённый в Provisa | `callable` (напр., `demo.py_functions:random_dataset`) |
 
 Когда команда объявляет `return_schema` (JSON Schema с `type: array, items: object`), она
 возвращает набор — каждая поверхность проецирует его как типизированный набор строк. Демонстрационные
 команды `random_python_set` (impl_kind `python`) и `random_grpc_set` (impl_kind `grpc`) иллюстрируют
 как размещённый вызываемый объект, так и внешний мост gRPC, возвращающий строки со случайными
-значениями; обе зарегистрированы в `config/provisa-install.yaml`. [tool-verified:
-`config/provisa-install.yaml:809-856`]
+значениями; обе зарегистрированы в `config/provisa-install.yaml`.
 
 ### Матрица протоколов {: #protocol-matrix }
 
@@ -324,17 +321,17 @@ Provisa отвечает на запросы `_entities` для межсубгр
 
 ---
 
-## Проверки качества данных (REQ-1443) {: #data-quality-checkers-req-1443 }
+## Проверки качества данных {: #data-quality-checkers }
 
-Soda Core и Great Expectations подключаются к Provisa так же, как любой другой postgres-клиент — через pgwire. Это и есть вся интеграция: чекер держит один драйвер postgres и сканирует федеративное представление, поэтому таблица Snowflake, таблица Iceberg и коллекция Mongo проверяются одним и тем же диалектом контрактов без отдельного чекера для каждой системы. [tool-verified: `provisa/events/source_loader.py` `make_dq_loader`]
+Soda Core и Great Expectations подключаются к Provisa так же, как любой другой postgres-клиент — через pgwire. Это и есть вся интеграция: чекер держит один драйвер postgres и сканирует федеративное представление, поэтому таблица Snowflake, таблица Iceberg и коллекция Mongo проверяются одним и тем же диалектом контрактов без отдельного чекера для каждой системы.
 
-Сканирование выполняется в дочернем интерпретаторе — `python -m provisa.dq.worker` — единственном месте, где импортируются `soda_core` или `great_expectations`. В процесс сервера ничего не линкуется, и падение чекера обрушивает подпроцесс, а не цикл событий. [tool-verified: `provisa/dq/runner.py` `build_command`]
+Сканирование выполняется в дочернем интерпретаторе — `python -m provisa.dq.worker` — единственном месте, где импортируются `soda_core` или `great_expectations`. В процесс сервера ничего не линкуется, и падение чекера обрушивает подпроцесс, а не цикл событий.
 
-Результаты сканирования попадают как обычные строки источника, поэтому периодичность, свежесть, события, происхождение, governance, RLS, сетка данных и экспорт применяются без второго механизма. Написание контрактов, конверт результата и производная регистрация описаны в [docs/sources.md](sources.md#data-quality-checkers-req-1443).
+Результаты сканирования попадают как обычные строки источника, поэтому периодичность, свежесть, события, происхождение, governance, RLS, сетка данных и экспорт применяются без второго механизма. Написание контрактов, конверт результата и производная регистрация описаны в [docs/sources.md](sources.md#data-quality-checkers).
 
 ### Установка чекера {: #installing-a-checker }
 
-Ни одна из библиотек не поставляется по умолчанию. Установщик спрашивает, какую вы хотите, и ответ становится `dq_checker: none|soda|gx` в `~/.provisa/config.yaml`. На уровне Docker `scripts/provisa` превращает это в аргумент сборки `PROVISA_EXTRAS`; на нативном уровне `first-launch.sh` устанавливает соответствующий extra pyproject в venv. [tool-verified: `scripts/provisa:69-79`, `packaging/linux/first-launch.sh` `_native_extras`]
+Ни одна из библиотек не поставляется по умолчанию. Установщик спрашивает, какую вы хотите, и ответ становится `dq_checker: none|soda|gx` в `~/.provisa/config.yaml`. На уровне Docker `scripts/provisa` превращает это в аргумент сборки `PROVISA_EXTRAS`; на нативном уровне `first-launch.sh` устанавливает соответствующий extra pyproject в venv.
 
 | `dq_checker` | Библиотека | Лицензия | Размещённая облачная плоскость |
 | -------------- | --------- | --------- | -------------------------- |
@@ -345,20 +342,17 @@ Elastic License 2.0 запрещает предоставление ПО тре�
 
 ---
 
-## Семантический обмен Apache Ossie (REQ-1316) {: #apache-ossie-semantic-interchange-req-1316 }
+## Семантический обмен Apache Ossie {: #apache-ossie-semantic-interchange }
 
 Provisa обменивается семантическими моделями с Apache Ossie (спецификация 0.2.0.dev0, в инкубации; ранее Open
 Semantic Interchange) через пограничный адаптер. Внутренний словарь Provisa никогда не переименовывается
 в словарь Ossie — спецификация объявляет несовместимые изменения вероятными, поэтому связь ограничена адаптером.
-[tool-verified: `provisa/ossie/convert.py` module docstring; `OSSIE_VERSION = "0.2.0.dev0"`]
 
 Черновая спецификация меняла форму, не меняя строки версии. Адаптер следует
 спецификации в том виде, в каком она находится в коммите `642cb894` репозитория `apache/ossie` (2026-10-10): одна модель на документ,
 с `version`, `name`, `datasets`, `relationships` и `metrics` в корне документа и
 перечисляемым `datatype`. Экспорт проверяется в модульных тестах по
 `core-spec/ossie-schema.json` этого коммита.
-[tool-verified: `OSSIE_SPEC_COMMIT`, `provisa/ossie/convert.py`;
-`test_the_export_is_valid_against_ossies_own_schema`, `tests/unit/test_ossie_convert.py`]
 
 ### Экспорт {: #export }
 
@@ -369,12 +363,9 @@ Semantic Interchange) через пограничный адаптер. Внут
 GET /admin/ossie
 ```
 Ответ — YAML-документ с `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
-[tool-verified: `ossie_router.py` lines 20–33: "THE canonical live Ossie endpoint: the semantic
-model derived from live state on every read — no caching, no regeneration step"]
 
 Страница Метрики также предлагает кнопку **Скачать** и копируемый URL endpoint на панели Ossie
 Interchange, обе ведут на тот же endpoint.
-[tool-verified: `OssieInterchangePanel.tsx` lines 64–79: `endpointUrl = window.location.origin + OSSIE_ENDPOINT_PATH`]
 
 #### Что экспортируется {: #what-is-exported }
 
@@ -388,27 +379,19 @@ Interchange, обе ведут на тот же endpoint.
 | `Metric` | `metric` | `name`, `expression` (ANSI_SQL), `datatype` (отображается как у колонки), `description`, `ai_context` |
 | `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | Только для обратного пути; другие инструменты могут игнорировать |
 
-[tool-verified: `_table_to_dataset`, `build_ossie_model`, `provisa/ossie/convert.py`: "Computed
-(function-target) relationships have no dataset target — not representable in Ossie; skipping
-is the defined export boundary"]
-
 Связь по нескольким колонкам перечисляет каждую колонку в `from_columns` и `to_columns`.
 Модель без таблиц отклоняется с `422`: в документе Ossie есть хотя бы один dataset.
-[tool-verified: `test_a_relationship_over_several_columns_lists_each_column`,
-`test_a_model_with_no_table_is_refused_by_name`, `tests/unit/test_ossie_convert.py`]
 
 Governance, RLS, lineage и семантика графа не экспортируются. Они могут передаваться в необязательном слоте
 `provisa` в custom_extensions для точности обратного пути, но обмен никогда не зависит от того, читают ли его другие
-инструменты. [tool-verified: `provisa/ossie/convert.py` docstring lines 13–15]
+инструменты.
 
 Тип колонки вне словаря Ossie записывается как `Opaque`, с собственным именем типа в расширении
 `provisa` поля, — именно это спецификация предписывает для известного типа, для которого у неё нет
 члена. Колонка без записанного типа не указывает `datatype`. Адаптер никогда не отображает на тип, которого у
-колонки нет. [tool-verified: `_map_datatype`, `_typed`, `provisa/ossie/convert.py`]
+колонки нет.
 
 #### Отображение типов {: #type-mapping }
-
-[tool-verified: `_DATATYPE_MAP`, `provisa/ossie/convert.py`]
 
 | Тип Provisa / источника | `datatype` Ossie |
 | --- | --- |
@@ -425,7 +408,6 @@ Governance, RLS, lineage и семантика графа не экспорти�
 
 `Decimal` в Ossie не несёт точности и масштаба, поэтому `numeric(10,2)` экспортируется как `Decimal`
 и возвращается из импорта как `decimal`.
-[tool-verified: `test_parse_round_trips_export`, `tests/unit/test_ossie_convert.py`]
 
 ### Импорт {: #import }
 
@@ -442,8 +424,6 @@ Content-Type: text/yaml   (or application/json)
 dataclass `OssieImport` с предлагаемыми таблицами, связями и метриками в виде простых словарей.
 Любая структурная проблема — это `400` с ошибкой, названной по пути, например
 `ossie import: missing $.datasets[1].source`.
-[tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py`:
-"Nothing is registered here — imported definitions never bypass registration review"]
 
 Импортёр читает только плоскую форму документа. Три вещи отклоняются по имени:
 
@@ -463,8 +443,6 @@ dataclass `OssieImport` с предлагаемыми таблицами, свя
 как неимпортированное. Поле, которое переименовывает свою колонку, предлагается как эта колонка, с именем
 поля в качестве псевдонима колонки. `source` у dataset должен состоять из трёх частей,
 `source.schema.table`; запрос или более короткое имя отклоняется, и ошибка об этом говорит.
-[tool-verified: `parse_ossie_model`, `_parse_dataset`, `_proposed_type`, `_ai_context`,
-`provisa/ossie/convert.py`; `tests/unit/test_ossie_convert.py`]
 
 #### Из dbt, Cube, Snowflake и других семантических слоёв {: #coming-from-dbt-cube-snowflake-and-other-semantic-layers }
 
@@ -477,19 +455,15 @@ dataclass `OssieImport` с предлагаемыми таблицами, свя
 | dbt (семантический слой) | `ossie-dbt msi-to-ossie -i target/semantic_manifest.json -o semantic_model.yaml` | `semantic_manifest.json`, который dbt пишет для MetricFlow |
 | Cube | `ossie-cube import -i model/ -o model.yaml` | Каталог модели Cube или отдельные файлы кубов и представлений |
 
-[tool-verified: `converters/dbt/README.md` and `converters/cube/README.md` in the
-`apache/ossie` repository, read 2026-10-10]
-
 В том же репозитории есть конвертеры для Snowflake, Databricks, Microsoft, Salesforce,
 ThoughtSpot, Sigma, Omni, Hex, GoodData и других; у каждого свой README.
-[tool-verified: directory listing of `converters/` in `apache/ossie`, 2026-10-10]
 
 Два ограничения, о которых стоит знать до конвертации:
 
 - Конвертер dbt читает только манифест семантического слоя. Проекту dbt без семантических
   моделей нечего ему конвертировать. Он отбрасывает метрики конверсии, приватные метрики и
   сущности с естественным ключом и печатает предупреждение для каждой.
-  [tool-verified: `converters/dbt/README.md`, the "MSI → Ossie is lossy" table]
+
 - Вывод конвертера следует спецификации в том виде, в каком она есть в собственном коммите этого конвертера. Provisa читает
   плоскую форму коммита `642cb894` репозитория `apache/ossie`; конвертер старше сентября 2026 года
   пишет обёртку `semantic_model`, которую Provisa отклоняет по имени.
@@ -506,13 +480,8 @@ ThoughtSpot, Sigma, Omni, Hex, GoodData и других; у каждого св�
 | Модель Cube → Ossie → Provisa | Прочитано. Вернулись таблицы, ключи, типы колонок, связь и метрика; имя связи было именем конвертера (`orders_to_customers`). |
 | Семантический манифест dbt → Ossie → Provisa | Прочитано. Вернулись таблицы, первичные ключи и метрика. Типы колонок нет (вывод конвертера их не указывает), а связь вернулась такой, какой конвертер вывел её из сущностей dbt, а это не зарегистрированная. Проверьте связи перед применением. |
 
-[tool-verified: both runs, 2026-10-10, `apache/ossie` commit `642cb894`, `ossie-dbt` and
-`ossie-cube` 0.2.0.dev0, metricflow 0.213.0; inputs were files those converters had written
-from a Provisa export, not files authored in dbt or Cube]
-
 Конвертер dbt отклоняет модель, в которой у какой-либо таблицы есть ограничение уникальности по нескольким
 колонкам («MetricFlow entities cannot represent composite keys losslessly»).
-[tool-verified: `ossie-dbt ossie-to-msi` on the same export with such a constraint, 2026-10-10]
 
 #### Экран проверки {: #the-review-screen }
 
@@ -521,15 +490,11 @@ from a Provisa export, not files authored in dbt or Cube]
 связь и метрика перечислены как отмеченные элементы. Моделировщик может снять отметку с чего угодно, чтобы исключить это.
 Кнопка **Применить** регистрирует отмеченные элементы через существующие мутации регистрации — сначала
 таблицы, затем связи (которые ссылаются на таблицы), затем метрики.
-[tool-verified: `OssieInterchangePanel.tsx` lines 88–165: "Review screen opens with everything
-checked; trimming = unchecking"; "Tables first, then relationships... then metrics — each through
-the EXISTING registration mutations (REQ-1316)"]
 
 Роль моделирования и история, сохранённые в документе Ossie, экспортированном Provisa, корректно проходят обратный путь
-при импорте. [tool-verified: `_parse_dataset` custom_extensions handling,
-`provisa/ossie/convert.py` lines 287–300: "REQ-1320: round-trip the provisa modeling metadata slot"]
+при импорте.
 
-### Файл sources для dbt (REQ-1967) {: #dbt-sources-file-req-1967 }
+### Файл sources для dbt {: #dbt-sources-file }
 
 Для проекта dbt, который не использует семантический слой, Provisa пишет `sources.yml` dbt напрямую.
 Он выводится из живой модели при каждом запросе.
@@ -541,8 +506,6 @@ GET /admin/dbt/sources?role=<role id>
 Вызывающему нужен `org_settings`, а `role` должна быть ролью, которую он имеет; обладатель
 `access_config` может назвать любую роль. Панель обмена на странице Метрики предлагает ту же загрузку
 для используемой роли.
-[tool-verified: `download_dbt_sources`, `provisa/api/admin/ossie_router.py`; `TestTheEndpoint`,
-`tests/unit/test_dbt_sources.py`]
 
 Файл перечисляет каждую таблицу, которую обслуживает роль, под source dbt для каждого источника и схемы (с именем
 по id источника или `<source>_<schema>`, когда у источника есть таблицы более чем в одной схеме),
@@ -560,26 +523,20 @@ GET /admin/dbt/sources?role=<role id>
 теста для него не пишется. Модель не записывает допустимость NULL, поэтому `not_null` появляется только на ключевых колонках.
 Файл не несёт метрик, построчной безопасности, маскировки, ролей или lineage, и его вступительный комментарий
 это говорит.
-[tool-verified: `build_dbt_sources`, `provisa/dbt/sources.py`; `tests/unit/test_dbt_sources.py`]
 
 Файл, сгенерированный из модели из двух таблиц и одной связи, разобран dbt-core 1.12.5
 с dbt-duckdb 1.11.0: два source и пять тестов, без предупреждений. dbt-core 1.9.11 не читает
 его тесты `relationships`, которые вкладывают свои аргументы в `arguments`; промежуточные версии
-не проверялись. [tool-verified: `dbt parse` and `dbt ls` on both versions, 2026-10-10; `dbt test`
-against data was not run]
+не проверялись.
 
 ---
 
-## Метрики по всем протоколам (REQ-1319) {: #metrics-across-protocols-req-1319 }
+## Метрики по всем протоколам {: #metrics-across-protocols }
 
 Определение управляемой метрики — её выражение, описание и `ai_context` — перемещается вместе со
 значением на каждую поверхность запроса через одно раскрытие компилятором. Копий не существует.
 Компилятор резервирует схему `metrics` для доступа по SQL; каждый протокол затем добавляет свой
 собственный канал метаданных.
-
-[tool-verified: `METRICS_SCHEMA = "metrics"`, `provisa/compiler/metric_expand.py` line 43;
-REQ-1319 requirement text: "the definition (description, ai_context) travels with the value
-everywhere, with no copies"]
 
 ### SQL / pgwire
 
@@ -602,20 +559,16 @@ GROUP BY region, month;
 
 Компилятор раскрывает форму `metrics.<name>` в реальный сгруппированный агрегат до выполнения
 governance. Описания колонок отображаются как записи `pg_description`, поэтому DBeaver и `\d+` в
-psql их показывают. [tool-verified: `metric_semantic_sql`, `provisa/compiler/metric_expand.py`
-lines 52–70; REQ-1319: "description surfaced via pg_description"]
+psql их показывают.
 
 `SELECT *` отклоняется — указывайте колонки явно.
-[tool-verified: `expand_metric_query`, `provisa/compiler/metric_expand.py` lines 302–306]
 
 ### GraphQL
 
 Метрики проецируются внутри корневого поля `_aggregate` как блок `metrics`.
-[inferred: per REQ-1319; aggregate_gen.py not read in this session]
 
 Текст определения (`description`, `ai_context`) появляется в документации интроспекции GraphQL,
 поэтому инструменты, осведомлённые о схеме, и генераторы кода подхватывают его автоматически.
-[inferred: per REQ-1319: "definition in introspection docs"]
 
 ### MCP (AI-агенты) {: #mcp-ai-agents }
 
@@ -626,10 +579,6 @@ lines 52–70; REQ-1319: "description surfaced via pg_description"]
 - **`query_metric`** — принимает имя метрики и список измерений и вызывает семантический
   SQL-путь компилятора, возвращая результат агрегации.
 
-[inferred: per REQ-1319: "MCP: list_metrics and query_metric tools carrying ai_context, so agents
-select governed meanings instead of composing aggregation SQL"; `provisa/api/mcp/tools.py` not
-read in this session]
-
 Агенты, вызывающие `list_metrics` перед построением запроса, выбирают управляемую метрику по имени,
 а не пишут агрегирующий SQL вручную. Поле `ai_context` — это место для текста определения,
 направляющего правильный выбор.
@@ -637,8 +586,6 @@ read in this session]
 ### Arrow Flight {: #arrow-flight }
 
 Метрики адресуемы как дескрипторы Flight для метрик, возвращающие таблицы Arrow.
-[inferred: per REQ-1319: "Arrow Flight: metric flight descriptors returning Arrow tables";
-`provisa/api/flight/catalog.py` not read in this session]
 
 Используйте ту же форму SQL `metrics.<name>` через стандартный путь тикетов Flight SQL.
 
@@ -650,37 +597,23 @@ read in this session]
 CALL provisa.metric('net_revenue', ['region']) YIELD region, value
 ```
 
-[inferred: per REQ-1319: "Bolt/Cypher: a provisa.metric() procedure"; the procedure signature
-is inferred from the REQ text and not verified against provisa/bolt/session.py in this session]
-
 Таблицы Fact и Dimension несут метки узлов `:Fact` и `:Dimension` в федеративном графе, поэтому
 Bloom автоматически отображает форму звезды.
-[inferred: per REQ-1319 and REQ-1320: "federated graph labels nodes :Fact/:Dimension so Bloom
-renders the star"; provisa/cypher/label_map.py not read in this session]
 
 ### Запросы на естественном языке {: #natural-language-queries }
 
 Сопоставитель схем NL разрешает словарь метрик в вопросах на естественном языке напрямую в метрику
-плюс измерения, затем генерирует семантический SQL. [tool-verified: `resolve_metric`,
-`provisa/nl/schema_matcher.py` is exercised in `test_nl_metrics.py` lines 76–78:
-`sql = matcher.resolve_metric("What is the total revenue by region?")` →
-`"SELECT region, value FROM metrics.total_revenue GROUP BY region"`]
+плюс измерения, затем генерирует семантический SQL.
 
 Таблицы фактов помечаются `[fact]` в подсказке NL; таблицы измерений помечаются `[dimension]`.
 Сопоставитель смещает пути join от факта к измерению при разрешении вопросов.
-[tool-verified: `test_format_entities_tags_star_roles`, `tests/unit/test_nl_metrics.py` lines 129–132:
-`assert "table: orders [fact]  fields: amount" in block`]
 
 ### Потоковая передача {: #streaming }
 
 Комбинируйте `view_metrics` с `materialize`, чтобы представление метрик оставалось актуальным при
 изменении его входных данных, используя существующий механизм материализации. Новый конвейер не
 требуется.
-[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
-table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Наблюдаемость (OTel) {: #observability-otel }
 
 Вычисления метрик трассируются и экспортируются как метрики OpenTelemetry.
-[inferred: per REQ-1319: "Observability: metric evaluations traced and exportable as OTel metrics";
-OTel integration code not read in this session]

@@ -1,9 +1,9 @@
-# PostgreSQL FDW / Extension Catalog for Embedded `pgserver` (REQ-898)
+# PostgreSQL FDW / Extension Catalog for Embedded `pgserver`
 
 Reference for the curated extension catalog: what foreign-data wrappers exist for each
 Provisa source type, how to acquire them, and how to compile them against a pinned
-PostgreSQL version. Feeds the Postgres federation engine (REQ-893) and complements the
-DuckDB engine (REQ-894/895).
+PostgreSQL version. Feeds the Postgres federation engine and complements the
+DuckDB engine.
 
 Data gathered from upstream repositories and PGXS documentation, July 2026. Verify version
 numbers and manylinux tags per wheel before pinning — several fields below carry stated
@@ -212,10 +212,10 @@ shim, then Python wrappers, at the cost of scan performance.
 ## Recommendation for the Provisa engines
 
 - **Prefer the DuckDB engine** for `parquet`, `sqlite`, `csv`, `iceberg`, `delta_lake`. It is a
-  `pip install duckdb` with zero compilation and already implemented (REQ-894/895). The Postgres
+  `pip install duckdb` with zero compilation and already implemented. The Postgres
   FDW path for these formats is compile-only and heavy.
 - **Postgres engine ships working out of the box** with `postgres_fdw` (remote PG) and
-  `file_fdw` (CSV) — no build step. This is what REQ-893 currently implements.
+  `file_fdw` (CSV) — no build step.
 - **sqlite_fdw / parquet_s3_fdw / mysql_fdw / tds_fdw** are the realistic curated additions when
   a deployment wants everything inside one PG process. Each is a PGXS build against the pinned
   `pg_config` with a bundled native dep.

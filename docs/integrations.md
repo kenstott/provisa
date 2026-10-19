@@ -73,9 +73,9 @@ The full surface × method table is in [Security Model](security.md#surfaces-and
 
 The Provisa JDBC driver uses Arrow Flight as its underlying transport. It is the recommended path for BI tools with a JDBC connection wizard.
 
-Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server — a refused credential, a role the user does not hold, a failed statement — is raised to the caller with the server's message; it is not retried over HTTP. (REQ-293)
+Queries run over Arrow Flight whenever the Flight port answers when the connection is opened, and results stream a batch at a time with their column types. The Flight port is taken to be the one beside the HTTP port (8815 beside 8001); set the `flight_port` property when it is not. If the Flight port is unreachable at connect, the connection uses the HTTP API for its queries and logs that at INFO. Once a connection is on Flight, an error from the server — a refused credential, a role the user does not hold, a failed statement — is raised to the caller with the server's message; it is not retried over HTTP.
 
-Schema browsing (`getTables`, `getColumns`, primary and foreign keys) is read from the same Flight port, with the signed-in credential: the driver lists the catalog of the role it acts as, so a table or column that role is not granted does not appear. A key that refers to a table or column the role is not granted is not listed either. On a connection whose Flight port was unreachable at connect, the driver reads the same catalog over HTTP (`GET /data/catalog`): the server builds both listings with one function, so the tables, column names, types and keys do not depend on which port answered. (REQ-128)
+Schema browsing (`getTables`, `getColumns`, primary and foreign keys) is read from the same Flight port, with the signed-in credential: the driver lists the catalog of the role it acts as, so a table or column that role is not granted does not appear. A key that refers to a table or column the role is not granted is not listed either. On a connection whose Flight port was unreachable at connect, the driver reads the same catalog over HTTP (`GET /data/catalog`): the server builds both listings with one function, so the tables, column names, types and keys do not depend on which port answered.
 
 ### Connection
 
@@ -87,7 +87,7 @@ JDBC URL:
 jdbc:provisa://<host>:8815
 ```
 
-Authentication uses standard JDBC `user` / `password` properties. The driver exchanges them for a session token and sends it on every request; a refused sign-in fails the connection with the server's status and reason. Provisa derives the role from the signed-in identity. The optional `role` property (or `?role=` in the URL) asks to act as one role the user holds, or a comma-separated set of them; a role the user does not hold is refused. On a deployment with no auth provider there is no sign-in, and the user name is taken as the requested role. (REQ-131, REQ-273)
+Authentication uses standard JDBC `user` / `password` properties. The driver exchanges them for a session token and sends it on every request; a refused sign-in fails the connection with the server's status and reason. Provisa derives the role from the signed-in identity. The optional `role` property (or `?role=` in the URL) asks to act as one role the user holds, or a comma-separated set of them; a role the user does not hold is refused. On a deployment with no auth provider there is no sign-in, and the user name is taken as the requested role.
 
 ### BI Tool Setup
 
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight carries its credential in the JSON payload, as a `token` field — a provider bearer token or a personal access token. Both the handshake and every ticket accept it, and both validate it the same way, so a client that authenticated at handshake still presents the token on each `do_get`. A `role` field alongside it *requests* a role; the server derives the identity's permitted roles and substitutes the authorized value, so a role string in a ticket is never the identity. (REQ-1263) See [Security Model](security.md#surfaces-and-credentials).
+Flight carries its credential in the JSON payload, as a `token` field — a provider bearer token or a personal access token. Both the handshake and every ticket accept it, and both validate it the same way, so a client that authenticated at handshake still presents the token on each `do_get`. A `role` field alongside it *requests* a role; the server derives the identity's permitted roles and substitutes the authorized value, so a role string in a ticket is never the identity. See [Security Model](security.md#surfaces-and-credentials).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -158,7 +158,7 @@ ticket = flight.Ticket(json.dumps({
 }).encode())
 ```
 
-Browsing needs the credential too. `list_flights`, `get_flight_info` and `get_schema` carry no ticket, so they read the credential from the call's `authorization: Bearer <token>` header and the requested role from `x-provisa-role` (one role, or a comma-separated set of held roles). With authentication on, a browsing call without a credential is refused, and the catalog it returns is the authorized role's: the tables, columns and commands that role is granted, and nothing else. A catalog ticket (a ticket with no `query`) is answered the same way from its own `token` and `role`. A client must therefore send its credential before it browses; `provisa-client` does this in `list_tables()`. On a deployment with no auth provider these calls list the whole catalog and take no credential. (REQ-1263, REQ-127)
+Browsing needs the credential too. `list_flights`, `get_flight_info` and `get_schema` carry no ticket, so they read the credential from the call's `authorization: Bearer <token>` header and the requested role from `x-provisa-role` (one role, or a comma-separated set of held roles). With authentication on, a browsing call without a credential is refused, and the catalog it returns is the authorized role's: the tables, columns and commands that role is granted, and nothing else. A catalog ticket (a ticket with no `query`) is answered the same way from its own `token` and `role`. A client must therefore send its credential before it browses; `provisa-client` does this in `list_tables()`. On a deployment with no auth provider these calls list the whole catalog and take no credential.
 
 ```python
 options = flight.FlightCallOptions(headers=[
@@ -230,7 +230,7 @@ Streaming queries emit one message per row; mutations are unary.
 
 ## Invoking Commands Across Protocols
 
-A **command** is a registered tracked function or webhook — a callable registered in the Provisa model with a `kind` (`query` or `mutation`) and an `impl_kind` that describes how it runs. Every surface routes invocations through a single governed executor (`invoke_tracked_function`) that enforces command assignment (`visible_to`), the `write` right for a mutation, and governance uniformly (REQ-1156). [tool-verified: `provisa/api/data/action_exec.py`, `provisa/bolt/session.py:786-791`, `provisa/grpc/server.py:107-135`, `provisa/pgwire/function_call.py:80-88`, `provisa/api/flight/server.py:542-554`]
+A **command** is a registered tracked function or webhook — a callable registered in the Provisa model with a `kind` (`query` or `mutation`) and an `impl_kind` that describes how it runs. Every surface routes invocations through a single governed executor (`invoke_tracked_function`) that enforces command assignment (`visible_to`), the `write` right for a mutation, and governance uniformly.
 
 | `impl_kind` | What runs | Binding fields |
 | ------------ | ----------- | --------------- |
@@ -238,9 +238,9 @@ A **command** is a registered tracked function or webhook — a callable registe
 | `script` | Server-side script | `script` |
 | `http` | Outbound HTTP call | `url`, `method` |
 | `grpc` | Outbound gRPC call to an external server | `target`, `method` |
-| `python` | Python callable hosted by Provisa (REQ-885) | `callable` (e.g. `demo.py_functions:random_dataset`) |
+| `python` | Python callable hosted by Provisa | `callable` (e.g. `demo.py_functions:random_dataset`) |
 
-When a command declares a `return_schema` (JSON Schema with `type: array, items: object`), it is set-returning — every surface projects it as a typed row set. The demo commands `random_python_set` (impl_kind `python`) and `random_grpc_set` (impl_kind `grpc`) illustrate both a hosted callable and an external gRPC bridge returning random-valued rows; both are registered in `config/provisa-install.yaml`. [tool-verified: `config/provisa-install.yaml:809-856`]
+When a command declares a `return_schema` (JSON Schema with `type: array, items: object`), it is set-returning — every surface projects it as a typed row set. The demo commands `random_python_set` (impl_kind `python`) and `random_grpc_set` (impl_kind `grpc`) illustrate both a hosted callable and an external gRPC bridge returning random-valued rows; both are registered in `config/provisa-install.yaml`.
 
 ### Protocol matrix
 
@@ -304,17 +304,17 @@ See [docs/sources.md](sources.md#kafka-sources) for Kafka topic configuration as
 
 ---
 
-## Data Quality Checkers (REQ-1443)
+## Data Quality Checkers
 
-Soda Core and Great Expectations connect to Provisa the same way any other postgres client does — through pgwire. That is the whole integration: the checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker. [tool-verified: `provisa/events/source_loader.py` `make_dq_loader`]
+Soda Core and Great Expectations connect to Provisa the same way any other postgres client does — through pgwire. That is the whole integration: the checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker.
 
-The scan runs in a child interpreter — `python -m provisa.dq.worker` — which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop. [tool-verified: `provisa/dq/runner.py` `build_command`]
+The scan runs in a child interpreter — `python -m provisa.dq.worker` — which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop.
 
-Scan results land as ordinary source rows, so cadence, freshness, events, lineage, governance, RLS, the grid and export all apply without a second mechanism. Contract authoring, the result envelope and the derived registration are covered in [docs/sources.md](sources.md#data-quality-checkers-req-1443).
+Scan results land as ordinary source rows, so cadence, freshness, events, lineage, governance, RLS, the grid and export all apply without a second mechanism. Contract authoring, the result envelope and the derived registration are covered in [docs/sources.md](sources.md#data-quality-checkers).
 
 ### Installing a checker
 
-Neither library ships by default. The installer asks which one you want, and the answer becomes `dq_checker: none|soda|gx` in `~/.provisa/config.yaml`. On the Docker tier `scripts/provisa` turns that into the `PROVISA_EXTRAS` build arg; on the native tier `first-launch.sh` installs the matching pyproject extra into the venv. [tool-verified: `scripts/provisa:69-79`, `packaging/linux/first-launch.sh` `_native_extras`]
+Neither library ships by default. The installer asks which one you want, and the answer becomes `dq_checker: none|soda|gx` in `~/.provisa/config.yaml`. On the Docker tier `scripts/provisa` turns that into the `PROVISA_EXTRAS` build arg; on the native tier `first-launch.sh` installs the matching pyproject extra into the venv.
 
 | `dq_checker` | Library | Licence | Hosted cloud plane |
 | -------------- | --------- | --------- | -------------------- |
@@ -325,20 +325,17 @@ Elastic License 2.0 bars providing the software to third parties as a hosted ser
 
 ---
 
-## Apache Ossie Semantic Interchange (REQ-1316)
+## Apache Ossie Semantic Interchange
 
 Provisa exchanges semantic models with Apache Ossie (spec 0.2.0.dev0, incubating; formerly Open
 Semantic Interchange) through a boundary adapter. Provisa's internal vocabulary is never renamed
 to Ossie's — the spec declares breaking changes as likely, so coupling is confined to the adapter.
-[tool-verified: `provisa/ossie/convert.py` module docstring; `OSSIE_VERSION = "0.2.0.dev0"`]
 
 The draft spec has changed shape without changing its version string. The adapter follows the
 spec as it stands at `apache/ossie` commit `642cb894` (2026-10-10): one model per document,
 with `version`, `name`, `datasets`, `relationships`, and `metrics` at the document's root, and
 an enumerated `datatype`. The export is checked in the unit tests against that commit's
 `core-spec/ossie-schema.json`.
-[tool-verified: `OSSIE_SPEC_COMMIT`, `provisa/ossie/convert.py`;
-`test_the_export_is_valid_against_ossies_own_schema`, `tests/unit/test_ossie_convert.py`]
 
 ### Export
 
@@ -350,12 +347,9 @@ GET /admin/ossie
 ```
 
 The response is a YAML document with `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
-[tool-verified: `ossie_router.py` lines 20–33: "THE canonical live Ossie endpoint: the semantic
-model derived from live state on every read — no caching, no regeneration step"]
 
 The Metrics page also offers a **Download** button and a copyable endpoint URL in the Ossie
 Interchange panel, both pointing to the same endpoint.
-[tool-verified: `OssieInterchangePanel.tsx` lines 64–79: `endpointUrl = window.location.origin + OSSIE_ENDPOINT_PATH`]
 
 #### What is exported
 
@@ -369,27 +363,19 @@ The adapter maps Provisa objects to Ossie objects as follows:
 | `Metric` | `metric` | `name`, `expression` (ANSI_SQL), `datatype` (mapped as a column's is), `description`, `ai_context` |
 | `modeling_role` / `modeling_history` | `custom_extensions[].vendor_name="provisa"` | Round-trip only; other tools may ignore |
 
-[tool-verified: `_table_to_dataset`, `build_ossie_model`, `provisa/ossie/convert.py`: "Computed
-(function-target) relationships have no dataset target — not representable in Ossie; skipping
-is the defined export boundary"]
-
 A relationship over several columns lists each column in `from_columns` and `to_columns`. A
 model with no table is refused with a `422`: an Ossie document has at least one dataset.
-[tool-verified: `test_a_relationship_over_several_columns_lists_each_column`,
-`test_a_model_with_no_table_is_refused_by_name`, `tests/unit/test_ossie_convert.py`]
 
 Governance, RLS, lineage, and graph semantics are not exported. They may travel in the optional
 `provisa` custom_extensions slot for round-trip fidelity, but interchange never depends on other
-tools reading it. [tool-verified: `provisa/ossie/convert.py` docstring lines 13–15]
+tools reading it.
 
 A column type outside Ossie's vocabulary is written as `Opaque`, with the type's own name in the
 field's `provisa` extension, which is what the spec directs for a known type it has no member
 for. A column with no type recorded states no `datatype`. The adapter never maps to a type the
-column does not have. [tool-verified: `_map_datatype`, `_typed`, `provisa/ossie/convert.py`]
+column does not have.
 
 #### Type mapping
-
-[tool-verified: `_DATATYPE_MAP`, `provisa/ossie/convert.py`]
 
 | Provisa / source type | Ossie `datatype` |
 | --- | --- |
@@ -406,7 +392,6 @@ column does not have. [tool-verified: `_map_datatype`, `_typed`, `provisa/ossie/
 
 Ossie's `Decimal` carries no precision or scale, so `numeric(10,2)` is exported as `Decimal`
 and comes back from an import as `decimal`.
-[tool-verified: `test_parse_round_trips_export`, `tests/unit/test_ossie_convert.py`]
 
 ### Import
 
@@ -424,8 +409,6 @@ The server parses the document with `parse_ossie_model`, which validates structu
 `OssieImport` dataclass containing proposed tables, relationships, and metrics as plain dicts.
 Any structural problem is a `400` with a path-named error, e.g.
 `ossie import: missing $.datasets[1].source`.
-[tool-verified: `import_ossie`, `provisa/api/admin/ossie_router.py`:
-"Nothing is registered here — imported definitions never bypass registration review"]
 
 The importer reads the flat document shape only. Three things are refused by name:
 
@@ -445,8 +428,6 @@ whose expression is a computation is not proposed; the review screen names it un
 as not imported. A field that renames its column is proposed as that column, with the field's
 name as the column's alias. A dataset's `source` must have three parts,
 `source.schema.table`; a query or a shorter name is refused, and the error says so.
-[tool-verified: `parse_ossie_model`, `_parse_dataset`, `_proposed_type`, `_ai_context`,
-`provisa/ossie/convert.py`; `tests/unit/test_ossie_convert.py`]
 
 #### Coming from dbt, Cube, Snowflake, and other semantic layers
 
@@ -459,19 +440,15 @@ review screen below. Provisa reads the Ossie document; it does not read the othe
 | dbt (semantic layer) | `ossie-dbt msi-to-ossie -i target/semantic_manifest.json -o semantic_model.yaml` | The `semantic_manifest.json` that dbt writes for MetricFlow |
 | Cube | `ossie-cube import -i model/ -o model.yaml` | A Cube model directory, or individual cube and view files |
 
-[tool-verified: `converters/dbt/README.md` and `converters/cube/README.md` in the
-`apache/ossie` repository, read 2026-10-10]
-
 The same repository holds converters for Snowflake, Databricks, Microsoft, Salesforce,
 ThoughtSpot, Sigma, Omni, Hex, GoodData, and others; each has its own README.
-[tool-verified: directory listing of `converters/` in `apache/ossie`, 2026-10-10]
 
 Two limits to know before converting:
 
 - The dbt converter reads the semantic-layer manifest only. A dbt project without semantic
   models has nothing for it to convert. It drops conversion metrics, private metrics, and
   natural-key entities, and prints a warning for each.
-  [tool-verified: `converters/dbt/README.md`, the "MSI → Ossie is lossy" table]
+
 - A converter's output follows the spec as that converter's own commit has it. Provisa reads
   the flat shape of `apache/ossie` commit `642cb894`; a converter older than September 2026
   writes the `semantic_model` wrapper, which Provisa refuses by name.
@@ -488,13 +465,8 @@ semantic manifest and to a Cube model, converted back to Ossie by `ossie-dbt msi
 | Cube model → Ossie → Provisa | Read. Tables, keys, column types, the relationship, and the metric all came back; the relationship's name was the converter's (`orders_to_customers`). |
 | dbt semantic manifest → Ossie → Provisa | Read. Tables, primary keys, and the metric came back. Column types did not (the converter's output states none), and the relationship came back as the converter derived it from dbt entities, which was not the registered one. Review the relationships before applying. |
 
-[tool-verified: both runs, 2026-10-10, `apache/ossie` commit `642cb894`, `ossie-dbt` and
-`ossie-cube` 0.2.0.dev0, metricflow 0.213.0; inputs were files those converters had written
-from a Provisa export, not files authored in dbt or Cube]
-
 The dbt converter refuses a model in which any table has a unique constraint over several
 columns ("MetricFlow entities cannot represent composite keys losslessly").
-[tool-verified: `ossie-dbt ossie-to-msi` on the same export with such a constraint, 2026-10-10]
 
 #### The review screen
 
@@ -503,15 +475,11 @@ After the document is posted and parsed, a review modal opens with every propose
 relationship, and metric listed as a checked item. The modeler can uncheck anything to exclude it.
 Clicking **Apply** registers the checked items through the existing registration mutations — tables
 first, then relationships (which reference tables), then metrics.
-[tool-verified: `OssieInterchangePanel.tsx` lines 88–165: "Review screen opens with everything
-checked; trimming = unchecking"; "Tables first, then relationships... then metrics — each through
-the EXISTING registration mutations (REQ-1316)"]
 
 The modeling role and history stored in a Provisa-exported Ossie document round-trip correctly
-through import. [tool-verified: `_parse_dataset` custom_extensions handling,
-`provisa/ossie/convert.py` lines 287–300: "REQ-1320: round-trip the provisa modeling metadata slot"]
+through import.
 
-### dbt sources file (REQ-1967)
+### dbt sources file
 
 For a dbt project that does not use the semantic layer, Provisa writes a dbt `sources.yml`
 directly. It is derived from the live model on every request.
@@ -524,8 +492,6 @@ The response is YAML with `Content-Disposition: attachment; filename=provisa.sou
 caller needs `org_settings`, and `role` must be a role the caller holds; the holder of
 `access_config` may name any role. The Metrics page's interchange panel offers the same download
 for the role in use.
-[tool-verified: `download_dbt_sources`, `provisa/api/admin/ossie_router.py`; `TestTheEndpoint`,
-`tests/unit/test_dbt_sources.py`]
 
 The file lists each table the role is served, under a dbt source per source and schema (named
 by the source id, or `<source>_<schema>` when a source has tables in more than one schema),
@@ -543,25 +509,19 @@ several columns has no standard dbt test; the file's opening comment names each 
 test is written for it. The model records no nullability, so `not_null` appears on key columns
 only. The file carries no metrics, row security, masking, roles, or lineage, and its opening
 comment says so.
-[tool-verified: `build_dbt_sources`, `provisa/dbt/sources.py`; `tests/unit/test_dbt_sources.py`]
 
 A file generated from a model of two tables and one relationship was parsed by dbt-core 1.12.5
 with dbt-duckdb 1.11.0: two sources and five tests, no warnings. dbt-core 1.9.11 does not read
 its `relationships` tests, which nest their arguments under `arguments`; versions between the
-two were not tried. [tool-verified: `dbt parse` and `dbt ls` on both versions, 2026-10-10; `dbt test`
-against data was not run]
+two were not tried.
 
 ---
 
-## Metrics Across Protocols (REQ-1319)
+## Metrics Across Protocols
 
 A governed metric's definition — its expression, description, and `ai_context` — travels with the
 value into every query surface through one compiler expansion. There are no copies. The compiler
 reserves the `metrics` schema for SQL access; each protocol then adds its own metadata channel.
-
-[tool-verified: `METRICS_SCHEMA = "metrics"`, `provisa/compiler/metric_expand.py` line 43;
-REQ-1319 requirement text: "the definition (description, ai_context) travels with the value
-everywhere, with no copies"]
 
 ### SQL / pgwire
 
@@ -584,20 +544,16 @@ GROUP BY region, month;
 
 The compiler expands the `metrics.<name>` form into the real grouped aggregate before governance
 runs. Column descriptions are surfaced as `pg_description` entries, so DBeaver and psql `\d+`
-show them. [tool-verified: `metric_semantic_sql`, `provisa/compiler/metric_expand.py` lines 52–70;
-REQ-1319: "description surfaced via pg_description"]
+show them.
 
 `SELECT *` is rejected — name the columns explicitly.
-[tool-verified: `expand_metric_query`, `provisa/compiler/metric_expand.py` lines 302–306]
 
 ### GraphQL
 
 Metrics project inside the `_aggregate` root field as a `metrics` block.
-[inferred: per REQ-1319; aggregate_gen.py not read in this session]
 
 The definition text (`description`, `ai_context`) appears in GraphQL introspection docs, so
 schema-aware tools and codegen pick it up automatically.
-[inferred: per REQ-1319: "definition in introspection docs"]
 
 ### MCP (AI agents)
 
@@ -608,10 +564,6 @@ Two tools expose metrics to MCP clients:
 - **`query_metric`** — accepts a metric name plus a dimension list and calls the compiler's
   semantic-SQL path, returning the aggregate result.
 
-[inferred: per REQ-1319: "MCP: list_metrics and query_metric tools carrying ai_context, so agents
-select governed meanings instead of composing aggregation SQL"; `provisa/api/mcp/tools.py` not
-read in this session]
-
 Agents that call `list_metrics` before constructing a query select a governed metric by name
 rather than writing aggregation SQL by hand. The `ai_context` field is the place to put the
 definition text that guides correct selection.
@@ -619,8 +571,6 @@ definition text that guides correct selection.
 ### Arrow Flight
 
 Metrics are addressable as metric flight descriptors returning Arrow tables.
-[inferred: per REQ-1319: "Arrow Flight: metric flight descriptors returning Arrow tables";
-`provisa/api/flight/catalog.py` not read in this session]
 
 Use the same `metrics.<name>` SQL form via the standard Flight SQL ticket path.
 
@@ -632,36 +582,22 @@ Call a metric using the `provisa.metric()` procedure:
 CALL provisa.metric('net_revenue', ['region']) YIELD region, value
 ```
 
-[inferred: per REQ-1319: "Bolt/Cypher: a provisa.metric() procedure"; the procedure signature
-is inferred from the REQ text and not verified against provisa/bolt/session.py in this session]
-
 Fact and Dimension tables carry `:Fact` and `:Dimension` node labels in the federated graph, so
 Bloom renders the star shape automatically.
-[inferred: per REQ-1319 and REQ-1320: "federated graph labels nodes :Fact/:Dimension so Bloom
-renders the star"; provisa/cypher/label_map.py not read in this session]
 
 ### Natural language queries
 
 The NL schema matcher resolves metric vocabulary in natural-language questions directly to a metric
-plus dimensions, then generates semantic SQL. [tool-verified: `resolve_metric`,
-`provisa/nl/schema_matcher.py` is exercised in `test_nl_metrics.py` lines 76–78:
-`sql = matcher.resolve_metric("What is the total revenue by region?")` →
-`"SELECT region, value FROM metrics.total_revenue GROUP BY region"`]
+plus dimensions, then generates semantic SQL.
 
 Fact tables are tagged `[fact]` in the NL prompt; dimension tables are tagged `[dimension]`. The
 matcher biases join paths fact-to-dimension when resolving questions.
-[tool-verified: `test_format_entities_tags_star_roles`, `tests/unit/test_nl_metrics.py` lines 129–132:
-`assert "table: orders [fact]  fields: amount" in block`]
 
 ### Streaming
 
 Combine `view_metrics` with `materialize` to keep a metric view current as its inputs change, using
 the existing materialization machinery. No new pipeline is required.
-[inferred: per REQ-1319. The table Kafka sink that requirement named is retired (REQ-176); a
-table publishes its new rows to Kafka through a live output (`live.outputs`, REQ-565)]
 
 ### Observability (OTel)
 
 Metric evaluations are traced and exportable as OpenTelemetry metrics.
-[inferred: per REQ-1319: "Observability: metric evaluations traced and exportable as OTel metrics";
-OTel integration code not read in this session]

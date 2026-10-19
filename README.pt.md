@@ -62,7 +62,7 @@ Como a redução é pura — uma especificação de `entity`/`fact` se torna exa
 
 ### Viagem no tempo {: #time-travel }
 
-Viagem no tempo é uma ideia simples — manter toda versão de uma linha em vez de sobrescrevê-la, para que você possa perguntar o que os dados *eram* em qualquer momento passado. O que difere é a eficiência com que cada motor consegue fazer isso, e é exatamente por isso que o Provisa a torna uma propriedade da **definição** da view materializada em vez do motor de armazenamento (REQ-1162). Declare uma vez; funciona em qualquer backend que materialize.
+Viagem no tempo é uma ideia simples — manter toda versão de uma linha em vez de sobrescrevê-la, para que você possa perguntar o que os dados *eram* em qualquer momento passado. O que difere é a eficiência com que cada motor consegue fazer isso, e é exatamente por isso que o Provisa a torna uma propriedade da **definição** da view materializada em vez do motor de armazenamento. Declare uma vez; funciona em qualquer backend que materialize.
 
 A regra que a mantém portátil é **apenas-anexação**: uma versão, uma vez escrita, nunca é atualizada ou excluída. Aposentar uma linha escrevendo de volta uma data "válido-até" — o truque bitemporal usual — precisa de um UPDATE, que muitos motores não conseguem fazer de forma barata (ou de forma alguma) sobre um armazenamento federado, então o Provisa não o faz. Em vez disso, toda atualização **anexa**, e "qual versão estava em vigor no momento T" é derivado no momento da leitura a partir do log imutável. Existem exatamente duas formas de anexar:
 

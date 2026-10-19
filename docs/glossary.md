@@ -15,7 +15,7 @@ same term, and the term carries the definition.
 ## How terms are derived
 
 Provisa derives a term from every column name automatically, using a deterministic normalization
-rule (REQ-1387): case folding, separator and camelCase tokenization, abbreviation expansion, and
+rule: case folding, separator and camelCase tokenization, abbreviation expansion, and
 stripping of trailing proxy tokens.
 
 **Abbreviation expansion** maps common enterprise shorthands to their full forms: `cust` →
@@ -53,7 +53,7 @@ that appear on nearly every table.
 ### The business name, not the physical name
 
 A derived term follows the column's **business name** — its alias when the modeler set one, its
-physical name when they did not (REQ-1581). When `usr_nm` is aliased to `user name`, the derived
+physical name when they did not. When `usr_nm` is aliased to `user name`, the derived
 term is `user name`, not `user number` or some expansion of `usr_nm`.
 
 Aliasing a column is the stronger correction. An alias travels to every surface that reads the
@@ -70,7 +70,7 @@ expert to a term, an alias edit does not move the ref — that work is the curat
 
 Some table names describe an access path rather than a concept: `user_by_name` is a user reached
 through a name lookup, not a distinct kind of entity. When Provisa derives the table concept for
-generic-phrase qualification, it cuts the name at the connective (REQ-1582). `user_by_name` becomes
+generic-phrase qualification, it cuts the name at the connective. `user_by_name` becomes
 `user`; `orders_by_customer` becomes `order`.
 
 Without the cut, the surrogate key on `user_by_name` would normalize to `user name` and collide
@@ -127,12 +127,11 @@ Relationships are directional. The UI shows both outgoing edges (this term → a
 edges (another term → this term), labeling each direction with its own plain-language phrase.
 
 The edges live in `glossary_term_edges`, an associative table declared as a junction relationship
-(REQ-1586): its `rel_type` column is the discriminator, so each of the types above is a separate
+: its `rel_type` column is the discriminator, so each of the types above is a separate
 Cypher relationship type between two `GlossaryTerm` nodes rather than a property on a reified node.
 The table is provisioned with the rest of the metadata schema and is not shown as a node in graph
 clients — it is the edge. Nothing about it is glossary-specific: it is declared the same way you
 would declare a junction over your own tables, and it is read by the same code.
-[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
 ## Abstract terms
 
@@ -147,7 +146,7 @@ cannot answer anything.
 
 ## The admission rule for consuming surfaces
 
-A term a consuming surface may offer must satisfy three conditions (REQ-1387):
+A term a consuming surface may offer must satisfy three conditions:
 
 1. **In service** — not retired (a curator removed it from service) and not deprecated (it lost its
    last column and was held only because deleting it would leave something dangling).
@@ -178,7 +177,7 @@ Column assets export independently. A term being excluded does not hide the unde
 
 Some columns carry plumbing rather than business data: ETL batch identifiers, row versions,
 ingestion timestamps. A term derived from such a column may have a perfectly accurate definition
-that is simply not business vocabulary (REQ-1583). The **Exclude from metadata export** control
+that is simply not business vocabulary. The **Exclude from metadata export** control
 withholds the term and any relationship edges that end on it from the catalogs Provisa publishes
 to, while the columns themselves still export as assets.
 

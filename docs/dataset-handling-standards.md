@@ -46,7 +46,7 @@ Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ### TRINO_ONLY lake sources — Trino connector, no direct driver
 
-These types are in `SOURCE_TO_CONNECTOR` and `TRINO_ONLY_SOURCES`. All queries route through Trino. No dialect; no direct driver. Time-travel (`as_of`) is supported on `iceberg` and `delta_lake` (REQ-372).
+These types are in `SOURCE_TO_CONNECTOR` and `TRINO_ONLY_SOURCES`. All queries route through Trino. No dialect; no direct driver. Time-travel (`as_of`) is supported on `iceberg` and `delta_lake`.
 
 | Source type | Trino connector | Physical schema concept | Trino catalog schema query |
 | --- | --- | --- | --- |
@@ -60,7 +60,7 @@ Tables: `information_schema.tables WHERE table_schema = ?`.
 
 ### NoSQL / non-relational — Trino connector, no direct driver
 
-These types are in `SOURCE_TO_CONNECTOR` but have no dialect and no direct driver. All queries route through Trino using the mapping DSL (REQ-251). Introspection falls back to Trino.
+These types are in `SOURCE_TO_CONNECTOR` but have no dialect and no direct driver. All queries route through Trino using the mapping DSL. Introspection falls back to Trino.
 
 | Source type | Trino connector | Physical schema concept | Trino catalog schema query |
 | --- | --- | --- | --- |
@@ -86,7 +86,7 @@ These types are in `SOURCE_TO_CONNECTOR` using the `kenstott/calcite` Trino plug
 
 Tables: `information_schema.tables WHERE table_schema = ?`.
 
-Kaggle datasets are staged and registered as `files` sources — no separate row here. Introspection dispatches identically to any other `files` source. [tool-verified: `provisa/kaggle/downloader.py` `stage_dataset`; `provisa/api/admin/schema_mutation.py` `stage_kaggle_dataset`]
+Kaggle datasets are staged and registered as `files` sources — no separate row here. Introspection dispatches identically to any other `files` source.
 
 ---
 
@@ -128,8 +128,8 @@ These types have no Trino connector and no native introspection path. Both `avai
 | `csv` | Local or remote CSV file — schema from file headers at registration |
 | `parquet` | Local or remote Parquet file — schema from file metadata at registration |
 | `google_sheets` | Google Sheets API — schema from spreadsheet columns at registration |
-| `ingest` | HTTP push receiver — schema defined in config at registration (REQ-333) |
-| `pinot` | Apache Pinot — Trino `pinot` connector (`pinot.controller-urls`); introspects live via Trino (REQ-1097) |
+| `ingest` | HTTP push receiver — schema defined in config at registration |
+| `pinot` | Apache Pinot — Trino `pinot` connector (`pinot.controller-urls`); introspects live via Trino |
 
 ---
 
@@ -170,7 +170,7 @@ Dataset names may be normalized to a semantic standard (e.g., `snake_case`) and 
 **Never compare two dataset names with `===`.** Always normalize both sides through the centralized normalization function before comparison.
 
 - In the UI: use `toSnakeCase(a) === toSnakeCase(b)` via the shared utility exported from `provisa-ui/src/naming.ts`.
-- In the backend: use the canonical function in `provisa.compiler.naming` (REQ-640).
+- In the backend: use the canonical function in `provisa.compiler.naming`.
 
 This applies everywhere a source-introspected name is compared against a stored registered name: `isRegistered` checks, alias lookups, duplicate detection, and any cross-source name matching.
 
@@ -204,7 +204,7 @@ A dataset may also be referenced by name inside a query payload. Each query lang
 | Cypher | PascalCase node label or relationship type | `PetByStatus` |
 | GraphQL | camelCase field name | `petByStatus` |
 
-The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name — it is not a hint, it is the name. The alias is consumed differently per language: **SQL uses the alias verbatim** (no convention applied); **GQL applies its configured convention** to the alias; **Cypher derives from the GQL name** (per REQ-351 the Cypher node label is the PascalCase GraphQL `type_name`), not directly from the alias. When no alias is set, each language derives its name from `tableName` (normalized) via its configured convention.
+The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name — it is not a hint, it is the name. The alias is consumed differently per language: **SQL uses the alias verbatim** (no convention applied); **GQL applies its configured convention** to the alias; **Cypher derives from the GQL name** (the Cypher node label is the PascalCase GraphQL `type_name`), not directly from the alias. When no alias is set, each language derives its name from `tableName` (normalized) via its configured convention.
 
 Resolution priority for the query-language name of a dataset:
 

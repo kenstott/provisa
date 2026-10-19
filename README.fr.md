@@ -62,7 +62,7 @@ Parce que l'abaissement est pur — une spécification `entity`/`fact` devient e
 
 ### Voyage dans le temps {: #time-travel }
 
-Le voyage dans le temps est une idée simple — conserver chaque version d'une ligne au lieu de l'écraser, afin de pouvoir demander ce que la donnée *était* à n'importe quel instant passé. Ce qui diffère, c'est l'efficacité avec laquelle chaque moteur sait le faire, et c'est exactement pourquoi Provisa en fait une propriété de la **définition** de la vue matérialisée plutôt que du moteur de stockage (REQ-1162). Déclarez-le une fois ; il fonctionne sur tout backend de matérialisation.
+Le voyage dans le temps est une idée simple — conserver chaque version d'une ligne au lieu de l'écraser, afin de pouvoir demander ce que la donnée *était* à n'importe quel instant passé. Ce qui diffère, c'est l'efficacité avec laquelle chaque moteur sait le faire, et c'est exactement pourquoi Provisa en fait une propriété de la **définition** de la vue matérialisée plutôt que du moteur de stockage. Déclarez-le une fois ; il fonctionne sur tout backend de matérialisation.
 
 La règle qui le maintient portable est l'**insertion seule** : une version, une fois écrite, n'est jamais mise à jour ni supprimée. Retirer une ligne en réécrivant une date de fin de validité — l'astuce bitemporelle habituelle — demande un UPDATE, que beaucoup de moteurs ne savent pas faire à bon compte (voire pas du tout) sur un magasin fédéré ; Provisa s'en abstient donc. Chaque rafraîchissement **ajoute**, et « quelle version était en vigueur à l'instant T » est dérivé à la lecture depuis le journal immuable. Il y a exactement deux façons d'ajouter :
 

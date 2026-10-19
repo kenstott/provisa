@@ -15,21 +15,21 @@ Provisa 支持六种部署路径。请根据受众和运维场景进行选择：
 
 ### 虚拟机 vs Kubernetes {: #vm-vs-kubernetes }
 
-两者均为企业级方案。虚拟机/AppImage 路径更简单：无需预配集群，无需配置 CNI 或 RBAC 策略，AppImage 本身完全自包含（REQ-223）。它可以自然地融入现有的服务器管理工具链（Ansible、Puppet、Datadog agent、Splunk forwarder 等）。
+两者均为企业级方案。虚拟机/AppImage 路径更简单：无需预配集群，无需配置 CNI 或 RBAC 策略，AppImage 本身完全自包含。它可以自然地融入现有的服务器管理工具链（Ansible、Puppet、Datadog agent、Splunk forwarder 等）。
 
-只有当团队已在运行 K8s 集群、并希望 Provisa 参与该运维模型（滚动部署、HPA、统一可观测性）时才选择 Kubernetes（REQ-056）。两者能力等价——Kubernetes 增加的是运维开销，而非能力。
+只有当团队已在运行 K8s 集群、并希望 Provisa 参与该运维模型（滚动部署、HPA、统一可观测性）时才选择 Kubernetes。两者能力等价——Kubernetes 增加的是运维开销，而非能力。
 
 ### 镜像获取与安全扫描 {: #image-acquisition-and-security-scanning }
 
 所有生产路径都要求先获取 Provisa 制品，之后才能进行部署。“气隙”指的是目标机器上安装时发生的事情——制品必须先被获取。
 
-**macOS 和 Windows 安装程序：** 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载。完全捆绑；下载后无需联网（REQ-227）。仅供开发/评估使用，不用于生产——不预期有镜像扫描门禁。
+**macOS 和 Windows 安装程序：** 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载。完全捆绑；下载后无需联网。仅供开发/评估使用，不用于生产——不预期有镜像扫描门禁。
 
-**AppImage 路径：** 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载并传输到目标机器。AppImage 将所有组件镜像以 tarball 形式打包在一个 squashfs 文件系统中（REQ-294）——大多数镜像仓库扫描器无法就地检查它们。请联系您的 Provisa 客户团队获取组件镜像摘要，以便独立对照您的扫描器进行验证。
+**AppImage 路径：** 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载并传输到目标机器。AppImage 将所有组件镜像以 tarball 形式打包在一个 squashfs 文件系统中——大多数镜像仓库扫描器无法就地检查它们。请联系您的 Provisa 客户团队获取组件镜像摘要，以便独立对照您的扫描器进行验证。
 
 **Terraform 路径：** 在运行 `terraform/deploy.sh` 之前，必须先将 AppImage 上传到 S3。EC2 节点在启动时通过 IAM 角色下载它——它们需要出站 S3 访问权限（直接访问或通过 VPC 网关终结点）。适用与 AppImage 路径相同的扫描策略。
 
-**Helm / Kubernetes 路径：** 各个镜像必须推送到集群可访问的镜像仓库。此路径与基于镜像仓库的扫描（Prisma Cloud、Aqua、Trivy、AWS Inspector）兼容性最好——镜像是扫描器原生理解的一等对象。对于气隙集群，将镜像镜像到内部镜像仓库，并在 `values.yaml` 中覆盖引用（REQ-294）。
+**Helm / Kubernetes 路径：** 各个镜像必须推送到集群可访问的镜像仓库。此路径与基于镜像仓库的扫描（Prisma Cloud、Aqua、Trivy、AWS Inspector）兼容性最好——镜像是扫描器原生理解的一等对象。对于气隙集群，将镜像镜像到内部镜像仓库，并在 `values.yaml` 中覆盖引用。
 
 ---
 
@@ -37,7 +37,7 @@ Provisa 支持六种部署路径。请根据受众和运维场景进行选择：
 
 ### 推荐方式：`start-ui.sh` {: #recommended-start-uish }
 
-从源码运行 Provisa 最简单的方式。一条命令即可启动所有基础设施、后端 API 和 UI 开发服务器（REQ-055）。Ctrl+C 可以干净地关闭一切。
+从源码运行 Provisa 最简单的方式。一条命令即可启动所有基础设施、后端 API 和 UI 开发服务器。Ctrl+C 可以干净地关闭一切。
 
 **前置条件：** Docker Desktop、Node.js、位于 `.venv/` 的 Python 虚拟环境
 
@@ -47,11 +47,11 @@ Provisa 支持六种部署路径。请根据受众和运维场景进行选择：
 
 该命令的作用：
 
-- 启动 `docker-compose.core.yml` + `docker-compose.dev.yml`（所有核心服务 + 演示服务），并等待其健康就绪（REQ-055）
+- 启动 `docker-compose.core.yml` + `docker-compose.dev.yml`（所有核心服务 + 演示服务），并等待其健康就绪
 - 向 Kafka 灌入演示数据
 - 从 `.venv/` 同步 Python 依赖
-- 在 8001 端口启动后端 API（日志写入 `.logs/server.log`）（REQ-558）
-- 在 3000 端口启动 Vite UI 开发服务器（REQ-559）
+- 在 8001 端口启动后端 API（日志写入 `.logs/server.log`）
+- 在 3000 端口启动 Vite UI 开发服务器
 - 打印 URL 并等待；Ctrl+C 会停止一切并拆除 compose 环境
 
 ```yaml
@@ -61,9 +61,9 @@ UI:      http://localhost:3000
 
 **选项：**
 
-`--reset-volumes` —— 在启动前运行 `docker compose down -v`，销毁所有 Docker 卷（PostgreSQL 数据、MinIO 对象、Redis 状态等）（REQ-170）。当您需要完全干净的环境时使用——例如开发过程中发生架构变更之后，或者 Docker 崩溃导致卷损坏时。**所有数据都会丢失。**
+`--reset-volumes` —— 在启动前运行 `docker compose down -v`，销毁所有 Docker 卷（PostgreSQL 数据、MinIO 对象、Redis 状态等）。当您需要完全干净的环境时使用——例如开发过程中发生架构变更之后，或者 Docker 崩溃导致卷损坏时。**所有数据都会丢失。**
 
-`--observability` —— 添加完整的追踪和指标插桩。下载 OpenTelemetry Java agent 并修补 Trino 的 `jvm.config` 以加载它，为 Provisa 后端插入 OTLP 导出，并启动 OTel collector、Prometheus、Tempo 和 Grafana（`http://localhost:3100`）（REQ-330）。对 `jvm.config` 的修补会在 Ctrl+C 时自动还原。
+`--observability` —— 添加完整的追踪和指标插桩。下载 OpenTelemetry Java agent 并修补 Trino 的 `jvm.config` 以加载它，为 Provisa 后端插入 OTLP 导出，并启动 OTel collector、Prometheus、Tempo 和 Grafana（`http://localhost:3100`）。对 `jvm.config` 的修补会在 Ctrl+C 时自动还原。
 
 ### 手动步骤（仅后端，无 UI） {: #manual-steps-backend-only-no-ui }
 
@@ -98,11 +98,11 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 | 服务 | 端口 | 用途 |
 | --------- | ------ | --------- |
-| PostgreSQL | 5432 | 配置元数据 + Iceberg 目录（REQ-169） |
-| PgBouncer | 6432 | 连接池（REQ-053） |
-| 联邦查询引擎 | 8080 | 查询联邦（REQ-028） |
-| Redis | 6379 | 查询结果缓存（REQ-371） |
-| MinIO | 9000/9001 | 兼容 S3 的对象存储（REQ-029, REQ-171） |
+| PostgreSQL | 5432 | 配置元数据 + Iceberg 目录 |
+| PgBouncer | 6432 | 连接池 |
+| 联邦查询引擎 | 8080 | 查询联邦 |
+| Redis | 6379 | 查询结果缓存 |
+| MinIO | 9000/9001 | 兼容 S3 的对象存储 |
 
 **演示服务（`docker-compose.dev.yml`）—— 可选，由 `start-ui.sh` 包含：**
 
@@ -115,10 +115,10 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Elasticsearch | 9200 | 演示用搜索数据源 |
 | Neo4j | 7474/7687 | 演示用图数据源 |
 | Fuseki | 3030 | 演示用 SPARQL 三元组存储 |
-| OpenTelemetry Collector | — | 追踪采集（需 `--observability`）（REQ-302） |
-| Prometheus | 9090 | 指标（需 `--observability`）（REQ-330） |
-| Tempo | — | 追踪存储（需 `--observability`）（REQ-330） |
-| Grafana | 3100 | 仪表板（需 `--observability`）（REQ-330） |
+| OpenTelemetry Collector | — | 追踪采集（需 `--observability`） |
+| Prometheus | 9090 | 指标（需 `--observability`） |
+| Tempo | — | 追踪存储（需 `--observability`） |
+| Grafana | 3100 | 仪表板（需 `--observability`） |
 
 存储、联邦查询引擎和这些遥测服务在 `PROVISA_STORE_BIND_IP`（未设置时为 `127.0.0.1`）上发布，密码为该部署生成。参见[部署加固](security.md#deployment-hardening)。
 
@@ -145,15 +145,15 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ## macOS 安装程序 {: #macos-installer }
 
-适用于开发者工作站和评估。完全气隙——下载后无需联网（REQ-227）。
+适用于开发者工作站和评估。完全气隙——下载后无需联网。
 
-基础安装程序是**原生安装**：DuckDB 联邦查询引擎 + 嵌入式 PostgreSQL 控制平面（pgserver） + 内存态（fakeredis）缓存，不含 Docker、虚拟机、Trino、Redis 或 MinIO（REQ-972, REQ-979）。联邦查询引擎是一个向导选项——DuckDB（原生，默认）、Docker 上的 Trino，或外部引擎（REQ-973）。可观测性始终开启，为可在 Admin 中查看的自遥测；Docker collector/Prometheus/Grafana 堆栈是一个可选的外部演示，而非开关（REQ-975）。演示数据包是可选的，默认关闭（REQ-978）。Trino、Docker 可观测性堆栈和演示数据都是重量级附加组件，按本地优先顺序解析（安装程序旁的目录、挂载卷、`~/Downloads`，最后是 GitHub release），因此企业可以为气隙安装预先准备 tarball（REQ-977）。
+基础安装程序是**原生安装**：DuckDB 联邦查询引擎 + 嵌入式 PostgreSQL 控制平面（pgserver） + 内存态（fakeredis）缓存，不含 Docker、虚拟机、Trino、Redis 或 MinIO。联邦查询引擎是一个向导选项——DuckDB（原生，默认）、Docker 上的 Trino，或外部引擎。可观测性始终开启，为可在 Admin 中查看的自遥测；Docker collector/Prometheus/Grafana 堆栈是一个可选的外部演示，而非开关。演示数据包是可选的，默认关闭。Trino、Docker 可观测性堆栈和演示数据都是重量级附加组件，按本地优先顺序解析（安装程序旁的目录、挂载卷、`~/Downloads`，最后是 GitHub release），因此企业可以为气隙安装预先准备 tarball。
 
 ### 步骤 {: #steps }
 
 1. 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载 `Provisa-<version>-macOS.dmg`
 2. 打开 DMG，将 **Provisa.app** 拖到 `/Applications`
-3. 双击 **Provisa.app**——首次启动的设置只运行一次；向导会提供上述引擎、可观测性和演示数据的选择（REQ-1007）
+3. 双击 **Provisa.app**——首次启动的设置只运行一次；向导会提供上述引擎、可观测性和演示数据的选择
 4. 打开终端：
 
    ```bash
@@ -162,33 +162,29 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
    provisa open     # open the UI in the browser
    ```
 
-   （REQ-224）
-
 ### 数据持久化 {: #data-persistence }
 
-所有数据存储在 `~/.provisa/` 中（REQ-224）。要移除一切：`provisa uninstall`。
+所有数据存储在 `~/.provisa/` 中。要移除一切：`provisa uninstall`。
 
 ---
 
 ## Windows 安装程序 {: #windows-installer }
 
-适用于开发者工作站和评估。完全气隙——下载后无需联网（REQ-227）。
+适用于开发者工作站和评估。完全气隙——下载后无需联网。
 
-与 macOS 类似，基础 Windows 安装程序是**原生层**：独立的 Python 运行时 + provisa wheel 包 + DuckDB/pg_duckdb + 嵌入式 PostgreSQL 控制平面（pgserver），不携带 Docker、虚拟机或容器镜像（REQ-979）。联邦查询引擎（Trino）、可观测性堆栈和演示数据包通过后续独立的分层安装程序添加，顺序为：容器安装程序（`Provisa-Container-<version>.exe`，添加 WSL2 + containerd + Trino），然后是 Obs 安装程序（需要容器层），然后是 Demo 安装程序（需要 Core + Obs）。首次启动指引会说明如何通过运行容器安装程序来初始化联邦查询引擎（REQ-1005）。
+与 macOS 类似，基础 Windows 安装程序是**原生层**：独立的 Python 运行时 + provisa wheel 包 + DuckDB/pg_duckdb + 嵌入式 PostgreSQL 控制平面（pgserver），不携带 Docker、虚拟机或容器镜像。联邦查询引擎（Trino）、可观测性堆栈和演示数据包通过后续独立的分层安装程序添加，顺序为：容器安装程序（`Provisa-Container-<version>.exe`，添加 WSL2 + containerd + Trino），然后是 Obs 安装程序（需要容器层），然后是 Demo 安装程序（需要 Core + Obs）。首次启动指引会说明如何通过运行容器安装程序来初始化联邦查询引擎。
 
 ### 步骤 {: #steps_1 }
 
 1. 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载 `Provisa-<version>-windows-x64.exe`
 2. 运行安装程序——无需管理员权限；安装到 `%LOCALAPPDATA%\Programs\Provisa\`
-3. 从开始菜单打开 **Provisa First Launch**——原生设置只运行一次，并打印出针对分层附加组件的后续步骤指引（REQ-1005）
+3. 从开始菜单打开 **Provisa First Launch**——原生设置只运行一次，并打印出针对分层附加组件的后续步骤指引
 4. 打开新终端：
 
    ```text
    provisa status
    provisa open
    ```
-
-   （REQ-224）
 
 ### 数据持久化 {: #data-persistence_1 }
 
@@ -200,10 +196,10 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ### 它是什么 {: #what-it-is }
 
-`Provisa.AppImage` 是一个单一的自包含可执行文件，其中打包了（REQ-223, REQ-228）：
+`Provisa.AppImage` 是一个单一的自包含可执行文件，其中打包了：
 
 - 一个无根 Docker 守护进程（`dockerd-rootless.sh` + `rootlesskit`）——无需系统级 Docker 或 root 权限
-- 所有容器镜像的 tarball（PostgreSQL、PgBouncer、MinIO、Redis、联邦查询引擎、Provisa API）（REQ-294）
+- 所有容器镜像的 tarball（PostgreSQL、PgBouncer、MinIO、Redis、联邦查询引擎、Provisa API）
 - Provisa CLI 包装器和首次启动设置脚本
 
 Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
@@ -212,7 +208,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
 - 本地裸机或虚拟机（单节点或多节点）
 - 没有 K8s 集群的云虚拟机
-- 气隙环境（REQ-294）
+- 气隙环境
 - 希望运维比 Kubernetes 更简单时
 
 ---
@@ -236,7 +232,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
    - **角色** → 选择 `primary`
    - **RAM 预算** → 分配的内存量（0 = 全部可用内存）；决定 Trino worker 数量
    - **主机名** → 该节点对外通告的地址
-   - **API 端口** → 默认 `8000`（REQ-560）
+   - **API 端口** → 默认 `8000`
 5. 设置过程会加载所有容器镜像（约 2–5 分钟），写入配置，并启动服务
 6. 验证：
 
@@ -306,7 +302,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
    - **角色** → 选择 `secondary`
    - **主节点 IP** → 输入主节点的 IP（会实时验证连通性）
    - **RAM 预算**、**主机名**、**API 端口** → 与上文相同方式回答
-5. 设置过程会加载一个精简的镜像集合（不含 PostgreSQL、PgBouncer、MinIO、Redis——这些只在主节点运行）（REQ-561），启动 Provisa API 和一个联邦查询引擎 worker
+5. 设置过程会加载一个精简的镜像集合（不含 PostgreSQL、PgBouncer、MinIO、Redis——这些只在主节点运行），启动 Provisa API 和一个联邦查询引擎 worker
 6. 验证：
 
    ```bash
@@ -325,16 +321,16 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 | 服务 | 为何是单例 |
 | --------- | --------------- |
 | PostgreSQL | 共享架构、应用配置、语义模型 |
-| Redis | 共享的查询结果缓存和订阅状态（REQ-371） |
-| MinIO | 用于重定向结果和物化视图快照的共享对象存储（REQ-029） |
-| 联邦查询引擎协调节点 | 所有 worker（主节点 + 从节点）都注册到这里（REQ-028） |
+| Redis | 共享的查询结果缓存和订阅状态 |
+| MinIO | 用于重定向结果和物化视图快照的共享对象存储 |
+| 联邦查询引擎协调节点 | 所有 worker（主节点 + 从节点）都注册到这里 |
 
 **从节点**只运行：
 
-- Provisa API——无状态；启动时从主节点的 PostgreSQL 读取全部配置（REQ-057, REQ-562）
-- 联邦查询引擎 worker——自行向主节点上的协调节点注册（REQ-028）
+- Provisa API——无状态；启动时从主节点的 PostgreSQL 读取全部配置
+- 联邦查询引擎 worker——自行向主节点上的协调节点注册
 
-所有应用状态都流经主节点的 PostgreSQL。无需手动同步。（REQ-562）
+所有应用状态都流经主节点的 PostgreSQL。无需手动同步。
 
 ---
 
@@ -350,7 +346,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 ./Provisa.AppImage --non-interactive --role secondary --primary-ip 10.0.0.10 --ram-gb 32
 ```
 
-非交互模式会安装一个 systemd 单元（`/etc/systemd/system/provisa.service`）以实现开机自启。（REQ-563）
+非交互模式会安装一个 systemd 单元（`/etc/systemd/system/provisa.service`）以实现开机自启。
 
 | 参数 | 说明 |
 | ------ | ------------- |
@@ -363,7 +359,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
 ## 云虚拟机部署 —— Terraform（AWS） {: #cloud-vm-deployment-terraform-aws }
 
-在 AWS 上通过一条交互式命令预配一个完整的多节点 Provisa 集群——VPC、安全组、EC2 实例、ALB、NLB。（REQ-564）
+在 AWS 上通过一条交互式命令预配一个完整的多节点 Provisa 集群——VPC、安全组、EC2 实例、ALB、NLB。
 
 ### 文件 {: #files }
 
@@ -410,8 +406,6 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
    secondary_ips     = ["10.0.x.x", ...]
    ```
 
-   （REQ-564, REQ-143）
-
 9.（可选）将 DNS 记录指向 ALB 和 NLB 的 DNS 名称
 
 10. 验证：
@@ -445,17 +439,17 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 | `m7i.4xlarge` | 16 | 64 GB | 2 | 中型生产环境 |
 | `m7i.8xlarge` | 32 | 128 GB | 4 | 大型生产环境 |
 
-所有节点都向主节点上的一个协调节点贡献 worker（REQ-028）。一个 3 节点的 `m7i.4xlarge` 集群总共产生 6 个 Trino worker。
+所有节点都向主节点上的一个协调节点贡献 worker。一个 3 节点的 `m7i.4xlarge` 集群总共产生 6 个 Trino worker。
 
 ### 预配内容 {: #what-gets-provisioned }
 
-- 跨两个可用区的两个公有子网组成的 VPC（REQ-564）
+- 跨两个可用区的两个公有子网组成的 VPC
 - 安全组：负载均衡器组（8000/8815 端口的公网入站）、节点组（负载均衡器→节点、集群内部通信、可选 SSH）
 - 带 S3 GetObject 权限（针对 AppImage 存储桶）的 IAM 角色 + 实例 profile
 - 主 EC2 实例——以 `--non-interactive --role primary` 模式运行首次启动
 - 从 EC2 实例（node_count − 1 个）——以 `--non-interactive --role secondary --primary-ip <primary private IP>` 模式运行首次启动；依赖主节点先完成
-- 8000 端口的 ALB —— HTTP API，健康检查 `/health`（REQ-560）
-- 8815 端口的 NLB —— Arrow Flight / gRPC（REQ-143）
+- 8000 端口的 ALB —— HTTP API，健康检查 `/health`
+- 8815 端口的 NLB —— Arrow Flight / gRPC
 - 两个负载均衡器都挂载到所有节点
 
 ### 前置条件清单 {: #prerequisites-checklist }
@@ -470,7 +464,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
 ### 密钥 {: #secrets }
 
-捆绑存储（PostgreSQL、Redis、MinIO、Grafana 管理员）的密码以及 Trino 集群的共享密钥由 Terraform（`random_password`）生成并交给每个节点，节点将其保存在 systemd 环境文件中，权限为 600。它们保存在 Terraform 状态中，因此应像保护密码本身一样保护该状态。不使用 Terraform 时，每个节点的启动器会将它们生成到 `~/.provisa/store-credentials.env`。其余凭据由 AppImage 在首次启动时生成，并写入每个节点上的 `~/.provisa/config.yaml`（REQ-563）。生产环境中，部署完成后从主节点获取管理员令牌：
+捆绑存储（PostgreSQL、Redis、MinIO、Grafana 管理员）的密码以及 Trino 集群的共享密钥由 Terraform（`random_password`）生成并交给每个节点，节点将其保存在 systemd 环境文件中，权限为 600。它们保存在 Terraform 状态中，因此应像保护密码本身一样保护该状态。不使用 Terraform 时，每个节点的启动器会将它们生成到 `~/.provisa/store-credentials.env`。其余凭据由 AppImage 在首次启动时生成，并写入每个节点上的 `~/.provisa/config.yaml`。生产环境中，部署完成后从主节点获取管理员令牌：
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -482,7 +476,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 ### 何时使用 {: #when-to-use_1 }
 
-您的团队已在运行 Kubernetes 集群，并希望 Provisa 参与该运维模型（REQ-056）。如果您正在评估 Provisa，或是在没有现成集群的情况下进行本地部署，AppImage 路径更简单。
+您的团队已在运行 Kubernetes 集群，并希望 Provisa 参与该运维模型。如果您正在评估 Provisa，或是在没有现成集群的情况下进行本地部署，AppImage 路径更简单。
 
 注意：Provisa AppImage 无法在 Kubernetes pod 内运行——它需要 FUSE 和无根 Docker 守护进程，这些在标准 pod 安全配置文件中不可用。
 
@@ -494,16 +488,16 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    kubectl cluster-info
    ```
 
-2. 将镜像拉取并镜像到您的内部镜像仓库（气隙或需扫描的环境必需；如果直接从公共镜像仓库拉取则可跳过）（REQ-294）：
+2. 将镜像拉取并镜像到您的内部镜像仓库（气隙或需扫描的环境必需；如果直接从公共镜像仓库拉取则可跳过）：
 
    | 镜像 | 用途 |
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa API |
-   | `trinodb/trino:480` | 联邦查询引擎协调节点 + worker（REQ-169） |
-   | `postgres:16` | 集群内 PostgreSQL（如启用 `postgresql.enabled`）（REQ-169） |
-   | `edoburu/pgbouncer:latest` | 集群内 PgBouncer（如启用 `pgbouncer.enabled`）（REQ-053） |
-   | `redis:7.2` | 集群内 Redis（如启用 `redis.enabled` 且未设置 `redis.host`）（REQ-371） |
-   | `minio/minio:latest` | 集群内 MinIO（如启用 `minio.enabled`）（REQ-029） |
+   | `trinodb/trino:480` | 联邦查询引擎协调节点 + worker |
+   | `postgres:16` | 集群内 PostgreSQL（如启用 `postgresql.enabled`） |
+   | `edoburu/pgbouncer:latest` | 集群内 PgBouncer（如启用 `pgbouncer.enabled`） |
+   | `redis:7.2` | 集群内 Redis（如启用 `redis.enabled` 且未设置 `redis.host`） |
+   | `minio/minio:latest` | 集群内 MinIO（如启用 `minio.enabled`） |
 
    对于经镜像仓库扫描的环境：
    - 将每个镜像推送到您的暂存镜像仓库
@@ -517,7 +511,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    - **TLS** —— 默认开启（`tls.enabled: true`）：创建 `tls.secretName` 所指定的 `kubernetes.io/tls` Secret，或设置 `tls.enabled: false`
    - **MinIO / S3** —— 集群内 MinIO 还是原生 S3？在 AWS 上，建议使用带 IAM 角色的 S3
    - **密钥** —— 评估阶段可通过 `--set` 传入；生产环境请使用 External Secrets 或 Vault Agent
-   - **Trino 协调器缓存** —— 默认申请的 1Gi 卷，挂载于 `/data/trino/cache`（`trino.coordinator.cache.persistence`：`enabled`、`size`、`storageClass`）。Salesforce 数据源的 describe 结果保存在此，使重启后的协调器不会再次耗费该组织的 API 配额去描述它。仅当没有数据源需要它时才关闭（REQ-1946）
+   - **Trino 协调器缓存** —— 默认申请的 1Gi 卷，挂载于 `/data/trino/cache`（`trino.coordinator.cache.persistence`：`enabled`、`size`、`storageClass`）。Salesforce 数据源的 describe 结果保存在此，使重启后的协调器不会再次耗费该组织的 API 配额去描述它。仅当没有数据源需要它时才关闭
 
 4. 为部署提供其主密钥。该密钥加密密钥库；每个 API pod 都必须
    持有相同的密钥，并且它必须比任何 pod 存活得更久。没有它，chart 不会渲染。
@@ -599,24 +593,24 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 | 值 | 默认值 | 说明 |
 | ------- | --------- | ------------- |
-| `replicaCount` | `2` | Provisa API 副本数（无状态）（REQ-057） |
+| `replicaCount` | `2` | Provisa API 副本数（无状态） |
 | `config.pgHost` | `postgres` | PostgreSQL 主机 |
 | `config.pgPassword` | | PostgreSQL 密码 |
 | `config.adminToken` | | 管理员 API Bearer 令牌 |
-| `redis.enabled` | `true` | 部署集群内 Redis StatefulSet（REQ-371） |
+| `redis.enabled` | `true` | 部署集群内 Redis StatefulSet |
 | `redis.host` | `""` | 设置以使用外部 Redis |
 | `redis.port` | `6379` | |
 | `credentials.existingSecret` | | 保存存储密码的 Secret（必需） |
 | `tls.enabled` | `true` | 通过 `tls.secretName` 中的证书以 TLS 提供每个端点 |
 | `redis.tls` | `false` | |
-| `trino.enabled` | `true` | 部署联邦查询引擎（REQ-028） |
-| `trino.workers` | `2` | 联邦查询引擎 worker 副本数（REQ-056） |
-| `trino.internalTls` | `false` | 使用 chart 生成的证书加密协调器与 worker 之间的流量；使 shuffle 密集型查询变慢 10% 到 100% 以上（REQ-2072） |
-| `postgresql.enabled` | `true` | 部署集群内 PostgreSQL（REQ-169） |
+| `trino.enabled` | `true` | 部署联邦查询引擎 |
+| `trino.workers` | `2` | 联邦查询引擎 worker 副本数 |
+| `trino.internalTls` | `false` | 使用 chart 生成的证书加密协调器与 worker 之间的流量；使 shuffle 密集型查询变慢 10% 到 100% 以上 |
+| `postgresql.enabled` | `true` | 部署集群内 PostgreSQL |
 | `postgresql.host` | `""` | 设置以使用外部 PostgreSQL |
-| `minio.enabled` | `true` | 部署集群内 MinIO（REQ-029） |
+| `minio.enabled` | `true` | 部署集群内 MinIO |
 | `s3.endpoint` | | 兼容 S3 的终结点 URL |
-| `s3.bucket` | `provisa-results` | 用于大结果集重定向的存储桶（REQ-029, REQ-137） |
+| `s3.bucket` | `provisa-results` | 用于大结果集重定向的存储桶 |
 | `ingress.enabled` | `false` | 启用 ingress |
 
 ### 扩缩容 {: #scaling }
@@ -625,7 +619,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-联邦查询引擎 worker 可独立扩缩——更多 worker 可提升吞吐量和并发查询能力（REQ-056）。（REQ-057）
+联邦查询引擎 worker 可独立扩缩——更多 worker 可提升吞吐量和并发查询能力。
 
 ### 更新配置 {: #updating-config }
 
@@ -640,7 +634,7 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ## 高可用与恢复 {: #high-availability-recovery }
 
-Provisa 在所有部署模式下都采用两层恢复模型（REQ-703）：
+Provisa 在所有部署模式下都采用两层恢复模型：
 
 - **第一层——瞬时错误。** 读操作在遇到瞬时错误时，使用带全抖动的指数退避重试，最长可达 30 秒。可通过 `PROVISA_RETRY_BUDGET_SECS` 调整预算。写操作从不在内部重试，内存错误也从不可重试。
 - **第二层——组件故障。** 内部引擎监视器会检测失败的软件组件并在 2–3 分钟内重启它们。
@@ -669,18 +663,16 @@ Provisa 在所有部署模式下都采用两层恢复模型（REQ-703）：
 
 ## 联邦查询引擎依赖 {: #federation-engine-dependencies }
 
-数据仓库联邦查询引擎需要 Provisa 默认安装之外的 Python 包和系统级组件。此处列出的所有 Python 包都声明在 `pyproject.toml` 中，并作为标准 `pip install provisa` 或 `pip install -e .` 的一部分安装 [tool-verified: `pyproject.toml` lines 44–52]。
+数据仓库联邦查询引擎需要 Provisa 默认安装之外的 Python 包和系统级组件。此处列出的所有 Python 包都声明在 `pyproject.toml` 中，并作为标准 `pip install provisa` 或 `pip install -e .` 的一部分安装。
 
 这些 Python 包随 Provisa 默认安装一起提供——任何数据仓库引擎都不需要额外的可选 extras。系统级组件（ODBC 驱动、云 CLI、服务账号密钥）需要单独安装。
 
 ### Python 包（已包含在核心依赖中） {: #python-packages-already-in-core-dependencies }
 
-[tool-verified: `pyproject.toml` lines 41–52]
-
 | 包 | 引擎 | 用途 |
 | ------- | ------ | ------- |
-| `databricks-sql-connector` | Databricks | SQL warehouse 连接；Arrow Cloud Fetch（REQ-987） |
-| `snowflake-connector-python[pandas]` | Snowflake | 连接 + Arrow 原生的 `fetch_arrow_table`（REQ-988） |
+| `databricks-sql-connector` | Databricks | SQL warehouse 连接；Arrow Cloud Fetch |
+| `snowflake-connector-python[pandas]` | Snowflake | 连接 + Arrow 原生的 `fetch_arrow_table` |
 | `google-cloud-bigquery` | BigQuery | 查询执行 |
 | `google-cloud-bigquery-storage` | BigQuery | 用于 Arrow 原生读取的 Storage Read API |
 | `google-cloud-storage` | BigQuery | 用于外部表关联的 GCS 暂存 |
@@ -696,7 +688,7 @@ Provisa 在所有部署模式下都采用两层恢复模型（REQ-703）：
 
 **Microsoft Fabric 和 Azure Synapse（ODBC）**
 
-`pyodbc` 通过 Microsoft ODBC Driver for SQL Server（`msodbcsql18`）建立连接。该驱动必须安装在主机上——而非通过 pip。[tool-verified: `mssql_warehouse_runtime.py` line 84 `"ODBC Driver 18 for SQL Server"` default]
+`pyodbc` 通过 Microsoft ODBC Driver for SQL Server（`msodbcsql18`）建立连接。该驱动必须安装在主机上——而非通过 pip。
 
 macOS：
 
@@ -720,7 +712,7 @@ export PROVISA_MSSQL_ODBC_DRIVER="ODBC Driver 17 for SQL Server"
 
 **Azure AD 认证（Fabric 和 Synapse）**
 
-两个引擎都通过 `azure.identity.DefaultAzureCredential` 进行认证 [tool-verified: `mssql_warehouse_runtime.py:79`, `fabric_shortcuts.py:46`]。`DefaultAzureCredential` 按顺序检查凭据来源：环境变量、workload identity、managed identity、VS Code、`az login` 等等。
+两个引擎都通过 `azure.identity.DefaultAzureCredential` 进行认证。`DefaultAzureCredential` 按顺序检查凭据来源：环境变量、workload identity、managed identity、VS Code、`az login` 等等。
 
 对于本地开发，`az login` 是最简单的方式：
 
@@ -765,27 +757,27 @@ Databricks 连接器从 `requests` 继承此设置——不需要 Databricks 专
 
 ### 各引擎检查清单 {: #per-engine-checklist }
 
-**Databricks**（REQ-987）
+**Databricks**
 
 - [ ] 已安装 `databricks-sql-connector`（默认）
 - [ ] 带 `http_path` 的引擎 URL：`databricks://token:TOKEN@workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxx`
 - [ ] 个人访问令牌或服务主体令牌
 - [ ] 如在 TLS 拦截代理之后，已设置 `REQUESTS_CA_BUNDLE`
 
-**Snowflake**（REQ-988）
+**Snowflake**
 
 - [ ] 已安装 `snowflake-connector-python[pandas]`（默认）
 - [ ] 引擎 URL：`snowflake://user:pass@account.snowflakecomputing.com/database`
 - [ ] `PROVISA_ENGINE_URL` 或 `federation_hints` 中包含 `account`
 
-**BigQuery**（REQ-989）
+**BigQuery**
 
 - [ ] 已安装 `google-cloud-bigquery`、`google-cloud-bigquery-storage`、`google-cloud-storage`（默认）
 - [ ] 已设置 `GOOGLE_APPLICATION_CREDENTIALS`（开发）或已配置 workload identity（生产）
 - [ ] 若项目无法从服务账号推断，已设置 `GOOGLE_CLOUD_PROJECT`
 - [ ] 服务账号具备 BigQuery Data Viewer + Job User 角色
 
-**Microsoft Fabric**（REQ-989）
+**Microsoft Fabric**
 
 - [ ] 已安装 `pyodbc` + `azure-identity`（默认）
 - [ ] 已安装 `msodbcsql18` 系统驱动
@@ -793,13 +785,13 @@ Databricks 连接器从 `requests` 继承此设置——不需要 Databricks 专
 - [ ] Azure AD 认证：`az login`（开发）或 managed identity / 服务主体（生产）
 - [ ] 如使用外部对象存储链接，已设置 `FABRIC_WORKSPACE_ID`
 
-**Azure Synapse**（REQ-989）
+**Azure Synapse**
 
 - [ ] 与 Fabric 相同的 Python + 系统要求
 - [ ] 已设置 `SYNAPSE_SQL_SERVER` 和 `SYNAPSE_DATABASE`
 - [ ] 与 Fabric 相同的 Azure AD 认证设置
 
-**ClickHouse**（REQ-986）
+**ClickHouse**
 
 - [ ] 已安装 `clickhouse-connect`（默认）
 - [ ] 引擎 URL：`clickhouse+http://user:pass@host:8123/database`
@@ -812,19 +804,19 @@ Databricks 连接器从 `requests` 继承此设置——不需要 Databricks 专
 | 变量 | 默认值 | 用途 |
 | ---------- | --------- | --------- |
 | `PG_PASSWORD` | | PostgreSQL 密码 |
-| `PROVISA_CONFIG` | `config/provisa.yaml` | 配置文件路径（REQ-528） |
-| `PROVISA_REDIRECT_ENABLED` | `false` | 启用大结果集向 S3 重定向（REQ-029, REQ-137） |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 触发重定向的行数阈值（REQ-029） |
-| `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 存储桶（REQ-029） |
-| `PROVISA_REDIRECT_ENDPOINT` | | 兼容 S3 的终结点 URL（REQ-029） |
-| `PROVISA_REDIRECT_TTL` | `3600` | 预签名 URL TTL（秒）（REQ-141） |
+| `PROVISA_CONFIG` | `config/provisa.yaml` | 配置文件路径 |
+| `PROVISA_REDIRECT_ENABLED` | `false` | 启用大结果集向 S3 重定向 |
+| `PROVISA_REDIRECT_THRESHOLD` | `1000` | 触发重定向的行数阈值 |
+| `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 存储桶 |
+| `PROVISA_REDIRECT_ENDPOINT` | | 兼容 S3 的终结点 URL |
+| `PROVISA_REDIRECT_TTL` | `3600` | 预签名 URL TTL（秒） |
 | `REDIS_HOST` | `localhost` | Redis 主机 |
 | `REDIS_PORT` | `6379` | Redis 端口 |
 | `REDIS_PASSWORD` | | Redis 密码 |
 | `REDIS_TLS` | `false` | 为 Redis 启用 TLS |
-| `TRINO_HOST` | `localhost` | Trino 联邦查询引擎协调节点主机（REQ-028, REQ-054） |
-| `TRINO_PORT` | `8080` | Trino 联邦查询引擎协调节点 HTTP 端口（REQ-028, REQ-054） |
-| `PROVISA_ENGINE` | `duckdb` | 活动联邦查询引擎键（REQ-989）；覆盖已持久化的配置 |
+| `TRINO_HOST` | `localhost` | Trino 联邦查询引擎协调节点主机 |
+| `TRINO_PORT` | `8080` | Trino 联邦查询引擎协调节点 HTTP 端口 |
+| `PROVISA_ENGINE` | `duckdb` | 活动联邦查询引擎键；覆盖已持久化的配置 |
 | `PROVISA_ENGINE_URL` | | 面向 URL 驱动引擎（Databricks、Snowflake、ClickHouse、BigQuery、Fabric、Synapse、SQLAlchemy）的连接 URL |
 | `PROVISA_MATERIALIZE_URL` | | 物化存储 URL 覆盖；默认使用引擎自身的存储 |
 | `PROVISA_MSSQL_ODBC_DRIVER` | `ODBC Driver 18 for SQL Server` | Fabric / Synapse 的 ODBC 驱动名称 |
@@ -856,11 +848,9 @@ provisa export FILE        # Write current config as YAML to FILE
 provisa import FILE        # Replace running config with YAML from FILE
 ```
 
-（REQ-224, REQ-164）
-
 ### 配置晋升流程（开发 → 测试 → 生产） {: #config-promotion-workflow-dev-test-prod }
 
-所有环境特定的设置（连接字符串、密钥、端口）应放在环境变量或密钥管理器中——而非导出的配置里。导出的 YAML 捕获的是您的语义模型：数据源、域、角色、视图。（REQ-164）
+所有环境特定的设置（连接字符串、密钥、端口）应放在环境变量或密钥管理器中——而非导出的配置里。导出的 YAML 捕获的是您的语义模型：数据源、域、角色、视图。
 
 ```bash
 # On dev — export after making changes in the UI
@@ -872,6 +862,5 @@ git push
 git pull
 provisa import config.yaml
 ```
-
 
 另见：[环境](environments.md)讲解如何管理受治理模型的具名、模式隔离副本。

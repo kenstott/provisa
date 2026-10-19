@@ -16,7 +16,7 @@ Begriff auf, und der Begriff trägt die Definition.
 ## Wie Begriffe abgeleitet werden {: #how-terms-are-derived }
 
 Provisa leitet aus jedem Spaltennamen automatisch einen Begriff ab, mithilfe einer deterministischen
-Normalisierungsregel (REQ-1387): Groß-/Kleinschreibung angleichen, nach Trennzeichen und camelCase
+Normalisierungsregel: Groß-/Kleinschreibung angleichen, nach Trennzeichen und camelCase
 tokenisieren, Abkürzungen ausschreiben und nachgestellte Proxy-Token entfernen.
 
 **Das Ausschreiben von Abkürzungen** bildet gängige Unternehmenskürzel auf ihre Langform ab: `cust` →
@@ -55,7 +55,7 @@ weiterer, die auf nahezu jeder Tabelle auftauchen.
 ### Der fachliche Name, nicht der physische {: #the-business-name-not-the-physical-name }
 
 Ein abgeleiteter Begriff folgt dem **fachlichen Namen** der Spalte — ihrem Alias, wenn die modellierende
-Person einen gesetzt hat, ihrem physischen Namen, wenn nicht (REQ-1581). Ist `usr_nm` auf `user name`
+Person einen gesetzt hat, ihrem physischen Namen, wenn nicht. Ist `usr_nm` auf `user name`
 aliasiert, lautet der abgeleitete Begriff `user name`, nicht `user number` oder irgendeine Ausschreibung
 von `usr_nm`.
 
@@ -75,7 +75,7 @@ Alias-Änderung die Ref nicht — diese Arbeit gehört der Kuratierung, und sie 
 
 Manche Tabellennamen beschreiben einen Zugriffspfad statt eines Konzepts: `user_by_name` ist ein Benutzer,
 der über eine Namenssuche erreicht wird, keine eigene Art von Entität. Wenn Provisa das Tabellenkonzept
-für die Qualifizierung generischer Phrasen ableitet, schneidet es den Namen am Bindewort (REQ-1582).
+für die Qualifizierung generischer Phrasen ableitet, schneidet es den Namen am Bindewort.
 `user_by_name` wird zu `user`; `orders_by_customer` wird zu `order`.
 
 Ohne den Schnitt würde der Surrogatschlüssel auf `user_by_name` zu `user name` normalisieren und mit dem
@@ -137,13 +137,12 @@ als auch eingehende Kanten (ein anderer Begriff → dieser) und beschriftet jede
 umgangssprachlichen Formulierung.
 
 Die Kanten liegen in `glossary_term_edges`, einer Zuordnungstabelle, die als Junction-Beziehung deklariert ist
-(REQ-1586): Ihre Spalte `rel_type` ist der Diskriminator, sodass jeder der obigen Typen ein
+: Ihre Spalte `rel_type` ist der Diskriminator, sodass jeder der obigen Typen ein
 eigener Cypher-Beziehungstyp zwischen zwei `GlossaryTerm`-Knoten ist und keine Eigenschaft an einem
 reifizierten Knoten. Die Tabelle wird mit dem übrigen Metadatenschema bereitgestellt und erscheint in
 Graph-Clients nicht als Knoten — sie ist die Kante. Nichts daran ist glossarspezifisch: Sie wird genauso
 deklariert, wie Sie eine Junction über Ihre eigenen Tabellen deklarieren würden, und sie wird vom selben
 Code gelesen.
-[tool-verified: `provisa/cypher/label_map.py:378-397`, `provisa/api/startup_seed.py:508-550`]
 
 ## Abstrakte Begriffe {: #abstract-terms }
 
@@ -158,7 +157,7 @@ Begriff, der keine Daten benennt, kann nichts beantworten.
 
 ## Die Zulassungsregel für konsumierende Oberflächen {: #the-admission-rule-for-consuming-surfaces }
 
-Ein Begriff, den eine konsumierende Oberfläche anbieten darf, muss drei Bedingungen erfüllen (REQ-1387):
+Ein Begriff, den eine konsumierende Oberfläche anbieten darf, muss drei Bedingungen erfüllen:
 
 1. **Im Dienst** — nicht stillgelegt (jemand hat ihn außer Dienst genommen) und nicht abgekündigt (er hat
    seine letzte Spalte verloren und wurde nur gehalten, weil ein Löschen etwas lose zurückgelassen hätte).
@@ -190,7 +189,7 @@ Daten nicht.
 
 Manche Spalten tragen Installationstechnik statt Fachdaten: ETL-Batch-Kennungen, Zeilenversionen,
 Ingest-Zeitstempel. Ein aus einer solchen Spalte abgeleiteter Begriff kann eine völlig zutreffende
-Definition haben, die schlicht kein Fachvokabular ist (REQ-1583). Das Steuerelement **Vom
+Definition haben, die schlicht kein Fachvokabular ist. Das Steuerelement **Vom
 Metadaten-Export ausschließen** hält den Begriff und alle Beziehungskanten, die auf ihm enden, von den
 Katalogen zurück, in die Provisa veröffentlicht, während die Spalten selbst weiterhin als Assets
 exportieren.

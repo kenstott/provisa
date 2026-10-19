@@ -94,6 +94,12 @@ def main() -> int:
         if pid not in served:
             errors.append(f"{FEATURES_YAML}: paragraph {pid!r} is served by no requirement")
 
+    # A requirement's docs name published pages that exist.
+    for req in rf.requirements:
+        for page in req.docs or []:
+            if not (Path("docs") / page).is_file():
+                errors.append(f"{req.id}: docs page {page!r} does not exist under docs/")
+
     if args.coverage_check:
         for req in rf.requirements:
             if (

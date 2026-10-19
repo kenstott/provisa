@@ -1,8 +1,8 @@
 # Referência de Configuração {: #configuration-reference }
 
-O Provisa é configurado via um arquivo YAML (padrão: `config/provisa.yaml`). (REQ-528)
+O Provisa é configurado via um arquivo YAML (padrão: `config/provisa.yaml`).
 
-## Includes (REQ-1669)
+## Includes
 
 Divida uma config em vários arquivos com `includes:`. O arquivo que inclui lista caminhos de fragmento sob essa chave; o Provisa os mescla antes da validação, produzindo o mesmo resultado que escrever tudo em um único arquivo.
 
@@ -13,9 +13,9 @@ includes:
   - /path/to/demo/sources/neo4j/fragment.yaml
 ```
 
-Um arquivo wrapper contendo apenas `includes:` é válido. `load_control_plane` lê através dos includes, então a seção `control_plane:` é tomada de qualquer arquivo incluído que a defina. [tool-verified: `provisa/core/config_loader.py:154-166`]
+Um arquivo wrapper contendo apenas `includes:` é válido. `load_control_plane` lê através dos includes, então a seção `control_plane:` é tomada de qualquer arquivo incluído que a defina.
 
-**Regras de merge** [tool-verified: `provisa/core/config_loader.py:104-146`]
+**Regras de merge**
 
 - Caminhos são resolvidos em relação ao arquivo que inclui. Caminhos absolutos são usados como estão.
 - Seções de lista (`sources`, `tables`, `domains`, `relationships`, `roles`, …) são anexadas — as entradas do fragmento seguem as entradas do arquivo que inclui.
@@ -42,7 +42,7 @@ sources:
     pgbouncer_port: 6432
 ```
 
-Todas as fontes compartilham um conjunto comum de campos. [tool-verified: `provisa/core/models.py:129-212`]
+Todas as fontes compartilham um conjunto comum de campos.
 
 | Campo | Padrão | Notas |
 | ------- | --------- | ------- |
@@ -58,12 +58,12 @@ Todas as fontes compartilham um conjunto comum de campos. [tool-verified: `provi
 | `pool_min` / `pool_max` | `1` / `5` | Limites do pool de conexão |
 | `cache_enabled` | `true` | Alterna o cache para todas as tabelas desta fonte |
 | `cache_ttl` | `null` | Segundos; `null` herda o padrão global; `-1` nunca expira |
-| `federation_hints` | `{}` | Parâmetros estendidos por conector (dict[str,str]); ver referência de tipos abaixo. REQ-281 |
-| `mapping` | `{}` | DSL de mapeamento para redis, elasticsearch, prometheus. REQ-251 |
+| `federation_hints` | `{}` | Parâmetros estendidos por conector (dict[str,str]); ver referência de tipos abaixo. |
+| `mapping` | `{}` | DSL de mapeamento para redis, elasticsearch, prometheus. |
 | `allowed_domains` | `[]` | Restringe esta fonte a IDs de domínio específicos; vazio = irrestrito |
 | `description` | `""` | |
 
-### Tipos de fonte suportados [tool-verified: `provisa/core/models.py:36-101`] {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### Tipos de fonte suportados {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
 
 | Tipo | Estilo de conexão | Notas |
 | ------ | ----------------- | ------- |
@@ -74,12 +74,12 @@ Todas as fontes compartilham um conjunto comum de campos. [tool-verified: `provi
 | `singlestore` | host/port | |
 | `sqlserver` | host/port | |
 | `oracle` | host/port | |
-| `firebird` | host + `path` (arquivo do BD) | Extensão comunitária firebird do DuckDB (REQ-899) |
+| `firebird` | host + `path` (arquivo do BD) | Extensão comunitária firebird do DuckDB |
 | `duckdb` | host/port | |
-| `cockroachdb` | host/port | Reaproveita o driver/dialeto PostgreSQL (REQ-950) |
-| `yugabytedb` | host/port | Reaproveita o driver/dialeto PostgreSQL (REQ-950) |
-| `greenplum` | host/port | Reaproveita o driver/dialeto PostgreSQL (REQ-950) |
-| `tidb` | host/port | Reaproveita o driver/dialeto MySQL (REQ-950) |
+| `cockroachdb` | host/port | Reaproveita o driver/dialeto PostgreSQL |
+| `yugabytedb` | host/port | Reaproveita o driver/dialeto PostgreSQL |
+| `greenplum` | host/port | Reaproveita o driver/dialeto PostgreSQL |
+| `tidb` | host/port | Reaproveita o driver/dialeto MySQL |
 | **DW em nuvem** | | |
 | `snowflake` | host/port + `federation_hints` | `account` obrigatório em hints |
 | `bigquery` | `federation_hints` | `project` obrigatório; autenticação via `GOOGLE_APPLICATION_CREDENTIALS` |
@@ -96,9 +96,9 @@ Todas as fontes compartilham um conjunto comum de campos. [tool-verified: `provi
 | **Data Lake** | | |
 | `delta_lake` | `path` (URI da tabela) | `delta_scan` do DuckDB; acesso a armazenamento de objetos via `federation_hints` |
 | `iceberg` | `path` (URI da tabela) | `iceberg_scan` do DuckDB; acesso a armazenamento de objetos via `federation_hints` |
-| `hudi` | `path` (URI da tabela) | Motor Hudi do ClickHouse, zero-copy (REQ-1178) |
+| `hudi` | `path` (URI da tabela) | Motor Hudi do ClickHouse, zero-copy |
 | `hive` | host/port (metastore) + `mapping.storage` | Backend de armazenamento em `mapping["storage"]`: hadoop/hdfs/local/s3/azure/adls |
-| `hive_s3` | host/port (metastore) + chaves S3 em `mapping` | Tipo distinto; sempre armazenamento S3 (REQ-229) |
+| `hive_s3` | host/port (metastore) + chaves S3 em `mapping` | Tipo distinto; sempre armazenamento S3 |
 | **NoSQL** | | |
 | `mongodb` | host/port | Campos de conexão simples; sem DSL de mapeamento |
 | `cassandra` | host/port | Campos de conexão simples; sem DSL de mapeamento |
@@ -121,7 +121,7 @@ Todas as fontes compartilham um conjunto comum de campos. [tool-verified: `provi
 | `graphql_remote` | `base_url` + `mapping` opcional | Headers, forward-client-headers, timeout em `mapping` |
 | `openapi` | `base_url` | |
 | `grpc_remote` | [UNVERIFIED end-to-end mapping] | |
-| `airport` | `base_url` (localização Flight) | Extensão airport do DuckDB (REQ-899) |
+| `airport` | `base_url` (localização Flight) | Extensão airport do DuckDB |
 | `ingest` | receptor push | Serviços externos enviam POST de eventos JSON |
 | **SaaS** | | |
 | `sharepoint` | `base_url` ou `host` + `mapping` | Autenticação via `mapping.auth_type` |
@@ -129,16 +129,16 @@ Todas as fontes compartilham um conjunto comum de campos. [tool-verified: `provi
 | **GovData** | | |
 | `govdata` | subject + `domain_id` | Modelo separado `GovDataSource`; ver §GovData abaixo |
 | **Qualidade de Dados** | | |
-| `soda` | host/port apontado para o pgwire do Provisa | Requer o extra `soda`; Elastic License 2.0, somente self-hosted (REQ-1443) |
-| `great_expectations` | host/port apontado para o pgwire do Provisa | Requer o extra `gx`; Apache 2.0 (REQ-1443) |
+| `soda` | host/port apontado para o pgwire do Provisa | Requer o extra `soda`; Elastic License 2.0, somente self-hosted |
+| `great_expectations` | host/port apontado para o pgwire do Provisa | Requer o extra `gx`; Apache 2.0 |
 
 ### Referência de tipos de fonte {: #source-type-reference }
 
 Tipos que precisam de configuração não óbvia têm uma entrada curta abaixo. Tipos RDBMS (postgresql, mysql, etc.) usam apenas os campos comuns acima — nenhuma seção adicional é necessária.
 
-#### GovData [tool-verified: `provisa/core/models.py:953-983`]
+#### GovData
 
-Fontes `govdata` usam um modelo separado de nível superior, `GovDataSource`, não o `Source` genérico. (REQ-540) O acesso é particionado por agrupamento de subject.
+Fontes `govdata` usam um modelo separado de nível superior, `GovDataSource`, não o `Source` genérico. O acesso é particionado por agrupamento de subject.
 
 ```yaml
 sources:
@@ -151,7 +151,7 @@ sources:
     end_year: 2024                     # optional year filter
 ```
 
-Cada subject mapeia para um ou mais esquemas GovData. Configurar uma fonte `govdata` com um subject expõe todos os esquemas para esse subject automaticamente. (REQ-540)
+Cada subject mapeia para um ou mais esquemas GovData. Configurar uma fonte `govdata` com um subject expõe todos os esquemas para esse subject automaticamente.
 
 | Subject | Esquemas |
 | --------- | --------- |
@@ -166,11 +166,11 @@ Cada subject mapeia para um ou mais esquemas GovData. Configurar uma fonte `govd
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-Os esquemas `ref` e `geo` são sempre incluídos como esquemas de ligação — não configuráveis e não listados acima. (REQ-541) Use o subject `ALL` para conceder acesso a todos os esquemas. [tool-verified: `provisa/core/models.py:961-963`]
+Os esquemas `ref` e `geo` são sempre incluídos como esquemas de ligação — não configuráveis e não listados acima. Use o subject `ALL` para conceder acesso a todos os esquemas.
 
-#### Kafka [tool-verified: `provisa/federation/trino_connectors.py:497-502`, `provisa/api/app_loaders.py:113-118`]
+#### Kafka
 
-A linha `kafka` em `sources:` é apenas registro. O `details()` de seu conector retorna `{}` — a configuração real vive no bloco de nível superior `kafka_sources[]`, não em uma linha de `sources:`. Kafka é sempre um VIRTUAL_SOURCE (roteia pelo motor; sem pool direto). [tool-verified: `provisa/transpiler/router.py:44-63`]
+A linha `kafka` em `sources:` é apenas registro. O `details()` de seu conector retorna `{}` — a configuração real vive no bloco de nível superior `kafka_sources[]`, não em uma linha de `sources:`. Kafka é sempre um VIRTUAL_SOURCE (roteia pelo motor; sem pool direto).
 
 ```yaml
 kafka_sources:
@@ -210,9 +210,9 @@ kafka_sources:
             type: timestamp
 ```
 
-**Janela de tempo** — `default_window` limita toda consulta a um período recente, evitando leituras ilimitadas de tópicos de alto volume. (REQ-148) Formato: `1h`, `30m`, `7d`, `60s`. Padrão `1h`. Auto-injetado como `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clientes podem sobrepor com seu próprio filtro `_timestamp` no argumento `where` do GraphQL.
+**Janela de tempo** — `default_window` limita toda consulta a um período recente, evitando leituras ilimitadas de tópicos de alto volume. Formato: `1h`, `30m`, `7d`, `60s`. Padrão `1h`. Auto-injetado como `WHERE _timestamp >= CURRENT_TIMESTAMP - INTERVAL '1' HOUR`. Clientes podem sobrepor com seu próprio filtro `_timestamp` no argumento `where` do GraphQL.
 
-**Discriminador** — Múltiplas configurações de tópico podem apontar para o mesmo tópico Kafka físico com valores de `discriminator` diferentes, produzindo tipos GraphQL separados. (REQ-149) O discriminador é auto-injetado como uma cláusula WHERE.
+**Discriminador** — Múltiplas configurações de tópico podem apontar para o mesmo tópico Kafka físico com valores de `discriminator` diferentes, produzindo tipos GraphQL separados. O discriminador é auto-injetado como uma cláusula WHERE.
 
 **Origem do esquema**
 
@@ -222,7 +222,7 @@ kafka_sources:
 | `manual` | Define colunas inline na configuração (sem necessidade de Schema Registry) |
 | `sample` | Descobre automaticamente a partir de mensagens de amostra |
 
-#### Snowflake [tool-verified: `provisa/executor/drivers/snowflake.py:48-62`]
+#### Snowflake
 
 `account` em `federation_hints` é obrigatório. `warehouse`, `role` e `schema` são opcionais.
 
@@ -241,7 +241,7 @@ sources:
       schema: PUBLIC               # remote schema override
 ```
 
-#### Databricks [tool-verified: `provisa/executor/drivers/databricks.py:34-52`]
+#### Databricks
 
 `http_path` em `federation_hints` é obrigatório. `password` carrega o personal access token. `catalog` é opcional (carregado em SQL/hints, não no campo `database`).
 
@@ -256,7 +256,7 @@ sources:
       catalog: my_unity_catalog              # optional
 ```
 
-#### BigQuery [tool-verified: `provisa/federation/connector_duckdb.py:238`]
+#### BigQuery
 
 `project` em `federation_hints` é obrigatório. A autenticação usa `GOOGLE_APPLICATION_CREDENTIALS` (caminho para um arquivo de chave de service account) ou Application Default Credentials no ambiente do motor.
 
@@ -268,7 +268,7 @@ sources:
       project: my-gcp-project     # required
 ```
 
-#### Fabric / Synapse [tool-verified: `provisa/core/models.py:56-57`]
+#### Fabric / Synapse
 
 Ambos usam T-SQL sobre TDS com autenticação Azure AD. Autentique-se com `az login` (desenvolvedor) ou uma identidade gerenciada (produção) — o motor lê as credenciais via `DefaultAzureCredential` do `azure-identity`. Os detalhes de conexão vêm de variáveis de ambiente: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) ou `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), ou via `PROVISA_ENGINE_URL`.
 
@@ -279,9 +279,9 @@ sources:
     # host/database read from FABRIC_SQL_SERVER / FABRIC_DATABASE when not set here
 ```
 
-#### ClickHouse [tool-verified: `provisa/executor/drivers/clickhouse.py:49-59`]
+#### ClickHouse
 
-`secure` em `federation_hints` habilita TLS na interface HTTP. A porta padrão é `8123` (simples) ou `8443` (quando `secure: "true"`). `schema` em `federation_hints` sobrepõe o esquema remoto. [tool-verified: `provisa/federation/connector_duckdb.py:378-379`]
+`secure` em `federation_hints` habilita TLS na interface HTTP. A porta padrão é `8123` (simples) ou `8443` (quando `secure: "true"`). `schema` em `federation_hints` sobrepõe o esquema remoto.
 
 ```yaml
 sources:
@@ -294,7 +294,7 @@ sources:
       schema: analytics
 ```
 
-#### Delta Lake / Iceberg [tool-verified: `provisa/federation/connector_duckdb.py:291-327`]
+#### Delta Lake / Iceberg
 
 `path` é o URI da tabela (S3, GCS, ADLS ou local). O acesso a armazenamento de objetos precisa de credenciais em `federation_hints`. Para Cloudflare R2, adicione `account_id`.
 
@@ -316,11 +316,11 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-#### Hive / Hive S3 [tool-verified: `provisa/federation/trino_connectors.py:244-363`]
+#### Hive / Hive S3
 
-`host` e `port` apontam para o metastore Thrift do Hive (porta padrão 9083). Para `hive`, defina `mapping["storage"]` para escolher o backend de armazenamento de objetos. Chaves obrigatórias ausentes falham de forma explícita — sem fallback. [tool-verified: `provisa/federation/trino_connectors.py:328-331`]
+`host` e `port` apontam para o metastore Thrift do Hive (porta padrão 9083). Para `hive`, defina `mapping["storage"]` para escolher o backend de armazenamento de objetos. Chaves obrigatórias ausentes falham de forma explícita — sem fallback.
 
-`hive_s3` é um tipo distinto que sempre declara armazenamento S3 (REQ-229); não precisa de `mapping.storage`.
+`hive_s3` é um tipo distinto que sempre declara armazenamento S3; não precisa de `mapping.storage`.
 
 ```yaml
 sources:
@@ -349,7 +349,7 @@ sources:
 
 Valores aceitos por `mapping.storage`: `hadoop` (padrão), `hdfs`, `local`, `s3`, `azure`, `adls`. Chaves de mapeamento S3: `endpoint`, `access_key_id`, `secret_access_key`, `region`, `path_style`. Chaves de mapeamento ADLS: `storage_account`, `access_key` ou `sas_token`.
 
-#### Redis [tool-verified: `provisa/core/trino_catalog_files.py:54-75`]
+#### Redis
 
 Usa a DSL `mapping`. `mongodb` e `cassandra` usam campos de conexão simples e NÃO usam a DSL de mapeamento.
 
@@ -375,7 +375,7 @@ sources:
               field: expires_at
 ```
 
-#### Elasticsearch [tool-verified: `provisa/core/trino_catalog_files.py:78-104`]
+#### Elasticsearch
 
 ```yaml
 sources:
@@ -403,7 +403,7 @@ sources:
               path: message
 ```
 
-#### Prometheus [tool-verified: `provisa/core/trino_catalog_files.py:107-124`]
+#### Prometheus
 
 `mapping.url` sobrepõe `host:port` quando ambos estão presentes.
 
@@ -421,7 +421,7 @@ sources:
           default_range: 1h        # default "1h"
 ```
 
-#### Google Sheets [tool-verified: `provisa/federation/connector_duckdb.py:273-275`]
+#### Google Sheets
 
 `spreadsheet_id` em `federation_hints` é obrigatório. A autenticação usa um SECRET `gsheet` do DuckDB provisionado no momento do attach.
 
@@ -435,7 +435,7 @@ sources:
 
 #### Fontes de arquivo (csv / parquet / sqlite / files) {: #file-sources-csv-parquet-sqlite-files }
 
-`path` é obrigatório. `files` percorre um diretório em busca de arquivos CSV, Parquet, XLSX e JSON, expondo cada um como uma tabela. Todas as fontes baseadas em arquivo são VIRTUAL (roteiam pelo motor; sem pool direto). [tool-verified: `provisa/transpiler/router.py:44-48`]
+`path` é obrigatório. `files` percorre um diretório em busca de arquivos CSV, Parquet, XLSX e JSON, expondo cada um como uma tabela. Todas as fontes baseadas em arquivo são VIRTUAL (roteiam pelo motor; sem pool direto).
 
 ```yaml
 sources:
@@ -461,7 +461,7 @@ sources:
     base_url: https://api.payments.example.com/v1
 ```
 
-**graphql_remote** — defina `base_url`. Chaves opcionais de `mapping`: `headers` (dict de cabeçalhos estáticos), `forward_client_headers` (bool), `timeout_seconds` (int). [tool-verified: `provisa/hasura_v2/mapper.py:129-152`]
+**graphql_remote** — defina `base_url`. Chaves opcionais de `mapping`: `headers` (dict de cabeçalhos estáticos), `forward_client_headers` (bool), `timeout_seconds` (int).
 
 ```yaml
 sources:
@@ -475,7 +475,7 @@ sources:
       timeout_seconds: 30
 ```
 
-**airport** — `base_url` é a localização do servidor Arrow Flight. Extensão airport do DuckDB (REQ-899). [tool-verified: `provisa/federation/connector_duckdb.py:285-288`]
+**airport** — `base_url` é a localização do servidor Arrow Flight. Extensão airport do DuckDB.
 
 ```yaml
 sources:
@@ -484,7 +484,7 @@ sources:
     base_url: grpc://flight.internal:8815
 ```
 
-**websocket / rss** — use `host`, `port`, `path` e `federation_hints`. [tool-verified: `provisa/api/data/subscribe.py:85-129`]
+**websocket / rss** — use `host`, `port`, `path` e `federation_hints`.
 
 ```yaml
 sources:
@@ -509,7 +509,7 @@ sources:
       # feed_url: https://...  # overrides host/port/path when set
 ```
 
-**sharepoint** [tool-verified: `provisa/federation/trino_connectors.py:394-423`]
+**sharepoint**
 
 ```yaml
 sources:
@@ -525,7 +525,7 @@ sources:
       # certificate_password: ${env:CERT_PASSWORD}
 ```
 
-**splunk** [tool-verified: `provisa/federation/trino_connectors.py:426-457`]
+**splunk**
 
 ```yaml
 sources:
@@ -543,8 +543,6 @@ sources:
 
 #### Verificadores de qualidade de dados (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
-[tool-verified: `provisa/dq/registration.py`, `provisa/events/source_loader.py` `make_dq_loader`]
-
 Uma fonte verificadora aponta para o próprio endpoint pgwire do Provisa, de modo que um driver postgres varre a visão federada de uma tabela apoiada em Snowflake ou Iceberg. A identidade da varredura é declarada, nunca herdada — a política se aplica a essa conexão, e um conjunto de linhas filtrado não deve produzir uma verificação que passe silenciosamente. As chaves de conexão vêm de `mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
@@ -560,7 +558,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Cada tabela de resultados carrega `dq_contract` — YAML de contrato Soda ou JSON de suíte Great Expectations, na íntegra. Colunas, watermark e promoções são derivadas dele; veja [Verificadores de Qualidade de Dados](sources.md#data-quality-checkers-req-1443) para a derivação completa.
+Cada tabela de resultados carrega `dq_contract` — YAML de contrato Soda ou JSON de suíte Great Expectations, na íntegra. Colunas, watermark e promoções são derivadas dele; veja [Verificadores de Qualidade de Dados](sources.md#data-quality-checkers) para a derivação completa.
 
 **Seleção no momento da instalação.** O verificador não vem vinculado — a varredura roda em um interpretador filho, e a biblioteca só é instalada quando um operador a nomeia. Todo caminho de instalador (`install.sh`, `packaging/linux/first-launch.sh`, e o assistente do macOS via `PROVISA_DQ_CHECKER`) grava a escolha em `~/.provisa/config.yaml`:
 
@@ -568,7 +566,7 @@ Cada tabela de resultados carrega `dq_contract` — YAML de contrato Soda ou JSO
 dq_checker: none        # none | soda | gx
 ```
 
-`scripts/provisa` lê essa chave e exporta `PROVISA_EXTRAS`, que o `docker-compose.app.yml` passa como argumento de build ao `ARG PROVISA_EXTRAS` do `Dockerfile`: [tool-verified: `scripts/provisa:69-79`]
+`scripts/provisa` lê essa chave e exporta `PROVISA_EXTRAS`, que o `docker-compose.app.yml` passa como argumento de build ao `ARG PROVISA_EXTRAS` do `Dockerfile`:
 
 | `dq_checker` | `PROVISA_EXTRAS` (camada Docker) | Instalação venv nativa |
 | -------------- | -------------------------------- | --------------------- |
@@ -603,9 +601,9 @@ naming:
 
 ### Convenção de nomenclatura {: #naming-convention }
 
-A autoridade de nomenclatura é a única fonte de verdade para nomes voltados ao cliente; nomes físicos de colunas do backend nunca são expostos aos clientes. (REQ-194) Cada linguagem de consulta deriva o nome de uma coluna a partir de seu `column.alias`, se definido, senão a partir do nome físico da coluna via sua convenção configurada. (REQ-194)
+A autoridade de nomenclatura é a única fonte de verdade para nomes voltados ao cliente; nomes físicos de colunas do backend nunca são expostos aos clientes. Cada linguagem de consulta deriva o nome de uma coluna a partir de seu `column.alias`, se definido, senão a partir do nome físico da coluna via sua convenção configurada.
 
-A convenção GraphQL é uma de três enums predefinidos. (REQ-416) Strings de formato livre antigas (`none`, `snake_case`, `camelCase`, `PascalCase`) estão descontinuadas. (REQ-416)
+A convenção GraphQL é uma de três enums predefinidos. Strings de formato livre antigas (`none`, `snake_case`, `camelCase`, `PascalCase`) estão descontinuadas.
 
 | Preset | Padrão | Nomes de tipo | Nomes de campo | Nomes de mutação |
 | -------- | --------- | ------------ | ------------- | ---------------- |
@@ -613,11 +611,11 @@ A convenção GraphQL é uma de três enums predefinidos. (REQ-416) Strings de f
 | `hasura_graphql` | | PascalCase | camelCase | snake_case |
 | `snake` | | PascalCase | snake_case | snake_case |
 
-A convenção GraphQL padrão é `apollo_graphql`, que produz nomes de campo e mutação em camelCase. (REQ-194, REQ-416) A convenção SQL é separada, com padrão `snake_case`, aplicada via `apply_sql_name()`; a convenção GraphQL é aplicada via `apply_gql_name()`, e o nome CQL é derivado do nome GraphQL. (REQ-194)
+A convenção GraphQL padrão é `apollo_graphql`, que produz nomes de campo e mutação em camelCase. A convenção SQL é separada, com padrão `snake_case`, aplicada via `apply_sql_name()`; a convenção GraphQL é aplicada via `apply_gql_name()`, e o nome CQL é derivado do nome GraphQL.
 
-`domain_prefix: bool` é uma opção ortogonal que se aplica independentemente do preset escolhido. (REQ-416)
+`domain_prefix: bool` é uma opção ortogonal que se aplica independentemente do preset escolhido.
 
-Um `column.alias` explícito é o nome canônico: SQL o usa literalmente sem aplicar convenção, GraphQL aplica sua convenção a ele, e CQL deriva do nome GraphQL. (REQ-194)
+Um `column.alias` explícito é o nome canônico: SQL o usa literalmente sem aplicar convenção, GraphQL aplica sua convenção a ele, e CQL deriva do nome GraphQL.
 
 Sobreposição por fonte:
 
@@ -638,7 +636,7 @@ tables:
 
 ### Prefixo de domínio {: #domain-prefix }
 
-Quando `domain_prefix: true`, todos os nomes de campo e tipo GraphQL recebem o prefixo do ID de domínio usando um separador de sublinhado duplo: (REQ-154)
+Quando `domain_prefix: true`, todos os nomes de campo e tipo GraphQL recebem o prefixo do ID de domínio usando um separador de sublinhado duplo:
 
 | Tabela | Domínio | Nome do campo |
 | ------- | -------- | ----------- |
@@ -649,7 +647,7 @@ Isso evita colisões de nome quando domínios diferentes têm tabelas com o mesm
 
 ### Regras de nomenclatura {: #naming-rules }
 
-Regras de regex aplicadas a nomes de tabela ao gerar nomes de campo GraphQL. Aplicadas em ordem antes da resolução de unicidade. (REQ-542)
+Regras de regex aplicadas a nomes de tabela ao gerar nomes de campo GraphQL. Aplicadas em ordem antes da resolução de unicidade.
 
 ## Tabelas {: #tables }
 
@@ -701,7 +699,7 @@ tables:
         check: "TRUE"
 ```
 
-Por padrão, uma tabela não tem nenhuma permissão de escrita, então nenhuma função pode escrever nela. Uma permissão dá a uma função uma operação (`insert`, `update` ou `delete`) sobre a tabela. Uma tabela contém no máximo uma permissão por função e operação. (REQ-2074)
+Por padrão, uma tabela não tem nenhuma permissão de escrita, então nenhuma função pode escrever nela. Uma permissão dá a uma função uma operação (`insert`, `update` ou `delete`) sobre a tabela. Uma tabela contém no máximo uma permissão por função e operação.
 
 | Campo da permissão | Significado |
 | ----------- | ------- |
@@ -722,7 +720,7 @@ Na interface de administração, a seção **Gravações** de uma tabela lista a
 
 ### Aliases
 
-Aliases de tabela e coluna sobrepõem o nome GraphQL padrão. (REQ-155) Úteis para:
+Aliases de tabela e coluna sobrepõem o nome GraphQL padrão. Úteis para:
 
 - Renomear nomes de banco de dados crípticos (ex.: `tbl_cust_seg` → `customer_segments`)
 - Evitar abreviações na camada de API
@@ -730,11 +728,11 @@ Aliases de tabela e coluna sobrepõem o nome GraphQL padrão. (REQ-155) Úteis p
 
 ### Descrições {: #descriptions }
 
-Descrições de tabela e coluna são incluídas no SDL GraphQL gerado. (REQ-156) Elas aparecem no explorador de documentação do GraphiQL e em consultas de introspecção. Defina-as no YAML de configuração ou via a UI de administração.
+Descrições de tabela e coluna são incluídas no SDL GraphQL gerado. Elas aparecem no explorador de documentação do GraphiQL e em consultas de introspecção. Defina-as no YAML de configuração ou via a UI de administração.
 
 ### Path (Extração JSON computada) {: #path-computed-json-extraction }
 
-Colunas podem extrair valores de uma coluna de origem JSON/JSONB usando um `path` em notação de ponto. (REQ-151) Útil para dados semiestruturados em mensagens Kafka, documentos MongoDB ou colunas JSONB do PostgreSQL.
+Colunas podem extrair valores de uma coluna de origem JSON/JSONB usando um `path` em notação de ponto. Útil para dados semiestruturados em mensagens Kafka, documentos MongoDB ou colunas JSONB do PostgreSQL.
 
 ```yaml
 columns:
@@ -751,9 +749,9 @@ columns:
     visible_to: [admin, analyst]
 ```
 
-O formato do path é `source_column.key1.key2...`. O compilador gera `json_extract_scalar(source_column, '$.key1.key2')` no SQL. (REQ-151)
+O formato do path é `source_column.key1.key2...`. O compilador gera `json_extract_scalar(source_column, '$.key1.key2')` no SQL.
 
-**Impacto no roteamento:** Colunas com path usam operadores JSON do PostgreSQL (`->>`), suportados nativamente pelo roteamento direto ao PG. (REQ-152) Para fontes não-PostgreSQL (MySQL, SQL Server, etc.), consultas com colunas de path são automaticamente roteadas pelo motor de federação. (REQ-152) Mutações não são afetadas, já que colunas de path são campos computados somente-leitura. (REQ-153)
+**Impacto no roteamento:** Colunas com path usam operadores JSON do PostgreSQL (`->>`), suportados nativamente pelo roteamento direto ao PG. Para fontes não-PostgreSQL (MySQL, SQL Server, etc.), consultas com colunas de path são automaticamente roteadas pelo motor de federação. Mutações não são afetadas, já que colunas de path são campos computados somente-leitura.
 
 ### Tipos de mascaramento {: #masking-types }
 
@@ -786,13 +784,13 @@ relationships:
 
 ### Auto-materialização {: #auto-materialization }
 
-Defina `materialize: true` em um relacionamento para gerar automaticamente uma view materializada para JOINs entre fontes. (REQ-158) Isso evita consultas federadas custosas pré-computando o resultado do JOIN.
+Defina `materialize: true` em um relacionamento para gerar automaticamente uma view materializada para JOINs entre fontes. Isso evita consultas federadas custosas pré-computando o resultado do JOIN.
 
-- Apenas relacionamentos entre fontes geram MVs (JOINs dentro da mesma fonte já são rápidos) (REQ-159)
-- Em um relacionamento apoiado em junção, a MV cobre a travessia de dois saltos — salto de origem, salto da junção, discriminador e as colunas próprias da junção como atributos da aresta. A junção conta como uma perna, então uma aresta é entre fontes quando qualquer uma das três tabelas fica em uma fonte diferente (REQ-1586)
-- A MV começa desatualizada e é populada pelo laço de atualização em segundo plano (REQ-160)
-- Mutações em qualquer uma das tabelas de origem marcam a MV como desatualizada para nova atualização (REQ-543)
-- `refresh_interval` tem padrão de 300 segundos (5 minutos) (REQ-543)
+- Apenas relacionamentos entre fontes geram MVs (JOINs dentro da mesma fonte já são rápidos)
+- Em um relacionamento apoiado em junção, a MV cobre a travessia de dois saltos — salto de origem, salto da junção, discriminador e as colunas próprias da junção como atributos da aresta. A junção conta como uma perna, então uma aresta é entre fontes quando qualquer uma das três tabelas fica em uma fonte diferente
+- A MV começa desatualizada e é populada pelo laço de atualização em segundo plano
+- Mutações em qualquer uma das tabelas de origem marcam a MV como desatualizada para nova atualização
+- `refresh_interval` tem padrão de 300 segundos (5 minutos)
 
 ## Funções {: #roles }
 
@@ -820,7 +818,7 @@ roles:
     parent_role_id: analyst      # inherits query_development + sales-analytics
 ```
 
-Funções com `parent_role_id` herdam capacidades, acesso a domínio, concessões de coluna e objeto, e regras de RLS do pai, com a própria regra de RLS da filha para uma tabela tendo precedência. (REQ-215, REQ-1677) A cadeia é achatada na inicialização. (REQ-215)
+Funções com `parent_role_id` herdam capacidades, acesso a domínio, concessões de coluna e objeto, e regras de RLS do pai, com a própria regra de RLS da filha para uma tabela tendo precedência. A cadeia é achatada na inicialização.
 
 ### Capacidades {: #capabilities }
 
@@ -856,7 +854,7 @@ materialized_views:
       right_table: customers
       right_column: id
       join_type: left
-      # REQ-1586: add via_table with via_left_column/via_right_column (and
+      # Add via_table with via_left_column/via_right_column (and
       # via_type_column/via_type_value when the junction is discriminated) to
       # cover a two-hop junction traversal instead of a direct join.
     target_catalog: postgresql
@@ -867,7 +865,7 @@ materialized_views:
 
 ## Views (conjuntos de dados computados governados) {: #views-governed-computed-datasets }
 
-Views são conjuntos de dados computados definidos por SQL com governança completa em nível de coluna. (REQ-133) São o mecanismo governado para adicionar agregações, transformações e métricas derivadas ao modelo. (REQ-136)
+Views são conjuntos de dados computados definidos por SQL com governança completa em nível de coluna. São o mecanismo governado para adicionar agregações, transformações e métricas derivadas ao modelo.
 
 ```yaml
 views:
@@ -907,14 +905,14 @@ views:
 
 ### Materializada vs ao vivo {: #materialized-vs-live }
 
-- **`materialize: true`**: O Provisa cria uma tabela via CTAS e a atualiza em uma programação. (REQ-135) Consultas mais rápidas, mas os dados podem estar desatualizados em até `refresh_interval` segundos.
-- **`materialize: false`**: O Provisa cria uma view federada. (REQ-135) Consultas sempre retornam dados ao vivo, mas podem ser mais lentas para agregações complexas.
+- **`materialize: true`**: O Provisa cria uma tabela via CTAS e a atualiza em uma programação. Consultas mais rápidas, mas os dados podem estar desatualizados em até `refresh_interval` segundos.
+- **`materialize: false`**: O Provisa cria uma view federada. Consultas sempre retornam dados ao vivo, mas podem ser mais lentas para agregações complexas.
 
-Views passam pelo mesmo pipeline de governança que tabelas — RLS, mascaramento, amostragem e visibilidade baseada em função. (REQ-134) Isso garante que nenhuma semântica nova possa ser adicionada à plataforma sem supervisão de um steward. (REQ-136)
+Views passam pelo mesmo pipeline de governança que tabelas — RLS, mascaramento, amostragem e visibilidade baseada em função. Isso garante que nenhuma semântica nova possa ser adicionada à plataforma sem supervisão de um steward.
 
 ### Views com histórico (viagem no tempo) {: #views-with-history-time-travel }
 
-Uma view materializada pode manter cada versão das suas linhas e ser lida em um momento passado. (REQ-1162, REQ-1163) Ela declara como as mantém e a qual chave uma versão pertence:
+Uma view materializada pode manter cada versão das suas linhas e ser lida em um momento passado. Ela declara como as mantém e a qual chave uma versão pertence:
 
 ```yaml
 views:
@@ -936,9 +934,9 @@ views:
 | `bitemporal_key` | Sim | As colunas às quais uma versão pertence |
 | `bitemporal_source_time` | Não | A coluna que informa quando cada linha mudou na fonte: o relógio pelo qual a viagem no tempo lê |
 
-**Escolher o relógio.** Com `bitemporal_source_time`, as versões são ordenadas e lidas pela hora própria da fonte: "na data da última terça-feira" é a última terça-feira na fonte. Sem ela, são ordenadas e lidas pelo momento em que o Provisa pousou cada mudança, então seguem a cadência de atualização e não o momento em que a linha mudou na fonte. As duas são uma escolha. A hora de carga serve para uma cadência de atualização frequente, para dados cujo momento na fonte não importa e para leituras que devem tratar da hora de carga, como auditar o que o Provisa tinha e quando. (REQ-1163)
+**Escolher o relógio.** Com `bitemporal_source_time`, as versões são ordenadas e lidas pela hora própria da fonte: "na data da última terça-feira" é a última terça-feira na fonte. Sem ela, são ordenadas e lidas pelo momento em que o Provisa pousou cada mudança, então seguem a cadência de atualização e não o momento em que a linha mudou na fonte. As duas são uma escolha. A hora de carga serve para uma cadência de atualização frequente, para dados cujo momento na fonte não importa e para leituras que devem tratar da hora de carga, como auditar o que o Provisa tinha e quando.
 
-Uma versão vigora do seu momento até o da versão seguinte. Uma exclusão não tem hora de mudança na fonte e passa a valer quando o Provisa a registrou. (REQ-2064)
+Uma versão vigora do seu momento até o da versão seguinte. Uma exclusão não tem hora de mudança na fonte e passa a valer quando o Provisa a registrou.
 
 **Leitura.** Uma leitura simples responde a versão de cada chave vigente agora. O cabeçalho `X-Provisa-As-Of` lê em um momento, ou sobre um intervalo dado como intervalo ISO 8601 `start/end`:
 
@@ -946,7 +944,7 @@ Uma versão vigora do seu momento até o da versão seguinte. Uma exclusão não
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
-Um momento responde a versão de cada chave vigente então. Um intervalo responde cada versão vigente em algum momento dentro dele, uma linha por versão. (REQ-2064)
+Um momento responde a versão de cada chave vigente então. Um intervalo responde cada versão vigente em algum momento dentro dele, uma linha por versão.
 
 **Como registrado.** Uma correção registrada depois muda o que uma visão diz sobre o passado: a versão em vigor em 30 de setembro passa a ser a corrigida assim que a correção é registrada. Para ler a visão como o Provisa a tinha registrado num momento, antes de qualquer correção posterior, adicione `X-Provisa-As-Recorded`, um instante ISO 8601:
 
@@ -955,7 +953,7 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Toda versão registrada depois desse momento fica de fora, e o as-of escolhe então a versão em vigor no seu próprio momento. Com `X-Provisa-As-Recorded` sozinho, a leitura responde a versão de cada chave em vigor como registrada então. É um instante, não um intervalo; um intervalo ou um valor malformado é recusado com HTTP 400 (`data.invalid_as_recorded`). O mesmo valor é o argumento `as_recorded` de `resolve`, o parâmetro de consulta REST `as_recorded` e a opção `as_recorded` de um ticket do Arrow Flight. O registro de auditoria de cada instrução guarda os dois momentos com que leu, `as_of` e `as_recorded`. (REQ-1163) O mesmo valor é o argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), o parâmetro de consulta REST `as_of` e a opção `as_of` de um ticket Arrow Flight. Um intervalo dado a `resolve` responde as `versions` da linha em vez da sua `row`. Direitos, máscaras e regras de linha se aplicam como em qualquer leitura. Um valor malformado, ou um intervalo cujo fim não é posterior ao início, é recusado com HTTP 400 (`data.invalid_as_of`).
+Toda versão registrada depois desse momento fica de fora, e o as-of escolhe então a versão em vigor no seu próprio momento. Com `X-Provisa-As-Recorded` sozinho, a leitura responde a versão de cada chave em vigor como registrada então. É um instante, não um intervalo; um intervalo ou um valor malformado é recusado com HTTP 400 (`data.invalid_as_recorded`). O mesmo valor é o argumento `as_recorded` de `resolve`, o parâmetro de consulta REST `as_recorded` e a opção `as_recorded` de um ticket do Arrow Flight. O registro de auditoria de cada instrução guarda os dois momentos com que leu, `as_of` e `as_recorded`. O mesmo valor é o argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), o parâmetro de consulta REST `as_of` e a opção `as_of` de um ticket Arrow Flight. Um intervalo dado a `resolve` responde as `versions` da linha em vez da sua `row`. Direitos, máscaras e regras de linha se aplicam como em qualquer leitura. Um valor malformado, ou um intervalo cujo fim não é posterior ao início, é recusado com HTTP 400 (`data.invalid_as_of`).
 
 Toda view com histórico responde mais três colunas, concedidas como a sua coluna de hora de origem (senão a sua primeira coluna de chave):
 
@@ -974,7 +972,7 @@ Tópicos Kafka sem o envelope do Debezium não trazem hora de commit.
 
 ### Views somente-consulta {: #query-only-views }
 
-Views com `materialize: true` e `materialize: false` expõem seu tipo GraphQL como somente-consulta. Nenhuma mutação de insert, upsert, update ou delete é gerada para relações apoiadas em `view_sql`. (REQ-1157) [tool-verified: `provisa/compiler/schema_gen.py:184`, `provisa/compiler/schema_types.py:79`]
+Views com `materialize: true` e `materialize: false` expõem seu tipo GraphQL como somente-consulta. Nenhuma mutação de insert, upsert, update ou delete é gerada para relações apoiadas em `view_sql`.
 
 ## Cache
 
@@ -987,7 +985,7 @@ cache:
 
 ### Hierarquia de cache {: #cache-hierarchy }
 
-Ordem de resolução de TTL (mais específico vence): **tabela** > **fonte** > **padrão global**. (REQ-544) O primeiro valor não nulo é usado.
+Ordem de resolução de TTL (mais específico vence): **tabela** > **fonte** > **padrão global**. O primeiro valor não nulo é usado.
 
 ```yaml
 cache:
@@ -1009,11 +1007,11 @@ tables:
     # no cache_ttl → inherits source TTL (600s)
 ```
 
-Definir `cache_enabled: false` em uma fonte desabilita o cache para todas as tabelas dessa fonte, independentemente do TTL em nível de tabela. (REQ-544) As chaves de cache sempre incluem `role_id` + valores de contexto RLS para particionamento de segurança. (REQ-544)
+Definir `cache_enabled: false` em uma fonte desabilita o cache para todas as tabelas dessa fonte, independentemente do TTL em nível de tabela. As chaves de cache sempre incluem `role_id` + valores de contexto RLS para particionamento de segurança.
 
 ### Adesão por requisição {: #per-request-opt-in }
 
-O cache de respostas fica desligado para toda requisição que não o pede. (REQ-544) Uma requisição adere com:
+O cache de respostas fica desligado para toda requisição que não o pede. Uma requisição adere com:
 
 | Superfície | Adesão |
 | --- | --- |
@@ -1023,19 +1021,19 @@ O cache de respostas fica desligado para toda requisição que não o pede. (REQ
 | gRPC (e o proxy gRPC HTTP) | metadados da chamada (cabeçalhos no proxy) `x-provisa-cache: true` ou `x-provisa-cache-ttl: 60` |
 | REST, JSON:API e, como alternativa à indicação no texto: GraphQL sobre HTTP, `/data/cypher`, a Neo4j Query API | o cabeçalho de requisição `Cache-Control: max-age=60` (ou `max-stale=60`), ou `x-provisa-cache: true` / `x-provisa-cache-ttl: 60` |
 
-Um `ttl` que não seja inteiro faz a requisição falhar. Uma requisição que indica a adesão duas vezes (no texto e em um cabeçalho, ou em dois cabeçalhos) com valores diferentes falha com `400`; nenhum é preferido. `Cache-Control: no-cache` ou `no-store` significa sem cache, o mesmo que sem cabeçalho. [tool-verified: `provisa/compiler/directives.py` `cache_hint_for`, `cache_hint_from_grpc_metadata`, `request_cache_hint`]
+Um `ttl` que não seja inteiro faz a requisição falhar. Uma requisição que indica a adesão duas vezes (no texto e em um cabeçalho, ou em dois cabeçalhos) com valores diferentes falha com `400`; nenhum é preferido. `Cache-Control: no-cache` ou `no-store` significa sem cache, o mesmo que sem cabeçalho.
 
-Sem a indicação, a requisição não lê nem grava o cache. Com ela, as configurações acima continuam decidindo: o resultado só é armazenado se cada fonte lida tiver `cache_enabled: true` e o TTL resolvido de cada tabela for maior que 0. A entrada dura o `ttl` da requisição, se ela informar um; caso contrário, o menor TTL resolvido das tabelas lidas. (REQ-544)
+Sem a indicação, a requisição não lê nem grava o cache. Com ela, as configurações acima continuam decidindo: o resultado só é armazenado se cada fonte lida tiver `cache_enabled: true` e o TTL resolvido de cada tabela for maior que 0. A entrada dura o `ttl` da requisição, se ela informar um; caso contrário, o menor TTL resolvido das tabelas lidas.
 
-A indicação apenas aceita dados mais antigos em troca de velocidade. Ela nunca torna uma leitura mais recente do que as configurações do operador permitem: o frescor do carregamento e da réplica (`cache_ttl`, `change_signal`), `row_materialize`, os snapshots `load_protected` e as verificações de frescor valem para uma requisição com indicação exatamente como para uma sem. Veja [Frescor e carga: quem decide](#freshness-and-load-who-decides). (REQ-544)
+A indicação apenas aceita dados mais antigos em troca de velocidade. Ela nunca torna uma leitura mais recente do que as configurações do operador permitem: o frescor do carregamento e da réplica (`cache_ttl`, `change_signal`), `row_materialize`, os snapshots `load_protected` e as verificações de frescor valem para uma requisição com indicação exatamente como para uma sem. Veja [Frescor e carga: quem decide](#freshness-and-load-who-decides).
 
 `@noCache` e `-- @provisa no_cache=true` não existem mais: com o cache desligado por padrão, não há o que contornar.
 
-Uma gravação invalida toda entrada de cache que a organização que grava mantém para as tabelas gravadas; as entradas de outra organização para a mesma tabela não são afetadas. Se a invalidação falhar, a requisição falha em vez de deixar entradas obsoletas. (REQ-544, REQ-595)
+Uma gravação invalida toda entrada de cache que a organização que grava mantém para as tabelas gravadas; as entradas de outra organização para a mesma tabela não são afetadas. Se a invalidação falhar, a requisição falha em vez de deixar entradas obsoletas.
 
 ## Atualidade e carga: quem decide {: #freshness-and-load-who-decides }
 
-Três partes influenciam o quão recente é um resultado e quanta carga uma consulta coloca nos sistemas por trás dela. (REQ-030)
+Três partes influenciam o quão recente é um resultado e quanta carga uma consulta coloca nos sistemas por trás dela.
 
 - **A fonte de origem.** Idealmente, gerencia a própria contrapressão: limites de conexão, tempos limite de instrução, réplicas de leitura.
 - **O operador.** Protege a plataforma, o próprio Provisa, da contrapressão. Quando uma fonte não consegue se proteger, o operador a protege também. As configurações ficam em fontes e tabelas: `load_protected`, `replicate`, os `federation_hints` da fonte, o limite de redirecionamento de resultados grandes, o cluster Kafka em que os sinks escrevem e o watermark registrado de cada tabela.
@@ -1052,13 +1050,13 @@ As configurações do operador são o piso. Uma requisição pode ir acima dele,
 | `@watermark` em uma assinatura | Repetir o watermark registrado da tabela | nomeia outra coluna, ou a tabela não tem nenhum |
 | `@cached`, `-- @provisa cache=true` | Servir um resultado mais antigo do cache | nunca; uma entrada de cache nunca é mais recente que a leitura que a gravou |
 
-As recusas retornam HTTP 403 com o código `query.operator_floor`, SQLSTATE `42501` via pgwire e `PERMISSION_DENIED` via Flight e gRPC. (REQ-030)
+As recusas retornam HTTP 403 com o código `query.operator_floor`, SQLSTATE `42501` via pgwire e `PERMISSION_DENIED` via Flight e gRPC.
 
-Uma tabela `load_protected` ou com `replicate: 0` nunca é lida ao vivo por uma consulta, em nenhum transporte. As consultas leem sua réplica. Só a replicação e suas atualizações leem a fonte: uma atualização ocorre quando `cache_ttl` ou uma verificação de atualidade a exige; sem nenhum dos dois, a réplica é construída uma vez e depois só é atualizada por um feed de mudanças ou pelo agendador. (REQ-1907) (REQ-1141, REQ-826) [tool-verified: `tests/integration/test_operator_floor_e2e.py`] Numa tabela assim com uma `off_peak_window` (na tabela ou na sua fonte, lida em `off_peak_tz`), uma atualização só roda enquanto a janela está aberta: uma que vence ou é pedida fora dela espera a próxima abertura da janela, e uma janela sem `cache_ttl` atualiza uma vez por abertura. A primeira construção nunca é retida, porque as leituras da tabela esperam por ela. [tool-verified: `provisa/federation/replica_builds.py` `_deferred_until`, `_next_refresh_at`; `tests/integration/test_off_peak_window_refresh_e2e.py`]
+Uma tabela `load_protected` ou com `replicate: 0` nunca é lida ao vivo por uma consulta, em nenhum transporte. As consultas leem sua réplica. Só a replicação e suas atualizações leem a fonte: uma atualização ocorre quando `cache_ttl` ou uma verificação de atualidade a exige; sem nenhum dos dois, a réplica é construída uma vez e depois só é atualizada por um feed de mudanças ou pelo agendador. Numa tabela assim com uma `off_peak_window` (na tabela ou na sua fonte, lida em `off_peak_tz`), uma atualização só roda enquanto a janela está aberta: uma que vence ou é pedida fora dela espera a próxima abertura da janela, e uma janela sem `cache_ttl` atualiza uma vez por abertura. A primeira construção nunca é retida, porque as leituras da tabela esperam por ela.
 
 ### A configuração `replicate` {: #the-replicate-setting }
 
-`replicate` é um inteiro em uma tabela. Uma tabela sem valor assume o de sua fonte e, quando nenhum dos dois está definido, vale o limite global. Uma réplica é uma cópia de uma tabela de origem mantida no armazenamento do motor e atualizada conforme as configurações de tempestividade da tabela; não é um fluxo contínuo de mudanças. (REQ-826) [tool-verified: `provisa/core/replicate.py`]
+`replicate` é um inteiro em uma tabela. Uma tabela sem valor assume o de sua fonte e, quando nenhum dos dois está definido, vale o limite global. Uma réplica é uma cópia de uma tabela de origem mantida no armazenamento do motor e atualizada conforme as configurações de tempestividade da tabela; não é um fluxo contínuo de mudanças.
 
 | Valor | Nome | Significado |
 | --- | --- | --- |
@@ -1069,9 +1067,9 @@ Uma tabela `load_protected` ou com `replicate: 0` nunca é lida ao vivo por uma 
 
 Só Always é uma garantia. Never e os valores Hot são de melhor esforço. `load_protected` com `replicate: -1` é recusado no carregamento da configuração e ao salvar. Uma fonte com `replicate: 0` não tem attach ao vivo em nenhum motor, de modo que toda tabela dela é servida pela sua réplica.
 
-O piso é avaliado pelas tabelas que uma instrução lê. Uma instrução que não lê nenhuma tabela servida por réplica mantém sua rota direta mesmo quando a fonte tem outras tabelas replicadas. [tool-verified: `provisa/federation/registry_view.py` `operator_floor`]
+O piso é avaliado pelas tabelas que uma instrução lê. Uma instrução que não lê nenhuma tabela servida por réplica mantém sua rota direta mesmo quando a fonte tem outras tabelas replicadas.
 
-Uma réplica é indexada pela chave primária declarada e pelas colunas em que os relacionamentos declarados fazem junção, com índices construídos depois que ela pousa. Onde esses índices aceleram junções, onde manter réplicas e como escolher a atualidade delas estão em [Replicas](replicas.md). (REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py`]
+Uma réplica é indexada pela chave primária declarada e pelas colunas em que os relacionamentos declarados fazem junção, com índices construídos depois que ela pousa. Onde esses índices aceleram junções, onde manter réplicas e como escolher a atualidade delas estão em [Replicas](replicas.md).
 
 ### Replicação hot {: #hot-replication }
 
@@ -1102,7 +1100,7 @@ Uma tabela é promovida quando sua contagem atinge o limite dela (o `N` próprio
 
 Uma tabela não é promovida quando tem mais linhas que `hot_max_rows`, quando seu sinal de mudança é `ttl` ou `ttl_probe` e nem ela nem sua fonte declaram `cache_ttl`, ou quando a camada hot do Redis já a gerencia. O resumo da tabela na interface de administração informa qual caso se aplica.
 
-As contagens ficam no Redis. Com um Redis compartilhado (`cache.redis_url`), cobrem todos os processos da implantação. Com o Redis embutido, são por processo; assim, a promoção só ocorre quando um único worker atende as requisições; com vários workers e sem Redis compartilhado nada é promovido, e o resumo informa isso. [tool-verified: `provisa/federation/replica_hot.py`]
+As contagens ficam no Redis. Com um Redis compartilhado (`cache.redis_url`), cobrem todos os processos da implantação. Com o Redis embutido, são por processo; assim, a promoção só ocorre quando um único worker atende as requisições; com vários workers e sem Redis compartilhado nada é promovido, e o resumo informa isso.
 
 ## Autenticação {: #authentication }
 
@@ -1136,7 +1134,7 @@ auth:
 | `oauth` | OIDC genérico (Okta, Azure AD, Auth0, PingFederate). | JWKS a partir da URL de descoberta |
 | `basic` | Implantações autônomas. As contas ficam no armazenamento próprio do Provisa. | Senha bcrypt, ou SCRAM-SHA-256 no pgwire |
 
-Credenciais de superusuário (bloco `superuser`) funcionam com qualquer provedor e sempre resolvem para a função admin com todas as capacidades. (REQ-125) Usadas para configuração inicial antes que a autenticação externa seja configurada.
+Credenciais de superusuário (bloco `superuser`) funcionam com qualquer provedor e sempre resolvem para a função admin com todas as capacidades. Usadas para configuração inicial antes que a autenticação externa seja configurada.
 
 ### SCRAM-SHA-256 (`auth.scram`)
 
@@ -1146,7 +1144,7 @@ auth:
   scram: true
 ```
 
-Faz o pgwire anunciar SASL com `SCRAM-SHA-256`, de modo que uma senha é provada em vez de enviada em texto claro. (REQ-1394) Aplica-se somente ao provedor `basic` — nenhum outro provedor guarda os verificadores RFC 5802 de que o SCRAM precisa — e a vinculação de canal não é oferecida.
+Faz o pgwire anunciar SASL com `SCRAM-SHA-256`, de modo que uma senha é provada em vez de enviada em texto claro. Aplica-se somente ao provedor `basic` — nenhum outro provedor guarda os verificadores RFC 5802 de que o SCRAM precisa — e a vinculação de canal não é oferecida.
 
 Verificadores não podem ser derivados dos hashes bcrypt existentes. Um é gravado sempre que uma senha passa em texto plano, então a primeira conexão SCRAM de cada usuário vem após seu próximo cadastro, login, troca de senha ou redefinição pelo administrador. Até lá, as conexões desse usuário recaem na troca em texto claro sobre TLS; o fio não revela quem já migrou.
 
@@ -1160,15 +1158,15 @@ auth:
     lockout_seconds: 900 # how long a locked-out subject is refused
 ```
 
-Ativa por padrão com os valores exibidos; o bloco apenas os ajusta. (REQ-1393) O contador fica na camada de validação de credenciais, então falhas por HTTP, pgwire e Bolt somam-se contra o mesmo sujeito e um bloqueio vale em todas as interfaces. É por processo: vários workers da API permitem, cada um, até `max_attempts`.
+Ativa por padrão com os valores exibidos; o bloco apenas os ajusta. O contador fica na camada de validação de credenciais, então falhas por HTTP, pgwire e Bolt somam-se contra o mesmo sujeito e um bloqueio vale em todas as interfaces. É por processo: vários workers da API permitem, cada um, até `max_attempts`.
 
 ### Tokens de acesso pessoal {: #personal-access-tokens }
 
-PATs não precisam de bloco de configuração — são sempre aceitos, e o armazenamento é criado junto com o restante do esquema do plano de controle. (REQ-1263) O que é configurável é a expiração que um usuário pode solicitar na emissão: de 1 a 366 dias, ou nenhuma para um token que não expira. Veja [Modelo de segurança](security.md#personal-access-tokens).
+PATs não precisam de bloco de configuração — são sempre aceitos, e o armazenamento é criado junto com o restante do esquema do plano de controle. O que é configurável é a expiração que um usuário pode solicitar na emissão: de 1 a 366 dias, ou nenhuma para um token que não expira. Veja [Modelo de segurança](security.md#personal-access-tokens).
 
 ### TLS mútuo {: #mutual-tls }
 
-A verificação de certificado de cliente é configurada por variável de ambiente, e não em `provisa.yaml`, ao lado das configurações de certificado TLS que ela estende. (REQ-1228)
+A verificação de certificado de cliente é configurada por variável de ambiente, e não em `provisa.yaml`, ao lado das configurações de certificado TLS que ela estende.
 
 | Variável | Padrão | Significado |
 | ---------- | --------- | --------- |
@@ -1180,7 +1178,7 @@ Cada uma aceita uma sobreposição por protocolo sob a mesma nomenclatura das co
 
 ### Endereçar uma organização sobre TLS {: #addressing-an-org-over-tls }
 
-Nada a configurar. Em uma implantação multiorganização, pgwire e Bolt leem a organização a partir do nome de host discado pelo cliente, transportado no ClientHello do TLS, exatamente como o HTTP a lê do cabeçalho `Host`. (REQ-1234) Um cliente que se conecta a `acme.provisa.dev` solicita a organização `acme`; a solicitação é recusada a menos que o principal autenticado seja membro. Conectar-se por endereço IP não solicita organização alguma, o que é o caso de toda conexão em uma implantação de organização única.
+Nada a configurar. Em uma implantação multiorganização, pgwire e Bolt leem a organização a partir do nome de host discado pelo cliente, transportado no ClientHello do TLS, exatamente como o HTTP a lê do cabeçalho `Host`. Um cliente que se conecta a `acme.provisa.dev` solicita a organização `acme`; a solicitação é recusada a menos que o principal autenticado seja membro. Conectar-se por endereço IP não solicita organização alguma, o que é o caso de toda conexão em uma implantação de organização única.
 
 ### Exemplo de configuração completa de autenticação (comentado) {: #full-auth-config-example-commented-out }
 
@@ -1221,7 +1219,7 @@ Nada a configurar. Em uma implantação multiorganização, pgwire e Bolt leem a
 
 ## Mutações Upsert {: #upsert-mutations }
 
-Para tabelas com uma chave primária, o Provisa gera automaticamente campos de mutação `upsert_<table>`. (REQ-212) Eles compilam para um upsert no dialeto de destino — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` no PostgreSQL, `ON DUPLICATE KEY UPDATE` no MySQL. (REQ-212)
+Para tabelas com uma chave primária, o Provisa gera automaticamente campos de mutação `upsert_<table>`. Eles compilam para um upsert no dialeto de destino — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` no PostgreSQL, `ON DUPLICATE KEY UPDATE` no MySQL.
 
 ```graphql
 mutation {
@@ -1231,11 +1229,11 @@ mutation {
 }
 ```
 
-Colunas de conflito são derivadas dos metadados de PK. (REQ-212) Todas as regras de visibilidade de coluna e permissão de escrita se aplicam.
+Colunas de conflito são derivadas dos metadados de PK. Todas as regras de visibilidade de coluna e permissão de escrita se aplicam.
 
 ## Distinct On
 
-O argumento `distinct_on` seleciona a primeira linha para cada valor distinto das colunas especificadas. (REQ-213) Disponível nos campos de consulta raiz.
+O argumento `distinct_on` seleciona a primeira linha para cada valor distinto das colunas especificadas. Disponível nos campos de consulta raiz.
 
 ```graphql
 {
@@ -1247,11 +1245,11 @@ O argumento `distinct_on` seleciona a primeira linha para cada valor distinto da
 }
 ```
 
-Compila para `SELECT DISTINCT ON (region) ...` no PostgreSQL. (REQ-213) Para dialetos não-PG, um fallback com função de janela é usado. (REQ-213)
+Compila para `SELECT DISTINCT ON (region) ...` no PostgreSQL. Para dialetos não-PG, um fallback com função de janela é usado.
 
 ## Presets das permissões de escrita {: #write-grant-presets }
 
-Uma permissão de escrita define colunas por conta própria em insert e update. (REQ-214, REQ-2074) Os presets são declarados na lista `presets` da permissão, por função e operação.
+Uma permissão de escrita define colunas por conta própria em insert e update. Os presets são declarados na lista `presets` da permissão, por função e operação.
 
 ```yaml
 tables:
@@ -1280,11 +1278,11 @@ tables:
 | `now` | Injeta o momento da escrita |
 | `literal` | Injeta uma constante (`value`) |
 
-Os presets são adicionados à instrução durante a compilação, antes da geração do SQL. (REQ-214) A instrução não pode fornecer uma coluna com preset, e uma coluna com preset não está no tipo de entrada da mutação. (REQ-214)
+Os presets são adicionados à instrução durante a compilação, antes da geração do SQL. A instrução não pode fornecer uma coluna com preset, e uma coluna com preset não está no tipo de entrada da mutação.
 
 ## Funções Herdadas {: #inherited-roles }
 
-Funções podem herdar de uma função pai via `parent_role_id`. (REQ-215) A cadeia é achatada na inicialização. (REQ-215) Uma função filha detém a união das capacidades e do acesso a domínio de seus ancestrais; uma coluna, métrica, função ou webhook concedido a um ancestral é concedido à filha; e as regras de RLS de um ancestral se aplicam à filha por tabela, função mais próxima primeiro, com a própria regra da filha para uma tabela substituindo a do pai. (REQ-1677)
+Funções podem herdar de uma função pai via `parent_role_id`. A cadeia é achatada na inicialização. Uma função filha detém a união das capacidades e do acesso a domínio de seus ancestrais; uma coluna, métrica, função ou webhook concedido a um ancestral é concedido à filha; e as regras de RLS de um ancestral se aplicam à filha por tabela, função mais próxima primeiro, com a própria regra da filha para uma tabela substituindo a do pai.
 
 ```yaml
 roles:
@@ -1308,11 +1306,11 @@ roles:
     parent_role_id: junior_analyst  # inherits from junior_analyst (and transitively analyst)
 ```
 
-Herança em múltiplos níveis é suportada. (REQ-215) As capacidades e domain_access explícitos da função filha são mesclados com os da função pai. (REQ-215) Um pai precisa ser uma função existente, não pode ser a própria função e não pode fechar um ciclo; cada caso é recusado ao salvar. (REQ-1677)
+Herança em múltiplos níveis é suportada. As capacidades e domain_access explícitos da função filha são mesclados com os da função pai. Um pai precisa ser uma função existente, não pode ser a própria função e não pode fechar um ciclo; cada caso é recusado ao salvar.
 
 ## Gatilhos Programados {: #scheduled-triggers }
 
-Gatilhos baseados em cron que chamam uma URL de webhook em uma programação. (REQ-216) Usa o APScheduler. (REQ-216)
+Gatilhos baseados em cron que chamam uma URL de webhook em uma programação. Usa o APScheduler.
 
 ```yaml
 scheduled_triggers:
@@ -1326,9 +1324,9 @@ scheduled_triggers:
     enabled: false
 ```
 
-Tarefas programadas são gerenciadas via a UI de administração (alternância habilitar/desabilitar) ou a mutação de administração `toggle_scheduled_task`. (REQ-216)
+Tarefas programadas são gerenciadas via a UI de administração (alternância habilitar/desabilitar) ou a mutação de administração `toggle_scheduled_task`.
 
-Um gatilho pode disparar sobre uma tabela registrada em vez de uma programação: `on: {table, event}` nomeia a tabela como `source_id.schema.table` e o evento, `change`, `error` ou `quarantine`. Um gatilho `command` executa um comando registrado como sua `role`, pelo despacho governado do próprio comando, e lhe passa como argumentos o que o disparou. Uma mudança passa `table` e, onde o sinal de mudança o carrega (Kafka, Debezium), o lote carregado como `changes`. Um evento `error` ou `quarantine` passa `table`, `event`, `reason` e `error`. Um gatilho cujo comando declara um argumento que o gatilho não passa é recusado ao salvar. Uma mudança dispara uma vez por rajada que seu sinal de mudança informa, ou quando chega uma escrita feita pelo Provisa; uma tabela servida de sua réplica dispara quando uma construção carrega linhas diferentes da anterior. A própria escrita de um comando é uma mudança, então os gatilhos se encadeiam. Cada execução é registrada com seu horário, seu resultado (`succeeded`, `refused` ou `failed`), seu erro e o que a disparou, e a consulta de administração `scheduledTasks` a lista. Só os gatilhos de prod disparam, e nada é instalado em um banco de dados de origem. (REQ-2054) [tool-verified: `provisa/scheduler/table_triggers.py`, `provisa/scheduler/trigger_runs.py`]
+Um gatilho pode disparar sobre uma tabela registrada em vez de uma programação: `on: {table, event}` nomeia a tabela como `source_id.schema.table` e o evento, `change`, `error` ou `quarantine`. Um gatilho `command` executa um comando registrado como sua `role`, pelo despacho governado do próprio comando, e lhe passa como argumentos o que o disparou. Uma mudança passa `table` e, onde o sinal de mudança o carrega (Kafka, Debezium), o lote carregado como `changes`. Um evento `error` ou `quarantine` passa `table`, `event`, `reason` e `error`. Um gatilho cujo comando declara um argumento que o gatilho não passa é recusado ao salvar. Uma mudança dispara uma vez por rajada que seu sinal de mudança informa, ou quando chega uma escrita feita pelo Provisa; uma tabela servida de sua réplica dispara quando uma construção carrega linhas diferentes da anterior. A própria escrita de um comando é uma mudança, então os gatilhos se encadeiam. Cada execução é registrada com seu horário, seu resultado (`succeeded`, `refused` ou `failed`), seu erro e o que a disparou, e a consulta de administração `scheduledTasks` a lista. Só os gatilhos de prod disparam, e nada é instalado em um banco de dados de origem.
 
 ```yaml
 scheduled_triggers:
@@ -1344,7 +1342,7 @@ scheduled_triggers:
 
 ## Formato OrderBy {: #orderby-format }
 
-OrderBy usa o formato `{column: direction}` com um enum de direção de 6 valores: (REQ-200, REQ-201)
+OrderBy usa o formato `{column: direction}` com um enum de direção de 6 valores:
 
 ```graphql
 {
@@ -1365,7 +1363,7 @@ OrderBy usa o formato `{column: direction}` com um enum de direção de 6 valore
 | `desc_nulls_first` | `DESC NULLS FIRST` |
 | `desc_nulls_last` | `DESC NULLS LAST` |
 
-Ordenação por relacionamento é suportada via objetos aninhados: (REQ-202)
+Ordenação por relacionamento é suportada via objetos aninhados:
 
 ```graphql
 {
@@ -1394,9 +1392,9 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### Filtros de Telemetria [tool-verified] {: #telemetry-filters-tool-verified }
+### Filtros de Telemetria {: #telemetry-filters-tool-verified }
 
-O Provisa mantém dois caminhos de exportação OTLP independentes: seu coletor interno e o endpoint de suporte Provisa opcional. (REQ-545) Cada caminho tem seu próprio filtro. Os filtros rodam dentro de um `_FilteringExporter` envolvente antes que os spans deixem o processo — os objetos de span originais nunca são alterados. (REQ-546) [tool-verified: `provisa/api/otel_setup.py` lines 156–207]
+O Provisa mantém dois caminhos de exportação OTLP independentes: seu coletor interno e o endpoint de suporte Provisa opcional. Cada caminho tem seu próprio filtro. Os filtros rodam dentro de um `_FilteringExporter` envolvente antes que os spans deixem o processo — os objetos de span originais nunca são alterados.
 
 **`telemetry_filter`** — controla o que chega ao seu coletor interno.
 
@@ -1405,7 +1403,7 @@ O Provisa mantém dois caminhos de exportação OTLP independentes: seu coletor 
 | `redact_sql_literals` | bool | `false` | Substitui literais string e numéricos em `db.statement` por `?` |
 | `redact_attributes` | list[str] | `[]` | Chaves de atributo removidas completamente de todo span |
 
-**`support_telemetry_filter`** — controla o que chega ao endpoint de suporte Provisa. A redação de literais SQL tem padrão `true` neste caminho, já que os dados de consulta pertencem a você. (REQ-547) [tool-verified: `provisa/api/otel_setup.py` line 240]
+**`support_telemetry_filter`** — controla o que chega ao endpoint de suporte Provisa. A redação de literais SQL tem padrão `true` neste caminho, já que os dados de consulta pertencem a você.
 
 | Chave | Tipo | Padrão | Descrição |
 | ----- | ------ | --------- | ------------- |
@@ -1424,21 +1422,21 @@ torna-se:
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### Endpoint de Suporte [tool-verified] {: #support-endpoint-tool-verified }
+### Endpoint de Suporte {: #support-endpoint-tool-verified }
 
-`support_endpoint` (ou env `PROVISA_SUPPORT_OTLP_ENDPOINT`) encaminha telemetria ao suporte Provisa para diagnóstico. (REQ-548) Quando não definido, nenhum dado sai da sua infraestrutura por este caminho. (REQ-548) O filtro de suporte se aplica independentemente do filtro interno — você pode redigir literais SQL de ambas as exportações e ainda compartilhar dados de tempo de span e erro com o suporte. (REQ-545) [tool-verified: `provisa/api/otel_setup.py` lines 238–288]
+`support_endpoint` (ou env `PROVISA_SUPPORT_OTLP_ENDPOINT`) encaminha telemetria ao suporte Provisa para diagnóstico. Quando não definido, nenhum dado sai da sua infraestrutura por este caminho. O filtro de suporte se aplica independentemente do filtro interno — você pode redigir literais SQL de ambas as exportações e ainda compartilhar dados de tempo de span e erro com o suporte.
 
-### Detecção de Protocolo do Endpoint [tool-verified] {: #endpoint-protocol-detection-tool-verified }
+### Detecção de Protocolo do Endpoint {: #endpoint-protocol-detection-tool-verified }
 
-O Provisa seleciona OTLP/HTTP ou OTLP/gRPC a partir do esquema da URL do endpoint. (REQ-549) URLs que começam com `http://` ou `https://` usam OTLP/HTTP, com `/v1/traces`, `/v1/metrics` e `/v1/logs` anexados automaticamente. (REQ-549) Qualquer outro esquema usa OTLP/gRPC com `insecure=True`. (REQ-549) [tool-verified: `provisa/api/otel_setup.py` lines 60–70]
+O Provisa seleciona OTLP/HTTP ou OTLP/gRPC a partir do esquema da URL do endpoint. URLs que começam com `http://` ou `https://` usam OTLP/HTTP, com `/v1/traces`, `/v1/metrics` e `/v1/logs` anexados automaticamente. Qualquer outro esquema usa OTLP/gRPC com `insecure=True`.
 
 ## Motor de Federação {: #federation-engine }
 
-Configurar um motor de federação é opcional. O padrão é `duckdb` — zero configuração, em processo, sem serviço externo necessário (REQ-989). Escolha outro motor quando precisar de escala MPP ou quiser reaproveitar um warehouse existente.
+Configurar um motor de federação é opcional. O padrão é `duckdb` — zero configuração, em processo, sem serviço externo necessário. Escolha outro motor quando precisar de escala MPP ou quiser reaproveitar um warehouse existente.
 
-Precedência: variável de ambiente `PROVISA_ENGINE` → campo de configuração `federation_engine` persistido na UI de administração → `duckdb`. As mudanças têm efeito na reinicialização do serviço. [tool-verified: `engine.py` `build_engine`]
+Precedência: variável de ambiente `PROVISA_ENGINE` → campo de configuração `federation_engine` persistido na UI de administração → `duckdb`. As mudanças têm efeito na reinicialização do serviço.
 
-### Visão geral dos motores [tool-verified: `engine.py` `ENGINE_REGISTRY`, `_ENGINE_BUILDERS`] {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### Visão geral dos motores {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
 
 | Chave do motor | Rótulo | Dialeto | MPP | Mecanismo de link externo | Autenticação |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
@@ -1502,7 +1500,7 @@ O armazenamento de materialização usa `TENANT_DATABASE_URL` como padrão.
 
 #### duckdb
 
-Em processo; sem serviço externo. O motor padrão (REQ-989). `PROVISA_DATA_DIR` controla onde o armazenamento embutido vive (`~/.provisa` por padrão).
+Em processo; sem serviço externo. O motor padrão. `PROVISA_DATA_DIR` controla onde o armazenamento embutido vive (`~/.provisa` por padrão).
 
 ```bash
 PROVISA_ENGINE=duckdb   # or omit — this is the default
@@ -1584,11 +1582,11 @@ O armazenamento de materialização usa `TENANT_DATABASE_URL` como padrão.
 
 ### Armazenamento de materialização {: #materialization-store }
 
-Quando uma fonte não pode conectar (attach) ao vivo (sem conector ATTACH para o motor selecionado), ela pousa no armazenamento de materialização do motor. Ordem de resolução: `PROVISA_MATERIALIZE_URL` explícito → padrão declarado do motor → erro explícito (sem fallback silencioso). [tool-verified: `engine.py` `materialize_store`]
+Quando uma fonte não pode conectar (attach) ao vivo (sem conector ATTACH para o motor selecionado), ela pousa no armazenamento de materialização do motor. Ordem de resolução: `PROVISA_MATERIALIZE_URL` explícito → padrão declarado do motor → erro explícito (sem fallback silencioso).
 
 O DuckDB declara seu arquivo embutido (`~/.provisa/materialize.duckdb`) como padrão. Todos os outros motores usam `TENANT_DATABASE_URL` (PostgreSQL) como padrão. Sobreponha qualquer motor com `PROVISA_MATERIALIZE_URL`.
 
-O armazenamento decide o que os índices de uma réplica fazem pelas junções: um armazenamento PostgreSQL indexa as réplicas e um motor que executa SQL nele lê esses índices, enquanto o DuckDB faz junções das réplicas do seu arquivo embutido sobre uma cópia por instrução. Veja [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it). (REQ-2015)
+O armazenamento decide o que os índices de uma réplica fazem pelas junções: um armazenamento PostgreSQL indexa as réplicas e um motor que executa SQL nele lê esses índices, enquanto o DuckDB faz junções das réplicas do seu arquivo embutido sobre uma cópia por instrução. Veja [Replicas](replicas.md#use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it).
 
 ### Hints de federação por fonte {: #per-source-federation-hints }
 
@@ -1636,18 +1634,18 @@ Para fontes Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` para o caminho
 | Variável | Padrão | Descrição |
 | ---------- | --------- | ------------- |
 | `PROVISA_CONFIG` | `config/provisa.yaml` | Caminho do arquivo de configuração |
-| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | URI do armazenamento do plano de controle (SQLAlchemy async); aceita `sqlite+pysqlite://…` / `duckdb://…` para o armazenamento desktop embutido (REQ-828, REQ-850) |
-| `PLATFORM_DATABASE_URL` | — | URI do registro de plataforma (diretório de tenants, registro de motores); obrigatório na inicialização, sem fallback (REQ-837) |
-| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` usa fakeredis embutido em vez de um servidor Redis — sem Docker (REQ-829) |
+| `TENANT_DATABASE_URL` | `postgresql+psycopg://provisa:provisa@localhost:5432/provisa` | URI do armazenamento do plano de controle (SQLAlchemy async); aceita `sqlite+pysqlite://…` / `duckdb://…` para o armazenamento desktop embutido |
+| `PLATFORM_DATABASE_URL` | — | URI do registro de plataforma (diretório de tenants, registro de motores); obrigatório na inicialização, sem fallback |
+| `PROVISA_REDIS_EMBEDDED` | — | `1`/`true` usa fakeredis embutido em vez de um servidor Redis — sem Docker |
 | `PG_HOST` | `localhost` | Host PostgreSQL |
 | `PG_PORT` | `5432` | Porta PostgreSQL |
 | `PG_DATABASE` | `provisa` | Banco de dados PostgreSQL |
 | `PG_USER` | `provisa` | Usuário PostgreSQL |
 | `PG_PASSWORD` | `provisa` | Senha PostgreSQL |
-| `PROVISA_ENGINE` | `duckdb` | Chave do motor de federação (REQ-989, REQ-916) |
+| `PROVISA_ENGINE` | `duckdb` | Chave do motor de federação |
 | `PROVISA_ENGINE_URL` | — | URL de conexão para motores orientados a URL (Snowflake, Databricks, ClickHouse Server, BigQuery, SQLAlchemy) |
 | `PROVISA_MATERIALIZE_URL` | — | Sobrepõe o DSN do armazenamento de materialização (padrão é o declarado pelo motor) |
-| `PROVISA_DATA_DIR` | `~/.provisa` | Diretório de dados para o armazenamento DuckDB embutido (REQ-989) |
+| `PROVISA_DATA_DIR` | `~/.provisa` | Diretório de dados para o armazenamento DuckDB embutido |
 | `TRINO_HOST` | `localhost` | Host do coordenador Trino |
 | `TRINO_PORT` | `8080` | Porta HTTP do coordenador Trino |
 | `GOOGLE_APPLICATION_CREDENTIALS` | — | Caminho para o JSON de chave de service account GCP (motor/fonte BigQuery) |
@@ -1659,7 +1657,7 @@ Para fontes Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` para o caminho
 | `REDIS_URL` | — | URL de conexão Redis |
 | `PROVISA_SAMPLE_SIZE` | `10000` | Limite de amostragem padrão |
 | `PROVISA_DEFAULT_ROW_LIMIT` | `100` | Limite de linhas quando uma consulta não fornece um `LIMIT` explícito |
-| `PROVISA_RETRY_BUDGET_SECS` | `30` | Orçamento de retry de leitura de Tier-1 em segundos; backoff exponencial com jitter completo (REQ-703) |
+| `PROVISA_RETRY_BUDGET_SECS` | `30` | Orçamento de retry de leitura de Tier-1 em segundos; backoff exponencial com jitter completo |
 | `ZAYCHIK_PORT` | `8480` | Porta do proxy Zaychik Flight SQL |
 | `FLIGHT_PORT` | `8815` | Porta do servidor Arrow Flight do Provisa |
 | `GRPC_PORT` | `50051` | Porta do servidor gRPC Protobuf do Provisa |
@@ -1671,12 +1669,12 @@ Para fontes Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` para o caminho
 | `PROVISA_REDIRECT_ACCESS_KEY` | — | Chave de acesso S3 |
 | `PROVISA_REDIRECT_SECRET_KEY` | — | Chave secreta S3 |
 | `PROVISA_REDIRECT_TTL` | `3600` | TTL da URL pré-assinada (segundos) |
-| `PROVISA_MTLS_CLIENT_CA` | — | Pacote PEM da(s) AC autorizada(s) a assinar certificados de cliente; defini-la ativa a verificação de certificados de cliente em pgwire, Bolt, gRPC e Flight (REQ-1228) |
-| `PROVISA_MTLS_MODE` | `required` assim que uma AC é definida | `required` ou `optional`; qualquer outro valor recusa-se a iniciar (REQ-1228) |
-| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Exige que o common name do certificado seja igual ao nome de usuário que se autentica (REQ-1228) |
-| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Sites separados por vírgula autorizados a abrir um WebSocket Bolt a partir de um navegador; não definida recusa toda origem de navegador (REQ-802) |
-| `PROVISA_EXTRAS` | `firebase,vector` | Extras do pyproject embutidos na imagem da aplicação; `scripts/provisa` os deriva de `dq_checker` em `~/.provisa/config.yaml` (REQ-1443) |
-| `PROVISA_DQ_CHECKER` | `none` | Somente instalador: `none`/`soda`/`gx`, lido pelo `first-launch.sh` em modo não interativo e gravado em `config.yaml` como `dq_checker` (REQ-1443) |
+| `PROVISA_MTLS_CLIENT_CA` | — | Pacote PEM da(s) AC autorizada(s) a assinar certificados de cliente; defini-la ativa a verificação de certificados de cliente em pgwire, Bolt, gRPC e Flight |
+| `PROVISA_MTLS_MODE` | `required` assim que uma AC é definida | `required` ou `optional`; qualquer outro valor recusa-se a iniciar |
+| `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Exige que o common name do certificado seja igual ao nome de usuário que se autentica |
+| `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Sites separados por vírgula autorizados a abrir um WebSocket Bolt a partir de um navegador; não definida recusa toda origem de navegador |
+| `PROVISA_EXTRAS` | `firebase,vector` | Extras do pyproject embutidos na imagem da aplicação; `scripts/provisa` os deriva de `dq_checker` em `~/.provisa/config.yaml` |
+| `PROVISA_DQ_CHECKER` | `none` | Somente instalador: `none`/`soda`/`gx`, lido pelo `first-launch.sh` em modo não interativo e gravado em `config.yaml` como `dq_checker` |
 | `ANTHROPIC_API_KEY` | — | Chave de API Claude (descoberta) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Sobrepõe `observability.endpoint` |
 | `OTEL_SERVICE_NAME` | `provisa` | Sobrepõe `observability.service_name` |

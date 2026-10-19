@@ -110,7 +110,7 @@ irrelevantes para o que um relacionamento é — elas só determinam quem o apro
 
 **Aprovação:**
 
-- Uma solicitação de relacionamento é decidida pelos domínios que ela toca: o domínio da sua tabela de origem e o domínio da sua tabela de destino (REQ-1948)
+- Uma solicitação de relacionamento é decidida pelos domínios que ela toca: o domínio da sua tabela de origem e o domínio da sua tabela de destino
 - Uma aprovação só conta se vier de um usuário cujo direito de criar relacionamentos alcança um desses domínios; qualquer usuário assim pode rejeitá-la
 - A solicitação é executada quando dois usuários diferentes, nenhum deles o solicitante, a aprovaram e cada domínio envolvido tem um aprovador: um relacionamento entre dois domínios precisa de um sim de cada lado, e um relacionamento dentro de um domínio precisa de dois aprovadores desse domínio
 - Aprovar um relacionamento constrói o grafo de dependência de cada steward, habilitando
@@ -348,5 +348,3 @@ mantêm consciência de como seus ativos são usados conforme acontece, não dep
 - **Push** — notificações pós-uso para atos estruturais (uma nova view foi criada usando seus
   campos)
 - **Pull** — histórico de consulta para padrões de uso em tempo de execução
-
-

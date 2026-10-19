@@ -1,6 +1,6 @@
 # מנויי SSE {: #sse-subscriptions }
 
-Provisa תומכת בדחיפה בזמן אמת מעל Server-Sent Events (SSE). לקוחות מקבלים זרם של אירועי שינוי ללא polling. (REQ-258)
+Provisa תומכת בדחיפה בזמן אמת מעל Server-Sent Events (SSE). לקוחות מקבלים זרם של אירועי שינוי ללא polling.
 
 ## מקורות {: #sources }
 
@@ -14,13 +14,13 @@ Provisa תומכת בדחיפה בזמן אמת מעל Server-Sent Events (SSE).
 
 ### התקנה אוטומטית של טריגר PostgreSQL {: #postgresql-trigger-auto-installation }
 
-Provisa מתקינה אוטומטית טריגרי `AFTER INSERT OR UPDATE OR DELETE` על כל טבלאות PostgreSQL **מאושרות-מראש** בעת ההפעלה. (REQ-565) טריגרים אלה קוראים ל-`pg_notify('provisa_{table}', ...)` כך ש-DML גולמי (לא רק מוטציות Provisa) נקלט על ידי מנויים. (REQ-565)
+Provisa מתקינה אוטומטית טריגרי `AFTER INSERT OR UPDATE OR DELETE` על כל טבלאות PostgreSQL **מאושרות-מראש** בעת ההפעלה. טריגרים אלה קוראים ל-`pg_notify('provisa_{table}', ...)` כך ש-DML גולמי (לא רק מוטציות Provisa) נקלט על ידי מנויים.
 
-אם התקנת הטריגר נכשלת (לדוגמה הרשאה לא מספקת — תפקיד מסד הנתונים חייב להיות הבעלים של הטבלה), Provisa נופלת חזרה ל-polling מבוסס watermark עבור אותה טבלה, בתנאי שמוגדר `watermark_column`. (REQ-566) אזהרה נרשמת ביומן. (REQ-566)
+אם התקנת הטריגר נכשלת (לדוגמה הרשאה לא מספקת — תפקיד מסד הנתונים חייב להיות הבעלים של הטבלה), Provisa נופלת חזרה ל-polling מבוסס watermark עבור אותה טבלה, בתנאי שמוגדר `watermark_column`. אזהרה נרשמת ביומן.
 
 ### מנויי תצוגה חוצי-מקורות-נתונים {: #cross-datasource-view-subscriptions }
 
-עבור תצוגות המצטרפות למספר מקורות נתונים דרך מנוע הפדרציה, הוסיפו `watermark_column` לרישום הטבלה. (REQ-260, REQ-283) העמודה חייבת להתקיים ב-SQL של התצוגה (אינה חייבת להופיע בסכמת GraphQL):
+עבור תצוגות המצטרפות למספר מקורות נתונים דרך מנוע הפדרציה, הוסיפו `watermark_column` לרישום הטבלה. העמודה חייבת להתקיים ב-SQL של התצוגה (אינה חייבת להופיע בסכמת GraphQL):
 
 ```sql
 -- Example: federated view with derived watermark
@@ -31,11 +31,11 @@ FROM postgresql.public.orders o
 JOIN mysql.crm.customer_segments s ON o.customer_id = s.customer_id;
 ```
 
-רשמו עם `watermark_column: _watermark`. Provisa מבצעת polling באמצעות `WHERE _watermark > <last_seen>`. (REQ-260)
+רשמו עם `watermark_column: _watermark`. Provisa מבצעת polling באמצעות `WHERE _watermark > <last_seen>`.
 
 ### מנויי קשר מקוננים {: #nested-relationship-subscriptions }
 
-כאשר שדה המנוי בוחר שדות מטבלאות מצורפות (דרך קשרים רשומים), Provisa עוקבת אחר **כל** הטבלאות הפיזיות המעורבות בו-זמנית. (REQ-567) שינוי בכל טבלה מצורפת מפעיל מחדש את שאילתת המנוי. (REQ-567)
+כאשר שדה המנוי בוחר שדות מטבלאות מצורפות (דרך קשרים רשומים), Provisa עוקבת אחר **כל** הטבלאות הפיזיות המעורבות בו-זמנית. שינוי בכל טבלה מצורפת מפעיל מחדש את שאילתת המנוי.
 
 ## נקודת קצה {: #endpoint }
 
@@ -46,7 +46,7 @@ GET /data/subscribe/{table}
 Accept: text/event-stream
 ```
 
-החיבור נשאר פתוח ופולט אירוע JSON אחד לכל שינוי: (REQ-258, REQ-568)
+החיבור נשאר פתוח ופולט אירוע JSON אחד לכל שינוי:
 
 ```text
 data: {"event":"insert","table":"orders","row":{"id":43,"amount":55.00,"region":"east"}}
@@ -56,7 +56,7 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 
 ## מצבי אספקה {: #delivery-modes }
 
-האספקה נבחרת על ידי `live.strategy` בתצורת הטבלה: (REQ-813, REQ-814)
+האספקה נבחרת על ידי `live.strategy` בתצורת הטבלה:
 
 | `strategy` | מנגנון | זמין עבור | דורש |
 | ------------ | ----------- | --------------- | --------- |
@@ -67,11 +67,11 @@ data: {"event":"update","table":"orders","row":{"id":42,"amount":199.00,"region"
 
 ### LISTEN/NOTIFY
 
-Provisa מנפיקה `LISTEN <channel>` על חיבור PG מתמשך. (REQ-258) מוטציות Provisa מפעילות `NOTIFY` אוטומטית. (REQ-565) כותבים חיצוניים חייבים לקרוא ל-`NOTIFY <channel>, '<payload>'` לאחר כתיבות. אין צורך בתשתית נוספת.
+Provisa מנפיקה `LISTEN <channel>` על חיבור PG מתמשך. מוטציות Provisa מפעילות `NOTIFY` אוטומטית. כותבים חיצוניים חייבים לקרוא ל-`NOTIFY <channel>, '<payload>'` לאחר כתיבות. אין צורך בתשתית נוספת.
 
 ### Polling
 
-Provisa מבצעת מחדש את שאילתת המקור מעת לעת, בוחרת רק שורות שבהן `watermark_column > last_watermark`. (REQ-260) הבדלים נפלטים כאירועי SSE. Polling אינו יכול לראות מחיקות קשות — שורה שהוסרה אינה משאירה watermark מתקדם. כדי להפוך מחיקה לגלויה, השתמשו במחיקה רכה (לדוגמה הגדרת דגל `deleted_at`) המקדמת את עמודת ה-watermark; המחיקה אז מגיעה כאירוע עדכון הנושא את סמן המחיקה-הרכה. (REQ-260)
+Provisa מבצעת מחדש את שאילתת המקור מעת לעת, בוחרת רק שורות שבהן `watermark_column > last_watermark`. הבדלים נפלטים כאירועי SSE. Polling אינו יכול לראות מחיקות קשות — שורה שהוסרה אינה משאירה watermark מתקדם. כדי להפוך מחיקה לגלויה, השתמשו במחיקה רכה (לדוגמה הגדרת דגל `deleted_at`) המקדמת את עמודת ה-watermark; המחיקה אז מגיעה כאירוע עדכון הנושא את סמן המחיקה-הרכה.
 
 תצורת polling של טבלה (ב-`provisa.yaml`):
 
@@ -89,9 +89,9 @@ tables:
 
 ### Debezium CDC
 
-דורש מחבר Debezium פעיל הכותב ל-Kafka. (REQ-261) Provisa צורכת את טופיק ה-Kafka ומעבירה אירועי שינוי ללקוחות SSE מחוברים. (REQ-261)
+דורש מחבר Debezium פעיל הכותב ל-Kafka. Provisa צורכת את טופיק ה-Kafka ומעבירה אירועי שינוי ללקוחות SSE מחוברים.
 
-תעבורת CDC מוגדרת פעם אחת לכל מקור בבלוק `cdc`; טופיקים נגזרים כ-`{topic_prefix}.{schema}.{table}` ואינם חוזרים לכל טבלה. (REQ-824) כל טבלה אז בוחרת `strategy: debezium`:
+תעבורת CDC מוגדרת פעם אחת לכל מקור בבלוק `cdc`; טופיקים נגזרים כ-`{topic_prefix}.{schema}.{table}` ואינם חוזרים לכל טבלה. כל טבלה אז בוחרת `strategy: debezium`:
 
 ```yaml
 sources:
@@ -108,7 +108,7 @@ sources:
 
 #### קידודי הודעות {: #message-encodings }
 
-נושא Debezium נקרא באחד משני קידודים, וכל הודעה אומרת באיזה. (REQ-1951)
+נושא Debezium נקרא באחד משני קידודים, וכל הודעה אומרת באיזה.
 
 | קידוד | מה הנושא נושא | מה המקור צריך |
 |---|---|---|
@@ -193,7 +193,7 @@ source.addEventListener("stream_error", (e) => {
 
 ## הפניית Sink ל-Kafka {: #kafka-sink-redirect }
 
-כל מנוי GraphQL ניתן להפניה לטופיק Kafka במקום זרימה חזרה ללקוח. (REQ-812) הוסיפו את הכותרת `X-Provisa-Sink` לבקשת המנוי:
+כל מנוי GraphQL ניתן להפניה לטופיק Kafka במקום זרימה חזרה ללקוח. הוסיפו את הכותרת `X-Provisa-Sink` לבקשת המנוי:
 
 ```yaml
 POST /data/graphql
@@ -202,17 +202,17 @@ Content-Type: application/json
 X-Provisa-Sink: kafka://broker:9092/my-topic
 ```
 
-השרת משיב `202 Accepted` מיידית ומתחיל משימת רקע ש: (REQ-812)
+השרת משיב `202 Accepted` מיידית ומתחיל משימת רקע ש:
 
 1. עוקבת אחר שינויי טבלה באמצעות אותה שרשרת פתרון-ספק כמו SSE (LISTEN/NOTIFY ← polling asyncpg ← polling פדרטיבי)
 2. מבצעת מחדש את השאילתה השקולה בכל שינוי
 3. מפרסמת את התוצאה כהודעת JSON לטופיק ה-Kafka הנקוב
 
-ה-sink רץ למשך חיי תהליך השרת. (REQ-812) הפעלה מחדש של השרת עוצרת אותו.
+ה-sink רץ למשך חיי תהליך השרת. הפעלה מחדש של השרת עוצרת אותו.
 
 **פורמט URI:** `kafka://[broker:port]/topic`
 
-- אם `broker:port` הושמט, משתנה הסביבה `KAFKA_BOOTSTRAP_SERVERS` נעשה בו שימוש (ברירת מחדל: `localhost:9092`) (REQ-812)
+- אם `broker:port` הושמט, משתנה הסביבה `KAFKA_BOOTSTRAP_SERVERS` נעשה בו שימוש (ברירת מחדל: `localhost:9092`)
 - `topic` נדרש
 
 **דוגמה (curl):**
@@ -228,7 +228,7 @@ curl -X POST http://localhost:8000/data/graphql \
 
 ### Sink של Kafka כפלט שני ברמת התצורה {: #kafka-sink-as-a-config-level-second-output }
 
-מנוי טבלה מבוסס-poll יכול לפרסם בו-זמנית לטופיק Kafka דרך `provisa.yaml`. (REQ-282, REQ-286) מנוי SSE ו-sink Kafka הם שני פלטים של אותו מנוע Live Query. (REQ-282) כל פלט עוקב אחר ה-watermark שלו באופן עצמאי. (REQ-286)
+מנוי טבלה מבוסס-poll יכול לפרסם בו-זמנית לטופיק Kafka דרך `provisa.yaml`. מנוי SSE ו-sink Kafka הם שני פלטים של אותו מנוע Live Query. כל פלט עוקב אחר ה-watermark שלו באופן עצמאי.
 
 ```yaml
 tables:
@@ -246,15 +246,15 @@ tables:
           role: analyst           # required: the rows are published governed as this role
 ```
 
-פלט Kafka מפרסם את שורות הטבלה כשהן מנוהלות כתפקיד שהוא נוקב בו: כללי השורות, נראות העמודות והמסכות שלו חלים כמו על קריאה של אותו תפקיד. פלט ללא `role` נדחה בטעינת הקונפיגורציה. (REQ-565) [tool-verified: `provisa/core/models.py` `LiveOutputConfig`]
+פלט Kafka מפרסם את שורות הטבלה כשהן מנוהלות כתפקיד שהוא נוקב בו: כללי השורות, נראות העמודות והמסכות שלו חלים כמו על קריאה של אותו תפקיד. פלט ללא `role` נדחה בטעינת הקונפיגורציה.
 
 ## אבטחה {: #security }
 
-כל מצבי המנוי אוכפים את אותו צינור אבטחה כמו שאילתות רגילות: (REQ-258, REQ-038)
+כל מצבי המנוי אוכפים את אותו צינור אבטחה כמו שאילתות רגילות:
 
-- פילטרים של RLS מוחלים על כל שורה נפלטת (REQ-040)
-- עמודות ממוסכות מופיעות ממוסכות באירועים (REQ-040)
-- הרשאת תפקיד נבדקת בזמן החיבור (REQ-258)
+- פילטרים של RLS מוחלים על כל שורה נפלטת
+- עמודות ממוסכות מופיעות ממוסכות באירועים
+- הרשאת תפקיד נבדקת בזמן החיבור
 
 ## דוגמת לקוח {: #client-example }
 
@@ -269,4 +269,3 @@ source.onmessage = (e) => {
   console.log(event.event, event.row);
 };
 ```
-

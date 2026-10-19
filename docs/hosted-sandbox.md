@@ -65,4 +65,3 @@ resolved there for every sandbox; a sandbox's own secrets never hold it.
 | Endpoint | Unset: no AI in sandboxes. OpenRouter's is `https://openrouter.ai/api/v1` | `sandbox.ai_base_url` |
 | Model | `anthropic/claude-haiku-5.5`, for every role | `sandbox.ai_model` |
 | Key | Unset: no AI in sandboxes. A `${secret:NAME}` reference to the deployment organization's secret | `sandbox.ai_api_key` |
-

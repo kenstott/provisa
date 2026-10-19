@@ -77,7 +77,7 @@ Una relación es una ruta de recorrido aprobada entre dos activos. Los límites 
 
 **Aprobación:**
 
-- Una solicitud de relación la deciden los dominios que toca: el dominio de su tabla de origen y el dominio de su tabla de destino (REQ-1948)
+- Una solicitud de relación la deciden los dominios que toca: el dominio de su tabla de origen y el dominio de su tabla de destino
 - Una aprobación solo cuenta si viene de un usuario cuyo derecho a crear relaciones alcanza uno de esos dominios; cualquier usuario así puede rechazarla
 - La solicitud se ejecuta cuando dos usuarios distintos, ninguno de ellos el solicitante, la han aprobado y cada dominio implicado tiene un aprobador: una relación entre dos dominios necesita un sí de cada lado, y una relación dentro de un dominio necesita dos aprobadores de ese dominio
 - Aprobar una relación construye el grafo de dependencias de cada steward, lo que permite notificaciones proactivas de evolución del esquema
@@ -262,5 +262,3 @@ El informe de historial de consultas del steward es una vista agregada sobre est
 
 - **Push**: notificaciones posteriores al uso para actos estructurales (se creó una nueva vista usando sus campos)
 - **Pull**: historial de consultas para patrones de uso en tiempo de ejecución
-
-

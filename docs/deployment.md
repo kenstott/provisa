@@ -15,21 +15,21 @@ Provisa supports six deployment paths. Choose based on your audience and operati
 
 ### VM vs Kubernetes
 
-Both are enterprise-grade. The VM/AppImage path is simpler: no cluster to provision, no CNI or RBAC policies to configure, and the AppImage is entirely self-contained (REQ-223). It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).
+Both are enterprise-grade. The VM/AppImage path is simpler: no cluster to provision, no CNI or RBAC policies to configure, and the AppImage is entirely self-contained. It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).
 
-Choose Kubernetes only if your team already operates a K8s cluster and wants Provisa to participate in that operational model (rolling deploys, HPA, unified observability) (REQ-056). The capabilities are equivalent — Kubernetes adds operational overhead, not capability.
+Choose Kubernetes only if your team already operates a K8s cluster and wants Provisa to participate in that operational model (rolling deploys, HPA, unified observability). The capabilities are equivalent — Kubernetes adds operational overhead, not capability.
 
 ### Image acquisition and security scanning
 
 All production paths require obtaining the Provisa artifacts before any deployment can run. "Air-gapped" refers to what happens at install time on the target machine — the artifacts must be acquired first.
 
-**macOS and Windows installers:** Download from the [GitHub releases page](https://github.com/provisa/provisa/releases). Fully bundled; no internet required after download (REQ-227). Intended for dev/eval, not production — no image scanning gate expected.
+**macOS and Windows installers:** Download from the [GitHub releases page](https://github.com/provisa/provisa/releases). Fully bundled; no internet required after download. Intended for dev/eval, not production — no image scanning gate expected.
 
-**AppImage path:** Download from the [GitHub releases page](https://github.com/provisa/provisa/releases) and transfer to the target machine. The AppImage bundles all component images as tarballs inside a squashfs filesystem (REQ-294) — most registry scanners cannot inspect these in-place. Contact your Provisa account team for component image digests to verify against your scanner independently.
+**AppImage path:** Download from the [GitHub releases page](https://github.com/provisa/provisa/releases) and transfer to the target machine. The AppImage bundles all component images as tarballs inside a squashfs filesystem — most registry scanners cannot inspect these in-place. Contact your Provisa account team for component image digests to verify against your scanner independently.
 
 **Terraform path:** The AppImage must be uploaded to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot via IAM role — they require outbound S3 access (direct or via VPC gateway endpoint). Apply the same scanning policy as the AppImage path.
 
-**Helm / Kubernetes path:** Individual images must be pushed to a registry the cluster can reach. This path is most compatible with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector) — images are first-class objects scanners understand natively. For air-gapped clusters, mirror images to an internal registry and override references in `values.yaml` (REQ-294).
+**Helm / Kubernetes path:** Individual images must be pushed to a registry the cluster can reach. This path is most compatible with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector) — images are first-class objects scanners understand natively. For air-gapped clusters, mirror images to an internal registry and override references in `values.yaml`.
 
 ---
 
@@ -37,7 +37,7 @@ All production paths require obtaining the Provisa artifacts before any deployme
 
 ### Recommended: `start-ui.sh`
 
-The easiest way to run Provisa from source. Starts all infrastructure, the backend API, and the UI dev server in one command (REQ-055). Ctrl+C shuts everything down cleanly.
+The easiest way to run Provisa from source. Starts all infrastructure, the backend API, and the UI dev server in one command. Ctrl+C shuts everything down cleanly.
 
 **Prerequisites:** Docker Desktop, Node.js, Python virtualenv at `.venv/`
 
@@ -47,11 +47,11 @@ The easiest way to run Provisa from source. Starts all infrastructure, the backe
 
 What it does:
 
-- Starts `docker-compose.core.yml` + `docker-compose.dev.yml` (all core + demo services) and waits for healthy (REQ-055)
+- Starts `docker-compose.core.yml` + `docker-compose.dev.yml` (all core + demo services) and waits for healthy
 - Seeds Kafka with demo data
 - Syncs Python dependencies from `.venv/`
-- Starts the backend API on port 8001 (logs to `.logs/server.log`) (REQ-558)
-- Starts the Vite UI dev server on port 3000 (REQ-559)
+- Starts the backend API on port 8001 (logs to `.logs/server.log`)
+- Starts the Vite UI dev server on port 3000
 - Prints URLs and waits; Ctrl+C stops everything and tears down compose
 
 ```yaml
@@ -61,9 +61,9 @@ UI:      http://localhost:3000
 
 **Options:**
 
-`--reset-volumes` — Runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.) (REQ-170). Use when you want a completely clean slate — after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
+`--reset-volumes` — Runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.). Use when you want a completely clean slate — after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
 
-`--observability` — Adds full tracing and metrics instrumentation. Downloads the OpenTelemetry Java agent and patches Trino's `jvm.config` to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (`http://localhost:3100`) (REQ-330). The `jvm.config` patch is automatically reverted on Ctrl+C.
+`--observability` — Adds full tracing and metrics instrumentation. Downloads the OpenTelemetry Java agent and patches Trino's `jvm.config` to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (`http://localhost:3100`). The `jvm.config` patch is automatically reverted on Ctrl+C.
 
 ### Manual steps (backend only, no UI)
 
@@ -98,11 +98,11 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 | Service | Port | Purpose |
 | --------- | ------ | --------- |
-| PostgreSQL | 5432 | Config metadata + Iceberg catalog (REQ-169) |
-| PgBouncer | 6432 | Connection pooling (REQ-053) |
-| Federation engine | 8080 | Query federation (REQ-028) |
-| Redis | 6379 | Query result cache (REQ-371) |
-| MinIO | 9000/9001 | S3-compatible object storage (REQ-029, REQ-171) |
+| PostgreSQL | 5432 | Config metadata + Iceberg catalog |
+| PgBouncer | 6432 | Connection pooling |
+| Federation engine | 8080 | Query federation |
+| Redis | 6379 | Query result cache |
+| MinIO | 9000/9001 | S3-compatible object storage |
 
 **Demo (`docker-compose.dev.yml`) — optional, included by `start-ui.sh`:**
 
@@ -115,10 +115,10 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | Elasticsearch | 9200 | Demo search source |
 | Neo4j | 7474/7687 | Demo graph source |
 | Fuseki | 3030 | Demo SPARQL triplestore |
-| OpenTelemetry Collector | — | Trace collection (with `--observability`) (REQ-302) |
-| Prometheus | 9090 | Metrics (with `--observability`) (REQ-330) |
-| Tempo | — | Trace storage (with `--observability`) (REQ-330) |
-| Grafana | 3100 | Dashboards (with `--observability`) (REQ-330) |
+| OpenTelemetry Collector | — | Trace collection (with `--observability`) |
+| Prometheus | 9090 | Metrics (with `--observability`) |
+| Tempo | — | Trace storage (with `--observability`) |
+| Grafana | 3100 | Dashboards (with `--observability`) |
 
 The stores, the federation engine and these telemetry services publish on `PROVISA_STORE_BIND_IP` (`127.0.0.1` unless set), with passwords generated for the deployment. See [Deployment Hardening](security.md#deployment-hardening).
 
@@ -162,15 +162,15 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 
 ## macOS Installer
 
-For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).
+For developer workstations and evaluation. Fully air-gapped — no internet required after download.
 
-The base installer is a **native install**: DuckDB federation engine + embedded PostgreSQL control plane (pgserver) + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO (REQ-972, REQ-979). The federation engine is a wizard choice — DuckDB (native, default), Trino-on-Docker, or an external engine (REQ-973). Observability is always-on self-telemetry viewable in Admin; the Docker collector/Prometheus/Grafana stack is an optional external demonstration, not an on/off switch (REQ-975). The demo data pack is optional and off by default (REQ-978). Trino, the Docker observability stack, and the demo are heavy add-ons resolved local-first (installer-adjacent dir, mounted volumes, `~/Downloads`, then GitHub release), so enterprises can pre-stage tarballs for air-gapped installs (REQ-977).
+The base installer is a **native install**: DuckDB federation engine + embedded PostgreSQL control plane (pgserver) + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO. The federation engine is a wizard choice — DuckDB (native, default), Trino-on-Docker, or an external engine. Observability is always-on self-telemetry viewable in Admin; the Docker collector/Prometheus/Grafana stack is an optional external demonstration, not an on/off switch. The demo data pack is optional and off by default. Trino, the Docker observability stack, and the demo are heavy add-ons resolved local-first (installer-adjacent dir, mounted volumes, `~/Downloads`, then GitHub release), so enterprises can pre-stage tarballs for air-gapped installs.
 
 ### Steps
 
 1. Download `Provisa-<version>-macOS.dmg` from the [GitHub releases page](https://github.com/provisa/provisa/releases)
 2. Open the DMG and drag **Provisa.app** to `/Applications`
-3. Double-click **Provisa.app** — first-launch setup runs once; the wizard offers the engine, observability, and demo choices above (REQ-1007)
+3. Double-click **Provisa.app** — first-launch setup runs once; the wizard offers the engine, observability, and demo choices above
 4. Open Terminal:
 
    ```bash
@@ -179,33 +179,29 @@ The base installer is a **native install**: DuckDB federation engine + embedded 
    provisa open     # open the UI in the browser
    ```
 
-   (REQ-224)
-
 ### Data persistence
 
-All data is stored in `~/.provisa/` (REQ-224). To remove everything: `provisa uninstall`.
+All data is stored in `~/.provisa/`. To remove everything: `provisa uninstall`.
 
 ---
 
 ## Windows Installer
 
-For developer workstations and evaluation. Fully air-gapped — no internet required after download (REQ-227).
+For developer workstations and evaluation. Fully air-gapped — no internet required after download.
 
-Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + embedded PostgreSQL control plane (pgserver), shipping no Docker, no VM, and no container images (REQ-979). The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer (REQ-1005).
+Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + embedded PostgreSQL control plane (pgserver), shipping no Docker, no VM, and no container images. The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer.
 
 ### Steps
 
 1. Download `Provisa-<version>-windows-x64.exe` from the [GitHub releases page](https://github.com/provisa/provisa/releases)
 2. Run the installer — no admin rights required; installs to `%LOCALAPPDATA%\Programs\Provisa\`
-3. Open **Provisa First Launch** from the Start Menu — native setup runs once and prints the next-steps guidance for the layered add-ons (REQ-1005)
+3. Open **Provisa First Launch** from the Start Menu — native setup runs once and prints the next-steps guidance for the layered add-ons
 4. Open a new terminal:
 
    ```text
    provisa status
    provisa open
    ```
-
-   (REQ-224)
 
 ### Data persistence
 
@@ -217,10 +213,10 @@ All data is stored in `%USERPROFILE%\.provisa\`.
 
 ### What it is
 
-`Provisa.AppImage` is a single self-contained executable bundling (REQ-223, REQ-228):
+`Provisa.AppImage` is a single self-contained executable bundling:
 
 - A rootless Docker daemon (`dockerd-rootless.sh` + `rootlesskit`) — no system Docker or root required
-- All container image tarballs (PostgreSQL, PgBouncer, MinIO, Redis, Federation engine, Provisa API) (REQ-294)
+- All container image tarballs (PostgreSQL, PgBouncer, MinIO, Redis, Federation engine, Provisa API)
 - The Provisa CLI wrapper and first-launch setup script
 
 The Provisa image is pre-built at packaging time — Python source is never included.
@@ -229,7 +225,7 @@ The Provisa image is pre-built at packaging time — Python source is never incl
 
 - On-premises bare metal or VM (single node or multi-node)
 - Cloud VMs without a K8s cluster
-- Air-gapped environments (REQ-294)
+- Air-gapped environments
 - When you want simpler operations than Kubernetes
 
 ---
@@ -253,7 +249,7 @@ The Provisa image is pre-built at packaging time — Python source is never incl
    - **Role** → select `primary`
    - **RAM budget** → amount of RAM to allocate (0 = all available); determines Trino worker count
    - **Hostname** → this node's advertised address
-   - **API port** → default `8000` (REQ-560)
+   - **API port** → default `8000`
 5. Setup loads all container images (~2–5 minutes), writes config, and starts services
 6. Verify:
 
@@ -323,7 +319,7 @@ Repeat these steps on each additional node after the primary is running and reac
    - **Role** → select `secondary`
    - **Primary IP** → enter the primary node's IP (connectivity is verified live)
    - **RAM budget**, **hostname**, **API port** → answer as above
-5. Setup loads a reduced image set (no PostgreSQL, PgBouncer, MinIO, Redis — those run only on primary) (REQ-561), starts the Provisa API and a federation engine worker
+5. Setup loads a reduced image set (no PostgreSQL, PgBouncer, MinIO, Redis — those run only on primary), starts the Provisa API and a federation engine worker
 6. Verify:
 
    ```bash
@@ -342,16 +338,16 @@ Repeat these steps on each additional node after the primary is running and reac
 | Service | Why singleton |
 | --------- | --------------- |
 | PostgreSQL | Shared schema, app config, semantic model |
-| Redis | Shared query result cache and subscription state (REQ-371) |
-| MinIO | Shared object store for redirect results and MV snapshots (REQ-029) |
-| Federation engine coordinator | All workers (primary + secondaries) register here (REQ-028) |
+| Redis | Shared query result cache and subscription state |
+| MinIO | Shared object store for redirect results and MV snapshots |
+| Federation engine coordinator | All workers (primary + secondaries) register here |
 
 **Secondary nodes** run only:
 
-- Provisa API — stateless; reads all config from PostgreSQL on the primary at startup (REQ-057, REQ-562)
-- Federation engine worker — self-registers with the coordinator on the primary (REQ-028)
+- Provisa API — stateless; reads all config from PostgreSQL on the primary at startup
+- Federation engine worker — self-registers with the coordinator on the primary
 
-All application state flows through the primary's PostgreSQL. No manual sync required. (REQ-562)
+All application state flows through the primary's PostgreSQL. No manual sync required.
 
 ---
 
@@ -367,7 +363,7 @@ For Terraform, cloud-init, or Ansible — pass flags instead of answering prompt
 ./Provisa.AppImage --non-interactive --role secondary --primary-ip 10.0.0.10 --ram-gb 32
 ```
 
-Non-interactive mode installs a systemd unit (`/etc/systemd/system/provisa.service`) for start-on-boot. (REQ-563)
+Non-interactive mode installs a systemd unit (`/etc/systemd/system/provisa.service`) for start-on-boot.
 
 | Flag | Description |
 | ------ | ------------- |
@@ -380,7 +376,7 @@ Non-interactive mode installs a systemd unit (`/etc/systemd/system/provisa.servi
 
 ## Cloud VM Deployment — Terraform (AWS)
 
-Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC2 instances, ALB, NLB — in one interactive command. (REQ-564)
+Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC2 instances, ALB, NLB — in one interactive command.
 
 ### Files
 
@@ -427,8 +423,6 @@ Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC
    secondary_ips     = ["10.0.x.x", ...]
    ```
 
-   (REQ-564, REQ-143)
-
 9. (Optional) Point DNS records at the ALB and NLB DNS names
 
 10. Verify:
@@ -462,17 +456,17 @@ Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC
 | `m7i.4xlarge` | 16 | 64 GB | 2 | Medium production |
 | `m7i.8xlarge` | 32 | 128 GB | 4 | Large production |
 
-All nodes contribute workers to one coordinator on the primary (REQ-028). A 3-node `m7i.4xlarge` cluster yields 6 Trino workers total.
+All nodes contribute workers to one coordinator on the primary. A 3-node `m7i.4xlarge` cluster yields 6 Trino workers total.
 
 ### What gets provisioned
 
-- VPC with two public subnets across two availability zones (REQ-564)
+- VPC with two public subnets across two availability zones
 - Security groups: LB group (public ingress on 8000/8815), nodes group (LB → nodes, intra-cluster, optional SSH)
 - IAM role + instance profile with S3 GetObject on the AppImage bucket
 - Primary EC2 instance — runs first-launch in `--non-interactive --role primary` mode
 - Secondary EC2 instances (node_count − 1) — run first-launch in `--non-interactive --role secondary --primary-ip <primary private IP>` mode; depend on primary completing first
-- ALB on port 8000 — HTTP API, health-checks `/health` (REQ-560)
-- NLB on port 8815 — Arrow Flight / gRPC (REQ-143)
+- ALB on port 8000 — HTTP API, health-checks `/health`
+- NLB on port 8815 — Arrow Flight / gRPC
 - Both LBs attach to all nodes
 
 ### Prerequisites checklist
@@ -487,7 +481,7 @@ All nodes contribute workers to one coordinator on the primary (REQ-028). A 3-no
 
 ### Secrets
 
-The bundled stores' passwords (PostgreSQL, Redis, MinIO, Grafana's admin) and the Trino cluster's shared secret are generated by Terraform (`random_password`) and given to every node, which keeps them in its systemd environment file, mode 600. They are held in the Terraform state, so protect the state as you would the passwords. Without Terraform, each node's launcher generates them into `~/.provisa/store-credentials.env`. The AppImage generates the remaining credentials during first-launch and writes them to `~/.provisa/config.yaml` on each node (REQ-563). For production, retrieve the admin token from the primary node after deployment:
+The bundled stores' passwords (PostgreSQL, Redis, MinIO, Grafana's admin) and the Trino cluster's shared secret are generated by Terraform (`random_password`) and given to every node, which keeps them in its systemd environment file, mode 600. They are held in the Terraform state, so protect the state as you would the passwords. Without Terraform, each node's launcher generates them into `~/.provisa/store-credentials.env`. The AppImage generates the remaining credentials during first-launch and writes them to `~/.provisa/config.yaml` on each node. For production, retrieve the admin token from the primary node after deployment:
 
 ```bash
 ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
@@ -499,7 +493,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 ### When to use
 
-Your team already operates a Kubernetes cluster and wants Provisa to participate in that operational model (REQ-056). If you are evaluating Provisa or deploying on-premises without an existing cluster, the AppImage path is simpler.
+Your team already operates a Kubernetes cluster and wants Provisa to participate in that operational model. If you are evaluating Provisa or deploying on-premises without an existing cluster, the AppImage path is simpler.
 
 Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FUSE and a rootless Docker daemon, which are not available in standard pod security profiles.
 
@@ -511,16 +505,16 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
    kubectl cluster-info
    ```
 
-2. Pull and mirror images to your internal registry (required for air-gapped or scanned environments; skip if pulling from public registries directly) (REQ-294):
+2. Pull and mirror images to your internal registry (required for air-gapped or scanned environments; skip if pulling from public registries directly):
 
    | Image | Used for |
    | ------- | ---------- |
    | `provisa/provisa:<version>` | Provisa API |
-   | `trinodb/trino:480` | Federation engine coordinator + workers (REQ-169) |
-   | `postgres:16` | In-cluster PostgreSQL (if `postgresql.enabled`) (REQ-169) |
-   | `edoburu/pgbouncer:latest` | In-cluster PgBouncer (if `pgbouncer.enabled`) (REQ-053) |
-   | `redis:7.2` | In-cluster Redis (if `redis.enabled` and no `redis.host`) (REQ-371) |
-   | `minio/minio:latest` | In-cluster MinIO (if `minio.enabled`) (REQ-029) |
+   | `trinodb/trino:480` | Federation engine coordinator + workers |
+   | `postgres:16` | In-cluster PostgreSQL (if `postgresql.enabled`) |
+   | `edoburu/pgbouncer:latest` | In-cluster PgBouncer (if `pgbouncer.enabled`) |
+   | `redis:7.2` | In-cluster Redis (if `redis.enabled` and no `redis.host`) |
+   | `minio/minio:latest` | In-cluster MinIO (if `minio.enabled`) |
 
    For registry-scanned environments:
    - Push each image to your staging registry
@@ -534,7 +528,7 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
    - **TLS** — on by default (`tls.enabled: true`): create the `kubernetes.io/tls` Secret `tls.secretName` names, or set `tls.enabled: false`
    - **MinIO / S3** — in-cluster MinIO or native S3? For AWS, use S3 with an IAM role
    - **Secrets** — pass via `--set` for evaluation; use External Secrets or Vault Agent for production
-   - **Trino coordinator cache** — a 1Gi volume claimed by default and mounted at `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). A Salesforce source's describe results are kept there, so a restarted coordinator does not spend the org's API allowance describing it again. Turn it off only when no source needs it (REQ-1946)
+   - **Trino coordinator cache** — a 1Gi volume claimed by default and mounted at `/data/trino/cache` (`trino.coordinator.cache.persistence`: `enabled`, `size`, `storageClass`). A Salesforce source's describe results are kept there, so a restarted coordinator does not spend the org's API allowance describing it again. Turn it off only when no source needs it
 
 4. Give the deployment its master key. The key encrypts the secrets vault; every API pod must
    hold the same one, and it must outlive any pod. The chart does not render without it.
@@ -616,24 +610,24 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
 
 | Value | Default | Description |
 | ------- | --------- | ------------- |
-| `replicaCount` | `2` | Provisa API replicas (stateless) (REQ-057) |
+| `replicaCount` | `2` | Provisa API replicas (stateless) |
 | `config.pgHost` | `postgres` | PostgreSQL host |
 | `config.pgPassword` | | PostgreSQL password |
 | `config.adminToken` | | Admin API bearer token |
-| `redis.enabled` | `true` | Deploy in-cluster Redis StatefulSet (REQ-371) |
+| `redis.enabled` | `true` | Deploy in-cluster Redis StatefulSet |
 | `redis.host` | `""` | Set to use external Redis |
 | `redis.port` | `6379` | |
 | `credentials.existingSecret` | | Secret holding the stores' passwords (required) |
 | `tls.enabled` | `true` | Serve every endpoint over TLS from `tls.secretName` |
 | `redis.tls` | `false` | |
-| `trino.enabled` | `true` | Deploy federation engine (REQ-028) |
-| `trino.workers` | `2` | Federation engine worker replicas (REQ-056) |
-| `trino.internalTls` | `false` | Encrypt coordinator-worker traffic with a chart-generated certificate; slows shuffle-heavy queries 10% to over 100% (REQ-2072) |
-| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL (REQ-169) |
+| `trino.enabled` | `true` | Deploy federation engine |
+| `trino.workers` | `2` | Federation engine worker replicas |
+| `trino.internalTls` | `false` | Encrypt coordinator-worker traffic with a chart-generated certificate; slows shuffle-heavy queries 10% to over 100% |
+| `postgresql.enabled` | `true` | Deploy in-cluster PostgreSQL |
 | `postgresql.host` | `""` | Set to use external PostgreSQL |
-| `minio.enabled` | `true` | Deploy in-cluster MinIO (REQ-029) |
+| `minio.enabled` | `true` | Deploy in-cluster MinIO |
 | `s3.endpoint` | | S3-compatible endpoint URL |
-| `s3.bucket` | `provisa-results` | Bucket for large result redirect (REQ-029, REQ-137) |
+| `s3.bucket` | `provisa-results` | Bucket for large result redirect |
 | `ingress.enabled` | `false` | Enable ingress |
 
 ### Scaling
@@ -642,7 +636,7 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-Federation engine workers scale independently — more workers increase throughput and concurrent query capacity (REQ-056). (REQ-057)
+Federation engine workers scale independently — more workers increase throughput and concurrent query capacity.
 
 ### Updating config
 
@@ -657,7 +651,7 @@ kubectl rollout restart deployment/provisa --namespace provisa
 
 ## High Availability & Recovery
 
-Provisa applies a two-tier recovery model across all deployment modes (REQ-703):
+Provisa applies a two-tier recovery model across all deployment modes:
 
 - **Tier 1 — transient errors.** Read operations retry for up to 30 seconds on transient errors using exponential backoff with full jitter. Tune the budget with `PROVISA_RETRY_BUDGET_SECS`. Write operations are never retried internally, and memory errors are never retryable.
 - **Tier 2 — component failure.** An internal engine watcher detects and restarts failed software components within 2–3 minutes.
@@ -686,18 +680,16 @@ Do not run `remove_orphan_files` on a table that is being recovered. It deletes 
 
 ## Federation Engine Dependencies
 
-The warehouse federation engines require Python packages and system-level components beyond Provisa's default install. All Python packages listed here are declared in `pyproject.toml` and installed as part of the standard `pip install provisa` or `pip install -e .` [tool-verified: `pyproject.toml` lines 44–52].
+The warehouse federation engines require Python packages and system-level components beyond Provisa's default install. All Python packages listed here are declared in `pyproject.toml` and installed as part of the standard `pip install provisa` or `pip install -e .`.
 
 The Python packages ship with Provisa's default install — no optional extras required for any warehouse engine. The system-level items (ODBC driver, cloud CLIs, service-account keys) must be installed separately.
 
 ### Python packages (already in core dependencies)
 
-[tool-verified: `pyproject.toml` lines 41–52]
-
 | Package | Engine | Purpose |
 | ------- | ------ | ------- |
-| `databricks-sql-connector` | Databricks | SQL warehouse connection; Arrow Cloud Fetch (REQ-987) |
-| `snowflake-connector-python[pandas]` | Snowflake | Connection + Arrow-native `fetch_arrow_table` (REQ-988) |
+| `databricks-sql-connector` | Databricks | SQL warehouse connection; Arrow Cloud Fetch |
+| `snowflake-connector-python[pandas]` | Snowflake | Connection + Arrow-native `fetch_arrow_table` |
 | `google-cloud-bigquery` | BigQuery | Query execution |
 | `google-cloud-bigquery-storage` | BigQuery | Storage Read API for Arrow-native reads |
 | `google-cloud-storage` | BigQuery | GCS staging for external-table links |
@@ -713,7 +705,7 @@ These are not Python packages — they must be installed on the host or containe
 
 **Microsoft Fabric and Azure Synapse (ODBC)**
 
-`pyodbc` connects through the Microsoft ODBC Driver for SQL Server (`msodbcsql18`). The driver must be installed on the host — not via pip. [tool-verified: `mssql_warehouse_runtime.py` line 84 `"ODBC Driver 18 for SQL Server"` default]
+`pyodbc` connects through the Microsoft ODBC Driver for SQL Server (`msodbcsql18`). The driver must be installed on the host — not via pip.
 
 macOS:
 
@@ -737,7 +729,7 @@ export PROVISA_MSSQL_ODBC_DRIVER="ODBC Driver 17 for SQL Server"
 
 **Azure AD authentication (Fabric and Synapse)**
 
-Both engines authenticate via `azure.identity.DefaultAzureCredential` [tool-verified: `mssql_warehouse_runtime.py:79`, `fabric_shortcuts.py:46`]. `DefaultAzureCredential` checks credential sources in order: environment variables, workload identity, managed identity, VS Code, `az login`, and others.
+Both engines authenticate via `azure.identity.DefaultAzureCredential`. `DefaultAzureCredential` checks credential sources in order: environment variables, workload identity, managed identity, VS Code, `az login`, and others.
 
 For local development, `az login` is the simplest path:
 
@@ -782,27 +774,27 @@ The Databricks connector inherits this from `requests` — no Databricks-specifi
 
 ### Per-engine checklist
 
-**Databricks** (REQ-987)
+**Databricks**
 
 - [ ] `databricks-sql-connector` installed (default)
 - [ ] Engine URL with `http_path`: `databricks://token:TOKEN@workspace.azuredatabricks.net?http_path=/sql/1.0/warehouses/xxx`
 - [ ] Personal access token or service principal token
 - [ ] `REQUESTS_CA_BUNDLE` set if behind TLS-intercepting proxy
 
-**Snowflake** (REQ-988)
+**Snowflake**
 
 - [ ] `snowflake-connector-python[pandas]` installed (default)
 - [ ] Engine URL: `snowflake://user:pass@account.snowflakecomputing.com/database`
 - [ ] `account` in `PROVISA_ENGINE_URL` or `federation_hints`
 
-**BigQuery** (REQ-989)
+**BigQuery**
 
 - [ ] `google-cloud-bigquery`, `google-cloud-bigquery-storage`, `google-cloud-storage` installed (default)
 - [ ] `GOOGLE_APPLICATION_CREDENTIALS` set (dev) or workload identity configured (prod)
 - [ ] `GOOGLE_CLOUD_PROJECT` set if the project cannot be inferred from the service account
 - [ ] Service account has BigQuery Data Viewer + Job User roles
 
-**Microsoft Fabric** (REQ-989)
+**Microsoft Fabric**
 
 - [ ] `pyodbc` + `azure-identity` installed (default)
 - [ ] `msodbcsql18` system driver installed
@@ -810,13 +802,13 @@ The Databricks connector inherits this from `requests` — no Databricks-specifi
 - [ ] Azure AD auth: `az login` (dev) or managed identity / service principal (prod)
 - [ ] `FABRIC_WORKSPACE_ID` set if using external object-storage links
 
-**Azure Synapse** (REQ-989)
+**Azure Synapse**
 
 - [ ] Same Python + system requirements as Fabric
 - [ ] `SYNAPSE_SQL_SERVER` and `SYNAPSE_DATABASE` set
 - [ ] Same Azure AD auth setup as Fabric
 
-**ClickHouse** (REQ-986)
+**ClickHouse**
 
 - [ ] `clickhouse-connect` installed (default)
 - [ ] Engine URL: `clickhouse+http://user:pass@host:8123/database`
@@ -829,19 +821,19 @@ The Databricks connector inherits this from `requests` — no Databricks-specifi
 | Variable | Default | Purpose |
 | ---------- | --------- | --------- |
 | `PG_PASSWORD` | | PostgreSQL password |
-| `PROVISA_CONFIG` | `config/provisa.yaml` | Path to config file (REQ-528) |
-| `PROVISA_REDIRECT_ENABLED` | `false` | Enable large result redirect to S3 (REQ-029, REQ-137) |
-| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Row count threshold for redirect (REQ-029) |
-| `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket (REQ-029) |
-| `PROVISA_REDIRECT_ENDPOINT` | | S3-compatible endpoint URL (REQ-029) |
-| `PROVISA_REDIRECT_TTL` | `3600` | Presigned URL TTL (seconds) (REQ-141) |
+| `PROVISA_CONFIG` | `config/provisa.yaml` | Path to config file |
+| `PROVISA_REDIRECT_ENABLED` | `false` | Enable large result redirect to S3 |
+| `PROVISA_REDIRECT_THRESHOLD` | `1000` | Row count threshold for redirect |
+| `PROVISA_REDIRECT_BUCKET` | `provisa-results` | S3 bucket |
+| `PROVISA_REDIRECT_ENDPOINT` | | S3-compatible endpoint URL |
+| `PROVISA_REDIRECT_TTL` | `3600` | Presigned URL TTL (seconds) |
 | `REDIS_HOST` | `localhost` | Redis host |
 | `REDIS_PORT` | `6379` | Redis port |
 | `REDIS_PASSWORD` | | Redis password |
 | `REDIS_TLS` | `false` | Enable TLS for Redis |
-| `TRINO_HOST` | `localhost` | Trino federation engine coordinator host (REQ-028, REQ-054) |
-| `TRINO_PORT` | `8080` | Trino federation engine coordinator HTTP port (REQ-028, REQ-054) |
-| `PROVISA_ENGINE` | `duckdb` | Active federation engine key (REQ-989); overrides persisted config |
+| `TRINO_HOST` | `localhost` | Trino federation engine coordinator host |
+| `TRINO_PORT` | `8080` | Trino federation engine coordinator HTTP port |
+| `PROVISA_ENGINE` | `duckdb` | Active federation engine key; overrides persisted config |
 | `PROVISA_ENGINE_URL` | | Connection URL for URL-driven engines (Databricks, Snowflake, ClickHouse, BigQuery, Fabric, Synapse, SQLAlchemy) |
 | `PROVISA_MATERIALIZE_URL` | | Materialization store URL override; defaults to engine's own store |
 | `PROVISA_MSSQL_ODBC_DRIVER` | `ODBC Driver 18 for SQL Server` | ODBC driver name for Fabric / Synapse |
@@ -873,11 +865,9 @@ provisa export FILE        # Write current config as YAML to FILE
 provisa import FILE        # Replace running config with YAML from FILE
 ```
 
-(REQ-224, REQ-164)
-
 ### Config promotion workflow (dev → test → prod)
 
-All environment-specific settings (connection strings, secrets, ports) belong in environment variables or secret managers — not in the exported config. The exported YAML captures your semantic model: sources, domains, roles, views. (REQ-164)
+All environment-specific settings (connection strings, secrets, ports) belong in environment variables or secret managers — not in the exported config. The exported YAML captures your semantic model: sources, domains, roles, views.
 
 ```bash
 # On dev — export after making changes in the UI
@@ -889,6 +879,5 @@ git push
 git pull
 provisa import config.yaml
 ```
-
 
 See also: [Environments](environments.md) explains how to manage named, schema-isolated copies of your governed model.

@@ -99,8 +99,8 @@ A pré-visualização retorna as três partes como listas. O conversor de linha 
 | Tabela rastreada | levado | Uma tabela registrada. Seu nome personalizado (ou seu campo raiz `select`) vira o alias da tabela. |
 | Nomes de coluna personalizados (`column_config`, ou o antigo `custom_column_names`) | levado | `alias` da coluna. |
 | Nomes de campo raiz além de `select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | mapeado | Informados pelo nome. O Provisa serve uma tabela como um único campo: uma leitura por chave é um filtro sobre ele, um agregado o seu campo `_aggregate`, uma escrita a sua mutação. Verifique se as consultas do app têm essa forma. |
-| Relationship de objeto e de array | levado | Um relacionamento aprovado (`many-to-one` para objeto, `one-to-many` para array) cujo campo GraphQL é o nome da relationship do Hasura. Os casos que diferem estão abaixo. (REQ-1680) |
-| Permissão de select | levado | Permissões de coluna (`visible_to`) e uma regra de linhas. Um termo com variável de sessão (`X-Hasura-User-Id`) vira `current_setting('provisa.hasura_user_id')`, que a requisição vincula em tempo de consulta aos claims da identidade ou aos atributos do membro. Uma variável de sessão do Hasura mantém o próprio nome; `provisa.user_id` continua sendo a identidade autenticada. (REQ-1682) |
+| Relationship de objeto e de array | levado | Um relacionamento aprovado (`many-to-one` para objeto, `one-to-many` para array) cujo campo GraphQL é o nome da relationship do Hasura. Os casos que diferem estão abaixo. |
+| Permissão de select | levado | Permissões de coluna (`visible_to`) e uma regra de linhas. Um termo com variável de sessão (`X-Hasura-User-Id`) vira `current_setting('provisa.hasura_user_id')`, que a requisição vincula em tempo de consulta aos claims da identidade ou aos atributos do membro. Uma variável de sessão do Hasura mantém o próprio nome; `provisa.user_id` continua sendo a identidade autenticada. |
 | Regra de linhas através de uma relationship | levado | Uma subconsulta `EXISTS` sobre a tabela relacionada. |
 | Permissão de insert, update e delete | levado | Permissões de escrita sobre a tabela: uma por função e operação. `columns` viram as colunas da permissão, `filter` o seu `rows`, `check` o seu `check` e `set` os seus presets. |
 | Função herdada de uma função | levado | Essa função como `parent_role_id`. |
@@ -110,7 +110,7 @@ A pré-visualização retorna as três partes como listas. O conversor de linha 
 | Action | mapeado | Um comando que chama o handler da action. |
 | Cron trigger | levado | Um trigger agendado. |
 | Event trigger | mapeado | Um trigger sobre as alterações da tabela. |
-| Remote schema | mapeado | Uma fonte `graphql_remote` cujos campos raiz aterrissam como tabelas governadas. (REQ-1681) |
+| Remote schema | mapeado | Uma fonte `graphql_remote` cujos campos raiz aterrissam como tabelas governadas. |
 
 Casos de relationships:
 
@@ -123,7 +123,7 @@ Detalhes das permissões de escrita:
 
 - Um `filter` ou `check` vazio significa todas as linhas, escrito `TRUE`.
 - Um valor de `set` que é uma variável de sessão (`X-Hasura-User-Id`) vira um preset `session` da variável de sessão correspondente (`X-Hasura-User-Id` vira `hasura_user_id`). Qualquer outro valor vira um preset `literal`. Uma coluna com preset não está também nas colunas da permissão.
-- O admin implícito do Hasura tem todas as permissões. Ele vira a função `org_admin`, que mantém uma permissão de insert, update e delete sobre todas as colunas e todas as linhas, e é nomeada em cada coluna importada. (REQ-1684)
+- O admin implícito do Hasura tem todas as permissões. Ele vira a função `org_admin`, que mantém uma permissão de insert, update e delete sobre todas as colunas e todas as linhas, e é nomeada em cada coluna importada.
 - Cada função com uma permissão de insert, update ou delete recebe também o direito `write`.
 
 Detalhes dos comandos:
@@ -137,16 +137,16 @@ Um documento consolidado também contém seções para as quais o conversor não
 
 ### Conexões e domínios na aba de importação {: #connections-and-domains-on-the-import-tab }
 
-Uma conexão que a exportação escreve por extenso é convertida como está. Quando a exportação lê uma URL de banco de dados de uma variável de ambiente (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), o valor da variável não está na exportação, então a conversão não adivinha nenhum. A fonte é registrada com os campos de conexão vazios, e o relatório manda refazê-la: informe host, porta, banco de dados, usuário e senha da fonte nas configurações de fontes da importação e converta novamente. Apenas os campos que você alterar viajam, como sobreposições de fonte. As linhas de domínio cobrem cada esquema, subgrafo e remote schema que o upload traz; cada uma é um seletor sobre os domínios existentes da organização que também aceita um nome digitado, marcado como "novo domínio" quando não corresponde a nenhum. Aplicar mescla com o que a organização já tem. (REQ-1687)
+Uma conexão que a exportação escreve por extenso é convertida como está. Quando a exportação lê uma URL de banco de dados de uma variável de ambiente (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), o valor da variável não está na exportação, então a conversão não adivinha nenhum. A fonte é registrada com os campos de conexão vazios, e o relatório manda refazê-la: informe host, porta, banco de dados, usuário e senha da fonte nas configurações de fontes da importação e converta novamente. Apenas os campos que você alterar viajam, como sobreposições de fonte. As linhas de domínio cobrem cada esquema, subgrafo e remote schema que o upload traz; cada uma é um seletor sobre os domínios existentes da organização que também aceita um nome digitado, marcado como "novo domínio" quando não corresponde a nenhum. Aplicar mescla com o que a organização já tem.
 
 ### Os tipos vêm da fonte na pré-visualização {: #types-come-from-the-source-at-preview }
 
-Uma exportação do Hasura nomeia colunas sem tipos, e uma tabela rastreada sem permissão não nomeia colunas. A pré-visualização roda com as conexões de fonte que você fornece, então ela lê o `information_schema.columns` de cada fonte SQL alcançável: toda coluna sem tipo recebe o tipo da fonte mapeado para o vocabulário IR, e uma tabela sem colunas recebe toda coluna que a fonte tem, visível somente a `org_admin`, já que o Hasura não a expôs a nenhuma outra função. Uma fonte que a pré-visualização não consegue alcançar é reportada como um aviso `[sources]` e suas colunas permanecem sem tipo para você concluir antes de aplicar. (REQ-1691, REQ-1684)
+Uma exportação do Hasura nomeia colunas sem tipos, e uma tabela rastreada sem permissão não nomeia colunas. A pré-visualização roda com as conexões de fonte que você fornece, então ela lê o `information_schema.columns` de cada fonte SQL alcançável: toda coluna sem tipo recebe o tipo da fonte mapeado para o vocabulário IR, e uma tabela sem colunas recebe toda coluna que a fonte tem, visível somente a `org_admin`, já que o Hasura não a expôs a nenhuma outra função. Uma fonte que a pré-visualização não consegue alcançar é reportada como um aviso `[sources]` e suas colunas permanecem sem tipo para você concluir antes de aplicar.
 
 ### Limitações {: #limitations }
 
 - **Computed fields** são refeitos à mão: a exportação nomeia a função do banco de dados, mas não a define. Adicione-a como coluna de uma view sobre a tabela, ou calcule-a no app.
-- **Remote schemas** aterrissam como tabelas a partir dos SDLs de permissão das funções. Um remote schema sem permissões não aterrissa nada, pois a exportação não traz outra declaração de sua forma. (REQ-1681)
+- **Remote schemas** aterrissam como tabelas a partir dos SDLs de permissão das funções. Um remote schema sem permissões não aterrissa nada, pois a exportação não traz outra declaração de sua forma.
 - **Funções rastreadas** precisam do banco de dados na pré-visualização para ler sua assinatura; offline, são refeitas na página Commands.
 - **As novas tentativas de event e cron triggers** não são levadas.
 

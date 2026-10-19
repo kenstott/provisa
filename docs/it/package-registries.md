@@ -1,6 +1,6 @@
 # Registri di pacchetti
 
-Le sorgenti Node e Python installano il proprio codice e le proprie dipendenze. **Admin → Registri di pacchetti** indica da dove installano: i registri npm, gli indici PyPI e gli host Git dell'organizzazione. Un amministratore dell'organizzazione li inserisce una volta, e ogni installazione Node e Python dell'organizzazione li usa. Il registro npm pubblico e il PyPI pubblico non richiedono alcuna voce. (REQ-1984, REQ-1993)
+Le sorgenti Node e Python installano il proprio codice e le proprie dipendenze. **Admin → Registri di pacchetti** indica da dove installano: i registri npm, gli indici PyPI e gli host Git dell'organizzazione. Un amministratore dell'organizzazione li inserisce una volta, e ogni installazione Node e Python dell'organizzazione li usa. Il registro npm pubblico e il PyPI pubblico non richiedono alcuna voce.
 
 Ogni campo contiene ciò che è stato digitato: un valore, oppure un riferimento come `${secret:npm_token}` o `${env:NPM_TOKEN}`, risolto nel vault dell'organizzazione a ogni installazione. Un riferimento che non si risolve in nulla interrompe l'installazione e indica il registro e il campo. Provisa non scrive mai nel vault e non inventa mai il nome di un segreto. Vedere [Segreti](secrets.md).
 
@@ -16,7 +16,7 @@ Ogni campo contiene ciò che è stato digitato: un valore, oppure un riferimento
 | Mirror di ogni installazione | Ogni pacchetto senza uno scope proprio viene installato tramite questo registro. Uno per organizzazione |
 | Autorità di certificazione (PEM) | Vedere [Un'autorità di certificazione privata](#a-private-certificate-authority) |
 
-Un token viene scritto nel `.npmrc` dell'installazione come `_authToken` e inviato come token bearer. `user:password`, ad esempio un utente Artifactory e la sua chiave API, viene scritto come `_auth` (base64) e inviato come Basic. In entrambi i casi va solo all'host del registro. (REQ-2088)
+Un token viene scritto nel `.npmrc` dell'installazione come `_authToken` e inviato come token bearer. `user:password`, ad esempio un utente Artifactory e la sua chiave API, viene scritto come `_auth` (base64) e inviato come Basic. In entrambi i casi va solo all'host del registro.
 
 ## Indici PyPI {: #pypi-indexes }
 
@@ -39,7 +39,7 @@ Una voce di host Git copre i repository da cui vengono recuperati il codice di u
 | Token o utente:token | Un token, oppure `user:token` |
 | Autorità di certificazione (PEM) | Vedere [Un'autorità di certificazione privata](#a-private-certificate-authority) |
 
-Un URL di repository viene associato alla voce con cui inizia per host, porta e prefisso di percorso. Se ne corrispondono più di una, vince la più lunga: una voce per `bitbucket.example.com:7990/bitbucket/scm/data` copre quel progetto e una per `bitbucket.example.com:7990/bitbucket` copre il resto. (REQ-2088)
+Un URL di repository viene associato alla voce con cui inizia per host, porta e prefisso di percorso. Se ne corrispondono più di una, vince la più lunga: una voce per `bitbucket.example.com:7990/bitbucket/scm/data` copre quel progetto e una per `bitbucket.example.com:7990/bitbucket` copre il resto.
 
 Un token da solo viene inviato con l'utente `x-access-token`. Altri provider si aspettano un utente, quindi inserire `user:token`:
 
@@ -52,7 +52,7 @@ Un token da solo viene inviato con l'utente `x-access-token`. Altri provider si 
 
 ## Un'autorità di certificazione privata {: #a-private-certificate-authority }
 
-Un registro, un indice o un server Git dietro la propria autorità di certificazione, come un proxy Artifactory all'interno della rete, richiede che tale autorità sia considerata attendibile. Incollare il suo certificato PEM nel campo **Autorità di certificazione (PEM)** della voce, oppure un riferimento a un segreto che lo contiene. Lasciare il campo vuoto per un server il cui certificato è attendibile pubblicamente. Un valore senza certificato PEM viene rifiutato al salvataggio della voce, e un riferimento che non si risolve in alcuno viene rifiutato quando si esegue un'installazione. (REQ-2088)
+Un registro, un indice o un server Git dietro la propria autorità di certificazione, come un proxy Artifactory all'interno della rete, richiede che tale autorità sia considerata attendibile. Incollare il suo certificato PEM nel campo **Autorità di certificazione (PEM)** della voce, oppure un riferimento a un segreto che lo contiene. Lasciare il campo vuoto per un server il cui certificato è attendibile pubblicamente. Un valore senza certificato PEM viene rifiutato al salvataggio della voce, e un riferimento che non si risolve in alcuno viene rifiutato quando si esegue un'installazione.
 
 L'autorità è considerata attendibile accanto a quelle pubbliche, mai al loro posto:
 

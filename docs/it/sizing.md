@@ -17,15 +17,15 @@ Una singola esecuzione di dimensionamento è composta da più esecuzioni di benc
 | Esecuzioni di replicazione | Un'origine letta dal vivo, poi da una replica | La frequenza oltre la quale una replica costa meno |
 | Esecuzioni dei worker | Processi worker e richieste in volo per worker | Worker per core fisico, richieste in volo per worker, quanto fornisce un core |
 
-Le esecuzioni per parametro, della cache e di replicazione sono eseguite per trasporto e per origine, e una volta per ogni motore di federazione indicato. Le esecuzioni dei worker sono eseguite per trasporto. [tool-verified: `demo/named/perf/bench/sweeps.py:plan_sweeps,plan_worker_sweep`]
+Le esecuzioni per parametro, della cache e di replicazione sono eseguite per trasporto e per origine, e una volta per ogni motore di federazione indicato. Le esecuzioni dei worker sono eseguite per trasporto.
 
-Per costo si intende qui il tempo di CPU di Provisa per richiesta, in millisecondi. Le esecuzioni per parametro non usano la cache, quindi il costo di un parametro non include mai l'effetto della cache. [tool-verified: `demo/named/perf/bench/sweeps.py:_baseline` sets `k["cache"] = {"probability": 0.0}`]
+Per costo si intende qui il tempo di CPU di Provisa per richiesta, in millisecondi. Le esecuzioni per parametro non usano la cache, quindi il costo di un parametro non include mai l'effetto della cache.
 
-Dalle esecuzioni, `bench_report.py` adatta un modello di costo per motore, trasporto e origine: un costo di base più un costo per campo, filtro, riga e join, con un join tra origini costato in base a come sono letti i suoi due lati. Quando il motore gira come server a sé e la CPU del suo container è misurata, anche il motore ha un modello di costo. [tool-verified: `demo/named/perf/bench/cost_model.py:fit`] `sizing_guide.py` trasforma il report nella guida. Dato un contratto che descrive il tuo carico, dimensiona anche quel carico.
+Dalle esecuzioni, `bench_report.py` adatta un modello di costo per motore, trasporto e origine: un costo di base più un costo per campo, filtro, riga e join, con un join tra origini costato in base a come sono letti i suoi due lati. Quando il motore gira come server a sé e la CPU del suo container è misurata, anche il motore ha un modello di costo. `sizing_guide.py` trasforma il report nella guida. Dato un contratto che descrive il tuo carico, dimensiona anche quel carico.
 
 ## Scrivere un contratto di setup {: #write-a-setup-contract }
 
-Il contratto di setup è un unico file YAML. Indica gli endpoint della tua distribuzione, le tabelle che il benchmark può leggere, la forma delle richieste e il carico. Il benchmark verifica il contratto rispetto alla distribuzione prima di partire. Rifiuta una tabella, una colonna o un join che la distribuzione non espone. [tool-verified: `demo/named/perf/bench/setup_contract.py:setup_from_dict`]
+Il contratto di setup è un unico file YAML. Indica gli endpoint della tua distribuzione, le tabelle che il benchmark può leggere, la forma delle richieste e il carico. Il benchmark verifica il contratto rispetto alla distribuzione prima di partire. Rifiuta una tabella, una colonna o un join che la distribuzione non espone.
 
 Tabelle e colonne sono indicate come la tua distribuzione le registra. Come le chiama ciascun trasporto (nomi SQL, campi GraphQL, etichette Cypher, percorsi REST, tipi gRPC) viene ricavato dalla distribuzione all'avvio dell'esecuzione.
 
@@ -129,22 +129,22 @@ workload:
   transport_weights: {graphql: 0.7, pgwire: 0.3}
 ```
 
-Il formato del contratto è definito da `setup_contract.py` e `contract_parse.py`; un contratto non valido viene rifiutato con un messaggio che nomina il campo. [tool-verified: `demo/named/perf/bench/contract_parse.py`, `SetupError`] I pesi di `workload` devono sommare a 1 e ogni trasporto che nominano deve essere uno di quelli che il contratto esegue. [tool-verified: `demo/named/perf/bench/contract_parse.py:_workload`]
+Il formato del contratto è definito da `setup_contract.py` e `contract_parse.py`; un contratto non valido viene rifiutato con un messaggio che nomina il campo. I pesi di `workload` devono sommare a 1 e ogni trasporto che nominano deve essere uno di quelli che il contratto esegue.
 
-Descrivi le richieste come sono davvero. La guida dimensiona esattamente le richieste che questo contratto genera: il dimensionamento le estrae dallo stesso generatore con seme che usa un'esecuzione. [tool-verified: `demo/named/perf/bench/sizing.py:_transport` uses `request_mix.RequestGenerator`]
+Descrivi le richieste come sono davvero. La guida dimensiona esattamente le richieste che questo contratto genera: il dimensionamento le estrae dallo stesso generatore con seme che usa un'esecuzione.
 
 ## Eseguirlo {: #run-it }
 
 ### 1. Risolvere i nomi una volta {: #1-resolve-the-names-once }
 
-Esegui una volta il contratto baseline. L'esecuzione chiede alla distribuzione come ciascun trasporto chiama le tue tabelle e scrive `resolved-names.json` accanto ai suoi risultati. [tool-verified: `demo/named/perf/bench/optimistic_load.py:resolve_names`]
+Esegui una volta il contratto baseline. L'esecuzione chiede alla distribuzione come ciascun trasporto chiama le tue tabelle e scrive `resolved-names.json` accanto ai suoi risultati.
 
 ```bash
 ../../../../.venv/bin/python3 run_benchmark.py --engine pg --optimistic \
   --setup acme.yaml --server-pid "$PROVISA_PID" --output-dir results/first
 ```
 
-`--engine` indica il motore di federazione che la tua distribuzione esegue (`duckdb`, `pg` o `trino`). `--server-pid` è l'id di processo del server; l'esecuzione legge il tempo di CPU di quel processo e dei suoi processi figli (i worker). Legge il processo direttamente, quindi funziona solo quando il generatore di carico gira sullo stesso host del server. [tool-verified: `demo/named/perf/bench/optimistic_load.py:_server_cpu_seconds`]
+`--engine` indica il motore di federazione che la tua distribuzione esegue (`duckdb`, `pg` o `trino`). `--server-pid` è l'id di processo del server; l'esecuzione legge il tempo di CPU di quel processo e dei suoi processi figli (i worker). Legge il processo direttamente, quindi funziona solo quando il generatore di carico gira sullo stesso host del server.
 
 ### Misurare la CPU del server da un altro host {: #measuring-the-servers-cpu-from-another-host }
 
@@ -159,7 +159,7 @@ Quando puoi, esegui il generatore di carico su una macchina separata: così non 
   --setup acme.yaml --server-cpu-url http://10.0.0.5:9555/ --output-dir results/first
 ```
 
-L'agente risponde con una sola cifra, la stessa che legge `--server-pid`: `GET /` restituisce `{"pid": ..., "cpu_seconds": ...}`, i secondi di CPU cumulativi del processo server e dei suoi worker. Ogni altro percorso risponde 404 e ogni altro metodo viene rifiutato. [tool-verified: `demo/named/perf/bench/server_cpu_agent.py:handler`] Passa a un'esecuzione uno solo tra `--server-pid` e `--server-cpu-url`, mai entrambi. [tool-verified: `demo/named/perf/bench/optimistic_load.py:server_cpu_source`]
+L'agente risponde con una sola cifra, la stessa che legge `--server-pid`: `GET /` restituisce `{"pid": ..., "cpu_seconds": ...}`, i secondi di CPU cumulativi del processo server e dei suoi worker. Ogni altro percorso risponde 404 e ogni altro metodo viene rifiutato. Passa a un'esecuzione uno solo tra `--server-pid` e `--server-cpu-url`, mai entrambi.
 
 `--listen` è obbligatorio: l'agente non ha un indirizzo predefinito. Associalo a un indirizzo privato raggiungibile solo dal generatore di carico, mai a un'interfaccia pubblica, e fermalo (Ctrl+C) quando le esecuzioni sono finite.
 
@@ -181,9 +181,9 @@ L'agente risponde con una sola cifra, la stessa che legge `--server-pid`: `GET /
 - `--engines`: i motori di federazione da misurare, `pg` per default. Ogni esecuzione per parametro è pianificata una volta per motore; il motore si imposta all'avvio del server, quindi le esecuzioni di ciascun motore richiedono di riavviare il server con quel motore.
 - `--engine-container`: `ENGINE=CONTAINER` per un motore che gira come server nel proprio container, la cui CPU ogni esecuzione riporta. Ometti un motore che gira dentro Provisa (DuckDB).
 
-Il piano scrive un contratto per esecuzione e un `manifest.json`. Un'esecuzione che la distribuzione non può servire, come join su gRPC o una tabella che un trasporto non espone, è elencata nel manifest con il motivo. Non viene mai scartata in silenzio. [tool-verified: `demo/named/perf/bench/sweeps.py:_validate`, `write_plan`]
+Il piano scrive un contratto per esecuzione e un `manifest.json`. Un'esecuzione che la distribuzione non può servire, come join su gRPC o una tabella che un trasporto non espone, è elencata nel manifest con il motivo. Non viene mai scartata in silenzio.
 
-Le esecuzioni con replica misurano il costo di aggiornamento della replica durante una finestra senza carico. Imposta `load.idle_window_s` nel tuo contratto (per esempio `120`) prima di pianificarle. Senza, il report rifiuta il punto di pareggio con `no idle.json`. [tool-verified: `demo/named/perf/bench/bench_report.py:_break_even`]
+Le esecuzioni con replica misurano il costo di aggiornamento della replica durante una finestra senza carico. Imposta `load.idle_window_s` nel tuo contratto (per esempio `120`) prima di pianificarle. Senza, il report rifiuta il punto di pareggio con `no idle.json`.
 
 ### 3. Eseguire ogni contratto pianificato {: #3-run-every-planned-contract }
 
@@ -198,9 +198,9 @@ Ogni voce del manifest indica il proprio file di contratto. Esegui ciascuno in `
 
 Da un altro host, usa `--server-cpu-url` al posto di `--server-pid`. Un'esecuzione dei worker riavvia il server, quindi il suo id di processo cambia: riavvia anche l'agente con il nuovo `--pid`.
 
-Aggiungi `--apply-replication` a ogni esecuzione la cui voce del manifest ha `"apply_replication": true` (le esecuzioni di replicazione e quelle di join tra origini). Imposta la replicazione dichiarata dal contratto dell'esecuzione e la ripristina al termine. [tool-verified: `demo/named/perf/bench/optimistic_load.py:add_arguments`]
+Aggiungi `--apply-replication` a ogni esecuzione la cui voce del manifest ha `"apply_replication": true` (le esecuzioni di replicazione e quelle di join tra origini). Imposta la replicazione dichiarata dal contratto dell'esecuzione e la ripristina al termine.
 
-Ogni esecuzione porta un `server_env` nel manifest: il server deve girare con esso. Quello di un'esecuzione per parametro è il suo motore, `{"PROVISA_ENGINE": "duckdb"}`; esegui tutte le esecuzioni di un motore, poi riavvia il server con il successivo. Quello di un'esecuzione dei worker aggiunge i suoi worker e il limite di richieste in volo, per esempio `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`: `PROVISA_WORKERS` è il numero di processi worker e `PROVISA_REQUEST_THREADS` imposta `concurrency.request_threads`, le richieste in volo che ogni worker esegue contemporaneamente. [tool-verified: `provisa/core/settings_catalog.py` `concurrency.request_threads`, `env="PROVISA_REQUEST_THREADS"`] Attendi che ogni worker sia in servizio (`/health` riporta `workers.ready` su `workers.expected`) prima di avviare l'esecuzione.
+Ogni esecuzione porta un `server_env` nel manifest: il server deve girare con esso. Quello di un'esecuzione per parametro è il suo motore, `{"PROVISA_ENGINE": "duckdb"}`; esegui tutte le esecuzioni di un motore, poi riavvia il server con il successivo. Quello di un'esecuzione dei worker aggiunge i suoi worker e il limite di richieste in volo, per esempio `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`: `PROVISA_WORKERS` è il numero di processi worker e `PROVISA_REQUEST_THREADS` imposta `concurrency.request_threads`, le richieste in volo che ogni worker esegue contemporaneamente. Attendi che ogni worker sia in servizio (`/health` riporta `workers.ready` su `workers.expected`) prima di avviare l'esecuzione.
 
 ### 4. Costruire il report {: #4-build-the-report }
 
@@ -208,7 +208,7 @@ Ogni esecuzione porta un `server_env` nel manifest: il server deve girare con es
 ../../../../.venv/bin/python3 bench_report.py --root results/sizing --out results/sizing/report.json
 ```
 
-`--tolerance` (default `0.05`) stabilisce quanto vicina alla migliore velocità di elaborazione misurata deve arrivare un'impostazione dei worker per essere considerata sufficiente. [tool-verified: `demo/named/perf/bench/bench_report.py:DEFAULT_TOLERANCE`]
+`--tolerance` (default `0.05`) stabilisce quanto vicina alla migliore velocità di elaborazione misurata deve arrivare un'impostazione dei worker per essere considerata sufficiente.
 
 ### 5. Generare la guida {: #5-generate-the-guide }
 
@@ -225,9 +225,9 @@ Senza `--setup` la guida contiene solo le sezioni di tuning. Con esso, la guida 
 
 La guida chiude questa sezione con una riga, per esempio: **12 core fisici, 24 processi worker, 2 richieste in volo per worker.** Sopra, una tabella mostra ogni trasporto e origine: la quota di richieste, la media di campi, filtri, righe e join, la quota di cache hit e la CPU che costa una richiesta.
 
-Una richiesta costa il modello di costo alle medie dei suoi parametri in caso di miss e il costo di hit misurato in caso di hit. La CPU di Provisa al secondo di un trasporto, divisa per quanto fornisce un core fisico, dà i suoi core fisici. La guida li somma tra i trasporti e arrotonda per eccesso. I worker sono i core per il maggior numero di worker per core richiesto da uno qualsiasi dei trasporti. Le richieste in volo per worker sono allo stesso modo il massimo richiesto da uno qualsiasi. Un'unica impostazione serve tutti. [tool-verified: `demo/named/perf/bench/sizing.py:size`]
+Una richiesta costa il modello di costo alle medie dei suoi parametri in caso di miss e il costo di hit misurato in caso di hit. La CPU di Provisa al secondo di un trasporto, divisa per quanto fornisce un core fisico, dà i suoi core fisici. La guida li somma tra i trasporti e arrotonda per eccesso. I worker sono i core per il maggior numero di worker per core richiesto da uno qualsiasi dei trasporti. Le richieste in volo per worker sono allo stesso modo il massimo richiesto da uno qualsiasi. Un'unica impostazione serve tutti.
 
-Lo strumento non dimensiona nulla che non abbia misurato. Una parte del carico per cui le esecuzioni non hanno un modello interrompe il dimensionamento con un messaggio che la nomina [tool-verified: `demo/named/perf/bench/sizing.py:SizingRefused`]:
+Lo strumento non dimensiona nulla che non abbia misurato. Una parte del carico per cui le esecuzioni non hanno un modello interrompe il dimensionamento con un messaggio che la nomina:
 
 - un motore che le esecuzioni non hanno misurato
 - un trasporto senza esecuzioni dei worker
@@ -241,7 +241,7 @@ Lo strumento non dimensiona nulla che non abbia misurato. Una parte del carico p
 
 Per ogni trasporto, la guida mostra il minor numero di worker il cui picco di velocità di elaborazione rientra nella tolleranza rispetto al migliore. A quel numero di worker sceglie poi il minor numero di richieste in volo per worker che fa lo stesso. Mostra questa impostazione in due forme: worker per core fisico e richieste in volo per worker. Averne di più non porta velocità di elaborazione. Averne meno lascia core inattivi. La tabella riporta anche il picco di richieste al secondo e la sua latenza p99. Ogni punto misurato è elencato sotto.
 
-Il fattore di capacità è il numero di richieste al secondo che un core fisico fornisce, per la CPU che una richiesta costa da sola, diviso 1000. Sopra 1 il core fa più del lavoro di un thread, come accade quando entrambi i suoi thread hardware servono. [tool-verified: `demo/named/perf/bench/bench_report.py:_server`]
+Il fattore di capacità è il numero di richieste al secondo che un core fisico fornisce, per la CPU che una richiesta costa da sola, diviso 1000. Sopra 1 il core fa più del lavoro di un thread, come accade quando entrambi i suoi thread hardware servono.
 
 ### Quanto costa una richiesta {: #what-a-request-costs }
 
@@ -249,11 +249,11 @@ Per ogni motore, trasporto e origine, affiancati: il costo di base di una richie
 
 ### L'adesione alla cache delle risposte {: #the-response-cache-opt-in }
 
-Per ogni trasporto e origine: la CPU di un miss, di un hit e ciò che un hit risparmia. Una richiesta è servita dalla cache solo quando aderisce e ripete una richiesta precedente, quindi il risparmio vale per le richieste ripetute. Fai aderire quelle ripetute. [tool-verified: `demo/named/perf/bench/bench_report.py:_cache`]
+Per ogni trasporto e origine: la CPU di un miss, di un hit e ciò che un hit risparmia. Una richiesta è servita dalla cache solo quando aderisce e ripete una richiesta precedente, quindi il risparmio vale per le richieste ripetute. Fai aderire quelle ripetute.
 
 ### Letture live o da replica, e il TTL {: #live-or-replica-reads-and-the-ttl }
 
-Per ogni motore, trasporto e origine con esecuzioni di replicazione: il costo di una lettura live, di una lettura da replica, la CPU di un aggiornamento, il TTL e la frequenza di pareggio. Sopra la frequenza di pareggio una replica costa meno CPU, quella di Provisa, della sorgente e del motore insieme, della lettura live. Sotto, leggi live. Una seconda tabella riporta lo stesso per i join tra origini, in base al numero di join nella richiesta: entrambi i lati letti live contro entrambi da repliche, con l'aggiornamento che conta ogni origine che il passaggio ha spostato su una replica. [tool-verified: `demo/named/perf/bench/cost_model.py:break_even`]
+Per ogni motore, trasporto e origine con esecuzioni di replicazione: il costo di una lettura live, di una lettura da replica, la CPU di un aggiornamento, il TTL e la frequenza di pareggio. Sopra la frequenza di pareggio una replica costa meno CPU, quella di Provisa, della sorgente e del motore insieme, della lettura live. Sotto, leggi live. Una seconda tabella riporta lo stesso per i join tra origini, in base al numero di join nella richiesta: entrambi i lati letti live contro entrambi da repliche, con l'aggiornamento che conta ogni origine che il passaggio ha spostato su una replica.
 
 Il pareggio è la CPU di aggiornamento al secondo divisa per quanto risparmia una lettura:
 

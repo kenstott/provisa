@@ -2,7 +2,7 @@
 
 ## Overview
 
-Vector search in Provisa is organized as three independent phases, each delivering standalone value: (REQ-431)
+Vector search in Provisa is organized as three independent phases, each delivering standalone value:
 
 1. **Native vector search** — model registry, embedding column declaration, `cosine_similarity()` UDF
 2. **Non-native fallback** — the replica of a table, with an HNSW index on its embedding column
@@ -14,7 +14,7 @@ Vector search in Provisa is organized as three independent phases, each deliveri
 
 ### Model Registry
 
-Declared in `provisa.yaml`. All embedding and query vectorization operations must reference a registered model. (REQ-419)
+Declared in `provisa.yaml`. All embedding and query vectorization operations must reference a registered model.
 
 ```yaml
 models:
@@ -37,7 +37,7 @@ models:
       enabled: true
 ```
 
-Supported provider types: (REQ-420)
+Supported provider types:
 
 - `openai` — OpenAI-compatible REST API
 - `ollama` — local Ollama server
@@ -45,7 +45,7 @@ Supported provider types: (REQ-420)
 
 ### Embedding Column Declaration
 
-A column is declared as an embedding vector by setting `embedding: true` on an existing column: (REQ-421)
+A column is declared as an embedding vector by setting `embedding: true` on an existing column:
 
 ```yaml
 columns:
@@ -57,11 +57,11 @@ columns:
     embedding_source: description             # optional: originating text column
 ```
 
-`embedding_source` is informational — documents what text generated the vector. Not required for externally generated embeddings. (REQ-421)
+`embedding_source` is informational — documents what text generated the vector. Not required for externally generated embeddings.
 
 ### Source Capability Detection
 
-At source registration time, Provisa auto-detects native vector support: (REQ-422)
+At source registration time, Provisa auto-detects native vector support:
 
 | Source | Detection | Native operator |
 | --- | --- | --- |
@@ -81,9 +81,9 @@ ORDER BY score DESC
 LIMIT 10
 ```
 
-The query is a vector (a bound value or a `'[...]'` literal), a text (embedded with the column's model, REQ-430), or another embedding column of the same model. The call is governed with the whole statement: its column must be an embedding column the role is served (visibility and scope; a `restricted` scope is the sensitivity tier), and any other column is refused by name (REQ-426). Row filters and domain rules apply to the statement as to any other.
+The query is a vector (a bound value or a `'[...]'` literal), a text (embedded with the column's model), or another embedding column of the same model. The call is governed with the whole statement: its column must be an embedding column the role is served (visibility and scope; a `restricted` scope is the sensitivity tier), and any other column is refused by name. Row filters and domain rules apply to the statement as to any other.
 
-The call is written in the SQL of the terminal that runs it: (REQ-423)
+The call is written in the SQL of the terminal that runs it:
 
 | Where the statement runs | Generated SQL |
 | --- | --- |
@@ -97,7 +97,7 @@ A statement over any other source routes to the federation engine, which compute
 
 ### Query-Time Vectorization
 
-Both text input and raw vector input are supported. In GraphQL every table with an embedding column the role is served takes one `similar` argument, naming the column and giving a text or a vector (exactly one), and a `_similarity` score field: (REQ-430)
+Both text input and raw vector input are supported. In GraphQL every table with an embedding column the role is served takes one `similar` argument, naming the column and giving a text or a vector (exactly one), and a `_similarity` score field:
 
 ```graphql
 # Text input — Provisa embeds it with the column's model
@@ -115,7 +115,7 @@ The rows most like the query come first, ahead of any `order_by`; `_similarity` 
 
 ### Model Locking
 
-Once an embedding column is generated with a model, that model is locked for that column. Provisa rejects queries using incompatible models or dimensions: (REQ-429)
+Once an embedding column is generated with a model, that model is locked for that column. Provisa rejects queries using incompatible models or dimensions:
 
 ```yaml
 ERROR: column description_vec was generated with text-embedding-3-small (1536d).
@@ -127,7 +127,7 @@ Re-embed the column or declare a separate embedding column.
 
 ## Phase 2: The Replica's Index
 
-A table served from its replica (REQ-1912) is the fallback for a vector search. Where the engine reads the replica through its store's own SQL, the replica holds each embedding column as a vector with an HNSW index for cosine distance. (REQ-424)
+A table served from its replica is the fallback for a vector search. Where the engine reads the replica through its store's own SQL, the replica holds each embedding column as a vector with an HNSW index for cosine distance.
 
 | Engine | Replica's embedding column | Index |
 | --- | --- | --- |
@@ -139,13 +139,13 @@ A top-k search reads the index: a statement with a `LIMIT`, ordered first by `co
 
 ### Freshness
 
-The index is as fresh as its replica. It is built with each replica build and swapped in with it (REQ-1915), and the DuckDB engine re-indexes its copy whenever the store changes. The table's replica settings (REQ-030, REQ-826) decide how fresh that is; there is no vector cache to invalidate apart from the replica. (REQ-425)
+The index is as fresh as its replica. It is built with each replica build and swapped in with it, and the DuckDB engine re-indexes its copy whenever the store changes. The table's replica settings decide how fresh that is; there is no vector cache to invalidate apart from the replica.
 
 ---
 
 ## Phase 3: Declarative Embedding Generation
 
-Provisa generates and maintains embedding columns from source text. The embedding column may not exist in the source — Provisa creates and owns it. (REQ-427)
+Provisa generates and maintains embedding columns from source text. The embedding column may not exist in the source — Provisa creates and owns it.
 
 ### Declaration
 
@@ -165,7 +165,7 @@ columns:
 
 ### generated_from Subquery
 
-The `generated_from` value is a SQL subquery with these constraints: (REQ-427)
+The `generated_from` value is a SQL subquery with these constraints:
 
 - Must return exactly one text value
 - Validated at declaration time against a sample row
@@ -194,7 +194,7 @@ END
 
 ### Storage
 
-Generated embeddings are stored in the internal pgvector PostgreSQL instance. No source write access required. (REQ-427)
+Generated embeddings are stored in the internal pgvector PostgreSQL instance. No source write access required.
 
 ### Incremental Refresh
 
@@ -203,13 +203,11 @@ Generated embeddings are stored in the internal pgvector PostgreSQL instance. No
 - Re-embed changed rows, upsert into pgvector table
 - Full rebuild triggered by: model change, schema change affecting subquery, manual admin trigger
 
-(REQ-428)
-
 ---
 
 ## Governance
 
-Embedding columns participate in the full Provisa governance stack: (REQ-426)
+Embedding columns participate in the full Provisa governance stack:
 
 | Governance feature | Applies to embedding columns |
 | --- | --- |
@@ -219,7 +217,7 @@ Embedding columns participate in the full Provisa governance stack: (REQ-426)
 | Sensitivity tiers | ✅ — `restricted` tier blocks cosine_similarity() for unauthorized roles |
 | Per-role schema visibility | ✅ — embedding columns hidden from roles without visibility |
 
-Column masking does not apply to embedding columns — a vector cannot be partially masked and remain semantically meaningful. (REQ-652) Access control is enforced via visibility (hide entirely), RLS (filter rows), sensitivity tier (block search), and domain boundary rules. An embedding column is either visible and searchable for a given role, or absent from the schema entirely. (REQ-426)
+Column masking does not apply to embedding columns — a vector cannot be partially masked and remain semantically meaningful. Access control is enforced via visibility (hide entirely), RLS (filter rows), sensitivity tier (block search), and domain boundary rules. An embedding column is either visible and searchable for a given role, or absent from the schema entirely.
 
 ---
 
@@ -231,10 +229,5 @@ Column masking does not apply to embedding columns — a vector cannot be partia
 | Air-gapped | Ollama, local HuggingFace models |
 | Regulated / on-prem | Ollama or local HuggingFace only — no external API calls |
 
-The model registry makes the embedding pipeline fully portable across deployment types. (REQ-419, REQ-420) An air-gapped enterprise substitutes local models; the rest of the pipeline is identical.
+The model registry makes the embedding pipeline fully portable across deployment types. An air-gapped enterprise substitutes local models; the rest of the pipeline is identical.
 
----
-
-## Requirements
-
-REQ-419 through REQ-431. See `docs/arch/requirements.md`.

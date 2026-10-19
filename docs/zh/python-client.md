@@ -5,9 +5,9 @@ Provisa 的 Python 客户端。提供四种接口：
 | 接口 | 使用场景 |
 | ----------- | ---------- |
 | `ProvisaClient` | GraphQL 查询、Arrow Flight、DataFrame 输出 |
-| DB-API 2.0（`connect`） | 标准 Python 数据库接口（PEP 249）（REQ-268） |
-| SQLAlchemy 方言 | BI 工具、ORM、Pandas `read_sql`（REQ-270） |
-| ADBC | 通过 Flight 实现 Arrow 原生列式流式传输（REQ-271） |
+| DB-API 2.0（`connect`） | 标准 Python 数据库接口（PEP 249） |
+| SQLAlchemy 方言 | BI 工具、ORM、Pandas `read_sql` |
+| ADBC | 通过 Flight 实现 Arrow 原生列式流式传输 |
 
 ## 安装 {: #install }
 
@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` 接受的是一份凭据，而不是用户名加密码：它自身没有登录步骤。当脚本需要无人值守运行时，个人访问令牌是首选凭据——它由用户自己的个人资料页签发，带有有效期，并且可以在不动账户的情况下吊销。（REQ-1263）提供程序颁发的 bearer 令牌用法完全相同。两者都放在 `token` 中，客户端会在 HTTP 和 Arrow Flight 两条路径上都出示它。
+`ProvisaClient` 接受的是一份凭据，而不是用户名加密码：它自身没有登录步骤。当脚本需要无人值守运行时，个人访问令牌是首选凭据——它由用户自己的个人资料页签发，带有有效期，并且可以在不动账户的情况下吊销。提供程序颁发的 bearer 令牌用法完全相同。两者都放在 `token` 中，客户端会在 HTTP 和 Arrow Flight 两条路径上都出示它。
 
 要用密码换取令牌，向 `/auth/login` 发送 POST 并读取 `access_token`：
 
@@ -74,7 +74,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight（高吞吐列式传输） {: #arrow-flight-high-throughput-columnar }
 
-大结果集请使用 Flight——数据以 Arrow record batch 的形式流式传输，无需在服务端物化。（REQ-143, REQ-145）
+大结果集请使用 Flight——数据以 Arrow record batch 的形式流式传输，无需在服务端物化。
 
 ```python
 import pyarrow as pa
@@ -83,7 +83,7 @@ table: pa.Table = client.flight("{ orders { id amount region } }")
 df = client.flight_df("{ orders { id amount region } }")
 ```
 
-Flight 默认连接到 8815 端口。（REQ-143）可通过 `flight_port=` 覆盖：
+Flight 默认连接到 8815 端口。可通过 `flight_port=` 覆盖：
 
 ```python
 client = ProvisaClient("http://prod.example.com", flight_port=8815)
@@ -100,14 +100,14 @@ tables_df = client.list_tables()
 | 参数 | 默认值 | 说明 |
 | ----------- | --------- | ------------- |
 | `url` | `http://localhost:8001` | Provisa 服务端基础 URL |
-| `token` | `None` | Bearer 凭据——提供程序令牌或个人访问令牌；使用密码认证时省略（REQ-606、REQ-1263） |
-| `role` | `None` | 要代为执行的角色，作为 `X-Provisa-Role` 发送，仅当该角色已分配给用户时才生效；省略时，请求以身份自身的角色运行（REQ-273） |
-| `flight_port` | `8815` | Arrow Flight gRPC 端口（REQ-143） |
+| `token` | `None` | Bearer 凭据——提供程序令牌或个人访问令牌；使用密码认证时省略 |
+| `role` | `None` | 要代为执行的角色，作为 `X-Provisa-Role` 发送，仅当该角色已分配给用户时才生效；省略时，请求以身份自身的角色运行 |
+| `flight_port` | `8815` | Arrow Flight gRPC 端口 |
 
 ### 错误处理 {: #error-handling }
 
-`query()` 在发生 HTTP 错误时抛出 `httpx.HTTPStatusError`。（REQ-607）
-`query_df()` 在响应中包含 GraphQL 错误时抛出 `RuntimeError`。（REQ-607）
+`query()` 在发生 HTTP 错误时抛出 `httpx.HTTPStatusError`。
+`query_df()` 在响应中包含 GraphQL 错误时抛出 `RuntimeError`。
 
 ---
 
@@ -256,7 +256,7 @@ df = pd.read_sql("SELECT id, amount FROM orders", engine)
 
 ## DB-API 2.0
 
-标准 [PEP 249](https://peps.python.org/pep-0249/) 接口。（REQ-268）可与任何接受 DB-API 连接的工具配合使用。
+标准 [PEP 249](https://peps.python.org/pep-0249/) 接口。可与任何接受 DB-API 连接的工具配合使用。
 
 ```python
 from provisa_client import connect
@@ -269,11 +269,11 @@ conn = connect(
 )
 ```
 
-`connect` 会把用户名和密码 POST 到 `/auth/login`，并保存返回的 `access_token`，因此该连接携带的是一份真实凭据，而不只是一个名字。`role` 是在*请求*某个角色，只有该身份确实被分配了该角色时服务器才会予以满足（REQ-273）；若省略，连接就以登录所解析出的角色运行。
+`connect` 会把用户名和密码 POST 到 `/auth/login`，并保存返回的 `access_token`，因此该连接携带的是一份真实凭据，而不只是一个名字。`role` 是在*请求*某个角色，只有该身份确实被分配了该角色时服务器才会予以满足；若省略，连接就以登录所解析出的角色运行。
 
 ### 执行查询 {: #executing-queries }
 
-游标可接受 GraphQL 或 SQL——自动检测。（REQ-268, REQ-274）
+游标可接受 GraphQL 或 SQL——自动检测。
 
 ```python
 cur = conn.cursor()
@@ -324,7 +324,7 @@ with connect("http://localhost:8001", username="alice", password="secret") as co
 pip install "provisa-client[sqlalchemy]"
 ```
 
-URL 方案：`provisa+http://` 或 `provisa+https://`（REQ-270）
+URL 方案：`provisa+http://` 或 `provisa+https://`
 
 ```python
 from sqlalchemy import create_engine, text
@@ -349,7 +349,7 @@ df = pd.read_sql("{ orders { id amount } }", engine)
 
 | 参数 | 说明 | 默认值 |
 | ----------- | ------------- | --------- |
-| `role` | 要请求的角色；由服务端校验（REQ-273） | 登录所解析出的角色 |
+| `role` | 要请求的角色；由服务端校验 | 登录所解析出的角色 |
 
 ```python
 engine = create_engine(
@@ -359,13 +359,13 @@ engine = create_engine(
 
 ### 架构自省 {: #schema-introspection }
 
-方言反映提供给你的角色的目录，以连接的用户、角色和组织身份从 `GET /data/catalog` 读取。每个域是一个模式，每张表都位于其中之一：`get_schema_names()` 列出各个域，`get_table_names(schema="shop")` 按 SQL 名称列出该域的表，`get_columns("orders", schema="shop")` 给出每列的类型、可空性和描述。未指定模式时，`get_table_names()` 不列出任何表。未知的表会抛出 `NoSuchTableError`；服务器拒绝的目录会抛出错误。(REQ-363, REQ-270, REQ-2070)
+方言反映提供给你的角色的目录，以连接的用户、角色和组织身份从 `GET /data/catalog` 读取。每个域是一个模式，每张表都位于其中之一：`get_schema_names()` 列出各个域，`get_table_names(schema="shop")` 按 SQL 名称列出该域的表，`get_columns("orders", schema="shop")` 给出每列的类型、可空性和描述。未指定模式时，`get_table_names()` 不列出任何表。未知的表会抛出 `NoSuchTableError`；服务器拒绝的目录会抛出错误。
 
 ---
 
 ## ADBC
 
-基于 Arrow Flight 的 Arrow Database Connectivity。（REQ-271）直接返回 `pyarrow.Table`——无需 JSON 反序列化。（REQ-271）
+基于 Arrow Flight 的 Arrow Database Connectivity。直接返回 `pyarrow.Table`——无需 JSON 反序列化。
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -379,11 +379,11 @@ conn = adbc_connect(
     user="alice",
     password="secret",
     role="analyst",   # optional; server validates the requested role
-    port=8815,        # Arrow Flight port (REQ-711)
+    port=8815,        # Arrow Flight port
 )
 ```
 
-`adbc_connect` 会先通过 HTTP 登录，并把得到的令牌放入每一张 Flight ticket，因此 Flight 服务器对连接的身份验证方式与 REST 接口完全一致。（REQ-1263）`role` 参数是一项请求，由服务器对照该身份的角色分配进行校验——它绝不会变成身份本身。（REQ-273）
+`adbc_connect` 会先通过 HTTP 登录，并把得到的令牌放入每一张 Flight ticket，因此 Flight 服务器对连接的身份验证方式与 REST 接口完全一致。`role` 参数是一项请求，由服务器对照该身份的角色分配进行校验——它绝不会变成身份本身。
 
 ### 以 Arrow Table 形式获取 {: #fetch-as-arrow-table }
 
@@ -420,4 +420,4 @@ with adbc_connect("http://localhost:8001", user="alice", password="secret") as c
         table = cur.fetch_arrow_table()
 ```
 
-ADBC 默认连接到 8815 端口的 Flight 服务器。（REQ-143）传入 `port=` 可连接到绑定在非默认端口的 Flight 服务器。（REQ-711）
+ADBC 默认连接到 8815 端口的 Flight 服务器。传入 `port=` 可连接到绑定在非默认端口的 Flight 服务器。

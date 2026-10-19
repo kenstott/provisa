@@ -1,6 +1,6 @@
 # Suporte a Consulta Cypher {: #cypher-query-support }
 
-O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cypher/`. (REQ-345, REQ-347) Consultas são analisadas por um parser recursivo-descendente personalizado (nenhuma biblioteca Cypher externa) (REQ-571), resolvidas de esquema contra o modelo (REQ-351), e emitidas como SQL, depois roteadas para o motor de execução alvo. (REQ-066, REQ-067, REQ-347)
+O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cypher/`. Consultas são analisadas por um parser recursivo-descendente personalizado (nenhuma biblioteca Cypher externa), resolvidas de esquema contra o modelo, e emitidas como SQL, depois roteadas para o motor de execução alvo.
 
 ## Funcionalidades Implementadas {: #implemented-features }
 
@@ -19,9 +19,9 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `UNION` / `UNION ALL` | ✓ | União recursiva através de sub-ASTs |
 | `CALL { … }` | ✓ | Decomposição de subconsulta de call de nível superior via `cypher_calls_to_sql_list` |
 | `CALL { WITH x … }` | ✓ | Subconsulta correlacionada → `CROSS JOIN LATERAL`; veja §CALL Correlacionado |
-| `CALL db.labels()` | ✓ | Retorna labels de nó do modelo; sem tradução SQL (REQ-572) |
-| `CALL db.relationshipTypes()` | ✓ | Retorna tipos de relacionamento do modelo (REQ-572) |
-| `CALL db.propertyKeys()` | ✓ | Retorna todos os nomes de chave de propriedade em todos os tipos de nó (REQ-572) |
+| `CALL db.labels()` | ✓ | Retorna labels de nó do modelo; sem tradução SQL |
+| `CALL db.relationshipTypes()` | ✓ | Retorna tipos de relacionamento do modelo |
+| `CALL db.propertyKeys()` | ✓ | Retorna todos os nomes de chave de propriedade em todos os tipos de nó |
 | `UNWIND` | ✓ | Expansão de array para linhas; primeiro item se torna FROM, subsequentes se tornam CROSS JOIN UNNEST |
 
 ### Padrões de Match {: #match-patterns }
@@ -78,7 +78,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 | `n { .*, extra: expr }` | Todas as props do esquema mais chave nomeada; MAP combinado |
 | `n { key: expr }` | `MAP(ARRAY['key'], ARRAY[expr])` |
 
-**Propriedades de objeto.** Uma coluna que contém um objeto declarado (o objeto embutido de um tipo GraphQL remoto, ou qualquer coluna registrada com campos de objeto) é uma propriedade de mapa: `RETURN n.address` a retorna como mapa, seja qual for a forma em que o motor a devolve, e o nó `n` a traz entre suas propriedades. Um campo GraphQL remoto que aponta para um tipo registrado, um objeto ou uma lista, não é uma propriedade; é alcançado pelo seu relacionamento. (REQ-1991) [tool-verified: `provisa/cypher/label_map.py`, `provisa/cypher/assembler.py`]
+**Propriedades de objeto.** Uma coluna que contém um objeto declarado (o objeto embutido de um tipo GraphQL remoto, ou qualquer coluna registrada com campos de objeto) é uma propriedade de mapa: `RETURN n.address` a retorna como mapa, seja qual for a forma em que o motor a devolve, e o nó `n` a traz entre suas propriedades. Um campo GraphQL remoto que aponta para um tipo registrado, um objeto ou uma lista, não é uma propriedade; é alcançado pelo seu relacionamento.
 
 ### Funções de Agregação {: #aggregation-functions }
 
@@ -159,7 +159,7 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 
 ### Subconsultas CALL Correlacionadas {: #correlated-call-subqueries }
 
-`CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` traduz para `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. (REQ-573) Regras:
+`CALL { WITH x MATCH (x)-[:R]->(n) RETURN n.prop AS alias }` traduz para `CROSS JOIN LATERAL (SELECT n."prop" AS alias FROM ... WHERE x."pk" = n."fk")`. Regras:
 
 - A variável de escopo externo (`x`) deve aparecer em `WITH`
 - Múltiplas vars importadas (`WITH a, b`) são suportadas
@@ -170,26 +170,26 @@ O Provisa traduz um subconjunto do openCypher para SQL via o módulo `provisa/cy
 
 ## Escritas {: #writes }
 
-Cypher suporta três padrões de escrita através do endpoint `/data/cypher`, executados por `provisa/cypher/write_translator.py`. (REQ-818) [tool-verified: `provisa/api/rest/cypher_router.py:415-545`]
+Cypher suporta três padrões de escrita através do endpoint `/data/cypher`, executados por `provisa/cypher/write_translator.py`.
 
-| Cypher | SQL | Req |
-| -------- | ----- | ----- |
-| `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` | REQ-666 |
-| `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` | REQ-667 |
-| `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` | REQ-668 |
+| Cypher | SQL |
+|---|---|
+| `CREATE (n:Label {props})` | `INSERT INTO catalog.schema.table (cols) VALUES (vals)` |
+| `MATCH (n:Label) WHERE … DELETE n` | `DELETE FROM catalog.schema.table WHERE …` |
+| `MATCH (n:Label) WHERE … SET n.prop = val, …` | `UPDATE catalog.schema.table SET col = val, … WHERE …` |
 
-Nomes de propriedade mapeiam para colunas via remoção de prefixo de domínio e resolução de alias; valores escalares Cypher são coagidos ao tipo de coluna alvo. (REQ-666, REQ-668) O corpo da resposta carrega uma contagem `affected_rows`. (REQ-670)
+Nomes de propriedade mapeiam para colunas via remoção de prefixo de domínio e resolução de alias; valores escalares Cypher são coagidos ao tipo de coluna alvo. O corpo da resposta carrega uma contagem `affected_rows`.
 
-A propriedade de um nó é o nome publicado da sua coluna: o alias da coluna quando ela tem um, senão o nome pela convenção de nomenclatura — o nome pelo qual GraphQL e SQL a leem — em `MATCH`, `RETURN`, `CREATE`, `SET` e `MERGE` igualmente. (REQ-471)
+A propriedade de um nó é o nome publicado da sua coluna: o alias da coluna quando ela tem um, senão o nome pela convenção de nomenclatura — o nome pelo qual GraphQL e SQL a leem — em `MATCH`, `RETURN`, `CREATE`, `SET` e `MERGE` igualmente.
 
 Regras:
 
-- O label deve resolver para exatamente uma tabela registrada. Labels ambíguos ou desconhecidos são erros rígidos; sem correspondência fuzzy. (REQ-661) Novos labels ou tipos não podem ser criados através do Cypher. (REQ-662)
-- Toda escrita é bloqueada pelas permissões de escrita da tabela alvo: a função precisa do direito `write` e de uma permissão para a operação, e as colunas escritas devem estar na permissão. Uma função sem elas é rejeitada no momento da compilação. (REQ-663)
-- O conector de fonte subjacente deve suportar DML. Fontes somente-leitura (federadas via Trino, Iceberg sem um conector Delta) rejeitam escritas no momento da tradução. (REQ-664)
-- Relacionamentos não podem ser escritos — eles são derivados dos joins declarados no modelo, não arestas armazenadas. Direcionar um relacionamento é um erro rígido. (REQ-665) Uma aresta apoiada em junção não é exceção: a tabela associativa por trás dela é ela própria uma tabela registrada, e as linhas são escritas nessa tabela, não na aresta. (REQ-1586)
-- Escritas rodam através do pipeline de escrita completo: injeção de RLS e hooks pós-mutação (invalidação de cache de resposta, marcação de obsolescência de view materializada, eventos de mudança Kafka, recarga de tabela quente). (REQ-798)
-- `MERGE`, `DETACH DELETE`, e `REMOVE` não são suportados e são rejeitados no momento da análise. (REQ-671)
+- O label deve resolver para exatamente uma tabela registrada. Labels ambíguos ou desconhecidos são erros rígidos; sem correspondência fuzzy. Novos labels ou tipos não podem ser criados através do Cypher.
+- Toda escrita é bloqueada pelas permissões de escrita da tabela alvo: a função precisa do direito `write` e de uma permissão para a operação, e as colunas escritas devem estar na permissão. Uma função sem elas é rejeitada no momento da compilação.
+- O conector de fonte subjacente deve suportar DML. Fontes somente-leitura (federadas via Trino, Iceberg sem um conector Delta) rejeitam escritas no momento da tradução.
+- Relacionamentos não podem ser escritos — eles são derivados dos joins declarados no modelo, não arestas armazenadas. Direcionar um relacionamento é um erro rígido. Uma aresta apoiada em junção não é exceção: a tabela associativa por trás dela é ela própria uma tabela registrada, e as linhas são escritas nessa tabela, não na aresta.
+- Escritas rodam através do pipeline de escrita completo: injeção de RLS e hooks pós-mutação (invalidação de cache de resposta, marcação de obsolescência de view materializada, eventos de mudança Kafka, recarga de tabela quente).
+- `MERGE`, `DETACH DELETE`, e `REMOVE` não são suportados e são rejeitados no momento da análise.
 
 ---
 
@@ -197,12 +197,12 @@ Regras:
 
 Cypher alcança o mesmo pipeline governado através de dois transportes:
 
-- **HTTP** — `POST /data/cypher` com um corpo JSON (`{"query": "...", "params": {...}}`). Retorna linhas tipadas, ou `affected_rows` para escritas. Variáveis de grafo na cláusula `RETURN` serializam como JSON: nós carregam `id`, `label`, `tableLabel`, e `properties`; arestas carregam `identity`, `start`, `end`, `type`, `properties`, `startNode`, e `endNode`; caminhos carregam `nodes`, `edges`, e `length`/`hops`. (REQ-750) Commands registrados também são chamáveis aqui via `CALL fn(args) YIELD col1, col2` — args posicionais mapeiam para os nomes de argumento declarados do command em ordem. (REQ-1156) [tool-verified: `provisa/api/rest/registered_call.py:113-143`]
-- **Bolt** — um servidor de protocolo binário compatível com Neo4j (codec PackStream, framing em chunks) que permite ao Neo4j Browser, Bloom, e drivers Bolt rodar Cypher sobre o grafo federado. (REQ-802) Ele inicia quando `PROVISA_BOLT_PORT` é definido para um valor não-zero e é desabilitado por padrão; defina `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` para TLS. [tool-verified: `provisa/api/app_startup.py:317-338`] A autenticação Bolt mapeia principal para usuário e banco de dados para função: `SHOW DATABASES` lista uma entrada por par (view × função), nomeada `provisa_<role>` (domínios de negócio) ou `provisa_ops_<role>` (com domínios system/meta/ops); `:use` seleciona a função e view ativas. (REQ-807) Relacionamentos recebem IDs inteiros duráveis via uma tabela `rel_ids`, espelhando o design de `node_ids`. (REQ-806) Commands registrados são chamáveis com `CALL command(args)` — args posicionais mapeiam para nomes de argumento declarados em ordem; procedimentos `CALL dbms.*` / `CALL db.*` têm precedência. (REQ-1156) [tool-verified: `provisa/bolt/session.py:722-749`]
+- **HTTP** — `POST /data/cypher` com um corpo JSON (`{"query": "...", "params": {...}}`). Retorna linhas tipadas, ou `affected_rows` para escritas. Variáveis de grafo na cláusula `RETURN` serializam como JSON: nós carregam `id`, `label`, `tableLabel`, e `properties`; arestas carregam `identity`, `start`, `end`, `type`, `properties`, `startNode`, e `endNode`; caminhos carregam `nodes`, `edges`, e `length`/`hops`. Commands registrados também são chamáveis aqui via `CALL fn(args) YIELD col1, col2` — args posicionais mapeiam para os nomes de argumento declarados do command em ordem.
+- **Bolt** — um servidor de protocolo binário compatível com Neo4j (codec PackStream, framing em chunks) que permite ao Neo4j Browser, Bloom, e drivers Bolt rodar Cypher sobre o grafo federado. Ele inicia quando `PROVISA_BOLT_PORT` é definido para um valor não-zero e é desabilitado por padrão; defina `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` para TLS. A autenticação Bolt mapeia principal para usuário e banco de dados para função: `SHOW DATABASES` lista uma entrada por par (view × função), nomeada `provisa_<role>` (domínios de negócio) ou `provisa_ops_<role>` (com domínios system/meta/ops); `:use` seleciona a função e view ativas. Relacionamentos recebem IDs inteiros duráveis via uma tabela `rel_ids`, espelhando o design de `node_ids`. Commands registrados são chamáveis com `CALL command(args)` — args posicionais mapeiam para nomes de argumento declarados em ordem; procedimentos `CALL dbms.*` / `CALL db.*` têm precedência.
 
 ### Análise de Grafo (Graph Analytics) {: #graph-analytics }
 
-`POST /data/graph-analytics` roda uma consulta Cypher, constrói um grafo NetworkX em memória a partir dos nós e arestas resultantes, executa um algoritmo nomeado, e mescla um dict `_analytics` em cada nó e aresta antes de retorná-los como JSON com um campo `elapsed_ms`. (REQ-642) As chaves de `_analytics` variam por algoritmo: centralidade produz `score`; detecção de comunidade produz `cluster`; k-core produz `core_number`; centralidade de grau adiciona `in_degree` e `out_degree`. (REQ-643) O endpoint rejeita grafos acima de um tamanho configurável (padrão 10.000 nós / 50.000 arestas) com HTTP 413; Girvan-Newman é limitado a 500 nós a menos que o chamador passe `force=true`. (REQ-650, REQ-651)
+`POST /data/graph-analytics` roda uma consulta Cypher, constrói um grafo NetworkX em memória a partir dos nós e arestas resultantes, executa um algoritmo nomeado, e mescla um dict `_analytics` em cada nó e aresta antes de retorná-los como JSON com um campo `elapsed_ms`. As chaves de `_analytics` variam por algoritmo: centralidade produz `score`; detecção de comunidade produz `cluster`; k-core produz `core_number`; centralidade de grau adiciona `in_degree` e `out_degree`. O endpoint rejeita grafos acima de um tamanho configurável (padrão 10.000 nós / 50.000 arestas) com HTTP 413; Girvan-Newman é limitado a 500 nós a menos que o chamador passe `force=true`.
 
 ---
 
@@ -210,29 +210,29 @@ Cypher alcança o mesmo pipeline governado através de dois transportes:
 
 ### Restrições de design {: #design-constraints }
 
-1. **Escritas são limitadas a `CREATE`, `SET`, e `DELETE`.** Estas executam como escritas de tabela diretas através do mesmo pipeline que mutações GraphQL e SQL. (REQ-818, REQ-666, REQ-667, REQ-668) Veja §Escritas acima. `MERGE`, `DETACH DELETE`, e `REMOVE` são rejeitados no momento da análise. (REQ-671, REQ-818) Procedimentos APOC também são rejeitados.
+1. **Escritas são limitadas a `CREATE`, `SET`, e `DELETE`.** Estas executam como escritas de tabela diretas através do mesmo pipeline que mutações GraphQL e SQL. Veja §Escritas acima. `MERGE`, `DETACH DELETE`, e `REMOVE` são rejeitados no momento da análise. Procedimentos APOC também são rejeitados.
 
-2. **Propriedades de relacionamento existem apenas em arestas apoiadas em junção.** Uma aresta declarada sobre um par de colunas de chave estrangeira existe somente como metadados de join no modelo (REQ-574) e não carrega atributos armazenados, então `WHERE r.since > 2020` ou `RETURN r.weight` não têm significado sobre ela. Uma aresta declarada sobre uma tabela de junção carrega, sim: as demais colunas da tabela associativa são as propriedades do relacionamento, `RETURN r` as devolve, e um `WHERE` sobre uma delas compila para um predicado sobre o alias da junção — portanto restringe a travessia em vez de filtrar linhas já montadas. (REQ-1586) A própria tabela de junção sai do lado dos nós do esquema do grafo; aqui ela é uma aresta e em todo o resto é uma tabela.
+2. **Propriedades de relacionamento existem apenas em arestas apoiadas em junção.** Uma aresta declarada sobre um par de colunas de chave estrangeira existe somente como metadados de join no modelo e não carrega atributos armazenados, então `WHERE r.since > 2020` ou `RETURN r.weight` não têm significado sobre ela. Uma aresta declarada sobre uma tabela de junção carrega, sim: as demais colunas da tabela associativa são as propriedades do relacionamento, `RETURN r` as devolve, e um `WHERE` sobre uma delas compila para um predicado sobre o alias da junção — portanto restringe a travessia em vez de filtrar linhas já montadas. A própria tabela de junção sai do lado dos nós do esquema do grafo; aqui ela é uma aresta e em todo o resto é uma tabela.
 
-3. **Travessia bidirecional** `(a)-[]-(b)` reescreve para a UNION ALL frente+trás de todos os relacionamentos direcionados correspondentes do modelo. (REQ-575) Todo relacionamento no modelo é direcional; sintaxe bidirecional é açúcar sintático que se expande para ambas as direções. Branches extras são emitidos no nível de consulta mais externo — padrões MATCH subsequentes na mesma consulta não são duplicados entre branches (limitação para bidirecional de múltiplos MATCH).
+3. **Travessia bidirecional** `(a)-[]-(b)` reescreve para a UNION ALL frente+trás de todos os relacionamentos direcionados correspondentes do modelo. Todo relacionamento no modelo é direcional; sintaxe bidirecional é açúcar sintático que se expande para ambas as direções. Branches extras são emitidos no nível de consulta mais externo — padrões MATCH subsequentes na mesma consulta não são duplicados entre branches (limitação para bidirecional de múltiplos MATCH).
 
-4. **Caminhos recursivos exigem um limite.** Padrões de comprimento variável (`[*]`) devem incluir um limite superior (ex.: `[*..10]`). (REQ-348) Travessia sem limite é rejeitada no momento da análise para prevenir CTEs recursivos descontrolados.
+4. **Caminhos recursivos exigem um limite.** Padrões de comprimento variável (`[*]`) devem incluir um limite superior (ex.: `[*..10]`). Travessia sem limite é rejeitada no momento da análise para prevenir CTEs recursivos descontrolados.
 
 ### Notas de comportamento {: #behaviour-notes }
 
-5. **`shortestPath` em caminhos não auto-referenciais usa JOIN plano, não ordenação por hops.** Quando os tipos de início e fim diferem e nenhum relacionamento auto-referencial existe no esquema, o tradutor emite uma cadeia de JOIN plana (o caminho de esquema mais curto). (REQ-576) Ele não emite `ORDER BY hops` porque hops não são rastreados nesse caminho de código. O resultado é o caminho de esquema estruturalmente mais curto, não o caminho mais curto de dados através de múltiplas linhas.
+5. **`shortestPath` em caminhos não auto-referenciais usa JOIN plano, não ordenação por hops.** Quando os tipos de início e fim diferem e nenhum relacionamento auto-referencial existe no esquema, o tradutor emite uma cadeia de JOIN plana (o caminho de esquema mais curto). Ele não emite `ORDER BY hops` porque hops não são rastreados nesse caminho de código. O resultado é o caminho de esquema estruturalmente mais curto, não o caminho mais curto de dados através de múltiplas linhas.
 
-6. **Múltiplos caminhos de esquema produzem `UNION ALL`.** Quando dois caminhos de esquema de igual contagem de hop conectam os mesmos tipos de início e fim (ex.: `Person -[WORKS_AT]-> Company` e `Person -[MANAGES]-> Company`), ambos são emitidos como branches `UNION ALL`. (REQ-577) Deduplicação de linhas que aparecem em ambos os branches não é realizada.
+6. **Múltiplos caminhos de esquema produzem `UNION ALL`.** Quando dois caminhos de esquema de igual contagem de hop conectam os mesmos tipos de início e fim (ex.: `Person -[WORKS_AT]-> Company` e `Person -[MANAGES]-> Company`), ambos são emitidos como branches `UNION ALL`. Deduplicação de linhas que aparecem em ambos os branches não é realizada.
 
 7. **Um `RelationshipMapping` por par fonte→alvo e combinação de rel\_type.** Se dois campos GraphQL no mesmo tipo de fonte produzem a mesma string `rel_type` (após maiusculização) para o mesmo tipo alvo, o segundo registro sobrescreve o primeiro em `CypherLabelMap.relationships`. A chave de relacionamento inclui nomes de tipo fonte e alvo, então pares fonte/alvo distintos com o mesmo nome de tipo cada um recebe sua própria entrada e não são afetados.
 
-8. **CTEs de cláusula `WITH` são nomeados `_w0`, `_w1`, …** (REQ-578) Nomes são atribuídos posicionalmente dentro de uma única chamada de tradução. Compor múltiplas consultas traduzidas (ex.: em um batch) pode produzir nomes de CTE colidentes se forem concatenadas ingenuamente.
+8. **CTEs de cláusula `WITH` são nomeados `_w0`, `_w1`, …** Nomes são atribuídos posicionalmente dentro de uma única chamada de tradução. Compor múltiplas consultas traduzidas (ex.: em um batch) pode produzir nomes de CTE colidentes se forem concatenadas ingenuamente.
 
-### Cobertura de expressão e padrão (REQ-913) {: #expression-and-pattern-coverage-req-913 }
+### Cobertura de expressão e padrão {: #expression-and-pattern-coverage }
 
 Expressões Cypher são analisadas em uma AST e reduzidas nó a nó para SQL (`provisa/cypher/expr_parser.py`, `provisa/cypher/expr_visitor.py`). A gramática segue a torre de precedência `oC_Expression` do openCypher. Suportado: literais, parâmetros, acesso a propriedade, `n.prop`, índice e slice, aritmética (`+ - * / % ^`), comparação, `IN`, `STARTS WITH` / `ENDS WITH` / `CONTAINS` / `=~`, `IS [NOT] NULL`, booleano `AND` / `OR` / `XOR` / `NOT`, `CASE`, literais de lista e mapa, compreensões de lista e padrão (incluindo a vinculação de caminho `p = (…)`), projeção de mapa, `reduce`, os quantificadores `all` / `any` / `none` / `single`, subconsultas existenciais, e chamadas de função.
 
-9. **Labels são fixos; você não pode criar tipos de objeto através do Cypher.** Um label resolve para um domínio conhecido, um tipo de objeto conhecido, ou um `domain:object_type` qualificado — o conjunto fechado definido pelo esquema registrado. Cypher nunca introduz um novo label ou tipo. Criação de instância é possível somente para tipos já definidos dentro de uma fonte de dados gravável; `CREATE` escreve linhas em tal tabela (veja §Escritas) mas não pode definir um novo label ou tipo. (REQ-662) Ambas as formas de label são aceitas e significam o mesmo teste: o postfix `n:Label` e o verboso `n IS :Label` (e sua negação `n IS NOT :Label`). Um label qualificado é escrito `n:domain:object_type`.
+9. **Labels são fixos; você não pode criar tipos de objeto através do Cypher.** Um label resolve para um domínio conhecido, um tipo de objeto conhecido, ou um `domain:object_type` qualificado — o conjunto fechado definido pelo esquema registrado. Cypher nunca introduz um novo label ou tipo. Criação de instância é possível somente para tipos já definidos dentro de uma fonte de dados gravável; `CREATE` escreve linhas em tal tabela (veja §Escritas) mas não pode definir um novo label ou tipo. Ambas as formas de label são aceitas e significam o mesmo teste: o postfix `n:Label` e o verboso `n IS :Label` (e sua negação `n IS NOT :Label`). Um label qualificado é escrito `n:domain:object_type`.
 
 10. **`shortestPath` e `allShortestPaths` são suportados somente dentro de `MATCH`, não como expressões.** Em um padrão (`MATCH p = shortestPath((a:Person)-[:KNOWS*..5]->(b:Person))`) eles traduzem para um CTE `WITH RECURSIVE` e exigem nós de origem e alvo com label. Usados em posição de expressão — por exemplo `RETURN shortestPath((a)-[*]->(b))` ou `WHERE length(shortestPath((a)-[*]->(b))) < 5` — eles não são suportados, porque a reescrita recursiva é orientada pela cláusula `MATCH` em vez de uma subconsulta correlacionada.
 

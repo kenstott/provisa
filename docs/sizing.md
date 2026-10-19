@@ -17,15 +17,15 @@ A single sizing run is several benchmark runs against your deployment. Each vari
 | Replication runs | A source read live, then from a replica | The rate above which a replica costs less |
 | Worker runs | Worker processes and in-flight requests per worker | Workers per physical core, in-flight per worker, what a core delivers |
 
-Knob runs, cache runs and replication runs are made per transport and per source, and once per federation engine you name. Worker runs are made per transport. [tool-verified: `demo/named/perf/bench/sweeps.py:plan_sweeps,plan_worker_sweep`]
+Knob runs, cache runs and replication runs are made per transport and per source, and once per federation engine you name. Worker runs are made per transport.
 
-Cost here means Provisa's CPU time per request, in milliseconds. The knob runs are uncached, so a knob's cost never includes the cache's effect. [tool-verified: `demo/named/perf/bench/sweeps.py:_baseline` sets `k["cache"] = {"probability": 0.0}`]
+Cost here means Provisa's CPU time per request, in milliseconds. The knob runs are uncached, so a knob's cost never includes the cache's effect.
 
-From the runs, `bench_report.py` fits a cost model per engine, transport and source: a base cost plus a cost per field, filter, row and join, with a cross-source join costed by how its two ends are read. When the engine runs as a server of its own and its container's CPU is measured, the engine gets a cost model too. [tool-verified: `demo/named/perf/bench/cost_model.py:fit`] `sizing_guide.py` turns the report into the guide. Given a contract that describes your workload, it also sizes that workload.
+From the runs, `bench_report.py` fits a cost model per engine, transport and source: a base cost plus a cost per field, filter, row and join, with a cross-source join costed by how its two ends are read. When the engine runs as a server of its own and its container's CPU is measured, the engine gets a cost model too. `sizing_guide.py` turns the report into the guide. Given a contract that describes your workload, it also sizes that workload.
 
 ## Write a setup contract
 
-The setup contract is one YAML file. It names your deployment's endpoints, the tables the benchmark may read, the shape of the requests, and the load. The benchmark checks the contract against the deployment before it runs. It refuses a table, column or join the deployment does not expose. [tool-verified: `demo/named/perf/bench/setup_contract.py:setup_from_dict`]
+The setup contract is one YAML file. It names your deployment's endpoints, the tables the benchmark may read, the shape of the requests, and the load. The benchmark checks the contract against the deployment before it runs. It refuses a table, column or join the deployment does not expose.
 
 Tables and columns are named as your deployment registers them. What each transport calls them (SQL names, GraphQL fields, Cypher labels, REST paths, gRPC types) is looked up from the deployment when the run starts.
 
@@ -129,22 +129,22 @@ workload:
   transport_weights: {graphql: 0.7, pgwire: 0.3}
 ```
 
-The contract format is defined by `setup_contract.py` and `contract_parse.py`; an invalid contract is refused with a message that names the field. [tool-verified: `demo/named/perf/bench/contract_parse.py`, `SetupError`] The `workload` weights must sum to 1, and each transport they name must be one the contract runs. [tool-verified: `demo/named/perf/bench/contract_parse.py:_workload`]
+The contract format is defined by `setup_contract.py` and `contract_parse.py`; an invalid contract is refused with a message that names the field. The `workload` weights must sum to 1, and each transport they name must be one the contract runs.
 
-Describe the requests as they really are. The guide sizes exactly the requests this contract generates: the sizing draws them from the same seeded generator a run uses. [tool-verified: `demo/named/perf/bench/sizing.py:_transport` uses `request_mix.RequestGenerator`]
+Describe the requests as they really are. The guide sizes exactly the requests this contract generates: the sizing draws them from the same seeded generator a run uses.
 
 ## Run it
 
 ### 1. Resolve the names once
 
-Run the baseline contract once. The run asks the deployment what each transport calls your tables and writes `resolved-names.json` next to its results. [tool-verified: `demo/named/perf/bench/optimistic_load.py:resolve_names`]
+Run the baseline contract once. The run asks the deployment what each transport calls your tables and writes `resolved-names.json` next to its results.
 
 ```bash
 ../../../../.venv/bin/python3 run_benchmark.py --engine pg --optimistic \
   --setup acme.yaml --server-pid "$PROVISA_PID" --output-dir results/first
 ```
 
-`--engine` names the federation engine your deployment runs (`duckdb`, `pg` or `trino`). `--server-pid` is the server's process id; the run reads the CPU time of that process and its child processes (the workers). It reads the process directly, so it works only when the load generator runs on the server's host. [tool-verified: `demo/named/perf/bench/optimistic_load.py:_server_cpu_seconds`]
+`--engine` names the federation engine your deployment runs (`duckdb`, `pg` or `trino`). `--server-pid` is the server's process id; the run reads the CPU time of that process and its child processes (the workers). It reads the process directly, so it works only when the load generator runs on the server's host.
 
 ### Measuring the server's CPU from another host
 
@@ -159,7 +159,7 @@ Run the load generator on its own machine when you can: then it takes no cores f
   --setup acme.yaml --server-cpu-url http://10.0.0.5:9555/ --output-dir results/first
 ```
 
-The agent answers one figure, the same one `--server-pid` reads: `GET /` returns `{"pid": ..., "cpu_seconds": ...}`, the cumulative CPU seconds of the server process and its workers. Every other path answers 404, and every other method is refused. [tool-verified: `demo/named/perf/bench/server_cpu_agent.py:handler`] Give a run one of `--server-pid` or `--server-cpu-url`, never both. [tool-verified: `demo/named/perf/bench/optimistic_load.py:server_cpu_source`]
+The agent answers one figure, the same one `--server-pid` reads: `GET /` returns `{"pid": ..., "cpu_seconds": ...}`, the cumulative CPU seconds of the server process and its workers. Every other path answers 404, and every other method is refused. Give a run one of `--server-pid` or `--server-cpu-url`, never both.
 
 `--listen` is required: the agent has no default address. Bind it to a private address that only the load generator can reach, never a public interface, and stop it (Ctrl+C) when the runs are done.
 
@@ -181,9 +181,9 @@ The agent answers one figure, the same one `--server-pid` reads: `GET /` returns
 - `--engines`: the federation engines to measure, `pg` by default. Every knob run is planned once per engine; the engine is set when the server starts, so each engine's runs need the server restarted with it.
 - `--engine-container`: `ENGINE=CONTAINER` for an engine that runs as a server in its own container, whose CPU each run then reports. Leave out an engine that runs inside Provisa (DuckDB).
 
-The plan writes one contract per run and a `manifest.json`. A run the deployment cannot serve, such as joins over gRPC or a table a transport does not expose, is listed in the manifest with the reason. It is never dropped silently. [tool-verified: `demo/named/perf/bench/sweeps.py:_validate`, `write_plan`]
+The plan writes one contract per run and a `manifest.json`. A run the deployment cannot serve, such as joins over gRPC or a table a transport does not expose, is listed in the manifest with the reason. It is never dropped silently.
 
-The replica runs measure the replica's refresh cost during a window with no load. Set `load.idle_window_s` in your contract (for example `120`) before planning them. Without it the report refuses the break-even with `no idle.json`. [tool-verified: `demo/named/perf/bench/bench_report.py:_break_even`]
+The replica runs measure the replica's refresh cost during a window with no load. Set `load.idle_window_s` in your contract (for example `120`) before planning them. Without it the report refuses the break-even with `no idle.json`.
 
 ### 3. Run every planned contract
 
@@ -198,9 +198,9 @@ Each manifest entry names its contract file. Run each one into `results/sizing/r
 
 From another host, use `--server-cpu-url` in place of `--server-pid`. A worker run restarts the server, so its process id changes: restart the agent with the new `--pid` too.
 
-Add `--apply-replication` to every run whose manifest entry has `"apply_replication": true` (the replication runs and the cross-source join runs). It sets the replication the run's contract declares and restores it afterwards. [tool-verified: `demo/named/perf/bench/optimistic_load.py:add_arguments`]
+Add `--apply-replication` to every run whose manifest entry has `"apply_replication": true` (the replication runs and the cross-source join runs). It sets the replication the run's contract declares and restores it afterwards.
 
-Every run carries a `server_env` in the manifest: the server must be running with it. A knob run's is its engine, `{"PROVISA_ENGINE": "duckdb"}`; run all of one engine's runs, then restart the server with the next. A worker run's adds its workers and in-flight bound, for example `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`: `PROVISA_WORKERS` is the number of worker processes and `PROVISA_REQUEST_THREADS` sets `concurrency.request_threads`, the in-flight requests each worker runs at once. [tool-verified: `provisa/core/settings_catalog.py` `concurrency.request_threads`, `env="PROVISA_REQUEST_THREADS"`] Wait until every worker is serving (`/health` reports `workers.ready` of `workers.expected`) before you start the run.
+Every run carries a `server_env` in the manifest: the server must be running with it. A knob run's is its engine, `{"PROVISA_ENGINE": "duckdb"}`; run all of one engine's runs, then restart the server with the next. A worker run's adds its workers and in-flight bound, for example `{"PROVISA_WORKERS": "16", "PROVISA_REQUEST_THREADS": "2", "PROVISA_ENGINE": "pg"}`: `PROVISA_WORKERS` is the number of worker processes and `PROVISA_REQUEST_THREADS` sets `concurrency.request_threads`, the in-flight requests each worker runs at once. Wait until every worker is serving (`/health` reports `workers.ready` of `workers.expected`) before you start the run.
 
 ### 4. Build the report
 
@@ -208,7 +208,7 @@ Every run carries a `server_env` in the manifest: the server must be running wit
 ../../../../.venv/bin/python3 bench_report.py --root results/sizing --out results/sizing/report.json
 ```
 
-`--tolerance` (default `0.05`) sets how close to the best measured throughput a worker setting must come to count as enough. [tool-verified: `demo/named/perf/bench/bench_report.py:DEFAULT_TOLERANCE`]
+`--tolerance` (default `0.05`) sets how close to the best measured throughput a worker setting must come to count as enough.
 
 ### 5. Generate the guide
 
@@ -225,9 +225,9 @@ Without `--setup` the guide has the tuning sections only. With it, the guide siz
 
 The guide ends this section with one line, for example: **12 physical cores, 24 worker processes, 2 in-flight requests per worker.** Above it, a table shows each transport and source: the share of requests, the mean fields, filters, rows and joins, the share that are cache hits, and the CPU one request costs.
 
-A request costs the cost model at its knob means on a miss and the measured hit cost on a hit. A transport's Provisa CPU per second, divided by what one physical core delivers, gives its physical cores. The guide adds these across transports and rounds up. Workers are the cores times the largest workers-per-core any of the transports needs. In-flight per worker is likewise the largest any of them needs. One setting serves them all. [tool-verified: `demo/named/perf/bench/sizing.py:size`]
+A request costs the cost model at its knob means on a miss and the measured hit cost on a hit. A transport's Provisa CPU per second, divided by what one physical core delivers, gives its physical cores. The guide adds these across transports and rounds up. Workers are the cores times the largest workers-per-core any of the transports needs. In-flight per worker is likewise the largest any of them needs. One setting serves them all.
 
-The tool sizes nothing it did not measure. A part of the workload the runs have no model for stops the sizing with a message that names it [tool-verified: `demo/named/perf/bench/sizing.py:SizingRefused`]:
+The tool sizes nothing it did not measure. A part of the workload the runs have no model for stops the sizing with a message that names it:
 
 - an engine the runs did not measure
 - a transport with no worker runs
@@ -241,7 +241,7 @@ The tool sizes nothing it did not measure. A part of the workload the runs have 
 
 For each transport, the guide shows the fewest workers whose peak throughput comes within the tolerance of the best. At that worker count it then picks the fewest in-flight requests per worker that do the same. It shows that setting in two forms: workers per physical core and in-flight per worker. More of either buys no throughput. Fewer leaves cores idle. The table also gives the peak requests per second and its p99 latency. Every measured point is listed below it.
 
-The capacity factor is the requests per second one physical core delivers, times the CPU one request costs on its own, over 1000. Above 1 the core does more than one thread's worth of requests, as it does when its hardware threads both serve. [tool-verified: `demo/named/perf/bench/bench_report.py:_server`]
+The capacity factor is the requests per second one physical core delivers, times the CPU one request costs on its own, over 1000. Above 1 the core does more than one thread's worth of requests, as it does when its hardware threads both serve.
 
 ### What a request costs
 
@@ -249,11 +249,11 @@ For each engine, transport and source, side by side: the base cost of an uncache
 
 ### The response-cache opt-in
 
-For each transport and source: the CPU of a miss, of a hit, and what a hit saves. A request is answered from the cache only when it opts in and repeats an earlier request, so the saving applies to repeated requests. Opt the repeated ones in. [tool-verified: `demo/named/perf/bench/bench_report.py:_cache`]
+For each transport and source: the CPU of a miss, of a hit, and what a hit saves. A request is answered from the cache only when it opts in and repeats an earlier request, so the saving applies to repeated requests. Opt the repeated ones in.
 
 ### Live or replica reads, and the TTL
 
-For each engine, transport and source with replication runs: the cost of a live read, of a replica read, the CPU of one refresh, the TTL, and the break-even rate. Above the break-even rate a replica costs less CPU, Provisa's, the source's and the engine's together, than reading live. Below it, read live. A second table gives the same for cross-source joins, by the number of joins in the request: both ends read live against both ends from replicas, the refresh counting every source the switch moved to a replica. [tool-verified: `demo/named/perf/bench/cost_model.py:break_even`]
+For each engine, transport and source with replication runs: the cost of a live read, of a replica read, the CPU of one refresh, the TTL, and the break-even rate. Above the break-even rate a replica costs less CPU, Provisa's, the source's and the engine's together, than reading live. Below it, read live. A second table gives the same for cross-source joins, by the number of joins in the request: both ends read live against both ends from replicas, the refresh counting every source the switch moved to a replica.
 
 The break-even is the refresh's CPU per second over what one read saves:
 

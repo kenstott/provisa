@@ -91,8 +91,8 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | 已追蹤的資料表 | 原樣帶過來 | 一張已註冊的資料表。其自訂名稱（或其 `select` 根欄位）成為資料表別名。 |
 | 自訂欄位名（`column_config`，或較舊的 `custom_column_names`） | 原樣帶過來 | 欄位的 `alias`。 |
 | `select` 之外的根欄位名（`select_by_pk`、`select_aggregate`、`insert` 等） | 對應 | 按名稱報告。Provisa 把一張資料表作為一個欄位提供：按鍵讀取是對它的篩選，聚合是它的 `_aggregate` 欄位，寫入是它的變更。請確認應用程式的查詢採用這種形態。 |
-| Object 和 array relationship | 原樣帶過來 | 一個已批准的關係（object 對應 `many-to-one`，array 對應 `one-to-many`），其 GraphQL 欄位是 Hasura relationship 的名稱。不同的情形見下文。（REQ-1680） |
-| select 權限 | 原樣帶過來 | 欄位權限（`visible_to`）和一條行規則。帶工作階段變數的項（`X-Hasura-User-Id`）變為 `current_setting('provisa.hasura_user_id')`，請求在查詢時根據身分的 claims 或成員的屬性綁定它。Hasura 工作階段變數保留自己的名稱；`provisa.user_id` 仍是已登入的身分。（REQ-1682） |
+| Object 和 array relationship | 原樣帶過來 | 一個已批准的關係（object 對應 `many-to-one`，array 對應 `one-to-many`），其 GraphQL 欄位是 Hasura relationship 的名稱。不同的情形見下文。 |
+| select 權限 | 原樣帶過來 | 欄位權限（`visible_to`）和一條行規則。帶工作階段變數的項（`X-Hasura-User-Id`）變為 `current_setting('provisa.hasura_user_id')`，請求在查詢時根據身分的 claims 或成員的屬性綁定它。Hasura 工作階段變數保留自己的名稱；`provisa.user_id` 仍是已登入的身分。 |
 | 穿過 relationship 的行規則 | 原樣帶過來 | 對關聯資料表的 `EXISTS` 子查詢。 |
 | insert、update 和 delete 權限 | 原樣帶過來 | 資料表上的寫入授權：每個角色和操作一條。`columns` 成為授權的欄位，`filter` 成為其 `rows`，`check` 成為其 `check`，`set` 成為其預設。 |
 | 繼承自一個角色的角色 | 原樣帶過來 | 該角色作為 `parent_role_id`。 |
@@ -102,7 +102,7 @@ python -m provisa.hasura_v2 ./metadata -o config.yaml
 | Action | 對應 | 呼叫 action 處理程式的指令。 |
 | Cron 觸發器 | 原樣帶過來 | 一個排程觸發器。 |
 | Event 觸發器 | 對應 | 一個針對資料表變更的觸發器。 |
-| Remote schema | 對應 | 一個 `graphql_remote` 數據來源，其根欄位落地為受治理的資料表。（REQ-1681） |
+| Remote schema | 對應 | 一個 `graphql_remote` 數據來源，其根欄位落地為受治理的資料表。 |
 
 relationship 的情形：
 
@@ -115,7 +115,7 @@ relationship 的情形：
 
 - 空的 `filter` 或 `check` 表示所有行，寫作 `TRUE`。
 - 屬於工作階段變數的 `set` 值（`X-Hasura-User-Id`）成為對應工作階段變數的 `session` 預設（`X-Hasura-User-Id` 成為 `hasura_user_id`）。其他任何值成為 `literal` 預設。預設欄位不會同時出現在授權的欄位中。
-- Hasura 隱含的 admin 持有每一項權限。它成為角色 `org_admin`，持有涵蓋所有欄位和所有行的 insert、update 和 delete 授權，並在每個匯入的欄位上被指名。（REQ-1684）
+- Hasura 隱含的 admin 持有每一項權限。它成為角色 `org_admin`，持有涵蓋所有欄位和所有行的 insert、update 和 delete 授權，並在每個匯入的欄位上被指名。
 - 每個具有 insert、update 或 delete 權限的角色還會獲得 `write` 權利。
 
 指令詳情：
@@ -129,16 +129,16 @@ relationship 的情形：
 
 ### 匯入分頁上的連線與網域 {: #connections-and-domains-on-the-import-tab }
 
-匯出明文寫出的連線按原樣轉換。當匯出從環境變數讀取資料庫 URL（`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`）時，變數的值不在匯出中，因此轉換不會猜測任何值。該數據來源會以空的連線欄位註冊，報告會要求重做：在匯入的數據來源設定中輸入該數據來源的 host、port、資料庫、使用者和密碼，然後再次轉換。只有你修改過的欄位會隨之傳遞，作為數據來源覆寫。網域行涵蓋上傳內容攜帶的每個 schema、subgraph 和 remote schema；每一行是對組織現有網域的選擇器，也接受鍵入的名稱，不匹配任何現有網域時標記為「新網域」。套用會合併到組織已有的內容中。（REQ-1687）
+匯出明文寫出的連線按原樣轉換。當匯出從環境變數讀取資料庫 URL（`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`）時，變數的值不在匯出中，因此轉換不會猜測任何值。該數據來源會以空的連線欄位註冊，報告會要求重做：在匯入的數據來源設定中輸入該數據來源的 host、port、資料庫、使用者和密碼，然後再次轉換。只有你修改過的欄位會隨之傳遞，作為數據來源覆寫。網域行涵蓋上傳內容攜帶的每個 schema、subgraph 和 remote schema；每一行是對組織現有網域的選擇器，也接受鍵入的名稱，不匹配任何現有網域時標記為「新網域」。套用會合併到組織已有的內容中。
 
 ### 類型在預覽時來自數據來源 {: #types-come-from-the-source-at-preview }
 
-Hasura 匯出為欄位命名但不附類型，而沒有權限的已追蹤資料表不會指名任何欄位。預覽會以你提供的數據來源連線執行，因此它會讀取每個可連上的 SQL 數據來源的 `information_schema.columns`：每個沒有類型的欄位都會取得數據來源對映至 IR 詞彙的類型，而沒有欄位的資料表會取得數據來源的每一個欄位，僅對 `org_admin` 可見，因為 Hasura 沒有把它公開給任何其他角色。預覽無法連上的數據來源會以 `[sources]` 警告報告，其欄位維持沒有類型，留待你在套用之前完成。(REQ-1691, REQ-1684)
+Hasura 匯出為欄位命名但不附類型，而沒有權限的已追蹤資料表不會指名任何欄位。預覽會以你提供的數據來源連線執行，因此它會讀取每個可連上的 SQL 數據來源的 `information_schema.columns`：每個沒有類型的欄位都會取得數據來源對映至 IR 詞彙的類型，而沒有欄位的資料表會取得數據來源的每一個欄位，僅對 `org_admin` 可見，因為 Hasura 沒有把它公開給任何其他角色。預覽無法連上的數據來源會以 `[sources]` 警告報告，其欄位維持沒有類型，留待你在套用之前完成。
 
 ### 限制 {: #limitations }
 
 - **Computed field** 需手動重做：匯出指明了資料庫函式但沒有定義它。把它新增為基於該資料表的檢視中的一個欄位，或在應用程式中計算。
-- **Remote schema** 根據角色權限 SDL 落地為資料表。沒有權限的 remote schema 不會落地任何內容，因為匯出沒有其他關於其形態的陳述。（REQ-1681）
+- **Remote schema** 根據角色權限 SDL 落地為資料表。沒有權限的 remote schema 不會落地任何內容，因為匯出沒有其他關於其形態的陳述。
 - **已追蹤的函式** 需要在預覽時存取資料庫來讀取其簽章；離線時，在 Commands 頁面重做。
 - **event 和 cron 觸發器的重試** 不會被帶過來。
 

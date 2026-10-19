@@ -62,7 +62,7 @@ Weil das Herunterbrechen rein ist — eine `entity`/`fact`-Spezifikation wird ge
 
 ### Time Travel
 
-Time Travel ist eine einfache Idee — jede Version einer Zeile aufbewahren statt sie zu überschreiben, sodass Sie fragen können, was die Daten zu jedem vergangenen Zeitpunkt *waren*. Was sich unterscheidet, ist, wie effizient jede Engine das kann, weshalb Provisa es genau deshalb zu einer Eigenschaft der Definition der materialisierten Sicht macht (REQ-1162), nicht der Storage-Engine. Einmal deklariert, funktioniert es auf jedem materialisierenden Backend.
+Time Travel ist eine einfache Idee — jede Version einer Zeile aufbewahren statt sie zu überschreiben, sodass Sie fragen können, was die Daten zu jedem vergangenen Zeitpunkt *waren*. Was sich unterscheidet, ist, wie effizient jede Engine das kann, weshalb Provisa es genau deshalb zu einer Eigenschaft der Definition der materialisierten Sicht macht, nicht der Storage-Engine. Einmal deklariert, funktioniert es auf jedem materialisierenden Backend.
 
 Die Regel, die es portabel hält, ist **Append-only**: Eine einmal geschriebene Version wird nie aktualisiert oder gelöscht. Eine Zeile durch Zurückschreiben eines „Valid-to"-Datums zu retiren — der übliche bitemporale Trick — erfordert ein UPDATE, das viele Engines über einem föderierten Store nicht günstig (oder überhaupt) ausführen können, also tut Provisa das nicht. Stattdessen **hängt** jede Aktualisierung an, und „welche Version zum Zeitpunkt T galt" wird zur Lesezeit aus dem unveränderlichen Log abgeleitet. Es gibt genau zwei Arten anzuhängen:
 

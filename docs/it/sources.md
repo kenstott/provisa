@@ -2,7 +2,7 @@
 
 ## Modello di esecuzione {: #execution-model }
 
-Ogni query viene infine eseguita attraverso il motore di federazione, che fornisce federazione su tutte le origini. Le origini rientrano in tre categorie in base alla loro connettività. [tool-verified: `provisa/core/models.py` lines 84–132] (REQ-550)
+Ogni query viene infine eseguita attraverso il motore di federazione, che fornisce federazione su tutte le origini. Le origini rientrano in tre categorie in base alla loro connettività.
 
 | Categoria | Ha driver diretto | Ha connettore federato | Esempi |
 | --- | --- | --- | --- |
@@ -12,21 +12,21 @@ Ogni query viene infine eseguita attraverso il motore di federazione, che fornis
 | **Direct (nessun connettore cross-source)** | Sì | No | Athena — le istruzioni su singola origine vengono eseguite interamente in Athena; i join tra origini diverse atterrano una replica completa |
 | **Materializza → Federazione** | No | No | REST/OpenAPI, GraphQL remoto, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (ricevitore push), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-Le origini **Direct-capable** eseguono query a singola origine tramite il loro driver nativo (sub-100ms), bypassando il motore di federazione (REQ-027, REQ-229). Mantengono il pieno supporto del connettore e partecipano alla federazione quando unite ad altre origini (REQ-028).
+Le origini **Direct-capable** eseguono query a singola origine tramite il loro driver nativo (sub-100ms), bypassando il motore di federazione. Mantengono il pieno supporto del connettore e partecipano alla federazione quando unite ad altre origini.
 
-Le origini **Solo federazione** vengono sempre interrogate attraverso il layer di federazione. Non esiste un driver diretto (REQ-229).
+Le origini **Solo federazione** vengono sempre interrogate attraverso il layer di federazione. Non esiste un driver diretto.
 
 Le origini **Direct-read (replica)** hanno un DirectDriver che legge dal warehouse nativamente (Arrow-native dove disponibile), atterra una replica nello store di materializzazione del motore attivo, e poi le query girano contro quella replica. Vedi [Warehouse come origini nominate](#warehouses-as-named-sources).
 
 Le origini **Direct (nessun connettore cross-source)** hanno un DirectDriver che esegue le istruzioni su singola origine interamente nell'origine — ogni filtro, colonna e limite viene spinto fino ad essa. Quando un'istruzione unisce l'origine a qualsiasi altra, il driver legge i dati e atterra una replica; il join viene eseguito contro quella replica nel motore attivo. Per queste origini non esiste alcun connettore Trino.
 
-Le origini **Materialize** non hanno un connettore federato. Provisa recupera i loro dati (all'avvio o al momento della query) e li mette in cache come Parquet su S3 o in PostgreSQL, rendendoli raggiungibili dal motore di federazione per query cross-source (REQ-309).
+Le origini **Materialize** non hanno un connettore federato. Provisa recupera i loro dati (all'avvio o al momento della query) e li mette in cache come Parquet su S3 o in PostgreSQL, rendendoli raggiungibili dal motore di federazione per query cross-source.
 
 ---
 
 ## Tutte le origini {: #all-sources }
 
-Provisa registra **73** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 73; l'indice è il conteggio. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `SOURCE_TYPES`, where `graphql` and `grpc` are `graphql_remote` and `grpc_remote`; Kaggle, Wikipedia, GitHub, GitLab and Stripe are counted as distinct sources even though they register through the `files`, `graphql_remote` and `openapi` connectors internally]
+Provisa registra **73** tipi di origine, quelli che il modulo Sources offre. Le tabelle qui sotto le coprono tutte e 73; l'indice è il conteggio.
 
 | # | Gruppo | Tipi di origine |
 | --- | --- | --- |
@@ -35,7 +35,7 @@ Provisa registra **73** tipi di origine, quelli che il modulo Sources offre. Le 
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [Data Lake / formati tabella aperti](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | [Sorgenti di codice](arch/code-sources.md) | `node`, `python` |
+| 39–40 | Sorgenti di codice | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [Ricevitore push](#push-receiver) | `ingest` |
 | 45–46 | [Grafo e semantico](#graph-semantic) | `neo4j`, `sparql` |
@@ -44,12 +44,12 @@ Provisa registra **73** tipi di origine, quelli che il modulo Sources offre. Le 
 | 54–61 | [Connettori SaaS enterprise](#enterprise-saas-connectors) | `sharepoint`, `salesforce`, `servicenow`, `jira`, `cloudops`, `splunk`, `google_workspace`, `microsoft_365` |
 | 62–67 | [Origini API](#api-sources) | `openapi`, `graphql_remote`, `grpc_remote`, GitHub, GitLab, Stripe |
 | 68 | [GovData](#govdata) | `govdata` |
-| 69–70 | [Controlli di qualità dei dati (REQ-1443)](#data-quality-checkers-req-1443) | `soda`, `great_expectations` |
+| 69–70 | [Controlli di qualità dei dati](#data-quality-checkers) | `soda`, `great_expectations` |
 | 71 | [Data profiler](#data-profiler) | `data_profiler` |
 | 72 | [Dataset Kaggle](#kaggle-datasets) | Kaggle (messo in stage tramite il modulo Sources; si registra come origine `files` — vedere [Dataset Kaggle](#kaggle-datasets)) |
 | 73 | [Wikipedia](#wikipedia) | Wikipedia (si registra come origine `files` che scansiona le pagine indicate — vedere [Wikipedia](#wikipedia)) |
 
-Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms) (REQ-027). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source (REQ-028). [tool-verified: `provisa/core/source_registry.py` `SOURCE_TO_DIALECT`; `provisa/federation/trino_connectors.py` `trino_connector_name`]
+Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" significa che le query a singola origine vengono eseguite nativamente contro l'origine (sub-100ms). "Nome connettore" è il connettore federato usato quando l'origine partecipa a JOIN multi-source.
 
 ### RDBMS
 
@@ -71,38 +71,36 @@ Riferimento per ogni tipo di origine supportato da Provisa. "Driver diretto" sig
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | No |
 | `hiveserver2` | impyla (HiveServer2 over Thrift) | — | hive | No |
 
-I database wire-compatible riusano il driver JDBC, il driver async nativo e il dialetto di un wire di base — CockroachDB, YugabyteDB e Greenplum usano il wire PostgreSQL; TiDB usa il wire MySQL. Richiedono solo voci di registro, nessun nuovo codice connettore. [tool-verified: `provisa/core/source_registry.py` `_PG_WIRE_TYPES`, `_MYSQL_WIRE_TYPES`] (REQ-950)
+I database wire-compatible riusano il driver JDBC, il driver async nativo e il dialetto di un wire di base — CockroachDB, YugabyteDB e Greenplum usano il wire PostgreSQL; TiDB usa il wire MySQL. Richiedono solo voci di registro, nessun nuovo codice connettore.
 
-`firebird` (Firebird 3/4/5) e `airport` (server Arrow Flight) sono tipi di origine registrati, raggiunti in loco tramite estensioni community di DuckDB quando DuckDB è il motore attivo — nessun driver diretto, nessun connettore federato. [tool-verified: `provisa/core/models.py` lines 44, 93] (REQ-899)
+`firebird` (Firebird 3/4/5) e `airport` (server Arrow Flight) sono tipi di origine registrati, raggiunti in loco tramite estensioni community di DuckDB quando DuckDB è il motore attivo — nessun driver diretto, nessun connettore federato.
 
 #### `saphana`
 
-SAP HANA viene letto tramite il proprio driver e replicato nello store del motore attivo, quindi è raggiungibile su ogni motore. Il modulo richiede host, porta (predefinita 39015), nome utente, password e database; su un sistema multi-tenant il database indica il tenant. Registra tabella elenca gli schemi che l'utente può leggere, escludendo gli schemi di sistema di HANA. [tool-verified: `provisa/executor/drivers/registry.py` `_SQLALCHEMY_FALLBACK`; `provisa/api/admin/introspect.py` `_SAPHANA_SYSTEM_SCHEMAS`] (REQ-1753)
+SAP HANA viene letto tramite il proprio driver e replicato nello store del motore attivo, quindi è raggiungibile su ogni motore. Il modulo richiede host, porta (predefinita 39015), nome utente, password e database; su un sistema multi-tenant il database indica il tenant. Registra tabella elenca gli schemi che l'utente può leggere, escludendo gli schemi di sistema di HANA.
 
 #### `hiveserver2`
 
-Un endpoint HiveServer2 letto direttamente su Thrift, per un deployment Hive in cui l'endpoint è l'unica cosa raggiungibile. È distinto da `hive` e `hive_s3`, che leggono i file e il metastore del warehouse e non passano mai da HiveServer2. Le righe vengono lette attraverso l'endpoint e replicate nello store del motore attivo. Il modulo richiede host, porta (predefinita 10000), nome utente, password e database; `federation_hints.auth_mechanism` seleziona l'autenticazione (predefinita `PLAIN`, ad esempio `GSSAPI` per Kerberos). [tool-verified: `provisa/executor/drivers/hive.py` `HiveDriver`; `provisa/core/models.py` `SourceType.hiveserver2`] (REQ-1731)
+Un endpoint HiveServer2 letto direttamente su Thrift, per un deployment Hive in cui l'endpoint è l'unica cosa raggiungibile. È distinto da `hive` e `hive_s3`, che leggono i file e il metastore del warehouse e non passano mai da HiveServer2. Le righe vengono lette attraverso l'endpoint e replicate nello store del motore attivo. Il modulo richiede host, porta (predefinita 10000), nome utente, password e database; `federation_hints.auth_mechanism` seleziona l'autenticazione (predefinita `PLAIN`, ad esempio `GSSAPI` per Kerberos).
 
 ### Data warehouse cloud {: #cloud-data-warehouses }
 
-[tool-verified: `executor/drivers/snowflake.py`, `executor/drivers/databricks.py`, `executor/drivers/registry.py`]
-
 | Tipo di origine | Driver diretto | Nome connettore | Dialetto | Mutation | Note |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `snowflake` | SnowflakeDriver | snowflake | snowflake | Federata | Legge via snowflake-connector-python; atterra una replica; `account`/`warehouse`/`role` in `federation_hints` (REQ-988) |
+| `snowflake` | SnowflakeDriver | snowflake | snowflake | Federata | Legge via snowflake-connector-python; atterra una replica; `account`/`warehouse`/`role` in `federation_hints` |
 | `bigquery` | — | bigquery | bigquery | Federata | Nessun DirectDriver; raggiunta via motore di federazione o ATTACH del motore BigQuery |
-| `databricks` | DatabricksDriver | delta_lake | databricks | Federata | Legge via databricks-sql-connector (Cloud Fetch, Arrow); atterra una replica; `http_path` richiesto in `federation_hints` (REQ-987) |
+| `databricks` | DatabricksDriver | delta_lake | databricks | Federata | Legge via databricks-sql-connector (Cloud Fetch, Arrow); atterra una replica; `http_path` richiesto in `federation_hints` |
 | `redshift` | — | redshift | redshift | Federata | — |
-| `athena` | AthenaDriver | — | athena | Parziale (INSERT sempre; UPDATE/DELETE/MERGE solo su Iceberg) | Query serverless su S3; le istruzioni su singola sorgente vengono eseguite interamente in Athena; i join tra sorgenti diverse atterrano una replica; `region` obbligatoria in `federation_hints` (REQ-1981) |
-| `fabric` | MssqlWarehouseDriver | — | tsql | Federata | Microsoft Fabric Warehouse; T-SQL su TDS, auth Azure AD; atterra una replica (REQ-995) |
-| `synapse` | MssqlWarehouseDriver | — | tsql | Federata | Azure Synapse SQL; T-SQL su TDS, auth Azure AD; atterra una replica (REQ-995) |
-| `trino` | SQLAlchemyDriver | — | — | Federata | Coordinator Trino/Presto remoto letto via il dialetto SQLAlchemy trino; atterra una replica su qualsiasi motore (REQ-994) |
+| `athena` | AthenaDriver | — | athena | Parziale (INSERT sempre; UPDATE/DELETE/MERGE solo su Iceberg) | Query serverless su S3; le istruzioni su singola sorgente vengono eseguite interamente in Athena; i join tra sorgenti diverse atterrano una replica; `region` obbligatoria in `federation_hints` |
+| `fabric` | MssqlWarehouseDriver | — | tsql | Federata | Microsoft Fabric Warehouse; T-SQL su TDS, auth Azure AD; atterra una replica |
+| `synapse` | MssqlWarehouseDriver | — | tsql | Federata | Azure Synapse SQL; T-SQL su TDS, auth Azure AD; atterra una replica |
+| `trino` | SQLAlchemyDriver | — | — | Federata | Coordinator Trino/Presto remoto letto via il dialetto SQLAlchemy trino; atterra una replica su qualsiasi motore |
 
 #### `athena`
 
-Amazon Athena è un servizio di query serverless su dati in S3, fatturato per byte analizzato. Un'istruzione che opera solo su tabelle Athena viene eseguita direttamente in Athena: filtri, elenchi di colonne e `LIMIT` vengono trasmessi integralmente, quindi vengono analizzati e fatturati solo i byte necessari ad Athena per rispondere a quell'istruzione. Un'istruzione che unisce una tabella Athena con un'altra sorgente prima atterrisce una replica completa da Athena — l'intera tabella viene letta e Athena la fattura — poi il join viene eseguito contro quella replica. Le impostazioni Replicate e di protezione del carico della sorgente regolano la frequenza degli atterraggi; la nota nella documentazione è l'unica regola. (REQ-1981)
+Amazon Athena è un servizio di query serverless su dati in S3, fatturato per byte analizzato. Un'istruzione che opera solo su tabelle Athena viene eseguita direttamente in Athena: filtri, elenchi di colonne e `LIMIT` vengono trasmessi integralmente, quindi vengono analizzati e fatturati solo i byte necessari ad Athena per rispondere a quell'istruzione. Un'istruzione che unisce una tabella Athena con un'altra sorgente prima atterrisce una replica completa da Athena — l'intera tabella viene letta e Athena la fattura — poi il join viene eseguito contro quella replica. Le impostazioni Replicate e di protezione del carico della sorgente regolano la frequenza degli atterraggi; la nota nella documentazione è l'unica regola.
 
-**Scoperta.** Register Table chiama l'API dei metadati di Athena — `ListDatabases`, `ListTableMetadata`, `GetTableMetadata`. Queste chiamate non eseguono query, quindi elencare database e tabelle e leggere le colonne di una tabella non ha alcun costo per byte. Le colonne di una tabella vengono lette solo quando quella tabella viene selezionata. Le chiavi di partizione seguono le colonne regolari. I tipi vengono mappati tramite la voce `athena` in `provisa/core/ir_types.py`: `array<…>`, `map<…>` e `struct<…>` diventano `text`; un tipo sconosciuto viene rifiutato nominandolo. [tool-verified: `provisa/federation/athena.py` `databases`, `tables`, `columns`; `provisa/core/ir_types.py` voce `"athena"`]
+**Scoperta.** Register Table chiama l'API dei metadati di Athena — `ListDatabases`, `ListTableMetadata`, `GetTableMetadata`. Queste chiamate non eseguono query, quindi elencare database e tabelle e leggere le colonne di una tabella non ha alcun costo per byte. Le colonne di una tabella vengono lette solo quando quella tabella viene selezionata. Le chiavi di partizione seguono le colonne regolari. I tipi vengono mappati tramite la voce `athena` in `provisa/core/ir_types.py`: `array<…>`, `map<…>` e `struct<…>` diventano `text`; un tipo sconosciuto viene rifiutato nominandolo.
 
 **Campi sorgente.**
 
@@ -117,9 +115,9 @@ Amazon Athena è un servizio di query serverless su dati in S3, fatturato per by
 | `catalog` | `federation_hints` | No | `AwsDataCatalog` | Catalogo dati Athena |
 | `role_arn` | `federation_hints` | No | — | ARN del ruolo IAM assunto per ogni chiamata |
 
-Entrambi `username` e `password` vuoti significa che viene utilizzata la catena di credenziali di boto3: ruolo dell'istanza, variabili d'ambiente (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) o un profilo con nome. Uno senza l'altro viene rifiutato. [tool-verified: `provisa/executor/drivers/athena.py` `AthenaDriver.connect`; `provisa/federation/athena.py` `athena_client`]
+Entrambi `username` e `password` vuoti significa che viene utilizzata la catena di credenziali di boto3: ruolo dell'istanza, variabili d'ambiente (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) o un profilo con nome. Uno senza l'altro viene rifiutato.
 
-**Scritture.** Ogni tabella registrata accetta `INSERT`. `UPDATE`, `DELETE` e `MERGE` sono disponibili solo su una tabella Iceberg; il formato viene registrato al momento della registrazione (`registered_tables.table_format`). Una scrittura su una tabella Hive che richiede `UPDATE`, `DELETE` o `MERGE` viene rifiutata nominando la tabella e l'operazione. Athena non restituisce le righe scritte — una clausola `RETURNING` viene rifiutata e GraphQL non offre campi di mutazione per queste tabelle; `INSERT`, `UPDATE`, `DELETE` e `COPY` sono i percorsi di scrittura. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` e `TRUNCATE` vengono rifiutati nominando la forma. [tool-verified: `provisa/executor/write_capability.py` `table_write_ops`; `provisa/executor/writable.py` `_TYPE_RETURNS_NO_ROWS`, `_TYPE_REFUSED_FORMS`]
+**Scritture.** Ogni tabella registrata accetta `INSERT`. `UPDATE`, `DELETE` e `MERGE` sono disponibili solo su una tabella Iceberg; il formato viene registrato al momento della registrazione (`registered_tables.table_format`). Una scrittura su una tabella Hive che richiede `UPDATE`, `DELETE` o `MERGE` viene rifiutata nominando la tabella e l'operazione. Athena non restituisce le righe scritte — una clausola `RETURNING` viene rifiutata e GraphQL non offre campi di mutazione per queste tabelle; `INSERT`, `UPDATE`, `DELETE` e `COPY` sono i percorsi di scrittura. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` e `TRUNCATE` vengono rifiutati nominando la forma.
 
 ```yaml
 - id: analytics-athena
@@ -147,9 +145,9 @@ Con un ruolo assunto per ogni chiamata (catena di credenziali per la sessione ba
 
 ### MotherDuck
 
-`motherduck` (REQ-1998) è un database DuckDB ospitato da MotherDuck. Sul motore DuckDB viene collegato sul posto; sul motore Postgres resta il connettore del foreign data wrapper `pg_duckdb` (REQ-1868). [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBMotherDuckConnector`, `PgDuckdbMotherDuckConnector`]
+`motherduck` è un database DuckDB ospitato da MotherDuck. Sul motore DuckDB viene collegato sul posto; sul motore Postgres resta il connettore del foreign data wrapper `pg_duckdb`.
 
-**Connessione.** `database` indica il database MotherDuck, oppure una condivisione tramite il suo indirizzo di condivisione. `password` è il token MotherDuck, risolto come qualsiasi segreto di origine. [tool-verified: `DuckDBMotherDuckConnector.details`]
+**Connessione.** `database` indica il database MotherDuck, oppure una condivisione tramite il suo indirizzo di condivisione. `password` è il token MotherDuck, risolto come qualsiasi segreto di origine.
 
 ```yaml
 - id: reference
@@ -158,62 +156,59 @@ Con un ruolo assunto per ogni chiamata (catena di credenziali per la sessione ba
   password: ${secret:<name>}     # the MotherDuck token, or a reference to it
 ```
 
-Il motore DuckDB esegue `ATTACH 'md:<database>'`; per una condivisione, `database` è l'indirizzo della condivisione (`_share/...`), quindi il collegamento è `md:_share/...`. [tool-verified: `details` builds `"md:" + database`; `tests/integration/test_motherduck_duckdb_e2e.py` attaches MotherDuck's public sample-data share this way]
+Il motore DuckDB esegue `ATTACH 'md:<database>'`; per una condivisione, `database` è l'indirizzo della condivisione (`_share/...`), quindi il collegamento è `md:_share/...`.
 
-- **Gestione del token.** Il motore accede con `SET GLOBAL motherduck_token = ?`, con il token passato come valore associato. Non compare nel testo di alcuna istruzione, quindi nessun log, trace o errore lo contiene. [tool-verified: `provisa/federation/duckdb_runtime.py` `_sign_in_motherduck`]
-- **Nessun token.** Un'origine senza `password` viene rifiutata con il suo nome prima che venga collegato qualcosa (`a MotherDuck source signs in with its token (the password field); none is set`). Senza questo controllo, l'estensione avvierebbe un accesso interattivo e attenderebbe circa un minuto. Anche un'origine senza `database` viene rifiutata. [tool-verified: `details`]
-- **Un account per motore.** Un motore accede a un solo account MotherDuck. Una seconda origine MotherDuck con un token diverso viene rifiutata con il suo nome: "one DuckDB engine reads one MotherDuck account". [tool-verified: `_sign_in_motherduck` compares a SHA-256 of the token]
-- **Le scritture** passano dal motore, come sul motore Postgres. [tool-verified: `DuckDBMotherDuckConnector.capability` `write=True`]
+- **Gestione del token.** Il motore accede con `SET GLOBAL motherduck_token = ?`, con il token passato come valore associato. Non compare nel testo di alcuna istruzione, quindi nessun log, trace o errore lo contiene.
+- **Nessun token.** Un'origine senza `password` viene rifiutata con il suo nome prima che venga collegato qualcosa (`a MotherDuck source signs in with its token (the password field); none is set`). Senza questo controllo, l'estensione avvierebbe un accesso interattivo e attenderebbe circa un minuto. Anche un'origine senza `database` viene rifiutata.
+- **Un account per motore.** Un motore accede a un solo account MotherDuck. Una seconda origine MotherDuck con un token diverso viene rifiutata con il suo nome: "one DuckDB engine reads one MotherDuck account".
+- **Le scritture** passano dal motore, come sul motore Postgres.
 
-**L'esecuzione ibrida (duale)** non richiede alcuna impostazione. Sul motore DuckDB ogni origine è collegata su un'unica connessione, quindi un'istruzione che unisce una tabella di un'origine file DuckDB con una tabella MotherDuck viene eseguita come un'unica istruzione DuckDB, e MotherDuck decide dove viene eseguita ciascuna parte. [tool-verified: `DuckDBMotherDuckConnector` docstring; REQ-1998 notes record a live join showing dual-execution operators]
+**L'esecuzione ibrida (duale)** non richiede alcuna impostazione. Sul motore DuckDB ogni origine è collegata su un'unica connessione, quindi un'istruzione che unisce una tabella di un'origine file DuckDB con una tabella MotherDuck viene eseguita come un'unica istruzione DuckDB, e MotherDuck decide dove viene eseguita ciascuna parte.
 
-> **Spostamento dei dati.** Con l'esecuzione duale, MotherDuck può spostare righe locali dalla sua parte per le parti che esegue. Un'istruzione di questo tipo può quindi inviare dati dal file locale all'account MotherDuck dell'organizzazione. Non unire un file con dati che devono restare sul nodo a un'origine MotherDuck, a meno che inviarli a quell'account sia accettabile. [tool-verified: `DuckDBMotherDuckConnector` docstring: "which may move local rows to its side"]
+> **Spostamento dei dati.** Con l'esecuzione duale, MotherDuck può spostare righe locali dalla sua parte per le parti che esegue. Un'istruzione di questo tipo può quindi inviare dati dal file locale all'account MotherDuck dell'organizzazione. Non unire un file con dati che devono restare sul nodo a un'origine MotherDuck, a meno che inviarli a quell'account sia accettabile.
 
-Un'origine MotherDuck è servita solo dai motori DuckDB e Postgres. Nessun altro motore ha un connettore per essa, e nulla vi atterra le sue tabelle come repliche. [tool-verified: `provisa/federation/engine.py` registers `DuckDBMotherDuckConnector` and `PgDuckdbMotherDuckConnector` and no other MotherDuck connector]
+Un'origine MotherDuck è servita solo dai motori DuckDB e Postgres. Nessun altro motore ha un connettore per essa, e nulla vi atterra le sue tabelle come repliche.
 
 ### Analytics / OLAP
 
-[tool-verified: `executor/drivers/clickhouse.py`]
-
 | Tipo di origine | Driver diretto | Nome connettore | Dialetto | Mutation | Note |
 | ------------ | -------------- | ----------------- | ----------------- | ----------- | ------- |
-| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Federata | Legge via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` per TLS (REQ-986) |
+| `clickhouse` | ClickHouseDriver | clickhouse | clickhouse | Federata | Legge via clickhouse-connect (HTTP); `secure: "true"` in `federation_hints` per TLS |
 | `druid` | — | druid | druid | No | — |
 | `exasol` | — | exasol | exasol | No | — |
-| `elasticsearch` | HTTP (motori nativi) | elasticsearch (Trino) | — | No | Su Trino il connettore lo legge, le sue proprietà provengono dal DSL di mapping del tipo [tool-verified: `trino_connectors.py:309`]; su ogni altro motore Provisa legge l'indice via HTTP (indici e mapping per Registra tabella, una scroll read per l'atterraggio) e atterra le righe [tool-verified: `provisa/elasticsearch/fetch.py`, `provisa/events/source_loader.py` `make_elasticsearch_loader`] (REQ-1672) |
-| `pinot` | — | pinot | — | No | Connettore Trino `pinot`; `pinot.controller-urls` = host:porta del controller Pinot [tool-verified: `trino_connectors.py:199`] |
+| `elasticsearch` | HTTP (motori nativi) | elasticsearch (Trino) | — | No | Su Trino il connettore lo legge, le sue proprietà provengono dal DSL di mapping del tipo; su ogni altro motore Provisa legge l'indice via HTTP (indici e mapping per Registra tabella, una scroll read per l'atterraggio) e atterra le righe |
+| `pinot` | — | pinot | — | No | Connettore Trino `pinot`; `pinot.controller-urls` = host:porta del controller Pinot |
 
 ### Data Lake / formati tabella aperti {: #data-lake-open-table-formats }
 
-Questi tipi di origine sono solo-federazione — nessun driver diretto, nessun dialetto. [tool-verified: `LAKE_ONLY_SOURCES` in `provisa/core/source_registry.py`] (REQ-229)
+Questi tipi di origine sono solo-federazione — nessun driver diretto, nessun dialetto.
 
 | Tipo di origine | Nome connettore | Time Travel | Note |
 | ------------ | ----------------- | ------------- | ------- |
-| `iceberg` | iceberg | Sì (argomento `as_of`, REQ-372) | — |
-| `delta_lake` | delta_lake | Sì (argomento `as_of`, REQ-372) | — |
+| `iceberg` | iceberg | Sì (argomento `as_of`) | — |
+| `delta_lake` | delta_lake | Sì (argomento `as_of`) | — |
 | `hive` | hive | No | — |
-| `hudi` | — (motore `Hudi` di ClickHouse, zero-copy — REQ-1178) | No | Nessun connettore federato; raggiunta sul posto quando ClickHouse è il motore attivo |
 | `hive_s3` | hive | No | Hive basato su S3 |
 
 ### NoSQL
 
-`mongodb`, `cassandra` e `redis` hanno connettori Trino (`redis` costruisce le sue proprietà dal DSL di mapping del tipo). [tool-verified: `provisa/federation/trino_connectors.py`; `provisa/core/models.py`] (REQ-017, REQ-1097)
+`mongodb`, `cassandra` e `redis` hanno connettori Trino (`redis` costruisce le sue proprietà dal DSL di mapping del tipo).
 
 | Tipo di origine | Nome connettore | Mutation |
 | ------------ | ----------------- | ----------- |
 | `mongodb` | mongodb | No |
-| `cassandra` | cassandra (Trino); lettura CQL tramite cassandra-driver su ogni altro motore | No | I keyspace sono schemi; Registra tabella elenca le tabelle di un keyspace e tipizza le colonne dai metadati di schema del cluster (partition key come chiavi primarie); l'extra `cassandra` installa il driver [tool-verified: `provisa/cassandra/fetch.py`] (REQ-1676) |
-| `redis` | redis (Trino); lettura redis-py senza HTTP su ogni altro motore | No | Un prefisso di chiave `<table>:*` è una tabella e un hash è una riga; Registra tabella elenca i prefissi presenti e tipizza le colonne di un prefisso dai suoi hash (una voce `mapping.tables` sovrascrive pattern, colonna chiave, tipo valore e colonne) [tool-verified: `provisa/redis/fetch.py`] (REQ-1675) |
+| `cassandra` | cassandra (Trino); lettura CQL tramite cassandra-driver su ogni altro motore | No | I keyspace sono schemi; Registra tabella elenca le tabelle di un keyspace e tipizza le colonne dai metadati di schema del cluster (partition key come chiavi primarie); l'extra `cassandra` installa il driver |
+| `redis` | redis (Trino); lettura redis-py senza HTTP su ogni altro motore | No | Un prefisso di chiave `<table>:*` è una tabella e un hash è una riga; Registra tabella elenca i prefissi presenti e tipizza le colonne di un prefisso dai suoi hash (una voce `mapping.tables` sovrascrive pattern, colonna chiave, tipo valore e colonne) |
 
-**Redis sui motori ospitati.** Redis non è disponibile quando il motore dell'organizzazione è uno dei motori predisposti della piattaforma ospitata. Trino legge le tabelle di un catalogo Redis da file di descrizione in una directory propria del catalogo, e a un motore ospitato non se ne può dare una mentre è in esecuzione. Salvare o applicare lì una sorgente Redis viene rifiutato per nome (HTTP 422, `sources.redis_needs_engine_files`); un deployment self-hosted legge Redis come descritto sopra. [tool-verified: `provisa/core/repositories/source.py` `refuse_on_engine_shard`] (REQ-2073)
+**Redis sui motori ospitati.** Redis non è disponibile quando il motore dell'organizzazione è uno dei motori predisposti della piattaforma ospitata. Trino legge le tabelle di un catalogo Redis da file di descrizione in una directory propria del catalogo, e a un motore ospitato non se ne può dare una mentre è in esecuzione. Salvare o applicare lì una sorgente Redis viene rifiutato per nome (HTTP 422, `sources.redis_needs_engine_files`); un deployment self-hosted legge Redis come descritto sopra.
 
 ### Qdrant
 
-`qdrant` (REQ-1983, REQ-2000) viene letto e scritto dal client proprio di Qdrant, `qdrant-client`. Qdrant è **solo live**: una proprietà del tipo di origine, non un'impostazione. Risponde con il suo indice vettoriale e la sua Query API, e nessuna replica può rispondere allo stesso modo, quindi le sue tabelle non vengono mai replicate. Non esiste la scelta Replicate per un'origine Qdrant né per le sue tabelle; un valore `replicate` o `row_materialize` su una di esse viene rifiutato. [tool-verified: `provisa/core/source_registry.py` `LIVE_ONLY_TYPES`; `provisa/api/admin/_landing_ttl.py` `_live_only_refusal`]
+`qdrant` viene letto e scritto dal client proprio di Qdrant, `qdrant-client`. Qdrant è **solo live**: una proprietà del tipo di origine, non un'impostazione. Risponde con il suo indice vettoriale e la sua Query API, e nessuna replica può rispondere allo stesso modo, quindi le sue tabelle non vengono mai replicate. Non esiste la scelta Replicate per un'origine Qdrant né per le sue tabelle; un valore `replicate` o `row_materialize` su una di esse viene rifiutato.
 
-**Connessione.** `host` è l'URL dell'istanza con la sua porta (`https://<cluster>.cloud.qdrant.io:6333`, oppure un `http://qdrant:6333` self-hosted); `password` è la sua chiave API, un riferimento a un secret risolto quando l'origine viene letta, vuota per un'istanza senza chiave. `federation_hints.prefer_grpc: true` legge dalla porta gRPC di Qdrant invece che via REST. L'origine ha uno schema, `default`. [tool-verified: `provisa/qdrant/fetch.py` `QdrantConnection.from_source`; `provisa/qdrant/introspect.py` `SCHEMA`]
+**Connessione.** `host` è l'URL dell'istanza con la sua porta (`https://<cluster>.cloud.qdrant.io:6333`, oppure un `http://qdrant:6333` self-hosted); `password` è la sua chiave API, un riferimento a un secret risolto quando l'origine viene letta, vuota per un'istanza senza chiave. `federation_hints.prefer_grpc: true` legge dalla porta gRPC di Qdrant invece che via REST. L'origine ha uno schema, `default`.
 
-**Tabelle di collection.** Una collection è una tabella. Registra tabella offre le colonne della collection: `id` (l'id del punto, la sua chiave, percorso `@id`), i campi del payload (un campo indicizzato tipizzato dal suo indice, ogni altro come suggeriscono i punti campionati; i campi annidati appiattiti con il loro percorso) e una colonna `json` per vettore (percorso `@vector`, o `@vector.<name>` per un vettore con nome), offerta non selezionata. Una colonna vettoriale indica il modello di embedding registrato di cui contiene gli embedding, scelto tra i modelli le cui dimensioni sono la dimensione del vettore (in Registra tabella e nella scheda Tipo e chiavi dell'editor); scegliere un modello registra il vettore. [tool-verified: `provisa/qdrant/introspect.py` `columns`; `provisa-ui/src/pages/tables/QdrantVectorColumns.tsx`]
+**Tabelle di collection.** Una collection è una tabella. Registra tabella offre le colonne della collection: `id` (l'id del punto, la sua chiave, percorso `@id`), i campi del payload (un campo indicizzato tipizzato dal suo indice, ogni altro come suggeriscono i punti campionati; i campi annidati appiattiti con il loro percorso) e una colonna `json` per vettore (percorso `@vector`, o `@vector.<name>` per un vettore con nome), offerta non selezionata. Una colonna vettoriale indica il modello di embedding registrato di cui contiene gli embedding, scelto tra i modelli le cui dimensioni sono la dimensione del vettore (in Registra tabella e nella scheda Tipo e chiavi dell'editor); scegliere un modello registra il vettore.
 
 **Istruzioni su un'origine Qdrant.** Un'istruzione che legge una sola collection viene eseguita in Qdrant quando l'API di Qdrant la esprime esattamente:
 
@@ -221,9 +216,9 @@ Questi tipi di origine sono solo-federazione — nessun driver diretto, nessun d
 - una condizione solo su `id` (`=` o `IN`) è un `retrieve`; ogni altra lettura è uno `scroll` filtrato;
 - `ORDER BY cosine_similarity(<vector>, <query>) DESC LIMIT k` è una `query_points` su un vettore la cui distanza è Cosine, con il filtro applicato prima del top-k. Un testo di query viene convertito in embedding dal modello del vettore. La risposta porta un avviso che il top-k è approssimato, scelto tramite l'indice di Qdrant.
 
-Tutto il resto (un aggregato, un `GROUP BY`, una colonna calcolata o mascherata, un ordinamento diverso dal più simile per primo) è risolto dal motore, come sotto. [tool-verified: `provisa/qdrant/direct.py` `analyse`, `condition`, `QdrantDriver`]
+Tutto il resto (un aggregato, un `GROUP BY`, una colonna calcolata o mascherata, un ordinamento diverso dal più simile per primo) è risolto dal motore, come sotto.
 
-**Istruzioni risolte dal motore.** Quando un'istruzione unisce una collection a un'altra origine, o calcola sulle sue colonne, la parte della collection viene letta in diretta da Qdrant per quell'istruzione e consegnata al motore come righe. La parte comprende le colonne della collection, le condizioni dell'istruzione sulla sola collection (comprese le sue regole di riga) e, quando la collection è letta da sola nel suo `SELECT`, l'ordinamento per similarità e il `LIMIT` di quel `SELECT`. Una parte che Qdrant non può esprimere esattamente viene rifiutata, indicando la tabella e il motivo. Una parte senza condizione, senza chiave e senza top-k leggerebbe l'intera collection e viene rifiutata anch'essa. Una condizione su un parametro (`$1`) è lasciata al motore. [tool-verified: `provisa/federation/live_only.py` `cut`, `read`; `provisa/pgwire/_pipeline.py` `_read_live_parts`]
+**Istruzioni risolte dal motore.** Quando un'istruzione unisce una collection a un'altra origine, o calcola sulle sue colonne, la parte della collection viene letta in diretta da Qdrant per quell'istruzione e consegnata al motore come righe. La parte comprende le colonne della collection, le condizioni dell'istruzione sulla sola collection (comprese le sue regole di riga) e, quando la collection è letta da sola nel suo `SELECT`, l'ordinamento per similarità e il `LIMIT` di quel `SELECT`. Una parte che Qdrant non può esprimere esattamente viene rifiutata, indicando la tabella e il motivo. Una parte senza condizione, senza chiave e senza top-k leggerebbe l'intera collection e viene rifiutata anch'essa. Una condizione su un parametro (`$1`) è lasciata al motore.
 
 **Scritture.** `INSERT`, `UPDATE` e `DELETE` su una collection vengono eseguiti in Qdrant:
 
@@ -231,8 +226,6 @@ Tutto il resto (un aggregato, un `GROUP BY`, una colonna calcolata o mascherata,
 - `INSERT … ON CONFLICT (id) DO UPDATE SET c = EXCLUDED.c, …` è un upsert. Le colonne che l'istruzione non imposta mantengono i loro valori.
 - `UPDATE` e `DELETE` agiscono sui punti selezionati dal loro `WHERE`, come filtro Qdrant; una condizione senza forma di filtro viene rifiutata.
 - Un testo scritto in una colonna vettoriale viene convertito in embedding dal modello della colonna. Un vettore scritto in essa deve avere le dimensioni del modello.
-
-[tool-verified: `provisa/qdrant/direct.py` `_insert`, `_upsert_clause`, `_write_points`, `_update`, `_delete`, `_vector_value`]
 
 **Tabelle di ricerca.** La ricerca vettoriale è una tabella di ricerca: il suo `query_template` contiene una richiesta della Query API.
 
@@ -243,43 +236,43 @@ Tutto il resto (un aggregato, un `GROUP BY`, una colonna calcolata o mascherata,
 ```
 
 - `query` è sempre un argomento; `using`, `filter`, `limit`, `score_threshold` e `model` sono opzionali. Qualsiasi valore di `using`, `filter`, `limit` o `score_threshold` che sia esattamente `"@name"` è anch'esso un argomento.
-- Ogni argomento è un parametro della tabella (`query_arg`, REQ-1986), convertito rigorosamente nel tipo dichiarato e inserito nella richiesta come valore JSON, mai nel suo testo. L'argomento di `query` è `array(double)` ed è obbligatorio.
+- Ogni argomento è un parametro della tabella (`query_arg`), convertito rigorosamente nel tipo dichiarato e inserito nella richiesta come valore JSON, mai nel suo testo. L'argomento di `query` è `array(double)` ed è obbligatorio.
 - Un chiamante passa gli argomenti come qualsiasi parametro: `SELECT id, score, title FROM docs_search WHERE _nf_query_vector = '[0.1, 0.2, …]' AND _nf_lang = 'en'` in SQL, argomenti di campo in GraphQL.
 - Un argomento opzionale non dato non filtra nulla: la sua condizione viene omessa dal filtro. Senza `limit`, una ricerca restituisce il valore predefinito di Qdrant, 10 punti.
 - Il filtro è applicato da Qdrant prima di scegliere i suoi punti più vicini, quindi è esatto. Qualsiasi altra condizione dell'istruzione restringe in seguito i punti restituiti dalla ricerca; non ne recupera altri.
 - `score` è la metrica propria della collection per il vettore cercato: per una collection Cosine, la similarità del coseno. Registra tabella elenca i vettori della collection con dimensione e distanza.
-- `model` nomina un modello di embedding registrato (`vector_models`, admin → AI Models). Un testo dato per la query viene allora incorporato da quel modello, e un vettore dato deve avere le dimensioni di quel modello (REQ-429, REQ-430). Senza `model`, la query deve essere un vettore.
+- `model` nomina un modello di embedding registrato (`vector_models`, admin → AI Models). Un testo dato per la query viene allora incorporato da quel modello, e un vettore dato deve avere le dimensioni di quel modello. Senza `model`, la query deve essere un vettore.
 
-Una ricerca viene letta per istruzione con i suoi argomenti, le sue righe conservate sotto quegli argomenti per il TTL della tabella. Una tabella di ricerca è di sola lettura. [tool-verified: `provisa/qdrant/table.py` `check_table`, `plan`, `read`; `provisa/api/data/materialization.py` `_is_native_read`]
+Una ricerca viene letta per istruzione con i suoi argomenti, le sue righe conservate sotto quegli argomenti per il TTL della tabella. Una tabella di ricerca è di sola lettura.
 
 ### Streaming
 
 | Tipo di origine | Meccanismo | Mutation |
 | ------------ | ----------- | ----------- |
-| `kafka` | Connettore Kafka federato; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), definizione manuale, o inferenza da campione (REQ-147, REQ-150) | No; l'output live di una tabella pubblica su Kafka (REQ-565) |
-| `websocket` | Feed WebSocket esterno — connette, si iscrive, riceve eventi; risultati materializzati (REQ-338) | No |
-| `rss` | Feed RSS 2.0 / Atom — polling, watermark per pubDate/updated; risultati materializzati (REQ-342, REQ-343) | No |
+| `kafka` | Connettore Kafka federato; schema via Confluent Schema Registry (Avro, Protobuf, JSON Schema), definizione manuale, o inferenza da campione | No; l'output live di una tabella pubblica su Kafka |
+| `websocket` | Feed WebSocket esterno — connette, si iscrive, riceve eventi; risultati materializzati | No |
+| `rss` | Feed RSS 2.0 / Atom — polling, watermark per pubDate/updated; risultati materializzati | No |
 
-**Kafka sui motori ospitati.** Sui motori predisposti della piattaforma ospitata, una sorgente Kafka deve nominare uno schema registry (`schema_registry_url`). Una sorgente le cui colonne dei topic sono dichiarate solo dal modello viene rifiutata per nome al salvataggio o all'applicazione (HTTP 422, `sources.kafka_needs_schema_registry`), perché le sue descrizioni di tabella richiederebbero una directory che non si può dare al motore in esecuzione. Le credenziali SASL raggiungono quei motori in memoria (vedere [Sicurezza](security.md#the-federation-engine-trino)). [tool-verified: `provisa/core/repositories/kafka_source.py` `refuse_on_engine_shard`] (REQ-2073)
+**Kafka sui motori ospitati.** Sui motori predisposti della piattaforma ospitata, una sorgente Kafka deve nominare uno schema registry (`schema_registry_url`). Una sorgente le cui colonne dei topic sono dichiarate solo dal modello viene rifiutata per nome al salvataggio o all'applicazione (HTTP 422, `sources.kafka_needs_schema_registry`), perché le sue descrizioni di tabella richiederebbero una directory che non si può dare al motore in esecuzione. Le credenziali SASL raggiungono quei motori in memoria (vedere [Sicurezza](security.md#the-federation-engine-trino)).
 
 ### Ricevitore push {: #push-receiver }
 
 | Tipo di origine | Meccanismo | Mutation |
 | ------------ | ----------- | ----------- |
-| `ingest` | Servizi esterni inviano eventi JSON via POST; risultati materializzati (REQ-331, REQ-335) | No |
+| `ingest` | Servizi esterni inviano eventi JSON via POST; risultati materializzati | No |
 
 ### Grafo e semantico {: #graph-semantic }
 
 | Tipo di origine | Meccanismo | Mutation |
 | ------------ | ----------- | ----------- |
-| `neo4j` | Cypher via API HTTP, risultati messi in cache in PostgreSQL (REQ-295) | No |
-| `sparql` | SPARQL 1.1 POST, risultati messi in cache in PostgreSQL (REQ-297) | No |
+| `neo4j` | Cypher via API HTTP, risultati messi in cache in PostgreSQL | No |
+| `sparql` | SPARQL 1.1 POST, risultati messi in cache in PostgreSQL | No |
 
 ### Basate su file {: #file-based }
 
-Tre meccanismi coprono i file. Le origini a file singolo e il crawler di file usano il campo `path` invece di `host`/`port`. [tool-verified: `provisa/core/models.py`] (REQ-553) Il terzo, [Logs](#logs), indica i propri file con un glob nel suo `mapping` e legge solo file presenti sul server Provisa. [tool-verified: `provisa/logs/settings.py`]
+Tre meccanismi coprono i file. Le origini a file singolo e il crawler di file usano il campo `path` invece di `host`/`port`. Il terzo, [Logs](#logs), indica i propri file con un glob nel suo `mapping` e legge solo file presenti sul server Provisa.
 
-**Origini database su file e a file singolo** — `sqlite`, `duckdb`, `csv`, `parquet` puntano `path` su un singolo file. (Un'origine `duckdb` tiene la sua posizione nel campo `database` del modulo.) [tool-verified: `provisa-ui/src/pages/sources/FileLocationFields.tsx`]
+**Origini database su file e a file singolo** — `sqlite`, `duckdb`, `csv`, `parquet` puntano `path` su un singolo file. (Un'origine `duckdb` tiene la sua posizione nel campo `database` del modulo.)
 
 | Tipo di origine | Posizioni | Mutation |
 | --- | --- | --- |
@@ -288,11 +281,9 @@ Tre meccanismi coprono i file. Le origini a file singolo e il crawler di file us
 | `csv` | percorso locale, `https://`, `s3://`, `gs://`, `az://` (motore DuckDB) | No |
 | `parquet` | percorso locale, `https://`, `s3://`, `gs://`, `az://` (motore DuckDB) | No |
 
-[tool-verified: `provisa/federation/connector_duckdb.py` `location_kind`, `file_location_details`; `provisa/executor/write_capability.py` `table_write_ops`. The table describes the DuckDB engine, where the connectors above take every location. On other engines, CSV and Parquet over `s3://` or `http(s)://` are better registered through the `files` source. [inferred]] (REQ-1997)
+Un percorso con qualsiasi altro schema (ad esempio `ftp://`) viene rifiutato: "DuckDB reads no file at a `ftp://` location".
 
-Un percorso con qualsiasi altro schema (ad esempio `ftp://`) viene rifiutato: "DuckDB reads no file at a `ftp://` location". [tool-verified: `location_kind` raises `ValueError`]
-
-**Credenziali per una posizione remota.** Inseritele nei `federation_hints` dell'origine. Ciascuna è limitata al bucket o al container del percorso stesso, quindi le credenziali di un'origine non vengono mai usate per la posizione di un'altra origine. Un'origine che non ne fornisce viene letta come posizione pubblica. [tool-verified: `object_store_secret_ddl`]
+**Credenziali per una posizione remota.** Inseritele nei `federation_hints` dell'origine. Ciascuna è limitata al bucket o al container del percorso stesso, quindi le credenziali di un'origine non vengono mai usate per la posizione di un'altra origine. Un'origine che non ne fornisce viene letta come posizione pubblica.
 
 | Posizione | Chiavi `federation_hints` |
 | --- | --- |
@@ -300,28 +291,28 @@ Un percorso con qualsiasi altro schema (ad esempio `ftp://`) viene rifiutato: "D
 | `gs://` | `gcs_access_id`, `gcs_secret_key` (una chiave HMAC) |
 | `az://` | `azure_account_name`, `azure_account_key` |
 
-**I file SQLite e DuckDB remoti sono di sola lettura.** Il motore DuckDB li collega sul posto con `READ_ONLY`, e una tabella su uno di essi non offre insert, update o delete. Su un motore che non collega SQLite, un file SQLite remoto viene letto tramite una connessione DuckDB temporanea che lo collega in sola lettura, e le sue righe atterrano come di consueto. [tool-verified: `_attach_options`; `table_write_ops`; `provisa/events/source_loader.py` `make_sqlite_loader` `_remote`]
+**I file SQLite e DuckDB remoti sono di sola lettura.** Il motore DuckDB li collega sul posto con `READ_ONLY`, e una tabella su uno di essi non offre insert, update o delete. Su un motore che non collega SQLite, un file SQLite remoto viene letto tramite una connessione DuckDB temporanea che lo collega in sola lettura, e le sue righe atterrano come di consueto.
 
-**Caricare un file.** Nel modulo di un'origine `sqlite`, `duckdb`, `csv` o `parquet`, caricate il file invece di digitare un percorso. Il file viene scritto su disco in streaming, mai tenuto in memoria, nella cartella dell'organizzazione sotto `files/<source id>/<file name>`, e il percorso dell'origine viene impostato su di esso. [tool-verified: `provisa/core/source_uploads.py` `receive`, `upload_dir`; `provisa/api/admin/source_files_router.py` `upload_file`]
+**Caricare un file.** Nel modulo di un'origine `sqlite`, `duckdb`, `csv` o `parquet`, caricate il file invece di digitare un percorso. Il file viene scritto su disco in streaming, mai tenuto in memoria, nella cartella dell'organizzazione sotto `files/<source id>/<file name>`, e il percorso dell'origine viene impostato su di esso.
 
-- **Sostituzione.** Un nuovo caricamento prende il posto del file precedente, qualunque sia il suo nome, e l'origine viene ripristinata così che la lettura successiva veda il nuovo file. [tool-verified: `receive` removes other files in the directory; `upload_file` calls `reprovision_source_after_registration`]
-- **Rimozione.** Rimuovere l'origine rimuove il file caricato. Nient'altro lo rimuove. [tool-verified: `provisa/api/admin/schema_mutation.py` `source_uploads.remove(id)`]
-- **Chi.** Solo i ruoli con la capability `source_registration` possono caricare. [tool-verified: `upload_file` `require_capability_request(request, "source_registration")`]
-- **Limite di dimensione.** L'impostazione `sources.max_upload_bytes` (ambiente `PROVISA_SOURCES_MAX_UPLOAD_BYTES`) limita il file, 1 GiB (1073741824 byte) per impostazione predefinita, minimo 1, letta all'inizio di un caricamento. Un file più grande viene rifiutato con HTTP 413 indicando il limite, e non ne viene conservato nulla. [tool-verified: `provisa/core/settings_catalog.py`; `UploadTooLarge`]
-- **Percorso.** Finché il percorso è il file caricato dell'origine, il campo percorso del modulo è di sola lettura. [tool-verified: `FileLocationFields.tsx` `readOnly={uploaded}`]
-- **Nomi.** L'id dell'origine e il nome del file possono contenere solo lettere, cifre, `.`, `_` e `-`. [tool-verified: `source_uploads._SEGMENT`]
-- **Archiviazione.** [inferred from the `source_uploads` docstring] Un file caricato viene archiviato come qualsiasi file dell'organizzazione: nella cartella dell'organizzazione, cifrato quando lo è quella cartella, e visibile a ogni nodo su un mount condiviso.
+- **Sostituzione.** Un nuovo caricamento prende il posto del file precedente, qualunque sia il suo nome, e l'origine viene ripristinata così che la lettura successiva veda il nuovo file.
+- **Rimozione.** Rimuovere l'origine rimuove il file caricato. Nient'altro lo rimuove.
+- **Chi.** Solo i ruoli con la capability `source_registration` possono caricare.
+- **Limite di dimensione.** L'impostazione `sources.max_upload_bytes` (ambiente `PROVISA_SOURCES_MAX_UPLOAD_BYTES`) limita il file, 1 GiB (1073741824 byte) per impostazione predefinita, minimo 1, letta all'inizio di un caricamento. Un file più grande viene rifiutato con HTTP 413 indicando il limite, e non ne viene conservato nulla.
+- **Percorso.** Finché il percorso è il file caricato dell'origine, il campo percorso del modulo è di sola lettura.
+- **Nomi.** L'id dell'origine e il nome del file possono contenere solo lettere, cifre, `.`, `_` e `-`.
+- **Archiviazione.** Un file caricato viene archiviato come qualsiasi file dell'organizzazione: nella cartella dell'organizzazione, cifrato quando lo è quella cartella, e visibile a ogni nodo su un mount condiviso.
 
-**Scritture su un file SQLite o DuckDB locale, e lock.** Una scrittura prende il lock del file e non lo attende mai. Quando un altro processo o nodo detiene il file, la scrittura viene rifiutata, indicando l'origine e che il suo file è bloccato. [tool-verified: `provisa/federation/file_locks.py` `FileLocked`; REQ-1997 notes quote the maintainer: "writes back to file databases in a multi-node env - just error them out when they can't a lock on it."]
+**Scritture su un file SQLite o DuckDB locale, e lock.** Una scrittura prende il lock del file e non lo attende mai. Quando un altro processo o nodo detiene il file, la scrittura viene rifiutata, indicando l'origine e che il suo file è bloccato.
 
-- **SQLite.** La scrittura imposta `PRAGMA busy_timeout = 0`, quindi un file bloccato fallisce subito. [tool-verified: `provisa/executor/drivers/sqlalchemy_driver.py` `_write_sqlite`]
-- **DuckDB.** DuckDB condivide un file solo tra aperture in sola lettura. Per questo il collegamento del motore e la connessione propria dell'origine tengono il file in sola lettura, e ogni nodo lo legge contemporaneamente. Una scrittura sospende i detentori di questo processo, apre il file in lettura e scrittura solo per quell'istruzione e lo chiude. Se l'apertura non riesce a prendere il lock, la scrittura viene rifiutata. [tool-verified: `provisa/executor/drivers/duckdb_driver.py` `_write`: `with file_locks.exclusive(self._database):` then `duckdb.connect(self._database)`; `connector_duckdb._attach_options`]
+- **SQLite.** La scrittura imposta `PRAGMA busy_timeout = 0`, quindi un file bloccato fallisce subito.
+- **DuckDB.** DuckDB condivide un file solo tra aperture in sola lettura. Per questo il collegamento del motore e la connessione propria dell'origine tengono il file in sola lettura, e ogni nodo lo legge contemporaneamente. Una scrittura sospende i detentori di questo processo, apre il file in lettura e scrittura solo per quell'istruzione e lo chiude. Se l'apertura non riesce a prendere il lock, la scrittura viene rifiutata.
 
-**Mount condivisi.** In una cartella dell'organizzazione cifrata il cui mount è condiviso da più nodi (impostazione `org_files.shared_mount`), una scrittura su un file SQLite o DuckDB al suo interno viene rifiutata direttamente, indicando l'origine. Lo strato di cifratura delle cartelle (gocryptfs) non porta i lock dei file agli altri nodi, quindi nulla impedirebbe a due nodi di scrivere contemporaneamente. Le letture funzionano comunque. [tool-verified: `file_locks.refuse_unprotected`, `UnprotectedWrite`; both drivers call it before a write]
+**Mount condivisi.** In una cartella dell'organizzazione cifrata il cui mount è condiviso da più nodi (impostazione `org_files.shared_mount`), una scrittura su un file SQLite o DuckDB al suo interno viene rifiutata direttamente, indicando l'origine. Lo strato di cifratura delle cartelle (gocryptfs) non porta i lock dei file agli altri nodi, quindi nulla impedirebbe a due nodi di scrivere contemporaneamente. Le letture funzionano comunque.
 
-Una cartella condivisa senza cifratura deve essere montata con lock che raggiungono ogni nodo: un mount NFS con il locking attivo, non `nolock` e non `local_lock`. Nessuna verifica lo controlla; è un requisito di deployment. [tool-verified: REQ-1997 description in `docs/arch/requirements.yaml`; no check exists in source [inferred]]
+Una cartella condivisa senza cifratura deve essere montata con lock che raggiungono ogni nodo: un mount NFS con il locking attivo, non `nolock` e non `local_lock`. Nessuna verifica lo controlla; è un requisito di deployment.
 
-**Crawler di file (origine `files`)** — punta `path` su un glob, lo esegue in crawling ricorsivamente, e registra la directory come catalogo federato di tabelle. Legge molti formati su molti trasporti; gli insiemi sotto provengono dal connettore file (fork kenstott/calcite). [tool-verified: `provisa/core/catalog.py` `files` branch e `provisa/core/models.py` `SOURCE_TO_CONNECTOR`; liste di formati e trasporti dall'adapter calcite `file` — `FileSchema.java`, `storage/StorageProviderFactory.java`]
+**Crawler di file (origine `files`)** — punta `path` su un glob, lo esegue in crawling ricorsivamente, e registra la directory come catalogo federato di tabelle. Legge molti formati su molti trasporti; gli insiemi sotto provengono dal connettore file (fork kenstott/calcite).
 
 | Formati | Trasporti |
 | --- | --- |
@@ -333,13 +324,13 @@ Una cartella condivisa senza cifratura deve essere montata con lock che raggiung
   path: s3://bucket/sales/**/*.csv   # glob; local and http(s):// also supported
 ```
 
-Qualsiasi origine `files` può anche dichiarare un `crawl` nel proprio mapping, con le stesse impostazioni elencate sotto [Wikipedia](#wikipedia): l'origine legge prima le pagine web e atterra ogni tabella di dati HTML e ogni file di dati collegato nella propria directory come tabella. [tool-verified: `provisa/file_source/crawl.py` `crawl_operand`]
+Qualsiasi origine `files` può anche dichiarare un `crawl` nel proprio mapping, con le stesse impostazioni elencate sotto [Wikipedia](#wikipedia): l'origine legge prima le pagine web e atterra ogni tabella di dati HTML e ogni file di dati collegato nella propria directory come tabella.
 
-Sul motore DuckDB, `files` viene letta nativamente — una vista scanner `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta (REQ-229) [tool-verified: `provisa/federation/connector_duckdb.py` `DuckDBFilesConnector`]. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite integrato nel connettore (`pgwire-file`) usato da sharepoint/splunk (REQ-954) — vedere [Connettori SaaS enterprise](#enterprise-saas-connectors) sotto. La copertura end-to-end della UI (modulo Sources → Registra tabella → query SQL) e il percorso di atterraggio pgwire sono verificati in REQ-1694.
+Sul motore DuckDB, `files` viene letta nativamente — una vista scanner `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite integrato nel connettore (`pgwire-file`) usato da sharepoint/splunk — vedere [Connettori SaaS enterprise](#enterprise-saas-connectors) sotto.
 
-#### Logs (REQ-1996) {: #logs }
+#### Logs {: #logs }
 
-Un'origine `logs` trasforma i file di log sul server Provisa in una tabella. I file si indicano con un percorso completo o con un glob, e si sceglie il formato in cui sono scritti i loro record. Ogni record diventa una riga. Un record che il formato non sa leggere viene conservato, con il testo grezzo e il motivo, mai scartato. [tool-verified: `provisa/logs/__init__.py`; `provisa/logs/files.py` `rows_of`]
+Un'origine `logs` trasforma i file di log sul server Provisa in una tabella. I file si indicano con un percorso completo o con un glob, e si sceglie il formato in cui sono scritti i loro record. Ogni record diventa una riga. Un record che il formato non sa leggere viene conservato, con il testo grezzo e il motivo, mai scartato.
 
 ```yaml
 sources:
@@ -350,7 +341,7 @@ sources:
       format: macos_install
 ```
 
-Il mapping accetta quattro chiavi e rifiuta qualsiasi altra per nome: `glob` e `format` (entrambe obbligatorie), e `pattern` e `record_start`, che solo il formato `regex` accetta. [tool-verified: `provisa/logs/settings.py` `parse`; `provisa/logparse/__init__.py` `format_for`]
+Il mapping accetta quattro chiavi e rifiuta qualsiasi altra per nome: `glob` e `format` (entrambe obbligatorie), e `pattern` e `record_start`, che solo il formato `regex` accetta.
 
 ```yaml
     mapping:
@@ -360,9 +351,9 @@ Il mapping accetta quattro chiavi e rifiuta qualsiasi altra per nome: `glob` e `
       record_start: '\d{4}-\d{2}-\d{2} '   # a stack trace joins the line it follows
 ```
 
-Nel modulo Sources, un'origine Logs compare come "Log files" sotto File. Il pulsante **Preview** mostra i file che il glob seleziona, le colonne che il formato fornisce e le prime 20 righe del file più recente, prima che venga salvato qualsiasi cosa. [tool-verified: `provisa-ui/src/pages/sources/constants.ts`; `provisa-ui/src/pages/sources/LogsFields.tsx`; `provisa/api/admin/logs_router.py` `PREVIEW_ROWS`]
+Nel modulo Sources, un'origine Logs compare come "Log files" sotto File. Il pulsante **Preview** mostra i file che il glob seleziona, le colonne che il formato fornisce e le prime 20 righe del file più recente, prima che venga salvato qualsiasi cosa.
 
-**Il glob.** Deve essere un percorso completo; `~` viene espanso e un percorso relativo viene rifiutato ("name the files by their full path"). La corrispondenza usa `glob` di Python in modalità non ricorsiva, quindi `**` si comporta come `*` e corrisponde entro un solo livello di directory. Si prendono solo i file regolari, in ordine di nome. Un file vuoto viene saltato finché non ha byte. [tool-verified: `provisa/logs/roots.py` `checked_glob`; `provisa/logs/files.py` `matched`, `identify`] Il glob può nominare una variabile d'ambiente, come in `${env:LOG_DIR}/*.log`. La sorgente conserva il riferimento così come è scritto e lo risolve a ogni lettura dei file; una variabile non impostata viene rifiutata per nome. [tool-verified: `provisa/logs/settings.py` `parse`; `tests/unit/test_logs_source.py` `test_a_glob_naming_a_variable_reads_where_it_points`]
+**Il glob.** Deve essere un percorso completo; `~` viene espanso e un percorso relativo viene rifiutato ("name the files by their full path"). La corrispondenza usa `glob` di Python in modalità non ricorsiva, quindi `**` si comporta come `*` e corrisponde entro un solo livello di directory. Si prendono solo i file regolari, in ordine di nome. Un file vuoto viene saltato finché non ha byte. Il glob può nominare una variabile d'ambiente, come in `${env:LOG_DIR}/*.log`. La sorgente conserva il riferimento così come è scritto e lo risolve a ogni lettura dei file; una variabile non impostata viene rifiutata per nome.
 
 **Le colonne proprie di ogni riga.** Vengono prima delle colonne del formato:
 
@@ -376,9 +367,9 @@ Nel modulo Sources, un'origine Logs compare come "Log files" sotto File. Il puls
 | `_parse_error` | text | Perché il record, o uno dei suoi valori, non ha potuto essere letto; NULL quando lo è stato |
 | `_landed_at` | timestamp | Quando la riga è atterrata |
 
-`_file_id`, `_line_offset` e `_entry` sono la chiave della riga, quindi un record letto due volte è una sola riga. [tool-verified: `provisa/logs/__init__.py` `META_COLUMNS`, `KEY`; `provisa/logs/preview.py` `columns`]
+`_file_id`, `_line_offset` e `_entry` sono la chiave della riga, quindi un record letto due volte è una sola riga.
 
-**Formati e preset.** La selezione del formato li raggruppa per famiglia; l'ultima scelta, `regex`, è il pattern definito da voi. [tool-verified: `provisa/logparse/__init__.py` `BUILT_IN`, `catalog`; `provisa/logparse/presets/__init__.py` `presets`; family labels from `provisa-ui/src/i18n/locales/en/logsFields.json`]
+**Formati e preset.** La selezione del formato li raggruppa per famiglia; l'ultima scelta, `regex`, è il pattern definito da voi.
 
 | Famiglia (etichetta nel modulo) | Nomi dei formati |
 | --- | --- |
@@ -392,26 +383,26 @@ Nel modulo Sources, un'origine Logs compare come "Log files" sotto File. Il puls
 | Server web e proxy | `nginx_error`, `apache_error`, `haproxy_http`, `squid_access`, `envoy_access`, `caddy_access`, `traefik_access` |
 | Personalizzato | `regex` |
 
-Sono 56 formati integrati più `regex`. [tool-verified: `BUILT_IN` enumerated with the project interpreter]
+Sono 56 formati integrati più `regex`.
 
-**Come un formato produce le colonne.** I formati ottengono le colonne in uno di quattro modi. [tool-verified: `provisa/logparse/formats.py`; `provisa/logparse/presets/_shared.py`; `provisa/logparse/coltypes.py`]
+**Come un formato produce le colonne.** I formati ottengono le colonne in uno di quattro modi.
 
 - **Colonne fisse.** La maggior parte dei formati dichiara colonne e tipi. `rfc3164`, per esempio, dà `timestamp`, `facility`, `severity`, `host`, `process`, `pid` e `message`; `facility` e `severity` sono calcolate dal valore `<PRI>`. Una riga syslog BSD non porta l'anno, quindi l'anno è quello dell'ultima scrittura del file, oppure l'anno precedente se il mese della riga è successivo a quello della scrittura.
 - **Campi nominati dal record.** `jsonl` e `logfmt` prendono le colonne dai campi visti nelle prime righe dei file (impostazione `logs.preview_lines`, predefinita 1000). Ogni colonna riceve il tipo più stretto in cui rientrano tutti i valori visti: boolean, poi integer, float, timestamp e json, altrimenti text. Un campo che un record successivo porta e che nessuna colonna ha finisce in una colonna json `extra`.
 - **Campi nominati da un'intestazione.** `w3c` e i preset costruiti su di esso leggono la riga `#Fields:` di ciascun file; `date` e `time` si uniscono in un'unica colonna `timestamp`. `aws_cloudfront`, `ms_iis`, `ms_windows_firewall`, `ms_exchange_tracking` e `zeek_tsv` leggono allo stesso modo le righe di intestazione che iniziano con `#`, e `aws_vpc_flow` legge una riga di intestazione che inizia con `version`. Il punto in cui è stata letta una riga di intestazione resta con il file, quindi un file letto più avanti mantiene i suoi campi.
 - **`regex`.** Ogni gruppo nominato, come `(?P<level>…)`, è una colonna di tipo text.
 
-La schermata Register Table elenca queste colonne con i loro tipi e segna la chiave. [tool-verified: `provisa/api/admin/schema_query.py` `_logs_columns`] Quando le righe vengono lette, ogni valore è convertito nel tipo che la sua colonna ha nella tabella registrata, quindi un tipo cambiato lì è quello applicato. Un valore che la colonna non può contenere diventa NULL e il suo motivo va in `_parse_error`. [tool-verified: `provisa/logs/loader.py` `_load`; `provisa/logs/files.py` `_typed`] [inferred: that the screen lets a steward change a suggested type, as REQ-1996 states]
+La schermata Register Table elenca queste colonne con i loro tipi e segna la chiave. Quando le righe vengono lette, ogni valore è convertito nel tipo che la sua colonna ha nella tabella registrata, quindi un tipo cambiato lì è quello applicato. Un valore che la colonna non può contenere diventa NULL e il suo motivo va in `_parse_error`.
 
-Un record più lungo di `logs.max_line_bytes` (predefinito 65536) conserva i primi byte in `_raw` e non viene analizzato; `_parse_error` ne indica la lunghezza. Un file che inizia con un byte-order mark UTF-8 o UTF-16 è letto in quella codifica, e qualsiasi altro file come UTF-8. [tool-verified: `provisa/core/settings_catalog.py`; `provisa/logs/files.py` `rows_of`, `text_encoding`]
+Un record più lungo di `logs.max_line_bytes` (predefinito 65536) conserva i primi byte in `_raw` e non viene analizzato; `_parse_error` ne indica la lunghezza. Un file che inizia con un byte-order mark UTF-8 o UTF-16 è letto in quella codifica, e qualsiasi altro file come UTF-8.
 
-**Record su più righe.** Un formato con un pattern di inizio record crea un record da una riga che lo soddisfa più tutte le righe successive che non lo soddisfano. Uno stack trace resta con la sua eccezione, e una voce di query lenta resta intera. Le righe prima della prima corrispondenza sono un record a sé; di solito il formato lo rifiuta, e la riga viene conservata. I formati integrati con un inizio record sono `rfc3164`, `macos_install`, `aws_cloudtrail`, `postgresql_stderr`, `postgresql_csvlog`, `mysql_error`, `mysql_slow`, `log4j2_default`, `logback_default`, `python_logging`, `chrome_net_export`, `ms_sqlserver_errorlog` e `azure_monitor`. Con `regex`, impostate voi `record_start`. [tool-verified: `provisa/logparse/framing.py` `records`; `record_start` of each format enumerated with the project interpreter]
+**Record su più righe.** Un formato con un pattern di inizio record crea un record da una riga che lo soddisfa più tutte le righe successive che non lo soddisfano. Uno stack trace resta con la sua eccezione, e una voce di query lenta resta intera. Le righe prima della prima corrispondenza sono un record a sé; di solito il formato lo rifiuta, e la riga viene conservata. I formati integrati con un inizio record sono `rfc3164`, `macos_install`, `aws_cloudtrail`, `postgresql_stderr`, `postgresql_csvlog`, `mysql_error`, `mysql_slow`, `log4j2_default`, `logback_default`, `python_logging`, `chrome_net_export`, `ms_sqlserver_errorlog` e `azure_monitor`. Con `regex`, impostate voi `record_start`.
 
-Due formati leggono i propri record da soli invece che per riga. `kubernetes_cri` unisce in un record le righe parziali (`P`) che il runtime ha spezzato, e `windows_evtx` legge il file binario `.evtx`. [tool-verified: `provisa/logparse/presets/linux.py` `KubernetesCri`; `frames_bytes` enumerated with the project interpreter]
+Due formati leggono i propri record da soli invece che per riga. `kubernetes_cri` unisce in un record le righe parziali (`P`) che il runtime ha spezzato, e `windows_evtx` legge il file binario `.evtx`.
 
-Un file ancora in scrittura è letto fino all'ultima riga completa. Per un formato multiriga è letto fino all'inizio del suo ultimo record, che la riga successiva potrebbe continuare. Quando il file resta 2 secondi senza scritture, quell'ultimo record è considerato intero. [tool-verified: `provisa/logs/files.py` `QUIET_SECONDS`, `read_file`]
+Un file ancora in scrittura è letto fino all'ultima riga completa. Per un formato multiriga è letto fino all'inizio del suo ultimo record, che la riga successiva potrebbe continuare. Quando il file resta 2 secondi senza scritture, quell'ultimo record è considerato intero.
 
-**Rotazione.** Un file è riconosciuto da un checksum dei suoi primi 4096 byte, decompressi, non dal suo nome. Quando `system.log` viene ruotato in `system.log.0` e poi compresso in `system.log.0.gz`, ogni copia è lo stesso file. La lettura prosegue dal byte raggiunto dall'ultima lettura, quindi nessuna riga è letta due volte. [tool-verified: `provisa/logs/files.py` module docstring, `identify`; `tests/unit/test_logs_source.py` `test_a_rotated_and_compressed_file_is_read_on_and_no_line_twice`]
+**Rotazione.** Un file è riconosciuto da un checksum dei suoi primi 4096 byte, decompressi, non dal suo nome. Quando `system.log` viene ruotato in `system.log.0` e poi compresso in `system.log.0.gz`, ogni copia è lo stesso file. La lettura prosegue dal byte raggiunto dall'ultima lettura, quindi nessuna riga è letta due volte.
 
 - La compressione è riconosciuta dai primi byte del file, mai dal nome: gzip e bzip2. Un file compresso è considerato completo.
 - Una copia ruotata e la sua gemella compressa, entrambe selezionate, sono lette una volta sola, dalla compressa.
@@ -419,13 +410,11 @@ Un file ancora in scrittura è letto fino all'ultima riga completa. Per un forma
 - I file più corti di 4096 byte che iniziano allo stesso modo si distinguono per inode, quindi restano due file.
 - Un file che il glob non seleziona più viene dimenticato; le sue righe restano come storico.
 
-[tool-verified: `provisa/logs/files.py` `compression`, `Found.complete`, `identify`; `provisa/logs/loader.py` module docstring; `tests/unit/test_logs_source.py`]
+**Aggiornamento e consegna live.** Una tabella Logs è una replica. Nulla osserva i file. Invece, quando il segnale di cambiamento dell'origine è `probe` o `ttl_probe`, la sua sonda calcola un digest di percorso, inode, dimensione e ultima scrittura di ogni file selezionato; quando il digest differisce, viene richiesto un aggiornamento. I tipi di sonda che un'origine Logs accetta sono `hash` e `none`.
 
-**Aggiornamento e consegna live.** Una tabella Logs è una replica. Nulla osserva i file. Invece, quando il segnale di cambiamento dell'origine è `probe` o `ttl_probe`, la sua sonda calcola un digest di percorso, inode, dimensione e ultima scrittura di ogni file selezionato; quando il digest differisce, viene richiesto un aggiornamento. I tipi di sonda che un'origine Logs accetta sono `hash` e `none`. [tool-verified: `provisa/logs/loader.py` `files_token`, `_freshness_probe`; `provisa/events/probes.py` `_LOADER_PROBED`, `probe_capabilities`]
+Un aggiornamento legge solo ciò che è nuovo. Ogni file è letto da dove è arrivato l'ultimo passaggio, e le righe sono scritte per chiave, 5000 alla volta, prima che la nuova posizione sia conservata. Un passaggio che si ferma tra i due passi rilegge quei record, il che lascia le stesse righe. Ogni passaggio marca le proprie righe in `_landed_at`, la colonna che la consegna live usa come watermark. Una definizione di tabella modificata è una ricostruzione completa che legge ogni file dall'inizio.
 
-Un aggiornamento legge solo ciò che è nuovo. Ogni file è letto da dove è arrivato l'ultimo passaggio, e le righe sono scritte per chiave, 5000 alla volta, prima che la nuova posizione sia conservata. Un passaggio che si ferma tra i due passi rilegge quei record, il che lascia le stesse righe. Ogni passaggio marca le proprie righe in `_landed_at`, la colonna che la consegna live usa come watermark. Una definizione di tabella modificata è una ricostruzione completa che legge ogni file dall'inizio. [tool-verified: `provisa/logs/loader.py` `_UnitsRead`, `_WholeRead`, `BATCH_ROWS`, `replica_stamp_column`; `provisa/federation/replica_builds.py` `_kept_in_place`] [inferred: that subscriptions deliver a Logs table's new rows by `_landed_at`, as REQ-1996 states; the subscription side was not traced]
-
-**Radici consentite.** L'impostazione operatore `logs.allowed_roots` elenca le directory in cui un glob può risolversi. Il valore predefinito è `["/var/log"]`; è un elenco nella scheda Security di Admin → Settings, impostabile anche con `PROVISA_LOGS_ALLOWED_ROOTS`, e una modifica chiede conferma. Ogni radice è risolta dopo l'espansione di `~` e dei symlink. [tool-verified: `provisa/core/settings_catalog.py` `logs.allowed_roots`; `provisa/logs/roots.py` `allowed_roots`]
+**Radici consentite.** L'impostazione operatore `logs.allowed_roots` elenca le directory in cui un glob può risolversi. Il valore predefinito è `["/var/log"]`; è un elenco nella scheda Security di Admin → Settings, impostabile anche con `PROVISA_LOGS_ALLOWED_ROOTS`, e una modifica chiede conferma. Ogni radice è risolta dopo l'espansione di `~` e dei symlink.
 
 Si applicano due controlli. La parte fissa del glob, fino al primo carattere jolly, deve risolversi dentro una radice; è controllata quando l'origine viene salvata e a ogni anteprima o lettura. Anche ogni file selezionato deve risolversi dentro una radice una volta seguiti i symlink, quindi un symlink che esce da `/var/log` viene rifiutato. Il rifiuto indica il percorso, ciò in cui si è risolto e le radici consentite:
 
@@ -433,36 +422,34 @@ Si applicano due controlli. La parte fissa del glob, fino al primo carattere jol
 /home/me/app.log resolves to /home/me/app.log, outside the directories log files may be read from: /var/log
 ```
 
-Al salvataggio il codice è `schema.logs_path_refused`; in anteprima è un 403 con `logs.path_refused`. [tool-verified: `provisa/logs/roots.py` `checked_glob`, `checked_file`; `provisa/api/admin/schema_common.py` `logs_refusal`; `provisa/api/admin/logs_router.py`; `tests/unit/test_logs_source.py` `test_a_symlink_escaping_the_root_is_refused_by_name`]
+Al salvataggio il codice è `schema.logs_path_refused`; in anteprima è un 403 con `logs.path_refused`.
 
-**Rifiuto in hosting (SaaS).** Un deployment che ospita molte organizzazioni non legge alcun file di log proprio. Ogni controllo di percorso rifiuta per primo, al salvataggio, in anteprima e in lettura, con "`<path>`: a server that holds many organizations reads no log file of its own". I file sono del server, non di una singola organizzazione, quindi nessun tenant può leggerli. Il deployment sa se ospita molte organizzazioni dal suo stato di multitenancy. [tool-verified: `provisa/logs/roots.py` `_refuse_on_saas`; `provisa/core/secrets_providers.py` `many_organisations`; `provisa/api/app.py` `set_many_organisations_resolver(lambda: state.multitenancy)`; `tests/unit/test_logs_source.py` `test_a_server_of_many_organizations_reads_no_log_file_of_its_own`]
+**Rifiuto in hosting (SaaS).** Un deployment che ospita molte organizzazioni non legge alcun file di log proprio. Ogni controllo di percorso rifiuta per primo, al salvataggio, in anteprima e in lettura, con "`<path>`: a server that holds many organizations reads no log file of its own". I file sono del server, non di una singola organizzazione, quindi nessun tenant può leggerli. Il deployment sa se ospita molte organizzazioni dal suo stato di multitenancy.
 
-#### Dataset Kaggle (REQ-1780, REQ-1781, REQ-1782, REQ-1783) {: #kaggle-datasets }
+#### Dataset Kaggle {: #kaggle-datasets }
 
-Kaggle è una piattaforma di download di file. Un dataset Kaggle messo in stage si registra come origine di tipo `files` e viene interrogato tramite lo stesso connettore pgwire-file usato da qualsiasi altra origine `files` — non esiste un `SourceType` `kaggle` nell'enum. [tool-verified: `provisa/kaggle/downloader.py`; `provisa/core/models.py` `SourceType` — nessun letterale `kaggle`]
+Kaggle è una piattaforma di download di file. Un dataset Kaggle messo in stage si registra come origine di tipo `files` e viene interrogato tramite lo stesso connettore pgwire-file usato da qualsiasi altra origine `files` — non esiste un `SourceType` `kaggle` nell'enum.
 
-**Aggiungere un dataset.** Apri Sources → Subscriptions → Kaggle. Il modulo esegue due passaggi sequenziali, perché l'endpoint di ricerca dataset di Kaggle richiede l'autenticazione — il selettore non può apparire prima che il token sia validato. [tool-verified: `provisa-ui/src/pages/sources/KaggleFormSection.tsx`] (REQ-1783)
+**Aggiungere un dataset.** Apri Sources → Subscriptions → Kaggle. Il modulo esegue due passaggi sequenziali, perché l'endpoint di ricerca dataset di Kaggle richiede l'autenticazione — il selettore non può apparire prima che il token sia validato.
 
-1. **Token** — inserisci un token API Kaggle e clicca "Validate". La validazione chiama `POST https://www.kaggle.com/api/v1/datasets/create/new` con corpo vuoto. Un `401` significa non valido; qualsiasi altra risposta significa valido (la validazione del payload propria di Kaggle scatta prima che venga creato qualsiasi dataset — nulla viene persistito). [tool-verified: `provisa/kaggle/client.py` `validate_token`] (REQ-1782)
+1. **Token** — inserisci un token API Kaggle e clicca "Validate". La validazione chiama `POST https://www.kaggle.com/api/v1/datasets/create/new` con corpo vuoto. Un `401` significa non valido; qualsiasi altra risposta significa valido (la validazione del payload propria di Kaggle scatta prima che venga creato qualsiasi dataset — nulla viene persistito).
 2. **Selettore** — un campo di ricerca live-as-you-type interroga `GET /api/v1/datasets/list`. Ogni risultato mostra titolo e descrizione del dataset. Selezionane uno, poi clicca "Add Dataset".
 
-Cliccare "Add Dataset" scarica il bundle da `GET /api/v1/datasets/download/{owner}/{ref}`, decomprime i membri CSV e Parquet in `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, e crea **una** origine di tipo `files` il cui `path` è quella directory radice. Il token non viene mai memorizzato lato server. [tool-verified: `provisa/kaggle/downloader.py` `stage_dataset`; `provisa-ui/src/pages/sources/KaggleFormSection.tsx` `handleConfirmDataset`] (REQ-1780, REQ-1781)
+Cliccare "Add Dataset" scarica il bundle da `GET /api/v1/datasets/download/{owner}/{ref}`, decomprime i membri CSV e Parquet in `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, e crea **una** origine di tipo `files` il cui `path` è quella directory radice. Il token non viene mai memorizzato lato server.
 
-Dopo aver aggiunto l'origine, registra le sue tabelle tramite la normale schermata Registra tabella. La discovery ricorsiva delle directory del connettore pgwire-file elenca ogni file come propria tabella — lo stesso meccanismo usato da qualsiasi altra origine `files` (REQ-1690). (REQ-1783)
+Dopo aver aggiunto l'origine, registra le sue tabelle tramite la normale schermata Registra tabella. La discovery ricorsiva delle directory del connettore pgwire-file elenca ogni file come propria tabella — lo stesso meccanismo usato da qualsiasi altra origine `files`.
 
-**Limitazione v1.** Un bundle contenente un file `.sqlite` o `.db` viene rifiutato immediatamente con un errore chiaro. Vengono messi in stage solo file CSV e Parquet. [tool-verified: `provisa/kaggle/downloader.py` `UnsupportedKaggleDataset`, `_UNSUPPORTED_EXTENSIONS`]
+**Limitazione v1.** Un bundle contenente un file `.sqlite` o `.db` viene rifiutato immediatamente con un errore chiaro. Vengono messi in stage solo file CSV e Parquet.
 
-**Denominazione delle tabelle.** Una tabella scansionata si chiama `<page>__<name>`: il titolo della pagina, poi la didascalia della tabella, oppure l'ultima intestazione sopra la tabella quando non ha didascalia, entrambi nell'ortografia dei nomi di colonna dell'origine. Per esempio, la tabella sotto l'intestazione "Tallest buildings in the world" nella pagina `List_of_tallest_buildings` è `list_of_tallest_buildings__tallest_buildings_in_the_world`. Un file di dati collegato conserva il proprio nome. [tool-verified: a live crawl of that page through the 0.109.0 file bundle]
+**Denominazione delle tabelle.** Una tabella scansionata si chiama `<page>__<name>`: il titolo della pagina, poi la didascalia della tabella, oppure l'ultima intestazione sopra la tabella quando non ha didascalia, entrambi nell'ortografia dei nomi di colonna dell'origine. Per esempio, la tabella sotto l'intestazione "Tallest buildings in the world" nella pagina `List_of_tallest_buildings` è `list_of_tallest_buildings__tallest_buildings_in_the_world`. Un file di dati collegato conserva il proprio nome.
 
-**Aggiornamento.** Per riscaricare un dataset dopo che Kaggle pubblica una nuova versione, chiama la mutation GraphQL `refreshKaggleSource` con l'ID dell'origine e un token valido. Questo rimette in stage i file sul posto e invalida la cache dell'endpoint pgwire-file, cosicché il connettore recepisce eventuali modifiche allo schema alla query successiva. `kaggle_owner` e `kaggle_ref` memorizzati in `federation_hints` al momento della creazione identificano quale dataset riscaricare. [tool-verified: `provisa/api/admin/schema_mutation.py` `refresh_kaggle_source`] (REQ-1780)
+**Aggiornamento.** Per riscaricare un dataset dopo che Kaggle pubblica una nuova versione, chiama la mutation GraphQL `refreshKaggleSource` con l'ID dell'origine e un token valido. Questo rimette in stage i file sul posto e invalida la cache dell'endpoint pgwire-file, cosicché il connettore recepisce eventuali modifiche allo schema alla query successiva. `kaggle_owner` e `kaggle_ref` memorizzati in `federation_hints` al momento della creazione identificano quale dataset riscaricare.
 
 **Nessun percorso di configurazione YAML statico.** Le origini Kaggle vengono create solo tramite il modulo Sources. Un'origine Kaggle esportata in YAML appare come `type: files` con `kaggle_owner` e `kaggle_ref` in `federation_hints`. Riscaricare da Kaggle richiede il flusso di aggiornamento della UI o la mutation `refreshKaggleSource` — puntare il `path` YAML a una directory già in stage è l'alternativa per ambienti air-gapped.
 
+#### Wikipedia {: #wikipedia }
 
-
-#### Wikipedia (REQ-1960) {: #wikipedia }
-
-Wikipedia scansiona le pagine che indichi. Ogni tabella di dati in una pagina, e ogni file CSV, TSV, Excel, JSON o Parquet collegato, diventa una tabella dell'origine. Come Kaggle, si registra come origine `files` con un `crawl` nel proprio mapping. Aggiungerla non registra nulla: uno steward registra le tabelle desiderate tramite la normale schermata Registra tabella. [tool-verified: `provisa/file_source/wikipedia.py` `crawl_settings`, `DATA_FILE_EXTENSIONS`; `provisa-ui/src/pages/sources/constants.ts` `wikipedia: "files"`] (REQ-316)
+Wikipedia scansiona le pagine che indichi. Ogni tabella di dati in una pagina, e ogni file CSV, TSV, Excel, JSON o Parquet collegato, diventa una tabella dell'origine. Come Kaggle, si registra come origine `files` con un `crawl` nel proprio mapping. Aggiungerla non registra nulla: uno steward registra le tabelle desiderate tramite la normale schermata Registra tabella.
 
 **Campi di configurazione.**
 
@@ -477,20 +464,18 @@ Wikipedia scansiona le pagine che indichi. Ogni tabella di dati in una pagina, e
 | What this edition calls its "See also" section | vuoto | Richiesto solo quando la casella sopra è disattivata e Provisa non sa indicare la sezione per l'edizione scelta. Il titolo della sezione come lo mostra una pagina, ad esempio `Voir aussi` |
 | Directory for the crawl's files | vuoto | Dove vengono scritte tabelle e file di dati. Vuoto: `<PROVISA_DATA_DIR>/crawl/<source id>` |
 
-[tool-verified: `provisa-ui/src/pages/sources/WikipediaFields.tsx`; `provisa-ui/src/i18n/locales/en/sourceFormFieldsExtended.json` `wp*`; `provisa/file_source/wikipedia.py` `DEFAULTS`; `provisa/file_source/crawl.py` `crawl_landing_directory`]
+Provisa conosce l'intestazione "See also" di queste edizioni: `en`, `de`, `es`, `it`, `pt`, `nl`, `pl`, `sv`, `ja`, `zh`, `ru`. Per qualsiasi altra edizione con "See also" disattivato, il modulo chiede come l'edizione chiami quella sezione; digita il suo titolo come lo mostra una pagina (ad esempio `Voir aussi`). Un'origine salvata senza di esso viene rifiutata (`wikipedia.see_also_heading_needed`).
 
-Provisa conosce l'intestazione "See also" di queste edizioni: `en`, `de`, `es`, `it`, `pt`, `nl`, `pl`, `sv`, `ja`, `zh`, `ru`. Per qualsiasi altra edizione con "See also" disattivato, il modulo chiede come l'edizione chiami quella sezione; digita il suo titolo come lo mostra una pagina (ad esempio `Voir aussi`). Un'origine salvata senza di esso viene rifiutata (`wikipedia.see_also_heading_needed`). [tool-verified: `provisa/file_source/wikipedia.py` `SEE_ALSO_HEADING`, `crawl_settings`]
-
-**Quali link vengono seguiti.** Un link è scelto da ciò che il markup della pagina stessa dice che è, mai da un nome nel suo indirizzo: tali nomi differiscono in ogni edizione linguistica e compaiono anche nei titoli ordinari. [tool-verified: `provisa/file_source/wikipedia.py` module docstring]
+**Quali link vengono seguiti.** Un link è scelto da ciò che il markup della pagina stessa dice che è, mai da un nome nel suo indirizzo: tali nomi differiscono in ogni edizione linguistica e compaiono anche nei titoli ordinari.
 
 - Seguiti: link ad altri articoli che si trovano nel testo, nelle liste e nelle tabelle di dati dell'articolo stesso. Il segno di markup è `a[rel='mw:WikiLink']`.
 - Non seguiti: pagine non ancora scritte, la pagina stessa, ricerche di libri, pagine di file, altri wiki e siti esterni.
 - Non letti affatto (rimossi prima di raccogliere link e tabelle): riquadri di navigazione, riquadri informativi, note e citazioni, categorie, indice, immagini e messaggi di manutenzione.
 - Non letta a meno che tu non attivi l'opzione: la sezione "See also".
 
-Solo le tabelle che i redattori contrassegnano come tabelle di dati (`table.wikitable`) diventano tabelle, e una tabella con meno di 2 righe non viene offerta. [tool-verified: `provisa/file_source/wikipedia.py` `LINK_SELECTOR`, `REMOVE_SELECTORS`, `TABLE_SELECTOR`, `DEFAULTS`]
+Solo le tabelle che i redattori contrassegnano come tabelle di dati (`table.wikitable`) diventano tabelle, e una tabella con meno di 2 righe non viene offerta.
 
-**Impostazioni avanzate di scansione.** Il modulo le tiene raccolte sotto "Crawl settings" e mostra ciascuna con il suo valore predefinito; lascia un campo vuoto per mantenerlo. In un mapping `files` gli stessi nomi vanno sotto `crawl:`, e un nome fuori da questo elenco viene rifiutato. [tool-verified: `provisa/file_source/crawl.py` `CRAWL_SETTINGS`, `crawl_operand`; `provisa/file_source/wikipedia.py` `crawl_settings`]
+**Impostazioni avanzate di scansione.** Il modulo le tiene raccolte sotto "Crawl settings" e mostra ciascuna con il suo valore predefinito; lascia un campo vuoto per mantenerlo. In un mapping `files` gli stessi nomi vanno sotto `crawl:`, e un nome fuori da questo elenco viene rifiutato.
 
 | Impostazione | Predefinito Wikipedia | Significato |
 | --- | --- | --- |
@@ -514,26 +499,26 @@ Solo le tabelle che i redattori contrassegnano come tabelle di dati (`table.wiki
 | `max_html_size` | non impostato | La pagina più grande letta, ad esempio `10MB` |
 | `max_data_file_size` | non impostato | Il file di dati più grande letto, ad esempio `100MB` |
 
-**Denominazione delle tabelle.** Una tabella scansionata si chiama `<page>__<name>`. Il nome è l'`id` della tabella stessa quando ne ha uno, altrimenti la sua didascalia, altrimenti l'intestazione più vicina sopra di essa. Per esempio, una tabella sotto l'intestazione "Tallest buildings" nella pagina `List_of_tallest_buildings` diventa `list_of_tallest_buildings__tallest_buildings` dopo la normalizzazione del nome. [tool-verified: calcite `file` adapter `HtmlToJsonConverter.java` (`baseFileName + "__" + tableName`), `HtmlTableScanner.java` `getTableName`] [inferred: the exact normalized spelling in the example]
+**Denominazione delle tabelle.** Una tabella scansionata si chiama `<page>__<name>`. Il nome è l'`id` della tabella stessa quando ne ha uno, altrimenti la sua didascalia, altrimenti l'intestazione più vicina sopra di essa. Per esempio, una tabella sotto l'intestazione "Tallest buildings" nella pagina `List_of_tallest_buildings` diventa `list_of_tallest_buildings__tallest_buildings` dopo la normalizzazione del nome.
 
-**Aggiornamento.** Una scansione viene conservata per il periodo di cache, `1 days` per impostazione predefinita (`html_cache_ttl`). Le pagine vengono recuperate di nuovo solo dopo che quel tempo è trascorso. [tool-verified: `provisa/file_source/wikipedia.py` `DEFAULTS`]
+**Aggiornamento.** Una scansione viene conservata per il periodo di cache, `1 days` per impostazione predefinita (`html_cache_ttl`). Le pagine vengono recuperate di nuovo solo dopo che quel tempo è trascorso.
 
 ### Osservabilità e altro {: #observability-other }
 
-`prometheus` ha un connettore Trino (proprietà costruite dal DSL di mapping del tipo). `google_sheets` è un tipo di origine registrato senza connettore Trino e materializza attraverso la pipeline di cache API. [tool-verified: `provisa/federation/trino_connectors.py:314`; `provisa/core/models.py` lines 87–88]
+`prometheus` ha un connettore Trino (proprietà costruite dal DSL di mapping del tipo). `google_sheets` è un tipo di origine registrato senza connettore Trino e materializza attraverso la pipeline di cache API.
 
 | Tipo di origine | Nome connettore | Mutation |
 | ------------ | ----------------- | ----------- |
 | `google_sheets` | — (materializzata) | No |
-| `prometheus` | prometheus | No | Una metrica è una tabella e un campione è una riga (`timestamp`, `value`, una colonna per etichetta); su ogni motore privo di connettore live Provisa legge l'API HTTP — nomi delle metriche ed etichette per Registra tabella, `query_range` sull'intervallo della tabella per l'atterraggio [tool-verified: `provisa/prometheus/fetch.py`] (REQ-1689) |
+| `prometheus` | prometheus | No | Una metrica è una tabella e un campione è una riga (`timestamp`, `value`, una colonna per etichetta); su ogni motore privo di connettore live Provisa legge l'API HTTP — nomi delle metriche ed etichette per Registra tabella, `query_range` sull'intervallo della tabella per l'atterraggio |
 
 ### Connettori SaaS enterprise {: #enterprise-saas-connectors }
 
-Google Workspace e Microsoft 365 sono letti da loader propri; vedere [Google Workspace e Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, l'inventario cloud e Splunk si registrano tramite connettori Apache Calcite (fork kenstott/calcite). Nessuno ha un driver diretto — Provisa avvia il server pgwire Calcite integrato del connettore (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) e lo raggiunge come endpoint PostgreSQL generico. Sul motore DuckDB quell'endpoint viene collegato live tramite l'estensione postgres: Registra tabella elenca le tabelle del connettore dal catalogo collegato, le query leggono il connettore sul posto, e i filtri e le proiezioni vengono spinti fino a Calcite (REQ-1690) [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBPgwireConnector`]. Ogni altro motore atterra le righe nello store di materializzazione per la federazione (REQ-954). I bundle vengono scaricati per OS/architettura dalla release fissata di `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) [tool-verified: `provisa/runtime_deps/pgwire_bundles.py`] Un operatore può invece indicare una cartella bundle costruita per questo host, per ogni connettore, in Admin → Impostazioni → Server dei connettori (`connectors.<connector>.bundle_dir`); vedere [Admin](admin.md). Tutti e cinque i connettori Trino (Jira non ne ha) abilitano sempre il matching dei nomi case-insensitive, corrispondente alla semantica case-insensitive propria di ciascun prodotto (REQ-725, REQ-730). [tool-verified: `provisa/core/models.py` lines 99–100; `provisa/federation/trino_connectors.py` lines 223–286]
+Google Workspace e Microsoft 365 sono letti da loader propri; vedere [Google Workspace e Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, l'inventario cloud e Splunk si registrano tramite connettori Apache Calcite (fork kenstott/calcite). Nessuno ha un driver diretto — Provisa avvia il server pgwire Calcite integrato del connettore (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) e lo raggiunge come endpoint PostgreSQL generico. Sul motore DuckDB quell'endpoint viene collegato live tramite l'estensione postgres: Registra tabella elenca le tabelle del connettore dal catalogo collegato, le query leggono il connettore sul posto, e i filtri e le proiezioni vengono spinti fino a Calcite. Ogni altro motore atterra le righe nello store di materializzazione per la federazione. I bundle vengono scaricati per OS/architettura dalla release fissata di `kenstott/calcite` (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) Un operatore può invece indicare una cartella bundle costruita per questo host, per ogni connettore, in Admin → Impostazioni → Server dei connettori (`connectors.<connector>.bundle_dir`); vedere [Admin](admin.md). Tutti e cinque i connettori Trino (Jira non ne ha) abilitano sempre il matching dei nomi case-insensitive, corrispondente alla semantica case-insensitive propria di ciascun prodotto.
 
 #### `sharepoint`
 
-Le liste SharePoint vengono enumerate come schemi ed esposte come tabelle interrogabili (REQ-726, REQ-731). Due metodi di autenticazione: `CLIENT_CREDENTIALS` (default) e basato su certificato tramite un certificato PFX (REQ-727). I valori segreti in `mapping` vengono risolti attraverso il motore dei secret prima di raggiungere il connettore (REQ-729). [tool-verified: `provisa/federation/trino_connectors.py` lines 230–252]
+Le liste SharePoint vengono enumerate come schemi ed esposte come tabelle interrogabili. Due metodi di autenticazione: `CLIENT_CREDENTIALS` (default) e basato su certificato tramite un certificato PFX. I valori segreti in `mapping` vengono risolti attraverso il motore dei secret prima di raggiungere il connettore.
 
 | Campo origine | Proprietà connettore | Note |
 | --- | --- | --- |
@@ -545,9 +530,9 @@ Le liste SharePoint vengono enumerate come schemi ed esposte come tabelle interr
 | `mapping.certificate_path` | `certificate-path` | Percorso PFX quando `auth_type: CERTIFICATE` — deve essere ASSOLUTO |
 | `mapping.certificate_password` | `certificate-password` | Password PFX — la chiave deve essere presente, stringa vuota per un PFX senza password |
 
-L'autenticazione a certificato sui motori diversi da Trino porta due regole aggiuntive, entrambe applicate quando viene costruito l'operando `model.json` del server pgwire Calcite (REQ-1693). `certificate_path` deve essere assoluto: il server viene eseguito con la directory del proprio bundle come directory di lavoro, quindi un percorso relativo si risolve dentro la cache dei runtime-deps e il PFX non viene trovato. `certificate_password` deve essere presente in `mapping` anche quando il PFX non ha password, nel qual caso è la stringa vuota — l'adapter Calcite rifiuta categoricamente una password null, e una chiave assente viene trattata come errore di configurazione anziché letta silenziosamente come password vuota. Un valore mancante o relativo solleva `MissingConnectorConfig` nominando il campo. [tool-verified: `provisa/federation/pgwire_replica.py` `_sharepoint_operand`]
+L'autenticazione a certificato sui motori diversi da Trino porta due regole aggiuntive, entrambe applicate quando viene costruito l'operando `model.json` del server pgwire Calcite. `certificate_path` deve essere assoluto: il server viene eseguito con la directory del proprio bundle come directory di lavoro, quindi un percorso relativo si risolve dentro la cache dei runtime-deps e il PFX non viene trovato. `certificate_password` deve essere presente in `mapping` anche quando il PFX non ha password, nel qual caso è la stringa vuota — l'adapter Calcite rifiuta categoricamente una password null, e una chiave assente viene trattata come errore di configurazione anziché letta silenziosamente come password vuota. Un valore mancante o relativo solleva `MissingConnectorConfig` nominando il campo.
 
-Quando il connettore non espone `information_schema.columns`, registra la tabella con definizioni di colonna esplicite (ottenute dall'API Microsoft Graph) tramite la mutation `registerTable` (REQ-732).
+Quando il connettore non espone `information_schema.columns`, registra la tabella con definizioni di colonna esplicite (ottenute dall'API Microsoft Graph) tramite la mutation `registerTable`.
 
 ```yaml
 - id: hr-sharepoint
@@ -576,7 +561,7 @@ Autenticazione a certificato, con il percorso assoluto e la password sempre pres
 
 #### `salesforce`
 
-Ogni sObject che le credenziali possono interrogare è una tabella che lo steward può registrare (`Account`, `Opportunity`, oggetti personalizzati `*__c`); nulla viene registrato automaticamente (REQ-1946). Colonne e tipi provengono dal describe dell'sObject. Filtri, proiezioni, ordinamenti e limiti vengono delegati a Salesforce come SOQL. [tool-verified: `provisa/federation/pgwire_replica.py` `_salesforce_operand`; `provisa/federation/trino_connectors.py` `TrinoSalesforceConnector`]
+Ogni sObject che le credenziali possono interrogare è una tabella che lo steward può registrare (`Account`, `Opportunity`, oggetti personalizzati `*__c`); nulla viene registrato automaticamente. Colonne e tipi provengono dal describe dell'sObject. Filtri, proiezioni, ordinamenti e limiti vengono delegati a Salesforce come SOQL.
 
 Una fonte Salesforce indica l'URL di accesso Dominio personale dell'organizzazione e un set completo di credenziali, scelto con `mapping.auth_type`. L'URL di accesso è l'URL `https://…` completo (ad esempio `https://acme.my.salesforce.com`); un host nudo o qualsiasi altro schema viene rifiutato, nominando il campo. Un set incompleto viene rifiutato quando la fonte viene usata, indicando il valore mancante. Ogni segreto può essere un riferimento `${secret:…}` o `${env:…}`. Un segreto digitato come valore letterale viene conservato nel vault dell'organizzazione e la fonte ne mantiene il riferimento.
 
@@ -595,9 +580,9 @@ Per `CLIENT_CREDENTIALS` l'app connessa richiede *Enable Client Credentials Flow
 
 **Letture.** Su Trino la fonte viene letta tramite il catalogo `salesforce`, che legge soltanto. Su ogni altro motore, il motore collega il server pgwire della fonte e la legge sul posto.
 
-**Scritture.** `INSERT`, `UPDATE` e `DELETE` su un sObject registrato sono mutazioni: governate, sottoposte ad audit e gestite per ambiente come ogni altra mutazione. Su ogni motore, Trino incluso, una scrittura viene eseguita sul server pgwire della fonte; su Trino quel server è in esecuzione solo per le scritture. Ogni istruzione viene inviata a Salesforce e confermata all'esecuzione, quindi non può essere annullata. Il server non restituisce le righe che scrive: un'istruzione con clausola `RETURNING` viene rifiutata e GraphQL non offre campi di mutazione per queste tabelle; `INSERT`, `UPDATE`, `DELETE` e `COPY` in SQL sono i percorsi di scrittura. Una scrittura è una singola istruzione semplice su una tabella: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` e `TRUNCATE` vengono rifiutati, nominando la forma. Una fonte SharePoint viene scritta allo stesso modo. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`; `provisa/api/data/pgwire_write.py`]
+**Scritture.** `INSERT`, `UPDATE` e `DELETE` su un sObject registrato sono mutazioni: governate, sottoposte ad audit e gestite per ambiente come ogni altra mutazione. Su ogni motore, Trino incluso, una scrittura viene eseguita sul server pgwire della fonte; su Trino quel server è in esecuzione solo per le scritture. Ogni istruzione viene inviata a Salesforce e confermata all'esecuzione, quindi non può essere annullata. Il server non restituisce le righe che scrive: un'istruzione con clausola `RETURNING` viene rifiutata e GraphQL non offre campi di mutazione per queste tabelle; `INSERT`, `UPDATE`, `DELETE` e `COPY` in SQL sono i percorsi di scrittura. Una scrittura è una singola istruzione semplice su una tabella: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` e `TRUNCATE` vengono rifiutati, nominando la forma. Una fonte SharePoint viene scritta allo stesso modo.
 
-**Avvio.** Prima di accettare connessioni, il server della fonte legge le colonne di ogni sObject, circa quattro minuti per un'organizzazione che ne ha 1.200. Il costo si paga una volta: i risultati dei describe sono conservati nella directory di stato propria della fonte, sotto la directory dati dell'istanza. Il server viene avviato quando la fonte viene registrata o caricata. Su Trino il catalogo `salesforce` conserva i propri risultati dei describe, una directory per fonte sotto `/data/trino/cache/salesforce-describe` nel coordinator, quindi il costo si paga una volta anche lì quando quel percorso è un volume che sopravvive al container: il volume `trino_cache` dello stack compose, o il volume della cache del coordinator del chart Helm (`trino.coordinator.cache.persistence`). Finché non accetta connessioni, Registra tabella mostra il connettore come in avvio e una scrittura riceve lo stesso messaggio invece di attendere. [tool-verified: `provisa/federation/pgwire_replica.py` `build_model_json`, `start_endpoint`]
+**Avvio.** Prima di accettare connessioni, il server della fonte legge le colonne di ogni sObject, circa quattro minuti per un'organizzazione che ne ha 1.200. Il costo si paga una volta: i risultati dei describe sono conservati nella directory di stato propria della fonte, sotto la directory dati dell'istanza. Il server viene avviato quando la fonte viene registrata o caricata. Su Trino il catalogo `salesforce` conserva i propri risultati dei describe, una directory per fonte sotto `/data/trino/cache/salesforce-describe` nel coordinator, quindi il costo si paga una volta anche lì quando quel percorso è un volume che sopravvive al container: il volume `trino_cache` dello stack compose, o il volume della cache del coordinator del chart Helm (`trino.coordinator.cache.persistence`). Finché non accetta connessioni, Registra tabella mostra il connettore come in avvio e una scrittura riceve lo stesso messaggio invece di attendere.
 
 ```yaml
 - id: sales-salesforce
@@ -626,7 +611,7 @@ Flusso nome utente e password:
 
 #### `servicenow`
 
-Ogni tabella dell'istanza è disponibile per la registrazione; nulla viene registrato automaticamente (REQ-1954). Un'istanza completa può averne migliaia; Register Table le raggruppa quindi per tema — ogni tema è il nome visualizzato di un pacchetto ServiceNow, o "(nessun pacchetto)" quando una tabella non appartiene a nessun pacchetto. Ogni tabella viene mostrata come `name — label`. Selezionare una tabella ne legge le colonne dall'istanza; elencare le tabelle non lo fa. [tool-verified: `provisa/federation/pgwire_replica.py` `servicenow_table_list`, `servicenow_columns`; `provisa/federation/servicenow.py` `TABLE_LIST`, `COLUMN_LIST`]
+Ogni tabella dell'istanza è disponibile per la registrazione; nulla viene registrato automaticamente. Un'istanza completa può averne migliaia; Register Table le raggruppa quindi per tema — ogni tema è il nome visualizzato di un pacchetto ServiceNow, o "(nessun pacchetto)" quando una tabella non appartiene a nessun pacchetto. Ogni tabella viene mostrata come `name — label`. Selezionare una tabella ne legge le colonne dall'istanza; elencare le tabelle non lo fa.
 
 Una fonte ServiceNow indica l'URL completo `https://…` dell'istanza insieme a nome utente e password. L'URL è preso da `base_url` o `host`; un host nudo o qualsiasi altro schema viene rifiutato, nominando il campo (`instanceUrl`). Un nome utente o una password assenti vengono rifiutati, nominando il campo. Ogni valore può essere un riferimento `${secret:…}` o `${env:…}`.
 
@@ -636,19 +621,17 @@ Una fonte ServiceNow indica l'URL completo `https://…` dell'istanza insieme a 
 | `username` | `username` | Nome utente per l'autenticazione di base |
 | `password` | `password` | Password per l'autenticazione di base |
 
-[tool-verified: `provisa/federation/servicenow.py` `servicenow_instance_url`, `servicenow_settings`]
+**Letture.** Su Trino la fonte viene letta tramite il catalogo `servicenow`, che legge soltanto. Su ogni altro motore, il motore collega il server pgwire della fonte e la legge sul posto. Solo le colonne selezionate vengono richieste all'istanza (`sysparm_fields`). Un filtro viene inviato all'istanza (`sysparm_query`) solo in una forma che l'adattatore ha verificato su un'istanza reale; ogni altro filtro, e ogni ordinamento e limite, viene applicato alle righe lette.
 
-**Letture.** Su Trino la fonte viene letta tramite il catalogo `servicenow`, che legge soltanto. Su ogni altro motore, il motore collega il server pgwire della fonte e la legge sul posto. Solo le colonne selezionate vengono richieste all'istanza (`sysparm_fields`). Un filtro viene inviato all'istanza (`sysparm_query`) solo in una forma che l'adattatore ha verificato su un'istanza reale; ogni altro filtro, e ogni ordinamento e limite, viene applicato alle righe lette. [inferred: the adapter's requirements ledger (kenstott/calcite `docs/requirements/servicenow.yaml`, SNOW-022, SNOW-023, SNOW-030)]
+Un campo di riferimento appare come due colonne: `<field>` contiene il sys_id del record referenziato e `<field>__display` contiene il valore di visualizzazione. Un campo vuoto è NULL. Un campo il cui tipo non può essere mappato dall'adattatore genera un errore che nomina la tabella, il campo e il tipo.
 
-Un campo di riferimento appare come due colonne: `<field>` contiene il sys_id del record referenziato e `<field>__display` contiene il valore di visualizzazione. Un campo vuoto è NULL. Un campo il cui tipo non può essere mappato dall'adattatore genera un errore che nomina la tabella, il campo e il tipo. [inferred from adapter behavior; non verificato direttamente nel codice sorgente di Provisa in questa sessione]
+La ricerca di tabelle (linguaggio naturale) corrisponde a nome, etichetta e tema di ogni tabella. Una volta registrata una tabella, le sue colonne si uniscono alla ricerca.
 
-La ricerca di tabelle (linguaggio naturale) corrisponde a nome, etichetta e tema di ogni tabella. Una volta registrata una tabella, le sue colonne si uniscono alla ricerca. [tool-verified: `provisa/discovery/catalog_cache.py` docstring di `COLUMNS_PER_TABLE_KINDS`]
+**Ciclo di vita del server.** Il server serve solo le tabelle registrate da esso. Registrare o rimuovere una tabella riavvia il server e ri-provisiona la fonte sul motore; un'istruzione che arriva durante quel riavvio fallisce.
 
-**Ciclo di vita del server.** Il server serve solo le tabelle registrate da esso. Registrare o rimuovere una tabella riavvia il server e ri-provisiona la fonte sul motore; un'istruzione che arriva durante quel riavvio fallisce. [tool-verified: `provisa/federation/pgwire_replica.py` `SERVES_REGISTERED_TABLES`; `provisa/api/app_rebuild.py` `serve_registered_tables`]
+**Scritture.** `INSERT`, `UPDATE` e `DELETE` su una tabella registrata sono mutazioni: governate, sottoposte ad audit e gestite per ambiente come ogni altra mutazione. Su ogni motore, Trino incluso, una scrittura viene eseguita sul server pgwire della fonte. Il server restituisce la riga che l'istanza contiene dopo ogni scrittura; una clausola `RETURNING` è quindi accettata e GraphQL offre campi di mutazione per queste tabelle. Una scrittura è una singola istruzione su una tabella: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` e `TRUNCATE` vengono rifiutati, nominando la forma.
 
-**Scritture.** `INSERT`, `UPDATE` e `DELETE` su una tabella registrata sono mutazioni: governate, sottoposte ad audit e gestite per ambiente come ogni altra mutazione. Su ogni motore, Trino incluso, una scrittura viene eseguita sul server pgwire della fonte. Il server restituisce la riga che l'istanza contiene dopo ogni scrittura; una clausola `RETURNING` è quindi accettata e GraphQL offre campi di mutazione per queste tabelle. Una scrittura è una singola istruzione su una tabella: `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING`, `MERGE` e `TRUNCATE` vengono rifiutati, nominando la forma. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`, `PGWIRE_SERVER_RETURNS_ROWS`]
-
-**Import set.** Quando una tabella ha una transform map attiva verso di essa, Register Table offre i suoi import set, e lo steward può vincolare la tabella a uno (una tabella con più map nomina ciascuno). Le inserzioni in una tabella vincolata passano attraverso l'Import Set API dell'istanza e la trasformazione di quella map; le inserzioni in una tabella non vincolata, e ogni aggiornamento ed eliminazione, vengono scritte direttamente nella tabella. Una riga che la trasformazione rifiuta viene respinta, nominando la riga; le righe già scritte restano scritte. Il vincolo viene verificato quando la tabella viene salvata: deve essere l'import set di una transform map attiva verso la tabella, su una fonte ServiceNow. [tool-verified: `provisa/api/admin/_import_set.py` `table_import_set_refusal`; `provisa/federation/servicenow.py` `servicenow_settings`; `provisa/federation/pgwire_replica.py` `servicenow_transform_maps`]
+**Import set.** Quando una tabella ha una transform map attiva verso di essa, Register Table offre i suoi import set, e lo steward può vincolare la tabella a uno (una tabella con più map nomina ciascuno). Le inserzioni in una tabella vincolata passano attraverso l'Import Set API dell'istanza e la trasformazione di quella map; le inserzioni in una tabella non vincolata, e ogni aggiornamento ed eliminazione, vengono scritte direttamente nella tabella. Una riga che la trasformazione rifiuta viene respinta, nominando la riga; le righe già scritte restano scritte. Il vincolo viene verificato quando la tabella viene salvata: deve essere l'import set di una transform map attiva verso la tabella, su una fonte ServiceNow.
 
 ```yaml
 - id: helpdesk-sn
@@ -660,9 +643,9 @@ La ricerca di tabelle (linguaggio naturale) corrisponde a nome, etichetta e tema
 
 #### `jira`
 
-Un sito Jira Cloud viene letto e scritto tramite un proprio adattatore Calcite (REQ-2069). Una tabella di una fonte Jira è un **modulo**: un progetto e un tipo di issue, più i campi che le sue colonne leggono. Register Table elenca ogni modulo di cui l'account può creare una issue, raggruppato per progetto; selezionarne uno legge da Jira i campi di quel modulo, mentre elencare i moduli non lo fa. Ogni modulo ha le colonne `key` (la sua chiave primaria), `id`, `summary`, `status`, `created` e `updated`, poi una colonna per ogni campo scelto, denominata come la denomina l'adattatore: il nome del campo in snake case (`Story Points` diventa `story_points`). Un campo il cui nome è già quello di una colonna viene denominato con il suo id di campo (`customfield_10099`), così che ogni campo possa essere scelto. Un campo utente contiene l'id dell'account; il suo nome visualizzato è un campo a sé (`assignee.displayName`, colonna `assignee_name`). Le colonne che Jira scrive da sé sono di sola lettura: `key`, `id`, `created`, `updated`, il nome visualizzato di un campo utente e un campo di una forma che l'adattatore non conosce, che serve come testo JSON. Registrarla la contrassegna con «Read only: Jira sets it» nella sua descrizione, se non ne ha una, e una scrittura che la imposta viene rifiutata dal server, nominandola. [tool-verified: `provisa/federation/jira.py` `FIXED_COLUMNS`, `form_columns`; `provisa/federation/pgwire_replica.py` `jira_form_list`, `jira_fields`; `provisa/api/admin/introspect.py` `complete_jira_form`]
+Un sito Jira Cloud viene letto e scritto tramite un proprio adattatore Calcite. Una tabella di una fonte Jira è un **modulo**: un progetto e un tipo di issue, più i campi che le sue colonne leggono. Register Table elenca ogni modulo di cui l'account può creare una issue, raggruppato per progetto; selezionarne uno legge da Jira i campi di quel modulo, mentre elencare i moduli non lo fa. Ogni modulo ha le colonne `key` (la sua chiave primaria), `id`, `summary`, `status`, `created` e `updated`, poi una colonna per ogni campo scelto, denominata come la denomina l'adattatore: il nome del campo in snake case (`Story Points` diventa `story_points`). Un campo il cui nome è già quello di una colonna viene denominato con il suo id di campo (`customfield_10099`), così che ogni campo possa essere scelto. Un campo utente contiene l'id dell'account; il suo nome visualizzato è un campo a sé (`assignee.displayName`, colonna `assignee_name`). Le colonne che Jira scrive da sé sono di sola lettura: `key`, `id`, `created`, `updated`, il nome visualizzato di un campo utente e un campo di una forma che l'adattatore non conosce, che serve come testo JSON. Registrarla la contrassegna con «Read only: Jira sets it» nella sua descrizione, se non ne ha una, e una scrittura che la imposta viene rifiutata dal server, nominandola.
 
-La tabella di un modulo nomina il suo progetto e il suo tipo di issue nei suoi `arguments` (`project`, `issue_type`), e ogni colonna legge il campo che il suo `path` nomina (un id di campo o il nome di un campo), oppure il campo con il proprio nome. Una tabella registrata dall'admin ottiene entrambi da Jira; una configurazione li dichiara. Una tabella Jira che fissa altro, o a cui manca uno dei due, viene rifiutata, nominandola. [tool-verified: `provisa/federation/jira.py` `form_of`; `provisa/core/config_loader.py` `_validate_table_arguments`]
+La tabella di un modulo nomina il suo progetto e il suo tipo di issue nei suoi `arguments` (`project`, `issue_type`), e ogni colonna legge il campo che il suo `path` nomina (un id di campo o il nome di un campo), oppure il campo con il proprio nome. Una tabella registrata dall'admin ottiene entrambi da Jira; una configurazione li dichiara. Una tabella Jira che fissa altro, o a cui manca uno dei due, viene rifiutata, nominandola.
 
 | Campo fonte | Proprietà dell'adattatore | Note |
 | --- | --- | --- |
@@ -670,17 +653,15 @@ La tabella di un modulo nomina il suo progetto e il suo tipo di issue nei suoi `
 | `username` | `email` | Email dell'account Atlassian |
 | `password` | `apiToken` | Un token API di quell'account, creato su id.atlassian.com in Security, API tokens |
 
-[tool-verified: `provisa/federation/jira.py` `jira_site_url`, `jira_settings`]
+**Collegamenti.** La tabella `issue_links` della fonte contiene i collegamenti tra le issue dei suoi moduli: `link_id`, `link_type`, `outward_key` e `inward_key`, ogni collegamento una sola volta. Una relazione tra due moduli viene dichiarata attraverso di essa come junction, con `link_type` come discriminante, così che GraphQL e Cypher passino da una issue alla issue collegata per tipo di collegamento.
 
-**Collegamenti.** La tabella `issue_links` della fonte contiene i collegamenti tra le issue dei suoi moduli: `link_id`, `link_type`, `outward_key` e `inward_key`, ogni collegamento una sola volta. Una relazione tra due moduli viene dichiarata attraverso di essa come junction (REQ-1586), con `link_type` come discriminante, così che GraphQL e Cypher passino da una issue alla issue collegata per tipo di collegamento. [inferred: the adapter's design agreed for REQ-2069]
+**Letture.** Una ricerca per chiave (`key =`, `key IN`) viene recuperata per chiave, così che una chiave che non nomina alcuna issue non dà alcuna riga. Un confronto su data o numero viene inviato a Jira come JQL. Ogni altro filtro, e ogni ordinamento, viene applicato alle righe lette: un'uguaglianza su testo, opzione, stato o utente non viene inviata, poiché JQL rifiuta un valore che non nomina nulla dove SQL restituisce zero righe. Un campo a più valori (etichette, selezione multipla, componenti, versioni) è testo che contiene un array JSON, e si scrive allo stesso modo.
 
-**Letture.** Una ricerca per chiave (`key =`, `key IN`) viene recuperata per chiave, così che una chiave che non nomina alcuna issue non dà alcuna riga. Un confronto su data o numero viene inviato a Jira come JQL. Ogni altro filtro, e ogni ordinamento, viene applicato alle righe lette: un'uguaglianza su testo, opzione, stato o utente non viene inviata, poiché JQL rifiuta un valore che non nomina nulla dove SQL restituisce zero righe. Un campo a più valori (etichette, selezione multipla, componenti, versioni) è testo che contiene un array JSON, e si scrive allo stesso modo. [inferred: the adapter's behaviour, as the calcite connector reports it for REQ-2069]
+Su DuckDB, PostgreSQL e ClickHouse il motore collega il server pgwire della fonte e la legge sul posto. Su Trino la fonte non ha un catalogo proprio e viene caricata tramite il suo server.
 
-Su DuckDB, PostgreSQL e ClickHouse il motore collega il server pgwire della fonte e la legge sul posto. Su Trino la fonte non ha un catalogo proprio e viene caricata tramite il suo server. [tool-verified: `provisa/federation/engine.py`; `provisa/federation/strategy.py` `_CONNECTOR_PGWIRE_REPLICA`]
+**Ciclo di vita del server.** Il server serve solo i moduli registrati da esso, insieme al suo elenco di moduli, al suo elenco di campi e ai collegamenti. Registrare, modificare o rimuovere un modulo riavvia il server e ri-provisiona la fonte sul motore.
 
-**Ciclo di vita del server.** Il server serve solo i moduli registrati da esso, insieme al suo elenco di moduli, al suo elenco di campi e ai collegamenti. Registrare, modificare o rimuovere un modulo riavvia il server e ri-provisiona la fonte sul motore. [tool-verified: `provisa/federation/served_tables.py` `SERVES_REGISTERED_TABLES`, `serve_tables`; `provisa/api/app_rebuild.py` `serve_registered_tables`]
-
-**Scritture.** `INSERT`, `UPDATE` e `DELETE` su un modulo sono mutazioni, scritte sul server pgwire della fonte su ogni motore. Le righe vengono inserite in lotti da 50; un aggiornamento o un'eliminazione avviene issue per issue, per chiave. Impostare `status` esegue la transizione del workflow verso quello stato, e viene rifiutato, nominando gli stati raggiungibili, quando il workflow della issue non ne ha. Una issue con sottoattività non viene eliminata. Il server restituisce ogni riga scritta per chiave, quindi `RETURNING` è accettato e GraphQL offre campi di mutazione. Su `issue_links`, `INSERT` crea un collegamento e `DELETE` ne rimuove uno; `UPDATE` viene rifiutato. [tool-verified: `provisa/executor/writable.py` `PGWIRE_SERVER_WRITTEN`, `PGWIRE_SERVER_RETURNS_ROWS`] [inferred: the batching, transitions and subtask refusal are the adapter's, agreed for REQ-2069]
+**Scritture.** `INSERT`, `UPDATE` e `DELETE` su un modulo sono mutazioni, scritte sul server pgwire della fonte su ogni motore. Le righe vengono inserite in lotti da 50; un aggiornamento o un'eliminazione avviene issue per issue, per chiave. Impostare `status` esegue la transizione del workflow verso quello stato, e viene rifiutato, nominando gli stati raggiungibili, quando il workflow della issue non ne ha. Una issue con sottoattività non viene eliminata. Il server restituisce ogni riga scritta per chiave, quindi `RETURNING` è accettato e GraphQL offre campi di mutazione. Su `issue_links`, `INSERT` crea un collegamento e `DELETE` ne rimuove uno; `UPDATE` viene rifiutato.
 
 ```yaml
 - id: support-jira
@@ -702,7 +683,7 @@ tables:
 
 #### `cloudops`
 
-L'inventario cloud presenta le risorse di Azure, AWS e GCP come un unico insieme di tabelle: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries` e `compute_security_groups`, che collega una risorsa di calcolo ai suoi gruppi di sicurezza. Ogni tabella ha le stesse colonne per i tre cloud, e la colonna `cloud_provider` indica il cloud da cui proviene ogni riga. La fonte legge soltanto, e le sue tabelle vengono registrate da uno steward come tutte le altre (REQ-1947). [tool-verified: `provisa/federation/cloudops.py` `cloudops_settings`; `provisa/federation/trino_connectors.py` `TrinoCloudopsConnector`]
+L'inventario cloud presenta le risorse di Azure, AWS e GCP come un unico insieme di tabelle: `compute_resources`, `storage_resources`, `kubernetes_clusters`, `database_resources`, `network_resources`, `iam_resources`, `container_registries` e `compute_security_groups`, che collega una risorsa di calcolo ai suoi gruppi di sicurezza. Ogni tabella ha le stesse colonne per i tre cloud, e la colonna `cloud_provider` indica il cloud da cui proviene ogni riga. La fonte legge soltanto, e le sue tabelle vengono registrate da uno steward come tutte le altre.
 
 Una fonte indica uno o più cloud. Ogni cloud è tutto o niente: un cloud con solo una parte dei valori obbligatori viene rifiutato, indicando ciò che manca, così come una fonte che non indica alcun cloud. La fonte legge esattamente i cloud che indica. Tutti i valori si trovano in `mapping`; ogni segreto può essere un riferimento `${secret:…}` o `${env:…}`, Un segreto digitato come valore letterale viene conservato nel vault dell'organizzazione e la fonte ne mantiene il riferimento.
 
@@ -741,7 +722,7 @@ Su Trino la fonte viene letta tramite il catalogo `cloudops`. Su ogni altro moto
 
 #### `splunk`
 
-I risultati di ricerca Splunk sono interrogabili come tabelle (es. `internal_server`) (REQ-721). L'URL del connettore proviene da `base_url`, oppure viene costruito come `https://{host}:{port}` con porta di default `8089` (REQ-722). Auth: quando `mapping.use_token` è `true` (default), `password` viene passata come token API; quando `false`, `username` e `password` vengono passate come credenziali separate (REQ-723). [tool-verified: `provisa/federation/trino_connectors.py` lines 262–286]
+I risultati di ricerca Splunk sono interrogabili come tabelle (es. `internal_server`). L'URL del connettore proviene da `base_url`, oppure viene costruito come `https://{host}:{port}` con porta di default `8089`. Auth: quando `mapping.use_token` è `true` (default), `password` viene passata come token API; quando `false`, `username` e `password` vengono passate come credenziali separate.
 
 | Campo origine | Proprietà connettore | Note |
 | --- | --- | --- |
@@ -750,9 +731,9 @@ I risultati di ricerca Splunk sono interrogabili come tabelle (es. `internal_ser
 | `username` | `user` | solo quando `use_token: false` |
 | `database` | `app` | restringe a un'app Splunk |
 | `mapping.datamodel_filter` | `datamodel-filter` | filtra a un data model |
-| `mapping.disable_ssl_validation` | `disable-ssl-validation` | per certificati self-signed (REQ-724) |
+| `mapping.disable_ssl_validation` | `disable-ssl-validation` | per certificati self-signed |
 
-Sul percorso pgwire-replica (ogni motore tranne Trino) le stesse quattro impostazioni opzionali diventano le chiavi dell'operando Calcite `model.json` `app`, `token`/`username`+`password`, `datamodelFilter` e `disableSslValidation` — le ultime due nei tipi in cui `SplunkSchemaFactory` le converte, una stringa e un booleano (REQ-1694). [tool-verified: `provisa/federation/pgwire_replica.py` `_splunk_operand`]
+Sul percorso pgwire-replica (ogni motore tranne Trino) le stesse quattro impostazioni opzionali diventano le chiavi dell'operando Calcite `model.json` `app`, `token`/`username`+`password`, `datamodelFilter` e `disableSslValidation` — le ultime due nei tipi in cui `SplunkSchemaFactory` le converte, una stringa e un booleano.
 
 ```yaml
 - id: ops-splunk
@@ -765,11 +746,11 @@ Sul percorso pgwire-replica (ogni motore tranne Trino) le stesse quattro imposta
     disable_ssl_validation: true
 ```
 
-#### Google Workspace e Microsoft 365 (REQ-1923, REQ-1994) {: #google-workspace-and-microsoft-365 }
+#### Google Workspace e Microsoft 365 {: #google-workspace-and-microsoft-365 }
 
-`google_workspace` e `microsoft_365` leggono posta, calendari e attività degli account che un'origine indica, e li atterrano come repliche. Non sono connettori Calcite: ciascuno ha un loader proprio che chiama l'API del provider, Gmail, Google Calendar e Google Tasks da una parte e Microsoft Graph dall'altra. Il modulo li elenca sotto Enterprise come "Google Workspace (Gmail)" e "Microsoft 365 (Outlook, Exchange)". [tool-verified: `provisa/core/models.py` `SourceType`; `provisa/federation/strategy.py` `_MATERIALIZE_ONLY`; `provisa-ui/src/pages/sources/constants.ts`]
+`google_workspace` e `microsoft_365` leggono posta, calendari e attività degli account che un'origine indica, e li atterrano come repliche. Non sono connettori Calcite: ciascuno ha un loader proprio che chiama l'API del provider, Gmail, Google Calendar e Google Tasks da una parte e Microsoft Graph dall'altra. Il modulo li elenca sotto Enterprise come "Google Workspace (Gmail)" e "Microsoft 365 (Outlook, Exchange)".
 
-**Tabelle.** I due tipi producono le stesse tabelle canoniche: stessi nomi, tipi di colonna e ordine. Un'unione dei due non richiede cast né rinomine; una colonna per cui un provider non ha valore è NULL. Le tabelle sono elencate nello schema `default`, e ogni riga inizia con l'account da cui è stata letta. Un'origine offre le tabelle delle risorse che legge: [tool-verified: `provisa/core/canonical_mail.py` module docstring, `RESOURCE_TABLES`, `tables_for`; `provisa/google_workspace/loader.py` `SCHEMA`]
+**Tabelle.** I due tipi producono le stesse tabelle canoniche: stessi nomi, tipi di colonna e ordine. Un'unione dei due non richiede cast né rinomine; una colonna per cui un provider non ha valore è NULL. Le tabelle sono elencate nello schema `default`, e ogni riga inizia con l'account da cui è stata letta. Un'origine offre le tabelle delle risorse che legge:
 
 | Risorsa | Tabelle | Scritte da istruzioni |
 | --- | --- | --- |
@@ -777,16 +758,14 @@ Sul percorso pgwire-replica (ogni motore tranne Trino) le stesse quattro imposta
 | `calendar` | `calendars`, `events`, `event_attendees` | `events`, `event_attendees` |
 | `tasks` | `task_lists`, `tasks` | `tasks` |
 
-Le colonne sono elencate nello [schema canonico della posta](arch/canonical-mail-schema.md). `events` contiene eventi singoli, eventi master di serie con la ricorrenza come righe RFC 5545, ed eccezioni; non contiene mai le occorrenze espanse di una serie. [tool-verified: `provisa/google_workspace/calendar_read.py` module docstring] (REQ-1994)
+Le colonne sono elencate nello [schema canonico della posta](arch/canonical-mail-schema.md). `events` contiene eventi singoli, eventi master di serie con la ricorrenza come righe RFC 5545, ed eccezioni; non contiene mai le occorrenze espanse di una serie.
 
-**Registrazione.** L'amministratore di un'organizzazione inserisce prima il client dell'organizzazione per la piattaforma sotto Admin → Email: un client ID e un secret, più l'ID della directory (tenant) o il dominio per Microsoft 365. Chi aggiunge un'origine non lo vede né lo digita. Un'origine assume poi una di due forme: [tool-verified: `provisa/core/mail_platforms.py` module docstring; `provisa/microsoft365/__init__.py`; `provisa-ui/src/i18n/locales/en/mailPlatforms.json`]
+**Registrazione.** L'amministratore di un'organizzazione inserisce prima il client dell'organizzazione per la piattaforma sotto Admin → Email: un client ID e un secret, più l'ID della directory (tenant) o il dominio per Microsoft 365. Chi aggiunge un'origine non lo vede né lo digita. Un'origine assume poi una di due forme:
 
 - **Una casella.** L'origine indica un indirizzo in `accounts`. Il suo titolare fa clic su **Connect** nel modulo e approva il client dell'organizzazione. L'approvazione risultante è conservata nello store di stato dell'organizzazione, non nelle impostazioni dell'origine. In Google Workspace questa forma dichiara anche `sign_in: google_account`.
 - **Le caselle dell'organizzazione.** L'origine dichiara `mailboxes` come esattamente uno tra `everyone: true`, `group: <address or id>` o `list: [addresses]`. Non contiene credenziali e nessuno la connette. L'organizzazione legge con un accesso proprio, e solo dopo che l'amministratore ha attivato "Read the organization's mailboxes". Su Google quell'accesso è una chiave di service account con delega a livello di dominio, più un indirizzo amministratore per le chiamate alla directory. Su Microsoft è il grant client-credentials della registrazione dell'app.
 
-[tool-verified: `provisa/google_workspace/settings.py` `parse`, `_mailboxes`; `provisa/microsoft365/settings.py` `parse`; `provisa/core/mail_platforms.py` `organisation_mailboxes`]
-
-Con la seconda forma, una tabella contiene le righe di ogni casella. Un ruolo che può leggere la tabella legge ogni casella, a meno che una regola di riga sulla colonna `account` lo limiti. [tool-verified: `provisa-ui/src/i18n/locales/en/googleWorkspaceFields.json` `everyMailbox`]
+Con la seconda forma, una tabella contiene le righe di ogni casella. Un ruolo che può leggere la tabella legge ogni casella, a meno che una regola di riga sulla colonna `account` lo limiti.
 
 ```yaml
 sources:
@@ -801,7 +780,7 @@ sources:
       calendar_send_updates: false
 ```
 
-**Impostazioni.** Ogni modulo rifiuta per nome una chiave che non legge. [tool-verified: `provisa/google_workspace/settings.py` `_KEYS`; `provisa/microsoft365/settings.py` `_KEYS`]
+**Impostazioni.** Ogni modulo rifiuta per nome una chiave che non legge.
 
 | Chiave `mapping` | Tipo | Significato |
 | --- | --- | --- |
@@ -817,9 +796,9 @@ sources:
 | `calendar_send_updates` | entrambi | Se una scrittura avvisa i partecipanti di un evento; disattivato per impostazione predefinita |
 | `calendar_check_days` | `microsoft_365` | Giorni prima e dopo oggi che il controllo delle modifiche esamina; un numero intero, 1 o più, obbligatorio quando si legge il calendario |
 
-Google rifiuta una ricerca sotto `gmail.metadata`, quindi `mail_content: headers` con `mail_search` o `mail_since` viene rifiutato. [tool-verified: `provisa/google_workspace/settings.py` `_mail`]
+Google rifiuta una ricerca sotto `gmail.metadata`, quindi `mail_content: headers` con `mail_search` o `mail_since` viene rifiutato.
 
-**Scope.** Un accesso chiede solo gli scope delle risorse selezionate: [tool-verified: `provisa/google_workspace/settings.py` `MAIL_SCOPES`, `RESOURCE_SCOPES`; `provisa/google_workspace/sign_in.py` `EMAIL_SCOPE`; `provisa/microsoft365/settings.py` `RESOURCE_SCOPES`, `BASE_SCOPES`; `provisa/microsoft365/directory.py`]
+**Scope.** Un accesso chiede solo gli scope delle risorse selezionate:
 
 | Risorsa | Google Workspace | Microsoft 365 (delegated) |
 | --- | --- | --- |
@@ -828,58 +807,58 @@ Google rifiuta una ricerca sotto `gmail.metadata`, quindi `mail_content: headers
 | `tasks` | `tasks` | `Tasks.ReadWrite` |
 | ogni origine | `userinfo.email` | `offline_access`, `User.Read` |
 
-Per la forma organizzazione, Microsoft richiede i permessi applicativi `Mail.Read` e `User.Read.All`, più `Calendars.ReadWrite` e `Tasks.ReadWrite.All` per calendari e attività. Il service account di Google è autorizzato per gli scope in `DELEGATED_SCOPES`, che includono anche la lettura di utenti e membri di gruppi della directory. [tool-verified: `provisa/microsoft365/directory.py`; `provisa/google_workspace/__init__.py` `DELEGATED_SCOPES`; `provisa-ui/src/i18n/locales/en/mailPlatforms.json` `organisationGrant`]
+Per la forma organizzazione, Microsoft richiede i permessi applicativi `Mail.Read` e `User.Read.All`, più `Calendars.ReadWrite` e `Tasks.ReadWrite.All` per calendari e attività. Il service account di Google è autorizzato per gli scope in `DELEGATED_SCOPES`, che includono anche la lettura di utenti e membri di gruppi della directory.
 
-**Aggiornamento e freschezza.** I tipi di sonda che queste origini accettano sono `hash` e `none`, e il loro loader fornisce il token di cambiamento: [tool-verified: `provisa/events/probes.py` `_MAIL_TYPES`, `probe_capabilities`]
+**Aggiornamento e freschezza.** I tipi di sonda che queste origini accettano sono `hash` e `none`, e il loro loader fornisce il token di cambiamento:
 
-- **Gmail:** un digest dell'history id corrente di ogni casella, una chiamata `users.getProfile` per casella. [tool-verified: `provisa/google_workspace/loader.py` `mailbox_token`]
-- **Posta Microsoft:** ogni delta link conservato, seguito per un elemento. [tool-verified: `provisa/microsoft365/loader.py` `unchanged`]
-- **Calendari e attività Google:** il tag e l'ora dell'ultima modifica di ogni calendario; il tag di ogni lista di attività, e l'id e l'ora di aggiornamento di ogni attività. [tool-verified: `provisa/google_workspace/calendar_read.py` `change_token`]
-- **Calendari e attività Microsoft:** le righe di modifica di ogni casella, entro `calendar_check_days` prima e dopo oggi. [tool-verified: `provisa/microsoft365/loader.py` `_calendar_token`] [inferred: that a line is an event's id and change key, or a task's update time, from REQ-1994]
+- **Gmail:** un digest dell'history id corrente di ogni casella, una chiamata `users.getProfile` per casella.
+- **Posta Microsoft:** ogni delta link conservato, seguito per un elemento.
+- **Calendari e attività Google:** il tag e l'ora dell'ultima modifica di ogni calendario; il tag di ogni lista di attività, e l'id e l'ora di aggiornamento di ogni attività.
+- **Calendari e attività Microsoft:** le righe di modifica di ogni casella, entro `calendar_check_days` prima e dopo oggi.
 
-Un controllo che non può essere eseguito richiede una lettura; non riporta mai "invariato". Le tabelle di calendari e attività sono lette per intero a ogni aggiornamento. Le repliche della posta di un'origine Microsoft 365 o Google Workspace sono mantenute sul posto: ogni parte di una casella è scritta man mano che arriva e può essere interrogata subito. [tool-verified: `provisa/core/canonical_mail.py` `RESOURCE_TABLES` comment; `provisa/federation/replica_builds.py` `GROUP_READ_TYPES`; `provisa/federation/mail_units.py`] Un'origine Google Workspace che restringe con `mail_search` è riletta per intero a ogni aggiornamento, perché solo Google può dire cosa una ricerca seleziona. [tool-verified: `provisa/google_workspace/units.py` module docstring]
+Un controllo che non può essere eseguito richiede una lettura; non riporta mai "invariato". Le tabelle di calendari e attività sono lette per intero a ogni aggiornamento. Le repliche della posta di un'origine Microsoft 365 o Google Workspace sono mantenute sul posto: ogni parte di una casella è scritta man mano che arriva e può essere interrogata subito. Un'origine Google Workspace che restringe con `mail_search` è riletta per intero a ogni aggiornamento, perché solo Google può dire cosa una ricerca seleziona.
 
-**Scritture.** `INSERT`, `UPDATE` e `DELETE` su `events`, `event_attendees` e `tasks` vanno al provider attraverso un unico percorso di scrittura per entrambi i tipi. Un `UPDATE` o `DELETE` indica le sue righe per `provider`, `account` e `id`; un partecipante è indicato da `event_id` e `address`. Una singola occorrenza di una serie è indicata da `series_id` e `original_start_at`. Una scrittura che imposta una colonna fuori dall'insieme scrivibile della tabella viene rifiutata per nome. Google scrive con `sendUpdates=all` quando `calendar_send_updates` è attivo e con `sendUpdates=none` quando è disattivo. Microsoft Graph non può fare una simile modifica in silenzio, quindi una modifica ai partecipanti di una riunione viene rifiutata, indicando l'impostazione. [tool-verified: `provisa/executor/writable.py` `API_WRITTEN`; `provisa/core/canonical_mail.py` `WRITE_KEYS`, `WRITABLE_COLUMNS`; `provisa-ui/src/i18n/locales/en/mailResources.json` `sendUpdatesHelp`] [tool-verified: `provisa/google_workspace/calendar_write.py`]
+**Scritture.** `INSERT`, `UPDATE` e `DELETE` su `events`, `event_attendees` e `tasks` vanno al provider attraverso un unico percorso di scrittura per entrambi i tipi. Un `UPDATE` o `DELETE` indica le sue righe per `provider`, `account` e `id`; un partecipante è indicato da `event_id` e `address`. Una singola occorrenza di una serie è indicata da `series_id` e `original_start_at`. Una scrittura che imposta una colonna fuori dall'insieme scrivibile della tabella viene rifiutata per nome. Google scrive con `sendUpdates=all` quando `calendar_send_updates` è attivo e con `sendUpdates=none` quando è disattivo. Microsoft Graph non può fare una simile modifica in silenzio, quindi una modifica ai partecipanti di una riunione viene rifiutata, indicando l'impostazione.
 
-**Esclusioni.** La posta è di sola lettura; nessuna istruzione modifica una casella. `calendars`, `task_lists` e ogni tabella di posta non accettano scritture. Spam e Cestino di Gmail sono esclusi a meno che `mail_include_spam_trash` sia attivo. L'API Tasks di Google conserva solo il giorno di scadenza di un'attività, e non ha promemoria. [tool-verified: `provisa/microsoft365/settings.py` `RESOURCE_SCOPES`; `provisa/core/canonical_mail.py` `WRITABLE_COLUMNS`; `provisa/google_workspace/settings.py` `_mail`] [inferred: the Tasks API limit, from REQ-1994]
+**Esclusioni.** La posta è di sola lettura; nessuna istruzione modifica una casella. `calendars`, `task_lists` e ogni tabella di posta non accettano scritture. Spam e Cestino di Gmail sono esclusi a meno che `mail_include_spam_trash` sia attivo. L'API Tasks di Google conserva solo il giorno di scadenza di un'attività, e non ha promemoria.
 
 ### Origini API {: #api-sources }
 
-Registra qualsiasi endpoint HTTP come tabella interrogabile. [tool-verified: `provisa/core/models.py` `SourceType` enum] (REQ-314, REQ-307, REQ-322)
+Registra qualsiasi endpoint HTTP come tabella interrogabile.
 
 | Tipo API | Discovery | Inferenza colonne |
 | --------- | ----------- | ----------------- |
-| `openapi` | Parsing della spec OpenAPI (REQ-314, REQ-316) | Primitivi → nativo, oggetti → JSONB |
-| `graphql_remote` | Introspezione dello schema (REQ-307, REQ-308) | Primitivi → nativo, oggetti → JSONB |
-| `grpc_remote` | Server reflection (REQ-322, REQ-325) | Primitivi → nativo, oggetti → JSONB |
+| `openapi` | Parsing della spec OpenAPI | Primitivi → nativo, oggetti → JSONB |
+| `graphql_remote` | Introspezione dello schema | Primitivi → nativo, oggetti → JSONB |
+| `grpc_remote` | Server reflection | Primitivi → nativo, oggetti → JSONB |
 
-Le risposte API vengono recuperate, messe in cache in PostgreSQL (TTL configurabile), ed esposte come tipi GraphQL (REQ-309, REQ-318, REQ-327). Le tabelle in cache partecipano a query federate come qualsiasi altra origine (REQ-313).
+Le risposte API vengono recuperate, messe in cache in PostgreSQL (TTL configurabile), ed esposte come tipi GraphQL. Le tabelle in cache partecipano a query federate come qualsiasi altra origine.
 
-**Regole JSONB**: Le colonne complesse (oggetti, array) memorizzate come JSONB non sono filtrabili (REQ-119). L'accesso ai sotto-campi usa l'estrazione `->>` in SQL (REQ-151). Le relazioni vengono dichiarate tra tabelle usando colonne FK scalari — le colonne blob JSONB non sono target di join. Usa la promozione JSONB per convertire campi annidati in colonne scalari native quando è necessario filtrare o unirsi su di essi (REQ-119).
+**Regole JSONB**: Le colonne complesse (oggetti, array) memorizzate come JSONB non sono filtrabili. L'accesso ai sotto-campi usa l'estrazione `->>` in SQL. Le relazioni vengono dichiarate tra tabelle usando colonne FK scalari — le colonne blob JSONB non sono target di join. Usa la promozione JSONB per convertire campi annidati in colonne scalari native quando è necessario filtrare o unirsi su di essi.
 
 #### GitHub e GitLab {: #github-and-gitlab }
 
-GitHub e GitLab sono origini con marchio, gestite da `graphql_remote`: ciascuna compare nel modulo Sources con il proprio nome e si registra come origine GraphQL remota che ne registra il marchio. Il modulo richiede un personal access token e nient'altro. L'endpoint (`https://api.github.com/graphql`, `https://gitlab.com/api/graphql`) e lo schema sono forniti con Provisa, quindi lo schema non viene sottoposto a introspezione alla registrazione. Il token viene verificato quando l'origine viene aggiunta. Aggiungere l'origine non registra tabelle: ogni tabella offerta dallo schema è disponibile sotto il namespace dell'origine (`gh`, `gl`), e lo steward registra quelle desiderate. Un campo che il token non può leggere viene escluso da una tabella quando questa viene registrata. [tool-verified: `provisa/graphql_remote/brands.py` `BRANDS`] (REQ-1923)
+GitHub e GitLab sono origini con marchio, gestite da `graphql_remote`: ciascuna compare nel modulo Sources con il proprio nome e si registra come origine GraphQL remota che ne registra il marchio. Il modulo richiede un personal access token e nient'altro. L'endpoint (`https://api.github.com/graphql`, `https://gitlab.com/api/graphql`) e lo schema sono forniti con Provisa, quindi lo schema non viene sottoposto a introspezione alla registrazione. Il token viene verificato quando l'origine viene aggiunta. Aggiungere l'origine non registra tabelle: ogni tabella offerta dallo schema è disponibile sotto il namespace dell'origine (`gh`, `gl`), e lo steward registra quelle desiderate. Un campo che il token non può leggere viene escluso da una tabella quando questa viene registrata.
 
-#### Stripe (REQ-1923) {: #stripe }
+#### Stripe {: #stripe }
 
-Stripe è un'origine con marchio portata da `openapi`, costruita come GitHub e GitLab sono costruiti su `graphql_remote`. Compare nel modulo Sources come Stripe, sotto Enterprise. Si registra come origine OpenAPI la cui riga registra il marchio in `federation_hints` e il cui percorso della specifica è `brand:stripe`. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `BRAND_CARRIER`; `provisa/openapi/brands.py` `BRANDS`, `SPEC_SCHEME`; `provisa/api/admin/openapi_router.py` `_branded`]
+Stripe è un'origine con marchio portata da `openapi`, costruita come GitHub e GitLab sono costruiti su `graphql_remote`. Compare nel modulo Sources come Stripe, sotto Enterprise. Si registra come origine OpenAPI la cui riga registra il marchio in `federation_hints` e il cui percorso della specifica è `brand:stripe`.
 
-**Cosa raggiunge.** L'API REST di Stripe, tramite la specifica OpenAPI pubblicata da Stripe (`stripe/openapi`, `spec3.json`). La specifica è distribuita con Provisa, fissata a una versione e compressa con gzip, e non viene scaricata alla registrazione. Quella distribuita è la versione API `2026-09-30.endive` con 425 percorsi. Ogni chiamata porta `Stripe-Version` impostato su quella versione, quindi ogni risposta ha la forma che la specifica descrive, qualunque sia la versione predefinita dell'account. I campi che Stripe restituisce ma che la specifica omette sono aggiunti da `stripe.additions.json`. [tool-verified: `provisa/openapi/brands.py` `brand_spec`, `Brand.headers`; `provisa/openapi/_known_specs/`; version and path count read with the project interpreter]
+**Cosa raggiunge.** L'API REST di Stripe, tramite la specifica OpenAPI pubblicata da Stripe (`stripe/openapi`, `spec3.json`). La specifica è distribuita con Provisa, fissata a una versione e compressa con gzip, e non viene scaricata alla registrazione. Quella distribuita è la versione API `2026-09-30.endive` con 425 percorsi. Ogni chiamata porta `Stripe-Version` impostato su quella versione, quindi ogni risposta ha la forma che la specifica descrive, qualunque sia la versione predefinita dell'account. I campi che Stripe restituisce ma che la specifica omette sono aggiunti da `stripe.additions.json`.
 
-Come per qualsiasi origine OpenAPI, ogni operazione `GET` è una tabella offerta e ogni altra operazione è un comando offerto. Aggiungere l'origine non ne registra nessuna: lo steward registra quelle volute. [tool-verified: `provisa/api/admin/openapi_router.py` `register_openapi_source`; `provisa/openapi/brands.py` module docstring]
+Come per qualsiasi origine OpenAPI, ogni operazione `GET` è una tabella offerta e ogni altra operazione è un comando offerto. Aggiungere l'origine non ne registra nessuna: lo steward registra quelle volute.
 
-**Autenticazione.** Il modulo chiede una sola cosa, un token di accesso (`BRAND_AUTH`: `token`). Usate una chiave API segreta o limitata (restricted) di Stripe. Il token è inviato come bearer token ed è verificato una volta con `GET /v1/balance` prima che l'origine sia aggiunta. Un token rifiutato fa fallire la registrazione con `openapi.credential_rejected`; uno mancante la fa fallire con `openapi.credential_required`. [tool-verified: `provisa-ui/src/pages/sources/constants.ts` `BRAND_AUTH`; `provisa/openapi/brands.py` `Brand.auth`, `verify_path`; `provisa/api/admin/openapi_router.py` `_branded`] [inferred: that a restricted key works, provided it may read `/v1/balance`]
+**Autenticazione.** Il modulo chiede una sola cosa, un token di accesso (`BRAND_AUTH`: `token`). Usate una chiave API segreta o limitata (restricted) di Stripe. Il token è inviato come bearer token ed è verificato una volta con `GET /v1/balance` prima che l'origine sia aggiunta. Un token rifiutato fa fallire la registrazione con `openapi.credential_rejected`; uno mancante la fa fallire con `openapi.credential_required`.
 
-**Aggiornamento e freschezza.** Una tabella Stripe è una replica, come ogni tabella OpenAPI. Le sue risposte in cache durano per il `cache_ttl` dell'origine, che una richiesta di registrazione imposta a 300 secondi se non dice altrimenti. Si applicano i tipi di sonda OpenAPI. [tool-verified: `provisa/api/admin/openapi_router.py` `OpenAPIRegisterRequest.cache_ttl`; `provisa/events/probes.py` `_HTTP_API_TYPES`] REQ-1923 prevede che un preset possa indicare il parametro che un aggiornamento usa per recuperare solo ciò che è cambiato. Il marchio Stripe non ne indica nessuno, quindi ogni aggiornamento legge le sue tabelle per intero. [tool-verified: `provisa/openapi/brands.py` `Brand` has no such field]
+**Aggiornamento e freschezza.** Una tabella Stripe è una replica, come ogni tabella OpenAPI. Le sue risposte in cache durano per il `cache_ttl` dell'origine, che una richiesta di registrazione imposta a 300 secondi se non dice altrimenti. Si applicano i tipi di sonda OpenAPI. Un preset può indicare il parametro che un aggiornamento usa per recuperare solo ciò che è cambiato. Il marchio Stripe non ne indica nessuno, quindi ogni aggiornamento legge le sue tabelle per intero.
 
-**Esclusioni.** L'integrazione di pagamento deprecata di Stripe basata su token e Sources è lasciata fuori dalla specifica distribuita. L'elenco è sotto [Esclusioni su un'origine costruita da una specifica](#exclusions-on-a-specification-built-source). Le `exclusions` proprie dell'operatore si aggiungono a quelle del marchio. [tool-verified: `provisa/openapi/_known_specs/stripe.exclusions.json`; `provisa/openapi/brands.py` `brand_spec`] (REQ-1957)
+**Esclusioni.** L'integrazione di pagamento deprecata di Stripe basata su token e Sources è lasciata fuori dalla specifica distribuita. L'elenco è sotto [Esclusioni su un'origine costruita da una specifica](#exclusions-on-a-specification-built-source). Le `exclusions` proprie dell'operatore si aggiungono a quelle del marchio.
 
-`stripe` compare anche in `SourceType` tra i tipi stub di Supabase `wrappers`. Un'origine Stripe aggiunta tramite il modulo è un'origine `openapi`, non quello stub. [tool-verified: `provisa/core/models.py` `SourceType`]
+`stripe` compare anche in `SourceType` tra i tipi stub di Supabase `wrappers`. Un'origine Stripe aggiunta tramite il modulo è un'origine `openapi`, non quello stub.
 
 #### Esclusioni su un'origine costruita da una specifica {: #exclusions-on-a-specification-built-source }
 
-Una specifica OpenAPI pubblicata descrive tutto ciò che l'API remota accetta, compreso ciò che il suo fornitore ha dichiarato obsoleto e ciò che un deployment non deve mai inviare. Un'origine OpenAPI può avere delle esclusioni: elementi della specifica che l'origine non offre. (REQ-1957)
+Una specifica OpenAPI pubblicata descrive tutto ciò che l'API remota accetta, compreso ciò che il suo fornitore ha dichiarato obsoleto e ciò che un deployment non deve mai inviare. Un'origine OpenAPI può avere delle esclusioni: elementi della specifica che l'origine non offre.
 
 | Escluso | Indicato da | Effetto |
 |---|---|---|
@@ -910,9 +889,9 @@ Un'origine con marchio fornisce proprie esclusioni come parte della sua curatela
 
 ### GovData
 
-Dati aperti del governo statunitense. L'accesso è partizionato per raggruppamento subject. [tool-verified: `provisa/core/models.py` lines 543–609]
+Dati aperti del governo statunitense. L'accesso è partizionato per raggruppamento subject.
 
-A un'origine vengono assegnati uno o più subject, e ogni subject porta gli schemi dell'adattatore elencati sotto. Uno schema può appartenere a più di un subject (`census`). Gli schemi `ref` e `geo` sono schemi linker: dati di riferimento e geografia attraverso cui si uniscono le tabelle di ogni subject, quindi ogni origine li serve qualunque subject le sia stato assegnato. L'elenco è dichiarato una sola volta sul server ed è vincolato, da un test, agli schemi serviti dal bundle dell'adattatore fissato. [tool-verified: `provisa/core/models.py` `GOVDATA_SUBJECT_SCHEMAS`, `GOVDATA_LINKER_SCHEMAS`; `tests/unit/test_govdata_subject_schemas.py`]
+A un'origine vengono assegnati uno o più subject, e ogni subject porta gli schemi dell'adattatore elencati sotto. Uno schema può appartenere a più di un subject (`census`). Gli schemi `ref` e `geo` sono schemi linker: dati di riferimento e geografia attraverso cui si uniscono le tabelle di ogni subject, quindi ogni origine li serve qualunque subject le sia stato assegnato. L'elenco è dichiarato una sola volta sul server ed è vincolato, da un test, agli schemi serviti dal bundle dell'adattatore fissato.
 
 | Subject | Schemi esposti |
 | --------- | ----------------- |
@@ -948,11 +927,11 @@ sources:
 | `domain_id` | Sì | — | Dominio a cui appartiene questa origine |
 | `description` | No | `""` | Descrizione leggibile |
 
-Un'origine AskAmerica creata nell'admin richiede una sola credenziale, la chiave API. Provisa presenta la chiave all'API di AskAmerica e riceve le credenziali di storage a breve durata e in sola lettura con cui i dati vengono letti; la chiave viene rifiutata lì, per nome, se è sconosciuta o revocata. [tool-verified: `provisa/federation/askamerica.py`]
+Un'origine AskAmerica creata nell'admin richiede una sola credenziale, la chiave API. Provisa presenta la chiave all'API di AskAmerica e riceve le credenziali di storage a breve durata e in sola lettura con cui i dati vengono letti; la chiave viene rifiutata lì, per nome, se è sconosciuta o revocata.
 
-L'origine è poi un'origine Postgres-wire come le origini SharePoint, Salesforce e inventario cloud: Provisa avvia per essa il server `pgwire-govdata` integrato, con la chiave e quelle credenziali nell'ambiente del server, e ogni motore raggiunge quel server come raggiunge quello di un'origine sorella. DuckDB, Postgres e ClickHouse lo collegano e leggono le sue tabelle sul posto, quindi una tabella AskAmerica si unisce alle tabelle di altre origini, sta sotto le view ed è consegnata come qualsiasi altra. Trino non ha un connettore per essa e legge una replica atterrata tramite il server: una copia della tabella conservata nello store di materializzazione, aggiornata quanto il suo ultimo refresh secondo le impostazioni di cache e replica della tabella, anziché letta al momento della query. Una tabella viene letta dallo schema dell'adattatore che nomina (`sec`, `econ` e così via). [tool-verified: `provisa/federation/pgwire_replica.py`, `provisa/federation/connector_duckdb.py`, `provisa/federation/clickhouse_connectors.py`]
+L'origine è poi un'origine Postgres-wire come le origini SharePoint, Salesforce e inventario cloud: Provisa avvia per essa il server `pgwire-govdata` integrato, con la chiave e quelle credenziali nell'ambiente del server, e ogni motore raggiunge quel server come raggiunge quello di un'origine sorella. DuckDB, Postgres e ClickHouse lo collegano e leggono le sue tabelle sul posto, quindi una tabella AskAmerica si unisce alle tabelle di altre origini, sta sotto le view ed è consegnata come qualsiasi altra. Trino non ha un connettore per essa e legge una replica atterrata tramite il server: una copia della tabella conservata nello store di materializzazione, aggiornata quanto il suo ultimo refresh secondo le impostazioni di cache e replica della tabella, anziché letta al momento della query. Una tabella viene letta dallo schema dell'adattatore che nomina (`sec`, `econ` e così via).
 
-Il server monta i suoi schemi dall'object storage prima di accettare una connessione, il che richiede minuti al primo avvio. Viene avviato quando l'origine viene salvata; finché non è pronto, il modulo Registra tabella segnala che l'origine è ancora in avvio. [tool-verified: `provisa/federation/pgwire_replica.py` `start_when_saved`]
+Il server monta i suoi schemi dall'object storage prima di accettare una connessione, il che richiede minuti al primo avvio. Viene avviato quando l'origine viene salvata; finché non è pronto, il modulo Registra tabella segnala che l'origine è ancora in avvio.
 
 ### Dove risiede la password di un'origine {: #where-a-sources-password-lives }
 
@@ -961,14 +940,12 @@ connessione. La riga `sources` del control plane porta una colonna `password_ref
 che è stato inserito come password: il valore stesso, oppure un riferimento come
 `${env:PG_PASSWORD}` o `${secret:SNOWFLAKE_KEY}`. Viene risolto nel momento in cui l'origine viene
 contattata, all'interno dell'organizzazione in cui la richiesta è in esecuzione.
-[tool-verified: `provisa/core/schema_org.py`, `provisa/core/repositories/source.py`]
 
 Un valore senza `${…}` al suo interno viene usato così com'è. `${env:VAR}` legge l'ambiente di
 processo del deployment e non richiede alcun binding. `${secret:NAME}` nomina un secret di
 proprietà di un'organizzazione, quindi si risolve solo all'interno delle operazioni proprie di
 quell'organizzazione: le seam di introspezione admin e il terminale di query che ogni superficie
-raggiunge stabiliscono quel binding. [tool-verified: `provisa/core/secrets.py` `resolve_secrets`;
-`provisa/pgwire/_pipeline.py` `_execute_plan`]
+raggiunge stabiliscono quel binding.
 
 Il campo contiene ciò che vi è stato inserito, comunque l'origine sia stata registrata:
 
@@ -978,29 +955,25 @@ Il campo contiene ciò che vi è stato inserito, comunque l'origine sia stata re
   valore o riferimento che sia. Provisa non scrive nulla nel vault dell'organizzazione per esso e non
   inventa alcun nome di secret. Per tenere una credenziale fuori dalla riga del control plane, crea
   tu stesso il secret (vedi [Secrets](secrets.md)) e digita `${secret:NAME}` nel campo.
-  [tool-verified: `provisa/api/admin/schema_mutation.py` `create_source`]
 
 Un valore digitato come valore viene memorizzato nel database del control plane così come digitato.
 Riscrivere la password sostituisce il testo del campo. Eliminare l'origine rimuove la sua riga e
-nulla dal vault: un secret che hai creato è tuo. [tool-verified:
-`provisa/api/admin/schema_mutation.py` `delete_source`; `tests/unit/test_no_product_written_secrets.py`]
+nulla dal vault: un secret che hai creato è tuo.
 
-`password_ref` non viaggia tra ambienti (REQ-1491). Un branch o un ambiente copiato fornisce i
+`password_ref` non viaggia tra ambienti. Un branch o un ambiente copiato fornisce i
 propri valori di connessione, e il vault che un riferimento nomina appartiene a qualunque ambiente
-lo abbia fornito. [tool-verified: `provisa/core/env_classes.py` `BINDING_COLUMNS`]
+lo abbia fornito.
 
 ### Data profiler {: #data-profiler }
 
-Un data profiler è un'origine che contiene un nome, una pianificazione e i valori predefiniti di esecuzione, e nient'altro. Non viene mai sottoposta a introspezione. Vi si aggiungono tabelle di altre origini, e ogni esecuzione le misura e scrive le sue righe nel control plane dell'organizzazione, dove vengono lette come le tabelle di qualsiasi altra origine. Vedi [Test data](test-data.md) per creare un profiler e aggiungervi tabelle. [tool-verified: `provisa/core/models.py` `SourceType.data_profiler`; `provisa/federation/strategy.py` `_MATERIALIZE_ONLY`] (REQ-1934)
+Un data profiler è un'origine che contiene un nome, una pianificazione e i valori predefiniti di esecuzione, e nient'altro. Non viene mai sottoposta a introspezione. Vi si aggiungono tabelle di altre origini, e ogni esecuzione le misura e scrive le sue righe nel control plane dell'organizzazione, dove vengono lette come le tabelle di qualsiasi altra origine. Vedi [Test data](test-data.md) per creare un profiler e aggiungervi tabelle.
 
-### Controlli di qualità dei dati (REQ-1443) {: #data-quality-checkers-req-1443 }
+### Controlli di qualità dei dati {: #data-quality-checkers }
 
 Un checker di qualità dei dati è un tipo di origine, non un sottosistema. Il suo output di
 scansione è dato: un risultato di controllo è un'osservazione, quindi percorre il normale percorso
 di origine ed eredita cadenza, freschezza, eventi, derivazione, governance, RLS, griglia ed
-esportazione da ogni altra origine. [tool-verified: `provisa/core/models.py` lines 110–116
-`SourceType.soda`, `SourceType.great_expectations`; `provisa/events/source_loader.py`
-`make_dq_loader`]
+esportazione da ogni altra origine.
 
 Ne sono supportati due, e la scelta è tanto una scelta di licenza quanto una scelta funzionale.
 
@@ -1013,14 +986,12 @@ La Elastic License 2.0 vieta di fornire il software a terzi come servizio ospita
 eseguire Soda all'interno del piano SaaS per conto di un tenant è esattamente questo.
 `config/capabilities.yaml` porta la distinzione come `cloud_eligible: false` sull'opzione `soda`, e
 il piano ospitato legge quel flag. Una distribuzione ospitata che desideri Soda raggiunge un
-endpoint Soda fornito dall'operatore, gestito direttamente da quest'ultimo. [tool-verified:
-`config/capabilities.yaml` lines 197–203]
+endpoint Soda fornito dall'operatore, gestito direttamente da quest'ultimo.
 
 Provisa non fa vendoring né linking di nulla. La scansione viene eseguita in un interprete figlio
 (`python -m provisa.dq.worker`), l'unico punto in cui vengono importati `soda_core` o
 `great_expectations`, così un checker source-available non raggiunge mai il processo del server e
-un crash del checker abbatte un sottoprocesso anziché l'event loop. [tool-verified:
-`provisa/dq/runner.py` `build_command`, `run_contract`]
+un crash del checker abbatte un sottoprocesso anziché l'event loop.
 
 **L'origine punta al proprio endpoint pgwire di Provisa.** Questo è ciò che permette a un unico
 driver postgres di controllare una tabella supportata da Snowflake o Iceberg: il checker analizza
@@ -1045,8 +1016,7 @@ sources:
 
 **Una tabella dei risultati per contratto, e il contratto è l'intera registrazione.** La tabella
 porta `dq_contract` — il testo del contratto testuale — e nient'altro riguardo alla propria forma.
-Colonne, watermark e promozioni sono tutte derivate. [tool-verified: `provisa/dq/registration.py`
-`derive_checker_table`]
+Colonne, watermark e promozioni sono tutte derivate.
 
 ```yaml
 tables:
@@ -1077,31 +1047,29 @@ tables:
 Ciò che la registrazione deriva da quel testo:
 
 - **Derivazione.** Il contratto nomina già il proprio dataset di destinazione, quindi la
-  registrazione lo analizza nello stesso modo in cui `extract_inputs` analizza SQL (REQ-939) e lo
+  registrazione lo analizza nello stesso modo in cui `extract_inputs` analizza SQL e lo
   risolve nella tabella governata. Un'unica definizione, nessuna seconda copia che possa
   divergere. Un contratto che nomina un dataset non governato fallisce rumorosamente alla
   registrazione anziché depositare righe che nessuno ha richiesto.
 - **Colonne.** L'involucro del risultato è quello del checker, non dell'operatore — 16 colonne
   fornite di serie da `scan_id` a `diagnostics`. Le colonne dichiarate vengono lette solo per il
-  loro `visible_to`, che deve essere unanime, e vengono poi sostituite. [tool-verified:
-  `provisa/dq/results.py` `_ENVELOPE`, `results_columns`]
-- **Watermark.** `scan_time` diventa il watermark, il che rende il deposito un append (REQ-982).
+  loro `visible_to`, che deve essere unanime, e vengono poi sostituite.
+- **Watermark.** `scan_time` diventa il watermark, il che rende il deposito un append.
   La cronologia delle scansioni si accumula senza un sottosistema di cronologia.
 - **Promozioni.** `freshness_max_timestamp` e `dataset_rows_tested` vengono promossi dal jsonb
-  `diagnostics` a colonne tipizzate (REQ-119). Aggiungerne altre nello stesso modo in cui si
-  farebbe su qualsiasi altra colonna jsonb. [tool-verified: `provisa/dq/results.py`
-  `DQ_PROMOTIONS`]
+  `diagnostics` a colonne tipizzate. Aggiungerne altre nello stesso modo in cui si
+  farebbe su qualsiasi altra colonna jsonb.
 
 La temporizzazione non introduce nuovi campi. `change_signal` più `cache_ttl` forniscono la
 cadenza di polling; `mv_debounce_quiet` e `mv_debounce_max_delay` collassano un burst a monte in
-una sola scansione (REQ-963); un grano di calendario la rende periodica (REQ-962);
+una sola scansione; un grano di calendario la rende periodica;
 `expected_events` trattiene la scansione finché i suoi input non sono aggiornati entro la finestra
-(REQ-961). Il ciclo di polling è lo scheduler della scansione.
+. Il ciclo di polling è lo scheduler della scansione.
 
 `outcome` è uno tra `pass`, `fail`, `warn`, `error`, `skipped`. Nessuno di essi è un verdetto —
 l'applicazione, se desiderata, è una dichiarazione separata successiva: un preflight o una MV sui
 risultati depositati. Poiché un'osservazione depositata non porta alcun obbligo di determinismo
-(REQ-964), qui sono ammissibili controlli non deterministici che non potrebbero mai stare su un
+, qui sono ammissibili controlli non deterministici che non potrebbero mai stare su un
 gate di preflight — punteggio di anomalia, variazione su finestra mobile, freschezza rispetto
 all'istante presente.
 
@@ -1113,13 +1081,13 @@ inatteso e che altrimenti non depositerebbe altro che righe che passano.
 
 ---
 
-## Connettori personalizzati (REQ-1177) {: #custom-connectors-req-1177 }
+## Connettori personalizzati {: #custom-connectors }
 
-I motori di federazione nativi — Postgres, DuckDB e ClickHouse — guadagnano raggiungibilità verso un nuovo tipo di origine quando un operatore dichiara un connettore per esso in `config/custom_connectors.yaml`. Non è richiesto codice. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors`; `provisa/federation/engine.py` `build_pg_engine`, `build_duckdb_engine`, `build_clickhouse_engine`]
+I motori di federazione nativi — Postgres, DuckDB e ClickHouse — guadagnano raggiungibilità verso un nuovo tipo di origine quando un operatore dichiara un connettore per esso in `config/custom_connectors.yaml`. Non è richiesto codice.
 
-L'estensibilità dei connettori di per sé precede questo. Il motore Trino è da tempo estensibile al proprio livello — un connettore JDBC generico parametrizzato per tipo di origine, un corpo `.properties` di catalogo per tipo, e i plugin connettore Trino personalizzati propri di Provisa (Splunk, SharePoint, Calcite). [tool-verified: `provisa/federation/trino_connectors.py` `_TrinoJdbcConnector`, `_TRINO_JDBC_TYPES`; `trino/plugins/trino-splunk`, `trino/plugins/trino-sharepoint`, `trino/plugins/trino-calcite`] REQ-1177 porta la stessa estensibilità config-driven ai due motori nativi senza cluster, che in precedenza portavano un insieme fisso di connettori.
+L'estensibilità dei connettori di per sé precede questo. Il motore Trino è da tempo estensibile al proprio livello — un connettore JDBC generico parametrizzato per tipo di origine, un corpo `.properties` di catalogo per tipo, e i plugin connettore Trino personalizzati propri di Provisa (Splunk, SharePoint, Calcite). Le dichiarazioni di connettori personalizzati portano la stessa estensibilità config-driven ai due motori nativi senza cluster, che in precedenza portavano un insieme fisso di connettori.
 
-La configurazione viene fornita vuota. I connettori integrati coprono la raggiungibilità out-of-the-box; tutto in questo file è scritto dall'operatore. [tool-verified: `config/custom_connectors.yaml` line 52: `connectors: []`] Imposta `PROVISA_CUSTOM_CONNECTORS` per puntare a un percorso diverso (utile per i test).
+La configurazione viene fornita vuota. I connettori integrati coprono la raggiungibilità out-of-the-box; tutto in questo file è scritto dall'operatore. Imposta `PROVISA_CUSTOM_CONNECTORS` per puntare a un percorso diverso (utile per i test).
 
 ### Tipi di descrittore {: #descriptor-kinds }
 
@@ -1132,27 +1100,27 @@ La configurazione viene fornita vuota. I connettori integrati coprono la raggiun
 | `clickhouse` | `clickhouse_table` | `CREATE TABLE ENGINE=…` per tabella (colonne dal registro) | `ch_engine`, `engine_template` (può portare `{table}`) |
 | `clickhouse` | `clickhouse_scan` | `CREATE TABLE ENGINE=…`, ClickHouse inferisce lo schema | `ch_engine`, `engine_template` |
 
-**Postgres è generico.** SQL/MED è uno standard ISO, quindi ogni FDW conforme condivide la stessa forma di DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, opzionalmente `CREATE USER MAPPING`, poi o `IMPORT FOREIGN SCHEMA` (quando `supports_import: true`) oppure un `CREATE FOREIGN TABLE` esplicito per tabella (quando `false`). Un descrittore `pg_fdw` fornisce solo la variazione per-FDW — nome dell'estensione, chiavi delle opzioni server, chiavi di user-mapping, flag di import, opzioni tabella. Qualsiasi FDW conforme allo standard è quindi pilotabile solo da configurazione. [tool-verified: `provisa/federation/custom_connectors.py` `GenericPgFdwConnector.details` lines 98–125]
+**Postgres è generico.** SQL/MED è uno standard ISO, quindi ogni FDW conforme condivide la stessa forma di DDL: `CREATE SERVER … FOREIGN DATA WRAPPER <fdw> OPTIONS(…)`, opzionalmente `CREATE USER MAPPING`, poi o `IMPORT FOREIGN SCHEMA` (quando `supports_import: true`) oppure un `CREATE FOREIGN TABLE` esplicito per tabella (quando `false`). Un descrittore `pg_fdw` fornisce solo la variazione per-FDW — nome dell'estensione, chiavi delle opzioni server, chiavi di user-mapping, flag di import, opzioni tabella. Qualsiasi FDW conforme allo standard è quindi pilotabile solo da configurazione.
 
-**DuckDB supporta due meccanismi.** Un'estensione che espone un catalogo via ATTACH usa `duckdb_attach`; una che espone una table-function di lettura usa `duckdb_scan`. Un'estensione che non rientra in nessuno dei due schemi non è supportata. [tool-verified: `provisa/federation/custom_connectors.py` `GenericDuckDbAttachConnector`, `GenericDuckDbScanConnector`]
+**DuckDB supporta due meccanismi.** Un'estensione che espone un catalogo via ATTACH usa `duckdb_attach`; una che espone una table-function di lettura usa `duckdb_scan`. Un'estensione che non rientra in nessuno dei due schemi non è supportata.
 
-**ClickHouse supporta tre meccanismi**, uno per ciascuna forma di motore di integrazione: un motore DATABASE relazionale che espone automaticamente ogni tabella remota (`clickhouse_database`, es. Redis/MySQL), un motore per tabella le cui colonne sono fornite dal registro (`clickhouse_table`, es. il bridge JDBC/ODBC — l'`engine_template` può portare un placeholder `{table}` che il runtime lega), e un motore file/lake/URL il cui schema ClickHouse inferisce (`clickhouse_scan`, es. HDFS/URL). SQLite (motore DATABASE, file, nessun server) e Hudi (lakehouse, zero-copy) sono forniti out-of-the-box. [tool-verified: `provisa/federation/custom_connectors.py` `GenericClickHouseDatabaseConnector`, `GenericClickHouseTableConnector`, `GenericClickHouseScanConnector`; `provisa/federation/clickhouse_connectors.py` `ClickHouseSqliteConnector`, `ClickHouseHudiConnector`] (REQ-1178)
+**ClickHouse supporta tre meccanismi**, uno per ciascuna forma di motore di integrazione: un motore DATABASE relazionale che espone automaticamente ogni tabella remota (`clickhouse_database`, es. Redis/MySQL), un motore per tabella le cui colonne sono fornite dal registro (`clickhouse_table`, es. il bridge JDBC/ODBC — l'`engine_template` può portare un placeholder `{table}` che il runtime lega), e un motore file/lake/URL il cui schema ClickHouse inferisce (`clickhouse_scan`, es. HDFS/URL). SQLite (motore DATABASE, file, nessun server) e Hudi (lakehouse, zero-copy) sono forniti out-of-the-box.
 
-Un valore `kind` sconosciuto fallisce in modo esplicito all'avvio — un errore di battitura nel descrittore non deve lasciare silenziosamente un tipo di origine irraggiungibile. [tool-verified: `provisa/federation/custom_connectors.py` `load_custom_connectors` lines 178–197]
+Un valore `kind` sconosciuto fallisce in modo esplicito all'avvio — un errore di battitura nel descrittore non deve lasciare silenziosamente un tipo di origine irraggiungibile.
 
 ### Gating della sonda (probe) {: #probe-gating }
 
 La disponibilità viene verificata al momento dell'attach contro il catalogo di discovery standard di ciascun motore:
 
-- **Postgres** — controlla `pg_extension`, poi `pg_available_extensions`. [tool-verified: `provisa/federation/connector_duckdb.py` `_probe_pg_extension` lines 333–344]
-- **DuckDB** — esegue `INSTALL`/`LOAD` e controlla `duckdb_functions()` per il `probe_symbol` dichiarato. [tool-verified: `provisa/federation/connector_duckdb.py` `_DuckDBExtensionConnector.probe` lines 160–180]
-- **ClickHouse** — controlla `system.table_engines` per il `ch_engine` dichiarato; l'assenza dal build fallisce in modo esplicito. [tool-verified: `provisa/federation/custom_connectors.py` `_probe_clickhouse_engine`]
+- **Postgres** — controlla `pg_extension`, poi `pg_available_extensions`.
+- **DuckDB** — esegue `INSTALL`/`LOAD` e controlla `duckdb_functions()` per il `probe_symbol` dichiarato.
+- **ClickHouse** — controlla `system.table_engines` per il `ch_engine` dichiarato; l'assenza dal build fallisce in modo esplicito.
 
 Un'estensione dichiarata che non è installabile fallisce in modo esplicito. Nessun salto silenzioso, nessun fallback. Un connettore la cui sonda fallisce semplicemente non è attivo per quel deployment.
 
 ### Variabili di template {: #template-variables }
 
-Ogni valore `server_options`, valore `user_mapping`, `attach_template` e `scan_template` può usare placeholder `{field}`. Campi disponibili: [tool-verified: `provisa/federation/custom_connectors.py` `_source_fields` lines 53–63]
+Ogni valore `server_options`, valore `user_mapping`, `attach_template` e `scan_template` può usare placeholder `{field}`. Campi disponibili:
 
 `{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, più qualsiasi chiave da `federation_hints`. I template attach di DuckDB ricevono anche `{alias}` — l'alias di catalogo interno che Provisa assegna al database attached.
 
@@ -1194,15 +1162,13 @@ connectors:
     scan_template: "read_xlsx('{path}')"
 ```
 
-[tool-verified: `config/custom_connectors.yaml` commented examples, lines 26–50]
-
 Con l'uno o l'altro descrittore in atto, registrare un'origine con il `source_type` dichiarato viene instradato attraverso il connettore personalizzato, soggetto a una sonda riuscita. Non è necessaria alcuna altra modifica di configurazione.
 
 ---
 
 ## Warehouse come origini nominate {: #warehouses-as-named-sources }
 
-Snowflake, Databricks e ClickHouse possono essere registrati come origini nominate indipendentemente da quale motore di federazione è attivo. [tool-verified: `executor/drivers/snowflake.py` (REQ-988), `executor/drivers/databricks.py` (REQ-987), `executor/drivers/clickhouse.py` (REQ-986)]
+Snowflake, Databricks e ClickHouse possono essere registrati come origini nominate indipendentemente da quale motore di federazione è attivo.
 
 Una volta registrato, Provisa legge il warehouse tramite il DirectDriver dell'origine e atterra una replica nello store di materializzazione del motore attivo. La query poi gira contro quella replica. Questo differisce dal percorso direct-capable tradizionale (asyncpg, aiomysql) dove il motore viene bypassato completamente — qui il motore esegue comunque la query, ma contro una replica locale piuttosto che sul wire verso il warehouse a ogni richiesta.
 
@@ -1259,7 +1225,7 @@ sources:
 
 ## Campi di configurazione dell'origine {: #source-configuration-fields }
 
-Tutte le origini condividono un insieme comune di campi. [tool-verified: `provisa/core/models.py` `Source` class, lines 138–204]
+Tutte le origini condividono un insieme comune di campi.
 
 | Campo | Richiesto | Default | Descrizione |
 | ------- | ---------- | --------- | ------------- |
@@ -1272,17 +1238,17 @@ Tutte le origini condividono un insieme comune di campi. [tool-verified: `provis
 | `password` | No | `""` | Password; usa `${env:VAR}` o `${secret:NAME}` invece di un letterale (vedi sotto) |
 | `path` | No | `null` | Percorso file o URI cloud per origini basate su file e object/lake |
 | `base_url` | No | `null` | URL base per origini OpenAPI |
-| `pool_min` | No | `1` | Dimensione minima del connection pool (REQ-052) |
-| `pool_max` | No | `5` | Dimensione massima del connection pool (REQ-052) |
-| `use_pgbouncer` | No | `false` | Instrada le connessioni attraverso PgBouncer (REQ-053) |
-| `pgbouncer_port` | No | `6432` | Porta PgBouncer (REQ-053) |
+| `pool_min` | No | `1` | Dimensione minima del connection pool |
+| `pool_max` | No | `5` | Dimensione massima del connection pool |
+| `use_pgbouncer` | No | `false` | Instrada le connessioni attraverso PgBouncer |
+| `pgbouncer_port` | No | `6432` | Porta PgBouncer |
 | `cache_enabled` | No | `true` | Abilita la cache delle risposte API |
 | `cache_ttl` | No | `null` | TTL della cache in secondi; eredita il default globale quando null |
 | `cache_catalog` | No | `null` | Catalogo federato per la cache API; di default il catalogo dell'origine stessa |
 | `cache_schema` | No | `api_cache` | Schema all'interno del catalogo di cache |
-| `naming_convention` | No | `null` | Sovrascrive la convenzione di naming globale per questa origine (REQ-194) |
-| `federation_hints` | No | `{}` | Proprietà di sessione passate al motore di federazione, e parametri di connessione estesi per origini warehouse (REQ-278, REQ-281) |
-| `mapping` | No | `{}` | Impostazioni di connettore specifiche per tipo per origini NoSQL e SaaS (es. `auth_type` di SharePoint, `auth_type` di Salesforce, `use_token` di Splunk) (REQ-251) |
+| `naming_convention` | No | `null` | Sovrascrive la convenzione di naming globale per questa origine |
+| `federation_hints` | No | `{}` | Proprietà di sessione passate al motore di federazione, e parametri di connessione estesi per origini warehouse |
+| `mapping` | No | `{}` | Impostazioni di connettore specifiche per tipo per origini NoSQL e SaaS (es. `auth_type` di SharePoint, `auth_type` di Salesforce, `use_token` di Splunk) |
 | `allowed_domains` | No | `[]` | Restringe l'origine a domini specifici; vuoto = senza restrizioni |
 | `description` | No | `""` | Descrizione leggibile |
 
@@ -1290,7 +1256,7 @@ Tutte le origini condividono un insieme comune di campi. [tool-verified: `provis
 
 ## Origini Kafka {: #kafka-sources }
 
-I topic Kafka vengono configurati separatamente sotto `kafka_sources`, indicizzati dall'`id` di origine di un'origine `kafka` registrata. [tool-verified: `config/provisa.yaml` lines 138–151] (REQ-147)
+I topic Kafka vengono configurati separatamente sotto `kafka_sources`, indicizzati dall'`id` di origine di un'origine `kafka` registrata.
 
 ```yaml
 kafka_sources:
@@ -1318,14 +1284,14 @@ kafka_sources:
 | `topics[].topic` | Nome del topic Kafka |
 | `topics[].domain_id` | Dominio a cui appartiene questo topic |
 | `topics[].description` | Descrizione leggibile |
-| `topics[].default_window` | Finestra temporale di default per query con finestra (es. `1h`) (REQ-148) |
-| `topics[].columns` | Definizioni di colonna per lo schema del topic (REQ-150) |
+| `topics[].default_window` | Finestra temporale di default per query con finestra (es. `1h`) |
+| `topics[].columns` | Definizioni di colonna per lo schema del topic |
 
 ---
 
 ## Visibilità delle colonne {: #column-visibility }
 
-Il campo `visible_to` su ogni colonna è una lista di ID di ruolo che possono vedere quella colonna. [tool-verified: `provisa/core/models.py` `Column` class line 248; `config/provisa.yaml` lines 39–51]
+Il campo `visible_to` su ogni colonna è una lista di ID di ruolo che possono vedere quella colonna.
 
 ```yaml
 columns:
@@ -1337,13 +1303,13 @@ columns:
     visible_to: [admin, analyst]  # both roles see this column
 ```
 
-Le colonne omesse dalla lista `visible_to` di un ruolo non appaiono nello schema GraphQL di quel ruolo e non possono essere interrogate o referenziate nei filtri (REQ-039).
+Le colonne omesse dalla lista `visible_to` di un ruolo non appaiono nello schema GraphQL di quel ruolo e non possono essere interrogate o referenziate nei filtri.
 
 ---
 
 ## Relazioni {: #relationships }
 
-Le relazioni collegano due tabelle registrate e appaiono come campi annidati in GraphQL. [tool-verified: `provisa/core/models.py` `Relationship` class lines 323–343; `config/provisa.yaml` lines 103–110] (REQ-019)
+Le relazioni collegano due tabelle registrate e appaiono come campi annidati in GraphQL.
 
 ```yaml
 relationships:
@@ -1363,16 +1329,16 @@ relationships:
 | `target_table_id` | Sì | Tabella referenziata; vuoto per relazioni calcolate |
 | `source_column` | Sì | Colonna sulla tabella sorgente |
 | `target_column` | Sì | Colonna sulla tabella target; vuoto per relazioni calcolate |
-| `cardinality` | Sì | `many-to-one` o `one-to-many` (REQ-019) |
-| `materialize` | No | Crea automaticamente una vista materializzata per join cross-source (REQ-158). Su un arco basato su una giunzione la vista copre la traversata a due salti, non un join diretto (REQ-1586) |
+| `cardinality` | Sì | `many-to-one` o `one-to-many` |
+| `materialize` | No | Crea automaticamente una vista materializzata per join cross-source. Su un arco basato su una giunzione la vista copre la traversata a due salti, non un join diretto |
 | `refresh_interval` | No | Intervallo di refresh della MV in secondi (default: 300) |
 | `target_function_name` | No | Nome della funzione DB per relazioni calcolate |
 | `function_arg` | No | Quale argomento della funzione riceve il valore della colonna sorgente |
 | `alias` | No | Tipo di relazione leggibile (es. `WORKS_FOR`) |
-| `graphql_alias` | No | Nomina il campo SDL che questa relazione espone sul tipo padre. Quando assente, il nome viene derivato dal `field_name` della tabella target e dalla cardinalità della relazione. [tool-verified: `provisa/compiler/schema_gen.py:1050`] |
+| `graphql_alias` | No | Nomina il campo SDL che questa relazione espone sul tipo padre. Quando assente, il nome viene derivato dal `field_name` della tabella target e dalla cardinalità della relazione. |
 | `disable_cypher` | No | Quando `true`, esclude questa relazione dagli archi grafo Cypher |
 | `source_json_key` | No | Estrae questa chiave dalla colonna sorgente come oggetto JSON prima del JOIN |
-| `via_table` | No | Nome della tabella registrata della giunzione che questo arco attraversa. Valorizzarlo rende l'arco basato su una giunzione; lasciarlo vuoto lo lascia un arco su chiave esterna (REQ-1586) |
+| `via_table` | No | Nome della tabella registrata della giunzione che questo arco attraversa. Valorizzarlo rende l'arco basato su una giunzione; lasciarlo vuoto lo lascia un arco su chiave esterna |
 | `via_source_column` | No | Colonna della giunzione accoppiata a `source_column`. Separata da virgole e posizionale per una chiave composta |
 | `via_target_column` | No | Colonna della giunzione accoppiata a `target_column` |
 | `via_type_column` | No | Colonna discriminante, quando una stessa giunzione porta più tipi di relazione |
@@ -1381,7 +1347,7 @@ relationships:
 
 ### Relazioni basate su una tabella di giunzione {: #junction-backed-relationships }
 
-Una tabella associativa può essere dichiarata come relazione Cypher di prima classe anziché come nodo, così che le sue colonne diventino gli attributi di quella relazione: (REQ-1586)
+Una tabella associativa può essere dichiarata come relazione Cypher di prima classe anziché come nodo, così che le sue colonne diventino gli attributi di quella relazione:
 
 ```yaml
 relationships:
@@ -1402,11 +1368,11 @@ relationships:
 
 La giunzione è una tabella registrata come tutte le altre e deve essere registrata prima che una relazione possa nominarla. Dichiaratela una volta per valore di discriminante: tre righe su `pet_companions` producono `BONDED_PAIR`, `LITTERMATE` e `SHARES_ENCLOSURE` come tre tipi Cypher distinti, ciascuno con le restanti colonne della riga di giunzione come proprietà dell'arco. La configurazione demo inclusa dichiara esattamente questo.
 
-Un arco di giunzione è una relazione Cypher, non un campo di join GraphQL: l'emettitore di join GraphQL costruisce la sua clausola `ON` per una singola coppia di colonne e non ha posto per il secondo salto, quindi gli archi di giunzione sono esclusi dall'SDL generato e da `pg_constraint`. [tool-verified: `provisa/compiler/schema_gen.py:304`] La tabella di giunzione resta interrogabile come proprio campo radice ed esce dal lato nodi dello schema del grafo Cypher, così da non comparire mai come etichetta di nodo.
+Un arco di giunzione è una relazione Cypher, non un campo di join GraphQL: l'emettitore di join GraphQL costruisce la sua clausola `ON` per una singola coppia di colonne e non ha posto per il secondo salto, quindi gli archi di giunzione sono esclusi dall'SDL generato e da `pg_constraint`. La tabella di giunzione resta interrogabile come proprio campo radice ed esce dal lato nodi dello schema del grafo Cypher, così da non comparire mai come etichetta di nodo.
 
 `materialize: true` funziona su un arco di giunzione, e ciò che materializza è la traversata anziché un join diretto `pets`-`pets`: la vista contiene il salto di origine, il salto della giunzione, il discriminante e le colonne proprie della giunzione accanto a quelle della destinazione. Poiché la giunzione è una terza gamba del join, se l'arco attraversa origini si giudica su tutte e tre le tabelle — una giunzione in un'origine diversa dalle due che collega viene materializzata anche quando quelle due coincidono. Una dichiarazione materializza un tipo di arco, quindi una vista costruita per `bonded pair` non risponde mai a una traversata `littermate`.
 
-Valori di cardinalità [tool-verified: `provisa/core/models.py` `Cardinality` enum, lines 79–81]:
+Valori di cardinalità:
 
 - `many-to-one` — ogni riga sorgente mappa a una riga target (FK verso PK)
 - `one-to-many` — ogni riga sorgente mappa a più righe target (inverso di sopra)
@@ -1415,7 +1381,7 @@ Valori di cardinalità [tool-verified: `provisa/core/models.py` `Cardinality` en
 
 ## Regole di sicurezza a livello di riga {: #row-level-security-rules }
 
-Le regole RLS iniettano clausole `WHERE` al momento della query, ambito a un ruolo e opzionalmente a una tabella o dominio. [tool-verified: `provisa/core/models.py` `RLSRule` class lines 391–395; `config/provisa.yaml` lines 128–131] (REQ-041)
+Le regole RLS iniettano clausole `WHERE` al momento della query, ambito a un ruolo e opzionalmente a una tabella o dominio.
 
 ```yaml
 rls_rules:
@@ -1425,21 +1391,21 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
     description: Analysts read only their own region's orders.
 
-  - domain_id: sales-analytics  # applies to every table in domain (REQ-402)
+  - domain_id: sales-analytics  # applies to every table in domain
     role_id: analyst
     filter: "tenant_id = current_setting('provisa.tenant_id')"
     description: Analysts read only their own tenant's rows.
 ```
 
-Quando esistono sia una regola a livello di dominio che una a livello di tabella per lo stesso ruolo, la regola a livello di tabella ha la precedenza (REQ-403).
+Quando esistono sia una regola a livello di dominio che una a livello di tabella per lo stesso ruolo, la regola a livello di tabella ha la precedenza.
 
 | Campo | Richiesto | Descrizione |
 | ------- | ---------- | ------------- |
 | `table_id` | Condizionale | Tabella a cui applicare la regola; mutuamente esclusivo con `domain_id` |
-| `domain_id` | Condizionale | Dominio a cui applicare la regola; si applica a tutte le tabelle nel dominio (REQ-402) |
+| `domain_id` | Condizionale | Dominio a cui applicare la regola; si applica a tutte le tabelle nel dominio |
 | `role_id` | Sì | Ruolo a cui si applica questa regola |
-| `filter` | Sì | Predicato SQL iniettato in `WHERE`; può referenziare variabili di sessione (REQ-041) |
-| `description` | Sì | A cosa serve la regola, come la legge una revisione degli accessi (REQ-2081) |
+| `filter` | Sì | Predicato SQL iniettato in `WHERE`; può referenziare variabili di sessione |
+| `description` | Sì | A cosa serve la regola, come la legge una revisione degli accessi |
 
 ---
 
@@ -1447,9 +1413,9 @@ Quando esistono sia una regola a livello di dominio che una a livello di tabella
 
 ### Funzioni DB {: #db-functions }
 
-Traccia una funzione database ed esponila come query o mutation GraphQL. [tool-verified: `provisa/core/models.py` `Function` class lines 423–438; `config/provisa.yaml` lines 152–164] (REQ-205)
+Traccia una funzione database ed esponila come query o mutation GraphQL.
 
-Le origini database possono anche scoprire automaticamente le loro stored procedure e funzioni dal catalogo del vendor (`pg_proc`, `information_schema.routines`, o equivalenti del vendor), eliminando la necessità di registrare ciascuna a mano. La discovery legge `prokind` e `provolatile`: le funzioni immutabili/stabili si registrano come relazioni parametrizzate (gli argomenti della procedura diventano parametri di query, la stessa forma delle tabelle OpenAPI GET), e le procedure volatili si registrano come mutation/funzioni tracciate. Le routine scoperte passano attraverso la governance Stage-2 in modo identico a quelle registrate a mano. [tool-verified: `provisa/api/admin/introspect.py:541`, `provisa/api/admin/introspect.py:593`] (REQ-887)
+Le origini database possono anche scoprire automaticamente le loro stored procedure e funzioni dal catalogo del vendor (`pg_proc`, `information_schema.routines`, o equivalenti del vendor), eliminando la necessità di registrare ciascuna a mano. La discovery legge `prokind` e `provolatile`: le funzioni immutabili/stabili si registrano come relazioni parametrizzate (gli argomenti della procedura diventano parametri di query, la stessa forma delle tabelle OpenAPI GET), e le procedure volatili si registrano come mutation/funzioni tracciate. Le routine scoperte passano attraverso la governance Stage-2 in modo identico a quelle registrate a mano.
 
 ```yaml
 functions:
@@ -1475,16 +1441,16 @@ functions:
 | `source_id` | Sì | — | Origine contenente la funzione |
 | `schema` | No | `public` | Schema del database |
 | `function_name` | Sì | — | Nome effettivo della funzione database |
-| `returns` | Sì | — | ID della tabella registrata restituita dalla funzione (REQ-207) |
-| `arguments` | No | `[]` | Elenco di definizioni argomento `{name, type}` (REQ-211) |
+| `returns` | Sì | — | ID della tabella registrata restituita dalla funzione |
+| `arguments` | No | `[]` | Elenco di definizioni argomento `{name, type}` |
 | `visible_to` | No | `[]` | Ruoli a cui è assegnata la funzione (vuoto: ogni ruolo). Una `mutation` richiede inoltre il diritto `write` |
 | `domain_id` | No | `""` | Dominio a cui appartiene questa funzione |
 | `description` | No | `null` | Descrizione del campo GraphQL |
-| `kind` | No | `mutation` | `"query"` o `"mutation"` (REQ-205) |
+| `kind` | No | `mutation` | `"query"` o `"mutation"` |
 
 ### Webhook {: #webhooks }
 
-Esponi un endpoint HTTP esterno come query o mutation GraphQL. [tool-verified: `provisa/core/models.py` `Webhook` class lines 441–455; `config/provisa.yaml` lines 166–178] (REQ-209)
+Esponi un endpoint HTTP esterno come query o mutation GraphQL.
 
 ```yaml
 webhooks:
@@ -1510,7 +1476,7 @@ webhooks:
 | `method` | No | `POST` | Metodo HTTP |
 | `timeout_ms` | No | `5000` | Timeout della richiesta in millisecondi |
 | `returns` | No | `null` | ID della tabella registrata, o null per tipo inline |
-| `inline_return_type` | No | `[]` | Elenco di campi `{name, type}` per forme di ritorno personalizzate (REQ-210) |
+| `inline_return_type` | No | `[]` | Elenco di campi `{name, type}` per forme di ritorno personalizzate |
 | `arguments` | No | `[]` | Elenco di definizioni argomento `{name, type}` |
 | `visible_to` | No | `[]` | Ruoli che possono chiamare questo webhook |
 | `domain_id` | No | `""` | Dominio a cui appartiene questo webhook |
@@ -1521,15 +1487,15 @@ webhooks:
 
 ## Autenticazione {: #authentication }
 
-L'autenticazione viene configurata sotto la chiave `auth`. [tool-verified: `provisa/core/models.py` `AuthConfig` class lines 467–477] (REQ-120)
+L'autenticazione viene configurata sotto la chiave `auth`.
 
 | Provider | Descrizione |
 | ---------- | ------------- |
 | `none` | Nessuna autenticazione; tutte le richieste trattate come il `default_role` |
-| `firebase` | Firebase Authentication; richiede `project_id` e `service_account_key` (REQ-121) |
-| `keycloak` | Keycloak OIDC (REQ-122) |
-| `oauth` | OAuth 2.0 generico (REQ-123) |
-| `simple` | Nome utente/password senza un provider esterno (REQ-124) |
+| `firebase` | Firebase Authentication; richiede `project_id` e `service_account_key` |
+| `keycloak` | Keycloak OIDC |
+| `oauth` | OAuth 2.0 generico |
+| `simple` | Nome utente/password senza un provider esterno |
 
 ```yaml
 auth:
@@ -1545,17 +1511,17 @@ auth:
     service_account_key: ${env:FIREBASE_SERVICE_ACCOUNT_KEY}
 ```
 
-`assignments_source: claims` legge le assegnazioni di ruolo dalle claim JWT. `assignments_source: provisa` le legge dallo store di assegnazioni proprio di Provisa. [tool-verified: `provisa/core/models.py` line 476] (REQ-551)
+`assignments_source: claims` legge le assegnazioni di ruolo dalle claim JWT. `assignments_source: provisa` le legge dallo store di assegnazioni proprio di Provisa.
 
 ---
 
 ## Routing di esecuzione {: #execution-routing }
 
-**Esecuzione diretta** — Le query a singola origine RDBMS vengono instradate al driver nativo per latenza sub-100ms (REQ-027). Le origini richiedono sia una voce `SOURCE_TO_DIALECT` che una voce `SOURCE_TO_CONNECTOR` per supportare questo percorso (REQ-229).
+**Esecuzione diretta** — Le query a singola origine RDBMS vengono instradate al driver nativo per latenza sub-100ms. Le origini richiedono sia una voce `SOURCE_TO_DIALECT` che una voce `SOURCE_TO_CONNECTOR` per supportare questo percorso.
 
-**Esecuzione federata** — Le query multi-source e le origini senza driver diretto vengono instradate attraverso il motore di federazione (REQ-028). Provisa include un motore di federazione integrato; punta al tuo cluster compatibile per deployment su larga scala (REQ-226).
+**Esecuzione federata** — Le query multi-source e le origini senza driver diretto vengono instradate attraverso il motore di federazione. Provisa include un motore di federazione integrato; punta al tuo cluster compatibile per deployment su larga scala.
 
-**Statistiche** — Alla registrazione, Provisa esegue `ANALYZE` su ogni tabella pubblicata per innescare l'ottimizzatore cost-based (conteggio righe, frazione null, valori distinti, min/max). I fallimenti vengono loggati e non bloccano la registrazione (REQ-275).
+**Statistiche** — Alla registrazione, Provisa esegue `ANALYZE` su ogni tabella pubblicata per innescare l'ottimizzatore cost-based (conteggio righe, frazione null, valori distinti, min/max). I fallimenti vengono loggati e non bloccano la registrazione.
 
 ---
 
@@ -1563,17 +1529,17 @@ auth:
 
 ### Neo4j
 
-Registra un database a grafo Neo4j come origine interrogabile. Gli steward scrivono query Cypher che proiettano valori scalari; Provisa mette in cache i risultati e li espone come tipi GraphQL (REQ-295).
+Registra un database a grafo Neo4j come origine interrogabile. Gli steward scrivono query Cypher che proiettano valori scalari; Provisa mette in cache i risultati e li espone come tipi GraphQL.
 
-Le query Cypher devono usare accessori di proprietà nella clausola `RETURN` (`RETURN n.id AS id, n.name AS name`) — restituire oggetti nodo viene rifiutato al momento della registrazione (REQ-296).
+Le query Cypher devono usare accessori di proprietà nella clausola `RETURN` (`RETURN n.id AS id, n.name AS name`) — restituire oggetti nodo viene rifiutato al momento della registrazione.
 
-#### Registrazione da file di configurazione (REQ-1668) {: #config-file-registration-req-1668 }
+#### Registrazione da file di configurazione {: #config-file-registration }
 
-Dichiara un'origine `neo4j` e le sue tabelle in YAML. Ogni tabella richiede un `query_template` (il Cypher che produce le sue righe) e colonne tipizzate. La chiave `query_template` non è valida sotto nessun altro tipo di origine. [tool-verified: `provisa/core/config_loader.py:456-511`]
+Dichiara un'origine `neo4j` e le sue tabelle in YAML. Ogni tabella richiede un `query_template` (il Cypher che produce le sue righe) e colonne tipizzate. La chiave `query_template` non è valida sotto nessun altro tipo di origine.
 
-Un'origine richiede `host`, `port` e `database`. [tool-verified: `provisa/core/config_loader.py:456-468`] Le righe vengono recuperate con un POST di `{"statements": [{"statement": <cypher>}]}` a `/db/<database>/tx/commit` (l'API delle transazioni HTTP di Neo4j). Una risposta con un elenco `errors` non vuoto viene trattata come query fallita, non come risultato vuoto. [tool-verified: `provisa/neo4j/source.py:71-82`, `provisa/api_source/caller.py:344-347`, `provisa/api_source/normalizers.py:49-74`]
+Un'origine richiede `host`, `port` e `database`. Le righe vengono recuperate con un POST di `{"statements": [{"statement": <cypher>}]}` a `/db/<database>/tx/commit` (l'API delle transazioni HTTP di Neo4j). Una risposta con un elenco `errors` non vuoto viene trattata come query fallita, non come risultato vuoto.
 
-Ogni colonna richiede `data_type`. Il loader mappa i tipi di config al tipo di colonna API usato al momento della query [tool-verified: `provisa/neo4j/persist.py:31-64`]:
+Ogni colonna richiede `data_type`. Il loader mappa i tipi di config al tipo di colonna API usato al momento della query:
 
 | `data_type` di config | Tipo API |
 |---|---|
@@ -1585,7 +1551,7 @@ Ogni colonna richiede `data_type`. Il loader mappa i tipi di config al tipo di c
 
 `varchar(N)` e `decimal(10,2)` sono accettati — viene usato il tipo base prima della parentesi.
 
-La registrazione persiste una riga `api_sources` e una riga `api_endpoints` per tabella, cosicché le tabelle sopravvivono a un riavvio senza rileggere il file. Gli endpoint REST admin sotto `/admin/sources/neo4j` scrivono le stesse righe. [tool-verified: `provisa/neo4j/persist.py:77-120`]
+La registrazione persiste una riga `api_sources` e una riga `api_endpoints` per tabella, cosicché le tabelle sopravvivono a un riavvio senza rileggere il file. Gli endpoint REST admin sotto `/admin/sources/neo4j` scrivono le stesse righe.
 
 ```yaml
 sources:
@@ -1612,14 +1578,14 @@ tables:
         data_type: integer
 ```
 
-#### Registra tabella nella UI (REQ-1670) {: #register-table-in-the-ui-req-1670 }
+#### Registra tabella nella UI {: #register-table-in-the-ui }
 
-Un'origine neo4j non ha tabelle da elencare, quindi il modulo Registra tabella chiede la tabella invece di offrirne una. [tool-verified: `provisa-ui/src/pages/tables/RegisterTableForm.tsx` (`isNeo4j`)]
+Un'origine neo4j non ha tabelle da elencare, quindi il modulo Registra tabella chiede la tabella invece di offrirne una.
 
 1. Scegli l'origine neo4j e un dominio. I selettori di schema e tabella, la checkbox di discovery e il selettore del watermark non appaiono; l'origine non viene mai introspezionata.
 2. Digita un nome tabella e il Cypher. Il Cypher deve proiettare scalari (`RETURN a.name AS name`); una proiezione che restituisce un nodo o una lista viene segnalata come errore.
-3. Premi Anteprima. Il modulo esegue il Cypher con `LIMIT 5` tramite la query GraphQL `neo4jPreview` e compila l'elenco delle colonne dalle righe restituite, tipizzate come `text`, `integer`, `double`, `boolean` o `json`. [tool-verified: `provisa/api/admin/_neo4j_registration.py` `preview_neo4j`] Un'anteprima fallita mantiene il Cypher nell'editor e mostra il messaggio.
-4. Regola visibilità, alias o mascheramento come per qualsiasi tabella, poi registra. Il modulo rifiuta l'invio finché un'anteprima non ha tipizzato le colonne, e il server rifiuta una tabella neo4j priva di Cypher (`schema.neo4j_query_required`). [tool-verified: `provisa/api/admin/schema_mutation_ops.py` `persist_neo4j_registration`]
+3. Premi Anteprima. Il modulo esegue il Cypher con `LIMIT 5` tramite la query GraphQL `neo4jPreview` e compila l'elenco delle colonne dalle righe restituite, tipizzate come `text`, `integer`, `double`, `boolean` o `json`. Un'anteprima fallita mantiene il Cypher nell'editor e mostra il messaggio.
+4. Regola visibilità, alias o mascheramento come per qualsiasi tabella, poi registra. Il modulo rifiuta l'invio finché un'anteprima non ha tipizzato le colonne, e il server rifiuta una tabella neo4j priva di Cypher (`schema.neo4j_query_required`).
 
 Il Cypher viene memorizzato con la tabella come `queryTemplate`, appare nella vista di lettura della tabella, e persiste esattamente come fa una registrazione da file di configurazione: una riga `api_sources` e una riga `api_endpoints` che il riavvio successivo idrata. Modificare la tabella ripersiste un Cypher modificato.
 
@@ -1644,13 +1610,13 @@ POST /admin/sources/neo4j/graph/tables
 }
 ```
 
-L'endpoint di preview (`POST /admin/sources/neo4j/{id}/preview`) restituisce righe di esempio e blocca la registrazione se il Cypher restituisce oggetti nodo (REQ-296).
+L'endpoint di preview (`POST /admin/sources/neo4j/{id}/preview`) restituisce righe di esempio e blocca la registrazione se il Cypher restituisce oggetti nodo.
 
 ### SPARQL
 
-Registra qualsiasi triplestore conforme a SPARQL 1.1 (Apache Jena Fuseki, Virtuoso, Stardog, ecc.) come origine interrogabile (REQ-297).
+Registra qualsiasi triplestore conforme a SPARQL 1.1 (Apache Jena Fuseki, Virtuoso, Stardog, ecc.) come origine interrogabile.
 
-Le query devono essere query `SELECT`. I nomi delle variabili nella clausola `SELECT` diventano automaticamente nomi di colonna (REQ-297).
+Le query devono essere query `SELECT`. I nomi delle variabili nella clausola `SELECT` diventano automaticamente nomi di colonna.
 
 ```bash
 # Register via admin API
@@ -1670,13 +1636,13 @@ POST /admin/sources/sparql/knowledge-graph/tables
 }
 ```
 
-Entrambi i connettori usano la pipeline di cache delle origini API — i risultati vengono memorizzati in PostgreSQL con TTL configurabile, rendendoli disponibili per JOIN federati cross-source (REQ-295, REQ-297, REQ-299).
+Entrambi i connettori usano la pipeline di cache delle origini API — i risultati vengono memorizzati in PostgreSQL con TTL configurabile, rendendoli disponibili per JOIN federati cross-source.
 
 ---
 
-#### Registrazione da file di configurazione e da UI (REQ-1683) {: #config-file-and-ui-registration-req-1683 }
+#### Registrazione da file di configurazione e da UI {: #config-file-and-ui-registration }
 
-L'`host` di un'origine `sparql` è l'URL del suo endpoint SPARQL (il modulo Sources lo memorizza allo stesso modo). Ogni tabella sotto di essa porta `query_template`, un SELECT le cui variabili sono le colonne; ogni binding è `text`. [tool-verified: `provisa/core/config_loader.py` `_validate_neo4j_sources`, `_handle_sparql_table`]
+L'`host` di un'origine `sparql` è l'URL del suo endpoint SPARQL (il modulo Sources lo memorizza allo stesso modo). Ogni tabella sotto di essa porta `query_template`, un SELECT le cui variabili sono le colonne; ogni binding è `text`.
 
 ```yaml
 sources:
@@ -1696,7 +1662,7 @@ tables:
   - { name: name, data_type: text, visible_to: [org_admin] }
 ```
 
-Registra tabella funziona allo stesso modo di Neo4j: scegli l'origine, digita un nome tabella e il SELECT, premi Anteprima (la query `sparqlPreview` lo esegue con `LIMIT 5` e compila l'elenco delle colonne), poi registra. La registrazione persiste una riga `api_sources` e una riga `api_endpoints` (POST form-encoded al percorso dell'endpoint, normalizzatore `sparql_bindings`), le stesse righe che scrive una registrazione da file di configurazione, e il motore nativo atterra le righe tramite la stessa catena di fetch di Neo4j. [tool-verified: `provisa/api/admin/_query_api_registration.py`, `provisa/sparql/persist.py`]
+Registra tabella funziona allo stesso modo di Neo4j: scegli l'origine, digita un nome tabella e il SELECT, premi Anteprima (la query `sparqlPreview` lo esegue con `LIMIT 5` e compila l'elenco delle colonne), poi registra. La registrazione persiste una riga `api_sources` e una riga `api_endpoints` (POST form-encoded al percorso dell'endpoint, normalizzatore `sparql_bindings`), le stesse righe che scrive una registrazione da file di configurazione, e il motore nativo atterra le righe tramite la stessa catena di fetch di Neo4j.
 
 ---
 
@@ -1771,4 +1737,4 @@ Registra tabella funziona allo stesso modo di Neo4j: scegli l'origine, digita un
 }
 ```
 
-Le porzioni a singola origine vengono instradate direttamente (REQ-027). I JOIN cross-source federano con coercizione di tipo automatica (REQ-028, REQ-552).
+Le porzioni a singola origine vengono instradate direttamente. I JOIN cross-source federano con coercizione di tipo automatica.

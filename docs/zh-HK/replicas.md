@@ -1,10 +1,10 @@
 # 複本 {: #replicas }
 
-複本是資料來源表的一份拷貝，Provisa 將它保存在引擎的具體化儲存區中，並讀取它來代替資料來源。本頁介紹複本按甚麼建立索引、複本應存放在何處，以及複本有多新鮮。一張表是否被複製，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能夠存取到的內容決定；請參閱 [What an engine changes](engines.md#what-an-engine-changes)。(REQ-826)
+複本是資料來源表的一份拷貝，Provisa 將它保存在引擎的具體化儲存區中，並讀取它來代替資料來源。本頁介紹複本按甚麼建立索引、複本應存放在何處，以及複本有多新鮮。一張表是否被複製，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能夠存取到的內容決定；請參閱 [What an engine changes](engines.md#what-an-engine-changes)。
 
 ## 複本帶有索引 {: #replicas-are-indexed }
 
-Provisa 按模型使用其表的方式為複本建立索引。(REQ-2015) [tool-verified: `provisa/federation/replica_indexes.py` `plan`, `join_columns`]
+Provisa 按模型使用其表的方式為複本建立索引。
 
 - **宣告的主索引鍵**，作為索引鍵強制執行。
 - **宣告的關係所連接的欄**：
@@ -24,22 +24,22 @@ relationships:
     cardinality: many-to-one
 ```
 
-`orders` 的複本得到它的索引鍵，以及 `customer_id` 上的索引。`customers` 的複本得到它的索引鍵，如果 `id` 就是該索引鍵，則無需更多。這樣，在使用索引進行聯結的儲存區中，這兩張表的聯結兩側都會讀取索引（請參閱[各儲存區建構甚麼](#what-each-store-builds)）。建立在複本不含的計算欄上的關係不會得到索引。[tool-verified: `provisa/federation/replica_indexes.py` `plan`]
+`orders` 的複本得到它的索引鍵，以及 `customer_id` 上的索引。`customers` 的複本得到它的索引鍵，如果 `id` 就是該索引鍵，則無需更多。這樣，在使用索引進行聯結的儲存區中，這兩張表的聯結兩側都會讀取索引（請參閱[各儲存區建構甚麼](#what-each-store-builds)）。建立在複本不含的計算欄上的關係不會得到索引。
 
-在欄上用 `is_primary_key: true` 宣告索引鍵。沒有宣告索引鍵的複本只得到其聯結索引。[tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
+在欄上用 `is_primary_key: true` 宣告索引鍵。沒有宣告索引鍵的複本只得到其聯結索引。
 
 ### 先可讀，後建索引 {: #readable-first-indexed-after }
 
-落地從不等待索引。複本從換入的一刻起就可讀取；隨後複本執行器在獨立的一輪中，在每個複本的索引鎖之下，逐個建構它的索引。[tool-verified: `provisa/federation/replica_runner.py` `_planned`, `_start_index_builds`] 落地之後最初的幾次查詢會在沒有這些索引的情況下執行。
+落地從不等待索引。複本從換入的一刻起就可讀取；隨後複本執行器在獨立的一輪中，在每個複本的索引鎖之下，逐個建構它的索引。 落地之後最初的幾次查詢會在沒有這些索引的情況下執行。
 
-每次落地都會按名稱記錄它所請求的索引、已建構的索引和失敗的索引，記錄在控制平面中該複本的記錄上（`replica_state.index_state`）。[tool-verified: `provisa/federation/replica_state.py` `record_index_plan`, `settle_index_state`]
+每次落地都會按名稱記錄它所請求的索引、已建構的索引和失敗的索引，記錄在控制平面中該複本的記錄上（`replica_state.index_state`）。
 
-- **索引失敗絕不會令落地失敗。** 它會連同原因寫入記錄，並在下一次落地時再次請求。記錄行形如 `replica of <source>.<schema>.<table>: index <name> on (<columns>) failed: <cause>`。[tool-verified: `provisa/federation/replica_indexes.py` `build_due`]
-- **與已宣告的索引鍵重複的列是獨立的失敗**，代碼為 `replica.index_duplicate_key`，並指明索引鍵的欄。資料來源中存在模型宣告為唯一的欄集合的重複值。重試無法修復：請在資料來源中更正數據，或更正宣告的索引鍵。[tool-verified: `provisa/federation/replica_indexes.py` `DuplicateKey`, `DUPLICATE_KEY`]
-- **在建構過程中替換表的落地**會丟下之前的建構；它們會停止且不記錄任何內容，新表則得到自己的建構。在 PostgreSQL 儲存區上，替換會取消仍在被替換的表上執行的建構。[tool-verified: `provisa/federation/replica_target.py` `_pg_swap`; `provisa/federation/replica_indexes.py` `build_due`]
-- **計劃在每次落地時依循模型。** 之後新增的關係會在複本的下一次落地時得到其索引。[tool-verified: `provisa/federation/replica_builds.py` `plan_indexes`]
+- **索引失敗絕不會令落地失敗。** 它會連同原因寫入記錄，並在下一次落地時再次請求。記錄行形如 `replica of <source>.<schema>.<table>: index <name> on (<columns>) failed: <cause>`。
+- **與已宣告的索引鍵重複的列是獨立的失敗**，代碼為 `replica.index_duplicate_key`，並指明索引鍵的欄。資料來源中存在模型宣告為唯一的欄集合的重複值。重試無法修復：請在資料來源中更正數據，或更正宣告的索引鍵。
+- **在建構過程中替換表的落地**會丟下之前的建構；它們會停止且不記錄任何內容，新表則得到自己的建構。在 PostgreSQL 儲存區上，替換會取消仍在被替換的表上執行的建構。
+- **計劃在每次落地時依循模型。** 之後新增的關係會在複本的下一次落地時得到其索引。
 
-管理介面不顯示索引記錄。請查看伺服器記錄，或複本所在列的 `index_state` 欄。[tool-verified: no reader of `index_state` outside `provisa/federation/replica_state.py` and `replica_indexes.py`]
+管理介面不顯示索引記錄。請查看伺服器記錄，或複本所在列的 `index_state` 欄。
 
 ### 各儲存區建構甚麼 {: #what-each-store-builds }
 
@@ -51,24 +51,22 @@ relationships:
 | ClickHouse | 僅排序索引鍵 | ClickHouse 複本按其宣告的索引鍵排序（`ORDER BY`），在落地時設定。ClickHouse 沒有可建構的次要 B-tree 索引。 |
 | Snowflake、BigQuery、Databricks、Fabric、Synapse | 無 | 數據倉庫自行組織表。 |
 
-[tool-verified: `provisa/federation/replica_target.py` `PostgresIndexer`, `SqlAlchemyIndexer`, `DuckDBStoreIndexer`; `provisa/federation/materialize_broker.py` `_SyncedStore.replica_index`; `provisa/federation/clickhouse_store.py` `create_ddl`; `replica_indexer` in `backend.py`, `pg_backend.py`, `duckdb_backend.py`, `sqlalchemy_backend.py`, `clickhouse_backend.py`, `snowflake_backend.py`, `bigquery_backend.py`, `databricks_backend.py`, `mssql_warehouse_backend.py`]
-
 索引只對在索引所在之處執行的聯結有幫助。有兩種引擎讀取其儲存區時不會使用儲存區的索引來做聯結：
 
-- **使用內嵌檔案的 DuckDB。** 引擎從不附加該檔案。每條語句會讀取它所涉及的每張儲存區表的本機拷貝，儲存區每次發生變化後都會重新產生該拷貝。聯結在該拷貝上以雜湊聯結執行，因此聯結索引不會加速它們；檔案的索引負責強制執行索引鍵，並為就地讀取該檔案的任何操作提供服務。[tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`, `_copy_store_table`; `provisa/federation/replica_target.py` `DuckDBStoreIndexer`]
-- **使用 PostgreSQL 儲存區的 DuckDB。** DuckDB 透過其 `postgres` 擴充功能讀取儲存區，並關閉了篩選下推（上游錯誤 duckdb/duckdb-postgres#564），因此它會掃描複本，並在 DuckDB 中篩選和聯結。儲存區的索引已建構，但這些讀取不使用它們。[tool-verified: `provisa/federation/duckdb_extensions.py` `_EXTENSION_SETTINGS`]
+- **使用內嵌檔案的 DuckDB。** 引擎從不附加該檔案。每條語句會讀取它所涉及的每張儲存區表的本機拷貝，儲存區每次發生變化後都會重新產生該拷貝。聯結在該拷貝上以雜湊聯結執行，因此聯結索引不會加速它們；檔案的索引負責強制執行索引鍵，並為就地讀取該檔案的任何操作提供服務。
+- **使用 PostgreSQL 儲存區的 DuckDB。** DuckDB 透過其 `postgres` 擴充功能讀取儲存區，並關閉了篩選下推（上游錯誤 duckdb/duckdb-postgres#564），因此它會掃描複本，並在 DuckDB 中篩選和聯結。儲存區的索引已建構，但這些讀取不使用它們。
 
-MotherDuck 儲存區是附加並就地讀取的。[tool-verified: `provisa/federation/duckdb_runtime.py` `_store_is_file`]
+MotherDuck 儲存區是附加並就地讀取的。
 
 ## 當引擎在關聯式資料庫中執行 SQL 時，用該資料庫作為複本儲存區 {: #use-a-relational-database-as-the-replica-store-where-the-engine-runs-sql-in-it }
 
 當引擎在關聯式資料庫內部執行聯結時，請把複本保存在那裡。這樣聯結就會讀取上述索引。有三種配置可以做到：
 
-- **`pg` 引擎。** 複本落地到引擎自己的 PostgreSQL 資料庫中，每條語句都在那裡透過它們的索引執行。[tool-verified: `provisa/federation/pg_backend.py` `replica_target`, `replica_indexer`]
-- **關聯式引擎**（`mysql`、`oracle`、`mssql`、兜底的 `sqlalchemy` 等）。每個資料來源都落地到該資料庫中，並在那裡查詢。[tool-verified: `provisa/federation/sqlalchemy_backend.py` `replica_indexer`; [Engine reference](configuration.md#engine-reference)]
-- **使用其 PostgreSQL 儲存區的 Trino。** PostgreSQL 是 Trino 支援的唯一儲存區；Trino 透過其 PostgreSQL 連接器讀取複本。[tool-verified: `provisa/federation/engine.py` `build_trino_engine` `supported_materialize_stores`; `provisa/federation/backend.py` `TrinoBackend.materialize_store_target`] Trino 下推到 PostgreSQL 的篩選或聯結會使用這些索引；Trino 自己完成的工作則不會。[inferred]
+- **`pg` 引擎。** 複本落地到引擎自己的 PostgreSQL 資料庫中，每條語句都在那裡透過它們的索引執行。
+- **關聯式引擎**（`mysql`、`oracle`、`mssql`、兜底的 `sqlalchemy` 等）。每個資料來源都落地到該資料庫中，並在那裡查詢。
+- **使用其 PostgreSQL 儲存區的 Trino。** PostgreSQL 是 Trino 支援的唯一儲存區；Trino 透過其 PostgreSQL 連接器讀取複本。 Trino 下推到 PostgreSQL 的篩選或聯結會使用這些索引；Trino 自己完成的工作則不會。
 
-用 `PROVISA_MATERIALIZE_URL` 或 `materialize_store_url` 將引擎指向某個儲存區；組織自己登記的儲存區優先於這兩者。[tool-verified: `provisa/federation/engine.py` `materialize_store`, `configured_materialize_url`]
+用 `PROVISA_MATERIALIZE_URL` 或 `materialize_store_url` 將引擎指向某個儲存區；組織自己登記的儲存區優先於這兩者。
 
 ```bash
 PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/replicas"
@@ -76,10 +74,10 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 這是一般性建議，而不是規則。是否划算取決於引擎、資料來源、儲存區和表的大小。請權衡以下幾點：
 
-- **每次查詢的存取路徑。** 引擎透過網絡存取的儲存區，會為每次讀取增加一次往返和一次傳輸。內嵌 DuckDB 檔案是本機的、欄式的，掃描很快。[inferred]
-- **落地成本。** 把複本寫入關聯式資料庫再建構其索引，比寫入本機檔案的成本更高。[inferred]
-- **資料庫自身的負載。** 複本讀取、落地和索引建構都在該資料庫上執行。請按它們來決定其規模。[inferred]
-- **大規模掃描。** 對讀取大表大部分內容的查詢，索引沒有任何作用。欄式儲存區掃描它比列式儲存區更快。[inferred]
+- **每次查詢的存取路徑。** 引擎透過網絡存取的儲存區，會為每次讀取增加一次往返和一次傳輸。內嵌 DuckDB 檔案是本機的、欄式的，掃描很快。
+- **落地成本。** 把複本寫入關聯式資料庫再建構其索引，比寫入本機檔案的成本更高。
+- **資料庫自身的負載。** 複本讀取、落地和索引建構都在該資料庫上執行。請按它們來決定其規模。
+- **大規模掃描。** 對讀取大表大部分內容的查詢，索引沒有任何作用。欄式儲存區掃描它比列式儲存區更快。
 
 ## 選擇複本存放的位置 {: #choosing-where-replicas-live }
 
@@ -87,12 +85,12 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 
 | 手段 | 作用 | 適用場景 |
 | --- | --- | --- |
-| Hot tables | 小型查找表保存在 Redis 中，並作為內嵌的 `VALUES` CTE（通用資料表運算式）放入每個讀取它的查詢。[tool-verified: `provisa/compiler/sql_gen.py`, `provisa/cache/hot_tables.py`] | 在任何儲存區上與小型查找表的聯結：資料列隨查詢一起傳遞。多對一關係的目標表，或列數不超過 `hot_tables.auto_threshold`（預設 1,000）的表，會在首次讀取時變為 hot。`hot: true` 強制放入，`hot: false` 將其排除。[tool-verified: `provisa/cache/hot_tables.py` `promote_on_read` and the loader that registers candidates; `provisa/core/models.py` `HotTablesConfig`, `Table.hot`] |
-| 你定義的具體化檢視 | 帶有 `materialize: true` 的檢視會被儲存並刷新。讀取該檢視的查詢，在檢視新鮮且讀取方看到的是完整內容時，由儲存的資料列應答：沒有任何輸入帶有比「全部」更窄的列規則。[tool-verified: `provisa/mv/view_read.py` module docstring] | 大表上的彙總。哪些檢視存在由你決定；不會替你建立任何檢視。請參閱 [Views](configuration.md#views-governed-computed-datasets)。 |
-| 關係 `materialize: true` | 跨資料來源關係會得到一個儲存的、預先聯結的父子檢視。聯結完全或部分符合該模式的請求，無論以 SQL 形式到達還是由編譯器建構，都會被改寫為讀取它。[tool-verified: `provisa/api/app_loaders.py` `_load_mv_and_views_config`; `provisa/mv/view_reinject.py` `reinject`; `provisa/pgwire/_pipeline.py` `_view_answering`] | 在不建構聯結索引的儲存區上的聯結。請參閱 [Auto-Materialization](configuration.md#auto-materialization)。 |
-| 放置 | 引擎能夠即時讀取的資料來源即時讀取；其餘的則被複製。最終儲存區中有甚麼，取決於你選擇的引擎。[tool-verified: `provisa/federation/replica_routing.py`] | 選擇引擎決定了儲存區需要容納的大部分內容。 |
+| Hot tables | 小型查找表保存在 Redis 中，並作為內嵌的 `VALUES` CTE（通用資料表運算式）放入每個讀取它的查詢。 | 在任何儲存區上與小型查找表的聯結：資料列隨查詢一起傳遞。多對一關係的目標表，或列數不超過 `hot_tables.auto_threshold`（預設 1,000）的表，會在首次讀取時變為 hot。`hot: true` 強制放入，`hot: false` 將其排除。 |
+| 你定義的具體化檢視 | 帶有 `materialize: true` 的檢視會被儲存並刷新。讀取該檢視的查詢，在檢視新鮮且讀取方看到的是完整內容時，由儲存的資料列應答：沒有任何輸入帶有比「全部」更窄的列規則。 | 大表上的彙總。哪些檢視存在由你決定；不會替你建立任何檢視。請參閱 [Views](configuration.md#views-governed-computed-datasets)。 |
+| 關係 `materialize: true` | 跨資料來源關係會得到一個儲存的、預先聯結的父子檢視。聯結完全或部分符合該模式的請求，無論以 SQL 形式到達還是由編譯器建構，都會被改寫為讀取它。 | 在不建構聯結索引的儲存區上的聯結。請參閱 [Auto-Materialization](configuration.md#auto-materialization)。 |
+| 放置 | 引擎能夠即時讀取的資料來源即時讀取；其餘的則被複製。最終儲存區中有甚麼，取決於你選擇的引擎。 | 選擇引擎決定了儲存區需要容納的大部分內容。 |
 
-關係具體化和帶索引的聯結以兩種方式滿足同一需求。在欄式或數據倉庫儲存區（DuckDB 檔案、ClickHouse、Snowflake、BigQuery、Databricks、Fabric、Synapse）上不建構聯結索引，因此預先聯結的檢視就是讓頻繁聯結變得低成本的辦法。在關聯式儲存區上，聯結欄已經有索引，同樣的聯結無需具體化也能快速執行。[inferred]
+關係具體化和帶索引的聯結以兩種方式滿足同一需求。在欄式或數據倉庫儲存區（DuckDB 檔案、ClickHouse、Snowflake、BigQuery、Databricks、Fabric、Synapse）上不建構聯結索引，因此預先聯結的檢視就是讓頻繁聯結變得低成本的辦法。在關聯式儲存區上，聯結欄已經有索引，同樣的聯結無需具體化也能快速執行。
 
 仍取決於儲存區的是：對沒有任何具體化檢視涵蓋、也沒有 hot 表服務的大表做的臨時掃描和聯結。這類操作在關聯式資料庫中依靠儲存區的索引執行，在欄式儲存區中則依靠其掃描速度。
 
@@ -116,17 +114,15 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
 | 新鮮度閘門 | 資料來源上的 `freshness_gate: true` | 每次讀取都先對照資料來源的 `change_signal` 和 `cache_ttl` 檢查；判定為過期則在讀取前先刷新 | 過期時在讀取路徑中進行一次刷新 |
 | 永不過期 | 資料來源或表上的 `cache_ttl: -1` | 只載入一次；每次讀取都由副本回應，讀取尚未載入的表會被按名拒絕 | 僅此一次載入：所有表都已載入的資料來源不再被連接、探測或讀取，也不需要憑證 |
 
-[tool-verified: `provisa/core/replicate.py`; `provisa/federation/replica_builds.py` `_next_refresh_at`, `_probe_decides`; `provisa/federation/query_residency.py` `freshness_verdict`, `is_stale_of`; `provisa/federation/role_ttl.py` `effective_ttl`; `provisa/freshness/source_gate.py` `gate_source`; `provisa/events/push_wiring.py` `wire_push_listeners`, `_run_change_stream`]
-
-沒有可比較內容的探測（沒有水位線、哨兵值或探測查詢）會退化為 TTL。[tool-verified: `provisa/federation/replica_builds.py` `_probe_decides`]
+沒有可比較內容的探測（沒有水位線、哨兵值或探測查詢）會退化為 TTL。
 
 ### 來自變更串流的近即時 {: #near-real-time-from-a-change-feed }
 
-當資料來源無法承受即時查詢負載，卻已經發佈其變更時，變更串流可以在查詢時不觸碰資料來源的情況下提供近即時數據。查詢讀取本機複本，既快又不為資料來源帶來負載，而事件迴圈在變更到達時套用它們。數據只延遲於變更串流，通常為幾秒。[inferred: the lag figure]
+當資料來源無法承受即時查詢負載，卻已經發佈其變更時，變更串流可以在查詢時不觸碰資料來源的情況下提供近即時數據。查詢讀取本機複本，既快又不為資料來源帶來負載，而事件迴圈在變更到達時套用它們。數據只延遲於變更串流，通常為幾秒。
 
 僅有變更串流還不夠。Provisa 只會為接入了變更串流的表追蹤它：
 
-- **Kafka 資料來源。** 表指明其主題，每個變更按主索引鍵套用到複本，包括刪除。[tool-verified: `provisa/events/push_wiring.py` `_build_provider`, `_run_listener`; `provisa/subscriptions/cdc_landing.py`]
+- **Kafka 資料來源。** 表指明其主題，每個變更按主索引鍵套用到複本，包括刪除。
 
   ```yaml
   live:
@@ -137,12 +133,12 @@ PROVISA_MATERIALIZE_URL="postgresql://provisa:secret@replicas.internal:5432/repl
   push_debounce_max_delay: 5  # a batch never waits longer than this
   ```
 
-- **WebSocket 資料來源。** 其串流以同樣方式套用。[tool-verified: `provisa/events/push_wiring.py` `_build_provider`]
-- **帶 `change_signal: debezium` 的表**（在表或其資料來源上），其資料來源的 `cdc` 區塊指明 Kafka 傳輸和連接器的 topic 前綴。首次讀取建置複本；之後 topic `{topic_prefix}.{schema}.{table}` 上的每個變更事件都按主鍵套用，包括刪除，且僅在變更落地後才提交 offset。[tool-verified: `provisa/events/push_wiring.py` `_captured_by_cdc`, `_cdc_provider`; `provisa/subscriptions/debezium_provider.py` `ack`]
-- **此類資料來源上帶 `change_signal: kafka` 的表**。其變更從其 `live.kafka.topic` 指定的增量 topic 讀取，使用同一傳輸，並以同樣方式套用；使用此訊號卻未指定 topic 的表，在儲存該表或其資料來源以及載入設定時都會被點名拒絕。 [tool-verified: `provisa/events/push_wiring.py` `_cdc_provider`; `provisa/core/change_signal.py` `kafka_topic_refusal`]
-- **帶 `change_signal: native` 的 MongoDB 或 Cosmos DB 表**（在表或其資料來源上）。變更串流上的每一批變更都會請求重建複本。[tool-verified: `provisa/events/push_wiring.py` `_change_feed_opted_in`, `_run_change_stream`]
-- **帶 `change_signal: native` 的 PostgreSQL 表**（在表或其資料來源上）。Provisa 從自己的 slot `provisa_<source id>` 讀取資料庫的邏輯複寫，所用的同名發佈列出該資料來源的原生表。不涉及 Kafka。表上的每一批變更都會請求重建其複本。資料庫需要的條件與 Debezium 相同：`wal_level` 設為 `logical`、具有複寫權限且可建立該發佈的角色，以及主要伺服器而非唯讀複本；缺少其中任何一項的資料來源在儲存及載入設定時都會被點名拒絕。第一張表跟隨時建立 slot 和發佈，最後一張停止跟隨或資料來源被刪除時將其刪除。 伺服器啟動時會檢查每個已註冊的 PostgreSQL 資料來源，並刪除沒有任何原生表跟隨的 Provisa slot，因此在沒有伺服器執行時修改設定所遺留的 slot 不會繼續佔用資料來源的 WAL。[tool-verified: `provisa/subscriptions/pg_logical.py`; `provisa/events/push_wiring.py` `_run_logical_stream`, `_drop_unfollowed_slots`]
+- **WebSocket 資料來源。** 其串流以同樣方式套用。
+- **帶 `change_signal: debezium` 的表**（在表或其資料來源上），其資料來源的 `cdc` 區塊指明 Kafka 傳輸和連接器的 topic 前綴。首次讀取建置複本；之後 topic `{topic_prefix}.{schema}.{table}` 上的每個變更事件都按主鍵套用，包括刪除，且僅在變更落地後才提交 offset。
+- **此類資料來源上帶 `change_signal: kafka` 的表**。其變更從其 `live.kafka.topic` 指定的增量 topic 讀取，使用同一傳輸，並以同樣方式套用；使用此訊號卻未指定 topic 的表，在儲存該表或其資料來源以及載入設定時都會被點名拒絕。
+- **帶 `change_signal: native` 的 MongoDB 或 Cosmos DB 表**（在表或其資料來源上）。變更串流上的每一批變更都會請求重建複本。
+- **帶 `change_signal: native` 的 PostgreSQL 表**（在表或其資料來源上）。Provisa 從自己的 slot `provisa_<source id>` 讀取資料庫的邏輯複寫，所用的同名發佈列出該資料來源的原生表。不涉及 Kafka。表上的每一批變更都會請求重建其複本。資料庫需要的條件與 Debezium 相同：`wal_level` 設為 `logical`、具有複寫權限且可建立該發佈的角色，以及主要伺服器而非唯讀複本；缺少其中任何一項的資料來源在儲存及載入設定時都會被點名拒絕。第一張表跟隨時建立 slot 和發佈，最後一張停止跟隨或資料來源被刪除時將其刪除。 伺服器啟動時會檢查每個已註冊的 PostgreSQL 資料來源，並刪除沒有任何原生表跟隨的 Provisa slot，因此在沒有伺服器執行時修改設定所遺留的 slot 不會繼續佔用資料來源的 WAL。
 
-被推送的表需要宣告主索引鍵；沒有主索引鍵的表會被跳過並寫入記錄。[tool-verified: `provisa/events/push_wiring.py` `wire_push_listeners`]
+被推送的表需要宣告主索引鍵；沒有主索引鍵的表會被跳過並寫入記錄。
 
-帶有推送變更訊號的表在讀取路徑上視為新鮮，因為它的變更串流就是它的新鮮度檢查。[tool-verified: `provisa/federation/query_residency.py` `freshness_verdict`] 因此，無人接收的推送訊號會被拒絕：除 Kafka、WebSocket、ingest、PostgreSQL、MongoDB 或 Cosmos DB 以外任何類型上的 `change_signal: native`，在儲存資料來源或表以及載入設定時都會被拒絕；沒有 `cdc` 區塊的資料來源上的 `debezium` 同樣如此。[tool-verified: `provisa/core/change_signal.py` `native_signal_refusal`; `provisa/core/config_loader.py` `_validate_change_signal`; `provisa/api/admin/_change_feed.py` `table_change_feed_refusal`]
+帶有推送變更訊號的表在讀取路徑上視為新鮮，因為它的變更串流就是它的新鮮度檢查。 因此，無人接收的推送訊號會被拒絕：除 Kafka、WebSocket、ingest、PostgreSQL、MongoDB 或 Cosmos DB 以外任何類型上的 `change_signal: native`，在儲存資料來源或表以及載入設定時都會被拒絕；沒有 `cdc` 區塊的資料來源上的 `debezium` 同樣如此。

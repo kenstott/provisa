@@ -77,7 +77,7 @@ Una relazione è un percorso di attraversamento approvato tra due asset. I confi
 
 **Approvazione:**
 
-- Una richiesta di relazione la decidono i domini che tocca: il dominio della sua tabella di origine e il dominio della sua tabella di destinazione (REQ-1948)
+- Una richiesta di relazione la decidono i domini che tocca: il dominio della sua tabella di origine e il dominio della sua tabella di destinazione
 - Un'approvazione conta solo se viene da un utente il cui diritto di creare relazioni raggiunge uno di quei domini; qualsiasi utente di questo tipo può rifiutarla
 - La richiesta viene eseguita quando due utenti diversi, nessuno dei quali il richiedente, l'hanno approvata e ogni dominio coinvolto ha un approvatore: una relazione tra due domini ha bisogno di un sì da ciascun lato, e una relazione all'interno di un dominio ha bisogno di due approvatori di quel dominio
 - Approvare una relazione costruisce il grafo delle dipendenze di ciascuno steward, abilitando notifiche proattive sull'evoluzione dello schema
@@ -262,5 +262,3 @@ Il report della cronologia query dello steward è una vista aggregata su questo 
 
 - **Push** — notifiche post-uso per atti strutturali (è stata creata una nuova vista usando i tuoi campi)
 - **Pull** — cronologia delle query per i pattern di utilizzo a runtime
-
-

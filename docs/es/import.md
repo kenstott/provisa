@@ -91,8 +91,8 @@ La vista previa devuelve las tres partes como listas. El conversor de línea de 
 | Tabla rastreada | trasladado | Una tabla registrada. Su nombre personalizado (o su campo raíz `select`) pasa a ser el alias de la tabla. |
 | Nombres de columna personalizados (`column_config`, o el antiguo `custom_column_names`) | trasladado | `alias` de la columna. |
 | Nombres de campo raíz más allá de `select` (`select_by_pk`, `select_aggregate`, `insert`, ...) | asignado | Se informa por nombre. Provisa sirve una tabla como un solo campo: una lectura por clave es un filtro sobre él, un agregado su campo `_aggregate`, una escritura su mutación. Compruebe que las consultas de la app tengan esa forma. |
-| Relationship de objeto y de array | trasladado | Una relación aprobada (`many-to-one` para objeto, `one-to-many` para array) cuyo campo GraphQL es el nombre de la relationship de Hasura. Los casos que difieren se detallan abajo. (REQ-1680) |
-| Permiso de select | trasladado | Permisos de columna (`visible_to`) y una regla de filas. Un término con variable de sesión (`X-Hasura-User-Id`) pasa a ser `current_setting('provisa.hasura_user_id')`, que la solicitud enlaza en el momento de la consulta con los claims de la identidad o los atributos del miembro. Una variable de sesión de Hasura conserva su propio nombre; `provisa.user_id` sigue siendo la identidad con sesión iniciada. (REQ-1682) |
+| Relationship de objeto y de array | trasladado | Una relación aprobada (`many-to-one` para objeto, `one-to-many` para array) cuyo campo GraphQL es el nombre de la relationship de Hasura. Los casos que difieren se detallan abajo. |
+| Permiso de select | trasladado | Permisos de columna (`visible_to`) y una regla de filas. Un término con variable de sesión (`X-Hasura-User-Id`) pasa a ser `current_setting('provisa.hasura_user_id')`, que la solicitud enlaza en el momento de la consulta con los claims de la identidad o los atributos del miembro. Una variable de sesión de Hasura conserva su propio nombre; `provisa.user_id` sigue siendo la identidad con sesión iniciada. |
 | Regla de filas a través de una relationship | trasladado | Una subconsulta `EXISTS` sobre la tabla relacionada. |
 | Permiso de insert, update y delete | trasladado | Permisos de escritura sobre la tabla: uno por rol y operación. `columns` pasan a ser las columnas del permiso, `filter` su `rows`, `check` su `check` y `set` sus presets. |
 | Rol heredado de un rol | trasladado | Ese rol como `parent_role_id`. |
@@ -102,7 +102,7 @@ La vista previa devuelve las tres partes como listas. El conversor de línea de 
 | Action | asignado | Un comando que llama al handler de la action. |
 | Cron trigger | trasladado | Un trigger programado. |
 | Event trigger | asignado | Un trigger sobre los cambios de la tabla. |
-| Remote schema | asignado | Un origen `graphql_remote` cuyos campos raíz se incorporan como tablas gobernadas. (REQ-1681) |
+| Remote schema | asignado | Un origen `graphql_remote` cuyos campos raíz se incorporan como tablas gobernadas. |
 
 Casos de relationships:
 
@@ -115,7 +115,7 @@ Detalles de los permisos de escritura:
 
 - Un `filter` o `check` vacío es todas las filas, escrito `TRUE`.
 - Un valor de `set` que es una variable de sesión (`X-Hasura-User-Id`) pasa a ser un preset `session` de la variable de sesión correspondiente (`X-Hasura-User-Id` pasa a ser `hasura_user_id`). Cualquier otro valor pasa a ser un preset `literal`. Una columna con preset no está también en las columnas del permiso.
-- El admin implícito de Hasura tiene todos los permisos. Pasa a ser el rol `org_admin`, que mantiene un permiso de insert, update y delete sobre todas las columnas y todas las filas, y se nombra en cada columna importada. (REQ-1684)
+- El admin implícito de Hasura tiene todos los permisos. Pasa a ser el rol `org_admin`, que mantiene un permiso de insert, update y delete sobre todas las columnas y todas las filas, y se nombra en cada columna importada.
 - Cada rol con un permiso de insert, update o delete recibe además el derecho `write`.
 
 Detalles de los comandos:
@@ -129,16 +129,16 @@ Un documento consolidado también contiene secciones para las que el conversor n
 
 ### Conexiones y dominios en la pestaña de importación {: #connections-and-domains-on-the-import-tab }
 
-Una conexión que la exportación escribe se convierte tal como está. Cuando la exportación lee una URL de base de datos de una variable de entorno (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), el valor de la variable no está en la exportación, así que la conversión no adivina ninguno. El origen se registra con los campos de conexión vacíos, y el informe indica rehacerlo: introduzca el host, puerto, base de datos, usuario y contraseña del origen en la configuración de orígenes de la importación y convierta de nuevo. Solo viajan los campos que cambie, como sobrescrituras de origen. Las filas de dominio cubren cada esquema, subgrafo y remote schema que trae la carga; cada una es un selector sobre los dominios existentes de la organización que también acepta un nombre escrito, marcado como «nuevo dominio» cuando no coincide con ninguno. Aplicar se fusiona con lo que la organización ya tiene. (REQ-1687)
+Una conexión que la exportación escribe se convierte tal como está. Cuando la exportación lee una URL de base de datos de una variable de entorno (`database_url: {from_env: HASURA_GRAPHQL_DATABASE_URL}`), el valor de la variable no está en la exportación, así que la conversión no adivina ninguno. El origen se registra con los campos de conexión vacíos, y el informe indica rehacerlo: introduzca el host, puerto, base de datos, usuario y contraseña del origen en la configuración de orígenes de la importación y convierta de nuevo. Solo viajan los campos que cambie, como sobrescrituras de origen. Las filas de dominio cubren cada esquema, subgrafo y remote schema que trae la carga; cada una es un selector sobre los dominios existentes de la organización que también acepta un nombre escrito, marcado como «nuevo dominio» cuando no coincide con ninguno. Aplicar se fusiona con lo que la organización ya tiene.
 
 ### Los tipos provienen del origen en la vista previa {: #types-come-from-the-source-at-preview }
 
-Una exportación de Hasura nombra columnas sin tipos, y una tabla rastreada sin permisos no nombra columnas. La vista previa se ejecuta con las conexiones de origen que usted suministra, así que lee `information_schema.columns` de cada origen SQL alcanzable: cada columna sin tipo obtiene el tipo del origen mapeado al vocabulario de la IR, y una tabla sin columnas toma cada columna que tiene el origen, visible solo para `org_admin`, ya que Hasura no la expuso a ningún otro rol. Un origen que la vista previa no puede alcanzar se reporta como una advertencia `[sources]` y sus columnas quedan sin tipo para que usted las complete antes de aplicar. (REQ-1691, REQ-1684)
+Una exportación de Hasura nombra columnas sin tipos, y una tabla rastreada sin permisos no nombra columnas. La vista previa se ejecuta con las conexiones de origen que usted suministra, así que lee `information_schema.columns` de cada origen SQL alcanzable: cada columna sin tipo obtiene el tipo del origen mapeado al vocabulario de la IR, y una tabla sin columnas toma cada columna que tiene el origen, visible solo para `org_admin`, ya que Hasura no la expuso a ningún otro rol. Un origen que la vista previa no puede alcanzar se reporta como una advertencia `[sources]` y sus columnas quedan sin tipo para que usted las complete antes de aplicar.
 
 ### Limitaciones {: #limitations }
 
 - **Computed fields** se rehacen a mano: la exportación nombra la función de la base de datos pero no la define. Añádala como columna de una vista sobre la tabla, o calcúlela en la app.
-- **Remote schemas** se incorporan como tablas a partir de los SDL de permisos de rol. Un remote schema sin permisos no incorpora nada, ya que la exportación no trae otra declaración de su forma. (REQ-1681)
+- **Remote schemas** se incorporan como tablas a partir de los SDL de permisos de rol. Un remote schema sin permisos no incorpora nada, ya que la exportación no trae otra declaración de su forma.
 - **Las funciones rastreadas** necesitan la base de datos en la vista previa para leer su firma; sin conexión, se rehacen en la página Commands.
 - **Los reintentos de event y cron triggers** no se trasladan.
 
