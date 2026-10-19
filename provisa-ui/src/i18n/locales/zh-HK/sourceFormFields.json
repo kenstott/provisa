@@ -73,7 +73,7 @@
     "icebergCatalogUser": "目錄使用者",
     "icebergCatalogPassword": "目錄密碼",
     "icebergCatalogRole": "目錄角色",
-    "icebergCatalogPasswordExposure": "SingleStore 會將此目錄密碼保存在管線的 CONFIG 中且不會遮蔽：在建置的管線存在期間，可在其管線中繼資料中讀取該密碼。",
+    "icebergCatalogPasswordExposure": "SingleStore 會將此目錄密碼保存在管線的 CONFIG 中且不會塗黑：在建置的管線存在期間，可在其管線中繼資料中讀取該密碼。",
     "s3EndpointMinio": "S3 端點 (MinIO)",
     "storageAccount": "儲存體帳戶",
     "accessKey": "存取金鑰",

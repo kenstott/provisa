@@ -1406,14 +1406,14 @@ Provisa 运行两条独立的 OTLP 导出路径：你自己的内部采集器和
 | `redact_sql_literals` | bool | `false` | 将 `db.statement` 中的字符串和数字字面值替换为 `?` |
 | `redact_attributes` | list[str] | `[]` | 从每个跨度中完全删除的属性键 |
 
-**`support_telemetry_filter`** —— 控制哪些数据到达 Provisa 支持端点。在此路径上，SQL 字面值脱敏默认开启为 `true`，因为查询数据归你所有。（REQ-547）[tool-verified: `provisa/api/otel_setup.py` line 240]
+**`support_telemetry_filter`** —— 控制哪些数据到达 Provisa 支持端点。在此路径上，SQL 字面值涂黑默认开启为 `true`，因为查询数据归你所有。（REQ-547）[tool-verified: `provisa/api/otel_setup.py` line 240]
 
 | 键 | 类型 | 默认值 | 说明 |
 | ----- | ------ | --------- | ------------- |
 | `redact_sql_literals` | bool | `true` | 将 `db.statement` 中的字符串和数字字面值替换为 `?` |
 | `redact_attributes` | list[str] | `[]` | 从每个跨度中完全删除的属性键 |
 
-脱敏后的 `db.statement` 示例——当 `redact_sql_literals: true` 时，这个跨度属性：
+涂黑后的 `db.statement` 示例——当 `redact_sql_literals: true` 时，这个跨度属性：
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1427,7 +1427,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### 支持端点 [tool-verified] {: #support-endpoint-tool-verified }
 
-`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会将遥测数据转发给 Provisa 支持团队用于诊断。（REQ-548）未设置时，不会有任何数据通过此路径离开你的基础设施。（REQ-548）支持端点的过滤器独立于内部过滤器生效——你可以对两条导出路径都做 SQL 字面值脱敏，同时仍与支持团队共享跨度的时间和错误数据。（REQ-545）[tool-verified: `provisa/api/otel_setup.py` lines 238–288]
+`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会将遥测数据转发给 Provisa 支持团队用于诊断。（REQ-548）未设置时，不会有任何数据通过此路径离开你的基础设施。（REQ-548）支持端点的过滤器独立于内部过滤器生效——你可以对两条导出路径都做 SQL 字面值涂黑，同时仍与支持团队共享跨度的时间和错误数据。（REQ-545）[tool-verified: `provisa/api/otel_setup.py` lines 238–288]
 
 ### 端点协议探测 [tool-verified] {: #endpoint-protocol-detection-tool-verified }
 

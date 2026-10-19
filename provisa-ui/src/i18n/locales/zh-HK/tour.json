@@ -94,7 +94,7 @@
       },
       "step5": {
         "title": "選取欄位與原則",
-        "description": "選擇數據來源、結構描述及表格，然後選取欄位——每個欄位都有自己的原則：<ul><li>🎭 <strong>遮罩</strong>——按角色遮蔽數值</li><li>👁️ <strong>可見性</strong>——顯示或隱藏欄位</li><li>🏷️ <strong>別名</strong>——為模型重新命名</li></ul><p>設定就是這麼簡單——一個數據來源加幾個表格。🚀 現在來查詢一下。→</p>"
+        "description": "選擇數據來源、結構描述及表格，然後選取欄位——每個欄位都有自己的原則：<ul><li>🎭 <strong>遮罩</strong>——按角色遮罩數值</li><li>👁️ <strong>可見性</strong>——顯示或隱藏欄位</li><li>🏷️ <strong>別名</strong>——為模型重新命名</li></ul><p>設定就是這麼簡單——一個數據來源加幾個表格。🚀 現在來查詢一下。→</p>"
       },
       "stepQuery": {
         "title": "用你的方式查詢",
@@ -1166,7 +1166,7 @@
       },
       "storefrontAnalystSql": {
         "title": "分析師的 SQL",
-        "description": "按地區和速遞公司統計的延遲送貨，基於同樣的表和關係。<strong>a_customer</strong> 顯示分析師讀到的電郵：已遮蔽。"
+        "description": "按地區和速遞公司統計的延遲送貨，基於同樣的表和關係。<strong>a_customer</strong> 顯示分析師讀到的電郵：已遮罩。"
       },
       "storefrontBi": {
         "title": "BI 儀表板",

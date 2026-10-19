@@ -1,13 +1,13 @@
 {
   "redactionTab": {
-    "panelTitle": "脱敏规则",
+    "panelTitle": "涂黑规则",
     "loading": "加载中…",
-    "intro": "与这些规则匹配的文本在离开 Provisa 之前会被替换为 [REDACTED:<rule>]：包括导出的追踪和日志、容器输出、审计日志以及返回给客户端的错误消息。组织自身的密钥会被自动脱敏。",
-    "bestEffort": "脱敏尽力而为。内置模式只是一组起步规则，并非保证：请在此为组织自身的敏感格式添加模式。数据源自身的日志不在 Provisa 的控制范围内。",
-    "unresolved": "以下引用规则无法解析，不会脱敏任何内容：{{names}}",
+    "intro": "与这些规则匹配的文本在离开 Provisa 之前会被替换为 [REDACTED:<rule>]：包括导出的追踪和日志、容器输出、审计日志以及返回给客户端的错误消息。组织自身的密钥会被自动涂黑。",
+    "bestEffort": "涂黑尽力而为。内置模式只是一组起步规则，并非保证：请在此为组织自身的敏感格式添加模式。数据源自身的日志不在 Provisa 的控制范围内。",
+    "unresolved": "以下引用规则无法解析，不会涂黑任何内容：{{names}}",
     "orgTitle": "本组织的规则",
     "deploymentTitle": "部署规则（所有组织）",
-    "automaticTitle": "自动脱敏的密钥",
+    "automaticTitle": "自动涂黑的密钥",
     "automaticHelp": "本组织保管库中的密钥及其模型引用的每个密钥，仅显示名称。为个别用户解析的值会在使用时加入（目前 {{count}} 个）。",
     "builtinTitle": "内置模式",
     "none": "无",
