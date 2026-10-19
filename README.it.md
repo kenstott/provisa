@@ -176,43 +176,45 @@ Le relazioni vengono registrate, approvate e applicate come gli unici percorsi J
 
 ## Modello di sicurezza {: #security-model }
 
-È qui che "sul percorso che ogni query già percorre" smette di essere uno slogan. Provisa applica un modello di sicurezza multilivello su ogni linguaggio di query (GraphQL, SQL, Cypher) e ogni trasporto (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). La governance è applicata in modo uniforme — non esiste un percorso di query che la bypassi. La copertura è totale per costruzione, non per diligenza: aggiungi un'origine, una colonna o una relazione e ogni livello si applica automaticamente, senza nulla da ricordare di registrare.
+È qui che "sul percorso che ogni query già fa" deve reggere. Provisa applica un unico modello di sicurezza a livelli a ogni linguaggio di query (GraphQL, SQL, Cypher) e a ogni trasporto (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket), e nessun percorso di query lo aggira. La copertura viene dal design, quindi nessuno deve ricordarsi nulla: aggiungete un'origine, una colonna o una relazione, e ogni livello vi si applica subito, senza altro da registrare.
 
-I livelli si applicano in ordine. Una richiesta deve superare ogni livello prima che il successivo venga valutato.
+I livelli si applicano in ordine, e una richiesta deve superarli uno per uno prima che venga controllato il successivo.
 
 ### Livello 0 — Filtraggio dell'introspezione {: #layer-0-introspection-filtering }
 
-Lo schema e il catalogo presentati a un ruolo contengono solo le tabelle nella sua lista `domain_access` e le colonne che superano le regole `visible_to` per colonna. Gli oggetti fuori dall'accesso di un ruolo sono invisibili al momento della scoperta — non possono essere interrogati, autocompletati, o dedotti come esistenti. Questo si applica allo schema GraphQL, al catalogo SQL e al browser di schema dell'editor di query.
+Lo schema e il catalogo che un ruolo vede contengono solo le tabelle della sua lista `domain_access` e le colonne che superano le loro regole `visible_to`. Tutto ciò che è fuori dall'accesso del ruolo è invisibile fin dall'inizio: non si può interrogare, completare automaticamente, né dedurne l'esistenza. Questo vale per lo schema GraphQL, il catalogo SQL e il browser dello schema dell'editor di query.
 
 ### Livello 1 — Accesso pubblico {: #layer-1-public-access }
 
-Le tabelle in domini senza restrizione `domain_access` sono visibili a tutte le identità autenticate senza configurazione aggiuntiva. Zero attrito per i dati genuinamente pubblici.
+Le tabelle dei domini senza restrizione `domain_access` sono visibili a ogni identità autenticata, senza altro da configurare. I dati davvero pubblici non richiedono sforzo.
 
 ### Livello 2 — Accesso al dominio {: #layer-2-domain-access }
 
-Ogni ruolo porta una lista `domain_access` di ID di dominio. Una query che tocca una tabella fuori da quei domini viene rifiutata prima dell'esecuzione. Questo è il confine di ownership grezzo — un ruolo HR non può raggiungere le tabelle finance indipendentemente da come è scritto l'SQL.
+Ogni ruolo porta una lista `domain_access` di ID di dominio, e una query che tocca una tabella fuori da quei domini viene rifiutata prima dell'esecuzione. È il confine ampio di proprietà: un ruolo HR non raggiunge le tabelle finanziarie, comunque sia scritto l'SQL.
 
 ### Livello 3 — Sicurezza a livello di riga {: #layer-3-row-level-security }
 
-Dopo che l'accesso al dominio è confermato, i predicati `WHERE` per tabella e per ruolo vengono iniettati in ogni `SELECT` al momento dell'esecuzione. I predicati vengono valutati contro i dati grezzi. Un regional manager che interroga una tabella orders condivisa vede solo le righe della propria regione anche su una `SELECT *`.
+Confermato l'accesso al dominio, predicati `WHERE` per tabella e per ruolo vengono aggiunti a ogni `SELECT` al momento dell'esecuzione e valutati sui dati grezzi. Una responsabile regionale che interroga una tabella ordini condivisa vede solo le righe della sua regione, anche con `SELECT *`.
 
 ### Livello 4 — Visibilità e mascheramento delle colonne {: #layer-4-column-visibility-and-masking }
 
-Le colonne con una lista `visible_to` che esclude il ruolo richiedente vengono rimosse dall'output della query. Le colonne con una regola di mascheramento hanno i propri valori sostituiti — redazione regex, sostituzione con costante o troncamento — prima che i risultati lascino il server. Il mascheramento si applica in tutti i linguaggi di query e formati di output.
+Le colonne la cui lista `visible_to` esclude il ruolo richiedente vengono tolte dall'output. Le colonne con una regola di mascheramento hanno i valori sostituiti da oscuramento regex, una costante o un troncamento prima che i risultati lascino il server. Il mascheramento vale in ogni linguaggio di query e ogni formato di output.
 
 ### Livello 5 — Guardia dei predicati {: #layer-5-predicate-guard }
 
-Le colonne mascherate vengono rifiutate dalle clausole `WHERE` e `HAVING`. Senza questo, un chiamante potrebbe inferire il valore non mascherato facendo una ricerca binaria in un filtro anche se l'output è mascherato. Il rifiuto viene applicato al momento del parsing della query, prima dell'esecuzione.
+Le colonne mascherate vengono rifiutate nelle clausole `WHERE` e `HAVING`. Altrimenti chi interroga potrebbe ricavare il valore reale cercandolo per bisezione in un filtro, anche con l'output mascherato. Il rifiuto avviene all'analisi della query, prima che giri qualsiasi cosa.
 
 ### Governance delle relazioni {: #relationship-governance }
 
-Le condizioni JOIN in SQL devono corrispondere a una relazione registrata e approvata tra le tabelle. I join non approvati vengono rifiutati. Ogni relazione porta un motivo e una descrizione leggibili dall'uomo — una guida sia per gli utenti che per gli agenti autonomi sul perché esiste un percorso di attraversamento. Questa è policy di governance, non un confine di sicurezza rigido: i Livelli 2-5 restano validi indipendentemente dalla struttura del join, quindi un'elusione deliberata non espone dati che il ruolo non potrebbe raggiungere con due query separate. I tentativi di elusione vengono registrati e sottoposti ad audit.
+In SQL una condizione JOIN deve corrispondere a una relazione registrata e approvata tra le tabelle, e un join non approvato viene rifiutato. Ogni relazione porta un motivo e una descrizione leggibili, che spiegano a persone e agenti autonomi perché esiste quel percorso. È una policy di governance e non un confine di sicurezza rigido. I livelli da 2 a 5 reggono qualunque forma abbia il join, quindi un aggiramento deliberato non espone nulla che il ruolo non potrebbe raggiungere con due query separate, e ogni tentativo viene registrato per l'audit.
 
-Nessun join non valido viene mai eseguito sui tuoi dati. I ruoli sono governati per impostazione predefinita; uscirne è una concessione deliberata del diritto `ignore_relationships` a un ruolo di cui ti fidi. Il token OAuth di un agente corrisponde a un ruolo, quindi un agente riceve gli stessi livelli di una persona. I cataloghi di dati che forniscono un livello di contesto dicono a un agente che cosa dovrebbe fare; Provisa impone ciò che può fare.
+Nessun join non valido gira mai sui vostri dati. I ruoli sono governati per impostazione predefinita, e uscirne significa concedere di proposito il diritto `ignore_relationships` a un ruolo di cui vi fidate. Il token OAuth di un agente corrisponde a un ruolo, quindi un agente riceve gli stessi livelli di una persona. I cataloghi di dati con un livello di contesto dicono a un agente cosa dovrebbe fare; Provisa impone cosa può fare.
 
 ---
 
-Questi livelli si compongono. Un ruolo con accesso al dominio, RLS e colonne mascherate ha tutti e cinque i vincoli attivi simultaneamente. Aggiungere una nuova origine dati, colonna o relazione non richiede di aggiornare ogni regola — ogni livello è configurato in modo indipendente e si applica automaticamente a qualsiasi query che tocchi oggetti governati.
+Questi livelli si compongono. Un ruolo con accesso ai domini, RLS e colonne mascherate ha tutti i livelli attivi insieme. Aggiungere un'origine, una colonna o una relazione non richiede di aggiornare ogni regola, perché ogni livello si configura per conto suo e si applica da solo a qualsiasi query che tocca oggetti governati.
+
+## Avvio rapido {: #quick-start }
 
 ### macOS
 

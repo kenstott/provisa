@@ -175,43 +175,45 @@ Beziehungen werden als die einzigen legalen JOIN-Pfade registriert, genehmigt un
 
 ## Sicherheitsmodell {: #security-model }
 
-Hier hört „auf dem Pfad, den jede Abfrage ohnehin nimmt" auf, ein Slogan zu sein. Provisa setzt ein mehrschichtiges Sicherheitsmodell über jede Abfragesprache (GraphQL, SQL, Cypher) und jeden Transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket) durch. Governance wird einheitlich angewendet — es gibt keinen Abfragepfad, der sie umgeht. Abdeckung ist durch Konstruktion vollständig, nicht durch Sorgfalt: Fügen Sie eine Quelle, Spalte oder Beziehung hinzu, und jede Schicht gilt automatisch dafür, ohne dass etwas zu registrieren zu merken wäre.
+Hier muss sich „auf dem Weg, den jede Abfrage ohnehin nimmt“ bewähren. Provisa wendet ein geschichtetes Sicherheitsmodell auf jede Abfragesprache (GraphQL, SQL, Cypher) und jeden Transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket) an, und kein Abfrageweg führt daran vorbei. Die Abdeckung kommt aus dem Design, niemand muss an etwas denken: Fügen Sie eine Quelle, eine Spalte oder eine Beziehung hinzu, und jede Schicht gilt sofort dafür, ohne dass etwas zusätzlich zu registrieren wäre.
 
-Die Schichten gelten der Reihe nach. Eine Anfrage muss jede Schicht passieren, bevor die nächste ausgewertet wird.
+Die Schichten greifen der Reihe nach, und eine Anfrage muss jede bestehen, bevor die nächste geprüft wird.
 
 ### Schicht 0 — Introspektionsfilterung {: #layer-0-introspection-filtering }
 
-Das Schema und der Katalog, die einer Rolle präsentiert werden, enthalten nur die Tabellen in ihrer `domain_access`-Liste und die Spalten, die pro-Spalte-`visible_to`-Regeln bestehen. Objekte außerhalb des Zugriffs einer Rolle sind zum Zeitpunkt der Entdeckung unsichtbar — sie können nicht abgefragt, autovervollständigt oder als existent erschlossen werden. Dies gilt für das GraphQL-Schema, den SQL-Katalog und den Schema-Browser des Abfrage-Editors.
+Schema und Katalog, die eine Rolle sieht, enthalten nur die Tabellen ihrer `domain_access`-Liste und die Spalten, die ihre `visible_to`-Regeln bestehen. Alles außerhalb des Zugriffs der Rolle ist von vornherein unsichtbar: Es lässt sich weder abfragen noch automatisch vervollständigen, und nicht einmal seine Existenz lässt sich erschließen. Das gilt für das GraphQL-Schema, den SQL-Katalog und den Schema-Browser des Abfrage-Editors.
 
 ### Schicht 1 — Öffentlicher Zugriff {: #layer-1-public-access }
 
-Tabellen in Domänen ohne `domain_access`-Beschränkung sind für alle authentifizierten Identitäten ohne zusätzliche Konfiguration sichtbar. Keine Reibung für genuin öffentliche Daten.
+Tabellen in Domänen ohne `domain_access`-Einschränkung sind für jede authentifizierte Identität sichtbar, ohne weitere Konfiguration. Wirklich öffentliche Daten kosten keinen Aufwand.
 
 ### Schicht 2 — Domänenzugriff {: #layer-2-domain-access }
 
-Jede Rolle trägt eine `domain_access`-Liste von Domänen-IDs. Eine Abfrage, die eine Tabelle außerhalb dieser Domänen berührt, wird vor der Ausführung abgelehnt. Dies ist die grobe Eigentumsgrenze — eine HR-Rolle kann Finanztabellen nicht erreichen, unabhängig davon, wie das SQL geschrieben ist.
+Jede Rolle trägt eine `domain_access`-Liste von Domänen-IDs, und eine Abfrage, die eine Tabelle außerhalb dieser Domänen berührt, wird vor der Ausführung abgelehnt. Das ist die grobe Eigentumsgrenze: Eine HR-Rolle erreicht keine Finanztabellen, wie auch immer das SQL geschrieben ist.
 
 ### Schicht 3 — Sicherheit auf Zeilenebene {: #layer-3-row-level-security }
 
-Nachdem der Domänenzugriff bestätigt ist, werden pro-Tabelle, pro-Rolle `WHERE`-Prädikate zur Ausführungszeit in jedes `SELECT` injiziert. Die Prädikate werten gegen Rohdaten aus. Ein regionaler Manager, der eine gemeinsam genutzte Orders-Tabelle abfragt, sieht selbst bei einem `SELECT *` nur die Zeilen seiner Region.
+Ist der Domänenzugriff bestätigt, werden tabellen- und rollenbezogene `WHERE`-Prädikate zur Ausführungszeit in jedes `SELECT` eingefügt und gegen die Rohdaten ausgewertet. Eine regionale Managerin, die eine gemeinsame Auftragstabelle abfragt, sieht nur die Zeilen ihrer Region, auch bei `SELECT *`.
 
 ### Schicht 4 — Spaltensichtbarkeit und Maskierung {: #layer-4-column-visibility-and-masking }
 
-Spalten mit einer `visible_to`-Liste, die die anfragende Rolle ausschließt, werden aus der Abfrageausgabe entfernt. Spalten mit einer Maskierungsregel haben ihre Werte ersetzt — Regex-Schwärzung, Konstantenersetzung oder Trunkierung — bevor Ergebnisse den Server verlassen. Maskierung gilt in allen Abfragesprachen und Ausgabeformaten.
+Spalten, deren `visible_to`-Liste die anfragende Rolle nicht enthält, werden aus der Ausgabe entfernt. Spalten mit einer Maskierungsregel bekommen ihre Werte durch Regex-Schwärzung, eine Konstante oder Kürzung ersetzt, bevor die Ergebnisse den Server verlassen. Die Maskierung gilt in jeder Abfragesprache und jedem Ausgabeformat.
 
 ### Schicht 5 — Prädikat-Guard {: #layer-5-predicate-guard }
 
-Maskierte Spalten werden aus `WHERE`- und `HAVING`-Klauseln abgelehnt. Ohne dies könnte ein Aufrufer den unmaskierten Wert durch Binärsuche in einem Filter erschließen, selbst wenn die Ausgabe maskiert ist. Die Ablehnung wird zur Abfrage-Parse-Zeit durchgesetzt, vor der Ausführung.
+Maskierte Spalten werden in `WHERE`- und `HAVING`-Klauseln abgelehnt. Sonst könnte ein Aufrufer den echten Wert per Binärsuche in einem Filter herausfinden, obwohl die Ausgabe maskiert ist. Die Ablehnung geschieht beim Parsen der Abfrage, bevor etwas läuft.
 
 ### Beziehungs-Governance {: #relationship-governance }
 
-JOIN-Bedingungen in SQL müssen einer registrierten, genehmigten Beziehung zwischen Tabellen entsprechen. Nicht genehmigte Joins werden abgelehnt. Jede Beziehung trägt einen menschenlesbaren Grund und eine Beschreibung — eine Orientierung für sowohl Nutzer als auch autonome Agenten darüber, warum ein Traversierungspfad existiert. Dies ist Governance-Richtlinie, keine harte Sicherheitsgrenze: Die Schichten 2–5 gelten unabhängig von der Join-Struktur, sodass eine gezielte Umgehung keine Daten exponiert, die die Rolle nicht über zwei separate Abfragen erreichen könnte. Umgehungsversuche werden protokolliert und sind auditierbar.
+In SQL muss eine JOIN-Bedingung zu einer registrierten, genehmigten Beziehung zwischen den Tabellen passen, und ein nicht genehmigter Join wird abgelehnt. Jede Beziehung trägt einen lesbaren Grund und eine Beschreibung, die Menschen und autonomen Agenten sagen, warum es diesen Pfad gibt. Das ist Governance-Policy und keine harte Sicherheitsgrenze. Die Schichten 2 bis 5 halten, wie auch immer der Join aussieht, sodass eine absichtliche Umgehung nichts preisgibt, was die Rolle nicht auch mit zwei getrennten Abfragen erreichen könnte, und jeder Versuch wird für das Audit protokolliert.
 
-Keine ungültige Verknüpfung läuft jemals auf Ihren Daten. Rollen sind standardmäßig reguliert; der Ausstieg ist eine bewusste Vergabe des Rechts `ignore_relationships` an eine Rolle, der Sie vertrauen. Das OAuth-Token eines Agenten wird einer Rolle zugeordnet, daher gelten für einen Agenten dieselben Schichten wie für eine Person. Datenkataloge, die eine Kontextschicht bereitstellen, sagen einem Agenten, was er tun sollte; Provisa erzwingt, was er tun kann.
+Kein ungültiger Join läuft je auf Ihren Daten. Rollen sind standardmäßig gesteuert; wer davon abweichen will, vergibt bewusst das Recht `ignore_relationships` an eine Rolle, der er vertraut. Das OAuth-Token eines Agenten wird auf eine Rolle abgebildet, also bekommt ein Agent dieselben Schichten wie ein Mensch. Datenkataloge mit einer Kontextschicht sagen einem Agenten, was er tun sollte; Provisa setzt durch, was er tun kann.
 
 ---
 
-Diese Schichten komponieren. Eine Rolle mit Domänenzugriff, RLS und maskierten Spalten hat alle fünf Constraints gleichzeitig aktiv. Eine neue Datenquelle, Spalte oder Beziehung hinzuzufügen erfordert nicht, jede Regel zu aktualisieren — jede Schicht ist unabhängig konfiguriert und gilt automatisch für jede Abfrage, die regulierte Objekte berührt.
+Diese Schichten setzen sich zusammen. Eine Rolle mit Domänenzugriff, RLS und maskierten Spalten hat alle Schichten zugleich aktiv. Eine neue Quelle, Spalte oder Beziehung verlangt keine Anpassung jeder Regel, denn jede Schicht wird für sich konfiguriert und greift von selbst bei jeder Abfrage, die gesteuerte Objekte berührt.
+
+## Schnellstart {: #quick-start }
 
 ### macOS
 

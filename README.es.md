@@ -176,43 +176,45 @@ Las relaciones se registran, aprueban y aplican como las únicas rutas JOIN lega
 
 ## Modelo de seguridad {: #security-model }
 
-Aquí es donde "en la ruta que ya toma cada consulta" deja de ser un eslogan. Provisa aplica un modelo de seguridad multicapa en cada lenguaje de consulta (GraphQL, SQL, Cypher) y cada transporte (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). El gobierno se aplica de manera uniforme — no existe ninguna ruta de consulta que lo eluda. La cobertura es total por construcción, no por diligencia: añada un origen, una columna o una relación y cada capa se le aplica automáticamente, sin nada que recordar registrar.
+Aquí es donde "en el camino que ya recorre toda consulta" tiene que sostenerse. Provisa aplica un único modelo de seguridad por capas a todo lenguaje de consulta (GraphQL, SQL, Cypher) y a todo transporte (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket), y ningún camino de consulta lo esquiva. La cobertura sale del diseño, así que nadie tiene que acordarse de nada: añada un origen, una columna o una relación, y cada capa se le aplica de inmediato, sin nada más que registrar.
 
-Las capas se aplican en orden. Una solicitud debe superar cada capa antes de que se evalúe la siguiente.
+Las capas se aplican en orden, y una petición tiene que superar cada una antes de que se compruebe la siguiente.
 
 ### Capa 0 — Filtrado de introspección {: #layer-0-introspection-filtering }
 
-El esquema y el catálogo presentados a un rol contienen solo las tablas de su lista `domain_access` y las columnas que superan las reglas `visible_to` por columna. Los objetos fuera del acceso de un rol son invisibles en el momento del descubrimiento — no pueden consultarse, autocompletarse ni inferirse como existentes. Esto se aplica al esquema GraphQL, al catálogo SQL y al navegador de esquema del editor de consultas.
+El esquema y el catálogo que ve un rol contienen solo las tablas de su lista `domain_access` y las columnas que superan sus reglas `visible_to`. Todo lo que queda fuera del acceso del rol es invisible desde el principio: no se puede consultar, ni autocompletar, ni siquiera deducir que existe. Esto cubre el esquema GraphQL, el catálogo SQL y el explorador de esquema del editor de consultas.
 
 ### Capa 1 — Acceso público {: #layer-1-public-access }
 
-Las tablas en dominios sin restricción `domain_access` son visibles para todas las identidades autenticadas sin configuración adicional. Fricción cero para datos genuinamente públicos.
+Las tablas de dominios sin restricción `domain_access` son visibles para toda identidad autenticada, sin nada más que configurar. Los datos que de verdad son públicos no cuestan esfuerzo.
 
 ### Capa 2 — Acceso por dominio {: #layer-2-domain-access }
 
-Cada rol lleva una lista `domain_access` de IDs de dominio. Una consulta que toca una tabla fuera de esos dominios se rechaza antes de la ejecución. Este es el límite de propiedad grueso — un rol de RR. HH. no puede alcanzar tablas de finanzas sin importar cómo esté escrito el SQL.
+Cada rol lleva una lista `domain_access` de ID de dominio, y una consulta que toca una tabla fuera de esos dominios se rechaza antes de ejecutarse. Es la frontera amplia de propiedad: un rol de RR. HH. no llega a las tablas de finanzas, se escriba como se escriba el SQL.
 
 ### Capa 3 — Seguridad de nivel de fila {: #layer-3-row-level-security }
 
-Una vez confirmado el acceso al dominio, los predicados `WHERE` por tabla y por rol se inyectan en cada `SELECT` en tiempo de ejecución. Los predicados se evalúan contra los datos crudos. Un gerente regional que consulta una tabla de pedidos compartida ve solo las filas de su región incluso en un `SELECT *`.
+Una vez confirmado el acceso al dominio, se añaden predicados `WHERE` por tabla y por rol a cada `SELECT` en el momento de la ejecución, y se evalúan sobre los datos sin procesar. Una gerente regional que consulta una tabla de pedidos compartida solo ve las filas de su región, incluso con `SELECT *`.
 
 ### Capa 4 — Visibilidad y enmascaramiento de columnas {: #layer-4-column-visibility-and-masking }
 
-Las columnas con una lista `visible_to` que excluye al rol solicitante se eliminan de la salida de la consulta. Las columnas con una regla de enmascaramiento tienen sus valores reemplazados — redacción por regex, reemplazo por constante o truncado — antes de que los resultados salgan del servidor. El enmascaramiento se aplica en todos los lenguajes de consulta y formatos de salida.
+Las columnas cuya lista `visible_to` no incluye al rol que pregunta se quitan de la salida. Las columnas con una regla de enmascaramiento ven sus valores sustituidos por redacción con regex, una constante o un truncado antes de que los resultados salgan del servidor. El enmascaramiento se aplica en todo lenguaje de consulta y todo formato de salida.
 
 ### Capa 5 — Guardia de predicados {: #layer-5-predicate-guard }
 
-Las columnas enmascaradas se rechazan en las cláusulas `WHERE` y `HAVING`. Sin esto, quien llama podría inferir el valor sin enmascarar mediante búsqueda binaria en un filtro aunque la salida esté enmascarada. El rechazo se aplica en el momento del análisis de la consulta, antes de la ejecución.
+Las columnas enmascaradas se rechazan en las cláusulas `WHERE` y `HAVING`. Si no, quien consulta podría averiguar el valor real buscándolo por bisección en un filtro, aunque la salida esté enmascarada. El rechazo ocurre al analizar la consulta, antes de que se ejecute nada.
 
 ### Gobierno de relaciones {: #relationship-governance }
 
-Las condiciones JOIN en SQL deben coincidir con una relación registrada y aprobada entre tablas. Las uniones no aprobadas se rechazan. Cada relación lleva una razón y una descripción legibles por humanos — orientación tanto para usuarios como para agentes autónomos sobre por qué existe una ruta de recorrido. Esto es política de gobierno, no un límite de seguridad estricto: las Capas 2–5 se mantienen sin importar la estructura de unión, de modo que una elusión deliberada no expone datos a los que el rol no pudiera llegar mediante dos consultas separadas. Los intentos de elusión se registran y son auditables.
+En SQL, una condición JOIN tiene que coincidir con una relación registrada y aprobada entre las tablas, y un join no aprobado se rechaza. Cada relación lleva un motivo y una descripción legibles, que explican a personas y a agentes autónomos por qué existe ese camino. Es una política de gobernanza y no una frontera de seguridad estricta. Las capas 2 a 5 se mantienen sea cual sea la forma del join, así que un rodeo deliberado no expone nada que el rol no pudiera alcanzar con dos consultas separadas, y cada intento queda registrado para auditoría.
 
-Ninguna unión no válida se ejecuta jamás sobre sus datos. Los roles están gobernados de forma predeterminada; excluirse es una concesión deliberada del derecho `ignore_relationships` a un rol de confianza. El token OAuth de un agente se asigna a un rol, así que un agente recibe las mismas capas que una persona. Los catálogos de datos que aportan una capa de contexto le dicen al agente qué debería hacer; Provisa impone qué puede hacer.
+Ningún join inválido se ejecuta nunca sobre sus datos. Los roles están gobernados por defecto, y salir de ello significa conceder a propósito el derecho `ignore_relationships` a un rol de confianza. El token OAuth de un agente corresponde a un rol, así que un agente recibe las mismas capas que una persona. Los catálogos de datos con una capa de contexto le dicen a un agente lo que debería hacer; Provisa impone lo que puede hacer.
 
 ---
 
-Estas capas se componen. Un rol con acceso a dominio, RLS y columnas enmascaradas tiene las cinco restricciones activas simultáneamente. Añadir un nuevo origen de datos, columna o relación no requiere actualizar cada regla — cada capa se configura de forma independiente y se aplica automáticamente a cualquier consulta que toque objetos gobernados.
+Estas capas se combinan. Un rol con acceso a dominios, RLS y columnas enmascaradas tiene todas las capas activas a la vez. Añadir un origen, una columna o una relación no obliga a actualizar cada regla, porque cada capa se configura por separado y se aplica sola a toda consulta que toca objetos gobernados.
+
+## Inicio rápido {: #quick-start }
 
 ### macOS
 

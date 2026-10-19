@@ -176,43 +176,45 @@ Relacionamentos são registrados, aprovados e aplicados como os únicos caminhos
 
 ## Modelo de segurança {: #security-model }
 
-É aqui que "no caminho que toda consulta já percorre" deixa de ser um slogan. O Provisa aplica um modelo de segurança em múltiplas camadas em toda linguagem de consulta (GraphQL, SQL, Cypher) e todo transporte (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). A governança é aplicada de forma uniforme — não há caminho de consulta que a contorne. A cobertura é total por construção, não por diligência: adicione uma fonte, coluna ou relacionamento e toda camada se aplica a ela automaticamente, sem nada para lembrar de registrar.
+É aqui que "no caminho que toda consulta já percorre" precisa se sustentar. O Provisa aplica um único modelo de segurança em camadas a toda linguagem de consulta (GraphQL, SQL, Cypher) e a todo transporte (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket), e nenhum caminho de consulta o contorna. A cobertura vem do desenho, então ninguém precisa se lembrar de nada: adicione uma fonte, uma coluna ou um relacionamento, e cada camada se aplica a ele na hora, sem nada a mais para registrar.
 
-As camadas se aplicam em ordem. Uma requisição precisa passar por cada camada antes que a próxima seja avaliada.
+As camadas se aplicam em ordem, e uma requisição precisa passar por cada uma antes de a próxima ser verificada.
 
 ### Camada 0 — Filtragem de introspecção {: #layer-0-introspection-filtering }
 
-O esquema e o catálogo apresentados a uma função contêm apenas as tabelas em sua lista `domain_access` e as colunas que passam pelas regras `visible_to` por coluna. Objetos fora do acesso de uma função são invisíveis no momento da descoberta — não podem ser consultados, autocompletados ou inferidos como existentes. Isso se aplica ao esquema GraphQL, ao catálogo SQL e ao navegador de esquema do editor de consultas.
+O esquema e o catálogo que um papel vê contêm só as tabelas da sua lista `domain_access` e as colunas que passam nas regras `visible_to`. Tudo fora do acesso do papel é invisível desde o início: não dá para consultar, autocompletar, nem deduzir que existe. Isso vale para o esquema GraphQL, o catálogo SQL e o navegador de esquema do editor de consultas.
 
 ### Camada 1 — Acesso público {: #layer-1-public-access }
 
-Tabelas em domínios sem restrição de `domain_access` são visíveis a todas as identidades autenticadas sem configuração adicional. Fricção zero para dados genuinamente públicos.
+Tabelas em domínios sem restrição `domain_access` são visíveis para toda identidade autenticada, sem nada mais a configurar. Dados que são de fato públicos não dão trabalho.
 
 ### Camada 2 — Acesso a domínio {: #layer-2-domain-access }
 
-Cada função carrega uma lista `domain_access` de IDs de domínio. Uma consulta que toca uma tabela fora desses domínios é rejeitada antes da execução. Esta é a fronteira grosseira de propriedade — uma função de RH não pode alcançar tabelas financeiras independentemente de como o SQL é escrito.
+Cada papel carrega uma lista `domain_access` de IDs de domínio, e uma consulta que toca uma tabela fora desses domínios é recusada antes de rodar. É a fronteira ampla de propriedade: um papel de RH não alcança tabelas de finanças, seja qual for a escrita do SQL.
 
 ### Camada 3 — Segurança em nível de linha {: #layer-3-row-level-security }
 
-Depois que o acesso a domínio é confirmado, predicados `WHERE` por tabela, por função são injetados em todo `SELECT` no momento da execução. Os predicados avaliam contra os dados brutos. Um gerente regional consultando uma tabela de pedidos compartilhada vê apenas as linhas de sua região mesmo em um `SELECT *`.
+Confirmado o acesso ao domínio, predicados `WHERE` por tabela e por papel são acrescentados a cada `SELECT` na execução e avaliados sobre os dados brutos. Uma gerente regional que consulta uma tabela de pedidos compartilhada vê só as linhas da sua região, mesmo com `SELECT *`.
 
 ### Camada 4 — Visibilidade e mascaramento de coluna {: #layer-4-column-visibility-and-masking }
 
-Colunas com uma lista `visible_to` que exclui a função solicitante são removidas da saída da consulta. Colunas com uma regra de mascaramento têm seus valores substituídos — redação por regex, substituição constante ou truncamento — antes que os resultados deixem o servidor. O mascaramento se aplica em todas as linguagens de consulta e formatos de saída.
+Colunas cuja lista `visible_to` deixa de fora o papel solicitante são removidas da saída. Colunas com regra de mascaramento têm os valores trocados por ocultação via regex, uma constante ou truncamento antes de os resultados saírem do servidor. O mascaramento vale em toda linguagem de consulta e todo formato de saída.
 
 ### Camada 5 — Guarda de predicado {: #layer-5-predicate-guard }
 
-Colunas mascaradas são rejeitadas em cláusulas `WHERE` e `HAVING`. Sem isso, um chamador poderia inferir o valor não mascarado fazendo busca binária dele em um filtro mesmo que a saída esteja mascarada. A rejeição é aplicada no momento da análise da consulta, antes da execução.
+Colunas mascaradas são recusadas em cláusulas `WHERE` e `HAVING`. Do contrário, quem consulta poderia descobrir o valor real por busca binária num filtro, mesmo com a saída mascarada. A recusa acontece na análise da consulta, antes de qualquer execução.
 
 ### Governança de relacionamento {: #relationship-governance }
 
-Condições JOIN em SQL precisam corresponder a um relacionamento registrado e aprovado entre tabelas. Joins não aprovados são rejeitados. Cada relacionamento carrega um motivo e descrição legíveis por humanos — orientação tanto para usuários quanto para agentes autônomos sobre por que um caminho de travessia existe. Isso é política de governança, não uma fronteira de segurança rígida: as Camadas 2–5 se mantêm independentemente da estrutura do join, então uma burla deliberada não expõe dados que a função não poderia alcançar através de duas consultas separadas. Tentativas de burla são registradas em log e auditáveis.
+Em SQL, uma condição JOIN precisa corresponder a um relacionamento registrado e aprovado entre as tabelas, e um join não aprovado é recusado. Cada relacionamento traz um motivo e uma descrição legíveis, que dizem a pessoas e agentes autônomos por que aquele caminho existe. É uma política de governança e não uma fronteira de segurança rígida. As camadas 2 a 5 se mantêm seja qual for a forma do join, então um desvio proposital não expõe nada que o papel não alcançaria com duas consultas separadas, e cada tentativa fica registrada para auditoria.
 
-Nenhuma junção inválida roda jamais sobre os seus dados. Os papéis são governados por padrão; sair disso é uma concessão deliberada do direito `ignore_relationships` a um papel em que você confia. O token OAuth de um agente é mapeado para um papel, então o agente recebe as mesmas camadas que uma pessoa. Catálogos de dados que fornecem uma camada de contexto dizem a um agente o que ele deve fazer; o Provisa impõe o que ele pode fazer.
+Nenhum join inválido roda nos seus dados. Os papéis são governados por padrão, e sair disso significa conceder de propósito o direito `ignore_relationships` a um papel de confiança. O token OAuth de um agente corresponde a um papel, então um agente recebe as mesmas camadas que uma pessoa. Catálogos de dados com uma camada de contexto dizem a um agente o que ele deveria fazer; o Provisa impõe o que ele pode fazer.
 
 ---
 
-Essas camadas se compõem. Uma função com acesso a domínio, RLS e colunas mascaradas tem todas as cinco restrições ativas simultaneamente. Adicionar uma nova fonte de dados, coluna ou relacionamento não exige atualizar cada regra — cada camada é configurada de forma independente e se aplica automaticamente a qualquer consulta que toque objetos governados.
+Essas camadas se combinam. Um papel com acesso a domínios, RLS e colunas mascaradas tem todas as camadas ativas ao mesmo tempo. Adicionar uma fonte, uma coluna ou um relacionamento não exige atualizar cada regra, porque cada camada é configurada por conta própria e se aplica sozinha a toda consulta que toca objetos governados.
+
+## Início rápido {: #quick-start }
 
 ### macOS
 
