@@ -18,7 +18,7 @@ A wrapper file containing only `includes:` is valid. `load_control_plane` reads 
 **Merge rules**
 
 - Paths resolve relative to the including file. Absolute paths are used as-is.
-- List sections (`sources`, `tables`, `domains`, `relationships`, `roles`, …) append — fragment entries follow the including file's entries.
+- List sections (`sources`, `tables`, `domains`, `relationships`, `roles`, …) append, and fragment entries follow the including file's entries.
 - A scalar or mapping key the including file does not set is taken from the fragment.
 - A key both files set to different values is a conflict; the load fails, naming the key.
 - Identical values in both files are not a conflict.
@@ -787,7 +787,7 @@ relationships:
 Set `materialize: true` on a relationship to automatically generate a materialized view for cross-source JOINs. This avoids expensive federated queries by pre-computing the JOIN result.
 
 - Only cross-source relationships generate MVs (same-source JOINs are already fast)
-- On a junction-backed relationship the MV covers the two-hop traversal — source hop, junction hop, discriminator, and the junction's own columns as edge attributes. The junction counts as a leg, so an edge is cross-source when any of the three tables sits in a different source
+- On a junction-backed relationship the MV covers the two-hop traversal: source hop, junction hop, discriminator, and the junction's own columns as edge attributes. The junction counts as a leg, so an edge is cross-source when any of the three tables sits in a different source
 - The MV starts stale and is populated by the background refresh loop
 - Mutations to either source table mark the MV as stale for re-refresh
 - `refresh_interval` defaults to 300 seconds (5 minutes)
@@ -1414,7 +1414,7 @@ Provisa runs two independent OTLP export paths: your internal collector and the 
 | `redact_sql_literals` | bool | `true` | Replaces string and numeric literals in `db.statement` with `?` |
 | `redact_attributes` | list[str] | `[]` | Attribute keys dropped entirely from every span |
 
-Redacted `db.statement` example — with `redact_sql_literals: true`, this span attribute:
+A redacted `db.statement`. With `redact_sql_literals: true`, this span attribute:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1575,7 +1575,7 @@ Materialization store defaults to `TENANT_DATABASE_URL`.
 
 #### Relational-database engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) and `sqlalchemy`
 
-One key per network-addressable relational database, all on the same land-only runtime (no federation to external sources): every source lands into the store and is queried there. The key selects the database; `PROVISA_ENGINE_URL` carries the DSN its dialect takes. `sqlalchemy` is the catch-all for a database with no key of its own. File-embedded stores (SQLite, Access) are not offered — the server has to be reachable over the network.
+One key per network-addressable relational database, all on the same land-only runtime (no federation to external sources): every source lands into the store and is queried there. The key selects the database; `PROVISA_ENGINE_URL` carries the DSN its dialect takes. `sqlalchemy` is the catch-all for a database with no key of its own. File-embedded stores (SQLite, Access) are not offered, because the server has to be reachable over the network.
 
 ```bash
 PROVISA_ENGINE=mysql

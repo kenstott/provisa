@@ -16,7 +16,7 @@ Subscriptions têm como alvo uma **tabela registrada**:
 
 O Provisa automaticamente instala triggers `AFTER INSERT OR UPDATE OR DELETE` em todas as tabelas PostgreSQL **pré-aprovadas** na inicialização. Esses triggers chamam `pg_notify('provisa_{table}', ...)` para que DML bruto (não apenas mutações do Provisa) seja captado pelas subscriptions.
 
-Se a instalação do trigger falhar (ex.: privilégio insuficiente — a função do banco de dados deve possuir a tabela), o Provisa recorre ao polling por marca d'água para aquela tabela, desde que um `watermark_column` esteja configurado. Um aviso é registrado no log.
+Se a instalação do trigger falhar (ex.: privilégio insuficiente, porque a função do banco de dados deve possuir a tabela), o Provisa recorre ao polling por marca d'água para aquela tabela, desde que um `watermark_column` esteja configurado. Um aviso é registrado no log.
 
 ### Subscriptions de view entre fontes de dados {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ O Provisa emite `LISTEN <channel>` em uma conexão PG persistente. Mutações do
 
 ### Polling
 
-O Provisa reexecuta a consulta de origem periodicamente, selecionando apenas linhas onde `watermark_column > last_watermark`. Diffs são emitidos como eventos SSE. O poll não consegue ver hard deletes — uma linha removida não deixa marca d'água avançando. Para tornar uma exclusão visível, use um soft delete (ex.: defina uma flag `deleted_at`) que avance a coluna de marca d'água; a exclusão então chega como um evento de atualização carregando o marcador de soft-delete.
+O Provisa reexecuta a consulta de origem periodicamente, selecionando apenas linhas onde `watermark_column > last_watermark`. Diffs são emitidos como eventos SSE. O poll não consegue ver hard deletes: uma linha removida não deixa marca d'água avançando. Para tornar uma exclusão visível, use um soft delete (ex.: defina uma flag `deleted_at`) que avance a coluna de marca d'água; a exclusão então chega como um evento de atualização carregando o marcador de soft-delete.
 
 Config de poll de tabela (em `provisa.yaml`):
 

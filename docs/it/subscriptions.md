@@ -16,7 +16,7 @@ Le subscription hanno come target una **tabella registrata**:
 
 All'avvio, Provisa installa automaticamente trigger `AFTER INSERT OR UPDATE OR DELETE` su tutte le tabelle PostgreSQL **preapprovate**. Questi trigger richiamano `pg_notify('provisa_{table}', ...)` in modo che le DML non elaborate (non solo le mutazioni di Provisa) vengano rilevate dalle subscription.
 
-Se l'installazione del trigger non riesce (ad esempio per privilegi insufficienti — il ruolo del database deve essere proprietario della tabella), Provisa passa al polling basato su watermark per quella tabella, purché sia configurato un `watermark_column`. Viene registrato un avviso nel log.
+Se l'installazione del trigger non riesce (ad esempio per privilegi insufficienti, perché il ruolo del database deve essere proprietario della tabella), Provisa passa al polling basato su watermark per quella tabella, purché sia configurato un `watermark_column`. Viene registrato un avviso nel log.
 
 ### Subscription su viste multi-origine {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa emette `LISTEN <channel>` su una connessione PG persistente. Le mutazion
 
 ### Polling
 
-Provisa riesegue periodicamente la query di origine, selezionando solo le righe in cui `watermark_column > last_watermark`. Le differenze vengono emesse come eventi SSE. Il polling non è in grado di rilevare le eliminazioni definitive (hard delete) — una riga rimossa non lascia alcun watermark che avanzi. Per rendere visibile un'eliminazione, utilizzare un'eliminazione logica (soft delete) (ad esempio impostando un flag `deleted_at`) che incrementi la colonna watermark; l'eliminazione arriva quindi come evento di aggiornamento che porta con sé il marcatore di eliminazione logica.
+Provisa riesegue periodicamente la query di origine, selezionando solo le righe in cui `watermark_column > last_watermark`. Le differenze vengono emesse come eventi SSE. Il polling non è in grado di rilevare le eliminazioni definitive (hard delete): una riga rimossa non lascia alcun watermark che avanzi. Per rendere visibile un'eliminazione, utilizzare un'eliminazione logica (soft delete) (ad esempio impostando un flag `deleted_at`) che incrementi la colonna watermark; l'eliminazione arriva quindi come evento di aggiornamento che porta con sé il marcatore di eliminazione logica.
 
 Configurazione del polling della tabella (in `provisa.yaml`):
 

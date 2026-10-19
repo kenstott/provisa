@@ -18,7 +18,7 @@ includes:
 **כללי מיזוג**
 
 - נתיבים נפתרים ביחס לקובץ המכליל. נתיבים מוחלטים משמשים כלשונם.
-- מקטעי רשימה (`sources`, `tables`, `domains`, `relationships`, `roles`, …) מצטרפים — רשומות המקטע (fragment) עוקבות אחרי רשומות הקובץ המכליל.
+- מקטעי רשימה (`sources`, `tables`, `domains`, `relationships`, `roles`, …) מצטרפים, ורשומות המקטע (fragment) עוקבות אחרי רשומות הקובץ המכליל.
 - מפתח סקלרי או מיפוי שהקובץ המכליל אינו קובע נלקח מהמקטע.
 - מפתח ששני הקבצים קובעים לערכים שונים הוא קונפליקט; הטעינה נכשלת, ונוקבת את המפתח.
 - ערכים זהים בשני הקבצים אינם קונפליקט.
@@ -787,7 +787,7 @@ relationships:
 הגדירו `materialize: true` על קשר כדי לחולל אוטומטית Materialized View עבור JOIN-ים חוצי-מקורות. זה נמנע משאילתות פדרטיביות יקרות על ידי חישוב מראש של תוצאת ה-JOIN.
 
 - רק קשרים חוצי-מקורות מחוללים MV-ים (JOIN-ים באותו מקור כבר מהירים)
-- בקשר מגובה junction ה-MV מכסה את החצייה בשתי קפיצות — קפיצת המקור, קפיצת ה-junction, המבחין ועמודות ה-junction עצמה כמאפייני קשת. ה-junction נחשבת רגל, ולכן קשת היא חוצת-מקורות כאשר אחת משלוש הטבלאות יושבת במקור אחר
+- בקשר מגובה junction ה-MV מכסה את החצייה בשתי קפיצות: קפיצת המקור, קפיצת ה-junction, המבחין ועמודות ה-junction עצמה כמאפייני קשת. ה-junction נחשבת רגל, ולכן קשת היא חוצת-מקורות כאשר אחת משלוש הטבלאות יושבת במקור אחר
 - ה-MV מתחיל מיושן (stale) ומתמלא על ידי לולאת הרענון ברקע
 - מוטציות לאחת מטבלאות המקור מסמנות את ה-MV כמיושן לרענון מחדש
 - `refresh_interval` ברירת המחדל היא 300 שניות (5 דקות)
@@ -1414,7 +1414,7 @@ Provisa מפעיל שני נתיבי ייצוא OTLP עצמאיים: ה-collecto
 | `redact_sql_literals` | bool | `true` | מחליף מילוליים מחרוזתיים ומספריים ב-`db.statement` ב-`?` |
 | `redact_attributes` | list[str] | `[]` | מפתחות תכונה שנשמטים לגמרי מכל span |
 
-דוגמת `db.statement` ערוך — עם `redact_sql_literals: true`, תכונת span זו:
+`db.statement` ערוך. עם `redact_sql_literals: true`, תכונת span זו:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1575,7 +1575,7 @@ PROVISA_ENGINE=synapse
 
 #### מנועי מסדי נתונים יחסיים (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) ו-`sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-מפתח אחד לכל מסד נתונים יחסי הניתן לכתובת ברשת, כולם על אותו runtime land-only (ללא פדרציה למקורות חיצוניים): כל מקור נוחת (lands) לתוך המאגר ונשאל שם. המפתח בוחר את מסד הנתונים; `PROVISA_ENGINE_URL` נושא את ה-DSN שהדיאלקט שלו מצפה לו. `sqlalchemy` הוא הכל-כולל למסד נתונים ללא מפתח משלו. מאגרים מוטמעי-קובץ (SQLite, Access) אינם מוצעים — השרת חייב להיות ניתן להשגה ברשת.
+מפתח אחד לכל מסד נתונים יחסי הניתן לכתובת ברשת, כולם על אותו runtime land-only (ללא פדרציה למקורות חיצוניים): כל מקור נוחת (lands) לתוך המאגר ונשאל שם. המפתח בוחר את מסד הנתונים; `PROVISA_ENGINE_URL` נושא את ה-DSN שהדיאלקט שלו מצפה לו. `sqlalchemy` הוא הכל-כולל למסד נתונים ללא מפתח משלו. מאגרים מוטמעי-קובץ (SQLite, Access) אינם מוצעים, כי השרת חייב להיות ניתן להשגה ברשת.
 
 ```bash
 PROVISA_ENGINE=mysql

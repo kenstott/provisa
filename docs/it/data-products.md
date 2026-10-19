@@ -1,6 +1,6 @@
 # Prodotti Dati {: #data-products }
 
-Un prodotto dati è un pacchetto di tabelle con nome e proprietà, pubblicato insieme per il consumo. È l'unità che il catalogo espone ai consumatori — non le singole tabelle, ma una superficie curata che un dominio dichiara esplicitamente pronta. I campi seguono il vocabolario ODPS (Open Data Product Standard) laddove Provisa possiede già la fonte di verità.
+Un prodotto dati è un pacchetto di tabelle con nome e proprietà, pubblicato insieme per il consumo. È l'unità che il catalogo espone ai consumatori: un insieme curato di tabelle che un dominio ha dichiarato pronto. I campi seguono il vocabolario ODPS (Open Data Product Standard) laddove Provisa possiede già la fonte di verità.
 
 ## Regola di proprietà del dominio {: #domain-ownership-rule }
 
@@ -10,7 +10,7 @@ Un prodotto che necessita di dati da un altro dominio deve prima far entrare que
 
 ## Output port {: #output-ports }
 
-Le tabelle e i comandi assegnati a un prodotto dati sono i suoi **output port** — la superficie interrogabile che i consumatori vedono. Assegnare una tabella imposta `Table.product_id`; rimuoverla elimina l'appartenenza. Una tabella appartiene al massimo a un prodotto. Anche i comandi nello stesso dominio possono essere assegnati come membri.
+Le tabelle e i comandi assegnati a un prodotto dati sono i suoi **output port**: la superficie interrogabile che i consumatori vedono. Assegnare una tabella imposta `Table.product_id`; rimuoverla elimina l'appartenenza. Una tabella appartiene al massimo a un prodotto. Anche i comandi nello stesso dominio possono essere assegnati come membri.
 
 ## Sezioni del pannello dei dettagli {: #detail-panel-sections }
 
@@ -30,7 +30,7 @@ Aprendo un prodotto dati nella UI di amministrazione vengono mostrati questi pan
 
 Solo le tabelle assegnate a un prodotto vengono pubblicate nei cataloghi esterni per impostazione predefinita. `build_snapshot` applica un filtro `data_products_only`: le tabelle non assegnate vengono trattenute, insieme ai loro archi di relazione, archi di lineage e tag di governance. Le origini dati e i domini vengono sempre pubblicati a prescindere.
 
-Un prodotto senza membri esportati non genera una voce nello snapshot — un elenco senza membri rappresenterebbe in modo scorretto il prodotto verso il catalogo.
+Un prodotto senza membri esportati non genera una voce nello snapshot. Un elenco senza membri rappresenterebbe in modo scorretto il prodotto verso il catalogo.
 
 Solo i cataloghi con un concetto nativo di prodotto dati lo pubblicano come entità di prima classe; gli altri pubblicano le tabelle membro (già filtrate) senza un raggruppamento di prodotto:
 

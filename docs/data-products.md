@@ -1,6 +1,6 @@
 # Data Products
 
-A data product is a named, owned bundle of tables published together for consumption. It is the unit the catalog exposes to consumers — not individual tables, but a curated surface a domain explicitly declares ready. Fields follow the ODPS (Open Data Product Standard) vocabulary where Provisa already has the source of truth.
+A data product is a named, owned bundle of tables published together for consumption. It is the unit the catalog exposes to consumers: a curated set of tables that a domain has declared ready. Fields follow the ODPS (Open Data Product Standard) vocabulary where Provisa already has the source of truth.
 
 ## Domain ownership rule
 
@@ -10,7 +10,7 @@ A product that needs data from another domain must bring that data in as a domai
 
 ## Output ports
 
-The tables and commands assigned to a data product are its **output ports** — the queryable surface consumers see. Assigning a table sets `Table.product_id`; clearing it removes the membership. A table belongs to at most one product. Commands in the same domain may also be assigned as members.
+The tables and commands assigned to a data product are its **output ports**: the queryable surface consumers see. Assigning a table sets `Table.product_id`; clearing it removes the membership. A table belongs to at most one product. Commands in the same domain may also be assigned as members.
 
 ## Detail panel sections
 
@@ -30,9 +30,9 @@ Opening a data product in the admin UI shows these panels:
 
 Only tables assigned to a product publish to external catalogs by default. `build_snapshot` applies a `data_products_only` filter: unassigned tables are withheld, along with their relationship edges, lineage edges, and governance tags. Sources and domains always publish regardless.
 
-A product with no exported members does not publish — an empty listing would claim a product exists with nothing behind it.
+A product with no exported members does not publish. An empty listing would claim a product exists with nothing behind it.
 
-Only catalogs with a native data-product concept publish it as a first-class entity; the rest publish the (already-filtered) member tables without a product grouping:
+Only catalogs with a native data-product concept publish it as an entity of its own; the rest publish the (already-filtered) member tables without a product grouping:
 
 | Catalog | Published as |
 | --- | --- |

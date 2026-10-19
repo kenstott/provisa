@@ -87,9 +87,7 @@ Establézcalas para anular los valores predeterminados que aplicaría `load_prof
 5. Verificación de desviación de esquema — escanea el plano de control en vivo en busca de columnas
    faltantes. Si encuentra alguna, imprime una sugerencia de `--reset` y sale con código 1. V1 no
    tiene migraciones; una columna agregada en una versión más nueva requiere un reset.
-6. Ambos servidores arrancan de forma concurrente. El anunciador de disponibilidad sondea
-   `GET /ready` (no `/health` — el endpoint `/ready` confirma que el almacén está conectado y el
-   motor está caliente) y abre el navegador cuando devuelve 200.
+6. Ambos servidores arrancan de forma concurrente. El anunciador de disponibilidad sondea `GET /ready` (no `/health`, porque el endpoint `/ready` confirma que el almacén está conectado y el motor está caliente) y abre el navegador cuando devuelve 200.
 
 ### Códigos de salida {: #exit-codes }
 

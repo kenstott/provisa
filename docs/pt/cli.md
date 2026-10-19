@@ -87,9 +87,7 @@ Defina-as para sobrepor os padrões que `load_profile("native", ...)` aplicaria 
 5. Verificação de desvio de esquema — varre o plano de controle ativo em busca de colunas ausentes. Se alguma for
    encontrada, imprime uma dica de `--reset` e sai com código 1. V1 não tem migrações; uma coluna adicionada em uma
    release mais nova exige um reset.
-6. Ambos os servidores iniciam concorrentemente. O anunciador de prontidão consulta `GET /ready` (não `/health` — o
-   endpoint `/ready` confirma que o armazenamento está conectado e o motor está aquecido) e abre o navegador
-   quando ele retorna 200.
+6. Ambos os servidores iniciam concorrentemente. O anunciador de prontidão consulta `GET /ready` (não `/health`, porque o endpoint `/ready` confirma que o armazenamento está conectado e o motor está aquecido) e abre o navegador quando ele retorna 200.
 
 ### Códigos de saída {: #exit-codes }
 

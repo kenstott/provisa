@@ -16,7 +16,7 @@ Las suscripciones apuntan a una **tabla registrada**:
 
 Provisa instala automáticamente triggers `AFTER INSERT OR UPDATE OR DELETE` en todas las tablas de PostgreSQL **preaprobadas** al iniciar. Estos triggers invocan `pg_notify('provisa_{table}', ...)` para que las DML sin procesar (no solo las mutaciones de Provisa) sean captadas por las suscripciones.
 
-Si la instalación del trigger falla (por ejemplo, por privilegios insuficientes — el rol de base de datos debe ser propietario de la tabla), Provisa recurre al sondeo por marca de agua para esa tabla, siempre que haya un `watermark_column` configurado. Se registra una advertencia.
+Si la instalación del trigger falla (por ejemplo, por privilegios insuficientes, porque el rol de base de datos debe ser propietario de la tabla), Provisa recurre al sondeo por marca de agua para esa tabla, siempre que haya un `watermark_column` configurado. Se registra una advertencia.
 
 ### Suscripciones a vistas entre orígenes de datos {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa emite `LISTEN <channel>` en una conexión persistente a PG. Las mutacion
 
 ### Sondeo {: #polling }
 
-Provisa vuelve a ejecutar periódicamente la consulta de origen, seleccionando solo las filas donde `watermark_column > last_watermark`. Las diferencias se emiten como eventos SSE. El sondeo no puede detectar eliminaciones definitivas (hard deletes) — una fila eliminada no deja ninguna marca de agua que avance. Para que una eliminación sea visible, use una eliminación lógica (soft delete) (por ejemplo, active un indicador `deleted_at`) que incremente la columna de marca de agua; la eliminación llega entonces como un evento de actualización que transporta el indicador de eliminación lógica.
+Provisa vuelve a ejecutar periódicamente la consulta de origen, seleccionando solo las filas donde `watermark_column > last_watermark`. Las diferencias se emiten como eventos SSE. El sondeo no puede detectar eliminaciones definitivas (hard deletes): una fila eliminada no deja ninguna marca de agua que avance. Para que una eliminación sea visible, use una eliminación lógica (soft delete) (por ejemplo, active un indicador `deleted_at`) que incremente la columna de marca de agua; la eliminación llega entonces como un evento de actualización que transporta el indicador de eliminación lógica.
 
 Configuración de sondeo de tabla (en `provisa.yaml`):
 

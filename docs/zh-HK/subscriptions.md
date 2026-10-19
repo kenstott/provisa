@@ -16,7 +16,7 @@ Provisa 透過 Server-Sent Events（SSE）支援即時推送。客戶端可接�
 
 Provisa 在啟動時，會自動在所有**已預先核准**的 PostgreSQL 資料表上安裝 `AFTER INSERT OR UPDATE OR DELETE` 觸發程序。這些觸發程序會呼叫 `pg_notify('provisa_{table}', ...)`，令原始 DML（不僅限於 Provisa 的變更操作）都能被訂閱捕捉到。
 
-如觸發程序安裝失敗（例如權限不足——資料庫角色必須擁有該資料表的擁有權），Provisa 會退回至該資料表的水位標記輪詢，前提是已設定 `watermark_column`。系統會記錄一則警告。
+如觸發程序安裝失敗（例如權限不足，因為資料庫角色必須擁有該資料表的擁有權），Provisa 會退回至該資料表的水位標記輪詢，前提是已設定 `watermark_column`。系統會記錄一則警告。
 
 ### 跨數據來源檢視訂閱 {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa 會在一條持久的 PG 連線上發出 `LISTEN <channel>`。Provisa �
 
 ### 輪詢 {: #polling }
 
-Provisa 會定期重新執行數據來源查詢，只選取 `watermark_column > last_watermark` 的資料列。差異會以 SSE 事件形式發出。輪詢無法偵測到硬刪除——被移除的資料列不會令水位標記推進。若要令刪除操作可見，請使用軟刪除（例如設定 `deleted_at` 旗標）以推進水位標記欄位；該刪除操作其後會以更新事件形式送達，並附帶軟刪除標記。
+Provisa 會定期重新執行數據來源查詢，只選取 `watermark_column > last_watermark` 的資料列。差異會以 SSE 事件形式發出。輪詢無法偵測到硬刪除：被移除的資料列不會令水位標記推進。若要令刪除操作可見，請使用軟刪除（例如設定 `deleted_at` 旗標）以推進水位標記欄位；該刪除操作其後會以更新事件形式送達，並附帶軟刪除標記。
 
 資料表輪詢設定（於 `provisa.yaml` 中）：
 

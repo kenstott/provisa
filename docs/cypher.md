@@ -187,7 +187,7 @@ Rules:
 - The label must resolve to exactly one registered table. Ambiguous or unknown labels are hard errors; no fuzzy matching. New labels or types cannot be created through Cypher.
 - Every write is gated on the target table's write grants: the role needs the `write` right and a grant for the operation, and the columns written must be in the grant. A role without them is rejected at compile time.
 - The backing source connector must support DML. Read-only sources (Trino-federated, Iceberg without a Delta connector) reject writes at translation time.
-- Relationships cannot be written — they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge.
+- Relationships cannot be written: they are derived from the model's declared joins, not stored edges. Targeting a relationship is a hard error. A junction-backed edge is no exception: the associative table behind it is itself a registered table, and rows are written to that table, not to the edge.
 - Writes run through the full write pipeline: RLS injection and post-mutation hooks (response-cache invalidation, materialized-view stale marking, Kafka change events, hot-table reload).
 - `MERGE`, `DETACH DELETE`, and `REMOVE` are unsupported and rejected at parse time.
 
@@ -197,8 +197,8 @@ Rules:
 
 Cypher reaches the same governed pipeline over two transports:
 
-- **HTTP** — `POST /data/cypher` with a JSON body (`{"query": "...", "params": {...}}`). Returns typed rows, or `affected_rows` for writes. Graph variables in the `RETURN` clause serialize as JSON: nodes carry `id`, `label`, `tableLabel`, and `properties`; edges carry `identity`, `start`, `end`, `type`, `properties`, `startNode`, and `endNode`; paths carry `nodes`, `edges`, and `length`/`hops`. Registered commands are also callable here via `CALL fn(args) YIELD col1, col2` — positional args map to the command's declared argument names in order.
-- **Bolt** — a Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. It starts when `PROVISA_BOLT_PORT` is set to a non-zero value and is disabled by default; set `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` for TLS. Bolt auth maps principal to user and database to role: `SHOW DATABASES` lists one entry per (view × role) pair, named `provisa_<role>` (business domains) or `provisa_ops_<role>` (with system/meta/ops domains); `:use` selects the active role and view. Relationships receive durable integer IDs via a `rel_ids` table, mirroring the `node_ids` design. Registered commands are callable with `CALL command(args)` — positional args map to declared argument names in order; `CALL dbms.*` / `CALL db.*` procedures take precedence.
+- **HTTP** — `POST /data/cypher` with a JSON body (`{"query": "...", "params": {...}}`). Returns typed rows, or `affected_rows` for writes. Graph variables in the `RETURN` clause serialize as JSON: nodes carry `id`, `label`, `tableLabel`, and `properties`; edges carry `identity`, `start`, `end`, `type`, `properties`, `startNode`, and `endNode`; paths carry `nodes`, `edges`, and `length`/`hops`. Registered commands are also callable here via `CALL fn(args) YIELD col1, col2`, and positional args map to the command's declared argument names in order.
+- **Bolt** — a Neo4j-compatible binary protocol server (PackStream codec, chunked framing) that lets Neo4j Browser, Bloom, and Bolt drivers run Cypher over the federated graph. It starts when `PROVISA_BOLT_PORT` is set to a non-zero value and is disabled by default; set `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY` for TLS. Bolt auth maps principal to user and database to role: `SHOW DATABASES` lists one entry per (view × role) pair, named `provisa_<role>` (business domains) or `provisa_ops_<role>` (with system/meta/ops domains); `:use` selects the active role and view. Relationships receive durable integer IDs via a `rel_ids` table, mirroring the `node_ids` design. Registered commands are callable with `CALL command(args)`, and positional args map to declared argument names in order; `CALL dbms.*` / `CALL db.*` procedures take precedence.
 
 ### Graph Analytics
 
@@ -210,7 +210,7 @@ Cypher reaches the same governed pipeline over two transports:
 
 ### Design constraints
 
-1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. See §Writes below. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. APOC procedures are also rejected.
+1. **Writes are limited to `CREATE`, `SET`, and `DELETE`.** These execute as direct table writes through the same pipeline as GraphQL and SQL mutations. See §Writes above. `MERGE`, `DETACH DELETE`, and `REMOVE` are rejected at parse time. APOC procedures are also rejected.
 
 2. **Relationship properties exist only on junction-backed edges.** An edge declared over a foreign-key column pair exists only as join metadata in the model and stores no attributes, so `WHERE r.since > 2020` or `RETURN r.weight` means nothing on it. An edge declared over a junction table does carry them. The associative table's remaining columns are the relationship's properties, and `RETURN r` returns them. A `WHERE` on one compiles to a predicate on the junction alias, so it restricts the traversal itself instead of filtering rows after assembly. The junction table is dropped from the node side of the graph schema: it's an edge here and a table everywhere else.
 

@@ -334,7 +334,7 @@ PUT  /admin/org-encryption
 
 ## GraphiQL
 
-The admin API ships with GraphiQL at `GET /admin/graphql` in the browser. Use it to explore the full admin schema interactively.
+The admin API ships with GraphiQL at `GET /admin/graphql` in the browser. Use it to browse the full admin schema and try calls.
 
 ## Ops-domain management views
 

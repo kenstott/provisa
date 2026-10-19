@@ -92,19 +92,11 @@ Terms relate to other terms through typed edges. The supported relationship type
 Relationships are directional. The UI shows both outgoing edges (this term → another) and incoming
 edges (another term → this term), labeling each direction with its own plain-language phrase.
 
-The edges live in `glossary_term_edges`, an associative table declared as a junction relationship
-: its `rel_type` column is the discriminator, so each of the types above is a separate
-Cypher relationship type between two `GlossaryTerm` nodes rather than a property on a reified node.
-The table is provisioned with the rest of the metadata schema and is not shown as a node in graph
-clients — it is the edge. Nothing about it is glossary-specific: it is declared the same way you
-would declare a junction over your own tables, and it is read by the same code.
+The edges live in `glossary_term_edges`, an associative table declared as a junction relationship: its `rel_type` column is the discriminator, so each of the types above is a separate Cypher relationship type between two `GlossaryTerm` nodes rather than a property on a reified node. The table is provisioned with the rest of the metadata schema and is not shown as a node in graph clients: it is the edge. Nothing about it is glossary-specific: it is declared the same way you would declare a junction over your own tables, and it is read by the same code.
 
 ## Abstract terms
 
-An abstract term has no physical column refs of its own. Use one for a business concept that spans
-multiple concrete terms — an umbrella you then wire to the specific terms that do hold columns.
-`revenue`, for example, might be abstract, with `PART_OF` edges from `order amount`, `adjustment
-amount`, and `refund amount` pointing to it.
+An abstract term has no physical column refs of its own. Use one for a business concept that spans multiple concrete terms: an umbrella you then wire to the specific terms that do hold columns. `revenue`, for example, might be abstract, with `PART_OF` edges from `order amount`, `adjustment amount`, and `refund amount` pointing to it.
 
 An abstract term that can't reach any physical column through the relationship graph is a dangling proposal. It doesn't appear in agent term search or in metadata export, because a term that names no data can't answer anything.
 

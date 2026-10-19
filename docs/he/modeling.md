@@ -219,10 +219,9 @@ mutation RegisterFact($input: FactInput!) {
 | `dimensions` | [DimRefInput] | `[]` | זוגות `{ entity, via }` |
 | `visibleTo` | [String] | `["public"]` | רשימת נראות תפקידים |
 
-`MeasureInput`: `{ column: String, agg: String }` — ברירת המחדל של agg היא `"sum"`.
+`MeasureInput`: `{ column: String, agg: String }`; ברירת המחדל של agg היא `"sum"`.
 
-`DimRefInput`: `{ entity: String, via: String }` — `entity` הוא שם ה-entity המופנה;
-`via` היא עמודת ה-FK ב-source ה-fact.
+`DimRefInput`: `{ entity: String, via: String }`; `entity` הוא שם ה-entity המופנה; `via` היא עמודת ה-FK ב-source ה-fact.
 
 בהצלחה, `registerFact` מחזיר הודעה בצורה:
 `Fact 'Sales' registered with 1 dimension link(s)`.

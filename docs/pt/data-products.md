@@ -1,6 +1,6 @@
 # Produtos de dados {: #data-products }
 
-Um produto de dados é um conjunto nomeado e possuído de tabelas publicadas juntas para consumo. É a unidade que o catálogo expõe aos consumidores — não tabelas individuais, mas uma superfície curada que um domínio declara explicitamente como pronta. Os campos seguem o vocabulário do ODPS (Open Data Product Standard) onde o Provisa já detém a fonte da verdade.
+Um produto de dados é um conjunto nomeado e possuído de tabelas publicadas juntas para consumo. É a unidade que o catálogo expõe aos consumidores: um conjunto curado de tabelas que um domínio declarou pronto. Os campos seguem o vocabulário do ODPS (Open Data Product Standard) onde o Provisa já detém a fonte da verdade.
 
 ## Regra de propriedade de domínio {: #domain-ownership-rule }
 
@@ -10,7 +10,7 @@ Um produto que necessite de dados de outro domínio deve importá-los como uma v
 
 ## Portas de saída {: #output-ports }
 
-As tabelas e comandos atribuídos a um produto de dados são suas **portas de saída** — a superfície consultável que os consumidores veem. Atribuir uma tabela define `Table.product_id`; removê-la cancela a associação. Uma tabela pertence a no máximo um produto. Comandos do mesmo domínio também podem ser atribuídos como membros.
+As tabelas e comandos atribuídos a um produto de dados são suas **portas de saída**: a superfície consultável que os consumidores veem. Atribuir uma tabela define `Table.product_id`; removê-la cancela a associação. Uma tabela pertence a no máximo um produto. Comandos do mesmo domínio também podem ser atribuídos como membros.
 
 ## Seções do painel de detalhes {: #detail-panel-sections }
 
@@ -30,7 +30,7 @@ Ao abrir um produto de dados na interface de administração, são exibidos os s
 
 Por padrão, somente tabelas atribuídas a um produto são publicadas em catálogos externos. `build_snapshot` aplica um filtro `data_products_only`: tabelas não atribuídas são retidas, juntamente com suas arestas de relacionamento, arestas de linhagem e tags de governança. Fontes e domínios sempre são publicados independentemente.
 
-Um produto sem membros exportados não é publicado — uma listagem vazia afirmaria que um produto existe sem nada por trás dele.
+Um produto sem membros exportados não é publicado. Uma listagem vazia afirmaria que um produto existe sem nada por trás dele.
 
 Somente catálogos com um conceito nativo de produto de dados o publicam como entidade de primeira classe; os demais publicam as tabelas membro (já filtradas) sem agrupamento por produto:
 

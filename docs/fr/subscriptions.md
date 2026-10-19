@@ -16,7 +16,7 @@ Les subscriptions ciblent une **table enregistrée** :
 
 Provisa installe automatiquement des triggers `AFTER INSERT OR UPDATE OR DELETE` sur toutes les tables PostgreSQL **préapprouvées** au démarrage. Ces triggers appellent `pg_notify('provisa_{table}', ...)` afin que le DML brut (pas seulement les mutations Provisa) soit capté par les subscriptions.
 
-Si l'installation du trigger échoue (par exemple en raison de privilèges insuffisants — le rôle de base de données doit être propriétaire de la table), Provisa recourt au polling par watermark pour cette table, à condition qu'un `watermark_column` soit configuré. Un avertissement est journalisé.
+Si l'installation du trigger échoue (par exemple en raison de privilèges insuffisants, car le rôle de base de données doit être propriétaire de la table), Provisa recourt au polling par watermark pour cette table, à condition qu'un `watermark_column` soit configuré. Un avertissement est journalisé.
 
 ### Subscriptions sur des vues inter-sources de données {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa émet `LISTEN <channel>` sur une connexion PG persistante. Les mutations
 
 ### Polling
 
-Provisa réexécute périodiquement la requête source, en ne sélectionnant que les lignes où `watermark_column > last_watermark`. Les différences sont émises sous forme d'événements SSE. Le polling ne peut pas détecter les suppressions définitives (hard deletes) — une ligne supprimée ne laisse aucun watermark qui progresse. Pour rendre une suppression visible, utilisez une suppression logique (soft delete) (par exemple en activant un indicateur `deleted_at`) qui fait avancer la colonne watermark ; la suppression arrive alors comme un événement de mise à jour portant le marqueur de suppression logique.
+Provisa réexécute périodiquement la requête source, en ne sélectionnant que les lignes où `watermark_column > last_watermark`. Les différences sont émises sous forme d'événements SSE. Le polling ne peut pas détecter les suppressions définitives (hard deletes) : une ligne supprimée ne laisse aucun watermark qui progresse. Pour rendre une suppression visible, utilisez une suppression logique (soft delete) (par exemple en activant un indicateur `deleted_at`) qui fait avancer la colonne watermark ; la suppression arrive alors comme un événement de mise à jour portant le marqueur de suppression logique.
 
 Configuration du polling de table (dans `provisa.yaml`) :
 

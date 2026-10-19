@@ -97,20 +97,11 @@ Les relations sont orientées. L'interface montre à la fois les arêtes sortant
 autre) et les arêtes entrantes (un autre terme → ce terme), en étiquetant chaque direction par sa
 propre formulation en langage courant.
 
-Les arêtes vivent dans `glossary_term_edges`, une table associative déclarée comme relation de jonction
- : sa colonne `rel_type` est le discriminant, de sorte que chacun des types ci-dessus est un
-type de relation Cypher distinct entre deux nœuds `GlossaryTerm`, et non une propriété portée par un nœud
-réifié. La table est provisionnée avec le reste du schéma de métadonnées et n'apparaît pas comme un nœud
-dans les clients graphe — elle est l'arête. Rien en elle n'est spécifique au glossaire : elle se déclare
-exactement comme vous déclareriez une jonction sur vos propres tables, et elle est lue par le même code.
+Les arêtes vivent dans `glossary_term_edges`, une table associative déclarée comme relation de jonction : sa colonne `rel_type` est le discriminant, de sorte que chacun des types ci-dessus est un type de relation Cypher distinct entre deux nœuds `GlossaryTerm`, et non une propriété portée par un nœud réifié. La table est provisionnée avec le reste du schéma de métadonnées et n'apparaît pas comme un nœud dans les clients graphe : elle est l'arête. Rien en elle n'est spécifique au glossaire : elle se déclare exactement comme vous déclareriez une jonction sur vos propres tables, et elle est lue par le même code.
 
 ## Termes abstraits {: #abstract-terms }
 
-Un terme abstrait n'a aucune référence de colonne physique en propre. Employez-en un pour un
-concept métier qui couvre plusieurs termes concrets — un chapeau que vous câblez ensuite vers les
-termes précis qui, eux, portent des colonnes. `revenue`, par exemple, pourrait être abstrait, avec
-des arêtes `PART_OF` venant de `order amount`, `adjustment amount` et `refund amount` pointant vers
-lui.
+Un terme abstrait n'a aucune référence de colonne physique en propre. Employez-en un pour un concept métier qui couvre plusieurs termes concrets : un chapeau que vous câblez ensuite vers les termes précis qui, eux, portent des colonnes. `revenue`, par exemple, pourrait être abstrait, avec des arêtes `PART_OF` venant de `order amount`, `adjustment amount` et `refund amount` pointant vers lui.
 
 Un terme abstrait qui ne peut atteindre aucune colonne physique par le graphe des relations est une proposition en suspens. Il n'apparaît ni dans la recherche de termes des agents ni dans l'export de métadonnées, car un terme qui ne désigne aucune donnée ne peut répondre à rien.
 

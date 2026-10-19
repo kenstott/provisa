@@ -9,7 +9,7 @@ La superficie di amministrazione esegue gli stessi convertitori, quindi un'impor
 1. **Caricamento.** Scegli una directory di metadati Hasura v2 compressa in zip, un progetto DDN compresso in zip, un export di metadati consolidato (`.yaml`/`.json`, incluso l'involucro `{resource_version, metadata}` restituito dall'API dei metadati), o un singolo `.hml`. Lascia il formato su *Rileva automaticamente* a meno che il caricamento non sia ambiguo.
 2. **Mappa i domini** (opzionale). Ogni coppia mappa uno schema v2 o un subgraph DDN a un dominio Provisa; ciò che non viene mappato mantiene il nome originale.
 3. **Converti e anteprima.** Il server converte e restituisce i conteggi, il rapporto di conversione (vedi [Il rapporto](#the-report)) e la configurazione generata. In questo passaggio non viene scritto nulla.
-4. **Rivedi e modifica.** La configurazione è modificabile sul posto — dettagli di connessione, nomi dei domini, nomi dei ruoli. Ciò che applichi è ciò che viene mostrato.
+4. **Rivedi e modifica.** La configurazione è modificabile sul posto: dettagli di connessione, nomi dei domini, nomi dei ruoli. Ciò che applichi è ciò che viene mostrato.
 5. **Applica.** *Applica a questa organizzazione* carica la configurazione e ricostruisce gli schemi dell'organizzazione. Un'importazione si unisce sempre a ciò che l'organizzazione già possiede.
 
 Endpoint: `POST /admin/import/hasura/preview` e `POST /admin/import/hasura/apply`.
@@ -148,7 +148,7 @@ Un export Hasura nomina le colonne senza tipi, e una tabella tracciata senza per
 
 ### Localizzare il progetto HML {: #locate-the-hml-project }
 
-Il convertitore DDN legge direttamente la **directory** di progetto DDN dei file `.hml` — nessun passo di build del supergraph richiesto. Il primo componente di directory sotto la root del progetto viene preso come nome del subgraph; i file sotto `globals/` vengono assegnati al subgraph `globals`.
+Il convertitore DDN legge direttamente la **directory** di progetto DDN dei file `.hml`, senza alcun passo di build del supergraph. Il primo componente di directory sotto la root del progetto viene preso come nome del subgraph; i file sotto `globals/` vengono assegnati al subgraph `globals`.
 
 ### Conversione {: #convert_1 }
 
@@ -190,8 +190,8 @@ I metadati `AggregateExpression` vengono preservati in un file sidecar `*-aggreg
 
 ## Dopo l'import {: #after-import }
 
-1. Esamina il `config.yaml` generato e il rapporto — parti dalle voci di `Redo by hand`
+1. Esamina il `config.yaml` generato e il rapporto. Parti dalle voci di `Redo by hand`
 2. Verifica le credenziali di connessione. Una connessione che l'esportazione leggeva da una variabile d'ambiente arriva vuota; il rapporto la nomina
 3. Avvia Provisa e conferma che le tabelle appaiono nell'Explorer
-4. Esegui le tue query GraphQL esistenti — lo schema è compatibile per i pattern comuni
+4. Esegui le tue query GraphQL esistenti; lo schema è compatibile per i pattern comuni
 5. Invia le query per l'approvazione tramite l'API Admin o la UI prima di abilitare la governance di produzione

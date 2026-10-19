@@ -18,7 +18,7 @@ Un archivo wrapper que solo contiene `includes:` es válido. `load_control_plane
 **Reglas de combinación**
 
 - Las rutas se resuelven en relación con el archivo que incluye. Las rutas absolutas se usan tal cual.
-- Las secciones de tipo lista (`sources`, `tables`, `domains`, `relationships`, `roles`, …) se anexan — las entradas del fragmento van después de las entradas del archivo que incluye.
+- Las secciones de tipo lista (`sources`, `tables`, `domains`, `relationships`, `roles`, …) se anexan, y las entradas del fragmento van después de las entradas del archivo que incluye.
 - Una clave escalar o de mapeo que el archivo que incluye no establece se toma del fragmento.
 - Una clave que ambos archivos establecen con valores distintos es un conflicto; la carga falla, nombrando la clave.
 - Valores idénticos en ambos archivos no son un conflicto.
@@ -787,7 +787,7 @@ relationships:
 Configure `materialize: true` en una relación para generar automáticamente una vista materializada para JOINs entre orígenes. Esto evita consultas federadas costosas precalculando el resultado del JOIN.
 
 - Solo las relaciones entre orígenes generan MVs (los JOINs del mismo origen ya son rápidos)
-- En una relación respaldada por una tabla de unión, la MV cubre el recorrido de dos saltos — salto de origen, salto de la tabla de unión, discriminador y las columnas propias de la tabla de unión como atributos de la arista. La tabla de unión cuenta como una pata, así que una arista es entre orígenes cuando cualquiera de las tres tablas está en un origen distinto
+- En una relación respaldada por una tabla de unión, la MV cubre el recorrido de dos saltos: salto de origen, salto de la tabla de unión, discriminador y las columnas propias de la tabla de unión como atributos de la arista. La tabla de unión cuenta como una pata, así que una arista es entre orígenes cuando cualquiera de las tres tablas está en un origen distinto
 - La MV comienza obsoleta y se puebla mediante el bucle de actualización en segundo plano
 - Las mutaciones sobre cualquiera de las tablas de origen marcan la MV como obsoleta para su reactualización
 - `refresh_interval` por defecto es de 300 segundos (5 minutos)
@@ -1414,7 +1414,7 @@ Provisa tiene dos vías de exportación OTLP independientes: su collector intern
 | `redact_sql_literals` | bool | `true` | Reemplaza los literales de cadena y numéricos en `db.statement` con `?` |
 | `redact_attributes` | list[str] | `[]` | Claves de atributo eliminadas por completo de cada span |
 
-Ejemplo de `db.statement` redactado — con `redact_sql_literals: true`, este atributo de span:
+Un `db.statement` redactado. Con `redact_sql_literals: true`, este atributo de span:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1575,7 +1575,7 @@ El almacén de materialización usa por defecto `TENANT_DATABASE_URL`.
 
 #### Motores de bases de datos relacionales (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) y `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-Una clave por cada base de datos relacional accesible por red, todas sobre el mismo runtime de solo aterrizaje (sin federación a orígenes externos): cada origen aterriza en el almacén y se consulta ahí. La clave selecciona la base de datos; `PROVISA_ENGINE_URL` lleva el DSN que su dialecto admite. `sqlalchemy` es el comodín para una base de datos sin clave propia. No se ofrecen almacenes embebidos en archivo (SQLite, Access) — el servidor debe ser accesible por red.
+Una clave por cada base de datos relacional accesible por red, todas sobre el mismo runtime de solo aterrizaje (sin federación a orígenes externos): cada origen aterriza en el almacén y se consulta ahí. La clave selecciona la base de datos; `PROVISA_ENGINE_URL` lleva el DSN que su dialecto admite. `sqlalchemy` es el comodín para una base de datos sin clave propia. No se ofrecen almacenes embebidos en archivo (SQLite, Access), porque el servidor debe ser accesible por red.
 
 ```bash
 PROVISA_ENGINE=mysql

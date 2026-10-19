@@ -18,7 +18,7 @@ includes:
 **合并规则**
 
 - 路径相对于包含文件解析。绝对路径按原样使用。
-- 列表类小节（`sources`、`tables`、`domains`、`relationships`、`roles` 等）采用追加方式——片段中的条目跟在包含文件的条目之后。
+- 列表类小节（`sources`、`tables`、`domains`、`relationships`、`roles` 等）采用追加方式，片段中的条目跟在包含文件的条目之后。
 - 包含文件未设置的标量或映射键，取自片段。
 - 两个文件对同一个键设置了不同的值，视为冲突；加载失败，并指出冲突的键。
 - 两个文件中的相同值不视为冲突。
@@ -787,7 +787,7 @@ relationships:
 在关系上设置 `materialize: true`，可为跨数据源 JOIN 自动生成物化视图。这可以避免昂贵的联邦查询，通过预先计算 JOIN 结果实现。
 
 - 只有跨数据源的关系才会生成物化视图（同数据源的 JOIN 本身已经很快）
-- 对于以关联表（junction）为支撑的关系，物化视图覆盖的是两跳遍历——源表这一跳、关联表这一跳、判别器，以及关联表自身的列作为边属性。关联表本身也算一跳，因此只要三张表中任意一张位于不同的数据源，该边就算跨数据源
+- 对于以关联表（junction）为支撑的关系，物化视图覆盖的是两跳遍历：源表这一跳、关联表这一跳、判别器，以及关联表自身的列作为边属性。关联表本身也算一跳，因此只要三张表中任意一张位于不同的数据源，该边就算跨数据源
 - 物化视图起始状态为过期（stale），由后台刷新循环负责填充
 - 对任一源表的变更（Mutation）会将该物化视图标记为过期，等待重新刷新
 - `refresh_interval` 默认值为 300 秒（5 分钟）
@@ -1414,7 +1414,7 @@ Provisa 有两条相互独立的 OTLP 导出路径：您的内部 collector，�
 | `redact_sql_literals` | bool | `true` | 将 `db.statement` 中的字符串和数字字面值替换为 `?` |
 | `redact_attributes` | list[str] | `[]` | 从每个跨度中完全删除的属性键 |
 
-涂黑后的 `db.statement` 示例——当 `redact_sql_literals: true` 时，这个跨度属性：
+涂黑后的 `db.statement` 示例。当 `redact_sql_literals: true` 时，这个跨度属性：
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1575,7 +1575,7 @@ PROVISA_ENGINE=synapse
 
 #### 关系型数据库引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）以及 `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-每种可通过网络访问的关系型数据库对应一个键，全部运行在同一个仅落地（land-only）的运行时上（不联邦到外部数据源）：每个数据源都落地到存储中并在那里被查询。该键选择数据库；`PROVISA_ENGINE_URL` 携带其方言所需的 DSN。`sqlalchemy` 是没有专属键的数据库的通用回退项。不提供文件内嵌式存储（SQLite、Access）——服务器必须可通过网络访问。
+每种可通过网络访问的关系型数据库对应一个键，全部运行在同一个仅落地（land-only）的运行时上（不联邦到外部数据源）：每个数据源都落地到存储中并在那里被查询。该键选择数据库；`PROVISA_ENGINE_URL` 携带其方言所需的 DSN。`sqlalchemy` 是没有专属键的数据库的通用回退项。不提供文件内嵌式存储（SQLite、Access），因为服务器必须可通过网络访问。
 
 ```bash
 PROVISA_ENGINE=mysql

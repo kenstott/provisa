@@ -18,7 +18,7 @@ Un file wrapper che contiene solo `includes:` è valido. `load_control_plane` le
 **Regole di unione**
 
 - I percorsi vengono risolti relativamente al file che include. I percorsi assoluti vengono usati così come sono.
-- Le sezioni elenco (`sources`, `tables`, `domains`, `relationships`, `roles`, …) vengono accodate — le voci del frammento seguono quelle del file che include.
+- Le sezioni elenco (`sources`, `tables`, `domains`, `relationships`, `roles`, …) vengono accodate, e le voci del frammento seguono quelle del file che include.
 - Una chiave scalare o mapping non impostata dal file che include viene presa dal frammento.
 - Una chiave impostata da entrambi i file con valori diversi è un conflitto; il caricamento fallisce, nominando la chiave.
 - Valori identici in entrambi i file non sono un conflitto.
@@ -787,7 +787,7 @@ relationships:
 Imposta `materialize: true` su una relazione per generare automaticamente una vista materializzata per i JOIN cross-source. Questo evita costose query federate pre-calcolando il risultato del JOIN.
 
 - Solo le relazioni cross-source generano MV (i JOIN sulla stessa origine sono già veloci)
-- Su una relazione basata su una giunzione la MV copre la traversata a due salti — salto di origine, salto della giunzione, discriminante e le colonne proprie della giunzione come attributi dell'arco. La giunzione conta come una gamba, quindi un arco è cross-source quando una qualsiasi delle tre tabelle sta in un'origine diversa
+- Su una relazione basata su una giunzione la MV copre la traversata a due salti: salto di origine, salto della giunzione, discriminante e le colonne proprie della giunzione come attributi dell'arco. La giunzione conta come una gamba, quindi un arco è cross-source quando una qualsiasi delle tre tabelle sta in un'origine diversa
 - La MV parte stale e viene popolata dal loop di refresh in background
 - Le mutation su una delle due tabelle sorgente marcano la MV come stale per un nuovo refresh
 - `refresh_interval` è di default 300 secondi (5 minuti)
@@ -1414,7 +1414,7 @@ Provisa gestisce due percorsi di esportazione OTLP indipendenti: il vostro colle
 | `redact_sql_literals` | bool | `true` | Sostituisce i letterali stringa e numerici in `db.statement` con `?` |
 | `redact_attributes` | list[str] | `[]` | Chiavi di attributo eliminate completamente da ogni span |
 
-Esempio di `db.statement` redatto — con `redact_sql_literals: true`, questo attributo di span:
+Un `db.statement` redatto. Con `redact_sql_literals: true`, questo attributo di span:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1575,7 +1575,7 @@ Lo store di materializzazione è di default `TENANT_DATABASE_URL`.
 
 #### Motori di database relazionali (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) e `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-Una chiave per ogni database relazionale raggiungibile in rete, tutte sullo stesso runtime solo-land (nessuna federazione verso origini esterne): ogni origine atterra nello store e viene interrogata lì. La chiave seleziona il database; `PROVISA_ENGINE_URL` porta il DSN richiesto dal suo dialetto. `sqlalchemy` è il jolly per un database privo di una propria chiave. Gli store file-embedded (SQLite, Access) non sono offerti — il server deve essere raggiungibile in rete.
+Una chiave per ogni database relazionale raggiungibile in rete, tutte sullo stesso runtime solo-land (nessuna federazione verso origini esterne): ogni origine atterra nello store e viene interrogata lì. La chiave seleziona il database; `PROVISA_ENGINE_URL` porta il DSN richiesto dal suo dialetto. `sqlalchemy` è il jolly per un database privo di una propria chiave. Gli store file-embedded (SQLite, Access) non sono offerti, perché il server deve essere raggiungibile in rete.
 
 ```bash
 PROVISA_ENGINE=mysql

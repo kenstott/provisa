@@ -86,9 +86,7 @@ Setzen Sie sie, um die Standardwerte zu überschreiben, die `load_profile("nativ
 5. Schema-Drift-Prüfung — durchsucht die laufende Control Plane nach fehlenden Spalten. Werden welche gefunden,
    wird ein `--reset`-Hinweis ausgegeben und mit Code 1 beendet. V1 kennt keine Migrationen; eine in einem
    neueren Release hinzugefügte Spalte erfordert einen Reset.
-6. Beide Server starten gleichzeitig. Der Ready-Announcer pollt `GET /ready` (nicht `/health` — der
-   `/ready`-Endpunkt bestätigt, dass der Store angebunden und die Engine warmgelaufen ist) und öffnet den Browser,
-   sobald 200 zurückkommt.
+6. Beide Server starten gleichzeitig. Der Ready-Announcer pollt `GET /ready` (nicht `/health`, denn der `/ready`-Endpunkt bestätigt, dass der Store angebunden und die Engine warmgelaufen ist) und öffnet den Browser, sobald 200 zurückkommt.
 
 ### Exit-Codes
 

@@ -86,9 +86,7 @@ Impostale per sovrascrivere i default che `load_profile("native", ...)` altrimen
 5. Controllo di drift dello schema — scansiona il control plane live per colonne mancanti. Se ne vengono trovate,
    stampa un suggerimento per `--reset` ed esce con codice 1. V1 non ha migrazioni; una colonna aggiunta in una
    release più recente richiede un reset.
-6. Entrambi i server si avviano contemporaneamente. Il ready announcer esegue il polling di `GET /ready` (non `/health` — l'endpoint
-   `/ready` conferma che lo store è collegato e il motore è pronto) e apre il browser
-   quando restituisce 200.
+6. Entrambi i server si avviano contemporaneamente. Il ready announcer esegue il polling di `GET /ready` (non `/health`, perché l'endpoint `/ready` conferma che lo store è collegato e il motore è pronto) e apre il browser quando restituisce 200.
 
 ### Codici di uscita {: #exit-codes }
 

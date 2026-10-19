@@ -218,10 +218,9 @@ mutation RegisterFact($input: FactInput!) {
 | `dimensions` | [DimRefInput] | `[]` | `{ entity, via }` 对 |
 | `visibleTo` | [String] | `["public"]` | 角色可见性列表 |
 
-`MeasureInput`：`{ column: String, agg: String }`——agg 默认为 `"sum"`。
+`MeasureInput`：`{ column: String, agg: String }`；agg 默认为 `"sum"`。
 
-`DimRefInput`：`{ entity: String, via: String }`——`entity` 是被引用的 entity 名称；
-`via` 是 fact 数据源上的 FK 列。
+`DimRefInput`：`{ entity: String, via: String }`；`entity` 是被引用的 entity 名称； `via` 是 fact 数据源上的 FK 列。
 
 成功时，`registerFact` 返回如下形式的消息：
 `Fact 'Sales' registered with 1 dimension link(s)`。

@@ -16,7 +16,7 @@ Provisa 通过 Server-Sent Events（SSE）支持实时推送。客户端可接�
 
 Provisa 在启动时，会自动在所有**已预先批准**的 PostgreSQL 数据表上安装 `AFTER INSERT OR UPDATE OR DELETE` 触发器。这些触发器会调用 `pg_notify('provisa_{table}', ...)`，使原始 DML（不仅限于 Provisa 的变更操作）也能被订阅捕获。
 
-如触发器安装失败（例如权限不足——数据库角色必须拥有该数据表的所有权），Provisa 会回退到该数据表的水位线轮询，前提是已配置 `watermark_column`。系统会记录一条警告。
+如触发器安装失败（例如权限不足，因为数据库角色必须拥有该数据表的所有权），Provisa 会回退到该数据表的水位线轮询，前提是已配置 `watermark_column`。系统会记录一条警告。
 
 ### 跨数据源视图订阅 {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa 会在一条持久的 PG 连接上发出 `LISTEN <channel>`。Provisa �
 
 ### 轮询 {: #polling }
 
-Provisa 会定期重新执行数据源查询，只选取 `watermark_column > last_watermark` 的数据行。差异会以 SSE 事件形式发出。轮询无法检测到硬删除——被移除的数据行不会推进水位线。若要使删除操作可见，请使用软删除（例如设置 `deleted_at` 标志）以推进水位线列；该删除操作随后会以更新事件形式到达，并携带软删除标记。
+Provisa 会定期重新执行数据源查询，只选取 `watermark_column > last_watermark` 的数据行。差异会以 SSE 事件形式发出。轮询无法检测到硬删除：被移除的数据行不会推进水位线。若要使删除操作可见，请使用软删除（例如设置 `deleted_at` 标志）以推进水位线列；该删除操作随后会以更新事件形式到达，并携带软删除标记。
 
 数据表轮询配置（在 `provisa.yaml` 中）：
 

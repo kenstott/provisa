@@ -92,19 +92,11 @@ Termos se relacionam com outros termos através de arestas tipadas. Os tipos de 
 Relacionamentos são direcionais. A UI mostra tanto arestas de saída (este termo → outro) quanto arestas
 de entrada (outro termo → este termo), rotulando cada direção com sua própria frase em linguagem simples.
 
-As arestas vivem em `glossary_term_edges`, uma tabela associativa declarada como relação de junção
-: a coluna `rel_type` é o discriminador, de modo que cada um dos tipos acima é um tipo de
-relação Cypher distinto entre dois nós `GlossaryTerm`, e não uma propriedade de um nó reificado. A tabela
-é provisionada com o restante do esquema de metadados e não aparece como nó nos clientes de grafo — ela
-é a aresta. Nada nela é específico do glossário: é declarada do mesmo modo que você declararia uma junção
-sobre as suas próprias tabelas, e é lida pelo mesmo código.
+As arestas vivem em `glossary_term_edges`, uma tabela associativa declarada como relação de junção: a coluna `rel_type` é o discriminador, de modo que cada um dos tipos acima é um tipo de relação Cypher distinto entre dois nós `GlossaryTerm`, e não uma propriedade de um nó reificado. A tabela é provisionada com o restante do esquema de metadados e não aparece como nó nos clientes de grafo: ela é a aresta. Nada nela é específico do glossário: é declarada do mesmo modo que você declararia uma junção sobre as suas próprias tabelas, e é lida pelo mesmo código.
 
 ## Termos abstratos {: #abstract-terms }
 
-Um termo abstrato não tem refs de coluna física próprios. Use um para um conceito de negócio que abrange
-múltiplos termos concretos — um guarda-chuva que você então liga aos termos específicos que de fato contêm colunas.
-`revenue`, por exemplo, poderia ser abstrato, com arestas `PART_OF` vindas de `order amount`, `adjustment
-amount` e `refund amount` apontando para ele.
+Um termo abstrato não tem refs de coluna física próprios. Use um para um conceito de negócio que abrange múltiplos termos concretos: um guarda-chuva que você então liga aos termos específicos que de fato contêm colunas. `revenue`, por exemplo, poderia ser abstrato, com arestas `PART_OF` vindas de `order amount`, `adjustment amount` e `refund amount` apontando para ele.
 
 Um termo abstrato que não alcança nenhuma coluna física pelo grafo de relacionamentos é uma proposta solta. Ele não aparece na busca de termos dos agentes nem na exportação de metadados, porque um termo que não nomeia dados não pode responder nada.
 

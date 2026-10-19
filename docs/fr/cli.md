@@ -86,9 +86,7 @@ Définissez-les pour surcharger les défauts que `load_profile("native", ...)` a
 5. Vérification de dérive de schéma — scrute le plan de contrôle en direct à la recherche de colonnes manquantes. Si des colonnes sont trouvées,
    affiche une invite `--reset` et sort avec le code 1. V1 n'a pas de migrations ; une colonne ajoutée dans une
    version plus récente nécessite une réinitialisation.
-6. Les deux serveurs démarrent simultanément. L'annonceur de disponibilité sonde `GET /ready` (pas `/health` — le
-   point d'entrée `/ready` confirme que le magasin est rattaché et que le moteur est chaud) et ouvre le navigateur
-   dès qu'il retourne 200.
+6. Les deux serveurs démarrent simultanément. L'annonceur de disponibilité sonde `GET /ready` (pas `/health`, car le point d'entrée `/ready` confirme que le magasin est rattaché et que le moteur est chaud) et ouvre le navigateur dès qu'il retourne 200.
 
 ### Codes de sortie {: #exit-codes }
 
