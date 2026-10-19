@@ -1119,6 +1119,20 @@ CREATE TABLE IF NOT EXISTS synthetic_generations (
     seconds       DOUBLE PRECISION NOT NULL
 );
 
+-- REQ-2091: the adequacy checks Provisa runs on each sensitive column's fake and synthetic rule,
+-- one row per check per run; the sensitive_coverage view reads each check's latest. A result is
+-- a share or a count and a reason, never a value.
+CREATE TABLE IF NOT EXISTS fake_adequacy_checks (
+    table_id      INTEGER REFERENCES registered_tables(id) ON DELETE CASCADE,
+    column_name   TEXT NOT NULL,
+    check_name    TEXT NOT NULL,
+    checked_at    TIMESTAMPTZ NOT NULL,
+    status        TEXT NOT NULL,
+    measure       DOUBLE PRECISION,
+    detail        TEXT NOT NULL,
+    PRIMARY KEY (table_id, column_name, check_name, checked_at)
+);
+
 CREATE TABLE IF NOT EXISTS synthetic_source_bindings (
     source_id     TEXT PRIMARY KEY REFERENCES sources(id) ON DELETE CASCADE,
     previous      JSONB NOT NULL
