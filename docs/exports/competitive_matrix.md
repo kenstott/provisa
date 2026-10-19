@@ -83,7 +83,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 **Compile-time enforcement, not runtime checks.** Provisa's two-stage compiler (Stage 1: GraphQL→SQL; Stage 2: AST rewrite) applies RLS, column masking, and sampling before any query reaches a data source. Stage 2 operates independently on any SQL string — including JDBC, DB-API, and pgwire traffic — so there is no ungoverned access path regardless of protocol. [tool-verified: REQ-001, REQ-002, REQ-038, REQ-262–266]
 
-**Pluggable approval hook with three transports.** The ABAC approval hook supports HTTP callback, persistent gRPC channel with circuit breaker, and inline function — chosen per source. gRPC channels are kept warm; there is no reconnect overhead per query. [tool-verified: REQ-246, REQ-555, REQ-556]
+**Pluggable approval hook with three transports.** The ABAC approval hook supports HTTP callback, persistent gRPC channel with circuit breaker, and inline function, chosen per source. gRPC channels are kept warm; there is no reconnect overhead per query. [tool-verified: REQ-246, REQ-555, REQ-556]
 
 **Server-assigned roles, no client override.** All clients (DB-API, SQLAlchemy, ADBC, JDBC, pgwire) authenticate with username/password. The server assigns the role; no client-supplied role parameter is accepted. Trino and Dremio allow session-level role overrides. Provisa does not. [tool-verified: REQ-273]
 
@@ -101,7 +101,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 ### Source Federation
 
-**Live no-restart source registration.** Registering a new source takes effect immediately via the Trino dynamic catalog API. Tables are default-invisible until a steward explicitly grants visibility per role — the opposite of most platforms, where new sources expose everything. [tool-verified: REQ-012, REQ-013, REQ-014]
+**Live no-restart source registration.** Registering a new source takes effect immediately via the Trino dynamic catalog API. Tables are default-invisible until a steward explicitly grants visibility per role. That is the opposite of most platforms, where new sources expose everything. [tool-verified: REQ-012, REQ-013, REQ-014]
 
 **Federation breadth beyond SQL.** Connectors include Neo4j (Cypher), SPARQL 1.1 triplestores, gRPC sources with proto auto-generation, OpenAPI endpoints with full auto-discovery, WebSocket sources, RSS feeds, and an ingest/push receiver. S3/Iceberg caching materializes remote API results for federation joins. Dremio covers data lake sources; Hasura covers PostgreSQL-family. No competitor spans this range. [tool-verified: REQ-295, REQ-297, REQ-309, REQ-316–318, REQ-322–327, REQ-331, REQ-338, REQ-342]
 
@@ -113,7 +113,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 **Client-controlled redirect format and threshold.** Clients set `X-Provisa-Redirect-Format` and `X-Provisa-Redirect-Threshold` headers inline with the query call. No other platform allows per-request redirect control via headers; competitors use server-side configuration or separate export APIs. [tool-verified: REQ-137]
 
-**LIMIT threshold+1 probe for redirect decision.** When threshold-based redirect is configured, Provisa runs a single `LIMIT threshold+1` probe — no COUNT(*), no re-execution. The cost of the redirect decision is bounded to one extra row read. [tool-verified: REQ-140]
+**LIMIT threshold+1 probe for redirect decision.** When threshold-based redirect is configured, Provisa runs a single `LIMIT threshold+1` probe, with no COUNT(*) and no re-execution. The cost of the redirect decision is bounded to one extra row read. [tool-verified: REQ-140]
 
 ### Live Data
 
@@ -127,7 +127,7 @@ Legend: **A** = Provisa ahead, **P** = parity, **G** = gap (Provisa behind or in
 
 **Hasura v2 and DDN migration converters.** CLI tools convert Hasura v2 metadata exports and Hasura DDN supergraph projects to valid Pydantic-validated Provisa YAML config, preserving tables, relationships, column visibility, write grants, RLS filters, and auth config. No competitor provides tooling to import Hasura configuration. [tool-verified: REQ-182, REQ-183, REQ-185–193]
 
-**Dual OTLP export with default SQL redaction.** Operators send telemetry to their own collector and optionally to Provisa support. The support path defaults to redacting SQL literals — query data does not leave the operator's infrastructure unless explicitly enabled. [tool-verified: REQ-545, REQ-547]
+**Dual OTLP export with default SQL redaction.** Operators send telemetry to their own collector and optionally to Provisa support. The support path defaults to redacting SQL literals, so query data does not leave the operator's infrastructure unless explicitly enabled. [tool-verified: REQ-545, REQ-547]
 
 ---
 
@@ -137,7 +137,7 @@ These requirements have `competitive_position.status: gap` in `docs/arch/require
 
 ### JSON:API Connector (REQ-656 through REQ-660) — Planned Unique Feature [tool-verified]
 
-The JSON:API source connector is in-progress (target 2026-Q3). No competitor natively federates JSON:API-compliant sources with governance — this is not a gap versus competitors but a differentiated planned capability:
+The JSON:API source connector is in-progress (target 2026-Q3). No competitor natively federates JSON:API-compliant sources with governance. This is not a gap versus competitors but a differentiated planned capability:
 
 - **REQ-656** — JSON:API connector foundation
 - **REQ-657** — Include-based relationship expansion (`?include=`)
@@ -177,29 +177,29 @@ Applications using Provisa for Neo4j must treat data as read-only today. Native 
 
 Trino is Provisa's federation engine, not a competitor in the governance sense. The comparison applies when buyers consider using Trino directly, without a governance layer.
 
-Trino exposes all tables in registered catalogs to every user with catalog access. There is no pre-approval registry, no column masking, no domain-scoped visibility. Schema browsers see the full catalog — visibility is not role-scoped at the metadata layer. Provisa's `getColumns()` returns only the columns the authenticated role may see; Trino's JDBC driver returns all columns and relies on query-time enforcement.
+Trino exposes all tables in registered catalogs to every user with catalog access. There is no pre-approval registry, no column masking, no domain-scoped visibility. Schema browsers see the full catalog, because visibility is not role-scoped at the metadata layer. Provisa's `getColumns()` returns only the columns the authenticated role may see; Trino's JDBC driver returns all columns and relies on query-time enforcement.
 
 Trino does not have a pgwire endpoint, Arrow Flight endpoint, or ADBC client library. Provisa adds all three while keeping Trino as the execution engine for cross-source federation. The `@provisa` federation hint vocabulary abstracts Trino session property names, so query authors and source configs are decoupled from engine version changes. [tool-verified: REQ-279, REQ-281]
 
-One area where Trino leads: running ANALYZE on source registration (REQ-275) and on-demand statistics refresh (REQ-276) are native Trino practices — Provisa integrates them but does not extend them.
+One area where Trino leads: running ANALYZE on source registration (REQ-275) and on-demand statistics refresh (REQ-276) are native Trino practices; Provisa integrates them but does not extend them.
 
 ### Hasura
 
 Hasura is the closest architectural neighbor. Both provide a GraphQL layer over data sources with role-based access. The differences are structural.
 
-Hasura enforces permissions at the GraphQL layer via row-level boolean expression filters baked into the schema. Provisa enforces governance at SQL generation time and re-enforces it at execution time via the Stage 2 AST rewrite. A caller who obtains raw SQL access to Hasura's underlying PostgreSQL bypasses all permissions. With Provisa, Stage 2 is the only path — there is no raw-SQL shortcut, including over JDBC, DB-API, SQLAlchemy, and pgwire.
+Hasura enforces permissions at the GraphQL layer via row-level boolean expression filters baked into the schema. Provisa enforces governance at SQL generation time and re-enforces it at execution time via the Stage 2 AST rewrite. A caller who obtains raw SQL access to Hasura's underlying PostgreSQL bypasses all permissions. With Provisa, Stage 2 is the only path. There is no raw-SQL shortcut, including over JDBC, DB-API, SQLAlchemy, and pgwire.
 
 Hasura's subscription model watches a single table. Provisa watches all physical tables touched by a subscription's join walk. Hasura has separate event trigger and subscription systems; Provisa's Unified Live Query Engine serves both from one poll loop.
 
 Hasura does not ship migration tooling for teams moving away from it. Provisa ships both a v2 metadata converter and a DDN HML converter, both producing Pydantic-validated output that starts Provisa without manual fixup. [tool-verified: REQ-182, REQ-183, REQ-193]
 
-APQ governance gating is a material difference: Hasura caches APQ hashes regardless of caller role at registration time. Provisa gates registration on the governance check — a query that exceeds the caller's rights cannot be hash-registered. [tool-verified: REQ-291]
+APQ governance gating is a material difference: Hasura caches APQ hashes regardless of caller role at registration time. Provisa gates registration on the governance check, so a query that exceeds the caller's rights cannot be hash-registered. [tool-verified: REQ-291]
 
 ### Denodo
 
 Denodo is a virtual data integration platform targeting enterprise data governance. It enforces policies at the virtualization layer via row and column restrictions defined per view.
 
-Denodo does not expose a pgwire endpoint, Arrow Flight endpoint, or ADBC client. Its governance model applies at view definition time — BI tool users connecting directly to a base view can sometimes bypass policies. Provisa's Stage 2 AST rewrite applies on every query regardless of how the client connects. [tool-verified: REQ-130, REQ-272]
+Denodo does not expose a pgwire endpoint, Arrow Flight endpoint, or ADBC client. Its governance model applies at view definition time, so BI tool users connecting directly to a base view can sometimes bypass policies. Provisa's Stage 2 AST rewrite applies on every query regardless of how the client connects. [tool-verified: REQ-130, REQ-272]
 
 Denodo's source connector set covers relational and LDAP sources; it does not federate Neo4j, SPARQL endpoints, gRPC services, WebSocket streams, or RSS feeds. Provisa's connector catalog is broader. [inferred from connector group requirements]
 
@@ -209,7 +209,7 @@ Denodo has no equivalent to the creation-request queue, the composable capabilit
 
 Dremio is a lakehouse query engine and data virtualization platform. Its strongest area is analytical performance via reflections (materialized views) and native Parquet/Iceberg support.
 
-Dremio does expose Arrow Flight — but only for its own lakehouse engine. Provisa exposes Arrow Flight across all federated sources, including relational, API, and graph sources, with the full governance pipeline applied at the Flight layer. [tool-verified: REQ-143]
+Dremio does expose Arrow Flight, but only for its own lakehouse engine. Provisa exposes Arrow Flight across all federated sources, including relational, API, and graph sources, with the full governance pipeline applied at the Flight layer. [tool-verified: REQ-143]
 
 Dremio's JDBC driver applies policies at reflection or dataset definition level, not uniformly at the wire. A developer with access to a base dataset bypasses reflection-level filters. Provisa has no ungoverned JDBC path. [tool-verified: REQ-272]
 
@@ -223,7 +223,7 @@ Snowflake and BigQuery are managed cloud data warehouses. The comparison applies
 
 Neither platform runs as an on-premise or airgapped deployment in any meaningful sense. Provisa's AppImage installer works in environments with no internet access. [tool-verified: REQ-294]
 
-Snowflake enforces column masking at the column policy level. It does not apply masking across federated sources — Snowflake is its own data store. Provisa federates 20+ source types with a single masking and RLS model that applies uniformly. [tool-verified: REQ-130]
+Snowflake enforces column masking at the column policy level. It does not apply masking across federated sources, since Snowflake is its own data store. Provisa federates 20+ source types with a single masking and RLS model that applies uniformly. [tool-verified: REQ-130]
 
 BigQuery has no pgwire endpoint and no Arrow Flight client. Both Snowflake and BigQuery allow role overrides in client session configuration; Provisa does not accept client-supplied role parameters. [tool-verified: REQ-273]
 
