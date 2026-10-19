@@ -26,7 +26,7 @@ from pathlib import Path
 
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.sandbox import sandboxed
-from provisa.codesource.worker import HostCommand, private_environment
+from provisa.codesource.worker import CODE_HASH_ENV, HostCommand, private_environment
 
 HOST = Path(__file__).with_name("host.mjs")
 
@@ -102,6 +102,7 @@ def host_command(
                 "--no-prompt",
                 f"--allow-read={readable}",
                 f"--allow-write={socket.parent}",
+                f"--allow-env={CODE_HASH_ENV}",  # the hello names its code (REQ-2098)
             ]
             # The socket is a net address to Deno; the allow-list's hosts are the only others.
             argv.append(f"--allow-net={','.join([f'unix:{socket}', *egress])}")

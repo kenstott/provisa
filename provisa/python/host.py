@@ -42,6 +42,8 @@ import traceback
 import typing
 
 BATCH = 1000
+#: The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
+PROTOCOL = 1
 _EXACT = 2**53 - 1
 _HEAD = struct.Struct(">I")
 _DONE = object()
@@ -224,7 +226,14 @@ async def run(address: str, code: str, entry: str) -> None:
         sock.connect(address)
     reader, writer = await asyncio.open_connection(sock=sock)
     host = Host(module, writer)
-    await host.send({"op": "hello", "exports": exported(module)})
+    await host.send(
+        {
+            "op": "hello",
+            "protocol": PROTOCOL,
+            "code_hash": os.environ["PROVISA_CODE_HASH"],
+            "exports": exported(module),
+        }
+    )
     while True:
         try:
             head = await reader.readexactly(_HEAD.size)
@@ -232,6 +241,9 @@ async def run(address: str, code: str, entry: str) -> None:
         except (asyncio.IncompleteReadError, ConnectionError):
             return  # the socket closed: Provisa stopped the worker
         op = message["op"]
+        if op == "refused":
+            sys.stderr.write(f"provisa refused this host: {message['message']}\n")
+            raise SystemExit(2)
         if op == "ping":
             await host.send({"op": "pong", "id": message["id"]})
         elif op == "cancel":

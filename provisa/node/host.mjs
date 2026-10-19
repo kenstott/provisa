@@ -20,8 +20,13 @@
 //
 //   Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names}
 //                    {op: "cancel", id}      {op: "ping", id}
-//   host -> Provisa  {op: "hello", exports}  {op: "rows", id, rows}  {op: "value", id, value}
+//   host -> Provisa  {op: "hello", protocol, code_hash, exports}
+//                    {op: "rows", id, rows}  {op: "value", id, value}
 //                    {op: "end", id}         {op: "error", id, message, stack}  {op: "pong", id}
+//   Provisa -> host  {op: "refused", message}, when it refuses this host's protocol or code
+//
+// REQ-2098: the hello names the protocol this host speaks and the content hash of its code
+// (PROVISA_CODE_HASH in its environment), which Provisa checks.
 
 import fs from "node:fs";
 import net from "node:net";
@@ -29,6 +34,8 @@ import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const BATCH = 1000;
+// The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
+const PROTOCOL = 1;
 const [socketPath, entry] = process.argv.slice(2);
 const bundle = await import(pathToFileURL(entry).href);
 
@@ -124,6 +131,10 @@ async function serve({ id, export: name, kind, args }) {
 }
 
 function dispatch(message) {
+  if (message.op === "refused") {
+    process.stderr.write(`provisa refused this host: ${message.message}\n`);
+    process.exit(2);
+  }
   if (message.op === "ping") return send({ op: "pong", id: message.id });
   if (message.op === "cancel") {
     const state = running.get(message.id);
@@ -152,7 +163,9 @@ socket.on("data", (chunk) => {
     dispatch(JSON.parse(body));
   }
 });
-if (inherited) send({ op: "hello", exports: Object.keys(bundle) });
-else socket.on("connect", () => send({ op: "hello", exports: Object.keys(bundle) }));
+const hello = () =>
+  send({ op: "hello", protocol: PROTOCOL, code_hash: process.env.PROVISA_CODE_HASH, exports: Object.keys(bundle) });
+if (inherited) hello();
+else socket.on("connect", hello);
 socket.on(inherited ? "end" : "close", () => process.exit(0));
 socket.on("error", () => process.exit(1));

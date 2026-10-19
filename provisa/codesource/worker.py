@@ -25,8 +25,15 @@ the order ``args`` gives them, for a host whose language passes arguments by nam
 
     Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names}
                      {op: "cancel", id}      {op: "ping", id}
-    host -> Provisa  {op: "hello", exports}  {op: "rows", id, rows}  {op: "value", id, value}
+    host -> Provisa  {op: "hello", protocol, code_hash, exports}
+                     {op: "rows", id, rows}  {op: "value", id, value}
                      {op: "end", id}         {op: "error", id, message, stack}  {op: "pong", id}
+    Provisa -> host  {op: "refused", message}, in place of any call, before the socket closes
+
+The hello names the protocol the host speaks (:data:`PROTOCOL`) and the content hash of the code
+it runs (``PROVISA_CODE_HASH`` in its environment: the worker gives it, an image built for a
+remote host carries it). A host that speaks another protocol, or runs other code than the source
+registered, is refused by name (REQ-2098).
 
 A call blocks its request's thread, as every driver call does (REQ-1882), and is cancelled through
 the request's deadline (:func:`provisa.core.request_deadline.cancel_on_deadline`): the host is
@@ -57,6 +64,12 @@ from pathlib import Path
 from typing import Any
 
 from provisa.core import request_deadline
+
+#: The protocol the hosts speak; a host built for another one is refused by name (REQ-2098).
+PROTOCOL = 1
+
+#: The variable a host reads the content hash of its code from, which its hello names.
+CODE_HASH_ENV = "PROVISA_CODE_HASH"
 
 #: How long a started host has to connect and say hello.
 START_TIMEOUT_S = 30.0
@@ -187,6 +200,21 @@ def _read_frame(conn: socket.socket) -> dict | None:
     return None if body is None else json.loads(body)
 
 
+def refusal(hello: dict, content_hash: str) -> str | None:
+    """Why a host's hello is refused, or None: another protocol, or other code than the source
+    registered (REQ-2098)."""
+    spoken = hello.get("protocol")
+    if spoken != PROTOCOL:
+        return (
+            f"its host speaks protocol {spoken}, and this Provisa speaks {PROTOCOL}: "
+            "run a host built for this Provisa version"
+        )
+    held = hello.get("code_hash")
+    if held != content_hash:
+        return f"its host runs code {held}, not the {content_hash} the source registered"
+    return None
+
+
 # -- one worker -------------------------------------------------------------------------------------
 
 
@@ -257,6 +285,15 @@ class Worker:
             conn.close()
             self.stop()
             raise WorkerFailed(self.source_id, f"its host ended before it was ready{self._said()}")
+        refused = refusal(hello, self.content_hash)
+        if refused is not None:
+            try:
+                conn.sendall(_frame({"op": "refused", "message": refused}))
+            except OSError:
+                pass  # the host has gone already: the refusal is still raised by name below
+            conn.close()
+            self.stop()
+            raise WorkerFailed(self.source_id, refused)
         conn.settimeout(None)
         self._conn = conn
         self.exports = list(hello.get("exports") or [])
@@ -268,7 +305,7 @@ class Worker:
         self._process = subprocess.Popen(  # nosec B603 - the pinned runtime and Provisa's host
             self._command.argv_for(address),
             cwd=self._command.cwd,
-            env=self._command.env,
+            env={**self._command.env, CODE_HASH_ENV: self.content_hash},
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
