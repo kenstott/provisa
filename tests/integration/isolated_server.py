@@ -228,6 +228,12 @@ class IsolatedServer:
         rows = base.parent / "replica_rows"
         if rows.is_dir():
             (directory / "replica_rows").symlink_to(rows, target_is_directory=True)
+        # And the secrets it names (REQ-2095), read from the directory of the config served.
+        from provisa.core.demo_secrets import FILE as SECRETS_FILE
+
+        secrets = base.parent / SECRETS_FILE
+        if secrets.is_file():
+            (directory / SECRETS_FILE).symlink_to(secrets)
         path = directory / base.name
         with open(path, "w") as f:
             yaml.safe_dump(cfg, f)
