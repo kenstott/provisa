@@ -130,9 +130,6 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
     {
         # String types
         "varchar": GraphQLString,
-        # The SQL standard's own name for varchar, as information_schema spells it: hit live
-        # registering a ServiceNow table, whose columns the adapter reports by that name.
-        "character varying": GraphQLString,
         "text": GraphQLString,  # views cast array/jsonb/json columns to text (see app.py)
         "char": GraphQLString,
         "bpchar": GraphQLString,  # postgres blank-padded char
@@ -263,7 +260,24 @@ def column_type_to_graphql(column_type: str) -> GraphQLScalarType | GraphQLList:
     if parse_native_type(normalized).nested:
         return JSONScalar
 
+    # Any other spelling an engine or a source reports (``character varying``, ``character``,
+    # ``timestamp without time zone``, a ServiceNow table's): the product's one type vocabulary
+    # names it, as the Arrow catalog's map does (core.catalog_types).
+    canonical = _canonical(normalized)
+    if canonical in _TYPE_MAP:
+        return _TYPE_MAP[canonical]
+
     raise ValueError(f"Unmapped the engine type: {column_type!r}")
+
+
+def _canonical(column_type: str) -> str | None:
+    """The type vocabulary's name for ``column_type``, or None when it has none."""
+    from provisa.core.ir_types import to_ir
+
+    try:
+        return to_ir(column_type)
+    except ValueError:
+        return None  # not in the vocabulary either: the caller refuses it by name
 
 
 # --- Filter input types (shared across all schemas) ---
