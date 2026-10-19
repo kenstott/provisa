@@ -428,24 +428,22 @@ Deux contrôles s'appliquent. La partie fixe du glob, jusqu'à son premier carac
 
 #### Jeux de données Kaggle {: #kaggle-datasets }
 
-Kaggle est une plateforme de téléchargement de fichiers. Un jeu de données Kaggle mis en scène s'enregistre comme une source de type `files` et est interrogé via le même connecteur pgwire-file que toute autre source `files` — il n'existe aucun `SourceType` `kaggle` dans l'énumération.
+Kaggle est un site de téléchargement de fichiers de données. Un jeu de données Kaggle que vous ajoutez s'enregistre comme source `files`, et vous l'interrogez comme n'importe quelle autre source `files`.
 
-**Ajouter un jeu de données.** Ouvrez Sources → Abonnements → Kaggle. Le formulaire exécute deux étapes séquentielles, car le point de terminaison de recherche de jeux de données de Kaggle exige une authentification — le sélecteur ne peut apparaître avant la validation du jeton.
+**Ajouter un jeu de données.** Ouvrez Sources → Abonnements → Kaggle. Le formulaire fonctionne en deux étapes, car la recherche de jeux de données de Kaggle exige un jeton : le sélecteur n'apparaît qu'une fois le vôtre validé.
 
-1. **Jeton** — saisissez un jeton API Kaggle et cliquez sur « Valider ». La validation appelle `POST https://www.kaggle.com/api/v1/datasets/create/new` avec un corps vide. Un `401` signifie invalide ; toute autre réponse signifie valide (la propre validation de charge utile de Kaggle se déclenche avant la création d'un quelconque jeu de données — rien n'est persisté).
-2. **Sélecteur** — un champ de recherche en direct interroge `GET /api/v1/datasets/list`. Chaque résultat affiche le titre et la description du jeu de données. Sélectionnez-en un, puis cliquez sur « Add Dataset ».
+1. **Jeton.** Saisissez un jeton d'API Kaggle et cliquez sur « Valider ». La validation appelle `POST https://www.kaggle.com/api/v1/datasets/create/new` avec un corps vide. Un `401` signifie que le jeton n'est pas valide, toute autre réponse qu'il l'est. Kaggle vérifie le corps vide avant de créer quoi que ce soit, donc rien n'est enregistré.
+2. **Sélecteur.** Un champ de recherche interroge `GET /api/v1/datasets/list` pendant la saisie, et chaque résultat montre le titre et la description du jeu de données. Choisissez-en un, puis cliquez sur « Add Dataset ».
 
-Cliquer sur « Add Dataset » télécharge le paquet depuis `GET /api/v1/datasets/download/{owner}/{ref}`, décompresse les membres CSV et Parquet dans `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, et crée **une seule** source de type `files` dont le `path` est ce répertoire racine. Le jeton n'est jamais stocké côté serveur.
+« Add Dataset » télécharge le paquet depuis `GET /api/v1/datasets/download/{owner}/{ref}`, décompresse ses fichiers CSV et Parquet dans `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` et crée **une** source `files` dont le `path` est ce répertoire racine. Le serveur ne stocke jamais le jeton.
 
-Après l'ajout de la source, enregistrez ses tables via l'écran normal Register Table. La découverte récursive de répertoires du connecteur pgwire-file liste chaque fichier comme sa propre table — le même mécanisme qu'utilise toute autre source `files`.
+Enregistrez ensuite les tables voulues sur l'écran Register Table habituel. Chaque fichier y figure comme sa propre table, comme pour toute autre source `files`.
 
-**Limitation v1.** Un paquet contenant un fichier `.sqlite` ou `.db` est rejeté d'emblée avec une erreur claire. Seuls les fichiers CSV et Parquet sont mis en scène.
+**CSV et Parquet seulement.** Un paquet qui contient un fichier `.sqlite` ou `.db` est refusé avec une erreur qui le dit. Seuls les fichiers CSV et Parquet sont préparés.
 
-**Nommage des tables.** Une table parcourue se nomme `<page>__<name>` : le titre de la page, puis la légende de la table ou, à défaut, le dernier intitulé au-dessus de la table, tous deux dans l'orthographe des noms de colonnes de la source. Par exemple, la table sous l'intitulé « Tallest buildings in the world » de la page `List_of_tallest_buildings` est `list_of_tallest_buildings__tallest_buildings_in_the_world`. Un fichier de données lié garde son propre nom.
+**Rafraîchir.** Quand Kaggle publie une nouvelle version d'un jeu de données, appelez la mutation GraphQL `refreshKaggleSource` avec l'ID de la source et un jeton valide. Elle prépare de nouveau les fichiers sur place et vide le cache du point de terminaison de fichiers, afin que la requête suivante prenne en compte tout changement de schéma. `kaggle_owner` et `kaggle_ref`, conservés dans `federation_hints` à la création de la source, indiquent quel jeu de données récupérer.
 
-**Rafraîchissement.** Pour retélécharger un jeu de données après que Kaggle publie une nouvelle version, appelez la mutation GraphQL `refreshKaggleSource` avec l'ID de la source et un jeton valide. Cela remet les fichiers en scène sur place et évince le cache de point de terminaison pgwire-file afin que le connecteur capte tout changement de schéma à sa prochaine requête. Les `kaggle_owner` et `kaggle_ref` stockés dans `federation_hints` à la création identifient quel jeu de données retélécharger.
-
-**Aucun chemin de configuration YAML statique.** Les sources Kaggle sont créées uniquement via le formulaire Sources. Une source Kaggle exportée en YAML apparaît comme `type: files` avec `kaggle_owner` et `kaggle_ref` dans `federation_hints`. Retélécharger depuis Kaggle nécessite le flux de rafraîchissement de l'interface ou la mutation `refreshKaggleSource` — pointer le `path` YAML vers un répertoire déjà mis en scène est l'alternative pour les environnements isolés (air-gapped).
+**Pas de YAML propre.** Une source Kaggle ne se crée que par le formulaire des sources. Exportée en YAML, elle apparaît comme `type: files` avec `kaggle_owner` et `kaggle_ref` dans `federation_hints`. Pour la récupérer à nouveau depuis Kaggle, il faut le rafraîchissement dans l'interface ou la mutation `refreshKaggleSource`. Dans un environnement isolé, faites pointer le `path` du YAML vers un répertoire que vous avez préparé vous-même.
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Seuls les tableaux que les éditeurs marquent comme tableaux de données (`table
 | `max_html_size` | non défini | Plus grande page lue, par exemple `10MB` |
 | `max_data_file_size` | non défini | Plus grand fichier de données lu, par exemple `100MB` |
 
-**Nommage des tables.** Une table parcourue se nomme `<page>__<name>`. Le nom est le propre `id` du tableau s'il en a un, sinon sa légende, sinon l'intitulé le plus proche au-dessus. Par exemple, un tableau sous l'intitulé « Tallest buildings » de la page `List_of_tallest_buildings` devient `list_of_tallest_buildings__tallest_buildings` après normalisation du nom.
+**Nommage des tables.** Une table explorée s'appelle `<page>__<name>`. Le nom est la légende (caption) de la table ou, à défaut, le dernier titre au-dessus d'elle ; une table sans l'un ni l'autre devient `table_1`, `table_2`, etc. Les deux parties passent en minuscules, et chaque suite d'autres caractères devient `_`. Par exemple, une table sous le titre « Tallest buildings » de la page `List_of_tallest_buildings` devient `list_of_tallest_buildings__tallest_buildings`. Un fichier de données lié garde son propre nom.
 
 **Rafraîchissement.** Un parcours est conservé pendant la période de cache, `1 days` par défaut (`html_cache_ttl`). Les pages ne sont récupérées de nouveau qu'une fois ce délai écoulé.
 

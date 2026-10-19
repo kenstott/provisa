@@ -428,24 +428,22 @@ On save the code is `schema.logs_path_refused`; on preview it is a 403 with `log
 
 #### Kaggle datasets {: #kaggle-datasets }
 
-Kaggle is a file-download platform. A staged Kaggle dataset registers as a `files`-type Source and is queried through the same pgwire-file connector any other `files` source uses — there is no `kaggle` SourceType in the enum.
+Kaggle is a place to download data files. A Kaggle dataset you add registers as a `files` source, and you query it the same way as any other `files` source.
 
-**Adding a dataset.** Open Sources → Subscriptions → Kaggle. The form runs two sequential steps, because Kaggle's own dataset-search endpoint requires auth — the picker cannot appear before the token validates.
+**Adding a dataset.** Open Sources → Subscriptions → Kaggle. The form works in two steps, because Kaggle's own dataset search needs a token, so the picker can't appear until yours checks out.
 
-1. **Token** — enter a Kaggle API token and click "Validate". Validation calls `POST https://www.kaggle.com/api/v1/datasets/create/new` with an empty body. A `401` means invalid; any other response means valid (Kaggle's own payload-validation fires before any dataset is created — nothing is persisted).
-2. **Picker** — a live search-as-you-type field queries `GET /api/v1/datasets/list`. Each result shows dataset title and description. Select one, then click "Add Dataset".
+1. **Token.** Enter a Kaggle API token and click "Validate". Validation calls `POST https://www.kaggle.com/api/v1/datasets/create/new` with an empty body. A `401` means the token is invalid, and any other response means it's valid. Kaggle checks the empty body before it creates anything, so nothing is saved.
+2. **Picker.** A search field queries `GET /api/v1/datasets/list` as you type, and each result shows the dataset's title and description. Select one, then click "Add Dataset".
 
-Clicking "Add Dataset" downloads the bundle from `GET /api/v1/datasets/download/{owner}/{ref}`, unzips CSV and Parquet members into `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, and creates **one** `files`-type Source whose `path` is that root directory. The token is never stored server-side.
+"Add Dataset" downloads the bundle from `GET /api/v1/datasets/download/{owner}/{ref}`, unzips its CSV and Parquet files into `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, and creates **one** `files` source whose `path` is that root directory. The server never stores the token.
 
-After adding the source, register its tables through the normal Register Table screen. The pgwire-file connector's recursive directory discovery lists each file as its own table — the same mechanism any other `files` source uses.
+Then register the tables you want on the normal Register Table screen. Each file is listed as its own table, as in any other `files` source.
 
-**v1 limitation.** A bundle containing a `.sqlite` or `.db` file is rejected outright with a clear error. Only CSV and Parquet files are staged.
+**Only CSV and Parquet.** A bundle that contains a `.sqlite` or `.db` file is refused with an error that says so. Only CSV and Parquet files are staged.
 
-**Table naming.** A crawled table is named `<page>__<name>`: the page's title, then the table's caption, or the last heading above the table when it has no caption, both in the source's column-name spelling. For example, the table under the heading "Tallest buildings in the world" on the page `List_of_tallest_buildings` is `list_of_tallest_buildings__tallest_buildings_in_the_world`. A linked data file keeps its own name.
+**Refreshing.** When Kaggle publishes a new version of a dataset, call the `refreshKaggleSource` GraphQL mutation with the source ID and a valid token. It stages the files again in place and clears the file endpoint's cache, so the next query picks up any schema change. The `kaggle_owner` and `kaggle_ref` kept in `federation_hints` when the source was created say which dataset to fetch.
 
-**Refreshing.** To re-fetch a dataset after Kaggle publishes a new version, call the `refreshKaggleSource` GraphQL mutation with the source ID and a valid token. This re-stages the files in place and evicts the pgwire-file endpoint cache so the connector picks up any schema changes on its next query. The `kaggle_owner` and `kaggle_ref` stored in `federation_hints` at creation time identify which dataset to re-fetch.
-
-**No static YAML config path.** Kaggle sources are created through the Sources form only. A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Re-downloading from Kaggle requires the UI refresh flow or the `refreshKaggleSource` mutation — pointing the YAML `path` at a pre-staged directory is the alternative for air-gapped environments.
+**No YAML of its own.** You create a Kaggle source only through the Sources form. Exported to YAML, it appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Fetching from Kaggle again takes the refresh in the UI or the `refreshKaggleSource` mutation. In an air-gapped environment, point the YAML `path` at a directory you staged yourself.
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Only tables that editors mark as data tables (`table.wikitable`) become tables, 
 | `max_html_size` | not set | Largest page read, for example `10MB` |
 | `max_data_file_size` | not set | Largest data file read, for example `100MB` |
 
-**Table naming.** A crawled table is named `<page>__<name>`. The name is the table's own `id` when it has one, otherwise its caption, otherwise the nearest heading above it. For example, a table under the heading "Tallest buildings" on the page `List_of_tallest_buildings` becomes `list_of_tallest_buildings__tallest_buildings` after name normalization.
+**Table naming.** A crawled table is named `<page>__<name>`. The name is the table's caption or, when it has none, the last heading above it; a table with neither is `table_1`, `table_2` and so on. Both parts are lowercased, with every run of other characters turned into `_`. For example, a table under the heading "Tallest buildings" on the page `List_of_tallest_buildings` becomes `list_of_tallest_buildings__tallest_buildings`. A linked data file keeps its own name.
 
 **Refreshing.** A crawl is kept for the cache period, `1 days` by default (`html_cache_ttl`). Pages are fetched again only after that time has passed.
 

@@ -428,24 +428,22 @@ Beim Speichern lautet der Code `schema.logs_path_refused`; bei der Vorschau ist 
 
 #### Kaggle-Datasets {: #kaggle-datasets }
 
-Kaggle ist eine Datei-Download-Plattform. Ein bereitgestellter Kaggle-Datensatz registriert sich als Quelle vom Typ `files` und wird über denselben pgwire-file-Connector abgefragt, den jede andere `files`-Quelle verwendet — es gibt keinen `kaggle`-SourceType im Enum.
+Kaggle ist ein Ort zum Herunterladen von Datendateien. Ein Kaggle-Datensatz, den Sie hinzufügen, wird als `files`-Quelle registriert, und Sie fragen ihn genauso ab wie jede andere `files`-Quelle.
 
-**Einen Datensatz hinzufügen.** Öffnen Sie Sources → Subscriptions → Kaggle. Das Formular durchläuft zwei sequenzielle Schritte, da Kaggles eigener Dataset-Suchendpunkt Auth erfordert — die Auswahl kann nicht erscheinen, bevor das Token validiert ist.
+**Einen Datensatz hinzufügen.** Öffnen Sie Sources → Subscriptions → Kaggle. Das Formular arbeitet in zwei Schritten, weil Kaggles eigene Datensatzsuche ein Token braucht; die Auswahl erscheint also erst, wenn Ihres geprüft ist.
 
-1. **Token** — geben Sie ein Kaggle-API-Token ein und klicken Sie auf „Validate". Die Validierung ruft `POST https://www.kaggle.com/api/v1/datasets/create/new` mit leerem Body auf. Ein `401` bedeutet ungültig; jede andere Antwort bedeutet gültig (Kaggles eigene Payload-Validierung greift, bevor irgendein Datensatz erstellt wird — nichts wird persistiert).
-2. **Auswahl** — ein Live-Search-as-you-type-Feld fragt `GET /api/v1/datasets/list` ab. Jedes Ergebnis zeigt Dataset-Titel und -Beschreibung. Wählen Sie eines aus und klicken Sie auf „Add Dataset".
+1. **Token.** Geben Sie ein Kaggle-API-Token ein und klicken Sie auf „Validate“. Die Prüfung ruft `POST https://www.kaggle.com/api/v1/datasets/create/new` mit leerem Body auf. Ein `401` bedeutet, dass das Token ungültig ist; jede andere Antwort bedeutet, dass es gültig ist. Kaggle prüft den leeren Body, bevor es etwas anlegt, daher wird nichts gespeichert.
+2. **Auswahl.** Ein Suchfeld fragt beim Tippen `GET /api/v1/datasets/list` ab, und jedes Ergebnis zeigt Titel und Beschreibung des Datensatzes. Wählen Sie einen aus und klicken Sie auf „Add Dataset“.
 
-Ein Klick auf „Add Dataset" lädt das Bundle von `GET /api/v1/datasets/download/{owner}/{ref}` herunter, entpackt CSV- und Parquet-Mitglieder nach `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` und erstellt **eine** Quelle vom Typ `files`, deren `path` dieses Wurzelverzeichnis ist. Das Token wird serverseitig nie gespeichert.
+„Add Dataset“ lädt das Paket von `GET /api/v1/datasets/download/{owner}/{ref}` herunter, entpackt seine CSV- und Parquet-Dateien nach `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` und legt **eine** `files`-Quelle an, deren `path` dieses Wurzelverzeichnis ist. Der Server speichert das Token nie.
 
-Nach dem Hinzufügen der Quelle registrieren Sie deren Tabellen über den normalen Register-Table-Bildschirm. Die rekursive Verzeichniserkennung des pgwire-file-Connectors listet jede Datei als eigene Tabelle — derselbe Mechanismus, den jede andere `files`-Quelle verwendet.
+Registrieren Sie dann die gewünschten Tabellen auf dem normalen Register-Table-Bildschirm. Jede Datei erscheint als eigene Tabelle, wie bei jeder anderen `files`-Quelle.
 
-**v1-Einschränkung.** Ein Bundle mit einer `.sqlite`- oder `.db`-Datei wird rundweg mit einer klaren Fehlermeldung abgelehnt. Nur CSV- und Parquet-Dateien werden bereitgestellt.
+**Nur CSV und Parquet.** Ein Paket mit einer `.sqlite`- oder `.db`-Datei wird mit einer Fehlermeldung abgelehnt, die das sagt. Bereitgestellt werden nur CSV- und Parquet-Dateien.
 
-**Tabellenbenennung.** Eine gecrawlte Tabelle heißt `<page>__<name>`: der Titel der Seite, dann die Beschriftung der Tabelle oder, wenn sie keine hat, die letzte Überschrift über der Tabelle, beides in der Spaltennamen-Schreibweise der Quelle. Zum Beispiel ist die Tabelle unter der Überschrift „Tallest buildings in the world" auf der Seite `List_of_tallest_buildings` die Tabelle `list_of_tallest_buildings__tallest_buildings_in_the_world`. Eine verlinkte Datendatei behält ihren eigenen Namen.
+**Aktualisieren.** Wenn Kaggle eine neue Version eines Datensatzes veröffentlicht, rufen Sie die GraphQL-Mutation `refreshKaggleSource` mit der Quell-ID und einem gültigen Token auf. Sie stellt die Dateien an Ort und Stelle neu bereit und leert den Cache des Datei-Endpunkts, sodass die nächste Abfrage jede Schemaänderung aufnimmt. `kaggle_owner` und `kaggle_ref`, beim Anlegen der Quelle in `federation_hints` abgelegt, sagen, welcher Datensatz geholt wird.
 
-**Aktualisieren.** Um einen Datensatz erneut abzurufen, nachdem Kaggle eine neue Version veröffentlicht hat, rufen Sie die GraphQL-Mutation `refreshKaggleSource` mit der Quell-ID und einem gültigen Token auf. Dies stellt die Dateien vor Ort erneut bereit und leert den pgwire-file-Endpunkt-Cache, sodass der Connector bei seiner nächsten Abfrage etwaige Schemaänderungen übernimmt. Die zur Erstellungszeit in `federation_hints` gespeicherten `kaggle_owner` und `kaggle_ref` identifizieren, welcher Datensatz erneut abgerufen werden soll.
-
-**Kein statischer YAML-Konfigurationspfad.** Kaggle-Quellen werden nur über das Sources-Formular erstellt. Eine nach YAML exportierte Kaggle-Quelle erscheint als `type: files` mit `kaggle_owner` und `kaggle_ref` in `federation_hints`. Ein erneuter Download von Kaggle erfordert den UI-Refresh-Flow oder die Mutation `refreshKaggleSource` — das Ausrichten des YAML-`path` auf ein vorab bereitgestelltes Verzeichnis ist die Alternative für air-gapped Umgebungen.
+**Kein eigenes YAML.** Eine Kaggle-Quelle legen Sie nur über das Sources-Formular an. Nach YAML exportiert erscheint sie als `type: files` mit `kaggle_owner` und `kaggle_ref` in `federation_hints`. Erneut von Kaggle holen geht über die Aktualisierung in der UI oder die Mutation `refreshKaggleSource`. In einer abgeschotteten Umgebung lassen Sie das YAML-`path` auf ein Verzeichnis zeigen, das Sie selbst bereitgestellt haben.
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Nur Tabellen, die Redakteure als Datentabellen markieren (`table.wikitable`), we
 | `max_html_size` | nicht gesetzt | Größte gelesene Seite, zum Beispiel `10MB` |
 | `max_data_file_size` | nicht gesetzt | Größte gelesene Datendatei, zum Beispiel `100MB` |
 
-**Tabellenbenennung.** Eine gecrawlte Tabelle heißt `<page>__<name>`. Der Name ist die eigene `id` der Tabelle, wenn sie eine hat, sonst ihre Beschriftung, sonst die nächste Überschrift darüber. Zum Beispiel wird eine Tabelle unter der Überschrift „Tallest buildings" auf der Seite `List_of_tallest_buildings` nach der Namensnormalisierung zu `list_of_tallest_buildings__tallest_buildings`.
+**Tabellennamen.** Eine gecrawlte Tabelle heißt `<page>__<name>`. Der Name ist die Beschriftung (caption) der Tabelle oder, wenn sie keine hat, die letzte Überschrift darüber; eine Tabelle ohne beides heißt `table_1`, `table_2` und so weiter. Beide Teile werden kleingeschrieben, und jede Folge anderer Zeichen wird zu `_`. Eine Tabelle unter der Überschrift „Tallest buildings“ auf der Seite `List_of_tallest_buildings` wird zum Beispiel zu `list_of_tallest_buildings__tallest_buildings`. Eine verlinkte Datendatei behält ihren eigenen Namen.
 
 **Aktualisieren.** Ein Crawl wird für die Cache-Dauer aufbewahrt, standardmäßig `1 days` (`html_cache_ttl`). Seiten werden erst nach Ablauf dieser Zeit erneut abgerufen.
 

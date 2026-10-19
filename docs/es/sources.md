@@ -422,24 +422,22 @@ Al guardar, el código es `schema.logs_path_refused`; en la vista previa es un 4
 
 #### Conjuntos de datos de Kaggle {: #kaggle-datasets }
 
-Kaggle es una plataforma de descarga de archivos. Un conjunto de datos de Kaggle preparado se registra como un origen de tipo `files` y se consulta a través del mismo conector pgwire-file que usa cualquier otro origen `files` — no existe un `SourceType` `kaggle` en el enum.
+Kaggle es un sitio para descargar archivos de datos. Un conjunto de datos de Kaggle que usted añade se registra como origen `files`, y se consulta igual que cualquier otro origen `files`.
 
-**Agregar un conjunto de datos.** Abra Orígenes → Suscripciones → Kaggle. El formulario ejecuta dos pasos secuenciales, porque el propio endpoint de búsqueda de conjuntos de datos de Kaggle exige autenticación — el selector no puede aparecer antes de que el token se valide.
+**Añadir un conjunto de datos.** Abra Orígenes → Suscripciones → Kaggle. El formulario funciona en dos pasos, porque la búsqueda de conjuntos de datos de Kaggle necesita un token, así que el selector no aparece hasta que el suyo se valida.
 
-1. **Token** — ingrese un token de API de Kaggle y haga clic en "Validate". La validación llama a `POST https://www.kaggle.com/api/v1/datasets/create/new` con un cuerpo vacío. Un `401` significa inválido; cualquier otra respuesta significa válido (la propia validación de payload de Kaggle se dispara antes de crear ningún conjunto de datos — no se persiste nada).
-2. **Selector** — un campo de búsqueda en vivo mientras escribe consulta `GET /api/v1/datasets/list`. Cada resultado muestra el título y la descripción del conjunto de datos. Seleccione uno y haga clic en "Add Dataset".
+1. **Token.** Introduzca un token de la API de Kaggle y haga clic en "Validate". La validación llama a `POST https://www.kaggle.com/api/v1/datasets/create/new` con el cuerpo vacío. Un `401` significa que el token no es válido, y cualquier otra respuesta significa que sí lo es. Kaggle revisa el cuerpo vacío antes de crear nada, así que no se guarda nada.
+2. **Selector.** Un campo de búsqueda consulta `GET /api/v1/datasets/list` mientras escribe, y cada resultado muestra el título y la descripción del conjunto de datos. Elija uno y haga clic en "Add Dataset".
 
-Al hacer clic en "Add Dataset" se descarga el paquete desde `GET /api/v1/datasets/download/{owner}/{ref}`, se descomprimen los miembros CSV y Parquet en `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, y se crea **un** origen de tipo `files` cuyo `path` es ese directorio raíz. El token nunca se almacena del lado del servidor.
+"Add Dataset" descarga el paquete desde `GET /api/v1/datasets/download/{owner}/{ref}`, descomprime sus archivos CSV y Parquet en `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` y crea **un** origen `files` cuyo `path` es ese directorio raíz. El servidor nunca guarda el token.
 
-Después de agregar el origen, registre sus tablas mediante la pantalla normal de Register Table. El descubrimiento recursivo de directorios del conector pgwire-file lista cada archivo como su propia tabla — el mismo mecanismo que usa cualquier otro origen `files`.
+Después registre las tablas que quiera en la pantalla normal Register Table. Cada archivo aparece como su propia tabla, como en cualquier otro origen `files`.
 
-**Limitación en v1.** Un paquete que contenga un archivo `.sqlite` o `.db` se rechaza directamente con un error claro. Solo se preparan archivos CSV y Parquet.
+**Solo CSV y Parquet.** Un paquete que contiene un archivo `.sqlite` o `.db` se rechaza con un error que lo indica. Solo se preparan archivos CSV y Parquet.
 
-**Nomenclatura de tablas.** Una tabla rastreada se llama `<page>__<name>`: el título de la página y luego el pie de la tabla o, si no tiene, el último encabezado sobre la tabla, ambos con la grafía de nombres de columna del origen. Por ejemplo, la tabla bajo el encabezado "Tallest buildings in the world" en la página `List_of_tallest_buildings` es `list_of_tallest_buildings__tallest_buildings_in_the_world`. Un archivo de datos enlazado conserva su propio nombre.
+**Actualizar.** Cuando Kaggle publica una nueva versión de un conjunto de datos, llame a la mutación GraphQL `refreshKaggleSource` con el ID del origen y un token válido. Vuelve a preparar los archivos en su sitio y limpia la caché del endpoint de archivos, para que la siguiente consulta recoja cualquier cambio de esquema. Los `kaggle_owner` y `kaggle_ref` guardados en `federation_hints` al crear el origen indican qué conjunto de datos traer.
 
-**Actualización.** Para volver a obtener un conjunto de datos después de que Kaggle publique una nueva versión, llame a la mutación GraphQL `refreshKaggleSource` con el ID del origen y un token válido. Esto vuelve a preparar los archivos en el mismo lugar y desaloja la caché del endpoint pgwire-file para que el conector detecte cualquier cambio de esquema en su siguiente consulta. Los valores `kaggle_owner` y `kaggle_ref` almacenados en `federation_hints` al momento de la creación identifican qué conjunto de datos volver a obtener.
-
-**Sin ruta de configuración YAML estática.** Los orígenes de Kaggle se crean solo mediante el formulario de Orígenes. Un origen de Kaggle exportado a YAML aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Volver a descargar desde Kaggle requiere el flujo de actualización de la UI o la mutación `refreshKaggleSource` — apuntar el `path` del YAML a un directorio ya preparado es la alternativa para entornos aislados de la red (air-gapped).
+**Sin YAML propio.** Un origen de Kaggle solo se crea desde el formulario de orígenes. Exportado a YAML, aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Para volver a traerlo de Kaggle hace falta la actualización en la UI o la mutación `refreshKaggleSource`. En un entorno aislado, apunte el `path` del YAML a un directorio que haya preparado usted.
 
 #### Wikipedia {: #wikipedia }
 
@@ -493,7 +491,7 @@ Solo las tablas que los editores marcan como tablas de datos (`table.wikitable`)
 | `max_html_size` | sin definir | Página más grande que se lee, por ejemplo `10MB` |
 | `max_data_file_size` | sin definir | Archivo de datos más grande que se lee, por ejemplo `100MB` |
 
-**Nomenclatura de tablas.** Una tabla rastreada se llama `<page>__<name>`. El nombre es el `id` propio de la tabla si lo tiene; si no, su pie; si no, el encabezado más cercano por encima. Por ejemplo, una tabla bajo el encabezado "Tallest buildings" en la página `List_of_tallest_buildings` pasa a ser `list_of_tallest_buildings__tallest_buildings` tras la normalización del nombre.
+**Nombres de tabla.** Una tabla rastreada se llama `<page>__<name>`. El nombre es el título (caption) de la tabla o, si no tiene, el último encabezado por encima de ella; una tabla sin ninguno de los dos es `table_1`, `table_2` y así sucesivamente. Ambas partes pasan a minúsculas, y cada tramo de otros caracteres se convierte en `_`. Por ejemplo, una tabla bajo el encabezado "Tallest buildings" en la página `List_of_tallest_buildings` pasa a ser `list_of_tallest_buildings__tallest_buildings`. Un archivo de datos enlazado conserva su propio nombre.
 
 **Actualización.** Un rastreo se conserva durante el período de caché, `1 days` de forma predeterminada (`html_cache_ttl`). Las páginas solo se obtienen de nuevo cuando ha pasado ese tiempo.
 

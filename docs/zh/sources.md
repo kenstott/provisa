@@ -428,24 +428,22 @@ Register Table 界面会列出这些列及其类型，并标出键。 读取行�
 
 #### Kaggle 数据集 {: #kaggle-datasets }
 
-Kaggle 是一个文件下载平台。暂存的 Kaggle 数据集会注册为一个 `files` 类型的 Source，并通过任何其他 `files` 数据源所使用的同一个 pgwire-file 连接器进行查询 — 枚举中并不存在 `kaggle` 这个 SourceType。
+Kaggle 是下载数据文件的平台。您添加的 Kaggle 数据集会注册为 `files` 数据源，查询方式与其他 `files` 数据源相同。
 
-**添加数据集。** 打开 Sources → Subscriptions → Kaggle。该表单运行两个连续的步骤，因为 Kaggle 自身的数据集搜索端点需要身份验证 — 选择器必须在令牌验证通过后才能出现。
+**添加数据集。** 打开 Sources → Subscriptions → Kaggle。表单分两步进行，因为 Kaggle 自己的数据集搜索需要令牌，所以要等您的令牌通过验证后才会出现选择器。
 
-1. **令牌** — 输入一个 Kaggle API 令牌并点击"Validate"。验证会向 `POST https://www.kaggle.com/api/v1/datasets/create/new` 发送一个空请求体。`401` 表示无效；任何其他响应都表示有效（Kaggle 自身的负载验证会先于任何数据集的创建触发 — 不会持久化任何内容）。
-2. **选择器** — 一个即时搜索字段查询 `GET /api/v1/datasets/list`。每个结果显示数据集标题和描述。选择一个，然后点击"Add Dataset"。
+1. **令牌。** 输入 Kaggle API 令牌并点击 "Validate"。验证会以空请求体调用 `POST https://www.kaggle.com/api/v1/datasets/create/new`。`401` 表示令牌无效，其他任何响应都表示有效。Kaggle 在创建任何东西之前就会检查空请求体，所以不会保存任何内容。
+2. **选择器。** 搜索框会在您输入时查询 `GET /api/v1/datasets/list`，每条结果显示数据集的标题和描述。选中一个，然后点击 "Add Dataset"。
 
-点击"Add Dataset"会从 `GET /api/v1/datasets/download/{owner}/{ref}` 下载数据包，将 CSV 和 Parquet 成员解压到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，并创建**一个** `files` 类型的 Source，其 `path` 指向该根目录。令牌不会在服务器端存储。
+"Add Dataset" 从 `GET /api/v1/datasets/download/{owner}/{ref}` 下载数据包，把其中的 CSV 和 Parquet 文件解压到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，并创建**一个** `files` 数据源，其 `path` 就是该根目录。服务器从不保存令牌。
 
-添加数据源后，通过常规的 Register Table 界面注册其表。pgwire-file 连接器的递归目录发现机制会将每个文件列为其自身的表 — 与其他任何 `files` 数据源所使用的机制相同。
+然后在常规的 Register Table 界面注册您需要的表。每个文件都列为一张独立的表，和其他 `files` 数据源一样。
 
-**v1 限制。** 包含 `.sqlite` 或 `.db` 文件的数据包会被直接拒绝并给出明确的错误提示。只有 CSV 和 Parquet 文件会被暂存。
+**仅限 CSV 和 Parquet。** 包含 `.sqlite` 或 `.db` 文件的数据包会被拒绝，并给出说明原因的错误。只会暂存 CSV 和 Parquet 文件。
 
-**表命名。** 抓取到的表命名为 `<page>__<name>`：先是页面标题，然后是表的标题（caption），表没有标题时则使用表上方最近的标题，两者都采用数据源的列名拼写。例如，页面 `List_of_tallest_buildings` 上标题"Tallest buildings in the world"下的表是 `list_of_tallest_buildings__tallest_buildings_in_the_world`。链接的数据文件保留其自身名称。
+**刷新。** Kaggle 发布数据集新版本后，用数据源 ID 和有效令牌调用 GraphQL 变更 `refreshKaggleSource`。它会就地重新暂存文件并清除文件端点的缓存，让下一次查询获取任何结构变化。创建数据源时保存在 `federation_hints` 中的 `kaggle_owner` 和 `kaggle_ref` 指明要获取哪个数据集。
 
-**刷新。** 要在 Kaggle 发布新版本后重新获取数据集，请调用 `refreshKaggleSource` GraphQL mutation，并提供数据源 ID 和有效令牌。这会就地重新暂存文件，并清除 pgwire-file 端点缓存，使连接器在下一次查询时能获取到任何 schema 变更。创建时存储在 `federation_hints` 中的 `kaggle_owner` 和 `kaggle_ref` 标识了要重新获取的数据集。
-
-**没有静态 YAML 配置路径。** Kaggle 数据源仅能通过 Sources 表单创建。导出为 YAML 的 Kaggle 数据源会显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。要从 Kaggle 重新下载，需要使用 UI 刷新流程或 `refreshKaggleSource` mutation — 对于隔离网络（air-gapped）环境，替代方案是将 YAML 中的 `path` 指向一个预先暂存好的目录。
+**没有专属的 YAML。** Kaggle 数据源只能通过数据源表单创建。导出为 YAML 时，它显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。要重新从 Kaggle 获取，需要使用界面中的刷新或 `refreshKaggleSource` 变更。在隔离环境中，把 YAML 的 `path` 指向您自己暂存的目录。
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Provisa 知道这些语言版本的"See also"标题：`en`、`de`、`es`、`it`�
 | `max_html_size` | 未设置 | 读取的最大页面，例如 `10MB` |
 | `max_data_file_size` | 未设置 | 读取的最大数据文件，例如 `100MB` |
 
-**表命名。** 抓取到的表命名为 `<page>__<name>`。名称是表自身的 `id`（若有），否则是其标题（caption），再否则是其上方最近的标题。例如，页面 `List_of_tallest_buildings` 上标题"Tallest buildings"下的表，在名称规范化后成为 `list_of_tallest_buildings__tallest_buildings`。
+**表命名。** 爬取到的表命名为 `<page>__<name>`。名称取表的标题（caption）；没有标题时，取它上方最近的一个小节标题；两者都没有的表命名为 `table_1`、`table_2`，依此类推。两部分都转为小写，其他字符组成的每一段都换成 `_`。例如，页面 `List_of_tallest_buildings` 上 "Tallest buildings" 小节下的表会成为 `list_of_tallest_buildings__tallest_buildings`。链接的数据文件保留自己的名称。
 
 **刷新。** 抓取结果会在缓存期内保留，默认为 `1 days`（`html_cache_ttl`）。只有在该时间过后才会重新获取页面。
 

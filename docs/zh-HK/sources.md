@@ -421,24 +421,22 @@ Register Table 畫面會列出這些資料行及其類型，並標出鍵。 讀�
 
 #### Kaggle 數據集 {: #kaggle-datasets }
 
-Kaggle 是一個檔案下載平台。已暫存的 Kaggle 數據集會註冊為一個 `files` 類型的 Source，並經任何其他 `files` 數據來源所用的同一個 pgwire-file 連接器查詢——列舉中並沒有 `kaggle` 這個 SourceType。
+Kaggle 是下載數據檔案的平台。您加入的 Kaggle 數據集會註冊為 `files` 數據來源，查詢方式與其他 `files` 數據來源相同。
 
-**新增數據集。** 開啟 Sources → Subscriptions → Kaggle。該表單分兩個連續步驟進行，因為 Kaggle 自己的數據集搜尋端點需要驗證——選取器必須在權杖驗證通過之後才能出現。
+**加入數據集。** 打開 Sources → Subscriptions → Kaggle。表單分兩步進行，因為 Kaggle 自己的數據集搜尋需要權杖，所以要等您的權杖通過驗證後才會出現選擇器。
 
-1. **權杖**——輸入 Kaggle API 權杖並按「Validate」。驗證會向 `POST https://www.kaggle.com/api/v1/datasets/create/new` 送出空的請求本文。`401` 表示無效；任何其他回應都表示有效（Kaggle 自己的負載驗證會在建立任何數據集之前觸發——不會持久化任何內容）。
-2. **選取器**——一個邊輸入邊搜尋的即時欄位查詢 `GET /api/v1/datasets/list`。每個結果顯示數據集標題與說明。選一個，然後按「Add Dataset」。
+1. **權杖。** 輸入 Kaggle API 權杖並點擊「Validate」。驗證會以空白請求主體呼叫 `POST https://www.kaggle.com/api/v1/datasets/create/new`。`401` 表示權杖無效，其他任何回應都表示有效。Kaggle 在建立任何東西之前就會檢查空白請求主體，所以不會儲存任何內容。
+2. **選擇器。** 搜尋欄會在您輸入時查詢 `GET /api/v1/datasets/list`，每項結果顯示數據集的標題及描述。選取一個，然後點擊「Add Dataset」。
 
-按「Add Dataset」會從 `GET /api/v1/datasets/download/{owner}/{ref}` 下載套件，把 CSV 與 Parquet 成員解壓到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，並建立**一個** `files` 類型的 Source，其 `path` 即該根目錄。權杖絕不會儲存在伺服器端。
+「Add Dataset」從 `GET /api/v1/datasets/download/{owner}/{ref}` 下載套件，把其中的 CSV 及 Parquet 檔案解壓到 `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`，並建立**一個** `files` 數據來源，其 `path` 就是該根目錄。伺服器從不儲存權杖。
 
-新增數據來源後，經一般的 Register Table 畫面註冊其表。pgwire-file 連接器的遞迴目錄探索會把每個檔案列為各自的表——與任何其他 `files` 數據來源所用的機制相同。
+然後在一般的 Register Table 畫面註冊您需要的資料表。每個檔案都列為一個獨立的資料表，與其他 `files` 數據來源一樣。
 
-**v1 限制。** 含有 `.sqlite` 或 `.db` 檔案的套件會被直接拒絕，並給出明確的錯誤。只有 CSV 與 Parquet 檔案會被暫存。
+**只限 CSV 及 Parquet。** 包含 `.sqlite` 或 `.db` 檔案的套件會被拒絕，並給出說明原因的錯誤。只會暫存 CSV 及 Parquet 檔案。
 
-**表命名。** 爬取到的表命名為 `<page>__<name>`：頁面標題，然後是表的標題（caption），表沒有標題時則用表上方最近的標題，兩者都採用數據來源的資料行名稱拼寫。例如，頁面 `List_of_tallest_buildings` 上標題「Tallest buildings in the world」之下的表是 `list_of_tallest_buildings__tallest_buildings_in_the_world`。連結的數據檔案保留它自己的名稱。
+**重新整理。** Kaggle 發佈數據集新版本後，以數據來源 ID 及有效權杖呼叫 GraphQL 變更 `refreshKaggleSource`。它會就地重新暫存檔案並清除檔案端點的快取，讓下一次查詢取得任何結構變化。建立數據來源時保存在 `federation_hints` 中的 `kaggle_owner` 及 `kaggle_ref` 指明要取得哪個數據集。
 
-**重新整理。** 要在 Kaggle 發佈新版本後重新取得數據集，請以數據來源 ID 與有效權杖呼叫 `refreshKaggleSource` GraphQL mutation。這會就地重新暫存檔案，並清除 pgwire-file 端點快取，讓連接器在下一次查詢時採用任何結構描述變更。建立時儲存在 `federation_hints` 中的 `kaggle_owner` 與 `kaggle_ref` 指明要重新取得哪個數據集。
-
-**沒有靜態 YAML 設定路徑。** Kaggle 數據來源只能經 Sources 表單建立。匯出為 YAML 的 Kaggle 數據來源會顯示為 `type: files`，並在 `federation_hints` 中帶有 `kaggle_owner` 與 `kaggle_ref`。要重新從 Kaggle 下載，需要 UI 的重新整理流程或 `refreshKaggleSource` mutation——對於隔離網路（air-gapped）環境，替代做法是把 YAML 的 `path` 指向預先暫存好的目錄。
+**沒有專屬的 YAML。** Kaggle 數據來源只能透過數據來源表單建立。匯出為 YAML 時，它顯示為 `type: files`，並在 `federation_hints` 中帶有 `kaggle_owner` 及 `kaggle_ref`。要重新從 Kaggle 取得，需要使用介面中的重新整理或 `refreshKaggleSource` 變更。在隔離環境中，把 YAML 的 `path` 指向您自行暫存的目錄。
 
 #### Wikipedia {: #wikipedia }
 
@@ -492,7 +490,7 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 | `max_html_size` | 未設定 | 讀取的最大頁面，例如 `10MB` |
 | `max_data_file_size` | 未設定 | 讀取的最大數據檔案，例如 `100MB` |
 
-**表命名。** 爬取到的表命名為 `<page>__<name>`。名稱是表自己的 `id`（若有），否則是其標題（caption），再否則是其上方最近的標題。例如，頁面 `List_of_tallest_buildings` 上標題「Tallest buildings」之下的表，在名稱正規化後成為 `list_of_tallest_buildings__tallest_buildings`。
+**資料表命名。** 爬取到的資料表命名為 `<page>__<name>`。名稱取資料表的標題（caption）；沒有標題時，取它上方最近的一個小節標題；兩者都沒有的資料表命名為 `table_1`、`table_2`，如此類推。兩部分都轉為小寫，其他字元組成的每一段都換成 `_`。例如，頁面 `List_of_tallest_buildings` 上「Tallest buildings」小節下的資料表會成為 `list_of_tallest_buildings__tallest_buildings`。連結的數據檔案保留自己的名稱。
 
 **重新整理。** 爬取結果會在快取期內保留，預設為 `1 days`（`html_cache_ttl`）。只有在該時間過後才會重新取得頁面。
 

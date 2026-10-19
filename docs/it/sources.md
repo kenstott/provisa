@@ -428,24 +428,22 @@ Al salvataggio il codice è `schema.logs_path_refused`; in anteprima è un 403 c
 
 #### Dataset Kaggle {: #kaggle-datasets }
 
-Kaggle è una piattaforma di download di file. Un dataset Kaggle messo in stage si registra come origine di tipo `files` e viene interrogato tramite lo stesso connettore pgwire-file usato da qualsiasi altra origine `files` — non esiste un `SourceType` `kaggle` nell'enum.
+Kaggle è un sito da cui scaricare file di dati. Un dataset Kaggle che aggiungete si registra come origine `files`, e lo interrogate come qualsiasi altra origine `files`.
 
-**Aggiungere un dataset.** Apri Sources → Subscriptions → Kaggle. Il modulo esegue due passaggi sequenziali, perché l'endpoint di ricerca dataset di Kaggle richiede l'autenticazione — il selettore non può apparire prima che il token sia validato.
+**Aggiungere un dataset.** Aprite Sources → Subscriptions → Kaggle. Il modulo procede in due passi, perché la ricerca di dataset di Kaggle richiede un token: il selettore compare solo dopo che il vostro è stato verificato.
 
-1. **Token** — inserisci un token API Kaggle e clicca "Validate". La validazione chiama `POST https://www.kaggle.com/api/v1/datasets/create/new` con corpo vuoto. Un `401` significa non valido; qualsiasi altra risposta significa valido (la validazione del payload propria di Kaggle scatta prima che venga creato qualsiasi dataset — nulla viene persistito).
-2. **Selettore** — un campo di ricerca live-as-you-type interroga `GET /api/v1/datasets/list`. Ogni risultato mostra titolo e descrizione del dataset. Selezionane uno, poi clicca "Add Dataset".
+1. **Token.** Inserite un token API di Kaggle e fate clic su "Validate". La verifica chiama `POST https://www.kaggle.com/api/v1/datasets/create/new` con un corpo vuoto. Un `401` significa che il token non è valido, qualsiasi altra risposta che lo è. Kaggle controlla il corpo vuoto prima di creare qualcosa, quindi non viene salvato nulla.
+2. **Selettore.** Un campo di ricerca interroga `GET /api/v1/datasets/list` mentre digitate, e ogni risultato mostra titolo e descrizione del dataset. Sceglietene uno e fate clic su "Add Dataset".
 
-Cliccare "Add Dataset" scarica il bundle da `GET /api/v1/datasets/download/{owner}/{ref}`, decomprime i membri CSV e Parquet in `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>`, e crea **una** origine di tipo `files` il cui `path` è quella directory radice. Il token non viene mai memorizzato lato server.
+"Add Dataset" scarica il pacchetto da `GET /api/v1/datasets/download/{owner}/{ref}`, decomprime i suoi file CSV e Parquet in `<PROVISA_DATA_DIR>/kaggle/<owner>/<ref>/<file-stem>/<file-name>` e crea **una** origine `files` il cui `path` è quella directory radice. Il server non conserva mai il token.
 
-Dopo aver aggiunto l'origine, registra le sue tabelle tramite la normale schermata Registra tabella. La discovery ricorsiva delle directory del connettore pgwire-file elenca ogni file come propria tabella — lo stesso meccanismo usato da qualsiasi altra origine `files`.
+Poi registrate le tabelle che volete nella normale schermata Register Table. Ogni file compare come tabella a sé, come in qualsiasi altra origine `files`.
 
-**Limitazione v1.** Un bundle contenente un file `.sqlite` o `.db` viene rifiutato immediatamente con un errore chiaro. Vengono messi in stage solo file CSV e Parquet.
+**Solo CSV e Parquet.** Un pacchetto che contiene un file `.sqlite` o `.db` viene rifiutato con un errore che lo dice. Vengono preparati solo file CSV e Parquet.
 
-**Denominazione delle tabelle.** Una tabella scansionata si chiama `<page>__<name>`: il titolo della pagina, poi la didascalia della tabella, oppure l'ultima intestazione sopra la tabella quando non ha didascalia, entrambi nell'ortografia dei nomi di colonna dell'origine. Per esempio, la tabella sotto l'intestazione "Tallest buildings in the world" nella pagina `List_of_tallest_buildings` è `list_of_tallest_buildings__tallest_buildings_in_the_world`. Un file di dati collegato conserva il proprio nome.
+**Aggiornare.** Quando Kaggle pubblica una nuova versione di un dataset, chiamate la mutation GraphQL `refreshKaggleSource` con l'ID dell'origine e un token valido. Prepara di nuovo i file sul posto e svuota la cache dell'endpoint dei file, così la query successiva recepisce qualsiasi cambio di schema. `kaggle_owner` e `kaggle_ref`, salvati in `federation_hints` alla creazione dell'origine, indicano quale dataset scaricare.
 
-**Aggiornamento.** Per riscaricare un dataset dopo che Kaggle pubblica una nuova versione, chiama la mutation GraphQL `refreshKaggleSource` con l'ID dell'origine e un token valido. Questo rimette in stage i file sul posto e invalida la cache dell'endpoint pgwire-file, cosicché il connettore recepisce eventuali modifiche allo schema alla query successiva. `kaggle_owner` e `kaggle_ref` memorizzati in `federation_hints` al momento della creazione identificano quale dataset riscaricare.
-
-**Nessun percorso di configurazione YAML statico.** Le origini Kaggle vengono create solo tramite il modulo Sources. Un'origine Kaggle esportata in YAML appare come `type: files` con `kaggle_owner` e `kaggle_ref` in `federation_hints`. Riscaricare da Kaggle richiede il flusso di aggiornamento della UI o la mutation `refreshKaggleSource` — puntare il `path` YAML a una directory già in stage è l'alternativa per ambienti air-gapped.
+**Nessuno YAML proprio.** Un'origine Kaggle si crea solo dal modulo delle origini. Esportata in YAML, compare come `type: files` con `kaggle_owner` e `kaggle_ref` in `federation_hints`. Per riscaricarla da Kaggle serve l'aggiornamento nella UI o la mutation `refreshKaggleSource`. In un ambiente isolato, puntate il `path` dello YAML a una directory preparata da voi.
 
 #### Wikipedia {: #wikipedia }
 
@@ -499,7 +497,7 @@ Solo le tabelle che i redattori contrassegnano come tabelle di dati (`table.wiki
 | `max_html_size` | non impostato | La pagina più grande letta, ad esempio `10MB` |
 | `max_data_file_size` | non impostato | Il file di dati più grande letto, ad esempio `100MB` |
 
-**Denominazione delle tabelle.** Una tabella scansionata si chiama `<page>__<name>`. Il nome è l'`id` della tabella stessa quando ne ha uno, altrimenti la sua didascalia, altrimenti l'intestazione più vicina sopra di essa. Per esempio, una tabella sotto l'intestazione "Tallest buildings" nella pagina `List_of_tallest_buildings` diventa `list_of_tallest_buildings__tallest_buildings` dopo la normalizzazione del nome.
+**Nomi delle tabelle.** Una tabella acquisita dal crawl si chiama `<page>__<name>`. Il nome è la didascalia (caption) della tabella o, se manca, l'ultima intestazione sopra di essa; una tabella senza nessuna delle due diventa `table_1`, `table_2` e così via. Entrambe le parti vengono messe in minuscolo, e ogni sequenza di altri caratteri diventa `_`. Per esempio, una tabella sotto l'intestazione "Tallest buildings" nella pagina `List_of_tallest_buildings` diventa `list_of_tallest_buildings__tallest_buildings`. Un file di dati collegato mantiene il proprio nome.
 
 **Aggiornamento.** Una scansione viene conservata per il periodo di cache, `1 days` per impostazione predefinita (`html_cache_ttl`). Le pagine vengono recuperate di nuovo solo dopo che quel tempo è trascorso.
 
