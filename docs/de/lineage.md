@@ -208,6 +208,15 @@ ORDER BY refreshed_at
 
 Die Sicht liest die Aktualisierungsdatensätze in `"ops"."traces"` und antwortet auf jeder Engine, die sie aufbewahrt. Auf Trino sind das die Iceberg-Tabellen des Katalogs `otel`. Auf DuckDB schreibt der Server seine eigenen Trace-Datensätze als Parquet-Dateien in seinen Telemetrie-Ordner (`PROVISA_TELEMETRY_DIR`, standardmäßig `~/.provisa/telemetry`), eine Datei pro Export-Batch in einem Ordner pro Tag. Die geplante Telemetrie-Kompaktierung (`otel.compact_cron`) fasst die kleinen Dateien jedes Tages zu Dateien von bis zu 64 MB zusammen. Jede Organisation liest nur ihre eigenen Aktualisierungen, und die Datensätze werden unbegrenzt aufbewahrt. Spans werden nur erfasst, solange das OpenTelemetry-SDK aktiviert ist (`OTEL_SDK_DISABLED` nicht gesetzt oder false).
 
+## Eine Sicht, wie sie stand und wie sie erfasst wurde (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+
+Eine als bitemporal deklarierte Sicht behält jede Version, die sie je hatte: Jede Aktualisierung hängt an, und keine Version wird überschrieben, auf jedem Speicher. Ein einfacher Lesezugriff liefert den aktuellen Stand. Zwei Request-Header lesen ihre Vergangenheit:
+
+- `X-Provisa-As-Of` liest die Sicht zu einem Zeitpunkt oder über einen Zeitraum, auf ihrer Uhr: der eigenen Änderungszeit der Quelle, wo die Sicht `bitemporal_source_time` deklariert, sonst der Ladezeit von Provisa.
+- `X-Provisa-As-Recorded` liest sie so, wie Provisa sie zu einem Zeitpunkt erfasst hatte. Später erfasste Versionen bleiben außen vor, sodass eine später erfasste Korrektur die Wiedergabe der Vergangenheit nicht ändert.
+
+Stand 30. September, erfasst am 1. Oktober, ergibt den ursprünglichen Wert; erfasst am 5. Oktober ergibt die Korrektur. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest (`as_of`, `as_recorded`), sodass sich ein Bericht so reproduzieren lässt, wie er zuerst erstellt wurde. [Sichten mit Historie](configuration.md#views-with-history-time-travel) beschreibt, wie eine bitemporale Sicht deklariert wird, und jede Oberfläche, die die beiden Werte annimmt.
+
 ## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Eine Spalte trägt zwei Namen, und jeder wird von einer anderen Gruppe von Artefakten gespeichert.

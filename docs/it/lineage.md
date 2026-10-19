@@ -205,6 +205,15 @@ ORDER BY refreshed_at
 
 La vista legge i record di refresh in `"ops"."traces"` e risponde su ogni motore che li conserva. Su Trino sono le tabelle Iceberg del catalogo `otel`. Su DuckDB il server scrive i propri record di trace come file Parquet nella sua cartella di telemetria (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` per impostazione predefinita), un file per batch di esportazione in una cartella per giorno. La compattazione pianificata della telemetria (`otel.compact_cron`) unisce i file piccoli di ogni giorno in file fino a 64 MB. Ogni organizzazione legge solo i propri refresh, e i record sono conservati a tempo indeterminato. Gli span vengono registrati solo mentre l'SDK OpenTelemetry è abilitato (`OTEL_SDK_DISABLED` non impostato o false).
 
+## Una vista com'era, e com'era stata registrata (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+
+Una vista dichiarata bitemporale conserva ogni versione che ha avuto: ogni refresh aggiunge, e nessuna versione viene riscritta, su qualsiasi archivio. Una lettura semplice risponde con lo stato attuale. Due header della richiesta ne leggono il passato:
+
+- `X-Provisa-As-Of` legge la vista a una data, o su un intervallo, secondo il suo orologio: l'ora di modifica propria della sorgente dove la vista dichiara `bitemporal_source_time`, l'ora di caricamento di Provisa dove non la dichiara.
+- `X-Provisa-As-Recorded` la legge come Provisa l'aveva registrata a una data. Le versioni registrate dopo restano escluse, quindi una correzione registrata in seguito non cambia la riproduzione del passato.
+
+Al 30 settembre e registrata il 1° ottobre dà il dato originale; registrata il 5 ottobre dà la correzione. Il record di audit di ogni istruzione conserva entrambe le date (`as_of`, `as_recorded`), così un report si può riprodurre com'era stato prodotto la prima volta. [Viste con cronologia](configuration.md#views-with-history-time-travel) descrive come dichiarare una vista bitemporale e ogni superficie che accetta i due valori.
+
 ## Che cosa romperebbe la ridenominazione o la rimozione di una colonna (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Una colonna porta due nomi, e ciascuno è memorizzato da un insieme diverso di artefatti.

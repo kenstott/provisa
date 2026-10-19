@@ -204,6 +204,15 @@ ORDER BY refreshed_at
 
 A visão lê os registros de atualização em `"ops"."traces"` e responde em todo motor que os guarda. No Trino são as tabelas Iceberg do catálogo `otel`. No DuckDB o servidor grava os próprios registros de trace como arquivos Parquet na sua pasta de telemetria (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` por padrão), um arquivo por lote exportado numa pasta por dia. A compactação agendada da telemetria (`otel.compact_cron`) junta os arquivos pequenos de cada dia em arquivos de até 64 MB. Cada organização lê só as próprias atualizações, e os registros são mantidos indefinidamente. Os spans só são registrados enquanto o SDK do OpenTelemetry está habilitado (`OTEL_SDK_DISABLED` não definido ou false).
 
+## Uma view como estava, e como foi registrada (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+
+Uma view declarada bitemporal guarda cada versão que já teve: cada atualização acrescenta, e nenhuma versão é reescrita, em qualquer armazenamento. Uma leitura simples responde com o estado atual. Dois cabeçalhos da requisição leem o seu passado:
+
+- `X-Provisa-As-Of` lê a view numa data, ou sobre um intervalo, no seu relógio: o tempo de alteração da própria fonte quando a view declara `bitemporal_source_time`, o tempo de carga do Provisa quando não declara.
+- `X-Provisa-As-Recorded` lê a view como o Provisa a tinha registrado num momento. Versões registradas depois ficam de fora, de modo que uma correção registrada mais tarde não muda a reprodução do passado.
+
+Em 30 de setembro e registrada em 1º de outubro dá o valor original; registrada em 5 de outubro dá a correção. O registro de auditoria de cada instrução guarda os dois tempos (`as_of`, `as_recorded`), para que um relatório possa ser reproduzido como foi produzido da primeira vez. [Views com histórico](configuration.md#views-with-history-time-travel) descreve como declarar uma view bitemporal e cada superfície que aceita os dois valores.
+
 ## O que uma renomeação ou remoção de coluna quebraria (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Uma coluna carrega dois nomes, e cada um é armazenado por um conjunto diferente de artefatos.

@@ -207,6 +207,15 @@ ORDER BY refreshed_at
 
 La vista lee los registros de refresco de `"ops"."traces"` y responde en todo motor que los conserve. En Trino son las tablas Iceberg del catálogo `otel`. En DuckDB el servidor escribe sus propios registros de traza como archivos Parquet en su carpeta de telemetría (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` por defecto), un archivo por lote exportado en una carpeta por día. La compactación programada de telemetría (`otel.compact_cron`) une los archivos pequeños de cada día en archivos de hasta 64 MB. Cada organización lee solo sus propios refrescos, y los registros se conservan indefinidamente. Los spans solo se registran mientras el SDK de OpenTelemetry está activado (`OTEL_SDK_DISABLED` sin definir o false).
 
+## Una vista tal como estaba y tal como se registró (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+
+Una vista declarada bitemporal conserva cada versión que ha tenido: cada refresco añade, y ninguna versión se reescribe, en cualquier almacén. Una lectura simple responde con el estado actual. Dos cabeceras de la petición leen su pasado:
+
+- `X-Provisa-As-Of` lee la vista a una fecha, o sobre un rango, según su reloj: el tiempo de cambio propio de la fuente cuando la vista declara `bitemporal_source_time`, el tiempo de carga de Provisa cuando no.
+- `X-Provisa-As-Recorded` la lee tal como Provisa la tenía registrada en un momento. Las versiones registradas después quedan fuera, así que una corrección registrada más tarde no cambia la reproducción del pasado.
+
+A 30 de septiembre y registrada el 1 de octubre da la cifra original; registrada el 5 de octubre da la corrección. El registro de auditoría de cada sentencia guarda ambos tiempos (`as_of`, `as_recorded`), de modo que un informe se puede reproducir tal como se produjo por primera vez. [Vistas con historial](configuration.md#views-with-history-time-travel) explica cómo declarar una vista bitemporal y cada superficie que acepta los dos valores.
+
 ## Qué rompería un renombrado o una eliminación de columna (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Una columna lleva dos nombres, y cada uno lo almacena un conjunto distinto de artefactos.

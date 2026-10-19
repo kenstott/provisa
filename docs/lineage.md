@@ -203,6 +203,15 @@ ORDER BY refreshed_at
 
 The view reads the refresh records in `"ops"."traces"` and answers on every engine that keeps them. On Trino those are the `otel` catalog's Iceberg tables. On DuckDB the server writes its own trace records as Parquet files under its telemetry folder (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` by default), one file per export batch in a folder per day. The scheduled telemetry compaction (`otel.compact_cron`) merges each day's small files into files of up to 64 MB. Each organization reads only its own refreshes, and the records are kept indefinitely. Spans are recorded only while the OpenTelemetry SDK is enabled (`OTEL_SDK_DISABLED` unset or false).
 
+## A view as it stood, and as it was recorded (REQ-1163)
+
+A view declared bitemporal keeps every version it has held: each refresh appends, and no version is rewritten, on any store. A plain read answers the current state. Two request headers read its past:
+
+- `X-Provisa-As-Of` reads the view as of a time, or over a range, on its clock: the source's own change time where the view declares `bitemporal_source_time`, Provisa's load time where it does not.
+- `X-Provisa-As-Recorded` reads it as Provisa had recorded it at a time. Versions recorded after that time are left out, so a correction recorded later does not change a replay of the past.
+
+As of 30 September and as recorded on 1 October gives the original figure; as recorded on 5 October gives the correction. The audit record of each statement keeps both times (`as_of`, `as_recorded`), so a report can be reproduced as it was first produced. [Views with history](configuration.md#views-with-history-time-travel) covers declaring a bitemporal view and every surface that takes the two values.
+
 ## What a column rename or drop would break (REQ-1484)
 
 A column carries two names, and each is stored by a different set of artifacts.

@@ -211,6 +211,15 @@ ORDER BY refreshed_at
 
 La vue lit les enregistrements de rafraîchissement dans `"ops"."traces"` et répond sur tout moteur qui les conserve. Sur Trino, ce sont les tables Iceberg du catalogue `otel`. Sur DuckDB, le serveur écrit ses propres enregistrements de traces en fichiers Parquet dans son dossier de télémétrie (`PROVISA_TELEMETRY_DIR`, `~/.provisa/telemetry` par défaut), un fichier par lot d'export dans un dossier par jour. La compaction planifiée de la télémétrie (`otel.compact_cron`) fusionne les petits fichiers de chaque jour en fichiers d'au plus 64 Mo. Chaque organisation ne lit que ses propres rafraîchissements, et les enregistrements sont conservés indéfiniment. Les spans ne sont enregistrés que tant que le SDK OpenTelemetry est activé (`OTEL_SDK_DISABLED` non défini ou false).
 
+## Une vue telle qu'elle était, et telle qu'elle a été enregistrée (REQ-1163) {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+
+Une vue déclarée bitemporelle conserve chaque version qu'elle a eue : chaque rafraîchissement ajoute, et aucune version n'est réécrite, sur n'importe quel stockage. Une lecture simple répond avec l'état actuel. Deux en-têtes de requête lisent son passé :
+
+- `X-Provisa-As-Of` lit la vue à une date, ou sur une plage, selon son horloge : l'heure de modification propre à la source lorsque la vue déclare `bitemporal_source_time`, l'heure de chargement de Provisa sinon.
+- `X-Provisa-As-Recorded` la lit telle que Provisa l'avait enregistrée à une date. Les versions enregistrées après cette date sont écartées, si bien qu'une correction enregistrée plus tard ne change pas la relecture du passé.
+
+Au 30 septembre et enregistrée le 1er octobre donne le chiffre d'origine ; enregistrée le 5 octobre donne la correction. L'enregistrement d'audit de chaque instruction conserve les deux dates (`as_of`, `as_recorded`), de sorte qu'un rapport peut être reproduit tel qu'il a été produit la première fois. [Vues avec historique](configuration.md#views-with-history-time-travel) décrit la déclaration d'une vue bitemporelle et chaque surface qui accepte les deux valeurs.
+
 ## Ce que renommer ou supprimer une colonne casserait (REQ-1484) {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 Une colonne porte deux noms, et chacun est stocké par un ensemble d'artefacts différent.

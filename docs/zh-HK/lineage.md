@@ -183,6 +183,15 @@ ORDER BY refreshed_at
 
 該檢視讀取 `"ops"."traces"` 中的重新整理記錄，並在保留這些記錄的每個引擎上作答。在 Trino 上，它們是 `otel` 目錄的 Iceberg 資料表。在 DuckDB 上，伺服器把自身的追蹤記錄以 Parquet 檔案寫入其遙測資料夾（`PROVISA_TELEMETRY_DIR`，預設 `~/.provisa/telemetry`），每個匯出批次一個檔案，每天一個資料夾。排程的遙測壓縮（`otel.compact_cron`）會把每天的小檔案合併為最大 64 MB 的檔案。每個組織只讀取自己的重新整理，記錄無限期保留。只有在啟用 OpenTelemetry SDK 時（`OTEL_SDK_DISABLED` 未設定或為 false）才會記錄 span。
 
+## 檢視當時的樣子，以及當時記錄的樣子（REQ-1163） {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+
+宣告為雙時態的檢視會保留它有過的每個版本：每次重新整理都是附加，任何版本都不會被改寫，在任何儲存上都是如此。一般讀取傳回目前狀態。兩個請求標頭用來讀取它的過去：
+
+- `X-Provisa-As-Of` 按檢視的時鐘讀取某個時間點或某個區間的檢視：檢視宣告了 `bitemporal_source_time` 時用資料來源本身的變更時間，未宣告時用 Provisa 的載入時間。
+- `X-Provisa-As-Recorded` 按 Provisa 在某個時間點所記錄的樣子讀取檢視。該時間之後記錄的版本不計入，因此之後記錄的更正不會改變對過去的重播。
+
+截至 9 月 30 日、按 10 月 1 日的記錄讀取得到原始數字；按 10 月 5 日的記錄讀取得到更正後的數字。每條陳述式的稽核記錄都保存這兩個時間（`as_of`、`as_recorded`），因此報表可以按其首次產生時的樣子重現。[帶歷史的檢視](configuration.md#views-with-history-time-travel)說明如何宣告雙時態檢視，以及接受這兩個值的每個介面。
+
 ## 改名或刪除一個欄位會弄壞什麼（REQ-1484） {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 一個欄位帶著兩個名字，而各由不同的一組構件儲存。

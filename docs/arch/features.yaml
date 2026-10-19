@@ -393,8 +393,8 @@
       it is large, and is read through a role picked on the lineage form. Every refresh of a materialized
       view also records its own lineage: the source columns and transform behind each output column, the versions
       of the definition and of the inputs it read, and the trace of the refresh. Those records are queryable
-      in the ops domain as mv_refresh_lineage. An engine without Trino lands Provisa''s traces as Parquet
-      files, so the records are kept whichever engine runs.'
+      in the ops domain as mv_refresh_lineage. On Trino they are kept in the telemetry catalog''s Iceberg
+      tables, and on DuckDB Provisa lands its own traces as Parquet files.'
   - id: lineage-and-provenance-point-in-time
     text: 'A table can record row-level changes into an append-only delta ledger, and a materialized view
       can be declared bitemporal: each refresh appends a version and never rewrites one, on any store. A plain

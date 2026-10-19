@@ -183,6 +183,15 @@ ORDER BY refreshed_at
 
 该视图读取 `"ops"."traces"` 中的刷新记录，并在保留这些记录的每个引擎上作答。在 Trino 上，它们是 `otel` 目录的 Iceberg 表。在 DuckDB 上，服务器把自身的追踪记录以 Parquet 文件写入其遥测文件夹（`PROVISA_TELEMETRY_DIR`，默认 `~/.provisa/telemetry`），每个导出批次一个文件，每天一个文件夹。定时的遥测压缩（`otel.compact_cron`）会把每天的小文件合并为最大 64 MB 的文件。每个组织只读取自己的刷新，记录无限期保留。只有在启用 OpenTelemetry SDK 时（`OTEL_SDK_DISABLED` 未设置或为 false）才会记录 span。
 
+## 视图当时的样子，以及当时记录的样子（REQ-1163） {: #a-view-as-it-stood-and-as-it-was-recorded-req-1163 }
+
+声明为双时态的视图会保留它有过的每个版本：每次刷新都是追加，任何版本都不会被改写，在任何存储上都是如此。普通读取返回当前状态。两个请求头用于读取它的过去：
+
+- `X-Provisa-As-Of` 按视图的时钟读取某个时间点或某个区间的视图：视图声明了 `bitemporal_source_time` 时用数据源自身的变更时间，未声明时用 Provisa 的加载时间。
+- `X-Provisa-As-Recorded` 按 Provisa 在某个时间点所记录的样子读取视图。该时间之后记录的版本不计入，因此之后记录的更正不会改变对过去的重放。
+
+截至 9 月 30 日、按 10 月 1 日的记录读取得到原始数字；按 10 月 5 日的记录读取得到更正后的数字。每条语句的审计记录都保存这两个时间（`as_of`、`as_recorded`），因此报表可以按其首次生成时的样子重现。[带历史的视图](configuration.md#views-with-history-time-travel)介绍如何声明双时态视图，以及接受这两个值的每个接口。
+
 ## 重命名或删除一个列会打断什么（REQ-1484） {: #what-a-column-rename-or-drop-would-break-req-1484 }
 
 一个列带着两个名字，每一个都由不同的一组制品保存。
