@@ -540,33 +540,68 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
     A bundled demo's template built from another version than the ready one is replaced. What
     each demo's template did: ``"ready"`` (built before; its runtime is built now) or
     ``"building"``."""
+    outcome = {demo.name: await _queue_template(pool, demo) for demo in published_demos().values()}
+    _start_builds()
+    _startup_queued.set()
+    return outcome
+
+
+async def queue_late_templates(pool) -> list[str]:
+    """Queue the template of each published demo this process has not been asked to build -- a
+    bundled demo the node marked ready after the tier started (its ``ready`` file, read by
+    published_demos) -- as ensure_demo_templates queued the others at startup. Run by the tier's
+    scheduler, never on a visitor's request; nothing before the startup has queued its own. The
+    demos queued."""
+    if not _startup_queued.is_set():
+        return []
+    queued = []
+    for demo in published_demos().values():
+        lock = _following.setdefault(demo.name, CrossLoopLock())
+        async with lock:
+            # A visitor's open builds a newer version itself (follow_latest), marked first.
+            if template_builds.state_of(demo.name) != "unknown" or (
+                _templated(demo.name) == demo.directory.name
+            ):
+                continue
+            await _queue_template(pool, demo)
+        queued.append(demo.name)
+    if queued:
+        _start_builds()
+    return queued
+
+
+async def _queue_template(pool, demo: PublishedDemo) -> str:
+    """Queue ``demo``'s template, or serve it as built; what its template did."""
+    from provisa.api.demo_region_seed import regional
+
+    # A template built from this demo version by this release, its store on disk as recorded,
+    # is served at once: no build, no runtime, no wait for its replicas. Its runtime is built
+    # when a sandbox of it is first opened. A regions tier's stores are its regions' own.
+    if not regional() and not seeding_release() and await warm_ready(pool, demo):
+        template_builds.record(demo.name, True)
+        return "ready (as built)"
+    if bundled_demos() and _templated(demo.name) != demo.directory.name:
+        await _retire_template(demo.name)
+    build = await _template_row(pool, demo)
+    _mark_templated(demo)
+    template_builds.add(demo, build=build)
+    return "building" if build else "ready"
+
+
+def _start_builds() -> None:
+    """Start the workers that build the queued templates, unless some are working: they take what
+    was queued since."""
     from provisa.core import settings_registry
     from provisa.core.connection_loop import spawn_background
 
-    from provisa.api.demo_region_seed import regional
-
-    outcome: dict[str, str] = {}
-    for demo in published_demos().values():
-        # A template built from this demo version by this release, its store on disk as recorded,
-        # is served at once: no build, no runtime, no wait for its replicas. Its runtime is built
-        # when a sandbox of it is first opened. A regions tier's stores are its regions' own.
-        if not regional() and not seeding_release() and await warm_ready(pool, demo):
-            template_builds.record(demo.name, True)
-            outcome[demo.name] = "ready (as built)"
-            continue
-        if bundled_demos() and _templated(demo.name) != demo.directory.name:
-            await _retire_template(demo.name)
-        build = await _template_row(pool, demo)
-        _mark_templated(demo)
-        template_builds.add(demo, build=build)
-        outcome[demo.name] = "building" if build else "ready"
+    if not template_builds.claim():
+        return
     # A few at a time (sandbox.template_builds_at_once): all at once, a small tier's machine was
     # too busy to serve the visitors it was preparing for.
     at_once = int(settings_registry.value("sandbox.template_builds_at_once"))
     task = spawn_background(template_builds.run(at_once, _prepare), name="demo-templates")
     _build_tasks.add(task)
     task.add_done_callback(_build_tasks.discard)
-    return outcome
 
 
 class TemplateBuilds:
@@ -581,6 +616,9 @@ class TemplateBuilds:
         #: The demos whose templates are being built now, and each finished one's outcome.
         self._building: set[str] = set()
         self._finished: dict[str, str] = {}
+        #: The workers taking templates now, and whether ones claimed (``claim``) are starting.
+        self._workers = 0
+        self._starting = False
 
     def state_of(self, name: str) -> str:
         """Where demo ``name``'s template is: ``queued``, ``building``, ``ready``, ``failed``, or
@@ -611,9 +649,21 @@ class TemplateBuilds:
                     return True
         return False
 
+    def claim(self) -> bool:
+        """Whether workers are to be started for the waiting templates: none is working or
+        starting. The claim lasts until :meth:`run` starts them."""
+        with self._lock:
+            if self._workers or self._starting:
+                return False
+            self._starting = True
+            return True
+
     def _next(self) -> tuple[Any, bool] | None:
         with self._lock:
             if not self._waiting:
+                # A worker stops where it found nothing waiting: a template queued after is
+                # taken by the workers then started (claim).
+                self._workers -= 1
                 return None
             demo, build = self._waiting.pop(0)
             self._building.add(demo.name)
@@ -630,6 +680,10 @@ class TemplateBuilds:
         import logging
 
         log = logging.getLogger(__name__)
+        workers = max(at_once, 1)
+        with self._lock:
+            self._starting = False
+            self._workers += workers
 
         async def _work() -> None:
             while (waiting := self._next()) is not None:
@@ -641,7 +695,7 @@ class TemplateBuilds:
                     ready = False
                 self._done(demo.name, "ready" if ready else "failed")
 
-        await asyncio.gather(*(_work() for _ in range(max(at_once, 1))))
+        await asyncio.gather(*(_work() for _ in range(workers)))
 
 
 #: The tier's template builds (ensure_demo_templates); a visitor's open moves its demo forward.
@@ -936,6 +990,8 @@ async def _replica_progress(rt) -> tuple[int, list[str], int]:
 
 
 _build_tasks: set = set()
+#: Set once the startup has queued every published demo's template (ensure_demo_templates).
+_startup_queued = threading.Event()
 
 
 async def record_demo_destinations(org_id: str) -> None:

@@ -934,6 +934,19 @@ async def reap_demo_sandboxes() -> None:  # REQ-2006
         logger.info("demo sandboxes reaped: %s", ", ".join(reaped))
 
 
+async def queue_late_demo_templates() -> None:  # REQ-2049
+    """Queue the template of each bundled demo the node marked ready after the tier started; the
+    startup queued only the ones ready then. Run by the sandbox tier."""
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.api.demo_templates import queue_late_templates
+
+    queued = await queue_late_templates(_admin_pool())
+    if queued:
+        logger.info(
+            "demo templates queued, their bundles ready since startup: %s", ", ".join(queued)
+        )
+
+
 async def stop_idle_sandbox_vm(since: datetime) -> None:  # REQ-2006
     """Stop the sandbox tier's own VM once no sandbox has been reached for
     ``PROVISA_SANDBOX_IDLE_STOP_SECONDS`` -- counted from the last request to any sandbox, or from
