@@ -761,10 +761,13 @@ async def _await_source_servers(decision: Any, sources: Any, state: Any) -> None
         await_serving,
     )
 
+    # REQ-2031: a source every table of which never expires and has landed is read from its
+    # replicas alone; nothing contacts it, so there is no server of it to wait for.
+    kept = state.replica_routes.kept_sources
     served = [
         (sid, state.source_types.get(sid, ""))
         for sid in sorted(sources)
-        if state.source_types.get(sid, "") in PGWIRE_REPLICA_TYPES
+        if state.source_types.get(sid, "") in PGWIRE_REPLICA_TYPES and sid not in kept
     ]
     if not served:
         return

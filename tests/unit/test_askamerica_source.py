@@ -1304,7 +1304,7 @@ def test_a_serving_source_and_a_source_with_no_server_yet_are_not_refused(monkey
     pr.await_serving("some-pg", "postgresql", 0)
 
 
-def _pipeline_state(attached: list[str]):
+def _pipeline_state(attached: list[str], kept_sources: frozenset[str] = frozenset()):
     async def _attached_runtime(_state):
         attached.append("walked")
 
@@ -1312,6 +1312,7 @@ def _pipeline_state(attached: list[str]):
     return SimpleNamespace(
         source_types={"test-askamerica": "govdata", "lake": "files", "pg": "postgresql"},
         federation_engine=SimpleNamespace(engine=SimpleNamespace(backend=backend)),
+        replica_routes=SimpleNamespace(kept_sources=kept_sources),
     )
 
 
@@ -1332,6 +1333,21 @@ async def test_the_pipeline_waits_only_for_a_served_source_of_a_statement_the_en
     # The engine attaches first (which starts a server not yet started), then the statement waits.
     assert attached == ["walked"]
     assert asked == [("lake", "files"), ("test-askamerica", "govdata")]
+
+
+async def test_a_source_read_from_its_landed_replicas_alone_is_not_waited_for(monkeypatch):
+    # REQ-2031: every table of the source never expires and has landed (a demo's declared
+    # replica rows among them): nothing contacts it, so no server of it is waited for.
+    from provisa.pgwire import _pipeline
+    from provisa.transpiler.router import Route
+
+    asked: list[tuple[str, str]] = []
+    monkeypatch.setattr(pr, "await_serving", lambda sid, stype, _t: asked.append((sid, stype)))
+    state = _pipeline_state([], kept_sources=frozenset({"lake"}))
+    await _pipeline._await_source_servers(
+        SimpleNamespace(route=Route.ENGINE), {"test-askamerica", "lake"}, state
+    )
+    assert asked == [("test-askamerica", "govdata")]
 
 
 async def test_the_engine_attaches_again_once_the_statement_has_waited_for_its_servers(
