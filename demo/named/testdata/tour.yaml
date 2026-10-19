@@ -30,6 +30,8 @@ steps:
   route: /tables
   capability: table_registration
   table: shop-db.customers
+  # Its detail panel, on the columns' Testing tab: each column's fake is shown only there.
+  open: columns.testing
 - key: testdataJoin
   route: /relationships
   capability: create_relationship

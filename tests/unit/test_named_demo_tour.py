@@ -60,6 +60,26 @@ _REST_PARAMS = {
     "groupBy",
     "includeNodes",
 }
+# A table's detail sections a step may open (the read view anchors each one's panel), and the
+# column tabs of its Columns section.
+_UI = _REPO / "provisa-ui" / "src" / "pages" / "tables"
+_TABLE_PANELS = set(
+    re.findall(
+        r'"([a-z]+)"',
+        re.search(
+            r"TABLE_SECTIONS: TableSection\[\] = \[([^\]]*)\]",
+            (_UI / "tableSections.ts").read_text(),
+        ).group(1),
+    )
+)
+_COLUMN_TABS = set(
+    re.findall(
+        r'"([a-z]+)"',
+        re.search(
+            r"METADATA_TABS: ColumnTab\[\] = \[([^\]]*)\]", (_UI / "columnTopics.ts").read_text()
+        ).group(1),
+    )
+) | {"testing"}
 # The page each surface's step runs on.
 _SURFACE_PAGES = {"api": "/openapi", "jsonapi": "/jsonapi", "grpc": "/grpc", "cypher": "/graph"}
 
@@ -210,7 +230,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         previous, before = before, step
         named = [k for k in _TARGETS if k in step]
         assert len(named) == 1, f"{step['key']}: names {named}, not one target"
-        assert set(step) <= {"key", "route", "capability", *_TARGETS}, step
+        assert set(step) <= {"key", "route", "capability", "open", *_TARGETS}, step
         if "route" in step:
             assert gates.get(step["route"]) == step["capability"], step
         else:
@@ -237,6 +257,13 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert types <= aliases, f"{step['key']}: relationships {types - aliases}"
         if "table" in step:
             assert step["table"] in tables, step
+        if "open" in step:
+            # The table's detail panel, on a section whose panel a step can anchor on and, in
+            # Columns, a column tab the read view has.
+            assert "table" in step and page == "/tables", f"{step['key']}: open is a table's panel"
+            section, _, tab = step["open"].partition(".")
+            assert section in _TABLE_PANELS, f"{step['key']}: no anchored section {section!r}"
+            assert not tab or tab in _COLUMN_TABS, f"{step['key']}: no column tab {tab!r}"
         if "polly" in step:
             # Its answer is stored at the template build and graded by the bake-off.
             assert "route" not in step, f"{step['key']}: Polly opens over the page it is on"

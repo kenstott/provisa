@@ -32,6 +32,8 @@ steps:
   route: /tables
   capability: table_registration
   table: crm.customers
+  # Its detail panel: its profiler is shown in its quality section.
+  open: quality
 - key: profilingRuns
   route: /sql
   capability: query_development

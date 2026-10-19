@@ -31,6 +31,8 @@ steps:
   route: /tables
   capability: table_registration
   table: fund.allocations
+  # Its detail panel: who may read each column is shown in its columns' access.
+  open: columns.access
 - key: opioidsDeaths
   table: govdata.cdc_county_injury_mortality
 - key: opioidsJoin

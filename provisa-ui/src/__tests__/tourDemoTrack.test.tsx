@@ -302,6 +302,19 @@ describe("a demo's steps, as the runner walks them", () => {
     );
   });
 
+  it("opens a table's panel on the section its step describes", () => {
+    const [onRow, opened] = demoTourSteps(
+      [
+        { key: "r", route: "/tables", table: "shop-db.customers" },
+        { key: "o", route: "/tables", table: "shop-db.customers", open: "columns.testing" },
+      ],
+      EXAMPLES,
+    );
+    expect(onRow.element).toBe('[data-table-row="shop-db.customers"]');
+    expect(opened.route).toBe("/tables?open=shop-db.customers&section=columns&tab=testing");
+    expect(opened.element).toBe('[data-testid="table-section-columns-panel"]');
+  });
+
   it("refuses a step naming an example the demo does not ship", () => {
     expect(() => demoTourSteps([{ key: "x", example: "9-missing" }], EXAMPLES)).toThrow(
       /names example "9-missing"/,
@@ -348,7 +361,13 @@ function Launcher() {
 
 /** Where the app is: the page a tour's end leaves the visitor on. */
 function Where() {
-  return <output data-testid="where">{useLocation().pathname}</output>;
+  const location = useLocation();
+  return (
+    <>
+      <output data-testid="where">{location.pathname}</output>
+      <output data-testid="where-state">{JSON.stringify(location.state ?? null)}</output>
+    </>
+  );
 }
 
 function renderTour(demo: NamedDemo) {
@@ -370,6 +389,10 @@ function tourTree(demo: NamedDemo) {
                 <tr data-testid="sources-row-shop_db_log" />
               </tbody>
             </table>
+            {/* The Graph page's newest frame, as a Cypher step and a group_by step anchor on it. */}
+            <div className="graph-stream" data-handoff-status="done">
+              <div className="gf-frame" />
+            </div>
           </TourProvider>
         </NamedDemoContext.Provider>
       </MemoryRouter>
@@ -457,6 +480,37 @@ describe("the tour button in a named demo", () => {
     fireEvent.click(document.querySelector<HTMLElement>(".driver-popover-next-btn")!);
     await act(async () => {});
     expect(showExchange).toHaveBeenCalledWith({ question: "Which pages?", answer: "/checkout" });
+  });
+
+  it("regroups the graph a Cypher step drew, on the graph page, without leaving it", async () => {
+    // reviewsBoughtWith then reviewsBoughtWithByDegree: the group_by step names no route and
+    // stays on the Cypher step's page, handing it the view to apply to its newest frame.
+    const cypher = {
+      key: "weblogsGraph",
+      route: "/graph",
+      capability: "query_development" as const,
+      cypher: "MATCH (p:Page) RETURN p",
+    };
+    const grouped = { key: "weblogsGrouped", group_by: "degTotal" };
+    const after = {
+      key: "weblogsAfter",
+      route: "/sources",
+      capability: "source_registration" as const,
+      source: "shop_access",
+    };
+    renderTour({ ...WEBLOGS, tour: [WEBLOGS.tour[0], cypher, grouped, after] });
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    const next = () => document.querySelector<HTMLElement>(".driver-popover-next-btn")!;
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsGraph.title")).toBeInTheDocument();
+    fireEvent.click(next());
+    expect(await screen.findByText("tour.steps.weblogsGrouped.title")).toBeInTheDocument();
+    expect(screen.getByTestId("where").textContent).toBe("/graph");
+    expect(JSON.parse(screen.getByTestId("where-state").textContent!)).toEqual({
+      view: { groupBy: "degTotal" },
+    });
   });
 
   it("waits for a page's answered mark, set on an element already on the page", async () => {

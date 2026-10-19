@@ -465,6 +465,7 @@ Each step has:
 |---|---|---|
 | `source` | source id from `config.yaml` | Sources |
 | `table` | `<source id>.<table name>` | Tables |
+| `open` (with `table`) | `<section>[.<tab>]`: `identity`, `associations`, `load`, `query`, `quality`, `columns` (tab `naming`, `type`, `access` or `testing`) or `writes` | the table's detail panel, open on that section |
 | `relationship` | relationship alias from `config.yaml` | Relationships |
 | `example` | example name (without `.graphql`), from `queries/` | New query tab |
 | `sql` | a SQL statement | SQL explorer |

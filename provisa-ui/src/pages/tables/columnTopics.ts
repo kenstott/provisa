@@ -18,8 +18,9 @@ export const METADATA_TABS: ColumnTab[] = ["naming", "type", "access"];
 /** Every topic of a registered table's columns; Testing is each column's test data. */
 export const COLUMN_TABS: ColumnTab[] = [...METADATA_TABS, "testing"];
 
-/** The tab in view; a form that hides a topic (no right to see grants) passes the ones it shows. */
-export function useColumnTab(shown: ColumnTab[] = COLUMN_TABS) {
-  const [tab, setTab] = useState<ColumnTab>(shown[0]);
+/** The tab in view; a form that hides a topic (no right to see grants) passes the ones it shows.
+ * ``initial`` is the tab it opens on (a link to the table's Testing tab); else the first shown. */
+export function useColumnTab(shown: ColumnTab[] = COLUMN_TABS, initial?: ColumnTab) {
+  const [tab, setTab] = useState<ColumnTab>(initial ?? shown[0]);
   return [shown.includes(tab) ? tab : shown[0], setTab] as const;
 }

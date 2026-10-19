@@ -27,6 +27,8 @@ steps:
   route: /tables
   capability: table_registration
   table: orders.customer
+  # Its detail panel: what it watches is shown in its load section.
+  open: load
 - key: datavaultArrived
   route: /sql
   capability: query_development

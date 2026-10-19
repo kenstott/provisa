@@ -65,6 +65,9 @@ export interface DemoTourStepDef {
   source?: string;
   /** A registered table, as `<source id>.<table name>`: its row on the Tables page. */
   table?: string;
+  /** With `table`: its detail panel opened on a section, and in Columns on a tab, as
+   *  `<section>[.<tab>]` (`columns.testing`: each column's fake). */
+  open?: string;
   /** A relationship, by alias: its row on the Relationships page. */
   relationship?: string;
   /** An example query of the demo, by name: opened in a new GraphiQL tab and run. */
@@ -175,6 +178,17 @@ function demoTourStep(
   };
   if (def.source !== undefined) {
     return { ...page, element: `[data-testid="sources-row-${def.source}"]` };
+  }
+  if (def.table !== undefined && def.open !== undefined) {
+    // The table's detail panel, open on the section (and Columns tab) the step is about: what it
+    // describes is shown only there.
+    const [section, tab] = def.open.split(".");
+    const query = new URLSearchParams({ open: def.table, section, ...(tab ? { tab } : {}) });
+    return {
+      ...page,
+      route: `${def.route ?? "/tables"}?${query.toString()}`,
+      element: `[data-testid="table-section-${section}-panel"]`,
+    };
   }
   if (def.table !== undefined) {
     return { ...page, element: `[data-table-row="${def.table}"]` };

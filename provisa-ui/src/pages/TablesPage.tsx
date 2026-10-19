@@ -77,7 +77,8 @@ import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
 import { ModelingForm } from "./tables/ModelingForm";
 import { TableReadView } from "./tables/TableReadView";
-import type { TableSection } from "./tables/tableSections";
+import { TABLE_SECTIONS, type TableSection } from "./tables/tableSections";
+import { COLUMN_TABS, type ColumnTab } from "./tables/columnTopics";
 import { ReplicatingMark } from "./tables/ReplicatingMark";
 import { buildOf } from "./tables/replicaBuild";
 import { ReplicaBuildsContext } from "./tables/replicaBuildsContext";
@@ -182,6 +183,28 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setSeededTable(tableParam);
     if (tableParam !== null) setExpanded(Number(tableParam));
   }
+  // `?open=<source>.<table>` opens that table's detail panel by its name -- a demo tour's step
+  // names a table so, whatever id the org gave it -- on `section` and, in Columns, `tab`.
+  const openParam = searchParams.get("open");
+  const sectionParam = searchParams.get("section");
+  const tabParam = searchParams.get("tab");
+  const opened = openParam
+    ? tables.find(
+        (t) =>
+          `${t.sourceId}.${t.tableName}` === openParam || `${t.sourceId}.${t.alias}` === openParam,
+      )
+    : undefined;
+  const [seededOpen, setSeededOpen] = useState<string | null>(null);
+  const openKey = opened ? `${opened.id}:${sectionParam}:${tabParam}` : null;
+  if (openKey !== null && openKey !== seededOpen) {
+    setSeededOpen(openKey);
+    setExpanded(opened!.id);
+    if (sectionParam && (TABLE_SECTIONS as string[]).includes(sectionParam)) {
+      setSection(sectionParam as TableSection);
+    }
+  }
+  const linkedColumnTab =
+    tabParam && (COLUMN_TABS as string[]).includes(tabParam) ? (tabParam as ColumnTab) : undefined;
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 50;
   const { checkedDomains, domainsEnabled } = useDomainFilter();
@@ -908,6 +931,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           invalidating={purging[t.id] === true}
           section={section}
           onSectionChange={setSection}
+          columnTab={linkedColumnTab}
           profileColumnsTable={
             // REQ-1934: this table's profile, if its columns table is registered.
             tables.find(

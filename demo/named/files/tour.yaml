@@ -25,6 +25,8 @@ steps:
   route: /tables
   capability: table_registration
   table: drop.complaints
+  # Its detail panel: the file pattern it reads is shown in its identity.
+  open: identity
 - key: filesMonths
   route: /sql
   capability: query_development

@@ -33,6 +33,8 @@ steps:
   route: /tables
   capability: table_registration
   table: eu-shop.customers
+  # Its detail panel: its region is shown in its identity.
+  open: identity
 - key: retailRequests
   table: group-ref.subject_requests
 - key: retailJoin

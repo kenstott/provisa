@@ -83,18 +83,23 @@ async def _template_ready(demo: PublishedDemo) -> None:
     from provisa.api.app import ensure_org_runtime
     from provisa.api.demo_templates import template_builds
 
-    if template_builds.state_of(demo.name) == "ready":
+    building = template_builds.state_of(demo.name)
+    if building == "ready":
         # Built and landed (or served as built at this start, demo_templates.warm_ready): its
         # runtime is built when the sandbox is copied from it, not to count its replicas here.
         return
 
+    # Still being prepared here: its preparation (its profile runs among it, REQ-2052) is what a
+    # sandbox is cloned from. A demo with no replica read as ready from its provisioning alone,
+    # and its first sandbox was cloned before the template had profiled anything.
+    ready = building not in ("queued", "building")
     async with _admin_pool().acquire() as conn:
         row = (
             await conn.execute_core(
                 select(orgs.c.provisioning_state).where(orgs.c.id == demo.template_org)
             )
         ).fetchone()
-    ready = row is not None and row[0] == "ready"
+    ready = ready and row is not None and row[0] == "ready"
     if ready:
         from provisa.api.demo_templates import _replica_progress
 

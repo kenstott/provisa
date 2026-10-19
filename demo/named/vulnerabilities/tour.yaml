@@ -35,6 +35,8 @@ steps:
   table: code.dependabot_alerts
 - key: vulnerabilitiesNvd
   table: govdata.vulnerabilities
+  # Its detail panel: its landing filter is shown in its load section.
+  open: load
 - key: vulnerabilitiesKev
   table: govdata.kev_catalog
 - key: vulnerabilitiesJoin

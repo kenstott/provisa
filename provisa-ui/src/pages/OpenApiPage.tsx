@@ -19,6 +19,11 @@ import "./OpenApiPage.css";
 
 // How long a driven call's response may take: a query on a loaded demo answers in seconds.
 const RESPONSE_WAIT_MS = 60000;
+// How long the docs may take to show the handed operation. The frame's load fires when its HTML
+// is in, before Swagger UI has fetched the role's spec and rendered it: on a demo sandbox that
+// took longer than the 2 s the other waits allow, the call was never made, and its tour step
+// waited out its time ("taking longer than expected").
+const DOCS_WAIT_MS = 60000;
 
 export function OpenApiPage() {
   const { t } = useTranslation();
@@ -139,7 +144,7 @@ export function OpenApiPage() {
             return m === method && fullPath.endsWith(dataPath);
           }) as HTMLElement | undefined;
 
-        await waitFor(() => !!findBlock());
+        await waitFor(() => !!findBlock(), DOCS_WAIT_MS);
         const block = findBlock();
         if (!block) return;
 

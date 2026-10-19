@@ -188,3 +188,41 @@ describe("OpenApiPage — a handed call with a table's parameters", () => {
     expect(doc.querySelector("input")!.value).toBe("5");
   });
 });
+
+describe("OpenApiPage — docs that render after the frame has loaded", () => {
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = () => undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("<html><body></body></html>", { status: 200 })),
+    );
+  });
+
+  it("drives the handed call once its operation appears, seconds later", async () => {
+    // The frame's load fires before Swagger UI has fetched the spec and rendered it; a sandbox's
+    // spec took longer than 2 s, and the call was never made.
+    const opened: string[] = [];
+    const { container } = render(
+      <MantineProvider>
+        <MemoryRouter initialEntries={["/openapi"]}>
+          <Polly path="/pet-store/users" />
+          <OpenApiPage />
+        </MemoryRouter>
+      </MantineProvider>,
+    );
+    const frame = await waitFor(() => {
+      const f = container.querySelector("iframe");
+      expect(f).not.toBeNull();
+      return f as HTMLIFrameElement;
+    });
+    (
+      frame.contentWindow as unknown as { Element: typeof Element }
+    ).Element.prototype.scrollIntoView = () => undefined;
+    fireEvent.load(frame);
+    act(() => screen.getByText("/pet-store/users").click());
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    expect(opened).toEqual([]);
+    stockDocs(frame.contentDocument!, opened);
+    await waitFor(() => expect(opened).toContain("/pet-store/users"), { timeout: 2000 });
+  }, 10000);
+});
