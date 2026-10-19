@@ -1486,7 +1486,7 @@ Cada ferramenta recebe um conjunto de dados definido por `sql` e o executa pelo 
 
 O mecanismo calcula o que pode sobre cada linha que o papel lê: as contagens, contagens distintas, médias, desvios-padrão, mínimos e máximos de `describe`, e o `n`, a média e a variância de cada grupo para `compare`. Um modelo ajustado e os quantis e valores mais frequentes de `describe` leem no máximo `mcp.stats_max_rows` linhas (Admin → Settings → Limits; 100.000 por padrão). Toda resposta que lê linhas informa `rows_read`, `row_cap` e `truncated`, e o limite de linhas do próprio papel é relatado em `warnings`, como em `run_sql`.
 
-As ferramentas de estatística devolvem apenas resultados, então as linhas por trás de uma análise nunca entram no contexto do modelo: minimização de dados por padrão. É o controle de acesso que limita o que um agente pode saber. Para expor apenas agregados, publique views de agregados e conceda aos papéis essas views, não as tabelas subjacentes; agregados sobre grupos pequenos podem identificar pessoas, e uma view de agregados decide o agrupamento que um papel lê. Veja [Segurança](security.md#statistics-over-mcp).
+As ferramentas de estatística devolvem apenas resultados, então as linhas por trás de uma análise nunca entram no contexto do modelo: minimização de dados por padrão. É o controle de acesso que limita o que um agente pode saber. Para expor apenas agregados, publique-os como exibições materializadas e conceda aos papéis essas exibições, não as tabelas subjacentes; agregados sobre grupos pequenos podem identificar pessoas, e a exibição materializada decide o agrupamento que um papel lê. Veja [Segurança](security.md#statistics-over-mcp).
 
 ### Exportação de Metadados {: #metadata-export }
 
