@@ -296,7 +296,8 @@ def forecast(
     if len(used) < needed:
         raise ValueError(f"forecast needs {needed} or more points; the result has {len(used)}")
     y = pd.Series(_series(used, value).astype(float).to_numpy())  # ETS predictions are indexed
-    fit = ETSModel(
+    # statsmodels types fit() as every shape it can return; this call returns the results.
+    fit: Any = ETSModel(
         y, error="add", trend=trend, seasonal=seasonal, seasonal_periods=seasonal_periods
     ).fit(disp=False)
     frame_ = fit.get_prediction(start=len(y), end=len(y) + horizon - 1).summary_frame(
