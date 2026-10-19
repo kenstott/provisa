@@ -155,6 +155,7 @@ OWNERS: dict[str, set[str]] = {
         "provisa/grpc/reflection.py",
         "provisa/grpc/server.py",
         "provisa/grpc/auth.py",  # auth interceptors for the served protocol, same owner family
+        "provisa/grpc/redaction.py",  # the served protocol's error-redacting interceptor
         "provisa/security/mtls.py",  # builds the served protocol's mTLS server credentials
         "provisa/auth/approval_pb2_grpc.py",
         "provisa/auth/approval_hook.py",

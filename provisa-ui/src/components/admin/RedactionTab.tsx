@@ -162,20 +162,23 @@ function RulesEditor({
           </ActionIcon>
         </Group>
       ))}
-      <FormFooter>
-        <Button
-          variant="default"
-          leftSection={<Plus size={14} />}
-          onClick={() => setRows((rs) => [...rs, { name: "", kind: "pattern", value: "" }])}
-          data-testid={`redaction-${scope}-add`}
-        >
-          {t("redactionTab.add")}
-        </Button>
-        <Button onClick={save} loading={saving} data-testid={`redaction-${scope}-save`}>
-          {t("redactionTab.save")}
-        </Button>
+      <FormFooter
+        onSave={save}
+        saving={saving}
+        saveProps={{ "data-testid": `redaction-${scope}-save` }}
+        problem={error || undefined}
+        action={
+          <Button
+            variant="default"
+            leftSection={<Plus size={14} />}
+            onClick={() => setRows((rs) => [...rs, { name: "", kind: "pattern", value: "" }])}
+            data-testid={`redaction-${scope}-add`}
+          >
+            {t("redactionTab.add")}
+          </Button>
+        }
+      >
         {msg && <Text c="green">{msg}</Text>}
-        {error && <Text c="red">{error}</Text>}
       </FormFooter>
     </Stack>
   );

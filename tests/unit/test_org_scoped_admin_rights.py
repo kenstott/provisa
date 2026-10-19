@@ -144,6 +144,8 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "cache",
         # REQ-2057: the claim types that become the org's derived roles are the org's own.
         "derived_roles",
+        # REQ-2087: the org's own redaction rules.
+        "redaction",
     }
     for deployment_wide in (
         "federation",

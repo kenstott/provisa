@@ -19,7 +19,6 @@
     "referencePlaceholder": "${secret:NAME} ou ${env:NAME}",
     "add": "Adicionar regra",
     "remove": "Remover regra",
-    "save": "Salvar",
     "saved": "Salvo. As regras se aplicam a partir de agora."
   }
 }

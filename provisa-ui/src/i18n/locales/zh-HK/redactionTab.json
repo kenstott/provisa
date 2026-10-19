@@ -19,7 +19,6 @@
     "referencePlaceholder": "${secret:NAME} 或 ${env:NAME}",
     "add": "加入規則",
     "remove": "移除規則",
-    "save": "儲存",
     "saved": "已儲存。規則由現在起生效。"
   }
 }

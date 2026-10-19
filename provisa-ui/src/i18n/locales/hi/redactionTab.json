@@ -19,7 +19,6 @@
     "referencePlaceholder": "${secret:NAME} या ${env:NAME}",
     "add": "नियम जोड़ें",
     "remove": "नियम हटाएँ",
-    "save": "सहेजें",
     "saved": "सहेजा गया। नियम अब से लागू होते हैं।"
   }
 }

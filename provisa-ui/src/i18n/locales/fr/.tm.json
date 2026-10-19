@@ -3150,7 +3150,6 @@
   "fr/redactionTab.json::redactionTab.patternPlaceholder": "A regular expression, e.g. \\bEMP-\\d{6}\\b",
   "fr/redactionTab.json::redactionTab.referencePlaceholder": "${secret:NAME} or ${env:NAME}",
   "fr/redactionTab.json::redactionTab.remove": "Remove rule",
-  "fr/redactionTab.json::redactionTab.save": "Save",
   "fr/redactionTab.json::redactionTab.saved": "Saved. The rules apply from now on.",
   "fr/redactionTab.json::redactionTab.unresolved": "These reference rules do not resolve and redact nothing: {{names}}",
   "fr/redactionTab.json::redactionTab.value": "Pattern or reference",

@@ -53,7 +53,7 @@ def _resolve(table: dict[str, str]):
     [
         ("card_number", "card 4111 1111 1111 1111 on file"),
         ("us_ssn", "ssn 123-45-6789"),
-        ("bearer_token", "Authorization: Bearer abc.DEF-123_xyz"),
+        ("bearer_token", "Authorization: Bearer abc.DEF-123_xyz.0123456789"),
         ("provisa_access_token", "token provisa_pat_ABCDEFGHIJKLMNOPQRSTUV"),
         ("aws_access_key_id", "key AKIAIOSFODNN7EXAMPLE"),
         ("aws_secret_access_key", "aws_secret_access_key=" + "a" * 40),
@@ -70,6 +70,11 @@ def _resolve(table: dict[str, str]):
 def test_each_builtin_redacts_its_shape(rule, text):
     out = redaction.redact(text)
     assert f"[REDACTED:{rule}]" in out
+
+
+def test_prose_naming_a_bearer_credential_is_not_a_token():
+    text = "a bearer credential is required"
+    assert redaction.redact(text) == text
 
 
 def test_a_card_number_must_pass_the_luhn_check():

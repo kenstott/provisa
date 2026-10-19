@@ -125,6 +125,12 @@ def store(monkeypatch, platform):
     monkeypatch.setattr(sr.secrets_store, "describe", _describe)
     monkeypatch.setattr(sr.secrets_store, "put", _put)
     monkeypatch.setattr(sr.secrets_store, "remove", _remove)
+
+    async def _refresh_org(org_id, *, every_environment=False):  # REQ-2087
+        calls["redaction"].append((org_id, every_environment))
+
+    calls["redaction"] = []
+    monkeypatch.setattr(sr, "refresh_org", _refresh_org)
     calls["held"] = held
     return calls
 
@@ -167,6 +173,12 @@ class TestNoResponseCarriesAValue:
     async def test_replacing_is_recorded_as_a_replacement(self, store):
         await sr.put_secret(_Request(), ORG, "GIT_TOKEN", sr.SecretBody(value=VALUE))
         assert store["audit"][0][2] == "secret.replaced"
+
+    async def test_storing_or_removing_an_org_secret_reloads_its_redaction(self, store):
+        # REQ-2087: the automatic rule matches the org's secrets as they now stand, in every env.
+        await sr.put_secret(_Request(), ORG, "NEW", sr.SecretBody(value=VALUE))
+        await sr.delete_secret(_Request(), ORG, "NEW")
+        assert store["redaction"] == [(ORG, True), (ORG, True)]
 
 
 class TestWhoMayAct:

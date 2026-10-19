@@ -95,7 +95,8 @@ def _card(match: re.Match) -> bool:
 BUILTINS: tuple[Rule, ...] = (
     Rule("card_number", r"\b(?:\d[ -]?){12,18}\d\b", source="builtin"),
     Rule("us_ssn", r"\b(?!000|666|9\d\d)\d{3}-(?!00)\d{2}-(?!0000)\d{4}\b", source="builtin"),
-    Rule("bearer_token", r"(?i)\bbearer\s+[A-Za-z0-9\-._~+/]+=*", source="builtin"),
+    # A token is 16 or more token characters, so prose ("a bearer credential") is not one.
+    Rule("bearer_token", r"(?i)\bbearer\s+[A-Za-z0-9\-._~+/]{16,}=*", source="builtin"),
     Rule("provisa_access_token", r"provisa_pat_[A-Za-z0-9_\-]{20,}", source="builtin"),
     Rule("aws_access_key_id", r"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b", source="builtin"),
     Rule(

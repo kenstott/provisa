@@ -19,7 +19,6 @@
     "referencePlaceholder": "${secret:NAME} או ${env:NAME}",
     "add": "הוספת כלל",
     "remove": "הסרת כלל",
-    "save": "שמירה",
     "saved": "נשמר. הכללים חלים מעכשיו."
   }
 }

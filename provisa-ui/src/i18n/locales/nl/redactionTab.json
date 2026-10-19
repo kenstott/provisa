@@ -19,7 +19,6 @@
     "referencePlaceholder": "${secret:NAME} of ${env:NAME}",
     "add": "Regel toevoegen",
     "remove": "Regel verwijderen",
-    "save": "Opslaan",
     "saved": "Opgeslagen. De regels gelden vanaf nu."
   }
 }

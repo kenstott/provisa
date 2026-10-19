@@ -70,7 +70,7 @@ async def refresh_org(org_id: str, *, every_environment: bool = False) -> None:
     from provisa.core.env_store import list_envs
     from provisa.core.org_settings import read_org_overrides
     from provisa.core.secrets import resolve_secrets
-    from provisa.core.secrets_runtime import secrets_backend_spec
+    from provisa.core.secrets_runtime import secrets_backend, secrets_backend_spec
 
     admin_db = state.admin_db
     assert admin_db is not None  # the platform plane is brought up before any org runtime
@@ -94,9 +94,10 @@ async def refresh_org(org_id: str, *, every_environment: bool = False) -> None:
         held = await secrets_store.vault_values(admin_db, org_id)
     secrets: dict[str, str] = {name: value for name, value in held.items()}
     async with secrets_store.bound(admin_db, org_id):
+        backend = secrets_backend()
         for name in sorted(names - set(secrets)):
             try:
-                secrets[name] = resolve_secrets("${secret:" + name + "}")
+                secrets[name] = backend.resolve(name)
             except (KeyError, ValueError) as exc:
                 _log.error("redaction: secret %r of org %s does not resolve: %s", name, org_id, exc)
         redaction.set_org(org_id, rules, secrets, resolve_secrets)

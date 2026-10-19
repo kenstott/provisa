@@ -19,7 +19,6 @@
     "referencePlaceholder": "${secret:NAME} or ${env:NAME}",
     "add": "Add rule",
     "remove": "Remove rule",
-    "save": "Save",
     "saved": "Saved. The rules apply from now on."
   }
 }
