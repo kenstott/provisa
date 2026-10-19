@@ -1319,8 +1319,7 @@ relationships:
 
 ### Junction-backed relationships
 
-An associative table can be declared as a first-class Cypher relationship instead of a node, so its
-own columns become that relationship's attributes:
+You can declare an associative table as a Cypher relationship in its own right, instead of a node. Its columns then become the relationship's attributes:
 
 ```yaml
 relationships:
@@ -1339,29 +1338,16 @@ relationships:
     via_label_source: column
 ```
 
-The junction is a registered table like any other and must be registered before a relationship can
-name it. Declare it once per discriminator value: three rows over `pet_companions` produce
-`BONDED_PAIR`, `LITTERMATE`, and `SHARES_ENCLOSURE` as three distinct Cypher types, each carrying
-the junction row's remaining columns as edge properties. The shipped demo config declares exactly
-this.
+The junction is a registered table like any other, and it must be registered before a relationship can name it. Declare one relationship per discriminator value. Three rows over `pet_companions` give `BONDED_PAIR`, `LITTERMATE` and `SHARES_ENCLOSURE` as three separate Cypher types, each carrying the junction row's other columns as edge properties. The shipped demo config declares exactly this.
 
-A junction edge is a Cypher relationship, not a GraphQL join field: the GraphQL join emitter builds
-its `ON` clause for a single column pair and has no place for the second hop, so junction edges are
-excluded from generated SDL and from `pg_constraint`.
-The junction table stays queryable as its own root field, and is dropped from the node side of the
-Cypher graph schema so it never appears as a node label.
+A junction edge exists only in Cypher. The GraphQL join emitter builds its `ON` clause for a single pair of columns and has nowhere to put the second hop, so junction edges are left out of the generated SDL and out of `pg_constraint`. The junction table itself stays queryable as its own root field. It is dropped from the node side of the Cypher graph schema, so it never shows up as a node label.
 
-`materialize: true` works on a junction edge, and what it materializes is the traversal rather than
-a direct `pets`-to-`pets` join: the view holds the source hop, the junction hop, the discriminator,
-and the junction's own columns beside the target's. Because the junction is a third leg of the join,
-whether the edge crosses sources is judged across all three tables — a junction in a different source
-from the two it links is materialized even when those two agree. One declaration materializes one
-edge type, so a view built for `bonded pair` never answers a `littermate` traversal.
+`materialize: true` works on a junction edge too. What it materializes is the whole traversal: the view holds the source hop, the junction hop, the discriminator, and the junction's own columns next to the target's. The junction is a third leg of the join, so whether the edge crosses sources is judged across all three tables. A junction that lives in a different source from the two tables it links is materialized even when those two share a source. Each declaration materializes one edge type, so a view built for `bonded pair` never answers a `littermate` traversal.
 
 Cardinality values:
 
-- `many-to-one` — each source row maps to one target row (FK to PK)
-- `one-to-many` — each source row maps to multiple target rows (inverse of above)
+- `many-to-one`: each source row maps to one target row (FK to PK)
+- `one-to-many`: each source row maps to several target rows (the reverse)
 
 ---
 

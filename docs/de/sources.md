@@ -1308,8 +1308,7 @@ relationships:
 
 ### Junction-gestützte Beziehungen {: #junction-backed-relationships }
 
-Eine assoziative Tabelle kann als erstklassige Cypher-Beziehung statt als Knoten deklariert werden, sodass ihre
-eigenen Spalten zu den Attributen dieser Beziehung werden:
+Sie können eine assoziative Tabelle als eigenständige Cypher-Beziehung deklarieren statt als Knoten. Ihre Spalten werden dann zu den Attributen der Beziehung:
 
 ```yaml
 relationships:
@@ -1328,29 +1327,16 @@ relationships:
     via_label_source: column
 ```
 
-Die Junction ist eine registrierte Tabelle wie jede andere und muss registriert sein, bevor eine Beziehung sie
-benennen kann. Deklarieren Sie sie einmal pro Diskriminatorwert: Drei Zeilen über `pet_companions` erzeugen
-`BONDED_PAIR`, `LITTERMATE` und `SHARES_ENCLOSURE` als drei unterschiedliche Cypher-Typen, jeder mit den
-verbleibenden Spalten der Junction-Zeile als Kanteneigenschaften. Die mitgelieferte Demo-Konfiguration
-deklariert genau dies.
+Die Junction ist eine registrierte Tabelle wie jede andere, und sie muss registriert sein, bevor eine Beziehung sie nennen kann. Deklarieren Sie eine Beziehung pro Diskriminatorwert. Drei Zeilen über `pet_companions` ergeben `BONDED_PAIR`, `LITTERMATE` und `SHARES_ENCLOSURE` als drei getrennte Cypher-Typen, jeder mit den übrigen Spalten der Junction-Zeile als Kanteneigenschaften. Die mitgelieferte Demo-Konfiguration deklariert genau das.
 
-Eine Junction-Kante ist eine Cypher-Beziehung, kein GraphQL-Join-Feld: Der GraphQL-Join-Emitter baut
-seine `ON`-Klausel für ein einzelnes Spaltenpaar und hat keinen Platz für den zweiten Hop, sodass Junction-Kanten
-von der generierten SDL und von `pg_constraint` ausgeschlossen sind.
-Die Junction-Tabelle bleibt als eigenes Root-Feld abfragbar und wird aus der Knotenseite des
-Cypher-Graph-Schemas entfernt, sodass sie nie als Knotenbezeichnung erscheint.
+Eine Junction-Kante gibt es nur in Cypher. Der GraphQL-Join-Emitter baut seine `ON`-Klausel für ein einziges Spaltenpaar und hat keinen Platz für den zweiten Hop, daher fehlen Junction-Kanten in der generierten SDL und in `pg_constraint`. Die Junction-Tabelle selbst bleibt als eigenes Root-Feld abfragbar. Aus der Knotenseite des Cypher-Graph-Schemas wird sie entfernt, sodass sie nie als Knotenbezeichnung erscheint.
 
-`materialize: true` funktioniert auf einer Junction-Kante, und was sie materialisiert, ist die Traversierung statt
-eines direkten `pets`-zu-`pets`-Joins: Die Sicht hält den Quell-Hop, den Junction-Hop, den Diskriminator
-und die eigenen Spalten der Junction neben denen des Ziels. Da die Junction ein drittes Bein des Joins ist,
-wird beurteilt, ob die Kante quellenübergreifend ist, über alle drei Tabellen hinweg — eine Junction in einer anderen Quelle
-als die beiden, die sie verbindet, wird materialisiert, selbst wenn diese beiden übereinstimmen. Eine Deklaration materialisiert einen
-Kantentyp, sodass eine für `bonded pair` gebaute Sicht nie eine `littermate`-Traversierung beantwortet.
+`materialize: true` funktioniert auch auf einer Junction-Kante. Materialisiert wird die ganze Traversierung: Die Sicht hält den Quell-Hop, den Junction-Hop, den Diskriminator und die eigenen Spalten der Junction neben denen des Ziels. Die Junction ist ein drittes Bein des Joins, also wird über alle drei Tabellen beurteilt, ob die Kante quellenübergreifend ist. Eine Junction, die in einer anderen Quelle liegt als die beiden Tabellen, die sie verbindet, wird materialisiert, auch wenn diese beiden in derselben Quelle liegen. Jede Deklaration materialisiert einen Kantentyp, sodass eine für `bonded pair` gebaute Sicht nie eine `littermate`-Traversierung beantwortet.
 
 Kardinalitätswerte:
 
-- `many-to-one` — jede Quellzeile bildet auf eine Zielzeile ab (FK auf PK)
-- `one-to-many` — jede Quellzeile bildet auf mehrere Zielzeilen ab (Umkehrung des Obigen)
+- `many-to-one`: Jede Quellzeile gehört zu einer Zielzeile (FK zu PK)
+- `one-to-many`: Jede Quellzeile gehört zu mehreren Zielzeilen (die Umkehrung)
 
 ---
 

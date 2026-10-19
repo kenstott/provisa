@@ -1273,7 +1273,7 @@ relationships:
 
 ### Relaciones respaldadas por una tabla de unión {: #junction-backed-relationships }
 
-Una tabla asociativa puede declararse como relación Cypher de primera clase en lugar de como nodo, de modo que sus propias columnas pasan a ser los atributos de esa relación:
+Puede declarar una tabla asociativa como relación de Cypher por derecho propio, en lugar de como nodo. Sus columnas pasan a ser los atributos de la relación:
 
 ```yaml
 relationships:
@@ -1292,16 +1292,16 @@ relationships:
     via_label_source: column
 ```
 
-La tabla de unión es una tabla registrada como cualquier otra y debe estar registrada antes de que una relación pueda nombrarla. Declárela una vez por valor de discriminador: tres filas sobre `pet_companions` producen `BONDED_PAIR`, `LITTERMATE` y `SHARES_ENCLOSURE` como tres tipos Cypher distintos, cada uno llevando las columnas restantes de la fila de unión como propiedades de la arista. La configuración de demo incluida declara exactamente esto.
+La tabla de unión es una tabla registrada como cualquier otra, y tiene que estar registrada antes de que una relación pueda nombrarla. Declare una relación por cada valor del discriminador. Tres filas sobre `pet_companions` dan `BONDED_PAIR`, `LITTERMATE` y `SHARES_ENCLOSURE` como tres tipos de Cypher distintos, cada uno con las demás columnas de la fila de unión como propiedades de arista. La configuración de demostración incluida declara exactamente esto.
 
-Una arista de unión es una relación Cypher, no un campo de join de GraphQL: el emisor de joins de GraphQL construye su cláusula `ON` para un único par de columnas y no tiene sitio para el segundo salto, así que las aristas de unión quedan excluidas del SDL generado y de `pg_constraint`. La tabla de unión sigue siendo consultable como su propio campo raíz, y desaparece del lado de los nodos del esquema del grafo Cypher, por lo que nunca aparece como etiqueta de nodo.
+Una arista de unión solo existe en Cypher. El emisor de joins de GraphQL construye su cláusula `ON` para un único par de columnas y no tiene dónde poner el segundo salto, así que las aristas de unión quedan fuera del SDL generado y de `pg_constraint`. La tabla de unión sigue pudiéndose consultar como su propio campo raíz. Se retira del lado de nodos del esquema de grafo de Cypher, así que nunca aparece como etiqueta de nodo.
 
-`materialize: true` funciona en una arista de unión, y lo que materializa es el recorrido en vez de un join directo `pets`-a-`pets`: la vista guarda el salto de origen, el salto de la tabla de unión, el discriminador y las columnas propias de la tabla de unión junto a las del destino. Como la tabla de unión es una tercera pata del join, que la arista cruce orígenes se juzga sobre las tres tablas — una tabla de unión en un origen distinto al de las dos que enlaza se materializa aunque esas dos coincidan. Una declaración materializa un tipo de arista, así que una vista construida para `bonded pair` nunca responde a un recorrido `littermate`.
+`materialize: true` también funciona sobre una arista de unión. Lo que materializa es el recorrido completo: la vista contiene el salto de origen, el salto de unión, el discriminador y las columnas propias de la unión junto a las del destino. La unión es una tercera pata del join, así que si la arista cruza orígenes se decide mirando las tres tablas. Una tabla de unión que está en un origen distinto del de las dos tablas que enlaza se materializa aunque esas dos compartan origen. Cada declaración materializa un tipo de arista, así que una vista construida para `bonded pair` nunca responde a un recorrido `littermate`.
 
 Valores de cardinalidad:
 
-- `many-to-one` — cada fila de origen se mapea a una fila de destino (FK a PK)
-- `one-to-many` — cada fila de origen se mapea a varias filas de destino (inverso de la anterior)
+- `many-to-one`: cada fila de origen corresponde a una fila de destino (FK a PK)
+- `one-to-many`: cada fila de origen corresponde a varias filas de destino (lo inverso)
 
 ---
 

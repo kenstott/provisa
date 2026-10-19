@@ -1307,7 +1307,7 @@ relationships:
 
 ### Relazioni basate su una tabella di giunzione {: #junction-backed-relationships }
 
-Una tabella associativa può essere dichiarata come relazione Cypher di prima classe anziché come nodo, così che le sue colonne diventino gli attributi di quella relazione:
+Potete dichiarare una tabella associativa come relazione Cypher a pieno titolo, invece che come nodo. Le sue colonne diventano allora gli attributi della relazione:
 
 ```yaml
 relationships:
@@ -1326,16 +1326,16 @@ relationships:
     via_label_source: column
 ```
 
-La giunzione è una tabella registrata come tutte le altre e deve essere registrata prima che una relazione possa nominarla. Dichiaratela una volta per valore di discriminante: tre righe su `pet_companions` producono `BONDED_PAIR`, `LITTERMATE` e `SHARES_ENCLOSURE` come tre tipi Cypher distinti, ciascuno con le restanti colonne della riga di giunzione come proprietà dell'arco. La configurazione demo inclusa dichiara esattamente questo.
+La tabella di giunzione è una tabella registrata come le altre, e va registrata prima che una relazione possa nominarla. Dichiarate una relazione per ogni valore del discriminatore. Tre righe su `pet_companions` danno `BONDED_PAIR`, `LITTERMATE` e `SHARES_ENCLOSURE` come tre tipi Cypher distinti, ciascuno con le altre colonne della riga di giunzione come proprietà dell'arco. La configurazione demo fornita dichiara esattamente questo.
 
-Un arco di giunzione è una relazione Cypher, non un campo di join GraphQL: l'emettitore di join GraphQL costruisce la sua clausola `ON` per una singola coppia di colonne e non ha posto per il secondo salto, quindi gli archi di giunzione sono esclusi dall'SDL generato e da `pg_constraint`. La tabella di giunzione resta interrogabile come proprio campo radice ed esce dal lato nodi dello schema del grafo Cypher, così da non comparire mai come etichetta di nodo.
+Un arco di giunzione esiste solo in Cypher. L'emettitore di join GraphQL costruisce la sua clausola `ON` per una sola coppia di colonne e non ha posto per il secondo salto, quindi gli archi di giunzione restano fuori dall'SDL generato e da `pg_constraint`. La tabella di giunzione resta interrogabile come proprio campo radice. Viene tolta dal lato nodi dello schema del grafo Cypher, così non compare mai come etichetta di nodo.
 
-`materialize: true` funziona su un arco di giunzione, e ciò che materializza è la traversata anziché un join diretto `pets`-`pets`: la vista contiene il salto di origine, il salto della giunzione, il discriminante e le colonne proprie della giunzione accanto a quelle della destinazione. Poiché la giunzione è una terza gamba del join, se l'arco attraversa origini si giudica su tutte e tre le tabelle — una giunzione in un'origine diversa dalle due che collega viene materializzata anche quando quelle due coincidono. Una dichiarazione materializza un tipo di arco, quindi una vista costruita per `bonded pair` non risponde mai a una traversata `littermate`.
+`materialize: true` funziona anche su un arco di giunzione. Ciò che materializza è l'intero attraversamento: la vista contiene il salto di origine, il salto di giunzione, il discriminatore e le colonne proprie della giunzione accanto a quelle della destinazione. La giunzione è una terza gamba del join, quindi se l'arco attraversa più origini si giudica su tutte e tre le tabelle. Una giunzione che sta in un'origine diversa dalle due tabelle che collega viene materializzata anche quando quelle due condividono l'origine. Ogni dichiarazione materializza un tipo di arco, quindi una vista costruita per `bonded pair` non risponde mai a un attraversamento `littermate`.
 
 Valori di cardinalità:
 
-- `many-to-one` — ogni riga sorgente mappa a una riga target (FK verso PK)
-- `one-to-many` — ogni riga sorgente mappa a più righe target (inverso di sopra)
+- `many-to-one`: ogni riga di origine corrisponde a una riga di destinazione (FK verso PK)
+- `one-to-many`: ogni riga di origine corrisponde a più righe di destinazione (l'inverso)
 
 ---
 

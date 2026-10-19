@@ -1307,7 +1307,7 @@ relationships:
 
 ### Relations adossées à une jonction {: #junction-backed-relationships }
 
-Une table associative peut être déclarée comme relation Cypher de première classe plutôt que comme nœud, de sorte que ses propres colonnes deviennent les attributs de cette relation :
+Vous pouvez déclarer une table associative comme relation Cypher à part entière, au lieu d'un nœud. Ses colonnes deviennent alors les attributs de la relation :
 
 ```yaml
 relationships:
@@ -1326,16 +1326,16 @@ relationships:
     via_label_source: column
 ```
 
-La jonction est une table enregistrée comme une autre et doit l'être avant qu'une relation puisse la nommer. Déclarez-la une fois par valeur de discriminant : trois lignes sur `pet_companions` produisent `BONDED_PAIR`, `LITTERMATE` et `SHARES_ENCLOSURE` comme trois types Cypher distincts, chacun portant les colonnes restantes de la ligne de jonction comme propriétés d'arête. La configuration de démo livrée déclare exactement cela.
+La jonction est une table enregistrée comme une autre, et elle doit l'être avant qu'une relation puisse la nommer. Déclarez une relation par valeur de discriminant. Trois lignes sur `pet_companions` donnent `BONDED_PAIR`, `LITTERMATE` et `SHARES_ENCLOSURE` comme trois types Cypher distincts, chacun portant les autres colonnes de la ligne de jonction comme propriétés d'arête. La configuration de démo livrée déclare exactement cela.
 
-Une arête de jonction est une relation Cypher, pas un champ de jointure GraphQL : l'émetteur de jointures GraphQL construit sa clause `ON` pour une seule paire de colonnes et n'a pas de place pour le second saut, si bien que les arêtes de jonction sont exclues du SDL généré et de `pg_constraint`. La table de jonction reste interrogeable comme son propre champ racine, et disparaît du côté nœuds du schéma du graphe Cypher, de sorte qu'elle n'apparaît jamais comme label de nœud.
+Une arête de jonction n'existe que dans Cypher. L'émetteur de jointures GraphQL construit sa clause `ON` pour une seule paire de colonnes et n'a pas de place pour le second saut, donc les arêtes de jonction sont absentes du SDL généré et de `pg_constraint`. La table de jonction elle-même reste interrogeable comme son propre champ racine. Elle est retirée du côté nœuds du schéma du graphe Cypher, si bien qu'elle n'apparaît jamais comme label de nœud.
 
-`materialize: true` fonctionne sur une arête de jonction, et ce qu'il matérialise est le parcours plutôt qu'une jointure directe `pets`-vers-`pets` : la vue contient le saut source, le saut de jonction, le discriminant et les colonnes propres de la jonction à côté de celles de la cible. Comme la jonction est une troisième patte de la jointure, le fait que l'arête franchisse des sources se juge sur les trois tables — une jonction dans une source différente des deux qu'elle relie est matérialisée même quand ces deux-là concordent. Une déclaration matérialise un type d'arête, donc une vue construite pour `bonded pair` ne répond jamais à un parcours `littermate`.
+`materialize: true` fonctionne aussi sur une arête de jonction. Ce qui est matérialisé, c'est tout le parcours : la vue contient le saut source, le saut de jonction, le discriminant et les colonnes propres de la jonction à côté de celles de la cible. La jonction est une troisième patte de la jointure, donc le fait que l'arête franchisse des sources se juge sur les trois tables. Une jonction placée dans une autre source que les deux tables qu'elle relie est matérialisée même quand ces deux-là partagent une source. Chaque déclaration matérialise un type d'arête, donc une vue construite pour `bonded pair` ne répond jamais à un parcours `littermate`.
 
-Valeurs de cardinalité :
+Valeurs de cardinalité :
 
-- `many-to-one` — chaque ligne source correspond à une ligne cible (clé étrangère vers clé primaire)
-- `one-to-many` — chaque ligne source correspond à plusieurs lignes cibles (inverse du précédent)
+- `many-to-one` : chaque ligne source correspond à une ligne cible (clé étrangère vers clé primaire)
+- `one-to-many` : chaque ligne source correspond à plusieurs lignes cibles (l'inverse)
 
 ---
 

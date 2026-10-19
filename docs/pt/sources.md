@@ -1307,7 +1307,7 @@ relationships:
 
 ### Relacionamentos apoiados em junção {: #junction-backed-relationships }
 
-Uma tabela associativa pode ser declarada como relacionamento Cypher de primeira classe em vez de nó, de modo que suas próprias colunas se tornem os atributos desse relacionamento:
+Você pode declarar uma tabela associativa como um relacionamento Cypher por si só, em vez de um nó. As colunas dela passam a ser os atributos do relacionamento:
 
 ```yaml
 relationships:
@@ -1326,16 +1326,16 @@ relationships:
     via_label_source: column
 ```
 
-A junção é uma tabela registrada como qualquer outra e precisa estar registrada antes que um relacionamento possa nomeá-la. Declare-a uma vez por valor de discriminador: três linhas sobre `pet_companions` produzem `BONDED_PAIR`, `LITTERMATE` e `SHARES_ENCLOSURE` como três tipos Cypher distintos, cada um carregando as demais colunas da linha de junção como propriedades da aresta. A configuração de demonstração distribuída declara exatamente isso.
+A junção é uma tabela registrada como qualquer outra, e precisa estar registrada antes que um relacionamento possa nomeá-la. Declare um relacionamento por valor do discriminador. Três linhas sobre `pet_companions` dão `BONDED_PAIR`, `LITTERMATE` e `SHARES_ENCLOSURE` como três tipos Cypher distintos, cada um levando as outras colunas da linha de junção como propriedades da aresta. A configuração de demonstração incluída declara exatamente isso.
 
-Uma aresta de junção é um relacionamento Cypher, não um campo de join GraphQL: o emissor de joins do GraphQL monta sua cláusula `ON` para um único par de colunas e não tem lugar para o segundo salto, então arestas de junção ficam excluídas do SDL gerado e de `pg_constraint`. A tabela de junção continua consultável como seu próprio campo raiz e sai do lado dos nós do esquema do grafo Cypher, de modo que nunca aparece como rótulo de nó.
+Uma aresta de junção só existe no Cypher. O emissor de joins do GraphQL monta sua cláusula `ON` para um único par de colunas e não tem onde pôr o segundo salto, então as arestas de junção ficam fora do SDL gerado e do `pg_constraint`. A própria tabela de junção continua consultável como seu campo raiz. Ela sai do lado de nós do esquema de grafo do Cypher, então nunca aparece como rótulo de nó.
 
-`materialize: true` funciona em uma aresta de junção, e o que ele materializa é a travessia em vez de um join direto `pets`-para-`pets`: a view guarda o salto de origem, o salto da junção, o discriminador e as colunas próprias da junção ao lado das do destino. Como a junção é uma terceira perna do join, se a aresta cruza fontes é julgado sobre as três tabelas — uma junção em uma fonte diferente das duas que ela liga é materializada mesmo quando essas duas coincidem. Uma declaração materializa um tipo de aresta, então uma view construída para `bonded pair` nunca responde a uma travessia `littermate`.
+`materialize: true` também funciona numa aresta de junção. O que se materializa é a travessia inteira: a visão guarda o salto de origem, o salto de junção, o discriminador e as colunas próprias da junção ao lado das do destino. A junção é uma terceira perna do join, então se a aresta cruza fontes é julgado pelas três tabelas. Uma junção que fica numa fonte diferente das duas tabelas que liga é materializada mesmo quando essas duas compartilham a fonte. Cada declaração materializa um tipo de aresta, então uma visão construída para `bonded pair` nunca responde a uma travessia `littermate`.
 
 Valores de cardinalidade:
 
-- `many-to-one` — cada linha de origem mapeia para uma linha alvo (FK para PK)
-- `one-to-many` — cada linha de origem mapeia para múltiplas linhas alvo (inverso do acima)
+- `many-to-one`: cada linha de origem corresponde a uma linha de destino (FK para PK)
+- `one-to-many`: cada linha de origem corresponde a várias linhas de destino (o inverso)
 
 ---
 
