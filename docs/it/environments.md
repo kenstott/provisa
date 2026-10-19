@@ -1,10 +1,6 @@
 # Ambienti {: #environments }
 
-Un ambiente è una copia nominata del modello governato di un'organizzazione. La copia è fisicamente
-uno schema PostgreSQL separato — non una colonna discriminante, non un prefisso, uno schema vero e
-proprio — così ogni query esistente del repository resta corretta dentro un ambiente senza riscrivere
-nulla, e le righe di un ambiente non possono finire nella lettura di un altro per via di un
-predicato dimenticato.
+Un ambiente è una copia con nome del modello governato di un'organizzazione. Fisicamente la copia è uno schema PostgreSQL separato: uno schema vero, senza colonna discriminante né prefisso. Così ogni query di repository esistente è corretta dentro un ambiente senza essere riscritta, e un predicato dimenticato non può rendere le righe di un ambiente leggibili da un altro.
 
 Ogni organizzazione nasce con un ambiente chiamato `prod`. Non può essere eliminato né rinominato.
 Una richiesta che non nomina alcun ambiente viene servita da `prod`; una richiesta che nomina un
@@ -16,18 +12,11 @@ Per riempire un ambiente non di produzione con dati sicuri da usare, vedere [Cre
 
 ## Nomi degli ambienti {: #environment-names }
 
-Un nome deve corrispondere a `[a-z][a-z0-9_]{1,31}` — da due a trentadue caratteri tra lettere
-minuscole, cifre e trattini bassi, con lettera iniziale. `prod` e i nomi che iniziano con `pg_`
-vengono rifiutati. La lunghezza massima per una singola org dipende dall'id dell'org stessa:
-PostgreSQL tronca silenziosamente un identificatore che superi i 63 byte, e il nome di schema più
-lungo che un ambiente deriva è ciò da cui il limite protegge.
+Un nome deve corrispondere a `[a-z][a-z0-9_]{1,31}`: da due a trentadue lettere minuscole, cifre e trattini bassi, iniziando con una lettera. `prod` e i nomi che iniziano con `pg_` vengono rifiutati. La lunghezza massima per un'organizzazione dipende dal suo id. PostgreSQL tronca in silenzio un identificatore oltre i 63 byte, e il limite protegge dal nome di schema più lungo che un ambiente ricava.
 
 ## Che cosa porta con sé una copia {: #what-a-copy-carries }
 
-Ogni tabella nello schema dell'org rientra in esattamente una classe. La classificazione
-è un elenco di ammissione, non di esclusione: una tabella aggiunta in seguito non viaggia finché
-qualcuno non ne dichiara qui la classe, quindi il modo in cui fallisce una tabella dimenticata è un
-test rosso.
+Ogni tabella dello schema dell'organizzazione rientra in esattamente una classe. La classificazione è una lista di inclusione: una tabella aggiunta in seguito non viaggia finché qualcuno non ne nomina qui la classe, così una tabella dimenticata si vede come un test rosso.
 
 | Classe | Tabelle | Che cosa succede nella copia |
 | --- | --- | --- |
@@ -47,10 +36,7 @@ poi sono la risposta propria di ciascun ambiente.
 
 ## Binding {: #bindings }
 
-I binding sono le colonne che dicono dove punta davvero un'origine — `host`, `port`, `database`,
-`username` e le altre. Non viaggiano mai in nessuna copia. Un ambiente che non è stato associato
-viene contrassegnato come `unbound` anziché lasciato vuoto: un host vuoto non è un host assente, e
-il costruttore della connessione lo leggerebbe come `localhost:5432`.
+I binding sono le colonne che dicono dove punta davvero un'origine: `host`, `port`, `database`, `username` e le altre. Non viaggiano mai in una copia. Un ambiente non ancora collegato viene marcato `unbound` invece di essere lasciato vuoto, perché un host vuoto non equivale a nessun host, e il costruttore della connessione lo leggerebbe come `localhost:5432`.
 
 Un ambiente creato in qualsiasi modo tranne Unbound copia la connessione di ogni sorgente dal suo padre,
 esattamente come il padre l'ha scritta: un riferimento `${secret:...}` o `${env:...}` viene copiato come quel
@@ -63,24 +49,16 @@ Un merge o un deploy non porta connessioni, quindi una sorgente che introduce ar
 
 ## La proiezione git {: #the-git-projection }
 
-Ogni scrittura nel modello esegue il commit del risultato nel branch git dell'ambiente. Il deploy di un albero
-richiede una chiamata esplicita — una pull request unita sull'host git non si distribuisce da sola.
+Ogni scrittura nel modello fa il commit del risultato sul branch git dell'ambiente. Fare il deploy di un albero richiede una chiamata esplicita: una pull request unita sull'host git non si distribuisce da sola.
 
-Ogni entità ottiene un file. Il percorso è l'indirizzo `provisa://` dell'entità privato dello schema e dell'org:
-`provisa://acme/sales/tables/Order` diventa `sales/tables/Order.yaml`. Le origini finiscono in
-`sources/`, i comandi in `commands/`, le metriche in `metrics/`. Le righe figlie che discendono in
-cascata da un genitore — colonne, relazioni, regole RLS — vengono scritte dentro il file del
-genitore, non come file a sé stanti.
+Ogni entità ha un file. Il percorso è l'indirizzo `provisa://` dell'entità senza schema e organizzazione: `provisa://acme/sales/tables/Order` diventa `sales/tables/Order.yaml`. Le origini finiscono in `sources/`, i command in `commands/` e le metriche in `metrics/`. Le righe figlie che dipendono da un padre (colonne, relazioni, regole RLS) vengono scritte dentro il file del padre, senza file propri.
 
 I comandi e le loro assegnazioni di tag sopravvivono al viaggio di andata e ritorno. Un tag su un
 comando viene instradato verso il file del comando stesso (`commands/<name>.yaml`); un tag che non
 appartiene ad alcun file scompare dalla proiezione e verrebbe eliminato al deployment successivo di
 quell'albero.
 
-Nessuna chiave surrogata raggiunge un file. `registered_tables.id` è un intero autoincrementale — lo
-stesso modello in due ambienti ottiene interi diversi, quindi un dump ingenuo produce differenze
-rispetto a se stesso. Ogni surrogato viene scartato e ogni riferimento a uno di essi viene scritto
-come percorso della destinazione.
+Nessuna chiave surrogata arriva in un file. `registered_tables.id` è un intero autoincrementale, quindi lo stesso modello riceve interi diversi in due ambienti, e un dump ingenuo risulterebbe diverso da sé stesso. Ogni chiave surrogata viene omessa, e ogni riferimento a una di esse viene scritto come percorso della destinazione.
 
 La serializzazione è deterministica. Le chiavi vengono emesse in ordine alfabetico, le collezioni
 figlie ordinate per indirizzo, e lo stile YAML è fisso. Due ambienti che contengono lo stesso modello
@@ -88,10 +66,7 @@ producono alberi identici byte per byte.
 
 ## Merge
 
-Unire il modello di un ambiente in un altro aggiorna per identità: ogni oggetto presente
-nell'origine viene creato o aggiornato nella destinazione. Gli oggetti che l'origine non ha più
-vengono rimossi solo quando chi chiama richiede esplicitamente le rimozioni. Un merge che fallisce a
-metà lascia la destinazione com'era — una sola transazione.
+Unire il modello di un ambiente in un altro aggiorna per identità: ogni oggetto che l'origine possiede viene creato o aggiornato nella destinazione. Gli oggetti che l'origine non ha più vengono rimossi solo se chi chiama chiede esplicitamente le rimozioni. Un merge è una sola transazione, quindi se fallisce a metà la destinazione resta com'era.
 
 Prima di applicare, chiamare l'endpoint di anteprima (`GET /{name}/merge-preview`) oppure passare
 `dry_run: true`. L'anteprima percorre lo stesso codice usato dal merge; è un endpoint `GET` proprio
@@ -104,21 +79,11 @@ prod. Prod non acquisisce le concessioni di dev.
 
 ### Che cosa nomina il report {: #what-the-report-names }
 
-Il report del merge elenca, per percorso, che cosa è stato aggiunto, modificato, rimosso e lasciato
-invariato. Nomina anche gli eventuali **conflitti** — oggetti che entrambe le parti hanno modificato
-dall'ultimo commit condiviso. Un conflitto viene segnalato e non risolto: vince l'origine, che è
-proprio ciò che significa un merge verso una destinazione. Provisa non offre risoluzione dei
-conflitti, né marcatori di merge, né scelte oggetto per oggetto. Il valore dell'elenco dei conflitti
-è il segnale — due persone stavano modificando lo stesso oggetto senza saperlo.
+Il report del merge elenca, per percorso, cosa è stato aggiunto, cambiato, rimosso e lasciato com'era. Nomina anche i **conflitti**: oggetti che entrambi i lati hanno cambiato dall'ultimo commit in comune. Un conflitto viene segnalato, e vince l'origine, perché è questo che significa un merge in una destinazione. Provisa non offre risoluzione dei conflitti, né marcatori di merge, né scelta per oggetto. La lista dei conflitti vale come segnale: due persone stavano modificando lo stesso oggetto senza saperlo.
 
-Un oggetto che entrambe le parti hanno modificato ottenendo lo stesso valore è un accordo, non un
-conflitto. Quando i due ambienti non condividono alcun antenato, la base nel report è `None` e
-l'elenco vuoto dei conflitti significa che non è stato confrontato nulla, non che nulla ha colliso.
+Quando entrambi i lati hanno portato un oggetto allo stesso valore, sono d'accordo e non c'è conflitto. Quando i due ambienti non hanno alcun antenato comune, nel report la base è `None`, e una lista di conflitti vuota significa che non è stato confrontato nulla, non che nulla si sia scontrato.
 
-Il merge atterra come un unico commit compattato sul branch della destinazione. Il messaggio di
-commit è obbligatorio e non può essere vuoto — è l'unico resoconto dell'intervallo di lavoro che il
-commit compattato rappresenta. I commit dell'origine restano dove sono e rimangono distribuibili per
-SHA anche dopo.
+Il merge arriva come un unico commit squash sul branch della destinazione. Il messaggio di commit è obbligatorio e non può essere vuoto, perché è l'unico racconto del lavoro che lo squash rappresenta. I commit dell'origine restano dove sono e si possono ancora distribuire per SHA in seguito.
 
 ## Pull
 
@@ -127,30 +92,18 @@ direttamente il branch locale in fast-forward; applica l'albero recuperato attra
 percorso di deployment, così le stesse validazioni e lo stesso audit che governano un deployment
 manuale governano anche un pull.
 
-Come un merge, un pull riporta che cosa ha sovrascritto — gli oggetti modificati dall'albero in
-arrivo che anche l'ambiente locale aveva modificato dall'ultimo commit condiviso tra le due linee.
-Una modifica locale non ancora registrata in un commit è un ambiente andato alla deriva (vedere
-Cronologia più avanti); un pull la nomina nel report come una modifica qualsiasi.
+Come un merge, un pull riporta cosa ha sovrascritto: gli oggetti che l'albero in arrivo ha cambiato e che anche l'ambiente locale aveva cambiato dall'ultimo commit in comune delle due linee. Una modifica locale mai committata rende l'ambiente disallineato (vedi Cronologia sotto), e un pull la nomina nel report come una modifica normale.
 
-Un pull viene rifiutato quando le due linee sono **divergenti** — entrambe contengono commit che
-l'altra non ha. Il rifiuto porta con sé l'elenco degli oggetti toccati da entrambe le parti, così
-chi ora deve decidere quale lavoro sopravvive sa quali oggetti guardare.
+Un pull viene rifiutato quando le due linee sono **divergenti**, cioè ciascuna ha commit che l'altra non ha. Il rifiuto elenca gli oggetti toccati da entrambi i lati, così chi deve decidere quale lavoro sopravvive sa quali oggetti guardare.
 
 ## Cronologia {: #history }
 
-Ogni deployment sposta in avanti il cursore dell'ambiente sulla sua linea di commit. Un annullamento
-torna indietro di un commit; una ripetizione avanza di nuovo verso la posizione da cui
-l'annullamento era partito. Nessuna delle due operazioni rimuove un commit — tornare indietro
-aggiunge una posizione, non riscrive la cronologia.
+Ogni deploy sposta in avanti il cursore dell'ambiente lungo la sua linea di commit. Un annulla torna indietro di un commit, e un ripristina avanza di nuovo verso il punto da cui era partito l'annulla. Nessuno dei due rimuove un commit: tornare indietro aggiunge una posizione e lascia la cronologia com'è.
 
 Un branch nasce sulla punta dell'ambiente da cui è stato creato, quindi un annullamento si ferma a
 quel punto di innesco e non prosegue sui commit dell'ambiente genitore.
 
-I flag `can_undo` e `can_redo` viaggiano con la risposta dell'elenco degli ambienti. Entrambi
-riportano `false` quando la proiezione non contiene il commit nominato dal control plane — uno stato
-che il progetto ammette, chiamato **drifted**. Un nodo il cui archivio del repository non ha mai
-ricevuto un determinato commit elenca comunque i propri ambienti; cambiano solo le risposte sulla
-cronologia.
+I flag `can_undo` e `can_redo` arrivano con la risposta dell'elenco degli ambienti. Entrambi valgono `false` quando la proiezione non contiene il commit che il piano di controllo nomina, uno stato che il design ammette e chiama **disallineato**. Un nodo il cui archivio del repository non ha mai ricevuto un certo commit elenca comunque i suoi ambienti; cambiano solo le risposte sulla cronologia.
 
 ## Autorizzazione {: #authorization }
 
@@ -162,13 +115,9 @@ impostazione predefinita.
 | `environment_management` | org_admin, developer | Creare ed eliminare ambienti |
 | `environment_switch` | org_admin, developer | Essere serviti da un ambiente diverso da prod |
 
-`prod` non richiede alcun diritto — è ciò da cui viene servita una richiesta che non nomina nulla, e
-rifiutarlo significherebbe rifiutare ogni richiesta.
+`prod` non richiede alcun diritto. È l'ambiente che serve una richiesta che non ne nomina nessuno, e rifiutarlo significherebbe rifiutare ogni richiesta.
 
-L'applicazione avviene nel punto di selezione, prima che venga raggiunta qualsiasi route. A un
-membro privo di `environment_switch` viene rifiutato l'accesso su tutte le superfici in una sola
-volta — HTTP, GraphQL, SQL e i protocolli di trasporto — perché l'ambiente viene legato nel
-middleware, non nei singoli handler.
+Il controllo avviene dove si sceglie l'ambiente, prima di raggiungere qualsiasi route. Un membro senza `environment_switch` viene rifiutato su tutte le superfici insieme (HTTP, GraphQL, SQL e i protocolli wire), perché l'ambiente viene legato nel middleware e non nei singoli handler.
 
 Un analista che non detiene alcun diritto sugli ambienti può interrogare `prod` e non vede il
 selettore degli ambienti. Un collaboratore esterno a cui è stato concesso il ruolo di analista non
@@ -177,10 +126,7 @@ produzione.
 
 ### L'autorità del proprietario di un ambiente {: #environment-owner-authority }
 
-Creare un ambiente è l'unico percorso attraverso cui un membro in sola lettura acquisisce diritti di
-modifica del modello. Dentro l'ambiente che ha creato, chi lo ha creato detiene le
-capability del ruolo `developer` — meno i diritti sui dati (`write`, `full_results`, `usage`).
-Diritti di costruzione del modello, non diritti sui dati.
+Creare un ambiente è l'unico modo in cui un membro in sola lettura ottiene diritti di modifica del modello. Dentro un ambiente che ha creato, il creatore ha le capacità del ruolo `developer`, meno i diritti sui dati (`write`, `full_results`, `usage`): diritti per costruire il modello, senza diritti sui dati.
 
 La concessione è derivata da `environments.created_by` al momento dell'autorizzazione, mai scritta
 in una tabella di concessioni. Eliminare l'ambiente la rimuove nello stesso atto.
@@ -194,15 +140,9 @@ Un ambiente può essere protetto. Un merge o un deployment verso un ambiente pro
 applicato al momento della richiesta; viene proposto, e qualcuno diverso da chi lo ha richiesto deve
 approvarlo.
 
-`prod` diventa protetto automaticamente non appena l'org ha più di un membro. Un'org con un solo
-membro non può soddisfare la condizione «qualcuno diverso da chi ha richiesto», quindi lì la regola
-non si applica — renderebbe `prod` impossibile da unire. Qualsiasi ambiente può essere
-contrassegnato come protetto da un org_admin.
+`prod` diventa protetto automaticamente appena l'organizzazione ha più di un membro. Un'organizzazione con un solo membro non può soddisfare "qualcuno diverso dal richiedente", quindi lì la regola non si applica; renderebbe impossibile fare merge in `prod`. Un org_admin può marcare protetto qualsiasi ambiente.
 
-Una richiesta di merge è una riga, non una finestra di conferma. Chi approva è per definizione una
-persona diversa da chi ha richiesto e non è presente nel momento della richiesta; una conferma
-effimera costringerebbe l'approvazione dentro la sessione di chi richiede, che è esattamente
-l'assetto vietato dal requisito.
+Una richiesta di merge è una riga salvata, e nessuna finestra di conferma la sostituisce. Chi approva è per definizione una persona diversa dal richiedente e non è presente al momento della richiesta. Una conferma effimera costringerebbe ad approvare dentro la sessione del richiedente, che è proprio ciò che la regola vieta.
 
 La riga della richiesta porta con sé il report del merge accanto al messaggio di chi ha richiesto.
 L'obsolescenza è derivata al momento della lettura, mai memorizzata: ripianificare al momento della
@@ -212,9 +152,7 @@ richiesta obsoleta deve essere ripresentata. Chi richiede non può approvare la 
 Stati del ciclo di vita di una richiesta: `requested` → `approved`/`rejected` → `applied`. `stale` è
 derivato.
 
-La stessa porta gestisce i deployment da un ref del repository: la richiesta fissa lo SHA al momento
-della proposta. Se il ref si sposta tra la proposta e la decisione, chi approva legge il report del
-commit fissato, non di quello nuovo.
+I deploy da un ref del repository passano dalla stessa porta, e la richiesta fissa lo SHA al momento della proposta. Se il ref si sposta tra la proposta e la decisione, chi approva legge il report del commit fissato, non quello nuovo.
 
 !!! note
     La UI delle richieste di merge si trova nella scheda **Merge requests** del pannello Ambienti.
@@ -223,10 +161,7 @@ commit fissato, non di quello nuovo.
 
 ## I comandi CLI `env` {: #the-env-cli-commands }
 
-`provisa env deploy` invia in un ambiente il modello presente a un dato ref. Esce con 0 quando il
-deployment è stato applicato o era una prova a vuoto, e con 2 quando l'ambiente è protetto e il
-deployment è stato solo proposto — una pipeline che trattasse un'approvazione in attesa come un
-deployment rilasciato sbaglierebbe, e il codice di uscita lo dice.
+`provisa env deploy` invia il modello di un ref in un ambiente. Esce con 0 quando il deploy è stato applicato o era una prova, e con 2 quando l'ambiente è protetto e il deploy è stato solo proposto. Una pipeline che trattasse un'approvazione in attesa come un deploy rilasciato sbaglierebbe, e il codice di uscita distingue i due casi.
 
 ```
 provisa env deploy --org acme --env prod --ref main --token <token> --api <url>

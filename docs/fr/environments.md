@@ -1,10 +1,6 @@
 # Environnements {: #environments }
 
-Un environnement est une copie nommée du modèle gouverné d'une organisation. La copie est
-physiquement un schéma PostgreSQL distinct — pas une colonne discriminante, pas un préfixe, un
-véritable schéma — de sorte que chaque requête existante du dépôt est correcte à l'intérieur d'un
-environnement sans rien réécrire, et que les lignes d'un environnement ne peuvent pas atteindre la
-lecture d'un autre par la faute d'un prédicat oublié.
+Un environnement est une copie nommée du modèle gouverné d'une organisation. Physiquement, la copie est un schéma PostgreSQL à part : un vrai schéma, sans colonne discriminante ni préfixe. Toute requête de dépôt existante est donc correcte dans un environnement sans être réécrite, et un prédicat oublié ne peut pas rendre les lignes d'un environnement lisibles depuis un autre.
 
 Chaque organisation démarre avec un environnement nommé `prod`. Il ne peut être ni supprimé ni
 renommé. Une requête qui ne nomme aucun environnement est servie par `prod` ; une requête nommant
@@ -16,18 +12,11 @@ Pour remplir un environnement hors production avec des données sûres à utilis
 
 ## Noms d'environnement {: #environment-names }
 
-Un nom doit correspondre à `[a-z][a-z0-9_]{1,31}` — de deux à trente-deux caractères parmi les
-lettres minuscules, les chiffres et les tirets bas, commençant par une lettre. `prod` et les noms
-commençant par `pg_` sont refusés. La longueur maximale pour une organisation donnée dépend de son
-propre identifiant : PostgreSQL tronque silencieusement un identifiant dépassant 63 octets, et le
-plus long nom de schéma qu'un environnement dérive est ce contre quoi le plafond protège.
+Un nom doit correspondre à `[a-z][a-z0-9_]{1,31}` : de deux à trente-deux lettres minuscules, chiffres et tirets bas, en commençant par une lettre. `prod` et les noms commençant par `pg_` sont refusés. La longueur maximale pour une organisation dépend de son propre id. PostgreSQL tronque en silence un identifiant de plus de 63 octets, et la limite protège contre le plus long nom de schéma qu'un environnement dérive.
 
 ## Ce qu'emporte une copie {: #what-a-copy-carries }
 
-Chaque table du schéma de l'organisation appartient à exactement une classe. La
-classification est une liste d'autorisation, pas une liste d'exclusion : une table ajoutée
-ultérieurement ne voyage pas tant que quelqu'un n'a pas nommé sa classe ici, si bien que le mode de
-défaillance d'une table oubliée est un test rouge.
+Chaque table du schéma de l'organisation appartient à exactement une classe. La classification est une liste d'autorisation : une table ajoutée plus tard ne voyage pas tant que personne n'a nommé sa classe ici, si bien qu'une table oubliée se voit sous forme de test rouge.
 
 | Classe | Tables | Ce qui se passe à la copie |
 | --- | --- | --- |
@@ -47,10 +36,7 @@ propre à chaque environnement.
 
 ## Liaisons {: #bindings }
 
-Les liaisons sont les colonnes qui disent où une source pointe réellement — `host`, `port`,
-`database`, `username` et les autres. Elles ne voyagent jamais dans aucune copie. Un environnement
-qui n'a pas été lié est marqué `unbound` plutôt que laissé vide : un hôte vide n'est pas un hôte
-absent, et le constructeur de connexion le lirait comme `localhost:5432`.
+Les liaisons sont les colonnes qui disent où pointe réellement une source : `host`, `port`, `database`, `username` et les autres. Elles ne voyagent jamais dans une copie. Un environnement qui n'a pas été lié est marqué `unbound` au lieu d'être laissé vide, car un hôte vide n'est pas la même chose qu'aucun hôte, et le constructeur de connexion le lirait comme `localhost:5432`.
 
 Un environnement créé autrement qu'en Unbound copie la connexion de chaque source depuis son parent,
 exactement telle que le parent l'a écrite : une référence `${secret:...}` ou `${env:...}` est copiée comme cette
@@ -63,24 +49,16 @@ Une fusion ou un déploiement ne transporte aucune connexion, donc une source qu
 
 ## La projection git {: #the-git-projection }
 
-Chaque écriture dans le modèle commite le résultat dans la branche git de l'environnement. Déployer un arbre
-exige un appel explicite — une pull request fusionnée sur l'hôte git ne se déploie pas d'elle-même.
+Chaque écriture dans le modèle commite le résultat sur la branche git de l'environnement. Déployer un arbre demande un appel explicite : une pull request fusionnée sur l'hébergeur git ne se déploie pas d'elle-même.
 
-Chaque entité obtient un fichier. Le chemin est l'adresse `provisa://` de l'entité privé de son schéma d'URI et de son
-organisation : `provisa://acme/sales/tables/Order` devient `sales/tables/Order.yaml`. Les sources
-atterrissent dans `sources/`, les commandes dans `commands/`, les métriques dans `metrics/`. Les
-lignes filles qui cascadent depuis un parent — colonnes, relations, règles RLS — sont écrites à
-l'intérieur du fichier du parent, non comme des fichiers à part.
+Chaque entité a un fichier. Le chemin est l'adresse `provisa://` de l'entité sans le schéma ni l'organisation : `provisa://acme/sales/tables/Order` devient `sales/tables/Order.yaml`. Les sources vont dans `sources/`, les commands dans `commands/` et les métriques dans `metrics/`. Les lignes enfants qui dépendent d'un parent (colonnes, relations, règles RLS) sont écrites dans le fichier du parent, sans fichier propre.
 
 Les commandes et leurs affectations d'étiquettes survivent à l'aller-retour. Une étiquette posée
 sur une commande est routée vers le fichier propre à la commande (`commands/<name>.yaml`) ; une
 étiquette qui n'appartient à aucun fichier disparaît de la projection et serait supprimée au
 prochain déploiement de cet arbre.
 
-Aucune clé de substitution n'atteint un fichier. `registered_tables.id` est un entier
-auto-incrémenté — le même modèle dans deux environnements reçoit des entiers différents, si bien
-qu'un vidage naïf produit un diff avec lui-même. Chaque substitut est abandonné et chaque référence
-à l'un d'eux est écrite comme le chemin de sa cible.
+Aucune clé de substitution n'arrive dans un fichier. `registered_tables.id` est un entier auto-incrémenté : le même modèle reçoit donc des entiers différents dans deux environnements, et un export naïf différerait de lui-même. Chaque clé de substitution est omise, et chaque référence à l'une d'elles est écrite comme le chemin de la cible.
 
 La sérialisation est déterministe. Les clés sont émises par ordre alphabétique, les collections
 filles triées par leur adresse, et le style YAML est figé. Deux environnements portant le même
@@ -88,10 +66,7 @@ modèle produisent des arbres identiques octet pour octet.
 
 ## Fusion {: #merge }
 
-Fusionner le modèle d'un environnement dans un autre met à jour par identité : chaque objet que la
-source possède est créé ou mis à jour dans la cible. Les objets que la source ne possède plus ne
-sont retirés que si l'appelant demande explicitement les retraits. Une fusion qui échoue en cours
-de route laisse la cible telle qu'elle était — une seule transaction.
+Fusionner le modèle d'un environnement dans un autre met à jour par identité : chaque objet que possède la source est créé ou mis à jour dans la cible. Les objets que la source n'a plus ne sont supprimés que si l'appelant demande explicitement des suppressions. Une fusion est une seule transaction ; si elle échoue en cours de route, la cible reste telle qu'elle était.
 
 Avant d'appliquer, appelez l'endpoint d'aperçu (`GET /{name}/merge-preview`) ou passez
 `dry_run: true`. L'aperçu emprunte exactement le même chemin de code que la fusion ; c'est un
@@ -104,21 +79,11 @@ en prenant un modèle plus récent de prod. Prod n'acquiert pas les habilitation
 
 ### Ce que nomme le rapport {: #what-the-report-names }
 
-Le rapport de fusion liste, par chemin, ce qui a été ajouté, modifié, retiré et laissé inchangé. Il
-nomme également les éventuels **conflits** — les objets que les deux côtés ont modifiés depuis leur
-dernier commit commun. Un conflit est signalé et non résolu : la source l'emporte, ce qui est le
-sens même d'une fusion dans une cible. Provisa n'offre aucune résolution de conflit, aucun marqueur
-de fusion, aucun choix objet par objet. La valeur de la liste des conflits est le signal — deux
-personnes éditaient le même objet sans le savoir.
+Le rapport de fusion liste, par chemin, ce qui a été ajouté, modifié, supprimé et laissé tel quel. Il nomme aussi les **conflits** : les objets modifiés des deux côtés depuis leur dernier commit commun. Un conflit est signalé, et la source l'emporte, puisque c'est ce que signifie une fusion dans une cible. Provisa n'offre ni résolution de conflits, ni marqueurs de fusion, ni choix objet par objet. La liste des conflits vaut comme signal : deux personnes modifiaient le même objet sans le savoir.
 
-Un objet que les deux côtés ont modifié vers la même valeur est un accord, pas un conflit. Lorsque
-les deux environnements ne partagent aucun ancêtre, la base vaut `None` dans le rapport et la liste
-de conflits vide signifie que rien n'a été comparé, non que rien ne s'est heurté.
+Quand les deux côtés ont changé un objet vers la même valeur, ils sont d'accord, et il n'y a pas de conflit. Quand les deux environnements n'ont aucun ancêtre commun, la base vaut `None` dans le rapport, et une liste de conflits vide signifie que rien n'a été comparé, pas que rien n'est entré en collision.
 
-La fusion atterrit en un seul commit écrasé sur la branche de la cible. Le message de commit est
-obligatoire et ne doit pas être vide — il est le seul compte rendu de la plage de travail que
-l'écrasement représente. Les commits de la source restent où ils sont et demeurent déployables par
-SHA par la suite.
+La fusion arrive sous la forme d'un seul commit écrasé sur la branche de la cible. Le message de commit est obligatoire et ne peut pas être vide, car c'est la seule trace du travail que ce commit regroupe. Les commits de la source restent où ils sont et peuvent ensuite toujours être déployés par SHA.
 
 ## Pull
 
@@ -127,30 +92,18 @@ la branche locale en fast-forward directement ; il applique l'arbre récupéré
 déploiement ordinaire, de sorte que la validation et l'audit qui régissent un déploiement manuel
 régissent aussi un pull.
 
-Comme une fusion, un pull rapporte ce qu'il a écrasé — les objets que l'arbre entrant a modifiés et
-que l'environnement local avait modifiés lui aussi depuis le dernier commit commun des deux lignes.
-Une modification locale non validée est un environnement en dérive (voir Historique ci-dessous) ;
-un pull la nomme comme une modification ordinaire dans le rapport.
+Comme une fusion, un pull signale ce qu'il a écrasé : les objets que l'arbre entrant a modifiés et que l'environnement local avait aussi modifiés depuis le dernier commit commun des deux lignes. Une modification locale jamais commitée rend l'environnement dérivé (voir Historique plus bas), et un pull la nomme comme un changement ordinaire dans le rapport.
 
-Un pull est refusé lorsque les deux lignes ont **divergé** — chacune détient des commits que
-l'autre n'a pas. Le refus emporte la liste des objets que les deux côtés ont touchés, afin que la
-personne qui doit maintenant décider quel travail survit sache quels objets regarder.
+Un pull est refusé quand les deux lignes ont **divergé**, c'est-à-dire que chacune a des commits que l'autre n'a pas. Le refus liste les objets touchés des deux côtés, pour que la personne qui doit maintenant décider quel travail survit sache quels objets examiner.
 
 ## Historique {: #history }
 
-Chaque déploiement avance le curseur de l'environnement dans sa propre ligne de commits. Une
-annulation recule d'un commit ; un rétablissement avance de nouveau vers la position que
-l'annulation avait quittée. Aucune des deux opérations ne supprime de commit — reculer ajoute une
-position, cela ne réécrit pas l'historique.
+Chaque déploiement fait avancer le curseur de l'environnement sur sa propre ligne de commits. Annuler recule d'un commit, et rétablir avance de nouveau vers le point de départ de l'annulation. Aucun des deux ne supprime de commit : reculer ajoute une position et laisse l'historique intact.
 
 Une branche est amorcée à la pointe de l'environnement dont elle est issue : une annulation
 s'arrête donc à ce point d'amorçage et ne s'aventure pas sur les commits de l'environnement parent.
 
-Les indicateurs `can_undo` et `can_redo` voyagent avec la réponse listant les environnements. Tous
-deux valent `false` lorsque la projection ne détient pas le commit que le plan de contrôle nomme —
-un état que la conception admet, appelé **en dérive**. Un nœud dont le magasin de dépôts n'a jamais
-reçu un commit donné liste tout de même ses environnements ; seules les réponses d'historique
-changent.
+Les indicateurs `can_undo` et `can_redo` accompagnent la réponse de la liste des environnements. Tous deux valent `false` quand la projection ne contient pas le commit que nomme le plan de contrôle, un état que la conception admet et appelle **dérivé**. Un nœud dont le stockage de dépôt n'a jamais reçu un commit donné liste toujours ses environnements ; seules les réponses d'historique changent.
 
 ## Autorisation {: #authorization }
 
@@ -162,13 +115,9 @@ Les environnements sont régis par deux droits. Aucun des deux n'appartient à u
 | `environment_management` | org_admin, developer | Créer et supprimer des environnements |
 | `environment_switch` | org_admin, developer | Être servi par un environnement autre que prod |
 
-`prod` n'exige aucun droit — c'est lui qui sert une requête ne nommant rien, et le refuser
-reviendrait à refuser chaque requête.
+`prod` ne demande aucun droit. C'est lui qui sert une requête ne nommant aucun environnement, et le refuser reviendrait à refuser toutes les requêtes.
 
-L'application a lieu au point de sélection, avant qu'aucune route ne soit atteinte. Un membre
-dépourvu d'`environment_switch` est refusé sur toutes les surfaces d'un coup — HTTP, GraphQL, SQL
-et les protocoles de niveau fil — parce que l'environnement est lié dans l'intergiciel, non dans
-les gestionnaires individuels.
+La vérification a lieu là où l'environnement est choisi, avant d'atteindre la moindre route. Un membre sans `environment_switch` est refusé sur toutes les surfaces à la fois (HTTP, GraphQL, SQL et les protocoles filaires), car l'environnement est lié dans le middleware et non dans chaque gestionnaire.
 
 Un analyste ne portant aucun droit d'environnement peut interroger `prod` et ne voit pas le
 sélecteur d'environnement. Un prestataire à qui l'on accorde le rôle d'analyste ne voit aucune
@@ -176,10 +125,7 @@ surface d'environnements et ne peut ni créer ni rejoindre un environnement autr
 
 ### Autorité du propriétaire d'un environnement {: #environment-owner-authority }
 
-Créer un environnement est le seul chemin par lequel un membre en lecture seule acquiert des droits
-d'édition du modèle. À l'intérieur de l'environnement qu'il a créé, le créateur détient
-les capacités du rôle `developer` — moins les droits sur les données (`write`, `full_results`,
-`usage`). Des droits de construction du modèle, pas des droits sur les données.
+Créer un environnement est le seul moyen pour un membre en lecture seule d'obtenir des droits de modification du modèle. Dans un environnement qu'il a créé, le créateur détient les capacités du rôle `developer`, moins les droits sur les données (`write`, `full_results`, `usage`) : des droits pour construire le modèle, sans droits sur les données.
 
 L'octroi est dérivé d'`environments.created_by` au moment de l'autorisation, jamais écrit dans une
 table d'octrois. Supprimer l'environnement le retire du même geste.
@@ -194,15 +140,9 @@ Un environnement peut être protégé. Une fusion ou un déploiement vers un env
 n'est pas appliqué au moment de la demande ; il est proposé, et quelqu'un d'autre que le demandeur
 doit l'approuver.
 
-`prod` est protégé automatiquement dès que l'organisation compte plus d'un membre. Une organisation
-à membre unique ne peut pas satisfaire « quelqu'un d'autre que le demandeur » : la règle n'y est
-donc pas appliquée — elle rendrait `prod` impossible à fusionner. Tout environnement peut être
-marqué protégé par un org_admin.
+`prod` devient protégé automatiquement dès que l'organisation compte plus d'un membre. Une organisation d'un seul membre ne peut pas satisfaire « quelqu'un d'autre que le demandeur », donc la règle ne s'y applique pas ; elle rendrait toute fusion dans `prod` impossible. Un org_admin peut marquer n'importe quel environnement comme protégé.
 
-Une demande de fusion est une ligne, pas une boîte de dialogue de confirmation. L'approbateur est
-par définition une personne différente du demandeur et n'est pas présent au moment de la demande ;
-une confirmation éphémère forcerait l'approbation à l'intérieur de la session du demandeur, soit le
-seul agencement que l'exigence interdit.
+Une demande de fusion est une ligne enregistrée, qu'aucune boîte de confirmation ne remplace. L'approbateur est par définition quelqu'un d'autre que le demandeur et n'est pas présent au moment de la demande. Une confirmation éphémère forcerait l'approbation dans la session du demandeur, exactement ce que la règle interdit.
 
 La ligne de la demande porte le rapport de fusion aux côtés du message du demandeur. L'obsolescence
 est dérivée au moment de la lecture, jamais stockée : replanifier à la lecture et comparer au
@@ -212,9 +152,7 @@ redemandée. Le demandeur ne peut pas approuver sa propre demande.
 États du cycle de vie d'une demande : `requested` → `approved`/`rejected` → `applied`. `stale` est
 dérivé.
 
-La même porte gère les déploiements depuis une référence de dépôt : la demande épingle le SHA au
-moment de la proposition. Si la référence bouge entre la proposition et la décision, l'approbateur
-lit le rapport du commit épinglé, non du nouveau.
+Les déploiements depuis une référence du dépôt passent par la même porte, et la demande fige le SHA au moment de la proposition. Si la référence bouge entre la proposition et la décision, l'approbateur lit le rapport du commit figé, pas celui du nouveau.
 
 ! ! ! note
     L'interface des demandes de fusion se trouve sous l'onglet **Demandes de fusion** du panneau
@@ -223,10 +161,7 @@ lit le rapport du commit épinglé, non du nouveau.
 
 ## Les commandes CLI `env` {: #the-env-cli-commands }
 
-`provisa env deploy` envoie le modèle situé à une référence dans un environnement. Elle sort avec 0
-lorsque le déploiement a été appliqué ou n'était qu'une simulation, et avec 2 lorsque
-l'environnement est protégé et que le déploiement n'a été que proposé — un pipeline qui traiterait
-une approbation en attente comme un déploiement livré aurait tort, et le code de sortie le dit.
+`provisa env deploy` envoie le modèle d'une référence dans un environnement. Il se termine par 0 quand le déploiement a été appliqué ou était un essai à blanc, et par 2 quand l'environnement est protégé et que le déploiement n'a été que proposé. Un pipeline qui prendrait une approbation en attente pour un déploiement livré se tromperait, et le code de sortie fait la différence.
 
 ```
 provisa env deploy --org acme --env prod --ref main --token <token> --api <url>
