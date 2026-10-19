@@ -216,6 +216,11 @@ async def test_a_trigger_made_on_another_worker_is_scheduled_by_the_model_reload
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
     monkeypatch.setattr(model_reload, "prune_region_state", _prune)
     monkeypatch.setattr(model_reload, "_held", lambda _rt: True)
+
+    async def _refresh_org(org_id, *, every_environment=False):  # REQ-2087
+        pass
+
+    monkeypatch.setattr("provisa.api.redaction_load.refresh_org", _refresh_org)
     assert _trigger_jobs(worker_2) == []
 
     await model_reload.reload_model(SimpleNamespace(org_id="a", env="prod"))  # type: ignore[arg-type]

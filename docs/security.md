@@ -390,13 +390,29 @@ Retention: rows are kept indefinitely. Provisa has no retention setting and neve
 
 ## Redaction
 
-What Provisa records about its own work passes through one list of redaction rules per organization before it is written anywhere. Provisa's built-in rules are the list's starting set; an organization adds its own. Every secret Provisa holds, and every secret the model references, is redacted without a rule naming it: a value resolved from `${secret:…}` or from Provisa's own store never appears in a record in the clear.
+What Provisa records about its own work passes through one list of redaction rules before it is written anywhere. Text a rule matches is replaced with `[REDACTED:<rule>]`, naming the rule that matched. (REQ-2087)
+
+The list has four parts:
+
+- **Built-in patterns.** Card numbers that pass the Luhn check, US Social Security numbers, bearer tokens, Provisa access tokens, AWS, GCP, Azure, GitHub and Slack keys, and private keys. These are a starter set, not a guarantee.
+- **The deployment's rules**, which apply in every organization. Changing them takes the `platform_settings` right.
+- **The organization's own rules.** Changing them takes the `org_settings` right.
+- **The automatic rule** over the organization's secrets: every value Provisa's own store holds for the organization, every `${secret:NAME}` the organization's model and settings name (on any secrets backend), and each `${secret:…}` or `${user:…}` value from the moment it is first resolved. No rule has to name these.
+
+A rule is either a named regular expression or a named `${secret:NAME}` / `${env:NAME}` reference, which matches the value the reference resolves to. A reference that does not resolve is logged at `ERROR` by name and shown as unresolved; the other rules still apply. Values shorter than four characters are not matched.
+
+Provisa is not responsible for knowing every sensitive format. The built-ins cover common shapes; an organization adds patterns for its own formats, such as employee numbers, account identifiers or internal hostnames. Redaction is best effort: a value written in a shape no rule describes passes through.
+
+The rules are on the **Org Secrets** page, under **Redaction rules**. The page lists the built-ins, the deployment's rules (editable with `platform_settings`), the organization's rules, the automatic rule's secrets by name only, and any reference that does not resolve. The rules are loaded when the server starts and when an organization's runtime is built, and reloaded when the model or the settings change and when an organization secret is stored or removed.
 
 The list applies at every exit Provisa writes:
 
-- every span and every log record, in Provisa's OpenTelemetry SDK, before any exporter sees it; standard output included;
-- the audit tables, as each row is written;
-- the error messages a client receives.
+- every span, as one redacted copy handed to every exporter, and the recent-spans view;
+- every log record in Provisa's OpenTelemetry log pipeline, and every line a logging handler writes, standard output and container logs included;
+- the audit log's query text, before it is hashed and encrypted, so neither the text nor its hash discloses a matched value; and the administrative trail's detail;
+- the error messages a client receives over HTTP, pgwire, gRPC, Arrow Flight and MCP.
+
+Telemetry and client errors are not tied to one organization when they are written, so they are redacted by every organization's rules together. Two errors are passed through unredacted: an HTTP error body larger than 1 MiB, and the error of an Arrow Flight stream that fails after it has started sending.
 
 A federated source keeps its own logs, which Provisa does not write and cannot reach. Records a source makes of the statements Provisa sends it are that source's to protect.
 

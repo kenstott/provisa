@@ -387,13 +387,29 @@ Retención: las filas se conservan indefinidamente. Provisa no tiene ningún aju
 
 ## Redacción de datos sensibles {: #redaction }
 
-Lo que Provisa registra sobre su propio trabajo pasa por una lista de reglas de redacción por organización antes de escribirse en ningún sitio. Las reglas integradas de Provisa son el conjunto inicial de la lista; una organización añade las suyas. Todo secreto que Provisa guarda, y todo secreto al que hace referencia el modelo, se redacta sin que una regla lo nombre: un valor resuelto desde `${secret:…}` o desde el almacén propio de Provisa nunca aparece en claro en un registro.
+Lo que Provisa registra sobre su propio trabajo pasa por una lista de reglas de redacción antes de escribirse en ningún sitio. El texto que coincide con una regla se sustituye por `[REDACTED:<rule>]`, que nombra la regla que coincidió. (REQ-2087)
 
-La lista se aplica en cada salida en la que Provisa escribe:
+La lista tiene cuatro partes:
 
-- cada span y cada registro de log, en el SDK de OpenTelemetry de Provisa, antes de que lo vea ningún exportador; incluida la salida estándar;
-- las tablas de auditoría, a medida que se escribe cada fila;
-- los mensajes de error que recibe un cliente.
+- **Patrones integrados.** Números de tarjeta que superan la comprobación de Luhn, números de la Seguridad Social de EE. UU., tokens bearer, tokens de acceso de Provisa, claves de AWS, GCP, Azure, GitHub y Slack, y claves privadas. Son un conjunto inicial, no una garantía.
+- **Las reglas del despliegue**, que se aplican en todas las organizaciones. Cambiarlas requiere el derecho `platform_settings`.
+- **Las reglas propias de la organización.** Cambiarlas requiere el derecho `org_settings`.
+- **La regla automática** sobre los secretos de la organización: todo valor que el almacén propio de Provisa guarda para la organización, todo `${secret:NAME}` que nombran el modelo y la configuración de la organización (en cualquier backend de secretos), y cada valor `${secret:…}` o `${user:…}` desde que se resuelve por primera vez. Ninguna regla tiene que nombrarlos.
+
+Una regla es una expresión regular con nombre o una referencia `${secret:NAME}` / `${env:NAME}` con nombre, que coincide con el valor al que se resuelve la referencia. Una referencia que no se resuelve se registra en `ERROR` por su nombre y se muestra como no resuelta; las demás reglas siguen aplicándose. Los valores de menos de cuatro caracteres no se detectan.
+
+Provisa no es responsable de conocer todos los formatos sensibles. Los patrones integrados cubren formas comunes; una organización añade patrones para sus propios formatos, como números de empleado, identificadores de cuenta o nombres de host internos. La redacción se hace en la medida de lo posible: un valor escrito en una forma que ninguna regla describe pasa sin cambios.
+
+Las reglas están en la página **Secretos de la organización**, en **Reglas de redacción**. La página muestra los patrones integrados, las reglas del despliegue (editables con `platform_settings`), las reglas de la organización, los secretos de la regla automática solo por su nombre y toda referencia que no se resuelve. Las reglas se cargan al arrancar el servidor y al construirse el entorno de ejecución de una organización, y se recargan cuando cambian el modelo o la configuración y cuando se guarda o elimina un secreto de la organización.
+
+La lista se aplica en cada salida que escribe Provisa:
+
+- cada span, como una copia redactada que se entrega a cada exportador, y la vista de spans recientes;
+- cada registro de log en la canalización de logs de OpenTelemetry de Provisa, y cada línea que escribe un manejador de logging, incluidas la salida estándar y los logs de los contenedores;
+- el texto de consulta del registro de auditoría, antes de calcular su hash y cifrarlo, de modo que ni el texto ni su hash revelan un valor detectado; y el detalle del registro administrativo;
+- los mensajes de error que recibe un cliente por HTTP, pgwire, gRPC, Arrow Flight y MCP.
+
+La telemetría y los errores de cliente no están ligados a una sola organización cuando se escriben, así que se redactan con las reglas de todas las organizaciones juntas. Dos errores pasan sin redactar: un cuerpo de error HTTP de más de 1 MiB y el error de un flujo de Arrow Flight que falla después de empezar a enviar.
 
 Una fuente federada mantiene sus propios logs, que Provisa no escribe ni puede alcanzar. Los registros que una fuente hace de las sentencias que Provisa le envía le corresponde protegerlos a esa fuente.
 

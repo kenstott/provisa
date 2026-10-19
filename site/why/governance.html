@@ -201,15 +201,20 @@
 
         <h2>One redaction list, applied at every exit</h2>
         <p>
-          What Provisa writes about its own work is redacted by one list of rules per
-          organization. Provisa's built-in rules are its starting set, and the organization adds
-          its own. Every secret Provisa holds, and every one the
-          model references, is redacted without a rule being written for it.
+          What Provisa writes about its own work is redacted by one list of rules: the
+          deployment's, the organization's own, and Provisa's built-in patterns for common
+          shapes such as card numbers and cloud keys. Every secret Provisa holds, and every one
+          the model references, is redacted without a rule being written for it.
         </p>
         <p>
-          The list applies where records leave: in the OpenTelemetry SDK to every span and log
-          line, standard output included, to the audit tables as each row is written, and to
-          the errors a client receives. A federated source's own logs are written by that
+          The built-in patterns are a starter set. Provisa cannot know every sensitive format,
+          so the organization adds patterns for its own, and redaction is best effort: a value
+          in a shape no rule describes passes through.
+        </p>
+        <p>
+          The list applies where records leave: to every span and log line, standard output
+          included, to the audit log's query text before it is hashed and encrypted, and to the
+          errors a client receives on every protocol. A federated source's own logs are written by that
           source and stay outside Provisa's reach.
         </p>
 

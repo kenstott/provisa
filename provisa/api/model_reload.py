@@ -200,6 +200,10 @@ async def reload_model(rt: "OrgRuntime") -> object:
         # REQ-1003: the org's triggers are its model, so a trigger made or changed on another
         # worker reaches this worker's scheduler here -- the holder's among them.
         await reschedule_triggers(rt)
+        # REQ-2087: a model change may name a secret the redaction rule does not match yet.
+        from provisa.api.redaction_load import refresh_org
+
+        await refresh_org(rt.org_id)
 
     try:
         await _bound(rt, _rebuild)
@@ -302,7 +306,13 @@ async def reload_org_settings(rt: "OrgRuntime") -> None:
     if not _held(rt):
         return
     before = rt.settings_overrides.get("naming")
+    before_redaction = rt.settings_overrides.get("redaction")
     await load_org_settings(rt)
+    if rt.settings_overrides.get("redaction") != before_redaction:
+        # REQ-2087: the org's redaction rules, saved on another worker.
+        from provisa.api.redaction_load import refresh_org
+
+        await refresh_org(rt.org_id)
     naming = rt.settings_overrides.get("naming")
     if naming == before:
         return
@@ -323,10 +333,19 @@ async def reload_org_settings(rt: "OrgRuntime") -> None:
     await _bound(rt, _apply_domain_mode)
 
 
+async def _reload_operator_settings() -> None:
+    """The operator settings, read again and applied; and the deployment's redaction rules, which
+    are a row of the same plane (REQ-2087)."""
+    from provisa.api.redaction_load import load_deployment_rules
+    from provisa.core import settings_registry
+
+    await settings_registry.reload_and_apply()
+    await load_deployment_rules()
+
+
 def targets() -> list[Target]:
     """Every copy this process holds of something a control plane stores, for its watcher."""
     from provisa.api.app import state
-    from provisa.core import settings_registry
 
     out: list[Target] = []
     if state.admin_db is not None:
@@ -336,7 +355,7 @@ def targets() -> list[Target]:
                 db=state.admin_db,
                 kind=config_stamp.SETTINGS,
                 loaded=deployment_settings.loaded_stamp,
-                reload=settings_registry.reload_and_apply,
+                reload=_reload_operator_settings,
             )
         )
     for key in state.org_registry.all_org_ids():

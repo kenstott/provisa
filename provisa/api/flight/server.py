@@ -21,6 +21,8 @@ The catalog path exposes the semantic layer as a read-only JDBC catalog.
 
 from __future__ import annotations
 
+from provisa.api.flight.redaction import redact_errors as _redact_errors
+
 from provisa.api.role_surface import role_surface
 
 import json
@@ -353,6 +355,7 @@ def _bearer(headers: dict[str, list[str]]) -> str | None:
     return token if scheme.lower() == "bearer" and token else None
 
 
+@_redact_errors  # REQ-2087
 class ProvisaFlightServer(
     flight.FlightServerBase
 ):  # REQ-045, REQ-051, REQ-143, REQ-369  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__

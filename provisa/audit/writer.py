@@ -151,12 +151,17 @@ class AuditRecord:
         table_ids = list(self.table_ids() if callable(self.table_ids) else self.table_ids)
         if model_commit is not None and enforced is not None:
             enforced = {k: v for k, v in enforced.items() if k != "visible_columns"}
+        # REQ-2087: redacted by the deployment's and the org's rules before it is hashed or
+        # encrypted, so neither the text nor its hash can disclose a matched value.
+        from provisa.security.redaction import redact
+
+        text = redact(self.query_text, self.tenant_id)
         return {
             "tenant_id": self.tenant_id,
             "user_id": self.user_id,
             "role_id": self.role_id,
-            "query_hash": hashlib.sha256(self.query_text.encode()).hexdigest(),
-            "query_text_enc": self.encryption.encrypt(self.query_text.encode("utf-8")),
+            "query_hash": hashlib.sha256(text.encode()).hexdigest(),
+            "query_text_enc": self.encryption.encrypt(text.encode("utf-8")),
             "table_ids": table_ids,
             "table_names": qualified_table_names(table_ids, self.tables),
             "source": self.source,

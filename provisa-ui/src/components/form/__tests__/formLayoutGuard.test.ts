@@ -85,6 +85,8 @@ const IN_PLACE_EDIT: Readonly<Record<string, string>> = {
   "components/TagControl.tsx": "a tag assigned and edited in its popover, beside what it tags",
   "pages/tables/ProfileConstraintsModal.tsx":
     "a column's constraints edited in the row of the checklist that lists them",
+  "components/admin/RedactionTab.tsx":
+    "a redaction rule's name, kind and pattern edited in its row of the rule list",
 };
 
 /**

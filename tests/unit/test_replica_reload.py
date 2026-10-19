@@ -221,6 +221,12 @@ async def test_a_model_change_to_a_boot_org_not_named_default_is_reloaded_by_ano
         pruned.append(rt.org_id)
 
     monkeypatch.setattr(model_reload, "prune_region_state", _prune)
+    refreshed: list[str] = []
+
+    async def _refresh_org(org_id, *, every_environment=False):  # REQ-2087
+        refreshed.append(org_id)
+
+    monkeypatch.setattr("provisa.api.redaction_load.refresh_org", _refresh_org)
     model = [t for t in model_reload.targets() if t.kind == config_stamp.MODEL]
     assert [t.name for t in model] == ["org acme: model"]
     assert await config_watch.check(model) == ["org acme: model"]

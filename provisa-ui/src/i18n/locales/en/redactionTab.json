@@ -1,0 +1,24 @@
+{
+  "redactionTab": {
+    "panelTitle": "Redaction rules",
+    "loading": "Loading…",
+    "intro": "Text matching these rules is replaced with [REDACTED:<rule>] before it leaves Provisa: in exported traces and logs, container output, the audit log and error messages returned to clients. The organization's own secrets are redacted automatically.",
+    "bestEffort": "Redaction is best effort. The built-in patterns are a starter set, not a guarantee: add patterns here for your organization's own sensitive formats. A source's own logs are out of Provisa's reach.",
+    "unresolved": "These reference rules do not resolve and redact nothing: {{names}}",
+    "orgTitle": "This organization's rules",
+    "deploymentTitle": "Deployment rules (every organization)",
+    "automaticTitle": "Secrets redacted automatically",
+    "automaticHelp": "Secrets in this organization's vault and every secret its model names, by name only. Values resolved for individual users are added as they are used ({{count}} so far).",
+    "builtinTitle": "Built-in patterns",
+    "none": "None",
+    "name": "Name",
+    "value": "Pattern or reference",
+    "kindPattern": "Pattern",
+    "kindReference": "Reference",
+    "patternPlaceholder": "A regular expression, e.g. \\bEMP-\\d{6}\\b",
+    "referencePlaceholder": "${secret:NAME} or ${env:NAME}",
+    "add": "Add rule",
+    "remove": "Remove rule",
+    "saved": "Saved. The rules apply from now on."
+  }
+}

@@ -1669,6 +1669,8 @@ def start_grpc_server(
     Returns:
         The started grpc.Server.
     """
+    from provisa.grpc.redaction import RedactingInterceptor
+
     servicer = ProvisaServicer(state)
 
     from provisa.grpc.auth import AuthInterceptor
@@ -1703,7 +1705,8 @@ def start_grpc_server(
         concurrent.futures.ThreadPoolExecutor(
             max_workers=max_concurrent_rpcs, thread_name_prefix="provisa-grpc"
         ),
-        interceptors=[AuthInterceptor(state)],
+        # REQ-2087: first, so the context every handler (and the auth refusals) sees redacts.
+        interceptors=[RedactingInterceptor(), AuthInterceptor(state)],
         maximum_concurrent_rpcs=max_concurrent_rpcs,
         options=[
             ("grpc.max_send_message_length", max_message_bytes),

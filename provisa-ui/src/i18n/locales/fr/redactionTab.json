@@ -1,0 +1,24 @@
+{
+  "redactionTab": {
+    "panelTitle": "Règles d'expurgation",
+    "loading": "Chargement…",
+    "intro": "Le texte correspondant à ces règles est remplacé par [REDACTED:<rule>] avant de quitter Provisa : dans les traces et journaux exportés, la sortie des conteneurs, le journal d'audit et les messages d'erreur renvoyés aux clients. Les secrets propres à l'organisation sont expurgés automatiquement.",
+    "bestEffort": "L'expurgation est faite au mieux. Les motifs intégrés sont un jeu de départ, pas une garantie : ajoutez ici des motifs pour les formats sensibles propres à votre organisation. Les journaux propres à une source sont hors de portée de Provisa.",
+    "unresolved": "Ces règles de référence ne se résolvent pas et n'expurgent rien : {{names}}",
+    "orgTitle": "Règles de cette organisation",
+    "deploymentTitle": "Règles du déploiement (toutes les organisations)",
+    "automaticTitle": "Secrets expurgés automatiquement",
+    "automaticHelp": "Les secrets du coffre-fort de cette organisation et chaque secret que nomme son modèle, par leur nom uniquement. Les valeurs résolues pour des utilisateurs individuels s'ajoutent à mesure qu'elles sont utilisées ({{count}} jusqu'ici).",
+    "builtinTitle": "Motifs intégrés",
+    "none": "Aucune",
+    "name": "Nom",
+    "value": "Motif ou référence",
+    "kindPattern": "Motif",
+    "kindReference": "Référence",
+    "patternPlaceholder": "Une expression régulière, p. ex. \\bEMP-\\d{6}\\b",
+    "referencePlaceholder": "${secret:NAME} ou ${env:NAME}",
+    "add": "Ajouter une règle",
+    "remove": "Supprimer la règle",
+    "saved": "Enregistré. Les règles s'appliquent dès maintenant."
+  }
+}

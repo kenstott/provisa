@@ -149,6 +149,10 @@ async def log_query(  # REQ-074, REQ-689
             f"audit row has {len(table_ids)} table id(s) and {len(table_names)} table name(s); "
             "each id is named, in the same order"
         )
+    # REQ-2087: redacted before it is hashed or encrypted, as the batch writer does.
+    from provisa.security.redaction import redact
+
+    query_text = redact(query_text, tenant_id)
     query_hash = hashlib.sha256(query_text.encode()).hexdigest()
     query_text_enc = encryption.encrypt(query_text.encode("utf-8"))
     async with pool.acquire() as conn:

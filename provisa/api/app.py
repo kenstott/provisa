@@ -1952,9 +1952,14 @@ async def ensure_org_runtime(org_id: str, env: str | None = None) -> OrgRuntime:
     # whichever key the org holds now.
     await ensure_org_encryption(org_id)
 
-    return await state.org_registry.get_or_build(
+    runtime = await state.org_registry.get_or_build(
         runtime_key(org_id, env), lambda _key: build_on_its_lane(org_id, env)
     )
+    # REQ-2087: the org's redaction rules and the secrets its model reaches, loaded once.
+    from provisa.api.redaction_load import ensure_loaded
+
+    await ensure_loaded(org_id)
+    return runtime
 
 
 async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-1266, REQ-1922
@@ -4549,6 +4554,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.ai_models_router import router as ai_models_router
 
     app.include_router(ai_models_router)
+    from provisa.api.admin.redaction_router import router as redaction_router  # REQ-2087
+
+    app.include_router(redaction_router)
     from provisa.api.admin.metadata_export_router import (  # REQ-1074
         router as metadata_export_router,
     )
@@ -4809,5 +4817,10 @@ def create_app() -> FastAPI:
     from provisa.core.request_thread import RequestThreadMiddleware
 
     app.add_middleware(RequestThreadMiddleware)
+
+    # REQ-2087: outermost, so every error body any layer answers with is redacted.
+    from provisa.api.error_redaction import ErrorRedactionMiddleware
+
+    app.add_middleware(ErrorRedactionMiddleware)
 
     return app

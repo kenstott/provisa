@@ -1,0 +1,24 @@
+{
+  "redactionTab": {
+    "panelTitle": "遮蔽規則",
+    "loading": "載入中…",
+    "intro": "與這些規則相符的文字在離開 Provisa 之前會被替換為 [REDACTED:<rule>]：包括匯出的追蹤和記錄、容器輸出、審計記錄，以及傳回給用戶端的錯誤訊息。組織自身的密鑰會被自動遮蔽。",
+    "bestEffort": "遮蔽盡力而為。內置模式只是一組起步規則，並非保證：請在此為組織自身的敏感格式加入模式。資料來源自身的記錄不在 Provisa 的控制範圍內。",
+    "unresolved": "以下參照規則無法解析，不會遮蔽任何內容：{{names}}",
+    "orgTitle": "本組織的規則",
+    "deploymentTitle": "部署規則（所有組織）",
+    "automaticTitle": "自動遮蔽的密鑰",
+    "automaticHelp": "本組織保管庫中的密鑰及其模型引用的每個密鑰，只顯示名稱。為個別使用者解析的值會在使用時加入（目前 {{count}} 個）。",
+    "builtinTitle": "內置模式",
+    "none": "無",
+    "name": "名稱",
+    "value": "模式或參照",
+    "kindPattern": "模式",
+    "kindReference": "參照",
+    "patternPlaceholder": "正規表達式，例如 \\bEMP-\\d{6}\\b",
+    "referencePlaceholder": "${secret:NAME} 或 ${env:NAME}",
+    "add": "加入規則",
+    "remove": "移除規則",
+    "saved": "已儲存。規則由現在起生效。"
+  }
+}

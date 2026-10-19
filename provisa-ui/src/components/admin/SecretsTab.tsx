@@ -36,6 +36,7 @@ import { useCapability } from "../../hooks/useCapability";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { OrgEncryptionTab } from "./OrgEncryptionTab";
+import { RedactionTab } from "./RedactionTab";
 import { OrgFilesTab } from "./OrgFilesTab";
 import {
   fetchSecrets,
@@ -556,6 +557,16 @@ export function SecretsTab() {
         title={t("orgFilesTab.panelTitle")}
       >
         <OrgFilesTab />
+      </CollapsibleItem>
+      {/* REQ-2087: the redaction rules, which hold the org's secrets out of telemetry and errors. */}
+      <CollapsibleItem
+        value="redaction"
+        defaultOpen={false}
+        mountWhenOpen
+        controlTestId="redaction-toggle"
+        title={t("redactionTab.panelTitle")}
+      >
+        <RedactionTab />
       </CollapsibleItem>
     </Collapsibles>
   ) : null;

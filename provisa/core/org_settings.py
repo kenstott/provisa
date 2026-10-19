@@ -54,6 +54,7 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "redirect",
         "cache",
         "derived_roles",  # REQ-2057: the attributes that become the org's derived roles
+        "redaction",  # REQ-2087: the org's own redaction rules
     }
 )
 

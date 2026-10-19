@@ -1179,6 +1179,52 @@ export async function setOrgEncryption(body: { key_b64: string | null }): Promis
   return resp.json();
 }
 
+// --- Central redaction rules (REQ-2087) ---
+
+export interface RedactionRule {
+  name: string;
+  pattern: string | null;
+  reference: string | null;
+  source?: "builtin" | "deployment" | "org";
+}
+
+export interface RedactionState {
+  builtins: RedactionRule[];
+  deployment: RedactionRule[];
+  org: RedactionRule[];
+  /** Names only: the org's secrets redacted by the automatic rule. Never a value. */
+  automatic: string[];
+  resolved_at_use: number;
+  unresolved: string[];
+  can_edit_deployment: boolean;
+}
+
+export async function fetchRedaction(): Promise<RedactionState> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/redaction`);
+  if (!resp.ok) throw httpError("Redaction rules fetch", resp.status);
+  return resp.json();
+}
+
+/** Replace the org's own rules (`scope` "org") or the deployment's (`scope` "deployment"). */
+export async function saveRedactionRules(
+  scope: "org" | "deployment",
+  rules: RedactionRule[],
+): Promise<RedactionState> {
+  const path = scope === "org" ? "/admin/redaction" : "/admin/redaction/deployment";
+  const resp = await fetch(`${API_BASE_RAW}${path}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      rules: rules.map(({ name, pattern, reference }) => ({ name, pattern, reference })),
+    }),
+  });
+  if (!resp.ok) {
+    const data = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(data, requestFailed("Redaction rules update", resp.status)));
+  }
+  return resp.json();
+}
+
 // --- MCP server status (REQ-1008) ---
 
 export interface McpTool {

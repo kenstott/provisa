@@ -387,13 +387,29 @@ Rétention : les lignes sont conservées indéfiniment. Provisa n'a aucun régla
 
 ## Expurgation {: #redaction }
 
-Ce que Provisa enregistre de son propre travail passe par une seule liste de règles d'expurgation par organisation avant d'être écrit où que ce soit. Les règles intégrées de Provisa sont l'ensemble de départ de la liste ; une organisation y ajoute les siennes. Chaque secret que Provisa détient, et chaque secret auquel le modèle fait référence, est expurgé sans qu'une règle le nomme : une valeur résolue depuis `${secret:…}` ou depuis le magasin propre de Provisa n'apparaît jamais en clair dans un enregistrement.
+Ce que Provisa enregistre de son propre travail passe par une liste de règles d'expurgation avant d'être écrit où que ce soit. Le texte qu'une règle reconnaît est remplacé par `[REDACTED:<rule>]`, qui nomme la règle concernée. (REQ-2087)
 
-La liste s'applique à chaque sortie où Provisa écrit :
+La liste a quatre parties :
 
-- chaque span et chaque enregistrement de log, dans le SDK OpenTelemetry de Provisa, avant qu'un exportateur ne le voie ; la sortie standard comprise ;
-- les tables d'audit, à l'écriture de chaque ligne ;
-- les messages d'erreur qu'un client reçoit.
+- **Motifs intégrés.** Numéros de carte qui passent le contrôle de Luhn, numéros de sécurité sociale américains, jetons bearer, jetons d'accès Provisa, clés AWS, GCP, Azure, GitHub et Slack, et clés privées. C'est un jeu de départ, pas une garantie.
+- **Les règles du déploiement**, qui s'appliquent dans toutes les organisations. Les modifier demande le droit `platform_settings`.
+- **Les règles propres à l'organisation.** Les modifier demande le droit `org_settings`.
+- **La règle automatique** sur les secrets de l'organisation : chaque valeur que le magasin propre de Provisa détient pour l'organisation, chaque `${secret:NAME}` que nomment le modèle et les paramètres de l'organisation (sur n'importe quel backend de secrets), et chaque valeur `${secret:…}` ou `${user:…}` dès sa première résolution. Aucune règle n'a besoin de les nommer.
+
+Une règle est soit une expression régulière nommée, soit une référence `${secret:NAME}` / `${env:NAME}` nommée, qui reconnaît la valeur à laquelle la référence se résout. Une référence qui ne se résout pas est journalisée en `ERROR` par son nom et affichée comme non résolue ; les autres règles continuent de s'appliquer. Les valeurs de moins de quatre caractères ne sont pas reconnues.
+
+Provisa n'a pas à connaître tous les formats sensibles. Les motifs intégrés couvrent des formes courantes ; une organisation ajoute des motifs pour ses propres formats, comme les matricules, les identifiants de compte ou les noms d'hôte internes. L'expurgation est faite au mieux : une valeur écrite sous une forme qu'aucune règle ne décrit passe telle quelle.
+
+Les règles se trouvent sur la page **Secrets de l'organisation**, sous **Règles d'expurgation**. La page liste les motifs intégrés, les règles du déploiement (modifiables avec `platform_settings`), les règles de l'organisation, les secrets de la règle automatique par leur nom uniquement, et toute référence qui ne se résout pas. Les règles sont chargées au démarrage du serveur et à la construction de l'environnement d'exécution d'une organisation, et rechargées quand le modèle ou les paramètres changent et quand un secret de l'organisation est enregistré ou supprimé.
+
+La liste s'applique à chaque sortie qu'écrit Provisa :
+
+- chaque span, sous forme d'une copie expurgée remise à chaque exportateur, et la vue des spans récents ;
+- chaque enregistrement de journal du pipeline de journaux OpenTelemetry de Provisa, et chaque ligne qu'écrit un gestionnaire de journalisation, sortie standard et journaux des conteneurs compris ;
+- le texte de requête du journal d'audit, avant d'être haché et chiffré, de sorte que ni le texte ni son hachage ne révèlent une valeur reconnue ; et le détail de la piste administrative ;
+- les messages d'erreur qu'un client reçoit par HTTP, pgwire, gRPC, Arrow Flight et MCP.
+
+La télémétrie et les erreurs client ne sont rattachées à aucune organisation au moment où elles sont écrites ; elles sont donc expurgées par les règles de toutes les organisations ensemble. Deux erreurs passent sans expurgation : un corps d'erreur HTTP de plus de 1 Mio, et l'erreur d'un flux Arrow Flight qui échoue après avoir commencé à envoyer.
 
 Une source fédérée tient ses propres logs, que Provisa n'écrit pas et ne peut pas atteindre. Les traces qu'une source garde des instructions que Provisa lui envoie relèvent de la protection de cette source.
 

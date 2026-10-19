@@ -1,0 +1,24 @@
+{
+  "redactionTab": {
+    "panelTitle": "Regole di oscuramento",
+    "loading": "Caricamento…",
+    "intro": "Il testo che corrisponde a queste regole viene sostituito con [REDACTED:<rule>] prima di uscire da Provisa: nelle tracce e nei log esportati, nell'output dei container, nel log di audit e nei messaggi di errore restituiti ai client. I segreti propri dell'organizzazione vengono oscurati automaticamente.",
+    "bestEffort": "L'oscuramento è svolto al meglio delle possibilità. I pattern integrati sono un insieme di partenza, non una garanzia: aggiungi qui pattern per i formati sensibili propri della tua organizzazione. I log propri di un'origine sono fuori dalla portata di Provisa.",
+    "unresolved": "Queste regole di riferimento non si risolvono e non oscurano nulla: {{names}}",
+    "orgTitle": "Regole di questa organizzazione",
+    "deploymentTitle": "Regole del deployment (tutte le organizzazioni)",
+    "automaticTitle": "Segreti oscurati automaticamente",
+    "automaticHelp": "I segreti nel vault di questa organizzazione e ogni segreto citato dal suo modello, solo per nome. I valori risolti per i singoli utenti si aggiungono man mano che vengono usati ({{count}} finora).",
+    "builtinTitle": "Pattern integrati",
+    "none": "Nessuna",
+    "name": "Nome",
+    "value": "Pattern o riferimento",
+    "kindPattern": "Pattern",
+    "kindReference": "Riferimento",
+    "patternPlaceholder": "Un'espressione regolare, ad es. \\bEMP-\\d{6}\\b",
+    "referencePlaceholder": "${secret:NAME} o ${env:NAME}",
+    "add": "Aggiungi regola",
+    "remove": "Rimuovi regola",
+    "saved": "Salvato. Le regole si applicano da ora."
+  }
+}

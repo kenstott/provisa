@@ -1,0 +1,24 @@
+{
+  "redactionTab": {
+    "panelTitle": "Weglakregels",
+    "loading": "Laden…",
+    "intro": "Tekst die met deze regels overeenkomt, wordt vervangen door [REDACTED:<rule>] voordat hij Provisa verlaat: in geëxporteerde traces en logs, containeruitvoer, het auditlogboek en foutmeldingen aan clients. De eigen secrets van de organisatie worden automatisch weggelakt.",
+    "bestEffort": "Weglakken gebeurt naar beste vermogen. De ingebouwde patronen zijn een startset, geen garantie: voeg hier patronen toe voor de eigen gevoelige formaten van uw organisatie. De eigen logs van een bron liggen buiten het bereik van Provisa.",
+    "unresolved": "Deze verwijzingsregels worden niet opgelost en lakken niets weg: {{names}}",
+    "orgTitle": "Regels van deze organisatie",
+    "deploymentTitle": "Deploymentregels (alle organisaties)",
+    "automaticTitle": "Automatisch weggelakte secrets",
+    "automaticHelp": "Secrets in de kluis van deze organisatie en elk secret dat haar model noemt, alleen op naam. Waarden die voor afzonderlijke gebruikers worden opgelost, komen erbij zodra ze worden gebruikt ({{count}} tot nu toe).",
+    "builtinTitle": "Ingebouwde patronen",
+    "none": "Geen",
+    "name": "Naam",
+    "value": "Patroon of verwijzing",
+    "kindPattern": "Patroon",
+    "kindReference": "Verwijzing",
+    "patternPlaceholder": "Een reguliere expressie, bijv. \\bEMP-\\d{6}\\b",
+    "referencePlaceholder": "${secret:NAME} of ${env:NAME}",
+    "add": "Regel toevoegen",
+    "remove": "Regel verwijderen",
+    "saved": "Opgeslagen. De regels gelden vanaf nu."
+  }
+}

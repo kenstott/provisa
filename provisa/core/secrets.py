@@ -156,8 +156,20 @@ def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
         # REQ-1560: the NAME in the reference decides the vault. ``user`` never reads the org's
         # names and ``secret`` never reads a person's -- neither scope stands in for the other.
         if provider_name == "user":
-            return provider.resolve_user(reference)
-        return provider.resolve(reference)
+            value = provider.resolve_user(reference)
+            # REQ-2087: a personal secret is matched by central redaction from its first use.
+            from provisa.security.redaction import note_user_value
+
+            note_user_value(reference, value)
+            return value
+        value = provider.resolve(reference)
+        if provider_name == "secret":
+            # REQ-2087: a secret resolved anywhere (an environment's model, a central backend's
+            # reference) is matched by central redaction from its first use.
+            from provisa.security.redaction import note_secret_value
+
+            note_secret_value(reference, value)
+        return value
 
     return _SECRET_PATTERN.sub(_replace, value)
 

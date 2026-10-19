@@ -85132,3 +85132,41 @@ And a constant naming a secret that does not exist fails the query, naming the c
   stakeholders:
   - compliance
   - ops
+- id: REQ-2087
+  status: complete
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: Security
+  feature: encryption-and-secrets-secrets
+  priority: SHOULD
+  type: behavioral
+  description: "Central redaction: one list of rules is applied to text before it leaves Provisa. The list holds the built-in patterns (a starter set: card numbers passing the Luhn check, US SSNs, bearer tokens, Provisa access tokens, AWS, GCP, Azure, GitHub and Slack keys, private keys), the deployment's rules (platform_settings), each org's own rules (org_settings), and an automatic rule over the org's secrets: the values Provisa's vault holds for the org, every ${secret:NAME} the org's stored model and settings name on any backend, and each ${secret:} or ${user:} value as it resolves. A rule is a named regular expression or a named ${secret:NAME} / ${env:NAME} reference resolved at load; a reference that does not resolve is logged at ERROR by name and shown unresolved, and the other rules stand. Matched text becomes [REDACTED:<rule>]. It applies to every exported span (one redacted copy handed to every channel) and the recent-spans view, to the OTel log pipeline and every logging handler (stdout included), to audit query text before it is hashed and encrypted, to the admin trail's detail, and to error messages sent on HTTP (bodies of status 400 and above, up to 1 MiB), pgwire, gRPC, Flight and MCP. Telemetry and errors, which carry no org, are redacted by every org's rules together. Rules reload on start, when an org's runtime is built, on a model or settings reload, and when an org secret is stored or removed. The Secrets page shows and edits the rules; the automatic rule's secrets are shown by name only, never a value. Redaction is best effort: the org adds patterns for its own sensitive formats, and a source's own logs are out of Provisa's reach. docs/security.md and the page say so."
+  use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
+  scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
+
+When a query fails with a message naming the password and an employee id
+
+Then the error the client receives, the exported span, the log line and the audit row's text carry [REDACTED:auto:warehouse_pw] and [REDACTED:employee_id] in their place
+
+And the Secrets page lists warehouse_pw under the automatic rule by name, with no value"
+  code:
+  - provisa/security/redaction.py
+  - provisa/api/redaction_load.py
+  - provisa/observability/redaction_otel.py
+  - provisa/api/otel_setup.py
+  - provisa/api/error_redaction.py
+  - provisa/grpc/redaction.py
+  - provisa/api/flight/redaction.py
+  - provisa/api/mcp/server.py
+  - provisa/pgwire/server.py
+  - provisa/audit/writer.py
+  - provisa/audit/query_log.py
+  - provisa/core/secret_references.py
+  - provisa/api/admin/redaction_router.py
+  - provisa-ui/src/components/admin/RedactionTab.tsx
+  tests:
+  - tests/unit/test_central_redaction.py
+  - provisa-ui/src/__tests__/RedactionTab.test.tsx
+  stakeholders:
+  - compliance
+  - ops

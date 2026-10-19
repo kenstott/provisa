@@ -1,0 +1,24 @@
+{
+  "redactionTab": {
+    "panelTitle": "Schwärzungsregeln",
+    "loading": "Wird geladen…",
+    "intro": "Text, der auf diese Regeln passt, wird durch [REDACTED:<rule>] ersetzt, bevor er Provisa verlässt: in exportierten Traces und Logs, in der Container-Ausgabe, im Audit-Log und in Fehlermeldungen an Clients. Die eigenen Secrets der Organisation werden automatisch geschwärzt.",
+    "bestEffort": "Die Schwärzung erfolgt nach bestem Bemühen. Die integrierten Muster sind ein Grundstock, keine Garantie: Fügen Sie hier Muster für die eigenen sensiblen Formate Ihrer Organisation hinzu. Die eigenen Logs einer Quelle liegen außerhalb der Reichweite von Provisa.",
+    "unresolved": "Diese Referenzregeln lassen sich nicht auflösen und schwärzen nichts: {{names}}",
+    "orgTitle": "Regeln dieser Organisation",
+    "deploymentTitle": "Deployment-Regeln (alle Organisationen)",
+    "automaticTitle": "Automatisch geschwärzte Secrets",
+    "automaticHelp": "Secrets im Vault dieser Organisation und jedes Secret, das ihr Modell nennt, nur mit Namen. Für einzelne Benutzer aufgelöste Werte kommen bei ihrer Verwendung hinzu (bisher {{count}}).",
+    "builtinTitle": "Integrierte Muster",
+    "none": "Keine",
+    "name": "Name",
+    "value": "Muster oder Referenz",
+    "kindPattern": "Muster",
+    "kindReference": "Referenz",
+    "patternPlaceholder": "Ein regulärer Ausdruck, z. B. \\bEMP-\\d{6}\\b",
+    "referencePlaceholder": "${secret:NAME} oder ${env:NAME}",
+    "add": "Regel hinzufügen",
+    "remove": "Regel entfernen",
+    "saved": "Gespeichert. Die Regeln gelten ab sofort."
+  }
+}

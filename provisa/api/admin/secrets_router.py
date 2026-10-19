@@ -26,7 +26,7 @@ Secrets are the ORG'S. A platform admin operates the control plane and has no re
 secret values (REQ-1361) -- and in fact nobody does, because nothing reads them out by name.
 """
 
-# Requirements: REQ-1361, REQ-1557, REQ-1558, REQ-1560
+# Requirements: REQ-1361, REQ-1557, REQ-1558, REQ-1560, REQ-2087
 
 from __future__ import annotations
 
@@ -35,6 +35,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 
 from provisa.api.errors import ApiError
+from provisa.api.redaction_load import refresh_org
 from provisa.api.admin.environments_router import _caller_user_id
 from provisa.core import secrets_store
 from provisa.core.database import Database
@@ -314,14 +315,19 @@ async def list_secrets(request: Request, org_id: str) -> dict:
 async def put_secret(request: Request, org_id: str, name: str, body: SecretBody) -> dict:
     """Create or replace one org secret. Storing it HERE is the act that shares it."""
     actor = await _org_guard(request, org_id)
-    return await _store(org_id, ORG_OWNER, name, body, actor)
+    stored = await _store(org_id, ORG_OWNER, name, body, actor)
+    # The new value is one the org's redaction rules hold from now on (REQ-2087).
+    await refresh_org(org_id, every_environment=True)
+    return stored
 
 
 @router.delete("/secrets/{name}")
 async def delete_secret(request: Request, org_id: str, name: str) -> dict:
     """Delete one org secret."""
     actor = await _org_guard(request, org_id)
-    return await _drop(org_id, ORG_OWNER, name, actor)
+    dropped = await _drop(org_id, ORG_OWNER, name, actor)
+    await refresh_org(org_id, every_environment=True)
+    return dropped
 
 
 # ------------------------------------------------------------- the PERSONAL vault (REQ-1560)

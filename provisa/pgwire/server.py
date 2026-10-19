@@ -135,6 +135,18 @@ def _redirect_row(handle: dict | None, delivery: Any):
     )
 
 
+class _Said:
+    """An error's text, redacted (REQ-2087), as what the base handler writes with ``str()``."""
+
+    def __init__(self, text: str) -> None:
+        from provisa.security.redaction import redact
+
+        self._text = redact(text)
+
+    def __str__(self) -> str:
+        return self._text
+
+
 class RedirectSettingInvalid(ValueError):
     """A ``provisa.redirect*`` value that cannot be read; refused by name, never defaulted."""
 
@@ -1536,7 +1548,8 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
         refusal = definition_refusal(exception)
         if refusal is None:
-            super().send_error(exception, ctx)
+            # REQ-2087: the base class writes str(exception); it is given the redacted text.
+            super().send_error(_Said(str(exception)), ctx)
             return
         self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
@@ -1629,6 +1642,9 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self.wfile = self._meter
 
     def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
+        from provisa.security.redaction import redact
+
+        message = redact(message)  # REQ-2087: every message a client is sent
         buf = BVBuffer()
         for field, value in (
             (b"S", severity),
