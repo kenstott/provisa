@@ -42,6 +42,7 @@ from typing import Any
 
 from provisa.core.change_signal import PUSH_SOURCE_TYPES
 from provisa.core.connection_loop import LongLived, spawn_long_lived
+from provisa.core.runtime_gone import RuntimeNotBuilt, left_to_the_next_runtime
 
 log = logging.getLogger(__name__)
 
@@ -1126,8 +1127,37 @@ async def _run_listener(
         )
     except asyncio.CancelledError:
         raise
+    except RuntimeNotBuilt as gone:
+        # Its runtime was retired between two batches: the batch was not landed and not
+        # acknowledged, so the next build's listener reads it again.
+        left_to_the_next_runtime(gone, f"push listener {node}")
     except Exception:
         log.exception("push listener %s crashed", node)
+
+
+def stop_runtime_listeners(state: Any, org_id: str, env: str) -> None:
+    """Stop every listener the runtime of ``org_id`` and ``env`` started, and forget it, when that
+    runtime is retired (``org_runtime._retire``). A listener lands into its runtime's engine, so
+    it cannot outlive it: the orders listener of a retired sandbox org met RuntimeNotBuilt at its
+    next landing and died, and its key, left behind, kept every later build from wiring it again.
+    Forgotten here, the next build of the org wires its listeners afresh.
+
+    Not waited for: a runtime is retired from synchronous code. The disconnect flag lets a
+    listener between events flush and exit; the cancel ends one blocked waiting for the next."""
+    from provisa.core.environments import PROD
+
+    wanted = (org_id, None if env == PROD else env)
+    disconnects = getattr(state, "push_listener_disconnects", {})
+    handles = getattr(state, "push_listener_handles", {})
+    tasks = getattr(state, "push_listener_tasks", [])
+    for key in [key for key in disconnects if key[:2] == wanted]:
+        disconnects.pop(key).set()
+        handle = handles.pop(key, None)
+        if handle is None:
+            continue
+        handle.cancel()
+        if handle in tasks:
+            tasks.remove(handle)
 
 
 async def shutdown_push_listeners(state: Any, timeout: float = 10.0) -> None:

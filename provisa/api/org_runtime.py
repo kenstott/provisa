@@ -551,16 +551,22 @@ class ActiveOrgPool:  # REQ-1266
 
 
 def _retire(runtime: OrgRuntime, replacement: OrgRuntime | None = None) -> None:
-    """A runtime no longer served stops its live-query engine: its polls are its org's, and a
-    replaced runtime's subscribers end with it (the replacement starts its own).
+    """A runtime no longer served stops its live-query engine and its push listeners: its polls
+    and its landings are its org's, and a replaced runtime's subscribers end with it (the
+    replacement starts its own).
 
     REQ-2006: an org that owns its federation engine (``isolated_engine``: its own coordinator
     session, or an in-process DuckDB pinned to its own file, REQ-1992) closes it too, unless the
     replacement holds the same one. Each build of such an org makes a new EngineRuntime, so one
     left open leaked its connection, its sources' pools and its file per rebuild, and a retired
     sandbox org kept its DuckDB file open after the org was gone."""
+    from provisa.api.app import state
     from provisa.core.connection_loop import spawn_background
+    from provisa.events.push_wiring import stop_runtime_listeners
 
+    # Its push listeners land into its engine: they stop with it, and the replacement's build
+    # (or the org's next) wires its own.
+    stop_runtime_listeners(state, runtime.org_id, runtime.env)
     engine = runtime.live_engine
     if engine is not None:
         runtime.live_engine = None
