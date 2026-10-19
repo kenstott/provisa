@@ -86927,7 +86927,7 @@ And a correlate over a result larger than mcp.stats_max_rows reports row_cap and
   - api-reference.md
   - security.md
 - id: REQ-2092
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: Performance Benchmark

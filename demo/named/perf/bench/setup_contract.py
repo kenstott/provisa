@@ -34,6 +34,7 @@ from typing import Any
 import lookup
 import yaml
 from contract_checks import (
+    _check_governance,
     _check_implemented,
     _check_joins,
     _check_ranges,
@@ -146,7 +147,14 @@ def setup_from_dict(
     # request) and this many rows.
     base_raw = _mapping(raw["base"], "base", required=("rows",))
     base = {"rows": _int(base_raw["rows"], "base.rows", minimum=1)}
-    transports = _transports(raw["transports"], "transports", list(known_transports), list(sources))
+    knobs = _knobs(raw["knobs"], "knobs", list(sources))
+    transports = _transports(
+        raw["transports"],
+        "transports",
+        list(known_transports),
+        list(sources),
+        knobs.governance.telemetry,
+    )
     setup = Setup(
         name=_str(section["name"], "deployment.name"),
         endpoints=_endpoints(section["endpoints"], "deployment.endpoints", env),
@@ -155,7 +163,7 @@ def setup_from_dict(
         sources=sources,
         cross_source_joins=cross,
         base=base,
-        knobs=_knobs(raw["knobs"], "knobs", list(sources)),
+        knobs=knobs,
         transports=transports,
         load=_load_section(raw["load"], "load"),
         seed=_int(raw["seed"], "seed"),
@@ -164,6 +172,7 @@ def setup_from_dict(
         ),
     )
     _check_implemented(setup)
+    _check_governance(setup)
     _check_route(setup)
     _check_ranges(setup)
     if deployment is None:

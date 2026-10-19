@@ -248,6 +248,16 @@ def build(root: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     return published, internal
 
 
+def run_contract(contract_text: str, *, telemetry: str) -> str:
+    """The setup contract as one run states it: ``knobs.governance.telemetry`` set to the
+    server's (REQ-2092), which the run checks against the server's agent's ``telemetry`` fact."""
+    if telemetry not in TELEMETRY:
+        raise ValueError(f"telemetry must be one of {', '.join(TELEMETRY)}, got {telemetry!r}")
+    contract = yaml.safe_load(contract_text)
+    contract["knobs"]["governance"]["telemetry"] = telemetry == "on"
+    return yaml.safe_dump(contract, sort_keys=False)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="The three-device optimistic benchmark")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -259,10 +269,18 @@ def main() -> int:
     serve.add_argument("--request-threads", type=int)
     serve.add_argument("--base-config", default=str(Path(__file__).parent.parent / "config.yaml"))
     serve.add_argument("--config-out", required=True)
+    con = sub.add_parser("contract", help="device 2: the setup contract as one run states it")
+    con.add_argument("--setup", required=True)
+    con.add_argument("--telemetry", choices=TELEMETRY, required=True)
+    con.add_argument("--out", required=True)
     rep = sub.add_parser("report", help="the published point and the telemetry impact")
     rep.add_argument("--root", required=True)
     rep.add_argument("--out", required=True)
     args = parser.parse_args()
+    if args.command == "contract":
+        out = Path(args.out).expanduser()
+        out.write_text(run_contract(Path(args.setup).read_text(), telemetry=args.telemetry))
+        return 0
     if args.command == "serve-env":
         url = collector_url(args.backends_host) if args.telemetry == "on" else None
         out = Path(args.config_out).expanduser()

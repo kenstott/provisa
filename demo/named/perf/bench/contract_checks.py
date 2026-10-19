@@ -92,6 +92,21 @@ def _check_implemented(setup: Setup) -> None:
             _refuse(f"tables.weight (source {source})")
 
 
+def _check_governance(setup: Setup) -> None:
+    """A request acts as a role the governance setup creates (``role_depth``) or names derived
+    roles beside its own (``derived_roles``) only as the deployment's unsecured header names it: a
+    signed-in principal would also have to be granted that role and given those attributes, which
+    the setup does not do."""
+    for transport in setup.transports:
+        g = setup.governance(transport)
+        if (g.role_depth or g.derived_roles) and setup.credentials.mode != "none":
+            raise SetupError(
+                f"transports.{transport}: governance role_depth and derived_roles need "
+                "deployment.credentials.mode none (the request names its role in its header); "
+                "granting the created roles and attributes to a signed-in principal is not built"
+            )
+
+
 def distribution_range(dist: Distribution) -> tuple[int, int]:
     """The smallest and largest value a distribution can draw."""
     p = dist.params

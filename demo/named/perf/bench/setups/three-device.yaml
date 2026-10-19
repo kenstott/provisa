@@ -149,6 +149,21 @@ knobs:
   # The class follows from the sources' replication settings above. 0 draws joins whatever their
   # class.
   join_replication: {probability: 0, weights: {both_live: 1.0}}
+  # The governance the run is measured under (REQ-2092; governance.py sets it up for the run and
+  # removes it after). All zero is the optimistic request on the deployment as it stands.
+  # row_rules_per_table: row rules on every table, each keeping every row, ANDed; masked_column_share:
+  # share of each table's columns masked (constant NULL) from its nullable, unfiltered, unjoined
+  # columns; central_redaction: the org's redaction rules extended with the bench's; role_depth: the
+  # request acts as a role that many inheritance levels below its own; derived_roles: that many
+  # derived roles named beside it (both need credentials mode none); telemetry: the server's own
+  # (three_device.py serve-env --telemetry), stated here and checked against the device facts.
+  governance:
+    row_rules_per_table: 0
+    masked_column_share: 0
+    central_redaction: false
+    role_depth: 0
+    derived_roles: 0
+    telemetry: false
   source_weights:
     bench-postgresql: 1.0
     bench-clickhouse: 0.0

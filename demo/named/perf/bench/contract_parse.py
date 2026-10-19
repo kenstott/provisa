@@ -16,6 +16,8 @@ from collections.abc import Collection, Mapping
 from typing import Any
 
 from contract_model import (
+    GOVERNANCE_KNOBS,
+    Governance,
     CREDENTIAL_KINDS,
     DISTRIBUTION_KNOBS,
     LOAD_MODES,
@@ -496,8 +498,41 @@ def _join_replication(raw: Any, path: str) -> JoinReplication:
     return JoinReplication(_probability(raw["probability"], f"{path}.probability"), weights)
 
 
+def _governance(raw: Any, path: str, *, telemetry: bool | None = None) -> Governance:
+    """The governance knobs (REQ-2092). ``telemetry``: for a transport's override, the global
+    value -- the server's own, set when it starts, so an override may not name it."""
+    if telemetry is None:
+        _mapping(raw, path, required=GOVERNANCE_KNOBS)
+        stated = _bool(raw["telemetry"], f"{path}.telemetry")
+    else:
+        if isinstance(raw, dict) and "telemetry" in raw:
+            raise SetupError(
+                f"{path}.telemetry: the server's own, set when it starts; it is the same for "
+                "every transport and is set in knobs.governance only"
+            )
+        _mapping(raw, path, required=tuple(k for k in GOVERNANCE_KNOBS if k != "telemetry"))
+        stated = telemetry
+    depth = _int(raw["role_depth"], f"{path}.role_depth")
+    derived = _int(raw["derived_roles"], f"{path}.derived_roles")
+    return Governance(
+        row_rules_per_table=_int(raw["row_rules_per_table"], f"{path}.row_rules_per_table"),
+        masked_column_share=_probability(raw["masked_column_share"], f"{path}.masked_column_share"),
+        central_redaction=_bool(raw["central_redaction"], f"{path}.central_redaction"),
+        role_depth=depth,
+        derived_roles=derived,
+        telemetry=stated,
+    )
+
+
 def _knobs(raw: Any, path: str, sources: Collection[str]) -> Knobs:
-    keys = (*DISTRIBUTION_KNOBS, "cache", "source_weights", "route", "join_replication")
+    keys = (
+        *DISTRIBUTION_KNOBS,
+        "cache",
+        "source_weights",
+        "route",
+        "join_replication",
+        "governance",
+    )
     _mapping(raw, path, required=keys)
     route_raw = _per_source(raw["route"], f"{path}.route", sources)
     return Knobs(
@@ -506,6 +541,7 @@ def _knobs(raw: Any, path: str, sources: Collection[str]) -> Knobs:
         route={s: _route_mode(route_raw[s], f"{path}.route.{s}") for s in sources},
         cache_probability=_cache_probability(raw["cache"], f"{path}.cache"),
         join_replication=_join_replication(raw["join_replication"], f"{path}.join_replication"),
+        governance=_governance(raw["governance"], f"{path}.governance"),
     )
 
 
@@ -515,8 +551,13 @@ def _override_route(raw: Any, path: str, sources: Collection[str]) -> dict[str, 
 
 
 def _transports(
-    raw: Any, path: str, known: Collection[str], sources: Collection[str]
+    raw: Any,
+    path: str,
+    known: Collection[str],
+    sources: Collection[str],
+    telemetry: bool,
 ) -> dict[str, TransportOverride]:
+    """Per-transport overrides; ``telemetry`` is the global governance's (the server's own)."""
     if not isinstance(raw, dict) or not raw:
         raise SetupError(f"{path}: must be a non-empty mapping")
     out: dict[str, TransportOverride] = {}
@@ -531,7 +572,14 @@ def _transports(
             knobs_raw,
             kp,
             required=(),
-            optional=(*DISTRIBUTION_KNOBS, "cache", "source_weights", "route", "join_replication"),
+            optional=(
+                *DISTRIBUTION_KNOBS,
+                "cache",
+                "source_weights",
+                "route",
+                "join_replication",
+                "governance",
+            ),
         )
         out[name] = TransportOverride(
             knobs={
@@ -555,6 +603,11 @@ def _transports(
             join_replication=(
                 _join_replication(knobs_raw["join_replication"], f"{kp}.join_replication")
                 if "join_replication" in knobs_raw
+                else None
+            ),
+            governance=(
+                _governance(knobs_raw["governance"], f"{kp}.governance", telemetry=telemetry)
+                if "governance" in knobs_raw
                 else None
             ),
         )
