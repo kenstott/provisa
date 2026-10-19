@@ -10,9 +10,9 @@
 
 4. **Single endpoint per operation.** The UI calls one `availableSchemas` endpoint and one `availableTables` endpoint. Backend routing selects the correct introspection strategy per source type internally.
 
-5. **Dataset stewardship — one domain owner, one responsible party.** Registering a dataset is a governance act: the registering domain becomes the sole steward of that dataset and is accountable for its governance, access policy, quality, and lifecycle. A datasource may serve multiple domains, but each physical dataset may be stewarded by exactly one domain. Once claimed, no other domain may register it. Uniqueness of virtual names (alias or table_name) within each domain is enforced by Provisa. Source-level uniqueness is inherent to the datasource. Together these guarantees eliminate the need for domain-prefixed aliases — table names are registered under their native source names.
+5. **Dataset stewardship — one domain owner, one responsible party.** Registering a dataset is a governance act: the registering domain becomes the sole steward of that dataset and is accountable for its governance, access policy, quality, and lifecycle. A datasource may serve multiple domains, but each physical dataset may be stewarded by exactly one domain. Once claimed, no other domain may register it. Uniqueness of virtual names (alias or table_name) within each domain is enforced by Provisa. Source-level uniqueness is inherent to the datasource. Together these guarantees eliminate the need for domain-prefixed aliases: table names are registered under their native source names.
 
-6. **All source types must be handled.** A source type not listed below must return `[]` for both schemas and tables — never `None`, which triggers a broken Trino fallback for non-Trino sources.
+6. **All source types must be handled.** A source type not listed below must return `[]` for both schemas and tables, never `None`, which triggers a broken Trino fallback for non-Trino sources.
 
 ---
 
@@ -103,9 +103,9 @@ These types have no Trino connector. `native_schemas` returns a fixed constant; 
 | `sparql` | `"sparql"` | No list introspection — user supplies a SPARQL query | SPARQL HTTP endpoint |
 | `govdata` | Category names from `sources.database` | `fetch_tables` per category | GovData JDBC adapter |
 
-Note: `kafka` is in `SOURCE_TO_CONNECTOR` (Trino `kafka` connector used for execution) but uses native config-DB introspection for schema/table discovery — it does not use Trino for introspection.
+Note: `kafka` is in `SOURCE_TO_CONNECTOR` (Trino `kafka` connector used for execution) but uses native config-DB introspection for schema/table discovery. It does not use Trino for introspection.
 
-For `graphql_remote`: introspection connects to the remote GraphQL HTTP endpoint directly. The PG cache holds previously-executed query results only — it is not the source and must not be used for introspection.
+For `graphql_remote`: introspection connects to the remote GraphQL HTTP endpoint directly. The PG cache holds previously-executed query results only. It is not the source and must not be used for introspection.
 
 For `grpc_remote`: introspection connects to the remote gRPC server (via proto reflection or a proto file path/URL in `sources.path`). PG is not the source.
 
@@ -172,7 +172,7 @@ Dataset names may be normalized to a semantic standard (e.g., `snake_case`) and 
 
 This applies everywhere a source-introspected name is compared against a stored registered name: `isRegistered` checks, alias lookups, duplicate detection, and any cross-source name matching.
 
-Inline assumptions about source casing (e.g., `name.toLowerCase()`, hardcoded `.replace(/-/g, "_")`) are forbidden — they are invisible and diverge from the canonical logic.
+Inline assumptions about source casing (e.g., `name.toLowerCase()`, hardcoded `.replace(/-/g, "_")`) are forbidden, because they are invisible and diverge from the canonical logic.
 
 ---
 
@@ -183,7 +183,7 @@ Every registered dataset has two forms of identity:
 - **Physical identity**: the native name as returned by the source (`findPetsByStatus`, `orders`, `pets` field in GraphQL, `StreamPets` gRPC method). This is what the query engine uses.
 - **Semantic identity**: `domainId + tableName` (the alias, normalized). This is what the API, GraphQL schema, and end users see.
 
-A reference to a dataset may use either form. Any code that needs to determine whether two references point to the same dataset must resolve both through a centralized identity service — never by ad-hoc string comparison.
+A reference to a dataset may use either form. Any code that needs to determine whether two references point to the same dataset must resolve both through a centralized identity service, never by ad-hoc string comparison.
 
 ### Resolution rules
 
@@ -202,7 +202,7 @@ A dataset may also be referenced by name inside a query payload. Each query lang
 | Cypher | PascalCase node label or relationship type | `PetByStatus` |
 | GraphQL | camelCase field name | `petByStatus` |
 
-The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name — it is not a hint, it is the name. The alias is consumed differently per language: **SQL uses the alias verbatim** (no convention applied); **GQL applies its configured convention** to the alias; **Cypher derives from the GQL name** (per REQ-351 the Cypher node label is the PascalCase GraphQL `type_name`), not directly from the alias. When no alias is set, each language derives its name from `tableName` (normalized) via its configured convention.
+The primary control over query-language naming is the **alias** set at registration time (`registered_tables.alias`). When an alias is present it is the authoritative name. It is not a hint; it is the name. The alias is consumed differently per language: **SQL uses the alias verbatim** (no convention applied); **GQL applies its configured convention** to the alias; **Cypher derives from the GQL name** (per REQ-351 the Cypher node label is the PascalCase GraphQL `type_name`), not directly from the alias. When no alias is set, each language derives its name from `tableName` (normalized) via its configured convention.
 
 Resolution priority for the query-language name of a dataset:
 
@@ -217,6 +217,6 @@ Any name extracted from a SQL, Cypher, or GraphQL query must be resolvable to a 
   - `resolve(ref, lang=None) -> DatasetIdentity` — accepts physical name, semantic `domain.table`, or query-language name (with `lang` in `{"sql", "cypher", "graphql"}`).
   - `same_dataset(ref_a, ref_b) -> bool` — resolves both sides before comparing.
   - `to_query_name(identity, lang) -> str` — applies the active naming convention to produce the correct form for a given query language.
-- Frontend: shared utility in `provisa-ui/src/utils/datasetIdentity.ts` — no per-component name-matching logic.
+- Frontend: shared utility in `provisa-ui/src/utils/datasetIdentity.ts`, with no per-component name-matching logic.
 - All inline normalization (`_normalize_op_id`, ad-hoc `toSnakeCase` comparisons, etc.) must be replaced by calls to these utilities.
 - The service reads the active naming convention from `registered_tables.naming_convention` → `sources.naming_convention` → global default, in that priority order (three levels: table, source, global).

@@ -23,7 +23,7 @@ fall short of it.
 ## Transport classification under the objective
 
 - **Streaming (drain the one terminal to the wire):** pgwire, Flight SQL, native gRPC, **airport**.
-  Airport is NOT exempt — it must stream (see Defect 5). The **native** gRPC query RPC already
+  Airport is NOT exempt: it must stream (see Defect 5). The **native** gRPC query RPC already
   streams (REQ-1215); the GraphQL-over-gRPC proxy is a GraphQL transport (buffered, below).
 - **Buffered → CTAS (never Provisa-RAM):** JSON:API, GraphQL, Bolt. These land a CTAS handle above
   the threshold and inline the body below it.
@@ -35,8 +35,7 @@ fall short of it.
 REQ-1190/1214 classify the DIRECT route as "genuinely-bounded (metadata/admin)." That conflates
 two different things: *single reachable source* (the router's DIRECT trigger, REQ-826) and
 *bounded metadata*. `SELECT * FROM one_big_postgres` is a single reachable source → DIRECT →
-`execute_native` → full `.rows` → `rows_to_arrow_table`. A billion-row passthrough to ONE source
-materializes — the passthrough that should stream *hardest* streams *worst*.
+`execute_native` → full `.rows` → `rows_to_arrow_table`. A billion-row passthrough to ONE source materializes, so the passthrough that should stream *hardest* streams *worst*.
 
 - `provisa/federation/runtime.py:153` `execute_native` returns a materialized `QueryResult`.
 - Consumed materialized at `provisa/api/flight/server.py:697`, `provisa/api/airport/query.py:66`,
@@ -57,7 +56,7 @@ be "genuinely lazy." Three of them materialize the whole table then re-emit its 
 - `provisa/federation/bigquery_runtime.py:218` — same
 - `provisa/federation/mssql_warehouse_runtime.py:271` — same
 
-**Who declares it:** not the runtime — the per-engine **builder** in `provisa/federation/engine.py`
+**Who declares it:** not the runtime but the per-engine **builder** in `provisa/federation/engine.py`
 hardcodes `ARROW_STREAM` into the capability `frozenset`, each with a comment naming a lazy driver
 primitive the runtime never calls:
 
@@ -72,7 +71,7 @@ does not honor is exactly the silent-materialization this project forbids.
 **The fix must make the terminal genuinely lazy** — use the server-side chunk API the builder
 already names (bigquery `to_arrow_iterable`, databricks Cloud Fetch chunk iteration, mssql cursor
 `fetchmany`→Arrow), as Snowflake `fetch_arrow_batches` and DuckDB `fetch_record_batch` do (REQ-1217).
-This fixes Defect 3 in the same stroke — a lazy `run_sync` falls out of the same primitive.
+This fixes Defect 3 in the same stroke, since a lazy `run_sync` falls out of the same primitive.
 
 **Dropping `ARROW_STREAM` does NOT conform.** `require(ARROW_STREAM)` failing routes to the adapter
 path `arrow_batches_from_rows(rt.run_sync(...))` (native_backend.py:298-304), but the adapter is
@@ -80,7 +79,7 @@ bounded ONLY when `run_sync` hands it a genuinely streaming `ResultStream`. Ware
 returns a fully-materialized `QueryResult` (Defect 3), so the adapter would re-batch an in-memory
 list whose materialization already OOM'd one call earlier. Dropping the capability relocates the
 buffer from `run_arrow_stream` to `run_sync`; it does not remove it. The adapter conforms only for
-engines whose `run_sync` already streams (pg / duckdb / sqla) — i.e. not the ones at fault. The only
+engines whose `run_sync` already streams (pg / duckdb / sqla), i.e. not the ones at fault. The only
 non-lazy-terminal alternative that conforms is CTAS-land (engine-native materialization off Provisa's
 heap, REQ-1194/1195), never the row→Arrow adapter over a materializing `run_sync`.
 
@@ -92,16 +91,14 @@ fully-materialized `QueryResult`, not a `StreamingQueryResult`:
 - snowflake `:117`, databricks `:233`, bigquery `:199`, clickhouse `:370`, mssql `:245`.
 
 So pgwire against a warehouse engine OOMs on a large result despite REQ-1186. (pg / duckdb / sqla
-`run_sync` are genuinely streaming — REQ-1222/1223 and the DuckDB private-cursor terminal.)
-REQ-1223's use case even *claims* server-side-cursor streaming "on federation engines (Trino,
-Snowflake, Databricks)" — but those engines don't use the sqla runtime; their own `run_sync`
+`run_sync` are genuinely streaming: REQ-1222/1223 and the DuckDB private-cursor terminal.)
+REQ-1223's use case even *claims* server-side-cursor streaming "on federation engines (Trino, Snowflake, Databricks)", but those engines don't use the sqla runtime; their own `run_sync`
 materializes. The claim is unbacked for them.
 
 ## Defect 4 — No automatic stream↔materialize threshold
 
 REQ-1203/1204 give a redirect/CTAS sink, but it fires only when a caller passes `deliver=` via a
-side-channel. The end goal's "*optionally* generate CTAS based on a row-count threshold"
-— an automatic policy at the single terminal — does not exist yet. Today materialization is either
+side-channel. The end goal's "*optionally* generate CTAS based on a row-count threshold", an automatic policy at the single terminal, does not exist yet. Today materialization is either
 caller-requested (redirect) or an accident of route/engine (Defects 1–3).
 
 ## Defect 5 — Airport materializes a full scan in Provisa RAM
@@ -128,7 +125,7 @@ REQ-1218 is superseded: airport streams; schema/rowid caching moves off the resu
 
 One terminal, `_execute_plan`, is the single decision point:
 
-1. Govern → obtain the engine's **streaming** `(schema, batch_gen)` — for ENGINE *and* DIRECT
+1. Govern → obtain the engine's **streaming** `(schema, batch_gen)`, for ENGINE *and* DIRECT
    (DIRECT drives the single source's server-side cursor / Arrow reader). There is no non-streaming
    producer path.
 2. The terminal decides delivery by **transport class**, not by route or engine:
@@ -140,7 +137,7 @@ One terminal, `_execute_plan`, is the single decision point:
    - **bounded** (metadata/admin/registered-fn) → collect directly; small by construction.
 3. Engine capability is honest: no `ARROW_STREAM`/streaming `run_sync` unless the terminal is
    genuinely lazy. A non-streaming engine either gets a genuinely-lazy terminal or serves buffered
-   transports straight to CTAS-land — never a streaming-shaped method that secretly materializes,
+   transports straight to CTAS-land, never a streaming-shaped method that secretly materializes,
    and never the row→Arrow adapter over a materializing `run_sync` (that just moves the buffer).
 
 ## Remediation sequence (highest leverage first)
@@ -149,7 +146,7 @@ One terminal, `_execute_plan`, is the single decision point:
    scans stream. Amend REQ-1190; the biggest single OOM hole.
 2. **Warehouse honesty** (Defects 2–3) — make `run_arrow_stream`/`run_sync` genuinely lazy via the
    driver's server-side chunk API. Delete the three fake `run_arrow_stream`s. No capability-dropping
-   fallback (it doesn't conform — Defect 2).
+   fallback (it doesn't conform; see Defect 2).
 3. **Airport streams** (Defect 5) — route airport through the streaming terminal; move
    schema/`is_rowid` off the result path. Supersede REQ-1218.
 4. **Buffered = CTAS** (Defect 4) — JSON:API / GraphQL / Bolt land a threshold-gated CTAS at the one

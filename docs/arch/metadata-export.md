@@ -41,10 +41,9 @@ Smallest thing that makes a MUST-gate enforceable, not a general billing system.
 - Add `tier: str` to `provisa/control_plane/models.py` `Org` and to the control-plane store.
 - Add `provisa/control_plane/entitlements.py`: `require_tier(org_id, feature)` raising a
   typed `EntitlementError`; feature keys are constants, not strings at call sites.
-- No default-allow. An org with an unrecognised tier is denied — REQ-1073 is a MUST
-  constraint, so the failure mode is refusal, never silent pass-through.
+- No default-allow. An org with an unrecognised tier is denied. REQ-1073 is a MUST constraint, so the failure mode is refusal, never silent pass-through.
 
-Tests — `tests/unit/test_entitlements.py`: allowed tier passes; disallowed tier raises;
+Tests: `tests/unit/test_entitlements.py`: allowed tier passes; disallowed tier raises;
 unknown tier raises; the error names the feature and the org.
 
 ## Phase 1 — REQ-1068: provider interface + per-org config
@@ -56,7 +55,7 @@ unknown tier raises; the error names the feature and the org.
     surfaced, not swallowed.
 - `provisa/api/metadata_export/config.py`: `MetadataExportConfig` pydantic model
   (`enabled`, `provider`, `endpoint`, credential fields, `reconcile_cron`), mounted on
-  `ProvisaConfig` as `metadata_export` — same shape as `MailConfig`.
+  `ProvisaConfig` as `metadata_export`, the same shape as `MailConfig`.
 - `provisa/api/metadata_export/registry.py`: `metadata_export(config)` factory mirroring
   `provisa/core/mail.py:130 email_sender()`. Unknown provider name → raise.
 - Directionality is a structural invariant: the module exposes no read/ingest entry point.
@@ -100,8 +99,7 @@ Tests
   - Masked columns from the `Column.mask_*` fields and `unmasked_to`.
   - RLS-restricted tables from `ProvisaConfig.rls_rules` / `RLSRule`.
   - Visibility-restricted assets from `provisa/security/` (REQ-039/040).
-- Tags carry the *fact* (this column is masked, by this rule, for these roles) — not the
-  mask pattern itself, which is a policy secret.
+- Tags carry the *fact* (this column is masked, by this rule, for these roles), never the mask pattern itself, which is a policy secret.
 
 Tests
 - `tests/unit/test_metadata_export_governance.py` — each of the three signal kinds
@@ -138,7 +136,7 @@ Tests
 Each is a thin subclass; no new metadata model.
 
 - `atlas.py` — Apache Atlas REST v2 (`/api/atlas/v2/entity/bulk`) with a Provisa typedef
-  bootstrap. **Microsoft Purview rides this adapter** — its ingestion surface is
+  bootstrap. **Microsoft Purview rides this adapter**: its ingestion surface is
   Atlas-API-compatible; the difference is auth (Entra ID token) and base URL, so Purview is
   a config variant plus an auth strategy, not a fourth code path.
 - `datahub.py` — MCP/MCE emit over the DataHub REST sink.
@@ -147,8 +145,7 @@ Each is a thin subclass; no new metadata model.
 Tests
 - `tests/unit/test_metadata_export_vendors.py` — one file rather than one per vendor: all
   four map the SAME governed fixture the e2e publishes, so the four mappings are compared
-  against each other rather than each against its own recorded payload. Recorded HTTP
-  fixtures were dropped — a fixture recorded from our own client proves only that the client
+  against each other rather than each against its own recorded payload. Recorded HTTP fixtures were dropped, because a fixture recorded from our own client proves only that the client
   did not change.
 - `tests/integration/test_metadata_export_atlas_e2e.py` — real Apache Atlas container
   (`requires_atlas`), publish then read every assertion back out of Atlas's own API. This is
@@ -164,12 +161,12 @@ Shipped as `provisa/api/metadata_export/publishing.py`.
 
 - Event-driven: metadata changes post through `provisa/events/queue.py:37 post_event` and
   fan one work item to the org's export target; `drain` claims that target, publishes, and
-  completes. Claim (not fanout) — duplicate publishes across the fleet are wrong, which is
+  completes. Claim (not fanout): duplicate publishes across the fleet are wrong, which is
   exactly the dispatch rule REQ-942 states. The injector sits at `_rebuild_schemas`, the one
   chokepoint every model mutation already passes through, so a new mutation cannot forget to
   publish.
 - Reconcile: a per-org cron job on the embedded APScheduler. NOT in
-  `provisa/scheduler/jobs.py` as planned — that module builds jobs from deployment config,
+  `provisa/scheduler/jobs.py` as planned. That module builds jobs from deployment config,
   while `reconcile_cron` is an org setting that has to be re-armed when an admin saves it.
   The jobs are armed at startup and again on every save, and removed when an org loses the
   entitlement rather than left firing into a skip.
@@ -178,7 +175,7 @@ Shipped as `provisa/api/metadata_export/publishing.py`.
   argument; the full snapshot already has one (every adapter upserts by fully-qualified
   name), which is what makes the two paths converge instead of racing.
 - Per-org scoping: the events queue lives in the org's own schema, and the org id is bound
-  around every publish — a publish for org A can never read org B's config.
+  around every publish, so a publish for org A can never read org B's config.
 
 Tests
 - `tests/unit/test_metadata_export_sync.py` — claim/complete lifecycle against a real
@@ -193,7 +190,7 @@ Tests
 ## Phase 7 — REQ-1073: premium gate + admin surface
 
 - `require_tier(org_id, Feature.METADATA_EXPORT)` at the publish entry point and at the
-  config-write endpoint — both, so a non-premium org cannot stage a config that a later
+  config-write endpoint, both of them, so a non-premium org cannot stage a config that a later
   reconcile would honour.
 - Admin UI tab: provider selection, credential entry, `health()` check, last-publish
   status and per-asset error list.
@@ -235,8 +232,7 @@ Phases 5 and 6 are independent of each other.
 
 ## Not executed against a live service
 
-Atlas is exercised against a real container, and Purview rides the same code path — same
-routes, same envelope, same type model — so the mapping is proven for both. What is NOT
+Atlas is exercised against a real container, and Purview rides the same code path (same routes, same envelope, same type model), so the mapping is proven for both. What is NOT
 proven live: Purview's Entra token exchange, and the Atlan, Collibra and DataHub transports.
 Purview was costed and skipped deliberately: an Azure Purview account bills its Data Map at
 a 1-capacity-unit minimum around the clock from creation, and the only thing it would

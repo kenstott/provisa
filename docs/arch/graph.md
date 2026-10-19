@@ -136,7 +136,7 @@ analyticsOverrides: Record<string, { color?: string; size?: number }>
 
 ### Core Principle
 
-Grouping is a **view transform**, not a data transform. The underlying nodes and edges are unchanged; the rendering layer applies a grouping function `node → groupKey` derived from any attribute. This keeps the model clean and composable across arbitrary attributes — data properties, injected metadata (`domain`), or analytics output (`cluster`).
+Grouping is a **view transform**, not a data transform. The underlying nodes and edges are unchanged; the rendering layer applies a grouping function `node → groupKey` derived from any attribute. This keeps the model clean and composable across arbitrary attributes: data properties, injected metadata (`domain`), or analytics output (`cluster`).
 
 ---
 
@@ -151,7 +151,7 @@ type GroupableAttributes = Record<string, string[]>
 //   "Company": ["domain", "sector", "cluster", "region"] }
 ```
 
-The UI builds the grouping controls dynamically from this map — no hardcoding of attribute names.
+The UI builds the grouping controls dynamically from this map, with no hardcoded attribute names.
 
 ---
 
@@ -214,7 +214,7 @@ Supernode ids use a reserved prefix to avoid collision with real node ids.
 
 ### UI Control Placement
 
-Grouping controls belong in the **frame header actions bar** inside `gf-header`. The Inspector (right panel) is for selected-item details only — grouping is a frame-level concern.
+Grouping controls belong in the **frame header actions bar** inside `gf-header`. The Inspector (right panel) is for selected-item details only; grouping is a frame-level concern.
 
 ```text
 ┌─────────────────────────────────────────────────────────┐
@@ -257,7 +257,7 @@ Analytics output (`_analytics.cluster`, `_analytics.score`) is just more node da
 - After a community detection run, `cluster` appears in `groupableAttributes`
 - The user can immediately select "Group by cluster" in the controls bar
 - Nodes are colored and hulled by cluster ID automatically
-- Centrality `score` is not groupable (continuous, not categorical) — it drives size encoding instead
+- Centrality `score` is not groupable (continuous, not categorical); it drives size encoding instead
 
 ---
 
@@ -265,5 +265,5 @@ Analytics output (`_analytics.cluster`, `_analytics.score`) is just more node da
 
 - Max graph size for analytics: 10,000 nodes / 50,000 edges (configurable). Return 413 if exceeded.
 - Algorithms run synchronously in the request thread for now. Move to background task if p99 > 5s.
-- Leiden requires `igraph` C extension — document build dependency in `Dockerfile`.
+- Leiden requires the `igraph` C extension; document the build dependency in `Dockerfile`.
 - Girvan-Newman is O(n³); restrict to graphs < 500 nodes or require explicit `force=true` param.

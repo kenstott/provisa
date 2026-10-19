@@ -16,14 +16,11 @@ Scope of this test: what the `.env` SHARED-TIER workspace exposes. Not a stateme
 | Iceberg external table / Iceberg ingest | not available on this tier | gated behind `enable_iceberg_ingest`, which this shared tier refuses (`SET global …` → Access denied 1227); the external-table DDL is not in the public docs I could reach |
 | Parquet in place (no ingest) | not available on this tier | no external-table/TVF scan of S3 Parquet reached here; it is pipelined in |
 
-Qualified finding (per the maintainer): Iceberg external tables DO exist in the product — SingleStore
-Helios release notes (August 2026) list *"Hive and REST catalog support for Iceberg external tables"* —
-but `CREATE EXTERNAL TABLE` is not its syntax, the exact DDL is undocumented in the public docs I
+Qualified finding (per the maintainer): Iceberg external tables DO exist in the product (SingleStore Helios release notes for August 2026 list *"Hive and REST catalog support for Iceberg external tables"*), but `CREATE EXTERNAL TABLE` is not its syntax, the exact DDL is undocumented in the public docs I
 reached, and this shared tier refuses the Iceberg globals (1227). So: **not available on this
 shared-tier instance; unverified on a dedicated workspace.** Do not conclude the product lacks it.
 
-For the bulk path Provisa builds now, the reachable mechanism on this tier is ingest (PIPELINE / LOAD
-DATA) — the "land into the store" reachability case. Whether an Iceberg external table could later
+For the bulk path Provisa builds now, the reachable mechanism on this tier is ingest (PIPELINE / LOAD DATA), the "land into the store" reachability case. Whether an Iceberg external table could later
 serve an in-place/direct-attach read is open, pending a dedicated workspace that allows the globals.
 
 ## Ingest (PIPELINE) capability matrix
@@ -51,16 +48,13 @@ serve an in-place/direct-attach read is open, pending a dedicated workspace that
 ## Privileges held by the `.env` user (own DB only)
 
 `CREATE/DROP/START/ALTER/SHOW PIPELINE`, `CREATE/DROP/SHOW LINK`, `CREATE/DROP/ALTER/SHOW EXTENSION`,
-`SELECT/INSERT/UPDATE/DELETE/CREATE/DROP/ALTER`, and `GRANT OUTBOUND` (pipelines reach out). No
-global/SUPER — so `enable_iceberg_ingest` cannot be toggled from this account.
+`SELECT/INSERT/UPDATE/DELETE/CREATE/DROP/ALTER`, and `GRANT OUTBOUND` (pipelines reach out). No global/SUPER, so `enable_iceberg_ingest` cannot be toggled from this account.
 
 ## Region / RLS load-filter constraint (design note, carried into PIPELINE phase)
 
-A homed table's data must not cross its region at load. The pipeline applies the region filter as it
-lands — a `SET`/`WHERE` transform in the `LOAD DATA … INTO TABLE` body that restricts rows to the
+A homed table's data must not cross its region at load. The pipeline applies the region filter as it lands: a `SET`/`WHERE` transform in the `LOAD DATA … INTO TABLE` body that restricts rows to the
 region, or the pipeline is refused by name when it cannot. (SingleStore `LOAD DATA` supports `SET
-col = expr` and `WHERE` transforms per docs; exact clause position to confirm in the PIPELINE
-implementation — my first probe's `WHERE`/`SET` placement was malformed, 1064, not a feature gap.)
+col = expr` and `WHERE` transforms per docs; exact clause position to confirm in the PIPELINE implementation. My first probe's `WHERE`/`SET` placement was malformed, 1064, not a feature gap.)
 
 ## Docs
 
@@ -68,4 +62,4 @@ implementation — my first probe's `WHERE`/`SET` placement was malformed, 1064,
 - Parquet pipelines: https://docs.singlestore.com/cloud/load-data/load-data-from-parquet-files/
 - Iceberg ingest: https://docs.singlestore.com/cloud/load-data/load-data-from-iceberg/ (needs `enable_iceberg_ingest`)
 - `LOAD DATA` (local infile + transforms): https://docs.singlestore.com/cloud/reference/sql-reference/data-manipulation-language-dml/load-data/
-- Iceberg external tables (exist in the product; unverified on this tier): SingleStore Helios release notes, August 2026 — "Hive and REST catalog support for Iceberg external tables" (https://docs.singlestore.com/cloud/release-notes/)
+- Iceberg external tables (exist in the product; unverified on this tier): SingleStore Helios release notes, August 2026: "Hive and REST catalog support for Iceberg external tables" (https://docs.singlestore.com/cloud/release-notes/)

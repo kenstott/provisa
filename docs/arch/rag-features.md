@@ -22,19 +22,17 @@ knobs, nothing a user has to learn twice.
 The entity types themselves are not a separate surface: they are the value list
 the `entity` tag carries in the tag registry, editable on the Tags tab even
 though `entity` is a system tag with no row of its own (REQ-1467). The list is
-closed, so a steward picks a type rather than typing one — a misspelt
+closed, so a steward picks a type rather than typing one, because a misspelt
 `entity:custmoer` would reach chonk as a real type and produce a graph whose
 customers are silently split in two.
 
-`ChonkConfig.sources` and `ChonkConfig.namespaces` are **derived and read-only** —
-they are computed from the registered document URNs and the org's domains. The
+`ChonkConfig.sources` and `ChonkConfig.namespaces` are **derived and read-only**: they are computed from the registered document URNs and the org's domains. The
 user never edits them.
 
 `EnhancedSearch` carries roughly thirty retrieval knobs (lane toggles, scoring
 weights, expansion budgets, similarity floors). None of them are user
 configuration. Provisa picks defaults, and a caller tunes retrieval per query
-through the MCP tool arguments — `k`, `query_text`, `mode` — not through a
-settings page. The knobs exist for ablation benchmarking; exposing them would
+through the MCP tool arguments (`k`, `query_text`, `mode`), never through a settings page. The knobs exist for ablation benchmarking; exposing them would
 break the claim above.
 
 ## Document folders live in Sources
@@ -49,8 +47,7 @@ They go in a **separate `document_sources` table** sharing the id namespace with
 `sources`. Rationale:
 
 - The adapter contract (`generate_catalog_properties`,
-  `generate_table_definitions` in `provisa/source_adapters/registry.py`) does not
-  apply to a document folder — there is no catalog and no table definition.
+  `generate_table_definitions` in `provisa/source_adapters/registry.py`) does not apply to a document folder: there is no catalog and no table definition.
 - `sources` has no domain column; a document folder needs one, because domain is
   the chonk namespace.
 
@@ -83,7 +80,7 @@ The column tag *is* the registration. Nothing extra is entered anywhere.
 column, no primary key, `SELECT DISTINCT`. The tag carries its parameter
 (REQ-1467): `entity:customer` on `CUSTOMER.NAME` and `entity:employee` on
 `SALES_REP.NAME` are two types, and the columns of each type group into one
-query. That grouping is what `add_from_db` takes — its `queries` argument is a
+query. That grouping is what `add_from_db` takes. Its `queries` argument is a
 `dict[entity_type, sql]` (`chonk/ner/_schema_vocab.py:412-453`), so the loader
 passes `{"customer": …, "employee": …}` and chonk labels every match with the
 type the query came from. The types are the values the maintainer holds on the
@@ -95,8 +92,7 @@ would merge them.
 The query results accumulate into `self._data_terms` in memory
 (`chonk/ner/_schema_vocab.py:406-409`) and never
 persist. Only *matched* entities are written
-(`chonk/ner/_build.py:206-246`), and a match requires the text to already be in
-that namespace — so the vocabulary itself discloses nothing. It is rebuilt live
+(`chonk/ner/_build.py:206-246`), and a match requires the text to already be in that namespace, so the vocabulary itself discloses nothing. It is rebuilt live
 at every namespace build.
 
 **`natural_language` tag** → per-row documents. Primary-key bearing, one document
@@ -109,8 +105,7 @@ separate document keyed by the dict key.
 
 ### Namespace pre-filter
 
-The caller's allowed domains — read from `user_role_assignments`, with `*`
-expanded server-side — become the `namespaces` argument on every chonk search.
+The caller's allowed domains, read from `user_role_assignments` with `*` expanded server-side, become the `namespaces` argument on every chonk search.
 
 Rules:
 
@@ -124,8 +119,7 @@ Rules:
 ### Row-grain re-check — via `chunk_filter`
 
 Domain grain alone would make tagging `natural_language` on an RLS-protected
-table a declassification — row rules lost at ingest, only domain reachability
-surviving. That is avoidable, so it is not the design.
+table a declassification: row rules would be lost at ingest, and only domain reachability would survive. That is avoidable, so it is not the design.
 
 A chunk derived from a row already carries its identity in the document name
 (`schema.table.column/<pk>`). Chonk indexes the full corpus, and retrieval
@@ -138,7 +132,7 @@ Provisa's filter:
 1. Partitions the cohort into row-keyed and free-standing chunks by document name.
 2. Resolves `pk IN (...)` against the source table under the caller's RLS, inside
    `_govern_and_route`. Rows the caller cannot see drop out.
-3. Returns free-standing chunks untouched — the namespace pre-filter already
+3. Returns free-standing chunks untouched, because the namespace pre-filter already
    authorized those.
 
 Over-fetch on `k`, since the cohort is assembled and ranked before the filter
@@ -146,8 +140,7 @@ runs, so a request for 10 otherwise returns fewer.
 
 The authorization decision never leaves the settled query pipeline; there is no
 second governance path. This check is narrower than the namespace filter and
-layers under it, applying only to chunks that have a row to check — exactly the
-set domain grain was too coarse for.
+layers under it, applying only to chunks that have a row to check, which is exactly the set domain grain was too coarse for.
 
 **`ask()` bypasses `chunk_filter`.** Chonk's own docstring states the filter is
 not applied when `search()` is called internally by `ask()`; that path takes
@@ -156,7 +149,7 @@ Wiring RLS only into `chunk_filter` would therefore leave the entire `ask()` pat
 unauthorized.
 
 Provisa does not call `ask()`. It calls `search()`, where `chunk_filter` always
-runs, and owns generation itself — Provisa already has the model registry, the
+runs, and owns generation itself. Provisa already has the model registry, the
 prompt path and the audit surface, and generation is where citations must be
 reconciled against what the caller may see. `redaction_filter` remains relevant
 for sovereign deployments (see below) but is not the RLS mechanism.
@@ -165,8 +158,7 @@ for sovereign deployments (see below) but is not the RLS mechanism.
 vector columns (REQ-421) and left chonk the standalone documents. That fails:
 graph edges are chunk co-occurrence over `chunk_entities` within a namespace
 (`chonk/graph/_context_graph.py:78-95`), so two chunks link only if they share an
-entity in the same index. Withholding row-keyed text does not yield two smaller
-graphs — it yields one graph with its connective tissue removed, since entity
+entity in the same index. Withholding row-keyed text does not yield two smaller graphs. It yields one graph with its connective tissue removed, since entity
 mentions are densest exactly in that text. A support ticket would never cluster
 with the contract it refers to.
 
@@ -176,8 +168,7 @@ predicate inside SQL. They are not a retrieval lane.
 ### Residual: inference through cluster structure
 
 Entity vocabulary and community membership are computed over the full corpus, so
-cluster shape is influenced by rows the caller cannot read. No content crosses —
-the row-grain re-check removes the chunks themselves — but the existence and
+cluster shape is influenced by rows the caller cannot read. No content crosses, since the row-grain re-check removes the chunks themselves, but the existence and
 rough association of an unreadable row is inferable from structure.
 
 This is an inference channel, not disclosure, and it is the price of a shared
@@ -185,14 +176,12 @@ graph. Recorded here because the namespace boundary is otherwise the only one th
 design names.
 
 Rename cleanup is a user concern. `documents` carries no `source_id` and
-`list_documents` is unscoped, so there is no orphan sweep to build — a renamed
-document is a new document and the old one is removed by the user.
+`list_documents` is unscoped, so there is no orphan sweep to build: a renamed document is a new document and the old one is removed by the user.
 
 ## Admin tab
 
 Owns `store` / `loader` / `index` and the refresher interval. Gated on
-`platform_settings`, because the build kwargs are shared across every namespace
-in the deployment — one org's chunk sizing would otherwise reach into another's.
+`platform_settings`, because the build kwargs are shared across every namespace in the deployment, and one org's chunk sizing would otherwise reach into another's.
 
 `embed.model` belongs on the existing `/admin/ai-models` tab instead, with a
 forced-full-reindex warning: the embedding dimension is baked into the DDL as
@@ -219,8 +208,7 @@ independently switchable:
 
 Ranking is a composite of relevance, source priority and marginal coverage
 (default weights 0.5 / 0.2 / 0.3) with an MMR redundancy penalty
-(`lambda_diversity`). Passing `query_text` alongside the embedding is not
-optional decoration — it turns on the BM25 lane, which is what anchors exact
+(`lambda_diversity`). Passing `query_text` alongside the embedding is not optional decoration. It turns on the BM25 lane, which is what anchors exact
 names, identifiers and codes.
 
 ### Three modes
@@ -232,13 +220,12 @@ names, identifiers and codes.
   `map_reduce_global_context` (map an LLM over each community summary, score,
   reduce to the top) this answers corpus-wide sensemaking: "what themes run
   through these documents." **The semantic layer cannot answer this class of
-  question at all** — it has no aggregate over unstructured text. This is the
+  question at all**, because it has no aggregate over unstructured text. This is the
   strongest single argument for the integration.
 
 ### Structured context, not a chunk list
 
-`assemble_graph_context` returns MS-GraphRAG-style sections — Entities |
-Relationships | Community Reports | Source Text — each trimmed to a token budget.
+`assemble_graph_context` returns MS-GraphRAG-style sections (Entities, Relationships, Community Reports, Source Text), each trimmed to a token budget.
 For an agent consumer this is a better payload than raw chunks, and it is what
 the MCP context tool should return.
 
@@ -248,7 +235,7 @@ the MCP context tool should return.
 `final_provenance`: which dimension produced each returned chunk. This is
 retrieval lineage, and it belongs in `/admin/observability` next to query
 observability (REQ-1160/1161) rather than being discarded. It is also the
-diagnostic for a bad cohort — a high `entity_adjacent` share at low scores means
+diagnostic for a bad cohort: a high `entity_adjacent` share at low scores means
 the entity lane is over-expanding.
 
 ### LLM namespace routing, subordinate to entitlement
@@ -268,7 +255,7 @@ widen. The routing callable is never handed the full namespace list.
 
 `redaction_filter` is documented as the trust boundary for the sovereign pattern:
 a frontier model plans, a sovereign model retrieves and generates, and only
-filtered answer text crosses the perimeter — raw chunks never leave. This lines
+filtered answer text crosses the perimeter. Raw chunks never leave. This lines
 up with `provisa/security/high_security.py` and should be wired to it rather than
 reinvented, for deployments that plan with an external model.
 
@@ -298,14 +285,13 @@ relational tools. None accepts a namespace argument from the caller.
 Two things to carry into the tool descriptions rather than lose: chonk's
 docstrings contain calibrated agent guidance (issue one atomic sub-query per
 call; name entities explicitly; state the answer type; widen `k` before
-concluding evidence is absent) — that guidance is what makes the difference
+concluding evidence is absent). That guidance is what makes the difference
 between good and poor retrieval, and MCP tool descriptions are where an agent
 will actually read it.
 
 ## chonk issues to fix
 
-Tracked in [chonk-concerns.md](chonk-concerns.md) — eight findings from code
-review, with the file and line establishing each.
+Tracked in [chonk-concerns.md](chonk-concerns.md): eight findings from code review, with the file and line establishing each.
 
 Two are blocking security defects on paths this design depends on: SQL injection
 in the BM25 lane (`chonk/storage/_pg.py:637-651`), which every search turns on,

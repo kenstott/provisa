@@ -53,9 +53,7 @@ update that sends no version is refused.
 source table into an engine store.
 
 **Version 1** formalizes and centralizes the replication code that exists: the API-source
-path, the general source path, and the engine-side copy added for the pg engine. It has one
-default method — a read loop that yields bounded batches and a write loop that fills a
-fresh table and swaps it in — and the engine-side copy where the engine can reach the
+path, the general source path, and the engine-side copy added for the pg engine. It has one default method (a read loop that yields bounded batches and a write loop that fills a fresh table and swaps it in) and the engine-side copy where the engine can reach the
 source.
 
 **Rules the component must hold to:**
@@ -71,9 +69,7 @@ source.
 - The choice of method is a pure decision from the declared capabilities of source, target
   and engine, testable as a table without running any of them.
 
-**Eager builds.** A replica starts building when the decision to replicate takes effect —
-an operator saving the setting, a boot that finds no replica, a table crossing its hot
-threshold — and not on the first query. A read that finds no replica and no build still
+**Eager builds.** A replica starts building when the decision to replicate takes effect, not on the first query. That happens when an operator saves the setting, a boot finds no replica, or a table crosses its hot threshold. A read that finds no replica and no build still
 starts one, as a backstop.
 
 **Central state.** The control plane holds one record per replica: its state, rows copied,
@@ -142,8 +138,7 @@ role from stored settings.
 
 ## Benchmark and tuning tool (REQ-1911)
 
-The benchmark and the tuning tool are one tool. With every knob at zero it is the
-optimistic benchmark — one row, one column, no filter. With knobs set it sizes and tunes a
+The benchmark and the tuning tool are one tool. With every knob at zero it is the optimistic benchmark: one row, one column, no filter. With knobs set it sizes and tunes a
 deployment. Each knob is a distribution and a probability, settable per transport: fields,
 filters, rows, joins, cache opt-in and repetition, source selection, route, and the
 replication setting a run is measured under. Its setup is one contract file naming the
@@ -183,8 +178,7 @@ What makes the final run publishable:
   and larger results cost more.
 - **Raw results kept,** so every published number can be traced to its run.
 
-Anything measured before that run — the sizing sweep, local timings, projections — is
-working data and is not published.
+Anything measured before that run (the sizing sweep, local timings, projections) is working data and is not published.
 
 ## SaaS: its own track
 
@@ -192,9 +186,7 @@ The hosted service has work that is separate from the items above and is not unb
 them.
 
 - **Rightsizing the shared configuration.** Trial and Starter orgs run on shared
-  infrastructure. Its sizing — the shared engine, the control-plane node, the workers per
-  node, the request-thread and stream bounds, the per-transport timeouts, the Redis and
-  store behind them — was set before the per-request work and before the sizing sweep.
+  infrastructure. Its sizing was set before the per-request work and before the sizing sweep. That covers the shared engine, the control-plane node, the workers per node, the request-thread and stream bounds, the per-transport timeouts, and the Redis and store behind them.
   It needs to be derived again from measured per-core figures, for the load the shared
   tier is meant to carry.
 - **Validating every SKU.** Each tier and each metered SKU has to be shown to behave as

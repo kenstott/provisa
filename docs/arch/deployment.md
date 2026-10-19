@@ -3,7 +3,7 @@
 ## Overview
 
 Provisa ships as three distinct packages per platform. (REQ-630) The split is driven by
-GitHub Actions' 2 GB artifact limit — container image tarballs alone exceed it. (REQ-630)
+GitHub Actions' 2 GB artifact limit, which container image tarballs alone exceed. (REQ-630)
 The three packages map directly to the three docker-compose layers: (REQ-630)
 
 | Package | Services | docker-compose file |
@@ -24,7 +24,7 @@ The three packages map directly to the three docker-compose layers: (REQ-630)
 | Obs | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **bundled into Core AppImage** |
 | Demo | DMG (image load into user's Docker) | NSIS .exe (image load into WSL2 VM) | **not included** |
 
-Linux rationale: Linux users are typically server/technical installs. (REQ-227) OTel
+Linux rationale: Linux installs are mostly servers run by technical users. (REQ-227) OTel
 observability is useful in production; petstore/graphql demo services are not.
 One self-contained AppImage is simpler to distribute. (REQ-632)
 
@@ -34,8 +34,7 @@ One self-contained AppImage is simpler to distribute. (REQ-632)
 
 On macOS the Core DMG's Docker tier runs on the user's own Docker (Docker
 Desktop or colima); on Windows the Core installer's container tier provisions
-WSL2 + containerd. (REQ-633) Obs and Demo are **extension packages** — they load
-images into that runtime with `docker load` (or `nerdctl load` on Windows) and
+WSL2 + containerd. (REQ-633) Obs and Demo are **extension packages**: they load images into that runtime with `docker load` (or `nerdctl load` on Windows) and
 drop a compose file into a well-known extensions directory. (REQ-633) Core's launcher
 detects installed extensions at startup and composes the service set dynamically. (REQ-633)
 
@@ -79,7 +78,7 @@ the expanded file list. (REQ-633) Trino picks up the OTel `JAVA_TOOL_OPTIONS` ov
 ### Core DMG (`Provisa-<version>.dmg`)
 
 `packaging/macos/build-dmg.sh` builds the Core DMG (Core package only). There is
-no separate Runtime DMG — the interpreter and images ship inside this DMG.
+no separate Runtime DMG; the interpreter and images ship inside this DMG.
 
 **Contents of DMG**:
 
@@ -108,8 +107,7 @@ no separate Runtime DMG — the interpreter and images ship inside this DMG.
 **`first-launch.sh`** picks the tier from the deployment choices (REQ-976):
 
 - **Native tier** (default, no Trino/Docker triggers): builds `~/.provisa/venv`
-  from `python-base`, then `pip install provisa[embedded]` — from PyPI when
-  online, or `--no-index --find-links` against the bundled `wheels/` when
+  from `python-base`, then `pip install provisa[embedded]`, from PyPI when online or `--no-index --find-links` against the bundled `wheels/` when
   airgapped. Writes `runtime: native` to `~/.provisa/config.yaml`. No Docker.
 - **Docker tier** (Trino engine, or obs/demo on Docker): `docker load`s the
   bundled image tarballs into the user's own Docker, writes `runtime: docker`
@@ -185,19 +183,16 @@ The launcher's `provisa start` path:
 bundles a standalone Python runtime (python-build-standalone for
 x86_64-pc-windows-msvc) with the provisa wheel + uvicorn + duckdb/pg_duckdb +
 aiosqlite, and stages the built UI at `<site-packages>\static`. The base
-installer ships **no Docker, no VM, and no container images** — no VirtualBox,
-no OVA, no Trino.
+installer ships **no Docker, no VM, and no container images**: no VirtualBox, no OVA, no Trino.
 
 `first-launch-native.ps1` stages the runtime to `%USERPROFILE%\.provisa\runtime`
 and writes config; `provisa-native.ps1` runs the two uvicorn processes (API
-factory + ui_server). The macOS native tier is the parallel path — its
-first-launch builds `~/.provisa/venv` via `setup_native_venv`.
+factory + ui_server). The macOS native tier is the parallel path; its first-launch builds `~/.provisa/venv` via `setup_native_venv`.
 
 ### Container Tier — on-demand upgrade (`Provisa-Container-Setup-<version>.exe`) (REQ-889, REQ-633)
 
 `packaging/windows/build-container.ps1` builds a separate installer (Inno Setup)
-that adds the compute stack (Trino + services) via **WSL2 + containerd** — the
-Windows equivalent of the macOS Docker tier. VirtualBox is never used. It bundles:
+that adds the compute stack (Trino + services) via **WSL2 + containerd**, the Windows equivalent of the macOS Docker tier. VirtualBox is never used. It bundles:
 
 - the compose tree (core/app/airgap/observability/demo, config, db, trino config
   minus plugins),
@@ -237,7 +232,7 @@ The tier is additive and reversible: switch back to the native tier with
 
 Requires Obs installer. (REQ-631)
 
-Same pattern as obs — loads demo images, writes extension compose file. (REQ-633)
+Same pattern as obs: it loads demo images and writes the extension compose file. (REQ-633)
 
 **Build script**: `packaging/windows/build-installer-demo.ps1`
 
@@ -262,12 +257,11 @@ Two tiers, in parity with the macOS DMG (native venv default, Docker for Trino/o
   rootless dockerd** (`${APPDIR}/bin/dockerd-rootless.sh`), acquires
   `provisa-core-images-amd64-<ver>.zip` **on demand** (local-first beside the
   AppImage for airgap, else download), `docker load`s it, and runs `docker compose`.
-  Writes `runtime: bundled`, `image_source: tarball`. No VM — Linux runs containers
-  natively.
+  Writes `runtime: bundled`, `image_source: tarball`. No VM: Linux runs containers natively.
 
 `packaging/linux/build-appimage.sh` builds a **slim** AppImage: the native
 `python-base/` + `wheels/` + `ui-dist/` payload (`bundle_native_payload`) plus the
-rootless-docker binaries and compose files — but **not** the container images
+rootless-docker binaries and compose files, but **not** the container images
 (native payload + images would exceed GitHub's 2 GB asset limit). The Docker tier
 pulls the amd64 image zip on demand. MinIO is a core service (REQ-561). No demo. (REQ-632)
 
@@ -351,8 +345,7 @@ enforced by CI). (REQ-631)
 
 The dev environment mirrors the packaged product's compose layers but with the
 Python backend and UI running on the **host** (uvicorn + vite), not in
-containers. (REQ-634) This means `docker-compose.app.yml` is **never used in dev** — it
-would bind ports 8000 and 3000 to containerized services, conflicting with the
+containers. (REQ-634) This means `docker-compose.app.yml` is **never used in dev**, because it would bind ports 8000 and 3000 to containerized services, conflicting with the
 local processes. (REQ-634)
 
 ### Compose stacks
@@ -363,8 +356,7 @@ local processes. (REQ-634)
 | Core + Obs | `core.yml` + `dev-install.yml` + `observability.yml` |
 | Core + Obs + Demo | `core.yml` + `dev-install.yml` + `observability.yml` + `demo.yml` |
 
-`docker-compose.app.yml` and `docker-compose.airgap.yml` are **packaged-product
-only** — never included in dev. (REQ-634)
+`docker-compose.app.yml` and `docker-compose.airgap.yml` are **packaged-product only** and never included in dev. (REQ-634)
 
 ### Port map
 
@@ -417,7 +409,7 @@ When obs is not active, these vars are unset (spans are dropped). (REQ-330)
 ./start-ui-install.sh --demo       # core + obs + demo  (--demo always implies obs)
 ```
 
-There is intentionally no `--obs` flag without demo — in dev, running obs
+There is intentionally no `--obs` flag without demo. In dev, running obs
 without demo data produces an empty Grafana/Tempo dashboard, which is not
 useful. (REQ-634) The flag may be added later if needed.
 
