@@ -23,6 +23,7 @@ exposes one of them; its column types are the shipped ones (``provisa.profiler.r
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import sqlalchemy as sa
 
@@ -418,3 +419,20 @@ def result_sa_table(profiled_table: str, table_id: int, kind: str) -> sa.Table:
         sa.MetaData(),
         *[sa.Column(name, _SA_TYPES[data_type]()) for name, data_type, _ in kind_fields(kind)],
     )
+
+
+async def result_exists(
+    conn: Any, profiled_table: str, table_id: int, kind: str, schema: str | None
+) -> bool:
+    """Whether the relation ``kind`` of ``profiled_table`` exists in ``schema`` (None: the
+    connection's search path). A profiler member has none until its first run writes it or a result
+    table of that kind is registered (provisa.profiler.registration.apply_registration): a table
+    put on a profiler by a configuration's seed, never run yet, has none."""
+    name = result_table_name(profiled_table, table_id, kind).replace('"', '""')
+    qualified = (
+        f'"{name}"' if schema is None else '"{}"."{}"'.format(schema.replace('"', '""'), name)
+    )
+    found = await conn.execute_core(
+        sa.select(sa.func.to_regclass(sa.literal(qualified, sa.Text)).is_not(None))
+    )
+    return bool(found.scalar())

@@ -133,7 +133,10 @@ async def _latest_run(conn: Any, schema: str, table_name: str, tid: int) -> str 
     from provisa.synthetic.run import _qualified
 
     from provisa.profiler.declared import measured
+    from provisa.profiler.schema import result_exists
 
+    if not await result_exists(conn, table_name, tid, "runs", schema):
+        return None  # a member never run: its runs relation is not written yet
     runs = _qualified(result_sa_table(table_name, tid, "runs"), schema)
     row = (
         await conn.execute_core(
@@ -147,8 +150,8 @@ async def _latest_run(conn: Any, schema: str, table_name: str, tid: int) -> str 
 
 
 async def _profiled_table_id(conn: Any, schema: str, reg: dict) -> int | None:
-    """The table's id in ``schema`` when it is a profiler's member there (its result relations
-    exist only then, provisa.profiler.registration), else None."""
+    """The table's id in ``schema`` when it is a profiler's member there, else None. A member's
+    result relations exist only once it has run (profiler.schema.result_exists)."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import registered_tables as rt
