@@ -358,7 +358,7 @@ Acht SQL-Views werden bei jeder Installation in die integrierte `ops`-Domäne ei
 | `stale_metadata` | Tabellen und Spalten ohne Beschreibung; Domänen ohne Steward |
 | `join_hotspots` | Am häufigsten gemeinsam abgefragte Tabellenpaare — Kandidaten für Materialisierung oder Caching |
 
-Zwei Einschränkungen gelten derzeit. Die Granularität liegt auf Tabellenebene — das Audit-Log erfasst `table_ids`, nicht einzelne abgerufene Spalten. Der Abfragetext ist verschlüsselt und in keiner der hier gezeigten Views enthalten; er ist nur über den autorisierten Admin-Entschlüsselungspfad zugänglich.
+Zwei Einschränkungen gelten. Die Granularität liegt auf Tabellenebene — das Audit-Log erfasst `table_ids`, nicht einzelne abgerufene Spalten. Der Abfragetext ist verschlüsselt und in keiner der hier gezeigten Views enthalten; er ist nur über den autorisierten Admin-Entschlüsselungspfad zugänglich.
 
 Eine Rolle benötigt Zugriff auf die `ops`-Domäne, damit diese Views sichtbar sind. Gewähren Sie ihn genauso wie den Zugriff auf jede andere Domäne.
 

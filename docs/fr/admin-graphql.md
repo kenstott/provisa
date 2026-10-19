@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-Déclencheurs planifiés depuis la config avec leur état d'exécution. Chaque entrée porte son expression cron, son `kind` (`webhook` ou `sql`), si elle est actuellement activée, l'horodatage de la dernière exécution (toujours `null` dans cette version — suivi par le planificateur), et la prochaine heure d'exécution planifiée depuis APScheduler.
+Déclencheurs planifiés depuis la config avec leur état d'exécution. Chaque entrée porte son expression cron, son `kind` (`webhook` ou `sql`), si elle est actuellement activée, l'horodatage de la dernière exécution (toujours `null` ; le planificateur le suit), et la prochaine heure d'exécution planifiée depuis APScheduler.
 
 ---
 

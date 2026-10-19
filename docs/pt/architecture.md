@@ -493,7 +493,7 @@ O campo de fornecedor aceita qualquer fornecedor compatível com `aisuite` (`ant
 
 ## Segredos Criptografados por Organização {: #per-org-encrypted-secrets }
 
-`provisa/core/org_secrets.py` armazena credenciais que nunca devem aparecer como texto plano no banco de dados. Atualmente restrito a chaves de API de fornecedores de LLM (`{vendor}_api_key`).
+`provisa/core/org_secrets.py` armazena credenciais que nunca devem aparecer como texto plano no banco de dados. Ele guarda as chaves de API dos fornecedores de IA (`{vendor}_api_key`) e a chave do Jev (`jev_api_key`).
 
 Os valores são criptografados via o `encryption_service` de escopo de processo de `provisa.encryption.runtime` — o mesmo mecanismo usado por `api_sources.auth`.
 

@@ -493,7 +493,7 @@ Il campo vendor accetta qualsiasi vendor compatibile con `aisuite` (`anthropic`,
 
 ## Segreti crittografati per organizzazione {: #per-org-encrypted-secrets }
 
-`provisa/core/org_secrets.py` memorizza credenziali che non devono mai comparire in chiaro nel database. Attualmente limitato alle chiavi API dei vendor LLM (`{vendor}_api_key`).
+`provisa/core/org_secrets.py` memorizza credenziali che non devono mai comparire in chiaro nel database. Contiene le chiavi API dei fornitori di IA (`{vendor}_api_key`) e la chiave Jev (`jev_api_key`).
 
 I valori sono crittografati tramite l'`encryption_service` a livello di processo di `provisa.encryption.runtime` — lo stesso meccanismo di `api_sources.auth`.
 

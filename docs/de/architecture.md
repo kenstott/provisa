@@ -493,7 +493,7 @@ Das Vendor-Feld akzeptiert jeden `aisuite`-kompatiblen Vendor (`anthropic`, `ope
 
 ## Verschlüsselte Secrets pro Organisation {: #per-org-encrypted-secrets }
 
-`provisa/core/org_secrets.py` speichert Zugangsdaten, die niemals im Klartext in der Datenbank erscheinen dürfen. Derzeit beschränkt auf LLM-Vendor-API-Keys (`{vendor}_api_key`).
+`provisa/core/org_secrets.py` speichert Zugangsdaten, die niemals im Klartext in der Datenbank erscheinen dürfen. Er enthält die API-Keys der KI-Anbieter (`{vendor}_api_key`) und den Jev-Key (`jev_api_key`).
 
 Werte werden über den prozessweiten `encryption_service` aus `provisa.encryption.runtime` verschlüsselt — derselbe Mechanismus wie `api_sources.auth`.
 

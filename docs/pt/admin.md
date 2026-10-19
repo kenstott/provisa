@@ -357,7 +357,7 @@ Oito exibições SQL são semeadas no domínio `ops` built-in em toda instalaç�
 | `stale_metadata` | Tabelas e colunas sem descrição; domínios sem responsável |
 | `join_hotspots` | Pares de tabelas coconsultadas com mais frequência — candidatas a materialização ou cache |
 
-Dois limites se aplicam hoje. A granularidade é no nível de tabela — o log de auditoria registra `table_ids`, não as colunas individuais acessadas. O texto da consulta é criptografado e excluído de todas as exibições aqui; ele só é acessível pelo caminho autorizado de descriptografia administrativa.
+Dois limites se aplicam. A granularidade é no nível de tabela — o log de auditoria registra `table_ids`, não as colunas individuais acessadas. O texto da consulta é criptografado e excluído de todas as exibições aqui; ele só é acessível pelo caminho autorizado de descriptografia administrativa.
 
 Uma função precisa de acesso ao domínio `ops` antes que essas exibições fiquem visíveis. Conceda-o do mesmo modo que você concede acesso a qualquer outro domínio.
 

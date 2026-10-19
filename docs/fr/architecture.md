@@ -493,7 +493,7 @@ Le champ vendeur accepte tout vendeur compatible `aisuite` (`anthropic`, `openai
 
 ## Secrets chiffrés par org {: #per-org-encrypted-secrets }
 
-`provisa/core/org_secrets.py` stocke les identifiants qui ne doivent jamais apparaître en clair dans la base de données. Actuellement restreint aux clés API de vendeur LLM (`{vendor}_api_key`).
+`provisa/core/org_secrets.py` stocke les identifiants qui ne doivent jamais apparaître en clair dans la base de données. Il contient les clés API des fournisseurs d'IA (`{vendor}_api_key`) et la clé Jev (`jev_api_key`).
 
 Les valeurs sont chiffrées via l'`encryption_service` global au processus de `provisa.encryption.runtime` — le même mécanisme que `api_sources.auth`.
 

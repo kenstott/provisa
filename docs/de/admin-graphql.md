@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-Geplante Trigger aus der Konfiguration mit Laufzeitstatus. Jeder Eintrag trägt seinen Cron-Ausdruck, `kind` (`webhook` oder `sql`), ob er aktuell aktiviert ist, den Zeitstempel des letzten Laufs (in diesem Release immer `null` — wird vom Scheduler verfolgt) und die nächste geplante Laufzeit von APScheduler.
+Geplante Trigger aus der Konfiguration mit Laufzeitstatus. Jeder Eintrag trägt seinen Cron-Ausdruck, `kind` (`webhook` oder `sql`), ob er aktuell aktiviert ist, den Zeitstempel des letzten Laufs (immer `null`; der Scheduler verfolgt ihn) und die nächste geplante Laufzeit von APScheduler.
 
 ---
 
