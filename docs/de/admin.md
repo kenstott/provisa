@@ -14,7 +14,7 @@ Der Admin-Zugriff wird durch die einer Rolle zugewiesene Capability `admin` gest
 
 ### Personal Access Tokens
 
-Ein Personal Access Token wird überall dort akzeptiert, wo ein Bearer-Token akzeptiert wird, auch an diesem Endpunkt. Ausstellen und Widerrufen sind Selbstbedienung — es ist das eigene Credential des Token-Inhabers und liegt deshalb im Profil des Benutzers in der Admin-Oberfläche, nicht unter einer Administrationsseite, direkt neben dem Verlassen einer Organisation und dem Löschen des Kontos. Ein Administrator stellt keine Tokens im Namen anderer aus.
+Ein Personal Access Token wird überall akzeptiert, wo ein Bearer-Token akzeptiert wird, auch an diesem Endpunkt. Sie stellen Ihre eigenen aus und widerrufen sie, denn ein Token ist die eigene Anmeldung seines Inhabers. Deshalb liegt es in Ihrem Profil in der Admin-Oberfläche, neben dem Verlassen einer Organisation und dem Löschen Ihres Kontos, und nicht unter einer Administrationsseite. Ein Administrator stellt nie ein Token im Namen eines anderen aus.
 
 | Route | Wirkung |
 | ------- | -------- |
@@ -55,14 +55,14 @@ Die Einstellungsoberfläche umfasst die Umleitung großer Ergebnisse, Standard-S
 
 Die Karte **Connector-Server** benennt für jeden Connector mit einem mitgelieferten Server (File Crawler, SharePoint, Salesforce, ServiceNow, Cloud Inventory, Splunk, AskAmerica) einen Ordner mit einem für diesen Host erstellten Server-Bundle (`connectors.<connector>.bundle_dir`, Umgebungsvariable `PROVISA_PGWIRE_BUNDLE_<CONNECTOR>`). Ist er leer, wird der Server des Connectors aus dem gepinnten `kenstott/calcite`-Release abgerufen. Ist er gesetzt, wird der Ordner so verwendet, wie er ist: Sein Launcher muss unter `bin/pgwire-<connector>` liegen; fehlt er, wird der Start des Connector-Servers mit einem Fehler abgebrochen, der die Einstellung nennt — das Release wird nie an seiner Stelle abgerufen. Die Einstellung wird bei jedem Start eines Connector-Servers gelesen.
 
-Sicherheitshaltung — `security.mode` (`standard` | `high`) — wird beim Neustart angewendet:
+Die Sicherheitsstufe `security.mode` (`standard` | `high`) wird beim Neustart angewendet:
 
 ```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
-KI-Modellzuweisungen, die Embedding-/Vektor-Modell-Registry und das NL-Rate-Limit — wirken ab der nächsten Anfrage, kein Neustart nötig:
+KI-Modellzuweisungen, die Registry der Embedding- und Vektormodelle und das NL-Ratenlimit wirken ab der nächsten Anfrage, ohne Neustart:
 
 ```http
 GET  /admin/ai-models
@@ -71,7 +71,7 @@ PUT  /admin/ai-models
 
 Der Admin-Tab für Verschlüsselung leitet seine Anbieterliste live aus der Verschlüsselungs-Registry ab; nicht verfügbare Anbieter erscheinen, sind aber nicht auswählbar.
 
-`GET`/`HEAD /health` und `GET /setup/status` sind immer unauthentifiziert — sie umgehen die Anforderung `Authorization: Bearer` selbst dann, wenn ein Auth-Provider konfiguriert ist.
+`GET`/`HEAD /health` und `GET /setup/status` verlangen nie eine Authentifizierung. Sie umgehen die Anforderung `Authorization: Bearer` auch dann, wenn ein Auth-Provider konfiguriert ist.
 
 ### Föderations-Engine {: #federation-engine }
 
@@ -142,9 +142,9 @@ mutation {
 }
 ```
 
-Eine Zuordnungstabelle wird als Kante deklariert, nie entdeckt. `viaTable` benennt eine registrierte Tabelle; ihre beiden Schlüsselspalten tragen die Kante, und jede verbleibende Spalte wird zu einem Attribut der Beziehung, filterbar wie jedes andere Feld. `viaTypeColumn` / `viaTypeValue` teilen eine Junction-Tabelle in mehrere Kantentypen auf — drei Zeilen von `pet_companions` mit `companion_type` gleich `bonded pair`, `littermate` und `shares enclosure` sind drei verschiedene Beziehungen über demselben Tabellenpaar.
+Eine Assoziationstabelle deklarieren Sie als Kante; Provisa entdeckt nie eine. `viaTable` nennt eine registrierte Tabelle. Ihre zwei Schlüsselspalten tragen die Kante, und jede weitere Spalte wird ein Attribut der Beziehung, filterbar wie jedes Feld. `viaTypeColumn` / `viaTypeValue` teilen eine Verknüpfungstabelle in mehrere Kantentypen. Zum Beispiel ergeben Zeilen von `pet_companions` mit `companion_type` `bonded pair`, `littermate` oder `shares enclosure` drei verschiedene Beziehungen über dasselbe Tabellenpaar.
 
-`viaLabelSource` bestimmt, woher der ausgestellte Name stammt, und alle drei Formen werden für Cypher in UPPER_SNAKE_CASE überführt: `column` nutzt `viaTypeValue` (`BONDED_PAIR`), `table` nutzt den Namen der Junction-Tabelle selbst (`PET_COMPANIONS`), `fixed` nutzt den deklarierten `alias`. Eine so deklarierte Junction-Tabelle ist eine Kante und keine Entität — sie fällt aus den Knoten-Labels heraus und erscheint daher nie als Knoten-Pille in der Graph-UI.
+`viaLabelSource` legt fest, woher der exponierte Name kommt, und Cypher erhält jede Form in Großbuchstaben mit Unterstrichen. `column` nutzt `viaTypeValue` (`BONDED_PAIR`), `table` den eigenen Namen der Verknüpfungstabelle (`PET_COMPANIONS`) und `fixed` den deklarierten `alias`. Eine so deklarierte Verknüpfungstabelle ist eine Kante. Provisa nimmt sie aus den Knotenlabels, sodass sie in der Graph-UI nie als Knoten-Pill erscheint.
 
 ### KI-gestützte Relationship-Erkennung {: #ai-relationship-discovery }
 
@@ -203,12 +203,7 @@ query {
 }
 ```
 
-Das Umbenennen eines Alias bricht jedes Artefakt, das gegen den exponierten Namen geschrieben
-wurde — Views, MVs, Metrik-Ausdrücke, RLS-Prädikate, DQ-Contracts. Das Löschen einer Spalte
-bricht diese sowie die Artefakte, die den physischen `column_name` speichern: Relationships,
-Glossar-Bindungen, Tag-Zuweisungen. `breaksOn` gibt an, welches. Die Tables-Seite führt dies
-beim Speichern aus und zeigt das Ergebnis als beratenden Dialog. Siehe [Lineage](lineage.md)
-dazu, was die Abfrage abdeckt und was nicht.
+Das Umbenennen eines Alias bricht jedes Artefakt, das gegen den exponierten Namen geschrieben ist: Views, MVs, Metrik-Ausdrücke, RLS-Prädikate und DQ-Verträge. Das Entfernen einer Spalte bricht diese ebenfalls, dazu die Artefakte, die den physischen `column_name` speichern, also Beziehungen, Glossar-Bindungen und Tag-Zuweisungen. `breaksOn` sagt, welche. Die Seite Tabellen führt diese Prüfung beim Speichern aus und zeigt das Ergebnis als Hinweisdialog. [Lineage](lineage.md) erklärt, was die Abfrage abdeckt und was nicht.
 
 ### View-Verwaltung {: #view-management }
 
@@ -298,7 +293,7 @@ POST /admin/import/hasura/apply
 
 `flavor` ist `"auto"` (aus der Archivstruktur erkannt), `"hasura_v2"` oder `"ddn"`.
 
-**Apply** nimmt das YAML, das Sie geprüft (und optional bearbeitet) haben, und lädt es in die handelnde Org — derselbe Hot-Reload-Pfad wie `PUT /admin/config`. Request-Body: `{"config_yaml": "<yaml string>"}`.
+**Apply** lädt das geprüfte YAML, auf Wunsch bearbeitet, in die handelnde Org. Es nutzt denselben Hot-Reload-Weg wie `PUT /admin/config`. Request-Body: `{"config_yaml": "<yaml string>"}`.
 
 Preview cachet das konvertierte YAML nie serverseitig; Apply nimmt das YAML, das Sie liefern, sodass genau das angewendet wird, was geprüft wurde.
 
@@ -311,9 +306,9 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**Export** (`GET /admin/ossie`) leitet das Ossie-YAML-Dokument bei jeder Anfrage aus dem lebenden regierten Modell ab — es wird nie gecacht und kann daher nicht veralten. Die Antwort ist `text/yaml` mit einem `Content-Disposition: attachment`-Header. Das Dokument ist ein Modell mit `version`, `name`, `datasets`, `relationships` und `metrics` an seiner Wurzel: Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Relationships bilden auf Ossie-`relationship`-Objekte ab. Ein Modell ohne Tabelle wird mit `422` abgelehnt.
+**Export** (`GET /admin/ossie`) baut das Ossie-YAML-Dokument bei jeder Anfrage aus dem lebenden gesteuerten Modell. Nichts wird zwischengespeichert, also ist das Dokument nie veraltet. Die Antwort ist `text/yaml` mit dem Header `Content-Disposition: attachment`. Das Dokument ist ein Modell mit `version`, `name`, `datasets`, `relationships` und `metrics` an der Wurzel. Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Beziehungen werden auf Ossie-`relationship`-Objekte abgebildet. Ein Modell ohne Tabelle wird mit `422` abgelehnt.
 
-**Import** (`POST /admin/ossie/import`) akzeptiert ein Ossie-Dokument in YAML oder JSON (das Format wird automatisch erkannt). Es parst das Dokument und liefert vorgeschlagene Tabellen-, Relationship- und Metrik-Registrierungen als JSON-Objekt zurück — nichts wird registriert. Es liest nur die flache Dokumentform; ein Dokument, das sein Modell in `semantic_model` einhüllt, wird namentlich abgelehnt. Der Prüfbildschirm in der Admin-UI lässt Sie Vorschläge annehmen oder kürzen, bevor irgendeine Mutation ausgelöst wird.
+**Import** (`POST /admin/ossie/import`) nimmt ein Ossie-Dokument in YAML oder JSON an und erkennt das Format selbst. Es parst das Dokument und gibt vorgeschlagene Registrierungen von Tabellen, Beziehungen und Metriken als JSON-Objekt zurück. Registriert wird nichts. Es liest nur die flache Dokumentform, und ein Dokument, das sein Modell in `semantic_model` einhüllt, wird namentlich abgelehnt. In der Admin-Oberfläche können Sie im Prüfbildschirm Vorschläge annehmen oder kürzen, bevor sich etwas ändert.
 
 ### Objektspeicher {: #object-storage }
 
@@ -335,7 +330,7 @@ GET  /admin/org-encryption
 PUT  /admin/org-encryption
 ```
 
-`GET` liefert Fingerabdruck, ID und Herkunft des Schlüssels — nie Schlüsselmaterial. `PUT` setzt oder rotiert den Schlüssel. Übergeben Sie `key_b64` (32 rohe Bytes, base64-kodiert), um einen eigenen Schlüssel mitzubringen, oder lassen Sie es weg, damit Provisa einen erzeugt. Ein Löschen gibt es nicht: Den letzten Schlüssel stillzulegen würde jede damit umschlossene Nutzlast unlesbar machen.
+`GET` liefert Fingerabdruck, ID und Herkunft des Schlüssels und nie Schlüsselmaterial. `PUT` setzt oder rotiert den Schlüssel. Geben Sie `key_b64` (32 Rohbytes, base64-kodiert) an, um einen eigenen Schlüssel mitzubringen, oder lassen Sie es weg, dann erzeugt Provisa einen. Löschen gibt es nicht, denn das Stilllegen des letzten Schlüssels machte jede von ihm umhüllte Nutzlast unlesbar.
 
 ## GraphiQL
 
@@ -343,7 +338,7 @@ Die Admin API wird mit GraphiQL unter `GET /admin/graphql` im Browser ausgeliefe
 
 ## Verwaltungsviews der Ops-Domäne {: #ops-domain-management-views }
 
-Acht SQL-Views werden bei jeder Installation in die integrierte `ops`-Domäne eingebracht. Sie exponieren das Query-Audit-Log als governte Tabellen — abfragbar über SQL (pgwire), GraphQL und Cypher unter denselben Domänenzugriffs-, RLS- und Maskierungsregeln wie jede geschäftliche Tabelle.
+Jede Installation legt acht SQL-Views in der eingebauten Domäne `ops` an. Sie stellen das Abfrage-Audit-Log als gesteuerte Tabellen bereit. Sie fragen sie über SQL (pgwire), GraphQL und Cypher ab, unter denselben Regeln für Domänenzugriff, RLS und Maskierung wie jede Geschäftstabelle.
 
 `org_admin` wird zum Zeitpunkt des Seedings als Steward der Ops-Domäne festgelegt, sodass die Domäne nie als Governance-Lücke in `stale_metadata` erscheint.
 
@@ -358,7 +353,7 @@ Acht SQL-Views werden bei jeder Installation in die integrierte `ops`-Domäne ei
 | `stale_metadata` | Tabellen und Spalten ohne Beschreibung; Domänen ohne Steward |
 | `join_hotspots` | Am häufigsten gemeinsam abgefragte Tabellenpaare — Kandidaten für Materialisierung oder Caching |
 
-Zwei Einschränkungen gelten. Die Granularität liegt auf Tabellenebene — das Audit-Log erfasst `table_ids`, nicht einzelne abgerufene Spalten. Der Abfragetext ist verschlüsselt und in keiner der hier gezeigten Views enthalten; er ist nur über den autorisierten Admin-Entschlüsselungspfad zugänglich.
+Die Granularität endet bei der Tabelle. Das Audit-Log zeichnet `table_ids` auf, die einzelnen gelesenen Spalten nicht. Abfragetext ist verschlüsselt und in keiner dieser Views enthalten; nur der autorisierte Admin-Entschlüsselungsweg kann ihn lesen.
 
 Eine Rolle benötigt Zugriff auf die `ops`-Domäne, damit diese Views sichtbar sind. Gewähren Sie ihn genauso wie den Zugriff auf jede andere Domäne.
 
@@ -380,7 +375,7 @@ FROM ops.surface_mix
 ORDER BY day DESC, query_count DESC;
 ```
 
-Dieselben Abfragen laufen als GraphQL oder Cypher über jeden governten Transport — pgwire, Arrow Flight oder Bolt.
+Da die Views gesteuerte Tabellen sind, können Sie dieselben Abfragen in GraphQL oder Cypher schreiben.
 
 ## Reports-Viewer
 
@@ -388,7 +383,7 @@ Der Reports-Viewer befindet sich unter `/admin/reports`. Rollen ohne die Capabil
 
 Das linke Panel listet jede registrierte Tabelle in der `ops`-Domäne, sortiert nach Alias. Die acht eingebrachten Verwaltungsviews erscheinen dort automatisch. Klicken Sie auf einen Report, um ihn im governten Datenviewer rechts zu laden.
 
-**Einen benutzerdefinierten Report hinzufügen.** Die Schaltfläche „Add report" öffnet einen Dialog. Geben Sie einen Namen, eine optionale Beschreibung und ein SELECT-Statement an. Beim Speichern wird die View als governte, abgeleitete Tabelle in der `ops`-Domäne registriert — katalogisiert, zugriffsgesteuert und über jede Oberfläche neben den eingebrachten Views abfragbar.
+**Einen benutzerdefinierten Report hinzufügen.** Die Schaltfläche „Add report“ öffnet einen Dialog, in dem Sie einen Namen, eine optionale Beschreibung und eine SELECT-Anweisung angeben. Beim Speichern wird die View als gesteuerte abgeleitete Tabelle in der Domäne `ops` registriert. Sie ist katalogisiert, zugriffsgesteuert und über jede Oberfläche abfragbar, neben den vorinstallierten Views.
 
 **Löschen.** Das Papierkorb-Symbol erscheint nur bei benutzerdefinierten Reports. Eingebrachte Verwaltungsviews können über diese Oberfläche nicht gelöscht werden.
 
@@ -404,7 +399,7 @@ Dieselbe Viewer-Komponente treibt sowohl das Vorschau-Modal als auch den Reports
 
 **Serverseitiges Paging.** Jede Seite ist ein eigenes governtes `SELECT *` mit `LIMIT 101 OFFSET n`. 100 Zeilen erscheinen pro Seite; die 101. zeigt an, ob weitere existieren. Der vollständige Datensatz wird nie in den Browser geladen.
 
-**Pushed-Down-Filter und -Sortierungen.** Jede Spaltenüberschrift hat ein Filterfeld. Filterbegriffe werden zu `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`-Prädikaten; Sortierklicks erzeugen `ORDER BY`-Klauseln. Beide gehen an die Datenbank — ein Filter auf einer Tabelle mit einer Milliarde Zeilen durchsucht die Quelle, nicht die 100-Zeilen-Seite vor Ihnen.
+**Pushed-Down-Filter und -Sortierungen.** Jeder Spaltenkopf hat ein Filterfeld. Ein Filterbegriff wird zum Prädikat `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`, und ein Klick zum Sortieren erzeugt eine `ORDER BY`-Klausel. Beides läuft in der Datenbank. Ein Filter auf einer Tabelle mit einer Milliarde Zeilen durchsucht die Quelle und ist nie auf die 100-Zeilen-Seite vor Ihnen beschränkt.
 
 **Mehrstufiges Group-by.** Das Layers-Symbol in jeder Spaltenüberschrift schaltet diese Spalte in die Gruppierung ein. Gruppenspalten führen die `ORDER BY`-Klausel an, sodass Gruppenmitglieder über Seitengrenzen hinweg auf derselben Seite wie ihre Überschrift landen. Primärschlüsselspalten werden als stabiler Tiebreaker angehängt. Gruppenüberschrift-Zeilen sind einklappbar; das Einklappen verbirgt Mitglieder, ohne eine neue Abfrage auszulösen.
 

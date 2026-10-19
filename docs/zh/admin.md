@@ -14,7 +14,7 @@ Authorization: Bearer <token>
 
 ### 个人访问令牌 {: #personal-access-tokens }
 
-凡是接受 bearer 令牌的地方都接受个人访问令牌，本端点也不例外。签发与吊销均为自助操作——它是持有者的私有凭据，因此位于管理界面的用户资料页而非管理员页面，与退出组织、删除账户并列。管理员不代他人签发令牌。
+凡是接受 bearer 令牌的地方都接受个人访问令牌，本端点也不例外。你自己签发和吊销自己的令牌，因为令牌是持有者本人的凭据。所以它位于管理界面中你的用户资料页，与退出组织、删除账户并列，而不在管理员页面下。管理员从不代他人签发令牌。
 
 | 路由 | 作用 |
 | ------- | -------- |
@@ -55,14 +55,14 @@ PUT  /admin/settings
 
 **连接器服务器**卡片为每个有随附服务器的连接器（File Crawler、SharePoint、Salesforce、ServiceNow、Cloud Inventory、Splunk、AskAmerica）命名一个文件夹，其中存放为该主机构建的服务器程序包（`connectors.<connector>.bundle_dir`，环境变量 `PROVISA_PGWIRE_BUNDLE_<CONNECTOR>`）。为空时，连接器服务器从固定的 `kenstott/calcite` release 获取。已设置时，文件夹按原样使用：其启动程序必须位于 `bin/pgwire-<connector>`；没有该启动程序的文件夹会阻止连接器服务器启动，并报错指出该设置 — release 不会在其位置被获取。该设置在每次连接器服务器启动时读取。
 
-安全态势 — `security.mode`（`standard` | `high`）— 在重启时生效：
+安全姿态 `security.mode`（`standard` | `high`）在重启时生效：
 
 ```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
-AI 模型分配、嵌入/向量模型注册表，以及自然语言速率限制 — 自下一次请求起生效，无需重启：
+AI 模型分配、嵌入与向量模型注册表以及 NL 速率限制从下一个请求起生效，无需重启：
 
 ```http
 GET  /admin/ai-models
@@ -71,7 +71,7 @@ PUT  /admin/ai-models
 
 管理员加密选项卡会实时从加密注册表获取其提供程序列表；不可用的提供程序会显示，但不可选择。
 
-`GET`/`HEAD /health` 和 `GET /setup/status` 始终无需身份验证 — 即使已配置身份验证提供程序，它们也会绕过 `Authorization: Bearer` 的要求。
+`GET`/`HEAD /health` 和 `GET /setup/status` 从不要求认证。即使配置了认证提供方，它们也跳过 `Authorization: Bearer` 要求。
 
 ### 联邦引擎 {: #federation-engine }
 
@@ -142,9 +142,9 @@ mutation {
 }
 ```
 
-关联表是被声明为边的，从不被自动发现。`viaTable` 指定一张已注册的表；它的两个键列承载这条边，其余每一列都会成为该关系的一个属性，可以像任何其他字段一样被过滤。`viaTypeColumn` / `viaTypeValue` 把一张联结表拆成多个边类型——`pet_companions` 中 `companion_type` 分别为 `bonded pair`、`littermate` 和 `shares enclosure` 的三类行，就是同一对表之上的三种不同关系。
+关联表由你声明为边，Provisa 从不自动发现。`viaTable` 指定一张已注册的表。它的两个键列承载这条边，其余每一列都成为该关系的属性，可以像任何字段一样过滤。`viaTypeColumn` / `viaTypeValue` 把一张连接表拆分成多种边类型。例如，`pet_companions` 中 `companion_type` 为 `bonded pair`、`littermate` 或 `shares enclosure` 的行，会在同一对表之间形成三个不同的关系。
 
-`viaLabelSource` 指定对外暴露的名称来自哪里，三种形式都会为 Cypher 转成大写蛇形（UPPER_SNAKE_CASE）：`column` 取 `viaTypeValue`（`BONDED_PAIR`），`table` 取联结表自身的名称（`PET_COMPANIONS`），`fixed` 取声明的 `alias`。以这种方式声明的联结表是一条边而不是一个实体——它会从节点标签中移除，因此在图 UI 中永远不会出现节点胶囊。
+`viaLabelSource` 指定对外名称从哪里来，Cypher 拿到的每种形式都是大写加下划线。`column` 使用 `viaTypeValue`（`BONDED_PAIR`），`table` 使用连接表自己的名称（`PET_COMPANIONS`），`fixed` 使用声明的 `alias`。这样声明的连接表是一条边。Provisa 会把它从节点标签中去掉，所以它永远不会以节点标签块出现在图界面中。
 
 ### AI 关联发现 {: #ai-relationship-discovery }
 
@@ -202,7 +202,7 @@ query {
 }
 ```
 
-重命名别名会破坏所有针对暴露名称编写的构件——视图、MV、指标表达式、RLS 谓词、DQ 合约。删除列除了破坏这些之外，还会破坏存储物理 `column_name` 的构件：关系、术语表绑定、标签分配。`breaksOn` 会说明是哪一种。Tables 页面会在保存时运行该查询，并以提示对话框展示结果。查询覆盖的范围及其局限性参见[血缘](lineage.md)。
+重命名别名会破坏所有基于对外名称编写的制品：视图、MV、指标表达式、RLS 谓词和 DQ 契约。删除列除了破坏这些之外，还会破坏存储物理 `column_name` 的制品，即关系、术语表绑定和标签分配。`breaksOn` 会说明是哪一种。“表”页面在保存时运行这项检查，并以提示对话框显示结果。[血缘](lineage.md) 说明了查询覆盖什么、不能覆盖什么。
 
 ### 视图管理 {: #view-management }
 
@@ -292,7 +292,7 @@ POST /admin/import/hasura/apply
 
 `flavor` 可为 `"auto"`（从归档结构中检测）、`"hasura_v2"` 或 `"ddn"`。
 
-**应用**会取用你已审阅（并可选择性编辑过）的 YAML，把它加载到当前操作所属的组织——与 `PUT /admin/config` 相同的热重载路径。请求体：`{"config_yaml": "<yaml string>"}`。
+**应用** 会把你审阅过（如果愿意也可编辑过）的 YAML 加载到当前操作的组织中。它走的是与 `PUT /admin/config` 相同的热重载路径。请求体：`{"config_yaml": "<yaml string>"}`。
 
 预览绝不在服务端缓存转换后的 YAML；应用取用的是你提交的 YAML，因此所应用的内容与所审阅的完全一致。
 
@@ -305,9 +305,9 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**导出**（`GET /admin/ossie`）在每次请求时从实时受治理模型派生 Ossie YAML 文档——从不缓存，因此不会过期。响应为 `text/yaml`，带有 `Content-Disposition: attachment` 标头。该文档是一个模型，其根部包含 `version`、`name`、`datasets`、`relationships` 和 `metrics`：表成为 `dataset` 对象，列成为 `field` 对象，关系映射为 Ossie 的 `relationship` 对象。没有任何表的模型以 `422` 被拒绝。
+**导出**（`GET /admin/ossie`）在每次请求时都从实时的受治理模型构建 Ossie YAML 文档。不做任何缓存，所以文档永远不会过时。响应为 `text/yaml`，带有 `Content-Disposition: attachment` 请求头。文档是一个模型，根部包含 `version`、`name`、`datasets`、`relationships` 和 `metrics`。表变为 `dataset` 对象，列变为 `field` 对象，关系映射为 Ossie 的 `relationship` 对象。没有任何表的模型会以 `422` 被拒绝。
 
-**导入**（`POST /admin/ossie/import`）接受 YAML 或 JSON 格式的 Ossie 文档（自动识别格式）。它解析文档，并以 JSON 对象形式返回建议的表、关系和指标注册——不会注册任何内容。它只读取文档的扁平形式；将模型包裹在 `semantic_model` 中的文档会被点名拒绝。管理界面中的审查屏幕允许在执行任何变更之前接受或裁剪建议。
+**导入**（`POST /admin/ossie/import`）接受 YAML 或 JSON 格式的 Ossie 文档，并自行识别格式。它解析文档，以 JSON 对象返回拟议的表、关系和指标注册。不会注册任何东西。它只读取扁平的文档形态，把模型包在 `semantic_model` 中的文档会被点名拒绝。在管理界面中，审阅页面让你在发生任何更改之前接受或删减这些提议。
 
 ### 对象存储 {: #object-storage }
 
@@ -329,7 +329,7 @@ GET  /admin/org-encryption
 PUT  /admin/org-encryption
 ```
 
-`GET` 返回密钥的指纹、id 和来源——绝不返回密钥材料。`PUT` 设置或轮换密钥。提供 `key_b64`（32 个原始字节，base64 编码）以自带密钥，或省略它让 Provisa 代为生成。没有删除操作：停用最后一个密钥，会让它包裹过的每一份载荷都无法读取。
+`GET` 返回密钥的指纹、id 和来源，从不返回密钥材料。`PUT` 设置或轮换密钥。提供 `key_b64`（32 个原始字节，base64 编码）即可使用你自己的密钥；省略它则由 Provisa 生成一个。没有删除操作，因为停用最后一把密钥会让它包裹过的每个负载都无法读取。
 
 ## GraphiQL
 
@@ -337,7 +337,7 @@ Admin API 在浏览器中的 `GET /admin/graphql` 附带 GraphiQL。可用它以
 
 ## ops 域管理视图 {: #ops-domain-management-views }
 
-每次安装都会向内置的 `ops` 域中植入八个 SQL 视图。 它们把查询审计日志暴露为受治理的表——可经由 SQL（pgwire）、GraphQL 和 Cypher 查询，并适用与任何业务表相同的域访问规则、行级安全和脱敏。
+每次安装都会在内置的 `ops` 领域中植入八个 SQL 视图。它们把查询审计日志以受治理表的形式公开。你可以通过 SQL（pgwire）、GraphQL 和 Cypher 查询它们，适用的领域访问、RLS 和脱敏规则与任何业务表相同。
 
 植入时会把 `org_admin` 设为 ops 域的管家，因此该域绝不会在 `stale_metadata` 中显示为治理缺口。
 
@@ -352,7 +352,7 @@ Admin API 在浏览器中的 `GET /admin/graphql` 附带 GraphiQL。可用它以
 | `stale_metadata` | 缺少描述的表与列；缺少管家的域 |
 | `join_hotspots` | 最常被一起查询的表对——物化或缓存的候选 |
 
-有两项限制。粒度为表级——审计日志记录 `table_ids`，而非具体访问了哪些列。查询文本已加密并从此处所有视图中排除；只能经由授权的管理解密路径访问。
+粒度止于表级。审计日志记录 `table_ids`，不记录查询读取的具体列。查询文本经过加密，不出现在这里的任何视图中；只有经授权的管理员解密路径才能读取它。
 
 角色需要 `ops` 域的访问权限，这些视图才可见。授予方式与授予任何其他域的访问权限相同。
 
@@ -374,7 +374,7 @@ FROM ops.surface_mix
 ORDER BY day DESC, query_count DESC;
 ```
 
-同样的查询可以作为 GraphQL 或 Cypher 运行在任何受治理的传输之上——pgwire、Arrow Flight 或 Bolt。
+由于这些视图是受治理表，你也可以用 GraphQL 或 Cypher 编写同样的查询。
 
 ## 报表查看器 {: #reports-viewer }
 
@@ -382,7 +382,7 @@ ORDER BY day DESC, query_count DESC;
 
 左侧面板列出 `ops` 域中每个已注册的表，按别名排序。 八个植入的管理视图会自动出现在那里。点击任一报表即可在右侧的受治理数据查看器中加载它。
 
-**添加自定义报表。**「添加报表」按钮会打开一个对话框。填写名称、可选描述以及一条 SELECT 语句。保存会把该视图注册为 `ops` 域中受治理的派生表——已编目、受访问控制，并可与植入视图一同从所有接口查询。
+**添加自定义报表。** “Add report”按钮会打开一个对话框，你在其中填写名称、可选的描述和一条 SELECT 语句。保存后，该视图会作为受治理的派生表注册到 `ops` 领域中。它会进入目录、受访问控制，并可通过所有接口查询，与预置视图并列。
 
 **删除。**垃圾桶图标仅对自定义报表显示。植入的管理视图无法从此接口删除。
 
@@ -398,7 +398,7 @@ ORDER BY day DESC, query_count DESC;
 
 **服务端分页。**每一页都是独立的受治理 `SELECT *`，带 `LIMIT 101 OFFSET n`。每页显示 100 行；第 101 行用于判断是否还有更多。完整数据集绝不会加载到浏览器中。
 
-**筛选与排序下推到数据源。**每个列标题都有一个筛选框。筛选词会变成 `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')` 谓词；点击排序会生成 `ORDER BY` 子句。二者都会发往数据库——对十亿行的表做筛选扫描的是数据源，而非你眼前的 100 行。
+**筛选与排序下推到数据源。** 每个列标题都有一个筛选输入框。筛选词会变成 `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')` 谓词，点击排序会生成 `ORDER BY` 子句。两者都在数据库中执行。对十亿行的表筛选会扫描数据源，范围从不局限于你眼前那一页的 100 行。
 
 **多级分组。**每个列标题上的图层图标会把该列加入分组。分组列排在 `ORDER BY` 最前，因此即使跨页，组成员也会与其组标题落在同一页。主键列会追加在末尾，作为稳定的决胜条件。 组标题行可折叠；折叠会隐藏成员而不发出新查询。
 

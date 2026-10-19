@@ -14,7 +14,7 @@ Admin access is governed by the `admin` capability assigned to a role.
 
 ### Personal access tokens
 
-A personal access token is accepted anywhere a bearer token is, including this endpoint. Issuing and revoking one is self-service — it is the token holder's own credential, so it lives on the user's profile in the admin UI rather than under an admin page, beside leaving an org and deleting the account. An administrator does not mint tokens on someone else's behalf.
+A personal access token is accepted anywhere a bearer token is, this endpoint included. You issue and revoke your own, because a token is its holder's own credential. That's why it lives on your profile in the admin UI, beside leaving an org and deleting your account, and not under an admin page. An administrator never mints a token on someone else's behalf.
 
 | Route | Effect |
 | ------- | -------- |
@@ -55,14 +55,14 @@ The settings surface covers large-result redirect, default sampling and row limi
 
 The **Connector servers** card names, for each connector with a bundled server (File Crawler, SharePoint, Salesforce, ServiceNow, Cloud Inventory, Splunk, AskAmerica), a folder holding a server bundle built for this host (`connectors.<connector>.bundle_dir`, environment variable `PROVISA_PGWIRE_BUNDLE_<CONNECTOR>`). Empty, the connector's server is fetched from the pinned `kenstott/calcite` release. Set, the folder is used as it is: its launcher must be at `bin/pgwire-<connector>`, and a folder without it stops that connector's server from starting with an error naming the setting; the release is never fetched in its place. The setting is read each time a connector's server starts.
 
-Security posture — `security.mode` (`standard` | `high`) — applied on restart:
+The security posture, `security.mode` (`standard` | `high`), is applied on restart:
 
 ```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
-AI model assignments, the embedding/vector-model registry, and the NL rate limit — take effect on the next request, no restart required:
+AI model assignments, the embedding and vector-model registry, and the NL rate limit take effect on the next request, with no restart:
 
 ```http
 GET  /admin/ai-models
@@ -71,7 +71,7 @@ PUT  /admin/ai-models
 
 The admin encryption tab derives its provider list live from the encryption registry; unavailable providers appear but are not selectable.
 
-`GET`/`HEAD /health` and `GET /setup/status` are always unauthenticated — they bypass the `Authorization: Bearer` requirement even when an auth provider is configured.
+`GET`/`HEAD /health` and `GET /setup/status` never require authentication. They skip the `Authorization: Bearer` requirement even when an auth provider is configured.
 
 ### Federation Engine
 
@@ -142,9 +142,9 @@ mutation {
 }
 ```
 
-An associative table is declared as an edge, never discovered. `viaTable` names a registered table; its two key columns carry the edge, and every remaining column becomes an attribute of the relationship, filterable like any other field. `viaTypeColumn` / `viaTypeValue` split one junction table into several edge types — three rows of `pet_companions` with `companion_type` of `bonded pair`, `littermate`, and `shares enclosure` are three distinct relationships over the same pair of tables.
+You declare an associative table as an edge; Provisa never discovers one. `viaTable` names a registered table. Its two key columns carry the edge, and every other column becomes an attribute of the relationship, filterable like any field. `viaTypeColumn` / `viaTypeValue` split one junction table into several edge types. For example, rows of `pet_companions` whose `companion_type` is `bonded pair`, `littermate` or `shares enclosure` give three distinct relationships over the same pair of tables.
 
-`viaLabelSource` nominates where the exposed name comes from, and all three forms are upper-snake-cased for Cypher: `column` uses `viaTypeValue` (`BONDED_PAIR`), `table` uses the junction table's own name (`PET_COMPANIONS`), `fixed` uses the declared `alias`. A junction table declared this way is an edge and not an entity — it is dropped from the node labels, so it never appears as a node pill in the graph UI.
+`viaLabelSource` says where the exposed name comes from, and Cypher gets each form in upper snake case. `column` uses `viaTypeValue` (`BONDED_PAIR`), `table` uses the junction table's own name (`PET_COMPANIONS`), and `fixed` uses the declared `alias`. A junction table declared this way is an edge. Provisa drops it from the node labels, so it never appears as a node pill in the graph UI.
 
 ### AI Relationship Discovery
 
@@ -203,11 +203,7 @@ query {
 }
 ```
 
-Renaming an alias breaks every artifact authored against the exposed name — views, MVs, metric
-expressions, RLS predicates, DQ contracts. Dropping a column breaks those plus the artifacts that
-store the physical `column_name`: relationships, glossary bindings, tag assignments. `breaksOn`
-says which. The Tables page runs this on save and shows the result as an advisory dialog. See
-[Lineage](lineage.md) for what the query covers and what it cannot.
+Renaming an alias breaks every artifact written against the exposed name: views, MVs, metric expressions, RLS predicates and DQ contracts. Dropping a column breaks those too, plus the artifacts that store the physical `column_name`, which are relationships, glossary bindings and tag assignments. `breaksOn` says which. The Tables page runs this check on save and shows the result as an advisory dialog. [Lineage](lineage.md) explains what the query covers and what it can't.
 
 ### View Management
 
@@ -297,7 +293,7 @@ POST /admin/import/hasura/apply
 
 `flavor` is `"auto"` (detected from the archive structure), `"hasura_v2"`, or `"ddn"`.
 
-**Apply** takes the YAML you reviewed (and optionally edited) and loads it into the acting org — the same hot-reload path as `PUT /admin/config`. Request body: `{"config_yaml": "<yaml string>"}`.
+**Apply** loads the YAML you reviewed, and edited if you chose to, into the acting org. It uses the same hot-reload path as `PUT /admin/config`. Request body: `{"config_yaml": "<yaml string>"}`.
 
 Preview never caches the converted YAML server-side; apply takes the YAML you supply, so what is applied is exactly what was reviewed.
 
@@ -310,9 +306,9 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**Export** (`GET /admin/ossie`) derives the Ossie YAML document from the live governed model on every request — it is never cached, so it cannot be stale. The response is `text/yaml` with a `Content-Disposition: attachment` header. The document is one model with `version`, `name`, `datasets`, `relationships`, and `metrics` at its root: tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects. A model with no table is refused with a `422`.
+**Export** (`GET /admin/ossie`) builds the Ossie YAML document from the live governed model on every request. Nothing is cached, so the document is never stale. The response is `text/yaml` with a `Content-Disposition: attachment` header. The document is one model with `version`, `name`, `datasets`, `relationships` and `metrics` at its root. Tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects. A model with no table is refused with a `422`.
 
-**Import** (`POST /admin/ossie/import`) accepts an Ossie YAML or JSON document (the format auto-detects). It parses the document and returns proposed table, relationship, and metric registrations as a JSON object — nothing is registered. It reads the flat document shape only; a document that wraps its model in `semantic_model` is refused by name. The review screen in the admin UI lets you accept or trim proposals before any mutation fires.
+**Import** (`POST /admin/ossie/import`) accepts an Ossie YAML or JSON document and detects the format itself. It parses the document and returns proposed table, relationship and metric registrations as a JSON object. Nothing is registered. It reads only the flat document shape, and a document that wraps its model in `semantic_model` is refused by name. In the admin UI, the review screen lets you accept or trim proposals before anything changes.
 
 ### Object Storage
 
@@ -334,7 +330,7 @@ GET  /admin/org-encryption
 PUT  /admin/org-encryption
 ```
 
-`GET` returns the key's fingerprint, id, and provenance — never key material. `PUT` sets or rotates the key. Supply `key_b64` (32 raw bytes, base64-encoded) to bring your own key, or omit it to have Provisa generate one. There is no delete: retiring the last key would leave every payload it wrapped unreadable.
+`GET` returns the key's fingerprint, id and provenance, and never key material. `PUT` sets or rotates the key. Supply `key_b64` (32 raw bytes, base64-encoded) to bring your own key, or omit it and Provisa generates one. There is no delete, because retiring the last key would leave every payload it wrapped unreadable.
 
 ## GraphiQL
 
@@ -342,7 +338,7 @@ The admin API ships with GraphiQL at `GET /admin/graphql` in the browser. Use it
 
 ## Ops-domain management views
 
-Eight SQL views are seeded into the built-in `ops` domain on every install. They expose the query audit log as governed tables — queryable through SQL (pgwire), GraphQL, and Cypher under the same domain access, RLS, and masking rules as any business table.
+Every install seeds eight SQL views into the built-in `ops` domain. They expose the query audit log as governed tables. You query them through SQL (pgwire), GraphQL and Cypher under the same domain access, RLS and masking rules as any business table.
 
 `org_admin` is designated as the ops-domain steward at seed time, so the domain never appears as a governance gap in `stale_metadata`.
 
@@ -357,7 +353,7 @@ Eight SQL views are seeded into the built-in `ops` domain on every install. They
 | `stale_metadata` | Tables and columns missing descriptions; domains missing a steward |
 | `join_hotspots` | Table pairs co-queried most often — candidates for materialization or caching |
 
-Two limits apply. Granularity is at the table level — the audit log records `table_ids`, not individual columns accessed. Query text is encrypted and excluded from every view here; it is accessible only through the authorised admin decrypt path.
+Granularity stops at the table. The audit log records `table_ids`, and the individual columns a query read aren't recorded. Query text is encrypted and left out of every view here; only the authorised admin decrypt path can read it.
 
 A role needs `ops` domain access before these views are visible. Grant it the same way you grant access to any other domain.
 
@@ -379,7 +375,7 @@ FROM ops.surface_mix
 ORDER BY day DESC, query_count DESC;
 ```
 
-The same queries run as GraphQL or Cypher over any governed transport — pgwire, Arrow Flight, or Bolt.
+Because the views are governed tables, you can write the same queries in GraphQL or Cypher.
 
 ## Reports viewer
 
@@ -387,7 +383,7 @@ The Reports viewer is at `/admin/reports`. Roles without the `observability` cap
 
 The left panel lists every registered table in the `ops` domain, sorted by alias. The eight seeded management views appear there automatically. Click any report to load it in the governed data viewer on the right.
 
-**Adding a custom report.** The "Add report" button opens a dialog. Provide a name, an optional description, and a SELECT statement. Saving registers the view as a governed derived table in the `ops` domain — cataloged, access-controlled, and queryable through every surface alongside the seeded views.
+**Adding a custom report.** The "Add report" button opens a dialog where you give a name, an optional description and a SELECT statement. Saving registers the view as a governed derived table in the `ops` domain. It's cataloged, access-controlled and queryable through every surface, alongside the seeded views.
 
 **Deleting.** The trash icon appears only for custom reports. Seeded management views cannot be deleted from this interface.
 
@@ -403,7 +399,7 @@ The same viewer component powers the preview modal and the Reports viewer. Its b
 
 **Server-side paging.** Each page is its own governed `SELECT *` with `LIMIT 101 OFFSET n`. 100 rows appear per page; the 101st signals whether more exist. The full dataset is never loaded into the browser.
 
-**Pushed-down filters and sorts.** Each column header has a filter input. Filter terms become `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')` predicates; sort clicks produce `ORDER BY` clauses. Both go to the database — a filter on a billion-row table scans the source, not the 100-row page in front of you.
+**Pushed-down filters and sorts.** Each column header has a filter input. A filter term becomes a `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')` predicate, and a sort click produces an `ORDER BY` clause. Both run in the database. A filter on a billion-row table scans the source, and its reach is never limited to the 100-row page in front of you.
 
 **Multi-level group-by.** The Layers icon in any column header toggles that column into the grouping. Group columns lead the `ORDER BY` so group members land on the same page as their header across page boundaries. Primary-key columns are appended as a stable tiebreaker. Group-header rows are collapsible; collapsing hides members without issuing a new query.
 

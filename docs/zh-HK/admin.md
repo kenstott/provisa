@@ -14,7 +14,7 @@ Authorization: Bearer <token>
 
 ### 個人存取權杖 {: #personal-access-tokens }
 
-凡接受 bearer 權杖之處都接受個人存取權杖，本端點亦然。簽發與撤銷都是自助的——它是權杖持有人自己的憑證，因此它落在管理 UI 中使用者的個人檔案上，而不在某個管理頁面之下，與退出組織及刪除帳戶並列。管理員不會代他人鑄造權杖。
+凡是接受 bearer 權杖的地方都接受個人存取權杖，本端點亦不例外。你自己簽發及撤銷自己的權杖，因為權杖是持有者本人的憑證。所以它位於管理介面中你的使用者資料頁，與退出組織、刪除帳戶並列，而不在管理員頁面下。管理員從不代他人簽發權杖。
 
 | 路由 | 作用 |
 | ------- | -------- |
@@ -55,14 +55,14 @@ PUT  /admin/settings
 
 **連接器伺服器**卡片為每個附有隨附伺服器的連接器（File Crawler、SharePoint、Salesforce、ServiceNow、Cloud Inventory、Splunk、AskAmerica）命名一個資料夾，其中存放為此主機建置的伺服器套件包（`connectors.<connector>.bundle_dir`，環境變數 `PROVISA_PGWIRE_BUNDLE_<CONNECTOR>`）。為空時，連接器伺服器從固定的 `kenstott/calcite` release 取得。已設定時，資料夾依原樣使用：其啟動程式必須位於 `bin/pgwire-<connector>`；沒有該啟動程式的資料夾將阻止連接器伺服器啟動，並顯示指出該設定的錯誤 — release 不會在其位置被取得。該設定在每次連接器伺服器啟動時讀取。
 
-安全姿態——`security.mode`（`standard` | `high`）——於重新啟動時套用：
+安全態勢 `security.mode`（`standard` | `high`）在重新啟動時生效：
 
 ```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
-AI 模型指派、embedding／向量模型註冊表，以及 NL 速率限制——於下一個請求生效，毋須重新啟動：
+AI 模型分配、嵌入與向量模型登錄表以及 NL 速率限制從下一個請求起生效，無須重新啟動：
 
 ```http
 GET  /admin/ai-models
@@ -71,7 +71,7 @@ PUT  /admin/ai-models
 
 管理介面的加密分頁會即時從加密註冊表推導出提供者清單；不可用的提供者會顯示出來，但無法選取。
 
-`GET`／`HEAD /health` 與 `GET /setup/status` 一律免驗證——即使設定了驗證提供者，它們也繞過 `Authorization: Bearer` 的要求。
+`GET`/`HEAD /health` 及 `GET /setup/status` 從不要求認證。即使設定了認證提供者，它們亦跳過 `Authorization: Bearer` 要求。
 
 ### 聯邦引擎 {: #federation-engine }
 
@@ -142,9 +142,9 @@ mutation {
 }
 ```
 
-關聯資料表是被宣告為邊的，從不被自動探索。`viaTable` 指定一張已註冊的資料表；它的兩個索引鍵欄位承載這條邊，其餘每一個欄位都會成為該關係的一個屬性，可以像任何其他欄位一樣被過濾。`viaTypeColumn` / `viaTypeValue` 把一張聯結資料表拆成多個邊類型——`pet_companions` 中 `companion_type` 分別為 `bonded pair`、`littermate` 與 `shares enclosure` 的三類資料列，就是同一對資料表之上的三種不同關係。
+關聯表由你宣告為邊，Provisa 從不自動發現。`viaTable` 指定一張已登錄的表。它的兩個鍵欄承載這條邊，其餘每一欄都成為該關係的屬性，可以像任何欄位一樣篩選。`viaTypeColumn` / `viaTypeValue` 把一張連接表拆分成多種邊類型。例如，`pet_companions` 中 `companion_type` 為 `bonded pair`、`littermate` 或 `shares enclosure` 的列，會在同一對表之間形成三個不同的關係。
 
-`viaLabelSource` 指定對外公開的名稱來自哪裡，三種形式都會為 Cypher 轉成大寫蛇形（UPPER_SNAKE_CASE）：`column` 取 `viaTypeValue`（`BONDED_PAIR`），`table` 取聯結資料表自身的名稱（`PET_COMPANIONS`），`fixed` 取宣告的 `alias`。以這種方式宣告的聯結資料表是一條邊而不是一個實體——它會從節點標籤中移除，因此在圖 UI 中永遠不會出現節點膠囊。
+`viaLabelSource` 指定對外名稱從哪裏來，Cypher 拿到的每種形式都是大寫加底線。`column` 使用 `viaTypeValue`（`BONDED_PAIR`），`table` 使用連接表自己的名稱（`PET_COMPANIONS`），`fixed` 使用宣告的 `alias`。這樣宣告的連接表是一條邊。Provisa 會把它從節點標籤中去掉，所以它永遠不會以節點標籤塊出現在圖介面中。
 
 ### AI 關係探索 {: #ai-relationship-discovery }
 
@@ -202,7 +202,7 @@ query {
 }
 ```
 
-更改別名會弄壞每個照著對外名稱撰寫的構件——檢視、MV、指標運算式、RLS 謂詞、DQ 合約。刪除欄位除了弄壞上述這些，還會弄壞儲存實體 `column_name` 的那些構件：關係、詞彙表繫結、標籤指派。`breaksOn` 會說明是哪一種。表頁面會在儲存時執行這個查詢，並以建議性對話方塊顯示結果。此查詢涵蓋什麼、又涵蓋不了什麼，見 [血緣](lineage.md)。
+重新命名別名會破壞所有基於對外名稱編寫的製品：視圖、MV、指標運算式、RLS 謂詞及 DQ 契約。刪除欄除了破壞這些之外，還會破壞儲存實體 `column_name` 的製品，即關係、詞彙表綁定及標籤指派。`breaksOn` 會說明是哪一種。「表」頁面在儲存時執行這項檢查，並以提示對話框顯示結果。[血緣](lineage.md) 說明了查詢涵蓋甚麼、不能涵蓋甚麼。
 
 ### 檢視管理 {: #view-management }
 
@@ -292,7 +292,7 @@ POST /admin/import/hasura/apply
 
 `flavor` 為 `"auto"`（由封存檔結構偵測）、`"hasura_v2"` 或 `"ddn"`。
 
-**套用**會取你已審閱（並可能已編輯）的 YAML，載入到操作中的組織——與 `PUT /admin/config` 走同一條熱重載路徑。請求主體：`{"config_yaml": "<yaml string>"}`。
+**套用** 會把你審閱過（如果願意亦可編輯過）的 YAML 載入到目前操作的組織中。它走的是與 `PUT /admin/config` 相同的熱重載路徑。請求主體：`{"config_yaml": "<yaml string>"}`。
 
 預覽絕不在伺服器端快取轉換後的 YAML；套用取用的是你提供的 YAML，因此被套用的與被審閱的完全一致。
 
@@ -305,9 +305,9 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**匯出**（`GET /admin/ossie`）在每次請求時從當下受治理的模型推導出 Ossie YAML 文件——從不快取，因此不可能過時。回應為 `text/yaml`，並帶有 `Content-Disposition: attachment` 標頭。該文件是一個模型，其根部包含 `version`、`name`、`datasets`、`relationships` 及 `metrics`：資料表成為 `dataset` 物件，欄位成為 `field` 物件，關係對映為 Ossie 的 `relationship` 物件。沒有任何資料表的模型會以 `422` 被拒絕。
+**匯出**（`GET /admin/ossie`）在每次請求時都從即時的受治理模型建構 Ossie YAML 文件。不做任何快取，所以文件永遠不會過時。回應為 `text/yaml`，帶有 `Content-Disposition: attachment` 標頭。文件是一個模型，根部包含 `version`、`name`、`datasets`、`relationships` 及 `metrics`。表變為 `dataset` 物件，欄變為 `field` 物件，關係對應為 Ossie 的 `relationship` 物件。沒有任何表的模型會以 `422` 被拒絕。
 
-**匯入**（`POST /admin/ossie/import`）接受 YAML 或 JSON 格式的 Ossie 文件（格式自動偵測）。它剖析該文件，並以 JSON 物件傳回建議的資料表、關係及指標註冊——不會註冊任何內容。它只讀取文件的扁平形態；將模型包裹於 `semantic_model` 之內的文件會被點名拒絕。管理介面中的審查畫面讓你在執行任何變更之前接受或刪減建議。
+**匯入**（`POST /admin/ossie/import`）接受 YAML 或 JSON 格式的 Ossie 文件，並自行識別格式。它剖析文件，以 JSON 物件傳回擬議的表、關係及指標登錄。不會登錄任何東西。它只讀取扁平的文件形態，把模型包在 `semantic_model` 中的文件會被點名拒絕。在管理介面中，審閱頁面讓你在發生任何變更之前接受或刪減這些提議。
 
 ### 物件儲存 {: #object-storage }
 
@@ -329,7 +329,7 @@ GET  /admin/org-encryption
 PUT  /admin/org-encryption
 ```
 
-`GET` 傳回金鑰的指紋、id 與來歷——絕不傳回金鑰內容。`PUT` 設定或輪替金鑰。提供 `key_b64`（32 個原始位元組，base64 編碼）可自帶金鑰，省略則由 Provisa 生成一把。此處沒有刪除：淘汰最後一把金鑰，會讓它所包覆過的每一份負載都無法讀取。
+`GET` 傳回金鑰的指紋、id 及來源，從不傳回金鑰材料。`PUT` 設定或輪換金鑰。提供 `key_b64`（32 個原始位元組，base64 編碼）即可使用你自己的金鑰；省略它則由 Provisa 產生一個。沒有刪除操作，因為停用最後一把金鑰會令它包裹過的每個負載都無法讀取。
 
 ## GraphiQL
 
@@ -337,7 +337,7 @@ PUT  /admin/org-encryption
 
 ## ops 網域的管理檢視 {: #ops-domain-management-views }
 
-每次安裝都會把八個 SQL 檢視播種進內建的 `ops` 網域。 它們把查詢審計記錄公開為受治理的表——可經 SQL (pgwire)、GraphQL 與 Cypher 查詢，並適用與任何業務表相同的網域存取、RLS 與遮罩規則。
+每次安裝都會在內置的 `ops` 領域中植入八個 SQL 視圖。它們把查詢稽核日誌以受治理表的形式公開。你可以透過 SQL（pgwire）、GraphQL 及 Cypher 查詢它們，適用的領域存取、RLS 及遮罩規則與任何業務表相同。
 
 播種時 `org_admin` 被指定為 ops 網域的數據管家，因此該網域絕不會在 `stale_metadata` 中顯示為治理缺口。
 
@@ -352,7 +352,7 @@ PUT  /admin/org-encryption
 | `stale_metadata` | 缺少說明的表與欄位；缺少數據管家的網域 |
 | `join_hotspots` | 最常被一同查詢的表配對——具體化或快取的候選 |
 
-有兩項限制。粒度停在表層級——審計記錄記的是 `table_ids`，而非個別被存取的欄位。查詢文字已加密，並被排除於此處每個檢視之外；它只能經授權的管理解密路徑取得。
+粒度止於表級。稽核日誌記錄 `table_ids`，不記錄查詢讀取的具體欄。查詢文字經過加密，不出現在這裏的任何視圖中；只有經授權的管理員解密路徑才能讀取它。
 
 角色須先具備 `ops` 網域存取權，這些檢視才會可見。授予方式與授予任何其他網域的存取權相同。
 
@@ -374,7 +374,7 @@ FROM ops.surface_mix
 ORDER BY day DESC, query_count DESC;
 ```
 
-同樣這些查詢也能以 GraphQL 或 Cypher 形式，在任何受治理的傳輸上執行——pgwire、Arrow Flight 或 Bolt。
+由於這些視圖是受治理表，你亦可以用 GraphQL 或 Cypher 編寫同樣的查詢。
 
 ## 報表檢視器 {: #reports-viewer }
 
@@ -382,7 +382,7 @@ ORDER BY day DESC, query_count DESC;
 
 左側面板列出 `ops` 網域中每一張已註冊的表，按別名排序。 那八個播種的管理檢視會自動出現在那裡。點擊任一報表，即可在右側受治理的數據檢視器中載入它。
 
-**加入自訂報表。** 「加入報表」按鈕會開啟一個對話方塊。填入名稱、選填說明，以及一段 SELECT 陳述式。儲存後，該檢視便以受治理的衍生表形式註冊進 `ops` 網域——已編目、受存取控制，並與那些播種的檢視並列，可經每個介面查詢。
+**加入自訂報表。** 「Add report」按鈕會開啟一個對話框，你在其中填寫名稱、選填的描述及一條 SELECT 陳述式。儲存後，該視圖會作為受治理的衍生表登錄到 `ops` 領域中。它會進入目錄、受存取控制，並可透過所有介面查詢，與預置視圖並列。
 
 **刪除。** 垃圾桶圖示只對自訂報表出現。播種的管理檢視無法從此介面刪除。
 
@@ -398,7 +398,7 @@ ORDER BY day DESC, query_count DESC;
 
 **伺服器端分頁。** 每一頁都是它自己的一次受治理 `SELECT *`，帶 `LIMIT 101 OFFSET n`。每頁顯示 100 行；第 101 行用來指示是否還有更多。完整數據集絕不會載入瀏覽器。
 
-**下推的篩選與排序。** 每個欄位標頭都有一個篩選輸入框。篩選詞會變成 `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')` 謂詞；點擊排序則產生 `ORDER BY` 子句。兩者都送進資料庫——對十億行的表所下的篩選掃的是數據來源，而不是你眼前那 100 行的頁面。
+**下推的篩選與排序。** 每個欄標題都有一個篩選輸入框。篩選詞會變成 `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')` 謂詞，點擊排序會產生 `ORDER BY` 子句。兩者都在資料庫中執行。對十億列的表篩選會掃描資料來源，範圍從不局限於你眼前那一頁的 100 列。
 
 **多層分組。** 任一欄位標頭中的圖層圖示，可把該欄位切換進分組。分組欄位排在 `ORDER BY` 最前，好讓跨頁時群組成員與其標頭落在同一頁。主索引鍵欄位會被附加在後，作為穩定的決勝依據。 群組標頭資料行可收合；收合會隱藏成員，且不會發出新的查詢。
 

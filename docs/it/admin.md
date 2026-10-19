@@ -14,7 +14,7 @@ L'accesso admin è governato dalla capability `admin` assegnata a un ruolo.
 
 ### Token di accesso personali {: #personal-access-tokens }
 
-Un token di accesso personale è accettato ovunque lo sia un bearer token, questo endpoint compreso. Emetterne e revocarne uno è un'operazione self-service — è la credenziale di chi lo detiene, quindi risiede nel profilo utente della UI Admin anziché sotto una pagina di amministrazione, accanto all'uscita da un'organizzazione e all'eliminazione dell'account. Un amministratore non conia token per conto di qualcun altro.
+Un token di accesso personale è accettato ovunque lo sia un token bearer, questo endpoint compreso. Emettete e revocate i vostri, perché un token è la credenziale del suo titolare. Per questo sta nel vostro profilo nella UI di amministrazione, accanto all'uscita da un'organizzazione e all'eliminazione dell'account, e non sotto una pagina di amministrazione. Un amministratore non emette mai un token per conto di un altro.
 
 | Route | Effetto |
 | ------- | -------- |
@@ -55,14 +55,14 @@ La superficie delle impostazioni copre il redirect dei risultati voluminosi, il 
 
 La scheda **Server dei connettori** indica, per ogni connettore con un server incluso (File Crawler, SharePoint, Salesforce, ServiceNow, Cloud Inventory, Splunk, AskAmerica), una cartella contenente un bundle server compilato per questo host (`connectors.<connector>.bundle_dir`, variabile d'ambiente `PROVISA_PGWIRE_BUNDLE_<CONNECTOR>`). Vuota, il server del connettore viene scaricato dalla release fissata di `kenstott/calcite`. Impostata, la cartella viene usata così com'è: il suo launcher deve trovarsi a `bin/pgwire-<connector>`, e una cartella senza di esso impedisce l'avvio del server del connettore con un errore che nomina l'impostazione; la release non viene mai scaricata al suo posto. L'impostazione viene letta ogni volta che il server di un connettore viene avviato.
 
-Postura di sicurezza — `security.mode` (`standard` | `high`) — applicata al riavvio:
+La postura di sicurezza, `security.mode` (`standard` | `high`), si applica al riavvio:
 
 ```http
 GET  /admin/security
 PUT  /admin/security
 ```
 
-Le assegnazioni dei modelli AI, il registro dei modelli di embedding/vettoriali e il rate limit NL — hanno effetto alla richiesta successiva, senza riavvio:
+Le assegnazioni dei modelli di IA, il registro dei modelli di embedding e vettoriali e il limite di frequenza NL hanno effetto dalla richiesta successiva, senza riavvio:
 
 ```http
 GET  /admin/ai-models
@@ -71,7 +71,7 @@ PUT  /admin/ai-models
 
 La scheda di crittografia della UI Admin deriva il proprio elenco di provider in tempo reale dal registro di crittografia; i provider non disponibili compaiono ma non sono selezionabili.
 
-`GET`/`HEAD /health` e `GET /setup/status` sono sempre non autenticati — aggirano il requisito `Authorization: Bearer` anche quando è configurato un provider di autenticazione.
+`GET`/`HEAD /health` e `GET /setup/status` non richiedono mai l'autenticazione. Saltano il requisito `Authorization: Bearer` anche quando è configurato un provider di autenticazione.
 
 ### Motore di federazione {: #federation-engine }
 
@@ -142,9 +142,9 @@ mutation {
 }
 ```
 
-Una tabella associativa si dichiara come arco, non viene mai scoperta. `viaTable` nomina una tabella registrata; le sue due colonne chiave portano l'arco, e ogni colonna rimanente diventa un attributo della relazione, filtrabile come qualunque altro campo. `viaTypeColumn` / `viaTypeValue` suddividono una stessa tabella di giunzione in più tipi di arco — tre righe di `pet_companions` con `companion_type` pari a `bonded pair`, `littermate` e `shares enclosure` sono tre relazioni distinte sulla stessa coppia di tabelle.
+Una tabella associativa si dichiara come arco; Provisa non ne scopre mai una. `viaTable` nomina una tabella registrata. Le sue due colonne chiave portano l'arco, e ogni altra colonna diventa un attributo della relazione, filtrabile come qualsiasi campo. `viaTypeColumn` / `viaTypeValue` dividono una tabella ponte in più tipi di arco. Per esempio, le righe di `pet_companions` con `companion_type` pari a `bonded pair`, `littermate` o `shares enclosure` danno tre relazioni distinte sulla stessa coppia di tabelle.
 
-`viaLabelSource` indica da dove proviene il nome esposto, e tutte e tre le forme vengono portate in UPPER_SNAKE_CASE per Cypher: `column` usa `viaTypeValue` (`BONDED_PAIR`), `table` usa il nome della tabella di giunzione stessa (`PET_COMPANIONS`), `fixed` usa l'`alias` dichiarato. Una tabella di giunzione dichiarata così è un arco e non un'entità — esce dalle etichette dei nodi, quindi non compare mai come pillola di nodo nell'interfaccia del grafo.
+`viaLabelSource` indica da dove viene il nome esposto, e Cypher riceve ogni forma in maiuscolo con trattini bassi. `column` usa `viaTypeValue` (`BONDED_PAIR`), `table` usa il nome della tabella ponte (`PET_COMPANIONS`) e `fixed` usa l'`alias` dichiarato. Una tabella ponte dichiarata così è un arco. Provisa la toglie dalle etichette dei nodi, quindi non compare mai come pillola di nodo nella UI del grafo.
 
 ### Scoperta delle relazioni con l'AI {: #ai-relationship-discovery }
 
@@ -203,12 +203,7 @@ query {
 }
 ```
 
-Rinominare un alias rompe ogni artefatto scritto sul nome esposto — viste, MV, espressioni delle
-metriche, predicati RLS, contratti DQ. Eliminare una colonna rompe quelli più gli artefatti che
-memorizzano il `column_name` fisico: relazioni, associazioni del glossario, assegnazioni di tag.
-`breaksOn` dice quale. La pagina Tables esegue questa query al salvataggio e ne mostra il risultato
-in una finestra informativa. Vedere [Derivazione](lineage.md) per che cosa la query copre e che cosa
-non può coprire.
+Rinominare un alias rompe ogni artefatto scritto contro il nome esposto: viste, MV, espressioni di metriche, predicati RLS e contratti DQ. Eliminare una colonna rompe anche quelli, più gli artefatti che salvano il `column_name` fisico, cioè relazioni, associazioni del glossario e assegnazioni di tag. `breaksOn` dice quale. La pagina Tabelle esegue questo controllo al salvataggio e mostra il risultato in una finestra di avviso. [Derivazione](lineage.md) spiega cosa copre la query e cosa no.
 
 ### Gestione delle viste {: #view-management }
 
@@ -298,7 +293,7 @@ POST /admin/import/hasura/apply
 
 `flavor` è `"auto"` (rilevato dalla struttura dell'archivio), `"hasura_v2"` oppure `"ddn"`.
 
-**L'applicazione** prende lo YAML revisionato (ed eventualmente modificato) e lo carica nell'organizzazione attiva — lo stesso percorso di hot-reload di `PUT /admin/config`. Corpo della richiesta: `{"config_yaml": "<yaml string>"}`.
+**L'applicazione** carica lo YAML che avete rivisto, e modificato se lo avete voluto, nell'org che agisce. Usa lo stesso percorso di ricarica a caldo di `PUT /admin/config`. Body della richiesta: `{"config_yaml": "<yaml string>"}`.
 
 L'anteprima non mette mai in cache lato server lo YAML convertito; l'applicazione prende lo YAML fornito, quindi ciò che viene applicato è esattamente ciò che è stato revisionato.
 
@@ -311,9 +306,9 @@ GET  /admin/ossie
 POST /admin/ossie/import
 ```
 
-**Export** (`GET /admin/ossie`) deriva il documento YAML Ossie dal modello governato attivo a ogni richiesta — non viene mai messo in cache, quindi non può essere obsoleto. La risposta è `text/yaml` con un'intestazione `Content-Disposition: attachment`. Il documento è un modello con `version`, `name`, `datasets`, `relationships` e `metrics` alla radice: le tabelle diventano oggetti `dataset`, le colonne oggetti `field`, e le relazioni corrispondono a oggetti `relationship` di Ossie. Un modello senza tabelle viene rifiutato con `422`.
+**Export** (`GET /admin/ossie`) costruisce il documento YAML di Ossie dal modello governato attivo a ogni richiesta. Nulla viene messo in cache, quindi il documento non è mai obsoleto. La risposta è `text/yaml` con un'intestazione `Content-Disposition: attachment`. Il documento è un modello con `version`, `name`, `datasets`, `relationships` e `metrics` alla radice. Le tabelle diventano oggetti `dataset`, le colonne oggetti `field`, e le relazioni corrispondono a oggetti `relationship` di Ossie. Un modello senza tabelle viene rifiutato con un `422`.
 
-**Import** (`POST /admin/ossie/import`) accetta un documento Ossie in YAML o JSON (il formato viene rilevato automaticamente). Analizza il documento e restituisce le registrazioni proposte di tabelle, relazioni e metriche come oggetto JSON — non viene registrato nulla. Legge solo la forma piatta del documento; un documento che avvolge il suo modello in `semantic_model` viene rifiutato per nome. La schermata di revisione dell'interfaccia di amministrazione consente di accettare o ridurre le proposte prima che venga eseguita qualsiasi mutazione.
+**Import** (`POST /admin/ossie/import`) accetta un documento Ossie in YAML o JSON e rileva il formato da solo. Analizza il documento e restituisce come oggetto JSON le registrazioni proposte di tabelle, relazioni e metriche. Non viene registrato nulla. Legge solo la forma piatta del documento, e un documento che avvolge il suo modello in `semantic_model` viene rifiutato per nome. Nella UI di amministrazione, la schermata di revisione vi permette di accettare o ridurre le proposte prima che cambi qualcosa.
 
 ### Object storage
 
@@ -335,7 +330,7 @@ GET  /admin/org-encryption
 PUT  /admin/org-encryption
 ```
 
-`GET` restituisce fingerprint, id e provenienza della chiave — mai il materiale della chiave. `PUT` imposta o ruota la chiave. Fornire `key_b64` (32 byte grezzi, codificati in base64) per portare la propria chiave, oppure ometterlo perché sia Provisa a generarne una. Non esiste un'eliminazione: ritirare l'ultima chiave renderebbe illeggibile ogni payload da essa protetto.
+`GET` restituisce impronta, id e provenienza della chiave, mai materiale della chiave. `PUT` imposta o ruota la chiave. Fornite `key_b64` (32 byte grezzi, codificati in base64) per portare la vostra chiave, oppure omettetelo e Provisa ne genera una. Non esiste l'eliminazione, perché ritirare l'ultima chiave renderebbe illeggibile ogni payload che ha avvolto.
 
 ## GraphiQL
 
@@ -343,7 +338,7 @@ L'API Admin include GraphiQL su `GET /admin/graphql` nel browser. Serve a esplor
 
 ## Viste di gestione del dominio ops {: #ops-domain-management-views }
 
-Otto viste SQL vengono seminate nel dominio integrato `ops` a ogni installazione. Espongono il log di audit delle query come tabelle governate — interrogabili via SQL (pgwire), GraphQL e Cypher sotto le stesse regole di accesso al dominio, RLS e mascheramento di qualsiasi tabella di business.
+Ogni installazione crea otto viste SQL nel dominio integrato `ops`. Espongono il log di audit delle query come tabelle governate. Le interrogate via SQL (pgwire), GraphQL e Cypher, con le stesse regole di accesso al dominio, RLS e mascheramento di qualsiasi tabella di business.
 
 `org_admin` è designato steward del dominio ops al momento della semina, così il dominio non compare mai come lacuna di governance in `stale_metadata`.
 
@@ -358,7 +353,7 @@ Otto viste SQL vengono seminate nel dominio integrato `ops` a ogni installazione
 | `stale_metadata` | Tabelle e colonne prive di descrizione; domini privi di steward |
 | `join_hotspots` | Coppie di tabelle interrogate insieme più spesso — candidate alla materializzazione o alla cache |
 
-Valgono due limiti. La granularità è a livello di tabella — il log di audit registra `table_ids`, non le singole colonne accedute. Il testo delle query è cifrato ed escluso da ognuna di queste viste; è accessibile solo attraverso il percorso di decifratura admin autorizzato.
+La granularità si ferma alla tabella. Il log di audit registra `table_ids`, non le singole colonne lette da una query. Il testo delle query è cifrato ed escluso da tutte queste viste; solo il percorso autorizzato di decifratura dell'amministrazione può leggerlo.
 
 Un ruolo ha bisogno dell'accesso al dominio `ops` perché queste viste siano visibili. Si concede allo stesso modo dell'accesso a qualsiasi altro dominio.
 
@@ -380,7 +375,7 @@ FROM ops.surface_mix
 ORDER BY day DESC, query_count DESC;
 ```
 
-Le stesse query funzionano in GraphQL o Cypher su qualsiasi protocollo di trasporto governato — pgwire, Arrow Flight o Bolt.
+Poiché le viste sono tabelle governate, potete scrivere le stesse query in GraphQL o Cypher.
 
 ## Visualizzatore dei report {: #reports-viewer }
 
@@ -388,7 +383,7 @@ Il visualizzatore dei report si trova su `/admin/reports`. I ruoli privi della c
 
 Il pannello di sinistra elenca ogni tabella registrata nel dominio `ops`, ordinata per alias. Le otto viste di gestione seminate vi compaiono automaticamente. Un clic su un report qualsiasi lo carica nel visualizzatore dei dati governati a destra.
 
-**Aggiungere un report personalizzato.** Il pulsante "Add report" apre una finestra di dialogo. Vanno forniti un nome, una descrizione facoltativa e un'istruzione SELECT. Il salvataggio registra la vista come tabella derivata governata nel dominio `ops` — catalogata, sottoposta a controllo degli accessi e interrogabile attraverso ogni superficie accanto alle viste seminate.
+**Aggiungere un report personalizzato.** Il pulsante "Add report" apre una finestra in cui indicate un nome, una descrizione facoltativa e un'istruzione SELECT. Il salvataggio registra la vista come tabella derivata governata nel dominio `ops`. È catalogata, con controllo degli accessi e interrogabile da ogni superficie, accanto alle viste predefinite.
 
 **Eliminare.** L'icona del cestino compare solo per i report personalizzati. Le viste di gestione seminate non possono essere eliminate da questa interfaccia.
 
@@ -404,7 +399,7 @@ Lo stesso componente alimenta la finestra di anteprima e il visualizzatore dei r
 
 **Paginazione lato server.** Ogni pagina è una `SELECT *` governata a sé con `LIMIT 101 OFFSET n`. Per pagina compaiono 100 righe; la centounesima segnala se ne esistono altre. L'intero dataset non viene mai caricato nel browser.
 
-**Filtri e ordinamenti spinti in basso.** Ogni intestazione di colonna ha un campo di filtro. I termini di filtro diventano predicati `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`; i clic di ordinamento producono clausole `ORDER BY`. Entrambi arrivano al database — un filtro su una tabella da un miliardo di righe percorre l'origine, non le 100 righe che si hanno davanti.
+**Filtri e ordinamenti spinti in basso.** Ogni intestazione di colonna ha un campo filtro. Un termine di filtro diventa un predicato `WHERE LOWER(CAST(col AS VARCHAR)) LIKE LOWER('%term%')`, e un clic di ordinamento produce una clausola `ORDER BY`. Entrambi vengono eseguiti nel database. Un filtro su una tabella da un miliardo di righe scandisce la sorgente, e la sua portata non si limita mai alla pagina da 100 righe che avete davanti.
 
 **Raggruppamento a più livelli.** L'icona Layers in una qualsiasi intestazione di colonna include quella colonna nel raggruppamento. Le colonne di raggruppamento aprono l'`ORDER BY`, così i membri di un gruppo atterrano nella stessa pagina della loro intestazione anche a cavallo delle pagine. Le colonne di chiave primaria vengono aggiunte in coda come discriminante stabile. Le righe di intestazione di gruppo sono comprimibili; comprimerle nasconde i membri senza emettere una nuova query.
 
