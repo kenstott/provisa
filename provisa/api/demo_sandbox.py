@@ -57,9 +57,10 @@ NAMED = "named"
 SANDBOX_ROLE = "sandbox"
 _TOKEN_NAME = "Demo sandbox"
 
-# One process serves every sandbox (sandbox_tier.py), so this lock is the whole of the count's
-# protection: two visitors arriving at once cannot both take the last place.
-_opening = asyncio.Lock()
+# The count's protection: two visitors arriving at once cannot both take the last place. Every
+# request runs on a thread and event loop of its own, so an asyncio lock (bound to one loop) cannot
+# serialize them; the control plane's advisory lock does, across threads and processes alike.
+_OPENING_LOCK_KEY = 7351
 
 
 @dataclass(frozen=True)
@@ -142,8 +143,8 @@ async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> O
     admin = _admin_pool()
     org_id = new_sandbox_org_id()
     person = user_id if user_id is not None else visitor_user_id(org_id)
-    async with _opening:
-        async with admin.acquire() as conn:
+    async with admin.acquire() as conn:
+        async with conn.advisory_lock(_OPENING_LOCK_KEY):
             cap = int(settings_registry.value("sandbox.max_concurrent"))
             if await _open_count(conn) >= cap:
                 raise ApiError(
