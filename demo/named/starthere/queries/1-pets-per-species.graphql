@@ -1,0 +1,9 @@
+# How many pets there are of each species: the query the tour hands the GraphQL explorer.
+query PetsCountPerSpecies {
+  ps__petsGroupBy(by: [species]) {
+    groupKey
+    aggregate {
+      count
+    }
+  }
+}
