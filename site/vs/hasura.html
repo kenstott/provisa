@@ -139,6 +139,57 @@
           </table>
         </div>
 
+        <h2>Your own code</h2>
+        <p>
+          Hasura DDN puts your code behind the API in two ways. A
+          <a href="https://hasura.io/docs/3.0/business-logic/overview/" rel="noopener">lambda connector</a>
+          turns each TypeScript, Python or Go function into a command: a query or a
+          mutation, marked with a <code>@readonly</code> JSDoc tag, a
+          <code>@connector.register_query</code> decorator or a <code>Function</code>
+          name prefix. A <a href="https://hasura.io/docs/3.0/connectors/build-your-own" rel="noopener">connector you build yourself</a>
+          implements the NDC specification's endpoints, and every feature it declares,
+          filtering and relationships included, is code you write.
+        </p>
+        <p>
+          In Provisa you tag a Node or Python function with <code>@table</code>,
+          <code>@command</code> or <code>@stream</code>, with no SDK to import. The command
+          covers what a lambda is for. The table is what a lambda doesn't give you: rows
+          that join, filter and sort with every other table, carry the same grants, masks
+          and row rules, and read the same way over SQL, GraphQL, Cypher and every other
+          way in. The code is pinned to a package version, a Git commit or an upload.
+          It runs in a sandboxed worker while you develop, and <strong>Build image</strong>
+          packages it to run on a remote host of your own.
+        </p>
+        <div class="cmp-wrap">
+          <table class="cmp">
+            <thead>
+              <tr><th>&nbsp;</th><th>Hasura DDN lambda</th><th>Provisa code source</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th>A function becomes</th>
+                <td>A command (query or mutation)</td>
+                <td class="is-us">A table, a command or a live table</td>
+              </tr>
+              <tr>
+                <th>Writing it</th>
+                <td>JSDoc tag, decorator with an SDK import, or a name prefix</td>
+                <td class="is-us">One tag in the docstring; no import</td>
+              </tr>
+              <tr>
+                <th>Permissions</th>
+                <td>Per-role execution and argument presets</td>
+                <td class="is-us">Grants, masks and row rules, as on any table</td>
+              </tr>
+              <tr>
+                <th>Deploying</th>
+                <td>Connector service, introspect, a metadata file per command, supergraph build</td>
+                <td class="is-us">Register the pinned code; sandboxed worker in development, a built image on a remote host</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
         <h2>On staying put</h2>
         <p>
           Provisa is a handful of primitives (domains, tables, relationships, masking,
