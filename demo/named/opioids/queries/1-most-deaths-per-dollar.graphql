@@ -1,7 +1,7 @@
 # The counties with the most overdose deaths for each million dollars of treatment and recovery the
 # fund spent there in fiscal 2023: where the settlement money is meeting the fewest of the deaths.
 query MostDeathsPerDollar {
-  o__viewOverdoseBurdenByCounty(order_by: [{ deathsPerMillionSpent: desc }], limit: 10) {
+  o__viewTreatmentAgainstBurden(order_by: [{ deathsPerMillionSpent: desc }], limit: 10) {
     countyName
     region
     population

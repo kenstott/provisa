@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "La risposta in SQL",
-        "description": "La vista overdose_burden_by_county collega la spesa del fondo per trattamento e recupero alle morti di ogni contea, ed è mantenuta memorizzata. Ordinata per morti per milione di dollari spesi, mette prima le contee dove il denaro incontra più morti."
+        "description": "La vista treatment_against_burden unisce la spesa del fondo per cura e recupero ai decessi di ogni contea, ed è conservata. Ordinata per decessi per ogni milione di dollari speso, mette prima le contee in cui il denaro incontra più decessi."
       },
       "opioidsRecap": {
         "title": "Che cosa hai visto",
-        "description": "I dati propri del fondo, letti in tempo reale, e dati pubblici sanitari e del censimento, caricati una volta, collegati per contea in un unico modello governato. Una vista memorizzata risponde alla domanda del consiglio in SQL, GraphQL e REST, e personale e pubblico vedono ciascuno ciò che il proprio ruolo consente."
+        "description": "I dati del fondo stesso, letti dal vivo, e i dati di sanità pubblica e del censimento, importati una volta, uniti per contea in un unico modello governato. Due viste conservate rispondono alla domanda: quella del personale, che legge la spesa del fondo, e il cruscotto pubblico, che non ne legge nulla. Ciascuna è servita in SQL, GraphQL e REST ai ruoli autorizzati a leggerla."
       },
       "opioidsGovdata": {
         "title": "I dati pubblici",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "Come la vede il pubblico",
-        "description": "La stessa vista, eseguita con il ruolo public: la dashboard del consiglio. Mostra morti, tassi e spesa per residente per contea, e nessuna assegnazione del fondo né i fornitori pagati."
+        "description": "Il cruscotto del consiglio, eseguito con il ruolo public: la vista overdose_burden_by_county. Mostra per ogni contea residenti, decessi, tasso di mortalità e fondi federali per residente, e non legge alcuna assegnazione del fondo né i fornitori pagati."
       },
       "opioidsByRegion": {
         "title": "Per regione, in GraphQL",

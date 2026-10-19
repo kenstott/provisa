@@ -170,9 +170,41 @@ tables:
   - {name: obligated_amount_excl_loans, data_type: double, description: 'Federal money obligated there in USD, loans aside', visible_to: [org_admin, staff, public]}
   - {name: year, data_type: integer, description: "The federal fiscal year", visible_to: [org_admin, staff, public]}
 views:
-# The answer, and the council's dashboard: each county's 2023 overdose deaths beside the treatment
-# and recovery the fund paid for there that year. Stored, and built again when its inputs change.
+# The council's dashboard, for everyone the demo serves, the public included: each county's 2023
+# overdose deaths and death rate beside its residents and the federal money obligated there. It
+# reads no allocation: a statement is governed whole, so a view the public reads names only what
+# the public may read. Stored, and built again when its inputs change.
 - id: overdose_burden_by_county
+  domain_id: opioids
+  materialize: true
+  enable_aggregates: true
+  enable_group_by: true
+  description: Each county's 2023 overdose deaths and death rate beside its residents and the
+    federal money obligated there for each resident
+  sql: >-
+    SELECT c.county_fips, c.county_name, c.region,
+           p.total_population AS population,
+           CAST(NULLIF(d.provisional_drug_overdose, '') AS INTEGER) AS deaths,
+           r.rate AS death_rate,
+           r.rate_m AS rate_modelled,
+           f.obligated_amount_excl_loans / p.total_population AS federal_per_resident
+    FROM "opioids"."counties" AS c
+    JOIN "opioids"."population" AS p ON p.county_fips = c.county_fips
+    LEFT JOIN "opioids"."overdose_deaths" AS d ON d.fips = c.county_fips
+    LEFT JOIN "opioids"."overdose_rates" AS r ON r.geoid = c.county_fips
+    LEFT JOIN "opioids"."federal_spending" AS f ON f.county_fips = c.county_fips
+  columns:
+  - {name: county_fips, data_type: varchar, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
+  - {name: region, data_type: varchar, description: The fund's region the county is in, visible_to: [org_admin, staff, public]}
+  - {name: population, data_type: bigint, description: Its residents in 2023, visible_to: [org_admin, staff, public]}
+  - {name: deaths, data_type: integer, description: 'Its overdose deaths in 2023; empty where CDC suppresses a count of 1 to 9', visible_to: [org_admin, staff, public]}
+  - {name: death_rate, data_type: double, description: 'Overdose deaths per 100,000 residents in 2023', visible_to: [org_admin, staff, public]}
+  - {name: rate_modelled, data_type: boolean, description: Whether the rate is CDC's modelled estimate, visible_to: [org_admin, staff, public]}
+  - {name: federal_per_resident, data_type: double, description: 'Federal money obligated there for each resident in USD, loans aside', visible_to: [org_admin, staff, public]}
+# The answer, for the fund's staff: each county's deaths beside the treatment and recovery the fund
+# paid for there in fiscal 2023, and the deaths for each million dollars of it. Stored.
+- id: treatment_against_burden
   domain_id: opioids
   materialize: true
   enable_aggregates: true
@@ -188,8 +220,7 @@ views:
            s.treatment_spent,
            s.treatment_spent / p.total_population AS treatment_per_resident,
            r.rate * p.total_population / 100000.0 / (s.treatment_spent / 1000000.0)
-             AS deaths_per_million_spent,
-           f.obligated_amount_excl_loans / p.total_population AS federal_per_resident
+             AS deaths_per_million_spent
     FROM "opioids"."counties" AS c
     JOIN (
       SELECT a.county_fips, SUM(a.spent) AS treatment_spent
@@ -200,19 +231,17 @@ views:
     JOIN "opioids"."population" AS p ON p.county_fips = c.county_fips
     LEFT JOIN "opioids"."overdose_deaths" AS d ON d.fips = c.county_fips
     LEFT JOIN "opioids"."overdose_rates" AS r ON r.geoid = c.county_fips
-    LEFT JOIN "opioids"."federal_spending" AS f ON f.county_fips = c.county_fips
   columns:
-  - {name: county_fips, data_type: varchar, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff, public]}
-  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff, public]}
-  - {name: region, data_type: varchar, description: The fund's region the county is in, visible_to: [org_admin, staff, public]}
-  - {name: population, data_type: bigint, description: Its residents in 2023, visible_to: [org_admin, staff, public]}
-  - {name: deaths, data_type: integer, description: 'Its overdose deaths in 2023; empty where CDC suppresses a count of 1 to 9', visible_to: [org_admin, staff, public]}
-  - {name: death_rate, data_type: double, description: 'Overdose deaths per 100,000 residents in 2023', visible_to: [org_admin, staff, public]}
-  - {name: rate_modelled, data_type: boolean, description: Whether the rate is CDC's modelled estimate, visible_to: [org_admin, staff, public]}
-  - {name: treatment_spent, data_type: decimal, description: What the fund spent there on treatment and recovery in fiscal 2023 in USD, visible_to: [org_admin, staff, public]}
-  - {name: treatment_per_resident, data_type: decimal, description: That spending for each resident in USD, visible_to: [org_admin, staff, public]}
-  - {name: deaths_per_million_spent, data_type: double, description: 'Overdose deaths for each million dollars of it, from the death rate: the higher, the less treatment the deaths are meeting', visible_to: [org_admin, staff, public]}
-  - {name: federal_per_resident, data_type: double, description: 'Federal money obligated there for each resident in USD, loans aside', visible_to: [org_admin, staff, public]}
+  - {name: county_fips, data_type: varchar, description: The county's 5-digit FIPS code, visible_to: [org_admin, staff]}
+  - {name: county_name, data_type: varchar, description: The county's name, visible_to: [org_admin, staff]}
+  - {name: region, data_type: varchar, description: The fund's region the county is in, visible_to: [org_admin, staff]}
+  - {name: population, data_type: bigint, description: Its residents in 2023, visible_to: [org_admin, staff]}
+  - {name: deaths, data_type: integer, description: 'Its overdose deaths in 2023; empty where CDC suppresses a count of 1 to 9', visible_to: [org_admin, staff]}
+  - {name: death_rate, data_type: double, description: 'Overdose deaths per 100,000 residents in 2023', visible_to: [org_admin, staff]}
+  - {name: rate_modelled, data_type: boolean, description: Whether the rate is CDC's modelled estimate, visible_to: [org_admin, staff]}
+  - {name: treatment_spent, data_type: decimal, description: What the fund spent there on treatment and recovery in fiscal 2023 in USD, visible_to: [org_admin, staff]}
+  - {name: treatment_per_resident, data_type: decimal, description: That spending for each resident in USD, visible_to: [org_admin, staff]}
+  - {name: deaths_per_million_spent, data_type: double, description: 'Overdose deaths for each million dollars of it, from the death rate: the higher, the less treatment the deaths are meeting', visible_to: [org_admin, staff]}
 relationships:
 - {id: allocation-to-county, alias: PAID_TO, cardinality: many-to-one, source_table_id: allocations, source_column: county_fips, target_table_id: counties, target_column: county_fips}
 - {id: county-to-overdose-deaths, alias: DEATHS_IN, cardinality: one-to-one, source_table_id: counties, source_column: county_fips, target_table_id: overdose_deaths, target_column: fips}

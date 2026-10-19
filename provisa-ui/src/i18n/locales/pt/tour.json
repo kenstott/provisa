@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "A resposta em SQL",
-        "description": "A view overdose_burden_by_county une o gasto do fundo com tratamento e recuperação às mortes de cada condado, e é mantida armazenada. Ordenada por mortes por milhão de dólares gastos, coloca primeiro os condados onde o dinheiro encontra mais mortes."
+        "description": "A visão treatment_against_burden une os gastos do fundo com tratamento e recuperação às mortes de cada condado, e é mantida armazenada. Ordenada por mortes a cada milhão de dólares gasto, coloca primeiro os condados onde o dinheiro encontra mais mortes."
       },
       "opioidsRecap": {
         "title": "O que você viu",
-        "description": "Os registros próprios do fundo, lidos ao vivo, e dados públicos de saúde e do censo, carregados uma vez, unidos por condado num modelo governado. Uma view armazenada responde à pergunta do conselho em SQL, GraphQL e REST, e a equipe e o público veem cada um o que o seu papel permite."
+        "description": "Os registros do próprio fundo, lidos ao vivo, e os dados de saúde pública e do censo, incorporados uma vez, unidos por condado em um modelo governado. Duas visões armazenadas respondem à pergunta: a da equipe, que lê os gastos do fundo, e o painel público, que não lê nada deles. Cada uma é servida em SQL, GraphQL e REST aos papéis autorizados a lê-la."
       },
       "opioidsGovdata": {
         "title": "Os dados públicos",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "Como o público vê",
-        "description": "A mesma view, executada com o papel public: o painel do conselho. Mostra mortes, taxas e gasto por residente por condado, e nenhuma alocação do fundo nem os prestadores pagos."
+        "description": "O painel do conselho, executado com o papel public: a visão overdose_burden_by_county. Mostra os residentes, as mortes, a taxa de mortalidade e o dinheiro federal por residente de cada condado, e não lê nenhuma alocação do fundo nem os fornecedores pagos."
       },
       "opioidsByRegion": {
         "title": "Por região, em GraphQL",

@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "Die Antwort in SQL",
-        "description": "Die View overdose_burden_by_county verknüpft die Ausgaben des Fonds für Behandlung und Genesung mit den Todesfällen jedes Countys und wird gespeichert vorgehalten. Nach Todesfällen je Million ausgegebener Dollar sortiert, stehen die Countys vorn, in denen das Geld auf die meisten Todesfälle trifft."
+        "description": "Die Sicht treatment_against_burden verknüpft die Ausgaben des Fonds für Behandlung und Genesung mit den Todesfällen jedes Landkreises und wird gespeichert vorgehalten. Nach Todesfällen je Million ausgegebener Dollar sortiert, stehen die Landkreise vorn, in denen das Geld auf die meisten Todesfälle trifft."
       },
       "opioidsRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Die eigenen Daten des Fonds, live gelesen, und öffentliche Gesundheits- und Zensusdaten, einmal geladen, über das County in einem geregelten Modell verknüpft. Eine gespeicherte View beantwortet die Frage des Rates in SQL, GraphQL und REST, wobei Mitarbeitende und Öffentlichkeit jeweils sehen, was ihre Rolle erlaubt."
+        "description": "Die eigenen Daten des Fonds, live gelesen, und Gesundheits- und Zensusdaten, einmal übernommen, nach Landkreis in einem gesteuerten Modell verknüpft. Zwei gespeicherte Sichten beantworten die Frage: die der Mitarbeiter, die die Ausgaben des Fonds liest, und das öffentliche Dashboard, das nichts davon liest. Jede wird in SQL, GraphQL und REST den Rollen bereitgestellt, die sie lesen dürfen."
       },
       "opioidsGovdata": {
         "title": "Die öffentlichen Daten",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "So sieht es die Öffentlichkeit",
-        "description": "Dieselbe View, ausgeführt als Rolle public: das Dashboard des Rates. Es zeigt Todesfälle, Raten und Ausgaben je Einwohner pro County, aber keine Zuweisungen des Fonds und keine bezahlten Anbieter."
+        "description": "Das Dashboard des Rates, ausgeführt als Rolle public: die Sicht overdose_burden_by_county. Sie zeigt für jeden Landkreis Einwohner, Todesfälle, Sterberate und Bundesmittel je Einwohner und liest keine Zuweisungen des Fonds und keine bezahlten Anbieter."
       },
       "opioidsByRegion": {
         "title": "Nach Region, in GraphQL",
