@@ -26,6 +26,15 @@ from provisa.compiler.schema_gen import SchemaInput
 _ROLE = {"id": "analyst", "capabilities": ["usage"], "domain_access": ["sales"]}
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """A deployment of one organisation, as the API layer says at import (provisa.api.app):
+    run alone, nothing here imports it, and the registry's secret reads ask."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 def _row(name: str, *, domain="sales", alias=None, visible_to=None) -> dict:
     return {
         "id": 9,
@@ -179,7 +188,12 @@ def test_a_draft_and_a_served_table_answer_to_the_same_qualified_names():
         "org_admin", RLSContext.empty(), {}, served, [served_row], role=role
     )
     qualified = {name for name in gov.table_map if "." in name}
-    assert qualified == {"pet_shelter.facts", "pet_shelter.financial_facts", "sec.financial_facts"}
+    assert qualified == {
+        "pet_shelter.facts",
+        "pet_shelter.financial_facts",
+        "sec.financial_facts",
+        "askamerica.sec.financial_facts",
+    }
     assert qualified <= set(_built(draft=True).draft_names)
 
 
