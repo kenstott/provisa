@@ -134,11 +134,11 @@ sources:
 
 ### רפרנס סוג מקור {: #source-type-reference }
 
-לסוגים הדורשים תצורה לא-מובנת-מאליה יש ערך קצר למטה. סוגי RDBMS (postgresql, mysql וכו') משתמשים רק בשדות המשותפים לעיל — אין צורך בסעיף נוסף.
+לכל סוג שצריך תצורה לא מובנת מאליה יש רשומה קצרה למטה. סוגי RDBMS (postgresql, mysql וכו') משתמשים רק בשדות המשותפים שלמעלה ולא צריכים מקטע משלהם.
 
 #### GovData
 
-מקורות `govdata` משתמשים במודל ברמה עליונה נפרד, `GovDataSource`, לא ב-`Source` הגנרי. הגישה מחולקת לפי קיבוץ subject.
+מקורות `govdata` משתמשים במודל עליון משלהם, `GovDataSource`, במקום ה-`Source` הכללי. הגישה מחולקת לפי קיבוץ נושאים.
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-הסכמות `ref` ו-`geo` תמיד כלולות כסכמות מקשרות (linker) — אינן ניתנות להגדרה ואינן מופיעות ברשימה לעיל. השתמשו ב-subject `ALL` כדי להעניק גישה לכל הסכמות.
+הסכמות `ref` ו-`geo` תמיד כלולות כסכמות מקשרות. אי אפשר להגדיר אותן והן לא מופיעות ברשימה שלמעלה. השתמשו בנושא `ALL` כדי להעניק גישה לכל הסכמות.
 
 #### Kafka
 
-השורה `kafka` תחת `sources:` היא רישום בלבד. ה-`details()` של המחבר שלה מחזיר `{}` — התצורה האמיתית נמצאת בבלוק `kafka_sources[]` ברמה העליונה, לא בשורת `sources:`. Kafka תמיד VIRTUAL_SOURCE (מנותב דרך המנוע; ללא pool ישיר).
+השורה `kafka` ב-`sources:` רק רושמת את המקור. ה-`details()` של המחבר שלה מחזיר `{}`; התצורה האמיתית נמצאת בבלוק העליון `kafka_sources[]`. Kafka הוא תמיד VIRTUAL_SOURCE: הוא עובר דרך המנוע ואין לו pool ישיר.
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`http_path` ב-`federation_hints` נדרש. `password` נושא את ה-personal access token. `catalog` אופציונלי (נישא ב-SQL/hints, לא בשדה `database`).
+`http_path` ב-`federation_hints` הוא חובה. `password` נושא את טוקן הגישה האישי. `catalog` אופציונלי ונכנס ל-SQL או לרמזים; השדה `database` לא מחזיק אותו.
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-שניהם משתמשים ב-T-SQL על גבי TDS עם אימות Azure AD. התאמתו עם `az login` (פיתוח) או זהות מנוהלת (ייצור) — המנוע קורא את האישורים דרך `DefaultAzureCredential` של `azure-identity`. פרטי חיבור מגיעים ממשתני סביבה: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) או `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), או דרך `PROVISA_ENGINE_URL`.
+שניהם משתמשים ב-T-SQL על גבי TDS עם אימות Azure AD. התחברו עם `az login` (פיתוח) או עם זהות מנוהלת (ייצור); המנוע קורא את פרטי ההתחברות דרך `DefaultAzureCredential` של `azure-identity`. פרטי החיבור מגיעים ממשתני סביבה, `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) או `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), או מ-`PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` ו-`port` מצביעים על ה-Hive Thrift metastore (פורט ברירת מחדל 9083). עבור `hive`, הגדירו `mapping["storage"]` כדי לבחור את ה-backend של אחסון האובייקטים. מפתחות חובה חסרים נכשלים בקול רם — ללא נפילה-חוזרת.
+`host` ו-`port` מצביעים על ה-metastore של Hive מסוג Thrift (פורט ברירת מחדל 9083). עבור `hive`, הגדירו `mapping["storage"]` כדי לבחור את ה-backend של אחסון האובייקטים. מפתח חובה חסר נכשל בקול רם, בלי ערך חלופי.
 
 `hive_s3` הוא סוג נבדל שתמיד מצהיר על אחסון S3; אין צורך ב-`mapping.storage`.
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**ערכות נתונים של Kaggle** לא ניתנות להוספה דרך קובץ זה — הן דורשות אסימון חי ובורר ערכת נתונים הזמינים בטופס המקורות (Sources → Subscriptions → Kaggle). מקור Kaggle שיוצא ל-YAML מופיע כ-`type: files` עם `kaggle_owner` ו-`kaggle_ref` תחת `federation_hints`. הורדה מחדש מ-Kaggle דורשת את ה-mutation‏ `refreshKaggleSource` או את תהליך הרענון ב-UI, לא עריכת YAML. ראו [ערכות נתונים של Kaggle](sources.md#kaggle-datasets) בהפניה של סוגי המקורות.
+אי אפשר להוסיף **ערכות נתונים של Kaggle** דרך הקובץ הזה, כי הן צריכות טוקן תקף ואת בורר ערכות הנתונים שבטופס המקורות (Sources → Subscriptions → Kaggle). מקור Kaggle שיוצא ל-YAML מופיע כ-`type: files` עם `kaggle_owner` ו-`kaggle_ref` ב-`federation_hints`. הורדה חוזרת מ-Kaggle דורשת את המוטציה `refreshKaggleSource` או את הרענון בממשק; עריכת ה-YAML לא עושה את זה. ראו [ערכות נתונים של Kaggle](sources.md#kaggle-datasets) בהפניה לסוגי המקורות.
 
 #### מקורות API / מרוחקים {: #api-remote-sources }
 
@@ -543,7 +543,7 @@ sources:
 
 #### בודקי איכות נתונים (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
-מקור בודק מצביע על נקודת הקצה pgwire של Provisa עצמה, כך שמנהל התקן postgres אחד סורק את התצוגה המפודררת של טבלה מגובית Snowflake או Iceberg. זהות הסריקה מוצהרת, לעולם לא נירשת — המדיניות חלה על אותו חיבור, וקבוצת שורות מסוננת אסור שתגרום לבדיקה שעוברת בשקט. מפתחות החיבור מגיעים מ-`mapping`: `host`, `port`, `database`, `user`, `password`.
+מקור בודק מצביע על נקודת הקצה pgwire של Provisa עצמו, כך שדרייבר postgres יחיד סורק את התצוגה המפודררת של טבלה שמאחוריה Snowflake או Iceberg. את זהות הסריקה מצהירים; היא לעולם לא עוברת בירושה. על החיבור הזה חלה המדיניות, וקבוצת שורות מסוננת לא אמורה להעביר בדיקה בשקט. מפתחות החיבור מגיעים מ-`mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-כל טבלת תוצאות נושאת `dq_contract` — YAML של חוזה Soda או JSON של סוויטת Great Expectations, כלשונו. עמודות, watermark וקידומים נגזרים ממנו; ראו [בודקי איכות נתונים](sources.md#data-quality-checkers) לגזירה המלאה.
+כל טבלת תוצאות נושאת את `dq_contract`, ה-YAML של חוזה Soda או ה-JSON של suite של Great Expectations, מילה במילה. העמודות, ה-watermark והקידומים נגזרים ממנו; איך בדיוק, ראו ב-[בודקי איכות נתונים](sources.md#data-quality-checkers).
 
-**בחירה בזמן התקנה.** הבודק אינו מקושר-פנימה — הסריקה רצה בפרשן-ילד, והספרייה מותקנת רק כשמפעיל מציין אותה בשם. כל נתיב מתקין (`install.sh`, `packaging/linux/first-launch.sh`, ואשף macOS דרך `PROVISA_DQ_CHECKER`) כותב את הבחירה ל-`~/.provisa/config.yaml`:
+**בחירה בזמן ההתקנה.** הבודק לא מקושר פנימה: הסריקה רצה במפרש-בן, והספרייה מותקנת רק כשמפעיל מציין אותה. כל נתיב התקנה (`install.sh`, `packaging/linux/first-launch.sh`, ואשף ה-macOS דרך `PROVISA_DQ_CHECKER`) כותב את הבחירה ל-`~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 התקנת מערך הדגמה מעלה את `none` ל-`gx` ומודיעה על כך, כיוון שתצורת ההדגמה רושמת סוויטת Great Expectations על `pet_store.pets` וכרטיס האיכות שלה לא היה לו מה להציג אחרת. ציון `soda` בשם משאיר `soda`.
 
-הגעה להדגמה דרך pip ולא דרך מתקין מדלגת על שלב האשף הזה, כך שהתוסף `demo` נושא את אותו בודק: `pip install 'provisa[embedded,demo]'` הוא מה ש-`provisa run --demo` צריך כדי שהסריקה שלו תרוץ. בלעדיו הסריקה מדווחת `data-quality checker 'great_expectations' is not installed`, ומציינת את פקודת ההתקנה.
+אם מגיעים להדגמה דרך pip ולא דרך תוכנת התקנה, מדלגים על שלב האשף הזה, ולכן התוספת `demo` כוללת את אותו בודק: `provisa run --demo` צריך את `pip install 'provisa[embedded,demo]'` כדי שהסריקה שלו תרוץ. בלעדיו, הסריקה מדווחת `data-quality checker 'great_expectations' is not installed` ומציינת את פקודת ההתקנה.
 
-כל ערך אחר עוצר את המשגר במקום להתחיל בלי הבודק שהמפעיל ביקש. התוסף `soda` מושך את `soda-postgres`; `gx` מושך את `great-expectations[postgresql]`. Soda Core היא Elastic License 2.0 — `config/capabilities.yaml` מסמן את האפשרות `cloud_eligible: false`, והמישור המתארח דוחה אותה.
+כל ערך אחר עוצר את המשגר, כך שהוא לעולם לא עולה בלי הבודק שהמפעיל ביקש. התוספת `soda` מושכת את `soda-postgres`, ו-`gx` מושכת את `great-expectations[postgresql]`. Soda Core נמצא תחת Elastic License 2.0: `config/capabilities.yaml` מסמן את האפשרות כ-`cloud_eligible: false`, והמישור המתארח דוחה אותה.
 
 ## דומיינים {: #domains }
 

@@ -134,11 +134,11 @@ Todos los orígenes comparten un conjunto común de campos.
 
 ### Referencia de tipos de origen {: #source-type-reference }
 
-Los tipos que necesitan configuración no obvia tienen una entrada breve a continuación. Los tipos RDBMS (postgresql, mysql, etc.) usan solo los campos comunes de arriba — no necesitan sección adicional.
+Cada tipo que necesita una configuración poco evidente tiene una entrada breve abajo. Los tipos RDBMS (postgresql, mysql, etc.) usan solo los campos comunes de arriba y no necesitan sección propia.
 
 #### GovData
 
-Los orígenes `govdata` usan un modelo de nivel superior separado, `GovDataSource`, no el `Source` genérico. El acceso se particiona por agrupación de subject.
+Los orígenes `govdata` usan un modelo de nivel superior propio, `GovDataSource`, en lugar del `Source` genérico. El acceso se reparte por agrupación de temas.
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ Cada subject se asigna a uno o más esquemas de GovData. Configurar un origen `g
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-Los esquemas `ref` y `geo` siempre se incluyen como esquemas de enlace — no son configurables y no se listan arriba. Use el subject `ALL` para conceder acceso a todos los esquemas.
+Los esquemas `ref` y `geo` se incluyen siempre como esquemas de enlace. No se pueden configurar y no aparecen en la lista de arriba. Use el tema `ALL` para conceder acceso a todos los esquemas.
 
 #### Kafka
 
-La fila `kafka` en `sources:` es solo de registro. El `details()` de su conector devuelve `{}` — la configuración real vive en el bloque de nivel superior `kafka_sources[]`, no en una fila de `sources:`. Kafka siempre es un VIRTUAL_SOURCE (enruta a través del motor; sin pool directo).
+La fila `kafka` de `sources:` solo registra el origen. El `details()` de su conector devuelve `{}`; la configuración real está en el bloque de nivel superior `kafka_sources[]`. Kafka es siempre un VIRTUAL_SOURCE: pasa por el motor y no tiene pool directo.
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`http_path` en `federation_hints` es requerido. `password` lleva el token de acceso personal. `catalog` es opcional (se transporta en SQL/hints, no en el campo `database`).
+`http_path` en `federation_hints` es obligatorio. `password` lleva el token de acceso personal. `catalog` es opcional y va en el SQL o en los hints; el campo `database` no lo contiene.
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-Ambos usan T-SQL sobre TDS con autenticación Azure AD. Autentíquese con `az login` (desarrollo) o una identidad administrada (producción) — el motor lee las credenciales mediante `DefaultAzureCredential` de `azure-identity`. Los detalles de conexión provienen de variables de entorno: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) o `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), o mediante `PROVISA_ENGINE_URL`.
+Ambos usan T-SQL sobre TDS con autenticación de Azure AD. Inicie sesión con `az login` (desarrollo) o con una identidad administrada (producción); el motor lee las credenciales mediante `DefaultAzureCredential` de `azure-identity`. Los datos de conexión vienen de variables de entorno, `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) o `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), o de `PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` y `port` apuntan al metastore Thrift de Hive (puerto por defecto 9083). Para `hive`, configure `mapping["storage"]` para elegir el backend de almacenamiento de objetos. Las claves requeridas faltantes fallan de forma ruidosa — sin reserva silenciosa.
+`host` y `port` apuntan al metastore Thrift de Hive (puerto predeterminado 9083). Para `hive`, defina `mapping["storage"]` para elegir el backend de almacenamiento de objetos. Una clave obligatoria que falte falla de forma visible, sin valor de reserva.
 
 `hive_s3` es un tipo distinto que siempre declara almacenamiento S3; no necesita `mapping.storage`.
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**Los conjuntos de datos de Kaggle** no pueden agregarse mediante este archivo — requieren un token en vivo y el selector de conjuntos de datos disponible en el formulario de Orígenes (Orígenes → Suscripciones → Kaggle). Un origen de Kaggle exportado a YAML aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Volver a descargar desde Kaggle requiere la mutación `refreshKaggleSource` o el flujo de actualización de la UI, no una edición de YAML. Véase [Conjuntos de datos de Kaggle](sources.md#kaggle-datasets) en la referencia de tipos de origen.
+Los **conjuntos de datos de Kaggle** no se pueden añadir con este archivo, porque necesitan un token válido y el selector de conjuntos de datos del formulario de orígenes (Orígenes → Suscripciones → Kaggle). Un origen de Kaggle exportado a YAML aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Volver a descargar de Kaggle requiere la mutación `refreshKaggleSource` o la actualización en la UI; editar el YAML no lo hace. Consulte [Conjuntos de datos de Kaggle](sources.md#kaggle-datasets) en la referencia de tipos de origen.
 
 #### Orígenes de API / remotos {: #api-remote-sources }
 
@@ -543,7 +543,7 @@ sources:
 
 #### Verificadores de calidad de datos (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
-Un origen verificador apunta al propio endpoint pgwire de Provisa, de modo que un driver de postgres explora la vista federada de una tabla respaldada por Snowflake o Iceberg. La identidad del escaneo se declara, nunca se hereda — la política se aplica a esa conexión, y un conjunto de filas filtrado no debe producir un chequeo que pase silenciosamente. Las claves de conexión provienen de `mapping`: `host`, `port`, `database`, `user`, `password`.
+Un origen verificador apunta al propio endpoint pgwire de Provisa, así que un solo driver de postgres escanea la vista federada de una tabla respaldada por Snowflake o Iceberg. La identidad del escaneo se declara; nunca se hereda. La política se aplica a esa conexión, y un conjunto de filas filtrado no debe dejar pasar una comprobación sin que nadie lo note. Las claves de conexión salen de `mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Cada tabla de resultados lleva `dq_contract` — YAML de contrato Soda o JSON de un suite de Great Expectations, textual. Las columnas, la marca de agua y las promociones se derivan de él; ver [Verificadores de calidad de datos](sources.md#data-quality-checkers) para la derivación completa.
+Cada tabla de resultados lleva `dq_contract`, el YAML del contrato de Soda o el JSON de la suite de Great Expectations palabra por palabra. Las columnas, la marca de agua y las promociones se derivan de él; consulte cómo en [Verificadores de calidad de datos](sources.md#data-quality-checkers).
 
-**Selección en tiempo de instalación.** El verificador no se enlaza de forma estática — el escaneo se ejecuta en un intérprete hijo, y la biblioteca se instala solo cuando un operador la nombra. Cada ruta de instalador (`install.sh`, `packaging/linux/first-launch.sh` y el asistente de macOS mediante `PROVISA_DQ_CHECKER`) escribe la elección en `~/.provisa/config.yaml`:
+**Selección al instalar.** El verificador no se enlaza: el escaneo se ejecuta en un intérprete hijo, y la biblioteca solo se instala cuando un operador la nombra. Cada ruta de instalación (`install.sh`, `packaging/linux/first-launch.sh` y el asistente de macOS mediante `PROVISA_DQ_CHECKER`) escribe la elección en `~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 Instalar el conjunto de datos de demostración eleva `none` a `gx` y lo indica, porque la configuración de demo registra un suite de Great Expectations sobre `pet_store.pets` y, de lo contrario, su tablero de calidad no tendría nada que mostrar. Nombrar `soda` mantiene `soda`.
 
-Llegar a la demo mediante pip en lugar de un instalador omite ese paso del asistente, así que el extra `demo` lleva el mismo verificador: `pip install 'provisa[embedded,demo]'` es lo que `provisa run --demo` necesita para que su escaneo se ejecute. Sin él, el escaneo informa `data-quality checker 'great_expectations' is not installed`, nombrando el comando de instalación.
+Si llega a la demo con pip en lugar de con un instalador, se salta ese paso del asistente, así que el extra `demo` lleva el mismo verificador: `provisa run --demo` necesita `pip install 'provisa[embedded,demo]'` para que su escaneo se ejecute. Sin él, el escaneo informa `data-quality checker 'great_expectations' is not installed` e indica el comando de instalación.
 
-Cualquier otro valor detiene el lanzador en lugar de iniciar sin el verificador que el operador pidió. El extra `soda` trae `soda-postgres`; `gx` trae `great-expectations[postgresql]`. Soda Core está bajo Elastic License 2.0 — `config/capabilities.yaml` marca la opción como `cloud_eligible: false`, y el plano alojado la rechaza.
+Cualquier otro valor detiene el lanzador, de modo que nunca arranca sin el verificador que pidió el operador. El extra `soda` trae `soda-postgres` y `gx` trae `great-expectations[postgresql]`. Soda Core está bajo la Elastic License 2.0: `config/capabilities.yaml` marca la opción como `cloud_eligible: false`, y el plano alojado la rechaza.
 
 ## Dominios {: #domains }
 

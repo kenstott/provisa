@@ -134,11 +134,11 @@ sources:
 
 ### 數據來源類型參考 {: #source-type-reference }
 
-組態不夠直觀的類型各有一段簡短說明。RDBMS 類型（postgresql、mysql 等）只用到上述通用欄位 — 不需額外章節。
+需要非顯而易見設定的每種類型在下面都有一個簡短條目。RDBMS 類型（postgresql、mysql 等）只使用上面的通用欄位，不需要獨立的小節。
 
 #### GovData
 
-`govdata` 數據來源使用獨立的頂層模型 `GovDataSource`，而非通用的 `Source`。 存取按主題分組劃分。
+`govdata` 數據來源使用自己的頂層模型 `GovDataSource`，而不是通用的 `Source`。存取權限按主題分組劃分。
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-`ref` 與 `geo` 結構描述一律作為連結結構描述納入 — 不可組態，也未列於上表。 使用主題 `ALL` 可授予所有結構描述的存取權。
+`ref` 及 `geo` 結構描述一律作為關聯結構描述包含在內，無法設定，亦不在上面的清單中。使用主題 `ALL` 可授予對所有結構描述的存取權。
 
 #### Kafka
 
-`sources:` 中的 `kafka` 項目僅供註冊。其連接器的 `details()` 回傳 `{}` — 真正的組態位於頂層 `kafka_sources[]` 區塊，而非 `sources:` 項目。Kafka 一律是 VIRTUAL_SOURCE（經由引擎路由；無直接集區）。
+`sources:` 中的 `kafka` 行只用於註冊數據來源。其連接器的 `details()` 傳回 `{}`；真正的設定在頂層的 `kafka_sources[]` 區塊中。Kafka 一律是 VIRTUAL_SOURCE：經由引擎路由，沒有直接連線池。
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`federation_hints` 中必須有 `http_path`。`password` 攜帶個人存取權杖。`catalog` 為選用（由 SQL/hints 攜帶，不在 `database` 欄位）。
+`federation_hints` 中的 `http_path` 是必需的。`password` 承載個人存取權杖。`catalog` 是可選的，放在 SQL 或 hints 中；`database` 欄位不存放它。
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-兩者皆使用透過 TDS 的 T-SQL 搭配 Azure AD 驗證。以 `az login`（開發者）或受控識別（生產環境）進行驗證 — 引擎透過 `azure-identity` 的 `DefaultAzureCredential` 讀取認證。連線詳細資料來自環境變數：`FABRIC_SQL_SERVER` / `FABRIC_DATABASE`（Fabric）或 `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE`（Synapse），或透過 `PROVISA_ENGINE_URL`。
+兩者都經 TDS 使用 T-SQL，並採用 Azure AD 驗證。用 `az login`（開發）或受控識別（生產）登入；引擎經 `azure-identity` 的 `DefaultAzureCredential` 讀取憑證。連線資料來自環境變數 `FABRIC_SQL_SERVER` / `FABRIC_DATABASE`（Fabric）或 `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE`（Synapse），亦可以來自 `PROVISA_ENGINE_URL`。
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` 與 `port` 指向 Hive Thrift metastore（預設連接埠 9083）。對 `hive` 而言，設定 `mapping["storage"]` 以選擇物件儲存體後端。缺少必要的鍵會明確失敗 — 沒有後備值。
+`host` 及 `port` 指向 Hive Thrift 中繼資料存放區（預設連接埠 9083）。對於 `hive`，用 `mapping["storage"]` 選擇物件儲存後端。缺少必需的鍵會明確報錯，沒有後備值。
 
 `hive_s3` 是一個獨立類型，一律宣告 S3 儲存體；不需 `mapping.storage`。
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**Kaggle 數據集**無法透過此檔案新增——它們需要即時權杖，以及僅在「數據來源」表單中提供的數據集選擇器（數據來源 → 訂閱 → Kaggle）。匯出為 YAML 的 Kaggle 數據來源會顯示為 `type: files`，並在 `federation_hints` 中帶有 `kaggle_owner` 和 `kaggle_ref`。從 Kaggle 重新下載需要 `refreshKaggleSource` 變更（mutation）或 UI 刷新流程，而不是編輯 YAML。請參閱數據來源類型參考中的 [Kaggle 數據集](sources.md#kaggle-datasets)。
+**Kaggle 數據集**不能經此檔案加入，因為它們需要有效權杖以及數據來源表單中的數據集選擇器（數據來源 → 訂閱 → Kaggle）。匯出為 YAML 的 Kaggle 數據來源顯示為 `type: files`，並在 `federation_hints` 中帶有 `kaggle_owner` 及 `kaggle_ref`。要重新從 Kaggle 下載，需要使用 `refreshKaggleSource` 變更或介面中的重新整理；編輯 YAML 做不到。參見數據來源類型參考中的 [Kaggle 數據集](sources.md#kaggle-datasets)。
 
 #### API／遠端數據來源 {: #api-remote-sources }
 
@@ -543,7 +543,7 @@ sources:
 
 #### 數據品質檢查器（soda / great_expectations） {: #data-quality-checkers-soda-great_expectations }
 
-檢查器數據來源指向 Provisa 自己的 pgwire 端點，因此單一個 postgres 驅動程式即可掃描以 Snowflake 或 Iceberg 為底的表的聯邦檢視。掃描身分是宣告出來的，不是繼承來的 — 原則套用於該連線，而經過篩選的資料列集合不得產生一項悄悄通過的檢查。連線鍵來自 `mapping`：`host`、`port`、`database`、`user`、`password`。
+檢查器數據來源指向 Provisa 自己的 pgwire 端點，因此一個 postgres 驅動程式就能掃描背後是 Snowflake 或 Iceberg 的資料表的聯邦檢視。掃描身分需要明確宣告，從不繼承。政策作用於這個連線，被篩選的資料列集不能令檢查悄悄通過。連線鍵來自 `mapping`：`host`、`port`、`database`、`user`、`password`。
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-每個結果表都帶有 `dq_contract` — 逐字保留的 Soda 合約 YAML 或 Great Expectations 套件 JSON。欄位、水位與晉升皆由它衍生；完整衍生方式見[數據品質檢查器](sources.md#data-quality-checkers)。
+每個結果資料表都帶有 `dq_contract`，即原樣保存的 Soda 契約 YAML 或 Great Expectations 套件 JSON。資料行、水位及晉升都由它推導；具體方式見[數據品質檢查器](sources.md#data-quality-checkers)。
 
-**安裝期選擇。** 檢查器並未連結進來 — 掃描在子解譯器中執行，而程式庫只在操作者指名時才安裝。每條安裝路徑（`install.sh`、`packaging/linux/first-launch.sh`，以及 macOS 精靈透過 `PROVISA_DQ_CHECKER`）都會把選擇寫入 `~/.provisa/config.yaml`：
+**安裝時選擇。** 檢查器不會被連結進來：掃描在子直譯器中執行，只有營運者指定時才安裝相應的程式庫。每條安裝路徑（`install.sh`、`packaging/linux/first-launch.sh`，以及經 `PROVISA_DQ_CHECKER` 的 macOS 精靈）都會把選擇寫入 `~/.provisa/config.yaml`：
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 安裝示範數據集會把 `none` 提升為 `gx` 並明說此事，因為示範組態在 `pet_store.pets` 上註冊了一個 Great Expectations 套件，否則其品質計分卡將無內容可顯示。指名 `soda` 則維持 `soda`。
 
-以 pip 而非安裝程式取得示範會跳過該精靈步驟，所以 `demo` extra 帶有同一個檢查器：`pip install 'provisa[embedded,demo]'` 正是 `provisa run --demo` 執行掃描所需。缺少它，掃描會回報 `data-quality checker 'great_expectations' is not installed`，並指出安裝指令。
+如經 pip 而不是安裝程式進入示範，就會略過那一步精靈，所以 `demo` 額外依賴包含同一個檢查器：`provisa run --demo` 需要 `pip install 'provisa[embedded,demo]'` 才能執行掃描。缺少它時，掃描會報告 `data-quality checker 'great_expectations' is not installed`，並給出安裝命令。
 
-任何其他值都會讓啟動器停止，而不是在缺少操作者指定的檢查器的情況下啟動。`soda` extra 會拉入 `soda-postgres`；`gx` 拉入 `great-expectations[postgresql]`。Soda Core 採用 Elastic License 2.0 — `config/capabilities.yaml` 將該選項標記為 `cloud_eligible: false`，託管平面會拒絕它。
+任何其他值都會令啟動器停止，所以它不會在缺少營運者所要求檢查器的情況下啟動。`soda` 額外依賴會拉取 `soda-postgres`，`gx` 會拉取 `great-expectations[postgresql]`。Soda Core 採用 Elastic License 2.0：`config/capabilities.yaml` 把該選項標為 `cloud_eligible: false`，託管平面會拒絕它。
 
 ## 網域 {: #domains }
 

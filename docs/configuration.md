@@ -134,11 +134,11 @@ All sources share a common field set.
 
 ### Source type reference
 
-Types needing non-obvious config each have a short entry below. RDBMS types (postgresql, mysql, etc.) use only the common fields above — no additional section needed.
+Each type that needs non-obvious config has a short entry below. RDBMS types (postgresql, mysql and so on) use only the common fields above and need no section of their own.
 
 #### GovData
 
-`govdata` sources use a separate top-level model, `GovDataSource`, not the generic `Source`. Access is partitioned by subject grouping.
+`govdata` sources use a top-level model of their own, `GovDataSource`, instead of the generic `Source`. Access is divided up by subject grouping.
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ Each subject maps to one or more GovData schemas. Configuring a `govdata` source
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-The `ref` and `geo` schemas are always included as linker schemas — not configurable and not listed above. Use subject `ALL` to grant access to every schema.
+The `ref` and `geo` schemas are always included as linker schemas. They can't be configured and aren't listed above. Use the subject `ALL` to grant access to every schema.
 
 #### Kafka
 
-The `kafka` row in `sources:` is registration-only. Its connector's `details()` returns `{}` — the real configuration lives in the top-level `kafka_sources[]` block, not in a `sources:` row. Kafka is always a VIRTUAL_SOURCE (routes through the engine; no direct pool).
+The `kafka` row in `sources:` only registers the source. Its connector's `details()` returns `{}`; the real configuration lives in the top-level `kafka_sources[]` block. Kafka is always a VIRTUAL_SOURCE: it routes through the engine and has no direct pool.
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`http_path` in `federation_hints` is required. `password` carries the personal access token. `catalog` is optional (carried in SQL/hints, not the `database` field).
+`http_path` in `federation_hints` is required. `password` carries the personal access token. `catalog` is optional and goes in SQL or the hints; the `database` field doesn't hold it.
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-Both use T-SQL over TDS with Azure AD authentication. Authenticate with `az login` (developer) or a managed identity (production) — the engine reads credentials via `azure-identity`'s `DefaultAzureCredential`. Connection details come from env vars: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) or `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), or via `PROVISA_ENGINE_URL`.
+Both use T-SQL over TDS with Azure AD authentication. Sign in with `az login` (developer) or a managed identity (production); the engine reads the credentials through `azure-identity`'s `DefaultAzureCredential`. Connection details come from environment variables, `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) or `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), or from `PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` and `port` point to the Hive Thrift metastore (default port 9083). For `hive`, set `mapping["storage"]` to choose the object store backend. Missing required keys fail loud — no fallback.
+`host` and `port` point to the Hive Thrift metastore (default port 9083). For `hive`, set `mapping["storage"]` to choose the object store backend. A missing required key fails loudly, with no fallback.
 
 `hive_s3` is a distinct type that always declares S3 storage; no `mapping.storage` needed.
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**Kaggle datasets** cannot be added through this file — they require a live token and dataset picker available in the Sources form (Sources → Subscriptions → Kaggle). A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Re-downloading from Kaggle requires the `refreshKaggleSource` mutation or the UI refresh flow, not a YAML edit. See [Kaggle datasets](sources.md#kaggle-datasets) in the source types reference.
+**Kaggle datasets** can't be added through this file, because they need a live token and the dataset picker in the Sources form (Sources → Subscriptions → Kaggle). A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Downloading from Kaggle again takes the `refreshKaggleSource` mutation or the refresh in the UI; editing the YAML won't do it. See [Kaggle datasets](sources.md#kaggle-datasets) in the source types reference.
 
 #### API / Remote sources
 
@@ -543,7 +543,7 @@ sources:
 
 #### Data quality checkers (soda / great_expectations)
 
-A checker source points at Provisa's own pgwire endpoint, so one postgres driver scans the federated view of a Snowflake- or Iceberg-backed table. The scan identity is declared, never inherited — policy applies to that connection, and a filtered row set must not produce a silently passing check. Connection keys come from `mapping`: `host`, `port`, `database`, `user`, `password`.
+A checker source points at Provisa's own pgwire endpoint, so one postgres driver scans the federated view of a table backed by Snowflake or Iceberg. You declare the scan identity; it's never inherited. Policy applies to that connection, and a filtered set of rows must not let a check pass silently. Connection keys come from `mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Each results table carries `dq_contract` — Soda contract YAML or a Great Expectations suite JSON, verbatim. Columns, watermark and promotions are derived from it; see [Data Quality Checkers](sources.md#data-quality-checkers) for the full derivation.
+Each results table carries `dq_contract`, the Soda contract YAML or Great Expectations suite JSON word for word. Columns, watermark and promotions are derived from it; see [Data Quality Checkers](sources.md#data-quality-checkers) for how.
 
-**Install-time selection.** The checker is not linked in — the scan runs in a child interpreter, and the library is installed only when an operator names it. Every installer path (`install.sh`, `packaging/linux/first-launch.sh`, and the macOS wizard through `PROVISA_DQ_CHECKER`) writes the choice to `~/.provisa/config.yaml`:
+**Install-time selection.** The checker isn't linked in: the scan runs in a child interpreter, and the library is installed only when an operator names it. Every installer path (`install.sh`, `packaging/linux/first-launch.sh`, and the macOS wizard through `PROVISA_DQ_CHECKER`) writes the choice to `~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 Installing the demo dataset raises `none` to `gx` and says so, because the demo config registers a Great Expectations suite over `pet_store.pets` and its quality scorecard would otherwise have nothing to show. Naming `soda` keeps `soda`.
 
-Reaching the demo through pip rather than an installer skips that wizard step, so the `demo` extra carries the same checker: `pip install 'provisa[embedded,demo]'` is what `provisa run --demo` needs for its scan to run. Without it the scan reports `data-quality checker 'great_expectations' is not installed`, naming the install command.
+If you reach the demo through pip instead of an installer, you skip that wizard step, so the `demo` extra carries the same checker: `provisa run --demo` needs `pip install 'provisa[embedded,demo]'` for its scan to run. Without it the scan reports `data-quality checker 'great_expectations' is not installed` and names the install command.
 
-Any other value stops the launcher rather than starting without the checker the operator asked for. The `soda` extra pulls `soda-postgres`; `gx` pulls `great-expectations[postgresql]`. Soda Core is Elastic License 2.0 — `config/capabilities.yaml` marks the option `cloud_eligible: false`, and the hosted plane refuses it.
+Any other value stops the launcher, so it never starts without the checker the operator asked for. The `soda` extra pulls in `soda-postgres`, and `gx` pulls in `great-expectations[postgresql]`. Soda Core is under the Elastic License 2.0: `config/capabilities.yaml` marks the option `cloud_eligible: false`, and the hosted plane refuses it.
 
 ## Domains
 

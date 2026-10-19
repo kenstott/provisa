@@ -134,11 +134,11 @@ sources:
 
 ### 数据源类型参考 {: #source-type-reference }
 
-需要非显而易见配置的类型各自在下方有简短条目。关系型数据库类型（postgresql、mysql 等）仅使用上面的通用字段——无需额外小节。
+需要非显而易见配置的每种类型在下面都有一个简短条目。RDBMS 类型（postgresql、mysql 等）只使用上面的通用字段，不需要单独的小节。
 
 #### GovData
 
-`govdata` 数据源使用独立的顶层模型 `GovDataSource`，而非通用的 `Source`。访问权限按主题分组进行分区。
+`govdata` 数据源使用自己的顶层模型 `GovDataSource`，而不是通用的 `Source`。访问权限按主题分组划分。
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`、`fec` |
 
-`ref` 和 `geo` 架构始终作为关联架构被包含在内——不可配置，也未在上表中列出。使用 subject `ALL` 可授予对所有架构的访问权限。
+`ref` 和 `geo` 模式始终作为关联模式包含在内，无法配置，也不在上面的列表中。使用主题 `ALL` 可授予对所有模式的访问权。
 
 #### Kafka
 
-`sources:` 中的 `kafka` 行仅用于注册。其连接器的 `details()` 返回 `{}`——真实配置位于顶层的 `kafka_sources[]` 块中，而不在 `sources:` 行中。Kafka 始终是 VIRTUAL_SOURCE（通过引擎路由；无直接连接池）。
+`sources:` 中的 `kafka` 行只用于注册数据源。其连接器的 `details()` 返回 `{}`；真正的配置在顶层的 `kafka_sources[]` 块中。Kafka 始终是 VIRTUAL_SOURCE：经由引擎路由，没有直连连接池。
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`federation_hints` 中的 `http_path` 为必填项。`password` 携带个人访问令牌。`catalog` 为可选项（携带在 SQL/提示中，而非 `database` 字段）。
+`federation_hints` 中的 `http_path` 是必需的。`password` 承载个人访问令牌。`catalog` 是可选的，放在 SQL 或 hints 中；`database` 字段不存放它。
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-两者都使用基于 TDS 的 T-SQL，并采用 Azure AD 认证。使用 `az login`（开发环境）或托管身份（生产环境）进行认证——引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。连接详情来自环境变量：`FABRIC_SQL_SERVER` / `FABRIC_DATABASE`（Fabric）或 `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE`（Synapse），或通过 `PROVISA_ENGINE_URL`。
+两者都通过 TDS 使用 T-SQL，并采用 Azure AD 认证。用 `az login`（开发）或托管标识（生产）登录；引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。连接信息来自环境变量 `FABRIC_SQL_SERVER` / `FABRIC_DATABASE`（Fabric）或 `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE`（Synapse），也可以来自 `PROVISA_ENGINE_URL`。
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` 和 `port` 指向 Hive Thrift 元存储（默认端口 9083）。对于 `hive`，设置 `mapping["storage"]` 以选择对象存储后端。缺失必填键会明确失败——没有回退值。
+`host` 和 `port` 指向 Hive Thrift 元数据存储（默认端口 9083）。对于 `hive`，用 `mapping["storage"]` 选择对象存储后端。缺少必需的键会明确报错，没有回退值。
 
 `hive_s3` 是一个独立类型，始终声明 S3 存储；无需 `mapping.storage`。
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**Kaggle 数据集**无法通过此文件添加——它们需要实时令牌以及仅在“数据源”表单中提供的数据集选择器（数据源 → 订阅 → Kaggle）。导出为 YAML 的 Kaggle 数据源会显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。从 Kaggle 重新下载需要 `refreshKaggleSource` 变更（mutation）或 UI 刷新流程，而不是编辑 YAML。参见数据源类型参考中的 [Kaggle 数据集](sources.md#kaggle-datasets)。
+**Kaggle 数据集**不能通过此文件添加，因为它们需要有效令牌以及数据源表单中的数据集选择器（数据源 → 订阅 → Kaggle）。导出为 YAML 的 Kaggle 数据源显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。要重新从 Kaggle 下载，需要使用 `refreshKaggleSource` 变更或界面中的刷新；编辑 YAML 做不到。参见数据源类型参考中的 [Kaggle 数据集](sources.md#kaggle-datasets)。
 
 #### API / 远程数据源 {: #api-remote-sources }
 
@@ -543,7 +543,7 @@ sources:
 
 #### 数据质量检查器（soda / great_expectations） {: #data-quality-checkers-soda-great_expectations }
 
-检查器数据源指向 Provisa 自身的 pgwire 端点，因此一个 postgres 驱动就能扫描由 Snowflake 或 Iceberg 支撑的表的联邦视图。扫描所用的身份是显式声明的，而非隐式继承——策略应用于该连接，经过过滤的行集不得产生静默通过的检查。连接键来自 `mapping`：`host`、`port`、`database`、`user`、`password`。
+检查器数据源指向 Provisa 自己的 pgwire 端点，因此一个 postgres 驱动就能扫描背后是 Snowflake 或 Iceberg 的表的联邦视图。扫描身份需要显式声明，从不继承。策略作用于这个连接，被过滤的行集不能让检查悄悄通过。连接键来自 `mapping`：`host`、`port`、`database`、`user`、`password`。
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-每个结果表都携带 `dq_contract`——原样保存的 Soda 契约 YAML 或 Great Expectations 套件 JSON。列、水位线（watermark）和推广（promotion）均由此派生；完整的派生过程参见[数据质量检查器](sources.md#data-quality-checkers)。
+每个结果表都带有 `dq_contract`，即原样保存的 Soda 契约 YAML 或 Great Expectations 套件 JSON。列、水位线和提升都由它推导；具体方式见[数据质量检查器](sources.md#data-quality-checkers)。
 
-**安装期选择。**检查器不会被链接进来——扫描运行在一个子解释器中，只有在运维人员指定其名称时才会安装该库。每条安装路径（`install.sh`、`packaging/linux/first-launch.sh`，以及通过 `PROVISA_DQ_CHECKER` 的 macOS 向导）都会将选择写入 `~/.provisa/config.yaml`：
+**安装时选择。** 检查器不会被链接进来：扫描在子解释器中运行，只有运营方指定时才安装相应的库。每条安装路径（`install.sh`、`packaging/linux/first-launch.sh`，以及通过 `PROVISA_DQ_CHECKER` 的 macOS 向导）都会把选择写入 `~/.provisa/config.yaml`：
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 安装演示数据集会将 `none` 提升为 `gx` 并说明原因，因为演示配置为 `pet_store.pets` 注册了一个 Great Expectations 套件，否则其数据质量记分卡将无内容可展示。指定 `soda` 时则保持 `soda`。
 
-通过 pip 而非安装程序获取演示环境会跳过该向导步骤，因此 `demo` 扩展会携带相同的检查器：`provisa run --demo` 的扫描所需要的正是 `pip install 'provisa[embedded,demo]'`。若缺少它，扫描会报告 `data-quality checker 'great_expectations' is not installed`，并给出安装命令。
+如果通过 pip 而不是安装程序进入演示，就会跳过那一步向导，所以 `demo` 额外依赖包含同一个检查器：`provisa run --demo` 需要 `pip install 'provisa[embedded,demo]'` 才能运行扫描。缺少它时，扫描会报告 `data-quality checker 'great_expectations' is not installed`，并给出安装命令。
 
-任何其他值都会阻止启动器运行，而不是在缺少运维人员所要求的检查器的情况下启动。`soda` 扩展会拉取 `soda-postgres`；`gx` 会拉取 `great-expectations[postgresql]`。Soda Core 采用 Elastic License 2.0——`config/capabilities.yaml` 将该选项标记为 `cloud_eligible: false`，托管平面会拒绝它。
+任何其他值都会让启动器停止，所以它不会在缺少运营方所要求检查器的情况下启动。`soda` 额外依赖会拉取 `soda-postgres`，`gx` 会拉取 `great-expectations[postgresql]`。Soda Core 采用 Elastic License 2.0：`config/capabilities.yaml` 把该选项标为 `cloud_eligible: false`，托管平面会拒绝它。
 
 ## 域（Domains） {: #domains }
 
