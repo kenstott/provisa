@@ -1486,7 +1486,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 
 引擎在角色读取的每一行上计算它能计算的内容：`describe` 的计数、去重计数、均值、标准差、最小值和最大值，以及 `compare` 所需的每组 `n`、均值和方差。拟合的模型以及 `describe` 的分位数和最常见值最多读取 `mcp.stats_max_rows` 行（Admin → Settings → Limits；默认 100,000）。每个读取行的答案都会给出 `rows_read`、`row_cap` 和 `truncated`，角色自身的行数上限会像 `run_sql` 一样在 `warnings` 中报告。
 
-统计工具只返回结果，因此分析背后的行永远不会进入模型的上下文：默认即数据最小化。限制智能体所能获知内容的是访问控制。若只公开聚合，请发布聚合视图，并把这些视图而不是底层表授予角色；对小分组的聚合可能识别出个人，而聚合视图决定了角色读取的分组方式。参见[安全](security.md#statistics-over-mcp)。
+统计工具只返回结果，因此分析背后的行永远不会进入模型的上下文：默认即数据最小化。限制智能体所能获知内容的是访问控制。若只公开聚合，请将其发布为物化视图，并把这些视图而不是底层表授予角色；对小分组的聚合可能识别出个人，而物化视图决定了角色读取的分组方式。参见[安全](security.md#statistics-over-mcp)。
 
 ### 元数据导出 {: #metadata-export }
 
