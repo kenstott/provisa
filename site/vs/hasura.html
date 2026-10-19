@@ -190,6 +190,30 @@
           </table>
         </div>
 
+        <h2>How sources are reached</h2>
+        <p>
+          Every DDN connector, the first-party database connectors included, is its own
+          web service. Each
+          <a href="https://hasura.io/docs/3.0/connectors/build-your-own" rel="noopener">connector SDK</a>
+          starts an HTTP server answering the
+          <a href="https://hasura.github.io/ndc-spec/specification/index.html" rel="noopener">NDC specification's</a>
+          endpoints, and the
+          <a href="https://github.com/hasura/ndc-postgres" rel="noopener">Postgres connector</a>
+          is built on the Rust one. The connector reads its source over the source's own
+          protocol; the hop from connector to engine is HTTP, with requests and results
+          sent as JSON in the shapes the spec defines. In Provisa a single-source read goes
+          straight to the source over its native driver, with no connector service in
+          between.
+        </p>
+        <p>
+          Self-hosting DDN's engine and connectors on Docker
+          <a href="https://hasura.io/docs/3.0/deployment/overview/" rel="noopener">comes without a control plane</a>.
+          <a href="https://hasura.io/docs/3.0/architecture/private/self-hosted" rel="noopener">Private DDN Self-Hosted</a>,
+          which brings the control plane onto your infrastructure, needs an enterprise
+          license and a Kubernetes cluster. Provisa installs the same product on a laptop,
+          a single VM, a VM cluster or Kubernetes.
+        </p>
+
         <h2>On staying put</h2>
         <p>
           Provisa is a handful of primitives (domains, tables, relationships, masking,
