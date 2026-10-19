@@ -57,7 +57,10 @@ def text() -> str:
 def test_the_page_is_navigable_under_security_and_governance() -> None:
     mkdocs = yaml.load((_ROOT / "mkdocs.yml").read_text(), Loader=_NavLoader)
     assert "metadata-export.md" in _section_targets(mkdocs.get("nav", []), NAV_SECTION)
-    assert "metadata-export.md" not in (mkdocs.get("exclude_docs") or "")
+    # Each line of exclude_docs is a page (or folder) left out; the design note
+    # arch/metadata-export.md is one of them, this page is not.
+    excluded = [ln.strip() for ln in (mkdocs.get("exclude_docs") or "").splitlines()]
+    assert "metadata-export.md" not in excluded
 
 
 def test_the_page_states_publication_is_outbound_only(text: str) -> None:
