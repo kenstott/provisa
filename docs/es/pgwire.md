@@ -256,7 +256,7 @@ Algunas herramientas de BI basadas en JDBC envían una ráfaga de consultas a `i
 
 ## Advertencias y restricciones {: #caveats-and-constraints }
 
-**Solo SQL.** El listener pgwire analiza y ejecuta solo SQL; no se aceptan cadenas GraphQL ni Cypher. Las escrituras de datos en tablas existentes se admiten según los derechos del rol, sus concesiones de columna y su filtro de filas; consulte [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin).
+**Solo SQL.** El listener de pgwire analiza y ejecuta SQL; no acepta cadenas GraphQL ni Cypher. Las escrituras de datos en tablas existentes las admiten los derechos del rol, sus concesiones de columnas y su filtro de filas; consulte [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
 **Sin definiciones.** `CREATE`, `ALTER` y `DROP` se rechazan con SQLSTATE 0A000 tenga el rol lo que tenga, salvo la tabla temporal propia de una sesión; consulte [Tablas temporales](#temporary-tables). `TRUNCATE` es una escritura de datos.
 
@@ -266,7 +266,7 @@ Algunas herramientas de BI basadas en JDBC envían una ráfaga de consultas a `i
 
 **La entrada de COPY es text o csv.** `COPY ... TO STDOUT` escribe `text`, `csv` y `binary`; `COPY ... FROM STDIN` lee `text` y `csv`.
 
-**La sustitución de parámetros es literal.** Los parámetros `$1`, `$2`, ... se sustituyen como literales SQL antes de la ejecución, no se envían como parámetros de enlace al motor subyacente. Esto significa que el motor subyacente nunca ve una sentencia preparada. Para Trino esto no tiene impacto práctico; para orígenes de pool directo, evita el almacenamiento en caché de sentencias preparadas.
+**Los parámetros siguen vinculados.** Los valores de `$1`, `$2`, ... nunca se insertan en el texto de la instrucción: viajan vinculados hasta el motor o el origen, así que todos los valores comparten un mismo texto SQL (los prepares del servidor y las cachés basadas en el texto SQL siguen funcionando) y un valor nunca puede cambiar la forma gobernada. Solo la intercepción del catálogo, que responde ella misma a las consultas de `information_schema` y `pg_catalog`, lee los valores en línea.
 
 **DECLARE SCROLL guarda en búfer el resultado completo.** Un cursor `SCROLL` acumula en el heap de Python cada fila que obtiene del motor para poder servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` y `LAST` cuando se piden. Con un resultado grande, todo el resultado vive en memoria mientras el cursor esté abierto. Use el predeterminado `NO SCROLL` para streaming solo hacia delante.
 

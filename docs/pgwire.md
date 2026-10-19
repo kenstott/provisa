@@ -261,7 +261,7 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 ## Caveats and Constraints
 
-**SQL only.** The pgwire listener parses and executes SQL only — GraphQL and Cypher strings are not accepted. Data writes to existing tables are admitted by the role's rights, its column grants and its row filter; see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin).
+**SQL only.** The pgwire listener parses and runs SQL; it doesn't accept GraphQL or Cypher strings. Data writes to existing tables are admitted by the role's rights, its column grants and its row filter; see [Data writes](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
 **No definitions.** `CREATE`, `ALTER` and `DROP` are refused with SQLSTATE 0A000 whatever the role holds, except a session's own temporary table; see [Temporary tables](#temporary-tables). `TRUNCATE` is a data write.
 
@@ -271,7 +271,7 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 **COPY input is text or csv.** `COPY ... TO STDOUT` writes `text`, `csv` and `binary`; `COPY ... FROM STDIN` reads `text` and `csv`.
 
-**Parameter substitution is literal.** `$1`, `$2`, ... parameters are substituted as SQL literals before execution, not sent as bind parameters to the upstream engine. This means the upstream engine never sees a prepared statement. For Trino this has no practical impact; for direct-pool sources it bypasses prepared-statement caching.
+**Parameters stay bound.** `$1`, `$2`, ... values are never spliced into the statement text: they travel bound all the way to the engine or source, so every value shares one SQL text (server-side prepares and caches keyed on SQL text keep working) and a value can never change the governed shape. Only the catalog intercept, which answers `information_schema` and `pg_catalog` queries itself, reads the values inline.
 
 **DECLARE SCROLL buffers the full result.** A `SCROLL` cursor accumulates every row it pulls from the engine into Python heap so `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST` can be served on demand. Against a large result this means the whole result lives in memory for as long as the cursor is open. Use the default `NO SCROLL` for forward-only streaming.
 

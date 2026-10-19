@@ -318,7 +318,7 @@ conversão de tipo — o comportamento de modo texto do JDBC é mais simples de 
 
 ## Ressalvas e Restrições {: #caveats-and-constraints }
 
-**Somente SQL.** O listener pgwire analisa e executa somente SQL — strings GraphQL e Cypher não são aceitas. Gravações de dados em tabelas existentes são admitidas pelos direitos da função, suas concessões de coluna e seu filtro de linha; veja [Gravações de dados](#data-writes-insert-update-delete-merge-copy-from-stdin).
+**Só SQL.** O listener do pgwire analisa e roda SQL; ele não aceita strings de GraphQL ou Cypher. Escritas de dados em tabelas existentes são admitidas pelos direitos do papel, suas concessões de colunas e seu filtro de linhas; veja [Gravações de dados](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
 **Sem definições.** `CREATE`, `ALTER` e `DROP` são recusados com SQLSTATE 0A000 seja o que for que a função detenha, exceto a tabela temporária própria de uma sessão; veja [Tabelas temporárias](#temporary-tables). `TRUNCATE` é uma gravação de dados.
 
@@ -329,10 +329,7 @@ Cada declaração roda independentemente.
 
 **A entrada de COPY é text ou csv.** `COPY ... TO STDOUT` escreve `text`, `csv` e `binary`; `COPY ... FROM STDIN` lê `text` e `csv`.
 
-**A substituição de parâmetro é literal.** Parâmetros `$1`, `$2`, ... são substituídos como
-literais SQL antes da execução, não enviados como parâmetros de bind ao motor upstream. Isso
-significa que o motor upstream nunca vê uma declaração preparada. Para o Trino isso não tem impacto
-prático; para fontes de pool direto isso ignora o cache de declaração preparada.
+**Os parâmetros continuam vinculados.** Os valores de `$1`, `$2`, ... nunca são inseridos no texto da instrução: eles viajam vinculados até o motor ou a fonte, então todos os valores compartilham um único texto SQL (prepares no servidor e caches baseados no texto SQL continuam funcionando) e um valor nunca pode mudar a forma governada. Só a interceptação do catálogo, que responde ela mesma às consultas a `information_schema` e `pg_catalog`, lê os valores inline.
 
 **DECLARE SCROLL guarda em buffer o resultado completo.** Um cursor `SCROLL` acumula no heap Python cada linha que busca do motor para poder servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST` sob demanda. Com um resultado grande, o resultado inteiro vive na memória enquanto o cursor estiver aberto. Use o padrão `NO SCROLL` para streaming só para frente.
 

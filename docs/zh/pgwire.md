@@ -256,7 +256,7 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 ## 注意事项与限制 {: #caveats-and-constraints }
 
-**仅限 SQL。** pgwire 监听器仅解析并执行 SQL——不接受 GraphQL 和 Cypher 字符串。 对已有表的数据写入由角色的权利、其列授权和其行过滤放行；参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)。
+**仅限 SQL。** pgwire 监听器只解析和执行 SQL，不接受 GraphQL 或 Cypher 字符串。向现有表写入数据时，由角色的权限、列授权和行过滤器决定是否准入；参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)。
 
 **不支持定义。** 无论角色持有什么，`CREATE`、`ALTER` 和 `DROP` 都会以 SQLSTATE 0A000 被拒绝，会话自己的临时表除外；参见[临时表](#temporary-tables)。`TRUNCATE` 是数据写入。
 
@@ -266,7 +266,7 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **COPY 输入为 text 或 csv。** `COPY ... TO STDOUT` 写出 `text`、`csv` 和 `binary`；`COPY ... FROM STDIN` 读取 `text` 和 `csv`。
 
-**参数替换为字面量形式。** `$1`、`$2`……等参数会在执行前以 SQL 字面量替换，而非以绑定参数形式发送至底层引擎。这意味着底层引擎永远不会看到已准备的语句。对 Trino 而言这没有实际影响；对于直接连接池的数据源，则会绕过预准备语句的缓存机制。
+**参数保持绑定。** `$1`、`$2`……的值永远不会拼进语句文本：它们以绑定方式一路传到引擎或数据源，所以所有取值共用一份 SQL 文本（服务器端预处理和按 SQL 文本缓存照常工作），值也永远无法改变受治理的语句结构。只有自行回答 `information_schema` 和 `pg_catalog` 查询的目录拦截会内联读取这些值。
 
 **DECLARE SCROLL 会缓冲整个结果。** `SCROLL` 游标会把它从引擎拉取的每一行累积到 Python 堆中，以便按需提供 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 和 `LAST`。面对大结果，这意味着只要游标处于打开状态，整个结果就驻留在内存中。仅向前的流式传输请使用默认的 `NO SCROLL`。
 

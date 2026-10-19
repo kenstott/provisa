@@ -256,7 +256,7 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 ## אזהרות ואילוצים {: #caveats-and-constraints }
 
-**SQL בלבד.** מאזין ה-pgwire מפענח ומבצע SQL בלבד — מחרוזות GraphQL ו-Cypher אינן מתקבלות. כתיבת נתונים לטבלאות קיימות מתקבלת לפי הזכויות של התפקיד, הענקות העמודות שלו ומסנן השורות שלו; ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin).
+**SQL בלבד.** המאזין של pgwire מנתח ומריץ SQL; הוא לא מקבל מחרוזות GraphQL או Cypher. כתיבת נתונים לטבלאות קיימות מתקבלת לפי זכויות התפקיד, הענקות העמודות שלו ומסנן השורות שלו; ראו [כתיבת נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
 **ללא הגדרות.** `CREATE`, `ALTER` ו-`DROP` נדחים עם SQLSTATE 0A000 לא משנה מה התפקיד מחזיק, למעט טבלה זמנית של הסשן עצמו; ראו [טבלאות זמניות](#temporary-tables). `TRUNCATE` הוא כתיבת נתונים.
 
@@ -266,7 +266,7 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **קלט COPY הוא text או csv.** `COPY ... TO STDOUT` כותב `text`, `csv` ו-`binary`; `COPY ... FROM STDIN` קורא `text` ו-`csv`.
 
-**החלפת פרמטרים היא ליטרלית.** פרמטרים `$1`, `$2`, ... מוחלפים כליטרלי SQL לפני הביצוע, לא נשלחים כפרמטרי bind למנוע ה-upstream. משמעות הדבר שמנוע ה-upstream לעולם לא רואה משפט מוכן (prepared statement). עבור Trino אין לכך השפעה מעשית; עבור מקורות pool-ישיר זה עוקף מטמון prepared-statement.
+**הפרמטרים נשארים קשורים.** ערכים של `$1`, `$2`, ... לעולם לא משולבים בטקסט ההצהרה: הם עוברים כקשורים עד למנוע או למקור, כך שכל הערכים חולקים טקסט SQL אחד (prepares בצד השרת ומטמונים שמבוססים על טקסט ה-SQL ממשיכים לעבוד) וערך לעולם לא יכול לשנות את הצורה המנוהלת. רק יירוט הקטלוג, שעונה בעצמו על שאילתות ל-`information_schema` ול-`pg_catalog`, קורא את הערכים בתוך הטקסט.
 
 **DECLARE SCROLL מחזיק את התוצאה כולה בחוצץ.** סמן `SCROLL` צובר כל שורה שהוא מושך מהמנוע ב-heap של Python כדי ש-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST` ו-`LAST` יוכלו להיענות לפי דרישה. מול תוצאה גדולה, פירוש הדבר שהתוצאה כולה חיה בזיכרון כל עוד הסמן פתוח. השתמשו בברירת המחדל `NO SCROLL` להזרמה קדימה בלבד.
 

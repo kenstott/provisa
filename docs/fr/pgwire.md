@@ -256,7 +256,7 @@ Certains outils de BI basés sur JDBC envoient, à la connexion, une rafale de r
 
 ## Mises en garde et contraintes {: #caveats-and-constraints }
 
-**SQL uniquement.** L'écouteur pgwire analyse et exécute uniquement du SQL — les chaînes GraphQL et Cypher ne sont pas acceptées. Les écritures de données dans des tables existantes sont admises selon les droits du rôle, ses autorisations de colonnes et son filtre de lignes ; voir [Écritures de données](#data-writes-insert-update-delete-merge-copy-from-stdin).
+**SQL uniquement.** L'écouteur pgwire analyse et exécute du SQL ; il n'accepte pas de chaînes GraphQL ou Cypher. Les écritures de données dans des tables existantes sont admises par les droits du rôle, ses autorisations de colonnes et son filtre de lignes ; voir [Écritures de données](#data-writes-insert-update-delete-merge-copy-from-stdin).
 
 **Aucune définition.** `CREATE`, `ALTER` et `DROP` sont refusés avec SQLSTATE 0A000 quoi que détienne le rôle, sauf la table temporaire propre à une session ; voir [Tables temporaires](#temporary-tables). `TRUNCATE` est une écriture de données.
 
@@ -266,7 +266,7 @@ Certains outils de BI basés sur JDBC envoient, à la connexion, une rafale de r
 
 **L'entrée COPY est text ou csv.** `COPY ... TO STDOUT` écrit `text`, `csv` et `binary` ; `COPY ... FROM STDIN` lit `text` et `csv`.
 
-**La substitution de paramètres est littérale.** Les paramètres `$1`, `$2`, ... sont substitués sous forme de littéraux SQL avant l'exécution, et non envoyés comme paramètres liés au moteur sous-jacent. Cela signifie que le moteur sous-jacent ne voit jamais d'instruction préparée. Pour Trino, cela n'a aucun impact pratique ; pour les sources à pool direct, cela contourne la mise en cache des instructions préparées.
+**Les paramètres restent liés.** Les valeurs de `$1`, `$2`, ... ne sont jamais insérées dans le texte de l'instruction : elles voyagent liées jusqu'au moteur ou à la source, si bien que toutes les valeurs partagent un même texte SQL (les préparations côté serveur et les caches indexés sur le texte SQL continuent de fonctionner) et qu'une valeur ne peut jamais changer la forme gouvernée. Seule l'interception du catalogue, qui répond elle-même aux requêtes sur `information_schema` et `pg_catalog`, lit les valeurs en ligne.
 
 **DECLARE SCROLL met en tampon le résultat complet.** Un curseur `SCROLL` accumule dans le tas Python chaque ligne qu'il récupère du moteur afin de pouvoir servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` et `LAST` à la demande. Sur un grand résultat, le résultat entier vit en mémoire tant que le curseur est ouvert. Utilisez la valeur par défaut `NO SCROLL` pour un streaming uniquement vers l'avant.
 
