@@ -17,19 +17,19 @@ Provisa supports six deployment paths. Choose based on your audience and operati
 
 Both are enterprise-grade. The VM/AppImage path is simpler: no cluster to provision, no CNI or RBAC policies to configure, and the AppImage is entirely self-contained. It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).
 
-Choose Kubernetes only if your team already operates a K8s cluster and wants Provisa to participate in that operational model (rolling deploys, HPA, unified observability). The capabilities are equivalent — Kubernetes adds operational overhead, not capability.
+Choose Kubernetes only if your team already runs a K8s cluster and wants Provisa to fit that way of operating (rolling deploys, HPA, unified observability). Both give you the same capabilities; Kubernetes adds operational overhead.
 
 ### Image acquisition and security scanning
 
-All production paths require obtaining the Provisa artifacts before any deployment can run. "Air-gapped" refers to what happens at install time on the target machine — the artifacts must be acquired first.
+Every production path needs the Provisa artifacts before any deployment can run. "Air-gapped" describes what happens at install time on the target machine, so you get the artifacts first.
 
-**macOS and Windows installers:** Download from the [GitHub releases page](https://github.com/provisa/provisa/releases). Fully bundled; no internet required after download. Intended for dev/eval, not production — no image scanning gate expected.
+**macOS and Windows installers:** Download them from the [GitHub releases page](https://github.com/provisa/provisa/releases). They're fully bundled and need no internet after download. They're meant for development and evaluation, so no image scanning gate is expected.
 
-**AppImage path:** Download from the [GitHub releases page](https://github.com/provisa/provisa/releases) and transfer to the target machine. The AppImage bundles all component images as tarballs inside a squashfs filesystem — most registry scanners cannot inspect these in-place. Contact your Provisa account team for component image digests to verify against your scanner independently.
+**AppImage path:** Download it from the [GitHub releases page](https://github.com/provisa/provisa/releases) and copy it to the target machine. The AppImage bundles every component image as a tarball inside a squashfs filesystem, which most registry scanners can't inspect in place. Ask your Provisa account team for the component image digests so you can check them against your scanner yourself.
 
-**Terraform path:** The AppImage must be uploaded to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot via IAM role — they require outbound S3 access (direct or via VPC gateway endpoint). Apply the same scanning policy as the AppImage path.
+**Terraform path:** Upload the AppImage to S3 before running `terraform/deploy.sh`. EC2 nodes download it at boot through their IAM role, so they need outbound access to S3, directly or through a VPC gateway endpoint. Apply the same scanning policy as for the AppImage path.
 
-**Helm / Kubernetes path:** Individual images must be pushed to a registry the cluster can reach. This path is most compatible with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector) — images are first-class objects scanners understand natively. For air-gapped clusters, mirror images to an internal registry and override references in `values.yaml`.
+**Helm / Kubernetes path:** Push the individual images to a registry the cluster can reach. This path works best with registry-based scanning (Prisma Cloud, Aqua, Trivy, AWS Inspector), because the images are objects scanners already understand. For an air-gapped cluster, mirror the images to an internal registry and override the references in `values.yaml`.
 
 ---
 
@@ -141,13 +141,7 @@ the backend with `PROVISA_OPS_DB_URL`:
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | moderate volume |
 | `trino://user@host:8080/otel` | Trino / Iceberg | technically works, **not recommended** — see below |
 
-**On `trino://`:** the SQLAlchemy Trino dialect emits valid Trino DDL and
-`INSERT`s, so it is technically feasible as an `otlp2sql` backend. It is not
-recommended for anything but low ingest rates. Every batch flush becomes a
-distributed Trino `INSERT` plus an Iceberg snapshot, so high-rate telemetry
-produces many small files and snapshots and still needs periodic
-`ALTER TABLE ... EXECUTE optimize` / `expire_snapshots` — which `otlp2sql` does
-not run. It also puts the query engine in the ingest hot path.
+**On `trino://`:** the SQLAlchemy Trino dialect emits valid Trino DDL and `INSERT`s, so it can work as an `otlp2sql` backend, but we recommend it only for low ingest rates. Every batch flush becomes a distributed Trino `INSERT` plus an Iceberg snapshot, so high-rate telemetry produces many small files and snapshots, and still needs a periodic `ALTER TABLE ... EXECUTE optimize` / `expire_snapshots`, which `otlp2sql` doesn't run. It also puts the query engine in the ingest hot path.
 
 For high-volume telemetry into Trino/Iceberg, use `otlp2parquet` instead: it
 writes parquet to object storage without going through Trino, and a scheduled
@@ -162,9 +156,9 @@ Point the app and Trino OTLP exporters (`OTEL_EXPORTER_OTLP_ENDPOINT`) at the
 
 ## macOS Installer
 
-For developer workstations and evaluation. Fully air-gapped — no internet required after download.
+For developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
 
-The base installer is a **native install**: DuckDB federation engine + embedded PostgreSQL control plane (pgserver) + in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis, or MinIO. The federation engine is a wizard choice — DuckDB (native, default), Trino-on-Docker, or an external engine. Observability is always-on self-telemetry viewable in Admin; the Docker collector/Prometheus/Grafana stack is an optional external demonstration, not an on/off switch. The demo data pack is optional and off by default. Trino, the Docker observability stack, and the demo are heavy add-ons resolved local-first (installer-adjacent dir, mounted volumes, `~/Downloads`, then GitHub release), so enterprises can pre-stage tarballs for air-gapped installs.
+The base installer is a **native install**: the DuckDB federation engine, an embedded PostgreSQL control plane (pgserver) and an in-memory (fakeredis) cache, with no Docker, VM, Trino, Redis or MinIO. You choose the federation engine in the wizard: DuckDB (native, the default), Trino on Docker, or an external engine. Observability is self-telemetry that's always on and viewable in Admin; the Docker collector, Prometheus and Grafana stack is a separate optional demonstration, and it doesn't switch that on or off. The demo data pack is optional and off by default. Trino, the Docker observability stack and the demo are heavy add-ons. They're looked for locally first (the directory next to the installer, mounted volumes, `~/Downloads`) and only then fetched from the GitHub release, so enterprises can pre-stage the tarballs for air-gapped installs.
 
 ### Steps
 
@@ -187,7 +181,7 @@ All data is stored in `~/.provisa/`. To remove everything: `provisa uninstall`.
 
 ## Windows Installer
 
-For developer workstations and evaluation. Fully air-gapped — no internet required after download.
+For developer workstations and evaluation. It's fully air-gapped and needs no internet after download.
 
 Like macOS, the base Windows installer is a **native tier**: a standalone Python runtime + provisa wheel + DuckDB/pg_duckdb + embedded PostgreSQL control plane (pgserver), shipping no Docker, no VM, and no container images. The federation engine (Trino), the observability stack, and the demo data pack are added later via separate layered installers, in order: the Container installer (`Provisa-Container-<version>.exe`, which adds WSL2 + containerd + Trino), then the Obs installer (requires the container tier), then the Demo installer (requires Core + Obs). First-launch guidance explains how to initialize the federation engine by running the Container installer.
 
@@ -219,7 +213,7 @@ All data is stored in `%USERPROFILE%\.provisa\`.
 - All container image tarballs (PostgreSQL, PgBouncer, MinIO, Redis, Federation engine, Provisa API)
 - The Provisa CLI wrapper and first-launch setup script
 
-The Provisa image is pre-built at packaging time — Python source is never included.
+The Provisa image is built when it's packaged, and Python source is never included.
 
 ### When to use
 
@@ -376,7 +370,7 @@ Non-interactive mode installs a systemd unit (`/etc/systemd/system/provisa.servi
 
 ## Cloud VM Deployment — Terraform (AWS)
 
-Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC2 instances, ALB, NLB — in one interactive command.
+One interactive command provisions a full multi-node Provisa cluster on AWS: VPC, security groups, EC2 instances, ALB and NLB.
 
 ### Files
 
@@ -495,7 +489,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 Your team already operates a Kubernetes cluster and wants Provisa to participate in that operational model. If you are evaluating Provisa or deploying on-premises without an existing cluster, the AppImage path is simpler.
 
-Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FUSE and a rootless Docker daemon, which are not available in standard pod security profiles.
+Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and a rootless Docker daemon, and standard pod security profiles allow neither.
 
 ### Steps
 
@@ -636,7 +630,7 @@ Note: the Provisa AppImage cannot run inside a Kubernetes pod — it requires FU
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-Federation engine workers scale independently — more workers increase throughput and concurrent query capacity.
+Federation engine workers scale on their own, and more workers mean more throughput and more queries at once.
 
 ### Updating config
 
@@ -656,7 +650,7 @@ Provisa applies a two-tier recovery model across all deployment modes:
 - **Tier 1 — transient errors.** Read operations retry for up to 30 seconds on transient errors using exponential backoff with full jitter. Tune the budget with `PROVISA_RETRY_BUDGET_SECS`. Write operations are never retried internally, and memory errors are never retryable.
 - **Tier 2 — component failure.** An internal engine watcher detects and restarts failed software components within 2–3 minutes.
 
-Machine-level and cluster-level failures remain the operator's responsibility — provision redundant nodes and a load balancer (Terraform and Helm paths above) for node-loss tolerance.
+Machine and cluster failures stay the operator's responsibility. For tolerance to losing a node, provision redundant nodes and a load balancer (the Terraform and Helm paths above).
 
 ### Telemetry table whose metadata is missing {: #telemetry-table-whose-metadata-is-missing }
 
@@ -682,7 +676,7 @@ Do not run `remove_orphan_files` on a table that is being recovered. It deletes 
 
 The warehouse federation engines require Python packages and system-level components beyond Provisa's default install. All Python packages listed here are declared in `pyproject.toml` and installed as part of the standard `pip install provisa` or `pip install -e .`.
 
-The Python packages ship with Provisa's default install — no optional extras required for any warehouse engine. The system-level items (ODBC driver, cloud CLIs, service-account keys) must be installed separately.
+The Python packages come with Provisa's default install, so no warehouse engine needs an optional extra. The system-level items (the ODBC driver, cloud CLIs, service-account keys) have to be installed separately.
 
 ### Python packages (already in core dependencies)
 
@@ -701,11 +695,11 @@ The Python packages ship with Provisa's default install — no optional extras r
 
 ### System-level requirements
 
-These are not Python packages — they must be installed on the host or container that runs Provisa.
+These aren't Python packages. Install them on the host or container that runs Provisa.
 
 **Microsoft Fabric and Azure Synapse (ODBC)**
 
-`pyodbc` connects through the Microsoft ODBC Driver for SQL Server (`msodbcsql18`). The driver must be installed on the host — not via pip.
+`pyodbc` connects through the Microsoft ODBC Driver for SQL Server (`msodbcsql18`). Install the driver on the host itself; pip can't install it.
 
 macOS:
 
@@ -737,7 +731,7 @@ For local development, `az login` is the simplest path:
 az login
 ```
 
-For production, use managed identity (on Azure VMs or AKS) — no credential management needed. For service-principal auth, set:
+In production, use managed identity (on Azure VMs or AKS), which needs no credential management. For service-principal auth, set:
 
 ```bash
 export AZURE_TENANT_ID=<tenant>
@@ -753,7 +747,7 @@ export AZURE_CLIENT_SECRET=<secret>
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 ```
 
-For production on GCP (Cloud Run, GKE with Workload Identity, Compute Engine), the library picks up the attached service account automatically — no environment variable needed.
+In production on GCP (Cloud Run, GKE with Workload Identity, Compute Engine), the library picks up the attached service account by itself, with no environment variable.
 
 The service account needs:
 
@@ -770,7 +764,7 @@ If Provisa runs behind a TLS-intercepting proxy (Charles, mitmproxy, corporate p
 export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 ```
 
-The Databricks connector inherits this from `requests` — no Databricks-specific env var is needed.
+The Databricks connector inherits this from `requests`, so it needs no Databricks-specific environment variable.
 
 ### Per-engine checklist
 
@@ -867,7 +861,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 ### Config promotion workflow (dev → test → prod)
 
-All environment-specific settings (connection strings, secrets, ports) belong in environment variables or secret managers — not in the exported config. The exported YAML captures your semantic model: sources, domains, roles, views.
+Every environment-specific setting (connection strings, secrets, ports) belongs in environment variables or a secret manager, outside the exported config. The exported YAML captures your semantic model: sources, domains, roles and views.
 
 ```bash
 # On dev — export after making changes in the UI

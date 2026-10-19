@@ -17,19 +17,19 @@ Provisa 支持六种部署路径。请根据受众和运维场景进行选择：
 
 两者均为企业级方案。虚拟机/AppImage 路径更简单：无需预配集群，无需配置 CNI 或 RBAC 策略，AppImage 本身完全自包含。它可以自然地融入现有的服务器管理工具链（Ansible、Puppet、Datadog agent、Splunk forwarder 等）。
 
-只有当团队已在运行 K8s 集群、并希望 Provisa 参与该运维模型（滚动部署、HPA、统一可观测性）时才选择 Kubernetes。两者能力等价——Kubernetes 增加的是运维开销，而非能力。
+只有当团队已经在运维 K8s 集群、并希望 Provisa 融入这套运维方式（滚动部署、HPA、统一可观测性）时，才选择 Kubernetes。两者能力相同；Kubernetes 只会增加运维负担。
 
 ### 镜像获取与安全扫描 {: #image-acquisition-and-security-scanning }
 
-所有生产路径都要求先获取 Provisa 制品，之后才能进行部署。“气隙”指的是目标机器上安装时发生的事情——制品必须先被获取。
+每条生产路径都要先拿到 Provisa 的制品，任何部署才能运行。“Air-gapped”（隔离环境）描述的是在目标机器上安装时的情形，所以制品要先准备好。
 
-**macOS 和 Windows 安装程序：** 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载。完全捆绑；下载后无需联网。仅供开发/评估使用，不用于生产——不预期有镜像扫描门禁。
+**macOS 和 Windows 安装程序：** 从 [GitHub 发布页面](https://github.com/provisa/provisa/releases)下载。它们是完整打包的，下载后无需联网。它们面向开发和评估，所以不需要镜像扫描关卡。
 
-**AppImage 路径：** 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载并传输到目标机器。AppImage 将所有组件镜像以 tarball 形式打包在一个 squashfs 文件系统中——大多数镜像仓库扫描器无法就地检查它们。请联系您的 Provisa 客户团队获取组件镜像摘要，以便独立对照您的扫描器进行验证。
+**AppImage 路径：** 从 [GitHub 发布页面](https://github.com/provisa/provisa/releases)下载，并复制到目标机器。AppImage 把每个组件镜像以 tarball 形式打包在 squashfs 文件系统中，大多数镜像仓库扫描器无法就地检查。请向您的 Provisa 客户团队索取组件镜像的摘要，以便自行用扫描器核对。
 
-**Terraform 路径：** 在运行 `terraform/deploy.sh` 之前，必须先将 AppImage 上传到 S3。EC2 节点在启动时通过 IAM 角色下载它——它们需要出站 S3 访问权限（直接访问或通过 VPC 网关终结点）。适用与 AppImage 路径相同的扫描策略。
+**Terraform 路径：** 在运行 `terraform/deploy.sh` 之前，先把 AppImage 上传到 S3。EC2 节点会在启动时通过其 IAM 角色下载它，所以它们需要能出站访问 S3，可以直连，也可以通过 VPC 网关端点。扫描策略与 AppImage 路径相同。
 
-**Helm / Kubernetes 路径：** 各个镜像必须推送到集群可访问的镜像仓库。此路径与基于镜像仓库的扫描（Prisma Cloud、Aqua、Trivy、AWS Inspector）兼容性最好——镜像是扫描器原生理解的一等对象。对于气隙集群，将镜像镜像到内部镜像仓库，并在 `values.yaml` 中覆盖引用。
+**Helm / Kubernetes 路径：** 把各个镜像推送到集群能访问的镜像仓库。这条路径与基于镜像仓库的扫描（Prisma Cloud、Aqua、Trivy、AWS Inspector）最契合，因为镜像本来就是扫描器理解的对象。对于隔离集群，把镜像同步到内部镜像仓库，并在 `values.yaml` 中覆盖引用。
 
 ---
 
@@ -135,7 +135,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | 中等数据量 |
 | `trino://user@host:8080/otel` | Trino / Iceberg | 技术上可行，**不推荐**——见下文 |
 
-**关于 `trino://`：** SQLAlchemy 的 Trino 方言可以生成有效的 Trino DDL 和 `INSERT` 语句，因此从技术上讲它可以作为 `otlp2sql` 的后端。但除了低摄取速率场景外并不推荐使用。每次批次刷新都会变成一次分布式 Trino `INSERT` 加一次 Iceberg 快照，因此高速率遥测会产生大量小文件和快照，且仍需要定期执行 `ALTER TABLE ... EXECUTE optimize` / `expire_snapshots`——而 `otlp2sql` 并不运行这些操作。它还会让查询引擎处于摄取热路径上。
+**使用 `trino://` 时：** SQLAlchemy 的 Trino 方言能生成合法的 Trino DDL 和 `INSERT`，所以可以充当 `otlp2sql` 的后端，但我们只建议在低写入速率下使用。每次批量刷新都会变成一次分布式 Trino `INSERT` 外加一个 Iceberg 快照，所以高速率遥测会产生大量小文件和快照，而且仍需要定期执行 `ALTER TABLE ... EXECUTE optimize` / `expire_snapshots`，而 `otlp2sql` 不会执行这些。它还会把查询引擎放到写入的热路径上。
 
 对于流向 Trino/Iceberg 的高容量遥测，请改用 `otlp2parquet`：它将 parquet 写入对象存储而不经过 Trino，并由一个定时的 Trino 压缩任务将原始文件滚动合并进活动的 Iceberg 表。若希望用单一引擎同时处理高速率摄取和压缩，优先选择 ClickHouse。
 
@@ -145,9 +145,9 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ## macOS 安装程序 {: #macos-installer }
 
-适用于开发者工作站和评估。完全气隙——下载后无需联网。
+适用于开发工作站和评估。完全离线运行，下载后无需联网。
 
-基础安装程序是**原生安装**：DuckDB 联邦查询引擎 + 嵌入式 PostgreSQL 控制平面（pgserver） + 内存态（fakeredis）缓存，不含 Docker、虚拟机、Trino、Redis 或 MinIO。联邦查询引擎是一个向导选项——DuckDB（原生，默认）、Docker 上的 Trino，或外部引擎。可观测性始终开启，为可在 Admin 中查看的自遥测；Docker collector/Prometheus/Grafana 堆栈是一个可选的外部演示，而非开关。演示数据包是可选的，默认关闭。Trino、Docker 可观测性堆栈和演示数据都是重量级附加组件，按本地优先顺序解析（安装程序旁的目录、挂载卷、`~/Downloads`，最后是 GitHub release），因此企业可以为气隙安装预先准备 tarball。
+基础安装程序是一种**原生安装**：DuckDB 联邦引擎、嵌入式 PostgreSQL 控制平面（pgserver）和内存缓存（fakeredis），不需要 Docker、虚拟机、Trino、Redis 或 MinIO。联邦引擎在向导中选择：DuckDB（原生，默认）、Docker 上的 Trino，或外部引擎。可观测性是始终开启的自身遥测，可在 Admin 中查看；Docker 的 collector、Prometheus 和 Grafana 组合是另一个可选的演示，不负责开关它。演示数据包是可选的，默认关闭。Trino、Docker 可观测性组合和演示都是较重的附加组件。它们会先在本地查找（安装程序旁的目录、已挂载的卷、`~/Downloads`），找不到才从 GitHub release 获取，所以企业可以为离线安装预先准备好 tarball。
 
 ### 步骤 {: #steps }
 
@@ -170,7 +170,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ## Windows 安装程序 {: #windows-installer }
 
-适用于开发者工作站和评估。完全气隙——下载后无需联网。
+适用于开发工作站和评估。完全离线运行，下载后无需联网。
 
 与 macOS 类似，基础 Windows 安装程序是**原生层**：独立的 Python 运行时 + provisa wheel 包 + DuckDB/pg_duckdb + 嵌入式 PostgreSQL 控制平面（pgserver），不携带 Docker、虚拟机或容器镜像。联邦查询引擎（Trino）、可观测性堆栈和演示数据包通过后续独立的分层安装程序添加，顺序为：容器安装程序（`Provisa-Container-<version>.exe`，添加 WSL2 + containerd + Trino），然后是 Obs 安装程序（需要容器层），然后是 Demo 安装程序（需要 Core + Obs）。首次启动指引会说明如何通过运行容器安装程序来初始化联邦查询引擎。
 
@@ -202,7 +202,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 - 所有容器镜像的 tarball（PostgreSQL、PgBouncer、MinIO、Redis、联邦查询引擎、Provisa API）
 - Provisa CLI 包装器和首次启动设置脚本
 
-Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
+Provisa 镜像在打包时构建，从不包含 Python 源代码。
 
 ### 何时使用 {: #when-to-use }
 
@@ -359,7 +359,7 @@ Provisa 镜像在打包时就已预先构建——绝不包含 Python 源码。
 
 ## 云虚拟机部署 —— Terraform（AWS） {: #cloud-vm-deployment-terraform-aws }
 
-在 AWS 上通过一条交互式命令预配一个完整的多节点 Provisa 集群——VPC、安全组、EC2 实例、ALB、NLB。
+一条交互式命令即可在 AWS 上创建完整的多节点 Provisa 集群：VPC、安全组、EC2 实例、ALB 和 NLB。
 
 ### 文件 {: #files }
 
@@ -478,7 +478,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 您的团队已在运行 Kubernetes 集群，并希望 Provisa 参与该运维模型。如果您正在评估 Provisa，或是在没有现成集群的情况下进行本地部署，AppImage 路径更简单。
 
-注意：Provisa AppImage 无法在 Kubernetes pod 内运行——它需要 FUSE 和无根 Docker 守护进程，这些在标准 pod 安全配置文件中不可用。
+注意：Provisa AppImage 无法在 Kubernetes Pod 内运行。它需要 FUSE 和无 root 的 Docker 守护进程，而标准 Pod 安全配置两者都不允许。
 
 ### 步骤 {: #steps_3 }
 
@@ -619,7 +619,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-联邦查询引擎 worker 可独立扩缩——更多 worker 可提升吞吐量和并发查询能力。
+联邦引擎的 worker 可以独立扩展，worker 越多，吞吐量和并发查询数就越高。
 
 ### 更新配置 {: #updating-config }
 
@@ -639,7 +639,7 @@ Provisa 在所有部署模式下都采用两层恢复模型：
 - **第一层——瞬时错误。** 读操作在遇到瞬时错误时，使用带全抖动的指数退避重试，最长可达 30 秒。可通过 `PROVISA_RETRY_BUDGET_SECS` 调整预算。写操作从不在内部重试，内存错误也从不可重试。
 - **第二层——组件故障。** 内部引擎监视器会检测失败的软件组件并在 2–3 分钟内重启它们。
 
-机器级和集群级故障仍是运维方的责任——请为节点丢失容错预配冗余节点和负载均衡器（见上文的 Terraform 和 Helm 路径）。
+机器级和集群级故障仍由运营方负责。为了能承受节点丢失，请部署冗余节点和负载均衡器（见上文的 Terraform 和 Helm 路径）。
 
 ### 元数据缺失的遥测表 {: #telemetry-table-whose-metadata-is-missing }
 
@@ -665,7 +665,7 @@ Provisa 在所有部署模式下都采用两层恢复模型：
 
 数据仓库联邦查询引擎需要 Provisa 默认安装之外的 Python 包和系统级组件。此处列出的所有 Python 包都声明在 `pyproject.toml` 中，并作为标准 `pip install provisa` 或 `pip install -e .` 的一部分安装。
 
-这些 Python 包随 Provisa 默认安装一起提供——任何数据仓库引擎都不需要额外的可选 extras。系统级组件（ODBC 驱动、云 CLI、服务账号密钥）需要单独安装。
+Python 包随 Provisa 的默认安装一起提供，所以任何数仓引擎都不需要可选的额外包。系统级组件（ODBC 驱动、云 CLI、服务账号密钥）需要另行安装。
 
 ### Python 包（已包含在核心依赖中） {: #python-packages-already-in-core-dependencies }
 
@@ -684,11 +684,11 @@ Provisa 在所有部署模式下都采用两层恢复模型：
 
 ### 系统级要求 {: #system-level-requirements }
 
-以下不是 Python 包——必须安装在运行 Provisa 的主机或容器上。
+这些不是 Python 包，需要安装在运行 Provisa 的主机或容器上。
 
 **Microsoft Fabric 和 Azure Synapse（ODBC）**
 
-`pyodbc` 通过 Microsoft ODBC Driver for SQL Server（`msodbcsql18`）建立连接。该驱动必须安装在主机上——而非通过 pip。
+`pyodbc` 通过 Microsoft ODBC Driver for SQL Server（`msodbcsql18`）连接。请直接在主机上安装该驱动；pip 无法安装它。
 
 macOS：
 
@@ -720,7 +720,7 @@ export PROVISA_MSSQL_ODBC_DRIVER="ODBC Driver 17 for SQL Server"
 az login
 ```
 
-对于生产环境，使用 managed identity（在 Azure 虚拟机或 AKS 上）——无需凭据管理。对于服务主体认证，设置：
+在生产环境中，请使用托管标识（在 Azure 虚拟机或 AKS 上），无需管理凭据。如果使用服务主体认证，请设置：
 
 ```bash
 export AZURE_TENANT_ID=<tenant>
@@ -736,7 +736,7 @@ export AZURE_CLIENT_SECRET=<secret>
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 ```
 
-对于 GCP 上的生产环境（Cloud Run、带 Workload Identity 的 GKE、Compute Engine），该库会自动获取所附加的服务账号——无需设置环境变量。
+在 GCP 生产环境中（Cloud Run、启用 Workload Identity 的 GKE、Compute Engine），该库会自动使用附加的服务账号，无需环境变量。
 
 该服务账号需要：
 
@@ -753,7 +753,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 ```
 
-Databricks 连接器从 `requests` 继承此设置——不需要 Databricks 专用的环境变量。
+Databricks 连接器从 `requests` 继承这一设置，所以无需 Databricks 专用的环境变量。
 
 ### 各引擎检查清单 {: #per-engine-checklist }
 
@@ -850,7 +850,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 ### 配置晋升流程（开发 → 测试 → 生产） {: #config-promotion-workflow-dev-test-prod }
 
-所有环境特定的设置（连接字符串、密钥、端口）应放在环境变量或密钥管理器中——而非导出的配置里。导出的 YAML 捕获的是您的语义模型：数据源、域、角色、视图。
+所有与环境相关的设置（连接字符串、密钥、端口）都应放在环境变量或密钥管理器中，不放进导出的配置。导出的 YAML 记录的是您的语义模型：数据源、领域、角色和视图。
 
 ```bash
 # On dev — export after making changes in the UI

@@ -17,19 +17,19 @@ Provisa תומכת בשישה נתיבי פריסה. בחרו בהתבסס על 
 
 שניהם ברמה ארגונית (enterprise-grade). נתיב ה-VM/AppImage פשוט יותר: אין אשכול לספק, אין מדיניות CNI או RBAC להגדיר, וה-AppImage הוא לגמרי self-contained. הוא משתלב באופן טבעי בכלי ניהול שרתים קיימים (Ansible, Puppet, סוכני Datadog, מעבירי Splunk, וכו').
 
-בחרו Kubernetes רק אם הצוות שלכם כבר מפעיל אשכול K8s ורוצה ש-Provisa ישתתף באותו מודל תפעולי (rolling deploys, HPA, observability מאוחד). היכולות שוות-ערך — Kubernetes מוסיף overhead תפעולי, לא יכולת.
+בחרו ב-Kubernetes רק אם הצוות שלכם כבר מפעיל אשכול K8s ורוצה ש-Provisa ישתלב בדרך התפעול הזו (פריסות מתגלגלות, HPA, ניטור מאוחד). שתי האפשרויות נותנות את אותן יכולות; Kubernetes מוסיף עומס תפעולי.
 
 ### רכישת image ו-סריקת אבטחה {: #image-acquisition-and-security-scanning }
 
-כל נתיבי הייצור דורשים השגת ה-artifacts של Provisa לפני שכל פריסה יכולה לרוץ. "Air-gapped" מתייחס למה שקורה בזמן ההתקנה על המכונה היעד — ה-artifacts חייבים להיות מושגים תחילה.
+כל נתיב ייצור צריך את תוצרי Provisa לפני שפריסה כלשהי יכולה לרוץ. "Air-gapped" מתאר את מה שקורה בזמן ההתקנה במכונת היעד, ולכן משיגים את התוצרים קודם.
 
-**מתקיני macOS ו-Windows:** הורידו מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases). ארוז לחלוטין (fully bundled); אינטרנט אינו נדרש לאחר ההורדה. מיועד ל-dev/הערכה, לא ייצור — אין ציפייה לשער סריקת image.
+**תוכנות התקנה ל-macOS ול-Windows:** הורידו אותן מ[עמוד השחרורים ב-GitHub](https://github.com/provisa/provisa/releases). הן ארוזות במלואן ולא צריכות אינטרנט אחרי ההורדה. הן מיועדות לפיתוח ולהערכה, ולכן לא מצופה שער של סריקת אימג'ים.
 
-**נתיב AppImage:** הורידו מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases) והעבירו למכונה היעד. ה-AppImage אורז את כל image-י הרכיבים כ-tarballs בתוך מערכת קבצים squashfs — רוב סורקי הרישום אינם יכולים לבדוק אלה במקומם. פנו לצוות החשבון של Provisa לקבלת digests של image-י רכיבים כדי לאמת מול הסורק שלכם באופן עצמאי.
+**נתיב AppImage:** הורידו אותו מ[עמוד השחרורים ב-GitHub](https://github.com/provisa/provisa/releases) והעתיקו אותו למכונת היעד. ה-AppImage אורז כל אימג' של רכיב כ-tarball בתוך מערכת קבצים squashfs, שרוב סורקי המאגרים לא יכולים לבדוק במקום. בקשו מצוות החשבון שלכם ב-Provisa את ה-digests של אימג'י הרכיבים כדי לבדוק אותם בעצמכם מול הסורק שלכם.
 
-**נתיב Terraform:** ה-AppImage חייב להיות מועלה ל-S3 לפני הרצת `terraform/deploy.sh`. nodes‏ EC2 מורידים אותו בעת האתחול (boot) דרך תפקיד IAM — הם דורשים גישת S3 יוצאת (ישירה או דרך endpoint‏ gateway של VPC). החילו את אותה מדיניות סריקה כמו נתיב ה-AppImage.
+**נתיב Terraform:** העלו את ה-AppImage ל-S3 לפני שמריצים את `terraform/deploy.sh`. צמתי EC2 מורידים אותו בעת האתחול דרך תפקיד ה-IAM שלהם, ולכן הם צריכים גישה יוצאת ל-S3, ישירות או דרך נקודת קצה של שער VPC. החילו את אותה מדיניות סריקה כמו בנתיב ה-AppImage.
 
-**נתיב Helm / Kubernetes:** image-ים בודדים חייבים להידחף לרישום (registry) שהאשכול יכול להגיע אליו. נתיב זה תואם ביותר לסריקה מבוססת-רישום (Prisma Cloud, Aqua, Trivy, AWS Inspector) — image-ים הם אובייקטים ממדרגה-ראשונה שסורקים מבינים באופן ילידי. עבור אשכולות air-gapped, שקפו (mirror) image-ים לרישום פנימי ודרסו הפניות ב-`values.yaml`.
+**נתיב Helm / Kubernetes:** דחפו את האימג'ים הנפרדים למאגר שהאשכול מגיע אליו. הנתיב הזה מתאים ביותר לסריקה מבוססת מאגר (Prisma Cloud, Aqua, Trivy, AWS Inspector), כי אימג'ים הם אובייקטים שסורקים כבר מבינים. לאשכול מבודד, שכפלו את האימג'ים למאגר פנימי ודרסו את ההפניות ב-`values.yaml`.
 
 ---
 
@@ -141,13 +141,7 @@ OTLP/HTTP הכותב traces, מטריקות, ולוגים למסד נתונים 
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | נפח בינוני |
 | `trino://user@host:8080/otel` | Trino / Iceberg | עובד טכנית, **לא מומלץ** — ראו למטה |
 
-**לגבי `trino://`:** דיאלקט ה-Trino של SQLAlchemy מנפיק DDL תקין של Trino ו-
-`INSERT`-ים, כך שהוא ריאלי טכנית כ-backend של `otlp2sql`. הוא אינו
-מומלץ עבור דבר מלבד קצבי קליטה נמוכים. כל flush‏ batch הופך ל-
-`INSERT` מבוזר של Trino בתוספת snapshot של Iceberg, כך שטלמטריה בקצב-גבוה
-מייצרת קבצי ו-snapshots קטנים רבים ועדיין דורשת מעת לעת
-`ALTER TABLE ... EXECUTE optimize` / `expire_snapshots` — ש-`otlp2sql` אינו
-מריץ. זה גם מציב את מנוע השאילתה בנתיב הקליטה החם.
+**עם `trino://`:** הניב של Trino ב-SQLAlchemy מפיק DDL ו-`INSERT` תקינים של Trino, כך שאפשר להשתמש בו כ-backend של `otlp2sql`, אבל אנחנו ממליצים עליו רק לקצבי קליטה נמוכים. כל ריקון של אצווה הופך ל-`INSERT` מבוזר של Trino ועוד תמונת מצב של Iceberg, ולכן טלמטריה בקצב גבוה יוצרת הרבה קבצים ותמונות מצב קטנים, ועדיין צריכה `ALTER TABLE ... EXECUTE optimize` / `expire_snapshots` תקופתי, ש-`otlp2sql` לא מריץ. זה גם שם את מנוע השאילתות בנתיב החם של הקליטה.
 
 עבור טלמטריה בנפח-גבוה ל-Trino/Iceberg, השתמשו במקום זאת ב-`otlp2parquet`: הוא
 כותב parquet לאחסון אובייקטים ללא מעבר דרך Trino, ו-compaction מתוזמן של
@@ -162,9 +156,9 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ## מתקין macOS {: #macos-installer }
 
-עבור תחנות עבודה למפתחים והערכה. air-gapped לחלוטין — אינטרנט אינו נדרש לאחר ההורדה.
+לתחנות עבודה של מפתחים ולהערכה. מבודד לגמרי ולא צריך אינטרנט אחרי ההורדה.
 
-מתקין הבסיס הוא **התקנה ילידית**: מנוע פדרציה DuckDB + control plane‏ PostgreSQL מוטמע (pgserver) + מטמון בזיכרון (fakeredis), ללא Docker, VM, Trino, Redis, או MinIO. מנוע הפדרציה הוא בחירת-אשף — DuckDB (ילידי, ברירת מחדל), Trino-על-Docker, או מנוע חיצוני. Observability הוא תמיד-פעיל self-telemetry הניתן לצפייה ב-Admin; מחסנית ה-collector/Prometheus/Grafana של Docker היא הדגמה חיצונית אופציונלית, לא מתג הפעלה/כיבוי. חבילת נתוני ההדגמה אופציונלית וכבויה כברירת מחדל. Trino, מחסנית ה-observability של Docker, וההדגמה הם תוספים כבדים הנפתרים local-first (תיקייה סמוכה-למתקין, volumes מותקנים, `~/Downloads`, ואז release ב-GitHub), כך שארגונים יכולים לטעון מראש tarballs עבור התקנות air-gapped.
+תוכנת ההתקנה הבסיסית היא **התקנה מקורית**: מנוע הפדרציה DuckDB, מישור בקרה מוטמע של PostgreSQL (pgserver) ומטמון בזיכרון (fakeredis), בלי Docker, VM, Trino, Redis או MinIO. את מנוע הפדרציה בוחרים באשף: DuckDB (מקורי, ברירת המחדל), Trino על Docker או מנוע חיצוני. הניטור הוא טלמטריה עצמית שתמיד פועלת וגלויה ב-Admin; מחסנית ה-Docker של collector, Prometheus ו-Grafana היא הדגמה אופציונלית נפרדת, והיא לא מדליקה או מכבה אותו. חבילת נתוני ההדגמה אופציונלית וכבויה כברירת מחדל. Trino, מחסנית הניטור ב-Docker וההדגמה הם תוספות כבדות. מחפשים אותם קודם מקומית (התיקייה שליד תוכנת ההתקנה, אמצעי אחסון מחוברים, `~/Downloads`) ורק אחר כך מורידים אותם משחרור ה-GitHub, כך שארגונים יכולים להכין את קובצי ה-tarball מראש להתקנות מבודדות.
 
 ### שלבים {: #steps }
 
@@ -187,7 +181,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ## מתקין Windows {: #windows-installer }
 
-עבור תחנות עבודה למפתחים והערכה. air-gapped לחלוטין — אינטרנט אינו נדרש לאחר ההורדה.
+לתחנות עבודה של מפתחים ולהערכה. מבודד לגמרי ולא צריך אינטרנט אחרי ההורדה.
 
 כמו macOS, מתקין ה-Windows הבסיסי הוא **שכבה ילידית**: runtime‏ Python עצמאי + wheel‏ provisa + DuckDB/pg_duckdb + control plane‏ PostgreSQL מוטמע (pgserver), ללא משלוח Docker, VM, או image-י קונטיינר. מנוע הפדרציה (Trino), מחסנית ה-observability, וחבילת נתוני ההדגמה נוספים מאוחר יותר דרך מתקינים שכבתיים נפרדים, לפי סדר: מתקין ה-Container (‏`Provisa-Container-<version>.exe`, המוסיף WSL2 + containerd + Trino), אז מתקין ה-Obs (דורש את שכבת ה-container), ואז מתקין ה-Demo (דורש Core + Obs). הנחיית הפעלה-ראשונה מסבירה כיצד לאתחל את מנוע הפדרציה על ידי הרצת מתקין ה-Container.
 
@@ -219,7 +213,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 - כל tarballs‏ image הקונטיינר (PostgreSQL, PgBouncer, MinIO, Redis, מנוע פדרציה, API של Provisa)
 - ה-wrapper של Provisa CLI וסקריפט הגדרת הפעלה-ראשונה
 
-ה-image של Provisa נבנה מראש בזמן האריזה — קוד מקור Python לעולם אינו נכלל.
+האימג' של Provisa נבנה בזמן האריזה, וקוד מקור של Python לעולם לא כלול בו.
 
 ### מתי להשתמש {: #when-to-use }
 
@@ -376,7 +370,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ## פריסת VM בענן — Terraform (AWS) {: #cloud-vm-deployment-terraform-aws }
 
-מספק אשכול Provisa רב-node מלא על AWS — VPC, security groups, מופעי EC2, ALB, NLB — בפקודה אינטראקטיבית אחת.
+פקודה אינטראקטיבית אחת מקימה אשכול Provisa מלא מרובה צמתים ב-AWS: VPC, קבוצות אבטחה, מופעי EC2, ALB ו-NLB.
 
 ### קבצים {: #files }
 
@@ -495,7 +489,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 הצוות שלכם כבר מפעיל אשכול Kubernetes ורוצה ש-Provisa ישתתף באותו מודל תפעולי. אם אתם מעריכים את Provisa או פורסים on-premises ללא אשכול קיים, נתיב ה-AppImage פשוט יותר.
 
-הערה: ה-AppImage של Provisa אינו יכול לרוץ בתוך pod‏ Kubernetes — הוא דורש FUSE ודמון Docker חסר-שורש, שאינם זמינים בפרופילי אבטחת pod סטנדרטיים.
+הערה: ה-AppImage של Provisa לא יכול לרוץ בתוך pod של Kubernetes. הוא צריך FUSE ו-daemon של Docker בלי root, ופרופילי האבטחה הרגילים של pods לא מאפשרים אף אחד מהם.
 
 ### שלבים {: #steps_3 }
 
@@ -636,7 +630,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-עובדי מנוע פדרציה scale-ים באופן עצמאי — יותר עובדים מגדילים תפוקה ויכולת שאילתות במקביל.
+ה-workers של מנוע הפדרציה מתרחבים בנפרד, ויותר workers פירושם יותר תפוקה ויותר שאילתות בו-זמנית.
 
 ### עדכון תצורה {: #updating-config }
 
@@ -656,7 +650,7 @@ Provisa מחילה מודל התאוששות דו-שכבתי על פני כל מ
 - **שכבה 1 — שגיאות חולפות.** פעולות קריאה מנסות שוב למשך עד 30 שניות על שגיאות חולפות באמצעות backoff אקספוננציאלי עם jitter מלא. כוונו את התקציב עם `PROVISA_RETRY_BUDGET_SECS`. פעולות כתיבה לעולם אינן מנוסות שוב פנימית, ושגיאות זיכרון לעולם אינן ניתנות-לניסיון-חוזר.
 - **שכבה 2 — כשל רכיב.** צופה מנוע פנימי מזהה ומפעיל מחדש רכיבי תוכנה שנכשלו תוך 2–3 דקות.
 
-כשלים ברמת-מכונה וברמת-אשכול נותרים באחריות המפעיל — ספקו nodes מיותרים (redundant) ו-load balancer (נתיבי Terraform ו-Helm שלמעלה) עבור סובלנות אובדן-node.
+כשלים ברמת המכונה והאשכול נשארים באחריות המפעיל. כדי לעמוד באובדן של צומת, הקימו צמתים יתירים ומאזן עומסים (נתיבי Terraform ו-Helm שלמעלה).
 
 ### טבלת טלמטריה שהמטא-נתונים שלה חסרים {: #telemetry-table-whose-metadata-is-missing }
 
@@ -682,7 +676,7 @@ Provisa אינו משנה דבר במקרה זה. כל הרצת דחיסה רו�
 
 מנועי הפדרציה של ה-warehouse דורשים חבילות Python ורכיבים ברמת-מערכת מעבר להתקנת ברירת המחדל של Provisa. כל חבילות ה-Python הרשומות כאן מוצהרות ב-`pyproject.toml` ומותקנות כחלק מ-`pip install provisa` הסטנדרטי או `pip install -e .`.
 
-חבילות ה-Python מגיעות עם התקנת ברירת המחדל של Provisa — אין צורך ב-extras אופציונליים עבור אף מנוע warehouse. הפריטים ברמת-המערכת (דרייבר ODBC, CLI-י ענן, מפתחות service-account) חייבים להיות מותקנים בנפרד.
+חבילות ה-Python מגיעות עם התקנת ברירת המחדל של Provisa, כך שאף מנוע מחסן לא צריך תוספת אופציונלית. את הרכיבים ברמת המערכת (דרייבר ה-ODBC, כלי ה-CLI של הענן, מפתחות של חשבונות שירות) צריך להתקין בנפרד.
 
 ### חבילות Python (כבר בתלויות הליבה) {: #python-packages-already-in-core-dependencies }
 
@@ -701,11 +695,11 @@ Provisa אינו משנה דבר במקרה זה. כל הרצת דחיסה רו�
 
 ### דרישות ברמת-מערכת {: #system-level-requirements }
 
-אלה אינן חבילות Python — הן חייבות להיות מותקנות על ה-host או הקונטיינר המריץ את Provisa.
+אלה לא חבילות Python. התקינו אותם על המארח או הקונטיינר שמריץ את Provisa.
 
 **Microsoft Fabric ו-Azure Synapse (ODBC)**
 
-`pyodbc` מתחבר דרך Microsoft ODBC Driver for SQL Server (`msodbcsql18`). הדרייבר חייב להיות מותקן על ה-host — לא דרך pip.
+`pyodbc` מתחבר דרך Microsoft ODBC Driver for SQL Server (`msodbcsql18`). התקינו את הדרייבר על המארח עצמו; pip לא יכול להתקין אותו.
 
 macOS:
 
@@ -737,7 +731,7 @@ export PROVISA_MSSQL_ODBC_DRIVER="ODBC Driver 17 for SQL Server"
 az login
 ```
 
-עבור ייצור, השתמשו ב-managed identity (על VM-י Azure או AKS) — אין צורך בניהול אישורים. עבור אימות service-principal, הגדירו:
+בייצור, השתמשו בזהות מנוהלת (על מכונות וירטואליות של Azure או AKS), שלא דורשת ניהול פרטי התחברות. לאימות באמצעות service principal, הגדירו:
 
 ```bash
 export AZURE_TENANT_ID=<tenant>
@@ -753,7 +747,7 @@ export AZURE_CLIENT_SECRET=<secret>
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 ```
 
-עבור ייצור על GCP (Cloud Run, GKE עם Workload Identity, Compute Engine), הספרייה קולטת את ה-service account המצורף אוטומטית — אין צורך במשתנה סביבה.
+בייצור ב-GCP (Cloud Run, GKE עם Workload Identity, Compute Engine), הספרייה מזהה בעצמה את חשבון השירות המצורף, בלי משתנה סביבה.
 
 ה-service account צריך:
 
@@ -770,7 +764,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 ```
 
-מחבר ה-Databricks יורש זאת מ-`requests` — אין צורך במשתנה סביבה ספציפי ל-Databricks.
+מחבר Databricks יורש זאת מ-`requests`, ולכן הוא לא צריך משתנה סביבה ייעודי ל-Databricks.
 
 ### רשימת בדיקה לפי מנוע {: #per-engine-checklist }
 
@@ -867,7 +861,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 ### זרימת קידום תצורה (dev ← test ← prod) {: #config-promotion-workflow-dev-test-prod }
 
-כל ההגדרות הספציפיות-לסביבה (מחרוזות חיבור, סודות, פורטים) שייכות במשתני סביבה או מנהלי סודות — לא בתצורה המיוצאת. ה-YAML המיוצא לוכד את המודל הסמנטי שלכם: מקורות, דומיינים, תפקידים, תצוגות.
+כל הגדרה שתלויה בסביבה (מחרוזות חיבור, סודות, פורטים) שייכת למשתני סביבה או למנהל סודות, מחוץ לתצורה המיוצאת. ה-YAML המיוצא לוכד את המודל הסמנטי שלכם: מקורות, תחומים, תפקידים ותצוגות.
 
 ```bash
 # On dev — export after making changes in the UI
