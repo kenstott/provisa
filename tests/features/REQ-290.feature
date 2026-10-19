@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-290 — Automatic Persisted Queries (APQ)
-  # APQ applies to any query the authenticated caller's rights permit. APQ is fully automatic — any successfully executed qu…
+  # APQ applies to any query the authenticated caller's rights permit. APQ is fully automatic: any successfully executed que…
 
   Scenario: REQ-290 default behaviour
     Given an authenticated caller executing any permitted query

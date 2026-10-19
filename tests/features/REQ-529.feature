@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-529 — pgwire Server
-  # pgwire authentication routes through the same pluggable AuthProvider contract as every other surface — no provider-name…
+  # pgwire authentication routes through the same pluggable AuthProvider contract as every other surface, with no provider-n…
 
   Scenario: REQ-529 default behaviour
     Given pgwire is launched with provider `none`

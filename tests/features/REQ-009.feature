@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-009 — Compiler & Schema
-  # Query compilation produces PG-style SQL from validated GraphQL AST — single SQL statement, no resolver chain, no N+1. Ex…
+  # Query compilation produces PG-style SQL from validated GraphQL AST: a single SQL statement, no resolver chain, no N+1. E…
 
   Scenario: REQ-009 default behaviour
     Given a valid GraphQL query AST

@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-238 — Warm Tables (Replica Profile — Low-Latency Placement)
-  # Warm tables -- frequently queried RDBMS tables materialized into a low-latency, engine-reachable location. In materializ…
+  # Warm tables are frequently queried RDBMS tables materialized into a low-latency, engine-reachable location. In materiali…
 
   Scenario: REQ-238 default behaviour
     Given a table materialized into the Iceberg results catalog with Trino file cache enabled

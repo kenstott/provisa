@@ -25534,7 +25534,7 @@ The benchmark contract has governance knobs: row rules per table, the share of c
 
 ### REQ-2093 · Performance {#REQ-2093}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 Request deadlines are watched by one shared watchdog thread per process instead of a threading.Timer per request; a request that passes its deadline is cancelled as before, on every transport that registers a cancel.
 
@@ -25542,7 +25542,7 @@ Request deadlines are watched by one shared watchdog thread per process instead 
 
 **Code:** `provisa/core/request_deadline.py`
 
-**Tests:** —
+**Tests:** `tests/unit/test_request_deadline.py`, `tests/unit/test_request_deadline_whole_request.py`
 
 ## 1. Access Governance & Security
 

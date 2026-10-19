@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-122 — Authentication
-  # Keycloak OIDC — validates JWT access tokens from Keycloak via OIDC discovery + JWKS. Realm roles + client roles → Provis…
+  # Keycloak OIDC validates JWT access tokens from Keycloak via OIDC discovery + JWKS. Realm roles + client roles → Provisa…
 
   Scenario: REQ-122 default behaviour
     Given Keycloak is configured as the OIDC provider
