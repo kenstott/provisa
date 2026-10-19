@@ -31,13 +31,13 @@ Provisa reads the common relational databases and cloud warehouses: PostgreSQL, 
 Files are sources too. CSV, Parquet, SQLite and DuckDB files, Iceberg and Delta Lake tables, and directories of files matched by a glob all register as tables, with column names mapped to GraphQL-friendly fields. Iceberg and Delta tables can be read as of an earlier point in time. A files source can also crawl web pages, landing HTML tables and linked data files as ordinary tables, which is how Wikipedia becomes a source.
 { #connector-catalog-files-and-lake }
 
-Non-relational stores appear as tables you can join to everything else. MongoDB and Cosmos DB, Elasticsearch, Redis, Cassandra, Accumulo, Prometheus, Splunk, Qdrant and other vector stores are covered, along with graph and triple stores such as Neo4j and SPARQL endpoints. Each has a mapping from its native shape to columns, so a document or a metric series reads like any other row.
+Non-relational stores appear as tables you can join to everything else. MongoDB and Cosmos DB, DynamoDB, Elasticsearch, Redis, Cassandra, Druid, Pinot, Prometheus and Splunk are covered, along with the vector stores Qdrant and S3 Vectors and the graph and triple stores Neo4j and SPARQL endpoints. Each has a mapping from its native shape to columns, so a document or a metric series reads like any other row.
 { #connector-catalog-nosql-search-and-graph }
 
 A remote GraphQL, gRPC or OpenAPI service can be registered as a source. Provisa introspects the schema or spec, turns each readable operation into a virtual table, and turns write operations into commands you register one at a time. The service's authentication, depth limits and relationships to local tables are configured at registration, and a refresh re-reads the spec on demand. Everything the service returns passes through the same row, column and masking rules as local data.
 { #connector-catalog-remote-schemas }
 
-Business applications register as named source types: Salesforce, ServiceNow, SharePoint, Google Workspace, Microsoft 365, Google Sheets, cloud inventory and a growing set of branded APIs built on the generic API sources. Each asks only for what that application needs, such as a login URL and credential, and exposes its objects as tables. Operations to exclude, and write operations to expose, are chosen one at a time.
+Business applications register as named source types: Salesforce, ServiceNow, SharePoint, Google Workspace, Microsoft 365, Google Sheets and cloud inventory, and branded APIs such as Stripe, Shopify, HubSpot, Jira, Notion, Slack and Airtable built on the generic API sources. Each asks only for what that application needs, such as a login URL and credential, and exposes its objects as tables. Operations to exclude, and write operations to expose, are chosen one at a time.
 { #connector-catalog-saas-and-enterprise }
 
 Event and reference data has its own source types. Kafka topics register with schemas inferred from the topic or a schema registry, log files become tables, and AskAmerica exposes U.S. government open data by subject. Kaggle datasets can be searched and registered, and data-quality checkers and profilers report their results as tables. Node and Python sources let a script supply rows when no connector exists.
@@ -180,10 +180,10 @@ Authority is scoped to an environment, and the usual way to get it is to create 
 
 ### Regions and data residency
 
-A deployment can run clusters in several regions off one shared model. The model is declared once; each cluster has its own nodes, engine, replica storage, cache and record, and serves clients that connect to its address. What a reader sees follows the model's rules, wherever they connect.
+A deployment can run clusters in several regions off one shared model. The model is declared once; each cluster has its own nodes, engine, replica storage, cache and record, and serves clients that connect to its address. What a reader sees follows the model's rules, wherever they connect, and each audit record names the region whose data answered.
 { #regions-and-residency-clusters }
 
-Residency is a short list of rules. Row and column rules written on user attributes decide what each reader gets. A table can name a home region, and whole-table copies of it are built only there; readers elsewhere are served from that replica with their own rules applied.
+Residency is a short list of rules. Row and column rules written on user attributes and on the region of the node answering decide what each reader gets and what crosses between regions. A table can name a home region, and only that region builds and refreshes its replica. Readers elsewhere read that replica in place, with their own rules applied in the home region, so only what they may see leaves it. When the home region cannot serve, the read is refused rather than answered from the source live somewhere else. Setting or moving a table's home region needs the data-residency right for the regions involved.
 { #regions-and-residency-residency-rules }
 
 ??? note "Requirements"
@@ -237,10 +237,10 @@ Mutations are classified as writes by contract, not by what the caller says. A g
 
 ### Roles and capabilities
 
-What a person can do is spelled out as capabilities, and each capability is assigned on its own. Registering sources, defining relationships, writing security rules and administering the organization are separate rights, so an admin builds a role from the pieces it needs. Every gate in the server and the UI tests a capability, never a role name, and every admin handler sits behind one.
+What a person can do is spelled out as capabilities, and each capability is assigned on its own. Registering sources, defining relationships, writing security rules and administering the organization are separate rights, so an admin builds a role from the pieces it needs. Every gate in the server and the UI tests a capability, never a role name, and every admin handler sits behind one. A role grant can carry an expiry, and a role can remove grants that have gone unused for a set number of days; each removal is recorded, and where mail is configured the holder and the admins are told before a grant ends.
 { #roles-and-capabilities-capabilities }
 
-A role can inherit from one parent, and the child gets everything the parent holds. A user who holds several roles can act as all of them at once, in which case a capability counts if any of the roles carries it.
+A role can inherit from one parent, and the child gets everything the parent holds. A request can act as several of the caller's roles at once: their rights are combined, each row is read under the rules of the roles that admitted it, and the audit names every role that acted. Roles can also come from a user's attributes. A declared attribute such as region gives a user the role region__eu, and a grant can require it alongside another role, so "an analyst in the EU sees this column unmasked" is an ordinary grant. Every role carries a description of what it is for, so an access review can read why it exists.
 { #roles-and-capabilities-inheritance }
 
 Domains are permission boundaries. A role reads freely inside the domains it is granted and needs an explicit grant for any other. Even the built-in operations domain follows this rule, and a seeded data steward role owns the governance of a domain.
@@ -266,13 +266,13 @@ A join is allowed only where a relationship has been registered and approved. Wh
 
 ### Row-level security, column visibility and masking
 
-Access is enforced twice. Schema visibility hides tables and columns a role may not see, so they never appear in the schema or the query builder. Then the SQL layer filters rows and strips columns from every query before it runs, on every surface. No code path returns rows without a role bound to them.
+Access is enforced twice. Schema visibility hides tables and columns a role may not see, so they never appear in the schema, the query builder or the admin API's listings. Then the SQL layer filters rows and strips columns from every query before it runs, on every surface. No code path returns rows without a role bound to them. A request acts only as roles its caller holds: naming one it does not hold is refused, recorded as a high-severity security event and, for a token-based client, suspends that token until an administrator lifts it. An AI agent over MCP is held to the roles it was given.
 { #row-security-and-masking-two-layers }
 
-Row filters are written as SQL predicates and attached to a table, a whole domain or a tag. They are checked when saved, so a bad rule fails at once instead of at the first query. Predicates can use attributes of the signed-in user, taken from the identity provider or set locally, and those values take the type of the column they are compared with.
+Row filters are written as SQL predicates and attached to a table, a whole domain or a tag. They are checked when saved, so a bad rule fails at once instead of at the first query. Predicates can use attributes of the signed-in user, taken from the identity provider or set locally, constants the role carries, and the region of the node answering; those values take the type of the column they are compared with. A role constant can be a reference to an environment variable or a secret, resolved when a query uses it.
 { #row-security-and-masking-row-rules }
 
-A column can be masked per role. The options are a regular-expression replace on text, a constant, a truncated date, or a consistent fake value, and the same real value always shows the same fake. The raw value never leaves the database. Masks respect column types, only touch the selected output, and leave filters and joins working on the real value. A masked column cannot be used to filter results.
+A column can be masked per role. The options are a regular-expression replace on text, a constant, a truncated date, or a consistent fake value, and the same real value always shows the same fake. The raw value never leaves the database. Masks respect column types, only touch the selected output, and leave filters and joins working on the real value. A masked column cannot be used to filter results. A column carrying a sensitive tag, such as the built-in pii tag, has its masks, fakes and grants changed only by a holder of the sensitive-data right, in every environment including production.
 { #row-security-and-masking-masking }
 
 The metadata about the model is governed like any other data. Core facts about tables and columns are open, while the governance columns, such as who may see or unmask a column, need a dedicated capability. Admins see every column.
@@ -290,10 +290,10 @@ The metadata about the model is governed like any other data. Core facts about t
 For rules too complex to write as row filters, Provisa calls out to an approval hook before a query runs. The hook can be switched on for a table, a source or the whole deployment, and it speaks over a webhook, gRPC or a Unix socket. A circuit breaker protects queries when the hook is unhealthy, and the gRPC channel is reused across calls.
 { #approvals-and-limits-approval-hook }
 
-Each role has its own request-rate limit, along with caps on concurrent subscriptions and Flight streams. Natural-language queries have a separate limit because they cost LLM calls. State is kept in Redis, so any number of stateless containers share the same count. A stream over its limit waits for a free slot.
+Each role has its own request-rate limit, kept in Redis so any number of stateless containers share one count, along with caps on concurrent subscriptions and Flight streams. A stream over its cap waits for a free slot. Natural-language queries have a separate limit because they cost LLM calls.
 { #approvals-and-limits-rate-limits }
 
-Roles carry ceilings on how long a query may run and how many rows it may return. Roles without the right to full results get a sample, and when a read is cut short the response says so. Each organization tier also has hard ceilings on query cost, and a query over the ceiling is refused with a message naming the tier it would need.
+Roles carry ceilings on how long a query may run and how many rows it may return. Roles without the right to full results get a sample, and when a read is cut short the response says so. A role, or the whole organization, can also cap how much one statement may ask for: its score counts the relations, joins, columns and nested queries, with a read from a remote API counting ten. A statement over the cap is refused before it runs, on every interface. Each organization tier also has hard ceilings on query cost, and a query over the ceiling is refused with a message naming the tier it would need.
 { #approvals-and-limits-query-limits }
 
 Creating a relationship, view, table, source or webhook goes through an approval. The approver must hold the matching right, must not be the requester, and for a relationship must have reach over one of the two domains it touches. When a registration change affects an entry, that entry is flagged for review.
@@ -302,16 +302,16 @@ Creating a relationship, view, table, source or webhook goes through an approval
 ??? note "Requirements"
 
     - [For rules too complex to write as row filters, Provisa calls out to an approval hook be...](#approvals-and-limits-approval-hook): [REQ-203](arch/requirements.md#REQ-203), [REQ-204](arch/requirements.md#REQ-204), [REQ-246](arch/requirements.md#REQ-246), [REQ-247](arch/requirements.md#REQ-247), [REQ-555](arch/requirements.md#REQ-555), [REQ-556](arch/requirements.md#REQ-556)
-    - [Each role has its own request-rate limit, along with caps on concurrent subscriptions a...](#approvals-and-limits-rate-limits): [REQ-369](arch/requirements.md#REQ-369), [REQ-370](arch/requirements.md#REQ-370), [REQ-371](arch/requirements.md#REQ-371), [REQ-1905](arch/requirements.md#REQ-1905)
+    - [Each role has its own request-rate limit, kept in Redis so any number of stateless cont...](#approvals-and-limits-rate-limits): [REQ-369](arch/requirements.md#REQ-369), [REQ-370](arch/requirements.md#REQ-370), [REQ-371](arch/requirements.md#REQ-371), [REQ-1905](arch/requirements.md#REQ-1905)
     - [Roles carry ceilings on how long a query may run and how many rows it may return.](#approvals-and-limits-query-limits): [REQ-005](arch/requirements.md#REQ-005), [REQ-554](arch/requirements.md#REQ-554), [REQ-1044](arch/requirements.md#REQ-1044), [REQ-1174](arch/requirements.md#REQ-1174), [REQ-1949](arch/requirements.md#REQ-1949)
     - [Creating a relationship, view, table, source or webhook goes through an approval.](#approvals-and-limits-creation-approvals): [REQ-022](arch/requirements.md#REQ-022), [REQ-023](arch/requirements.md#REQ-023), [REQ-024](arch/requirements.md#REQ-024), [REQ-025](arch/requirements.md#REQ-025), [REQ-026](arch/requirements.md#REQ-026), [REQ-434](arch/requirements.md#REQ-434), [REQ-1948](arch/requirements.md#REQ-1948), [REQ-1950](arch/requirements.md#REQ-1950), [REQ-1995](arch/requirements.md#REQ-1995)
 
 ### Lineage and provenance
 
-Provisa traces any column back to its sources. From one SQL statement, including commands composed inline, it builds the column-level lineage, and it merges all of them into a single graph across the estate. The graph is drawn with one box per relation and its columns as rows, arrives collapsed when it is large, and is read through a role picked on the lineage form.
+Provisa traces any column back to its sources. From one SQL statement, including commands composed inline, it builds the column-level lineage, and it merges all of them into a single graph across the estate. The graph is drawn with one box per relation and its columns as rows, arrives collapsed when it is large, and is read through a role picked on the lineage form. Every refresh of a materialized view also records its own lineage: the source columns and transform behind each output column, the versions of the definition and of the inputs it read, and the trace of the refresh. Those records are queryable in the ops domain as mv_refresh_lineage. An engine without Trino lands Provisa's traces as Parquet files, so the records are kept whichever engine runs.
 { #lineage-and-provenance-column-lineage }
 
-A table can record row-level changes into an append-only delta ledger. From the ledger, a materialized view can be rebuilt as it stood at an earlier moment, so a report can be reproduced exactly.
+A table can record row-level changes into an append-only delta ledger, and a materialized view can be declared bitemporal: each refresh appends a version and never rewrites one, on any store. A plain read returns the current state. A request can read as of a time, measured on the source's own change time where the view declares one and on Provisa's load time where it does not. It can also read as recorded at a time, which reads the view as Provisa had recorded it then, so a correction recorded later does not change a replay of the past. The audit record keeps both times, so a report can be reproduced exactly.
 { #lineage-and-provenance-point-in-time }
 
 Because every change is an event and every derived dataset is a view over those events, the platform describes itself. Quality scorecards, history and operational facts are views over streams the system already emits, not separate subsystems.
@@ -320,20 +320,20 @@ Because every change is an event and every derived dataset is a view over those 
 ??? note "Requirements"
 
     - [Provisa traces any column back to its sources.](#lineage-and-provenance-column-lineage): [REQ-862](arch/requirements.md#REQ-862), [REQ-1160](arch/requirements.md#REQ-1160), [REQ-1161](arch/requirements.md#REQ-1161), [REQ-1625](arch/requirements.md#REQ-1625), [REQ-1626](arch/requirements.md#REQ-1626), [REQ-1627](arch/requirements.md#REQ-1627), [REQ-1628](arch/requirements.md#REQ-1628), [REQ-1665](arch/requirements.md#REQ-1665)
-    - [A table can record row-level changes into an append-only delta ledger.](#lineage-and-provenance-point-in-time): [REQ-877](arch/requirements.md#REQ-877), [REQ-878](arch/requirements.md#REQ-878), [REQ-1162](arch/requirements.md#REQ-1162), [REQ-1163](arch/requirements.md#REQ-1163), [REQ-1366](arch/requirements.md#REQ-1366), [REQ-2064](arch/requirements.md#REQ-2064)
+    - [A table can record row-level changes into an append-only delta ledger, and a materializ...](#lineage-and-provenance-point-in-time): [REQ-877](arch/requirements.md#REQ-877), [REQ-878](arch/requirements.md#REQ-878), [REQ-1162](arch/requirements.md#REQ-1162), [REQ-1163](arch/requirements.md#REQ-1163), [REQ-1366](arch/requirements.md#REQ-1366), [REQ-2064](arch/requirements.md#REQ-2064)
     - [Because every change is an event and every derived dataset is a view over those events,...](#lineage-and-provenance-self-describing): [REQ-967](arch/requirements.md#REQ-967)
 
 ### Audit
 
-Every query is recorded in an audit log with the tenant, user, role, a hash of the query, the tables touched, the source, status and duration. Query text is never stored in the clear. The record is written at the single governed pipeline, so no surface can skip it.
+Every query is recorded in its organization's audit log, written at the single governed pipeline so no surface can skip it. The record names the user and every role that acted, and holds a hash of the query, the tables touched, the source, status, duration, route and row count, and what was enforced on the statement. It also records the version of the model that answered, the sources read and the age of their data, the region that answered, and the as-of and as-recorded times of a time-travel read. The query text is kept encrypted under the organization's key, or the deployment's where the organization has set none, and is decrypted only on authorized admin reads.
 { #audit-query-log }
 
-The audit log is append-only, and the database itself blocks updates and deletes. Indexes by tenant and time and by user and time make compliance reports fast to run. Nobody, including an admin, can edit the history.
+The audit log is append-only, and the database itself blocks updates and deletes. Each organization's log is a table in its own schema, in the record store it names for each region it selects. Indexes by tenant and time and by user and time make compliance reports fast to run. Nobody, including an admin, can edit the history. Before anything Provisa records is written, whether a span, a log line, an audit row or an error message to a client, it passes the organization's redaction rules, and every secret Provisa holds or the model references is redacted without a rule naming it.
 { #audit-append-only }
 
 ??? note "Requirements"
 
-    - [Every query is recorded in an audit log with the tenant, user, role, a hash of the quer...](#audit-query-log): [REQ-596](arch/requirements.md#REQ-596)
+    - [Every query is recorded in its organization's audit log, written at the single governed...](#audit-query-log): [REQ-596](arch/requirements.md#REQ-596)
     - [The audit log is append-only, and the database itself blocks updates and deletes.](#audit-append-only): [REQ-613](arch/requirements.md#REQ-613)
 
 ### Public data publishing
