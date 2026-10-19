@@ -155,6 +155,8 @@ _OWN_STEPS = {
     "integration-suite-lanes.yml": {"cluster", "warehouse", "salesforce", "athena", "servicenow"},
     # REQ-2012: carries the paid model keys of its own, as the live-account jobs do.
     "polly-bakeoff.yml": {"bakeoff"},
+    # REQ-2006: walks the bundle it built before publishing it, with the build's live keys.
+    "demo-bundles.yml": {"bundle"},
 }
 
 

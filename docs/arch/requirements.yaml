@@ -81710,6 +81710,9 @@
   - provisa-ui/src/lib/sandboxSession.ts
   - provisa-ui/src/components/JoinNotice.tsx
   - docs/hosted-sandbox.md
+  tests:
+  - tests/integration/test_sandbox_visitor_walk.py
+  - tests/unit/test_sandbox_visitor_walk_state.py
 - id: REQ-1998
   status: proposed
   since: 2026-10

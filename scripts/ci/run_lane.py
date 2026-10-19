@@ -34,13 +34,19 @@ REPO = Path(__file__).resolve().parents[2]
 # replaces the ini addopts -m.
 _BASE = (
     "not packaging and not cluster and not isolated and not requires_warehouse "
-    "and not requires_vector"
+    "and not requires_vector and not demo_walk"
 )
 _KAFKA = "requires_kafka or requires_debezium"
 _DATASTORE = "requires_elasticsearch or requires_sparql or requires_mongodb or requires_prometheus"
 _HIVE_S3 = "requires_hive_s3"
 # Container-backed paths. tests/unit runs in unit-tests.yml and is not repeated here.
 _SUITE = ("tests/integration", "tests/steps")
+
+# The longest one test may run in a lane. Generous: a heavy engine's provisioning happens inside its
+# first test's setup.
+TEST_TIMEOUT_S = 900
+# How long before that bound a still-running test's stacks are written to the log.
+STACKS_BEFORE_BOUND_S = 60
 
 
 @dataclass(frozen=True)
@@ -49,7 +55,13 @@ class Lane:
     marker: str
     clear_addopts: bool = False
     ignore: tuple[str, ...] = ()
+    #: The longest one test of the lane may run.
+    bound: int = TEST_TIMEOUT_S
 
+
+# A demo's walk: its template built and its replicas landed, every tour step, then the close's
+# grace and the reaper (scripts/ci/run_lane.py demo_walk).
+DEMO_WALK_TIMEOUT_S = 3600
 
 LANES: dict[str, Lane] = {
     "core": Lane(
@@ -99,6 +111,15 @@ LANES: dict[str, Lane] = {
     "servicenow": Lane(
         ("tests/integration", "tests/steps"), "requires_servicenow", clear_addopts=True
     ),
+    # REQ-2006: a visitor's walk through one published demo, served from the bundle demo-bundles.yml
+    # just built (PROVISA_TEST_DEMO_BUNDLES_DIR), before it is published: that job runs it with the
+    # demo's node id. One test opens the demo's template, which lands its replicas first.
+    "demo_walk": Lane(
+        ("tests/integration/test_sandbox_visitor_walk.py",),
+        "demo_walk and not requires_warehouse",
+        clear_addopts=True,
+        bound=DEMO_WALK_TIMEOUT_S,
+    ),
     # REQ-2012: Polly's model bake-off asks paid models real questions; on demand only, its own
     # workflow (polly-bakeoff.yml).
     "polly_bakeoff": Lane(
@@ -108,12 +129,6 @@ LANES: dict[str, Lane] = {
     ),
 }
 
-
-# The longest one test may run in a lane. Generous: a heavy engine's provisioning happens inside its
-# first test's setup.
-TEST_TIMEOUT_S = 900
-# How long before that bound a still-running test's stacks are written to the log.
-STACKS_BEFORE_BOUND_S = 60
 
 # The suite job's matrix: lane -> (file shards, timeout minutes). cluster, warehouse and salesforce
 # are their own jobs, not matrix entries.
@@ -217,12 +232,12 @@ def command(lane_name: str, shard_spec: str | None, extra: list[str]) -> list[st
     cmd += [f"--ignore={path}" for path in lane.ignore]
     # Every test is bounded: one that waits past this fails by name with every thread's stack,
     # instead of holding the shard until the job's own timeout cancels it and its log is lost.
-    bound = ["--timeout", str(TEST_TIMEOUT_S), "--timeout-method", "signal"]
+    bound = ["--timeout", str(lane.bound), "--timeout-method", "signal"]
     # The bound's own stacks are printed in pytest's final report, which a lane cancelled by its
     # job limit never reaches: the e2e lane spent seven 15-minute bounds in module teardowns and
     # was cancelled with no stack in its log. A test phase still running a minute before its
     # bound has every thread's stack written to the log at that moment.
-    stacks = ["-o", f"faulthandler_timeout={TEST_TIMEOUT_S - STACKS_BEFORE_BOUND_S}"]
+    stacks = ["-o", f"faulthandler_timeout={lane.bound - STACKS_BEFORE_BOUND_S}"]
     return cmd + ["-ra", "-p", "no:cacheprovider", "--durations=50", *bound, *stacks, *extra]
 
 
