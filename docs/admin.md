@@ -148,7 +148,7 @@ You declare an associative table as an edge; Provisa never discovers one. `viaTa
 
 ### AI Relationship Discovery
 
-Trigger Claude-powered FK analysis via REST:
+Ask Claude for FK candidates over REST:
 
 ```bash
 curl -X POST http://localhost:8001/admin/discover/relationships \
