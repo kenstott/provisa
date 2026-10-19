@@ -4,9 +4,7 @@
 
 # 数据建模（Entities 与 Facts） {: #data-modeling-entities-facts }
 
-Provisa 提供两个声明式基元——`entity` 和 `fact`——涵盖了每个星型模式（star schema）和
-Data Vault 赖以构建的所有构建块。声明规格，Provisa 会将其精确转换为具体化视图、双时态
-（bitemporal）和关系定义，无需你手工编写。
+Provisa 提供两个声明式原语 `entity` 和 `fact`，涵盖了构成每个星型模型和每个 Data Vault 的基本构件。声明规格，Provisa 就会把它精确转换为您原本需要手写的物化视图、双时态和关系定义。
 
 ## Entity 与 Fact 是什么 {: #what-entities-and-facts-are }
 
@@ -14,13 +12,9 @@ Data Vault 赖以构建的所有构建块。声明规格，Provisa 会将其精�
 声明 entity key 和要保留的属性，并选择一种历史模式。Provisa 会编写视图的 SQL 并注册该
 物化视图。启用历史时，该物化视图为双时态。
 
-**fact** 是对 entity key 的连接（join），归约到一个声明的粒度（grain），并带有聚合的
-度量（measures）。Provisa 会编写一个聚合物化视图查询（按粒度 + FK 列的 `GROUP BY`），
-并为每个声明的维度链接注册一个关系。没有度量的 fact 是一个纯键集合——即 Data Vault 的
-link 模式。
+**fact** 是一个连到实体键的联接，归约到声明的粒度，并带有聚合度量。Provisa 会写出一个聚合 MV 查询（`GROUP BY` 粒度 + 外键列），并为每个声明的维度链接注册一个关系。没有度量的 fact 是纯键集合，也就是 Data Vault 的 link 模式。
 
-这两种构造都是 IR（中间表示）。所生成的定义可以在不同引擎之间重新定向——在 Oracle、
-Databricks 中物化，或者在 MPP 引擎之上保持虚拟——而无需重新建模。
+这两种构造都是 IR。生成的定义可以在引擎之间迁移而无需重新建模：在 Oracle 或 Databricks 中物化，或在 MPP 引擎上保持虚拟。
 
 ## 历史模式 {: #history-modes }
 
@@ -36,7 +30,7 @@ entity 有三种可用模式：
 存储空间都会增加一份完整副本。对大型、缓慢变化的数据源选用 `scd2`；当需要完整历史而
 数据源无法提供键时，选用 `snapshot`。
 
-fact 没有历史模式——时态覆盖范围由底层 entity 的历史提供。
+fact 没有自己的历史模式；它们在时间上的覆盖来自下层实体的历史。
 
 ## 度量与聚合 {: #measures-and-aggregations }
 
@@ -254,16 +248,11 @@ mutation RegisterFact($input: FactInput!) {
 | Type 1（仅当前） | `none` | 每次刷新时重建物化视图；无行历史 |
 | Type 2（版本化） | `scd2` | 双时态 delta 物化视图；每次变更都追加一行新记录，以 entity key 为键 |
 
-当下游查询需要按事务发生时的状态连接一个维度时——例如客户在购买那一刻的 tier，而非其
-当前 tier——使用 `scd2`。对于稳定的查找表，使用 `none`。日期基准表（date spine）永远
-不会变化。若产品目录只需要当前价格，则可以每次刷新时重建。
+当下游查询需要按交易发生时的状态联接维度时，使用 `scd2`，例如购买时客户所在的等级，而不是当前等级。稳定的查找表用 `none`。日期轴永远不变；只需要当前价格的产品目录可以在每次刷新时重建。
 
 #### 粒度决策 {: #grain-decision }
 
-粒度是 fact 所回答的最低细节层次。`order_id` 使每个订单对应一行，保留了统计唯一订单数、
-以及在订单粒度上与任意维度连接的能力。更粗的粒度——例如 `["customer_id", "order_date"]`
-——会在订单之间预先聚合，并永久丢弃该细节。声明业务所需的最窄粒度；更粗的汇总之后可以
-低成本地派生出来。
+粒度是 fact 所能回答的最细明细层级。`order_id` 表示每个订单一行，保留了统计不同订单数、以及在订单层级联接任意维度的能力。更粗的粒度，例如 `["customer_id", "order_date"]`，会在订单之间预先聚合，并永久丢掉这些明细。请声明业务所需的最细粒度；更粗的汇总以后很容易推导。
 
 #### 注册维度 {: #register-the-dimensions }
 
@@ -333,7 +322,7 @@ SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 
 #### 在三个维度上注册 Sales fact {: #register-the-sales-fact-across-three-dimensions }
 
-粒度：`order_id`。三个维度引用——每个一个 FK 列。两个度量都是可加总的总和。
+粒度：`order_id`。三个维度引用，每个各有一个外键列。两个度量都是可加的求和。
 
 ```graphql
 mutation {
@@ -488,8 +477,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 
 #### Link（无度量的 fact） {: #link-measureless-fact }
 
-Link 记录哪些 hub key 曾经共同出现——仅键，无度量。当 `measures` 为空时，Provisa 会
-省略 `GROUP BY`。
+link 记录哪些 hub 键一起出现过。它只保存键，没有度量；`measures` 为空时，Provisa 会省略 `GROUP BY`。
 
 ```graphql
 mutation {
@@ -554,9 +542,7 @@ GROUP BY "order_id", "customer_id"
 
 ## 指标（Metrics） {: #metrics }
 
-**指标**（metric）是一个具名、受治理的聚合定义，本身没有粒度。粒度——即聚合所按的
-维度——在查询时由调用方绑定，而非在定义时绑定。这正是指标与视图的区别：视图在创建时
-锁定粒度；指标在被查询之前始终保持开放。
+**指标**是一个具名、受治理的聚合定义，本身没有粒度。粒度，即聚合按哪些维度拆分，由调用方在查询时绑定，而不是在定义时确定。这正是指标与视图的区别：视图在创建时就固定了粒度，指标则在被查询之前一直保持开放。
 
 ### Metric 对象 {: #the-metric-object }
 
@@ -570,8 +556,7 @@ GROUP BY "order_id", "customer_id"
 | `visible_to` | 否 | 角色列表；默认为 `["*"]`（所有角色） |
 | `from_fact` | — | 当指标由 fact 度量自动生成时自动设置 |
 
-表达式中的列引用必须以表名限定（例如 `orders.amount`，而非 `amount`）。未限定的列在
-展开时属于硬性错误，而非警告。
+表达式中的列引用必须带上表名限定（`orders.amount`，而不只是 `amount`）。未限定的列在展开指标时会直接报错，不会只给警告就放行。
 
 指标仓库在每次写入时都会校验表达式。无法解析或不含任何聚合函数的表达式会被拒绝，
 永远不会被存储。
@@ -589,8 +574,7 @@ metrics:
 
 ### 查询一个指标 {: #querying-a-metric }
 
-编译器保留了 `metrics` schema。 每个指标都可以在该 schema 中以虚拟关系的
-形式被寻址。可以像查询表一样查询它——所选的列成为维度集合和 GROUP BY：
+编译器保留了 `metrics` 模式，每个指标都可以作为其中的虚拟关系来访问。像查询表一样查询它，您选择的列就成为维度集合和 GROUP BY：
 
 ```sql
 -- Scalar total (no dimension)
@@ -603,7 +587,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 编译器会在治理（governance）执行之前，将该查询重写为针对底层语义表的真正分组聚合，
 使 RLS 和脱敏得以作用于真实列。
 
-对指标关系使用 `SELECT *` 会被拒绝——需要显式指定维度列和 `value`。
+对指标关系执行 `SELECT *` 会被拒绝。请明确列出维度列和 `value`。
 
 当一个指标的表达式跨越多张表时，编译器会通过已注册的关系将它们连接起来。若一个维度是
 被直接引用表的一列，则解析到该表。若一个维度距离一步关系之遥，则自动连接。两跳以上或
@@ -656,8 +640,7 @@ GROUP BY orders.region, orders.month
 （lineage edge）。这使手写视图在引用指标而非复制其公式时，同样具有变更即重新编译的
 特性。
 
-注意：使用内联 `metric()` 调用的配置路径视图，会在配置重新加载时重新生成，而非在指标
-upsert 时。
+注意：配置文件中使用内联 `metric()` 调用的视图会在配置重新加载时重新生成，指标 upsert 不会让它们重新生成。
 
 ### Metrics 管理页面 {: #the-metrics-admin-page }
 
@@ -672,7 +655,4 @@ upsert 时。
 
 ## IR 带来的收益 {: #the-ir-payoff }
 
-每次注册调用都经过与手写物化视图相同的路径。entity/fact 规格是一种中间表示——不是
-模板，也不是宏。它所指向的数据仓库是部署的一个属性，而非模型的属性。更换目标引擎，
-同一组 `entity` / `fact` 声明依然会在该引擎中物化，因为所生成的 SQL 和双时态模式在
-结构上就是引擎中立的。
+每次注册调用都与手写的 MV 走同一条路径。entity 和 fact 规格是一种中间表示，不是模板，也不是宏。它面向哪个数仓是部署的属性，模型本身不指定。更换目标引擎后，同样的 `entity` / `fact` 声明会在那里物化，因为生成的 SQL 和双时态模式在设计上就与引擎无关。

@@ -4,10 +4,7 @@
 
 # Modelado de datos (Entities y Facts) {: #data-modeling-entities-facts }
 
-Provisa ofrece dos primitivas declarativas — `entity` y `fact` — que cubren los bloques de
-construcción con los que se ensambla todo star schema y Data Vault. Declare la especificación;
-Provisa la reduce exactamente a las definiciones de vista materializada, bitemporales y de
-relación que de otro modo tendría que escribir a mano.
+Provisa le ofrece dos primitivas declarativas, `entity` y `fact`, que cubren las piezas con las que se arma todo esquema en estrella y todo Data Vault. Declare la especificación, y Provisa la convierte exactamente en las definiciones de vistas materializadas, bitemporales y de relaciones que de otro modo escribiría a mano.
 
 ## Qué son las entities y los facts {: #what-entities-and-facts-are }
 
@@ -16,14 +13,9 @@ relación de origen. Se le asigna un nombre, se apunta a un origen, se declara l
 entity y los atributos que se desean conservar, y se elige un modo de historial. Provisa escribe
 el SQL de la vista y registra la MV. Cuando el historial está habilitado, la MV es bitemporal.
 
-Un **fact** es una unión (join) a claves de entity, reducida a un grano declarado, con medidas
-agregadas. Provisa escribe una consulta de MV agregada (`GROUP BY` de grano + columnas FK) y
-registra una relación por cada vínculo de dimensión declarado. Un fact sin medidas es un puro
-conjunto de claves — el patrón de link de Data Vault.
+Un **hecho** es un join a claves de entidad, reducido a un grano declarado, con medidas agregadas. Provisa escribe una consulta de MV agregada (`GROUP BY` grano + columnas FK) y registra una relación por cada enlace de dimensión declarado. Un hecho sin medidas es un conjunto puro de claves, que es el patrón link de Data Vault.
 
-Ambas construcciones son IR (representación intermedia). Las definiciones generadas se
-reorientan entre motores — materializadas en Oracle, Databricks, o dejadas virtuales sobre un
-motor MPP — sin necesidad de remodelar.
+Ambas construcciones son IR. Las definiciones generadas pasan de un motor a otro sin remodelar: materializadas en Oracle o Databricks, o virtuales sobre un motor MPP.
 
 ## Modos de historial {: #history-modes }
 
@@ -40,8 +32,7 @@ motor, pero el almacenamiento crece en una copia completa por actualización. El
 orígenes grandes y de cambio lento; elija `snapshot` cuando necesite historial completo y el
 origen no pueda proporcionar una clave.
 
-Los facts no tienen modo de historial — la cobertura temporal proviene del historial de la
-entity subyacente.
+Los hechos no tienen modo de historial propio; su cobertura en el tiempo viene del historial de las entidades subyacentes.
 
 ## Medidas y agregaciones {: #measures-and-aggregations }
 
@@ -263,18 +254,11 @@ El modo de historial es el único parámetro que distingue entre SCD Type 1 y Ty
 | Type 1 (solo actual) | `none` | La MV se reconstruye en cada actualización; sin historial de filas |
 | Type 2 (versionado) | `scd2` | MV delta bitemporal; cada cambio agrega una fila nueva con clave en la clave de la entity |
 
-Use `scd2` cuando las consultas posteriores necesiten unir una dimensión tal como existía en el
-momento de la transacción — el tier de un cliente en el momento de la compra, no su tier
-actual. Use `none` para búsquedas estables. Un date spine nunca cambia. Un catálogo de
-productos donde solo se necesita el precio actual puede reconstruirse en cada actualización.
+Use `scd2` cuando las consultas posteriores necesiten unir una dimensión tal como era en el momento de la transacción, como el nivel de un cliente en el momento de la compra en vez de su nivel actual. Use `none` para tablas de consulta estables. Un eje de fechas nunca cambia, y un catálogo de productos en el que solo importa el precio actual puede reconstruirse en cada actualización.
 
 #### Decisión de grano {: #grain-decision }
 
-El grano es el nivel de detalle más bajo que responde el fact. `order_id` da una fila por
-pedido, preservando la capacidad de contar pedidos distintos y unir con cualquier dimensión a
-la granularidad de pedido. Un grano más grueso — por ejemplo `["customer_id", "order_date"]` —
-preagrega entre pedidos y descarta ese detalle de forma permanente. Declare el grano más
-estrecho que necesite el negocio; los agregados más gruesos son económicos de derivar después.
+El grano es el nivel de detalle más bajo que responde el hecho. `order_id` da una fila por pedido y conserva la posibilidad de contar pedidos distintos y unir con cualquier dimensión a nivel de pedido. Un grano más grueso, por ejemplo `["customer_id", "order_date"]`, agrega por adelantado entre pedidos y pierde ese detalle para siempre. Declare el grano más fino que necesite el negocio; los resúmenes más gruesos son baratos de derivar después.
 
 #### Registrar las dimensiones {: #register-the-dimensions }
 
@@ -344,8 +328,7 @@ SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 
 #### Registrar el fact Sales en tres dimensiones {: #register-the-sales-fact-across-three-dimensions }
 
-Grano: `order_id`. Tres referencias de dimensión — una columna FK cada una. Ambas medidas son
-sumas aditivas.
+Grano: `order_id`. Tres referencias a dimensiones, con una columna FK cada una. Ambas medidas son sumas aditivas.
 
 ```graphql
 mutation {
@@ -505,8 +488,7 @@ capa bitemporal.
 
 #### Link (fact sin medidas) {: #link-measureless-fact }
 
-Un link registra qué claves de hub coocurrieron — solo claves, sin medidas. Provisa omite el
-`GROUP BY` cuando `measures` está vacío.
+Un link registra qué claves de hub aparecieron juntas. Solo contiene claves, sin medidas, y Provisa omite el `GROUP BY` cuando `measures` está vacío.
 
 ```graphql
 mutation {
@@ -571,11 +553,7 @@ división hub/satellite siguen siendo decisiones del modelador. Provisa las ejec
 
 ## Métricas {: #metrics }
 
-Una **métrica** (metric) es una definición agregada, con nombre y gobernada, sin grano propio.
-El grano — las dimensiones por las que se desglosa el agregado — lo vincula quien llama en el
-momento de la consulta, no en el momento de la definición. Eso es lo que distingue una métrica
-de una vista: una vista fija el grano al crearse; una métrica permanece abierta hasta que se
-consulta.
+Una **métrica** es una definición de agregado con nombre y gobernada, sin grano propio. El grano, es decir, las dimensiones por las que se desglosa el agregado, lo fija quien consulta en el momento de la consulta y no al definirla. Eso es lo que distingue una métrica de una vista: una vista fija el grano al crearse, y una métrica queda abierta hasta que se consulta.
 
 ### El objeto Metric {: #the-metric-object }
 
@@ -589,9 +567,7 @@ consulta.
 | `visible_to` | no | Lista de roles; el valor predeterminado es `["*"]` (todos los roles) |
 | `from_fact` | — | Se establece automáticamente cuando la métrica se generó a partir de una medida de un fact |
 
-Las referencias a columnas dentro de la expresión deben estar calificadas con la tabla
-(`orders.amount`, no `amount`). Una columna no calificada es un error irrecuperable en el
-momento de la expansión, no una advertencia.
+Las referencias a columnas dentro de la expresión deben ir calificadas con su tabla (`orders.amount`, no solo `amount`). Una columna sin calificar es un error grave al expandir la métrica, y nada la deja pasar con un aviso.
 
 El repositorio de métricas valida la expresión en cada escritura. Una expresión que no analiza
 correctamente o que no contiene ninguna función de agregación se rechaza; nunca se almacena.
@@ -609,9 +585,7 @@ metrics:
 
 ### Consultar una métrica {: #querying-a-metric }
 
-El compilador reserva el esquema `metrics`. Cada métrica es direccionable como una relación
-virtual dentro de ese esquema. Consúltela como una tabla — las columnas que seleccione se
-convierten en el conjunto de dimensiones y en el GROUP BY:
+El compilador reserva el esquema `metrics`, y cada métrica se puede direccionar como una relación virtual dentro de él. Consúltela como una tabla, y las columnas que seleccione pasan a ser el conjunto de dimensiones y el GROUP BY:
 
 ```sql
 -- Scalar total (no dimension)
@@ -625,8 +599,7 @@ El compilador reescribe esto en un agregado agrupado real sobre las tablas semá
 subyacentes antes de que se ejecute el gobierno, de modo que RLS y el enmascaramiento se
 aplican a las columnas reales.
 
-`SELECT *` contra una relación de métrica se rechaza — indique explícitamente las columnas de
-dimensión y `value`.
+`SELECT *` sobre una relación de métrica se rechaza. Nombre de forma explícita las columnas de dimensión y `value`.
 
 Cuando la expresión de una métrica abarca varias tablas, el compilador las une a través de
 las relaciones registradas. Una dimensión que es una columna de una tabla referenciada
@@ -684,8 +657,7 @@ cada llamada con la expresión de la métrica y registra un enlace de linaje. Es
 vistas escritas a mano la misma propiedad de recompilación al cambio cuando referencian una
 métrica en lugar de copiar su fórmula.
 
-Nota: las vistas de la ruta de configuración que usan llamadas `metric()` en línea se
-regeneran al recargar la configuración, no al hacer upsert de la métrica.
+Nota: las vistas del archivo de configuración que usan llamadas `metric()` en línea se regeneran cuando se recarga la configuración, y un upsert de la métrica no las regenera.
 
 ### La página de administración de Metrics {: #the-metrics-admin-page }
 
@@ -703,8 +675,4 @@ expresiones arbitrarias.
 
 ## El beneficio de la IR {: #the-ir-payoff }
 
-Cada llamada de registro pasa por la misma ruta que una MV escrita a mano. La especificación
-de entity/fact es una representación intermedia — no una plantilla, no una macro. El almacén
-al que apunta es una propiedad del despliegue, no del modelo. Cambie el motor de destino y las
-mismas declaraciones `entity` / `fact` se materializan allí, porque el SQL generado y los
-modos bitemporales son neutrales respecto al motor por construcción.
+Cada llamada de registro sigue la misma vía que una MV escrita a mano. La especificación de entity y fact es una representación intermedia; no es una plantilla ni una macro. El almacén de destino es una propiedad del despliegue, y el modelo no lo nombra. Cambie el motor de destino, y las mismas declaraciones `entity` / `fact` se materializan allí, porque el SQL generado y los modos bitemporales son neutrales respecto al motor por diseño.

@@ -4,9 +4,7 @@
 
 # 數據建模（Entities 與 Facts） {: #data-modeling-entities-facts }
 
-Provisa 提供兩個宣告式基元 —— `entity` 同 `fact` —— 涵蓋咗每個星型結構（star schema）同
-Data Vault 賴以組裝嘅所有構建塊。只需宣告規格；Provisa 會將佢準確轉換成具體化檢視、雙時態
-（bitemporal）同關係定義，唔使你自己手寫。
+Provisa 提供兩個宣告式原語 `entity` 及 `fact`，涵蓋了構成每個星型模型及每個 Data Vault 的基本構件。宣告規格，Provisa 就會把它精確轉換為您原本需要人手編寫的具體化檢視、雙時態及關係定義。
 
 ## Entity 同 Fact 係咩 {: #what-entities-and-facts-are }
 
@@ -14,13 +12,9 @@ Data Vault 賴以組裝嘅所有構建塊。只需宣告規格；Provisa 會將�
 宣告 entity key 同要保留嘅屬性，並選擇一個歷史模式。Provisa 會撰寫檢視嘅 SQL 並登記該具體化
 檢視。當歷史啟用時，該具體化檢視為雙時態。
 
-**fact** 係一個對 entity key 嘅連接（join），縮減至一個宣告嘅粒度（grain），並帶有匯總的
-度量（measures）。Provisa 會撰寫一個匯總具體化檢視查詢（按粒度 + FK 欄位嘅 `GROUP BY`），
-並為每個宣告嘅維度連結登記一個關係。無度量嘅 fact 係一個純鍵集合 —— 即 Data Vault 嘅 link
-模式。
+**fact** 是一個連到實體鍵的聯結，歸約到宣告的粒度，並帶有彙總量度。Provisa 會寫出一個彙總 MV 查詢（`GROUP BY` 粒度 + 外鍵資料行），並為每個宣告的維度連結註冊一個關係。沒有量度的 fact 是純鍵集合，亦即 Data Vault 的 link 模式。
 
-呢兩個構造都係 IR（中間表示）。所生成嘅定義可以喺唔同引擎之間重新導向 —— 喺 Oracle、
-Databricks 具體化，或者喺 MPP 引擎之上保持虛擬 —— 而唔使重新建模。
+這兩種構造都是 IR。產生的定義可以在引擎之間遷移而毋須重新建模：在 Oracle 或 Databricks 中具體化，或在 MPP 引擎上保持虛擬。
 
 ## 歷史模式 {: #history-modes }
 
@@ -36,7 +30,7 @@ Databricks 具體化，或者喺 MPP 引擎之上保持虛擬 —— 而唔使�
 就會增加一份完整副本。對大型、緩慢變化嘅數據來源選用 `scd2`；當你需要完整歷史而數據來源
 又冇辦法提供鍵時，選用 `snapshot`。
 
-fact 冇歷史模式 —— 時態涵蓋範圍由底層 entity 嘅歷史提供。
+fact 沒有自己的歷史模式；它們在時間上的覆蓋來自下層實體的歷史。
 
 ## 度量同匯總 {: #measures-and-aggregations }
 
@@ -254,16 +248,11 @@ mutation RegisterFact($input: FactInput!) {
 | Type 1（僅當前） | `none` | 每次刷新時重建具體化檢視；冇行歷史 |
 | Type 2（版本化） | `scd2` | 雙時態 delta 具體化檢視；每次變更都會附加一行新記錄，以 entity key 為鍵 |
 
-當下游查詢需要按事務發生時嘅狀態去連接一個維度時 —— 例如客戶喺購買嗰刻嘅 tier，而唔係
-佢而家嘅 tier —— 就用 `scd2`。對於穩定嘅查閱表，就用 `none`。日期基準表（date spine）永遠
-唔會變。若一個產品目錄只需要當前價格，就可以每次刷新時重建。
+當下游查詢需要按交易發生時的狀態聯結維度時，使用 `scd2`，例如購買時客戶所在的等級，而不是目前等級。穩定的查找表用 `none`。日期軸永遠不變；只需要目前價格的產品目錄可以在每次重新整理時重建。
 
 #### 粒度決策 {: #grain-decision }
 
-粒度係 fact 所回答嘅最低層次細節。`order_id` 會令每張訂單有一行，保留咗計算唯一訂單數，
-以及喺訂單粒度上同任何維度連接嘅能力。較粗嘅粒度 —— 例如 `["customer_id", "order_date"]`
-—— 會喺訂單之間預先匯總，並永久捨棄呢啲細節。宣告業務所需嘅最窄粒度；較粗嘅彙總其後可以
-用低成本推導出嚟。
+粒度是 fact 所能回答的最細明細層級。`order_id` 表示每張訂單一列，保留了統計不同訂單數、以及在訂單層級聯結任意維度的能力。更粗的粒度，例如 `["customer_id", "order_date"]`，會在訂單之間預先彙總，並永久丟掉這些明細。請宣告業務所需的最細粒度；更粗的彙總以後很容易推導。
 
 #### 登記維度 {: #register-the-dimensions }
 
@@ -333,7 +322,7 @@ SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 
 #### 喺三個維度上登記 Sales fact {: #register-the-sales-fact-across-three-dimensions }
 
-粒度：`order_id`。三個維度引用 —— 各自一個 FK 欄位。兩個度量都係可加總嘅總和。
+粒度：`order_id`。三個維度參照，每個各有一個外鍵資料行。兩個量度都是可加的求和。
 
 ```graphql
 mutation {
@@ -488,8 +477,7 @@ SELECT "id", "name", "region", "tier" FROM "raw"."customers"
 
 #### Link（無度量嘅 fact） {: #link-measureless-fact }
 
-Link 記錄邊啲 hub key 曾經共同出現過 —— 只有鍵，冇度量。當 `measures` 為空時，Provisa
-會省略 `GROUP BY`。
+link 記錄哪些 hub 鍵一起出現過。它只保存鍵，沒有量度；`measures` 為空時，Provisa 會省略 `GROUP BY`。
 
 ```graphql
 mutation {
@@ -554,9 +542,7 @@ Provisa 只負責執行。
 
 ## 指標（Metrics） {: #metrics }
 
-**指標**（metric）係一個具名、受治理嘅匯總定義，本身冇粒度。粒度 —— 即匯總所按嘅維度 ——
-係喺查詢時由調用方綁定，而唔係喺定義時綁定。呢個正正就係指標同檢視嘅分別：檢視喺建立時
-就鎖定粒度；指標喺被查詢之前都保持開放。
+**指標**是一個具名、受治理的彙總定義，本身沒有粒度。粒度，即彙總按哪些維度拆分，由呼叫方在查詢時繫結，而不是在定義時確定。這正是指標與檢視的分別：檢視在建立時已固定了粒度，指標則在被查詢之前一直保持開放。
 
 ### Metric 物件 {: #the-metric-object }
 
@@ -570,8 +556,7 @@ Provisa 只負責執行。
 | `visible_to` | 否 | 角色列表；預設為 `["*"]`（所有角色） |
 | `from_fact` | — | 當指標係由 fact 度量自動生成時，會自動設置 |
 
-表達式入面嘅欄位引用必須以資料表限定（例如 `orders.amount`，而唔係 `amount`）。未限定嘅
-欄位喺展開時屬於硬性錯誤，而唔係警告。
+運算式中的資料行參照必須帶上資料表名稱限定（`orders.amount`，而不只是 `amount`）。未限定的資料行在展開指標時會直接報錯，不會只給警告就放行。
 
 指標儲存庫喺每次寫入時都會驗證表達式。無法解析或唔包含任何匯總函數嘅表達式會被拒絕，
 永遠唔會被儲存。
@@ -589,8 +574,7 @@ metrics:
 
 ### 查詢一個指標 {: #querying-a-metric }
 
-編譯器保留咗 `metrics` schema。 每個指標都可以喺該 schema 入面，以虛擬關係嘅
-形式被定址。你可以好似查詢一張表咁去查詢佢 —— 你所選擇嘅欄位會成為維度集合同 GROUP BY：
+編譯器保留了 `metrics` 結構描述，每個指標都可以作為其中的虛擬關係來存取。像查詢資料表一樣查詢它，您選擇的資料行就成為維度集合及 GROUP BY：
 
 ```sql
 -- Scalar total (no dimension)
@@ -603,7 +587,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 編譯器會喺治理（governance）執行之前，將呢個查詢重寫成一個針對底層語義表嘅真正分組匯總，
 令 RLS 同遮罩得以套用喺真實嘅欄位之上。
 
-對指標關係使用 `SELECT *` 會被拒絕 —— 需要明確指定維度欄位同 `value`。
+對指標關係執行 `SELECT *` 會被拒絕。請明確列出維度資料行及 `value`。
 
 當一個指標嘅表達式橫跨多張表時，編譯器會透過已登記嘅關係將佢哋連接埋一齊。若一個維度係
 直接被引用嘅表嘅一個欄位，就會解析到嗰張表。若一個維度距離一步關係之遙，就會自動連接。
@@ -655,8 +639,7 @@ GROUP BY orders.region, orders.month
 引用指標。編譯器會用指標嘅表達式取代每個調用，並記錄一條血緣邊（lineage edge）。呢樣令
 手寫檢視喺引用指標而唔係複製其公式時，都享有同樣嘅變更即重新編譯特性。
 
-備註：使用內嵌 `metric()` 調用嘅配置路徑檢視，會喺配置重新載入時重新生成，而唔係喺指標
-upsert 時。
+注意：設定檔中使用內嵌 `metric()` 呼叫的檢視會在設定重新載入時重新產生，指標 upsert 不會令它們重新產生。
 
 ### Metrics 管理頁面 {: #the-metrics-admin-page }
 
@@ -671,7 +654,4 @@ upsert 時。
 
 ## IR 帶嚟嘅好處 {: #the-ir-payoff }
 
-每次登記調用都會經過同一條路徑，跟手寫具體化檢視一模一樣。entity/fact 規格係一種中間表示
-—— 唔係範本，都唔係宏。佢所指向嘅倉庫係部署嘅一個屬性，而唔係模型嘅屬性。改變目標引擎，
-同一組 `entity` / `fact` 宣告依然會喺該引擎具體化，因為所生成嘅 SQL 同雙時態模式喺結構上
-就係引擎中立嘅。
+每次註冊呼叫都與人手編寫的 MV 走同一條路徑。entity 及 fact 規格是一種中間表示，不是範本，亦不是巨集。它面向哪個數據倉庫是部署的屬性，模型本身不指定。更換目標引擎後，同樣的 `entity` / `fact` 宣告會在那裏具體化，因為產生的 SQL 及雙時態模式在設計上就與引擎無關。
