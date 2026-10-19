@@ -1,8 +1,8 @@
 # Provisa
 
-**连接你的数据库。使用 GraphQL、gRPC、SQL 或 MCP —— 通过任意 API 或协议 —— 5 分钟内完成。**
+**连接您的数据库。5 分钟内即可用 GraphQL、gRPC、SQL 或 MCP 查询它们，通过任意 API 或协议。**
 
-Provisa 在您的全部数据之上提供一个 API。把它指向您的数据库和业务应用，描述它们如何相互关联，然后通过 REST、GraphQL、SQL、gRPC、MCP 等方式查询连接后的结果。
+Provisa 在您的全部数据之上提供一个 API。把它指向您的数据库和业务应用，描述它们如何相互关联，然后通过 REST、GraphQL、SQL、gRPC、MCP、JSON:API、Arrow Flight、pgwire 或 Bolt 查询连接后的结果。
 
 这之所以可行，是因为一切都来自同一个模型：您的域、表之间的关系，以及作用在它们之上的策略，覆盖所有数据源。Provisa 依据这个模型运行，也依据它实施治理，所以没有任何需要同步的东西。注册过的关系是查询唯一可以进行的连接，访问策略会编译进每一个查询计划。由这一个模型带来四件事：
 
@@ -15,7 +15,7 @@ Provisa 在您的全部数据之上提供一个 API。把它指向您的数据�
 
 读和写都经过它。跨数据源的查询通过联邦层分发。写入，以及只涉及单一数据源的读取，会直接交给该数据源的驱动，治理方式相同，通常在 100 毫秒内返回。内置 Arrow Flight 列式流传输。
 
-模型的词汇很少：域、关系、角色和策略。这让它易读、易审计。读一遍策略集，就知道它做什么。Provisa 本身是一个轻量的查询编译器，而不是挡在数据路径中间的运行时。它把请求转成原生查询，路由出去，然后让开，所以整套数据始终保持高速。
+模型的词汇很少：域、关系、角色和策略。这让它易读、易审计，读一遍策略集，就知道它做什么。Provisa 本身是一个轻量的查询编译器。它从不作为运行时挡在您的数据路径中间。它把请求转成原生查询，路由出去，然后让开，所以整套数据始终保持高速。
 
 它有两种用法，可以并用：
 
@@ -39,7 +39,7 @@ Provisa 在您的全部数据之上提供一个 API。把它指向您的数据�
 
 整个设计靠四个想法支撑。每个数据源都归结为表。每个查询都归结为一种类似 SQL 的形式。可达性决定哪些内容实时查询、哪些先复制。新鲜度策略则让每份副本和每个派生数据集保持在需要的新鲜程度。
 
-先说数据源。每个数据源都表示为一组建立在同一套共享类型系统上的二维表，这是数据源加入整套数据所要满足的唯一契约。MySQL 或 PostgreSQL 的表本来就是这样的表。GraphQL 查询结果展平之后也是。SPARQL 三元组存储和 Neo4j 看起来完全不像表，但您提供一个结果为表格的查询，这个查询就成了适配器。无论是什么数据源，系统看到的都是行、列和类型。接入一种新的数据源，就是满足这一个契约，有时需要一点人工帮助，而不是另写一套定制集成。
+先说数据源。每个数据源都表示为一组建立在同一套共享类型系统上的二维表，这是数据源加入整套数据所要满足的唯一契约。MySQL 或 PostgreSQL 的表本来就是这样的表。GraphQL 查询结果展平之后也是。SPARQL 三元组存储和 Neo4j 看起来完全不像表，但您提供一个结果为表格的查询，这个查询就成了适配器。无论是什么数据源，系统看到的都是行、列和类型。接入一种新的数据源，就是满足这一个契约，有时需要一点人工帮助。没有人需要另写一套定制集成。
 
 查询也同样处理。SQL 无论有多少方言，都是在表上做分析的语言，所以类似 SQL 的形式是天然的共同目标。因此，每个请求无论用什么语言到来，都会先降为这种形式。SQL 和 GraphQL 降起来很容易。Cypher 的路径和图语义需要真正下功夫，但也能做到。由于一切在其他处理之前都先经过同一种形式，无论请求用什么语言，治理都只在一个地方施加。
 
@@ -51,9 +51,9 @@ Provisa 在您的全部数据之上提供一个 API。把它指向您的数据�
 
 派生数据集也套用同一种形式：派生表、聚合，以及转换的输出。它们用同一种形式编写，所以血缘自然就有了。从每个源系统到最终输出的路径，就是生成它的那个定义，从头到尾都能读懂。构建它们时，新鲜度问题会再往前走一步：数据集是按计划刷新、只在前置条件满足时刷新、持续刷新，还是作为固定的历史快照？可选项和数据源副本是同一小组，所以派生数据集的构建策略用的是同一套词汇。
 
-维度模型可以直接由此得出。星型模型中的事实和维度，和其他任何派生数据集一样。维度是一致化、去重后的投影，事实表是归约到某个粒度的连接加聚合，各自都有自己的构建和新鲜度策略。缓慢变化维度不需要任何特殊机制：固定快照就是第 2 类历史，按计划重建就是第 1 类。由于模式定义在模型中，而不是绑定在某个数据仓库的表上，同样的事实和维度可以在 Oracle 或 Databricks 中构建，也可以在 MPP 引擎上保持为虚拟的，无需重新建模。
+维度模型可以直接由此得出。星型模型中的事实和维度，和其他任何派生数据集一样。维度是一致化、去重后的投影，事实表是归约到某个粒度的连接加聚合，各自都有自己的构建和新鲜度策略。缓慢变化维度不需要任何特殊机制：固定快照就是第 2 类历史，按计划重建就是第 1 类。由于模式定义在模型中，并不绑定在某个数据仓库的表上，同样的事实和维度可以在 Oracle 或 Databricks 中构建，也可以在 MPP 引擎上保持为虚拟的，无需重新建模。
 
-Data Vault 也以同样的方式适配，只是早一层。中心表（hub）是去重后的业务键数据集，链接（link）是它们之间注册的关系，卫星（satellite）是只插入、带时间戳、保存历史的属性数据集。卫星就是采用变更信号策略的派生数据集：加载日期加 hashdiff，就是作用在描述性属性上的变更捕获，而只插入的历史就是固定快照策略。时间点表和桥接表则是为查询速度而建的更多派生数据集。因此，原始保险库是模型中的一组派生数据集，星型模型是从它投影出来的，两者都是生成的，都能在引擎之间迁移。方法论仍然由您决定：什么成为中心表、卫星的粒度、怎么拆分。一旦决定，它就存在于模型中，而不是焊死在某个数据仓库上的 ETL 里。
+Data Vault 也以同样的方式适配，只是早一层。中心表（hub）是去重后的业务键数据集，链接（link）是它们之间注册的关系，卫星（satellite）是只插入、带时间戳、保存历史的属性数据集。卫星就是采用变更信号策略的派生数据集：加载日期加 hashdiff，就是作用在描述性属性上的变更捕获，而只插入的历史就是固定快照策略。时间点表和桥接表则是为查询速度而建的更多派生数据集。因此，原始保险库是模型中的一组派生数据集，星型模型是从它投影出来的，两者都是生成的，都能在引擎之间迁移。方法论仍然由您决定：什么成为中心表、卫星的粒度、怎么拆分。一旦决定，它就存在于模型中。没有任何 ETL 把它焊死在某个数据仓库上。
 
 这两种模式都用**两个快捷声明**来声明，而不用手写视图。它们是所有星型模型和所有 Data Vault 的构件，不会把您绑定在其中任何一种方法上：
 
@@ -64,16 +64,16 @@ Data Vault 也以同样的方式适配，只是早一层。中心表（hub）是
 
 ### 时间旅行 {: #time-travel }
 
-时间旅行的意思是保留一行的每个版本而不是覆盖它，这样您就能问数据在过去任意时刻是什么样子。不同引擎做这件事的效率差别很大，所以 Provisa 把它作为物化视图**定义**的一部分，而不是存储引擎的一部分。声明一次，就能在任何能存放物化视图的存储上使用。
+时间旅行的意思是保留一行的每个版本而不是覆盖它，这样您就能问数据在过去任意时刻是什么样子。不同引擎做这件事的效率差别很大，所以 Provisa 把它作为物化视图**定义**的一部分，与存储引擎无关。声明一次，就能在任何能存放物化视图的存储上使用。
 
 让它可以迁移的，是它**只追加**。一个版本一旦写入，就不会再更新或删除。常见的双时态技巧是回写一个“有效至”日期来关闭一行，但这需要 UPDATE，而很多引擎在联邦存储上做不到廉价的更新，甚至根本做不到。所以每次刷新都改为**追加**，某一时刻生效的是哪个版本，在读取时从日志中推算出来。追加有两种方式：
 
 - **Snapshot** 追加整个最新的数据集，并打上本次刷新的系统时间戳。不需要比较差异，在每个引擎上都正确，但每次刷新存储都会增加一整份副本。
-- **Delta** 只追加发生变化的内容，再加上已删除键的墓碑。差异由引擎自己用 `INSERT … SELECT` 中的反连接算出来，而不是由 Provisa 逐行合并。它更小，但需要实体键。
+- **Delta** 只追加发生变化的内容，再加上已删除键的墓碑。差异由引擎自己用 `INSERT … SELECT` 中的反连接算出来。Provisa 从不逐行合并。它更小，但需要实体键。
 
 Provisa 用这种方式管理系统时间，也就是它记录一个版本的时间。有效时间，也就是一个事实在业务上成立的时间，来自视图自身的 SELECT，并被保留下来。能做得更好的引擎，例如原生 Iceberg 快照或改动更少行的 MERGE，可以放在同一个声明背后使用；只追加的路径是在任何地方都正确的底线。
 
-读取是透明的。对双时态 MV 的普通查询会返回由日志重建的**当前**状态。要回到过去，发送 `X-Provisa-As-Of: <timestamp>` 请求头，整个查询就会按当时的数据状态作答，在每种存储上都一样。再加上 `X-Provisa-As-Recorded`，就能按 Provisa 在某一时刻所记录的样子读取数据，这样之后记录的更正就不会改变对过去的重放。可以在管理界面（**Time Travel** 控件：关闭、snapshot 或 delta，再加一个实体键）或通过管理 API 为任意物化视图开启它。
+读取不需要任何特殊语法。对双时态 MV 的普通查询会返回由日志重建的**当前**状态。要回到过去，发送 `X-Provisa-As-Of: <timestamp>` 请求头，整个查询就会按当时的数据状态作答，在每种存储上都一样。再加上 `X-Provisa-As-Recorded`，就能按 Provisa 在某一时刻所记录的样子读取数据，这样之后记录的更正就不会改变对过去的重放。可以在管理界面（**Time Travel** 控件：关闭、snapshot 或 delta，再加一个实体键）或通过管理 API 为任意物化视图开启它。
 
 可达性和新鲜度合在一起，构成一个通用的联邦模型：定义哪些是实时的、哪些是复制的、每份副本保持多新，而不依赖于任何一个引擎能连到什么。模型是可迁移的，所以您的数据不会被绑定在今天恰好能连到最多数据源的那家供应商身上。
 
@@ -83,32 +83,32 @@ Provisa 用这种方式管理系统时间，也就是它记录一个版本的时
 
 这些是你用来编写查询的语言和结构化 API。每一种都有自己的语法和语义；治理（RLS、脱敏、列可见性、关系强制执行）在所有这些接口上统一应用，与承载它们的线协议无关。
 
-- **GraphQL** —— 按角色区分的 schema，具备字段级可见性、过滤、基于游标的分页和聚合查询（`count`、`sum`、`avg`、`min`、`max`）。schema 被约束在已注册的关系之内 —— 由构造保证结构有效，是编写正确的简单查询的最快路径。内置 Apollo APQ：查询在服务端被哈希并注册；后续调用只需通过 HTTP GET 发送哈希值，使响应可被 CDN 缓存，且无需任何客户端改动。低于可配置行数阈值的查找表被暴露为枚举类型。
-- **SQL** —— 完整的联邦数据 SQL 支持；不受约束，比 GraphQL 更具表达力。编写标准 SQL —— 相关子查询等等 —— 它可以原样跨数据源运行。单源查询完全绕过联邦层（亚 100ms）。
+- **GraphQL** —— 按角色区分的 schema，具备字段级可见性、过滤、基于游标的分页和聚合查询（`count`、`sum`、`avg`、`min`、`max`）。schema 只提供已注册的关系，所以每个查询在构造上就结构有效，GraphQL 也是写出正确简单查询的最快路径。内置 Apollo APQ：查询在服务端被哈希并注册，后续调用只需通过 HTTP GET 发送哈希值，响应无需改动客户端即可被 CDN 缓存。行数低于可配置阈值的查找表以枚举类型呈现。
+- **SQL** —— 完整的联邦数据 SQL，不受约束，比 GraphQL 更具表达力。编写标准 SQL，包括相关子查询，它都能原样跨数据源运行。单源查询会完全跳过联邦层（低于 100ms）。
 - **Cypher** —— 基于同一联邦 schema 的图查询语言。将关系作为图的边进行遍历；联合数据源；支持变长路径。治理与 GraphQL 和 SQL 完全相同。
-- **gRPC 模型 API** —— 从已注册的 schema 自动生成 `.proto`；在角色的 schema 根部为每张表提供带类型的查询和插入 RPC，流式返回结果。与 GraphQL 同样是由 schema 驱动的 —— 注册模型就是契约，protobuf 只是线上编码方式。与 Arrow Flight（一种列式流式传输协议）不同，这是一个完整的逐表查询接口。
-- **JSON:API** —— 位于 `/data/jsonapi/{table}` 的结构化查询 API，设计上仅支持 HTTP。支持 JSON:API 1.1：稀疏字段集（`fields[table]=col1,col2`）、过滤表达式（`filter[field][op]=value`）、复合文档（`include=relation`）以及排序。不是通用查询语言 —— 一次查询一张表，使用标准化的过滤语法，而非临时拼凑的查询字符串。
+- **gRPC 模型 API** —— 从已注册的 schema 生成 `.proto`，在角色 schema 的根部为每张表提供带类型的查询和插入 RPC，并以流式返回结果。它和 GraphQL 一样由 schema 驱动：注册模型就是契约，protobuf 只是线上编码。它是完整的逐表查询接口，而 Arrow Flight 是列式流式传输。
+- **JSON:API** —— 位于 `/data/jsonapi/{table}` 的结构化查询 API，设计上仅支持 HTTP。支持 JSON:API 1.1：稀疏字段集（`fields[table]=col1,col2`）、过滤表达式（`filter[field][op]=value`）、复合文档（`include=relation`）以及排序。它一次查询一张表，使用标准化的过滤语法，所以需要通用查询语言时请使用 SQL 或 GraphQL。
 - **查询语言浏览器** —— 编写一个 GraphQL 查询，在侧边面板中实时查看对应的**语义化 SQL** 和 **Cypher** 翻译；可以复制其中任意一个，或直接跳转到 SQL 或图编辑器。一种实用的工作流是先在 GraphQL 中勾勒查询片段，再把生成的 SQL 拼接进复杂的视图或报表中。
 
 该浏览器将一个 GraphQL 查询与其实时的 SQL 和 Cypher 翻译并排展示：
 
 ![Query Language Explorer](docs/images/query-explorer.png)
 
-同一份联邦 schema 也可以作为一个实时图来探索 —— 域和节点标签、关系类型，以及变长遍历：
+同一个联邦模式也以实时图的形式呈现，包含域和节点标签、关系类型以及可变长度遍历：
 
 ![Graph Visualization](docs/images/graph-view.png)
 
 ### 查询组合工具 {: #query-composition-tools }
 
-这些工具帮助你用上述语言编写查询 —— 它们本身不是查询语言。
+这些工具帮助您用上述语言编写查询。它们本身不是查询语言。
 
-- **自然语言查询** —— 由 Claude 驱动的 NL→SQL/Cypher/GraphQL 流水线。用简单的英语描述你想要什么；该流水线会用你选择的语言生成一条查询，并在执行前提供一个交互式验证循环。
+- **自然语言查询** —— 运行在 Claude 上的 NL→SQL/Cypher/GraphQL 流水线。用日常语言描述您想要的内容，流水线会用您选择的语言写出查询，并在执行前提供交互式校验循环。
 
 ![Natural Language Query](docs/images/natural-language.png)
 
 ### 线协议 {: #wire-protocols }
 
-这些是连接协议。SQL、GraphQL 和 Cypher 都承载在它们之上 —— 选择哪种线协议不会改变查询接口或治理行为。
+这些是连接协议。SQL、GraphQL 和 Cypher 都运行在它们之上，选用哪种协议既不改变查询接口，也不改变治理行为。
 
 - **pgwire** —— 任何 PostgreSQL 客户端（psql、DBeaver、DataGrip、asyncpg、SQLAlchemy、pandas `read_sql`）都可以连接到 5439 端口，就好像它是一个 Postgres 服务器一样。仅接受 SQL。完整的治理流水线适用。`pg_catalog` 和 `information_schema` 由内存中的目录回答，因此 schema 浏览器无需一次联邦往返即可工作。TLS 可选。
 - **Bolt（Neo4j）** —— 任何 Neo4j 客户端（Neo4j Browser、Bloom、官方驱动）都可以通过 Bolt 协议连接，并对联邦图运行 Cypher。用户所持有的每个角色都会呈现为一个 `provisa_<role>` 数据库。治理方式与其他每种传输方式相同。TLS 可选。
@@ -118,9 +118,9 @@ Provisa 用这种方式管理系统时间，也就是它记录一个版本的时
 
 ### 数据源 {: #data-sources }
 
-- **73 个连接器，85 种以上数据源** —— 较大的数字分别计入托管的 PostgreSQL 服务（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的文件格式。 PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元组存储、Kafka、Google Sheets、Kaggle 等等，全部通过单一 API 访问；图和 RDF 数据源是一等公民，而非适配器
-- **智能路由** —— 单源查询绕过联邦（亚 100ms）；多源查询通过联邦层路由 —— 可自带集群，也可使用内置的 worker
-- **API 数据源** —— 将 REST、GraphQL、gRPC、WebSocket 或 RSS 端点注册为可查询的表；内置 SPARQL 辅助工具；跨 API 数据源和关系型数据源的联邦联接透明工作
+- **73 个连接器，85 种以上数据源** —— 较大的数字把托管的 PostgreSQL 服务（RDS、Aurora、Cloud SQL、AlloyDB、Azure、Supabase、Neon）和 File Crawler 的各种文件格式逐一计算在内。PostgreSQL、MySQL、MongoDB、Cassandra、Elasticsearch、Neo4j、SPARQL 三元组存储、Kafka、Google Sheets、Kaggle、Salesforce、ServiceNow、Stripe 等都位于同一个 API 之后。图和 RDF 数据源与关系型数据源地位相同。
+- **智能路由** —— 单源查询会跳过联邦（低于 100ms）。多源查询经由联邦层执行，可以用您自己的集群，也可以用内置的工作节点。
+- **API 数据源** —— 把 REST、GraphQL、gRPC、WebSocket 或 RSS 端点注册为可查询的表，并附带 SPARQL 辅助工具。API 数据源与关系型数据源之间的联邦连接无需额外设置。
 - **远程 schema 内省** —— 指向任意 GraphQL、OpenAPI 或 gRPC 端点；已记录的操作会自动暴露为可查询的表、图节点和边，并在其上完整应用治理
 - **文件数据源** —— CSV、Parquet 和 SQLite 文件作为可查询的表；支持本地路径和远程对象存储（`s3://`、`ftp://`、`sftp://`）
 - **Kaggle 数据集** —— 通过令牌认证的实时搜索，检索 Kaggle 的公开数据集目录并注册某个数据集，无需手动下载；注册为一个单一的文件数据源，其表会被自动发现，仅支持 CSV/Parquet 压缩包
@@ -149,10 +149,10 @@ Provisa 用这种方式管理系统时间，也就是它记录一个版本的时
 
 ### 交付与性能 {: #delivery-performance }
 
-- **作为已记录转换的物化视图** —— 一个 MV 会捕获产生它的那次转换：它的联接形态或 SQL、构建它所依据的各数据源输入信号（Iceberg 快照、关系型数据库水位线），以及注册时的一次确定性检查。由于该转换被记录了下来，查询（或子表达式）会被透明地重写到一个新鲜的 MV 上 —— 采用支持部分匹配的结构化联接模式匹配，因此即使一个 MV 只覆盖了部分联接，它仍然适用，其余联接则被保留
+- **作为已记录转换的物化视图** —— MV 会记录生成它的转换：它的连接形态或 SQL、构建时所依据的各数据源输入信号（Iceberg 快照、RDB 水位线），以及注册时的确定性检查。由于转换已被记录，Provisa 可以把查询或其中一部分改写到新鲜的 MV 上，无需您修改查询。匹配基于连接模式，并接受部分匹配，因此只覆盖部分连接的 MV 依然适用，其余连接会被保留。
 - **热表内联** —— 频繁被联接的小型查找表被内联为查询计划中直接的 VALUES CTE，消除维度数据的跨源往返
 - **查询缓存** —— 按角色+RLS 分区的 Redis 结果缓存；包含 APQ 哈希缓存
-- **作为数据的可观测性** —— 分布式追踪、指标和日志通过 OpenTelemetry 收集，压缩进 S3 上的 Iceberg，并自动注册为联邦 schema 中可查询的表（`traces`、`metrics`、`logs`、`queries`）；可以用 SQL、GraphQL 或 Cypher 与你的业务数据一起查询它们 —— 将一张 `customers` 表联接到 `queries` 表，看看是谁运行了什么查询、耗时多久
+- **作为数据的可观测性** —— 分布式追踪、指标和日志通过 OpenTelemetry 采集，压缩存入 S3 上的 Iceberg，并在联邦模式中注册为可查询的表（`traces`、`metrics`、`logs`、`queries`）。您可以用 SQL、GraphQL 或 Cypher 把它们和业务数据放在一起查询。例如，把 `customers` 表与 `queries` 连接，就能看到谁运行了什么、耗时多久。
 
 ### 管理与集成 {: #administration-integration }
 
@@ -160,7 +160,7 @@ Provisa 用这种方式管理系统时间，也就是它记录一个版本的时
 - **报表查看器** —— `/admin/reports` 列出内置的运维域管理视图以及任何已注册的自定义报表；需要 `observability` 能力
 - **表预览** —— 每张已注册的表都有一个支持下推过滤、多级分组和 CSV 导出的服务端分页治理数据查看器
 - **GraphQL Voyager** —— 交互式的、按角色划定范围的 schema 可视化，呈现为实体关系图
-- **LLM 关系发现** —— 由 Claude 驱动的外键候选建议
+- **LLM 关系发现** —— 由 Claude 推荐外键候选。
 - **Python 客户端** —— `pip install provisa-client`；GraphQL/SQL → DataFrame，Arrow Flight → pyarrow Table，SQLAlchemy 方言，ADBC 支持
 - **数据摄取** —— 用于将 JSON 事件数据推送进平台的 HTTP 端点
 - **Hasura v2 / DDN 导入** —— 将 Hasura v2 元数据或 DDN supergraph YAML 转换为 Provisa 配置
@@ -212,7 +212,7 @@ Provisa 用这种方式管理系统时间，也就是它记录一个版本的时
 
 ---
 
-这些层可以叠加。一个拥有域访问、RLS 和脱敏列的角色，所有层同时生效。添加数据源、列或关系，并不需要更新每条规则，因为每一层都单独配置，并自动作用于任何触及受治理对象的查询。
+这些层可以叠加。一个拥有域访问、RLS 和脱敏列的角色，所有层同时生效，因为每一层都单独配置，并作用于任何触及受治理对象的查询。
 
 ## 快速开始 {: #quick-start }
 
@@ -231,7 +231,7 @@ provisa open    # open the UI in your browser
 ### Linux
 
 1. 下载 [Provisa-linux-x86_64.AppImage](https://provisa.dev/dl/linux)（始终是最新版本）
-2. 赋予可执行权限并运行 —— 首次启动会完成一次性设置（无需联网）：
+2. 赋予可执行权限并运行。首次启动会完成一次性设置（无需联网）：
 
 ```bash
 chmod +x Provisa-*-linux-x86_64.AppImage
@@ -242,8 +242,8 @@ provisa start && provisa open
 ### Windows
 
 1. 下载 [Provisa-windows-x64.exe](https://provisa.dev/dl/windows)（始终是最新版本）
-2. 运行安装程序 —— 无需管理员权限
-3. 从开始菜单打开 **Provisa First Launch** —— 完成一次性设置（约 5 分钟，无需联网）
+2. 运行安装程序。无需管理员权限
+3. 从开始菜单打开 **Provisa First Launch**。完成一次性设置（约 5 分钟，无需联网）
 4. 打开一个新终端：
 
 ```bash
@@ -252,7 +252,7 @@ provisa start
 
 ### 第一次查询 {: #first-query }
 
-在本地开发环境中（`PROVISA_MODE=test`），无需任何凭据。在生产环境中，使用 Bearer 令牌进行认证 —— 角色会自动从中提取。
+在本地开发环境（`PROVISA_MODE=test`）中不需要凭据。在生产环境中，您使用 Bearer 令牌进行认证，Provisa 会从中读取角色。
 
 ```bash
 # Local dev — no auth required, role defaults to admin
@@ -280,13 +280,13 @@ curl -X POST https://provisa.example.com/data/graphql \
 jdbc:provisa://localhost:8815
 ```
 
-使用你的 Provisa 用户名和密码进行认证 —— 服务器会分配你的角色。
+使用您的 Provisa 用户名和密码进行认证，服务器会为您分配角色。
 
 Tableau 和 Power BI 的设置步骤参见 [docs/integrations.md](docs/integrations.md)。
 
 ### PostgreSQL 线协议（pgwire） {: #postgresql-wire-protocol-pgwire }
 
-Provisa 在 5439 端口上讲 PostgreSQL 线协议。任何能连接 Postgres 的客户端都能连接 Provisa —— 无需驱动，无需适配器，现有工具无需任何改动。
+Provisa 在 5439 端口上使用 PostgreSQL 线协议。任何能连接 Postgres 的客户端都能连接 Provisa，无需驱动、无需适配器，也无需改动您现有的工具。
 
 **PostgreSQL 用户名用于选择 Provisa 角色。** 在 `provider: none`（信任模式）下，密码会被忽略，任何已配置的角色名都会被接受为用户名 —— 以 `analyst`、`admin` 或任意角色连接，即可看到该角色所治理的数据视图。在 `provider: simple` 下，密码会经过 bcrypt 验证。其他认证提供方（`firebase`、`keycloak`、`oauth`）不支持通过 pgwire 使用。
 
@@ -308,9 +308,9 @@ engine = create_engine("postgresql+psycopg2://analyst:x@localhost:5439/provisa")
 df = pd.read_sql("SELECT * FROM orders", engine)
 ```
 
-所有查询都经过完整的治理流水线 —— 域访问、RLS、脱敏和谓词守卫的应用方式与 GraphQL 和 REST 完全相同。schema 浏览器（DBeaver、DataGrip、pgAdmin）开箱即用：`pg_catalog` 和 `information_schema` 查询由一个限定在该角色域访问范围内的内存目录回答，因此用户只能看到自己被允许查询的表和列。
+每个查询都经过完整的治理流水线，所以域访问、RLS、脱敏和谓词保护的作用方式与 GraphQL 和 REST 完全相同。模式浏览器（DBeaver、DataGrip、pgAdmin）无需任何设置即可使用。Provisa 从一个按角色域访问权限限定的内存目录回答它们的 `pg_catalog` 和 `information_schema` 查询，因此用户只能看到他们有权查询的表和列。
 
-DataGrip 通过 pgwire 浏览被治理的 schema 及其外键关系图 —— 无需驱动，无需适配器：
+DataGrip 通过 pgwire 浏览受治理的模式及其外键关系图，无需驱动，也无需适配器：
 
 ![Provisa in DataGrip over pgwire](docs/images/pgwire-datagrip.png)
 
@@ -318,13 +318,13 @@ DataGrip 通过 pgwire 浏览被治理的 schema 及其外键关系图 —— �
 
 ### Bolt（Neo4j 线协议） {: #bolt-neo4j-wire-protocol }
 
-Provisa 还讲 Neo4j 的 **Bolt** 协议，因此图原生工具可以直接连接，并对联邦图运行 Cypher —— 无需导出，无需独立的图数据库。将 **Neo4j Browser** 或 **Bloom** 指向 Provisa，即可跨数据源遍历关系，并应用相同的治理（域访问、RLS、脱敏）。
+Provisa 也支持 Neo4j 的 **Bolt** 协议，所以图原生工具可以直接连接，并对联邦图运行 Cypher。无需导出任何数据，也不需要单独的图数据库。把 **Neo4j Browser** 或 **Bloom** 指向 Provisa，即可在相同的治理（域访问、RLS、脱敏）下跨数据源遍历关系。
 
-Neo4j Browser 对 Provisa 运行 Cypher —— 节点标签、关系类型和属性键都直接来自已注册的 schema：
+Neo4j Browser 对 Provisa 运行 Cypher。节点标签、关系类型和属性键都直接来自已注册的 schema：
 
 ![Provisa in Neo4j Browser over Bolt](docs/images/bolt-neo4j-browser.png)
 
-通过设置 `PROVISA_BOLT_PORT`（Neo4j 的默认值为 `7687`）启用它。TLS 通过 `PROVISA_BOLT_CERT` 和 `PROVISA_BOLT_KEY` 启用。已认证用户所持有的每个 Provisa 角色都会呈现为一个可选择的 `provisa_<role>` 数据库（上图中的 `provisa_admin` 选择器）—— 选择其中一个会将会话限定在该角色的域权限范围内；用户永远无法超出自己所持有的角色。
+设置 `PROVISA_BOLT_PORT` 即可启用它（Neo4j 的默认端口是 `7687`），并通过 `PROVISA_BOLT_CERT` 和 `PROVISA_BOLT_KEY` 开启 TLS。已认证用户拥有的每个 Provisa 角色都显示为一个可选择的 `provisa_<role>` 数据库（即上图中的 `provisa_admin` 选择器）。选择其中一个会把会话收窄到该角色的域权限，用户永远无法超出自己拥有的角色。
 
 ### Python 客户端 {: #python-client }
 
@@ -428,7 +428,7 @@ Provisa 内置一个用于多源查询的联邦引擎。首次启动时你会选
 
 ### 超越单机的扩展 {: #scaling-beyond-a-single-box }
 
-**水平扩展** —— 在负载均衡器后面运行多个 Provisa 实例。每个实例都是一个功能完整的系统。所有实例必须指向同一个配置数据库（在从属机器上设置 `CONFIG_DB_HOST`），并可以选择共享一个 Redis 实例（`REDIS_URL`）以实现统一缓存。大多数查询会透明地分布式执行；非常大的跨源联接可能超出单个实例的资源，需要更大的机器或外部联邦集群。
+**水平扩展** —— 在负载均衡器后面运行多个 Provisa 实例。每个实例都是完整的系统。所有实例必须指向同一个配置数据库（在从属机器上设置 `CONFIG_DB_HOST`），并可共享一个 Redis 实例（`REDIS_URL`）作为统一缓存。大多数查询无需改动即可分散执行。非常大的跨源连接可能超出单个实例的承受范围，这时需要更大的机器或外部联邦集群。
 
 **共享 Redis** —— 在每个实例上设置 `REDIS_URL` 指向一个外部 Redis。共享 Redis 意味着某一个实例产生的缓存条目对所有实例可用，从而提升整个集群的命中率。
 

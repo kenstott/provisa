@@ -1,8 +1,8 @@
 # Provisa
 
-**Verbinden Sie Ihre Datenbanken. Abfragen mit GraphQL, gRPC, SQL oder MCP — über jede API oder jedes Protokoll — in 5 Minuten.**
+**Verbinden Sie Ihre Datenbanken. Fragen Sie sie in 5 Minuten mit GraphQL, gRPC, SQL oder MCP ab, über jede API und jedes Protokoll.**
 
-Provisa legt eine API über alle Ihre Daten. Richten Sie es auf Ihre Datenbanken und Geschäftsanwendungen, beschreiben Sie, wie sie zusammenhängen, und fragen Sie das verknüpfte Ergebnis über REST, GraphQL, SQL, gRPC, MCP und mehr ab.
+Provisa legt eine API über alle Ihre Daten. Richten Sie es auf Ihre Datenbanken und Geschäftsanwendungen, beschreiben Sie, wie sie zusammenhängen, und fragen Sie das verknüpfte Ergebnis über REST, GraphQL, SQL, gRPC, MCP, JSON:API, Arrow Flight, pgwire oder Bolt ab.
 
 Das funktioniert, weil alles aus einem einzigen Modell kommt: Ihren Domänen, den Beziehungen zwischen Ihren Tabellen und den Richtlinien darauf, über alle Quellen hinweg. Provisa läuft aus diesem Modell und regelt aus ihm, also gibt es nichts synchron zu halten. Die registrierten Beziehungen sind die einzigen Joins, die eine Abfrage machen darf, und die Zugriffsrichtlinien werden in jeden Abfrageplan kompiliert. Aus dem einen Modell folgen vier Dinge:
 
@@ -15,7 +15,7 @@ Sie können in **GraphQL, Cypher oder SQL** fragen und sich über **pgwire, Bolt
 
 Lesen und Schreiben laufen beide hindurch. Eine quellenübergreifende Abfrage verteilt sich über die Föderationsschicht. Schreibvorgänge und Lesezugriffe auf eine einzige Quelle gehen direkt an deren Treiber, gleich reguliert und typischerweise in unter 100 ms zurück. Spaltenbasiertes Streaming über Arrow Flight ist eingebaut.
 
-Das Modell hat ein kleines Vokabular: Domänen, Beziehungen, Rollen und Richtlinien. Das hält es leicht lesbar und prüfbar. Sie können den Richtliniensatz lesen und wissen, was er tut. Provisa selbst ist ein schlanker Abfrage-Compiler, keine Laufzeitumgebung in Ihrem Datenpfad. Es macht aus einer Anfrage native Abfragen, leitet sie weiter und tritt beiseite, und deshalb bleibt die Datenlandschaft schnell.
+Das Modell hat ein kleines Vokabular: Domänen, Beziehungen, Rollen und Richtlinien. Das hält es leicht lesbar und prüfbar, und Sie können den Richtliniensatz lesen und wissen, was er tut. Provisa selbst ist ein schlanker Abfrage-Compiler. Es sitzt nie als Laufzeitumgebung in Ihrem Datenpfad. Es macht aus einer Anfrage native Abfragen, leitet sie weiter und tritt beiseite, und deshalb bleibt die Datenlandschaft schnell.
 
 Sie können es auf zwei Arten nutzen, und beide lassen sich kombinieren:
 
@@ -39,7 +39,7 @@ Eine veröffentlichte Demo wird als fertiges Bundle geladen; die anderen laufen 
 
 Vier Ideen tragen das ganze Design. Jede Quelle wird auf Tabellen zurückgeführt. Jede Abfrage wird auf eine SQL-ähnliche Form zurückgeführt. Die Erreichbarkeit entscheidet, was live abgefragt und was zuerst kopiert wird. Und eine Aktualitätsstrategie hält jede Kopie und jeden abgeleiteten Datensatz so aktuell, wie es nötig ist.
 
-Beginnen wir mit den Quellen. Jede wird als Menge zweidimensionaler Tabellen über einem gemeinsamen Typsystem ausgedrückt, und das ist der einzige Vertrag, den eine Quelle erfüllen muss, um zur Datenlandschaft zu gehören. Eine MySQL- oder PostgreSQL-Tabelle ist schon eine. Ein GraphQL-Abfrageergebnis wird eine, sobald es abgeflacht ist. SPARQL-Triplestores und Neo4j sehen überhaupt nicht wie Tabellen aus, aber Sie liefern eine Abfrage mit tabellarischem Ergebnis, und die Abfrage wird zum Adapter. Gleich welche Quelle: Die Landschaft sieht Zeilen, Spalten und Typen. Eine neue Art von Quelle anzubinden heißt, diesen einen Vertrag zu erfüllen, manchmal mit etwas menschlicher Hilfe, statt eine Spezialintegration zu schreiben.
+Beginnen wir mit den Quellen. Jede wird als Menge zweidimensionaler Tabellen über einem gemeinsamen Typsystem ausgedrückt, und das ist der einzige Vertrag, den eine Quelle erfüllen muss, um zur Datenlandschaft zu gehören. Eine MySQL- oder PostgreSQL-Tabelle ist schon eine. Ein GraphQL-Abfrageergebnis wird eine, sobald es abgeflacht ist. SPARQL-Triplestores und Neo4j sehen überhaupt nicht wie Tabellen aus, aber Sie liefern eine Abfrage mit tabellarischem Ergebnis, und die Abfrage wird zum Adapter. Gleich welche Quelle: Die Landschaft sieht Zeilen, Spalten und Typen. Eine neue Art von Quelle anzubinden heißt, diesen einen Vertrag zu erfüllen, manchmal mit etwas menschlicher Hilfe. Niemand schreibt eine Spezialintegration.
 
 Abfragen werden genauso behandelt. SQL ist bei allen Dialekten die Sprache der Analyse über Tabellen, und das macht eine SQL-ähnliche Form zum natürlichen gemeinsamen Ziel. Also wird jede Anfrage, in welcher Sprache sie auch kommt, zuerst auf diese Form abgesenkt. SQL und GraphQL lassen sich leicht absenken. Die Pfade und die Graph-Semantik von Cypher kosten echte Arbeit, aber sie kommen an. Weil alles durch eine Form läuft, bevor irgendetwas anderes passiert, greift die Governance an einer Stelle, gleich in welcher Sprache die Anfrage kam.
 
@@ -51,9 +51,9 @@ Bleibt die Aktualität. Wie aktuell muss die Kopie jeder Quelle sein, die die En
 
 Abgeleitete Datensätze passen in dieselbe Form: abgeleitete Tabellen, Aggregate, die Ausgabe einer Transformation. Sie werden in derselben Form geschrieben, also bekommen Sie die Lineage umsonst. Der Weg von jedem Ursprungssystem bis zur Endausgabe ist die Definition, die sie erzeugt hat, von Anfang bis Ende lesbar. Beim Aufbau stellt sich die Aktualitätsfrage einen Schritt weiter: Wird der Datensatz nach Zeitplan aktualisiert, erst wenn seine Vorbedingungen erfüllt sind, fortlaufend oder als fixierter historischer Snapshot? Die Möglichkeiten sind dieselbe kleine Menge wie bei einer Quellkopie, also nutzt die Aufbaurichtlinie eines abgeleiteten Datensatzes dasselbe Vokabular.
 
-Dimensionale Modelle folgen direkt daraus. Fakten und Dimensionen eines Sternschemas sind abgeleitete Datensätze wie alle anderen. Eine Dimension ist eine abgestimmte, deduplizierte Projektion, eine Faktentabelle ein auf eine Granularität reduzierter Join mit Aggregat, jede mit eigener Aufbau- und Aktualitätsrichtlinie. Slowly Changing Dimensions brauchen nichts Besonderes: Ein fixierter Snapshot ist Typ-2-Historie, ein geplanter Neuaufbau Typ 1. Weil das Schema im Modell definiert ist statt an die Tabellen eines Warehouse gebunden, lassen sich dieselben Fakten und Dimensionen in Oracle oder Databricks aufbauen oder virtuell über einer MPP-Engine belassen, ohne Neumodellierung.
+Dimensionale Modelle folgen direkt daraus. Fakten und Dimensionen eines Sternschemas sind abgeleitete Datensätze wie alle anderen. Eine Dimension ist eine abgestimmte, deduplizierte Projektion, eine Faktentabelle ein auf eine Granularität reduzierter Join mit Aggregat, jede mit eigener Aufbau- und Aktualitätsrichtlinie. Slowly Changing Dimensions brauchen nichts Besonderes: Ein fixierter Snapshot ist Typ-2-Historie, ein geplanter Neuaufbau Typ 1. Weil das Schema im Modell definiert und an die Tabellen keines einzelnen Warehouse gebunden ist, lassen sich dieselben Fakten und Dimensionen in Oracle oder Databricks aufbauen oder virtuell über einer MPP-Engine belassen, ohne Neumodellierung.
 
-Data Vault passt genauso, eine Schicht früher. Hubs sind deduplizierte Datensätze aus Geschäftsschlüsseln, Links die registrierten Beziehungen zwischen ihnen, und Satelliten sind nur anhängende, zeitgestempelte Attributdatensätze, die die Historie halten. Ein Satellit ist schlicht ein abgeleiteter Datensatz mit der Änderungssignal-Strategie: Ladedatum plus Hashdiff ist Änderungserfassung auf beschreibenden Attributen, und rein anhängende Historie ist die Strategie des fixierten Snapshots. Point-in-Time- und Bridge-Tabellen sind weitere abgeleitete Datensätze, gebaut für Abfragegeschwindigkeit. Ein Raw Vault ist also eine Menge abgeleiteter Datensätze im Modell und ein Sternschema eine Projektion daraus, beide erzeugt und beide zwischen Engines übertragbar. Die Methodik entscheiden weiter Sie: was ein Hub wird, die Granularität eines Satelliten, wie aufgeteilt wird. Ist das entschieden, lebt es im Modell statt in ETL, das an ein Warehouse geschweißt ist.
+Data Vault passt genauso, eine Schicht früher. Hubs sind deduplizierte Datensätze aus Geschäftsschlüsseln, Links die registrierten Beziehungen zwischen ihnen, und Satelliten sind nur anhängende, zeitgestempelte Attributdatensätze, die die Historie halten. Ein Satellit ist schlicht ein abgeleiteter Datensatz mit der Änderungssignal-Strategie: Ladedatum plus Hashdiff ist Änderungserfassung auf beschreibenden Attributen, und rein anhängende Historie ist die Strategie des fixierten Snapshots. Point-in-Time- und Bridge-Tabellen sind weitere abgeleitete Datensätze, gebaut für Abfragegeschwindigkeit. Ein Raw Vault ist also eine Menge abgeleiteter Datensätze im Modell und ein Sternschema eine Projektion daraus, beide erzeugt und beide zwischen Engines übertragbar. Die Methodik entscheiden weiter Sie: was ein Hub wird, die Granularität eines Satelliten, wie aufgeteilt wird. Ist das entschieden, lebt die Entscheidung im Modell. Kein ETL schweißt sie an ein Warehouse.
 
 Beide Muster deklarieren Sie mit **zwei Abkürzungen** statt handgeschriebener Views. Sie sind die Bausteine, aus denen jedes Sternschema und jeder Data Vault besteht, und legen Sie auf keine der beiden Methoden fest:
 
@@ -64,16 +64,16 @@ Jede `entity` und jeder `fact` wird genau zu den Materialized Views, bitemporale
 
 ### Time Travel
 
-Time Travel heißt, jede Version einer Zeile zu behalten, statt sie zu überschreiben, damit Sie fragen können, wie die Daten zu einem früheren Zeitpunkt waren. Engines unterscheiden sich stark darin, wie effizient sie das können, deshalb macht Provisa es zum Teil der **Definition** der Materialized View statt der Speicher-Engine. Einmal deklariert, funktioniert es auf jedem Speicher, der eine Materialized View halten kann.
+Time Travel heißt, jede Version einer Zeile zu behalten, statt sie zu überschreiben, damit Sie fragen können, wie die Daten zu einem früheren Zeitpunkt waren. Engines unterscheiden sich stark darin, wie effizient sie das können, deshalb macht Provisa es zum Teil der **Definition** der Materialized View, gleich welche Speicher-Engine darunter liegt. Einmal deklariert, funktioniert es auf jedem Speicher, der eine Materialized View halten kann.
 
 Übertragbar bleibt es, weil es **nur anhängend** ist. Eine einmal geschriebene Version wird nie geändert oder gelöscht. Der übliche bitemporale Trick, eine Zeile durch Zurückschreiben eines „gültig bis“-Datums zu schließen, braucht ein UPDATE, das viele Engines über einen föderierten Speicher nicht günstig oder gar nicht können. Also **hängt** jede Aktualisierung stattdessen an, und welche Version zu einem Zeitpunkt galt, wird beim Lesen aus dem Log ermittelt. Es gibt zwei Arten anzuhängen:
 
 - **Snapshot** hängt den ganzen frischen Datensatz an, gestempelt mit der Systemzeit der Aktualisierung. Es gibt kein Diffing, und es ist auf jeder Engine korrekt, aber der Speicher wächst um eine volle Kopie pro Aktualisierung.
-- **Delta** hängt nur an, was sich geändert hat, plus Grabsteine für entfernte Schlüssel. Die Engine ermittelt das Delta selbst, mit Anti-Joins in einem `INSERT … SELECT`, statt dass Provisa es Zeile für Zeile zusammenführt. Es ist kleiner und braucht einen Entitätsschlüssel.
+- **Delta** hängt nur an, was sich geändert hat, plus Grabsteine für entfernte Schlüssel. Die Engine ermittelt das Delta selbst, mit Anti-Joins in einem `INSERT … SELECT`. Provisa führt es nie Zeile für Zeile zusammen. Es ist kleiner und braucht einen Entitätsschlüssel.
 
 Die Systemzeit, also wann Provisa eine Version aufgezeichnet hat, verwaltet Provisa auf diese Weise. Die gültige Zeit, wann ein Sachverhalt im Geschäft zutrifft, kommt aus dem eigenen SELECT der View und bleibt erhalten. Engines, die mehr können, etwa native Iceberg-Snapshots oder ein MERGE, das weniger Zeilen berührt, lassen sich hinter derselben Deklaration nutzen; der rein anhängende Weg ist die Untergrenze, die überall korrekt ist.
 
-Das Lesen ist transparent. Eine einfache Abfrage auf eine bitemporale MV liefert den **aktuellen** Zustand, aus dem Log wiederhergestellt. Um in der Zeit zurückzugehen, senden Sie einen Header `X-Provisa-As-Of: <timestamp>`, und die ganze Abfrage wird so beantwortet, wie die Landschaft damals aussah, auf jedem Speicher gleich. Fügen Sie `X-Provisa-As-Recorded` hinzu, um die Daten so zu lesen, wie Provisa sie zu einem Zeitpunkt aufgezeichnet hatte, damit eine später erfasste Korrektur eine Wiedergabe der Vergangenheit nicht ändert. Schalten Sie es für jede Materialized View in der Admin-Oberfläche ein (das Steuerelement **Time Travel**: aus, Snapshot oder Delta, plus ein Entitätsschlüssel) oder über die Admin-API.
+Das Lesen braucht keine besondere Syntax. Eine einfache Abfrage auf eine bitemporale MV liefert den **aktuellen** Zustand, aus dem Log wiederhergestellt. Um in der Zeit zurückzugehen, senden Sie einen Header `X-Provisa-As-Of: <timestamp>`, und die ganze Abfrage wird so beantwortet, wie die Landschaft damals aussah, auf jedem Speicher gleich. Fügen Sie `X-Provisa-As-Recorded` hinzu, um die Daten so zu lesen, wie Provisa sie zu einem Zeitpunkt aufgezeichnet hatte, damit eine später erfasste Korrektur eine Wiedergabe der Vergangenheit nicht ändert. Schalten Sie es für jede Materialized View in der Admin-Oberfläche ein (das Steuerelement **Time Travel**: aus, Snapshot oder Delta, plus ein Entitätsschlüssel) oder über die Admin-API.
 
 Erreichbarkeit und Aktualität zusammen ergeben ein allgemeines Modell für Föderation: eine Definition dessen, was live ist, was kopiert wird und wie aktuell jede Kopie bleibt, unabhängig davon, was eine einzelne Engine erreicht. Das Modell ist übertragbar, also ist Ihre Datenlandschaft nicht an den Anbieter gebunden, dessen Föderation heute zufällig die meisten Quellen erreicht.
 
@@ -83,32 +83,32 @@ Erreichbarkeit und Aktualität zusammen ergeben ein allgemeines Modell für Föd
 
 Dies sind die Sprachen und strukturierten APIs, in denen Sie Abfragen schreiben. Jede hat ihre eigene Syntax und Semantik; Governance (RLS, Maskierung, Spaltensichtbarkeit, Beziehungsdurchsetzung) gilt einheitlich über alle hinweg, unabhängig davon, welches Wire-Protokoll sie liefert.
 
-- **GraphQL** — Rollenspezifische Schemas mit feldgenauer Sichtbarkeit, Filterung, Cursor-basierter Paginierung und Aggregatabfragen (`count`, `sum`, `avg`, `min`, `max`). Schema-eingeschränkt auf registrierte Beziehungen — durch Konstruktion strukturell gültig, der schnellste Weg zu einer korrekten einfachen Abfrage. Apollo APQ inklusive: Abfragen werden gehasht und serverseitig registriert; nachfolgende Aufrufe senden nur den Hash über HTTP GET, was Antworten CDN-cachebar macht, ohne dass Client-Änderungen nötig sind. Lookup-Tabellen unterhalb eines konfigurierbaren Zeilenschwellenwerts werden als Enum-Typen exponiert.
-- **SQL** — Vollständiges SQL über föderierte Daten; uneingeschränkt und ausdrucksstärker als GraphQL. Schreiben Sie Standard-SQL — korrelierte Unterabfragen inklusive — und es läuft unverändert über Quellen hinweg. Einzelquellen-Abfragen umgehen die Föderationsschicht vollständig (unter 100 ms).
+- **GraphQL** — Schemas pro Rolle mit Sichtbarkeit auf Feldebene, Filterung, Cursor-Paginierung und Aggregatabfragen (`count`, `sum`, `avg`, `min`, `max`). Das Schema bietet nur registrierte Beziehungen an, also ist jede Abfrage durch Konstruktion strukturell gültig, und GraphQL ist der schnellste Weg zu einer korrekten einfachen Abfrage. Apollo APQ ist enthalten: Abfragen werden gehasht und auf dem Server registriert, spätere Aufrufe senden nur den Hash per HTTP GET, und Antworten werden ohne Client-Änderung CDN-cachebar. Nachschlagetabellen unter einer konfigurierbaren Zeilenschwelle erscheinen als Enum-Typen.
+- **SQL** — Vollständiges SQL über föderierte Daten, uneingeschränkt und ausdrucksstärker als GraphQL. Schreiben Sie Standard-SQL, korrelierte Unterabfragen eingeschlossen, und es läuft unverändert über Quellen hinweg. Eine Abfrage auf nur einer Quelle überspringt die Föderationsschicht vollständig (unter 100 ms).
 - **Cypher** — Graph-Abfragesprache über demselben föderierten Schema. Beziehungen als Graph-Kanten traversieren; Quellen vereinigen; Pfade variabler Länge. Governance gilt identisch wie bei GraphQL und SQL.
-- **gRPC-Model-API** — Automatisch generiertes `.proto` aus dem registrierten Schema; typisierte Query- und Insert-RPCs für jede Tabelle an der Wurzel des Schemas einer Rolle, gestreamte Antworten. Schema-getrieben im selben Sinne wie GraphQL — das Registrierungsmodell ist der Vertrag, Protobuf ist die Wire-Kodierung. Anders als Arrow Flight (das ein Columnar-Streaming-Transport ist) ist dies eine vollständige Pro-Tabelle-Abfrageschnittstelle.
-- **JSON:API** — Strukturierte Abfrage-API unter `/data/jsonapi/{table}`, per Design nur HTTP. Unterstützt JSON:API 1.1: Sparse Fieldsets (`fields[table]=col1,col2`), Filterausdrücke (`filter[field][op]=value`), zusammengesetzte Dokumente (`include=relation`) und Sortierung. Keine Allzweck-Abfragesprache — fragt eine Tabelle nach der anderen mit standardisierter Filtersyntax ab statt mit einem Ad-hoc-Abfragestring.
+- **gRPC-Model-API** — Ein aus dem registrierten Schema erzeugtes `.proto` mit typisierten Query- und Insert-RPCs für jede Tabelle an der Wurzel des Schemas einer Rolle und gestreamten Antworten. Wie GraphQL ist es schemagetrieben: Das Registrierungsmodell ist der Vertrag, Protobuf die Wire-Kodierung. Es ist eine vollständige Abfrageschnittstelle pro Tabelle, während Arrow Flight ein spaltenorientierter Streaming-Transport ist.
+- **JSON:API** — Eine strukturierte Abfrage-API unter `/data/jsonapi/{table}`, per Design nur über HTTP. Sie unterstützt JSON:API 1.1: Sparse Fieldsets (`fields[table]=col1,col2`), Filterausdrücke (`filter[field][op]=value`), zusammengesetzte Dokumente (`include=relation`) und Sortierung. Sie fragt eine Tabelle nach der anderen mit einer standardisierten Filtersyntax ab, also nutzen Sie SQL oder GraphQL, wenn Sie eine Allzweck-Abfragesprache brauchen.
 - **Query Language Explorer** — Schreiben Sie eine GraphQL-Abfrage und sehen Sie live **Semantic-SQL**- und **Cypher**-Übersetzungen in Seitenpanels; kopieren Sie eine davon oder springen Sie direkt in den SQL- oder Graph-Editor. Ein praktischer Workflow ist, Abfragefragmente in GraphQL zu skizzieren und dann das resultierende SQL in komplexe Views oder Reports einzufügen.
 
 Der Explorer zeigt eine GraphQL-Abfrage neben ihren live SQL- und Cypher-Übersetzungen:
 
 ![Query Language Explorer](docs/images/query-explorer.png)
 
-Dasselbe föderierte Schema ist als lebender Graph erkundbar — Domänen- und Knotenlabels, Beziehungstypen und Traversierungen variabler Länge:
+Dasselbe föderierte Schema erscheint auch als lebender Graph, mit Domänen- und Knotenlabels, Beziehungstypen und Traversierungen variabler Länge:
 
 ![Graph Visualization](docs/images/graph-view.png)
 
 ### Werkzeuge zur Abfragekomposition {: #query-composition-tools }
 
-Diese Werkzeuge helfen Ihnen, Abfragen in den obigen Sprachen zu schreiben — sie sind selbst keine Abfragesprachen.
+Diese Werkzeuge helfen Ihnen, Abfragen in den obigen Sprachen zu schreiben. Selbst sind sie keine Abfragesprachen.
 
-- **Natural-Language-Abfrage** — NL→SQL/Cypher/GraphQL-Pipeline, angetrieben von Claude. Beschreiben Sie in einfachem Englisch, was Sie wollen; die Pipeline erzeugt eine Abfrage in Ihrer gewählten Sprache mit einer interaktiven Validierungsschleife vor der Ausführung.
+- **Natural-Language-Abfrage** — Eine NL→SQL/Cypher/GraphQL-Pipeline, die auf Claude läuft. Beschreiben Sie in einfacher Sprache, was Sie wollen, und die Pipeline schreibt eine Abfrage in der gewählten Sprache, mit einer interaktiven Validierungsschleife, bevor etwas ausgeführt wird.
 
 ![Natural Language Query](docs/images/natural-language.png)
 
 ### Wire-Protokolle {: #wire-protocols }
 
-Dies sind die Verbindungsprotokolle. SQL, GraphQL und Cypher reiten über ihnen — die Wahl des Wire-Protokolls ändert die Abfrageschnittstelle oder das Governance-Verhalten nicht.
+Das sind die Verbindungsprotokolle. SQL, GraphQL und Cypher laufen über sie, und das gewählte Protokoll ändert weder die Abfrageschnittstelle noch das Verhalten der Governance.
 
 - **pgwire** — Jeder PostgreSQL-Client (psql, DBeaver, DataGrip, asyncpg, SQLAlchemy, pandas `read_sql`) verbindet sich auf Port 5439, als wäre es ein Postgres-Server. Akzeptiert nur SQL. Volle Governance-Pipeline gilt. `pg_catalog` und `information_schema` werden aus einem In-Memory-Katalog beantwortet, sodass Schema-Browser ohne Föderations-Roundtrip funktionieren. TLS optional.
 - **Bolt (Neo4j)** — Jeder Neo4j-Client (Neo4j Browser, Bloom, offizielle Treiber) verbindet sich über das Bolt-Protokoll und führt Cypher gegen den föderierten Graphen aus. Jede Rolle, die der Nutzer hält, erscheint als `provisa_<role>`-Datenbank. Dieselbe Governance wie jeder andere Transport. TLS optional.
@@ -118,9 +118,9 @@ Dies sind die Verbindungsprotokolle. SQL, GraphQL und Cypher reiten über ihnen 
 
 ### Datenquellen {: #data-sources }
 
-- **73 Konnektoren, 85+ Arten von Quellen** — Die größere Zahl zählt die gehosteten PostgreSQL-Dienste (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) und die Dateiformate des File Crawlers einzeln. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL-Triplestores, Kafka, Google Sheets und mehr über eine einzige API; Graph- und RDF-Quellen sind erstklassig, keine Adapter
-- **Smart Routing** — Einzelquellen-Abfragen umgehen die Föderation (unter 100 ms); Multi-Quellen-Abfragen routen durch die Föderationsschicht — eigenen Cluster mitbringen oder die eingebetteten Worker nutzen
-- **API-Quellen** — REST-, GraphQL-, gRPC-, WebSocket- oder RSS-Endpunkte als abfragbare Tabellen registrieren; SPARQL-Helfer inklusive; föderierte Joins über API-Quellen und relationale Quellen hinweg funktionieren transparent
+- **73 Konnektoren, 85+ Arten von Quellen** — Die größere Zahl zählt die gehosteten PostgreSQL-Dienste (RDS, Aurora, Cloud SQL, AlloyDB, Azure, Supabase, Neon) und die Dateiformate des File Crawlers einzeln. PostgreSQL, MySQL, MongoDB, Cassandra, Elasticsearch, Neo4j, SPARQL-Triplestores, Kafka, Google Sheets, Kaggle, Salesforce, ServiceNow, Stripe und die übrigen liegen hinter einer einzigen API. Graph- und RDF-Quellen stehen gleichberechtigt neben relationalen.
+- **Smart Routing** — Eine Abfrage auf einer Quelle überspringt die Föderation (unter 100 ms). Eine Abfrage über mehrere Quellen läuft durch die Föderationsschicht, auf Ihrem eigenen Cluster oder auf den eingebetteten Workern.
+- **API-Quellen** — Registrieren Sie REST-, GraphQL-, gRPC-, WebSocket- oder RSS-Endpunkte als abfragbare Tabellen, SPARQL-Helfer inklusive. Föderierte Joins zwischen API-Quellen und relationalen Quellen brauchen keine zusätzliche Einrichtung.
 - **Remote-Schema-Introspektion** — Auf jeden GraphQL-, OpenAPI- oder gRPC-Endpunkt zeigen; dokumentierte Operationen werden automatisch als abfragbare Tabellen, Graph-Knoten und -Kanten mit voller Governance obendrauf exponiert
 - **Dateiquellen** — CSV-, Parquet- und SQLite-Dateien als abfragbare Tabellen; unterstützt lokale Pfade und Remote-Objektspeicher (`s3://`, `ftp://`, `sftp://`)
 - **Kafka-Integration** — Topics als schreibgeschützte Tabellen; Abfrageergebnisse als Kafka-Sinks
@@ -148,10 +148,10 @@ Quellen, Dateien und Remote-Endpunkte werden als regulierte Tabellen aus der UI 
 
 ### Delivery & Performance
 
-- **Materialisierte Sichten als aufgezeichnete Transforms** — Eine MV erfasst den Transform, der sie erzeugt hat: ihre Join-Form oder SQL, die Eingangssignale pro Quelle (Iceberg-Snapshot, RDB-Watermark), aus denen sie gebaut wurde, und eine Determinismusprüfung bei der Registrierung. Weil der Transform aufgezeichnet ist, werden Abfragen (oder Teilausdrücke) transparent auf eine frische MV umgeschrieben — strukturelles Join-Pattern-Matching mit Partial-Match-Unterstützung, sodass eine MV, die eine Teilmenge von Joins abdeckt, weiterhin anwendbar ist, wobei verbleibende Joins erhalten bleiben
+- **Materialisierte Sichten als aufgezeichnete Transforms** — Eine MV zeichnet die Transformation auf, die sie erzeugt hat: ihre Join-Form oder ihr SQL, die Eingangssignale pro Quelle, aus denen sie gebaut wurde (Iceberg-Snapshot, RDB-Watermark), und eine Determinismusprüfung bei der Registrierung. Weil die Transformation aufgezeichnet ist, kann Provisa eine Abfrage oder einen Teil davon auf eine frische MV umschreiben, ohne dass Sie die Abfrage ändern. Der Abgleich arbeitet auf Join-Mustern und akzeptiert Teiltreffer, also greift auch eine MV, die nur einen Teil der Joins abdeckt, und die übrigen Joins bleiben erhalten.
 - **Hot-Table-Inlining** — Kleine, häufig gejointe Lookup-Tabellen werden als VALUES-CTEs direkt in den Abfrageplan inline eingebettet, was quellübergreifende Roundtrips für Dimensionsdaten eliminiert
 - **Query-Caching** — Rollen- und RLS-partitionierter Redis-Ergebniscache; APQ-Hash-Cache inklusive
-- **Observability als Daten** — Verteilte Traces, Metriken und Protokolle werden über OpenTelemetry gesammelt, in Iceberg auf S3 kompaktiert und automatisch als abfragbare Tabellen (`traces`, `metrics`, `logs`, `queries`) im föderierten Schema registriert; fragen Sie sie mit SQL, GraphQL oder Cypher neben Ihren Geschäftsdaten ab — joinen Sie eine `customers`-Tabelle mit der `queries`-Tabelle, um zu sehen, wer was ausgeführt hat und wie lange es gedauert hat
+- **Observability als Daten** — Verteilte Traces, Metriken und Logs werden über OpenTelemetry gesammelt, in Iceberg auf S3 verdichtet und als abfragbare Tabellen (`traces`, `metrics`, `logs`, `queries`) im föderierten Schema registriert. Fragen Sie sie mit SQL, GraphQL oder Cypher neben Ihren Geschäftsdaten ab. Verknüpfen Sie etwa eine Tabelle `customers` mit `queries`, um zu sehen, wer was ausgeführt hat und wie lange es dauerte.
 
 ### Administration & Integration
 
@@ -159,7 +159,7 @@ Quellen, Dateien und Remote-Endpunkte werden als regulierte Tabellen aus der UI 
 - **Reports-Viewer** — `/admin/reports` listet die eingebauten Ops-Domain-Management-Views und jeden registrierten benutzerdefinierten Report auf; erfordert die Capability `observability`
 - **Table Preview** — jede registrierte Tabelle hat einen server-seitig paginierten regulierten Datenviewer mit pushed-down Filtern, mehrstufigem Group-by und CSV-Export
 - **GraphQL Voyager** — Interaktive rollenspezifische Schema-Visualisierung als Entity-Relationship-Diagramm
-- **LLM-Beziehungserkennung** — Von Claude angetriebene Fremdschlüssel-Kandidatenvorschläge
+- **LLM-Beziehungserkennung** — Claude schlägt Fremdschlüsselkandidaten vor.
 - **Python-Client** — `pip install provisa-client`; GraphQL/SQL → DataFrames, Arrow Flight → pyarrow Tables, SQLAlchemy-Dialekt, ADBC-Unterstützung
 - **Datenaufnahme** — HTTP-Endpunkte zum Einspeisen von JSON-Ereignisdaten in die Plattform
 - **Hasura v2 / DDN Import** — Hasura-v2-Metadaten oder DDN-Supergraph-YAML in Provisa-Konfiguration umwandeln
@@ -211,7 +211,7 @@ Kein ungültiger Join läuft je auf Ihren Daten. Rollen sind standardmäßig ges
 
 ---
 
-Diese Schichten setzen sich zusammen. Eine Rolle mit Domänenzugriff, RLS und maskierten Spalten hat alle Schichten zugleich aktiv. Eine neue Quelle, Spalte oder Beziehung verlangt keine Anpassung jeder Regel, denn jede Schicht wird für sich konfiguriert und greift von selbst bei jeder Abfrage, die gesteuerte Objekte berührt.
+Diese Schichten setzen sich zusammen. Eine Rolle mit Domänenzugriff, RLS und maskierten Spalten hat alle Schichten zugleich aktiv, denn jede Schicht wird für sich konfiguriert und gilt für jede Abfrage, die ein gesteuertes Objekt berührt.
 
 ## Schnellstart {: #quick-start }
 
@@ -230,7 +230,7 @@ provisa open    # open the UI in your browser
 ### Linux
 
 1. [Provisa-linux-x86_64.AppImage](https://provisa.dev/dl/linux) herunterladen (immer die neueste Version)
-2. Ausführbar machen und starten — der erste Start schließt eine einmalige Einrichtung ab (keine Internetverbindung erforderlich):
+2. Ausführbar machen und starten. Der erste Start schließt eine einmalige Einrichtung ab (keine Internetverbindung erforderlich):
 
 ```bash
 chmod +x Provisa-*-linux-x86_64.AppImage
@@ -241,8 +241,8 @@ provisa start && provisa open
 ### Windows
 
 1. [Provisa-windows-x64.exe](https://provisa.dev/dl/windows) herunterladen (immer die neueste Version)
-2. Den Installer ausführen — keine Administratorrechte erforderlich
-3. **Provisa First Launch** aus dem Startmenü öffnen — schließt eine einmalige Einrichtung ab (~5 Min., keine Internetverbindung erforderlich)
+2. Den Installer ausführen. Keine Administratorrechte erforderlich
+3. **Provisa First Launch** aus dem Startmenü öffnen. Schließt eine einmalige Einrichtung ab (~5 Min., keine Internetverbindung erforderlich)
 4. Ein neues Terminal öffnen:
 
 ```bash
@@ -251,7 +251,7 @@ provisa start
 
 ### Erste Abfrage {: #first-query }
 
-In der lokalen Entwicklung (`PROVISA_MODE=test`) sind keine Anmeldedaten erforderlich. In der Produktion authentifizieren Sie sich mit einem Bearer-Token — die Rolle wird automatisch daraus extrahiert.
+In der lokalen Entwicklung (`PROVISA_MODE=test`) sind keine Anmeldedaten nötig. In der Produktion authentifizieren Sie sich mit einem Bearer-Token, und Provisa liest die Rolle daraus.
 
 ```bash
 # Local dev — no auth required, role defaults to admin
@@ -279,13 +279,13 @@ curl -X POST https://provisa.example.com/data/graphql \
 jdbc:provisa://localhost:8815
 ```
 
-Authentifizieren Sie sich mit Ihrem Provisa-Benutzernamen und -Passwort — der Server weist Ihre Rolle zu.
+Authentifizieren Sie sich mit Ihrem Provisa-Benutzernamen und Passwort, und der Server weist Ihnen Ihre Rolle zu.
 
 Siehe [docs/integrations.md](docs/integrations.md) für Tableau- und Power-BI-Einrichtungsschritte.
 
 ### PostgreSQL Wire Protocol (pgwire)
 
-Provisa spricht das PostgreSQL-Wire-Protokoll auf Port 5439. Jeder Client, der sich mit Postgres verbinden kann, verbindet sich mit Provisa — kein Treiber, kein Adapter, keine Änderungen an bestehendem Tooling.
+Provisa spricht das PostgreSQL-Wire-Protokoll auf Port 5439. Jeder Client, der sich mit Postgres verbinden kann, verbindet sich mit Provisa, ohne Treiber, ohne Adapter und ohne Änderung an Ihren vorhandenen Werkzeugen.
 
 **Der PostgreSQL-Benutzername wählt die Provisa-Rolle.** Mit `provider: none` (Trust-Modus) wird das Passwort ignoriert, und jeder konfigurierte Rollenname wird als Benutzername akzeptiert — verbinden Sie sich als `analyst`, `admin` oder jede Rolle, um die regulierte Sicht dieser Rolle auf die Daten zu sehen. Mit `provider: simple` wird das Passwort bcrypt-validiert. Andere Provider (`firebase`, `keycloak`, `oauth`) werden über pgwire nicht unterstützt.
 
@@ -307,9 +307,9 @@ engine = create_engine("postgresql+psycopg2://analyst:x@localhost:5439/provisa")
 df = pd.read_sql("SELECT * FROM orders", engine)
 ```
 
-Alle Abfragen laufen durch die vollständige Governance-Pipeline — Domänenzugriff, RLS, Maskierung und Prädikat-Guard gelten genau wie bei GraphQL und REST. Schema-Browser (DBeaver, DataGrip, pgAdmin) funktionieren sofort: `pg_catalog`- und `information_schema`-Abfragen werden aus einem In-Memory-Katalog beantwortet, der auf den Domänenzugriff der Rolle beschränkt ist, sodass Nutzer nur die Tabellen und Spalten sehen, die sie abfragen dürfen.
+Jede Abfrage durchläuft die vollständige Governance-Pipeline, also gelten Domänenzugriff, RLS, Maskierung und Prädikatschutz genau wie bei GraphQL und REST. Schema-Browser (DBeaver, DataGrip, pgAdmin) funktionieren ohne Einrichtung. Provisa beantwortet ihre Abfragen auf `pg_catalog` und `information_schema` aus einem In-Memory-Katalog, der auf den Domänenzugriff der Rolle beschränkt ist, sodass Benutzer nur die Tabellen und Spalten sehen, die sie abfragen dürfen.
 
-DataGrip beim Durchsuchen des regulierten Schemas und seines Fremdschlüssel-Diagramms über pgwire — kein Treiber, kein Adapter:
+DataGrip durchsucht das gesteuerte Schema und sein Fremdschlüsseldiagramm über pgwire, ohne Treiber und ohne Adapter:
 
 ![Provisa in DataGrip over pgwire](docs/images/pgwire-datagrip.png)
 
@@ -317,13 +317,13 @@ TLS wird durch Setzen von `PROVISA_PGWIRE_CERT` und `PROVISA_PGWIRE_KEY` aktivie
 
 ### Bolt (Neo4j Wire Protocol)
 
-Provisa spricht auch das Neo4j-**Bolt**-Protokoll, sodass graph-native Tools sich direkt verbinden und Cypher gegen den föderierten Graphen ausführen — kein Export, keine separate Graphdatenbank. Richten Sie **Neo4j Browser** oder **Bloom** auf Provisa und traversieren Sie Beziehungen über Quellen hinweg mit derselben angewendeten Governance (Domänenzugriff, RLS, Maskierung).
+Provisa spricht auch das Neo4j-Protokoll **Bolt**, also verbinden sich graphnative Werkzeuge direkt und führen Cypher gegen den föderierten Graphen aus. Nichts wird exportiert, und Sie brauchen keine separate Graphdatenbank. Richten Sie **Neo4j Browser** oder **Bloom** auf Provisa und traversieren Sie Beziehungen über Quellen hinweg unter derselben Governance (Domänenzugriff, RLS, Maskierung).
 
-Neo4j Browser, der Cypher gegen Provisa ausführt — Knotenlabels, Beziehungstypen und Property-Keys stammen direkt aus dem registrierten Schema:
+Neo4j Browser, der Cypher gegen Provisa ausführt. Knotenlabels, Beziehungstypen und Property-Keys stammen direkt aus dem registrierten Schema:
 
 ![Provisa in Neo4j Browser over Bolt](docs/images/bolt-neo4j-browser.png)
 
-Aktivieren Sie es durch Setzen von `PROVISA_BOLT_PORT` (Neo4js Standard ist `7687`). TLS wird mit `PROVISA_BOLT_CERT` und `PROVISA_BOLT_KEY` aktiviert. Jede Provisa-Rolle, die der authentifizierte Nutzer hält, erscheint als auswählbare `provisa_<role>`-Datenbank (der `provisa_admin`-Selektor oben) — die Auswahl einer davon grenzt die Sitzung auf die Domänenrechte dieser Rolle ein; der Nutzer kann die Rollen, die er hält, nie überschreiten.
+Aktivieren Sie es, indem Sie `PROVISA_BOLT_PORT` setzen (der Standard von Neo4j ist `7687`), und schalten Sie TLS mit `PROVISA_BOLT_CERT` und `PROVISA_BOLT_KEY` ein. Jede Provisa-Rolle des authentifizierten Benutzers erscheint als auswählbare Datenbank `provisa_<role>` (der Selektor `provisa_admin` oben). Die Auswahl einer davon beschränkt die Sitzung auf die Domänenrechte dieser Rolle, und der Benutzer kann nie über seine Rollen hinausgehen.
 
 ### Python-Client
 
@@ -427,7 +427,7 @@ Die Worker-Anzahl kann jederzeit durch Bearbeiten von `~/.provisa/config.yaml` (
 
 ### Über eine einzelne Box hinaus skalieren {: #scaling-beyond-a-single-box }
 
-**Horizontale Skalierung** — Mehrere Provisa-Instanzen hinter einem Load Balancer betreiben. Jede Instanz ist ein vollständig funktionierendes System. Alle Instanzen müssen auf dieselbe Konfigurations-DB zeigen (`CONFIG_DB_HOST` auf sekundären Boxen setzen) und optional auf eine gemeinsame Redis-Instanz (`REDIS_URL`) für einen vereinheitlichten Cache. Die meisten Abfragen verteilen sich transparent; sehr große quellübergreifende Joins können die Ressourcen einer einzelnen Instanz übersteigen und eine größere Box oder einen externen Föderationscluster erfordern.
+**Horizontale Skalierung** — Betreiben Sie mehrere Provisa-Instanzen hinter einem Load Balancer. Jede Instanz ist ein vollständiges System. Alle Instanzen müssen auf dieselbe Konfigurationsdatenbank zeigen (setzen Sie `CONFIG_DB_HOST` auf den sekundären Rechnern) und können sich eine Redis-Instanz (`REDIS_URL`) für einen gemeinsamen Cache teilen. Die meisten Abfragen verteilen sich ohne Änderung. Ein sehr großer quellenübergreifender Join kann eine Instanz übersteigen, und dann brauchen Sie einen größeren Rechner oder einen externen Föderations-Cluster.
 
 **Gemeinsam genutztes Redis** — `REDIS_URL` auf jeder Instanz setzen, um auf ein externes Redis zu zeigen. Gemeinsam genutztes Redis bedeutet, dass Cache-Einträge einer Instanz für alle verfügbar sind, was die Trefferquote clusterweit verbessert.
 
