@@ -211,12 +211,11 @@
           the join-field values to the second as query variables, and
           <a href="https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs" rel="noopener">joins the two responses itself</a>.
           In Provisa a cross-source join runs in the chosen federation engine (Trino,
-          DuckDB or Postgres), which reads each source over its native connector. Every
-          side of the join is a real table with statistics: a source the engine reaches
-          natively is a live catalog, and a source it can't read natively is replicated
-          into the engine's store and analyzed when the replica lands. The planner joins
-          tables and orders the join by their statistics, where DDN joins two connectors'
-          JSON results.
+          DuckDB or Postgres), which reads each source over its native connector. The
+          planner always joins real tables: replicas landed in the engine's store, which
+          carry statistics, or live catalogs the engine attaches directly, which carry the
+          statistics that engine's connector reports. DDN joins two connectors' JSON
+          results.
         </p>
         <p>
           Self-hosting DDN's engine and connectors on Docker
