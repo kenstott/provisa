@@ -181,7 +181,7 @@
   <img class="demo-shot" src="/assets/demo-testdata.bab0d906a0.png" alt="Test data: the demo in Provisa" loading="lazy" />
   <div class="demo-body">
     <h2>Test data</h2>
-    <p>A shop's production database, read in prod as it is and in two Test (fake) environments, dev and test, as realistic generated data computed by the engine at the read. Can I test against realistic data without touching production? The same queries, views and joins answer in all three; only prod sees the real rows.</p>
+    <p>A shop's production database in three environments: prod, the real rows; pre-prod, production's rows with every sensitive column faked for every role; and dev, generated from production's profile with nothing real. The same queries, views and joins answer in all three.</p>
     <a class="btn btn-primary" href="https://cloud.provisa.dev/demos/testdata" target="_blank" rel="noopener">Open live demo</a>
   </div>
 </article>
