@@ -91,7 +91,11 @@ _HOST = textwrap.dedent(
             os._exit(3)
         send({"op": "end", "id": i})
 
-    send({"op": "hello", "exports": ["many", "echo", "total", "boom", "slow", "ticks", "die"]})
+    import os
+    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "1")),
+             "code_hash": os.environ["PROVISA_CODE_HASH"],
+             "exports": ["many", "echo", "total", "boom", "slow", "ticks", "die"]}
+    send(hello)
     while (m := recv()) is not None:
         if m["op"] == "ping":
             send({"op": "pong", "id": m["id"]})
@@ -240,3 +244,24 @@ def test_a_host_that_neither_connects_nor_exits_is_stopped_at_the_start_timeout(
         worker.start(timeout=0.5)
     assert str(failed.value).startswith("source 'silent-src': its host did not connect within 0.5s")
     assert not worker.alive()
+
+
+def test_a_host_speaking_another_protocol_is_refused_by_name(command, tmp_path):
+    """REQ-2098: a host built for another Provisa version is refused, and told why."""
+    base = command[0]
+    other = w.HostCommand(argv=base.argv, env={**base.env, "TEST_PROTOCOL": "2"}, cwd=base.cwd)
+    worker = w.Worker("orders-src", "h1", other)
+    with pytest.raises(w.WorkerFailed) as failed:
+        worker.start()
+    assert str(failed.value) == (
+        "source 'orders-src': its host speaks protocol 2, and this Provisa speaks 1: "
+        "run a host built for this Provisa version"
+    )
+    assert not worker.alive()
+
+
+def test_a_host_running_other_code_than_the_source_registered_is_refused_by_name():
+    """REQ-2098: the hello's code hash is the source's, or the host is refused."""
+    hello = {"op": "hello", "protocol": w.PROTOCOL, "code_hash": "abc", "exports": []}
+    assert w.refusal(hello, "abc") is None
+    assert w.refusal(hello, "def") == "its host runs code abc, not the def the source registered"
