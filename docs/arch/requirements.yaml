@@ -85203,3 +85203,28 @@ And the file is gone when the install ends"
   stakeholders:
   - ops
   - app-developer
+- id: REQ-2089
+  status: complete
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: Demo Provisioning
+  feature: product-tour-and-demos-sandbox
+  priority: MUST
+  type: behavioral
+  description: "A configuration may declare a replica's rows instead of landing them from its source: replica_rows/<source_id>/<schema>.<table>.tsv beside its config.yaml, its first line the table's columns in their order, tab separated, each line after one row (\\N is NULL; \\t, \\n, \\r and \\\\ a tab, newline, carriage return and backslash; an integer, floating or boolean column's cells read as that type, every other as its text). When an org's runtime is built, before its replica convergence is wired -- a demo template's from its demo's directory, the deployment org's from its launch config's directory -- each declared table is written into the org's own replica store as a build of it writes it (its columns' types, a stream build's content hash) and recorded as built for that store and the table's definition; convergence then asks for no build and the source is never read, so a demo whose source has no tenant (the insider demo's bank mail in Microsoft 365) is served from its declared rows by the bundle build's setup, its seeding run and every sandbox, and the bundle's seed carries them like any landed replica. A table already landed in that store from those rows is left as it is. Refused, naming the file: a file not named <schema>.<table>.tsv; a table the configuration does not serve from that source; a header that is not the table's columns in their order; a cell not of its column's type; a source whose cache_ttl is not -1 (nothing may refresh the replica from the source); a declared table with no rows."
+  use_case: "A demo reads a bank's mail through a Microsoft 365 source though no sandbox has a tenant: its seeded mailbox ships as the source's canonical mail tables' rows."
+  scenario: "Given demo/named/insider/replica_rows/mail/default.messages.tsv holding the bank's 118 messages in the canonical messages columns, and source mail of type microsoft_365 with cache_ttl -1
+
+When the demo's template org's runtime is built
+
+Then the mail source's messages replica holds those 118 rows, recorded built, and no read of Microsoft Graph is made
+
+And a messages file whose source declares cache_ttl 300 is refused, naming the file"
+  code:
+  - provisa/federation/declared_replica_rows.py
+  - provisa/api/demo_templates.py
+  - provisa/api/app.py
+  tests:
+  - tests/unit/test_declared_replica_rows.py
+  stakeholders:
+  - ops

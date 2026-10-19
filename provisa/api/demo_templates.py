@@ -458,6 +458,21 @@ def seeding_release() -> bool:
     return seeding_run()
 
 
+def declared_rows_directory(org_id: str) -> Path | None:
+    """REQ-2089: the directory whose ``replica_rows`` the org ``org_id`` lands its declared
+    replicas from: a demo template's demo directory, or, for the deployment org, the directory
+    of the config it was launched with. Any other org has none."""
+    from provisa.api.app import state
+    from provisa.api.sandbox_tier import is_template_org
+    from provisa.core.config_location import config_path_str
+
+    if is_template_org(org_id):
+        return demo_of_template(org_id).directory
+    if org_id == state.org_id:
+        return Path(config_path_str()).parent
+    return None
+
+
 async def land_from_seed(org_id: str) -> None:
     """In the template org ``org_id``'s runtime build, with its model loaded and the org bound,
     before its replica convergence is wired: land its replicas from the demo's seed when this

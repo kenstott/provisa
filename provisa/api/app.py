@@ -2669,6 +2669,18 @@ async def _build_org_runtime(
 
             await land_from_seed(org_id)
 
+        if env == PROD:
+            # REQ-2089: the replicas its config's directory declares the rows of (a demo whose
+            # source has no tenant to read), before the wiring below starts its convergence: a
+            # demo template's from its demo's directory, the deployment org's from its launch
+            # config's.
+            from provisa.api.demo_templates import declared_rows_directory
+            from provisa.federation.declared_replica_rows import adopt_declared_rows
+
+            rows_directory = declared_rows_directory(org_id)
+            if rows_directory is not None:
+                await adopt_declared_rows(state, rows_directory)
+
         # REQ-1882 (amended 2026-09-29): the wiring below starts process-lifetime scheduler jobs and
         # listener tasks. Inline on the process loop; from a connection-thread loop (this org built
         # on first pgwire/Bolt/Flight access) it is started on the process loop, which outlives the
