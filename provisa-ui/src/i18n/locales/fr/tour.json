@@ -150,7 +150,7 @@
       },
       "stepRelsList": {
         "title": "Toutes les relations dans une liste",
-        "description": "📋 Les relations du modèle, qu'une source les déclare ou non, filtrables et triables. Développez une ligne pour la modifier ou ajouter sa réciproque. Un rôle ne joint que le long de ces relations, sauf s'il a le droit ignore_relationships."
+        "description": "📋 Toutes les relations du modèle, qu'une source les déclare ou non. Filtrez et triez la liste, et dépliez une ligne pour modifier une relation ou ajouter son inverse. Un rôle ne peut joindre des tables qu'en suivant ces relations, sauf s'il détient le droit ignore_relationships."
       },
       "step17": {
         "title": "Consulter le diagramme entité-relation",
@@ -178,7 +178,7 @@
       },
       "stepRequests": {
         "title": "Demandes de relation",
-        "description": "✋ Cette demande vient de quelqu'un qui ne peut pas créer de relations lui-même, souvent hors de votre domaine, et qui veut relier ses tables aux vôtres ; c'est généralement la première étape avant de demander vos données. Les relations sont gouvernées : en approuver une change les requêtes autorisées, car un rôle qui ne peut faire de jointures que le long de relations approuvées pourra désormais en faire à travers celle-ci. Une demande de relation requiert deux approbations avant de pouvoir être exécutée. Une relation entre deux domaines requiert un oui de chaque côté. Approuvez-la, exécutez-la ou rejetez-la avec un motif tiré d'une liste fixe ; les demandes traitées passent dans l'onglet Traitées."
+        "description": "✋ Quelqu'un qui ne peut pas créer de relations demande à relier ses tables aux vôtres. Il vient souvent d'un autre domaine, et c'est en général sa première étape avant de demander vos données. Comme les relations sont gouvernées, en approuver une change les requêtes autorisées : un rôle qui ne peut joindre que le long de relations approuvées peut désormais joindre à travers celle-ci. Une demande de relation a besoin de deux approbations avant de pouvoir être exécutée, et une demande qui couvre deux domaines a besoin d'un oui de chaque côté. Approuvez-la, exécutez-la ou refusez-la avec un motif tiré d'une liste fixe. Les demandes traitées passent dans l'onglet Traitées."
       },
       "stepQualityTable": {
         "title": "Un vérificateur de qualité n'est qu'une source",
@@ -190,11 +190,11 @@
       },
       "stepQualityProfile": {
         "title": "Profiler une table",
-        "description": "📊 Une table rejoint un <strong>Data Profiler</strong> depuis l'onglet <strong>Qualité</strong> de son éditeur, une source qui profile ses tables membres selon un calendrier. Une exécution mesure la forme de chaque colonne, les distributions et les fréquences de valeurs, ainsi que les enfants par parent. <strong>Profiler maintenant</strong> en lance une et <strong>Voir les exécutions de profil</strong> les lit. Les résultats arrivent sous forme de tables que vous enregistrez et gouvernez comme les autres ; tant que vous ne les enregistrez pas, aucun lecteur ne voit de profil. La carte suivante y ajoute des contrôles."
+        "description": "📊 Un <strong>Data Profiler</strong> est une source qui profile ses tables membres selon un calendrier. Ajoutez-y une table depuis l'onglet <strong>Qualité</strong> de son éditeur. Chaque exécution mesure la forme, les distributions et les valeurs les plus fréquentes de chaque colonne, ainsi que le nombre d'enfants de chaque parent. <strong>Run Profile Now</strong> lance une exécution et <strong>View Profile Runs</strong> en montre les résultats. Les résultats arrivent sous forme de tables que vous enregistrez et gouvernez comme les autres, et personne ne voit un profil tant que vous ne les avez pas enregistrées. La carte suivante y ajoute des contrôles."
       },
       "stepProfilerChecks": {
         "title": "Contrôles sur les résultats du profil",
-        "description": "Chaque exécution ajoute des lignes à ses tables de résultats : colonnes (part de nuls, nombre de valeurs distinctes, plage), exécutions (nombre de lignes), enfants par parent, quantiles et dérive. Enregistrez une table de résultats et un vérificateur de qualité des données, une source <strong>Soda</strong> ou <strong>Great Expectations</strong> comme une autre, peut l'analyser : toute mesure produite par un profil peut porter un contrôle qui lève un problème. La <strong>dérive</strong> est l'une de ces mesures : chaque exécution est comparée aux exécutions récentes de la table, et une mesure qui bouge est signalée. Une contrainte acceptée, un contrôle de dérive ou un contrôle par rapport à des attentes extérieures à Provisa peuvent être ajoutés au contrat du vérificateur depuis les exécutions du profileur."
+        "description": "Chaque exécution ajoute des lignes à ses tables de résultats : mesures par colonne (part de valeurs nulles, nombre de valeurs distinctes, plage), par exécution (nombre de lignes), enfants par parent, quantiles et dérive. Dès que vous enregistrez une table de résultats, un vérificateur de qualité des données peut l'analyser comme n'importe quelle table. Ce vérificateur est une source <strong>Soda</strong> ou <strong>Great Expectations</strong> : toute mesure produite par un profil peut donc porter un contrôle qui signale un problème. La <strong>dérive</strong> est l'une de ces mesures. Chaque exécution est comparée aux exécutions récentes de la table, et une mesure qui bouge est signalée. Depuis les exécutions du profileur, vous pouvez ajouter au contrat du vérificateur une contrainte acceptée, un contrôle de dérive ou un contrôle par rapport à des attentes extérieures à Provisa."
       },
       "stepQualityProduct": {
         "title": "La qualité voyage avec le produit",
@@ -218,7 +218,7 @@
       },
       "stepEnvKinds": {
         "title": "Environnements et leurs connexions",
-        "description": "Un environnement est une <strong>branche</strong> de votre modèle, et la liste indique de laquelle chacun est issu. À la création, <strong>Hériter des connexions</strong> lit par référence les connexions de source de cet environnement, si bien qu'une rotation là-bas est reprise ici. Laissez-le désactivé, par défaut, pour obtenir tout le modèle sans les connexions et pointer chaque source vers votre propre base."
+        "description": "Un environnement est une <strong>branche</strong> de votre modèle, et la liste montre de quel environnement chacun est issu. À sa création, vous choisissez s'il <strong>hérite des connexions</strong>. Si c'est activé, le nouvel environnement utilise par référence les connexions de source de son parent : si un identifiant y est renouvelé, il l'est ici aussi. Si c'est désactivé, la valeur par défaut, vous obtenez tout le modèle sans aucune connexion, et vous pointez chaque source vers votre propre base de données."
       },
       "stepSynthetic": {
         "title": "Générer des données synthétiques",
@@ -306,7 +306,7 @@
       },
       "weblogsTables": {
         "title": "Les sources deviennent des tables",
-        "description": "Les données de chaque source sont enregistrées comme tables : les clients, produits et commandes de la boutique, et une table par journal, ses lignes découpées en colonnes comme le chemin, le statut et la durée. Des vues, requêtes enregistrées sur ces tables, ajoutent les pages les plus lentes et le SQL exécuté par chaque requête."
+        "description": "Les données de chaque source sont enregistrées comme tables : les clients, produits et commandes de la boutique, et une table par journal, dont les lignes sont découpées en colonnes comme le chemin, le statut et la durée. Au-dessus, deux vues ajoutent les pages les plus lentes et le SQL exécuté par chaque requête. Une vue est une requête enregistrée."
       },
       "weblogsJoin": {
         "title": "Une requête, deux journaux",
@@ -322,19 +322,19 @@
       },
       "sonnetsIntro": {
         "title": "Les sonnets de Shakespeare, par le sens",
-        "description": "Les 154 sonnets de Shakespeare dans Postgres, plongés dans Qdrant, cherchés par le sens, devenus un graphe. La question : quels thèmes traversent les sonnets, et où Shakespeare se fait-il écho à lui-même ? <strong>sonnets</strong> est la source Postgres, une ligne pour chaque sonnet et pour chacun de ses 2 155 vers."
+        "description": "Les 154 sonnets de Shakespeare sont stockés dans Postgres, plongés dans Qdrant, cherchés par le sens et transformés en graphe. La question : quels thèmes traversent les sonnets, et où Shakespeare se fait-il écho à lui-même ? <strong>sonnets</strong> est la source Postgres. Elle a une ligne par sonnet et une par chacun des 2 155 vers."
       },
       "sonnetsVectors": {
         "title": "Le magasin de vecteurs",
-        "description": "<strong>vectors</strong> est Qdrant. Il garde un point pour chaque vers, dont le vecteur est le plongement des mots du vers, et Provisa le lit et l'écrit comme toute autre source."
+        "description": "<strong>vectors</strong> est Qdrant. Il contient un point par vers, et le vecteur de chaque point est le plongement des mots de ce vers. Provisa le lit et l'écrit comme n'importe quelle autre source."
       },
       "sonnetsLines": {
         "title": "Chaque vers, plongé",
-        "description": "La table line tient une ligne pour chacun des 2 155 vers. La commande <strong>embed_lines</strong> est une seule instruction SQL gouvernée : son embed() fait des mots de chaque vers un vecteur, et les lignes sont écrites dans Qdrant par la voie d'écriture de la collection."
+        "description": "La table des vers a une ligne pour chacun des 2 155 vers. La commande <strong>embed_lines</strong> est une seule instruction SQL gouvernée. Son appel à embed() transforme les mots de chaque vers en vecteur, et les lignes sont écrites dans Qdrant par la voie d'écriture de la collection."
       },
       "sonnetsSearch": {
         "title": "Une recherche par le sens",
-        "description": "<strong>lines_like</strong> est une table de recherche : Provisa la lit en direct dans Qdrant avec les arguments que lui donne l'instruction, ici une phrase et le nombre de vers à trouver. Regardez le score de chaque vers : sa proximité avec la phrase."
+        "description": "<strong>lines_like</strong> est une table de recherche. Provisa lance la recherche en direct dans Qdrant avec les arguments que votre instruction transmet : ici, une phrase et le nombre de vers à renvoyer. Chaque vers revient avec un score qui indique sa proximité avec la phrase."
       },
       "sonnetsThemeView": {
         "title": "Un thème, conservé",
@@ -438,7 +438,7 @@
       },
       "reviewsBoughtWithByDegree": {
         "title": "On peut en faire un graphe. Mais que signifie-t-il ?",
-        "description": "Regroupé par degré, pour la question qui a motivé le dessin : les groupes font ressortir les produits le plus souvent achetés avec les produits mal notés. Plus le nombre est grand, plus il y passe d'appariements. Le degré est compté dans ce seul résultat : les produits notés en dessous de trois étoiles et ce que cinq de leurs clients ou plus ont aussi acheté avec eux. Les nœuds rouges sont les produits ; les notes et les nœuds de paire sont eux aussi regroupés."
+        "description": "Le même résultat, regroupé par degré pour répondre à la question pour laquelle il a été tracé. Les groupes font ressortir les produits les plus souvent achetés avec les produits mal notés, et un nombre plus grand signifie que plus d'associations passent par ce produit. Le degré n'est compté qu'au sein de ce résultat : les produits notés sous trois étoiles, et ce que cinq de leurs clients ou plus ont aussi acheté. Les nœuds rouges sont les produits. Les notes et les nœuds de paires sont regroupés aussi."
       },
       "reviewsRest": {
         "title": "La recherche en REST",
@@ -466,7 +466,7 @@
       },
       "insuranceRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Les données propres de l'assureur, lues en direct, et les données publiques de risque, chargées une fois, jointes par comté dans un modèle gouverné : une vue répond à la question de savoir où l'exposition rencontre le risque, en SQL, GraphQL et REST, selon l'accès de chaque rôle."
+        "description": "Vous avez vu les données propres de l'assureur, lues en direct et jointes par comté à des données publiques de risque chargées une fois, le tout dans un modèle gouverné. Une vue répond à la question de savoir où l'exposition rencontre le risque, en SQL, GraphQL et REST, et chaque rôle ne voit que ce qu'il a le droit de voir."
       },
       "insuranceGovdata": {
         "title": "Les données publiques de risque",
@@ -482,7 +482,7 @@
       },
       "insuranceTerms": {
         "title": "Dans les termes de l'assureur",
-        "description": "Le glossaire nomme ce que demande un souscripteur : valeur totale assurée, cumul, sinistre maximum probable (PML), perte annuelle attendue. Ici le cumul : une exposition concentrée là où un seul événement atteint de nombreuses polices."
+        "description": "Le glossaire nomme ce que demande un souscripteur : valeur assurée totale, cumul, sinistre maximal probable et perte annuelle attendue. Ici, le cumul désigne une exposition concentrée là où un seul événement peut toucher de nombreuses polices."
       },
       "insuranceByRating": {
         "title": "Par note de risque, en GraphQL",
@@ -494,7 +494,7 @@
       },
       "qualityIntro": {
         "title": "Des données dignes de confiance",
-        "description": "Une chaîne de cinq boutiques envoie ses ventes sous forme de flux, un lot par jour, déposé en bronze dans <strong>sales</strong>, la base de données de la chaîne. Tout ce qui suit le bronze est une vue matérialisée : les contrôles, l'argent et l'or, actualisés par le seul dépôt. La question : puis-je faire confiance à ces données avant qu'elles n'atteignent l'or ?"
+        "description": "Une chaîne de cinq boutiques envoie ses ventes sous forme de flux quotidien. Chaque lot arrive comme couche bronze dans <strong>sales</strong>, la base de données de la chaîne. Tout ce qui suit le bronze est une vue matérialisée (les contrôles, l'argent et l'or), et l'arrivée d'un lot suffit à les rafraîchir toutes. La question : puis-je me fier à ces données avant qu'elles n'atteignent l'or ?"
       },
       "qualityBronze": {
         "title": "Bronze : typé là où c'est propre",
@@ -522,7 +522,7 @@
       },
       "qualitySilver": {
         "title": "Argent : nettoyé",
-        "description": "L'argent est le bronze nettoyé, à partir des seuls lots réussis : codes de boutique rognés et en majuscules, une graphie par produit, le prix en nombre, le jour dérivé, et une vente envoyée deux fois gardée une fois, dans sa version la plus récente."
+        "description": "L'argent, c'est le bronze nettoyé, construit uniquement à partir des lots qui ont passé les contrôles. Les codes de boutique sont élagués et mis en majuscules, chaque produit a une seule orthographe, le prix est un nombre, le jour est déduit, et une vente envoyée deux fois est gardée une fois, dans sa version la plus récente."
       },
       "qualityGold": {
         "title": "Or : les totaux",
@@ -534,7 +534,7 @@
       },
       "qualityDone": {
         "title": "Une confiance que l'on peut interroger",
-        "description": "Déposer un lot a actualisé les contrôles, l'argent et l'or, sans rien exécuter d'autre. Le lot propre a atteint l'or ; le mauvais s'est arrêté au bronze, et pourquoi, c'est une requête."
+        "description": "L'arrivée d'un lot a rafraîchi les contrôles, l'argent et l'or, sans rien d'autre à exécuter. Le lot propre a atteint l'or. Le mauvais s'est arrêté au bronze, et une requête vous dit pourquoi."
       },
       "insiderIntro": {
         "title": "Revue d'initiés dans une banque",
@@ -622,11 +622,11 @@
       },
       "vulnerabilitiesTerms": {
         "title": "Le vocabulaire",
-        "description": "Vulnérabilité exploitée connue, CVE, CWE et CVSS, dans le glossaire de l'entreprise, chacun relié aux colonnes qu'il concerne. Un score CVSS dit la gravité d'une vulnérabilité ; seul le catalogue dit si quelqu'un l'exploite."
+        "description": "Le glossaire de l'entreprise définit vulnérabilité exploitée connue, CVE, CWE et CVSS, et relie chaque terme aux colonnes qu'il décrit. Un score CVSS dit à quel point une vulnérabilité est grave. Seul le catalogue dit si quelqu'un l'exploite."
       },
       "vulnerabilitiesAnswer": {
         "title": "La réponse en SQL",
-        "description": "La vue exploited_in_our_code garde chaque alerte ouverte dont la CVE figure au catalogue de la CISA, avec les jours écoulés depuis l'échéance de la CISA, et reste stockée. Les dépôts exposés à internet d'abord, les plus en retard d'abord : par où commencer."
+        "description": "La vue exploited_in_our_code est stockée. Elle garde chaque alerte ouverte dont le CVE figure au catalogue de la CISA, avec le nombre de jours écoulés depuis l'échéance fixée par la CISA. Les dépôts exposés à Internet viennent d'abord, puis ceux qui ont le plus de retard. C'est par là qu'il faut commencer."
       },
       "vulnerabilitiesByTeam": {
         "title": "La réponse en GraphQL",
@@ -642,7 +642,7 @@
       },
       "vulnerabilitiesRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Les données de code de l'entreprise, lues en direct, et des données publiques de vulnérabilités, chargées une fois et seulement ce dont les alertes ont besoin, jointes par CVE dans un modèle gouverné : une vue répond aux questions de savoir quelles vulnérabilités exploitées se trouvent dans le code et de combien chacune est en retard, en SQL, GraphQL, Cypher et REST."
+        "description": "Vous avez vu les données de code propres de l'entreprise, lues en direct et jointes par CVE à des données publiques de vulnérabilités chargées une fois, et seulement ce dont les alertes ont besoin. Une vue dans un modèle gouverné indique quelles vulnérabilités exploitées se trouvent dans le code et quel retard chacune a pris, en SQL, GraphQL, Cypher et REST."
       },
       "testdataScenario": {
         "title": "Puis-je tester sur des données réalistes sans toucher à la production ?",
@@ -650,7 +650,7 @@
       },
       "testdataTables": {
         "title": "Chaque colonne déclare sa valeur fictive",
-        "description": "Chaque colonne de <strong>customers</strong> nomme le genre de valeur qu'elle contient, sa valeur fictive : un nom de personne, une adresse e-mail, une ville, une région parmi quatre, une date dans une plage. Le modèle le porte avec la colonne, donc la valeur fictive est définie une fois, là où est la colonne."
+        "description": "Chaque colonne de <strong>customers</strong> déclare son faux : le genre de valeur qu'elle contient, comme le nom d'une personne, une adresse e-mail, une ville, l'une de quatre régions ou une date dans une plage. Le modèle garde le faux avec la colonne : vous le définissez une seule fois, à un seul endroit."
       },
       "testdataJoin": {
         "title": "Des clés falsifiées de même façon joignent toujours",
@@ -658,15 +658,15 @@
       },
       "testdataProd": {
         "title": "Production : les vraies lignes",
-        "description": "En prod, l'environnement qui sert une requête n'en nommant aucun, les clients se lisent tels qu'ils sont."
+        "description": "En production, l'environnement par défaut, vous voyez les clients tels qu'ils sont réellement."
       },
       "testdataToDev": {
         "title": "Passer à dev",
-        "description": "dev et test sont des environnements du modèle : des branches de celui-ci, comme dans git. Tous deux sont des environnements de test (valeurs fictives). Ensuite, le sélecteur de l'en-tête passe à dev ; chaque lecture qui suit est servie de là."
+        "description": "dev et test sont des environnements du modèle, des branches comme dans git. Ce sont tous deux des environnements Test (faux). Ensuite, le sélecteur de l'en-tête passe à dev, et tout ce que vous lirez ensuite viendra de dev."
       },
       "testdataDev": {
         "title": "La même requête en dev",
-        "description": "La même instruction, lue en dev : chaque colonne est sa valeur fictive, calculé par le moteur à la lecture. Noms, e-mails, villes et dates ont l'air vrais et ne le sont pas. Rien n'a été copié hors de la production."
+        "description": "La même instruction, lue dans dev : chaque colonne affiche maintenant son faux, que le moteur calcule à la lecture. Les noms, e-mails, villes et dates ont l'air vrais, mais ne le sont pas. Rien n'a été copié depuis la production."
       },
       "testdataDevAnswer": {
         "title": "Vues et jointures fonctionnent sur les valeurs fictives",
@@ -690,11 +690,11 @@
       },
       "testdataProdAnswer": {
         "title": "La vraie réponse, en production seulement",
-        "description": "La même vue, lue en prod : le vrai chiffre d'affaires par région et catégorie. Seule prod reçoit les vraies lignes ; dev et test ne les voient jamais."
+        "description": "La même vue, lue en production : le vrai chiffre d'affaires par région et par catégorie. Seule la production reçoit les vraies lignes. dev et test ne les voient jamais."
       },
       "testdataDone": {
         "title": "Ce que c'est",
-        "description": "Les environnements sont des branches d'un modèle, et une valeur fictive se déclare une fois par colonne. Un environnement de test (valeurs fictives) répond à chaque requête avec des valeurs générées réalistes, garde les clés joignables, et est refusé tant qu'une colonne de données personnelles n'a pas de valeur fictive. Les données de production ne quittent jamais la production."
+        "description": "Les environnements sont des branches d'un même modèle, et un faux se déclare une fois par colonne. Un environnement Test (faux) répond à chaque requête avec des valeurs générées réalistes et garde les clés joignables. Tant qu'une colonne sensible n'a pas de faux, Provisa refuse de créer un environnement Test (faux), d'y basculer ou d'y répondre à une requête. Les données de production ne quittent jamais la production."
       },
       "streamingScenario": {
         "title": "Les commandes, en direct",
@@ -706,11 +706,11 @@
       },
       "streamingAnswer": {
         "title": "Les régions les plus actives, maintenant",
-        "description": "<strong>orders_last_five_minutes</strong> est une vue matérialisée : les commandes et le chiffre d'affaires de chaque région ces cinq dernières minutes. Chaque lot de commandes chargé la rafraîchit : cette lecture porte sur des lignes stockées vieilles de quelques secondes, jamais sur le topic. Relancez-la dans une minute et les chiffres auront bougé."
+        "description": "<strong>orders_last_five_minutes</strong> est une vue matérialisée des commandes et du chiffre d'affaires de chaque région sur les cinq dernières minutes. Chaque lot de commandes qui arrive la rafraîchit : vous lisez donc des lignes stockées vieilles de quelques secondes, jamais le topic lui-même. Relancez-la dans une minute et les chiffres auront changé."
       },
       "streamingRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Un topic Kafka chargé comme une table et relié à un catalogue lu en direct ; une vue tenue à jour par chaque lot chargé ; la même réponse en SQL, GraphQL et REST, mise en cache à la demande ; et un abonnement qui suit le flux. Explorez par vous-même depuis la page des requêtes."
+        "description": "Un topic Kafka a été chargé comme table et joint à un catalogue en direct. Une vue est restée à jour avec chaque lot arrivé. La même réponse est sortie en SQL, GraphQL et REST, mise en cache sur demande, et un abonnement a suivi le flux. Explorez seul depuis la page des requêtes."
       },
       "streamingCatalog": {
         "title": "Le catalogue",
@@ -718,7 +718,7 @@
       },
       "streamingOrders": {
         "title": "Un topic devient une table",
-        "description": "<strong>orders</strong> est le topic, chargé dans une table qui lui est propre à mesure que les commandes arrivent : un lot au plus toutes les deux secondes, chaque commande par son identifiant. Chaque lot chargé rafraîchit les vues qui le lisent et prévient ses abonnés."
+        "description": "<strong>orders</strong> est le topic, chargé dans sa propre table à mesure que les commandes arrivent, par lot au plus toutes les deux secondes, avec l'identifiant de commande comme clé. Chaque lot qui arrive rafraîchit les vues qui le lisent et prévient leurs abonnés."
       },
       "streamingFresh": {
         "title": "Les commandes à mesure qu'elles arrivent",
@@ -754,7 +754,7 @@
       },
       "profilingTerms": {
         "title": "Le vocabulaire",
-        "description": "Profil de données, type plausible, forme de valeur, ligne en double et valeur de substitution, dans le glossaire, chacun relié aux mesures qu'il concerne."
+        "description": "Le glossaire définit profil de données, type plausible, forme de valeur, ligne en double et valeur de remplissage, et relie chaque terme aux mesures qu'il décrit."
       },
       "profilingAnswer": {
         "title": "Ce que contient chaque colonne",
@@ -770,7 +770,7 @@
       },
       "profilingCountries": {
         "title": "Un pays, plusieurs graphies",
-        "description": "Les cinq valeurs les plus fréquentes de la colonne country : US, USA et United States sont un même pays, écrit de trois façons rien que parmi elles. Un décompte par pays le scinderait."
+        "description": "Les cinq valeurs les plus fréquentes de la colonne pays. US, USA et United States sont un seul pays, écrit de trois façons différentes rien que parmi ces cinq. Un comptage par pays le diviserait en trois."
       },
       "profilingDuplicates": {
         "title": "Les lignes écrites deux fois",
@@ -782,7 +782,7 @@
       },
       "profilingRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Les tables acquises, lues en direct, et leur profil, établi par le profileur intégré et conservé sous forme de tables gouvernées : valeurs nulles, plages, formats, types plausibles et doublons répondent à ce que contiennent réellement ces données, en SQL, GraphQL et REST, selon l'accès de chaque rôle."
+        "description": "Vous avez vu les tables de l'entreprise rachetée, lues en direct, et un profil réalisé par le profileur intégré et conservé sous forme de tables gouvernées. Valeurs nulles, plages, formats, types plausibles et doublons disent chacun ce que contiennent vraiment ces données, en SQL, GraphQL et REST, et chaque rôle ne voit que ce qu'il a le droit de voir."
       },
       "opioidsScenario": {
         "title": "Ce que montre cette démo",
@@ -814,7 +814,7 @@
       },
       "opioidsTerms": {
         "title": "En termes simples",
-        "description": "Le glossaire explique les termes qu'un élu ou un habitant rencontre : fonds des accords, atténuation, allocation, dépense, nombre masqué, taux pour 100 000. Ici l'atténuation : ce à quoi les accords exigent que l'argent soit consacré."
+        "description": "Le glossaire explique les termes qu'un élu ou un habitant rencontrera : fonds de règlement, réduction des méfaits, allocation, dépense, nombre masqué et taux pour 100 000. Ici, la réduction des méfaits désigne ce à quoi les règlements exigent que l'argent soit consacré."
       },
       "opioidsAsPublic": {
         "title": "Exécuter en tant que public",
@@ -834,7 +834,7 @@
       },
       "datavaultScenario": {
         "title": "Deux systèmes, une question",
-        "description": "Un système de commandes et un CRM, tous deux issus de Northwind, chacun avec sa propre copie de chaque client. La question : que savions-nous de ce client, de quelle source et quand ? Un data vault y répond en conservant chaque version de chaque source. Ici, le vault est déclaré sous forme de vues, et le moteur le construit et le rafraîchit : pas de plateforme ETL, pas de serveur de tâches, pas de code de pipeline ; le travail s'exécute sur le moteur, là où il passe à l'échelle, et un seul vault déclaré alimente les marts, les API gouvernées et la traçabilité."
+        "description": "Un système de commandes et un CRM, tous deux de Northwind, gardent chacun leur propre copie de chaque client. La question : que savions-nous de ce client, de quelle source, et quand ? Un data vault y répond en gardant chaque version de chaque source. Ici, le vault est déclaré sous forme de vues, et le moteur le construit et le rafraîchit. Pas de plateforme ETL, de serveur de tâches ni de code de pipeline à faire tourner. Le travail s'exécute sur le moteur, là où il passe à l'échelle, et un seul vault déclaré alimente les marts, les API gouvernées et le lignage."
       },
       "datavaultCrm": {
         "title": "La copie propre du CRM",
@@ -850,7 +850,7 @@
       },
       "datavaultHub": {
         "title": "Un hub",
-        "description": "Une ligne par client connu de l'un ou l'autre système : son code, la clé de hachage du code sur laquelle chaque link et chaque satellite se joint, le système où il a été vu en premier, et quand."
+        "description": "Une ligne pour chaque client que l'un ou l'autre système connaît. Chaque ligne contient le code du client, la clé de hachage de ce code (sur laquelle se joignent tous les links et satellites), le système où le client est apparu en premier, et quand."
       },
       "datavaultLinks": {
         "title": "Hub, link, hub",
@@ -858,7 +858,7 @@
       },
       "datavaultSatellites": {
         "title": "Les satellites conservent chaque version",
-        "description": "Les attributs de chaque système pour le client, chaque version étant une ligne avec sa date de chargement et un hashdiff de ses valeurs. Le renvoi du CRM du 1er octobre a le hashdiff de la ligne précédente : ce n'est donc pas une version."
+        "description": "Un satellite garde les attributs du client tels que chaque système les connaît. Chaque version est une ligne, avec sa date de chargement et un hashdiff de ses valeurs. Le renvoi du CRM du 1er octobre a le même hashdiff que la ligne précédente : il ne compte donc pas comme une nouvelle version."
       },
       "datavaultProduct": {
         "title": "Un produit renommé, un prix corrigé",
@@ -866,7 +866,7 @@
       },
       "datavaultAnswer": {
         "title": "Ce qui était connu, et quand",
-        "description": "La réponse en une seule requête point in time. À chaque date où quelque chose a été chargé sur le client, la version des valeurs de chaque système en vigueur alors, et depuis quand. Du 1er septembre au 15 novembre, les deux systèmes n'étaient pas d'accord sur le lieu de résidence du client."
+        "description": "La réponse, en une requête point-in-time. Pour chaque date à laquelle quelque chose a été chargé sur le client, vous voyez la version des valeurs de chaque système en vigueur à ce moment-là, et depuis quand. Du 1er septembre au 15 novembre, les deux systèmes n'étaient pas d'accord sur l'endroit où vivait le client."
       },
       "datavaultGraphql": {
         "title": "La même réponse en GraphQL",
@@ -886,11 +886,11 @@
       },
       "datavaultAnalyst": {
         "title": "La vue d'un analyste",
-        "description": "La suite exécute l'explorateur SQL en tant qu'analyste européen. Les données personnelles résident dans les satellites ; c'est donc là qu'elles sont gouvernées."
+        "description": "Ensuite, l'explorateur SQL s'exécute en tant qu'analyste européen. Les données personnelles se trouvent dans les satellites, et c'est donc là qu'elles sont gouvernées."
       },
       "datavaultMasked": {
         "title": "Masquées là où se trouvent les données personnelles",
-        "description": "En tant qu'analyste, le satellite du CRM n'affiche que les clients européens, leurs contacts retenus, leurs noms d'e-mail et chiffres de téléphone masqués. Les hubs et les links restent lisibles, de sorte que l'analyste peut toujours joindre sur eux."
+        "description": "En tant qu'analyste, le satellite du CRM ne montre que les clients européens. Leurs contacts sont retenus, et les noms dans leurs e-mails ainsi que les chiffres de leurs numéros de téléphone sont masqués. Les hubs et les links restent lisibles, si bien que l'analyste peut toujours joindre dessus."
       },
       "datavaultRecap": {
         "title": "Ce que vous avez vu",
@@ -922,7 +922,7 @@
       },
       "agricultureTerms": {
         "title": "Dans les termes de l'assureur",
-        "description": "Le glossaire nomme ce que demande un souscripteur en assurance récolte : ratio sinistres/primes, cause de sinistre, historique de production réelle (APH), niveau de couverture, engagement assuré, la saison de culture. Ici le ratio sinistres/primes : indemnités rapportées à la prime, au-dessus de 1 c'est une année déficitaire."
+        "description": "Le glossaire nomme ce que demande un souscripteur d'assurance récolte : ratio sinistres/primes, cause de sinistre, historique de production réel, niveau de couverture, responsabilité et saison de croissance. Ici, le ratio sinistres/primes est l'indemnisation divisée par la prime. Au-dessus de 1, l'année a perdu de l'argent."
       },
       "agricultureAnswer": {
         "title": "La réponse en SQL",
@@ -942,7 +942,7 @@
       },
       "agricultureRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Les données propres de l'assureur, lues en direct, et les pertes, la météo et les rendements publics, chargés une fois, rapprochés par comté et année de récolte dans un seul modèle gouverné : une vue répond à la question de savoir si la météo explique les pertes, en SQL, GraphQL et REST."
+        "description": "Vous avez vu les données propres de l'assureur, lues en direct et rapprochées par comté et année de récolte de données publiques sur les sinistres, la météo et les rendements chargées une fois, le tout dans un modèle gouverné. Une vue indique si la météo explique les sinistres, en SQL, GraphQL et REST."
       },
       "retailScenario": {
         "title": "Un groupe, deux régions",
@@ -1034,11 +1034,11 @@
       },
       "provisioningJoin": {
         "title": "Comment les flux se relient",
-        "description": "Une commande nomme son produit, et le produit connaît son coût et sa catégorie. Le dataset relie chaque commande à celui-ci ; la clôture s'appuie sur le dataset et sur les flux d'inventaire et de prix -- une vue sur une vue, actualisées à la suite."
+        "description": "Une commande nomme son produit, et le produit connaît son coût et sa catégorie. Le jeu de données joint chaque commande à son produit. La clôture est construite sur le jeu de données et les flux de stocks et de prix : une vue sur une vue, rafraîchies tour à tour."
       },
       "provisioningRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Des flux chargés à leur arrivée, des datasets construits et actualisés à partir d'eux, chaque équipe avertie par Kafka quand l'un est prêt et l'extrayant par Arrow Flight tel qu'il était à cet instant, chacune voyant ce que son rôle permet, seulement dans la fenêtre du dataset. Ni copies ni tâches d'extraction."
+        "description": "Les flux ont été chargés à leur arrivée, et les jeux de données construits et rafraîchis à partir d'eux. Chaque équipe a été prévenue sur Kafka quand un jeu était prêt, et l'a récupéré par Arrow Flight tel qu'il était à cet instant, en ne voyant que ce que son rôle permet et seulement dans la fenêtre du jeu. Aucune copie, aucune tâche d'extraction."
       },
       "provisioningWarehouse": {
         "title": "La base de données de l'entrepôt",
@@ -1050,7 +1050,7 @@
       },
       "provisioningDataset": {
         "title": "Le dataset",
-        "description": "order_margins : chaque commande avec son chiffre d'affaires, son coût et sa marge. Il conserve chaque version de chaque ligne et peut donc être lu tel qu'il était à tout instant -- ce qu'une équipe extrait. Sa fenêtre de chargement dit quand utilisateurs et clients peuvent le lire : ici toute la journée sauf de 00:00 à 00:30 UTC. Un vrai entrepôt ouvrirait plutôt une fenêtre plus étroite, la nuit ; celle de la démo est large pour qu'on puisse la parcourir à toute heure."
+        "description": "order_margins contient chaque commande avec son chiffre d'affaires, son coût et sa marge. Il garde chaque version de chaque ligne, si bien qu'une équipe peut le lire tel qu'il était à n'importe quel instant, et c'est ce qu'elle récupère. Sa fenêtre de chargement indique quand utilisateurs et clients peuvent le lire. Ici, c'est toute la journée sauf de 00:00 à 00:30 UTC. Un vrai entrepôt ouvrirait en général une fenêtre plus étroite, la nuit ; celle de la démo est large pour que vous puissiez la parcourir à toute heure."
       },
       "provisioningNotices": {
         "title": "Avertis quand il est prêt",
@@ -1110,7 +1110,7 @@
       },
       "pharmaTerms": {
         "title": "Dans les termes de la pharmacie",
-        "description": "Le glossaire nomme ce que demande un acheteur en pharmacie : NDC, livret thérapeutique, pénurie, classe de rappel, jours de couverture. Ici le risque d'approvisionnement : une pénurie, un rappel par son fabricant ou trop peu de jours de stock."
+        "description": "Le glossaire nomme ce que demande un acheteur de pharmacie : NDC, formulaire, pénurie, classe de rappel et jours d'approvisionnement. Ici, le risque d'approvisionnement désigne une pénurie, un rappel par le fabricant du produit, ou trop peu de jours de stock."
       },
       "pharmaAnswer": {
         "title": "La réponse en SQL",
@@ -1126,7 +1126,7 @@
       },
       "pharmaRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Les données propres de la pharmacie, lues en direct, et des données publiques sur les médicaments, chargées une fois, jointes par NDC et par firme dans un modèle gouverné : une vue répond quels produits sont à risque, en SQL, GraphQL et REST, selon l'accès de chaque rôle."
+        "description": "Vous avez vu les données propres de la pharmacie, lues en direct et jointes par NDC et par fabricant à des données publiques sur les médicaments chargées une fois, le tout dans un modèle gouverné. Une vue indique quels produits sont à risque, en SQL, GraphQL et REST, et chaque rôle ne voit que ce qu'il a le droit de voir."
       },
       "storefrontScenario": {
         "title": "Un modèle, une app et la BI",
@@ -1146,7 +1146,7 @@
       },
       "storefrontAsCustomer": {
         "title": "Connecté en tant que client",
-        "description": "L'app envoie ses requêtes avec le rôle <strong>customer</strong>, dont les filtres de lignes limitent chaque réponse aux commandes du client connecté. Suivant choisit <strong>customer</strong> dans le sélecteur de rôle, pour que la requête suivante s'exécute comme l'app l'exécute."
+        "description": "L'application envoie ses requêtes sous le rôle <strong>customer</strong>, dont les filtres de lignes limitent chaque réponse aux commandes du client connecté. Ensuite, le sélecteur de rôle passe à <strong>customer</strong>, pour que la requête ci-dessous s'exécute exactement comme l'application l'exécute."
       },
       "storefrontScreen": {
         "title": "L'unique requête de l'app",
@@ -1162,7 +1162,7 @@
       },
       "storefrontAnalyst": {
         "title": "Maintenant en analyste",
-        "description": "Le côté BI lit en tant que <strong>analyst</strong> : toutes les commandes, et aucun e-mail de client. Suivant choisit <strong>analyst</strong> dans le sélecteur d'exécution."
+        "description": "Le côté BI lit sous <strong>analyst</strong> : il voit toutes les commandes, mais aucun e-mail de client. Ensuite, le sélecteur d'exécution passe à <strong>analyst</strong>."
       },
       "storefrontAnalystSql": {
         "title": "Le SQL de l'analyste",
@@ -1174,7 +1174,7 @@
       },
       "storefrontEveryRole": {
         "title": "Retour à tous les rôles",
-        "description": "Suivant choisit de nouveau <strong>Tous</strong> dans le sélecteur de rôle. Le côté BI lit avec son propre rôle, choisi là où son SQL s'exécute."
+        "description": "Ensuite, le sélecteur de rôle revient sur <strong>All</strong>. Le côté BI lit sous son propre rôle, choisi là où s'exécute son SQL."
       },
       "storefrontPoint": {
         "title": "Un modèle, deux consommateurs",
@@ -1194,7 +1194,7 @@
       },
       "hasuramigrationAsAna": {
         "title": "Connecté en tant qu'Ana",
-        "description": "Ana est cliente. Son jeton portait <strong>x-hasura-user-id: 1</strong> ; Provisa lit ce claim comme la valeur de session <strong>hasura_user_id</strong>, à laquelle se comparent les règles de ligne importées. Suivant choisit <strong>ana</strong> dans le sélecteur de rôle, de sorte que les requêtes ci-dessous s'exécutent comme la boutique les exécute pour elle."
+        "description": "Ana est cliente. Son jeton portait <strong>x-hasura-user-id: 1</strong>, et Provisa lit ce claim comme la valeur de session <strong>hasura_user_id</strong>, à laquelle se comparent les règles de lignes importées. Ensuite, le sélecteur de rôle passe à <strong>ana</strong>, pour que les requêtes ci-dessous s'exécutent exactement comme la boutique les exécute pour elle."
       },
       "hasuramigrationMyOrders": {
         "title": "L'historique des commandes, remodelé",
@@ -1202,7 +1202,7 @@
       },
       "hasuramigrationProfile": {
         "title": "Une lecture par clé",
-        "description": "<strong>customers_by_pk</strong> de Hasura est un filtre sur la table, et le champ calculé <strong>full_name</strong> est l'assemblage des deux noms que fait l'écran ; l'import l'a listé à refaire à la main. La règle de ligne décide toujours : Ana ne lit que sa propre ligne."
+        "description": "<strong>customers_by_pk</strong> de Hasura devient un filtre sur la table. Le champ calculé <strong>full_name</strong> n'est que les deux noms que l'écran assemble, et l'import l'a listé comme élément à refaire à la main. La règle de lignes décide toujours de ce que voit Ana : sa propre ligne, et elle seule."
       },
       "hasuramigrationSalesforce": {
         "title": "Ce que Hasura ne savait pas faire : Salesforce",
@@ -1214,7 +1214,7 @@
       },
       "hasuramigrationAsSupport": {
         "title": "Le support",
-        "description": "Le personnel du support lit toutes les commandes et tous les clients, comme le permettaient ses permissions Hasura. Suivant choisit <strong>support</strong>, et l'écran des commandes du support s'exécute comme eux l'exécutent."
+        "description": "Le personnel du support peut lire toutes les commandes et tous les clients, comme le permettaient ses droits Hasura. Ensuite, le sélecteur de rôle passe à <strong>support</strong>, et l'écran des commandes du support s'exécute comme ils l'exécutent."
       },
       "hasuramigrationSupportScreen": {
         "title": "Les commandes avec leurs comptes",
@@ -1222,7 +1222,7 @@
       },
       "hasuramigrationAnalyst": {
         "title": "L'analyste",
-        "description": "Les analystes lisent les totaux des commandes et les liens vers les comptes, mais aucun nom ni e-mail, et jamais les commandes annulées : la règle de ligne et les listes de colonnes apportées par l'import. Suivant choisit <strong>analyst</strong>."
+        "description": "Les analystes peuvent lire les totaux de commande et les liens vers les comptes, mais aucun nom ni e-mail, et jamais les commandes annulées. Ce sont la règle de lignes et les listes de colonnes que l'import a reprises. Ensuite, le sélecteur de rôle passe à <strong>analyst</strong>."
       },
       "hasuramigrationByIndustry": {
         "title": "Chiffre d'affaires par secteur",
@@ -1266,7 +1266,7 @@
       },
       "reproduceAsFiled": {
         "title": "Enregistré au moment du dépôt",
-        "description": "Le moment où la reconstruction après la correction a commencé, repris de la réponse de l'étape des rafraîchissements : après l'enregistrement des chiffres déposés et avant celui de la correction. Le rapport est désormais lu tel que Provisa l'avait enregistré alors, si bien que rien de ce qui a été enregistré ensuite ne peut le modifier."
+        "description": "C'est l'heure à laquelle a commencé la reconstruction liée à la correction, reprise de la réponse de l'étape des rafraîchissements. Elle tombe après l'enregistrement des chiffres déposés et avant celui de la correction. Le rapport est maintenant lu tel que Provisa l'avait enregistré à ce moment-là, si bien que rien d'enregistré plus tard ne peut le changer."
       },
       "reproduceFiled": {
         "title": "Le rapport tel que déposé",
@@ -1326,7 +1326,7 @@
     "demos": {
       "weblogs": {
         "title": "Les journaux de la boutique en ligne",
-        "summary": "La question d'une boutique en ligne, quelles pages sont lentes et quel SQL les rend lentes : ses sources, les tables qu'elles deviennent, la jointure de ses deux journaux et la réponse en SQL et par REST."
+        "summary": "Quelles pages d'une boutique en ligne sont lentes, et quel SQL les ralentit ? Voyez les sources de la boutique, les tables qu'elles deviennent, la jointure de ses deux journaux et la réponse en SQL et par REST."
       },
       "sonnets": {
         "title": "Les sonnets de Shakespeare",
@@ -1342,27 +1342,27 @@
       },
       "insurance": {
         "title": "Exposition des biens et risque de catastrophe",
-        "summary": "La question d'un assureur dommages, où son exposition se concentre face au risque : ses propres polices jointes par comté aux données de la FEMA, des feux de forêt et des tempêtes, avec la réponse en SQL, GraphQL et REST."
+        "summary": "Où se concentre l'exposition d'un assureur de biens face aux risques naturels ? Ses propres polices, jointes par comté aux données de la FEMA, des feux de forêt et des tempêtes, répondent en SQL, GraphQL et REST."
       },
       "quality": {
         "title": "Des données dignes de confiance",
-        "summary": "Le flux de ventes d'une chaîne de boutiques, raffiné du bronze à l'argent puis à l'or par des vues matérialisées contrôlées : il suffit de déposer un lot, et un lot qui échoue à un contrôle n'atteint jamais l'argent."
+        "summary": "Le flux de ventes d'une chaîne de boutiques, affiné du bronze à l'argent puis à l'or par des vues matérialisées contrôlées. Il suffit de charger un lot, et un lot qui échoue à un contrôle n'atteint jamais l'argent."
       },
       "insider": {
         "title": "Revue d'initiés",
-        "summary": "Le courrier sortant d'une banque confronté à sa liste de surveillance des opérations en cours et vérifié pour les données clients, classé dans une seule file de revue qu'un réviseur de premier niveau lit sans jamais voir la liste."
+        "summary": "Une banque compare ses e-mails sortants à la liste de surveillance des opérations en cours, et y cherche des données clients. Tout est classé dans une seule file de revue qu'un réviseur de premier niveau traite sans jamais voir la liste."
       },
       "vulnerabilities": {
         "title": "Vulnérabilités exploitées dans notre code",
-        "summary": "Les alertes Dependabot d'un éditeur de logiciels jointes par CVE à la NVD et au catalogue Known Exploited Vulnerabilities de la CISA : quelles vulnérabilités exploitées se trouvent dans notre code, et de combien ont-elles dépassé l'échéance de la CISA ?"
+        "summary": "Quelles vulnérabilités exploitées se trouvent dans le code d'un éditeur de logiciels, et de combien ont-elles dépassé l'échéance de la CISA ? Ses alertes Dependabot, jointes par CVE à la NVD et au catalogue Known Exploited Vulnerabilities de la CISA, répondent."
       },
       "testdata": {
         "title": "Données de test",
-        "summary": "La base de production d'une boutique, lue en prod telle quelle et dans deux environnements de test comme des données générées réalistes ; les mêmes requêtes et jointures répondent dans les trois."
+        "summary": "La base de production d'une boutique, vue telle qu'elle est en production et sous forme de données générées réalistes dans deux environnements de test. Les mêmes requêtes et jointures fonctionnent dans les trois."
       },
       "streaming": {
         "title": "Flux de commandes en direct",
-        "summary": "Les commandes d'un café arrivent en direct par Kafka et sont reliées à son catalogue : une vue des régions les plus actives ces cinq dernières minutes, rafraîchie par chaque lot chargé, interrogée en SQL, GraphQL et REST, mise en cache et suivie par un abonnement."
+        "summary": "Les commandes d'un café arrivent en direct sur Kafka et sont jointes à son catalogue. Une vue des régions les plus actives sur les cinq dernières minutes se rafraîchit à chaque lot, répond en SQL, GraphQL et REST, peut être mise en cache et suivie par un abonnement."
       },
       "profiling": {
         "title": "Que contiennent réellement ces données ?",
@@ -1370,15 +1370,15 @@
       },
       "opioids": {
         "title": "Fonds des accords sur les opioïdes et décès par surdose",
-        "summary": "La question d'une collectivité locale, quels comtés comptent le plus de décès par surdose au regard du traitement que finance l'argent des accords sur les opioïdes : les allocations d'un fonds reliées par comté aux données des CDC, du recensement et des dépenses fédérales."
+        "summary": "Quels comtés ont le plus de décès par surdose au regard du traitement que paie leur argent du règlement sur les opioïdes ? Les allocations d'un fonds, jointes par comté aux données des CDC, du recensement et des dépenses fédérales, répondent à la question d'une collectivité locale."
       },
       "datavault": {
         "title": "Data vault",
-        "summary": "Un data vault déclaré sur un système de commandes et un CRM : des hubs, des links et des satellites que le moteur construit et rafraîchit à mesure que les lignes arrivent, des données personnelles masquées dans les satellites, et une requête point in time pour savoir ce qui était connu d'un client, de quelle source et quand."
+        "summary": "Un data vault déclaré sur un système de commandes et un CRM. Le moteur construit et rafraîchit ses hubs, links et satellites à mesure que les lignes arrivent, les données personnelles sont masquées dans les satellites, et une requête point-in-time montre ce qu'on savait d'un client, de quelle source, et quand."
       },
       "agriculture": {
         "title": "Météo et pertes de l'assurance récolte",
-        "summary": "La question d'un assureur agricole, la météo explique-t-elle les pertes de son portefeuille : ses propres exploitations, polices et sinistres joints par comté et année de récolte aux pertes par cause de l'USDA, à la météo de la NOAA et aux rendements de la NASS, avec la réponse en SQL, GraphQL et REST."
+        "summary": "La météo explique-t-elle les sinistres du portefeuille d'un assureur récolte ? Ses propres exploitations, polices et sinistres, joints par comté et année de récolte aux sinistres par cause de l'USDA, à la météo de la NOAA et aux rendements de la NASS, répondent en SQL, GraphQL et REST."
       },
       "retail": {
         "title": "Un groupe, deux régions",
@@ -1386,11 +1386,11 @@
       },
       "provisioning": {
         "title": "Fournir des datasets aux équipes en aval",
-        "summary": "La question d'un entrepôt, comment les équipes en aval obtiennent de gros datasets dès qu'ils sont prêts : flux chargés depuis Kafka, datasets actualisés à leur arrivée, équipes averties par Kafka et extrayant par Arrow Flight tel qu'à cet instant."
+        "summary": "Comment les équipes en aval obtiennent-elles de gros jeux de données dès qu'ils sont prêts ? Les flux arrivent de Kafka, les jeux se rafraîchissent à leur arrivée, et chaque équipe est prévenue sur Kafka et récupère par Arrow Flight les données telles qu'elles étaient à cet instant."
       },
       "pharma": {
         "title": "Risque de pénurie et de rappel de médicaments",
-        "summary": "La question de la pharmacie d'un hôpital, lesquels de ses produits sont menacés de pénurie ou de rappel : son livret et son stock joints aux pénuries et rappels de la FDA et aux prescriptions Medicaid, avec la réponse en SQL, GraphQL et REST."
+        "summary": "Quels produits d'une pharmacie hospitalière risquent une pénurie ou un rappel ? Son formulaire et ses stocks, joints aux pénuries et rappels de la FDA et aux prescriptions Medicaid, répondent en SQL, GraphQL et REST."
       },
       "storefront": {
         "title": "Un modèle, app et BI",
@@ -1406,7 +1406,7 @@
       },
       "churn": {
         "title": "Prédire la résiliation des clients",
-        "summary": "Quels clients sont sur le point de résilier ? Leurs variables gouvernées et masquées, lues dans pandas dans le navigateur, et un modèle scikit-learn entraîné dessus depuis le notebook fourni avec la démo."
+        "summary": "Quels clients sont sur le point de résilier ? Leurs caractéristiques gouvernées et masquées sont lues dans pandas dans le navigateur, et un modèle scikit-learn est entraîné dessus dans le notebook fourni avec la démo."
       }
     }
   }

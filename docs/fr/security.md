@@ -1,67 +1,67 @@
 # Modèle de sécurité {: #security-model }
 
-Provisa applique un modèle de sécurité à plusieurs couches à tout langage de requête (GraphQL, SQL, Cypher) et à tout transport (REST, gRPC, Arrow Flight, JDBC, WebSocket). La gouvernance s'applique de manière uniforme — aucun chemin de requête ne la contourne.
+Chaque requête passe par la même gouvernance, quel que soit le langage dans lequel elle est écrite (GraphQL, SQL, Cypher) et la voie par laquelle elle arrive (REST, gRPC, Arrow Flight, JDBC, WebSocket). Il n'existe aucun chemin qui la contourne.
 
-Les couches s'appliquent dans l'ordre. Une requête doit franchir chaque couche avant que la suivante soit évaluée.
+Les contrôles s'appliquent dans l'ordre. Une requête doit passer chacun avant que le suivant ne soit examiné.
 
 ## Modèle en couches {: #layered-model }
 
 ### Couche 0 — Filtrage de l'introspection {: #layer-0-introspection-filtering }
 
-Le schéma et le catalogue présentés à un rôle ne contiennent que les tables de sa liste `domain_access` et les colonnes qui passent les règles `visible_to` de chaque colonne. Les objets hors de l'accès d'un rôle sont invisibles au moment de la découverte — ils ne peuvent être ni interrogés, ni complétés automatiquement, ni supposés exister. Cela s'applique au schéma GraphQL, au catalogue SQL et au navigateur de schéma de l'éditeur de requêtes.
+Un rôle ne voit que les tables que son `domain_access` atteint et les colonnes que ses règles `visible_to` autorisent. Le reste n'existe pas pour ce rôle : impossible de l'interroger, de le compléter automatiquement ou de le deviner. Le schéma GraphQL, le catalogue SQL et le navigateur de schéma de l'éditeur de requêtes montrent tous la même vue restreinte.
 
 Voir [Visibilité du schéma](#schema-visibility).
 
 ### Couche 1 — Accès public {: #layer-1-public-access }
 
-Une colonne publiée avec la portée `public` est servie à chaque rôle de l'organisation, y compris les rôles dont le `domain_access` n'atteint pas le domaine de la table ; un tel rôle voit la table avec ses seules colonnes publiques. Rien n'est public tant que celui qui enregistre une table ne le dit pas. Voir [Colonnes publiques](#public-columns).
+Une colonne publiée avec la portée `public` est servie à chaque rôle de l'organisation, même à un rôle dont le `domain_access` n'atteint pas le domaine de la table. Ce rôle voit la table avec ses colonnes publiques et rien d'autre. Rien n'est public tant que la personne qui a enregistré la table ne l'a pas décidé. Voir [Colonnes publiques](#public-columns).
 
-### Couche 2 — Accès aux domaines {: #layer-2-domain-access }
+### Couche 2 — Accès par domaine {: #layer-2-domain-access }
 
-Chaque rôle porte une liste `domain_access` d'identifiants de domaine. Une requête qui touche une table hors de ces domaines est refusée avant exécution. C'est la frontière grossière de propriété — un rôle RH n'atteint pas les tables financières, quelle que soit la manière dont le SQL est écrit.
+Chaque rôle a une liste `domain_access` d'identifiants de domaine, et une requête qui touche une table d'un autre domaine est refusée avant de s'exécuter. C'est la frontière grossière de propriété. Un rôle RH n'atteint pas les tables financières, quelle que soit la façon dont le SQL est écrit.
 
 Voir [Modèle de droits](#rights-model).
 
 ### Couche 3 — Sécurité au niveau des lignes {: #layer-3-row-level-security }
 
-Une fois l'accès au domaine confirmé, des prédicats `WHERE` par table et par rôle sont injectés dans chaque `SELECT` à l'exécution. Les prédicats s'évaluent sur les données brutes. Un responsable régional qui interroge une table de commandes partagée ne voit que les lignes de sa région, même avec `SELECT *`.
+Une fois l'accès par domaine établi, le filtre de lignes du rôle pour chaque table est ajouté à chaque `SELECT` sous forme de prédicat `WHERE`, évalué sur les données brutes. Un responsable régional qui lance `SELECT *` sur la table partagée des commandes ne récupère toujours que les lignes de sa région.
 
 Voir [Sécurité au niveau des lignes (RLS)](#row-level-security-rls).
 
 ### Couche 4 — Visibilité et masquage des colonnes {: #layer-4-column-visibility-and-masking }
 
-Les colonnes dont la liste `visible_to` exclut le rôle demandeur sont retirées de la sortie de la requête. Les colonnes ayant une règle de masquage voient leurs valeurs remplacées — expurgation par regex, remplacement par une constante ou troncature — avant que les résultats ne quittent le serveur. Le masquage s'applique dans tous les langages de requête et formats de sortie.
+Une colonne dont la liste `visible_to` exclut votre rôle disparaît du résultat. Une colonne masquée voit ses valeurs remplacées avant qu'elles ne quittent le serveur, par une expression régulière, une constante ou une troncature. Cela vaut dans chaque langage de requête et chaque format de sortie.
 
-Voir [Modèle de permissions des colonnes](#column-permission-model) et [Masquage au niveau des colonnes](#column-level-masking).
+Voir [Modèle de permissions des colonnes](#column-permission-model) et [Masquage des colonnes](#column-level-masking).
 
 ### Couche 5 — Garde des prédicats {: #layer-5-predicate-guard }
 
-Les colonnes masquées sont refusées dans les clauses `WHERE` et `HAVING`. Sans cela, un appelant pourrait déduire la valeur non masquée en la cherchant par dichotomie dans un filtre, même si la sortie est masquée. Le refus s'applique à l'analyse de la requête, avant l'exécution.
+Vous ne pouvez pas filtrer sur une colonne masquée : `WHERE` et `HAVING` la refusent dès l'analyse de la requête. Sinon, un appelant pourrait retrouver la vraie valeur par recherche dichotomique, filtre après filtre, alors que chaque résultat qu'il a vu était masqué.
 
 ### Gouvernance des relations (V002) {: #relationship-governance-v002 }
 
-Les conditions JOIN en SQL doivent correspondre à une relation enregistrée et approuvée entre tables. Les jointures non approuvées sont refusées. Chaque relation porte un motif et une description lisibles — un guide pour les utilisateurs comme pour les agents autonomes sur la raison d'être d'un chemin de parcours. C'est une politique de gouvernance, pas une frontière de sécurité stricte : les couches 2 à 5 tiennent quelle que soit la structure de la jointure, donc un contournement délibéré n'expose aucune donnée que le rôle ne pourrait atteindre par deux requêtes séparées. Les tentatives de contournement sont journalisées et auditables.
+Une jointure SQL doit suivre une relation enregistrée et approuvée, et toute autre jointure est refusée. Chaque relation porte une raison et une description qui expliquent aux personnes et aux agents pourquoi ce chemin existe. Voyez-la comme une politique de gouvernance plutôt que comme une frontière de sécurité. Les couches 2 à 5 tiennent quelles que soient les jointures, si bien que contourner la garde n'expose rien que le rôle ne puisse lire avec deux requêtes séparées. Les tentatives de contournement sont journalisées.
 
-**Mécanismes de contournement** — V002 peut être contourné de deux façons. La première est une capacité : un rôle qui détient `ignore_relationships` joint des relations que le catalogue ne couvre pas. Parmi les rôles système prédéfinis, seul `modeler` la détient — le rôle de découverte dont le travail est de déterminer le modèle plutôt que de l'appliquer. `analyst` ne la détient pas.
+Il y a deux façons de passer V002. La première est une capacité : un rôle qui détient `ignore_relationships` peut joindre des relations que le catalogue ne couvre pas. Parmi les rôles fournis, seul `modeler` la détient, parce que son travail consiste à établir le modèle ; `analyst` ne l'a pas.
 
-La seconde est une exclusion à deux conditions, qui doivent être vraies toutes les deux :
+La seconde exige deux choses à la fois :
 
-1. **Indicateur du rôle** — `relationship_guard: false` dans la définition du rôle (par défaut : `true`).
-2. **Exclusion par requête** — le SQL contient le commentaire `--relationship-guard=false`.
+1. **Drapeau du rôle** : `relationship_guard: false` dans la définition du rôle (la valeur par défaut est `true`).
+2. **Désactivation par requête** : le commentaire `--relationship-guard=false` dans le SQL.
 
-L'indicateur du rôle seul ne contourne pas V002 ; le commentaire seul ne contourne pas V002.
+L'une sans l'autre ne fait rien.
 
-**Le mode haute sécurité verrouille la garde.** Avec `security.mode: high`, aucun contournement ne s'applique : `ignore_relationships` est ignoré, `relationship_guard: false` est ignoré, et chaque jointure doit exister dans le catalogue des relations approuvées. C'est une redondance délibérée — un rôle de production auquel la capacité a été accordée par erreur ne peut toujours pas sortir du modèle.
+**Le mode haute sécurité verrouille la garde.** Avec `security.mode: high`, aucune des deux voies ne fonctionne. `ignore_relationships` et `relationship_guard: false` sont tous deux ignorés, et chaque jointure doit figurer dans le catalogue approuvé. La redondance est voulue : un rôle de production qui a reçu la capacité par erreur ne peut toujours pas sortir du modèle.
 
-**Chemin GraphQL** — V002 est toujours ignoré pour les requêtes GraphQL. Les relations définies dans le SDL sont pré-approuvées par conception ; la vérification est redondante et n'est pas appliquée.
+**GraphQL** ignore V002. Ses relations viennent du modèle, elles sont donc déjà approuvées.
 
-**Chemins SQL et Cypher** — V002 est actif par défaut. `endpoint_dev.py` comme `cypher_router.py` appliquent la vérification à deux conditions avant d'appeler `validate_sql`.
+**SQL et Cypher** appliquent V002 par défaut, avec la désactivation à deux conditions décrite plus haut.
 
-**Chemin pgwire** — même vérification à deux conditions qu'en SQL. Le commentaire `--relationship-guard=false` est retiré de la requête avant exécution ; il n'atteint pas la base de données.
+**pgwire** applique le même contrôle que SQL. Le commentaire `--relationship-guard=false` est retiré avant que la requête n'atteigne la base de données.
 
 ---
 
-Ces couches se combinent. Un rôle avec accès aux domaines, RLS et colonnes masquées a les cinq contraintes actives simultanément. Ajouter une source de données, une colonne ou une relation n'oblige pas à mettre à jour chaque règle — chaque couche se configure indépendamment et s'applique automatiquement à toute requête qui touche des objets gouvernés.
+Les couches s'additionnent. Un rôle avec un accès par domaine, des filtres de lignes et des colonnes masquées a tout cela en vigueur en même temps. Ajouter une source, une colonne ou une relation n'oblige pas à toucher chaque règle, car chaque couche se configure à part et s'applique à toute requête qui atteint ce qu'elle gouverne.
 
 ---
 
@@ -293,21 +293,17 @@ Dans cet exemple :
 
 ## Autorisation des mutations {: #mutation-authorization }
 
-Les mutations enregistrées (GraphQL distant, OpenAPI, gRPC, Hasura) sont protégées par deux vérifications indépendantes. Un rôle ne peut invoquer une mutation que s'il détient la capacité globale `write` ET que la commande lui est affectée par `visible_to` (une liste vide l'affecte à tous les rôles). Une commande n'a pas de liste `writable_by` ; la configuration en refuse une par son nom.
+Une mutation enregistrée (GraphQL distant, OpenAPI, gRPC, Hasura) passe deux contrôles. Le rôle doit détenir la capacité globale `write`, et la commande doit lui être attribuée par `visible_to` ; une liste vide l'attribue à tous les rôles. Une commande n'a pas de liste `writable_by`, et la configuration en refuse une en la nommant.
 
-Les mutations sont classées comme écritures par contrat, pas selon ce que déclare l'appelant. Un `SELECT` qui fait référence à une fonction de type mutation est promu en écriture et soumis au même contrôle à deux portes, de sorte qu'un appelant ne peut pas invoquer une mutation en la déguisant en lecture. Reclasser une mutation comme sûre en lecture requiert la capacité `access_config` et est consigné comme une décision de gouvernance ; il n'y a pas d'exclusion par requête.
+C'est son contrat qui décide si une opération est une écriture, pas ce qu'en dit l'appelant. Un `SELECT` qui appelle une fonction de type mutation est traité comme une écriture et passe les mêmes deux contrôles : impossible de lancer une mutation en la déguisant en lecture. Marquer une mutation comme sûre en lecture exige la capacité `access_config` et est consigné comme une décision de gouvernance. Aucune requête ne peut s'en exempter.
 
 ## Visibilité du schéma {: #schema-visibility }
 
-Les schémas GraphQL par rôle masquent le contenu non autorisé :
-
-- **Accès aux domaines** : un rôle ne voit les tables que dans ses domaines `domain_access` (`"*"` = tous)
-- **Visibilité des colonnes** : les colonnes absentes de `visible_to` pour un rôle sont omises du SDL
-- Les tables/colonnes non autorisées n'apparaissent pas dans le schéma
+Chaque rôle a son propre schéma GraphQL. Seules les tables des domaines de son `domain_access` y figurent (`"*"` les désigne tous), et une colonne absente de `visible_to` pour ce rôle est absente du SDL aussi. Ce que le rôle ne peut pas lire, il ne le voit pas.
 
 ## Sécurité au niveau des lignes (RLS) {: #row-level-security-rls }
 
-Injection de clause SQL WHERE par table et par rôle. Appliquée après la compilation, avant l'exécution.
+Un filtre de lignes est un prédicat `WHERE` pour une table et un rôle, ajouté après la compilation et avant l'exécution.
 
 ```yaml
 rls_rules:
@@ -316,11 +312,16 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
     description: Analysts read only their own region's orders.
 ```
-Le filtre est combiné par AND à la clause WHERE de la requête. Fonctionne pour les requêtes comme pour les mutations (UPDATE/DELETE).
 
-Un terme `current_setting('provisa.<name>')` se résout contre les variables de session que lie la requête : `user_id` depuis l'identité authentifiée, `role` depuis le rôle agissant, et chaque claim scalaire du jeton sous son nom en minuscules, tirets en tirets bas. Une variable de session Hasura garde son propre nom : `X-Hasura-User-Id` est `hasura_user_id`, lue dans le claim `x-hasura-user-id` du jeton (au niveau supérieur ou dans l'objet de claims Hasura, tel que `https://hasura.io/jwt/claims`) ou enregistrée pour le membre comme attribut `hasura_user_id`. Un filtre Hasura importé sur `X-Hasura-User-Id` lit donc `provisa.hasura_user_id`. `provisa.user_id` est toujours l'identité connectée ; aucun claim ne la remplace. Les `session_vars` configurées d'un rôle sont les constantes de base ; les liaisons de la requête les recouvrent. Un rôle qui hérite d'un autre prend les constantes de ses ancêtres sous les siennes, la valeur du rôle le plus proche pour chaque nom. `user_id`, `role`, `region` et `org` sont liés par la requête ou par le nœud et ne peuvent pas être configurés comme constantes. En mode non sécurisé, un en-tête `x-provisa-session-<name>` lie `<name>`. Une variable liée nulle part se résout en NULL et ne correspond à aucune ligne.
+Le filtre est ajouté par AND à la clause `WHERE` de la requête, pour les lectures comme pour `UPDATE` et `DELETE`.
 
-Une constante de rôle est l'inverse d'un rôle dérivé. Un rôle dérivé fait d'une valeur qu'un membre détient un rôle ; une constante de rôle donne à chaque requête qui agit en tant que ce rôle une valeur, qu'une règle de ligne lit comme elle lit un claim. Une constante de rôle peut être une référence `${env:NAME}` ou `${secret:NAME}`, résolue par le même résolveur que toute autre référence lorsqu'une requête l'utilise ; le modèle conserve la référence, jamais sa valeur résolue, et une référence qui ne se résout en rien fait échouer la requête en nommant la constante. Une constante résolue fait partie de la requête. Les enregistrements que Provisa fait de la requête sont couverts par le masquage central ; les journaux propres d'une source fédérée sont hors de portée de Provisa.
+Un filtre lit la requête par `current_setting('provisa.<name>')`. La requête lie `user_id` à partir de l'identité connectée, `role` à partir du rôle agissant, et chaque claim scalaire du jeton, en minuscules et avec des tirets bas à la place des tirets. `provisa.user_id` est toujours l'identité connectée, et aucun claim ne peut la remplacer.
+
+Les variables de session de Hasura gardent leur nom. `X-Hasura-User-Id` est `hasura_user_id`, lu dans le claim `x-hasura-user-id` du jeton (au premier niveau ou dans l'objet de claims de Hasura, par exemple `https://hasura.io/jwt/claims`) ou dans l'attribut `hasura_user_id` enregistré pour le membre. Un filtre Hasura importé sur `X-Hasura-User-Id` lit donc `provisa.hasura_user_id`.
+
+Sous les valeurs de la requête se trouvent les `session_vars` configurées du rôle, que la requête remplace. Un rôle qui hérite prend les constantes de ses ancêtres sous les siennes, le rôle le plus proche l'emportant pour chaque nom. `user_id`, `role`, `region` et `org` viennent de la requête ou du nœud et ne peuvent pas être configurés comme constantes. En mode non sécurisé, un en-tête `x-provisa-session-<name>` lie `<name>`. Une variable liée nulle part vaut NULL, et un filtre sur elle ne correspond à aucune ligne.
+
+Une constante de rôle fonctionne à l'inverse d'un rôle dérivé. Un rôle dérivé transforme en rôle une valeur que détient un membre. Une constante de rôle donne une valeur à chaque requête faite sous ce rôle, et une règle de lignes la lit comme elle lit un claim. La constante peut être une référence `${env:NAME}` ou `${secret:NAME}`, résolue par le même résolveur que toute autre référence quand une requête l'utilise. Le modèle garde la référence, jamais la valeur, et une référence qui ne se résout en rien fait échouer la requête en nommant la constante. Une fois résolue, la valeur fait partie de la requête : les enregistrements propres à Provisa sont couverts par l'expurgation centrale, mais les journaux propres d'une source fédérée échappent à Provisa.
 
 ## Masquage au niveau des colonnes {: #column-level-masking }
 
@@ -361,29 +362,29 @@ masks:
 ```
 ## Gouvernance des réponses d'actions {: #governing-action-responses }
 
-La réponse d'une fonction suivie ou d'un webhook est gouvernée comme les lignes d'une table. Les lignes que renvoie une action sont liées comme une relation dont les colonnes sont le contrat de sortie déclaré de l'action — `output_columns` pour une fonction, `inline_return_type` pour un webhook, ou les propriétés d'objet du `return_schema` de type tableau d'une fonction — et cette relation passe par la même étape de gouvernance que toute lecture de table, sur une CTE VALUES contenant les lignes. Rien de la RLS, du masquage ou de la visibilité n'est réimplémenté pour les actions.
+Ce que renvoie une fonction suivie ou un webhook est gouverné comme les lignes d'une table. Provisa lie les lignes renvoyées en une relation dont les colonnes sont la sortie déclarée de l'action : `output_columns` pour une fonction, `inline_return_type` pour un webhook, ou les propriétés d'objet du `return_schema` de type tableau d'une fonction. Cette relation passe ensuite par la même étape de gouvernance que toute lecture de table, sur une CTE VALUES contenant les lignes : la sécurité des lignes, le masquage et la visibilité ne sont pas réimplémentés pour les actions.
 
-Trois choses s'appliquent, dans le même ordre que pour une table.
+Trois règles s'appliquent, dans le même ordre que pour une table :
 
-- Un filtre de lignes : la règle RLS du rôle enregistrée contre l'action par son nom (`upsertRlsRule` avec `actionName`), ou, lorsque l'action n'en a pas, la règle de domaine du domaine de l'action. Le prédicat est validé contre le contrat à l'enregistrement, comme une règle de table.
-- Visibilité des colonnes : une colonne du contrat qui déclare `visible_to` est retirée pour un rôle que la liste ne nomme pas ; une colonne qui n'en déclare aucun fait partie de la forme publique de l'action et reste.
-- Masques : une colonne du contrat porte `masks`, la même liste ordonnée de masques qu'une colonne de table.
+- **Filtre de lignes.** La règle RLS du rôle enregistrée pour l'action sous son nom (`upsertRlsRule` avec `actionName`), ou la règle du domaine de l'action quand celle-ci n'en a pas. Le prédicat est vérifié par rapport au contrat à l'enregistrement, comme une règle de table.
+- **Visibilité des colonnes.** Une colonne du contrat qui déclare `visible_to` disparaît pour tout rôle que la liste n'inclut pas. Une colonne qui n'en déclare pas fait partie de la forme publique de l'action et reste.
+- **Masques.** Une colonne du contrat porte `masks`, la même liste ordonnée qu'une colonne de table.
 
-L'héritage des rôles résout la chaîne pour les trois. Une réponse qui renvoie une colonne hors du contrat déclaré est refusée avec un 502 plutôt que transmise sans gouvernance. Une action qui ne déclare aucun contrat de colonnes renvoie un scalaire et n'a rien à lier ; elle est renvoyée telle quelle. L'invocation de test d'administration indique les filtres, exclusions et masques appliqués, et l'instruction gouvernée est écrite dans le journal d'audit des requêtes.
+L'héritage des rôles résout la chaîne pour les trois. Si une réponse renvoie une colonne hors de son contrat déclaré, l'appel échoue avec une erreur 502 au lieu de la laisser passer sans gouvernance. Une action qui ne déclare aucune colonne renvoie un scalaire, qui n'a rien à lier, et il est rendu tel quel. L'invocation de test de l'administration indique quels filtres, exclusions et masques se sont appliqués, et l'instruction gouvernée est écrite dans le journal d'audit des requêtes.
 
 ## Échantillonnage {: #sampling }
 
-Tous les rôles voient des résultats échantillonnés (par défaut : 100 lignes) sauf s'ils ont la capacité `full_results`. Contrôlé par la variable d'environnement `PROVISA_SAMPLE_SIZE`.
+Chaque rôle reçoit un échantillon des résultats, 100 lignes par défaut, sauf s'il détient la capacité `full_results`. La taille se règle avec la variable d'environnement `PROVISA_SAMPLE_SIZE`.
 
 ## Journalisation d'audit {: #audit-logging }
 
-Chaque requête qui touche un actif de domaine est consignée dans `query_audit_log`. Le journal d'audit appartient à l'organisation, pas à la plateforme : le registre propre de la plateforme pour les organisations, les utilisateurs et les invitations ne contient aucun enregistrement d'audit. Le `query_audit_log` de chaque organisation est une table dans le schéma propre à cette organisation, dans le magasin que l'organisation désigne pour son enregistrement dans chaque région qu'elle sélectionne. Une organisation qui ne déclare aucune région conserve ce schéma dans la base de données du plan de contrôle du déploiement, à côté de son modèle.
+Chaque requête qui touche un actif d'un domaine est écrite dans `query_audit_log`. Le journal appartient à l'organisation, pas à la plateforme : le registre propre de la plateforme, avec organisations, utilisateurs et invitations, ne contient aucune entrée d'audit. Le journal de chaque organisation est une table de son schéma, dans le stockage que l'organisation désigne pour ses enregistrements dans chaque région qu'elle choisit. Une organisation sans région le garde dans la base de données du plan de contrôle du déploiement, à côté de son modèle.
 
-Chaque ligne capture `tenant_id` (l'organisation), `user_id`, `role_id`, un hachage SHA-256 du texte de la requête, le texte de la requête lui-même chiffré, `table_ids` et `table_names`, `source`, `status_code`, `duration_ms`, la route et le nombre de lignes, ce qui a été appliqué à l'instruction, et `logged_at`. Le texte de la requête est chiffré avec la clé de l'organisation lorsque celle-ci en a défini une, sinon avec la clé du déploiement. Un déploiement qui ne configure aucun fournisseur de chiffrement le stocke en clair. Le texte n'est jamais exposé dans les tables d'exploitation interrogeables, et n'est déchiffré que lors de lectures d'administration autorisées.
+Une ligne consigne `tenant_id` (l'organisation), `user_id`, `role_id`, un hachage SHA-256 du texte de la requête, le texte lui-même (chiffré), `table_ids` et `table_names`, `source`, `status_code`, `duration_ms`, la route et le nombre de lignes, ce qui a été appliqué à l'instruction, et `logged_at`. Le texte est chiffré avec la clé de l'organisation si elle en a défini une, sinon avec celle du déploiement. Un déploiement sans fournisseur de chiffrement le stocke en clair. Dans tous les cas, il n'apparaît jamais dans les tables d'exploitation interrogeables et n'est déchiffré que pour les lectures d'administration autorisées.
 
-Le journal est en ajout seul au niveau de la base de données : les règles PostgreSQL transforment `DELETE` et `UPDATE` sur `query_audit_log` en opérations nulles. Deux index, `(tenant_id, logged_at)` et `(user_id, logged_at)`, prennent en charge les requêtes de conformité par organisation et par utilisateur sur des plages de temps.
+Le journal n'accepte que des ajouts, au niveau de la base elle-même : des règles PostgreSQL rendent `DELETE` et `UPDATE` sur `query_audit_log` sans effet. Deux index, `(tenant_id, logged_at)` et `(user_id, logged_at)`, rendent rapides les requêtes de conformité par organisation et par utilisateur sur une période.
 
-Rétention : les lignes sont conservées indéfiniment. Provisa n'a aucun réglage de rétention et ne purge jamais le journal d'audit ; comme `DELETE` est une opération nulle, supprimer d'anciennes lignes suppose qu'un opérateur supprime ou archive les données de la table en dehors de Provisa.
+Les lignes sont conservées pour toujours. Provisa n'a aucun réglage de rétention et ne purge jamais le journal, et comme `DELETE` ne fait rien, supprimer d'anciennes lignes revient pour un opérateur à supprimer ou archiver les données de la table en dehors de Provisa.
 
 ## Expurgation {: #redaction }
 
@@ -415,11 +416,11 @@ Une source fédérée tient ses propres logs, que Provisa n'écrit pas et ne peu
 
 ## Limitation de débit {: #rate-limiting }
 
-Les limites de débit par rôle se configurent dans `provisa.yaml` : nombre maximal de requêtes par seconde, d'abonnements SSE simultanés et de flux Arrow Flight simultanés. Les limites s'appliquent dans la couche API avant compilation ou exécution ; les requêtes au-delà de la limite sont refusées avec HTTP 429 et un en-tête `Retry-After`.
+Les limites par rôle se règlent dans `provisa.yaml` : requêtes par seconde, abonnements SSE simultanés et flux Arrow Flight simultanés. Elles sont vérifiées à l'API, avant toute compilation ou exécution, et une requête au-delà de la limite reçoit HTTP 429 avec un en-tête `Retry-After`.
 
-Le service de requêtes NL (`POST /query/nl`) a une limite indépendante via `nl.rate_limit` (requêtes par minute et par rôle). Les requêtes au-delà de la limite sont refusées avant tout appel à un LLM.
+Les requêtes en langage naturel (`POST /query/nl`) ont leur propre limite, `nl.rate_limit`, en requêtes par minute et par rôle. Une requête au-delà est refusée avant tout appel au LLM.
 
-L'état des limites de débit vit dans Redis (`cache.redis_url`) sous forme de compteur à fenêtre glissante — sans état par instance — de sorte que les limites tiennent sur toutes les instances horizontales de Provisa.
+Les compteurs vivent dans Redis (`cache.redis_url`) sous forme de fenêtres glissantes, sans rien de propre à une instance : une limite tient quel que soit le nombre d'instances Provisa que vous faites tourner.
 
 ## Limite de complexité des requêtes {: #query-complexity-limit }
 
@@ -462,7 +463,7 @@ Un superutilisateur configuré dans `provisa.yaml` (nom d'utilisateur plus un mo
 
 ### Surfaces et identifiants {: #surfaces-and-credentials }
 
-Chaque surface s'authentifie via le même contrat de fournisseur, de sorte qu'un identifiant qui fonctionne sur l'une fonctionne sur toutes, partout où le protocole peut le transporter. Ce tableau est la seule référence ; la documentation de chaque surface ne le répète pas.
+Chaque surface authentifie les appelants par le même fournisseur : un identifiant qui fonctionne sur l'une fonctionne sur toutes, partout où le protocole peut le transporter.
 
 | Surface | Mot de passe | Jeton du fournisseur | Jeton d'accès personnel | Certificat client (mTLS) |
 | --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
@@ -474,24 +475,21 @@ Chaque surface s'authentifie via le même contrat de fournisseur, de sorte qu'un
 | Airport (extension DuckDB `airport`, sur option) | — | `authorization: Bearer` (l'`auth_token` du secret) | idem | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | via un proxy de terminaison |
 
-La seule option d'authentification de l'extension DuckDB `airport` est l'`auth_token` bearer de son secret ; un client DuckDB y présente donc un jeton du fournisseur ou un jeton d'accès personnel et agit sous le rôle auquel se résout son identité. Un client qui peut définir des en-têtes d'appel peut demander un rôle détenu, ou un ensemble séparé par des virgules, dans `x-provisa-role`.
+L'extension DuckDB `airport` ne peut envoyer que l'`auth_token` bearer de son secret. Un client DuckDB y place un jeton du fournisseur ou un jeton d'accès personnel et agit sous le rôle auquel son identité se résout. Tout client capable de définir des en-têtes d'appel peut demander l'un de ses rôles, ou un ensemble séparé par des virgules, dans `x-provisa-role`.
 
-Un refus indique son type sur chacune de ces surfaces. Un identifiant absent, rejeté ou inutilisable est un refus d'authentification : HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight et Airport `Unauthenticated`. Un identifiant valide qui demande à agir sous un rôle que son identité ne détient pas est un refus d'autorisation, avec le rôle nommé : HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight et Airport `Unauthorized`. Une exception se trouve dans la bibliothèque cliente Arrow, pas dans le serveur : un refus de l'appel `get_schema` de Flight parvient à un client Python comme une erreur Arrow générique portant le motif du serveur, sans son type ; `list_flights`, `get_flight_info` et `do_get` transmettent le type.
+Chaque surface vous dit quel genre de refus vous avez reçu. Un identifiant absent, rejeté ou inutilisable donne un refus d'authentification : HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight et Airport `Unauthenticated`. Un identifiant valide qui demande à agir sous un rôle que son identité ne détient pas donne un refus d'autorisation, qui nomme le rôle : HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight et Airport `Unauthorized`. Une exception vient de la bibliothèque cliente Arrow, pas du serveur. Quand `get_schema` de Flight est refusé, un client Python voit une erreur Arrow générique qui porte la raison du serveur mais pas le genre ; `list_flights`, `get_flight_info` et `do_get` transmettent bien le genre.
 
-Là où une cellule indique `—`, le protocole ne porte aucun champ de nom d'utilisateur auquel associer un mot de passe ; les formes de jeton le couvrent. pgwire est le cas inverse : le paquet de démarrage a un champ secret et aucun schéma, donc ce qu'*est* le secret choisit la méthode — un PAT est reconnu à son préfixe, le secret est lu comme un jeton bearer lorsque le fournisseur configuré est un fournisseur de jetons, et tout le reste est un mot de passe. Le choix se fait une seule fois — un identifiant que refuse le validateur choisi n'est pas réessayé avec un autre.
-
-La matrice est imposée par `tests/unit/test_auth_surface_conformance.py`, qui exerce le véritable point d'entrée de validation de chaque surface et échoue lorsqu'une nouvelle surface est ajoutée sans ligne.
+Un `—` dans le tableau signifie que le protocole n'a pas de champ de nom d'utilisateur auquel associer un mot de passe ; les formes à jeton le couvrent. pgwire est le cas inverse. Son paquet de démarrage n'a qu'un champ secret et aucun schéma, donc c'est le secret lui-même qui choisit la méthode : un jeton d'accès personnel est reconnu à son préfixe, le secret est lu comme un jeton bearer quand le fournisseur configuré émet des jetons, et tout le reste est un mot de passe. Ce choix se fait une fois, et un identifiant que le validateur choisi refuse n'est pas retenté auprès d'un autre.
 
 ### Jetons d'accès personnels {: #personal-access-tokens }
 
-Un PAT est un secret bearer de longue durée qu'un utilisateur génère pour un client qui ne peut pas effectuer de connexion interactive — un script, un outil BI, un pilote. Il porte sa propre organisation et son propre rôle, et chaque surface le résout via le même validateur, de sorte qu'aucune surface n'a besoin de savoir ce qu'est un PAT.
+Un jeton d'accès personnel est un secret bearer de longue durée que vous créez pour un client incapable de se connecter de façon interactive : un script, un outil de BI, un pilote. Il porte sa propre organisation et son propre rôle, et chaque surface le vérifie avec le même validateur, si bien qu'aucune n'a besoin de savoir ce que c'est.
 
-La forme filaire est `provisa_pat_` suivi de 43 caractères base64 sûrs pour les URL. Le préfixe est ce qui dirige un secret présenté vers le magasin de jetons plutôt que vers le fournisseur d'identité, et il rend un jeton divulgué repérable dans les journaux et les dépôts.
+Sur le réseau, il s'écrit `provisa_pat_` suivi de 43 caractères base64 sûrs pour les URL. Le préfixe envoie un secret présenté vers le magasin de jetons plutôt que vers le fournisseur d'identité, et rend un jeton divulgué facile à retrouver dans les journaux et les dépôts.
 
-- **Stockage** — seul le SHA-256 du secret est conservé. Le secret lui-même n'est affiché qu'une fois, à la création, et ne peut pas être récupéré. La liste porte le préfixe d'affichage et les horodatages du cycle de vie, jamais un identifiant fonctionnel.
-- **Émission et révocation** — `POST /auth/tokens`, `GET /auth/tokens`, `DELETE /auth/tokens/{token_hash}`, plus la section en libre-service du profil propre de l'utilisateur dans l'interface d'administration. Générer et révoquer un identifiant est l'acte du détenteur du jeton.
-- **Attribution** — un PAT validé se résout vers le compte de son propriétaire : identifiant utilisateur, e-mail et nom affiché. Une ligne d'audit ou un rapport d'usage écrit sous un PAT nomme donc la personne, pas l'identifiant. Lequel des jetons de cette personne a agi est porté séparément, dans `raw_claims["token_name"]`.
-- **Expiration** — un jeton peut porter une expiration ; un jeton expiré est refusé à la validation. Supprimer l'appartenance d'un utilisateur révoque ses jetons avec elle.
+Seul le SHA-256 du secret est conservé. Vous voyez le secret une fois, à sa création, et il ne peut plus être récupéré ensuite ; la liste de vos jetons montre un préfixe d'affichage et des dates, jamais un identifiant utilisable. Vous créez, listez et révoquez vos propres jetons avec `POST /auth/tokens`, `GET /auth/tokens` et `DELETE /auth/tokens/{token_hash}`, ou dans la section des jetons de votre profil dans l'interface d'administration.
+
+Un jeton valide se résout vers le compte de son propriétaire, avec identifiant, e-mail et nom affiché : une ligne d'audit ou un rapport d'utilisation écrit sous un jeton nomme la personne et non l'identifiant. Lequel de ses jetons a agi est consigné à part, dans `raw_claims["token_name"]`. Un jeton peut porter une expiration, après laquelle il est refusé, et retirer l'appartenance d'un utilisateur révoque ses jetons avec elle.
 
 ### SCRAM-SHA-256 sur pgwire {: #scram-sha-256-on-pgwire }
 

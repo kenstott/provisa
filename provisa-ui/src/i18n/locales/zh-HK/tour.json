@@ -150,7 +150,7 @@
       },
       "stepRelsList": {
         "title": "所有關係集中在一個清單",
-        "description": "📋 模型中的關係，無論資料來源是否宣告，均可篩選和排序。展開一列即可編輯它或新增其反向關係。角色只能沿這些關係做連接，除非它擁有 ignore_relationships 權限。"
+        "description": "📋 模型中的所有關係，無論數據來源有否宣告。您可以篩選及排序這個清單，展開一列即可編輯關係或加入其反向關係。除非持有 ignore_relationships 權限，否則角色只能沿着這些關係連接資料表。"
       },
       "step17": {
         "title": "查看 ERD",
@@ -178,7 +178,7 @@
       },
       "stepRequests": {
         "title": "關係請求",
-        "description": "✋ 這個請求來自無權自行建立關係的人，通常在你的網域之外，想把他們的表與你的表關聯起來——這往往是向你索取資料的第一步。關係受治理管控，所以核准一個關係會改變哪些查詢是合法的：只能沿已核准關係做連接（join）的角色，現在可以跨這個關係做連接。關係請求需要兩次核准才能執行。跨兩個網域的關係需要每一方都同意。你可以核准、執行，或從固定清單中選擇原因後拒絕；已處理的請求會移到「已處理」分頁。"
+        "description": "✋ 有個自己不能建立關係的人，想把他的資料表與您的資料表關聯起來。他通常來自另一個網域，而這往往是他向您要求數據的第一步。由於關係受治理，批准一個關係會改變哪些查詢合法：原本只能沿已批准關係連接的角色，現在也能跨這條關係連接。關係請求在執行前需要兩次批准，跨兩個網域的請求需要雙方各自同意。您可以批准、執行，或從固定清單中選一個理由拒絕。已處理的請求會移到「已處理」分頁。"
       },
       "stepQualityTable": {
         "title": "品質檢查器也只是一個數據來源",
@@ -190,11 +190,11 @@
       },
       "stepQualityProfile": {
         "title": "為表格做剖析",
-        "description": "📊 表格透過其編輯器的<strong>質素</strong>分頁加入 <strong>Data Profiler</strong>，這是一種按排程為成員表格做剖析的來源。一次執行會量度每個欄位的形態、分布、數值頻率，以及每個父列的子列數目。<strong>立即剖析</strong>啟動一次執行，<strong>檢視剖析執行</strong>讀取執行記錄。結果以表格形式落地，您像登記其他表格一樣登記並管治它們；登記之前，沒有讀取者能看到剖析。 下一張卡片會為它們加上檢查。"
+        "description": "📊 <strong>Data Profiler</strong> 是一種按排程為其成員資料表產生剖析的數據來源。在資料表編輯器的 <strong>品質</strong> 分頁中把資料表加入。每次執行都會量度每一欄的形態、分佈及最常見的值，以及每個父記錄有多少個子記錄。<strong>Run Profile Now</strong> 開始一次執行，<strong>View Profile Runs</strong> 顯示結果。結果以資料表形式落地，您像對待其他資料表一樣註冊及治理它們；在您註冊之前，任何人都看不到剖析。下一張卡片會為它們加上檢查。"
       },
       "stepProfilerChecks": {
         "title": "對剖析結果的檢查",
-        "description": "每次執行都會向它的結果表追加列：欄位（空值佔比、不同值數目、範圍）、執行（列數）、每個父列的子列數目、分位數和漂移。登記一張結果表後，數據質素檢查器（與其他來源一樣的 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 來源）就能掃描它，因此剖析產生的任何量度都可以附帶一項會提出問題的檢查。<strong>漂移</strong>就是這樣的量度之一：每次執行都與該表最近的執行比較，發生移動的量度會被標記。已接受的約束、漂移檢查，或針對 Provisa 以外期望值的檢查，都可以從剖析器的執行中新增到檢查器的合約裡。"
+        "description": "每次執行都會向其結果資料表加入資料列：按欄的量度（空值比例、不同值個數、範圍）、按執行的量度（列數）、每個父記錄的子記錄數、分位數及漂移。註冊結果資料表後，數據品質檢查器就能像掃描其他資料表一樣掃描它。檢查器是一個 <strong>Soda</strong> 或 <strong>Great Expectations</strong> 數據來源，所以剖析產生的任何量度都可以掛上一項會報告問題的檢查。<strong>漂移</strong>就是這樣一種量度。每次執行都會與該資料表最近的執行比較，有變化的量度會被標記。您可以從剖析器的執行中，把一條已接受的約束、一項漂移檢查，或一項針對 Provisa 以外預期的檢查，加入檢查器的契約。"
       },
       "stepQualityProduct": {
         "title": "質素隨產品一併發布",
@@ -218,7 +218,7 @@
       },
       "stepEnvKinds": {
         "title": "環境及其連線",
-        "description": "環境是您模型的一個<strong>分支</strong>，清單會顯示每個環境由哪個環境建立。建立時，<strong>繼承連線</strong>按參照讀取該環境的來源連線，因此那邊的輪替會在這裡生效。保持關閉（預設）則取得不帶連線的完整模型，並把每個來源指向您自己的資料庫。"
+        "description": "環境是您模型的一個<strong>分支</strong>，清單會顯示每個環境是從哪個環境建立的。建立時，您可以選擇是否<strong>繼承連線</strong>。開啟時，新環境以參照方式使用父環境的數據來源連線，因此那邊輪換了憑證，這邊也會隨之更新。關閉時（預設），您會得到不含任何連線的完整模型，再把每個數據來源指向您自己的資料庫。"
       },
       "stepSynthetic": {
         "title": "產生合成數據",
@@ -306,7 +306,7 @@
       },
       "weblogsTables": {
         "title": "資料來源變成表",
-        "description": "每個資料來源的數據都登記為表：網店的客戶、產品和訂單，以及每份日誌各一張表，其行被拆分為路徑、狀態和耗時等欄。檢視是基於這些表儲存的查詢，補充了最慢的頁面以及每個請求執行的 SQL。"
+        "description": "每個數據來源的數據都註冊為資料表：商店的客戶、產品及訂單，以及每份日誌各一張資料表，日誌的每一行被拆成路徑、狀態、時間等欄位。在這些資料表之上，兩個檢視加上了最慢的頁面及每個請求執行的 SQL。檢視就是儲存起來的查詢。"
       },
       "weblogsJoin": {
         "title": "一個請求，兩份日誌",
@@ -322,19 +322,19 @@
       },
       "sonnetsIntro": {
         "title": "按意義讀莎士比亞十四行詩",
-        "description": "莎士比亞的154首十四行詩存於 Postgres，在 Qdrant 中轉成向量，按意義搜尋，長成一張圖。問題是：哪些主題貫穿這些十四行詩，莎士比亞又在哪裏呼應自己？<strong>sonnets</strong> 是 Postgres 來源，每首詩一行，2,155 個詩行各一行。"
+        "description": "莎士比亞的 154 首十四行詩存放在 Postgres 中，被嵌入 Qdrant，按含義搜尋，並擴展成一張圖。問題是：這些十四行詩貫穿着哪些主題，莎士比亞又在哪裏與自己互相呼應？<strong>sonnets</strong> 是 Postgres 數據來源，每首詩一列，2,155 個詩行亦各佔一列。"
       },
       "sonnetsVectors": {
         "title": "向量儲存",
-        "description": "<strong>vectors</strong> 是 Qdrant。它為每個詩行保存一個點，其向量是該行文字的嵌入；Provisa 像讀寫其他來源一樣讀寫它。"
+        "description": "<strong>vectors</strong> 是 Qdrant。每個詩行對應一個點，每個點的向量就是該詩行文字的嵌入。Provisa 讀寫它的方式與其他任何數據來源完全相同。"
       },
       "sonnetsLines": {
         "title": "每一行，都成向量",
-        "description": "line 表為 2,155 個詩行各保存一條記錄。指令 <strong>embed_lines</strong> 是一條受治理的 SQL 語句：它的 embed() 把每行文字變成向量，記錄經由集合的寫入路徑寫入 Qdrant。"
+        "description": "詩行資料表為 2,155 個詩行各存一列。命令 <strong>embed_lines</strong> 是一條受治理的 SQL 陳述式。其中的 embed() 呼叫把每個詩行的文字變成向量，再透過集合的寫入路由把這些資料列寫入 Qdrant。"
       },
       "sonnetsSearch": {
         "title": "按意義搜尋",
-        "description": "<strong>lines_like</strong> 是一張搜尋表：Provisa 按語句給出的參數在 Qdrant 中即時讀取它，這裏是一個短語和要找的行數。請看每行的分數：它與短語有多接近。"
+        "description": "<strong>lines_like</strong> 是一張搜尋資料表。Provisa 以您的陳述式傳入的參數在 Qdrant 中即時執行搜尋：這裏是一個短語及要傳回的詩行數量。每個詩行傳回時都附有一個分數，表示它與短語有多接近。"
       },
       "sonnetsThemeView": {
         "title": "保存下來的主題",
@@ -438,7 +438,7 @@
       },
       "reviewsBoughtWithByDegree": {
         "title": "我們可以把它畫成圖。但它意味着甚麼?",
-        "description": "按度分組，針對繪製這張圖所要回答的問題：各分組會浮現出最常與低評分產品一同購買的產品。數字越大，經過它的配對越多。度只在這一結果內部計算：評分低於三星的產品，以及其五位或更多客戶與它們一同購買的商品。紅色節點是產品；評分和配對節點同樣被分組。"
+        "description": "同一個結果，按度數分組，用來回答它當初要回答的問題。分組會突出那些最常與低評分產品一起被購買的產品，數字越大，經過該產品的組合就越多。度數只在這個結果內計算：評分低於三星的產品，以及其中五位或以上買家還一起買了甚麼。紅色節點是產品，評分節點及配對節點亦已分組。"
       },
       "reviewsRest": {
         "title": "透過 REST 搜尋",
@@ -466,7 +466,7 @@
       },
       "insuranceRecap": {
         "title": "你看到了甚麼",
-        "description": "保險公司自己的數據即時讀取，公開風險數據載入一次，在一個受管治的模型中按縣關聯：一個檢視回答風險承擔在哪裏與風險相遇，以 SQL、GraphQL 和 REST 提供，並遵循每個角色的存取權限。"
+        "description": "您看到了保險公司自己的數據：即時讀取，並按縣與只落地一次的公共風險數據連接，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答風險承擔與風險在哪裏交匯，每個角色只看到獲准的內容。"
       },
       "insuranceGovdata": {
         "title": "公開的風險數據",
@@ -482,7 +482,7 @@
       },
       "insuranceTerms": {
         "title": "用保險公司的術語",
-        "description": "詞彙表定義了核保人關心的概念：總保險價值、累積風險、可能最大損失（PML）、預期年損失。這裏是累積風險：集中在一次事件就能同時波及許多保單的地方的風險承擔。"
+        "description": "詞彙表列出核保人關心的內容：總保險金額、累積、可能最大損失及預期年度損失。這裏，累積指風險承擔集中在一次事件就可能波及許多保單的地方。"
       },
       "insuranceByRating": {
         "title": "按風險等級，以 GraphQL",
@@ -494,7 +494,7 @@
       },
       "qualityIntro": {
         "title": "可信的數據",
-        "description": "一間有五家分店的連鎖店以數據流傳送銷售紀錄，每日一個批次，作為銅層落入連鎖店的數據庫 <strong>sales</strong>。銅層之後的一切都是物化視圖：檢查、銀層和金層，單靠落入就會更新。問題是：這些數據在到達金層之前可信嗎？"
+        "description": "一家有五間分店的連鎖店以每日數據流的形式發送銷售數據。每個批次都作為青銅層落地到連鎖店的資料庫 <strong>sales</strong> 中。青銅層之後的一切都是實體化檢視（檢查、白銀及黃金），只要落地一個批次，就能全部重新整理。問題是：在數據進入黃金層之前，我能信任它嗎？"
       },
       "qualityBronze": {
         "title": "銅層：乾淨之處已定型",
@@ -522,7 +522,7 @@
       },
       "qualitySilver": {
         "title": "銀層：已清洗",
-        "description": "銀層是清洗後的銅層，只來自通過檢查的批次：分店代碼去除空格並轉大寫，每個產品一種拼寫，價格轉為數字，日期由時間導出，傳送了兩次的銷售只保留一次，即最新的那條。"
+        "description": "白銀層是清洗後的青銅層，只用通過檢查的批次建構。分店代碼去掉首尾空格並轉為大寫，每個產品只有一種拼寫，價格是數字，日期由數據推算，重複發送兩次的銷售只保留一條最新版本。"
       },
       "qualityGold": {
         "title": "金層：匯總",
@@ -534,7 +534,7 @@
       },
       "qualityDone": {
         "title": "可以查詢的信任",
-        "description": "落入一個批次就更新了檢查、銀層和金層，沒有執行其他任何東西。乾淨的批次到達金層；有問題的批次停在銅層，原因可以直接查詢。"
+        "description": "落地一個批次就重新整理了檢查、白銀層及黃金層，其他甚麼都不用執行。乾淨的批次到達了黃金層。有問題的批次停在青銅層，原因可以用一個查詢查出來。"
       },
       "insiderIntro": {
         "title": "銀行的內幕資料審查",
@@ -622,11 +622,11 @@
       },
       "vulnerabilitiesTerms": {
         "title": "詞彙",
-        "description": "已知被利用漏洞、CVE、CWE 和 CVSS 都在公司的詞彙表中，各自連結到相關的欄位。CVSS 分數說明漏洞有多嚴重；只有目錄能說明是否有人在利用它。"
+        "description": "公司的詞彙表定義了已知被利用漏洞、CVE、CWE 及 CVSS，並把每個詞彙關聯到它所描述的欄位。CVSS 分數說明漏洞有多嚴重，而是否有人正在利用它，只有目錄才能告訴您。"
       },
       "vulnerabilitiesAnswer": {
         "title": "SQL 中的答案",
-        "description": "檢視 exploited_in_our_code 保留每條 CVE 在 CISA 目錄中的未處理警示，並給出 CISA 限期已過去的天數，結果會被儲存。先看面向互聯網的程式碼庫，先看逾期最久的：從這裏開始。"
+        "description": "檢視 exploited_in_our_code 是儲存的。它保留每一個 CVE 在 CISA 目錄中的未處理警示，並附上 CISA 限期過後的日數。面向互聯網的程式碼庫排在最前，然後是逾期最久的。就從那裏開始。"
       },
       "vulnerabilitiesByTeam": {
         "title": "GraphQL 中的答案",
@@ -642,7 +642,7 @@
       },
       "vulnerabilitiesRecap": {
         "title": "你看到了甚麼",
-        "description": "公司自身的程式碼資料（即時讀取）和公開的漏洞資料（只載入一次，且只載入警示需要的部分）按 CVE 關聯到一個受管治的模型中：一個檢視以 SQL、GraphQL、Cypher 和 REST 回答程式碼中有哪些被利用的漏洞，以及各自逾期多久。"
+        "description": "您看到了公司自己的程式碼數據：即時讀取，並按 CVE 與只落地一次、且只取警示所需部分的公共漏洞數據連接。同一個受治理模型中的一個檢視，以 SQL、GraphQL、Cypher 及 REST 回答程式碼裏有哪些已被利用的漏洞，以及每個逾期了多久。"
       },
       "testdataScenario": {
         "title": "能否在不觸碰生產的情況下用逼真的數據測試？",
@@ -650,7 +650,7 @@
       },
       "testdataTables": {
         "title": "每一欄聲明自己的虛構值",
-        "description": "<strong>customers</strong> 的每一欄都說明它保存的值的種類，即它的虛構值：人名、電郵地址、城市、四個地區之一、某個範圍內的日期。模型把它與欄放在一起，所以虛構值只在欄所在之處定義一次。"
+        "description": "<strong>customers</strong> 的每一欄都宣告了自己的假數據：它保存的值屬於哪一類，例如人名、電郵地址、城市、四個區域之一，或某個範圍內的日期。模型把假數據與欄位放在一起，所以您只需在一個地方定義一次。"
       },
       "testdataJoin": {
         "title": "以相同方式替換的鍵仍能連接",
@@ -658,15 +658,15 @@
       },
       "testdataProd": {
         "title": "生產：真實的行",
-        "description": "在 prod，即服務未指明環境的請求的環境中，客戶按原樣讀取。"
+        "description": "在生產環境（預設環境）中，您看到的是客戶的真實情況。"
       },
       "testdataToDev": {
         "title": "切換到 dev",
-        "description": "dev 和 test 是模型的環境：它的分支，就像在 git 中一樣。兩者都是測試（虛構值）環境。接下來，頁首的切換器切到 dev；之後的每次讀取都由那裏提供。"
+        "description": "dev 及 test 是模型的環境，就像 git 裏的分支。兩者都是 Test (fake) 環境。接下來，頁首的切換器會切到 dev，之後您讀到的一切都來自 dev。"
       },
       "testdataDev": {
         "title": "dev 中的同一查詢",
-        "description": "同一語句在 dev 中讀取：每一欄都是它的虛構值，由引擎在讀取時計算。姓名、電郵、城市和日期看起來真實卻並非如此。沒有從生產複製任何東西。"
+        "description": "同一條陳述式，在 dev 中讀取：現在每一欄都顯示它的假數據，由引擎在讀取時計算。姓名、電郵、城市及日期看起來都很真實，但並不是真的。沒有任何數據從生產環境複製出來。"
       },
       "testdataDevAnswer": {
         "title": "視圖和連接基於虛構值運作",
@@ -690,11 +690,11 @@
       },
       "testdataProdAnswer": {
         "title": "真實的答案，只在生產中",
-        "description": "同一視圖在 prod 中讀取：按地區和類別的真實收入。只有 prod 收到真實的行；dev 和 test 永遠看不到。"
+        "description": "同一個檢視，在生產環境中讀取：按區域及類別統計的真實收入。只有生產環境能取得真實的資料列，dev 及 test 永遠看不到。"
       },
       "testdataDone": {
         "title": "這是甚麼",
-        "description": "環境是一個模型的分支，虛構值按欄聲明一次。測試（虛構值）環境用逼真的生成值回答每個查詢，保持鍵可連接，並且在個人資料欄沒有虛構值時拒絕建立。生產數據從不離開生產。"
+        "description": "環境是同一個模型的分支，假數據按欄宣告一次。Test (fake) 環境以逼真的生成值回答每項查詢，並讓鍵依然可以連接。只要仍有敏感欄位沒有假數據，Provisa 就不會建立或切換到 Test (fake) 環境，亦不會回答其中的請求。生產數據永遠不會離開生產環境。"
       },
       "streamingScenario": {
         "title": "即時訂單",
@@ -706,11 +706,11 @@
       },
       "streamingAnswer": {
         "title": "此刻最繁忙的地區",
-        "description": "<strong>orders_last_five_minutes</strong> 是一個物化視圖:每個地區過去五分鐘的訂單數和收入。每載入一批訂單都會刷新它,所以這次讀取的是幾秒前儲存的行,而不是主題本身。一分鐘後再執行一次,數字就變了。"
+        "description": "<strong>orders_last_five_minutes</strong> 是一個實體化檢視，記錄每個區域最近五分鐘的訂單及收入。每個落地的訂單批次都會重新整理它，所以您讀到的是幾秒前儲存的資料列，而不是主題本身。一分鐘後再執行一次，數字就會變化。"
       },
       "streamingRecap": {
         "title": "您看到了甚麼",
-        "description": "一個 Kafka 主題被載入為表,並與即時讀取的目錄連接;一個由每批載入保持最新的視圖;同一答案的 SQL、GraphQL 和 REST 形式,按要求快取;以及一個隨資料流變化的訂閱。請從查詢頁面自行瀏覽。"
+        "description": "一個 Kafka 主題作為資料表落地，並與即時目錄連接。一個檢視隨着每個落地的批次保持最新。同樣的答案以 SQL、GraphQL 及 REST 傳回，按需要快取，還有一個訂閱一路跟隨數據流。您可以在查詢頁面上自行再看看。"
       },
       "streamingCatalog": {
         "title": "商品目錄",
@@ -718,7 +718,7 @@
       },
       "streamingOrders": {
         "title": "主題變成表",
-        "description": "<strong>orders</strong> 是該主題,隨訂單到達而載入它自己的表:最多每兩秒一批,每張訂單按其 id 載入。每載入一批,就會刷新讀取它的視圖,並通知它的訂閱者。"
+        "description": "<strong>orders</strong> 是這個主題，訂單到達時就落地到它自己的資料表中，最多每兩秒一個批次，以訂單 ID 為鍵。每個落地的批次都會重新整理讀取它的檢視，並通知這些檢視的訂閱者。"
       },
       "streamingFresh": {
         "title": "載入中的訂單",
@@ -754,7 +754,7 @@
       },
       "profilingTerms": {
         "title": "詞彙",
-        "description": "資料剖析、可能類型、值形態、重複列和佔位值都在詞彙表中，各自連結到相關的量度。"
+        "description": "詞彙表定義了數據剖析、合理類型、值的形態、重複資料列及佔位值，並把每個詞彙關聯到它所描述的量度。"
       },
       "profilingAnswer": {
         "title": "每一欄包含甚麼",
@@ -770,7 +770,7 @@
       },
       "profilingCountries": {
         "title": "一個國家，多種寫法",
-        "description": "country 欄中最常見的五個值：US、USA 和 United States 是同一個國家，僅在這五個值中就有三種寫法。按國家計數會把它拆開。"
+        "description": "國家欄位中最常見的五個值。US、USA 及 United States 是同一個國家，單在這五個值裏就有三種寫法。按國家統計會把它拆成三份。"
       },
       "profilingDuplicates": {
         "title": "寫了兩次的列",
@@ -782,7 +782,7 @@
       },
       "profilingRecap": {
         "title": "你看到了甚麼",
-        "description": "被收購的表（即時讀取）及其剖析（由內置分析器產生並作為受管治的表保存）：缺失值、範圍、格式、可能類型和重複項，以 SQL、GraphQL 和 REST 回答這些資料裏到底有甚麼，並依照每個角色的存取權限。"
+        "description": "您看到了被收購公司的資料表，即時讀取，以及內置剖析器為它們產生並儲存為受治理資料表的剖析。空值、範圍、格式、合理類型及重複項各自以 SQL、GraphQL 及 REST 回答這些數據裏到底有甚麼，每個角色只看到獲准的內容。"
       },
       "opioidsScenario": {
         "title": "這個示範是甚麼",
@@ -814,7 +814,7 @@
       },
       "opioidsTerms": {
         "title": "淺白地說",
-        "description": "詞彙表解釋議員或居民會遇到的用語：和解基金、減害、撥款、開支、不公佈的人數、每 10 萬人比率。這裡是減害：和解協議要求這筆錢用於甚麼。"
+        "description": "詞彙表解釋了議員或居民會遇到的詞彙：和解基金、減害、分配、支出、隱去的計數以及每 10 萬人比率。這裏，減害指和解協議要求這筆錢必須用於的用途。"
       },
       "opioidsAsPublic": {
         "title": "以公眾身份執行",
@@ -834,7 +834,7 @@
       },
       "datavaultScenario": {
         "title": "兩個系統，一個問題",
-        "description": "一個訂單系統和一個 CRM，均來自 Northwind，各自保存着每位客戶的副本。問題是：我們對這位客戶了解甚麼，來自哪個數據來源，又是甚麼時候？Data Vault 透過保留每個數據來源的每個版本來回答。這裏的 Vault 以檢視的形式宣告，由引擎建立並重新整理：無需 ETL 平台、作業伺服器或管道程式碼，工作在可擴展的引擎上執行，一個宣告的 Vault 同時為數據集市、受管治的 API 和血緣提供數據。"
+        "description": "一個訂單系統及一個 CRM，都來自 Northwind，各自保存每位客戶的一份副本。問題是：我們對這位客戶知道甚麼，來自哪個來源，又是何時知道的？數據保險庫透過保留每個來源的每個版本來回答這個問題。這裏的保險庫以檢視宣告，由引擎建構及重新整理。不需要執行 ETL 平台、作業伺服器或管道程式碼。工作在引擎上執行，在那裏可以擴展，一個宣告好的保險庫就能為數據集市、受治理的 API 及血緣提供數據。"
       },
       "datavaultCrm": {
         "title": "CRM 自己的副本",
@@ -850,7 +850,7 @@
       },
       "datavaultHub": {
         "title": "Hub",
-        "description": "每位任一系統已知的客戶對應一行：其代碼、代碼的雜湊鍵（每個 Link 和 Satellite 都以它進行關聯）、首次出現的系統以及時間。"
+        "description": "兩個系統中任一系統知道的每位客戶各佔一列。每列包含客戶的代碼、該代碼的雜湊鍵（所有連結及衛星都在它上面連接）、客戶最先出現的系統，以及時間。"
       },
       "datavaultLinks": {
         "title": "Hub、Link、Hub",
@@ -858,7 +858,7 @@
       },
       "datavaultSatellites": {
         "title": "Satellite 保留每個版本",
-        "description": "每個系統關於該客戶的屬性，每個版本為一行，附有載入日期和針對其值的 Hashdiff。CRM 在 10 月 1 日的重發與其前一行的 Hashdiff 相同，因此不算新版本。"
+        "description": "衛星保存每個系統中客戶的屬性。每個版本是一列，附有載入日期及對其值計算的 hashdiff。CRM 在 10 月 1 日的重發與上一列的 hashdiff 相同，所以不算新版本。"
       },
       "datavaultProduct": {
         "title": "改名的產品，更正的價格",
@@ -866,7 +866,7 @@
       },
       "datavaultAnswer": {
         "title": "當時知道甚麼，以及何時",
-        "description": "答案只需一個時間點（Point in Time）查詢。對於客戶有任何數據被載入的每個日期，給出當時有效的各系統取值的版本，以及由何時開始。由 9 月 1 日至 11 月 15 日，兩個系統對客戶住在哪裏存在分歧。"
+        "description": "答案只需一個時間點查詢。對每個載入過該客戶資料的日期，您都能看到當時各系統中生效的值版本，以及由何時起生效。由 9 月 1 日至 11 月 15 日，兩個系統對客戶住在哪裏的說法並不一致。"
       },
       "datavaultGraphql": {
         "title": "同樣的答案，用 GraphQL",
@@ -886,11 +886,11 @@
       },
       "datavaultAnalyst": {
         "title": "分析師的視角",
-        "description": "接下來，SQL 瀏覽器以歐洲分析師的身份執行。個人數據存放在 Satellite 中，因此在那裏進行管治。"
+        "description": "接下來，SQL 瀏覽器以歐洲分析師的身分執行。個人數據存放在衛星中，所以治理亦在那裏進行。"
       },
       "datavaultMasked": {
         "title": "在個人數據所在處遮罩",
-        "description": "以分析師身份查看時，CRM Satellite 只顯示歐洲客戶，其聯絡人被隱藏，電郵名稱和電話號碼數字被遮罩。Hub 和 Link 保持可讀，因此分析師仍然可以基於它們進行關聯。"
+        "description": "以分析師身分查看時，CRM 衛星只顯示歐洲客戶。他們的聯絡人被隱去，電郵中的姓名及電話號碼中的數字亦被隱藏。中心表及連結仍然可讀，因此分析師仍能在它們上面做連接。"
       },
       "datavaultRecap": {
         "title": "你看到了甚麼",
@@ -922,7 +922,7 @@
       },
       "agricultureTerms": {
         "title": "用保險公司的術語",
-        "description": "術語表為農作物承保人會問到的概念命名:賠付率、損失原因、實際生產歷史(APH)、保障水平、責任額、生長季。這裏的賠付率是:賠款除以保費,高於 1 即為虧損年。"
+        "description": "詞彙表列出農作物保險核保人關心的內容：賠付率、損失原因、實際生產歷史、保障水平、責任額及生長季。這裏，賠付率就是賠款除以保費。大於 1，說明那一年虧了錢。"
       },
       "agricultureAnswer": {
         "title": "以 SQL 得出答案",
@@ -942,7 +942,7 @@
       },
       "agricultureRecap": {
         "title": "你看到了甚麼",
-        "description": "保險公司自己的資料即時讀取,公開的損失、天氣和產量一次載入,按縣和作物年度在一個受管治的模型中配對:一個檢視回答天氣是否解釋了損失,可用 SQL、GraphQL 和 REST。"
+        "description": "您看到了保險公司自己的數據：即時讀取，並按縣及作物年份與只落地一次的公共損失、天氣及產量數據配對，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答天氣能否解釋這些損失。"
       },
       "retailScenario": {
         "title": "一個集團，兩個區域",
@@ -1034,11 +1034,11 @@
       },
       "provisioningJoin": {
         "title": "數據流如何連結",
-        "description": "訂單指明其產品，產品知道自己的成本和類別。數據集把每張訂單與之連結；結帳匯總建基於數據集以及庫存和價格數據流——視圖之上的視圖，依次重新整理。"
+        "description": "訂單指明它的產品，產品知道自己的成本及類別。數據集把每項訂單連接到它的產品。結算建構在數據集以及存貨及價格數據流之上：一個檢視疊在另一個檢視上，依次重新整理。"
       },
       "provisioningRecap": {
         "title": "你看到了甚麼",
-        "description": "到達即載入的數據流，由此建立並重新整理的數據集，每個團隊在數據集就緒時透過 Kafka 收到通知，並透過 Arrow Flight 按那一刻的狀態拉取，每個團隊只看到其角色容許的內容，且只在數據集的窗口內。沒有副本，也沒有抽取作業。"
+        "description": "數據流一到就落地，數據集由它們建構及重新整理。每個團隊都會在數據集就緒時收到 Kafka 通知，並透過 Arrow Flight 拉取那一刻的數據，只能看到其角色容許的內容，而且只在數據集的時段內。沒有副本，亦沒有擷取作業。"
       },
       "provisioningWarehouse": {
         "title": "倉庫自己的資料庫",
@@ -1050,7 +1050,7 @@
       },
       "provisioningDataset": {
         "title": "數據集",
-        "description": "order_margins：每張訂單及其收入、成本和利潤。它保留每一行的每個版本，因此可以按任何時刻的狀態讀取——這正是團隊拉取的內容。它的載入窗口規定用戶和客戶端何時可以讀取：這裡是除 00:00-00:30 UTC 之外的全日。真實的倉庫通常會開一個較窄的夜間窗口；示範的窗口很闊，方便任何時間體驗。"
+        "description": "order_margins 包含每項訂單及其收入、成本及利潤。它保留每一列的每個版本，所以團隊可以按任何時刻的狀態讀取它，而這正是團隊要拉取的內容。它的載入時段規定了使用者及用戶端何時可以讀取它。這裏是全日，00:00 至 00:30 UTC 除外。真實的數據倉庫通常會開一個較窄的夜間時段；示範的時段開得很寬，讓您隨時都能走一遍。"
       },
       "provisioningNotices": {
         "title": "就緒時通知",
@@ -1110,7 +1110,7 @@
       },
       "pharmaTerms": {
         "title": "用藥房的術語",
-        "description": "詞彙表定義了藥房採購人員關心的概念：NDC、處方集、藥品短缺、回收級別、供應日數。這裏是供應風險：短缺、生產商回收，或庫存日數過少。"
+        "description": "詞彙表列出藥房採購員關心的內容：NDC、處方集、藥物短缺、回收等級及供應日數。這裏，供應風險指短缺、產品製造商發起的回收，或手頭存貨日數太少。"
       },
       "pharmaAnswer": {
         "title": "SQL 中的答案",
@@ -1126,7 +1126,7 @@
       },
       "pharmaRecap": {
         "title": "你看到了甚麼",
-        "description": "藥房自己的數據即時讀取，公開的藥品數據載入一次，在一個受管治的模型中按 NDC 和企業關聯：一個檢視回答哪些藥品有風險，以 SQL、GraphQL 和 REST 提供，並遵循每個角色的存取權限。"
+        "description": "您看到了藥房自己的數據：即時讀取，並按 NDC 及廠商與只落地一次的公共藥物數據連接，全部位於同一個受治理的模型中。一個檢視以 SQL、GraphQL 及 REST 回答哪些產品存在風險，每個角色只看到獲准的內容。"
       },
       "storefrontScenario": {
         "title": "一個模型，一個應用程式和 BI",
@@ -1146,7 +1146,7 @@
       },
       "storefrontAsCustomer": {
         "title": "以顧客身份登入",
-        "description": "應用程式以 <strong>customer</strong> 角色發送查詢，該角色的行篩選器把每個結果都限定為已登入顧客自己的訂單。按下一步會在角色選擇器中選取 <strong>customer</strong>，令下面的查詢按應用程式的方式執行。"
+        "description": "應用程式以 <strong>customer</strong> 角色發送查詢，該角色的列過濾會把每個答案限制在已登入客戶自己的訂單內。接下來，角色選擇器會切換到 <strong>customer</strong>，讓下面的查詢完全按應用程式的方式執行。"
       },
       "storefrontScreen": {
         "title": "應用程式唯一的查詢",
@@ -1162,7 +1162,7 @@
       },
       "storefrontAnalyst": {
         "title": "現在以分析師身份",
-        "description": "BI 一方以 <strong>analyst</strong> 身份讀取：所有訂單，且看不到任何顧客的電郵。按下一步會在執行角色選擇器中選取 <strong>analyst</strong>。"
+        "description": "BI 一方以 <strong>analyst</strong> 身分讀取：看得到所有訂單，但看不到任何客戶的電郵。接下來，執行身分選擇器會切換到 <strong>analyst</strong>。"
       },
       "storefrontAnalystSql": {
         "title": "分析師的 SQL",
@@ -1174,7 +1174,7 @@
       },
       "storefrontEveryRole": {
         "title": "回到所有角色",
-        "description": "按下一步會在角色選擇器中重新選取 <strong>全部</strong>。BI 一方以自己的角色讀取，該角色在執行其 SQL 的地方選取。"
+        "description": "接下來，角色選擇器切回 <strong>All</strong>。BI 一方以它自己的角色讀取，這個角色在其 SQL 執行的地方選擇。"
       },
       "storefrontPoint": {
         "title": "一個模型，兩個使用方",
@@ -1194,7 +1194,7 @@
       },
       "hasuramigrationAsAna": {
         "title": "以 Ana 身分登入",
-        "description": "Ana 是顧客。她的令牌帶有 <strong>x-hasura-user-id: 1</strong>；Provisa 把該 claim 讀作工作階段值 <strong>hasura_user_id</strong>，匯入的行規則與之比較。按下一步會在角色選擇器中選取 <strong>ana</strong>，下面的查詢便按商店為她執行的方式執行。"
+        "description": "Ana 是一位客戶。她的權杖帶有 <strong>x-hasura-user-id: 1</strong>，Provisa 把這個聲明讀作工作階段值 <strong>hasura_user_id</strong>，匯入的列規則就以它來比較。接下來，角色選擇器會切換到 <strong>ana</strong>，讓下面的查詢完全按網店為她執行的方式執行。"
       },
       "hasuramigrationMyOrders": {
         "title": "重塑後的訂單紀錄",
@@ -1202,7 +1202,7 @@
       },
       "hasuramigrationProfile": {
         "title": "按鍵讀取",
-        "description": "Hasura 的 <strong>customers_by_pk</strong> 是表上的一個篩選條件，計算欄位 <strong>full_name</strong> 是畫面拼合的兩個名字；匯入將其列為需手動重做。行規則仍然起決定作用：Ana 只能讀取她自己的行。"
+        "description": "Hasura 的 <strong>customers_by_pk</strong> 變成了對這張資料表的一個過濾。計算欄位 <strong>full_name</strong> 只是頁面拼起來的兩個名字，匯入把它列為需要手動重做的項目。Ana 看得到甚麼，仍然由列規則決定：只有她自己的那一列。"
       },
       "hasuramigrationSalesforce": {
         "title": "Hasura 做不到的：Salesforce",
@@ -1214,7 +1214,7 @@
       },
       "hasuramigrationAsSupport": {
         "title": "客戶支援台",
-        "description": "支援人員讀取所有訂單和所有顧客，正如他們的 Hasura 權限所允許的。按下一步會選取 <strong>support</strong>，支援台的訂單畫面便按他們的方式執行。"
+        "description": "支援人員可以讀取所有訂單及所有客戶，與他們原來的 Hasura 權限一致。接下來，角色選擇器會切換到 <strong>support</strong>，支援台的訂單頁面會按他們的方式執行。"
       },
       "hasuramigrationSupportScreen": {
         "title": "訂單及其帳戶",
@@ -1222,7 +1222,7 @@
       },
       "hasuramigrationAnalyst": {
         "title": "分析師",
-        "description": "分析師讀取訂單總額和帳戶連結，但讀不到姓名或電郵，也讀不到已取消的訂單：這是匯入帶來的行規則和欄位清單。按下一步會選取 <strong>analyst</strong>。"
+        "description": "分析師可以讀取訂單總額及帳戶連結，但看不到姓名或電郵，亦永遠看不到已取消的訂單。這就是匯入帶過來的列規則及欄位清單。接下來，角色選擇器會切換到 <strong>analyst</strong>。"
       },
       "hasuramigrationByIndustry": {
         "title": "按行業統計的收入",
@@ -1266,7 +1266,7 @@
       },
       "reproduceAsFiled": {
         "title": "記錄於呈交之時",
-        "description": "更正後重建開始的時間，取自刷新步驟的答案：在提交的數字記錄之後、更正記錄之前。報告現在按 Provisa 當時的記錄讀取，因此之後記錄的任何內容都無法改變它。"
+        "description": "這是修正的重建開始的時間，取自重新整理那一步的答案。它晚於已呈交數字被記錄的時間，早於修正被記錄的時間。報告現在按 Provisa 在那一刻的記錄來讀取，所以之後記錄的任何內容都無法改變它。"
       },
       "reproduceFiled": {
         "title": "呈交時的報告",
@@ -1326,7 +1326,7 @@
     "demos": {
       "weblogs": {
         "title": "網店的日誌",
-        "summary": "一家網店的問題：哪些頁面慢，是哪些 SQL 令它們變慢。它的資料來源、由此而來的表、兩份日誌的關聯，以及用 SQL 和 REST 給出的答案。"
+        "summary": "網店的哪些頁面慢，又是哪些 SQL 令它們變慢？看看這間店的數據來源、它們變成的資料表、兩份日誌的連接，以及以 SQL 及 REST 給出的答案。"
       },
       "sonnets": {
         "title": "莎士比亞十四行詩",
@@ -1342,27 +1342,27 @@
       },
       "insurance": {
         "title": "財產風險承擔與災害風險",
-        "summary": "一家財產保險公司的問題：相對於風險，它的風險承擔集中在哪裏。它自己的保單按縣與 FEMA、山火和風暴數據關聯，以 SQL、GraphQL 和 REST 回答。"
+        "summary": "一間財產保險公司的風險承擔在自然災害風險面前集中在哪裏？它自己的保單按縣與 FEMA、山火及風暴數據連接，以 SQL、GraphQL 及 REST 給出答案。"
       },
       "quality": {
         "title": "可信的數據",
-        "summary": "一間連鎖店的銷售數據流，由帶檢查的物化視圖由銅層提煉到銀層和金層：只需落入一個批次，而未通過檢查的批次永遠不會進入銀層。"
+        "summary": "一間連鎖店的銷售數據流，經過附有檢查的實體化檢視，由青銅層提煉到白銀層及黃金層。只需落地一個批次，而檢查不通過的批次永遠到不了白銀層。"
       },
       "insider": {
         "title": "內幕資料審查",
-        "summary": "將一間銀行的外發電郵與其在洽交易的觀察名單比對，並檢查客戶數據，排入同一個審查隊列；一線審查員閱讀它，卻從未見過名單本身。"
+        "summary": "一間銀行把外發電郵與正在洽談的交易觀察名單比對，並檢查其中有否客戶數據。所有結果都排進同一個審查隊列，一線審查員處理這個隊列，卻從不會看到名單本身。"
       },
       "vulnerabilities": {
         "title": "我們程式碼中被利用的漏洞",
-        "summary": "一家軟件公司的 Dependabot 警示按 CVE 關聯到 NVD 和 CISA 的 Known Exploited Vulnerabilities 目錄：我們的程式碼中有哪些被利用的漏洞，它們已超過 CISA 限期多久？"
+        "summary": "一間軟件公司的程式碼裏有哪些已被利用的漏洞，它們又超過 CISA 的限期多久了？它的 Dependabot 警示按 CVE 與 NVD 以及 CISA 的 Known Exploited Vulnerabilities 目錄連接，給出答案。"
       },
       "testdata": {
         "title": "測試數據",
-        "summary": "一間商店的生產數據庫：在 prod 中按原樣讀取，在兩個測試環境中作為逼真的生成數據讀取；相同的查詢和連接在三者中都能給出答案。"
+        "summary": "一間商店的生產資料庫：在生產環境中看到真實樣子，在兩個測試環境中看到逼真的生成數據。同樣的查詢及連接在三個環境中都能用。"
       },
       "streaming": {
         "title": "即時訂單流",
-        "summary": "一間咖啡店的訂單透過 Kafka 即時到達,並與其商品目錄連接:一個過去五分鐘最繁忙地區的視圖,由每批載入刷新,以 SQL、GraphQL 和 REST 回答,可快取,並可透過訂閱觀察。"
+        "summary": "一間咖啡店的訂單透過 Kafka 即時到達，並與它的目錄連接。最近五分鐘最繁忙區域的檢視隨每個批次重新整理，以 SQL、GraphQL 及 REST 作答，可以快取，亦可以用訂閱持續觀察。"
       },
       "profiling": {
         "title": "這些資料裏到底有甚麼？",
@@ -1370,15 +1370,15 @@
       },
       "opioids": {
         "title": "類鴉片藥物和解金與藥物過量死亡",
-        "summary": "一個地方政府的問題：相對於類鴉片藥物和解金支付的治療，哪些縣的藥物過量死亡最多？基金的撥款按縣連結 CDC、人口普查和聯邦開支資料。"
+        "summary": "相對於鴉片類藥物和解金所資助的治療，哪些縣的藥物過量死亡最多？一個基金的分配按縣與 CDC、人口普查及聯邦支出數據連接，回答一個地方政府的問題。"
       },
       "datavault": {
         "title": "Data Vault",
-        "summary": "在訂單系統和 CRM 之上宣告的 Data Vault：由引擎在行到達時建立並重新整理的 Hub、Link 和 Satellite，在 Satellite 中遮罩的個人數據，以及一個時間點查詢，說明關於某位客戶當時知道甚麼、來自哪個數據來源、是甚麼時候。"
+        "summary": "在訂單系統及 CRM 之上宣告的數據保險庫。引擎隨着資料列到達建構並重新整理它的中心表、連結及衛星，個人數據在衛星中被遮罩，一個時間點查詢就能顯示關於某位客戶的資料是何時、從哪個來源得知的。"
       },
       "agriculture": {
         "title": "天氣與農作物保險損失",
-        "summary": "一家農作物保險公司的問題:天氣能否解釋其投資組合的損失。它自己的農場、保單和索償按縣和作物年度,與 USDA 按原因劃分的損失、NOAA 的天氣和 NASS 的產量連接起來,以 SQL、GraphQL 和 REST 作答。"
+        "summary": "天氣能否解釋一間農作物保險公司投資組合中的損失？它自己的農場、保單及索償，按縣及作物年份與 USDA 的按原因損失、NOAA 的天氣及 NASS 的產量連接，以 SQL、GraphQL 及 REST 給出答案。"
       },
       "retail": {
         "title": "一個集團，兩個區域",
@@ -1386,11 +1386,11 @@
       },
       "provisioning": {
         "title": "向下游團隊提供數據集",
-        "summary": "一個數據倉庫的問題：下游團隊如何在大數據集一就緒就取得它們——從 Kafka 載入的數據流、到達即重新整理的數據集、透過 Kafka 收到通知並透過 Arrow Flight 按那一刻狀態拉取的團隊。"
+        "summary": "下游團隊如何在大型數據集一就緒就取得它們？數據流從 Kafka 落地，數據集隨落地重新整理，每個團隊都會收到 Kafka 通知，並透過 Arrow Flight 拉取那一刻的數據。"
       },
       "pharma": {
         "title": "藥品短缺與回收風險",
-        "summary": "醫院藥房的問題：其哪些藥品面臨短缺或回收風險。處方集和庫存與 FDA 的短缺和回收資料及 Medicaid 處方數據關聯，以 SQL、GraphQL 和 REST 作答。"
+        "summary": "一間醫院藥房的哪些產品面臨短缺或回收風險？它的處方集及存貨與 FDA 的短缺及回收資料以及 Medicaid 的處方連接，以 SQL、GraphQL 及 REST 給出答案。"
       },
       "storefront": {
         "title": "一個模型，應用程式和 BI",
@@ -1406,7 +1406,7 @@
       },
       "churn": {
         "title": "預測客戶流失",
-        "summary": "哪些客戶即將取消訂閱？在瀏覽器中將他們受管治、已遮罩的特徵讀入 pandas，並透過示範附帶的筆記簿訓練 scikit-learn 模型。"
+        "summary": "哪些客戶即將取消訂閱？他們受治理、已遮罩的特徵在瀏覽器中讀入 pandas，並在示範附帶的筆記本中用來訓練一個 scikit-learn 模型。"
       }
     }
   }

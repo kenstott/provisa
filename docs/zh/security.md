@@ -1,67 +1,67 @@
 # 安全模型 {: #security-model }
 
-Provisa 在所有查询语言（GraphQL、SQL、Cypher）和所有传输（REST、gRPC、Arrow Flight、JDBC、WebSocket）上执行分层安全模型。 治理统一适用——不存在绕过它的查询路径。
+每条查询都经过同一套治理，无论它用哪种语言编写（GraphQL、SQL、Cypher），也无论它经由哪条途径到达（REST、gRPC、Arrow Flight、JDBC、WebSocket）。没有任何绕过它的路径。
 
-各层按顺序应用。请求必须通过每一层，下一层才会被评估。
+检查按顺序进行。请求必须先通过一项，才会进入下一项。
 
 ## 分层模型 {: #layered-model }
 
-### 第0层——内省过滤 {: #layer-0-introspection-filtering }
+### 第 0 层 — 内省过滤 {: #layer-0-introspection-filtering }
 
-呈现给角色的 schema 和目录只包含其 `domain_access` 列表中的表，以及通过每列 `visible_to` 规则的列。 角色访问范围之外的对象在发现时不可见——无法查询、自动补全或推断其存在。 这适用于 GraphQL schema、SQL 目录以及查询编辑器中的 schema 浏览器。
+一个角色只能看到其 `domain_access` 覆盖的表，以及其 `visible_to` 规则允许的列。其余一切对这个角色来说都不存在：无法查询，无法自动补全，也无法猜出它的存在。GraphQL schema、SQL 目录和查询编辑器的 schema 浏览器显示的都是同一个收窄后的视图。
 
-参见[架构可见性](#schema-visibility)。
+参见[Schema 可见性](#schema-visibility)。
 
-### 第1层——公开访问 {: #layer-1-public-access }
+### 第 1 层 — 公开访问 {: #layer-1-public-access }
 
-以 `public` 范围发布的列会提供给组织中的每个角色，包括其 `domain_access` 未覆盖该表所在域的角色；这样的角色只能看到带有公开列的该表。在注册表的人明确说明之前，没有任何内容是公开的。 参见[公开列](#public-columns)。
+以 `public` 作用域发布的列会提供给组织中的每个角色，即使该角色的 `domain_access` 并不覆盖这张表的域。这样的角色能看到这张表，但只有其中的公开列。在注册这张表的人作出决定之前，没有任何东西是公开的。参见[公开列](#public-columns)。
 
-### 第2层——域访问 {: #layer-2-domain-access }
+### 第 2 层 — 域访问 {: #layer-2-domain-access }
 
-每个角色携带一个由域 id 组成的 `domain_access` 列表。涉及这些域之外的表的查询会在执行前被拒绝。 这是粗粒度的所有权边界——无论 SQL 如何编写，HR 角色都无法触及财务表。
+每个角色都有一个由域 ID 组成的 `domain_access` 列表，触及其他域中表的查询会在执行前被拒绝。这是粗粒度的归属边界。无论 SQL 怎么写，人力资源角色都碰不到财务表。
 
 参见[权限模型](#rights-model)。
 
-### 第3层——行级安全 {: #layer-3-row-level-security }
+### 第 3 层 — 行级安全 {: #layer-3-row-level-security }
 
-确认域访问之后，按表、按角色的 `WHERE` 谓词会在执行时注入每一个 `SELECT`。 谓词针对数据源数据求值。查询共享订单表的区域经理即使使用 `SELECT *`，也只能看到其所在区域的行。
+确认域访问之后，角色对每张表的行过滤条件会作为 `WHERE` 谓词加入每个 `SELECT`，并针对原始数据求值。区域经理即使对共享的订单表执行 `SELECT *`，拿到的也只有自己区域的行。
 
 参见[行级安全 (RLS)](#row-level-security-rls)。
 
-### 第4层——列可见性及脱敏 {: #layer-4-column-visibility-and-masking }
+### 第 4 层 — 列可见性与掩码 {: #layer-4-column-visibility-and-masking }
 
-`visible_to` 列表不包含请求角色的列会从查询输出中移除。 带有脱敏规则的列，其值会在结果离开服务器之前被替换——通过正则涂黑、常量替换或截断。 脱敏适用于所有查询语言和输出格式。
+如果某列的 `visible_to` 列表不包含您的角色，该列会从输出中去掉。被掩码的列在离开服务器之前，其值会被正则替换、常量替换或截断所取代。这在所有查询语言和所有输出格式中都成立。
 
-参见[列权限模型](#column-permission-model)和[列级脱敏](#column-level-masking)。
+参见[列权限模型](#column-permission-model)和[列级掩码](#column-level-masking)。
 
-### 第5层——谓词防护 {: #layer-5-predicate-guard }
+### 第 5 层 — 谓词保护 {: #layer-5-predicate-guard }
 
-被脱敏的列在 `WHERE` 和 `HAVING` 子句中会被拒绝。 否则，即使输出已脱敏，调用者也可以在过滤条件中通过二分查找推断出未脱敏的值。拒绝在解析查询时、执行之前发生。
+您不能按被掩码的列过滤：`WHERE` 和 `HAVING` 在解析查询时就会拒绝它。否则，调用方可以通过二分查找一个过滤条件接一个过滤条件地还原真实值，即使它看到的每个结果都是掩码后的。
 
-### 关系治理（V002） {: #relationship-governance-v002 }
+### 关系治理 (V002) {: #relationship-governance-v002 }
 
-SQL 的 JOIN 条件必须与表之间一个已注册且已批准的关系相匹配。 未经批准的联接会被拒绝。每个关系都带有人类可读的原因和描述——为用户和自主智能体说明该遍历路径为何存在。这是一项治理策略，而不是硬性的安全边界：第 2–5 层的执行与联接结构无关，因此有意的绕过不会暴露该角色用两条独立查询无法获得的数据。绕过尝试会被记录并可审计。
+SQL 中的连接必须沿着已注册并已批准的关系进行，其他任何连接都会被拒绝。每个关系都带有原因和描述，向人和智能体说明这条路径为什么存在。请把它看作治理策略，而不是安全边界。无论连接怎么写，第 2 至第 5 层都照样生效，所以绕过这项检查也不会暴露该角色用两条独立查询读不到的任何内容。绕过的尝试会被记录。
 
-**绕过机制**——V002 可以通过两种方式绕过。第一种是能力：持有 `ignore_relationships` 的角色可以联接目录未覆盖的关系。预置的系统角色中只有 `modeler` 拥有它——这是一个探索角色，其职责是定义模型，而不是执行模型。 `analyst` 没有它。
+绕过 V002 有两种方式。第一种是一项能力：持有 `ignore_relationships` 的角色可以连接目录未覆盖的关系。在预置角色中，只有 `modeler` 拥有它，因为它的工作是把模型梳理出来；`analyst` 没有。
 
-第二种是双条件例外，两个条件必须同时满足：
+第二种需要两个条件同时满足：
 
-1. **角色标志**——角色定义中的 `relationship_guard: false`（默认：`true`）。
-2. **查询内例外**——SQL 包含注释 `--relationship-guard=false`。
+1. **角色标志**：角色定义中的 `relationship_guard: false`（默认是 `true`）。
+2. **按查询退出**：SQL 中的注释 `--relationship-guard=false`。
 
-仅有角色标志不会绕过 V002；仅有注释也不会绕过 V002。
+只有其中一个时什么也不会发生。
 
-**高安全模式锁定防护。** 在 `security.mode: high` 下，任何绕过都不起作用：`ignore_relationships` 被忽略，`relationship_guard: false` 被忽略，每个联接都必须存在于已批准关系目录中。 这是有意的冗余——被误授予该能力的生产角色仍然无法跳出模型。
+**高安全模式会锁定这项检查。** 在 `security.mode: high` 下，两种方式都不起作用。`ignore_relationships` 和 `relationship_guard: false` 都会被忽略，每个连接都必须在已批准的目录中。这种冗余是有意为之：误被授予该能力的生产角色依然无法跳出模型。
 
-**GraphQL 路径**——GraphQL 查询总是跳过 V002。SDL 中定义的关系本质上已预先批准；该检查是冗余的，不会应用。
+**GraphQL** 跳过 V002。它的关系来自模型，因此已经获得批准。
 
-**SQL 和 Cypher 路径**——V002 默认启用。`endpoint_dev.py` 和 `cypher_router.py` 都会在调用 `validate_sql` 之前应用双条件检查。
+**SQL 和 Cypher** 默认应用 V002，并允许上述两个条件的退出方式。
 
-**pgwire 路径**——与 SQL 相同的双条件检查。注释 `--relationship-guard=false` 会在执行前从查询中剥离；它不会到达数据库。
+**pgwire** 与 SQL 应用相同的检查。注释 `--relationship-guard=false` 会在查询到达数据库之前被去掉。
 
 ---
 
-这些层相互叠加。对于同时具有域访问、行级安全和脱敏列的角色，所有五项限制会同时生效。添加数据源、列或关系不需要更新每条规则——每一层独立配置，并自动应用于任何触及受治理对象的查询。
+各层是叠加的。一个同时具有域访问、行过滤和掩码列的角色，这些约束会同时生效。添加数据源、列或关系不需要逐条修改规则，因为每一层都单独配置，并适用于任何触及其所管辖对象的查询。
 
 ---
 
@@ -293,21 +293,17 @@ tables:
 
 ## 变更操作授权 {: #mutation-authorization }
 
-已注册的变更（远程 GraphQL、OpenAPI、gRPC、Hasura）由两项相互独立的检查把关。 角色只有同时持有全局 `write` 能力，并且该命令通过 `visible_to` 分配给它（列表为空表示分配给所有角色），才可以调用变更。 命令没有 `writable_by` 列表；配置会按名称拒绝它。
+已注册的变更操作（远程 GraphQL、OpenAPI、gRPC、Hasura）要通过两项检查。角色必须持有全局能力 `write`，且该命令必须通过 `visible_to` 分配给它；空列表表示分配给所有角色。命令没有 `writable_by` 列表，配置中出现这样的列表会被按名称拒绝。
 
-变更按契约而非调用者的声明被归类为写入。 引用变更类函数的 `SELECT` 会被提升为写入，并接受相同的双重门检查，因此调用者无法把变更伪装成读取来调用。 将变更重新归类为读取安全需要 `access_config` 能力，并作为治理决定记录；没有按请求的例外。
+一个操作是不是写入，由它的契约决定，而不是由调用方说了算。调用变更类函数的 `SELECT` 会被当作写入，并经过同样的两项检查，所以您无法把变更操作伪装成读取来运行。将某个变更操作标记为读取安全需要 `access_config` 能力，并会作为治理决定记录下来。任何请求都不能自行豁免。
 
 ## 架构可见性 {: #schema-visibility }
 
-每个角色的 GraphQL schema 会隐藏未授权内容：
-
-- **域访问**：角色只能看到其 `domain_access` 域中的表（`"*"` = 全部）
-- **列可见性**：不在角色 `visible_to` 中的列会从 SDL 中排除
-- 未授权的表/列不会出现在 schema 中
+每个角色都有自己的 GraphQL schema。只会出现其 `domain_access` 中各个域的表（`"*"` 表示全部），某列若不在该角色的 `visible_to` 中，也不会出现在 SDL 里。角色读不到的，它也看不到。
 
 ## 行级安全 (RLS) {: #row-level-security-rls }
 
-按表、按角色注入 SQL WHERE 子句。在编译之后、执行之前应用。
+行过滤条件是针对一张表、一个角色的 `WHERE` 谓词，在编译之后、执行之前加入。
 
 ```yaml
 rls_rules:
@@ -316,11 +312,16 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
     description: Analysts read only their own region's orders.
 ```
-过滤条件以 AND 追加到查询的 WHERE 子句。适用于查询和变更（UPDATE/DELETE）。
 
-`current_setting('provisa.<name>')` 项从请求所绑定的会话变量解析：来自已验证身份的 `user_id`、来自执行角色的 `role`，以及令牌中每个标量 claim，以其小写名称绑定，连字符换为下划线。Hasura 会话变量保留自己的名称：`X-Hasura-User-Id` 是 `hasura_user_id`，读自令牌的 `x-hasura-user-id` claim（在顶层，或在 Hasura claims 对象内，如 `https://hasura.io/jwt/claims`），或作为属性 `hasura_user_id` 记录在成员名下。因此导入的基于 `X-Hasura-User-Id` 的 Hasura 过滤会读取 `provisa.hasura_user_id`。`provisa.user_id` 始终是已登录的身份，任何 claim 都不会替换它。角色配置的 `session_vars` 是基础常量；请求的绑定叠加在其上。从另一个角色继承的角色，会把祖先的常量放在自己的常量之下，每个名称取最近角色的值。`user_id`、`role`、`region` 和 `org` 由请求或节点绑定，不能配置为常量。在不安全模式下，标头 `x-provisa-session-<name>` 绑定 `<name>`。任何地方都未绑定的变量解析为 NULL，不匹配任何行。
+过滤条件以 AND 并入查询的 `WHERE` 子句，读取时如此，`UPDATE` 和 `DELETE` 时也是如此。
 
-角色常量是派生角色的反向。派生角色把成员持有的某个值变成角色；角色常量则给每个以该角色身份发出的请求一个值，行规则像读取 claim 一样读取它。角色常量可以是 `${env:NAME}` 或 `${secret:NAME}` 引用，在查询使用它时通过与其他所有引用相同的解析器解析；模型保留引用本身，从不保留解析后的值，无法解析为任何内容的引用会使查询失败，并指明该常量。解析后的常量会参与查询。Provisa 自身对该查询的记录由集中涂黑覆盖；联邦数据源自身的日志不在 Provisa 的控制范围内。
+过滤条件通过 `current_setting('provisa.<name>')` 读取请求。请求会把 `user_id` 绑定为已登录的身份，把 `role` 绑定为当前行事的角色，并绑定令牌中的每个标量声明（claim），名称转为小写，连字符改为下划线。`provisa.user_id` 始终是已登录的身份，任何声明都无法替换它。
+
+Hasura 的会话变量保留原名。`X-Hasura-User-Id` 即 `hasura_user_id`，取自令牌的 `x-hasura-user-id` 声明（位于顶层，或位于 Hasura 声明对象内，例如 `https://hasura.io/jwt/claims`），或取自为该成员记录的 `hasura_user_id` 属性。因此，导入的基于 `X-Hasura-User-Id` 的 Hasura 过滤条件读取的是 `provisa.hasura_user_id`。
+
+请求的值之下是角色配置的 `session_vars`，请求会覆盖它们。继承的角色会在自己的常量之下取得祖先的常量，同名时以最近的角色为准。`user_id`、`role`、`region` 和 `org` 来自请求或节点，不能配置为常量。在不安全模式下，`x-provisa-session-<name>` 请求头会绑定 `<name>`。哪里都没有绑定的变量为 NULL，基于它的过滤条件不会匹配任何行。
+
+角色常量的作用方向与派生角色相反。派生角色把成员持有的值变成一个角色。角色常量则给以该角色发出的每个请求一个值，行规则读取它的方式与读取声明相同。常量可以是 `${env:NAME}` 或 `${secret:NAME}` 引用，在查询用到它时，由与其他引用相同的解析器解析。模型保存的是引用，从不保存值；解析不出任何内容的引用会使查询失败，并指出该常量。解析之后，这个值就是查询的一部分：Provisa 自己的记录受集中涂黑保护，但联邦数据源自己的日志不在 Provisa 的控制范围内。
 
 ## 列级脱敏 {: #column-level-masking }
 
@@ -361,29 +362,29 @@ masks:
 ```
 ## 治理操作响应 {: #governing-action-responses }
 
-被跟踪函数或 webhook 的响应像表的行一样受治理。 操作返回的行被绑定为一个关系，其列是该操作声明的输出契约（函数的 `output_columns`、webhook 的 `inline_return_type`，或函数数组型 `return_schema` 的对象属性），并且该关系通过带有这些行的 VALUES CTE，经过与每次表读取相同的治理阶段。 行级安全、脱敏或可见性都不会为操作重新实现。
+被跟踪函数或 webhook 返回的内容，与表的行一样受治理。Provisa 把返回的行绑定为一个关系，其列就是该操作声明的输出：函数为 `output_columns`，webhook 为 `inline_return_type`，或函数数组型 `return_schema` 的对象属性。随后，这个关系在一个保存这些行的 VALUES CTE 上，经过与任何表读取相同的治理阶段，因此行安全、掩码和可见性无需为操作重新实现。
 
-有三件事适用，顺序与表相同。
+有三条规则，按与表相同的顺序应用：
 
-- 行过滤：为该操作按名称保存的角色行级安全规则（带 `actionName` 的 `upsertRlsRule`），或者在操作没有自己的规则时，操作所在域的域规则。保存时会像表规则一样对照契约检查谓词。
-- 列可见性：声明了 `visible_to` 的契约列会对列表未指名的角色移除；未声明任何内容的列属于该操作的公开形态并保留。
-- 脱敏：契约列携带 `masks`，即与表列相同的有序脱敏列表。
+- **行过滤。** 角色按操作名称为该操作保存的 RLS 规则（带 `actionName` 的 `upsertRlsRule`），若操作没有自己的规则，则用操作所在域的规则。谓词在保存时会对照契约检查，与表规则一样。
+- **列可见性。** 契约中声明了 `visible_to` 的列，对列表未包含的任何角色都会去掉。没有声明的列属于操作的公开形状，会保留。
+- **掩码。** 契约列带有 `masks`，与表列使用同一种有序列表。
 
-角色继承为三者解析继承链。 返回声明契约之外的列的响应会以 502 被拒绝，而不是不受治理地通过。未声明列契约的操作返回标量，没有可绑定的内容；它按原样返回。管理端的测试调用会报告所应用的过滤、排除和脱敏，受治理的语句会记录在查询审计日志中。
+角色继承会为这三条规则解析继承链。如果响应返回了声明契约之外的列，调用会以 502 失败，而不是让它不受治理地通过。没有声明任何列的操作返回一个标量，没有东西可绑定，按原样返回。管理端的测试调用会报告应用了哪些过滤、排除和掩码，受治理的语句会写入查询审计日志。
 
 ## 采样 {: #sampling }
 
-除非拥有 `full_results` 能力，所有角色看到的都是采样结果（默认：100 行）。 由环境变量 `PROVISA_SAMPLE_SIZE` 控制。
+每个角色得到的都是结果的样本，默认 100 行，除非它拥有 `full_results` 能力。用环境变量 `PROVISA_SAMPLE_SIZE` 设置样本大小。
 
 ## 审计日志 {: #audit-logging }
 
-每个触及域资产的查询都会记录到 `query_audit_log`。 审计日志属于组织，而不属于平台：平台自己的组织、用户和邀请注册表不保存审计记录。 每个组织的 `query_audit_log` 是该组织自己的 schema 中的一张表，位于该组织为其在所选每个区域中的记录所指定的存储中。未声明任何区域的组织，将该 schema 与其模型一起保存在部署的控制平面数据库中。
+每条触及域资产的查询都会写入 `query_audit_log`。日志属于组织，而不属于平台：平台自己的组织、用户和邀请登记中不保存任何审计记录。每个组织的日志是其 schema 中的一张表，位于该组织为其所选每个区域的记录指定的存储中。没有声明区域的组织会把它保存在部署的控制平面数据库中，与其模型放在一起。
 
-每一行记录 `tenant_id`（组织）、`user_id`、`role_id`、查询文本的 SHA-256 哈希、加密后的查询文本本身、`table_ids` 和 `table_names`、`source`、`status_code`、`duration_ms`、路由和行数、对该语句实施了哪些强制措施，以及 `logged_at`。组织设置了密钥时，查询文本用组织的密钥加密，否则用部署的密钥加密。未配置加密提供程序的部署，以未加密形式存储。该文本从不暴露在可查询的运维表中，只在授权的管理读取中解密。
+一行记录 `tenant_id`（组织）、`user_id`、`role_id`、查询文本的 SHA-256 哈希、查询文本本身（加密）、`table_ids` 和 `table_names`、`source`、`status_code`、`duration_ms`、路由和行数、对该语句实施了什么，以及 `logged_at`。如果组织设置了自己的密钥，文本就用它加密，否则用部署的密钥。没有配置加密提供方的部署会以明文保存。无论哪种情况，它都不会出现在可查询的运维表中，只在授权的管理读取时才会解密。
 
-该日志在数据库层面是仅追加的：PostgreSQL 规则将针对 `query_audit_log` 的 `DELETE` 和 `UPDATE` 变为空操作。 两个索引——`(tenant_id, logged_at)` 和 `(user_id, logged_at)`——支持按组织和按用户在时间范围内的合规查询。
+日志在数据库层面只能追加：PostgreSQL 规则把对 `query_audit_log` 的 `DELETE` 和 `UPDATE` 变成空操作。两个索引 `(tenant_id, logged_at)` 和 `(user_id, logged_at)` 让按组织、按用户在某个时间范围内的合规查询保持快速。
 
-保留期：行会被无限期保留。Provisa 没有保留期设置，也从不清除审计日志；由于 `DELETE` 是空操作，删除旧行意味着由运维人员在 Provisa 之外删除或归档该表的数据。
+行会一直保留。Provisa 没有保留期设置，也从不清理日志；由于 `DELETE` 不起作用，要清除旧行，只能由运维人员在 Provisa 之外删除或归档该表的数据。
 
 ## 涂黑 {: #redaction }
 
@@ -415,11 +416,11 @@ Provisa 无从知晓每一种敏感格式。内置模式覆盖常见形式；组
 
 ## 速率限制 {: #rate-limiting }
 
-每个角色的速率限制在 `provisa.yaml` 中配置：每秒最大查询数、最大并发 SSE 订阅数和最大并发 Arrow Flight 流数。 限制在 API 层、编译或执行之前执行；超出限制的请求以 HTTP 429 和 `Retry-After` 标头被拒绝。
+按角色的限制在 `provisa.yaml` 中设置：每秒请求数、并发 SSE 订阅数和并发 Arrow Flight 流数。它们在 API 层检查，早于任何编译或执行；超出限制的请求会收到 HTTP 429 和 `Retry-After` 响应头。
 
-自然语言查询服务（`POST /query/nl`）通过 `nl.rate_limit`（每个角色每分钟请求数）有单独的限制。超出限制的请求在调用任何 LLM 之前被拒绝。
+自然语言查询（`POST /query/nl`）有自己的限制 `nl.rate_limit`，单位是每个角色每分钟的请求数。超出的请求会在调用任何 LLM 之前被拒绝。
 
-速率限制状态以滑动窗口计数器保存在 Redis（`cache.redis_url`）中——不在单个实例内保存状态——因此限制在所有水平扩展的 Provisa 实例上执行。
+计数以滑动窗口的形式保存在 Redis（`cache.redis_url`）中，不在单个实例上保存状态，因此无论运行多少个 Provisa 实例，限制都同样生效。
 
 ## 查询复杂度上限 {: #query-complexity-limit }
 
@@ -462,7 +463,7 @@ roles:
 
 ### 接口与凭据 {: #surfaces-and-credentials }
 
-每个接口都通过同一个提供程序契约进行身份验证，因此在一个接口上可用的凭据，在协议能携带它的所有接口上都可用。 此表是唯一的参考；各接口的文档不再重复。
+每个接口都通过同一个提供方验证调用方，因此一份凭据在一个接口上能用，在所有接口上都能用，只要协议有地方承载它。
 
 | 接口 | 密码 | 提供程序令牌 | 个人访问令牌 | 客户端证书 (mTLS) |
 | --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
@@ -474,24 +475,21 @@ roles:
 | Airport（DuckDB `airport` 扩展，可选） | — | `authorization: Bearer`（密钥的 `auth_token`） | 同上 | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | 通过终止代理 |
 
-DuckDB `airport` 扩展唯一的身份验证选项是其密钥的 bearer `auth_token`，因此 DuckDB 客户端在那里出示提供程序令牌或个人访问令牌，并以其身份解析到的角色执行。能够设置调用标头的客户端，可以在 `x-provisa-role` 中请求一个已持有的角色或逗号分隔的集合。
+DuckDB 的 `airport` 扩展只能发送其密钥中的 bearer `auth_token`。DuckDB 客户端在那里填入提供方令牌或个人访问令牌，并以其身份解析到的角色行事。任何能设置调用请求头的客户端，都可以在 `x-provisa-role` 中请求自己的某个角色，或以逗号分隔的一组角色。
 
-在这些接口上，拒绝都会报告其类别。缺失、被拒绝或不可用的凭据是身份验证失败：HTTP 401、gRPC `UNAUTHENTICATED`、Arrow Flight 和 Airport `Unauthenticated`。有效凭据请求以身份不持有的角色执行，是授权失败，并会指明该角色：HTTP 403、gRPC `PERMISSION_DENIED`、Arrow Flight 和 Airport `Unauthorized`。 有一个例外位于 Arrow 客户端库而非服务器：Flight `get_schema` 调用的拒绝会以带有服务器原因、但不带其类别的通用 Arrow 错误到达 Python 客户端；`list_flights`、`get_flight_info` 和 `do_get` 会传递类别。
+每个接口都会告诉您收到的是哪一类拒绝。缺失、被拒或不可用的凭据属于认证拒绝：HTTP 401、gRPC `UNAUTHENTICATED`、Arrow Flight 和 Airport `Unauthenticated`。有效凭据请求以其身份并不持有的角色行事，属于授权拒绝，并会指出该角色：HTTP 403、gRPC `PERMISSION_DENIED`、Arrow Flight 和 Airport `Unauthorized`。有一个例外来自 Arrow 客户端库，而不是服务器。Flight 的 `get_schema` 被拒绝时，Python 客户端看到的是一个通用的 Arrow 错误，带有服务器给出的原因，但没有拒绝的类别；`list_flights`、`get_flight_info` 和 `do_get` 会带上类别。
 
-单元格为 `—` 之处，协议不携带可以附加密码的用户名字段；令牌形式覆盖了这种情况。pgwire 则相反：启动包中只有一个密钥字段且没有方案，因此方法根据密钥*是什么*来选择：PAT 按前缀识别；当配置的提供程序是令牌提供程序时，密钥作为 bearer 令牌读取；其他一切都是密码。选择只做一次——被所选验证器拒绝的凭据不会再由另一个验证器检查。
-
-该矩阵由 `tests/unit/test_auth_surface_conformance.py` 执行，它调用每个接口真实的身份验证入口点，若新增接口而没有对应的行则失败。
+表中的 `—` 表示该协议没有可与密码配对的用户名字段，由令牌形式覆盖。pgwire 是相反的情况。它的启动包只有一个密钥字段，没有方案，因此由密钥本身决定方式：个人访问令牌按前缀识别；当配置的提供方签发令牌时，密钥按 bearer 令牌读取；其余一律视为密码。这个选择只做一次，被所选验证器拒绝的凭据不会再交给另一个验证器尝试。
 
 ### 个人访问令牌 {: #personal-access-tokens }
 
-PAT 是用户为无法完成交互式登录的客户端（脚本、BI 工具、驱动）创建的长期 bearer 密钥。 它携带自己的组织和角色，每个接口都通过同一个验证器解析它，因此任何接口都不需要知道 PAT 是什么。
+个人访问令牌是一种长期有效的 bearer 密钥，供无法完成交互式登录的客户端使用：脚本、BI 工具、驱动程序。它自带组织和角色，每个接口都用同一个验证器检查它，因此没有哪个接口需要知道它是什么。
 
-线上形式为 `provisa_pat_` 后接 43 个 URL 安全的 base64 字符。该前缀将出示的密钥路由到令牌存储而不是身份提供程序，并使泄露的令牌能在日志和代码仓库中被找到。
+在传输中，它的形式是 `provisa_pat_` 后跟 43 个 URL 安全的 base64 字符。正是这个前缀把提交的密钥送往令牌存储，而不是身份提供方，也让泄露的令牌在日志和代码库中很容易被找到。
 
-- **存储**——只保存密钥的 SHA-256。密钥本身只在创建时显示一次，且无法恢复。列表携带显示前缀和生命周期时间戳，但从不携带有效凭据。
-- **签发与吊销**——`POST /auth/tokens`、`GET /auth/tokens`、`DELETE /auth/tokens/{token_hash}`，以及管理界面中用户自己个人资料里的自助区域。创建和吊销凭据是令牌所有者的操作。
-- **归属**——经过验证的 PAT 解析为其所有者的账户：用户 id、电子邮件和显示名称。因此在 PAT 下写入的审计行或用量报告指明的是人，而不是凭据。该人的哪个令牌在执行，会单独放在 `raw_claims["token_name"]` 中传递。
-- **过期**——令牌可以设置过期时间；过期的令牌在验证时被拒绝。移除用户的成员资格会一并吊销其令牌。
+只保存密钥的 SHA-256。您只在创建时看到一次密钥，之后无法找回；您的令牌列表只显示展示用前缀和时间，绝不显示可用的凭据。用 `POST /auth/tokens`、`GET /auth/tokens` 和 `DELETE /auth/tokens/{token_hash}`，或在管理界面中您个人资料的令牌部分，创建、列出和吊销您自己的令牌。
+
+有效令牌会解析到其所有者的账号，带有用户 ID、电子邮件和显示名称，因此以令牌写下的审计行或用量报告指名的是人，而不是凭据。具体是该用户的哪个令牌在行事，单独记录在 `raw_claims["token_name"]` 中。令牌可以带有过期时间，过期后会被拒绝；移除用户的成员身份也会一并吊销其令牌。
 
 ### pgwire 上的 SCRAM-SHA-256 {: #scram-sha-256-on-pgwire }
 

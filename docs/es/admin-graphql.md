@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-Disparadores programados desde la configuración con estado en tiempo de ejecución. Cada entrada lleva su expresión cron, `kind` (`webhook` o `sql`), si está actualmente habilitada, la marca de tiempo de la última ejecución (siempre `null` en esta versión — rastreada por el planificador), y la próxima hora de ejecución programada desde APScheduler.
+Disparadores programados desde la configuración con estado en tiempo de ejecución. Cada entrada lleva su expresión cron, `kind` (`webhook` o `sql`), si está actualmente habilitada, la marca de tiempo de la última ejecución (siempre `null`; la sigue el planificador), y la próxima hora de ejecución programada desde APScheduler.
 
 ---
 

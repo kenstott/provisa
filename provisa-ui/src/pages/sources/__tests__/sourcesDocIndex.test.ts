@@ -56,9 +56,14 @@ function indexRows(text: string): IndexRow[] {
   return rows;
 }
 
-/** The bold numbers of the paragraph that states the total. */
+/** The bold numbers of the paragraph that states the total: the last one before the index table. */
 function boldTotals(text: string): number[] {
-  const para = text.split("\n").find((l) => /\*\*\d+\*\*/.test(l) && l.includes("SOURCE_TYPES"));
+  const lines = text.split("\n");
+  const table = lines.findIndex((l) => /^\| (\d+)(?:–\d+)? \| /.test(l));
+  const para = lines
+    .slice(0, table)
+    .reverse()
+    .find((l) => l.trim() !== "" && !l.startsWith("|"));
   return para ? [...para.matchAll(/\*\*(\d+)\*\*/g)].map((m) => Number(m[1])) : [];
 }
 

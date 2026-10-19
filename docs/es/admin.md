@@ -358,7 +358,7 @@ En cada instalación se siembran ocho vistas SQL en el dominio integrado `ops`. 
 | `stale_metadata` | Tablas y columnas sin descripción; dominios sin responsable |
 | `join_hotspots` | Pares de tablas consultadas juntas con más frecuencia: candidatas a materialización o caché |
 
-Hoy se aplican dos límites. La granularidad es de tabla: el registro de auditoría anota `table_ids`, no las columnas concretas a las que se accede. El texto de la consulta está cifrado y queda excluido de todas estas vistas; solo es accesible por la vía de descifrado administrativa autorizada.
+Se aplican dos límites. La granularidad es de tabla: el registro de auditoría anota `table_ids`, no las columnas concretas a las que se accede. El texto de la consulta está cifrado y queda excluido de todas estas vistas; solo es accesible por la vía de descifrado administrativa autorizada.
 
 Un rol necesita acceso al dominio `ops` para que estas vistas sean visibles. Concédalo igual que concede el acceso a cualquier otro dominio.
 
