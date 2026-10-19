@@ -174,7 +174,7 @@ Provisa wählt beim Start eine Federation-Engine über die Umgebungsvariable `PR
 
 Jede Engine ist eine `FederationEngine`-Instanz, definiert in `provisa/federation/engine.py`. Die Instanz besitzt eine Connector-Sammlung, die bestimmt, welche Quelltypen die Engine live lesen kann (ATTACH) versus welche zuerst in den Materialisierungs-Store der Engine landen müssen.
 
-### Treiberklassen {: #driver-classes-tool-verified-enginepy-driverclass }
+### Treiberklassen {: #driver-classes }
 
 | Klasse | Bedeutung | Beispiele |
 | ------- | --------- | --------- |
@@ -182,7 +182,7 @@ Jede Engine ist eine `FederationEngine`-Instanz, definiert in `provisa/federatio
 | `PARTIAL` | Erreicht eine Teilmenge (relational, Dateien, Cloud-Objekt/-Lake) und landet alles andere | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Erreicht nur seinen eigenen Store; jede andere Quelle landet dort | SQLAlchemy |
 
-### Verfügbare Engines {: #available-engines-tool-verified-enginepy-engine_builders }
+### Verfügbare Engines {: #available-engines }
 
 | Engine-Key | Dialekt | MPP | Externer-Link-Mechanismus | Auth |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Jede Engine ist eine `FederationEngine`-Instanz, definiert in `provisa/federatio
 | `synapse` | T-SQL | Ja | ADLS OPENROWSET / External Tables | Azure AD |
 | `sqlalchemy` | Beliebiger SQLAlchemy-Dialekt | Nein | Keiner (nur Landen) | Zugangsdaten pro Dialekt |
 
-### Zero-Config-Standard: DuckDB {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
+### Zero-Config-Standard: DuckDB {: #zero-config-default-duckdb }
 
 Ist `PROVISA_ENGINE` nicht gesetzt, verwendet Provisa die vollständig eingebettete In-Process-DuckDB-Engine. Der Materialisierungs-Store von DuckDB ist eine eingebettete DuckDB-Datei unter `$PROVISA_DATA_DIR/materialize.duckdb` (Standard `~/.provisa/materialize.duckdb`). Keine externe Datenbank oder Dienst erforderlich.
 
 Da DuckDB pro Datei nur einen einzigen Writer erlaubt, schreibt `store_connection.py` über die eigene Verbindung der Engine in den eingebetteten Store — nie über eine zweite, unabhängige Verbindung. Das ist der eine Fall, in dem Engine und Materialisierungs-Store per Design einen Datei-Handle teilen.
 
-### Arrow-natives Lese-Transport {: #arrow-native-read-transport-tool-verified-enginepy-build__engine-capabilities }
+### Arrow-natives Lese-Transport {: #arrow-native-read-transport }
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric und Synapse bewerben alle `EngineCapability.ARROW` und `EngineCapability.ARROW_STREAM`. Abfragen gegen diese Engines geben Arrow-RecordBatches direkt zurück — der Zeilen-Serialisierungspfad wird vollständig umgangen. Der Flight-Server streamt diese Batches an Clients, ohne das vollständige Ergebnis im Prozessspeicher von Provisa zu materialisieren. Für Trino stützt sich Arrow-Streaming auf den Zaychik-Proxy; für die Warehouse-Engines speist die eigene Arrow-native API der Engine (Cloud Fetch für Databricks, Storage Read API für BigQuery, `fetch_arrow_table` für DuckDB und Snowflake) den Flight-Stream.
 
-### Externe Datenverknüpfungen (ATTACH) {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
+### Externe Datenverknüpfungen (ATTACH) {: #external-data-links-attach }
 
 Jede Warehouse-Engine kann Cloud-Objekt-/Lake-Daten vor Ort scannen, ohne eine Kopie zu landen. Parquet-, CSV-, Iceberg- und Delta-Lake-Dateien auf S3, GCS oder OneLake werden der Engine direkt angehängt, als wären sie native Tabellen. Die Strategie — ATTACH (vor Ort scannen) oder LAND (in den Store kopieren) — wird durch den deklarierten `Mechanism` des Connectors bestimmt; im Planner existiert kein Engine-spezifisches Branching. Ein `Mechanism.ATTACH_R`-Connector löst einen Zero-Copy-Scan aus; ein `Mechanism.DIRECT`- oder fehlender Connector löst ein Landen aus.
 
@@ -223,7 +223,7 @@ Attach stellt alle Voraussetzungen zur Attach-Zeit automatisch bereit:
 
 Zugangsdaten für Cloud-Storage reisen in den `federation_hints` der Quelle (siehe [Sources](sources.md#warehouses-as-named-sources)). Jeder Quelltyp, der nicht ATTACH kann, landet zuerst im Materialisierungs-Store der Engine.
 
-### Columnar-Materialisierungs-Writes {: #columnar-materialization-writes-tool-verified-coredatabasepy436-store_connectionpy99 }
+### Columnar-Materialisierungs-Writes {: #columnar-materialization-writes }
 
 `Connection.bulk_copy` in `provisa/core/database.py` wählt den schnellsten Bulk-Ingest-Pfad pro Store-Dialekt: binäres `COPY` (asyncpg `copy_records_to_table`) für PostgreSQL-Stores und ein einzelnes vorbereitetes `executemany`-Statement für alle anderen relationalen Stores. Der eingebettete DuckDB-Store landet über `land_duckdb_native` in `store_connection.py` — ein `executemany`-Aufruf für den gesamten Batch, nie eine Pro-Zeile-Schleife.
 

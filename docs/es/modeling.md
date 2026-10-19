@@ -644,7 +644,7 @@ través de las relaciones FK del fact.
 Las métricas registradas automáticamente aparecen en la página Metrics con una insignia
 **fact**. Se pueden editar como cualquier otra métrica.
 
-### Vistas compuestas por métricas (view_metrics) {: #metric-composed-views-view_metrics-req-1318 }
+### Vistas compuestas por métricas (view_metrics) {: #metric-composed-views-view_metrics }
 
 Una vista `view_metrics` fija el grano de una métrica en el momento de la definición. Declare
 los nombres de las métricas, las columnas de dimensión y los filtros opcionales; el compilador

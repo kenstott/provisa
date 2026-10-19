@@ -63,7 +63,7 @@ Todas as fontes compartilham um conjunto comum de campos.
 | `allowed_domains` | `[]` | Restringe esta fonte a IDs de domínio específicos; vazio = irrestrito |
 | `description` | `""` | |
 
-### Tipos de fonte suportados {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### Tipos de fonte suportados {: #supported-source-types }
 
 | Tipo | Estilo de conexão | Notas |
 | ------ | ----------------- | ------- |
@@ -1392,7 +1392,7 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### Filtros de Telemetria {: #telemetry-filters-tool-verified }
+### Filtros de Telemetria {: #telemetry-filters }
 
 O Provisa mantém dois caminhos de exportação OTLP independentes: seu coletor interno e o endpoint de suporte Provisa opcional. Cada caminho tem seu próprio filtro. Os filtros rodam dentro de um `_FilteringExporter` envolvente antes que os spans deixem o processo — os objetos de span originais nunca são alterados.
 
@@ -1422,11 +1422,11 @@ torna-se:
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### Endpoint de Suporte {: #support-endpoint-tool-verified }
+### Endpoint de Suporte {: #support-endpoint }
 
 `support_endpoint` (ou env `PROVISA_SUPPORT_OTLP_ENDPOINT`) encaminha telemetria ao suporte Provisa para diagnóstico. Quando não definido, nenhum dado sai da sua infraestrutura por este caminho. O filtro de suporte se aplica independentemente do filtro interno — você pode redigir literais SQL de ambas as exportações e ainda compartilhar dados de tempo de span e erro com o suporte.
 
-### Detecção de Protocolo do Endpoint {: #endpoint-protocol-detection-tool-verified }
+### Detecção de Protocolo do Endpoint {: #endpoint-protocol-detection }
 
 O Provisa seleciona OTLP/HTTP ou OTLP/gRPC a partir do esquema da URL do endpoint. URLs que começam com `http://` ou `https://` usam OTLP/HTTP, com `/v1/traces`, `/v1/metrics` e `/v1/logs` anexados automaticamente. Qualquer outro esquema usa OTLP/gRPC com `insecure=True`.
 
@@ -1436,7 +1436,7 @@ Configurar um motor de federação é opcional. O padrão é `duckdb` — zero c
 
 Precedência: variável de ambiente `PROVISA_ENGINE` → campo de configuração `federation_engine` persistido na UI de administração → `duckdb`. As mudanças têm efeito na reinicialização do serviço.
 
-### Visão geral dos motores {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### Visão geral dos motores {: #engine-overview }
 
 | Chave do motor | Rótulo | Dialeto | MPP | Mecanismo de link externo | Autenticação |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

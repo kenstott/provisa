@@ -82,7 +82,7 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 
 מיישם את פרוטוקול החוט frontend/backend של PostgreSQL באמצעות הספרייה `buenavista`. כל לקוח תואם PostgreSQL — `psql`, DBeaver, SQLAlchemy עם `psycopg2`, JDBC — יכול להתחבר ללא שינוי. מקבל SQL בלבד. צינור הממשל המלא (RLS, מיסוך, הרשאות תחום) חל באופן זהה על חיבורי pgwire. מופעל על ידי הגדרת `PROVISA_PGWIRE_PORT` לפורט שאינו אפס.
 
-## צינור הבקשות (Request Pipeline)
+## צינור הבקשות (Request Pipeline) {: #request-pipeline }
 
 שלוש שפות שאילתה מתקבלות. כולן מתכנסות אל הממשל לאחר שלבי הפירוק/הידור (parse/compile) המתאימים להן. רק GraphQL תומכת בכתיבות. אין שער יכולת על השאילתה עצמה — כל זהות מאומתת רשאית לשאול בכל שפה, והנתונים מנוהלים אך ורק דרך נראות אובייקטים, RLS ומיסוך.
 
@@ -174,7 +174,7 @@ Provisa בוחרת מנוע פדרציה באתחול דרך משתנה הסבי
 
 כל מנוע הוא מופע `FederationEngine` המוגדר ב-`provisa/federation/engine.py`. המופע מחזיק אוסף קונקטורים שקובע אילו סוגי מקורות המנוע יכול לקרוא באופן חי (ATTACH) לעומת אילו חייבים תחילה לנחות (land) במאגר המימוש (materialization store) של המנוע.
 
-### מחלקות דרייבר {: #driver-classes-tool-verified-enginepy-driverclass }
+### מחלקות דרייבר {: #driver-classes }
 
 | מחלקה | משמעות | דוגמאות |
 | ------- | --------- | --------- |
@@ -182,7 +182,7 @@ Provisa בוחרת מנוע פדרציה באתחול דרך משתנה הסבי
 | `PARTIAL` | מגיעה לקבוצת משנה (יחסיים, קבצים, אחסון ענן/lake) בנוסף לנחיתה של כל השאר | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | מגיעה רק למאגר שלה עצמה; כל מקור אחר נוחת פנימה | SQLAlchemy |
 
-### מנועים זמינים {: #available-engines-tool-verified-enginepy-engine_builders }
+### מנועים זמינים {: #available-engines }
 
 | מפתח מנוע | דיאלקט | MPP | מנגנון קישור חיצוני | אימות |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Provisa בוחרת מנוע פדרציה באתחול דרך משתנה הסבי
 | `synapse` | T-SQL | כן | ADLS OPENROWSET / טבלאות חיצוניות | Azure AD |
 | `sqlalchemy` | כל דיאלקט SQLAlchemy | לא | אין (נחיתה בלבד) | פרטי גישה לפי דיאלקט |
 
-### ברירת מחדל ללא קונפיגורציה: DuckDB {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
+### ברירת מחדל ללא קונפיגורציה: DuckDB {: #zero-config-default-duckdb }
 
 כאשר `PROVISA_ENGINE` אינו מוגדר, Provisa משתמשת במנוע DuckDB המוטמע (embedded) תוך-תהליכי במלואו. מאגר המימוש של DuckDB הוא קובץ DuckDB מוטמע ב-`$PROVISA_DATA_DIR/materialize.duckdb` (ברירת מחדל `~/.provisa/materialize.duckdb`). אין צורך במסד נתונים או שירות חיצוני.
 
 מכיוון ש-DuckDB אוכפת כותב יחיד לכל קובץ, `store_connection.py` כותב אל המאגר המוטמע דרך החיבור של המנוע עצמו — לעולם לא דרך חיבור עצמאי שני. זהו המקרה היחיד שבו המנוע ומאגר המימוש חולקים handle קובץ אחד במכוון.
 
-### הובלת קריאה טבעית ל-Arrow {: #arrow-native-read-transport-tool-verified-enginepy-build__engine-capabilities }
+### הובלת קריאה טבעית ל-Arrow {: #arrow-native-read-transport }
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם מכריזים על `EngineCapability.ARROW` ו-`EngineCapability.ARROW_STREAM`. שאילתות מול מנועים אלו מחזירות Arrow RecordBatches ישירות — נתיב הסדרת השורות (row-serialization) עוקף לחלוטין. שרת ה-Flight מזרים את ה-batches הללו ללקוחות מבלי לממש את התוצאה המלאה בזיכרון התהליך של Provisa. עבור Trino, זרימת Arrow נשענת על ה-proxy של Zaychik; עבור מנועי מחסן הנתונים, ה-API הטבעי של Arrow של המנוע עצמו (Cloud Fetch עבור Databricks, Storage Read API עבור BigQuery, `fetch_arrow_table` עבור DuckDB ו-Snowflake) מזין את זרם ה-Flight.
 
-### קישורי נתונים חיצוניים (ATTACH) {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
+### קישורי נתונים חיצוניים (ATTACH) {: #external-data-links-attach }
 
 כל מנוע מחסן נתונים יכול לסרוק נתוני ענן/lake במקום, מבלי לנחות עותק. קבצי Parquet, CSV, Iceberg ו-Delta Lake על S3, GCS או OneLake מתחברים (attach) ישירות למנוע כאילו היו טבלאות טבעיות. האסטרטגיה — ATTACH (סריקה במקום) או LAND (העתקה למאגר) — נקבעת על ידי ה-`Mechanism` המוצהר של הקונקטור; אין הסתעפות ספציפית-למנוע בתכנן (planner). קונקטור מסוג `Mechanism.ATTACH_R` מפעיל סריקת zero-copy; קונקטור מסוג `Mechanism.DIRECT` או קונקטור שאינו קיים מפעיל נחיתה (land).
 
@@ -223,7 +223,7 @@ ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם 
 
 פרטי גישה לאחסון ענן עוברים בתוך `federation_hints` של המקור (ראו [Sources](sources.md#warehouses-as-named-sources)). כל סוג מקור שאינו יכול לבצע ATTACH נוחת תחילה במאגר המימוש של המנוע.
 
-### כתיבות מימוש עמודתי {: #columnar-materialization-writes-tool-verified-coredatabasepy436-store_connectionpy99 }
+### כתיבות מימוש עמודתי {: #columnar-materialization-writes }
 
 `Connection.bulk_copy` ב-`provisa/core/database.py` בוחר את נתיב ההזנה הכמותית (bulk-ingest) המהיר ביותר לפי דיאלקט המאגר: `COPY` בינארי (asyncpg `copy_records_to_table`) עבור מאגרי PostgreSQL, ופקודת `executemany` מוכנה (prepared) יחידה עבור כל שאר המאגרים היחסיים. המאגר המוטמע של DuckDB נוחת דרך `land_duckdb_native` ב-`store_connection.py` — קריאת `executemany` אחת עבור כל האצווה, לעולם לא לולאה לכל שורה.
 
@@ -512,7 +512,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 נקודות קצה אלו מיישמות את אותו צינור אבטחה (RLS, מיסוך, בדיקות תפקיד) כמו נקודת הקצה של GraphQL.
 
-## מנויים (Subscriptions)
+## מנויים (Subscriptions) {: #subscriptions }
 
 מנויי SSE מוגשים תחת `GET /data/subscribe/{table}`. שלושה מצבי מסירה:
 
@@ -673,7 +673,7 @@ Provisa היא שכבת הידור וניתוב דקה — היא מוסיפה �
 | הפניה: העלאת Provisa (JSON, CSV, NDJSON, Arrow IPC) | כן | תוצאות בינוניות, הורדת קובץ |
 | **הפניה: CTAS (Parquet, ORC)** | **לא** | **בלתי מוגבל — מנוע הפדרציה כותב ל-S3** |
 
-### בדיקת סף (Threshold Probing)
+### בדיקת סף (Threshold Probing) {: #threshold-probing }
 
 עבור הפניה מבוססת סף, Provisa מזריקה `LIMIT threshold + 1` לתוך השאילתה כבדיקה (probe). אם לתוצאה יש פחות שורות, היא מוחזרת inline (תוצאה מלאה, ללא בזבוז עבודה). אם התוצאה מגיעה לגבול, הבדיקה נזרקת והשאילתה המלאה מבוצעת מחדש דרך CTAS או העלאת Provisa. זה נמנע מ-`SELECT COUNT(*)` (שחלק מהמקורות אינם מייעלים) ופועל על כל מקור.
 

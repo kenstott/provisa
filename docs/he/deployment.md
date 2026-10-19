@@ -179,7 +179,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
    provisa open     # open the UI in the browser
    ```
 
-### התמדת נתונים (Data persistence)
+### התמדת נתונים (Data persistence) {: #data-persistence }
 
 כל הנתונים מאוחסנים ב-`~/.provisa/`. כדי להסיר הכל: `provisa uninstall`.
 

@@ -476,7 +476,7 @@ Définir la convention de nommage GraphQL globale et reconstruire les schémas p
 
 ---
 
-### Rôles
+### Rôles {: #roles }
 
 #### `createRole(input: RoleInput!) → MutationResult`
 

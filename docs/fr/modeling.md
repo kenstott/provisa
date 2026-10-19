@@ -646,7 +646,7 @@ via les relations FK du fact.
 Les métriques enregistrées automatiquement apparaissent sur la page Metrics avec un badge
 **fact**. Elles peuvent être modifiées comme n'importe quelle autre métrique.
 
-### Vues composées de métriques (view_metrics) {: #metric-composed-views-view_metrics-req-1318 }
+### Vues composées de métriques (view_metrics) {: #metric-composed-views-view_metrics }
 
 Une vue `view_metrics` fixe le grain d'une métrique au moment de la définition. Déclarez les
 noms des métriques, les colonnes de dimension et les filtres optionnels ; le compilateur

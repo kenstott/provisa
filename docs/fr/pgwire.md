@@ -118,7 +118,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 **Durée de vie du curseur.** Le serveur pgwire de Provisa n'a pas de machine à états de transaction (`ProvisaSession.in_transaction()` est figé à `False`). Chaque curseur se comporte donc comme s'il était déclaré `WITH HOLD` : il vit pendant toute la connexion, pas jusqu'à `COMMIT`. Les mots-clés `WITH HOLD` et `WITHOUT HOLD` sont acceptés et ignorés sans avertissement — il n'y a pas de cycle de vie des curseurs par transaction à appliquer.
 
-### Définitions (CREATE, ALTER, DROP)
+### Définitions (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
 Rien n'est défini via pgwire. Une instruction qui crée, modifie ou supprime un objet (`CREATE TABLE`, `CREATE TABLE … AS SELECT`, `CREATE VIEW`, `ALTER`, `DROP`, un index, une séquence ou un schéma) est refusée avec SQLSTATE 0A000, quoi que détienne le rôle ; l'exception est la table temporaire propre à une session (voir [Tables temporaires](#temporary-tables)). Une table ou une vue est un objet du modèle : créez-la dans le modèle (pages d'administration, API d'administration ou configuration), ou créez-la dans la source de données et admettez-la dans le modèle. `TRUNCATE` ne définit rien : c'est une écriture de données (voir [Écritures de données](#data-writes-insert-update-delete-merge-copy-from-stdin)).
 

@@ -378,7 +378,7 @@ GROUP BY "order_id", "customer_id", "product_id", "order_date"
 | `Sales.product_id → Product` | many-to-one |
 | `Sales.order_date → DateDim` | many-to-one |
 
-#### Согласованные измерения (conformed dimensions)
+#### Согласованные измерения (conformed dimensions) {: #conformed-dimensions }
 
 Согласованное измерение регистрируется один раз и ссылается по имени из любого числа фактов. Допустим,
 `raw.returns` содержит `return_id`, `customer_id`, `product_id` и `amount`. Факт Returns переиспользует
@@ -626,7 +626,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 Автоматически зарегистрированные метрики появляются на странице Metrics со значком **fact**. Вы можете редактировать их как
 любую другую метрику.
 
-### Представления, составленные из метрик (view_metrics) {: #metric-composed-views-view_metrics-req-1318 }
+### Представления, составленные из метрик (view_metrics) {: #metric-composed-views-view_metrics }
 
 Представление `view_metrics` фиксирует grain метрики во время определения. Объявите имена метрик,
 столбцы измерений и опциональные фильтры; компилятор генерирует SELECT.

@@ -63,7 +63,7 @@ sources:
 | `allowed_domains` | `[]` | 将此数据源限制在特定的域 ID 内；为空表示不受限制 |
 | `description` | `""` | |
 
-### 支持的数据源类型 {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### 支持的数据源类型 {: #supported-source-types }
 
 | 类型 | 连接方式 | 说明 |
 | ------ | ----------------- | ------- |
@@ -580,7 +580,7 @@ dq_checker: none        # none | soda | gx
 
 任何其他值都会阻止启动器运行，而不是在缺少运维人员所要求的检查器的情况下启动。`soda` 扩展会拉取 `soda-postgres`；`gx` 会拉取 `great-expectations[postgresql]`。Soda Core 采用 Elastic License 2.0——`config/capabilities.yaml` 将该选项标记为 `cloud_eligible: false`，托管平面会拒绝它。
 
-## 域（Domains）
+## 域（Domains） {: #domains }
 
 ```yaml
 domains:
@@ -1392,7 +1392,7 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### 遥测过滤器 {: #telemetry-filters-tool-verified }
+### 遥测过滤器 {: #telemetry-filters }
 
 Provisa 运行两条独立的 OTLP 导出路径：你自己的内部采集器和可选的 Provisa 支持端点。每条路径都有各自的过滤器。过滤器在跨度（span）离开进程之前，运行在一个包裹层 `_FilteringExporter` 内部——原始的跨度对象永远不会被修改。
 
@@ -1422,11 +1422,11 @@ db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### 支持端点 {: #support-endpoint-tool-verified }
+### 支持端点 {: #support-endpoint }
 
 `support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会将遥测数据转发给 Provisa 支持团队用于诊断。未设置时，不会有任何数据通过此路径离开你的基础设施。支持端点的过滤器独立于内部过滤器生效——你可以对两条导出路径都做 SQL 字面值涂黑，同时仍与支持团队共享跨度的时间和错误数据。
 
-### 端点协议探测 {: #endpoint-protocol-detection-tool-verified }
+### 端点协议探测 {: #endpoint-protocol-detection }
 
 Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。以 `http://` 或 `https://` 开头的 URL 使用 OTLP/HTTP，并自动附加 `/v1/traces`、`/v1/metrics`、`/v1/logs`。其他任何 scheme 都使用 `insecure=True` 的 OTLP/gRPC。
 
@@ -1436,7 +1436,7 @@ Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。以 `htt
 
 优先级：`PROVISA_ENGINE` 环境变量 → 持久化的管理界面 `federation_engine` 配置字段 → `duckdb`。更改在服务重启后生效。
 
-### 引擎概览 {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### 引擎概览 {: #engine-overview }
 
 | 引擎键 | 标签 | 方言 | MPP | 外部链接机制 | 认证 |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

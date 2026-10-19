@@ -6,7 +6,7 @@ Provisa חושפת נקודות קצה REST תחת שתי קידומות: `/data
 
 ---
 
-## אימות (Authentication)
+## אימות (Authentication) {: #authentication }
 
 כאשר `auth.provider` מוגדר ב-`provisa.yaml`, כל נקודות הקצה מלבד `/health` ו-`/setup/status` דורשות כותרת `Authorization: Bearer <token>`.
 
@@ -30,7 +30,7 @@ GET /auth/provider-type
 
 ---
 
-## נקודות קצה של נתונים (Data Endpoints)
+## נקודות קצה של נתונים (Data Endpoints) {: #data-endpoints }
 
 ### `POST /data/graphql`
 
@@ -159,7 +159,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 
 ---
 
-### הפניה (Redirect)
+### הפניה (Redirect) {: #redirect }
 
 תוצאות מעל סף שורות מוגדר (או כאשר `X-Provisa-Redirect: true`) נכתבות ל-S3 ומוחזר כתובת URL חתומה מראש (Presigned).
 
@@ -506,7 +506,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ## נקודות קצה REST לניהול (Admin) {: #admin-rest-endpoints }
 
-### תצורה (Config)
+### תצורה (Config) {: #config }
 
 #### `GET /admin/config`
 
@@ -554,7 +554,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### הגדרות (Settings)
+### הגדרות (Settings) {: #settings }
 
 #### `GET /admin/settings`
 
@@ -700,7 +700,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### מדיניות תחום (Domain Policy)
+### מדיניות תחום (Domain Policy) {: #domain-policy }
 
 #### `POST /admin/domain-policy`
 
@@ -721,7 +721,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### תצפיתיות (Observability)
+### תצפיתיות (Observability) {: #observability }
 
 #### `GET /admin/traces/recent`
 
@@ -751,7 +751,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### גילוי (Discovery)
+### גילוי (Discovery) {: #discovery }
 
 #### `POST /admin/discover/relationships`
 
@@ -796,7 +796,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### סריקת מקור (Source Crawl)
+### סריקת מקור (Source Crawl) {: #source-crawl }
 
 #### `POST /admin/sources/crawl`
 
@@ -1068,7 +1068,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### תפקידים (Roles)
+### תפקידים (Roles) {: #roles }
 
 כל נקודות הקצה תחת הקידומת `/admin/roles`.
 
@@ -1081,7 +1081,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### משתמשים (Users)
+### משתמשים (Users) {: #users }
 
 כל נקודות הקצה תחת הקידומת `/admin/users`.
 
@@ -1099,7 +1099,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### ארגונים (Organizations)
+### ארגונים (Organizations) {: #organizations }
 
 כל נקודות הקצה תחת `/admin/orgs`.
 
@@ -1115,7 +1115,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ---
 
-### הזמנות (Invites)
+### הזמנות (Invites) {: #invites }
 
 כל נקודות הקצה תחת `/admin/invites`.
 
@@ -1160,7 +1160,7 @@ mutation {
 
 ---
 
-### הגדרה ראשונית (Setup)
+### הגדרה ראשונית (Setup) {: #setup }
 
 #### `GET /setup/status`
 
@@ -1172,7 +1172,7 @@ mutation {
 
 ---
 
-## בדיקת תקינות (Health Check)
+## בדיקת תקינות (Health Check) {: #health-check }
 
 #### `GET /health` או `HEAD /health` {: #get-health-or-head-health }
 

@@ -60,7 +60,7 @@ curl -X POST http://localhost:8080/v1/metadata \
   > metadata.json
 ```
 
-The bare object and the `{resource_version, metadata}` envelope are both accepted. The admin import takes this form (see [Interactive import](#interactive-import-admin--import-hasura-config)); the command-line converter reads directories only.
+The bare object and the `{resource_version, metadata}` envelope are both accepted. The admin import takes this form (see [Interactive import](#interactive-import-admin-import-hasura-config)); the command-line converter reads directories only.
 
 ### Convert
 

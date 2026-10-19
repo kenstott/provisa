@@ -375,7 +375,7 @@ GROUP BY "order_id", "customer_id", "product_id", "order_date"
 | `Sales.product_id → Product` | many-to-one |
 | `Sales.order_date → DateDim` | many-to-one |
 
-#### 一致性维度（Conformed dimensions）
+#### 一致性维度（Conformed dimensions） {: #conformed-dimensions }
 
 一致性维度只需注册一次，之后可以在任意数量的 fact 中按名称引用。假设 `raw.returns`
 包含 `return_id`、`customer_id`、`product_id` 和 `amount`。Returns fact 直接复用
@@ -618,7 +618,7 @@ entity 属性。
 自动注册的指标会在 Metrics 页面上显示一个 **fact** 徽章。可以像编辑其他指标一样编辑
 它们。
 
-### 由指标组成的视图（view_metrics） {: #metric-composed-views-view_metrics-req-1318 }
+### 由指标组成的视图（view_metrics） {: #metric-composed-views-view_metrics }
 
 `view_metrics` 视图在定义时锁定一个指标的粒度。声明指标名称、维度列和可选的过滤条件；
 编译器生成对应的 SELECT。

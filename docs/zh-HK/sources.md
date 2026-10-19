@@ -500,9 +500,7 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 | `google_sheets` | —（經具體化） | 否 |
 | `prometheus` | prometheus | 否 | 一個指標即為一張表，一個樣本即為一列（`timestamp`、`value`，每個標籤一個資料行）；在沒有即時連接器的每個引擎上，Provisa 讀取 HTTP API——Register Table 取得指標名稱與標籤，落地時對該表的範圍使用 `query_range`
 
-### 企業 SaaS 連接器 {: #enterprise-saas-connectors }
-Google Workspace 與 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 與 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、雲端資源清單與 Splunk 經 Apache Calcite 連接器（kenstott/calcite fork）註冊。它們都沒有直接驅動程式——Provisa 啟動連接器隨附的 Calcite pgwire 伺服器（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），以通用 PostgreSQL 端點的身分連線。在 DuckDB 引擎上，該端點經 postgres 擴充即時附掛：Register Table 從已附掛的目錄列出連接器的表，查詢就地讀取該連接器，篩選與投影會下推到 Calcite。其他每個引擎都把資料列落地到具體化儲存區供聯邦使用。這些套件依作業系統／架構，從固定版本的 `kenstott/calcite` release 取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64） 營運者也可以為每個連接器單獨指定一個為此主機建置的套件資料夾，位於 Admin → 設定 → 連接器伺服器（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。。五個 Trino 連接器（Jira 沒有）都一律啟用不分大小寫的名稱比對，以配合各產品自身不分大小寫的語意。
-
+Google Workspace 及 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 及 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、雲端資源清單及 Splunk 經以獨立程序執行、使用 PostgreSQL 協定通訊的驅動程式讀取（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），所以它們都沒有直接驅動程式。在 DuckDB 引擎上，驅動程式的端點透過 postgres 擴充功能即時掛載：Register Table 從已掛載的目錄中列出連接器的資料表，查詢就地讀取連接器，篩選及投影會下推給它。其他所有引擎都把資料列落地到具體化儲存區以用於聯邦。驅動程式套件按作業系統及架構從固定版本的 release 中取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）。營運者亦可以在 Admin → 設定 → 連接器伺服器中，按連接器指定一個為本主機建構的套件資料夾（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。五個 Trino 連接器（Jira 沒有）一律以不分大小寫的方式比對名稱，與各產品自身一致。
 #### `sharepoint`
 
 SharePoint 清單被列舉為結構描述，並以可查詢的表對外呈現。兩種驗證方式：`CLIENT_CREDENTIALS`（預設）與經 PFX 憑證的憑證式驗證。`mapping` 中的密鑰值在抵達連接器之前，先經密鑰引擎解析。
@@ -733,7 +731,7 @@ Splunk 搜尋結果可作為表查詢（例如 `internal_server`）。連接器 
     disable_ssl_validation: true
 ```
 
-#### Google Workspace and Microsoft 365 {: #google-workspace-and-microsoft-365 }
+#### Google Workspace 及 Microsoft 365 {: #google-workspace-and-microsoft-365 }
 
 `google_workspace` 與 `microsoft_365` 讀取數據來源所指定帳戶的郵件、日曆與工作，並把它們落地為副本。它們不是 Calcite 連接器：各自有自己的載入器，呼叫供應商的 API——一邊是 Gmail、Google Calendar 與 Google Tasks，另一邊是 Microsoft Graph。表單在 Enterprise 之下把它們列為「Google Workspace (Gmail)」與「Microsoft 365 (Outlook, Exchange)」。
 

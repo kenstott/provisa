@@ -82,7 +82,7 @@ UI 端到端测试套件用来搭建这些数据源的正是同一个 `provision
 | `sparql` | 23030 | Apache Jena Fuseki；数据源和一张基于查询的表（`volunteer`）从片段中注册，图数据由 `prime.py` 播种；可通过“注册表”（查询 + 预览）注册更多表 |
 | `prometheus` | 29090 | 数据源已注册；服务器自我抓取，因此 `up` 和 `prometheus_*` 指标可通过“注册表”注册为表 |
 | `elasticsearch` | 29200 | 数据源和索引映射已注册；`support_tickets` 索引由 `prime.py` 播种；由原生引擎通过 HTTP 读取，在 Trino 上则通过连接器读取 |
-| `splunk` | mgmt 8089, HEC 8088 | 数据源以令牌鉴权和 `disable_ssl_validation` 方式注册（该容器的证书是自签名的）；一个索引、七个庇护所警报事件以及 `shelter_alerts` 数据模型由 `prime.py` 播种，该脚本同时生成片段中作为 `PROVISA_DEMO_SPLUNK_TOKEN` 读取的 API 令牌。数据模型通过“注册表”注册为表——在 Trino 上通过 `splunk` 目录注册，在其他每种引擎上都通过该引擎所附带的内置 Calcite pgwire 服务器注册 |
+| `splunk` | mgmt 8089, HEC 8088 | 数据源以令牌鉴权和 `disable_ssl_validation` 方式注册（该容器的证书是自签名的）；一个索引、七个庇护所警报事件以及 `shelter_alerts` 数据模型由 `prime.py` 播种，该脚本同时生成片段中作为 `PROVISA_DEMO_SPLUNK_TOKEN` 读取的 API 令牌。数据模型通过“注册表”注册为表：在 Trino 上通过 `splunk` 目录注册，在其他每种引擎上通过引擎挂载的 Splunk 驱动 pgwire 端点注册 |
 | `chinook` | 25433 | 一个持有 snake_case Chinook 子集的 Postgres 数据库，该子集是 Hasura 元数据示例所追踪的对象，由 `prime.py` 从 `tests/fixtures/hasura_v2_t1_seed.sql` 播种；数据源从片段中注册，也是 `tests/fixtures/hasura_v2_t1_metadata.json` 的 Hasura v2 导入所落地的数据源 |
 
 `--idp=basic|firebase` —— 为身份验证启用一个身份提供程序。不带此标志时，后端在没有身份验证提供程序的情况下运行，所有请求都被视为 `admin`。

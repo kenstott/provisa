@@ -203,7 +203,7 @@ Todas las vistas materializadas con su estado en tiempo de ejecución: habilitad
 
 ---
 
-### Caché
+### Caché {: #cache }
 
 #### `cacheStats → CacheStatsType`
 
@@ -594,7 +594,7 @@ Habilita o deshabilita una vista materializada.
 
 ---
 
-### Caché
+### Caché {: #cache_1 }
 
 #### `purgeCache → MutationResult`
 

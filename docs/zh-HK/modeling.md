@@ -375,7 +375,7 @@ GROUP BY "order_id", "customer_id", "product_id", "order_date"
 | `Sales.product_id → Product` | many-to-one |
 | `Sales.order_date → DateDim` | many-to-one |
 
-#### 一致性維度（Conformed dimensions）
+#### 一致性維度（Conformed dimensions） {: #conformed-dimensions }
 
 一致性維度只需登記一次，之後可以喺任意數量嘅 fact 中以名稱引用。假設 `raw.returns`
 包含 `return_id`、`customer_id`、`product_id` 同 `amount`。Returns fact 可以直接重用
@@ -618,7 +618,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 自動登記嘅指標會喺 Metrics 頁面上顯示一個 **fact** 標記。你可以好似編輯其他指標一樣去
 編輯佢哋。
 
-### 由指標組成嘅檢視（view_metrics） {: #metric-composed-views-view_metrics-req-1318 }
+### 由指標組成嘅檢視（view_metrics） {: #metric-composed-views-view_metrics }
 
 `view_metrics` 檢視會喺定義時鎖定一個指標嘅粒度。宣告指標名稱、維度欄位同可選嘅篩選條件；
 編譯器就會生成對應嘅 SELECT。

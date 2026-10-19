@@ -510,8 +510,7 @@ Provisa 知道这些语言版本的"See also"标题：`en`、`de`、`es`、`it`�
 
 ### Enterprise SaaS Connectors {: #enterprise-saas-connectors }
 
-Google Workspace 和 Microsoft 365 由各自的加载器读取；参见 [Google Workspace 和 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、云资源清单和 Splunk 通过 Apache Calcite 连接器（kenstott/calcite fork）注册。它们都没有直连驱动 — Provisa 启动连接器自带的 Calcite pgwire 服务器（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），并将其作为通用 PostgreSQL 端点访问。在 DuckDB 引擎上，该端点通过 postgres 扩展实时挂载：Register Table 从已挂载的目录中列出连接器的表，查询就地读取该连接器，过滤和投影会下推到 Calcite。在其他所有引擎上，数据行都会落地到物化存储中以用于联邦。这些程序包按操作系统/架构从固定版本的 `kenstott/calcite` release 中获取（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64） 操作员也可以为每个连接器单独命名一个为该主机构建的程序包文件夹，路径位于 Admin → 设置 → 连接器服务器（`connectors.<connector>.bundle_dir`）；请参阅 [Admin](admin.md)。。五个 Trino 连接器（Jira 没有）都始终启用大小写不敏感的名称匹配，以匹配各自产品自身的大小写不敏感语义。
-
+Google Workspace 和 Microsoft 365 由各自的加载器读取；参见 [Google Workspace 和 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、云资源清单和 Splunk 通过以独立进程运行、使用 PostgreSQL 协议通信的驱动读取（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），所以它们都没有直连驱动。在 DuckDB 引擎上，驱动的端点通过 postgres 扩展实时挂载：Register Table 从已挂载的目录中列出连接器的表，查询就地读取连接器，过滤和投影会下推给它。其他所有引擎都把数据行落地到物化存储中用于联邦。驱动包按操作系统和架构从固定版本的 release 中获取（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）。运营方也可以在 Admin → 设置 → 连接器服务器中，按连接器指定一个为本主机构建的包文件夹（`connectors.<connector>.bundle_dir`）；参见 [Admin](admin.md)。五个 Trino 连接器（Jira 没有）始终按不区分大小写的方式匹配名称，与各产品自身一致。
 #### `sharepoint`
 
 SharePoint 列表被枚举为 schema 并暴露为可查询的表。两种身份验证方式：`CLIENT_CREDENTIALS`（默认）和基于证书的 PFX 证书方式。`mapping` 中的密钥值在到达连接器之前会通过密钥引擎解析。
@@ -742,7 +741,7 @@ Splunk 的搜索结果可作为表查询（例如 `internal_server`）。连接�
     disable_ssl_validation: true
 ```
 
-#### Google Workspace and Microsoft 365 {: #google-workspace-and-microsoft-365 }
+#### Google Workspace 和 Microsoft 365 {: #google-workspace-and-microsoft-365 }
 
 `google_workspace` 和 `microsoft_365` 读取数据源所指定账户的邮件、日历和任务，并将它们落地为副本。它们不是 Calcite 连接器：各自有自己的加载器，调用提供商的 API——一边是 Gmail、Google Calendar 和 Google Tasks，另一边是 Microsoft Graph。表单在 Enterprise 下将它们列为“Google Workspace (Gmail)”和“Microsoft 365 (Outlook, Exchange)”。
 

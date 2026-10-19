@@ -489,7 +489,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 ---
 
-## Kubernetes и Helm
+## Kubernetes и Helm {: #kubernetes-helm }
 
 ### Когда использовать {: #when-to-use_1 }
 

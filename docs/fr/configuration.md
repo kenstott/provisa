@@ -63,7 +63,7 @@ Toutes les sources partagent un jeu de champs commun.
 | `allowed_domains` | `[]` | Restreint cette source à des identifiants de domaine précis ; vide = sans restriction |
 | `description` | `""` | |
 
-### Types de source pris en charge {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### Types de source pris en charge {: #supported-source-types }
 
 | Type | Style de connexion | Notes |
 | ------ | ----------------- | ------- |
@@ -792,7 +792,7 @@ Définissez `materialize: true` sur une relation pour générer automatiquement 
 - Les mutations sur l'une ou l'autre table source marquent la vue matérialisée comme périmée en vue d'un nouveau rafraîchissement
 - `refresh_interval` vaut 300 secondes (5 minutes) par défaut
 
-## Rôles
+## Rôles {: #roles }
 
 ```yaml
 roles:
@@ -1392,7 +1392,7 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### Filtres de télémétrie {: #telemetry-filters-tool-verified }
+### Filtres de télémétrie {: #telemetry-filters }
 
 Provisa fait tourner deux chemins d'export OTLP indépendants : votre collecteur interne et l'endpoint optionnel du support Provisa. Chaque chemin a son propre filtre. Les filtres s'exécutent à l'intérieur d'un `_FilteringExporter` enveloppant, avant que les spans ne quittent le processus — les objets span d'origine ne sont jamais modifiés.
 
@@ -1422,11 +1422,11 @@ devient :
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### Endpoint du support {: #support-endpoint-tool-verified }
+### Endpoint du support {: #support-endpoint }
 
 `support_endpoint` (ou la variable d'environnement `PROVISA_SUPPORT_OTLP_ENDPOINT`) transmet la télémétrie au support Provisa à des fins de diagnostic. Lorsqu'il n'est pas défini, aucune donnée ne quitte votre infrastructure par ce chemin. Le filtre du support s'applique indépendamment du filtre interne — vous pouvez censurer les littéraux SQL des deux exports tout en partageant avec le support les temps d'exécution des spans et les données d'erreur.
 
-### Détection du protocole d'endpoint {: #endpoint-protocol-detection-tool-verified }
+### Détection du protocole d'endpoint {: #endpoint-protocol-detection }
 
 Provisa choisit OTLP/HTTP ou OTLP/gRPC d'après le schéma d'URL de l'endpoint. Les URL commençant par `http://` ou `https://` utilisent OTLP/HTTP, avec ajout automatique de `/v1/traces`, `/v1/metrics` et `/v1/logs`. Tout autre schéma utilise OTLP/gRPC avec `insecure=True`.
 
@@ -1436,7 +1436,7 @@ Configurer un moteur de fédération est facultatif. Le défaut est `duckdb` —
 
 Précédence : variable d'environnement `PROVISA_ENGINE` → champ de configuration `federation_engine` persisté par l'interface d'administration → `duckdb`. Les changements prennent effet au redémarrage du service.
 
-### Vue d'ensemble des moteurs {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### Vue d'ensemble des moteurs {: #engine-overview }
 
 | Clé de moteur | Libellé | Dialecte | MPP | Mécanisme de lien externe | Authentification |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

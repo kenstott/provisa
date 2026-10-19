@@ -4,7 +4,7 @@ Provisa переводит подмножество openCypher в SQL через
 
 ## Реализованные возможности {: #implemented-features }
 
-### Предложения (Clauses)
+### Предложения (Clauses) {: #clauses }
 
 | Предложение | Статус | Примечания |
 | -------- | -------- | ------- |
@@ -24,7 +24,7 @@ Provisa переводит подмножество openCypher в SQL через
 | `CALL db.propertyKeys()` | ✓ | Возвращает все имена ключей свойств по всем типам узлов |
 | `UNWIND` | ✓ | Развёртывание массива в строки; первый элемент становится FROM, последующие — CROSS JOIN UNNEST |
 
-### Паттерны сопоставления (Match Patterns)
+### Паттерны сопоставления (Match Patterns) {: #match-patterns }
 
 | Паттерн | Статус | Примечания |
 | --------- | -------- | ------- |
@@ -69,7 +69,7 @@ Provisa переводит подмножество openCypher в SQL через
 | `CASE WHEN … THEN … ELSE … END` | ✓ | Прямое (искомая и простая формы) |
 | Неявный GROUP BY | ✓ | Неагрегированные элементы RETURN становятся ключами GROUP BY, когда любой элемент содержит агрегат |
 
-### Проекции карт (Map Projections)
+### Проекции карт (Map Projections) {: #map-projections }
 
 | Синтаксис | Отображение в SQL |
 | -------- | ------------ |
@@ -137,7 +137,7 @@ Provisa переводит подмножество openCypher в SQL через
 | `tail(list)` | `slice(list, 2, cardinality(list))` |
 | `isEmpty(list)` | `cardinality(list) = 0` |
 
-### Списковые включения (List Comprehensions)
+### Списковые включения (List Comprehensions) {: #list-comprehensions }
 
 | Синтаксис | Отображение в SQL |
 | -------- | ------------ |
@@ -150,7 +150,7 @@ Provisa переводит подмножество openCypher в SQL через
 | `single(x IN list WHERE p(x))` | `cardinality(filter(list, x -> p(x))) = 1` |
 | `reduce(acc = init, x IN list \| expr)` | `reduce(list, init, (acc, x) -> expr, acc -> acc)` |
 
-### Включения по паттернам (Pattern Comprehensions)
+### Включения по паттернам (Pattern Comprehensions) {: #pattern-comprehensions }
 
 | Синтаксис | Отображение в SQL |
 | -------- | ------------ |
@@ -168,7 +168,7 @@ Provisa переводит подмножество openCypher в SQL через
 
 ---
 
-## Записи (Writes)
+## Записи (Writes) {: #writes }
 
 Cypher поддерживает три паттерна записи через эндпоинт `/data/cypher`, выполняемые `provisa/cypher/write_translator.py`.
 

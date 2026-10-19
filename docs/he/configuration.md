@@ -2,7 +2,7 @@
 
 Provisa מוגדרת דרך קובץ YAML (ברירת מחדל: `config/provisa.yaml`).
 
-## הכללות (Includes)
+## הכללות (Includes) {: #includes }
 
 פיצול הגדרות על פני מספר קבצים באמצעות `includes:`. הקובץ המכליל נוקב נתיבי מקטע (fragment) תחת מפתח זה; Provisa ממזגת אותם לפני האימות, ומפיקה את אותה תוצאה כמו כתיבת הכל בקובץ אחד.
 
@@ -25,7 +25,7 @@ includes:
 - הכללות מקוננות. קובץ המכליל את עצמו — ישירות או דרך מקטע אחר — נדחה.
 - `includes` נצרך בזמן הטעינה ולעולם אינו מופיע בהגדרות המאומתות.
 
-## מקורות (Sources)
+## מקורות (Sources) {: #sources }
 
 ```yaml
 sources:
@@ -63,7 +63,7 @@ sources:
 | `allowed_domains` | `[]` | הגבלת מקור זה למזהי דומיין מסוימים; ריק = ללא הגבלה |
 | `description` | `""` | |
 
-### סוגי מקורות נתמכים {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### סוגי מקורות נתמכים {: #supported-source-types }
 
 | סוג | סגנון חיבור | הערות |
 | ------ | ----------------- | ------- |
@@ -588,7 +588,7 @@ domains:
     description: Sales operational data
 ```
 
-## שיוֹם (Naming)
+## שיוֹם (Naming) {: #naming }
 
 ```yaml
 naming:
@@ -599,7 +599,7 @@ naming:
       replace: ""
 ```
 
-### מוסכמת שיוֹם (Naming Convention)
+### מוסכמת שיוֹם (Naming Convention) {: #naming-convention }
 
 רשות השיוֹם היא מקור האמת היחיד לשמות הפונים ללקוח; שמות עמודות ה-backend הפיזיים לעולם אינם נחשפים ללקוחות. כל שפת שאילתה גוזרת את שם העמודה מ-`column.alias` שלה אם הוגדר, אחרת משם העמודה הפיזי דרך המוסכמה המוגדרת שלו.
 
@@ -634,7 +634,7 @@ tables:
     naming_convention: snake  # overrides source for this table
 ```
 
-### קידומת דומיין (Domain Prefix)
+### קידומת דומיין (Domain Prefix) {: #domain-prefix }
 
 כאשר `domain_prefix: true`, כל שמות שדה וטיפוס GraphQL מקבלים קידומת מזהה הדומיין באמצעות מפריד קו-תחתון כפול:
 
@@ -718,7 +718,7 @@ tables:
 
 בממשק הניהול, הסעיף **כתיבות** של טבלה מפרט את ההרשאות ועורך אותן יחד.
 
-### כינויים (Aliases)
+### כינויים (Aliases) {: #aliases }
 
 כינויי טבלה ועמודה דורסים את שם ה-GraphQL ברירת המחדל. שימושי עבור:
 
@@ -782,7 +782,7 @@ relationships:
     refresh_interval: 600          # refresh every 10 minutes
 ```
 
-### מימוש אוטומטי (Auto-Materialization)
+### מימוש אוטומטי (Auto-Materialization) {: #auto-materialization }
 
 הגדירו `materialize: true` על קשר כדי לחולל אוטומטית Materialized View עבור JOIN-ים חוצי-מקורות. זה נמנע משאילתות פדרטיביות יקרות על ידי חישוב מראש של תוצאת ה-JOIN.
 
@@ -792,7 +792,7 @@ relationships:
 - מוטציות לאחת מטבלאות המקור מסמנות את ה-MV כמיושן לרענון מחדש
 - `refresh_interval` ברירת המחדל היא 300 שניות (5 דקות)
 
-## תפקידים (Roles)
+## תפקידים (Roles) {: #roles }
 
 ```yaml
 roles:
@@ -820,7 +820,7 @@ roles:
 
 תפקידים עם `parent_role_id` יורשים מההורה יכולות, גישת דומיין, הענקות של עמודות ואובייקטים וכללי RLS, כשכלל ה-RLS של הבן עצמו לטבלה קודם. השרשרת משוטחת בעת ההפעלה.
 
-### יכולות (Capabilities)
+### יכולות (Capabilities) {: #capabilities }
 
 | יכולת | תיאור |
 | ----------- | ------------- |
@@ -974,7 +974,7 @@ X-Provisa-As-Recorded: 2026-10-01T00:00:00
 
 גם views עם `materialize: true` וגם עם `materialize: false` חושפים את טיפוס ה-GraphQL שלהם כלקריאה-בלבד. לא מחוללות מוטציות insert, upsert, update, או delete עבור יחסים מבוססי-`view_sql`.
 
-## מטמון (Cache)
+## מטמון (Cache) {: #cache }
 
 ```yaml
 cache:
@@ -1071,7 +1071,7 @@ tables:
 
 רפליקה מאונדקסת לפי המפתח הראשי המוצהר שלה ולפי העמודות שהקשרים המוצהרים שלה מצטרפים עליהן, והאינדקסים נבנים אחרי שהיא נטענת. היכן האינדקסים האלה מאיצים צירופים, היכן לשמור רפליקות וכיצד לבחור את העדכניות שלהן מפורט ב-[Replicas](replicas.md).
 
-### שכפול חם (Hot replication)
+### שכפול חם (Hot replication) {: #hot-replication }
 
 טבלה שה-`replicate` שלה אינו מוגדר, או הוא `N` גדול מ-0, נקראת חי עד שהיא עמוסה.
 
@@ -1102,7 +1102,7 @@ replication:
 
 הספירות נשמרות ב-Redis. עם Redis משותף (`cache.redis_url`) הן מכסות כל תהליך בפריסה. עם Redis מוטמע הן לכל תהליך, ולכן קידום פועל רק כשעובד (worker) אחד משרת בקשות; עם כמה עובדים וללא Redis משותף שום דבר אינו מקודם, והסיכום מציין זאת.
 
-## אימות (Authentication)
+## אימות (Authentication) {: #authentication }
 
 ```yaml
 auth:
@@ -1392,7 +1392,7 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### מסנני טלמטריה {: #telemetry-filters-tool-verified }
+### מסנני טלמטריה {: #telemetry-filters }
 
 Provisa מריצה שני נתיבי ייצוא OTLP עצמאיים: הקולקטור הפנימי שלכם ונקודת הקצה האופציונלית לתמיכה של Provisa. לכל נתיב מסנן משלו. המסננים רצים בתוך `_FilteringExporter` עוטף לפני שה-spans עוזבים את התהליך — אובייקטי span המקוריים לעולם אינם משתנים.
 
@@ -1422,11 +1422,11 @@ db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### נקודת קצה לתמיכה {: #support-endpoint-tool-verified }
+### נקודת קצה לתמיכה {: #support-endpoint }
 
 `support_endpoint` (או משתנה סביבה `PROVISA_SUPPORT_OTLP_ENDPOINT`) מעביר טלמטריה לתמיכה של Provisa לצורכי אבחון. כאשר לא מוגדר, שום נתון אינו עוזב את התשתית שלכם דרך נתיב זה. מסנן התמיכה חל באופן עצמאי מהמסנן הפנימי — ניתן לערוך מילוליים SQL משני הייצואים בעודכם משתפים עם התמיכה את נתוני תזמון וטעויות ה-span.
 
-### זיהוי פרוטוקול נקודת קצה {: #endpoint-protocol-detection-tool-verified }
+### זיהוי פרוטוקול נקודת קצה {: #endpoint-protocol-detection }
 
 Provisa בוחרת OTLP/HTTP או OTLP/gRPC לפי סכימת ה-URL של נקודת הקצה. כתובות URL שמתחילות ב-`http://` או `https://` משתמשות ב-OTLP/HTTP, עם `/v1/traces`, `/v1/metrics`, ו-`/v1/logs` מתווספים אוטומטית. כל סכימה אחרת משתמשת ב-OTLP/gRPC עם `insecure=True`.
 
@@ -1436,7 +1436,7 @@ Provisa בוחרת OTLP/HTTP או OTLP/gRPC לפי סכימת ה-URL של נקו
 
 עדיפות: משתנה סביבה `PROVISA_ENGINE` ← שדה תצורה `federation_engine` שמור בממשק הניהול ← `duckdb`. שינויים נכנסים לתוקף בהפעלה מחדש של השירות.
 
-### סקירת מנועים {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### סקירת מנועים {: #engine-overview }
 
 | מפתח מנוע | תווית | דיאלקט | MPP | מנגנון קישור חיצוני | אימות |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |
@@ -1580,7 +1580,7 @@ PROVISA_ENGINE_URL="mysql+pymysql://user:pass@host:3306/db"
 
 מאגר המימוש ברירת מחדל `TENANT_DATABASE_URL`.
 
-### מאגר המימוש (Materialization store)
+### מאגר המימוש (Materialization store) {: #materialization-store }
 
 כאשר מקור אינו יכול להתחבר (attach) חי (אין מחבר ATTACH למנוע הנבחר), הוא נוחת (lands) לתוך מאגר המימוש של המנוע. סדר פתרון: `PROVISA_MATERIALIZE_URL` מפורש ← ברירת המחדל המוצהרת של המנוע ← שגיאה קשה (ללא נפילה-חוזרת שקטה).
 

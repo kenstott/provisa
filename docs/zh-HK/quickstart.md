@@ -82,7 +82,7 @@ Provisa running:
 | `sparql` | 23030 | Apache Jena Fuseki；數據來源及一張以查詢為基礎的資料表（`volunteer`）從片段註冊，圖由 `prime.py` 植入；更多資料表透過 Register Table（查詢 + Preview）註冊 |
 | `prometheus` | 29090 | 數據來源已註冊；伺服器抓取自身，因此 `up` 及 `prometheus_*` 指標透過 Register Table 註冊為資料表 |
 | `elasticsearch` | 29200 | 數據來源及索引對映已註冊；`support_tickets` 索引由 `prime.py` 植入；由原生引擎經 HTTP 讀取，在 Trino 上經由連接器讀取 |
-| `splunk` | mgmt 8089, HEC 8088 | 數據來源以權杖驗證及 `disable_ssl_validation` 註冊（容器的憑證為自簽）；一個索引、七個收容所警示事件及 `shelter_alerts` 數據模型由 `prime.py` 植入，它亦會產生片段以 `PROVISA_DEMO_SPLUNK_TOKEN` 讀取的 API 權杖。數據模型透過 Register Table 註冊為資料表——在 Trino 上經由 `splunk` 目錄，在其他所有引擎上經由引擎所附加的隨附 Calcite pgwire 伺服器 |
+| `splunk` | mgmt 8089, HEC 8088 | 數據來源以權杖驗證及 `disable_ssl_validation` 註冊（容器的憑證為自簽）；一個索引、七個收容所警示事件及 `shelter_alerts` 數據模型由 `prime.py` 植入，它亦會產生片段以 `PROVISA_DEMO_SPLUNK_TOKEN` 讀取的 API 權杖。數據模型透過 Register Table 註冊為資料表：在 Trino 上經由 `splunk` 目錄，在其他所有引擎上經由引擎掛載的 Splunk 驅動程式 pgwire 端點 |
 | `chinook` | 25433 | 存放 Hasura 中繼資料範例所追蹤的 snake_case Chinook 子集的 Postgres，由 `prime.py` 從 `tests/fixtures/hasura_v2_t1_seed.sql` 植入；數據來源從片段註冊，也是匯入 `tests/fixtures/hasura_v2_t1_metadata.json` 的 Hasura v2 匯入所落地的數據來源 |
 
 `--idp=basic|firebase`——啟用用於驗證的身分識別提供者。若無此旗標，後端會在沒有驗證提供者的情況下執行，所有要求都會被視為 `admin`。

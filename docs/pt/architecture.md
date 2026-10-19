@@ -174,7 +174,7 @@ O Provisa seleciona um motor de federação na inicialização via a variável d
 
 Cada motor é uma instância de `FederationEngine` definida em `provisa/federation/engine.py`. A instância possui uma coleção de conectores que determina quais tipos de fonte o motor pode ler ao vivo (ATTACH) versus quais devem pousar no armazenamento de materialização do motor primeiro.
 
-### Classes de driver {: #driver-classes-tool-verified-enginepy-driverclass }
+### Classes de driver {: #driver-classes }
 
 | Classe | Significado | Exemplos |
 | ------- | --------- | --------- |
@@ -182,7 +182,7 @@ Cada motor é uma instância de `FederationEngine` definida em `provisa/federati
 | `PARTIAL` | Alcança um subconjunto (relacional, arquivos, objeto/lake em nuvem) além de pousar tudo o mais | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Alcança apenas seu próprio armazenamento; toda outra fonte pousa nele | SQLAlchemy |
 
-### Motores disponíveis {: #available-engines-tool-verified-enginepy-engine_builders }
+### Motores disponíveis {: #available-engines }
 
 | Chave do motor | Dialeto | MPP | Mecanismo de link externo | Autenticação |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Cada motor é uma instância de `FederationEngine` definida em `provisa/federati
 | `synapse` | T-SQL | Sim | ADLS OPENROWSET / tabelas externas | Azure AD |
 | `sqlalchemy` | Qualquer dialeto SQLAlchemy | Não | Nenhum (apenas pouso) | Credenciais por dialeto |
 
-### Padrão zero-config: DuckDB {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
+### Padrão zero-config: DuckDB {: #zero-config-default-duckdb }
 
 Quando `PROVISA_ENGINE` não está definido, o Provisa usa o motor DuckDB totalmente embutido, em processo. O armazenamento de materialização do DuckDB é um arquivo DuckDB embutido em `$PROVISA_DATA_DIR/materialize.duckdb` (padrão `~/.provisa/materialize.duckdb`). Nenhum banco de dados ou serviço externo é necessário.
 
 Como o DuckDB impõe um único gravador por arquivo, `store_connection.py` grava no armazenamento embutido através da própria conexão do motor — nunca uma segunda conexão independente. Este é o único caso em que o motor e o armazenamento de materialização compartilham um handle de arquivo por design.
 
-### Transporte de leitura nativo Arrow {: #arrow-native-read-transport-tool-verified-enginepy-build__engine-capabilities }
+### Transporte de leitura nativo Arrow {: #arrow-native-read-transport }
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric, e Synapse todos anunciam `EngineCapability.ARROW` e `EngineCapability.ARROW_STREAM`. Consultas contra esses motores retornam RecordBatches Arrow diretamente — o caminho de serialização por linha é completamente contornado. O servidor Flight faz streaming desses batches para clientes sem materializar o resultado completo na memória do processo do Provisa. Para o Trino, o streaming Arrow depende do proxy Zaychik; para os motores de warehouse, a própria API Arrow-nativa do motor (Cloud Fetch para Databricks, Storage Read API para BigQuery, `fetch_arrow_table` para DuckDB e Snowflake) alimenta o stream Flight.
 
-### Links de dados externos (ATTACH) {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
+### Links de dados externos (ATTACH) {: #external-data-links-attach }
 
 Todo motor de warehouse pode escanear dados de objeto/lake em nuvem no lugar, sem pousar uma cópia. Arquivos Parquet, CSV, Iceberg e Delta Lake em S3, GCS, ou OneLake se conectam (attach) diretamente ao motor como se fossem tabelas nativas. A estratégia — ATTACH (escanear no lugar) ou LAND (copiar para o armazenamento) — é determinada pelo `Mechanism` declarado do conector; não existe ramificação específica de motor no planejador. Um conector `Mechanism.ATTACH_R` aciona escaneamento zero-cópia; um conector `Mechanism.DIRECT` ou ausente aciona um pouso.
 
@@ -223,7 +223,7 @@ O attach auto-provisiona todos os pré-requisitos no momento do attach:
 
 Credenciais para armazenamento em nuvem viajam em `federation_hints` da fonte (veja [Fontes](sources.md#warehouses-as-named-sources)). Qualquer tipo de fonte que não pode fazer ATTACH pousa primeiro no armazenamento de materialização do motor.
 
-### Escritas de materialização colunar {: #columnar-materialization-writes-tool-verified-coredatabasepy436-store_connectionpy99 }
+### Escritas de materialização colunar {: #columnar-materialization-writes }
 
 `Connection.bulk_copy` em `provisa/core/database.py` escolhe o caminho de ingestão em massa mais rápido por dialeto de armazenamento: `COPY` binário (`copy_records_to_table` do asyncpg) para armazenamentos PostgreSQL, e uma única declaração preparada `executemany` para todos os outros armazenamentos relacionais. O armazenamento embutido DuckDB pousa através de `land_duckdb_native` em `store_connection.py` — uma única chamada `executemany` para o lote inteiro, nunca um laço linha a linha.
 
