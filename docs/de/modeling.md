@@ -4,10 +4,7 @@
 
 # Datenmodellierung (Entities & Facts) {: #data-modeling-entities-facts }
 
-Provisa bietet zwei deklarative Primitive — `entity` und `fact` — die alle Bausteine abdecken,
-aus denen jedes Star Schema und jedes Data Vault zusammengesetzt ist. Deklarieren Sie die
-Spezifikation; Provisa übersetzt sie exakt in die materialisierten Sichten, bitemporalen und
-Beziehungsdefinitionen, die Sie andernfalls von Hand schreiben müssten.
+Provisa gibt Ihnen zwei deklarative Grundbausteine, `entity` und `fact`, die alles abdecken, woraus jedes Sternschema und jedes Data Vault zusammengesetzt ist. Deklarieren Sie die Spezifikation, und Provisa übersetzt sie in genau die Definitionen für Materialized Views, Bitemporalität und Beziehungen, die Sie sonst von Hand schreiben würden.
 
 ## Was Entities und Facts sind {: #what-entities-and-facts-are }
 
@@ -17,14 +14,9 @@ Entity-Schlüssel und die gewünschten Attribute und wählen einen History-Modus
 das SQL der Sicht und registriert die MV (materialisierte Sicht). Ist History aktiviert, ist die
 MV bitemporal.
 
-Ein **fact** ist ein Join auf Entity-Schlüssel, reduziert auf einen deklarierten Grain, mit
-aggregierten Measures. Provisa schreibt eine aggregierende MV-Abfrage (`GROUP BY` über Grain +
-FK-Spalten) und registriert für jeden deklarierten Dimensionslink eine Beziehung. Ein Fact ohne
-Measures ist eine reine Schlüsselmenge — das Data-Vault-Link-Muster.
+Ein **Fakt** ist ein Join auf Entitätsschlüssel, reduziert auf eine deklarierte Granularität, mit aggregierten Kennzahlen. Provisa schreibt eine Aggregat-MV-Abfrage (`GROUP BY` Granularität + FK-Spalten) und registriert für jede deklarierte Dimensionsverknüpfung eine Beziehung. Ein Fakt ohne Kennzahlen ist eine reine Schlüsselmenge, das Link-Muster von Data Vault.
 
-Beide Konstrukte sind IR (Intermediate Representation). Die generierten Definitionen lassen
-sich engineübergreifend neu ausrichten — materialisiert in Oracle, Databricks oder virtuell über
-einer MPP-Engine belassen — ohne Neumodellierung.
+Beide Konstrukte sind IR. Die erzeugten Definitionen wechseln ohne Neumodellierung zwischen Engines: materialisiert in Oracle oder Databricks oder virtuell über einer MPP-Engine.
 
 ## History-Modi {: #history-modes }
 
@@ -41,8 +33,7 @@ jeder Engine, aber der Speicherbedarf wächst pro Aktualisierung um eine vollst�
 Wählen Sie `scd2` für große, sich langsam ändernde Quellen; wählen Sie `snapshot`, wenn Sie
 vollständige History benötigen und die Quelle keinen Schlüssel liefern kann.
 
-Facts haben keinen History-Modus — die zeitliche Abdeckung ergibt sich aus der History der
-zugrunde liegenden Entity.
+Fakten haben keinen eigenen Historienmodus; ihre zeitliche Abdeckung kommt aus der Historie der darunterliegenden Entitäten.
 
 ## Measures und Aggregationen {: #measures-and-aggregations }
 
@@ -263,20 +254,11 @@ Der History-Modus ist der einzige Regler zwischen SCD Type 1 und Type 2:
 | Type 1 (nur aktuell) | `none` | MV wird bei jeder Aktualisierung neu aufgebaut; keine Zeilen-History |
 | Type 2 (versioniert) | `scd2` | Bitemporale Delta-MV; jede Änderung hängt eine neue Zeile an, mit dem Entity-Schlüssel als Schlüssel |
 
-Verwenden Sie `scd2`, wenn nachgelagerte Abfragen eine Dimension so joinen müssen, wie sie zum
-Transaktionszeitpunkt bestand — den Tier eines Kunden zum Kaufzeitpunkt, nicht den aktuellen
-Tier. Verwenden Sie `none` für stabile Lookups. Eine Date Spine ändert sich nie. Ein
-Produktkatalog, bei dem nur der aktuelle Preis benötigt wird, kann bei jeder Aktualisierung
-neu aufgebaut werden.
+Nehmen Sie `scd2`, wenn nachgelagerte Abfragen eine Dimension so joinen müssen, wie sie zur Zeit der Transaktion war, etwa die Stufe eines Kunden im Moment des Kaufs statt seiner aktuellen Stufe. Nehmen Sie `none` für stabile Nachschlagetabellen. Eine Datumsachse ändert sich nie, und ein Produktkatalog, bei dem nur der aktuelle Preis zählt, kann bei jeder Aktualisierung neu aufgebaut werden.
 
 #### Grain-Entscheidung {: #grain-decision }
 
-Der Grain ist die niedrigste Detailebene, die der Fact beantwortet. `order_id` liefert eine
-Zeile pro Bestellung und erhält die Fähigkeit, eindeutige Bestellungen zu zählen und mit jeder
-Dimension auf Bestellgranularität zu joinen. Ein gröberer Grain — etwa
-`["customer_id", "order_date"]` — aggregiert über Bestellungen hinweg vor und verwirft dieses
-Detail dauerhaft. Deklarieren Sie den schmalsten Grain, den das Geschäft benötigt; gröbere
-Rollups lassen sich danach günstig ableiten.
+Die Granularität ist die feinste Detailebene, die der Fakt beantwortet. `order_id` ergibt eine Zeile pro Bestellung und erhält die Möglichkeit, verschiedene Bestellungen zu zählen und auf Bestellebene mit jeder Dimension zu joinen. Eine gröbere Granularität, etwa `["customer_id", "order_date"]`, aggregiert über Bestellungen vor und verwirft dieses Detail endgültig. Deklarieren Sie die feinste Granularität, die das Geschäft braucht; gröbere Zusammenfassungen lassen sich später billig ableiten.
 
 #### Die Dimensionen registrieren {: #register-the-dimensions }
 
@@ -347,8 +329,7 @@ SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 
 #### Den Fact Sales über drei Dimensionen registrieren {: #register-the-sales-fact-across-three-dimensions }
 
-Grain: `order_id`. Drei Dimensionsreferenzen — je eine FK-Spalte. Beide Measures sind additive
-Summen.
+Granularität: `order_id`. Drei Dimensionsverweise mit je einer FK-Spalte. Beide Kennzahlen sind additive Summen.
 
 ```graphql
 mutation {
@@ -506,8 +487,7 @@ Join-Ziel; das Satellite liefert punktgenauen Attributzugriff über die bitempor
 
 #### Link (Fact ohne Measures) {: #link-measureless-fact }
 
-Ein Link erfasst, welche Hub-Schlüssel gemeinsam aufgetreten sind — nur Schlüssel, keine
-Measures. Provisa lässt die `GROUP BY` weg, wenn `measures` leer ist.
+Ein Link hält fest, welche Hub-Schlüssel gemeinsam auftraten. Er enthält nur Schlüssel und keine Kennzahlen, und Provisa lässt das `GROUP BY` weg, wenn `measures` leer ist.
 
 ```graphql
 mutation {
@@ -573,11 +553,7 @@ Hub/Satellite-Aufteilung bleiben Entscheidungen des Modellierers. Provisa führt
 
 ## Metriken {: #metrics }
 
-Eine **Metrik** (metric) ist eine benannte, governte Aggregatdefinition ohne eigenen Grain. Der
-Grain — die Dimensionen, nach denen das Aggregat aufgeschlüsselt wird — wird zum Abfragezeitpunkt
-vom Aufrufer gebunden, nicht zum Definitionszeitpunkt. Das unterscheidet eine Metrik von einer
-Sicht: Eine Sicht legt den Grain bei der Erstellung fest; eine Metrik bleibt offen, bis sie
-abgefragt wird.
+Eine **Metrik** ist eine benannte, gesteuerte Aggregatdefinition ohne eigene Granularität. Die Granularität, also die Dimensionen, nach denen das Aggregat aufgeschlüsselt wird, legt der Aufrufer zur Abfragezeit fest und nicht bei der Definition. Das unterscheidet eine Metrik von einer Sicht: Eine Sicht legt die Granularität beim Erstellen fest, eine Metrik bleibt offen, bis sie abgefragt wird.
 
 ### Das Metric-Objekt {: #the-metric-object }
 
@@ -591,9 +567,7 @@ abgefragt wird.
 | `visible_to` | nein | Rollenliste; Standard ist `["*"]` (alle Rollen) |
 | `from_fact` | — | Wird automatisch gesetzt, wenn die Metrik aus einem Fact-Measure generiert wurde |
 
-Spaltenreferenzen innerhalb des Ausdrucks müssen tabellenqualifiziert sein (`orders.amount`,
-nicht `amount`). Eine nicht qualifizierte Spalte ist zum Zeitpunkt der Expansion ein harter
-Fehler, keine Warnung.
+Spaltenverweise im Ausdruck müssen mit ihrer Tabelle qualifiziert sein (`orders.amount`, nicht nur `amount`). Eine unqualifizierte Spalte ist beim Expandieren der Metrik ein harter Fehler, und nichts lässt sie mit einer Warnung durch.
 
 Das Metrik-Repository validiert den Ausdruck bei jedem Schreibvorgang. Ein Ausdruck, der nicht
 geparst werden kann oder keine Aggregatfunktion enthält, wird abgelehnt; er wird niemals
@@ -612,9 +586,7 @@ metrics:
 
 ### Eine Metrik abfragen {: #querying-a-metric }
 
-Der Compiler reserviert das Schema `metrics`. Jede Metrik ist als virtuelle Relation innerhalb
-dieses Schemas adressierbar. Fragen Sie sie wie eine Tabelle ab — die ausgewählten Spalten
-werden zum Dimensionssatz und zur GROUP BY:
+Der Compiler reserviert das Schema `metrics`, und jede Metrik ist darin als virtuelle Relation adressierbar. Fragen Sie sie wie eine Tabelle ab; die ausgewählten Spalten werden zur Dimensionsmenge und zum GROUP BY:
 
 ```sql
 -- Scalar total (no dimension)
@@ -628,8 +600,7 @@ Der Compiler schreibt dies in ein echtes gruppiertes Aggregat über die zugrunde
 semantischen Tabellen um, bevor die Governance läuft, sodass RLS und Maskierung auf die
 tatsächlichen Spalten angewendet werden.
 
-`SELECT *` gegen eine Metrik-Relation wird abgelehnt — benennen Sie die Dimensionsspalten und
-`value` explizit.
+`SELECT *` auf eine Metrik-Relation wird abgelehnt. Nennen Sie die Dimensionsspalten und `value` ausdrücklich.
 
 Erstreckt sich der Ausdruck einer Metrik über mehrere Tabellen, joint der Compiler diese über
 registrierte Beziehungen. Eine Dimension, die eine Spalte einer direkt referenzierten Tabelle
@@ -688,8 +659,7 @@ Ausdruck der Metrik und erfasst eine Lineage-Kante. Dadurch erhalten frei geschr
 dieselbe Eigenschaft der automatischen Neukompilierung bei Änderung, wenn sie eine Metrik
 referenzieren, statt deren Formel zu kopieren.
 
-Hinweis: Sichten aus dem Konfigurationspfad, die Inline-`metric()`-Aufrufe verwenden, werden
-beim Konfigurations-Reload neu generiert, nicht beim Upsert der Metrik.
+Hinweis: Sichten aus der Konfigurationsdatei, die Inline-Aufrufe von `metric()` nutzen, werden beim Neuladen der Konfiguration neu erzeugt; ein Upsert der Metrik erzeugt sie nicht neu.
 
 ### Die Metrics-Admin-Seite {: #the-metrics-admin-page }
 
@@ -707,8 +677,4 @@ wird automatisch abgeleitet: `COUNT → bigint`, `AVG → numeric`, `SUM/MIN/MAX
 
 ## Der Nutzen der IR {: #the-ir-payoff }
 
-Jeder Registrierungsaufruf durchläuft denselben Pfad wie eine handgeschriebene MV. Die
-Entity-/Fact-Spezifikation ist eine Zwischendarstellung — kein Template, kein Makro. Das
-Warehouse, auf das sie zielt, ist eine Eigenschaft der Bereitstellung, nicht des Modells.
-Ändern Sie die Ziel-Engine, und dieselben `entity`-/`fact`-Deklarationen materialisieren dort,
-weil das generierte SQL und die bitemporalen Modi konstruktionsbedingt engine-neutral sind.
+Jeder Registrierungsaufruf geht denselben Weg wie eine von Hand geschriebene MV. Die Spezifikation von Entity und Fact ist eine Zwischendarstellung; sie ist weder Vorlage noch Makro. Das Ziel-Warehouse ist eine Eigenschaft des Deployments, und das Modell nennt es nicht. Wechseln Sie die Ziel-Engine, und dieselben Deklarationen `entity` / `fact` materialisieren dort, weil das erzeugte SQL und die bitemporalen Modi von Grund auf engine-neutral sind.

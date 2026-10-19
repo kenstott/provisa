@@ -1,6 +1,6 @@
 # 遠端結構描述 {: #remote-schemas }
 
-遠端結構描述來源將外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——連接至 Provisa 模型。新增來源不會註冊任何資料表。來源會提供資料表，由 data steward 透過「Register Table」選擇器註冊所需的每一張表；該註冊即為策展（curation）步驟。已註冊的資料表是一級的 Provisa 資料表。所有治理規則、查詢介面及安全層均會自動套用。遠端服務永遠不會看到 Provisa 的治理規則。
+遠端結構描述數據來源把外部 API（GraphQL（包括 GitHub）、gRPC 或 REST（OpenAPI））接入 Provisa 模型。加入數據來源不會註冊任何資料表。數據來源提供可選的資料表，由數據管家在 Register Table 選擇器中逐一註冊所需的資料表；這個註冊就是整理篩選的步驟。已註冊的資料表是完整的 Provisa 資料表，所以每條治理規則、每種查詢介面及每個安全層都會自動作用於它。遠端服務永遠看不到 Provisa 的治理規則。
 
 ---
 
@@ -77,7 +77,7 @@
 
 **必要引數。** 當根查詢欄位帶有非空值、無預設值的引數時，這些引數會成為資料表上的 `native_filter_type: query_param` 欄位（於注入時加上 `_nf_` 前綴）。執行器會將其作為 GraphQL 變數傳遞。
 
-**自動偵測的關聯。** Provisa 會掃描每張已註冊資料表中 OBJECT 類型的欄位。當所參照的 GQL 類型同樣是同一來源中已註冊的資料表，且該關聯所依附的欄位屬於已註冊的欄位時，該關聯即被儲存。尚未註冊的資料表則不會獲得關聯。多對一關聯會依據命名慣例推斷來源欄位與目標欄位（來源類型上的 `breedName` → 目標類型 `Breed` 上的 `name`）。一對多（LIST）欄位會產生欄位參照為空的關聯——外鍵位於目標一側。
+**自動偵測關係。** Provisa 會掃描每個已註冊資料表中 OBJECT 類型的資料行。當某資料行引用的 GQL 類型亦是同一數據來源中已註冊的資料表，並且承載該關係的資料行屬於已註冊的資料行時，就會儲存該關係。尚未註冊的資料表不會獲得關係。多對一關係根據命名慣例推斷來源資料行及目標資料行（來源類型上的 `breedName` → 目標類型 `Breed` 上的 `name`）。一對多（LIST）欄位產生的關係資料行參照為空，因為外鍵位於目標一側。
 
 **Mutation。** mutation 欄位會被逐一註冊為 `source_operation` 種類的命令。其引數的類型均為 `json`，並作為類型化變數傳給遠端服務；回應即遠端服務傳回的 JSON，沒有 `return_schema`。參見[遠端來源的寫入操作](commands.md#a-remote-sources-write-operation)。
 
@@ -136,7 +136,7 @@ GitHub 是一種普通的來源類型。其 API 為 GraphQL，因此其資料表
 
 **過重的頁面。** 當 GitHub 因某一頁的計算成本過高而回應 `RESOURCE_LIMITS_EXCEEDED` 時，會以一半大小重新請求該頁。
 
-**巢狀物件。** GitHub 資料表使用自身的巢狀深度 0（此來源類型的 `max_object_depth=0`），而不是 `graphql_remote.max_object_depth`。巢狀物件欄位僅以其自身的純量欄位選取；其內部的物件顯示為 `__typename`。
+**巢狀物件。** GitHub 資料表使用自己的巢狀深度 0（此數據來源類型的 `max_object_depth=0`），而不是 `graphql_remote.max_object_depth`。巢狀物件資料行只選取其自身的純量欄位，其中的物件顯示為 `__typename`。
 
 **權杖儲存。** 權杖存入密鑰庫，來源列保留一個參照，因此重新啟動後會重新讀取該來源，無需重新輸入權杖。
 
@@ -154,7 +154,7 @@ GitLab 是一種普通的來源類型，其新增與註冊方式與 GitHub 相�
 - 一個欄位的成本取決於其種類。一般值約為一點；巢狀物件欄位的成本是其許多倍。捨棄巢狀物件欄位最能節省成本。
 - 頁面大小是價格的一部分。它即 `graphql_remote.max_list_items`。
 
-**權杖驗證。** GitLab 對無法辨識的權杖回應空結果，而不是錯誤。Provisa 將其視為被拒絕的權杖，不會新增該來源。
+**權杖檢查。** GitLab 對無法識別的權杖傳回空結果，而不是報錯。Provisa 會把這視為權杖被拒絕，不加入該數據來源。
 
 ---
 
@@ -211,7 +211,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 | 巢狀訊息 | `jsonb` |
 | Enum | `text` |
 
-**註冊時的關聯。** `relationships` 的運作方式與 GQL 轉接器相同——宣告外部索引鍵/主索引鍵連接路徑，並儲存為手動宣告的關聯（沒有 `remote_managed` 旗標）。刷新時，這些關聯會維持不變。
+**註冊時的關係。** `relationships` 的作用與 GQL 配接器相同：宣告 FK/PK 聯結路徑，儲存為人手宣告的關係（沒有 `remote_managed` 標記）。重新整理時它們保持不變。
 
 **Query 方法。** 輸出訊息的欄位會成為資料表欄位。輸入訊息的欄位既會成為傳遞至遠端呼叫的 GraphQL 引數，*同時*亦會註冊為以 `_nf_` 為前綴、`native_filter_type: "grpc_input"` 的欄位——此機制與 GQL 及 OpenAPI 用於原生篩選器注入的機制相同。
 
@@ -249,11 +249,11 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 }
 ```
 
-**來源提供的內容。** 規格中的每個 GET 操作都會作為資料表提供，除非其回應結構描述是純量類型（`string`、`number`、`boolean`、`integer`）——傳回純量的 GET 操作則是只有單一 `value` 欄的函式。每個非 GET 操作（POST、PUT、PATCH、DELETE）都會作為命令提供，以其 `operationId` 命名。註冊後，它接受該操作的路徑參數，以及用於請求本文的 `body` 引數，類型均為 `json`；其餘任何引數都放在查詢字串中。參見[遠端來源的寫入操作](commands.md#a-remote-sources-write-operation)。
+**數據來源提供甚麼。** 規格中的每個 GET 操作都作為資料表提供，除非其回應結構描述是純量類型（`string`、`number`、`boolean`、`integer`）；傳回純量的 GET 是只有一個 `value` 資料行的函數。其他每個操作（POST、PUT、PATCH、DELETE）都作為命令提供，以其 `operationId` 命名。註冊後，它接受操作的路徑參數及一個用於請求主體的 `body` 參數，類型均為 `json`，其他參數放在查詢字串中。參見[遠端來源的寫入操作](commands.md#a-remote-sources-write-operation)。
 
 分類優先順序：`operation_overrides`（酬載）優先於 `x-provisa-kind`（規格擴充），而 `x-provisa-kind` 又優先於 GET 啟發式規則。`operation_overrides` 為建議的覆寫途徑；`x-provisa-kind` 則適用於須由規格本身承載分類資訊的情況。
 
-**註冊時的關聯。** `relationships` 的運作方式與其他轉接器相同——儲存為手動宣告的關聯，並於刷新時予以保留。
+**註冊時的關係。** `relationships` 的作用與其他配接器相同：儲存為人手宣告的關係，重新整理時保留。
 
 **資料表命名。** 資料表使用操作的 `operationId`。若未定義 `operationId`，Provisa 會將 `{method}_{path}` 轉為 slug。別名的推導方式為移除開頭的動詞片段並將名詞轉為單數（`findPetsByStatus` → `pet_by_status`）。
 
@@ -268,7 +268,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 | `array` | `jsonb` |
 | `object` | `jsonb` |
 
-**作為原生篩選器欄位的參數。** 尚未屬於回應欄位的路徑及查詢參數，會成為 `native_filter_type` 設為 `path_param` 或 `query_param`、並以 `_nf_` 為前綴的欄位。當參數名稱與回應欄位名稱相符時，該參數的中繼資料會併入既有的欄位項目，而非另建重複項目。
+**參數作為原生篩選資料行。** 尚未成為回應欄位的路徑參數及查詢參數會變成資料行，其 `native_filter_type` 為 `path_param` 或 `query_param`，並帶 `_nf_` 前綴。當參數與某個回應欄位同名時，其中繼資料會合併到該資料行的條目中，不會產生重複。
 
 **回應結構描述的解析。** 映射器會依序檢查 `responses.200`、`responses.2xx`，再檢查 `responses.default`。陣列類型的回應會展開至其元素結構描述。`$ref` 參照會解析至一層深度。
 
@@ -300,9 +300,9 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 4. 欄位遮罩——遮罩規則於治理流程的第二階段套用。
 5. 述詞防護——已遮罩的欄位會於 WHERE 及 HAVING 子句中被拒絕。
 
-針對遠端資料表的即席查詢僅依使用者本身的權限予以允許——存取方式統一以權限為基礎（資料表/欄位權限加上已核准的關聯），並無按資料表而異的治理模式。
+對遠端資料表的即席查詢只依據使用者自己的權限放行。各處的存取都遵循同一套基於權限的模型（資料表及資料行的權限加上已批准的關係），沒有按資料表設定的治理模式。
 
-**關聯治理（V002）。** 針對遠端資料表的 JOIN 條件——當透過 SQL 或 Cypher 查詢時——必須符合一項已註冊並已核准的關聯。由於 SDL 定義的關聯依設計已預先核准，GraphQL 查詢會略過 V002 檢查。詳見 [docs/security.md](security.md#relationship-governance-v002)。
+**關係治理（V002）。** 在 SQL 或 Cypher 查詢中，針對遠端資料表的 JOIN 條件必須與已註冊並獲批准的關係相符。GraphQL 查詢會略過 V002 檢查，因為 SDL 中定義的關係按設計已獲批准。參見 [docs/security.md](security.md#relationship-governance-v002)。
 
 **OBJECT 類型欄位。** 當欄位對應至未受治理的內嵌 GQL OBJECT 或 OpenAPI 物件類型時，其 Provisa 類型為 `jsonb`。該欄位會儲存完整的巢狀 JSON blob。當宣告了子欄位（`gql_object_fields` 或 `object_fields`）時，`gql_object_columns` 對應表會於結構描述建構時填入。當查詢選取這些子欄位時，SQL 生成器會使用此對應表發出 `->>` 擷取運算式。
 
@@ -316,9 +316,9 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 **聯結如何取得優先。** 於查詢編譯階段，Provisa 會透過已註冊的關聯解析聯結路徑。該關聯的 `source_column` 及 `target_column` 會成為生成 SQL 中的聯結條件。聯結會取代原本針對已連接類型所需的、按資料表逐一發出的遠端呼叫。
 
-**原始 blob 永遠不會於 SQL 中曝露。** `petstore__pets` 上的 `breed` 欄位無法於 SQL 查詢中作為原始 jsonb 值選取。當 `petstore__pets` 與 `petstore__breeds` 之間已註冊一項關聯時，SQL 查詢會經由聯結解析——`SELECT breed.name FROM petstore__pets` 是透過外部索引鍵聯結解析，而非透過 blob。若未註冊任何關聯，但該欄位帶有已宣告的子欄位（`gql_object_fields`），則 SQL 中對子欄位的參照會被重寫為對已儲存 blob 的 `->>` 擷取。此路徑僅適用於未受治理的內嵌類型——受治理目標類型的欄位完全從 SDL 中排除，並無 blob 可供擷取。原始 blob 本身永遠不會以裸欄位值的形式輸出。
+**原始 blob 永遠不會在 SQL 中暴露。** 在 SQL 查詢中無法把 `petstore__pets` 的 `breed` 資料行作為原始 jsonb 值選出。一旦在 `petstore__pets` 及 `petstore__breeds` 之間註冊了關係，SQL 查詢就會走聯結：`SELECT breed.name FROM petstore__pets` 經外鍵聯結解析。如果沒有註冊關係，但該資料行宣告了子欄位（`gql_object_fields`），對子欄位的 SQL 參照會改寫為針對已存 blob 的 `->>` 擷取。這條路徑只適用於未受治理的內嵌類型；目標受治理的欄位完全不出現在 SDL 中，亦沒有可擷取的 blob。原始 blob 本身永遠不會作為裸資料行值傳回。
 
-於 GraphQL SDL 中，未受治理的內嵌 OBJECT 欄位會被定型為該巢狀物件類型。至於它究竟是於執行階段透過聯結或透過 blob 擷取來提供服務，屬於實作細節——兩種情況下的 SDL 形狀均相同。當子類型被註冊為其獨立資料表（因而成為受治理類型）時，五層治理規則會獨立套用於其上：其自身的 RLS 規則、欄位可見性、遮罩規則、述詞防護及網域存取控制。Blob 擷取則會繞過此機制——子項資料會以預先內嵌的形式隨父資料列一併到達，並僅受父資料表規則的治理。將子項註冊為資料表並建立關聯,是對子類型實現精細治理的途徑。
+在 GraphQL SDL 中，未受治理的內嵌 OBJECT 欄位的類型就是巢狀物件類型。執行時由聯結還是由 blob 擷取來提供數據，並不影響 SDL 的形狀。一旦子類型註冊為獨立的資料表並因此受治理，五個治理層都會獨立作用於它：它自己的 RLS 規則、資料行可見性、遮罩規則、述詞守衛及領域存取控制。blob 擷取會繞過這一切，因為子數據嵌在父列中一併到達，只受父資料表規則約束。要對子類型作細粒度治理，請把它註冊為資料表並建立關係。
 
 **關聯上的 `graphql_alias`。** `graphql_alias` 欄位會為關聯於父類型上曝露的 SDL 欄位命名。若缺省，其名稱會依目標資料表的 `field_name` 及該關聯的基數,透過 `rel_field_name(target.field_name, cardinality)` 推導而來。
 
@@ -334,7 +334,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 當 `SchemaInput` 上設定了 `root_table_ids` 時,ID 不在該集合中的資料表會從生成 SDL 的根查詢欄位中排除。它們仍會以 GraphQL 類型的形式存在,並可透過具有根項目的資料表上的關聯欄位加以存取。
 
-相同機制亦適用於按網域篩選的結構描述建構:位於角色無法存取的網域中的資料表,僅屬類型定義——其類型定義存在於 SDL 中以供關聯遍歷之用,但不會為其生成任何根查詢欄位。
+按領域篩選建構結構描述時，同樣的機制亦適用。角色無權存取的領域中的資料表只保留類型定義：其類型定義存在於 SDL 中以便遍歷關係，但不會為它們產生根查詢欄位。
 
 僅供類型定義的資料表具備以下特性:
 
@@ -343,6 +343,6 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 - 仍會於結構描述內省中以具名類型的形式出現。
 - 當透過關聯存取資料時,仍會套用所有治理規則。
 
-只有在資料表的註冊被完全刪除時,才會從結構描述中完全移除——包括其類型定義。將資料表標記為僅供類型定義（透過從 `root_table_ids` 中移除其 ID,或按網域存取權進行篩選）並不會移除該類型。
+只有刪除資料表的註冊時，該資料表（包括類型定義）才會從結構描述中完全移除。把資料表變成只保留類型定義（從 `root_table_ids` 中移除其 ID，或經領域存取篩選）並不會移除該類型。
 
-此設計讓 data steward 能夠公開可導覽的物件圖,其中部分類型僅可透過遍歷存取,而非獨立查詢。
+這樣，數據管家就能公開可導覽的物件圖，其中某些類型只能經遍歷到達，無法單獨查詢。

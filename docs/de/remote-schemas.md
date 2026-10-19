@@ -1,6 +1,6 @@
 # Externe Schemas {: #remote-schemas }
 
-Eine Quelle für ein externes Schema (Remote Schema) verbindet eine externe API — GraphQL (einschließlich GitHub), gRPC oder REST (OpenAPI) — mit dem Provisa-Modell. Das Hinzufügen einer Quelle registriert keine Tabelle. Die Quelle bietet Tabellen an, und ein Data Steward registriert jede gewünschte Tabelle über die Auswahl „Tabelle registrieren“ (Register Table); diese Registrierung ist der Kurationsschritt. Eine registrierte Tabelle ist eine vollwertige Provisa-Tabelle. Jede Governance-Regel, jede Abfrageschnittstelle und jede Sicherheitsschicht gilt automatisch. Der externe Dienst sieht die Governance-Regeln von Provisa niemals.
+Eine externe Schema-Quelle verbindet eine externe API, ob GraphQL (GitHub eingeschlossen), gRPC oder REST (OpenAPI), mit dem Provisa-Modell. Das Hinzufügen der Quelle registriert keine Tabelle. Die Quelle bietet Tabellen an, und ein Steward registriert jede gewünschte über die Auswahl Register Table; diese Registrierung ist der Kuratierungsschritt. Eine registrierte Tabelle ist eine vollwertige Provisa-Tabelle, also gelten jede Governance-Regel, jede Abfrageschnittstelle und jede Sicherheitsschicht automatisch für sie. Der externe Dienst sieht die Governance-Regeln von Provisa nie.
 
 ---
 
@@ -77,7 +77,7 @@ OBJECT-Typen, die NICHT als Wurzel-Query-Felder erreichbar sind (Inline-Typen wi
 
 **Erforderliche Argumente.** Wenn ein Wurzel-Query-Feld Non-Null-Argumente ohne Standardwert besitzt, werden diese zu Spalten mit `native_filter_type: query_param` auf der Tabelle (mit dem Präfix `_nf_` zum Zeitpunkt der Injektion). Der Executor übergibt sie als GraphQL-Variablen.
 
-**Automatisch erkannte Beziehungen.** Provisa durchsucht die OBJECT-typisierten Spalten jeder registrierten Tabelle. Wenn der referenzierte GQL-Typ ebenfalls als Tabelle in derselben Quelle registriert ist und die Spalte, auf der die Beziehung beruht, zu den registrierten Spalten gehört, wird die Beziehung gespeichert. Eine noch nicht registrierte Tabelle erhält keine. n:1-Beziehungen leiten Quell- und Zielspalten aus Namenskonventionen ab (`breedName` am Quelltyp → `name` am Zieltyp `Breed`). 1:n-Felder (LIST) erzeugen Beziehungen mit leeren Spaltenreferenzen — der Fremdschlüssel befindet sich auf der Zielseite.
+**Automatisch erkannte Beziehungen.** Provisa durchsucht die OBJECT-typisierten Spalten jeder registrierten Tabelle. Ist der GQL-Typ, auf den eine Spalte verweist, ebenfalls eine registrierte Tabelle derselben Quelle und gehört die Spalte, an der die Beziehung hängt, zu den registrierten Spalten, wird die Beziehung gespeichert. Eine noch nicht registrierte Tabelle bekommt keine. Many-to-one-Beziehungen leiten Quell- und Zielspalte aus Namenskonventionen ab (`breedName` am Quelltyp → `name` am Zieltyp `Breed`). One-to-many-Felder (LIST) erzeugen Beziehungen mit leeren Spaltenverweisen, weil der FK auf der Zielseite liegt.
 
 **Mutationen.** Ein Mutation-Feld wird einzeln als Command der Art `source_operation` registriert. Seine Argumente sind jeweils als `json` typisiert und werden als typisierte Variablen an den externen Dienst übergeben; die Antwort ist das JSON, das der externe Dienst zurückgibt, ohne `return_schema`. Siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation).
 
@@ -136,7 +136,7 @@ Das Hinzufügen der Quelle registriert keine Tabellen.
 
 **Schwere Seiten.** Antwortet GitHub mit `RESOURCE_LIMITS_EXCEEDED`, weil die Berechnung einer Seite zu aufwendig ist, wird die Seite in halber Größe erneut angefragt.
 
-**Verschachtelte Objekte.** GitHub-Tabellen verwenden ihre eigene Verschachtelungstiefe von 0 (`max_object_depth=0` für diesen Quellentyp), nicht `graphql_remote.max_object_depth`. Eine Spalte mit verschachteltem Objekt wird nur mit ihren eigenen skalaren Feldern ausgewählt; Objekte darin erscheinen als `__typename`.
+**Verschachtelte Objekte.** GitHub-Tabellen nutzen eine eigene Verschachtelungstiefe von 0 (`max_object_depth=0` für diesen Quelltyp) statt `graphql_remote.max_object_depth`. Eine verschachtelte Objektspalte wird nur mit ihren eigenen Skalarfeldern ausgewählt, und Objekte darin erscheinen als `__typename`.
 
 **Token-Speicherung.** Das Token wird im Secrets-Vault abgelegt, und die Quellzeile behält eine Referenz, sodass ein Neustart die Quelle erneut liest, ohne dass das Token neu eingegeben werden muss.
 
@@ -154,7 +154,7 @@ GitLab ist ein gewöhnlicher Quellentyp und wird auf dieselbe Weise wie GitHub h
 - Was eine Spalte kostet, hängt von ihrer Art ab. Ein einfacher Wert kostet etwa einen Punkt; eine Spalte mit verschachteltem Objekt kostet ein Vielfaches davon. Das Weglassen von Spalten mit verschachtelten Objekten spart am meisten.
 - Die Seitengröße ist Teil des Preises. Sie entspricht `graphql_remote.max_list_items`.
 
-**Token-Prüfung.** GitLab beantwortet ein unbekanntes Token mit einem leeren Ergebnis, nicht mit einem Fehler. Provisa wertet das als abgelehntes Token und fügt die Quelle nicht hinzu.
+**Tokenprüfung.** GitLab beantwortet ein unbekanntes Token mit einem leeren Ergebnis statt mit einem Fehler. Provisa wertet das als abgelehntes Token und fügt die Quelle nicht hinzu.
 
 ---
 
@@ -211,7 +211,7 @@ Mutation-Methoden sind angebotene Commands und werden in `available_mutations` g
 | Verschachtelte Message | `jsonb` |
 | Enum | `text` |
 
-**Beziehungen zum Registrierungszeitpunkt.** `relationships` funktioniert identisch zum GQL-Adapter — es deklariert FK/PK-Verknüpfungspfade, die als manuell deklarierte Beziehungen gespeichert werden (ohne `remote_managed`-Flag). Bei einer Aktualisierung bleiben diese unverändert erhalten.
+**Beziehungen bei der Registrierung.** `relationships` funktioniert genau wie beim GQL-Adapter: Es deklariert FK/PK-Join-Pfade, gespeichert als manuell deklarierte Beziehungen (ohne Flag `remote_managed`). Eine Aktualisierung lässt sie unverändert.
 
 **Query-Methoden.** Felder der Ausgabemeldung werden zu Tabellenspalten. Felder der Eingabemeldung werden sowohl zu GraphQL-Argumenten, die an den externen Aufruf übergeben werden, *als auch* als Spalten mit dem Präfix `_nf_` und `native_filter_type: "grpc_input"` registriert — derselbe Mechanismus, den GQL und OpenAPI für die Injektion nativer Filter verwenden.
 
@@ -249,11 +249,11 @@ Server-Streaming-Methoden sammeln alle gestreamten Meldungen in einer Liste, bev
 }
 ```
 
-**Was die Quelle anbietet.** Jede GET-Operation in der Spezifikation wird als Tabelle angeboten, sofern ihr Antwortschema nicht ein Skalartyp ist (`string`, `number`, `boolean`, `integer`) — GET-Operationen mit skalarer Rückgabe sind stattdessen Funktionen mit einer einzelnen Spalte `value`. Jede Nicht-GET-Operation (POST, PUT, PATCH, DELETE) wird als Command angeboten, benannt nach ihrer `operationId`. Registriert, nimmt sie die Pfadparameter der Operation und ein Argument `body` für den Request-Body entgegen, jeweils als `json` typisiert; jedes andere Argument kommt in den Query-String. Siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation).
+**Was die Quelle anbietet.** Jede GET-Operation der Spezifikation wird als Tabelle angeboten, außer ihr Antwortschema ist ein Skalartyp (`string`, `number`, `boolean`, `integer`); ein GET, das einen Skalar liefert, ist eine Funktion mit einer einzigen Spalte `value`. Jede andere Operation (POST, PUT, PATCH, DELETE) wird als Command angeboten, benannt nach ihrer `operationId`. Registriert nimmt sie die Pfadparameter der Operation und ein Argument `body` für den Request-Body, jeweils vom Typ `json`, und jedes andere Argument kommt in den Query-String. Siehe [Schreiboperation einer externen Quelle](commands.md#a-remote-sources-write-operation).
 
 Priorität der Klassifizierung: `operation_overrides` (Payload) hat Vorrang vor `x-provisa-kind` (Spezifikationserweiterung), was wiederum Vorrang vor der GET-Heuristik hat. `operation_overrides` ist der empfohlene Override-Pfad; `x-provisa-kind` ist für Fälle gedacht, in denen die Spezifikation selbst die Klassifizierung tragen soll.
 
-**Beziehungen zum Registrierungszeitpunkt.** `relationships` funktioniert identisch zu den anderen Adaptern — gespeichert als manuell deklarierte Beziehungen, bei Aktualisierungen erhalten.
+**Beziehungen bei der Registrierung.** `relationships` funktioniert wie bei den anderen Adaptern: gespeichert als manuell deklarierte Beziehungen und bei einer Aktualisierung behalten.
 
 **Benennung von Tabellen.** Tabellen verwenden die `operationId` der Operation. Ist keine `operationId` definiert, erzeugt Provisa einen Slug aus `{method}_{path}`. Ein Alias wird abgeleitet, indem das führende Verb-Segment entfernt und das Substantiv in den Singular gesetzt wird (`findPetsByStatus` → `pet_by_status`).
 
@@ -268,7 +268,7 @@ Priorität der Klassifizierung: `operation_overrides` (Payload) hat Vorrang vor 
 | `array` | `jsonb` |
 | `object` | `jsonb` |
 
-**Parameter als native Filterspalten.** Pfad- und Query-Parameter, die nicht bereits Antwortfelder sind, werden zu Spalten mit `native_filter_type` auf `path_param` oder `query_param`, mit dem Präfix `_nf_`. Stimmt der Name eines Parameters mit dem Namen eines Antwortfelds überein, werden die Parameter-Metadaten in den vorhandenen Spalteneintrag zusammengeführt, statt ein Duplikat zu erzeugen.
+**Parameter als native Filterspalten.** Pfad- und Abfrageparameter, die nicht schon Antwortfelder sind, werden zu Spalten mit `native_filter_type` gleich `path_param` oder `query_param` und dem Präfix `_nf_`. Hat ein Parameter denselben Namen wie ein Antwortfeld, werden seine Metadaten in den Eintrag dieser Spalte übernommen, sodass kein Duplikat entsteht.
 
 **Auflösung des Antwortschemas.** Der Mapper prüft `responses.200`, dann `responses.2xx`, dann `responses.default`. Array-typisierte Antworten werden auf ihr Elementschema zurückgeführt. `$ref`-Referenzen werden eine Ebene tief aufgelöst.
 
@@ -300,9 +300,9 @@ Eine aus einer beliebigen Remote-Schema-Quelle registrierte Tabelle ist eine vol
 4. Spaltenmaskierung — Maskierungsregeln werden in Stufe 2 der Governance-Pipeline angewendet.
 5. Prädikatschutz — maskierte Spalten werden in WHERE- und HAVING-Klauseln abgelehnt.
 
-Ad-hoc-Abfragen gegen externe Tabellen sind allein auf Grundlage der Rechte des Benutzers zulässig — der Zugriff basiert einheitlich auf Rechten (Tabellen-/Spaltenrechte + genehmigte Beziehungen), ohne tabellenspezifischen Governance-Modus.
+Ad-hoc-Abfragen gegen externe Tabellen sind allein aufgrund der Rechte des Benutzers erlaubt. Der Zugriff folgt überall demselben rechtebasierten Modell (Tabellen- und Spaltenrechte plus genehmigte Beziehungen), ohne Governance-Modus pro Tabelle.
 
-**Beziehungsgovernance (V002).** JOIN-Bedingungen gegen externe Tabellen — bei Abfrage über SQL oder Cypher — müssen einer registrierten, genehmigten Beziehung entsprechen. Die V002-Prüfung wird bei GraphQL-Abfragen übersprungen, da in der SDL definierte Beziehungen konstruktionsbedingt bereits genehmigt sind. Siehe [docs/security.md](security.md#relationship-governance-v002).
+**Beziehungs-Governance (V002).** Eine JOIN-Bedingung gegen externe Tabellen muss in einer SQL- oder Cypher-Abfrage zu einer registrierten, genehmigten Beziehung passen. GraphQL-Abfragen überspringen die Prüfung V002, weil in der SDL definierte Beziehungen von vornherein genehmigt sind. Siehe [docs/security.md](security.md#relationship-governance-v002).
 
 **OBJECT-typisierte Spalten.** Wenn eine Spalte einem nicht governance-pflichtigen Inline-GQL-OBJECT oder einem OpenAPI-Objekttyp entspricht, ist ihr Provisa-Typ `jsonb`. Die Spalte speichert den vollständigen verschachtelten JSON-Blob. Sind Unterfelder deklariert (`gql_object_fields` oder `object_fields`), wird die `gql_object_columns`-Zuordnung beim Schema-Build befüllt. Der SQL-Generator verwendet diese Zuordnung, um `->>`-Extraktionsausdrücke für Unterfelder zu erzeugen, wenn eine Abfrage diese auswählt.
 
@@ -316,9 +316,9 @@ Wenn ein Data Steward eine Beziehung zwischen zwei externen Tabellen (oder zwisc
 
 **Wie sich der Join durchsetzt.** Bei der Abfragekompilierung löst Provisa den Join-Pfad über die registrierte Beziehung auf. `source_column` und `target_column` der Beziehung werden zur Join-Bedingung im generierten SQL. Der Join ersetzt jeden pro-Tabelle-Aufruf an die externe Quelle, der andernfalls für den verbundenen Typ erforderlich wäre.
 
-**Der rohe Blob wird in SQL nie offengelegt.** Die Spalte `breed` auf `petstore__pets` ist in SQL-Abfragen nicht als roher jsonb-Wert auswählbar. Wenn eine Beziehung zwischen `petstore__pets` und `petstore__breeds` registriert ist, durchlaufen SQL-Abfragen den Join — `SELECT breed.name FROM petstore__pets` wird über den FK-Join aufgelöst, nicht über einen Blob. Ist keine Beziehung registriert, verfügt die Spalte aber über deklarierte Unterfelder (`gql_object_fields`), werden SQL-Unterfeldreferenzen zu `->>`-Extraktion gegen den gespeicherten Blob umgeschrieben. Dieser Pfad steht nur für nicht governance-pflichtige Inline-Typen zur Verfügung — Felder mit governance-pflichtigem Zieltyp sind vollständig von der SDL ausgeschlossen und besitzen keinen Blob, aus dem extrahiert werden könnte. Der rohe Blob selbst wird nie als bloßer Spaltenwert ausgegeben.
+**Der rohe Blob ist in SQL nie sichtbar.** Die Spalte `breed` an `petstore__pets` lässt sich in einer SQL-Abfrage nicht als roher jsonb-Wert auswählen. Sobald eine Beziehung zwischen `petstore__pets` und `petstore__breeds` registriert ist, traversieren SQL-Abfragen den Join: `SELECT breed.name FROM petstore__pets` wird über den FK-Join aufgelöst. Ist keine Beziehung registriert, hat die Spalte aber deklarierte Unterfelder (`gql_object_fields`), werden SQL-Verweise auf Unterfelder in eine `->>`-Extraktion aus dem gespeicherten Blob umgeschrieben. Diesen Weg gibt es nur für nicht gesteuerte Inline-Typen; Felder mit gesteuertem Ziel fehlen ganz in der SDL und haben keinen Blob, aus dem man extrahieren könnte. Der rohe Blob selbst wird nie als bloßer Spaltenwert ausgegeben.
 
-In der GraphQL-SDL wird ein nicht governance-pflichtiges Inline-OBJECT-Feld als der verschachtelte Objekttyp typisiert. Ob es zur Laufzeit über einen Join oder über Blob-Extraktion bedient wird, ist ein Implementierungsdetail — die SDL-Form ist in beiden Fällen identisch. Wird der untergeordnete Typ als eigene Tabelle registriert (und damit governance-pflichtig), gelten alle fünf Governance-Schichten unabhängig für ihn: eigene RLS-Regeln, Spaltensichtbarkeit, Maskierungsregeln, Prädikatschutz und Domänenzugriffskontrolle. Blob-Extraktion umgeht dies — die untergeordneten Daten treffen bereits eingebettet in der übergeordneten Zeile ein und unterliegen nur den Regeln der übergeordneten Tabelle. Das Registrieren des untergeordneten Typs als Tabelle und das Erstellen einer Beziehung ist der Weg zu feingranularer Governance auf dem untergeordneten Typ.
+In der GraphQL-SDL hat ein nicht gesteuertes Inline-Feld vom Typ OBJECT den verschachtelten Objekttyp. Ob es zur Ausführungszeit ein Join oder eine Blob-Extraktion bedient, ändert an der SDL-Form nichts. Sobald der Kindtyp als eigene Tabelle registriert und damit gesteuert ist, gelten für ihn alle fünf Governance-Schichten unabhängig: eigene RLS-Regeln, Spaltensichtbarkeit, Maskierungsregeln, Prädikat-Guards und Domänenzugriffskontrolle. Die Blob-Extraktion umgeht all das, weil die Kinddaten eingebettet in der Elternzeile ankommen und nur die Regeln der Elterntabelle gelten. Um den Kindtyp im Detail zu steuern, registrieren Sie ihn als Tabelle und legen eine Beziehung an.
 
 **`graphql_alias` auf der Beziehung.** Das Feld `graphql_alias` benennt das SDL-Feld, das die Beziehung auf dem übergeordneten Typ freigibt. Fehlt es, wird der Name aus dem `field_name` der Zieltabelle und der Kardinalität der Beziehung über `rel_field_name(target.field_name, cardinality)` abgeleitet.
 
@@ -334,7 +334,7 @@ Nicht jeder Typ in einem externen Schema muss eine abfragbare Tabelle sein.
 
 Wenn `root_table_ids` auf einem `SchemaInput` gesetzt ist, werden Tabellen, deren ID in dieser Menge fehlt, aus den Wurzel-Query-Feldern der generierten SDL ausgeschlossen. Sie bleiben als GraphQL-Typen vorhanden und sind über Beziehungsfelder auf Tabellen erreichbar, die selbst Wurzeleinträge besitzen.
 
-Derselbe Mechanismus gilt für domänengefilterte Schema-Builds: Tabellen in Domänen, auf die die Rolle keinen Zugriff hat, sind reine Typdefinitionen — ihre Typdefinition existiert in der SDL für den Beziehungsdurchlauf, aber es wird kein Wurzel-Query-Feld für sie generiert.
+Derselbe Mechanismus gilt, wenn das Schema nach Domänen gefiltert gebaut wird. Tabellen in Domänen, auf die die Rolle keinen Zugriff hat, sind reine Typdefinitionen: Ihre Typdefinition steht für das Traversieren von Beziehungen in der SDL, aber für sie wird kein Root-Abfragefeld erzeugt.
 
 Eine Tabelle mit reiner Typdefinition:
 
@@ -343,6 +343,6 @@ Eine Tabelle mit reiner Typdefinition:
 - Erscheint weiterhin als benannter Typ in der Schema-Introspektion.
 - Behält alle Governance-Regeln bei, wenn auf Daten über eine Beziehung zugegriffen wird.
 
-Eine vollständige Entfernung aus dem Schema — einschließlich der Typdefinition — erfolgt nur, wenn die Tabellenregistrierung vollständig gelöscht wird. Das Markieren einer Tabelle als reine Typdefinition (durch Entfernen ihrer ID aus `root_table_ids` oder durch Filterung nach Domänenzugriff) entfernt den Typ nicht.
+Eine Tabelle verschwindet samt Typdefinition nur dann ganz aus dem Schema, wenn ihre Registrierung gelöscht wird. Eine Tabelle zur reinen Typdefinition zu machen (indem ihre ID aus `root_table_ids` entfernt wird oder über den Domänenzugriffsfilter) entfernt den Typ nicht.
 
-Dieses Design ermöglicht es Data Stewards, navigierbare Objektgraphen offenzulegen, in denen manche Typen ausschließlich durch Durchlauf erreichbar sind, nicht durch eigenständige Abfrage.
+So können Stewards navigierbare Objektgraphen bereitstellen, in denen manche Typen nur über Traversierung erreichbar sind und sich nicht eigenständig abfragen lassen.

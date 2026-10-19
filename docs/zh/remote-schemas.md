@@ -1,6 +1,6 @@
 # 远程模式 {: #remote-schemas }
 
-远程模式来源将外部 API——GraphQL（含 GitHub）、gRPC 或 REST（OpenAPI）——连接至 Provisa 模型。添加来源不会注册任何数据表。来源会提供数据表，由数据管家通过“Register Table”选择器注册所需的每一张表；该注册即为策展（curation）步骤。已注册的数据表是一级的 Provisa 数据表。所有治理规则、查询接口及安全层均会自动应用。远程服务永远不会看到 Provisa 的治理规则。
+远程模式数据源把外部 API（GraphQL（包括 GitHub）、gRPC 或 REST（OpenAPI））接入 Provisa 模型。添加数据源不会注册任何表。数据源提供可选的表，由数据管家在 Register Table 选择器中逐个注册所需的表；这个注册就是筛选整理的步骤。已注册的表是完整的 Provisa 表，所以每条治理规则、每种查询接口和每个安全层都会自动作用于它。远程服务永远看不到 Provisa 的治理规则。
 
 ---
 
@@ -77,7 +77,7 @@
 
 **必填参数。** 当根查询字段带有非空值、无默认值的参数时，这些参数会成为数据表上的 `native_filter_type: query_param` 字段（于注入时加上 `_nf_` 前缀）。执行器会将其作为 GraphQL 变量传递。
 
-**自动检测的关系。** Provisa 会扫描每张已注册数据表中 OBJECT 类型的列。当所引用的 GQL 类型同样是同一来源中已注册的数据表，且该关系所依附的列属于已注册的列时，该关系即被存储。尚未注册的数据表则不会获得关系。多对一关系会依据命名惯例推断来源列与目标列（来源类型上的 `breedName` → 目标类型 `Breed` 上的 `name`）。一对多（LIST）字段会产生列引用为空的关系——外键位于目标一侧。
+**自动检测关系。** Provisa 会扫描每张已注册表中 OBJECT 类型的列。当某列引用的 GQL 类型也是同一数据源中已注册的表，并且承载该关系的列属于已注册的列时，就会保存该关系。尚未注册的表不会获得关系。多对一关系根据命名约定推断源列和目标列（源类型上的 `breedName` → 目标类型 `Breed` 上的 `name`）。一对多（LIST）字段生成的关系列引用为空，因为外键位于目标一侧。
 
 **Mutation。** mutation 字段会被逐个注册为 `source_operation` 种类的命令。其参数的类型均为 `json`，并作为类型化变量传给远程服务；应答即远程服务返回的 JSON，没有 `return_schema`。参见[远程来源的写入操作](commands.md#a-remote-sources-write-operation)。
 
@@ -136,7 +136,7 @@ GitHub 是一种普通的来源类型。其 API 为 GraphQL，因此其数据表
 
 **过重的页面。** 当 GitHub 因某一页的计算成本过高而返回 `RESOURCE_LIMITS_EXCEEDED` 时，会以一半大小重新请求该页。
 
-**嵌套对象。** GitHub 数据表使用自身的嵌套深度 0（此来源类型的 `max_object_depth=0`），而不是 `graphql_remote.max_object_depth`。嵌套对象列仅以其自身的标量字段选取；其内部的对象显示为 `__typename`。
+**嵌套对象。** GitHub 表使用自己的嵌套深度 0（此数据源类型的 `max_object_depth=0`），而不是 `graphql_remote.max_object_depth`。嵌套对象列只选取其自身的标量字段，其中的对象显示为 `__typename`。
 
 **令牌存储。** 令牌存入密钥库，来源行保留一个引用，因此重启后会重新读取该来源，无需重新输入令牌。
 
@@ -154,7 +154,7 @@ GitLab 是一种普通的来源类型，其添加与注册方式与 GitHub 相�
 - 一列的成本取决于其种类。普通值约为一点；嵌套对象列的成本是其许多倍。舍弃嵌套对象列最能节省成本。
 - 页面大小是价格的一部分。它即 `graphql_remote.max_list_items`。
 
-**令牌校验。** GitLab 对无法识别的令牌返回空结果，而不是错误。Provisa 将其视为被拒绝的令牌，不会添加该来源。
+**令牌检查。** GitLab 对无法识别的令牌返回空结果，而不是报错。Provisa 会把这视为令牌被拒绝，不添加该数据源。
 
 ---
 
@@ -211,7 +211,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 | 嵌套消息 | `jsonb` |
 | Enum | `text` |
 
-**注册时的关系。** `relationships` 的运作方式与 GQL 适配器相同——声明外键/主键连接路径，并存储为手动声明的关系（没有 `remote_managed` 标志）。刷新时，这些关系会保持不变。
+**注册时的关系。** `relationships` 的作用与 GQL 适配器相同：声明 FK/PK 联接路径，保存为手工声明的关系（没有 `remote_managed` 标记）。刷新时它们保持不变。
 
 **Query 方法。** 输出消息的字段会成为数据表列。输入消息的字段既会成为传递至远程调用的 GraphQL 参数，*同时*也会注册为以 `_nf_` 为前缀、`native_filter_type: "grpc_input"` 的字段——此机制与 GQL 及 OpenAPI 用于原生过滤器注入的机制相同。
 
@@ -249,11 +249,11 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 }
 ```
 
-**来源提供的内容。** 规范中的每个 GET 操作都会作为数据表提供，除非其响应模式是标量类型（`string`、`number`、`boolean`、`integer`）——返回标量的 GET 操作则是只有单个 `value` 列的函数。每个非 GET 操作（POST、PUT、PATCH、DELETE）都会作为命令提供，以其 `operationId` 命名。注册后，它接受该操作的路径参数，以及用于请求体的 `body` 参数，类型均为 `json`；其余任何参数都放在查询字符串中。参见[远程来源的写入操作](commands.md#a-remote-sources-write-operation)。
+**数据源提供什么。** 规范中的每个 GET 操作都作为表提供，除非其响应模式是标量类型（`string`、`number`、`boolean`、`integer`）；返回标量的 GET 是只有一个 `value` 列的函数。其他每个操作（POST、PUT、PATCH、DELETE）都作为命令提供，以其 `operationId` 命名。注册后，它接受操作的路径参数和一个用于请求体的 `body` 参数，类型均为 `json`，其他参数放在查询字符串中。参见[远程来源的写入操作](commands.md#a-remote-sources-write-operation)。
 
 分类优先顺序：`operation_overrides`（载荷）优先于 `x-provisa-kind`（规范扩展），而 `x-provisa-kind` 又优先于 GET 启发式规则。`operation_overrides` 为推荐的覆盖途径；`x-provisa-kind` 则适用于须由规范本身承载分类信息的情况。
 
-**注册时的关系。** `relationships` 的运作方式与其他适配器相同——存储为手动声明的关系，并于刷新时予以保留。
+**注册时的关系。** `relationships` 的作用与其他适配器相同：保存为手工声明的关系，刷新时保留。
 
 **数据表命名。** 数据表使用操作的 `operationId`。若未定义 `operationId`，Provisa 会将 `{method}_{path}` 转为 slug。别名的推导方式为移除开头的动词片段并将名词转为单数（`findPetsByStatus` → `pet_by_status`）。
 
@@ -268,7 +268,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 | `array` | `jsonb` |
 | `object` | `jsonb` |
 
-**作为原生过滤器字段的参数。** 尚未属于响应字段的路径及查询参数，会成为 `native_filter_type` 设为 `path_param` 或 `query_param`、并以 `_nf_` 为前缀的字段。当参数名称与响应字段名称相符时，该参数的元数据会并入已有的字段项，而非另建重复项。
+**参数作为原生过滤列。** 尚未成为响应字段的路径参数和查询参数会变成列，其 `native_filter_type` 为 `path_param` 或 `query_param`，并带 `_nf_` 前缀。当参数与某个响应字段同名时，其元数据会合并到该列的条目中，不会产生重复。
 
 **响应模式的解析。** 映射器会依序检查 `responses.200`、`responses.2xx`，再检查 `responses.default`。数组类型的响应会展开至其元素模式。`$ref` 引用会解析至一层深度。
 
@@ -300,9 +300,9 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 4. 字段脱敏——脱敏规则于治理流程的第二阶段应用。
 5. 谓词防护——已脱敏的字段会于 WHERE 及 HAVING 子句中被拒绝。
 
-针对远程数据表的即席查询仅依用户本身的权限予以允许——访问方式统一以权限为基础（数据表/字段权限加上已批准的关系），并无按数据表而异的治理模式。
+对远程表的即席查询只依据用户自己的权限放行。各处的访问都遵循同一套基于权限的模型（表和列的权限加上已批准的关系），没有按表设置的治理模式。
 
-**关系治理（V002）。** 针对远程数据表的 JOIN 条件——当通过 SQL 或 Cypher 查询时——必须符合一项已注册并已批准的关系。由于 SDL 定义的关系依设计已预先批准，GraphQL 查询会跳过 V002 检查。详见 [docs/security.md](security.md#relationship-governance-v002)。
+**关系治理（V002）。** 在 SQL 或 Cypher 查询中，针对远程表的 JOIN 条件必须与已注册并获批准的关系相符。GraphQL 查询会跳过 V002 检查，因为 SDL 中定义的关系按设计已获批准。参见 [docs/security.md](security.md#relationship-governance-v002)。
 
 **OBJECT 类型字段。** 当字段映射至未受治理的内嵌 GQL OBJECT 或 OpenAPI 对象类型时，其 Provisa 类型为 `jsonb`。该字段会存储完整的嵌套 JSON blob。当声明了子字段（`gql_object_fields` 或 `object_fields`）时，`gql_object_columns` 映射表会于模式构建时填充。当查询选取这些子字段时，SQL 生成器会使用此映射表发出 `->>` 提取表达式。
 
@@ -316,9 +316,9 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 **联接如何取得优先。** 于查询编译阶段，Provisa 会通过已注册的关系解析联接路径。该关系的 `source_column` 及 `target_column` 会成为生成 SQL 中的联接条件。联接会取代原本针对已连接类型所需的、按数据表逐一发出的远程调用。
 
-**原始 blob 永远不会于 SQL 中暴露。** `petstore__pets` 上的 `breed` 字段无法于 SQL 查询中作为原始 jsonb 值选取。当 `petstore__pets` 与 `petstore__breeds` 之间已注册一项关系时，SQL 查询会经由联接解析——`SELECT breed.name FROM petstore__pets` 是通过外键联接解析，而非通过 blob。若未注册任何关系，但该字段带有已声明的子字段（`gql_object_fields`），则 SQL 中对子字段的引用会被重写为对已存储 blob 的 `->>` 提取。此路径仅适用于未受治理的内嵌类型——受治理目标类型的字段完全从 SDL 中排除，并无 blob 可供提取。原始 blob 本身永远不会以裸字段值的形式输出。
+**原始 blob 永远不会在 SQL 中暴露。** 在 SQL 查询中无法把 `petstore__pets` 的 `breed` 列作为原始 jsonb 值选出。一旦在 `petstore__pets` 和 `petstore__breeds` 之间注册了关系，SQL 查询就会走联接：`SELECT breed.name FROM petstore__pets` 通过外键联接解析。如果没有注册关系，但该列声明了子字段（`gql_object_fields`），对子字段的 SQL 引用会改写为针对已存 blob 的 `->>` 提取。这条路径只适用于未受治理的内联类型；目标受治理的字段完全不出现在 SDL 中，也没有可提取的 blob。原始 blob 本身永远不会作为裸列值返回。
 
-于 GraphQL SDL 中，未受治理的内嵌 OBJECT 字段会被定型为该嵌套对象类型。至于它究竟是于运行时通过联接或通过 blob 提取来提供服务，属于实现细节——两种情况下的 SDL 形状均相同。当子类型被注册为其独立数据表（因而成为受治理类型）时，五层治理规则会独立应用于其上：其自身的 RLS 规则、字段可见性、脱敏规则、谓词防护及域访问控制。Blob 提取则会绕过此机制——子项数据会以预先内嵌的形式随父行数据一并到达，并仅受父数据表规则的治理。将子项注册为数据表并建立关系，是对子类型实现精细治理的途径。
+在 GraphQL SDL 中，未受治理的内联 OBJECT 字段的类型就是嵌套对象类型。执行时由联接还是由 blob 提取来提供数据，并不影响 SDL 的形状。一旦子类型注册为独立的表并因此受治理，五个治理层都会独立作用于它：它自己的 RLS 规则、列可见性、脱敏规则、谓词守卫和领域访问控制。blob 提取会绕过这一切，因为子数据嵌在父行中一起到达，只受父表规则约束。要对子类型做细粒度治理，请把它注册为表并创建关系。
 
 **关系上的 `graphql_alias`。** `graphql_alias` 字段会为关系于父类型上暴露的 SDL 字段命名。若缺省，其名称会依目标数据表的 `field_name` 及该关系的基数，通过 `rel_field_name(target.field_name, cardinality)` 推导而来。
 
@@ -334,7 +334,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 当 `SchemaInput` 上设置了 `root_table_ids` 时，ID 不在该集合中的数据表会从生成 SDL 的根查询字段中排除。它们仍会以 GraphQL 类型的形式存在，并可通过具有根条目的数据表上的关系字段加以访问。
 
-相同机制也适用于按域过滤的模式构建：位于角色无法访问的域中的数据表，仅属类型定义——其类型定义存在于 SDL 中以供关系遍历之用，但不会为其生成任何根查询字段。
+按领域过滤构建模式时，同样的机制也适用。角色无权访问的领域中的表只保留类型定义：其类型定义存在于 SDL 中以便遍历关系，但不会为它们生成根查询字段。
 
 仅供类型定义的数据表具备以下特性：
 
@@ -343,6 +343,6 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 - 仍会于模式内省中以具名类型的形式出现。
 - 当通过关系访问数据时，仍会应用所有治理规则。
 
-只有在数据表的注册被完全删除时，才会从模式中完全移除——包括其类型定义。将数据表标记为仅供类型定义（通过从 `root_table_ids` 中移除其 ID，或按域访问权进行过滤）并不会移除该类型。
+只有删除表的注册时，该表（包括类型定义）才会从模式中完全移除。把表变成只保留类型定义（从 `root_table_ids` 中移除其 ID，或通过领域访问过滤）并不会移除该类型。
 
-此设计让数据管家能够公开可导航的对象图，其中部分类型仅可通过遍历访问，而非独立查询。
+这样，数据管家就能公开可导航的对象图，其中某些类型只能通过遍历到达，无法单独查询。

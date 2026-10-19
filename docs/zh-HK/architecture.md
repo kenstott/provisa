@@ -4,7 +4,7 @@
 
 Provisa 是一個以設定驅動的數據虛擬化平台：聯邦、指標、本體與管治出自單一模型，適用於小型團隊與大型企業。它為異質數據來源提供統一的 API，並具備治理、安全性及效能優化。用戶端可透過 SQL、GraphQL 或 Cypher 查詢；三者均為一等介面，套用完全相同的治理規則。
 
-模型是加入語意的唯一位置。要擴充模型，你須在數據虛擬化層之內註冊新的數據來源或聚合。這造成一個乾淨的分隔——不能在平台之外對語義做任何新增，從而實現真正的數據治理。強制執行是在編譯器層級進行：無論使用哪一種查詢語言，經核准的關聯目錄都是唯一真實來源。
+模型是唯一加入語義的地方。要擴充模型，就在數據虛擬化層註冊新的數據來源或彙總。這保持了清晰的分隔：平台之外的任何東西都無法加入語義，亦正因如此才能實現真正的數據治理。由編譯器強制執行：無論使用哪種查詢語言，已批准的關係目錄都是唯一依據。
 
 Provisa 的設計目標，是同時對營運需求具備高效能，並對企業級分析需求具備高可擴展性。單一平台可同時服務兩者，不必犧牲速度或可擴展性。
 
@@ -31,7 +31,7 @@ Config YAML → PG Metadata → Federation Catalogs
 
 ## 查詢介面 {: #query-interfaces }
 
-每個介面都是一個獨立的傳輸方式。所有四種都套用同一套安全管線（RLS、遮罩、抽樣、角色檢查）。用戶端永不直接與聯邦引擎對話。「查詢語言」（SQL / GraphQL / Cypher）與傳輸方式互相正交——多種語言可經由同一種傳輸方式抵達。
+每個介面都是獨立的傳輸方式，四者套用同一條安全管道（RLS、遮罩、抽樣、角色檢查）。用戶端從不直接與聯邦引擎通訊。查詢語言（SQL、GraphQL 或 Cypher）與傳輸方式無關，多種語言可以經由同一種傳輸到達。
 
 | 連接埠 | 傳輸方式 | 所接受的查詢語言 | 使用情境 |
 | ------ | ----------- | -------------------------- | ---------- |
@@ -72,7 +72,7 @@ Config YAML → PG Metadata → Federation Catalogs
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
-完整結果永不在 Provisa 的記憶體中被具體化——批次資料一到達即被轉發。這使 Arrow Flight 成為一條無邊界的路徑，適合任意大小的結果。
+完整結果從不保存在 Provisa 的記憶體中：批次一到就轉發出去。這令 Arrow Flight 成為一條沒有上限的路徑，適合任意大小的結果。
 
 ### Protobuf gRPC（連接埠 50051） {: #protobuf-grpc-port-50051 }
 
@@ -84,7 +84,7 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 
 ## 請求管線 {: #request-pipeline }
 
-系統接受三種查詢語言。三者在各自的剖析/編譯步驟之後，全部匯聚於治理階段。只有 GraphQL 支援寫入。查詢本身沒有任何能力閘控——任何已通過身分驗證的身分都可以用任何語言查詢，數據僅由物件可視性、RLS 及遮罩治理。
+系統接受三種查詢語言，三者在各自完成剖析及編譯後匯合到治理階段。三者都可以寫入：GraphQL 變更、SQL 的 `INSERT`、`UPDATE`、`DELETE`、`MERGE` 及 `TRUNCATE`，以及 Cypher 的 `CREATE`、`SET` 及 `DELETE`，都會轉換為 SQL 並經過同一個寫入准入。查詢本身沒有能力關卡。任何已驗證身分都可以用任何語言查詢，數據僅由物件可見性、RLS 及遮罩來治理。
 
 | 介面 | 讀取 | 寫入 | 查詢閘控 |
 | --- | --- | --- | --- |
@@ -170,7 +170,7 @@ CTAS 重新導向使用一個 Iceberg 連接器（`results` 目錄），其後�
 
 ## 聯邦引擎 {: #federation-engines }
 
-Provisa 在啟動時，透過 `PROVISA_ENGINE` 環境變數、持久化的管理介面設定，或預設值來選擇一個聯邦引擎。當未設定任何值時，DuckDB 是預設引擎——完全於行程內執行，不需要外部服務。選擇詳情請參閱[設定](configuration.md#federation-engine)。
+Provisa 在啟動時根據 `PROVISA_ENGINE` 環境變數、管理介面中儲存的設定或預設值選擇聯邦引擎。如果甚麼都沒設定，預設是 DuckDB，完全在程序內執行，毋須外部服務。選擇方式見[設定](configuration.md#federation-engine)。
 
 每一個引擎都是 `provisa/federation/engine.py` 中定義的一個 `FederationEngine` 實例。該實例擁有一組連接器集合，決定該引擎可以即時讀取（ATTACH）哪些來源類型，以及哪些必須先落地至該引擎的具體化儲存區。
 
@@ -201,7 +201,7 @@ Provisa 在啟動時，透過 `PROVISA_ENGINE` 環境變數、持久化的管理
 
 當 `PROVISA_ENGINE` 未設定時，Provisa 使用完全內嵌、行程內執行的 DuckDB 引擎。DuckDB 的具體化儲存區是位於 `$PROVISA_DATA_DIR/materialize.duckdb` 的一個內嵌 DuckDB 檔案（預設為 `~/.provisa/materialize.duckdb`）。不需要任何外部資料庫或服務。
 
-由於 DuckDB 對每個檔案僅允許一個寫入者，`store_connection.py` 是透過引擎自身的連線寫入內嵌儲存區——絕不會另開第二條獨立連線。這是引擎與具體化儲存區依設計共用同一個檔案控制代碼的唯一案例。
+DuckDB 每個檔案只容許一個寫入者，所以 `store_connection.py` 經引擎自身的連線寫入內嵌儲存，從不另開一個獨立連線。這是引擎及具體化儲存按設計共用檔案控制代碼的唯一情況。
 
 ### Arrow 原生讀取傳輸 {: #arrow-native-read-transport }
 
@@ -238,7 +238,7 @@ Attach 會在附加時自動佈建所有先決條件：
 | **CTAS**（Parquet、ORC） | 聯邦引擎透過 `CREATE TABLE AS SELECT` 直接寫入 S3 | 否 |
 | **Provisa 上傳**（JSON、NDJSON、CSV、Arrow IPC） | Provisa 序列化並透過 boto3 上傳 | 是 |
 
-對於 CTAS 原生格式，Provisa 永不經手數據——聯邦引擎直接將檔案寫入 MinIO/S3。這是大型分析匯出的首選路徑。
+對於 CTAS 原生支援的格式，Provisa 完全不經手數據：聯邦引擎直接把檔案寫入 MinIO/S3。這是大型分析匯出的首選路徑。
 
 ### 沒有物件儲存 {: #with-no-object-store }
 
@@ -304,7 +304,7 @@ Redirect to Parquet/ORC? → Federation engine (CTAS, regardless of source count
 
 ## 聯邦查詢優化 {: #federation-query-optimization }
 
-Provisa 會自動預熱聯邦引擎的成本導向優化器，讓跨來源查詢計畫依據真實的數據分佈，而非硬編碼的預設值。
+Provisa 會自動為聯邦引擎以成本為基礎的最佳化器準備統計資料，令跨數據來源查詢計劃基於數據的真實分佈，而不是寫死的預設值。
 
 ### 自動統計資料 (`ANALYZE`) {: #automatic-statistics-analyze }
 
@@ -315,7 +315,7 @@ Provisa 會自動預熱聯邦引擎的成本導向優化器，讓跨來源查詢
 
 優化器會利用這些資料，估算篩選查詢的選擇率 (selectivity)。若沒有統計資料，會回退至固定的預設值（例如相等判斷式的選擇率為 10%），這在資料傾斜或高基數的數據上會產生不良的 join 計畫。有了統計資料，估算便足夠準確，能為大多數工作負載作出正確的廣播式 (broadcast) 或分割式 (partitioned) join 決策。
 
-**涵蓋範圍**：統計資料支援視連接器而異。PostgreSQL、MySQL、Hive、Iceberg 及 Delta Lake 完全支援 `ANALYZE`。MongoDB 及 Cassandra 連接器僅有部分支援或完全不支援。Provisa 會靜默吞掉 `ANALYZE` 失敗——登記程序絕不會因此被阻擋。
+**涵蓋範圍**：統計資料支援因連接器而異。PostgreSQL、MySQL、Hive、Iceberg 及 Delta Lake 完全支援 `ANALYZE`；MongoDB 及 Cassandra 部分支援或不支援。連接器不收集統計資料的目錄會被略過，失敗的 `ANALYZE` 會記入日誌並略過，所以註冊永遠不會被阻塞。
 
 **選擇率的限制**：統計資料提供的是逐欄位估算值。對於相關聯的判斷式（`WHERE region = 'US' AND city = 'Seattle'`），優化器假設欄位彼此獨立，這可能會低估資料列數。這是所有成本導向優化器中，欄位層級統計資料共有的已知限制。
 
@@ -342,11 +342,11 @@ MV 藉由預先運算並快取結果，透明地優化昂貴的查詢。
 
 ### 作為 MV 提示的關聯 {: #relationships-as-mv-hints }
 
-一項關聯宣告不僅是一種治理構件——它同時也是一個 join 形狀的結構性描述。而這正是 MV 優化器所需要的：兩個資料表、兩個欄位、一種 join 類型。這代表一項關聯可以直接驅動具體化。
+關係宣告既是治理產物，亦是聯結形態的結構化描述。這個形態（資料表、資料行、聯結類型）正是 MV 最佳化器所需要的，所以關係可以直接驅動具體化。
 
-對於**跨來源關聯**，此舉會在啟動時自動發生：每一項帶有 `materialize: true` 且其各條腿落在一個以上來源中的關聯，都會產生一個 `JoinPattern` MV（`auto-mv-<rel_id>`）。不需要另外設定 MV。當編譯器在某個查詢中偵測到該 join 時，重寫器 (rewriter) 會透明地以預先具體化的結果取而代之。同來源的關聯不會產生任何東西——那些 JOIN 透過直接執行已相當快速。
+對於**跨數據來源的關係**，這一切在啟動時自動發生：每個設定了 `materialize: true`、且兩端落在多於一個數據來源中的關係，都會產生一個 `JoinPattern` MV（`auto-mv-<rel_id>`），毋須獨立的 MV 設定。編譯器在查詢中看到這個聯結時，重寫器會在呼叫方無感知的情況下換上預先具體化的結果。同一數據來源內的關係不會產生任何東西，因為這些 JOIN 經直接執行已經很快。
 
-**由聯結資料表支撐的關聯**具體化的是它的走訪，而不是一次直接 join：關聯資料表是第三條腿，因此該模式攜帶來源端跳、聯結資料表跳，以及把資料列集釘定到單一邊類型的判別欄，而聯結資料表自身的欄位會與目標資料表的欄位一起落入檢視表。由於聯結資料表算作一條腿，若某條邊的聯結資料表位於與它所連接的兩張資料表不同的來源，即使那兩張資料表同源，這條邊仍是跨來源的。重寫器把這兩跳當作一條鏈來比對——第二跳必須從第一跳引入的別名出發——因此，一個不經過聯結資料表就觸及同樣兩張資料表的查詢讀取的是基礎資料表，而為某一個判別值建構的檢視表，永遠不會回答按另一個值過濾的走訪。
+**經由關聯表的關係**會具體化整條遍歷。關聯表是第三條腿，所以該模式包含來源一跳、關聯表一跳，以及把資料列限定到某一種邊類型的判別值，關聯表自身的資料行會與目標的資料行一起落到檢視中。由於關聯表算作一條腿，如果關聯表所在的數據來源與它連接的兩個資料表不同，即使那兩個資料表同屬一個數據來源，這條邊亦算跨數據來源。重寫器把兩跳作為一條鏈來比對，第二跳必須從第一跳引入的別名出發。因此，不經過關聯表而到達同樣兩個資料表的查詢會讀取基礎資料表，為某個判別值建構的檢視亦永遠不會回答按另一個判別值篩選的遍歷。
 
 實際的結果是：核准一項關聯的數據管家，同時也隱含地決定了該 join 是否適合作為具體化的候選對象。治理行為與優化提示，是同一項宣告。
 
@@ -470,7 +470,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 `GET /admin/ai-models` 及 `PUT /admin/ai-models` 為每個組織設定 LLM 管線。
 
-設定值是**依組織範圍界定**的：每個組織的選擇會疊加於部署層級的設定之上，並於下一次請求即時生效——不需要重新啟動。
+這些設定**按機構生效**：每個機構的選擇疊加在部署設定之上，由下一個請求起生效，毋須重新啟動。
 
 **逐操作模型指派。**六項操作各自具有可設定的供應商及模型字串：
 
@@ -489,13 +489,13 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 **向量模型登記冊。**一份嵌入模型清單（欄位：`id`、`provider`、`dimensions`，可選的 `api_key_env` 及 `base_url`、`enabled` 旗標）。全清單取代：每一項都必須具備 `id`、`provider` 及 `dimensions`，否則該次寫入會被拒絕，回傳 `400`。
 
-**API 金鑰。**逐供應商的 LLM API 金鑰經由 `provisa.core.org_secrets` 加密儲存（見下文）。`GET` 回應僅回報每個供應商是否已設定金鑰——絕不會傳回該值本身。對某供應商送出空字串會清除該金鑰，使該供應商的 LLM 呼叫回復為部署層級環境變數所提供的憑證。
+**API 金鑰。** 每個供應商的 LLM API 金鑰都經 `provisa.core.org_secrets` 加密儲存（見下文）。`GET` 回應只說明每個供應商是否設定了金鑰，從不傳回金鑰值。為某個供應商傳送空字串會清除其金鑰，該供應商的 LLM 呼叫隨即改回使用部署環境變數中的憑證。
 
 ## 逐組織加密機密 {: #per-org-encrypted-secrets }
 
 `provisa/core/org_secrets.py` 儲存絕不能以明文形式出現在資料庫中的憑證。其中保存 AI 供應商的 API 金鑰（`{vendor}_api_key`）及 Jev 金鑰（`jev_api_key`）。
 
-數值是透過 `provisa.encryption.runtime` 的行程層級 `encryption_service` 加密——與 `api_sources.auth` 相同的機制。
+這些值用 `provisa.encryption.runtime` 中程序級的 `encryption_service` 加密，與 `api_sources.auth` 使用同一機制。
 
 支援十二個相容 `aisuite` 的供應商：`anthropic`、`openai`、`cohere`、`groq`、`mistral`、`xai`、`deepseek`、`together`、`fireworks`、`nebius`、`sambanova` 及 `inception`。Google、AWS 及 Azure 因需要超出單純 API 金鑰以外的設定（專案 ID、IAM 角色、地區）而被排除。本機端點供應商（`ollama`、`lmstudio`）因同樣理由——沒有金鑰——而被排除。
 
@@ -607,7 +607,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 ## 列舉型別自動偵測 {: #enum-type-auto-detection }
 
-`compiler/enum_detect.py` 在結構描述產生時，內省 PostgreSQL 原生列舉型別（`pg_enum`）。使用 PostgreSQL 使用者自訂列舉型別的欄位，會被提升為 GraphQL 列舉型別——其值成為列舉成員，而非字串純量。
+`compiler/enum_detect.py` 在產生結構描述時檢查 PostgreSQL 原生列舉類型（`pg_enum`）。使用 PostgreSQL 使用者自訂列舉類型的資料行會成為 GraphQL 列舉類型，其取值成為列舉成員，而不是字串純量。
 
 ## 排程觸發器 {: #scheduled-triggers }
 
@@ -647,11 +647,11 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## GraphQL Voyager 結構描述瀏覽器 {: #graphql-voyager-schema-explorer }
 
-管理介面（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌了 GraphQL Voyager 作為互動式結構描述視覺化工具。它將角色範圍內的結構描述呈現為一個可瀏覽的實體關聯圖——資料表為節點，關聯為邊。所顯示的結構描述一律依目前所選角色進行篩選。
+管理介面（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌了 GraphQL Voyager，作為互動式的結構描述視覺化工具。它把按角色限定的結構描述繪製成可導覽的實體關係圖，資料表是節點，關係是邊。顯示的結構描述一律按目前選取的角色篩選。
 
 ## 安全強制執行順序 {: #security-enforcement-order }
 
-查詢本身沒有任何能力閘控——治理完全透過數據層控制來表達。一個原始 SQL 請求，會在治理程序執行之前，就拒絕（HTTP 403）任何超出該角色物件範圍的資料表。
+查詢沒有能力關卡；治理完全由數據層的控制實現。對於角色物件範圍以外的任何資料表，原始 SQL 請求會在治理執行之前已被拒絕（HTTP 403）。
 
 1. **物件可視性**：逐角色結構描述會隱藏未經授權的資料表/欄位；原始 SQL 中超出範圍的資料表會被拒絕
 2. **關聯強制執行**：遍歷 (traversal) 必須存在於已核准的關聯目錄中，除非該角色持有 `ignore_relationships`——在已預置的系統角色中，只有 `modeler` 具備此能力。在高安全性模式下，此能力會被忽略，沒有任何遍歷可逃離目錄範圍
@@ -663,7 +663,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## 可擴展性限制 {: #scalability-limits }
 
-Provisa 是一個輕量的編譯與路由層——它只為查詢延遲增加個位數毫秒。然而，Provisa 需要序列化結果數據的路徑，會受行程記憶體所限。有兩條路徑是真正無邊界的：
+Provisa 是一個很薄的編譯與路由層，只為查詢延遲增加個位數毫秒。不過，Provisa 需要序列化結果數據的路徑會受程序記憶體限制。有兩條路徑完全不受限：
 
 | 路徑 | 是否受記憶體限制？ | 適用情境 |
 | ------ | -------------- | ------------- |

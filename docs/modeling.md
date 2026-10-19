@@ -4,10 +4,7 @@
 
 # Data Modeling (Entities & Facts)
 
-Provisa gives you two declarative primitives — `entity` and `fact` — that cover the building
-blocks every star schema and Data Vault is assembled from. Declare the spec; Provisa lowers it to
-exactly the materialized-view, bitemporal, and relationship definitions you would otherwise
-hand-write.
+Provisa gives you two declarative primitives, `entity` and `fact`, which cover the building blocks every star schema and Data Vault is put together from. Declare the spec, and Provisa lowers it to exactly the materialized-view, bitemporal and relationship definitions you would otherwise write by hand.
 
 ## What entities and facts are
 
@@ -16,12 +13,9 @@ name it, point it at a source, declare the entity key and the attributes you wan
 and choose a history mode. Provisa writes the view SQL and registers the MV. When history is
 enabled, the MV is bitemporal.
 
-A **fact** is a join to entity keys, reduced to a declared grain, with aggregated measures. Provisa
-writes an aggregate-MV query (`GROUP BY` grain + FK columns) and registers a relationship for each
-declared dimension link. A fact with no measures is a pure key-set — the Data Vault link pattern.
+A **fact** is a join to entity keys, reduced to a declared grain, with aggregated measures. Provisa writes an aggregate-MV query (`GROUP BY` grain + FK columns) and registers a relationship for each declared dimension link. A fact with no measures is a pure key set, which is the Data Vault link pattern.
 
-Both constructs are IR. The generated definitions retarget across engines — materialized in Oracle,
-Databricks, or left virtual over an MPP engine — without remodeling.
+Both constructs are IR. The generated definitions move across engines without remodeling: materialized in Oracle or Databricks, or left virtual over an MPP engine.
 
 ## History modes
 
@@ -37,7 +31,7 @@ Three modes are available on an entity:
 by a full copy per refresh. Pick `scd2` for large, slowly-changing sources; pick `snapshot` when
 you need full history and the source can't supply a key.
 
-Facts have no history mode — temporal coverage comes from the underlying entity history.
+Facts have no history mode of their own; their coverage over time comes from the history of the entities underneath.
 
 ## Measures and aggregations
 
@@ -255,18 +249,11 @@ History mode is the only dial between SCD Type 1 and Type 2:
 | Type 1 (current only) | `none` | MV rebuilt on refresh; no row history |
 | Type 2 (versioned) | `scd2` | Bitemporal delta MV; each change appends a new row keyed on the entity key |
 
-Use `scd2` when downstream queries need to join a dimension as it existed at transaction time — a
-customer's tier at the moment of purchase, not their current tier. Use `none` for stable lookups.
-A date spine never changes. A product catalog where you only need the current price can rebuild on
-every refresh.
+Use `scd2` when downstream queries need to join a dimension as it was at transaction time, such as a customer's tier at the moment of purchase instead of their current tier. Use `none` for stable lookups. A date spine never changes, and a product catalog where you only need the current price can rebuild on every refresh.
 
 #### Grain decision
 
-The grain is the lowest level of detail the fact answers. `order_id` gives one row per order,
-preserving the ability to count distinct orders and join to any dimension at order granularity.
-A coarser grain — say `["customer_id", "order_date"]` — pre-aggregates across orders and discards
-that detail permanently. Declare the narrowest grain the business needs; coarser rollups are cheap
-to derive afterward.
+The grain is the lowest level of detail the fact answers. `order_id` gives one row per order and keeps the ability to count distinct orders and join to any dimension at the order level. A coarser grain, say `["customer_id", "order_date"]`, pre-aggregates across orders and throws that detail away for good. Declare the narrowest grain the business needs; coarser rollups are cheap to derive later.
 
 #### Register the dimensions
 
@@ -336,7 +323,7 @@ SELECT "date_key", "year", "quarter", "month" FROM "raw"."date_spine"
 
 #### Register the Sales fact across three dimensions
 
-Grain: `order_id`. Three dimension references — one FK column each. Both measures are additive sums.
+Grain: `order_id`. Three dimension references, with one FK column each. Both measures are additive sums.
 
 ```graphql
 mutation {
@@ -492,8 +479,7 @@ provides point-in-time attribute access through the bitemporal layer.
 
 #### Link (measureless fact)
 
-A link records which hub keys co-occurred — keys only, no measures. Provisa omits the `GROUP BY`
-when `measures` is empty.
+A link records which hub keys occurred together. It holds keys only and no measures, and Provisa leaves out the `GROUP BY` when `measures` is empty.
 
 ```graphql
 mutation {
@@ -558,10 +544,7 @@ split remain the modeler's decisions. Provisa executes them.
 
 ## Metrics
 
-A **metric** is a named, governed aggregate definition with no grain of its own. The grain — the
-dimensions the aggregate is broken out by — is bound at query time by the caller, not at definition
-time. That is what distinguishes a metric from a view: a view locks the grain at creation; a metric
-stays open until queried.
+A **metric** is a named, governed aggregate definition with no grain of its own. The grain, meaning the dimensions the aggregate is broken out by, is bound by the caller at query time instead of at definition time. That's what sets a metric apart from a view: a view fixes the grain when it's created, and a metric stays open until it's queried.
 
 ### The Metric object
 
@@ -575,8 +558,7 @@ stays open until queried.
 | `visible_to` | no | Role list; defaults to `["*"]` (all roles) |
 | `from_fact` | — | Set automatically when the metric was generated from a fact measure |
 
-Column references inside the expression must be table-qualified (`orders.amount`, not `amount`).
-An unqualified column is a hard error at expansion time, not a warning.
+Column references inside the expression must be qualified with their table (`orders.amount`, not plain `amount`). An unqualified column is a hard error when the metric is expanded, and nothing lets it pass with a warning.
 
 The metric repository validates the expression on every write. An expression that does not parse or
 contains no aggregate function is rejected; it is never stored.
@@ -594,9 +576,7 @@ metrics:
 
 ### Querying a metric
 
-The compiler reserves the `metrics` schema. Every metric is addressable as a virtual relation
-inside that schema. Query it like a table — the columns you select become the dimension set and
-the GROUP BY:
+The compiler reserves the `metrics` schema, and every metric can be addressed as a virtual relation inside it. Query it like a table, and the columns you select become the dimension set and the GROUP BY:
 
 ```sql
 -- Scalar total (no dimension)
@@ -609,8 +589,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 The compiler rewrites this into a real grouped aggregate over the underlying semantic tables before
 governance runs, so RLS and masking apply to the actual columns.
 
-`SELECT *` against a metric relation is rejected — name the dimension columns and `value`
-explicitly.
+`SELECT *` against a metric relation is refused. Name the dimension columns and `value` explicitly.
 
 When a metric's expression spans multiple tables, the compiler joins them through registered
 relationships. A dimension that is a column of a directly-referenced table resolves to that table.
@@ -664,8 +643,7 @@ metrics via `metric('name')`. The compiler replaces each call with the metric's 
 records a lineage edge. This gives free-hand views the same recompile-on-change property when
 they reference a metric rather than copy its formula.
 
-Note: config-path views using inline `metric()` calls regenerate on config reload, not on metric
-upsert.
+Note: views from the config file that use inline `metric()` calls regenerate when the config reloads, and a metric upsert doesn't regenerate them.
 
 ### The Metrics admin page
 
@@ -681,8 +659,4 @@ The expression textarea remains the escape hatch for arbitrary expressions.
 
 ## The IR payoff
 
-Every registration call goes through the same path as a hand-written MV. The entity/fact spec
-is an intermediate representation — not a template, not a macro. The warehouse it targets is a
-property of the deployment, not of the model. Change the target engine and the same `entity` /
-`fact` declarations materialize there, because the generated SQL and bitemporal modes are
-engine-neutral by construction.
+Every registration call goes through the same path as a hand-written MV. The entity and fact spec is an intermediate representation; it isn't a template or a macro. The warehouse it targets is a property of the deployment, and the model doesn't name it. Change the target engine, and the same `entity` / `fact` declarations materialize there, because the generated SQL and the bitemporal modes are engine-neutral by design.

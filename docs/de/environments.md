@@ -1,10 +1,6 @@
 # Umgebungen {: #environments }
 
-Eine Umgebung ist eine benannte Kopie des regierten Modells einer Organisation. Die Kopie ist physisch ein
-eigenes PostgreSQL-Schema — keine Diskriminatorspalte, kein Präfix, ein echtes Schema —, sodass jede
-bestehende Repository-Abfrage innerhalb einer Umgebung korrekt ist, ohne dass etwas umgeschrieben wird, und
-die Zeilen der einen Umgebung nicht durch ein vergessenes Prädikat in den Lesezugriff einer anderen geraten
-können.
+Eine Umgebung ist eine benannte Kopie des gesteuerten Modells einer Organisation. Physisch ist die Kopie ein eigenes PostgreSQL-Schema: ein echtes Schema, ohne Diskriminatorspalte und ohne Präfix. Darum ist jede vorhandene Repository-Abfrage in einer Umgebung korrekt, ohne umgeschrieben zu werden, und ein vergessenes Prädikat kann die Zeilen einer Umgebung nicht aus einer anderen lesbar machen.
 
 Jede Organisation startet mit einer Umgebung namens `prod`. Sie kann weder gelöscht noch umbenannt werden.
 Eine Anfrage, die keine Umgebung benennt, wird von `prod` bedient; eine Anfrage, die eine nicht existierende
@@ -16,17 +12,11 @@ Wie Sie eine Nicht-Produktionsumgebung mit gefahrlos nutzbaren Daten füllen, be
 
 ## Umgebungsnamen {: #environment-names }
 
-Ein Name muss `[a-z][a-z0-9_]{1,31}` entsprechen — zwei bis zweiunddreißig Zeichen aus Kleinbuchstaben,
-Ziffern und Unterstrichen, beginnend mit einem Buchstaben. `prod` und Namen, die mit `pg_` beginnen, werden
-abgelehnt. Die Maximallänge für eine bestimmte Org hängt von der ID dieser Org ab: PostgreSQL kürzt einen
-Bezeichner über 63 Byte stillschweigend, und der längste Schemaname, den eine Umgebung ableitet, ist das,
-wovor die Obergrenze schützt.
+Ein Name muss `[a-z][a-z0-9_]{1,31}` entsprechen: zwei bis zweiunddreißig Kleinbuchstaben, Ziffern und Unterstriche, beginnend mit einem Buchstaben. `prod` und Namen, die mit `pg_` beginnen, werden abgelehnt. Die Höchstlänge für eine Organisation hängt von deren eigener ID ab. PostgreSQL kürzt einen Bezeichner über 63 Byte stillschweigend, und die Grenze schützt vor dem längsten Schemanamen, den eine Umgebung ableitet.
 
 ## Was eine Kopie mitnimmt {: #what-a-copy-carries }
 
-Jede Tabelle im Org-Schema fällt in genau eine Klasse. Die Klassifizierung ist eine Allow-List,
-keine Ausschlussliste: Eine später hinzugefügte Tabelle reist nicht mit, bis jemand hier ihre Klasse benennt
-— die Fehlerwirkung für eine vergessene Tabelle ist also ein roter Test.
+Jede Tabelle im Org-Schema gehört genau einer Klasse an. Die Einteilung ist eine Positivliste: Eine später hinzugefügte Tabelle reist nicht mit, bis jemand hier ihre Klasse nennt, sodass eine vergessene Tabelle als roter Test auffällt.
 
 | Klasse | Tabellen | Was beim Kopieren geschieht |
 | --- | --- | --- |
@@ -45,10 +35,7 @@ Zuweisungen reisen deshalb einmal mit, beim Anlegen, und sind danach die eigene 
 
 ## Bindungen {: #bindings }
 
-Bindungen sind die Spalten, die sagen, wohin eine Quelle tatsächlich zeigt — `host`, `port`, `database`,
-`username` und der Rest. Sie reisen in keiner Kopie mit. Eine Umgebung, die noch nicht gebunden wurde, wird
-als `unbound` markiert, statt leer gelassen zu werden: Ein leerer Host ist kein fehlender, und der
-Verbindungsaufbau würde ihn als `localhost:5432` lesen.
+Bindungen sind die Spalten, die sagen, wohin eine Quelle tatsächlich zeigt: `host`, `port`, `database`, `username` und die übrigen. Sie reisen nie in einer Kopie mit. Eine Umgebung, die noch nicht gebunden ist, wird als `unbound` markiert statt leer gelassen, denn ein leerer Host ist nicht dasselbe wie kein Host, und der Verbindungsaufbau würde ihn als `localhost:5432` lesen.
 
 Eine Umgebung, die nicht als Unbound angelegt wird, kopiert die Verbindung jeder Quelle von ihrer Elternumgebung,
 genau so, wie die Elternumgebung sie geschrieben hat: Ein `${secret:...}`- oder `${env:...}`-Verweis wird als dieser
@@ -61,21 +48,15 @@ Ein Merge oder Deploy trägt keine Verbindungen, daher kommt eine Quelle, die er
 
 ## Die Git-Projektion {: #the-git-projection }
 
-Jeder Schreibvorgang am Modell committet das Ergebnis in den Git-Branch der Umgebung. Einen Baum zu deployen erfordert einen ausdrücklichen Aufruf — ein
-gemergter Pull Request auf dem Git-Host deployt sich nicht von selbst.
+Jeder Schreibvorgang im Modell committet das Ergebnis auf den Git-Branch der Umgebung. Einen Baum zu deployen, verlangt einen ausdrücklichen Aufruf: Ein gemergter Pull Request auf dem Git-Host deployt sich nicht selbst.
 
-Jede Entität bekommt eine Datei. Der Pfad ist die `provisa://`-Adresse der Entität ohne Schema und Org:
-`provisa://acme/sales/tables/Order` wird zu `sales/tables/Order.yaml`. Quellen landen in `sources/`,
-Commands in `commands/`, Metriken in `metrics/`. Kindzeilen, die von einem Elternteil kaskadieren — Spalten,
-Beziehungen, RLS-Regeln —, werden in die Datei des Elternteils geschrieben, nicht als eigene Dateien.
+Jede Entität bekommt eine Datei. Der Pfad ist die `provisa://`-Adresse der Entität ohne Schema und Organisation: `provisa://acme/sales/tables/Order` wird zu `sales/tables/Order.yaml`. Quellen landen in `sources/`, Commands in `commands/` und Metriken in `metrics/`. Kindzeilen, die von einem Elternteil abhängen (Spalten, Beziehungen, RLS-Regeln), stehen in der Datei des Elternteils und haben keine eigenen Dateien.
 
 Commands und ihre Tag-Zuweisungen überstehen den Hin- und Rückweg. Ein Tag auf einem Command wird in die
 eigene Datei des Commands geleitet (`commands/<name>.yaml`); ein Tag, das zu keiner Datei gehört,
 verschwindet aus der Projektion und würde beim nächsten Deploy dieses Baums gelöscht.
 
-Kein Surrogatschlüssel gelangt in eine Datei. `registered_tables.id` ist eine automatisch hochzählende
-Ganzzahl — dasselbe Modell bekommt in zwei Umgebungen unterschiedliche Zahlen, sodass ein naiver Dump gegen
-sich selbst diffed. Jedes Surrogat wird verworfen und jede Referenz darauf als Pfad des Ziels geschrieben.
+Kein Surrogatschlüssel gelangt in eine Datei. `registered_tables.id` ist eine automatisch hochgezählte Ganzzahl, dasselbe Modell bekommt also in zwei Umgebungen verschiedene Zahlen, und ein naiver Dump würde sich von sich selbst unterscheiden. Jeder Surrogatschlüssel wird weggelassen, und jeder Verweis darauf wird als Pfad des Ziels geschrieben.
 
 Die Serialisierung ist deterministisch. Schlüssel werden alphabetisch ausgegeben, Kindsammlungen nach ihrer
 Adresse sortiert, und der YAML-Stil liegt fest. Zwei Umgebungen, die dasselbe Modell halten, erzeugen
@@ -83,10 +64,7 @@ byte-identische Bäume.
 
 ## Merge
 
-Das Mergen des Modells einer Umgebung in eine andere aktualisiert über die Identität: Jedes Objekt, das die
-Quelle hat, wird im Ziel angelegt oder aktualisiert. Objekte, die die Quelle nicht mehr hat, werden nur
-entfernt, wenn die aufrufende Seite Entfernungen ausdrücklich anfordert. Ein Merge, der auf halbem Weg
-scheitert, lässt das Ziel so, wie es war — eine Transaktion.
+Das Mergen des Modells einer Umgebung in eine andere aktualisiert nach Identität: Jedes Objekt, das die Quelle hat, wird im Ziel angelegt oder aktualisiert. Objekte, die die Quelle nicht mehr hat, werden nur entfernt, wenn der Aufrufer ausdrücklich Entfernungen verlangt. Ein Merge ist eine Transaktion; scheitert er mittendrin, bleibt das Ziel, wie es war.
 
 Rufen Sie vor dem Anwenden den Vorschau-Endpunkt auf (`GET /{name}/merge-preview`) oder übergeben Sie
 `dry_run: true`. Die Vorschau läuft denselben Codepfad, den der Merge verwendet; sie ist ein `GET`-Endpunkt,
@@ -98,20 +76,11 @@ nicht die Grants von dev.
 
 ### Was der Bericht benennt {: #what-the-report-names }
 
-Der Merge-Bericht führt nach Pfad auf, was hinzugefügt, geändert, entfernt und unverändert gelassen wurde.
-Er benennt außerdem alle **Konflikte** — Objekte, die beide Seiten seit dem letzten gemeinsamen Commit
-geändert haben. Ein Konflikt wird gemeldet und nicht aufgelöst: Die Quelle gewinnt, denn genau das bedeutet
-ein Merge in ein Ziel. Provisa bietet keine Konfliktauflösung, keine Merge-Marker, keine Auswahl pro Objekt.
-Der Wert der Konfliktliste ist das Signal — zwei Personen haben dasselbe Objekt bearbeitet, ohne voneinander
-zu wissen.
+Der Merge-Bericht listet nach Pfad, was hinzugefügt, geändert, entfernt und belassen wurde. Er nennt auch alle **Konflikte**: Objekte, die beide Seiten geändert haben, seit sie zuletzt einen Commit teilten. Ein Konflikt wird gemeldet, und die Quelle gewinnt, denn das bedeutet ein Merge in ein Ziel. Provisa bietet keine Konfliktlösung, keine Merge-Markierungen und keine Auswahl pro Objekt. Die Konfliktliste ist als Signal wertvoll: Zwei Menschen haben dasselbe Objekt bearbeitet, ohne es zu wissen.
 
-Ein Objekt, das beide Seiten auf denselben Wert geändert haben, ist Übereinstimmung, kein Konflikt. Teilen
-die beiden Umgebungen überhaupt keinen Vorfahren, ist die Basis im Bericht `None`, und die leere Konfliktliste
-bedeutet, dass nichts verglichen wurde, nicht dass nichts kollidiert ist.
+Haben beide Seiten ein Objekt auf denselben Wert geändert, stimmen sie überein, und es ist kein Konflikt. Teilen die beiden Umgebungen gar keinen Vorfahren, ist die Basis im Bericht `None`, und eine leere Konfliktliste heißt, dass nichts verglichen wurde, nicht, dass nichts kollidiert ist.
 
-Der Merge landet als ein einzelner gequetschter Commit auf dem Branch des Ziels. Die Commit-Nachricht ist
-erforderlich und darf nicht leer sein — sie ist die einzige Rechenschaft über den Arbeitsbereich, für den der
-Squash steht. Die Commits der Quelle bleiben, wo sie sind, und bleiben danach per SHA deploybar.
+Der Merge landet als ein zusammengefasster Commit auf dem Branch des Ziels. Die Commit-Nachricht ist Pflicht und darf nicht leer sein, weil sie die einzige Beschreibung der Arbeit ist, für die der zusammengefasste Commit steht. Die Commits der Quelle bleiben, wo sie sind, und lassen sich danach weiterhin per SHA deployen.
 
 ## Pull
 
@@ -119,29 +88,18 @@ Ein Pull nimmt, was die Gegenstelle für eine Umgebung hält, und macht es zum M
 Branch nicht direkt vor; er wendet den geholten Baum über den gewöhnlichen Deploy-Pfad an, sodass dieselbe
 Validierung und dieselbe Auditierung, die ein manuelles Deploy regieren, auch einen Pull regieren.
 
-Wie ein Merge meldet ein Pull, was er überschrieben hat — Objekte, die der eingehende Baum geändert hat und
-die die lokale Umgebung seit dem letzten gemeinsamen Commit der beiden Linien ebenfalls geändert hatte. Eine
-nicht committete lokale Änderung ist eine abgedriftete Umgebung (siehe Historie weiter unten); ein Pull
-benennt sie im Bericht als gewöhnliche Änderung.
+Wie ein Merge meldet ein Pull, was er überschrieben hat: Objekte, die der eingehende Baum geändert hat und die die lokale Umgebung seit dem letzten gemeinsamen Commit der beiden Linien ebenfalls geändert hatte. Eine nie committete lokale Änderung macht die Umgebung abgedriftet (siehe Verlauf unten), und ein Pull nennt sie im Bericht als gewöhnliche Änderung.
 
-Ein Pull wird abgelehnt, wenn die beiden Linien **auseinandergelaufen** sind — beide halten Commits, die die
-andere nicht hat. Die Ablehnung trägt die Liste der Objekte, die beide Seiten angefasst haben, damit die
-Person, die nun entscheiden muss, wessen Arbeit überlebt, weiß, welche Objekte sie ansehen muss.
+Ein Pull wird abgelehnt, wenn die beiden Linien **auseinandergelaufen** sind, also jede Commits hält, die die andere nicht hat. Die Ablehnung listet die Objekte, die beide Seiten berührt haben, damit derjenige, der nun entscheiden muss, wessen Arbeit bleibt, weiß, welche Objekte er ansehen muss.
 
 ## Historie {: #history }
 
-Jedes Deploy bewegt den Cursor der Umgebung in ihrer eigenen Commit-Linie vorwärts. Ein Undo tritt einen
-Commit zurück; ein Redo tritt wieder vorwärts in Richtung der Position, die das Undo verlassen hat. Keine der
-beiden Operationen entfernt einen Commit — ein Rückschritt fügt eine Position hinzu, er schreibt die Historie
-nicht um.
+Jedes Deployment schiebt den Zeiger der Umgebung auf ihrer eigenen Commit-Linie vorwärts. Ein Rückgängig geht einen Commit zurück, ein Wiederholen geht wieder vorwärts in Richtung der Stelle, an der das Rückgängig begann. Keines von beiden entfernt einen Commit: Ein Schritt zurück fügt eine Position hinzu und lässt den Verlauf, wie er ist.
 
 Ein Branch wird an der Spitze der Umgebung angesät, aus der er angelegt wurde, sodass ein Undo an diesem
 Ansaatpunkt stoppt und nicht auf die Commits der Elternumgebung wandert.
 
-Die Flags `can_undo` und `can_redo` reisen mit der Antwort der Umgebungsliste mit. Beide melden `false`, wenn
-die Projektion den Commit nicht hält, den die Control Plane benennt — ein Zustand, den der Entwurf zulässt und
-der **abgedriftet** heißt. Ein Knoten, dessen Repository-Speicher einen bestimmten Commit nie erhalten hat,
-listet seine Umgebungen weiterhin auf; nur die Historie-Antworten ändern sich.
+Die Flags `can_undo` und `can_redo` kommen mit der Antwort der Umgebungsliste. Beide melden `false`, wenn die Projektion den Commit nicht hält, den die Steuerungsebene nennt, ein Zustand, den das Design zulässt und **abgedriftet** nennt. Ein Knoten, dessen Repository-Speicher einen bestimmten Commit nie erhalten hat, listet seine Umgebungen trotzdem; nur die Antworten zum Verlauf ändern sich.
 
 ## Autorisierung {: #authorization }
 
@@ -152,12 +110,9 @@ Umgebungen werden von zwei Rechten regiert. Keines gehört standardmäßig einer
 | `environment_management` | org_admin, developer | Umgebungen anlegen und löschen |
 | `environment_switch` | org_admin, developer | Von einer anderen Umgebung als prod bedient werden |
 
-`prod` braucht kein Recht — es ist das, wovon eine Anfrage bedient wird, die nichts benennt, und es zu
-verweigern hieße, jede Anfrage zu verweigern.
+`prod` braucht kein Recht. Es bedient jede Anfrage, die keine Umgebung nennt, und es zu verweigern hieße, jede Anfrage zu verweigern.
 
-Die Durchsetzung erfolgt am Auswahlpunkt, bevor irgendeine Route erreicht wird. Ein Mitglied ohne
-`environment_switch` wird für alle Oberflächen zugleich abgelehnt — HTTP, GraphQL, SQL und die
-Wire-Protokolle —, weil die Umgebung in der Middleware gebunden wird, nicht in einzelnen Handlern.
+Die Prüfung findet dort statt, wo die Umgebung gewählt wird, bevor irgendeine Route erreicht ist. Ein Mitglied ohne `environment_switch` wird auf allen Oberflächen zugleich abgewiesen (HTTP, GraphQL, SQL und die Wire-Protokolle), weil die Umgebung in der Middleware gebunden wird und nicht in einzelnen Handlern.
 
 Eine Analystin ohne Umgebungsrecht kann `prod` abfragen und sieht den Umgebungswechsler nicht. Eine externe
 Kraft mit der Analystenrolle sieht keine Umgebungsoberfläche und kann keine andere Umgebung als die Produktion
@@ -165,10 +120,7 @@ anlegen oder in sie wechseln.
 
 ### Die Autorität der Umgebungseigentümerin {: #environment-owner-authority }
 
-Eine Umgebung anzulegen ist der einzige Weg, auf dem ein nur lesendes Mitglied Rechte zur Modellbearbeitung
-erwirbt. Innerhalb der Umgebung, die sie angelegt hat, hält die erstellende Person die Capabilities
-der Rolle `developer` — abzüglich der Datenrechte (`write`, `full_results`, `usage`). Rechte zum Modellbau,
-keine Datenrechte.
+Eine Umgebung anzulegen, ist der einzige Weg, auf dem ein Mitglied mit Leserechten Rechte zum Bearbeiten des Modells bekommt. In einer selbst angelegten Umgebung hat der Ersteller die Fähigkeiten der Rolle `developer`, abzüglich der Datenrechte (`write`, `full_results`, `usage`): Rechte zum Bauen des Modells, ohne Rechte an den Daten.
 
 Die Vergabe wird zur Autorisierungszeit aus `environments.created_by` abgeleitet und nie in eine
 Vergabetabelle geschrieben. Das Löschen der Umgebung entzieht sie im selben Akt.
@@ -181,14 +133,9 @@ ein Mitglied tun darf; er ändert nie, an welchen Domänen es das tun darf.
 Eine Umgebung kann geschützt sein. Ein Merge oder Deploy in eine geschützte Umgebung wird nicht auf Anfrage
 angewendet; er wird vorgeschlagen, und jemand anderes als die anfragende Person muss ihn genehmigen.
 
-`prod` ist automatisch geschützt, sobald die Org mehr als ein Mitglied hat. Eine Org mit einem einzigen
-Mitglied kann „jemand anderes als die anfragende Person“ nicht erfüllen, also gilt die Regel dort nicht — sie
-würde `prod` unmergebar machen. Jede Umgebung kann von einem org_admin als geschützt markiert werden.
+`prod` wird automatisch geschützt, sobald die Organisation mehr als ein Mitglied hat. Eine Organisation mit einem einzigen Mitglied kann „jemand anderes als der Antragsteller“ nicht erfüllen, daher gilt die Regel dort nicht; sie würde `prod` unmergebar machen. Ein org_admin kann jede Umgebung als geschützt markieren.
 
-Eine Merge-Anfrage ist eine Zeile, kein Bestätigungsdialog. Die genehmigende Person ist definitionsgemäß eine
-andere als die anfragende und ist im Moment der Anfrage nicht anwesend; eine flüchtige Bestätigung würde die
-Genehmigung in die Sitzung der anfragenden Person zwingen — genau die eine Anordnung, die die Anforderung
-verbietet.
+Ein Merge-Antrag ist eine gespeicherte Zeile, und kein Bestätigungsdialog ersetzt ihn. Wer genehmigt, ist per Definition jemand anderes als der Antragsteller und ist im Moment des Antrags nicht anwesend. Eine flüchtige Bestätigung würde die Genehmigung in die Sitzung des Antragstellers zwingen, und genau diese Anordnung verbietet die Regel.
 
 Die Anfragezeile trägt den Merge-Bericht zusammen mit der Nachricht der anfragenden Person. Veraltung wird zur
 Lesezeit abgeleitet, nie gespeichert: Zur Lesezeit neu zu planen und mit dem gespeicherten Bericht zu
@@ -198,9 +145,7 @@ werden. Die anfragende Person kann ihre eigene Anfrage nicht genehmigen.
 Zustände im Lebenszyklus einer Anfrage: `requested` → `approved`/`rejected` → `applied`. `stale` wird
 abgeleitet.
 
-Dieselbe Tür bearbeitet Deploys von einer Repository-Ref: Die Anfrage nagelt den SHA zum Zeitpunkt des
-Vorschlags fest. Bewegt sich die Ref zwischen Vorschlag und Entscheidung, liest die genehmigende Person den
-Bericht für den festgenagelten Commit, nicht für den neuen.
+Deployments aus einer Repository-Referenz gehen durch dieselbe Tür, und der Antrag hält den SHA beim Vorschlag fest. Bewegt sich die Referenz zwischen Vorschlag und Entscheidung, liest der Genehmiger den Bericht zum festgehaltenen Commit, nicht zum neuen.
 
 !!! note
     Die Oberfläche für Merge-Anfragen liegt im Tab **Merge-Anfragen** des Umgebungs-Panels.
@@ -209,10 +154,7 @@ Bericht für den festgenagelten Commit, nicht für den neuen.
 
 ## Die `env`-CLI-Befehle {: #the-env-cli-commands }
 
-`provisa env deploy` schickt das Modell an einer Ref in eine Umgebung. Der Befehl endet mit 0, wenn das
-Deploy angewendet wurde oder ein Trockenlauf war, und mit 2, wenn die Umgebung geschützt ist und das Deploy
-nur vorgeschlagen wurde — eine Pipeline, die eine ausstehende Genehmigung als freigegebenes Deploy behandelte,
-läge falsch, und der Exit-Code sagt das.
+`provisa env deploy` schickt das Modell an einer Referenz in eine Umgebung. Es endet mit 0, wenn das Deployment angewendet wurde oder ein Probelauf war, und mit 2, wenn die Umgebung geschützt ist und das Deployment nur vorgeschlagen wurde. Eine Pipeline, die eine offene Genehmigung als ausgeliefertes Deployment behandelt, läge falsch, und der Exit-Code unterscheidet beides.
 
 ```
 provisa env deploy --org acme --env prod --ref main --token <token> --api <url>

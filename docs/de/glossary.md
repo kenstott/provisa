@@ -1,17 +1,10 @@
 # Business-Glossar {: #business-glossary }
 
-Das Business-Glossar ist ein lebendes Vokabular über Ihrem Datenmodell. Jede physische Spalte im
-Modell löst auf einen Begriff auf — auf einen gemeinsamen Begriff immer dann, wenn
-mehrere Spalten dasselbe Konzept tragen, wie unterschiedlich sie es auch schreiben. Jeder Begriff kann
-eine Definition halten, dazu einen Satz typisierter Beziehungen zu anderen Begriffen und eine Liste von
-Fachexperten, denen die Bedeutung gehört.
+Das Geschäftsglossar ist ein lebendiges Vokabular über Ihrem Datenmodell. Jede physische Spalte im Modell wird einem Begriff zugeordnet, und Spalten, die dasselbe Konzept tragen, teilen sich einen Begriff, wie unterschiedlich sie es auch schreiben. Jeder Begriff kann eine Definition, eine Reihe typisierter Beziehungen zu anderen Begriffen und eine Liste von Fachexperten haben, denen seine Bedeutung gehört.
 
 Das Glossar ist eine Ontologie: ein Graph aus Konzepten, ihren Definitionen und den Beziehungen zwischen ihnen. Provisa bildet sie auf die Datenbankstrukturen ab, in denen die Werte liegen; dadurch kann es Fragen zu Ihren Daten beantworten. Ein Konzept ist ein Entwurf, bis es die Daten erreicht, direkt oder über andere Konzepte. Das Glossar ist von den Metriken getrennt: Ein Begriff sagt, was ein Konzept ist, eine Metrik sagt, wie eine Zahl berechnet wird.
 
-Dieses gemeinsame Vokabular ist die Brücke zwischen Fachsprache und physischen Daten. Ein KI-Agent,
-der weiß, dass „customer“ jede Spalte benennt, die eine Kundenkennung trägt, muss nicht raten,
-welche von `cust_id`, `customerId` und `CUSTOMER_KEY` die richtige ist — sie alle lösen auf denselben
-Begriff auf, und der Begriff trägt die Definition.
+Dieses gemeinsame Vokabular verbindet die Sprache des Geschäfts mit den physischen Daten. Ein KI-Agent, der weiß, dass „customer“ jede Spalte mit einer Kundenkennung bezeichnet, muss nicht raten, welche von `cust_id`, `customerId` und `CUSTOMER_KEY` die richtige ist. Alle werden demselben Begriff zugeordnet, und der Begriff trägt die Definition.
 
 ## Wie Begriffe abgeleitet werden {: #how-terms-are-derived }
 
@@ -19,10 +12,7 @@ Provisa leitet aus jedem Spaltennamen automatisch einen Begriff ab, mithilfe ein
 Normalisierungsregel: Groß-/Kleinschreibung angleichen, nach Trennzeichen und camelCase
 tokenisieren, Abkürzungen ausschreiben und nachgestellte Proxy-Token entfernen.
 
-**Das Ausschreiben von Abkürzungen** bildet gängige Unternehmenskürzel auf ihre Langform ab: `cust` →
-`customer`, `txn` → `transaction`, `qty` → `quantity` und so weiter. Sowohl `id` als auch `key` werden
-zu `identifier`. Die Tabelle ist fest und zurückhaltend — mehrdeutige Kürzel wie `st`, `min` und
-`no` bleiben, wie sie geschrieben sind, statt falsch zu raten.
+Die **Abkürzungserweiterung** bildet übliche Unternehmenskürzel auf ihre volle Form ab: `cust` → `customer`, `txn` → `transaction`, `qty` → `quantity` und so weiter. `id` und `key` werden beide zu `identifier`. Die Tabelle ist fest und vorsichtig: Mehrdeutige Kürzel wie `st`, `min` und `no` bleiben, wie sie sind, damit nichts falsch geraten wird.
 
 **Das Entfernen von Proxy-Token** streicht ein nachgestelltes `identifier`-, `code`-, `index`- oder
 `reference`-Token. Eine Spalte namens `cust_id` benennt nicht die Kennung selbst; sie benennt eine
@@ -30,16 +20,11 @@ Kundin über einen Surrogatwert. Das Entfernen des Proxys lässt `cust_id` und `
 dem Begriff `customer` landen. Nur nachgestellte Token fallen weg, und nie das letzte verbliebene
 Token: Eine bloße `id`-Spalte wird zu `identifier` und bleibt dort.
 
-**Deduplizierung** ist der Zweck. Die Normalisierungsregel ist deterministisch, also ergeben `cust_id`,
-`customerId` und `CUSTOMER_KEY` alle `customer`. Jede Spalte erhält eine Ref auf den einen daraus
-entstehenden Begriff statt auf drei getrennte Begriffe. Die Kuratierung hat dann eine Stelle für die
-Definition, nicht drei.
+Um die **Deduplizierung** geht es. Die Normalisierungsregel ist deterministisch, also ergeben `cust_id`, `customerId` und `CUSTOMER_KEY` alle `customer`. Jede Spalte bekommt eine Referenz auf diesen einen Begriff, und die Kuratierung hat einen einzigen Ort für die Definition statt drei.
 
 ### Generische Phrasen {: #generic-phrases }
 
-Manche normalisierten Phrasen sind zu generisch, um für sich ein Konzept zu sein. Eine bloße Spalte
-`name`, `date` oder `identifier` benennt ein Attribut des Konzepts ihrer Tabelle, kein von dieser
-Tabelle unabhängiges Konzept. Mitarbeitende haben Namen; Produkte haben Namen; das ist nicht dasselbe.
+Manche normalisierten Ausdrücke sind zu allgemein, um für sich ein Konzept zu sein. Eine bloße Spalte `name`, `date` oder `identifier` bezeichnet ein Attribut des Konzepts ihrer Tabelle, das es ohne diese Tabelle nicht gibt. Mitarbeiter haben Namen, Produkte haben Namen, aber das ist nicht dasselbe.
 
 Fällt eine Phrase in die generische Menge und ist ein Tabellenkontext verfügbar, qualifiziert sich der
 Begriff zu `<table concept> <phrase>`: `employees.first_name` normalisiert zu `employee first name`,
@@ -54,50 +39,28 @@ weiterer, die auf nahezu jeder Tabelle auftauchen.
 
 ### Der fachliche Name, nicht der physische {: #the-business-name-not-the-physical-name }
 
-Ein abgeleiteter Begriff folgt dem **fachlichen Namen** der Spalte — ihrem Alias, wenn die modellierende
-Person einen gesetzt hat, ihrem physischen Namen, wenn nicht. Ist `usr_nm` auf `user name`
-aliasiert, lautet der abgeleitete Begriff `user name`, nicht `user number` oder irgendeine Ausschreibung
-von `usr_nm`.
+Ein abgeleiteter Begriff folgt dem **fachlichen Namen** der Spalte: ihrem Alias, wenn der Modellierer einen gesetzt hat, sonst ihrem physischen Namen. Ist `usr_nm` als `user name` aliasiert, lautet der abgeleitete Begriff `user name`, wo eine Erweiterung von `usr_nm` vielleicht `user number` ergeben hätte.
 
-Eine Spalte zu aliasieren ist die stärkere Korrektur. Ein Alias wandert zu jeder Oberfläche, die die
-Spalte liest — SQL, GraphQL, KI-Agenten, den Katalog —, sodass sich das Modell überall korrekt
-beschreibt. Ein Umbenennen des Begriffs richtet einen Katalogeintrag und lässt die Spalte für die
-nächste lesende Person weiter `usr_nm` heißen. Das Banner für vorgeschlagene Begriffe in der Oberfläche
-sagt genau das: erst die Spalte aliasieren; den Begriff nur dann umbenennen, wenn der Spaltenname
-richtig ist und das Vokabular nicht.
+Einer Spalte einen Alias zu geben, ist die stärkere Korrektur. Ein Alias gelangt auf jede Oberfläche, die die Spalte liest (SQL, GraphQL, KI-Agenten, der Katalog), sodass das Modell sich überall richtig beschreibt. Den Begriff umzubenennen, korrigiert einen Katalogeintrag und lässt die Spalte für den nächsten Leser `usr_nm` heißen. Das Banner für vorgeschlagene Begriffe in der UI sagt genau das: zuerst der Spalte einen Alias geben, den Begriff nur umbenennen, wenn der Spaltenname stimmt und das Vokabular nicht.
 
-Ein erneutes Aliasieren einer Spalte leitet ihren vorgeschlagenen Begriff neu ab, sodass das Glossar dem
-Modell folgt, statt zweimal um dieselbe Korrektur zu bitten. Sobald eine kuratierende Person einem
-Begriff eine Definition, eine Beziehung oder einen Experten hinzugefügt hat, verschiebt eine
-Alias-Änderung die Ref nicht — diese Arbeit gehört der Kuratierung, und sie bleibt.
+Ein neuer Alias für eine Spalte leitet ihren vorgeschlagenen Begriff neu ab, sodass das Glossar dem Modell folgt und nie zweimal dieselbe Korrektur verlangt. Hat ein Kurator einem Begriff eine Definition, eine Beziehung oder einen Experten hinzugefügt, lässt eine Alias-Änderung die Referenz, wo sie ist, denn diese Arbeit gehört dem Kurator und bleibt.
 
 ### Tabellennamen als Zugriffspfad {: #access-path-table-names }
 
-Manche Tabellennamen beschreiben einen Zugriffspfad statt eines Konzepts: `user_by_name` ist ein Benutzer,
-der über eine Namenssuche erreicht wird, keine eigene Art von Entität. Wenn Provisa das Tabellenkonzept
-für die Qualifizierung generischer Phrasen ableitet, schneidet es den Namen am Bindewort.
-`user_by_name` wird zu `user`; `orders_by_customer` wird zu `order`.
+Manche Tabellennamen beschreiben einen Zugriffspfad statt eines Konzepts: `user_by_name` ist ein Benutzer, den man über eine Namenssuche erreicht, und keine eigene Art von Entität. Leitet Provisa das Tabellenkonzept ab, um allgemeine Ausdrücke zu qualifizieren, schneidet es den Namen am Bindewort ab, sodass `user_by_name` zu `user` und `orders_by_customer` zu `order` wird.
 
-Ohne den Schnitt würde der Surrogatschlüssel auf `user_by_name` zu `user name` normalisieren und mit dem
-echten Attribut `users.name` kollidieren — ein Begriff, der eine Sache und zugleich eines ihrer eigenen
-Felder hält. Der Schnitt gilt nur für Tabellenkonzepte. In einem Spaltennamen ist `by` Teil des
-zusammengesetzten Substantivs: `pet_by_name` und `pet_name` normalisieren auf denselben Begriff,
-`pet name`.
+Ohne den Schnitt würde der Surrogatschlüssel von `user_by_name` zu `user name` normalisiert und mit dem echten Attribut `users.name` kollidieren; ein Begriff hielte dann ein Ding und eines seiner eigenen Felder. Der Schnitt gilt nur für Tabellenkonzepte. In einem Spaltennamen gehört `by` zum zusammengesetzten Substantiv, sodass `pet_by_name` und `pet_name` zum selben Begriff `pet name` normalisiert werden.
 
 ## Was einen Begriff kuratiert macht {: #what-makes-a-term-curated }
 
-Ein Begriff, der aus der Spaltennormalisierung entstanden ist, beginnt leer — als Vorschlag, noch nicht
-als Vokabular. Er wird kuratiert, sobald eines der Folgenden zutrifft:
+Ein Begriff, der aus der Normalisierung einer Spalte entsteht, beginnt leer, als Vorschlag, der noch kein Vokabular ist. Kuratiert wird er, sobald eines der folgenden zutrifft:
 
 - Eine Definition wurde gespeichert.
 - Eine Beziehungskante wurde hinzugefügt.
 - Eine Fachexpertin wurde zugewiesen.
 - Eine kuratierende Person hat ihn manuell stillgelegt.
 
-Die Kuratierung ist für den Lebenszyklus des Begriffs entscheidend. Wird die letzte physische Spalte
-eines kuratierten Begriffs aus dem Modell entfernt, wird der Begriff abgekündigt statt gelöscht: Er geht
-außer Dienst, behält seine redaktionellen Inhalte und wird automatisch wiederbelebt, wenn dieselbe Spalte
-erneut auftaucht. Ein nicht kuratierter Begriff ohne weitere Spalten wird schlicht entfernt.
+Die Kuratierung zählt für den Lebenszyklus des Begriffs. Verlässt die letzte physische Spalte eines kuratierten Begriffs das Modell, wird der Begriff als veraltet markiert und behalten: Er geht außer Betrieb, behält den Inhalt seiner Bearbeiter und kehrt automatisch zurück, wenn dieselbe Spalte wieder auftaucht. Ein nicht kuratierter Begriff ohne verbleibende Spalten wird einfach entfernt.
 
 ## Erneutes Synchronisieren aus Tabellen {: #re-syncing-from-tables }
 
@@ -106,9 +69,7 @@ dieser Tabelle gegen die vorhandenen Refs ab. Neue Spalten legen Begriffe an ode
 ihnen; verschwundene Spalten lassen ihre Refs fallen; und die Regel „entfernen oder abkündigen“ klärt
 jeden Begriff, der seine letzte Ref verliert.
 
-Neu abgeleitet wird nur für nicht kuratierte Begriffe. Haben Sie eine Spalte aliasiert und weicht der
-vorgeschlagene Begriff nun ab, wandert die Ref zum neuen Begriff. Ist der Begriff kuratiert, bleibt die
-Verknüpfung bestehen — die Alias-Änderung hat die Begriffswahl der Kuratierung nicht überstimmt.
+Neu abgeleitet werden nur nicht kuratierte Begriffe. Haben Sie einer Spalte einen Alias gegeben und weicht der vorgeschlagene Begriff nun ab, wandert die Referenz zum neuen Begriff. Ist der Begriff kuratiert, bleibt die Verknüpfung, weil eine Alias-Änderung die Begriffswahl des Kurators nicht überstimmt.
 
 Ein abstrakter Begriff, dessen einziger Pfad zu physischen Daten über einen abgehenden Begriff lief, wird
 abgekündigt statt entfernt, wodurch die konzeptionelle Struktur erhalten bleibt, bis sie neu verdrahtet
@@ -151,9 +112,7 @@ fachliches Konzept, das mehrere konkrete Begriffe überspannt — ein Dach, das 
 konkreten Begriffen verdrahten, die tatsächlich Spalten halten. `revenue` etwa könnte abstrakt sein, mit
 `PART_OF`-Kanten von `order amount`, `adjustment amount` und `refund amount`, die darauf zeigen.
 
-Ein abstrakter Begriff, der über den Beziehungsgraphen keine physische Spalte erreichen kann, ist ein
-loser Vorschlag. Er erscheint weder in der Begriffssuche von Agenten noch im Metadaten-Export — ein
-Begriff, der keine Daten benennt, kann nichts beantworten.
+Ein abstrakter Begriff, der über den Beziehungsgraphen keine physische Spalte erreicht, ist ein hängender Vorschlag. Er erscheint weder in der Begriffssuche für Agenten noch im Metadatenexport, weil ein Begriff, der keine Daten benennt, nichts beantworten kann.
 
 ## Die Zulassungsregel für konsumierende Oberflächen {: #the-admission-rule-for-consuming-surfaces }
 
@@ -168,17 +127,11 @@ Ein Begriff, den eine konsumierende Oberfläche anbieten darf, muss drei Bedingu
    physische Spalte hält. Das Glossar ist ein Einstiegspunkt in die Daten, also muss jede Kette an einer
    Spalte enden.
 
-Konnektivität pflanzt sich durch den Graphen fort: Ein abstrakter Begriff erreicht Daten über jeden
-Nachbarn im Dienst, der das tut. Begriffe außer Dienst leiten nicht — ein stillgelegter Begriff hält seine
-Abhängigen nicht am Leben.
+Die Verbindung breitet sich durch den Graphen aus: Ein abstrakter Begriff erreicht Daten über jeden Nachbarn in Betrieb, der es tut. Begriffe außer Betrieb leiten nicht weiter, ein stillgelegter Begriff hält also seine Abhängigen nicht am Leben.
 
 ## Metadaten-Export {: #metadata-export }
 
-Das Glossar veröffentlicht im Rahmen des Metadaten-Exports in externe Datenkataloge. Es gilt dieselbe
-Zulassungsregel, mit einer Einschränkung: Die Verankerung eines Begriffs wird nur gegen Spalten beurteilt,
-die tatsächlich veröffentlichen. Ein Begriff, dessen Spalten allesamt vom Export zurückgehalten werden —
-weil ihre Tabellen nicht als Datenprodukte markiert sind oder weil technische Filter sie ausschließen —,
-gilt für Exportzwecke als nicht verankert, selbst wenn er in der Control Plane Refs hält.
+Das Glossar wird im Rahmen des Metadatenexports in externe Datenkataloge veröffentlicht. Es gilt dieselbe Zulassungsregel, in einem Punkt verengt: Ob ein Begriff verwurzelt ist, wird nur an Spalten gemessen, die tatsächlich veröffentlicht werden. Ein Begriff, dessen Spalten alle vom Export zurückgehalten werden, weil ihre Tabellen nicht als Datenprodukte markiert sind oder technische Filter sie ausschließen, ist für den Export nicht verwurzelt, auch wenn er in der Steuerungsebene Referenzen hält.
 
 Beziehungskanten veröffentlichen nur, wenn beide Endpunktbegriffe veröffentlichen.
 
@@ -194,9 +147,7 @@ Metadaten-Export ausschließen** hält den Begriff und alle Beziehungskanten, di
 Katalogen zurück, in die Provisa veröffentlicht, während die Spalten selbst weiterhin als Assets
 exportieren.
 
-Der Maßstab ist, ob das Fachgeschäft dieses Wort spricht, nicht ob die Definition gut ist. Eine
-ETL-Batch-Kennung hat eine klare Bedeutung, die für Engineers ins Glossar gehört; in einen Fachkatalog
-neben `customer` und `revenue` gehört sie nicht.
+Entscheidend ist, ob das Geschäft das Wort verwendet; wie gut die Definition ist, entscheidet es nicht. Eine ETL-Batch-Kennung hat eine klare Bedeutung, die für Ingenieure ins Glossar gehört, aber nicht in einen Geschäftskatalog neben `customer` und `revenue`.
 
 ## Arbeiten mit dem Glossar {: #working-with-the-glossary }
 
