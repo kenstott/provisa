@@ -690,6 +690,13 @@
       roles its token's holder holds, and a local agent only the roles the operator pinned for it; any other
       role is refused. An agent can ask which role it acts as and what that role is for, but never sees the
       rules that narrowed its results.
+  - id: mcp-server-stats
+    text: Agents can describe, correlate, regress, compare and forecast over any SQL the caller's role may
+      run. Each tool runs the SQL through the same governed pipeline as run_sql, so row rules, masks and
+      redaction apply, and returns only results with their method and n. The rows behind an analysis
+      never enter the model's context, which is data minimization by default. Counts, means and group
+      comparisons are computed by the engine over every row; a fitted model reads up to a set number of
+      rows and says when the result held more.
 - id: vector-search
   name: Vector and semantic search
   section: Query it any way

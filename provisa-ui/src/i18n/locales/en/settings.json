@@ -575,6 +575,10 @@
       "chat_model": {
         "label": "Chat model",
         "help": "The model the built-in chat uses, overriding each organization's own choice."
+      },
+      "stats_max_rows": {
+        "label": "MCP statistics row limit",
+        "help": "The most rows a statistics tool (correlate, regress, forecast, and describe's quantiles and top values) reads to fit a model. Counts, means and group comparisons are computed by the engine over every row. A result that holds more says so."
       }
     },
     "udf": {

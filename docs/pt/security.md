@@ -414,6 +414,12 @@ A telemetria e os erros de cliente não estão ligados a uma única organizaçã
 
 Uma fonte federada mantém os próprios logs, que o Provisa não escreve e não alcança. Os registros que uma fonte guarda das instruções que o Provisa lhe envia cabe a essa fonte proteger.
 
+## Estatística pelo MCP {: #statistics-over-mcp }
+
+As ferramentas de estatística do MCP (`describe`, `correlate`, `regress`, `compare`, `forecast`) executam o SQL que um agente define pelo pipeline governado com o papel do agente, então as regras de linha, o mascaramento e a ocultação se aplicam ao que analisam. As ferramentas de estatística devolvem apenas resultados, então as linhas por trás de uma análise nunca entram no contexto do modelo: minimização de dados por padrão.
+
+É o controle de acesso que limita o que um agente pode saber. Para expor apenas agregados, publique views de agregados e conceda aos papéis essas views, não as tabelas subjacentes. Agregados sobre grupos pequenos podem identificar pessoas, então a view de agregados decide o agrupamento e o menor grupo que um papel lê.
+
 ## Limitação de taxa {: #rate-limiting }
 
 Você define limites por papel em `provisa.yaml`: requisições por segundo, assinaturas SSE simultâneas e fluxos Arrow Flight simultâneos. Eles são verificados na API, antes de qualquer compilação ou execução, e uma requisição acima do limite recebe HTTP 429 com um cabeçalho `Retry-After`.

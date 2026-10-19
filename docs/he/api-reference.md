@@ -1464,6 +1464,30 @@ search_terms(query, role=None, limit=25)
 
 השתמשו ב-`search_terms` לפני כתיבת SQL כדי למצוא כל שדה פיזי המייצג מושג לפי שם. לדוגמה, חיפוש `"order date"` מחזיר את המונח וכל עמודות `order_dt`, `orderDate`, `ORDER_DATE` על-פני כל טבלה רשומה.
 
+### כלי הסטטיסטיקה של MCP {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+כל כלי מקבל מערך נתונים שמוגדר ב-`sql` ומריץ אותו דרך אותו צינור מנוהל שבו עובר `run_sql`, בתפקיד של הקורא: כללי שורות, מיסוך והשחרה חלים, SQL שהצינור דוחה נכשל כמו ב-`run_sql`, ותפקיד שהקורא אינו מחזיק נדחה. כל כלי מחזיר תוצאות, לעולם לא את השורות, יחד עם השיטה שבה השתמש וה-`n` שספר.
+
+| כלי | מחזיר |
+| --- | --- |
+| `describe` | לכל עמודה: `count`,‏ `missing`,‏ `distinct`; למספר גם `mean`,‏ `sd`,‏ `min`,‏ `max` ו-`quantiles` (p0, p5, p25, p50, p75, p95, p100); `top_values` (חמשת השכיחים) |
+| `correlate` | `matrix` המתאם מסוג `pearson` או `spearman` של ה-`columns` המספריות, על השורות השלמות בכולן, ואת ה-`n` הזה |
+| `regress` | `kind="linear"`: `coefficients` של ריבועים פחותים (`estimate`,‏ `se`,‏ `p_value`),‏ `r_squared`,‏ `adj_r_squared`. ‏`kind="logistic"`: `target` בעל שני ערכים, `coefficients` של נראות מרבית, `pseudo_r_squared`,‏ `auc` ו-`positive_value`. משתנה טקסט הופך למציין אחד לכל ערך מלבד הראשון |
+| `compare` | ה-`n`, ה-`mean` וה-`sd` של כל קבוצה; לשתי קבוצות מבחן t של Welch ‏(`t`,‏ `df`,‏ `p_value`) ו-d של Cohen; ליותר, ANOVA חד-כיווני (`f`,‏ `df_between`,‏ `df_within`,‏ `p_value`) ואטא בריבוע |
+| `forecast` | ‏`horizon` נקודות אחרי ה-`time` האחרון, כל אחת עם `value`,‏ `lower` ו-`upper` (רווח חיזוי של 95%), בהחלקה מעריכית (ETS) עם שגיאה אדיטיבית, מגמה אדיטיבית מ-10 נקודות ועונתיות אדיטיבית כשניתן `seasonal_periods` |
+
+המנוע מחשב את מה שהוא יכול על כל שורה שהתפקיד קורא: הספירות, הספירות הייחודיות, הממוצעים, סטיות התקן, המינימום והמקסימום של `describe`, וה-`n`, הממוצע והשונות של כל קבוצה עבור `compare`. מודל מותאם, והאחוזונים והערכים השכיחים של `describe`, קוראים לכל היותר `mcp.stats_max_rows` שורות (Admin → Settings → Limits; ברירת המחדל 100,000). כל תשובה שקוראת שורות מציינת `rows_read`,‏ `row_cap` ו-`truncated`, ומגבלת השורות של התפקיד עצמו מדווחת תחת `warnings`, כמו ב-`run_sql`.
+
+כלי הסטטיסטיקה מחזירים תוצאות בלבד, ולכן השורות שמאחורי ניתוח לעולם אינן נכנסות להקשר של המודל: מזעור נתונים כברירת מחדל. בקרת הגישה היא שמגבילה את מה שסוכן יכול ללמוד. כדי לחשוף אגרגטים בלבד, פרסמו תצוגות אגרגטים והעניקו לתפקידים את התצוגות האלה, לא את הטבלאות שמתחתן; אגרגטים על קבוצות קטנות יכולים לזהות אנשים, ותצוגת אגרגטים קובעת את הקיבוץ שתפקיד קורא. ראו [אבטחה](security.md#statistics-over-mcp).
+
 ### ייצוא מטא-דאטה {: #metadata-export }
 
 גרף מונחי המילון נכלל בכל `MetadataSnapshot` שנבנה על-ידי `build_snapshot`.

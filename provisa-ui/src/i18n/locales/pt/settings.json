@@ -575,6 +575,10 @@
       "chat_model": {
         "label": "Modelo de chat",
         "help": "O modelo que o chat integrado usa, substituindo a escolha de cada organização."
+      },
+      "stats_max_rows": {
+        "label": "Limite de linhas de estatística do MCP",
+        "help": "O máximo de linhas que uma ferramenta estatística (correlate, regress, forecast, e os quantis e valores mais frequentes de describe) lê para ajustar um modelo. Contagens, médias e comparações entre grupos são calculadas pelo mecanismo sobre todas as linhas. Um resultado com mais linhas informa isso."
       }
     },
     "udf": {

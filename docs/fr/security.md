@@ -414,6 +414,12 @@ La télémétrie et les erreurs client ne sont rattachées à aucune organisatio
 
 Une source fédérée tient ses propres logs, que Provisa n'écrit pas et ne peut pas atteindre. Les traces qu'une source garde des instructions que Provisa lui envoie relèvent de la protection de cette source.
 
+## Statistiques par MCP {: #statistics-over-mcp }
+
+Les outils statistiques MCP (`describe`, `correlate`, `regress`, `compare`, `forecast`) exécutent le SQL défini par un agent dans le pipeline gouverné sous le rôle de l'agent, donc les règles de lignes, le masquage et l'expurgation s'appliquent à ce qu'ils analysent. Les outils statistiques ne renvoient que des résultats, donc les lignes derrière une analyse n'entrent jamais dans le contexte du modèle : minimisation des données par défaut.
+
+Le contrôle d'accès est ce qui limite ce qu'un agent peut apprendre. Pour n'exposer que des agrégats, publiez des vues d'agrégats et accordez aux rôles ces vues, pas les tables sous-jacentes. Des agrégats sur de petits groupes peuvent identifier des individus, donc la vue d'agrégats fixe le regroupement et le plus petit groupe que lit un rôle.
+
 ## Limitation de débit {: #rate-limiting }
 
 Les limites par rôle se règlent dans `provisa.yaml` : requêtes par seconde, abonnements SSE simultanés et flux Arrow Flight simultanés. Elles sont vérifiées à l'API, avant toute compilation ou exécution, et une requête au-delà de la limite reçoit HTTP 429 avec un en-tête `Retry-After`.

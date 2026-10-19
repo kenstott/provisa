@@ -416,6 +416,12 @@ Telemetry and client errors are not tied to one organization when they are writt
 
 A federated source keeps its own logs, which Provisa does not write and cannot reach. Records a source makes of the statements Provisa sends it are that source's to protect.
 
+## Statistics over MCP
+
+The MCP statistics tools (`describe`, `correlate`, `regress`, `compare`, `forecast`) run the SQL an agent defines through the governed pipeline as the agent's role, so row rules, masks and redaction apply to what they analyze. Stats tools return only results, so the rows behind an analysis never enter the model's context: data minimization by default.
+
+Access control is what limits what an agent can learn. To expose only aggregates, publish aggregate views and grant roles those views, not the underlying tables. Aggregates over small groups can identify individuals, so the aggregate view decides the grouping and the smallest group a role reads.
+
 ## Rate Limiting
 
 You set per-role limits in `provisa.yaml`: requests per second, concurrent SSE subscriptions and concurrent Arrow Flight streams. They're checked at the API, before anything is compiled or run, and a request over the limit gets HTTP 429 with a `Retry-After` header.

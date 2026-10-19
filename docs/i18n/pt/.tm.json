@@ -1,6 +1,6 @@
 {
   "admin.md": "43e16d7ff027da1e94a9eff916cdc6fdd1e75cf52ba635fa72762c64d75294ce",
-  "api-reference.md": "db234b0564a15d373773bf975c19c0243070a213268e147f3cbe19337233093f",
+  "api-reference.md": "d863d3becda5689fa64a4688614ccb3cbd05542c888effed91d0e30325e7e9f5",
   "architecture.md": "c34de61124cca24178b904dd113b45d4ca1e96b7cb8b74861f491e5ccdba1f36",
   "commands.md": "9a55994444b4e5fc92254ecc01f6174998328f677302dff4287714dea5beb3b1",
   "configuration.md": "5a2055be05803e184b976d847a00f738deb157c8f951f65b482195c5492c080f",
@@ -22,7 +22,7 @@
   "releasing.md": "9eab172c5c9688f324fb0c948025eae39e8a52d839f12594b9a00baa8fe66384",
   "remote-schemas.md": "9c895adb7ac58970560852b532cb5e6c964a55a00e47c617eec5c59875c79181",
   "secrets.md": "96a5d650f07649984fd4237efc5ff5d881c2f2e1bd32105f052f8e94164648c2",
-  "security.md": "b2bed85d3a67e0432f896c8f12caf3c09c7f18eb55a8fb1fafd36f5814e8a0fb",
+  "security.md": "70230bd71a4a2b1248ca0fe3bdc369f0953d431c9304b5d711dd1bbc15cd8004",
   "sources.md": "04196a351bf967cc43760e7d4ed0be4d839d3e7ea763650de8baf2319ddf9108",
   "subscriptions.md": "3beaa9e9bcf028a9fa82bc64bb57ca31dbdbd130acebfd037a390fd936ab6351",
   "data-products.md": "6aaa4a2feeff1e57613a74660b399d54ec3926a6a777e8ac3d9e1dc6c20d39bc",

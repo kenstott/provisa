@@ -25487,3 +25487,33 @@ Package registries reach a proxy such as Artifactory and the Git servers GitLab,
 **Tests:** `tests/unit/test_package_registry_trust.py`, `tests/unit/test_package_registries.py`, `provisa-ui/src/__tests__/PackageRegistries.test.tsx`
 
 **Docs:** [package-registries.md](../package-registries.md)
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2089 · Demo Provisioning {#REQ-2089}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A configuration may declare a replica's rows instead of landing them from its source: replica_rows/<source_id>/<schema>.<table>.tsv beside its config.yaml, its first line the table's columns in their order, tab separated, each line after one row (\N is NULL; \t, \n, \r and \\ a tab, newline, carriage return and backslash; an integer, floating or boolean column's cells read as that type, every other as its text). When an org's runtime is built, before its replica convergence is wired -- a demo template's from its demo's directory, the deployment org's from its launch config's directory -- each declared table is written into the org's own replica store as a build of it writes it (its columns' types, a stream build's content hash) and recorded as built for that store and the table's definition; convergence then asks for no build and the source is never read, so a demo whose source has no tenant (the insider demo's bank mail in Microsoft 365) is served from its declared rows by the bundle build's setup, its seeding run and every sandbox, and the bundle's seed carries them like any landed replica. A table already landed in that store from those rows is left as it is. Refused, naming the file: a file not named <schema>.<table>.tsv; a table the configuration does not serve from that source; a header that is not the table's columns in their order; a cell not of its column's type; a source whose cache_ttl is not -1 (nothing may refresh the replica from the source); a declared table with no rows.
+
+**Use case:** A demo reads a bank's mail through a Microsoft 365 source though no sandbox has a tenant: its seeded mailbox ships as the source's canonical mail tables' rows.
+
+**Code:** `provisa/federation/declared_replica_rows.py`, `provisa/api/demo_templates.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_declared_replica_rows.py`
+
+## 8. Client Access & Protocols
+
+### REQ-2090 · MCP & AI Integration {#REQ-2090}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The MCP server offers five statistics tools over a dataset the caller defines in SQL: describe (per column count, missing, distinct, mean, sd, quantiles and top values), correlate (pearson or spearman matrix and n), regress (linear: coefficients, standard errors, p-values, R²; logistic: the same with pseudo R² and AUC), compare (Welch's t-test for two groups, one-way ANOVA for more, with Cohen's d or eta squared) and forecast (exponential smoothing, ETS, with prediction intervals). Each runs the SQL through the one governed pipeline as the caller's resolved role, as run_sql does: row rules, masks and redaction apply, SQL the pipeline refuses fails as it fails for run_sql, and a role the caller does not hold is refused. Each returns only results, stating the method and n. Counts, distinct counts, means, standard deviations and each group's n, mean and variance are computed by the engine over every row the role reads; a fitted model, quantiles and top values read at most mcp.stats_max_rows rows (an operator setting on the Limits card), and the answer gives rows_read, row_cap and truncated. The models are fitted with numpy, pandas, scipy and statsmodels, the packages the Python sandboxes ship. docs say the rows behind an analysis never enter the model's context (data minimization by default), and that access control limits what an agent can learn: to expose only aggregates, publish aggregate views and grant roles those views, not the underlying tables, since aggregates over small groups can identify individuals.
+
+**Use case:** An analyst's agent asks whether order amounts differ by region; Provisa runs the comparison over the rows the analyst's role may read and returns the test, its p-value, effect size and n, and none of the orders.
+
+**Code:** `provisa/api/mcp/stats.py`, `provisa/api/mcp/tools.py`, `provisa/api/mcp/server.py`, `provisa/core/settings_catalog.py`
+
+**Tests:** `tests/unit/test_mcp_stats_tools.py`, `tests/integration/test_mcp_stats_governed.py`
+
+**Docs:** [api-reference.md](../api-reference.md), [security.md](../security.md)

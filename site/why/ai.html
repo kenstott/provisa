@@ -156,6 +156,21 @@
           the answer is a query away.
         </p>
 
+        <h2>Statistics, not rows</h2>
+        <p>
+          An agent can describe, correlate, regress, compare and forecast over any SQL its
+          role may run. The SQL goes through the same governed pipeline as every query, so row
+          rules, masks and redaction apply, and the agent gets back the result with its method
+          and n. Stats tools return only results, so the rows behind an analysis never enter
+          the model's context: data minimization by default.
+        </p>
+        <p>
+          Access control is what limits what an agent can learn. To expose only aggregates,
+          publish aggregate views and grant roles those views, not the underlying tables.
+          Aggregates over small groups can identify individuals, so the aggregate view decides
+          the grouping and the smallest group a role reads.
+        </p>
+
         <h2>What it looks like</h2>
         <div class="cmp-wrap">
           <table class="cmp">

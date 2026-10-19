@@ -1462,6 +1462,30 @@ Searches term names and definitions with a case-insensitive substring match, up 
 
 Use `search_terms` before writing SQL to find every physical field that represents a concept by name. For example, searching `"order date"` returns the term and all `order_dt`, `orderDate`, `ORDER_DATE` columns across every registered table.
 
+### MCP Statistics Tools
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+Each tool takes a dataset defined by `sql` and runs it through the same governed pipeline as `run_sql`, as the caller's role: row rules, masks and redaction apply, SQL the pipeline refuses fails as it fails for `run_sql`, and a role the caller does not hold is refused. Each returns results, never the rows, with the method it used and the `n` it counted.
+
+| Tool | Returns |
+| --- | --- |
+| `describe` | Per column: `count`, `missing`, `distinct`; for a number `mean`, `sd`, `min`, `max` and `quantiles` (p0, p5, p25, p50, p75, p95, p100); `top_values` (the five most frequent) |
+| `correlate` | The `pearson` or `spearman` correlation `matrix` of the numeric `columns`, over the rows complete in all of them, and that `n` |
+| `regress` | `kind="linear"`: ordinary least squares `coefficients` (`estimate`, `se`, `p_value`), `r_squared`, `adj_r_squared`. `kind="logistic"`: a two-valued `target`, maximum-likelihood `coefficients`, `pseudo_r_squared`, `auc` and the `positive_value`. A text feature becomes one indicator per value but its first |
+| `compare` | Each group's `n`, `mean` and `sd`; for two groups Welch's t-test (`t`, `df`, `p_value`) and Cohen's d; for more, one-way ANOVA (`f`, `df_between`, `df_within`, `p_value`) and eta squared |
+| `forecast` | `horizon` points past the last `time`, each with `value`, `lower` and `upper` (95% prediction interval), by exponential smoothing (ETS) with additive error, an additive trend from 10 points, and additive seasonality when `seasonal_periods` is given |
+
+The engine computes what it can over every row the role reads: `describe`'s counts, distinct counts, means, standard deviations, minimums and maximums, and each group's `n`, mean and variance for `compare`. A fitted model, `describe`'s quantiles and top values read at most `mcp.stats_max_rows` rows (Admin → Settings → Limits; 100,000 by default). Every answer that reads rows gives `rows_read`, `row_cap` and `truncated`, and a role's own row limit is reported under `warnings` as it is for `run_sql`.
+
+Stats tools return only results, so the rows behind an analysis never enter the model's context: data minimization by default. Access control is what limits what an agent can learn. To expose only aggregates, publish aggregate views and grant roles those views, not the underlying tables; aggregates over small groups can identify individuals, and an aggregate view decides the grouping a role reads. See [Security](security.md#statistics-over-mcp).
+
 ### Metadata Export
 
 The glossary term graph is included in every `MetadataSnapshot` built by `build_snapshot`.

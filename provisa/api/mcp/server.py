@@ -529,6 +529,55 @@ def build_mcp_server(state: Any):
         """Validate and govern a query without executing it; confirms it plans cleanly for the role."""
         return await tools.explain_sql(state, _role(role), sql)
 
+    # --- statistics over a SQL-defined dataset (REQ-2090): results only, never the rows ---------
+
+    @_tool
+    async def describe(sql: str, role: str | None = None) -> dict:
+        """Describe the result of ``sql`` column by column: count, missing, distinct, mean, sd,
+        quantiles and the most frequent values. Answers the statistics, not the rows."""
+        return await tools.stats_describe(state, _role(role), sql)
+
+    @_tool
+    async def correlate(
+        sql: str, columns: list[str], method: str = "pearson", role: str | None = None
+    ) -> dict:
+        """The correlation matrix of numeric ``columns`` of the result of ``sql`` (``pearson`` or
+        ``spearman``) and its n. Answers the matrix, not the rows."""
+        return await tools.stats_correlate(state, _role(role), sql, columns, method)
+
+    @_tool
+    async def regress(
+        sql: str,
+        target: str,
+        features: list[str],
+        kind: str = "linear",
+        role: str | None = None,
+    ) -> dict:
+        """Regress ``target`` on ``features`` over the result of ``sql``: ``linear`` (R²) or
+        ``logistic`` (AUC, two-valued target). Coefficients, standard errors, p-values and n."""
+        return await tools.stats_regress(state, _role(role), sql, target, features, kind)
+
+    @_tool
+    async def compare(sql: str, value: str, group: str, role: str | None = None) -> dict:
+        """Compare ``value`` across the groups of ``group`` in the result of ``sql``: Welch's
+        t-test for two groups, one-way ANOVA for more, with the effect size."""
+        return await tools.stats_compare(state, _role(role), sql, value, group)
+
+    @_tool
+    async def forecast(
+        sql: str,
+        time: str,
+        value: str,
+        horizon: int,
+        seasonal_periods: int | None = None,
+        role: str | None = None,
+    ) -> dict:
+        """Forecast ``value`` ``horizon`` steps past the last ``time`` of the result of ``sql``
+        by exponential smoothing (ETS), with 95% prediction intervals."""
+        return await tools.stats_forecast(
+            state, _role(role), sql, time, value, horizon, seasonal_periods
+        )
+
     @_tool
     async def search_catalog(query: str, role: str | None = None, k: int = 5) -> list[dict]:
         """Semantically search the catalog for datasets matching a natural-language query.

@@ -1464,6 +1464,30 @@ search_terms(query, role=None, limit=25)
 
 在撰寫 SQL 之前使用 `search_terms`，可依名稱找出代表某個概念的每一個實體欄位。例如搜尋 `"order date"` 會傳回該術語，以及每個已註冊資料表中所有的 `order_dt`、`orderDate`、`ORDER_DATE` 欄位。
 
+### MCP 統計工具 {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+每個工具接收由 `sql` 定義的數據集，並以呼叫方的角色，透過與 `run_sql` 相同的受治理管道執行它：行規則、遮罩和塗黑都會生效，管道拒絕的 SQL 會像在 `run_sql` 中一樣失敗，呼叫方不持有的角色會被拒絕。每個工具只傳回結果，從不傳回行，並附上所用的方法和統計的 `n`。
+
+| 工具 | 傳回 |
+| --- | --- |
+| `describe` | 每欄：`count`、`missing`、`distinct`；數值欄還有 `mean`、`sd`、`min`、`max` 和 `quantiles`（p0、p5、p25、p50、p75、p95、p100）；`top_values`（最常見的五個值） |
+| `correlate` | 數值 `columns` 的 `pearson` 或 `spearman` 相關 `matrix`，基於在所有這些欄中都完整的行，以及該 `n` |
+| `regress` | `kind="linear"`：最小二乘 `coefficients`（`estimate`、`se`、`p_value`）、`r_squared`、`adj_r_squared`。`kind="logistic"`：取兩個值的 `target`，最大似然 `coefficients`、`pseudo_r_squared`、`auc` 和 `positive_value`。文字特徵按除第一個值外的每個值各變為一個指示變數 |
+| `compare` | 每組的 `n`、`mean` 和 `sd`；兩組時為 Welch t 檢定（`t`、`df`、`p_value`）和 Cohen's d；更多組時為單因子變異數分析（`f`、`df_between`、`df_within`、`p_value`）和 eta 平方 |
+| `forecast` | 最後一個 `time` 之後的 `horizon` 個點，每點附 `value`、`lower` 和 `upper`（95% 預測區間），採用加性誤差的指數平滑（ETS），10 個點起帶加性趨勢，給出 `seasonal_periods` 時帶加性季節性 |
+
+引擎在角色讀取的每一行上計算它能計算的內容：`describe` 的計數、去重計數、平均值、標準差、最小值和最大值，以及 `compare` 所需的每組 `n`、平均值和變異數。擬合的模型以及 `describe` 的分位數和最常見值最多讀取 `mcp.stats_max_rows` 行（Admin → Settings → Limits；預設 100,000）。每個讀取行的答案都會給出 `rows_read`、`row_cap` 和 `truncated`，角色自身的行數上限會像 `run_sql` 一樣在 `warnings` 中報告。
+
+統計工具只傳回結果，因此分析背後的行永遠不會進入模型的上下文：預設即數據最小化。限制智能體所能得知內容的是存取控制。若只公開聚合，請發布聚合檢視，並把這些檢視而不是底層表授予角色；對小分組的聚合可能識別出個人，而聚合檢視決定了角色讀取的分組方式。參見[安全](security.md#statistics-over-mcp)。
+
 ### 中繼資料匯出 {: #metadata-export }
 
 詞彙表術語圖包含在 `build_snapshot` 建置的每個 `MetadataSnapshot` 中。

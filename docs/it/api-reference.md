@@ -1464,6 +1464,30 @@ Cerca nei nomi e nelle definizioni dei termini con una corrispondenza substring 
 
 Usare `search_terms` prima di scrivere SQL per trovare ogni campo fisico che rappresenta un concetto per nome. Per esempio, cercare `"order date"` restituisce il termine e tutte le colonne `order_dt`, `orderDate`, `ORDER_DATE` in ogni tabella registrata.
 
+### Strumenti statistici MCP {: #mcp-statistics-tools }
+
+```
+describe(sql, role=None)
+correlate(sql, columns, method="pearson", role=None)
+regress(sql, target, features, kind="linear", role=None)
+compare(sql, value, group, role=None)
+forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
+```
+
+Ogni strumento prende un dataset definito da `sql` e lo esegue nella stessa pipeline governata di `run_sql`, con il ruolo del chiamante: si applicano le regole di riga, il mascheramento e l'oscuramento, l'SQL che la pipeline rifiuta fallisce come per `run_sql`, e un ruolo che il chiamante non detiene viene rifiutato. Ognuno restituisce risultati, mai le righe, con il metodo usato e l'`n` contato.
+
+| Strumento | Restituisce |
+| --- | --- |
+| `describe` | Per colonna: `count`, `missing`, `distinct`; per un numero `mean`, `sd`, `min`, `max` e `quantiles` (p0, p5, p25, p50, p75, p95, p100); `top_values` (i cinque più frequenti) |
+| `correlate` | La `matrix` di correlazione `pearson` o `spearman` delle `columns` numeriche, sulle righe complete in tutte, e quell'`n` |
+| `regress` | `kind="linear"`: `coefficients` dei minimi quadrati (`estimate`, `se`, `p_value`), `r_squared`, `adj_r_squared`. `kind="logistic"`: un `target` a due valori, `coefficients` di massima verosimiglianza, `pseudo_r_squared`, `auc` e il `positive_value`. Una variabile di testo diventa un indicatore per valore tranne il primo |
+| `compare` | `n`, `mean` e `sd` di ogni gruppo; per due gruppi il t-test di Welch (`t`, `df`, `p_value`) e la d di Cohen; per più gruppi l'ANOVA a una via (`f`, `df_between`, `df_within`, `p_value`) e l'eta quadrato |
+| `forecast` | `horizon` punti dopo l'ultimo `time`, ognuno con `value`, `lower` e `upper` (intervallo di previsione al 95%), con lisciamento esponenziale (ETS) a errore additivo, trend additivo da 10 punti e stagionalità additiva quando è indicato `seasonal_periods` |
+
+Il motore calcola ciò che può su ogni riga che il ruolo legge: i conteggi, i conteggi distinti, le medie, le deviazioni standard, i minimi e i massimi di `describe`, e l'`n`, la media e la varianza di ogni gruppo per `compare`. Un modello adattato e i quantili e valori più frequenti di `describe` leggono al massimo `mcp.stats_max_rows` righe (Admin → Settings → Limits; 100.000 per impostazione predefinita). Ogni risposta che legge righe indica `rows_read`, `row_cap` e `truncated`, e il limite di righe proprio di un ruolo è riportato in `warnings` come per `run_sql`.
+
+Gli strumenti statistici restituiscono solo risultati, quindi le righe dietro un'analisi non entrano mai nel contesto del modello: minimizzazione dei dati per impostazione predefinita. È il controllo degli accessi a limitare ciò che un agente può apprendere. Per esporre solo aggregati, pubblicate viste di aggregati e concedete ai ruoli quelle viste, non le tabelle sottostanti; aggregati su gruppi piccoli possono identificare persone, e una vista di aggregati decide il raggruppamento che un ruolo legge. Vedere [Sicurezza](security.md#statistics-over-mcp).
+
 ### Export dei metadati {: #metadata-export }
 
 Il grafo dei termini del glossario è incluso in ogni `MetadataSnapshot` costruito da `build_snapshot`.
