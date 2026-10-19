@@ -1,16 +1,10 @@
 # Business Glossary
 
-The business glossary is a living vocabulary over your data model. Every physical column in the
-model resolves to a term — one shared term whenever multiple columns carry the same
-concept, however differently they spell it. Each term can hold a definition, a set of typed
-relationships to other terms, and a list of subject-matter experts who own the meaning.
+The business glossary is a living vocabulary over your data model. Every physical column in the model resolves to a term, and columns that carry the same concept share one term, however differently they spell it. Each term can hold a definition, a set of typed relationships to other terms, and a list of subject-matter experts who own its meaning.
 
 The glossary is an ontology: a graph of concepts, their definitions and the relationships between them. Provisa maps it to the database structures that hold the values, which is what lets it answer questions about your data. A concept is a draft until it reaches data, directly or through other concepts. The glossary is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
 
-That shared vocabulary is the bridge between business language and physical data. An AI agent
-that knows "customer" names every column that carries a customer identifier does not have to guess
-which of `cust_id`, `customerId`, and `CUSTOMER_KEY` is the right one — they all resolve to the
-same term, and the term carries the definition.
+That shared vocabulary connects business language to physical data. An AI agent that knows "customer" names every column carrying a customer identifier doesn't have to guess which of `cust_id`, `customerId` and `CUSTOMER_KEY` is the right one. They all resolve to the same term, and the term carries the definition.
 
 ## How terms are derived
 
@@ -18,10 +12,7 @@ Provisa derives a term from every column name automatically, using a determinist
 rule: case folding, separator and camelCase tokenization, abbreviation expansion, and
 stripping of trailing proxy tokens.
 
-**Abbreviation expansion** maps common enterprise shorthands to their full forms: `cust` →
-`customer`, `txn` → `transaction`, `qty` → `quantity`, and so on. Both `id` and `key` expand to
-`identifier`. The table is fixed and conservative — ambiguous shorthands like `st`, `min`, and
-`no` stay as written rather than guessing wrong.
+**Abbreviation expansion** maps common enterprise shorthands to their full forms: `cust` → `customer`, `txn` → `transaction`, `qty` → `quantity` and so on. Both `id` and `key` expand to `identifier`. The table is fixed and cautious: ambiguous shorthands like `st`, `min` and `no` stay as written, so nothing is guessed wrong.
 
 **Proxy-token stripping** removes a trailing `identifier`, `code`, `index`, or `reference` token.
 A column named `cust_id` is not naming the identifier itself; it is naming a customer through a
@@ -29,16 +20,11 @@ surrogate value. Stripping the proxy lands both `cust_id` and `customerId` on th
 Only trailing tokens strip, and never the last remaining token: a bare `id` column expands to
 `identifier` and stays there.
 
-**Deduplication** is the point. The normalization rule is deterministic, so `cust_id`,
-`customerId`, and `CUSTOMER_KEY` all produce `customer`. Each column gets a ref on the single
-resulting term rather than three separate terms. Curation then has one place to add the definition,
-not three.
+**Deduplication** is the point. The normalization rule is deterministic, so `cust_id`, `customerId` and `CUSTOMER_KEY` all produce `customer`. Each column gets a ref on that one term, and curation has a single place to add the definition instead of three.
 
 ### Generic phrases
 
-Some normalized phrases are too generic to be a concept on their own. A bare `name`, `date`, or
-`identifier` column names an attribute of its table's concept, not a concept independent of that
-table. Employees have names; products have names; they are not the same thing.
+Some normalized phrases are too generic to be a concept on their own. A bare `name`, `date` or `identifier` column names an attribute of its table's concept, which doesn't exist apart from that table. Employees have names, and products have names, but they aren't the same thing.
 
 When a phrase falls in the generic set and a table context is available, the term qualifies to
 `<table concept> <phrase>`: `employees.first_name` normalizes to `employee first name`, and
@@ -52,46 +38,28 @@ that appear on nearly every table.
 
 ### The business name, not the physical name
 
-A derived term follows the column's **business name** — its alias when the modeler set one, its
-physical name when they did not. When `usr_nm` is aliased to `user name`, the derived
-term is `user name`, not `user number` or some expansion of `usr_nm`.
+A derived term follows the column's **business name**: its alias when the modeler set one, and its physical name otherwise. When `usr_nm` is aliased to `user name`, the derived term is `user name`, where expanding `usr_nm` might have given `user number`.
 
-Aliasing a column is the stronger correction. An alias travels to every surface that reads the
-column — SQL, GraphQL, AI agents, the catalog — so the model describes itself correctly everywhere.
-A term rename fixes one catalog entry and leaves the column reading `usr_nm` to the next reader.
-The proposed-term banner in the UI says this directly: alias the column first; rename the term
-only when the column name is right and the vocabulary is not.
+Aliasing a column is the stronger correction. An alias travels to every surface that reads the column (SQL, GraphQL, AI agents, the catalog), so the model describes itself correctly everywhere. Renaming the term fixes one catalog entry and leaves the column reading `usr_nm` for the next reader. The proposed-term banner in the UI says so: alias the column first, and rename the term only when the column name is right and the vocabulary isn't.
 
-Re-aliasing a column re-derives its proposed term, so the glossary tracks the model rather than
-asking for the same correction twice. Once a curator has added a definition, a relationship, or an
-expert to a term, an alias edit does not move the ref — that work is the curator's, and it stays.
+Re-aliasing a column re-derives its proposed term, so the glossary follows the model and never asks for the same correction twice. Once a curator has added a definition, a relationship or an expert to a term, an alias edit leaves the ref where it is, because that work is the curator's and it stays.
 
 ### Access-path table names
 
-Some table names describe an access path rather than a concept: `user_by_name` is a user reached
-through a name lookup, not a distinct kind of entity. When Provisa derives the table concept for
-generic-phrase qualification, it cuts the name at the connective. `user_by_name` becomes
-`user`; `orders_by_customer` becomes `order`.
+Some table names describe an access path instead of a concept: `user_by_name` is a user reached through a name lookup, and no separate kind of entity. When Provisa derives the table concept for qualifying generic phrases, it cuts the name at the connective, so `user_by_name` becomes `user` and `orders_by_customer` becomes `order`.
 
-Without the cut, the surrogate key on `user_by_name` would normalize to `user name` and collide
-with the genuine `users.name` attribute — one term holding a thing and one of its own fields.
-The cut applies to table concepts only. In a column name, `by` is part of the compound noun:
-`pet_by_name` and `pet_name` normalize to the same term, `pet name`.
+Without the cut, the surrogate key on `user_by_name` would normalize to `user name` and collide with the real `users.name` attribute, giving one term that holds both a thing and one of its own fields. The cut applies to table concepts only. In a column name, `by` is part of the compound noun, so `pet_by_name` and `pet_name` normalize to the same term, `pet name`.
 
 ## What makes a term curated
 
-A term born from column normalization starts blank — a proposal, not yet vocabulary. It becomes
-curated when any of the following is true:
+A term born from column normalization starts out blank, as a proposal that isn't vocabulary yet. It becomes curated when any of the following is true:
 
 - A definition has been saved.
 - A relationship edge has been added.
 - A subject-matter expert has been assigned.
 - A curator has manually retired it.
 
-Curation matters for the term's lifecycle. When a curated term's last physical column is removed
-from the model, the term is deprecated rather than deleted: it goes out of service, keeps its
-editor-supplied content, and is revived automatically if the same column reappears. An uncurated
-term with no more columns is simply removed.
+Curation matters for the term's lifecycle. When a curated term's last physical column leaves the model, the term is deprecated and kept: it goes out of service, keeps the content its editors supplied, and comes back automatically if the same column reappears. An uncurated term with no columns left is simply removed.
 
 ## Re-syncing from tables
 
@@ -99,9 +67,7 @@ Every time a table is saved or reloaded, `sync_table_refs` reconciles that table
 the existing refs. New columns create-or-link terms; departed columns drop their refs; and the
 remove-or-deprecate rule settles any term that loses its last ref.
 
-Re-deriving happens for uncurated terms only. If you aliased a column and the proposed term now
-differs, the ref moves to the new term. If the term is curated, the link stays — the alias edit
-did not override the curator's choice of term.
+Only uncurated terms are re-derived. If you aliased a column and the proposed term now differs, the ref moves to the new term. If the term is curated, the link stays, because an alias edit doesn't override the curator's choice of term.
 
 An abstract term whose only path to physical data ran through a departing term is deprecated rather
 than removed, preserving the conceptual structure until it is rewired.
@@ -140,9 +106,7 @@ multiple concrete terms — an umbrella you then wire to the specific terms that
 `revenue`, for example, might be abstract, with `PART_OF` edges from `order amount`, `adjustment
 amount`, and `refund amount` pointing to it.
 
-An abstract term that cannot reach any physical column through the relationship graph is a dangling
-proposal. It does not appear in agent term search or in metadata export — a term that names no data
-cannot answer anything.
+An abstract term that can't reach any physical column through the relationship graph is a dangling proposal. It doesn't appear in agent term search or in metadata export, because a term that names no data can't answer anything.
 
 ## The admission rule for consuming surfaces
 
@@ -157,17 +121,11 @@ A term a consuming surface may offer must satisfy three conditions:
    column ref. The glossary is an entry point into the data, so every chain must terminate at a
    column.
 
-Connectivity propagates through the graph: an abstract term reaches data through any in-service
-neighbor that does. Out-of-service terms do not conduct — a retired term does not keep its
-dependents alive.
+Connectivity spreads through the graph: an abstract term reaches data through any in-service neighbor that does. Terms that are out of service don't conduct, so a retired term doesn't keep its dependents alive.
 
 ## Metadata export
 
-The glossary publishes to external data catalogs as part of metadata export. The same admission
-rule applies, with one narrowing: a term's rootedness is judged only against columns that actually
-publish. A term whose columns are all withheld from export — because their tables are not marked
-as data products, or because technical filters exclude them — is not rooted for export purposes
-even if it holds refs in the control plane.
+The glossary publishes to external data catalogs as part of metadata export. The same admission rule applies, narrowed in one way: a term's rootedness is judged only against columns that actually publish. A term whose columns are all withheld from export, because their tables aren't marked as data products or because technical filters exclude them, isn't rooted for export, even if it holds refs in the control plane.
 
 Relationship edges publish only when both endpoint terms publish.
 
@@ -181,9 +139,7 @@ that is simply not business vocabulary. The **Exclude from metadata export** con
 withholds the term and any relationship edges that end on it from the catalogs Provisa publishes
 to, while the columns themselves still export as assets.
 
-The test is whether the business speaks this word, not whether the definition is good. An ETL
-batch identifier has a clear meaning that belongs in the glossary for engineers; it does not belong
-in a business catalog next to `customer` and `revenue`.
+What counts is whether the business uses the word; how good the definition is doesn't decide it. An ETL batch identifier has a clear meaning that belongs in the glossary for engineers, but it doesn't belong in a business catalog next to `customer` and `revenue`.
 
 ## Working with the glossary
 

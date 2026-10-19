@@ -1,17 +1,10 @@
 # Glossario aziendale {: #business-glossary }
 
-Il glossario aziendale è un vocabolario vivo sopra il modello dei dati. Ogni colonna fisica del
-modello si risolve in un termine — un unico termine condiviso ogni volta che più colonne
-portano lo stesso concetto, per quanto diversamente lo scrivano. Ogni termine può contenere una
-definizione, un insieme di relazioni tipizzate verso altri termini e un elenco di esperti in materia
-che ne detengono il significato.
+Il glossario aziendale è un vocabolario vivo sopra il vostro modello di dati. Ogni colonna fisica del modello corrisponde a un termine, e le colonne che portano lo stesso concetto condividono un solo termine, comunque lo scrivano. Ogni termine può avere una definizione, un insieme di relazioni tipizzate con altri termini e un elenco di esperti di dominio a cui appartiene il suo significato.
 
 Il glossario è un'ontologia: un grafo di concetti, delle loro definizioni e delle relazioni tra essi. Provisa lo mappa sulle strutture di database che contengono i valori, ed è questo che gli permette di rispondere a domande sui tuoi dati. Un concetto è una bozza finché non raggiunge i dati, direttamente o tramite altri concetti. Il glossario è distinto dalle metriche: un termine dice che cos'è un concetto, una metrica dice come si calcola un numero.
 
-Quel vocabolario condiviso è il ponte tra il linguaggio di business e i dati fisici. Un agente AI
-che sa che «customer» nomina ogni colonna che porta un identificatore di cliente non deve indovinare
-quale sia quella giusta tra `cust_id`, `customerId` e `CUSTOMER_KEY` — si risolvono tutte nello
-stesso termine, e il termine porta con sé la definizione.
+Quel vocabolario condiviso collega il linguaggio del business ai dati fisici. Un agente di IA che sa che "customer" indica ogni colonna con un identificativo cliente non deve indovinare quale tra `cust_id`, `customerId` e `CUSTOMER_KEY` sia quella giusta. Corrispondono tutte allo stesso termine, ed è il termine a portare la definizione.
 
 ## Come vengono derivati i termini {: #how-terms-are-derived }
 
@@ -19,10 +12,7 @@ Provisa deriva automaticamente un termine da ogni nome di colonna, con una regol
 deterministica: normalizzazione delle maiuscole, tokenizzazione per separatori e
 camelCase, espansione delle abbreviazioni e rimozione dei token proxy finali.
 
-**L'espansione delle abbreviazioni** mappa le sigle aziendali più comuni sulla loro forma estesa:
-`cust` → `customer`, `txn` → `transaction`, `qty` → `quantity` e così via. Sia `id` sia `key` si
-espandono in `identifier`. La tabella è fissa e prudente — le sigle ambigue come `st`, `min` e `no`
-restano come sono scritte anziché rischiare un'ipotesi sbagliata.
+L'**espansione delle abbreviazioni** porta le abbreviazioni aziendali comuni alla forma completa: `cust` → `customer`, `txn` → `transaction`, `qty` → `quantity` e così via. Sia `id` sia `key` diventano `identifier`. La tabella è fissa e prudente: abbreviazioni ambigue come `st`, `min` e `no` restano come sono, per non tirare a indovinare.
 
 **La rimozione dei token proxy** elimina un token finale `identifier`, `code`, `index` o
 `reference`. Una colonna chiamata `cust_id` non sta nominando l'identificatore in sé; sta nominando
@@ -30,17 +20,11 @@ un cliente attraverso un valore surrogato. Rimuovere il proxy fa atterrare sia `
 `customerId` sul termine `customer`. Vengono rimossi solo i token finali, e mai l'ultimo token
 rimasto: una colonna `id` isolata si espande in `identifier` e lì resta.
 
-**La deduplicazione** è il punto. La regola di normalizzazione è deterministica, quindi `cust_id`,
-`customerId` e `CUSTOMER_KEY` producono tutti `customer`. Ogni colonna ottiene un ref sull'unico
-termine risultante anziché su tre termini separati. La curatela ha così un solo posto in cui
-aggiungere la definizione, non tre.
+La **deduplicazione** è lo scopo. La regola di normalizzazione è deterministica, quindi `cust_id`, `customerId` e `CUSTOMER_KEY` producono tutti `customer`. Ogni colonna riceve un riferimento a quell'unico termine, e la curatela ha un solo posto dove aggiungere la definizione invece di tre.
 
 ### Frasi generiche {: #generic-phrases }
 
-Alcune frasi normalizzate sono troppo generiche per essere un concetto a sé stante. Una colonna
-`name`, `date` o `identifier` isolata nomina un attributo del concetto della propria tabella, non un
-concetto indipendente da quella tabella. I dipendenti hanno un nome; i prodotti hanno un nome; non
-sono la stessa cosa.
+Alcune espressioni normalizzate sono troppo generiche per essere un concetto da sole. Una colonna `name`, `date` o `identifier` da sola indica un attributo del concetto della sua tabella, che non esiste separato da quella tabella. I dipendenti hanno un nome, i prodotti hanno un nome, ma non sono la stessa cosa.
 
 Quando una frase rientra nell'insieme generico ed è disponibile un contesto di tabella, il termine
 viene qualificato in `<table concept> <phrase>`: `employees.first_name` si normalizza in
@@ -55,51 +39,28 @@ una manciata di altre che compaiono su quasi ogni tabella.
 
 ### Il nome di business, non il nome fisico {: #the-business-name-not-the-physical-name }
 
-Un termine derivato segue il **nome di business** della colonna — il suo alias quando chi modella ne
-ha impostato uno, il suo nome fisico quando non l'ha fatto. Quando `usr_nm` ha come alias
-`user name`, il termine derivato è `user name`, non `user number` né una qualche espansione di
-`usr_nm`.
+Un termine derivato segue il **nome di business** della colonna: il suo alias se il modellatore ne ha impostato uno, altrimenti il nome fisico. Quando `usr_nm` ha l'alias `user name`, il termine derivato è `user name`, dove un'espansione di `usr_nm` avrebbe potuto dare `user number`.
 
-Assegnare un alias a una colonna è la correzione più forte. Un alias viaggia verso ogni superficie
-che legge la colonna — SQL, GraphQL, agenti AI, il catalogo — così il modello si descrive
-correttamente ovunque. Rinominare un termine sistema una sola voce di catalogo e lascia la colonna
-che si legge `usr_nm` a chi verrà dopo. Il banner del termine proposto nella UI lo dice
-esplicitamente: prima assegnare un alias alla colonna; rinominare il termine solo quando il nome
-della colonna è corretto e il vocabolario no.
+Dare un alias alla colonna è la correzione più forte. Un alias arriva a ogni superficie che legge la colonna (SQL, GraphQL, agenti di IA, il catalogo), così il modello si descrive correttamente ovunque. Rinominare il termine corregge una voce del catalogo e lascia la colonna come `usr_nm` per il lettore successivo. Il banner del termine proposto nella UI lo dice: prima date un alias alla colonna, e rinominate il termine solo quando il nome della colonna è giusto e il vocabolario no.
 
-Riassegnare l'alias di una colonna ne rideriva il termine proposto, così il glossario segue il
-modello anziché chiedere due volte la stessa correzione. Una volta che un curatore ha aggiunto una
-definizione, una relazione o un esperto a un termine, una modifica dell'alias non sposta il ref —
-quel lavoro appartiene al curatore, e resta.
+Cambiare l'alias di una colonna rideriva il suo termine proposto, così il glossario segue il modello e non chiede mai due volte la stessa correzione. Quando un curatore ha già aggiunto a un termine una definizione, una relazione o un esperto, una modifica dell'alias lascia il riferimento dov'è, perché quel lavoro è del curatore e resta.
 
 ### Nomi di tabella che descrivono un percorso di accesso {: #access-path-table-names }
 
-Alcuni nomi di tabella descrivono un percorso di accesso anziché un concetto: `user_by_name` è un
-utente raggiunto attraverso una ricerca per nome, non un tipo di entità distinto. Quando Provisa
-deriva il concetto della tabella per qualificare le frasi generiche, taglia il nome in
-corrispondenza del connettivo. `user_by_name` diventa `user`; `orders_by_customer`
-diventa `order`.
+Alcuni nomi di tabella descrivono un percorso di accesso e non un concetto: `user_by_name` è un utente raggiunto tramite una ricerca per nome, non un tipo di entità a sé. Quando Provisa ricava il concetto della tabella per qualificare le espressioni generiche, taglia il nome al connettivo, così `user_by_name` diventa `user` e `orders_by_customer` diventa `order`.
 
-Senza il taglio, la chiave surrogata di `user_by_name` si normalizzerebbe in `user name` e
-colliderebbe con il vero attributo `users.name` — un unico termine che contiene una cosa e uno dei
-suoi stessi campi. Il taglio si applica solo ai concetti di tabella. In un nome di colonna, `by` fa
-parte del nome composto: `pet_by_name` e `pet_name` si normalizzano nello stesso termine,
-`pet name`.
+Senza il taglio, la chiave surrogata di `user_by_name` verrebbe normalizzata in `user name` e si scontrerebbe con il vero attributo `users.name`, dando un termine che contiene sia una cosa sia uno dei suoi stessi campi. Il taglio vale solo per i concetti di tabella. In un nome di colonna, `by` fa parte del sostantivo composto, quindi `pet_by_name` e `pet_name` si normalizzano nello stesso termine, `pet name`.
 
 ## Che cosa rende curato un termine {: #what-makes-a-term-curated }
 
-Un termine nato dalla normalizzazione di una colonna nasce vuoto — una proposta, non ancora
-vocabolario. Diventa curato quando è vera una qualsiasi di queste condizioni:
+Un termine nato dalla normalizzazione delle colonne parte vuoto, come una proposta che non è ancora vocabolario. Diventa curato quando vale una qualsiasi di queste condizioni:
 
 - È stata salvata una definizione.
 - È stato aggiunto un arco di relazione.
 - È stato assegnato un esperto in materia.
 - Un curatore lo ha ritirato manualmente.
 
-La curatela conta per il ciclo di vita del termine. Quando l'ultima colonna fisica di un termine
-curato viene rimossa dal modello, il termine viene deprecato anziché eliminato: esce dal servizio,
-conserva il contenuto fornito da chi lo ha redatto e viene ripristinato automaticamente se la stessa
-colonna ricompare. Un termine non curato rimasto senza colonne viene semplicemente rimosso.
+La curatela conta per il ciclo di vita del termine. Quando l'ultima colonna fisica di un termine curato esce dal modello, il termine viene deprecato e conservato: esce dal servizio, mantiene il contenuto fornito dai suoi editor e torna automaticamente se la stessa colonna ricompare. Un termine non curato senza più colonne viene semplicemente rimosso.
 
 ## Risincronizzazione dalle tabelle {: #re-syncing-from-tables }
 
@@ -108,10 +69,7 @@ quella tabella con i ref esistenti. Le colonne nuove creano o collegano termini;
 scomparse perdono i propri ref; e la regola rimuovi-o-deprecalo definisce ogni termine che perde
 l'ultimo ref.
 
-La riderivazione avviene solo per i termini non curati. Se è stato assegnato un alias a una colonna
-e il termine proposto ora è diverso, il ref si sposta sul nuovo termine. Se il termine è curato, il
-collegamento resta — la modifica dell'alias non ha scavalcato la scelta del termine fatta dal
-curatore.
+Vengono ricavati di nuovo solo i termini non curati. Se avete dato un alias a una colonna e ora il termine proposto è diverso, il riferimento passa al nuovo termine. Se il termine è curato, il collegamento resta, perché una modifica dell'alias non prevale sulla scelta del termine fatta dal curatore.
 
 Un termine astratto il cui unico percorso verso i dati fisici passava attraverso un termine in
 uscita viene deprecato anziché rimosso, preservando la struttura concettuale fino a quando non viene
@@ -153,9 +111,7 @@ business che copre più termini concreti — un ombrello che poi si collega ai t
 detengono davvero le colonne. `revenue`, per esempio, potrebbe essere astratto, con archi `PART_OF` che
 puntano a esso da `order amount`, `adjustment amount` e `refund amount`.
 
-Un termine astratto che non riesce a raggiungere alcuna colonna fisica attraverso il grafo delle
-relazioni è una proposta sospesa. Non compare nella ricerca di termini degli agenti né
-nell'esportazione dei metadati — un termine che non nomina alcun dato non può rispondere a nulla.
+Un termine astratto che non può raggiungere alcuna colonna fisica attraverso il grafo delle relazioni è una proposta sospesa. Non compare nella ricerca di termini degli agenti né nell'esportazione dei metadati, perché un termine che non nomina dati non può rispondere a nulla.
 
 ## La regola di ammissione per le superfici consumatrici {: #the-admission-rule-for-consuming-surfaces }
 
@@ -171,18 +127,11 @@ Un termine che una superficie consumatrice può offrire deve soddisfare tre cond
    verso una colonna fisica. Il glossario è un punto d'ingresso nei dati, quindi ogni catena deve
    terminare su una colonna.
 
-La connettività si propaga nel grafo: un termine astratto raggiunge i dati attraverso qualsiasi
-vicino in servizio che li raggiunga. I termini fuori servizio non conducono — un termine ritirato
-non tiene in vita chi dipende da lui.
+La connettività si propaga nel grafo: un termine astratto raggiunge i dati attraverso qualsiasi vicino in servizio che li raggiunga. I termini fuori servizio non trasmettono, quindi un termine ritirato non tiene in vita i suoi dipendenti.
 
 ## Esportazione dei metadati {: #metadata-export }
 
-Il glossario viene pubblicato verso cataloghi dati esterni nell'ambito dell'esportazione dei
-metadati. Si applica la stessa regola di ammissione, con un restringimento: il radicamento di un
-termine è valutato solo rispetto alle colonne che vengono effettivamente pubblicate. Un termine le
-cui colonne sono tutte escluse dall'esportazione — perché le loro tabelle non sono contrassegnate
-come prodotti dati, oppure perché filtri tecnici le escludono — non è radicato ai fini
-dell'esportazione, anche se detiene ref nel control plane.
+Il glossario viene pubblicato nei cataloghi di dati esterni come parte dell'esportazione dei metadati. Vale la stessa regola di ammissione, con una restrizione: se un termine è radicato si giudica solo sulle colonne che vengono davvero pubblicate. Un termine le cui colonne sono tutte escluse dall'esportazione, perché le loro tabelle non sono marcate come data product o perché filtri tecnici le escludono, non è radicato ai fini dell'esportazione, anche se ha riferimenti nel piano di controllo.
 
 Gli archi di relazione vengono pubblicati solo quando entrambi i termini agli estremi vengono
 pubblicati.
@@ -199,9 +148,7 @@ Il controllo **Escludi dall'esportazione dei metadati** trattiene il termine, e 
 relazione che termina su di esso, dai cataloghi verso cui Provisa pubblica, mentre le colonne stesse
 continuano a essere esportate come asset.
 
-Il criterio è se il business usi questa parola, non se la definizione sia buona. Un identificatore
-di batch ETL ha un significato chiaro che nel glossario è utile a chi fa ingegneria; non ha posto in
-un catalogo di business accanto a `customer` e `revenue`.
+Conta se il business usa la parola; quanto sia buona la definizione non lo decide. Un identificativo di batch ETL ha un significato chiaro che appartiene al glossario per gli ingegneri, ma non a un catalogo di business accanto a `customer` e `revenue`.
 
 ## Lavorare con il glossario {: #working-with-the-glossary }
 
