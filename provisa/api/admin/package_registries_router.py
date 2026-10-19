@@ -16,7 +16,7 @@ it. Each field is answered as entered -- the value, or a reference the administr
 the form shows again what it holds.
 """
 
-# Requirements: REQ-1984
+# Requirements: REQ-1984, REQ-2088
 from __future__ import annotations
 
 from fastapi import APIRouter, Request
@@ -37,6 +37,8 @@ class RegistryBody(BaseModel):
     #: Left out on a replace to keep the credential already entered.
     credential: str | None = None
     mirror: bool = False
+    #: REQ-2088: the PEM certificate authority, or a reference to it; empty or left out holds none.
+    ca_bundle: str | None = None
 
 
 def _refusal(refused: PackageRegistryRefused) -> ApiError:
@@ -52,6 +54,7 @@ def _entry(registry: Registry) -> dict:
         # As entered; read only by who may enter it (_org_guard).
         "credential": registry.credential,
         "mirror": registry.mirror,
+        "ca_bundle": registry.ca_bundle,
     }
 
 
@@ -77,6 +80,7 @@ async def _put(request: Request, org_id: str, registry_id: str | None, body: Reg
             credential=body.credential,
             mirror=body.mirror,
             actor=actor,
+            ca_bundle=body.ca_bundle,
         )
     except PackageRegistryRefused as refused:
         raise _refusal(refused) from None

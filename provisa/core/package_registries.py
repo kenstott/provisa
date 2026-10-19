@@ -18,7 +18,13 @@ of the organisation, for a source's own code and for its dependencies:
 - PyPI indexes, each with an address (its simple-index URL) and a credential. Python packages
   have no scope. One may be the default index every Python install goes through, in place of
   the public PyPI.
-- Git hosts, each with a host and a credential (an HTTPS token).
+- Git hosts, each with a host -- with its port and a path prefix where the server has them
+  (``bitbucket.acme.com:7990/bitbucket``) -- and a credential: a token, or ``user:token``.
+
+An npm registry's credential is a token, or ``user:password`` (an Artifactory user and its API key,
+say); a PyPI index's likewise. Any entry may carry the PEM certificate authority its TLS
+certificate chains to, for a proxy or server behind a private CA (REQ-2088): installs and fetches
+through it trust that authority beside the publicly trusted ones.
 
 Every field holds what was entered -- the value, or a ``${secret:NAME}`` / ``${env:NAME}``
 reference the administrator typed -- and is resolved at use (:func:`resolved`), in the
@@ -28,7 +34,7 @@ npm registry needs no entry.
 An organisation reads and writes only its own: every call names the organisation.
 """
 
-# Requirements: REQ-1984, REQ-1993
+# Requirements: REQ-1984, REQ-1993, REQ-2088
 from __future__ import annotations
 
 import uuid
@@ -72,10 +78,22 @@ class Registry:
     credential: str
     #: Whether this npm registry is the mirror every install goes through.
     mirror: bool
+    #: The PEM certificate authority the entry's TLS chains to, or a reference to it; None for
+    #: the publicly trusted authorities alone (REQ-2088).
+    ca_bundle: str | None = None
 
 
 def _row(row) -> Registry:
-    return Registry(row.id, row.kind, row.address, row.scope, row.credential, bool(row.mirror))
+    return Registry(
+        row.id, row.kind, row.address, row.scope, row.credential, bool(row.mirror), row.ca_bundle
+    )
+
+
+_PEM_CERTIFICATE = "-----BEGIN CERTIFICATE-----"
+
+
+def _is_reference(value: str) -> bool:
+    return value.startswith("${") and value.endswith("}")
 
 
 async def entries(admin_db: "Database", org_id: str) -> list[Registry]:
@@ -108,13 +126,17 @@ async def put(
     credential: str | None,
     mirror: bool,
     actor: str | None,
+    ca_bundle: str | None = None,
 ) -> Registry:
     """Keep an entry of ``org_id``: a new one when ``registry_id`` is None, else the one it
     names, replaced. Each field is kept exactly as entered. ``credential`` None keeps the one the
     entry already holds, which there must then be.
 
+    ``ca_bundle`` is kept as entered too; None or empty holds none.
+
     Refused by name: an unknown kind; an empty address or credential; a scope on a PyPI index or
-    a Git host; the mirror on a Git host; a second mirror of the same kind; a scope another npm
+    a Git host; the mirror on a Git host; a certificate authority entered as a value that holds no
+    PEM certificate; a second mirror of the same kind; a scope another npm
     registry has; a host another Git host entry has."""
     if kind not in KINDS:
         raise PackageRegistryRefused(
@@ -123,6 +145,13 @@ async def put(
     address = address.strip()
     scope = (scope or "").strip() or None
     credential = (credential or "").strip() or None
+    ca_bundle = (ca_bundle or "").strip() or None
+    if ca_bundle is not None and not _is_reference(ca_bundle) and _PEM_CERTIFICATE not in ca_bundle:
+        raise PackageRegistryRefused(
+            "ca_bundle_not_pem",
+            f"The certificate authority of {address} holds no PEM certificate",
+            address=address,
+        )
     if kind == GIT and scope is not None:
         raise PackageRegistryRefused("git_scope", "A Git host has no scope", address=address)
     if kind == PYPI and scope is not None:
@@ -185,6 +214,7 @@ async def put(
         "scope": scope,
         "credential": credential,
         "mirror": mirror,
+        "ca_bundle": ca_bundle,
         "updated_by": actor,
     }
     async with admin_db.acquire() as conn:
@@ -192,7 +222,7 @@ async def put(
             _t,
             values,
             index_elements=["org_id", "id"],
-            update_columns=["address", "scope", "credential", "mirror", "updated_by"],
+            update_columns=["address", "scope", "credential", "mirror", "ca_bundle", "updated_by"],
             set_extra={"updated_at": func.now()},
         )
     kept = await read(admin_db, org_id, values["id"])
@@ -223,13 +253,16 @@ class Resolved:
     scope: str | None
     credential: str
     mirror: bool
+    #: The PEM certificate authority, resolved; None for none (REQ-2088).
+    ca_bundle: str | None = None
 
 
 async def resolved(admin_db: "Database", org_id: str) -> list[Resolved]:
     """Every entry of ``org_id`` with each field resolved by the product's one resolver
     (``core.secrets.resolve_secrets``) in THAT organisation's vault, bound here for this read
     alone. Refused by the entry's address and the field's name when a field cannot be resolved;
-    the reason is the resolver's, which names only a reference the administrator typed."""
+    the reason is the resolver's, which names only a reference the administrator typed. A
+    certificate authority that resolves to no PEM certificate is refused by the entry's address."""
     from provisa.core.secrets import resolve_secrets
 
     kept = await entries(admin_db, org_id)
@@ -237,7 +270,7 @@ async def resolved(admin_db: "Database", org_id: str) -> list[Resolved]:
     async with secrets_store.bound(admin_db, org_id):
         for entry in kept:
             fields: dict[str, str | None] = {}
-            for name in ("address", "scope", "credential"):
+            for name in ("address", "scope", "credential", "ca_bundle"):
                 value = getattr(entry, name)
                 if value is None:
                     fields[name] = None
@@ -256,7 +289,24 @@ async def resolved(admin_db: "Database", org_id: str) -> list[Resolved]:
                     ) from None
             address, credential = fields["address"], fields["credential"]
             assert address is not None and credential is not None  # NOT NULL columns
+            ca_bundle = fields["ca_bundle"]
+            if ca_bundle is not None and _PEM_CERTIFICATE not in ca_bundle:
+                raise PackageRegistryRefused(
+                    "ca_bundle_not_pem",
+                    f"The certificate authority of package registry {entry.address} holds no PEM "
+                    "certificate",
+                    registry=entry.id,
+                    address=entry.address,
+                )
             out.append(
-                Resolved(entry.id, entry.kind, address, fields["scope"], credential, entry.mirror)
+                Resolved(
+                    entry.id,
+                    entry.kind,
+                    address,
+                    fields["scope"],
+                    credential,
+                    entry.mirror,
+                    ca_bundle,
+                )
             )
     return out

@@ -18,18 +18,21 @@
     "gitHost": "Host",
     "scope": "Escopo",
     "scopeHelp": "Por exemplo @acme. Deixe vazio para um registro sem escopo.",
-    "npmCredential": "Token",
-    "npmCredentialHelp": "O token de acesso do registro.",
-    "pypiCredential": "Token",
-    "pypiCredentialHelp": "O token de acesso do índice, ou usuário:senha.",
-    "gitCredential": "Token HTTPS",
-    "gitCredentialHelp": "Um token com acesso de leitura aos repositórios.",
+    "npmCredential": "Token ou usuário:senha",
+    "npmCredentialHelp": "Um token de acesso, ou usuário:senha, por exemplo um usuário do Artifactory e sua chave de API.",
+    "pypiCredential": "Token ou usuário:senha",
+    "pypiCredentialHelp": "Um token de acesso, ou usuário:senha, por exemplo um usuário do Artifactory e sua chave de API.",
+    "gitCredential": "Token ou usuário:token",
+    "gitCredentialHelp": "Um token sozinho é enviado como x-access-token, como o GitHub espera. Caso contrário, informe usuário:token. GitLab: qualquer nome de usuário. Bitbucket Cloud: x-token-auth para tokens de acesso de repositório ou de workspace, ou seu nome de usuário ou e-mail para tokens de API. Bitbucket Data Center: seu nome de usuário, ou x-token-auth para tokens de projeto ou de repositório.",
     "mirror": "Espelho de toda instalação",
     "mirrorHelp": "Todo pacote sem escopo próprio é instalado por este registro. Uma organização tem um espelho npm.",
     "pypiMirror": "Índice padrão para cada instalação",
     "pypiMirrorHelp": "Cada pacote Python é instalado a partir deste índice em vez do PyPI público. Uma organização tem um índice padrão.",
     "saved": "Salvo",
     "removed": "Removido",
-    "remove": "Remover"
+    "remove": "Remover",
+    "gitHostHelp": "O host, com porta e caminho quando o servidor os tem, por exemplo bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "Autoridade certificadora (PEM)",
+    "caBundleHelp": "Somente para um servidor cujo certificado é assinado pela sua própria autoridade, como um proxy do Artifactory dentro da sua rede: o certificado PEM dela ou uma referência a um segredo. Ela é confiável junto às autoridades públicas. Caso contrário, deixe em branco."
   }
 }

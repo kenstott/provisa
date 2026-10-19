@@ -23,14 +23,18 @@ The source names its code in one of three ways:
 The content hash is taken over the bundle's files BEFORE any install, and is what a source
 records: a later install that finds other content is refused, naming both hashes.
 
-Credentials come from the organisation's package registries only (core/package_registries). The
+Credentials come from the organisation's package registries only (core/package_registries). An
+npm registry's credential is a token, sent as a bearer token and written as ``_authToken``, or
+``user:password`` (an Artifactory user and its API key, say), sent as Basic and written as
+``_auth`` (REQ-2088). A registry's certificate authority is trusted by the fetches through it and,
+as ``cafile``, by the install. The
 install's configuration (an ``.npmrc`` for every runtime, a Git configuration for Git
 dependencies) is written into that install's own directory and removed after it, whether it
 succeeded or not; the install runs with a HOME of its own and none of the process's environment
 but its PATH, so no other credential reaches it. Nothing installed keeps a credential.
 """
 
-# Requirements: REQ-1984
+# Requirements: REQ-1984, REQ-2088
 from __future__ import annotations
 
 import base64
@@ -53,6 +57,7 @@ from provisa.codesource.install import (
     Lockfile,
     Runner,
     UploadCode,
+    get,
     gitconfig,
     http_get,
     run_command,
@@ -103,10 +108,25 @@ def npm_registry_for(package: str, registries: Sequence[Resolved]) -> Resolved |
     return None
 
 
-def npmrc(registries: Sequence[Resolved]) -> str:
+def _basic(credential: str) -> str | None:
+    """``user:password`` as npm's ``_auth`` value (base64), or None for a bare token."""
+    user, sep, password = credential.partition(":")
+    return base64.b64encode(f"{user}:{password}".encode()).decode() if sep else None
+
+
+def npm_authorization(credential: str) -> str:
+    """The Authorization header a registry's credential is sent as: Basic for ``user:password``,
+    else Bearer for a token."""
+    basic = _basic(credential)
+    return f"Basic {basic}" if basic is not None else f"Bearer {credential}"
+
+
+def npmrc(registries: Sequence[Resolved], cafile: Path | None = None) -> str:
     """The ``.npmrc`` every runtime reads: the mirror as the default registry, each scope's
-    registry, and each registry's token for its own address."""
-    lines: list[str] = []
+    registry, and each registry's credential for its own address -- ``_auth`` for
+    ``user:password``, ``_authToken`` for a token -- and ``cafile``, the trusted authorities,
+    when a registry carries its own."""
+    lines: list[str] = [f"cafile={cafile}"] if cafile is not None else []
     for registry in registries:
         if registry.kind != NPM:
             continue
@@ -116,7 +136,11 @@ def npmrc(registries: Sequence[Resolved]) -> str:
         if registry.scope:
             lines.append(f"{registry.scope}:registry={address}")
         parts = urlsplit(address)
-        lines.append(f"//{parts.netloc}{parts.path}:_authToken={registry.credential}")
+        basic = _basic(registry.credential)
+        if basic is not None:
+            lines.append(f"//{parts.netloc}{parts.path}:_auth={basic}")
+        else:
+            lines.append(f"//{parts.netloc}{parts.path}:_authToken={registry.credential}")
     return "\n".join(lines) + "\n"
 
 
@@ -155,8 +179,9 @@ def fetch_npm(
     base = _slash(registry.address) if registry else NPM_PUBLIC
     headers = {"Accept": "application/json"}
     if registry is not None:
-        headers["Authorization"] = f"Bearer {registry.credential}"
-    meta = json.loads(http(base + quote(code.package, safe="@"), headers))
+        headers["Authorization"] = npm_authorization(registry.credential)
+    ca_bundle = registry.ca_bundle if registry is not None else None
+    meta = json.loads(get(http, base + quote(code.package, safe="@"), headers, ca_bundle))
     found = (meta.get("versions") or {}).get(code.version)
     if found is None:
         raise BundleRefused(
@@ -180,9 +205,10 @@ def fetch_npm(
             f"{base} gives {code.package}@{code.version} no tarball integrity to check",
             package=code.package,
         )
-    # The token goes only to the registry's own host.
+    # The credential goes only to the registry's own host.
     same_host = registry is not None and urlsplit(tarball).netloc == urlsplit(base).netloc
-    data = http(tarball, {"Authorization": headers["Authorization"]} if same_host else {})
+    auth = {"Authorization": headers["Authorization"]} if same_host else {}
+    data = get(http, tarball, auth, ca_bundle)
     if not _integrity_ok(data, integrity):
         raise BundleRefused(
             "integrity_mismatch",
@@ -261,7 +287,8 @@ def _install(
     with tempfile.TemporaryDirectory(prefix="provisa-node-install-") as scratch:
         home = Path(scratch)
         rc, git = home / ".npmrc", home / ".gitconfig"
-        rc.write_text(npmrc(registries))
+        cafile = shared.install_trust(registries, home)
+        rc.write_text(npmrc(registries, cafile))
         git.write_text(gitconfig(registries))
         project_rc = root / ".npmrc"
         had_rc = project_rc.exists()
@@ -280,6 +307,9 @@ def _install(
             "GIT_TERMINAL_PROMPT": "0",
             # Deno's own cache is kept with the install: the worker reads its npm packages there.
             "DENO_DIR": str(root / ".deno"),
+            # Deno reads its trusted authorities from DENO_CERT, not from the .npmrc.
+            **({"DENO_CERT": str(cafile)} if cafile is not None else {}),
+            **shared.trust_environment(cafile),
         }
         try:
             run(install_command(runtime, executable), root, env)

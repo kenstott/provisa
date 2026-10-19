@@ -11,7 +11,7 @@
 // REQ-1984, REQ-1993: the organisation's package registries -- the npm registries, PyPI indexes and
 // Git hosts every Node and Python install of the organisation goes through, entered by an organisation administrator. Each field
 // is answered as it was entered (a value, or the reference typed for it), to the administrator
-// who may enter it.
+// who may enter it. REQ-2088: an entry may carry the PEM certificate authority its TLS chains to.
 
 import { requestFailed, serverMessage } from "../i18n/serverMessage";
 
@@ -31,6 +31,8 @@ export interface PackageRegistry {
   /** Whether this npm registry (or PyPI index) is the mirror every npm (or Python) install
    * goes through. */
   mirror: boolean;
+  /** As entered: the PEM certificate authority, or a reference to it; null for none. */
+  ca_bundle: string | null;
 }
 
 export interface PackageRegistryBody {
@@ -40,6 +42,8 @@ export interface PackageRegistryBody {
   /** What the field holds; left out on a replace, the entry keeps what it has. */
   credential?: string;
   mirror: boolean;
+  /** The PEM certificate authority, or a reference; null holds none. */
+  ca_bundle: string | null;
 }
 
 async function ok<T>(res: Response, op: string): Promise<T> {

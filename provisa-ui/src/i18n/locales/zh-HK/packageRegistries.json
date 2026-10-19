@@ -18,18 +18,21 @@
     "gitHost": "主機",
     "scope": "範圍",
     "scopeHelp": "例如 @acme。沒有範圍的登錄庫請留空。",
-    "npmCredential": "權杖",
-    "npmCredentialHelp": "登錄庫的存取權杖。",
-    "pypiCredential": "權杖",
-    "pypiCredentialHelp": "索引的存取權杖，或 用戶名稱:密碼。",
-    "gitCredential": "HTTPS 權杖",
-    "gitCredentialHelp": "對儲存庫有讀取權限的權杖。",
+    "npmCredential": "權杖或 user:password",
+    "npmCredentialHelp": "存取權杖，或 user:password，例如 Artifactory 使用者及其 API 金鑰。",
+    "pypiCredential": "權杖或 user:password",
+    "pypiCredentialHelp": "存取權杖，或 user:password，例如 Artifactory 使用者及其 API 金鑰。",
+    "gitCredential": "權杖或 user:token",
+    "gitCredentialHelp": "單獨的權杖會按 GitHub 的要求以 x-access-token 傳送。否則請輸入 user:token。GitLab：任何使用者名稱。Bitbucket Cloud：儲存庫或工作區存取權杖用 x-token-auth，API 權杖用您的使用者名稱或電郵。Bitbucket Data Center：您的使用者名稱，或專案、儲存庫權杖用 x-token-auth。",
     "mirror": "所有安裝的鏡像",
     "mirrorHelp": "沒有自身範圍的每個套件都經此登錄庫安裝。一個機構有一個 npm 鏡像。",
     "pypiMirror": "每次安裝的預設索引",
     "pypiMirrorHelp": "每個 Python 套件都從此索引安裝，而不是從公共 PyPI。一個機構有一個預設索引。",
     "saved": "已儲存",
     "removed": "已刪除",
-    "remove": "刪除"
+    "remove": "刪除",
+    "gitHostHelp": "主機，伺服器有連接埠和路徑時一併填寫，例如 bitbucket.example.com:7990/bitbucket。",
+    "caBundle": "憑證授權單位 (PEM)",
+    "caBundleHelp": "只適用於憑證由您自己的憑證授權單位簽發的伺服器，例如您網絡內的 Artifactory 代理：填寫其 PEM 憑證或機密參照。它會與公開憑證授權單位一併受信任。否則請留空。"
   }
 }

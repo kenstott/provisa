@@ -345,3 +345,63 @@ class TestTheAdminSurface:
 
     async def test_removing_what_was_never_entered_removes_nothing(self, wired):
         assert await router.delete_registry(None, "acme", "nope") == {"removed": False}
+
+    async def test_the_certificate_authority_is_answered_as_it_was_entered(self, wired):
+        added = await router.add_registry(
+            None, "acme", self._body(ca_bundle="${secret:proxy_ca}", credential="ada:made-up")
+        )
+        (listed,) = (await router.list_registries(None, "acme"))["registries"]
+        assert added == listed
+        assert (listed["ca_bundle"], listed["credential"]) == ("${secret:proxy_ca}", "ada:made-up")
+
+
+# REQ-2088: an entry's certificate authority, for a proxy or Git server behind a private CA.
+PEM = "-----BEGIN CERTIFICATE-----\nMIIBmade-up\n-----END CERTIFICATE-----\n"
+
+
+class TestTheCertificateAuthority:
+    async def test_it_is_kept_as_entered_and_resolved_at_use(self, plane):
+        await secrets_store.put(plane, "acme", "proxy_ca", PEM, owner_id=secrets_store.ORG_OWNER)
+        await _npm(plane, ca_bundle="${secret:proxy_ca}")
+        await _pypi(plane, ca_bundle=PEM)
+        await _git(plane, ca_bundle=PEM)
+        assert sorted(r["ca_bundle"] for r in _stored(plane)) == [
+            "${secret:proxy_ca}",
+            PEM.strip(),
+            PEM.strip(),
+        ]
+        assert {e.ca_bundle for e in await registries.resolved(plane, "acme")} == {PEM.strip(), PEM}
+
+    async def test_an_entry_without_one_has_none(self, plane):
+        kept = await _npm(plane, ca_bundle="  ")
+        assert kept.ca_bundle is None
+        (entry,) = await registries.resolved(plane, "acme")
+        assert entry.ca_bundle is None
+
+    async def test_a_value_that_holds_no_certificate_is_refused_by_name(self, plane):
+        with pytest.raises(PackageRegistryRefused) as refused:
+            await _npm(plane, ca_bundle="not a certificate")
+        assert refused.value.code == "package_registry.ca_bundle_not_pem"
+        assert refused.value.params == {"address": "https://npm.acme.test/"}
+
+    async def test_a_reference_to_nothing_fails_by_name_at_use(self, plane):
+        await _pypi(plane, ca_bundle="${secret:no_such_ca}")
+        with pytest.raises(PackageRegistryRefused) as refused:
+            await registries.resolved(plane, "acme")
+        assert refused.value.code == "package_registry.unresolved"
+        assert refused.value.params["field"] == "ca_bundle"
+        assert "no_such_ca" in str(refused.value)
+
+    async def test_a_reference_that_resolves_to_no_certificate_is_refused_at_use(
+        self, plane, monkeypatch
+    ):
+        monkeypatch.setenv("PROXY_CA", "plain text")
+        await _npm(plane, ca_bundle="${env:PROXY_CA}")
+        with pytest.raises(PackageRegistryRefused) as refused:
+            await registries.resolved(plane, "acme")
+        assert refused.value.code == "package_registry.ca_bundle_not_pem"
+
+    async def test_a_replace_without_one_removes_it(self, plane):
+        kept = await _npm(plane, ca_bundle=PEM)
+        replaced = await _npm(plane, registry_id=kept.id, ca_bundle=None)
+        assert replaced.ca_bundle is None

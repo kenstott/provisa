@@ -153,6 +153,7 @@ nav:
       - CLI Reference: cli.md
       - Admin API: admin.md
       - Admin GraphQL Reference: admin-graphql.md
+      - Package Registries: package-registries.md
       - Releasing: releasing.md
   - Architecture:
       - Overview: architecture.md

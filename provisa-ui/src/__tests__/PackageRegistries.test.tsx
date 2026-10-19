@@ -11,6 +11,7 @@
 // REQ-1984, REQ-1993: Admin › Package registries holds the npm registries, PyPI indexes and Git
 // hosts every Node and Python install of the organisation goes through. Each field is shown again as it was entered, a new entry is
 // added with nothing in it, and an entry is not saved until it has its address and credential.
+// REQ-2088: each entry may carry the PEM certificate authority its server's TLS chains to.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, waitFor } from "../test-utils/render";
@@ -49,14 +50,16 @@ const NPM = {
   scope: "@acme",
   credential: "${secret:npm_acme}",
   mirror: false,
+  ca_bundle: null,
 };
 const GIT = {
   id: "g1",
   kind: "git" as const,
   address: "git.acme.test",
   scope: null,
-  credential: "made-up-git-token",
+  credential: "ada:made-up-git-token",
   mirror: false,
+  ca_bundle: "${secret:git_ca}",
 };
 
 beforeEach(() => {
@@ -114,6 +117,7 @@ describe("Admin › Package registries", () => {
         scope: null,
         credential: "tok",
         mirror: true,
+        ca_bundle: null,
       }),
     );
   });
@@ -141,6 +145,7 @@ describe("Admin › Package registries", () => {
         scope: null,
         credential: "tok",
         mirror: true,
+        ca_bundle: null,
       }),
     );
   });
@@ -158,6 +163,7 @@ describe("Admin › Package registries", () => {
         scope: "@acme",
         credential: NPM.credential,
         mirror: false,
+        ca_bundle: null,
       }),
     );
   });
@@ -171,6 +177,41 @@ describe("Admin › Package registries", () => {
     fireEvent.click(screen.getByTestId(`${card.getAttribute("data-testid")}-remove`));
     await waitFor(() => expect(screen.queryByTestId(/^package-registry-new-git-/)).toBeNull());
     expect(remove).toHaveBeenCalledTimes(1);
+  });
+
+  it("shows each entry's certificate authority as entered, and sends it on save", async () => {
+    render(<PackageRegistriesTab />);
+    expect(await screen.findByTestId("package-registry-g1-ca-bundle")).toHaveValue(
+      "${secret:git_ca}",
+    );
+    expect(screen.getByTestId("package-registry-r1-ca-bundle")).toHaveValue("");
+    const pem = "-----BEGIN CERTIFICATE-----\nMIIBmade-up\n-----END CERTIFICATE-----";
+    fireEvent.change(screen.getByTestId("package-registry-r1-ca-bundle"), {
+      target: { value: pem },
+    });
+    fireEvent.click(screen.getByTestId("package-registry-r1-save"));
+    await waitFor(() =>
+      expect(replace).toHaveBeenCalledWith(
+        "acme",
+        "r1",
+        expect.objectContaining({ ca_bundle: pem }),
+      ),
+    );
+  });
+
+  it("names Artifactory and each Git provider's user in its help", async () => {
+    render(<PackageRegistriesTab />);
+    await screen.findByTestId("package-registry-r1");
+    expect(en.packageRegistries.npmCredentialHelp).toMatch(/Artifactory/);
+    expect(en.packageRegistries.caBundleHelp).toMatch(/Artifactory/);
+    expect(en.packageRegistries.gitCredentialHelp).toMatch(/x-access-token.*GitLab.*x-token-auth/s);
+    // Each help is the name of its field's (?) glyph.
+    expect(
+      screen.getAllByRole("img", { name: en.packageRegistries.gitCredentialHelp }).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("img", { name: en.packageRegistries.caBundleHelp }).length,
+    ).toBeGreaterThan(0);
   });
 
   it("shows the server's refusal beside the entry", async () => {

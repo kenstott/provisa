@@ -18,18 +18,21 @@
     "gitHost": "Host",
     "scope": "Scope",
     "scopeHelp": "Ad esempio @acme. Lasciare vuoto per un registro senza scope.",
-    "npmCredential": "Token",
-    "npmCredentialHelp": "Il token di accesso del registro.",
-    "pypiCredential": "Token",
-    "pypiCredentialHelp": "Il token di accesso dell'indice, oppure utente:password.",
-    "gitCredential": "Token HTTPS",
-    "gitCredentialHelp": "Un token con accesso in lettura ai repository.",
+    "npmCredential": "Token o utente:password",
+    "npmCredentialHelp": "Un token di accesso, oppure utente:password, ad esempio un utente Artifactory e la sua chiave API.",
+    "pypiCredential": "Token o utente:password",
+    "pypiCredentialHelp": "Un token di accesso, oppure utente:password, ad esempio un utente Artifactory e la sua chiave API.",
+    "gitCredential": "Token o utente:token",
+    "gitCredentialHelp": "Un token da solo viene inviato come x-access-token, come si aspetta GitHub. Altrimenti inserire utente:token. GitLab: qualsiasi nome utente. Bitbucket Cloud: x-token-auth per i token di accesso di repository o di workspace, oppure il proprio nome utente o indirizzo email per i token API. Bitbucket Data Center: il proprio nome utente, oppure x-token-auth per i token di progetto o di repository.",
     "mirror": "Mirror di ogni installazione",
     "mirrorHelp": "Ogni pacchetto senza un proprio scope viene installato tramite questo registro. Un'organizzazione ha un mirror npm.",
     "pypiMirror": "Indice predefinito per ogni installazione",
     "pypiMirrorHelp": "Ogni pacchetto Python viene installato da questo indice invece che dal PyPI pubblico. Un'organizzazione ha un indice predefinito.",
     "saved": "Salvato",
     "removed": "Rimosso",
-    "remove": "Rimuovi"
+    "remove": "Rimuovi",
+    "gitHostHelp": "L'host, con porta e percorso se il server li ha, ad esempio bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "Autorità di certificazione (PEM)",
+    "caBundleHelp": "Solo per un server il cui certificato è firmato dalla propria autorità, come un proxy Artifactory all'interno della rete: il suo certificato PEM o un riferimento a un segreto. È considerata attendibile accanto alle autorità pubbliche. Altrimenti lasciare vuoto."
   }
 }

@@ -16,6 +16,10 @@
 //
 // Every field keeps what was typed -- the value, or a reference to a secret the administrator
 // created -- and shows it again; the credential behind the reveal control.
+//
+// REQ-2088: a credential may be user:password (npm, PyPI: an Artifactory user and its API key) or
+// user:token (Git: GitLab, Bitbucket), and every entry may carry the PEM certificate authority its
+// server's TLS certificate chains to, for a proxy or Git server behind a private CA.
 
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -27,6 +31,7 @@ import {
   PasswordInput,
   Stack,
   Text,
+  Textarea,
   TextInput,
   Title,
 } from "@mantine/core";
@@ -51,6 +56,7 @@ interface Draft {
   scope: string;
   credential: string;
   mirror: boolean;
+  caBundle: string;
 }
 
 const draftOf = (r: PackageRegistry): Draft => ({
@@ -61,6 +67,7 @@ const draftOf = (r: PackageRegistry): Draft => ({
   scope: r.scope ?? "",
   credential: r.credential,
   mirror: r.mirror,
+  caBundle: r.ca_bundle ?? "",
 });
 
 let fresh = 0;
@@ -72,15 +79,24 @@ const blank = (kind: RegistryKind): Draft => ({
   scope: "",
   credential: "",
   mirror: false,
+  caBundle: "",
 });
 
 /** Each kind's own labels and placeholder; only npm has a scope, and Git hosts no mirror. */
 const LABELS: Record<
   RegistryKind,
-  { address: string; placeholder: string; credential: string; credentialHelp: string; mirror: string | null }
+  {
+    address: string;
+    addressHelp: string | null;
+    placeholder: string;
+    credential: string;
+    credentialHelp: string;
+    mirror: string | null;
+  }
 > = {
   npm: {
     address: "packageRegistries.npmAddress",
+    addressHelp: null,
     placeholder: "https://npm.example.com/",
     credential: "packageRegistries.npmCredential",
     credentialHelp: "packageRegistries.npmCredentialHelp",
@@ -88,6 +104,7 @@ const LABELS: Record<
   },
   pypi: {
     address: "packageRegistries.pypiAddress",
+    addressHelp: null,
     placeholder: "https://pypi.example.com/simple/",
     credential: "packageRegistries.pypiCredential",
     credentialHelp: "packageRegistries.pypiCredentialHelp",
@@ -95,6 +112,7 @@ const LABELS: Record<
   },
   git: {
     address: "packageRegistries.gitHost",
+    addressHelp: "packageRegistries.gitHostHelp",
     placeholder: "git.example.com",
     credential: "packageRegistries.gitCredential",
     credentialHelp: "packageRegistries.gitCredentialHelp",
@@ -104,10 +122,9 @@ const LABELS: Record<
 
 /** The fields an entry cannot be kept without. */
 const missing = (d: Draft): string[] =>
-  [
-    d.address.trim() ? null : "address",
-    d.credential.trim() ? null : "credential",
-  ].filter((f): f is string => f !== null);
+  [d.address.trim() ? null : "address", d.credential.trim() ? null : "credential"].filter(
+    (f): f is string => f !== null,
+  );
 
 export function PackageRegistriesTab() {
   const { t } = useTranslation();
@@ -158,6 +175,7 @@ export function PackageRegistriesTab() {
       scope: d.kind === "npm" ? d.scope.trim() || null : null,
       credential: d.credential,
       mirror: LABELS[d.kind].mirror !== null && d.mirror,
+      ca_bundle: d.caBundle.trim() || null,
     };
     return run(
       d.key,
@@ -172,7 +190,11 @@ export function PackageRegistriesTab() {
   const remove = (d: Draft) =>
     d.id === null
       ? setDrafts((ds) => (ds ?? []).filter((x) => x.key !== d.key))
-      : run(d.key, () => deletePackageRegistry(activeOrgId, d.id as string), t("packageRegistries.removed"));
+      : run(
+          d.key,
+          () => deletePackageRegistry(activeOrgId, d.id as string),
+          t("packageRegistries.removed"),
+        );
 
   const entry = (d: Draft) => {
     const id = `package-registry-${d.key}`;
@@ -180,7 +202,7 @@ export function PackageRegistriesTab() {
     return (
       <Card key={d.key} withBorder data-testid={id}>
         <FormLayout>
-          <FormField size="long">
+          <FormField size="long" help={labels.addressHelp ? t(labels.addressHelp) : undefined}>
             <TextInput
               label={t(labels.address)}
               placeholder={labels.placeholder}
@@ -203,10 +225,7 @@ export function PackageRegistriesTab() {
               />
             </FormField>
           )}
-          <FormField
-            size="long"
-            help={t(labels.credentialHelp)}
-          >
+          <FormField size="long" help={t(labels.credentialHelp)}>
             <PasswordInput
               label={t(labels.credential)}
               required
@@ -214,6 +233,19 @@ export function PackageRegistriesTab() {
               onChange={(e) => change(d.key, { credential: e.currentTarget.value })}
               autoComplete="new-password"
               data-testid={`${id}-credential`}
+            />
+          </FormField>
+          <FormField size="long" help={t("packageRegistries.caBundleHelp")}>
+            <Textarea
+              label={t("packageRegistries.caBundle")}
+              placeholder={"-----BEGIN CERTIFICATE-----"}
+              value={d.caBundle}
+              onChange={(e) => change(d.key, { caBundle: e.currentTarget.value })}
+              autosize
+              minRows={2}
+              maxRows={8}
+              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+              data-testid={`${id}-ca-bundle`}
             />
           </FormField>
           {labels.mirror !== null && (

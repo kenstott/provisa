@@ -18,18 +18,21 @@
     "gitHost": "Host",
     "scope": "Scope",
     "scopeHelp": "For example @acme. Leave empty for a registry with no scope.",
-    "npmCredential": "Token",
-    "npmCredentialHelp": "The registry's access token.",
-    "pypiCredential": "Token",
-    "pypiCredentialHelp": "The index's access token, or user:password.",
-    "gitCredential": "HTTPS token",
-    "gitCredentialHelp": "A token with read access to the repositories.",
+    "npmCredential": "Token or user:password",
+    "npmCredentialHelp": "An access token, or user:password, for example an Artifactory user and its API key.",
+    "pypiCredential": "Token or user:password",
+    "pypiCredentialHelp": "An access token, or user:password, for example an Artifactory user and its API key.",
+    "gitCredential": "Token or user:token",
+    "gitCredentialHelp": "A token alone is sent as x-access-token, as GitHub expects. Otherwise enter user:token. GitLab: any username. Bitbucket Cloud: x-token-auth for repository or workspace access tokens, or your username or email for API tokens. Bitbucket Data Center: your username, or x-token-auth for project or repository tokens.",
     "mirror": "Mirror every install",
     "mirrorHelp": "Every package without a scope of its own is installed through this registry. An organization has one npm mirror.",
     "pypiMirror": "Default index for every install",
     "pypiMirrorHelp": "Every Python package is installed from this index instead of the public PyPI. An organization has one default index.",
     "saved": "Saved",
     "removed": "Removed",
-    "remove": "Remove"
+    "remove": "Remove",
+    "gitHostHelp": "The host, with its port and path where the server has them, for example bitbucket.example.com:7990/bitbucket.",
+    "caBundle": "Certificate authority (PEM)",
+    "caBundleHelp": "Only for a server whose certificate is signed by your own authority, such as an Artifactory proxy inside your network: its PEM certificate, or a secret reference. It is trusted beside the public authorities. Leave empty otherwise."
   }
 }

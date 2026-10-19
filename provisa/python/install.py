@@ -27,10 +27,12 @@ A code that declares dependencies carries a lockfile (decision P4): ``uv.lock`` 
 requirement. They are installed into a virtual environment inside the install
 (``<install>/.venv``), from the pinned Python, with no build of any package. The index addresses
 and credentials reach uv in the install's own environment only, never in a file; the install runs
-with a HOME of its own and none of the process's environment but its PATH.
+with a HOME of its own and none of the process's environment but its PATH. An index's certificate
+authority (REQ-2088) is trusted by the fetches through it and, through SSL_CERT_FILE naming a file
+in the install's own temporary directory, by uv.
 """
 
-# Requirements: REQ-1993
+# Requirements: REQ-1993, REQ-2088
 from __future__ import annotations
 
 import base64
@@ -55,6 +57,7 @@ from provisa.codesource.install import (
     Lockfile,
     Runner,
     UploadCode,
+    get,
     gitconfig,
     http_get,
     run_command,
@@ -186,7 +189,8 @@ def fetch_wheel(code: PypiCode, registries: Sequence[Resolved], http: Http, dest
     headers = {"Accept": "application/vnd.pypi.simple.v1+json"}
     if index is not None:
         headers.update(_auth_header(index.credential))
-    listing = json.loads(http(f"{base}{_normalized(code.package)}/", headers))
+    ca_bundle = index.ca_bundle if index is not None else None
+    listing = json.loads(get(http, f"{base}{_normalized(code.package)}/", headers, ca_bundle))
     files = [f for f in listing.get("files", []) if _of_version(f["filename"], code)]
     if not files:
         raise BundleRefused(
@@ -215,7 +219,7 @@ def fetch_wheel(code: PypiCode, registries: Sequence[Resolved], http: Http, dest
     if not url.startswith("https://"):
         url = base + url  # a relative link, beside the listing
     same_host = index is not None and urlsplit(url).netloc == urlsplit(base).netloc
-    data = http(url, _auth_header(index.credential) if same_host and index else {})
+    data = get(http, url, _auth_header(index.credential) if same_host and index else {}, ca_bundle)
     if hashlib.sha256(data).hexdigest() != expected:
         raise BundleRefused(
             "integrity_mismatch",
@@ -341,6 +345,7 @@ def _install(
         home = Path(scratch)
         git = home / ".gitconfig"
         git.write_text(gitconfig(registries))
+        ca_file = shared.install_trust(registries, home)
         env = {
             "PATH": os.environ.get("PATH", ""),
             "HOME": str(home),
@@ -353,6 +358,10 @@ def _install(
             "GIT_CONFIG_NOSYSTEM": "1",
             "GIT_TERMINAL_PROMPT": "0",
             **uv_index_environment(registries),
+            # uv trusts the file SSL_CERT_FILE names in place of its own authorities; the file
+            # holds the publicly trusted ones with the indexes' own (trust_bundle).
+            **({"SSL_CERT_FILE": str(ca_file)} if ca_file is not None else {}),
+            **shared.trust_environment(ca_file),
         }
         for argv in install_commands(uv, python, root, lock):
             run(argv, root, env)

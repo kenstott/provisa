@@ -17,15 +17,18 @@ install; :func:`ensure_installed` takes both as callables. The content hash is w
 records: a later install that finds other content is refused, naming both hashes.
 
 Credentials come from the organisation's package registries only (core/package_registries). A
-Git host's token is given to the fetch for that host and to nothing else.
+Git host's token is given to the fetch for that host and to nothing else. A registry's certificate
+authority (REQ-2088) is trusted beside the publicly trusted ones, by the fetches made through that
+registry and by the language's install, from a file in the install's own temporary directory.
 """
 
-# Requirements: REQ-1984, REQ-1993
+# Requirements: REQ-1984, REQ-1993, REQ-2088
 from __future__ import annotations
 
 import os
 import re
 import shutil
+import ssl
 import subprocess  # nosec B404 - argv-list invocation only, never shell=True
 import tempfile
 from collections.abc import Callable, Sequence
@@ -79,8 +82,9 @@ class Installed:
     content_hash: str
 
 
-#: GET ``url`` with ``headers``; the body. Injected so tests never touch the network.
-Http = Callable[[str, dict[str, str]], bytes]
+#: GET ``url`` with ``headers``; the body. Injected so tests never touch the network. A fetch
+#: through a registry that carries a certificate authority passes it as ``ca_bundle=`` (REQ-2088).
+Http = Callable[..., bytes]
 #: Run ``argv`` in ``cwd`` with exactly ``env``; raises :class:`InstallFailed` on a non-zero exit.
 Runner = Callable[[Sequence[str], Path, dict[str, str]], None]
 
@@ -89,13 +93,68 @@ class InstallFailed(BundleRefused):
     """The language's install exited with an error; its output is the message."""
 
 
-def http_get(url: str, headers: dict[str, str]) -> bytes:
+def _publicly_trusted() -> str:
+    """The publicly trusted certificate authorities, as PEM: the ones every fetch trusts."""
+    import certifi
+
+    return Path(certifi.where()).read_text()
+
+
+def trust_context(ca_bundle: str) -> ssl.SSLContext:
+    """A TLS context that trusts ``ca_bundle`` (PEM) beside the publicly trusted authorities."""
+    import certifi
+
+    context = ssl.create_default_context(cafile=certifi.where())
+    try:
+        context.load_verify_locations(cadata=ca_bundle)
+    except ssl.SSLError as exc:
+        raise BundleRefused(
+            "ca_bundle_unreadable", f"the certificate authority could not be read: {exc}"
+        ) from exc
+    return context
+
+
+def trust_bundle(ca_bundles: Sequence[str], scratch: Path) -> Path | None:
+    """The file a language's install reads its trusted authorities from (uv's SSL_CERT_FILE,
+    npm's cafile), written into ``scratch``, the install's own temporary directory: the publicly
+    trusted authorities with every registry's own after them, since each of those settings
+    replaces the authorities the tool trusts rather than adding to them. None when no registry
+    carries one, and the tool trusts what it always does."""
+    if not ca_bundles:
+        return None
+    for ca_bundle in ca_bundles:
+        trust_context(ca_bundle)  # refused by name here, not as a TLS failure mid-install
+    path = scratch / "registries-ca.pem"
+    path.write_text(
+        _publicly_trusted().rstrip("\n") + "\n" + "\n".join(c.strip() for c in ca_bundles) + "\n"
+    )
+    path.chmod(0o600)
+    return path
+
+
+def install_trust(registries: Sequence[Resolved], scratch: Path) -> Path | None:
+    """The trusted-authorities file an install reads (:func:`trust_bundle`) with every
+    registry's own certificate authority: one install reaches npm registries or PyPI indexes and
+    Git hosts alike. None when no registry carries one."""
+    return trust_bundle([r.ca_bundle for r in registries if r.ca_bundle], scratch)
+
+
+def trust_environment(ca_file: Path | None) -> dict[str, str]:
+    """What Git reads its trusted authorities from, in an install's own environment: a Git
+    dependency is fetched by the git the language's install runs."""
+    return {} if ca_file is None else {"GIT_SSL_CAINFO": str(ca_file)}
+
+
+def http_get(url: str, headers: dict[str, str], ca_bundle: str | None = None) -> bytes:
     import httpx
 
     if not url.startswith("https://"):
         raise BundleRefused("not_https", f"refusing a non-https address: {url}", url=url)
+    verify: ssl.SSLContext | bool = True if ca_bundle is None else trust_context(ca_bundle)
     try:
-        response = httpx.get(url, headers=headers, follow_redirects=True, timeout=300.0)
+        response = httpx.get(
+            url, headers=headers, follow_redirects=True, timeout=300.0, verify=verify
+        )
     except httpx.HTTPError as exc:
         raise BundleRefused("fetch_failed", f"could not fetch {url}: {exc}", url=url) from exc
     if response.status_code != 200:
@@ -103,6 +162,11 @@ def http_get(url: str, headers: dict[str, str]) -> bytes:
             "fetch_failed", f"could not fetch {url}: HTTP {response.status_code}", url=url
         )
     return response.content
+
+
+def get(http: Http, url: str, headers: dict[str, str], ca_bundle: str | None) -> bytes:
+    """``http`` for a fetch through a registry: with its certificate authority when it has one."""
+    return http(url, headers) if ca_bundle is None else http(url, headers, ca_bundle=ca_bundle)
 
 
 def run_command(argv: Sequence[str], cwd: Path, env: dict[str, str]) -> None:
@@ -120,31 +184,68 @@ def run_command(argv: Sequence[str], cwd: Path, env: dict[str, str]) -> None:
 # -- Git hosts --------------------------------------------------------------------------------------
 
 
+def git_credentials(credential: str) -> tuple[str, str]:
+    """A Git host's credential as the user and token it is sent with: ``user:token`` as entered
+    (GitLab, Bitbucket), else a bare token sent as ``x-access-token`` (GitHub) (REQ-2088)."""
+    user, sep, token = credential.partition(":")
+    return (user, token) if sep else (GIT_TOKEN_USER, credential)
+
+
+def git_prefix(address: str) -> str:
+    """A Git host entry's address as the prefix of the repository URLs it covers: the host, with
+    its port and a path prefix where it has them (``bitbucket.acme.com:7990/bitbucket``)."""
+    address = address.strip()
+    if address.startswith("https://"):
+        address = address[len("https://") :]
+    return address.rstrip("/")
+
+
 def gitconfig(registries: Sequence[Resolved]) -> str:
-    """The Git configuration a dependency fetched by Git reads: each Git host's address rewritten
-    to carry its token."""
+    """The Git configuration a dependency fetched by Git reads: each Git host's prefix rewritten
+    to carry its user and token."""
     lines: list[str] = []
     for registry in registries:
         if registry.kind != GIT:
             continue
-        host = registry.address.strip().rstrip("/")
-        token = quote(registry.credential, safe="")
+        prefix = git_prefix(registry.address)
+        user, token = git_credentials(registry.credential)
         lines += [
-            f'[url "https://{GIT_TOKEN_USER}:{token}@{host}/"]',
-            f"\tinsteadOf = https://{host}/",
+            f'[url "https://{quote(user, safe="")}:{quote(token, safe="")}@{prefix}/"]',
+            f"\tinsteadOf = https://{prefix}/",
         ]
     return "\n".join(lines) + "\n"
 
 
 def git_host_for(url: str, registries: Sequence[Resolved]) -> Resolved | None:
-    host = urlsplit(url).netloc.rsplit("@", 1)[-1]
-    for registry in registries:
-        if registry.kind == GIT and registry.address.strip().rstrip("/") == host:
-            return registry
-    return None
+    """The Git host entry whose prefix covers ``url``: the host with its port and path; the
+    longest such prefix when several do."""
+    parts = urlsplit(url)
+    target = parts.netloc.rsplit("@", 1)[-1] + parts.path.rstrip("/")
+    covering = [
+        registry
+        for registry in registries
+        if registry.kind == GIT
+        and (
+            target == git_prefix(registry.address)
+            or target.startswith(git_prefix(registry.address) + "/")
+        )
+    ]
+    return max(covering, key=lambda registry: len(git_prefix(registry.address)), default=None)
 
 
 # -- fetching the code ------------------------------------------------------------------------------
+
+
+def _trusting_config(ca_file: Path):
+    """The Git configuration a fetch reads, with ``http.sslCAInfo`` naming ``ca_file`` above
+    whatever else configures it: the fetch's own, never written to a configuration file."""
+    from dulwich.config import ConfigFile, StackedConfig
+
+    trusting = ConfigFile()
+    trusting.set((b"http",), b"sslCAInfo", str(ca_file).encode())
+    config = StackedConfig.default()
+    config.backends.insert(0, trusting)
+    return config
 
 
 def fetch_git(code: GitCode, registries: Sequence[Resolved], dest: Path) -> Path:
@@ -163,18 +264,20 @@ def fetch_git(code: GitCode, registries: Sequence[Resolved], dest: Path) -> Path
         )
     host = git_host_for(code.repository, registries)
     try:
-        with open(os.devnull, "wb") as quiet:
-            repo = (
-                porcelain.clone(code.repository, str(dest), checkout=False, errstream=quiet)
-                if host is None
-                else porcelain.clone(
-                    code.repository,
-                    str(dest),
-                    checkout=False,
-                    errstream=quiet,
-                    username=GIT_TOKEN_USER,
-                    password=host.credential,
-                )
+        with (
+            open(os.devnull, "wb") as quiet,
+            tempfile.TemporaryDirectory(prefix="provisa-git-fetch-") as scratch,
+        ):
+            options: dict = {}
+            if host is not None:
+                options["username"], options["password"] = git_credentials(host.credential)
+            ca_file = trust_bundle(
+                [host.ca_bundle] if host and host.ca_bundle else [], Path(scratch)
+            )
+            if ca_file is not None:
+                options["config"] = _trusting_config(ca_file)
+            repo = porcelain.clone(
+                code.repository, str(dest), checkout=False, errstream=quiet, **options
             )
             porcelain.reset(repo, "hard", code.commit)
     except Exception as exc:  # noqa: BLE001 -- dulwich raises many kinds; each is a fetch that failed, named
