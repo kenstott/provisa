@@ -384,6 +384,9 @@ The desktop build turns on a local MCP server, bound to loopback. The Explore pa
 Remote bearer tokens map to Provisa roles. Every tool call is scoped to the capabilities of the identity behind it, so an agent can never do more than that person could. A remote agent names only roles its token's holder holds, and a local agent only the roles the operator pinned for it; any other role is refused. An agent can ask which role it acts as and what that role is for, but never sees the rules that narrowed its results.
 { #mcp-server-identity }
 
+Agents can describe, correlate, regress, compare and forecast over any SQL the caller's role may run. Each tool runs the SQL through the same governed pipeline as run_sql, so row rules, masks and redaction apply, and returns only results with their method and n. The rows behind an analysis never enter the model's context, which is data minimization by default. Counts, means and group comparisons are computed by the engine over every row; a fitted model reads up to a set number of rows and says when the result held more.
+{ #mcp-server-stats }
+
 ### Vector and semantic search
 
 Embedding models are declared in a registry with their provider and dimensions. OpenAI-compatible APIs, Ollama and local HuggingFace models are supported. The embed function in SQL returns the embedding of a text from any registered model, and API keys can be secret references.

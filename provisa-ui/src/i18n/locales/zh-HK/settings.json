@@ -575,6 +575,10 @@
       "chat_model": {
         "label": "聊天模型",
         "help": "內建聊天使用的模型，會覆蓋各組織自己的選擇。"
+      },
+      "stats_max_rows": {
+        "label": "MCP 統計行數上限",
+        "help": "統計工具（correlate、regress、forecast，以及 describe 的分位數和最常見值）為擬合模型讀取的最多行數。計數、平均值和分組比較由引擎在所有行上計算。行數更多的結果會說明這一點。"
       }
     },
     "udf": {

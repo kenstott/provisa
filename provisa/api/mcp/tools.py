@@ -1694,3 +1694,167 @@ def describe_role(state: Any, role: str, switchable: set[str]) -> dict:  # REQ-2
         out["members"] = [_described_role(state, m) for m in (*members, *qualifiers)]
     out["can_switch_to"] = [_described_role(state, r) for r in sorted(switchable)]
     return out
+
+
+# --- statistics over a SQL-defined dataset (REQ-2090) ---------------------------------------------
+#
+# Each tool runs the caller's SQL through the ONE governed pipeline as the caller's role -- row
+# rules, masks and redaction apply as they do to run_sql -- and answers results, never the rows.
+# What the engine can compute (counts, distinct counts, means, deviations, a group's n, mean and
+# variance) is asked of it, over every row the role reads; a model fitted here reads at most
+# ``mcp.stats_max_rows`` rows, and the answer says when the result held more.
+
+_STATS_ALIAS = "_provisa_stats"
+
+
+def _stats_max_rows() -> int:
+    from provisa.core import settings_registry
+
+    return settings_registry.value("mcp.stats_max_rows")
+
+
+def _subquery(sql: str) -> str:
+    """The caller's SQL as a subquery, as written: SQL the pipeline refuses is refused here as
+    run_sql refuses it."""
+    body = sql.strip()
+    while body.endswith(";"):
+        body = body[:-1].rstrip()
+    return f"(\n{body}\n) AS {_STATS_ALIAS}"
+
+
+def _ident(name: str) -> str:
+    return '"' + name.replace('"', '""') + '"'
+
+
+async def _stats_rows(state: Any, role: str, sql: str) -> tuple[Any, dict]:
+    """At most ``mcp.stats_max_rows`` rows of the caller's result, as a frame, and what was read."""
+    from provisa.api.mcp import stats
+    from provisa.pgwire._pipeline import execute_sql_batch
+
+    require_role(role, state)
+    cap = _stats_max_rows()
+    result = await execute_sql_batch(
+        f"SELECT * FROM {_subquery(sql)} LIMIT {cap + 1}", role, state, buffered=True
+    )
+    rows = result.rows[:cap]
+    read = {"rows_read": len(rows), "row_cap": cap, "truncated": len(result.rows) > cap}
+    return stats.frame(list(result.column_names), rows), read
+
+
+async def _stats_aggregate(state: Any, role: str, select: str, sql: str, tail: str = "") -> Any:
+    from provisa.pgwire._pipeline import execute_sql_batch
+
+    return await execute_sql_batch(
+        f"SELECT {select} FROM {_subquery(sql)}{tail}", role, state, buffered=True
+    )
+
+
+async def stats_describe(state: Any, role: str, sql: str) -> dict:
+    """Per column: count, missing, distinct, and for a number mean, sd, min and max, computed by
+    the engine over the whole result; quantiles and the most frequent values over the rows read."""
+    from provisa.api.mcp import stats
+
+    df, read = await _stats_rows(state, role, sql)
+    exprs = ["count(*) AS n"]
+    for i, col in enumerate(df.columns):
+        c = _ident(col)
+        exprs += [f"count({c}) AS c{i}", f"count(DISTINCT {c}) AS d{i}"]
+        if stats.is_numeric(df[col]):
+            x = f"CAST({c} AS DOUBLE PRECISION)"
+            exprs += [
+                f"avg({x}) AS m{i}",
+                f"stddev_samp({x}) AS s{i}",
+                f"min({x}) AS lo{i}",
+                f"max({x}) AS hi{i}",
+            ]
+    agg = await _stats_aggregate(state, role, ", ".join(exprs), sql)
+    got = dict(zip(agg.column_names, agg.rows[0]))
+    total = int(got["n"])
+    aggregates = {
+        col: {
+            "count": got[f"c{i}"],
+            "missing": total - int(got[f"c{i}"]),
+            "distinct": got[f"d{i}"],
+            "mean": got.get(f"m{i}"),
+            "sd": got.get(f"s{i}"),
+            "min": got.get(f"lo{i}"),
+            "max": got.get(f"hi{i}"),
+        }
+        for i, col in enumerate(df.columns)
+    }
+    return {
+        "method": (
+            "count, missing, distinct, mean, sd, min and max computed by the engine over every "
+            "row; quantiles and top values over the rows read"
+        ),
+        "n": total,
+        "columns": stats.describe_shape(df, aggregates),
+        **read,
+    }
+
+
+async def stats_correlate(
+    state: Any, role: str, sql: str, columns: list[str], method: str = "pearson"
+) -> dict:
+    from provisa.api.mcp import stats
+
+    df, read = await _stats_rows(state, role, sql)
+    return {**stats.correlate(df, list(columns), method), **read}
+
+
+async def stats_regress(
+    state: Any, role: str, sql: str, target: str, features: list[str], kind: str = "linear"
+) -> dict:
+    from provisa.api.mcp import stats
+
+    df, read = await _stats_rows(state, role, sql)
+    return {**stats.regress(df, target, list(features), kind), **read}
+
+
+async def stats_compare(state: Any, role: str, sql: str, value: str, group: str) -> dict:
+    """Each group's n, mean and variance, computed by the engine over every row, then Welch's
+    t-test (two groups) or one-way ANOVA (more)."""
+    from provisa.api.mcp import stats
+
+    require_role(role, state)
+    v, g = _ident(value), _ident(group)
+    x = f"CAST({v} AS DOUBLE PRECISION)"
+    agg = await _stats_aggregate(
+        state,
+        role,
+        f"{g} AS g, count({v}) AS n, avg({x}) AS m, var_samp({x}) AS v",
+        sql,
+        f" WHERE {v} IS NOT NULL GROUP BY {g}",
+    )
+    groups = [
+        {
+            "group": _json_value(r[0]),
+            "n": int(r[1]),
+            "mean": float(r[2]),
+            "var": float(r[3]) if r[3] is not None else 0.0,
+        }
+        for r in agg.rows
+    ]
+    return {**stats.compare(groups, value, group), "groups_read": len(groups)}
+
+
+async def stats_forecast(
+    state: Any,
+    role: str,
+    sql: str,
+    time: str,
+    value: str,
+    horizon: int,
+    seasonal_periods: int | None = None,
+) -> dict:
+    from provisa.api.mcp import stats
+
+    df, read = await _stats_rows(state, role, sql)
+    return {**stats.forecast(df, time, value, int(horizon), seasonal_periods), **read}
+
+
+def _json_value(value: Any) -> Any:
+    """A group's value as JSON carries it."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)

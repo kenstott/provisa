@@ -575,6 +575,10 @@
       "chat_model": {
         "label": "Chatmodel",
         "help": "Het model dat de ingebouwde chat gebruikt, ter vervanging van de eigen keuze van elke organisatie."
+      },
+      "stats_max_rows": {
+        "label": "MCP-rijlimiet voor statistiek",
+        "help": "Het maximale aantal rijen dat een statistiektool (correlate, regress, forecast, en de kwantielen en meest voorkomende waarden van describe) leest om een model te passen. Aantallen, gemiddelden en groepsvergelijkingen berekent de engine over alle rijen. Een resultaat met meer rijen meldt dat."
       }
     },
     "udf": {

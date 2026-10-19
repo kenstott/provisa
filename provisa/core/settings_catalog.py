@@ -1117,6 +1117,17 @@ DECLARED: list[Setting] = [
         unit="rows",
     ),
     Setting(
+        key="mcp.stats_max_rows",
+        card="limits",
+        type="int",
+        effect="live",  # read on every stats tool call
+        req="REQ-2090",
+        env="PROVISA_MCP_STATS_MAX_ROWS",
+        default=100000,
+        min=1,
+        unit="rows",
+    ),
+    Setting(
         key="mcp.render_timeout_s",
         card="mcp",
         type="int",

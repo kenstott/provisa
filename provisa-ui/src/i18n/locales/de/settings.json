@@ -575,6 +575,10 @@
       "chat_model": {
         "label": "Chat-Modell",
         "help": "Das Modell, das der integrierte Chat verwendet; es überschreibt die eigene Wahl jeder Organisation."
+      },
+      "stats_max_rows": {
+        "label": "MCP-Zeilenlimit für Statistik",
+        "help": "Die meisten Zeilen, die ein Statistik-Tool (correlate, regress, forecast sowie die Quantile und häufigsten Werte von describe) liest, um ein Modell anzupassen. Anzahlen, Mittelwerte und Gruppenvergleiche berechnet die Engine über alle Zeilen. Ein Ergebnis mit mehr Zeilen sagt das."
       }
     },
     "udf": {

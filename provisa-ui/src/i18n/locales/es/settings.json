@@ -575,6 +575,10 @@
       "chat_model": {
         "label": "Modelo de chat",
         "help": "El modelo que usa el chat integrado, que prevalece sobre la elección propia de cada organización."
+      },
+      "stats_max_rows": {
+        "label": "Límite de filas de estadística MCP",
+        "help": "Las filas máximas que lee una herramienta de estadística (correlate, regress, forecast, y los cuantiles y valores más frecuentes de describe) para ajustar un modelo. Los recuentos, las medias y las comparaciones entre grupos los calcula el motor sobre todas las filas. Un resultado con más filas lo indica."
       }
     },
     "udf": {

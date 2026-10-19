@@ -151,6 +151,10 @@ dependencies = [
     "python-evtx==0.8.1",
     "networkx>=3.0",
     "scipy",
+    # REQ-2090: the MCP stats tools fit their models with statsmodels (the 0.14 line the Python
+    # sandboxes' Pyodide ships), over pandas frames.
+    "pandas",
+    "statsmodels>=0.14.4,<0.15",
     "defusedxml",
     "jpype1",
     "minio",

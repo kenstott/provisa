@@ -575,6 +575,10 @@
       "chat_model": {
         "label": "Modello di chat",
         "help": "Il modello usato dalla chat integrata, che sostituisce la scelta di ciascuna organizzazione."
+      },
+      "stats_max_rows": {
+        "label": "Limite di righe delle statistiche MCP",
+        "help": "Il numero massimo di righe che uno strumento statistico (correlate, regress, forecast, e i quantili e i valori più frequenti di describe) legge per adattare un modello. Conteggi, medie e confronti tra gruppi sono calcolati dal motore su tutte le righe. Un risultato che ne contiene di più lo indica."
       }
     },
     "udf": {
