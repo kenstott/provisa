@@ -426,6 +426,24 @@ Gli strumenti statistici MCP (`describe`, `correlate`, `regress`, `compare`, `fo
 
 La vista `sensitive_coverage` nel dominio meta elenca ogni colonna sensibile dell'organizzazione con il valore fittizio e la regola sintetica che dichiara e uno stato: `covered`, `no_fake`, oppure `inadequate` quando uno dei controlli di adeguatezza di Provisa è fallito. I controlli cercano un valore fittizio che lascia invariati i valori reali, un valore fittizio il cui tipo non corrisponde a ciò che la colonna contiene, e un valore fittizio o una regola che legge il valore reale di un'altra colonna sensibile. Un data steward vede le colonne senza valore fittizio nel dettaglio di ogni ambiente, e un ambiente Test (fake) rifiuta di servire dati finché ogni colonna sensibile non ne ha uno. I controlli e la vista sono descritti in [Costruire ambienti di test](test-data.md#coverage-and-adequacy-checks).
 
+## Giudizi in revisione {: #judgments-under-review }
+
+Le scelte di governance si basano sul giudizio, e un giudizio può essere sbagliato o diventare obsoleto quando cambiano i fatti su cui si basava. Ogni giudizio di governance può portare un **perché**: un tag su un oggetto, il valore fittizio e la regola sintetica di una colonna, una voce di maschera, una regola di riga e un permesso di scrittura. Un perché contiene la ragione su cui si è fatto affidamento, lo scopo, le basi nominate citate e una data di revisione, tutto facoltativo. Su un'assegnazione di tag la ragione è il suo `reason`; su una regola di riga lo scopo è la sua descrizione obbligatoria. Provisa registra chi ha preso la decisione, quando e su quale evidenza di profilo: l'ultima esecuzione del profilo della tabella e un suo riepilogo. Li registra a ogni salvataggio che cambia la decisione o il suo perché. Un salvataggio che omette il perché mantiene quello memorizzato, e un file di modello porta ogni perché in un blocco `why:`.
+
+Le **basi nominate** sono il contesto che i dati non possono mostrare: una normativa, una policy, una strategia. Un giudizio le cita per id da un breve elenco (`/admin/judgments/bases`). Chi detiene `access_config` dichiara una base cambiata con una nota, e ogni giudizio che la cita e che è stato deciso prima diventa subito obsoleto.
+
+La revisione viene eseguita ogni ora per ogni organizzazione, alla fine di ogni esecuzione del profilo per la tabella profilata e subito quando una base viene dichiarata cambiata. Mette ciò che trova in un'unica coda:
+
+| Categoria | Rilevato quando |
+|---|---|
+| Sbagliato | un controllo di adeguatezza del valore fittizio di una colonna sensibile fallisce, o la regola sintetica di una colonna sensibile copia valori reali |
+| Obsoleto per i dati | il profilo ha subito una deriva sulla colonna decisa (secondo le soglie del profiler), il suo tipo plausibile, la famiglia o il tipo di dato sono cambiati, è stata aggiunta una colonna alla tabella, la colonna decisa è stata rimossa o ritipizzata, oppure chi ha deciso non è più membro |
+| Obsoleto per il contesto | una base citata è stata dichiarata cambiata dopo la decisione, è arrivata la data di revisione, o è passato l'`expires_on` di un'assegnazione di tag |
+| Non deciso | una colonna sensibile non ha valore fittizio, o è stata aggiunta una colonna a una tabella che ha un tag sensibile o un valore fittizio |
+| Da guardare | una credenziale di origine è memorizzata come valore e non come riferimento; l'origine di un ambiente di test legge la connessione di prod; nessuna autenticazione è configurata; l'amministratore di bootstrap non è reclamato; un listener serve senza TLS; un ruolo o un'origine raggiunge ogni dominio; un'assegnazione di tag scaduta è ancora in vigore |
+
+L'ultima categoria è osservata, non imposta: nulla nella revisione rifiuta alcunché. `GET /admin/judgments/findings` elenca i rilievi aperti che il chiamante può vedere; un rilievo su una colonna sensibile richiede `sensitive_data`, ogni altro `view_governance`. *Riconfermare* (`POST /admin/judgments/findings/{id}/reaffirm`) registra di nuovo il giudizio con l'evidenza di oggi e richiede il diritto che modifica la decisione. Un rilievo di postura si archivia con una nota (`.../dismiss`, `access_config`). Un rilievo che la revisione non vede più viene chiuso. Come evidenza di audit, la vista `judgment_review` nel dominio ops collega ogni rilievo al perché del suo giudizio e si interroga con l'accesso per ruolo e dominio.
+
 ## Limitazione della frequenza {: #rate-limiting }
 
 I limiti per ruolo si impostano in `provisa.yaml`: richieste al secondo, sottoscrizioni SSE contemporanee e flussi Arrow Flight contemporanei. Vengono controllati nell'API, prima che qualcosa sia compilato o eseguito, e una richiesta oltre il limite riceve HTTP 429 con un header `Retry-After`.

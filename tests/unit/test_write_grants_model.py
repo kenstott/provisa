@@ -204,4 +204,6 @@ async def test_grants_are_kept_with_their_predicates_encrypted(control_plane, mo
         raw = (await conn.execute_core(select(table_write_grants.c.rows_expr))).scalar_one()
         assert bytes(raw) == b"status IN ('placed', 'packed')"[::-1]  # ciphertext at rest
         (kept,) = await write_grant_repo.for_table(conn, table_id)
-    assert WriteGrant.model_validate(kept) == grant
+    # REQ-2094: the grant comes back with its why, stamped with when it was decided.
+    assert kept["why"]["decided_at"]
+    assert WriteGrant.model_validate({**kept, "why": None}) == grant

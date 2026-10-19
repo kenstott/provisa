@@ -278,6 +278,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
             "table_id": None if row["table_id"] is None else name_of[int(row["table_id"])],
             "domain_id": row["domain_id"],
             "action_name": row["action_name"],
+            "why": row.get("why"),  # REQ-2094
         }
         rls_rules.append(_written(RLSRule.model_validate(rule)))
 

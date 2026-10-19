@@ -171,6 +171,14 @@ def _system() -> str | None:
     return None
 
 
+def actor() -> str | None:
+    """Who the current change is committed as: the request's actor, None for the system (a
+    background change, a boot) or outside a change. A judgment's ``decided_by`` is this actor
+    (REQ-2094), so the decision and the model's history name the same person."""
+    current = _SCOPE.get()
+    return None if current is None else current.actor()
+
+
 @asynccontextmanager
 async def scope(text: str, actor: Callable[[], str | None] = _system) -> AsyncGenerator[_Scope]:
     """One logical model change. A scope opened inside another joins it: the outermost scope is

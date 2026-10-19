@@ -249,16 +249,25 @@ def check_pii(tables: list[DatasetTable]) -> None:
         )
 
 
+def copied_sensitive(tables: list[DatasetTable]) -> list[tuple[DatasetTable, str]]:
+    """Each (table, column) whose rule copies real values into the generated rows, of the
+    sensitive columns (REQ-1943)."""
+    return sorted(
+        (
+            (t, c)
+            for t in tables
+            for c in t.pii
+            # One declaring neither is refused by name where the tables are planned (check_pii).
+            if c in t.fakes and copies_real_values(t.fakes[c])
+        ),
+        key=lambda tc: (tc[0].name, tc[1]),
+    )
+
+
 def refuse_copied_sensitive(tables: list[DatasetTable]) -> None:
     """In a Test (synthetic) environment, refuse a sensitive column whose rule copies real values
     into the generated rows, naming every one (REQ-1943)."""
-    copying = sorted(
-        f"{t.name}.{c}"
-        for t in tables
-        for c in t.pii
-        # One declaring neither is refused by name where the tables are planned (check_pii).
-        if c in t.fakes and copies_real_values(t.fakes[c])
-    )
+    copying = [f"{t.name}.{c}" for t, c in copied_sensitive(tables)]
     if copying:
         raise DatasetRefused(
             "these columns are sensitive and their rule copies real values into the generated "

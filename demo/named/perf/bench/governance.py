@@ -167,7 +167,12 @@ def column_input(c: Mapping[str, Any], masks: list[dict] | None = None) -> dict[
         "name": c["columnName"],
         "visibleTo": list(c["visibleTo"] or []),
         "masks": [
-            {"to": list(e["to"]), "mask": None if e["mask"] is None else dict(e["mask"])}
+            # The editor sends no why: the stored one stands (REQ-2094).
+            {
+                "to": list(e["to"]),
+                "mask": None if e["mask"] is None else dict(e["mask"]),
+                "why": None,
+            }
             for e in (c["masks"] or [] if masks is None else masks)
         ],
     }

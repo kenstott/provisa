@@ -1120,6 +1120,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.fakes.adequacy import register_org as register_org_fake_checks
 
         register_org_fake_checks(scheduler, org_id)
+        # REQ-2094: and its judgments, reviewed against the model and profiles now.
+        from provisa.judgments.review import register_org as register_org_review
+
+        register_org_review(scheduler, org_id)
     finally:
         reset_current_env(env_token)
         reset_current_org(org_token)

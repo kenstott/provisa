@@ -426,6 +426,24 @@ El control de acceso es lo que limita lo que un agente puede saber. Para mantene
 
 La vista `sensitive_coverage` del dominio meta enumera cada columna sensible de la organización con el valor ficticio y la regla sintética que declara y un estado: `covered`, `no_fake` o `inadequate` cuando falló una de las comprobaciones de adecuación de Provisa. Las comprobaciones buscan un valor ficticio que deja sin cambiar los valores reales, un valor ficticio cuyo tipo no encaja con lo que contiene la columna, y un valor ficticio o una regla que lee el valor real de otra columna sensible. Un responsable de datos ve las columnas sin valor ficticio en el detalle de cada entorno, y un entorno Test (fake) se niega a servir datos hasta que cada columna sensible tenga uno. Las comprobaciones y la vista se describen en [Crear entornos de prueba](test-data.md#coverage-and-adequacy-checks).
 
+## Juicios en revisión {: #judgments-under-review }
+
+Las decisiones de gobierno se basan en el juicio, y el juicio puede ser erróneo o quedar desfasado cuando cambian los hechos en los que se apoyaba. Cada juicio de gobierno puede llevar un **porqué**: una etiqueta sobre un objeto, el valor ficticio y la regla sintética de una columna, una entrada de máscara, una regla de filas y un permiso de escritura. Un porqué contiene la razón en la que se basó, el propósito, las bases nombradas que cita y una fecha de revisión, todo opcional. En una asignación de etiqueta la razón es su propio `reason`; en una regla de filas el propósito es su descripción obligatoria. Provisa registra quién tomó la decisión, cuándo y sobre qué evidencia de perfil: la última ejecución de perfil de la tabla y un resumen de ella. Lo registra en cada guardado que cambia la decisión o su porqué. Un guardado que omite el porqué conserva el almacenado, y un archivo de modelo lleva cada porqué en un bloque `why:`.
+
+Las **bases nombradas** son el contexto que los datos no pueden mostrar: una regulación, una política, una estrategia. Un juicio las cita por id de una lista corta (`/admin/judgments/bases`). Quien tiene `access_config` declara una base cambiada con una nota, y cada juicio que la cita y se decidió antes queda desfasado de inmediato.
+
+La revisión se ejecuta cada hora para cada organización, al final de cada ejecución de perfil para la tabla perfilada y de inmediato cuando se declara cambiada una base. Pone lo que encuentra en una sola cola:
+
+| Categoría | Se detecta cuando |
+|---|---|
+| Erróneo | falla una comprobación de adecuación del valor ficticio de una columna sensible, o la regla sintética de una columna sensible copia valores reales |
+| Desfasado por los datos | el perfil derivó en la columna decidida (según los umbrales del propio perfilador), cambió su tipo plausible, familia o tipo de datos, se añadió una columna a la tabla, se eliminó o se cambió el tipo de la columna decidida, o quien decidió ya no es miembro |
+| Desfasado por el contexto | una base citada se declaró cambiada después de la decisión, llegó la fecha de revisión o pasó el `expires_on` de una asignación de etiqueta |
+| Sin decidir | una columna sensible no tiene valor ficticio, o se añadió una columna a una tabla con una etiqueta sensible o un valor ficticio |
+| Merece una mirada | una credencial de fuente se guarda como valor y no como referencia; la fuente de un entorno de prueba lee la conexión de prod; no hay autenticación configurada; el administrador de arranque no está reclamado; un listener sirve sin TLS; un rol o una fuente alcanza todos los dominios; una asignación de etiqueta caducada sigue vigente |
+
+La última categoría se observa, no se impone: nada en la revisión rechaza nada. `GET /admin/judgments/findings` enumera los hallazgos abiertos que el llamante puede ver; un hallazgo sobre una columna sensible requiere `sensitive_data` y cualquier otro `view_governance`. *Reafirmar* (`POST /admin/judgments/findings/{id}/reaffirm`) registra de nuevo el juicio con la evidencia de hoy y requiere el derecho que edita la decisión. Un hallazgo de postura se descarta con una nota (`.../dismiss`, `access_config`). Un hallazgo que la revisión ya no ve se cierra. Como evidencia de auditoría, la vista `judgment_review` del dominio ops une cada hallazgo con el porqué de su juicio y se consulta bajo el acceso por rol y dominio.
+
 ## Limitación de tasa {: #rate-limiting }
 
 Los límites por rol se fijan en `provisa.yaml`: peticiones por segundo, suscripciones SSE simultáneas y flujos de Arrow Flight simultáneos. Se comprueban en la API, antes de compilar o ejecutar nada, y una petición que supera el límite recibe HTTP 429 con una cabecera `Retry-After`.

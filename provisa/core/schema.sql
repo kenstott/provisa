@@ -237,6 +237,7 @@ CREATE TABLE IF NOT EXISTS table_columns (
     fake_stable  BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1494
     fake_stable_version INTEGER,  -- REQ-1494: the portable definition version a stable fake is pinned to
     synthetic_rule TEXT,  -- REQ-1494, REQ-1939: laid over the fake, for synthetic generation
+    fake_why JSONB,  -- REQ-2094: why the column's fake and synthetic rule are what they are
     embedding    BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-421, REQ-1919
     embedding_model TEXT,  -- REQ-421
     embedding_source_column TEXT,  -- REQ-421
@@ -498,6 +499,7 @@ CREATE TABLE IF NOT EXISTS rls_rules (
     -- REQ-1384: a rule may target a user tag; it then applies to every table carrying the tag.
     -- The reference to tags(id) is declared after that table, below.
     tag_id      TEXT,
+    why         JSONB,  -- REQ-2094: why the rule is what it is
     UNIQUE (table_id, role_id),
     UNIQUE (action_name, role_id),
     CONSTRAINT rls_rules_tag_role_key UNIQUE (tag_id, role_id)
@@ -515,6 +517,7 @@ CREATE TABLE IF NOT EXISTS table_write_grants (
     rows_expr   BYTEA,
     check_expr  BYTEA,
     presets     JSONB NOT NULL DEFAULT '[]',
+    why         JSONB,  -- REQ-2094: why the grant is what it is
     tenant_id   UUID,
     UNIQUE (table_id, role_id, operation)
 );
@@ -611,6 +614,14 @@ CREATE TABLE IF NOT EXISTS tag_assignments (
     -- ISO date the assignment stops being intended: for 'deprecated' the planned removal
     -- date, queryable for management reporting (typed on purpose — never buried in prose).
     expires_on      TEXT,
+    -- REQ-2094: the rest of the assignment's "why" (reason is above): what it is for, the bases
+    -- it cites, a review-by date, and who decided it, when and on what profile evidence.
+    purpose         TEXT,
+    bases           JSONB,
+    review_on       TEXT,
+    decided_by      TEXT,
+    decided_at      TIMESTAMPTZ,
+    evidence        JSONB,
     -- REQ-1467: over the BASE id, so one column carries one entity type. A UNIQUE over the full
     -- tag_id would accept entity:customer and entity:employee on the same column, which is a
     -- contradiction — the column's values are entity names of ONE type.
@@ -1117,6 +1128,34 @@ CREATE TABLE IF NOT EXISTS synthetic_generations (
     finished_at   TIMESTAMPTZ PRIMARY KEY,
     generated_rows BIGINT NOT NULL,
     seconds       DOUBLE PRECISION NOT NULL
+);
+
+-- REQ-2094: named bases a judgment can cite; declaring one changed dates its judgments.
+CREATE TABLE IF NOT EXISTS judgment_bases (
+    id            TEXT PRIMARY KEY,
+    name          TEXT NOT NULL UNIQUE,
+    description   TEXT,
+    owner         TEXT,
+    changed_at    TIMESTAMPTZ,
+    changed_by    TEXT,
+    change_note   TEXT
+);
+
+-- REQ-2094: the review queue, one row per (object, judgment, finding kind).
+CREATE TABLE IF NOT EXISTS judgment_findings (
+    id            SERIAL PRIMARY KEY,
+    object_type   TEXT NOT NULL,
+    object_key    TEXT NOT NULL,
+    judgment      TEXT NOT NULL,
+    category      TEXT NOT NULL,
+    finding       TEXT NOT NULL,
+    observed      JSONB,
+    first_seen    TIMESTAMPTZ NOT NULL,
+    last_seen     TIMESTAMPTZ NOT NULL,
+    resolved_at   TIMESTAMPTZ,
+    resolved_by   TEXT,
+    resolution    TEXT,
+    UNIQUE (object_type, object_key, judgment, finding)
 );
 
 -- REQ-2091: the adequacy checks Provisa runs on each sensitive column's fake and synthetic rule,

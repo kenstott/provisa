@@ -426,6 +426,24 @@ Access control is what limits what an agent can learn. To keep identities out of
 
 The `sensitive_coverage` view in the meta domain lists every sensitive column of the organization with the fake and synthetic rule it declares and a status: `covered`, `no_fake`, or `inadequate` when one of Provisa's adequacy checks failed. The checks look for a fake that leaves real values unchanged, a fake whose kind does not fit what the column holds, and a fake or rule that reads another sensitive column's real value. A data steward sees the columns with no fake in each environment's detail, and a Test (fake) environment refuses to serve data until every sensitive column has one. The checks and the view are described in [Building test environments](test-data.md#coverage-and-adequacy-checks).
 
+## Judgments under review
+
+Governance choices rest on judgment, and judgment can be wrong or go out of date when the facts it rested on change. Every governance judgment can carry a **why**: a tag on an object, a column's fake and synthetic rule, a mask entry, a row rule and a write grant. A why holds the reason relied on, the purpose, the named bases cited and a review-by date, all optional. On a tag assignment the reason is the assignment's own `reason`; on a row rule the purpose is its required description. Provisa records who made the decision, when, and the profile evidence it was made on: the table's latest profile run and a digest of it. It records them at each save that changes the decision or its why. A save that leaves the why out keeps the stored one, and a model file carries each why in a `why:` block.
+
+**Named bases** are the context the data cannot show: a regulation, a policy, a strategy. A judgment cites them by id from a short list (`/admin/judgments/bases`). A holder of `access_config` declares a basis changed with a note, and every judgment citing it that was decided earlier is dated at once.
+
+The review runs every hour for each organization, at the end of each profile run for the profiled table, and at once when a basis is declared changed. It puts what it finds in one queue:
+
+| Category | Found when |
+|---|---|
+| Wrong | an adequacy check on a sensitive column's fake fails, or a sensitive column's synthetic rule copies real values |
+| Dated by data | the profile drifted on the decided column (the profiler's own thresholds), its plausible type, family or data type changed, a column was added to the table, the decided column was removed or retyped, or the decider is no longer a member |
+| Dated by context | a cited basis was declared changed after the decision, the review-by date has come, or a tag assignment's `expires_on` has passed |
+| Undecided | a sensitive column has no fake, or a column was added to a table that has a sensitive tag or a fake |
+| Worth a look | a source credential is stored as a value, not a reference; a Test environment's source reads prod's connection; no authentication is configured; the bootstrap administrator is unclaimed; a listener serves without TLS; a role or source reaches every domain; an expired tag assignment is still in force |
+
+The last category is observed, not enforced: nothing in the review refuses anything. `GET /admin/judgments/findings` lists the open findings a caller may see; a finding on a sensitive column needs `sensitive_data`, and any other needs `view_governance`. *Reaffirm* (`POST /admin/judgments/findings/{id}/reaffirm`) records the judgment again with today's evidence and needs the right that edits the decision. A posture finding is dismissed with a note (`.../dismiss`, `access_config`). A finding the review no longer sees is cleared. For audit evidence, the `judgment_review` view in the ops domain joins every finding to its judgment's why and is queried under role and domain access.
+
 ## Rate Limiting
 
 You set per-role limits in `provisa.yaml`: requests per second, concurrent SSE subscriptions and concurrent Arrow Flight streams. They're checked at the API, before anything is compiled or run, and a request over the limit gets HTTP 429 with a `Retry-After` header.

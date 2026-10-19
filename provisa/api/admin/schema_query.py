@@ -811,6 +811,7 @@ class Query:  # REQ-021, REQ-042
                 table_ref=r["table_ref"],
                 reason=r["reason"],
                 expires_on=r["expires_on"],
+                why=r.get("why"),  # REQ-2094
             )
             for r in rows
         ]

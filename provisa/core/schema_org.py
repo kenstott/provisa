@@ -374,6 +374,8 @@ table_columns = Table(
     # REQ-1494: the portable definition version a stable fake is pinned to; NULL when not stable
     Column("fake_stable_version", Integer),
     Column("synthetic_rule", Text),  # REQ-1494, REQ-1939: laid over the fake, for generation
+    # REQ-2094: why the column's fake and synthetic rule are what they are (provisa.judgments.why).
+    Column("fake_why", JSON(none_as_null=True)),
     Column("embedding", Boolean, nullable=False, server_default=false()),  # REQ-421
     Column("embedding_model", Text),  # REQ-421
     Column("embedding_source_column", Text),  # REQ-421
@@ -497,6 +499,9 @@ table_write_grants = Table(
     Column("rows_expr", LargeBinary),
     Column("check_expr", LargeBinary),
     Column("presets", JSON, nullable=False, default=list, server_default="[]"),
+    Column(
+        "why", JSON(none_as_null=True)
+    ),  # REQ-2094: why the grant is what it is (provisa.judgments.why)
     Column("tenant_id", Uuid),
     CheckConstraint(
         "operation IN ('insert', 'update', 'delete')", name="table_write_grants_operation"
@@ -519,6 +524,9 @@ rls_rules = Table(
     # that carries a row filter is refused deletion (repositories.integrity), because removing
     # the filter with the tag would widen what its role reads without anyone saying so.
     Column("tag_id", Text, ForeignKey("tags.id")),
+    Column(
+        "why", JSON(none_as_null=True)
+    ),  # REQ-2094: why the rule is what it is (provisa.judgments.why)
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "role_id"),
     UniqueConstraint("tag_id", "role_id", name="rls_rules_tag_role_key"),
@@ -594,6 +602,16 @@ tag_assignments = Table(
     Column("object_key", Text, nullable=False),
     Column("reason", Text),  # required for 'deprecated' (enforced at the mutation layer)
     Column("expires_on", Text),  # ISO date; planned removal for 'deprecated', typed for reporting
+    # REQ-2094: the rest of the assignment's "why" -- ``reason`` above is its reason. What it is
+    # for, the named bases it cites, a review-by date (asks for a look; it does not end the
+    # assignment as ``expires_on`` does), and who decided it, when and on what profile evidence,
+    # set by the server at each save that changes the assignment or its why.
+    Column("purpose", Text),
+    Column("bases", JSON(none_as_null=True)),
+    Column("review_on", Text),  # ISO date
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("evidence", JSON(none_as_null=True)),
     Column("tenant_id", Uuid),
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
@@ -1118,6 +1136,45 @@ synthetic_generations = Table(
     Column("finished_at", DateTime(timezone=True), primary_key=True),
     Column("generated_rows", BigInteger, nullable=False),
     Column("seconds", Float, nullable=False),
+)
+
+# REQ-2094: named bases a judgment can cite -- a policy, regulation or position the data cannot
+# show. Declaring one changed sets ``changed_at``, which dates every judgment citing it decided
+# before then.
+judgment_bases = Table(
+    "judgment_bases",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("name", Text, nullable=False, unique=True),
+    Column("description", Text),
+    Column("owner", Text),
+    Column("changed_at", DateTime(timezone=True)),
+    Column("changed_by", Text),
+    Column("change_note", Text),
+)
+
+# REQ-2094: the review queue -- one row per (object, judgment, finding kind), written only by
+# provisa.judgments.findings.record_finding. A finding seen again refreshes ``last_seen``; one
+# no longer seen is resolved.
+judgment_findings = Table(
+    "judgment_findings",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("object_type", Text, nullable=False),
+    Column("object_key", Text, nullable=False),
+    Column(
+        "judgment", Text, nullable=False
+    ),  # tag | fake | mask | row_rule | write_grant | posture
+    # wrong | dated_by_data | dated_by_context | undecided | worth_a_look
+    Column("category", Text, nullable=False),
+    Column("finding", Text, nullable=False),
+    Column("observed", JSON(none_as_null=True)),
+    Column("first_seen", DateTime(timezone=True), nullable=False),
+    Column("last_seen", DateTime(timezone=True), nullable=False),
+    Column("resolved_at", DateTime(timezone=True)),
+    Column("resolved_by", Text),
+    Column("resolution", Text),
+    UniqueConstraint("object_type", "object_key", "judgment", "finding"),
 )
 
 # REQ-2091: the adequacy checks Provisa runs on each sensitive column's fake and synthetic rule,

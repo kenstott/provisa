@@ -13,7 +13,7 @@
 # Requirements: REQ-041, REQ-402, REQ-403
 
 from provisa.core import model_change
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, select
 
@@ -65,6 +65,7 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919
             raise ValueError(f"Table not registered: {rule.table_id}")
         scope = {"table_id": tbl["id"]}
     ((scope_column, scope_value),) = scope.items()
+    why = await _stamped_why(conn, rule, scope_column, scope_value)
     await conn.upsert(
         rls_rules,
         {
@@ -72,9 +73,45 @@ async def upsert(  # REQ-041, REQ-402, REQ-686, REQ-1919
             "role_id": rule.role_id,
             "filter_expr": filter_enc,
             "description": rule.description,  # REQ-2081
+            "why": why,  # REQ-2094
         },
         index_elements=[scope_column, "role_id"],
-        update_columns=["filter_expr", "description"],
+        update_columns=["filter_expr", "description", "why"],
+    )
+
+
+async def _stamped_why(
+    conn: "Connection", rule: RLSRule, scope_column: str, scope_value: Any
+) -> dict:
+    """The rule's why to store (REQ-2094): its reason, bases and review-by date -- the stored ones
+    when the save does not restate them; its description is its purpose -- with the decider, time
+    and evidence moved when the filter or its why changes."""
+    from provisa.judgments.evidence import evidence
+    from provisa.judgments.why import stamp_for
+
+    held = (
+        await conn.execute_core(
+            select(rls_rules).where(
+                rls_rules.c[scope_column] == scope_value, rls_rules.c.role_id == rule.role_id
+            )
+        )
+    ).fetchone()
+    previous = None if held is None else _decrypt_row(held)
+    given = None if rule.why is None else {k: v for k, v in rule.why.items() if k != "purpose"}
+
+    async def _evidence() -> dict:
+        if scope_column != "table_id":
+            return {}
+        reg = await table_repo.get(conn, int(scope_value))
+        return {} if reg is None else await evidence(conn, None, reg)
+
+    return await stamp_for(
+        conn,
+        None if previous is None else previous.get("why"),
+        given,
+        changed=previous is None or previous["filter_expr"] != rule.filter,
+        where=f"row rule for {rule.role_id}",
+        evidence=_evidence,
     )
 
 

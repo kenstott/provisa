@@ -2851,6 +2851,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             command_name=input.command_name,
             reason=(input.reason or "").strip() or None,
             expires_on=(input.expires_on or "").strip() or None,
+            why=input.why,  # REQ-2094
         )
         problem = _assignment_target_problem(model)
         if problem is not None:
@@ -3797,6 +3798,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         "columns": list(g.columns),
                         "rows": g.rows,
                         "check": g.check,
+                        "why": g.why,  # REQ-2094
                         "presets": [
                             {k: v for k, v in vars(p).items() if v is not None} for p in g.presets
                         ],
@@ -3915,6 +3917,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             role_id=input.role_id,
             filter=input.filter_expr,
             description=input.description,
+            why=input.why,  # REQ-2094
         )
         try:
             async with pool.acquire() as conn:
@@ -5597,6 +5600,7 @@ async def _upsert_tag_rls_rule(
                 role_id=input.role_id,
                 filter=input.filter_expr,
                 description=input.description,
+                why=input.why,  # REQ-2094
             ),
         )
     await _rebuild_schemas()
@@ -5676,6 +5680,7 @@ async def _upsert_action_rls_rule(
                 role_id=input.role_id,
                 filter=input.filter_expr,
                 description=input.description,
+                why=input.why,  # REQ-2094
             ),
         )
     # See upsert_rls_rule's own matching rebuild — this action-RLS path bypasses that function

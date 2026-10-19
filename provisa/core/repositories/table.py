@@ -101,6 +101,7 @@ _COLUMN_PROJECTION = [
     table_columns.c.fake_stable,
     table_columns.c.fake_stable_version,
     table_columns.c.synthetic_rule,
+    table_columns.c.fake_why,  # REQ-2094
     table_columns.c.embedding,
     table_columns.c.embedding_model,
     table_columns.c.embedding_source_column,
@@ -527,19 +528,22 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
     # naming them; the transaction around this call undoes the table row's update. A dropped
     # column's tag assignments are its parts and go with it.
     # REQ-1494: each stable fake's pinned portable definition version, kept while its fake is.
-    _pins = {
-        r.column_name: (r.fake, bool(r.fake_stable), r.fake_stable_version)
-        for r in (
-            await conn.execute_core(
-                select(
-                    table_columns.c.column_name,
-                    table_columns.c.fake,
-                    table_columns.c.fake_stable,
-                    table_columns.c.fake_stable_version,
-                ).where(table_columns.c.table_id == table_id)
-            )
-        ).fetchall()
-    }
+    _held = (
+        await conn.execute_core(
+            select(
+                table_columns.c.column_name,
+                table_columns.c.fake,
+                table_columns.c.fake_stable,
+                table_columns.c.fake_stable_version,
+                table_columns.c.synthetic_rule,
+                table_columns.c.fake_why,
+                table_columns.c.masks,
+            ).where(table_columns.c.table_id == table_id)
+        )
+    ).fetchall()
+    _pins = {r.column_name: (r.fake, bool(r.fake_stable), r.fake_stable_version) for r in _held}
+    # REQ-2094: each column's judgments as stored, for their why.
+    _decided = {r.column_name: r for r in _held}
     _dropped = sorted(set(_existing_types) - {col.name for col in table.columns})
     _referred: dict[str, list[Dependent]] = {}
     for _column in _dropped:
@@ -555,6 +559,56 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 tag_assignments.c.column_name.in_(_dropped),
             )
         )
+    # REQ-2094: each column's fake and mask entries carry their why, stamped when they change.
+    from provisa.judgments.evidence import evidence as _evidence
+    from provisa.judgments.why import stamp_for
+    from provisa.security.sensitive import mask_entry_dict
+
+    _reg = {
+        "source_id": table.source_id,
+        "schema_name": table.schema_name,
+        "table_name": table.table_name,
+    }
+    _whys: dict[str, tuple[dict | None, list[dict]]] = {}
+    for col in table.columns:
+        _was = _decided.get(col.name)
+
+        def _ev(name: str = col.name) -> Any:
+            return _evidence(conn, None, _reg, name)
+
+        _fake_why = None
+        if getattr(col, "fake", None) or getattr(col, "synthetic_rule", None):
+            _fake_why = await stamp_for(
+                conn,
+                _was.fake_why if _was is not None else None,
+                getattr(col, "fake_why", None),
+                changed=_was is None
+                or (_was.fake, bool(_was.fake_stable), _was.synthetic_rule)
+                != (
+                    getattr(col, "fake", None),
+                    bool(getattr(col, "fake_stable", False)),
+                    getattr(col, "synthetic_rule", None),
+                ),
+                where=f"{table.table_name}.{col.name} fake",
+                evidence=_ev,
+            )
+        _old_masks = list(_was.masks or []) if _was is not None else []
+        _entries = []
+        for _i, _e in enumerate(col.masks):
+            _new = mask_entry_dict(_e)
+            _prev = mask_entry_dict(_old_masks[_i]) if _i < len(_old_masks) else None
+            _bare = {k: v for k, v in _new.items() if k != "why"}
+            _was_bare = None if _prev is None else {k: v for k, v in _prev.items() if k != "why"}
+            _entry_why = await stamp_for(
+                conn,
+                None if _prev is None else _prev.get("why"),
+                _new.get("why"),
+                changed=_was_bare != _bare,
+                where=f"{table.table_name}.{col.name} mask entry {_i + 1}",
+                evidence=_ev,
+            )
+            _entries.append({**_bare, "why": _entry_why})
+        _whys[col.name] = (_fake_why, _entries)
     # Replace columns: delete existing, insert new
     _control_plane = await _control_plane_role_ids(conn)
     await conn.execute_core(_delete(table_columns).where(table_columns.c.table_id == table_id))
@@ -587,8 +641,8 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                 column_name=col.name,
                 visible_to=_ungrant_control_plane(col.visible_to, _control_plane),
                 masks=[
-                    {**e.model_dump(), "to": _ungrant_control_plane(e.to, _control_plane)}
-                    for e in col.masks
+                    {**e, "to": _ungrant_control_plane(e["to"], _control_plane)}
+                    for e in _whys[col.name][1]
                 ],
                 alias=getattr(col, "alias", None),
                 description=getattr(col, "description", None),
@@ -618,6 +672,7 @@ async def _upsert(conn: "Connection", table: Table) -> int | None:
                     _pins.get(col.name),
                 ),
                 synthetic_rule=getattr(col, "synthetic_rule", None),
+                fake_why=_whys[col.name][0],  # REQ-2094
                 embedding=getattr(col, "embedding", False),  # REQ-421
                 embedding_model=getattr(col, "embedding_model", None),
                 embedding_source_column=getattr(col, "embedding_source_column", None),

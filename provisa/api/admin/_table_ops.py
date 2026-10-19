@@ -61,6 +61,7 @@ def _build_column_models(columns: list) -> list:
             fake=getattr(c, "fake", None),  # REQ-1494
             fake_stable=getattr(c, "fake_stable", False),
             synthetic_rule=getattr(c, "synthetic_rule", None),
+            fake_why=getattr(c, "fake_why", None),  # REQ-2094
         )
         for c in columns
     ]

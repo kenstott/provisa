@@ -37,16 +37,17 @@ _PURGE = "DELETE FROM s.orders WHERE day < '{{YYYY-MM-DD}}'"
 
 def _trigger_jobs(scheduler) -> list:
     """The scheduler's trigger jobs: every org's runtime also schedules its service-level
-    evaluation (REQ-506), its role grant sweep (REQ-2077) and its fake adequacy checks (REQ-2091)
-    beside them, which these tests are not about."""
+    evaluation (REQ-506), its role grant sweep (REQ-2077), its fake adequacy checks (REQ-2091)
+    and its judgment review (REQ-2094) beside them, which these tests are not about."""
     from provisa.audit.sla_monitor import JOB_ID
     from provisa.auth.role_grants import JOB_ID as GRANTS_JOB_ID
     from provisa.fakes.adequacy import JOB_ID as FAKES_JOB_ID
+    from provisa.judgments.review import JOB_ID as REVIEW_JOB_ID
 
     return [
         j
         for j in scheduler.get_jobs()
-        if not j.id.startswith((JOB_ID, GRANTS_JOB_ID, FAKES_JOB_ID))
+        if not j.id.startswith((JOB_ID, GRANTS_JOB_ID, FAKES_JOB_ID, REVIEW_JOB_ID))
     ]
 
 

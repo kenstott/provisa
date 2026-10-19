@@ -370,7 +370,36 @@ async def refuse_uncovered_sensitive(conn: "Connection", schema: str, env: str) 
     """Refuse Test (fake) in ``env`` while a sensitive column declares no fake."""
     columns = await uncovered_sensitive(conn, schema)
     if columns:
+        await _record_uncovered(conn, schema, columns)
         raise DataChoiceRefused(sensitive_refusal(env, columns))
+
+
+async def _record_uncovered(conn: "Connection", schema: str, columns: list[str]) -> None:
+    """REQ-2094: each sensitive column the choice is refused for, as an ``undecided`` finding in
+    that environment's review queue, as its review records it."""
+    import datetime as dt
+
+    from provisa.judgments import findings as fq
+    from provisa.judgments.review import NO_FAKE
+
+    rt = _table("registered_tables", schema)
+    ids = {
+        r[1]: r[0] for r in (await conn.execute_core(select(rt.c.id, rt.c.table_name))).fetchall()
+    }
+    at = dt.datetime.now(dt.timezone.utc)
+    for qualified in columns:
+        table, column = qualified.split(".", 1)
+        await fq.record_finding(
+            conn,
+            object_type="column",
+            object_key=f"{ids[table]}:{column}",
+            judgment=fq.FAKE,
+            category=fq.UNDECIDED,
+            finding=NO_FAKE,
+            observed={"table": table, "column": column},
+            at=at,
+            table=_table("judgment_findings", schema),
+        )
 
 
 async def faked_column_count(conn: "Connection", schema: str) -> int:

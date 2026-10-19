@@ -157,6 +157,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
             "alias, description, path, is_primary_key, object_fields, native_filter_type, "
             "native_filter_required, required_by_steward, "  # REQ-1986
             "epoch_unit, fake, fake_stable, fake_stable_version, synthetic_rule, "  # REQ-1908, REQ-1494
+            "fake_why, "  # REQ-2094
             "array_depth, element_type, native_type, native_platform, "  # REQ-1965
             "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
             "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
@@ -195,6 +196,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
                 "fake_stable": bool(r.get("fake_stable") or False),
                 "fake_stable_version": r.get("fake_stable_version"),
                 "synthetic_rule": r.get("synthetic_rule"),
+                "fake_why": r.get("fake_why"),  # REQ-2094
                 "embedding": bool(r["embedding"]),  # REQ-421
                 "embedding_model": r["embedding_model"],  # REQ-423
             }

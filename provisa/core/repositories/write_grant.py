@@ -46,6 +46,7 @@ def _grant(row: Any) -> dict[str, Any]:
         "rows": _opened(d["rows_expr"]),
         "check": _opened(d["check_expr"]),
         "presets": list(d["presets"] or []),
+        "why": d.get("why"),  # REQ-2094
     }
 
 
@@ -53,7 +54,39 @@ async def replace_for_table(
     conn: "Connection", table_id: int, grants: list[WriteGrant], *, unheld: set[str]
 ) -> None:
     """Make ``grants`` the table's whole set of write grants. A grant to a role in ``unheld``
-    (a control-plane role, which holds no data-plane right: REQ-1337) is not stored."""
+    (a control-plane role, which holds no data-plane right: REQ-1337) is not stored. REQ-2094:
+    each grant's why is stamped when the grant or its why changes."""
+    from provisa.core.schema_org import registered_tables
+    from provisa.judgments.evidence import evidence
+    from provisa.judgments.why import stamp_for
+
+    held = {(g["role"], g["operation"]): g for g in await for_table(conn, table_id)}
+
+    async def _evidence() -> dict:
+        reg = (
+            await conn.execute_core(
+                select(registered_tables).where(registered_tables.c.id == table_id)
+            )
+        ).fetchone()
+        return {} if reg is None else await evidence(conn, None, dict(reg._mapping))
+
+    whys = {}
+    for grant in grants:
+        was = held.get((grant.role, grant.operation))
+        bare = {
+            "columns": list(grant.columns),
+            "rows": grant.rows,
+            "check": grant.check,
+            "presets": [p.model_dump(exclude_none=True) for p in grant.presets],
+        }
+        whys[(grant.role, grant.operation)] = await stamp_for(
+            conn,
+            None if was is None else was["why"],
+            grant.why,
+            changed=was is None or {k: was[k] for k in bare} != bare,
+            where=f"{grant.operation} grant to {grant.role}",
+            evidence=_evidence,
+        )
     await conn.execute_core(
         _delete(table_write_grants).where(table_write_grants.c.table_id == table_id)
     )
@@ -69,6 +102,7 @@ async def replace_for_table(
                 rows_expr=_sealed(grant.rows),
                 check_expr=_sealed(grant.check),
                 presets=[p.model_dump(exclude_none=True) for p in grant.presets],
+                why=whys[(grant.role, grant.operation)],  # REQ-2094
             )
         )
 
@@ -85,7 +119,7 @@ async def for_table(conn: "Connection", table_id: int) -> list[dict[str, Any]]:
 
 #: Every grant, ordered as :func:`by_table` orders them, for a reader that speaks SQL text.
 BY_TABLE_SQL = (
-    "SELECT table_id, role_id, operation, columns, rows_expr, check_expr, presets "
+    "SELECT table_id, role_id, operation, columns, rows_expr, check_expr, presets, why "
     "FROM table_write_grants ORDER BY table_id, role_id, operation"
 )
 

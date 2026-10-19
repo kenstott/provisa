@@ -335,6 +335,7 @@ async def _fetch_table_with_columns(
             fake_stable=bool(r.get("fake_stable") or False),
             fake_stable_version=r.get("fake_stable_version"),
             synthetic_rule=r.get("synthetic_rule"),
+            fake_why=r.get("fake_why"),  # REQ-2094
             is_pii=r["column_name"] in _pii,
         )
         for r in col_rows
@@ -354,6 +355,7 @@ async def _fetch_table_with_columns(
                 )
                 for p in g["presets"]
             ],
+            why=g["why"],  # REQ-2094
         )
         for g in await write_grant_repo.for_table(conn, row["id"])
     ]  # REQ-2074

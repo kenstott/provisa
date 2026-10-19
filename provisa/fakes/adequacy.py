@@ -393,13 +393,36 @@ async def run_org(state: Any, org_id: str, env: str | None = None) -> dict[str, 
             }
             for r in results
         ]
-    if rows:
-        async with db.acquire() as conn:
+    async with db.acquire() as conn:
+        if rows:
             await conn.execute_core(insert(fake_adequacy_checks), rows)
+        await _record_findings(conn, rows, checked_at)
     counts = {PASSED: 0, FAILED: 0, NOT_RUN: 0}
     for r in rows:
         counts[r["status"]] += 1
     return counts
+
+
+async def _record_findings(conn: Any, rows: list[dict], at: Any) -> None:
+    """REQ-2094: each failed check as a ``wrong`` finding on the column's fake in the review
+    queue; a check that passes again clears its finding."""
+    from provisa.judgments import findings as fq
+
+    seen = [
+        await fq.record_finding(
+            conn,
+            object_type="column",
+            object_key=f"{r['table_id']}:{r['column_name']}",
+            judgment=fq.FAKE,
+            category=fq.WRONG,
+            finding=r["check_name"],
+            observed={"measure": r["measure"], "detail": r["detail"]},
+            at=at,
+        )
+        for r in rows
+        if r["status"] == FAILED
+    ]
+    await fq.clear_unseen(conn, seen, judgments=(fq.FAKE,), findings=CHECKS, at=at)
 
 
 async def scheduled_run(org_id: str) -> dict[str, int]:

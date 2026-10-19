@@ -57,6 +57,7 @@ CARRIED: frozenset[str] = frozenset(
         "tag_param_values",
         "tag_assignments",
         "glossary_terms",
+        "judgment_bases",  # REQ-2094: the named bases judgments cite, as the glossary travels
         "glossary_term_refs",
         "glossary_term_edges",
         "glossary_term_experts",
@@ -161,6 +162,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "synthetic_generations",
         # REQ-2091: the adequacy checks run on its own fakes and rules, with their run times.
         "fake_adequacy_checks",
+        # REQ-2094: its own review queue, about its own judgments.
+        "judgment_findings",
     }
 )
 
