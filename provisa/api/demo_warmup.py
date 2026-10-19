@@ -37,8 +37,8 @@ _EXPLORERS: tuple[tuple[str, str, dict | None], ...] = (
 
 def tour_requests(directory: Path) -> list[tuple[str, str, str, dict | None]]:
     """The requests that do the work of the demo's tour steps, in tour order, then the explorers':
-    ``(what, method, path, body)``. A step that runs nothing (a page, a source, a term) and a
-    Polly step (answered when the bundle was built) send none."""
+    ``(what, method, path, body)``. A step that runs nothing (a page, a source, a term), a
+    Polly step (answered when the bundle was built) and a subscription send none."""
     from provisa.core.demo import demo_tour, example_queries
 
     examples = {q["name"]: q["query"] for q in example_queries(directory)}
@@ -49,7 +49,7 @@ def tour_requests(directory: Path) -> list[tuple[str, str, str, dict | None]]:
             out.append((key, "POST", "/data/sql", {"sql": step["sql"]}))
         if "cypher" in step:
             out.append((key, "POST", "/data/cypher", {"query": step["cypher"]}))
-        if "example" in step:
+        if "example" in step and not _is_subscription(examples[step["example"]]):
             out.append((key, "POST", "/data/graphql", {"query": examples[step["example"]]}))
         for kind in ("api", "jsonapi"):
             if kind in step:
@@ -59,6 +59,18 @@ def tour_requests(directory: Path) -> list[tuple[str, str, str, dict | None]]:
                 out.append((key, method, path, None))
     out.extend((path, method, path, body) for method, path, body in _EXPLORERS)
     return out
+
+
+def _is_subscription(query: str) -> bool:
+    """A subscription's answer is a stream that runs until the request timeout ends it: there is
+    nothing for a warm-up to wait for, and it held the requests after it back for that long. Its
+    first answer is the query the tour's other steps have already warmed."""
+    from graphql import OperationDefinitionNode, OperationType, parse
+
+    return any(
+        isinstance(d, OperationDefinitionNode) and d.operation == OperationType.SUBSCRIPTION
+        for d in parse(query).definitions
+    )
 
 
 async def _warm(app: Any, org_id: str, headers: dict[str, str], directory: Path) -> None:

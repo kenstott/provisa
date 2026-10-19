@@ -56,6 +56,20 @@ def test_an_example_step_sends_the_demos_own_query():
     )
 
 
+def test_a_subscription_step_is_not_sent():
+    """The streaming demo's live step is a subscription: sent, its stream ran until the request
+    timeout and the warm-up logged it as failed, every sandbox, holding the steps after it back."""
+    tour = yaml.safe_load((DEMOS / "streaming" / "tour.yaml").read_text())["steps"]
+    live = next(s for s in tour if s["key"] == "streamingLive")
+    text = (DEMOS / "streaming" / "queries" / f"{live['example']}.graphql").read_text()
+    assert "subscription" in text
+    sent = demo_warmup.tour_requests(DEMOS / "streaming")
+    assert "streamingLive" not in [what for what, *_ in sent]
+    queries = [s for s in tour if "example" in s and s["key"] != "streamingLive"]
+    assert queries, "the streaming tour's other example steps are still sent"
+    assert {s["key"] for s in queries} <= {what for what, *_ in sent}
+
+
 def test_the_warmup_sends_each_request_as_the_visitor_and_carries_on_past_a_refusal(caplog):
     seen: list[tuple[str, str, str | None, str | None, bytes]] = []
 

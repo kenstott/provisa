@@ -28,13 +28,20 @@ import json
 import logging
 import os
 import time
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
 import httpx
 from fastapi import FastAPI, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi.responses import (
+    FileResponse,
+    HTMLResponse,
+    JSONResponse,
+    Response,
+    StreamingResponse,
+)
 from fastapi.staticfiles import StaticFiles
+from starlette.background import BackgroundTask
 
 from provisa import sandbox_wake
 
@@ -388,14 +395,23 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
     started = time.monotonic()
     # The same internal-hop rule as _API_VERIFY, for whichever API process this request reaches.
     verify = not base.startswith("https://")
-    async with httpx.AsyncClient(timeout=proxy_timeout, verify=verify) as client:
+    # The upstream response is read as it arrives: a subscription's event stream never ends on
+    # its own, so a proxy that waited for the whole body sent the browser none of its frames.
+    client = httpx.AsyncClient(timeout=proxy_timeout, verify=verify)
+    handed_on = False  # the client now belongs to the streamed response, which closes it
+    try:
         try:
-            upstream = await client.request(
-                method=request.method,
-                url=target,
-                headers=headers,
-                content=body,
+            upstream = await client.send(
+                client.build_request(
+                    method=request.method,
+                    url=target,
+                    headers=headers,
+                    content=body,
+                ),
+                stream=True,
             )
+            if not upstream.headers.get("content-type", "").startswith("text/event-stream"):
+                await upstream.aread()
         except httpx.ConnectError:
             # Both sandbox tiers run on the sandbox VM (REQ-2068).
             sandbox = base in (SANDBOX_API_URL, SANDBOX_REGIONS_API_URL)
@@ -424,17 +440,46 @@ async def handler(request: Request, full_path: str) -> Response:  # REQ-057, REQ
                 media_type="text/plain",
             )
 
-    # The API is reachable to the browser only through this proxy's own origin.
-    # FastAPI's trailing-slash and other redirects emit an absolute Location on the
-    # internal host (http://provisa:8000/...), which the browser cannot resolve —
-    # the fetch dies as "Failed to fetch". Rewrite it back to a path on our origin.
-    resp_headers = dict(upstream.headers)
-    location = resp_headers.get("location")
-    if location and location.startswith(API_BASE_URL):
-        resp_headers["location"] = location[len(API_BASE_URL) :] or "/"
+        # The API is reachable to the browser only through this proxy's own origin.
+        # FastAPI's trailing-slash and other redirects emit an absolute Location on the
+        # internal host (http://provisa:8000/...), which the browser cannot resolve —
+        # the fetch dies as "Failed to fetch". Rewrite it back to a path on our origin.
+        resp_headers = dict(upstream.headers)
+        location = resp_headers.get("location")
+        if location and location.startswith(API_BASE_URL):
+            resp_headers["location"] = location[len(API_BASE_URL) :] or "/"
 
-    return Response(
-        content=upstream.content,
-        status_code=upstream.status_code,
-        headers=resp_headers,
-    )
+        if not upstream.is_stream_consumed:
+            # An event stream: each frame is passed on as it arrives, and the upstream and its
+            # client are closed when it ends or the browser goes away.
+            streamed = StreamingResponse(
+                _frames(upstream, target),
+                status_code=upstream.status_code,
+                headers=resp_headers,
+                background=BackgroundTask(_close_upstream, upstream, client),
+            )
+            handed_on = True
+            return streamed
+        return Response(
+            content=upstream.content,
+            status_code=upstream.status_code,
+            headers=resp_headers,
+        )
+    finally:
+        if not handed_on:
+            await client.aclose()
+
+
+async def _frames(upstream: httpx.Response, target: str) -> AsyncIterator[bytes]:
+    """An upstream event stream's bytes as they arrive. The API ends a stream at its request
+    timeout (REQ-1905) by dropping the connection; the browser's stream then ends there too."""
+    try:
+        async for chunk in upstream.aiter_raw():
+            yield chunk
+    except httpx.HTTPError as exc:
+        _log.warning("event stream from %s ended: %s", target, exc)
+
+
+async def _close_upstream(upstream: httpx.Response, client: httpx.AsyncClient) -> None:
+    await upstream.aclose()
+    await client.aclose()

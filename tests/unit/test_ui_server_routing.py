@@ -9,6 +9,8 @@
 # permission from the copyright holder.
 
 # REQ-1006: Sec-Fetch-Dest-driven API-vs-SPA routing decision.
+import json
+
 import pytest
 
 from provisa.ui_server import _STATIC_PREFIXES, is_spa_navigation
@@ -88,10 +90,10 @@ def test_upstream_timeout_returns_504_naming_the_path(tmp_path, monkeypatch, cap
     (tmp_path / "index.html").write_text("<!doctype html><title>provisa</title>")
     monkeypatch.setattr(ui_server, "STATIC_DIR", tmp_path)
 
-    async def _timeout(self, **kwargs):
+    async def _timeout(self, request, **kwargs):
         raise httpx.ReadTimeout("timed out")
 
-    monkeypatch.setattr(httpx.AsyncClient, "request", _timeout)
+    monkeypatch.setattr(httpx.AsyncClient, "send", _timeout)
 
     # REQ-1913: the proxy's read budget is the operator setting the UI server asks the API for.
     # The API has answered that already; the slow call here is the proxied one.
@@ -108,6 +110,102 @@ def test_upstream_timeout_returns_504_naming_the_path(tmp_path, monkeypatch, cap
     assert "ReadTimeout" in resp.text
     logged = [r.getMessage() for r in caplog.records]
     assert any("proxy timeout" in m and "/admin/discovery/run" in m for m in logged), logged
+
+
+def _proxied(tmp_path, monkeypatch, upstream):
+    """The UI server's proxy, its upstream API answering with ``upstream``."""
+    import httpx
+
+    import provisa.ui_server as ui_server
+
+    (tmp_path / "index.html").write_text("<!doctype html><title>provisa</title>")
+    monkeypatch.setattr(ui_server, "STATIC_DIR", tmp_path)
+
+    async def _budget() -> float:
+        return 480.0
+
+    monkeypatch.setattr(ui_server, "proxy_timeout_s", _budget)
+    real = httpx.AsyncClient
+    monkeypatch.setattr(
+        ui_server.httpx,
+        "AsyncClient",
+        lambda **kw: real(transport=httpx.MockTransport(upstream), **kw),
+    )
+    return ui_server
+
+
+def _api_request(body: bytes):
+    from starlette.requests import Request
+
+    async def _receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": "/data/graphql",
+        "raw_path": b"/data/graphql",
+        "query_string": b"",
+        "headers": [(b"sec-fetch-dest", b"empty"), (b"content-type", b"application/json")],
+        "http_version": "1.1",
+        "scheme": "http",
+        "server": ("ui", 3000),
+        "client": ("browser", 50000),
+    }
+    return Request(scope, _receive)
+
+
+async def test_an_event_stream_is_passed_on_as_each_frame_arrives(tmp_path, monkeypatch):
+    """A subscription's event stream never ends on its own. The proxy waited for the whole body,
+    so a sandbox's live subscription sent the browser no frame at all: the tour step spun."""
+    import asyncio
+
+    import httpx
+    from starlette.responses import StreamingResponse
+
+    more = asyncio.Event()
+    closed: list[bool] = []
+
+    class _Open(httpx.AsyncByteStream):
+        async def __aiter__(self):
+            yield b'data: {"data": {"first": 1}}\n\n'
+            await more.wait()
+            yield b'data: {"data": {"second": 2}}\n\n'
+
+        async def aclose(self) -> None:
+            closed.append(True)
+
+    def _upstream(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, headers={"content-type": "text/event-stream"}, stream=_Open())
+
+    ui_server = _proxied(tmp_path, monkeypatch, _upstream)
+    resp = await ui_server.handler(_api_request(b'{"query": "subscription { s }"}'), "data/graphql")
+
+    assert isinstance(resp, StreamingResponse)
+    assert resp.headers["content-type"] == "text/event-stream"
+    frames = resp.body_iterator
+    # The first frame reaches the browser while the upstream stream is still open.
+    assert b'"first"' in await asyncio.wait_for(frames.__anext__(), timeout=5)
+    more.set()
+    assert b'"second"' in await asyncio.wait_for(frames.__anext__(), timeout=5)
+    with pytest.raises(StopAsyncIteration):
+        await frames.__anext__()
+    await resp.background()
+    assert closed == [True]
+
+
+async def test_any_other_answer_is_passed_on_whole(tmp_path, monkeypatch):
+    import httpx
+
+    def _upstream(request: httpx.Request) -> httpx.Response:
+        assert request.content == b'{"query": "{ a }"}'
+        return httpx.Response(201, json={"data": {"a": 1}})
+
+    ui_server = _proxied(tmp_path, monkeypatch, _upstream)
+    resp = await ui_server.handler(_api_request(b'{"query": "{ a }"}'), "data/graphql")
+
+    assert resp.status_code == 201
+    assert json.loads(resp.body) == {"data": {"a": 1}}
 
 
 # -- REQ-1923: the page an issuer returns a source sign-in to ---------------------------------
