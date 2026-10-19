@@ -14,6 +14,7 @@ Usage:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -27,8 +28,12 @@ OUT_PATH = Path("docs/exports/roadmap.md")
 _ROADMAP_STATUSES = {Status.proposed, Status.accepted, Status.in_progress}
 
 
+_SUPERSEDED_SPAN = re.compile(r"\[SUPERSEDED\b.*?\[END SUPERSEDED BLOCK\]", re.S)
+
+
 def _brief(text: str) -> str:
-    desc = text.replace("\n", " ").strip()
+    """The live wording only: amendment history kept inline is not what the roadmap promises."""
+    desc = " ".join(_SUPERSEDED_SPAN.sub(" ", text).split())
     return desc if len(desc) <= 140 else desc[:137] + "…"
 
 
