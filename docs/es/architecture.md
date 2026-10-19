@@ -4,7 +4,7 @@
 
 Provisa es una plataforma de virtualización de datos controlada por configuración: federación, métricas, ontología y gobierno desde un único modelo, para equipos pequeños y grandes empresas. Proporciona una API unificada sobre orígenes de datos heterogéneos con gobierno, seguridad y optimización de rendimiento. Los clientes consultan mediante SQL, GraphQL o Cypher; las tres son interfaces de primera clase con el mismo gobierno aplicado.
 
-El modelo es el único lugar donde se añade significado. Para añadir al modelo, se registran nuevos orígenes de datos o agregados dentro de la capa de virtualización de datos. Esto crea una separación limpia: no se pueden hacer adiciones nuevas a la semántica fuera de la plataforma, lo que permite un verdadero gobierno de datos. La aplicación se realiza a nivel del compilador: el catálogo de relaciones aprobado es la fuente de verdad sin importar qué lenguaje de consulta se utilice.
+El modelo es el único lugar donde se añade significado. Para ampliarlo, registre nuevos orígenes de datos o agregados en la capa de virtualización de datos. Eso mantiene una separación limpia, porque nada puede añadir semántica fuera de la plataforma, y es lo que hace posible una gobernanza de datos real. Lo impone el compilador: el catálogo de relaciones aprobadas es la fuente de verdad, sea cual sea el lenguaje de consulta.
 
 Provisa está diseñado para ser altamente eficiente en necesidades operativas y altamente escalable para necesidades analíticas empresariales. Una única plataforma atiende ambos casos sin sacrificar velocidad ni escalabilidad.
 
@@ -31,7 +31,7 @@ Config YAML → PG Metadata → Federation Catalogs
 
 ## Interfaces de consulta {: #query-interfaces }
 
-Cada interfaz es un transporte distinto. Las cuatro aplican el mismo pipeline de seguridad (RLS, enmascaramiento, muestreo, verificaciones de rol). Los clientes nunca se comunican directamente con el motor de federación. El "lenguaje de consulta" (SQL / GraphQL / Cypher) es ortogonal al transporte: varios lenguajes pueden llegar por el mismo transporte.
+Cada interfaz es un transporte distinto, y las cuatro aplican el mismo pipeline de seguridad (RLS, enmascaramiento, muestreo, comprobación de roles). Los clientes nunca hablan directamente con el motor de federación. El lenguaje de consulta (SQL, GraphQL o Cypher) es independiente del transporte, y varios lenguajes pueden llegar por el mismo transporte.
 
 | Port | Transport | Accepted query languages | Use case |
 | ------ | ----------- | -------------------------- | ---------- |
@@ -72,7 +72,7 @@ y reciben RecordBatches de Arrow transmitidos de forma diferida. Cuando el proxy
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
-El resultado completo nunca se materializa en la memoria de Provisa: los lotes se reenvían a medida que llegan. Esto hace de Arrow Flight una ruta sin límite, adecuada para resultados arbitrariamente grandes.
+El resultado completo nunca se guarda en la memoria de Provisa: los lotes se reenvían según llegan. Eso convierte Arrow Flight en una vía sin límite, apta para resultados de cualquier tamaño.
 
 ### Protobuf gRPC (puerto 50051) {: #protobuf-grpc-port-50051 }
 
@@ -84,7 +84,7 @@ Implementa el protocolo de cable frontend/backend de PostgreSQL usando la biblio
 
 ## Pipeline de solicitudes {: #request-pipeline }
 
-Se aceptan tres lenguajes de consulta. Todos convergen en el gobierno después de sus respectivos pasos de análisis/compilación. Solo GraphQL admite escrituras. No hay una compuerta de capacidad sobre la consulta en sí: cualquier identidad autenticada puede consultar en cualquier lenguaje, y los datos se gobiernan únicamente mediante visibilidad de objetos, RLS y enmascaramiento.
+Se aceptan tres lenguajes de consulta, y los tres confluyen en la gobernanza tras sus propios pasos de análisis y compilación. Los tres pueden además escribir: las mutaciones de GraphQL, `INSERT`, `UPDATE`, `DELETE`, `MERGE` y `TRUNCATE` de SQL y `CREATE`, `SET` y `DELETE` de Cypher se convierten en SQL y pasan por la misma admisión de escrituras. Consultar no tiene en sí ninguna barrera de capacidad. Cualquier identidad autenticada puede consultar en cualquier lenguaje, y los datos se gobiernan solo con la visibilidad de objetos, RLS y el enmascaramiento.
 
 | Interface | Reads | Writes | Query gate |
 | --- | --- | --- | --- |
@@ -170,7 +170,7 @@ La redirección CTAS usa un conector Iceberg (catálogo `results`) respaldado po
 
 ## Motores de federación {: #federation-engines }
 
-Provisa selecciona un motor de federación en el arranque mediante la variable de entorno `PROVISA_ENGINE`, la configuración persistida de la UI de administración, o el valor predeterminado. Cuando no se configura nada, DuckDB es el predeterminado: totalmente en proceso, sin servicio externo. Consulte [Configuración](configuration.md#federation-engine) para conocer los detalles de selección.
+Provisa elige el motor de federación al arrancar a partir de la variable de entorno `PROVISA_ENGINE`, la configuración guardada desde la UI de administración o el valor predeterminado. Si no hay nada definido, el predeterminado es DuckDB, totalmente dentro del proceso y sin servicios externos. Consulte cómo funciona la selección en [Configuración](configuration.md#federation-engine).
 
 Cada motor es una instancia de `FederationEngine` definida en `provisa/federation/engine.py`. La instancia posee una colección de conectores que determina qué tipos de origen puede leer el motor en vivo (ATTACH) frente a cuáles deben aterrizar primero en el almacén de materialización del motor.
 
@@ -201,7 +201,7 @@ Cada motor es una instancia de `FederationEngine` definida en `provisa/federatio
 
 Cuando `PROVISA_ENGINE` no está definido, Provisa usa el motor DuckDB totalmente embebido en proceso. El almacén de materialización de DuckDB es un archivo DuckDB embebido en `$PROVISA_DATA_DIR/materialize.duckdb` (por defecto, `~/.provisa/materialize.duckdb`). No se requiere ninguna base de datos ni servicio externo.
 
-Debido a que DuckDB obliga a un único escritor por archivo, `store_connection.py` escribe en el almacén embebido a través de la propia conexión del motor, nunca mediante una segunda conexión independiente. Este es el único caso en que el motor y el almacén de materialización comparten un descriptor de archivo por diseño.
+DuckDB permite un solo escritor por archivo, así que `store_connection.py` escribe en el almacén embebido a través de la propia conexión del motor y nunca abre una segunda conexión independiente. Es el único caso en que el motor y el almacén de materialización comparten un descriptor de archivo por diseño.
 
 ### Transporte de lectura nativo de Arrow {: #arrow-native-read-transport }
 
@@ -238,7 +238,7 @@ Los resultados que superan un umbral de filas se redirigen a almacenamiento comp
 | **CTAS** (Parquet, ORC) | Federation engine writes directly to S3 via `CREATE TABLE AS SELECT` | No |
 | **Provisa upload** (JSON, NDJSON, CSV, Arrow IPC) | Provisa serializes and uploads via boto3 | Yes |
 
-Para los formatos nativos de CTAS, Provisa nunca maneja los datos: el motor de federación escribe los archivos directamente en MinIO/S3. Esta es la ruta preferida para exportaciones analíticas grandes.
+En los formatos nativos de CTAS, Provisa nunca toca los datos: el motor de federación escribe los archivos directamente en MinIO/S3. Es la vía preferible para exportaciones analíticas grandes.
 
 ### Sin almacén de objetos {: #with-no-object-store }
 
@@ -304,7 +304,7 @@ Redirect to Parquet/ORC? → Federation engine (CTAS, regardless of source count
 
 ## Optimización de consultas de federación {: #federation-query-optimization }
 
-Provisa prepara automáticamente el optimizador basado en costos del motor de federación para que los planes de consulta entre orígenes se basen en la distribución real de los datos, no en valores predeterminados fijos.
+Provisa prepara automáticamente el optimizador basado en costes del motor de federación, para que los planes de consultas entre orígenes se basen en la distribución real de los datos y no en valores fijos por defecto.
 
 ### Estadísticas automáticas (`ANALYZE`) {: #automatic-statistics-analyze }
 
@@ -315,7 +315,7 @@ Al registrar un origen, Provisa ejecuta `ANALYZE catalog.schema.table` para cada
 
 El optimizador usa estos datos para estimar la selectividad de las consultas filtradas. Sin estadísticas, recurre a valores predeterminados fijos (p. ej., 10 % de selectividad para predicados de igualdad), que producen planes de unión deficientes en datos sesgados o de alta cardinalidad. Con estadísticas, las estimaciones son lo suficientemente precisas para tomar decisiones correctas de unión por difusión (broadcast) frente a particionada en la mayoría de las cargas de trabajo.
 
-**Cobertura**: el soporte de estadísticas varía según el conector. PostgreSQL, MySQL, Hive, Iceberg y Delta Lake admiten `ANALYZE` completamente. Los conectores de MongoDB y Cassandra tienen soporte parcial o nulo. Provisa absorbe los fallos de `ANALYZE` de forma silenciosa: el registro nunca se bloquea.
+**Cobertura**: el soporte de estadísticas depende del conector. PostgreSQL, MySQL, Hive, Iceberg y Delta Lake admiten `ANALYZE` por completo; MongoDB y Cassandra lo admiten en parte o nada. Un catálogo cuyo conector no recoge estadísticas se omite, y un `ANALYZE` que falla se registra en el log y se pasa por alto, así que el registro nunca se bloquea.
 
 **Límites de selectividad**: las estadísticas proporcionan estimaciones por columna. Para predicados correlacionados (`WHERE region = 'US' AND city = 'Seattle'`), el optimizador asume independencia entre columnas, lo que puede subestimar el recuento de filas. Esta es una limitación conocida de las estadísticas a nivel de columna en todos los optimizadores basados en costos.
 
@@ -342,11 +342,11 @@ Las MV optimizan de manera transparente las consultas costosas precalculando y a
 
 ### Relaciones como sugerencias de MV {: #relationships-as-mv-hints }
 
-Una declaración de relación no es solo un artefacto de gobierno: también es la descripción estructural de una forma de unión (join). Esa forma es exactamente lo que necesita el optimizador de MV: dos tablas, dos columnas, un tipo de unión. Esto significa que una relación puede impulsar directamente la materialización.
+Una declaración de relación es un artefacto de gobernanza y también la descripción estructural de la forma de un join. Esa forma (las tablas, las columnas, el tipo de join) es justo lo que necesita el optimizador de MV, así que una relación puede guiar la materialización directamente.
 
-Para **relaciones entre orígenes**, esto sucede automáticamente en el arranque: cada relación con `materialize: true` cuyas patas caen en más de un origen genera una MV `JoinPattern` (`auto-mv-<rel_id>`). No se requiere configuración de MV independiente. Cuando el compilador detecta esa unión en una consulta, el reescritor sustituye el resultado premateializado de forma transparente. Las relaciones dentro de un mismo origen no generan nada — esos JOIN ya son rápidos mediante ejecución directa.
+En las **relaciones entre orígenes** esto ocurre automáticamente al arrancar: cada relación con `materialize: true` cuyas patas caen en más de un origen genera una MV `JoinPattern` (`auto-mv-<rel_id>`), sin configuración de MV aparte. Cuando el compilador ve ese join en una consulta, el reescritor coloca el resultado prematerializado sin que quien llama lo note. Las relaciones de un mismo origen no generan nada, porque esos JOIN ya son rápidos con la ejecución directa.
 
-Una **relación respaldada por una tabla de unión (junction)** materializa su recorrido en lugar de una unión directa: la tabla asociativa es una tercera pata, de modo que el patrón lleva el salto de origen, el salto de la tabla de unión y el discriminador que fija el conjunto de filas a un único tipo de arista, con las columnas propias de la tabla de unión aterrizando en la vista junto a las del destino. Como la tabla de unión cuenta como pata, una arista cuya tabla de unión reside en un origen distinto al de las dos tablas que enlaza es entre orígenes aunque esas dos coincidan. El reescritor empareja los dos saltos como una cadena — el segundo debe partir del alias que introdujo el primero — así que una consulta que llega a esas mismas dos tablas sin pasar por la tabla de unión lee las tablas base, y una vista construida para un valor de discriminador nunca responde a un recorrido filtrado por otro.
+Una **relación respaldada por tabla de unión** materializa todo su recorrido. La tabla asociativa es una tercera pata, así que el patrón lleva el salto de origen, el salto de unión y el discriminador que fija las filas a un tipo de arista, con las columnas propias de la unión en la vista junto a las del destino. Como la unión cuenta como pata, una arista cuya tabla de unión está en un origen distinto del de las dos tablas que enlaza es entre orígenes aunque esas dos compartan origen. El reescritor reconoce los dos saltos como una cadena, en la que el segundo debe partir del alias que introdujo el primero. Por eso una consulta que llega a las mismas dos tablas sin pasar por la unión lee las tablas base, y una vista hecha para un valor del discriminador nunca responde a un recorrido filtrado por otro.
 
 La consecuencia práctica: los stewards que aprueban una relación están decidiendo implícitamente si la unión es una buena candidata para materialización. El acto de gobierno y la sugerencia de optimización son la misma declaración.
 
@@ -470,7 +470,7 @@ La API GraphQL de administración de Strawberry está montada en `/admin/graphql
 
 `GET /admin/ai-models` y `PUT /admin/ai-models` configuran el pipeline de LLM para cada organización.
 
-La configuración tiene **alcance de organización**: las elecciones de cada organización se superponen a la configuración del despliegue y surten efecto en la siguiente solicitud, sin necesidad de reiniciar.
+Los ajustes son **por organización**: lo que elige cada organización se superpone a la configuración del despliegue y se aplica desde la siguiente petición, sin reiniciar.
 
 **Asignaciones de modelo por operación.** Seis operaciones tienen cada una un proveedor y una cadena de modelo configurables:
 
@@ -489,13 +489,13 @@ El campo de proveedor acepta cualquier proveedor compatible con `aisuite` (`anth
 
 **Registro de modelos vectoriales.** Una lista de modelos de embedding (campos: `id`, `provider`, `dimensions`, opcionalmente `api_key_env` y `base_url`, indicador `enabled`). Reemplazo de lista completa: cada entrada debe tener `id`, `provider` y `dimensions`, o la escritura se rechaza con `400`.
 
-**Claves de API.** Las claves de API de LLM por proveedor se almacenan cifradas mediante `provisa.core.org_secrets` (véase más abajo). La respuesta de `GET` solo informa si hay una clave configurada para cada proveedor; el valor nunca se devuelve. Enviar una cadena en blanco para un proveedor borra esa clave, revirtiendo las llamadas LLM de ese proveedor a la credencial de variable de entorno del despliegue.
+**Claves de API.** La clave de API de LLM de cada proveedor se guarda cifrada mediante `provisa.core.org_secrets` (vea más abajo). La respuesta de `GET` solo indica si hay clave para cada proveedor y nunca devuelve el valor. Enviar una cadena vacía para un proveedor borra su clave, así que las llamadas de LLM a ese proveedor vuelven a usar la credencial de la variable de entorno del despliegue.
 
 ## Secretos cifrados por organización {: #per-org-encrypted-secrets }
 
 `provisa/core/org_secrets.py` almacena credenciales que nunca deben aparecer en texto plano en la base de datos. Guarda las claves de API de los proveedores de IA (`{vendor}_api_key`) y la clave de Jev (`jev_api_key`).
 
-Los valores se cifran mediante el `encryption_service` a nivel de proceso de `provisa.encryption.runtime`, el mismo mecanismo que `api_sources.auth`.
+Los valores se cifran con el `encryption_service` de todo el proceso, de `provisa.encryption.runtime`, el mismo mecanismo que `api_sources.auth`.
 
 Se admiten doce proveedores compatibles con `aisuite`: `anthropic`, `openai`, `cohere`, `groq`, `mistral`, `xai`, `deepseek`, `together`, `fireworks`, `nebius`, `sambanova` e `inception`. Google, AWS y Azure quedan excluidos porque requieren configuración más allá de una simple clave de API (IDs de proyecto, roles de IAM, región). Los proveedores de endpoint local (`ollama`, `lmstudio`) no tienen clave y quedan excluidos por la misma razón.
 
@@ -607,7 +607,7 @@ Un rol nombra como máximo un padre mediante `parent_role_id`. En la construcci�
 
 ## Detección automática de tipos enumerados {: #enum-type-auto-detection }
 
-`compiler/enum_detect.py` introspecciona los tipos enumerados nativos de PostgreSQL (`pg_enum`) en el momento de la generación del esquema. Las columnas que usan un tipo enumerado definido por el usuario en PostgreSQL se promueven a tipos enumerados de GraphQL: sus valores se convierten en miembros del enum en lugar de escalares de cadena.
+`compiler/enum_detect.py` examina los tipos enum nativos de PostgreSQL (`pg_enum`) al generar el esquema. Una columna de un tipo enum de PostgreSQL definido por el usuario pasa a ser un tipo enum de GraphQL, y sus valores pasan a ser miembros del enum en lugar de escalares de cadena.
 
 ## Disparadores programados {: #scheduled-triggers }
 
@@ -647,11 +647,11 @@ Los `write_grants` de una tabla indican, por rol y operación, qué columnas pue
 
 ## Explorador de esquemas GraphQL Voyager {: #graphql-voyager-schema-explorer }
 
-La UI de administración (`provisa-ui/src/pages/SchemaExplorer.tsx`) incorpora GraphQL Voyager como herramienta interactiva de visualización de esquemas. Renderiza el esquema con alcance de rol como un diagrama de entidad-relación navegable: tablas como nodos, relaciones como aristas. El esquema mostrado siempre está filtrado según el rol seleccionado actualmente.
+La UI de administración (`provisa-ui/src/pages/SchemaExplorer.tsx`) incrusta GraphQL Voyager como visualización interactiva del esquema. Dibuja el esquema limitado al rol como un diagrama entidad-relación navegable, con las tablas como nodos y las relaciones como aristas. El esquema que muestra siempre está filtrado por el rol seleccionado en ese momento.
 
 ## Orden de aplicación de la seguridad {: #security-enforcement-order }
 
-No hay una compuerta de capacidad sobre la consulta: el gobierno se expresa enteramente mediante controles de la capa de datos. Una solicitud de SQL sin procesar rechaza (HTTP 403) cualquier tabla fuera del alcance de objetos del rol antes de que se ejecute el gobierno.
+Consultar no tiene barrera de capacidad; la gobernanza sale por completo de controles en la capa de datos. Una petición de SQL en bruto se rechaza (HTTP 403) para cualquier tabla fuera del ámbito de objetos del rol antes de que se ejecute la gobernanza.
 
 1. **Visibilidad de objetos**: el esquema por rol oculta las tablas/columnas no autorizadas; las tablas fuera de alcance en SQL sin procesar se rechazan
 2. **Aplicación de relaciones**: los recorridos deben existir en el catálogo de relaciones aprobado, a menos que el rol tenga `ignore_relationships`: entre los roles de sistema precargados, solo `modeler` lo tiene. En el modo de alta seguridad la capacidad se ignora y ningún recorrido escapa del catálogo
@@ -663,7 +663,7 @@ Las cuatro interfaces de consulta (HTTP, Flight, gRPC, pgwire) aplican el mismo 
 
 ## Límites de escalabilidad {: #scalability-limits }
 
-Provisa es una capa delgada de compilación y enrutamiento: añade una latencia de un solo dígito en milisegundos a la consulta. Sin embargo, las rutas donde Provisa serializa los datos del resultado están limitadas por la memoria del proceso. Dos rutas son verdaderamente sin límite:
+Provisa es una capa fina de compilación y enrutamiento, y añade milisegundos de un solo dígito a la latencia de las consultas. Las vías en las que Provisa serializa los datos del resultado sí están limitadas por la memoria del proceso. Dos vías no tienen límite alguno:
 
 | Path | Memory bound? | Suitable for |
 | ------ | -------------- | ------------- |

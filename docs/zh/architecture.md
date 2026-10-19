@@ -4,7 +4,7 @@
 
 Provisa 是一个配置驱动的数据虚拟化平台：联邦、指标、本体与治理出自单一模型，适用于小型团队和大型企业。它在异构数据源之上提供统一的 API，并具备治理、安全和性能优化能力。客户端可通过 SQL、GraphQL 或 Cypher 进行查询；三者都是一等接口，应用相同的治理机制。
 
-模型是添加语义的唯一位置。要向模型添加内容，需在数据虚拟化层内注册新的数据源或聚合。这形成了清晰的隔离——不能在平台之外对语义做任何新增，从而实现真正的数据治理。 强制执行发生在编译器层：无论使用哪种查询语言，已批准的关系目录都是唯一的事实来源。
+模型是唯一添加语义的地方。要扩充模型，就在数据虚拟化层注册新的数据源或聚合。这保持了清晰的分隔：平台之外的任何东西都无法添加语义，也正因如此才能实现真正的数据治理。由编译器强制执行：无论使用哪种查询语言，已批准的关系目录都是唯一依据。
 
 Provisa 的设计目标是：在运营场景下高性能，在企业分析场景下高可扩展。单一平台可同时满足两者，不牺牲速度或可扩展性。
 
@@ -31,7 +31,7 @@ Config YAML → PG Metadata → Federation Catalogs
 
 ## 查询接口 {: #query-interfaces }
 
-每种接口都是独立的传输方式。所有四种传输方式都应用相同的安全流水线（行级安全、脱敏、采样、角色检查）。 客户端从不直接与联邦引擎对话。 "查询语言"（SQL / GraphQL / Cypher）与传输方式是正交的——多种语言可以经由同一种传输方式到达。
+每个接口都是独立的传输方式，四者应用同一条安全管道（RLS、脱敏、采样、角色检查）。客户端从不直接与联邦引擎通信。查询语言（SQL、GraphQL 或 Cypher）与传输方式无关，多种语言可以经由同一种传输到达。
 
 | 端口 | 传输方式 | 支持的查询语言 | 使用场景 |
 | ------ | ----------- | -------------------------- | ---------- |
@@ -72,7 +72,7 @@ Config YAML → PG Metadata → Federation Catalogs
 Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik ←(JDBC)← Federation Engine
 ```
 
-完整结果从不会在 Provisa 内存中被物化——批次到达即被转发。 这使得 Arrow Flight 成为适合任意大结果集的无界路径。
+完整结果从不保存在 Provisa 的内存中：批次一到就转发出去。这让 Arrow Flight 成为一条没有上限的路径，适合任意大小的结果。
 
 ### Protobuf gRPC（端口 50051） {: #protobuf-grpc-port-50051 }
 
@@ -84,7 +84,7 @@ Client ←(Arrow batches)← Provisa Flight Server ←(Arrow batches)← Zaychik
 
 ## 请求流水线 {: #request-pipeline }
 
-系统接受三种查询语言。它们在各自的解析/编译步骤之后都汇聚到治理环节。 只有 GraphQL 支持写入。 查询本身没有能力门控——任何已认证身份都可以用任意语言进行查询，数据仅由对象可见性、行级安全和脱敏来治理。
+系统接受三种查询语言，三者在各自完成解析和编译后汇合到治理阶段。三者都可以写入：GraphQL 变更、SQL 的 `INSERT`、`UPDATE`、`DELETE`、`MERGE` 和 `TRUNCATE`，以及 Cypher 的 `CREATE`、`SET` 和 `DELETE`，都会转换为 SQL 并经过同一个写入准入。查询本身没有能力关卡。任何已认证身份都可以用任何语言查询，数据仅由对象可见性、RLS 和脱敏来治理。
 
 | 接口 | 读取 | 写入 | 查询门控 |
 | --- | --- | --- | --- |
@@ -170,7 +170,7 @@ CTAS 重定向使用一个 Iceberg 连接器（`results` 目录），其后端�
 
 ## 联邦引擎 {: #federation-engines }
 
-Provisa 在启动时通过 `PROVISA_ENGINE` 环境变量、持久化的管理 UI 配置或默认值来选择联邦引擎。当未设置任何值时，DuckDB 为默认引擎——完全进程内运行，无需外部服务。选择细节参见[配置](configuration.md#federation-engine)。
+Provisa 在启动时根据 `PROVISA_ENGINE` 环境变量、管理界面中保存的配置或默认值选择联邦引擎。如果什么都没设置，默认是 DuckDB，完全在进程内运行，无需外部服务。选择方式见[配置](configuration.md#federation-engine)。
 
 每个引擎都是定义在 `provisa/federation/engine.py` 中的 `FederationEngine` 实例。该实例拥有一个连接器集合，决定引擎可以实时读取（ATTACH）哪些数据源类型，以及哪些必须先落地到引擎的物化存储中。
 
@@ -201,7 +201,7 @@ Provisa 在启动时通过 `PROVISA_ENGINE` 环境变量、持久化的管理 UI
 
 当 `PROVISA_ENGINE` 未设置时，Provisa 使用完全内嵌的进程内 DuckDB 引擎。DuckDB 的物化存储是一个内嵌的 DuckDB 文件，路径为 `$PROVISA_DATA_DIR/materialize.duckdb`（默认 `~/.provisa/materialize.duckdb`）。不需要任何外部数据库或服务。
 
-由于 DuckDB 对每个文件强制要求单一写入者，`store_connection.py` 通过引擎自身的连接写入内嵌存储——绝不使用第二条独立连接。这是引擎与物化存储按设计共享同一文件句柄的唯一情形。
+DuckDB 每个文件只允许一个写入者，所以 `store_connection.py` 通过引擎自身的连接写入嵌入式存储，从不另开一个独立连接。这是引擎和物化存储按设计共享文件句柄的唯一情况。
 
 ### Arrow 原生读取传输 {: #arrow-native-read-transport }
 
@@ -238,7 +238,7 @@ Attach 会在挂载时自动预配所有前置条件：
 | **CTAS**（Parquet、ORC） | 联邦引擎通过 `CREATE TABLE AS SELECT` 直接写入 S3 | 否 |
 | **Provisa 上传**（JSON、NDJSON、CSV、Arrow IPC） | Provisa 序列化并通过 boto3 上传 | 是 |
 
-对于 CTAS 原生格式，Provisa 从不接触数据——联邦引擎直接将文件写入 MinIO/S3。 这是大型分析导出的首选路径。
+对于 CTAS 原生支持的格式，Provisa 完全不经手数据：联邦引擎直接把文件写入 MinIO/S3。这是大型分析导出的首选路径。
 
 ### 没有对象存储 {: #with-no-object-store }
 
@@ -304,7 +304,7 @@ Redirect to Parquet/ORC? → Federation engine (CTAS, regardless of source count
 
 ## 联邦查询优化 {: #federation-query-optimization }
 
-Provisa 会自动为联邦引擎的基于成本的优化器预热统计信息，使跨数据源查询计划基于真实数据分布，而不是硬编码的默认值。
+Provisa 会自动为联邦引擎的基于成本的优化器准备统计信息，让跨数据源查询计划基于数据的真实分布，而不是写死的默认值。
 
 ### 自动统计信息 (`ANALYZE`) {: #automatic-statistics-analyze }
 
@@ -315,7 +315,7 @@ Provisa 会自动为联邦引擎的基于成本的优化器预热统计信息，
 
 优化器使用这些信息来估计过滤查询的选择率。若没有统计信息，则会回退到固定默认值（例如等值谓词的选择率假设为 10%），这会在倾斜或高基数数据上产生较差的连接计划。有了统计信息，估计就足够准确，可以为大多数工作负载做出正确的广播连接与分区连接决策。
 
-**覆盖范围**：统计信息支持因连接器而异。PostgreSQL、MySQL、Hive、Iceberg 和 Delta Lake 完全支持 `ANALYZE`。MongoDB 和 Cassandra 连接器仅部分支持或不支持。Provisa 会静默吞掉 `ANALYZE` 失败——注册过程不会因此被阻塞。
+**覆盖范围**：统计信息支持因连接器而异。PostgreSQL、MySQL、Hive、Iceberg 和 Delta Lake 完全支持 `ANALYZE`；MongoDB 和 Cassandra 部分支持或不支持。连接器不收集统计信息的目录会被跳过，失败的 `ANALYZE` 会记入日志并跳过，所以注册永远不会被阻塞。
 
 **选择率限制**：统计信息只提供按列估计。对于相关谓词（`WHERE region = 'US' AND city = 'Seattle'`），优化器假设列之间相互独立，这可能低估行数。这是所有基于成本的优化器在列级统计上的已知局限。
 
@@ -342,11 +342,11 @@ mutation {
 
 ### 关系作为物化视图提示 {: #relationships-as-mv-hints }
 
-一条关系声明不仅是治理层面的产物——它同时也是连接形态的结构性描述。这种形态正是物化视图优化器所需要的：表、列、连接类型。这意味着一条关系可以直接驱动物化。
+关系声明既是治理产物，也是联接形态的结构化描述。这个形态（表、列、联接类型）正是 MV 优化器所需要的，所以关系可以直接驱动物化。
 
-对于**跨数据源关系**，这一切会在启动时自动发生：每条携带 `materialize: true`、且其两端落在多个数据源中的关系，都会生成一个 `JoinPattern` 物化视图（`auto-mv-<rel_id>`）。 不需要单独的物化视图配置。当编译器在查询中识别出该连接时，重写器会透明地替换为预物化的结果。同数据源关系不会生成任何物化视图——那些 JOIN 通过直接执行本已足够快。
+对于**跨数据源的关系**，这一切在启动时自动发生：每个设置了 `materialize: true`、且两端落在不止一个数据源中的关系，都会生成一个 `JoinPattern` MV（`auto-mv-<rel_id>`），无需单独的 MV 配置。编译器在查询中看到这个联接时，重写器会在调用方无感知的情况下换上预物化的结果。同一数据源内的关系不会生成任何东西，因为这些 JOIN 通过直接执行已经很快。
 
-一条**以关联表为基础的关系**物化的是其遍历路径，而非一次直接连接：关联表（junction table）是第三条腿，因此该形态包含源跳、关联表跳，以及将行集固定到某一种边类型的判别式，关联表自身的列也会一并落在视图中、与目标表的列并列。 由于关联表算作一条腿，当某条边的关联表与它所连接的两张表分处不同数据源时，即便这两张表本身同源，该边依然算跨数据源。重写器把这两跳作为一条链来匹配——第二跳必须从第一跳引入的别名开始——因此，若某个查询在不经过关联表的情况下到达同样两张表，读取的是基础表；而针对某一判别值构建的视图，绝不会回答被过滤到另一判别值的遍历。
+**经由关联表的关系**会物化整条遍历。关联表是第三条腿，所以该模式包含源头一跳、关联表一跳，以及把行限定到某一种边类型的判别值，关联表自身的列会与目标的列一起落到视图中。由于关联表算作一条腿，如果关联表所在的数据源与它连接的两张表不同，即使那两张表同属一个数据源，这条边也算跨数据源。重写器把两跳作为一条链来匹配，第二跳必须从第一跳引入的别名出发。因此，不经过关联表而到达同样两张表的查询会读取基础表，为某个判别值构建的视图也永远不会回答按另一个判别值过滤的遍历。
 
 实际影响是：审批一条关系的数据管家，同时也在隐含地决定该连接是否适合作为物化候选。治理行为与优化提示是同一份声明。
 
@@ -470,7 +470,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 `GET /admin/ai-models` 与 `PUT /admin/ai-models` 用于配置每个组织的 LLM 流水线。
 
-设置是**按组织作用域**的：每个组织的选择会叠加在部署配置之上，并在下一次请求时立即生效——无需重启。
+这些设置**按组织生效**：每个组织的选择叠加在部署配置之上，从下一个请求起生效，无需重启。
 
 **按操作的模型分配。** 六种操作各自拥有可配置的厂商与模型字符串：
 
@@ -489,13 +489,13 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 **向量模型注册表。** 一个嵌入模型列表（字段：`id`、`provider`、`dimensions`，可选的 `api_key_env` 与 `base_url`，以及 `enabled` 标志）。整表替换写入：每一项都必须含有 `id`、`provider` 和 `dimensions`，否则写入会被拒绝并返回 `400`。
 
-**API 密钥。** 各厂商的 LLM API 密钥通过 `provisa.core.org_secrets` 加密存储（见下文）。`GET` 响应只报告某厂商是否已设置密钥——密钥值本身从不返回。为某厂商传入空字符串会清除该密钥，使该厂商的 LLM 调用回退到部署的环境变量凭据。
+**API 密钥。** 每个供应商的 LLM API 密钥都通过 `provisa.core.org_secrets` 加密存储（见下文）。`GET` 响应只说明每个供应商是否设置了密钥，从不返回密钥值。为某个供应商发送空字符串会清除其密钥，该供应商的 LLM 调用随即改回使用部署环境变量中的凭据。
 
 ## 按组织的加密密钥 {: #per-org-encrypted-secrets }
 
 `provisa/core/org_secrets.py` 存储绝不能以明文形式出现在数据库中的凭据。其中保存 AI 厂商的 API 密钥（`{vendor}_api_key`）和 Jev 密钥（`jev_api_key`）。
 
-数值通过来自 `provisa.encryption.runtime` 的进程级 `encryption_service` 加密——与 `api_sources.auth` 使用相同的机制。
+这些值用 `provisa.encryption.runtime` 中进程级的 `encryption_service` 加密，与 `api_sources.auth` 使用同一机制。
 
 支持十二个兼容 `aisuite` 的厂商：`anthropic`、`openai`、`cohere`、`groq`、`mistral`、`xai`、`deepseek`、`together`、`fireworks`、`nebius`、`sambanova` 和 `inception`。Google、AWS 和 Azure 被排除在外，因为它们需要超出单纯 API 密钥的配置（项目 ID、IAM 角色、区域）。本地端点厂商（`ollama`、`lmstudio`）没有密钥，出于同样的原因被排除。
 
@@ -607,7 +607,7 @@ Mutation executed → EventDispatcher → match event trigger rules
 
 ## 枚举类型自动检测 {: #enum-type-auto-detection }
 
-`compiler/enum_detect.py` 在架构生成阶段内省 PostgreSQL 原生枚举类型（`pg_enum`）。 使用 PostgreSQL 用户定义枚举类型的列会被提升为 GraphQL 枚举类型——其取值成为枚举成员，而非字符串标量。
+`compiler/enum_detect.py` 在生成模式时检查 PostgreSQL 原生枚举类型（`pg_enum`）。使用 PostgreSQL 用户自定义枚举类型的列会成为 GraphQL 枚举类型，其取值成为枚举成员，而不是字符串标量。
 
 ## 定时触发器 {: #scheduled-triggers }
 
@@ -647,11 +647,11 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## GraphQL Voyager 架构浏览器 {: #graphql-voyager-schema-explorer }
 
-管理 UI（`provisa-ui/src/pages/SchemaExplorer.tsx`）内嵌了 GraphQL Voyager，作为交互式的架构可视化工具。 它将按角色限定范围的架构渲染为可导航的实体关系图——表作为节点，关系作为边。所展示的架构始终以当前选中的角色为过滤条件。
+管理界面（`provisa-ui/src/pages/SchemaExplorer.tsx`）嵌入了 GraphQL Voyager，作为交互式的模式可视化工具。它把按角色限定的模式绘制成可导航的实体关系图，表是节点，关系是边。显示的模式始终按当前选中的角色过滤。
 
 ## 安全强制执行顺序 {: #security-enforcement-order }
 
-查询本身没有能力门控——治理完全通过数据层控制来表达。 一条原始 SQL 请求，在治理运行之前，会先拒绝（HTTP 403）任何超出该角色对象范围的表。
+查询没有能力关卡；治理完全由数据层的控制实现。对于角色对象范围之外的任何表，原始 SQL 请求会在治理运行之前就被拒绝（HTTP 403）。
 
 1. **对象可见性**：按角色的架构会隐藏未授权的表/列；原始 SQL 中超出范围的表会被拒绝
 2. **关系强制执行**：遍历必须存在于已批准的关系目录中，除非该角色持有 `ignore_relationships`——在预置的系统角色中，只有 `modeler` 拥有此权限。在高安全模式下，该能力会被忽略，没有任何遍历能逃脱目录约束
@@ -663,7 +663,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## 可扩展性限制 {: #scalability-limits }
 
-Provisa 是一个轻量的编译与路由层——它为查询延迟增加的是个位数毫秒级开销。然而，凡是由 Provisa 序列化结果数据的路径，都受限于进程内存。有两条路径是真正无界的：
+Provisa 是一个很薄的编译与路由层，只给查询延迟增加个位数毫秒。不过，Provisa 需要序列化结果数据的路径会受进程内存限制。有两条路径完全不受限：
 
 | 路径 | 是否受内存限制？ | 适用场景 |
 | ------ | -------------- | ------------- |
