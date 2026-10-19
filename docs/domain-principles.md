@@ -9,14 +9,14 @@
 1. **Every resource must be owned by a domain.** Tables, views, and relationships are all domain assets. There are no ungoverned floating resources. The domain is the unit of accountability.
 2. **Every domain must have a steward.** A domain may exist in a pending state until a steward is assigned, but it cannot serve governed data without one.
 3. **The admin owns sources.** Sources are infrastructure, not domain resources. The admin registers and manages connections to external data systems.
-4. **Stewards can claim tables for a domain.** Claiming is exclusive — a table belongs to exactly one domain. This is the governed act that bridges infrastructure and the model.
-5. **Stewards can create intradomain views from domain assets.** Views express business logic — joins, aggregations, derived metrics — over assets the steward owns within the same domain. Views create new semantic meaning and require steward approval.
-6. **Analysts can create cross-domain queries from approved relationships.** Queries are interdomain views expressed in any supported query language. They do not create new semantics — they traverse approved relationship paths. No additional approval is required: governance is handled upstream at the Relationship and column visibility layers. The catalog is the enforcement mechanism: the compiler rejects traversals not in the approved relationship catalog.
-7. **Anyone can request access to a domain resource.** Access is granted at the resource level, not the query level. If you have access to a resource, you can query it. Governance is enforced at execution time through the pipeline.
+4. **Stewards can claim tables for a domain.** A claim is exclusive: a table belongs to exactly one domain. Claiming is the governed act that connects infrastructure to the model.
+5. **Stewards can create intradomain views from domain assets.** Views express business logic, such as joins, aggregations and derived metrics, over assets the steward owns in the same domain. A view creates new semantic meaning and needs steward approval.
+6. **Analysts can create cross-domain queries from approved relationships.** Queries are interdomain views written in any supported query language. They create no new semantics; they traverse approved relationship paths. No further approval is needed, because governance happens earlier, at the Relationship and column visibility layers. The catalog does the enforcing: the compiler refuses any traversal that isn't in the approved relationship catalog.
+7. **Anyone can request access to a domain resource.** Access is granted per resource, never per query: if you have access to a resource, you can query it. Governance is enforced at execution time through the pipeline.
 
 ### Resources: Tables and Views as Peers
 
-The distinction between a table and a view is origin only — a table is claimed from a source, a view is defined by a steward. Once either exists as a domain asset, the governance model treats them identically:
+A table and a view differ only in where they come from: a table is claimed from a source, and a view is defined by a steward. Once either is a domain asset, the governance model treats them the same:
 
 - Both are first-class domain assets visible in the catalog
 - Both can be the target of a relationship
@@ -27,7 +27,7 @@ A steward can claim tables privately and expose only curated views as public-fac
 
 ### View Composition
 
-A view always belongs to a single domain — there is only one view type, always intradomain. A view exists for one of two purposes:
+A view always belongs to a single domain. There's only one kind of view, and it's always intradomain. A view exists for one of two purposes:
 
 - **Cross-domain import** — the source is outside the domain. Cross-domain data may only enter a domain via a view, which acts as a read-only adapter naming the external data as a domain business concept.
 - **Local derivation** — the source is same-domain. The view derives new or calculated data from existing domain assets. New or derived data may only exist as a view.
@@ -38,7 +38,7 @@ A view may reference:
 - Fields imported from another domain under a field access grant
 - One other view within the same domain, where the variation is purposeful: field restriction, aggregation, or enrichment via an additional join
 
-Composition depth is not technically enforced — steward judgment during HITL review is the quality control mechanism.
+Nothing technical limits how deeply views compose. The steward's judgment during HITL review is the quality control.
 
 Every view carries a declared business purpose, stated at creation time:
 
@@ -48,11 +48,11 @@ Every view carries a declared business purpose, stated at creation time:
 
 ### Queries
 
-A Query traverses approved relationship paths over domain assets. Unlike Views, Queries do not create new semantic meaning — they traverse the approved structure of the model. Queries may be expressed in any supported query language (SQL, GraphQL, Cypher).
+A Query traverses approved relationship paths over domain assets. Unlike a View, it creates no new semantic meaning; it follows the model's approved structure. A Query can be written in any supported query language (SQL, GraphQL, Cypher).
 
-**Structural enforcement:** The relationship catalog is the enforcement mechanism. The compiler validates every traversal against approved catalog entries and rejects queries that reference unapproved paths. Governance is structural, not a runtime check.
+**Structural enforcement:** The relationship catalog does the enforcing. The compiler checks every traversal against the approved catalog entries and refuses a query that names an unapproved path. Governance is built into the structure, so there's no separate check at run time.
 
-**No approval required:** Governance happens upstream — at the Relationship and column visibility layers. If a user has access to the columns and the traversal path is approved, the Query is valid usage. No additional gate.
+**No approval required:** Governance happens earlier, at the Relationship and column visibility layers. If a user can see the columns and the traversal path is approved, the Query is valid usage, with no further gate.
 
 **Distinction from Views:**
 
@@ -69,11 +69,11 @@ Each supported language surfaces the domain as a structural namespace native to 
 | SQL | Schema name | `SELECT * FROM sales.orders` |
 | Cypher | Additional node label (domain only required when type name is ambiguous) | `MATCH (o:Sales:Order)` |
 
-The compiler resolves domain membership from these structural positions — no annotation or hint is required.
+The compiler works out domain membership from these structural positions, so no annotation or hint is needed.
 
 ### Relationships
 
-A relationship is an approved traversal path between two assets. Domain boundaries are irrelevant to what a relationship is — they only determine who approves it.
+A relationship is an approved traversal path between two assets. Domain boundaries don't change what a relationship is; they only decide who approves it.
 
 **Approval:**
 
@@ -82,13 +82,13 @@ A relationship is an approved traversal path between two assets. Domain boundari
 - The request is carried out once two different users, neither of them the requester, have approved and every domain involved has an approver: a relationship across two domains needs a yes from each side, and a relationship inside one domain needs two approvers of that domain
 - Approving a relationship builds each steward's dependency graph, enabling proactive schema evolution notifications
 
-Relationships are created by demand, not speculatively. The first team with the business need does the work; subsequent teams inherit the infrastructure.
+Relationships are created when someone needs them, never speculatively. The first team with the business need does the work, and later teams inherit it.
 
-**Optimization consequence:** A relationship declaration is not only a governance artifact — it is also a structural description of a join shape. The two tables, two columns, and join type that define a relationship are exactly what the query optimizer needs to pre-materialize that join. Cross-source relationships automatically generate pre-materialized join tables; same-source relationships can opt in via `materialize: true`. Stewards who think through and approve valid relationships get query acceleration as a direct byproduct — governance work and optimization work are the same act.
+**Optimization consequence:** A relationship declaration is a governance artifact and also a structural description of a join shape. The two tables, two columns and join type that define a relationship are exactly what the query optimizer needs to pre-materialize that join. Cross-source relationships get pre-materialized join tables automatically, and same-source relationships can opt in with `materialize: true`. Stewards who think through and approve valid relationships get faster queries as a direct result: the governance work and the optimization work are the same act.
 
 ### Field Access Grants
 
-A field access grant is a domain-to-domain permission — Domain A may use specific fields from Domain B in its views.
+A field access grant is a permission from one domain to another: Domain A may use specific fields from Domain B in its views.
 
 **Grant lifecycle:**
 
@@ -98,7 +98,7 @@ A field access grant is a domain-to-domain permission — Domain A may use speci
 - Any subsequent view in the requesting domain may use the granted fields without further cross-domain involvement
 - Additional ungranated fields require a new request
 
-**Post-use notification:** When a view is created using granted fields, the source steward is notified — not asked to approve. The notification includes the view name, declared business purpose, specific fields used, and which steward approved it. This gives the source steward:
+**Post-use notification:** When a view is created with granted fields, the source steward is told about it, without being asked to approve. The notification gives the view name, its declared business purpose, the fields used and the steward who approved it. That gives the source steward:
 
 - **Visibility** — awareness of how their data is being used
 - **Oversight** — grounds to raise a concern if usage looks inappropriate
@@ -120,9 +120,9 @@ Three stages, in order.
 
 **Stage 2 — Relationship approval** (consequential — structural and permanent):
 
-- Raised to every distinct steward who owns an asset involved in the relationship
+- Decided by the domains the relationship touches, as described under [Relationships](#relationships)
 - Is this a legitimate traversal path? Is the join semantically valid?
-- All implicated stewards must approve; relationship becomes a permanent catalog entry
+- Two different users, neither of them the requester, must approve, and every domain involved must have an approver; the relationship then becomes a permanent catalog entry
 
 **Stage 3 — Query creation:**
 
@@ -132,7 +132,7 @@ Three stages, in order.
 
 ### HITL as the Primary Control
 
-Technical rules handle what is objective — field provenance tracking, domain boundary enforcement, compiler validation. Contextual judgment stays with the steward. Constraints such as view composition depth, per-query purpose requirements, and relationship approval decisions are HITL concerns, not compiler-enforced rules.
+Technical rules handle what is objective: field provenance tracking, domain boundary enforcement and compiler validation. Judgment that depends on context stays with the steward. Limits such as view composition depth, a stated purpose for each query and relationship approval decisions are HITL concerns, which the compiler doesn't enforce.
 
 **Source domain neutrality:** The source domain steward approves the relationship once and the field grant once. After that, downstream domains operate within those granted boundaries:
 

@@ -9,14 +9,14 @@
 1. **Todo recurso debe pertenecer a un dominio.** Las tablas, vistas y relaciones son todos activos de dominio. No existen recursos flotantes sin gobernar. El dominio es la unidad de responsabilidad.
 2. **Todo dominio debe tener un steward.** Un dominio puede existir en estado pendiente hasta que se asigne un steward, pero no puede servir datos gobernados sin uno.
 3. **El administrador es propietario de los orígenes.** Los orígenes son infraestructura, no recursos de dominio. El administrador registra y gestiona las conexiones a los sistemas de datos externos.
-4. **Los stewards pueden reclamar tablas para un dominio.** Reclamar es exclusivo: una tabla pertenece exactamente a un dominio. Este es el acto gobernado que conecta la infraestructura con el modelo.
-5. **Los stewards pueden crear vistas intradominio a partir de activos de dominio.** Las vistas expresan lógica de negocio (uniones, agregaciones, métricas derivadas) sobre activos que el steward posee dentro del mismo dominio. Las vistas crean nuevo significado semántico y requieren aprobación del steward.
-6. **Los analistas pueden crear consultas entre dominios a partir de relaciones aprobadas.** Las consultas son vistas interdominio expresadas en cualquier lenguaje de consulta admitido. No crean nueva semántica: recorren rutas de relación aprobadas. No se requiere aprobación adicional: el gobierno se gestiona previamente en las capas de Relación y visibilidad de columnas. El catálogo es el mecanismo de aplicación: el compilador rechaza los recorridos que no están en el catálogo de relaciones aprobadas.
-7. **Cualquiera puede solicitar acceso a un recurso de dominio.** El acceso se otorga a nivel de recurso, no a nivel de consulta. Si tiene acceso a un recurso, puede consultarlo. El gobierno se aplica en tiempo de ejecución mediante el pipeline.
+4. **Los stewards pueden reclamar tablas para un dominio.** Una reclamación es exclusiva: una tabla pertenece exactamente a un dominio. Reclamar es el acto gobernado que une la infraestructura con el modelo.
+5. **Los stewards pueden crear vistas intradominio a partir de activos del dominio.** Las vistas expresan lógica de negocio, como joins, agregaciones y métricas derivadas, sobre activos que el steward posee en el mismo dominio. Una vista crea significado semántico nuevo y necesita la aprobación del steward.
+6. **Los analistas pueden crear consultas entre dominios a partir de relaciones aprobadas.** Las consultas son vistas interdominio escritas en cualquier lenguaje de consulta admitido. No crean semántica nueva; recorren caminos de relación aprobados. No hace falta otra aprobación, porque la gobernanza ocurre antes, en las capas de relación y de visibilidad de columnas. El catálogo es quien impone: el compilador rechaza cualquier recorrido que no esté en el catálogo de relaciones aprobadas.
+7. **Cualquiera puede solicitar acceso a un recurso del dominio.** El acceso se concede por recurso, nunca por consulta: si tiene acceso a un recurso, puede consultarlo. La gobernanza se impone en tiempo de ejecución a través del pipeline.
 
 ### Recursos: tablas y vistas como pares {: #resources-tables-and-views-as-peers }
 
-La distinción entre una tabla y una vista es solo de origen: una tabla se reclama de un origen, una vista la define un steward. Una vez que cualquiera de las dos existe como activo de dominio, el modelo de gobierno las trata de forma idéntica:
+Una tabla y una vista solo se diferencian en su origen: una tabla se reclama de un origen y una vista la define un steward. En cuanto cualquiera de las dos es un activo del dominio, el modelo de gobernanza las trata igual:
 
 - Ambas son activos de dominio de primera clase, visibles en el catálogo
 - Ambas pueden ser el destino de una relación
@@ -27,7 +27,7 @@ Un steward puede reclamar tablas de forma privada y exponer únicamente vistas c
 
 ### Composición de vistas {: #view-composition }
 
-Una vista siempre pertenece a un único dominio; solo existe un tipo de vista, siempre intradominio. Una vista existe para uno de dos propósitos:
+Una vista siempre pertenece a un solo dominio. Solo hay un tipo de vista, y siempre es intradominio. Una vista existe para uno de dos fines:
 
 - **Importación entre dominios**: el origen está fuera del dominio. Los datos entre dominios solo pueden ingresar a un dominio mediante una vista, que actúa como un adaptador de solo lectura que nombra los datos externos como un concepto de negocio del dominio.
 - **Derivación local**: el origen es del mismo dominio. La vista deriva datos nuevos o calculados a partir de activos de dominio existentes. Los datos nuevos o derivados solo pueden existir como una vista.
@@ -38,7 +38,7 @@ Una vista puede hacer referencia a:
 - Campos importados de otro dominio bajo una concesión de acceso a campos
 - Otra vista dentro del mismo dominio, cuando la variación tiene un propósito: restricción de campos, agregación o enriquecimiento mediante una unión adicional
 
-La profundidad de composición no se aplica técnicamente; el criterio del steward durante la revisión HITL es el mecanismo de control de calidad.
+Nada técnico limita cuántos niveles de vistas se componen. El control de calidad es el criterio del steward durante la revisión HITL.
 
 Toda vista lleva un propósito de negocio declarado, indicado en el momento de la creación:
 
@@ -48,11 +48,11 @@ Toda vista lleva un propósito de negocio declarado, indicado en el momento de l
 
 ### Consultas {: #queries }
 
-Una consulta (Query) recorre rutas de relación aprobadas sobre activos de dominio. A diferencia de las vistas, las consultas no crean nuevo significado semántico: recorren la estructura aprobada del modelo. Las consultas pueden expresarse en cualquier lenguaje de consulta admitido (SQL, GraphQL, Cypher).
+Una consulta recorre caminos de relación aprobados sobre activos del dominio. A diferencia de una vista, no crea significado semántico nuevo; sigue la estructura aprobada del modelo. Una consulta puede escribirse en cualquier lenguaje de consulta admitido (SQL, GraphQL, Cypher).
 
-**Aplicación estructural:** el catálogo de relaciones es el mecanismo de aplicación. El compilador valida cada recorrido contra las entradas aprobadas del catálogo y rechaza las consultas que hacen referencia a rutas no aprobadas. El gobierno es estructural, no una verificación en tiempo de ejecución.
+**Imposición estructural:** El catálogo de relaciones es quien impone. El compilador comprueba cada recorrido con las entradas aprobadas del catálogo y rechaza una consulta que nombra un camino no aprobado. La gobernanza está en la estructura, así que no hay una comprobación aparte en tiempo de ejecución.
 
-**No se requiere aprobación:** el gobierno ocurre previamente, en las capas de Relación y visibilidad de columnas. Si un usuario tiene acceso a las columnas y la ruta de recorrido está aprobada, la consulta es un uso válido. No hay control adicional.
+**Sin aprobación:** La gobernanza ocurre antes, en las capas de relación y de visibilidad de columnas. Si un usuario puede ver las columnas y el camino de recorrido está aprobado, la consulta es un uso válido, sin más barreras.
 
 **Diferencia con las vistas:**
 
@@ -69,11 +69,11 @@ Cada lenguaje admitido expresa el dominio como un espacio de nombres estructural
 | SQL | Nombre de esquema | `SELECT * FROM sales.orders` |
 | Cypher | Etiqueta de nodo adicional (el dominio solo es necesario cuando el nombre de tipo es ambiguo) | `MATCH (o:Sales:Order)` |
 
-El compilador resuelve la pertenencia al dominio a partir de estas posiciones estructurales; no se requiere ninguna anotación ni indicación.
+El compilador deduce la pertenencia al dominio a partir de estas posiciones estructurales, así que no hace falta ninguna anotación ni pista.
 
 ### Relaciones {: #relationships }
 
-Una relación es una ruta de recorrido aprobada entre dos activos. Los límites de dominio son irrelevantes para lo que es una relación; solo determinan quién la aprueba.
+Una relación es un camino de recorrido aprobado entre dos activos. Las fronteras de dominio no cambian lo que es una relación; solo deciden quién la aprueba.
 
 **Aprobación:**
 
@@ -82,13 +82,13 @@ Una relación es una ruta de recorrido aprobada entre dos activos. Los límites 
 - La solicitud se ejecuta cuando dos usuarios distintos, ninguno de ellos el solicitante, la han aprobado y cada dominio implicado tiene un aprobador: una relación entre dos dominios necesita un sí de cada lado, y una relación dentro de un dominio necesita dos aprobadores de ese dominio
 - Aprobar una relación construye el grafo de dependencias de cada steward, lo que permite notificaciones proactivas de evolución del esquema
 
-Las relaciones se crean por demanda, no de forma especulativa. El primer equipo con la necesidad de negocio realiza el trabajo; los equipos posteriores heredan la infraestructura.
+Las relaciones se crean cuando alguien las necesita, nunca por si acaso. El primer equipo con la necesidad de negocio hace el trabajo y los equipos posteriores lo heredan.
 
-**Consecuencia de optimización:** una declaración de relación no es solo un artefacto de gobierno, también es una descripción estructural de la forma de una unión (join). Las dos tablas, las dos columnas y el tipo de unión que definen una relación son exactamente lo que necesita el optimizador de consultas para pre-materializar esa unión. Las relaciones entre orígenes generan automáticamente tablas de unión pre-materializadas; las relaciones del mismo origen pueden optar por ello mediante `materialize: true`. Los stewards que analizan y aprueban relaciones válidas obtienen aceleración de consultas como subproducto directo: el trabajo de gobierno y el de optimización son el mismo acto.
+**Consecuencia para la optimización:** Una declaración de relación es un artefacto de gobernanza y también una descripción estructural de la forma de un join. Las dos tablas, las dos columnas y el tipo de join que definen una relación son justo lo que el optimizador de consultas necesita para prematerializar ese join. Las relaciones entre orígenes obtienen tablas de join prematerializadas automáticamente, y las de un mismo origen pueden activarlo con `materialize: true`. Los stewards que piensan y aprueban relaciones válidas obtienen consultas más rápidas como resultado directo: el trabajo de gobernanza y el de optimización son el mismo acto.
 
 ### Concesiones de acceso a campos {: #field-access-grants }
 
-Una concesión de acceso a campos es un permiso de dominio a dominio: el Dominio A puede usar campos específicos del Dominio B en sus vistas.
+Una concesión de acceso a campos es un permiso de un dominio a otro: el dominio A puede usar campos concretos del dominio B en sus vistas.
 
 **Ciclo de vida de la concesión:**
 
@@ -98,7 +98,7 @@ Una concesión de acceso a campos es un permiso de dominio a dominio: el Dominio
 - Cualquier vista posterior del dominio solicitante puede usar los campos concedidos sin más intervención entre dominios
 - Los campos adicionales no concedidos requieren una nueva solicitud
 
-**Notificación posterior al uso:** cuando se crea una vista usando campos concedidos, se notifica al steward de origen, sin pedirle aprobación. La notificación incluye el nombre de la vista, el propósito de negocio declarado, los campos específicos usados y qué steward la aprobó. Esto le da al steward de origen:
+**Aviso tras el uso:** Cuando se crea una vista con campos concedidos, al steward de origen se le avisa, sin pedirle que apruebe. El aviso indica el nombre de la vista, su propósito de negocio declarado, los campos usados y el steward que la aprobó. Eso da al steward de origen:
 
 - **Visibilidad**: conocimiento de cómo se están usando sus datos
 - **Supervisión**: base para plantear una inquietud si el uso parece inapropiado
@@ -120,9 +120,9 @@ Tres etapas, en orden.
 
 **Etapa 2 — Aprobación de la relación** (consecuente: estructural y permanente):
 
-- Se plantea a cada steward distinto que posea un activo involucrado en la relación
-- ¿Es esta una ruta de recorrido legítima? ¿Es la unión semánticamente válida?
-- Todos los stewards implicados deben aprobar; la relación se convierte en una entrada permanente del catálogo
+- La deciden los dominios que la relación toca, como se describe en [Relaciones](#relationships)
+- ¿Es un camino de recorrido legítimo? ¿Es el join semánticamente válido?
+- Deben aprobarla dos usuarios distintos, ninguno de ellos el solicitante, y cada dominio implicado debe tener un aprobador; después la relación pasa a ser una entrada permanente del catálogo
 
 **Etapa 3 — Creación de la consulta:**
 
@@ -132,7 +132,7 @@ Tres etapas, en orden.
 
 ### HITL como control principal {: #hitl-as-the-primary-control }
 
-Las reglas técnicas gestionan lo que es objetivo: el seguimiento de procedencia de campos, la aplicación de límites de dominio, la validación del compilador. El criterio contextual queda en manos del steward. Restricciones como la profundidad de composición de vistas, los requisitos de propósito por consulta y las decisiones de aprobación de relaciones son asuntos de HITL, no reglas aplicadas por el compilador.
+Las reglas técnicas se ocupan de lo objetivo: el seguimiento de la procedencia de los campos, la imposición de las fronteras de dominio y la validación del compilador. El juicio que depende del contexto queda en manos del steward. Límites como la profundidad de composición de vistas, un propósito declarado para cada consulta y las decisiones de aprobación de relaciones son asuntos HITL, que el compilador no impone.
 
 **Neutralidad del dominio de origen:** el steward del dominio de origen aprueba la relación una vez y la concesión de campos una vez. Después de eso, los dominios descendentes operan dentro de esos límites concedidos:
 

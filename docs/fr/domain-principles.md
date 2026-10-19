@@ -9,14 +9,14 @@
 1. **Chaque ressource doit appartenir à un domaine.** Les tables, vues et relations sont toutes des actifs de domaine. Il n'existe aucune ressource flottante non gouvernée. Le domaine est l'unité de responsabilité.
 2. **Chaque domaine doit avoir un steward.** Un domaine peut exister à l'état en attente jusqu'à ce qu'un steward lui soit assigné, mais il ne peut servir de données gouvernées sans en avoir un.
 3. **L'admin possède les sources.** Les sources sont de l'infrastructure, pas des ressources de domaine. L'admin enregistre et gère les connexions aux systèmes de données externes.
-4. **Les stewards peuvent revendiquer des tables pour un domaine.** La revendication est exclusive — une table appartient à exactement un domaine. C'est l'acte gouverné qui relie l'infrastructure et le modèle.
-5. **Les stewards peuvent créer des vues intra-domaine à partir d'actifs de domaine.** Les vues expriment la logique métier — jointures, agrégations, métriques dérivées — sur des actifs que le steward possède au sein du même domaine. Les vues créent une nouvelle signification sémantique et requièrent l'approbation du steward.
-6. **Les analystes peuvent créer des requêtes inter-domaines à partir de relations approuvées.** Les requêtes sont des vues interdomaines exprimées dans n'importe quel langage de requête pris en charge. Elles ne créent pas de nouvelle sémantique — elles parcourent des chemins de relation approuvés. Aucune approbation supplémentaire n'est requise : la gouvernance est gérée en amont, aux couches Relation et visibilité des colonnes. Le catalogue est le mécanisme d'application : le compilateur rejette les parcours qui ne figurent pas dans le catalogue de relations approuvées.
-7. **Toute personne peut demander l'accès à une ressource de domaine.** L'accès est accordé au niveau de la ressource, pas au niveau de la requête. Si vous avez accès à une ressource, vous pouvez l'interroger. La gouvernance est appliquée à l'exécution via le pipeline.
+4. **Les intendants peuvent revendiquer des tables pour un domaine.** Une revendication est exclusive : une table appartient à exactement un domaine. Revendiquer est l'acte gouverné qui relie l'infrastructure au modèle.
+5. **Les intendants peuvent créer des vues intra-domaine à partir des actifs du domaine.** Les vues expriment une logique métier, comme des jointures, des agrégations et des métriques dérivées, sur des actifs que l'intendant possède dans le même domaine. Une vue crée un sens sémantique nouveau et demande l'approbation de l'intendant.
+6. **Les analystes peuvent créer des requêtes inter-domaines à partir de relations approuvées.** Les requêtes sont des vues inter-domaines écrites dans n'importe quel langage de requête pris en charge. Elles ne créent aucune sémantique nouvelle ; elles parcourent des chemins de relation approuvés. Aucune autre approbation n'est nécessaire, car la gouvernance intervient plus tôt, aux niveaux relation et visibilité des colonnes. C'est le catalogue qui impose : le compilateur refuse tout parcours absent du catalogue des relations approuvées.
+7. **Chacun peut demander l'accès à une ressource de domaine.** L'accès s'accorde par ressource, jamais par requête : si vous avez accès à une ressource, vous pouvez l'interroger. La gouvernance s'applique à l'exécution, dans le pipeline.
 
 ### Ressources : tables et vues comme pairs {: #resources-tables-and-views-as-peers }
 
-La distinction entre une table et une vue tient uniquement à l'origine — une table est revendiquée à partir d'une source, une vue est définie par un steward. Une fois que l'une ou l'autre existe en tant qu'actif de domaine, le modèle de gouvernance les traite de façon identique :
+Une table et une vue ne diffèrent que par leur origine : une table est revendiquée depuis une source, une vue est définie par un intendant. Dès que l'une ou l'autre est un actif de domaine, le modèle de gouvernance les traite de la même façon :
 
 - Les deux sont des actifs de domaine de premier ordre visibles dans le catalogue
 - Les deux peuvent être la cible d'une relation
@@ -27,7 +27,7 @@ Un steward peut revendiquer des tables de façon privée et n'exposer que des vu
 
 ### Composition des vues {: #view-composition }
 
-Une vue appartient toujours à un seul domaine — il n'existe qu'un seul type de vue, toujours intra-domaine. Une vue existe pour l'une des deux finalités suivantes :
+Une vue appartient toujours à un seul domaine. Il n'existe qu'un type de vue, toujours intra-domaine. Une vue sert l'un de deux objectifs :
 
 - **Import inter-domaines** — la source est extérieure au domaine. Les données inter-domaines ne peuvent entrer dans un domaine que via une vue, qui agit comme un adaptateur en lecture seule nommant les données externes comme un concept métier du domaine.
 - **Dérivation locale** — la source est dans le même domaine. La vue dérive des données nouvelles ou calculées à partir d'actifs de domaine existants. Les données nouvelles ou dérivées ne peuvent exister que sous forme de vue.
@@ -38,7 +38,7 @@ Une vue peut référencer :
 - Des champs importés depuis un autre domaine sous un octroi d'accès aux champs
 - Une autre vue au sein du même domaine, où la variation est délibérée : restriction de champs, agrégation, ou enrichissement via une jointure supplémentaire
 
-La profondeur de composition n'est pas techniquement contrainte — le jugement du steward lors de la revue HITL est le mécanisme de contrôle de qualité.
+Rien de technique ne limite la profondeur de composition des vues. Le contrôle qualité, c'est le jugement de l'intendant lors de la revue HITL.
 
 Chaque vue porte une finalité métier déclarée, énoncée à sa création :
 
@@ -48,11 +48,11 @@ Chaque vue porte une finalité métier déclarée, énoncée à sa création :
 
 ### Requêtes {: #queries }
 
-Une requête parcourt des chemins de relation approuvés sur des actifs de domaine. Contrairement aux vues, les requêtes ne créent pas de nouvelle signification sémantique — elles parcourent la structure approuvée du modèle. Les requêtes peuvent être exprimées dans n'importe quel langage de requête pris en charge (SQL, GraphQL, Cypher).
+Une requête parcourt des chemins de relation approuvés sur des actifs de domaine. Contrairement à une vue, elle ne crée aucun sens sémantique nouveau ; elle suit la structure approuvée du modèle. Une requête peut s'écrire dans n'importe quel langage de requête pris en charge (SQL, GraphQL, Cypher).
 
-**Application structurelle :** le catalogue de relations est le mécanisme d'application. Le compilateur valide chaque parcours par rapport aux entrées approuvées du catalogue et rejette les requêtes qui référencent des chemins non approuvés. La gouvernance est structurelle, pas une vérification à l'exécution.
+**Application structurelle :** C'est le catalogue des relations qui impose. Le compilateur vérifie chaque parcours par rapport aux entrées approuvées du catalogue et refuse une requête qui nomme un chemin non approuvé. La gouvernance est inscrite dans la structure ; il n'y a pas de contrôle séparé à l'exécution.
 
-**Aucune approbation requise :** la gouvernance se fait en amont — aux couches Relation et visibilité des colonnes. Si un utilisateur a accès aux colonnes et que le chemin de parcours est approuvé, la requête est un usage valide. Aucun contrôle supplémentaire.
+**Aucune approbation requise :** La gouvernance intervient plus tôt, aux niveaux relation et visibilité des colonnes. Si un utilisateur peut voir les colonnes et que le chemin est approuvé, la requête est un usage valide, sans autre barrière.
 
 **Distinction avec les vues :**
 
@@ -69,11 +69,11 @@ Chaque langage pris en charge fait apparaître le domaine comme un espace de nom
 | SQL | Nom du schéma | `SELECT * FROM sales.orders` |
 | Cypher | Étiquette de nœud supplémentaire (domaine requis uniquement lorsque le nom de type est ambigu) | `MATCH (o:Sales:Order)` |
 
-Le compilateur résout l'appartenance au domaine à partir de ces positions structurelles — aucune annotation ni indication n'est requise.
+Le compilateur déduit l'appartenance au domaine de ces positions structurelles ; aucune annotation ni indication n'est nécessaire.
 
 ### Relations {: #relationships }
 
-Une relation est un chemin de parcours approuvé entre deux actifs. Les frontières de domaine n'ont aucune incidence sur ce qu'est une relation — elles déterminent seulement qui l'approuve.
+Une relation est un chemin de parcours approuvé entre deux actifs. Les frontières de domaine ne changent rien à ce qu'est une relation ; elles décident seulement qui l'approuve.
 
 **Approbation :**
 
@@ -82,13 +82,13 @@ Une relation est un chemin de parcours approuvé entre deux actifs. Les frontiè
 - La demande est exécutée dès que deux utilisateurs différents, dont aucun n'est le demandeur, l'ont approuvée et que chaque domaine concerné a un approbateur : une relation entre deux domaines a besoin d'un oui de chaque côté, et une relation à l'intérieur d'un domaine a besoin de deux approbateurs de ce domaine
 - Approuver une relation construit le graphe de dépendances de chaque steward, permettant des notifications proactives d'évolution de schéma
 
-Les relations sont créées à la demande, non de façon spéculative. La première équipe ayant le besoin métier effectue le travail ; les équipes suivantes héritent de l'infrastructure.
+Les relations se créent quand quelqu'un en a besoin, jamais par anticipation. La première équipe qui a le besoin métier fait le travail, et les équipes suivantes en héritent.
 
-**Conséquence sur l'optimisation :** une déclaration de relation n'est pas seulement un artefact de gouvernance — c'est aussi une description structurelle d'une forme de jointure. Les deux tables, les deux colonnes et le type de jointure qui définissent une relation sont exactement ce dont l'optimiseur de requêtes a besoin pour pré-matérialiser cette jointure. Les relations inter-sources génèrent automatiquement des tables de jointure pré-matérialisées ; les relations de même source peuvent y adhérer via `materialize: true`. Les stewards qui réfléchissent à des relations valides et les approuvent obtiennent une accélération des requêtes comme sous-produit direct — le travail de gouvernance et le travail d'optimisation sont un seul et même acte.
+**Conséquence pour l'optimisation :** Une déclaration de relation est un artefact de gouvernance et aussi une description structurelle d'une forme de jointure. Les deux tables, les deux colonnes et le type de jointure qui définissent une relation sont exactement ce dont l'optimiseur a besoin pour prématérialiser cette jointure. Les relations inter-sources reçoivent automatiquement des tables de jointure prématérialisées, et les relations au sein d'une même source peuvent l'activer avec `materialize: true`. Les intendants qui réfléchissent à des relations valides et les approuvent obtiennent des requêtes plus rapides en conséquence directe : le travail de gouvernance et le travail d'optimisation sont le même acte.
 
 ### Octrois d'accès aux champs {: #field-access-grants }
 
-Un octroi d'accès aux champs est une permission de domaine à domaine — le domaine A peut utiliser des champs spécifiques du domaine B dans ses vues.
+Une autorisation d'accès aux champs est une permission d'un domaine à un autre : le domaine A peut utiliser des champs précis du domaine B dans ses vues.
 
 **Cycle de vie de l'octroi :**
 
@@ -98,7 +98,7 @@ Un octroi d'accès aux champs est une permission de domaine à domaine — le do
 - Toute vue ultérieure du domaine demandeur peut utiliser les champs accordés sans implication inter-domaines supplémentaire
 - Tout champ supplémentaire non accordé nécessite une nouvelle demande
 
-**Notification a posteriori :** lorsqu'une vue est créée en utilisant des champs accordés, le steward source en est notifié — non pas sollicité pour approbation. La notification comprend le nom de la vue, sa finalité métier déclarée, les champs spécifiques utilisés, et quel steward l'a approuvée. Cela procure au steward source :
+**Notification après usage :** Quand une vue est créée avec des champs autorisés, l'intendant de la source en est informé, sans qu'on lui demande d'approuver. La notification donne le nom de la vue, son objectif métier déclaré, les champs utilisés et l'intendant qui l'a approuvée. Cela donne à l'intendant de la source :
 
 - **Visibilité** — connaissance de la façon dont ses données sont utilisées
 - **Supervision** — des motifs pour soulever une préoccupation si l'usage semble inapproprié
@@ -120,9 +120,9 @@ Trois étapes, dans l'ordre.
 
 **Étape 2 — Approbation de la relation** (déterminante — structurelle et permanente) :
 
-- Soumise à chaque steward distinct possédant un actif impliqué dans la relation
-- S'agit-il d'un chemin de parcours légitime ? La jointure est-elle sémantiquement valide ?
-- Tous les stewards impliqués doivent approuver ; la relation devient une entrée permanente du catalogue
+- Décidée par les domaines que la relation touche, comme décrit sous [Relations](#relationships)
+- Est-ce un chemin de parcours légitime ? La jointure est-elle valide sur le plan sémantique ?
+- Deux utilisateurs différents, dont aucun n'est le demandeur, doivent approuver, et chaque domaine concerné doit avoir un approbateur ; la relation devient alors une entrée permanente du catalogue
 
 **Étape 3 — Création de requête :**
 
@@ -132,7 +132,7 @@ Trois étapes, dans l'ordre.
 
 ### HITL comme contrôle principal {: #hitl-as-the-primary-control }
 
-Les règles techniques traitent ce qui est objectif — le suivi de la provenance des champs, l'application des frontières de domaine, la validation par le compilateur. Le jugement contextuel reste du ressort du steward. Des contraintes telles que la profondeur de composition des vues, les exigences de finalité par requête, et les décisions d'approbation de relation relèvent de HITL, et non de règles imposées par le compilateur.
+Les règles techniques prennent en charge ce qui est objectif : le suivi de la provenance des champs, l'application des frontières de domaine et la validation par le compilateur. Le jugement qui dépend du contexte reste à l'intendant. Des limites comme la profondeur de composition des vues, un objectif déclaré pour chaque requête et les décisions d'approbation des relations relèvent du HITL, que le compilateur n'impose pas.
 
 **Neutralité du domaine source :** le steward du domaine source approuve la relation une fois et l'octroi de champs une fois. Ensuite, les domaines en aval opèrent dans les limites de ces octrois :
 

@@ -9,14 +9,14 @@
 1. **Jede Ressource muss einer Domäne gehören.** Tabellen, Sichten und Beziehungen sind alle Domänen-Assets. Es gibt keine ungovernten frei schwebenden Ressourcen. Die Domäne ist die Einheit der Rechenschaftspflicht.
 2. **Jede Domäne muss einen Steward haben.** Eine Domäne kann sich in einem ausstehenden Zustand befinden, bis ein Steward zugewiesen wird, aber sie kann ohne einen solchen keine governten Daten bereitstellen.
 3. **Der Admin besitzt die Quellen.** Quellen sind Infrastruktur, keine Domänen-Ressourcen. Der Admin registriert und verwaltet Verbindungen zu externen Datensystemen.
-4. **Stewards können Tabellen für eine Domäne beanspruchen.** Das Beanspruchen ist exklusiv — eine Tabelle gehört genau einer Domäne. Dies ist der governte Akt, der Infrastruktur und Modell verbindet.
-5. **Stewards können intradomänen Sichten aus Domänen-Assets erstellen.** Sichten drücken Geschäftslogik aus — Joins, Aggregationen, abgeleitete Kennzahlen — über Assets, die der Steward innerhalb derselben Domäne besitzt. Sichten erzeugen neue semantische Bedeutung und erfordern die Genehmigung des Stewards.
-6. **Analysten können domänenübergreifende Abfragen aus genehmigten Beziehungen erstellen.** Abfragen sind interdomäne Sichten, ausgedrückt in jeder unterstützten Abfragesprache. Sie erzeugen keine neue Semantik — sie durchlaufen genehmigte Beziehungspfade. Es ist keine zusätzliche Genehmigung erforderlich: Governance wird vorgelagert auf der Ebene der Beziehung und der Spaltensichtbarkeit gehandhabt. Der Katalog ist der Durchsetzungsmechanismus: Der Compiler weist Traversierungen zurück, die nicht im genehmigten Beziehungskatalog stehen.
-7. **Jeder kann Zugriff auf eine Domänen-Ressource anfordern.** Der Zugriff wird auf Ressourcenebene gewährt, nicht auf Abfrageebene. Wenn Sie Zugriff auf eine Ressource haben, können Sie sie abfragen. Governance wird zur Ausführungszeit über die Pipeline durchgesetzt.
+4. **Stewards können Tabellen für eine Domäne beanspruchen.** Ein Anspruch ist exklusiv: Eine Tabelle gehört genau einer Domäne. Das Beanspruchen ist der gesteuerte Akt, der die Infrastruktur mit dem Modell verbindet.
+5. **Stewards können domäneninterne Sichten aus Domänen-Assets erstellen.** Sichten drücken Geschäftslogik aus, etwa Joins, Aggregationen und abgeleitete Kennzahlen, über Assets, die der Steward in derselben Domäne besitzt. Eine Sicht schafft neue semantische Bedeutung und braucht die Genehmigung des Stewards.
+6. **Analysten können domänenübergreifende Abfragen aus genehmigten Beziehungen erstellen.** Abfragen sind domänenübergreifende Sichten in jeder unterstützten Abfragesprache. Sie schaffen keine neue Semantik; sie traversieren genehmigte Beziehungspfade. Eine weitere Genehmigung ist nicht nötig, weil die Governance schon vorher greift, auf den Ebenen Beziehung und Spaltensichtbarkeit. Der Katalog setzt durch: Der Compiler lehnt jede Traversierung ab, die nicht im Katalog genehmigter Beziehungen steht.
+7. **Jeder kann Zugriff auf eine Domänenressource anfragen.** Zugriff wird pro Ressource gewährt, nie pro Abfrage: Wer Zugriff auf eine Ressource hat, kann sie abfragen. Die Governance wird zur Ausführungszeit über die Pipeline durchgesetzt.
 
 ### Ressourcen: Tabellen und Sichten als Gleichrangige {: #resources-tables-and-views-as-peers }
 
-Der Unterschied zwischen einer Tabelle und einer Sicht ist nur die Herkunft — eine Tabelle wird aus einer Quelle beansprucht, eine Sicht wird von einem Steward definiert. Sobald eines von beiden als Domänen-Asset existiert, behandelt das Governance-Modell sie identisch:
+Eine Tabelle und eine Sicht unterscheiden sich nur in ihrer Herkunft: Eine Tabelle wird aus einer Quelle beansprucht, eine Sicht von einem Steward definiert. Sobald eine von beiden ein Domänen-Asset ist, behandelt das Governance-Modell sie gleich:
 
 - Beide sind erstklassige Domänen-Assets, die im Katalog sichtbar sind
 - Beide können Ziel einer Beziehung sein
@@ -27,7 +27,7 @@ Ein Steward kann Tabellen privat beanspruchen und nur kuratierte Sichten als öf
 
 ### Sicht-Komposition {: #view-composition }
 
-Eine Sicht gehört immer zu einer einzigen Domäne — es gibt nur einen Sichttyp, immer intradomän. Eine Sicht existiert für einen von zwei Zwecken:
+Eine Sicht gehört immer zu genau einer Domäne. Es gibt nur eine Art von Sicht, und sie ist immer domänenintern. Eine Sicht dient einem von zwei Zwecken:
 
 - **Domänenübergreifender Import** — die Quelle liegt außerhalb der Domäne. Domänenübergreifende Daten dürfen nur über eine Sicht in eine Domäne gelangen, die als schreibgeschützter Adapter fungiert, der die externen Daten als Domänen-Geschäftskonzept benennt.
 - **Lokale Ableitung** — die Quelle liegt in derselben Domäne. Die Sicht leitet neue oder berechnete Daten aus vorhandenen Domänen-Assets ab. Neue oder abgeleitete Daten dürfen nur als Sicht existieren.
@@ -38,7 +38,7 @@ Eine Sicht kann referenzieren:
 - Felder, die aus einer anderen Domäne unter einer Feldzugriffsberechtigung importiert wurden
 - Eine andere Sicht innerhalb derselben Domäne, wobei die Abweichung zweckgebunden ist: Feldeinschränkung, Aggregation oder Anreicherung über einen zusätzlichen Join
 
-Die Kompositionstiefe wird technisch nicht erzwungen — die Beurteilung des Stewards während der HITL-Prüfung ist der Qualitätskontrollmechanismus.
+Wie tief Sichten aufeinander aufbauen, begrenzt nichts Technisches. Die Qualitätskontrolle ist das Urteil des Stewards in der HITL-Prüfung.
 
 Jede Sicht trägt einen deklarierten Geschäftszweck, der zum Erstellungszeitpunkt angegeben wird:
 
@@ -48,11 +48,11 @@ Jede Sicht trägt einen deklarierten Geschäftszweck, der zum Erstellungszeitpun
 
 ### Abfragen {: #queries }
 
-Eine Abfrage durchläuft genehmigte Beziehungspfade über Domänen-Assets. Anders als Sichten erzeugen Abfragen keine neue semantische Bedeutung — sie durchlaufen die genehmigte Struktur des Modells. Abfragen können in jeder unterstützten Abfragesprache ausgedrückt werden (SQL, GraphQL, Cypher).
+Eine Abfrage traversiert genehmigte Beziehungspfade über Domänen-Assets. Anders als eine Sicht schafft sie keine neue semantische Bedeutung; sie folgt der genehmigten Struktur des Modells. Eine Abfrage kann in jeder unterstützten Abfragesprache geschrieben werden (SQL, GraphQL, Cypher).
 
-**Strukturelle Durchsetzung:** Der Beziehungskatalog ist der Durchsetzungsmechanismus. Der Compiler validiert jede Traversierung gegen genehmigte Katalogeinträge und weist Abfragen zurück, die nicht genehmigte Pfade referenzieren. Governance ist strukturell, keine Laufzeitprüfung.
+**Strukturelle Durchsetzung:** Der Beziehungskatalog setzt durch. Der Compiler prüft jede Traversierung gegen die genehmigten Katalogeinträge und lehnt eine Abfrage ab, die einen nicht genehmigten Pfad nennt. Die Governance steckt in der Struktur, eine eigene Prüfung zur Laufzeit gibt es nicht.
 
-**Keine Genehmigung erforderlich:** Governance geschieht vorgelagert — auf der Ebene der Beziehung und der Spaltensichtbarkeit. Wenn ein Benutzer Zugriff auf die Spalten hat und der Traversierungspfad genehmigt ist, ist die Abfrage eine gültige Nutzung. Kein zusätzliches Gate.
+**Keine Genehmigung nötig:** Die Governance greift vorher, auf den Ebenen Beziehung und Spaltensichtbarkeit. Darf ein Benutzer die Spalten sehen und ist der Traversierungspfad genehmigt, ist die Abfrage zulässig, ohne weitere Schranke.
 
 **Unterschied zu Sichten:**
 
@@ -69,11 +69,11 @@ Jede unterstützte Sprache stellt die Domäne als strukturellen Namensraum dar, 
 | SQL | Schemaname | `SELECT * FROM sales.orders` |
 | Cypher | Zusätzliches Knoten-Label (Domäne nur erforderlich, wenn der Typname mehrdeutig ist) | `MATCH (o:Sales:Order)` |
 
-Der Compiler löst die Domänenzugehörigkeit aus diesen strukturellen Positionen auf — keine Annotation oder Hinweis ist erforderlich.
+Der Compiler ermittelt die Domänenzugehörigkeit aus diesen strukturellen Positionen; eine Annotation oder ein Hinweis ist nicht nötig.
 
 ### Beziehungen {: #relationships }
 
-Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Domänengrenzen sind irrelevant dafür, was eine Beziehung ist — sie bestimmen nur, wer sie genehmigt.
+Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Domänengrenzen ändern nichts daran, was eine Beziehung ist; sie bestimmen nur, wer sie genehmigt.
 
 **Genehmigung:**
 
@@ -82,13 +82,13 @@ Eine Beziehung ist ein genehmigter Traversierungspfad zwischen zwei Assets. Dom�
 - Der Antrag wird ausgeführt, sobald zwei verschiedene Benutzer, keiner davon der Antragsteller, zugestimmt haben und jede beteiligte Domäne einen Genehmiger hat: Eine Beziehung über zwei Domänen braucht ein Ja von jeder Seite, eine Beziehung innerhalb einer Domäne zwei Genehmiger dieser Domäne
 - Die Genehmigung einer Beziehung baut den Abhängigkeitsgraphen jedes Stewards auf und ermöglicht proaktive Benachrichtigungen über Schemaentwicklung
 
-Beziehungen werden bedarfsgesteuert erstellt, nicht spekulativ. Das erste Team mit dem Geschäftsbedarf leistet die Arbeit; nachfolgende Teams erben die Infrastruktur.
+Beziehungen entstehen, wenn jemand sie braucht, nie auf Vorrat. Das erste Team mit dem fachlichen Bedarf erledigt die Arbeit, spätere Teams erben sie.
 
-**Optimierungsfolge:** Eine Beziehungsdeklaration ist nicht nur ein Governance-Artefakt — sie ist auch eine strukturelle Beschreibung einer Join-Form. Die beiden Tabellen, die beiden Spalten und der Join-Typ, die eine Beziehung definieren, sind genau das, was der Abfrageoptimierer benötigt, um diesen Join vorab zu materialisieren. Quellenübergreifende Beziehungen erzeugen automatisch vormaterialisierte Join-Tabellen; Beziehungen innerhalb derselben Quelle können sich über `materialize: true` dafür entscheiden. Stewards, die gültige Beziehungen durchdenken und genehmigen, erhalten Abfragebeschleunigung als direktes Nebenprodukt — Governance-Arbeit und Optimierungsarbeit sind derselbe Akt.
+**Folge für die Optimierung:** Eine Beziehungsdeklaration ist ein Governance-Artefakt und zugleich eine strukturelle Beschreibung einer Join-Form. Die zwei Tabellen, zwei Spalten und der Join-Typ, die eine Beziehung definieren, sind genau das, was der Abfrageoptimierer braucht, um diesen Join vorzumaterialisieren. Quellenübergreifende Beziehungen bekommen automatisch vormaterialisierte Join-Tabellen, Beziehungen innerhalb einer Quelle können das mit `materialize: true` wählen. Stewards, die gültige Beziehungen durchdenken und genehmigen, bekommen schnellere Abfragen als direkte Folge: Governance-Arbeit und Optimierungsarbeit sind derselbe Akt.
 
 ### Feldzugriffsberechtigungen {: #field-access-grants }
 
-Eine Feldzugriffsberechtigung ist eine Domäne-zu-Domäne-Berechtigung — Domäne A darf bestimmte Felder von Domäne B in ihren Sichten verwenden.
+Eine Feldzugriffsfreigabe ist eine Erlaubnis von einer Domäne an eine andere: Domäne A darf bestimmte Felder aus Domäne B in ihren Sichten verwenden.
 
 **Lebenszyklus der Berechtigung:**
 
@@ -98,7 +98,7 @@ Eine Feldzugriffsberechtigung ist eine Domäne-zu-Domäne-Berechtigung — Domä
 - Jede nachfolgende Sicht in der anfragenden Domäne darf die gewährten Felder ohne weitere domänenübergreifende Beteiligung verwenden
 - Zusätzliche nicht gewährte Felder erfordern eine neue Anfrage
 
-**Benachrichtigung nach Nutzung:** Wenn eine Sicht unter Verwendung gewährter Felder erstellt wird, wird der Quell-Steward benachrichtigt — nicht um Genehmigung gebeten. Die Benachrichtigung enthält den Namen der Sicht, den deklarierten Geschäftszweck, die konkret verwendeten Felder und welcher Steward sie genehmigt hat. Dies gibt dem Quell-Steward:
+**Benachrichtigung nach der Nutzung:** Wird eine Sicht mit freigegebenen Feldern erstellt, erfährt der Steward der Quelle davon, ohne dass er genehmigen muss. Die Benachrichtigung nennt den Namen der Sicht, ihren erklärten Geschäftszweck, die verwendeten Felder und den Steward, der sie genehmigt hat. Das gibt dem Steward der Quelle:
 
 - **Sichtbarkeit** — Kenntnis darüber, wie seine Daten genutzt werden
 - **Aufsicht** — Grundlage, um Bedenken zu äußern, falls die Nutzung unangemessen erscheint
@@ -120,9 +120,9 @@ Drei Phasen, in dieser Reihenfolge.
 
 **Phase 2 — Beziehungsgenehmigung** (folgenreich — strukturell und dauerhaft):
 
-- Wird an jeden einzelnen Steward gerichtet, der ein an der Beziehung beteiligtes Asset besitzt
-- Ist dies ein legitimer Traversierungspfad? Ist der Join semantisch gültig?
-- Alle beteiligten Stewards müssen genehmigen; die Beziehung wird zu einem dauerhaften Katalogeintrag
+- Entschieden von den Domänen, die die Beziehung berührt, wie unter [Beziehungen](#relationships) beschrieben
+- Ist das ein legitimer Traversierungspfad? Ist der Join semantisch gültig?
+- Zwei verschiedene Benutzer, keiner davon der Antragsteller, müssen genehmigen, und jede beteiligte Domäne braucht einen Genehmiger; danach wird die Beziehung ein dauerhafter Katalogeintrag
 
 **Phase 3 — Abfrageerstellung:**
 
@@ -132,7 +132,7 @@ Drei Phasen, in dieser Reihenfolge.
 
 ### HITL als primäre Kontrolle {: #hitl-as-the-primary-control }
 
-Technische Regeln behandeln das Objektive — Feldherkunftsverfolgung, Durchsetzung von Domänengrenzen, Compiler-Validierung. Die kontextuelle Beurteilung bleibt beim Steward. Einschränkungen wie die Kompositionstiefe von Sichten, Anforderungen an den Zweck pro Abfrage und Entscheidungen zur Beziehungsgenehmigung sind HITL-Angelegenheiten, keine vom Compiler durchgesetzten Regeln.
+Technische Regeln übernehmen, was objektiv ist: das Nachverfolgen der Feldherkunft, das Durchsetzen von Domänengrenzen und die Prüfung durch den Compiler. Urteile, die vom Kontext abhängen, bleiben beim Steward. Grenzen wie die Kompositionstiefe von Sichten, ein erklärter Zweck je Abfrage und Entscheidungen über Beziehungsgenehmigungen sind HITL-Themen, die der Compiler nicht durchsetzt.
 
 **Neutralität der Quelldomäne:** Der Steward der Quelldomäne genehmigt die Beziehung einmalig und die Feldberechtigung einmalig. Danach operieren nachgelagerte Domänen innerhalb dieser gewährten Grenzen:
 

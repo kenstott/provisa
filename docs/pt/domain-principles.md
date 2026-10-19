@@ -12,27 +12,14 @@
    steward seja designado, mas não pode servir dados governados sem um.
 3. **O admin é dono das fontes.** Fontes são infraestrutura, não recursos de domínio. O admin
    registra e gerencia conexões a sistemas de dados externos.
-4. **Stewards podem reivindicar tabelas para um domínio.** Reivindicar é exclusivo — uma tabela
-   pertence a exatamente um domínio. Este é o ato governado que conecta a infraestrutura e a camada
-   semântica.
-5. **Stewards podem criar views intradomínio a partir de ativos de domínio.** Views expressam
-   lógica de negócio — joins, agregações, métricas derivadas — sobre ativos que o steward possui
-   dentro do mesmo domínio. Views criam novo significado semântico e requerem aprovação do steward.
-6. **Analistas podem criar consultas entre domínios a partir de relacionamentos aprovados.**
-   Consultas são views interdomínio expressas em qualquer linguagem de consulta suportada. Elas não
-   criam nova semântica — percorrem caminhos de relacionamento aprovados. Nenhuma aprovação
-   adicional é necessária: a governança é tratada upstream nas camadas de Relacionamento e
-   visibilidade de coluna. O catálogo é o mecanismo de aplicação: o compilador rejeita travessias
-   que não estejam no catálogo de relacionamento aprovado.
-7. **Qualquer um pode solicitar acesso a um recurso de domínio.** O acesso é concedido no nível do
-   recurso, não no nível da consulta. Se você tem acesso a um recurso, pode consultá-lo. A
-   governança é aplicada em tempo de execução através do pipeline.
+4. **Stewards podem reivindicar tabelas para um domínio.** Uma reivindicação é exclusiva: uma tabela pertence a exatamente um domínio. Reivindicar é o ato governado que liga a infraestrutura ao modelo.
+5. **Stewards podem criar views intradomínio a partir de ativos do domínio.** Views expressam lógica de negócio, como joins, agregações e métricas derivadas, sobre ativos que o steward possui no mesmo domínio. Uma view cria significado semântico novo e precisa de aprovação do steward.
+6. **Analistas podem criar consultas entre domínios a partir de relacionamentos aprovados.** Consultas são views interdomínio escritas em qualquer linguagem de consulta suportada. Elas não criam semântica nova; percorrem caminhos de relacionamento aprovados. Nenhuma outra aprovação é necessária, porque a governança acontece antes, nas camadas de relacionamento e de visibilidade de colunas. É o catálogo que impõe: o compilador recusa qualquer travessia que não esteja no catálogo de relacionamentos aprovados.
+7. **Qualquer pessoa pode pedir acesso a um recurso de domínio.** O acesso é concedido por recurso, nunca por consulta: se você tem acesso a um recurso, pode consultá-lo. A governança é imposta no momento da execução, pelo pipeline.
 
 ### Recursos: Tabelas e Views como Pares {: #resources-tables-and-views-as-peers }
 
-A distinção entre uma tabela e uma view é somente de origem — uma tabela é reivindicada de uma
-fonte, uma view é definida por um steward. Uma vez que qualquer uma exista como um ativo de
-domínio, o modelo de governança as trata de forma idêntica:
+Uma tabela e uma view só diferem na origem: uma tabela é reivindicada de uma fonte, e uma view é definida por um steward. Assim que qualquer uma delas é um ativo de domínio, o modelo de governança as trata da mesma forma:
 
 - Ambas são ativos de domínio de primeira classe visíveis no catálogo
 - Ambas podem ser o alvo de um relacionamento
@@ -44,8 +31,7 @@ dados voltados ao público.
 
 ### Composição de View {: #view-composition }
 
-Uma view sempre pertence a um único domínio — há somente um tipo de view, sempre intradomínio. Uma
-view existe para um de dois propósitos:
+Uma view sempre pertence a um único domínio. Só existe um tipo de view, e ele é sempre intradomínio. Uma view existe para um de dois propósitos:
 
 - **Importação entre domínios** — a fonte está fora do domínio. Dados entre domínios só podem
   entrar em um domínio via uma view, que atua como um adaptador somente-leitura nomeando os dados
@@ -60,8 +46,7 @@ Uma view pode referenciar:
 - Uma outra view dentro do mesmo domínio, onde a variação é proposital: restrição de campo,
   agregação, ou enriquecimento via um join adicional
 
-A profundidade de composição não é tecnicamente aplicada — o julgamento do steward durante a
-revisão HITL é o mecanismo de controle de qualidade.
+Nada técnico limita a profundidade com que views se compõem. O controle de qualidade é o julgamento do steward na revisão HITL.
 
 Toda view carrega um propósito de negócio declarado, estabelecido no momento da criação:
 
@@ -72,18 +57,11 @@ Toda view carrega um propósito de negócio declarado, estabelecido no momento d
 
 ### Consultas (Queries) {: #queries }
 
-Uma Query percorre caminhos de relacionamento aprovados sobre ativos de domínio. Diferente das
-Views, Queries não criam novo significado semântico — elas percorrem a estrutura aprovada do
-modelo. Queries podem ser expressas em qualquer linguagem de consulta suportada (SQL, GraphQL,
-Cypher).
+Uma consulta percorre caminhos de relacionamento aprovados sobre ativos de domínio. Diferente de uma view, ela não cria significado semântico novo; segue a estrutura aprovada do modelo. Uma consulta pode ser escrita em qualquer linguagem de consulta suportada (SQL, GraphQL, Cypher).
 
-**Aplicação estrutural:** O catálogo de relacionamento é o mecanismo de aplicação. O compilador
-valida toda travessia contra entradas de catálogo aprovadas e rejeita consultas que referenciam
-caminhos não aprovados. A governança é estrutural, não uma verificação em tempo de execução.
+**Imposição estrutural:** Quem impõe é o catálogo de relacionamentos. O compilador confere cada travessia com as entradas aprovadas do catálogo e recusa uma consulta que nomeia um caminho não aprovado. A governança está na estrutura, então não há uma verificação separada em tempo de execução.
 
-**Nenhuma aprovação necessária:** A governança acontece upstream — nas camadas de Relacionamento e
-visibilidade de coluna. Se um usuário tem acesso às colunas e o caminho de travessia é aprovado, a
-Query é um uso válido. Nenhum portão adicional.
+**Sem aprovação:** A governança acontece antes, nas camadas de relacionamento e de visibilidade de colunas. Se um usuário pode ver as colunas e o caminho está aprovado, a consulta é um uso válido, sem outra barreira.
 
 **Distinção de Views:**
 
@@ -100,13 +78,11 @@ Cada linguagem suportada expõe o domínio como um namespace estrutural nativo �
 | SQL | Nome de esquema | `SELECT * FROM sales.orders` |
 | Cypher | Rótulo de nó adicional (domínio só necessário quando o nome do tipo é ambíguo) | `MATCH (o:Sales:Order)` |
 
-O compilador resolve a associação de domínio a partir dessas posições estruturais — nenhuma
-anotação ou dica é necessária.
+O compilador deduz a qual domínio cada coisa pertence a partir dessas posições estruturais, então não é preciso anotação nem dica.
 
 ### Relacionamentos {: #relationships }
 
-Um relacionamento é um caminho de travessia aprovado entre dois ativos. Fronteiras de domínio são
-irrelevantes para o que um relacionamento é — elas só determinam quem o aprova.
+Um relacionamento é um caminho de travessia aprovado entre dois ativos. As fronteiras de domínio não mudam o que é um relacionamento; só decidem quem o aprova.
 
 **Aprovação:**
 
@@ -116,22 +92,13 @@ irrelevantes para o que um relacionamento é — elas só determinam quem o apro
 - Aprovar um relacionamento constrói o grafo de dependência de cada steward, habilitando
   notificações proativas de evolução de esquema
 
-Relacionamentos são criados por demanda, não especulativamente. A primeira equipe com a necessidade
-de negócio faz o trabalho; equipes subsequentes herdam a infraestrutura.
+Relacionamentos são criados quando alguém precisa deles, nunca por especulação. A primeira equipe com a necessidade de negócio faz o trabalho, e as equipes seguintes o herdam.
 
-**Consequência de otimização:** Uma declaração de relacionamento não é somente um artefato de
-governança — também é uma descrição estrutural de uma forma de join. As duas tabelas, duas colunas,
-e tipo de join que definem um relacionamento são exatamente o que o otimizador de consulta precisa
-para pré-materializar aquele join. Relacionamentos entre fontes geram automaticamente tabelas de
-join pré-materializadas; relacionamentos na mesma fonte podem optar por isso via
-`materialize: true`. Stewards que pensam bem e aprovam relacionamentos válidos ganham aceleração de
-consulta como um subproduto direto — trabalho de governança e trabalho de otimização são o mesmo
-ato.
+**Consequência para a otimização:** Uma declaração de relacionamento é um artefato de governança e também uma descrição estrutural do formato de um join. As duas tabelas, as duas colunas e o tipo de join que definem um relacionamento são exatamente o que o otimizador de consultas precisa para pré-materializar esse join. Relacionamentos entre fontes ganham tabelas de join pré-materializadas automaticamente, e relacionamentos na mesma fonte podem optar por isso com `materialize: true`. Stewards que pensam e aprovam relacionamentos válidos ganham consultas mais rápidas como resultado direto: o trabalho de governança e o de otimização são o mesmo ato.
 
 ### Concessões de Acesso de Campo {: #field-access-grants }
 
-Uma concessão de acesso de campo é uma permissão domínio-para-domínio — o Domínio A pode usar
-campos específicos do Domínio B em suas views.
+Uma concessão de acesso a campos é uma permissão de um domínio para outro: o domínio A pode usar campos específicos do domínio B nas suas views.
 
 **Ciclo de vida da concessão:**
 
@@ -142,9 +109,7 @@ campos específicos do Domínio B em suas views.
   envolvimento adicional entre domínios
 - Campos adicionais não concedidos requerem uma nova solicitação
 
-**Notificação pós-uso:** Quando uma view é criada usando campos concedidos, o steward de origem é
-notificado — não solicitado a aprovar. A notificação inclui o nome da view, o propósito de negócio
-declarado, os campos específicos usados, e qual steward a aprovou. Isso dá ao steward de origem:
+**Aviso após o uso:** Quando uma view é criada com campos concedidos, o steward de origem é avisado, sem precisar aprovar. O aviso traz o nome da view, o propósito de negócio declarado, os campos usados e o steward que a aprovou. Isso dá ao steward de origem:
 
 - **Visibilidade** — consciência de como seus dados estão sendo usados
 - **Supervisão** — fundamento para levantar uma preocupação se o uso parecer inapropriado
@@ -169,10 +134,9 @@ Três estágios, em ordem.
 
 **Estágio 2 — Aprovação de relacionamento** (consequencial — estrutural e permanente):
 
-- Levantada a todo steward distinto que possui um ativo envolvido no relacionamento
+- Decidido pelos domínios que o relacionamento toca, como descrito em [Relacionamentos](#relationships)
 - Este é um caminho de travessia legítimo? O join é semanticamente válido?
-- Todos os stewards implicados devem aprovar; o relacionamento se torna uma entrada permanente do
-  catálogo
+- Dois usuários diferentes, nenhum deles o solicitante, precisam aprovar, e todo domínio envolvido precisa ter um aprovador; aí o relacionamento vira uma entrada permanente do catálogo
 
 **Estágio 3 — Criação de consulta:**
 
@@ -185,10 +149,7 @@ Três estágios, em ordem.
 
 ### HITL como o Controle Primário {: #hitl-as-the-primary-control }
 
-Regras técnicas tratam do que é objetivo — rastreamento de proveniência de campo, aplicação de
-fronteira de domínio, validação de compilador. O julgamento contextual permanece com o steward.
-Restrições como profundidade de composição de view, requisitos de propósito por consulta, e
-decisões de aprovação de relacionamento são preocupações HITL, não regras aplicadas pelo compilador.
+Regras técnicas cuidam do que é objetivo: o rastreamento da procedência dos campos, a imposição das fronteiras de domínio e a validação do compilador. O julgamento que depende do contexto fica com o steward. Limites como a profundidade de composição das views, um propósito declarado para cada consulta e as decisões de aprovação de relacionamentos são questões de HITL, que o compilador não impõe.
 
 **Neutralidade de domínio de origem:** O steward do domínio de origem aprova o relacionamento uma
 vez e a concessão de campo uma vez. Depois disso, domínios a jusante operam dentro dessas

@@ -9,14 +9,14 @@
 1. **Ogni risorsa deve essere di proprietà di un dominio.** Tabelle, viste e relazioni sono tutti asset di dominio. Non esistono risorse fluttuanti non governate. Il dominio è l'unità di responsabilità.
 2. **Ogni dominio deve avere uno steward.** Un dominio può esistere in uno stato in sospeso finché non viene assegnato uno steward, ma non può servire dati governati senza uno.
 3. **L'admin possiede le origini dati.** Le origini dati sono infrastruttura, non risorse di dominio. L'admin registra e gestisce le connessioni ai sistemi dati esterni.
-4. **Gli steward possono rivendicare tabelle per un dominio.** La rivendicazione è esclusiva — una tabella appartiene esattamente a un dominio. Questo è l'atto governato che collega l'infrastruttura al modello.
-5. **Gli steward possono creare viste intra-dominio a partire dagli asset di dominio.** Le viste esprimono logica di business — join, aggregazioni, metriche derivate — su asset di proprietà dello steward all'interno dello stesso dominio. Le viste creano nuovo significato semantico e richiedono l'approvazione dello steward.
-6. **Gli analisti possono creare query cross-dominio a partire da relazioni approvate.** Le query sono viste interdominio espresse in qualsiasi linguaggio di query supportato. Non creano nuova semantica — attraversano percorsi di relazione approvati. Non è richiesta alcuna approvazione aggiuntiva: la governance è gestita a monte, ai livelli di Relazione e visibilità delle colonne. Il catalogo è il meccanismo di enforcement: il compilatore rifiuta gli attraversamenti non presenti nel catalogo delle relazioni approvate.
-7. **Chiunque può richiedere l'accesso a una risorsa di dominio.** L'accesso è concesso a livello di risorsa, non a livello di query. Se si ha accesso a una risorsa, la si può interrogare. La governance è applicata a runtime attraverso la pipeline.
+4. **Gli steward possono rivendicare tabelle per un dominio.** Una rivendicazione è esclusiva: una tabella appartiene a esattamente un dominio. Rivendicare è l'atto governato che collega l'infrastruttura al modello.
+5. **Gli steward possono creare viste intra-dominio dagli asset del dominio.** Le viste esprimono logica di business, come join, aggregazioni e metriche derivate, su asset che lo steward possiede nello stesso dominio. Una vista crea un significato semantico nuovo e richiede l'approvazione dello steward.
+6. **Gli analisti possono creare query tra domini a partire da relazioni approvate.** Le query sono viste interdominio scritte in qualsiasi linguaggio di query supportato. Non creano semantica nuova; percorrono cammini di relazione approvati. Non serve un'ulteriore approvazione, perché la governance agisce prima, ai livelli di relazione e di visibilità delle colonne. È il catalogo a imporre: il compilatore rifiuta qualsiasi attraversamento che non sia nel catalogo delle relazioni approvate.
+7. **Chiunque può richiedere l'accesso a una risorsa di dominio.** L'accesso si concede per risorsa, mai per query: se avete accesso a una risorsa, potete interrogarla. La governance viene applicata al momento dell'esecuzione, nella pipeline.
 
 ### Risorse: tabelle e viste come pari {: #resources-tables-and-views-as-peers }
 
-La distinzione tra una tabella e una vista è solo di origine — una tabella è rivendicata da un'origine dati, una vista è definita da uno steward. Una volta che entrambe esistono come asset di dominio, il modello di governance le tratta in modo identico:
+Una tabella e una vista differiscono solo per l'origine: una tabella viene rivendicata da un'origine, una vista viene definita da uno steward. Appena una delle due è un asset di dominio, il modello di governance le tratta allo stesso modo:
 
 - Entrambe sono asset di dominio di prima classe visibili nel catalogo
 - Entrambe possono essere il target di una relazione
@@ -27,7 +27,7 @@ Uno steward può rivendicare tabelle privatamente ed esporre solo viste curate c
 
 ### Composizione delle viste {: #view-composition }
 
-Una vista appartiene sempre a un singolo dominio — esiste un solo tipo di vista, sempre intra-dominio. Una vista esiste per uno dei due scopi seguenti:
+Una vista appartiene sempre a un solo dominio. Esiste un solo tipo di vista, sempre intra-dominio. Una vista esiste per uno di due scopi:
 
 - **Importazione cross-dominio** — l'origine è esterna al dominio. I dati cross-dominio possono entrare in un dominio solo tramite una vista, che funge da adattatore in sola lettura che denomina i dati esterni come un concetto di business del dominio.
 - **Derivazione locale** — l'origine è nello stesso dominio. La vista deriva dati nuovi o calcolati da asset di dominio esistenti. I dati nuovi o derivati possono esistere solo come vista.
@@ -38,7 +38,7 @@ Una vista può fare riferimento a:
 - Campi importati da un altro dominio tramite una concessione di accesso al campo
 - Un'altra vista all'interno dello stesso dominio, dove la variazione è mirata: restrizione di campi, aggregazione o arricchimento tramite un join aggiuntivo
 
-La profondità di composizione non è tecnicamente applicata — il giudizio dello steward durante la revisione HITL è il meccanismo di controllo qualità.
+Niente di tecnico limita la profondità di composizione delle viste. Il controllo di qualità è il giudizio dello steward durante la revisione HITL.
 
 Ogni vista porta uno scopo di business dichiarato, indicato al momento della creazione:
 
@@ -48,11 +48,11 @@ Ogni vista porta uno scopo di business dichiarato, indicato al momento della cre
 
 ### Query {: #queries }
 
-Una Query attraversa percorsi di relazione approvati sugli asset di dominio. A differenza delle Viste, le Query non creano nuovo significato semantico — attraversano la struttura approvata del modello. Le Query possono essere espresse in qualsiasi linguaggio di query supportato (SQL, GraphQL, Cypher).
+Una query percorre cammini di relazione approvati sugli asset di dominio. A differenza di una vista, non crea nuovo significato semantico; segue la struttura approvata del modello. Una query si può scrivere in qualsiasi linguaggio di query supportato (SQL, GraphQL, Cypher).
 
-**Enforcement strutturale:** il catalogo delle relazioni è il meccanismo di enforcement. Il compilatore valida ogni attraversamento rispetto alle voci approvate nel catalogo e rifiuta le query che fanno riferimento a percorsi non approvati. La governance è strutturale, non un controllo a runtime.
+**Imposizione strutturale:** È il catalogo delle relazioni a imporre. Il compilatore verifica ogni attraversamento rispetto alle voci approvate del catalogo e rifiuta una query che nomina un cammino non approvato. La governance è nella struttura, quindi non c'è un controllo separato a runtime.
 
-**Nessuna approvazione richiesta:** la governance avviene a monte — ai livelli di Relazione e visibilità delle colonne. Se un utente ha accesso alle colonne e il percorso di attraversamento è approvato, la Query è un uso valido. Nessun ulteriore gate.
+**Nessuna approvazione:** La governance agisce prima, ai livelli di relazione e di visibilità delle colonne. Se un utente può vedere le colonne e il cammino è approvato, la query è un uso valido, senza altri cancelli.
 
 **Distinzione dalle Viste:**
 
@@ -69,11 +69,11 @@ Ogni linguaggio supportato espone il dominio come namespace strutturale nativo d
 | SQL | Nome dello schema | `SELECT * FROM sales.orders` |
 | Cypher | Etichetta di nodo aggiuntiva (il dominio è richiesto solo quando il nome del tipo è ambiguo) | `MATCH (o:Sales:Order)` |
 
-Il compilatore risolve l'appartenenza al dominio da queste posizioni strutturali — non è richiesta alcuna annotazione o suggerimento.
+Il compilatore ricava l'appartenenza al dominio da queste posizioni strutturali, quindi non servono annotazioni né suggerimenti.
 
 ### Relazioni {: #relationships }
 
-Una relazione è un percorso di attraversamento approvato tra due asset. I confini di dominio sono irrilevanti rispetto a cosa sia una relazione — determinano solo chi la approva.
+Una relazione è un cammino di attraversamento approvato tra due asset. I confini di dominio non cambiano cosa sia una relazione; decidono solo chi la approva.
 
 **Approvazione:**
 
@@ -82,13 +82,13 @@ Una relazione è un percorso di attraversamento approvato tra due asset. I confi
 - La richiesta viene eseguita quando due utenti diversi, nessuno dei quali il richiedente, l'hanno approvata e ogni dominio coinvolto ha un approvatore: una relazione tra due domini ha bisogno di un sì da ciascun lato, e una relazione all'interno di un dominio ha bisogno di due approvatori di quel dominio
 - Approvare una relazione costruisce il grafo delle dipendenze di ciascuno steward, abilitando notifiche proattive sull'evoluzione dello schema
 
-Le relazioni sono create su richiesta, non speculativamente. Il primo team con l'esigenza di business svolge il lavoro; i team successivi ereditano l'infrastruttura.
+Le relazioni si creano quando qualcuno ne ha bisogno, mai per ipotesi. Il primo team con l'esigenza di business fa il lavoro, e i team successivi lo ereditano.
 
-**Conseguenza sull'ottimizzazione:** una dichiarazione di relazione non è solo un artefatto di governance — è anche una descrizione strutturale della forma di un join. Le due tabelle, le due colonne e il tipo di join che definiscono una relazione sono esattamente ciò di cui l'ottimizzatore di query ha bisogno per pre-materializzare quel join. Le relazioni cross-source generano automaticamente tabelle di join pre-materializzate; le relazioni same-source possono aderire tramite `materialize: true`. Gli steward che pensano e approvano relazioni valide ottengono l'accelerazione delle query come sottoprodotto diretto — il lavoro di governance e il lavoro di ottimizzazione sono lo stesso atto.
+**Conseguenza per l'ottimizzazione:** Una dichiarazione di relazione è un artefatto di governance e anche una descrizione strutturale della forma di un join. Le due tabelle, le due colonne e il tipo di join che definiscono una relazione sono esattamente ciò che serve all'ottimizzatore per prematerializzare quel join. Le relazioni tra origini diverse ottengono automaticamente tabelle di join prematerializzate, e quelle nella stessa origine possono attivarle con `materialize: true`. Gli steward che ragionano su relazioni valide e le approvano ottengono query più veloci come conseguenza diretta: il lavoro di governance e quello di ottimizzazione sono lo stesso atto.
 
 ### Concessioni di accesso al campo {: #field-access-grants }
 
-Una concessione di accesso al campo è un permesso da dominio a dominio — il Dominio A può usare campi specifici del Dominio B nelle proprie viste.
+Una concessione di accesso ai campi è un permesso da un dominio a un altro: il dominio A può usare campi specifici del dominio B nelle sue viste.
 
 **Ciclo di vita della concessione:**
 
@@ -98,7 +98,7 @@ Una concessione di accesso al campo è un permesso da dominio a dominio — il D
 - Qualsiasi vista successiva nel dominio richiedente può usare i campi concessi senza ulteriore coinvolgimento cross-dominio
 - Campi aggiuntivi non concessi richiedono una nuova richiesta
 
-**Notifica post-uso:** quando una vista viene creata usando campi concessi, lo steward di origine viene notificato — non gli viene chiesta l'approvazione. La notifica include il nome della vista, lo scopo di business dichiarato, i campi specifici usati e quale steward l'ha approvata. Questo offre allo steward di origine:
+**Notifica dopo l'uso:** Quando si crea una vista con campi concessi, lo steward di origine viene informato, senza che gli si chieda di approvare. La notifica indica il nome della vista, lo scopo di business dichiarato, i campi usati e lo steward che l'ha approvata. Questo dà allo steward di origine:
 
 - **Visibilità** — consapevolezza di come vengono usati i propri dati
 - **Supervisione** — motivi per sollevare una preoccupazione se l'uso appare inappropriato
@@ -120,9 +120,9 @@ Tre fasi, in ordine.
 
 **Fase 2 — Approvazione della relazione** (conseguente — strutturale e permanente):
 
-- Sollevata a ogni steward distinto che possiede un asset coinvolto nella relazione
-- Si tratta di un percorso di attraversamento legittimo? Il join è semanticamente valido?
-- Tutti gli steward coinvolti devono approvare; la relazione diventa una voce permanente del catalogo
+- Decisa dai domini che la relazione tocca, come descritto in [Relazioni](#relationships)
+- È un cammino di attraversamento legittimo? Il join è semanticamente valido?
+- Devono approvare due utenti diversi, nessuno dei quali sia il richiedente, e ogni dominio coinvolto deve avere un approvatore; dopo, la relazione diventa una voce permanente del catalogo
 
 **Fase 3 — Creazione della query:**
 
@@ -132,7 +132,7 @@ Tre fasi, in ordine.
 
 ### HITL come controllo primario {: #hitl-as-the-primary-control }
 
-Le regole tecniche gestiscono ciò che è oggettivo — tracciamento della provenienza dei campi, enforcement dei confini di dominio, validazione del compilatore. Il giudizio contestuale rimane in capo allo steward. Vincoli come la profondità di composizione delle viste, i requisiti di scopo per query e le decisioni di approvazione delle relazioni sono questioni HITL, non regole applicate dal compilatore.
+Le regole tecniche si occupano di ciò che è oggettivo: il tracciamento della provenienza dei campi, l'imposizione dei confini di dominio e la validazione del compilatore. Il giudizio che dipende dal contesto resta allo steward. Limiti come la profondità di composizione delle viste, uno scopo dichiarato per ogni query e le decisioni di approvazione delle relazioni sono questioni HITL, che il compilatore non impone.
 
 **Neutralità del dominio di origine:** lo steward del dominio di origine approva la relazione una volta e la concessione del campo una volta. Dopodiché, i domini a valle operano entro quei confini concessi:
 
