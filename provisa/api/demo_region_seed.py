@@ -267,14 +267,20 @@ async def _write_records(
 
 
 async def _as_built_here(
-    template_org: str, org_id: str, rows: list[dict], store: RegionStore
+    template_org: str, org_id: str, rows: list[dict], store: RegionStore, *, bound: bool = False
 ) -> list[dict]:
     """``rows`` -- records of replicas of this node's region -- as built for ``org_id``'s own
-    replicas store there, from the template's model at ``org_id``'s address (demo_replicas)."""
-    from provisa.api.demo_replicas import _as_built, _key, definitions
+    replicas store there, from the template's model at ``org_id``'s address (demo_replicas).
+    ``bound``: within the template's own runtime build, with it bound (adopt_seed), its model is
+    read as it is -- asking for that runtime there would wait on the build that is asking."""
+    from provisa.api.demo_replicas import _as_built, _bound_definitions, _key, definitions
 
     keys = [_key(row) for row in rows]
-    defined = await definitions(template_org, keys, org_id)
+    defined = await (
+        _bound_definitions(template_org, keys, org_id)
+        if bound
+        else definitions(template_org, keys, org_id)
+    )
     return _as_built(rows, org_id, defined, datetime.now(UTC), store.replicas_url)
 
 
@@ -346,7 +352,8 @@ async def adopt_seed(template_org: str, demo_directory: Path) -> bool:
         )
         replicas, builds = _parsed(record["replicas"]), _parsed(record["builds"])
         if region == here():
-            replicas = await _as_built_here(template_org, template_org, replicas, store)
+            # Run within the template's runtime build (demo_templates.land_from_seed): bound.
+            replicas = await _as_built_here(template_org, template_org, replicas, store, bound=True)
         else:
             await lay_out_state(template_org, store)
         await _write_records(state_db(template_org, store), replicas, builds, replace_replicas=True)
