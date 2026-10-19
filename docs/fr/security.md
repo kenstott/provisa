@@ -83,7 +83,7 @@ Capacités attribuées indépendamment, avec une hiérarchie de rôles facultati
 
 ### Héritage des rôles {: #role-inheritance }
 
-Les rôles peuvent hériter d'un rôle parent via `parent_role_id`, défini dans la configuration ou sur la page Sécurité comme « Hérite de ». La chaîne est repliée au démarrage : un enfant détient l'union des capacités et de l'accès aux domaines de ses ancêtres, chaque autorisation de colonne, de métrique, de fonction et de webhook qui nomme un ancêtre, et les règles RLS des ancêtres par table, l'enfant ayant la priorité — le rôle le plus proche dans la chaîne qui a une règle pour une table fournit le prédicat de cette table, et une règle enregistrée pour l'enfant remplace celle du parent pour cette table.
+Les rôles peuvent hériter d'un rôle parent via `parent_role_id`, défini dans la configuration ou sur la page Sécurité comme « Hérite de ». La chaîne est repliée au démarrage : un enfant détient l'union des capacités et de l'accès aux domaines de ses ancêtres, chaque autorisation de colonne, de métrique, de fonction et de webhook qui nomme un ancêtre, et les règles RLS des ancêtres par table, l'enfant ayant la priorité. Le rôle le plus proche dans la chaîne qui a une règle pour une table fournit le prédicat de cette table, et une règle enregistrée pour l'enfant remplace celle du parent pour cette table.
 
 ```yaml
 roles:
@@ -97,6 +97,7 @@ roles:
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
+
 ## Rôles : accordés, dérivés et méta {: #roles-granted-derived-and-meta }
 
 Trois sortes de rôles fonctionnent ensemble dans le modèle d'accès de Provisa. La page Rôles liste les deux premières ensemble ; un méta-rôle n'est jamais listé.
@@ -137,7 +138,7 @@ Pensez à un JWT : ses claims sont des faits sur la personne. Les rôles dériv�
 
 Lorsqu'une requête nomme plus d'un rôle, Provisa construit un méta-rôle éphémère identifié comme `meta:<ids sorted, joined by +>`. C'est un enfant unique de chaque rôle de l'ensemble nommé. Tout le pipeline s'exécute alors avec lui comme un rôle unique ordinaire.
 
-Les droits sont l'union de ceux de chaque membre. Les filtres de lignes sont l'OR du filtre résolu de chaque membre ; si un membre qui lit une table n'a pas de filtre, le méta-rôle n'en a pas non plus — pas de filtre signifie toutes les lignes. Un méta-rôle n'est jamais stocké, listé ni exporté. Il est reconstruit à partir de ses membres lorsque le modèle change.
+Les droits sont l'union de ceux de chaque membre. Les filtres de lignes sont l'OR du filtre résolu de chaque membre ; si un membre qui lit une table n'a pas de filtre, le méta-rôle n'en a pas non plus. Pas de filtre signifie toutes les lignes. Un méta-rôle n'est jamais stocké, listé ni exporté. Il est reconstruit à partir de ses membres lorsque le modèle change.
 
 Les colonnes de chaque ligne sont masquées et affichées selon les rôles dont le filtre de lignes a admis cette ligne : parmi ces rôles, la lecture la moins restrictive de la colonne s'applique, et un rôle qui n'a pas admis la ligne ne contribue en rien à la façon dont elle est lue. Les masques s'appliquent là où la table est lue, avant toute jointure ou agrégation, de sorte qu'une agrégation lit les valeurs masquées. Les écritures sont vérifiées de la même façon : une colonne n'est écrite sur une ligne que là où un rôle qui accorde cette colonne admet la ligne.
 
@@ -188,7 +189,7 @@ Le compromis est le calcul plutôt que l'énumération. Un petit catalogue de r�
 
 - Gardez le catalogue de rôles aussi petit que l'organisation le permet.
 - Héritez au sein d'un axe (ancienneté, niveau d'habilitation). Composez entre axes indépendants (rôle + région, rôle + service).
-- Placez en premier les entrées de masque les plus spécifiques — une entrée antérieure l'emporte même lorsque le lecteur en détient une ultérieure.
+- Placez en premier les entrées de masque les plus spécifiques. Une entrée antérieure l'emporte même lorsque le lecteur en détient une ultérieure.
 - Vérifiez l'accès effectif avec `POST /admin/masks/check` avant de déployer une combinaison en production.
 
 ## Modèle de permissions des colonnes {: #column-permission-model }
@@ -341,7 +342,7 @@ L'expression de masque est poussée dans la projection SQL SELECT. La base de do
 
 **Aucune entrée détenue signifie non masqué.** Un lecteur qui ne détient aucune entrée lit la colonne non masquée. Terminez une liste par une entrée `*` lorsque chaque lecteur doit recevoir un masque. L'éditeur de colonnes avertit lorsqu'une liste n'a pas d'entrée `*` (`unlisted_unmasked`).
 
-**Refuser par l'ordre.** Une entrée antérieure l'emporte même lorsque le lecteur en détient aussi une ultérieure plus permissive. Pour que les prestataires voient toujours un salaire masqué quels que soient leurs autres rôles, placez l'entrée des prestataires avant l'entrée non masquée. Un rôle accordé ne perd jamais ce que son parent accorde par héritage, mais une entrée de masque placée plus tôt dans la liste s'applique en premier — c'est ainsi que fonctionne la restriction ici.
+**Refuser par l'ordre.** Une entrée antérieure l'emporte même lorsque le lecteur en détient aussi une ultérieure plus permissive. Pour que les prestataires voient toujours un salaire masqué quels que soient leurs autres rôles, placez l'entrée des prestataires avant l'entrée non masquée. Un rôle accordé ne perd jamais ce que son parent accorde par héritage, mais une entrée de masque placée plus tôt dans la liste s'applique en premier. C'est ainsi que fonctionne la restriction ici.
 
 **Méta-rôles.** La chaîne d'un méta-rôle comprend les rôles de chaque membre, leurs ancêtres et tout rôle dérivé nommé. Une entrée accordée à n'importe quel membre atteint le méta-rôle. Une entrée placée avant, détenue par un autre membre, s'applique toujours en premier.
 
@@ -360,6 +361,7 @@ masks:
   - to: ["*"]
     mask: {type: truncate, precision: year}
 ```
+
 ## Gouvernance des réponses d'actions {: #governing-action-responses }
 
 Ce que renvoie une fonction suivie ou un webhook est gouverné comme les lignes d'une table. Provisa lie les lignes renvoyées en une relation dont les colonnes sont la sortie déclarée de l'action : `output_columns` pour une fonction, `inline_return_type` pour un webhook, ou les propriétés d'objet du `return_schema` de type tableau d'une fonction. Cette relation passe ensuite par la même étape de gouvernance que toute lecture de table, sur une CTE VALUES contenant les lignes : la sécurité des lignes, le masquage et la visibilité ne sont pas réimplémentés pour les actions.
@@ -446,6 +448,7 @@ roles:
     rate_limit:
       max_query_complexity: 200
 ```
+
 Le score est mesuré après l'analyse d'une requête et avant sa gouvernance ou son exécution, de sorte qu'une même limite tient sur chaque interface par laquelle une instruction peut arriver : GraphQL, SQL sur HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API et MCP. Une instruction au-delà de la limite est refusée avec son score, la limite et ce qu'elle demandait. Les interfaces HTTP répondent 413. Le refus est consigné comme un refus de politique.
 
 ## Authentification {: #authentication }
@@ -469,7 +472,7 @@ Fournisseurs d'authentification enfichables :
 
 Correspondance des rôles : claims d'identité → rôle Provisa via des règles configurables. Le champ `assignments_source` contrôle d'où viennent les attributions de rôles : `claims` les lit dans les claims du jeton JWT (par défaut), `provisa` les lit dans le magasin d'attributions interne de Provisa. Un déploiement multi-tenant (`multitenancy: true`) accorde lui-même les rôles, par organisation, et doit donc utiliser `assignments_source: provisa` : avec `claims`, il ne démarre pas, et un changement de réglages qui produirait cette combinaison est refusé. Un déploiement mono-tenant peut utiliser l'un ou l'autre.
 
-Un superutilisateur configuré dans `provisa.yaml` (nom d'utilisateur plus un mot de passe issu d'un secret d'environnement) reçoit toujours le rôle admin et toutes les capacités, quel que soit le fournisseur configuré — un chemin d'amorçage pour la configuration initiale.
+Un superutilisateur configuré dans `provisa.yaml` (nom d'utilisateur plus un mot de passe issu d'un secret d'environnement) reçoit toujours le rôle admin et toutes les capacités, quel que soit le fournisseur configuré, un chemin d'amorçage pour la configuration initiale.
 
 ### Surfaces et identifiants {: #surfaces-and-credentials }
 
@@ -505,11 +508,11 @@ Un jeton valide se résout vers le compte de son propriétaire, avec identifiant
 
 Avec le fournisseur `basic`, définir `auth.scram: true` fait annoncer à pgwire SASL (code d'authentification 10) avec le mécanisme `SCRAM-SHA-256`, de sorte qu'un mot de passe est prouvé plutôt qu'envoyé. Le channel binding (`SCRAM-SHA-256-PLUS`) n'est pas proposé.
 
-SCRAM a besoin d'un vérificateur RFC 5802, qui ne peut pas être dérivé d'un hachage bcrypt. Un vérificateur est écrit chaque fois qu'un mot de passe passe en clair — inscription, connexion, changement de mot de passe, réinitialisation par un administrateur — de sorte qu'un déploiement qui active SCRAM collecte des vérificateurs à mesure que ses utilisateurs s'authentifient, et la première connexion SCRAM de chaque utilisateur suit sa prochaine saisie de mot de passe. Un utilisateur sans vérificateur reçoit un échange factice impossible à distinguer d'un vrai, afin que le réseau ne révèle pas qui a migré.
+SCRAM a besoin d'un vérificateur RFC 5802, qui ne peut pas être dérivé d'un hachage bcrypt. Un vérificateur est écrit chaque fois qu'un mot de passe passe en clair (inscription, connexion, changement de mot de passe, réinitialisation par un administrateur) de sorte qu'un déploiement qui active SCRAM collecte des vérificateurs à mesure que ses utilisateurs s'authentifient, et la première connexion SCRAM de chaque utilisateur suit sa prochaine saisie de mot de passe. Un utilisateur sans vérificateur reçoit un échange factice impossible à distinguer d'un vrai, afin que le réseau ne révèle pas qui a migré.
 
 ### TLS mutuel {: #mutual-tls }
 
-La vérification du certificat client déplace le premier contrôle dans la poignée de main TLS : un appelant sans certificat signé par la CA du déploiement n'atteint jamais la couche des identifiants. Elle est disponible sur pgwire, Bolt, gRPC et Arrow Flight — les quatre transports qui terminent leur propre TLS.
+La vérification du certificat client déplace le premier contrôle dans la poignée de main TLS : un appelant sans certificat signé par la CA du déploiement n'atteint jamais la couche des identifiants. Elle est disponible sur pgwire, Bolt, gRPC et Arrow Flight: les quatre transports qui terminent leur propre TLS.
 
 | Variable | Signification |
 | ---------- | --------- |
@@ -517,7 +520,7 @@ La vérification du certificat client déplace le premier contrôle dans la poig
 | `PROVISA_MTLS_MODE` | `required` (par défaut dès qu'une CA est définie) ou `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | Si vrai, le nom commun du certificat doit égaler le nom d'utilisateur sous lequel la connexion s'authentifie ensuite |
 
-Les surcharges par protocole suivent le même nommage que les réglages TLS. Rien n'est déduit : un mode défini sans CA refuse de démarrer, et un mode non reconnu refuse de démarrer plutôt que d'être lu comme le voisin le plus sûr — un déploiement qui croit exiger des certificats clients et ne le fait pas est en plus mauvaise posture qu'un déploiement qui ne démarre pas.
+Les surcharges par protocole suivent le même nommage que les réglages TLS. Rien n'est déduit : un mode défini sans CA refuse de démarrer, et un mode non reconnu refuse de démarrer plutôt que d'être lu comme le voisin le plus sûr. Un déploiement qui croit exiger des certificats clients et ne le fait pas est en plus mauvaise posture qu'un déploiement qui ne démarre pas.
 
 ### Versions de TLS {: #tls-versions }
 
@@ -527,9 +530,9 @@ Chaque écouteur que Provisa termine (l'API HTTP et l'UI, pgwire, Bolt, MCP, gRP
 
 Deviner des mots de passe ne dépend pas du protocole : le même compte peut être attaqué via HTTP, pgwire et Bolt. Le compteur vit donc dans la couche de validation des identifiants, pas sur une surface particulière, de sorte qu'un verrouillage obtenu n'importe où s'applique partout.
 
-Elle est active par défaut — cinq échecs en cinq minutes verrouillent le sujet pendant quinze minutes — et se règle sous `auth.login_throttle`. Un sujet verrouillé est refusé avant même que l'identifiant soit examiné, et une authentification réussie efface l'historique de ce sujet.
+Elle est active par défaut (cinq échecs en cinq minutes verrouillent le sujet pendant quinze minutes) et se règle sous `auth.login_throttle`. Un sujet verrouillé est refusé avant même que l'identifiant soit examiné, et une authentification réussie efface l'historique de ce sujet.
 
-La clé est le principal que porte le protocole. Une surface uniquement bearer ne porte pas de principal, la clé est donc un condensé de l'identifiant lui-même ; ce que cela empêche, c'est qu'un mauvais jeton soit rejoué sans limite. Le magasin est par processus, donc un déploiement qui exécute plusieurs workers d'API autorise jusqu'à `max_attempts` par worker — la limitation freine la devinette, ce n'est pas un quota distribué.
+La clé est le principal que porte le protocole. Une surface uniquement bearer ne porte pas de principal, la clé est donc un condensé de l'identifiant lui-même ; ce que cela empêche, c'est qu'un mauvais jeton soit rejoué sans limite. Le magasin est par processus, donc un déploiement qui exécute plusieurs workers d'API autorise jusqu'à `max_attempts` par worker. La limitation freine la devinette, ce n'est pas un quota distribué.
 
 ### Sondage de rôles {: #role-probing }
 
@@ -669,8 +672,8 @@ Les onglets Python et Notebook d'Explore exécutent Python dans le navigateur du
 
 **Ce que fait le mode :**
 
-- **Les endpoints de données exigent une preuve de déchiffrement côté client.** Tout ce qui se trouve sous `/data/` renvoie 403 sauf si l'appelant présente l'en-tête `X-Provisa-KMS-Key` — la marque d'un client JDBC ou Python configuré pour déchiffrer localement. Un navigateur ou un consommateur REST en clair ne porte pas une telle clé et est refusé. Le contrôle est un refus par défaut sur toute l'arborescence : une route ajoutée demain est protégée le jour de sa publication, et une exemption doit être justifiée.
-- **Les endpoints de métadonnées de schéma restent ouverts.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` et `/data/compile` ne renvoient aucune donnée de ligne, et un client doit lire le schéma — y compris les champs `@encrypted` — avant de pouvoir se connecter.
+- **Les endpoints de données exigent une preuve de déchiffrement côté client.** Tout ce qui se trouve sous `/data/` renvoie 403 sauf si l'appelant présente l'en-tête `X-Provisa-KMS-Key`, la marque d'un client JDBC ou Python configuré pour déchiffrer localement. Un navigateur ou un consommateur REST en clair ne porte pas une telle clé et est refusé. Le contrôle est un refus par défaut sur toute l'arborescence : une route ajoutée demain est protégée le jour de sa publication, et une exemption doit être justifiée.
+- **Les endpoints de métadonnées de schéma restent ouverts.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` et `/data/compile` ne renvoient aucune donnée de ligne, et un client doit lire le schéma (y compris les champs `@encrypted`) avant de pouvoir se connecter.
 - **gRPC et Arrow Flight continuent de servir, sous la même preuve.** Ce sont les transports qu'utilisent réellement les clients qui chiffrent ; les fermer laisserait un déploiement haute sécurité sans protocole filaire. Un appel de données sur l'un ou l'autre doit porter la même clé KMS en métadonnées d'appel.
 - **pgwire, Bolt et MCP ne démarrent pas.** Aucun des trois n'a de poignée de main par connexion capable de porter un contexte de déchiffrement : un ensemble de lignes pgwire et un résultat Cypher circulent en clair, et un appel d'outil MCP remet ses résultats à un modèle sous forme de texte. Un port configuré pour l'un d'eux est refusé au démarrage plutôt que servi.
 - **La garde des relations ne peut pas être contournée.** `ignore_relationships` et `relationship_guard: false` sont tous deux ignorés ; voir [Gouvernance des relations](#relationship-governance-v002).
@@ -683,7 +686,7 @@ Un point d'ancrage de politique externe facultatif qui se déclenche avant l'ex�
 
 ### Portée {: #scoping }
 
-Le point d'ancrage ne se déclenche que lorsque la requête touche une table ou une source incluse — aucun surcoût pour tout le reste.
+Le point d'ancrage ne se déclenche que lorsque la requête touche une table ou une source incluse. Aucun surcoût pour tout le reste.
 
 | Configuration | Effet |
 | -------- | -------- |
@@ -724,7 +727,8 @@ message ApprovalResponse {
   string reason = 2;
 }
 ```
-Le canal gRPC est persistant — un canal par instance de Provisa, réutilisé pour tous les appels vers cet endpoint du point d'ancrage.
+
+Le canal gRPC est persistant: un canal par instance de Provisa, réutilisé pour tous les appels vers cet endpoint du point d'ancrage.
 
 ### Requête / réponse {: #request-response }
 
@@ -774,6 +778,7 @@ auth:
     fallback: deny      # allow | deny — applied on timeout or error
     scope: ""           # "" = use per-table/per-source flags; "all" = every query
 ```
+
 En cas de délai dépassé ou d'erreur de transport, la politique `fallback` s'applique. Un disjoncteur (par défaut : ouvert après 5 échecs consécutifs, semi-ouvert après 30 s) empêche les défaillances en cascade dues à un endpoint de point d'ancrage lent.
 
 ### Exemple de configuration {: #configuration-example }
@@ -794,8 +799,9 @@ tables:
   - id: salary_data
     approval_hook: true   # this table always requires hook approval
 ```
+
 ## Secrets
 
 Les identifiants utilisent la syntaxe `${env:VAR_NAME}`, résolue à l'exécution. Les mots de passe ne sont jamais stockés dans la base de données de configuration.
 
-Pour le service de secrets complet — coffres, syntaxe des références et fournisseurs — voir [Secrets](secrets.md).
+Pour le service de secrets complet (coffres, syntaxe des références et fournisseurs) voir [Secrets](secrets.md).

@@ -83,7 +83,7 @@ Unabhängig vergebene Capabilities mit optionaler Rollenhierarchie über `parent
 
 ### Rollenvererbung {: #role-inheritance }
 
-Rollen können über `parent_role_id` von einer übergeordneten Rolle erben, gesetzt in der Konfiguration oder auf der Seite Sicherheit als „Erbt von". Die Kette wird beim Start eingefaltet: Ein Kind hält die Vereinigung der Capabilities und des Domänenzugriffs seiner Vorfahren, jede Spalten-, Metrik-, Funktions- und Webhook-Freigabe, die einen Vorfahren nennt, und die RLS-Regeln der Vorfahren pro Tabelle, wobei das Kind Vorrang hat — die nächstgelegene Rolle in der Kette mit einer Regel für eine Tabelle liefert das Prädikat dieser Tabelle, und eine für das Kind gespeicherte Regel ersetzt die des Elternteils für diese Tabelle.
+Rollen können über `parent_role_id` von einer übergeordneten Rolle erben, gesetzt in der Konfiguration oder auf der Seite Sicherheit als „Erbt von". Die Kette wird beim Start eingefaltet: Ein Kind hält die Vereinigung der Capabilities und des Domänenzugriffs seiner Vorfahren, jede Spalten-, Metrik-, Funktions- und Webhook-Freigabe, die einen Vorfahren nennt, und die RLS-Regeln der Vorfahren pro Tabelle, wobei das Kind Vorrang hat. Die nächstgelegene Rolle in der Kette mit einer Regel für eine Tabelle liefert das Prädikat dieser Tabelle, und eine für das Kind gespeicherte Regel ersetzt die des Elternteils für diese Tabelle.
 
 ```yaml
 roles:
@@ -97,6 +97,7 @@ roles:
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
+
 ## Rollen: gewährt, abgeleitet und meta {: #roles-granted-derived-and-meta }
 
 Drei Arten von Rollen wirken im Zugriffsmodell von Provisa zusammen. Die Seite Rollen listet die ersten beiden gemeinsam auf; eine Meta-Rolle wird nie gelistet.
@@ -137,7 +138,7 @@ Denken Sie an ein JWT: Seine Claims sind Fakten über die Person. Abgeleitete Ro
 
 Wenn eine Anfrage mehr als eine Rolle nennt, baut Provisa eine flüchtige Meta-Rolle mit der Kennung `meta:<ids sorted, joined by +>`. Sie ist ein einziges Kind jeder Rolle der genannten Menge. Die ganze Pipeline läuft dann mit ihr als gewöhnlicher einzelner Rolle.
 
-Die Rechte sind die Vereinigung der Rechte aller Mitglieder. Zeilenfilter sind das OR des aufgelösten Filters jedes Mitglieds; hat irgendein Mitglied, das eine Tabelle liest, keinen Filter, hat auch die Meta-Rolle keinen — kein Filter bedeutet alle Zeilen. Eine Meta-Rolle wird nie gespeichert, gelistet oder exportiert. Sie wird aus ihren Mitgliedern neu gebaut, wenn sich das Modell ändert.
+Die Rechte sind die Vereinigung der Rechte aller Mitglieder. Zeilenfilter sind das OR des aufgelösten Filters jedes Mitglieds; hat irgendein Mitglied, das eine Tabelle liest, keinen Filter, hat auch die Meta-Rolle keinen. Kein Filter bedeutet alle Zeilen. Eine Meta-Rolle wird nie gespeichert, gelistet oder exportiert. Sie wird aus ihren Mitgliedern neu gebaut, wenn sich das Modell ändert.
 
 Die Spalten jeder Zeile werden nach den Rollen maskiert und gezeigt, deren Zeilenfilter diese Zeile zugelassen hat: Von diesen Rollen gilt die am wenigsten einschränkende Lesart der Spalte, und eine Rolle, die die Zeile nicht zugelassen hat, trägt nichts dazu bei, wie sie gelesen wird. Masken greifen dort, wo die Tabelle gelesen wird, vor jedem Join und jeder Aggregation, sodass eine Aggregation die maskierten Werte liest. Schreibvorgänge werden ebenso geprüft: Eine Spalte wird in einer Zeile nur geschrieben, wo eine Rolle, die diese Spalte gewährt, die Zeile zulässt.
 
@@ -188,7 +189,7 @@ Der Kompromiss ist Berechnung statt Aufzählung. Ein kleiner Rollenkatalog hält
 
 - Halten Sie den Rollenkatalog so klein, wie die Organisation es zulässt.
 - Erben Sie innerhalb einer Achse (Seniorität, Freigabestufe). Kombinieren Sie über unabhängige Achsen (Rolle + Region, Rolle + Abteilung).
-- Setzen Sie die spezifischsten Maskeneinträge an den Anfang — ein früherer Eintrag gewinnt, auch wenn der Leser einen späteren hält.
+- Setzen Sie die spezifischsten Maskeneinträge an den Anfang. Ein früherer Eintrag gewinnt, auch wenn der Leser einen späteren hält.
 - Prüfen Sie den wirksamen Zugriff mit `POST /admin/masks/check`, bevor Sie eine Kombination in Produktion bringen.
 
 ## Spaltenberechtigungsmodell {: #column-permission-model }
@@ -341,7 +342,7 @@ Der Maskenausdruck wird in die SQL-SELECT-Projektion verschoben. Die Datenbank l
 
 **Kein gehaltener Eintrag bedeutet unmaskiert.** Ein Leser, der keinen Eintrag hält, liest die Spalte unmaskiert. Beenden Sie eine Liste mit einem `*`-Eintrag, wenn auf jeden Leser irgendeine Maske angewendet werden soll. Der Spalteneditor warnt, wenn einer Liste ein `*`-Eintrag fehlt (`unlisted_unmasked`).
 
-**Verweigern durch Reihenfolge.** Ein früherer Eintrag gewinnt, auch wenn der Leser zusätzlich einen späteren, freizügigeren hält. Damit Auftragnehmer ein Gehalt immer maskiert sehen, gleich welche anderen Rollen sie haben, setzen Sie den Eintrag für Auftragnehmer vor den unmaskierten Eintrag. Eine gewährte Rolle verliert nie, was ihr Elternteil über die Vererbung gewährt, aber ein früher in der Liste stehender Maskeneintrag gilt zuerst — so funktioniert Einschränkung hier.
+**Verweigern durch Reihenfolge.** Ein früherer Eintrag gewinnt, auch wenn der Leser zusätzlich einen späteren, freizügigeren hält. Damit Auftragnehmer ein Gehalt immer maskiert sehen, gleich welche anderen Rollen sie haben, setzen Sie den Eintrag für Auftragnehmer vor den unmaskierten Eintrag. Eine gewährte Rolle verliert nie, was ihr Elternteil über die Vererbung gewährt, aber ein früher in der Liste stehender Maskeneintrag gilt zuerst. So funktioniert Einschränkung hier.
 
 **Meta-Rollen.** Die Kette einer Meta-Rolle umfasst die Rollen jedes Mitglieds, deren Vorfahren und alle genannten abgeleiteten Rollen. Ein Eintrag, der irgendeinem Mitglied gewährt ist, erreicht die Meta-Rolle. Ein Eintrag davor, den ein anderes Mitglied hält, gilt weiterhin zuerst.
 
@@ -360,6 +361,7 @@ masks:
   - to: ["*"]
     mask: {type: truncate, precision: year}
 ```
+
 ## Regulierung von Aktionsantworten {: #governing-action-responses }
 
 Was eine verfolgte Funktion oder ein Webhook zurückgibt, wird wie die Zeilen einer Tabelle reguliert. Provisa bindet die zurückgegebenen Zeilen als Relation, deren Spalten die deklarierte Ausgabe der Aktion sind: `output_columns` bei einer Funktion, `inline_return_type` bei einem Webhook oder die Objekteigenschaften des Array-`return_schema` einer Funktion. Diese Relation durchläuft dann dieselbe Governance-Stufe wie jeder Tabellenzugriff, über eine VALUES-CTE mit den Zeilen, sodass Zeilensicherheit, Maskierung und Sichtbarkeit für Aktionen nicht neu implementiert werden.
@@ -446,6 +448,7 @@ roles:
     rate_limit:
       max_query_complexity: 200
 ```
+
 Der Wert wird gemessen, nachdem eine Anfrage geparst und bevor sie reguliert oder ausgeführt wird, sodass ein Limit auf jeder Schnittstelle gilt, über die eine Anweisung kommen kann: GraphQL, SQL über HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API und MCP. Eine Anweisung über dem Limit wird mit ihrem Wert, dem Limit und dem, was sie verlangt hat, abgelehnt. HTTP-Schnittstellen antworten mit 413. Die Ablehnung wird als Richtlinienverweigerung erfasst.
 
 ## Authentifizierung {: #authentication }
@@ -469,7 +472,7 @@ Austauschbare Auth-Provider:
 
 Rollenzuordnung: Identitäts-Claims → Provisa-Rolle über konfigurierbare Regeln. Das Feld `assignments_source` steuert, woher Rollenzuweisungen kommen: `claims` liest sie aus den Claims des JWT (Standard), `provisa` liest sie aus dem internen Zuweisungsspeicher von Provisa. Ein mandantenfähiges Deployment (`multitenancy: true`) vergibt Rollen selbst, pro Org, und muss daher `assignments_source: provisa` nutzen: Mit `claims` startet es nicht, und eine Einstellungsänderung, die diese Kombination ergäbe, wird abgelehnt. Ein Deployment mit einem Mandanten darf beides nutzen.
 
-Ein in `provisa.yaml` konfigurierter Superuser (Benutzername plus ein Passwort aus einem Umgebungs-Secret) erhält immer die Admin-Rolle und alle Capabilities, unabhängig vom konfigurierten Provider — ein Bootstrap-Pfad für die Ersteinrichtung.
+Ein in `provisa.yaml` konfigurierter Superuser (Benutzername plus ein Passwort aus einem Umgebungs-Secret) erhält immer die Admin-Rolle und alle Capabilities, unabhängig vom konfigurierten Provider, ein Bootstrap-Pfad für die Ersteinrichtung.
 
 ### Oberflächen und Anmeldedaten {: #surfaces-and-credentials }
 
@@ -505,11 +508,11 @@ Ein gültiges Token wird zum Konto seines Besitzers aufgelöst, mit Benutzer-ID,
 
 Unter dem Provider `basic` lässt `auth.scram: true` pgwire SASL (Authentifizierungscode 10) mit dem Mechanismus `SCRAM-SHA-256` anbieten, sodass ein Passwort nachgewiesen statt gesendet wird. Channel Binding (`SCRAM-SHA-256-PLUS`) wird nicht angeboten.
 
-SCRAM braucht einen Verifier nach RFC 5802, der sich nicht aus einem bcrypt-Hash ableiten lässt. Ein Verifier wird immer dann geschrieben, wenn ein Passwort im Klartext durchläuft — Registrierung, Anmeldung, Passwortänderung, Admin-Zurücksetzung —, sodass ein Deployment, das SCRAM einschaltet, Verifier sammelt, wenn sich seine Benutzer das nächste Mal authentifizieren, und die erste SCRAM-Verbindung jedes Benutzers auf seine nächste Passworteingabe folgt. Einem Benutzer ohne Verifier wird mit einem Schein-Austausch geantwortet, der von einem echten nicht zu unterscheiden ist, sodass die Leitung nicht verrät, wer schon umgestellt ist.
+SCRAM braucht einen Verifier nach RFC 5802, der sich nicht aus einem bcrypt-Hash ableiten lässt. Ein Verifier wird immer dann geschrieben, wenn ein Passwort im Klartext durchläuft (Registrierung, Anmeldung, Passwortänderung, Admin-Zurücksetzung), sodass ein Deployment, das SCRAM einschaltet, Verifier sammelt, wenn sich seine Benutzer das nächste Mal authentifizieren, und die erste SCRAM-Verbindung jedes Benutzers auf seine nächste Passworteingabe folgt. Einem Benutzer ohne Verifier wird mit einem Schein-Austausch geantwortet, der von einem echten nicht zu unterscheiden ist, sodass die Leitung nicht verrät, wer schon umgestellt ist.
 
 ### Mutual TLS {: #mutual-tls }
 
-Die Prüfung des Client-Zertifikats verlegt die erste Prüfung in den TLS-Handshake: Ein Aufrufer ohne ein von der CA des Deployments signiertes Zertifikat erreicht die Credential-Schicht nie. Sie ist auf pgwire, Bolt, gRPC und Arrow Flight verfügbar — den vier Transporten, die ihr eigenes TLS terminieren.
+Die Prüfung des Client-Zertifikats verlegt die erste Prüfung in den TLS-Handshake: Ein Aufrufer ohne ein von der CA des Deployments signiertes Zertifikat erreicht die Credential-Schicht nie. Sie ist auf pgwire, Bolt, gRPC und Arrow Flight verfügbar: den vier Transporten, die ihr eigenes TLS terminieren.
 
 | Variable | Bedeutung |
 | ---------- | --------- |
@@ -517,7 +520,7 @@ Die Prüfung des Client-Zertifikats verlegt die erste Prüfung in den TLS-Handsh
 | `PROVISA_MTLS_MODE` | `required` (Standard, sobald eine CA gesetzt ist) oder `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | Wenn true, muss der Common Name des Zertifikats dem Benutzernamen entsprechen, als der sich die Verbindung dann authentifiziert |
 
-Protokollspezifische Überschreibungen folgen derselben Benennung wie die TLS-Einstellungen. Nichts wird abgeleitet: Ein ohne CA gesetzter Modus verweigert den Start, und ein unbekannter Modus verweigert den Start, statt als sicherster Nachbar gelesen zu werden — ein Deployment, das glaubt, Client-Zertifikate zu verlangen, es aber nicht tut, ist schlechter dran als eines, das nicht startet.
+Protokollspezifische Überschreibungen folgen derselben Benennung wie die TLS-Einstellungen. Nichts wird abgeleitet: Ein ohne CA gesetzter Modus verweigert den Start, und ein unbekannter Modus verweigert den Start, statt als sicherster Nachbar gelesen zu werden. Ein Deployment, das glaubt, Client-Zertifikate zu verlangen, es aber nicht tut, ist schlechter dran als eines, das nicht startet.
 
 ### TLS-Versionen {: #tls-versions }
 
@@ -527,9 +530,9 @@ Jeder Listener, den Provisa terminiert (die HTTP-API und die UI, pgwire, Bolt, M
 
 Passwortraten ist protokollunabhängig: Dasselbe Konto kann über HTTP, pgwire und Bolt bearbeitet werden. Der Zähler liegt daher auf der Credential-Validierungsschicht, nicht auf einer einzelnen Oberfläche, sodass eine irgendwo verdiente Sperre überall durchgesetzt wird.
 
-Sie ist standardmäßig an — fünf Fehlschläge in fünf Minuten sperren das Subjekt für fünfzehn Minuten — und wird unter `auth.login_throttle` eingestellt. Ein gesperrtes Subjekt wird abgelehnt, bevor das Credential überhaupt geprüft wird, und eine erfolgreiche Authentifizierung löscht die Historie dieses Subjekts.
+Sie ist standardmäßig an (fünf Fehlschläge in fünf Minuten sperren das Subjekt für fünfzehn Minuten) und wird unter `auth.login_throttle` eingestellt. Ein gesperrtes Subjekt wird abgelehnt, bevor das Credential überhaupt geprüft wird, und eine erfolgreiche Authentifizierung löscht die Historie dieses Subjekts.
 
-Der Schlüssel ist der Principal, den das Protokoll trägt. Eine reine Bearer-Oberfläche trägt keinen Principal, daher ist der Schlüssel ein Digest des Credentials selbst; das verhindert, dass ein schlechtes Token unbegrenzt wiederholt wird. Der Speicher ist pro Prozess, daher erlaubt ein Deployment mit mehreren API-Workern bis zu `max_attempts` pro Worker — die Drosselung bremst das Raten, sie ist kein verteiltes Kontingent.
+Der Schlüssel ist der Principal, den das Protokoll trägt. Eine reine Bearer-Oberfläche trägt keinen Principal, daher ist der Schlüssel ein Digest des Credentials selbst; das verhindert, dass ein schlechtes Token unbegrenzt wiederholt wird. Der Speicher ist pro Prozess, daher erlaubt ein Deployment mit mehreren API-Workern bis zu `max_attempts` pro Worker. Die Drosselung bremst das Raten, sie ist kein verteiltes Kontingent.
 
 ### Rollen-Sondierung {: #role-probing }
 
@@ -669,8 +672,8 @@ Die Tabs Python und Notebook von Explore führen Python im Browser des Besuchers
 
 **Was der Modus tut:**
 
-- **Datenendpunkte verlangen den Nachweis clientseitiger Entschlüsselung.** Alles unter `/data/` liefert 403, sofern der Aufrufer nicht den Header `X-Provisa-KMS-Key` vorlegt — das Kennzeichen eines JDBC- oder Python-Clients, der lokal entschlüsselt. Ein Browser oder ein REST-Konsument im Klartext trägt keinen solchen Schlüssel und wird abgelehnt. Das Gate ist ein Default-Deny über den ganzen Baum: Eine morgen hinzugefügte Route ist am Tag ihrer Auslieferung geschützt, und eine Ausnahme muss begründet werden.
-- **Schema-Metadaten-Endpunkte bleiben offen.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` und `/data/compile` liefern keine Zeilendaten, und ein Client muss das Schema lesen — einschließlich der Felder, die `@encrypted` sind —, bevor er sich überhaupt verbinden kann.
+- **Datenendpunkte verlangen den Nachweis clientseitiger Entschlüsselung.** Alles unter `/data/` liefert 403, sofern der Aufrufer nicht den Header `X-Provisa-KMS-Key` vorlegt, das Kennzeichen eines JDBC- oder Python-Clients, der lokal entschlüsselt. Ein Browser oder ein REST-Konsument im Klartext trägt keinen solchen Schlüssel und wird abgelehnt. Das Gate ist ein Default-Deny über den ganzen Baum: Eine morgen hinzugefügte Route ist am Tag ihrer Auslieferung geschützt, und eine Ausnahme muss begründet werden.
+- **Schema-Metadaten-Endpunkte bleiben offen.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` und `/data/compile` liefern keine Zeilendaten, und ein Client muss das Schema lesen (einschließlich der Felder, die `@encrypted` sind), bevor er sich überhaupt verbinden kann.
 - **gRPC und Arrow Flight bedienen weiter, unter demselben Nachweis.** Sie sind die Transporte, die verschlüsselnde Clients tatsächlich nutzen; sie zu schließen ließe ein Hochsicherheits-Deployment ohne Wire-Protokoll. Ein Datenaufruf auf einem von beiden muss denselben KMS-Schlüssel als Aufruf-Metadaten tragen.
 - **pgwire, Bolt und MCP starten nicht.** Keiner der drei hat einen Handshake pro Verbindung, der einen Entschlüsselungskontext tragen könnte: Eine pgwire-Zeilenmenge und ein Cypher-Ergebnis sind auf der Leitung Klartext, und ein MCP-Werkzeugaufruf übergibt seine Ergebnisse einem Modell als Text. Ein konfigurierter Port für einen von ihnen wird beim Start abgelehnt statt bedient.
 - **Der Beziehungsschutz lässt sich nicht umgehen.** `ignore_relationships` und `relationship_guard: false` werden beide ignoriert; siehe [Governance der Beziehungen](#relationship-governance-v002).
@@ -683,7 +686,7 @@ Ein optionaler externer Richtlinien-Hook, der vor der Abfrageausführung auslös
 
 ### Geltungsbereich {: #scoping }
 
-Der Hook löst nur aus, wenn die Abfrage eine einbezogene Tabelle oder Quelle berührt — kein Overhead für alles andere.
+Der Hook löst nur aus, wenn die Abfrage eine einbezogene Tabelle oder Quelle berührt. Kein Overhead für alles andere.
 
 | Konfiguration | Wirkung |
 | -------- | -------- |
@@ -724,7 +727,8 @@ message ApprovalResponse {
   string reason = 2;
 }
 ```
-Der gRPC-Kanal ist persistent — ein Kanal pro Provisa-Instanz, wiederverwendet für alle Aufrufe an diesen Hook-Endpunkt.
+
+Der gRPC-Kanal ist persistent: ein Kanal pro Provisa-Instanz, wiederverwendet für alle Aufrufe an diesen Hook-Endpunkt.
 
 ### Anfrage / Antwort {: #request-response }
 
@@ -774,6 +778,7 @@ auth:
     fallback: deny      # allow | deny — applied on timeout or error
     scope: ""           # "" = use per-table/per-source flags; "all" = every query
 ```
+
 Bei einem Timeout oder Transportfehler gilt die Richtlinie `fallback`. Ein Circuit Breaker (Standard: offen nach 5 aufeinanderfolgenden Fehlern, halboffen nach 30 s) verhindert kaskadierende Ausfälle durch einen langsamen Hook-Endpunkt.
 
 ### Konfigurationsbeispiel {: #configuration-example }
@@ -794,8 +799,9 @@ tables:
   - id: salary_data
     approval_hook: true   # this table always requires hook approval
 ```
+
 ## Secrets
 
 Anmeldedaten verwenden die Syntax `${env:VAR_NAME}`, zur Laufzeit aufgelöst. Passwörter werden nie in der Konfigurations-DB gespeichert.
 
-Den vollständigen Secrets-Dienst — Vaults, Referenzsyntax und Provider — beschreibt [Secrets](secrets.md).
+Den vollständigen Secrets-Dienst (Vaults, Referenzsyntax und Provider) beschreibt [Secrets](secrets.md).

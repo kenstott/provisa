@@ -83,7 +83,7 @@ Independently assigned capabilities with optional role hierarchy via `parent_rol
 
 ### Role Inheritance
 
-Roles can inherit from one parent role via `parent_role_id`, set in config or on the Security page as "Inherits from". The chain is folded in at startup: a child holds the union of its ancestors' capabilities and domain access, every column, metric, function and webhook grant that names an ancestor, and the ancestors' RLS rules per table with the child taking precedence — the nearest role in the chain with a rule for a table supplies that table's predicate, and a rule saved for the child replaces the parent's for that table.
+Roles can inherit from one parent role via `parent_role_id`, set in config or on the Security page as "Inherits from". The chain is folded in at startup: a child holds the union of its ancestors' capabilities and domain access, every column, metric, function and webhook grant that names an ancestor, and the ancestors' RLS rules per table with the child taking precedence. The nearest role in the chain with a rule for a table supplies that table's predicate, and a rule saved for the child replaces the parent's for that table.
 
 ```yaml
 roles:
@@ -138,7 +138,7 @@ Think of a JWT: its claims are facts about the person. Derived roles turn chosen
 
 When a request names more than one role, Provisa builds an ephemeral meta-role identified as `meta:<ids sorted, joined by +>`. It is a single child of every role in the named set. The whole pipeline then runs with it as an ordinary single role.
 
-Rights are the union of every member's. Row filters are the OR of each member's resolved filter; if any member that reads a table has no filter, the meta-role has none either — no filter means all rows. A meta-role is never stored, listed, or exported. It is rebuilt from its members when the model changes.
+Rights are the union of every member's. Row filters are the OR of each member's resolved filter; if any member that reads a table has no filter, the meta-role has none either. No filter means all rows. A meta-role is never stored, listed, or exported. It is rebuilt from its members when the model changes.
 
 Each row's columns are masked and shown according to the roles whose row filter admitted that row: of those roles, the least restrictive reading of the column applies, and a role that did not admit the row contributes nothing to how it is read. Masks apply where the table is read, before any join or aggregate, so an aggregate reads the masked values. Writes are checked the same way: a column is written on a row only where a role granting that column admits the row.
 
@@ -189,7 +189,7 @@ The trade-off is computation over enumeration. A small role catalogue keeps main
 
 - Keep the role catalogue as small as the organisation allows.
 - Inherit within one axis (seniority, clearance level). Compose across independent axes (role + region, role + department).
-- Put the most specific mask entries first — an earlier entry wins even when the reader holds a later one.
+- Put the most specific mask entries first. An earlier entry wins even when the reader holds a later one.
 - Check effective access with `POST /admin/masks/check` before deploying a combination in production.
 
 ## Column Permission Model
@@ -342,7 +342,7 @@ The mask expression is pushed into the SQL SELECT projection. The database retur
 
 **No entry held means unmasked.** A reader that holds no entry reads the column unmasked. End a list with a `*` entry when every reader should have some mask applied. The column editor warns when a list lacks a `*` entry (`unlisted_unmasked`).
 
-**Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first — that is how restriction works here.
+**Deny by order.** An earlier entry wins even when the reader also holds a later, more permissive one. To ensure contractors always see a masked salary regardless of their other roles, put the contractor entry before the unmasked entry. A granted role never loses what its parent grants through inheritance, but a mask entry placed earlier in the list applies first. That is how restriction works here.
 
 **Meta-roles.** A meta-role's chain includes every member's roles, their ancestors, and any named derived roles. An entry granted to any member reaches the meta-role. An entry before it, held by another member, still applies first.
 
@@ -472,7 +472,7 @@ Pluggable auth providers:
 
 Role mapping: identity claims → Provisa role via configurable rules. The `assignments_source` field controls where role assignments come from: `claims` reads them from JWT token claims (default), `provisa` reads them from Provisa's internal assignment store. A multi-tenant deployment (`multitenancy: true`) grants roles itself, per org, so it must use `assignments_source: provisa`: with `claims` it does not start, and a settings change that would produce that combination is refused. A single-tenant deployment may use either.
 
-A superuser configured in `provisa.yaml` (username plus a password from an env secret) always receives the admin role and all capabilities regardless of the configured provider — a bootstrap path for initial setup.
+A superuser configured in `provisa.yaml` (username plus a password from an env secret) always receives the admin role and all capabilities regardless of the configured provider, a bootstrap path for initial setup.
 
 ### Surfaces and credentials
 
@@ -508,11 +508,11 @@ A valid token resolves to its owner's account, with user id, email and display n
 
 Under the `basic` provider, setting `auth.scram: true` makes pgwire advertise SASL (authentication code 10) with the `SCRAM-SHA-256` mechanism, so a password is proved rather than sent. Channel binding (`SCRAM-SHA-256-PLUS`) is not offered.
 
-SCRAM needs an RFC 5802 verifier, which cannot be derived from a bcrypt hash. A verifier is written whenever a password passes through in plaintext — signup, login, password change, admin reset — so a deployment that turns SCRAM on collects verifiers as its users next authenticate, and each user's first SCRAM connection follows their next password entry. A user with no verifier yet is answered with a mock exchange indistinguishable from a real one, so the wire does not reveal who has migrated.
+SCRAM needs an RFC 5802 verifier, which cannot be derived from a bcrypt hash. A verifier is written whenever a password passes through in plaintext (signup, login, password change, admin reset) so a deployment that turns SCRAM on collects verifiers as its users next authenticate, and each user's first SCRAM connection follows their next password entry. A user with no verifier yet is answered with a mock exchange indistinguishable from a real one, so the wire does not reveal who has migrated.
 
 ### Mutual TLS
 
-Client-certificate verification moves the first check to the TLS handshake: a caller without a certificate signed by the deployment's CA never reaches the credential layer. It is available on pgwire, Bolt, gRPC and Arrow Flight — the four transports that terminate their own TLS.
+Client-certificate verification moves the first check to the TLS handshake: a caller without a certificate signed by the deployment's CA never reaches the credential layer. It is available on pgwire, Bolt, gRPC and Arrow Flight: the four transports that terminate their own TLS.
 
 | Variable | Meaning |
 | ---------- | --------- |
@@ -520,7 +520,7 @@ Client-certificate verification moves the first check to the TLS handshake: a ca
 | `PROVISA_MTLS_MODE` | `required` (the default once a CA is set) or `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | When true, the certificate's common name must equal the username the connection then authenticates as |
 
-Per-protocol overrides follow the same naming as the TLS settings. Nothing is inferred: a mode set without a CA refuses to start, and an unrecognized mode refuses to start rather than being read as the safest neighbour — a deployment that believes it requires client certificates and does not is worse off than one that fails to start.
+Per-protocol overrides follow the same naming as the TLS settings. Nothing is inferred: a mode set without a CA refuses to start, and an unrecognized mode refuses to start rather than being read as the safest neighbour. A deployment that believes it requires client certificates and does not is worse off than one that fails to start.
 
 ### TLS versions
 
@@ -530,9 +530,9 @@ Every listener Provisa terminates (the HTTP API and UI, pgwire, Bolt, MCP, gRPC 
 
 Password guessing is protocol-independent: the same account can be hammered over HTTP, pgwire and Bolt. The counter therefore lives at the credential-validation layer, not on any one surface, so a lockout earned anywhere is enforced everywhere.
 
-It is on by default — five failures in five minutes locks the subject out for fifteen minutes — and is tuned under `auth.login_throttle`. A locked-out subject is refused before the credential is examined at all, and a successful authentication clears that subject's history.
+It is on by default (five failures in five minutes locks the subject out for fifteen minutes) and is tuned under `auth.login_throttle`. A locked-out subject is refused before the credential is checked at all, and a successful authentication clears that subject's history.
 
-The key is the principal the protocol carries. A bearer-only surface carries no principal, so the key is a digest of the credential itself; what that stops is one bad token being replayed without limit. The store is per process, so a deployment running several API workers allows up to `max_attempts` per worker — the throttle is a brake on guessing, not a distributed quota.
+The key is the principal the protocol carries. A bearer-only surface carries no principal, so the key is a digest of the credential itself; what that stops is one bad token being replayed without limit. The store is per process, so a deployment running several API workers allows up to `max_attempts` per worker. The throttle is a brake on guessing, not a distributed quota.
 
 ### Role probing
 
@@ -672,8 +672,8 @@ Explore's Python and Notebook tabs run Python in the visitor's browser. Every re
 
 **What the mode does:**
 
-- **Data endpoints require proof of client-side decryption.** Everything under `/data/` returns 403 unless the caller presents the `X-Provisa-KMS-Key` header — the marker of a JDBC or Python client configured to decrypt locally. A browser or a plaintext REST consumer carries no such key and is refused. The gate is a default-deny over the whole tree: a route added tomorrow is gated on the day it ships, and an exemption has to be argued for.
-- **Schema-metadata endpoints stay open.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` and `/data/compile` return no row data, and a client has to read the schema — including which fields are `@encrypted` — before it can connect at all.
+- **Data endpoints require proof of client-side decryption.** Everything under `/data/` returns 403 unless the caller presents the `X-Provisa-KMS-Key` header, the marker of a JDBC or Python client configured to decrypt locally. A browser or a plaintext REST consumer carries no such key and is refused. The gate is a default-deny over the whole tree: a route added tomorrow is gated on the day it ships, and an exemption has to be argued for.
+- **Schema-metadata endpoints stay open.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` and `/data/compile` return no row data, and a client has to read the schema (including which fields are `@encrypted`) before it can connect at all.
 - **gRPC and Arrow Flight keep serving, under the same proof.** They are the transports encrypting clients actually use; closing them would leave a high-security deployment with no wire protocol. A data call on either must carry the same KMS key as call metadata.
 - **pgwire, Bolt and MCP do not start.** None of the three has a per-connection handshake that can carry a decryption context: a pgwire row set and a Cypher result are plaintext on the wire, and an MCP tool call hands its results to a model as text. A configured port for any of them is refused at startup rather than served.
 - **The relationship guard cannot be bypassed.** `ignore_relationships` and `relationship_guard: false` are both ignored; see [Relationship governance](#relationship-governance-v002).
@@ -686,7 +686,7 @@ An optional external policy hook that fires before query execution. When configu
 
 ### Scoping
 
-The hook only fires when the query touches a scoped table or source — zero overhead for everything else.
+The hook only fires when the query touches a scoped table or source. Zero overhead for everything else.
 
 | Config | Effect |
 | -------- | -------- |
@@ -728,7 +728,7 @@ message ApprovalResponse {
 }
 ```
 
-The gRPC channel is persistent — one channel per Provisa instance, reused across all calls to that hook endpoint.
+The gRPC channel is persistent: one channel per Provisa instance, reused across all calls to that hook endpoint.
 
 ### Request / Response
 
@@ -804,4 +804,4 @@ tables:
 
 Credentials use `${env:VAR_NAME}` syntax, resolved at runtime. Passwords are never stored in the config DB.
 
-For the full secrets service — vaults, reference syntax, and providers — see [Secrets](secrets.md).
+For the full secrets service (vaults, reference syntax, and providers), see [Secrets](secrets.md).

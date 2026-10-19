@@ -83,7 +83,7 @@ Capacidades atribuídas de forma independente, com uma hierarquia de funções o
 
 ### Herança de funções {: #role-inheritance }
 
-Funções podem herdar de uma função pai via `parent_role_id`, definida na configuração ou na página Segurança como "Herda de". A cadeia é dobrada na inicialização: um filho tem a união das capacidades e do acesso a domínios dos seus ancestrais, cada concessão de coluna, métrica, função e webhook que nomeia um ancestral, e as regras RLS dos ancestrais por tabela, com precedência do filho — a função mais próxima na cadeia com uma regra para uma tabela fornece o predicado dessa tabela, e uma regra salva para o filho substitui a do pai para essa tabela.
+Funções podem herdar de uma função pai via `parent_role_id`, definida na configuração ou na página Segurança como "Herda de". A cadeia é dobrada na inicialização: um filho tem a união das capacidades e do acesso a domínios dos seus ancestrais, cada concessão de coluna, métrica, função e webhook que nomeia um ancestral, e as regras RLS dos ancestrais por tabela, com precedência do filho. A função mais próxima na cadeia com uma regra para uma tabela fornece o predicado dessa tabela, e uma regra salva para o filho substitui a do pai para essa tabela.
 
 ```yaml
 roles:
@@ -97,6 +97,7 @@ roles:
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
+
 ## Funções: concedidas, derivadas e meta {: #roles-granted-derived-and-meta }
 
 Três tipos de função trabalham juntos no modelo de acesso do Provisa. A página Funções lista as duas primeiras juntas; uma meta-função nunca é listada.
@@ -137,7 +138,7 @@ Pense em um JWT: seus claims são fatos sobre a pessoa. Funções derivadas tran
 
 Quando uma requisição nomeia mais de uma função, o Provisa monta uma meta-função efêmera identificada como `meta:<ids sorted, joined by +>`. Ela é um único filho de cada função do conjunto nomeado. O pipeline inteiro então roda com ela como uma função única comum.
 
-Os direitos são a união dos de cada membro. Os filtros de linha são o OR do filtro resolvido de cada membro; se algum membro que lê uma tabela não tem filtro, a meta-função também não tem — sem filtro significa todas as linhas. Uma meta-função nunca é armazenada, listada nem exportada. Ela é remontada a partir dos seus membros quando o modelo muda.
+Os direitos são a união dos de cada membro. Os filtros de linha são o OR do filtro resolvido de cada membro; se algum membro que lê uma tabela não tem filtro, a meta-função também não tem. Sem filtro significa todas as linhas. Uma meta-função nunca é armazenada, listada nem exportada. Ela é remontada a partir dos seus membros quando o modelo muda.
 
 As colunas de cada linha são mascaradas e exibidas conforme os papéis cujo filtro de linhas admitiu essa linha: desses papéis, aplica-se a leitura menos restritiva da coluna, e um papel que não admitiu a linha não contribui em nada para como ela é lida. As máscaras se aplicam onde a tabela é lida, antes de qualquer join ou agregação, de modo que uma agregação lê os valores mascarados. As escritas são verificadas da mesma forma: uma coluna é escrita em uma linha apenas onde um papel que concede essa coluna admite a linha.
 
@@ -188,7 +189,7 @@ A troca é cálculo em vez de enumeração. Um catálogo de funções pequeno ma
 
 - Mantenha o catálogo de funções tão pequeno quanto a organização permitir.
 - Herde dentro de um eixo (senioridade, nível de habilitação). Componha entre eixos independentes (função + região, função + departamento).
-- Coloque primeiro as entradas de máscara mais específicas — uma entrada anterior vence mesmo quando o leitor tem uma posterior.
+- Coloque primeiro as entradas de máscara mais específicas. Uma entrada anterior vence mesmo quando o leitor tem uma posterior.
 - Verifique o acesso efetivo com `POST /admin/masks/check` antes de colocar uma combinação em produção.
 
 ## Modelo de permissões de coluna {: #column-permission-model }
@@ -341,7 +342,7 @@ A expressão de máscara é levada para a projeção SQL SELECT. O banco de dado
 
 **Nenhuma entrada tida significa sem máscara.** Um leitor que não tem nenhuma entrada lê a coluna sem máscara. Termine uma lista com uma entrada `*` quando todo leitor deve receber alguma máscara. O editor de colunas avisa quando falta uma entrada `*` em uma lista (`unlisted_unmasked`).
 
-**Negar pela ordem.** Uma entrada anterior vence mesmo quando o leitor também tem uma posterior mais permissiva. Para que prestadores de serviço vejam sempre um salário mascarado, quaisquer que sejam suas outras funções, coloque a entrada deles antes da entrada sem máscara. Uma função concedida nunca perde o que o pai concede por herança, mas uma entrada de máscara colocada antes na lista se aplica primeiro — é assim que a restrição funciona aqui.
+**Negar pela ordem.** Uma entrada anterior vence mesmo quando o leitor também tem uma posterior mais permissiva. Para que prestadores de serviço vejam sempre um salário mascarado, quaisquer que sejam suas outras funções, coloque a entrada deles antes da entrada sem máscara. Uma função concedida nunca perde o que o pai concede por herança, mas uma entrada de máscara colocada antes na lista se aplica primeiro. É assim que a restrição funciona aqui.
 
 **Meta-funções.** A cadeia de uma meta-função inclui as funções de cada membro, seus ancestrais e quaisquer funções derivadas nomeadas. Uma entrada concedida a qualquer membro alcança a meta-função. Uma entrada anterior, tida por outro membro, ainda se aplica primeiro.
 
@@ -360,6 +361,7 @@ masks:
   - to: ["*"]
     mask: {type: truncate, precision: year}
 ```
+
 ## Governança das respostas de ações {: #governing-action-responses }
 
 O que uma função rastreada ou um webhook retorna é governado como as linhas de uma tabela. O Provisa vincula as linhas retornadas como uma relação cujas colunas são a saída declarada da ação: `output_columns` para uma função, `inline_return_type` para um webhook, ou as propriedades do objeto do `return_schema` do tipo array de uma função. Essa relação passa então pela mesma etapa de governança de qualquer leitura de tabela, sobre uma CTE VALUES com as linhas, de modo que segurança de linhas, mascaramento e visibilidade não são reimplementados para ações.
@@ -446,6 +448,7 @@ roles:
     rate_limit:
       max_query_complexity: 200
 ```
+
 A pontuação é medida depois que uma requisição é analisada e antes de ser governada ou executada, então um mesmo limite vale em toda interface por onde uma instrução pode chegar: GraphQL, SQL sobre HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API e MCP. Uma instrução acima do limite é recusada com sua pontuação, o limite e o que pediu. As interfaces HTTP respondem 413. A recusa é registrada como uma negação de política.
 
 ## Autenticação {: #authentication }
@@ -469,7 +472,7 @@ O `saml` é o Web Browser SSO iniciado pelo SP. A assinatura XML da resposta é 
 
 Mapeamento de funções: claims de identidade → função do Provisa via regras configuráveis. O campo `assignments_source` controla de onde vêm as atribuições de funções: `claims` as lê dos claims do token JWT (padrão), `provisa` as lê do armazenamento interno de atribuições do Provisa. Uma implantação multi-tenant (`multitenancy: true`) concede as funções ela mesma, por organização, então precisa usar `assignments_source: provisa`: com `claims` ela não inicia, e uma mudança de configuração que produziria essa combinação é recusada. Uma implantação single-tenant pode usar qualquer uma.
 
-Um superusuário configurado em `provisa.yaml` (nome de usuário mais uma senha de um segredo de ambiente) sempre recebe a função admin e todas as capacidades, seja qual for o provedor configurado — um caminho de bootstrap para a configuração inicial.
+Um superusuário configurado em `provisa.yaml` (nome de usuário mais uma senha de um segredo de ambiente) sempre recebe a função admin e todas as capacidades, seja qual for o provedor configurado, um caminho de bootstrap para a configuração inicial.
 
 ### Superfícies e credenciais {: #surfaces-and-credentials }
 
@@ -505,11 +508,11 @@ Um token válido é resolvido para a conta do dono, com id de usuário, e-mail e
 
 Com o provedor `basic`, definir `auth.scram: true` faz o pgwire anunciar SASL (código de autenticação 10) com o mecanismo `SCRAM-SHA-256`, para que uma senha seja provada em vez de enviada. O channel binding (`SCRAM-SHA-256-PLUS`) não é oferecido.
 
-O SCRAM precisa de um verificador RFC 5802, que não pode ser derivado de um hash bcrypt. Um verificador é gravado sempre que uma senha passa em texto puro — cadastro, login, troca de senha, redefinição por administrador — então uma implantação que ativa o SCRAM coleta verificadores à medida que seus usuários se autenticam, e a primeira conexão SCRAM de cada usuário vem depois da sua próxima digitação de senha. Um usuário ainda sem verificador recebe uma troca simulada indistinguível de uma real, para que a rede não revele quem já migrou.
+O SCRAM precisa de um verificador RFC 5802, que não pode ser derivado de um hash bcrypt. Um verificador é gravado sempre que uma senha passa em texto puro (cadastro, login, troca de senha, redefinição por administrador) então uma implantação que ativa o SCRAM coleta verificadores à medida que seus usuários se autenticam, e a primeira conexão SCRAM de cada usuário vem depois da sua próxima digitação de senha. Um usuário ainda sem verificador recebe uma troca simulada indistinguível de uma real, para que a rede não revele quem já migrou.
 
 ### TLS mútuo {: #mutual-tls }
 
-A verificação do certificado do cliente move a primeira checagem para o handshake TLS: um chamador sem um certificado assinado pela CA da implantação nunca chega à camada de credenciais. Está disponível no pgwire, Bolt, gRPC e Arrow Flight — os quatro transportes que terminam o próprio TLS.
+A verificação do certificado do cliente move a primeira checagem para o handshake TLS: um chamador sem um certificado assinado pela CA da implantação nunca chega à camada de credenciais. Está disponível no pgwire, Bolt, gRPC e Arrow Flight: os quatro transportes que terminam o próprio TLS.
 
 | Variável | Significado |
 | ---------- | --------- |
@@ -517,7 +520,7 @@ A verificação do certificado do cliente move a primeira checagem para o handsh
 | `PROVISA_MTLS_MODE` | `required` (o padrão quando uma CA é definida) ou `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | Se verdadeiro, o common name do certificado deve ser igual ao nome de usuário com que a conexão então se autentica |
 
-As substituições por protocolo seguem a mesma nomenclatura das configurações de TLS. Nada é deduzido: um modo definido sem CA se recusa a iniciar, e um modo não reconhecido se recusa a iniciar em vez de ser lido como o vizinho mais seguro — uma implantação que acredita exigir certificados de cliente e não exige está em situação pior que uma que não inicia.
+As substituições por protocolo seguem a mesma nomenclatura das configurações de TLS. Nada é deduzido: um modo definido sem CA se recusa a iniciar, e um modo não reconhecido se recusa a iniciar em vez de ser lido como o vizinho mais seguro. Uma implantação que acredita exigir certificados de cliente e não exige está em situação pior que uma que não inicia.
 
 ### Versões do TLS {: #tls-versions }
 
@@ -527,9 +530,9 @@ Todo listener que o Provisa termina (a API HTTP e a UI, pgwire, Bolt, MCP, gRPC 
 
 Adivinhar senhas não depende do protocolo: a mesma conta pode ser atacada por HTTP, pgwire e Bolt. O contador fica, portanto, na camada de validação de credenciais, não em uma superfície específica, de modo que um bloqueio obtido em qualquer lugar é aplicado em todo lugar.
 
-Ela fica ligada por padrão — cinco falhas em cinco minutos bloqueiam o sujeito por quinze minutos — e é ajustada em `auth.login_throttle`. Um sujeito bloqueado é recusado antes mesmo de a credencial ser examinada, e uma autenticação bem-sucedida apaga o histórico desse sujeito.
+Ela fica ligada por padrão (cinco falhas em cinco minutos bloqueiam o sujeito por quinze minutos) e é ajustada em `auth.login_throttle`. Um sujeito bloqueado é recusado antes mesmo de a credencial ser examinada, e uma autenticação bem-sucedida apaga o histórico desse sujeito.
 
-A chave é o principal que o protocolo traz. Uma superfície só de bearer não traz principal, então a chave é um digest da própria credencial; o que isso impede é que um token ruim seja reapresentado sem limite. O armazenamento é por processo, então uma implantação com vários workers de API permite até `max_attempts` por worker — a limitação freia as tentativas, não é uma cota distribuída.
+A chave é o principal que o protocolo traz. Uma superfície só de bearer não traz principal, então a chave é um digest da própria credencial; o que isso impede é que um token ruim seja reapresentado sem limite. O armazenamento é por processo, então uma implantação com vários workers de API permite até `max_attempts` por worker. A limitação freia as tentativas, não é uma cota distribuída.
 
 ### Sondagem de papéis {: #role-probing }
 
@@ -669,8 +672,8 @@ As abas Python e Notebook do Explore executam Python no navegador do visitante. 
 
 **O que o modo faz:**
 
-- **Os endpoints de dados exigem prova de decifração no cliente.** Tudo sob `/data/` retorna 403 a menos que o chamador apresente o cabeçalho `X-Provisa-KMS-Key` — a marca de um cliente JDBC ou Python configurado para decifrar localmente. Um navegador ou um consumidor REST em texto puro não traz essa chave e é recusado. O controle é uma negação por padrão sobre a árvore inteira: uma rota adicionada amanhã fica protegida no dia em que é lançada, e uma exceção precisa ser justificada.
-- **Os endpoints de metadados de esquema continuam abertos.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` e `/data/compile` não retornam dados de linha, e um cliente precisa ler o esquema — incluindo quais campos são `@encrypted` — antes de poder se conectar.
+- **Os endpoints de dados exigem prova de decifração no cliente.** Tudo sob `/data/` retorna 403 a menos que o chamador apresente o cabeçalho `X-Provisa-KMS-Key`, a marca de um cliente JDBC ou Python configurado para decifrar localmente. Um navegador ou um consumidor REST em texto puro não traz essa chave e é recusado. O controle é uma negação por padrão sobre a árvore inteira: uma rota adicionada amanhã fica protegida no dia em que é lançada, e uma exceção precisa ser justificada.
+- **Os endpoints de metadados de esquema continuam abertos.** `/data/sdl`, `/data/introspection`, `/data/schema-version`, `/data/domains`, `/data/proto` e `/data/compile` não retornam dados de linha, e um cliente precisa ler o esquema (incluindo quais campos são `@encrypted`) antes de poder se conectar.
 - **gRPC e Arrow Flight continuam servindo, com a mesma prova.** São os transportes que os clientes que cifram realmente usam; fechá-los deixaria uma implantação de alta segurança sem protocolo de transmissão. Uma chamada de dados em qualquer um deles precisa levar a mesma chave KMS como metadados de chamada.
 - **pgwire, Bolt e MCP não iniciam.** Nenhum dos três tem um handshake por conexão capaz de levar um contexto de decifração: um conjunto de linhas do pgwire e um resultado Cypher trafegam em texto puro, e uma chamada de ferramenta MCP entrega seus resultados a um modelo como texto. Uma porta configurada para qualquer um deles é recusada na inicialização em vez de servida.
 - **A proteção de relacionamentos não pode ser contornada.** `ignore_relationships` e `relationship_guard: false` são ambos ignorados; veja [Governança de relacionamentos](#relationship-governance-v002).
@@ -683,7 +686,7 @@ Um hook de política externo opcional que dispara antes da execução da consult
 
 ### Escopo {: #scoping }
 
-O hook só dispara quando a consulta toca uma tabela ou fonte incluída — nenhum custo extra para todo o resto.
+O hook só dispara quando a consulta toca uma tabela ou fonte incluída. Nenhum custo extra para todo o resto.
 
 | Configuração | Efeito |
 | -------- | -------- |
@@ -724,7 +727,8 @@ message ApprovalResponse {
   string reason = 2;
 }
 ```
-O canal gRPC é persistente — um canal por instância do Provisa, reutilizado em todas as chamadas a esse endpoint do hook.
+
+O canal gRPC é persistente: um canal por instância do Provisa, reutilizado em todas as chamadas a esse endpoint do hook.
 
 ### Requisição / resposta {: #request-response }
 
@@ -774,6 +778,7 @@ auth:
     fallback: deny      # allow | deny — applied on timeout or error
     scope: ""           # "" = use per-table/per-source flags; "all" = every query
 ```
+
 Em caso de timeout ou erro de transporte, a política `fallback` se aplica. Um circuit breaker (padrão: abre após 5 falhas consecutivas, meio aberto após 30 s) evita falhas em cascata por um endpoint de hook lento.
 
 ### Exemplo de configuração {: #configuration-example }
@@ -794,8 +799,9 @@ tables:
   - id: salary_data
     approval_hook: true   # this table always requires hook approval
 ```
+
 ## Segredos {: #secrets }
 
 As credenciais usam a sintaxe `${env:VAR_NAME}`, resolvida em tempo de execução. Senhas nunca são armazenadas no banco de dados de configuração.
 
-Para o serviço completo de segredos — cofres, sintaxe de referência e provedores — veja [Segredos](secrets.md).
+Para o serviço completo de segredos (cofres, sintaxe de referência e provedores) veja [Segredos](secrets.md).

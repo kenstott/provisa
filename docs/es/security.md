@@ -97,6 +97,7 @@ roles:
     domain_access: [sales, analytics]
     parent_role_id: basic_user   # inherits query_development + public domain
 ```
+
 ## Roles: concedidos, derivados y meta {: #roles-granted-derived-and-meta }
 
 Tres tipos de rol funcionan juntos en el modelo de acceso de Provisa. La página Roles lista los dos primeros juntos; un meta-rol nunca se lista.
@@ -360,6 +361,7 @@ masks:
   - to: ["*"]
     mask: {type: truncate, precision: year}
 ```
+
 ## Gobierno de las respuestas de acciones {: #governing-action-responses }
 
 Lo que devuelve una función rastreada o un webhook se gobierna como las filas de una tabla. Provisa vincula las filas devueltas como una relación cuyas columnas son la salida declarada de la acción: `output_columns` para una función, `inline_return_type` para un webhook o las propiedades del objeto del `return_schema` de tipo array de una función. Esa relación pasa luego por la misma etapa de gobernanza que cualquier lectura de tabla, sobre una CTE VALUES que contiene las filas, de modo que la seguridad de filas, el enmascaramiento y la visibilidad no se reimplementan para las acciones.
@@ -446,6 +448,7 @@ roles:
     rate_limit:
       max_query_complexity: 200
 ```
+
 La puntuación se mide después de analizar una solicitud y antes de gobernarla o ejecutarla, así que un mismo límite se cumple en cada interfaz por la que puede llegar una sentencia: GraphQL, SQL sobre HTTP, pgwire, Arrow Flight, gRPC, Cypher, JSON:API y MCP. Una sentencia por encima del límite se rechaza con su puntuación, el límite y lo que pidió. Las interfaces HTTP responden 413. El rechazo se registra como una denegación de política.
 
 ## Autenticación {: #authentication }
@@ -724,6 +727,7 @@ message ApprovalResponse {
   string reason = 2;
 }
 ```
+
 El canal gRPC es persistente: un canal por instancia de Provisa, reutilizado en todas las llamadas a ese endpoint del hook.
 
 ### Solicitud / respuesta {: #request-response }
@@ -774,6 +778,7 @@ auth:
     fallback: deny      # allow | deny — applied on timeout or error
     scope: ""           # "" = use per-table/per-source flags; "all" = every query
 ```
+
 Ante un tiempo límite o un error de transporte se aplica la política `fallback`. Un disyuntor (predeterminado: se abre tras 5 fallos consecutivos, semiabierto tras 30 s) evita fallos en cascada por un endpoint de hook lento.
 
 ### Ejemplo de configuración {: #configuration-example }
@@ -794,6 +799,7 @@ tables:
   - id: salary_data
     approval_hook: true   # this table always requires hook approval
 ```
+
 ## Secretos {: #secrets }
 
 Las credenciales usan la sintaxis `${env:VAR_NAME}`, resuelta en tiempo de ejecución. Las contraseñas nunca se guardan en la base de datos de configuración.
