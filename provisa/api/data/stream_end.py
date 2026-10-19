@@ -43,7 +43,14 @@ def new_subscription_id() -> str:
 
 
 def failure_body(exc: BaseException) -> dict:
-    """What the HTTP error handlers answer for ``exc``, as a body."""
+    """What the HTTP error handlers answer for ``exc``, as a body, redacted (REQ-2087): a
+    stream's last frame is sent with a 200, past the error-response middleware."""
+    from provisa.security.redaction import redact_value
+
+    return redact_value(_failure_body(exc))
+
+
+def _failure_body(exc: BaseException) -> dict:
     from provisa.api.errors import ApiError
 
     if isinstance(exc, ApiError):

@@ -33,6 +33,8 @@ decrypted is never read as "no reference": that row is named in the refusal as u
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -272,4 +274,69 @@ async def references(
             else:
                 continue  # not an org's row: deployment-wide records are not the org's values
             found.extend(await _in_table(conn, table, literal, environment=None, where=scope))
+    return found
+
+
+#: A ``${secret:NAME}`` reference, as stored text holds one.
+_SECRET_REFERENCE = re.compile(r"\$\{secret:([^}#]+)(?:#[^}]*)?\}")
+
+
+async def _names_in_table(conn: "Connection", table: SATable, *, where: Any = None) -> set[str]:
+    """Every org secret a stored value of ``table`` names, encrypted columns included."""
+    names: set[str] = set()
+    for column in searched_columns(table):
+        statement = select(column).where(cast(column, Text).contains("${secret:", autoescape=True))
+        if where is not None:
+            statement = statement.where(where)
+        for (value,) in (await conn.execute_core(statement)).fetchall():
+            names.update(_SECRET_REFERENCE.findall(str(value)))
+    for column in decrypted_columns(table):
+        statement = select(column).where(column.is_not(None))
+        if where is not None:
+            statement = statement.where(where)
+        for (ciphertext,) in (await conn.execute_core(statement)).fetchall():
+            names.update(_SECRET_REFERENCE.findall(_plaintext(ciphertext)))
+    return names
+
+
+def _plaintext(ciphertext: Any) -> str:
+    """The text of an encrypted value, or "" when this worker cannot open it (as _names_it)."""
+    from cryptography.exceptions import InvalidTag
+
+    from provisa.encryption.runtime import encryption_service
+
+    try:
+        return encryption_service().decrypt(bytes(ciphertext)).decode("utf-8")
+    except (ValueError, InvalidTag, RuntimeError):
+        return ""
+
+
+async def referenced_names(
+    admin_db: "Database", org_id: str, *, environments: "Mapping[str, Database]"
+) -> set[str]:
+    """Every org secret any stored value of the org names, in any environment and on the
+    platform plane -- what the automatic redaction rule matches (REQ-2087). The same tables and
+    columns :func:`references` reads."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+
+    found: set[str] = set()
+    token = set_current_org(org_id)
+    try:
+        for environment in sorted(environments):
+            async with environments[environment].acquire() as conn:
+                for table in _model_tables():
+                    found |= await _names_in_table(conn, table)
+    finally:
+        reset_current_org(token)
+    async with admin_db.acquire() as conn:
+        for table in schema_admin.metadata.sorted_tables:
+            if table.name in _VAULT_TABLES:
+                continue
+            if table.name == "orgs":
+                scope = table.c.id == org_id
+            elif "org_id" in table.c:
+                scope = table.c.org_id == org_id
+            else:
+                continue
+            found |= await _names_in_table(conn, table, where=scope)
     return found

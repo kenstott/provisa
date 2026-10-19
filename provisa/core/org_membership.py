@@ -447,10 +447,13 @@ async def record_admin_action(  # REQ-1303, REQ-1308
     """Append an entry to the org's administrative trail. ``model_db`` must be scoped to that org's
     schema — the entry belongs to the org the act was performed against, so a platform_admin's
     intervention is visible there afterward rather than only on the platform."""
+    # REQ-2087: the trail's detail is redacted as every record Provisa writes is.
+    from provisa.security.redaction import redact_value
+
     async with model_db.acquire() as conn:
         await conn.execute_core(
             insert(admin_audit_log).values(
-                action=action, actor_id=actor_id, subject_id=subject_id, detail=detail
+                action=action, actor_id=actor_id, subject_id=subject_id, detail=redact_value(detail)
             )
         )
 

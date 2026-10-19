@@ -286,6 +286,15 @@ async def _within_request(make_coro: Any, label: str) -> Any:
         return result
 
 
+def _redacted_error(exc: BaseException) -> RuntimeError | None:
+    """The error to send in place of ``exc`` when redaction changes its text (REQ-2087); None
+    when nothing in it matched, and ``exc`` goes out as it is."""
+    from provisa.security.redaction import redact
+
+    said = redact(str(exc))
+    return None if said == str(exc) else RuntimeError(said)
+
+
 def build_mcp_server(state: Any):
     """Build a FastMCP server whose tools are bound to ``state``.
 
@@ -373,6 +382,11 @@ def build_mcp_server(state: Any):
                         )
                     except RoleNotHeld as refused:
                         raise await _probed(refused, fn.__name__) from refused
+                    except Exception as exc:  # noqa: BLE001  # allow-blind-except: FastMCP sends any tool error's text to the client; REQ-2087 redacts that text, and an unchanged one is re-raised as it is
+                        said = _redacted_error(exc)
+                        if said is None:
+                            raise
+                        raise said from None
                 return _with_warnings(result, found)
 
         return mcp.tool()(_on_request_thread)
@@ -857,7 +871,9 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
     import json as _json
 
     async def _send_401(send: Any, detail: str) -> None:
-        body = _json.dumps({"error": "unauthorized", "detail": detail}).encode("utf-8")
+        from provisa.security.redaction import redact
+
+        body = _json.dumps({"error": "unauthorized", "detail": redact(detail)}).encode("utf-8")
         await send(
             {
                 "type": "http.response.start",

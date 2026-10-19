@@ -54,6 +54,8 @@ PROVISA_AIRPORT_DEFAULT_ROLE (documented dev default); absent too → the call i
 
 from __future__ import annotations
 
+from provisa.api.flight.redaction import redact_errors as _redact_errors
+
 import json
 import logging
 import os
@@ -147,6 +149,7 @@ def _bound_batches(org_id: str, batches: Any) -> Any:
         yield batch
 
 
+@_redact_errors  # REQ-2087
 class ProvisaAirportServer(
     flight.FlightServerBase  # pyright: ignore[reportPrivateImportUsage]
 ):

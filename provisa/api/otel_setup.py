@@ -123,8 +123,16 @@ def _span_switch(exports: "_SpanExports") -> Any:
                 processor.on_start(span, parent_context)
 
         def on_end(self, span: Any) -> None:
-            for processor in exports.current():
-                processor.on_end(span)
+            processors = exports.current()
+            if not processors:
+                return
+            # REQ-2087: one redacted copy, handed to every channel (collector, support, the
+            # native lane), so no span leaves the process unredacted.
+            from provisa.observability.redaction_otel import redacted_span
+
+            redacted = redacted_span(span)
+            for processor in processors:
+                processor.on_end(redacted)
 
         def shutdown(self) -> None:
             exports.clear()
@@ -351,7 +359,9 @@ def _process_tracer_provider(sampler: Any, resource: Any) -> Any:
             pass
 
         def on_end(self, span: Any) -> None:
-            _buf.push(span)
+            from provisa.observability.redaction_otel import redacted_span
+
+            _buf.push(redacted_span(span))  # REQ-2087: the recent-spans view is redacted too
 
         def shutdown(self) -> None:
             pass
@@ -704,7 +714,11 @@ def attach_otlp_exporters(
         _span_exports.set(
             "internal",
             BatchSpanProcessor(
-                _make_span_exporter(endpoint, otlp_protocol),
+                # The internal channel keeps its filter across an endpoint change, as setup_otel
+                # installs it (it was dropped here, exporting unfiltered after any change).
+                _make_filtering_exporter(
+                    _make_span_exporter(endpoint, otlp_protocol), *_internal_redaction
+                ),
                 schedule_delay_millis=settings_registry.value("otel.span_export_delay_millis"),
             ),
         )
@@ -727,6 +741,12 @@ def attach_otlp_exporters(
         global _log_provider
         _shutdown_log_pipeline()
         log_provider = LoggerProvider(resource=resource)
+        from provisa.observability.redaction_otel import (
+            install_on_every_handler,
+            log_record_processor,
+        )
+
+        log_provider.add_log_record_processor(log_record_processor())  # REQ-2087: first
         log_provider.add_log_record_processor(
             BatchLogRecordProcessor(_make_log_exporter(endpoint, otlp_protocol))
         )
@@ -735,6 +755,7 @@ def attach_otlp_exporters(
         handler = LoggingHandler(level=_logging.WARNING, logger_provider=log_provider)
         handler.addFilter(OrgLogFilter())
         _logging.getLogger().addHandler(handler)
+        install_on_every_handler()  # REQ-2087
 
         _log.info("OTel exporters attached → %s (service=%s)", endpoint, service_name)
     except Exception as e:
@@ -969,6 +990,12 @@ def setup_otel(
             # process) is shut down and its root handler removed, never left exporting beside this.
             _shutdown_log_pipeline()
             log_provider = LoggerProvider(resource=resource)
+            from provisa.observability.redaction_otel import (
+                install_on_every_handler,
+                log_record_processor,
+            )
+
+            log_provider.add_log_record_processor(log_record_processor())  # REQ-2087: first
             log_provider.add_log_record_processor(
                 BatchLogRecordProcessor(_make_log_exporter(endpoint, otlp_protocol))
             )
@@ -980,6 +1007,7 @@ def setup_otel(
             )
             handler.addFilter(OrgLogFilter())
             _logging.getLogger().addHandler(handler)
+            install_on_every_handler()  # REQ-2087
             _log.info("OTel logs → %s (service=%s)", endpoint, service_name)
 
         # REQ-1432: each block is one subsystem, instrumented only when its switch is on.

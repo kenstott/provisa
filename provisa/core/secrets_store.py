@@ -443,6 +443,12 @@ async def _decrypted(admin_db: "Database", org_id: str, owner_id: str) -> dict[s
         ) from exc
 
 
+async def vault_values(admin_db: "Database", org_id: str) -> dict[str, str]:
+    """The org vault's secrets, name -> value: what the central redaction rule matches (REQ-2087).
+    Never returned to a caller outside the process; the page lists the names alone."""
+    return await _decrypted(admin_db, org_id, ORG_OWNER)
+
+
 async def value_of(admin_db: "Database", org_id: str, name: str, *, owner_id: str) -> str:
     """The value of the secret ``name`` in ``owner_id``'s vault within ``org_id``, read now. For
     the one caller that must see what is stored at this moment and not what a binding read

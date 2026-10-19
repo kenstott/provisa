@@ -775,6 +775,13 @@ async def _init_control_planes(
     from provisa.core import deployment_settings
 
     deployment_settings.bind(state.admin_db)
+    # REQ-2087: the deployment's redaction rules, from the plane just bound; and every logging
+    # handler configured so far (stdout, uvicorn's) redacts what it writes.
+    from provisa.api.redaction_load import load_deployment_rules
+    from provisa.observability.redaction_otel import install_on_every_handler
+
+    await load_deployment_rules()
+    install_on_every_handler()
     # REQ-1524: every environment's position and drift are rows of the platform plane, so from
     # here a model change is committed to its environment's branch.
     from provisa.core import model_change

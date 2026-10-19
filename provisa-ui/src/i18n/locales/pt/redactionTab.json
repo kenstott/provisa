@@ -1,0 +1,25 @@
+{
+  "redactionTab": {
+    "panelTitle": "Regras de ocultação",
+    "loading": "Carregando…",
+    "intro": "O texto que corresponde a estas regras é substituído por [REDACTED:<rule>] antes de sair do Provisa: em traces e logs exportados, na saída dos contêineres, no log de auditoria e nas mensagens de erro devolvidas aos clientes. Os segredos da própria organização são ocultados automaticamente.",
+    "bestEffort": "A ocultação é feita na medida do possível. Os padrões integrados são um conjunto inicial, não uma garantia: adicione aqui padrões para os formatos sensíveis próprios da sua organização. Os logs próprios de uma fonte estão fora do alcance do Provisa.",
+    "unresolved": "Estas regras de referência não se resolvem e não ocultam nada: {{names}}",
+    "orgTitle": "Regras desta organização",
+    "deploymentTitle": "Regras da implantação (todas as organizações)",
+    "automaticTitle": "Segredos ocultados automaticamente",
+    "automaticHelp": "Os segredos no cofre desta organização e cada segredo que o seu modelo nomeia, apenas pelo nome. Os valores resolvidos para usuários individuais são adicionados à medida que são usados ({{count}} até agora).",
+    "builtinTitle": "Padrões integrados",
+    "none": "Nenhuma",
+    "name": "Nome",
+    "value": "Padrão ou referência",
+    "kindPattern": "Padrão",
+    "kindReference": "Referência",
+    "patternPlaceholder": "Uma expressão regular, p. ex. \\bEMP-\\d{6}\\b",
+    "referencePlaceholder": "${secret:NAME} ou ${env:NAME}",
+    "add": "Adicionar regra",
+    "remove": "Remover regra",
+    "save": "Salvar",
+    "saved": "Salvo. As regras se aplicam a partir de agora."
+  }
+}
