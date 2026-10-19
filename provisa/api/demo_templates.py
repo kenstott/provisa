@@ -51,6 +51,7 @@ import yaml
 from provisa.api.errors import ApiError
 from provisa.api.sandbox_tier import TEMPLATE_PREFIX, is_template_org, template_org_id
 from provisa.core.replicate import ALWAYS
+from provisa.core.connection_loop import CrossLoopLock
 
 _DEMO_DIR_REF = "${env:PROVISA_NAMED_DEMO_DIR}"
 
@@ -517,7 +518,10 @@ def _mark_templated(demo: PublishedDemo) -> None:
         (bundles_root() / demo.name / "templated").write_text(demo.directory.name + "\n")
 
 
-_following: dict[str, asyncio.Lock] = {}
+# The lock that keeps two openers of one demo from replacing its template at once, one a demo.
+# Each request runs on a thread and event loop of its own (REQ-1882): an asyncio.Lock binds to the
+# first loop that waits on it, and an opener on another loop then waited for good.
+_following: dict[str, CrossLoopLock] = {}
 
 
 async def follow_latest(name: str) -> None:
@@ -553,7 +557,7 @@ async def follow_latest(name: str) -> None:
             f"The {name} demo is still being prepared; try again shortly",
             demo=name,
         )
-    lock = _following.setdefault(name, asyncio.Lock())
+    lock = _following.setdefault(name, CrossLoopLock())
     async with lock:
         if _templated(name) == ready:
             return
