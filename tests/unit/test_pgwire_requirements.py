@@ -738,12 +738,13 @@ class TestReq580MultiStatement:
 
 
 # ---------------------------------------------------------------------------
-# REQ-581 — $N positional parameter substitution
+# REQ-581 — $N positional parameters: the catalog intercept's inline substitution
 # ---------------------------------------------------------------------------
 
 
 class TestReq581ParameterSubstitution:
-    """REQ-581: $1, $2, ... substituted as SQL literals before execution."""
+    """REQ-581: the catalog intercept substitutes $1, $2, ... as SQL literals; governed
+    statements keep them bound (REQ-589)."""
 
     def test_string_parameter_substituted(self):
         # REQ-581
