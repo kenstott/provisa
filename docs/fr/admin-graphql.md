@@ -1,6 +1,6 @@
 # Référence de l'API GraphQL admin {: #admin-graphql-api-reference }
 
-L'API GraphQL admin est le plan de configuration de Provisa. C'est l'API que l'application web admin appelle pour chaque opération de gestion — créer des sources, enregistrer des tables, définir des relations, configurer des règles RLS, et tout ce qui façonne le modèle.
+L'API GraphQL admin est le plan de configuration de Provisa. C'est l'API que l'application web admin appelle pour chaque opération de gestion : créer des sources, enregistrer des tables, définir des relations, configurer des règles RLS, et tout ce qui façonne le modèle.
 
 **Point de montage :** `POST /admin/graphql`
 
@@ -73,7 +73,7 @@ query {
 }
 ```
 
-`passwordRef` est une référence `${secret:NAME}` dans le coffre-fort de l'organisation — jamais l'identifiant en clair.
+`passwordRef` est une référence `${secret:NAME}` dans le coffre-fort de l'organisation, jamais l'identifiant en clair.
 
 #### `source(id: String!) → SourceType`
 
@@ -113,7 +113,7 @@ Renvoie l'alias à utiliser lors de l'enregistrement de `tableName` dans `domain
 
 #### `tables → [RegisteredTableType!]!`
 
-Toutes les tables enregistrées, chacune avec sa liste complète de colonnes. La visibilité des colonnes dans la réponse respecte la capacité `table_registration` de l'appelant — `canDeployToDb` est conditionné à la détention de ce droit par l'appelant.
+Toutes les tables enregistrées, chacune avec sa liste complète de colonnes. La visibilité des colonnes dans la réponse respecte la capacité `table_registration` de l'appelant : `canDeployToDb` est conditionné à la détention de ce droit par l'appelant.
 
 Chaque `RegisteredTableType` expose des sous-champs calculés :
 
@@ -130,7 +130,7 @@ Arguments : `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `repl
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
-Artefacts qu'un renommage d'alias ou une suppression de colonne en attente casserait. Consultatif — l'interface admin l'affiche avant l'enregistrement et l'administrateur décide. Doit être appelé *avant* l'enregistrement, car les dépendants ont été écrits contre le nom exposé que la colonne porte actuellement.
+Artefacts qu'un renommage d'alias ou une suppression de colonne en attente casserait. C'est un avis : l'interface admin l'affiche avant l'enregistrement et l'administrateur décide. Doit être appelé *avant* l'enregistrement, car les dépendants ont été écrits contre le nom exposé que la colonne porte actuellement.
 
 ---
 
@@ -258,7 +258,7 @@ Analyser du texte de contrat brut en lignes modifiables du panneau constructeur.
 
 #### `dqCheckCatalog(checker: String!, dataset: String!) → DqCheckCatalogType`
 
-Les vérifications que `checker` propose, limitées aux colonnes de `dataset`. Le jeu de données est la cible observée du contrat, résolue de la même manière que le scanneur la résout — de sorte que les vérifications proposées correspondent aux colonnes que le vérificateur verra réellement.
+Les vérifications que `checker` propose, limitées aux colonnes de `dataset`. Le jeu de données est la cible observée du contrat, résolue de la même manière que le scanneur la résout, de sorte que les vérifications proposées correspondent aux colonnes que le vérificateur verra réellement.
 
 #### `dqCheckDefinition(checker: String!, check: DqCheckBuildInput!) → DqCheckDefinitionType`
 
@@ -344,7 +344,7 @@ Demandes de création en attente, visibles par les appelants qui détiennent la 
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-Enregistre une nouvelle source de données. Un identifiant qui existe déjà est refusé (`schema.source_id_taken`) après les vérifications de la définition et avant que quoi que ce soit ne soit préparé ou écrit ; une source se modifie avec `updateSource`. Valide la connexion avant la persistance — une source refusée ne laisse aucune entrée dans le coffre. Stocke les identifiants dans le coffre de l'organisation et enregistre la référence ; le texte en clair n'atteint jamais la base de données. Requiert la capacité `source_registration`.
+Enregistre une nouvelle source de données. Un identifiant qui existe déjà est refusé (`schema.source_id_taken`) après les vérifications de la définition et avant que quoi que ce soit ne soit préparé ou écrit ; une source se modifie avec `updateSource`. Valide la connexion avant la persistance. Une source refusée ne laisse aucune entrée dans le coffre. Stocke les identifiants dans le coffre de l'organisation et enregistre la référence ; le texte en clair n'atteint jamais la base de données. Requiert la capacité `source_registration`.
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
@@ -488,7 +488,7 @@ Modifie un rôle existant, avec les mêmes vérifications que `createRole`. Un i
 
 #### `deleteRole(id: String!) → MutationResult`
 
-Supprimer un rôle. Échoue si d'autres rôles en héritent — reparentez-les d'abord. Requiert `user_management`.
+Supprimer un rôle. Échoue si d'autres rôles en héritent ; reparentez-les d'abord. Requiert `user_management`.
 
 ---
 
@@ -574,7 +574,7 @@ Supprimer une métrique gouvernée. Reconstruit les schémas. Requiert `table_re
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
-Créer ou remplacer un calendrier de limite d'instantané versionné. Validé en construisant le `Calendar` en mémoire avant la persistance — échoue sur un système de base inconnu, un fuseau horaire incorrect, ou un ancrage fiscal incorrect.
+Créer ou remplacer un calendrier de limite d'instantané versionné. Validé en construisant le `Calendar` en mémoire avant la persistance. Il échoue sur un système de base inconnu, un fuseau horaire incorrect, ou un ancrage fiscal incorrect.
 
 #### `deleteCalendar(name: String!) → MutationResult`
 

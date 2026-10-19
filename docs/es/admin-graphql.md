@@ -1,6 +1,6 @@
 # Referencia de la API GraphQL de administración {: #admin-graphql-api-reference }
 
-La API GraphQL de administración es el plano de configuración de Provisa. Es la API que la aplicación web de administración llama para toda operación de gestión — crear orígenes, registrar tablas, definir relaciones, configurar reglas de RLS, y todo lo demás que da forma al modelo.
+La API GraphQL de administración es el plano de configuración de Provisa. Es la API que la aplicación web de administración llama para toda operación de gestión: crear orígenes, registrar tablas, definir relaciones, configurar reglas de RLS, y todo lo demás que da forma al modelo.
 
 **Punto de montaje:** `POST /admin/graphql`
 
@@ -73,7 +73,7 @@ query {
 }
 ```
 
-`passwordRef` es una referencia `${secret:NAME}` a la bóveda de la organización — nunca la credencial literal.
+`passwordRef` es una referencia `${secret:NAME}` a la bóveda de la organización, nunca la credencial literal.
 
 #### `source(id: String!) → SourceType`
 
@@ -113,7 +113,7 @@ Devuelve el alias a usar al registrar `tableName` en `domainId` desde `sourceId`
 
 #### `tables → [RegisteredTableType!]!`
 
-Todas las tablas registradas, cada una con su lista completa de columnas. La visibilidad de columnas en la respuesta respeta la capacidad `table_registration` del llamador — `canDeployToDb` depende de si el llamador posee ese derecho.
+Todas las tablas registradas, cada una con su lista completa de columnas. La visibilidad de columnas en la respuesta respeta la capacidad `table_registration` del llamador: `canDeployToDb` depende de si el llamador posee ese derecho.
 
 Cada `RegisteredTableType` expone subcampos calculados:
 
@@ -130,7 +130,7 @@ Argumentos: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `repl
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
-Artefactos que un cambio de alias o una eliminación de columna pendientes romperían. Es informativo — la UI de administración lo muestra antes de guardar y el administrador decide. Debe llamarse *antes* de guardar, porque los dependientes fueron escritos contra el nombre expuesto que la columna lleva actualmente.
+Artefactos que un cambio de alias o una eliminación de columna pendientes romperían. Es informativo: la UI de administración lo muestra antes de guardar y el administrador decide. Debe llamarse *antes* de guardar, porque los dependientes fueron escritos contra el nombre expuesto que la columna lleva actualmente.
 
 ---
 
@@ -258,7 +258,7 @@ Analiza el texto de un contrato en bruto en las filas editables del panel constr
 
 #### `dqCheckCatalog(checker: String!, dataset: String!) → DqCheckCatalogType`
 
-Las verificaciones que ofrece `checker`, con alcance a las columnas de `dataset`. El dataset es el objetivo observado del contrato, resuelto de la misma manera que lo resuelve el escáner — de modo que las verificaciones ofrecidas coincidan con las columnas que el verificador realmente verá.
+Las verificaciones que ofrece `checker`, con alcance a las columnas de `dataset`. El dataset es el objetivo observado del contrato, resuelto de la misma manera que lo resuelve el escáner, de modo que las verificaciones ofrecidas coincidan con las columnas que el verificador realmente verá.
 
 #### `dqCheckDefinition(checker: String!, check: DqCheckBuildInput!) → DqCheckDefinitionType`
 
@@ -488,7 +488,7 @@ Cambia un rol existente, con las mismas comprobaciones que `createRole`. Un id q
 
 #### `deleteRole(id: String!) → MutationResult`
 
-Elimina un rol. Falla si otros roles heredan de él — reasígneles un nuevo padre primero. Requiere `user_management`.
+Elimina un rol. Falla si otros roles heredan de él; reasígneles un nuevo padre primero. Requiere `user_management`.
 
 ---
 
@@ -574,7 +574,7 @@ Elimina una métrica gobernada. Reconstruye los esquemas. Requiere `table_regist
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
-Crea o reemplaza un calendario versionado de límites de instantánea. Se valida construyendo el `Calendar` en memoria antes de persistir — falla ante un sistema base desconocido, una zona horaria incorrecta o un anclaje fiscal incorrecto.
+Crea o reemplaza un calendario versionado de límites de instantánea. Se valida construyendo el `Calendar` en memoria antes de persistir. Falla ante un sistema base desconocido, una zona horaria incorrecta o un anclaje fiscal incorrecto.
 
 #### `deleteCalendar(name: String!) → MutationResult`
 

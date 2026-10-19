@@ -4,7 +4,7 @@
 
 Positioning line: **Federation, metrics, ontology and governance from a single model. Nothing to keep in sync.** Four properties, kept separate: federation (73 connectors reaching 85+ kinds of source, SaaS systems such as Salesforce, ServiceNow and Stripe among them), metrics (defined once), ontology (the glossary as a graph of concepts, separate from the metrics), and governance (six layers compiled into every query plan). Complementary to data catalogs that provide a context layer: they tell an agent what it should do; Provisa enforces what it can do. No invalid join ever runs on your data.
 
-Provisa follows the Hasura V2 PLG model: **connect a source, register tables, suggest relationships, query with GraphQL** — zero required governance config. Domains, security policies, and steward workflows are progressive disclosures, not prerequisites. Governance is the upgrade path, not the entry tax.
+Provisa follows the Hasura V2 PLG model: **connect a source, register tables, suggest relationships, query with GraphQL**, with zero required governance config. Domains, security policies, and steward workflows are progressive disclosures, not prerequisites. Governance is the upgrade path, not the entry tax.
 
 ## SKUs
 
@@ -19,7 +19,7 @@ The SaaS SKU is not yet generally available. It requires the productized multi-t
 
 ### CE vs Enterprise gate
 
-CE is full-featured. Governance ships in the open-source core: RLS enforcement, column masking, the append-only query audit log, ABAC hooks, and SSO (Firebase, Keycloak OIDC) are all CE features, not paywalled. Enterprise adds only: SLA guarantees, dedicated support, advanced audit logging, and compliance reporting. No bait-and-switch — CE stays genuinely capable. The GraphQL/Hasura community has a sharp nose for hobbled community editions; trust is the asset.
+CE is full-featured. Governance ships in the open-source core: RLS enforcement, column masking, the append-only query audit log, ABAC hooks, and SSO (Firebase, Keycloak OIDC) are all CE features, not paywalled. Enterprise adds only: SLA guarantees, dedicated support, advanced audit logging, and compliance reporting. No bait-and-switch: CE stays capable. The GraphQL/Hasura community has a sharp nose for hobbled community editions; trust is the asset.
 
 BSL 1.1 license: source-available, converts to Apache 2 after time window, prevents commercial cloud hosting without a deal. Explicitly communicated in docs and marketing.
 
@@ -33,14 +33,14 @@ BSL 1.1 license: source-available, converts to Apache 2 after time window, preve
 
 **Tactics:**
 
-- Hasura V2 metadata migration tool as the top-of-funnel hook — zero-risk trial for teams already burned by migration work
-- SEO: "Hasura V2 alternative", "Hasura DDN migration", "self-hosted GraphQL" — low competition, high intent
-- Show up in Hasura GitHub Discussions, /r/graphql, Hacker News — genuine participation, not ads
-- Honest comparison page: V2 vs DDN vs Provisa. The community respects directness and shares it
-- Broader GraphQL community angle: "GraphQL over anything" — 73 connectors reaching 85+ kinds of source, including Kafka, Iceberg, MotherDuck, Stripe, HubSpot, Airtable, Notion, Auth0, things Hasura never touched
-- Zero-copy warehouse angle: Snowflake, Databricks, and BigQuery tables reachable live via their own Iceberg catalogs, not just materialize-and-copy — a warehouse team keeps its data in place
-- ClickHouse and MongoDB also reach live, not just materialize-and-copy — full predicate/aggregate pushdown to ClickHouse confirmed against a real 60M-row table; not every competitor gets analytics warehouses and document stores both live
-- SaaS-API sources (Stripe, HubSpot, Airtable, Notion, Auth0, AWS Cognito, Cloudflare D1, Logflare, Calendly) reach through the same captive-Postgres pattern already proven for files/SharePoint/Splunk — no bespoke connector per SaaS app
+- Hasura V2 metadata migration tool as the top-of-funnel hook, a zero-risk trial for teams already burned by migration work
+- SEO: "Hasura V2 alternative", "Hasura DDN migration", "self-hosted GraphQL": low competition, high intent
+- Show up in Hasura GitHub Discussions, /r/graphql, Hacker News, with genuine participation and no ads
+- A plain comparison page: V2 vs DDN vs Provisa. The community respects directness and shares it
+- Broader GraphQL community angle: "GraphQL over anything": 73 connectors reaching 85+ kinds of source, including Kafka, Iceberg, MotherDuck, Stripe, HubSpot, Airtable, Notion, Auth0, things Hasura never touched
+- Zero-copy warehouse angle: Snowflake, Databricks, and BigQuery tables reachable live through their own Iceberg catalogs with no copy, so a warehouse team keeps its data in place
+- ClickHouse and MongoDB also reach live with no copy. Full predicate/aggregate pushdown to ClickHouse is confirmed against a real 60M-row table; not every competitor gets analytics warehouses and document stores both live
+- SaaS-API sources (Stripe, HubSpot, Airtable, Notion, Auth0, AWS Cognito, Cloudflare D1, Logflare, Calendly) reach through the same captive-Postgres pattern already proven for files/SharePoint/Splunk, so no SaaS app needs a bespoke connector
 
 **Conversion moment:** Team grows → needs governance, SSO, or managed hosting → upgrade to SaaS or Enterprise.
 
@@ -60,7 +60,7 @@ BSL 1.1 license: source-available, converts to Apache 2 after time window, preve
 
 **Sales cycle:** 6–12 months. Need 2–3 reference enterprise logos before this motion scales.
 
-**Accelerant:** Community adoption in the wild helps enterprise procurement — "our team already knows it."
+**Accelerant:** Community adoption in the wild helps enterprise procurement: "our team already knows it."
 
 ## Vertical Strategy (Land and Expand)
 
@@ -79,6 +79,6 @@ Vertical packages are pre-built configuration artifacts — source configs, regi
 
 **Cybersecurity is the strongest wedge:** data sources are public and well-known, security teams think in graph relationships, Cypher traversal is a natural fit, FedRAMP overlap opens the federal SI channel.
 
-## Summary
+## Where the edge comes from
 
-The GTM stack (community → SaaS → enterprise + SI) is the standard playbook for successful dev-tools companies (Hashicorp, Hasura, Grafana, dbt). Differentiation comes from execution: how clean the Hasura V2 migration story is, and how strong the governance features are for regulated verticals. The vertical packages reduce time-to-value for enterprise and give the SI channel a concrete, repeatable practice to sell.
+Hashicorp, Hasura, Grafana and dbt all ran the same stack (community → SaaS → enterprise + SI). Nothing here differs from theirs except execution: a clean Hasura V2 migration path, and governance strong enough to pass a regulated buyer's review.

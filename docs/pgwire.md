@@ -37,7 +37,7 @@ Trust mode (`provider: none`, or auth middleware inactive) is the exception: the
 
 **SCRAM-SHA-256.** Under `provider: basic` with `auth.scram: true`, the server advertises SASL (authentication code 10) with `SCRAM-SHA-256` and the password is proved rather than sent. `SCRAM-SHA-256-PLUS` is not offered. A user whose verifier has not been written yet — verifiers cannot be derived from bcrypt hashes — is answered with a mock exchange, so the wire does not reveal who has migrated; that user authenticates by cleartext password over TLS until their next password entry writes one. With `auth.scram` off, the server uses PG auth type 3 (cleartext password). MD5 is not supported in either case.
 
-**Client certificates.** Set `PROVISA_MTLS_CLIENT_CA` and the server verifies a client certificate during the handshake, before any credential is examined. With `PROVISA_MTLS_BIND_PRINCIPAL` the certificate's common name must equal the `user` the connection then authenticates as. See [Configuration](configuration.md#mutual-tls).
+**Client certificates.** Set `PROVISA_MTLS_CLIENT_CA` and the server verifies a client certificate during the handshake, before any credential is checked. With `PROVISA_MTLS_BIND_PRINCIPAL` the certificate's common name must equal the `user` the connection then authenticates as. See [Configuration](configuration.md#mutual-tls).
 
 **Failed attempts are counted.** Five failures in five minutes lock the account for fifteen minutes. The counter is shared with HTTP and Bolt, so a lockout earned on any surface holds on all of them.
 
@@ -58,7 +58,7 @@ All SELECT statements go through the governance pipeline (`_pipeline.py`). The p
 
 Multi-statement simple queries are supported. Semicolon-separated statements are split and executed in order.
 
-Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. Parameters are substituted as literals before execution.
+Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and extended-query (Bind/Execute) modes. The values stay bound all the way to the engine or source (see [Caveats and Constraints](#caveats-and-constraints)).
 
 `SELECT * FROM fn(args)` and `SELECT fn(args)` — where `fn` names a registered tracked function — are intercepted before the governance pipeline and routed through the single governed executor (`invoke_tracked_function`). The result is a typed row set identical to what every other surface returns for that command. Command assignment (`visible_to`), the `write` right for a mutation and governance rules are enforced inside the executor.
 
@@ -86,7 +86,7 @@ The `SCROLL` keyword controls both what navigation is allowed and how much memor
 | `DECLARE c NO SCROLL CURSOR FOR ...` | Not allowed | Bounded to one FETCH batch |
 | `DECLARE c SCROLL CURSOR FOR ...` | Allowed | Full result buffered in Python memory |
 
-When neither `SCROLL` nor `NO SCROLL` is written, the default is `NO SCROLL` — matching PostgreSQL's own default. A `NO SCROLL` cursor trims consumed rows from its internal buffer after each forward step, so a `FETCH FORWARD` scan through a large result never holds more than roughly one batch in Python memory at a time. A `SCROLL` cursor retains every row it has ever pulled — that's the cost of supporting `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST`. Before declaring a `SCROLL` cursor against a large result, budget the full result size as Python heap.
+When neither `SCROLL` nor `NO SCROLL` is written, the default is `NO SCROLL`, matching PostgreSQL's own default. A `NO SCROLL` cursor trims consumed rows from its internal buffer after each forward step, so a `FETCH FORWARD` scan through a large result never holds more than roughly one batch in Python memory at a time. A `SCROLL` cursor retains every row it has ever pulled. That's the cost of supporting `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST`. Before declaring a `SCROLL` cursor against a large result, budget the full result size as Python heap.
 
 Re-declaring a cursor name that is already open closes the previous cursor first. `WITH HOLD` and `WITHOUT HOLD` are accepted in the syntax; see Cursor Lifetime below.
 
@@ -104,7 +104,7 @@ FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
 
-`FETCH` returns rows and sends command tag `FETCH <n>`, where `n` is the actual count returned — which may be less than requested when the cursor reaches the end. `MOVE` advances the position without returning rows and sends `MOVE <n>`.
+`FETCH` returns rows and sends command tag `FETCH <n>`, where `n` is the actual count returned, which may be less than requested when the cursor reaches the end. `MOVE` advances the position without returning rows and sends `MOVE <n>`.
 
 `FROM` and `IN` are interchangeable as the cursor name introducer. Unquoted cursor names are case-folded to lowercase; quoted names (`"CaseSensitive"`) preserve case.
 
@@ -245,17 +245,17 @@ Result columns are also sent in binary when the client requests it, for the same
 
 ## Driver Recommendations
 
-**Native Python drivers (psycopg2, asyncpg).** These negotiate the extended-query protocol by default and use binary encoding for most types. Type fidelity is highest here — `NUMERIC` columns arrive as `Decimal`, `TIMESTAMP` as `datetime`, and so on. Use these for Python-based ETL, scripts, or direct integration.
+**Native Python drivers (psycopg2, asyncpg).** These negotiate the extended-query protocol by default and use binary encoding for most types. Type fidelity is highest here: `NUMERIC` columns arrive as `Decimal`, `TIMESTAMP` as `datetime`, and so on. Use these for Python-based ETL, scripts, or direct integration.
 
-**JDBC (PostgreSQL JDBC driver).** Use this for Java-ecosystem tools: DBeaver, Tableau, Power BI, Metabase, Airflow JDBC operators. JDBC defaults to the simple-query protocol, which avoids binary encoding complications. Connection string:
+**JDBC (PostgreSQL JDBC driver).** Use this for Java tools: DBeaver, Tableau, Power BI, Metabase, Airflow JDBC operators. JDBC defaults to the simple-query protocol, which avoids binary encoding complications. Connection string:
 
 ```yaml
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` queries on connect to populate their schema browser. These are all answered by the catalog intercept layer — no Trino traffic is generated during schema inspection.
+Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` queries on connect to populate their schema browser. These are all answered by the catalog intercept layer, so no Trino traffic is generated during schema inspection.
 
-**When to prefer one over the other.** If the client is Python, use psycopg2 or asyncpg for better type handling. If the client is a BI tool or any JVM application, use JDBC. Avoid mixing binary and text protocol expectations in the same connection if you observe type conversion surprises — JDBC's text-mode behavior is simpler to reason about.
+**When to prefer one over the other.** If the client is Python, use psycopg2 or asyncpg for better type handling. If the client is a BI tool or any JVM application, use JDBC. Avoid mixing binary and text protocol expectations in the same connection if you observe type conversion surprises. JDBC's text-mode behavior is simpler to reason about.
 
 ---
 
@@ -275,4 +275,4 @@ Some JDBC-based BI tools send a burst of `information_schema` and `pg_catalog` q
 
 **DECLARE SCROLL buffers the full result.** A `SCROLL` cursor accumulates every row it pulls from the engine into Python heap so `FETCH BACKWARD`, `ABSOLUTE`, `FIRST`, and `LAST` can be served on demand. Against a large result this means the whole result lives in memory for as long as the cursor is open. Use the default `NO SCROLL` for forward-only streaming.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (`pg_index` is populated — see Catalog Intercept.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** These tables exist in the catalog layer but are empty stubs. Monitoring tools that query them will receive zero rows rather than errors. (`pg_index` is populated; see Catalog Intercept.)

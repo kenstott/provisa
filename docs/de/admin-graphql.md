@@ -1,6 +1,6 @@
 # Admin-GraphQL-API-Referenz {: #admin-graphql-api-reference }
 
-Die Admin-GraphQL-API ist Provisas Konfigurationsebene. Sie ist die API, die die Admin-Web-App für jede Verwaltungsoperation aufruft — Quellen anlegen, Tabellen registrieren, Beziehungen definieren, RLS-Regeln konfigurieren und alles andere, was das Modell formt.
+Die Admin-GraphQL-API ist Provisas Konfigurationsebene. Sie ist die API, die die Admin-Web-App für jede Verwaltungsoperation aufruft: Quellen anlegen, Tabellen registrieren, Beziehungen definieren, RLS-Regeln konfigurieren und alles andere, was das Modell formt.
 
 **Mount-Point:** `POST /admin/graphql`
 
@@ -73,7 +73,7 @@ query {
 }
 ```
 
-`passwordRef` ist eine `${secret:NAME}`-Referenz in den Org-Vault — niemals das Klartext-Credential.
+`passwordRef` ist eine `${secret:NAME}`-Referenz in den Org-Vault, niemals das Klartext-Credential.
 
 #### `source(id: String!) → SourceType`
 
@@ -113,7 +113,7 @@ Gibt den Alias zurück, der bei der Registrierung von `tableName` in `domainId` 
 
 #### `tables → [RegisteredTableType!]!`
 
-Alle registrierten Tabellen, jeweils mit ihrer vollständigen Spaltenliste. Die Spaltensichtbarkeit in der Antwort respektiert die `table_registration`-Capability des Aufrufers — `canDeployToDb` ist davon abhängig, ob der Aufrufer dieses Recht hält.
+Alle registrierten Tabellen, jeweils mit ihrer vollständigen Spaltenliste. Die Spaltensichtbarkeit in der Antwort respektiert die `table_registration`-Capability des Aufrufers: `canDeployToDb` ist davon abhängig, ob der Aufrufer dieses Recht hält.
 
 Jeder `RegisteredTableType` exponiert berechnete Unterfelder:
 
@@ -130,7 +130,7 @@ Argumente: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `repli
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
-Artefakte, die eine anstehende Alias-Umbenennung oder ein Spalten-Drop brechen würde. Beratend — die Admin-UI zeigt dies vor dem Speichern an, und der Administrator entscheidet. Muss *vor* dem Speichern aufgerufen werden, da die Abhängigen gegen den aktuell von der Spalte getragenen exponierten Namen verfasst wurden.
+Artefakte, die eine anstehende Alias-Umbenennung oder ein Spalten-Drop brechen würde. Das Ergebnis ist ein Hinweis: Die Admin-UI zeigt dies vor dem Speichern an, und der Administrator entscheidet. Muss *vor* dem Speichern aufgerufen werden, da die Abhängigen gegen den aktuell von der Spalte getragenen exponierten Namen verfasst wurden.
 
 ---
 
@@ -258,7 +258,7 @@ Parst rohen Vertragstext in die editierbaren Zeilen des Builder-Panels. Wird bei
 
 #### `dqCheckCatalog(checker: String!, dataset: String!) → DqCheckCatalogType`
 
-Die Checks, die `checker` anbietet, eingeschränkt auf die Spalten von `dataset`. Das Dataset ist das beobachtete Ziel des Vertrags, aufgelöst auf dieselbe Weise wie der Scanner es auflöst — sodass die angebotenen Checks zu den Spalten passen, die der Checker wirklich sehen wird.
+Die Checks, die `checker` anbietet, eingeschränkt auf die Spalten von `dataset`. Das Dataset ist das beobachtete Ziel des Vertrags, aufgelöst auf dieselbe Weise wie der Scanner es auflöst, sodass die angebotenen Checks zu den Spalten passen, die der Checker wirklich sehen wird.
 
 #### `dqCheckDefinition(checker: String!, check: DqCheckBuildInput!) → DqCheckDefinitionType`
 
@@ -344,7 +344,7 @@ Ausstehende Erstellungsanfragen, sichtbar für Aufrufer mit der relevanten Erste
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-Registriert eine neue Datenquelle. Eine bereits vorhandene ID wird abgelehnt (`schema.source_id_taken`), nach den Prüfungen der Definition und bevor irgendetwas vorbereitet oder geschrieben wird; eine Quelle wird mit `updateSource` geändert. Validiert die Verbindung vor der Persistierung — eine abgelehnte Quelle hinterlässt keinen Vault-Eintrag. Speichert Zugangsdaten im Org-Vault und protokolliert die Referenz; der Klartext landet nie in der Datenbank. Erfordert die Capability `source_registration`.
+Registriert eine neue Datenquelle. Eine bereits vorhandene ID wird abgelehnt (`schema.source_id_taken`), nach den Prüfungen der Definition und bevor irgendetwas vorbereitet oder geschrieben wird; eine Quelle wird mit `updateSource` geändert. Validiert die Verbindung vor der Persistierung. Eine abgelehnte Quelle hinterlässt keinen Vault-Eintrag. Speichert Zugangsdaten im Org-Vault und protokolliert die Referenz; der Klartext landet nie in der Datenbank. Erfordert die Capability `source_registration`.
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
@@ -488,7 +488,7 @@ Erstellt eine Rolle mit Capabilities, Domänenzugriff, optionalen Rate Limits un
 
 #### `deleteRole(id: String!) → MutationResult`
 
-Löscht eine Rolle. Schlägt fehl, wenn andere Rollen von ihr erben — diese müssen zuerst umgehängt werden. Erfordert `user_management`.
+Löscht eine Rolle. Schlägt fehl, wenn andere Rollen von ihr erben; diese müssen zuerst umgehängt werden. Erfordert `user_management`.
 
 ---
 
@@ -574,7 +574,7 @@ Löscht eine regierte Metrik. Baut Schemas neu auf. Erfordert `table_registratio
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
-Erstellt oder ersetzt einen versionierten Snapshot-Grenz-Kalender. Validiert durch Konstruktion des In-Memory-`Calendar` vor der Persistierung — schlägt fehl bei unbekanntem Basissystem, falscher Zeitzone oder falschem Fiskalanker.
+Erstellt oder ersetzt einen versionierten Snapshot-Grenz-Kalender. Validiert durch Konstruktion des In-Memory-`Calendar` vor der Persistierung. Es schlägt fehl bei unbekanntem Basissystem, falscher Zeitzone oder falschem Fiskalanker.
 
 #### `deleteCalendar(name: String!) → MutationResult`
 

@@ -58,7 +58,7 @@ Toutes les instructions SELECT traversent le pipeline de gouvernance (`_pipeline
 
 Les requêtes simples multi-instructions sont prises en charge. Les instructions séparées par des points-virgules sont découpées et exécutées dans l'ordre.
 
-Les requêtes paramétrées (`$1`, `$2`, ...) sont prises en charge à la fois en mode requête simple et en mode requête étendue (Bind/Execute). Les paramètres sont substitués sous forme de littéraux avant l'exécution.
+Les requêtes paramétrées (`$1`, `$2`, ...) sont prises en charge à la fois en mode requête simple et en mode requête étendue (Bind/Execute). Les valeurs restent liées jusqu'au moteur ou à la source (voir [Mises en garde et contraintes](#caveats-and-constraints)).
 
 `SELECT * FROM fn(args)` et `SELECT fn(args)` — où `fn` désigne une fonction suivie et enregistrée — sont interceptés avant le pipeline de gouvernance et routés via l'unique exécuteur gouverné (`invoke_tracked_function`). Le résultat est un ensemble de lignes typé identique à celui que renvoie toute autre surface pour cette commande. L'affectation de la commande (`visible_to`), le droit `write` pour une mutation et les règles de gouvernance sont appliqués à l'intérieur de l'exécuteur.
 
@@ -86,7 +86,7 @@ Le mot-clé `SCROLL` contrôle à la fois la navigation autorisée et la mémoir
 | `DECLARE c NO SCROLL CURSOR FOR ...` | Non autorisée | Limité à un lot de FETCH |
 | `DECLARE c SCROLL CURSOR FOR ...` | Autorisée | Résultat complet mis en tampon dans la mémoire Python |
 
-Lorsque ni `SCROLL` ni `NO SCROLL` n'est écrit, la valeur par défaut est `NO SCROLL` — comme la valeur par défaut de PostgreSQL. Un curseur `NO SCROLL` retire de son tampon interne les lignes consommées après chaque pas en avant, de sorte qu'un parcours `FETCH FORWARD` d'un grand résultat ne garde jamais plus d'environ un lot en mémoire Python à la fois. Un curseur `SCROLL` conserve chaque ligne qu'il a jamais récupérée — c'est le prix de la prise en charge de `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` et `LAST`. Avant de déclarer un curseur `SCROLL` sur un grand résultat, prévoyez la taille complète du résultat en tas Python.
+Lorsque ni `SCROLL` ni `NO SCROLL` n'est écrit, la valeur par défaut est `NO SCROLL`, comme la valeur par défaut de PostgreSQL. Un curseur `NO SCROLL` retire de son tampon interne les lignes consommées après chaque pas en avant, de sorte qu'un parcours `FETCH FORWARD` d'un grand résultat ne garde jamais plus d'environ un lot en mémoire Python à la fois. Un curseur `SCROLL` conserve chaque ligne qu'il a jamais récupérée. C'est le prix de la prise en charge de `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` et `LAST`. Avant de déclarer un curseur `SCROLL` sur un grand résultat, prévoyez la taille complète du résultat en tas Python.
 
 Redéclarer un nom de curseur déjà ouvert ferme d'abord le curseur précédent. `WITH HOLD` et `WITHOUT HOLD` sont acceptés dans la syntaxe ; voir la durée de vie du curseur ci-dessous.
 
@@ -104,7 +104,7 @@ FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
 
-`FETCH` renvoie des lignes et envoie l'étiquette de commande `FETCH <n>`, où `n` est le nombre réellement renvoyé — qui peut être inférieur à celui demandé quand le curseur atteint la fin. `MOVE` avance la position sans renvoyer de lignes et envoie `MOVE <n>`.
+`FETCH` renvoie des lignes et envoie l'étiquette de commande `FETCH <n>`, où `n` est le nombre réellement renvoyé, qui peut être inférieur à celui demandé quand le curseur atteint la fin. `MOVE` avance la position sans renvoyer de lignes et envoie `MOVE <n>`.
 
 `FROM` et `IN` sont interchangeables pour introduire le nom du curseur. Les noms de curseur sans guillemets sont mis en minuscules ; les noms entre guillemets (`"CaseSensitive"`) conservent leur casse.
 
@@ -245,7 +245,7 @@ Les colonnes de résultat sont également envoyées en binaire lorsque le client
 
 ## Recommandations de pilote {: #driver-recommendations }
 
-**Pilotes Python natifs (psycopg2, asyncpg).** Ceux-ci négocient le protocole de requête étendue par défaut et utilisent l'encodage binaire pour la plupart des types. La fidélité des types est maximale ici — les colonnes `NUMERIC` arrivent en tant que `Decimal`, `TIMESTAMP` en tant que `datetime`, et ainsi de suite. Utilisez-les pour l'ETL basé sur Python, les scripts ou l'intégration directe.
+**Pilotes Python natifs (psycopg2, asyncpg).** Ceux-ci négocient le protocole de requête étendue par défaut et utilisent l'encodage binaire pour la plupart des types. La fidélité des types est maximale ici : les colonnes `NUMERIC` arrivent en tant que `Decimal`, `TIMESTAMP` en tant que `datetime`, et ainsi de suite. Utilisez-les pour l'ETL basé sur Python, les scripts ou l'intégration directe.
 
 **JDBC (pilote JDBC PostgreSQL).** Utilisez-le pour les outils de l'écosystème Java : DBeaver, Tableau, Power BI, Metabase, opérateurs JDBC d'Airflow. JDBC utilise par défaut le protocole de requête simple, ce qui évite les complications liées à l'encodage binaire. Chaîne de connexion :
 
@@ -253,9 +253,9 @@ Les colonnes de résultat sont également envoyées en binaire lorsque le client
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-Certains outils de BI basés sur JDBC envoient, à la connexion, une rafale de requêtes vers `information_schema` et `pg_catalog` pour alimenter leur explorateur de schéma. Toutes sont traitées par la couche d'interception de catalogue — aucun trafic vers Trino n'est généré lors de l'inspection du schéma.
+Certains outils de BI basés sur JDBC envoient, à la connexion, une rafale de requêtes vers `information_schema` et `pg_catalog` pour alimenter leur explorateur de schéma. Toutes sont traitées par la couche d'interception de catalogue, si bien qu'aucun trafic vers Trino n'est généré lors de l'inspection du schéma.
 
-**Quand préférer l'un à l'autre.** Si le client est en Python, utilisez psycopg2 ou asyncpg pour une meilleure gestion des types. Si le client est un outil de BI ou toute application JVM, utilisez JDBC. Évitez de mélanger les attentes de protocole binaire et texte sur la même connexion si vous observez des anomalies de conversion de type — le comportement en mode texte de JDBC est plus simple à raisonner.
+**Quand préférer l'un à l'autre.** Si le client est en Python, utilisez psycopg2 ou asyncpg pour une meilleure gestion des types. Si le client est un outil de BI ou toute application JVM, utilisez JDBC. Évitez de mélanger les attentes de protocole binaire et texte sur la même connexion si vous observez des anomalies de conversion de type. Le comportement en mode texte de JDBC est plus simple à raisonner.
 
 ---
 
@@ -275,4 +275,4 @@ Certains outils de BI basés sur JDBC envoient, à la connexion, une rafale de r
 
 **DECLARE SCROLL met en tampon le résultat complet.** Un curseur `SCROLL` accumule dans le tas Python chaque ligne qu'il récupère du moteur afin de pouvoir servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` et `LAST` à la demande. Sur un grand résultat, le résultat entier vit en mémoire tant que le curseur est ouvert. Utilisez la valeur par défaut `NO SCROLL` pour un streaming uniquement vers l'avant.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Ces tables existent dans la couche de catalogue mais sont des stubs vides. Les outils de surveillance qui les interrogent recevront zéro ligne plutôt que des erreurs. (`pg_index` est alimentée — voir Interception de catalogue.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Ces tables existent dans la couche de catalogue mais sont des stubs vides. Les outils de surveillance qui les interrogent recevront zéro ligne plutôt que des erreurs. (`pg_index` est alimentée ; voir Interception de catalogue.)

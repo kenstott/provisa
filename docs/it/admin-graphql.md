@@ -1,6 +1,6 @@
 # Riferimento API Admin GraphQL {: #admin-graphql-api-reference }
 
-L'API GraphQL admin è il piano di configurazione di Provisa. È l'API che l'app web di amministrazione chiama per ogni operazione di gestione — creare origini, registrare tabelle, definire relazioni, configurare regole RLS, e tutto il resto che modella il modello.
+L'API GraphQL admin è il piano di configurazione di Provisa. È l'API che l'app web di amministrazione chiama per ogni operazione di gestione: creare origini, registrare tabelle, definire relazioni, configurare regole RLS, e tutto il resto che modella il modello.
 
 **Punto di mount:** `POST /admin/graphql`
 
@@ -73,7 +73,7 @@ query {
 }
 ```
 
-`passwordRef` è un riferimento `${secret:NAME}` nel vault dell'org — mai la credenziale letterale.
+`passwordRef` è un riferimento `${secret:NAME}` nel vault dell'org, mai la credenziale letterale.
 
 #### `source(id: String!) → SourceType`
 
@@ -113,7 +113,7 @@ Restituisce l'alias da usare quando si registra `tableName` in `domainId` da `so
 
 #### `tables → [RegisteredTableType!]!`
 
-Tutte le tabelle registrate, ciascuna con l'elenco completo delle colonne. La visibilità delle colonne nella risposta rispetta la capability `table_registration` del chiamante — `canDeployToDb` è vincolato al fatto che il chiamante possieda quel diritto.
+Tutte le tabelle registrate, ciascuna con l'elenco completo delle colonne. La visibilità delle colonne nella risposta rispetta la capability `table_registration` del chiamante: `canDeployToDb` è vincolato al fatto che il chiamante possieda quel diritto.
 
 Ogni `RegisteredTableType` espone sotto-campi calcolati:
 
@@ -130,7 +130,7 @@ Argomenti: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `repli
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
-Artefatti che una ridenominazione di alias o rimozione di colonna in sospeso romperebbe. Consultivo — la UI admin lo mostra prima di salvare e l'amministratore decide. Deve essere chiamato *prima* di salvare, perché i dipendenti sono stati scritti contro il nome esposto che la colonna porta attualmente.
+Artefatti che una ridenominazione di alias o rimozione di colonna in sospeso romperebbe. È consultivo: la UI admin lo mostra prima di salvare e l'amministratore decide. Deve essere chiamato *prima* di salvare, perché i dipendenti sono stati scritti contro il nome esposto che la colonna porta attualmente.
 
 ---
 
@@ -258,7 +258,7 @@ Analizza il testo grezzo del contratto nelle righe modificabili del pannello bui
 
 #### `dqCheckCatalog(checker: String!, dataset: String!) → DqCheckCatalogType`
 
-I controlli che `checker` offre, ambitoati alle colonne di `dataset`. Il dataset è il target osservato del contratto, risolto nello stesso modo in cui lo scanner lo risolve — cosicché i controlli offerti corrispondano alle colonne che il checker vedrà davvero.
+I controlli che `checker` offre, ambitoati alle colonne di `dataset`. Il dataset è il target osservato del contratto, risolto nello stesso modo in cui lo scanner lo risolve, cosicché i controlli offerti corrispondano alle colonne che il checker vedrà davvero.
 
 #### `dqCheckDefinition(checker: String!, check: DqCheckBuildInput!) → DqCheckDefinitionType`
 
@@ -344,7 +344,7 @@ Richieste di creazione in sospeso, visibili ai chiamanti che hanno la capacità 
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-Registra una nuova sorgente di dati. Un id già esistente viene rifiutato (`schema.source_id_taken`) dopo i controlli della definizione e prima che qualcosa venga preparato o scritto; una sorgente si modifica con `updateSource`. Convalida la connessione prima di persistere — una sorgente rifiutata non lascia alcuna voce nel vault. Memorizza le credenziali nel vault dell'organizzazione e registra il riferimento; il testo in chiaro non arriva mai al database. Richiede la capacità `source_registration`.
+Registra una nuova sorgente di dati. Un id già esistente viene rifiutato (`schema.source_id_taken`) dopo i controlli della definizione e prima che qualcosa venga preparato o scritto; una sorgente si modifica con `updateSource`. Convalida la connessione prima di persistere. Una sorgente rifiutata non lascia alcuna voce nel vault. Memorizza le credenziali nel vault dell'organizzazione e registra il riferimento; il testo in chiaro non arriva mai al database. Richiede la capacità `source_registration`.
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
@@ -488,7 +488,7 @@ Modifica un ruolo esistente, con gli stessi controlli di `createRole`. Un id che
 
 #### `deleteRole(id: String!) → MutationResult`
 
-Elimina un ruolo. Fallisce se altri ruoli ereditano da esso — ri-assegnali prima a un nuovo padre. Richiede `user_management`.
+Elimina un ruolo. Fallisce se altri ruoli ereditano da esso; ri-assegnali prima a un nuovo padre. Richiede `user_management`.
 
 ---
 
@@ -574,7 +574,7 @@ Elimina una metrica governata. Ricostruisce gli schemi. Richiede `table_registra
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
-Crea o sostituisce un calendario versionato dei confini di snapshot. Validato costruendo il `Calendar` in memoria prima di persistere — fallisce su un sistema base sconosciuto, un fuso orario errato, o un'ancora fiscale errata.
+Crea o sostituisce un calendario versionato dei confini di snapshot. Validato costruendo il `Calendar` in memoria prima di persistere. Fallisce su un sistema base sconosciuto, un fuso orario errato, o un'ancora fiscale errata.
 
 #### `deleteCalendar(name: String!) → MutationResult`
 

@@ -84,7 +84,7 @@ Consultas simples multi-declaração são suportadas. Declarações separadas po
 divididas e executadas em ordem.
 
 Consultas parametrizadas (`$1`, `$2`, ...) são suportadas tanto em modo de consulta simples quanto
-de consulta estendida (Bind/Execute). Parâmetros são substituídos como literais antes da execução.
+de consulta estendida (Bind/Execute). Os valores ficam vinculados até o motor ou a fonte (veja [Ressalvas e restrições](#caveats-and-constraints)).
 
 `SELECT * FROM fn(args)` e `SELECT fn(args)` — onde `fn` nomeia uma função rastreada registrada —
 são interceptados antes do pipeline de governança e roteados através do executor governado único
@@ -116,7 +116,7 @@ A palavra-chave `SCROLL` controla tanto a navegação permitida quanto a memóri
 | `DECLARE c NO SCROLL CURSOR FOR ...` | Não permitida | Limitado a um lote de FETCH |
 | `DECLARE c SCROLL CURSOR FOR ...` | Permitida | Resultado completo em buffer na memória Python |
 
-Quando nem `SCROLL` nem `NO SCROLL` é escrito, o padrão é `NO SCROLL` — igual ao padrão do PostgreSQL. Um cursor `NO SCROLL` remove do seu buffer interno as linhas consumidas a cada passo para frente, então uma varredura `FETCH FORWARD` por um resultado grande nunca mantém mais que aproximadamente um lote na memória Python de cada vez. Um cursor `SCROLL` guarda cada linha que já buscou — esse é o custo de suportar `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST`. Antes de declarar um cursor `SCROLL` sobre um resultado grande, reserve o tamanho completo do resultado como heap Python.
+Quando nem `SCROLL` nem `NO SCROLL` é escrito, o padrão é `NO SCROLL`, igual ao padrão do PostgreSQL. Um cursor `NO SCROLL` remove do seu buffer interno as linhas consumidas a cada passo para frente, então uma varredura `FETCH FORWARD` por um resultado grande nunca mantém mais que aproximadamente um lote na memória Python de cada vez. Um cursor `SCROLL` guarda cada linha que já buscou. Esse é o custo de suportar `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST`. Antes de declarar um cursor `SCROLL` sobre um resultado grande, reserve o tamanho completo do resultado como heap Python.
 
 Declarar de novo um nome de cursor já aberto fecha primeiro o cursor anterior. `WITH HOLD` e `WITHOUT HOLD` são aceitos na sintaxe; veja a duração do cursor abaixo.
 
@@ -134,7 +134,7 @@ FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
 
-`FETCH` retorna linhas e envia a tag de comando `FETCH <n>`, onde `n` é a quantidade realmente retornada — que pode ser menor que a pedida quando o cursor chega ao fim. `MOVE` avança a posição sem retornar linhas e envia `MOVE <n>`.
+`FETCH` retorna linhas e envia a tag de comando `FETCH <n>`, onde `n` é a quantidade realmente retornada, que pode ser menor que a pedida quando o cursor chega ao fim. `MOVE` avança a posição sem retornar linhas e envia `MOVE <n>`.
 
 `FROM` e `IN` são intercambiáveis para introduzir o nome do cursor. Nomes de cursor sem aspas são convertidos para minúsculas; nomes entre aspas (`"CaseSensitive"`) preservam maiúsculas e minúsculas.
 
@@ -290,10 +290,7 @@ conjunto de tipos mais ARRAY, JSON, INTERVAL, e BIGINT.
 
 ## Recomendações de Driver {: #driver-recommendations }
 
-**Drivers Python nativos (psycopg2, asyncpg).** Estes negociam o protocolo de consulta estendida
-por padrão e usam codificação binária para a maioria dos tipos. A fidelidade de tipo é mais alta
-aqui — colunas `NUMERIC` chegam como `Decimal`, `TIMESTAMP` como `datetime`, e assim por diante.
-Use estes para ETL baseado em Python, scripts, ou integração direta.
+**Drivers Python nativos (psycopg2, asyncpg).** Estes negociam o protocolo de consulta estendida por padrão e usam codificação binária para a maioria dos tipos. A fidelidade de tipo é mais alta aqui: colunas `NUMERIC` chegam como `Decimal`, `TIMESTAMP` como `datetime`, e assim por diante. Use estes para ETL baseado em Python, scripts, ou integração direta.
 
 **JDBC (driver JDBC PostgreSQL).** Use este para ferramentas do ecossistema Java: DBeaver, Tableau,
 Power BI, Metabase, operadores JDBC do Airflow. JDBC assume por padrão o protocolo de consulta
@@ -303,14 +300,9 @@ simples, o que evita complicações de codificação binária. String de conexã
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-Algumas ferramentas de BI baseadas em JDBC enviam uma rajada de consultas `information_schema` e
-`pg_catalog` na conexão para popular seu navegador de esquema. Todas são respondidas pela camada de
-interceptação de catálogo — nenhum tráfego Trino é gerado durante a inspeção de esquema.
+Algumas ferramentas de BI baseadas em JDBC enviam uma rajada de consultas `information_schema` e `pg_catalog` na conexão para popular seu navegador de esquema. Todas são respondidas pela camada de interceptação de catálogo, então nenhum tráfego Trino é gerado durante a inspeção de esquema.
 
-**Quando preferir um sobre o outro.** Se o cliente é Python, use psycopg2 ou asyncpg para melhor
-tratamento de tipo. Se o cliente é uma ferramenta de BI ou qualquer aplicação JVM, use JDBC. Evite
-misturar expectativas de protocolo binário e texto na mesma conexão se você observar surpresas de
-conversão de tipo — o comportamento de modo texto do JDBC é mais simples de raciocinar.
+**Quando preferir um sobre o outro.** Se o cliente é Python, use psycopg2 ou asyncpg para melhor tratamento de tipo. Se o cliente é uma ferramenta de BI ou qualquer aplicação JVM, use JDBC. Evite misturar expectativas de protocolo binário e texto na mesma conexão se você observar surpresas de conversão de tipo. O comportamento de modo texto do JDBC é mais simples de raciocinar.
 
 ---
 
@@ -331,6 +323,4 @@ Cada declaração roda independentemente.
 
 **DECLARE SCROLL guarda em buffer o resultado completo.** Um cursor `SCROLL` acumula no heap Python cada linha que busca do motor para poder servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST` sob demanda. Com um resultado grande, o resultado inteiro vive na memória enquanto o cursor estiver aberto. Use o padrão `NO SCROLL` para streaming só para frente.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.**
-Estas tabelas existem na camada de catálogo mas são stubs vazios. Ferramentas de monitoramento que
-as consultam receberão zero linhas em vez de erros. (`pg_index` é populada — veja Interceptação de Catálogo.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Estas tabelas existem na camada de catálogo mas são stubs vazios. Ferramentas de monitoramento que as consultam receberão zero linhas em vez de erros. (`pg_index` é populada; veja Interceptação de Catálogo.)

@@ -71,7 +71,7 @@
 2. **從 SDL 中排除**——該欄位不會出現在生成結構描述中的父類型上。
 3. **僅可透過已宣告的關聯存取**——data steward 必須在兩個已具體化的受治理資料表之間註冊 JOIN。若無此關聯，該欄位純粹缺席；並無 blob 後備方案。
 
-無法作為根 Query 欄位存取的 OBJECT 類型（例如 `ContactInfo` 或 `Address` 等內嵌類型）遵循不同的規則：它們會以 `jsonb` blob 欄的形式擷取，並於 SDL 中呈現為巢狀物件欄位。子欄位可透過 SQL 中的 `-->>` 擷取存取。
+無法作為根 Query 欄位存取的 OBJECT 類型（例如 `ContactInfo` 或 `Address` 等內嵌類型）遵循不同的規則：它們會以 `jsonb` blob 欄的形式擷取，並於 SDL 中呈現為巢狀物件欄位。子欄位可透過 SQL 中的 `->>` 擷取存取。
 
 **需要引數的欄位不是欄位。** 帶有必要引數的欄位無法直接選取，因此會被排除在資料表的欄位及巢狀選擇之外。
 
@@ -88,7 +88,7 @@
 - 純量及 ENUM 類型的根查詢欄位（回傳類型非 OBJECT）會成為受追蹤的函式，而非虛擬資料表。其 `return_schema` 為單一欄位 `value`，類型為對應的純量類型。
 - 物件巢狀結構於註冊時會解析至 `graphql_remote.max_object_depth`（預設值：5）。遠端擷取的選擇集與子欄位中繼資料均建構至此深度；超出限制的欄位不會被擷取，也無法用於 SQL 擷取。沿任一路徑，同一類型只會進入一次：類型已在向下路徑上的欄位會被排除，因此類型相互參照的結構描述每個類型只走訪一次，而不是每個深度層級走訪一次。
 - LIST 類型的巢狀 OBJECT 欄位（例如 `breed.awards: [Award]`）會被納入擷取選擇集，最多巢狀 `graphql_remote.max_list_depth` 層（預設值：2）。在此限制內，清單會作為父欄位上的 `jsonb` 陣列擷取。當清單欄位宣告了 `first` 引數（Relay、PostGraphile、pg_graphql）或 `limit` 引數（Hasura）時，選擇集會將其作為 `first: N` 或 `limit: N` 傳入，其中 N 為 `graphql_remote.max_list_items`（預設值：100）。兩者都未宣告的清單欄位不會獲得引數，因為遠端服務會拒絕欄位未宣告的引數。超出 `max_list_depth` 後，該 LIST 欄位將被完全排除，以防止資料無限膨脹。在 SQL 中，陣列可透過 `json_array_elements(column_name)` 或使用 `->>` 的索引擷取來存取。若清單的元素類型自帶根查詢，應改為將其註冊為獨立資料表並建立關聯——聯結路徑更有效率，且可繞過 blob。
-- 對於 SQL 查詢，未受治理的 OBJECT 類型欄位會從遠端來源完整擷取（所有子欄位至設定深度為止），並以 `jsonb` 形式快取。SQL 中對子欄位的存取是透過對 blob 進行 `->>` 擷取來處理；遠端請求不會限縮為 SQL 查詢所選取的欄位。當清單的元素類型沒有根查詢，且 blob 表示法不敷使用時，應直接以 GraphQL SDL 撰寫查詢——Provisa 會忠實地重現 GQL 欄位選擇，令遠端來源僅接收到確切請求的欄位。
+- 對於 SQL 查詢，未受治理的 OBJECT 類型欄位會從遠端來源完整擷取（所有子欄位至設定深度為止），並以 `jsonb` 形式快取。SQL 中對子欄位的存取是透過對 blob 進行 `->>` 擷取來處理；遠端請求不會限縮為 SQL 查詢所選取的欄位。當清單的元素類型沒有根查詢，且 blob 表示法不敷使用時，應直接以 GraphQL SDL 撰寫查詢。Provisa 會忠實地重現 GQL 欄位選擇，令遠端來源僅接收到確切請求的欄位。
 - 若遠端伺服器因需要子欄位選擇而拒絕某個 OBJECT 類型欄位（在 `gql_selection` 可用時理應不會發生此情況），執行器會移除該等欄位後重試一次，以確保純量欄位仍可正常回傳。此規則適用於從根欄位讀取的資料表。連線資料表不走此路徑。
 
 **分頁讀取。** 連線資料表透過游標讀取。每一頁請求 `first: N, after: $pageCursor` 及 `pageInfo { hasNextPage endCursor }`，讀取會沿 `endCursor` 繼續，直至遠端服務回報沒有下一頁。
@@ -187,7 +187,7 @@ Proto 檔案亦可為本機路徑。常見類型（`google/protobuf/timestamp.pr
 
 1. **註冊酬載中的 `method_overrides`**——`{"MethodName": "query"}` 或 `{"MethodName": "mutation"}` 優先於其他一切。
 2. **`server_streaming: true`**——伺服器發送訊息串流；恆為虛擬資料表（除非輸出為純量）。
-3. **輸出訊息帶有重複的訊息類型欄位**——例如 `ListOrdersResponse { repeated Order items; }` 會被視為清單包裝並成為虛擬資料表。重複的純量欄位（例如 `repeated string tags`）不會觸發此規則——它們是單一實體的陣列屬性，並非資料列來源。
+3. **輸出訊息帶有重複的訊息類型欄位**——例如 `ListOrdersResponse { repeated Order items; }` 會被視為清單包裝並成為虛擬資料表。重複的純量欄位（例如 `repeated string tags`）不會觸發此規則，因為它們是單一實體的陣列屬性，並非資料列來源。
 
 不符合以上任何訊號的方法（回傳單一實體訊息的一元 RPC，或任何純量輸出）會成為受追蹤的函式。
 
@@ -213,7 +213,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 **註冊時的關係。** `relationships` 的作用與 GQL 配接器相同：宣告 FK/PK 聯結路徑，儲存為人手宣告的關係（沒有 `remote_managed` 標記）。重新整理時它們保持不變。
 
-**Query 方法。** 輸出訊息的欄位會成為資料表欄位。輸入訊息的欄位既會成為傳遞至遠端呼叫的 GraphQL 引數，*同時*亦會註冊為以 `_nf_` 為前綴、`native_filter_type: "grpc_input"` 的欄位——此機制與 GQL 及 OpenAPI 用於原生篩選器注入的機制相同。
+**Query 方法。** 輸出訊息的欄位會成為資料表欄位。輸入訊息的欄位既會成為傳遞至遠端呼叫的 GraphQL 引數，*同時*亦會註冊為以 `_nf_` 為前綴、`native_filter_type: "grpc_input"` 的欄位，此機制與 GQL 及 OpenAPI 用於原生篩選器注入的機制相同。
 
 **巢狀訊息的子欄位。** 對於 query 方法，深度 0（直接輸出欄）的非重複訊息類型欄位，其子欄位會解析多一層並儲存為 `ColumnDef` 上的 `object_fields`。此中繼資料用於 SQL 中的 `jsonb` 子欄位擷取及結構描述文件。超出深度 1 的巢狀欄位不會遞迴展開。
 
@@ -274,7 +274,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 **物件子欄位。** 帶有 `type: object` 且自身具有 `properties` 的回應屬性，會儲存為該欄位上的 `object_fields`。這些子欄位於 SDL 中可見，並用於查詢中的 `jsonb` 擷取。
 
-**回應快取。** GET 操作的結果會由 `pg_cache.py` 快取於 PostgreSQL 中。每種請求參數組合均擁有其專屬的 `_params_hash` 群組。當 TTL 到期時，特定雜湊值的資料列會被取代。帶路徑參數的端點（`/pets/{id}`）會略過初始批量擷取——快取資料表會先建立為空以供結構描述內省之用，再依主索引鍵於請求到達時逐步填入。
+**回應快取。** GET 操作的結果會由 `pg_cache.py` 快取於 PostgreSQL 中。每種請求參數組合均擁有其專屬的 `_params_hash` 群組。當 TTL 到期時，特定雜湊值的資料列會被取代。帶路徑參數的端點（`/pets/{id}`）會略過初始批量擷取。快取資料表會先建立為空以供結構描述內省之用，再依主索引鍵於請求到達時逐步填入。
 
 **刷新。** 向 `/admin/openapi/refresh/{source_id}` 發送 POST 請求。透過 `_load_and_register` 重新解析規格，該函式不註冊任何內容：它不會新增任何資料表或欄位。既有的治理規則將予以保留。已註冊的表保留其欄位；它透過刷新後 spec 中的操作讀取。
 
@@ -290,7 +290,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 從任何遠端結構描述來源註冊的資料表，均為一級的 Provisa 資料表。在執行階段，它與本機連接的關聯式資料表在待遇上並無任何分別。
 
-**查詢介面。** 該資料表可立即透過 GraphQL、SQL（pgwire 或直接連線）、Cypher（GQL）、JSON:API 及 Arrow Flight 進行查詢。由於遠端資料表沒有目錄，結構描述生成過程會為其合成 `ColumnMetadata`——類型對應是於結構描述建構時套用的。
+**查詢介面。** 該資料表可立即透過 GraphQL、SQL（pgwire 或直接連線）、Cypher（GQL）、JSON:API 及 Arrow Flight 進行查詢。由於遠端資料表沒有目錄，結構描述生成過程會為其合成 `ColumnMetadata`，類型對應是於結構描述建構時套用的。
 
 **安全模型。** 所有五層治理規則均適用：
 
@@ -338,7 +338,7 @@ Mutation 方法是可提供的命令，計入 `available_mutations`；新增來�
 
 僅供類型定義的資料表具備以下特性:
 
-- 沒有根查詢欄位——用戶端無法直接按名稱查詢它。
+- 沒有根查詢欄位，因此用戶端無法直接按名稱查詢它。
 - 可透過具有根項目的資料表上的關聯欄位加以存取。
 - 仍會於結構描述內省中以具名類型的形式出現。
 - 當透過關聯存取資料時,仍會套用所有治理規則。

@@ -3,7 +3,7 @@
 A named demo is a self-contained, reusable demo environment you drop into `demo/named/<name>/`.
 Once the directory exists, `start-ui-install.sh --demo <name>` picks it up with no change to
 the launcher script and no developer involvement required. This is the mechanism for
-client-specific and vertical demo scenarios — a future `--demo banking` or `--demo healthcare`
+client-specific and vertical demo scenarios: a future `--demo banking` or `--demo healthcare`
 is just a new directory in this shape.
 
 Named demos are distinct from the `--source=<name>` mechanism. The `--source` flag adds a single
@@ -63,7 +63,7 @@ manual commands. No host-side scripts to run before it works.
 
 This does **not** mean the demo must be a single process or single container. The `perf` demo
 runs five containers (four engines plus a seeder). A demo may also reference
-external managed resources it does not containerize — a live Databricks or Snowflake source
+external managed resources it does not containerize: a live Databricks or Snowflake source
 reached by connection string, registered in `config.yaml` with no corresponding compose
 service. Those are implementation details behind the single entry point.
 
@@ -428,7 +428,7 @@ of only local or file sources has no seed to write and no replica to serve.
 
 ## tour.yaml — the demo's guided tour
 
-Every published demo has a `tour.yaml`, except one whose `demo.yaml` says `tour: core` (`starthere`). It describes the demo step by step — what it is, how
+Every published demo has a `tour.yaml`, except one whose `demo.yaml` says `tour: core` (`starthere`). It describes the demo step by step: what it is, how
 its pieces fit, and then the answer it shows. The UI renders it as an interactive tour, with each
 step's words in `tour.json` (per locale, in `provisa-ui/src/i18n/`).
 
@@ -706,7 +706,7 @@ volumes:
   banking_pg:
 ```
 
-The Snowflake source requires no service entry — it is external. Its credentials belong in
+The Snowflake source requires no service entry; it is external. Its credentials belong in
 `config.yaml` via env-var interpolation.
 
 **3. Write `Dockerfile.seeder`.**

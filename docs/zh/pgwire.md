@@ -58,7 +58,7 @@ trust 模式（`provider: none`，或身份验证中间件未启用）是例外�
 
 支持多语句的简单查询。以分号分隔的语句会被拆分并按顺序执行。
 
-在简单查询模式和扩展查询（Bind/Execute）模式下均支持参数化查询（`$1`、`$2`……）。参数会在执行前以字面量替换。
+在简单查询模式和扩展查询（Bind/Execute）模式下均支持参数化查询（`$1`、`$2`……）。参数值会一直以绑定形式传到引擎或数据源（参见[注意事项与限制](#caveats-and-constraints)）。
 
 `SELECT * FROM fn(args)` 和 `SELECT fn(args)`——其中 `fn` 指定一个已注册且受跟踪的函数——会在治理管道之前被拦截，并通过唯一受治理的执行器（`invoke_tracked_function`）路由。结果是一个类型化的行集，与该命令在其他任何界面所返回的结果一致。命令的分配（`visible_to`）、变更所需的 `write` 权利 及治理规则会在执行器内部强制执行。
 
@@ -86,7 +86,7 @@ DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 | `DECLARE c NO SCROLL CURSOR FOR ...` | 不允许 | 限于一批 FETCH |
 | `DECLARE c SCROLL CURSOR FOR ...` | 允许 | 整个结果缓冲在 Python 内存中 |
 
-既未指定 `SCROLL` 也未指定 `NO SCROLL` 时，默认为 `NO SCROLL`——与 PostgreSQL 本身一致。 `NO SCROLL` 游标在每次向前推进后都会从其内部缓冲区丢弃已消费的行，因此对大结果的 `FETCH FORWARD` 遍历在任一时刻都只在 Python 内存中保留大约一批数据。 `SCROLL` 游标会保留它拉取过的每一行——这是支持 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 和 `LAST` 的代价。在对大结果声明 `SCROLL` 游标之前，请为整个结果的大小预留 Python 堆空间。
+既未指定 `SCROLL` 也未指定 `NO SCROLL` 时，默认为 `NO SCROLL`，与 PostgreSQL 本身一致。 `NO SCROLL` 游标在每次向前推进后都会从其内部缓冲区丢弃已消费的行，因此对大结果的 `FETCH FORWARD` 遍历在任一时刻都只在 Python 内存中保留大约一批数据。 `SCROLL` 游标会保留它拉取过的每一行。这是支持 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 和 `LAST` 的代价。在对大结果声明 `SCROLL` 游标之前，请为整个结果的大小预留 Python 堆空间。
 
 重新声明已打开的游标名称会先关闭之前的游标。 `WITH HOLD` 和 `WITHOUT HOLD` 被语法接受；参见下文的游标生命周期。
 
@@ -245,7 +245,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 
 ## 驱动程序建议 {: #driver-recommendations }
 
-**原生 Python 驱动程序（psycopg2、asyncpg）。** 这些驱动程序默认会协商扩展查询协议，并对大多数类型使用二进制编码。类型保真度在此最高——`NUMERIC` 列以 `Decimal` 形式到达，`TIMESTAMP` 则以 `datetime` 形式到达，依此类推。适用于基于 Python 的 ETL、脚本或直接集成。
+**原生 Python 驱动程序（psycopg2、asyncpg）。** 这些驱动程序默认会协商扩展查询协议，并对大多数类型使用二进制编码。类型保真度在此最高：`NUMERIC` 列以 `Decimal` 形式到达，`TIMESTAMP` 则以 `datetime` 形式到达，依此类推。适用于基于 Python 的 ETL、脚本或直接集成。
 
 **JDBC（PostgreSQL JDBC 驱动程序）。** 适用于 Java 生态系统工具：DBeaver、Tableau、Power BI、Metabase、Airflow 的 JDBC 算子。JDBC 默认使用简单查询协议，可避免二进制编码带来的复杂情况。连接字符串：
 
@@ -253,9 +253,9 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 和 DEAL
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-部分基于 JDBC 的 BI 工具在连接时会发送一连串针对 `information_schema` 和 `pg_catalog` 的查询，以填充其架构浏览器。这些查询全部由目录拦截层解答——在架构检查期间不会产生任何 Trino 流量。
+部分基于 JDBC 的 BI 工具在连接时会发送一连串针对 `information_schema` 和 `pg_catalog` 的查询，以填充其架构浏览器。这些查询全部由目录拦截层解答，因此在架构检查期间不会产生任何 Trino 流量。
 
-**何时优先选用哪一种。** 若客户端为 Python，请使用 psycopg2 或 asyncpg 以获得更好的类型处理。若客户端为 BI 工具或任何 JVM 应用程序，请使用 JDBC。若观察到类型转换方面的异常情况，应避免在同一连接中混用二进制和文本协议的预期行为——JDBC 的文本模式行为更易于推断。
+**何时优先选用哪一种。** 若客户端为 Python，请使用 psycopg2 或 asyncpg 以获得更好的类型处理。若客户端为 BI 工具或任何 JVM 应用程序，请使用 JDBC。若观察到类型转换方面的异常情况，应避免在同一连接中混用二进制和文本协议的预期行为。JDBC 的文本模式行为更易于推断。
 
 ---
 
@@ -275,4 +275,4 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **DECLARE SCROLL 会缓冲整个结果。** `SCROLL` 游标会把它从引擎拉取的每一行累积到 Python 堆中，以便按需提供 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 和 `LAST`。面对大结果，这意味着只要游标处于打开状态，整个结果就驻留在内存中。仅向前的流式传输请使用默认的 `NO SCROLL`。
 
-**`pg_stat_activity`、`pg_stat_user_tables`、`pg_extension`、`pg_enum`、`pg_attrdef`、`pg_proc`。** 这些表存在于目录层中，但属于空的桩 (stub)。查询它们的监控工具将收到零行结果，而非错误。（`pg_index` 已有数据填充——参见"目录拦截"一节。）
+**`pg_stat_activity`、`pg_stat_user_tables`、`pg_extension`、`pg_enum`、`pg_attrdef`、`pg_proc`。** 这些表存在于目录层中，但属于空的桩 (stub)。查询它们的监控工具将收到零行结果，而非错误。（`pg_index` 已有数据填充；参见"目录拦截"一节。）

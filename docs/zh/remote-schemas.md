@@ -71,7 +71,7 @@
 2. **从 SDL 中排除**——该字段不会出现在生成模式中的父类型上。
 3. **仅可通过已声明的关系访问**——数据管家必须在两个已物化的受治理数据表之间注册 JOIN。若无此关系，该字段纯粹缺失；并无 blob 回退方案。
 
-无法作为根 Query 字段访问的 OBJECT 类型（例如 `ContactInfo` 或 `Address` 等内嵌类型）遵循不同的规则：它们会以 `jsonb` blob 列的形式提取，并于 SDL 中呈现为嵌套对象字段。子字段可通过 SQL 中的 `-->>` 提取访问。
+无法作为根 Query 字段访问的 OBJECT 类型（例如 `ContactInfo` 或 `Address` 等内嵌类型）遵循不同的规则：它们会以 `jsonb` blob 列的形式提取，并于 SDL 中呈现为嵌套对象字段。子字段可通过 SQL 中的 `->>` 提取访问。
 
 **需要参数的字段不是列。** 带有必填参数的字段无法直接选取，因此会被排除在数据表的列及嵌套选择之外。
 
@@ -88,7 +88,7 @@
 - 标量及 ENUM 类型的根查询字段（返回类型非 OBJECT）会成为受跟踪的函数，而非虚拟数据表。其 `return_schema` 为单一字段 `value`，类型为对应的标量类型。
 - 对象嵌套结构于注册时会解析至 `graphql_remote.max_object_depth`（默认值：5）。远程获取的选择集与子字段元数据均构建至此深度；超出限制的字段不会被获取，也无法用于 SQL 提取。沿任一路径，同一类型只会进入一次：类型已在向下路径上的字段会被排除，因此类型相互引用的模式每个类型只遍历一次，而不是每个深度层级遍历一次。
 - LIST 类型的嵌套 OBJECT 字段（例如 `breed.awards: [Award]`）会被纳入获取选择集，最多嵌套 `graphql_remote.max_list_depth` 层（默认值：2）。在此限制内，列表会作为父列上的 `jsonb` 数组获取。当列表字段声明了 `first` 参数（Relay、PostGraphile、pg_graphql）或 `limit` 参数（Hasura）时，选择集会将其作为 `first: N` 或 `limit: N` 传入，其中 N 为 `graphql_remote.max_list_items`（默认值：100）。两者都未声明的列表字段不会获得参数，因为远程服务会拒绝字段未声明的参数。超出 `max_list_depth` 后，该 LIST 字段将被完全排除，以防止数据无限膨胀。在 SQL 中，数组可通过 `json_array_elements(column_name)` 或使用 `->>` 的索引提取来访问。若列表的元素类型自带根查询，应改为将其注册为独立数据表并建立关系——联接路径更高效，且可绕过 blob。
-- 对于 SQL 查询，未受治理的 OBJECT 类型字段会从远程来源完整提取（所有子字段至配置深度为止），并以 `jsonb` 形式缓存。SQL 中对子字段的访问是通过对 blob 进行 `->>` 提取来处理；远程请求不会限缩为 SQL 查询所选取的字段。当列表的元素类型没有根查询，且 blob 表示法不敷使用时，应直接以 GraphQL SDL 编写查询——Provisa 会忠实地重现 GQL 字段选择，令远程来源仅接收到确切请求的字段。
+- 对于 SQL 查询，未受治理的 OBJECT 类型字段会从远程来源完整提取（所有子字段至配置深度为止），并以 `jsonb` 形式缓存。SQL 中对子字段的访问是通过对 blob 进行 `->>` 提取来处理；远程请求不会限缩为 SQL 查询所选取的字段。当列表的元素类型没有根查询，且 blob 表示法不敷使用时，应直接以 GraphQL SDL 编写查询。Provisa 会忠实地重现 GQL 字段选择，令远程来源仅接收到确切请求的字段。
 - 若远程服务器因需要子字段选择而拒绝某个 OBJECT 类型字段（在 `gql_selection` 可用时理应不会发生此情况），执行器会移除该等字段后重试一次，以确保标量字段仍可正常返回。此规则适用于从根字段读取的数据表。连接数据表不走此路径。
 
 **分页读取。** 连接数据表通过游标读取。每一页请求 `first: N, after: $pageCursor` 及 `pageInfo { hasNextPage endCursor }`，读取会沿 `endCursor` 继续，直至远程服务报告没有下一页。
@@ -187,7 +187,7 @@ Proto 文件也可为本地路径。常见类型（`google/protobuf/timestamp.pr
 
 1. **注册载荷中的 `method_overrides`**——`{"MethodName": "query"}` 或 `{"MethodName": "mutation"}` 优先于其他一切。
 2. **`server_streaming: true`**——服务器发送消息流；恒为虚拟数据表（除非输出为标量）。
-3. **输出消息带有重复的消息类型字段**——例如 `ListOrdersResponse { repeated Order items; }` 会被视为列表包装并成为虚拟数据表。重复的标量字段（例如 `repeated string tags`）不会触发此规则——它们是单一实体的数组属性，并非行数据来源。
+3. **输出消息带有重复的消息类型字段**——例如 `ListOrdersResponse { repeated Order items; }` 会被视为列表包装并成为虚拟数据表。重复的标量字段（例如 `repeated string tags`）不会触发此规则，因为它们是单一实体的数组属性，并非行数据来源。
 
 不符合以上任何信号的方法（返回单一实体消息的一元 RPC，或任何标量输出）会成为受跟踪的函数。
 
@@ -213,7 +213,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 **注册时的关系。** `relationships` 的作用与 GQL 适配器相同：声明 FK/PK 联接路径，保存为手工声明的关系（没有 `remote_managed` 标记）。刷新时它们保持不变。
 
-**Query 方法。** 输出消息的字段会成为数据表列。输入消息的字段既会成为传递至远程调用的 GraphQL 参数，*同时*也会注册为以 `_nf_` 为前缀、`native_filter_type: "grpc_input"` 的字段——此机制与 GQL 及 OpenAPI 用于原生过滤器注入的机制相同。
+**Query 方法。** 输出消息的字段会成为数据表列。输入消息的字段既会成为传递至远程调用的 GraphQL 参数，*同时*也会注册为以 `_nf_` 为前缀、`native_filter_type: "grpc_input"` 的字段，此机制与 GQL 及 OpenAPI 用于原生过滤器注入的机制相同。
 
 **嵌套消息的子字段。** 对于 query 方法，深度 0（直接输出列）的非重复消息类型字段，其子字段会解析多一层并存储为 `ColumnDef` 上的 `object_fields`。此元数据用于 SQL 中的 `jsonb` 子字段提取及模式文档。超出深度 1 的嵌套字段不会递归展开。
 
@@ -274,7 +274,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 **对象子字段。** 带有 `type: object` 且自身具有 `properties` 的响应属性，会存储为该字段上的 `object_fields`。这些子字段于 SDL 中可见，并用于查询中的 `jsonb` 提取。
 
-**响应缓存。** GET 操作的结果会由 `pg_cache.py` 缓存于 PostgreSQL 中。每种请求参数组合均拥有其专属的 `_params_hash` 分组。当 TTL 到期时，特定哈希值的行数据会被替换。带路径参数的端点（`/pets/{id}`）会跳过初始批量提取——缓存数据表会先创建为空以供模式内省之用，再依主键于请求到达时逐步填充。
+**响应缓存。** GET 操作的结果会由 `pg_cache.py` 缓存于 PostgreSQL 中。每种请求参数组合均拥有其专属的 `_params_hash` 分组。当 TTL 到期时，特定哈希值的行数据会被替换。带路径参数的端点（`/pets/{id}`）会跳过初始批量提取。缓存数据表会先创建为空以供模式内省之用，再依主键于请求到达时逐步填充。
 
 **刷新。** 向 `/admin/openapi/refresh/{source_id}` 发送 POST 请求。通过 `_load_and_register` 重新解析规范，该函数不注册任何内容：它不会添加任何数据表或列。已有的治理规则将予以保留。已注册的表保留其列；它通过刷新后 spec 中的操作读取。
 
@@ -290,7 +290,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 从任何远程模式来源注册的数据表，均为一级的 Provisa 数据表。在运行时，它与本地连接的关系型数据表在待遇上并无任何区别。
 
-**查询接口。** 该数据表可立即通过 GraphQL、SQL（pgwire 或直接连接）、Cypher（GQL）、JSON:API 及 Arrow Flight 进行查询。由于远程数据表没有目录，模式生成过程会为其合成 `ColumnMetadata`——类型映射是于模式构建时应用的。
+**查询接口。** 该数据表可立即通过 GraphQL、SQL（pgwire 或直接连接）、Cypher（GQL）、JSON:API 及 Arrow Flight 进行查询。由于远程数据表没有目录，模式生成过程会为其合成 `ColumnMetadata`，类型映射是于模式构建时应用的。
 
 **安全模型。** 所有五层治理规则均适用：
 
@@ -338,7 +338,7 @@ Mutation 方法是可提供的命令，计入 `available_mutations`；添加来�
 
 仅供类型定义的数据表具备以下特性：
 
-- 没有根查询字段——客户端无法直接按名称查询它。
+- 没有根查询字段，因此客户端无法直接按名称查询它。
 - 可通过具有根条目的数据表上的关系字段加以访问。
 - 仍会于模式内省中以具名类型的形式出现。
 - 当通过关系访问数据时，仍会应用所有治理规则。

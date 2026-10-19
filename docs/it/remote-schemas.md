@@ -71,7 +71,7 @@ Quando una colonna di tipo OBJECT in una tabella governata punta a un altro tipo
 2. **Esclusa dalla SDL** — il campo non compare sul tipo padre nello schema generato.
 3. **Accessibile solo tramite una relazione dichiarata** — un data steward deve registrare un JOIN tra le due tabelle governate materializzate. In assenza di tale relazione, il campo è semplicemente assente; non esiste un fallback in forma di blob.
 
-I tipi OBJECT NON raggiungibili come campi radice di Query (tipi inline come `ContactInfo` o `Address`) seguono regole diverse: vengono recuperati come colonne blob `jsonb` e compaiono nella SDL come campi di oggetto annidato. I sottocampi sono accessibili tramite estrazione `-->>` in SQL.
+I tipi OBJECT NON raggiungibili come campi radice di Query (tipi inline come `ContactInfo` o `Address`) seguono regole diverse: vengono recuperati come colonne blob `jsonb` e compaiono nella SDL come campi di oggetto annidato. I sottocampi sono accessibili tramite estrazione `->>` in SQL.
 
 **I campi che richiedono un argomento non sono colonne.** Un campo con un argomento obbligatorio non può essere selezionato così com'è, quindi viene lasciato fuori dalle colonne della tabella e dalle selezioni annidate.
 
@@ -87,8 +87,8 @@ I tipi OBJECT NON raggiungibili come campi radice di Query (tipi inline come `Co
 
 - I campi di query radice di tipo scalare ed ENUM (il cui tipo di ritorno non è OBJECT) diventano funzioni tracciate, non tabelle virtuali. Il loro `return_schema` è costituito da un'unica colonna `value` del tipo scalare mappato.
 - L'annidamento degli oggetti viene risolto al momento della registrazione fino a `graphql_remote.max_object_depth` (predefinito: 5). Sia la selezione del recupero remoto sia i metadati dei sottocampi vengono costruiti fino a tale profondità; i campi oltre il limite non vengono recuperati e non sono disponibili per l'estrazione SQL. Un tipo viene attraversato una sola volta lungo un singolo percorso: un campo il cui tipo è già sul cammino verso il basso viene lasciato fuori, così uno schema i cui tipi si riferiscono l'un l'altro viene percorso una volta per tipo, non una volta per livello di profondità.
-- I campi OBJECT annidati di tipo LIST (ad es. `breed.awards: [Award]`) sono inclusi nella selezione di recupero fino a `graphql_remote.max_list_depth` livelli di annidamento (predefinito: 2). Entro tale limite, l'elenco viene recuperato come array `jsonb` nella colonna padre. Quando il campo elenco dichiara un argomento `first` (Relay, PostGraphile, pg_graphql) o un argomento `limit` (Hasura), la selezione lo passa come `first: N` o `limit: N`, dove N è `graphql_remote.max_list_items` (predefinito: 100). Un campo elenco che non dichiara né l'uno né l'altro non riceve alcun argomento, perché un remoto rifiuta un argomento che il campo non dichiara. Oltre `max_list_depth`, il campo LIST viene escluso del tutto per evitare un'espansione illimitata dei dati. In SQL, l'array è accessibile tramite `json_array_elements(column_name)` o l'estrazione per indice con `->>`. Se il tipo di elemento dell'elenco dispone di una propria query radice, registrarlo invece come tabella separata e creare una relazione — il percorso di join è più efficiente e aggira il blob.
-- Per le query SQL, le colonne di tipo OBJECT non governate vengono recuperate integralmente dall'origine remota (tutti i sottocampi fino alla profondità configurata) e memorizzate nella cache come `jsonb`. L'accesso ai sottocampi in SQL avviene tramite estrazione `->>` sul blob; la richiesta remota non viene ristretta ai soli campi selezionati dalla query SQL. Quando il tipo di elemento della lista non dispone di una query radice e la rappresentazione in blob risulta insufficiente, è opportuno scrivere la query direttamente in SDL GraphQL — Provisa riproduce fedelmente la selezione di campi GQL, in modo che l'origine remota veda esattamente i campi richiesti.
+- I campi OBJECT annidati di tipo LIST (ad es. `breed.awards: [Award]`) sono inclusi nella selezione di recupero fino a `graphql_remote.max_list_depth` livelli di annidamento (predefinito: 2). Entro tale limite, l'elenco viene recuperato come array `jsonb` nella colonna padre. Quando il campo elenco dichiara un argomento `first` (Relay, PostGraphile, pg_graphql) o un argomento `limit` (Hasura), la selezione lo passa come `first: N` o `limit: N`, dove N è `graphql_remote.max_list_items` (predefinito: 100). Un campo elenco che non dichiara né l'uno né l'altro non riceve alcun argomento, perché un remoto rifiuta un argomento che il campo non dichiara. Oltre `max_list_depth`, il campo LIST viene escluso del tutto per evitare un'espansione illimitata dei dati. In SQL, l'array è accessibile tramite `json_array_elements(column_name)` o l'estrazione per indice con `->>`. Se il tipo di elemento dell'elenco dispone di una propria query radice, registrarlo invece come tabella separata e creare una relazione. Il percorso di join è più efficiente e aggira il blob.
+- Per le query SQL, le colonne di tipo OBJECT non governate vengono recuperate integralmente dall'origine remota (tutti i sottocampi fino alla profondità configurata) e memorizzate nella cache come `jsonb`. L'accesso ai sottocampi in SQL avviene tramite estrazione `->>` sul blob; la richiesta remota non viene ristretta ai soli campi selezionati dalla query SQL. Quando il tipo di elemento della lista non dispone di una query radice e la rappresentazione in blob risulta insufficiente, è opportuno scrivere la query direttamente in SDL GraphQL. Provisa riproduce fedelmente la selezione di campi GQL, in modo che l'origine remota veda esattamente i campi richiesti.
 - Se il server remoto rifiuta un campo di tipo OBJECT perché richiede la selezione di sottocampi (situazione che non dovrebbe verificarsi quando `gql_selection` è disponibile), l'executor riprova una volta rimuovendo tali campi, in modo che le colonne scalari vengano comunque restituite. Ciò vale per le tabelle lette da un campo radice. Una tabella di connessione non segue questo percorso.
 
 **Letture paginate.** Una tabella di connessione viene letta tramite cursore. Ogni pagina richiede `first: N, after: $pageCursor` con `pageInfo { hasNextPage endCursor }`, e la lettura segue `endCursor` finché il remoto non segnala che non c'è una pagina successiva.
@@ -187,7 +187,7 @@ I file proto possono anche essere percorsi locali. I percorsi di importazione pe
 
 1. **`method_overrides`** nel payload di registrazione — `{"MethodName": "query"}` oppure `{"MethodName": "mutation"}` ha priorità su tutto il resto.
 2. **`server_streaming: true`** — il server invia un flusso di messaggi; è sempre una tabella virtuale (a meno che l'output non sia uno scalare).
-3. **Il messaggio di output presenta un campo ripetuto di tipo messaggio** — ad es. `ListOrdersResponse { repeated Order items; }` viene trattato come un wrapper di lista e diventa una tabella virtuale. I campi scalari ripetuti (ad es. `repeated string tags`) non attivano questa regola — sono proprietà di tipo array di una singola entità, non origini di righe.
+3. **Il messaggio di output presenta un campo ripetuto di tipo messaggio** — ad es. `ListOrdersResponse { repeated Order items; }` viene trattato come un wrapper di lista e diventa una tabella virtuale. I campi scalari ripetuti (ad es. `repeated string tags`) non attivano questa regola, perché sono proprietà di tipo array di una singola entità, non origini di righe.
 
 I metodi che non corrispondono a nessuno di questi segnali (RPC unario che restituisce un singolo messaggio di entità, o qualsiasi output scalare) diventano funzioni tracciate.
 
@@ -213,7 +213,7 @@ I metodi di mutazione sono comandi offerti, contati in `available_mutations`; ag
 
 **Relazioni alla registrazione.** `relationships` funziona come nell'adattatore GQL: dichiara cammini di join FK/PK, salvati come relazioni dichiarate a mano (senza flag `remote_managed`). Un aggiornamento le lascia come sono.
 
-**Metodi query.** I campi del messaggio di output diventano colonne della tabella. I campi del messaggio di input diventano sia argomenti GraphQL passati alla chiamata remota *sia* colonne registrate con il prefisso `_nf_` e `native_filter_type: "grpc_input"` — lo stesso meccanismo utilizzato da GQL e OpenAPI per l'iniezione di filtri nativi.
+**Metodi query.** I campi del messaggio di output diventano colonne della tabella. I campi del messaggio di input diventano sia argomenti GraphQL passati alla chiamata remota *sia* colonne registrate con il prefisso `_nf_` e `native_filter_type: "grpc_input"`, lo stesso meccanismo utilizzato da GQL e OpenAPI per l'iniezione di filtri nativi.
 
 **Sottocampi di messaggi annidati.** Per i metodi query, i campi di tipo messaggio non ripetuti alla profondità 0 (colonne di output dirette) hanno i propri sottocampi risolti un livello più in profondità e memorizzati come `object_fields` nel `ColumnDef`. Questi metadati vengono utilizzati per l'estrazione di sottocampi `jsonb` in SQL e per la documentazione dello schema. I campi annidati oltre la profondità 1 non vengono espansi ricorsivamente.
 
@@ -274,7 +274,7 @@ Priorità di classificazione: `operation_overrides` (payload) ha priorità su `x
 
 **Sottocampi di oggetto.** Le proprietà di risposta con `type: object` e proprie `properties` vengono memorizzate come `object_fields` sulla colonna. Questi sottocampi sono visibili nella SDL e vengono utilizzati per l'estrazione `jsonb` nelle query.
 
-**Cache delle risposte.** I risultati delle operazioni GET vengono memorizzati nella cache in PostgreSQL da `pg_cache.py`. Ogni combinazione di parametri della richiesta ottiene un proprio gruppo `_params_hash`. Le righe di un determinato hash vengono sostituite alla scadenza del TTL. Gli endpoint con parametro di percorso (`/pets/{id}`) saltano il recupero massivo iniziale — la tabella cache viene creata vuota per l'introspezione dello schema, quindi popolata per chiave primaria man mano che arrivano le richieste.
+**Cache delle risposte.** I risultati delle operazioni GET vengono memorizzati nella cache in PostgreSQL da `pg_cache.py`. Ogni combinazione di parametri della richiesta ottiene un proprio gruppo `_params_hash`. Le righe di un determinato hash vengono sostituite alla scadenza del TTL. Gli endpoint con parametro di percorso (`/pets/{id}`) saltano il recupero massivo iniziale. La tabella cache viene creata vuota per l'introspezione dello schema, quindi popolata per chiave primaria man mano che arrivano le richieste.
 
 **Aggiornamento.** Inviare una richiesta POST a `/admin/openapi/refresh/{source_id}`. Analizza nuovamente la specifica tramite `_load_and_register`, che non registra nulla: non aggiunge alcuna tabella né colonna. Le regole di governance esistenti vengono preservate. Una tabella registrata mantiene le sue colonne; viene letta tramite l'operazione della spec aggiornata.
 
@@ -290,7 +290,7 @@ Priorità di classificazione: `operation_overrides` (payload) ha priorità su `x
 
 Una tabella registrata da qualsiasi origine di schema remoto è una tabella Provisa a tutti gli effetti. Nulla al suo interno viene trattato in modo diverso rispetto a una tabella relazionale connessa localmente in fase di esecuzione.
 
-**Interfacce di query.** La tabella è immediatamente interrogabile tramite GraphQL, SQL (pgwire o diretto), Cypher (GQL), JSON:API e Arrow Flight. La generazione dello schema sintetizza `ColumnMetadata` per le tabelle remote, poiché non dispongono di un catalogo — la mappatura dei tipi viene applicata al momento della costruzione dello schema.
+**Interfacce di query.** La tabella è immediatamente interrogabile tramite GraphQL, SQL (pgwire o diretto), Cypher (GQL), JSON:API e Arrow Flight. La generazione dello schema sintetizza `ColumnMetadata` per le tabelle remote, poiché non dispongono di un catalogo; la mappatura dei tipi viene applicata al momento della costruzione dello schema.
 
 **Modello di sicurezza.** Si applicano tutti e cinque i livelli di governance:
 
@@ -338,7 +338,7 @@ Lo stesso meccanismo vale quando lo schema viene costruito filtrato per dominio.
 
 Una tabella di sola definizione di tipo:
 
-- Non ha alcun campo di query radice — i client non possono interrogarla direttamente per nome.
+- Non ha alcun campo di query radice, quindi i client non possono interrogarla direttamente per nome.
 - È raggiungibile tramite campi di relazione su tabelle che dispongono di voci radice.
 - Continua a comparire nell'introspezione dello schema come tipo con nome.
 - Mantiene l'applicazione di tutte le regole di governance quando si accede ai dati tramite una relazione.
