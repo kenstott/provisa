@@ -36,10 +36,11 @@ def _at(table: Any, schema: str | None) -> Any:
 
 async def latest_run(conn: Any, schema: str | None, reg: dict) -> tuple[int, str] | None:
     """(the table's id in ``schema``, its latest measured run id), or None when no profiler
-    holds the table there (its result relations exist only then) or it has no run."""
+    holds the table there, its runs relation is not written yet (a member seeded from a
+    configuration and never run: profiler.schema.result_exists), or it has no run."""
     from provisa.core.schema_org import registered_tables as rt
     from provisa.profiler.declared import measured
-    from provisa.profiler.schema import result_sa_table
+    from provisa.profiler.schema import result_exists, result_sa_table
 
     q = _at(rt, schema)
     row = (
@@ -54,6 +55,8 @@ async def latest_run(conn: Any, schema: str | None, reg: dict) -> tuple[int, str
     if row is None or row[1] is None:
         return None
     tid = int(row[0])
+    if not await result_exists(conn, reg["table_name"], tid, "runs", schema):
+        return None
     runs = _at(result_sa_table(reg["table_name"], tid, "runs"), schema)
     found = (
         await conn.execute_core(

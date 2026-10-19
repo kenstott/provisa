@@ -147,6 +147,10 @@ async def latest_facts(
     def rel(kind: str) -> Any:
         return _qualified(result_sa_table(reg["table_name"], tid, kind), schema)
 
+    from provisa.profiler.schema import result_exists
+
+    if not await result_exists(conn, reg["table_name"], tid, "runs", schema):
+        return None  # a member never run: its runs relation is not written yet
     runs = rel("runs")
     from provisa.profiler.declared import measured
 
