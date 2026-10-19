@@ -144,7 +144,7 @@ DROP TABLE busy;
 - **生命週期。** 暫存資料表不是模型物件，其他工作階段看不到它，它隨工作階段結束。在 pgwire 中，工作階段就是連線。在沒有自己連線的介面上（HTTP 上的 SQL、Flight、MCP），工作階段就是請求，因此暫存資料表只在該請求中一併傳送的陳述式之間存續。
 - **儲存。** 資料列存放於引擎儲存中工作階段自己的結構描述，並在工作階段結束時移除。`INSERT`、`UPDATE` 或 `DELETE` 會經由引擎重寫整張資料表，因此暫存資料表適合工作數據，而不適合逐列寫入的大型資料表。沒有結束其工作階段便停止的程序會在儲存中留下這些工作階段的結構描述；它們會在環境停用時被移除。
 
-同樣的陳述式在每個 SQL 介面上都可使用：它們在所有介面共用的管線中處理。[inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+同樣的陳述式在每個 SQL 介面上都可使用：它們在所有介面共用的管線中處理。[inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; no test covers the pgwire connection-long session]
 
 ### 數據寫入（INSERT、UPDATE、DELETE、MERGE、COPY FROM STDIN） {: #data-writes-insert-update-delete-merge-copy-from-stdin }
 

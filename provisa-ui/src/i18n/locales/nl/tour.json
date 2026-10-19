@@ -910,7 +910,7 @@
       },
       "agricultureMarket": {
         "title": "De verliezen van de hele markt",
-        "description": "De USDA Risk Management Agency publiceert de gewasverzekeringsresultaten van elk county per gewas, schadeoorzaak en maand: de premie die de markt ontving en de uitkeringen voor droogte, hitte, overtollig vocht, hagel en de rest. De overheidsdata bevat dit voor 2009 tot en met 2017 en vanaf 2024; 2018 tot en met 2023 zijn nog niet geladen, dus deze demo beslaat de oogstjaren 2010 tot en met 2017."
+        "description": "De USDA Risk Management Agency publiceert de gewasverzekeringsresultaten van elk county per gewas, schadeoorzaak en maand: de premie die de markt ontving en de uitkeringen voor droogte, hitte, overtollig vocht, hagel en de rest. Deze demo beslaat de oogstjaren 2010 tot en met 2017."
       },
       "agricultureWeather": {
         "title": "Dagelijks weer per county",

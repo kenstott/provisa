@@ -910,7 +910,7 @@
       },
       "agricultureMarket": {
         "title": "As perdas de todo o mercado",
-        "description": "A USDA Risk Management Agency publica a experiência do seguro agrícola de cada condado por cultura, causa da perda e mês: o prêmio que o mercado arrecadou e as indenizações que pagou por seca, calor, excesso de umidade, granizo e o resto. Os dados governamentais trazem isso de 2009 a 2017 e a partir de 2024; 2018 a 2023 ainda não foram carregados, por isso esta demo cobre os anos-safra de 2010 a 2017."
+        "description": "A USDA Risk Management Agency publica a experiência do seguro agrícola de cada condado por cultura, causa da perda e mês: o prêmio que o mercado arrecadou e as indenizações que pagou por seca, calor, excesso de umidade, granizo e o resto. Esta demo cobre os anos-safra de 2010 a 2017."
       },
       "agricultureWeather": {
         "title": "Clima diário por condado",

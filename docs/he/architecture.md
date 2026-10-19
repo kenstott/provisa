@@ -499,7 +499,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 ## סודות מוצפנים לפי ארגון {: #per-org-encrypted-secrets }
 
-`provisa/core/org_secrets.py` שומר פרטי גישה שאסור שיופיעו כטקסט גלוי במסד הנתונים. כרגע מוגבל למפתחות API של ספקי LLM (`{vendor}_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
+`provisa/core/org_secrets.py` שומר פרטי גישה שאסור שיופיעו כטקסט גלוי במסד הנתונים. הוא מחזיק את מפתחות ה-API של ספקי ה-AI (`{vendor}_api_key`) ואת מפתח Jev (`jev_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
 
 הערכים מוצפנים דרך `encryption_service` הכלל-תהליכי מ-`provisa.encryption.runtime` — אותו מנגנון כמו `api_sources.auth`. [tool-verified: `provisa/core/org_secrets.py:16-17`]
 

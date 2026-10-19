@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-Trigger pianificati da config con stato a runtime. Ogni voce porta la propria espressione cron, `kind` (`webhook` o `sql`), se è attualmente abilitata, il timestamp dell'ultima esecuzione (sempre `null` in questa release — tracciato dallo scheduler), e il prossimo orario di esecuzione pianificato da APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
+Trigger pianificati da config con stato a runtime. Ogni voce porta la propria espressione cron, `kind` (`webhook` o `sql`), se è attualmente abilitata, il timestamp dell'ultima esecuzione (sempre `null`; lo traccia lo scheduler), e il prossimo orario di esecuzione pianificato da APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
 
 ---
 

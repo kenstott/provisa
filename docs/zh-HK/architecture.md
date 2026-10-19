@@ -499,7 +499,7 @@ STALE → (refresh loop picks up) → REFRESHING → FRESH
 
 ## 逐組織加密機密 {: #per-org-encrypted-secrets }
 
-`provisa/core/org_secrets.py` 儲存絕不能以明文形式出現在資料庫中的憑證。目前僅限於 LLM 供應商 API 金鑰（`{vendor}_api_key`）。（REQ-1395、REQ-1398） [tool-verified: `provisa/core/org_secrets.py`]
+`provisa/core/org_secrets.py` 儲存絕不能以明文形式出現在資料庫中的憑證。它保存 AI 供應商的 API 金鑰（`{vendor}_api_key`）和 Jev 金鑰（`jev_api_key`）。（REQ-1395、REQ-1398） [tool-verified: `provisa/core/org_secrets.py`]
 
 數值是透過 `provisa.encryption.runtime` 的行程層級 `encryption_service` 加密——與 `api_sources.auth` 相同的機制。[tool-verified: `provisa/core/org_secrets.py:16-17`]
 

@@ -352,7 +352,7 @@ Admin API 在浏览器中的 `GET /admin/graphql` 附带 GraphiQL（REQ-622）�
 | `stale_metadata` | 缺少描述的表与列；缺少管家的域 |
 | `join_hotspots` | 最常被一起查询的表对——物化或缓存的候选 |
 
-当前有两项限制。粒度为表级——审计日志记录 `table_ids`，而非具体访问了哪些列。查询文本已加密（REQ-689）并从此处所有视图中排除；只能经由授权的管理解密路径访问。[tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+有两项限制。粒度为表级——审计日志记录 `table_ids`，而非具体访问了哪些列。查询文本已加密（REQ-689）并从此处所有视图中排除；只能经由授权的管理解密路径访问。[tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
 
 角色需要 `ops` 域的访问权限，这些视图才可见。授予方式与授予任何其他域的访问权限相同。
 

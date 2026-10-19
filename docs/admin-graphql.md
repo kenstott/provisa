@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-Scheduled triggers from config with runtime state. Each entry carries its cron expression, `kind` (`webhook` or `sql`), whether it is currently enabled, the last run timestamp (always `null` in this release — tracked by the scheduler), and the next scheduled run time from APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
+Scheduled triggers from config with runtime state. Each entry carries its cron expression, `kind` (`webhook` or `sql`), whether it is currently enabled, the last run timestamp (always `null`; the scheduler tracks it), and the next scheduled run time from APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
 
 ---
 

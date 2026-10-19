@@ -910,7 +910,7 @@
       },
       "agricultureMarket": {
         "title": "Die Schäden des gesamten Marktes",
-        "description": "Die USDA Risk Management Agency veröffentlicht die Ernteversicherungsdaten jedes Countys nach Kultur, Schadenursache und Monat: die vom Markt eingenommene Prämie und die gezahlten Entschädigungen für Dürre, Hitze, Übernässe, Hagel und den Rest. Die Regierungsdaten enthalten sie für 2009 bis 2017 und ab 2024; 2018 bis 2023 sind noch nicht geladen, daher umfasst diese Demo die Erntejahre 2010 bis 2017."
+        "description": "Die USDA Risk Management Agency veröffentlicht die Ernteversicherungsdaten jedes Countys nach Kultur, Schadenursache und Monat: die vom Markt eingenommene Prämie und die gezahlten Entschädigungen für Dürre, Hitze, Übernässe, Hagel und den Rest. Diese Demo umfasst die Erntejahre 2010 bis 2017."
       },
       "agricultureWeather": {
         "title": "Tageswetter je County",

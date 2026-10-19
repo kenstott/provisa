@@ -144,7 +144,7 @@ DROP TABLE busy;
 - **Lebensdauer.** Eine temporäre Tabelle ist kein Modellobjekt, keine andere Sitzung sieht sie, und sie endet mit der Sitzung. Bei pgwire ist eine Sitzung die Verbindung. Auf einer Oberfläche ohne eigene Verbindung (SQL über HTTP, Flight, MCP) ist eine Sitzung eine Anfrage, sodass eine temporäre Tabelle für die gemeinsam in dieser Anfrage gesendeten Anweisungen lebt.
 - **Speicherung.** Die Zeilen liegen in einem eigenen Schema der Sitzung im Store der Engine und werden gelöscht, wenn die Sitzung endet. Ein `INSERT`, `UPDATE` oder `DELETE` schreibt die ganze Tabelle über die Engine neu, sodass eine temporäre Tabelle für Arbeitsdaten taugt, nicht für große, zeilenweise geschriebene Tabellen. Ein Prozess, der anhält, ohne seine Sitzungen zu beenden, lässt deren Schemas im Store zurück; sie werden entfernt, wenn die Umgebung außer Betrieb geht.
 
-Dieselben Anweisungen funktionieren auf jeder SQL-Oberfläche: Sie werden in der Pipeline behandelt, die alle teilen. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+Dieselben Anweisungen funktionieren auf jeder SQL-Oberfläche: Sie werden in der Pipeline behandelt, die alle teilen. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; no test covers the pgwire connection-long session]
 
 ### Datenschreibvorgänge (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN) {: #data-writes-insert-update-delete-merge-copy-from-stdin }
 

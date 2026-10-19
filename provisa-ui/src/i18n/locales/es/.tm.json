@@ -6295,7 +6295,7 @@
   "es/tour.json::tour.steps.agricultureGovdata.title": "The public data",
   "es/tour.json::tour.steps.agricultureJoin.description": "The portfolio and the public tables share the county's FIPS code, and these relationships join them. The answer's view matches them by county and crop year.",
   "es/tour.json::tour.steps.agricultureJoin.title": "Joined by county",
-  "es/tour.json::tour.steps.agricultureMarket.description": "The USDA Risk Management Agency publishes every county's crop insurance experience by crop, cause of loss and month: the premium the market earned and the indemnities it paid for drought, heat, excess moisture, hail and the rest. The government data holds it for 2009 to 2017 and from 2024; 2018 to 2023 are not loaded yet, so this demo covers the crop years 2010 to 2017.",
+  "es/tour.json::tour.steps.agricultureMarket.description": "The USDA Risk Management Agency publishes every county's crop insurance experience by crop, cause of loss and month: the premium the market earned and the indemnities it paid for drought, heat, excess moisture, hail and the rest. This demo covers the crop years 2010 to 2017.",
   "es/tour.json::tour.steps.agricultureMarket.title": "The whole market's losses",
   "es/tour.json::tour.steps.agricultureRecap.description": "The insurer's own data, read live, and public losses, weather and yields, landed once, matched by county and crop year in one governed model: one view answers whether the weather explains the losses, in SQL, GraphQL and REST.",
   "es/tour.json::tour.steps.agricultureRecap.title": "What you saw",

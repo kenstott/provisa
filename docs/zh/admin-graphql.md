@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-来自配置的计划触发器及其运行时状态。每个条目携带其 cron 表达式、`kind`（`webhook` 或 `sql`）、当前是否启用、上次运行时间戳（本版本中始终为 `null`——由调度器跟踪），以及来自 APScheduler 的下次计划运行时间。[tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
+来自配置的计划触发器及其运行时状态。每个条目携带其 cron 表达式、`kind`（`webhook` 或 `sql`）、当前是否启用、上次运行时间戳（始终为 `null`；由调度器跟踪），以及来自 APScheduler 的下次计划运行时间。[tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
 
 ---
 

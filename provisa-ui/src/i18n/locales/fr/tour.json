@@ -910,7 +910,7 @@
       },
       "agricultureMarket": {
         "title": "Les pertes de tout le marché",
-        "description": "L'USDA Risk Management Agency publie l'expérience de l'assurance récolte de chaque comté par culture, cause de sinistre et mois : la prime encaissée par le marché et les indemnités versées pour la sécheresse, la chaleur, l'excès d'humidité, la grêle et le reste. Les données publiques la couvrent de 2009 à 2017 et à partir de 2024 ; 2018 à 2023 ne sont pas encore chargées, cette démo couvre donc les campagnes 2010 à 2017."
+        "description": "L'USDA Risk Management Agency publie l'expérience de l'assurance récolte de chaque comté par culture, cause de sinistre et mois : la prime encaissée par le marché et les indemnités versées pour la sécheresse, la chaleur, l'excès d'humidité, la grêle et le reste. Cette démo couvre les campagnes 2010 à 2017."
       },
       "agricultureWeather": {
         "title": "Météo quotidienne par comté",

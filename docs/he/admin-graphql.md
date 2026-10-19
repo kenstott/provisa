@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-טריגרים מתוזמנים מקובץ ההגדרות עם מצב ריצה. כל רשומה נושאת את ביטוי ה-cron שלה, `kind` (`webhook` או `sql`), האם היא מופעלת כרגע, חותמת הזמן של ההרצה האחרונה (תמיד `null` בגרסה זו — נעקב על ידי המתזמן), וזמן ההרצה המתוזמן הבא מ-APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
+טריגרים מתוזמנים מקובץ ההגדרות עם מצב ריצה. כל רשומה נושאת את ביטוי ה-cron שלה, `kind` (`webhook` או `sql`), האם היא מופעלת כרגע, חותמת הזמן של ההרצה האחרונה (תמיד `null`; המתזמן עוקב אחריו), וזמן ההרצה המתוזמן הבא מ-APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
 
 ---
 

@@ -358,7 +358,7 @@ Huit vues SQL sont amorcées dans le domaine `ops` intégré à chaque installat
 | `stale_metadata` | Tables et colonnes dépourvues de description ; domaines sans intendant |
 | `join_hotspots` | Paires de tables les plus souvent co-interrogées — candidates à la matérialisation ou à la mise en cache |
 
-Deux limites s'appliquent aujourd'hui. La granularité est au niveau de la table — le journal d'audit enregistre les `table_ids`, non les colonnes individuelles consultées. Le texte des requêtes est chiffré (REQ-689) et exclu de toutes les vues présentées ici ; il n'est accessible que par le chemin de déchiffrement administrateur autorisé. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+Deux limites s'appliquent. La granularité est au niveau de la table — le journal d'audit enregistre les `table_ids`, non les colonnes individuelles consultées. Le texte des requêtes est chiffré (REQ-689) et exclu de toutes les vues présentées ici ; il n'est accessible que par le chemin de déchiffrement administrateur autorisé. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
 
 Un rôle a besoin de l'accès au domaine `ops` pour que ces vues lui soient visibles. Accordez-le comme vous accordez l'accès à n'importe quel autre domaine.
 
