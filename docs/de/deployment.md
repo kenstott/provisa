@@ -441,7 +441,7 @@ Provisioniert einen vollständigen Multi-Node-Provisa-Cluster auf AWS — VPC, S
 
 | Frage | Standard | Hinweise |
 | ---------- | --------- | ------- |
-| Cloud-Anbieter | — | Heute nur AWS |
+| Cloud-Anbieter | — | Nur AWS |
 | AWS-Anmeldedaten | — | Prüft zuerst auf eine aktive Sitzung |
 | Region | `us-east-1` | |
 | Node-Anzahl | `2` | 1 = nur primär, kein LB; 2+ = primär + sekundär + ALB/NLB |

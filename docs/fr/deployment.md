@@ -441,7 +441,7 @@ Provisionne un cluster Provisa multinœud complet sur AWS — VPC, groupes de s�
 
 | Question | Valeur par défaut | Remarques |
 | ---------- | --------- | ------- |
-| Fournisseur cloud | — | AWS uniquement aujourd'hui |
+| Fournisseur cloud | — | AWS uniquement |
 | Identifiants AWS | — | Cherche d'abord une session active |
 | Région | `us-east-1` | |
 | Nombre de nœuds | `2` | 1 = primaire seul, sans répartiteur ; 2+ = primaire + secondaires + ALB/NLB |

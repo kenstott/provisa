@@ -148,7 +148,7 @@ DROP TABLE busy;
 - **Lifetime.** A temporary table is not a model object, no other session sees it, and it ends with the session. On pgwire a session is the connection. On a surface with no connection of its own (SQL over HTTP, Flight, MCP) a session is one request, so a temporary table lives for the statements sent together in that request.
 - **Storage.** The rows are held in a schema of the session's own in the engine's store and dropped when the session ends. An `INSERT`, `UPDATE` or `DELETE` rewrites the whole table through the engine, so a temporary table suits scratch data, not large tables written row by row. A process that stops without ending its sessions leaves their schemas in the store; they are removed when the environment is retired.
 
-The same statements work on every SQL surface: they are handled in the pipeline all of them share. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+The same statements work on every SQL surface: they are handled in the pipeline all of them share. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; no test covers the pgwire connection-long session]
 
 ### Data writes (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN)
 

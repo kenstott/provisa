@@ -499,7 +499,7 @@ Admin GraphQL API на Strawberry монтируется по адресу `/adm
 
 ## Зашифрованные секреты для каждой организации {: #per-org-encrypted-secrets }
 
-`provisa/core/org_secrets.py` хранит учётные данные, которые никогда не должны появляться в базе данных как открытый текст. В настоящее время ограничено ключами API вендоров LLM (`{vendor}_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
+`provisa/core/org_secrets.py` хранит учётные данные, которые никогда не должны появляться в базе данных как открытый текст. В нём хранятся ключи API вендоров ИИ (`{vendor}_api_key`) и ключ Jev (`jev_api_key`). (REQ-1395, REQ-1398) [tool-verified: `provisa/core/org_secrets.py`]
 
 Значения шифруются через общепроцессный `encryption_service` из `provisa.encryption.runtime` — тот же механизм, что и `api_sources.auth`. [tool-verified: `provisa/core/org_secrets.py:16-17`]
 

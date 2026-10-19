@@ -910,7 +910,7 @@
       },
       "agricultureMarket": {
         "title": "Las pérdidas de todo el mercado",
-        "description": "La Agencia de Gestión de Riesgos (RMA) del USDA publica la experiencia del seguro agrícola de cada condado por cultivo, causa de pérdida y mes: la prima que cobró el mercado y las indemnizaciones que pagó por sequía, calor, exceso de humedad, granizo y el resto. Los datos gubernamentales la contienen de 2009 a 2017 y desde 2024; 2018 a 2023 aún no están cargados, por lo que esta demo abarca las campañas agrícolas de 2010 a 2017."
+        "description": "La Agencia de Gestión de Riesgos (RMA) del USDA publica la experiencia del seguro agrícola de cada condado por cultivo, causa de pérdida y mes: la prima que cobró el mercado y las indemnizaciones que pagó por sequía, calor, exceso de humedad, granizo y el resto. Esta demo abarca las campañas agrícolas de 2010 a 2017."
       },
       "agricultureWeather": {
         "title": "Clima diario por condado",

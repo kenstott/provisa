@@ -246,7 +246,7 @@ query {
 
 #### `scheduledTasks → [ScheduledTaskType!]!`
 
-Gatilhos agendados a partir da configuração, com estado em tempo de execução. Cada entrada carrega sua expressão cron, `kind` (`webhook` ou `sql`), se está habilitada atualmente, o timestamp da última execução (sempre `null` nesta versão — rastreado pelo agendador), e o próximo horário de execução agendado a partir do APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
+Gatilhos agendados a partir da configuração, com estado em tempo de execução. Cada entrada carrega sua expressão cron, `kind` (`webhook` ou `sql`), se está habilitada atualmente, o timestamp da última execução (sempre `null`; o agendador o rastreia), e o próximo horário de execução agendado a partir do APScheduler. [tool-verified: `provisa/api/admin/schema_query.py:1203-1245`]
 
 ---
 

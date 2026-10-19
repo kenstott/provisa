@@ -144,7 +144,7 @@ DROP TABLE busy;
 - **生命周期。** 临时表不是模型对象，其他会话看不到它，它随会话结束。在 pgwire 中，会话就是连接。在没有自己连接的界面上（HTTP 上的 SQL、Flight、MCP），会话就是请求，因此临时表只在该请求中一起发送的语句之间存续。
 - **存储。** 行保存在引擎存储中会话自己的 schema 里，并在会话结束时移除。`INSERT`、`UPDATE` 或 `DELETE` 会通过引擎重写整张表，因此临时表适合工作数据，而不适合逐行写入的大表。未结束其会话就停止的进程会在存储中留下这些会话的 schema；它们会在环境停用时被移除。
 
-同样的语句在每个 SQL 界面上都可用：它们在所有界面共享的管道中处理。[inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+同样的语句在每个 SQL 界面上都可用：它们在所有界面共享的管道中处理。[inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; no test covers the pgwire connection-long session]
 
 ### 数据写入（INSERT、UPDATE、DELETE、MERGE、COPY FROM STDIN） {: #data-writes-insert-update-delete-merge-copy-from-stdin }
 

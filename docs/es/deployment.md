@@ -441,7 +441,7 @@ Aprovisiona un clúster de Provisa multinodo completo en AWS: VPC, grupos de seg
 
 | Pregunta | Por defecto | Notas |
 | ---------- | --------- | ------- |
-| Proveedor de nube | — | Solo AWS por ahora |
+| Proveedor de nube | — | Solo AWS |
 | Credenciales de AWS | — | Primero verifica si hay una sesión activa |
 | Región | `us-east-1` | |
 | Número de nodos | `2` | 1 = solo primario, sin LB; 2+ = primario + secundarios + ALB/NLB |

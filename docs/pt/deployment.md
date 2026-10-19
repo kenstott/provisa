@@ -441,7 +441,7 @@ Provisiona um cluster Provisa multi-nó completo na AWS — VPC, security groups
 
 | Pergunta | Padrão | Notas |
 | ---------- | --------- | ------- |
-| Provedor de nuvem | — | Somente AWS hoje |
+| Provedor de nuvem | — | Somente AWS |
 | Credenciais AWS | — | Verifica sessão ativa primeiro |
 | Região | `us-east-1` | |
 | Contagem de nós | `2` | 1 = somente primário, sem LB; 2+ = primário + secundários + ALB/NLB |

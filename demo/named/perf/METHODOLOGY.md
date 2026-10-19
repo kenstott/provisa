@@ -1,7 +1,5 @@
 # Optimistic benchmark: three-device methodology
 
-Approved by the maintainer. Not yet provisioned or run.
-
 The optimistic benchmark measures Provisa's own ceiling per transport: one row, one column, no filter, the Postgres `orders` table. It runs on three machines, so no figure carries another program's CPU. The published figures are measured with telemetry off; the same points are measured again with telemetry on, to measure what telemetry costs.
 
 ## What runs where

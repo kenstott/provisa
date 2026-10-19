@@ -357,7 +357,7 @@ Eight SQL views are seeded into the built-in `ops` domain on every install. [too
 | `stale_metadata` | Tables and columns missing descriptions; domains missing a steward |
 | `join_hotspots` | Table pairs co-queried most often — candidates for materialization or caching |
 
-Two limits apply today. Granularity is at the table level — the audit log records `table_ids`, not individual columns accessed. Query text is encrypted (REQ-689) and excluded from every view here; it is accessible only through the authorised admin decrypt path. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+Two limits apply. Granularity is at the table level — the audit log records `table_ids`, not individual columns accessed. Query text is encrypted (REQ-689) and excluded from every view here; it is accessible only through the authorised admin decrypt path. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
 
 A role needs `ops` domain access before these views are visible. Grant it the same way you grant access to any other domain.
 

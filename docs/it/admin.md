@@ -358,7 +358,7 @@ Otto viste SQL vengono seminate nel dominio integrato `ops` a ogni installazione
 | `stale_metadata` | Tabelle e colonne prive di descrizione; domini privi di steward |
 | `join_hotspots` | Coppie di tabelle interrogate insieme più spesso — candidate alla materializzazione o alla cache |
 
-Oggi valgono due limiti. La granularità è a livello di tabella — il log di audit registra `table_ids`, non le singole colonne accedute. Il testo delle query è cifrato (REQ-689) ed escluso da ognuna di queste viste; è accessibile solo attraverso il percorso di decifratura admin autorizzato. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
+Valgono due limiti. La granularità è a livello di tabella — il log di audit registra `table_ids`, non le singole colonne accedute. Il testo delle query è cifrato (REQ-689) ed escluso da ognuna di queste viste; è accessibile solo attraverso il percorso di decifratura admin autorizzato. [tool-verified: `_meta_views.py:148-162` — comment notes `query_text_enc` exclusion]
 
 Un ruolo ha bisogno dell'accesso al dominio `ops` perché queste viste siano visibili. Si concede allo stesso modo dell'accesso a qualsiasi altro dominio.
 

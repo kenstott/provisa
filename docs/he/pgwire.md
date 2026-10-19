@@ -144,7 +144,7 @@ DROP TABLE busy;
 - **משך חיים.** טבלה זמנית אינה אובייקט מודל, סשנים אחרים אינם רואים אותה, והיא מסתיימת עם הסשן. ב-pgwire הסשן הוא החיבור. במשטח ללא חיבור משלו (SQL על HTTP, Flight, MCP) הסשן הוא הבקשה, ולכן טבלה זמנית חיה עבור ההצהרות שנשלחו יחד בבקשה זו.
 - **אחסון.** השורות נשמרות בסכמה משלו של הסשן במאגר של המנוע ומוסרות כשהסשן מסתיים. `INSERT`, `UPDATE` או `DELETE` כותב מחדש את הטבלה כולה דרך המנוע, כך שטבלה זמנית מתאימה לנתוני עבודה, לא לטבלאות גדולות שנכתבות שורה אחר שורה. תהליך שנעצר בלי לסיים את הסשנים שלו משאיר את הסכמות שלהם במאגר; הן מוסרות כשהסביבה יוצאת משימוש.
 
-אותן הצהרות עובדות בכל משטח SQL: הן מטופלות בצינור המשותף לכולם. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+אותן הצהרות עובדות בכל משטח SQL: הן מטופלות בצינור המשותף לכולם. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; no test covers the pgwire connection-long session]
 
 ### כתיבת נתונים (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN) {: #data-writes-insert-update-delete-merge-copy-from-stdin }
 

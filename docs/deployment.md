@@ -441,7 +441,7 @@ Provisions a full multi-node Provisa cluster on AWS — VPC, security groups, EC
 
 | Question | Default | Notes |
 | ---------- | --------- | ------- |
-| Cloud provider | — | AWS only today |
+| Cloud provider | — | AWS only |
 | AWS credentials | — | Checks for active session first |
 | Region | `us-east-1` | |
 | Node count | `2` | 1 = primary only, no LB; 2+ = primary + secondaries + ALB/NLB |

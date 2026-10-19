@@ -910,7 +910,7 @@
       },
       "agricultureMarket": {
         "title": "Le perdite dell'intero mercato",
-        "description": "La USDA Risk Management Agency pubblica l'andamento dell'assicurazione agricola di ogni contea per coltura, causa del danno e mese: il premio incassato dal mercato e gli indennizzi pagati per siccità, caldo, eccesso di umidità, grandine e il resto. I dati governativi la contengono dal 2009 al 2017 e dal 2024; dal 2018 al 2023 non sono ancora caricati, quindi questa demo copre le campagne dal 2010 al 2017."
+        "description": "La USDA Risk Management Agency pubblica l'andamento dell'assicurazione agricola di ogni contea per coltura, causa del danno e mese: il premio incassato dal mercato e gli indennizzi pagati per siccità, caldo, eccesso di umidità, grandine e il resto. Questa demo copre le campagne dal 2010 al 2017."
       },
       "agricultureWeather": {
         "title": "Meteo giornaliero per contea",

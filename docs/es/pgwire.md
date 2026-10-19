@@ -144,7 +144,7 @@ DROP TABLE busy;
 - **Duración.** Una tabla temporal no es un objeto del modelo, ninguna otra sesión la ve y termina con la sesión. En pgwire una sesión es la conexión. En una superficie sin conexión propia (SQL sobre HTTP, Flight, MCP) una sesión es una solicitud, así que una tabla temporal vive para las sentencias enviadas juntas en esa solicitud.
 - **Almacenamiento.** Las filas se guardan en un esquema propio de la sesión en el almacén del motor y se eliminan cuando termina la sesión. Un `INSERT`, `UPDATE` o `DELETE` reescribe toda la tabla a través del motor, así que una tabla temporal sirve para datos de trabajo, no para tablas grandes escritas fila a fila. Un proceso que se detiene sin terminar sus sesiones deja sus esquemas en el almacén; se eliminan cuando se retira el entorno.
 
-Las mismas sentencias funcionan en toda superficie SQL: se manejan en el pipeline que todas comparten. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; the pgwire connection-long session is not yet covered by a test]
+Las mismas sentencias funcionan en toda superficie SQL: se manejan en el pipeline que todas comparten. [inferred: verified by `tests/integration/test_session_temp_tables.py` over HTTP; no test covers the pgwire connection-long session]
 
 ### Escrituras de datos (INSERT, UPDATE, DELETE, MERGE, COPY FROM STDIN) {: #data-writes-insert-update-delete-merge-copy-from-stdin }
 

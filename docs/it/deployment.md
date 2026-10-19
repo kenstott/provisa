@@ -441,7 +441,7 @@ Provisiona un intero cluster Provisa multi-nodo su AWS — VPC, security group, 
 
 | Domanda | Default | Note |
 | ---------- | --------- | ------- |
-| Provider cloud | — | Solo AWS oggi |
+| Provider cloud | — | Solo AWS |
 | Credenziali AWS | — | Controlla prima una sessione attiva |
 | Regione | `us-east-1` | |
 | Numero nodi | `2` | 1 = solo primary, nessun LB; 2+ = primary + secondary + ALB/NLB |
