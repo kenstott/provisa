@@ -20,8 +20,7 @@ actually check out against them needs to be reconciled separately from this docu
 
 Five plans, one product family, not the "Free/Starter/Team/Scale + two lanes" shape an
 earlier design pass modeled. `provisa_commercial.models.Plan`: `trial`, `starter`, `pro_s`,
-`pro_m`, `pro_l`. Pro is sold as three fixed sizes — the size IS the plan, not a setting on
-a single "Pro" tier, because each size is different hardware, a different price, and a
+`pro_m`, `pro_l`. Pro is sold as three fixed sizes. The size IS the plan, not a setting on a single "Pro" tier, because each size is different hardware, a different price, and a
 different Lemon Squeezy variant.
 
 | Plan | Hardware | Query ceilings | Sources | Compute base fee | Included active-hrs | Overage/active-hr | Included egress | Egress overage |
@@ -36,9 +35,7 @@ Query ceilings and hardware are engineering facts (`entitlements.py`, `ProSize`)
 included hours/GB, and overage rates are the live Lemon Squeezy price for each variant's
 graduated tier.
 
-**Pro is not unmetered compute.** Query *ceilings* (rows/bytes/memory/time) are uncapped on
-Pro — a dedicated engine has no shared-tenant reason to throttle a single query — but active-
-hour *billing* still applies to every plan, Pro included: each size's monthly base fee bundles
+**Pro is not unmetered compute.** Query *ceilings* (rows/bytes/memory/time) are uncapped on Pro, since a dedicated engine has no shared-tenant reason to throttle a single query. Active-hour *billing* still applies to every plan, Pro included: each size's monthly base fee bundles
 an included-hours allowance, then overage bills per hour beyond it, at a rate that scales with
 the hardware. Uncapped query limits and metered billing are two different axes; Pro relaxes
 only the first.
@@ -46,14 +43,11 @@ only the first.
 ## Why active-hour, not vCPU-hour or per-query
 
 The unit is occupancy (any clock hour the org submitted at least one query bills once,
-regardless of query count or duration), not a per-query or per-vCPU meter — Starter's shard
-hosts many orgs on the same nodes, so no per-org vCPU-hour is a real, readable number; billing
+regardless of query count or duration), not a per-query or per-vCPU meter. Starter's shard hosts many orgs on the same nodes, so no per-org vCPU-hour is a real, readable number; billing
 one would be inventing a figure the infrastructure cannot actually attribute
-(`usage.py`). An hour containing only rejected/killed queries still bills — the shard did the
-work of planning and admitting them before rejecting, so the occupancy cost was real.
+(`usage.py`). An hour containing only rejected or killed queries still bills, because the shard did the work of planning and admitting them before rejecting, so the occupancy cost was real.
 
-The signal is a durable counter (`org_usage_hour`, upserted per `(org, hour)`), not the audit
-log or the OTel trace stream — neither of those is a billing record; a billing fact needs an
+The signal is a durable counter (`org_usage_hour`, upserted per `(org, hour)`), not the audit log or the OTel trace stream. Neither of those is a billing record; a billing fact needs an
 idempotent row a monthly sweep can total without risk of double-counting a replay.
 
 ## The trial
@@ -61,13 +55,11 @@ idempotent row a monthly sweep can total without risk of double-counting a repla
 14 days, capped by three independent bounds, whichever comes first (`trial.py`,
 `TRIAL_DAYS`/`TRIAL_ACTIVE_HOURS`/`TRIAL_EGRESS_BYTES`): **14 calendar days**, **40 active
 hours**, or **25 GB egress** (sized to match Starter's own included egress allowance, so the
-trial evaluates the plan the org would actually buy). There is no separate "Trial" product in
-Lemon Squeezy — a trial is a Starter subscription with Lemon Squeezy's own free-trial flag
+trial evaluates the plan the org would actually buy). There is no separate "Trial" product in Lemon Squeezy. A trial is a Starter subscription with Lemon Squeezy's own free-trial flag
 enabled on that variant (confirmed live: the Starter variant carries `has_free_trial: true`,
 `trial_interval_count: 14`, `trial_interval: day`). Lemon Squeezy can only express the
 day-count bound; the active-hour and egress bounds are enforced by Provisa's own clock, which
-force-converts the trial (moves `trial_ends_at` to now) when either is hit early — that's what
-makes the merchant of record charge the first period on schedule rather than Provisa's code.
+force-converts the trial (moves `trial_ends_at` to now) when either is hit early. That is what makes the merchant of record charge the first period on schedule rather than Provisa's code.
 
 Entitlement is keyed on the Lemon Squeezy **subscription status**, never on a landed payment:
 `on_trial`, `active`, and `cancelled` (cancel-at-period-end — the org paid for the period it's
@@ -76,8 +68,7 @@ still in) are entitled; `past_due`, `unpaid`, `expired`, and `paused` are not (`
 
 ## Egress
 
-One overage rate, **$0.48/GB**, identical across every plan — only the included allowance
-scales with plan size (25/50/100/200 GB). Metered separately from compute because it fails
+One overage rate, **$0.48/GB**, identical across every plan. Only the included allowance scales with plan size (25/50/100/200 GB). Metered separately from compute because it fails
 differently: a compute ceiling is enforced by Trino itself (session properties, `EXCEEDED_*`
 errors); an unbounded `SELECT *` over a modest table passes every scan guard while still
 shipping gigabytes, so egress is enforced on the result path
@@ -93,8 +84,7 @@ box beyond the active-hour/egress lines above.
 
 ## The zero-customer cost floor
 
-What this deployment costs with zero paying customers signed up — the number that makes the
-free tier and trial genuinely low-risk to offer, verified against what's actually deployed
+What this deployment costs with zero paying customers signed up , the number that makes the free tier and trial low-risk to offer, verified against what's actually deployed
 (`terraform/gcp-saas/`), not a modeled estimate:
 
 | Component | Cost at zero customers | Why |
@@ -107,25 +97,22 @@ free tier and trial genuinely low-risk to offer, verified against what's actuall
 | Static IP (shared front-door address) | **$0** | GCP only charges for a *reserved-but-unattached* external IP; this one stays attached to the always-on front-door VM. |
 | DNS (Cloudflare) | **$0** | Free-tier DNS-only records (`proxied = false`). |
 
-**Total fixed floor: ~$9/mo**, not the ~$19/mo an earlier design pass modeled — Cloud SQL is
-the only real fixed line; everything else is either genuinely free-tier or scales to zero with
+**Total fixed floor: ~$9/mo**, not the ~$19/mo an earlier design pass modeled. Cloud SQL is the only real fixed line; everything else is either genuinely free-tier or scales to zero with
 no traffic. This is what makes offering a free tier and a 14-day trial cheap to run: acquiring
 a customer who never converts costs Cloud SQL's per-tenant registry row, nothing else.
 
 ## Comparison to competitors' actual current pricing
 
-Verified against each vendor's own live pricing/API as of 2026-09-16, not older or modeled
-figures — two material corrections to what an earlier pass assumed:
+Verified against each vendor's own live pricing/API as of 2026-09-16, not older or modeled figures. Two material corrections to what an earlier pass assumed:
 
 **Hasura has moved off active-hour billing entirely for new customers.** Their current
-flagship product, Hasura DDN, bills **$5–$30 per "active model"/month** (Free / Base / Advanced
-tiers) — a per-table unit, not project-hours, and specifically gated on a usage threshold, per
+flagship product, Hasura DDN, bills **$5–$30 per "active model"/month** (Free / Base / Advanced tiers): a per-table unit, not project-hours, and specifically gated on a usage threshold, per
 Hasura's own pricing page: *"Active Model is any model or command in the metadata that is
 accessed more than 1000 times/month."* A table queried fewer than 1000 times in the month costs
 nothing; cross that line and the whole table is billed for the month, regardless of how far
 over 1000 it went. This is a fundamentally different unit from what Provisa's `hasura_v2`
 compatibility layer targets. The active-hour model below is **Hasura Cloud v2, legacy and
-grandfathered** — still running for existing customers, not what a new Hasura signup lands on
+grandfathered**, still running for existing customers not what a new Hasura signup lands on
 today.
 
 | | Hasura Cloud v2 (legacy) | Starburst Galaxy | Provisa |
@@ -139,8 +126,7 @@ today.
 Provisa's Starter rate ($1.30/active-hr overage) undercuts Hasura v2's base rate ($1.50/active-hr)
 even before accounting for the included-hours allowance a Lemon Squeezy subscription bundles in;
 Provisa's Pro tiers sit at or below Galaxy's Pro worker-hour rate while reaching a broader source
-class than Galaxy's Trino-only reach. Both comparisons hold at the *entry* tier — a rigorous
-apples-to-apples comparison at higher tiers would need Hasura's actual current advanced-connector
+class than Galaxy's Trino-only reach. Both comparisons hold at the *entry* tier. A rigorous apples-to-apples comparison at higher tiers would need Hasura's actual current advanced-connector
 multiplier, which isn't publicly documented precisely enough to cite as fact here.
 
 ## Net-revenue projection
@@ -149,8 +135,7 @@ multiplier, which isn't publicly documented precisely enough to cite as fact her
 compute costs are current GCP on-demand list prices for the actual machine types/pod sizes this
 deployment runs (`ProSize` for Pro, the shared shard's Autopilot pod request for Starter);
 per-org usage and the customer count per tier are assumed, not measured. The single biggest
-unverified lever is the Starter/shared-lane concurrency assumption below — change it and
-Starter's margin moves a lot; Pro's doesn't, because Pro's engine is never shared.
+unverified lever is the Starter/shared-lane concurrency assumption below: change it and Starter's margin moves a lot; Pro's doesn't, because Pro's engine is never shared.
 
 **Direct compute cost basis:**
 
@@ -161,8 +146,7 @@ Starter's margin moves a lot; Pro's doesn't, because Pro's engine is never share
 | Pro M | n2-highmem-8 on-demand, us-central1 | **$0.52/hr** |
 | Pro L | n2-highmem-16 on-demand, us-central1 | **$1.05/hr** |
 
-Egress costs Provisa **$0.12/GB** regardless of whether it falls inside a customer's included
-allowance (that section, above) — included GB is revenue Provisa doesn't collect on cost it
+Egress costs Provisa **$0.12/GB** regardless of whether it falls inside a customer's included allowance (that section, above). Included GB is revenue Provisa doesn't collect on cost it
 still pays, not cost Provisa avoids.
 
 **Per-org economics, assumed usage:**
@@ -185,12 +169,10 @@ still pays, not cost Provisa avoids.
 | **Net margin** | **80%** |
 
 Two things this makes visible that the per-unit margin percentages alone don't: Starter's 89%
-margin is the *most* sensitive number in this whole model — it's a direct function of the
-concurrency assumption (4 orgs/shard-hour), which isn't measured, only asserted; a real
+margin is the *most* sensitive number in this whole model. It is a direct function of the concurrency assumption (4 orgs/shard-hour), which isn't measured, only asserted; a real
 concurrency count from `org_usage_hour` once there's live traffic should replace it. Pro's ~77%
 margin depends on no modeling assumption at all: dedicated hardware means no concurrency
-number to guess at, just the org's own usage against a fixed, verifiable on-demand rate — the
-only thing that would move it is which Pro sizes customers actually pick.
+number to guess at, just the org's own usage against a fixed, verifiable on-demand rate. The only thing that would move it is which Pro sizes customers actually pick.
 
 **Live model:** the SaaS figures above, plus on-prem/add-on SKUs and two named scenarios, are
 built as an interactive workbook — `docs/pricing/provisa-revenue-model.xlsx`
@@ -201,13 +183,12 @@ re-run the script after changing an assumption and everything downstream recompu
 
 ## On-prem licensing
 
-Negotiated, not published — these are starting-assumption placeholder rates for the SKU
+Negotiated, not published. These are starting-assumption placeholder rates for the SKU
 structure, not a price list (`Inputs` sheet, "On-prem licensing" section). One model only: a
-flat per-core rate, with no hardware-class factor and no coordinator/worker distinction — a
-core costs the same regardless of the chip it runs on or the role the node plays.
+flat per-core rate, with no hardware-class factor and no coordinator/worker distinction: a core costs the same regardless of the chip it runs on or the role the node plays.
 
 An earlier draft split cores into a device-class factor (Oracle's core-factor-table pattern:
-0.5× commodity x86/ARM, 1.0× everything else) — dropped, because Oracle's rationale for that
+0.5× commodity x86/ARM, 1.0× everything else). It was dropped, because Oracle's rationale for that
 split (non-x86 chips do more work per core on Oracle's own workloads) doesn't hold for Provisa:
 it's software, a core is a core regardless of instruction set.
 
@@ -220,26 +201,22 @@ it's software, a core is a core regardless of instruction set.
 A representative deal (48 licensed cores, the workbook's current default): 48 × $3,000 =
 **$144,000/deal license revenue**, **$108,000/deal margin** after the 25% delivery cost.
 
-**Enforcement is contractual, not technical.** Provisa on-prem ships as a library — there is no
-runtime gate that can check node count, core count, or memory against what was purchased, and no
+**Enforcement is contractual, not technical.** Provisa on-prem ships as a library. There is no runtime gate that can check node count, core count, or memory against what was purchased, and no
 phone-home or central key registry. The license key is scoped to a *cluster* (a group of nodes):
 nodes sharing a key can sum their own reported vCPU/mem and warn once the cluster's licensed core
-entitlement is exceeded, but that check only holds within one cluster's own key exchange —
-nothing stops a customer copying the same key into a second, isolated cluster. The only thing
+entitlement is exceeded, but that check only holds within one cluster's own key exchange, and nothing stops a customer copying the same key into a second, isolated cluster. The only thing
 Provisa can actually withhold from an out-of-scope or unpaid deployment is service: support,
 SLAs, and updates. Every license fee above is really a support/update contract with a
-usage-scope clause and audit rights attached — not a technical control on total consumption.
+usage-scope clause and audit rights attached, and no technical control on total consumption.
 This is the same posture Oracle and IBM's own core-factor licensing runs on in practice (audit
 rights, not a runtime block), and the same free-to-run-anywhere shape as Grafana OSS or Neo4j
 Desktop.
 
 **Free tier:** orgs may run on-prem at $0/no-support if both hold: a self-attested contractual
-8-core cluster cap, and under $1M in company annual revenue — license-terms limits, not
-technical ones, for the same reason above.
+8-core cluster cap, and under $1M in company annual revenue. These are license-terms limits, not technical ones, for the same reason above.
 
-**Support-only SKU:** for free-tier orgs who want someone to call without buying a license —
-**$10,000/yr**, no license included, scoped to a 24-hour response commitment (confirm the defect
-or clarify the feature, plus a resolution ETA — never a resolution-time guarantee, which the
+**Support-only SKU:** for free-tier orgs who want someone to call without buying a license: **$10,000/yr**, no license included, scoped to a 24-hour response commitment (confirm the defect
+or clarify the feature, plus a resolution ETA, never a resolution-time guarantee, which the
 price point can't cover). At a 40% assumed delivery cost, that nets **$6,000/yr per
 subscriber**.
 
@@ -269,24 +246,23 @@ knobs (they don't share counts with the base `Model` sheet):
   $795K/yr combined**, illustrating that on-prem deals reach the same order of magnitude with
   far fewer logos than SaaS alone (3 deals vs. hundreds of orgs).
 
-Neither is a forecast — both are starting points for a "what customer mix gets us to $X"
+Neither is a forecast. Both are starting points for a "what customer mix gets us to $X"
 conversation, meant to be replaced by real attach/conversion rates once they exist.
 
 ## How this deployment reaches billing
 
-`.claude/commercial/` is the only module that knows about any of this — `provisa.core.commerce`
-is the sole seam, imported inside a `try` from core, memoized, degrading to a no-op everywhere
+`.claude/commercial/` is the only module that knows about any of this, and `provisa.core.commerce` is the sole seam, imported inside a `try` from core, memoized, degrading to a no-op everywhere
 it's not installed. A self-hosted install with no commercial plugin present runs **unmetered,
 uncapped, and unbilled** — the correct behavior for a deployment with no subscription to
 enforce, not a bug. The plugin is installed only on the hosted node.
 
 ## Open questions this restatement surfaces
 
-- **`.env` variant-ID drift** (above) — needs reconciling against the live store before the
+- **`.env` variant-ID drift** (above) needs reconciling against the live store before the
   hosted checkout flow can be trusted to charge the right variant.
 - The commercial plugin's own numbers (base fees, included hours, overage rates) live in Lemon
   Squeezy's dashboard, not in this repository, by design (`README.md`: "so the open-source
   wheel and the demo build ship neither the pricing model nor the code that charges for it").
-  This document is a snapshot as of 2026-09-16 — re-pull from the API before quoting these
+  This document is a snapshot as of 2026-09-16. Re-pull from the API before quoting these
   numbers externally if meaningful time has passed, since nothing enforces this file staying in
   sync with a dashboard it doesn't read.

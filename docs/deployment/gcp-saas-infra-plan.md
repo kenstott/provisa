@@ -8,20 +8,20 @@ with postgres in the coordinator's compose stack. Pricing basis: the pricing pla
 
 Four layers, each with a different scaling law and warmth:
 
-1. **Site front-door** — always warm, no cold start. Cloud Run (`min-instances=1`)
+1. **Site front-door.** Always warm, no cold start. Cloud Run (`min-instances=1`)
    serves marketing/signup/login/UI/REST-API/health. HTTP only; scales up on demand,
    never to zero. This is what a prospect always hits instantly.
-2. **Control plane** — durable, managed, always warm. Cloud SQL holds the multitenancy
+2. **Control plane.** Durable, managed, always warm. Cloud SQL holds the multitenancy
    metadata (`PLATFORM_DATABASE_URL` / `TENANT_DATABASE_URL`); the site reads it live.
-3. **Coordinator** — Trino coordinator + TCP protocol listeners + stateful singletons.
+3. **Coordinator.** Trino coordinator, TCP protocol listeners and stateful singletons.
    Cold by default (scale-to-zero); a customer's first pgwire/bolt/flight connect
    cold-starts it. Always-warm only as a paid add-on (see Warmth tiers).
-4. **Data plane** — Trino workers only. Autoscaled Spot MIG, min=0 → N. Metered
+4. **Data plane.** Trino workers only. Autoscaled Spot MIG, min=0 → N. Metered
    compute; scales to zero at idle. Customer eats query startup on first run.
 
 Raw-TCP protocols (pgwire 5439, bolt 7687, Flight 8815, gRPC 50051, MCP 8009) need a
 persistent listener, so the coordinator is the reachable endpoint behind a regional
-external passthrough NLB (all-ports, one shared IP — same pattern as enterprise
+external passthrough NLB (all ports, one shared IP, the same pattern as enterprise
 [main.tf:375-429](https://github.com/kenstott/provisa/blob/main/terraform/gcp/main.tf#L375-L429)). Workers are not in the LB.
 The Cloud Run site front-door sits off to the side of the NLB: HTTP visitors hit Cloud
 Run directly (its own managed HTTPS), TCP clients hit the NLB → coordinator.
@@ -41,8 +41,7 @@ The warmth you keep hot maps to who needs it, so cold-start cost lands on the ri
 
 Raw-TCP connections can't be woken on demand (a passthrough-TCP connect can't trigger a
 wake the way an HTTP request can), so always-on TCP endpoints / ops-grade latency are
-inherently the paid warm-coordinator tier. Warm add-ons use on-demand (not Spot — a
-"guaranteed warm" SLA can't ride a preemptible instance) and qualify for a 1-year
+inherently the paid warm-coordinator tier. Warm add-ons use on-demand instances, because a "guaranteed warm" SLA can't ride a preemptible Spot instance, and qualify for a 1-year
 committed-use discount (~37% off) since they run 24/7.
 
 ## Service placement — can every service be provisioned here?
@@ -68,8 +67,7 @@ with optional managed swaps for the stateful singletons.
 | observability (grafana/prometheus/otel) | opt-in on node | coordinator, or `obs_mode=collector` → external OTLP | Managed Prometheus / external OTLP |
 
 The stateful singletons (redis, minio) ride the coordinator at low scale. Offloading
-them to Memorystore + GCS is a scale-up option, not a requirement — the plan provisions
-everything without it.
+them to Memorystore + GCS is a scale-up option. The plan provisions everything without it.
 
 ## Terraform module — delta from enterprise
 
@@ -103,14 +101,13 @@ the blocker is the `depends_on: postgres` and first-launch keying the skip on `R
 
 ## Coordinator scaling (the one vertical bottleneck)
 
-The Trino coordinator is the single non-autoscaling layer — a query planner is a
-single-writer coordination point, so it scales up, not out. But its heap is pinned at
+The Trino coordinator is the single non-autoscaling layer. A query planner is a single-writer coordination point, so it scales up, not out. But its heap is pinned at
 JVM launch (`-Xmx8G`, [trino/etc/jvm.config:2](https://github.com/kenstott/provisa/blob/main/trino/etc/jvm.config#L2)), so **there
 is no live vertical resize**: adding RAM does nothing until the JVM restarts with a higher
 `-Xmx`, and a restart drops every TCP connection and in-flight query. GCE machine_type
 resize needs a stop/start (same drop); GKE VPA / in-place resize can grow CPU live but not
 usable heap. So the design goal is to make the coordinator *not need* to grow, and to
-automate the rare resize as a graceful failover — never a live resize.
+automate the rare resize as a graceful failover, never a live resize.
 
 **1. Make the coordinator memory-light (biggest effect).** Flip
 `node-scheduler.include-coordinator=false` in the SaaS coordinator config (enterprise ships
@@ -126,15 +123,14 @@ data to minio/GCS instead of coordinator heap. Keep it; it is the spill valve th
 big query from blowing the coordinator.
 
 **3. Shard coordinators per tenant.** Multitenant routing (`{org}.provisa.dev`) lets each org
-hit its own coordinator, so no single coordinator carries the whole platform — horizontal
-scale *across* tenants, vertical *within* only a genuinely hot org. This is the primary
+hit its own coordinator, so no single coordinator carries the whole platform: horizontal scale *across* tenants, vertical *within* only a genuinely hot org. This is the primary
 scale-out story; per-coordinator vertical resize is the exception, not the norm.
 
 **4. Monitor + automate the rare resize as a rolling failover.** Coordinator exposes JMX
-(`HeapMemoryUsage`, running/queued query counts, cluster memory-pool reserved) — scrape via
+(`HeapMemoryUsage`, running/queued query counts, cluster memory-pool reserved). Scrape it via
 Managed Prometheus / OTLP (the obs stack already exists) and alert on heap % + queue depth.
 When a tenant genuinely outgrows its coordinator, a controller drains it (stop admitting new
-queries, let in-flight ones drain — FTE lets them checkpoint), brings up a larger-`-Xmx`
+queries, let in-flight ones drain, which FTE lets checkpoint), brings up a larger-`-Xmx`
 coordinator, and cuts the NLB/DNS over. Seconds of connect interruption, not a live resize.
 
 ## Cost points
@@ -149,7 +145,7 @@ coordinator, and cuts the NLB/DNS over. Seconds of connect interruption, not a l
 
 - Confirm Trino coordinator on `n2-standard-4` is sufficient once workers are remote and
   `node-scheduler.include-coordinator=false` (coordinator does planning + exchange, not scan).
-- Build the drain/rolling-upsize controller (see Coordinator scaling) — or defer until a
+- Build the drain/rolling-upsize controller (see Coordinator scaling), or defer it until a
   tenant actually saturates a coordinator, since per-tenant sharding pushes that out.
 - Cloud SQL connection pooling: decide Cloud SQL built-in vs PgBouncer sidecar under
   many-tenant connection fan-out.
