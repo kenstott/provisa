@@ -418,7 +418,7 @@ Uma fonte federada mantém os próprios logs, que o Provisa não escreve e não 
 
 As ferramentas de estatística do MCP (`describe`, `correlate`, `regress`, `compare`, `forecast`) executam o SQL que um agente define pelo pipeline governado com o papel do agente, então as regras de linha, o mascaramento e a ocultação se aplicam ao que analisam. As ferramentas de estatística devolvem apenas resultados, então as linhas por trás de uma análise nunca entram no contexto do modelo: minimização de dados por padrão.
 
-É o controle de acesso que limita o que um agente pode saber. Para expor apenas agregados, publique-os como exibições materializadas e conceda aos papéis essas exibições, não as tabelas subjacentes. Agregados sobre grupos pequenos podem identificar pessoas, então a exibição materializada decide o agrupamento e o menor grupo que um papel lê.
+É o controle de acesso que limita o que um agente pode saber. Para manter identidades fora do alcance de um agente, conceda ao papel dele apenas as colunas que não identificam ninguém; um papel que pode ler uma coluna pode agregá-la, e agregados sobre grupos pequenos ainda podem identificar pessoas.
 
 ## Limitação de taxa {: #rate-limiting }
 

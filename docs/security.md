@@ -420,7 +420,7 @@ A federated source keeps its own logs, which Provisa does not write and cannot r
 
 The MCP statistics tools (`describe`, `correlate`, `regress`, `compare`, `forecast`) run the SQL an agent defines through the governed pipeline as the agent's role, so row rules, masks and redaction apply to what they analyze. Stats tools return only results, so the rows behind an analysis never enter the model's context: data minimization by default.
 
-Access control is what limits what an agent can learn. To expose only aggregates, publish them as materialized views and grant roles those views, not the underlying tables. Aggregates over small groups can identify individuals, so the materialized view decides the grouping and the smallest group a role reads.
+Access control is what limits what an agent can learn. To keep identities out of an agent's reach, grant its role only the columns that identify no one; a role that can read a column can aggregate it, and aggregates over small groups can still identify individuals.
 
 ## Rate Limiting
 

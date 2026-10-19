@@ -1486,7 +1486,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 
 引擎在角色讀取的每一行上計算它能計算的內容：`describe` 的計數、去重計數、平均值、標準差、最小值和最大值，以及 `compare` 所需的每組 `n`、平均值和變異數。擬合的模型以及 `describe` 的分位數和最常見值最多讀取 `mcp.stats_max_rows` 行（Admin → Settings → Limits；預設 100,000）。每個讀取行的答案都會給出 `rows_read`、`row_cap` 和 `truncated`，角色自身的行數上限會像 `run_sql` 一樣在 `warnings` 中報告。
 
-統計工具只傳回結果，因此分析背後的行永遠不會進入模型的上下文：預設即數據最小化。限制智能體所能得知內容的是存取控制。若只公開聚合，請將其發布為具體化檢視，並把這些檢視而不是底層表授予角色；對小分組的聚合可能識別出個人，而具體化檢視決定了角色讀取的分組方式。參見[安全](security.md#statistics-over-mcp)。
+統計工具只傳回結果，因此分析背後的行永遠不會進入模型的上下文：預設即數據最小化。限制智能體所能得知內容的是存取控制。要讓身份資訊不在智能體可及範圍內，只向其角色授予不識別任何人的欄；能讀取某欄的角色就能對其聚合，而對小分組的聚合仍可能識別出個人。參見[安全](security.md#statistics-over-mcp)。
 
 ### 中繼資料匯出 {: #metadata-export }
 

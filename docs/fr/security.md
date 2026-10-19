@@ -418,7 +418,7 @@ Une source fédérée tient ses propres logs, que Provisa n'écrit pas et ne peu
 
 Les outils statistiques MCP (`describe`, `correlate`, `regress`, `compare`, `forecast`) exécutent le SQL défini par un agent dans le pipeline gouverné sous le rôle de l'agent, donc les règles de lignes, le masquage et l'expurgation s'appliquent à ce qu'ils analysent. Les outils statistiques ne renvoient que des résultats, donc les lignes derrière une analyse n'entrent jamais dans le contexte du modèle : minimisation des données par défaut.
 
-Le contrôle d'accès est ce qui limite ce qu'un agent peut apprendre. Pour n'exposer que des agrégats, publiez-les sous forme de vues matérialisées et accordez aux rôles ces vues, pas les tables sous-jacentes. Des agrégats sur de petits groupes peuvent identifier des individus, donc la vue matérialisée fixe le regroupement et le plus petit groupe que lit un rôle.
+Le contrôle d'accès est ce qui limite ce qu'un agent peut apprendre. Pour garder les identités hors de portée d'un agent, n'accordez à son rôle que les colonnes qui n'identifient personne ; un rôle qui peut lire une colonne peut l'agréger, et des agrégats sur de petits groupes peuvent encore identifier des individus.
 
 ## Limitation de débit {: #rate-limiting }
 
