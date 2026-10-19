@@ -192,7 +192,14 @@ class Stores:
         self.project = f"provisa-demo-bundle-{demo.name}-{os.getpid()}"
         text = self.compose_file.read_text() if self.compose_file.exists() else ""
         self.ports = {name: str(_free_port()) for name in sorted(set(_PORT_VAR.findall(text)))}
-        self.env = {**os.environ, "PROVISA_NAMED_DEMO_DIR": str(demo), **self.ports}
+        # Where the stores are: what a build's server is given of them. Never this process's whole
+        # environment -- a server given it would take this process's settings for its own (a test
+        # session's PROVISA_MATERIALIZE_URL kept the setup server's views in the session's
+        # PostgreSQL instead of its DuckDB file, CI run 39239941042).
+        self.addresses = {"PROVISA_NAMED_DEMO_DIR": str(demo), **self.ports}
+        # What compose and the build's client steps run with: this process's environment, and
+        # where the stores are.
+        self.env = {**os.environ, **self.addresses}
 
     def _compose(self, *args: str, **kw) -> subprocess.CompletedProcess:
         cmd = ["docker", "compose", "-p", self.project, "-f", str(self.compose_file), *args]
@@ -557,7 +564,7 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
     flight_port = _free_port()
     server_env = {
         **_config_env(demo),
-        **stores.env,
+        **stores.addresses,
         **({"OPENROUTER_API_KEY": os.environ["OPENROUTER_API_KEY"]} if asked else {}),
         "PROVISA_CONFIG": str(answering_config(work, demo) if asked else demo / "config.yaml"),
         "PROVISA_ENGINE": "duckdb",
@@ -702,7 +709,7 @@ def _seed_node(
     http_port = _free_port()
     server_env = {
         **_config_env(demo),
-        **stores.env,
+        **stores.addresses,
         **_protocol_ports(),
         **_duckdb_env(work),
         "ORG_ID": "demobundle",
@@ -759,7 +766,7 @@ def _demo_config(demo: Path, stores: Stores):
     from provisa.core.config_loader import parse_config_dict, read_config_with_includes
 
     saved = dict(os.environ)
-    os.environ.update({k: v for k, v in stores.env.items() if k not in saved or saved[k] != v})
+    os.environ.update(stores.addresses)
     try:
         return parse_config_dict(read_config_with_includes(demo / "config.yaml"))
     finally:

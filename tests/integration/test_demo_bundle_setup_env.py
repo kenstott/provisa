@@ -8,14 +8,21 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The bundle build's setup server starts where the build has no HOME (scripts/demo_bundle.py).
+"""The bundle build's setup server runs on an environment of the build's own (scripts/demo_bundle.py),
+and its views' history is exported from where it kept them.
 
 The build gives its servers an environment of their own. Without HOME, DuckDB cannot place its
 per-user extension directory: the server failed to start ("To set the TimeZone setting, the icu
 extension needs to be loaded. But it could not be autoloaded."), on a demo whose views keep time
 (the reproduce demo's bitemporal report). The build now names where DuckDB finds its extensions
 (_duckdb_env), and this sets the reproduce demo up with HOME unset, its trading book in an
-embedded Postgres of the test's own, to show the server starts and its setup runs."""
+embedded Postgres of the test's own, to show the server starts and its setup runs.
+
+Nor is a server given this process's own environment: the stores' addresses only. Given the whole
+of it, the setup server took a test session's PROVISA_MATERIALIZE_URL for its own and kept its
+views in the session's PostgreSQL, and the export then found no store (CI run 39239941042). Here
+this process holds such a URL, unreachable, and the views are exported from the server's own
+DuckDB store, with the records of the refreshes that built them."""
 
 # Requirements: REQ-2016, REQ-2049
 
@@ -43,11 +50,14 @@ def _builder():
     return module
 
 
-class _Book:
-    """The demo's stores as the build names them: its trading book, here an embedded Postgres."""
-
-    def __init__(self, port: int) -> None:
-        self.env = {"REPRODUCE_PG_HOST": "127.0.0.1", "REPRODUCE_PG_PORT": str(port)}
+def _stores(builder, demo: Path, port: int):
+    """The build's own Stores for the demo, its trading book at the embedded Postgres instead of
+    its compose service (never started here)."""
+    stores = builder.Stores(demo)
+    book = {"REPRODUCE_PG_HOST": "127.0.0.1", "REPRODUCE_PG_PORT": str(port)}
+    stores.addresses.update(book)
+    stores.env.update(book)
+    return stores
 
 
 @pytest.fixture
@@ -67,9 +77,19 @@ def book():
         pg.stop()
 
 
-def test_the_setup_server_starts_and_sets_up_with_home_absent(tmp_path, monkeypatch, book):
+def test_the_setup_server_runs_on_the_builds_own_environment(tmp_path, monkeypatch, book):
+    import json
+
     demo = tmp_path / "named" / "reproduce"
     shutil.copytree(_REPO / "demo" / "named" / "reproduce", demo)
     monkeypatch.delenv("HOME", raising=False)
-    # Raises SystemExit naming an early exit (the server did not start) or a timeout.
-    _builder()._set_up(tmp_path, demo, _Book(book.port), 300)
+    monkeypatch.setenv("PROVISA_MATERIALIZE_URL", "postgresql://nobody:x@127.0.0.1:1/nowhere")
+    builder = _builder()
+    stores = _stores(builder, demo, book.port)
+    # Raises SystemExit naming an early exit (the server did not start), a timeout, or a store
+    # not where the views are exported from.
+    builder._set_up(tmp_path, demo, stores, 300)
+    builder._export_views(tmp_path, demo, stores)
+    record = json.loads((demo / "seeded" / "views.json").read_text())
+    assert record["tables"] == ["mv_view_exposure"]
+    assert record["refreshes"] == 2, record
