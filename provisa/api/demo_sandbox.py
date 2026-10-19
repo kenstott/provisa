@@ -218,6 +218,7 @@ async def open_sandbox(name: str, *, kind: str, user_id: str | None = None) -> O
 async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> str | None:
     from provisa.api.admin.orgs_router import _admin_pool, _pool, _refresh_root_registry_view
     from provisa.api.app import _stop_org_servers, build_org_runtime, state
+    from provisa.codesource import uploads
     from provisa.auth.pat import PersonalAccessTokenStore
     from provisa.core import org_files
     from provisa.core.env_copy import clone_model
@@ -243,6 +244,8 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     # so its first build finds every replica already recorded as built for its own store and asks
     # for none.
     await clone_model(_pool(), org_schema(demo.template_org), org_schema(org_id), landing=COPIED)
+    # Uploads are the organisation's, outside its schema: its code sources name the template's.
+    await uploads.copy(_admin_pool(), demo.template_org, org_id)
     await org_files.prepare(org_id, state.admin_db, _stop_org_servers)
     # The demo version it is opened from: its examples and tour are that version's, whatever is
     # published after (demo_directory_of).
