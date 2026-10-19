@@ -387,13 +387,29 @@ Aufbewahrung: Zeilen werden unbegrenzt behalten. Provisa hat keine Einstellung f
 
 ## Schwärzung {: #redaction }
 
-Was Provisa über seine eigene Arbeit aufzeichnet, durchläuft eine Liste von Schwärzungsregeln je Organisation, bevor es irgendwohin geschrieben wird. Die eingebauten Regeln von Provisa sind der Ausgangsbestand der Liste; eine Organisation ergänzt eigene. Jedes Secret, das Provisa hält, und jedes Secret, auf das das Modell verweist, wird ohne eine Regel geschwärzt, die es nennt: Ein aus `${secret:…}` oder aus Provisas eigenem Speicher aufgelöster Wert erscheint nie im Klartext in einem Eintrag.
+Was Provisa über seine eigene Arbeit aufzeichnet, durchläuft eine Liste von Schwärzungsregeln, bevor es irgendwohin geschrieben wird. Text, auf den eine Regel passt, wird durch `[REDACTED:<rule>]` ersetzt, das die passende Regel nennt. (REQ-2087)
+
+Die Liste hat vier Teile:
+
+- **Integrierte Muster.** Kartennummern, die die Luhn-Prüfung bestehen, US-Sozialversicherungsnummern, Bearer-Tokens, Provisa-Zugriffstokens, AWS-, GCP-, Azure-, GitHub- und Slack-Schlüssel sowie private Schlüssel. Sie sind ein Grundstock, keine Garantie.
+- **Die Regeln des Deployments**, die in jeder Organisation gelten. Sie zu ändern erfordert das Recht `platform_settings`.
+- **Die eigenen Regeln der Organisation.** Sie zu ändern erfordert das Recht `org_settings`.
+- **Die automatische Regel** über die Secrets der Organisation: jeder Wert, den Provisas eigener Speicher für die Organisation hält, jedes `${secret:NAME}`, das Modell und Einstellungen der Organisation nennen (auf jedem Secrets-Backend), und jeder `${secret:…}`- oder `${user:…}`-Wert ab seiner ersten Auflösung. Keine Regel muss sie nennen.
+
+Eine Regel ist entweder ein benannter regulärer Ausdruck oder eine benannte `${secret:NAME}`- / `${env:NAME}`-Referenz, die auf den Wert passt, zu dem die Referenz aufgelöst wird. Eine Referenz, die sich nicht auflösen lässt, wird mit Namen auf `ERROR` protokolliert und als nicht aufgelöst angezeigt; die übrigen Regeln gelten weiter. Werte mit weniger als vier Zeichen werden nicht erkannt.
+
+Provisa ist nicht dafür zuständig, jedes sensible Format zu kennen. Die integrierten Muster decken verbreitete Formen ab; eine Organisation ergänzt Muster für ihre eigenen Formate, etwa Personalnummern, Kontokennungen oder interne Hostnamen. Die Schwärzung erfolgt nach bestem Bemühen: Ein Wert in einer Form, die keine Regel beschreibt, geht durch.
+
+Die Regeln stehen auf der Seite **Org-Secrets** unter **Schwärzungsregeln**. Die Seite listet die integrierten Muster, die Regeln des Deployments (mit `platform_settings` bearbeitbar), die Regeln der Organisation, die Secrets der automatischen Regel nur mit Namen und jede Referenz, die sich nicht auflösen lässt. Die Regeln werden beim Start des Servers und beim Aufbau der Laufzeitumgebung einer Organisation geladen und neu geladen, wenn sich Modell oder Einstellungen ändern und wenn ein Secret der Organisation gespeichert oder entfernt wird.
 
 Die Liste gilt an jedem Ausgang, an den Provisa schreibt:
 
-- jeder Span und jeder Log-Eintrag, im OpenTelemetry-SDK von Provisa, bevor ein Exporter ihn sieht; die Standardausgabe eingeschlossen;
-- die Audit-Tabellen, wenn jede Zeile geschrieben wird;
-- die Fehlermeldungen, die ein Client erhält.
+- jeder Span, als eine geschwärzte Kopie, die jedem Exporter übergeben wird, und die Ansicht der letzten Spans;
+- jeder Log-Eintrag in der OpenTelemetry-Log-Pipeline von Provisa und jede Zeile, die ein Logging-Handler schreibt, Standardausgabe und Container-Logs eingeschlossen;
+- der Abfragetext des Audit-Logs, bevor er gehasht und verschlüsselt wird, sodass weder der Text noch sein Hash einen erkannten Wert preisgibt; und das Detail des administrativen Protokolls;
+- die Fehlermeldungen, die ein Client über HTTP, pgwire, gRPC, Arrow Flight und MCP erhält.
+
+Telemetrie und Client-Fehler sind beim Schreiben keiner einzelnen Organisation zugeordnet; sie werden daher mit den Regeln aller Organisationen zusammen geschwärzt. Zwei Fehler gehen ungeschwärzt durch: ein HTTP-Fehlerrumpf größer als 1 MiB und der Fehler eines Arrow-Flight-Streams, der fehlschlägt, nachdem er zu senden begonnen hat.
 
 Eine föderierte Quelle führt ihre eigenen Logs, die Provisa weder schreibt noch erreicht. Aufzeichnungen einer Quelle über die Anweisungen, die Provisa an sie sendet, sind von dieser Quelle zu schützen.
 

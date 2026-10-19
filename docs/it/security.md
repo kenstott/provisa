@@ -387,13 +387,29 @@ Conservazione: le righe sono conservate a tempo indeterminato. Provisa non ha al
 
 ## Oscuramento {: #redaction }
 
-Ciò che Provisa registra del proprio lavoro passa per un'unica lista di regole di oscuramento per organizzazione prima di essere scritto ovunque. Le regole integrate di Provisa sono l'insieme iniziale della lista; un'organizzazione aggiunge le proprie. Ogni segreto che Provisa detiene, e ogni segreto a cui il modello fa riferimento, viene oscurato senza che una regola lo nomini: un valore risolto da `${secret:…}` o dall'archivio di Provisa non compare mai in chiaro in un record.
+Ciò che Provisa registra del proprio lavoro passa per una lista di regole di oscuramento prima di essere scritto ovunque. Il testo riconosciuto da una regola viene sostituito con `[REDACTED:<rule>]`, che nomina la regola corrispondente. (REQ-2087)
 
-La lista si applica a ogni uscita su cui Provisa scrive:
+La lista ha quattro parti:
 
-- ogni span e ogni record di log, nell'SDK OpenTelemetry di Provisa, prima che un exporter lo veda; output standard compreso;
-- le tabelle di audit, mentre ogni riga viene scritta;
-- i messaggi di errore che un client riceve.
+- **Pattern integrati.** Numeri di carta che superano il controllo di Luhn, numeri di previdenza sociale statunitensi, token bearer, token di accesso di Provisa, chiavi AWS, GCP, Azure, GitHub e Slack, e chiavi private. Sono un insieme di partenza, non una garanzia.
+- **Le regole del deployment**, che valgono in ogni organizzazione. Modificarle richiede il diritto `platform_settings`.
+- **Le regole proprie dell'organizzazione.** Modificarle richiede il diritto `org_settings`.
+- **La regola automatica** sui segreti dell'organizzazione: ogni valore che l'archivio di Provisa conserva per l'organizzazione, ogni `${secret:NAME}` citato dal modello e dalle impostazioni dell'organizzazione (su qualsiasi backend di segreti), e ogni valore `${secret:…}` o `${user:…}` dal momento in cui viene risolto la prima volta. Nessuna regola deve nominarli.
+
+Una regola è un'espressione regolare con nome oppure un riferimento `${secret:NAME}` / `${env:NAME}` con nome, che riconosce il valore a cui il riferimento si risolve. Un riferimento che non si risolve viene registrato a livello `ERROR` per nome e mostrato come non risolto; le altre regole continuano a valere. I valori più corti di quattro caratteri non vengono riconosciuti.
+
+Provisa non ha il compito di conoscere ogni formato sensibile. I pattern integrati coprono forme comuni; un'organizzazione aggiunge pattern per i propri formati, come matricole, identificativi di conto o nomi host interni. L'oscuramento è svolto al meglio delle possibilità: un valore scritto in una forma che nessuna regola descrive passa invariato.
+
+Le regole si trovano nella pagina **Segreti dell'organizzazione**, sotto **Regole di oscuramento**. La pagina elenca i pattern integrati, le regole del deployment (modificabili con `platform_settings`), le regole dell'organizzazione, i segreti della regola automatica solo per nome e ogni riferimento che non si risolve. Le regole vengono caricate all'avvio del server e alla costruzione del runtime di un'organizzazione, e ricaricate quando cambiano il modello o le impostazioni e quando un segreto dell'organizzazione viene salvato o rimosso.
+
+La lista si applica a ogni uscita che Provisa scrive:
+
+- ogni span, come un'unica copia oscurata consegnata a ogni exporter, e la vista degli span recenti;
+- ogni record di log nella pipeline di log OpenTelemetry di Provisa, e ogni riga scritta da un handler di logging, compresi l'output standard e i log dei container;
+- il testo della query del log di audit, prima che ne sia calcolato l'hash e che sia cifrato, così che né il testo né il suo hash rivelino un valore riconosciuto; e il dettaglio del registro amministrativo;
+- i messaggi di errore che un client riceve tramite HTTP, pgwire, gRPC, Arrow Flight e MCP.
+
+La telemetria e gli errori dei client non sono legati a una singola organizzazione quando vengono scritti, quindi vengono oscurati con le regole di tutte le organizzazioni insieme. Due errori passano senza oscuramento: un corpo di errore HTTP più grande di 1 MiB e l'errore di uno stream Arrow Flight che fallisce dopo aver iniziato a inviare.
 
 Una sorgente federata tiene i propri log, che Provisa non scrive e non può raggiungere. I record che una sorgente conserva delle istruzioni che Provisa le invia spetta a quella sorgente proteggerli.
 

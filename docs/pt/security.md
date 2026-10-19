@@ -387,13 +387,29 @@ Retenção: as linhas são mantidas indefinidamente. O Provisa não tem configur
 
 ## Ocultação {: #redaction }
 
-O que o Provisa registra sobre o próprio trabalho passa por uma lista de regras de ocultação por organização antes de ser escrito em qualquer lugar. As regras embutidas do Provisa são o conjunto inicial da lista; uma organização acrescenta as suas. Todo segredo que o Provisa guarda, e todo segredo a que o modelo faz referência, é ocultado sem que uma regra o nomeie: um valor resolvido de `${secret:…}` ou do armazenamento do próprio Provisa nunca aparece em claro num registro.
+O que o Provisa registra sobre o próprio trabalho passa por uma lista de regras de ocultação antes de ser escrito em qualquer lugar. O texto que uma regra reconhece é substituído por `[REDACTED:<rule>]`, que nomeia a regra correspondente. (REQ-2087)
 
-A lista se aplica em cada saída em que o Provisa escreve:
+A lista tem quatro partes:
 
-- cada span e cada registro de log, no SDK do OpenTelemetry do Provisa, antes que qualquer exportador o veja; a saída padrão incluída;
-- as tabelas de auditoria, à medida que cada linha é escrita;
-- as mensagens de erro que um cliente recebe.
+- **Padrões integrados.** Números de cartão que passam na verificação de Luhn, números de Seguro Social dos EUA, tokens bearer, tokens de acesso do Provisa, chaves da AWS, GCP, Azure, GitHub e Slack, e chaves privadas. São um conjunto inicial, não uma garantia.
+- **As regras da implantação**, que valem em todas as organizações. Alterá-las exige o direito `platform_settings`.
+- **As regras próprias da organização.** Alterá-las exige o direito `org_settings`.
+- **A regra automática** sobre os segredos da organização: todo valor que o armazenamento do próprio Provisa guarda para a organização, todo `${secret:NAME}` que o modelo e as configurações da organização nomeiam (em qualquer backend de segredos), e cada valor `${secret:…}` ou `${user:…}` a partir da primeira resolução. Nenhuma regra precisa nomeá-los.
+
+Uma regra é uma expressão regular nomeada ou uma referência `${secret:NAME}` / `${env:NAME}` nomeada, que reconhece o valor para o qual a referência se resolve. Uma referência que não se resolve é registrada em `ERROR` pelo nome e mostrada como não resolvida; as demais regras continuam valendo. Valores com menos de quatro caracteres não são reconhecidos.
+
+O Provisa não tem como conhecer todos os formatos sensíveis. Os padrões integrados cobrem formas comuns; uma organização acrescenta padrões para os próprios formatos, como matrículas de funcionários, identificadores de conta ou nomes de host internos. A ocultação é feita na medida do possível: um valor escrito numa forma que nenhuma regra descreve passa sem alteração.
+
+As regras ficam na página **Segredos da organização**, em **Regras de ocultação**. A página lista os padrões integrados, as regras da implantação (editáveis com `platform_settings`), as regras da organização, os segredos da regra automática apenas pelo nome e toda referência que não se resolve. As regras são carregadas quando o servidor inicia e quando o runtime de uma organização é construído, e recarregadas quando o modelo ou as configurações mudam e quando um segredo da organização é salvo ou removido.
+
+A lista vale em cada saída que o Provisa escreve:
+
+- cada span, como uma cópia ocultada entregue a cada exportador, e a visão de spans recentes;
+- cada registro de log no pipeline de logs OpenTelemetry do Provisa, e cada linha que um handler de logging escreve, incluindo a saída padrão e os logs dos contêineres;
+- o texto da consulta no log de auditoria, antes de ter o hash calculado e ser criptografado, de modo que nem o texto nem o hash revelam um valor reconhecido; e o detalhe da trilha administrativa;
+- as mensagens de erro que um cliente recebe por HTTP, pgwire, gRPC, Arrow Flight e MCP.
+
+A telemetria e os erros de cliente não estão ligados a uma única organização quando são escritos, por isso são ocultados pelas regras de todas as organizações em conjunto. Dois erros passam sem ocultação: um corpo de erro HTTP maior que 1 MiB e o erro de um stream do Arrow Flight que falha depois de começar a enviar.
 
 Uma fonte federada mantém os próprios logs, que o Provisa não escreve e não alcança. Os registros que uma fonte guarda das instruções que o Provisa lhe envia cabe a essa fonte proteger.
 
