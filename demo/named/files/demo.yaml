@@ -10,8 +10,8 @@
 # The files demo's card on provisa.dev's live demos page (REQ-2006, REQ-2032).
 title: Instant data lake
 description: >-
-  A city's open-data drop -- 311 complaints in monthly CSV files, building permits in Parquet, the
-  budget in Excel and inspections in JSON -- read in place as one governed catalog, with no load
+  A city's open-data drop (311 complaints in monthly CSV files, building permits in Parquet, the
+  budget in Excel and inspections in JSON) read in place as one governed catalog, with no load
   step: which neighborhoods have the most complaints near active construction?
 screenshot: card.png
 published: true

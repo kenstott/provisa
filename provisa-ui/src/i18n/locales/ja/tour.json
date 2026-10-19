@@ -70,11 +70,11 @@
     "steps": {
       "step0": {
         "title": "ようこそ、ツアーを始めましょう",
-        "description": "🧭 このコンパスで、いつでもツアーを再開できます。いつでも終了できます。アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データ、そのメタデータ、そしてその間の処理を 1 つに収めたモデルです。同じモデルがデータ資産を定義し、運用もします。すべてが 1 つのものであり、データパスには関与しません。</p><p>だから<strong>すべてが同期したまま</strong>になり、<strong>再利用が最初から組み込まれて</strong>います。一度定義したリレーションシップ、メトリクス、マスク、ルールは、すべてのサーフェス、環境、ロールで使われます。重複したテーブルやメトリクス、重複したコマンドやルール、さらには同じデータを提供する 2 つのシステムまで、モデルの中で並んで見えるため、重複は見つけやすく、取り除きやすくなります。</p><p>コンパクトで、拡張でき、組み合わせられます。既存の環境の隣に収まり、散らかったものを整理し、すべてのデータ専門家が想像力を制限されることなく専門性を発揮できるようにします。取り除くのは面倒な作業だけです。</p><p>🎯 <strong>コアは 1 つの短い演習です。</strong>データベースを 1 つ接続し、普段お使いの言語やツールでクエリを実行します。普通の言葉で質問することもできます。所要時間は約 5 分で、<strong>デスクトップ上で完結</strong>し、構築するインフラはありません。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>それ以降はすべて、準備ができたときにメニューから選ぶ<strong>ディープダイブ</strong>です。</p><p>準備はいいですか？ ソースを接続しましょう。 →</p>"
+        "description": "🧭 このコンパスで、いつでもツアーを再開できます。終了するには、アプリをクリックするか <kbd>Esc</kbd> を押してください。<p><strong>Provisa</strong> は、データ、そのメタデータ、そしてその間の処理を 1 つに収めたモデルです。同じモデルがデータ資産を定義し、運用もします。データパスには関与しません。</p><p>だから<strong>すべてが同期したまま</strong>になり、<strong>再利用が最初から組み込まれて</strong>います。一度定義したリレーションシップ、メトリクス、マスク、ルールは、すべてのサーフェス、環境、ロールで使われます。重複したテーブルやメトリクス、重複したコマンドやルール、さらには同じデータを提供する 2 つのシステムまで、モデルの中で並んで見えるため、重複は見つけやすく、取り除きやすくなります。</p><p>コンパクトで、拡張でき、組み合わせられます。既存の環境の隣に収まり、散らかったものを整理します。</p><p>🎯 <strong>コアは 1 つの短い演習です。</strong>データベースを 1 つ接続し、普段お使いの言語やツールでクエリを実行します。普通の言葉で質問することもできます。所要時間は約 5 分で、<strong>デスクトップ上で完結</strong>し、構築するインフラはありません。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Postgres · pgwire</span><span>Neo4j · Bolt</span><span>JDBC · Java/JVM</span><span>Arrow Flight SQL · ADBC</span><span>DuckDB · airport</span></div><p>それ以降はすべて、準備ができたときにメニューから選ぶ<strong>ディープダイブ</strong>です。</p><p>準備はいいですか？ ソースを接続しましょう。 →</p>"
       },
       "stepPolly": {
         "title": "設定アシスタントの Polly をご紹介",
-        "description": "<p>💬 <strong>Polly</strong> は、普通の言葉で Provisa を設定します。ドキュメントを読むよりずっと簡単です。</p><p><em>「Postgres を登録して」 · 「customers テーブルのメール列をフェイクにして」 · 「合成データで QA 環境を作って」 · 「給与は誰が見られる?」</em></p><p>Polly は <strong>UI と同じガバナンス付き API と権限</strong>で動作するため、あなたにできることだけを実行できます。Polly はここで開いています。チャットボタンでこのパネルをいつでも開き直せます。</p>"
+        "description": "<p>💬 <strong>Polly</strong> は、普通の言葉で Provisa を設定します。</p><p><em>「Postgres を登録して」 · 「customers テーブルのメール列をフェイクにして」 · 「合成データで QA 環境を作って」 · 「給与は誰が見られる?」</em></p><p>Polly は <strong>UI と同じガバナンス付き API と権限</strong>で動作するため、あなたにできることだけを実行できます。Polly はここで開いています。チャットボタンでこのパネルをいつでも開き直せます。</p>"
       },
       "step1": {
         "title": "まずはソースから",
@@ -82,7 +82,7 @@
       },
       "step2": {
         "title": "ソースを登録する",
-        "description": "➕ 新規接続はこのボタンから始まります — PostgreSQL、Snowflake、MongoDB、REST API、CSV、その他50種類以上。"
+        "description": "➕ 新規接続はこのボタンから始まります。PostgreSQL、Snowflake、MongoDB、REST API、CSV、そして残りの 73 種類のコネクターです。"
       },
       "step3": {
         "title": "73種類のソース、14カテゴリ",
@@ -90,31 +90,31 @@
       },
       "step4": {
         "title": "すべてがテーブルになる",
-        "description": "ソースが何であれ — Mongo のコレクション、Kafka のトピック、REST エンドポイント、グラフ — Provisa はそれを2次元の<strong>テーブル</strong>に分解します：あらゆるソースを横断して同じ形でクエリできます。<p>📁 テーブルは<strong>ドメイン</strong>にグループ化され、それぞれをデータスチュワードが担当し、モデルが進化する中で品質を守ります。</p>"
+        "description": "ソースが何であれ、Mongo のコレクション、Kafka のトピック、REST エンドポイント、グラフのいずれでも、Provisa はそれを2次元の<strong>テーブル</strong>に分解します。あらゆるソースを横断して同じ形でクエリできます。<p>📁 テーブルは<strong>ドメイン</strong>にグループ化され、それぞれをデータスチュワードが担当し、モデルが進化する中で品質を守ります。</p>"
       },
       "step5": {
         "title": "カラムとポリシーを選ぶ",
-        "description": "ソース、スキーマ、テーブルを選び、次にカラムを選択します — 各カラムには独自のポリシーがあります：<ul><li>🎭 <strong>マスキング</strong> — ロールごとに値を非表示にする</li><li>👁️ <strong>可視性</strong> — カラムの表示・非表示</li><li>🏷️ <strong>エイリアス</strong> — モデル用に名前を変更</li></ul><p>これでセットアップは完了です — ソース1つとテーブルいくつか。🚀 では次はそれをクエリしてみましょう。→</p>"
+        "description": "ソース、スキーマ、テーブルを選び、次にカラムを選択します。各カラムには独自のポリシーがあります：<ul><li>🎭 <strong>マスキング</strong>：ロールごとに値を非表示にする</li><li>👁️ <strong>可視性</strong>：カラムの表示・非表示</li><li>🏷️ <strong>エイリアス</strong>：モデル用に名前を変更</li></ul><p>これでセットアップは完了です。ソース1つとテーブルいくつかだけです。🚀 では次はそれをクエリしてみましょう。→</p>"
       },
       "stepQuery": {
         "title": "お好みの方法でクエリ",
-        "description": "💬 普段お使いの言語やツールで質問します。SQL、GraphQL、Cypher、Polly を通じた普通の言葉、あるいは BI ツールやドライバーのいずれでも、すべて同じガバナンス済みモデルを読むため、どれを選んでも答えもルールも同じです。"
+        "description": "💬 普段お使いの言語やツール（SQL、GraphQL、Cypher、Polly を通じた普通の言葉、あるいは BI ツールやドライバー）で質問します。いずれも同じガバナンス済みモデルを読むため、どれを選んでも答えもルールも同じです。"
       },
       "step6": {
         "title": "SQL（7つのサーフェスのうち1つ目）",
-        "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルです — 監査ログやリネージをライブデータに直接結合できます。<p>🔌 このエクスプローラーだけでなく、同じガバナンス済み SQL が複数のワイヤープロトコル経由でも動作します。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong> — Postgres 互換のクライアント全般 — psql、DBeaver、Tableau、Power BI — がそのまま接続できます。</li><li><strong>JDBC</strong> — あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong> — ADBC クライアント向けの列指向ストリーミング — 行の再エンコード不要で、大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong> — DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li></ul>"
+        "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルなので、監査ログやリネージをライブデータに直接結合できます。<p>🔌 同じガバナンス済み SQL は、このエクスプローラー以外にも複数のワイヤープロトコル経由で動作します。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong>：Postgres 互換のクライアント全般（psql、DBeaver、Tableau、Power BI）がそのまま接続できます。</li><li><strong>JDBC</strong>：あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong>：ADBC クライアント向けの列指向ストリーミングで、行の再エンコードは不要です。大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong>：DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li></ul>"
       },
       "step7": {
         "title": "GraphQL（7つのサーフェスのうち2つ目）",
-        "description": "◈ 同じクエリを GraphQL として表現すると：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>リレーションシップに対するグルーピングと集計 — 🎯 単一のエンドポイント、📖 自己記述的なスキーマ。</p><p>🔌 <strong>任意の GraphQL クライアント</strong> — Apollo、Relay、urql — からアクセスでき、フェデレーションを有効にすれば、Provisa を<strong>Apollo スーパーグラフのサブグラフ</strong>として組み込めます。既存のグラフと並んで、フェデレーテッドモデルを合成できます。</p>"
+        "description": "◈ 同じクエリを GraphQL として表現すると：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>リレーションシップに対するグルーピングと集計：🎯 単一のエンドポイント、📖 自己記述的なスキーマ。</p><p>🔌 Apollo、Relay、urql など<strong>任意の GraphQL クライアント</strong>から呼び出せます。フェデレーションを有効にすれば、Provisa を<strong>Apollo スーパーグラフのサブグラフ</strong>として組み込めます。既存のグラフと並んで、フェデレーテッドモデルを合成できます。</p>"
       },
       "step8": {
         "title": "Cypher（7つのサーフェスのうち3つ目）",
-        "description": "🕸️ Cypher でフェデレーテッドモデルをグラフとしてトラバースします：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ このトラバースは<strong>複数のソースをまたいで</strong>実行されます — 単一のグラフデータベースは不要です。</p><p>🔌 そして<strong>Bolt</strong> クライアント — Neo4j Browser、Bloom — であれば、コードを変更せずに同じトラバースをワイヤー経由で実行できます。</p>"
+        "description": "🕸️ Cypher でフェデレーテッドモデルをグラフとしてトラバースします：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ このトラバースは<strong>複数のソースをまたいで</strong>実行され、単一のグラフデータベースは不要です。</p><p>🔌 Neo4j Browser や Bloom など、どの<strong>Bolt</strong> クライアントでも、コードを変更せずに同じトラバースをワイヤー経由で実行できます。</p>"
       },
       "step9": {
         "title": "gRPC（7つのサーフェスのうち4つ目）",
-        "description": "⚙️ 登録済みのエンティティはすべて gRPC サービスでもあります：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>任意の gRPC クライアントから呼び出せます — 📐 強く型付けされ、🚀 高スループットです。</p>"
+        "description": "⚙️ 登録済みのエンティティはすべて gRPC サービスでもあります：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>任意の gRPC クライアントから呼び出せます。📐 強く型付けされ、🚀 高スループットです。</p>"
       },
       "step10": {
         "title": "JSON:API（7つのサーフェスのうち5つ目）",
@@ -126,15 +126,15 @@
       },
       "step12": {
         "title": "MCP（7つのサーフェスのうち7つ目）",
-        "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群 — カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡 — を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>残るサーフェスはあと1つ — それが7つすべてをあなたの代わりに書いてくれるものです。→</p>"
+        "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群（カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡）を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>残るサーフェスはあと1つ。それが7つすべてをあなたの代わりに書いてくれるものです。→</p>"
       },
       "step13": {
-        "title": "質問するだけ — 7つすべてを書いてくれるサーフェス",
-        "description": "💬 <em>「種ごとのペット数を表示して」</em><p>🎁 これが集大成です：<strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします — 以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong> — クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "質問するだけ：7つすべてを書いてくれるサーフェス",
+        "description": "💬 <em>「種ごとのペット数を表示して」</em><p><strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします。以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong>：クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
       },
       "step14": {
         "title": "これが5分でわかるコアです",
-        "description": "✅ 今まさに一部始終を見ていただきました：<strong>1つのソースを普段お使いの言語やツールでクエリ — あるいは普通の英語で質問するだけ。</strong>これが約束のすべてです — ここで止めても構いません。<p>それ以外はすべて<strong>ディープダイブ</strong>です。データ接続、リレーションシップ、モデリング、ガバナンス、クエリ、テストデータ、公開、運用。「完了」でディープダイブのカタログが開きます。</p>"
+        "description": "✅ 今まさに一部始終を見ていただきました：<strong>1つのソースを普段お使いの言語やツールでクエリするか、普通の英語で質問するだけです。</strong>ここで止めても構いません。<p>それ以外はすべて<strong>ディープダイブ</strong>です。データ接続、リレーションシップ、モデリング、ガバナンス、クエリ、テストデータ、公開、運用。「完了」でディープダイブのカタログが開きます。</p>"
       },
       "step15": {
         "title": "グラフを接続する",
@@ -154,11 +154,11 @@
       },
       "step17": {
         "title": "ERD を見る",
-        "description": "エンティティ・リレーションシップ図は、あなたのフェデレーテッドモデル全体をレンダリングします — 登録済みのすべてのテーブルと、それらの間のリレーションシップです。"
+        "description": "エンティティ・リレーションシップ図は、あなたのフェデレーテッドモデル全体をレンダリングします。登録済みのすべてのテーブルと、それらの間のリレーションシップです。"
       },
       "step18": {
         "title": "アクセス制御（RBAC）",
-        "description": "🔐 テーブルを登録すると、カラム単位のアクセス権が設定され、ロールに直接連動します：<div class='tour-tags'><span>👁️ 読み取り</span><span>✏️ 書き込み</span></div><p>これが<strong>ロールベースのアクセス制御</strong>です — ロール自体は、この Security ページで定義します。</p>"
+        "description": "🔐 テーブルを登録すると、カラム単位のアクセス権が設定され、ロールに直接連動します：<div class='tour-tags'><span>👁️ 読み取り</span><span>✏️ 書き込み</span></div><p>これが<strong>ロールベースのアクセス制御</strong>です。ロール自体は、この Security ページで定義します。</p>"
       },
       "stepRoleInherit": {
         "title": "ロールは継承する",
@@ -166,7 +166,7 @@
       },
       "step19": {
         "title": "行レベルセキュリティ",
-        "description": "🔎 ロールが定義されたら、さらに細かく — 属性ベースの述語で、各ロールが閲覧できる<strong>行</strong>を制限できます：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 データ駆動で、行単位で強制されます — すべてのソースとプロトコルを横断して。</p>"
+        "description": "🔎 ロールが定義されたら、さらに細かく設定できます。属性ベースの述語で、各ロールが閲覧できる<strong>行</strong>を制限できます：<p><code>region = user.region AND status != 'archived'</code></p><p>📐 データ駆動で、行単位で強制されます。すべてのソースとプロトコルを横断して適用されます。</p>"
       },
       "stepDomains": {
         "title": "ドメインとそのスチュワード",
@@ -182,11 +182,11 @@
       },
       "stepQualityTable": {
         "title": "品質チェッカーもソースの一つ",
-        "description": "🧪 データ品質チェッカー (Soda や Great Expectations) は<strong>ソース</strong>として登録します。Provisa 自身の postgres エンドポイントを通じてスキャンし返すため、1 つのコントラクト方言で Snowflake テーブルも Iceberg テーブルも Mongo コレクションも同様に扱えます。結果は通常のテーブルとして格納され、行を展開すれば他と同じように開けます。"
+        "description": "🧪 データ品質チェッカー（Soda や Great Expectations）は<strong>ソース</strong>として登録します。Provisa 自身の postgres エンドポイントを通じてスキャンし返すため、1 つのコントラクト方言で Snowflake テーブルも Iceberg テーブルも Mongo コレクションも同様に扱えます。結果は通常のテーブルとして格納され、行を展開すれば他と同じように開けます。"
       },
       "stepQualityPanel": {
         "title": "品質コントラクトを組み立てる",
-        "description": "✅ コントラクトを手書きするか、列ごとにチェックを組み立て (NULL 率、行数、範囲、鮮度)、保存前に<strong>ドライラン</strong>できます。スキャンのたびに追記されるため、このテーブルこそが品質の履歴<em>そのもの</em>です。グラフ化し、アラートを設定し、任意のデータと結合できます。"
+        "description": "✅ コントラクトを手書きするか、列ごとにチェックを組み立て（NULL 率、行数、範囲、鮮度）、保存前に<strong>ドライラン</strong>できます。スキャンのたびに追記されるため、このテーブルこそが品質の履歴<em>そのもの</em>です。グラフ化し、アラートを設定し、任意のデータと結合できます。"
       },
       "stepQualityProfile": {
         "title": "テーブルをプロファイルする",
@@ -230,11 +230,11 @@
       },
       "step20": {
         "title": "配信パイプラインを構築する",
-        "description": "🔧 別途 ETL ツールを用意しなくても、ここで配信パイプライン全体を組み立てられます：<ul><li>👁️ <strong>ビュー</strong> — 任意のテーブルに対して、一時的またはマテリアライズドで、ビューに対するビューも可能です。</li><li>⚡ <strong>コマンド</strong> — ガバナンス済みで型付けされた操作（HTTP サービス、Python モデル、ストアドプロシージャ）で、二つの役割を兼ねます：パイプライン内のステップとして、<em>かつ</em>下流のアプリやエージェントがデータを操作するために呼び出す一級市民の API として — すべてのサーフェスから呼び出し可能で、完全にガバナンスされトレースされます。</li><li>⭐ <strong>エンティティとファクト</strong> — ディメンションやファクトを一度宣言すれば、Provisa がウェアハウスを生成します。手法にとらわれず：3NF（Inmon）、スタースキーマ（Kimball）、Data Vault のいずれにも対応します。</li><li>📏 <strong>メトリクス</strong> — ガバナンス済みの集計定義（「純収益」など）で、粒度はクエリ時に決定されます。一度定義すれば、SQL、GraphQL、AI エージェントを含むすべてのサーフェスが同じ数値を計算し、メトリクスに基づくビューはその定義が変わると再生成されます。</li></ul>"
+        "description": "🔧 別途 ETL ツールを用意しなくても、ここで配信パイプライン全体を組み立てられます：<ul><li>👁️ <strong>ビュー</strong>：任意のテーブルに対して、一時的またはマテリアライズドで、ビューに対するビューも可能です。</li><li>⚡ <strong>コマンド</strong>：ガバナンス済みで型付けされた操作（HTTP サービス、Python モデル、ストアドプロシージャ）で、二つの役割を兼ねます。パイプライン内のステップとして、<em>かつ</em>下流のアプリやエージェントがデータを操作するために呼び出す一級市民の API として機能し、すべてのサーフェスから呼び出し可能で、ガバナンスされトレースされます。</li><li>⭐ <strong>エンティティとファクト</strong>：ディメンションやファクトを一度宣言すれば、Provisa がウェアハウスを生成します。手法にとらわれず、3NF（Inmon）、スタースキーマ（Kimball）、Data Vault のいずれにも対応します。</li><li>📏 <strong>メトリクス</strong>：ガバナンス済みの集計定義（「純収益」など）で、粒度はクエリ時に決定されます。一度定義すれば、すべてのサーフェス（SQL、GraphQL、AI エージェント）が同じ数値を計算し、メトリクスに基づくビューはその定義が変わると再生成されます。</li></ul>"
       },
       "step21": {
         "title": "ライブウェアハウスにマテリアライズする",
-        "description": "🏗️ ビューをマテリアライズすると、スクリプトではなく宣言によるフル機能の ETL エンジンが手に入ります：<ul><li>📅 実際の<strong>ビジネスカレンダー</strong>に基づく<strong>スケジュールスナップショット</strong> — 繰り返しルール、祝日、営業日ゲーティング、締め処理の猶予期間により、単なる時計ではなく<em>あなた</em>のレポーティングカレンダーに合わせて実行されます。</li><li>🗄️ <strong>保存方法</strong> — <strong>replace</strong>、<strong>upsert</strong>、あるいは <strong>snapshot</strong> / <strong>delta</strong> による履歴保持、加えて増分計算にも対応します。</li><li>🕰️ <strong>タイムトラベル</strong> — バイテンポラルな履歴。任意の時点のモデルをクエリできます。</li><li>⚡ デバウンス付きの<strong>ニアリアルタイム</strong>更新、または入力の変化に応じた鮮度駆動の再パブリッシュ。</li></ul>"
+        "description": "🏗️ ビューをマテリアライズすると、スクリプトではなく宣言によるフル機能の ETL エンジンが手に入ります：<ul><li>📅 実際の<strong>ビジネスカレンダー</strong>に基づく<strong>スケジュールスナップショット</strong>：繰り返しルール、祝日、営業日ゲーティング、締め処理の猶予期間により、<em>あなた</em>のレポーティングカレンダーに合わせて実行されます。</li><li>🗄️ <strong>保存方法</strong>：<strong>replace</strong>、<strong>upsert</strong>、あるいは <strong>snapshot</strong> / <strong>delta</strong> による履歴保持、加えて増分計算にも対応します。</li><li>🕰️ <strong>タイムトラベル</strong>：バイテンポラルな履歴。任意の時点のモデルをクエリできます。</li><li>⚡ デバウンス付きの<strong>ニアリアルタイム</strong>更新、または入力の変化に応じた鮮度駆動の再パブリッシュ。</li></ul>"
       },
       "stepMetrics": {
         "title": "メトリクスは一度だけ定義",
@@ -262,15 +262,15 @@
       },
       "step23": {
         "title": "運用する",
-        "description": "Admin ページがプラットフォームを運用します：<ul><li>⚙️ <strong>フェデレーションエンジン</strong>の選択と設定 — プラガブルです：DuckDB（組み込み、ゼロコンフィグ）、Trino、PostgreSQL、ClickHouse、あるいはクラウドウェアハウスを一級エンジンとして使用（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。いつでも切り替え可能で、モデル、サーフェス、その上のガバナンスは変わりません。</li><li>🔗 選んだエンジンごとに、独自の<strong>ライブな外部データ</strong>アクセスが付いてきます — Parquet、Iceberg、Delta をその場で、ゼロコピーで読み取り、認証情報も自動的にプロビジョニングされます。ライブでリンクできないものは、ガバナンス済みのレプリカとして着地します。</li><li>🔑 <strong>暗号化キー</strong>の管理と<strong>認証プロバイダー</strong>の設定</li><li>📊 完全な<strong>オブザーバビリティ</strong> — エンタープライズ級のトレース管理のため、任意の OpenTelemetry コレクターへリダイレクト可能</li><li>📤 <strong>モデルの構成をエクスポート</strong> — モデル全体または選んだセクション — し、ファイルとしてレビュー、差分確認、CI/CD での展開に使えます</li></ul><p>同じモデルがローカル開発から本番環境まで、各ステップで検証されながら移行します — 書き換え不要です：</p><ul><li><strong>開発</strong> — 組み込み DuckDB、Docker 不要。ローカルで構築・検証します。</li><li><strong>大規模検証</strong> — Docker で、エンジンとオブザーバビリティを立ち上げます。本番エンジンに対して動作を検証します。</li><li><strong>昇格</strong> — 自社のインフラを指定し、CI/CD を通してビルドし、本番環境へ出荷します。</li></ul>"
+        "description": "Admin ページがプラットフォームを運用します：<ul><li>⚙️ <strong>フェデレーションエンジン</strong>の選択と設定：DuckDB（組み込み、ゼロコンフィグ）、Trino、PostgreSQL、ClickHouse、あるいはクラウドウェアハウスを一級エンジンとして使用（Snowflake、BigQuery、Databricks、Microsoft Fabric、Azure Synapse）。いつでも切り替え可能で、モデル、サーフェス、その上のガバナンスは変わりません。</li><li>🔗 選んだエンジンごとに、独自の<strong>ライブな外部データ</strong>アクセスが付いてきます。Parquet、Iceberg、Delta をその場でゼロコピーで読み取り、認証情報も自動的にプロビジョニングされます。ライブでリンクできないものは、ガバナンス済みのレプリカとして着地します。</li><li>🔑 <strong>暗号化キー</strong>の管理と<strong>認証プロバイダー</strong>の設定</li><li>📊 完全な<strong>オブザーバビリティ</strong>：エンタープライズ級のトレース管理のため、任意の OpenTelemetry コレクターへリダイレクト可能</li><li>📤 <strong>モデルの構成をエクスポート</strong>：モデル全体または選んだセクションを、ファイルとしてレビュー、差分確認、CI/CD での展開に使えます</li></ul><p>同じモデルがローカル開発から本番環境まで、各ステップで検証されながら移行します。書き換えは不要です：</p><ul><li><strong>開発</strong>：組み込み DuckDB、Docker 不要。ローカルで構築・検証します。</li><li><strong>大規模検証</strong>：Docker で、エンジンとオブザーバビリティを立ち上げます。本番エンジンに対して動作を検証します。</li><li><strong>昇格</strong>：自社のインフラを指定し、CI/CD を通してビルドし、本番環境へ出荷します。</li></ul>"
       },
       "stepPreview": {
         "title": "どのテーブルもプレビュー",
-        "description": "👀 行を展開して<strong>プレビュー</strong>をクリック — ガバナンス管理されたパイプライン経由のライブデータです。マスキングとアクセス制御が適用され、<strong>サーバー側ページング</strong>なので 10 億行のテーブルでも即座に開きます。フィルター・ソート・グループ化はクエリ内で実行され、API ベースのテーブルは先に必須パラメーターを求めます。"
+        "description": "👀 行を展開して<strong>プレビュー</strong>をクリックすると、ガバナンス管理されたパイプライン経由のライブデータが見られます。マスキングとアクセス制御が適用され、<strong>サーバー側ページング</strong>なので 10 億行のテーブルでも即座に開きます。フィルター・ソート・グループ化はクエリ内で実行され、API ベースのテーブルは先に必須パラメーターを求めます。"
       },
       "stepReports": {
         "title": "組み込みの管理レポート",
-        "description": "📊 先ほどクエリした監査ログは<strong>すぐ使えるレポート</strong>にもなります — 利用ランキング、PII アクセス、ポリシー拒否、クエリ健全性 — いずれも <code>ops</code> ドメインのガバナンス管理されたビューです。独自レポートの追加は SQL 一文で、他のテーブルと同じくカタログ化・エクスポート可能なデータプロダクトになります。"
+        "description": "📊 先ほどクエリした監査ログは<strong>すぐ使えるレポート</strong>（利用ランキング、PII アクセス、ポリシー拒否、クエリ健全性）にもなり、いずれも <code>ops</code> ドメインのガバナンス管理されたビューです。独自レポートの追加は SQL 一文で、他のテーブルと同じくカタログ化・エクスポート可能なデータプロダクトになります。"
       },
       "stepProductForm": {
         "title": "データプロダクトを定義",
@@ -282,7 +282,7 @@
       },
       "stepDataProducts": {
         "title": "データプロダクトを、利用者がすでに見ている場所で公開",
-        "description": "📦 ここにあるすべてのプロダクトは <strong>ODPS</strong>(Open Data Product Standard)に対応しています。オーナー、チーム、目的、制限事項、使用方法、SLA、サポート、カスタムプロパティを備え、Provisa が <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong> に直接自動公開するため、利用者がすでに使っているカタログにネイティブのプロダクトとして表示されます。<p>🔁 忘れてしまいがちな別のエクスポート手順はありません。仕様は毎回、テーブル、リネージ、タグ、用語集の用語を含む<strong>ライブモデルから導出</strong>されるため、手作業で管理する ODPS ファイルのように、公開内容が古くなることはありません。</p><p>✅ 公開では<strong>オントロジー抜粋</strong>も送られます。用語集のうち、公開対象に関わる部分です。列を定義する用語、それらがつながる上位や関連の用語、そして用語間の型付き関係が含まれます。それをスキャンするチェッカーのデータ品質結果も一緒に送られます。プロダクトの<strong>関連用語</strong>パネルには、そのプロダクトの用語が一覧されます。</p>"
+        "description": "📦 ここにあるすべてのプロダクトは <strong>ODPS</strong>（Open Data Product Standard）に対応しています。オーナー、チーム、目的、制限事項、使用方法、SLA、サポート、カスタムプロパティを備え、Provisa が <strong>Snowflake Horizon</strong> と <strong>BigQuery Dataplex</strong> に直接公開するため、利用者がすでに使っているカタログにネイティブのプロダクトとして表示されます。<p>🔁 忘れてしまいがちな別のエクスポート手順はありません。仕様は毎回、テーブル、リネージ、タグ、用語集の用語を含む<strong>ライブモデルから導出</strong>されるため、手作業で管理する ODPS ファイルのように、公開内容が古くなることはありません。</p><p>✅ 公開では<strong>オントロジー抜粋</strong>も送られます。用語集のうち、公開対象に関わる部分です。列を定義する用語、それらがつながる上位や関連の用語、そして用語間の型付き関係が含まれます。それをスキャンするチェッカーのデータ品質結果も一緒に送られます。プロダクトの<strong>関連用語</strong>パネルには、そのプロダクトの用語が一覧されます。</p>"
       },
       "stepGlossaryTerm": {
         "title": "用語を追加",
