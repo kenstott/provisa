@@ -121,7 +121,8 @@ def test_the_patch_overlay_and_the_sandbox_vm_read_the_lists():
     assert "packaging/linux/demo-stores/sandbox-tier-bundles" in _SCRIPT.read_text()
     tf = (_REPO / "terraform" / "gcp-saas" / "sandbox.tf").read_text()
     assert "demo-stores/sandbox-tier-bundles" in tf and "demo-stores/regions-tier-bundles" in tf
-    assert "PROVISA_DEMO_BUNDLES=${local.sandbox_tier_bundles},${local.regions_tier_bundles}" in tf
+    # The VM's sync takes both lists, those demos with a bundle (test_sandbox_vm_terraform.py).
+    assert 'split(",", "${local.sandbox_tier_bundles},${local.regions_tier_bundles}")' in tf
 
 
 def test_first_launch_offers_what_the_lists_say():

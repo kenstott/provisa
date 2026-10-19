@@ -71,17 +71,108 @@ def test_the_vm_may_be_started_and_stopped_by_the_node_account_and_on_it_alone()
 
 
 def test_the_vm_runs_the_retail_demos_stores():
-    """REQ-2068: the regions tier's demo is synced with the others, its stores run there."""
+    """REQ-2068: the regions tier's demo is the VM's to run beside the sandbox tier's; its stores
+    are synced once it has a bundle."""
     sandbox = (_TF / "sandbox.tf").read_text()
-    # Both tiers' demos, from their one list each (test_deploy_cloud_store_env.py holds them).
-    assert (
-        "PROVISA_DEMO_BUNDLES=${local.sandbox_tier_bundles},${local.regions_tier_bundles}"
-        in sandbox
-    )
     lists = _TF.parents[1] / "packaging" / "linux" / "demo-stores"
     assert "retail" in (lists / "regions-tier-bundles").read_text().strip().split(",")
+    # The sync takes both tiers' demos, through the one composition deploy-cloud.sh shares.
+    assert (
+        'for d in split(",", "${local.sandbox_tier_bundles},${local.regions_tier_bundles}") : d'
+        in sandbox
+    )
     # Published on the VM's VPC address, where the coordinator reaches it.
     assert 'export PROVISA_SANDBOX_REGIONS_PUBLISH="${var.sandbox_internal_ip}:8100"' in sandbox
+
+
+# --- the sync's settings, at boot and at a patch ---------------------------------------------------
+
+_REPO = _TF.parents[1]
+_DEPLOY = _REPO / "scripts" / "deploy-cloud.sh"
+
+
+def _function(name: str) -> str:
+    text = _DEPLOY.read_text()
+    start = text.index(f"{name}() {{")
+    return text[start : text.index("\n}\n", start) + 3]
+
+
+def _rendered(repo: Path) -> str:
+    """What deploy-cloud.sh writes as the VM's demo-stores.env, for the checkout at ``repo``."""
+    import subprocess
+
+    script = f"{_function('demo_stores_env')}\ndemo_stores_env\n"
+    return subprocess.run(
+        ["bash", "-c", script],
+        env={"REPO": str(repo), "PATH": "/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+
+
+def _composed(repo: Path) -> str:
+    """The same settings as sandbox.tf composes them: the template, with both tiers' demos that
+    are published, the file ending in one newline (the heredoc's)."""
+    lists = repo / "packaging" / "linux" / "demo-stores"
+    names = ",".join(
+        (lists / f"{tier}-tier-bundles").read_text().strip() for tier in ("sandbox", "regions")
+    ).split(",")
+    published = [
+        n
+        for n in names
+        if n
+        and (repo / "demo" / "named" / n / "demo.yaml").is_file()
+        and "published: true"
+        in (repo / "demo" / "named" / n / "demo.yaml").read_text().splitlines()
+    ]
+    template = (lists / "sandbox-vm.env.tpl").read_text()
+    return template.replace("${bundles}", ",".join(published)).strip() + "\n"
+
+
+def test_boot_and_patch_compose_the_sync_settings_from_one_template():
+    sandbox = (_TF / "sandbox.tf").read_text()
+    assert "packaging/linux/demo-stores/sandbox-vm.env.tpl" in sandbox
+    assert "{ bundles = local.demo_stores_bundles }" in sandbox
+    assert 'regex("(?m)^published: true$"' in sandbox
+    assert "${local.demo_stores_env}" in sandbox
+    assert "PROVISA_DEMO_BUNDLES=" not in sandbox  # written from the template, nowhere else
+    assert _rendered(_REPO) == _composed(_REPO)
+
+
+def test_a_demo_without_a_bundle_is_not_synced(tmp_path):
+    """A tier may name a demo that is not published yet (retail): it has no bundle, so the sync
+    leaves it out until it is; every published one is synced."""
+    lists = tmp_path / "packaging" / "linux" / "demo-stores"
+    lists.mkdir(parents=True)
+    (lists / "sandbox-tier-bundles").write_text("weblogs,starthere\n")
+    (lists / "regions-tier-bundles").write_text("retail\n")
+    (lists / "sandbox-vm.env.tpl").write_text(
+        (_REPO / "packaging/linux/demo-stores/sandbox-vm.env.tpl").read_text()
+    )
+    for name, published in (("weblogs", True), ("starthere", True), ("retail", False)):
+        demo = tmp_path / "demo" / "named" / name
+        demo.mkdir(parents=True)
+        (demo / "demo.yaml").write_text(f"name: {name}\npublished: {str(published).lower()}\n")
+    rendered = _rendered(tmp_path)
+    assert rendered.splitlines()[0] == "PROVISA_DEMO_BUNDLES=weblogs,starthere"
+    assert rendered == _composed(tmp_path)
+    # Published, it is synced.
+    (tmp_path / "demo/named/retail/demo.yaml").write_text("name: retail\npublished: true\n")
+    assert _rendered(tmp_path).splitlines()[0] == "PROVISA_DEMO_BUNDLES=weblogs,starthere,retail"
+
+
+def test_a_patch_rewrites_the_vm_sync_settings_when_they_differ_and_runs_the_sync():
+    deploy = _DEPLOY.read_text()
+    body = deploy[deploy.index("deploy_sandbox_vm() {") :]
+    body = body[: body.index("\n}\n")]
+    assert "push_demo_stores; push_demo_stores_env; push_overlay" in body
+    push = _function("push_demo_stores_env")
+    assert 'demo_stores_env > "$STAGE/demo-stores.env"' in push
+    assert '[ "$want" = "$have" ]' in push  # rewritten only when it differs
+    assert "sudo install -m 644 /tmp/demo-stores.env $DEMO_STORES_ENV" in push
+    assert "systemctl start --no-block provisa-demo-stores.service" in push
+    assert 'DEMO_STORES_ENV="/root/.provisa/demo-stores.env"' in deploy
 
 
 def _guard() -> str:

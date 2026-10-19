@@ -32,6 +32,19 @@ locals {
   # the stores this VM runs are both tiers' demos.
   sandbox_tier_bundles = trimspace(file("${path.module}/../../packaging/linux/demo-stores/sandbox-tier-bundles"))
   regions_tier_bundles = trimspace(file("${path.module}/../../packaging/linux/demo-stores/regions-tier-bundles"))
+  # The demos the VM's sync pulls: both tiers', those with a bundle -- a demo is bundled only once
+  # it is published (demo.yaml `published: true`, .github/workflows/demo-bundles.yml), so a tier
+  # may name one not yet published (retail), and the sync leaves it out until it is.
+  demo_stores_bundles = join(",", [
+    for d in split(",", "${local.sandbox_tier_bundles},${local.regions_tier_bundles}") : d
+    if can(regex("(?m)^published: true$", file("${path.module}/../../demo/named/${d}/demo.yaml")))
+  ])
+  # The sync's settings, rendered from the one template deploy-cloud.sh renders too, so a patch
+  # rewrites the file exactly as a boot writes it.
+  demo_stores_env = trimspace(templatefile(
+    "${path.module}/../../packaging/linux/demo-stores/sandbox-vm.env.tpl",
+    { bundles = local.demo_stores_bundles }
+  ))
 
   sandbox_demo_stores = <<-SHELL
     install -d /root/.provisa/bin
@@ -46,11 +59,7 @@ locals {
       echo "$b64" | base64 -d > /etc/systemd/system/provisa-demo-stores.$unit
     done
     cat > /root/.provisa/demo-stores.env <<'ENV'
-    PROVISA_DEMO_BUNDLES=${local.sandbox_tier_bundles},${local.regions_tier_bundles}
-    DEMO_BUNDLES_DIR=/root/.provisa/sandbox-data/demo-bundles
-    DEMO_PULL=docker exec compose-provisa-sandbox-1 python -m provisa.core.demo_bundles
-    DEMO_PULL_INTO=/var/lib/provisa/demo-bundles
-    DEMO_STORES_NETWORK=compose_default
+    ${local.demo_stores_env}
     ENV
     systemctl daemon-reload
     # --now: a unit enabled while the VM boots does not start until the next boot.
