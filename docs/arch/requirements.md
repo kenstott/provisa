@@ -21892,7 +21892,7 @@ One write admission. Every data write on every surface (SQL over HTTP, pgwire, F
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** constraint
 
-Nothing is defined through a query protocol. An object is defined in the model, or in the source and then admitted into the model; changing the contents of an object is a write ([REQ-1925](#REQ-1925)), creating, altering or deleting one is not. CREATE, DROP, ALTER and TRUNCATE are refused on every surface by one refusal in the semantic layer, Cypher included, where the refusal is made before the statement is lowered to SQL. The one exception is a session's own temporary tables. pgwire answers the refusal with SQLSTATE 0A000. There is no `ddl` capability, no `ddl_catalog` and no `ddl_schema`; a configuration that carries either field fails validation. No client statement registers a table into a role's context, client CREATE TABLE AS is refused, and the Airport create_schema, drop_schema and create_table calls are refused.
+Nothing is defined through a query protocol. An object is defined in the model, or in the source and then admitted into the model; changing the contents of an object is a write ([REQ-1925](#REQ-1925)), creating, altering or deleting one is not. CREATE, DROP and ALTER are refused on every surface by one refusal in the semantic layer, Cypher included, where the refusal is made before the statement is lowered to SQL. The one exception is a session's own temporary tables. pgwire answers the refusal with SQLSTATE 0A000. There is no `ddl` capability, no `ddl_catalog` and no `ddl_schema`; a configuration that carries either field fails validation. No client statement registers a table into a role's context, client CREATE TABLE AS is refused, and the Airport create_schema, drop_schema and create_table calls are refused. (Amended 2026-10-19, TRUNCATE IS A DATA WRITE:) TRUNCATE is not refused here; [REQ-1942](#REQ-1942) supersedes this requirement's TRUNCATE clause, and a TRUNCATE is a write admitted by the one write admission.
 
 **Use case:** The model is the one declaration of the estate. An object that a client could create through a query protocol would exist outside that declaration and outside its governance.
 
@@ -25487,3 +25487,17 @@ Package registries reach a proxy such as Artifactory and the Git servers GitLab,
 **Tests:** `tests/unit/test_package_registry_trust.py`, `tests/unit/test_package_registries.py`, `provisa-ui/src/__tests__/PackageRegistries.test.tsx`
 
 **Docs:** [package-registries.md](../package-registries.md)
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2089 · Demo Provisioning {#REQ-2089}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A configuration may declare a replica's rows instead of landing them from its source: replica_rows/<source_id>/<schema>.<table>.tsv beside its config.yaml, its first line the table's columns in their order, tab separated, each line after one row (\N is NULL; \t, \n, \r and \\ a tab, newline, carriage return and backslash; an integer, floating or boolean column's cells read as that type, every other as its text). When an org's runtime is built, before its replica convergence is wired -- a demo template's from its demo's directory, the deployment org's from its launch config's directory -- each declared table is written into the org's own replica store as a build of it writes it (its columns' types, a stream build's content hash) and recorded as built for that store and the table's definition; convergence then asks for no build and the source is never read, so a demo whose source has no tenant (the insider demo's bank mail in Microsoft 365) is served from its declared rows by the bundle build's setup, its seeding run and every sandbox, and the bundle's seed carries them like any landed replica. A table already landed in that store from those rows is left as it is. Refused, naming the file: a file not named <schema>.<table>.tsv; a table the configuration does not serve from that source; a header that is not the table's columns in their order; a cell not of its column's type; a source whose cache_ttl is not -1 (nothing may refresh the replica from the source); a declared table with no rows.
+
+**Use case:** A demo reads a bank's mail through a Microsoft 365 source though no sandbox has a tenant: its seeded mailbox ships as the source's canonical mail tables' rows.
+
+**Code:** `provisa/federation/declared_replica_rows.py`, `provisa/api/demo_templates.py`, `provisa/api/app.py`
+
+**Tests:** `tests/unit/test_declared_replica_rows.py`
