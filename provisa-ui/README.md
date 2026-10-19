@@ -1,73 +1,31 @@
-# React + TypeScript + Vite
+# provisa-ui
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The Provisa web console: React and TypeScript, built with Vite. It talks to the Provisa API for
+everything it shows, so run the backend too. From the repository root, `./start-ui.sh` starts
+both and serves the console at http://localhost:3000.
 
-Currently, two official plugins are available:
+It needs Node.js 22.12 or later.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## Commands
 
-## React Compiler
+Run these from this directory.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Vite dev server with hot reload |
+| `npm run build` | Type-check, then build to `dist/`. The `prebuild` step first builds the MkDocs site into `public/docs-site/`, the offline copy the in-app docs reader falls back to; set `SKIP_DOCS_SITE=1` to skip it |
+| `npm run typecheck` | `tsc -b --noEmit` |
+| `npm run lint` | ESLint |
+| `npm run test:unit` | Vitest, with coverage |
+| `npm run test:e2e` | Playwright |
 
-## Expanding the ESLint configuration
+## Tests
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Unit tests sit beside the code in `__tests__` folders. Browser tests are under `e2e/`, and every
+Playwright test imports `test` from `./coverage`, whose fixture fails a test on any uncaught
+browser exception. The e2e suites start the services they need, so they run in CI.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Text and languages
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+No user-facing string is written in a component. English lives in `src/i18n/locales/en.json`
+and `src/i18n/locales/en/<namespace>.json`, and each other language mirrors it.

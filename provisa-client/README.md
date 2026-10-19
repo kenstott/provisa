@@ -1,14 +1,14 @@
 # provisa-client
 
-Python client for [Provisa](https://github.com/kenstott/provisa) — a config-driven data
-virtualization platform. Query a Provisa server's governed GraphQL API and stream results back
+Python client for [Provisa](https://github.com/kenstott/provisa), the config-driven data
+virtualization platform. Query a Provisa server in SQL, GraphQL or Cypher and stream results back
 as Arrow tables over Arrow Flight, without hand-rolling HTTP calls or Arrow IPC decoding.
 
 ## Features
 
 - GraphQL query execution against a Provisa server
 - Arrow Flight streaming for large result sets
-- Optional pandas, SQLAlchemy dialect (`provisa.http`/`provisa.https`), and ADBC integration
+- Optional pandas, a SQLAlchemy dialect (`provisa+http://` and `provisa+https://` URLs) and ADBC
 - AES-GCM payload encryption support
 
 ## Install
