@@ -86926,3 +86926,41 @@ And a correlate over a result larger than mcp.stats_max_rows reports row_cap and
   docs:
   - api-reference.md
   - security.md
+- id: REQ-2092
+  status: proposed
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: Performance Benchmark
+  feature: benchmarks-methodology
+  priority: SHOULD
+  type: behavioral
+  description: "The benchmark contract has governance knobs: row rules per table, the share of columns masked, central redaction on or off, role inheritance depth (derived roles included) and telemetry on or off. With every knob at zero the request is the optimistic request. A local pass measures, with request counters and per-stage thread CPU, the per-request cost of derived roles, masks by admitting role, central redaction, recording which role granted each read, time-limited grants and the per-org event loop and slots, and gives per-request figures for REST, JSON:API, Flight SQL and MCP. The local four-source proof runs. The publishable benchmark runs only after the harness is feature complete and has run on low-cost infrastructure (a Spot VM)."
+  use_case: "A solution engineer sets the governance knobs to a prospect's policy (rules per table, masked share, redaction) and the sizing guide states what that policy costs per request."
+  scenario: "Given a contract with two row rules per table and a quarter of columns masked
+
+When the benchmark runs locally
+
+Then the report gives per-request server CPU for the governed run beside the run with every knob at zero"
+  stakeholders:
+  - ops
+- id: REQ-2093
+  status: proposed
+  since: 2026-10
+  group: 11. Platform, Infrastructure & Delivery
+  category: Performance
+  feature: performance-and-scale-concurrency
+  priority: SHOULD
+  type: behavioral
+  description: "Request deadlines are watched by one shared watchdog thread per process instead of a threading.Timer per request; a request that passes its deadline is cancelled as before, on every transport that registers a cancel."
+  use_case: "A busy node stops creating and tearing down a timer thread for every request."
+  scenario: "Given a request with a 50 ms deadline whose source does not answer
+
+When the deadline passes
+
+Then the request is cancelled with the deadline error
+
+And no thread was started for that request's deadline"
+  code:
+  - provisa/core/request_deadline.py
+  stakeholders:
+  - ops
