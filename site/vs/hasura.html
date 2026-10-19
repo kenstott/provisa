@@ -218,6 +218,16 @@
           results.
         </p>
         <p>
+          DDN holds a cross-connector join in the engine's memory: the left-hand rows, the
+          join keys collected from them and the second connector's response, with
+          <a href="https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs" rel="noopener">no spill or streaming path</a>.
+          Each hop has a size limit. The engine refuses a connector response over
+          <code>NDC_RESPONSE_SIZE_LIMIT</code> (30 MB by default), and the SDK servers cap
+          the requests they accept. Values travel as JSON, with 64-bit and arbitrary-precision
+          numbers as strings and bytes as base64. In Provisa the join runs in the federation
+          engine; DuckDB and Postgres spill to disk when a join outgrows memory.
+        </p>
+        <p>
           Self-hosting DDN's engine and connectors on Docker
           <a href="https://hasura.io/docs/3.0/deployment/overview/" rel="noopener">comes without a control plane</a>.
           <a href="https://hasura.io/docs/3.0/architecture/private/self-hosted" rel="noopener">Private DDN Self-Hosted</a>,
