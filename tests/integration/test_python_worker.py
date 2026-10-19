@@ -26,6 +26,7 @@ from pathlib import Path
 import pytest
 
 from provisa.codesource import worker as w
+from provisa.codesource.arrow_rows import row_schema, schema_text
 from provisa.codesource.manifest import Named, Scalar
 from provisa.python.source import host_command, read_code
 
@@ -41,7 +42,8 @@ def runtimes(tmp_path_factory):
 
     resolver = CodeRuntimeResolver(cache_root=tmp_path_factory.mktemp("runtime-deps"))
     python = resolver.resolve("python")
-    return python, python.parent.parent, resolver.resolve("uv")
+    host_lib = resolver.resolve("pyarrow").parent.parent  # the host's own pyarrow (REQ-2098)
+    return python, python.parent.parent, resolver.resolve("uv"), host_lib
 
 
 @pytest.fixture
@@ -52,17 +54,30 @@ def code(tmp_path):
 
 
 def _start(code: Path, runtimes, egress=()) -> w.Worker:
-    python, python_home, _uv = runtimes
+    python, python_home, _uv, host_lib = runtimes
     command = host_command(
-        python=python, python_home=python_home, code=code, entry="orders", egress=list(egress)
+        python=python,
+        python_home=python_home,
+        code=code,
+        entry="orders",
+        egress=list(egress),
+        host_lib=host_lib,
     )
     started = w.Worker("python-src", "h", command)
     started.start()
     return started
 
 
+def _rows(started: w.Worker, code: Path, runtimes, export: str, args: list) -> list[list[dict]]:
+    """The export's rows, batch by batch, sent against its row type's schema (REQ-2098)."""
+    python, python_home, _uv, _lib = runtimes
+    manifest = read_code(python=python, python_home=python_home, code=code, entry="orders")
+    schema = schema_text(row_schema(manifest, manifest.export(export)))
+    return list(started.rows(export, "table", args, schema=schema))
+
+
 def test_the_code_is_read_inside_the_sandbox(code, runtimes):
-    python, python_home, _uv = runtimes
+    python, python_home, _uv, _lib = runtimes
     manifest = read_code(python=python, python_home=python_home, code=code, entry="orders")
     orders = manifest.export("orders")
     assert orders.returns == Named("Order")
@@ -75,9 +90,9 @@ def test_the_code_is_read_inside_the_sandbox(code, runtimes):
 def test_rows_are_served_inside_the_sandbox(code, runtimes):
     started = _start(code, runtimes)
     try:
-        [[row]] = list(started.rows("orders", "table", ["acme"]))
+        [[row]] = _rows(started, code, runtimes, "orders", ["acme"])
         assert row["lines"] == [{"sku": "acme", "qty": 2}]
-        assert [len(b) for b in started.rows("many", "table", [1500])] == [1000, 500]
+        assert [len(b) for b in _rows(started, code, runtimes, "many", [1500])] == [1000, 500]
     finally:
         started.stop()
 
@@ -86,7 +101,7 @@ def test_the_code_reads_nothing_outside_it(code, runtimes):
     started = _start(code, runtimes)
     try:
         with pytest.raises(w.CodeFailed, match="PermissionError|Operation not permitted"):
-            list(started.rows("outside", "table", []))
+            _rows(started, code, runtimes, "outside", [])
     finally:
         started.stop()
 
@@ -124,13 +139,13 @@ def test_a_host_on_the_allow_list_is_reached_through_the_proxy_and_no_other(
     host, port = upstream
     started = _start(code, runtimes, egress=[f"{host}:{port}"])
     try:
-        [[reached]] = list(started.rows("fetched", "table", [f"http://{host}:{port}/rates"]))
+        [[reached]] = _rows(started, code, runtimes, "fetched", [f"http://{host}:{port}/rates"])
         assert reached == {"status": 200, "body": "ok"}
-        [[refused]] = list(started.rows("fetched", "table", [f"http://{host}:{port + 1}/x"]))
+        [[refused]] = _rows(started, code, runtimes, "fetched", [f"http://{host}:{port + 1}/x"])
         assert refused["status"] == 403
         assert "not on the egress allow-list" in refused["body"]
         with pytest.raises(w.CodeFailed):
-            list(started.rows("direct", "table", [host, port]))  # around the proxy
+            _rows(started, code, runtimes, "direct", [host, port])  # around the proxy
     finally:
         started.stop()
 
@@ -153,7 +168,7 @@ def test_dependencies_are_installed_from_the_lockfile_and_imported_in_the_sandbo
     from provisa.python.install import ensure_installed, environment_python
     from provisa.python.source import code_path, entry_module
 
-    python, python_home, uv = runtimes
+    python, python_home, uv, _lib = runtimes
     buf = io.BytesIO()
     with zipfile.ZipFile(buf, "w") as archive:
         archive.writestr(
@@ -182,11 +197,17 @@ def test_dependencies_are_installed_from_the_lockfile_and_imported_in_the_sandbo
     manifest = read_code(python=interpreter, python_home=python_home, code=code, entry=entry)
     assert [e.name for e in manifest.exports] == ["versions"]
     command = host_command(
-        python=interpreter, python_home=python_home, code=code, entry=entry, egress=[]
+        python=interpreter,
+        python_home=python_home,
+        code=code,
+        entry=entry,
+        egress=[],
+        host_lib=runtimes[3],
     )
     started = w.Worker("rates-src", installed.content_hash, command)
     started.start()
+    schema = schema_text(row_schema(manifest, manifest.export("versions")))
     try:
-        assert list(started.rows("versions", "table", [])) == [[{"six": "1.16.0"}]]
+        assert list(started.rows("versions", "table", [], schema=schema)) == [[{"six": "1.16.0"}]]
     finally:
         started.stop()

@@ -158,12 +158,15 @@ async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app s
         for c in table["columns"]
         if c["native_filter_type"] is None
     ]
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+
     worker = prepared.worker()
+    schema = schema_text(row_schema(prepared.manifest, export))
 
     def _run() -> list[dict]:
         return [
             project(name, row, outputs)
-            for batch in worker.rows(function, "table", args, names)
+            for batch in worker.rows(function, "table", args, names, schema=schema)
             for row in batch
         ]
 
@@ -187,7 +190,10 @@ async def whole_rows(state: Any, source: Any, table: Any) -> list[dict]:  # the 
         )
     prepared = await prepare(source.id, source.type.value, source.mapping, await context_for(state))
     function = export_of(table)
-    if not any(e.name == function and e.kind == "table" for e in prepared.manifest.exports):
+    export = next(
+        (e for e in prepared.manifest.exports if e.name == function and e.kind == "table"), None
+    )
+    if export is None:
         raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
     outputs = [
         OutputColumn(
@@ -195,12 +201,15 @@ async def whole_rows(state: Any, source: Any, table: Any) -> list[dict]:  # the 
         )
         for c in columns
     ]
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+
     worker = prepared.worker()
+    schema = schema_text(row_schema(prepared.manifest, export))
 
     def _run() -> list[dict]:
         return [
             project(name, row, outputs)
-            for batch in worker.rows(function, "table", [], [])
+            for batch in worker.rows(function, "table", [], [], schema=schema)
             for row in batch
         ]
 

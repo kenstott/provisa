@@ -153,7 +153,7 @@ class RemoteHost:
 
     async def _pair(self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         head = await reader.readexactly(_HEAD.size)
-        message = json.loads(await reader.readexactly(_HEAD.unpack(head)[0]))
+        message = json.loads((await reader.readexactly(_HEAD.unpack(head)[0]))[1:])
         held = (self.state / SECRET).read_text()
         if message.get("op") != "pair" or not secrets.compare_digest(
             str(message.get("secret", "")), held
@@ -171,7 +171,7 @@ class RemoteHost:
 
 
 async def _send(writer: asyncio.StreamWriter, message: dict) -> None:
-    body = json.dumps(message, separators=(",", ":")).encode()
+    body = b"J" + json.dumps(message, separators=(",", ":")).encode()
     writer.write(_HEAD.pack(len(body)) + body)
     await writer.drain()
 

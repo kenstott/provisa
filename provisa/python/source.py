@@ -130,14 +130,21 @@ def read_code(
 
 
 def host_command(
-    *, python: Path, python_home: Path, code: Path, entry: str, egress: Sequence[str]
+    *,
+    python: Path,
+    python_home: Path,
+    code: Path,
+    entry: str,
+    egress: Sequence[str],
+    host_lib: Path,
 ) -> HostCommand:
-    """How the source's Python runs the host on its code, sandboxed."""
+    """How the source's Python runs the host on its code, sandboxed. ``host_lib`` is where the
+    host's own pyarrow is (REQ-2098), which it reads its rows' schema with and sends them in."""
     return sandboxed(
         lambda address: [str(python), "-I", str(HOST), address, str(code), entry],
         executable=python,
-        read=[HOST.parent, code, python_home],
-        env=private_environment(**_PYTHON_ENV),
+        read=[HOST.parent, code, python_home, host_lib],
+        env=private_environment(**_PYTHON_ENV, PROVISA_HOST_LIB=str(host_lib)),
         cwd=code,
         egress=egress,
     )

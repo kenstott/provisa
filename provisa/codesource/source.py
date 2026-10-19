@@ -220,8 +220,15 @@ def _prepare_python(
     manifest = read_code(
         python=interpreter, python_home=home, code=root, entry=entry, egress=ctx.egress
     )
+    # The host's pyarrow, pinned and fetched as the runtime is (REQ-2098): <home>/pyarrow/.
+    host_lib = resolver.resolve("pyarrow").parent.parent
     command = host_command(
-        python=interpreter, python_home=home, code=root, entry=entry, egress=ctx.egress
+        python=interpreter,
+        python_home=home,
+        code=root,
+        entry=entry,
+        egress=ctx.egress,
+        host_lib=host_lib,
     )
     return Prepared(source_id, installed.content_hash, manifest, command)
 

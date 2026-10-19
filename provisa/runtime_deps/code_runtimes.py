@@ -200,6 +200,34 @@ RUNTIMES: dict[str, RuntimePin] = {
             ),
         },
     ),
+    # REQ-2098: the Arrow library a Python source's host program sends its rows with, for the
+    # pinned CPython above; a wheel is a zip, unpacked onto the host's path (python/source.py).
+    # Each sum is the one PyPI publishes for the file.
+    "pyarrow": RuntimePin(
+        "pyarrow",
+        "24.0.0",
+        "https://files.pythonhosted.org/packages/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "b4/a9/9686d9f07837f91f775e8932659192e02c74f9d8920524b480b85212cc68/"
+                "pyarrow-24.0.0-cp312-cp312-macosx_12_0_arm64.whl",
+                "6233c9ed9ab9d1db47de57d9753256d9dcffbf42db341576099f0fd9f6bf4810",
+                "pyarrow/__init__.py",
+            ),
+            LINUX_X64: Asset(
+                "b3/7a/829f7d9dfd37c207206081d6dad474d81dde29952401f07f2ba507814818/"
+                "pyarrow-24.0.0-cp312-cp312-manylinux_2_28_x86_64.whl",
+                "6165461f55ef6314f026de6638d661188e3455d3ec49834556a0ebbdbace18bb",
+                "pyarrow/__init__.py",
+            ),
+            WINDOWS_X64: Asset(
+                "66/1c/e3e72c8014ad2743ca64a701652c733cc5cbcee15c0463a32a8c55518d9e/"
+                "pyarrow-24.0.0-cp312-cp312-win_amd64.whl",
+                "295f0a7f2e242dabd513737cf076007dc5b2d59237e3eca37b05c0c6446f3826",
+                "pyarrow/__init__.py",
+            ),
+        },
+    ),
 }
 
 #: Fetch an archive's bytes. Injected so tests never touch the network.
@@ -223,7 +251,7 @@ def fetch_https(url: str) -> bytes:
 
 def _extract(filename: str, data: bytes, dest: Path) -> None:
     """Expand ``data`` under ``dest``, refusing any entry that escapes it."""
-    if filename.endswith(".zip"):
+    if filename.endswith((".zip", ".whl")):  # a wheel is a zip
         with zipfile.ZipFile(io.BytesIO(data)) as archive:
             root = dest.resolve()
             for info in archive.infolist():
