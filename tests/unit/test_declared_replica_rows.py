@@ -264,3 +264,54 @@ class TestAdopting:
         self, tmp_path: Path, model: dict
     ) -> None:
         assert asyncio.run(drr.adopt_declared_rows(_state(_Target()), tmp_path)) == []
+
+
+class TestTheSchemaBuild:
+    """The declared rows land before the routes are published, so a source of them alone is kept
+    (and never contacted) from the first read on."""
+
+    def _record(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
+        from provisa.api import demo_templates, model_reload
+
+        calls: list[str] = []
+
+        async def adopt(state, directory):
+            calls.append(f"adopt {directory.name}")
+            return []
+
+        async def publish(rt):
+            calls.append("publish")
+
+        monkeypatch.setattr(demo_templates, "declared_rows_directory", lambda org_id: tmp_path)
+        monkeypatch.setattr(drr, "adopt_declared_rows", adopt)
+        monkeypatch.setattr(model_reload, "publish_replica_routes", publish)
+        return calls
+
+    def test_the_rows_land_before_the_routes_are_published(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from provisa.api.model_reload import publish_routes_over_declared_rows
+        from provisa.core.environments import PROD
+
+        calls = self._record(monkeypatch, tmp_path)
+        asyncio.run(publish_routes_over_declared_rows(SimpleNamespace(env=PROD, org_id="o")))
+        assert calls == [f"adopt {tmp_path.name}", "publish"]
+
+    def test_another_environment_publishes_its_routes_alone(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        from provisa.api.model_reload import publish_routes_over_declared_rows
+
+        calls = self._record(monkeypatch, tmp_path)
+        asyncio.run(publish_routes_over_declared_rows(SimpleNamespace(env="dev", org_id="o")))
+        assert calls == ["publish"]
+
+    def test_the_rebuild_publishes_its_routes_through_that_one_step(self) -> None:
+        import inspect
+
+        from provisa.api import app
+
+        body = inspect.getsource(app._rebuild_schemas_impl)
+        assert "publish_routes_over_declared_rows(" in body
+        assert "publish_replica_routes(" not in body
+        assert "adopt_declared_rows(" not in body

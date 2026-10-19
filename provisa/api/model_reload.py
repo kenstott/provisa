@@ -263,6 +263,27 @@ async def publish_replica_routes(rt: "OrgRuntime") -> None:
     rt.replica_stamp = stamp
 
 
+async def publish_routes_over_declared_rows(rt: "OrgRuntime") -> None:
+    """Land the replicas ``rt``'s config directory declares the rows of, then publish ``rt``'s
+    replica routes: the schema build's one step for both, in that order (REQ-2089, REQ-1912).
+
+    A demo whose source has no tenant to read declares its replica rows (a demo template's in its
+    demo's directory, the deployment org's beside its launch config). Landed first, they are in
+    the routes published next, so a source of them alone is kept (REQ-2031) and never contacted,
+    from the first read on. Published first, the routes would hold them only after a later
+    rebuild, and a read before it would wait on the source's connector."""
+    from provisa.api.app import state
+
+    if rt.env == PROD:
+        from provisa.api.demo_templates import declared_rows_directory
+        from provisa.federation.declared_replica_rows import adopt_declared_rows
+
+        rows_directory = declared_rows_directory(rt.org_id)
+        if rows_directory is not None:
+            await adopt_declared_rows(state, rows_directory)
+    await publish_replica_routes(rt)
+
+
 async def reload_replicas(rt: "OrgRuntime") -> None:
     """Republish ``rt``'s replica routes after the ``replica`` stamp moved: a busy table was
     promoted or demoted, or a promoted table's first replica completed (REQ-826). Neither is a
