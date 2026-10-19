@@ -1,8 +1,8 @@
 # Guía rápida para desarrolladores {: #developer-quick-start }
 
-Para evaluar Provisa sin compilar desde el código fuente, consulte [Guía rápida](index.md) — descargue el instalador para macOS, Windows o Linux y ejecute `provisa start`.
+Para evaluar Provisa sin compilar desde el código fuente, consulte el [Inicio rápido](index.md): descargue el instalador para macOS, Windows o Linux y ejecute `provisa start`.
 
-Esta guía es para ejecutar Provisa **desde el repositorio** — desarrollo activo, depuración o contribución.
+Esta guía explica cómo ejecutar Provisa **desde el repositorio**, cuando usted desarrolla, depura o contribuye.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Superposición de desarrollo de Docker Compose (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - API de backend en el puerto 8001 (recarga en caliente ante cambios en `provisa/` y `config/`)
 - Servidor de desarrollo Vite de la UI en el puerto 3000 (HMR)
-- Trazado de OpenTelemetry y Grafana en `http://localhost:3100`. El stack de observabilidad es un perfil `observability` opcional de docker-compose (OTel Collector, Prometheus, Tempo, Grafana), no activo de forma predeterminada a nivel de la plataforma; `start-ui.sh` lo habilita como comodidad del script de desarrollo a menos que pase `--no-observability`.
+- Trazado de OpenTelemetry y Grafana en `http://localhost:3100`. El stack de observabilidad (OTel Collector, Prometheus, Tempo, Grafana) es un perfil `observability` opcional de docker-compose y está desactivado por defecto en la plataforma; `start-ui.sh` lo activa por comodidad en desarrollo salvo que pase `--no-observability`.
 
-**Ctrl+C** detiene todo — backend, UI y todos los servicios de Docker — y revierte cualquier parche de configuración.
+**Ctrl+C** lo detiene todo (backend, UI y todos los servicios de Docker) y revierte cualquier parche de configuración.
 
 **Ctrl+R** reinicia solo el backend (útil después de un cambio de configuración que la recarga en caliente no detecta).
 
@@ -91,7 +91,7 @@ Orígenes incluidos:
 
 ## 3. Conectar un origen de datos {: #3-connect-a-data-source }
 
-Provisa lee la configuración desde `config/`. Agregue un archivo de origen — por ejemplo `config/sources/my-db.yaml`:
+Provisa lee su configuración desde `config/`. Añada un archivo de origen, por ejemplo `config/sources/my-db.yaml`:
 
 ```yaml
 sources:

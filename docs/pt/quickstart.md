@@ -1,8 +1,8 @@
 # Início Rápido para Desenvolvedores {: #developer-quick-start }
 
-Para avaliar o Provisa sem compilar a partir do código-fonte, veja o [Início Rápido](index.md) — baixe o instalador para macOS, Windows ou Linux e execute `provisa start`.
+Para avaliar o Provisa sem compilar a partir do código-fonte, veja o [Início rápido](index.md): baixe o instalador para macOS, Windows ou Linux e rode `provisa start`.
 
-Este guia é para rodar o Provisa **a partir do repositório** — desenvolvimento ativo, depuração ou contribuição.
+Este guia explica como rodar o Provisa **a partir do repositório**, quando você está desenvolvendo, depurando ou contribuindo.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Overlay de desenvolvimento do Docker Compose (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - API de backend na porta 8001 (hot-reload em mudanças em `provisa/` e `config/`)
 - Servidor de desenvolvimento Vite da UI na porta 3000 (HMR)
-- Rastreamento OpenTelemetry e Grafana em `http://localhost:3100`. A stack de observabilidade é um perfil docker-compose `observability` opcional (OTel Collector, Prometheus, Tempo, Grafana), não ativado por padrão no nível da plataforma; `start-ui.sh` o habilita como conveniência de script de desenvolvimento, a menos que você passe `--no-observability`.
+- Rastreamento OpenTelemetry e Grafana em `http://localhost:3100`. A stack de observabilidade (OTel Collector, Prometheus, Tempo, Grafana) é um perfil docker-compose `observability` opcional, desligado por padrão na plataforma; o `start-ui.sh` a liga por conveniência no desenvolvimento, a menos que você passe `--no-observability`.
 
-**Ctrl+C** para tudo — backend, UI e todos os serviços Docker — e reverte quaisquer patches de configuração.
+**Ctrl+C** para tudo (backend, UI e todos os serviços Docker) e reverte quaisquer patches de configuração.
 
 **Ctrl+R** reinicia apenas o backend (útil após uma mudança de configuração que o hot-reload não capta).
 
@@ -91,7 +91,7 @@ Fontes incluídas:
 
 ## 3. Conectar uma fonte de dados {: #3-connect-a-data-source }
 
-O Provisa lê a configuração de `config/`. Adicione um arquivo de fonte — por exemplo `config/sources/my-db.yaml`:
+O Provisa lê a configuração de `config/`. Adicione um arquivo de fonte, por exemplo `config/sources/my-db.yaml`:
 
 ```yaml
 sources:

@@ -1,8 +1,8 @@
 # 开发者快速入门 {: #developer-quick-start }
 
-如需在不从源代码构建的情况下评估 Provisa，请参见[快速入门](index.md)——下载 macOS、Windows 或 Linux 安装程序并运行 `provisa start`。
+如果想在不从源码构建的情况下试用 Provisa，请参阅[快速开始](index.md)：下载 macOS、Windows 或 Linux 安装程序，然后运行 `provisa start`。
 
-本指南适用于**从代码仓库**运行 Provisa——用于日常开发、调试或贡献代码。
+本指南介绍如何**从代码仓库**运行 Provisa，适用于开发、调试或贡献代码。
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Docker Compose 开发叠加层（`docker-compose.dev.yml`）—— MinIO、Kafka、MongoDB、Elasticsearch、Neo4j、Fuseki、Debezium、Schema Registry
 - 8001 端口上的后端 API（对 `provisa/` 和 `config/` 的改动支持热重载）
 - 3000 端口上的 Vite UI 开发服务器（支持 HMR）
-- `http://localhost:3100` 上的 OpenTelemetry 追踪和 Grafana。可观测性技术栈是一个可选启用的 docker-compose `observability` 配置文件（OTel Collector、Prometheus、Tempo、Grafana），在平台层面默认不启用；`start-ui.sh` 会将其作为开发脚本的便利功能默认启用，除非您传入 `--no-observability`。
+- `http://localhost:3100` 上的 OpenTelemetry 追踪和 Grafana。可观测性技术栈（OTel Collector、Prometheus、Tempo、Grafana）是一个可选的 docker-compose `observability` 配置文件，在平台上默认关闭；`start-ui.sh` 为了开发方便会把它打开，除非您传入 `--no-observability`。
 
-**Ctrl+C** 会停止一切——后端、UI 以及所有 Docker 服务——并还原任何配置补丁。
+**Ctrl+C** 会停止一切（后端、UI 以及所有 Docker 服务），并还原所有配置补丁。
 
 **Ctrl+R** 只重启后端（在热重载未能捕获的配置更改之后很有用）。
 
@@ -91,7 +91,7 @@ UI 端到端测试套件用来搭建这些数据源的正是同一个 `provision
 
 ## 3. 连接一个数据源 {: #3-connect-a-data-source }
 
-Provisa 从 `config/` 读取配置。添加一个数据源文件——例如 `config/sources/my-db.yaml`：
+Provisa 从 `config/` 读取配置。添加一个数据源文件，例如 `config/sources/my-db.yaml`：
 
 ```yaml
 sources:

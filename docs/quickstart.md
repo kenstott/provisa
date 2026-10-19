@@ -1,8 +1,8 @@
 # Developer Quick Start
 
-For evaluating Provisa without building from source, see the [Quick Start](index.md) — download the macOS, Windows, or Linux installer and run `provisa start`.
+To evaluate Provisa without building from source, see the [Quick Start](index.md): download the macOS, Windows or Linux installer and run `provisa start`.
 
-This guide is for running Provisa **from the repository** — active development, debugging, or contributing.
+This guide is for running Provisa **from the repository**, when you're developing, debugging or contributing.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Docker Compose dev overlay (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - Backend API on port 8001 (hot-reload on changes to `provisa/` and `config/`)
 - Vite UI dev server on port 3000 (HMR)
-- OpenTelemetry tracing and Grafana at `http://localhost:3100`. The observability stack is an opt-in docker-compose `observability` profile (OTel Collector, Prometheus, Tempo, Grafana), not on by default at the platform level; `start-ui.sh` enables it as a dev-script convenience unless you pass `--no-observability`.
+- OpenTelemetry tracing and Grafana at `http://localhost:3100`. The observability stack (OTel Collector, Prometheus, Tempo, Grafana) is an opt-in docker-compose `observability` profile and is off by default for the platform; `start-ui.sh` turns it on for convenience in development unless you pass `--no-observability`.
 
-**Ctrl+C** stops everything — backend, UI, and all Docker services — and reverts any config patches.
+**Ctrl+C** stops everything (backend, UI and all Docker services) and reverts any config patches.
 
 **Ctrl+R** restarts only the backend (useful after a config change that hot-reload misses).
 
@@ -91,7 +91,7 @@ Shipped sources:
 
 ## 3. Connect a data source
 
-Provisa reads configuration from `config/`. Add a source file — for example `config/sources/my-db.yaml`:
+Provisa reads its configuration from `config/`. Add a source file, for example `config/sources/my-db.yaml`:
 
 ```yaml
 sources:

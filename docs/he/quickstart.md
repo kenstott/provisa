@@ -1,8 +1,8 @@
 # מדריך התחלה מהירה למפתחים {: #developer-quick-start }
 
-להערכת Provisa ללא בנייה מהמקור, ראו [התחלה מהירה](index.md) — הורידו את מתקין ה-macOS, Windows או Linux והריצו `provisa start`.
+כדי להעריך את Provisa בלי לבנות מקוד המקור, ראו את [ההתחלה המהירה](index.md): הורידו את תוכנת ההתקנה ל-macOS, Windows או Linux והריצו `provisa start`.
 
-מדריך זה מיועד להרצת Provisa **מתוך המאגר (repository)** — לפיתוח פעיל, דיבוג, או תרומת קוד.
+המדריך הזה מסביר איך להריץ את Provisa **מתוך המאגר (repository)**, כשאתם מפתחים, מדבגים או תורמים קוד.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - שכבת הפיתוח של Docker Compose (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - Backend API בפורט 8001 (טעינה חוזרת חמה (hot-reload) בעת שינויים ב-`provisa/` וב-`config/`)
 - שרת הפיתוח של Vite עבור ה-UI בפורט 3000 (HMR)
-- מעקב (tracing) של OpenTelemetry ו-Grafana בכתובת `http://localhost:3100`. מחסנית ה-Observability היא פרופיל `observability` אופציונלי (opt-in) של docker-compose (OTel Collector, Prometheus, Tempo, Grafana), שאינו פעיל כברירת מחדל ברמת הפלטפורמה; `start-ui.sh` מפעיל אותה כנוחות של סקריפט פיתוח אלא אם מעבירים `--no-observability`.
+- מעקב (tracing) של OpenTelemetry ו-Grafana בכתובת `http://localhost:3100`. מחסנית ה-Observability (OTel Collector, Prometheus, Tempo, Grafana) היא פרופיל `observability` אופציונלי של docker-compose, והיא כבויה כברירת מחדל בפלטפורמה; `start-ui.sh` מפעיל אותה לנוחות בפיתוח, אלא אם תעבירו `--no-observability`.
 
-**Ctrl+C** עוצר את הכול — Backend, UI, וכל שירותי ה-Docker — ומבטל כל תיקוני (patches) קונפיגורציה.
+**Ctrl+C** עוצר הכול (Backend, UI וכל שירותי ה-Docker) ומבטל כל תיקון (patch) בקונפיגורציה.
 
 **Ctrl+R** מפעיל מחדש רק את ה-Backend (שימושי לאחר שינוי קונפיגורציה שה-hot-reload לא תופס).
 
@@ -91,7 +91,7 @@ Provisa running:
 
 ## 3. חיבור מקור נתונים {: #3-connect-a-data-source }
 
-Provisa קוראת קונפיגורציה מתוך `config/`. הוסיפו קובץ מקור — לדוגמה `config/sources/my-db.yaml`:
+Provisa קורא את הקונפיגורציה שלו מתוך `config/`. הוסיפו קובץ מקור, למשל `config/sources/my-db.yaml`:
 
 ```yaml
 sources:

@@ -1,8 +1,8 @@
 # 開發人員快速入門 {: #developer-quick-start }
 
-如要在不從原始碼建置的情況下評估 Provisa，請參閱[快速入門](index.md)——下載 macOS、Windows 或 Linux 安裝程式，然後執行 `provisa start`。
+如想在不從原始碼建構的情況下試用 Provisa，請參閱[快速開始](index.md)：下載 macOS、Windows 或 Linux 安裝程式，然後執行 `provisa start`。
 
-本指南適用於**從版本庫執行** Provisa——即積極開發、偵錯或貢獻程式碼的情況。
+本指南介紹如何**從版本庫執行** Provisa，適用於開發、偵錯或貢獻程式碼。
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Docker Compose 開發疊加層（`docker-compose.dev.yml`）——MinIO、Kafka、MongoDB、Elasticsearch、Neo4j、Fuseki、Debezium、Schema Registry
 - 執行於連接埠 8001 的後端 API（當 `provisa/` 及 `config/` 有變更時熱重載）
 - 執行於連接埠 3000 的 Vite UI 開發伺服器（HMR）
-- 於 `http://localhost:3100` 提供的 OpenTelemetry 追蹤及 Grafana。可觀測性堆疊是一個選用的 docker-compose `observability` 設定檔（OTel Collector、Prometheus、Tempo、Grafana），在平台層級預設並非啟用；除非您傳遞 `--no-observability`，否則 `start-ui.sh` 會將其作為開發指令碼的便利功能加以啟用。
+- 於 `http://localhost:3100` 提供的 OpenTelemetry 追蹤及 Grafana。可觀測性堆疊（OTel Collector、Prometheus、Tempo、Grafana）是一個選用的 docker-compose `observability` 設定檔，在平台上預設關閉；`start-ui.sh` 為方便開發會把它開啟，除非您傳遞 `--no-observability`。
 
-**Ctrl+C** 會停止所有項目——後端、UI 及所有 Docker 服務——並還原任何設定修補。
+**Ctrl+C** 會停止所有項目（後端、UI 及所有 Docker 服務），並還原所有設定修補。
 
 **Ctrl+R** 只會重新啟動後端（在熱重載未能偵測到的設定變更後很有用）。
 
@@ -91,7 +91,7 @@ Provisa running:
 
 ## 3. 連接數據來源 {: #3-connect-a-data-source }
 
-Provisa 會從 `config/` 讀取設定。請新增一個來源檔案——例如 `config/sources/my-db.yaml`：
+Provisa 會從 `config/` 讀取設定。新增一個來源檔案，例如 `config/sources/my-db.yaml`：
 
 ```yaml
 sources:

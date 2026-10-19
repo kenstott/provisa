@@ -1,8 +1,8 @@
 # Schnellstart für Entwickler {: #developer-quick-start }
 
-Um Provisa zu evaluieren, ohne aus dem Quellcode zu kompilieren, siehe [Schnellstart](index.md) — laden Sie den Installer für macOS, Windows oder Linux herunter und führen Sie `provisa start` aus.
+Um Provisa auszuprobieren, ohne aus dem Quellcode zu bauen, siehe den [Schnellstart](index.md): Laden Sie das Installationsprogramm für macOS, Windows oder Linux herunter und führen Sie `provisa start` aus.
 
-Dieser Leitfaden richtet sich an das Ausführen von Provisa **aus dem Repository** — aktive Entwicklung, Debugging oder Beiträge.
+Dieser Leitfaden beschreibt, wie Sie Provisa **aus dem Repository** ausführen, wenn Sie entwickeln, debuggen oder beitragen.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Docker-Compose-Dev-Overlay (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - Backend-API auf Port 8001 (Hot-Reload bei Änderungen an `provisa/` und `config/`)
 - Vite-UI-Dev-Server auf Port 3000 (HMR)
-- OpenTelemetry-Tracing und Grafana unter `http://localhost:3100`. Der Observability-Stack ist ein optionales docker-compose-Profil `observability` (OTel Collector, Prometheus, Tempo, Grafana), das auf Plattformebene standardmäßig nicht aktiv ist; `start-ui.sh` aktiviert es als Dev-Skript-Komfortfunktion, sofern Sie nicht `--no-observability` übergeben.
+- OpenTelemetry-Tracing und Grafana unter `http://localhost:3100`. Der Observability-Stack (OTel Collector, Prometheus, Tempo, Grafana) ist ein optionales docker-compose-Profil `observability` und für die Plattform standardmäßig aus; `start-ui.sh` schaltet ihn zur Bequemlichkeit in der Entwicklung ein, außer Sie übergeben `--no-observability`.
 
-**Strg+C** stoppt alles — Backend, UI und alle Docker-Dienste — und macht alle Konfigurationspatches rückgängig.
+**Strg+C** stoppt alles (Backend, UI und alle Docker-Dienste) und macht alle Konfigurationspatches rückgängig.
 
 **Strg+R** startet nur das Backend neu (nützlich nach einer Konfigurationsänderung, die vom Hot-Reload nicht erfasst wird).
 
@@ -91,7 +91,7 @@ Mitgelieferte Quellen:
 
 ## 3. Eine Datenquelle verbinden {: #3-connect-a-data-source }
 
-Provisa liest die Konfiguration aus `config/`. Fügen Sie eine Quelldatei hinzu — zum Beispiel `config/sources/my-db.yaml`:
+Provisa liest seine Konfiguration aus `config/`. Fügen Sie eine Quelldatei hinzu, zum Beispiel `config/sources/my-db.yaml`:
 
 ```yaml
 sources:
