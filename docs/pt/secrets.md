@@ -2,7 +2,7 @@
 
 **Nomes entram. Valores nunca saem.**
 
-Nenhum endpoint de API retorna um valor de segredo armazenado. Nenhuma tela oferece um botão "mostrar". Quem perdeu um valor o substitui — essa é a mesma chamada que o criou, pelo mesmo formulário. Isto não é uma decisão de política: o caminho de leitura simplesmente não existe no código.
+Nenhum endpoint da API devolve o valor de um segredo guardado, e nenhuma UI oferece um botão "mostrar". Quem perdeu um valor o substitui, com a mesma chamada e o mesmo formulário que o criaram. Não é uma decisão de política: o caminho de leitura simplesmente não existe no código.
 
 ---
 
@@ -16,13 +16,13 @@ Três formas de referência são válidas onde quer que o Provisa resolva creden
 | `${secret:NAME}` | O cofre da organização — compartilhado por todos os membros | Qualquer campo que aceite uma referência de credencial |
 | `${user:NAME}` | O cofre pessoal de quem está agindo | Qualquer campo que aceite uma referência de credencial |
 
-Em uma implantação multi-tenant, mantenha as credenciais da plataforma em um serviço de segredos, e não em variáveis de ambiente. Um administrador de tenant pode escrever `${env:...}` em um campo de credencial próprio, então qualquer valor no ambiente do processo fica ao alcance de todos os tenants. Deixe no ambiente apenas a credencial própria do backend de segredos.
+Num deployment multi-inquilino, mantenha as credenciais da plataforma num serviço de segredos e fora das variáveis de ambiente. Um admin de inquilino pode escrever `${env:...}` num campo de credencial próprio, então qualquer valor do ambiente do processo está ao alcance de todo inquilino. Deixe no ambiente só a credencial do próprio backend de segredos.
 
 A resolução é de falha fechada de ponta a ponta. Um nome de provedor desconhecido, um nome não definido e um backend inacessível levantam erro. Uma referência que não pôde ser resolvida nunca é silenciosamente substituída por uma string vazia.
 
 ### Formato do nome {: #name-format }
 
-Nomes de segredo devem corresponder a `[A-Za-z_][A-Za-z0-9_]*` — letras, dígitos e sublinhados, começando por letra ou sublinhado. A restrição é prática: `${secret:NAME}` é analisado pela gramática de referência, que lê até o `}` de fechamento. Um nome contendo chave, espaço ou dois-pontos produziria uma referência que é analisada como outra coisa.
+Nomes de segredos precisam corresponder a `[A-Za-z_][A-Za-z0-9_]*`: letras, dígitos e sublinhados, começando por letra ou sublinhado. O motivo é prático. `${secret:NAME}` é analisado pela gramática de referências, que lê até a `}` de fechamento, então um nome com chave, espaço ou dois-pontos geraria uma referência analisada como outra coisa.
 
 ---
 
@@ -30,17 +30,17 @@ Nomes de segredo devem corresponder a `[A-Za-z_][A-Za-z0-9_]*` — letras, dígi
 
 Toda organização tem dois cofres. Ambos vivem dentro do mesmo serviço de segredos.
 
-**Cofre da organização** — A credencial que um administrador da organização guarda aqui é compartilhada. Todo membro que referencia `${secret:DATABASE_TOKEN}` recebe o mesmo valor. Isto é para credenciais que a *organização* possui: uma senha de banco de dados compartilhada, uma chave de conta de serviço, um token de implantação. O cofre da organização exige a capacidade `org_settings` para leitura ou escrita.
+**Cofre da organização.** A credencial que um administrador da organização guarda aqui é compartilhada, então todo membro que referencia `${secret:DATABASE_TOKEN}` recebe o mesmo valor. Use-o para credenciais que a *organização* possui, como uma senha de banco de dados compartilhada, uma chave de conta de serviço ou um token de implantação. Ler ou escrever no cofre da organização exige a capacidade `org_settings`.
 
-**Cofre pessoal** — Uma credencial guardada aqui pertence a exatamente uma pessoa. Quando duas pessoas mantêm cada uma um `GIT_TOKEN`, `${user:GIT_TOKEN}` resolve para o de quem estiver agindo. O mesmo texto de referência entrega a cada pessoa a sua própria credencial. Quem não guardou nada recebe um erro, não o valor de outra pessoa. Nenhuma capacidade controla o cofre pessoal — guardar a sua própria credencial não é um privilégio que um administrador concede. E não há sintaxe de requisição para nomear o cofre de outra pessoa.
+**Cofre pessoal.** Uma credencial guardada aqui pertence a exatamente uma pessoa. Quando duas pessoas têm cada uma um `GIT_TOKEN`, `${user:GIT_TOKEN}` resolve para o de quem está agindo, então o mesmo texto de referência entrega a cada pessoa a sua própria credencial. Quem não guardou nada recebe um erro, nunca o valor de outra pessoa. Nenhuma capacidade protege o cofre pessoal, porque ter a própria credencial não é um privilégio que um administrador concede, e nenhuma sintaxe de requisição nomeia o cofre de outra pessoa.
 
-O escopo faz parte da referência, não é uma permissão em torno dela. `${secret:NAME}` e `${user:NAME}` nunca respondem um pelo outro.
+O escopo faz parte da própria referência, e nenhuma permissão a envolve. `${secret:NAME}` e `${user:NAME}` nunca respondem um pelo outro.
 
 ---
 
 ## Escolhendo um serviço de segredos {: #choosing-a-secrets-service }
 
-**Administração → Segurança → Serviço de segredos.** O painel é visível a quem detém a capacidade `platform_settings`. Todo backend que o build conhece é listado, esteja o SDK instalado ou não. Uma linha esmaecida diz qual pacote Python está faltando — o painel o nomeia em vez de esconder a opção por completo.
+**Administração → Segurança → Serviço de segredos.** Qualquer pessoa com a capacidade `platform_settings` vê o painel. Ele lista todo backend que a build conhece, com ou sem o SDK instalado, e uma linha acinzentada nomeia o pacote Python que falta em vez de esconder a opção.
 
 Cinco backends acompanham o produto:
 
@@ -52,13 +52,13 @@ Cinco backends acompanham o produto:
 | `gcp_secret_manager` | Google Secret Manager | `google-cloud-secret-manager` |
 | `azure_key_vault` | Azure Key Vault (secrets) | `azure-keyvault-secrets` |
 
-A seleção é de falha fechada: um backend desconhecido ou indisponível levanta erro na inicialização em vez de recair silentemente em outro.
+A seleção falha de forma fechada: um backend desconhecido ou indisponível interrompe a inicialização com um erro, e o Provisa nunca recorre a outro em silêncio.
 
 ### A credencial do próprio backend {: #the-backends-own-credential }
 
-A credencial de conexão de um backend central é configuração de processo. Ela vem de `${env:...}` apenas — nunca de `${secret:...}`. Um serviço de segredos cuja própria credencial vive dentro dele mesmo não pode ser aberto, então a cadeia de confiança termina no ambiente do host por design. O registro impõe isto: qualquer valor de configuração na especificação de um backend é resolvido com `providers=("env",)` antes de o backend ser construído.
+A credencial de conexão de um backend central é configuração do processo e vem só de `${env:...}`. `${secret:...}` não pode fornecê-la, porque um serviço de segredos cuja própria credencial vive dentro dele nunca poderia ser aberto. A cadeia de confiança termina no ambiente do host por design. O Provisa resolve cada valor de configuração de um backend a partir do ambiente antes de construir o backend.
 
-Exemplo — configuração do Vault em `provisa.yaml`:
+Por exemplo, uma configuração do Vault em `provisa.yaml`:
 
 ```yaml
 secrets:
@@ -71,9 +71,9 @@ secrets:
 
 ### Serviço central vs. built-in {: #central-service-vs-built-in }
 
-Quando um serviço central está configurado, o Provisa lê dele mas não escreve nele. O serviço central é dono da criação e da exclusão de entradas — essas operações pertencem à ferramenta dele. A página de Segredos diz isso e não oferece botão de criação.
+Com um serviço central configurado, o Provisa lê dele e nunca escreve nele. Criar e apagar entradas cabe às ferramentas do próprio serviço, então a página de segredos diz isso e não oferece botão de criar.
 
-Quando o backend `provisa` built-in está ativo, a página de Segredos é totalmente gravável: criar, substituir e excluir pela UI ou via API.
+Com o backend embutido `provisa` ativo, a página de segredos aceita escrita completa. Você cria, substitui e apaga segredos pela UI ou pela API.
 
 ---
 
@@ -100,9 +100,9 @@ Uma implantação de uma única organização lê uma referência exatamente com
 
 ## O armazenamento built-in do Provisa {: #provisas-built-in-store }
 
-O padrão quando nenhum serviço central está configurado. Cada linha em `secrets_store` guarda um blob de envelope criptografado — a coluna `value` é binária, não texto, e a chave de descriptografia vive no ambiente do processo, não no banco de dados. Uma cópia do plano de controle sem a chave mestra da implantação guarda texto cifrado e nada mais.
+É o padrão quando nenhum serviço central está configurado. Cada linha de `secrets_store` guarda um blob de envelope cifrado. A coluna `value` é binária, e a chave de decifração fica no ambiente do processo, fora do banco de dados. Uma cópia do plano de controle sem a chave mestra do deployment contém texto cifrado e nada mais.
 
-A criptografia nunca é opcional. Quando nenhuma chave de criptografia de processo está configurada, o armazenamento recorre a um keychain local. Se o host não tiver keychain para guardar uma chave, o armazenamento se recusa a escrever em vez de guardar o valor às claras.
+A criptografia nunca é opcional. Sem uma chave de criptografia configurada para todo o processo, o armazenamento usa um chaveiro local. Se o host não tem chaveiro para guardar uma chave, o armazenamento se recusa a escrever, e o valor nunca é guardado em claro.
 
 **Formato de armazenamento**:
 
@@ -123,7 +123,7 @@ A coluna `value` não é selecionada em nenhuma consulta de listagem.
 
 ## Endpoints da API {: #api-endpoints }
 
-Todas as rotas ficam sob `/admin/orgs/{org_id}`. O cofre da organização exige `org_settings` naquela organização. O cofre pessoal não exige capacidade alguma — o dono é lido da identidade autenticada; não há parâmetro de requisição para nomear o cofre de outra pessoa.
+Todas as rotas ficam sob `/admin/orgs/{org_id}`. O cofre da organização exige `org_settings` nessa organização. O cofre pessoal não exige capacidade, porque o dono é lido da identidade autenticada, e nenhum parâmetro de requisição nomeia o cofre de outra pessoa.
 
 | Método | Caminho | O que faz |
 | -------- | ------ | ------------- |
@@ -134,21 +134,21 @@ Todas as rotas ficam sob `/admin/orgs/{org_id}`. O cofre da organização exige 
 | `PUT` | `/my-secrets/{name}` | Cria ou substitui um segredo de quem chama |
 | `DELETE` | `/my-secrets/{name}` | Exclui um segredo de quem chama |
 
-Toda resposta devolve metadados — nome, descrição, `updated_at`, `updated_by` e a string de `reference` para colar — mas nunca o valor. O corpo do `PUT` carrega `value` (obrigatório) e `description` (opcional). Uma substituição é a mesma chamada que uma criação: o nome é a identidade, não um ID à parte.
+Toda resposta devolve metadados e nunca o valor: o nome, a descrição, `updated_at`, `updated_by` e a string `reference` para colar. O corpo do `PUT` leva `value` (obrigatório) e `description` (opcional). Substituir é a mesma chamada que criar, porque o nome é a identidade e não há um ID separado.
 
-Toda escrita é registrada no log de auditoria. A entrada do log nomeia o ator e o nome do segredo. O valor não é registrado, nem mesmo o seu tamanho.
+Toda escrita fica registrada no log de auditoria. A entrada nomeia quem agiu e o segredo. Nem o valor nem seu comprimento são registrados.
 
 ---
 
 ## Onde `${secret:NAME}` é resolvido {: #where-secretname-resolves }
 
-A resolução acontece dentro de uma operação vinculada a um contexto, não no momento do import nem na inicialização. O armazenamento lê e descriptografa os segredos da organização uma vez no início dessa operação e mantém o mapa em um `ContextVar` durante a sua duração. Fora de uma operação vinculada, `${secret:NAME}` levanta erro.
+A resolução acontece dentro de uma operação vinculada. Nada é resolvido na importação nem na inicialização. O armazenamento lê e decifra os segredos da organização uma vez, quando a operação começa, e guarda o mapa enquanto ela dura. Fora de uma operação vinculada, `${secret:NAME}` gera um erro.
 
 Dois pontos de chamada estabelecem o vínculo:
 
-**Operações de remote git.** Quando a URL do remote do repositório de uma organização contém uma referência `${secret:...}` ou `${user:...}` — por exemplo, um token de push embutido na URL — o roteador de ambientes vincula tanto o cofre da organização quanto o cofre pessoal do usuário que está agindo em torno da chamada git. A forma `${user:GIT_TOKEN}` significa que um commit chega sob a credencial de quem o enviou, não de uma conta de serviço compartilhada.
+**Operações remotas do Git.** A URL remota do repositório de uma organização pode conter uma referência `${secret:...}` ou `${user:...}`, como um token de push embutido na URL. O roteador de ambientes vincula então o cofre da organização e o cofre pessoal do usuário que age em torno da chamada ao git. Com a forma `${user:GIT_TOKEN}`, um commit fica sob a credencial de quem fez o push. Nenhuma conta de serviço compartilhada participa.
 
-**Leituras da chave de API do fornecedor de IA.** Quando o Provisa lê a chave do fornecedor de LLM de uma organização e essa chave está guardada como referência `${secret:NAME}`, `bound_to_request_org` estabelece o cofre da organização para aquela requisição. A referência é resolvida na saída; o próprio texto da referência nunca é enviado ao fornecedor.
+**Leitura de chaves de API de fornecedores de IA.** Quando o Provisa lê a chave do fornecedor de LLM de uma organização e essa chave está guardada como referência `${secret:NAME}`, ele vincula o cofre da organização para essa requisição. A referência é resolvida na saída, e o texto da referência nunca chega ao fornecedor.
 
 ---
 
@@ -169,7 +169,7 @@ Depois configure a IA da organização para referenciá-la:
 vendor key field → ${secret:OPENAI_KEY}
 ```
 
-A referência é guardada criptografada em `org_secrets`. No momento da consulta o Provisa resolve `${secret:OPENAI_KEY}` contra o cofre da organização e entrega a chave literal ao SDK do fornecedor. Girar a entrada do cofre tem efeito imediato — nenhuma mudança de configuração do lado das configurações da organização.
+A referência é guardada cifrada em `org_secrets`. No momento da consulta, o Provisa resolve `${secret:OPENAI_KEY}` contra o cofre da organização e entrega a chave literal ao SDK do fornecedor. Rotacionar a entrada do cofre vale na hora, sem mudar a configuração da organização.
 
 ---
 
@@ -181,7 +181,7 @@ As senhas dos stores que o Provisa executa (PostgreSQL, Redis, MinIO, a conta de
 
 ## Acesso do administrador da plataforma {: #platform-admin-access }
 
-Um administrador da plataforma operando o plano de controle não tem leitura de nenhum valor de segredo de nenhuma organização. A guarda `org_settings` recusa explicitamente `cross_org` e o bypass de plataforma: administrar o ciclo de vida de uma organização não é uma leitura das credenciais que aquela organização guarda. O servidor impõe isto independentemente da UI.
+Um admin de plataforma que opera o plano de controle não consegue ler os valores secretos de nenhuma organização. A guarda `org_settings` recusa de saída `cross_org` e o bypass de plataforma, porque administrar o ciclo de vida de uma organização não dá leitura das credenciais que ela guarda. O servidor impõe isso por conta própria, seja o que for que a UI mostre.
 
 ---
 

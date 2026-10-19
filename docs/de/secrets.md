@@ -2,7 +2,7 @@
 
 **Namen gehen hinein. Werte kommen nie wieder heraus.**
 
-Kein API-Endpunkt gibt einen gespeicherten Secret-Wert zurück. Keine Oberfläche bietet eine Schaltfläche „Anzeigen“. Wer einen Wert verloren hat, ersetzt ihn — das ist derselbe Aufruf, der ihn angelegt hat, über dasselbe Formular. Das ist keine Richtlinienentscheidung: Der Lesepfad existiert im Code schlicht nicht.
+Kein API-Endpunkt gibt einen gespeicherten Secret-Wert zurück, und keine UI bietet eine Schaltfläche „Anzeigen“. Wer einen Wert verloren hat, ersetzt ihn, mit demselben Aufruf und demselben Formular, mit denen er angelegt wurde. Das ist keine Richtlinienentscheidung: Den Leseweg gibt es im Code schlicht nicht.
 
 ---
 
@@ -16,13 +16,13 @@ Kein API-Endpunkt gibt einen gespeicherten Secret-Wert zurück. Keine Oberfläch
 | `${secret:NAME}` | Dem Org-Vault — geteilt von allen Mitgliedern | Jedes Feld, das eine Anmeldedaten-Referenz akzeptiert |
 | `${user:NAME}` | Dem persönlichen Vault der handelnden Person | Jedes Feld, das eine Anmeldedaten-Referenz akzeptiert |
 
-Halten Sie Plattform-Anmeldedaten auf einem mandantenfähigen Deployment in einem Secrets-Dienst statt in Umgebungsvariablen. Ein Mandanten-Admin kann `${env:...}` in ein eigenes Anmeldedatenfeld schreiben, sodass jeder Wert in der Prozessumgebung für jeden Mandanten erreichbar ist. Lassen Sie nur die eigenen Anmeldedaten des Secrets-Backends in der Umgebung.
+In einem mandantenfähigen Deployment gehören Plattform-Anmeldedaten in einen Secrets-Dienst und nicht in Umgebungsvariablen. Ein Mandanten-Admin kann `${env:...}` in ein eigenes Anmeldefeld schreiben, also ist jeder Wert in der Prozessumgebung für jeden Mandanten erreichbar. Lassen Sie nur die eigene Anmeldung des Secrets-Backends in der Umgebung.
 
 Die Auflösung ist durchgängig fail-closed. Ein unbekannter Anbietername, ein nicht gesetzter Name und ein nicht erreichbares Backend lösen jeweils einen Fehler aus. Eine Referenz, die nicht aufgelöst werden konnte, wird nie stillschweigend durch eine leere Zeichenkette ersetzt.
 
 ### Namensformat {: #name-format }
 
-Secret-Namen müssen `[A-Za-z_][A-Za-z0-9_]*` entsprechen — Buchstaben, Ziffern und Unterstriche, beginnend mit einem Buchstaben oder Unterstrich. Die Einschränkung ist praktischer Natur: `${secret:NAME}` wird von der Referenzgrammatik geparst, die bis zur schließenden `}` liest. Ein Name mit geschweifter Klammer, Leerzeichen oder Doppelpunkt ergäbe eine Referenz, die als etwas anderes geparst wird.
+Secret-Namen müssen `[A-Za-z_][A-Za-z0-9_]*` entsprechen: Buchstaben, Ziffern und Unterstriche, beginnend mit einem Buchstaben oder Unterstrich. Der Grund ist praktisch. `${secret:NAME}` wird von der Referenzgrammatik geparst, die bis zur schließenden `}` liest, also ergäbe ein Name mit Klammer, Leerzeichen oder Doppelpunkt eine Referenz, die als etwas anderes geparst wird.
 
 ---
 
@@ -30,17 +30,17 @@ Secret-Namen müssen `[A-Za-z_][A-Za-z0-9_]*` entsprechen — Buchstaben, Ziffer
 
 Jede Org hat zwei Vaults. Beide liegen innerhalb desselben Secrets-Dienstes.
 
-**Org-Vault** — Anmeldedaten, die ein Org-Admin hier ablegt, sind geteilt. Jedes Mitglied, das `${secret:DATABASE_TOKEN}` referenziert, erhält denselben Wert. Das ist für Anmeldedaten gedacht, die der *Organisation* gehören: ein geteiltes Datenbankpasswort, ein Service-Account-Schlüssel, ein Deployment-Token. Der Org-Vault erfordert die Capability `org_settings` zum Lesen und Schreiben.
+**Org-Vault.** Anmeldedaten, die ein Org-Admin hier ablegt, sind geteilt, also erhält jedes Mitglied, das `${secret:DATABASE_TOKEN}` referenziert, denselben Wert. Nutzen Sie ihn für Anmeldedaten, die der *Organisation* gehören, etwa ein geteiltes Datenbankpasswort, einen Service-Account-Schlüssel oder ein Deployment-Token. Lesen und Schreiben im Org-Vault erfordert die Capability `org_settings`.
 
-**Persönlicher Vault** — Anmeldedaten, die hier abgelegt sind, gehören genau einer Person. Wenn zwei Personen je ein `GIT_TOKEN` halten, löst `${user:GIT_TOKEN}` auf diejenige auf, die gerade handelt. Derselbe Referenztext gibt jeder Person ihre eigenen Anmeldedaten. Wer nichts abgelegt hat, bekommt einen Fehler und nicht den Wert einer anderen Person. Keine Capability schützt den persönlichen Vault — die eigenen Anmeldedaten zu halten ist kein Privileg, das eine Administratorin vergibt. Und es gibt keine Anfragesyntax, um den Vault einer anderen Person zu benennen.
+**Persönlicher Vault.** Eine hier gespeicherte Anmeldung gehört genau einer Person. Haben zwei Personen je ein `GIT_TOKEN`, wird `${user:GIT_TOKEN}` zu dem der gerade handelnden Person aufgelöst, sodass derselbe Referenztext jeder Person ihre eigene Anmeldung gibt. Wer nichts gespeichert hat, bekommt einen Fehler und nie den Wert eines anderen. Keine Fähigkeit schützt den persönlichen Vault, denn die eigene Anmeldung zu halten, ist kein Privileg, das ein Administrator vergibt, und keine Anfragesyntax nennt den Vault einer anderen Person.
 
-Der Geltungsbereich ist Teil der Referenz, nicht eine Berechtigung darum herum. `${secret:NAME}` und `${user:NAME}` antworten nie füreinander.
+Der Geltungsbereich ist Teil der Referenz selbst, keine Berechtigung legt sich um sie. `${secret:NAME}` und `${user:NAME}` antworten nie füreinander.
 
 ---
 
 ## Einen Secrets-Dienst wählen {: #choosing-a-secrets-service }
 
-**Admin → Sicherheit → Secrets-Dienst.** Das Panel ist für alle sichtbar, die die Capability `platform_settings` halten. Jedes Backend, das der Build kennt, wird aufgeführt, unabhängig davon, ob das SDK installiert ist. Eine ausgegraute Zeile nennt das fehlende Python-Paket — das Panel benennt es, statt die Option ganz zu verbergen.
+**Admin → Sicherheit → Secrets-Dienst.** Jeder mit der Fähigkeit `platform_settings` sieht das Panel. Es listet jedes Backend, das der Build kennt, ob sein SDK installiert ist oder nicht, und eine ausgegraute Zeile nennt das fehlende Python-Paket, statt die Option zu verstecken.
 
 Fünf Backends werden mitgeliefert:
 
@@ -52,13 +52,13 @@ Fünf Backends werden mitgeliefert:
 | `gcp_secret_manager` | Google Secret Manager | `google-cloud-secret-manager` |
 | `azure_key_vault` | Azure Key Vault (Secrets) | `azure-keyvault-secrets` |
 
-Die Auswahl ist fail-closed: Ein unbekanntes oder nicht verfügbares Backend löst beim Start einen Fehler aus, statt stillschweigend auf ein anderes zurückzufallen.
+Die Auswahl schlägt sicher fehl: Ein unbekanntes oder nicht verfügbares Backend bricht den Start mit einem Fehler ab, und Provisa weicht nie stillschweigend auf ein anderes aus.
 
 ### Die eigenen Anmeldedaten des Backends {: #the-backends-own-credential }
 
-Die Verbindungs-Anmeldedaten eines zentralen Backends sind Prozesskonfiguration. Sie kommen ausschließlich aus `${env:...}` — nie aus `${secret:...}`. Ein Secrets-Dienst, dessen eigene Anmeldedaten in ihm selbst liegen, lässt sich nicht öffnen; die Vertrauenskette endet daher konstruktionsbedingt in der Host-Umgebung. Die Registry erzwingt das: Jeder Konfigurationswert einer Backend-Spezifikation wird mit `providers=("env",)` aufgelöst, bevor das Backend konstruiert wird.
+Die Verbindungsanmeldung eines zentralen Backends ist Prozesskonfiguration und kommt allein aus `${env:...}`. `${secret:...}` kann sie nicht liefern, denn ein Secrets-Dienst, dessen eigene Anmeldung in ihm selbst liegt, ließe sich nie öffnen. Die Vertrauenskette endet absichtlich in der Host-Umgebung. Provisa löst jeden Konfigurationswert eines Backends aus der Umgebung auf, bevor es das Backend baut.
 
-Beispiel — Vault-Konfiguration in `provisa.yaml`:
+Zum Beispiel eine Vault-Konfiguration in `provisa.yaml`:
 
 ```yaml
 secrets:
@@ -71,9 +71,9 @@ secrets:
 
 ### Zentraler Dienst vs. integrierter Speicher {: #central-service-vs-built-in }
 
-Ist ein zentraler Dienst konfiguriert, liest Provisa aus ihm, schreibt aber nicht in ihn. Der zentrale Dienst besitzt das Anlegen und Löschen von Einträgen — diese Operationen gehören zu seinem eigenen Werkzeug. Die Secrets-Seite sagt das und bietet keine Schaltfläche zum Anlegen.
+Ist ein zentraler Dienst konfiguriert, liest Provisa aus ihm und schreibt nie hinein. Einträge anlegen und löschen ist Sache der eigenen Werkzeuge des Dienstes, also sagt die Secrets-Seite das und bietet keine Schaltfläche zum Anlegen.
 
-Ist das integrierte Backend `provisa` aktiv, ist die Secrets-Seite voll schreibbar: anlegen, ersetzen und löschen über die Oberfläche oder die API.
+Mit dem eingebauten Backend `provisa` ist die Secrets-Seite voll beschreibbar. Sie legen Secrets in der UI oder über die API an, ersetzen und löschen sie.
 
 ---
 
@@ -100,9 +100,9 @@ Ein Deployment mit einer Organisation liest eine Referenz genau so, wie sie gesc
 
 ## Der integrierte Speicher von Provisa {: #provisas-built-in-store }
 
-Die Voreinstellung, wenn kein zentraler Dienst konfiguriert ist. Jede Zeile in `secrets_store` hält einen verschlüsselten Envelope-Blob — die Spalte `value` ist binär, nicht Text, und der Entschlüsselungsschlüssel liegt in der Prozessumgebung, nicht in der Datenbank. Eine Kopie der Control Plane ohne den Master-Schlüssel des Deployments hält Chiffretext und sonst nichts.
+Das ist der Standard, wenn kein zentraler Dienst konfiguriert ist. Jede Zeile in `secrets_store` enthält einen verschlüsselten Envelope-Blob. Die Spalte `value` ist binär, und der Entschlüsselungsschlüssel liegt in der Prozessumgebung, außerhalb der Datenbank. Eine Kopie der Steuerungsebene ohne den Master-Schlüssel des Deployments enthält Chiffretext und sonst nichts.
 
-Verschlüsselung ist nie optional. Ist kein prozessweiter Verschlüsselungsschlüssel konfiguriert, weicht der Speicher auf einen lokalen Schlüsselbund aus. Hat der Host keinen Schlüsselbund, der einen Schlüssel halten kann, verweigert der Speicher den Schreibvorgang, statt den Wert im Klartext abzulegen.
+Verschlüsselung ist nie optional. Ist kein prozessweiter Verschlüsselungsschlüssel konfiguriert, nutzt der Speicher einen lokalen Schlüsselbund. Hat der Host keinen Schlüsselbund für einen Schlüssel, verweigert der Speicher das Schreiben, und der Wert wird nie im Klartext abgelegt.
 
 **Speicherform**:
 
@@ -123,7 +123,7 @@ Die Spalte `value` wird in keiner Listenabfrage selektiert.
 
 ## API-Endpunkte {: #api-endpoints }
 
-Alle Routen liegen unter `/admin/orgs/{org_id}`. Der Org-Vault erfordert `org_settings` in dieser Org. Der persönliche Vault erfordert keine Capability — der Eigentümer wird aus der authentifizierten Identität gelesen; es gibt keinen Anfrageparameter, um den Vault einer anderen Person zu benennen.
+Alle Routen liegen unter `/admin/orgs/{org_id}`. Der Org-Vault erfordert `org_settings` in dieser Org. Der persönliche Vault erfordert keine Capability, denn der Besitzer wird aus der authentifizierten Identität gelesen, und kein Anfrageparameter nennt den Vault einer anderen Person.
 
 | Methode | Pfad | Was sie tut |
 | -------- | ------ | ------------- |
@@ -134,21 +134,21 @@ Alle Routen liegen unter `/admin/orgs/{org_id}`. Der Org-Vault erfordert `org_se
 | `PUT` | `/my-secrets/{name}` | Ein Secret der aufrufenden Person anlegen oder ersetzen |
 | `DELETE` | `/my-secrets/{name}` | Ein Secret der aufrufenden Person löschen |
 
-Jede Antwort liefert Metadaten — Name, Beschreibung, `updated_at`, `updated_by` und die einzufügende `reference`-Zeichenkette —, aber nie den Wert. Der `PUT`-Body trägt `value` (erforderlich) und `description` (optional). Ein Ersetzen ist derselbe Aufruf wie ein Anlegen: Der Name ist die Identität, keine separate ID.
+Jede Antwort liefert Metadaten und nie den Wert: Name, Beschreibung, `updated_at`, `updated_by` und den einzufügenden `reference`-String. Der `PUT`-Body enthält `value` (Pflicht) und `description` (optional). Ersetzen ist derselbe Aufruf wie Anlegen, denn der Name ist die Identität, und es gibt keine separate ID.
 
-Jeder Schreibvorgang wird im Audit-Log festgehalten. Der Eintrag nennt die handelnde Person und den Secret-Namen. Der Wert wird nicht festgehalten, nicht einmal seine Länge.
+Jeder Schreibvorgang wird im Audit-Log festgehalten. Der Eintrag nennt den Handelnden und das Secret. Weder der Wert noch seine Länge werden festgehalten.
 
 ---
 
 ## Wo `${secret:NAME}` aufgelöst wird {: #where-secretname-resolves }
 
-Die Auflösung geschieht innerhalb einer kontextgebundenen Operation, nicht zur Importzeit und nicht beim Start. Der Speicher liest und entschlüsselt die Secrets der Org einmal zu Beginn dieser Operation und hält die Zuordnung für ihre Dauer in einer `ContextVar`. Außerhalb einer gebundenen Operation löst `${secret:NAME}` einen Fehler aus.
+Die Auflösung geschieht innerhalb einer gebundenen Operation. Nichts wird beim Import oder beim Start aufgelöst. Der Speicher liest und entschlüsselt die Secrets der Org einmal, wenn die Operation beginnt, und hält die Zuordnung, solange sie läuft. Außerhalb einer gebundenen Operation löst `${secret:NAME}` einen Fehler aus.
 
 Zwei Aufrufstellen stellen die Bindung her:
 
-**Git-Remote-Operationen.** Enthält die Remote-URL des Repositorys einer Org eine `${secret:...}`- oder `${user:...}`-Referenz — etwa ein in der URL eingebettetes Push-Token —, bindet der Environments-Router sowohl den Org-Vault als auch den persönlichen Vault der handelnden Person um den Git-Aufruf. Die Form `${user:GIT_TOKEN}` bedeutet, dass ein Commit unter den Anmeldedaten derjenigen Person landet, die ihn gepusht hat, und nicht unter einem geteilten Service-Account.
+**Git-Remote-Operationen.** Die Remote-URL des Repositorys einer Org kann eine Referenz `${secret:...}` oder `${user:...}` enthalten, etwa ein in die URL eingebettetes Push-Token. Der Environments-Router bindet dann den Org-Vault und den persönlichen Vault des handelnden Benutzers um den Git-Aufruf. Mit der Form `${user:GIT_TOKEN}` landet ein Commit unter der Anmeldung dessen, der gepusht hat. Kein geteiltes Dienstkonto ist beteiligt.
 
-**Lesen von KI-Anbieter-API-Schlüsseln.** Liest Provisa den LLM-Anbieterschlüssel einer Org und ist dieser Schlüssel als `${secret:NAME}`-Referenz abgelegt, stellt `bound_to_request_org` den Org-Vault für diese Anfrage her. Die Referenz wird auf dem Weg nach draußen aufgelöst; der Referenztext selbst wird nie an den Anbieter gesendet.
+**Lesen von KI-Anbieter-API-Schlüsseln.** Liest Provisa den LLM-Anbieterschlüssel einer Org und ist dieser als Referenz `${secret:NAME}` gespeichert, bindet es den Org-Vault für diese Anfrage. Die Referenz wird beim Hinausgehen aufgelöst, und der Referenztext selbst erreicht den Anbieter nie.
 
 ---
 
@@ -169,7 +169,7 @@ Setzen Sie dann die KI-Konfiguration der Org so, dass sie darauf verweist:
 vendor key field → ${secret:OPENAI_KEY}
 ```
 
-Die Referenz wird verschlüsselt in `org_secrets` abgelegt. Zur Abfragezeit löst Provisa `${secret:OPENAI_KEY}` gegen den Org-Vault auf und übergibt den literalen Schlüssel an das Anbieter-SDK. Ein Rotieren des Vault-Eintrags wirkt sofort — ohne Konfigurationsänderung auf der Seite der Org-Einstellungen.
+Die Referenz wird verschlüsselt in `org_secrets` gespeichert. Zur Abfragezeit löst Provisa `${secret:OPENAI_KEY}` gegen den Org-Vault auf und übergibt den eigentlichen Schlüssel an das SDK des Anbieters. Eine Rotation des Vault-Eintrags wirkt sofort, ohne Konfigurationsänderung in den Org-Einstellungen.
 
 ---
 
@@ -181,7 +181,7 @@ Die Passwörter der Stores, die Provisa betreibt (PostgreSQL, Redis, MinIO, das 
 
 ## Zugriff durch Plattform-Admins {: #platform-admin-access }
 
-Ein Plattform-Admin, der die Control Plane betreibt, hat keinen Lesezugriff auf die Secret-Werte irgendeiner Org. Der `org_settings`-Wächter verweigert `cross_org` und den Plattform-Bypass ausdrücklich: den Lebenszyklus einer Org zu verwalten ist kein Lesen der Anmeldedaten, die diese Org verwahrt. Der Server erzwingt das unabhängig von der Oberfläche.
+Ein Plattform-Admin, der die Steuerungsebene betreibt, kann die Secret-Werte keiner Org lesen. Der Guard `org_settings` lehnt `cross_org` und den Plattform-Bypass rundweg ab, denn den Lebenszyklus einer Org zu verwalten, gibt keinen Lesezugriff auf die Anmeldedaten dieser Org. Der Server setzt das selbst durch, unabhängig von der UI.
 
 ---
 

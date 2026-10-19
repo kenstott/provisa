@@ -2,7 +2,7 @@
 
 **I nomi entrano. I valori non escono mai.**
 
-Nessun endpoint API restituisce il valore di un segreto memorizzato. Nessuna interfaccia offre un pulsante «mostra». Chi ha perso un valore lo sostituisce — è la stessa chiamata che lo ha creato, attraverso lo stesso modulo. Non è una decisione di policy: nel codice il percorso di lettura semplicemente non esiste.
+Nessun endpoint dell'API restituisce il valore di un segreto salvato, e nessuna UI offre un pulsante "mostra". Chi ha perso un valore lo sostituisce, con la stessa chiamata e lo stesso modulo con cui è stato creato. Non è una scelta di policy: il percorso di lettura semplicemente non esiste nel codice.
 
 ---
 
@@ -16,13 +16,13 @@ Tre forme di riferimento sono valide ovunque Provisa risolva credenziali:
 | `${secret:NAME}` | Il vault dell'org — condiviso da tutti i membri | Qualsiasi campo che accetta un riferimento a credenziale |
 | `${user:NAME}` | Il vault personale di chi sta agendo | Qualsiasi campo che accetta un riferimento a credenziale |
 
-In un deployment multi-tenant, conservate le credenziali della piattaforma in un servizio di segreti anziché in variabili d'ambiente. Un amministratore di tenant può scrivere `${env:...}` in un proprio campo credenziale, quindi qualsiasi valore nell'ambiente del processo è alla portata di ogni tenant. Lasciate nell'ambiente solo la credenziale propria del backend dei segreti.
+In un deployment multi-tenant, tenete le credenziali della piattaforma in un servizio di segreti e fuori dalle variabili d'ambiente. Un amministratore di tenant può scrivere `${env:...}` in un proprio campo credenziale, quindi qualsiasi valore nell'ambiente del processo è alla portata di ogni tenant. Lasciate nell'ambiente solo la credenziale del backend dei segreti stesso.
 
 La risoluzione è fail-closed ovunque. Un nome di provider sconosciuto, un nome non impostato e un backend irraggiungibile sollevano tutti un errore. Un riferimento che non è stato possibile risolvere non viene mai sostituito silenziosamente con una stringa vuota.
 
 ### Formato del nome {: #name-format }
 
-I nomi dei segreti devono corrispondere a `[A-Za-z_][A-Za-z0-9_]*` — lettere, cifre e trattini bassi, con lettera o trattino basso iniziale. Il vincolo è pratico: `${secret:NAME}` viene analizzato dalla grammatica dei riferimenti, che legge fino alla `}` di chiusura. Un nome contenente una parentesi graffa, uno spazio o due punti produrrebbe un riferimento che viene interpretato come qualcos'altro.
+I nomi dei segreti devono corrispondere a `[A-Za-z_][A-Za-z0-9_]*`: lettere, cifre e trattini bassi, iniziando con una lettera o un trattino basso. Il motivo è pratico. `${secret:NAME}` viene analizzato dalla grammatica dei riferimenti, che legge fino alla `}` di chiusura, quindi un nome con una graffa, uno spazio o i due punti produrrebbe un riferimento analizzato come qualcos'altro.
 
 ---
 
@@ -30,17 +30,17 @@ I nomi dei segreti devono corrispondere a `[A-Za-z_][A-Za-z0-9_]*` — lettere, 
 
 Ogni org ha due vault. Entrambi risiedono all'interno dello stesso servizio dei segreti.
 
-**Vault dell'org** — La credenziale che un amministratore dell'org memorizza qui è condivisa. Ogni membro che fa riferimento a `${secret:DATABASE_TOKEN}` ottiene lo stesso valore. È pensato per le credenziali di proprietà dell'*organizzazione*: una password di database condivisa, la chiave di un account di servizio, un token di deployment. Il vault dell'org richiede la capability `org_settings` in lettura e in scrittura.
+**Vault dell'org.** La credenziale che un amministratore dell'org salva qui è condivisa, quindi ogni membro che fa riferimento a `${secret:DATABASE_TOKEN}` ottiene lo stesso valore. Usatelo per le credenziali di proprietà dell'*organizzazione*, come una password di database condivisa, la chiave di un account di servizio o un token di deployment. Leggere o scrivere nel vault dell'org richiede la capability `org_settings`.
 
-**Vault personale** — Una credenziale memorizzata qui appartiene a una sola persona. Quando due persone detengono ciascuna un `GIT_TOKEN`, `${user:GIT_TOKEN}` si risolve in quello di chi sta agendo. Lo stesso testo di riferimento consegna a ciascuna persona la propria credenziale. Chi non ha memorizzato nulla riceve un errore, non il valore di qualcun altro. Nessuna capability protegge il vault personale — detenere una credenziale propria non è un privilegio concesso da un amministratore. E non esiste alcuna sintassi di richiesta per nominare il vault di un'altra persona.
+**Vault personale.** Una credenziale salvata qui appartiene a una sola persona. Quando due persone hanno ciascuna un `GIT_TOKEN`, `${user:GIT_TOKEN}` si risolve in quello di chi sta agendo, così lo stesso testo di riferimento dà a ciascuno la propria credenziale. Chi non ha salvato nulla riceve un errore, mai il valore di un altro. Nessuna capacità protegge il vault personale, perché avere la propria credenziale non è un privilegio concesso da un amministratore, e nessuna sintassi di richiesta nomina il vault di un'altra persona.
 
-L'ambito fa parte del riferimento, non è un'autorizzazione che lo circonda. `${secret:NAME}` e `${user:NAME}` non rispondono mai l'uno per l'altro.
+L'ambito fa parte del riferimento stesso, e nessun permesso lo avvolge. `${secret:NAME}` e `${user:NAME}` non rispondono mai l'uno per l'altro.
 
 ---
 
 ## Scegliere un servizio dei segreti {: #choosing-a-secrets-service }
 
-**Admin → Sicurezza → Servizio dei segreti.** Il pannello è visibile a chiunque detenga la capability `platform_settings`. Ogni backend noto alla build è elencato, che il relativo SDK sia installato o meno. Una riga in grigio indica quale pacchetto Python manca — il pannello lo nomina invece di nascondere del tutto l'opzione.
+**Admin → Sicurezza → Servizio dei segreti.** Chiunque abbia la capacità `platform_settings` vede il pannello. Elenca ogni backend che la build conosce, che il suo SDK sia installato o no, e una riga in grigio nomina il pacchetto Python mancante invece di nascondere l'opzione.
 
 Cinque backend sono inclusi:
 
@@ -52,13 +52,13 @@ Cinque backend sono inclusi:
 | `gcp_secret_manager` | Google Secret Manager | `google-cloud-secret-manager` |
 | `azure_key_vault` | Azure Key Vault (secrets) | `azure-keyvault-secrets` |
 
-La selezione è fail-closed: un backend sconosciuto o non disponibile solleva un errore all'avvio invece di ripiegare silenziosamente su un altro.
+La selezione fallisce in modo chiuso: un backend sconosciuto o non disponibile blocca l'avvio con un errore, e Provisa non ripiega mai in silenzio su un altro.
 
 ### La credenziale del backend stesso {: #the-backends-own-credential }
 
-La credenziale di connessione di un backend centrale è configurazione di processo. Proviene solo da `${env:...}` — mai da `${secret:...}`. Un servizio dei segreti la cui credenziale risiede al suo interno non può essere aperto, quindi per progettazione la catena di fiducia termina nell'ambiente host. Il registro lo impone: qualsiasi valore di configurazione in una specifica di backend viene risolto con `providers=("env",)` prima che il backend venga costruito.
+La credenziale di connessione di un backend centrale è configurazione del processo e arriva solo da `${env:...}`. `${secret:...}` non può fornirla, perché un servizio di segreti la cui credenziale vive dentro di sé non potrebbe mai essere aperto. La catena di fiducia termina nell'ambiente dell'host per progetto. Provisa risolve ogni valore di configurazione di un backend dall'ambiente prima di costruire il backend.
 
-Esempio — configurazione di Vault in `provisa.yaml`:
+Per esempio, una configurazione di Vault in `provisa.yaml`:
 
 ```yaml
 secrets:
@@ -71,9 +71,9 @@ secrets:
 
 ### Servizio centrale e store integrato {: #central-service-vs-built-in }
 
-Quando è configurato un servizio centrale, Provisa vi legge ma non vi scrive. La creazione e l'eliminazione delle voci appartengono al servizio centrale — quelle operazioni spettano ai suoi strumenti. La pagina Segreti lo dichiara e non offre un pulsante di creazione.
+Con un servizio centrale configurato, Provisa legge da esso e non vi scrive mai. Creare ed eliminare voci spetta agli strumenti del servizio stesso, quindi la pagina dei segreti lo dice e non offre un pulsante di creazione.
 
-Quando è attivo il backend integrato `provisa`, la pagina Segreti è completamente scrivibile: creazione, sostituzione ed eliminazione dalla UI o tramite l'API.
+Con il backend integrato `provisa` attivo, la pagina dei segreti è completamente scrivibile. Create, sostituite ed eliminate i segreti dalla UI o tramite l'API.
 
 ---
 
@@ -100,9 +100,9 @@ Un deployment con una sola organizzazione legge un riferimento esattamente come 
 
 ## Lo store integrato di Provisa {: #provisas-built-in-store }
 
-È l'impostazione predefinita quando non è configurato alcun servizio centrale. Ogni riga di `secrets_store` contiene un blob di busta cifrato — la colonna `value` è binaria, non testuale, e la chiave di decifratura risiede nell'ambiente del processo, non nel database. Una copia del control plane priva della chiave master del deployment contiene testo cifrato e nient'altro.
+È il default quando non è configurato un servizio centrale. Ogni riga di `secrets_store` contiene un blob di envelope cifrato. La colonna `value` è binaria, e la chiave di decifratura vive nell'ambiente del processo, fuori dal database. Una copia del control plane senza la master key del deployment contiene testo cifrato e nient'altro.
 
-La cifratura non è mai facoltativa. Quando non è configurata alcuna chiave di cifratura a livello di processo, lo store ricorre a un portachiavi locale. Se l'host non dispone di un portachiavi in cui custodire una chiave, lo store rifiuta di scrivere anziché memorizzare il valore in chiaro.
+La cifratura non è mai facoltativa. Senza una chiave di cifratura configurata per l'intero processo, l'archivio usa un portachiavi locale. Se l'host non ha un portachiavi che conservi una chiave, l'archivio rifiuta di scrivere, e il valore non viene mai salvato in chiaro.
 
 **Forma di archiviazione**:
 
@@ -123,7 +123,7 @@ La colonna `value` non viene selezionata in nessuna query di elenco.
 
 ## Endpoint API {: #api-endpoints }
 
-Tutte le route si trovano sotto `/admin/orgs/{org_id}`. Il vault dell'org richiede `org_settings` in quell'org. Il vault personale non richiede alcuna capability — il proprietario viene letto dall'identità autenticata; non esiste alcun parametro di richiesta per nominare il vault di qualcun altro.
+Tutte le route stanno sotto `/admin/orgs/{org_id}`. Il vault dell'org richiede `org_settings` in quell'org. Il vault personale non richiede alcuna capability, perché il proprietario viene letto dall'identità autenticata, e nessun parametro di richiesta nomina il vault di qualcun altro.
 
 | Metodo | Percorso | Che cosa fa |
 | -------- | ------ | ------------- |
@@ -134,21 +134,21 @@ Tutte le route si trovano sotto `/admin/orgs/{org_id}`. Il vault dell'org richie
 | `PUT` | `/my-secrets/{name}` | Crea o sostituisce un segreto del chiamante |
 | `DELETE` | `/my-secrets/{name}` | Elimina un segreto del chiamante |
 
-Ogni risposta restituisce metadati — nome, descrizione, `updated_at`, `updated_by` e la stringa `reference` da incollare — ma mai il valore. Il corpo del `PUT` porta `value` (obbligatorio) e `description` (facoltativo). Una sostituzione è la stessa chiamata di una creazione: l'identità è il nome, non un ID separato.
+Ogni risposta restituisce metadati e mai il valore: il nome, la descrizione, `updated_at`, `updated_by` e la stringa `reference` da incollare. Il body del `PUT` porta `value` (obbligatorio) e `description` (facoltativo). Sostituire è la stessa chiamata del creare, perché il nome è l'identità e non esiste un ID separato.
 
-Ogni scrittura viene registrata nel log di audit. La voce di log nomina l'attore e il nome del segreto. Il valore non viene registrato, nemmeno la sua lunghezza.
+Ogni scrittura viene registrata nel log di audit. La voce nomina chi ha agito e il segreto. Né il valore né la sua lunghezza vengono registrati.
 
 ---
 
 ## Dove si risolve `${secret:NAME}` {: #where-secretname-resolves }
 
-La risoluzione avviene all'interno di un'operazione legata a un contesto, non al momento dell'import né all'avvio. Lo store legge e decifra i segreti dell'org una sola volta all'inizio di quell'operazione e mantiene la mappa in una `ContextVar` per tutta la sua durata. Al di fuori di un'operazione legata a un contesto, `${secret:NAME}` solleva un errore.
+La risoluzione avviene dentro un'operazione vincolata. Nulla si risolve all'import o all'avvio. L'archivio legge e decifra i segreti dell'org una volta, all'inizio dell'operazione, e tiene la mappa finché questa dura. Fuori da un'operazione vincolata, `${secret:NAME}` solleva un errore.
 
 Due punti di chiamata stabiliscono il legame:
 
-**Operazioni sul remote Git.** Quando l'URL del remote del repository di un'org contiene un riferimento `${secret:...}` o `${user:...}` — per esempio un token di push incorporato nell'URL — il router degli ambienti lega sia il vault dell'org sia il vault personale dell'utente che sta agendo attorno alla chiamata git. La forma `${user:GIT_TOKEN}` fa sì che un commit venga registrato sotto la credenziale di chi lo ha inviato, non sotto un account di servizio condiviso.
+**Operazioni Git remote.** L'URL remoto del repository di un'org può contenere un riferimento `${secret:...}` o `${user:...}`, come un token di push incorporato nell'URL. Il router degli ambienti vincola allora sia il vault dell'org sia il vault personale dell'utente che agisce attorno alla chiamata git. Con la forma `${user:GIT_TOKEN}`, un commit finisce sotto la credenziale di chi ha fatto il push. Nessun account di servizio condiviso è coinvolto.
 
-**Letture della chiave API del fornitore AI.** Quando Provisa legge la chiave del fornitore LLM di un'org e quella chiave è memorizzata come riferimento `${secret:NAME}`, `bound_to_request_org` stabilisce il vault dell'org per quella richiesta. Il riferimento viene risolto in uscita; il testo del riferimento stesso non viene mai inviato al fornitore.
+**Lettura delle chiavi API dei fornitori di IA.** Quando Provisa legge la chiave del fornitore LLM di un'org e quella chiave è salvata come riferimento `${secret:NAME}`, vincola il vault dell'org per quella richiesta. Il riferimento viene risolto in uscita, e il testo del riferimento non arriva mai al fornitore.
 
 ---
 
@@ -169,7 +169,7 @@ Poi impostare la configurazione AI dell'org perché vi faccia riferimento:
 vendor key field → ${secret:OPENAI_KEY}
 ```
 
-Il riferimento viene memorizzato cifrato in `org_secrets`. Al momento della query Provisa risolve `${secret:OPENAI_KEY}` sul vault dell'org e consegna la chiave letterale all'SDK del fornitore. La rotazione della voce nel vault ha effetto immediato — nessuna modifica di configurazione sul lato impostazioni dell'org.
+Il riferimento è salvato cifrato in `org_secrets`. Al momento della query Provisa risolve `${secret:OPENAI_KEY}` nel vault dell'org e passa la chiave letterale all'SDK del fornitore. La rotazione della voce del vault ha effetto subito, senza modificare la configurazione nelle impostazioni dell'org.
 
 ---
 
@@ -181,7 +181,7 @@ Le password degli store che Provisa esegue (PostgreSQL, Redis, MinIO, l'account 
 
 ## Accesso dell'amministratore di piattaforma {: #platform-admin-access }
 
-Un amministratore di piattaforma che gestisce il control plane non ha alcuna lettura dei valori dei segreti di nessuna org. La protezione `org_settings` rifiuta esplicitamente `cross_org` e il bypass di piattaforma: amministrare il ciclo di vita di un'org non è una lettura delle credenziali che quell'org custodisce. Il server lo impone indipendentemente dalla UI.
+Un amministratore di piattaforma che gestisce il control plane non può leggere i valori segreti di nessuna org. La guardia `org_settings` rifiuta senz'altro `cross_org` e il bypass di piattaforma, perché amministrare il ciclo di vita di un'org non dà lettura delle credenziali che l'org conserva. Il server lo impone da sé, qualunque cosa mostri la UI.
 
 ---
 

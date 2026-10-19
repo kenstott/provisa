@@ -2,7 +2,7 @@
 
 **Los nombres entran. Los valores nunca vuelven a salir.**
 
-Ningún endpoint de la API devuelve el valor de un secreto almacenado. Ninguna pantalla ofrece un botón de "mostrar". Quien haya perdido un valor lo reemplaza: es la misma llamada que lo creó, a través del mismo formulario. No se trata de una decisión de política: la ruta de lectura sencillamente no existe en el código.
+Ningún endpoint de la API devuelve el valor de un secreto guardado, y ninguna UI ofrece un botón "mostrar". Quien ha perdido un valor lo reemplaza, con la misma llamada y el mismo formulario con que se creó. No es una decisión de política: la vía de lectura simplemente no existe en el código.
 
 ---
 
@@ -16,13 +16,13 @@ Hay tres formas de referencia válidas allí donde Provisa resuelve credenciales
 | `${secret:NAME}` | La bóveda de la organización, compartida por todos sus miembros | Cualquier campo que acepte una referencia a credencial |
 | `${user:NAME}` | La bóveda personal de quien actúa | Cualquier campo que acepte una referencia a credencial |
 
-En un despliegue multiinquilino, guarde las credenciales de la plataforma en un servicio de secretos y no en variables de entorno. Un administrador de inquilino puede escribir `${env:...}` en un campo de credencial propio, así que cualquier valor del entorno del proceso queda al alcance de todos los inquilinos. Deje en el entorno solo la credencial del propio backend de secretos.
+En un despliegue multiinquilino, guarde las credenciales de la plataforma en un servicio de secretos y no en variables de entorno. Un administrador de inquilino puede escribir `${env:...}` en un campo de credencial propio, así que cualquier valor del entorno del proceso está al alcance de todos los inquilinos. Deje en el entorno solo la credencial propia del backend de secretos.
 
 La resolución es de cierre seguro en todo momento. Un nombre de proveedor desconocido, un nombre sin definir y un backend inalcanzable generan un error. Una referencia que no se pudo resolver nunca se sustituye en silencio por una cadena vacía.
 
 ### Formato del nombre {: #name-format }
 
-Los nombres de secreto deben coincidir con `[A-Za-z_][A-Za-z0-9_]*`: letras, dígitos y guiones bajos, empezando por una letra o un guion bajo. La restricción es práctica: `${secret:NAME}` lo analiza la gramática de referencias, que lee hasta la `}` de cierre. Un nombre que contenga una llave, un espacio o dos puntos produciría una referencia que se analiza como otra cosa.
+Los nombres de secretos deben coincidir con `[A-Za-z_][A-Za-z0-9_]*`: letras, dígitos y guiones bajos, empezando por una letra o un guion bajo. El motivo es práctico. `${secret:NAME}` lo analiza la gramática de referencias, que lee hasta la `}` de cierre, así que un nombre con una llave, un espacio o dos puntos daría una referencia que se analiza como otra cosa.
 
 ---
 
@@ -30,17 +30,17 @@ Los nombres de secreto deben coincidir con `[A-Za-z_][A-Za-z0-9_]*`: letras, dí
 
 Cada organización tiene dos bóvedas. Ambas viven dentro del mismo servicio de secretos.
 
-**Bóveda de la organización** — La credencial que un administrador de organización guarda aquí es compartida. Todos los miembros que referencien `${secret:DATABASE_TOKEN}` obtienen el mismo valor. Es para las credenciales que posee la *organización*: una contraseña de base de datos compartida, la clave de una cuenta de servicio, un token de despliegue. La bóveda de la organización exige la capacidad `org_settings` para leer o escribir.
+**Bóveda de la organización.** La credencial que un administrador de organización guarda aquí es compartida, así que todos los miembros que referencien `${secret:DATABASE_TOKEN}` obtienen el mismo valor. Úsela para las credenciales que posee la *organización*, como una contraseña de base de datos compartida, la clave de una cuenta de servicio o un token de despliegue. Leer o escribir en la bóveda de la organización exige la capacidad `org_settings`.
 
-**Bóveda personal** — Una credencial guardada aquí pertenece exactamente a una persona. Cuando dos personas tienen cada una un `GIT_TOKEN`, `${user:GIT_TOKEN}` se resuelve al de quien esté actuando. El mismo texto de referencia entrega a cada persona su propia credencial. Quien no haya guardado nada recibe un error, no el valor de otra persona. Ninguna capacidad restringe la bóveda personal: tener la credencial propia no es un privilegio que conceda un administrador. Y no existe sintaxis de solicitud para nombrar la bóveda de otra persona.
+**Bóveda personal.** Una credencial guardada aquí pertenece exactamente a una persona. Cuando dos personas tienen cada una un `GIT_TOKEN`, `${user:GIT_TOKEN}` se resuelve en el de quien esté actuando, así que el mismo texto de referencia da a cada persona su propia credencial. Quien no ha guardado nada recibe un error y nunca el valor de otro. Ninguna capacidad protege la bóveda personal, porque tener tu propia credencial no es un privilegio que conceda un administrador, y ninguna sintaxis de petición nombra la bóveda de otra persona.
 
-El alcance forma parte de la referencia, no es un permiso que la envuelva. `${secret:NAME}` y `${user:NAME}` nunca responden el uno por el otro.
+El ámbito forma parte de la propia referencia, y ningún permiso la envuelve. `${secret:NAME}` y `${user:NAME}` nunca responden el uno por el otro.
 
 ---
 
 ## Elegir un servicio de secretos {: #choosing-a-secrets-service }
 
-**Administración → Seguridad → Servicio de secretos.** El panel es visible para quien tenga la capacidad `platform_settings`. Se listan todos los backends que conoce la compilación, esté o no instalado el SDK. Una fila atenuada indica qué paquete de Python falta: el panel lo nombra en vez de ocultar la opción por completo.
+**Administración → Seguridad → Servicio de secretos.** Cualquiera con la capacidad `platform_settings` ve el panel. Enumera todos los backends que conoce la versión, tenga o no instalado su SDK, y una fila en gris nombra el paquete de Python que falta en lugar de ocultar la opción.
 
 Se incluyen cinco backends:
 
@@ -52,13 +52,13 @@ Se incluyen cinco backends:
 | `gcp_secret_manager` | Google Secret Manager | `google-cloud-secret-manager` |
 | `azure_key_vault` | Azure Key Vault (secretos) | `azure-keyvault-secrets` |
 
-La selección es de cierre seguro: un backend desconocido o no disponible genera un error en el arranque en lugar de recurrir en silencio a otro.
+La selección falla de forma segura: un backend desconocido o no disponible detiene el arranque con un error, y Provisa nunca recurre a otro sin avisar.
 
 ### La credencial del propio backend {: #the-backends-own-credential }
 
-La credencial de conexión de un backend central es configuración de proceso. Procede únicamente de `${env:...}`, nunca de `${secret:...}`. Un servicio de secretos cuya propia credencial viva dentro de sí mismo no se puede abrir, así que la cadena de confianza termina en el entorno del host por diseño. El registro lo impone: todo valor de configuración de una especificación de backend se resuelve con `providers=("env",)` antes de construir el backend.
+La credencial de conexión de un backend central es configuración del proceso y sale solo de `${env:...}`. `${secret:...}` no puede aportarla, porque un servicio de secretos cuya propia credencial vive dentro de sí mismo nunca podría abrirse. La cadena de confianza termina en el entorno del host por diseño. Provisa resuelve cada valor de configuración de un backend desde el entorno antes de construirlo.
 
-Ejemplo: configuración de Vault en `provisa.yaml`:
+Por ejemplo, una configuración de Vault en `provisa.yaml`:
 
 ```yaml
 secrets:
@@ -71,9 +71,9 @@ secrets:
 
 ### Servicio central frente al integrado {: #central-service-vs-built-in }
 
-Cuando hay un servicio central configurado, Provisa lee de él pero no escribe en él. La creación y la eliminación de entradas son competencia del servicio central: esas operaciones corresponden a sus propias herramientas. La página de Secretos así lo indica y no ofrece un botón de creación.
+Con un servicio central configurado, Provisa lee de él y nunca escribe en él. Crear y borrar entradas corresponde a las herramientas propias del servicio, así que la página de secretos lo indica y no ofrece botón de crear.
 
-Cuando el backend integrado `provisa` está activo, la página de Secretos permite escritura completa: crear, reemplazar y eliminar desde la interfaz o mediante la API.
+Con el backend integrado `provisa` activo, la página de secretos admite escritura completa. Usted crea, reemplaza y borra secretos desde la UI o mediante la API.
 
 ---
 
@@ -100,9 +100,9 @@ Un despliegue de una sola organización lee la referencia exactamente como está
 
 ## El almacén integrado de Provisa {: #provisas-built-in-store }
 
-Es el valor por defecto cuando no hay un servicio central configurado. Cada fila de `secrets_store` contiene un blob de sobre cifrado: la columna `value` es binaria, no texto, y la clave de descifrado vive en el entorno del proceso, no en la base de datos. Una copia del plano de control sin la clave maestra del despliegue contiene texto cifrado y nada más.
+Es el valor por defecto cuando no hay un servicio central configurado. Cada fila de `secrets_store` contiene un blob de sobre cifrado. La columna `value` es binaria, y la clave de descifrado vive en el entorno del proceso, fuera de la base de datos. Una copia del plano de control sin la clave maestra del despliegue contiene texto cifrado y nada más.
 
-El cifrado nunca es opcional. Cuando no hay configurada una clave de cifrado para todo el proceso, el almacén recurre a un llavero local. Si el host no tiene un llavero donde guardar una clave, el almacén se niega a escribir en lugar de guardar el valor en claro.
+El cifrado nunca es opcional. Si no hay una clave de cifrado configurada para todo el proceso, el almacén usa un llavero local. Si el host no tiene un llavero que guarde una clave, el almacén se niega a escribir, y el valor nunca se guarda en claro.
 
 **Forma del almacenamiento**:
 
@@ -123,7 +123,7 @@ La columna `value` no se selecciona en ninguna consulta de listado.
 
 ## Endpoints de la API {: #api-endpoints }
 
-Todas las rutas están bajo `/admin/orgs/{org_id}`. La bóveda de la organización exige `org_settings` en esa organización. La bóveda personal no exige ninguna capacidad: el propietario se lee de la identidad autenticada; no hay ningún parámetro de solicitud para nombrar la bóveda de otra persona.
+Todas las rutas están bajo `/admin/orgs/{org_id}`. La bóveda de la organización exige `org_settings` en esa organización. La bóveda personal no exige ninguna capacidad, porque el propietario se lee de la identidad autenticada, y ningún parámetro de petición nombra la bóveda de otra persona.
 
 | Método | Ruta | Qué hace |
 | -------- | ------ | ------------- |
@@ -134,21 +134,21 @@ Todas las rutas están bajo `/admin/orgs/{org_id}`. La bóveda de la organizaci�
 | `PUT` | `/my-secrets/{name}` | Crea o reemplaza uno de los secretos de quien llama |
 | `DELETE` | `/my-secrets/{name}` | Elimina uno de los secretos de quien llama |
 
-Cada respuesta devuelve metadatos —nombre, descripción, `updated_at`, `updated_by` y la cadena `reference` que se pega—, pero nunca el valor. El cuerpo del `PUT` lleva `value` (obligatorio) y `description` (opcional). Un reemplazo es la misma llamada que una creación: el nombre es la identidad, no un ID aparte.
+Cada respuesta devuelve metadatos y nunca el valor: el nombre, la descripción, `updated_at`, `updated_by` y la cadena `reference` para pegar. El cuerpo del `PUT` lleva `value` (obligatorio) y `description` (opcional). Reemplazar es la misma llamada que crear, porque el nombre es la identidad y no hay un ID aparte.
 
-Toda escritura queda registrada en el registro de auditoría. La entrada del registro nombra al actor y al secreto. El valor no se registra, ni siquiera su longitud.
+Cada escritura queda registrada en el registro de auditoría. La entrada nombra a quien actuó y el secreto. No se registran ni el valor ni su longitud.
 
 ---
 
 ## Dónde se resuelve `${secret:NAME}` {: #where-secretname-resolves }
 
-La resolución ocurre dentro de una operación ligada a un contexto, no en el momento de importar ni en el arranque. El almacén lee y descifra los secretos de la organización una vez al comienzo de esa operación y mantiene el mapa en un `ContextVar` mientras dura. Fuera de una operación ligada, `${secret:NAME}` genera un error.
+La resolución ocurre dentro de una operación vinculada. Nada se resuelve al importar ni al arrancar. El almacén lee y descifra los secretos de la organización una vez, al empezar la operación, y guarda el mapa mientras dura. Fuera de una operación vinculada, `${secret:NAME}` lanza un error.
 
 Hay dos puntos de llamada que establecen ese vínculo:
 
-**Operaciones remotas de Git.** Cuando la URL del remoto del repositorio de una organización contiene una referencia `${secret:...}` o `${user:...}` —por ejemplo, un token de push incrustado en la URL—, el router de entornos vincula tanto la bóveda de la organización como la bóveda personal de quien actúa alrededor de la llamada a git. La forma `${user:GIT_TOKEN}` significa que un commit queda registrado bajo la credencial de quien lo envió, no bajo una cuenta de servicio compartida.
+**Operaciones remotas de Git.** La URL remota del repositorio de una organización puede contener una referencia `${secret:...}` o `${user:...}`, como un token de push incrustado en la URL. El router de entornos vincula entonces la bóveda de la organización y la bóveda personal del usuario que actúa alrededor de la llamada a git. Con la forma `${user:GIT_TOKEN}`, un commit queda bajo la credencial de quien hizo el push. No interviene ninguna cuenta de servicio compartida.
 
-**Lecturas de la clave de API del proveedor de IA.** Cuando Provisa lee la clave del proveedor de LLM de una organización y esa clave está guardada como una referencia `${secret:NAME}`, `bound_to_request_org` establece la bóveda de la organización para esa solicitud. La referencia se resuelve a la salida; el texto de la referencia en sí nunca se envía al proveedor.
+**Lectura de claves de API de proveedores de IA.** Cuando Provisa lee la clave del proveedor de LLM de una organización y esa clave está guardada como referencia `${secret:NAME}`, vincula la bóveda de la organización para esa petición. La referencia se resuelve a la salida, y el texto de la referencia nunca llega al proveedor.
 
 ---
 
@@ -169,7 +169,7 @@ Después, configure la IA de la organización para que la referencie:
 vendor key field → ${secret:OPENAI_KEY}
 ```
 
-La referencia se guarda cifrada en `org_secrets`. En el momento de la consulta, Provisa resuelve `${secret:OPENAI_KEY}` contra la bóveda de la organización y entrega la clave literal al SDK del proveedor. Rotar la entrada de la bóveda surte efecto de inmediato: no hay que cambiar nada en la configuración de la organización.
+La referencia se guarda cifrada en `org_secrets`. En el momento de la consulta, Provisa resuelve `${secret:OPENAI_KEY}` contra la bóveda de la organización y entrega la clave literal al SDK del proveedor. Rotar la entrada de la bóveda surte efecto de inmediato, sin cambiar la configuración de la organización.
 
 ---
 
@@ -181,7 +181,7 @@ Las contraseñas de los almacenes que ejecuta Provisa (PostgreSQL, Redis, MinIO,
 
 ## Acceso del administrador de la plataforma {: #platform-admin-access }
 
-Un administrador de la plataforma que opera el plano de control no puede leer los valores de los secretos de ninguna organización. La comprobación de `org_settings` rechaza explícitamente `cross_org` y la excepción de plataforma: administrar el ciclo de vida de una organización no es leer las credenciales que esa organización guarda. El servidor lo impone con independencia de la interfaz.
+Un administrador de plataforma que opera el plano de control no puede leer los valores secretos de ninguna organización. La guarda `org_settings` rechaza de plano `cross_org` y el bypass de plataforma, porque administrar el ciclo de vida de una organización no da lectura de las credenciales que guarda. El servidor lo impone por sí mismo, muestre lo que muestre la UI.
 
 ---
 
