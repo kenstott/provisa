@@ -184,7 +184,7 @@
 
 ### Explorers
 
-- **REQ-2071** [SHOULD] [in-progress] UI — that run Python in the user's browser over the governed data their role is served. Both run on one Pyodide version and its packages (nump…
+- **REQ-2071** [SHOULD] [in-progress] UI — Explore has two top-level tabs, Python and Notebook, that run Python in the user's browser over the governed data their role is served. B…
 
 ### Chat assistant
 
