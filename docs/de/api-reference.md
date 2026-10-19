@@ -172,7 +172,7 @@ Ergebnisse oberhalb eines konfigurierten Zeilenschwellenwerts (oder wenn `X-Prov
 | `text/csv` | Provisa | Speicherbegrenzt |
 | `application/vnd.apache.arrow.stream` | Provisa | Speicherbegrenzt |
 
-Für große analytische Exporte verwenden Sie den Parquet- oder ORC-Redirect. Die Föderations-Engine schreibt direkt und parallel nach S3 — keine Daten laufen durch Provisa.
+Für große analytische Exporte nutzen Sie die Parquet- oder ORC-Umleitung. Die Federation-Engine schreibt parallel direkt nach S3, und keine Daten laufen durch Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ Führt rohes SQL durch die Stage-2-Governance-Pipeline aus.
 }
 ```
 
-Die Werte werden gebunden, wenn die Anweisung läuft — von der Engine oder vom Treiber der Quelle —, und nie in die Anweisung geschrieben, sodass ein Wert nicht ändern kann, was die Anweisung ist. Sie gehören zu genau einer Anweisung, deren Platzhalter sie genau durchnummerieren: Ein Batch von Anweisungen, ein Platzhalter ohne Wert oder ein Wert, den kein Platzhalter nimmt, wird mit `400` und Code `data.sql_parameters_do_not_fit` abgelehnt, bevor die Anweisung reguliert oder ausgeführt wird. Eine Anweisung ohne Platzhalter wird wie bisher ohne `params` gesendet.
+Die Werte werden beim Ausführen der Anweisung gebunden, von der Engine oder vom Treiber der Quelle, und nie in die Anweisung geschrieben, sodass ein Wert nicht verändern kann, was die Anweisung ist. Sie gehören zu genau einer Anweisung, deren Platzhalter sie genau durchnummerieren. Ein Stapel von Anweisungen, ein Platzhalter ohne Wert oder ein Wert, den kein Platzhalter aufnimmt, wird mit `400` und dem Code `data.sql_parameters_do_not_fit` abgelehnt, bevor die Anweisung gesteuert oder ausgeführt wird. Eine Anweisung ohne Platzhalter wird wie bisher ohne `params` gesendet.
 
 **Erforderliche Capabilities:** `QUERY_DEVELOPMENT`.
 
@@ -215,7 +215,7 @@ Governance-Verstöße bei `POST /data/sql` geben HTTP 403 zurück.
 
 ### `POST /data/query`
 
-Vereinheitlichter Abfrage-Endpunkt. Akzeptiert GraphQL, SQL oder Cypher — die Syntax wird automatisch erkannt.
+Ein Endpunkt für jede Abfragesprache. Er nimmt GraphQL, SQL oder Cypher an und erkennt, was er bekommen hat.
 
 Cypher-Abfragen können auch an den reinen Cypher-Endpunkt `POST /query/cypher` gesendet werden.
 
@@ -238,7 +238,7 @@ Gibt `{"data": ...}` für GraphQL und `{"columns": [...], "rows": [...]}` für S
 
 Erklärt oder analysiert eine SQL-Anweisung durch die governte Pipeline.
 
-Der Endpunkt umschließt das **governte** SQL — die Anweisung, die tatsächlich unter der Rolle des Aufrufers nach RLS und Maskierung läuft — mit der EXPLAIN-Syntax des Dialekts. Was der Plan zeigt, ist die autorisierte Version der Abfrage, nicht die rohe Eingabe.
+Der Endpunkt hüllt das **gesteuerte** SQL in die EXPLAIN-Syntax des Dialekts: die Anweisung, die unter der Rolle des Aufrufers tatsächlich läuft, nach RLS und Maskierung. Der Plan, den Sie sehen, gilt also für die autorisierte Fassung der Abfrage, nicht für die Roheingabe.
 
 **Request-Body:**
 
@@ -262,7 +262,7 @@ Setzen Sie `analyze: true`, um EXPLAIN ANALYZE auszuführen. Die Abfrage wird au
 
 Gibt den aktuellen Zustand des Engine-Shards zurück, ohne ihn zu wecken.
 
-Die UI pollt diesen Endpunkt, um während des Kaltstarts der Engine ein Startbanner anzuzeigen. Er löst nie ein Aufwecken aus — Polling ist sicher und zählt nicht als Aktivität für den Idle-Reaper.
+Die UI fragt diesen Endpunkt ab, um während des Kaltstarts der Engine ein Startbanner zu zeigen. Er weckt die Engine nie, daher ist das Abfragen gefahrlos und zählt für den Leerlauf-Abschalter nicht als Aktivität.
 
 **Antwort:**
 
@@ -285,7 +285,7 @@ Mögliche Werte:
 
 Löst ein Aufwecken der Engine aus, ohne eine Abfrage auszuführen.
 
-Gibt sofort `202 Accepted` zurück. Das Aufwecken läuft im Hintergrund. Verwenden Sie dies, wenn die Engine bereit sein soll, bevor die erste Abfrage eintrifft — zum Beispiel von einem Scheduler, der Abfragen erst einige Minuten später ausführt.
+Gibt sofort `202 Accepted` zurück, und das Wecken läuft im Hintergrund. Nutzen Sie das, wenn die Engine vor der ersten Abfrage bereit sein soll, etwa aus einem Scheduler, der ein paar Minuten später Abfragen ausführt.
 
 **Antwort:** `202 Accepted`, Body `{"started": true}`
 
@@ -312,11 +312,11 @@ Die authentifizierte Rolle ist erforderlich; nicht authentifizierte Anfragen geb
 
 #### OpenAPI-/Swagger-UI-Explorer
 
-Die OpenAPI-Explorer-Seite (`/app/openapi`) bettet die Swagger UI in einem sandboxed iframe ein. Die Spezifikation ist rollenbezogen — nur für die aktuelle Rolle sichtbare Tabellen und Spalten erscheinen — und optional über den Domänenselektor domänengefiltert. Die UI wechselt automatisch zwischen hellem und dunklem Theme.
+Die OpenAPI-Explorer-Seite (`/app/openapi`) bettet die Swagger UI in einen abgeschotteten iframe ein. Die Spezifikation ist auf die Rolle zugeschnitten, es erscheinen also nur Tabellen und Spalten, die die aktuelle Rolle sehen kann, und die Domänenauswahl kann sie weiter eingrenzen. Die UI wechselt selbständig zwischen hellem und dunklem Design.
 
-Die Seite lädt das Spec-HTML über `fetch()` statt über ein direktes iframe-`src`, sodass die Anfrage das Bearer-Token der Sitzung trägt und die eigenen relativen Anfragen der Swagger UI korrekt gegen denselben Origin aufgelöst werden.
+Die Seite lädt das Spezifikations-HTML mit `fetch()` statt über ein direktes iframe-`src`. So trägt die Anfrage das Bearer-Token der Sitzung, und die eigenen relativen Anfragen der Swagger UI werden gegen denselben Ursprung aufgelöst.
 
-Bei Navigation über einen NL-Link "In OpenAPI öffnen" klappt die Seite den Ziel-Endpunkt automatisch auf, füllt Query-Parameter aus der NL-generierten URL (z. B. `aggregate`, `groupBy`) und klickt Execute — mittels DOM-Polling, um sicherzustellen, dass jeder Schritt abgeschlossen ist, bevor der nächste ausgelöst wird.
+Über einen NL-Link „In OpenAPI öffnen“ aufgerufen, klappt die Seite den Ziel-Endpunkt auf, füllt die Abfrageparameter aus der NL-generierten URL aus (z. B. `aggregate`, `groupBy`) und klickt auf Execute, wobei sie das DOM abfragt, damit jeder Schritt fertig ist, bevor der nächste beginnt.
 
 ---
 
@@ -392,11 +392,11 @@ Drei Generierungsschleifen (Cypher, GraphQL, SQL) laufen parallel, jede über de
 }
 ```
 
-Ein Branch, der sein Iterationslimit erschöpft, gibt `query: null`, `result: null` und eine `error`-Zeichenkette zurück. Jede generierte Abfrage wird unter den Rechten des Konsumenten mit angewandter Stage-2-Governance ausgeführt — der Dienst umgeht Governance nie.
+Ein Zweig, dem die Iterationen ausgehen, liefert `query: null`, `result: null` und einen `error`-String. Jede generierte Abfrage läuft unter den Rechten des Nutzers mit der Governance der Stufe 2; der Dienst umgeht die Governance nie.
 
 #### NL Group-By mit Dimensionsdetails {: #nl-group-by-with-dimension-details }
 
-Wenn eine NL-Group-by-Abfrage auch Spalten aus einer verbundenen Dimensionstabelle projiziert — zum Beispiel "Anzahl der Anfragen nach Benutzer mit Benutzername und E-Mail" — leitet der Runner Pro-Feld-Punktpfade (`dim_paths`) aus den in der SELECT projizierten Dimensionsspalten ab. Diese Pfade befüllen den Parameter `includeNodes=` in den generierten URLs der JSON:API- und OpenAPI-Panels, sodass diese Panels dieselben verbundenen Dimensionsfelder anfordern, die die SQL- und GraphQL-Branches aufgelöst haben. Ohne dies würde `includeNodes=true` nur die eigenen skalaren Felder der Basis-Aggregattabelle zurückgeben.
+Nehmen Sie eine NL-Group-by-Abfrage, die auch Spalten aus einer angebundenen Dimensionstabelle projiziert, etwa „Anzahl der Anfragen pro Benutzer mit Benutzername und E-Mail“. Der Runner leitet aus den Dimensionsspalten im SELECT Punktpfade pro Feld ab (`dim_paths`). Diese Pfade füllen den Parameter `includeNodes=` in den URLs, die für die Panels JSON:API und OpenAPI erzeugt werden, sodass diese Panels dieselben Felder der angebundenen Dimension anfordern, die die Zweige SQL und GraphQL aufgelöst haben. Ohne sie würde `includeNodes=true` nur die eigenen Skalarfelder der Basis-Aggregattabelle liefern.
 
 Im gRPC-Panel trägt die generierte `{Type}GroupByRequest` `include_nodes` (bool) und `include` (repeated string mit Beziehungsfeldnamen). Die zurückgegebene `{Type}GroupByRow` enthält ein typisiertes `nodes`-Feld mit den Dimensionsdetail-Zeilen.
 
@@ -434,7 +434,7 @@ Gibt die Graphansicht des Schemas der Rolle zurück: Knoten-Labels und ihre Bezi
 
 **Antwort:** `application/json` mit `node_labels` (jeweils mit `pk`/`pk_columns`) und `relationship_types`.
 
-Jeder Beziehungstyp trägt auch `junction_table_name` und `properties`. Bei einer über eine Junction realisierten Kante benennt das erste die assoziative Tabelle, die durchlaufen wird, und das zweite listet die Spalten dieser Tabelle auf, die als `r.attr` lesbar und in `WHERE` filterbar sind; bei einer über einen Fremdschlüssel realisierten Kante ist der Name `null` und die Property-Liste leer, woran ein Client die beiden unterscheidet. Die Junction-Tabelle selbst ist nie ein Knoten-Label — sie ist die Kante, hat also keine Pille in einem Graph-Client und keine Zeile in `node_labels`.
+Jeder Beziehungstyp trägt außerdem `junction_table_name` und `properties`. Bei einer Junction-Kante nennt das erste die assoziative Tabelle, die sie traversiert, und das zweite listet deren Spalten, lesbar als `r.attr` und filterbar in `WHERE`. Bei einer Fremdschlüssel-Kante ist der Name `null` und die Liste leer; daran unterscheidet ein Client die beiden. Die Junction-Tabelle selbst ist nie eine Knotenbezeichnung. Sie ist die Kante, hat also in einem Graph-Client kein Etikett und keine Zeile in `node_labels`.
 
 ---
 

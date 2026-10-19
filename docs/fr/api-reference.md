@@ -172,7 +172,7 @@ Les résultats dépassant un seuil de lignes configuré (ou lorsque `X-Provisa-R
 | `text/csv` | Provisa | Limité par la mémoire |
 | `application/vnd.apache.arrow.stream` | Provisa | Limité par la mémoire |
 
-Pour les exports analytiques volumineux, utilisez la redirection Parquet ou ORC. Le moteur de fédération écrit directement sur S3 en parallèle — aucune donnée ne transite par Provisa.
+Pour les gros exports analytiques, utilisez la redirection Parquet ou ORC. Le moteur de fédération écrit directement dans S3 en parallèle, et aucune donnée ne passe par Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ Exécute du SQL brut à travers le pipeline de gouvernance de l'étape 2.
 }
 ```
 
-Les valeurs sont liées à l'exécution de l'instruction — par le moteur ou par le pilote de la source — et ne sont jamais écrites dans l'instruction, de sorte qu'une valeur ne peut pas changer ce qu'est l'instruction. Elles accompagnent exactement une instruction dont les espaces réservés les numérotent exactement : un lot d'instructions, un espace réservé sans valeur ou une valeur qu'aucun espace réservé ne prend est refusé avec `400` et le code `data.sql_parameters_do_not_fit` avant que l'instruction ne soit gouvernée ou exécutée. Une instruction sans espace réservé s'envoie sans `params`, comme avant.
+Les valeurs sont liées à l'exécution de l'instruction, par le moteur ou par le pilote de la source, et ne sont jamais écrites dans l'instruction ; une valeur ne peut donc pas changer ce qu'est l'instruction. Elles accompagnent exactement une instruction dont les marqueurs les numérotent exactement. Un lot d'instructions, un marqueur sans valeur ou une valeur qu'aucun marqueur ne prend est refusé avec `400` et le code `data.sql_parameters_do_not_fit` avant que l'instruction soit gouvernée ou exécutée. Une instruction sans marqueur est envoyée sans `params`, comme avant.
 
 **Capacités requises :** `QUERY_DEVELOPMENT`.
 
@@ -215,7 +215,7 @@ Les violations de gouvernance sur `POST /data/sql` renvoient un statut HTTP 403.
 
 ### `POST /data/query`
 
-Point de terminaison de requête unifié. Accepte GraphQL, SQL ou Cypher — la syntaxe est détectée automatiquement.
+Un seul point de terminaison pour tous les langages de requête. Il accepte GraphQL, SQL ou Cypher et détecte lequel il a reçu.
 
 Les requêtes Cypher peuvent aussi être soumises au point de terminaison dédié `POST /query/cypher`.
 
@@ -238,7 +238,7 @@ Renvoie `{"data": ...}` pour GraphQL, `{"columns": [...], "rows": [...]}` pour S
 
 Explique ou analyse une instruction SQL à travers le pipeline gouverné.
 
-Le point de terminaison enveloppe le SQL **gouverné** — l'instruction qui s'exécute réellement sous le rôle de l'appelant, après la sécurité au niveau des lignes et le masquage — dans la syntaxe EXPLAIN du dialecte. Ce que montre le plan est la version autorisée de la requête, pas l'entrée brute.
+Le point de terminaison enveloppe le SQL **gouverné** dans la syntaxe EXPLAIN du dialecte : l'instruction qui s'exécute réellement sous le rôle de l'appelant, après RLS et masquage. Le plan affiché porte donc sur la version autorisée de la requête, pas sur l'entrée brute.
 
 **Corps de la requête :**
 
@@ -262,7 +262,7 @@ Définissez `analyze: true` pour exécuter EXPLAIN ANALYZE. La requête s'exécu
 
 Renvoie l'état actuel du shard moteur sans le réveiller.
 
-L'interface interroge ce point de terminaison pour afficher une bannière de démarrage pendant que le moteur redémarre à froid. Cela ne déclenche jamais de réveil — l'interrogation est sûre et ne compte pas comme activité pour le récupérateur d'inactivité.
+L'interface interroge ce point de terminaison pour afficher une bannière de démarrage pendant le démarrage à froid du moteur. Il ne réveille jamais le moteur ; l'interroger est donc sans risque et ne compte pas comme activité pour l'arrêt sur inactivité.
 
 **Réponse :**
 
@@ -285,7 +285,7 @@ Valeurs possibles :
 
 Déclenche un réveil du moteur sans exécuter de requête.
 
-Renvoie `202 Accepted` immédiatement. Le réveil s'exécute en arrière-plan. Utilisez ceci si vous voulez que le moteur soit prêt avant l'arrivée de la première requête — par exemple, depuis un planificateur qui exécute des requêtes quelques minutes plus tard.
+Renvoie `202 Accepted` immédiatement, et le réveil se fait en arrière-plan. Utilisez-le quand vous voulez le moteur prêt avant la première requête, par exemple depuis un ordonnanceur qui lance des requêtes quelques minutes plus tard.
 
 **Réponse :** `202 Accepted`, corps `{"started": true}`
 
@@ -312,11 +312,11 @@ Le rôle authentifié est requis ; les requêtes non authentifiées renvoient `4
 
 #### Explorateur OpenAPI / Swagger UI {: #openapi-swagger-ui-explorer }
 
-La page de l'explorateur OpenAPI (`/app/openapi`) intègre Swagger UI dans un iframe en bac à sable. La spécification est délimitée par rôle — seules les tables et colonnes visibles pour le rôle actuel apparaissent — et optionnellement filtrée par domaine via le sélecteur de domaine. L'interface bascule automatiquement entre les thèmes clair et sombre.
+La page de l'explorateur OpenAPI (`/app/openapi`) intègre Swagger UI dans une iframe isolée. La spécification est limitée au rôle : seules les tables et colonnes visibles par le rôle courant apparaissent, et le sélecteur de domaine peut la restreindre davantage. L'interface passe d'elle-même du thème clair au thème sombre.
 
-La page charge le HTML de la spécification via `fetch()` plutôt qu'un `src` d'iframe direct, de sorte que la requête porte le jeton porteur de la session et que les requêtes relatives propres à Swagger UI se résolvent correctement contre la même origine.
+La page charge le HTML de la spécification avec `fetch()` au lieu d'un `src` direct d'iframe. La requête porte ainsi le jeton bearer de la session, et les requêtes relatives de Swagger UI se résolvent sur la même origine.
 
-Lorsqu'elle est atteinte depuis un lien NL « Ouvrir dans OpenAPI », la page développe automatiquement le point de terminaison ciblé, renseigne les paramètres de requête à partir de l'URL générée par NL (p. ex. `aggregate`, `groupBy`), et clique sur Exécuter — en utilisant un sondage du DOM pour s'assurer que chaque étape se termine avant que la suivante ne se déclenche.
+Ouverte depuis un lien NL « Ouvrir dans OpenAPI », la page déplie le point de terminaison cible, remplit les paramètres de requête à partir de l'URL générée par NL (p. ex. `aggregate`, `groupBy`) et clique sur Execute, en interrogeant le DOM pour que chaque étape se termine avant la suivante.
 
 ---
 
@@ -392,11 +392,11 @@ Trois boucles de génération (Cypher, GraphQL, SQL) s'exécutent en parallèle,
 }
 ```
 
-Une branche qui épuise sa limite d'itérations renvoie `query: null`, `result: null`, et une chaîne `error`. Chaque requête générée s'exécute sous les droits du consommateur avec la gouvernance de l'étape 2 appliquée — le service ne contourne jamais la gouvernance.
+Une branche qui épuise ses itérations renvoie `query: null`, `result: null` et une chaîne `error`. Chaque requête générée s'exécute avec les droits du consommateur et la gouvernance de l'étape 2 ; le service ne contourne jamais la gouvernance.
 
 #### Regroupement NL avec détails de dimension {: #nl-group-by-with-dimension-details }
 
-Lorsqu'une requête de regroupement NL projette aussi des colonnes d'une table de dimension jointe — par exemple, « nombre de demandes par utilisateur avec nom et e-mail de l'utilisateur » — l'exécuteur dérive des chemins pointés par champ (`dim_paths`) à partir des colonnes de dimension projetées dans le SELECT. Ces chemins alimentent le paramètre `includeNodes=` sur les URL générées par les panneaux JSON:API et OpenAPI, de sorte que ces panneaux demandent les mêmes champs de dimension jointe que les branches SQL et GraphQL ont résolus. Sans cela, `includeNodes=true` ne renverrait que les champs scalaires propres de la table d'agrégation de base.
+Prenez une requête NL avec regroupement qui projette aussi des colonnes d'une table de dimension jointe, comme « nombre de demandes par utilisateur avec nom d'utilisateur et e-mail ». L'exécuteur dérive des chemins pointés par champ (`dim_paths`) des colonnes de dimension du SELECT. Ces chemins remplissent le paramètre `includeNodes=` dans les URL générées pour les panneaux JSON:API et OpenAPI, si bien que ces panneaux demandent les mêmes champs de dimension jointe que ceux résolus par les branches SQL et GraphQL. Sans eux, `includeNodes=true` ne renverrait que les champs scalaires propres de la table d'agrégat de base.
 
 Sur le panneau gRPC, le `{Type}GroupByRequest` généré porte `include_nodes` (booléen) et `include` (chaîne répétée de noms de champs de relation). Le `{Type}GroupByRow` renvoyé inclut un champ `nodes` typé avec les lignes de détail de dimension.
 
@@ -434,7 +434,7 @@ Renvoie la vue en graphe du schéma du rôle : étiquettes de nœud et leurs typ
 
 **Réponse :** `application/json` avec `node_labels` (chacune portant `pk`/`pk_columns`) et `relationship_types`.
 
-Chaque type de relation porte aussi `junction_table_name` et `properties`. Sur une arête reposant sur une table de jonction, le premier nomme la table associative qu'elle parcourt et le second liste les colonnes de cette table lisibles comme `r.attr` et filtrables dans `WHERE` ; sur une arête reposant sur une clé étrangère, le nom est `null` et la liste de propriétés est vide, ce qui permet à un client de distinguer les deux cas. La table de jonction elle-même n'est jamais une étiquette de nœud — elle est l'arête, elle n'a donc aucune pastille dans un client de graphe ni aucune ligne dans `node_labels`.
+Chaque type de relation porte aussi `junction_table_name` et `properties`. Sur une arête de jonction, le premier nomme la table associative qu'elle traverse, et le second liste ses colonnes, lisibles en `r.attr` et filtrables dans `WHERE`. Sur une arête de clé étrangère, le nom vaut `null` et la liste est vide ; c'est ainsi qu'un client distingue les deux. La table de jonction n'est jamais un label de nœud. C'est l'arête : elle n'a donc ni étiquette dans un client de graphe ni ligne dans `node_labels`.
 
 ---
 

@@ -172,7 +172,7 @@ Los resultados que superan un umbral de filas configurado (o cuando `X-Provisa-R
 | `text/csv` | Provisa | Limitado por memoria |
 | `application/vnd.apache.arrow.stream` | Provisa | Limitado por memoria |
 
-Para exportaciones analíticas grandes, use redirección Parquet u ORC. El motor de federación escribe directamente en S3 en paralelo — ningún dato pasa por Provisa.
+Para exportaciones analíticas grandes, use la redirección a Parquet u ORC. El motor de federación escribe directamente en S3 en paralelo y ningún dato pasa por Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ Ejecuta SQL sin procesar a través del pipeline de gobierno de la Etapa 2.
 }
 ```
 
-Los valores se enlazan cuando se ejecuta la sentencia (por el motor o por el controlador del origen) y nunca se escriben en la sentencia, así que un valor no puede cambiar lo que es la sentencia. Van con exactamente una sentencia cuyos marcadores los numeran exactamente: un lote de sentencias, un marcador sin valor o un valor que ningún marcador toma se rechazan con `400` y el código `data.sql_parameters_do_not_fit` antes de gobernar o ejecutar la sentencia. Una sentencia sin marcadores se envía sin `params`, como antes.
+Los valores se vinculan cuando se ejecuta la instrucción, por el motor o por el driver del origen, y nunca se escriben en la instrucción, así que un valor no puede cambiar lo que es la instrucción. Van con exactamente una instrucción cuyos marcadores los numeran exactamente. Un lote de instrucciones, un marcador sin valor o un valor que ningún marcador recibe se rechaza con `400` y el código `data.sql_parameters_do_not_fit` antes de gobernar o ejecutar la instrucción. Una instrucción sin marcadores se envía sin `params`, como hasta ahora.
 
 **Capacidades requeridas:** `QUERY_DEVELOPMENT`.
 
@@ -215,7 +215,7 @@ Las violaciones de gobierno en `POST /data/sql` devuelven HTTP 403.
 
 ### `POST /data/query`
 
-Endpoint de consulta unificado. Acepta GraphQL, SQL o Cypher — la sintaxis se detecta automáticamente.
+Un solo endpoint para todos los lenguajes de consulta. Acepta GraphQL, SQL o Cypher y detecta cuál ha recibido.
 
 Las consultas Cypher también pueden enviarse al endpoint exclusivo de Cypher `POST /query/cypher`.
 
@@ -238,7 +238,7 @@ Devuelve `{"data": ...}` para GraphQL, `{"columns": [...], "rows": [...]}` para 
 
 Explica o analiza una sentencia SQL a través del pipeline gobernado.
 
-El endpoint envuelve el SQL **gobernado** —la sentencia que realmente se ejecuta bajo el rol del llamante, después de RLS y enmascaramiento— en la sintaxis EXPLAIN del dialecto. Lo que muestra el plan es la versión autorizada de la consulta, no la entrada sin procesar.
+El endpoint envuelve el SQL **gobernado** en la sintaxis EXPLAIN del dialecto: la instrucción que de verdad se ejecuta bajo el rol de quien llama, después de RLS y enmascaramiento. Así que el plan que ve corresponde a la versión autorizada de la consulta, no a la entrada sin procesar.
 
 **Cuerpo de la solicitud:**
 
@@ -262,7 +262,7 @@ Establezca `analyze: true` para ejecutar EXPLAIN ANALYZE. La consulta se ejecuta
 
 Devuelve el estado actual del shard del motor sin despertarlo.
 
-La interfaz consulta este endpoint para mostrar un aviso de arranque mientras el motor está en arranque en frío. Nunca provoca un despertar: consultarlo es seguro y no cuenta como actividad para el recolector de inactividad.
+La UI consulta este endpoint para mostrar un aviso de arranque mientras el motor arranca en frío. Nunca despierta el motor, así que consultarlo es seguro y no cuenta como actividad para el apagado por inactividad.
 
 **Respuesta:**
 
@@ -285,7 +285,7 @@ Valores posibles:
 
 Provoca el despertar del motor sin ejecutar una consulta.
 
-Devuelve `202 Accepted` de inmediato. El despertar se ejecuta en segundo plano. Úselo si quiere que el motor esté listo antes de que llegue la primera consulta — por ejemplo, desde un planificador que ejecuta consultas unos minutos después.
+Devuelve `202 Accepted` de inmediato, y el despertar se ejecuta en segundo plano. Úselo cuando quiera el motor listo antes de que llegue la primera consulta, por ejemplo desde un planificador que lanza consultas unos minutos después.
 
 **Respuesta:** `202 Accepted`, cuerpo `{"started": true}`
 
@@ -312,11 +312,11 @@ Se requiere el rol autenticado; las solicitudes no autenticadas devuelven `401`.
 
 #### Explorador OpenAPI / Swagger UI {: #openapi-swagger-ui-explorer }
 
-La página del explorador OpenAPI (`/app/openapi`) incrusta Swagger UI en un iframe con sandbox. La especificación está delimitada por rol — solo aparecen las tablas y columnas visibles para el rol actual — y opcionalmente filtrada por dominio mediante el selector de dominio. La interfaz cambia automáticamente entre los temas claro y oscuro.
+La página del explorador OpenAPI (`/app/openapi`) incrusta Swagger UI en un iframe aislado. La especificación está limitada al rol, así que solo aparecen las tablas y columnas que el rol actual puede ver, y el selector de dominio puede acotarla más. La UI cambia sola entre los temas claro y oscuro.
 
-La página carga el HTML de la especificación mediante `fetch()` en lugar de un `src` de iframe directo, de modo que la solicitud lleva el token portador de la sesión y las solicitudes relativas propias de Swagger UI se resuelven correctamente contra el mismo origen.
+La página carga el HTML de la especificación con `fetch()` en lugar de un `src` directo del iframe. Así la petición lleva el token bearer de la sesión y las peticiones relativas de Swagger UI se resuelven contra el mismo origen.
 
-Cuando se navega desde un enlace de NL "Abrir en OpenAPI", la página expande automáticamente el endpoint objetivo, completa los parámetros de consulta a partir de la URL generada por NL (p. ej., `aggregate`, `groupBy`) y hace clic en Execute — usando sondeo del DOM (polling) para garantizar que cada paso se complete antes de que se dispare el siguiente.
+Abierta desde un enlace NL "Abrir en OpenAPI", la página expande el endpoint de destino, rellena los parámetros de consulta desde la URL generada por NL (p. ej. `aggregate`, `groupBy`) y pulsa Execute, sondeando el DOM para que cada paso termine antes de empezar el siguiente.
 
 ---
 
@@ -392,11 +392,11 @@ Tres bucles de generación (Cypher, GraphQL, SQL) se ejecutan en paralelo, cada 
 }
 ```
 
-Una rama que agota su límite de iteraciones devuelve `query: null`, `result: null` y una cadena `error`. Cada consulta generada se ejecuta bajo los derechos del consumidor con el gobierno de la Etapa 2 aplicado — el servicio nunca omite el gobierno.
+Una rama que agota sus iteraciones devuelve `query: null`, `result: null` y una cadena `error`. Cada consulta generada se ejecuta con los derechos del consumidor y la gobernanza de la etapa 2 aplicada; el servicio nunca esquiva la gobernanza.
 
 #### Agrupamiento de NL con detalles de dimensión {: #nl-group-by-with-dimension-details }
 
-Cuando una consulta de agrupamiento de NL también proyecta columnas de una tabla de dimensión incluida — por ejemplo, "cantidad de consultas por usuario con nombre y correo electrónico del usuario" — el ejecutor deriva rutas de puntos por campo (`dim_paths`) a partir de las columnas de dimensión proyectadas en el SELECT. Estas rutas alimentan el parámetro `includeNodes=` en las URLs generadas de los paneles de JSON:API y OpenAPI, de modo que esos paneles solicitan los mismos campos de dimensión incluida que resolvieron las ramas de SQL y GraphQL. Sin esto, `includeNodes=true` devolvería únicamente los campos escalares propios de la tabla agregada base.
+Tome una consulta NL con group-by que además proyecta columnas de una tabla de dimensión unida, como "número de consultas por usuario con nombre de usuario y correo". El ejecutor deriva rutas con puntos por campo (`dim_paths`) de las columnas de dimensión del SELECT. Esas rutas rellenan el parámetro `includeNodes=` en las URL generadas para los paneles JSON:API y OpenAPI, de modo que esos paneles piden los mismos campos de dimensión unida que resolvieron las ramas SQL y GraphQL. Sin ellas, `includeNodes=true` devolvería solo los campos escalares propios de la tabla agregada base.
 
 En el panel de gRPC, la `{Type}GroupByRequest` generada lleva `include_nodes` (booleano) e `include` (cadena repetida de nombres de campo de relación). La `{Type}GroupByRow` devuelta incluye un campo `nodes` tipado con las filas de detalle de dimensión.
 
@@ -434,7 +434,7 @@ Devuelve la vista de grafo del esquema del rol: etiquetas de nodo y sus tipos de
 
 **Respuesta:** `application/json` con `node_labels` (cada una con `pk`/`pk_columns`) y `relationship_types`.
 
-Cada tipo de relación lleva además `junction_table_name` y `properties`. En una arista respaldada por una tabla de unión, el primero nombra la tabla asociativa que recorre y el segundo lista las columnas de esa tabla legibles como `r.attr` y filtrables en `WHERE`; en una arista respaldada por clave foránea el nombre es `null` y la lista de propiedades está vacía, que es como un cliente distingue ambas. La propia tabla de unión nunca es una etiqueta de nodo — es la arista, así que no tiene píldora en un cliente de grafo ni fila en `node_labels`.
+Cada tipo de relación lleva además `junction_table_name` y `properties`. En una arista de unión, el primero nombra la tabla asociativa que recorre y el segundo enumera sus columnas, legibles como `r.attr` y filtrables en `WHERE`. En una arista basada en clave foránea el nombre es `null` y la lista está vacía, y así distingue un cliente las dos. La tabla de unión nunca es una etiqueta de nodo. Es la arista, así que no tiene etiqueta en un cliente de grafos ni fila en `node_labels`.
 
 ---
 

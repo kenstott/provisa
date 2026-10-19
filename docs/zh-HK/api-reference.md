@@ -172,7 +172,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 | `text/csv` | Provisa | 受記憶體限制 |
 | `application/vnd.apache.arrow.stream` | Provisa | 受記憶體限制 |
 
-大型分析匯出請使用 Parquet 或 ORC 重新導向。聯邦引擎會並行直接寫入 S3 — 數據不經過 Provisa。
+對於大型分析匯出，請使用 Parquet 或 ORC 重新導向。聯邦引擎會並行直接寫入 S3，數據不經過 Provisa。
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-這些值在陳述式執行時由引擎或數據來源的驅動程式綁定，從不寫入陳述式，因此值無法改變陳述式本身。它們只屬於一條陳述式，其預留位置精確地為它們編號：陳述式批次、沒有值的預留位置，或沒有預留位置接收的值，都會在陳述式被治理或執行之前以 `400` 及代碼 `data.sql_parameters_do_not_fit` 被拒絕。沒有預留位置的陳述式不帶 `params` 傳送，與以往一樣。
+這些值在語句執行時由引擎或數據來源的驅動程式繫結，從不寫進語句本身，所以值無法改變語句是甚麼。它們只隨一條語句一起傳送，該語句的預留位置與它們逐一編號對應。語句批次、沒有值的預留位置，或沒有預留位置接收的值，都會在語句受治理或執行之前以 `400` 及代碼 `data.sql_parameters_do_not_fit` 被拒絕。沒有預留位置的語句與以前一樣，不帶 `params` 傳送。
 
 **必要能力：** `QUERY_DEVELOPMENT`。
 
@@ -215,7 +215,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/query`
 
-統一查詢端點。接受 GraphQL、SQL 或 Cypher — 語法會自動偵測。
+所有查詢語言共用一個端點。它接受 GraphQL、SQL 或 Cypher，並自動識別收到的是哪一種。
 
 Cypher 查詢也可以提交到僅限 Cypher 的 `POST /query/cypher` 端點。
 
@@ -238,7 +238,7 @@ GraphQL 傳回 `{"data": ...}`，SQL 與 Cypher 傳回 `{"columns": [...], "rows
 
 透過受治理的管線說明或分析 SQL 陳述式。
 
-該端點會將**受治理的** SQL — 即在呼叫者角色下、套用 RLS 與遮罩後實際執行的陳述式 — 包裝在該方言的 EXPLAIN 語法中。計劃顯示的是查詢的已授權版本，而非原始輸入。
+該端點把**受治理的** SQL 包進方言的 EXPLAIN 語法中：亦即在呼叫者角色下、經過 RLS 及遮罩之後真正執行的語句。所以您看到的計劃對應的是查詢的授權版本，而不是原始輸入。
 
 **請求主體：**
 
@@ -262,7 +262,7 @@ GraphQL 傳回 `{"data": ...}`，SQL 與 Cypher 傳回 `{"columns": [...], "rows
 
 在不喚醒引擎的情況下傳回引擎分區的目前狀態。
 
-UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從不觸發喚醒 — 輪詢是安全的，也不會被閒置回收器視為活動。
+UI 會輪詢該端點，在引擎冷啟動期間顯示啟動橫額。它從不喚醒引擎，所以輪詢是安全的，亦不會被閒置回收機制算作活動。
 
 **回應：**
 
@@ -285,7 +285,7 @@ UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從�
 
 在不執行查詢的情況下觸發引擎喚醒。
 
-立即傳回 `202 Accepted`。喚醒在背景執行。如果你希望引擎在第一個查詢抵達之前就緒，可使用此端點 — 例如由數分鐘後才執行查詢的排程器呼叫。
+立即傳回 `202 Accepted`，喚醒在背景進行。如您希望引擎在第一個查詢到來之前已準備好，就呼叫它，例如從幾分鐘後才執行查詢的排程器中呼叫。
 
 **回應：** `202 Accepted`，主體為 `{"started": true}`
 
@@ -312,11 +312,11 @@ UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從�
 
 #### OpenAPI / Swagger UI 探索工具 {: #openapi-swagger-ui-explorer }
 
-OpenAPI 探索工具頁面（`/app/openapi`）在沙箱化的 iframe 中內嵌 Swagger UI。規格以角色為範圍 — 只會出現目前角色可見的資料表與欄位 — 並可透過網域選擇器選擇性地依網域篩選。UI 會自動在淺色與深色佈景主題之間切換。
+OpenAPI 瀏覽器頁面（`/app/openapi`）在沙盒化的 iframe 中嵌入 Swagger UI。規格按角色限定，只顯示當前角色能看到的資料表及資料行，亦可以用領域選擇器進一步篩選。UI 會自動在淺色及深色主題之間切換。
 
-該頁面透過 `fetch()` 而非直接使用 iframe `src` 載入規格 HTML，因此請求會攜帶工作階段的 bearer 權杖，而 Swagger UI 本身的相對請求也能正確解析到同一來源。
+頁面用 `fetch()` 載入規格 HTML，而不是直接設定 iframe 的 `src`。這樣請求會攜帶工作階段的 bearer 權杖，Swagger UI 自身的相對請求亦會基於同一來源解析。
 
-從自然語言的「Open in OpenAPI」連結導覽而來時，該頁面會自動展開目標端點、以自然語言產生的 URL 填入查詢參數（例如 `aggregate`、`groupBy`），並按下 Execute — 使用 DOM 輪詢確保每一步在下一步觸發前已完成。
+從 NL 的「在 OpenAPI 中開啟」連結進入時，頁面會展開目標端點，用 NL 產生的 URL 填好查詢參數（例如 `aggregate`、`groupBy`），然後點擊 Execute，並輪詢 DOM，確保每一步完成後才開始下一步。
 
 ---
 
@@ -392,11 +392,11 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 }
 ```
 
-耗盡疊代上限的分支會傳回 `query: null`、`result: null` 與一個 `error` 字串。每個產生的查詢都在消費者的權限下執行，並套用第 2 階段治理 — 服務從不繞過治理。
+耗盡迭代次數的分支傳回 `query: null`、`result: null` 及一個 `error` 字串。每個產生的查詢都以使用者的權限執行，並套用第 2 階段治理；服務從不繞過治理。
 
 #### 帶維度明細的自然語言分組查詢 {: #nl-group-by-with-dimension-details }
 
-當自然語言分組查詢同時投影聯結維度資料表的欄位時 — 例如「按使用者統計查詢數，並附使用者名稱與電郵」— 執行器會從 SELECT 投影的維度欄位推導出每個欄位的點路徑（`dim_paths`）。這些路徑會填入 JSON:API 與 OpenAPI 面板所產生 URL 的 `includeNodes=` 參數，讓這些面板要求與 SQL 及 GraphQL 分支所解析的相同聯結維度欄位。若無此機制，`includeNodes=true` 只會傳回基礎彙總資料表自身的純量欄位。
+以一個同時投影所聯結維度表資料行的 NL 分組查詢為例，例如「按使用者統計查詢次數，並顯示使用者名稱及電郵」。執行器會從 SELECT 中的維度資料行推導出每個欄位的點路徑（`dim_paths`）。這些路徑會填入為 JSON:API 及 OpenAPI 面板產生的 URL 中的 `includeNodes=` 參數，令這些面板請求與 SQL、GraphQL 分支所解析的相同維度欄位。沒有它們，`includeNodes=true` 只會傳回基礎彙總表自身的純量欄位。
 
 在 gRPC 面板上，產生的 `{Type}GroupByRequest` 帶有 `include_nodes`（布林值）與 `include`（關聯欄位名稱的重複字串）。傳回的 `{Type}GroupByRow` 包含帶有維度明細資料列的具型別 `nodes` 欄位。
 
@@ -434,7 +434,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 **回應：** `application/json`，包含 `node_labels`（各自帶有 `pk`/`pk_columns`）與 `relationship_types`。
 
-每種關係類型還帶有 `junction_table_name` 與 `properties`。在由聯結資料表支撐的邊上，前者給出它所穿過的關聯資料表名稱，後者列出該資料表中可作為 `r.attr` 讀取並可在 `WHERE` 中過濾的欄位；在由外部索引鍵支撐的邊上，該名稱為 `null`，屬性清單為空——用戶端正是據此區分兩者。聯結資料表本身永遠不是節點標籤——它就是邊，因此在圖用戶端中沒有對應的標籤膠囊，在 `node_labels` 中也沒有對應資料列。
+每種關係類型還帶有 `junction_table_name` 及 `properties`。對於經由關聯表的邊，前者指明它所穿過的關聯表，後者列出該表可作為 `r.attr` 讀取、可在 `WHERE` 中篩選的資料行。對於基於外鍵的邊，名稱為 `null`，屬性清單為空，用戶端據此區分兩者。關聯表本身永遠不是節點標籤。它就是邊，所以在圖用戶端中沒有標籤，在 `node_labels` 中亦沒有對應列。
 
 ---
 

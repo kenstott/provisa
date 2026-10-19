@@ -170,7 +170,7 @@ Results above a configured row threshold (or when `X-Provisa-Redirect: true`) ar
 | `text/csv` | Provisa | Memory-bound |
 | `application/vnd.apache.arrow.stream` | Provisa | Memory-bound |
 
-For large analytical exports, use Parquet or ORC redirect. The federation engine writes directly to S3 in parallel — no data passes through Provisa.
+For large analytical exports, use the Parquet or ORC redirect. The federation engine writes straight to S3 in parallel, and no data passes through Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -201,7 +201,7 @@ Execute raw SQL through the Stage 2 governance pipeline.
 }
 ```
 
-The values are bound when the statement runs — by the engine or the source's driver — and are never written into the statement, so a value cannot change what the statement is. They go with exactly one statement whose placeholders number them exactly: a batch of statements, a placeholder with no value or a value no placeholder takes is refused with `400` and code `data.sql_parameters_do_not_fit` before the statement is governed or run. A statement without placeholders is sent without `params`, as before.
+The values are bound when the statement runs, by the engine or the source's driver, and are never written into the statement, so a value can't change what the statement is. They go with exactly one statement whose placeholders number them exactly. A batch of statements, a placeholder with no value, or a value no placeholder takes is refused with `400` and code `data.sql_parameters_do_not_fit` before the statement is governed or run. A statement without placeholders is sent without `params`, as before.
 
 **Required capabilities:** `QUERY_DEVELOPMENT`.
 
@@ -213,7 +213,7 @@ Governance violations on `POST /data/sql` return HTTP 403.
 
 ### `POST /data/query`
 
-Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detected.
+One endpoint for every query language. It accepts GraphQL, SQL or Cypher and detects which one it got.
 
 Cypher queries can also be submitted to the Cypher-only `POST /query/cypher` endpoint.
 
@@ -236,7 +236,7 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 
 Explain or analyze a SQL statement through the governed pipeline.
 
-The endpoint wraps the **governed** SQL — the statement that actually runs under the caller's role, after RLS and masking — in the dialect's EXPLAIN syntax. What the plan shows is the authorized version of the query, not the raw input.
+The endpoint wraps the **governed** SQL in the dialect's EXPLAIN syntax: the statement that actually runs under the caller's role, after RLS and masking. So the plan you see is for the authorized version of the query, not the raw input.
 
 **Request body:**
 
@@ -260,7 +260,7 @@ Set `analyze: true` to run EXPLAIN ANALYZE. The query executes and the plan carr
 
 Return the engine shard's current state without waking it.
 
-The UI polls this endpoint to show a startup banner while the engine is cold-starting. It never triggers a wake — polling is safe and does not count as activity for the idle reaper.
+The UI polls this endpoint to show a startup banner while the engine is cold-starting. It never wakes the engine, so polling is safe and doesn't count as activity for the idle reaper.
 
 **Response:**
 
@@ -283,7 +283,7 @@ Possible values:
 
 Trigger an engine wake without running a query.
 
-Returns `202 Accepted` immediately. The wake runs in the background. Use this if you want the engine ready before the first query arrives — for example, from a scheduler that runs queries a few minutes later.
+Returns `202 Accepted` immediately, and the wake runs in the background. Use it when you want the engine ready before the first query arrives, for example from a scheduler that runs queries a few minutes later.
 
 **Response:** `202 Accepted`, body `{"started": true}`
 
@@ -310,11 +310,11 @@ The authenticated role is required; unauthenticated requests return `401`. An Op
 
 #### OpenAPI / Swagger UI Explorer
 
-The OpenAPI explorer page (`/app/openapi`) embeds the Swagger UI in a sandboxed iframe. The spec is role-scoped — only tables and columns visible to the current role appear — and optionally domain-filtered via the domain selector. The UI switches between light and dark themes automatically.
+The OpenAPI explorer page (`/app/openapi`) embeds the Swagger UI in a sandboxed iframe. The spec is scoped to the role, so only tables and columns the current role can see appear, and the domain selector can narrow it further. The UI switches between light and dark themes by itself.
 
-The page loads the spec HTML via `fetch()` rather than a direct iframe `src`, so the request carries the session's bearer token and Swagger UI's own relative requests resolve correctly against the same origin.
+The page loads the spec HTML with `fetch()` instead of a direct iframe `src`. That way the request carries the session's bearer token, and Swagger UI's own relative requests resolve against the same origin.
 
-When navigated from an NL "Open in OpenAPI" link, the page auto-expands the target endpoint, populates query parameters from the NL-generated URL (e.g. `aggregate`, `groupBy`), and clicks Execute — using DOM polling to ensure each step completes before the next fires.
+Opened from an NL "Open in OpenAPI" link, the page expands the target endpoint, fills in the query parameters from the NL-generated URL (e.g. `aggregate`, `groupBy`) and clicks Execute, polling the DOM so that each step finishes before the next starts.
 
 ---
 
@@ -390,11 +390,11 @@ Three generation loops (Cypher, GraphQL, SQL) run in parallel, each validated th
 }
 ```
 
-A branch that exhausts its iteration limit returns `query: null`, `result: null`, and an `error` string. Every generated query executes under the consumer's rights with Stage 2 governance applied — the service never bypasses governance.
+A branch that runs out of iterations returns `query: null`, `result: null` and an `error` string. Every generated query runs under the consumer's rights with Stage 2 governance applied; the service never goes around governance.
 
 #### NL Group-By with Dimension Details
 
-When an NL group-by query also projects columns from a joined dimension table — for example, "count of inquiries by user with user name and email" — the runner derives per-field dot-paths (`dim_paths`) from the SELECT-projected dimension columns. These paths populate the `includeNodes=` parameter on the JSON:API and OpenAPI panels' generated URLs, so those panels request the same joined-dimension fields the SQL and GraphQL branches resolved. Without this, `includeNodes=true` would return only the base aggregate table's own scalar fields.
+Take an NL group-by query that also projects columns from a joined dimension table, such as "count of inquiries by user with user name and email". The runner derives per-field dot-paths (`dim_paths`) from the dimension columns in the SELECT. Those paths fill the `includeNodes=` parameter in the URLs generated for the JSON:API and OpenAPI panels, so those panels ask for the same joined-dimension fields the SQL and GraphQL branches resolved. Without them, `includeNodes=true` would return only the base aggregate table's own scalar fields.
 
 On the gRPC panel, the generated `{Type}GroupByRequest` carries `include_nodes` (bool) and `include` (repeated string of relationship field names). The returned `{Type}GroupByRow` includes a typed `nodes` field with the dimension-detail rows.
 
@@ -432,7 +432,7 @@ Return the graph view of the role's schema: node labels and their relationship t
 
 **Response:** `application/json` with `node_labels` (each carrying `pk`/`pk_columns`) and `relationship_types`.
 
-Each relationship type also carries `junction_table_name` and `properties`. On a junction-backed edge the first names the associative table it traverses and the second lists the columns of that table readable as `r.attr` and filterable in `WHERE`; on a foreign-key-backed edge the name is `null` and the property list is empty, which is how a client tells the two apart. The junction table itself is never a node label — it is the edge, so it has no pill in a graph client and no row in `node_labels`.
+Each relationship type also carries `junction_table_name` and `properties`. On a junction-backed edge, the first names the associative table it traverses, and the second lists that table's columns readable as `r.attr` and filterable in `WHERE`. On a foreign-key-backed edge the name is `null` and the property list is empty, which is how a client tells the two apart. The junction table itself is never a node label. It is the edge, so it has no pill in a graph client and no row in `node_labels`.
 
 ---
 

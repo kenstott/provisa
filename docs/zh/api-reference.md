@@ -172,7 +172,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 | `text/csv` | Provisa | 受内存限制 |
 | `application/vnd.apache.arrow.stream` | Provisa | 受内存限制 |
 
-对于大型分析导出，请使用 Parquet 或 ORC 重定向。联邦引擎并行直接写入 S3——数据不经过 Provisa。
+对于大型分析导出，请使用 Parquet 或 ORC 重定向。联邦引擎会并行直接写入 S3，数据不经过 Provisa。
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-这些值在语句运行时由引擎或数据源的驱动绑定，从不写入语句，因此值无法改变语句本身。它们只属于一条语句，其占位符精确地为它们编号：语句批次、没有值的占位符，或没有占位符接收的值，都会在语句被治理或运行之前以 `400` 和代码 `data.sql_parameters_do_not_fit` 被拒绝。没有占位符的语句不带 `params` 发送，与之前一样。
+这些值在语句运行时由引擎或数据源驱动绑定，从不写进语句本身，所以值无法改变语句是什么。它们只随一条语句一起发送，该语句的占位符与它们一一编号对应。语句批次、没有值的占位符，或没有占位符接收的值，都会在语句受治理或运行之前以 `400` 和代码 `data.sql_parameters_do_not_fit` 被拒绝。没有占位符的语句和以前一样，不带 `params` 发送。
 
 **所需能力：** `QUERY_DEVELOPMENT`。
 
@@ -215,7 +215,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/query`
 
-统一查询端点。接受 GraphQL、SQL 或 Cypher——语法自动检测。
+所有查询语言共用一个端点。它接受 GraphQL、SQL 或 Cypher，并自动识别收到的是哪一种。
 
 Cypher 查询也可以提交到仅支持 Cypher 的 `POST /query/cypher` 端点。
 
@@ -238,7 +238,7 @@ GraphQL 返回 `{"data": ...}`，SQL 和 Cypher 返回 `{"columns": [...], "rows
 
 通过治理管道解释或分析一条 SQL 语句。
 
-该端点将**治理后**的 SQL——即在调用者角色下、经过行级安全与脱敏处理后实际运行的语句——包装在对应方言的 EXPLAIN 语法中。计划展示的是查询的授权版本，而不是原始输入。
+该端点把**受治理的** SQL 包进方言的 EXPLAIN 语法中：也就是在调用者角色下、经过 RLS 和脱敏之后真正运行的语句。所以您看到的计划对应的是查询的授权版本，而不是原始输入。
 
 **请求体：**
 
@@ -262,7 +262,7 @@ GraphQL 返回 `{"data": ...}`，SQL 和 Cypher 返回 `{"columns": [...], "rows
 
 返回引擎分片的当前状态，而不唤醒它。
 
-UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不触发唤醒——轮询是安全的，也不会被空闲回收器计为活动。
+UI 会轮询该端点，在引擎冷启动期间显示启动横幅。它从不唤醒引擎，所以轮询是安全的，也不会被空闲回收机制算作活动。
 
 **响应：**
 
@@ -285,7 +285,7 @@ UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不�
 
 触发引擎唤醒而不运行查询。
 
-立即返回 `202 Accepted`。唤醒过程在后台运行。如果希望在第一个查询到达前引擎已就绪——例如调度程序会在几分钟后运行查询——可使用此端点。
+立即返回 `202 Accepted`，唤醒在后台进行。如果您希望引擎在第一个查询到来之前就准备好，就调用它，例如从几分钟后才运行查询的调度器中调用。
 
 **响应：** `202 Accepted`，响应体 `{"started": true}`
 
@@ -312,11 +312,11 @@ UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不�
 
 #### OpenAPI / Swagger UI 浏览器 {: #openapi-swagger-ui-explorer }
 
-OpenAPI 浏览器页面（`/app/openapi`）在一个沙盒 iframe 中嵌入 Swagger UI。该规范按角色范围限定——只有当前角色可见的表和列会出现——并可通过域选择器进一步按域过滤。UI 会自动在浅色和深色主题之间切换。
+OpenAPI 浏览器页面（`/app/openapi`）在沙箱化的 iframe 中嵌入 Swagger UI。规范按角色限定，只显示当前角色能看到的表和列，还可以用域选择器进一步筛选。UI 会自动在浅色和深色主题之间切换。
 
-该页面通过 `fetch()` 而不是直接的 iframe `src` 加载规范 HTML，因此请求会携带会话的持有者令牌，且 Swagger UI 自身的相对请求能正确解析到同一源。
+页面用 `fetch()` 加载规范 HTML，而不是直接设置 iframe 的 `src`。这样请求会携带会话的 bearer 令牌，Swagger UI 自身的相对请求也会基于同一源解析。
 
-当从 NL「在 OpenAPI 中打开」链接导航而来时，页面会自动展开目标端点，从 NL 生成的 URL 中填充查询参数（例如 `aggregate`、`groupBy`），并点击 Execute——使用 DOM 轮询确保每一步在下一步触发前完成。
+从 NL 的“在 OpenAPI 中打开”链接进入时，页面会展开目标端点，用 NL 生成的 URL 填好查询参数（例如 `aggregate`、`groupBy`），然后点击 Execute，并轮询 DOM，确保每一步完成后才开始下一步。
 
 ---
 
@@ -392,11 +392,11 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 }
 ```
 
-耗尽迭代次数上限的分支返回 `query: null`、`result: null`，并附带一个 `error` 字符串。每个生成的查询都在使用者的权限下执行，并应用第二阶段治理——该服务从不绕过治理。
+耗尽迭代次数的分支返回 `query: null`、`result: null` 和一个 `error` 字符串。每个生成的查询都以使用者的权限运行，并应用第 2 阶段治理；服务从不绕过治理。
 
 #### 带维度详情的 NL 分组查询 {: #nl-group-by-with-dimension-details }
 
-当 NL 分组查询还从已联接的维度表中投影列时——例如「按用户统计的询价数量，附带用户名和邮箱」——运行器会从 SELECT 投影的维度列中派生每字段的点路径（`dim_paths`）。这些路径填充到 JSON:API 和 OpenAPI 面板生成的 URL 上的 `includeNodes=` 参数中，使这些面板请求与 SQL 和 GraphQL 分支所解析出的相同已联接维度字段。若没有此机制，`includeNodes=true` 将只返回基础聚合表自身的标量字段。
+以一个同时投影所联接维度表列的 NL 分组查询为例，例如“按用户统计咨询次数，并显示用户名和邮箱”。运行器会从 SELECT 中的维度列推导出每个字段的点路径（`dim_paths`）。这些路径会填入为 JSON:API 和 OpenAPI 面板生成的 URL 中的 `includeNodes=` 参数，让这些面板请求与 SQL、GraphQL 分支所解析的相同的维度字段。没有它们，`includeNodes=true` 只会返回基础聚合表自身的标量字段。
 
 在 gRPC 面板上，生成的 `{Type}GroupByRequest` 携带 `include_nodes`（布尔值）和 `include`（关系字段名的重复字符串）。返回的 `{Type}GroupByRow` 包含一个带有维度详情行的类型化 `nodes` 字段。
 
@@ -434,7 +434,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 **响应：** `application/json`，含 `node_labels`（每个携带 `pk`/`pk_columns`）和 `relationship_types`。
 
-每种关系类型还携带 `junction_table_name` 和 `properties`。在联结表支撑的边上，前者命名它所遍历的关联表，后者列出该表中可作为 `r.attr` 读取并可在 `WHERE` 中过滤的列；在外键支撑的边上，名称为 `null` 且属性列表为空，这就是客户端区分两者的方式。联结表本身从不是节点标签——它是边，因此在图客户端中没有对应的图钉，在 `node_labels` 中也没有对应的行。
+每种关系类型还带有 `junction_table_name` 和 `properties`。对于经由关联表的边，前者指明它所穿过的关联表，后者列出该表可作为 `r.attr` 读取、可在 `WHERE` 中过滤的列。对于基于外键的边，名称为 `null`，属性列表为空，客户端据此区分两者。关联表本身永远不是节点标签。它就是边，所以在图客户端中没有标签，在 `node_labels` 中也没有对应行。
 
 ---
 
