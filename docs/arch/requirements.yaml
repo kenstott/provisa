@@ -7,8 +7,7 @@
   type: behavioral
   since: 2026-03
   description: Any authenticated identity can query using any supported language (GraphQL, SQL, pgwire,
-    Arrow Flight). Data returned is governed solely by table/column visibility, RLS, and masking — there
-    is no capability gate on querying itself. Relationship join enforcement applies unless the role holds
+    Arrow Flight). Data returned is governed solely by table/column visibility, RLS, and masking; there is no capability gate on querying itself. Relationship join enforcement applies unless the role holds
     the ignore_relationships capability. There is no query registry and no pre-approval concept.
   use_case: Removing the query-execution capability gate means governance is expressed entirely through
     data-layer controls (visibility, RLS, masking), not through access lists.
@@ -520,7 +519,7 @@
   feature: approvals-and-limits-approval-hook
   priority: MAY
   type: behavioral
-  description: 'Approval hook scoping — per-table (`approval_hook: true`), per-source (`approval_hook:
+  description: 'Approval hook scoping: per-table (`approval_hook: true`), per-source (`approval_hook:
     true` on source config), or global (`auth.approval_hook`). Compiler checks at query time: if no table
     in the query has approval_hook enabled (directly, via source, or global), skip the call entirely.
     Zero overhead for unscoped tables.'
@@ -564,7 +563,7 @@
   feature: approvals-and-limits-approval-hook
   priority: MAY
   type: structural
-  description: 'Approval hook protocols — three transport options, configured via `auth.approval_hook.type`
+  description: 'Approval hook protocols: three transport options, configured via `auth.approval_hook.type`
     (Part of Phase AE): - `webhook` (default): HTTP POST to URL. ~5-50ms. Simplest, works with any external
     ABAC service. - `grpc`: gRPC with persistent connection + multiplexing. ~1-5ms. Binary protocol for
     high-volume same-datacenter deployments. Proto service definition shipped with Provisa. - `unix_socket`:
@@ -638,8 +637,7 @@
   feature: federation-and-routing-governed-pipeline
   priority: MUST
   type: structural
-  description: 'Compiler refactored into two explicit stages. Stage 1: GraphQL → plain PG-style SQL (semantic
-    compilation only — resolves aliases, domains, relationships, emits physical column names and table
+  description: 'Compiler refactored into two explicit stages. Stage 1: GraphQL → plain PG-style SQL (semantic compilation only: it resolves aliases, domains, relationships, emits physical column names and table
     names with AS aliases). Stage 2: plain SQL → governed SQL (AST rewrite applying RLS, masking, visibility,
     and the row cap). Stage 2 is a standalone transformer that accepts SQL + role and returns governed
     SQL, with no knowledge of GraphQL or the semantic model.'
@@ -821,8 +819,7 @@
 
 
     (Amended 2026-09-30, REGISTERED RELATIONS ONLY:) A governed raw-SQL statement reads only registered
-    tables, CTEs, and pure row generators (generate_series) — for every role, including domain_access
-    [*], which widens the domains a role reads, never what counts as governed data. Any other table function
+    tables, CTEs, and pure row generators (generate_series). That holds for every role, including domain_access [*], which widens the domains a role reads, never what counts as governed data. Any other table function
     (duckdb_secrets(), duckdb_settings(), duckdb_databases(), read_csv(...), ...) or unregistered relation
     name (a quoted file path answered by DuckDB''s replacement scan) is refused before routing with V006
     (validate_sql). These reach engine internals or the engine host: DuckDB prints http-secret headers
@@ -977,10 +974,7 @@
   feature: approvals-and-limits-rate-limits
   priority: MUST
   type: behavioral
-  description: The NL query service (`POST /query/nl`) has an independent rate limit configurable via
-    `nl.rate_limit` (requests per minute per role). LLM API cost is the primary driver — unbounded NL
-    requests are a cost risk regardless of server capacity. Requests exceeding the limit are rejected
-    before any LLM call is made.
+  description: 'The NL query service (`POST /query/nl`) has an independent rate limit configurable via `nl.rate_limit` (requests per minute per role). LLM API cost is the primary driver: unbounded NL requests are a cost risk regardless of server capacity. Requests exceeding the limit are rejected before any LLM call is made.'
   use_case: NL rate limit caps LLM API cost exposure without restricting other query paths.
   code:
   - provisa/nl/
@@ -1024,7 +1018,7 @@
   priority: MUST
   type: infrastructure
   description: Rate limit state stored in Redis (existing `cache.redis_url`) using a sliding window counter.
-    No rate limit state is held in-process — stateless Provisa containers (REQ-057) share limit state
+    No rate limit state is held in-process; stateless Provisa containers (REQ-057) share limit state
     across all instances.
   use_case: Redis-backed rate limit state ensures limits are enforced correctly across all horizontal
     Provisa instances.
@@ -1344,8 +1338,7 @@
   type: behavioral
   description: AuthMiddleware defines a skip-path set `{/billing/signup, /billing/webhook, /health, /live,
     /ready, /data/openapi/*, /auth/login, /auth/provider-type, /auth/bootstrap-status, /setup/status}`.
-    Requests to these paths bypass the bearer-token gate entirely and do not require a JWT. The set is
-    exact — every entry is an unauthenticated hole, so an addition is a deliberate edit. REQ-1355 moved
+    Requests to these paths bypass the bearer-token gate entirely and do not require a JWT. The set is exact. Every entry is an unauthenticated hole, so an addition is a deliberate edit. REQ-1355 moved
     this set out of TenantMiddleware, which was registered behind a flag that was always False at app-factory
     time and therefore never ran, leaving the billing webhook to 401 on the auth gate.
   use_case: Skip-path exemptions allow Lemon Squeezy billing webhooks (which authenticate by HMAC signature,
@@ -1389,8 +1382,7 @@
   type: behavioral
   description: 'Every query is recorded in `query_audit_log` with tenant_id, user_id, role_id, SHA-256
     query hash, table_ids, source, status_code, duration_ms, and logged_at. The table is append-only:
-    PostgreSQL rules block DELETE and UPDATE at the database level. Query text is never stored verbatim
-    — only its SHA-256 hash. Two indexes support tenant-scoped and per-user time-range queries. The write
+    PostgreSQL rules block DELETE and UPDATE at the database level. Query text is never stored verbatim, only its SHA-256 hash. Two indexes support tenant-scoped and per-user time-range queries. The write
     happens at the ONE governed pipeline, never per transport: the governors (_govern_and_route, _govern_and_route_compiled)
     open a PendingAudit carrying the acting principal, the resolved registered_tables ids (from gov_ctx.table_map),
     the source surface and the start time; a governance refusal writes its row immediately with status
@@ -1461,7 +1453,7 @@
     as on the raw one, except in high-security mode (REQ-693).
 
 
-    (Amended 2026-10-07, maintainer -- ANY ROW MATCHING; this replaces "every JOIN ON condition" above as the
+    (Amended 2026-10-07, maintainer: ANY ROW MATCHING; this replaces "every JOIN ON condition" above as the
     statement of what is checked:) Two registered tables are related whenever rows of one are matched or filtered
     against rows of the other by comparing their columns, however that is written: a join of any spelling (ON, USING,
     NATURAL, a comma or CROSS JOIN with the condition in WHERE), through a CTE or a derived table, IN and NOT IN with
@@ -1472,7 +1464,7 @@
     A registered view is its own table. Not relating, and so allowed without a relationship: the branches of UNION,
     INTERSECT and EXCEPT, and a subquery that refers to nothing outside itself. A relationship type that is not
     registered is refused on every Cypher surface alike. Found 2026-10-07: the check read only ON equalities between
-    directly named tables, and the Cypher surfaces did not run it. (Amended 2026-10-08:) A table joined to itself on equality of its whole registered primary key re-reads the same row and relates nothing; it needs no relationship. A table with no registered key has no such exemption. (Maintainer ruling 2026-10-08, after the any-row rule refused ordinary same-table subqueries and the profiler''s own sampling:) A table paired with itself needs no relationship in exactly two cases: the same row, as above; and a filter -- IN, NOT IN, EXISTS or NOT EXISTS over the same table, whose rows do not come out and which only decides which outer rows appear. Anything that brings out a second copy of the table on other columns -- a self-join of any spelling, a CTE, derived table or LATERAL of the table joined back, a correlated scalar subquery, a recursive walk -- needs a relationship registered from the table to itself, like any pair; a bare product of a table with itself stays refused. Pairings inside a recursive branch are judged like any other. A statement the product writes for itself -- the data profiler''s sampling -- is not a role''s query: it states so at its one call site and the relationship guard is not applied to it, every other check still is, and no surface can state it for a role''s SQL.'
+    directly named tables, and the Cypher surfaces did not run it. (Amended 2026-10-08:) A table joined to itself on equality of its whole registered primary key re-reads the same row and relates nothing; it needs no relationship. A table with no registered key has no such exemption. (Maintainer ruling 2026-10-08, after the any-row rule refused ordinary same-table subqueries and the profiler''s own sampling:) A table paired with itself needs no relationship in exactly two cases: the same row, as above; and a filter (IN, NOT IN, EXISTS or NOT EXISTS) over the same table, whose rows do not come out and which only decides which outer rows appear. Anything that brings out a second copy of the table on other columns -- a self-join of any spelling, a CTE, derived table or LATERAL of the table joined back, a correlated scalar subquery, a recursive walk -- needs a relationship registered from the table to itself, like any pair; a bare product of a table with itself stays refused. Pairings inside a recursive branch are judged like any other. A statement the product writes for itself -- the data profiler''s sampling -- is not a role''s query: it states so at its one call site and the relationship guard is not applied to it, every other check still is, and no surface can state it for a role''s SQL.'
   use_case: V002 enforces approved navigation paths so joins between sensitive tables require explicit
     steward registration and approval, providing an audit surface for cross-table data access.
   code:
@@ -1557,8 +1549,7 @@
   feature: sign-in-and-identity-providers
   priority: MUST
   type: structural
-  description: Pluggable auth provider interface — abstract AuthProvider producing AuthIdentity (user_id,
-    email, roles, claims) mapped to Provisa roles. One provider at a time configured in YAML.
+  description: 'Pluggable auth provider interface: an abstract AuthProvider producing AuthIdentity (user_id, email, roles, claims) mapped to Provisa roles. One provider at a time configured in YAML.'
   use_case: Pluggable auth provider interface lets organizations connect any identity system without code
     changes.
   code:
@@ -1601,7 +1592,7 @@
   feature: sign-in-and-identity-providers
   priority: MUST
   type: behavioral
-  description: Firebase Authentication — validates Firebase ID tokens via firebase-admin SDK. Supports
+  description: Firebase Authentication validates Firebase ID tokens via firebase-admin SDK. Supports
     all Firebase auth methods (email/password, Google, Apple, GitHub, phone, anonymous, SAML, OIDC).
   use_case: Firebase auth integration supports all Firebase sign-in methods including SSO and anonymous
     users.
@@ -1647,7 +1638,7 @@
   feature: sign-in-and-identity-providers
   priority: MUST
   type: behavioral
-  description: Keycloak OIDC — validates JWT access tokens from Keycloak via OIDC discovery + JWKS. Realm
+  description: Keycloak OIDC validates JWT access tokens from Keycloak via OIDC discovery + JWKS. Realm
     roles + client roles → Provisa role mapping.
   use_case: Keycloak OIDC integration maps realm and client roles to Provisa roles for enterprise SSO
     deployments.
@@ -1692,7 +1683,7 @@
   feature: sign-in-and-identity-providers
   priority: MUST
   type: behavioral
-  description: Generic OAuth 2.0 / OIDC — works with any OIDC-compliant provider (PingFederate, Okta,
+  description: Generic OAuth 2.0 / OIDC works with any OIDC-compliant provider (PingFederate, Okta,
     Azure AD, Auth0). OIDC discovery URL → JWKS → JWT validation. Configurable role claim mapping.
   use_case: Generic OIDC support lets any compliant provider (Okta, Azure AD, Auth0) integrate without
     custom code.
@@ -1738,7 +1729,7 @@
   feature: sign-in-and-identity-providers
   priority: MAY
   type: behavioral
-  description: 'Simple username/password auth for testing — users defined in config YAML with bcrypt hashed
+  description: 'Simple username/password auth for testing, with users defined in config YAML with bcrypt hashed
     passwords. Issues short-lived JWT. NOT for production (requires allow_simple_auth: true flag).'
   use_case: Simple username/password auth lets developers test the platform locally without configuring
     an IdP.
@@ -1953,8 +1944,7 @@
   feature: source-registration-explicit-tables
   priority: MUST
   type: constraint
-  description: Source registration does not expose data — no table queryable until explicitly registered
-    by a steward.
+  description: 'Source registration does not expose data: no table is queryable until explicitly registered by a steward.'
   use_case: Data is invisible until explicitly registered, so raw database tables are never exposed by accident.
   code:
   - provisa/core/
@@ -1995,8 +1985,7 @@
   feature: source-registration-explicit-tables
   priority: MUST
   type: constraint
-  description: Unregistered tables do not exist — cannot be referenced in queries, do not appear in schema
-    browser, cannot be mutation targets.
+  description: 'Unregistered tables do not exist: they cannot be referenced in queries, do not appear in the schema browser, and cannot be mutation targets.'
   use_case: Unregistered tables are completely absent from schema and runtime, eliminating enumeration
     attacks.
   code:
@@ -2196,15 +2185,14 @@
     model a true 1:1 as a many-to-one in each direction.) [END SUPERSEDED BLOCK] (Amended 2026-09-26,
     ONE-TO-ONE RESTORED:) "one-to-one" is now a first-class Cardinality value (provisa/core/models.py),
     distinct from many-to-one/one-to-many. The 2026-06-18 removal is reversed: forcing a genuine 1:1 (e.g.
-    orders.order_id <-> order_docs.order_id, both primary keys) into a many-to-one/one-to-many workaround
-    was semantically lossy — it could not express "exactly one, not zero-or-one-of-many" and misled schema/catalog/Cypher
+    orders.order_id <-> order_docs.order_id, both primary keys) into a many-to-one/one-to-many workaround was semantically lossy. It could not express "exactly one, not zero-or-one-of-many" and misled schema/catalog/Cypher
     consumers that infer PK-ness from cardinality. one-to-one produces the same SDL shape as many-to-one
     (singular object field, not a list) and the same resolver shape (LIMIT 1 / head-of-matched-rows, per
     provisa/compiler/sql_selection.py._build_rel_json_expr), but is looked up by the target-side join
     key rather than assumed to already be the FK-pointed-to row. Every `cardinality ==`/`in (...)` switch
     across the codebase (schema_gen, sql_selection, label_map, mutations, mcp/tools, catalog_constraints,
     core/repositories/relationship, grpc/query_ir, grpc/proto_gen, cache/hot_tables, federation/landed_keys)
-    must handle it explicitly — an unrecognized cardinality value raises, never silently defaults to many-to-one
+    must handle it explicitly; an unrecognized cardinality value raises, never silently defaults to many-to-one
     or one-to-many. Many-to-many is still NOT a Cardinality value: it remains represented as two of these
     binary hops through a junction table (via_table_id, REQ-1586).'
   use_case: Manual cross-source relationship definitions let stewards federate data across different databases
@@ -2407,8 +2395,7 @@
   feature: views-governed-datasets
   priority: MUST
   type: behavioral
-  description: Views go through the same governance pipeline as tables — RLS, masking, sampling, role-based
-    schema visibility, approval workflow.
+  description: 'Views go through the same governance pipeline as tables: RLS, masking, sampling, role-based schema visibility, approval workflow.'
   use_case: Views through the same governance pipeline as tables ensures computed datasets receive identical
     security treatment.
   code:
@@ -2607,7 +2594,7 @@
   feature: semantic-model-tables-and-columns
   priority: MUST
   type: constraint
-  description: Path columns are read-only computed fields — mutations unaffected.
+  description: Path columns are read-only computed fields; mutations are unaffected.
   use_case: Path columns are read-only, preventing mutations from targeting computed derived fields.
   code:
   - provisa/compiler/sql_gen.py
@@ -2968,7 +2955,7 @@
   feature: source-registration-connect
   priority: MUST
   type: structural
-  description: All Trino catalog configuration must flow through Provisa's config YAML — users never manage
+  description: All Trino catalog configuration must flow through Provisa's config YAML; users never manage
     Trino .properties files directly. Provisa generates catalog properties, table definition files, and
     auto-registers tables at runtime following the Kafka source config pattern as exemplar.
   use_case: Config-driven Trino catalog generation hides Trino properties files from operators entirely.
@@ -3113,8 +3100,7 @@
   type: behavioral
   description: 'Views require an approval workflow, OR the originator must already hold the rights to
     the underlying tables and to any joins used within the view. Any join within a view likewise requires
-    approval or originator rights. Convenience views (adding no new semantics) are discouraged — instead
-    grant the relationship rights and query in any form. Creating a view implies new semantics: derived/calculated
+    approval or originator rights. Convenience views (adding no new semantics) are discouraged. Instead, grant the relationship rights and query in any form. Creating a view implies new semantics: derived/calculated
     values, or the view name itself as a new business concept. Approval gates therefore apply to both
     views (for the semantics they introduce, consistent with REQ-134) and relationships (for navigational
     intent).'
@@ -3157,12 +3143,12 @@
   feature: semantic-model-domains
   priority: MUST
   type: structural
-  description: 'There is only one view type — always intradomain (the output belongs to a domain). Two
+  description: 'There is only one view type, always intradomain (the output belongs to a domain). Two
     valid reasons to create a view: (1) the source is cross-domain (importing external data into the domain
     as a named business concept), (2) the source is local (deriving new or calculated data from existing
     domain assets). Two hard constraints follow: cross-domain data may only enter a domain via a view,
     and new or derived data may only exist as a view. No other reason to create a view is valid; there
-    is no separate cross-domain view type — just views, always intradomain, used for exactly these two
+    is no separate cross-domain view type. There are just views, always intradomain, used for exactly these two
     purposes.'
   use_case: Unified view model with two hard constraints ensures cross-domain imports are read-only adapters
     while computed data is always created within a single domain.
@@ -3243,7 +3229,7 @@
   priority: SHOULD
   type: structural
   description: 'The semantic layer must support user-designated primary key columns per table column via
-    an `is_primary_key: bool` field. Designation is informational only — Provisa does not enforce uniqueness;
+    an `is_primary_key: bool` field. Designation is informational only. Provisa does not enforce uniqueness;
     the underlying datastore is authoritative.'
   use_case: User-designated PKs enable semantic graph operations without requiring Provisa to validate
     database constraints.
@@ -3385,8 +3371,7 @@
   feature: semantic-model-relationships
   priority: SHOULD
   type: behavioral
-  description: Auto-generate GQL relationships from FK constraints in database schema introspection —
-    relationships discoverable from FK metadata in addition to manual steward configuration and AI-assisted
+  description: Auto-generate GQL relationships from FK constraints in database schema introspection, so relationships are discoverable from FK metadata in addition to manual steward configuration and AI-assisted
     hints.
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
@@ -3464,8 +3449,7 @@
   feature: hasura-migration-converters
   priority: MAY
   type: behavioral
-  description: The `hasura_v2_relationship_style` option controls whether FK-derived relationships use
-    Hasura V2's naming conventions — singular for many-to-one, plural for one-to-many using inflection.
+  description: 'The `hasura_v2_relationship_style` option controls whether FK-derived relationships use Hasura V2''s naming conventions: singular for many-to-one, plural for one-to-many using inflection.'
   use_case: V2-compatible relationship naming enables teams to adopt Hasura conventions without schema
     migration.
   code:
@@ -3585,7 +3569,7 @@
   feature: semantic-model-domains
   priority: MUST
   type: constraint
-  description: A registered table must be unique by (domain_id, table_name) — stronger guarantee than
+  description: A registered table must be unique by (domain_id, table_name), a stronger guarantee than
     the DB constraint UNIQUE(source_id, schema_name, table_name). Table registration (admin registerTable/updateTable
     mutations) rejects any collision of domain+table against a different physical table. Startup/schema-rebuild
     validates the entire registry and fails if any duplicate exists.
@@ -3620,8 +3604,7 @@
   priority: MUST
   type: behavioral
   description: A datasource may be associated with multiple domains. Any domain owner may register any
-    unclaimed table from that source. Once a table is claimed by one domain, no other domain may register
-    it — first-come ownership model. Unique constraint enforced on (source_id, normalized_table_name).
+    unclaimed table from that source. Once a table is claimed by one domain, no other domain may register it (first-come ownership). Unique constraint enforced on (source_id, normalized_table_name).
     The UI greys out claimed tables regardless of which domain claimed them.
   use_case: Multi-domain with first-claim ownership prevents the same physical table from being registered
     multiple times while allowing flexible domain-to-source associations.
@@ -3950,11 +3933,7 @@
   feature: catalog-and-discovery-discovery
   priority: SHOULD
   type: structural
-  description: 'Discovery is structured across five tiers of increasing governance: (1) Registered source
-    schema — raw inventory, admin-level visibility; (2) Unclaimed tables — introspected from registered
-    sources with no domain owner; (3) Domain assets — claimed tables and steward-defined views, fully
-    governed; (4) Relationships — approved traversal paths between Tier 3 assets; (5) Field grants — domain-to-domain
-    field access permissions. Each tier is a prerequisite for the next.'
+  description: 'Discovery is structured across five tiers of increasing governance: (1) Registered source schema: raw inventory, admin-level visibility; (2) Unclaimed tables: introspected from registered sources with no domain owner; (3) Domain assets: claimed tables and steward-defined views, fully governed; (4) Relationships: approved traversal paths between Tier 3 assets; (5) Field grants: domain-to-domain field access permissions. Each tier is a prerequisite for the next.'
   use_case: Structured discovery tiers give stewards and analysts a clear mental model of what data is
     governed and at what level.
   code:
@@ -3989,9 +3968,7 @@
   priority: SHOULD
   type: behavioral
   description: 'Relationship candidates are ranked by a four-level confidence hierarchy: (Highest) Approved
-    catalog relationship validated by both stewards; (High) Intra-source FK constraint — explicit modeling
-    intent; (Medium) Intra-source semantic inference — column name/type similarity; (Low) Cross-source
-    semantic inference — naming conventions diverge, high false-positive risk. Candidates corroborated
+    catalog relationship validated by both stewards; (High) Intra-source FK constraint, which is explicit modeling intent; (Medium) Intra-source semantic inference from column name/type similarity; (Low) Cross-source semantic inference, where naming conventions diverge and false-positive risk is high. Candidates corroborated
     by multiple evidence types accumulate confidence.'
   use_case: Confidence hierarchy lets stewards prioritize which relationship suggestions to review first,
     reducing false-positive noise.
@@ -4188,7 +4165,7 @@
   priority: MUST
   type: constraint
   description: A source type not explicitly handled by the introspection router must return [] (empty
-    list) for both schemas and tables — never None. Returning None triggers a Trino fallback path that
+    list) for both schemas and tables, never None. Returning None triggers a Trino fallback path that
     is not appropriate for non-Trino sources.
   use_case: Returning empty list instead of None for unknown source types prevents broken Trino fallback
     execution on source types that have no Trino connector.
@@ -4377,8 +4354,7 @@
   feature: change-events-and-streams-kafka-topics
   priority: SHOULD
   type: behavioral
-  description: Discriminator filter for multi-type topics — multiple table configs on the same physical
-    topic, each filtered by a discriminator field/value.
+  description: 'Discriminator filter for multi-type topics: multiple table configs on the same physical topic, each filtered by a discriminator field/value.'
   use_case: Discriminator filters let a single physical Kafka topic serve multiple logical table definitions
     safely.
   code:
@@ -4447,7 +4423,7 @@
     connector is packaged in the Trino deployment, (2) SQLGlot has the dialect for transpilation, (3)
     `SOURCE_TO_DIALECT` and `SOURCE_TO_CONNECTOR` entries exist in Provisa config. New direct-route sources
     to add: clickhouse, mariadb, singlestore, redshift, databricks, hive, druid, exasol. File and lake
-    sources (iceberg, hive_s3, delta) are TRINO_ONLY — no direct-route, no SQLGlot dialect entry required;
+    sources (iceberg, hive_s3, delta) are TRINO_ONLY. They need no direct route and no SQLGlot dialect entry;
     only Trino connector packaging and Provisa config entries needed. Each source must have all applicable
     items verified.'
   use_case: Verified direct-route support for new RDBMS dialects lets data engineers connect more source
@@ -4742,7 +4718,7 @@
     return type. This eliminates manual table and function registration for remote GraphQL APIs. [END
     SUPERSEDED BLOCK] (Amended 2026-10-02, RELAY CONNECTIONS) A schema that follows the Relay connection
     convention maps to tables that can be read. A connection -- a type with page information beside a
-    row list -- is a table whose rows are its nodes -- a root field that returns a connection is one table,
+    row list -- is a table whose rows are its nodes. A root field that returns a connection is one table,
     and each connection on the single object a root field returns is a table of its own that takes the
     root field's required arguments (`repository(owner, name)` and its `issues` give the table `repositoryIssues`).
     A connection is never a column, and a connection that cannot be read page by page, or whose rows are
@@ -4815,7 +4791,7 @@
     cache is held in the engine's own store on every engine, not in a Trino Iceberg table on S3. Kept
     here for history; do not implement against it.] The response rows are materialized as Parquet in a
     Trino Iceberg table on S3 (`results.api_cache`, `s3a://provisa-results/api_cache/`). [END SUPERSEDED
-    BLOCK] Repeated calls within TTL are served from the Iceberg table via Trino — zero remote hops. The
+    BLOCK] Repeated calls within TTL are served from the Iceberg table via Trino, with zero remote hops. The
     cache table is automatically dropped after TTL expires. (Amended 2026-10-02, PAGED READS) A connection
     table (REQ-308) is read page by page, `graphql_remote.max_list_items` rows a page, following the remote's
     cursor until it reports no next page or `graphql_remote.max_rows` rows are read; a read that stops
@@ -4924,7 +4900,7 @@
   priority: SHOULD
   type: behavioral
   description: Remote schema introspection is re-run on demand via an "Refresh Schema" admin mutation.
-    Provisa does not poll for remote schema changes automatically — the steward triggers refresh when
+    Provisa does not poll for remote schema changes automatically; the steward triggers refresh when
     the remote API evolves. On refresh, existing table and function registrations derived from the remote
     schema are updated; custom RLS/masking rules applied on top are preserved.
   use_case: On-demand schema refresh lets stewards update remote schema registrations when the upstream
@@ -5132,72 +5108,7 @@
   feature: connector-catalog-remote-schemas
   priority: SHOULD
   type: behavioral
-  description: OpenAPI GET operations as tables. [SUPERSEDED by the 2026-10-02 REGISTRATION IS
-    CURATION amendment below -- a GET operation is OFFERED as a table and becomes one only when the
-    steward registers it. Kept here for history; do not implement against it.] On registration,
-    Provisa parses the spec and auto-registers all GET operations as virtual query tables. [END
-    SUPERSEDED BLOCK] Path parameters and query parameters become GraphQL arguments. The `responses.200` (or
-    `responses.2xx`) schema determines the virtual table's column set. (Amended 2026-10-02,
-    REGISTRATION IS CURATION) Adding an OpenAPI source registers no tables. Every table the source offers is listed by the Register Table picker, and the steward registers the ones wanted through the mutation every source uses; that registration is the curation step, and a registered table is then governed like any other (REQ-1923). The spec is
-    parsed when the source is added and kept with it; each GET operation is a table on offer.
-    (Amended 2026-10-07, SPEC READ BY A LIBRARY) The spec is read through a maintained spec library
-    that follows its references; Provisa has no reference resolver of its own. A response schema
-    composed with allOf is read as one set of properties, so its columns are those of every member.
-    A schema that refers to itself is read as far as a table's columns and an object column's
-    fields need.
-    (Amended 2026-10-07, A GET THAT ANSWERS NO ROWS) A GET whose response declares no schema, or
-    whose declared answer is a file, is offered as a command and not as a table (REQ-1924).
-    (Amended 2026-10-07, WHICH RESPONSE IS THE ROWS) A table's columns are read from the success
-    response only -- 200, else 2xx, else a default declared with neither. A default declared
-    beside a success response is the error the remote answers with and is never read as the rows.
-    The JSON schema is the one under the response's JSON media type, whatever parameters the
-    media type carries (application/json;charset=UTF-8 is JSON).
-    (Amended 2026-10-07, ROW LOCATION PROPOSED FROM THE SPEC) A list operation often answers a page
-    wrapper -- an object holding the rows under one property beside its paging fields. When the
-    success response is an object with exactly one property that is an array of objects, that
-    property is proposed as the table's row location when the table is offered, the way its paging
-    is proposed (REQ-318). The steward accepts or edits it at registration. The table's columns are
-    those of the objects at the row location, and each read takes its rows from there.
-    (Amended 2026-10-07, ROW LOCATION AS BUILT) The row location is one of the table's paging
-    settings (REQ-318) and may be declared with no paging type, for an answer that is wrapped and
-    not paged. It is proposed only when the response has no identity of its own -- no id, key or
-    name property -- and the objects in its one list declare their fields, so that a single thing
-    holding one list is not taken for a page. A row location the response does not have is refused
-    when the table is registered. It is set at registration and kept afterwards -- an edit of the
-    table's paging that names another is refused, since the table's columns are those of the objects
-    there; the table is registered again to read its rows from elsewhere. A cursor is not proposed
-    for a wrapped list, since nothing in a spec says which field or parameter carries it; the
-    steward declares it.
-    (Amended 2026-10-07, PAGING AFTER THE LAST ROW) A fifth paging type reads a list whose next
-    page starts after the last row of the page before -- a parameter carries a field of that row,
-    its id, and a page shorter than the page size is the last. It declares the parameter, the
-    row's field, the page-size parameter and the page size, and is bounded by max pages like the
-    others. It is proposed from the spec when a list declares a starting_after parameter beside a
-    size parameter and its rows declare an id. A cursor the answer carries is now proposed where
-    the spec names it -- a parameter x beside a next_x property of the answer -- which replaces
-    the statement above that a cursor is never proposed; any other cursor is still declared by
-    the steward. A page whose last row lacks the declared field fails the read by name.
-    (Amended 2026-10-07, ENUM PARAMETERS, maintainer ruling) The parameters a read of a table's
-    whole collection is called with are taken from the spec as follows. A list parameter whose
-    items are an enum is sent every value, so one call covers each of them. A single-valued
-    parameter is sent its declared default where it has one. A single-valued enum parameter with
-    no default is not sent, so the read is not filtered by it; before this ruling it was sent
-    every value it allows, which a remote that takes one value reads as the last of them or
-    refuses.
-    (Amended 2026-10-08, PAGE SIZE OF A CURSOR-PAGED LIST) A cursor-paged table may declare a
-    page-size parameter, and its page size is then sent under it on every page; before this a
-    cursor-paged table's page size was never sent and each page was the remote's own size. With
-    no page-size parameter declared none is sent, since a cursor says where a page starts and
-    not how long it is, and no name is assumed. The parameter is proposed from the spec where
-    the list declares one beside its cursor. The Paging section shows both fields for a cursor.
-    (Amended 2026-10-08, ROWS OF SEVERAL KINDS) A list whose rows are one of several kinds of object
-    (anyOf or oneOf, every member an object with properties) is a table like any other list. Its
-    columns are every property any kind declares, since a row is one kind and holds that kind's; a
-    property the kinds type differently is a text column. A value that may also be a scalar, such as
-    an id or the object it names, is not a row. (Amended 2026-10-08, AN OPERATION'S OWN ADDRESS) An
-    operation that declares servers of its own, on itself or on its path, is called at that address
-    with the source's credential and headers; every other operation is called at the source's address.
-    This holds for a table and for a command.
+  description: 'OpenAPI GET operations as tables. [SUPERSEDED by the 2026-10-02 REGISTRATION IS CURATION amendment below -- a GET operation is OFFERED as a table and becomes one only when the steward registers it. Kept here for history; do not implement against it.] On registration, Provisa parses the spec and auto-registers all GET operations as virtual query tables. [END SUPERSEDED BLOCK] Path parameters and query parameters become GraphQL arguments. The `responses.200` (or `responses.2xx`) schema determines the virtual table''s column set. (Amended 2026-10-02, REGISTRATION IS CURATION) Adding an OpenAPI source registers no tables. Every table the source offers is listed by the Register Table picker, and the steward registers the ones wanted through the mutation every source uses; that registration is the curation step, and a registered table is then governed like any other (REQ-1923). The spec is parsed when the source is added and kept with it; each GET operation is a table on offer. (Amended 2026-10-07, SPEC READ BY A LIBRARY) The spec is read through a maintained spec library that follows its references; Provisa has no reference resolver of its own. A response schema composed with allOf is read as one set of properties, so its columns are those of every member. A schema that refers to itself is read as far as a table''s columns and an object column''s fields need. (Amended 2026-10-07, A GET THAT ANSWERS NO ROWS) A GET whose response declares no schema, or whose declared answer is a file, is offered as a command and not as a table (REQ-1924). (Amended 2026-10-07, WHICH RESPONSE IS THE ROWS) A table''s columns are read from the success response only: 200, else 2xx, else a default declared with neither. A default declared beside a success response is the error the remote answers with and is never read as the rows. The JSON schema is the one under the response''s JSON media type, whatever parameters the media type carries (application/json;charset=UTF-8 is JSON). (Amended 2026-10-07, ROW LOCATION PROPOSED FROM THE SPEC) A list operation often answers a page wrapper, an object holding the rows under one property beside its paging fields. When the success response is an object with exactly one property that is an array of objects, that property is proposed as the table''s row location when the table is offered, the way its paging is proposed (REQ-318). The steward accepts or edits it at registration. The table''s columns are those of the objects at the row location, and each read takes its rows from there. (Amended 2026-10-07, ROW LOCATION AS BUILT) The row location is one of the table''s paging settings (REQ-318) and may be declared with no paging type, for an answer that is wrapped and not paged. It is proposed only when the response has no identity of its own -- no id, key or name property -- and the objects in its one list declare their fields, so that a single thing holding one list is not taken for a page. A row location the response does not have is refused when the table is registered. It is set at registration and kept afterwards. An edit of the table''s paging that names another is refused, since the table''s columns are those of the objects there; the table is registered again to read its rows from elsewhere. A cursor is not proposed for a wrapped list, since nothing in a spec says which field or parameter carries it; the steward declares it. (Amended 2026-10-07, PAGING AFTER THE LAST ROW) A fifth paging type reads a list whose next page starts after the last row of the page before. A parameter carries a field of that row, its id, and a page shorter than the page size is the last. It declares the parameter, the row''s field, the page-size parameter and the page size, and is bounded by max pages like the others. It is proposed from the spec when a list declares a starting_after parameter beside a size parameter and its rows declare an id. A cursor the answer carries is now proposed where the spec names it -- a parameter x beside a next_x property of the answer -- which replaces the statement above that a cursor is never proposed; any other cursor is still declared by the steward. A page whose last row lacks the declared field fails the read by name. (Amended 2026-10-07, ENUM PARAMETERS, maintainer ruling) The parameters a read of a table''s whole collection is called with are taken from the spec as follows. A list parameter whose items are an enum is sent every value, so one call covers each of them. A single-valued parameter is sent its declared default where it has one. A single-valued enum parameter with no default is not sent, so the read is not filtered by it; before this ruling it was sent every value it allows, which a remote that takes one value reads as the last of them or refuses. (Amended 2026-10-08, PAGE SIZE OF A CURSOR-PAGED LIST) A cursor-paged table may declare a page-size parameter, and its page size is then sent under it on every page; before this a cursor-paged table''s page size was never sent and each page was the remote''s own size. With no page-size parameter declared none is sent, since a cursor says where a page starts and not how long it is, and no name is assumed. The parameter is proposed from the spec where the list declares one beside its cursor. The Paging section shows both fields for a cursor. (Amended 2026-10-08, ROWS OF SEVERAL KINDS) A list whose rows are one of several kinds of object (anyOf or oneOf, every member an object with properties) is a table like any other list. Its columns are every property any kind declares, since a row is one kind and holds that kind''s; a property the kinds type differently is a text column. A value that may also be a scalar, such as an id or the object it names, is not a row. (Amended 2026-10-08, AN OPERATION''S OWN ADDRESS) An operation that declares servers of its own, on itself or on its path, is called at that address with the source''s credential and headers; every other operation is called at the source''s address. This holds for a table and for a command.'
   use_case: GET operation auto-registration maps path and query params to GraphQL arguments automatically.
   code:
   - provisa/openapi/
@@ -5301,7 +5212,7 @@
     + operation path + native args`. [SUPERSEDED by REQ-845, 2026-10-03 -- a repeated call is served from
     the engine''s own store, not from Trino. Kept here for history; do not implement against it.] Repeated
     calls within TTL hit Trino directly. [END SUPERSEDED BLOCK] The cache table is dropped after TTL expires.
-    Mutations are never cached — they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES IN
+    Mutations are never cached, because they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES IN
     THE ENGINE''S STORE:) The rows a call returns are kept in the federation engine''s own store, in the
     org''s API cache schema, in one table per API table (REQ-845, REQ-859). This holds on every engine.
     The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE
@@ -5730,7 +5641,7 @@
     on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against
     it.] Query method results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
     `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id
-    + method + native args`. Mutations are never cached — they are side-effecting. One `grpc.aio.Channel`
+    + method + native args`. Mutations are never cached, because they are side-effecting. One `grpc.aio.Channel`
     is reused per registered source across requests, stored in `AppState.grpc_remote_channels`. The cache
     table is dropped after TTL expires. (Amended 2026-10-03, THE API CACHE LIVES IN THE ENGINE''S STORE:)
     The rows a call returns are kept in the federation engine''s own store, in the org''s API cache schema,
@@ -5943,7 +5854,7 @@
     `mysql+pymysql`). [END SUPERSEDED BLOCK]
 
 
-    (Amended 2026-09-29, shared sync engine — REQ-1882:) Provisa creates one synchronous SQLAlchemy Engine
+    (Amended 2026-09-29, shared sync engine, REQ-1882:) Provisa creates one synchronous SQLAlchemy Engine
     per ingest source at startup and reuses it across all requests; every request runs on its own thread
     and shares that engine''s thread-safe pool, waiting (bounded by the request budget) when it is exhausted.
     [SUPERSEDED by REQ-332, 2026-09-30 -- the PostgreSQL store runs on psycopg 3 (postgresql+psycopg)
@@ -5953,7 +5864,7 @@
     to its sync driver. [END SUPERSEDED BLOCK]
 
 
-    (Amended 2026-09-30, store drivers — REQ-828:) The `dialect` field names the backend (`postgresql`,
+    (Amended 2026-09-30, store drivers, REQ-828:) The `dialect` field names the backend (`postgresql`,
     `mysql`, ...) or the backend with its one supported sync driver (`postgresql+psycopg`, `mysql+pymysql`);
     any other driver name fails loud.'
   use_case: Per-source SQLAlchemy AsyncEngine lets ingest tables target any supported relational store
@@ -6108,7 +6019,7 @@
   description: 'Ingest tables are subscribable via the standard SSE endpoint (`GET /data/subscribe/{table}`).
     The subscription provider polls `_updated_at` watermark at a configurable interval (default: 5 s).
     Full governance is applied: RLS row filtering and column masking are enforced identically to local
-    table subscriptions. (Amended 2026-10-05) Change notifications are governed per subscriber. A changed row is never forwarded as the source reported it -- an insert or update is read back by primary key through the governed pipeline as the subscriber''s key, and a row the key may not read is not delivered. A delete is delivered only for a row the stream delivered, with its key columns as delivered; a row that leaves the key''s view on update is delivered as a delete. A table with no primary key is refused for subscription, by name.'
+    table subscriptions. (Amended 2026-10-05) Change notifications are governed per subscriber. A changed row is never forwarded as the source reported it. An insert or update is read back by primary key through the governed pipeline as the subscriber''s key, and a row the key may not read is not delivered. A delete is delivered only for a row the stream delivered, with its key columns as delivered; a row that leaves the key''s view on update is delivered as a delete. A table with no primary key is refused for subscription, by name.'
   use_case: Ingest tables subscribable via SSE lets consumers receive pushed events as a live stream with
     full governance.
   code:
@@ -6795,9 +6706,7 @@
   feature: vector-search-columns
   priority: SHOULD
   type: behavioral
-  description: Generated embedding columns must support scheduled incremental refresh — only rows where
-    the source data has changed since last embedding are re-embedded. Full rebuild is triggered on model
-    change or schema change affecting the generating subquery.
+  description: 'Generated embedding columns must support scheduled incremental refresh: only rows where the source data has changed since last embedding are re-embedded. Full rebuild is triggered on model change or schema change affecting the generating subquery.'
   use_case: Incremental refresh avoids unnecessary embedding API calls and reduces operational cost.
   code:
   - provisa/vector/scheduled_refresh.py
@@ -6944,25 +6853,25 @@
   feature: performance-and-scale-optimizer-hints
   priority: SHOULD
   type: structural
-  description: 'Connector cardinality capability — cardinality(source, table) -> Estimate{value, exact,
+  description: 'Connector cardinality capability: cardinality(source, table) -> Estimate{value, exact,
     method}. A source may expose a CHEAP volume metric so a caller can size a table without a full scan.
     Resolution order: (1) a cheap native statistic when the source has one (GraphQL totalCount, OpenAPI
     X-Total-Count, PG pg_class.reltuples, Trino SHOW STATS, Parquet/Iceberg row-group metadata); (2) an
     exact COUNT(*) only when the connector reports counting is cheap; (3) UNKNOWN when sizing is expensive
-    and no native estimate exists — fail-open, never a hidden full scan. The Estimate carries `exact`
+    and no native estimate exists (fail-open, never a hidden full scan). The Estimate carries `exact`
     (true for a native count(*)/totalCount, false for reltuples-style estimates) and `method`, so a consumer
     knows what the number is and what it may be used for. The producer is SPARSE and OPT-IN: a native
-    count is authored only for expensive-count sources — the API sources (openapi/graphql_remote/grpc),
+    count is authored only for expensive-count sources: the API sources (openapi/graphql_remote/grpc),
     where a count today means materializing the full pull, and huge un-indexed row-stores. Cheap-count
     sources contribute nothing and carry no maintenance. Generalizes and supersedes the GQL-specific count_query
     helper (provisa/sources/counts.py) under the connector abstraction (REQ-840-843). DONE (2026-07):
-    the estimate type + resolution order are implemented — provisa/federation/ cardinality.py::Estimate(value,
+    the estimate type + resolution order are implemented in provisa/federation/cardinality.py: Estimate(value,
     exact, method: CardinalityMethod) and resolve_cardinality(native_stat, exact_count_cheap, exact_count)
     returning, in order, a source''s native statistic (exact totalCount or approximate reltuples), else
     an exact COUNT(*) only when the connector says counting is cheap, else UNKNOWN (fail-open, never a
     hidden full scan). REMAINING (kept in-progress): the per-source native-stat PRODUCERS wired onto the
     connectors (graphql totalCount, openapi X-Total-Count, PG reltuples, Trino SHOW STATS, Parquet/Iceberg
-    row-group metadata) — sparse/opt-in for expensive-count sources.'
+    row-group metadata), sparse and opt-in for expensive-count sources.'
   code:
   - provisa/federation/cardinality.py
   tests:
@@ -7035,8 +6944,7 @@
   feature: connector-catalog-streams-logs-and-public-data
   priority: MUST
   type: constraint
-  description: The `ref` and `geo` schemas are always included as linker schemas in every GovData source
-    — they are not configurable and not tied to any subject grouping. The Register Table form lists
+  description: The `ref` and `geo` schemas are always included as linker schemas in every GovData source. They are not configurable and not tied to any subject grouping. The Register Table form lists
     them beside the schemas of the ticked subjects.
   use_case: Always-included linker schemas ensure GovData joins on reference and geography data are always
     available without explicit configuration.
@@ -7412,7 +7320,7 @@
   feature: vector-search-governance-and-replicas
   priority: MUST
   type: constraint
-  description: 'Column masking does not apply to embedding columns — a vector cannot be partially masked and remain semantically meaningful. Registration refuses a mask on an embedding column. Access to an embedding column is enforced via visibility (hide entirely), row filters, sensitivity tier (block search), and domain boundary rules; the column is either visible and searchable for a given role, or absent from the schema entirely.'
+  description: 'Column masking does not apply to embedding columns, because a vector cannot be partially masked and remain semantically meaningful. Registration refuses a mask on an embedding column. Access to an embedding column is enforced via visibility (hide entirely), row filters, sensitivity tier (block search), and domain boundary rules; the column is either visible and searchable for a given role, or absent from the schema entirely.'
   use_case: Preventing partial-masking of vectors ensures access control is all-or-nothing for embedding
     columns, which cannot be meaningfully redacted at the field level.
   code:
@@ -7527,8 +7435,7 @@
   feature: graphql-schema
   priority: MUST
   type: behavioral
-  description: 'Query compilation produces PG-style SQL from validated GraphQL AST — single SQL statement,
-    no resolver chain, no N+1. Exception: action query fields (REQ-361) and remote-schema relationships
+  description: 'Query compilation produces PG-style SQL from validated GraphQL AST: a single SQL statement, no resolver chain, no N+1. Exception: action query fields (REQ-361) and remote-schema relationships
     (REQ-313) resolve nested relationships via batched secondary fetches, which is outside this single-statement
     guarantee.'
   use_case: Single-statement SQL compilation eliminates N+1 query patterns and improves query execution
@@ -7643,8 +7550,7 @@
   feature: writes-governed-mutations
   priority: MUST
   type: behavioral
-  description: DB mutations are single-source by definition, bypass Trino, no routing decision, no registry
-    approval — but always require write authority on the target table (REQ-033). Webhook mutations are
+  description: DB mutations are single-source by definition, bypass Trino, no routing decision, no registry approval, but always require write authority on the target table (REQ-033). Webhook mutations are
     governed separately and require specific steward approval for use (REQ-209).
   use_case: DB mutations skip the registry approval path but still require table write authority; webhook
     mutations require explicit approval.
@@ -7793,7 +7699,7 @@
   feature: writes-governed-mutations
   priority: MUST
   type: constraint
-  description: Mutations can only target registered tables — compiler does not generate mutation types
+  description: Mutations can only target registered tables; the compiler does not generate mutation types
     for unregistered tables.
   use_case: Mutations only target registered tables, preventing writes to unmanaged or unknown database
     objects.
@@ -8102,12 +8008,11 @@
   feature: metrics-and-aggregates-aggregates
   priority: MAY
   type: behavioral
-  description: 'View auto-materialization for aggregate optimization — expensive views auto-materialized
+  description: 'View auto-materialization for aggregate optimization: expensive views auto-materialized
     and registered in aggregate catalog instead of requiring bespoke `materialized_views` entries. Default
     TTL configurable globally via `materialized_views.default_ttl` (seconds, default: 3600). Individual
     views can override with `refresh_interval`. Stale MVs refreshed by background loop; queries against
-    stale MVs fall back to live execution. (Explicit, defined exception to REQ-064 fail-fast — stale-MV→live
-    is designed behavior, not silent error handling.)'
+    stale MVs fall back to live execution. (Explicit, defined exception to REQ-064 fail-fast: stale-MV→live is designed behavior, not silent error handling.)'
   use_case: View auto-materialization avoids repeated expensive subquery execution for high-traffic computed
     datasets.
   code:
@@ -8223,7 +8128,7 @@
   feature: graphql-schema
   priority: SHOULD
   type: behavioral
-  description: 'Relationship ordering — order by related object fields (e.g., `order_by: {author: {name:
+  description: 'Relationship ordering: order by related object fields (e.g., `order_by: {author: {name:
     asc}}`). Matches Hasura v2 default behavior.'
   use_case: 'Hasura v2 parity: relationship ordering lets clients sort parent rows by child attributes in one request.'
   code:
@@ -8423,7 +8328,7 @@
   feature: commands-and-functions-webhooks
   priority: MUST
   type: behavioral
-  description: 'Webhook-backed mutations — external HTTP endpoint called as a GraphQL mutation (Part of
+  description: 'Webhook-backed mutations: an external HTTP endpoint called as a GraphQL mutation (Part of
     Phase AC). Config includes name, url, method, domain_id, governance (requires_approval), arguments
     with name and type, returns (registered table or inline type), visible_to, and timeout_ms. Webhook
     mutations are NOT DB mutations (REQ-031/REQ-032) and require specific steward approval for use; `governance:
@@ -8655,10 +8560,7 @@
   feature: graphql-schema
   priority: MAY
   type: behavioral
-  description: Apollo Federation v2 subgraph support — when enabled, Provisa generates a Federation v2
-    compliant schema with @key directives on entity types (derived from primary keys), _service and _entities
-    root fields, and batch entity resolution. Provisa can be composed into an Apollo Gateway/Router supergraph.
-    Entity resolution respects RLS, masking, and role-based visibility. Disabled by default.
+  description: 'Apollo Federation v2 subgraph support: when enabled, Provisa generates a Federation v2 compliant schema with @key directives on entity types (derived from primary keys), _service and _entities root fields, and batch entity resolution. Provisa can be composed into an Apollo Gateway/Router supergraph. Entity resolution respects RLS, masking, and role-based visibility. Disabled by default.'
   use_case: Apollo Federation v2 subgraph support lets Provisa participate in a federated supergraph alongside
     other APIs.
   code:
@@ -8706,8 +8608,7 @@
   type: behavioral
   description: 'GraphQL operations may declare variable default values (e.g. `query Q($limit: Int = 10)`).
     The compiler MUST apply those defaults for any variable not present in the request `variables` dict,
-    per GraphQL spec §6.4.1. Missing a declared default must not produce a 500 — the default value is
-    used as if the caller had supplied it.'
+    per GraphQL spec §6.4.1. Missing a declared default must not produce a 500; the default value is used as if the caller had supplied it.'
   use_case: GraphQL variable defaults applied by compiler prevent 500 errors when callers omit optional
     parameters.
   code:
@@ -8859,8 +8760,7 @@
   type: structural
   description: 'JSON Schema → GraphQL type mapping for `return_schema`: `"string"` → `GraphQLString`,
     `"integer"` → `GraphQLInt`, `"number"` → `GraphQLFloat`, `"boolean"` → `GraphQLBoolean`. Unknown or
-    missing `type` defaults to `GraphQLString`. Properties with nested objects are not recursively expanded
-    in V1 — only top-level scalar fields are mapped.'
+    missing `type` defaults to `GraphQLString`. Properties with nested objects are not recursively expanded in V1; only top-level scalar fields are mapped.'
   use_case: JSON Schema to GraphQL type mapping for return_schema ensures functions with custom shapes
     have typed fields.
   code:
@@ -9150,8 +9050,7 @@
   feature: cypher-and-graph-analytics-translation
   priority: MUST
   type: structural
-  description: The Cypher label map is derived entirely from the existing Provisa `CompilationContext`
-    — no separate config. `TableMeta.type_name` (PascalCase GraphQL type name) becomes the Cypher node
+  description: The Cypher label map is derived entirely from the existing Provisa `CompilationContext`, with no separate config. `TableMeta.type_name` (PascalCase GraphQL type name) becomes the Cypher node
     label; registered `JoinMeta` entries become relationship types. Consumers write Cypher using the same
     type names already visible in the Provisa GraphQL schema. No additional registration step is required.
   use_case: The Cypher label map is derived from the existing compilation context, so Cypher users have no extra registration step.
@@ -9233,7 +9132,7 @@
   feature: cypher-and-graph-analytics-endpoint
   priority: SHOULD
   type: behavioral
-  description: WITHDRAWN (2026-06-19). Cross-source Cypher queries are allowed — Trino joins across catalogs
+  description: WITHDRAWN (2026-06-19). Cross-source Cypher queries are allowed. Trino joins across catalogs
     natively, so a query whose labels resolve to tables on different sources translates and executes normally.
     No cross-source restriction is enforced. (Supersedes REQ-481.)
   use_case: Cross-source graph traversal is a core capability, not an error.
@@ -9317,12 +9216,7 @@
   feature: natural-language-query-jobs
   priority: SHOULD
   type: behavioral
-  description: For each submitted NL query the service runs three independent parallel generation loops
-    — one targeting Cypher, one GraphQL, and one SQL. Each loop uses an LLM to generate a candidate query,
-    validates it through the existing Provisa compiler pipeline (parse + compile, no execution), feeds
-    any compiler error back to the LLM as a correction signal, and retries until the query is valid or
-    a max iteration limit is reached. The three loops are independent — failure in one does not block
-    the others.
+  description: 'For each submitted NL query the service runs three independent parallel generation loops: one targeting Cypher, one GraphQL, and one SQL. Each loop uses an LLM to generate a candidate query, validates it through the existing Provisa compiler pipeline (parse + compile, no execution), feeds any compiler error back to the LLM as a correction signal, and retries until the query is valid or a max iteration limit is reached. The three loops are independent; failure in one does not block the others.'
   use_case: Parallel three-target generation maximizes answer quality; one valid result is enough to respond.
   code:
   - provisa/nl/
@@ -9367,7 +9261,7 @@
   priority: MUST
   type: constraint
   description: 'The LLM prompt for each generation loop is scoped to the consumer''s role. The schema
-    context supplied to the LLM is the GraphQL SDL visible to that role — tables, fields, and relationships
+    context supplied to the LLM is the GraphQL SDL visible to that role. Tables, fields, and relationships
     the consumer is not permitted to see are absent from the prompt. Generated queries referencing invisible
     schema elements are rejected by the compiler, triggering a refinement loop iteration. Governance is
     enforced at two layers: prompt scoping and compiler validation.'
@@ -9451,10 +9345,9 @@
   feature: natural-language-query-jobs
   priority: SHOULD
   type: behavioral
-  description: 'The NL query service is differentiated from commodity text-to-SQL tools by: (1) three-target
-    generation (SQL, GraphQL, Cypher) — Cypher output for graph-shaped questions is not available in any
-    comparable tool; (2) role-scoped schema context — the LLM cannot generate queries referencing data
-    the consumer is not permitted to see; (3) compiler-driven refinement loop — deterministic validation
+  description: 'The NL query service is differentiated from commodity text-to-SQL tools by: (1) three-target generation (SQL, GraphQL, Cypher), where Cypher output for graph-shaped questions is not available in any
+    comparable tool; (2) role-scoped schema context, so the LLM cannot generate queries referencing data
+    the consumer is not permitted to see; (3) compiler-driven refinement loop, where deterministic validation
     replaces heuristic result quality checks.'
   use_case: 'Differentiator: only platform offering role-scoped, compiler-validated, multi-target NL query
     generation.'
@@ -9499,7 +9392,7 @@
   type: constraint
   description: Any valid query produced by the NL service is executed directly under the consumer's rights,
     and may be saved by the consumer for reuse. Generated queries are governed by the same rights + Stage
-    2 enforcement as hand-written queries — the NL service never bypasses governance.
+    2 enforcement as hand-written queries; the NL service never bypasses governance.
   use_case: NL-generated queries run under the consumer's rights with full Stage 2 governance, which is never bypassed.
   code:
   - provisa/nl/
@@ -9537,8 +9430,7 @@
   priority: SHOULD
   type: behavioral
   description: 'Action query fields (tracked functions and webhooks with `exposed_as: query`) must support
-    standard filter/sort/pagination GraphQL arguments: `where`, `order_by`, `limit`, `offset` — applied
-    as Python post-processing after the function executes and results are materialized.'
+    standard filter/sort/pagination GraphQL arguments: `where`, `order_by`, `limit`, `offset`, applied as Python post-processing after the function executes and results are materialized.'
   use_case: Filter/sort/pagination on action query fields gives function-backed results the same query
     ergonomics as tables.
   code:
@@ -10619,7 +10511,7 @@
   priority: SHOULD
   type: behavioral
   description: '`{table}_group_by` supports two additional filter clauses beyond the base `where`: (1)
-    `aggregates(where: {TypeName}BoolExp)` — a `where` arg on the `aggregates` field of `{TypeName}GroupByRow`
+    `aggregates(where: {TypeName}BoolExp)`, a `where` arg on the `aggregates` field of `{TypeName}GroupByRow`
     that applies conditional aggregation within each group (SQL `FILTER (WHERE ...)`); (2) `having: {TypeName}HavingExp`
     arg on the root field that filters groups post-aggregation (SQL `HAVING`). `{TypeName}HavingExp` is
     a new input type with the same numeric/comparable fields as `{TypeName}AggregateFields` but with comparison
@@ -10667,8 +10559,7 @@
   type: constraint
   description: Labels in Cypher write clauses (CREATE, SET, DELETE) must resolve to exactly one NodeMeta
     via the semantic label map. Ambiguous or unknown labels are hard errors at translation time; no fuzzy
-    matching or implicit selection is permitted. New labels cannot be created via write clauses — only
-    pre-registered tables are writable (absorbs REQ-662).
+    matching or implicit selection is permitted. New labels cannot be created via write clauses; only pre-registered tables are writable (absorbs REQ-662).
   use_case: Single-label resolution ensures write operations are unambiguous and cannot accidentally target
     the wrong table.
   code:
@@ -10801,7 +10692,7 @@
   feature: cypher-and-graph-analytics-writes
   priority: MUST
   type: constraint
-  description: Relationships in Cypher cannot be written — they are derived from foreign-key joins in
+  description: Relationships in Cypher cannot be written. They are derived from foreign-key joins in
     the semantic layer, not stored edges. CREATE, SET, and DELETE cannot target relationship entities.
     Attempting to write a relationship is a hard error at translation time.
   use_case: Relationship immutability prevents accidental FK manipulation and keeps relationship metadata
@@ -11167,8 +11058,7 @@
     the operator allows and is rejected with RedirectFloorViolation (REQ-030). executor.redirect.request_redirect_config
     is the one place a request threshold meets the operator's, used by the GraphQL endpoint and delivery_from_request.
     With redirect disabled, a request threshold only makes that result redirect sooner than never. The
-    request config keeps every operator field (encrypt, local_dir) — the GraphQL path previously rebuilt
-    it and dropped them.
+    request config keeps every operator field (encrypt, local_dir); the GraphQL path previously rebuilt it and dropped them.
   use_case: Large-result redirect to blob storage prevents memory exhaustion on the Provisa server for
     big datasets.
   code:
@@ -11352,7 +11242,7 @@
     when that connection loop closes; idle connection loops are capped at 64 and closed after 300s idle.
     [END SUPERSEDED BLOCK]
 
-    (Amended 2026-09-29, shared synchronized pools — REQ-1882:) Each registered RDBMS source has ONE warm
+    (Amended 2026-09-29, shared synchronized pools, REQ-1882:) Each registered RDBMS source has ONE warm
     pool per worker (`provisa/core/sync_pool.py` BlockingPool over the source''s sync driver), shared
     by every request thread; a borrower beyond its maximum waits, bounded by the request''s remaining
     budget, and never fails with "pool exhausted".
@@ -11361,7 +11251,7 @@
     3 `psycopg_pool.ConnectionPool` per worker (`provisa/executor/drivers/postgresql.py`), with the same
     wait rule (bounded by the request''s remaining budget). Its connections prepare each statement server-side
     on its first execution (`prepare_threshold=0`) and reuse that prepared plan for every later execution
-    of the same SQL, up to 100 statements per connection (`prepared_max`, LRU) — restoring the per-connection
+    of the same SQL, up to 100 statements per connection (`prepared_max`, LRU). This restores the per-connection
     prepared-statement reuse the asyncpg driver had (statement cache of 100, prepare on first use), which
     the psycopg2 driver lost (psycopg2 has no server-side prepared statements). Parameters are bound,
     never interpolated. Connections run in autocommit so a read is one round trip; a stream holds an explicit
@@ -11489,8 +11379,7 @@
     governance (RLS/masking/visibility) is NOT applied at storage time but by Stage-2 apply_governance
     over the governed SQL that wraps the CTE (pipeline order: governance -> cache/CTE -> route). The per-row
     PK-hash/sorted-set storage in the spec was judged unnecessary because hot tables are tiny inline tables.
-    (Amended 2026-10-08, AN OPENAPI TABLE DECLARED HOT) An OpenAPI table declared hot is loaded as
-    every read of it is made -- through its endpoint and the one paged caller, with its source''s
+    (Amended 2026-10-08, AN OPENAPI TABLE DECLARED HOT) An OpenAPI table declared hot is loaded as every read of it is made, through its endpoint and the one paged caller, with its source''s
     stored address, credential and headers and the table''s own paging. A read the endpoint cut at its
     page limit, or one above the tier''s row ceiling, leaves the table not hot. The tier''s own reader,
     which fetched the spec again and guessed a list path from the table''s name, is removed.'
@@ -11585,11 +11474,7 @@
   feature: replicas-and-freshness-hot-tables
   priority: SHOULD
   type: behavioral
-  description: Hot table JOIN optimization -- when a query joins a hot table (e.g., `orders JOIN countries
-    ON country_code`), the compiler injects the hot table data as constants into the SQL via a `VALUES`-based
-    CTE. The DB engine sees literal rows, not a table reference. This eliminates the second table scan
-    and works across sources (constants travel with the query to Trino/Snowflake/ClickHouse). SQLGlot
-    transpiles the VALUES clause per dialect.
+  description: 'Hot table JOIN optimization: when a query joins a hot table (e.g., `orders JOIN countries ON country_code`), the compiler injects the hot table data as constants into the SQL via a `VALUES`-based CTE. The DB engine sees literal rows, not a table reference. This eliminates the second table scan and works across sources (constants travel with the query to Trino/Snowflake/ClickHouse). SQLGlot transpiles the VALUES clause per dialect.'
   use_case: Hot table JOIN optimisation eliminates a second table scan by injecting lookup data as SQL
     constants.
   code:
@@ -11634,7 +11519,7 @@
   priority: MUST
   type: constraint
   description: Hot caching is bounded by both `max_rows` (own config default, falls back to `auto_threshold`)
-    and `max_bytes` (default 10MB, measured after JSON serialization) — a wide table within `max_rows`
+    and `max_bytes` (default 10MB, measured after JSON serialization). A wide table within `max_rows`
     but over the byte ceiling is not cached.
   use_case: Dual byte and row limits prevent hot caching of unexpectedly wide tables that would exceed
     Redis memory budgets.
@@ -11665,7 +11550,7 @@
   feature: replicas-and-freshness-materialized-views
   priority: SHOULD
   type: behavioral
-  description: 'Auto-materialized view storage reclamation -- when a view is removed from config, disabled,
+  description: 'Auto-materialized view storage reclamation: when a view is removed from config, disabled,
     or its source table is unregistered, the backing MV table is dropped (Trino `DROP TABLE`). Background
     cleanup task runs on config reload and periodically (default: daily). Orphaned MV tables (present
     in target schema but not in MV registry) are flagged and optionally auto-dropped after a grace period.'
@@ -11709,7 +11594,7 @@
   feature: replicas-and-freshness-materialized-views
   priority: MUST
   type: constraint
-  description: 'Auto-materialized aggregate views must have a size guard -- `materialized_views.max_rows`
+  description: 'Auto-materialized aggregate views must have a size guard, `materialized_views.max_rows`
     (default: 1,000,000). Views whose source query would produce more rows than the limit skip materialization
     and fall back to live execution. Size estimated via `SELECT COUNT(*)` probe before CTAS. Configurable
     per view to override the global default.'
@@ -11822,9 +11707,8 @@
   feature: replicas-and-freshness-warm-placement
   priority: SHOULD
   type: behavioral
-  description: Warm tables -- frequently queried RDBMS tables materialized into a low-latency, engine-reachable
-    location. In materialization_store terms (REQ-844) this is the `warm` profile of the REPLICA role
-    — an engine-relative low-latency PLACEMENT of a reachable source (distinct from `reactive`, which
+  description: Warm tables are frequently queried RDBMS tables materialized into a low-latency, engine-reachable
+    location. In materialization_store terms (REQ-844) this is the `warm` profile of the REPLICA role, an engine-relative low-latency PLACEMENT of a reachable source (distinct from `reactive`, which
     lands an unreachable source). [SUPERSEDED by REQ-238 amendment, 2026-10-01 -- warm promotion is prefer-materialized
     applied automatically, through the one landing path, into the engine's own materialization store.
     Kept here for history; do not implement against it.] The mechanism below is the current Trino realization
@@ -12000,7 +11884,7 @@
   feature: replicas-and-freshness-hot-tables
   priority: MUST
   type: constraint
-  description: A table lives in at most one cache tier — hot wins over warm. [SUPERSEDED by REQ-241 amendment,
+  description: A table lives in at most one cache tier; hot wins over warm. [SUPERSEDED by REQ-241 amendment,
     2026-10-03 -- WarmTableManager is gone; the rule is held by Hot promotion. Kept here for history;
     do not implement against it.] `WarmTableManager.check_promotions` skips any table the hot tier manages
     (`HotTableManager.managed_tables()`). [END SUPERSEDED BLOCK] (Amended 2026-10-03, HOT PROMOTION LEAVES
@@ -12444,17 +12328,16 @@
     raw-SQL namespace of REQ-1897) is read and written ONLY for a request that opts in: GraphQL `@cached(ttl:
     Int)` (ttl optional), SQL `-- @provisa cache=true` or `-- @provisa cache_ttl=N` (pgwire, Flight SQL,
     /data/sql and every plan whose statement carries the comment). No hint: no cache read, no cache write.
-    `@noCache` and `no_cache` are removed (no back-compat) — with caching off by default there is nothing
+    `@noCache` and `no_cache` are removed (no back-compat). With caching off by default there is nothing
     to bypass; neither ever bypassed landing or materialization (they only gated the response cache).
     The operator''s source/table settings stay the permission and TTL: an opted-in result is cached only
     if every source it reads has `cache_enabled` and every table''s operator-resolved TTL is positive
-    (`cache.policy.opt_in_ttl`); the request''s own ttl, when given, is the entry lifetime (any value
-    — an entry is never fresher than the replica it was read from), else the shortest operator TTL. A
+    (`cache.policy.opt_in_ttl`); the request''s own ttl, when given, is the entry lifetime (any value; an entry is never fresher than the replica it was read from), else the shortest operator TTL. A
     failed cache invalidation raises (`RedisCacheStore.invalidate_by_table`) rather than leaving stale
     entries behind. The split (user decision): ideally an upstream manages its own backpressure; the operator
     is concerned primarily with PLATFORM backpressure and may also manage upstream backpressure when the
     upstream cannot; the end user trades performance vs recency ABOVE the operator''s floor. A per-request
-    cache hint can only accept staler data for speed — it never reaches below the operator''s settings:
+    cache hint can only accept staler data for speed. It never reaches below the operator''s settings:
     landing/replica freshness (cache_ttl/change_signal), row_materialize, load_protected snapshots and
     freshness gates apply to a hinted request exactly as to an unhinted one, and there is no per-request
     way to force a read fresher than the operator allows.
@@ -12878,7 +12761,7 @@
   feature: large-results-redirect
   priority: SHOULD
   type: behavioral
-  description: Trino-native formats (Parquet, ORC) use CTAS — Trino writes directly to S3 via Iceberg,
+  description: Trino-native formats (Parquet, ORC) use CTAS. Trino writes directly to S3 via Iceberg,
     data never passes through Provisa.
   use_case: Trino-native CTAS redirect lets Trino write Parquet and ORC directly to S3 without data passing
     through Provisa.
@@ -12956,7 +12839,7 @@
   feature: large-results-redirect
   priority: MUST
   type: behavioral
-  description: Threshold-based redirect uses LIMIT threshold+1 probe — no COUNT(*), no double execution
+  description: Threshold-based redirect uses LIMIT threshold+1 probe, with no COUNT(*) and no double execution
     for inline results.
   use_case: Threshold probe via LIMIT avoids double execution overhead when deciding whether to redirect
     large results.
@@ -13147,7 +13030,7 @@
   feature: arrow-flight-server
   priority: MUST
   type: constraint
-  description: Flight server streams batch-by-batch via GeneratorStream — full result never materialized
+  description: Flight server streams batch-by-batch via GeneratorStream; the full result is never materialized
     in Provisa memory. Unbounded result support.
   use_case: GeneratorStream batch delivery means arbitrarily large result sets never fully materialize
     in Provisa memory.
@@ -13425,8 +13308,7 @@
   feature: postgres-wire-protocol-client-drivers
   priority: SHOULD
   type: behavioral
-  description: '`getColumns(tableName)` introspects the registered table/view output schema — column names
-    and types from compiled metadata, filtered by role visibility.'
+  description: '`getColumns(tableName)` introspects the registered table/view output schema: column names and types from compiled metadata, filtered by role visibility.'
   use_case: getColumns() introspection lets JDBC tools render correct column types without manual schema
     configuration.
   code:
@@ -13467,7 +13349,7 @@
   type: behavioral
   description: '`executeQuery(sql)` runs arbitrary SQL against registered tables/views, passes it through
     Stage 2 governance, executes via Provisa''s HTTP API, and deserializes the result into a JDBC ResultSet.
-    (Amended 2026-06-19: transport is Arrow IPC / JSON, not Parquet — Arrow IPC streams a ResultSet far
+    (Amended 2026-06-19: transport is Arrow IPC / JSON, not Parquet. Arrow IPC streams a ResultSet far
     better than a columnar file format, which would buffer the whole result.)'
   use_case: executeQuery lets JDBC tools run governed SQL against registered tables/views using standard
     SQL syntax.
@@ -13866,7 +13748,7 @@
   priority: SHOULD
   type: behavioral
   description: DB-API 2.0 connection exposes all registered tables and views the user's rights permit
-    for arbitrary SQL. There is no connection `mode` parameter — governance is uniform via rights + Stage
+    for arbitrary SQL. There is no connection `mode` parameter; governance is uniform via rights + Stage
     2.
   use_case: Uniform rights-governed SQL access in DB-API removes mode selection; every query is governed
     identically.
@@ -13987,8 +13869,7 @@
   feature: postgres-wire-protocol-client-drivers
   priority: MUST
   type: constraint
-  description: JDBC driver runs arbitrary SQL against registered tables and views with full Stage 2 governance
-    — RLS, masking, sampling, and ceilings applied on every query. There is no ungoverned access path.
+  description: 'JDBC driver runs arbitrary SQL against registered tables and views with full Stage 2 governance: RLS, masking, sampling, and ceilings applied on every query. There is no ungoverned access path.'
   use_case: Uniform Stage 2 governance in JDBC ensures arbitrary SQL from BI tools always has RLS and
     masking applied.
   code:
@@ -14028,7 +13909,7 @@
   type: constraint
   description: All clients (DB-API, SQLAlchemy, ADBC, JDBC) authenticate via username/password. Server
     assigns role from configured auth provider. No client-supplied role parameter accepted or required.
-    This binds the wire protocols as well as the HTTP surface — on Arrow Flight the handshake and the
+    This binds the wire protocols as well as the HTTP surface. On Arrow Flight the handshake and the
     ticket both carry a bearer credential, the executing role is derived from the validated identity,
     and a role named by the client is a REQUEST honored only when that identity's own assignments carry
     it; on gRPC the same holds for `x-provisa-role`. A surface that echoes back the role it was handed,
@@ -14173,8 +14054,7 @@
   priority: SHOULD
   type: structural
   description: 'APQ cache stored in Redis (existing `cache.redis_url`). TTL configurable via `apq.ttl`
-    (default: 24h). Cache miss on cold start is expected and handled by the standard APQ retry flow —
-    no preloading required.'
+    (default: 24h). Cache miss on cold start is expected and handled by the standard APQ retry flow; no preloading is required.'
   use_case: Redis APQ cache with configurable TTL reuses query text across process restarts without preloading.
   code:
   - provisa/apq/
@@ -14203,9 +14083,7 @@
   feature: graphql-persisted-queries
   priority: SHOULD
   type: behavioral
-  description: APQ applies to any query the authenticated caller's rights permit. APQ is fully automatic
-    — any successfully executed query is registered in the APQ cache and reusable by hash on subsequent
-    calls. No steward involvement.
+  description: 'APQ applies to any query the authenticated caller''s rights permit. APQ is fully automatic: any successfully executed query is registered in the APQ cache and reusable by hash on subsequent calls. No steward involvement.'
   use_case: Automatic APQ registration lets clients benefit from hash-based execution with no config.
   code:
   - provisa/apq/
@@ -14240,8 +14118,7 @@
   priority: MUST
   type: constraint
   description: APQ registration is gated only by the standard rights + Stage 2 governance check. A query
-    referencing tables or columns the caller's rights do not permit is rejected at the governance check
-    — before it can be registered in the APQ cache. Only queries that pass governance can be cached.
+    referencing tables or columns the caller's rights do not permit is rejected at the governance check, before it can be registered in the APQ cache. Only queries that pass governance can be cached.
   use_case: Rights-gated APQ registration prevents hash-only execution of queries the caller is not permitted
     to run.
   code:
@@ -14274,11 +14151,7 @@
   feature: postgres-wire-protocol-client-drivers
   priority: SHOULD
   type: behavioral
-  description: JDBC driver transport via Arrow Flight — connect to Provisa's existing Flight server (`grpc://host:8815`)
-    for streaming query results. Arrow record batches stream from the first row with backpressure, zero
-    serialization overhead, and no full-result buffering. Flight is used automatically when the server
-    is reachable; falls back to HTTP silently if not. No user configuration required. The Flight ticket
-    carries the SQL or GraphQL query + role + variables as JSON; Stage 2 governance applies uniformly.
+  description: 'JDBC driver transport via Arrow Flight: it connects to Provisa''s existing Flight server (`grpc://host:8815`) for streaming query results. Arrow record batches stream from the first row with backpressure, zero serialization overhead, and no full-result buffering. Flight is used automatically when the server is reachable; falls back to HTTP silently if not. No user configuration required. The Flight ticket carries the SQL or GraphQL query + role + variables as JSON; Stage 2 governance applies uniformly.'
   use_case: JDBC transport via Arrow Flight streams results with backpressure so BI tools handle large
     result sets safely.
   code:
@@ -14529,8 +14402,7 @@
   feature: postgres-wire-protocol-server
   priority: MUST
   type: behavioral
-  description: 'pgwire authentication routes through the same pluggable AuthProvider contract as every
-    other surface — no provider-name allowlist. PG auth type 3 (cleartext password) carries the credential;
+  description: 'pgwire authentication routes through the same pluggable AuthProvider contract as every other surface, with no provider-name allowlist. PG auth type 3 (cleartext password) carries the credential;
     what the password field holds depends on the configured provider. Trust mode (`provider: none`): username
     becomes role_id, password ignored. `simple` and `basic`: password verified against the provider''s
     credential store. OIDC-family providers (`oidc`, `oauth`, `keycloak`, `firebase`): the password is
@@ -14637,8 +14509,7 @@
   priority: SHOULD
   type: behavioral
   description: Queries against `information_schema` and `pg_catalog` are intercepted and answered from
-    an in-memory DuckDB database built per request from the role's compilation context — no Trino round-trip
-    occurs. Intercepted tables include `pg_namespace`, `pg_class`, `pg_attribute`, `pg_type`, `pg_constraint`,
+    an in-memory DuckDB database built per request from the role's compilation context; no Trino round-trip occurs. Intercepted tables include `pg_namespace`, `pg_class`, `pg_attribute`, `pg_type`, `pg_constraint`,
     `pg_roles`, `pg_settings`, `pg_stat_activity`, `schemata`, `tables`, `columns`, `views`, `table_constraints`,
     `key_column_usage`, `referential_constraints`, and others. Stubs return zero rows.
   use_case: Local catalog intercept allows BI tools (DBeaver, Tableau, JDBC schema browsers) to populate
@@ -15031,10 +14902,7 @@
   feature: postgres-wire-protocol-queries
   priority: SHOULD
   type: behavioral
-  description: Transaction control commands (SET, BEGIN, START TRANSACTION, COMMIT, ROLLBACK, SAVEPOINT,
-    RELEASE, DISCARD, RESET, DEALLOCATE) are intercepted and return an empty success response. The server
-    is stateless with respect to transactions — `in_transaction()` always returns False; there is no transaction
-    isolation or rollback support.
+  description: 'Transaction control commands (SET, BEGIN, START TRANSACTION, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, DEALLOCATE) are intercepted and return an empty success response. The server is stateless with respect to transactions: `in_transaction()` always returns False; there is no transaction isolation or rollback support.'
   use_case: Accepting but ignoring transaction commands allows JDBC drivers and ORMs that issue implicit
     BEGIN/COMMIT to function without errors, while making the stateless nature explicit.
   code:
@@ -15171,10 +15039,10 @@
     call detection read the values inline. (Amended 2026-10-01, Describe from registered metadata, governed
     once:) A Describe(Statement) sends nothing to an engine or a source, on any route. The statement is
     governed ONCE, at its Describe, by the first stage of the one pipeline (`govern_statement`: parse,
-    validate, apply governance -- everything that does not depend on bound values or live routing state),
+    validate, apply governance, everything that does not depend on bound values or live routing state),
     and its result columns are derived from that governed statement and registered metadata (`provisa/pgwire/result_shape.py`):
-    a registered column carries the registry''s own type -- the per-table column types the pgwire catalog
-    advertises (`schema_build_cache.column_types`), under the names the role sees -- and a computed expression
+    a registered column carries the registry''s own type (the per-table column types the pgwire catalog
+    advertises (`schema_build_cache.column_types`), under the names the role sees), and a computed expression
     is typed by SQLGlot annotation against those types. A result column whose type cannot be derived fails
     the Describe with an error naming the column and its expression (the remedy is a CAST); no probe query
     stands in for it. A write describes no columns unless it has a RETURNING list of its target''s columns;
@@ -15550,8 +15418,7 @@
   description: Role selection on every Provisa gRPC RPC is via the `x-provisa-role` metadata key. Missing
     or unrecognised role metadata causes the call to be rejected with UNAUTHENTICATED. Streaming query
     RPCs emit one response message per result row; mutation RPCs are unary. On a secured deployment the
-    key selects among the roles the caller's validated identity already holds, and nothing more — a server
-    interceptor validates the bearer credential in `authorization` (a provider token or a personal access
+    key selects among the roles the caller's validated identity already holds, and nothing more. A server interceptor validates the bearer credential in `authorization` (a provider token or a personal access
     token) ahead of every RPC on the server, reflection included, and derives the executing role from
     that identity per REQ-273. A key naming a role the identity does not hold is rejected with PERMISSION_DENIED
     rather than granted.
