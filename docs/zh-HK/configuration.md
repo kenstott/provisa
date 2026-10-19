@@ -18,7 +18,7 @@ includes:
 **合併規則**
 
 - 路徑相對於包含檔案解析。絕對路徑按原樣使用。
-- 清單類小節（`sources`、`tables`、`domains`、`relationships`、`roles` 等）採用附加方式——片段中的項目跟在包含檔案的項目之後。
+- 清單類小節（`sources`、`tables`、`domains`、`relationships`、`roles` 等）採用附加方式，片段中的項目跟在包含檔案的項目之後。
 - 包含檔案未設定的純量或對應鍵，取自片段。
 - 兩個檔案對同一個鍵設定了不同的值，視為衝突；載入失敗，並指出衝突的鍵。
 - 兩個檔案中的相同值不視為衝突。
@@ -787,7 +787,7 @@ relationships:
 在關係上設定 `materialize: true`，即可為跨數據來源的 JOIN 自動產生具體化檢視。 這藉由預先計算 JOIN 結果來避免昂貴的聯邦查詢。
 
 - 只有跨數據來源的關係會產生 MV（同一數據來源的 JOIN 本來就很快）
-- 在由聯結資料表支撐的關係上，MV 涵蓋的是兩跳走訪——來源端跳、聯結跳、判別欄，以及聯結資料表自身的欄位作為邊屬性。聯結資料表算作一條腿，因此只要三張資料表中任何一張位於不同的數據來源，這條邊就是跨數據來源的
+- 在由聯結資料表支撐的關係上，MV 涵蓋的是兩跳走訪：來源端跳、聯結跳、判別欄，以及聯結資料表自身的欄位作為邊屬性。聯結資料表算作一條腿，因此只要三張資料表中任何一張位於不同的數據來源，這條邊就是跨數據來源的
 - MV 起初是過時的，由背景重新整理迴圈填入
 - 對任一方來源表的變更操作會將 MV 標記為過時以便重新整理
 - `refresh_interval` 預設為 300 秒（5 分鐘）
@@ -928,6 +928,7 @@ views:
       - {name: tier, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
+
 | 欄位 | 必填 | 說明 |
 | ------- | ---------- | ------------- |
 | `bitemporal_mode` | 是 | `snapshot` 在每次重新整理時附加整個結果；`delta` 只附加有變化的部分 |
@@ -944,6 +945,7 @@ views:
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
+
 時刻傳回每個鍵在當時生效的版本。範圍傳回在其中任何時點生效的每個版本，每個版本一列。
 
 **按記錄時間。** 之後記錄的更正會改變檢視對過去的描述：一旦更正被記錄，9 月 30 日生效的版本就是更正後的版本。若要按 Provisa 在某個時間點記錄的樣子讀取檢視（早於之後的任何更正），請加上 `X-Provisa-As-Recorded`，即一個 ISO 8601 時間：
@@ -1412,7 +1414,7 @@ Provisa 有兩條互相獨立的 OTLP 匯出路徑：您的內部 collector，�
 | `redact_sql_literals` | bool | `true` | 將 `db.statement` 中的字串與數值字面值取代為 `?` |
 | `redact_attributes` | list[str] | `[]` | 從每個跨距中完全移除的屬性鍵 |
 
-塗黑後的 `db.statement` 範例 — 在 `redact_sql_literals: true` 之下，這個跨距屬性：
+塗黑後的 `db.statement` 範例。在 `redact_sql_literals: true` 之下，這個跨距屬性：
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1573,7 +1575,7 @@ PROVISA_ENGINE=synapse
 
 #### 關聯式資料庫引擎（mysql、mariadb、oracle、mssql、db2、redshift、greenplum、cockroachdb、yugabytedb、opengauss、tidb、singlestore、vertica、exasol、teradata、saphana、sapase、sqlanywhere、monetdb、firebird）與 `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-每個可透過網路定址的關聯式資料庫各有一個鍵，全都跑在同一套僅落地的執行環境上（不聯邦到外部數據來源）：每個數據來源都落地到儲存區，並在那裡被查詢。鍵用來選擇資料庫；`PROVISA_ENGINE_URL` 攜帶其方言所接受的 DSN。`sqlalchemy` 是沒有專屬鍵的資料庫的萬用選項。不提供檔案內嵌式儲存區（SQLite、Access）— 伺服器必須可透過網路連達。
+每個可透過網路定址的關聯式資料庫各有一個鍵，全都跑在同一套僅落地的執行環境上（不聯邦到外部數據來源）：每個數據來源都落地到儲存區，並在那裡被查詢。鍵用來選擇資料庫；`PROVISA_ENGINE_URL` 攜帶其方言所接受的 DSN。`sqlalchemy` 是沒有專屬鍵的資料庫的萬用選項。不提供檔案內嵌式儲存區（SQLite、Access），因為伺服器必須可透過網路連達。
 
 ```bash
 PROVISA_ENGINE=mysql

@@ -9,7 +9,7 @@ Die Admin-Oberfläche nutzt dieselben Konverter, sodass ein Import weder Shell-Z
 1. **Hochladen.** Wählen Sie ein gezipptes Hasura-v2-Metadatenverzeichnis, ein gezipptes DDN-Projekt, einen konsolidierten Metadaten-Export (`.yaml`/`.json`, einschließlich der `{resource_version, metadata}`-Hülle, die die Metadaten-API zurückgibt), oder eine einzelne `.hml`-Datei. Belassen Sie das Format bei *Automatisch erkennen*, außer der Upload ist mehrdeutig.
 2. **Domänen zuordnen** (optional). Jedes Paar ordnet ein v2-Schema oder einen DDN-Subgraph einer Provisa-Domäne zu; alles Nicht-Zugeordnete behält seinen ursprünglichen Namen.
 3. **Konvertieren und Vorschau.** Der Server konvertiert und liefert Anzahlen, den Konvertierungsbericht (siehe [Der Bericht](#the-report)) und die generierte Konfiguration zurück. In diesem Schritt wird nichts geschrieben.
-4. **Prüfen und bearbeiten.** Die Konfiguration ist direkt bearbeitbar — Verbindungsdetails, Domänennamen, Rollennamen. Was Sie anwenden, ist das, was angezeigt wird.
+4. **Prüfen und bearbeiten.** Die Konfiguration ist direkt bearbeitbar: Verbindungsdetails, Domänennamen, Rollennamen. Was Sie anwenden, ist das, was angezeigt wird.
 5. **Anwenden.** *Auf diese Organisation anwenden* lädt die Konfiguration und baut die Schemas der Organisation neu auf. Ein Import wird immer mit dem zusammengeführt, was die Organisation bereits hat.
 
 Endpunkte: `POST /admin/import/hasura/preview` und `POST /admin/import/hasura/apply`.
@@ -148,7 +148,7 @@ Ein Hasura-Export benennt Spalten ohne Typen, und eine verfolgte Tabelle ohne Be
 
 ### HML-Projekt lokalisieren {: #locate-the-hml-project }
 
-Der DDN-Konverter liest das DDN-Projekt-**Verzeichnis** mit `.hml`-Dateien direkt — kein Supergraph-Build-Schritt erforderlich. Die erste Verzeichniskomponente unter der Projektwurzel wird als Subgraph-Name übernommen; Dateien unter `globals/` werden dem Subgraph `globals` zugeordnet.
+Der DDN-Konverter liest das DDN-Projekt-**Verzeichnis** mit `.hml`-Dateien direkt, ohne Supergraph-Build-Schritt. Die erste Verzeichniskomponente unter der Projektwurzel wird als Subgraph-Name übernommen; Dateien unter `globals/` werden dem Subgraph `globals` zugeordnet.
 
 ### Konvertieren {: #convert_1 }
 
@@ -190,8 +190,8 @@ Die `AggregateExpression`-Metadaten werden in einer Sidecar-Datei `*-aggregates.
 
 ## Nach dem Import {: #after-import }
 
-1. Prüfen Sie die generierte `config.yaml` und den Bericht — beginnen Sie mit den Einträgen unter `Redo by hand`
+1. Prüfen Sie die generierte `config.yaml` und den Bericht. Beginnen Sie mit den Einträgen unter `Redo by hand`
 2. Verifizieren Sie die Verbindungsanmeldedaten. Eine Verbindung, die der Export aus einer Umgebungsvariable las, kommt leer an; der Bericht nennt sie
 3. Starten Sie Provisa und bestätigen Sie, dass Tabellen im Explorer erscheinen
-4. Führen Sie Ihre bestehenden GraphQL-Abfragen aus — das Schema ist für gängige Muster kompatibel
+4. Führen Sie Ihre bestehenden GraphQL-Abfragen aus; das Schema ist für gängige Muster kompatibel
 5. Reichen Sie Abfragen zur Genehmigung über die Admin-API oder -UI ein, bevor Sie die Produktions-Governance aktivieren

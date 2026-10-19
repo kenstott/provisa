@@ -225,7 +225,7 @@ ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric ו-Synapse כולם 
 
 ### כתיבות מימוש עמודתי {: #columnar-materialization-writes }
 
-`Connection.bulk_copy` ב-`provisa/core/database.py` בוחר את נתיב ההזנה הכמותית (bulk-ingest) המהיר ביותר לפי דיאלקט המאגר: `COPY` בינארי (asyncpg `copy_records_to_table`) עבור מאגרי PostgreSQL, ופקודת `executemany` מוכנה (prepared) יחידה עבור כל שאר המאגרים היחסיים. המאגר המוטמע של DuckDB נוחת דרך `land_duckdb_native` ב-`store_connection.py` — קריאת `executemany` אחת עבור כל האצווה, לעולם לא לולאה לכל שורה.
+`Connection.bulk_copy` ב-`provisa/core/database.py` בוחר את נתיב ההזנה הכמותית (bulk-ingest) המהיר ביותר לפי דיאלקט המאגר: `COPY` בינארי (asyncpg `copy_records_to_table`) עבור מאגרי PostgreSQL, ופקודת `executemany` מוכנה (prepared) יחידה עבור כל שאר המאגרים היחסיים. המאגר המוטמע של DuckDB נוחת דרך `land_duckdb_native` ב-`store_connection.py`: קריאת `executemany` אחת עבור כל האצווה, לעולם לא לולאה לכל שורה.
 
 ## הפניית תוצאות גדולות {: #large-result-redirect }
 
@@ -654,7 +654,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 לשאילתות אין שער של יכולות; הממשל מגיע כולו מבקרות בשכבת הנתונים. בקשת SQL גולמי נדחית (HTTP 403) עבור כל טבלה שמחוץ לתחום האובייקטים של התפקיד, לפני שהממשל רץ.
 
 1. **נראות אובייקטים**: הסכמה לפי תפקיד מסתירה טבלאות/עמודות לא מורשות; טבלאות מחוץ להיקף ב-SQL גולמי נדחות
-2. **אכיפת קשרים**: מעברים (traversals) חייבים להתקיים בקטלוג הקשרים המאושר, אלא אם התפקיד מחזיק ב-`ignore_relationships` — מבין תפקידי המערכת הזרועים (seeded), רק `modeler` מחזיק בכך. במצב אבטחה גבוהה, היכולת מתעלמת ואף מעבר אינו בורח מהקטלוג
+2. **אכיפת קשרים**: מעברים (traversals) חייבים להתקיים בקטלוג הקשרים המאושר, אלא אם התפקיד מחזיק ב-`ignore_relationships`. מבין תפקידי המערכת הזרועים (seeded), רק `modeler` מחזיק בכך. במצב אבטחה גבוהה, היכולת מתעלמת ואף מעבר אינו בורח מהקטלוג
 3. **RLS**: הזרקת פסוקית WHERE לכל טבלה לכל תפקיד
 4. **מיסוך עמודות**: טרנספורמציית נתונים לכל עמודה לכל תפקיד
 5. **תקרת שורות (LIMIT)**: תקרת ספירת שורות עבור תפקידים ללא `full_results`; דגימה סטטיסטית אקראית היא תכונת שאילתת משתמש נפרדת
@@ -679,8 +679,8 @@ Provisa היא שכבה דקה של הידור וניתוב, והיא מוסיפ
 
 עבור עומסי עבודה אנליטיים גדולים, יש להשתמש באחד מהבאים:
 
-- **Arrow Flight** (פורט 8815) עבור זרימה לכלי נתונים — batches זורמים דרך Provisa מבלי לממש
-- **הפניית Parquet/ORC** עבור ייצוא מבוסס קובץ — מנוע הפדרציה כותב ישירות ל-S3, Provisa מחזירה כתובת חתומה מראש (presigned URL)
+- **Arrow Flight** (פורט 8815) עבור זרימה לכלי נתונים; batches זורמים דרך Provisa מבלי לממש
+- **הפניית Parquet/ORC** עבור ייצוא מבוסס קובץ: מנוע הפדרציה כותב ישירות ל-S3, ו-Provisa מחזירה כתובת חתומה מראש (presigned URL)
 
 ## תשתית {: #infrastructure }
 

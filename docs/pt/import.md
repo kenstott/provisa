@@ -16,8 +16,7 @@ organização em que a sessão está atuando.
    Provisa; o que não for mapeado mantém o nome original.
 3. **Converter e visualizar.** O servidor converte e retorna as contagens, o relatório da conversão (veja [O relatório](#the-report)) e a configuração gerada. Nada é gravado nesta etapa.
    configuração gerada. Nada é escrito nesta etapa.
-4. **Revisar e editar.** A configuração é editável no local — detalhes de conexão, nomes de domínio,
-   nomes de função. O que você aplica é o que é mostrado.
+4. **Revisar e editar.** A configuração é editável no local: detalhes de conexão, nomes de domínio, nomes de função. O que você aplica é o que é mostrado.
 5. **Aplicar.** *Aplicar a esta organização* carrega a configuração e reconstrói os esquemas da organização. Uma importação sempre faz merge com o que a organização já tem.
 
 Endpoints: `POST /admin/import/hasura/preview` e `POST /admin/import/hasura/apply`.
@@ -156,7 +155,7 @@ Uma exportação do Hasura nomeia colunas sem tipos, e uma tabela rastreada sem 
 
 ### Localizar o projeto HML {: #locate-the-hml-project }
 
-O conversor DDN lê o **diretório** do projeto DDN de arquivos `.hml` diretamente — nenhum passo de build de supergrafo é exigido. O primeiro componente de diretório sob a raiz do projeto é tomado como o nome do subgrafo; arquivos sob `globals/` são atribuídos ao subgrafo `globals`.
+O conversor DDN lê o **diretório** do projeto DDN de arquivos `.hml` diretamente, sem passo de build de supergrafo. O primeiro componente de diretório sob a raiz do projeto é tomado como o nome do subgrafo; arquivos sob `globals/` são atribuídos ao subgrafo `globals`.
 
 ### Converter {: #convert_1 }
 
@@ -198,8 +197,8 @@ Metadados de `AggregateExpression` são preservados em um arquivo sidecar `*-agg
 
 ## Após a Importação {: #after-import }
 
-1. Revise o `config.yaml` gerado e o relatório — comece pelos itens de `Redo by hand`
+1. Revise o `config.yaml` gerado e o relatório. Comece pelos itens de `Redo by hand`
 2. Verifique as credenciais de conexão. Uma conexão que a exportação lia de uma variável de ambiente chega vazia; o relatório a nomeia
 3. Inicie o Provisa e confirme que as tabelas aparecem no Explorer
-4. Rode suas consultas GraphQL existentes — o esquema é compatível para padrões comuns
+4. Rode suas consultas GraphQL existentes; o esquema é compatível para padrões comuns
 5. Envie consultas para aprovação via API de Administração ou UI antes de habilitar a governança de produção

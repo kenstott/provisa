@@ -65,7 +65,7 @@ A tabela completa de interface × método está no [Modelo de segurança](securi
 - Somente SQL. GraphQL e Cypher não são aceitos via pgwire.
 - Não é somente leitura. As linhas das tabelas registradas são gravadas com `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` e `COPY ... FROM STDIN`, cada uma admitida pelo direito `write` da função, suas concessões de colunas e seu filtro de linhas; veja [Gravações de dados](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
 - Sem definições: `CREATE`, `ALTER` e `DROP` são recusados com SQLSTATE 0A000, exceto a tabela temporária própria de uma sessão; veja [Definições](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` exporta em `text`, `csv` e `binary`; `COPY ... FROM STDIN` lê `text` e `csv`.
-- Consultas a `information_schema` e `pg_catalog` são interceptadas e respondidas a partir de um shim de catálogo DuckDB — ferramentas de descoberta de esquema funcionam corretamente.
+- Consultas a `information_schema` e `pg_catalog` são interceptadas e respondidas a partir de um shim de catálogo DuckDB, então as ferramentas de descoberta de esquema funcionam corretamente.
 
 ---
 
@@ -98,7 +98,7 @@ A autenticação usa as propriedades JDBC padrão `user` / `password`. O driver 
 3. URL: `jdbc:provisa://localhost:8815`
 4. Digite seu usuário e senha quando solicitado
 
-**DBeaver** (caminho JDBC — para o caminho pgwire veja acima)
+**DBeaver** (o caminho JDBC; o caminho pgwire está acima)
 
 1. Database → New Connection → JDBC
 2. Driver: adicione `provisa-jdbc.jar`
@@ -115,7 +115,7 @@ O Arrow Flight (porta 8815) é o caminho recomendado para ferramentas de dados q
 
 ### Python (`provisa-client`)
 
-O caminho Python recomendado — envolve tanto GraphQL quanto Arrow Flight:
+O caminho Python recomendado envolve tanto GraphQL quanto Arrow Flight:
 
 ```bash
 pip install provisa-client
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-O Flight carrega sua credencial no payload JSON, como um campo `token` — um token bearer do provedor ou um token de acesso pessoal. Tanto o handshake quanto cada ticket o aceitam, e ambos o validam do mesmo modo, então um cliente que se autenticou no handshake ainda apresenta o token em cada `do_get`. Um campo `role` ao lado *solicita* uma função; o servidor deriva as funções permitidas da identidade e substitui pelo valor autorizado, de modo que uma string de função em um ticket nunca é a identidade. Veja [Modelo de segurança](security.md#surfaces-and-credentials).
+O Flight carrega sua credencial no payload JSON, num campo `token`, que contém um token bearer do provedor ou um token de acesso pessoal. Tanto o handshake quanto cada ticket o aceitam, e ambos o validam do mesmo modo, então um cliente que se autenticou no handshake ainda apresenta o token em cada `do_get`. Um campo `role` ao lado *solicita* uma função; o servidor deriva as funções permitidas da identidade e substitui pelo valor autorizado, de modo que uma string de função em um ticket nunca é a identidade. Veja [Modelo de segurança](security.md#surfaces-and-credentials).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -208,7 +208,7 @@ spark = SparkSession.builder \
 
 ## Protobuf gRPC (porta 50051) {: #protobuf-grpc-port-50051 }
 
-Caminho de serviço para serviço. O Provisa gera um `.proto` por função e o regenera sempre que o modelo ou a função muda — cada função vê apenas as tabelas e colunas às quais tem acesso. O serviço tem uma RPC para cada tabela na raiz do esquema da função; as tabelas relacionadas são alcançadas pelos seus relacionamentos, como no GraphQL.
+Caminho de serviço para serviço. O Provisa gera um `.proto` por função e o regenera sempre que o modelo ou a função muda, e cada função vê apenas as tabelas e colunas às quais tem acesso. O serviço tem uma RPC para cada tabela na raiz do esquema da função; as tabelas relacionadas são alcançadas pelos seus relacionamentos, como no GraphQL.
 
 Baixe o proto para sua função:
 
@@ -222,7 +222,7 @@ Use `grpc_server_reflection` para descobrir o esquema programaticamente. A refle
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-Todo RPC deve carregar uma credencial na chave de metadados `authorization` — um token do provedor ou um token de acesso pessoal. `x-provisa-role` solicita uma função do conjunto permitido da identidade; não é uma credencial e nunca foi. Certificados de cliente são suportados. Veja [Modelo de segurança](security.md#surfaces-and-credentials).
+Todo RPC deve carregar uma credencial na chave de metadados `authorization`, seja um token do provedor, seja um token de acesso pessoal. `x-provisa-role` solicita uma função do conjunto permitido da identidade; não é uma credencial e nunca foi. Certificados de cliente são suportados. Veja [Modelo de segurança](security.md#surfaces-and-credentials).
 
 Consultas em streaming emitem uma mensagem por linha; mutações são unárias.
 
@@ -230,7 +230,7 @@ Consultas em streaming emitem uma mensagem por linha; mutações são unárias.
 
 ## Invocando Comandos Entre Protocolos {: #invoking-commands-across-protocols }
 
-Um **comando** é uma função rastreada registrada ou webhook — um chamável registrado no modelo do Provisa com um `kind` (`query` ou `mutation`) e um `impl_kind` que descreve como ele roda. Toda superfície roteia invocações através de um único executor governado (`invoke_tracked_function`) que aplica a atribuição do comando (`visible_to`), o direito `write` para uma mutação e governança uniformemente.
+Um **comando** é uma função rastreada registrada ou webhook: um chamável registrado no modelo do Provisa com um `kind` (`query` ou `mutation`) e um `impl_kind` que descreve como ele roda. Toda superfície roteia invocações através de um único executor governado (`invoke_tracked_function`) que aplica a atribuição do comando (`visible_to`), o direito `write` para uma mutação e governança uniformemente.
 
 | `impl_kind` | O que roda | Campos de vinculação |
 | ------------ | ----------- | --------------- |
@@ -240,7 +240,7 @@ Um **comando** é uma função rastreada registrada ou webhook — um chamável 
 | `grpc` | Chamada gRPC de saída para um servidor externo | `target`, `method` |
 | `python` | Chamável Python hospedado pelo Provisa | `callable` (ex.: `demo.py_functions:random_dataset`) |
 
-Quando um comando declara um `return_schema` (JSON Schema com `type: array, items: object`), ele retorna conjunto — toda superfície o projeta como um conjunto de linhas tipado. Os comandos de demonstração `random_python_set` (impl_kind `python`) e `random_grpc_set` (impl_kind `grpc`) ilustram tanto um chamável hospedado quanto uma ponte gRPC externa retornando linhas com valores aleatórios; ambos são registrados em `config/provisa-install.yaml`.
+Quando um comando declara um `return_schema` (JSON Schema com `type: array, items: object`), ele retorna conjunto, e toda superfície o projeta como um conjunto de linhas tipado. Os comandos de demonstração `random_python_set` (impl_kind `python`) e `random_grpc_set` (impl_kind `grpc`) ilustram tanto um chamável hospedado quanto uma ponte gRPC externa retornando linhas com valores aleatórios; ambos são registrados em `config/provisa-install.yaml`.
 
 ### Matriz de protocolo {: #protocol-matrix }
 
@@ -252,7 +252,7 @@ Quando um comando declara um `return_schema` (JSON Schema com `type: array, item
 | Bolt (Neo4j Browser / driver) | `CALL fn(args)` — argumentos posicionais mapeiam para nomes de argumento declarados | `CALL random_python_set(3, 7)` |
 | Provisa gRPC (porta 50051) | Unário `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
 
-O campo `kind` controla apenas o posicionamento no GraphQL — as superfícies SQL, Cypher, Bolt, e gRPC aceitam comandos `query` e `mutation` de forma idêntica.
+O campo `kind` controla apenas o posicionamento no GraphQL. As superfícies SQL, Cypher, Bolt e gRPC aceitam comandos `query` e `mutation` de forma idêntica.
 
 ---
 
@@ -306,7 +306,7 @@ Veja [docs/sources.md](sources.md#kafka-sources) para configuração de tópico 
 
 ## Verificadores de Qualidade de Dados {: #data-quality-checkers }
 
-Soda Core e Great Expectations se conectam ao Provisa da mesma forma que qualquer outro cliente postgres — através do pgwire. Essa é toda a integração: o verificador mantém um driver postgres e varre a exibição federada, de modo que uma tabela Snowflake, uma tabela Iceberg e uma coleção Mongo são todas verificadas pelo mesmo dialeto de contrato, sem verificador por sistema.
+Soda Core e Great Expectations se conectam ao Provisa pelo pgwire, como qualquer outro cliente postgres. Essa é toda a integração: o verificador mantém um driver postgres e varre a exibição federada, de modo que uma tabela Snowflake, uma tabela Iceberg e uma coleção Mongo são todas verificadas pelo mesmo dialeto de contrato, sem verificador por sistema.
 
 A varredura roda em um interpretador filho — `python -m provisa.dq.worker` — que é o único lugar onde `soda_core` ou `great_expectations` é importado. Nada é vinculado ao processo do servidor, e uma falha do verificador derruba um subprocesso em vez do loop de eventos.
 
@@ -327,9 +327,7 @@ O Elastic License 2.0 proíbe fornecer o software a terceiros como um serviço h
 
 ## Intercâmbio semântico Apache Ossie {: #apache-ossie-semantic-interchange }
 
-O Provisa troca modelos semânticos com o Apache Ossie (especificação 0.2.0.dev0, em incubação; antes Open
-Semantic Interchange) por meio de um adaptador de fronteira. O vocabulário interno do Provisa nunca é renomeado
-para o do Ossie — a especificação declara prováveis mudanças incompatíveis, então o acoplamento fica restrito ao adaptador.
+O Provisa troca modelos semânticos com o Apache Ossie (especificação 0.2.0.dev0, em incubação; antes Open Semantic Interchange) por meio de um adaptador de fronteira. O vocabulário interno do Provisa nunca é renomeado para o do Ossie. A especificação declara prováveis mudanças incompatíveis, então o acoplamento fica restrito ao adaptador.
 
 A especificação em rascunho mudou de forma sem mudar sua string de versão. O adaptador segue a
 especificação como está no commit `642cb894` do `apache/ossie` (2026-10-10): um modelo por documento,
@@ -339,12 +337,12 @@ um `datatype` enumerado. A exportação é verificada nos testes unitários cont
 
 ### Exportação {: #export }
 
-A superfície canônica de exportação é um endpoint HTTP ativo. Ele deriva o documento Ossie do estado ativo
-a cada requisição — sem cache, sem etapa de geração.
+A superfície canônica de exportação é um endpoint HTTP ativo. Ele deriva o documento Ossie do estado ativo a cada requisição, sem cache e sem etapa de geração.
 
 ```http
 GET /admin/ossie
 ```
+
 A resposta é um documento YAML com `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 
 A página Métricas também oferece um botão **Baixar** e uma URL de endpoint copiável no painel Ossie
@@ -394,8 +392,7 @@ e volta de uma importação como `decimal`.
 
 ### Importação {: #import }
 
-A importação aceita um documento Ossie (YAML ou JSON) e retorna propostas de registro. Nada é
-registrado automaticamente — definições importadas nunca pulam a etapa de revisão.
+A importação aceita um documento Ossie (YAML ou JSON) e retorna propostas de registro. Nada é registrado automaticamente, e as definições importadas nunca pulam a etapa de revisão.
 
 ```http
 POST /admin/ossie/import
@@ -403,6 +400,7 @@ Content-Type: text/yaml   (or application/json)
 
 <ossie document>
 ```
+
 O servidor analisa o documento com `parse_ossie_model`, que valida a estrutura e retorna uma
 dataclass `OssieImport` contendo as tabelas, os relacionamentos e as métricas propostos como dicionários simples.
 Qualquer problema estrutural é um `400` com um erro nomeado pelo caminho, por exemplo
@@ -468,11 +466,7 @@ colunas ("MetricFlow entities cannot represent composite keys losslessly").
 
 #### A tela de revisão {: #the-review-screen }
 
-Na interface, o botão **Importar** (página Métricas → painel Ossie Interchange) abre um seletor de arquivos.
-Depois que o documento é enviado e analisado, abre-se uma janela de revisão com cada tabela,
-relacionamento e métrica proposta listada como item marcado. O modelador pode desmarcar qualquer coisa para excluí-la.
-Clicar em **Aplicar** registra os itens marcados pelas mutações de registro existentes — primeiro as
-tabelas, depois os relacionamentos (que referenciam tabelas), depois as métricas.
+Na interface, o botão **Importar** (página Métricas → painel Ossie Interchange) abre um seletor de arquivos. Depois que o documento é enviado e analisado, abre-se uma janela de revisão com cada tabela, relacionamento e métrica proposta listada como item marcado. O modelador pode desmarcar qualquer coisa para excluí-la. Clicar em **Aplicar** registra os itens marcados pelas mutações de registro existentes: primeiro as tabelas, depois os relacionamentos (que referenciam tabelas), depois as métricas.
 
 A função de modelagem e o histórico guardados em um documento Ossie exportado pelo Provisa fazem a ida e volta corretamente
 na importação.
@@ -485,6 +479,7 @@ Ele é derivado do modelo ativo a cada requisição.
 ```http
 GET /admin/dbt/sources?role=<role id>
 ```
+
 A resposta é YAML com `Content-Disposition: attachment; filename=provisa.sources.yml`. O
 chamador precisa de `org_settings`, e `role` deve ser uma função que o chamador tem; o detentor de
 `access_config` pode nomear qualquer função. O painel de intercâmbio da página Métricas oferece o mesmo download
@@ -543,7 +538,7 @@ O compilador expande a forma `metrics.<name>` para o agregado agrupado real ante
 rodar. Descrições de coluna são exibidas como entradas `pg_description`, então o DBeaver e o `\d+` do psql
 as mostram.
 
-`SELECT *` é rejeitado — nomeie as colunas explicitamente.
+`SELECT *` é rejeitado, então nomeie as colunas que você quer.
 
 ### GraphQL
 

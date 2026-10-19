@@ -33,7 +33,7 @@ orders.region ─╯
 - `orders.id`, `orders.region` e `orders.geo` sono nodi **source** (il contratto di input ristretto
   di `enrich_grpc_set` dichiara `id` e `region`; la chiusura per contaminazione completa collega
   tutti gli input dichiarati a tutti gli output).
-- `e.embedding` ed `e.geo` sono nodi **command** — il confine di `enrich_grpc_set`.
+- `e.embedding` ed `e.geo` sono nodi **command** al confine di `enrich_grpc_set`.
 - `geo_u` è un nodo **derived** prodotto dalla funzione SQL `UPPER`.
 
 Il confine del comando **non è opaco**. Poiché `enrich_grpc_set` dichiara le proprie colonne di

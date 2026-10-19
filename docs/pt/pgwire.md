@@ -84,7 +84,7 @@ Consultas simples multi-declaração são suportadas. Declarações separadas po
 divididas e executadas em ordem.
 
 Consultas parametrizadas (`$1`, `$2`, ...) são suportadas tanto em modo de consulta simples quanto
-de consulta estendida (Bind/Execute). Parâmetros são substituídos como literais antes da execução.
+de consulta estendida (Bind/Execute). Os valores ficam vinculados até o motor ou a fonte (veja [Ressalvas e restrições](#caveats-and-constraints)).
 
 `SELECT * FROM fn(args)` e `SELECT fn(args)` — onde `fn` nomeia uma função rastreada registrada —
 são interceptados antes do pipeline de governança e roteados através do executor governado único
@@ -105,6 +105,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 O SELECT interno passa pelo pipeline governado normal do Provisa, com a mesma aplicação de RLS, o mesmo mascaramento e as mesmas verificações de acesso por domínio de qualquer SELECT isolado. Declarar um cursor não contorna a governança.
 
 A palavra-chave `SCROLL` controla tanto a navegação permitida quanto a memória que o cursor usa:
@@ -115,7 +116,7 @@ A palavra-chave `SCROLL` controla tanto a navegação permitida quanto a memóri
 | `DECLARE c NO SCROLL CURSOR FOR ...` | Não permitida | Limitado a um lote de FETCH |
 | `DECLARE c SCROLL CURSOR FOR ...` | Permitida | Resultado completo em buffer na memória Python |
 
-Quando nem `SCROLL` nem `NO SCROLL` é escrito, o padrão é `NO SCROLL` — igual ao padrão do PostgreSQL. Um cursor `NO SCROLL` remove do seu buffer interno as linhas consumidas a cada passo para frente, então uma varredura `FETCH FORWARD` por um resultado grande nunca mantém mais que aproximadamente um lote na memória Python de cada vez. Um cursor `SCROLL` guarda cada linha que já buscou — esse é o custo de suportar `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST`. Antes de declarar um cursor `SCROLL` sobre um resultado grande, reserve o tamanho completo do resultado como heap Python.
+Quando nem `SCROLL` nem `NO SCROLL` é escrito, o padrão é `NO SCROLL`, igual ao padrão do PostgreSQL. Um cursor `NO SCROLL` remove do seu buffer interno as linhas consumidas a cada passo para frente, então uma varredura `FETCH FORWARD` por um resultado grande nunca mantém mais que aproximadamente um lote na memória Python de cada vez. Um cursor `SCROLL` guarda cada linha que já buscou. Esse é o custo de suportar `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST`. Antes de declarar um cursor `SCROLL` sobre um resultado grande, reserve o tamanho completo do resultado como heap Python.
 
 Declarar de novo um nome de cursor já aberto fecha primeiro o cursor anterior. `WITH HOLD` e `WITHOUT HOLD` são aceitos na sintaxe; veja a duração do cursor abaixo.
 
@@ -132,7 +133,8 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
-`FETCH` retorna linhas e envia a tag de comando `FETCH <n>`, onde `n` é a quantidade realmente retornada — que pode ser menor que a pedida quando o cursor chega ao fim. `MOVE` avança a posição sem retornar linhas e envia `MOVE <n>`.
+
+`FETCH` retorna linhas e envia a tag de comando `FETCH <n>`, onde `n` é a quantidade realmente retornada, que pode ser menor que a pedida quando o cursor chega ao fim. `MOVE` avança a posição sem retornar linhas e envia `MOVE <n>`.
 
 `FROM` e `IN` são intercambiáveis para introduzir o nome do cursor. Nomes de cursor sem aspas são convertidos para minúsculas; nomes entre aspas (`"CaseSensitive"`) preservam maiúsculas e minúsculas.
 
@@ -144,6 +146,7 @@ A navegação para trás (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE` ne
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` libera o fluxo de resultados subjacente e remove o cursor da sessão. Desconectar sem emitir `CLOSE` é seguro: `ProvisaSession.close()` libera automaticamente todos os cursores ainda abertos na desconexão.
 
 **Vida de um cursor.** O servidor pgwire do Provisa não tem máquina de estados de transação (`ProvisaSession.in_transaction()` devolve sempre `False`). Por isso todo cursor se comporta como se tivesse sido declarado `WITH HOLD`: vive enquanto a conexão durar, e o `COMMIT` não o encerra. As palavras-chave `WITH HOLD` e `WITHOUT HOLD` são aceitas e ignoradas, já que não há ciclo de vida de cursor por transação para impor.
@@ -166,6 +169,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **Criar** com `CREATE TEMP TABLE name (column type, ...)` ou `CREATE TEMP TABLE name AS SELECT ...`. O nome não leva esquema. Um `SELECT` a partir do qual ela é criada é uma leitura como qualquer outra: as regras de linha, as máscaras, os dados falsos e o limite de linhas da função se aplicam às linhas que ele pega.
 - **Tipos de coluna**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` e `DECIMAL(precision, scale)`. Um decimal mantém sua precisão e escala. Qualquer outro tipo é recusado, nomeando a coluna e o tipo: um valor nunca é armazenado como um tipo diferente do seu. Uma coluna criada a partir de um `SELECT` assume o tipo dos seus valores; uma sem valor pelo qual deduzir um tipo é recusada, então aplique `CAST` no `SELECT`.
 - **Limite de linhas.** As linhas que um `CREATE ... AS SELECT` ou um `INSERT ... SELECT` pega são lidas como a função lê qualquer coisa, então o limite de linhas da função se aplica. Uma tabela temporária preenchida a partir de uma leitura que o limite cortou traz o mesmo aviso de instrução que qualquer leitura cortada (`statement.rows_cut`), com o limite.
@@ -203,6 +207,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 Formatos suportados: `text` (delimitado por tabulação, padrão), `csv` e `binary`, o formato COPY binário do PostgreSQL, com o qual a extensão postgres do DuckDB lê.
 
 **COPY FROM STDIN** é uma gravação de dados em uma tabela registrada existente: é admitida pela mesma admissão de escrita de um `INSERT` das mesmas linhas, com a condição adicional de que a permissão `insert` não tenha presets (veja [Gravações de dados](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lê `text` (padrão) e `csv`. Qualquer outro formato é recusado com SQLSTATE 0A000, nomeando-o, antes de qualquer dado ser enviado.
@@ -285,10 +290,7 @@ conjunto de tipos mais ARRAY, JSON, INTERVAL, e BIGINT.
 
 ## Recomendações de Driver {: #driver-recommendations }
 
-**Drivers Python nativos (psycopg2, asyncpg).** Estes negociam o protocolo de consulta estendida
-por padrão e usam codificação binária para a maioria dos tipos. A fidelidade de tipo é mais alta
-aqui — colunas `NUMERIC` chegam como `Decimal`, `TIMESTAMP` como `datetime`, e assim por diante.
-Use estes para ETL baseado em Python, scripts, ou integração direta.
+**Drivers Python nativos (psycopg2, asyncpg).** Estes negociam o protocolo de consulta estendida por padrão e usam codificação binária para a maioria dos tipos. A fidelidade de tipo é mais alta aqui: colunas `NUMERIC` chegam como `Decimal`, `TIMESTAMP` como `datetime`, e assim por diante. Use estes para ETL baseado em Python, scripts, ou integração direta.
 
 **JDBC (driver JDBC PostgreSQL).** Use este para ferramentas do ecossistema Java: DBeaver, Tableau,
 Power BI, Metabase, operadores JDBC do Airflow. JDBC assume por padrão o protocolo de consulta
@@ -298,14 +300,9 @@ simples, o que evita complicações de codificação binária. String de conexã
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-Algumas ferramentas de BI baseadas em JDBC enviam uma rajada de consultas `information_schema` e
-`pg_catalog` na conexão para popular seu navegador de esquema. Todas são respondidas pela camada de
-interceptação de catálogo — nenhum tráfego Trino é gerado durante a inspeção de esquema.
+Algumas ferramentas de BI baseadas em JDBC enviam uma rajada de consultas `information_schema` e `pg_catalog` na conexão para popular seu navegador de esquema. Todas são respondidas pela camada de interceptação de catálogo, então nenhum tráfego Trino é gerado durante a inspeção de esquema.
 
-**Quando preferir um sobre o outro.** Se o cliente é Python, use psycopg2 ou asyncpg para melhor
-tratamento de tipo. Se o cliente é uma ferramenta de BI ou qualquer aplicação JVM, use JDBC. Evite
-misturar expectativas de protocolo binário e texto na mesma conexão se você observar surpresas de
-conversão de tipo — o comportamento de modo texto do JDBC é mais simples de raciocinar.
+**Quando preferir um sobre o outro.** Se o cliente é Python, use psycopg2 ou asyncpg para melhor tratamento de tipo. Se o cliente é uma ferramenta de BI ou qualquer aplicação JVM, use JDBC. Evite misturar expectativas de protocolo binário e texto na mesma conexão se você observar surpresas de conversão de tipo. O comportamento de modo texto do JDBC é mais simples de raciocinar.
 
 ---
 
@@ -326,6 +323,4 @@ Cada declaração roda independentemente.
 
 **DECLARE SCROLL guarda em buffer o resultado completo.** Um cursor `SCROLL` acumula no heap Python cada linha que busca do motor para poder servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST` sob demanda. Com um resultado grande, o resultado inteiro vive na memória enquanto o cursor estiver aberto. Use o padrão `NO SCROLL` para streaming só para frente.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.**
-Estas tabelas existem na camada de catálogo mas são stubs vazios. Ferramentas de monitoramento que
-as consultam receberão zero linhas em vez de erros. (`pg_index` é populada — veja Interceptação de Catálogo.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Estas tabelas existem na camada de catálogo mas são stubs vazios. Ferramentas de monitoramento que as consultam receberão zero linhas em vez de erros. (`pg_index` é populada; veja Interceptação de Catálogo.)

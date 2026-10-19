@@ -1,6 +1,6 @@
 # Replikate {: #replicas }
 
-Ein Replikat ist eine Kopie einer Quelltabelle, die Provisa im Materialisierungs-Store der Engine hält und anstelle der Quelle liest. Diese Seite behandelt, worauf ein Replikat indiziert wird, wo Replikate abzulegen sind und wie aktuell sie sind. Ob eine Tabelle überhaupt repliziert wird, legt [`replicate`](configuration.md#the-replicate-setting) fest, zusammen mit dem, was die Engine erreichen kann; siehe [Was eine Engine ändert](engines.md#what-an-engine-changes).
+Ein Replikat ist eine Kopie einer Quelltabelle, die Provisa im Materialisierungs-Store der Engine hält und anstelle der Quelle liest. Ob eine Tabelle überhaupt repliziert wird, legt [`replicate`](configuration.md#the-replicate-setting) fest, zusammen mit dem, was die Engine erreichen kann; siehe [Was eine Engine ändert](engines.md#what-an-engine-changes).
 
 ## Replikate sind indiziert {: #replicas-are-indexed }
 

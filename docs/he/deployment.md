@@ -61,7 +61,7 @@ UI:      http://localhost:3000
 
 **אפשרויות:**
 
-`--reset-volumes` — מריץ `docker compose down -v` לפני ההתחלה, הורס את כל volume-י ה-Docker (נתוני PostgreSQL, אובייקטי MinIO, מצב Redis, וכו'). השתמשו כשאתם רוצים slate נקי לחלוטין — אחרי שינוי סכמה בזמן פיתוח, או כאשר Docker קרס והשאיר volumes פגומים. **כל הנתונים יאבדו.**
+`--reset-volumes` — מריץ `docker compose down -v` לפני ההתחלה, הורס את כל volume-י ה-Docker (נתוני PostgreSQL, אובייקטי MinIO, מצב Redis, וכו'). השתמשו כשאתם רוצים slate נקי לחלוטין: אחרי שינוי סכמה בזמן פיתוח, או כאשר Docker קרס והשאיר volumes פגומים. **כל הנתונים יאבדו.**
 
 `--observability` — מוסיף instrumentation מלא של tracing ומטריקות. מוריד את סוכן ה-Java של OpenTelemetry ומתקן את `jvm.config` של Trino לטעון אותו, מציין (instruments) את ה-backend של Provisa עם ייצוא OTLP, ומתחיל את ה-collector של OTel, Prometheus, Tempo, ו-Grafana (`http://localhost:3100`). התיקון ל-`jvm.config` מוחזר אוטומטית ב-Ctrl+C.
 
@@ -164,7 +164,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 1. הורידו את `Provisa-<version>-macOS.dmg` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases)
 2. פתחו את ה-DMG וגררו את **Provisa.app** ל-`/Applications`
-3. לחצו פעמיים על **Provisa.app** — הגדרת הפעלה-ראשונה רצה פעם אחת; האשף מציע את בחירות המנוע, observability, וההדגמה שלעיל
+3. לחצו פעמיים על **Provisa.app**. הגדרת ההפעלה הראשונה רצה פעם אחת, והאשף מציע את בחירות המנוע, observability, וההדגמה שלעיל
 4. פתחו Terminal:
 
    ```bash
@@ -188,8 +188,8 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 ### שלבים {: #steps_1 }
 
 1. הורידו את `Provisa-<version>-windows-x64.exe` מ[עמוד releases ב-GitHub](https://github.com/provisa/provisa/releases)
-2. הריצו את המתקין — אין צורך בהרשאות admin; מתקין ל-`%LOCALAPPDATA%\Programs\Provisa\`
-3. פתחו את **Provisa First Launch** מתפריט ה-Start — הגדרה ילידית רצה פעם אחת ומדפיסה את הנחיית הצעדים-הבאים עבור התוספים השכבתיים
+2. הריצו את המתקין. הוא לא דורש הרשאות admin ומותקן ב-`%LOCALAPPDATA%\Programs\Provisa\`
+3. פתחו את **Provisa First Launch** מתפריט ה-Start. הגדרה ילידית רצה פעם אחת ומדפיסה את הנחיית הצעדים-הבאים עבור התוספים השכבתיים
 4. פתחו terminal חדש:
 
    ```text
@@ -209,7 +209,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 `Provisa.AppImage` הוא קובץ הרצה יחיד self-contained הארוז:
 
-- דמון Docker חסר-שורש (`dockerd-rootless.sh` + `rootlesskit`) — אין צורך ב-Docker מערכתי או root
+- דמון Docker חסר-שורש (`dockerd-rootless.sh` + `rootlesskit`), כך שאין צורך ב-Docker מערכתי או ב-root
 - כל tarballs‏ image הקונטיינר (PostgreSQL, PgBouncer, MinIO, Redis, מנוע פדרציה, API של Provisa)
 - ה-wrapper של Provisa CLI וסקריפט הגדרת הפעלה-ראשונה
 
@@ -280,7 +280,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
    - **תפקיד** ← בחרו `primary`
    - **תקציב RAM**, **hostname**, **פורט API** ← ענו כמו עבור node יחיד
 5. לאחר השלמת ההגדרה, רשמו את ה-**IP הפרטי** של מכונה זו. ה-secondaries צריכים אותו, ואת אישורי ה-stores שה-primary יצר: `~/.provisa/store-credentials.env` (‏`PROVISA_PG_PASSWORD`, ‏`PROVISA_REDIS_PASSWORD`, ‏`PROVISA_MINIO_ROOT_PASSWORD`, ‏`PROVISA_GRAFANA_ADMIN_PASSWORD`, ‏`PROVISA_TRINO_SHARED_SECRET`). העתיקו קובץ זה לכל secondary בערוץ מאובטח
-6. האשף מדפיס בלוק upstream‏ nginx — שמרו אותו עבור תצורת ה-load balancer שלכם
+6. האשף מדפיס בלוק upstream‏ nginx; שמרו אותו עבור תצורת ה-load balancer שלכם
 7. אמתו:
 
    ```bash
@@ -313,7 +313,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
    - **תפקיד** ← בחרו `secondary`
    - **IP‏ Primary** ← הזינו את ה-IP של ה-node‏ primary (הקישוריות מאומתת בזמן אמת)
    - **תקציב RAM**, **hostname**, **פורט API** ← ענו כמו לעיל
-5. ההגדרה טוענת קבוצת image מצומצמת (ללא PostgreSQL, PgBouncer, MinIO, Redis — אלה רצים רק על primary), מתחילה את ה-API של Provisa ועובד מנוע פדרציה
+5. ההגדרה טוענת קבוצת image מצומצמת (ללא PostgreSQL, PgBouncer, MinIO ו-Redis, שרצים רק על ה-primary), מתחילה את ה-API של Provisa ועובד מנוע פדרציה
 6. אמתו:
 
    ```bash
@@ -347,7 +347,7 @@ Trino מגלגל את הקבצים הגולמיים לתוך טבלאות Iceber
 
 ### הפעלה-ראשונה לא-אינטראקטיבית (אוטומטית) {: #non-interactive-automated-first-launch }
 
-עבור Terraform, cloud-init, או Ansible — העבירו דגלים במקום לענות על prompts:
+עבור Terraform, cloud-init, או Ansible, העבירו דגלים במקום לענות על prompts:
 
 ```bash
 # Primary
@@ -587,7 +587,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    curl http://localhost:8000/health
    ```
 
-8. (אופציונלי) הפעילו ingress עבור גישה חיצונית — הגדירו `ingress.enabled: true` והגדירו את בקר ה-ingress שלכם
+8. (אופציונלי) הפעילו ingress עבור גישה חיצונית: הגדירו `ingress.enabled: true` והגדירו את בקר ה-ingress שלכם
 
 ### רשימת דרישות מוקדמות {: #prerequisites-checklist_1 }
 
@@ -674,9 +674,9 @@ Provisa אינו משנה דבר במקרה זה. כל הרצת דחיסה רו�
 
 ## תלויות מנוע פדרציה {: #federation-engine-dependencies }
 
-מנועי הפדרציה של ה-warehouse דורשים חבילות Python ורכיבים ברמת-מערכת מעבר להתקנת ברירת המחדל של Provisa. כל חבילות ה-Python הרשומות כאן מוצהרות ב-`pyproject.toml` ומותקנות כחלק מ-`pip install provisa` הסטנדרטי או `pip install -e .`.
+מנועי הפדרציה של המחסנים צריכים חבילות Python ורכיבים ברמת המערכת. חבילות ה-Python מוצהרות ב-`pyproject.toml` ומגיעות עם `pip install provisa` או `pip install -e .` הרגילים, כך שאף מנוע מחסן לא צריך תוספת אופציונלית.
 
-חבילות ה-Python מגיעות עם התקנת ברירת המחדל של Provisa, כך שאף מנוע מחסן לא צריך תוספת אופציונלית. את הרכיבים ברמת המערכת (דרייבר ה-ODBC, כלי ה-CLI של הענן, מפתחות של חשבונות שירות) צריך להתקין בנפרד.
+את הרכיבים ברמת המערכת (מנהל ה-ODBC, ממשקי ה-CLI של הענן, מפתחות חשבון השירות) צריך להתקין בנפרד.
 
 ### חבילות Python (כבר בתלויות הליבה) {: #python-packages-already-in-core-dependencies }
 

@@ -58,7 +58,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 שאילתות פשוטות מרובות-משפטים נתמכות. משפטים מופרדי-נקודה-פסיק מפוצלים ומבוצעים בסדר.
 
-שאילתות פרמטריות (`$1`, `$2`, ...) נתמכות הן במצב שאילתה-פשוטה והן במצב שאילתה-מורחבת (Bind/Execute). פרמטרים מוחלפים כליטרלים לפני הביצוע.
+שאילתות פרמטריות (`$1`, `$2`, ...) נתמכות הן במצב שאילתה-פשוטה והן במצב שאילתה-מורחבת (Bind/Execute). הערכים נשארים קשורים עד המנוע או המקור (ראו [הסתייגויות ומגבלות](#caveats-and-constraints)).
 
 `SELECT * FROM fn(args)` ו-`SELECT fn(args)` — כאשר `fn` נותן שם לפונקציה עוקבת (tracked) רשומה — מיורטים לפני צינור הממשל ומנותבים דרך ה-executor המנוהל היחיד (`invoke_tracked_function`). התוצאה היא סט שורות מוקלד זהה למה שכל surface אחר מחזיר עבור אותו command. שיוך ה-command (`visible_to`), הזכות `write` למוטציה וכללי ממשל נאכפים בתוך ה-executor.
 
@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 ה-SELECT הפנימי עובר דרך הצינור המנוהל הרגיל של Provisa, עם אותה אכיפת RLS, אותו מיסוך ואותן בדיקות גישה לתחום כמו כל SELECT עצמאי. הצהרה על סמן לא עוקפת את הממשל.
 
 מילת המפתח `SCROLL` שולטת הן בניווט המותר והן בטביעת הזיכרון של הסמן:
@@ -85,7 +86,7 @@ DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 | `DECLARE c NO SCROLL CURSOR FOR ...` | אסור | מוגבלת לאצוות FETCH אחת |
 | `DECLARE c SCROLL CURSOR FOR ...` | מותר | התוצאה כולה בחוצץ בזיכרון Python |
 
-כשלא צוינו `SCROLL` ולא `NO SCROLL`, ברירת המחדל היא `NO SCROLL` — כמו ב-PostgreSQL עצמה. סמן `NO SCROLL` משליך מהחוצץ הפנימי שלו שורות שנצרכו אחרי כל צעד קדימה, כך שמעבר `FETCH FORWARD` על תוצאה גדולה לעולם אינו מחזיק בזיכרון Python יותר מאצווה אחת בערך בכל פעם. סמן `SCROLL` שומר כל שורה שאי פעם משך — זה המחיר של תמיכה ב-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST` ו-`LAST`. לפני שמצהירים על סמן `SCROLL` מעל תוצאה גדולה, תכננו את מלוא גודל התוצאה ב-heap של Python.
+כשלא צוינו `SCROLL` ולא `NO SCROLL`, ברירת המחדל היא `NO SCROLL`, כמו ב-PostgreSQL עצמה. סמן `NO SCROLL` משליך מהחוצץ הפנימי שלו שורות שנצרכו אחרי כל צעד קדימה, כך שמעבר `FETCH FORWARD` על תוצאה גדולה לעולם אינו מחזיק בזיכרון Python יותר מאצווה אחת בערך בכל פעם. סמן `SCROLL` שומר כל שורה שאי פעם משך. זה המחיר של תמיכה ב-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST` ו-`LAST`. לפני שמצהירים על סמן `SCROLL` מעל תוצאה גדולה, תכננו את מלוא גודל התוצאה ב-heap של Python.
 
 הצהרה מחדש על שם סמן שכבר פתוח סוגרת קודם את הסמן הקודם. `WITH HOLD` ו-`WITHOUT HOLD` מתקבלים על ידי התחביר; ראו את משך החיים של הסמן בהמשך.
 
@@ -102,6 +103,7 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
+
 `FETCH` מחזיר שורות ושולח את תג הפקודה `FETCH <n>`, כאשר `n` הוא המספר שהוחזר בפועל, שעשוי להיות קטן מהמבוקש כשהסמן מגיע לסוף. `MOVE` מזיז את המיקום בלי להחזיר שורות ושולח `MOVE <n>`.
 
 `FROM` ו-`IN` ניתנים להחלפה לפני שם הסמן. שמות סמנים ללא מירכאות מומרים לאותיות קטנות; שמות במירכאות (`"CaseSensitive"`) שומרים על הרישיות.
@@ -114,6 +116,7 @@ MOVE 100 FROM c1             -- advance position without returning rows
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` משחרר את זרם התוצאות שמתחת ומסיר את הסמן מהסשן. ניתוק בלי `CLOSE` בטוח: `ProvisaSession.close()` משחרר אוטומטית בניתוק כל סמן שעדיין פתוח.
 
 **אורך החיים של סמן.** לשרת ה-pgwire של Provisa אין מכונת מצבים של טרנזקציות (`ProvisaSession.in_transaction()` מחזיר תמיד `False`). לכן כל סמן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי כל עוד החיבור קיים, ו-`COMMIT` לא מסיים אותו. מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמים מהן, כי אין מחזור חיים של סמן לכל טרנזקציה שצריך לאכוף.
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **יצירה** — `CREATE TEMP TABLE name (column type, ...)` או `CREATE TEMP TABLE name AS SELECT ...`. השם אינו מקבל סכמה. ה-`SELECT` שממנו היא נוצרת הוא קריאה כמו כל קריאה אחרת: כללי השורות, המסכות, הנתונים המזויפים ומגבלת השורות של התפקיד חלים על השורות שהוא לוקח.
 - **סוגי עמודות**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` ו-`DECIMAL(precision, scale)`. מספר עשרוני שומר על הדיוק וקנה המידה שלו. כל סוג אחר נדחה תוך ציון העמודה והסוג: ערך לעולם אינו נשמר כסוג שאינו שלו. עמודה שנוצרה מ-`SELECT` לוקחת את סוג הערכים שלה; עמודה בלי ערך שממנו אפשר לקבוע סוג נדחית, אז החילו `CAST` ב-`SELECT`.
 - **מגבלת שורות.** השורות ש-`CREATE ... AS SELECT` או `INSERT ... SELECT` לוקחים נקראות כפי שהתפקיד קורא כל דבר, ולכן מגבלת השורות של התפקיד חלה. טבלה זמנית שמולאה מקריאה שהמגבלה קיצצה נושאת את אותה אזהרת הצהרה כמו כל קריאה מקוצצת (`statement.rows_cut`), עם ציון המגבלה.
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 פורמטים נתמכים: `text` (מופרד בטאבים, ברירת מחדל), `csv` ו-`binary`, פורמט ה-COPY הבינארי של PostgreSQL, שבו קוראת הרחבת postgres של DuckDB.
 
 **COPY FROM STDIN** הוא כתיבת נתונים לטבלה רשומה קיימת: הוא מאושר באותו אישור כתיבה כמו `INSERT` של אותן שורות, בתוספת התנאי שלהרשאת `insert` אין presets (ראו [כתיבות נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)). הוא קורא `text` (ברירת מחדל) ו-`csv`. כל פורמט אחר נדחה עם SQLSTATE 0A000, בציון שמו, לפני שנשלחים נתונים.
@@ -240,7 +245,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET ו-DEALLOCATE �
 
 ## המלצות דרייבר {: #driver-recommendations }
 
-**דרייברי Python ילידיים (psycopg2, asyncpg).** אלה מנהלים משא-ומתן על פרוטוקול השאילתה-המורחבת כברירת מחדל ומשתמשים בקידוד בינארי עבור רוב הטיפוסים. נאמנות הטיפוסים הגבוהה ביותר כאן — עמודות `NUMERIC` מגיעות כ-`Decimal`, `TIMESTAMP` כ-`datetime`, וכן הלאה. השתמשו באלה עבור ETL מבוסס-Python, סקריפטים, או אינטגרציה ישירה.
+**דרייברי Python ילידיים (psycopg2, asyncpg).** אלה מנהלים משא-ומתן על פרוטוקול השאילתה-המורחבת כברירת מחדל ומשתמשים בקידוד בינארי עבור רוב הטיפוסים. נאמנות הטיפוסים הגבוהה ביותר כאן: עמודות `NUMERIC` מגיעות כ-`Decimal`, `TIMESTAMP` כ-`datetime`, וכן הלאה. השתמשו באלה עבור ETL מבוסס-Python, סקריפטים, או אינטגרציה ישירה.
 
 **JDBC (דרייבר JDBC של PostgreSQL).** השתמשו בו עבור כלי אקוסיסטם-Java: DBeaver, Tableau, Power BI, Metabase, מפעילי JDBC של Airflow. JDBC ברירת מחדל לפרוטוקול השאילתה-הפשוטה, המונע סיבוכי קידוד בינארי. מחרוזת חיבור:
 
@@ -248,9 +253,9 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET ו-DEALLOCATE �
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-חלק מכלי ה-BI מבוססי-JDBC שולחים בהתחברות פרץ שאילתות `information_schema` ו-`pg_catalog` כדי לאכלס את דפדפן הסכמה שלהם. אלה כולן נענות על ידי שכבת יירוט הקטלוג — אין תעבורת Trino נוצרת במהלך בדיקת הסכמה.
+חלק מכלי ה-BI מבוססי-JDBC שולחים בהתחברות פרץ שאילתות `information_schema` ו-`pg_catalog` כדי לאכלס את דפדפן הסכמה שלהם. אלה כולן נענות על ידי שכבת יירוט הקטלוג, ולכן לא נוצרת תעבורת Trino במהלך בדיקת הסכמה.
 
-**מתי להעדיף אחד על פני השני.** אם הלקוח הוא Python, השתמשו ב-psycopg2 או asyncpg לטיפול טוב יותר בטיפוסים. אם הלקוח הוא כלי BI או כל אפליקציית JVM, השתמשו ב-JDBC. הימנעו מערבוב ציפיות פרוטוקול בינארי וטקסט באותו חיבור אם אתם רואים הפתעות המרת-טיפוסים — התנהגות מצב-הטקסט של JDBC פשוטה יותר להבנה.
+**מתי להעדיף אחד על פני השני.** אם הלקוח הוא Python, השתמשו ב-psycopg2 או asyncpg לטיפול טוב יותר בטיפוסים. אם הלקוח הוא כלי BI או כל אפליקציית JVM, השתמשו ב-JDBC. הימנעו מערבוב ציפיות פרוטוקול בינארי וטקסט באותו חיבור אם אתם רואים הפתעות המרת-טיפוסים. התנהגות מצב-הטקסט של JDBC פשוטה יותר להבנה.
 
 ---
 
@@ -270,4 +275,4 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **DECLARE SCROLL מחזיק את התוצאה כולה בחוצץ.** סמן `SCROLL` צובר כל שורה שהוא מושך מהמנוע ב-heap של Python כדי ש-`FETCH BACKWARD`, `ABSOLUTE`, `FIRST` ו-`LAST` יוכלו להיענות לפי דרישה. מול תוצאה גדולה, פירוש הדבר שהתוצאה כולה חיה בזיכרון כל עוד הסמן פתוח. השתמשו בברירת המחדל `NO SCROLL` להזרמה קדימה בלבד.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** טבלאות אלה קיימות בשכבת הקטלוג אך הן stubs ריקים. כלי ניטור השואלים אותן יקבלו אפס שורות במקום שגיאות. (`pg_index` מאוכלס — ראו יירוט קטלוג.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** טבלאות אלה קיימות בשכבת הקטלוג אך הן stubs ריקים. כלי ניטור השואלים אותן יקבלו אפס שורות במקום שגיאות. (`pg_index` מאוכלס; ראו יירוט קטלוג.)

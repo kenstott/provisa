@@ -1,6 +1,6 @@
 # רפליקות {: #replicas }
 
-רפליקה היא עותק של טבלת מקור ש-Provisa מחזיקה במאגר המימוש של המנוע וקוראת במקום המקור. עמוד זה מכסה על מה רפליקה מאונדקסת, היכן לשמור רפליקות וכמה הן עדכניות. אם טבלה משוכפלת בכלל נקבע על ידי [`replicate`](configuration.md#the-replicate-setting) ועל ידי מה שהמנוע יכול להגיע אליו; ראו [What an engine changes](engines.md#what-an-engine-changes).
+רפליקה היא עותק של טבלת מקור ש-Provisa מחזיקה במאגר המימוש של המנוע וקוראת במקום המקור. אם טבלה משוכפלת בכלל נקבע על ידי [`replicate`](configuration.md#the-replicate-setting) ועל ידי מה שהמנוע יכול להגיע אליו; ראו [What an engine changes](engines.md#what-an-engine-changes).
 
 ## רפליקות מאונדקסות {: #replicas-are-indexed }
 

@@ -1,6 +1,6 @@
 # Produits de données {: #data-products }
 
-Un produit de données est un ensemble nommé et possédé de tables publiées ensemble pour la consommation. C'est l'unité que le catalogue expose aux consommateurs — non pas des tables individuelles, mais une surface sélectionnée qu'un domaine déclare explicitement prête. Les champs suivent le vocabulaire ODPS (Open Data Product Standard) là où Provisa possède déjà la source de vérité.
+Un produit de données est un ensemble nommé et possédé de tables publiées ensemble pour la consommation. C'est l'unité que le catalogue expose aux consommateurs : un ensemble sélectionné de tables qu'un domaine a déclaré prêt. Les champs suivent le vocabulaire ODPS (Open Data Product Standard) là où Provisa possède déjà la source de vérité.
 
 ## Règle de propriété du domaine {: #domain-ownership-rule }
 
@@ -10,7 +10,7 @@ Un produit qui a besoin de données d'un autre domaine doit d'abord faire entrer
 
 ## Ports de sortie {: #output-ports }
 
-Les tables et commandes affectées à un produit de données constituent ses **ports de sortie** — la surface interrogeable que voient les consommateurs. Affecter une table définit `Table.product_id` ; l'effacer supprime l'appartenance. Une table appartient à au plus un produit. Les commandes du même domaine peuvent également être affectées comme membres.
+Les tables et commandes affectées à un produit de données constituent ses **ports de sortie** : la surface interrogeable que voient les consommateurs. Affecter une table définit `Table.product_id` ; l'effacer supprime l'appartenance. Une table appartient à au plus un produit. Les commandes du même domaine peuvent également être affectées comme membres.
 
 ## Sections du panneau de détail {: #detail-panel-sections }
 
@@ -30,7 +30,7 @@ Ouvrir un produit de données dans l'interface d'administration affiche les pann
 
 Seules les tables affectées à un produit sont publiées vers les catalogues externes par défaut. `build_snapshot` applique un filtre `data_products_only` : les tables non affectées sont retenues, ainsi que leurs arêtes de relation, arêtes de traçabilité et étiquettes de gouvernance. Les sources et les domaines sont toujours publiés, quel que soit ce filtre.
 
-Un produit sans membre exporté ne publie pas — une fiche vide laisserait croire qu'un produit existe sans rien derrière.
+Un produit sans membre exporté ne publie pas. Une fiche vide laisserait croire qu'un produit existe sans rien derrière.
 
 Seuls les catalogues disposant d'un concept natif de produit de données le publient comme entité de premier ordre ; les autres publient les tables membres (déjà filtrées ci-dessus) sans regroupement en produit :
 

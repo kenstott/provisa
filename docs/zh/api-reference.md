@@ -1338,8 +1338,8 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 1. 按 camelCase 边界和分隔符（`_`、`-`、`.`、`/`、空白）拆分。
 2. 将结果转为小写。
 3. 展开一个固定的缩写表（例如 `cust` → `customer`、`amt` → `amount`、`dt` → `date`、`id` → `identifier`、`key` → `identifier`、`guid` → `identifier`）。
-4. 剥除末尾的**代理标记**（`identifier`、`code`、`index` 或 `reference`）——以键或代码命名的列是通过一个代替值指向底层概念的，因此术语应该是概念本身。最后剩余的标记从不会被剥除。
-5. 用表的概念限定**过于泛化的短语**。当完整的规范化短语是一个裸属性词（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 及类似词）时，术语会变为 `<table concept> <phrase>`——`employees.first_name` → `employee first name`，`orders.id` → `order identifier`。若在不相关的表之间共用一个 `name` 术语，会把不同的含义混为一谈；限定操作则将每一列与其所属概念关联起来。表概念是该表的业务名称，并规范化为单数中心名词（`order_lines` → `order line`）。
+4. 剥除末尾的**代理标记**（`identifier`、`code`、`index` 或 `reference`）。以键或代码命名的列是通过一个代替值指向底层概念的，因此术语应该是概念本身。最后剩余的标记从不会被剥除。
+5. 用表的概念限定**过于泛化的短语**。当完整的规范化短语是一个裸属性词（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 及类似词）时，术语会变为 `<table concept> <phrase>`：`employees.first_name` → `employee first name`，`orders.id` → `order identifier`。若在不相关的表之间共用一个 `name` 术语，会把不同的含义混为一谈；限定操作则将每一列与其所属概念关联起来。表概念是该表的业务名称，并规范化为单数中心名词（`order_lines` → `order line`）。
 
 原生过滤器伪列（以 `_nf_` 为前缀，或任何携带 `native_filter_type` 的列）是查询参数机制，不是业务字段，不会派生任何术语。
 
@@ -1358,7 +1358,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 
 术语**由语义层的成员关系推导而来**，不由用户按需创建。表仓库是唯一的写入路径：`sync_table_refs` 在每次列集 upsert 内运行，`sweep_refless_terms` 在任何删除路径之后运行。
 
-**添加一列时：** Provisa 按名称查找规范化术语。如果已存在，该列会获得对它的引用（如果该术语曾被弃用，则会被恢复——`deprecated` 会被设回 `False`）。如果尚不存在术语，则创建一个。
+**添加一列时：** Provisa 按名称查找规范化术语。如果已存在，该列会获得对它的引用（如果该术语曾被弃用，则会被恢复，`deprecated` 会被设回 `False`）。如果尚不存在术语，则创建一个。
 
 **当某列移除时**（模式变更或删除表），其引用会被删除，术语按“删除或弃用”规则**处置**。没有剩余引用的根术语会连同其边和专家分配被直接删除，除非删除它会让某个抽象术语在术语图中再也没有通往任何根术语的路径。在这种情况下，该术语会被**弃用**（标记 `deprecated=True`）而不是删除，从而让抽象术语保留它在图中的锚点。
 

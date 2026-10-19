@@ -18,7 +18,7 @@ Um arquivo wrapper contendo apenas `includes:` é válido. `load_control_plane` 
 **Regras de merge**
 
 - Caminhos são resolvidos em relação ao arquivo que inclui. Caminhos absolutos são usados como estão.
-- Seções de lista (`sources`, `tables`, `domains`, `relationships`, `roles`, …) são anexadas — as entradas do fragmento seguem as entradas do arquivo que inclui.
+- Seções de lista (`sources`, `tables`, `domains`, `relationships`, `roles`, …) são anexadas, e as entradas do fragmento seguem as entradas do arquivo que inclui.
 - Uma chave escalar ou de mapeamento que o arquivo que inclui não define é tomada do fragmento.
 - Uma chave que os dois arquivos definem com valores diferentes é um conflito; o carregamento falha, nomeando a chave.
 - Valores idênticos em ambos os arquivos não são um conflito.
@@ -787,7 +787,7 @@ relationships:
 Defina `materialize: true` em um relacionamento para gerar automaticamente uma view materializada para JOINs entre fontes. Isso evita consultas federadas custosas pré-computando o resultado do JOIN.
 
 - Apenas relacionamentos entre fontes geram MVs (JOINs dentro da mesma fonte já são rápidos)
-- Em um relacionamento apoiado em junção, a MV cobre a travessia de dois saltos — salto de origem, salto da junção, discriminador e as colunas próprias da junção como atributos da aresta. A junção conta como uma perna, então uma aresta é entre fontes quando qualquer uma das três tabelas fica em uma fonte diferente
+- Em um relacionamento apoiado em junção, a MV cobre a travessia de dois saltos: salto de origem, salto da junção, discriminador e as colunas próprias da junção como atributos da aresta. A junção conta como uma perna, então uma aresta é entre fontes quando qualquer uma das três tabelas fica em uma fonte diferente
 - A MV começa desatualizada e é populada pelo laço de atualização em segundo plano
 - Mutações em qualquer uma das tabelas de origem marcam a MV como desatualizada para nova atualização
 - `refresh_interval` tem padrão de 300 segundos (5 minutos)
@@ -928,6 +928,7 @@ views:
       - {name: tier, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
+
 | Campo | Obrigatório | Descrição |
 | ------- | ---------- | ------------- |
 | `bitemporal_mode` | Sim | `snapshot` acrescenta o resultado inteiro a cada atualização; `delta` acrescenta só o que mudou |
@@ -944,6 +945,7 @@ Uma versão vigora do seu momento até o da versão seguinte. Uma exclusão não
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
+
 Um momento responde a versão de cada chave vigente então. Um intervalo responde cada versão vigente em algum momento dentro dele, uma linha por versão.
 
 **Como registrado.** Uma correção registrada depois muda o que uma visão diz sobre o passado: a versão em vigor em 30 de setembro passa a ser a corrigida assim que a correção é registrada. Para ler a visão como o Provisa a tinha registrado num momento, antes de qualquer correção posterior, adicione `X-Provisa-As-Recorded`, um instante ISO 8601:
@@ -1412,7 +1414,7 @@ O Provisa tem dois caminhos de exportação OTLP independentes: o seu collector 
 | `redact_sql_literals` | bool | `true` | Substitui literais string e numéricos em `db.statement` por `?` |
 | `redact_attributes` | list[str] | `[]` | Chaves de atributo removidas completamente de todo span |
 
-Exemplo de `db.statement` com redação — com `redact_sql_literals: true`, este atributo de span:
+Um `db.statement` com redação. Com `redact_sql_literals: true`, este atributo de span:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1573,7 +1575,7 @@ O armazenamento de materialização usa `TENANT_DATABASE_URL` como padrão.
 
 #### Motores de banco de dados relacional (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) e `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-Uma chave por banco de dados relacional endereçável pela rede, todos no mesmo runtime apenas-pouso (sem federação para fontes externas): cada fonte pousa no armazenamento e é consultada ali. A chave seleciona o banco de dados; `PROVISA_ENGINE_URL` carrega o DSN que seu dialeto espera. `sqlalchemy` é o catch-all para um banco de dados sem chave própria. Armazenamentos embutidos em arquivo (SQLite, Access) não são oferecidos — o servidor precisa ser alcançável pela rede.
+Uma chave por banco de dados relacional endereçável pela rede, todos no mesmo runtime apenas-pouso (sem federação para fontes externas): cada fonte pousa no armazenamento e é consultada ali. A chave seleciona o banco de dados; `PROVISA_ENGINE_URL` carrega o DSN que seu dialeto espera. `sqlalchemy` é o catch-all para um banco de dados sem chave própria. Armazenamentos embutidos em arquivo (SQLite, Access) não são oferecidos, porque o servidor precisa ser alcançável pela rede.
 
 ```bash
 PROVISA_ENGINE=mysql

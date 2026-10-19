@@ -65,7 +65,7 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 - SQL בלבד. GraphQL ו-Cypher אינם מתקבלים דרך pgwire.
 - לא לקריאה בלבד. שורות של טבלאות רשומות נכתבות עם `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` ו-`COPY ... FROM STDIN`, כל אחת מתקבלת לפי זכות ה-`write` של התפקיד, הענקות העמודות שלו ומסנן השורות שלו; ראו [כתיבת נתונים](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
 - ללא הגדרות: `CREATE`, `ALTER` ו-`DROP` נדחים עם SQLSTATE 0A000, למעט טבלה זמנית של הסשן עצמו; ראו [הגדרות](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` מייצא ב-`text`, `csv` ו-`binary`; `COPY ... FROM STDIN` קורא `text` ו-`csv`.
-- שאילתות `information_schema` ו-`pg_catalog` מיורטות ונענות מ-shim קטלוג DuckDB — כלי גילוי סכמה עובדים כראוי.
+- שאילתות `information_schema` ו-`pg_catalog` מיורטות ונענות מ-shim קטלוג DuckDB, ולכן כלי גילוי סכמה עובדים כראוי.
 
 ---
 
@@ -98,7 +98,7 @@ jdbc:provisa://<host>:8815
 3. URL: `jdbc:provisa://localhost:8815`
 4. הזינו את שם המשתמש והסיסמה כאשר תתבקשו
 
-**DBeaver** (נתיב JDBC — עבור נתיב pgwire ראו למעלה)
+**DBeaver** (נתיב JDBC; נתיב pgwire מופיע למעלה)
 
 1. Database → New Connection → JDBC
 2. Driver: הוסיפו את `provisa-jdbc.jar`
@@ -115,7 +115,7 @@ Arrow Flight (פורט 8815) הוא הנתיב המומלץ עבור כלי נת
 
 ### Python (`provisa-client`)
 
-הנתיב המומלץ ב-Python — עוטף גם GraphQL וגם Arrow Flight:
+הנתיב המומלץ ב-Python עוטף גם GraphQL וגם Arrow Flight:
 
 ```bash
 pip install provisa-client
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight נושא את האישור שלו במטען ה-JSON, כשדה `token` — אסימון bearer של ספק או אסימון גישה אישי. גם ה-handshake וגם כל ticket מקבלים אותו, ושניהם מאמתים אותו באותו אופן, כך שלקוח שהתאמת (authenticated) ב-handshake עדיין מציג את האסימון בכל `do_get`. שדה `role` לצידו *מבקש* תפקיד; השרת גוזר את התפקידים המורשים של הזהות ומחליף לערך המורשה, כך ששדה role ב-ticket לעולם אינו הזהות עצמה. ראו [Security Model](security.md#surfaces-and-credentials).
+Flight נושא את האישור שלו במטען ה-JSON, בשדה `token`, שמחזיק אסימון bearer של ספק או אסימון גישה אישי. גם ה-handshake וגם כל ticket מקבלים אותו, ושניהם מאמתים אותו באותו אופן, כך שלקוח שהתאמת (authenticated) ב-handshake עדיין מציג את האסימון בכל `do_get`. שדה `role` לצידו *מבקש* תפקיד; השרת גוזר את התפקידים המורשים של הזהות ומחליף לערך המורשה, כך ששדה role ב-ticket לעולם אינו הזהות עצמה. ראו [Security Model](security.md#surfaces-and-credentials).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -208,7 +208,7 @@ spark = SparkSession.builder \
 
 ## Protobuf gRPC (פורט 50051) {: #protobuf-grpc-port-50051 }
 
-נתיב משירות לשירות. Provisa מייצרת `.proto` לכל תפקיד ומייצרת אותו מחדש בכל שינוי במודל או בתפקיד — כל תפקיד רואה רק את הטבלאות והעמודות שיש לו גישה אליהן. בשירות יש RPC לכל טבלה בשורש הסכמה של התפקיד; טבלאות מקושרות נגישות דרך הקשרים שלהן, כמו ב-GraphQL.
+נתיב משירות לשירות. Provisa מייצרת `.proto` לכל תפקיד ומייצרת אותו מחדש בכל שינוי במודל או בתפקיד, וכל תפקיד רואה רק את הטבלאות והעמודות שיש לו גישה אליהן. בשירות יש RPC לכל טבלה בשורש הסכמה של התפקיד; טבלאות מקושרות נגישות דרך הקשרים שלהן, כמו ב-GraphQL.
 
 הורידו את ה-proto עבור התפקיד שלכם:
 
@@ -222,7 +222,7 @@ curl http://localhost:8001/data/proto/analyst > provisa_analyst.proto
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-כל RPC חייב לשאת אישור במפתח metadata `authorization` — אסימון ספק או אסימון גישה אישי. `x-provisa-role` מבקש תפקיד מתוך הקבוצה המורשית של הזהות; זה אינו אישור ולעולם לא היה. תעודות לקוח נתמכות. ראו [Security Model](security.md#surfaces-and-credentials).
+כל RPC חייב לשאת אישור במפתח metadata `authorization`, אסימון ספק או אסימון גישה אישי. `x-provisa-role` מבקש תפקיד מתוך הקבוצה המורשית של הזהות; זה אינו אישור ולעולם לא היה. תעודות לקוח נתמכות. ראו [Security Model](security.md#surfaces-and-credentials).
 
 שאילתות בזרימה (streaming) מנפיקות הודעה אחת לכל שורה; mutations הן unary.
 
@@ -230,7 +230,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 
 ## הפעלת Commands על פני פרוטוקולים {: #invoking-commands-across-protocols }
 
-**command** הוא פונקציה עקובה רשומה או webhook — יישות ניתנת לקריאה (callable) הרשומה במודל של Provisa עם `kind` (`query` או `mutation`) ו-`impl_kind` המתאר כיצד היא רצה. כל משטח מנתב הפעלות דרך מבצע מנוהל יחיד (`invoke_tracked_function`) שאוכף את שיוך ה-command (`visible_to`), את הזכות `write` למוטציה וממשל באופן אחיד.
+**command** הוא פונקציה עקובה רשומה או webhook: יישות ניתנת לקריאה (callable) הרשומה במודל של Provisa עם `kind` (`query` או `mutation`) ו-`impl_kind` המתאר כיצד היא רצה. כל משטח מנתב הפעלות דרך מבצע מנוהל יחיד (`invoke_tracked_function`) שאוכף את שיוך ה-command (`visible_to`), את הזכות `write` למוטציה וממשל באופן אחיד.
 
 | `impl_kind` | מה רץ | שדות קישור |
 | ------------ | ----------- | --------------- |
@@ -240,7 +240,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | `grpc` | קריאת gRPC יוצאת לשרת חיצוני | `target`, `method` |
 | `python` | יישות Python ניתנת לקריאה המתארחת על ידי Provisa | `callable` (למשל `demo.py_functions:random_dataset`) |
 
-כאשר command מצהיר `return_schema` (JSON Schema עם `type: array, items: object`), הוא set-returning — כל משטח משליך אותו כסט שורות בעל טיפוס. ה-commands לדוגמה `random_python_set` (impl_kind `python`) ו-`random_grpc_set` (impl_kind `grpc`) ממחישים גם יישות מתארחת ניתנת לקריאה וגם גשר gRPC חיצוני המחזיר שורות בעלות ערך אקראי; שניהם רשומים ב-`config/provisa-install.yaml`.
+כאשר command מצהיר `return_schema` (JSON Schema עם `type: array, items: object`), הוא set-returning, וכל משטח משליך אותו כסט שורות בעל טיפוס. ה-commands לדוגמה `random_python_set` (impl_kind `python`) ו-`random_grpc_set` (impl_kind `grpc`) ממחישים גם יישות מתארחת ניתנת לקריאה וגם גשר gRPC חיצוני המחזיר שורות בעלות ערך אקראי; שניהם רשומים ב-`config/provisa-install.yaml`.
 
 ### מטריצת פרוטוקולים {: #protocol-matrix }
 
@@ -252,7 +252,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | Bolt (Neo4j Browser / driver) | `CALL fn(args)` — ארגומנטים לפי מיקום ממופים לשמות הארגומנטים המוצהרים | `CALL random_python_set(3, 7)` |
 | Provisa gRPC (פורט 50051) | Unary `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
 
-שדה ה-`kind` שולט במיקום GraphQL בלבד — משטחי SQL, Cypher, Bolt, ו-gRPC מקבלים commands מסוג `query` ו-`mutation` באופן זהה.
+שדה ה-`kind` שולט במיקום GraphQL בלבד. משטחי SQL, Cypher, Bolt, ו-gRPC מקבלים commands מסוג `query` ו-`mutation` באופן זהה.
 
 ---
 
@@ -306,7 +306,7 @@ Provisa מגיבה לשאילתות `_entities` עבור joins חוצי-subgraph
 
 ## בודקי איכות נתונים (Data Quality Checkers) {: #data-quality-checkers }
 
-Soda Core ו-Great Expectations מתחברים ל-Provisa באותו אופן שבו כל לקוח postgres אחר מתחבר — דרך pgwire. זו כל האינטגרציה: הבודק מחזיק מנהל התקן postgres אחד וסורק את התצוגה הפדרטיבית, כך שטבלת Snowflake, טבלת Iceberg, ואוסף Mongo נבדקים כולם על ידי אותו dialect חוזה, ללא בודק פר-מערכת.
+Soda Core ו-Great Expectations מתחברים ל-Provisa דרך pgwire, כמו כל לקוח postgres אחר. זו כל האינטגרציה: הבודק מחזיק מנהל התקן postgres אחד וסורק את התצוגה הפדרטיבית, כך שטבלת Snowflake, טבלת Iceberg, ואוסף Mongo נבדקים כולם על ידי אותו dialect חוזה, ללא בודק פר-מערכת.
 
 הסריקה רצה בפרשן (interpreter) ילד — `python -m provisa.dq.worker` — שהוא המקום היחיד שבו `soda_core` או `great_expectations` מיובאים. שום דבר לא מקושר לתהליך השרת, וקריסת בודק מפילה תת-תהליך ולא את לולאת האירועים.
 
@@ -327,9 +327,7 @@ Elastic License 2.0 אוסר על אספקת התוכנה לצדדים שליש�
 
 ## חילופי סמנטיקה עם Apache Ossie {: #apache-ossie-semantic-interchange }
 
-Provisa מחליפה מודלים סמנטיים עם Apache Ossie (מפרט 0.2.0.dev0, באינקובציה; לשעבר Open
-Semantic Interchange) דרך מתאם גבול. אוצר המילים הפנימי של Provisa לעולם אינו משנה את שמו
-לאוצר המילים של Ossie — המפרט מצהיר ששינויים שוברים צפויים, ולכן הצימוד מוגבל למתאם.
+Provisa מחליפה מודלים סמנטיים עם Apache Ossie (מפרט 0.2.0.dev0, באינקובציה; לשעבר Open Semantic Interchange) דרך מתאם גבול. אוצר המילים הפנימי של Provisa לעולם אינו משנה את שמו לאוצר המילים של Ossie. המפרט מצהיר ששינויים שוברים צפויים, ולכן הצימוד מוגבל למתאם.
 
 טיוטת המפרט שינתה את צורתה בלי לשנות את מחרוזת הגרסה. המתאם עוקב אחר
 המפרט כפי שהוא ב-commit `642cb894` של `apache/ossie` (2026-10-10): מודל אחד לכל מסמך,
@@ -339,12 +337,12 @@ Semantic Interchange) דרך מתאם גבול. אוצר המילים הפנימ
 
 ### ייצוא {: #export }
 
-משטח הייצוא הקנוני הוא נקודת קצה HTTP חיה. היא גוזרת את מסמך ה-Ossie מהמצב החי
-בכל בקשה — ללא מטמון וללא שלב יצירה.
+משטח הייצוא הקנוני הוא נקודת קצה HTTP חיה. היא גוזרת את מסמך ה-Ossie מהמצב החי בכל בקשה, בלי מטמון ובלי שלב יצירה.
 
 ```http
 GET /admin/ossie
 ```
+
 התגובה היא מסמך YAML עם `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 
 עמוד המדדים מציע גם כפתור **הורדה** וכתובת URL של נקודת הקצה הניתנת להעתקה בלוח Ossie
@@ -394,8 +392,7 @@ Interchange, ושניהם מובילים לאותה נקודת קצה.
 
 ### ייבוא {: #import }
 
-הייבוא מקבל מסמך Ossie (YAML או JSON) ומחזיר הצעות רישום. דבר אינו
-נרשם אוטומטית — הגדרות מיובאות לעולם אינן עוקפות את שלב הסקירה.
+הייבוא מקבל מסמך Ossie (YAML או JSON) ומחזיר הצעות רישום. דבר אינו נרשם אוטומטית, והגדרות מיובאות לעולם אינן עוקפות את שלב הסקירה.
 
 ```http
 POST /admin/ossie/import
@@ -403,6 +400,7 @@ Content-Type: text/yaml   (or application/json)
 
 <ossie document>
 ```
+
 השרת מנתח את המסמך עם `parse_ossie_model`, שבודק את המבנה ומחזיר
 dataclass של `OssieImport` עם הטבלאות, הקשרים והמדדים המוצעים כמילונים פשוטים.
 כל בעיה מבנית היא `400` עם שגיאה הנקובה לפי נתיב, למשל
@@ -468,11 +466,7 @@ ThoughtSpot, Sigma, Omni, Hex, GoodData ואחרים; לכל אחד README מש�
 
 #### מסך הסקירה {: #the-review-screen }
 
-בממשק, כפתור **ייבוא** (עמוד המדדים ← לוח Ossie Interchange) פותח בורר קבצים.
-אחרי שהמסמך נשלח ונותח, נפתחת חלונית סקירה שבה כל טבלה,
-קשר ומדד מוצעים מפורטים כפריטים מסומנים. המעצב יכול לבטל את הסימון של כל דבר כדי להחריג אותו.
-**החלה** רושמת את הפריטים המסומנים דרך מוטציות הרישום הקיימות — קודם
-הטבלאות, אחר כך הקשרים (שמפנים לטבלאות), ואז המדדים.
+בממשק, כפתור **ייבוא** (עמוד המדדים ← לוח Ossie Interchange) פותח בורר קבצים. אחרי שהמסמך נשלח ונותח, נפתחת חלונית סקירה שבה כל טבלה, קשר ומדד מוצעים מפורטים כפריטים מסומנים. המעצב יכול לבטל את הסימון של כל דבר כדי להחריג אותו. **החלה** רושמת את הפריטים המסומנים דרך מוטציות הרישום הקיימות: קודם הטבלאות, אחר כך הקשרים (שמפנים לטבלאות), ואז המדדים.
 
 תפקיד המידול וההיסטוריה שנשמרו במסמך Ossie שיוצא מ-Provisa עוברים הלוך-ושוב נכון
 בייבוא.
@@ -485,6 +479,7 @@ ThoughtSpot, Sigma, Omni, Hex, GoodData ואחרים; לכל אחד README מש�
 ```http
 GET /admin/dbt/sources?role=<role id>
 ```
+
 התגובה היא YAML עם `Content-Disposition: attachment; filename=provisa.sources.yml`.
 הקורא צריך `org_settings`, ו-`role` חייב להיות תפקיד שהוא מחזיק; מחזיק
 `access_config` רשאי לנקוב בכל תפקיד. לוח החילופים בעמוד המדדים מציע את אותה הורדה
@@ -542,7 +537,7 @@ GROUP BY region, month;
 המהדר מרחיב את הצורה `metrics.<name>` לצירוף (aggregate) המקובץ האמיתי לפני שהממשל רץ.
 תיאורי עמודות מוצגים כרשומות `pg_description`, כך ש-DBeaver ו-`\d+` ב-psql מציגים אותם.
 
-`SELECT *` נדחה — ציינו את העמודות במפורש.
+`SELECT *` נדחה, ולכן ציינו את העמודות שאתם רוצים.
 
 ### GraphQL
 

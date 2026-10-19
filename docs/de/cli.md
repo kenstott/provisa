@@ -86,9 +86,7 @@ Setzen Sie sie, um die Standardwerte zu überschreiben, die `load_profile("nativ
 5. Schema-Drift-Prüfung — durchsucht die laufende Control Plane nach fehlenden Spalten. Werden welche gefunden,
    wird ein `--reset`-Hinweis ausgegeben und mit Code 1 beendet. V1 kennt keine Migrationen; eine in einem
    neueren Release hinzugefügte Spalte erfordert einen Reset.
-6. Beide Server starten gleichzeitig. Der Ready-Announcer pollt `GET /ready` (nicht `/health` — der
-   `/ready`-Endpunkt bestätigt, dass der Store angebunden und die Engine warmgelaufen ist) und öffnet den Browser,
-   sobald 200 zurückkommt.
+6. Beide Server starten gleichzeitig. Der Ready-Announcer pollt `GET /ready` (nicht `/health`, denn der `/ready`-Endpunkt bestätigt, dass der Store angebunden und die Engine warmgelaufen ist) und öffnet den Browser, sobald 200 zurückkommt.
 
 ### Exit-Codes
 
@@ -199,6 +197,7 @@ wie auch immer die Operation aufgerufen wird.
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### Flags, die jeder Subcommand nimmt {: #flags-every-subcommand-takes }
 
 | Flag | Erforderlich | Hinweise |
@@ -230,6 +229,7 @@ Listet die Umgebungen der Org und den Build, auf dem jede steht. Keine Flags üb
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 Zeigt eine Umgebung und ihren aktuellen Build. Endet mit 1 und `environments.unknown`, wenn die
@@ -238,6 +238,7 @@ Umgebung nicht existiert.
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 Legt eine Umgebung an, die das Modell einer anderen hält, mit bei der Anlage gewählten Daten. Die API
@@ -247,6 +248,7 @@ entscheidet, welche Wahl der Aufrufer treffen darf.
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | Flag | Erforderlich | Hinweise |
 | --- | --- | --- |
 | `--env` | ja | Name der neuen Umgebung |
@@ -258,6 +260,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 Setzt eine Umgebung außer Betrieb. Ihre Branches verschwinden nur, wenn sie benannt werden.
@@ -265,6 +268,7 @@ Setzt eine Umgebung außer Betrieb. Ihre Branches verschwinden nur, wenn sie ben
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | Flag | Hinweise |
 | --- | --- |
 | `--delete-branch` | Löscht auch ihren Branch |
@@ -278,6 +282,7 @@ daher nicht schreiben; geben Sie es einem Runner, der nichts ändern darf.
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | Flag | Erforderlich | Hinweise |
 | --- | --- | --- |
 | `--from` | ja | Umgebung, aus der gemergt wird |
@@ -294,6 +299,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | Flag | Erforderlich | Hinweise |
 | --- | --- | --- |
 | `--from` | ja | Umgebung, aus der gemergt wird |
@@ -314,6 +320,7 @@ Aufruf mit einer Identität gegen eine benannte Control Plane.
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | Flag | Erforderlich | Hinweise |
 | --- | --- | --- |
 | `--env` | ja | Umgebung, die das deployte Modell halten wird |
@@ -333,6 +340,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 Setzt eine Umgebung auf einen früheren Build zurück. Ohne `--to` geht es einen Commit
@@ -341,6 +349,7 @@ in der eigenen Historie der Umgebung zurück. Mit `--to` ist es das gewöhnliche
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | Flag | Erforderlich | Hinweise |
 | --- | --- | --- |
 | `--env` | ja | Zurückzusetzende Umgebung |
@@ -354,6 +363,7 @@ Geht wieder vorwärts in Richtung des Builds, von dem ein Revert ausgegangen ist
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 Ruft die Remote-Branches der Org in ihr Provisa-Repository ab. Führen Sie dies vor einem Deploy aus,
@@ -362,6 +372,7 @@ wenn Sie `origin/<branch>` benennen wollen. Provisa führt es nie zeitgesteuert 
 ```
 provisa env fetch --org ORG
 ```
+
 Gibt eine Zeile pro abgerufenem Branch aus, `origin/<name>  <sha12>`.
 
 ```bash
@@ -369,6 +380,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 Sendet den Branch einer Umgebung an das Remote der Org. Gibt `nothing to send` aus, wenn
@@ -377,6 +389,7 @@ nichts zu senden ist.
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 Wendet an, was das Remote für eine Umgebung hält. Gibt
@@ -386,6 +399,7 @@ beim Deploy.
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 Die vollständige Erklärung von Umgebungsklassen, Schutzregeln, Merge-Berichten und dem
 Genehmigungslebenszyklus finden Sie unter [Environments](environments.md#the-env-cli-commands).
 

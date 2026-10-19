@@ -9,7 +9,7 @@ Provisa 可以将现有的 Hasura 元数据转换为 Provisa 的 `config.yaml`�
 1. **上传。** 选择一个压缩的 Hasura v2 元数据目录、一个压缩的 DDN 项目、一份合并的元数据导出文件（`.yaml`/`.json`，包括元数据 API 返回的 `{resource_version, metadata}` 信封），或单个 `.hml` 文件。除非上传内容存在歧义，否则将格式保持为*自动检测*。
 2. **映射域**（可选）。每一对将一个 v2 架构或一个 DDN 子图映射到一个 Provisa 域；未映射的内容保留其原始名称。
 3. **转换并预览。** 服务器进行转换，并返回计数、转换报告（参见[报告](#the-report)）和生成的配置。此步骤不会写入任何内容。
-4. **审查并编辑。** 配置可就地编辑——连接详情、域名称、角色名称。你所应用的正是所展示的内容。
+4. **审查并编辑。** 配置可就地编辑：连接详情、域名称、角色名称。你所应用的正是所展示的内容。
 5. **应用。** *应用到本组织*会加载配置并重建组织的架构。导入始终是合并到组织已有的内容中。
 
 端点：`POST /admin/import/hasura/preview` 和 `POST /admin/import/hasura/apply`。
@@ -148,7 +148,7 @@ Hasura 导出为列命名时不带类型，而没有权限的已跟踪表则不�
 
 ### 定位 HML 项目 {: #locate-the-hml-project }
 
-DDN 转换器直接读取由 `.hml` 文件组成的 DDN 项目**目录**——无需超图（supergraph）构建步骤。项目根目录下的第一级目录名会被作为子图名称；`globals/` 下的文件会被分配到 `globals` 子图。
+DDN 转换器直接读取由 `.hml` 文件组成的 DDN 项目**目录**，无需超图（supergraph）构建步骤。项目根目录下的第一级目录名会被作为子图名称；`globals/` 下的文件会被分配到 `globals` 子图。
 
 ### 转换 {: #convert_1 }
 
@@ -190,8 +190,8 @@ python -m provisa.ddn ./my-ddn-project -o config.yaml
 
 ## 导入之后 {: #after-import }
 
-1. 审阅生成的 `config.yaml` 和报告 —— 从 `Redo by hand` 的条目开始
+1. 审阅生成的 `config.yaml` 和报告，从 `Redo by hand` 的条目开始
 2. 核实连接凭据。导出原本从环境变量读取的连接会以空值到达；报告会指明它
 3. 启动 Provisa 并确认表出现在浏览器中
-4. 运行你现有的 GraphQL 查询——该架构对常见模式是兼容的
+4. 运行你现有的 GraphQL 查询；该架构对常见模式是兼容的
 5. 在启用生产治理之前，通过管理 API 或 UI 提交查询以供审批

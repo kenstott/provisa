@@ -110,7 +110,7 @@ build-ים ללא secrets אלה מצליחים אך מייצרים DMG לא-ח�
 ## ייצוא תעודת ה-.p12 {: #exporting-the-p12-certificate }
 
 1. פתחו את **Keychain Access** → login keychain → **My Certificates**
-2. מצאו את **Developer ID Application: Your Name (TEAMID)** — הרחיבו אותה כדי לאשר שהמפתח הפרטי מקונן מתחת
+2. מצאו את **Developer ID Application: Your Name (TEAMID)** והרחיבו אותה כדי לאשר שהמפתח הפרטי מקונן מתחת
 3. בחרו הן את התעודה והן את המפתח הפרטי שלה → קליק ימני → **Export 2 Items** → שמרו כ-`.p12` → הגדירו סיסמה חזקה
 4. קודדו ל-Base64 והעתיקו ללוח:
 

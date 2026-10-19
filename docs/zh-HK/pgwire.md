@@ -58,7 +58,7 @@ trust 模式（`provider: none`，或驗證中介軟件未啟用）是例外：�
 
 支援多陳述式的簡單查詢。以分號分隔的陳述式會被拆分並按順序執行。
 
-在簡單查詢模式及擴展查詢（Bind/Execute）模式下均支援參數化查詢（`$1`、`$2`……）。參數會在執行前以字面值替換。
+在簡單查詢模式及擴展查詢（Bind/Execute）模式下均支援參數化查詢（`$1`、`$2`……）。參數值會一直以綁定形式傳到引擎或數據來源（請參閱[注意事項與限制](#caveats-and-constraints)）。
 
 `SELECT * FROM fn(args)` 及 `SELECT fn(args)`——其中 `fn` 指定一個已註冊且受追蹤的函式——會在治理管線之前被攔截，並透過唯一受治理的執行器（`invoke_tracked_function`）路由。結果為一個類型化的行集，與該指令在其他任何介面所返回的結果一致。指令的分配（`visible_to`）、變更所需的 `write` 權利 及治理規則會在執行器內強制執行。
 
@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 內部的 SELECT 會經過 Provisa 正常的受治理管道，與任何單獨的 SELECT 一樣執行 RLS、遮罩及領域存取檢查。宣告遊標並不能繞過治理。
 
 `SCROLL` 關鍵字同時控制允許的導覽及游標的記憶體佔用：
@@ -85,7 +86,7 @@ DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 | `DECLARE c NO SCROLL CURSOR FOR ...` | 不允許 | 限於一批 FETCH |
 | `DECLARE c SCROLL CURSOR FOR ...` | 允許 | 整個結果緩衝於 Python 記憶體 |
 
-既沒有指定 `SCROLL` 也沒有指定 `NO SCROLL` 時，預設為 `NO SCROLL`——與 PostgreSQL 本身一致。 `NO SCROLL` 游標在每次向前推進後，都會從其內部緩衝區捨棄已消耗的資料列，因此對大型結果的 `FETCH FORWARD` 走訪，在任何時候都只在 Python 記憶體中保留大約一批數據。 `SCROLL` 游標會保留它曾經拉取的每一個資料列——這是支援 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 及 `LAST` 的代價。在對大型結果宣告 `SCROLL` 游標之前，請為整個結果的大小預留 Python 堆積空間。
+既沒有指定 `SCROLL` 也沒有指定 `NO SCROLL` 時，預設為 `NO SCROLL`，與 PostgreSQL 本身一致。 `NO SCROLL` 游標在每次向前推進後，都會從其內部緩衝區捨棄已消耗的資料列，因此對大型結果的 `FETCH FORWARD` 走訪，在任何時候都只在 Python 記憶體中保留大約一批數據。 `SCROLL` 游標會保留它曾經拉取的每一個資料列。這是支援 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 及 `LAST` 的代價。在對大型結果宣告 `SCROLL` 游標之前，請為整個結果的大小預留 Python 堆積空間。
 
 重新宣告已開啟的游標名稱會先關閉先前的游標。 `WITH HOLD` 及 `WITHOUT HOLD` 會被語法接受；請參閱下文的游標生命週期。
 
@@ -102,6 +103,7 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
+
 `FETCH` 傳回資料列並傳送命令標籤 `FETCH <n>`，其中 `n` 是實際傳回的數目，當游標到達結尾時可能少於所要求的數目。`MOVE` 移動位置而不傳回資料列，並傳送 `MOVE <n>`。
 
 `FROM` 及 `IN` 在游標名稱之前可以互換。沒有加引號的游標名稱會轉為小寫；加引號的名稱（`"CaseSensitive"`）保留大小寫。
@@ -114,6 +116,7 @@ MOVE 100 FROM c1             -- advance position without returning rows
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` 釋放底層的結果串流，並從工作階段中移除游標。 不執行 `CLOSE` 便中斷連線是安全的：`ProvisaSession.close()` 會在中斷連線時自動釋放所有仍然開啟的游標。
 
 **遊標生命週期。** Provisa 的 pgwire 伺服器沒有交易狀態機（`ProvisaSession.in_transaction()` 固定傳回 `False`）。因此每個遊標的行為都像宣告了 `WITH HOLD`：它在連線存續期間一直存在，`COMMIT` 不會結束它。`WITH HOLD` 及 `WITHOUT HOLD` 關鍵字會被接受並略過，因為不存在按交易管理的遊標生命週期。
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **建立**——`CREATE TEMP TABLE name (column type, ...)` 或 `CREATE TEMP TABLE name AS SELECT ...`。名稱不接受結構描述。它所根據的 `SELECT` 與任何其他讀取一樣：角色的資料列規則、遮罩、偽造數據及資料列上限都適用於它所取得的資料列。
 - **欄位類型**：`smallint`、`integer`、`bigint`、`real`、`double precision`、`boolean`、`date`、`timestamp`、`text`、`varchar` 及 `DECIMAL(precision, scale)`。小數保留其精度及小數位數。任何其他類型都會被拒絕，並指出欄位及類型：值絕不會以並非其本身的類型儲存。由 `SELECT` 建立的欄位採用其值的類型；沒有可推斷類型之值的欄位會被拒絕，因此請在 `SELECT` 中使用 `CAST`。
 - **資料列上限。** `CREATE ... AS SELECT` 或 `INSERT ... SELECT` 所取得的資料列，按角色讀取任何內容的方式讀取，因此角色的資料列上限適用。由被上限截斷的讀取填入的暫存資料表，會帶有與任何被截斷讀取相同的陳述式警告（`statement.rows_cut`），並指出上限。
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 支援的格式：`text`（以定位字元分隔，預設）、`csv` 及 `binary`，即 PostgreSQL 的二進位 COPY 格式，DuckDB 的 postgres 擴充以它讀取。
 
 **COPY FROM STDIN** 是對現有已註冊資料表的數據寫入：它與相同行的 `INSERT` 經由同一個寫入准入，另加一個條件：`insert` 授權不得帶有預設（參見[數據寫入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它讀取 `text`（預設）和 `csv`。任何其他格式都會在發送任何數據之前以 SQLSTATE 0A000 被拒絕，並指明該格式。
@@ -240,7 +245,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 
 ## 驅動程式建議 {: #driver-recommendations }
 
-**原生 Python 驅動程式（psycopg2、asyncpg）。** 這些驅動程式預設會協商擴展查詢協定，並對大多數類型使用二進制編碼。類型保真度在此最高——`NUMERIC` 欄位以 `Decimal` 形式送達，`TIMESTAMP` 則以 `datetime` 形式送達，如此類推。適用於以 Python 為基礎的 ETL、腳本或直接整合。
+**原生 Python 驅動程式（psycopg2、asyncpg）。** 這些驅動程式預設會協商擴展查詢協定，並對大多數類型使用二進制編碼。類型保真度在此最高：`NUMERIC` 欄位以 `Decimal` 形式送達，`TIMESTAMP` 則以 `datetime` 形式送達，如此類推。適用於以 Python 為基礎的 ETL、腳本或直接整合。
 
 **JDBC（PostgreSQL JDBC 驅動程式）。** 適用於 Java 生態系統工具：DBeaver、Tableau、Power BI、Metabase、Airflow 的 JDBC 運算子。JDBC 預設使用簡單查詢協定，可避免二進制編碼帶來的複雜情況。連接字串：
 
@@ -248,9 +253,9 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-部分基於 JDBC 的 BI 工具在連接時，會傳送一連串針對 `information_schema` 及 `pg_catalog` 的查詢，以填充其結構描述瀏覽器。這些查詢全部由目錄攔截層解答——在結構描述檢查期間不會產生任何 Trino 流量。
+部分基於 JDBC 的 BI 工具在連接時，會傳送一連串針對 `information_schema` 及 `pg_catalog` 的查詢，以填充其結構描述瀏覽器。這些查詢全部由目錄攔截層解答，因此在結構描述檢查期間不會產生任何 Trino 流量。
 
-**應何時選用哪一種。** 若客戶端為 Python，請使用 psycopg2 或 asyncpg 以獲得更佳的類型處理。若客戶端為 BI 工具或任何 JVM 應用程式，請使用 JDBC。若觀察到類型轉換方面的異常情況，應避免在同一連接中混用二進制及文字協定的預期行為——JDBC 的文字模式行為更易於推斷。
+**應何時選用哪一種。** 若客戶端為 Python，請使用 psycopg2 或 asyncpg 以獲得更佳的類型處理。若客戶端為 BI 工具或任何 JVM 應用程式，請使用 JDBC。若觀察到類型轉換方面的異常情況，應避免在同一連接中混用二進制及文字協定的預期行為。JDBC 的文字模式行為更易於推斷。
 
 ---
 
@@ -270,4 +275,4 @@ jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<
 
 **DECLARE SCROLL 會緩衝整個結果。** `SCROLL` 游標會把它從引擎拉取的每一個資料列累積到 Python 堆積中，以便按需提供 `FETCH BACKWARD`、`ABSOLUTE`、`FIRST` 及 `LAST`。面對大型結果，這表示只要游標仍然開啟，整個結果便會留在記憶體中。只需向前的串流請使用預設的 `NO SCROLL`。
 
-**`pg_stat_activity`、`pg_stat_user_tables`、`pg_extension`、`pg_enum`、`pg_attrdef`、`pg_proc`。** 這些資料表存在於目錄層中，但屬於空的存根 (stub)。查詢它們的監控工具將收到零行結果，而非錯誤。（`pg_index` 已有數據填充——請參閱「目錄攔截」一節。）
+**`pg_stat_activity`、`pg_stat_user_tables`、`pg_extension`、`pg_enum`、`pg_attrdef`、`pg_proc`。** 這些資料表存在於目錄層中，但屬於空的存根 (stub)。查詢它們的監控工具將收到零行結果，而非錯誤。（`pg_index` 已有數據填充；請參閱「目錄攔截」一節。）

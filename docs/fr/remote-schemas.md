@@ -71,7 +71,7 @@ Lorsqu'une colonne de type OBJECT sur une table gouvernée pointe vers un autre 
 2. **Exclue du SDL** — le champ n'apparaît pas sur le type parent dans le schéma généré.
 3. **Accessible uniquement via une relation déclarée** — un data steward doit enregistrer une jointure entre les deux tables gouvernées matérialisées. En l'absence de cette relation, le champ est simplement absent ; il n'y a pas de repli sous forme de blob.
 
-Les types OBJECT qui ne sont PAS accessibles en tant que champs racine de Query (types inline tels que `ContactInfo` ou `Address`) suivent des règles différentes : ils sont récupérés sous forme de colonnes blob `jsonb` et apparaissent dans le SDL comme des champs d'objet imbriqué. Les sous-champs sont accessibles via une extraction `-->>` en SQL.
+Les types OBJECT qui ne sont PAS accessibles en tant que champs racine de Query (types inline tels que `ContactInfo` ou `Address`) suivent des règles différentes : ils sont récupérés sous forme de colonnes blob `jsonb` et apparaissent dans le SDL comme des champs d'objet imbriqué. Les sous-champs sont accessibles via une extraction `->>` en SQL.
 
 **Les champs qui exigent un argument ne sont pas des colonnes.** Un champ avec un argument obligatoire ne peut pas être sélectionné tel quel ; il est donc écarté des colonnes de la table et des sélections imbriquées.
 
@@ -87,8 +87,8 @@ Les types OBJECT qui ne sont PAS accessibles en tant que champs racine de Query 
 
 - Les champs de requête racine de type scalaire et ENUM (dont le type de retour n'est pas OBJECT) deviennent des fonctions suivies, et non des tables virtuelles. Leur `return_schema` est une colonne unique `value` du type scalaire correspondant.
 - L'imbrication d'objets est résolue au moment de l'enregistrement jusqu'à `graphql_remote.max_object_depth` (par défaut : 5). La sélection de la récupération distante et les métadonnées des sous-champs sont toutes deux construites jusqu'à cette profondeur ; les champs au-delà de la limite ne sont pas récupérés et ne sont pas disponibles pour l'extraction SQL. Un type n'est visité qu'une fois le long d'un même chemin : un champ dont le type figure déjà sur le chemin descendant est écarté, de sorte qu'un schéma dont les types se réfèrent les uns aux autres est parcouru une fois par type, et non une fois par niveau de profondeur.
-- Les champs OBJECT imbriqués de type LIST (p. ex. `breed.awards: [Award]`) sont inclus dans la sélection de récupération jusqu'à `graphql_remote.max_list_depth` niveaux d'imbrication (par défaut : 2). Dans cette limite, la liste est récupérée sous forme de tableau `jsonb` dans la colonne parente. Lorsque le champ de liste déclare un argument `first` (Relay, PostGraphile, pg_graphql) ou un argument `limit` (Hasura), la sélection le transmet sous la forme `first: N` ou `limit: N`, où N vaut `graphql_remote.max_list_items` (par défaut : 100). Un champ de liste qui ne déclare ni l'un ni l'autre ne reçoit aucun argument, car un distant rejette un argument que le champ ne déclare pas. Au-delà de `max_list_depth`, le champ LIST est entièrement exclu afin d'éviter une expansion illimitée des données. En SQL, le tableau est accessible via `json_array_elements(column_name)` ou par extraction d'index avec `->>`. Si le type d'élément de la liste possède sa propre requête racine, enregistrez-le plutôt comme table distincte et créez une relation — le chemin de jointure est plus efficace et contourne le blob.
-- Pour les requêtes SQL, les colonnes de type OBJECT non gouvernées sont récupérées intégralement depuis la source distante (tous les sous-champs jusqu'à la profondeur configurée) et mises en cache sous forme de `jsonb`. L'accès aux sous-champs en SQL est géré via une extraction `->>` sur le blob ; la requête distante n'est pas restreinte aux seuls champs sélectionnés par la requête SQL. Lorsque le type d'élément de la liste n'a pas de requête racine et que la représentation en blob est insuffisante, il convient d'écrire directement la requête en SDL GraphQL — Provisa reproduit fidèlement la sélection de champs GQL, de sorte que la source distante reçoit exactement les champs demandés.
+- Les champs OBJECT imbriqués de type LIST (p. ex. `breed.awards: [Award]`) sont inclus dans la sélection de récupération jusqu'à `graphql_remote.max_list_depth` niveaux d'imbrication (par défaut : 2). Dans cette limite, la liste est récupérée sous forme de tableau `jsonb` dans la colonne parente. Lorsque le champ de liste déclare un argument `first` (Relay, PostGraphile, pg_graphql) ou un argument `limit` (Hasura), la sélection le transmet sous la forme `first: N` ou `limit: N`, où N vaut `graphql_remote.max_list_items` (par défaut : 100). Un champ de liste qui ne déclare ni l'un ni l'autre ne reçoit aucun argument, car un distant rejette un argument que le champ ne déclare pas. Au-delà de `max_list_depth`, le champ LIST est entièrement exclu afin d'éviter une expansion illimitée des données. En SQL, le tableau est accessible via `json_array_elements(column_name)` ou par extraction d'index avec `->>`. Si le type d'élément de la liste possède sa propre requête racine, enregistrez-le plutôt comme table distincte et créez une relation. Le chemin de jointure est plus efficace et contourne le blob.
+- Pour les requêtes SQL, les colonnes de type OBJECT non gouvernées sont récupérées intégralement depuis la source distante (tous les sous-champs jusqu'à la profondeur configurée) et mises en cache sous forme de `jsonb`. L'accès aux sous-champs en SQL est géré via une extraction `->>` sur le blob ; la requête distante n'est pas restreinte aux seuls champs sélectionnés par la requête SQL. Lorsque le type d'élément de la liste n'a pas de requête racine et que la représentation en blob est insuffisante, il convient d'écrire directement la requête en SDL GraphQL. Provisa reproduit fidèlement la sélection de champs GQL, de sorte que la source distante reçoit exactement les champs demandés.
 - Si le serveur distant rejette un champ de type OBJECT parce qu'il exige une sélection de sous-champs (ce qui ne devrait pas se produire lorsque `gql_selection` est disponible), l'exécuteur retente une fois en retirant ces champs afin que les colonnes scalaires soient tout de même renvoyées. Cela s'applique aux tables lues depuis un champ racine. Une table de connexion n'emprunte pas ce chemin.
 
 **Lectures paginées.** Une table de connexion est lue par curseur. Chaque page demande `first: N, after: $pageCursor` avec `pageInfo { hasNextPage endCursor }`, et la lecture suit `endCursor` jusqu'à ce que le distant indique qu'il n'y a plus de page suivante.
@@ -187,7 +187,7 @@ Les fichiers proto peuvent également être des chemins locaux. Les chemins d'im
 
 1. **`method_overrides`** dans le payload d'enregistrement — `{"MethodName": "query"}` ou `{"MethodName": "mutation"}` est prioritaire sur tout le reste.
 2. **`server_streaming: true`** — le serveur envoie un flux de messages ; c'est toujours une table virtuelle (sauf si la sortie est un scalaire).
-3. **Le message de sortie possède un champ répété de type message** — p. ex. `ListOrdersResponse { repeated Order items; }` est traité comme un enveloppant de liste et devient une table virtuelle. Les champs scalaires répétés (p. ex. `repeated string tags`) ne déclenchent pas cette règle — ce sont des propriétés de type tableau d'une entité unique, et non des sources de lignes.
+3. **Le message de sortie possède un champ répété de type message** — p. ex. `ListOrdersResponse { repeated Order items; }` est traité comme un enveloppant de liste et devient une table virtuelle. Les champs scalaires répétés (p. ex. `repeated string tags`) ne déclenchent pas cette règle, car ce sont des propriétés de type tableau d'une entité unique, et non des sources de lignes.
 
 Les méthodes qui ne correspondent à aucun de ces signaux (RPC unaire renvoyant un message d'entité unique, ou toute sortie scalaire) deviennent des fonctions suivies.
 
@@ -213,7 +213,7 @@ Les méthodes de mutation sont des commandes proposées, comptées dans `availab
 
 **Relations à l'enregistrement.** `relationships` fonctionne comme pour l'adaptateur GQL : il déclare des chemins de jointure FK/PK, stockés comme relations déclarées manuellement (sans indicateur `remote_managed`). Un rafraîchissement les laisse telles quelles.
 
-**Méthodes de requête.** Les champs du message de sortie deviennent des colonnes de table. Les champs du message d'entrée deviennent à la fois des arguments GraphQL transmis à l'appel distant *et* des colonnes enregistrées avec le préfixe `_nf_` et `native_filter_type: "grpc_input"` — le même mécanisme utilisé par GQL et OpenAPI pour l'injection de filtres natifs.
+**Méthodes de requête.** Les champs du message de sortie deviennent des colonnes de table. Les champs du message d'entrée deviennent à la fois des arguments GraphQL transmis à l'appel distant *et* des colonnes enregistrées avec le préfixe `_nf_` et `native_filter_type: "grpc_input"`, le même mécanisme utilisé par GQL et OpenAPI pour l'injection de filtres natifs.
 
 **Sous-champs de messages imbriqués.** Pour les méthodes de requête, les champs de type message non répétés à la profondeur 0 (colonnes de sortie directes) voient leurs sous-champs résolus un niveau plus loin et stockés comme `object_fields` dans le `ColumnDef`. Ces métadonnées sont utilisées pour l'extraction de sous-champs `jsonb` en SQL et pour la documentation du schéma. Les champs imbriqués au-delà de la profondeur 1 ne sont pas développés récursivement.
 
@@ -274,7 +274,7 @@ Ordre de priorité de la classification : `operation_overrides` (payload) est pr
 
 **Sous-champs d'objet.** Les propriétés de réponse de `type: object` possédant leurs propres `properties` sont stockées comme `object_fields` sur la colonne. Ces sous-champs sont visibles dans le SDL et utilisés pour l'extraction `jsonb` dans les requêtes.
 
-**Mise en cache des réponses.** Les résultats des opérations GET sont mis en cache dans PostgreSQL par `pg_cache.py`. Chaque combinaison de paramètres de requête obtient son propre groupe `_params_hash`. Les lignes d'un hash donné sont remplacées à l'expiration du TTL. Les endpoints à paramètre de chemin (`/pets/{id}`) omettent la récupération initiale en masse — la table de cache est créée vide pour l'introspection de schéma, puis peuplée par clé primaire au fur et à mesure des requêtes.
+**Mise en cache des réponses.** Les résultats des opérations GET sont mis en cache dans PostgreSQL par `pg_cache.py`. Chaque combinaison de paramètres de requête obtient son propre groupe `_params_hash`. Les lignes d'un hash donné sont remplacées à l'expiration du TTL. Les endpoints à paramètre de chemin (`/pets/{id}`) omettent la récupération initiale en masse. La table de cache est créée vide pour l'introspection de schéma, puis peuplée par clé primaire au fur et à mesure des requêtes.
 
 **Actualisation.** Envoyer une requête POST à `/admin/openapi/refresh/{source_id}`. Ré-analyse la spécification via `_load_and_register`, qui n'enregistre rien : elle n'ajoute ni table ni colonne. Les règles de gouvernance existantes sont préservées. Une table enregistrée conserve ses colonnes ; elle est lue via l'opération de la spec actualisée.
 
@@ -290,7 +290,7 @@ Ordre de priorité de la classification : `operation_overrides` (payload) est pr
 
 Une table enregistrée depuis n'importe quelle source de schéma distant est une table Provisa de première classe. Rien ne la distingue, au moment de l'exécution, d'une table relationnelle connectée localement.
 
-**Interfaces de requête.** La table est immédiatement interrogeable via GraphQL, SQL (pgwire ou direct), Cypher (GQL), JSON:API et Arrow Flight. La génération de schéma synthétise `ColumnMetadata` pour les tables distantes, puisqu'elles n'ont pas de catalogue — la correspondance des types est appliquée au moment de la construction du schéma.
+**Interfaces de requête.** La table est immédiatement interrogeable via GraphQL, SQL (pgwire ou direct), Cypher (GQL), JSON:API et Arrow Flight. La génération de schéma synthétise `ColumnMetadata` pour les tables distantes, puisqu'elles n'ont pas de catalogue ; la correspondance des types est appliquée au moment de la construction du schéma.
 
 **Modèle de sécurité.** Les cinq couches de gouvernance s'appliquent :
 
@@ -338,7 +338,7 @@ Le même mécanisme s'applique quand le schéma est construit filtré par domain
 
 Une table en définition de type seule :
 
-- N'a pas de champ de requête racine — les clients ne peuvent pas l'interroger directement par nom.
+- N'a pas de champ de requête racine, donc les clients ne peuvent pas l'interroger directement par nom.
 - Est accessible via des champs de relation sur les tables disposant d'entrées racine.
 - Apparaît toujours dans l'introspection de schéma comme un type nommé.
 - Conserve l'application de toutes les règles de gouvernance lorsque les données sont consultées via une relation.

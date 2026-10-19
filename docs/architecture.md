@@ -225,7 +225,7 @@ Credentials for cloud storage travel in the source's `federation_hints` (see [So
 
 ### Columnar materialization writes
 
-`Connection.bulk_copy` in `provisa/core/database.py` chooses the fastest bulk-ingest path per store dialect: binary `COPY` (asyncpg `copy_records_to_table`) for PostgreSQL stores, and a single `executemany` prepared statement for all other relational stores. The DuckDB embedded store lands through `land_duckdb_native` in `store_connection.py` — one `executemany` call for the whole batch, never a per-row loop.
+`Connection.bulk_copy` in `provisa/core/database.py` chooses the fastest bulk-ingest path per store dialect: binary `COPY` (asyncpg `copy_records_to_table`) for PostgreSQL stores, and a single `executemany` prepared statement for all other relational stores. The DuckDB embedded store lands through `land_duckdb_native` in `store_connection.py`: one `executemany` call for the whole batch, never a per-row loop.
 
 ## Large Result Redirect
 
@@ -654,7 +654,7 @@ The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager 
 Querying has no capability gate; governance comes entirely from controls at the data layer. A raw-SQL request is refused (HTTP 403) for any table outside the role's object scope before governance runs.
 
 1. **Object Visibility**: Per-role schema hides unauthorized tables/columns; out-of-scope tables in raw SQL are rejected
-2. **Relationship enforcement**: Traversals must exist in the approved relationship catalog, unless the role holds `ignore_relationships` — among the seeded system roles, only `modeler` does. In high-security mode the capability is ignored and no traversal escapes the catalog
+2. **Relationship enforcement**: Traversals must exist in the approved relationship catalog, unless the role holds `ignore_relationships`. Among the seeded system roles, only `modeler` does. In high-security mode the capability is ignored and no traversal escapes the catalog
 3. **RLS**: Per-table per-role WHERE clause injection
 4. **Column Masking**: Per-column per-role data transformation
 5. **Row cap (LIMIT)**: Row-count cap for roles without `full_results`; random statistical sampling is a separate user query feature
@@ -679,8 +679,8 @@ For threshold-based redirect, Provisa injects `LIMIT threshold + 1` into the que
 
 For large analytical workloads, use either:
 
-- **Arrow Flight** (port 8815) for streaming to data tools — batches flow through Provisa without materializing
-- **Parquet/ORC redirect** for file-based exports — the federation engine writes directly to S3, Provisa returns a presigned URL
+- **Arrow Flight** (port 8815) for streaming to data tools; batches flow through Provisa without materializing
+- **Parquet/ORC redirect** for file-based exports: the federation engine writes directly to S3 and Provisa returns a presigned URL
 
 ## Infrastructure
 

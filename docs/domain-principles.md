@@ -18,7 +18,7 @@
 
 A table and a view differ only in where they come from: a table is claimed from a source, and a view is defined by a steward. Once either is a domain asset, the governance model treats them the same:
 
-- Both are first-class domain assets visible in the catalog
+- Both are domain assets in their own right, visible in the catalog
 - Both can be the target of a relationship
 - Both can be granted under Principle 6
 - Both are subject to the same governance pipeline
@@ -42,7 +42,7 @@ Nothing technical limits how deeply views compose. The steward's judgment during
 
 Every view carries a declared business purpose, stated at creation time:
 
-- Part of the governed artifact — stewards approve knowing what the view is for
+- Part of the governed artifact, so stewards approve knowing what the view is for
 - Referenced by access requests under Principle 7 so the steward can assess fit
 - Travels from view creation through the full governance workflow
 
@@ -80,7 +80,7 @@ A relationship is an approved traversal path between two assets. Domain boundari
 - A relationship request is decided by the domains it touches: the domain of its source table and the domain of its target table
 - An approval counts only from a user whose right to create relationships reaches one of those domains; a rejection may come from any such user
 - The request is carried out once two different users, neither of them the requester, have approved and every domain involved has an approver: a relationship across two domains needs a yes from each side, and a relationship inside one domain needs two approvers of that domain
-- Approving a relationship builds each steward's dependency graph, enabling proactive schema evolution notifications
+- Approving a relationship builds each steward's dependency graph, so stewards hear about schema changes before they land
 
 Relationships are created when someone needs them, never speculatively. The first team with the business need does the work, and later teams inherit it.
 
@@ -96,7 +96,7 @@ A field access grant is a permission from one domain to another: Domain A may us
 - Approved once by the target domain steward
 - Belongs to the requesting domain, not to the view that prompted it
 - Any subsequent view in the requesting domain may use the granted fields without further cross-domain involvement
-- Additional ungranated fields require a new request
+- Additional ungranted fields require a new request
 
 **Post-use notification:** When a view is created with granted fields, the source steward is told about it, without being asked to approve. The notification gives the view name, its declared business purpose, the fields used and the steward who approved it. That gives the source steward:
 
@@ -112,10 +112,10 @@ Three stages, in order.
 
 **Stage 1 — Shaping (SQL discovery, from the Relationships page):**
 
-- Analyst opens the Shaping tool from the Relationships page to explore potential join paths in raw SQL
+- Analyst opens the Shaping tool from the Relationships page to try out join paths in raw SQL
 - SQL is run against accessible data, subject to existing RLS and column masking
 - JOINs in the SQL are parsed and surfaced as candidate Relationship proposals
-- Machine-suggested candidates (FK inference, semantic inference) are shown alongside the analyst's SQL exploration in the same view
+- Machine-suggested candidates (FK inference, semantic inference) are shown alongside the analyst's SQL in the same view
 - Analyst selects candidates to promote to a formal Relationship request
 
 **Stage 2 — Relationship approval** (consequential — structural and permanent):
@@ -127,8 +127,8 @@ Three stages, in order.
 **Stage 3 — Query creation:**
 
 - Analyst builds the Query in any supported language (SQL, GraphQL, Cypher), traversing approved relationship paths
-- Only approved catalog relationships are traversable — the compiler enforces this structurally
-- No approval required — column visibility and relationship approval are the only gates
+- Only approved catalog relationships are traversable, and the compiler enforces this structurally
+- No approval required: column visibility and relationship approval are the only gates
 
 ### HITL as the Primary Control
 
@@ -164,7 +164,7 @@ FK constraints belong to a single source, so they can't span sources. Cross-sour
 Within a source:
 
 - FK constraints are surfaced automatically as candidate relationships on source registration
-- They represent explicit modeling intent — unenforced in most analytical SQL systems but purposefully declared
+- They represent explicit modeling intent: unenforced in most analytical SQL systems, but declared on purpose
 - Steward validation is still required before a candidate becomes an approved relationship
 
 ### Relationship Confidence Hierarchy
@@ -196,7 +196,7 @@ The LLM operates across all five tiers simultaneously, suggesting relationships,
 
 - Candidate relationships ranked by confidence
 - Unclaimed tables that may satisfy a data need, with a prompt to initiate claiming
-- Absence of any candidate — signal to escalate to admin
+- No candidate at all is the signal to escalate to an admin
 
 **View design from business description:**
 
@@ -233,12 +233,12 @@ The business description becomes the view's declared business purpose once the v
 It opens as a modal from the Relationships page. Its purpose is building the semantic model: finding structural join paths before they are made formal as governed relationships.
 
 1. Analyst writes freeform SQL against accessible tables (RLS and masking still applied)
-2. SQL AST is parsed — each JOIN condition becomes a candidate Relationship proposal
+2. The SQL AST is parsed, and each JOIN condition becomes a candidate Relationship proposal
 3. Candidate list is shown alongside machine-suggested candidates (FK inference, semantic inference) for unified review
 4. Analyst promotes selected candidates to formal Relationship requests
 5. Approved Relationships are added to the catalog and become traversable in Queries
 
-For structural exploration the Modeling tool may show every registered table, including ones whose data the analyst can't see. Schema visibility is a separate matter; steward approval is what governs access to the data itself.
+While you work out the structure, the Modeling tool may show every registered table, including ones whose data the analyst can't see. Schema visibility is a separate matter; steward approval is what governs access to the data itself.
 
 ---
 
@@ -249,7 +249,7 @@ For structural exploration the Modeling tool may show every registered table, in
 Every query that touches a domain asset is recorded in an append-only `query_audit_log`. Each entry captures:
 
 - `tenant_id`, `user_id`, `role_id` — the identity context
-- A SHA-256 hash of the query — the verbatim query text is never stored
+- A SHA-256 hash of the query; the verbatim query text is never stored
 - `table_ids` — the domain assets the query touched
 - `source`, `status_code`, `duration_ms`
 - `logged_at` — the timestamp

@@ -242,8 +242,8 @@ provisa start && provisa open
 ### Windows
 
 1. Download [Provisa-windows-x64.exe](https://provisa.dev/dl/windows) (always the latest release)
-2. Run the installer. No admin rights required
-3. Open **Provisa First Launch** from the Start Menu. It completes a one-time setup (~5 min, no internet required)
+2. Run the installer. It needs no admin rights.
+3. Open **Provisa First Launch** from the Start Menu. It completes a one-time setup (~5 min, no internet required).
 4. Open a new terminal:
 
 ```bash
@@ -320,7 +320,7 @@ TLS is enabled by setting `PROVISA_PGWIRE_CERT` and `PROVISA_PGWIRE_KEY`. The po
 
 Provisa also speaks the Neo4j **Bolt** protocol, so graph-native tools connect directly and run Cypher against the federated graph. Nothing is exported, and you need no separate graph database. Point **Neo4j Browser** or **Bloom** at Provisa and traverse relationships across sources under the same governance (domain access, RLS, masking).
 
-Neo4j Browser running Cypher against Provisa. Node labels, relationship types, and property keys come straight from the registered schema:
+Neo4j Browser runs Cypher against Provisa here. Its node labels, relationship types and property keys all come straight from the registered schema:
 
 ![Provisa in Neo4j Browser over Bolt](docs/images/bolt-neo4j-browser.png)
 

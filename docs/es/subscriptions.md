@@ -16,7 +16,7 @@ Las suscripciones apuntan a una **tabla registrada**:
 
 Provisa instala automáticamente triggers `AFTER INSERT OR UPDATE OR DELETE` en todas las tablas de PostgreSQL **preaprobadas** al iniciar. Estos triggers invocan `pg_notify('provisa_{table}', ...)` para que las DML sin procesar (no solo las mutaciones de Provisa) sean captadas por las suscripciones.
 
-Si la instalación del trigger falla (por ejemplo, por privilegios insuficientes — el rol de base de datos debe ser propietario de la tabla), Provisa recurre al sondeo por marca de agua para esa tabla, siempre que haya un `watermark_column` configurado. Se registra una advertencia.
+Si la instalación del trigger falla (por ejemplo, por privilegios insuficientes, porque el rol de base de datos debe ser propietario de la tabla), Provisa recurre al sondeo por marca de agua para esa tabla, siempre que haya un `watermark_column` configurado. Se registra una advertencia.
 
 ### Suscripciones a vistas entre orígenes de datos {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa emite `LISTEN <channel>` en una conexión persistente a PG. Las mutacion
 
 ### Sondeo {: #polling }
 
-Provisa vuelve a ejecutar periódicamente la consulta de origen, seleccionando solo las filas donde `watermark_column > last_watermark`. Las diferencias se emiten como eventos SSE. El sondeo no puede detectar eliminaciones definitivas (hard deletes) — una fila eliminada no deja ninguna marca de agua que avance. Para que una eliminación sea visible, use una eliminación lógica (soft delete) (por ejemplo, active un indicador `deleted_at`) que incremente la columna de marca de agua; la eliminación llega entonces como un evento de actualización que transporta el indicador de eliminación lógica.
+Provisa vuelve a ejecutar periódicamente la consulta de origen, seleccionando solo las filas donde `watermark_column > last_watermark`. Las diferencias se emiten como eventos SSE. El sondeo no puede detectar eliminaciones definitivas (hard deletes): una fila eliminada no deja ninguna marca de agua que avance. Para que una eliminación sea visible, use una eliminación lógica (soft delete) (por ejemplo, active un indicador `deleted_at`) que incremente la columna de marca de agua; la eliminación llega entonces como un evento de actualización que transporta el indicador de eliminación lógica.
 
 Configuración de sondeo de tabla (en `provisa.yaml`):
 
@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## Cuando un flujo termina con un fallo {: #when-a-stream-ends-on-a-failure }
 
 Un flujo que se ha abierto ya respondió `200`, así que un fallo posterior no puede ser un estado HTTP. El suscriptor recibe una última trama que dice por qué, y después el flujo se cierra. Un flujo nunca se cierra por un fallo sin esa trama.
@@ -176,6 +177,7 @@ La suscripción de tabla (`/data/subscribe/{table}`) envía el cuerpo como los d
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 El evento no se llama `error`, porque un `EventSource` lanza su propio evento `error` cuando se cae una conexión y un listener no podría distinguir los dos. Escúchelo por su nombre:
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 Una suscripción GraphQL mantiene la forma de respuesta de GraphQL, con el código y los params bajo `extensions`:
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 Un caso no termina una suscripción GraphQL: cuando falla la relectura tras un solo cambio, esa trama se envía con la misma forma y el flujo sigue con el siguiente cambio. Un fallo de la lectura inicial, del propio feed de cambios o de su arranque es la última trama.
 
 ## Redirección a un sink de Kafka {: #kafka-sink-redirect }

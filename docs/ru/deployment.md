@@ -61,7 +61,7 @@ UI:      http://localhost:3000
 
 **Параметры:**
 
-`--reset-volumes` — выполняет `docker compose down -v` перед запуском, уничтожая все тома Docker (данные PostgreSQL, объекты MinIO, состояние Redis и т. д.). Используйте, когда нужно начать полностью с нуля — после изменения схемы во время разработки или когда Docker упал и оставил тома повреждёнными. **Все данные будут потеряны.**
+`--reset-volumes` — выполняет `docker compose down -v` перед запуском, уничтожая все тома Docker (данные PostgreSQL, объекты MinIO, состояние Redis и т. д.). Используйте, когда нужно начать полностью с нуля: после изменения схемы во время разработки или когда Docker упал и оставил тома повреждёнными. **Все данные будут потеряны.**
 
 `--observability` — добавляет полную инструментацию трассировки и метрик. Скачивает Java-агент OpenTelemetry и правит `jvm.config` Trino, чтобы тот его загрузил, инструментирует серверную часть Provisa экспортом OTLP и запускает коллектор OTel, Prometheus, Tempo и Grafana (`http://localhost:3100`). Правка `jvm.config` автоматически откатывается по Ctrl+C.
 
@@ -164,7 +164,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 1. Скачайте `Provisa-<version>-macOS.dmg` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases)
 2. Откройте DMG и перетащите **Provisa.app** в `/Applications`
-3. Дважды щёлкните **Provisa.app** — настройка при первом запуске выполняется один раз; мастер предлагает описанный выше выбор движка, наблюдаемости и демонстрации
+3. Дважды щёлкните **Provisa.app**. Настройка при первом запуске выполняется один раз, и мастер предлагает описанный выше выбор движка, наблюдаемости и демонстрации
 4. Откройте терминал:
 
    ```bash
@@ -188,8 +188,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 ### Шаги {: #steps_1 }
 
 1. Скачайте `Provisa-<version>-windows-x64.exe` со [страницы релизов GitHub](https://github.com/provisa/provisa/releases)
-2. Запустите установщик — права администратора не нужны; установка выполняется в `%LOCALAPPDATA%\Programs\Provisa\`
-3. Откройте **Provisa First Launch** из меню «Пуск» — нативная настройка выполняется один раз и печатает подсказки по дальнейшим шагам для послойных дополнений
+2. Запустите установщик. Права администратора ему не нужны, а установка выполняется в `%LOCALAPPDATA%\Programs\Provisa\`
+3. Откройте **Provisa First Launch** из меню «Пуск». Нативная настройка выполняется один раз и печатает подсказки по дальнейшим шагам для послойных дополнений
 4. Откройте новый терминал:
 
    ```text
@@ -209,7 +209,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 `Provisa.AppImage` — один самодостаточный исполняемый файл, включающий:
 
-- Демон Docker без root-прав (`dockerd-rootless.sh` + `rootlesskit`) — системный Docker и root не нужны
+- Демон Docker без root-прав (`dockerd-rootless.sh` + `rootlesskit`), поэтому системный Docker и root не нужны
 - Все tar-архивы образов контейнеров (PostgreSQL, PgBouncer, MinIO, Redis, федеративный движок, API Provisa)
 - Обёртку CLI Provisa и скрипт настройки при первом запуске
 
@@ -280,7 +280,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
    - **Роль** → выберите `primary`
    - **Бюджет ОЗУ**, **имя узла**, **порт API** → отвечайте так же, как для одного узла
 5. После завершения настройки запишите **частный IP-адрес** этой машины. Он нужен вторичным узлам, как и учётные данные хранилищ, сгенерированные главным узлом: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`). Скопируйте этот файл на каждый вторичный узел по защищённому каналу
-6. Мастер печатает блок upstream для nginx — сохраните его для конфигурации балансировщика нагрузки
+6. Мастер печатает блок upstream для nginx; сохраните его для конфигурации балансировщика нагрузки
 7. Проверьте:
 
    ```bash
@@ -313,7 +313,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
    - **Роль** → выберите `secondary`
    - **IP главного узла** → введите IP-адрес главного узла (связность проверяется вживую)
    - **Бюджет ОЗУ**, **имя узла**, **порт API** → отвечайте как выше
-5. Настройка загружает сокращённый набор образов (без PostgreSQL, PgBouncer, MinIO и Redis — они работают только на главном узле), запускает API Provisa и рабочий узел федеративного движка
+5. Настройка загружает сокращённый набор образов (без PostgreSQL, PgBouncer, MinIO и Redis, которые работают только на главном узле), запускает API Provisa и рабочий узел федеративного движка
 6. Проверьте:
 
    ```bash
@@ -347,7 +347,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 ### Неинтерактивный (автоматизированный) первый запуск {: #non-interactive-automated-first-launch }
 
-Для Terraform, cloud-init или Ansible — передайте флаги вместо ответов на вопросы:
+Для Terraform, cloud-init или Ansible передайте флаги вместо ответов на вопросы:
 
 ```bash
 # Primary
@@ -587,7 +587,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    curl http://localhost:8000/health
    ```
 
-8. (Необязательно) Включите ingress для внешнего доступа — задайте `ingress.enabled: true` и настройте свой контроллер ingress
+8. (Необязательно) Включите ingress для внешнего доступа: задайте `ingress.enabled: true` и настройте свой контроллер ingress
 
 ### Контрольный список предварительных требований {: #prerequisites-checklist_1 }
 
@@ -674,9 +674,9 @@ Provisa применяет двухуровневую модель восста�
 
 ## Зависимости федеративных движков {: #federation-engine-dependencies }
 
-Федеративные движки хранилищ данных требуют пакетов Python и системных компонентов сверх установки Provisa по умолчанию. Все перечисленные здесь пакеты Python объявлены в `pyproject.toml` и устанавливаются в рамках обычного `pip install provisa` или `pip install -e .`.
+Федеративным движкам хранилищ нужны пакеты Python и системные компоненты. Пакеты Python объявлены в `pyproject.toml` и ставятся обычным `pip install provisa` или `pip install -e .`, поэтому ни одному движку хранилища не нужен дополнительный extra.
 
-Пакеты Python поставляются со стандартной установкой Provisa, поэтому ни одному движку хранилища не нужны дополнительные extras. Системные компоненты (драйвер ODBC, облачные CLI, ключи сервисных аккаунтов) устанавливаются отдельно.
+Системные компоненты (драйвер ODBC, облачные CLI, ключи сервисных аккаунтов) устанавливаются отдельно.
 
 ### Пакеты Python (уже в основных зависимостях) {: #python-packages-already-in-core-dependencies }
 

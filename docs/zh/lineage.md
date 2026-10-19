@@ -27,7 +27,7 @@ orders.region ─╯
 ```
 
 - `orders.id`、`orders.region` 和 `orders.geo` 是**源**节点（`enrich_grpc_set` 的窄输入契约声明了 `id` 和 `region`；完整的污点闭包把所有已声明的输入连到所有输出）。
-- `e.embedding` 和 `e.geo` 是**命令**节点——即 `enrich_grpc_set` 边界。
+- `e.embedding` 和 `e.geo` 是位于 `enrich_grpc_set` 边界上的**命令**节点。
 - `geo_u` 是由 `UPPER` 这个 SQL 函数产出的**派生**节点。
 
 命令边界**并不是不透明的**。由于 `enrich_grpc_set` 声明了它的输入列（`id`、`region`）和输出列（`id`、`embedding`、`geo`），血缘引擎会把污点闭包从源关系已声明的列一直连续拼接到每一个输出。

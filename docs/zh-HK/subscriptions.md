@@ -16,7 +16,7 @@ Provisa 透過 Server-Sent Events（SSE）支援即時推送。客戶端可接�
 
 Provisa 在啟動時，會自動在所有**已預先核准**的 PostgreSQL 資料表上安裝 `AFTER INSERT OR UPDATE OR DELETE` 觸發程序。這些觸發程序會呼叫 `pg_notify('provisa_{table}', ...)`，令原始 DML（不僅限於 Provisa 的變更操作）都能被訂閱捕捉到。
 
-如觸發程序安裝失敗（例如權限不足——資料庫角色必須擁有該資料表的擁有權），Provisa 會退回至該資料表的水位標記輪詢，前提是已設定 `watermark_column`。系統會記錄一則警告。
+如觸發程序安裝失敗（例如權限不足，因為資料庫角色必須擁有該資料表的擁有權），Provisa 會退回至該資料表的水位標記輪詢，前提是已設定 `watermark_column`。系統會記錄一則警告。
 
 ### 跨數據來源檢視訂閱 {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa 會在一條持久的 PG 連線上發出 `LISTEN <channel>`。Provisa �
 
 ### 輪詢 {: #polling }
 
-Provisa 會定期重新執行數據來源查詢，只選取 `watermark_column > last_watermark` 的資料列。差異會以 SSE 事件形式發出。輪詢無法偵測到硬刪除——被移除的資料列不會令水位標記推進。若要令刪除操作可見，請使用軟刪除（例如設定 `deleted_at` 旗標）以推進水位標記欄位；該刪除操作其後會以更新事件形式送達，並附帶軟刪除標記。
+Provisa 會定期重新執行數據來源查詢，只選取 `watermark_column > last_watermark` 的資料列。差異會以 SSE 事件形式發出。輪詢無法偵測到硬刪除：被移除的資料列不會令水位標記推進。若要令刪除操作可見，請使用軟刪除（例如設定 `deleted_at` 旗標）以推進水位標記欄位；該刪除操作其後會以更新事件形式送達，並附帶軟刪除標記。
 
 資料表輪詢設定（於 `provisa.yaml` 中）：
 
@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## 串流失敗時 {: #when-a-stream-ends-on-a-failure }
 
 已開啟的串流已經回應了 `200`，因此之後的失敗不能再是 HTTP 狀態。訂閱者會收到說明原因的最後一個訊框，然後串流關閉。串流絕不會在沒有這個訊框的情況下因失敗而關閉。
@@ -176,6 +177,7 @@ sources:
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 該事件不叫 `error`，因為 `EventSource` 在連線中斷時會自行產生一個 `error` 事件，監聽器將無法區分兩者。請按名稱監聽它：
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 GraphQL 訂閱保持 GraphQL 回應的形態，代碼及 params 位於 `extensions` 之中：
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 有一種情況不會結束 GraphQL 訂閱：當某次變更之後的重新讀取失敗時，會以同樣的形態傳送該訊框，然後串流繼續處理下一次變更。初始讀取、變更串流本身或其啟動的失敗是最後一個訊框。
 
 ## Kafka 接收器重新導向 {: #kafka-sink-redirect }

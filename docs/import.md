@@ -16,8 +16,7 @@ session is acting in.
    anything unmapped keeps its original name.
 3. **Convert and preview.** The server converts and returns counts, the conversion report (see
    [The report](#the-report)), and the generated configuration. Nothing is written at this step.
-4. **Review and edit.** The configuration is editable in place — connection details, domain names,
-   role names. What you apply is what is shown.
+4. **Review and edit.** The configuration is editable in place: connection details, domain names, role names. What you apply is what is shown.
 5. **Apply.** *Apply to this organization* loads the configuration and rebuilds the organization's schemas.
    An import is always a merge into what the organization has.
 
@@ -157,7 +156,7 @@ A Hasura export names columns without types, and a tracked table with no permiss
 
 ### Locate the HML project
 
-The DDN converter reads the DDN project **directory** of `.hml` files directly — no supergraph build step is required. The first directory component under the project root is taken as the subgraph name; files under `globals/` are assigned the `globals` subgraph.
+The DDN converter reads the DDN project **directory** of `.hml` files directly, with no supergraph build step. The first directory component under the project root is taken as the subgraph name; files under `globals/` are assigned the `globals` subgraph.
 
 ### Convert
 
@@ -199,8 +198,8 @@ Flags:
 
 ## After Import
 
-1. Review the generated `config.yaml` and the report — start with the `Redo by hand` items
+1. Review the generated `config.yaml` and the report. Start with the `Redo by hand` items
 2. Verify connection credentials. A connection the export read from an environment variable arrives empty; the report names it
 3. Start Provisa and confirm tables appear in the Explorer
-4. Run your existing GraphQL queries — the schema is compatible for common patterns
-5. Submit queries for approval via the Admin API or UI before enabling production governance
+4. Run your existing GraphQL queries; the schema is compatible for common patterns
+5. Submit queries for approval via the Admin API or UI before turning on production governance

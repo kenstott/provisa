@@ -58,7 +58,7 @@ Tutte le istruzioni SELECT attraversano la pipeline di governance (`_pipeline.py
 
 Sono supportate query semplici multi-istruzione. Le istruzioni separate da punto e virgola vengono suddivise ed eseguite in ordine.
 
-Le query parametrizzate (`$1`, `$2`, ...) sono supportate sia in modalità query semplice sia in modalità query estesa (Bind/Execute). I parametri vengono sostituiti come letterali prima dell'esecuzione.
+Le query parametrizzate (`$1`, `$2`, ...) sono supportate sia in modalità query semplice sia in modalità query estesa (Bind/Execute). I valori restano vincolati fino al motore o alla sorgente (vedi [Avvertenze e vincoli](#caveats-and-constraints)).
 
 `SELECT * FROM fn(args)` e `SELECT fn(args)` — dove `fn` indica una funzione registrata e tracciata — vengono intercettati prima della pipeline di governance e instradati attraverso l'unico esecutore governato (`invoke_tracked_function`). Il risultato è un insieme di righe tipizzato identico a quello restituito da ogni altra superficie per quel comando. L'assegnazione del comando (`visible_to`), il diritto `write` per una mutazione e le regole di governance vengono applicate all'interno dell'esecutore.
 
@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 La SELECT interna passa dalla normale pipeline governata di Provisa, con la stessa applicazione della RLS, lo stesso mascheramento e gli stessi controlli di accesso per dominio di qualsiasi SELECT autonoma. Dichiarare un cursore non aggira la governance.
 
 La parola chiave `SCROLL` controlla sia la navigazione consentita sia la memoria che usa il cursore:
@@ -85,7 +86,7 @@ La parola chiave `SCROLL` controlla sia la navigazione consentita sia la memoria
 | `DECLARE c NO SCROLL CURSOR FOR ...` | Non consentita | Limitato a un batch di FETCH |
 | `DECLARE c SCROLL CURSOR FOR ...` | Consentita | Risultato completo nel buffer della memoria Python |
 
-Quando non è scritto né `SCROLL` né `NO SCROLL`, il predefinito è `NO SCROLL` — come il predefinito di PostgreSQL. Un cursore `NO SCROLL` rimuove dal suo buffer interno le righe consumate dopo ogni passo in avanti, così una scansione `FETCH FORWARD` di un grande risultato non tiene mai in memoria Python più di circa un batch alla volta. Un cursore `SCROLL` conserva ogni riga che ha recuperato — è il prezzo del supporto a `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST`. Prima di dichiarare un cursore `SCROLL` su un grande risultato, mettete in conto l'intera dimensione del risultato come heap Python.
+Quando non è scritto né `SCROLL` né `NO SCROLL`, il predefinito è `NO SCROLL`, come il predefinito di PostgreSQL. Un cursore `NO SCROLL` rimuove dal suo buffer interno le righe consumate dopo ogni passo in avanti, così una scansione `FETCH FORWARD` di un grande risultato non tiene mai in memoria Python più di circa un batch alla volta. Un cursore `SCROLL` conserva ogni riga che ha recuperato. È il prezzo del supporto a `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST`. Prima di dichiarare un cursore `SCROLL` su un grande risultato, mettete in conto l'intera dimensione del risultato come heap Python.
 
 Ridichiarare un nome di cursore già aperto chiude prima il cursore precedente. `WITH HOLD` e `WITHOUT HOLD` sono accettati nella sintassi; vedere la durata del cursore qui sotto.
 
@@ -102,7 +103,8 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
-`FETCH` restituisce righe e invia il tag di comando `FETCH <n>`, dove `n` è il numero effettivamente restituito — che può essere minore di quello richiesto quando il cursore raggiunge la fine. `MOVE` avanza la posizione senza restituire righe e invia `MOVE <n>`.
+
+`FETCH` restituisce righe e invia il tag di comando `FETCH <n>`, dove `n` è il numero effettivamente restituito, che può essere minore di quello richiesto quando il cursore raggiunge la fine. `MOVE` avanza la posizione senza restituire righe e invia `MOVE <n>`.
 
 `FROM` e `IN` sono intercambiabili per introdurre il nome del cursore. I nomi di cursore senza virgolette vengono portati in minuscolo; i nomi tra virgolette (`"CaseSensitive"`) conservano maiuscole e minuscole.
 
@@ -114,6 +116,7 @@ La navigazione all'indietro (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE`
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` rilascia il flusso di risultati sottostante e rimuove il cursore dalla sessione. Disconnettersi senza emettere `CLOSE` è sicuro: `ProvisaSession.close()` rilascia automaticamente tutti i cursori ancora aperti alla disconnessione.
 
 **Durata di un cursore.** Il server pgwire di Provisa non ha una macchina a stati delle transazioni (`ProvisaSession.in_transaction()` restituisce sempre `False`). Ogni cursore si comporta quindi come se fosse dichiarato `WITH HOLD`: vive quanto la connessione, e `COMMIT` non lo chiude. Le parole chiave `WITH HOLD` e `WITHOUT HOLD` vengono accettate e ignorate, perché non c'è un ciclo di vita del cursore per transazione da applicare.
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **Creare** con `CREATE TEMP TABLE name (column type, ...)` o `CREATE TEMP TABLE name AS SELECT ...`. Il nome non prende uno schema. Una `SELECT` da cui viene creata è una lettura come un'altra: le regole di riga, le maschere, i dati fittizi e il limite di righe del ruolo si applicano alle righe che prende.
 - **Tipi di colonna**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` e `DECIMAL(precision, scale)`. Un decimale conserva precisione e scala. Qualsiasi altro tipo viene rifiutato, indicando la colonna e il tipo: un valore non viene mai memorizzato come un tipo diverso dal proprio. Una colonna creata da una `SELECT` prende il tipo dei suoi valori; una senza un valore da cui dedurre un tipo viene rifiutata, quindi applicate un `CAST` nella `SELECT`.
 - **Limite di righe.** Le righe che prende un `CREATE ... AS SELECT` o un `INSERT ... SELECT` vengono lette come il ruolo legge qualsiasi cosa, quindi si applica il limite di righe del ruolo. Una tabella temporanea riempita da una lettura troncata dal limite porta lo stesso avviso di istruzione di qualsiasi lettura troncata (`statement.rows_cut`), con il limite.
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 Formati supportati: `text` (separato da tabulazioni, predefinito), `csv` e `binary`, il formato COPY binario di PostgreSQL, con cui legge l'estensione postgres di DuckDB.
 
 **COPY FROM STDIN** è una scrittura di dati in una tabella registrata esistente: è ammessa dalla stessa ammissione di scrittura di un `INSERT` delle stesse righe, con la condizione aggiuntiva che l'autorizzazione `insert` non abbia preset (vedi [Scritture di dati](#data-writes-insert-update-delete-merge-copy-from-stdin)). Legge `text` (predefinito) e `csv`. Qualsiasi altro formato viene rifiutato con SQLSTATE 0A000, nominandolo, prima che venga inviato qualsiasi dato.
@@ -240,7 +245,7 @@ Anche le colonne dei risultati vengono inviate in binario quando il client lo ri
 
 ## Raccomandazioni sui driver {: #driver-recommendations }
 
-**Driver Python nativi (psycopg2, asyncpg).** Questi negoziano il protocollo di query estesa per impostazione predefinita e utilizzano la codifica binaria per la maggior parte dei tipi. La fedeltà dei tipi qui è massima — le colonne `NUMERIC` arrivano come `Decimal`, `TIMESTAMP` come `datetime`, e così via. Usarli per ETL basati su Python, script o integrazione diretta.
+**Driver Python nativi (psycopg2, asyncpg).** Questi negoziano il protocollo di query estesa per impostazione predefinita e utilizzano la codifica binaria per la maggior parte dei tipi. La fedeltà dei tipi qui è massima: le colonne `NUMERIC` arrivano come `Decimal`, `TIMESTAMP` come `datetime`, e così via. Usarli per ETL basati su Python, script o integrazione diretta.
 
 **JDBC (driver JDBC di PostgreSQL).** Usarlo per gli strumenti dell'ecosistema Java: DBeaver, Tableau, Power BI, Metabase, operatori JDBC di Airflow. JDBC utilizza per impostazione predefinita il protocollo di query semplice, che evita complicazioni legate alla codifica binaria. Stringa di connessione:
 
@@ -248,9 +253,9 @@ Anche le colonne dei risultati vengono inviate in binario quando il client lo ri
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-Alcuni strumenti di BI basati su JDBC inviano, alla connessione, una raffica di query verso `information_schema` e `pg_catalog` per popolare il proprio browser di schema. Tutte vengono risolte dal livello di intercettazione del catalogo — non viene generato traffico verso Trino durante l'ispezione dello schema.
+Alcuni strumenti di BI basati su JDBC inviano, alla connessione, una raffica di query verso `information_schema` e `pg_catalog` per popolare il proprio browser di schema. Tutte vengono risolte dal livello di intercettazione del catalogo, quindi non viene generato traffico verso Trino durante l'ispezione dello schema.
 
-**Quando preferire l'uno o l'altro.** Se il client è in Python, usare psycopg2 o asyncpg per una migliore gestione dei tipi. Se il client è uno strumento di BI o qualsiasi applicazione JVM, usare JDBC. Evitare di mescolare aspettative di protocollo binario e testuale sulla stessa connessione se si osservano anomalie nella conversione dei tipi — il comportamento in modalità testo di JDBC è più semplice da interpretare.
+**Quando preferire l'uno o l'altro.** Se il client è in Python, usare psycopg2 o asyncpg per una migliore gestione dei tipi. Se il client è uno strumento di BI o qualsiasi applicazione JVM, usare JDBC. Evitare di mescolare aspettative di protocollo binario e testuale sulla stessa connessione se si osservano anomalie nella conversione dei tipi. Il comportamento in modalità testo di JDBC è più semplice da interpretare.
 
 ---
 
@@ -270,4 +275,4 @@ Alcuni strumenti di BI basati su JDBC inviano, alla connessione, una raffica di 
 
 **DECLARE SCROLL mette in buffer il risultato completo.** Un cursore `SCROLL` accumula nell'heap Python ogni riga che recupera dal motore, così da poter servire `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` e `LAST` su richiesta. Con un grande risultato, l'intero risultato vive in memoria finché il cursore è aperto. Usate il predefinito `NO SCROLL` per lo streaming solo in avanti.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Queste tabelle esistono nel livello di catalogo ma sono stub vuoti. Gli strumenti di monitoraggio che le interrogano riceveranno zero righe anziché errori. (`pg_index` è popolata — vedere Intercettazione del catalogo.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Queste tabelle esistono nel livello di catalogo ma sono stub vuoti. Gli strumenti di monitoraggio che le interrogano riceveranno zero righe anziché errori. (`pg_index` è popolata; vedere Intercettazione del catalogo.)

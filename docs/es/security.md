@@ -686,7 +686,7 @@ Un hook de política externo opcional que se dispara antes de ejecutar la consul
 
 ### Ámbito {: #scoping }
 
-El hook solo se dispara cuando la consulta toca una tabla o un origen incluidos: sobrecarga nula para todo lo demás.
+El hook solo se dispara cuando una consulta toca una tabla o un origen incluidos, así que cualquier otra consulta se ejecuta sin coste añadido.
 
 | Configuración | Efecto |
 | -------- | -------- |

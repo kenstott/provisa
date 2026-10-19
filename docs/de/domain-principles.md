@@ -42,7 +42,7 @@ Wie tief Sichten aufeinander aufbauen, begrenzt nichts Technisches. Die Qualitä
 
 Jede Sicht trägt einen deklarierten Geschäftszweck, der zum Erstellungszeitpunkt angegeben wird:
 
-- Teil des governten Artefakts — Stewards genehmigen im Wissen, wofür die Sicht bestimmt ist
+- Teil des governten Artefakts, sodass Stewards genehmigen im Wissen, wofür die Sicht bestimmt ist
 - Wird bei Zugriffsanfragen unter Prinzip 7 referenziert, damit der Steward die Eignung beurteilen kann
 - Begleitet die Sicht von ihrer Erstellung durch den gesamten Governance-Workflow
 
@@ -127,8 +127,8 @@ Drei Phasen, in dieser Reihenfolge.
 **Phase 3 — Abfrageerstellung:**
 
 - Der Analyst erstellt die Abfrage in jeder unterstützten Sprache (SQL, GraphQL, Cypher) und durchläuft dabei genehmigte Beziehungspfade
-- Nur genehmigte Katalogbeziehungen sind durchlaufbar — der Compiler setzt dies strukturell durch
-- Keine Genehmigung erforderlich — Spaltensichtbarkeit und Beziehungsgenehmigung sind die einzigen Gates
+- Nur genehmigte Katalogbeziehungen sind durchlaufbar, und der Compiler setzt dies strukturell durch
+- Keine Genehmigung erforderlich: Spaltensichtbarkeit und Beziehungsgenehmigung sind die einzigen Gates
 
 ### HITL als primäre Kontrolle {: #hitl-as-the-primary-control }
 
@@ -164,7 +164,7 @@ FK-Constraints gehören zu einer einzelnen Quelle und können daher keine Quelle
 Innerhalb einer Quelle:
 
 - FK-Constraints werden bei der Quellregistrierung automatisch als Kandidatenbeziehungen angezeigt
-- Sie repräsentieren explizite Modellierungsabsicht — in den meisten analytischen SQL-Systemen nicht erzwungen, aber bewusst deklariert
+- Sie repräsentieren explizite Modellierungsabsicht: in den meisten analytischen SQL-Systemen nicht erzwungen, aber bewusst deklariert
 - Eine Steward-Validierung ist weiterhin erforderlich, bevor ein Kandidat zu einer genehmigten Beziehung wird
 
 ### Vertrauenshierarchie für Beziehungen {: #relationship-confidence-hierarchy }
@@ -196,7 +196,7 @@ Das LLM operiert gleichzeitig über alle fünf Ebenen und schlägt Beziehungen, 
 
 - Kandidatenbeziehungen, geordnet nach Vertrauen
 - Unbeanspruchte Tabellen, die einen Datenbedarf erfüllen könnten, mit einer Aufforderung zur Einleitung der Beanspruchung
-- Fehlen jeglichen Kandidaten — Signal zur Eskalation an den Admin
+- Gibt es gar keinen Kandidaten, ist das das Signal zur Eskalation an den Admin
 
 **Sicht-Design aus Geschäftsbeschreibung:**
 
@@ -233,7 +233,7 @@ Die Geschäftsbeschreibung wird zum deklarierten Geschäftszweck der Sicht, soba
 Es öffnet sich als Dialog auf der Seite Beziehungen. Sein Zweck ist der Aufbau des semantischen Modells: strukturelle Join-Pfade finden, bevor sie als gesteuerte Beziehungen formalisiert werden.
 
 1. Der Analyst schreibt freies SQL gegen zugängliche Tabellen (RLS und Maskierung gelten weiterhin)
-2. Der SQL-AST wird geparst — jede JOIN-Bedingung wird zu einem Kandidaten-Beziehungsvorschlag
+2. Der SQL-AST wird geparst, und jede JOIN-Bedingung wird zu einem Kandidaten-Beziehungsvorschlag
 3. Die Kandidatenliste wird zusammen mit maschinell vorgeschlagenen Kandidaten (FK-Inferenz, semantische Inferenz) für eine einheitliche Prüfung angezeigt
 4. Der Analyst befördert ausgewählte Kandidaten zu formalen Beziehungsanfragen
 5. Genehmigte Beziehungen werden dem Katalog hinzugefügt und in Abfragen durchlaufbar
@@ -249,7 +249,7 @@ Für die strukturelle Erkundung darf das Modellierungswerkzeug jede registrierte
 Jede Abfrage, die ein Domänen-Asset berührt, wird in einem nur anfügbaren `query_audit_log` erfasst. Jeder Eintrag erfasst:
 
 - `tenant_id`, `user_id`, `role_id` — den Identitätskontext
-- Einen SHA-256-Hash der Abfrage — der wörtliche Abfragetext wird nie gespeichert
+- Einen SHA-256-Hash der Abfrage; der wörtliche Abfragetext wird nie gespeichert
 - `table_ids` — die von der Abfrage berührten Domänen-Assets
 - `source`, `status_code`, `duration_ms`
 - `logged_at` — den Zeitstempel

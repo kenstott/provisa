@@ -18,7 +18,7 @@ Un fichier enveloppe ne contenant que `includes:` est valide. `load_control_plan
 **Règles de fusion**
 
 - Les chemins se résolvent relativement au fichier incluant. Les chemins absolus sont utilisés tels quels.
-- Les sections de liste (`sources`, `tables`, `domains`, `relationships`, `roles`, …) s'ajoutent — les entrées du fragment suivent celles du fichier incluant.
+- Les sections de liste (`sources`, `tables`, `domains`, `relationships`, `roles`, …) s'ajoutent, et les entrées du fragment suivent celles du fichier incluant.
 - Une clé scalaire ou de mappage que le fichier incluant ne définit pas est prise du fragment.
 - Une clé définie par les deux fichiers avec des valeurs différentes est un conflit ; le chargement échoue en nommant la clé.
 - Des valeurs identiques dans les deux fichiers ne constituent pas un conflit.
@@ -787,7 +787,7 @@ relationships:
 Définissez `materialize: true` sur une relation pour générer automatiquement une vue matérialisée destinée aux JOIN inter-sources. Cela évite des requêtes fédérées coûteuses en pré-calculant le résultat du JOIN.
 
 - Seules les relations inter-sources génèrent des vues matérialisées (les JOIN au sein d'une même source sont déjà rapides)
-- Sur une relation adossée à une jonction, la vue matérialisée couvre le parcours à deux sauts — saut source, saut de jonction, discriminant et les colonnes propres de la jonction comme attributs d'arête. La jonction compte comme une patte : une arête est donc inter-sources dès que l'une des trois tables se trouve dans une autre source
+- Sur une relation adossée à une jonction, la vue matérialisée couvre le parcours à deux sauts : saut source, saut de jonction, discriminant et les colonnes propres de la jonction comme attributs d'arête. La jonction compte comme une patte : une arête est donc inter-sources dès que l'une des trois tables se trouve dans une autre source
 - La vue matérialisée démarre périmée et est remplie par la boucle de rafraîchissement en arrière-plan
 - Les mutations sur l'une ou l'autre table source marquent la vue matérialisée comme périmée en vue d'un nouveau rafraîchissement
 - `refresh_interval` vaut 300 secondes (5 minutes) par défaut
@@ -928,6 +928,7 @@ views:
       - {name: tier, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
+
 | Champ | Obligatoire | Description |
 | ------- | ---------- | ------------- |
 | `bitemporal_mode` | Oui | `snapshot` ajoute le résultat complet à chaque rafraîchissement ; `delta` n'ajoute que ce qui a changé |
@@ -944,6 +945,7 @@ Une version est en vigueur de son instant jusqu'à celui de la version suivante.
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
+
 Un instant renvoie la version de chaque clé en vigueur à ce moment. Une plage renvoie chaque version en vigueur à un moment quelconque de cette plage, une ligne par version.
 
 **Tel qu'enregistré.** Une correction enregistrée plus tard change ce qu'une vue dit du passé : la version en vigueur le 30 septembre est la version corrigée une fois la correction enregistrée. Pour lire la vue telle que Provisa l'avait enregistrée à un instant, avant toute correction ultérieure, ajoutez `X-Provisa-As-Recorded`, un instant ISO 8601 :
@@ -1412,7 +1414,7 @@ Provisa gère deux chemins d'export OTLP indépendants : votre collecteur intern
 | `redact_sql_literals` | bool | `true` | Remplace les littéraux chaîne et numériques de `db.statement` par `?` |
 | `redact_attributes` | list[str] | `[]` | Clés d'attribut entièrement retirées de chaque span |
 
-Exemple de `db.statement` censuré — avec `redact_sql_literals: true`, cet attribut de span :
+Un `db.statement` censuré. Avec `redact_sql_literals: true`, cet attribut de span :
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1573,7 +1575,7 @@ Le magasin de matérialisation vaut par défaut `TENANT_DATABASE_URL`.
 
 #### Moteurs de base relationnelle (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) et `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-Une clé par base relationnelle joignable sur le réseau, toutes sur le même runtime d'atterrissage seul (pas de fédération vers des sources externes) : chaque source atterrit dans le magasin et y est interrogée. La clé sélectionne la base ; `PROVISA_ENGINE_URL` porte le DSN attendu par son dialecte. `sqlalchemy` est le fourre-tout pour une base sans clé propre. Les magasins embarqués dans un fichier (SQLite, Access) ne sont pas proposés — le serveur doit être joignable sur le réseau.
+Une clé par base relationnelle joignable sur le réseau, toutes sur le même runtime d'atterrissage seul (pas de fédération vers des sources externes) : chaque source atterrit dans le magasin et y est interrogée. La clé sélectionne la base ; `PROVISA_ENGINE_URL` porte le DSN attendu par son dialecte. `sqlalchemy` est le fourre-tout pour une base sans clé propre. Les magasins embarqués dans un fichier (SQLite, Access) ne sont pas proposés, car le serveur doit être joignable sur le réseau.
 
 ```bash
 PROVISA_ENGINE=mysql

@@ -1631,6 +1631,7 @@ Register Table 的運作方式與 Neo4j 相同：選擇數據來源，輸入表�
 ```
 
 ### 跨來源查詢 {: #cross-source-query }
+
 ```graphql
 {
   orders(where: {region: {eq: "us"}}) {

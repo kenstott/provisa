@@ -166,7 +166,7 @@ Un agente chiede con quale ruolo agisce tramite lo strumento MCP `describe_role`
 
 `+` compare in due punti, con un significato diverso in ciascuno.
 
-**In una voce di concessione.** `analyst+region__eu` in una lista `visible_to` o `to` significa che il lettore li detiene tutti — `analyst` E `region__eu` contemporaneamente. Una voce che non è un composto è un ruolo singolo. Tra le voci di una lista la regola è una qualsiasi: un lettore detiene la concessione se detiene una voce qualsiasi. E all'interno, O tra le voci.
+**In una voce di concessione.** `analyst+region__eu` in una lista `visible_to` o `to` significa che il lettore li detiene tutti: `analyst` E `region__eu` contemporaneamente. Una voce che non è un composto è un ruolo singolo. Tra le voci di una lista la regola è una qualsiasi: un lettore detiene la concessione se detiene una voce qualsiasi. E all'interno, O tra le voci.
 
 **In un id di meta-ruolo.** `meta:analyst+engineer` è l'identificatore del server per il meta-ruolo dell'insieme {analyst, engineer}. I suoi diritti sono l'unione di entrambi. Un client non nomina mai direttamente l'id del meta-ruolo; nomina i ruoli che detiene, e il server costruisce il meta-ruolo.
 
@@ -686,7 +686,7 @@ Un hook di policy esterno facoltativo che scatta prima dell'esecuzione della que
 
 ### Ambito {: #scoping }
 
-L'hook scatta solo quando la query tocca una tabella o una sorgente incluse. Nessun sovraccarico per tutto il resto.
+L'hook scatta solo quando una query tocca una tabella o una sorgente incluse, quindi ogni altra query gira senza costi aggiuntivi.
 
 | Configurazione | Effetto |
 | -------- | -------- |

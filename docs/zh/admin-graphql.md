@@ -1,6 +1,6 @@
 # 管理 GraphQL API 参考 {: #admin-graphql-api-reference }
 
-管理 GraphQL API 是 Provisa 的配置平面。它是管理 Web 应用为每一项管理操作所调用的 API——创建数据源、注册表、定义关系、配置 RLS 规则，以及塑造该模型的其他一切。
+管理 GraphQL API 是 Provisa 的配置平面。它是管理 Web 应用为每一项管理操作所调用的 API，包括创建数据源、注册表、定义关系、配置 RLS 规则，以及塑造该模型的其他一切。
 
 **挂载点：** `POST /admin/graphql`
 
@@ -73,7 +73,7 @@ query {
 }
 ```
 
-`passwordRef` 是指向组织保管库的 `${secret:NAME}` 引用——绝不是字面凭据。
+`passwordRef` 是指向组织保管库的 `${secret:NAME}` 引用，绝不是字面凭据。
 
 #### `source(id: String!) → SourceType`
 
@@ -113,7 +113,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 #### `tables → [RegisteredTableType!]!`
 
-所有已注册的表，各自带有完整的列列表。响应中的列可见性遵从调用者的 `table_registration` 能力——`canDeployToDb` 取决于调用者是否持有该权限。
+所有已注册的表，各自带有完整的列列表。响应中的列可见性遵从调用者的 `table_registration` 能力：`canDeployToDb` 取决于调用者是否持有该权限。
 
 每个 `RegisteredTableType` 都暴露计算得出的子字段：
 
@@ -130,7 +130,7 @@ OpenAPI 数据源的非 GET 操作（POST、PUT、PATCH、DELETE）。对于非 
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
-待处理的别名重命名或列删除将破坏的构件。仅供参考——管理 UI 会在保存前显示此信息，由管理员决定。必须在*保存之前*调用，因为依赖项是针对该列当前所持有的暴露名称编写的。
+待处理的别名重命名或列删除将破坏的构件。仅供参考：管理 UI 会在保存前显示此信息，由管理员决定。必须在*保存之前*调用，因为依赖项是针对该列当前所持有的暴露名称编写的。
 
 ---
 
@@ -258,7 +258,7 @@ query {
 
 #### `dqCheckCatalog(checker: String!, dataset: String!) → DqCheckCatalogType`
 
-`checker` 提供的检查项，限定在 `dataset` 的列范围内。该数据集是契约的观测目标，其解析方式与扫描器的解析方式相同——因此所提供的检查项与检查器实际会看到的列相匹配。
+`checker` 提供的检查项，限定在 `dataset` 的列范围内。该数据集是契约的观测目标，其解析方式与扫描器的解析方式相同，因此所提供的检查项与检查器实际会看到的列相匹配。
 
 #### `dqCheckDefinition(checker: String!, check: DqCheckBuildInput!) → DqCheckDefinitionType`
 
@@ -344,7 +344,7 @@ query {
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-注册新的数据源。已存在的 id 会在定义检查之后、准备或写入任何内容之前被拒绝（`schema.source_id_taken`）；数据源通过 `updateSource` 修改。保存前测试连接——被拒绝的数据源不会在存储中留下记录。将凭据存入组织的密钥库并记录引用；明文从不进入数据库。 需要 `source_registration` 能力。
+注册新的数据源。已存在的 id 会在定义检查之后、准备或写入任何内容之前被拒绝（`schema.source_id_taken`）；数据源通过 `updateSource` 修改。保存前测试连接。被拒绝的数据源不会在存储中留下记录。将凭据存入组织的密钥库并记录引用；明文从不进入数据库。 需要 `source_registration` 能力。
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
@@ -488,7 +488,7 @@ query {
 
 #### `deleteRole(id: String!) → MutationResult`
 
-删除一个角色。如果其他角色继承自它则失败——请先重新指定它们的父级。需要 `user_management`。
+删除一个角色。如果其他角色继承自它则失败；请先重新指定它们的父级。需要 `user_management`。
 
 ---
 
@@ -574,7 +574,7 @@ query {
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
-创建或替换一个带版本的快照边界日历。通过在持久化之前构造内存中的 `Calendar` 来验证——在未知的基础系统、错误的时区或错误的财年锚点上会失败。
+创建或替换一个带版本的快照边界日历。通过在持久化之前构造内存中的 `Calendar` 来验证。在未知的基础系统、错误的时区或错误的财年锚点上会失败。
 
 #### `deleteCalendar(name: String!) → MutationResult`
 

@@ -1,6 +1,6 @@
 # Réplicas
 
-Uma réplica é uma cópia de uma tabela de origem que o Provisa mantém no armazenamento de materialização do motor e lê no lugar da fonte. Esta página trata do que uma réplica indexa, de onde guardar as réplicas e de quão atuais elas são. Se uma tabela é replicada ou não é definido por [`replicate`](configuration.md#the-replicate-setting) e pelo que o motor consegue alcançar; veja [What an engine changes](engines.md#what-an-engine-changes).
+Uma réplica é uma cópia de uma tabela de origem que o Provisa mantém no armazenamento de materialização do motor e lê no lugar da fonte. Se uma tabela é replicada ou não é definido por [`replicate`](configuration.md#the-replicate-setting) e pelo que o motor consegue alcançar; veja [What an engine changes](engines.md#what-an-engine-changes).
 
 ## As réplicas são indexadas {: #replicas-are-indexed }
 

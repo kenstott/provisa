@@ -1,6 +1,6 @@
 # Répliques {: #replicas }
 
-Une réplique est une copie d'une table source que Provisa conserve dans le magasin de matérialisation du moteur et lit à la place de la source. Cette page traite de ce sur quoi une réplique est indexée, de l'endroit où conserver les répliques et de leur fraîcheur. Qu'une table soit répliquée ou non est déterminé par [`replicate`](configuration.md#the-replicate-setting) et par ce que le moteur peut atteindre ; voir [Ce qu'un moteur change](engines.md#what-an-engine-changes).
+Une réplique est une copie d'une table source que Provisa conserve dans le magasin de matérialisation du moteur et lit à la place de la source. Qu'une table soit répliquée ou non est déterminé par [`replicate`](configuration.md#the-replicate-setting) et par ce que le moteur peut atteindre ; voir [Ce qu'un moteur change](engines.md#what-an-engine-changes).
 
 ## Les répliques sont indexées {: #replicas-are-indexed }
 

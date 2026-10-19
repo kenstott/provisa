@@ -42,7 +42,7 @@ Niente di tecnico limita la profondità di composizione delle viste. Il controll
 
 Ogni vista porta uno scopo di business dichiarato, indicato al momento della creazione:
 
-- Fa parte dell'artefatto governato — gli steward approvano sapendo a cosa serve la vista
+- Fa parte dell'artefatto governato, così gli steward approvano sapendo a cosa serve la vista
 - Viene referenziato dalle richieste di accesso secondo il Principio 7, così lo steward può valutarne l'idoneità
 - Accompagna la vista dalla sua creazione lungo l'intero flusso di governance
 
@@ -127,8 +127,8 @@ Tre fasi, in ordine.
 **Fase 3 — Creazione della query:**
 
 - L'analista costruisce la Query in qualsiasi linguaggio supportato (SQL, GraphQL, Cypher), attraversando percorsi di relazione approvati
-- Solo le relazioni approvate nel catalogo sono attraversabili — il compilatore lo applica strutturalmente
-- Nessuna approvazione richiesta — la visibilità delle colonne e l'approvazione della relazione sono gli unici gate
+- Solo le relazioni approvate nel catalogo sono attraversabili, e il compilatore lo applica strutturalmente
+- Nessuna approvazione richiesta: la visibilità delle colonne e l'approvazione della relazione sono gli unici gate
 
 ### HITL come controllo primario {: #hitl-as-the-primary-control }
 
@@ -164,7 +164,7 @@ I vincoli FK appartengono a una sola origine, quindi non possono attraversare pi
 All'interno di un'origine:
 
 - I vincoli FK vengono presentati automaticamente come relazioni candidate alla registrazione dell'origine
-- Rappresentano un intento di modellazione esplicito — non applicato nella maggior parte dei sistemi SQL analitici, ma dichiarato con intenzione
+- Rappresentano un intento di modellazione esplicito: non applicato nella maggior parte dei sistemi SQL analitici, ma dichiarato con intenzione
 - La validazione dello steward è comunque richiesta prima che un candidato diventi una relazione approvata
 
 ### Gerarchia di confidenza delle relazioni {: #relationship-confidence-hierarchy }
@@ -196,7 +196,7 @@ L'LLM opera su tutti e cinque i livelli simultaneamente, suggerendo relazioni, r
 
 - Relazioni candidate classificate per confidenza
 - Tabelle non rivendicate che potrebbero soddisfare un'esigenza di dati, con un invito ad avviare la rivendicazione
-- Assenza di qualsiasi candidato — segnale di escalation all'admin
+- L'assenza di qualsiasi candidato è il segnale di escalation all'admin
 
 **Progettazione della vista a partire da una descrizione di business:**
 
@@ -233,7 +233,7 @@ La descrizione di business diventa lo scopo di business dichiarato della vista u
 Si apre come finestra modale dalla pagina Relazioni. Serve a costruire il modello semantico: trovare cammini di join strutturali prima di formalizzarli come relazioni governate.
 
 1. L'analista scrive SQL libero sulle tabelle accessibili (RLS e mascheramento restano applicati)
-2. L'AST SQL viene analizzato — ogni condizione JOIN diventa una proposta candidata di Relationship
+2. L'AST SQL viene analizzato, e ogni condizione JOIN diventa una proposta candidata di Relationship
 3. L'elenco dei candidati viene mostrato insieme ai candidati suggeriti dalla macchina (inferenza FK, inferenza semantica) per una revisione unificata
 4. L'analista promuove i candidati selezionati a richieste formali di Relationship
 5. Le Relationship approvate vengono aggiunte al catalogo e diventano attraversabili nelle Query
@@ -249,7 +249,7 @@ Per l'esplorazione strutturale, lo strumento di modellazione può mostrare ogni 
 Ogni query che tocca un asset di dominio viene registrata in un `query_audit_log` di sola aggiunta. Ogni voce cattura:
 
 - `tenant_id`, `user_id`, `role_id` — il contesto di identità
-- Un hash SHA-256 della query — il testo letterale della query non viene mai memorizzato
+- Un hash SHA-256 della query; il testo letterale della query non viene mai memorizzato
 - `table_ids` — gli asset di dominio toccati dalla query
 - `source`, `status_code`, `duration_ms`
 - `logged_at` — il timestamp

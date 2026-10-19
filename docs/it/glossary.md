@@ -97,19 +97,11 @@ Le relazioni sono direzionali. La UI mostra sia gli archi in uscita (questo term
 quelli in entrata (un altro termine → questo termine), etichettando ogni direzione con una frase in
 linguaggio corrente.
 
-Gli archi vivono in `glossary_term_edges`, una tabella associativa dichiarata come relazione di giunzione
-(junction): la sua colonna `rel_type` è il discriminatore, quindi ciascuno dei tipi qui sopra
-è un tipo di relazione Cypher distinto fra due nodi `GlossaryTerm`, non una proprietà su un nodo reificato.
-La tabella viene provisionata con il resto dello schema di metadati e non è mostrata come nodo nei client
-grafo — è l'arco. Nulla in essa è specifico del glossario: si dichiara esattamente come dichiareresti una
-giunzione sulle tue tabelle, ed è letta dallo stesso codice.
+Gli archi vivono in `glossary_term_edges`, una tabella associativa dichiarata come relazione di giunzione (junction): la sua colonna `rel_type` è il discriminatore, quindi ciascuno dei tipi qui sopra è un tipo di relazione Cypher distinto fra due nodi `GlossaryTerm`, non una proprietà su un nodo reificato. La tabella viene provisionata con il resto dello schema di metadati e non è mostrata come nodo nei client grafo: è l'arco. Nulla in essa è specifico del glossario: si dichiara esattamente come dichiareresti una giunzione sulle tue tabelle, ed è letta dallo stesso codice.
 
 ## Termini astratti {: #abstract-terms }
 
-Un termine astratto non ha ref propri verso colonne fisiche. Se ne usa uno per un concetto di
-business che copre più termini concreti — un ombrello che poi si collega ai termini specifici che
-detengono davvero le colonne. `revenue`, per esempio, potrebbe essere astratto, con archi `PART_OF` che
-puntano a esso da `order amount`, `adjustment amount` e `refund amount`.
+Un termine astratto non ha ref propri verso colonne fisiche. Se ne usa uno per un concetto di business che copre più termini concreti: un ombrello che poi si collega ai termini specifici che detengono davvero le colonne. `revenue`, per esempio, potrebbe essere astratto, con archi `PART_OF` che puntano a esso da `order amount`, `adjustment amount` e `refund amount`.
 
 Un termine astratto che non può raggiungere alcuna colonna fisica attraverso il grafo delle relazioni è una proposta sospesa. Non compare nella ricerca di termini degli agenti né nell'esportazione dei metadati, perché un termine che non nomina dati non può rispondere a nulla.
 

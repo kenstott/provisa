@@ -223,10 +223,9 @@ Champs de `FactInput` :
 | `dimensions` | [DimRefInput] | `[]` | Paires `{ entity, via }` |
 | `visibleTo` | [String] | `["public"]` | Liste de visibilité par rôle |
 
-`MeasureInput` : `{ column: String, agg: String }` — agg vaut `"sum"` par défaut.
+`MeasureInput` : `{ column: String, agg: String }` ; agg vaut `"sum"` par défaut.
 
-`DimRefInput` : `{ entity: String, via: String }` — `entity` est le nom de l'entity référencée ;
-`via` est la colonne FK sur la source du fact.
+`DimRefInput` : `{ entity: String, via: String }` ; `entity` est le nom de l'entity référencée ; `via` est la colonne FK sur la source du fact.
 
 En cas de succès, `registerFact` renvoie un message de la forme :
 `Fact 'Sales' registered with 1 dimension link(s)`.

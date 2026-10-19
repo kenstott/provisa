@@ -86,9 +86,7 @@ Set them to override the defaults that `load_profile("native", ...)` would other
 5. Schema drift check — scans the live control plane for missing columns. If any are found,
    prints a `--reset` hint and exits with code 1. V1 has no migrations; a column added in a
    newer release requires a reset.
-6. Both servers start concurrently. The ready announcer polls `GET /ready` (not `/health` — the
-   `/ready` endpoint confirms the store is attached and the engine is warm) and opens the browser
-   when it returns 200.
+6. Both servers start concurrently. The ready announcer polls `GET /ready` (not `/health`, because the `/ready` endpoint confirms the store is attached and the engine is warm) and opens the browser when it returns 200.
 
 ### Exit codes
 
@@ -330,7 +328,7 @@ provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 | `--dry-run` | no | Report what the deploy would do; apply nothing |
 | `--message` | no | Note carried onto an approval request when the target is protected |
 
-A load into an existing environment never applies roles. `--seed` is gone: the API refuses a seed
+A load into an existing environment never applies roles. There is no `--seed`: the API refuses a seed
 with `environments.seed_only_at_creation`.
 
 ```bash

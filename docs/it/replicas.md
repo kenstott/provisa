@@ -1,6 +1,6 @@
 # Repliche {: #replicas }
 
-Una replica è una copia di una tabella di origine che Provisa conserva nello store di materializzazione del motore e legge al posto dell'origine. Questa pagina tratta su cosa è indicizzata una replica, dove conservare le repliche e quanto sono aggiornate. Se una tabella sia replicata o meno è stabilito da [`replicate`](configuration.md#the-replicate-setting) e da ciò che il motore può raggiungere; vedere [What an engine changes](engines.md#what-an-engine-changes).
+Una replica è una copia di una tabella di origine che Provisa conserva nello store di materializzazione del motore e legge al posto dell'origine. Se una tabella sia replicata o meno è stabilito da [`replicate`](configuration.md#the-replicate-setting) e da ciò che il motore può raggiungere; vedere [What an engine changes](engines.md#what-an-engine-changes).
 
 ## Le repliche sono indicizzate {: #replicas-are-indexed }
 

@@ -1,6 +1,6 @@
 # Replicas
 
-A replica is a copy of a source table that Provisa keeps in the engine's materialization store and reads instead of the source. This page covers what a replica is indexed on, where to keep replicas, and how fresh they are. Whether a table is replicated at all is set by [`replicate`](configuration.md#the-replicate-setting) and by what the engine can reach; see [What an engine changes](engines.md#what-an-engine-changes).
+A replica is a copy of a source table that Provisa keeps in the engine's materialization store and reads instead of the source. Whether a table is replicated at all is set by [`replicate`](configuration.md#the-replicate-setting) and by what the engine can reach; see [What an engine changes](engines.md#what-an-engine-changes).
 
 ## Replicas are indexed
 

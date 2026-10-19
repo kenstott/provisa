@@ -9,7 +9,7 @@ in the target catalog is overwritten by the next publish.
 
 ## Supported targets
 
-Two open standards are first-class, and vendor catalogs are reached through the adapter that
+Two open standards have their own adapters, and vendor catalogs are reached through the adapter that
 matches each one's ingestion API.
 
 | `provider` | Target | Protocol |
@@ -28,13 +28,12 @@ table/column/lineage snapshot the six adapters above publish. A snapshot with no
 publishes nothing to either.
 
 `snowflake_horizon` is engine-native, unlike every other adapter: Horizon Catalog is not a remote
-catalog reached over `endpoint`/`api_key` — it lives inside the same Snowflake account the engine
+catalog reached over `endpoint`/`api_key`; it lives inside the same Snowflake account the engine
 already runs governed SQL against, so the adapter opens its own connection off the engine's
 configured DSN instead. `endpoint` and `api_key` are not settings this provider has, and the config
 validator does not require them for it. Each Data Product
 becomes a Snowflake `SHARE` over its member tables' physical addresses, wrapped in an internal
-`CREATE ORGANIZATION LISTING` (`distribution: ORGANIZATION`, not `EXTERNAL` — Marketplace-shaped
-listings never surface in the account's own Horizon Catalog / Data sharing UI). `publish=false` on
+`CREATE ORGANIZATION LISTING` (`distribution: ORGANIZATION`, not `EXTERNAL`, because Marketplace-shaped listings never surface in the account's own Horizon Catalog / Data sharing UI). `publish=false` on
 the Data Product keeps the listing DRAFT; `publish=true` takes it live immediately.
 
 The listing's data dictionary is Snowflake's own, generated from the share: every member the share
@@ -68,14 +67,12 @@ BigQuery, where a column tag has no counterpart and is reported withheld. `snowf
 publishes no constraints and no model tags of its own; it still appends governance facts to the
 descriptions of the Data Product tables it publishes.
 
-`bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but — like
-`snowflake_horizon` — cannot be a pure payload builder: an Analytics Hub listing identifies a table
+`bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but, like `snowflake_horizon`, cannot be a pure payload builder: an Analytics Hub listing identifies a table
 by its `project.dataset.table` in the org's real BigQuery project, which `MetadataSnapshot`'s own
 `(source_id, schema_name, table_name)` asset refs don't carry, so the adapter resolves real
 identity from the org's live BigQuery federation runtime. One Data Product becomes one Analytics
 Hub listing backed by a dataset containing the product's member tables. Until the org's BigQuery
-source has a landing terminal attached, `publish` finds no usable runtime and reports
-nothing published — the documented "otherwise skipped" state, not an error.
+source has a landing terminal attached, `publish` finds no usable runtime and reports nothing published: the documented "otherwise skipped" state, not an error.
 
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
@@ -85,13 +82,12 @@ Atlas publishes a source as an `rdbms_instance` with one `rdbms_db` beneath it, 
 as `rdbms_table` and `rdbms_column`, and one `Process` per derived table carrying its inputs,
 outputs and compiled transforms. Domains and approved relationships have no Atlas type, so they
 ride in `userDescription` as one JSON document; Atlas drops an attribute its type has not declared
-rather than refusing it. Governance signals become Atlas classifications, whose typedefs are
-registered first — an existing typedef is left alone rather than updated, because an update would
+rather than refusing it. Governance signals become Atlas classifications, whose typedefs are registered first. An existing typedef is left alone rather than updated, because an update would
 overwrite what a catalog admin has since added to it.
 
 DataHub is aspect-oriented rather than entity-oriented: each asset is a URN, and Provisa proposes
 only the aspects it owns — `tagProperties` for each governance tag, then `datasetProperties`,
-`schemaMetadata`, `globalTags`, `ownership` and `upsimplifiesage`, the last carrying the
+`schemaMetadata`, `globalTags`, `ownership` and `upstreamLineage`, the last carrying the
 column-level `fineGrainedLineages`. Aspects Provisa does
 not own are never touched.
 
@@ -108,8 +104,7 @@ owner is an entity reference the server resolves by the UUID it assigned, so eac
 upserted as a user first and the id that comes back is substituted at publish time; a steward id
 that is not already an address is qualified with the reserved domain `provisa.invalid`, so no
 synthesized address can reach a real mailbox. Approved relationships ride in a custom property,
-`provisaRelationships`, which the adapter registers on the `table` type before the first table that
-carries one — OpenMetadata rejects an extension field its entity type has not declared. The
+`provisaRelationships`, which the adapter registers on the `table` type before the first table that carries one, because OpenMetadata rejects an extension field its entity type has not declared. The
 property is a `string` holding a JSON array because OpenMetadata's own tabular property type caps a
 table at three columns and an approved relationship carries far more than that.
 
@@ -157,8 +152,7 @@ plan includes metadata export. Both the tab and every endpoint behind it enforce
 
 ### From the command line
 
-`provisa metadata export` posts to the same `/admin/metadata-export/publish` endpoint that
-**Publish now** uses — the single publish path. Run it from cron or CI when you need
+`provisa metadata export` posts to the same `/admin/metadata-export/publish` endpoint that **Publish now** uses, so there is one publish path. Run it from cron or CI when you need
 a timed export outside the `reconcile_cron` schedule.
 
 ```bash
@@ -200,7 +194,7 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra` — each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `bigquery_dataplex`; glossary terms are silently omitted from their publishes.
+- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `bigquery_dataplex`; glossary terms are silently omitted from their publishes.
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,
@@ -229,8 +223,7 @@ Three paths publish, and all three send the same full snapshot.
   publish the same change to the same catalog.
 - **Scheduled reconcile.** The org's `reconcile_cron` republishes the whole snapshot, correcting
   drift from an event that never arrived or a catalog restored from a backup.
-- **On demand.** **Publish now** in the Admin tab, or `provisa metadata export` from the
-  command line — both call the same endpoint and return the same result.
+- **On demand.** **Publish now** in the Admin tab, or `provisa metadata export` from the command line. Both call the same endpoint and return the same result.
 
 They send the same snapshot because a delta on the change path would need its own builder and
 its own correctness argument, while the full snapshot already has one: every adapter upserts by
@@ -238,7 +231,7 @@ fully-qualified name, so republishing an unchanged asset overwrites it rather th
 it, and the paths converge on the same catalog state instead of racing into different ones.
 
 A publish the catalog rejected is not marked done. The work item stays claimed, the lease
-lapses, and the next drain retries it — so a target that was briefly unreachable catches up on
+lapses, and the next drain retries it, so a target that was briefly unreachable catches up on
 its own rather than waiting for the reconcile.
 
 Both scheduled paths are armed per org and re-armed when an admin saves the settings, so a

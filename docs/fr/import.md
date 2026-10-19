@@ -9,7 +9,7 @@ La surface d'administration exécute les mêmes convertisseurs : un import ne n�
 1. **Téléverser.** Choisissez un répertoire de métadonnées Hasura v2 zippé, un projet DDN zippé, un export de métadonnées consolidé (`.yaml`/`.json`, y compris l'enveloppe `{resource_version, metadata}` que retourne l'API de métadonnées), ou un unique fichier `.hml`. Laissez le format sur *Detect automatically* sauf si le téléversement est ambigu.
 2. **Associer les domaines** (optionnel). Chaque paire associe un schéma v2 ou un sous-graphe DDN à un domaine Provisa ; tout ce qui n'est pas associé conserve son nom d'origine.
 3. **Convertir et prévisualiser.** Le serveur convertit et renvoie les décomptes, le rapport de conversion (voir [Le rapport](#the-report)) et la configuration générée. Rien n'est écrit à cette étape.
-4. **Réviser et modifier.** La configuration est modifiable sur place — détails de connexion, noms de domaines, noms de rôles. Ce que vous appliquez est ce qui est affiché.
+4. **Réviser et modifier.** La configuration est modifiable sur place : détails de connexion, noms de domaines, noms de rôles. Ce que vous appliquez est ce qui est affiché.
 5. **Appliquer.** *Appliquer à cette organisation* charge la configuration et reconstruit les schémas de l'organisation. Un import fusionne toujours avec ce que possède déjà l'organisation.
 
 Endpoints : `POST /admin/import/hasura/preview` et `POST /admin/import/hasura/apply`.
@@ -148,7 +148,7 @@ Un export Hasura nomme les colonnes sans types, et une table suivie sans autoris
 
 ### Localiser le projet HML {: #locate-the-hml-project }
 
-Le convertisseur DDN lit directement le **répertoire** du projet DDN contenant les fichiers `.hml` — aucune étape de build de supergraphe n'est requise. Le premier composant de répertoire sous la racine du projet est pris comme nom de sous-graphe ; les fichiers sous `globals/` sont assignés au sous-graphe `globals`.
+Le convertisseur DDN lit directement le **répertoire** du projet DDN contenant les fichiers `.hml`, sans étape de build de supergraphe. Le premier composant de répertoire sous la racine du projet est pris comme nom de sous-graphe ; les fichiers sous `globals/` sont assignés au sous-graphe `globals`.
 
 ### Convertir {: #convert_1 }
 
@@ -190,8 +190,8 @@ Les métadonnées `AggregateExpression` sont préservées dans un fichier annexe
 
 ## Après l'import {: #after-import }
 
-1. Examinez le `config.yaml` généré et le rapport — commencez par les éléments de `Redo by hand`
+1. Examinez le `config.yaml` généré et le rapport. Commencez par les éléments de `Redo by hand`
 2. Vérifiez les identifiants de connexion. Une connexion que l'export lisait depuis une variable d'environnement arrive vide ; le rapport la nomme
 3. Démarrez Provisa et confirmez que les tables apparaissent dans l'Explorer
-4. Exécutez vos requêtes GraphQL existantes — le schéma est compatible avec les motifs courants
+4. Exécutez vos requêtes GraphQL existantes ; le schéma est compatible avec les motifs courants
 5. Soumettez les requêtes pour approbation via l'API Admin ou l'UI avant d'activer la gouvernance en production

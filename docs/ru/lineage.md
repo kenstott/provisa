@@ -33,7 +33,7 @@ orders.region ─╯
 - `orders.id`, `orders.region` и `orders.geo` — узлы **source** (узкий входной контракт
   `enrich_grpc_set` объявляет `id` и `region`; полное замыкание taint-closure соединяет все
   объявленные входы со всеми выходами).
-- `e.embedding` и `e.geo` — узлы **command** — граница `enrich_grpc_set`.
+- `e.embedding` и `e.geo` являются узлами **command** на границе `enrich_grpc_set`.
 - `geo_u` — узел **derived**, произведённый SQL-функцией `UPPER`.
 
 Граница команды **не непрозрачна**. Поскольку `enrich_grpc_set` объявляет свои входные колонки

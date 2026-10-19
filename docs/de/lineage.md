@@ -34,7 +34,7 @@ orders.region ─╯
   Eingabe-Contract von `enrich_grpc_set` deklariert `id` und `region`; die vollständige
   Taint-Closure verbindet alle deklarierten Eingaben mit allen Ausgaben).
 
-- `e.embedding` und `e.geo` sind **command**-Knoten — die Grenze von `enrich_grpc_set`.
+- `e.embedding` und `e.geo` sind **command**-Knoten an der Grenze von `enrich_grpc_set`.
 - `geo_u` ist ein **derived**-Knoten, erzeugt durch die SQL-Funktion `UPPER`.
 
 Die Command-Grenze ist **nicht undurchsichtig**. Weil `enrich_grpc_set` seine Eingabespalten

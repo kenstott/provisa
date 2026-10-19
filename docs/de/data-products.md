@@ -1,6 +1,6 @@
 # Datenprodukte {: #data-products }
 
-Ein Datenprodukt ist ein benanntes, im Besitz befindliches Bündel von Tabellen, das gemeinsam zur Nutzung veröffentlicht wird. Es ist die Einheit, die der Katalog den Konsumenten bereitstellt — nicht einzelne Tabellen, sondern eine kuratierte Oberfläche, die eine Domäne ausdrücklich als bereit erklärt. Die Felder folgen dem ODPS-Vokabular (Open Data Product Standard), wo Provisa bereits die Source of Truth besitzt.
+Ein Datenprodukt ist ein benanntes, im Besitz befindliches Bündel von Tabellen, das gemeinsam zur Nutzung veröffentlicht wird. Es ist die Einheit, die der Katalog den Konsumenten bereitstellt: eine kuratierte Menge von Tabellen, die eine Domäne als bereit erklärt hat. Die Felder folgen dem ODPS-Vokabular (Open Data Product Standard), wo Provisa bereits die Source of Truth besitzt.
 
 ## Regel der Domäneneigentümerschaft {: #domain-ownership-rule }
 
@@ -10,7 +10,7 @@ Ein Produkt, das Daten aus einer anderen Domäne benötigt, muss diese Daten zun
 
 ## Output Ports
 
-Die einem Datenprodukt zugewiesenen Tabellen und Commands sind seine **Output Ports** — die abfragbare Oberfläche, die Konsumenten sehen. Die Zuweisung einer Tabelle setzt `Table.product_id`; das Entfernen hebt die Mitgliedschaft auf. Eine Tabelle gehört höchstens einem Produkt. Commands in derselben Domäne können ebenfalls als Mitglieder zugewiesen werden.
+Die einem Datenprodukt zugewiesenen Tabellen und Commands sind seine **Output Ports**: die abfragbare Oberfläche, die Konsumenten sehen. Die Zuweisung einer Tabelle setzt `Table.product_id`; das Entfernen hebt die Mitgliedschaft auf. Eine Tabelle gehört höchstens einem Produkt. Commands in derselben Domäne können ebenfalls als Mitglieder zugewiesen werden.
 
 ## Abschnitte des Detailbereichs {: #detail-panel-sections }
 
@@ -30,7 +30,7 @@ Das Öffnen eines Datenprodukts in der Admin-UI zeigt diese Panels:
 
 Standardmäßig werden nur einem Produkt zugewiesene Tabellen an externe Kataloge veröffentlicht. `build_snapshot` wendet einen `data_products_only`-Filter an: Nicht zugewiesene Tabellen werden zurückgehalten, ebenso ihre Beziehungskanten, Lineage-Kanten und Governance-Tags. Quellen und Domänen werden immer veröffentlicht.
 
-Ein Produkt ohne exportierte Mitglieder wird nicht veröffentlicht — ein leerer Eintrag würde vortäuschen, dass ein Produkt existiert, ohne dass etwas dahintersteht.
+Ein Produkt ohne exportierte Mitglieder wird nicht veröffentlicht. Ein leerer Eintrag würde vortäuschen, dass ein Produkt existiert, ohne dass etwas dahintersteht.
 
 Nur Kataloge mit einem nativen Datenprodukt-Konzept veröffentlichen es als erstklassige Entität; die übrigen veröffentlichen die (bereits gefilterten) Mitgliedstabellen ohne Produktgruppierung:
 

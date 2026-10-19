@@ -61,7 +61,7 @@ UI:      http://localhost:3000
 
 **選項：**
 
-`--reset-volumes` — 啟動前先執行 `docker compose down -v`，銷毀所有 Docker 磁碟區（PostgreSQL 數據、MinIO 物件、Redis 狀態等）。當你想要一張完全乾淨的白紙時使用——開發期間更改結構描述之後，或 Docker 當掉並留下損毀的磁碟區時。**所有數據都會遺失。**
+`--reset-volumes` — 啟動前先執行 `docker compose down -v`，銷毀所有 Docker 磁碟區（PostgreSQL 數據、MinIO 物件、Redis 狀態等）。當你想要一張完全乾淨的白紙時使用，例如開發期間更改結構描述之後，或 Docker 當掉並留下損毀的磁碟區時。**所有數據都會遺失。**
 
 `--observability` — 加入完整的追蹤與量度檢測。它下載 OpenTelemetry Java agent 並修補 Trino 的 `jvm.config` 以載入它，以 OTLP 匯出檢測 Provisa 後端，並啟動 OTel collector、Prometheus、Tempo 與 Grafana（`http://localhost:3100`）。該 `jvm.config` 修補會在 Ctrl+C 時自動還原。
 
@@ -164,7 +164,7 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa-<version>-macOS.dmg`
 2. 開啟該 DMG，把 **Provisa.app** 拖到 `/Applications`
-3. 按兩下 **Provisa.app**——首次啟動設定執行一次；精靈會提供上述的引擎、可觀測性與示範選項
+3. 按兩下 **Provisa.app**。首次啟動設定執行一次，精靈會提供上述的引擎、可觀測性與示範選項
 4. 開啟終端機：
 
    ```bash
@@ -188,8 +188,8 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 ### 步驟 {: #steps_1 }
 
 1. 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載 `Provisa-<version>-windows-x64.exe`
-2. 執行該安裝程式——毋須管理員權限；安裝到 `%LOCALAPPDATA%\Programs\Provisa\`
-3. 自「開始」功能表開啟 **Provisa First Launch**——原生設定執行一次，並印出分層附加元件的後續步驟指引
+2. 執行該安裝程式。它毋須管理員權限，會安裝到 `%LOCALAPPDATA%\Programs\Provisa\`
+3. 自「開始」功能表開啟 **Provisa First Launch**。原生設定執行一次，並印出分層附加元件的後續步驟指引
 4. 開啟一個新的終端機：
 
    ```text
@@ -209,7 +209,7 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
 `Provisa.AppImage` 是單一自足的可執行檔，打包了：
 
-- 一個無 root 的 Docker 常駐程式（`dockerd-rootless.sh` + `rootlesskit`）——毋須系統 Docker 或 root
+- 一個無 root 的 Docker 常駐程式（`dockerd-rootless.sh` + `rootlesskit`），因此毋須系統 Docker 或 root
 - 所有容器映像 tarball（PostgreSQL、PgBouncer、MinIO、Redis、聯邦引擎、Provisa API）
 - Provisa CLI 包裝器與首次啟動設定腳本
 
@@ -280,7 +280,7 @@ Provisa 映像在打包時建構，從不包含 Python 原始碼。
    - **角色** → 選 `primary`
    - **RAM 預算**、**主機名稱**、**API 連接埠** → 與單節點相同作答
 5. 設定完成後，記下此機器的**私有 IP**。secondary 需要它，也需要 primary 產生的資料儲存憑據：`~/.provisa/store-credentials.env`（`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`）。經安全通道將該檔案複製到每個 secondary
-6. 精靈會印出一段 nginx upstream 區塊——請保存下來供你的負載平衡器設定使用
+6. 精靈會印出一段 nginx upstream 區塊，請保存下來供你的負載平衡器設定使用
 7. 驗證：
 
    ```bash
@@ -313,7 +313,7 @@ Provisa 映像在打包時建構，從不包含 Python 原始碼。
    - **角色** → 選 `secondary`
    - **Primary IP** → 輸入 primary 節點的 IP（連通性會即時驗證）
    - **RAM 預算**、**主機名稱**、**API 連接埠** → 同上作答
-5. 設定載入縮減後的映像集（沒有 PostgreSQL、PgBouncer、MinIO、Redis——那些只在 primary 上執行），並啟動 Provisa API 與一個聯邦引擎工作處理程序
+5. 設定載入縮減後的映像集（沒有 PostgreSQL、PgBouncer、MinIO、Redis，那些只在 primary 上執行），並啟動 Provisa API 與一個聯邦引擎工作處理程序
 6. 驗證：
 
    ```bash
@@ -347,7 +347,7 @@ Provisa 映像在打包時建構，從不包含 Python 原始碼。
 
 ### 非互動式（自動化）首次啟動 {: #non-interactive-automated-first-launch }
 
-供 Terraform、cloud-init 或 Ansible 使用——以旗標取代回答提示：
+供 Terraform、cloud-init 或 Ansible 使用時，請以旗標取代回答提示：
 
 ```bash
 # Primary
@@ -587,7 +587,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    curl http://localhost:8000/health
    ```
 
-8. （選用）啟用 ingress 以供外部存取——設定 `ingress.enabled: true` 並設定你的 ingress 控制器
+8. （選用）啟用 ingress 以供外部存取：設定 `ingress.enabled: true` 並設定你的 ingress 控制器
 
 ### 先決條件檢查清單 {: #prerequisites-checklist_1 }
 
@@ -674,9 +674,9 @@ Provisa 在所有部署模式上套用一套雙層復原模型：
 
 ## 聯邦引擎相依項 {: #federation-engine-dependencies }
 
-倉庫聯邦引擎需要 Provisa 預設安裝之外的 Python 套件與系統層級元件。此處列出的所有 Python 套件都宣告於 `pyproject.toml`，並作為標準 `pip install provisa` 或 `pip install -e .` 的一部分安裝。
+數據倉庫聯邦查詢引擎需要 Python 套件及系統級元件。Python 套件都宣告在 `pyproject.toml` 中，隨標準的 `pip install provisa` 或 `pip install -e .` 一起安裝，所以任何數倉引擎都不需要選用的額外套件。
 
-Python 套件隨 Provisa 的預設安裝一併提供，所以任何數據倉庫引擎都不需要可選的額外套件。系統級元件（ODBC 驅動程式、雲端 CLI、服務帳戶金鑰）需要另行安裝。
+系統級元件（ODBC 驅動程式、雲端 CLI、服務帳戶金鑰）需要另行安裝。
 
 ### Python 套件（已在核心相依項中） {: #python-packages-already-in-core-dependencies }
 

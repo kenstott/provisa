@@ -39,7 +39,7 @@ Open the **eu** UI at http://127.0.0.1:8310 and the **us** UI at http://127.0.0.
   region or to "all regions"; the line next to it says how many rows the current selection hides. Each
   row shows its region in the region column. Searching by name crosses regions and labels each result.
 - **A cross-region read.** On the **us** node, query the `intake_eu` table (homed in eu). The us node
-  reads it from eu's replica store — the data processed and kept in eu, read from us under one model.
+  reads it from eu's replica store: the data is processed and kept in eu and read from us under one model.
 - **The 503 refusal when a home region is stopped.** Stop just the eu node (leave us up), then on the
   us node read `intake_eu` again: the read is refused by name, because eu's store is not reachable.
 - **A data_residency refusal, by name.** data_residency is the right to SET an object's region, not
@@ -48,8 +48,7 @@ Open the **eu** UI at http://127.0.0.1:8310 and the **us** UI at http://127.0.0.
   anything) and `resident` (`eu_resident`, which owns objects but whose grant covers only `eu` and
   no-region). Log in as `resident`, then on **Tables** change a us-homed table's region → the edit is
   refused and the message names `us` (not covered by the grant); set the no-region `breeds` table's
-  region to `eu` → it succeeds. That org_admin alone cannot move data — it needs the separate
-  data_residency grant — is the design point. Reads are unaffected: what a reader sees across regions
+  region to `eu` → it succeeds. The design point is that the org_admin alone cannot move data; it needs the separate data_residency grant. Reads are unaffected: what a reader sees across regions
   is governed by RLS, not by data_residency. (The break-glass `admin` superuser is control-plane only
   and holds no data capabilities, so it is not used for this.)
 - **A draft table.** Pending replica-layout-2's draft work; the demo's draft table and this step are

@@ -16,7 +16,7 @@ Provisa תומכת בדחיפה בזמן אמת מעל Server-Sent Events (SSE).
 
 Provisa מתקינה אוטומטית טריגרי `AFTER INSERT OR UPDATE OR DELETE` על כל טבלאות PostgreSQL **מאושרות-מראש** בעת ההפעלה. טריגרים אלה קוראים ל-`pg_notify('provisa_{table}', ...)` כך ש-DML גולמי (לא רק מוטציות Provisa) נקלט על ידי מנויים.
 
-אם התקנת הטריגר נכשלת (לדוגמה הרשאה לא מספקת — תפקיד מסד הנתונים חייב להיות הבעלים של הטבלה), Provisa נופלת חזרה ל-polling מבוסס watermark עבור אותה טבלה, בתנאי שמוגדר `watermark_column`. אזהרה נרשמת ביומן.
+אם התקנת הטריגר נכשלת (לדוגמה הרשאה לא מספקת, כי תפקיד מסד הנתונים חייב להיות הבעלים של הטבלה), Provisa נופלת חזרה ל-polling מבוסס watermark עבור אותה טבלה, בתנאי שמוגדר `watermark_column`. אזהרה נרשמת ביומן.
 
 ### מנויי תצוגה חוצי-מקורות-נתונים {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa מנפיקה `LISTEN <channel>` על חיבור PG מתמשך. מוטצ�
 
 ### Polling
 
-Provisa מבצעת מחדש את שאילתת המקור מעת לעת, בוחרת רק שורות שבהן `watermark_column > last_watermark`. הבדלים נפלטים כאירועי SSE. Polling אינו יכול לראות מחיקות קשות — שורה שהוסרה אינה משאירה watermark מתקדם. כדי להפוך מחיקה לגלויה, השתמשו במחיקה רכה (לדוגמה הגדרת דגל `deleted_at`) המקדמת את עמודת ה-watermark; המחיקה אז מגיעה כאירוע עדכון הנושא את סמן המחיקה-הרכה.
+Provisa מבצעת מחדש את שאילתת המקור מעת לעת, בוחרת רק שורות שבהן `watermark_column > last_watermark`. הבדלים נפלטים כאירועי SSE. Polling אינו יכול לראות מחיקות קשות: שורה שהוסרה אינה משאירה watermark מתקדם. כדי להפוך מחיקה לגלויה, השתמשו במחיקה רכה (לדוגמה הגדרת דגל `deleted_at`) המקדמת את עמודת ה-watermark; המחיקה אז מגיעה כאירוע עדכון הנושא את סמן המחיקה-הרכה.
 
 תצורת polling של טבלה (ב-`provisa.yaml`):
 
@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## כשזרם נכשל {: #when-a-stream-ends-on-a-failure }
 
 זרם שנפתח כבר ענה `200`, ולכן כשל לאחר מכן אינו יכול להיות סטטוס HTTP. המנוי מקבל פריים אחרון שאומר מדוע, ואז הזרם נסגר. זרם לעולם אינו נסגר בגלל כשל בלי הפריים הזה.
@@ -176,6 +177,7 @@ sources:
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 האירוע אינו נקרא `error`, כי `EventSource` מייצר בעצמו אירוע `error` כשהחיבור נקטע, ומאזין לא היה יכול להבחין ביניהם. האזינו לו בשמו:
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 מינוי GraphQL שומר על צורת התגובה של GraphQL, עם הקוד וה-params ב-`extensions`:
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 מקרה אחד אינו מסיים מינוי GraphQL: כשקריאה חוזרת לאחר שינוי אחד נכשלת, הפריים הזה נשלח באותה צורה, והזרם ממשיך לשינוי הבא. כשל בקריאה הראשונית, בזרם השינויים עצמו או בהפעלתו הוא הפריים האחרון.
 
 ## הפניית Sink ל-Kafka {: #kafka-sink-redirect }

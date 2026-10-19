@@ -67,7 +67,7 @@ proposed → accepted → in-progress → complete
          → rejected
 ```
 
-IDs are assigned at `proposed`. Requirements are never deleted — `rejected` preserves the audit trail.
+IDs are assigned at `proposed`. Requirements are never deleted; `rejected` preserves the audit trail.
 
 ---
 
@@ -86,7 +86,7 @@ All scripts live in `scripts/`. All read `docs/arch/requirements.yaml` via the s
 | `gen_roadmap.py` | `docs/exports/roadmap.md` | Proposed + accepted REQs by target quarter |
 | `match_rfp.py <file.csv>` | stdout CSV | Fuzzy-matches buyer RFP rows against YAML |
 
-`gen_requirements_md.py --check` and `gen_features.py --check` diff generated output against committed files and exit non-zero on drift — used in CI without writing files.
+`gen_requirements_md.py --check` and `gen_features.py --check` diff generated output against committed files and exit non-zero on drift. CI runs them without writing files.
 
 ---
 
@@ -109,7 +109,7 @@ tests/
   conftest.py           ← configures pytest-bdd feature discovery
 ```
 
-Unimplemented steps are stubbed with `pytest.skip("step not implemented")` so CI collects all scenarios and reports skipped rather than erroring — gives visibility without blocking.
+Unimplemented steps are stubbed with `pytest.skip("step not implemented")` so CI collects all scenarios and reports skipped rather than erroring, which gives visibility without blocking.
 
 ---
 
@@ -172,7 +172,7 @@ On release tag (additional):
 | `docs/exports/roadmap.md` | Prospects, investors | Release tag |
 | RFP response sheet | Specific buyer evaluation | Manual: `match_rfp.py <buyer.csv>` |
 
-The traceability matrix maps every `accepted|in-progress|complete` REQ to its code paths and test files. Test coverage is machine-verifiable against CI run history — a buyer or auditor can confirm claimed features have passing tests, not just checkboxes.
+The traceability matrix maps every `accepted|in-progress|complete` REQ to its code paths and test files. Test coverage is machine-verifiable against CI run history, so a buyer or auditor can confirm that claimed features have passing tests.
 
 `rejected` REQs with `rejection_reason` document deliberate non-features. When a competitor claims Provisa "doesn't support X," the rejection record shows it was an intentional design decision with a dated rationale.
 

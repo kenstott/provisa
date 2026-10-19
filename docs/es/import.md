@@ -9,7 +9,7 @@ La superficie de administración ejecuta los mismos convertidores, por lo que un
 1. **Cargar.** Elija un directorio de metadatos de Hasura v2 comprimido en zip, un proyecto DDN comprimido en zip, una exportación de metadatos consolidada (`.yaml`/`.json`, incluido el envoltorio `{resource_version, metadata}` que devuelve la API de metadatos), o un único `.hml`. Deje el formato en *Detect automatically* a menos que la carga sea ambigua.
 2. **Mapear dominios** (opcional). Cada par mapea un esquema v2 o un subgraph de DDN a un dominio de Provisa; lo que no se mapee conserva su nombre original.
 3. **Convertir y previsualizar.** El servidor convierte y devuelve los recuentos, el informe de la conversión (véase [El informe](#the-report)) y la configuración generada. En este paso no se escribe nada.
-4. **Revisar y editar.** La configuración es editable in situ — detalles de conexión, nombres de dominio, nombres de rol. Lo que aplique es lo que se muestra.
+4. **Revisar y editar.** La configuración es editable in situ: detalles de conexión, nombres de dominio, nombres de rol. Lo que aplique es lo que se muestra.
 5. **Aplicar.** *Aplicar a esta organización* carga la configuración y reconstruye los esquemas de la organización. Una importación siempre se fusiona con lo que ya tiene la organización.
 
 Endpoints: `POST /admin/import/hasura/preview` y `POST /admin/import/hasura/apply`.
@@ -148,7 +148,7 @@ Una exportación de Hasura nombra columnas sin tipos, y una tabla rastreada sin 
 
 ### Ubicar el proyecto HML {: #locate-the-hml-project }
 
-El convertidor DDN lee directamente el **directorio** del proyecto DDN con archivos `.hml` — no se requiere un paso de build del supergraph. El primer componente de directorio bajo la raíz del proyecto se toma como el nombre del subgraph; los archivos bajo `globals/` se asignan al subgraph `globals`.
+El convertidor DDN lee directamente el **directorio** del proyecto DDN con archivos `.hml`, sin ningún paso de build del supergraph. El primer componente de directorio bajo la raíz del proyecto se toma como el nombre del subgraph; los archivos bajo `globals/` se asignan al subgraph `globals`.
 
 ### Convertir {: #convert_1 }
 
@@ -190,8 +190,8 @@ Los metadatos de `AggregateExpression` se preservan en un archivo complementario
 
 ## Después de la importación {: #after-import }
 
-1. Revise el `config.yaml` generado y el informe — empiece por los elementos de `Redo by hand`
+1. Revise el `config.yaml` generado y el informe. Empiece por los elementos de `Redo by hand`
 2. Verifique las credenciales de conexión. Una conexión que la exportación leyó de una variable de entorno llega vacía; el informe la nombra
 3. Inicie Provisa y confirme que las tablas aparecen en el Explorer
-4. Ejecute sus consultas GraphQL existentes — el esquema es compatible con patrones comunes
+4. Ejecute sus consultas GraphQL existentes; el esquema es compatible con patrones comunes
 5. Envíe las consultas para aprobación mediante la Admin API o la UI antes de habilitar el gobierno de producción

@@ -110,7 +110,7 @@ git tag v1.2.3 && git push origin v1.2.3
 ## Экспорт сертификата .p12 {: #exporting-the-p12-certificate }
 
 1. Откройте **Keychain Access** → login keychain → **My Certificates**
-2. Найдите **Developer ID Application: Your Name (TEAMID)** — разверните, чтобы убедиться, что закрытый ключ вложен под ним
+2. Найдите **Developer ID Application: Your Name (TEAMID)** и разверните, чтобы убедиться, что закрытый ключ вложен под ним
 3. Выберите и сертификат, и его закрытый ключ → правая кнопка мыши → **Export 2 Items** → сохраните как `.p12` → задайте надёжный пароль
 4. Закодируйте в Base64 и скопируйте в буфер обмена:
 

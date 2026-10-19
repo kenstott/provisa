@@ -242,8 +242,8 @@ provisa start && provisa open
 ### Windows
 
 1. הורידו את [Provisa-windows-x64.exe](https://provisa.dev/dl/windows) (תמיד הגרסה העדכנית ביותר)
-2. הריצו את המתקין. אין צורך בהרשאות מנהל
-3. פתחו את **Provisa First Launch** מתפריט ההתחלה. משלים הגדרה חד-פעמית (~5 דקות, ללא צורך באינטרנט)
+2. הריצו את המתקין. הוא לא דורש הרשאות מנהל.
+3. פתחו את **Provisa First Launch** מתפריט ההתחלה. הוא משלים הגדרה חד-פעמית (~5 דקות, ללא צורך באינטרנט).
 4. פתחו טרמינל חדש:
 
 ```bash
@@ -320,7 +320,7 @@ TLS מופעל על ידי הגדרת `PROVISA_PGWIRE_CERT` ו-`PROVISA_PGWIRE_K
 
 Provisa מדבר גם את פרוטוקול **Bolt** של Neo4j, כך שכלים מבוססי גרף מתחברים ישירות ומריצים Cypher על הגרף המאוחד. שום דבר לא מיוצא, ואין צורך במסד נתוני גרף נפרד. כוונו את **Neo4j Browser** או את **Bloom** אל Provisa ועברו על קשרים בין מקורות תחת אותו ממשל (גישת תחום, RLS, הסתרה).
 
-Neo4j Browser מריצה Cypher כנגד Provisa. תוויות צומת, סוגי קשרים, ומפתחות תכונה מגיעים ישירות מהסכמה הרשומה:
+כאן Neo4j Browser מריץ Cypher על Provisa. תוויות הצמתים, סוגי הקשרים ומפתחות התכונות מגיעים ישירות מהסכמה הרשומה:
 
 ![Provisa in Neo4j Browser over Bolt](docs/images/bolt-neo4j-browser.png)
 

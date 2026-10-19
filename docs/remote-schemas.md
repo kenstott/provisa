@@ -71,7 +71,7 @@ When an OBJECT-typed column on a governed table points to another governed type,
 2. **Excluded from the SDL** — the field does not appear on the parent type in the generated schema.
 3. **Accessible only via a declared relationship** — a steward must register a JOIN between the two materialized governed tables. Without one, the field is simply absent; there is no blob fallback.
 
-OBJECT types that are NOT reachable as root Query fields (inline types such as `ContactInfo` or `Address`) follow different rules: they are fetched as `jsonb` blob columns and appear in the SDL as nested-object fields. Sub-fields are accessible via `-->>` extraction in SQL.
+OBJECT types that are NOT reachable as root Query fields (inline types such as `ContactInfo` or `Address`) follow different rules: they are fetched as `jsonb` blob columns and appear in the SDL as nested-object fields. Sub-fields are accessible via `->>` extraction in SQL.
 
 **Fields that need an argument are not columns.** A field with a required argument cannot be selected bare, so it is left out of the table's columns and out of nested selections.
 
@@ -87,8 +87,8 @@ OBJECT types that are NOT reachable as root Query fields (inline types such as `
 
 - Scalar and ENUM root query fields (return type is not OBJECT) become tracked functions, not virtual tables. Their `return_schema` is a single `value` column of the mapped scalar type.
 - Object nesting is resolved at registration time up to `graphql_remote.max_object_depth` (default: 5). Both the remote fetch selection and the sub-field metadata are built to that depth; fields beyond the limit are not fetched and are not available for SQL extraction. A type is entered once along any one path: a field whose type is already on the way down is left out, so a schema whose types refer back to each other is walked once per type, not once per depth level.
-- LIST-typed nested OBJECT fields (e.g. `breed.awards: [Award]`) are included in the fetch selection up to `graphql_remote.max_list_depth` nesting levels (default: 2). Within that limit, the list is fetched as a `jsonb` array on the parent column. When the list field declares a `first` argument (Relay, PostGraphile, pg_graphql) or a `limit` argument (Hasura), the selection passes it as `first: N` or `limit: N`, where N is `graphql_remote.max_list_items` (default: 100). A list field that declares neither gets no argument, because a remote rejects an argument the field does not declare. Beyond `max_list_depth`, the LIST field is excluded entirely to prevent unbounded data expansion. In SQL, the array is accessed via `json_array_elements(column_name)` or `->>` index extraction. If the list's item type has its own root query, register it as a separate table and create a relationship instead — the join path is more efficient and bypasses the blob.
-- For SQL queries, non-governed OBJECT-typed columns are fetched in full from the remote (all sub-fields up to the configured depth) and cached as `jsonb`. Sub-field access in SQL is handled via `->>`  extraction against the blob; the remote request is not narrowed to only the fields the SQL query selects. When the LIST-item type has no root query and the blob representation is insufficient, write the query in GraphQL SDL directly — Provisa faithfully reproduces the GQL field selection, so the remote sees exactly the fields requested.
+- LIST-typed nested OBJECT fields (e.g. `breed.awards: [Award]`) are included in the fetch selection up to `graphql_remote.max_list_depth` nesting levels (default: 2). Within that limit, the list is fetched as a `jsonb` array on the parent column. When the list field declares a `first` argument (Relay, PostGraphile, pg_graphql) or a `limit` argument (Hasura), the selection passes it as `first: N` or `limit: N`, where N is `graphql_remote.max_list_items` (default: 100). A list field that declares neither gets no argument, because a remote rejects an argument the field does not declare. Beyond `max_list_depth`, the LIST field is excluded entirely to prevent unbounded data expansion. In SQL, the array is accessed via `json_array_elements(column_name)` or `->>` index extraction. If the list's item type has its own root query, register it as a separate table and create a relationship instead. The join path is more efficient and skips the blob.
+- For SQL queries, non-governed OBJECT-typed columns are fetched in full from the remote (all sub-fields up to the configured depth) and cached as `jsonb`. Sub-field access in SQL is handled via `->>`  extraction against the blob; the remote request is not narrowed to only the fields the SQL query selects. When the LIST-item type has no root query and the blob representation is insufficient, write the query in GraphQL SDL directly. Provisa reproduces the GQL field selection, so the remote sees exactly the fields requested.
 - If the remote server rejects an OBJECT-typed field because it requires subfield selection (which should not occur when `gql_selection` is available), the executor retries once with those fields removed so scalar columns are still returned. This applies to tables read off a root field. A connection table does not take this path.
 
 **Paged reads.** A connection table is read by cursor. Each page asks for `first: N, after: $pageCursor` with `pageInfo { hasNextPage endCursor }`, and the read follows `endCursor` until the remote reports no next page.
@@ -187,7 +187,7 @@ Proto files may also be local paths. Import paths for well-known types (`google/
 
 1. **`method_overrides`** in the registration payload — `{"MethodName": "query"}` or `{"MethodName": "mutation"}` overrides everything else.
 2. **`server_streaming: true`** — the server sends a stream of messages; always a virtual table (unless the output is a scalar).
-3. **Output message has a repeated message-type field** — e.g. `ListOrdersResponse { repeated Order items; }` is treated as a list-wrapper and becomes a virtual table. Repeated scalar fields (e.g. `repeated string tags`) do not trigger this — they are array properties on a single entity, not row sources.
+3. **Output message has a repeated message-type field** — e.g. `ListOrdersResponse { repeated Order items; }` is treated as a list-wrapper and becomes a virtual table. Repeated scalar fields (e.g. `repeated string tags`) do not trigger this, because they are array properties on a single entity, not row sources.
 
 Methods that match none of these signals (unary RPC returning a single entity message, or any scalar output) become tracked functions.
 
@@ -213,7 +213,7 @@ Mutation methods are commands on offer, counted in `available_mutations`; adding
 
 **Relationships at registration time.** `relationships` works just as it does for the GQL adapter: it declares FK/PK join paths, stored as manually declared relationships (with no `remote_managed` flag). A refresh leaves them as they are.
 
-**Query methods.** Output message fields become table columns. Input message fields both become GraphQL arguments passed to the remote call *and* are registered as `_nf_`-prefixed columns with `native_filter_type: "grpc_input"` — the same mechanism GQL and OpenAPI use for native filter injection.
+**Query methods.** Output message fields become table columns. Input message fields both become GraphQL arguments passed to the remote call *and* are registered as `_nf_`-prefixed columns with `native_filter_type: "grpc_input"`, the same mechanism GQL and OpenAPI use for native filter injection.
 
 **Nested message sub-fields.** For query methods, non-repeated message-typed fields at depth 0 (direct output columns) have their sub-fields resolved one level deep and stored as `object_fields` on the `ColumnDef`. This metadata is used for `jsonb` sub-field extraction in SQL and for schema documentation. Fields nested beyond depth 1 are not recursively expanded.
 
@@ -274,7 +274,7 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 
 **Object sub-fields.** Response properties with `type: object` and their own `properties` are stored as `object_fields` on the column. These sub-fields are visible in the SDL and used for `jsonb` extraction in queries.
 
-**Response caching.** GET operation results are cached in PostgreSQL by `pg_cache.py`. Each combination of request parameters gets its own `_params_hash` group. Rows for a given hash are replaced when the TTL expires. Path-param endpoints (`/pets/{id}`) skip the initial bulk fetch — the cache table is created empty for schema introspection, then populated per-PK as requests arrive.
+**Response caching.** GET operation results are cached in PostgreSQL by `pg_cache.py`. Each combination of request parameters gets its own `_params_hash` group. Rows for a given hash are replaced when the TTL expires. Path-param endpoints (`/pets/{id}`) skip the initial bulk fetch. The cache table is created empty for schema introspection, then populated per-PK as requests arrive.
 
 **Refresh.** POST to `/admin/openapi/refresh/{source_id}`. Re-parses the spec through `_load_and_register`, which registers nothing: it adds no table and no column. Existing governance rules are preserved. A registered table keeps its columns; it is read through the refreshed spec's operation.
 
@@ -288,9 +288,9 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 
 ## Impact of registering a remote table
 
-A table registered from any remote schema source is a first-class Provisa table. Nothing about it is treated differently from a locally connected relational table at runtime.
+A table registered from any remote schema source is an ordinary Provisa table. Nothing about it is treated differently from a locally connected relational table at runtime.
 
-**Query interfaces.** The table is immediately queryable via GraphQL, SQL (pgwire or direct), Cypher (GQL), JSON:API, and Arrow Flight. Schema generation synthesizes `ColumnMetadata` for remote tables since they have no catalog — type mapping is applied at schema build time.
+**Query interfaces.** The table is immediately queryable via GraphQL, SQL (pgwire or direct), Cypher (GQL), JSON:API, and Arrow Flight. Schema generation synthesizes `ColumnMetadata` for remote tables since they have no catalog; type mapping is applied at schema build time.
 
 **Security model.** All five governance layers apply:
 
@@ -338,7 +338,7 @@ The same mechanism applies when the schema is built filtered by domain. Tables i
 
 A type-def-only table:
 
-- Has no root query field — clients cannot query it directly by name.
+- Has no root query field, so clients cannot query it directly by name.
 - Is reachable via relationship fields on tables that do have root entries.
 - Still appears in schema introspection as a named type.
 - Still has all governance rules applied when data is accessed through a relationship.

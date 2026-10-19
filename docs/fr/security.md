@@ -166,7 +166,7 @@ Un agent demande sous quel rôle il agit avec l'outil MCP `describe_role`. La r�
 
 `+` apparaît à deux endroits, avec un sens différent dans chacun.
 
-**Dans une entrée d'autorisation.** `analyst+region__eu` dans une liste `visible_to` ou `to` signifie que le lecteur les détient tous — `analyst` ET `region__eu` à la fois. Une entrée qui n'est pas un composé est un rôle unique. Entre les entrées d'une liste, la règle est n'importe laquelle : un lecteur détient l'autorisation s'il détient une entrée quelconque. ET à l'intérieur, OU entre elles.
+**Dans une entrée d'autorisation.** `analyst+region__eu` dans une liste `visible_to` ou `to` signifie que le lecteur les détient tous : `analyst` ET `region__eu` à la fois. Une entrée qui n'est pas un composé est un rôle unique. Entre les entrées d'une liste, la règle est n'importe laquelle : un lecteur détient l'autorisation s'il détient une entrée quelconque. ET à l'intérieur, OU entre elles.
 
 **Dans un identifiant de méta-rôle.** `meta:analyst+engineer` est l'identifiant du serveur pour le méta-rôle de l'ensemble {analyst, engineer}. Ses droits sont l'union des deux. Un client ne nomme jamais directement l'identifiant du méta-rôle ; il nomme les rôles qu'il détient, et le serveur construit le méta-rôle.
 
@@ -686,7 +686,7 @@ Un point d'ancrage de politique externe facultatif qui se déclenche avant l'ex�
 
 ### Portée {: #scoping }
 
-Le point d'ancrage ne se déclenche que lorsque la requête touche une table ou une source incluse. Aucun surcoût pour tout le reste.
+Le point d'ancrage ne se déclenche que lorsqu'une requête touche une table ou une source incluse ; toute autre requête s'exécute donc sans surcoût.
 
 | Configuration | Effet |
 | -------- | -------- |

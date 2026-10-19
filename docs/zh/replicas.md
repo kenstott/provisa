@@ -1,6 +1,6 @@
 # 副本 {: #replicas }
 
-副本是数据源表的一份拷贝，Provisa 将它保存在引擎的物化存储中，并读取它来代替数据源。本页介绍副本按什么建立索引、副本应存放在何处，以及副本有多新鲜。一张表是否被复制，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能够访问到的内容决定；参见 [What an engine changes](engines.md#what-an-engine-changes)。
+副本是数据源表的一份拷贝，Provisa 将它保存在引擎的物化存储中，并读取它来代替数据源。一张表是否被复制，由 [`replicate`](configuration.md#the-replicate-setting) 以及引擎能够访问到的内容决定；参见 [What an engine changes](engines.md#what-an-engine-changes)。
 
 ## 副本带有索引 {: #replicas-are-indexed }
 

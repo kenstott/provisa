@@ -16,7 +16,7 @@ Subscriptions zielen auf eine **registrierte Tabelle**:
 
 Provisa installiert beim Start automatisch `AFTER INSERT OR UPDATE OR DELETE`-Trigger auf allen **vorab genehmigten** PostgreSQL-Tabellen. Diese Trigger rufen `pg_notify('provisa_{table}', ...)` auf, sodass rohes DML (nicht nur Provisa-Mutationen) von Subscriptions erfasst wird.
 
-Schlägt die Trigger-Installation fehl (z. B. wegen unzureichender Berechtigung — die Datenbankrolle muss Eigentümer der Tabelle sein), fällt Provisa für diese Tabelle auf Watermark-Polling zurück, sofern eine `watermark_column` konfiguriert ist. Es wird eine Warnung protokolliert.
+Schlägt die Trigger-Installation fehl (z. B. wegen unzureichender Berechtigung, denn die Datenbankrolle muss Eigentümer der Tabelle sein), fällt Provisa für diese Tabelle auf Watermark-Polling zurück, sofern eine `watermark_column` konfiguriert ist. Es wird eine Warnung protokolliert.
 
 ### Subscriptions auf datenquellenübergreifende Sichten {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa führt `LISTEN <channel>` auf einer dauerhaften PG-Verbindung aus. Provi
 
 ### Polling
 
-Provisa führt die Quellabfrage periodisch erneut aus und wählt nur Zeilen aus, bei denen `watermark_column > last_watermark` gilt. Unterschiede werden als SSE-Ereignisse gesendet. Polling kann harte Löschungen (hard deletes) nicht erkennen — eine entfernte Zeile hinterlässt keine fortschreitende Watermark. Damit eine Löschung sichtbar wird, verwenden Sie eine logische Löschung (soft delete) (z. B. das Setzen eines `deleted_at`-Flags), das die Watermark-Spalte erhöht; die Löschung kommt dann als Update-Ereignis mit dem Soft-Delete-Marker an.
+Provisa führt die Quellabfrage periodisch erneut aus und wählt nur Zeilen aus, bei denen `watermark_column > last_watermark` gilt. Unterschiede werden als SSE-Ereignisse gesendet. Polling kann harte Löschungen (hard deletes) nicht erkennen: Eine entfernte Zeile hinterlässt keine fortschreitende Watermark. Damit eine Löschung sichtbar wird, verwenden Sie eine logische Löschung (soft delete) (z. B. das Setzen eines `deleted_at`-Flags), das die Watermark-Spalte erhöht; die Löschung kommt dann als Update-Ereignis mit dem Soft-Delete-Marker an.
 
 Tabellen-Polling-Konfiguration (in `provisa.yaml`):
 

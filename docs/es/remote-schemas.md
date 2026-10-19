@@ -71,7 +71,7 @@ Cuando una columna de tipo OBJECT en una tabla gobernada apunta a otro tipo gobe
 2. **Excluida de la SDL** — el campo no aparece en el tipo padre dentro del esquema generado.
 3. **Accesible solo mediante una relación declarada** — un steward debe registrar un JOIN entre las dos tablas gobernadas materializadas. Sin esa relación, el campo simplemente está ausente; no hay un blob de reserva.
 
-Los tipos OBJECT que NO son alcanzables como campos raíz de Query (tipos inline como `ContactInfo` o `Address`) siguen reglas distintas: se obtienen como columnas blob `jsonb` y aparecen en la SDL como campos de objeto anidado. Los subcampos son accesibles mediante extracción `-->>` en SQL.
+Los tipos OBJECT que NO son alcanzables como campos raíz de Query (tipos inline como `ContactInfo` o `Address`) siguen reglas distintas: se obtienen como columnas blob `jsonb` y aparecen en la SDL como campos de objeto anidado. Los subcampos son accesibles mediante extracción `->>` en SQL.
 
 **Los campos que necesitan un argumento no son columnas.** Un campo con un argumento obligatorio no puede seleccionarse sin más, por lo que se deja fuera de las columnas de la tabla y de las selecciones anidadas.
 
@@ -88,7 +88,7 @@ Los tipos OBJECT que NO son alcanzables como campos raíz de Query (tipos inline
 - Los campos raíz de query de tipo escalar y ENUM (cuando el tipo de retorno no es OBJECT) se convierten en funciones rastreadas, no en tablas virtuales. Su `return_schema` es una única columna `value` del tipo escalar mapeado.
 - El anidamiento de objetos se resuelve al momento del registro hasta `graphql_remote.max_object_depth` (por defecto: 5). Tanto la selección de la obtención remota como los metadatos de los subcampos se construyen hasta esa profundidad; los campos más allá del límite no se obtienen y no están disponibles para la extracción en SQL. Un tipo se visita una sola vez a lo largo de cada ruta: un campo cuyo tipo ya está en el camino hacia abajo se omite, de modo que un esquema cuyos tipos se refieren entre sí se recorre una vez por tipo, no una vez por nivel de profundidad.
 - Los campos OBJECT anidados de tipo LIST (p. ej. `breed.awards: [Award]`) se incluyen en la selección de obtención hasta `graphql_remote.max_list_depth` niveles de anidamiento (por defecto: 2). Dentro de ese límite, la lista se obtiene como un arreglo `jsonb` en la columna padre. Cuando el campo de lista declara un argumento `first` (Relay, PostGraphile, pg_graphql) o un argumento `limit` (Hasura), la selección lo pasa como `first: N` o `limit: N`, donde N es `graphql_remote.max_list_items` (por defecto: 100). Un campo de lista que no declara ninguno de los dos no recibe argumento, porque un remoto rechaza un argumento que el campo no declara. Más allá de `max_list_depth`, el campo LIST se excluye por completo para evitar una expansión ilimitada de datos. En SQL, el arreglo se accede mediante `json_array_elements(column_name)` o extracción por índice con `->>`. Si el tipo de elemento de la lista tiene su propia consulta raíz, regístrelo en su lugar como tabla independiente y cree una relación: la ruta de join es más eficiente y evita el blob.
-- Para consultas SQL, las columnas de tipo OBJECT no gobernadas se obtienen por completo desde el origen remoto (todos los subcampos hasta la profundidad configurada) y se almacenan en caché como `jsonb`. El acceso a subcampos en SQL se maneja mediante extracción `->>` contra el blob; la solicitud remota no se acota únicamente a los campos que selecciona la consulta SQL. Cuando el tipo de elemento de la lista no tiene query raíz y la representación en blob resulta insuficiente, escriba la consulta directamente en SDL de GraphQL — Provisa reproduce fielmente la selección de campos GQL, de modo que el origen remoto ve exactamente los campos solicitados.
+- Para consultas SQL, las columnas de tipo OBJECT no gobernadas se obtienen por completo desde el origen remoto (todos los subcampos hasta la profundidad configurada) y se almacenan en caché como `jsonb`. El acceso a subcampos en SQL se maneja mediante extracción `->>` contra el blob; la solicitud remota no se acota únicamente a los campos que selecciona la consulta SQL. Cuando el tipo de elemento de la lista no tiene query raíz y la representación en blob resulta insuficiente, escriba la consulta directamente en SDL de GraphQL. Provisa reproduce fielmente la selección de campos GQL, de modo que el origen remoto ve exactamente los campos solicitados.
 - Si el servidor remoto rechaza un campo de tipo OBJECT porque requiere selección de subcampos (lo cual no debería ocurrir cuando `gql_selection` está disponible), el ejecutor reintenta una vez con esos campos eliminados para que las columnas escalares se sigan devolviendo. Esto se aplica a las tablas leídas desde un campo raíz. Una tabla de conexión no sigue esta ruta.
 
 **Lecturas paginadas.** Una tabla de conexión se lee por cursor. Cada página pide `first: N, after: $pageCursor` con `pageInfo { hasNextPage endCursor }`, y la lectura sigue `endCursor` hasta que el remoto indica que no hay página siguiente.
@@ -187,7 +187,7 @@ Los archivos proto también pueden ser rutas locales. Las rutas de importación 
 
 1. **`method_overrides`** en el payload de registro — `{"MethodName": "query"}` o `{"MethodName": "mutation"}` tiene prioridad sobre todo lo demás.
 2. **`server_streaming: true`** — el servidor envía un stream de mensajes; siempre se convierte en tabla virtual (a menos que la salida sea un escalar).
-3. **El mensaje de salida tiene un campo repetido de tipo mensaje** — p. ej. `ListOrdersResponse { repeated Order items; }` se trata como un envoltorio de lista (list-wrapper) y se convierte en tabla virtual. Los campos escalares repetidos (p. ej. `repeated string tags`) no activan esta regla — son propiedades de array de una sola entidad, no orígenes de filas.
+3. **El mensaje de salida tiene un campo repetido de tipo mensaje** — p. ej. `ListOrdersResponse { repeated Order items; }` se trata como un envoltorio de lista (list-wrapper) y se convierte en tabla virtual. Los campos escalares repetidos (p. ej. `repeated string tags`) no activan esta regla, porque son propiedades de array de una sola entidad, no orígenes de filas.
 
 Los métodos que no coinciden con ninguna de estas señales (RPC unario que devuelve un único mensaje de entidad, o cualquier salida escalar) se convierten en funciones rastreadas.
 
@@ -213,7 +213,7 @@ Los métodos de mutación son comandos ofrecidos, contados en `available_mutatio
 
 **Relaciones al registrar.** `relationships` funciona igual que en el adaptador GQL: declara caminos de join FK/PK, que se guardan como relaciones declaradas a mano (sin el indicador `remote_managed`). Una actualización las deja como están.
 
-**Métodos de query.** Los campos del mensaje de salida se convierten en columnas de la tabla. Los campos del mensaje de entrada se convierten a la vez en argumentos GraphQL pasados a la llamada remota *y* se registran como columnas con prefijo `_nf_` y `native_filter_type: "grpc_input"` — el mismo mecanismo que usan GQL y OpenAPI para la inyección de filtros nativos.
+**Métodos de query.** Los campos del mensaje de salida se convierten en columnas de la tabla. Los campos del mensaje de entrada se convierten a la vez en argumentos GraphQL pasados a la llamada remota *y* se registran como columnas con prefijo `_nf_` y `native_filter_type: "grpc_input"`, el mismo mecanismo que usan GQL y OpenAPI para la inyección de filtros nativos.
 
 **Subcampos de mensajes anidados.** Para los métodos de query, los campos de tipo mensaje no repetidos en profundidad 0 (columnas de salida directas) tienen sus subcampos resueltos un nivel más y se almacenan como `object_fields` en el `ColumnDef`. Estos metadatos se usan para la extracción de subcampos `jsonb` en SQL y para la documentación del esquema. Los campos anidados más allá de la profundidad 1 no se expanden recursivamente.
 
@@ -274,7 +274,7 @@ Prioridad de clasificación: `operation_overrides` (payload) tiene prioridad sob
 
 **Subcampos de objeto.** Las propiedades de respuesta con `type: object` y sus propias `properties` se almacenan como `object_fields` en la columna. Estos subcampos son visibles en la SDL y se usan para la extracción `jsonb` en las consultas.
 
-**Caché de respuestas.** Los resultados de las operaciones GET se almacenan en caché en PostgreSQL mediante `pg_cache.py`. Cada combinación de parámetros de solicitud obtiene su propio grupo `_params_hash`. Las filas de un hash determinado se reemplazan cuando expira el TTL. Los endpoints con parámetro de ruta (`/pets/{id}`) omiten la obtención masiva inicial — la tabla de caché se crea vacía para la introspección de esquema, y luego se puebla por clave primaria a medida que llegan las solicitudes.
+**Caché de respuestas.** Los resultados de las operaciones GET se almacenan en caché en PostgreSQL mediante `pg_cache.py`. Cada combinación de parámetros de solicitud obtiene su propio grupo `_params_hash`. Las filas de un hash determinado se reemplazan cuando expira el TTL. Los endpoints con parámetro de ruta (`/pets/{id}`) omiten la obtención masiva inicial. La tabla de caché se crea vacía para la introspección de esquema, y luego se puebla por clave primaria a medida que llegan las solicitudes.
 
 **Actualización.** Enviar un POST a `/admin/openapi/refresh/{source_id}`. Vuelve a analizar la especificación mediante `_load_and_register`, que no registra nada: no añade ninguna tabla ni columna. Las reglas de gobierno existentes se preservan. Una tabla registrada conserva sus columnas; se lee mediante la operación de la spec actualizada.
 
@@ -290,7 +290,7 @@ Prioridad de clasificación: `operation_overrides` (payload) tiene prioridad sob
 
 Una tabla registrada desde cualquier origen de esquema remoto es una tabla de Provisa de primera clase. Nada en ella se trata de forma diferente a una tabla relacional conectada localmente en tiempo de ejecución.
 
-**Interfaces de consulta.** La tabla es consultable de inmediato vía GraphQL, SQL (pgwire o directo), Cypher (GQL), JSON:API y Arrow Flight. La generación de esquema sintetiza `ColumnMetadata` para las tablas remotas, ya que no tienen catálogo — el mapeo de tipos se aplica al momento de construir el esquema.
+**Interfaces de consulta.** La tabla es consultable de inmediato vía GraphQL, SQL (pgwire o directo), Cypher (GQL), JSON:API y Arrow Flight. La generación de esquema sintetiza `ColumnMetadata` para las tablas remotas, ya que no tienen catálogo; el mapeo de tipos se aplica al momento de construir el esquema.
 
 **Modelo de seguridad.** Se aplican las cinco capas de gobierno:
 
@@ -338,7 +338,7 @@ El mismo mecanismo se aplica cuando el esquema se construye filtrado por dominio
 
 Una tabla de solo definición de tipo:
 
-- No tiene campo raíz de query — los clientes no pueden consultarla directamente por nombre.
+- No tiene campo raíz de query, así que los clientes no pueden consultarla directamente por nombre.
 - Es accesible mediante campos de relación en tablas que sí tienen entradas raíz.
 - Sigue apareciendo en la introspección de esquema como un tipo con nombre.
 - Sigue teniendo todas las reglas de gobierno aplicadas cuando se accede a los datos a través de una relación.

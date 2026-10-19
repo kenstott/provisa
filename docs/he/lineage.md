@@ -33,7 +33,7 @@ orders.region ─╯
 - ‏`orders.id`, `orders.region` ו-`orders.geo` הם צמתי **source** ‏(חוזה הקלט הצר
   של `enrich_grpc_set` מצהיר על `id` ועל `region`; סגור הזיהום המלא מחבר את כל הקלטים
   המוצהרים לכל הפלטים).
-- ‏`e.embedding` ו-`e.geo` הם צמתי **command** — גבול ה-`enrich_grpc_set`.
+- ‏`e.embedding` ו-`e.geo` הם צמתי **command** בגבול ה-`enrich_grpc_set`.
 - ‏`geo_u` הוא צומת **derived** המיוצר על ידי פונקציית ה-SQL `UPPER`.
 
 גבול הפקודה **אינו אטום**. משום ש-`enrich_grpc_set` מצהיר על עמודות הקלט שלו

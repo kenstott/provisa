@@ -187,7 +187,7 @@ Cypher 透過 `/data/cypher` 端點支援三種寫入模式，由 `provisa/cyphe
 - 該標籤必須恰好解析至一個已註冊的資料表。含糊或未知的標籤即為硬性錯誤；不進行模糊比對。 無法透過 Cypher 建立新標籤或型別。
 - 每次寫入均受目標資料表寫入授權的閘控：角色需要 `write` 權利和該操作的授權，且寫入的欄位必須在授權中。不符合的角色會於編譯時被拒絕。
 - 該後端數據來源連接器必須支援 DML。唯讀數據來源（Trino 聯邦、無 Delta 連接器的 Iceberg）會於轉譯時拒絕寫入。
-- 關係無法被寫入——它們衍生自模型中宣告的 JOIN，而非儲存的邊。以關係為目標即為硬性錯誤。 由聯結資料表支撐的邊也不例外：其背後的關聯資料表本身就是一張已註冊的資料表，寫入的資料列進入那張資料表，而不是進入邊。
+- 關係無法被寫入：它們衍生自模型中宣告的 JOIN，而非儲存的邊。以關係為目標即為硬性錯誤。 由聯結資料表支撐的邊也不例外：其背後的關聯資料表本身就是一張已註冊的資料表，寫入的資料列進入那張資料表，而不是進入邊。
 - 寫入會經過完整的寫入管線：RLS 注入及變異後掛鉤（回應快取失效、具體化檢視標記過期、Kafka 變更事件、熱資料表重新載入）。
 - `MERGE`、`DETACH DELETE` 及 `REMOVE` 不受支援，並於剖析時遭拒絕。
 
@@ -197,8 +197,8 @@ Cypher 透過 `/data/cypher` 端點支援三種寫入模式，由 `provisa/cyphe
 
 Cypher 經由兩種傳輸方式抵達相同的受治理管線：
 
-- **HTTP**——`POST /data/cypher`，帶一個 JSON 本文（`{"query": "...", "params": {...}}`）。回傳具型別的資料列，或於寫入時回傳 `affected_rows`。`RETURN` 子句中的圖形變數序列化為 JSON：節點帶有 `id`、`label`、`tableLabel` 及 `properties`；邊帶有 `identity`、`start`、`end`、`type`、`properties`、`startNode` 及 `endNode`；路徑帶有 `nodes`、`edges` 及 `length`/`hops`。 已註冊的命令亦可於此處經 `CALL fn(args) YIELD col1, col2` 呼叫——位置式引數依序對應至該命令所宣告的引數名稱。
-- **Bolt**——一個相容於 Neo4j 的二進位協定伺服器（PackStream 編解碼器、分塊 framing），讓 Neo4j Browser、Bloom 及 Bolt 驅動程式可於聯邦圖形上執行 Cypher。 當 `PROVISA_BOLT_PORT` 設為非零值時啟動，預設為停用；TLS 請設定 `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY`。 Bolt 驗證將主體對應至使用者，將資料庫對應至角色：`SHOW DATABASES` 會為每個（檢視 × 角色）配對列出一筆項目，命名為 `provisa_<role>`（業務領域）或 `provisa_ops_<role>`（含系統/中繼/ops 領域）；`:use` 選取使用中的角色及檢視。 關係經由一個 `rel_ids` 資料表取得持久性整數 ID，其設計仿照 `node_ids`。 已註冊的命令可以 `CALL command(args)` 呼叫——位置式引數依序對應至已宣告的引數名稱；`CALL dbms.*` / `CALL db.*` 程序具優先權。
+- **HTTP**——`POST /data/cypher`，帶一個 JSON 本文（`{"query": "...", "params": {...}}`）。回傳具型別的資料列，或於寫入時回傳 `affected_rows`。`RETURN` 子句中的圖形變數序列化為 JSON：節點帶有 `id`、`label`、`tableLabel` 及 `properties`；邊帶有 `identity`、`start`、`end`、`type`、`properties`、`startNode` 及 `endNode`；路徑帶有 `nodes`、`edges` 及 `length`/`hops`。 已註冊的命令亦可於此處經 `CALL fn(args) YIELD col1, col2` 呼叫，位置式引數依序對應至該命令所宣告的引數名稱。
+- **Bolt**——一個相容於 Neo4j 的二進位協定伺服器（PackStream 編解碼器、分塊 framing），讓 Neo4j Browser、Bloom 及 Bolt 驅動程式可於聯邦圖形上執行 Cypher。 當 `PROVISA_BOLT_PORT` 設為非零值時啟動，預設為停用；TLS 請設定 `PROVISA_BOLT_CERT` / `PROVISA_BOLT_KEY`。 Bolt 驗證將主體對應至使用者，將資料庫對應至角色：`SHOW DATABASES` 會為每個（檢視 × 角色）配對列出一筆項目，命名為 `provisa_<role>`（業務領域）或 `provisa_ops_<role>`（含系統/中繼/ops 領域）；`:use` 選取使用中的角色及檢視。 關係經由一個 `rel_ids` 資料表取得持久性整數 ID，其設計仿照 `node_ids`。 已註冊的命令可以 `CALL command(args)` 呼叫，位置式引數依序對應至已宣告的引數名稱；`CALL dbms.*` / `CALL db.*` 程序具優先權。
 
 ### 圖形分析 {: #graph-analytics }
 

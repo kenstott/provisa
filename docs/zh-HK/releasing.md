@@ -110,7 +110,7 @@ Python 客戶端版本會自動轉換為 PEP 440 格式：
 ## 匯出 .p12 憑證 {: #exporting-the-p12-certificate }
 
 1. 開啟 **Keychain Access** → 登入鑰匙圈 → **My Certificates**
-2. 尋找 **Developer ID Application: Your Name (TEAMID)** — 展開以確認私密金鑰嵌套於其下
+2. 尋找 **Developer ID Application: Your Name (TEAMID)**，展開以確認私密金鑰嵌套於其下
 3. 同時選取憑證及其私密金鑰 → 按右鍵 → **Export 2 Items** → 儲存為 `.p12` → 設定一個強密碼
 4. 進行 Base64 編碼並複製到剪貼簿：
 

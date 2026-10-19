@@ -58,7 +58,7 @@ Todas las sentencias SELECT pasan por el pipeline de gobierno (`_pipeline.py`). 
 
 Se admiten consultas simples de múltiples sentencias. Las sentencias separadas por punto y coma se dividen y se ejecutan en orden.
 
-Las consultas parametrizadas (`$1`, `$2`, ...) se admiten tanto en el modo de consulta simple como en el modo de consulta extendida (Bind/Execute). Los parámetros se sustituyen como literales antes de la ejecución.
+Las consultas parametrizadas (`$1`, `$2`, ...) se admiten tanto en el modo de consulta simple como en el modo de consulta extendida (Bind/Execute). Los valores siguen vinculados hasta el motor o la fuente (vea [Advertencias y restricciones](#caveats-and-constraints)).
 
 `SELECT * FROM fn(args)` y `SELECT fn(args)` — donde `fn` nombra una función registrada y rastreada — se interceptan antes del pipeline de gobierno y se enrutan a través del único ejecutor gobernado (`invoke_tracked_function`). El resultado es un conjunto de filas tipado idéntico al que devuelve cualquier otra superficie para ese comando. La asignación del comando (`visible_to`), el derecho `write` para una mutación y las reglas de gobierno se aplican dentro del ejecutor.
 
@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 El SELECT interior pasa por el pipeline gobernado normal de Provisa, con la misma aplicación de RLS, el mismo enmascaramiento y las mismas comprobaciones de acceso por dominio que cualquier SELECT independiente. Declarar un cursor no esquiva la gobernanza.
 
 La palabra clave `SCROLL` controla tanto la navegación permitida como la memoria que usa el cursor:
@@ -102,6 +103,7 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
+
 `FETCH` devuelve filas y envía la etiqueta de comando `FETCH <n>`, donde `n` es el número real devuelto, que puede ser menor que el pedido cuando el cursor llega al final. `MOVE` avanza la posición sin devolver filas y envía `MOVE <n>`.
 
 `FROM` e `IN` son intercambiables como introducción del nombre del cursor. Los nombres de cursor sin comillas se pasan a minúsculas; los nombres entre comillas (`"CaseSensitive"`) conservan las mayúsculas.
@@ -114,6 +116,7 @@ La navegación hacia atrás (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE`
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` libera el flujo de resultados subyacente y quita el cursor de la sesión. Desconectarse sin emitir `CLOSE` es seguro: `ProvisaSession.close()` libera automáticamente todos los cursores aún abiertos al desconectar.
 
 **Vida de un cursor.** El servidor pgwire de Provisa no tiene máquina de estados de transacción (`ProvisaSession.in_transaction()` devuelve siempre `False`). Por eso todo cursor se comporta como si se hubiera declarado `WITH HOLD`: vive lo que dura la conexión, y `COMMIT` no lo termina. Las palabras clave `WITH HOLD` y `WITHOUT HOLD` se aceptan y se ignoran, ya que no hay ciclo de vida de cursor por transacción que aplicar.
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **Crear** con `CREATE TEMP TABLE name (column type, ...)` o `CREATE TEMP TABLE name AS SELECT ...`. El nombre no lleva esquema. Un `SELECT` a partir del que se crea es una lectura como cualquier otra: las reglas de filas, las máscaras, los datos falsos y el límite de filas del rol se aplican a las filas que toma.
 - **Tipos de columna**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` y `DECIMAL(precision, scale)`. Un decimal conserva su precisión y escala. Cualquier otro tipo se rechaza, nombrando la columna y el tipo: un valor nunca se guarda como un tipo distinto del suyo. Una columna creada a partir de un `SELECT` toma el tipo de sus valores; una sin valor con el que deducir un tipo se rechaza, así que aplique `CAST` en el `SELECT`.
 - **Límite de filas.** Las filas que toma un `CREATE ... AS SELECT` o un `INSERT ... SELECT` se leen como el rol lee cualquier cosa, así que se aplica el límite de filas del rol. Una tabla temporal llenada desde una lectura que el límite recortó lleva la misma advertencia de sentencia que cualquier lectura recortada (`statement.rows_cut`), con el límite.
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 Formatos admitidos: `text` (delimitado por tabulaciones, predeterminado), `csv` y `binary`, el formato COPY binario de PostgreSQL, con el que lee la extensión postgres de DuckDB.
 
 **COPY FROM STDIN** es una escritura de datos en una tabla registrada existente: la admite la misma admisión de escritura que un `INSERT` de las mismas filas, con la condición añadida de que el permiso `insert` no tenga presets (véase [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lee `text` (por defecto) y `csv`. Cualquier otro formato se rechaza con SQLSTATE 0A000, nombrándolo, antes de enviar ningún dato.
@@ -240,7 +245,7 @@ Las columnas de resultado también se envían en binario cuando el cliente lo so
 
 ## Recomendaciones de driver {: #driver-recommendations }
 
-**Drivers nativos de Python (psycopg2, asyncpg).** Estos negocian el protocolo de consulta extendida de forma predeterminada y usan codificación binaria para la mayoría de los tipos. La fidelidad de tipos es máxima aquí — las columnas `NUMERIC` llegan como `Decimal`, `TIMESTAMP` como `datetime`, y así sucesivamente. Úselos para ETL basado en Python, scripts o integración directa.
+**Drivers nativos de Python (psycopg2, asyncpg).** Estos negocian el protocolo de consulta extendida de forma predeterminada y usan codificación binaria para la mayoría de los tipos. La fidelidad de tipos es máxima aquí: las columnas `NUMERIC` llegan como `Decimal`, `TIMESTAMP` como `datetime`, y así sucesivamente. Úselos para ETL basado en Python, scripts o integración directa.
 
 **JDBC (driver JDBC de PostgreSQL).** Úselo para herramientas del ecosistema Java: DBeaver, Tableau, Power BI, Metabase, operadores JDBC de Airflow. JDBC usa por defecto el protocolo de consulta simple, lo que evita complicaciones de codificación binaria. Cadena de conexión:
 
@@ -248,9 +253,9 @@ Las columnas de resultado también se envían en binario cuando el cliente lo so
 jdbc:postgresql://<host>:<PROVISA_PGWIRE_PORT>/provisa?user=<role_id>&password=<password>
 ```
 
-Algunas herramientas de BI basadas en JDBC envían una ráfaga de consultas a `information_schema` y `pg_catalog` al conectarse para poblar su explorador de esquemas. Todas se responden mediante la capa de intercepción de catálogo — no se genera tráfico a Trino durante la inspección de esquemas.
+Algunas herramientas de BI basadas en JDBC envían una ráfaga de consultas a `information_schema` y `pg_catalog` al conectarse para poblar su explorador de esquemas. Todas se responden mediante la capa de intercepción de catálogo, así que no se genera tráfico a Trino durante la inspección de esquemas.
 
-**Cuándo preferir uno sobre otro.** Si el cliente es Python, use psycopg2 o asyncpg para un mejor manejo de tipos. Si el cliente es una herramienta de BI o cualquier aplicación JVM, use JDBC. Evite mezclar expectativas de protocolo binario y de texto en la misma conexión si observa sorpresas de conversión de tipos — el comportamiento en modo texto de JDBC es más simple de razonar.
+**Cuándo preferir uno sobre otro.** Si el cliente es Python, use psycopg2 o asyncpg para un mejor manejo de tipos. Si el cliente es una herramienta de BI o cualquier aplicación JVM, use JDBC. Evite mezclar expectativas de protocolo binario y de texto en la misma conexión si observa sorpresas de conversión de tipos. El comportamiento en modo texto de JDBC es más simple de razonar.
 
 ---
 
@@ -270,4 +275,4 @@ Algunas herramientas de BI basadas en JDBC envían una ráfaga de consultas a `i
 
 **DECLARE SCROLL guarda en búfer el resultado completo.** Un cursor `SCROLL` acumula en el heap de Python cada fila que obtiene del motor para poder servir `FETCH BACKWARD`, `ABSOLUTE`, `FIRST` y `LAST` cuando se piden. Con un resultado grande, todo el resultado vive en memoria mientras el cursor esté abierto. Use el predeterminado `NO SCROLL` para streaming solo hacia delante.
 
-**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Estas tablas existen en la capa de catálogo pero son stubs vacíos. Las herramientas de monitoreo que las consultan recibirán cero filas en lugar de errores. (`pg_index` sí está poblada — vea Intercepción de catálogo.)
+**`pg_stat_activity`, `pg_stat_user_tables`, `pg_extension`, `pg_enum`, `pg_attrdef`, `pg_proc`.** Estas tablas existen en la capa de catálogo pero son stubs vacíos. Las herramientas de monitoreo que las consultan recibirán cero filas en lugar de errores. (`pg_index` sí está poblada; vea Intercepción de catálogo.)

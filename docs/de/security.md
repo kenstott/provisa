@@ -166,7 +166,7 @@ Ein Agent fragt mit dem MCP-Werkzeug `describe_role`, als welche Rolle er handel
 
 `+` erscheint an zwei Stellen, mit jeweils anderer Bedeutung.
 
-**In einem Freigabeeintrag.** `analyst+region__eu` in einer `visible_to`- oder `to`-Liste bedeutet, dass der Leser alle davon hält — `analyst` UND `region__eu` gleichzeitig. Ein Eintrag, der kein Kompositum ist, ist eine einzelne Rolle. Über die Einträge einer Liste hinweg gilt die Regel „irgendeiner": Ein Leser hält die Freigabe, wenn er irgendeinen Eintrag hält. UND innerhalb, ODER übergreifend.
+**In einem Freigabeeintrag.** `analyst+region__eu` in einer `visible_to`- oder `to`-Liste bedeutet, dass der Leser alle davon hält: `analyst` UND `region__eu` gleichzeitig. Ein Eintrag, der kein Kompositum ist, ist eine einzelne Rolle. Über die Einträge einer Liste hinweg gilt die Regel „irgendeiner": Ein Leser hält die Freigabe, wenn er irgendeinen Eintrag hält. UND innerhalb, ODER übergreifend.
 
 **In einer Meta-Rollen-ID.** `meta:analyst+engineer` ist die Kennung des Servers für die Meta-Rolle der Menge {analyst, engineer}. Ihre Rechte sind die Vereinigung beider. Ein Client nennt die Meta-Rollen-ID nie direkt; er nennt die Rollen, die er hält, und der Server baut die Meta-Rolle.
 
@@ -686,7 +686,7 @@ Ein optionaler externer Richtlinien-Hook, der vor der Abfrageausführung auslös
 
 ### Geltungsbereich {: #scoping }
 
-Der Hook löst nur aus, wenn die Abfrage eine einbezogene Tabelle oder Quelle berührt. Kein Overhead für alles andere.
+Der Hook löst nur aus, wenn eine Abfrage eine einbezogene Tabelle oder Quelle berührt, also läuft jede andere Abfrage ohne zusätzlichen Aufwand.
 
 | Konfiguration | Wirkung |
 | -------- | -------- |

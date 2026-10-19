@@ -16,7 +16,7 @@ Le subscription hanno come target una **tabella registrata**:
 
 All'avvio, Provisa installa automaticamente trigger `AFTER INSERT OR UPDATE OR DELETE` su tutte le tabelle PostgreSQL **preapprovate**. Questi trigger richiamano `pg_notify('provisa_{table}', ...)` in modo che le DML non elaborate (non solo le mutazioni di Provisa) vengano rilevate dalle subscription.
 
-Se l'installazione del trigger non riesce (ad esempio per privilegi insufficienti — il ruolo del database deve essere proprietario della tabella), Provisa passa al polling basato su watermark per quella tabella, purché sia configurato un `watermark_column`. Viene registrato un avviso nel log.
+Se l'installazione del trigger non riesce (ad esempio per privilegi insufficienti, perché il ruolo del database deve essere proprietario della tabella), Provisa passa al polling basato su watermark per quella tabella, purché sia configurato un `watermark_column`. Viene registrato un avviso nel log.
 
 ### Subscription su viste multi-origine {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa emette `LISTEN <channel>` su una connessione PG persistente. Le mutazion
 
 ### Polling
 
-Provisa riesegue periodicamente la query di origine, selezionando solo le righe in cui `watermark_column > last_watermark`. Le differenze vengono emesse come eventi SSE. Il polling non è in grado di rilevare le eliminazioni definitive (hard delete) — una riga rimossa non lascia alcun watermark che avanzi. Per rendere visibile un'eliminazione, utilizzare un'eliminazione logica (soft delete) (ad esempio impostando un flag `deleted_at`) che incrementi la colonna watermark; l'eliminazione arriva quindi come evento di aggiornamento che porta con sé il marcatore di eliminazione logica.
+Provisa riesegue periodicamente la query di origine, selezionando solo le righe in cui `watermark_column > last_watermark`. Le differenze vengono emesse come eventi SSE. Il polling non è in grado di rilevare le eliminazioni definitive (hard delete): una riga rimossa non lascia alcun watermark che avanzi. Per rendere visibile un'eliminazione, utilizzare un'eliminazione logica (soft delete) (ad esempio impostando un flag `deleted_at`) che incrementi la colonna watermark; l'eliminazione arriva quindi come evento di aggiornamento che porta con sé il marcatore di eliminazione logica.
 
 Configurazione del polling della tabella (in `provisa.yaml`):
 
@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## Quando un flusso termina con un errore {: #when-a-stream-ends-on-a-failure }
 
 Un flusso che si è aperto ha già risposto `200`, quindi un errore successivo non può essere uno stato HTTP. Il sottoscrittore riceve un ultimo frame che dice perché, poi il flusso si chiude. Un flusso non si chiude mai per un errore senza quel frame.
@@ -176,6 +177,7 @@ La sottoscrizione di tabella (`/data/subscribe/{table}`) invia il corpo come dat
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 L'evento non si chiama `error`, perché un `EventSource` genera il proprio evento `error` quando una connessione cade e un listener non potrebbe distinguere i due. Ascoltatelo per nome:
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 Una sottoscrizione GraphQL mantiene la forma di risposta GraphQL, con il codice e i params sotto `extensions`:
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 Un caso non termina una sottoscrizione GraphQL: quando la rilettura dopo una singola modifica fallisce, quel frame viene inviato nella stessa forma e il flusso prosegue con la modifica successiva. Un errore della lettura iniziale, del feed di modifiche stesso o del suo avvio è l'ultimo frame.
 
 ## Reindirizzamento a un sink Kafka {: #kafka-sink-redirect }

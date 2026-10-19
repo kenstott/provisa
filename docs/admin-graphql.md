@@ -1,6 +1,6 @@
 # Admin GraphQL API Reference
 
-The admin GraphQL API is Provisa's configuration plane. It is the API the admin web app calls for every management operation — creating sources, registering tables, defining relationships, configuring RLS rules, and everything else that shapes the model.
+The admin GraphQL API is Provisa's configuration plane. It is the API the admin web app calls for every management operation: creating sources, registering tables, defining relationships, configuring RLS rules, and everything else that shapes the model.
 
 **Mount point:** `POST /admin/graphql`
 
@@ -73,7 +73,7 @@ query {
 }
 ```
 
-`passwordRef` is a `${secret:NAME}` reference into the org vault — never the literal credential.
+`passwordRef` is a `${secret:NAME}` reference into the org vault, never the literal credential.
 
 #### `source(id: String!) → SourceType`
 
@@ -113,7 +113,7 @@ Returns the alias to use when registering `tableName` in `domainId` from `source
 
 #### `tables → [RegisteredTableType!]!`
 
-All registered tables, each with their full column list. Column visibility in the response respects the caller's `table_registration` capability — `canDeployToDb` is gated on whether the caller holds that right.
+All registered tables, each with their full column list. Column visibility in the response respects the caller's `table_registration` capability: `canDeployToDb` is gated on whether the caller holds that right.
 
 Each `RegisteredTableType` exposes computed sub-fields:
 
@@ -130,7 +130,7 @@ Arguments: `sourceId`, `domainId`, `schemaName`, `tableName`, `cacheTtl`, `repli
 
 #### `columnDependents(tableId: String!, renamed: [String!], removed: [String!]) → [ColumnDependentsType!]!`
 
-Artifacts that a pending alias rename or column drop would break. Advisory — the admin UI shows this before saving and the administrator decides. Must be called *before* saving, because the dependents were authored against the exposed name the column currently carries.
+Artifacts that a pending alias rename or column drop would break. It is advisory: the admin UI shows this before saving and the administrator decides. Must be called *before* saving, because the dependents were authored against the exposed name the column currently carries.
 
 ---
 
@@ -258,7 +258,7 @@ Parse raw contract text into the builder panel's editable rows. Called on every 
 
 #### `dqCheckCatalog(checker: String!, dataset: String!) → DqCheckCatalogType`
 
-The checks `checker` offers, scoped to the columns of `dataset`. The dataset is the contract's observed target, resolved the same way the scanner resolves it — so the offered checks match the columns the checker will really see.
+The checks `checker` offers, scoped to the columns of `dataset`. The dataset is the contract's observed target, resolved the same way the scanner resolves it, so the offered checks match the columns the checker will really see.
 
 #### `dqCheckDefinition(checker: String!, check: DqCheckBuildInput!) → DqCheckDefinitionType`
 
@@ -344,7 +344,7 @@ Pending creation requests, visible to callers holding the relevant create capabi
 
 #### `createSource(input: SourceInput!) → MutationResult`
 
-Register a new data source. An id that exists is refused (`schema.source_id_taken`) after the definition checks and before anything is staged or written; changing a source is `updateSource`. Validates the connection before persisting — a rejected source leaves no vault entry behind. Stores credentials in the org vault and records the reference; the plaintext never lands in the database. Requires `source_registration` capability.
+Register a new data source. An id that exists is refused (`schema.source_id_taken`) after the definition checks and before anything is staged or written; changing a source is `updateSource`. Validates the connection before persisting. A rejected source leaves no vault entry behind. Stores credentials in the org vault and records the reference; the plaintext never lands in the database. Requires `source_registration` capability.
 
 #### `updateSource(input: SourceInput!) → MutationResult`
 
@@ -488,7 +488,7 @@ Change an existing role, with the same checks as `createRole`. An id no role hol
 
 #### `deleteRole(id: String!) → MutationResult`
 
-Delete a role. Fails if other roles inherit from it — reparent those first. Requires `user_management`.
+Delete a role. Fails if other roles inherit from it; reparent those first. Requires `user_management`.
 
 ---
 
@@ -574,7 +574,7 @@ Delete a governed metric. Rebuilds schemas. Requires `table_registration`.
 
 #### `createCalendar(input: CalendarInput!) → MutationResult`
 
-Create or replace a versioned snapshot-boundary calendar. Validated by constructing the in-memory `Calendar` before persisting — fails on an unknown base system, bad time zone, or bad fiscal anchor.
+Create or replace a versioned snapshot-boundary calendar. Validated by constructing the in-memory `Calendar` before persisting. It fails on an unknown base system, bad time zone, or bad fiscal anchor.
 
 #### `deleteCalendar(name: String!) → MutationResult`
 

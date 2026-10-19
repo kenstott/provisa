@@ -16,7 +16,7 @@ Subscriptions target a **registered table**:
 
 Provisa automatically installs `AFTER INSERT OR UPDATE OR DELETE` triggers on all **pre-approved** PostgreSQL tables at startup. These triggers call `pg_notify('provisa_{table}', ...)` so that raw DML (not just Provisa mutations) is picked up by subscriptions.
 
-If trigger installation fails (e.g. insufficient privilege — the database role must own the table), Provisa falls back to watermark polling for that table, provided a `watermark_column` is configured. A warning is logged.
+If trigger installation fails (e.g. insufficient privilege, because the database role must own the table), Provisa falls back to watermark polling for that table, provided a `watermark_column` is configured. A warning is logged.
 
 ### Cross-datasource view subscriptions
 
@@ -71,7 +71,7 @@ Provisa issues `LISTEN <channel>` on a persistent PG connection. Provisa mutatio
 
 ### Polling
 
-Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. Diffs are emitted as SSE events. Poll cannot see hard deletes — a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker.
+Provisa re-executes the source query periodically, selecting only rows where `watermark_column > last_watermark`. Diffs are emitted as SSE events. Poll cannot see hard deletes: a removed row leaves no advancing watermark. To make a delete visible, use a soft delete (e.g. set a `deleted_at` flag) that bumps the watermark column; the delete then arrives as an update event carrying the soft-delete marker.
 
 Table poll config (in `provisa.yaml`):
 

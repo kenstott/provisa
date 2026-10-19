@@ -1338,8 +1338,8 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 1. 在 camelCase 邊界與分隔字元（`_`、`-`、`.`、`/`、空白）處切分。
 2. 將結果轉為小寫。
 3. 展開一份固定的縮寫對照表（例如 `cust` → `customer`、`amt` → `amount`、`dt` → `date`、`id` → `identifier`、`key` → `identifier`、`guid` → `identifier`）。
-4. 移除結尾的**代理權杖**（`identifier`、`code`、`index` 或 `reference`）— 以索引鍵或代碼命名的欄位，是透過一個替代值指向底層概念，因此術語應該就是那個概念本身。最後剩下的權杖永遠不會被移除。
-5. 以資料表的概念修飾**過於一般化的片語**。當完整的正規化片語只是一個裸屬性詞（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 之類）時，術語會變成 `<table concept> <phrase>` — `employees.first_name` → `employee first name`、`orders.id` → `order identifier`。若讓一個共用的 `name` 術語橫跨互不相關的資料表，會把不同的意義合併在一起；修飾則把每個欄位連結到其所屬概念。資料表概念即該資料表的業務名稱，並正規化為單數主名詞（`order_lines` → `order line`）。
+4. 移除結尾的**代理權杖**（`identifier`、`code`、`index` 或 `reference`）。以索引鍵或代碼命名的欄位，是透過一個替代值指向底層概念，因此術語應該就是那個概念本身。最後剩下的權杖永遠不會被移除。
+5. 以資料表的概念修飾**過於一般化的片語**。當完整的正規化片語只是一個裸屬性詞（`name`、`identifier`、`date`、`location`、`message`、`first name`、`last name` 之類）時，術語會變成 `<table concept> <phrase>`：`employees.first_name` → `employee first name`、`orders.id` → `order identifier`。若讓一個共用的 `name` 術語橫跨互不相關的資料表，會把不同的意義合併在一起；修飾則把每個欄位連結到其所屬概念。資料表概念即該資料表的業務名稱，並正規化為單數主名詞（`order_lines` → `order line`）。
 
 原生篩選的虛擬欄位（以 `_nf_` 為前綴，或任何帶有 `native_filter_type` 的欄位）屬於查詢參數機制，而非業務欄位，不會推導出任何術語。
 
@@ -1358,7 +1358,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 
 術語**由語義層的成員關係推導而來**，不由使用者按需建立。資料表儲存庫是唯一的寫入路徑：`sync_table_refs` 在每次資料行集 upsert 內執行，`sweep_refless_terms` 在任何刪除路徑之後執行。
 
-**新增欄位時：** Provisa 依名稱查找正規化後的術語。若已存在，該欄位會取得一個指向它的參照（若該術語先前已淘汰，則會復原 — `deprecated` 會設回 `False`）。若尚無術語，則建立一個。
+**新增欄位時：** Provisa 依名稱查找正規化後的術語。若已存在，該欄位會取得一個指向它的參照（若該術語先前已淘汰，則會復原，`deprecated` 會設回 `False`）。若尚無術語，則建立一個。
 
 **當某資料行移除時**（結構描述變更或刪除資料表），其參照會被刪除，術語按「刪除或棄用」規則**處置**。沒有剩餘參照的根術語會連同其邊及專家指派被直接刪除，除非刪除它會令某個抽象術語在術語圖中再沒有通往任何根術語的路徑。在這種情況下，該術語會被**棄用**（標記 `deprecated=True`）而不是刪除，從而令抽象術語保留它在圖中的錨點。
 

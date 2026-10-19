@@ -1,7 +1,6 @@
 # Federation Engines
 
-A source type says where data lives. A federation **engine** is the runtime Provisa compiles that
-data's queries into — the thing that holds the connectors, executes the plan, and owns the
+A source type says where data lives. A federation **engine** is the runtime Provisa compiles that data's queries into: the thing that holds the connectors, executes the plan, and owns the
 materialization store. The two are separate registries: `SourceType` in `provisa/core/models.py`
 lists what you can register, `_ENGINE_BUILDERS` in `provisa/federation/engine.py` lists what can run
 it. `trino` and several warehouses appear in both, meaning Provisa can read a Trino cluster as a
@@ -86,7 +85,7 @@ from wherever Provisa runs, which a local file on someone else's disk is not.
 The 32 keys are the complete set, but two other places name a subset on purpose, and they are not
 the same list:
 
-- **The install wizard** offers 5 options — `duckdb`, `pg_duckdb`, `postgres_fdw`, `trino`,
+- **The install wizard** offers 5 options: `duckdb`, `pg_duckdb`, `postgres_fdw`, `trino`,
   `sqlalchemy`. These are provisioning choices, not builder keys: `pg_duckdb` and `postgres_fdw`
   are two ways to provision the one `pg` engine. A wizard option must declare its platforms,
   provisioning route and startup cost, and the demo preset may only use bundled instant ones.
@@ -109,8 +108,7 @@ copy, where join indexes do not help. See [Replicas](replicas.md).
 
 ## Engine lifecycle (hosted deployment only)
 
-On the hosted cloud deployment, engine shards scale to zero replicas when idle — no pod means no
-bill. A desktop or self-hosted install runs the engine as an always-on process; none of the
+On the hosted cloud deployment, engine shards scale to zero replicas when idle, and no pod means no bill. A desktop or self-hosted install runs the engine as an always-on process; none of the
 behavior below applies to it.
 
 **Cold starts.** When the first query arrives after an idle period, Provisa wakes the shard before
@@ -125,19 +123,18 @@ the state is `starting`. The banner clears when the shard reports `ready`. Possi
 
 **Prewarm on sign-in.** Signing in triggers a background wake for the org's shard, so the engine
 starts provisioning while the operator reads schemas and composes a query. The sign-in endpoint
-returns immediately — it does not block on the wake. If the first query arrives while the prewarm
+returns immediately; it does not block on the wake. If the first query arrives while the prewarm
 is still running, the query path waits on it rather than starting a second wake.
 
 **Coordinator re-resolution.** A coordinator pod can move between the cached address check and a
-query dispatching to it — eviction, node repair, or a deploy rolling the pod. When a dial reaches
+query dispatching to it, through eviction, node repair or a deploy rolling the pod. When a dial reaches
 nothing, Provisa re-resolves the shard's address, detects whether the coordinator moved, and if it
 did, redispatches the statement once at the new address. A statement error from an engine the query
 actually reached is not retried this way.
 
 **Idle reaper.** A shard that has not served traffic for 15 minutes (default; configurable via
 `PROVISA_ENGINE_IDLE_SECONDS`) is scaled to zero. The check runs every 60 seconds
-(`PROVISA_ENGINE_IDLE_CHECK_SECONDS`). An in-flight query cancels a drain in progress — the pod
-may already be gone by then, but the wake that follows treats the shard as cold and brings a new
+(`PROVISA_ENGINE_IDLE_CHECK_SECONDS`). An in-flight query cancels a drain in progress. The pod may already be gone by then, but the wake that follows treats the shard as cold and brings a new
 one up.
 
 ## Query plans and statistics
@@ -145,16 +142,14 @@ one up.
 The Explore and SQL surfaces can show execution statistics and a plan diagram for any statement.
 Turn on **Query stats** in the surface before running the query.
 
-**Plan diagram.** The diagram is a Mermaid flowchart built from the governed plan — after RLS,
-masking, and post-governance optimization. Sources appear on the left, the route node in the
+**Plan diagram.** The diagram is a Mermaid flowchart built from the governed plan, after RLS, masking and post-governance optimization. Sources appear on the left, the route node in the
 centre, and the row count on the right. Each optimization that fired (hot-table cache serve,
 API-cache rewrite, dropped UNION branch) appears as its own node. The diagram reflects the actual
 route: if a cross-source query collapsed to a single live source after inlining, it shows `direct`,
 not `engine`.
 
 **EXPLAIN and ANALYZE.** The `POST /data/sql/explain` endpoint wraps the governed SQL in the
-dialect's EXPLAIN syntax. Passing `analyze: true` runs EXPLAIN ANALYZE — the query actually
-executes and the plan carries real row counts and timings. ANALYZE requires connector support;
+dialect's EXPLAIN syntax. Passing `analyze: true` runs EXPLAIN ANALYZE: the query actually executes and the plan carries real row counts and timings. ANALYZE requires connector support;
 the dialects that collect statistics are:
 
 | Dialect | EXPLAIN | EXPLAIN ANALYZE |
@@ -166,5 +161,5 @@ the dialects that collect statistics are:
 | `sqlite` | `EXPLAIN QUERY PLAN` | not supported |
 
 Other dialects are not supported for EXPLAIN. Requesting ANALYZE on an unsupported dialect returns
-`400`. The plan the endpoint explains is the governed plan — the SQL that actually ran under the
+`400`. The plan the endpoint explains is the governed plan: the SQL that actually ran under the
 caller's role, after RLS and masking.

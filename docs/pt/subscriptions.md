@@ -16,7 +16,7 @@ Subscriptions têm como alvo uma **tabela registrada**:
 
 O Provisa automaticamente instala triggers `AFTER INSERT OR UPDATE OR DELETE` em todas as tabelas PostgreSQL **pré-aprovadas** na inicialização. Esses triggers chamam `pg_notify('provisa_{table}', ...)` para que DML bruto (não apenas mutações do Provisa) seja captado pelas subscriptions.
 
-Se a instalação do trigger falhar (ex.: privilégio insuficiente — a função do banco de dados deve possuir a tabela), o Provisa recorre ao polling por marca d'água para aquela tabela, desde que um `watermark_column` esteja configurado. Um aviso é registrado no log.
+Se a instalação do trigger falhar (ex.: privilégio insuficiente, porque a função do banco de dados deve possuir a tabela), o Provisa recorre ao polling por marca d'água para aquela tabela, desde que um `watermark_column` esteja configurado. Um aviso é registrado no log.
 
 ### Subscriptions de view entre fontes de dados {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ O Provisa emite `LISTEN <channel>` em uma conexão PG persistente. Mutações do
 
 ### Polling
 
-O Provisa reexecuta a consulta de origem periodicamente, selecionando apenas linhas onde `watermark_column > last_watermark`. Diffs são emitidos como eventos SSE. O poll não consegue ver hard deletes — uma linha removida não deixa marca d'água avançando. Para tornar uma exclusão visível, use um soft delete (ex.: defina uma flag `deleted_at`) que avance a coluna de marca d'água; a exclusão então chega como um evento de atualização carregando o marcador de soft-delete.
+O Provisa reexecuta a consulta de origem periodicamente, selecionando apenas linhas onde `watermark_column > last_watermark`. Diffs são emitidos como eventos SSE. O poll não consegue ver hard deletes: uma linha removida não deixa marca d'água avançando. Para tornar uma exclusão visível, use um soft delete (ex.: defina uma flag `deleted_at`) que avance a coluna de marca d'água; a exclusão então chega como um evento de atualização carregando o marcador de soft-delete.
 
 Config de poll de tabela (em `provisa.yaml`):
 
@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## Quando um fluxo termina com uma falha {: #when-a-stream-ends-on-a-failure }
 
 Um fluxo que abriu já respondeu `200`, então uma falha depois disso não pode ser um status HTTP. O assinante recebe um último quadro dizendo por quê, e então o fluxo fecha. Um fluxo nunca fecha por uma falha sem esse quadro.
@@ -176,6 +177,7 @@ A assinatura de tabela (`/data/subscribe/{table}`) envia o corpo como os dados d
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 O evento não se chama `error`, porque um `EventSource` dispara seu próprio evento `error` quando uma conexão cai e um ouvinte não conseguiria distinguir os dois. Escute-o pelo nome:
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 Uma assinatura GraphQL mantém a forma de resposta do GraphQL, com o código e os params em `extensions`:
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 Um caso não encerra uma assinatura GraphQL: quando a releitura após uma única mudança falha, esse quadro é enviado na mesma forma e o fluxo segue para a próxima mudança. Uma falha da leitura inicial, do próprio feed de mudanças ou do seu início é o último quadro.
 
 ## Redirecionamento de Sink Kafka {: #kafka-sink-redirect }

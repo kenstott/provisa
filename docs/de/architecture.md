@@ -225,7 +225,7 @@ Zugangsdaten für Cloud-Storage reisen in den `federation_hints` der Quelle (sie
 
 ### Columnar-Materialisierungs-Writes {: #columnar-materialization-writes }
 
-`Connection.bulk_copy` in `provisa/core/database.py` wählt den schnellsten Bulk-Ingest-Pfad pro Store-Dialekt: binäres `COPY` (asyncpg `copy_records_to_table`) für PostgreSQL-Stores und ein einzelnes vorbereitetes `executemany`-Statement für alle anderen relationalen Stores. Der eingebettete DuckDB-Store landet über `land_duckdb_native` in `store_connection.py` — ein `executemany`-Aufruf für den gesamten Batch, nie eine Pro-Zeile-Schleife.
+`Connection.bulk_copy` in `provisa/core/database.py` wählt den schnellsten Bulk-Ingest-Pfad pro Store-Dialekt: binäres `COPY` (asyncpg `copy_records_to_table`) für PostgreSQL-Stores und ein einzelnes vorbereitetes `executemany`-Statement für alle anderen relationalen Stores. Der eingebettete DuckDB-Store landet über `land_duckdb_native` in `store_connection.py`: ein `executemany`-Aufruf für den gesamten Batch, nie eine Pro-Zeile-Schleife.
 
 ## Große-Ergebnis-Umleitung {: #large-result-redirect }
 
@@ -654,7 +654,7 @@ Die Admin-UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) bettet GraphQL Voyager 
 Für das Abfragen gibt es keine Fähigkeitsschranke; die Governance kommt ganz aus Kontrollen auf der Datenebene. Eine Raw-SQL-Anfrage wird für jede Tabelle außerhalb des Objektbereichs der Rolle abgelehnt (HTTP 403), bevor die Governance läuft.
 
 1. **Objektsichtbarkeit**: Rollenspezifisches Schema verbirgt nicht autorisierte Tabellen/Spalten; Tabellen außerhalb des Scopes in Raw-SQL werden abgelehnt
-2. **Beziehungsdurchsetzung**: Traversierungen müssen im genehmigten Beziehungskatalog existieren, sofern die Rolle nicht `ignore_relationships` hält — unter den vordefinierten Systemrollen nur `modeler`. Im Hochsicherheitsmodus wird die Capability ignoriert, und keine Traversierung entkommt dem Katalog
+2. **Beziehungsdurchsetzung**: Traversierungen müssen im genehmigten Beziehungskatalog existieren, sofern die Rolle nicht `ignore_relationships` hält. Unter den vordefinierten Systemrollen hält nur `modeler` es. Im Hochsicherheitsmodus wird die Capability ignoriert, und keine Traversierung entkommt dem Katalog
 3. **RLS**: WHERE-Klausel-Injektion pro Tabelle, pro Rolle
 4. **Spaltenmaskierung**: Datentransformation pro Spalte, pro Rolle
 5. **Zeilenobergrenze (LIMIT)**: Zeilenanzahl-Obergrenze für Rollen ohne `full_results`; zufälliges statistisches Sampling ist ein separates Nutzer-Abfrage-Feature
@@ -679,8 +679,8 @@ Für schwellenwertbasierten Redirect injiziert Provisa `LIMIT threshold + 1` als
 
 Für große analytische Workloads verwenden Sie entweder:
 
-- **Arrow Flight** (Port 8815) für Streaming zu Daten-Tools — Batches fließen durch Provisa, ohne materialisiert zu werden
-- **Parquet-/ORC-Redirect** für dateibasierte Exporte — die Federation-Engine schreibt direkt nach S3, Provisa gibt eine signierte URL zurück
+- **Arrow Flight** (Port 8815) für Streaming zu Daten-Tools; Batches fließen durch Provisa, ohne materialisiert zu werden
+- **Parquet-/ORC-Redirect** für dateibasierte Exporte: Die Federation-Engine schreibt direkt nach S3, und Provisa gibt eine signierte URL zurück
 
 ## Infrastruktur {: #infrastructure }
 

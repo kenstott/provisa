@@ -71,7 +71,7 @@ Wenn eine OBJECT-typisierte Spalte einer governance-pflichtigen Tabelle auf eine
 2. **Von der SDL ausgeschlossen** — das Feld erscheint nicht am übergeordneten Typ im generierten Schema.
 3. **Nur über eine deklarierte Beziehung zugänglich** — ein Data Steward muss einen JOIN zwischen den beiden materialisierten, governance-pflichtigen Tabellen registrieren. Ohne diesen fehlt das Feld schlicht; es gibt keinen Blob-Fallback.
 
-OBJECT-Typen, die NICHT als Wurzel-Query-Felder erreichbar sind (Inline-Typen wie `ContactInfo` oder `Address`), folgen anderen Regeln: Sie werden als `jsonb`-Blob-Spalten abgerufen und erscheinen in der SDL als verschachtelte Objektfelder. Unterfelder sind über `-->>`-Extraktion in SQL zugänglich.
+OBJECT-Typen, die NICHT als Wurzel-Query-Felder erreichbar sind (Inline-Typen wie `ContactInfo` oder `Address`), folgen anderen Regeln: Sie werden als `jsonb`-Blob-Spalten abgerufen und erscheinen in der SDL als verschachtelte Objektfelder. Unterfelder sind über `->>`-Extraktion in SQL zugänglich.
 
 **Felder mit Argument sind keine Spalten.** Ein Feld mit einem erforderlichen Argument kann nicht ohne Weiteres ausgewählt werden und wird daher aus den Spalten der Tabelle und aus verschachtelten Auswahlen ausgelassen.
 
@@ -87,8 +87,8 @@ OBJECT-Typen, die NICHT als Wurzel-Query-Felder erreichbar sind (Inline-Typen wi
 
 - Skalare und ENUM-Wurzel-Query-Felder (Rückgabetyp ist nicht OBJECT) werden zu nachverfolgten Funktionen, nicht zu virtuellen Tabellen. Ihr `return_schema` besteht aus einer einzelnen Spalte `value` des zugeordneten Skalartyps.
 - Objektverschachtelung wird zum Registrierungszeitpunkt bis zu `graphql_remote.max_object_depth` (Standard: 5) aufgelöst. Sowohl die Auswahl beim externen Abruf als auch die Metadaten der Unterfelder werden bis zu dieser Tiefe erstellt; Felder jenseits des Limits werden nicht abgerufen und stehen für die SQL-Extraktion nicht zur Verfügung. Ein Typ wird entlang eines Pfades nur einmal betreten: Ein Feld, dessen Typ bereits auf dem Weg nach unten liegt, wird ausgelassen, sodass ein Schema, dessen Typen aufeinander verweisen, einmal pro Typ durchlaufen wird und nicht einmal pro Tiefenebene.
-- LIST-typisierte verschachtelte OBJECT-Felder (z. B. `breed.awards: [Award]`) werden bis zu `graphql_remote.max_list_depth` Verschachtelungsebenen (Standard: 2) in die Abrufauswahl einbezogen. Innerhalb dieses Limits wird die Liste als `jsonb`-Array in der übergeordneten Spalte abgerufen. Deklariert das Listenfeld ein Argument `first` (Relay, PostGraphile, pg_graphql) oder ein Argument `limit` (Hasura), übergibt die Auswahl es als `first: N` bzw. `limit: N`, wobei N `graphql_remote.max_list_items` (Standard: 100) entspricht. Ein Listenfeld, das keines von beiden deklariert, erhält kein Argument, weil ein externer Dienst ein Argument ablehnt, das das Feld nicht deklariert. Jenseits von `max_list_depth` wird das LIST-Feld vollständig ausgeschlossen, um eine unbegrenzte Datenexpansion zu verhindern. In SQL wird auf das Array über `json_array_elements(column_name)` oder eine Index-Extraktion mit `->>` zugegriffen. Wenn der Elementtyp der Liste über eine eigene Wurzelabfrage verfügt, sollte er stattdessen als separate Tabelle registriert und eine Beziehung erstellt werden — der Join-Pfad ist effizienter und umgeht den Blob.
-- Bei SQL-Abfragen werden nicht governance-pflichtige OBJECT-typisierte Spalten vollständig von der externen Quelle abgerufen (alle Unterfelder bis zur konfigurierten Tiefe) und als `jsonb` zwischengespeichert. Der Zugriff auf Unterfelder in SQL erfolgt über `->>`-Extraktion gegen den Blob; die externe Anfrage wird nicht auf die von der SQL-Abfrage ausgewählten Felder eingeschränkt. Wenn der Elementtyp der Liste keine Wurzelabfrage besitzt und die Blob-Darstellung nicht ausreicht, sollte die Abfrage direkt in GraphQL-SDL geschrieben werden — Provisa gibt die GQL-Feldauswahl originalgetreu wieder, sodass die externe Quelle genau die angeforderten Felder sieht.
+- LIST-typisierte verschachtelte OBJECT-Felder (z. B. `breed.awards: [Award]`) werden bis zu `graphql_remote.max_list_depth` Verschachtelungsebenen (Standard: 2) in die Abrufauswahl einbezogen. Innerhalb dieses Limits wird die Liste als `jsonb`-Array in der übergeordneten Spalte abgerufen. Deklariert das Listenfeld ein Argument `first` (Relay, PostGraphile, pg_graphql) oder ein Argument `limit` (Hasura), übergibt die Auswahl es als `first: N` bzw. `limit: N`, wobei N `graphql_remote.max_list_items` (Standard: 100) entspricht. Ein Listenfeld, das keines von beiden deklariert, erhält kein Argument, weil ein externer Dienst ein Argument ablehnt, das das Feld nicht deklariert. Jenseits von `max_list_depth` wird das LIST-Feld vollständig ausgeschlossen, um eine unbegrenzte Datenexpansion zu verhindern. In SQL wird auf das Array über `json_array_elements(column_name)` oder eine Index-Extraktion mit `->>` zugegriffen. Wenn der Elementtyp der Liste über eine eigene Wurzelabfrage verfügt, sollte er stattdessen als separate Tabelle registriert und eine Beziehung erstellt werden. Der Join-Pfad ist effizienter und umgeht den Blob.
+- Bei SQL-Abfragen werden nicht governance-pflichtige OBJECT-typisierte Spalten vollständig von der externen Quelle abgerufen (alle Unterfelder bis zur konfigurierten Tiefe) und als `jsonb` zwischengespeichert. Der Zugriff auf Unterfelder in SQL erfolgt über `->>`-Extraktion gegen den Blob; die externe Anfrage wird nicht auf die von der SQL-Abfrage ausgewählten Felder eingeschränkt. Wenn der Elementtyp der Liste keine Wurzelabfrage besitzt und die Blob-Darstellung nicht ausreicht, sollte die Abfrage direkt in GraphQL-SDL geschrieben werden. Provisa gibt die GQL-Feldauswahl originalgetreu wieder, sodass die externe Quelle genau die angeforderten Felder sieht.
 - Falls der externe Server ein OBJECT-typisiertes Feld ablehnt, weil eine Unterfeldauswahl erforderlich ist (was nicht auftreten sollte, wenn `gql_selection` verfügbar ist), unternimmt der Executor einen erneuten Versuch ohne diese Felder, damit skalare Spalten dennoch zurückgegeben werden. Das gilt für Tabellen, die von einem Wurzelfeld gelesen werden. Eine Connection-Tabelle nimmt diesen Weg nicht.
 
 **Seitenweises Lesen.** Eine Connection-Tabelle wird per Cursor gelesen. Jede Seite fragt `first: N, after: $pageCursor` mit `pageInfo { hasNextPage endCursor }` an, und der Lesevorgang folgt `endCursor`, bis der externe Dienst keine weitere Seite meldet.
@@ -187,7 +187,7 @@ Proto-Dateien können auch als lokale Pfade angegeben werden. Importpfade für a
 
 1. **`method_overrides`** in der Registrierungs-Payload — `{"MethodName": "query"}` oder `{"MethodName": "mutation"}` hat Vorrang vor allem anderen.
 2. **`server_streaming: true`** — der Server sendet einen Stream von Nachrichten; immer eine virtuelle Tabelle (sofern die Ausgabe kein Skalar ist).
-3. **Die Ausgabemeldung besitzt ein wiederholtes Feld vom Typ Message** — z. B. wird `ListOrdersResponse { repeated Order items; }` als Listen-Wrapper behandelt und zu einer virtuellen Tabelle. Wiederholte skalare Felder (z. B. `repeated string tags`) lösen dies nicht aus — es handelt sich um Array-Eigenschaften einer einzelnen Entität, nicht um Zeilenquellen.
+3. **Die Ausgabemeldung besitzt ein wiederholtes Feld vom Typ Message** — z. B. wird `ListOrdersResponse { repeated Order items; }` als Listen-Wrapper behandelt und zu einer virtuellen Tabelle. Wiederholte skalare Felder (z. B. `repeated string tags`) lösen dies nicht aus, denn es handelt sich um Array-Eigenschaften einer einzelnen Entität, nicht um Zeilenquellen.
 
 Methoden, die keinem dieser Signale entsprechen (unäres RPC mit Rückgabe einer einzelnen Entitätsmeldung oder jede skalare Ausgabe) werden zu nachverfolgten Funktionen.
 
@@ -213,7 +213,7 @@ Mutation-Methoden sind angebotene Commands und werden in `available_mutations` g
 
 **Beziehungen bei der Registrierung.** `relationships` funktioniert genau wie beim GQL-Adapter: Es deklariert FK/PK-Join-Pfade, gespeichert als manuell deklarierte Beziehungen (ohne Flag `remote_managed`). Eine Aktualisierung lässt sie unverändert.
 
-**Query-Methoden.** Felder der Ausgabemeldung werden zu Tabellenspalten. Felder der Eingabemeldung werden sowohl zu GraphQL-Argumenten, die an den externen Aufruf übergeben werden, *als auch* als Spalten mit dem Präfix `_nf_` und `native_filter_type: "grpc_input"` registriert — derselbe Mechanismus, den GQL und OpenAPI für die Injektion nativer Filter verwenden.
+**Query-Methoden.** Felder der Ausgabemeldung werden zu Tabellenspalten. Felder der Eingabemeldung werden sowohl zu GraphQL-Argumenten, die an den externen Aufruf übergeben werden, *als auch* als Spalten mit dem Präfix `_nf_` und `native_filter_type: "grpc_input"` registriert, derselbe Mechanismus, den GQL und OpenAPI für die Injektion nativer Filter verwenden.
 
 **Unterfelder verschachtelter Messages.** Bei Query-Methoden werden für nicht wiederholte, messagetypisierte Felder auf Tiefe 0 (direkte Ausgabespalten) deren Unterfelder eine Ebene tiefer aufgelöst und als `object_fields` im `ColumnDef` gespeichert. Diese Metadaten werden für die `jsonb`-Unterfeldextraktion in SQL sowie für die Schemadokumentation verwendet. Felder, die über Tiefe 1 hinaus verschachtelt sind, werden nicht rekursiv expandiert.
 
@@ -274,7 +274,7 @@ Priorität der Klassifizierung: `operation_overrides` (Payload) hat Vorrang vor 
 
 **Objekt-Unterfelder.** Antwort-Properties vom `type: object` mit eigenen `properties` werden als `object_fields` auf der Spalte gespeichert. Diese Unterfelder sind in der SDL sichtbar und werden für die `jsonb`-Extraktion in Abfragen verwendet.
 
-**Zwischenspeicherung von Antworten.** Ergebnisse von GET-Operationen werden von `pg_cache.py` in PostgreSQL zwischengespeichert. Jede Kombination von Anfrageparametern erhält eine eigene `_params_hash`-Gruppe. Zeilen eines bestimmten Hash werden ersetzt, sobald der TTL abläuft. Endpunkte mit Pfadparameter (`/pets/{id}`) überspringen den anfänglichen Massenabruf — die Cache-Tabelle wird für die Schema-Introspektion leer erstellt und anschließend anfragenweise pro Primärschlüssel befüllt.
+**Zwischenspeicherung von Antworten.** Ergebnisse von GET-Operationen werden von `pg_cache.py` in PostgreSQL zwischengespeichert. Jede Kombination von Anfrageparametern erhält eine eigene `_params_hash`-Gruppe. Zeilen eines bestimmten Hash werden ersetzt, sobald der TTL abläuft. Endpunkte mit Pfadparameter (`/pets/{id}`) überspringen den anfänglichen Massenabruf. Die Cache-Tabelle wird für die Schema-Introspektion leer erstellt und anschließend anfragenweise pro Primärschlüssel befüllt.
 
 **Aktualisierung.** POST an `/admin/openapi/refresh/{source_id}`. Parst die Spezifikation erneut über `_load_and_register`, das nichts registriert: Es fügt weder eine Tabelle noch eine Spalte hinzu. Bestehende Governance-Regeln bleiben erhalten. Eine registrierte Tabelle behält ihre Spalten; sie wird über die Operation der aktualisierten Spec gelesen.
 
@@ -290,7 +290,7 @@ Priorität der Klassifizierung: `operation_overrides` (Payload) hat Vorrang vor 
 
 Eine aus einer beliebigen Remote-Schema-Quelle registrierte Tabelle ist eine vollwertige Provisa-Tabelle. Zur Laufzeit wird sie in keiner Weise anders behandelt als eine lokal verbundene relationale Tabelle.
 
-**Abfrageschnittstellen.** Die Tabelle ist sofort über GraphQL, SQL (pgwire oder direkt), Cypher (GQL), JSON:API und Arrow Flight abfragbar. Die Schemagenerierung synthetisiert `ColumnMetadata` für externe Tabellen, da diese keinen Katalog besitzen — die Typzuordnung wird beim Schema-Build angewendet.
+**Abfrageschnittstellen.** Die Tabelle ist sofort über GraphQL, SQL (pgwire oder direkt), Cypher (GQL), JSON:API und Arrow Flight abfragbar. Die Schemagenerierung synthetisiert `ColumnMetadata` für externe Tabellen, da diese keinen Katalog besitzen; die Typzuordnung wird beim Schema-Build angewendet.
 
 **Sicherheitsmodell.** Alle fünf Governance-Schichten gelten:
 
@@ -338,7 +338,7 @@ Derselbe Mechanismus gilt, wenn das Schema nach Domänen gefiltert gebaut wird. 
 
 Eine Tabelle mit reiner Typdefinition:
 
-- Besitzt kein Wurzel-Query-Feld — Clients können sie nicht direkt namentlich abfragen.
+- Besitzt kein Wurzel-Query-Feld, also können Clients sie nicht direkt namentlich abfragen.
 - Ist über Beziehungsfelder auf Tabellen erreichbar, die Wurzeleinträge besitzen.
 - Erscheint weiterhin als benannter Typ in der Schema-Introspektion.
 - Behält alle Governance-Regeln bei, wenn auf Daten über eine Beziehung zugegriffen wird.

@@ -18,7 +18,7 @@ Eine Wrapper-Datei, die nur `includes:` enthält, ist gültig. `load_control_pla
 **Merge-Regeln**
 
 - Pfade werden relativ zur einbindenden Datei aufgelöst. Absolute Pfade werden unverändert übernommen.
-- Listenabschnitte (`sources`, `tables`, `domains`, `relationships`, `roles`, …) werden angehängt — Fragmenteinträge folgen auf die Einträge der einbindenden Datei.
+- Listenabschnitte (`sources`, `tables`, `domains`, `relationships`, `roles`, …) werden angehängt, und Fragmenteinträge folgen auf die Einträge der einbindenden Datei.
 - Ein skalarer oder Mapping-Schlüssel, den die einbindende Datei nicht setzt, wird aus dem Fragment übernommen.
 - Ein Schlüssel, den beide Dateien auf unterschiedliche Werte setzen, ist ein Konflikt; das Laden schlägt fehl und nennt den Schlüssel.
 - Identische Werte in beiden Dateien sind kein Konflikt.
@@ -787,7 +787,7 @@ relationships:
 Setzen Sie `materialize: true` auf einer Beziehung, um automatisch eine materialisierte Sicht für quellenübergreifende JOINs zu generieren. Dies vermeidet teure föderierte Abfragen, indem das JOIN-Ergebnis vorab berechnet wird.
 
 - Nur quellenübergreifende Beziehungen generieren MVs (Joins innerhalb derselben Quelle sind bereits schnell)
-- Bei einer Junction-gestützten Beziehung deckt die MV die Zwei-Sprung-Traversierung ab — Quellsprung, Junction-Sprung, Diskriminator und die eigenen Spalten der Junction als Kantenattribute. Die Junction zählt als Bein, eine Kante ist also quellenübergreifend, sobald eine der drei Tabellen in einer anderen Quelle liegt
+- Bei einer Junction-gestützten Beziehung deckt die MV die Zwei-Sprung-Traversierung ab: Quellsprung, Junction-Sprung, Diskriminator und die eigenen Spalten der Junction als Kantenattribute. Die Junction zählt als Bein, eine Kante ist also quellenübergreifend, sobald eine der drei Tabellen in einer anderen Quelle liegt
 - Die MV startet veraltet und wird von der Hintergrund-Refresh-Schleife befüllt
 - Mutationen an einer der beiden Quelltabellen markieren die MV zur erneuten Aktualisierung als veraltet
 - `refresh_interval` ist standardmäßig 300 Sekunden (5 Minuten)
@@ -1414,7 +1414,7 @@ Provisa betreibt zwei unabhängige OTLP-Exportwege: Ihren internen Collector und
 | `redact_sql_literals` | bool | `true` | Ersetzt String- und numerische Literale in `db.statement` durch `?` |
 | `redact_attributes` | list[str] | `[]` | Attributschlüssel, die vollständig aus jedem Span entfernt werden |
 
-Beispiel für ein geschwärztes `db.statement` — mit `redact_sql_literals: true` wird dieses Span-Attribut:
+Ein geschwärztes `db.statement`. Mit `redact_sql_literals: true` wird dieses Span-Attribut:
 
 ```yaml
 db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
@@ -1575,7 +1575,7 @@ Der Materialisierungs-Store ist standardmäßig `TENANT_DATABASE_URL`.
 
 #### Relationale-Datenbank-Engines (mysql, mariadb, oracle, mssql, db2, redshift, greenplum, cockroachdb, yugabytedb, opengauss, tidb, singlestore, vertica, exasol, teradata, saphana, sapase, sqlanywhere, monetdb, firebird) und `sqlalchemy` {: #relational-database-engines-mysql-mariadb-oracle-mssql-db2-redshift-greenplum-cockroachdb-yugabytedb-opengauss-tidb-singlestore-vertica-exasol-teradata-saphana-sapase-sqlanywhere-monetdb-firebird-and-sqlalchemy }
 
-Ein Schlüssel pro netzwerkadressierbarer relationaler Datenbank, alle auf derselben Nur-Landing-Laufzeit (keine Föderation zu externen Quellen): Jede Quelle landet im Store und wird dort abgefragt. Der Schlüssel wählt die Datenbank; `PROVISA_ENGINE_URL` trägt den DSN, den ihr Dialekt erwartet. `sqlalchemy` ist der Catch-all für eine Datenbank ohne eigenen Schlüssel. Dateibasierte Stores (SQLite, Access) werden nicht angeboten — der Server muss über das Netzwerk erreichbar sein.
+Ein Schlüssel pro netzwerkadressierbarer relationaler Datenbank, alle auf derselben Nur-Landing-Laufzeit (keine Föderation zu externen Quellen): Jede Quelle landet im Store und wird dort abgefragt. Der Schlüssel wählt die Datenbank; `PROVISA_ENGINE_URL` trägt den DSN, den ihr Dialekt erwartet. `sqlalchemy` ist der Catch-all für eine Datenbank ohne eigenen Schlüssel. Dateibasierte Stores (SQLite, Access) werden nicht angeboten, denn der Server muss über das Netzwerk erreichbar sein.
 
 ```bash
 PROVISA_ENGINE=mysql

@@ -16,7 +16,7 @@ Les subscriptions ciblent une **table enregistrée** :
 
 Provisa installe automatiquement des triggers `AFTER INSERT OR UPDATE OR DELETE` sur toutes les tables PostgreSQL **préapprouvées** au démarrage. Ces triggers appellent `pg_notify('provisa_{table}', ...)` afin que le DML brut (pas seulement les mutations Provisa) soit capté par les subscriptions.
 
-Si l'installation du trigger échoue (par exemple en raison de privilèges insuffisants — le rôle de base de données doit être propriétaire de la table), Provisa recourt au polling par watermark pour cette table, à condition qu'un `watermark_column` soit configuré. Un avertissement est journalisé.
+Si l'installation du trigger échoue (par exemple en raison de privilèges insuffisants, car le rôle de base de données doit être propriétaire de la table), Provisa recourt au polling par watermark pour cette table, à condition qu'un `watermark_column` soit configuré. Un avertissement est journalisé.
 
 ### Subscriptions sur des vues inter-sources de données {: #cross-datasource-view-subscriptions }
 
@@ -71,7 +71,7 @@ Provisa émet `LISTEN <channel>` sur une connexion PG persistante. Les mutations
 
 ### Polling
 
-Provisa réexécute périodiquement la requête source, en ne sélectionnant que les lignes où `watermark_column > last_watermark`. Les différences sont émises sous forme d'événements SSE. Le polling ne peut pas détecter les suppressions définitives (hard deletes) — une ligne supprimée ne laisse aucun watermark qui progresse. Pour rendre une suppression visible, utilisez une suppression logique (soft delete) (par exemple en activant un indicateur `deleted_at`) qui fait avancer la colonne watermark ; la suppression arrive alors comme un événement de mise à jour portant le marqueur de suppression logique.
+Provisa réexécute périodiquement la requête source, en ne sélectionnant que les lignes où `watermark_column > last_watermark`. Les différences sont émises sous forme d'événements SSE. Le polling ne peut pas détecter les suppressions définitives (hard deletes) : une ligne supprimée ne laisse aucun watermark qui progresse. Pour rendre une suppression visible, utilisez une suppression logique (soft delete) (par exemple en activant un indicateur `deleted_at`) qui fait avancer la colonne watermark ; la suppression arrive alors comme un événement de mise à jour portant le marqueur de suppression logique.
 
 Configuration du polling de table (dans `provisa.yaml`) :
 
@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## Quand un flux se termine sur un échec {: #when-a-stream-ends-on-a-failure }
 
 Un flux qui s'est ouvert a déjà répondu `200`, donc un échec après ce point ne peut pas être un statut HTTP. L'abonné reçoit une dernière trame qui dit pourquoi, puis le flux se ferme. Un flux ne se ferme jamais sur un échec sans cette trame.
@@ -176,6 +177,7 @@ L'abonnement de table (`/data/subscribe/{table}`) envoie le corps comme les donn
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 L'événement ne s'appelle pas `error`, car un `EventSource` déclenche son propre événement `error` lorsqu'une connexion tombe et un écouteur ne pourrait pas distinguer les deux. Écoutez-le par son nom :
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 Un abonnement GraphQL garde la forme de réponse GraphQL, avec le code et les params sous `extensions` :
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 Un cas ne termine pas un abonnement GraphQL : quand la relecture après un seul changement échoue, cette trame est envoyée sous la même forme et le flux passe au changement suivant. Un échec de la lecture initiale, du flux de changements lui-même ou de son démarrage est la dernière trame.
 
 ## Redirection vers un sink Kafka {: #kafka-sink-redirect }

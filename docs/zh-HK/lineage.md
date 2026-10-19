@@ -27,7 +27,7 @@ orders.region ─╯
 ```
 
 - `orders.id`、`orders.region` 與 `orders.geo` 是**來源**節點（`enrich_grpc_set` 的窄輸入合約宣告了 `id` 與 `region`；完整的污染閉合會把所有已宣告的輸入連到所有輸出）。
-- `e.embedding` 與 `e.geo` 是**命令**節點——即 `enrich_grpc_set` 這道邊界。
+- `e.embedding` 與 `e.geo` 是位於 `enrich_grpc_set` 邊界上的**命令**節點。
 - `geo_u` 是由 `UPPER` 這個 SQL 函式產出的**衍生**節點。
 
 命令邊界**並非不透明**。由於 `enrich_grpc_set` 宣告了自己的輸入欄位（`id`、`region`）與輸出欄位（`id`、`embedding`、`geo`），血緣引擎得以把污染閉合從來源關聯的已宣告欄位，連續地接合到每個輸出。

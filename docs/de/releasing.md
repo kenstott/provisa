@@ -110,7 +110,7 @@ Builds ohne diese Secrets werden erfolgreich abgeschlossen, erzeugen jedoch ein 
 ## Das .p12-Zertifikat exportieren {: #exporting-the-p12-certificate }
 
 1. Öffnen Sie **Keychain Access** → Anmeldeschlüsselbund → **My Certificates**
-2. Suchen Sie **Developer ID Application: Your Name (TEAMID)** — erweitern Sie den Eintrag, um zu bestätigen, dass der private Schlüssel darunter eingebettet ist
+2. Suchen Sie **Developer ID Application: Your Name (TEAMID)** und erweitern Sie den Eintrag, um zu bestätigen, dass der private Schlüssel darunter eingebettet ist
 3. Wählen Sie sowohl das Zertifikat als auch den zugehörigen privaten Schlüssel aus → Rechtsklick → **Export 2 Items** → als `.p12` speichern → ein sicheres Passwort festlegen
 4. Base64-codieren und in die Zwischenablage kopieren:
 

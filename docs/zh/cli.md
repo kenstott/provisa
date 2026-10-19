@@ -86,9 +86,7 @@ provisa run [--demo] [--host HOST] [--api-port PORT] [--ui-port PORT]
 5. 架构漂移检查——扫描实时控制平面以查找缺失的列。如果发现任何缺失，
    会打印 `--reset` 提示并以退出码 1 退出。V1 没有迁移；较新版本中新增的列
    需要重置。
-6. 两个服务器并发启动。就绪通知器轮询 `GET /ready`（而不是 `/health`——
-   `/ready` 终结点确认存储已连接且引擎已预热），并在其返回 200 时打开
-   浏览器。
+6. 两个服务器并发启动。就绪通知器轮询 `GET /ready`（而不是 `/health`，因为 `/ready` 终结点确认存储已连接且引擎已预热），并在其返回 200 时打开浏览器。
 
 ### 退出码 {: #exit-codes }
 
@@ -198,6 +196,7 @@ provisa metadata export \
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### 每个子命令都接受的标志 {: #flags-every-subcommand-takes }
 
 | 标志 | 必填 | 说明 |
@@ -229,6 +228,7 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 显示一个环境及其当前构建。如果
@@ -237,6 +237,7 @@ provisa env list --org ORG [--json]
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 创建一个持有另一个环境模型的环境，其数据在创建时选定。由 API
@@ -246,6 +247,7 @@ provisa env show --org ORG --env ENV [--json]
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | 标志 | 必填 | 说明 |
 | --- | --- | --- |
 | `--env` | 是 | 新环境的名称 |
@@ -257,6 +259,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 停用一个环境。只有点名时才删除其分支。
@@ -264,6 +267,7 @@ provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | 标志 | 说明 |
 | --- | --- |
 | `--delete-branch` | 同时删除其分支 |
@@ -277,6 +281,7 @@ provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | 标志 | 必填 | 说明 |
 | --- | --- | --- |
 | `--from` | 是 | 合并来源环境 |
@@ -293,6 +298,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | 标志 | 必填 | 说明 |
 | --- | --- | --- |
 | `--from` | 是 | 合并来源环境 |
@@ -313,6 +319,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | 标志 | 必填 | 说明 |
 | --- | --- | --- |
 | `--env` | 是 | 将持有所部署模型的环境 |
@@ -332,6 +339,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 将环境回退到之前的构建。不带 `--to` 时，它在环境自己的历史中
@@ -340,6 +348,7 @@ provisa env deploy \
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | 标志 | 必填 | 说明 |
 | --- | --- | --- |
 | `--env` | 是 | 要回退的环境 |
@@ -353,6 +362,7 @@ provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 将组织的远程分支拉取到其 Provisa 仓库中。当你想指定 `origin/<branch>` 时，
@@ -361,6 +371,7 @@ provisa env redo --org ORG --env ENV
 ```
 provisa env fetch --org ORG
 ```
+
 每拉取一个分支打印一行，`origin/<name>  <sha12>`。
 
 ```bash
@@ -368,6 +379,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 将环境的分支发送到组织的远程仓库。没有可发送的内容时
@@ -376,6 +388,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 应用远程仓库为某个环境持有的内容。没有可应用的内容时打印
@@ -385,6 +398,7 @@ deploy 相同。
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 关于环境类别、保护规则、合并报告以及
 批准生命周期的完整说明，请参阅[环境](environments.md#the-env-cli-commands)。
 

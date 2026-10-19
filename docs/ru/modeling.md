@@ -219,10 +219,9 @@ mutation RegisterFact($input: FactInput!) {
 | `dimensions` | [DimRefInput] | `[]` | Пары `{ entity, via }` |
 | `visibleTo` | [String] | `["public"]` | Список видимости по ролям |
 
-`MeasureInput`: `{ column: String, agg: String }` — agg по умолчанию `"sum"`.
+`MeasureInput`: `{ column: String, agg: String }`; agg по умолчанию `"sum"`.
 
-`DimRefInput`: `{ entity: String, via: String }` — `entity` — это имя ссылаемой сущности;
-`via` — столбец FK в источнике факта.
+`DimRefInput`: `{ entity: String, via: String }`; `entity` — это имя ссылаемой сущности; `via` — столбец FK в источнике факта.
 
 При успехе `registerFact` возвращает сообщение вида:
 `Fact 'Sales' registered with 1 dimension link(s)`.
