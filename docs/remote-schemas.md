@@ -1,6 +1,6 @@
 # Remote Schemas
 
-A remote schema source connects an external API — GraphQL (including GitHub), gRPC, or REST (OpenAPI) — to the Provisa model. Adding a source registers no table. The source offers tables, and a steward registers each one wanted through the Register Table picker; that registration is the curation step. A registered table is a first-class Provisa table. Every governance rule, query interface, and security layer applies automatically. The remote service never sees Provisa's governance rules.
+A remote schema source connects an external API, whether GraphQL (GitHub included), gRPC or REST (OpenAPI), to the Provisa model. Adding the source registers no table. The source offers tables, and a steward registers each one wanted in the Register Table picker; that registration is the curation step. A registered table is a full Provisa table, so every governance rule, query interface and security layer applies to it automatically. The remote service never sees Provisa's governance rules.
 
 ---
 
@@ -77,7 +77,7 @@ OBJECT types that are NOT reachable as root Query fields (inline types such as `
 
 **Required arguments.** When a root query field has non-null arguments with no default value, those become `native_filter_type: query_param` columns on the table (prefixed `_nf_` at injection time). The executor passes them as GraphQL variables.
 
-**Relationships detected automatically.** Provisa scans each registered table's OBJECT-typed columns. When the referenced GQL type is also a registered table in the same source, and the column the relationship rides on is among the registered columns, the relationship is stored. A table not yet registered gets none. Many-to-one relationships infer source and target columns from naming conventions (`breedName` on the source type → `name` on the `Breed` target type). One-to-many (LIST) fields emit relationships with empty column references — the FK lives on the target side.
+**Relationships detected automatically.** Provisa scans each registered table's OBJECT-typed columns. When the GQL type a column refers to is also a registered table in the same source, and the column the relationship rides on is one of the registered columns, the relationship is stored. A table that isn't registered yet gets none. Many-to-one relationships infer their source and target columns from naming conventions (`breedName` on the source type → `name` on the `Breed` target type). One-to-many (LIST) fields produce relationships with empty column references, because the FK lives on the target side.
 
 **Mutations.** A mutation field is registered as a command of kind `source_operation`, one at a time. Its arguments are each typed `json` and passed to the remote as typed variables; the answer is the JSON the remote returns, with no `return_schema`. See [A remote source's write operation](commands.md#a-remote-sources-write-operation).
 
@@ -136,7 +136,7 @@ Adding the source registers no tables.
 
 **Heavy pages.** When GitHub answers `RESOURCE_LIMITS_EXCEEDED` because a page costs too much to compute, the page is asked again at half the size.
 
-**Nested objects.** GitHub tables use their own nesting depth of 0 (`max_object_depth=0` for this source type), not `graphql_remote.max_object_depth`. A nested object column is selected with its own scalar fields only; objects inside it show as `__typename`.
+**Nested objects.** GitHub tables use a nesting depth of their own, 0 (`max_object_depth=0` for this source type), instead of `graphql_remote.max_object_depth`. A nested object column is selected with its own scalar fields only, and objects inside it show as `__typename`.
 
 **Token storage.** The token goes to the secrets vault and the source row keeps a reference, so a restart reads the source again without re-entering the token.
 
@@ -154,7 +154,7 @@ GitLab is an ordinary source type and is added and registered the same way as Gi
 - What a column costs depends on its kind. A plain value costs about a point; a nested-object column costs many times that. Dropping nested-object columns frees the most.
 - The page size is part of the price. It is `graphql_remote.max_list_items`.
 
-**Token check.** GitLab answers an unrecognized token with an empty result, not an error. Provisa treats that as a rejected token and does not add the source.
+**Token check.** GitLab answers an unrecognized token with an empty result instead of an error. Provisa treats that as a rejected token and doesn't add the source.
 
 ---
 
@@ -211,7 +211,7 @@ Mutation methods are commands on offer, counted in `available_mutations`; adding
 | Nested message | `jsonb` |
 | Enum | `text` |
 
-**Relationships at registration time.** `relationships` works identically to the GQL adapter — declares FK/PK join paths stored as manually declared relationships (no `remote_managed` flag). On refresh, these are preserved unchanged.
+**Relationships at registration time.** `relationships` works just as it does for the GQL adapter: it declares FK/PK join paths, stored as manually declared relationships (with no `remote_managed` flag). A refresh leaves them as they are.
 
 **Query methods.** Output message fields become table columns. Input message fields both become GraphQL arguments passed to the remote call *and* are registered as `_nf_`-prefixed columns with `native_filter_type: "grpc_input"` — the same mechanism GQL and OpenAPI use for native filter injection.
 
@@ -249,11 +249,11 @@ Server-streaming methods collect all streamed messages into a list before return
 }
 ```
 
-**What the source offers.** Every GET operation in the spec is offered as a table, unless its response schema is a scalar type (`string`, `number`, `boolean`, `integer`) — scalar-returning GETs are functions with a single `value` column instead. Every non-GET operation (POST, PUT, PATCH, DELETE) is offered as a command, named by its `operationId`. Registered, it takes the operation's path parameters and a `body` argument for the request body, each typed `json`; any other argument goes on the query string. See [A remote source's write operation](commands.md#a-remote-sources-write-operation).
+**What the source offers.** Every GET operation in the spec is offered as a table, unless its response schema is a scalar type (`string`, `number`, `boolean`, `integer`); a GET that returns a scalar is a function with a single `value` column. Every other operation (POST, PUT, PATCH, DELETE) is offered as a command, named by its `operationId`. Once registered, it takes the operation's path parameters and a `body` argument for the request body, each typed `json`, and any other argument goes on the query string. See [A remote source's write operation](commands.md#a-remote-sources-write-operation).
 
 Classification priority: `operation_overrides` (payload) overrides `x-provisa-kind` (spec extension) overrides the GET heuristic. `operation_overrides` is the recommended override path; `x-provisa-kind` is for when the spec itself should carry the classification.
 
-**Relationships at registration time.** `relationships` works identically to the other adapters — stored as manually declared relationships, preserved on refresh.
+**Relationships at registration time.** `relationships` works just as it does for the other adapters: stored as manually declared relationships and kept on refresh.
 
 **Table naming.** Tables use the operation's `operationId`. If no `operationId` is defined, Provisa slugifies `{method}_{path}`. An alias is derived by stripping the leading verb segment and singularizing the noun (`findPetsByStatus` → `pet_by_status`).
 
@@ -268,7 +268,7 @@ Classification priority: `operation_overrides` (payload) overrides `x-provisa-ki
 | `array` | `jsonb` |
 | `object` | `jsonb` |
 
-**Parameters as native filter columns.** Path and query parameters that are not already response fields become columns with `native_filter_type` set to `path_param` or `query_param`, prefixed `_nf_`. When a parameter name matches a response field name, the parameter metadata is merged into the existing column entry rather than creating a duplicate.
+**Parameters as native filter columns.** Path and query parameters that aren't already response fields become columns with `native_filter_type` set to `path_param` or `query_param`, prefixed `_nf_`. When a parameter has the same name as a response field, its metadata is merged into that column's entry, so no duplicate is created.
 
 **Response schema resolution.** The mapper checks `responses.200`, then `responses.2xx`, then `responses.default`. Array-type responses are unwrapped to their item schema. `$ref` references are resolved one level deep.
 
@@ -300,9 +300,9 @@ A table registered from any remote schema source is a first-class Provisa table.
 4. Column masking — masking rules apply in Stage 2 of the governance pipeline.
 5. Predicate guard — masked columns are rejected from WHERE and HAVING clauses.
 
-Ad-hoc queries against remote tables are allowed under the user's rights alone — access is uniform rights-based (table/column rights + approved relationships), with no per-table governance mode.
+Ad-hoc queries against remote tables are allowed on the user's rights alone. Access is the same rights-based model everywhere (table and column rights plus approved relationships), with no governance mode per table.
 
-**Relationship governance (V002).** JOIN conditions against remote tables — when queried via SQL or Cypher — must match a registered, approved relationship. The V002 check is skipped for GraphQL queries because SDL-defined relationships are pre-approved by design. See [docs/security.md](security.md#relationship-governance-v002).
+**Relationship governance (V002).** A JOIN condition against remote tables, in a SQL or Cypher query, must match a registered, approved relationship. GraphQL queries skip the V002 check, because relationships defined in the SDL are approved by design. See [docs/security.md](security.md#relationship-governance-v002).
 
 **OBJECT-typed columns.** When a column maps to a non-governed inline GQL OBJECT or OpenAPI object type, its Provisa type is `jsonb`. The column stores the full nested JSON blob. When sub-fields are declared (`gql_object_fields` or `object_fields`), the `gql_object_columns` map is populated at schema build time. The SQL generator uses this map to emit `->>`  extraction expressions for sub-fields when a query selects them.
 
@@ -316,9 +316,9 @@ When a steward registers a relationship between two remote tables (or between a 
 
 **How the join wins.** At query compilation, Provisa resolves the join path through the registered relationship. The `source_column` and `target_column` on the relationship become the join condition in generated SQL. The join replaces any per-table remote call that would otherwise be needed for the connected type.
 
-**The raw blob is never exposed in SQL.** The `breed` column on `petstore__pets` is not selectable as a raw jsonb value in SQL queries. When a relationship is registered between `petstore__pets` and `petstore__breeds`, SQL queries traverse the join — `SELECT breed.name FROM petstore__pets` resolves via the FK join, not a blob. When no relationship is registered but the column has declared sub-fields (`gql_object_fields`), SQL sub-field references are rewritten to `->>`  extraction against the stored blob. This path is only available for non-governed inline types — governed-target fields are excluded from the SDL entirely and have no blob to extract from. The raw blob itself is never emitted as a bare column value.
+**The raw blob is never exposed in SQL.** You can't select the `breed` column on `petstore__pets` as a raw jsonb value in a SQL query. Once a relationship is registered between `petstore__pets` and `petstore__breeds`, SQL queries traverse the join: `SELECT breed.name FROM petstore__pets` resolves through the FK join. When no relationship is registered but the column has declared sub-fields (`gql_object_fields`), SQL references to sub-fields are rewritten to `->>` extraction against the stored blob. That path exists only for inline types that aren't governed; fields whose target is governed are left out of the SDL entirely and have no blob to extract from. The raw blob itself is never returned as a bare column value.
 
-In GraphQL SDL, a non-governed inline OBJECT field is typed as the nested object type. Whether it is served by a join or by blob extraction at execution time is an implementation detail — the SDL shape is identical either way. When the child type is registered as its own table (and becomes governed), all five governance layers apply to it independently: its own RLS rules, column visibility, masking rules, predicate guards, and domain access control. Blob extraction bypasses this — the child data arrives pre-embedded in the parent row and is governed only by the parent table's rules. Registering the child as a table and creating a relationship is the path to fine-grained governance on the child type.
+In GraphQL SDL, an inline OBJECT field that isn't governed is typed as the nested object type. Whether a join or blob extraction serves it at execution time doesn't change the SDL shape. Once the child type is registered as a table of its own, and so governed, all five governance layers apply to it independently: its own RLS rules, column visibility, masking rules, predicate guards and domain access control. Blob extraction skips all of that, because the child data arrives embedded in the parent row and only the parent table's rules govern it. To govern the child type in detail, register it as a table and create a relationship.
 
 **`graphql_alias` on the relationship.** The `graphql_alias` field names the SDL field that the relationship exposes on the parent type. When absent, the name is derived from the target table's `field_name` and the relationship's cardinality via `rel_field_name(target.field_name, cardinality)`.
 
@@ -334,7 +334,7 @@ Not every type in a remote schema needs to be a queryable table.
 
 When `root_table_ids` is set on a `SchemaInput`, tables whose IDs are absent from that set are excluded from the root query fields in the generated SDL. They remain present as GraphQL types and can be reached via relationship fields on tables that do have root entries.
 
-The same mechanism applies to domain-filtered schema builds: tables in domains the role cannot access are type-defs only — their type definition exists in the SDL for relationship traversal, but no root query field is generated for them.
+The same mechanism applies when the schema is built filtered by domain. Tables in domains the role can't access are type-defs only: their type definition exists in the SDL for traversing relationships, but no root query field is generated for them.
 
 A type-def-only table:
 
@@ -343,6 +343,6 @@ A type-def-only table:
 - Still appears in schema introspection as a named type.
 - Still has all governance rules applied when data is accessed through a relationship.
 
-Full removal from the schema — including the type definition — only happens when the table registration is deleted entirely. Marking a table as type-def-only (by removing its ID from `root_table_ids` or by filtering on domain access) does not remove the type.
+A table, type definition included, leaves the schema completely only when its registration is deleted. Making a table type-def-only (by removing its ID from `root_table_ids`, or through domain access filtering) doesn't remove the type.
 
-This design lets stewards expose navigable object graphs where some types are reachable only by traversal, not by independent query.
+This lets stewards expose navigable object graphs in which some types can only be reached by traversal and can't be queried on their own.

@@ -1,6 +1,6 @@
 # Esquemas remotos {: #remote-schemas }
 
-Un origen de esquema remoto conecta una API externa —GraphQL (incluido GitHub), gRPC o REST (OpenAPI)— a el modelo de Provisa. Añadir un origen no registra ninguna tabla. El origen ofrece tablas, y un steward registra cada tabla que desea mediante el selector «Register Table»; ese registro es el paso de curación. Una tabla registrada es una tabla de Provisa de primera clase. Toda regla de gobierno, interfaz de consulta y capa de seguridad se aplica automáticamente. El servicio remoto nunca ve las reglas de gobierno de Provisa.
+Un origen de esquema remoto conecta una API externa, sea GraphQL (incluido GitHub), gRPC o REST (OpenAPI), con el modelo de Provisa. Añadir el origen no registra ninguna tabla. El origen ofrece tablas, y un steward registra cada una que quiera en el selector Register Table; ese registro es el paso de curación. Una tabla registrada es una tabla de Provisa de pleno derecho, así que toda regla de gobernanza, interfaz de consulta y capa de seguridad se le aplica automáticamente. El servicio remoto nunca ve las reglas de gobernanza de Provisa.
 
 ---
 
@@ -77,7 +77,7 @@ Los tipos OBJECT que NO son alcanzables como campos raíz de Query (tipos inline
 
 **Argumentos obligatorios.** Cuando un campo raíz de query tiene argumentos non-null sin valor por defecto, estos se convierten en columnas `native_filter_type: query_param` en la tabla (con el prefijo `_nf_` al momento de la inyección). El ejecutor las pasa como variables GraphQL.
 
-**Relaciones detectadas automáticamente.** Provisa examina las columnas de tipo OBJECT de cada tabla registrada. Cuando el tipo GQL referenciado también es una tabla registrada en el mismo origen, y la columna sobre la que se apoya la relación figura entre las columnas registradas, la relación se almacena. Una tabla aún no registrada no obtiene ninguna. Las relaciones many-to-one infieren las columnas de origen y destino a partir de convenciones de nomenclatura (`breedName` en el tipo de origen → `name` en el tipo de destino `Breed`). Los campos one-to-many (LIST) emiten relaciones con referencias de columna vacías: la FK reside en el lado del destino.
+**Relaciones detectadas automáticamente.** Provisa examina las columnas de tipo OBJECT de cada tabla registrada. Cuando el tipo GQL al que apunta una columna es también una tabla registrada del mismo origen, y la columna sobre la que va la relación está entre las columnas registradas, la relación se guarda. Una tabla aún sin registrar no recibe ninguna. Las relaciones many-to-one deducen sus columnas de origen y destino de las convenciones de nombres (`breedName` en el tipo de origen → `name` en el tipo de destino `Breed`). Los campos one-to-many (LIST) producen relaciones con referencias de columna vacías, porque la FK está en el lado de destino.
 
 **Mutaciones.** Un campo de mutación se registra, uno por uno, como un comando de tipo `source_operation`. Sus argumentos son cada uno de tipo `json` y se pasan al servicio remoto como variables tipadas; la respuesta es el JSON que devuelve el servicio remoto, sin `return_schema`. Véase [Operación de escritura de un origen remoto](commands.md#a-remote-sources-write-operation).
 
@@ -136,7 +136,7 @@ Añadir el origen no registra ninguna tabla.
 
 **Páginas pesadas.** Cuando GitHub responde `RESOURCE_LIMITS_EXCEEDED` porque calcular una página cuesta demasiado, la página se pide de nuevo a la mitad de tamaño.
 
-**Objetos anidados.** Las tablas de GitHub usan su propia profundidad de anidamiento de 0 (`max_object_depth=0` para este tipo de origen), no `graphql_remote.max_object_depth`. Una columna de objeto anidado se selecciona solo con sus propios campos escalares; los objetos dentro de ella aparecen como `__typename`.
+**Objetos anidados.** Las tablas de GitHub usan una profundidad de anidamiento propia, 0 (`max_object_depth=0` para este tipo de origen), en lugar de `graphql_remote.max_object_depth`. Una columna de objeto anidado se selecciona solo con sus propios campos escalares, y los objetos que contiene aparecen como `__typename`.
 
 **Almacenamiento del token.** El token va a la bóveda de secretos y la fila del origen conserva una referencia, de modo que un reinicio vuelve a leer el origen sin volver a introducir el token.
 
@@ -154,7 +154,7 @@ GitLab es un tipo de origen ordinario y se añade y registra igual que GitHub: a
 - Lo que cuesta una columna depende de su tipo. Un valor simple cuesta alrededor de un punto; una columna de objeto anidado cuesta muchas veces más. Descartar columnas de objeto anidado es lo que más libera.
 - El tamaño de página forma parte del precio. Es `graphql_remote.max_list_items`.
 
-**Comprobación del token.** GitLab responde a un token no reconocido con un resultado vacío, no con un error. Provisa lo trata como un token rechazado y no añade el origen.
+**Comprobación del token.** GitLab responde a un token no reconocido con un resultado vacío en lugar de un error. Provisa lo trata como un token rechazado y no añade el origen.
 
 ---
 
@@ -211,7 +211,7 @@ Los métodos de mutación son comandos ofrecidos, contados en `available_mutatio
 | Mensaje anidado | `jsonb` |
 | Enum | `text` |
 
-**Relaciones al momento del registro.** `relationships` funciona igual que en el adaptador GQL — declara rutas de unión FK/PK almacenadas como relaciones declaradas manualmente (sin el flag `remote_managed`). En cada actualización (refresh), estas se preservan sin cambios.
+**Relaciones al registrar.** `relationships` funciona igual que en el adaptador GQL: declara caminos de join FK/PK, que se guardan como relaciones declaradas a mano (sin el indicador `remote_managed`). Una actualización las deja como están.
 
 **Métodos de query.** Los campos del mensaje de salida se convierten en columnas de la tabla. Los campos del mensaje de entrada se convierten a la vez en argumentos GraphQL pasados a la llamada remota *y* se registran como columnas con prefijo `_nf_` y `native_filter_type: "grpc_input"` — el mismo mecanismo que usan GQL y OpenAPI para la inyección de filtros nativos.
 
@@ -249,11 +249,11 @@ Los métodos de server-streaming recopilan todos los mensajes transmitidos en un
 }
 ```
 
-**Qué ofrece el origen.** Toda operación GET de la especificación se ofrece como tabla, salvo que su esquema de respuesta sea un tipo escalar (`string`, `number`, `boolean`, `integer`) — las operaciones GET que devuelven un escalar son funciones con una sola columna `value`. Toda operación que no sea GET (POST, PUT, PATCH, DELETE) se ofrece como comando, con el nombre de su `operationId`. Una vez registrada, recibe los parámetros de ruta de la operación y un argumento `body` para el cuerpo de la solicitud, cada uno de tipo `json`; cualquier otro argumento va en la cadena de consulta. Véase [Operación de escritura de un origen remoto](commands.md#a-remote-sources-write-operation).
+**Qué ofrece el origen.** Cada operación GET de la especificación se ofrece como tabla, salvo que su esquema de respuesta sea un tipo escalar (`string`, `number`, `boolean`, `integer`); un GET que devuelve un escalar es una función con una sola columna `value`. Cualquier otra operación (POST, PUT, PATCH, DELETE) se ofrece como command, con el nombre de su `operationId`. Una vez registrada, recibe los parámetros de ruta de la operación y un argumento `body` para el cuerpo de la petición, cada uno de tipo `json`, y cualquier otro argumento va en la query string. Consulte [Operación de escritura de un origen remoto](commands.md#a-remote-sources-write-operation).
 
 Prioridad de clasificación: `operation_overrides` (payload) tiene prioridad sobre `x-provisa-kind` (extensión de la especificación), que a su vez tiene prioridad sobre la heurística de GET. `operation_overrides` es la ruta de override recomendada; `x-provisa-kind` es para cuando la propia especificación debe llevar la clasificación.
 
-**Relaciones al momento del registro.** `relationships` funciona igual que en los demás adaptadores — se almacena como relaciones declaradas manualmente, preservadas en la actualización (refresh).
+**Relaciones al registrar.** `relationships` funciona igual que en los demás adaptadores: se guardan como relaciones declaradas a mano y se conservan al actualizar.
 
 **Nomenclatura de tablas.** Las tablas usan el `operationId` de la operación. Si no hay `operationId` definido, Provisa convierte a slug `{method}_{path}`. Se deriva un alias eliminando el segmento verbal inicial y singularizando el sustantivo (`findPetsByStatus` → `pet_by_status`).
 
@@ -268,7 +268,7 @@ Prioridad de clasificación: `operation_overrides` (payload) tiene prioridad sob
 | `array` | `jsonb` |
 | `object` | `jsonb` |
 
-**Parámetros como columnas de filtro nativo.** Los parámetros de ruta y de query que no son ya campos de respuesta se convierten en columnas con `native_filter_type` establecido en `path_param` o `query_param`, con prefijo `_nf_`. Cuando el nombre de un parámetro coincide con el nombre de un campo de respuesta, los metadatos del parámetro se fusionan en la entrada de columna existente en lugar de crear un duplicado.
+**Parámetros como columnas de filtro nativo.** Los parámetros de ruta y de consulta que no son ya campos de la respuesta pasan a ser columnas con `native_filter_type` igual a `path_param` o `query_param`, con el prefijo `_nf_`. Cuando un parámetro se llama igual que un campo de la respuesta, sus metadatos se fusionan en la entrada de esa columna, así que no se crea un duplicado.
 
 **Resolución del esquema de respuesta.** El mapper verifica `responses.200`, luego `responses.2xx`, luego `responses.default`. Las respuestas de tipo array se desenvuelven a su esquema de elemento. Las referencias `$ref` se resuelven un nivel de profundidad.
 
@@ -300,9 +300,9 @@ Una tabla registrada desde cualquier origen de esquema remoto es una tabla de Pr
 4. Enmascaramiento de columnas — las reglas de enmascaramiento se aplican en la Etapa 2 del pipeline de gobierno.
 5. Guardia de predicados — las columnas enmascaradas se rechazan en las cláusulas WHERE y HAVING.
 
-Las consultas ad-hoc contra tablas remotas se permiten únicamente bajo los derechos del usuario — el acceso se basa uniformemente en derechos (derechos de tabla/columna + relaciones aprobadas), sin un modo de gobierno por tabla.
+Las consultas ad hoc sobre tablas remotas se permiten solo con los derechos del usuario. El acceso sigue en todas partes el mismo modelo basado en derechos (derechos de tabla y de columna más relaciones aprobadas), sin un modo de gobernanza por tabla.
 
-**Gobierno de relaciones (V002).** Las condiciones JOIN contra tablas remotas —cuando se consultan vía SQL o Cypher— deben coincidir con una relación registrada y aprobada. La verificación V002 se omite para las consultas GraphQL porque las relaciones definidas en la SDL están preaprobadas por diseño. Ver [docs/security.md](security.md#relationship-governance-v002).
+**Gobernanza de relaciones (V002).** Una condición JOIN sobre tablas remotas, en una consulta SQL o Cypher, debe coincidir con una relación registrada y aprobada. Las consultas GraphQL omiten la comprobación V002, porque las relaciones definidas en el SDL están aprobadas por diseño. Consulte [docs/security.md](security.md#relationship-governance-v002).
 
 **Columnas de tipo OBJECT.** Cuando una columna se mapea a un tipo OBJECT de GQL inline no gobernado o a un tipo de objeto de OpenAPI, su tipo Provisa es `jsonb`. La columna almacena el blob JSON anidado completo. Cuando se declaran subcampos (`gql_object_fields` u `object_fields`), el mapa `gql_object_columns` se puebla al momento de construir el esquema. El generador de SQL usa este mapa para emitir expresiones de extracción `->>` para los subcampos cuando una consulta los selecciona.
 
@@ -316,9 +316,9 @@ Cuando un steward registra una relación entre dos tablas remotas (o entre una t
 
 **Cómo prevalece la unión.** Al compilar la consulta, Provisa resuelve la ruta de unión a través de la relación registrada. `source_column` y `target_column` de la relación se convierten en la condición de unión en el SQL generado. La unión reemplaza cualquier llamada remota por tabla que de otro modo se necesitaría para el tipo conectado.
 
-**El blob crudo nunca se expone en SQL.** La columna `breed` en `petstore__pets` no es seleccionable como un valor jsonb crudo en consultas SQL. Cuando se registra una relación entre `petstore__pets` y `petstore__breeds`, las consultas SQL recorren la unión — `SELECT breed.name FROM petstore__pets` se resuelve vía la unión FK, no mediante un blob. Cuando no hay una relación registrada pero la columna tiene subcampos declarados (`gql_object_fields`), las referencias a subcampos en SQL se reescriben como extracción `->>` contra el blob almacenado. Esta ruta solo está disponible para tipos inline no gobernados — los campos de destino gobernado se excluyen por completo de la SDL y no tienen blob del cual extraer. El blob crudo en sí nunca se emite como valor de columna simple.
+**El blob en bruto nunca se expone en SQL.** La columna `breed` de `petstore__pets` no se puede seleccionar como valor jsonb en bruto en una consulta SQL. En cuanto se registra una relación entre `petstore__pets` y `petstore__breeds`, las consultas SQL recorren el join: `SELECT breed.name FROM petstore__pets` se resuelve mediante el join por FK. Si no hay relación registrada pero la columna tiene subcampos declarados (`gql_object_fields`), las referencias SQL a subcampos se reescriben como extracción `->>` sobre el blob guardado. Esa vía solo existe para tipos en línea no gobernados; los campos cuyo destino está gobernado quedan fuera del SDL y no tienen blob del que extraer. El blob en bruto nunca se devuelve como valor de columna sin más.
 
-En la SDL de GraphQL, un campo OBJECT inline no gobernado se tipa como el tipo de objeto anidado. Que se sirva mediante una unión o mediante extracción de blob en tiempo de ejecución es un detalle de implementación — la forma de la SDL es idéntica en ambos casos. Cuando el tipo hijo está registrado como su propia tabla (y se vuelve gobernado), las cinco capas de gobierno se aplican a él de forma independiente: sus propias reglas RLS, visibilidad de columnas, reglas de enmascaramiento, guardias de predicados y control de acceso por dominio. La extracción de blob evita esto — los datos del hijo llegan preincrustados en la fila padre y se gobiernan únicamente por las reglas de la tabla padre. Registrar el hijo como tabla y crear una relación es la vía hacia un gobierno de grano fino en el tipo hijo.
+En el SDL de GraphQL, un campo OBJECT en línea no gobernado tiene como tipo el tipo de objeto anidado. Que en tiempo de ejecución lo sirva un join o una extracción del blob no cambia la forma del SDL. En cuanto el tipo hijo se registra como tabla propia, y por tanto queda gobernado, se le aplican por separado las cinco capas de gobernanza: sus propias reglas RLS, visibilidad de columnas, reglas de enmascaramiento, guardas de predicados y control de acceso por dominio. La extracción del blob se salta todo eso, porque los datos hijos llegan incrustados en la fila padre y solo los rigen las reglas de la tabla padre. Para gobernar el tipo hijo en detalle, regístrelo como tabla y cree una relación.
 
 **`graphql_alias` en la relación.** El campo `graphql_alias` nombra el campo de la SDL que la relación expone en el tipo padre. Cuando está ausente, el nombre se deriva del `field_name` de la tabla destino y la cardinalidad de la relación vía `rel_field_name(target.field_name, cardinality)`.
 
@@ -334,7 +334,7 @@ No todos los tipos de un esquema remoto necesitan ser una tabla consultable.
 
 Cuando se establece `root_table_ids` en un `SchemaInput`, las tablas cuyos ID están ausentes de ese conjunto se excluyen de los campos raíz de query en la SDL generada. Siguen presentes como tipos GraphQL y son accesibles mediante campos de relación en tablas que sí tienen entradas raíz.
 
-El mismo mecanismo se aplica a las construcciones de esquema filtradas por dominio: las tablas en dominios a los que el rol no puede acceder son solo definiciones de tipo — su definición de tipo existe en la SDL para el recorrido de relaciones, pero no se genera ningún campo raíz de query para ellas.
+El mismo mecanismo se aplica cuando el esquema se construye filtrado por dominio. Las tablas de dominios a los que el rol no tiene acceso son solo definiciones de tipo: su definición de tipo existe en el SDL para recorrer relaciones, pero no se genera ningún campo de consulta raíz para ellas.
 
 Una tabla de solo definición de tipo:
 
@@ -343,6 +343,6 @@ Una tabla de solo definición de tipo:
 - Sigue apareciendo en la introspección de esquema como un tipo con nombre.
 - Sigue teniendo todas las reglas de gobierno aplicadas cuando se accede a los datos a través de una relación.
 
-La eliminación completa del esquema —incluida la definición de tipo— solo ocurre cuando el registro de la tabla se elimina por completo. Marcar una tabla como solo definición de tipo (eliminando su ID de `root_table_ids` o filtrando por acceso de dominio) no elimina el tipo.
+Una tabla, definición de tipo incluida, solo sale por completo del esquema cuando se borra su registro. Convertir una tabla en solo definición de tipo (quitando su ID de `root_table_ids` o mediante el filtrado por acceso a dominios) no elimina el tipo.
 
-Este diseño permite a los stewards exponer grafos de objetos navegables donde algunos tipos son alcanzables solo por recorrido, no por consulta independiente.
+Así los stewards pueden exponer grafos de objetos navegables en los que algunos tipos solo se alcanzan recorriendo y no se pueden consultar por separado.
