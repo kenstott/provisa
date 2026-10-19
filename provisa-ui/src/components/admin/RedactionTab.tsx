@@ -34,6 +34,9 @@ import { FormFooter } from "../form/FormLayout";
 
 type Kind = "pattern" | "reference";
 
+/** One width for a rule's name, in the editor and the read-only lists alike. */
+const NAME_WIDTH = 220;
+
 interface Row {
   name: string;
   kind: Kind;
@@ -95,12 +98,14 @@ function RulesEditor({
         {t("redactionTab.none")}
       </Text>
     ) : (
-      <Table data-testid={`redaction-${scope}-table`}>
+      <Table layout="fixed" data-testid={`redaction-${scope}-table`}>
         <Table.Tbody>
           {rules.map((r) => (
             <Table.Tr key={r.name}>
-              <Table.Td>{r.name}</Table.Td>
-              <Table.Td ff="monospace">{r.reference ?? r.pattern}</Table.Td>
+              <Table.Td w={NAME_WIDTH}>{r.name}</Table.Td>
+              <Table.Td ff="monospace" style={{ wordBreak: "break-all" }}>
+                {r.reference ?? r.pattern}
+              </Table.Td>
             </Table.Tr>
           ))}
         </Table.Tbody>
@@ -121,7 +126,7 @@ function RulesEditor({
             label={i === 0 ? t("redactionTab.name") : undefined}
             value={r.name}
             onChange={(e) => change(i, { name: e.currentTarget.value })}
-            w={200}
+            w={NAME_WIDTH}
             data-testid={`redaction-${scope}-name-${i}`}
           />
           <SegmentedControl
@@ -142,7 +147,7 @@ function RulesEditor({
                 : t("redactionTab.referencePlaceholder")
             }
             onChange={(e) => change(i, { value: e.currentTarget.value })}
-            ff="monospace"
+            styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
             style={{ flex: 1, maxWidth: 560 }}
             data-testid={`redaction-${scope}-value-${i}`}
           />
@@ -242,11 +247,11 @@ export function RedactionTab() {
       </Group>
 
       <Title order={5}>{t("redactionTab.builtinTitle")}</Title>
-      <Table data-testid="redaction-builtins">
+      <Table layout="fixed" data-testid="redaction-builtins">
         <Table.Tbody>
           {s.builtins.map((r) => (
             <Table.Tr key={r.name}>
-              <Table.Td>{r.name}</Table.Td>
+              <Table.Td w={NAME_WIDTH}>{r.name}</Table.Td>
               <Table.Td ff="monospace" style={{ wordBreak: "break-all" }}>
                 {r.pattern}
               </Table.Td>
