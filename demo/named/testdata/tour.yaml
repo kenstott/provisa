@@ -12,12 +12,13 @@
 # against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
 # tour.steps.<key> in the UI's tour.json, in every language.
 #
-#
-# The track: the scenario (the shop's production database); how it fits together (the tables,
-# each column declaring its fake, and the relationship whose two keys are faked alike); then the
-# same statements read in prod, in dev and in test -- real rows in prod, generated rows of the
-# same shape in the two test environments, the join still matching -- and a recap back in prod.
-# "Where next?" is the Environments page.
+# The track: the scenario (the shop's production database, and three environments over it); the
+# model's fakes on the sensitive and identifying columns, the operator's choice; the steward's
+# coverage check, as the setup showed it before pre-prod existed; production's real rows; pre-prod,
+# Test (fake): the same rows with every sensitive column faked, for every role, and the totals
+# exactly production's; dev, Test (synthetic): rows generated from production's profile, nothing
+# real, keys still joining, and the report comparing them with the profile they were drawn from;
+# a recap back in prod. "Where next?" is the Environments page.
 landing:
   route: /admin/environments
   capability: environment_management
@@ -32,17 +33,47 @@ steps:
   table: shop-db.customers
   # Its detail panel, on the columns' Testing tab: each column's fake is shown only there.
   open: columns.testing
-- key: testdataJoin
-  route: /relationships
-  capability: create_relationship
-  relationship: PLACED_BY
-- key: testdataProd
+- key: testdataCoverage
+  image: coverage.png
+- key: testdataCoverageNow
   route: /sql
   capability: query_development
+  sql: >-
+    SELECT table_name, column_name, tags, status, reason FROM "meta"."sensitive_coverage"
+    ORDER BY table_name, column_name
+- key: testdataProd
   sql: >-
     SELECT id, name, email, city, region, joined_on
     FROM "shop"."customers"
     ORDER BY id
+    LIMIT 10
+- key: testdataProdAnswer
+  sql: >-
+    SELECT region, category, orders, revenue
+    FROM "shop"."view_sales_by_region"
+    ORDER BY revenue DESC
+    LIMIT 10
+- key: testdataToPreprod
+  env: preprod
+- key: testdataPreprod
+  sql: >-
+    SELECT id, name, email, city, region, joined_on
+    FROM "shop"."customers"
+    ORDER BY region, joined_on
+    LIMIT 10
+- key: testdataPreprodAnswer
+  sql: >-
+    SELECT region, category, orders, revenue
+    FROM "shop"."view_sales_by_region"
+    ORDER BY revenue DESC
+    LIMIT 10
+- key: testdataPreprodAnalyst
+  role: analyst
+- key: testdataPreprodAsAnalyst
+  sql: >-
+    SELECT name, email, city, region
+    FROM "shop"."customers"
+    ORDER BY region, name
     LIMIT 10
 - key: testdataToDev
   env: dev
@@ -62,24 +93,12 @@ steps:
   route: /query
   capability: query_development
   example: 1-orders-by-customer
-- key: testdataToTest
-  env: test
-- key: testdataTest
+- key: testdataReport
+  image: report.png
+- key: testdataToProd
   route: /sql
   capability: query_development
-  sql: >-
-    SELECT id, name, email, city, region, joined_on
-    FROM "shop"."customers"
-    ORDER BY id
-    LIMIT 10
-- key: testdataToProd
   env: prod
-- key: testdataProdAnswer
-  sql: >-
-    SELECT region, category, orders, revenue
-    FROM "shop"."view_sales_by_region"
-    ORDER BY revenue DESC
-    LIMIT 10
 - key: testdataDone
   route: /tables
   capability: table_registration

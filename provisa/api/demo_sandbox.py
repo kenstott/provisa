@@ -293,7 +293,15 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     # the sandbox's prod after its person's roles are granted, so each carries them.
     from provisa.api.demo_templates import create_environments, template_environments
 
-    await create_environments(org_id, await template_environments(demo.template_org), person)
+    wanted = await template_environments(demo.template_org)
+    await create_environments(org_id, wanted, person)
+    # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
+    # at a visitor's request.
+    from provisa.api import demo_synthetic
+
+    await demo_synthetic.copy_to_sandbox(
+        demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
+    )
     await _refresh_root_registry_view()
     async with _admin_pool().acquire() as conn:
         await conn.execute_core(

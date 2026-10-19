@@ -644,58 +644,6 @@
         "title": "你看到了什么",
         "description": "您看到了公司自己的代码数据：实时读取，并按 CVE 与只落地一次、且只取告警所需部分的公共漏洞数据连接。同一个受治理模型中的一个视图，用 SQL、GraphQL、Cypher 和 REST 回答代码里有哪些已被利用的漏洞，以及每个逾期了多久。"
       },
-      "testdataScenario": {
-        "title": "能否在不触碰生产的情况下用逼真的数据测试？",
-        "description": "<strong>shop-db</strong> 是一家商店的生产数据库：客户、商品和订单。开发和测试人员需要相同形态的数据，但客户的姓名、邮箱和城市是个人数据，而生产的副本会过时。这里的数据本身也是生成的，代替一家真实的商店。"
-      },
-      "testdataTables": {
-        "title": "每一列声明自己的虚构值",
-        "description": "<strong>customers</strong> 的每一列都声明了自己的假数据：它保存的值属于哪一类，比如人名、电子邮件地址、城市、四个区域之一，或某个范围内的日期。模型把假数据和列放在一起，所以您只需在一个地方定义一次。"
-      },
-      "testdataJoin": {
-        "title": "以相同方式替换的键仍能连接",
-        "description": "订单的 <strong>customer_id</strong> 和客户的 <strong>id</strong> 都被替换为哈希值。同一个真实值总是得到同一个虚构值，所以即使两者都是虚构的，订单也能找到它的客户。"
-      },
-      "testdataProd": {
-        "title": "生产：真实的行",
-        "description": "在生产环境（默认环境）中，您看到的是客户的真实情况。"
-      },
-      "testdataToDev": {
-        "title": "切换到 dev",
-        "description": "dev 和 test 是模型的环境，就像 git 里的分支。两者都是 Test (fake) 环境。接下来，页头的切换器会切到 dev，此后您读到的一切都来自 dev。"
-      },
-      "testdataDev": {
-        "title": "dev 中的同一查询",
-        "description": "同一条语句，在 dev 中读取：现在每一列都显示它的假数据，由引擎在读取时计算。姓名、电子邮件、城市和日期看起来都很真实，但并不是真的。没有任何数据从生产环境复制出来。"
-      },
-      "testdataDevAnswer": {
-        "title": "视图和连接基于虚构值工作",
-        "description": "连接订单、订单行、客户和商品的视图在 dev 中同样给出答案。分组、连接和求和都在虚构值上进行，所以测试运行的正是生产运行的查询。"
-      },
-      "testdataDevGraphql": {
-        "title": "GraphQL 也一样",
-        "description": "每个订单及下单的客户，经由关系获得。每个 API 读取为它提供服务的环境，所以通过 GraphQL、REST 或 SQL 的测试套件看到的是相同的生成数据。"
-      },
-      "testdataToTest": {
-        "title": "切换到 test",
-        "description": "接下来，切换器切到 test，第二个测试（虚构值）环境。"
-      },
-      "testdataTest": {
-        "title": "test 中相同的虚构值",
-        "description": "一个真实值无论在哪里读取都显示相同的虚构值，所以 dev 和 test 一致：在 dev 中写的测试在 test 中找到相同的行。"
-      },
-      "testdataToProd": {
-        "title": "回到生产",
-        "description": "接下来，切换器回到 prod。"
-      },
-      "testdataProdAnswer": {
-        "title": "真实的答案，只在生产中",
-        "description": "同一个视图，在生产环境中读取：按区域和类别统计的真实收入。只有生产环境能拿到真实的行，dev 和 test 永远看不到。"
-      },
-      "testdataDone": {
-        "title": "这是什么",
-        "description": "环境是同一个模型的分支，假数据按列声明一次。Test (fake) 环境用逼真的生成值回答每个查询，并让键依然可以连接。只要还有敏感列没有假数据，Provisa 就不会创建或切换到 Test (fake) 环境，也不会回答其中的请求。生产数据永远不会离开生产环境。"
-      },
       "streamingScenario": {
         "title": "实时订单",
         "description": "一家咖啡店的订单每秒几笔地到达一个 Kafka 主题,它的商品目录在它的 Postgres 中。问题:过去五分钟内哪些地区下单最多?<strong>orders</strong> 是订单到达的 broker。"
@@ -1391,6 +1339,78 @@
       "dataroomRecap": {
         "title": "您看到了什么",
         "description": "没有导出的数据室：卖方自己的系统被就地读取，并以聚合、概要、质量评分、脱敏样本和不含身份的记录的形式展示给每位竞买方。没有任何客户身份离开数据室。每位竞买方持有自己的角色，授权至交易日，每条语句都被审计。"
+      },
+      "testdataScenario": {
+        "title": "同一生产数据库上的三个环境",
+        "description": "<strong>shop-db</strong> 是一家商店的生产数据库：客户、产品和订单。团队需要数据来构建和测试。持有个人数据的公司为预发布数据付出很多，因为他们缺少好的虚构值，或者要去购买。这里一个模型服务三个环境。<strong>prod</strong> 是真实的行，是事实来源，没有人在其上构建。<strong>preprod</strong> 是生产自身的数据，每个敏感列都已虚构，用于最终测试。<strong>dev</strong> 由生产的画像生成，不含任何真实数据，用于日常构建。Provisa 提供工具；公司需要哪种配置，由公司决定。"
+      },
+      "testdataTables": {
+        "title": "模型声明哪些列要虚构",
+        "description": "在 <strong>customers</strong> 上，姓名、邮箱、城市和注册日期各声明一个虚构值，客户编号也是：它是标识符，而注册日期是可能锁定某个人的准标识符。区域、产品、订单和金额不声明，因此保持真实。虚构哪些列由运营者决定，在模型中一次完成。"
+      },
+      "testdataCoverage": {
+        "title": "数据管家检查覆盖情况",
+        "description": "预发布出现之前，覆盖检查会列出每个敏感列，以及是否有虚构值覆盖它。这里 <strong>customers.email</strong> 没有。只要有敏感列没有虚构值，Test (fake) 环境就拒绝打开，并拒绝一切读取。数据管家一旦声明，该列即被覆盖。"
+      },
+      "testdataCoverageNow": {
+        "title": "每个敏感列都已覆盖",
+        "description": "同样的检查，现在从模型读取：每个敏感列、它的标签，以及是否有虚构值覆盖它。全部已覆盖，因此预发布可以打开并作答。"
+      },
+      "testdataProd": {
+        "title": "生产：真实的行",
+        "description": "在 prod 中，您看到的是客户的真实情况。"
+      },
+      "testdataProdAnswer": {
+        "title": "生产的答案",
+        "description": "按区域和类别统计的收入，来自真实订单。"
+      },
+      "testdataToPreprod": {
+        "title": "切换到预发布",
+        "description": "环境是一个模型的分支，如同 git。接下来，页眉中的切换器移到 <strong>preprod</strong>，一个 Test (fake) 环境。"
+      },
+      "testdataPreprod": {
+        "title": "预发布：生产的行，身份已虚构",
+        "description": "同样的客户，在 preprod 中读取。每个姓名、邮箱、城市、注册日期和客户编号都是虚构值，在读取行时计算。区域是真实的。预发布通过 Provisa 读取生产自身的数据，唯一连接生产存储的身份是 Provisa 自己的。不会复制任何数据。"
+      },
+      "testdataPreprodAnswer": {
+        "title": "合计与生产一致",
+        "description": "preprod 中的同一视图，按区域和类别给出与生产完全相同的收入。每一行真实数据、数据量和边界情况都在，供最终测试使用。客户编号在 customers 和 orders 上以同样方式虚构，因此连接仍然匹配。"
+      },
+      "testdataPreprodAnalyst": {
+        "title": "每个角色读到的都是虚构值",
+        "description": "接下来，语句以 <strong>analyst</strong> 身份运行。"
+      },
+      "testdataPreprodAsAnalyst": {
+        "title": "没有角色能取消虚构",
+        "description": "以 analyst 或任何其他角色身份，预发布的敏感列读到的都是虚构值。在 Test (fake) 环境中，没有授权、掩码或角色能显示真实值。"
+      },
+      "testdataToDev": {
+        "title": "切换到 dev",
+        "description": "接下来，切换器切换到 <strong>dev</strong>，一个 Test (synthetic) 环境。"
+      },
+      "testdataDev": {
+        "title": "Dev：生成的，没有真实数据",
+        "description": "dev 中的每一行都由生产的画像生成：相同的列、值的形态和分布，没有任何真实的行。当连预发布的真实行也不能离开生产边界时，这也是答案：给测试人员一份合成副本。"
+      },
+      "testdataDevAnswer": {
+        "title": "形态相同，数字不同",
+        "description": "dev 中的同一视图。区域和类别与生产相同，合计接近生产，但不是生产的数字。"
+      },
+      "testdataDevGraphql": {
+        "title": "键仍然可以连接",
+        "description": "每个订单连同下单的客户，通过关系显示。键经过生成，在各表之间对得上，因此每个 API 都把 dev 读作一致的数据集。"
+      },
+      "testdataReport": {
+        "title": "副本有多接近",
+        "description": "生成报告逐列比较每个生成的表与其来源的生产画像：分布、空值率、不同值数量，以及各列如何联动。它显示 dev 与生产有多接近，而不展示生产本身。"
+      },
+      "testdataToProd": {
+        "title": "回到生产",
+        "description": "接下来，切换器回到 prod。"
+      },
+      "testdataDone": {
+        "title": "您看到了什么",
+        "description": "一个模型，三个环境。Prod 保存真实的行。预发布读取这些行，每个敏感列都已虚构，对所有角色一致。Dev 由生产的画像生成，不含任何真实数据。虚构值按列声明一次，而会显示未虚构敏感列的环境会拒绝打开。"
       }
     },
     "status": {
@@ -1438,7 +1458,7 @@
       },
       "testdata": {
         "title": "测试数据",
-        "summary": "一家商店的生产数据库：在生产环境中看到真实样子，在两个测试环境中看到逼真的生成数据。同样的查询和连接在三个环境中都能用。"
+        "summary": "一家商店的生产数据库分成三个环境：prod 中是真实的行，preprod 中是每个敏感列都已虚构的生产行，dev 中是不含任何真实数据的生成行。"
       },
       "streaming": {
         "title": "实时订单流",

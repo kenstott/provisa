@@ -644,58 +644,6 @@
         "title": "O que viu",
         "description": "Você viu os dados de código da própria empresa, lidos ao vivo e unidos por CVE a dados públicos de vulnerabilidades carregados uma vez, e só o que os alertas precisam. Uma view em um modelo governado responde quais vulnerabilidades exploradas estão no código e o quanto cada uma está atrasada, em SQL, GraphQL, Cypher e REST."
       },
-      "testdataScenario": {
-        "title": "Posso testar com dados realistas sem tocar na produção?",
-        "description": "<strong>shop-db</strong> é o banco de produção de uma loja: clientes, produtos e pedidos. Desenvolvedores e testadores precisam de dados com a mesma forma, mas nomes, e-mails e cidades dos clientes são dados pessoais, e cópias da produção ficam desatualizadas. Os dados aqui são eles próprios gerados, no lugar de uma loja real."
-      },
-      "testdataTables": {
-        "title": "Cada coluna declara seu valor fictício",
-        "description": "Cada coluna de <strong>customers</strong> declara o seu fake: o tipo de valor que ela guarda, como o nome de uma pessoa, um endereço de e-mail, uma cidade, uma de quatro regiões ou uma data em um intervalo. O modelo mantém o fake junto da coluna, então você o define uma vez, em um só lugar."
-      },
-      "testdataJoin": {
-        "title": "Chaves falsificadas igualmente ainda se juntam",
-        "description": "O <strong>customer_id</strong> de um pedido e o <strong>id</strong> do cliente são ambos falsificados como hash. Um valor real sempre dá o mesmo valor fictício, então um pedido encontra seu cliente mesmo quando ambos são fictícios."
-      },
-      "testdataProd": {
-        "title": "Produção: as linhas reais",
-        "description": "Em produção, o ambiente padrão, você vê os clientes como eles realmente são."
-      },
-      "testdataToDev": {
-        "title": "Mudar para dev",
-        "description": "dev e test são ambientes do modelo, branches dele como no git. Os dois são ambientes Test (fake). Em seguida, o seletor no cabeçalho passa para dev, e tudo o que você ler depois disso vem de dev."
-      },
-      "testdataDev": {
-        "title": "A mesma consulta em dev",
-        "description": "A mesma instrução, lida em dev: cada coluna agora mostra o seu fake, que o motor calcula ao ler. Os nomes, e-mails, cidades e datas parecem reais, mas não são. Nada foi copiado da produção."
-      },
-      "testdataDevAnswer": {
-        "title": "Visões e joins funcionam sobre os valores fictícios",
-        "description": "Uma visão que junta pedidos, itens, clientes e produtos também responde em dev. Agrupar, juntar e somar acontecem sobre os valores fictícios, então um teste exercita as mesmas consultas que a produção executa."
-      },
-      "testdataDevGraphql": {
-        "title": "Também por GraphQL",
-        "description": "Cada pedido com o cliente que o fez, pela relação. Cada API lê o ambiente de onde é atendida, então uma suíte de testes por GraphQL, REST ou SQL vê os mesmos dados gerados."
-      },
-      "testdataToTest": {
-        "title": "Mudar para test",
-        "description": "Em seguida, o seletor passa para test, o segundo ambiente de teste (valores fictícios)."
-      },
-      "testdataTest": {
-        "title": "Os mesmos valores fictícios em test",
-        "description": "Um valor real mostra o mesmo valor fictício onde quer que seja lido, então dev e test concordam: um teste escrito em dev encontra as mesmas linhas em test."
-      },
-      "testdataToProd": {
-        "title": "De volta à produção",
-        "description": "Em seguida, o seletor volta para prod."
-      },
-      "testdataProdAnswer": {
-        "title": "A resposta real, só em produção",
-        "description": "A mesma view, lida em produção: a receita real por região e categoria. Só a produção recebe as linhas reais. dev e test nunca as veem."
-      },
-      "testdataDone": {
-        "title": "O que é isto",
-        "description": "Ambientes são branches de um só modelo, e um fake é declarado uma vez por coluna. Um ambiente Test (fake) responde a toda consulta com valores gerados realistas e mantém as chaves unificáveis. Enquanto uma coluna sensível não tiver fake, o Provisa não cria um ambiente Test (fake), não muda para um nem responde a requisições nele. Os dados de produção nunca saem da produção."
-      },
       "streamingScenario": {
         "title": "Pedidos, ao vivo",
         "description": "Os pedidos de uma cafeteria chegam a um tópico Kafka, alguns por segundo, e o catálogo dela está no seu Postgres. A pergunta: quais regiões fizeram mais pedidos nos últimos cinco minutos? <strong>orders</strong> é o broker por onde os pedidos chegam."
@@ -1391,6 +1339,78 @@
       "dataroomRecap": {
         "title": "O que viu",
         "description": "Uma data room sem exportações: os próprios sistemas do vendedor, lidos no local e mostrados a cada proponente como agregados, perfis, pontuações de qualidade, amostras mascaradas e registos sem identidades. Nenhuma identidade de cliente sai da sala. Cada proponente tem uma função própria, concedida até à data da operação, e cada instrução é auditada."
+      },
+      "testdataScenario": {
+        "title": "Três ambientes sobre um banco de produção",
+        "description": "<strong>shop-db</strong> é o banco de dados de produção de uma loja: clientes, produtos e pedidos. As equipes precisam de dados para construir e testar. Empresas com dados pessoais pagam muito por dados de pré-produção, porque não têm bons valores fictícios ou os compram. Aqui um modelo atende três ambientes. <strong>prod</strong> são as linhas reais, a fonte da verdade, e ninguém constrói em cima delas. <strong>preprod</strong> são os dados da própria produção com cada coluna sensível tornada fictícia, para o teste final. <strong>dev</strong> é gerado a partir do perfil da produção e não contém nada real, para o trabalho do dia a dia. A Provisa fornece as ferramentas; qual configuração uma empresa precisa é decisão da empresa."
+      },
+      "testdataTables": {
+        "title": "O modelo diz quais colunas são fictícias",
+        "description": "Em <strong>customers</strong>, nome, e-mail, cidade e data de cadastro declaram cada um um valor fictício, assim como o número do cliente: um identificador, e a data de cadastro um quase-identificador que poderia apontar alguém. Região, produtos, pedidos e valores não declaram nenhum e continuam reais. Quais colunas tornar fictícias é escolha do operador, feita uma vez no modelo."
+      },
+      "testdataCoverage": {
+        "title": "O steward verifica a cobertura",
+        "description": "Antes da pré-produção, a verificação de cobertura listava cada coluna sensível e se um valor fictício a cobre. Aqui <strong>customers.email</strong> não tem nenhum. Um ambiente Test (fake) se recusa a abrir, e recusa toda leitura, enquanto uma coluna sensível não tiver valor fictício. Quando o steward declara um, a coluna fica coberta."
+      },
+      "testdataCoverageNow": {
+        "title": "Toda coluna sensível está coberta",
+        "description": "A mesma verificação, lida agora do modelo: cada coluna sensível, suas tags e se um valor fictício a cobre. Todas estão cobertas, então a pré-produção abre e responde."
+      },
+      "testdataProd": {
+        "title": "Produção: as linhas reais",
+        "description": "Em prod você vê os clientes como realmente são."
+      },
+      "testdataProdAnswer": {
+        "title": "A resposta da produção",
+        "description": "Receita por região e categoria, a partir dos pedidos reais."
+      },
+      "testdataToPreprod": {
+        "title": "Mudar para a pré-produção",
+        "description": "Ambientes são ramificações de um modelo, como no git. Em seguida, o seletor no cabeçalho muda para <strong>preprod</strong>, um ambiente Test (fake)."
+      },
+      "testdataPreprod": {
+        "title": "Pré-produção: linhas da produção, identidades fictícias",
+        "description": "Os mesmos clientes, lidos em preprod. Cada nome, e-mail, cidade, data de cadastro e número de cliente é fictício, calculado quando a linha é lida. A região é real. A pré-produção lê os dados da própria produção por meio da Provisa, e a única identidade que se conecta aos armazenamentos da produção é a da Provisa. Nada é copiado."
+      },
+      "testdataPreprodAnswer": {
+        "title": "Os totais são os da produção",
+        "description": "A mesma exibição em preprod dá exatamente a receita da produção por região e categoria. Cada linha real, volume e caso extremo está lá para o teste final. O número do cliente é tornado fictício do mesmo jeito em customers e em orders, então as junções continuam batendo."
+      },
+      "testdataPreprodAnalyst": {
+        "title": "Toda função lê os valores fictícios",
+        "description": "Em seguida, as instruções rodam como <strong>analyst</strong>."
+      },
+      "testdataPreprodAsAnalyst": {
+        "title": "Nenhuma função remove os valores fictícios",
+        "description": "Como analyst, ou como qualquer outra função, as colunas sensíveis da pré-produção são lidas como fictícias. Nenhuma concessão, máscara ou função mostra os valores reais em um ambiente Test (fake)."
+      },
+      "testdataToDev": {
+        "title": "Mudar para dev",
+        "description": "A seguir, o seletor muda para <strong>dev</strong>, um ambiente Test (synthetic)."
+      },
+      "testdataDev": {
+        "title": "Dev: gerado, nada real",
+        "description": "Cada linha em dev foi gerada a partir do perfil da produção: as mesmas colunas, formas de valor e dispersão, e nenhuma das linhas reais. Esta também é a resposta quando nem as linhas reais da pré-produção podem sair do limite da produção: dar aos testadores uma cópia sintética."
+      },
+      "testdataDevAnswer": {
+        "title": "Mesma forma, números diferentes",
+        "description": "A mesma exibição em dev. As regiões e categorias são as que a produção tem, e os totais são próximos aos da produção sem serem os números dela."
+      },
+      "testdataDevGraphql": {
+        "title": "As chaves continuam se juntando",
+        "description": "Cada pedido com o cliente que o fez, pelo relacionamento. As chaves foram geradas para bater entre as tabelas, então toda API lê dev como um conjunto de dados consistente."
+      },
+      "testdataReport": {
+        "title": "Quão próxima é a cópia",
+        "description": "O relatório de geração compara cada tabela gerada com o perfil de produção de onde foi extraída, coluna por coluna: distribuições, taxas de nulos, valores distintos e como as colunas variam juntas. Mostra quão perto dev está da produção, sem mostrar a produção."
+      },
+      "testdataToProd": {
+        "title": "De volta à produção",
+        "description": "Em seguida, o seletor volta para prod."
+      },
+      "testdataDone": {
+        "title": "O que você viu",
+        "description": "Um modelo, três ambientes. Prod guarda as linhas reais. A pré-produção as lê com cada coluna sensível tornada fictícia, para toda função. Dev é gerado a partir do perfil da produção e não contém nada real. Os valores fictícios são declarados uma vez por coluna, e um ambiente que mostraria uma coluna sensível sem torná-la fictícia se recusa a abrir."
       }
     },
     "status": {
@@ -1438,7 +1458,7 @@
       },
       "testdata": {
         "title": "Dados de teste",
-        "summary": "O banco de produção de uma loja, visto como realmente é em produção e como dados gerados realistas em dois ambientes de teste. As mesmas consultas e uniões funcionam nos três."
+        "summary": "O banco de produção de uma loja em três ambientes: as linhas reais em prod, as linhas da produção com cada coluna sensível tornada fictícia em preprod e linhas geradas sem nada real em dev."
       },
       "streaming": {
         "title": "Fluxo de pedidos ao vivo",

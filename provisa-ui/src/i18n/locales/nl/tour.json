@@ -644,58 +644,6 @@
         "title": "Wat u zag",
         "description": "U zag de eigen codedata van het bedrijf, live gelezen en per CVE gekoppeld aan openbare kwetsbaarheidsdata die één keer is geland, en alleen wat de meldingen nodig hebben. Eén view in één beheerd model beantwoordt welke misbruikte kwetsbaarheden in de code zitten en hoe ver elk over de deadline is, in SQL, GraphQL, Cypher en REST."
       },
-      "testdataScenario": {
-        "title": "Kan ik testen met realistische gegevens zonder productie aan te raken?",
-        "description": "<strong>shop-db</strong> is de productiedatabase van een winkel: klanten, producten en bestellingen. Ontwikkelaars en testers hebben gegevens van dezelfde vorm nodig, maar namen, e-mails en woonplaatsen van klanten zijn persoonsgegevens, en kopieën van productie verouderen. De gegevens hier zijn zelf gegenereerd, in plaats van een echte winkel."
-      },
-      "testdataTables": {
-        "title": "Elke kolom declareert zijn nepwaarde",
-        "description": "Elke kolom van <strong>customers</strong> declareert haar fake: het soort waarde dat ze bevat, zoals de naam van een persoon, een e-mailadres, een stad, een van vier regio's of een datum binnen een bereik. Het model bewaart de fake bij de kolom, dus u definieert hem één keer, op één plek."
-      },
-      "testdataJoin": {
-        "title": "Gelijk vervalste sleutels joinen nog",
-        "description": "De <strong>customer_id</strong> van een bestelling en de <strong>id</strong> van de klant worden allebei als hash vervalst. Eén echte waarde geeft altijd dezelfde nepwaarde, dus een bestelling vindt haar klant ook als beide nepwaarden zijn."
-      },
-      "testdataProd": {
-        "title": "Productie: de echte rijen",
-        "description": "In productie, de standaardomgeving, ziet u de klanten zoals ze echt zijn."
-      },
-      "testdataToDev": {
-        "title": "Naar dev wisselen",
-        "description": "dev en test zijn omgevingen van het model, branches ervan zoals in git. Beide zijn Test-(fake-)omgevingen. Vervolgens schakelt de wisselaar in de koptekst naar dev, en alles wat u daarna leest komt uit dev."
-      },
-      "testdataDev": {
-        "title": "Dezelfde query in dev",
-        "description": "Dezelfde instructie, gelezen in dev: elke kolom toont nu haar fake, die de engine tijdens het lezen berekent. De namen, e-mails, steden en datums zien er echt uit, maar zijn het niet. Er is niets uit productie gekopieerd."
-      },
-      "testdataDevAnswer": {
-        "title": "Views en joins werken op de nepwaarden",
-        "description": "Een view die bestellingen, hun regels, klanten en producten verbindt, antwoordt ook in dev. Groeperen, verbinden en optellen gebeuren allemaal op de nepwaarden, dus een test oefent dezelfde queries als productie."
-      },
-      "testdataDevGraphql": {
-        "title": "Ook via GraphQL",
-        "description": "Elke bestelling met de klant die haar plaatste, via de relatie. Elke API leest de omgeving waar hij uit bediend wordt, dus een testsuite via GraphQL, REST of SQL ziet dezelfde gegenereerde gegevens."
-      },
-      "testdataToTest": {
-        "title": "Naar test wisselen",
-        "description": "Hierna gaat de schakelaar naar test, de tweede testomgeving (nepwaarden)."
-      },
-      "testdataTest": {
-        "title": "Dezelfde nepwaarden in test",
-        "description": "Een echte waarde toont overal waar hij gelezen wordt dezelfde nepwaarde, dus dev en test komen overeen: een test die in dev is geschreven vindt in test dezelfde rijen."
-      },
-      "testdataToProd": {
-        "title": "Terug naar productie",
-        "description": "Hierna keert de schakelaar terug naar prod."
-      },
-      "testdataProdAnswer": {
-        "title": "Het echte antwoord, alleen in productie",
-        "description": "Dezelfde view, gelezen in productie: de echte omzet per regio en categorie. Alleen productie krijgt de echte rijen. dev en test zien ze nooit."
-      },
-      "testdataDone": {
-        "title": "Wat dit is",
-        "description": "Omgevingen zijn branches van één model, en een fake declareert u één keer per kolom. Een Test-(fake-)omgeving beantwoordt elke query met realistische gegenereerde waarden en houdt sleutels koppelbaar. Zolang een gevoelige kolom geen fake heeft, maakt Provisa geen Test-(fake-)omgeving aan, schakelt het er niet naar over en beantwoordt het er geen verzoeken in. Productiedata verlaat productie nooit."
-      },
       "streamingScenario": {
         "title": "Bestellingen, live",
         "description": "De bestellingen van een koffiezaak komen binnen op een Kafka-topic, een paar per seconde, en de catalogus staat in de eigen Postgres. De vraag: welke regio's plaatsten de afgelopen vijf minuten de meeste bestellingen? <strong>orders</strong> is de broker waarop de bestellingen binnenkomen."
@@ -1391,6 +1339,78 @@
       "dataroomRecap": {
         "title": "Wat u zag",
         "description": "Een datakamer zonder exports: de eigen systemen van de verkoper, ter plekke gelezen en aan elke bieder getoond als aggregaten, profielen, kwaliteitsscores, gemaskeerde steekproeven en records zonder identiteiten. Geen enkele klantidentiteit verlaat de kamer. Elke bieder heeft een eigen rol, toegekend tot de transactiedatum, en elk statement wordt geaudit."
+      },
+      "testdataScenario": {
+        "title": "Drie omgevingen op één productiedatabase",
+        "description": "<strong>shop-db</strong> is de productiedatabase van een webshop: klanten, producten en bestellingen. Teams hebben data nodig om op te bouwen en te testen. Bedrijven met persoonsgegevens betalen veel voor pre-productiedata, omdat ze geen goede nepwaarden hebben of die inkopen. Hier bedient één model drie omgevingen. <strong>prod</strong> zijn de echte rijen, de bron van waarheid, en niemand bouwt erop. <strong>preprod</strong> is de eigen data van productie met elke gevoelige kolom nagemaakt, voor de eindtest. <strong>dev</strong> wordt gegenereerd uit het profiel van productie en bevat niets echts, voor het dagelijkse bouwwerk. Provisa levert het gereedschap; welke opzet een bedrijf nodig heeft, beslist het bedrijf."
+      },
+      "testdataTables": {
+        "title": "Het model bepaalt welke kolommen nep zijn",
+        "description": "Bij <strong>customers</strong> declareren naam, e-mail, stad en aanmelddatum elk een nepwaarde, evenals het klantnummer: een identificator, en de aanmelddatum een quasi-identificator die iemand kan aanwijzen. Regio, producten, bestellingen en bedragen declareren er geen en blijven echt. Welke kolommen nep worden, bepaalt de operator, één keer in het model."
+      },
+      "testdataCoverage": {
+        "title": "De steward controleert de dekking",
+        "description": "Voordat pre-productie bestond, somde de dekkingscontrole elke gevoelige kolom op en of een nepwaarde die dekt. Hier heeft <strong>customers.email</strong> er geen. Een Test (fake)-omgeving weigert te openen, en weigert elke leesactie, zolang een gevoelige kolom geen nepwaarde heeft. Zodra de steward er een declareert, is de kolom gedekt."
+      },
+      "testdataCoverageNow": {
+        "title": "Elke gevoelige kolom is gedekt",
+        "description": "Dezelfde controle, nu uit het model gelezen: elke gevoelige kolom, haar tags en of een nepwaarde die dekt. Alle zijn gedekt, dus pre-productie opent en antwoordt."
+      },
+      "testdataProd": {
+        "title": "Productie: de echte rijen",
+        "description": "In prod zie je de klanten zoals ze echt zijn."
+      },
+      "testdataProdAnswer": {
+        "title": "Het antwoord van productie",
+        "description": "Omzet per regio en categorie, uit de echte bestellingen."
+      },
+      "testdataToPreprod": {
+        "title": "Naar pre-productie",
+        "description": "Omgevingen zijn branches van één model, zoals in git. Hierna schakelt de omgevingskiezer in de kop naar <strong>preprod</strong>, een Test (fake)-omgeving."
+      },
+      "testdataPreprod": {
+        "title": "Pre-productie: rijen van productie, identiteiten nagemaakt",
+        "description": "Dezelfde klanten, gelezen in preprod. Elke naam, e-mail, stad, aanmelddatum en elk klantnummer is nep, berekend op het moment dat de rij wordt gelezen. De regio is echt. Pre-productie leest de eigen data van productie via Provisa, en de enige identiteit die verbinding maakt met de opslag van productie is die van Provisa. Er wordt niets gekopieerd."
+      },
+      "testdataPreprodAnswer": {
+        "title": "De totalen zijn die van productie",
+        "description": "Dezelfde view in preprod geeft precies de omzet van productie per regio en categorie. Elke echte rij, elk volume en elk randgeval is er voor de eindtest. Het klantnummer wordt op customers en op orders op dezelfde manier nagemaakt, dus de joins sluiten nog aan."
+      },
+      "testdataPreprodAnalyst": {
+        "title": "Elke rol leest de nepwaarden",
+        "description": "Hierna draaien de statements als <strong>analyst</strong>."
+      },
+      "testdataPreprodAsAnalyst": {
+        "title": "Geen rol heft de nepwaarden op",
+        "description": "Als analyst, of als elke andere rol, lezen de gevoelige kolommen van pre-productie als nepwaarden. Geen grant, masker of rol toont de echte waarden in een Test (fake)-omgeving."
+      },
+      "testdataToDev": {
+        "title": "Naar dev",
+        "description": "Daarna schakelt de schakelaar naar <strong>dev</strong>, een Test (synthetic)-omgeving."
+      },
+      "testdataDev": {
+        "title": "Dev: gegenereerd, niets echts",
+        "description": "Elke rij in dev is gegenereerd uit het profiel van productie: dezelfde kolommen, waardevormen en spreiding, en geen van de echte rijen. Dit is ook het antwoord als zelfs de echte rijen van pre-productie de grens van productie niet mogen verlaten: geef testers een synthetische kopie."
+      },
+      "testdataDevAnswer": {
+        "title": "Zelfde vorm, andere getallen",
+        "description": "Dezelfde view in dev. De regio's en categorieën zijn die van productie, en de totalen liggen dicht bij die van productie zonder haar getallen te zijn."
+      },
+      "testdataDevGraphql": {
+        "title": "Sleutels sluiten nog aan",
+        "description": "Elke bestelling met de klant die haar plaatste, via de relatie. Sleutels zijn zo gegenereerd dat ze tussen tabellen aansluiten, dus elke API leest dev als een consistente dataset."
+      },
+      "testdataReport": {
+        "title": "Hoe dichtbij de kopie is",
+        "description": "Het generatierapport vergelijkt elke gegenereerde tabel, kolom voor kolom, met het productieprofiel waaruit ze is getrokken: verdelingen, nullpercentages, aantallen verschillende waarden en hoe kolommen samen bewegen. Het toont hoe dicht dev bij productie ligt, zonder productie te tonen."
+      },
+      "testdataToProd": {
+        "title": "Terug naar productie",
+        "description": "Hierna keert de omgevingskiezer terug naar prod."
+      },
+      "testdataDone": {
+        "title": "Wat je zag",
+        "description": "Eén model, drie omgevingen. Prod bevat de echte rijen. Pre-productie leest ze met elke gevoelige kolom nagemaakt, voor elke rol. Dev wordt gegenereerd uit het profiel van productie en bevat niets echts. Nepwaarden worden één keer per kolom gedeclareerd, en een omgeving die een gevoelige kolom niet-nagemaakt zou tonen, weigert te openen."
       }
     },
     "status": {
@@ -1437,8 +1457,8 @@
         "summary": "Welke misbruikte kwetsbaarheden zitten in de code van een softwarebedrijf, en hoe ver zijn ze over de deadline van CISA? De Dependabot-meldingen, per CVE gekoppeld aan de NVD en de catalogus Known Exploited Vulnerabilities van CISA, geven het antwoord."
       },
       "testdata": {
-        "title": "Testgegevens",
-        "summary": "De productiedatabase van een winkel, gezien zoals ze echt is in productie en als realistische gegenereerde data in twee testomgevingen. Dezelfde queries en koppelingen werken in alle drie."
+        "title": "Testdata",
+        "summary": "De productiedatabase van een webshop in drie omgevingen: de echte rijen in prod, de rijen van productie met elke gevoelige kolom nagemaakt in preprod, en gegenereerde rijen zonder iets echts in dev."
       },
       "streaming": {
         "title": "Live bestelstroom",

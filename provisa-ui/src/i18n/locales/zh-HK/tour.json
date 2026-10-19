@@ -644,58 +644,6 @@
         "title": "你看到了甚麼",
         "description": "您看到了公司自己的程式碼數據：即時讀取，並按 CVE 與只落地一次、且只取警示所需部分的公共漏洞數據連接。同一個受治理模型中的一個檢視，以 SQL、GraphQL、Cypher 及 REST 回答程式碼裏有哪些已被利用的漏洞，以及每個逾期了多久。"
       },
-      "testdataScenario": {
-        "title": "能否在不觸碰生產的情況下用逼真的數據測試？",
-        "description": "<strong>shop-db</strong> 是一間商店的生產數據庫：客戶、商品和訂單。開發和測試人員需要相同形態的數據，但客戶的姓名、電郵和城市是個人資料，而生產的副本會過時。這裏的數據本身也是生成的，代替一間真實的商店。"
-      },
-      "testdataTables": {
-        "title": "每一欄聲明自己的虛構值",
-        "description": "<strong>customers</strong> 的每一欄都宣告了自己的假數據：它保存的值屬於哪一類，例如人名、電郵地址、城市、四個區域之一，或某個範圍內的日期。模型把假數據與欄位放在一起，所以您只需在一個地方定義一次。"
-      },
-      "testdataJoin": {
-        "title": "以相同方式替換的鍵仍能連接",
-        "description": "訂單的 <strong>customer_id</strong> 和客戶的 <strong>id</strong> 都被替換為雜湊值。同一個真實值總是得到同一個虛構值，所以即使兩者都是虛構的，訂單也能找到它的客戶。"
-      },
-      "testdataProd": {
-        "title": "生產：真實的行",
-        "description": "在生產環境（預設環境）中，您看到的是客戶的真實情況。"
-      },
-      "testdataToDev": {
-        "title": "切換到 dev",
-        "description": "dev 及 test 是模型的環境，就像 git 裏的分支。兩者都是 Test (fake) 環境。接下來，頁首的切換器會切到 dev，之後您讀到的一切都來自 dev。"
-      },
-      "testdataDev": {
-        "title": "dev 中的同一查詢",
-        "description": "同一條陳述式，在 dev 中讀取：現在每一欄都顯示它的假數據，由引擎在讀取時計算。姓名、電郵、城市及日期看起來都很真實，但並不是真的。沒有任何數據從生產環境複製出來。"
-      },
-      "testdataDevAnswer": {
-        "title": "視圖和連接基於虛構值運作",
-        "description": "連接訂單、訂單行、客戶和商品的視圖在 dev 中同樣給出答案。分組、連接和求和都在虛構值上進行，所以測試運行的正是生產運行的查詢。"
-      },
-      "testdataDevGraphql": {
-        "title": "GraphQL 也一樣",
-        "description": "每張訂單及下單的客戶，經由關係取得。每個 API 讀取為它提供服務的環境，所以透過 GraphQL、REST 或 SQL 的測試套件看到的是相同的生成數據。"
-      },
-      "testdataToTest": {
-        "title": "切換到 test",
-        "description": "接下來，切換器切到 test，第二個測試（虛構值）環境。"
-      },
-      "testdataTest": {
-        "title": "test 中相同的虛構值",
-        "description": "一個真實值無論在哪裏讀取都顯示相同的虛構值，所以 dev 和 test 一致：在 dev 中寫的測試在 test 中找到相同的行。"
-      },
-      "testdataToProd": {
-        "title": "回到生產",
-        "description": "接下來，切換器回到 prod。"
-      },
-      "testdataProdAnswer": {
-        "title": "真實的答案，只在生產中",
-        "description": "同一個檢視，在生產環境中讀取：按區域及類別統計的真實收入。只有生產環境能取得真實的資料列，dev 及 test 永遠看不到。"
-      },
-      "testdataDone": {
-        "title": "這是甚麼",
-        "description": "環境是同一個模型的分支，假數據按欄宣告一次。Test (fake) 環境以逼真的生成值回答每項查詢，並讓鍵依然可以連接。只要仍有敏感欄位沒有假數據，Provisa 就不會建立或切換到 Test (fake) 環境，亦不會回答其中的請求。生產數據永遠不會離開生產環境。"
-      },
       "streamingScenario": {
         "title": "即時訂單",
         "description": "一間咖啡店的訂單每秒幾張地到達一個 Kafka 主題,它的商品目錄在它的 Postgres 中。問題:過去五分鐘內哪些地區落單最多?<strong>orders</strong> 是訂單到達的 broker。"
@@ -1391,6 +1339,78 @@
       "dataroomRecap": {
         "title": "您看到了什麼",
         "description": "沒有匯出的資料室：賣方自己的系統被就地讀取，並以彙總、設定檔、品質評分、遮罩樣本和不含身分的記錄的形式展示給每位競投方。沒有任何客戶身分離開資料室。每位競投方持有自己的角色，授權至交易日，每條陳述式都被稽核。"
+      },
+      "testdataScenario": {
+        "title": "同一生產數據庫上的三個環境",
+        "description": "<strong>shop-db</strong> 是一家商店的生產數據庫：客戶、產品和訂單。團隊需要數據來構建和測試。持有個人資料的公司為預發佈數據付出很多，因為他們缺少好的虛構值，或者要去購買。這裏一個模型服務三個環境。<strong>prod</strong> 是真實的行，是事實來源，沒有人在其上構建。<strong>preprod</strong> 是生產自身的數據，每個敏感欄都已虛構，用於最終測試。<strong>dev</strong> 由生產的概況生成，不含任何真實數據，用於日常構建。Provisa 提供工具；公司需要哪種配置，由公司決定。"
+      },
+      "testdataTables": {
+        "title": "模型聲明哪些欄要虛構",
+        "description": "在 <strong>customers</strong> 上，姓名、電郵、城市和註冊日期各聲明一個虛構值，客戶編號也是：它是識別碼，而註冊日期是可能鎖定某個人的準識別碼。區域、產品、訂單和金額不聲明，因此保持真實。虛構哪些欄由營運者決定，在模型中一次完成。"
+      },
+      "testdataCoverage": {
+        "title": "數據管家檢查覆蓋情況",
+        "description": "預發佈出現之前，覆蓋檢查會列出每個敏感欄，以及是否有虛構值覆蓋它。這裏 <strong>customers.email</strong> 沒有。只要有敏感欄沒有虛構值，Test (fake) 環境就拒絕開啟，並拒絕一切讀取。數據管家一旦聲明，該欄即被覆蓋。"
+      },
+      "testdataCoverageNow": {
+        "title": "每個敏感欄都已覆蓋",
+        "description": "同樣的檢查，現在從模型讀取：每個敏感欄、它的標籤，以及是否有虛構值覆蓋它。全部已覆蓋，因此預發佈可以開啟並作答。"
+      },
+      "testdataProd": {
+        "title": "生產：真實的行",
+        "description": "在 prod 中，您看到的是客戶的真實情況。"
+      },
+      "testdataProdAnswer": {
+        "title": "生產的答案",
+        "description": "按區域和類別統計的收入，來自真實訂單。"
+      },
+      "testdataToPreprod": {
+        "title": "切換到預發佈",
+        "description": "環境是一個模型的分支，如同 git。接下來，頁首中的切換器移到 <strong>preprod</strong>，一個 Test (fake) 環境。"
+      },
+      "testdataPreprod": {
+        "title": "預發佈：生產的行，身份已虛構",
+        "description": "同樣的客戶，在 preprod 中讀取。每個姓名、電郵、城市、註冊日期和客戶編號都是虛構值，在讀取行時計算。區域是真實的。預發佈透過 Provisa 讀取生產自身的數據，唯一連接生產儲存的身份是 Provisa 自己的。不會複製任何數據。"
+      },
+      "testdataPreprodAnswer": {
+        "title": "合計與生產一致",
+        "description": "preprod 中的同一檢視，按區域和類別給出與生產完全相同的收入。每一行真實數據、數據量和邊界情況都在，供最終測試使用。客戶編號在 customers 和 orders 上以同樣方式虛構，因此連接仍然匹配。"
+      },
+      "testdataPreprodAnalyst": {
+        "title": "每個角色讀到的都是虛構值",
+        "description": "接下來，語句以 <strong>analyst</strong> 身份執行。"
+      },
+      "testdataPreprodAsAnalyst": {
+        "title": "沒有角色能取消虛構",
+        "description": "以 analyst 或任何其他角色身份，預發佈的敏感欄讀到的都是虛構值。在 Test (fake) 環境中，沒有授權、遮罩或角色能顯示真實值。"
+      },
+      "testdataToDev": {
+        "title": "切換到 dev",
+        "description": "接下來，切換器切換到 <strong>dev</strong>，一個 Test (synthetic) 環境。"
+      },
+      "testdataDev": {
+        "title": "Dev：生成的，沒有真實數據",
+        "description": "dev 中的每一行都由生產的概況生成：相同的欄、值的形態和分佈，沒有任何真實的行。當連預發佈的真實行也不能離開生產邊界時，這也是答案：給測試人員一份合成副本。"
+      },
+      "testdataDevAnswer": {
+        "title": "形態相同，數字不同",
+        "description": "dev 中的同一檢視。區域和類別與生產相同，合計接近生產，但不是生產的數字。"
+      },
+      "testdataDevGraphql": {
+        "title": "鍵仍然可以連接",
+        "description": "每個訂單連同下單的客戶，透過關係顯示。鍵經過生成，在各表之間對得上，因此每個 API 都把 dev 讀作一致的數據集。"
+      },
+      "testdataReport": {
+        "title": "副本有多接近",
+        "description": "生成報告逐欄比較每個生成的表與其來源的生產概況：分佈、空值率、相異值數量，以及各欄如何連動。它顯示 dev 與生產有多接近，而不展示生產本身。"
+      },
+      "testdataToProd": {
+        "title": "回到生產",
+        "description": "接下來，切換器回到 prod。"
+      },
+      "testdataDone": {
+        "title": "您看到了甚麼",
+        "description": "一個模型，三個環境。Prod 保存真實的行。預發佈讀取這些行，每個敏感欄都已虛構，對所有角色一致。Dev 由生產的概況生成，不含任何真實數據。虛構值按欄聲明一次，而會顯示未虛構敏感欄的環境會拒絕開啟。"
       }
     },
     "status": {
@@ -1438,7 +1458,7 @@
       },
       "testdata": {
         "title": "測試數據",
-        "summary": "一間商店的生產資料庫：在生產環境中看到真實樣子，在兩個測試環境中看到逼真的生成數據。同樣的查詢及連接在三個環境中都能用。"
+        "summary": "一家商店的生產數據庫分成三個環境：prod 中是真實的行，preprod 中是每個敏感欄都已虛構的生產行，dev 中是不含任何真實數據的生成行。"
       },
       "streaming": {
         "title": "即時訂單流",
