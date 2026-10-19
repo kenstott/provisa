@@ -76,8 +76,8 @@
         <h2>Access control: six layers, compiled into the plan</h2>
         <p>
           Access control is applied at query time, uniformly, on every language and every
-          transport. Add a source, a column, or a relationship and every layer applies
-          automatically — there is nothing to remember and nothing to re-apply per API.
+          transport. Add a source, a column or a relationship and every layer applies to it; there
+          is nothing to re-apply per API.
         </p>
 
         <h3>0 — Introspection filtering</h3>
@@ -101,25 +101,25 @@
 
         <h3>3 — Row-level security</h3>
         <p>
-          Per-table, per-role <code>WHERE</code> injection, inherited recursively — a view
-          over a governed table carries the predicate of everything beneath it, and so does
+          Per-table, per-role <code>WHERE</code> injection, inherited recursively: a
+          view over a governed table carries the predicate of everything beneath it, and so does
           a materialized view built on that view.
         </p>
 
         <h3>4 — Column visibility and masking</h3>
         <p>
           Columns are visible, hidden, or masked per role. Masking is regex, constant, or
-          truncation, with an explicit role-based bypass where a privileged role genuinely
-          needs the raw value. When a request acts as several roles, each row's columns are
+          truncation, with an explicit role-based bypass where a privileged role needs the raw
+          value. When a request acts as several roles, each row's columns are
           masked and shown according to the roles whose row filter admitted that row, and
           writes are checked the same way.
         </p>
 
         <h3>5 — Predicate guard and approval</h3>
         <p>
-          A pre-execution ABAC hook over webhook, gRPC, or unix socket. The plan is offered
-          to your own decision service before it runs, which is where request-time context
-          — a ticket number, a break-glass approval, a time window — enters the decision.
+          A pre-execution ABAC hook over webhook, gRPC, or unix socket. The plan is offered to your own decision service before it runs, which is
+          where request-time context, such as a ticket number, a break-glass approval or
+          a time window, enters the decision.
         </p>
 
         <h2>Roles from attributes, and roles that explain themselves</h2>
@@ -156,19 +156,18 @@
           relationship. Unapproved paths are rejected and logged.
         </p>
         <p>
-          That is what lets the query and graph explorers be genuinely open: people can
-          roam the model freely, and AI agents can discover what connects to what, while
-          every path stays inside the edges policy sanctioned. Each relationship carries a
-          human- and agent-readable reason for why the traversal exists, so the model
-          explains itself to whoever — or whatever — is reading it.
+          That is what lets the query and graph explorers stay open: people can explore
+          the whole model, and AI agents can discover what connects to what, while every
+          path stays inside the edges policy approved. Each relationship carries a
+          reason for why the traversal exists, written for people and agents alike.
         </p>
 
         <h2>It's a per-role capability</h2>
         <p>
-          The guardrail is a single flag on the role. Leave it on for analysts and agents
-          who should stay on the rails; take the training wheels off for a trusted role and
-          it writes unconstrained JOINs across the whole federated model. Same governed
-          path, same RLS and masking — just without the relationship guard.
+          The guard is a single right on the role. Leave it off for analysts and agents;
+          grant it to a trusted role and that role can write any JOIN across the whole
+          federated model. The query takes the same governed path, with the same
+          row-level security and masking, without the relationship guard.
         </p>
         <p>
           An MCP agent never acts beyond the roles it was given: a remote agent only the roles
@@ -265,8 +264,8 @@
         <p>
           Traces, metrics, and logs are collected via OpenTelemetry, compacted into
           Iceberg, and registered as queryable tables. Join <code>customers</code> to
-          <code>queries</code> to see who ran what and how long it took — the audit trail
-          is a governed table like any other, not a log file you grep.
+          <code>queries</code> to see who ran what and how long it took. The audit trail is a governed table
+          like any other, not a log file you grep.
         </p>
       </div>
 
