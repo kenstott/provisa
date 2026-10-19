@@ -10,7 +10,7 @@
 
 """REQ-1910: trace detail — one span per request in normal detail, the waterfall in debug."""
 
-# Requirements: REQ-1910
+# Requirements: REQ-1910, REQ-2092
 
 from __future__ import annotations
 
@@ -129,6 +129,41 @@ def test_normal_stage_that_runs_twice_accumulates(traced):
     attrs = exporter.get_finished_spans()[0].attributes
     assert attrs["stage.govern.count"] == 3
     assert attrs["stage.govern.ms"] >= 0
+
+
+def _burn(seconds: float) -> None:
+    import time
+
+    end = time.thread_time() + seconds
+    while time.thread_time() < end:
+        pass
+
+
+def test_a_stage_reports_its_thread_cpu_beside_its_duration(traced):
+    """REQ-2092: thread CPU per stage, accumulated like its duration; waiting costs no CPU."""
+    import time
+
+    tracer, exporter = traced
+    with request_span(tracer, "pgwire.query", transport="pgwire"):
+        for _ in range(2):
+            with stage(tracer, "rls.inject", name="govern"):
+                _burn(0.02)
+        with stage(tracer, "provisa.query.direct", name="execute"):
+            time.sleep(0.05)
+    attrs = exporter.get_finished_spans()[0].attributes
+    assert attrs["stage.govern.count"] == 2
+    assert 40 <= attrs["stage.govern.cpu_ms"] <= attrs["stage.govern.ms"] + 1
+    assert attrs["stage.execute.ms"] >= 50
+    assert attrs["stage.execute.cpu_ms"] < 10
+
+
+def test_a_debug_stage_reports_its_thread_cpu_on_the_request_span(traced, debug_detail):
+    tracer, exporter = traced
+    with request_span(tracer, "pgwire.query", transport="pgwire"):
+        with stage(tracer, "rls.inject", name="govern"):
+            _burn(0.02)
+    request = next(s for s in exporter.get_finished_spans() if s.name == "pgwire.query")
+    assert request.attributes["stage.govern.cpu_ms"] >= 20
 
 
 def test_normal_stage_that_raises_names_the_error_and_reraises(traced):

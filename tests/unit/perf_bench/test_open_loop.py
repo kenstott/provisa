@@ -221,6 +221,7 @@ def test_run_all_runs_the_open_loop_at_its_connection_count(
         source_cpu_url=None,
         backend_container=[],
         device=[],
+        stage_tally_url=None,
         resolved_names=str(names),
         apply_replication=False,
         skip_route_verification=True,

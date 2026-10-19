@@ -113,6 +113,9 @@ class Endpoints:
     backend_containers: tuple[str, ...] = ()
     # Each benchmark device's host_agent (name, URL): its paging is read at both ends of a step.
     devices: tuple[tuple[str, str], ...] = ()
+    # The trace receiver's stage tally (noop_otlp_receiver.py --tally, ``GET /stages``): each step
+    # reports its request spans' per-stage time and thread CPU per request. None: not read.
+    stage_tally_url: str | None = None
 
 
 # --------------------------------------------------------------------------------------------
@@ -755,6 +758,37 @@ def _paging_snapshots(server_pid: int | str | None, devices: tuple[tuple[str, st
     return out
 
 
+def _stage_totals(url: str | None) -> dict | None:
+    if url is None:
+        return None
+    import httpx
+
+    resp = httpx.get(f"{url}/stages", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def stage_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+    """Per transport, the request spans the receiver saw between two tallies and each stage's
+    time, thread CPU and entries per request span. Spans arrive in export batches, so a step's
+    last batch may be counted in the next: per request span, the figures do not depend on it."""
+    out: dict[str, Any] = {}
+    for transport, n1 in after["requests"].items():
+        n = n1 - before["requests"].get(transport, 0)
+        if n <= 0:
+            continue
+        was = before["stages"].get(transport, {})
+        stages = {}
+        for name, figures in after["stages"][transport].items():
+            prior = was.get(name, {})
+            stages[name] = {
+                f"{f}_per_request": round((figures[f] - prior.get(f, 0.0)) / n, 4)
+                for f in ("ms", "cpu_ms", "count")
+            }
+        out[transport] = {"request_spans": n, "stages": stages}
+    return out
+
+
 def _paging_text(by_host: Mapping[str, Mapping[str, Any]]) -> str:
     """A step's paging in one phrase per host: major faults, swap in/out, available memory."""
     parts = []
@@ -807,6 +841,7 @@ def run_step(
         return {"concurrency": concurrency, "error": failures[0]}
     server_cpu0 = _server_cpu_seconds(server_pid)
     paging0 = _paging_snapshots(server_pid, ep.devices)
+    stages0 = _stage_totals(ep.stage_tally_url)
     monitored = {sid: s.container for sid, s in ep.setup.sources.items() if s.container}
     sampler = _sampler(ep, monitored) if monitored or ep.backend_containers else None
     if sampler is not None:
@@ -815,6 +850,7 @@ def run_step(
     results = [out.get(timeout=window_s + 120) for _ in procs]
     server_cpu1 = _server_cpu_seconds(server_pid)
     paging1 = _paging_snapshots(server_pid, ep.devices)
+    stages1 = _stage_totals(ep.stage_tally_url)
     if sampler is not None:
         sampler.stop()
     for p in procs:
@@ -842,6 +878,8 @@ def run_step(
         step["server_cpu_ms_per_request"] = round((server_cpu1 - server_cpu0) / attempts * 1000, 3)
         step["server_cpu_cores"] = round((server_cpu1 - server_cpu0) / window_s, 2)
     step["paging"] = {host: paging.delta(paging0[host], paging1[host]) for host in paging0}
+    if stages0 is not None and stages1 is not None:
+        step["stages"] = stage_delta(stages0, stages1)
     if sampler is not None:
         sampled = sampler.result()
         sources = measurements.SampleResult(
@@ -1160,6 +1198,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "plane, Redis, collector); repeatable.",
     )
     parser.add_argument(
+        "--stage-tally-url",
+        default=None,
+        help="Base URL of noop_otlp_receiver.py --tally (http://HOST:PORT): each step reports its "
+        "request spans' per-stage time and thread CPU per request (telemetry on).",
+    )
+    parser.add_argument(
         "--device",
         action="append",
         default=[],
@@ -1308,6 +1352,7 @@ def run_from_args(
         docker_stats_url=args.source_cpu_url,
         backend_containers=tuple(args.backend_container),
         devices=tuple(_device(d) for d in args.device),
+        stage_tally_url=args.stage_tally_url,
     )
     devices = None
     if args.device:
