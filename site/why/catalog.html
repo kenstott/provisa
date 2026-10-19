@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Feeds the catalog you already bought — Provisa</title>
-  <meta name="description" content="One registration publishes to OpenMetadata, DataHub, Collibra, Atlan, Apache Atlas, and OpenLineage — with lineage stitched on business identity and every governed value addressable." />
+  <meta name="description" content="One registration publishes to OpenMetadata, DataHub, Collibra, Atlan, Apache Atlas, OpenLineage, BigQuery Dataplex and Snowflake Horizon, with lineage stitched on business identity and every governed value given an address." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -50,58 +50,56 @@
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Fits your stack</span></p>
         <h1>It feeds the catalog you already bought.</h1>
         <p class="lead">
-          Provisa is not another place your metadata goes to die. The model that governs
-          your queries publishes outward to the tools your organization already runs — and
-          addresses every governed value it holds.
+          The model that governs your queries publishes to the catalog tools your
+          organization already runs, and gives every governed value an address.
         </p>
       </div>
 
       <div class="doc-body">
         <h2>Publishes to your catalog</h2>
         <p>
-          One registration, six destinations: <strong>OpenMetadata</strong>,
+          One registration, eight destinations: <strong>OpenMetadata</strong>,
           <strong>DataHub</strong>, <strong>Collibra</strong>, <strong>Atlan</strong>,
-          <strong>Apache Atlas</strong>, and <strong>OpenLineage</strong>. Tables, columns,
+          <strong>Apache Atlas</strong>, <strong>OpenLineage</strong>, <strong>BigQuery
+          Dataplex</strong> and <strong>Snowflake Horizon</strong>. Tables, columns,
           tags, classifications, and lineage flow out as first-class catalog assets, from
           the admin console or from <code>provisa metadata export</code> on a cron.
         </p>
         <p>
-          The point is not that Provisa has a catalog. It is that the metadata is a
-          byproduct of the thing that already has to be correct — the model that executes
-          and governs your queries — rather than a parallel description maintained by hand
-          and drifting from the moment it is written.
+          The metadata comes from the model that runs and governs your queries, which
+          already has to be correct. Nobody maintains a second description by hand, so
+          there is nothing to drift.
         </p>
 
         <h2>Lineage that survives re-platforming</h2>
         <p>
           Assets are stitched on <strong>business identity</strong>, not physical location.
           Move a table from Oracle to Postgres and its catalog entry, lineage, and history
-          follow the business entity instead of shattering into a new asset with no past.
-          A migration doesn't reset your catalog to zero.
+          follow the business entity, instead of starting over as a new asset with no
+          past.
         </p>
 
         <h2>Data quality, without a second engine</h2>
         <p>
           Point <strong>Soda</strong> at a governed table and register the contract as a
-          source. You get scan history, a quality scorecard, and lineage from each failing
-          check back to the table it guards — with scans triggered by <em>change</em>
-          rather than by a cron guess. Provisa ships no data-quality engine and doesn't ask
+          source. You get scan history, a quality scorecard, and lineage from each failing check back to the table it guards. Scans run when
+          the table changes, not on a guessed schedule. Provisa ships no data-quality engine and doesn't ask
           you to retire yours.
         </p>
 
         <h2>Every value has an address</h2>
         <p>
           A governed value is addressable as
-          <code>provisa://&lt;org&gt;/&lt;domain&gt;/&lt;table&gt;/pk=&lt;id&gt;/&lt;column&gt;</code>
-          and resolves over REST or MCP — optionally <em>as of</em> a point in time.
+          <code>provisa://&lt;org&gt;/&lt;domain&gt;/tables/&lt;table&gt;/pk=&lt;id&gt;/&lt;column&gt;</code>
+          and resolves over REST or MCP, optionally <em>as of</em> a point in time.
           Exported documents, lineage nodes, audit records, and AI-agent citations carry
           links that resolve back to the live governed value, under the same policy as any
           other read.
         </p>
         <p>
-          Only semantic addresses dereference. Physical URIs are refused, so a citation can
-          never leak a location — which matters most when the thing doing the citing is an
-          agent whose output you cannot review line by line.
+          Only semantic addresses dereference. Physical URIs are refused, so a citation never leaks a location. That matters
+          most when an agent writes the citation and nobody reviews its output line by
+          line.
         </p>
       </div>
 
