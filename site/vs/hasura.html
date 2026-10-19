@@ -206,6 +206,14 @@
           between.
         </p>
         <p>
+          A DDN join across two connectors is assembled in the engine from each
+          connector's serialized results: the engine queries the first connector, passes
+          the join-field values to the second as query variables, and
+          <a href="https://github.com/hasura/graphql-engine/blob/master/v3/crates/execute/src/execute/remote_joins.rs" rel="noopener">joins the two responses itself</a>.
+          In Provisa a cross-source join runs in the chosen federation engine (Trino,
+          DuckDB or Postgres), which reads each source over its native connector.
+        </p>
+        <p>
           Self-hosting DDN's engine and connectors on Docker
           <a href="https://hasura.io/docs/3.0/deployment/overview/" rel="noopener">comes without a control plane</a>.
           <a href="https://hasura.io/docs/3.0/architecture/private/self-hosted" rel="noopener">Private DDN Self-Hosted</a>,
