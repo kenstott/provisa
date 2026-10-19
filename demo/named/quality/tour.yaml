@@ -25,6 +25,8 @@ steps:
   route: /tables
   capability: table_registration
   table: sales.bronze
+  # Its detail panel: its probe is shown in its load section.
+  open: load
 - key: qualityRaw
   route: /sql
   capability: query_development

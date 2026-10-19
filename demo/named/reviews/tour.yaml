@@ -36,6 +36,8 @@ steps:
   table: catalog.ratings_by_product
 - key: reviewsSearchTable
   table: reviews.reviews_matching
+  # Its detail panel: its phrase parameter is shown in its query section.
+  open: query
 - key: reviewsCypherTable
   table: purchases.bought_together
 - key: reviewsJoin

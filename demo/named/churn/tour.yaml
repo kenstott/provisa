@@ -31,6 +31,8 @@ steps:
   route: /tables
   capability: table_registration
   table: churn-db.customers
+  # Its detail panel: the email mask is shown only in its columns' access.
+  open: columns.access
 - key: churnUsage
   route: /relationships
   capability: create_relationship

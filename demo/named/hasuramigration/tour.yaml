@@ -29,6 +29,8 @@ steps:
   route: /tables
   capability: table_registration
   table: outfitters.customers
+  # Its detail panel: its custom names are shown in its columns' naming.
+  open: columns.naming
 - key: hasuramigrationSalesforce
   route: /sources
   capability: source_registration

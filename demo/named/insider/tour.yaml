@@ -27,6 +27,8 @@ steps:
   route: /tables
   capability: table_registration
   table: bank.deal
+  # Its detail panel: who may read each column is shown in its columns' access.
+  open: columns.access
 - key: insiderMail
   table: bank.message
 - key: insiderMatch

@@ -31,6 +31,8 @@ steps:
   route: /tables
   capability: table_registration
   table: orders.orders
+  # Its detail panel: how the topic lands is shown in its load section.
+  open: load
 - key: streamingJoin
   route: /relationships
   capability: create_relationship
