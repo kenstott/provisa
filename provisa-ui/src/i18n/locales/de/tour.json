@@ -644,58 +644,6 @@
         "title": "Was Sie gesehen haben",
         "description": "Sie haben die eigenen Code-Daten des Unternehmens gesehen, live gelesen und per CVE mit öffentlichen Schwachstellendaten verknüpft, die einmal gelandet wurden, und nur so viel davon, wie die Alerts brauchen. Eine View in einem regulierten Modell beantwortet, welche ausgenutzten Schwachstellen im Code stecken und wie überfällig jede ist, in SQL, GraphQL, Cypher und REST."
       },
-      "testdataScenario": {
-        "title": "Kann ich mit realistischen Daten testen, ohne die Produktion anzufassen?",
-        "description": "<strong>shop-db</strong> ist die Produktionsdatenbank eines Shops: Kunden, Produkte und Bestellungen. Entwickler und Tester brauchen Daten derselben Form, aber Namen, E-Mails und Städte der Kunden sind personenbezogen, und Kopien der Produktion veralten. Die Daten hier sind selbst generiert und stehen für einen echten Shop."
-      },
-      "testdataTables": {
-        "title": "Jede Spalte deklariert ihren Fake-Wert",
-        "description": "Jede Spalte von <strong>customers</strong> deklariert ihren Fake: die Art von Wert, die sie hält, etwa einen Personennamen, eine E-Mail-Adresse, eine Stadt, eine von vier Regionen oder ein Datum in einem Bereich. Das Modell hält den Fake bei der Spalte, also definieren Sie ihn einmal, an einer Stelle."
-      },
-      "testdataJoin": {
-        "title": "Gleich gefälschte Schlüssel joinen weiter",
-        "description": "Die <strong>customer_id</strong> einer Bestellung und die <strong>id</strong> des Kunden werden beide als Hash gefälscht. Ein echter Wert ergibt immer denselben Fake-Wert, also findet eine Bestellung ihren Kunden auch, wenn beide gefälscht sind."
-      },
-      "testdataProd": {
-        "title": "Produktion: die echten Zeilen",
-        "description": "In der Produktion, der Standardumgebung, sehen Sie die Kunden so, wie sie wirklich sind."
-      },
-      "testdataToDev": {
-        "title": "Zu dev wechseln",
-        "description": "dev und test sind Umgebungen des Modells, Branches davon wie in git. Beide sind Test-(Fake-)Umgebungen. Als Nächstes wechselt der Umschalter in der Kopfzeile zu dev, und alles, was Sie danach lesen, kommt aus dev."
-      },
-      "testdataDev": {
-        "title": "Dieselbe Abfrage in dev",
-        "description": "Dieselbe Anweisung, in dev gelesen: Jede Spalte zeigt jetzt ihren Fake, den die Engine beim Lesen berechnet. Namen, E-Mails, Städte und Datumsangaben sehen echt aus, sind es aber nicht. Nichts wurde aus der Produktion kopiert."
-      },
-      "testdataDevAnswer": {
-        "title": "Ansichten und Joins arbeiten auf den Fake-Werten",
-        "description": "Eine Ansicht, die Bestellungen, ihre Positionen, Kunden und Produkte verbindet, antwortet auch in dev. Gruppieren, Verbinden und Summieren laufen alle auf den Fake-Werten, also prüft ein Test dieselben Abfragen, die die Produktion ausführt."
-      },
-      "testdataDevGraphql": {
-        "title": "Auch über GraphQL",
-        "description": "Jede Bestellung mit dem Kunden, der sie aufgegeben hat, über die Beziehung. Jede API liest die Umgebung, aus der sie bedient wird, also sieht eine Testsuite über GraphQL, REST oder SQL dieselben generierten Daten."
-      },
-      "testdataToTest": {
-        "title": "Zu test wechseln",
-        "description": "Als Nächstes wechselt der Umschalter zu test, der zweiten Test-Umgebung (Fake-Werte)."
-      },
-      "testdataTest": {
-        "title": "Dieselben Fake-Werte in test",
-        "description": "Ein echter Wert zeigt überall, wo er gelesen wird, denselben Fake-Wert, also stimmen dev und test überein: Ein in dev geschriebener Test findet in test dieselben Zeilen."
-      },
-      "testdataToProd": {
-        "title": "Zurück zur Produktion",
-        "description": "Als Nächstes kehrt der Umschalter zu prod zurück."
-      },
-      "testdataProdAnswer": {
-        "title": "Die echte Antwort, nur in der Produktion",
-        "description": "Dieselbe View, in der Produktion gelesen: der echte Umsatz nach Region und Kategorie. Nur die Produktion bekommt die echten Zeilen. dev und test sehen sie nie."
-      },
-      "testdataDone": {
-        "title": "Was das ist",
-        "description": "Umgebungen sind Branches eines Modells, und einen Fake deklarieren Sie einmal pro Spalte. Eine Test-(Fake-)Umgebung beantwortet jede Abfrage mit realistischen erzeugten Werten und hält Schlüssel verknüpfbar. Solange eine sensible Spalte keinen Fake hat, legt Provisa keine Test-(Fake-)Umgebung an, wechselt nicht zu einer und beantwortet keine Anfrage darin. Produktionsdaten verlassen die Produktion nie."
-      },
       "streamingScenario": {
         "title": "Bestellungen, live",
         "description": "Die Bestellungen eines Cafés treffen auf einem Kafka-Topic ein, einige pro Sekunde, und sein Katalog liegt in seiner Postgres-Datenbank. Die Frage: Welche Regionen haben in den letzten fünf Minuten die meisten Bestellungen aufgegeben? <strong>orders</strong> ist der Broker, auf dem die Bestellungen eintreffen."
@@ -1391,6 +1339,78 @@
       "dataroomRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Ein Datenraum ohne Exporte: die eigenen Systeme des Verkäufers, an Ort und Stelle gelesen und jedem Bieter als Aggregate, Profile, Qualitätswerte, maskierte Stichproben und Datensätze ohne Identitäten gezeigt. Keine Kundenidentität verlässt den Raum. Jeder Bieter hat eine eigene Rolle, gewährt bis zum Abschlusstag, und jede Anweisung wird auditiert."
+      },
+      "testdataScenario": {
+        "title": "Drei Umgebungen über einer Produktionsdatenbank",
+        "description": "<strong>shop-db</strong> ist die Produktionsdatenbank eines Shops: Kunden, Produkte und Bestellungen. Teams brauchen Daten zum Entwickeln und Testen. Firmen mit personenbezogenen Daten zahlen viel für Pre-Prod-Daten, weil ihnen gute Fakes fehlen oder sie sie zukaufen. Hier bedient ein Modell drei Umgebungen. <strong>prod</strong> sind die echten Zeilen, die Quelle der Wahrheit; niemand baut darauf auf. <strong>preprod</strong> sind die Daten der Produktion mit gefakten sensiblen Spalten, für den finalen Test. <strong>dev</strong> wird aus dem Profil der Produktion erzeugt und enthält nichts Echtes, für die tägliche Entwicklung. Provisa liefert die Werkzeuge; welches Setup eine Firma braucht, entscheidet die Firma."
+      },
+      "testdataTables": {
+        "title": "Das Modell legt fest, welche Spalten gefakt sind",
+        "description": "Bei <strong>customers</strong> deklarieren Name, E-Mail, Stadt und Anmeldedatum je einen Fake, ebenso die Kundennummer: ein Identifikator, und das Anmeldedatum ein Quasi-Identifikator, der eine Person herausgreifen kann. Region, Produkte, Bestellungen und Beträge deklarieren keinen und bleiben echt. Welche Spalten gefakt werden, entscheidet der Betreiber einmal im Modell."
+      },
+      "testdataCoverage": {
+        "title": "Der Steward prüft die Abdeckung",
+        "description": "Vor Pre-Prod listete die Abdeckungsprüfung jede sensible Spalte und ob ein Fake sie abdeckt. Hier hat <strong>customers.email</strong> keinen. Eine Test (fake)-Umgebung öffnet sich nicht und verweigert jeden Lesezugriff, solange eine sensible Spalte keinen Fake hat. Sobald der Steward einen deklariert, ist die Spalte abgedeckt."
+      },
+      "testdataCoverageNow": {
+        "title": "Jede sensible Spalte ist abgedeckt",
+        "description": "Dieselbe Prüfung, jetzt aus dem Modell gelesen: jede sensible Spalte, ihre Tags und ob ein Fake sie abdeckt. Alle sind abgedeckt, also öffnet sich Pre-Prod und antwortet."
+      },
+      "testdataProd": {
+        "title": "Produktion: die echten Zeilen",
+        "description": "In prod sehen Sie die Kunden, wie sie wirklich sind."
+      },
+      "testdataProdAnswer": {
+        "title": "Die Antwort der Produktion",
+        "description": "Umsatz nach Region und Kategorie, aus den echten Bestellungen."
+      },
+      "testdataToPreprod": {
+        "title": "Zu Pre-Prod wechseln",
+        "description": "Umgebungen sind Branches eines Modells, wie in Git. Als Nächstes wechselt der Umschalter in der Kopfzeile zu <strong>preprod</strong>, einer Test (fake)-Umgebung."
+      },
+      "testdataPreprod": {
+        "title": "Pre-Prod: Zeilen der Produktion, Identitäten gefakt",
+        "description": "Dieselben Kunden, gelesen in preprod. Name, E-Mail, Stadt, Anmeldedatum und Kundennummer sind jeweils ein Fake, berechnet beim Lesen der Zeile. Die Region ist echt. Pre-Prod liest die Daten der Produktion über Provisa, und die einzige Identität, die sich mit den Speichern der Produktion verbindet, ist die von Provisa. Es wird nichts herauskopiert."
+      },
+      "testdataPreprodAnswer": {
+        "title": "Die Summen sind die der Produktion",
+        "description": "Dieselbe Sicht in preprod liefert genau den Umsatz der Produktion nach Region und Kategorie. Jede echte Zeile, jedes Volumen und jeder Randfall ist für den finalen Test da. Die Kundennummer wird bei customers und bei orders gleich gefakt, die Joins passen also weiter."
+      },
+      "testdataPreprodAnalyst": {
+        "title": "Jede Rolle liest die Fakes",
+        "description": "Als Nächstes laufen die Abfragen als <strong>analyst</strong>."
+      },
+      "testdataPreprodAsAnalyst": {
+        "title": "Keine Rolle hebt die Fakes auf",
+        "description": "Als analyst oder jede andere Rolle: Die sensiblen Spalten von Pre-Prod erscheinen als Fakes. Kein Grant, keine Maskierung und keine Rolle zeigt in einer Test (fake)-Umgebung die echten Werte."
+      },
+      "testdataToDev": {
+        "title": "Zu dev wechseln",
+        "description": "Als Nächstes wechselt der Umschalter zu <strong>dev</strong>, einer Test (synthetic)-Umgebung."
+      },
+      "testdataDev": {
+        "title": "Dev: erzeugt, nichts Echtes",
+        "description": "Jede Zeile in dev wurde aus dem Profil der Produktion erzeugt: dieselben Spalten, Wertformen und Streuung, aber keine der echten Zeilen. Das ist auch die Antwort, wenn selbst die echten Zeilen von Pre-Prod die Grenze der Produktion nicht verlassen dürfen: Tester bekommen eine synthetische Kopie."
+      },
+      "testdataDevAnswer": {
+        "title": "Gleiche Form, andere Zahlen",
+        "description": "Dieselbe Sicht in dev. Regionen und Kategorien sind die der Produktion, und die Summen liegen nahe an denen der Produktion, ohne ihre Zahlen zu sein."
+      },
+      "testdataDevGraphql": {
+        "title": "Schlüssel passen weiter zusammen",
+        "description": "Jede Bestellung mit dem Kunden, der sie aufgegeben hat, über die Beziehung. Die Schlüssel wurden tabellenübergreifend passend erzeugt, sodass jede API dev als konsistenten Datensatz liest."
+      },
+      "testdataReport": {
+        "title": "Wie nah die Kopie ist",
+        "description": "Der Generierungsbericht vergleicht jede erzeugte Tabelle spaltenweise mit dem Produktionsprofil, aus dem sie gezogen wurde: Verteilungen, Null-Raten, Anzahl verschiedener Werte und das Zusammenspiel der Spalten. Er zeigt, wie nah dev an der Produktion liegt, ohne die Produktion zu zeigen."
+      },
+      "testdataToProd": {
+        "title": "Zurück zur Produktion",
+        "description": "Als Nächstes wechselt der Umschalter zurück zu prod."
+      },
+      "testdataDone": {
+        "title": "Was Sie gesehen haben",
+        "description": "Ein Modell, drei Umgebungen. Prod hält die echten Zeilen. Pre-Prod liest sie mit gefakten sensiblen Spalten, für jede Rolle. Dev wird aus dem Profil der Produktion erzeugt und enthält nichts Echtes. Fakes werden einmal pro Spalte deklariert, und eine Umgebung, die eine sensible Spalte ungefakt zeigen würde, öffnet sich nicht."
       }
     },
     "status": {
@@ -1438,7 +1458,7 @@
       },
       "testdata": {
         "title": "Testdaten",
-        "summary": "Die Produktionsdatenbank eines Shops, in der Produktion so gesehen, wie sie wirklich ist, und in zwei Testumgebungen als realistische erzeugte Daten. Dieselben Abfragen und Verknüpfungen funktionieren in allen dreien."
+        "summary": "Die Produktionsdatenbank eines Shops in drei Umgebungen: die echten Zeilen in prod, die Zeilen der Produktion mit gefakten sensiblen Spalten in preprod und erzeugte Zeilen ohne Echtes in dev."
       },
       "streaming": {
         "title": "Live-Bestellstrom",

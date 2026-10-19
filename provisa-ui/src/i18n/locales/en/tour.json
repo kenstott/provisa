@@ -644,58 +644,6 @@
         "title": "What you saw",
         "description": "You saw the company's own code data, read live, joined by CVE to public vulnerability data that was landed once, and only as much of it as the alerts need. One view in one governed model answers which exploited vulnerabilities are in the code and how overdue each one is, in SQL, GraphQL, Cypher and REST."
       },
-      "testdataScenario": {
-        "title": "Can I test against realistic data without touching production?",
-        "description": "<strong>shop-db</strong> is a shop's production database: its customers, products and orders. Developers and testers need data of the same shape to work against, but the customers' names, emails and cities are personal data, and copies of production drift. The data here is itself generated, to stand in for a real shop."
-      },
-      "testdataTables": {
-        "title": "Each column declares its fake",
-        "description": "Every column of <strong>customers</strong> declares its fake: the kind of value it holds, such as a person's name, an email address, a city, one of four regions or a date in a range. The model keeps the fake with the column, so you define it once, in one place."
-      },
-      "testdataJoin": {
-        "title": "Keys faked alike still join",
-        "description": "An order's <strong>customer_id</strong> and the customer's <strong>id</strong> are both faked as a hash. One real value always gives the same fake, so an order still finds its customer when both are fake."
-      },
-      "testdataProd": {
-        "title": "Production: the real rows",
-        "description": "In production, the default environment, you see the customers as they really are."
-      },
-      "testdataToDev": {
-        "title": "Switch to dev",
-        "description": "dev and test are environments of the model, branches of it as in git. Both are Test (fake) environments. Next, the switcher in the header moves to dev, and everything you read after that comes from dev."
-      },
-      "testdataDev": {
-        "title": "The same query in dev",
-        "description": "The same statement, read in dev: every column now shows its fake, which the engine computes as it reads. The names, emails, cities and dates look real, but they aren't. Nothing was copied out of production."
-      },
-      "testdataDevAnswer": {
-        "title": "Views and joins work on the fakes",
-        "description": "A view joining orders, their lines, customers and products answers in dev too. Grouping, joining and adding up all run on the fakes, so a test exercises the same queries production runs."
-      },
-      "testdataDevGraphql": {
-        "title": "Over GraphQL as well",
-        "description": "Each order with the customer who placed it, through the relationship. Every API reads the environment it is served from, so a test suite against GraphQL, REST or SQL sees the same generated data."
-      },
-      "testdataToTest": {
-        "title": "Switch to test",
-        "description": "Next, the switcher moves to test, the second Test (fake) environment."
-      },
-      "testdataTest": {
-        "title": "The same fakes in test",
-        "description": "A real value shows the same fake wherever it is read, so dev and test agree: a test written in dev finds the same rows in test."
-      },
-      "testdataToProd": {
-        "title": "Back to production",
-        "description": "Next, the switcher returns to prod."
-      },
-      "testdataProdAnswer": {
-        "title": "The real answer, in production only",
-        "description": "The same view, read in production: the real revenue by region and category. Only production gets the real rows. dev and test never see them."
-      },
-      "testdataDone": {
-        "title": "What this is",
-        "description": "Environments are branches of one model, and you declare a fake once per column. A Test (fake) environment answers every query with realistic generated values and keeps keys joinable. While any sensitive column has no fake, Provisa won't create or switch to a Test (fake) environment, or answer a request in one. Production data never leaves production."
-      },
       "streamingScenario": {
         "title": "Orders, live",
         "description": "A coffee shop's orders arrive on a Kafka topic, a few a second, and its catalog is in its Postgres. The question: which regions placed the most orders in the last five minutes? <strong>orders</strong> is the broker the orders arrive on."
@@ -1391,6 +1339,78 @@
       "dataroomRecap": {
         "title": "What you saw",
         "description": "A data room with no exports: the seller's own systems, read in place, shown to each bidder as aggregates, profiles, quality scores, masked samples and records without identities. No customer identity leaves the room. Each bidder holds a role of its own, granted until the deal date, and every statement is audited."
+      },
+      "testdataScenario": {
+        "title": "Three environments over one production database",
+        "description": "<strong>shop-db</strong> is a shop's production database: customers, products and orders. Teams need data to build and test against. Firms with personal data pay a lot for pre-production data, because they lack good fakes or buy them. Here one model serves three environments. <strong>prod</strong> is the real rows, the source of truth, and nobody builds against it. <strong>preprod</strong> is production's own data with every sensitive column faked, for final testing. <strong>dev</strong> is generated from production's profile and holds nothing real, for everyday building. Provisa provides the tools; which setup a firm needs is the firm's decision."
+      },
+      "testdataTables": {
+        "title": "The model says which columns are faked",
+        "description": "On <strong>customers</strong>, the name, email, city and sign-up date each declare a fake, and so does the customer number: an identifier, and the sign-up date a quasi-identifier that could single someone out. Region, products, orders and amounts declare none, so they stay real. Which columns to fake is the operator's choice, made once in the model."
+      },
+      "testdataCoverage": {
+        "title": "The steward checks coverage",
+        "description": "Before pre-prod existed, the coverage check listed every sensitive column and whether a fake covers it. Here <strong>customers.email</strong> has none. A Test (fake) environment refuses to open, and refuses every read, while a sensitive column has no fake. Once the steward declares one, the column is covered."
+      },
+      "testdataCoverageNow": {
+        "title": "Every sensitive column is covered",
+        "description": "The same check, read now from the model: each sensitive column, its tags, and whether a fake covers it. Every one is covered, so pre-prod opens and answers."
+      },
+      "testdataProd": {
+        "title": "Production: the real rows",
+        "description": "In prod you see the customers as they really are."
+      },
+      "testdataProdAnswer": {
+        "title": "Production's answer",
+        "description": "Revenue by region and category, from the real orders."
+      },
+      "testdataToPreprod": {
+        "title": "Switch to pre-prod",
+        "description": "Environments are branches of one model, as in git. Next, the switcher in the header moves to <strong>preprod</strong>, a Test (fake) environment."
+      },
+      "testdataPreprod": {
+        "title": "Pre-prod: production's rows, identities faked",
+        "description": "The same customers, read in preprod. Each name, email, city, sign-up date and customer number is a fake, computed as the row is read. The region is real. Pre-prod reads production's own data through Provisa, and the only identity that connects to production's stores is Provisa's own. Nothing is copied out."
+      },
+      "testdataPreprodAnswer": {
+        "title": "The totals are production's",
+        "description": "The same view in preprod gives exactly production's revenue by region and category. Every real row, volume and edge case is there for final testing. The customer number is faked the same way on customers and on orders, so the joins still match."
+      },
+      "testdataPreprodAnalyst": {
+        "title": "Every role reads the fakes",
+        "description": "Next, the statements run as <strong>analyst</strong>."
+      },
+      "testdataPreprodAsAnalyst": {
+        "title": "No role lifts the fakes",
+        "description": "As analyst, or as any other role, pre-prod's sensitive columns read as fakes. No grant, mask or role shows the real values in a Test (fake) environment."
+      },
+      "testdataToDev": {
+        "title": "Switch to dev",
+        "description": "Next, the switcher moves to <strong>dev</strong>, a Test (synthetic) environment."
+      },
+      "testdataDev": {
+        "title": "Dev: generated, nothing real",
+        "description": "Every row in dev was generated from production's profile: the same columns, value shapes and spread, and none of the real rows. This is also the answer when even pre-prod's real rows can't leave production's boundary: give testers a synthetic copy."
+      },
+      "testdataDevAnswer": {
+        "title": "Same shape, different numbers",
+        "description": "The same view in dev. The regions and categories are the ones production has, and the totals are close to production's without being its numbers."
+      },
+      "testdataDevGraphql": {
+        "title": "Keys still join",
+        "description": "Each order with the customer who placed it, through the relationship. Keys were generated to line up across tables, so every API reads dev as a consistent dataset."
+      },
+      "testdataReport": {
+        "title": "How close the copy is",
+        "description": "The generation report compares each generated table with the production profile it was drawn from, column by column: distributions, null rates, distinct values and how columns move together. It shows how close dev is to production, without showing production."
+      },
+      "testdataToProd": {
+        "title": "Back to production",
+        "description": "Next, the switcher returns to prod."
+      },
+      "testdataDone": {
+        "title": "What you saw",
+        "description": "One model, three environments. Prod holds the real rows. Pre-prod reads them with every sensitive column faked, for every role. Dev is generated from production's profile and holds nothing real. Fakes are declared once per column, and an environment that would show a sensitive column unfaked refuses to open."
       }
     },
     "status": {
@@ -1438,7 +1458,7 @@
       },
       "testdata": {
         "title": "Test data",
-        "summary": "A shop's production database, seen as it really is in production and as realistic generated data in two test environments. The same queries and joins work in all three."
+        "summary": "A shop's production database in three environments: the real rows in prod, production's rows with every sensitive column faked in pre-prod, and generated rows with nothing real in dev."
       },
       "streaming": {
         "title": "Live order stream",

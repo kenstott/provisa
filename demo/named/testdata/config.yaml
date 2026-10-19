@@ -10,13 +10,16 @@
 # The WHOLE config of the named demo "testdata" (start-ui-install.sh --demo testdata; REQ-2053).
 # docker-compose.yml in this directory brings up its database.
 #
-# The question: can I test against realistic data without touching production? The shop's
-# database is production. Every column declares its fake -- the kind of value it holds -- and two
-# environments, dev and test (setup.yaml), are Test (fake) environments: a read there is answered
-# with each column's fake, computed by the engine at the read, while prod answers with the real
-# rows. The keys are faked alike (hash), so a join through a relationship still matches.
+# The question: can I build and test against realistic data without exposing production? The
+# shop's database is production. Three environments read it (setup.yaml): prod, the real rows;
+# preprod, Test (fake): production's own rows with each column that declares a fake (the sensitive
+# and identifying ones, the operator's choice) faked for every role and the rest real, so totals
+# and joins are production's; dev, Test (synthetic): every table generated from prod's profile,
+# nothing real, a categorical column's values drawn from its synthetic rule. The keys are faked
+# alike (hash), so a join through a relationship still matches.
 #
-#   shop-db   the shop's Postgres, read live as provisa_reader (db/init.sql).
+#   shop-db        the shop's Postgres, read live as provisa_reader (db/init.sql)
+#   shop-profiler  the profile of its tables, which dev is generated from
 auth:
   assignments_source: provisa
   default_assignments:
@@ -55,10 +58,26 @@ sources:
   username: provisa_reader
   password: provisa_reader
   description: The shop's production database
+- id: shop-profiler
+  type: data_profiler
+  description: The profile of the shop's tables, which dev's rows are generated from
+  mapping:
+    cron: 0 2 * * *
+    low_cardinality_max: 100
+    drift_window: 7
+    drift_season: none
+    drift_distance: 3.0
+    drift_slope: 3.0
+    drift_ks: 0.2
+    drift_psi: 0.25
+    correlation_max_columns: 20
+    joint_max_distinct: 20
+    category_max_columns: 10
 tables:
 - source_id: shop-db
   domain_id: shop
   schema: public
+  profiler_source_id: shop-profiler
   table: customers
   description: Who has signed up, and where they live
   columns:
@@ -66,41 +85,44 @@ tables:
   - {name: name, data_type: varchar, description: 'The customer''s name', fake: "name()", visible_to: [org_admin, analyst]}
   - {name: email, data_type: varchar, description: 'The customer''s email address', fake: "email()", visible_to: [org_admin, analyst]}
   - {name: city, data_type: varchar, description: 'Where the customer lives', fake: "city()", visible_to: [org_admin, analyst]}
-  - {name: region, data_type: varchar, description: 'The customer''s sales region', fake: "categories((North, South, East, West))", visible_to: [org_admin, analyst]}
+  - {name: region, data_type: varchar, description: 'The customer''s sales region', synthetic_rule: "categories((North, South, East, West))", visible_to: [org_admin, analyst]}
   - {name: joined_on, data_type: date, description: 'When the customer signed up', fake: "uniform(min='2024-01-01', max='2026-06-30')", visible_to: [org_admin, analyst]}
 - source_id: shop-db
   domain_id: shop
   schema: public
+  profiler_source_id: shop-profiler
   table: products
   description: What the shop sells
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The product''s id', fake: "hash()", visible_to: [org_admin, analyst]}
-  - {name: name, data_type: varchar, description: 'The product''s name', fake: "word()", visible_to: [org_admin, analyst]}
-  - {name: category, data_type: varchar, description: 'The product''s category', fake: "categories((Books, Games, Garden, Kitchen))", visible_to: [org_admin, analyst]}
-  - {name: price, data_type: 'decimal(8,2)', description: 'The price in USD', fake: "uniform(min=5, max=60)", visible_to: [org_admin, analyst]}
-  - {name: stock, data_type: integer, description: 'Units in stock', fake: "poisson(mean=40)", visible_to: [org_admin, analyst]}
-  - {name: description, data_type: varchar, description: 'The product''s description', fake: "sentence()", visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The product''s id', visible_to: [org_admin, analyst]}
+  - {name: name, data_type: varchar, description: 'The product''s name', visible_to: [org_admin, analyst]}
+  - {name: category, data_type: varchar, description: 'The product''s category', synthetic_rule: "categories((Books, Games, Garden, Kitchen))", visible_to: [org_admin, analyst]}
+  - {name: price, data_type: 'decimal(8,2)', description: 'The price in USD', visible_to: [org_admin, analyst]}
+  - {name: stock, data_type: integer, description: 'Units in stock', visible_to: [org_admin, analyst]}
+  - {name: description, data_type: varchar, description: 'The product''s description', visible_to: [org_admin, analyst]}
 - source_id: shop-db
   domain_id: shop
   schema: public
+  profiler_source_id: shop-profiler
   table: orders
   description: Each order a customer placed
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The order''s id', fake: "hash()", visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The order''s id', visible_to: [org_admin, analyst]}
   - {name: customer_id, data_type: integer, description: 'The customer who placed it', fake: "hash()", visible_to: [org_admin, analyst]}
-  - {name: placed_at, data_type: timestamp, description: 'When it was placed', fake: "uniform(min='2026-01-01', max='2026-09-30')", visible_to: [org_admin, analyst]}
-  - {name: status, data_type: varchar, description: 'placed, paid, shipped, delivered or cancelled', fake: "categories((placed, paid, shipped, delivered, cancelled))", visible_to: [org_admin, analyst]}
+  - {name: placed_at, data_type: timestamp, description: 'When it was placed', visible_to: [org_admin, analyst]}
+  - {name: status, data_type: varchar, description: 'placed, paid, shipped, delivered or cancelled', synthetic_rule: "categories((placed, paid, shipped, delivered, cancelled))", visible_to: [org_admin, analyst]}
 - source_id: shop-db
   domain_id: shop
   schema: public
+  profiler_source_id: shop-profiler
   table: order_items
   description: The lines of each order
   columns:
-  - {name: id, data_type: integer, is_primary_key: true, description: 'The line''s id', fake: "hash()", visible_to: [org_admin, analyst]}
-  - {name: order_id, data_type: integer, description: 'The order the line is on', fake: "hash()", visible_to: [org_admin, analyst]}
-  - {name: product_id, data_type: integer, description: 'The product ordered', fake: "hash()", visible_to: [org_admin, analyst]}
-  - {name: quantity, data_type: integer, description: 'Units ordered', fake: "poisson(mean=2)", visible_to: [org_admin, analyst]}
-  - {name: unit_price, data_type: 'decimal(8,2)', description: 'The price of one unit when ordered', fake: "uniform(min=5, max=60)", visible_to: [org_admin, analyst]}
+  - {name: id, data_type: integer, is_primary_key: true, description: 'The line''s id', visible_to: [org_admin, analyst]}
+  - {name: order_id, data_type: integer, description: 'The order the line is on', visible_to: [org_admin, analyst]}
+  - {name: product_id, data_type: integer, description: 'The product ordered', visible_to: [org_admin, analyst]}
+  - {name: quantity, data_type: integer, description: 'Units ordered', visible_to: [org_admin, analyst]}
+  - {name: unit_price, data_type: 'decimal(8,2)', description: 'The price of one unit when ordered', visible_to: [org_admin, analyst]}
 # The customers' personal data is pii: a Test (fake) environment is refused while a pii column has
 # no fake, and every read of one is in the record (ops.pii_access).
 tag_assignments:

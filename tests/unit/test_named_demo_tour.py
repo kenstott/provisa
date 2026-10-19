@@ -110,8 +110,10 @@ def _route_capabilities() -> dict[str, str]:
 
 def _relations(config: dict) -> set[str]:
     """The ``"domain"."name"`` each table and view of the demo is read by in SQL, and the ops
-    record every organisation has (its audit log and reports), which a tour may show."""
+    record and meta tables every organisation has (its audit log and reports, its model's own
+    tables, sensitive coverage among them), which a tour may show."""
     from provisa.api._meta_views import _OPS_LOG_TABLE_VIEWS, _OPS_REPORT_VIEWS
+    from provisa.api.app_loaders import _META_TABLES
     from provisa.core.config_loader import views_as_tables
 
     tables = views_as_tables(json.loads(json.dumps(config)))["tables"]
@@ -120,7 +122,10 @@ def _relations(config: dict) -> set[str]:
     # REQ-862: and the ops signal views, each MV refresh's lineage among them.
     signals = [v[0] for v in OPS_SIGNAL_VIEWS]
     ops = {f"ops.{name}" for name in (*_OPS_LOG_TABLE_VIEWS, *_OPS_REPORT_VIEWS, *signals)}
-    return {f"{t['domain_id']}.{t.get('alias') or config_table_name(t)}" for t in tables} | ops
+    meta = {f"meta.{name}" for name in _META_TABLES}
+    return (
+        {f"{t['domain_id']}.{t.get('alias') or config_table_name(t)}" for t in tables} | ops | meta
+    )
 
 
 def _surface(config: dict) -> tuple[set[tuple[str, str]], set[str], set[str]]:

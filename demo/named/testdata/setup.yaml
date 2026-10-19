@@ -12,5 +12,6 @@
 # the model whose reads are answered with every column's fake. prod is the environment a request
 # naming none is served, with the real rows.
 steps:
-- environment: {name: dev, data_mode: test_fake}
-- environment: {name: test, data_mode: test_fake}
+- profile: shop-profiler
+- environment: {name: preprod, data_mode: test_fake}
+- environment: {name: dev, data_mode: test_synthetic}

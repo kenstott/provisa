@@ -2022,7 +2022,10 @@ async def build_on_its_lane(org_id: str, env: str | None) -> OrgRuntime:  # REQ-
         org_id,
         env=env or PROD,
         ephemeral=_ephemeral,
-        include_demo=lane.seeded_demo,
+        # A demo's model is rebuilt from its configuration in prod alone: an environment's is
+        # copied from prod when it is made, and then is its own -- a Test (synthetic) one's
+        # generated dataset and bindings with it (REQ-1942).
+        include_demo=lane.seeded_demo and (env or PROD) == PROD,
         isolated_engine=lane.isolated_engine,
         external_engine=external_engine,
         engine_kind=engine_kind,

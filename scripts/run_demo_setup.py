@@ -41,6 +41,7 @@ import argparse
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -191,6 +192,8 @@ def run_step(client: httpx.Client, step: dict) -> str:
         if created.status_code != 200:
             raise StepFailed(step, f"HTTP {created.status_code}: {created.text}")
         made = created.json()["environment"]
+        if made["data_mode"] == "test_synthetic":
+            return _generated(client, org, step, made["name"])
         return f"environment {made['name']}: created ({made['data_mode']})"
     view = step["refresh"]
     data = _ok(
@@ -207,12 +210,40 @@ def run_step(client: httpx.Client, step: dict) -> str:
     return f"refresh {view}: {data['refreshMv']['message']}"
 
 
+def _generated(client: httpx.Client, org: str, step: dict, env: str) -> str:
+    """Generate the Test (synthetic) environment ``env`` from prod's profile runs, as its
+    Generate and Confirm on the Environments page do (REQ-1942): declaring it in setup.yaml is the
+    demo's confirmation of the warning. Waits until it is generated."""
+    base = f"/admin/orgs/{org}/environments/{env}/synthetic"
+    shown = client.post(base, json={})
+    if shown.status_code != 200:
+        raise StepFailed(step, f"HTTP {shown.status_code}: {shown.text}")
+    digest = shown.json()["warning"]["digest"]
+    started = client.post(f"{base}/confirm", json={"digest": digest})
+    if started.status_code != 200:
+        raise StepFailed(step, f"HTTP {started.status_code}: {started.text}")
+    deadline = time.monotonic() + _TIMEOUT
+    while True:
+        listed = client.get(f"/admin/orgs/{org}/environments")
+        listed.raise_for_status()
+        [row] = [e for e in listed.json()["environments"] if e["name"] == env]
+        if row["data_status"] == "ready":
+            return f"environment {env}: created and generated (test_synthetic)"
+        if row["data_status"] == "failed":
+            raise StepFailed(step, f"{env} was not generated: {row['data_error']}")
+        if time.monotonic() > deadline:
+            raise StepFailed(step, f"{env} was not generated in {_TIMEOUT:.0f}s")
+        time.sleep(2)
+
+
 def run(
     demo_dir: Path, url: str, *, environments_only: bool = False, flight: str | None = None
 ) -> int:
     listed = steps(demo_dir)
     if environments_only:
-        listed = [step for step in listed if "environment" in step]
+        # A Test (synthetic) environment is generated from prod's profile runs: the profile steps
+        # run with them.
+        listed = [step for step in listed if "environment" in step or "profile" in step]
     if not listed:
         return 0
     name = demo_dir.resolve().name

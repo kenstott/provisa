@@ -867,6 +867,20 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
             break
         await asyncio.sleep(_LANDED_POLL_S)
     log.info("demo template %s: every replica landed", demo.name)
+    # REQ-1942, REQ-2053: its Test (synthetic) environments, generated once here (or adopted from
+    # the seed its bundle carries), which every sandbox of it is given (demo_synthetic).
+    from provisa.api import demo_synthetic
+
+    token = set_current_org(org_id)
+    try:
+        await demo_synthetic.prepare(
+            org_id,
+            demo.directory,
+            demo_synthetic.synthetic_envs(demo_environments(demo.directory)),
+            exporting=exporting,
+        )
+    finally:
+        reset_current_org(token)
     from provisa.api.demo_region_seed import regional, views_built_here, views_kept_here
 
     if exporting and regional():
