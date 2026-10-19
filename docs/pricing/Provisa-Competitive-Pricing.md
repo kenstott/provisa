@@ -24,12 +24,11 @@ MCP) that request-driven competitors can't offer.
 ($1.50/hr) before even counting Provisa's included-hours allowance. Provisa's Pro tiers sit at
 or below Galaxy's Pro rate while reaching sources Galaxy's Trino-only model can't.
 
-**On Hasura DDN:** Hasura's current flagship product no longer bills by the hour at all — it
-bills **$5–$30 per "active model" per month**, where an active model is *"any model or command
+**On Hasura DDN:** Hasura's current flagship product no longer bills by the hour at all. It bills **$5–$30 per "active model" per month**, where an active model is *"any model or command
 in the metadata that is accessed more than 1000 times/month"* (Hasura's own wording). Query a
 table fewer than 1,000 times and it's free; cross that line and the whole table bills for the
 month. This is a genuinely different pricing unit, not a rate to put side-by-side with an
-hourly number — lead with the structural difference (usage-gated per-table vs. Provisa's
+hourly number. Lead with the structural difference (usage-gated per-table vs. Provisa's
 predictable hourly occupancy) rather than trying to force a single "cheaper/more expensive"
 comparison.
 
@@ -43,8 +42,7 @@ comparison.
 | Typical entry deal | ~$144,000/yr (48-core deployment) | Six-figure and up | Six-figure and up |
 | Free tier | Yes — under $1M company revenue and ≤8 cores | No | No |
 
-**Key talking point:** Provisa's on-prem rate is transparent and public — no "contact sales for
-a quote" friction. At a comparable footprint, Provisa's per-core rate runs well under Denodo's
+**Key talking point:** Provisa's on-prem rate is transparent and public, with no "contact sales for a quote" friction. At a comparable footprint, Provisa's per-core rate runs well under Denodo's
 implied per-CPU rate, with no separate coordinator/worker pricing to negotiate.
 
 ## Quick-reference cheat sheet
@@ -56,8 +54,7 @@ implied per-CPU rate, with no separate coordinator/worker pricing to negotiate.
 - **Cheaper and simpler on-prem:** Provisa publishes its rate; Denodo and Starburst Enterprise
   both require a sales conversation to get a number.
 - **Broader reach, every comparison:** Provisa is the only one of the four that reaches
-  warehouses, graph, MongoDB, and MSSQL under a single federated query with persistent
-  protocol surfaces — not just GraphQL (Hasura) or Trino-reachable sources (Starburst).
+  warehouses, graph, MongoDB, and MSSQL under a single federated query with persistent protocol surfaces. Hasura reaches only through GraphQL, and Starburst only the sources Trino reaches.
 
 ## Sourcing
 

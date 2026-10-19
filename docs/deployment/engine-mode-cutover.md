@@ -32,8 +32,7 @@ egress.
 
 ## Runbook
 
-Target instance: **cloud-dev** (`cloud.provisa.dev`, project `provisa-test-473`). Wake the
-coordinator VM first — it stops when idle.
+Target instance: **cloud-dev** (`cloud.provisa.dev`, project `provisa-test-473`). Wake the coordinator VM first; it stops when idle.
 
 ### 1. Raise the notice
 
@@ -60,7 +59,7 @@ terraform apply
 
 Read the plan before approving. Expect the cluster to be destroyed and recreated, plus
 `google_container_node_pool.system` and one `.shard[...]` per entry in `var.shared_shards`. The
-coordinator VM is **not** replaced — only its `startup-script` metadata changes, and metadata is
+coordinator VM is **not** replaced. Only its `startup-script` metadata changes, and metadata is
 updated in place.
 
 ### 3. Repoint the running control plane
@@ -102,4 +101,4 @@ provisa maintenance off
 ## Rollback
 
 Set `engine_cluster_mode` back, repeat steps 2-4. Rollback is another cluster replacement with the
-same shard loss, so it costs a second window — decide before step 2, not during.
+same shard loss, so it costs a second window. Decide before step 2, not during.

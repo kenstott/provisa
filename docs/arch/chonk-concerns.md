@@ -42,7 +42,7 @@ hold under `standard_conforming_strings = off`, and it is unnecessary when the
 driver already parameterises.
 
 **Why it matters for Provisa specifically.** `query_text` is caller-supplied and
-reaches this function on the BM25 lane — which the integration design turns *on*
+reaches this function on the BM25 lane, which the integration design turns *on*
 for every search, because BM25 is what anchors exact names and identifiers. The
 injection sits directly under an MCP tool argument.
 
@@ -60,8 +60,7 @@ chunks = self.search(..., _bypass_chunk_filter=True)
 ```
 
 `chunk_filter` is the hook the integration uses for the row-grain RLS re-check.
-`ask()` disables it by design and offers `redaction_filter` in its place — but
-`redaction_filter` is optional and defaults to `None` (`:889-891`), so
+`ask()` disables it by design and offers `redaction_filter` in its place, but `redaction_filter` is optional and defaults to `None` (`:889-891`), so
 constructing `EnhancedSearch(chunk_filter=rls_check)` and calling `ask()` returns
 an answer generated from unfiltered chunks with no error and no warning.
 
@@ -72,7 +71,7 @@ suppression that should have happened before generation.
 
 **Fix in Provisa, not chonk.** Do not call `ask()`. Call `search()`, where
 `chunk_filter` always runs, and own generation. This is already the design in
-[rag-features.md](rag-features.md) — recorded here because the failure is silent
+[rag-features.md](rag-features.md). It is recorded here because the failure is silent
 and someone will reach for `ask()` as the convenient one-shot call.
 
 **Fix in chonk, if upstreamed.** Raise when `chunk_filter` is set and `ask()` is
@@ -85,7 +84,7 @@ The pieces exist and are correct. `get_document_hash`, `register_document` and
 versioning and return `skipped` / `added` / `updated`. Nothing reads them to make
 a decision.
 
-`sync_document` has no internal caller anywhere in chonk — every reference is an
+`sync_document` has no internal caller anywhere in chonk: every reference is an
 export or a docstring example.
 
 The queue worker (`chonk/_ingest_worker.py:66-74`) computes the hash *after*
@@ -98,16 +97,13 @@ backend.add_chunks(chunks, emb, namespace=namespace)
 backend.register_document(chunks[0].document_name, content_hash, ...)
 ```
 
-The hash is recorded and never consulted. The expensive step — embedding — has
-already run.
+The hash is recorded and never consulted. The expensive step, embedding, has already run.
 
 The main indexer path (`chonk/indexer.py:134-215`) is worse: it crawls, embeds
 every chunk unconditionally, and calls `add_document`. It never calls
 `register_document` at all, so on that path no version record exists.
 
-**Impact.** The contract the integration assumes — index a document once, recheck
-versions on a schedule, and on change remove the original entries and reindex —
-does not hold. Every build re-embeds the whole corpus. This is the single largest
+**Impact.** The contract the integration assumes does not hold: index a document once, recheck versions on a schedule, and on change remove the original entries and reindex. Every build re-embeds the whole corpus. This is the single largest
 running cost of the integration, and it is entirely avoidable with code already
 written.
 
@@ -135,25 +131,23 @@ For every listed scheme the freshness check is skipped entirely, so the source i
 treated as current forever. A changed remote document is never picked up. The
 cache is only invalidated by a local file's mtime.
 
-This is not a churn problem — it is a staleness problem, and it is silent. The
+This is not a churn problem. It is a staleness problem, and it is silent. The
 namespace reports as valid while serving content that no longer matches the
 source.
 
 **Fix.** Replace the skip with a scheme-appropriate freshness probe: HTTP `HEAD`
 for ETag or `Last-Modified`, `HeadObject` for S3, the commit SHA for `github://`.
-`sync_document` already takes an ETag as the content hash, so the two fixes
-compose — finding 3 provides the mechanism this one needs.
+`sync_document` already takes an ETag as the content hash, so the two fixes compose: finding 3 provides the mechanism this one needs.
 
 ## 5. `hdfs://` rebuilds on every pass — Medium
 
 Same block. `hdfs://` is absent from the prefix list, so `os.path.getmtime()` is
-called on an HDFS URI, raises `OSError`, and the `except` returns `False` —
-cache invalid, unconditionally, every time.
+called on an HDFS URI, raises `OSError`, and the `except` returns `False`, so the cache is invalid unconditionally, every time.
 
 The two branches produce opposite failures: a scheme in the list is never
 refreshed, a remote scheme missing from it is always rebuilt.
 
-**Fix.** Folded into finding 4 — a real freshness probe per scheme removes both
+**Fix.** Folded into finding 4: a real freshness probe per scheme removes both
 the allowlist and its gap.
 
 ## 6. Refresh loop swallows failures with no log — Medium
@@ -173,8 +167,7 @@ except Exception:
 Two bare `except Exception: return` blocks with no logging. `_loop`
 (`chonk/lifecycle.py:217-219`) then waits out the interval and tries again.
 
-With the default `interval_seconds = 3600`, a persistent failure — a moved DB
-path, a permissions change — means the corpus silently stops refreshing and
+With the default `interval_seconds = 3600`, a persistent failure (a moved DB path, a permissions change) means the corpus silently stops refreshing and
 nothing surfaces it. The next signal is a user noticing stale answers.
 
 **Fix.** Log at error level with the exception before returning. The
@@ -192,7 +185,7 @@ limited = f"SELECT * FROM ({sql}) _q LIMIT {row_limit}"
 
 Deduplication happens in Python *after* the fetch (`chonk/ner/_schema_vocab.py:74-104`),
 so the cap truncated raw rows, not distinct terms. The damage is worst on a
-low-cardinality column over a large table — exactly the case where the
+low-cardinality column over a large table, exactly the case where the
 vocabulary should have been complete and small. A partial vocabulary weakens
 entity matching silently rather than failing, and entity matching feeds the
 entity-adjacent retrieval lane and the co-occurrence graph, so the loss
@@ -212,8 +205,7 @@ scope.
 `chonk/indexer.py:158-161, 179-181, 200-208`. Each phase catches `Exception`,
 calls `self._on_error(phase, exc)` and `return 0`.
 
-The callback fires, so the failure is not fully lost — but the return value is
-`0`, identical to a source that legitimately produced no chunks. A caller
+The callback fires, so the failure is not fully lost, but the return value is `0`, identical to a source that legitimately produced no chunks. A caller
 counting indexed chunks to decide whether a namespace built correctly cannot
 distinguish "this folder is empty" from "the crawl threw."
 
@@ -225,8 +217,7 @@ callbacks rather than infer health from chunk counts.
 
 ## Consequence for the integration
 
-Findings 1 and 2 are security defects on the exact paths the design depends on —
-the BM25 lane and the `chunk_filter` hook. Neither can ship unfixed.
+Findings 1 and 2 are security defects on the exact paths the design depends on: the BM25 lane and the `chunk_filter` hook. Neither can ship unfixed.
 
 Findings 3 and 4 together mean the stated refresh contract does not hold in
 either direction: unchanged documents are re-embedded on every build, and changed

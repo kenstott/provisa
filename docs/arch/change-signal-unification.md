@@ -13,8 +13,7 @@ with overlapping value sets:
 
 `change_signal` is the union: `∩ freshness_mode = {ttl, probe, ttl_probe}` (identical),
 `∩ live.strategy = {native, debezium, kafka}` (identical). `poll` is `ttl`/`probe` with a
-watermark. The same axis is expressed three times, and `change_signal` — the field designed
-to be authoritative — is read nowhere.
+watermark. The same axis is expressed three times, and `change_signal`, the field designed to be authoritative, is read nowhere.
 
 ## Target model
 
@@ -40,7 +39,7 @@ to_freshness_mode(sig) -> str | None   # poll → same value; push → None (eve
 to_provider(sig, source_type) -> str   # native → source_type; debezium → "debezium"; kafka → "kafka"; poll → source_type
 ```
 
-Push signals skip the freshness gate — their landed copy is updated by applying incoming
+Push signals skip the freshness gate: their landed copy is updated by applying incoming
 events, not by polling.
 
 ## Rewired sites
@@ -68,11 +67,10 @@ events, not by polling.
 ## Landing (consumption layer, shipped)
 
 `change_signal.select_landing_shape(sig, watermark_column)` maps the signal to a landing shape,
-applied by the DB-agnostic Core ops in `federation/materialize_exec.py` (driven by
-`federation/store_writer.py`) — not by engine CTAS in `mv/refresh.py`:
+applied by the DB-agnostic Core ops in `federation/materialize_exec.py` (driven by `federation/store_writer.py`), not by engine CTAS in `mv/refresh.py`:
 
-- Replace: `DELETE`+`INSERT` — poll signal with no watermark.
-- Append: `INSERT ... WHERE watermark > cursor` — poll signal with a `watermark_column` set.
+- Replace: `DELETE`+`INSERT`, for a poll signal with no watermark.
+- Append: `INSERT ... WHERE watermark > cursor`, for a poll signal with a `watermark_column` set.
 - CDC-apply: consume the debezium/kafka provider and upsert/tombstone by primary key into the
   landed table via the dialect-agnostic `Connection.upsert`. This is what makes landed deletes work.
   (A subscription still delivers inserts and updates only.)
@@ -82,7 +80,7 @@ applied by the DB-agnostic Core ops in `federation/materialize_exec.py` (driven 
 V1, no migrations. Derivation happens at the read sites rather than by dropping the fields:
 `change_signal` is authoritative, and `live.strategy`/`live.watermark_column` remain on the model
 as a legacy fallback read through `resolve_effective` / `signal_from_strategy`. Existing JSONB rows
-carrying `live.strategy` keep working — the resolver maps `strategy → change_signal` when the
+carrying `live.strategy` keep working: the resolver maps `strategy → change_signal` when the
 latter is unset.
 
 ## Sequencing (each phase leaves the tree green)

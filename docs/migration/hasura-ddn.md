@@ -98,8 +98,7 @@ and sets `columns[].alias` to the GraphQL field name when they differ.
    (the first directory component under the project root). Without `--domain-map`, each
    subgraph name becomes a domain ID directly. Use `--domain-map` to rename them.
 4. **Check RLS rules.** DDN filter predicates are converted to SQL approximations.
-   Nested boolean logic (`_and`/`_or`/`_not`) is supported but complex
-   relationship-traversing filters may need manual review.
+   Nested boolean logic (`_and`/`_or`/`_not`) converts; review filters that traverse relationships by hand.
 5. **Review aggregate config.** Aggregate expressions are written to a sidecar
    `provisa-aggregates.yaml` file and converted to Provisa aggregate config.
 6. **Review warnings.** The converter prints a summary to stderr listing skipped
@@ -135,7 +134,7 @@ name). If no Model uses the given ObjectType, the relationship is skipped silent
 ### Column aliases everywhere
 
 If your DDN project uses `fieldMapping` extensively, expect most columns to have
-an `alias` in the output. This is correct behavior -- `name` is the physical column,
+an `alias` in the output. That is expected: `name` is the physical column,
 `alias` is the GraphQL name your application used.
 
 ### Aggregate expressions

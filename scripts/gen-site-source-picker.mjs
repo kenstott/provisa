@@ -165,7 +165,6 @@ export const COUNTED = [
   "docs/competitive_analysis.md",
   "docs/marketing.md",
   "mkdocs.yml",
-  "provisa-ui/public/guides-md/readme.md",
   "site/index.html",
   "site/vs/hasura.html",
   "site/why/data-mesh.html",

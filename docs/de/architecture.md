@@ -6,7 +6,7 @@ Provisa ist eine konfigurationsgesteuerte Datenvirtualisierungsplattform: Föder
 
 Das Modell ist der einzige Ort, an dem Bedeutung hinzukommt. Um es zu erweitern, registrieren Sie neue Datenquellen oder Aggregate in der Datenvirtualisierungsschicht. Das hält eine saubere Trennung aufrecht, weil nichts außerhalb der Plattform Semantik hinzufügen kann, und erst das macht echte Data Governance möglich. Der Compiler setzt es durch: Der Katalog genehmigter Beziehungen ist die maßgebliche Quelle, gleich in welcher Abfragesprache.
 
-Provisa ist darauf ausgelegt, für operative Bedürfnisse hochperformant und für analytische Bedürfnisse von Unternehmen hochskalierbar zu sein. Eine einzige Plattform bedient beides, ohne Geschwindigkeit oder Skalierbarkeit zu opfern.
+Eine Plattform bedient operative und analytische Lesezugriffe. Eine Abfrage auf eine einzige Quelle geht über deren nativen Treiber direkt zu dieser Quelle und ist meist in unter 100 ms zurück, und eine Abfrage, die Quellen verknüpft, läuft in der Federation-Engine, die Sie für analytische Last gewählt haben.
 
 ```text
 Config YAML → PG Metadata → Federation Catalogs

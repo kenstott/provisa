@@ -6,7 +6,7 @@ Provisa is a config-driven data virtualization platform: federation, metrics, on
 
 The model is the only place meaning is added. To add to it, you register new data sources or aggregates in the data virtualization layer. That keeps a clean separation, since nothing can add semantics outside the platform, and it's what makes real data governance possible. The compiler enforces it: the approved relationship catalog is the source of truth, whichever query language is used.
 
-Provisa is designed to be highly performant for operational needs and highly scalable for enterprise analytical needs. A single platform serves both without sacrificing speed or scalability.
+One platform serves operational and analytical reads. A query that touches one source goes straight to that source over its native driver, typically back in under 100 ms, and a query that joins sources runs in the federation engine you chose for analytical scale.
 
 ```text
 Config YAML → PG Metadata → Federation Catalogs

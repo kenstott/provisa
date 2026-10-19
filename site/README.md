@@ -48,7 +48,7 @@ python3 -m http.server 8080 --directory site
 The three installer cards resolve to the latest GitHub Release assets at runtime
 via the GitHub API (`Provisa-<tag>-macOS.dmg`, `-linux-x86_64.AppImage`,
 `-windows-x64.exe`). If the API is unreachable or no release exists yet, each card
-falls back to its default href — the releases page. The visitor's OS is highlighted
+falls back to its default href, the releases page. The visitor's OS is highlighted
 client-side. No build step; the resolution is plain fetch + regex in `index.html`.
 
 ## Deploy — Cloudflare Pages (provisa.dev)
@@ -70,9 +70,7 @@ One-time: create the `provisa-dev` Pages project and bind the `provisa.dev`
 custom domain in the Cloudflare dashboard. `_headers` sets caching + security
 headers (honored by Cloudflare Pages).
 
-The page is also portable to any static host (GitHub Pages, Netlify, S3, or the
-app's own static mount) — but the mailing-list signup only runs on Cloudflare
-Pages (it needs the Pages Function + D1).
+The page is also portable to any static host (GitHub Pages, Netlify, S3, or the app's own static mount), but the mailing-list signup only runs on Cloudflare Pages (it needs the Pages Function + D1).
 
 ## Mailing list (private, account-only)
 
@@ -117,14 +115,13 @@ Spam is handled by the honeypot; for a stronger guard, add
 [Turnstile](https://developers.cloudflare.com/turnstile/) to the form and verify
 the token in `subscribe.js`.
 
-## License registration (REQ-1793, double opt-in)
+## License registration (double opt-in)
 
 `/register` collects the fields `provisa/licensing/license.py` requires (company, position,
 role, name, email, machine ID), stores them unconfirmed in D1, and emails a confirmation link
 ([functions/api/register.js](functions/api/register.js)). Clicking the link
 ([functions/api/register/confirm.js](functions/api/register/confirm.js)) signs the license with
-the production Ed25519 key and emails `license.json` — nothing is signed or sent before that
-click, so an email you don't control can never receive a working license.
+the production Ed25519 key and emails `license.json`. Nothing is signed or sent before that click, so an email you don't control can never receive a working license.
 
 One-time setup (in addition to the mailing-list steps above, same D1 database):
 
@@ -150,5 +147,5 @@ npx --yes wrangler d1 execute provisa-subscribers --remote --file=site/schema.sq
 `scripts/generate_license_keypair.py` also prints the raw private-key seed hex for
 `PROVISA_LICENSE_PRIVKEY`, Provisa's own manual issuance path
 ([scripts/issue_license.py](../scripts/issue_license.py)) for a license requested outside this
-form (e.g. by email). Both paths sign for the same public key — keep the seed and the PKCS8
+form (e.g. by email). Both paths sign for the same public key, so keep the seed and the PKCS8
 secret in sync if either is ever rotated.

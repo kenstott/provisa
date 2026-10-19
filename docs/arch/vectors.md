@@ -57,7 +57,7 @@ columns:
     embedding_source: description             # optional: originating text column
 ```
 
-`embedding_source` is informational — documents what text generated the vector. Not required for externally generated embeddings.
+`embedding_source` is informational: it records what text generated the vector. Not required for externally generated embeddings.
 
 ### Source Capability Detection
 
@@ -145,7 +145,7 @@ The index is as fresh as its replica. It is built with each replica build and sw
 
 ## Phase 3: Declarative Embedding Generation
 
-Provisa generates and maintains embedding columns from source text. The embedding column may not exist in the source — Provisa creates and owns it.
+Provisa generates and maintains embedding columns from source text. The embedding column may not exist in the source; Provisa creates and owns it.
 
 ### Declaration
 
@@ -217,7 +217,7 @@ Embedding columns participate in the full Provisa governance stack:
 | Sensitivity tiers | ✅ — `restricted` tier blocks cosine_similarity() for unauthorized roles |
 | Per-role schema visibility | ✅ — embedding columns hidden from roles without visibility |
 
-Column masking does not apply to embedding columns — a vector cannot be partially masked and remain semantically meaningful. Access control is enforced via visibility (hide entirely), RLS (filter rows), sensitivity tier (block search), and domain boundary rules. An embedding column is either visible and searchable for a given role, or absent from the schema entirely.
+Column masking does not apply to embedding columns, because a vector cannot be partially masked and remain semantically meaningful. Access control is enforced via visibility (hide entirely), RLS (filter rows), sensitivity tier (block search), and domain boundary rules. An embedding column is either visible and searchable for a given role, or absent from the schema entirely.
 
 ---
 

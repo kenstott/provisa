@@ -6,7 +6,7 @@ Provisa est une plateforme de virtualisation de données pilotée par configurat
 
 Le modèle est le seul endroit où du sens est ajouté. Pour l'enrichir, vous enregistrez de nouvelles sources de données ou de nouveaux agrégats dans la couche de virtualisation des données. Cela garde une séparation nette, car rien ne peut ajouter de sémantique en dehors de la plateforme, et c'est ce qui rend possible une vraie gouvernance des données. Le compilateur l'impose : le catalogue des relations approuvées fait foi, quel que soit le langage de requête.
 
-Provisa est conçu pour être hautement performant pour les besoins opérationnels et hautement scalable pour les besoins analytiques d'entreprise. Une plateforme unique sert les deux sans sacrifier la vitesse ou la scalabilité.
+Une seule plateforme sert les lectures opérationnelles et analytiques. Une requête qui touche une seule source va directement à cette source par son pilote natif, et revient en général en moins de 100 ms ; une requête qui joint des sources s'exécute dans le moteur de fédération choisi pour l'échelle analytique.
 
 ```text
 Config YAML → PG Metadata → Federation Catalogs

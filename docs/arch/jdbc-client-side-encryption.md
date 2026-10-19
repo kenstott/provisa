@@ -50,8 +50,7 @@ jdbc:provisa://host:8001?kms_provider=aws&kms_key_arn=arn:aws:kms:us-east-1:...:
 - `KmsProviders` — factory selecting the provider by `kms_provider`, wired into
   `ProvisaConnection.configureEncryption`.
 
-Each cloud provider holds only the CMK identifier plus an injected SDK client — never
-raw key material — and maps any SDK failure (including an `AccessDenied` /
+Each cloud provider holds only the CMK identifier plus an injected SDK client, never raw key material, and maps any SDK failure (including an `AccessDenied` /
 `PERMISSION_DENIED` / forbidden result on a revoked grant) to `DecryptionException`.
 Revoking the `kms:Decrypt` (or Key Vault / IAM) grant is an instant lockout kill
 switch (REQ-694).

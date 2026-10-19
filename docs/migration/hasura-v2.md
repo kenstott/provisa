@@ -156,8 +156,8 @@ again.
 ### Wildcard columns
 
 When a permission grants `columns: "*"`, the converter creates a single wildcard
-column entry. After conversion, you may want to replace it with explicit column
-lists by inspecting the actual database schema.
+column entry. After conversion, replace it with an explicit column list
+read from the database schema.
 
 ### Event trigger fidelity
 
