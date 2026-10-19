@@ -13,7 +13,9 @@
 Every transport refuses it (security.meta_role.RoleNotHeld) and hands it here with what it knows
 of the call (:class:`Probe`). What follows depends on the credential and the transport:
 
-- a personal access token, on any transport: the token is suspended;
+- a personal access token, on any transport: the token is suspended -- but a demo sandbox
+  visitor's, its browser tab's only credential, is refused and recorded on the HTTP API as a
+  session is;
 - a token an external identity provider signed, over MCP or a transport that is never a browser
   session (pgwire, Bolt, Flight, gRPC): that principal's token access to the org is suspended.
   On the HTTP API the browser presents the same bearer, and a tab still naming a role the user
@@ -118,10 +120,26 @@ def suspension(probe: Probe) -> str | None:
     if probe.transport == "stdio":
         return None
     if probe.credential == "pat" and probe.credential_id:
+        # A demo sandbox visitor's token is its browser tab's only credential: on the HTTP API it
+        # is the tab's session in all but name, and refused and recorded as a session is.
+        if probe.transport == "http" and _sandbox_visitor(probe):
+            return None
         return "token"
     if probe.credential == "idp" and probe.transport in NOT_A_BROWSER and probe.user_id:
         return "principal"
     return None
+
+
+def _sandbox_visitor(probe: Probe) -> bool:
+    """Whether ``probe``'s caller is a demo sandbox's own visitor (provisa.api.demo_sandbox)."""
+    from provisa.core.org_ids import is_sandbox_tier_org, is_template_org
+
+    org = probe.org_id
+    if org is None or not is_sandbox_tier_org(org) or is_template_org(org):
+        return False
+    from provisa.api.demo_sandbox import visitor_user_id
+
+    return probe.user_id == visitor_user_id(org)
 
 
 def refusal(probe: Probe, said: str) -> str:

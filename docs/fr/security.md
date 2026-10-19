@@ -533,13 +533,14 @@ Le reste dépend de l'identifiant et du transport :
 
 | Identifiant | Transport | Suspendu |
 |---|---|---|
+| Le jeton d'un visiteur d'un bac à sable de démo | l'API HTTP | rien |
 | Jeton d'accès personnel | tout | le jeton |
 | Jeton signé par un fournisseur d'identité externe | MCP, pgwire, Bolt, Flight, gRPC | l'accès par jeton du principal à l'organisation |
 | Jeton signé par un fournisseur d'identité externe | l'API HTTP | rien |
 | Une session ou un mot de passe que ce déploiement vérifie | tout | rien |
 | Une session MCP locale (sans bearer) | MCP | rien ; l'événement va au journal de l'opérateur |
 
-L'API HTTP fait exception parce que le navigateur présente le même jeton bearer qu'un client d'API, si bien que le serveur ne peut pas les distinguer, et qu'un onglet qui nomme encore un rôle que l'utilisateur a perdu depuis (après qu'un administrateur a modifié ses rôles, ou un changement d'organisation) est courant. MCP et les autres transports ne sont jamais une session de navigateur. L'événement y est refusé, enregistré et notifié comme tout autre ; seule la suspension est omise.
+L'API HTTP fait exception parce que le navigateur présente le même jeton bearer qu'un client d'API, si bien que le serveur ne peut pas les distinguer, et qu'un onglet qui nomme encore un rôle que l'utilisateur a perdu depuis (après qu'un administrateur a modifié ses rôles, ou un changement d'organisation) est courant. MCP et les autres transports ne sont jamais une session de navigateur. L'événement y est refusé, enregistré et notifié comme tout autre ; seule la suspension est omise. Le jeton d'un visiteur d'un bac à sable de démo est un jeton d'accès personnel, mais c'est le seul identifiant de l'onglet du navigateur du visiteur ; sur l'API HTTP il est donc traité comme une session : refusé et consigné, jamais suspendu.
 
 Un jeton suspendu est refusé comme un jeton révoqué. Un principal dont l'accès par jeton est suspendu est refusé sur MCP, pgwire, Bolt, Flight et gRPC dans cette organisation, et peut toujours se connecter à l'interface. Seul un administrateur lève une suspension ; rien ne la lève au bout d'un délai. Équipe → Accès suspendu liste chaque suspension avec l'événement qui l'a causée et la lève (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
 

@@ -533,13 +533,14 @@ Il resto dipende dalla credenziale e dal trasporto:
 
 | Credenziale | Trasporto | Sospeso |
 |---|---|---|
+| Il token del visitatore di una sandbox demo | l'API HTTP | niente |
 | Token di accesso personale | qualsiasi | il token |
 | Token firmato da un provider di identità esterno | MCP, pgwire, Bolt, Flight, gRPC | l'accesso tramite token del principal all'organizzazione |
 | Token firmato da un provider di identità esterno | l'API HTTP | niente |
 | Una sessione o una password che questo deployment verifica | qualsiasi | niente |
 | Una sessione MCP locale (senza bearer) | MCP | niente; l'evento va nel log dell'operatore |
 
-L'API HTTP fa eccezione perché il browser presenta lo stesso token bearer di un client API, quindi il server non può distinguerli, e una scheda che nomina ancora un ruolo che l'utente ha perso (dopo che un amministratore ne ha cambiato i ruoli, o dopo un cambio di organizzazione) è normale. MCP e gli altri trasporti non sono mai una sessione del browser. Lì l'evento viene rifiutato, registrato e notificato come qualsiasi altro; si omette solo la sospensione.
+L'API HTTP fa eccezione perché il browser presenta lo stesso token bearer di un client API, quindi il server non può distinguerli, e una scheda che nomina ancora un ruolo che l'utente ha perso (dopo che un amministratore ne ha cambiato i ruoli, o dopo un cambio di organizzazione) è normale. MCP e gli altri trasporti non sono mai una sessione del browser. Lì l'evento viene rifiutato, registrato e notificato come qualsiasi altro; si omette solo la sospensione. Il token del visitatore di una sandbox demo è un token di accesso personale, ma è l'unica credenziale della scheda del browser del visitatore, quindi sull'API HTTP è trattato come una sessione: rifiutato e registrato, mai sospeso.
 
 Un token sospeso viene rifiutato come uno revocato. Un principal il cui accesso tramite token è sospeso viene rifiutato su MCP, pgwire, Bolt, Flight e gRPC in quell'organizzazione, e può ancora accedere all'interfaccia. Solo un amministratore revoca una sospensione; niente la revoca allo scadere di un tempo. Team → Accesso sospeso elenca ogni sospensione con l'evento che l'ha causata e la revoca (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
 

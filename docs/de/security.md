@@ -533,13 +533,14 @@ Was sonst geschieht, hängt von Anmeldedaten und Transport ab:
 
 | Anmeldedaten | Transport | Gesperrt |
 |---|---|---|
+| Das Token eines Demo-Sandbox-Besuchers | die HTTP-API | nichts |
 | Persönliches Zugriffstoken | jeder | das Token |
 | Von einem externen Identitätsanbieter signiertes Token | MCP, pgwire, Bolt, Flight, gRPC | der Token-Zugriff des Prinzipals auf die Organisation |
 | Von einem externen Identitätsanbieter signiertes Token | die HTTP-API | nichts |
 | Eine Sitzung oder ein Passwort, das dieses Deployment selbst prüft | jeder | nichts |
 | Eine lokale MCP-Sitzung (kein Bearer) | MCP | nichts; das Ereignis geht in das Protokoll des Betreibers |
 
-Die HTTP-API ist die Ausnahme, weil der Browser dasselbe Bearer-Token vorlegt wie ein API-Client, sodass der Server sie nicht unterscheiden kann, und ein Tab, der noch eine Rolle nennt, die der Benutzer inzwischen verloren hat (nachdem ein Administrator seine Rollen geändert hat oder nach einem Organisationswechsel), alltäglich ist. MCP und die anderen Transporte sind nie eine Browser-Sitzung. Dort wird das Ereignis wie jedes andere abgelehnt, aufgezeichnet und gemeldet; nur die Sperre entfällt.
+Die HTTP-API ist die Ausnahme, weil der Browser dasselbe Bearer-Token vorlegt wie ein API-Client, sodass der Server sie nicht unterscheiden kann, und ein Tab, der noch eine Rolle nennt, die der Benutzer inzwischen verloren hat (nachdem ein Administrator seine Rollen geändert hat oder nach einem Organisationswechsel), alltäglich ist. MCP und die anderen Transporte sind nie eine Browser-Sitzung. Dort wird das Ereignis wie jedes andere abgelehnt, aufgezeichnet und gemeldet; nur die Sperre entfällt. Das Token eines Demo-Sandbox-Besuchers ist ein persönliches Zugriffstoken, aber die einzige Anmeldung des Browser-Tabs des Besuchers; auf der HTTP-API wird es daher wie eine Sitzung behandelt: abgelehnt und protokolliert, nie gesperrt.
 
 Ein gesperrtes Token wird wie ein widerrufenes abgelehnt. Ein Prinzipal, dessen Token-Zugriff gesperrt ist, wird in dieser Organisation auf MCP, pgwire, Bolt, Flight und gRPC abgelehnt und kann sich weiterhin in der UI anmelden. Nur ein Administrator hebt eine Sperre auf; nichts hebt sie nach Zeitablauf auf. Team → Gesperrter Zugriff listet jede Sperre mit dem Ereignis dahinter und hebt sie auf (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
 

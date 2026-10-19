@@ -533,13 +533,14 @@ Lo demás depende de la credencial y del transporte:
 
 | Credencial | Transporte | Se suspende |
 |---|---|---|
+| El token de un visitante de un sandbox de demo | la API HTTP | nada |
 | Token de acceso personal | cualquiera | el token |
 | Token firmado por un proveedor de identidad externo | MCP, pgwire, Bolt, Flight, gRPC | el acceso por token del principal a la organización |
 | Token firmado por un proveedor de identidad externo | la API HTTP | nada |
 | Una sesión o contraseña que este despliegue comprueba | cualquiera | nada |
 | Una sesión MCP local (sin bearer) | MCP | nada; el evento va al registro del operador |
 
-La API HTTP es la excepción porque el navegador presenta el mismo token bearer que un cliente de API, de modo que el servidor no puede distinguirlos, y una pestaña que aún nombra un rol que el usuario ha perdido (después de que un administrador cambie sus roles, o tras cambiar de organización) es algo habitual. MCP y los demás transportes nunca son una sesión de navegador. Allí el evento se rechaza, se registra y se notifica como cualquier otro; solo se omite la suspensión.
+La API HTTP es la excepción porque el navegador presenta el mismo token bearer que un cliente de API, de modo que el servidor no puede distinguirlos, y una pestaña que aún nombra un rol que el usuario ha perdido (después de que un administrador cambie sus roles, o tras cambiar de organización) es algo habitual. MCP y los demás transportes nunca son una sesión de navegador. Allí el evento se rechaza, se registra y se notifica como cualquier otro; solo se omite la suspensión. El token de un visitante de un sandbox de demo es un token de acceso personal, pero es la única credencial de la pestaña del navegador del visitante, así que en la API HTTP se trata como una sesión: se rechaza y se registra, nunca se suspende.
 
 Un token suspendido se rechaza como uno revocado. Un principal cuyo acceso por token está suspendido se rechaza en MCP, pgwire, Bolt, Flight y gRPC en esa organización, y aún puede iniciar sesión en la interfaz. Solo un administrador levanta una suspensión; nada la levanta por tiempo. Equipo → Acceso suspendido enumera cada suspensión con el evento que la causó y la levanta (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
 

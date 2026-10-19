@@ -52,6 +52,20 @@ def test_a_personal_access_token_is_suspended_on_every_transport(transport):
     assert role_probe.suspension(_probe("pat", transport)) == "token"
 
 
+def test_a_sandbox_visitors_token_on_the_http_api_is_refused_not_suspended():
+    """A demo sandbox visitor's token is its browser tab's only credential, the tab's session in
+    all but name: on the HTTP API it is refused and recorded, as a session is. Anywhere else, and
+    any other personal access token, is suspended."""
+    visitor = {"org_id": "sbx92ef25e575ab", "user_id": "sandbox-visitor-sbx92ef25e575ab"}
+    assert role_probe.suspension(_probe("pat", "http", **visitor)) is None
+    assert role_probe.suspension(_probe("pat", "mcp", **visitor)) == "token"
+    # Another person's token in a sandbox, and a visitor's id outside one, are tokens like any.
+    other = {"org_id": "sbx92ef25e575ab", "user_id": "ada"}
+    assert role_probe.suspension(_probe("pat", "http", **other)) == "token"
+    template = {"org_id": "sbxtplalpha", "user_id": "sandbox-visitor-sbxtplalpha"}
+    assert role_probe.suspension(_probe("pat", "http", **template)) == "token"
+
+
 @pytest.mark.parametrize("transport", ["mcp", "pgwire", "bolt", "flight", "airport", "grpc"])
 def test_an_idp_principal_is_suspended_where_no_browser_calls(transport):
     assert role_probe.suspension(_probe("idp", transport)) == "principal"

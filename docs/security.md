@@ -537,13 +537,14 @@ What else happens depends on the credential and the transport:
 
 | Credential | Transport | Suspended |
 |---|---|---|
+| A demo sandbox visitor's token | the HTTP API | nothing |
 | Personal access token | any | the token |
 | Token signed by an external identity provider | MCP, pgwire, Bolt, Flight, gRPC | the principal's token access to the org |
 | Token signed by an external identity provider | the HTTP API | nothing |
 | A session or password this deployment checks | any | nothing |
 | A local MCP session (no bearer) | MCP | nothing; the event goes to the operator's log |
 
-The HTTP API is the exception because the browser presents the same bearer token an API client would, so the server cannot tell them apart, and a tab still naming a role the user has since lost (after an administrator changes their roles, or an org switch) is routine. MCP and the other transports are never a browser session. There the event is refused, recorded and notified like any other, and only the suspension is withheld.
+The HTTP API is the exception because the browser presents the same bearer token an API client would, so the server cannot tell them apart, and a tab still naming a role the user has since lost (after an administrator changes their roles, or an org switch) is routine. MCP and the other transports are never a browser session. There the event is refused, recorded and notified like any other, and only the suspension is withheld. A demo sandbox visitor's token is a personal access token, but it is the visitor's browser tab's only credential, so on the HTTP API it is treated as a session is: refused and recorded, never suspended.
 
 A suspended token is refused as a revoked one is. A principal whose token access is suspended is refused on MCP, pgwire, Bolt, Flight and gRPC in that org, and can still sign in to the UI. Only an administrator lifts a suspension; nothing lifts it on a timer. Team → Suspended access lists each suspension with the event behind it and lifts it (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
 

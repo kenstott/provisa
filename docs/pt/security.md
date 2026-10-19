@@ -533,13 +533,14 @@ O restante depende da credencial e do transporte:
 
 | Credencial | Transporte | Suspenso |
 |---|---|---|
+| O token do visitante de um sandbox de demonstração | a API HTTP | nada |
 | Token de acesso pessoal | qualquer | o token |
 | Token assinado por um provedor de identidade externo | MCP, pgwire, Bolt, Flight, gRPC | o acesso por token do principal à organização |
 | Token assinado por um provedor de identidade externo | a API HTTP | nada |
 | Uma sessão ou senha que esta implantação verifica | qualquer | nada |
 | Uma sessão MCP local (sem bearer) | MCP | nada; o evento vai para o log do operador |
 
-A API HTTP é a exceção porque o navegador apresenta o mesmo token bearer que um cliente de API, de modo que o servidor não consegue distingui-los, e uma aba que ainda nomeia um papel que o usuário perdeu (depois que um administrador mudou seus papéis, ou após uma troca de organização) é rotineira. MCP e os demais transportes nunca são uma sessão de navegador. Lá o evento é recusado, registrado e notificado como qualquer outro; apenas a suspensão é omitida.
+A API HTTP é a exceção porque o navegador apresenta o mesmo token bearer que um cliente de API, de modo que o servidor não consegue distingui-los, e uma aba que ainda nomeia um papel que o usuário perdeu (depois que um administrador mudou seus papéis, ou após uma troca de organização) é rotineira. MCP e os demais transportes nunca são uma sessão de navegador. Lá o evento é recusado, registrado e notificado como qualquer outro; apenas a suspensão é omitida. O token do visitante de um sandbox de demonstração é um token de acesso pessoal, mas é a única credencial da aba do navegador do visitante; por isso, na API HTTP é tratado como uma sessão: recusado e registrado, nunca suspenso.
 
 Um token suspenso é recusado como um revogado. Um principal cujo acesso por token está suspenso é recusado em MCP, pgwire, Bolt, Flight e gRPC nessa organização, e ainda pode entrar na interface. Somente um administrador levanta uma suspensão; nada a levanta por tempo. Equipe → Acesso suspenso lista cada suspensão com o evento que a causou e a levanta (`GET /admin/orgs/{org}/suspensions`, `POST /admin/orgs/{org}/suspensions/lift`).
 
