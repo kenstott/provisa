@@ -2,23 +2,25 @@
 
 **Connect your databases. Query with GraphQL, gRPC, SQL, or MCP — over any API or protocol — in 5 minutes.**
 
-Provisa serves every API surface (REST, GraphQL, SQL, gRPC, MCP, and more) over the joined result across your sources. It can do that because **federation, metrics, ontology and governance come from a single model, with nothing to keep in sync**. The model is a single definition of your data estate — every domain, relationship, and policy across your sources, excluding only the systems of origin themselves — that both operates the estate and governs it. The definition is not documentation an engine may consult; it *is* the engine. Registered domains and relationships are the only legal join paths, and access policies are compiled into every query plan. One model, four properties:
+Provisa puts one API over all your data. Point it at your databases and business applications, describe how they fit together, and query the joined result over REST, GraphQL, SQL, gRPC, MCP and more.
 
-- **Federation** — 73 connectors reaching 85+ kinds of source, including Salesforce, ServiceNow and Stripe, are read in place: the SaaS systems the business runs on are tables beside the databases, with no pipeline into a warehouse first. Query in SQL, GraphQL or Cypher over nine protocols.
-- **Metrics** — A metric is a named, governed aggregate. It is defined once, and every tool and language that asks gets the same definition.
-- **Ontology** — The business glossary is a graph of concepts, their definitions and the relationships between them. Provisa maps it to the database structures that hold the values, which is what lets it answer questions about your data. A concept is a draft until it reaches data, directly or through other concepts. The glossary is separate from the metrics: a term says what a concept is, a metric says how a number is computed.
-- **Governance** — Six layers are compiled into every query plan, on every language and every protocol, and every request is recorded the same way: who queried what, under which role, against which policy. Traces, metrics, and logs are themselves registered as queryable tables alongside your business data.
+It works because everything comes from a single model: your domains, the relationships between your tables, and the policies on them, across every source. Provisa runs from that model and governs from it, so there's nothing to keep in sync. The registered relationships are the only joins a query may make, and the access policies are compiled into every query plan. Four things follow from the one model:
 
-One governed core serves every language and transport. Query with **GraphQL, Cypher, or SQL**; consume over **pgwire, Bolt, gRPC, REST, Arrow Flight, or JDBC**. Each query language lowers to a single intermediate representation where governance is injected once — so a policy cannot drift between languages — and that IR retargets to each source's native dialect on the way out. Adding a language is a new front-end onto the shared core, not a new engine.
+- **Federation.** 73 connectors reach more than 85 kinds of source, Salesforce, ServiceNow and Stripe among them. The SaaS systems your business runs on read as tables beside your databases, in place, without a pipeline into a warehouse first. Query them in SQL, GraphQL or Cypher, over nine protocols.
+- **Metrics.** A metric is a named, governed aggregate. You define it once, and every tool and language that asks for it gets the same definition.
+- **Ontology.** The business glossary is a graph of concepts, their definitions and how they relate. Provisa maps it onto the tables and columns that hold the values, which is what lets it answer questions about your data. A concept stays a draft until it reaches data, directly or through other concepts. The glossary says what a concept is; a metric says how a number is computed.
+- **Governance.** Six layers of checks are compiled into every query plan, in every language and over every protocol, and every request is recorded the same way: who queried what, as which role, under which policy. Traces, metrics and logs are registered as queryable tables beside your business data.
 
-The estate is both analytical and transactional. Cross-source reads fan out through the federation layer; writes and single-source reads route directly to the source driver — governed identically, but transactional and sub-100ms. Arrow Flight columnar streaming is built in.
+You can ask in **GraphQL, Cypher or SQL**, and connect over **pgwire, Bolt, gRPC, REST, Arrow Flight or JDBC**. Every query language is lowered to one intermediate representation, and governance is applied there, once, so a policy can't drift between languages. On the way out, that form is translated into each source's own dialect. A new query language is a new front end on the same core.
 
-The whole model is built from a handful of primitives — domains, relationships, roles, and policies. Small vocabulary, so the definition is easy to comprehend and simple to evaluate and audit: you can read the policy set and know what it does. Provisa is a light query compiler, not a runtime that sits in the data path. It converts a request into native queries, routes them, and gets out of the way — which is why the estate performs.
+Reads and writes both go through it. A query across sources fans out through the federation layer. Writes, and reads from a single source, go straight to that source's driver, governed the same way and typically back in under 100 ms. Arrow Flight columnar streaming is built in.
 
-That design supports two ways of using it, and they are not exclusive:
+The model has a small vocabulary: domains, relationships, roles and policies. That keeps it easy to read and to audit. You can read the policy set and know what it does. Provisa itself is a light query compiler rather than a runtime that sits in your data path. It turns a request into native queries, routes them and steps aside, which is why the estate stays fast.
 
-- **As scaffolding for modernization** — Model your estate, let Provisa generate the native SQL for each source, then capture that SQL and adopt it directly in the target system. Provisa is the transition layer, not a permanent dependency.
-- **As permanent policy-enforcing infrastructure** — Keep it in place as the governed path every query takes, so definition, enforcement, and audit stay unified for as long as the estate exists.
+You can use it in two ways, and they combine:
+
+- **To modernize.** Model your estate, let Provisa generate the native SQL for each source, then take that SQL and adopt it in the target system. Provisa is the bridge for the transition, and you can drop it afterwards.
+- **To govern for good.** Keep it as the path every query takes, so definition, enforcement and audit stay together for as long as the estate exists.
 
 ## Try a demo
 
