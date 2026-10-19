@@ -712,11 +712,20 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
 
         _mv_cols: dict[str, list[tuple[str, str]]] = {}
         _dialect = engine.engine.dialect
+        _unbuilt = {view_node(m) for m in mvs if getattr(m, "last_refresh_at", None) is None}
         for _m in mvs:
             _sql = getattr(_m, "sql", None)
             if not _sql:
                 continue
             _key = view_node(_m)
+            _waits_on = sorted(graph.get(_key, set()) & _unbuilt)
+            if _waits_on:
+                # A view over a view not built yet has nothing to read: no probe, it is wired when
+                # that input's first build lands (views_awaiting_input, below).
+                log.info(
+                    "event loop: MV %s awaits the first build of %s", _key, ", ".join(_waits_on)
+                )
+                continue
             try:
                 # The statement its build reads (REQ-1922, #257): its definition through the one
                 # pipeline, so a table it reads is read as a direct statement reads it -- a search
