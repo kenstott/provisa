@@ -194,6 +194,7 @@ exclude_docs: |
   arch/cosmosdb-nosql.md
   arch/dataset-handling-standards.md
   arch/deployment.md
+  arch/extension-seams.md
   arch/jdbc-client-side-encryption.md
   arch/json-columns-design.md
   arch/json-columns-v3-note.md
