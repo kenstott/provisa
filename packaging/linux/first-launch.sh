@@ -1191,15 +1191,16 @@ ask_api_port() {
   echo "$port"
 }
 
-# ── Install systemd service (non-interactive / cloud deployments) ─────────────
-install_systemd() {
-  local unit="/etc/systemd/system/provisa.service"
-  # Persist auth env (PROVISA_IDP + provider secrets) so the server, running
-  # under systemd rather than this first-launch process, auto-configures the IdP
-  # and can resolve ${env:...} secret placeholders at runtime.
-  local env_file="${PROVISA_HOME}/provisa.env"
-  : > "$env_file"
-  chmod 600 "$env_file"
+# ── The systemd EnvironmentFile ───────────────────────────────────────────────
+# Writes the settings this run was given into the file and keeps every line already in it whose key
+# this run does not set: a key another tool added (scripts/deploy-cloud.sh adds the store bind
+# address, the telemetry object store, Grafana's admin password and the billing keys) survives a
+# reset or a version bump, and a key this run sets takes this run's value. The file is replaced in
+# one rename, mode 600, so the service never reads half of it.
+write_env_file() {
+  local env_file="$1" merged var line key set_keys=" "
+  merged="$(mktemp "${env_file}.XXXXXX")"
+  chmod 600 "$merged"
   # CONFIG_DB_* / PROVISA_EXTERNAL_CONTROL_DB: external control-plane database mode
   # (terraform/gcp-saas — Cloud SQL). docker-compose.app.yml interpolates PG_* /
   # PLATFORM_DATABASE_URL / TENANT_DATABASE_URL from CONFIG_DB_*, so persisting them
@@ -1237,9 +1238,29 @@ install_systemd() {
              TRINO_HOST TRINO_PORT \
              PROVISA_ISOLATED_ENGINE_HOST_TEMPLATE PROVISA_ISOLATED_ENGINE_PORT; do
     if [ -n "${!var:-}" ]; then
-      printf '%s=%s\n' "$var" "${!var}" >> "$env_file"
+      printf '%s=%s\n' "$var" "${!var}" >> "$merged"
+      set_keys+="${var} "
     fi
   done
+  if [ -f "$env_file" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      key="${line%%=*}"
+      if [[ "$line" == *=* ]] && [[ "$set_keys" == *" ${key} "* ]]; then
+        continue
+      fi
+      printf '%s\n' "$line" >> "$merged"
+    done < "$env_file"
+  fi
+  mv -f "$merged" "$env_file"
+}
+
+# ── Install systemd service (non-interactive / cloud deployments) ─────────────
+install_systemd() {
+  local unit="/etc/systemd/system/provisa.service"
+  # Persist auth env (PROVISA_IDP + provider secrets) so the server, running
+  # under systemd rather than this first-launch process, auto-configures the IdP
+  # and can resolve ${env:...} secret placeholders at runtime.
+  write_env_file "${PROVISA_HOME}/provisa.env"
   # $USER is not exported under the GCE metadata runner / systemd-run; resolve it.
   local run_user; run_user="$(id -un)"
   # System Docker runs as its own systemd service — order after it and skip the
