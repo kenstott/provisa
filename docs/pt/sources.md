@@ -2,7 +2,7 @@
 
 ## Modelo de Execução {: #execution-model }
 
-Toda consulta em última análise é executada através do motor de federação, que fornece federação entre todas as fontes. Fontes se dividem em três categorias com base em sua conectividade.
+Toda consulta acaba passando pelo motor de federação, e é isso que permite unir qualquer fonte a qualquer outra. Como uma fonte chega lá depende de como o Provisa a alcança, e isso coloca cada fonte em um de cinco grupos.
 
 | Categoria | Tem Driver Direto | Tem Conector Federado | Exemplos |
 | --- | --- | --- | --- |
@@ -12,15 +12,15 @@ Toda consulta em última análise é executada através do motor de federação,
 | **Direta (sem conector entre fontes)** | Sim | Não | Athena — instruções de fonte única rodam inteiras no Athena; joins entre fontes pousam uma réplica completa |
 | **Materializar → Federação** | Não | Não | REST/OpenAPI, GraphQL remoto, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (receptor push), GovData, SharePoint, Salesforce, ServiceNow, Cloud inventory, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-Fontes **direta-capazes** executam consultas de fonte única via seu driver nativo (sub-100ms), contornando o motor de federação. Elas mantêm suporte completo a conectores e participam de federação quando unidas com outras fontes.
+Fontes **direta-capazes** respondem a uma consulta que só toca nelas pelo próprio driver, em menos de 100 ms, sem passar pelo motor de federação. Elas mantêm o conector completo, então continuam se unindo a outras fontes pelo motor.
 
-Fontes **somente federação** são sempre consultadas através da camada de federação. Nenhum driver direto existe.
+Fontes **somente federação** não têm driver direto. Toda consulta chega a elas pela camada de federação.
 
-Fontes de **leitura direta (réplica)** têm um DirectDriver que lê do warehouse nativamente (transporte Arrow-nativo quando disponível), pousa uma réplica no armazenamento de materialização do motor ativo, e então as consultas rodam contra essa réplica. Veja [Warehouses como Fontes Nomeadas](#warehouses-as-named-sources).
+Fontes de **leitura direta (réplica)** têm um DirectDriver que lê do warehouse nativamente (Arrow-nativo quando possível) e pousa uma réplica no armazenamento de materialização do motor ativo. As consultas então rodam contra essa réplica. Veja [Warehouses como Fontes Nomeadas](#warehouses-as-named-sources).
 
-Fontes **diretas (sem conector entre fontes)** têm um DirectDriver que executa instruções de fonte única inteiras na própria fonte — todo filtro, coluna e limite é empurrado até ela. Quando uma instrução une a fonte a qualquer outra, o driver lê os dados e pousa uma réplica; o join roda contra essa réplica no motor ativo. Não existe conector Trino para essas fontes.
+Fontes **diretas (sem conector entre fontes)** têm um DirectDriver que executa uma instrução de fonte única inteira na própria fonte, com todo filtro, coluna e limite empurrado até ela. Não existe conector Trino para elas, então quando uma instrução une uma delas a outra fonte, o driver lê os dados e pousa uma réplica, e o join roda contra essa réplica no motor ativo.
 
-Fontes de **materialização** não têm conector federado. O Provisa busca seus dados (na inicialização ou no momento da consulta) e os armazena em cache como Parquet no S3 ou no PostgreSQL, tornando-os alcançáveis pelo motor de federação para consultas entre fontes.
+Fontes de **materialização** também não têm conector federado. O Provisa busca os dados delas, na inicialização ou no momento da consulta, e os guarda em cache como Parquet no S3 ou no PostgreSQL. Dali o motor de federação os alcança para consultas entre fontes.
 
 ---
 
@@ -35,7 +35,7 @@ O Provisa registra **73** tipos de fonte, os que o formulário de Fontes oferece
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [Data lake / formatos de tabela aberta](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | Fontes de código | `node`, `python` |
+| 39–40 | [Fontes de código](code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [Receptor push](#push-receiver) | `ingest` |
 | 45–46 | [Grafo e semântico](#graph-semantic) | `neo4j`, `sparql` |

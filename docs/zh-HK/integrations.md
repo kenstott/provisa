@@ -22,9 +22,9 @@ Provisa 實作了 PostgreSQL 線路通訊協定（協定版本 3.0）。任何�
 
 ### 為何選用 pgwire 而非 JDBC？ {: #why-pgwire-instead-of-jdbc }
 
-JDBC 驅動程式以 Arrow Flight 作為其傳輸方式，並需要部署 `provisa-jdbc.jar`。pgwire 則不需要任何額外部署——如果你已經有 `psql`、DBeaver、SQLAlchemy 或 PG JDBC 驅動程式，即可直接使用。對於純 SQL 工作負載而言，這是摩擦較低的路徑。
+JDBC 驅動程式經 Arrow Flight 傳輸查詢，使用它需要部署 `provisa-jdbc.jar`。pgwire 不需要任何額外的東西。如果您已經有 `psql`、DBeaver、SQLAlchemy 或 PG JDBC 驅動程式，就可以直接使用，所以只傳送 SQL 時，這是較簡單的方式。
 
-對於內建 JDBC 連線精靈、並能受惠於 Arrow Flight 欄式串流以處理大型結果集的 BI 工具而言，JDBC 是正確的選擇。pgwire 則可對完整已發佈結構描述執行自由 SQL——相同的查詢，較低的設定成本。
+對於內建 JDBC 連線精靈、需要擷取大型結果集的 BI 工具，選用 JDBC，Arrow Flight 的欄式串流在這時最划算。pgwire 接受針對整個已發佈結構描述的同樣自由 SQL，需要設定的較少。
 
 ### psql
 

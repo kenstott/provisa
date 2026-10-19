@@ -2,7 +2,7 @@
 
 ## Ausführungsmodell {: #execution-model }
 
-Jede Abfrage wird letztlich über die Federation-Engine ausgeführt, die Federation über alle Quellen hinweg bereitstellt. Quellen fallen basierend auf ihrer Konnektivität in drei Kategorien.
+Jede Abfrage läuft am Ende über die Federation-Engine, und genau das lässt jede Quelle mit jeder anderen joinen. Wie eine Quelle dorthin kommt, hängt davon ab, wie Provisa sie erreicht, und danach gehört jede Quelle zu einer von fünf Gruppen.
 
 | Kategorie | Hat direkten Treiber | Hat föderierten Connector | Beispiele |
 | --- | --- | --- | --- |
@@ -12,15 +12,15 @@ Jede Abfrage wird letztlich über die Federation-Engine ausgeführt, die Federat
 | **Direkt (kein quellenübergreifender Connector)** | Ja | Nein | Athena — Einzelquellen-Anweisungen laufen vollständig in Athena; quellenübergreifende Joins landen ein vollständiges Replikat |
 | **Materialisieren → Federation** | Nein | Nein | REST/OpenAPI, Remote-GraphQL, gRPC, Neo4j Cypher, SPARQL, WebSocket, RSS, CSV, SQLite, Parquet, Ingest (Push-Empfänger), GovData, SharePoint, Salesforce, ServiceNow, Cloud-Inventar, Splunk, Qdrant, Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-**Direktfähige** Quellen führen Einzelquellen-Abfragen über ihren nativen Treiber aus (unter 100 ms) und umgehen dabei die Federation-Engine. Sie behalten volle Connector-Unterstützung und nehmen an der Federation teil, wenn sie mit anderen Quellen gejoint werden.
+**Direktfähige** Quellen beantworten eine Abfrage, die nur sie betrifft, über ihren eigenen Treiber, in unter 100 ms und ohne Umweg über die Federation-Engine. Ihren vollen Connector behalten sie, also joinen sie über die Engine weiterhin mit anderen Quellen.
 
-**Nur-Federation**-Quellen werden immer über die Federation-Schicht abgefragt. Es existiert kein direkter Treiber.
+**Nur-Federation**-Quellen haben keinen direkten Treiber. Jede Abfrage erreicht sie über die Federation-Schicht.
 
-**Direktlesen (Replikat)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (wo verfügbar Arrow-nativ), ein Replikat in den Materialisierungs-Store der aktiven Engine landet, und Abfragen laufen dann gegen dieses Replikat. Siehe [Warehouses als benannte Quellen](#warehouses-as-named-sources).
+**Direktlesen (Replikat)**-Quellen haben einen DirectDriver, der nativ aus dem Warehouse liest (Arrow-nativ, wo es geht) und ein Replikat im Materialisierungs-Store der aktiven Engine landet. Abfragen laufen dann gegen dieses Replikat. Siehe [Warehouses als benannte Quellen](#warehouses-as-named-sources).
 
-**Direkt (kein quellenübergreifender Connector)**-Quellen haben einen DirectDriver, der Einzelquellen-Anweisungen vollständig in der Quelle ausführt — jeder Filter, jede Spalte und jedes Limit wird weitergereicht. Verbindet eine Anweisung die Quelle mit einer anderen, liest der Treiber die Daten und landet ein Replikat; der Join läuft gegen dieses Replikat in der aktiven Engine. Für diese Quellen existiert kein Trino-Connector.
+**Direkt (kein quellenübergreifender Connector)**-Quellen haben einen DirectDriver, der eine Einzelquellen-Anweisung vollständig in der Quelle ausführt, mit jedem Filter, jeder Spalte und jedem Limit weitergereicht. Einen Trino-Connector gibt es für sie nicht. Joint eine Anweisung eine solche Quelle mit einer anderen, liest der Treiber deshalb die Daten und landet ein Replikat, und der Join läuft gegen dieses Replikat in der aktiven Engine.
 
-**Materialize**-Quellen haben keinen föderierten Connector. Provisa ruft ihre Daten ab (beim Start oder zur Abfragezeit) und cacht sie als Parquet in S3 oder in PostgreSQL, wodurch sie für quellenübergreifende Abfragen durch die Federation-Engine erreichbar werden.
+**Materialize**-Quellen haben ebenfalls keinen föderierten Connector. Provisa holt ihre Daten beim Start oder zur Abfragezeit und cacht sie als Parquet in S3 oder in PostgreSQL. Von dort erreicht die Federation-Engine sie für quellenübergreifende Abfragen.
 
 ---
 
@@ -35,7 +35,7 @@ Provisa registriert **73** Quelltypen, die das Sources-Formular anbietet. Die fo
 | 25–29 | [Analytics / OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [Data-Lake / offene Tabellenformate](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | Code-Quellen | `node`, `python` |
+| 39–40 | [Code-Quellen](code-sources.md) | `node`, `python` |
 | 41–43 | [Streaming](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [Push-Empfänger](#push-receiver) | `ingest` |
 | 45–46 | [Graph & Semantic](#graph-semantic) | `neo4j`, `sparql` |

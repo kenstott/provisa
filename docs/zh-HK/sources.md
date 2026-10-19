@@ -1,6 +1,7 @@
 # 數據來源類型 {: #source-types }
 ## 執行模型 {: #execution-model }
-每個查詢最終都經聯邦引擎執行，由它提供跨所有數據來源的聯邦能力。數據來源依其連通性分為三類。
+
+每個查詢最終都要經過聯邦引擎，正是它令任何數據來源都能與其他數據來源聯結。數據來源怎樣到達那裏，取決於 Provisa 怎樣觸及它，據此每個數據來源歸入五組之一。
 
 | 類別 | 有直接驅動程式 | 有聯邦連接器 | 例子 |
 | --- | --- | --- | --- |
@@ -10,15 +11,15 @@
 | **直接（無跨來源連接器）** | 是 | 否 | Athena——單一來源語句完整在 Athena 中執行；跨來源聯結會落地完整副本 |
 | **具體化 → 聯邦** | 否 | 否 | REST/OpenAPI、遠端 GraphQL、gRPC、Neo4j Cypher、SPARQL、WebSocket、RSS、CSV、SQLite、Parquet、Ingest（推送接收器）、GovData、SharePoint、Salesforce、ServiceNow、雲端資源清單、Splunk、Qdrant、Azure Cosmos DB, Logs, Google Workspace, Microsoft 365 |
 
-**可直接執行**的數據來源經其原生驅動程式執行單一來源查詢（低於 100 毫秒），繞過聯邦引擎。它們保有完整的連接器支援，並在與其他數據來源聯結時參與聯邦。
+**可直接執行**的數據來源經自己的驅動程式回答只涉及它們的查詢，耗時低於 100 毫秒，亦不經過聯邦引擎。它們保有完整的連接器，所以仍然經引擎與其他數據來源聯結。
 
-**僅聯邦**的數據來源一律經聯邦層查詢。沒有直接驅動程式存在。
+**僅聯邦**的數據來源沒有直接驅動程式。每個查詢都經聯邦層到達它們。
 
-**直接讀取（副本）**的數據來源具備一個 DirectDriver，會原生地（在可行處以 Arrow 原生方式）自倉庫讀取，把一份副本落地到啟用中引擎的具體化儲存區，之後查詢便針對該副本執行。見 [作為具名數據來源的倉庫](#warehouses-as-named-sources)。
+**直接讀取（副本）**的數據來源具備一個 DirectDriver，原生地自倉庫讀取（可行時以 Arrow 原生方式），並把一份副本落地到啟用中引擎的具體化儲存區。之後查詢針對該副本執行。見 [作為具名數據來源的倉庫](#warehouses-as-named-sources)。
 
-**直接（無跨來源連接器）**的數據來源具備一個 DirectDriver，會在數據來源內完整執行單一來源語句——每個篩選條件、資料行與限制都會下推。當語句把該數據來源與任何其他數據來源聯結時，驅動程式會讀取數據並落地一份副本；聯結在啟用中的引擎裡針對該副本執行。這些數據來源不存在 Trino 連接器。
+**直接（無跨來源連接器）**的數據來源具備一個 DirectDriver，在數據來源內完整執行單一來源語句，每個篩選條件、資料行與限制都會下推。它們沒有 Trino 連接器，所以當語句把其中一個與其他數據來源聯結時，驅動程式會讀取數據並落地一份副本，聯結在啟用中的引擎裏針對該副本執行。
 
-**具體化**的數據來源沒有聯邦連接器。Provisa 取得其數據（於啟動時或查詢時），並以 Parquet 快取於 S3 或 PostgreSQL 中，使聯邦引擎能就跨來源查詢觸及它。
+**具體化**的數據來源同樣沒有聯邦連接器。Provisa 於啟動時或查詢時取得其數據，並以 Parquet 快取於 S3 或 PostgreSQL 中。聯邦引擎從那裏觸及它們，進行跨來源查詢。
 
 ---
 
@@ -32,7 +33,7 @@ Provisa 註冊了 **73** 種數據來源類型，即 Sources 表單所提供的�
 | 25–29 | [分析／OLAP](#analytics-olap) | `clickhouse`, `druid`, `exasol`, `elasticsearch`, `pinot` |
 | 30–33 | [數據湖／開放表格式](#data-lake-open-table-formats) | `iceberg`, `delta_lake`, `hive`, `hive_s3` |
 | 34–38 | [NoSQL](#nosql) | `mongodb`, `cosmosdb`, `qdrant`, `cassandra`, `redis` |
-| 39–40 | 程式碼來源 | `node`, `python` |
+| 39–40 | [程式碼來源](code-sources.md) | `node`, `python` |
 | 41–43 | [串流](#streaming) | `kafka`, `websocket`, `rss` |
 | 44 | [推送接收器](#push-receiver) | `ingest` |
 | 45–46 | [圖形與語意](#graph-semantic) | `neo4j`, `sparql` |
