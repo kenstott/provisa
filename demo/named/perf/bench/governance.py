@@ -75,7 +75,7 @@ _MASK_FIELDS = "to mask { type pattern replace value precision }"
 COLUMN_FIELDS = (
     "columnName visibleTo alias description dataType path embedding embeddingModel "
     "nativeFilterType nativeFilterRequired isPrimaryKey isForeignKey isAlternateKey scope "
-    f"epochUnit fake fakeStable syntheticRule nullable masks {{ {_MASK_FIELDS} }}"
+    f"epochUnit fake fakeStable syntheticRule masks {{ {_MASK_FIELDS} }}"
 )
 TABLE_FIELDS = (
     "id sourceId domainId schemaName tableName alias description watermarkColumn changeSignal "
@@ -473,7 +473,9 @@ class AdminGovernance:
         try:
             for table, tid in tables:
                 t = stored[tid]
-                nullable = {c["columnName"]: bool(c["nullable"]) for c in t["columns"]}
+                # A column is nullable unless it is the primary key: the rule the compiled
+                # schema types columns by (provisa/api/app_schema_build.py, is_nullable)
+                nullable = {c["columnName"]: not c["isPrimaryKey"] for c in t["columns"]}
                 names = masked_columns(setup, table, nullable, share)
                 if not names:
                     continue
