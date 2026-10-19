@@ -225,7 +225,7 @@
           <code>NDC_RESPONSE_SIZE_LIMIT</code> (30 MB by default), and the SDK servers cap
           the requests they accept. Values travel as JSON, with 64-bit and arbitrary-precision
           numbers as strings and bytes as base64. In Provisa the join runs in the federation
-          engine; DuckDB and Postgres spill to disk when a join outgrows memory.
+          engine, and on DuckDB and Postgres a join that outgrows memory can spill to disk.
         </p>
         <p>
           Self-hosting DDN's engine and connectors on Docker
