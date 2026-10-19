@@ -47,7 +47,8 @@ _ROLE = "org_admin"
 #: What db/init.sql generates: the fund's allocations and the counties it pays, Ohio's 88.
 _ALLOCATIONS = 1194
 _COUNTIES = 88
-_VIEW = '"opioids"."view_overdose_burden_by_county"'
+_VIEW = '"opioids"."view_overdose_burden_by_county"'  # the dashboard, the public's too
+_ANSWER = '"opioids"."view_treatment_against_burden"'  # the fund's staff's answer
 #: Each govdata table, its alias in the demo and the column naming the county.
 _GOVDATA = {
     "overdose_deaths": "fips",
@@ -204,13 +205,13 @@ def test_every_county_has_its_residents_and_a_rate_or_cdc_publishes_none(server)
 
 
 def test_the_answer_is_the_same_live_and_built(server):
-    sql = f"SELECT county_fips, treatment_spent, death_rate FROM {_VIEW} ORDER BY county_fips"
+    sql = f"SELECT county_fips, treatment_spent, death_rate FROM {_ANSWER} ORDER BY county_fips"
     live = query(server, sql)
     resp = _post(
         server,
         "/admin/graphql",
         {
-            "query": 'mutation { refreshMv(mvId: "view-view_overdose_burden_by_county") '
+            "query": 'mutation { refreshMv(mvId: "view-view_treatment_against_burden") '
             "{ success message } }"
         },
     )
@@ -220,10 +221,13 @@ def test_the_answer_is_the_same_live_and_built(server):
 
 def test_the_public_reads_the_dashboard_and_no_allocation(server):
     assert len(query(server, f"SELECT county_name, death_rate FROM {_VIEW}", "public")) == _COUNTIES
-    resp = _post(
-        server, "/data/sql", {"sql": 'SELECT provider FROM "opioids"."allocations"'}, "public"
-    )
-    assert resp.status_code != 200, resp.text
+    # Neither the allocations nor the answer that reads them.
+    for sql in (
+        'SELECT provider FROM "opioids"."allocations"',
+        f"SELECT county_name FROM {_ANSWER}",
+    ):
+        resp = _post(server, "/data/sql", {"sql": sql}, "public")
+        assert resp.status_code != 200, (sql, resp.text)
 
 
 @pytest.mark.parametrize(

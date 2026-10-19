@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "La respuesta en SQL",
-        "description": "La vista overdose_burden_by_county une el gasto del fondo en tratamiento y recuperación con las muertes de cada condado, y se mantiene almacenada. Ordenada por muertes por cada millón de dólares gastado, pone primero los condados donde el dinero enfrenta más muertes."
+        "description": "La vista treatment_against_burden une el gasto del fondo en tratamiento y recuperación con las muertes de cada condado, y se mantiene almacenada. Ordenada por muertes por cada millón de dólares gastado, pone primero los condados donde el dinero se enfrenta a más muertes."
       },
       "opioidsRecap": {
         "title": "Lo que ha visto",
-        "description": "Los registros propios del fondo, leídos en vivo, y datos públicos de salud y del censo, cargados una vez, unidos por condado en un modelo gobernado. Una vista almacenada responde la pregunta del concejo en SQL, GraphQL y REST, y el personal y el público ven cada uno lo que su rol permite."
+        "description": "Los registros del propio fondo, leídos en vivo, y los datos de salud pública y del censo, incorporados una vez, unidos por condado en un modelo gobernado. Dos vistas almacenadas responden la pregunta: la del personal, que lee el gasto del fondo, y el panel público, que no lee nada de ello. Cada una se sirve en SQL, GraphQL y REST a los roles que pueden leerla."
       },
       "opioidsGovdata": {
         "title": "Los datos públicos",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "Como lo ve el público",
-        "description": "La misma vista, ejecutada con el rol public: el panel del concejo. Muestra muertes, tasas y gasto por residente por condado, y ninguna asignación del fondo ni los proveedores pagados."
+        "description": "El panel del consejo, ejecutado con el rol public: la vista overdose_burden_by_county. Muestra los residentes, las muertes, la tasa de mortalidad y el dinero federal por residente de cada condado, y no lee ninguna asignación del fondo ni los proveedores pagados."
       },
       "opioidsByRegion": {
         "title": "Por región, en GraphQL",

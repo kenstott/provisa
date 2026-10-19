@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "La réponse en SQL",
-        "description": "La vue overdose_burden_by_county relie les dépenses du fonds en traitement et rétablissement aux décès de chaque comté, et reste stockée. Triée par décès par million de dollars dépensé, elle place en tête les comtés où l'argent rencontre le plus de décès."
+        "description": "La vue treatment_against_burden relie les dépenses du fonds pour le traitement et le rétablissement aux décès de chaque comté, et elle est conservée. Triée par décès pour chaque million de dollars dépensé, elle place en tête les comtés où l'argent rencontre le plus de décès."
       },
       "opioidsRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Les données propres du fonds, lues en direct, et des données publiques de santé et de recensement, chargées une fois, reliées par comté dans un modèle gouverné. Une vue stockée répond à la question du conseil en SQL, GraphQL et REST, le personnel et le public voyant chacun ce que son rôle permet."
+        "description": "Les données propres du fonds, lues en direct, et les données de santé publique et de recensement, importées une fois, reliées par comté dans un modèle gouverné. Deux vues conservées répondent à la question : celle du personnel, qui lit les dépenses du fonds, et le tableau de bord public, qui n'en lit rien. Chacune est servie en SQL, GraphQL et REST aux rôles autorisés à la lire."
       },
       "opioidsGovdata": {
         "title": "Les données publiques",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "Ce que voit le public",
-        "description": "La même vue, exécutée avec le rôle public : le tableau de bord du conseil. Il montre les décès, les taux et les dépenses par habitant par comté, sans aucune allocation du fonds ni les prestataires payés."
+        "description": "Le tableau de bord du conseil, exécuté avec le rôle public : la vue overdose_burden_by_county. Elle montre pour chaque comté les habitants, les décès, le taux de mortalité et l'argent fédéral par habitant, et ne lit aucune attribution du fonds ni aucun prestataire payé."
       },
       "opioidsByRegion": {
         "title": "Par région, en GraphQL",

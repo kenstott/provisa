@@ -47,14 +47,14 @@ steps:
   sql: >-
     SELECT b.county_name, b.region, b.population, b.deaths, b.death_rate, b.rate_modelled,
            b.treatment_spent, b.deaths_per_million_spent
-    FROM "opioids"."view_overdose_burden_by_county" AS b
+    FROM "opioids"."view_treatment_against_burden" AS b
     ORDER BY b.deaths_per_million_spent DESC
     LIMIT 15
 - key: opioidsAsPublic
   role: public
 - key: opioidsPublic
   sql: >-
-    SELECT b.county_name, b.deaths, b.death_rate, b.treatment_per_resident, b.federal_per_resident
+    SELECT b.county_name, b.population, b.deaths, b.death_rate, b.federal_per_resident
     FROM "opioids"."view_overdose_burden_by_county" AS b
     ORDER BY b.death_rate DESC
     LIMIT 15

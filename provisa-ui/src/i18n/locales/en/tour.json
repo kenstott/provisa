@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "The answer in SQL",
-        "description": "The view overdose_burden_by_county joins the fund's treatment and recovery spending to each county's deaths, and is kept stored. Ordered by deaths for each million dollars spent, it puts the counties where the money meets the most deaths first."
+        "description": "The view treatment_against_burden joins the fund's treatment and recovery spending to each county's deaths, and is kept stored. Ordered by deaths for each million dollars spent, it puts the counties where the money meets the most deaths first."
       },
       "opioidsRecap": {
         "title": "What you saw",
-        "description": "The fund's own records, read live, and public health and census data, landed once, joined by county in one governed model. One stored view answers the council's question in SQL, GraphQL and REST, with staff and the public each seeing what their role allows."
+        "description": "The fund's own records, read live, and public health and census data, landed once, joined by county in one governed model. Two stored views answer the question: the staff's, which reads the fund's spending, and the public's dashboard, which reads none of it. Each is served in SQL, GraphQL and REST to the roles allowed to read it."
       },
       "opioidsGovdata": {
         "title": "The public data",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "As the public sees it",
-        "description": "The same view, run as the public role: the council's dashboard. It shows deaths, rates and spending per resident by county, and none of the fund's allocations or the providers paid."
+        "description": "The council's dashboard, run as the public role: the view overdose_burden_by_county. It shows each county's residents, deaths, death rate and federal money per resident, and reads none of the fund's allocations or the providers paid."
       },
       "opioidsByRegion": {
         "title": "By region, in GraphQL",

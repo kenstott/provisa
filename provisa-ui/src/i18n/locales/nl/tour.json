@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "Het antwoord in SQL",
-        "description": "De view overdose_burden_by_county koppelt de uitgaven van het fonds aan behandeling en herstel aan de doden in elke county, en wordt opgeslagen bijgehouden. Gesorteerd op doden per miljoen uitgegeven dollar komen de county's waar het geld de meeste doden tegenkomt bovenaan."
+        "description": "De view treatment_against_burden koppelt de uitgaven van het fonds aan behandeling en herstel aan de sterfgevallen van elke county en wordt opgeslagen. Gesorteerd op sterfgevallen per miljoen uitgegeven dollar staan de county's waar het geld de meeste sterfgevallen tegenkomt vooraan."
       },
       "opioidsRecap": {
         "title": "Wat u zag",
-        "description": "De eigen gegevens van het fonds, live gelezen, en openbare gezondheids- en volkstellingsgegevens, één keer geladen, per county gekoppeld in één beheerd model. Eén opgeslagen view beantwoordt de vraag van de raad in SQL, GraphQL en REST, waarbij medewerkers en publiek elk zien wat hun rol toestaat."
+        "description": "De eigen gegevens van het fonds, live gelezen, en gegevens over volksgezondheid en de volkstelling, eenmaal binnengehaald, per county gekoppeld in één beheerd model. Twee opgeslagen views beantwoorden de vraag: die van de medewerkers, die de uitgaven van het fonds leest, en het openbare dashboard, dat daar niets van leest. Elk wordt in SQL, GraphQL en REST geleverd aan de rollen die het mogen lezen."
       },
       "opioidsGovdata": {
         "title": "De openbare gegevens",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "Zo ziet het publiek het",
-        "description": "Dezelfde view, uitgevoerd als de rol public: het dashboard van de raad. Het toont doden, cijfers en uitgaven per inwoner per county, en geen toewijzingen van het fonds of betaalde aanbieders."
+        "description": "Het dashboard van de raad, uitgevoerd als de rol public: de view overdose_burden_by_county. Die toont per county de inwoners, sterfgevallen, het sterftecijfer en federaal geld per inwoner, en leest geen enkele toewijzing van het fonds of betaalde aanbieder."
       },
       "opioidsByRegion": {
         "title": "Per regio, in GraphQL",

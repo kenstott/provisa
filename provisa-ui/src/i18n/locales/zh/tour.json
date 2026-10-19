@@ -794,11 +794,11 @@
       },
       "opioidsAnswer": {
         "title": "用 SQL 给出的答案",
-        "description": "视图 overdose_burden_by_county 把基金在治疗和康复上的支出与每个县的死亡人数关联起来，并保持存储。按每百万美元支出对应的死亡人数排序，资金面对死亡最多的县排在最前面。"
+        "description": "视图 treatment_against_burden 将基金在治疗和康复上的支出与每个县的死亡人数关联，并被存储。按每百万美元支出对应的死亡人数排序，资金面对死亡最多的县排在最前。"
       },
       "opioidsRecap": {
         "title": "你看到了什么",
-        "description": "实时读取的基金自有记录，与只加载一次的公共卫生和人口普查数据，在一个受治理的模型中按县关联。一个存储的视图用 SQL、GraphQL 和 REST 回答议会的问题，工作人员和公众各自只看到其角色允许的内容。"
+        "description": "基金自己的记录实时读取，公共卫生和人口普查数据导入一次，在一个受治理的模型中按县关联。两个存储的视图回答这个问题：读取基金支出的员工视图，以及完全不读取支出的公开仪表板。每个视图都通过 SQL、GraphQL 和 REST 提供给允许读取它的角色。"
       },
       "opioidsGovdata": {
         "title": "公开数据",
@@ -822,7 +822,7 @@
       },
       "opioidsPublic": {
         "title": "公众看到的样子",
-        "description": "同一个视图，以 public 角色运行：议会的仪表板。它按县显示死亡人数、死亡率和人均支出，不显示基金的任何拨款或获得付款的服务机构。"
+        "description": "以 public 角色运行的议会仪表板：视图 overdose_burden_by_county。它显示每个县的居民、死亡人数、死亡率和人均联邦资金，不读取基金的任何拨款或受付款的服务方。"
       },
       "opioidsByRegion": {
         "title": "按地区，用 GraphQL",
