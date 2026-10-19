@@ -287,7 +287,11 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
 
         raw = _with_stores(raw, stores_env(demo.directory))
     _sandbox_sees_what_its_rights_cover(raw, _role_rights(raw))
-    return parse_config_dict(raw)
+    from provisa.core.demo_secrets import resolving
+
+    # REQ-2095: the secrets it names, from its own secrets.yaml, wherever it is parsed.
+    with resolving(demo.directory, org_id):
+        return parse_config_dict(raw)
 
 
 async def write_declared_vector_models(model_db: Any, seed: Any) -> None:  # REQ-2006

@@ -1540,7 +1540,11 @@ async def _load_and_build(
     bind_auth_config(state, raw_config.get("auth"))
 
     # Load config into PG (and create the engine catalogs)
-    config = parse_config_dict(raw_config)
+    from provisa.core.demo_secrets import launched_directory, resolving
+
+    # REQ-2095: a ${secret:NAME} its demo declares, before the org's vault is bound.
+    with resolving(launched_directory(_launch_config), state.org_id):
+        config = parse_config_dict(raw_config)
     state.config = config
     state.multitenancy = config.multitenancy
     # REQ-1337: org_admin holds the platform_settings right only in a single-tenant deployment.
@@ -1636,6 +1640,13 @@ async def _load_and_build(
         from provisa.core.demo import is_demo
 
         _seed_engine = None if engine_deferred else state.federation_engine
+        if apply:
+            # REQ-2095: the secrets the file names, in the org's vault before the model is read.
+            from provisa.core.demo_secrets import launched_directory
+            from provisa.core.demo_secrets import seed as seed_secrets
+
+            assert state.admin_db is not None, "the platform plane is up before the model is read"
+            await seed_secrets(state.admin_db, state.org_id, launched_directory(_launch_config))
         if apply and is_demo():
             _populate_source_catalog_names(_seed_file)
             async with bound_to_request_org():
@@ -2591,16 +2602,25 @@ async def _build_org_runtime(
             from provisa.core.secrets_store import bound_to_request_org
 
             seed = state.seed_config
+            from provisa.core.demo_secrets import launched_directory
+
+            seed_directory = launched_directory(Path(config_path))
             from provisa.api.sandbox_tier import is_template_org
 
             if is_template_org(org_id):
                 # REQ-2006: a demo's template org is the demo organisation of that demo, rebuilt
                 # from the named demo's own configuration rather than the deployment's file.
-                from provisa.api.demo_templates import template_seed
+                from provisa.api.demo_templates import demo_of_template, template_seed
 
                 seed = template_seed(org_id)
+                seed_directory = demo_of_template(org_id).directory
             domain_policy.configure(seed.naming.use_domains, seed.naming.default_domain)
             if include_demo:
+                # REQ-2095: the secrets the configuration names, in the org's vault before it loads.
+                from provisa.core.demo_secrets import seed as seed_secrets
+
+                assert state.admin_db is not None, "the platform plane is up before any org runtime"
+                await seed_secrets(state.admin_db, org_id, seed_directory)
                 await _bind_region_stores_before_reset(org_id, env)
             async with state.model_db.acquire() as conn:
                 if include_demo:

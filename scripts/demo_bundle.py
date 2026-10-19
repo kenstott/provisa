@@ -764,11 +764,14 @@ def _seed_node(
 def _demo_config(demo: Path, stores: Stores):
     """The demo's config.yaml, parsed against its running stores."""
     from provisa.core.config_loader import parse_config_dict, read_config_with_includes
+    from provisa.core.demo_secrets import resolving
 
     saved = dict(os.environ)
     os.environ.update(stores.addresses)
     try:
-        return parse_config_dict(read_config_with_includes(demo / "config.yaml"))
+        # REQ-2095: the secrets it names, from its own secrets.yaml.
+        with resolving(demo, demo.name):
+            return parse_config_dict(read_config_with_includes(demo / "config.yaml"))
     finally:
         os.environ.clear()
         os.environ.update(saved)

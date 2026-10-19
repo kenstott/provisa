@@ -19,6 +19,7 @@ Every named demo lives at `demo/named/<name>/` and contains these files:
 demo/named/<name>/
   demo.yaml             # required for published demos — bundle metadata and page card
   config.yaml           # required — the demo's whole config, used in place of the standard demo's
+  secrets.yaml          # optional — the secrets config.yaml names as ${secret:NAME}, with their values
   docker-compose.yml    # the demo's own data stores at build and authoring time (omit if none)
   docker-compose.run.yml  # the run-time stores, loaded from the bundle's dumps (omit if none)
   setup.yaml            # optional — commands and MV refreshes to run once after the server is up
@@ -286,6 +287,23 @@ requires_provisa: 0.1.0a483
 The `extras` field installs additional Provisa optional dependencies before the demo's setup
 runs. The `sonnets` demo uses `[vector]` to install the sentence-transformers package needed to
 embed its lines.
+
+## secrets.yaml — the secrets the config names
+
+A demo whose config reads a credential names it `${secret:NAME}` and declares the value in
+`secrets.yaml`, beside `config.yaml`:
+
+```yaml
+# demo/named/testdata/secrets.yaml
+secrets:
+  SHOP_DB_PASSWORD: provisa_reader
+```
+
+Each org built from the demo gets these secrets in its own vault before its config loads: the
+deployment org started on the demo, the demo's template org on the sandbox tier, and every
+sandbox opened from that template. A later start writes them again, so a changed value replaces
+the stored one. The file travels in the demo's bundle with the rest of its directory. Every
+`${secret:NAME}` in a demo's `config.yaml` must be declared here; a unit test checks each demo.
 
 ## setup.yaml — run once, on first start and at bundle build
 

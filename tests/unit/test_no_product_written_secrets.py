@@ -13,9 +13,9 @@
 A credential field holds exactly what the operator entered -- a value, or a ``${secret:NAME}``
 / ``${env:NAME}`` reference they typed -- and is resolved where it is used. So no product code
 calls the secrets store's write or remove API, and none builds a ``${secret:…}`` reference:
-the only writer is the admin route where an operator creates a secret by a name they chose,
-and the only code that spells a reference is the code that searches for, or reports, one the
-operator wrote.
+the only writers are the admin route where an operator creates a secret by a name they chose
+and the seeding of a demo's secrets.yaml, whose author chose its names; the only code that spells
+a reference is the code that searches for, or reports, one the operator wrote.
 
 ``STILL_TO_REMOVE`` lists what is known to break the rule and is being removed. It only
 shrinks: a file in it that no longer offends fails this test until it is taken out.
@@ -32,8 +32,16 @@ pytestmark = pytest.mark.unit
 
 REPO = Path(__file__).resolve().parents[2]
 
-#: The store itself, and the one route where an operator creates or removes a secret by name.
-MAY_WRITE = frozenset({"provisa/core/secrets_store.py", "provisa/api/admin/secrets_router.py"})
+#: The store itself, the one route where an operator creates or removes a secret by name, and a
+#: demo's own secrets.yaml, whose names and values its author declared (REQ-2095), written to the
+#: vaults of the orgs built from that demo.
+MAY_WRITE = frozenset(
+    {
+        "provisa/core/secrets_store.py",
+        "provisa/api/admin/secrets_router.py",
+        "provisa/core/demo_secrets.py",
+    }
+)
 
 #: Code that spells a reference without making one up: the search for references an operator
 #: wrote, and the resolver's own messages about a reference it was given.

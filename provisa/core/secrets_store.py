@@ -33,13 +33,13 @@ vault and ``${user:NAME}`` reads the acting person's -- so there is no syntax fo
 secret" to write down, and neither scope ever answers for the other.
 """
 
-# Requirements: REQ-125, REQ-557, REQ-684, REQ-685, REQ-1557, REQ-1558, REQ-1560
+# Requirements: REQ-125, REQ-557, REQ-684, REQ-685, REQ-1557, REQ-1558, REQ-1560, REQ-2095
 
 from __future__ import annotations
 
 import re
 from collections.abc import Callable
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime
@@ -478,6 +478,19 @@ async def bound(admin_db: "Database", org_id: str, *, user_id: str | None = None
     token = _bound.set(
         _Binding(org_id, await _decrypted(admin_db, org_id, ORG_OWNER), user_id, personal)
     )
+    try:
+        yield
+    finally:
+        _bound.reset(token)
+
+
+@contextmanager
+def bound_to_values(org_id: str, org_values: "Mapping[str, str]"):
+    """Make ``org_values`` resolvable as ``org_id``'s secrets for the duration of the block, with no
+    personal vault: a configuration whose secrets are declared beside it (a demo's secrets.yaml,
+    REQ-2095) is parsed where that org's vault is not bound -- the values are the ones its vault is
+    given, read from the same file."""
+    token = _bound.set(_Binding(org_id, dict(org_values), None, {}))
     try:
         yield
     finally:
