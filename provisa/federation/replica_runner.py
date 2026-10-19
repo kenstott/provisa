@@ -99,11 +99,19 @@ def _log_failure(
             "replica build of %s failed again (%d in a row): %s; next attempt at %s",
             name,
             failure.attempts,
-            exc,
+            _named(exc),
             again,
         )
         return
-    log.error("replica build of %s failed: %s; next attempt at %s", name, exc, again, exc_info=exc)
+    log.error(
+        "replica build of %s failed: %s; next attempt at %s", name, _named(exc), again, exc_info=exc
+    )
+
+
+def _named(exc: BaseException) -> str:
+    """A failure as the log names it: its type, and its message where it has one."""
+    message = str(exc)
+    return f"{type(exc).__name__}: {message}" if message else type(exc).__name__
 
 
 @dataclass

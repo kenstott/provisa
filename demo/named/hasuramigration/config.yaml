@@ -58,8 +58,9 @@ sources:
   description: The store's database, which the Hasura app read and wrote
 - id: crm
   type: salesforce
-  # The connected app's credentials, needed only to land Account: the bundle build has them. A
-  # sandbox reads the landed copy and never this source.
+  # Account's rows are declared beside this config (replica_rows/crm/crm.Account.tsv, REQ-2089),
+  # as the sales team's org held them: they land as its replica, and nothing ever calls
+  # Salesforce, at the bundle build or in a sandbox.
   base_url: ${env:SF_LOGIN_URL:-}
   username: ${env:SF_CONSUMER_KEY:-}
   password: ${env:SF_CONSUMER_SECRET:-}

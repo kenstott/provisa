@@ -935,9 +935,15 @@ async def _pg_connect(host: str, port: int, password: str) -> Any:
     with the source's ``password`` (:func:`sign_in_password`)."""
     import asyncpg
 
-    return await asyncpg.connect(
-        host=host, port=port, user="provisa", password=password, database="provisa"
-    )
+    try:
+        return await asyncpg.connect(
+            host=host, port=port, user="provisa", password=password, database="provisa"
+        )
+    except TimeoutError as exc:
+        # asyncpg's connect timeout carries no message: name what did not answer.
+        raise TimeoutError(
+            f"the source's connector server at {host}:{port} accepted no connection"
+        ) from exc
 
 
 def _registered_columns(table: Any) -> list[str] | None:
