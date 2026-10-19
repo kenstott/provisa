@@ -81,6 +81,12 @@ async def _template_ready(demo: PublishedDemo) -> None:
     """Refuse by name when the demo's template is not built, or its replicas are not all landed."""
     from provisa.api.admin.orgs_router import _admin_pool
     from provisa.api.app import ensure_org_runtime
+    from provisa.api.demo_templates import template_builds
+
+    if template_builds.state_of(demo.name) == "ready":
+        # Built and landed (or served as built at this start, demo_templates.warm_ready): its
+        # runtime is built when the sandbox is copied from it, not to count its replicas here.
+        return
 
     async with _admin_pool().acquire() as conn:
         row = (

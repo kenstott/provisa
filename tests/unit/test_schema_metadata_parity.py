@@ -66,6 +66,9 @@ REGISTRY_ONLY_TABLES = {
     # REQ-2006: the demo sandboxes, each an org of its own; beside ``orgs`` on the platform plane.
     # Portable metadata only.
     "demo_sandboxes",
+    # REQ-2006: each demo template's readiness record, beside the template org's ``orgs`` row.
+    # Portable metadata only.
+    "demo_template_readiness",
     # REQ-1394: the SCRAM verifier pgwire's SASL exchange reads. Keyed to the platform user
     # registry it sits beside, so portable metadata only.
     "scram_credentials",

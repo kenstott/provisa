@@ -377,6 +377,20 @@ demo_sandboxes = Table(
     CheckConstraint("kind IN ('visitor','named')", name="demo_sandboxes_kind_check"),
 )
 
+# REQ-2006: a demo template that finished building, recorded so the sandbox tier's next start can
+# serve it at once: the demo version and Provisa release it was built from (``version``), and the
+# rows each of its replicas and views holds in its store. A start that finds the same version and
+# the same rows on disk trusts it; anything else rebuilds it (demo_templates.warm_ready).
+demo_template_readiness = Table(
+    "demo_template_readiness",
+    metadata,
+    Column("template_org", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    Column("version", Text, nullable=False),
+    Column("ready_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("replicas", JSON, nullable=False),
+    Column("views", JSON, nullable=False),
+)
+
 # REQ-1394: SCRAM-SHA-256 verifiers, the credential PostgreSQL clients negotiate over pgwire.
 #
 # A separate table from ``local_users`` rather than another column on it, because the two are
@@ -938,6 +952,7 @@ REGISTRY_TABLES = [
     deployment_encryption_key,
     personal_access_tokens,
     demo_sandboxes,
+    demo_template_readiness,
     scram_credentials,
     platform_notice,
     mail_events,

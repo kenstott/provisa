@@ -496,8 +496,17 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
     from provisa.core import settings_registry
     from provisa.core.connection_loop import spawn_background
 
+    from provisa.api.demo_region_seed import regional
+
     outcome: dict[str, str] = {}
     for demo in published_demos().values():
+        # A template built from this demo version by this release, its store on disk as recorded,
+        # is served at once: no build, no runtime, no wait for its replicas. Its runtime is built
+        # when a sandbox of it is first opened. A regions tier's stores are its regions' own.
+        if not regional() and not seeding_release() and await warm_ready(pool, demo):
+            template_builds.record(demo.name, True)
+            outcome[demo.name] = "ready (as built)"
+            continue
         if bundled_demos() and _templated(demo.name) != demo.directory.name:
             await _retire_template(demo.name)
         build = await _template_row(pool, demo)
@@ -590,6 +599,69 @@ class TemplateBuilds:
 
 #: The tier's template builds (ensure_demo_templates); a visitor's open moves its demo forward.
 template_builds = TemplateBuilds()
+
+
+def readiness_version(demo: PublishedDemo) -> str:
+    """What a template's readiness record is for: its demo's version (a bundle's directory, else
+    the demo's own) and the Provisa release that built it -- a replica's definition is computed
+    by the release, so another release builds the template again."""
+    from provisa.core.demo_bundles import running_provisa
+
+    return f"{demo.directory.name}@{running_provisa()}"
+
+
+async def record_ready(pool, demo: PublishedDemo) -> None:
+    """Record that ``demo``'s template is ready, with the rows its store holds now (REQ-2006)."""
+    from sqlalchemy import func
+
+    from provisa.api.demo_replicas import store_counts
+    from provisa.core.schema_admin import demo_template_readiness
+
+    counts = await asyncio.to_thread(store_counts, demo.template_org)
+    async with pool.acquire() as conn:
+        await conn.upsert(
+            demo_template_readiness,
+            {
+                "template_org": demo.template_org,
+                "version": readiness_version(demo),
+                "replicas": counts["replicas"],
+                "views": counts["views"],
+            },
+            index_elements=["template_org"],
+            set_extra={"ready_at": func.now()},
+        )
+
+
+async def warm_ready(pool, demo: PublishedDemo) -> bool:
+    """Whether ``demo``'s template can be served as it is, right after a start, with no build and
+    no wait for its replicas: its org is ready, its readiness record is for this demo version and
+    this Provisa release, and its store on disk holds exactly the rows recorded."""
+    from sqlalchemy import select
+
+    from provisa.api.demo_replicas import store_counts
+    from provisa.core.schema_admin import demo_template_readiness, orgs
+
+    async with pool.acquire() as conn:
+        org = (
+            await conn.execute_core(
+                select(orgs.c.provisioning_state).where(orgs.c.id == demo.template_org)
+            )
+        ).fetchone()
+        record = (
+            await conn.execute_core(
+                select(
+                    demo_template_readiness.c.version,
+                    demo_template_readiness.c.replicas,
+                    demo_template_readiness.c.views,
+                ).where(demo_template_readiness.c.template_org == demo.template_org)
+            )
+        ).fetchone()
+    if org is None or org[0] != "ready" or record is None:
+        return False
+    if record.version != readiness_version(demo):
+        return False
+    held = await asyncio.to_thread(store_counts, demo.template_org)
+    return held == {"replicas": dict(record.replicas), "views": dict(record.views)}
 
 
 def _templated(name: str) -> str | None:
@@ -769,6 +841,11 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
                 log.exception("demo template %s: ready hook %r failed", demo.name, hook)
     finally:
         reset_current_org(token)
+    if not regional() and not exporting:
+        # REQ-2006: the next start serves this template as it is built (warm_ready).
+        from provisa.api.admin.orgs_router import _admin_pool
+
+        await record_ready(_admin_pool(), demo)
     return True
 
 
