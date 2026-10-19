@@ -12,8 +12,9 @@
 //   node scripts/gen-site-demos.mjs --check    exit 1 when the page or a screenshot is out of step
 //
 // Source of truth: demo/named/<name>/demo.yaml -- title, description, screenshot (a file beside
-// it), published (true or false). A demo with published: false has no card; a published one
-// needs all four. Its "Open live demo" button opens LIVE_DEMO_URL + <name>: the no-signup sandbox
+// it), published (true or false), and optionally order (a positive integer). A demo with
+// published: false has no card; a published one needs the first four. Cards with an order come
+// first, lowest first; the rest follow by name. Its "Open live demo" button opens LIVE_DEMO_URL + <name>: the no-signup sandbox
 // of that demo on cloud.provisa.dev, which the cloud deployment serves.
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -55,9 +56,14 @@ export function readDemos() {
     if (!fs.existsSync(shot)) {
       throw new Error(`${path.relative(ROOT, file)}: screenshot ${spec.screenshot} is not beside it`);
     }
-    demos.push({ name, title: spec.title.trim(), description: spec.description.trim(), shot });
+    if (spec.order !== undefined && !(Number.isInteger(spec.order) && spec.order > 0)) {
+      throw new Error(`${path.relative(ROOT, file)}: order must be a positive integer`);
+    }
+    const order = spec.order ?? Infinity;
+    demos.push({ name, title: spec.title.trim(), description: spec.description.trim(), shot, order });
   }
-  return demos;
+  // Sorted by name already: a stable sort keeps that order among demos with no order.
+  return demos.sort((a, b) => a.order - b.order);
 }
 
 /** A screenshot as the site serves it: the file unchanged, its name carrying its content hash. */

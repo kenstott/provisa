@@ -27,6 +27,7 @@
  */
 import type { Capability } from "../types/auth";
 import type { TourPrerequisites } from "./tourPrerequisites";
+import PREREQUISITES from "./tourPrerequisites.json";
 
 export interface TourStep {
   /** Route to navigate to before the step is shown. Omit to stay put. */
@@ -714,22 +715,16 @@ export type TourScope = "core" | TopicId;
  * REQ-2013: what each tour's steps need of the org, beyond rights. The core tour and these deep
  * dives are told with the standard demo's objects (its pet store, quality checker and data
  * products); a scope not listed here needs nothing but its pages. A tour whose prerequisites the
- * org lacks is not offered (tourPrerequisites.ts).
+ * org lacks is not offered (tourPrerequisites.ts). They are a JSON file so the Start here demo's
+ * test (tests/integration/test_starthere_demo.py) checks the same list against a running server:
+ * - core: stepQuery hands the SQL explorer the canned pet-store statement.
+ * - query: the explorers' cards hand over the canned pet-store queries.
+ * - quality: the checker's results table, the pets table's profiler, and a product carrying its
+ *   quality.
+ * - model: the lineage card analyses LINEAGE_DEMO_SQL.
+ * - publish: the products card opens the first product.
  */
-const PETS = "pet-store-sqlite.pets";
-export const TOUR_PREREQUISITES: Partial<Record<TourScope, TourPrerequisites>> = {
-  // stepQuery hands the SQL explorer the canned pet-store statement.
-  core: { tables: [PETS] },
-  // The explorers' cards hand over the canned pet-store queries.
-  query: { tables: [PETS] },
-  // The checker's results table, the pets table's profiler, and a product carrying its quality.
-  quality: { tables: ["dq-checker.pets_quality_dq_checker_dq", PETS], dataProduct: true },
-  testdata: { tables: [PETS] },
-  // The lineage card analyses LINEAGE_DEMO_SQL.
-  model: { tables: ["inquiries-sqlite.inquiries", "inquiries-sqlite.users"] },
-  // The products card opens the first product.
-  publish: { dataProduct: true },
-};
+export const TOUR_PREREQUISITES: Partial<Record<TourScope, TourPrerequisites>> = PREREQUISITES;
 
 /** REQ-2010: what one run of the tour walks — a scope of TOUR_STEPS, or the named demo's track,
  * the steps after TOUR_STEPS in the runner's list. */

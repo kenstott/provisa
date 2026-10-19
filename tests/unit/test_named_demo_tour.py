@@ -161,14 +161,19 @@ def _path_names(path: str, prefix: str) -> tuple[str, str]:
 
 
 def test_there_is_a_demo_tour_to_check():
-    """The tours are found, not listed: every published demo has one, so none is left unchecked."""
-    published = {
-        spec.parent.name
-        for spec in _NAMED.glob("*/demo.yaml")
-        if yaml.safe_load(spec.read_text()).get("published") is True
+    """The tours are found, not listed: every published demo has one, so none is left unchecked.
+    A demo whose demo.yaml says ``tour: core`` is toured by the product's core tour and has no
+    tour.yaml of its own."""
+    specs = {
+        spec.parent.name: yaml.safe_load(spec.read_text()) for spec in _NAMED.glob("*/demo.yaml")
     }
+    core = {name for name, spec in specs.items() if spec.get("tour") == "core"}
+    assert all(spec.get("tour") in (None, "core") for spec in specs.values()), "tour is only core"
+    published = {name for name, spec in specs.items() if spec.get("published") is True}
+    tours = {p.parent.name for p in TOURS}
     assert published, "no published demo"
-    assert published <= {p.parent.name for p in TOURS}, "a published demo with no tour.yaml"
+    assert published - core <= tours, "a published demo with no tour.yaml"
+    assert not core & tours, "a demo toured by the core tour has a tour.yaml"
 
 
 @pytest.mark.parametrize("path", TOURS, ids=[p.parent.name for p in TOURS])

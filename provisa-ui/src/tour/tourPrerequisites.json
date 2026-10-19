@@ -1,0 +1,11 @@
+{
+  "core": { "tables": ["pet-store-sqlite.pets"] },
+  "query": { "tables": ["pet-store-sqlite.pets"] },
+  "quality": {
+    "tables": ["dq-checker.pets_quality_dq_checker_dq", "pet-store-sqlite.pets"],
+    "dataProduct": true
+  },
+  "testdata": { "tables": ["pet-store-sqlite.pets"] },
+  "model": { "tables": ["inquiries-sqlite.inquiries", "inquiries-sqlite.users"] },
+  "publish": { "dataProduct": true }
+}

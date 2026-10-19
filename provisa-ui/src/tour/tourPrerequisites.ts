@@ -21,7 +21,7 @@ export interface TourPrerequisites {
   /** Registered tables, as `<source id>.<table name>` (the Tables page's `data-table-row`). */
   tables?: readonly string[];
   /** At least one data product. */
-  dataProduct?: true;
+  dataProduct?: boolean;
 }
 
 export interface OrgHas {

@@ -37,8 +37,10 @@ LOCALES = ROOT / "provisa-ui" / "src" / "i18n" / "locales"
 #: A demo's name is its directory, its compose project's suffix and its tour keys' prefix.
 NAME = re.compile(r"[a-z][a-z0-9]*")
 #: A host port a named demo publishes by default: a variable's default (``${X_PORT:-28132}``,
-#: ``${env:X_PORT:-28132}``, ``${X_PORT-28132}``) or a fixed mapping (``"28132:5432"``).
-_PORT = re.compile(r"\$\{(?:env:)?[A-Z][A-Z0-9_]*_PORT:?-(\d{4,5})\}|\b(\d{4,5}):\d+\b")
+#: ``${env:X_PORT:-28132}``, ``${X_PORT-28132}``) or a fixed mapping (``"28132:5432"``). Provisa's
+#: own ports (``${env:PROVISA_PGWIRE_PORT:-5439}``, which a quality checker source reads its results
+#: through) are the server's, not the demo's.
+_PORT = re.compile(r"\$\{(?:env:)?(?!PROVISA_)[A-Z][A-Z0-9_]*_PORT:?-(\d{4,5})\}|\b(\d{4,5}):\d+\b")
 #: Each demo's stores take a block of 100 ports, 28000-29999; a new demo's database is the
 #: block's <block>32.
 _BLOCKS = range(280, 300)
