@@ -155,11 +155,11 @@ Discovery ist in fünf Ebenen mit zunehmender Governance strukturiert. Jede Eben
 | 4 — Beziehungen | Genehmigte Traversierungspfade zwischen Assets der Ebene 3. Voraussetzung für die Erstellung domänenübergreifender Sichten. | Von beiden Stewards genehmigt |
 | 5 — Feldberechtigungen | Domäne-zu-Domäne-Feldzugriffsberechtigungen. Der spezifischste und bewussteste governte Zugriff. | Vom Quell-Steward genehmigt |
 
-Eine unbeanspruchte Tabelle ist ein Lückensignal — wenn benötigte Daten nur auf Ebene 2 existieren, muss ein Steward sie beanspruchen, bevor Governance fortschreiten kann. Das Fehlen jeglichen Kandidaten über alle Ebenen hinweg erfordert eine Eskalation an den Admin.
+Eine nicht beanspruchte Tabelle zeigt eine Lücke an. Gibt es die benötigten Daten nur auf Stufe 2, muss ein Steward sie beanspruchen, bevor die Governance weitergehen kann. Hat keine Stufe einen Kandidaten, wenden Sie sich an einen Admin.
 
 ### FK-Constraints
 
-FK-Constraints sind ein Konstrukt auf Quellebene — sie können sich nicht über Datenquellen hinweg erstrecken. Quellübergreifende Join-Pfade werden ausschließlich aus genehmigten Katalogbeziehungen (Ebene 4) abgeleitet, die stärker sind, da sie von beiden Stewards validiert wurden.
+FK-Constraints gehören zu einer einzelnen Quelle und können daher keine Quellen überspannen. Quellenübergreifende Join-Pfade stammen ganz aus genehmigten Katalogbeziehungen (Stufe 4), die stärkere Belege sind, weil beide Stewards sie geprüft haben.
 
 Innerhalb einer Quelle:
 
@@ -186,7 +186,7 @@ Für semantisch abgeleitete Kandidaten bietet Daten-Probing einen Validierungssc
 - **Kardinalität** — ob die Verteilung dem erwarteten Beziehungstyp entspricht
 - **Null-Rate** — Anteil der Quellspalte, der null ist, was auf Optionalität hinweist
 
-Hohe Korrelation erhöht das Vertrauen; niedrige Korrelation unterdrückt oder degradiert den Kandidaten. Probing ist bestätigendes Indiz, kein Beweis — Ganzzahlbereiche können zufällig überlappen, und partielle referenzielle Integrität ist in analytischen Systemen üblich. Ein erheblicher Fehlerspielraum bleibt bestehen. Die semantische Beurteilung des Stewards ist die einzige verlässliche Endkontrolle.
+Hohe Korrelation erhöht das Vertrauen, niedrige unterdrückt den Kandidaten oder stuft ihn herab. Probing bestätigt, es beweist nicht. Ganzzahlbereiche können sich zufällig überschneiden, und teilweise referentielle Integrität ist in analytischen Systemen häufig, es bleibt also viel Raum für Fehler. Das semantische Urteil des Stewards ist die einzige verlässliche letzte Prüfung.
 
 ### LLM-unterstützte Discovery {: #llm-assisted-discovery }
 
@@ -230,7 +230,7 @@ Die Geschäftsbeschreibung wird zum deklarierten Geschäftszweck der Sicht, soba
 
 **SQL-first Beziehungs-Discovery (Modeling-Werkzeug):**
 
-Zugänglich als Modal von der Beziehungen-Seite aus. Die Absicht ist der Aufbau des semantischen Modells — die Identifizierung struktureller Join-Pfade, bevor sie als governte Beziehungen formalisiert werden.
+Es öffnet sich als Dialog auf der Seite Beziehungen. Sein Zweck ist der Aufbau des semantischen Modells: strukturelle Join-Pfade finden, bevor sie als gesteuerte Beziehungen formalisiert werden.
 
 1. Der Analyst schreibt freies SQL gegen zugängliche Tabellen (RLS und Maskierung gelten weiterhin)
 2. Der SQL-AST wird geparst — jede JOIN-Bedingung wird zu einem Kandidaten-Beziehungsvorschlag
@@ -238,7 +238,7 @@ Zugänglich als Modal von der Beziehungen-Seite aus. Die Absicht ist der Aufbau 
 4. Der Analyst befördert ausgewählte Kandidaten zu formalen Beziehungsanfragen
 5. Genehmigte Beziehungen werden dem Katalog hinzugefügt und in Abfragen durchlaufbar
 
-Das Modeling-Werkzeug kann alle registrierten Tabellen zur strukturellen Exploration anzeigen, selbst dort, wo der Analyst die zugrunde liegenden Daten nicht sehen kann — die Steward-Genehmigung regelt den tatsächlichen Datenzugriff, nicht die Schemasichtbarkeit.
+Für die strukturelle Erkundung darf das Modellierungswerkzeug jede registrierte Tabelle zeigen, auch solche, deren Daten der Analyst nicht sehen kann. Die Sichtbarkeit des Schemas ist eine eigene Frage; den Zugriff auf die Daten selbst regelt die Genehmigung des Stewards.
 
 ---
 
@@ -256,7 +256,7 @@ Jede Abfrage, die ein Domänen-Asset berührt, wird in einem nur anfügbaren `qu
 
 Das Log ist nur anfügbar (DELETE und UPDATE werden auf Datenbankebene blockiert) und indiziert nach `(tenant_id, logged_at)` und `(user_id, logged_at)`.
 
-Der Abfrageverlaufsbericht des Stewards ist eine aggregierte Sicht über dieses Log, filterbar nach Asset, Rolle und Zeitfenster. Der Katalog ist ein lebendiges Governance-Instrument — Stewards behalten in Echtzeit den Überblick darüber, wie ihre Assets genutzt werden, nicht erst im Nachhinein.
+Der Abfrageverlaufsbericht des Stewards ist eine aggregierte Sicht über dieses Protokoll, filterbar nach Asset, Rolle und Zeitfenster. Damit wird der Katalog zu einem lebendigen Governance-Instrument: Stewards sehen, wie ihre Assets genutzt werden, während es geschieht, und erfahren es nicht erst hinterher.
 
 **Zwei Sichtbarkeitsmechanismen:**
 

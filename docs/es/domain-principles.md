@@ -155,11 +155,11 @@ El descubrimiento está estructurado en cinco niveles de gobierno creciente. Cad
 | 4 — Relaciones | Rutas de recorrido aprobadas entre activos de Nivel 3. Prerrequisito para la creación de vistas entre dominios. | Aprobado por ambos stewards |
 | 5 — Concesiones de campos | Permisos de acceso a campos de dominio a dominio. El acceso gobernado más específico y deliberado. | Aprobado por el steward de origen |
 
-Una tabla no reclamada es una señal de vacío: si los datos necesarios existen solo en el Nivel 2, un steward debe reclamarla antes de que el gobierno pueda proceder. La ausencia de cualquier candidato en todos los niveles requiere escalamiento al administrador.
+Una tabla sin reclamar señala un hueco. Si los datos que necesita solo existen en el nivel 2, un steward debe reclamarlos antes de que la gobernanza pueda avanzar. Cuando ningún nivel tiene candidatos, escale a un administrador.
 
 ### Restricciones de clave foránea {: #fk-constraints }
 
-Las restricciones de clave foránea son una construcción a nivel de origen: no pueden abarcar múltiples orígenes de datos. Las rutas de unión entre orígenes se derivan enteramente de relaciones de catálogo aprobadas (Nivel 4), que son más sólidas, al haber sido validadas por ambos stewards.
+Las restricciones FK pertenecen a un solo origen, así que no pueden abarcar varios. Los caminos de join entre orígenes salen por completo de relaciones aprobadas del catálogo (nivel 4), que son una prueba más sólida porque las han validado ambos stewards.
 
 Dentro de un origen:
 
@@ -186,7 +186,7 @@ Para los candidatos inferidos semánticamente, el sondeo de datos ofrece un paso
 - **Cardinalidad**: si la distribución coincide con el tipo de relación esperado
 - **Tasa de nulos**: proporción de la columna de origen que es nula, lo que indica opcionalidad
 
-Una correlación alta aumenta la confianza; una correlación baja suprime o degrada el candidato. El sondeo es evidencia corroborante, no prueba: los rangos de enteros pueden superponerse por coincidencia y la integridad referencial parcial es común en los sistemas analíticos. Queda un margen de error considerable. El criterio semántico del steward es la única verificación final confiable.
+Una correlación alta aumenta la confianza, y una baja suprime o rebaja al candidato. El sondeo corrobora; no demuestra. Los rangos de enteros pueden solaparse por casualidad y la integridad referencial parcial es habitual en sistemas analíticos, así que queda mucho margen de error. El juicio semántico del steward es la única comprobación final fiable.
 
 ### Descubrimiento asistido por LLM {: #llm-assisted-discovery }
 
@@ -230,7 +230,7 @@ La descripción de negocio se convierte en el propósito de negocio declarado de
 
 **Descubrimiento de relaciones basado en SQL (herramienta de Modelado):**
 
-Se accede como un modal desde la página de Relaciones. La intención es construir el modelo semántico: identificar rutas de unión estructurales antes de formalizarlas como relaciones gobernadas.
+Se abre como ventana modal desde la página de relaciones. Su propósito es construir el modelo semántico: encontrar caminos de join estructurales antes de formalizarlos como relaciones gobernadas.
 
 1. El analista escribe SQL libre contra las tablas accesibles (con RLS y enmascaramiento aún aplicados)
 2. Se analiza el AST del SQL: cada condición JOIN se convierte en una propuesta de Relación candidata
@@ -238,7 +238,7 @@ Se accede como un modal desde la página de Relaciones. La intención es constru
 4. El analista promueve los candidatos seleccionados a solicitudes formales de Relación
 5. Las relaciones aprobadas se agregan al catálogo y se vuelven recorribles en las consultas
 
-La herramienta de Modelado puede mostrar todas las tablas registradas para exploración estructural, incluso cuando el analista no puede ver los datos subyacentes: la aprobación del steward gobierna el acceso real a los datos, no la visibilidad del esquema.
+Para la exploración estructural, la herramienta de modelado puede mostrar todas las tablas registradas, incluso aquellas cuyos datos el analista no puede ver. La visibilidad del esquema es otra cuestión; lo que rige el acceso a los datos en sí es la aprobación del steward.
 
 ---
 
@@ -256,7 +256,7 @@ Toda consulta que toca un activo de dominio se registra en un `query_audit_log` 
 
 El registro es de solo adición (DELETE y UPDATE están bloqueados a nivel de base de datos) e indexado por `(tenant_id, logged_at)` y `(user_id, logged_at)`.
 
-El informe de historial de consultas del steward es una vista agregada sobre este registro, filtrable por activo, rol y ventana de tiempo. El catálogo es un instrumento de gobierno en vivo: los stewards mantienen conocimiento de cómo se usan sus activos en el momento en que ocurre, no después.
+El informe de historial de consultas del steward es una vista agregada sobre este registro, que puede filtrar por activo, rol y ventana de tiempo. Eso convierte el catálogo en un instrumento de gobernanza vivo: los stewards ven cómo se usan sus activos mientras ocurre, en lugar de enterarse después.
 
 **Dos mecanismos de visibilidad:**
 

@@ -155,11 +155,11 @@ La découverte est structurée en cinq paliers de gouvernance croissante. Chaque
 | 4 — Relations | Chemins de parcours approuvés entre actifs du palier 3. Prérequis pour la création de vues inter-domaines. | Approuvé par les deux stewards |
 | 5 — Octrois de champs | Permissions d'accès aux champs de domaine à domaine. L'accès gouverné le plus spécifique et le plus délibéré. | Approuvé par le steward source |
 
-Une table non revendiquée est un signal de lacune — si les données nécessaires n'existent qu'au palier 2, un steward doit la revendiquer avant que la gouvernance puisse progresser. L'absence de tout candidat à travers tous les paliers requiert une escalade vers l'admin.
+Une table non revendiquée signale un manque. Si les données dont vous avez besoin n'existent qu'au niveau 2, un intendant doit la revendiquer avant que la gouvernance puisse avancer. Quand aucun niveau n'a de candidat, remontez à un administrateur.
 
 ### Contraintes de clé étrangère {: #fk-constraints }
 
-Les contraintes de clé étrangère sont une construction au niveau de la source — elles ne peuvent pas s'étendre sur plusieurs sources de données. Les chemins de jointure inter-sources sont dérivés entièrement des relations approuvées du catalogue (palier 4), qui sont plus robustes, ayant été validées par les deux stewards.
+Les contraintes FK appartiennent à une seule source, elles ne peuvent donc pas en enjamber plusieurs. Les chemins de jointure inter-sources viennent entièrement des relations approuvées du catalogue (niveau 4), une preuve plus solide puisque les deux intendants les ont validées.
 
 Au sein d'une source :
 
@@ -186,7 +186,7 @@ Pour les candidats inférés sémantiquement, le sondage des données fournit un
 - **Cardinalité** — si la distribution correspond au type de relation attendu
 - **Taux de valeurs nulles** — proportion de la colonne source qui est nulle, indiquant l'optionalité
 
-Une corrélation élevée renforce la confiance ; une corrélation faible supprime ou rétrograde le candidat. Le sondage est une preuve corroborante, pas une démonstration — des plages d'entiers peuvent se chevaucher par coïncidence et l'intégrité référentielle partielle est courante dans les systèmes analytiques. Une marge d'erreur significative subsiste. Le jugement sémantique du steward est le seul contrôle final fiable.
+Une forte corrélation augmente la confiance, une faible corrélation supprime ou rétrograde le candidat. Le sondage corrobore ; il ne prouve pas. Des plages d'entiers peuvent se chevaucher par hasard et une intégrité référentielle partielle est courante dans les systèmes analytiques, donc la marge d'erreur reste grande. Le jugement sémantique de l'intendant est le seul contrôle final fiable.
 
 ### Découverte assistée par LLM {: #llm-assisted-discovery }
 
@@ -230,7 +230,7 @@ La description métier devient la finalité métier déclarée de la vue une foi
 
 **Découverte de relations SQL-first (outil de modelage) :**
 
-Accessible sous forme de fenêtre modale depuis la page Relations. L'intention est de construire le modèle sémantique — en identifiant les chemins de jointure structurels avant de les formaliser en relations gouvernées.
+Il s'ouvre en fenêtre modale depuis la page Relations. Son but est de construire le modèle sémantique : trouver des chemins de jointure structurels avant de les formaliser en relations gouvernées.
 
 1. L'analyste écrit du SQL libre sur les tables accessibles (la sécurité au niveau des lignes et le masquage restent appliqués)
 2. L'AST SQL est analysé — chaque condition JOIN devient une proposition de relation candidate
@@ -238,7 +238,7 @@ Accessible sous forme de fenêtre modale depuis la page Relations. L'intention e
 4. L'analyste promeut les candidats sélectionnés vers des demandes de relation formelles
 5. Les relations approuvées sont ajoutées au catalogue et deviennent franchissables dans les requêtes
 
-L'outil de modelage peut afficher toutes les tables enregistrées à des fins d'exploration structurelle, même lorsque l'analyste ne peut pas voir les données sous-jacentes — l'approbation du steward gouverne l'accès réel aux données, non la visibilité du schéma.
+Pour l'exploration structurelle, l'outil de modélisation peut montrer toutes les tables enregistrées, y compris celles dont l'analyste ne peut pas voir les données. La visibilité du schéma est une autre question ; c'est l'approbation de l'intendant qui régit l'accès aux données elles-mêmes.
 
 ---
 
@@ -256,7 +256,7 @@ Chaque requête qui touche un actif de domaine est enregistrée dans un `query_a
 
 Le journal est en ajout seul (DELETE et UPDATE bloqués au niveau de la base de données) et indexé par `(tenant_id, logged_at)` et `(user_id, logged_at)`.
 
-Le rapport d'historique des requêtes du steward est une vue agrégée sur ce journal, filtrable par actif, rôle et fenêtre temporelle. Le catalogue est un instrument de gouvernance vivant — les stewards maintiennent une conscience de la façon dont leurs actifs sont utilisés en temps réel, non après coup.
+Le rapport d'historique des requêtes de l'intendant est une vue agrégée sur ce journal, filtrable par actif, rôle et fenêtre de temps. Le catalogue devient ainsi un instrument de gouvernance vivant : les intendants voient comment leurs actifs sont utilisés au moment où cela se passe, sans l'apprendre après coup.
 
 **Deux mécanismes de visibilité :**
 

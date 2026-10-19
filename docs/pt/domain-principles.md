@@ -175,15 +175,11 @@ pré-requisito para a próxima.
 | 4 — Relacionamentos | Caminhos de travessia aprovados entre ativos da Camada 3. Pré-requisito para criação de view entre domínios. | Aprovado por ambos os stewards |
 | 5 — Concessões de campo | Permissões de acesso de campo domínio-para-domínio. O acesso governado mais específico e deliberado. | Aprovado pelo steward de origem |
 
-Uma tabela não reivindicada é um sinal de lacuna — se dados necessários existem somente na Camada
-2, um steward deve reivindicá-los antes que a governança possa prosseguir. A ausência de qualquer
-candidato em todas as camadas requer escalonamento ao admin.
+Uma tabela não reivindicada aponta uma lacuna. Se os dados de que você precisa só existem no nível 2, um steward precisa reivindicá-los antes que a governança possa avançar. Quando nenhum nível tem candidato, escale para um admin.
 
 ### Restrições FK {: #fk-constraints }
 
-Restrições FK são uma construção em nível de fonte — não podem abranger múltiplas fontes de dados.
-Caminhos de join entre fontes são derivados inteiramente de relacionamentos de catálogo aprovados
-(Camada 4), que são mais fortes, tendo sido validados por ambos os stewards.
+Restrições FK pertencem a uma única fonte, então não podem abranger fontes. Caminhos de join entre fontes vêm inteiramente de relacionamentos aprovados do catálogo (nível 4), que são uma evidência mais forte porque os dois stewards os validaram.
 
 Dentro de uma fonte:
 
@@ -212,10 +208,7 @@ Para candidatos inferidos semanticamente, a sondagem de dados fornece uma etapa 
 - **Cardinalidade** — se a distribuição corresponde ao tipo de relacionamento esperado
 - **Taxa de nulo** — proporção da coluna de origem que é nula, indicando opcionalidade
 
-Alta correlação eleva a confiança; baixa correlação suprime ou rebaixa o candidato. A sondagem é
-evidência corroborante, não prova — faixas de inteiro podem se sobrepor coincidentemente e
-integridade referencial parcial é comum em sistemas analíticos. Uma margem de erro significativa
-permanece. O julgamento semântico do steward é a única verificação final confiável.
+Correlação alta aumenta a confiança, e correlação baixa suprime ou rebaixa o candidato. A sondagem corrobora; não prova. Faixas de inteiros podem se sobrepor por acaso, e integridade referencial parcial é comum em sistemas analíticos, então sobra muito espaço para erro. O julgamento semântico do steward é a única verificação final confiável.
 
 ### Descoberta Assistida por LLM {: #llm-assisted-discovery }
 
@@ -267,9 +260,7 @@ formalmente criada.
 
 **Descoberta de relacionamento SQL-first (ferramenta Modeling):**
 
-Acessada como um modal a partir da página Relationships. A intenção é construir o modelo
-semântico — identificando caminhos de join estruturais antes de formalizá-los como relacionamentos
-governados.
+Ele abre como modal na página de relacionamentos. O propósito é construir o modelo semântico: encontrar caminhos de join estruturais antes de formalizá-los como relacionamentos governados.
 
 1. O analista escreve SQL livre contra tabelas acessíveis (RLS e mascaramento ainda aplicados)
 2. A AST do SQL é analisada — cada condição JOIN se torna uma proposta de Relationship candidata
@@ -278,9 +269,7 @@ governados.
 4. O analista promove candidatos selecionados a solicitações de Relationship formais
 5. Relationships aprovados são adicionados ao catálogo e se tornam percorríveis em Queries
 
-A ferramenta Modeling pode mostrar todas as tabelas registradas para exploração estrutural, mesmo
-onde o analista não consegue ver os dados subjacentes — a aprovação do steward governa o acesso
-real aos dados, não a visibilidade de esquema.
+Para a exploração estrutural, a ferramenta de modelagem pode mostrar toda tabela registrada, inclusive aquelas cujos dados o analista não pode ver. A visibilidade do esquema é outra questão; o acesso aos dados em si é regido pela aprovação do steward.
 
 ---
 
@@ -300,9 +289,7 @@ Cada entrada captura:
 O log é somente-anexação (DELETE e UPDATE bloqueados no nível do banco de dados) e indexado por
 `(tenant_id, logged_at)` e `(user_id, logged_at)`.
 
-O relatório de histórico de consulta do steward é uma view agregada sobre este log, filtrável por
-ativo, função, e janela de tempo. O catálogo é um instrumento de governança ao vivo — stewards
-mantêm consciência de como seus ativos são usados conforme acontece, não depois do fato.
+O relatório de histórico de consultas do steward é uma visão agregada sobre este log, que você pode filtrar por ativo, papel e janela de tempo. Isso faz do catálogo um instrumento de governança vivo: os stewards veem como seus ativos são usados enquanto acontece, em vez de descobrir depois.
 
 **Dois mecanismos de visibilidade:**
 

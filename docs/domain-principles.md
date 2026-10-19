@@ -155,11 +155,11 @@ Discovery is structured across five tiers of increasing governance. Each tier is
 | 4 — Relationships | Approved traversal paths between Tier 3 assets. Prerequisite for cross-domain view creation. | Approved by both stewards |
 | 5 — Field grants | Domain-to-domain field access permissions. The most specific and deliberate governed access. | Approved by source steward |
 
-An unclaimed table is a gap signal — if needed data exists only at Tier 2, a steward must claim it before governance can proceed. Absence of any candidate across all tiers requires admin escalation.
+An unclaimed table points to a gap. If the data you need exists only at Tier 2, a steward must claim it before governance can go further. When no tier has any candidate, escalate to an admin.
 
 ### FK Constraints
 
-FK constraints are a source-level construct — they cannot span data sources. Cross-source join paths are derived entirely from approved catalog relationships (Tier 4), which are stronger, having been validated by both stewards.
+FK constraints belong to a single source, so they can't span sources. Cross-source join paths come entirely from approved catalog relationships (Tier 4), which are stronger evidence because both stewards have validated them.
 
 Within a source:
 
@@ -186,7 +186,7 @@ For semantically inferred candidates, data probing provides a validation step:
 - **Cardinality** — whether distribution matches the expected relationship type
 - **Null rate** — proportion of source column that is null, indicating optionality
 
-High correlation raises confidence; low correlation suppresses or demotes the candidate. Probing is corroborating evidence, not proof — integer ranges can overlap coincidentally and partial referential integrity is common in analytical systems. Significant room for error remains. Steward semantic judgment is the only reliable final check.
+High correlation raises confidence, and low correlation suppresses or demotes the candidate. Probing corroborates; it doesn't prove. Integer ranges can overlap by coincidence, and partial referential integrity is common in analytical systems, so there's plenty of room for error. The steward's semantic judgment is the only reliable final check.
 
 ### LLM-Assisted Discovery
 
@@ -230,7 +230,7 @@ The business description becomes the view's declared business purpose once the v
 
 **SQL-first relationship discovery (Modeling tool):**
 
-Accessed as a modal from the Relationships page. The intent is to build the semantic model — identifying structural join paths before formalising them as governed relationships.
+It opens as a modal from the Relationships page. Its purpose is building the semantic model: finding structural join paths before they are made formal as governed relationships.
 
 1. Analyst writes freeform SQL against accessible tables (RLS and masking still applied)
 2. SQL AST is parsed — each JOIN condition becomes a candidate Relationship proposal
@@ -238,7 +238,7 @@ Accessed as a modal from the Relationships page. The intent is to build the sema
 4. Analyst promotes selected candidates to formal Relationship requests
 5. Approved Relationships are added to the catalog and become traversable in Queries
 
-The Modeling tool may show all registered tables for structural exploration, even where the analyst cannot see the underlying data — steward approval governs actual data access, not schema visibility.
+For structural exploration the Modeling tool may show every registered table, including ones whose data the analyst can't see. Schema visibility is a separate matter; steward approval is what governs access to the data itself.
 
 ---
 
@@ -256,7 +256,7 @@ Every query that touches a domain asset is recorded in an append-only `query_aud
 
 The log is append-only (DELETE and UPDATE blocked at the database level) and indexed by `(tenant_id, logged_at)` and `(user_id, logged_at)`.
 
-The steward's query history report is an aggregated view over this log, filterable by asset, role, and time window. The catalog is a live governance instrument — stewards maintain awareness of how their assets are used as it happens, not after the fact.
+The steward's query history report is an aggregated view over this log, which you can filter by asset, role and time window. That makes the catalog a live governance instrument: stewards see how their assets are used as it happens, and don't find out after the fact.
 
 **Two visibility mechanisms:**
 

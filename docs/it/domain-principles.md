@@ -155,11 +155,11 @@ La scoperta è strutturata su cinque livelli di governance crescente. Ogni livel
 | 4 — Relazioni | Percorsi di attraversamento approvati tra asset di Livello 3. Prerequisito per la creazione di viste cross-dominio. | Approvate da entrambi gli steward |
 | 5 — Concessioni di campo | Permessi di accesso ai campi da dominio a dominio. L'accesso governato più specifico e deliberato. | Approvate dallo steward di origine |
 
-Una tabella non rivendicata è un segnale di lacuna — se i dati necessari esistono solo al Livello 2, uno steward deve rivendicarla prima che la governance possa procedere. L'assenza di qualsiasi candidato in tutti i livelli richiede un'escalation all'admin.
+Una tabella non rivendicata segnala una lacuna. Se i dati che vi servono esistono solo al livello 2, uno steward deve rivendicarli prima che la governance possa procedere. Quando nessun livello ha candidati, rivolgetevi a un amministratore.
 
 ### Vincoli FK {: #fk-constraints }
 
-I vincoli FK sono un costrutto a livello di origine — non possono estendersi su più origini dati. I percorsi di join cross-source sono derivati interamente da relazioni approvate nel catalogo (Livello 4), che sono più solide, essendo state validate da entrambi gli steward.
+I vincoli FK appartengono a una sola origine, quindi non possono attraversare più origini. I cammini di join tra origini derivano interamente dalle relazioni approvate del catalogo (livello 4), una prova più solida perché entrambi gli steward le hanno convalidate.
 
 All'interno di un'origine:
 
@@ -186,7 +186,7 @@ Per i candidati inferiti semanticamente, il probing dei dati fornisce un passagg
 - **Cardinalità** — se la distribuzione corrisponde al tipo di relazione atteso
 - **Tasso di null** — proporzione della colonna di origine che è null, indicando opzionalità
 
-Un'alta correlazione aumenta la confidenza; una bassa correlazione sopprime o retrocede il candidato. Il probing è evidenza corroborante, non prova — gli intervalli interi possono sovrapporsi per coincidenza e l'integrità referenziale parziale è comune nei sistemi analitici. Rimane un margine di errore significativo. Il giudizio semantico dello steward è l'unico controllo finale affidabile.
+Una correlazione alta aumenta la fiducia, una bassa sopprime o declassa il candidato. Il sondaggio corrobora, non dimostra. Gli intervalli di interi possono sovrapporsi per caso e l'integrità referenziale parziale è comune nei sistemi analitici, quindi il margine d'errore resta ampio. Il giudizio semantico dello steward è l'unico controllo finale affidabile.
 
 ### Scoperta assistita da LLM {: #llm-assisted-discovery }
 
@@ -230,7 +230,7 @@ La descrizione di business diventa lo scopo di business dichiarato della vista u
 
 **Scoperta di relazioni SQL-first (strumento Modeling):**
 
-Accessibile come modale dalla pagina Relationships. L'intento è costruire il modello semantico — identificando i percorsi di join strutturali prima di formalizzarli come relazioni governate.
+Si apre come finestra modale dalla pagina Relazioni. Serve a costruire il modello semantico: trovare cammini di join strutturali prima di formalizzarli come relazioni governate.
 
 1. L'analista scrive SQL libero sulle tabelle accessibili (RLS e mascheramento restano applicati)
 2. L'AST SQL viene analizzato — ogni condizione JOIN diventa una proposta candidata di Relationship
@@ -238,7 +238,7 @@ Accessibile come modale dalla pagina Relationships. L'intento è costruire il mo
 4. L'analista promuove i candidati selezionati a richieste formali di Relationship
 5. Le Relationship approvate vengono aggiunte al catalogo e diventano attraversabili nelle Query
 
-Lo strumento di Modeling può mostrare tutte le tabelle registrate per l'esplorazione strutturale, anche dove l'analista non può vedere i dati sottostanti — l'approvazione dello steward governa l'accesso effettivo ai dati, non la visibilità dello schema.
+Per l'esplorazione strutturale, lo strumento di modellazione può mostrare ogni tabella registrata, anche quelle di cui l'analista non vede i dati. La visibilità dello schema è un'altra questione; è l'approvazione dello steward a governare l'accesso ai dati stessi.
 
 ---
 
@@ -256,7 +256,7 @@ Ogni query che tocca un asset di dominio viene registrata in un `query_audit_log
 
 Il log è di sola aggiunta (DELETE e UPDATE bloccati a livello di database) e indicizzato per `(tenant_id, logged_at)` e `(user_id, logged_at)`.
 
-Il report della cronologia query dello steward è una vista aggregata su questo log, filtrabile per asset, ruolo e finestra temporale. Il catalogo è uno strumento di governance vivo — gli steward mantengono consapevolezza di come i propri asset vengono usati mentre accade, non a posteriori.
+Il report della cronologia delle query dello steward è una vista aggregata su questo log, filtrabile per asset, ruolo e finestra temporale. Così il catalogo diventa uno strumento di governance vivo: gli steward vedono come vengono usati i loro asset mentre accade, invece di scoprirlo dopo.
 
 **Due meccanismi di visibilità:**
 
