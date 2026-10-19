@@ -126,7 +126,7 @@ Python 客户端版本会自动转换为 PEP 440 格式：
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-复制引号中的完整字符串——这就是 `APPLE_DEVELOPER_ID` 的值。
+复制引号中的完整字符串。这个字符串就是 `APPLE_DEVELOPER_ID` 的值。
 
 ## 删除错误的标签 {: #deleting-a-bad-tag }
 

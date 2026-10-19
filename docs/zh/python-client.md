@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` 接受的是一份凭据，而不是用户名加密码：它自身没有登录步骤。当脚本需要无人值守运行时，个人访问令牌是首选凭据——它由用户自己的个人资料页签发，带有有效期，并且可以在不动账户的情况下吊销。提供程序颁发的 bearer 令牌用法完全相同。两者都放在 `token` 中，客户端会在 HTTP 和 Arrow Flight 两条路径上都出示它。
+`ProvisaClient` 接收的是凭据。它没有自己的登录步骤，所以从不索要用户名和密码。脚本需要无人值守运行时，请使用个人访问令牌：你在自己的个人资料中签发它，它有有效期，并且可以在不改动账户的情况下吊销。提供方的 bearer 令牌用法相同。两者都放在 `token` 中，客户端会在 HTTP 和 Arrow Flight 两条路径上出示它。
 
 要用密码换取令牌，向 `/auth/login` 发送 POST 并读取 `access_token`：
 
@@ -48,7 +48,7 @@ body = httpx.post(
 client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 ```
 
-DB-API 和 ADBC 入口会替您完成这一交换——见下文。
+DB-API 和 ADBC 入口会替你完成这次交换，详见下文。
 
 ### GraphQL 查询 {: #graphql-queries }
 
@@ -74,7 +74,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight（高吞吐列式传输） {: #arrow-flight-high-throughput-columnar }
 
-大结果集请使用 Flight——数据以 Arrow record batch 的形式流式传输，无需在服务端物化。
+大型结果集请使用 Flight。数据以 Arrow 记录批次的形式流式传输，从不在服务器上物化。
 
 ```python
 import pyarrow as pa
@@ -169,7 +169,7 @@ url = https://staging.provisa.example.com
 username = ana
 ```
 
-`token` 是个人访问令牌或会话令牌。改为提供 `username` 和 `password` 时，客户端会在 `POST /auth/login` 将其换成会话令牌。这适用于登录提供方接受密码的部署（basic、simple、LDAP）。请把密码放在 `PROVISA_PASSWORD` 中，而不是文件里。登录被拒绝、缺少 URL，或指定的配置节不在文件中时，会抛出带原因的错误。Provisa 没有笔记本可以通过浏览器驱动的登录流程，因此在单点登录部署中请使用个人访问令牌。
+`token` 是个人访问令牌或会话令牌。如果改为提供 `username` 和 `password`，客户端会在 `POST /auth/login` 把它们换成会话令牌。这适用于登录提供方接受密码的部署（basic、simple、LDAP）。把密码放在 `PROVISA_PASSWORD` 中，不要写进文件。登录被拒、缺少 URL，或指定的配置档不在文件中，都会报错并说明原因。Provisa 没有可由笔记本通过浏览器驱动的登录流程，所以单点登录的部署请使用个人访问令牌。
 
 ### 单元格魔法命令 {: #cell-magics }
 
@@ -222,7 +222,7 @@ GraphQL 响应把数据放在一个根字段名下；`query_df()` 会将其提�
 df = client.flight_df("SELECT * FROM events")
 ```
 
-Arrow 保留列类型——整数仍是整数，时间戳仍是时间戳。JSON 做不到。仅凭这一点，在模式重要时就应优先使用 Flight。
+Arrow 会保留列类型。整数仍是整数，时间戳仍是时间戳，而 JSON 做不到这一点。在意模式时，单凭这一点就该优先选择 Flight。
 
 Flight 默认连接 8815 端口。如果服务器使用其他端口，请向 `ProvisaClient` 构造函数传入 `flight_port=`。
 
@@ -234,7 +234,7 @@ Flight 默认连接 8815 端口。如果服务器使用其他端口，请向 `Pr
 %pip install "provisa-client[sqlalchemy]"
 ```
 
-然后用 `provisa+http://` URL 创建 engine。把凭据放在环境变量中，而不是 URL 字符串里。
+然后用 `provisa+http://` URL 构建一个 engine。从环境变量读取凭据，这样它们永远不会出现在你的笔记本里。
 
 ```python
 import os
@@ -250,7 +250,7 @@ engine = create_engine(f"provisa+http://{user}:{pwd}@{host}")
 df = pd.read_sql("SELECT id, amount FROM orders", engine)
 ```
 
-方言把用户名和密码发送到 `/auth/login`，并在 engine 的整个生命周期内持有得到的令牌——不会在每次查询时重新传输凭据。
+该方言只把用户名和密码向 `/auth/login` 发送一次，并在 engine 的整个生命周期内持有得到的令牌。凭据不会随每次查询重复发送。
 
 ---
 
@@ -269,11 +269,11 @@ conn = connect(
 )
 ```
 
-`connect` 会把用户名和密码 POST 到 `/auth/login`，并保存返回的 `access_token`，因此该连接携带的是一份真实凭据，而不只是一个名字。`role` 是在*请求*某个角色，只有该身份确实被分配了该角色时服务器才会予以满足；若省略，连接就以登录所解析出的角色运行。
+`connect` 把用户名和密码发送到 `/auth/login`，并持有返回的 `access_token`，所以连接携带的是真正的凭据。`role` 用于*请求*某个角色，只有当身份被分配了该角色时服务器才会采纳。省略时，连接以登录解析出的角色运行。
 
 ### 执行查询 {: #executing-queries }
 
-游标可接受 GraphQL 或 SQL——自动检测。
+游标接受 GraphQL 或 SQL，并自动识别收到的是哪一种。
 
 ```python
 cur = conn.cursor()
@@ -365,7 +365,7 @@ engine = create_engine(
 
 ## ADBC
 
-基于 Arrow Flight 的 Arrow Database Connectivity。直接返回 `pyarrow.Table`——无需 JSON 反序列化。
+基于 Arrow Flight 的 Arrow Database Connectivity。它直接返回 `pyarrow.Table`，无需 JSON 反序列化。
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -383,7 +383,7 @@ conn = adbc_connect(
 )
 ```
 
-`adbc_connect` 会先通过 HTTP 登录，并把得到的令牌放入每一张 Flight ticket，因此 Flight 服务器对连接的身份验证方式与 REST 接口完全一致。`role` 参数是一项请求，由服务器对照该身份的角色分配进行校验——它绝不会变成身份本身。
+`adbc_connect` 先通过 HTTP 登录，并把得到的令牌放进每张 Flight 票据，所以 Flight 服务器认证连接的方式与 REST 接口相同。`role` 参数是一个请求，服务器会依据身份的分配对其校验。它永远不会变成身份本身。
 
 ### 以 Arrow Table 形式获取 {: #fetch-as-arrow-table }
 

@@ -126,7 +126,7 @@ Builds without these secrets succeed but produce an unsigned/unnotarized DMG (us
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-Copy the full string in quotes — that's the value for `APPLE_DEVELOPER_ID`.
+Copy the full string in quotes. That string is the value for `APPLE_DEVELOPER_ID`.
 
 ## Deleting a Bad Tag
 

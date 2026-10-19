@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` accetta una credenziale, non un nome utente e una password: non ha alcun passaggio di login proprio. Un token di accesso personale è la credenziale a cui ricorrere quando uno script deve girare senza supervisione — viene emesso dal profilo dell'utente stesso, porta una scadenza ed è revocabile senza toccare l'account. Un token bearer del provider funziona allo stesso modo. L'uno o l'altro va in `token`, e il client lo presenta sia sul percorso HTTP sia su quello Arrow Flight.
+`ProvisaClient` riceve una credenziale. Non ha un proprio passo di login, quindi non chiede mai nome utente e password. Quando uno script deve girare senza supervisione, usate un token di accesso personale: lo emettete dal vostro profilo, ha una scadenza e potete revocarlo senza toccare l'account. Un token bearer del provider funziona allo stesso modo. L'uno o l'altro va in `token`, e il client lo presenta sia sul percorso HTTP sia su quello Arrow Flight.
 
 Per scambiare una password con un token, fai POST su `/auth/login` e leggi `access_token`:
 
@@ -48,7 +48,7 @@ body = httpx.post(
 client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 ```
 
-I punti di ingresso DB-API e ADBC eseguono questo scambio per te — vedi sotto.
+I punti di ingresso DB-API e ADBC fanno questo scambio per voi, come descritto più sotto.
 
 ### Query GraphQL {: #graphql-queries }
 
@@ -74,7 +74,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight (columnar ad alto throughput) {: #arrow-flight-high-throughput-columnar }
 
-Usa Flight per grandi result set — i dati vengono trasmessi in streaming come Arrow record batch senza essere materializzati sul server.
+Usate Flight per insiemi di risultati grandi. I dati scorrono come batch di record Arrow e non vengono mai materializzati sul server.
 
 ```python
 import pyarrow as pa
@@ -169,7 +169,7 @@ url = https://staging.provisa.example.com
 username = ana
 ```
 
-Un `token` è un token di accesso personale o un token di sessione. Date invece `username` e `password` e il client li scambia con un token di sessione presso `POST /auth/login`. Funziona su un deployment il cui provider di accesso accetta una password (basic, simple, LDAP). Tenete la password in `PROVISA_PASSWORD` invece che nel file. Un accesso rifiutato, un URL mancante o un profilo nominato che non è nel file sollevano un errore con il motivo. Provisa non ha un flusso di accesso che un notebook possa guidare tramite un browser, quindi per i deployment con single sign-on usate un token di accesso personale.
+Un `token` è un token di accesso personale o un token di sessione. Se date invece `username` e `password`, il client li scambia con un token di sessione su `POST /auth/login`. Funziona su un deployment il cui provider di accesso accetta una password (basic, simple, LDAP). Tenete la password in `PROVISA_PASSWORD`, fuori dal file. Un accesso rifiutato, un URL mancante o un profilo con nome che non è nel file solleva un errore con il motivo. Provisa non ha un flusso di accesso che un notebook possa guidare in un browser, quindi per i deployment con single sign-on usate un token di accesso personale.
 
 ### Magic di cella {: #cell-magics }
 
@@ -222,7 +222,7 @@ Le risposte GraphQL portano i dati sotto il nome di un campo radice; `query_df()
 df = client.flight_df("SELECT * FROM events")
 ```
 
-Arrow preserva i tipi di colonna: gli interi restano interi, i timestamp restano timestamp. JSON no. Già questo basta per preferire Flight quando lo schema conta.
+Arrow conserva i tipi di colonna. Gli interi restano interi e i timestamp restano timestamp, cosa che JSON non può promettere. Quando lo schema conta, basta questo per preferire Flight.
 
 Flight si connette per impostazione predefinita alla porta 8815. Passate `flight_port=` al costruttore di `ProvisaClient` se il vostro server usa un'altra porta.
 
@@ -234,7 +234,7 @@ Installate l'extra `sqlalchemy` nel kernel:
 %pip install "provisa-client[sqlalchemy]"
 ```
 
-Poi create un engine con un URL `provisa+http://`. Mettete le credenziali in variabili d'ambiente, non nell'URL.
+Poi costruite un engine con un URL `provisa+http://`. Leggete le credenziali da variabili d'ambiente, così non finiscono mai nel notebook.
 
 ```python
 import os
@@ -250,7 +250,7 @@ engine = create_engine(f"provisa+http://{user}:{pwd}@{host}")
 df = pd.read_sql("SELECT id, amount FROM orders", engine)
 ```
 
-Il dialetto invia nome utente e password a `/auth/login` e conserva il token ottenuto per tutta la vita dell'engine: le credenziali non vengono ritrasmesse a ogni query.
+Il dialetto invia nome utente e password a `/auth/login` una volta e tiene il token ottenuto per tutta la vita dell'engine. Le credenziali non vengono reinviate a ogni query.
 
 ---
 
@@ -269,11 +269,11 @@ conn = connect(
 )
 ```
 
-`connect` invia nome utente e password in POST a `/auth/login` e conserva l'`access_token` che riceve, così la connessione porta una credenziale vera anziché un nome. `role` *richiede* un ruolo e il server lo onora solo se l'identità lo ha assegnato; se omesso, la connessione gira con il ruolo risolto dal login.
+`connect` invia nome utente e password a `/auth/login` e tiene l'`access_token` che riceve, quindi la connessione porta una credenziale reale. `role` *richiede* un ruolo, e il server lo concede solo se all'identità è assegnato quel ruolo. Se lo omettete, la connessione gira con il ruolo risolto dal login.
 
 ### Esecuzione di query {: #executing-queries }
 
-Il cursore accetta GraphQL o SQL — rilevato automaticamente.
+Il cursore accetta GraphQL o SQL e rileva quale ha ricevuto.
 
 ```python
 cur = conn.cursor()
@@ -365,7 +365,7 @@ Il dialetto riflette il catalogo servito al vostro ruolo, letto da `GET /data/ca
 
 ## ADBC
 
-Arrow Database Connectivity basata su Arrow Flight. Restituisce direttamente `pyarrow.Table` — nessuna deserializzazione JSON.
+Arrow Database Connectivity, basato su Arrow Flight. Restituisce direttamente una `pyarrow.Table`, senza deserializzazione JSON.
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -383,7 +383,7 @@ conn = adbc_connect(
 )
 ```
 
-`adbc_connect` esegue prima il login su HTTP e inserisce il token ottenuto in ogni ticket Flight, così il server Flight autentica la connessione allo stesso modo della superficie REST. L'argomento `role` è una richiesta, validata lato server rispetto alle assegnazioni dell'identità — non diventa mai l'identità.
+`adbc_connect` accede prima via HTTP e mette il token ottenuto in ogni ticket Flight, quindi il server Flight autentica la connessione come fa la superficie REST. L'argomento `role` è una richiesta che il server convalida rispetto alle assegnazioni dell'identità. Non diventa mai l'identità.
 
 ### Recupero come Arrow Table {: #fetch-as-arrow-table }
 

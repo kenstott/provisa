@@ -126,7 +126,7 @@ Los builds sin estos secretos se completan correctamente pero producen un DMG si
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-Copie la cadena completa entre comillas — ese es el valor para `APPLE_DEVELOPER_ID`.
+Copie la cadena completa entre comillas. Esa cadena es el valor de `APPLE_DEVELOPER_ID`.
 
 ## Eliminar una etiqueta incorrecta {: #deleting-a-bad-tag }
 

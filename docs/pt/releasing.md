@@ -126,7 +126,7 @@ Builds sem esses segredos são bem-sucedidos mas produzem um DMG não assinado/n
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-Copie a string completa entre aspas — esse é o valor para `APPLE_DEVELOPER_ID`.
+Copie a string completa entre aspas. Essa string é o valor de `APPLE_DEVELOPER_ID`.
 
 ## Excluindo uma Tag Ruim {: #deleting-a-bad-tag }
 

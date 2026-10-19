@@ -126,7 +126,7 @@ git tag v1.2.3 && git push origin v1.2.3
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-Скопируйте полную строку в кавычках — это значение для `APPLE_DEVELOPER_ID`.
+Скопируйте всю строку в кавычках. Эта строка и есть значение `APPLE_DEVELOPER_ID`.
 
 ## Удаление неверного тега {: #deleting-a-bad-tag }
 

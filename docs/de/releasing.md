@@ -126,7 +126,7 @@ Builds ohne diese Secrets werden erfolgreich abgeschlossen, erzeugen jedoch ein 
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-Kopieren Sie die vollständige Zeichenfolge in Anführungszeichen — das ist der Wert für `APPLE_DEVELOPER_ID`.
+Kopieren Sie die vollständige Zeichenfolge in Anführungszeichen. Diese Zeichenfolge ist der Wert für `APPLE_DEVELOPER_ID`.
 
 ## Ein fehlerhaftes Tag löschen {: #deleting-a-bad-tag }
 

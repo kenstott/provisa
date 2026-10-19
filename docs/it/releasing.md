@@ -126,7 +126,7 @@ Le build senza questi secret vengono completate correttamente ma producono un DM
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-Copiare la stringa completa tra virgolette — quello è il valore per `APPLE_DEVELOPER_ID`.
+Copiate la stringa completa tra virgolette. Quella stringa è il valore di `APPLE_DEVELOPER_ID`.
 
 ## Eliminazione di un tag errato {: #deleting-a-bad-tag }
 

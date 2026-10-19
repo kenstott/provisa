@@ -34,7 +34,7 @@ client = ProvisaClient(
 )
 ```
 
-`ProvisaClient` takes a credential, not a username and password: it holds no login step of its own. A personal access token is the credential to reach for when a script needs to run unattended — it is issued from the user's own profile, carries an expiry, and is revocable without touching the account. A provider bearer token works identically. Either goes in `token`, and the client presents it on both the HTTP and the Arrow Flight path.
+`ProvisaClient` takes a credential. It has no login step of its own, so it never asks for a username and password. When a script needs to run unattended, use a personal access token: you issue it from your own profile, it carries an expiry, and you can revoke it without touching the account. A provider bearer token works the same way. Either one goes in `token`, and the client presents it on both the HTTP and the Arrow Flight path.
 
 To exchange a password for a token, POST to `/auth/login` and read `access_token`:
 
@@ -48,7 +48,7 @@ body = httpx.post(
 client = ProvisaClient("http://localhost:8001", token=body["access_token"])
 ```
 
-The DB-API and ADBC entry points do this exchange for you — see below.
+The DB-API and ADBC entry points do this exchange for you, as described below.
 
 ### GraphQL Queries
 
@@ -74,7 +74,7 @@ result = await client.aquery("{ orders { id amount } }")
 
 ### Arrow Flight (high-throughput columnar)
 
-Use Flight for large result sets — data streams as Arrow record batches without materializing on the server.
+Use Flight for large result sets. Data streams as Arrow record batches and is never materialized on the server.
 
 ```python
 import pyarrow as pa
@@ -169,7 +169,7 @@ url = https://staging.provisa.example.com
 username = ana
 ```
 
-A `token` is a personal access token or a session token. Give a `username` and `password` instead and the client exchanges them for a session token at `POST /auth/login`. That works on a deployment whose sign-in provider takes a password (basic, simple, LDAP). Keep the password in `PROVISA_PASSWORD` rather than the file. A refused sign-in, a missing URL, or a named profile that isn't in the file raises with the reason. Provisa has no sign-in flow a notebook can drive through a browser, so for single sign-on deployments use a personal access token.
+A `token` is a personal access token or a session token. Give a `username` and `password` instead, and the client exchanges them for a session token at `POST /auth/login`. That works on a deployment whose sign-in provider takes a password (basic, simple, LDAP). Keep the password in `PROVISA_PASSWORD`, out of the file. A refused sign-in, a missing URL or a named profile that isn't in the file raises an error with the reason. Provisa has no sign-in flow a notebook can drive through a browser, so for single sign-on deployments use a personal access token.
 
 ### Cell magics
 
@@ -222,7 +222,7 @@ GraphQL responses carry the data under a root field name; `query_df()` extracts 
 df = client.flight_df("SELECT * FROM events")
 ```
 
-Arrow preserves column types — integers stay integers, timestamps stay timestamps. JSON does not. That alone is reason to prefer Flight when the schema matters.
+Arrow preserves column types. Integers stay integers and timestamps stay timestamps, which JSON can't promise. When the schema matters, that alone is reason to prefer Flight.
 
 Flight connects on port 8815 by default. Pass `flight_port=` to the `ProvisaClient` constructor if your server uses a different port.
 
@@ -234,7 +234,7 @@ Install the `sqlalchemy` extra into the kernel:
 %pip install "provisa-client[sqlalchemy]"
 ```
 
-Then build an engine with a `provisa+http://` URL. Put credentials in environment variables, not in the URL string.
+Then build an engine with a `provisa+http://` URL. Read the credentials from environment variables so they never sit in your notebook.
 
 ```python
 import os
@@ -250,7 +250,7 @@ engine = create_engine(f"provisa+http://{user}:{pwd}@{host}")
 df = pd.read_sql("SELECT id, amount FROM orders", engine)
 ```
 
-The dialect posts the username and password to `/auth/login` and holds the resulting token for the life of the engine — the credentials are not retransmitted on each query.
+The dialect posts the username and password to `/auth/login` once and holds the resulting token for the life of the engine. The credentials aren't sent again with each query.
 
 ---
 
@@ -269,11 +269,11 @@ conn = connect(
 )
 ```
 
-`connect` posts the username and password to `/auth/login` and holds the `access_token` it gets back, so the connection carries a real credential rather than a name. `role` *requests* a role and the server honours it only if the identity is assigned it; omitted, the connection runs as the role the login resolved.
+`connect` posts the username and password to `/auth/login` and holds the `access_token` it gets back, so the connection carries a real credential. `role` *requests* a role, and the server honours it only if the identity is assigned that role. When you omit it, the connection runs as the role the login resolved.
 
 ### Executing queries
 
-The cursor accepts either GraphQL or SQL — detected automatically.
+The cursor accepts GraphQL or SQL and detects which one it got.
 
 ```python
 cur = conn.cursor()
@@ -365,7 +365,7 @@ The dialect reflects the catalog your role is served, read from `GET /data/catal
 
 ## ADBC
 
-Arrow Database Connectivity backed by Arrow Flight. Returns `pyarrow.Table` directly — no JSON deserialization.
+Arrow Database Connectivity, backed by Arrow Flight. It returns a `pyarrow.Table` directly, with no JSON deserialization.
 
 ```bash
 pip install "provisa-client[adbc]"
@@ -383,7 +383,7 @@ conn = adbc_connect(
 )
 ```
 
-`adbc_connect` logs in over HTTP first and puts the resulting token in every Flight ticket, so the Flight server authenticates the connection the same way the REST surface does. The `role` argument is a request, validated server-side against the identity's assignments — it never becomes the identity.
+`adbc_connect` logs in over HTTP first and puts the resulting token in every Flight ticket, so the Flight server authenticates the connection the same way the REST surface does. The `role` argument is a request that the server validates against the identity's assignments. It never becomes the identity.
 
 ### Fetch as Arrow Table
 

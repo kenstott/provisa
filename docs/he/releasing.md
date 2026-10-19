@@ -126,7 +126,7 @@ build-ים ללא secrets אלה מצליחים אך מייצרים DMG לא-ח�
 security find-identity -v -p codesigning | grep "Developer ID Application"
 ```
 
-העתיקו את המחרוזת המלאה במרכאות — זהו הערך עבור `APPLE_DEVELOPER_ID`.
+העתיקו את המחרוזת המלאה שבין המירכאות. המחרוזת הזו היא הערך של `APPLE_DEVELOPER_ID`.
 
 ## מחיקת תגית שגויה {: #deleting-a-bad-tag }
 
