@@ -79,7 +79,7 @@ ws_in["A1"] = "Provisa Net-Revenue Model — Inputs (yellow = adjustable knob)"
 ws_in["A1"].font = TITLE_FONT
 ws_in["A2"] = (
     "Rates are live Lemon Squeezy / GCP prices as of 2026-09-16 "
-    "(see docs/pricing/pricing-plan.md). Usage and customer counts are illustrative assumptions."
+    "(from the internal pricing plan). Usage and customer counts are illustrative assumptions."
 )
 ws_in["A2"].font = NOTE_FONT
 ws_in.merge_cells("A2:F2")
