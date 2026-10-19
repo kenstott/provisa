@@ -1146,7 +1146,7 @@ auth:
   scram: true
 ```
 
-讓 pgwire 以 `SCRAM-SHA-256` 公告 SASL，因此密碼是被證明而非以明文傳送。 它僅適用於 `basic` 提供者 — 其他提供者都不持有 SCRAM 所需的 RFC 5802 驗證子 — 且不提供通道繫結。
+令 pgwire 通告帶 `SCRAM-SHA-256` 的 SASL，使密碼以證明方式驗證，從不以明文傳送。它只適用於 `basic` 提供者，因為沒有其他提供者保存 SCRAM 所需的 RFC 5802 驗證資料，並且不提供通道繫結。
 
 驗證子無法從既有的 bcrypt 雜湊衍生。每當密碼以純文字經過時就會寫入一個，因此每位使用者的第一次 SCRAM 連線發生在其下一次註冊、登入、變更密碼或管理員重設之後。在那之前，該使用者的連線會回退為經 TLS 的明文交換；線路上不會顯示誰已遷移。
 
@@ -1164,11 +1164,11 @@ auth:
 
 ### 個人存取權杖 {: #personal-access-tokens }
 
-PAT 不需組態區塊 — 它們一律被接受，且其儲存區隨控制平面結構描述一併建立。 可組態的是使用者在簽發時可要求的到期時間：1 至 366 天，或不設到期的永久權杖。見[安全模型](security.md#personal-access-tokens)。
+PAT 不需要設定區塊。它們一律被接受，其儲存會與控制平面的其餘結構描述一併建立。可設定的是使用者簽發時可申請的有效期：1 至 366 天，或者不設期限，即永不過期的權杖。參見[安全模型](security.md#personal-access-tokens)。
 
 ### 雙向 TLS {: #mutual-tls }
 
-用戶端憑證驗證是以環境變數組態，而非在 `provisa.yaml` 中，與它所延伸的 TLS 憑證設定並列。
+用戶端憑證驗證經環境變數設定，與它所擴充的 TLS 憑證設定放在一起，不寫在 `provisa.yaml` 中。
 
 | 變數 | 預設 | 意義 |
 | ---------- | --------- | --------- |
@@ -1176,7 +1176,7 @@ PAT 不需組態區塊 — 它們一律被接受，且其儲存區隨控制平�
 | `PROVISA_MTLS_MODE` | 設定 CA 後為 `required` | `required` 或 `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求憑證的一般名稱等於該連線驗證所用的使用者名稱 |
 
-每一項都可依協定覆寫，命名方式與 TLS 設定相同。設定了模式卻沒有 CA，或模式不是這兩個值之一，都會拒絕啟動，而不是提供操作者以為已驗證的連線。
+每一項都可以按協定覆寫，命名方式與 TLS 設定相同。設定了模式卻沒有 CA，或模式既不是 `required` 亦不是 `optional`，都會阻止啟動，所以伺服器永遠不會在營運者以為已驗證、實際未驗證的情況下提供連線。
 
 ### 透過 TLS 指向某個組織 {: #addressing-an-org-over-tls }
 
@@ -1221,7 +1221,7 @@ PAT 不需組態區塊 — 它們一律被接受，且其儲存區隨控制平�
 
 ## Upsert 變更操作 {: #upsert-mutations }
 
-對於具有主索引鍵的表，Provisa 會自動產生 `upsert_<table>` 變更操作欄位。 它們會編譯成目標方言的 upsert — PostgreSQL 上的 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，MySQL 上的 `ON DUPLICATE KEY UPDATE`。
+對於有主鍵的資料表，Provisa 會產生 `upsert_<table>` 變更欄位。它們編譯為目標方言的 upsert：PostgreSQL 上是 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，MySQL 上是 `ON DUPLICATE KEY UPDATE`。
 
 ```graphql
 mutation {
@@ -1396,7 +1396,7 @@ observability:
 
 ### 遙測篩選器 {: #telemetry-filters }
 
-Provisa 執行兩條獨立的 OTLP 匯出路徑：你的內部收集器，以及選用的 Provisa 支援端點。 每條路徑各有自己的篩選器。篩選器在跨距離開處理程序之前，於包覆的 `_FilteringExporter` 內執行 — 原始跨距物件永不被變更。
+Provisa 有兩條互相獨立的 OTLP 匯出路徑：您的內部 collector，以及可選的 Provisa 支援端點。每條路徑都有自己的篩選器。篩選器在 span 離開程序之前執行，原始的 span 物件永遠不會被修改。
 
 **`telemetry_filter`** — 控制哪些內容到達你的內部收集器。
 
@@ -1426,7 +1426,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### 支援端點 {: #support-endpoint }
 
-`support_endpoint`（或環境變數 `PROVISA_SUPPORT_OTLP_ENDPOINT`）會將遙測轉送給 Provisa 支援以供診斷。 未設定時，沒有數據會經由這條路徑離開你的基礎架構。 支援篩選器獨立於內部篩選器運作 — 你可以在兩邊匯出中都塗黑 SQL 字面值，同時仍與支援分享跨距時間與錯誤數據。
+`support_endpoint`（或環境變數 `PROVISA_SUPPORT_OTLP_ENDPOINT`）會把遙測轉發給 Provisa 支援團隊作診斷。未設定時，任何數據都不會經由這條路徑離開您的基礎設施。支援篩選器獨立於內部篩選器運作，所以您可以在兩路匯出中都隱去 SQL 字面值，同時仍與支援團隊分享 span 耗時及錯誤數據。
 
 ### 端點協定偵測 {: #endpoint-protocol-detection }
 
@@ -1434,7 +1434,7 @@ Provisa 從端點 URL 的配置選擇 OTLP/HTTP 或 OTLP/gRPC。 以 `http://` �
 
 ## 聯邦引擎 {: #federation-engine }
 
-組態聯邦引擎是選用的。預設為 `duckdb` — 零組態、行程內、不需外部服務。當你需要 MPP 規模，或想沿用既有的數據倉庫時，才選擇其他引擎。
+設定聯邦引擎是可選的。預設是 `duckdb`：零設定、程序內執行、毋須外部服務。需要 MPP 規模，或想重用現有數據倉庫時，再選擇其他引擎。
 
 優先順序：`PROVISA_ENGINE` 環境變數 → 持久化的管理員 UI `federation_engine` 組態欄位 → `duckdb`。變更於服務重新啟動時生效。
 
@@ -1508,7 +1508,7 @@ PROVISA_ENGINE=pg
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-具體化儲存區預設為 `~/.provisa/materialize.duckdb` — 唯一預設儲存區不是 PostgreSQL 的引擎。
+具體化儲存預設為 `~/.provisa/materialize.duckdb`。它是唯一預設儲存不是 PostgreSQL 的引擎。
 
 #### clickhouse (embedded) / clickhouse-server
 
@@ -1629,7 +1629,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-若使用 Google Cloud 數據來源，請將 `GOOGLE_APPLICATION_CREDENTIALS` 設為服務帳戶金鑰檔案的路徑。若使用 Fabric 與 Synapse，請以 `az login`（開發者）或受控識別（生產環境）驗證 — 引擎透過 `azure-identity` 的 `DefaultAzureCredential` 讀取認證。
+對於 Google Cloud 數據來源，將 `GOOGLE_APPLICATION_CREDENTIALS` 設定為服務帳戶金鑰檔案的路徑。對於 Fabric 及 Synapse，用 `az login`（開發）或受控識別（生產）登入；引擎經 `azure-identity` 的 `DefaultAzureCredential` 讀取憑證。
 
 ## 環境變數 {: #environment-variables }
 

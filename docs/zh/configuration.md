@@ -1146,7 +1146,7 @@ auth:
   scram: true
 ```
 
-使 pgwire 通过 `SCRAM-SHA-256` 播发 SASL，从而以证明的方式验证密码，而不是以明文发送。它仅适用于 `basic` 提供方——没有其他提供方持有 SCRAM 所需的 RFC 5802 验证器——且不提供通道绑定（channel binding）。
+让 pgwire 通告带 `SCRAM-SHA-256` 的 SASL，使密码以证明方式校验，从不以明文发送。它只适用于 `basic` 提供方，因为没有其他提供方保存 SCRAM 所需的 RFC 5802 验证数据，并且不提供通道绑定。
 
 验证器无法从现有的 bcrypt 哈希派生。每当密码以明文形式经过一次，就会写入一个验证器，因此每个用户的首次 SCRAM 连接紧随其下一次注册、登录、修改密码或管理员重置之后。在此之前，该用户的连接会回退为通过 TLS 的明文交换；线路上不会暴露谁已经完成了迁移。
 
@@ -1164,11 +1164,11 @@ auth:
 
 ### 个人访问令牌 {: #personal-access-tokens }
 
-个人访问令牌（PAT）不需要任何配置块——它们始终被接受，其存储与其余控制平面架构一同创建。可配置的是用户在签发时可以请求的有效期：1 到 366 天，或者选择永不过期。参见[安全模型](security.md#personal-access-tokens)。
+PAT 不需要配置块。它们始终被接受，其存储会与控制平面的其余模式一起创建。可配置的是用户签发时可申请的有效期：1 到 366 天，或者不设期限，即永不过期的令牌。参见[安全模型](security.md#personal-access-tokens)。
 
 ### 双向 TLS（Mutual TLS） {: #mutual-tls }
 
-客户端证书校验是通过环境变量配置的，而非在 `provisa.yaml` 中，它扩展自 TLS 证书设置所在的同一组环境变量。
+客户端证书校验通过环境变量配置，与它所扩展的 TLS 证书设置放在一起，不写在 `provisa.yaml` 中。
 
 | 变量 | 默认值 | 含义 |
 | ---------- | --------- | --------- |
@@ -1176,7 +1176,7 @@ auth:
 | `PROVISA_MTLS_MODE` | 一旦设置了 CA 则为 `required` | `required` 或 `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求证书的通用名称（common name）与连接认证所使用的用户名一致 |
 
-每一项都可以按协议使用与 TLS 设置相同的命名方式进行覆盖。设置了模式却未设置 CA，或者模式取值既非 `required` 也非 `optional`，都会拒绝启动，而不是让运维人员误以为连接已经过验证。
+每一项都可以按协议覆盖，命名方式与 TLS 设置相同。设置了模式却没有 CA，或模式既不是 `required` 也不是 `optional`，都会阻止启动，所以服务器永远不会在运营方以为已校验、实际未校验的情况下提供连接。
 
 ### 通过 TLS 寻址组织 {: #addressing-an-org-over-tls }
 
@@ -1221,7 +1221,7 @@ auth:
 
 ## Upsert 变更（Mutation） {: #upsert-mutations }
 
-对于拥有主键的表，Provisa 会自动生成 `upsert_<table>` 变更字段。它们会编译为目标方言中的 upsert 语句——在 PostgreSQL 上是 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，在 MySQL 上是 `ON DUPLICATE KEY UPDATE`。
+对于有主键的表，Provisa 会生成 `upsert_<table>` 变更字段。它们编译为目标方言的 upsert：PostgreSQL 上是 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，MySQL 上是 `ON DUPLICATE KEY UPDATE`。
 
 ```graphql
 mutation {
@@ -1396,7 +1396,7 @@ observability:
 
 ### 遥测过滤器 {: #telemetry-filters }
 
-Provisa 运行两条独立的 OTLP 导出路径：你自己的内部采集器和可选的 Provisa 支持端点。每条路径都有各自的过滤器。过滤器在跨度（span）离开进程之前，运行在一个包裹层 `_FilteringExporter` 内部——原始的跨度对象永远不会被修改。
+Provisa 有两条相互独立的 OTLP 导出路径：您的内部 collector，以及可选的 Provisa 支持端点。每条路径都有自己的过滤器。过滤器在 span 离开进程之前运行，原始的 span 对象永远不会被修改。
 
 **`telemetry_filter`** —— 控制哪些数据到达你的内部采集器。
 
@@ -1426,7 +1426,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### 支持端点 {: #support-endpoint }
 
-`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会将遥测数据转发给 Provisa 支持团队用于诊断。未设置时，不会有任何数据通过此路径离开你的基础设施。支持端点的过滤器独立于内部过滤器生效——你可以对两条导出路径都做 SQL 字面值涂黑，同时仍与支持团队共享跨度的时间和错误数据。
+`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会把遥测转发给 Provisa 支持团队用于诊断。未设置时，任何数据都不会经由这条路径离开您的基础设施。支持过滤器独立于内部过滤器工作，所以您可以在两路导出中都隐去 SQL 字面量，同时仍与支持团队共享 span 耗时和错误数据。
 
 ### 端点协议探测 {: #endpoint-protocol-detection }
 
@@ -1434,7 +1434,7 @@ Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。以 `htt
 
 ## 联邦引擎 {: #federation-engine }
 
-配置联邦引擎是可选的。默认值为 `duckdb`——零配置、进程内运行、无需外部服务。当你需要 MPP 规模，或想复用现有数据仓库时，可选择其他引擎。
+配置联邦引擎是可选的。默认是 `duckdb`：零配置、进程内运行、无需外部服务。需要 MPP 规模，或想复用已有数仓时，再选择其他引擎。
 
 优先级：`PROVISA_ENGINE` 环境变量 → 持久化的管理界面 `federation_engine` 配置字段 → `duckdb`。更改在服务重启后生效。
 
@@ -1508,7 +1508,7 @@ PROVISA_ENGINE=pg
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-物化存储默认使用 `~/.provisa/materialize.duckdb`——是唯一默认存储不是 PostgreSQL 的引擎。
+物化存储默认为 `~/.provisa/materialize.duckdb`。它是唯一默认存储不是 PostgreSQL 的引擎。
 
 #### clickhouse（嵌入式）/ clickhouse-server {: #clickhouse-embedded-clickhouse-server }
 
@@ -1629,7 +1629,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-对于 Google Cloud 数据源，将 `GOOGLE_APPLICATION_CREDENTIALS` 设置为服务账号密钥文件的路径。对于 Fabric 和 Synapse，使用 `az login`（开发环境）或托管身份（生产环境）进行认证——引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。
+对于 Google Cloud 数据源，将 `GOOGLE_APPLICATION_CREDENTIALS` 设置为服务账号密钥文件的路径。对于 Fabric 和 Synapse，用 `az login`（开发）或托管标识（生产）登录；引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。
 
 ## 环境变量 {: #environment-variables }
 

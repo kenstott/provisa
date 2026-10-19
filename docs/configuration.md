@@ -1148,7 +1148,7 @@ auth:
   scram: true
 ```
 
-Makes pgwire advertise SASL with `SCRAM-SHA-256`, so a password is proved rather than sent in cleartext. It applies to the `basic` provider only — no other provider holds the RFC 5802 verifiers SCRAM needs — and channel binding is not offered.
+Makes pgwire advertise SASL with `SCRAM-SHA-256`, so a password is proved and never sent in cleartext. It applies only to the `basic` provider, since no other provider holds the RFC 5802 verifiers SCRAM needs, and channel binding isn't offered.
 
 Verifiers cannot be derived from existing bcrypt hashes. One is written whenever a password passes through in plaintext, so each user's first SCRAM connection follows their next signup, login, password change or admin reset. Until then that user's connections fall back to the cleartext exchange over TLS; the wire does not reveal who has migrated.
 
@@ -1166,11 +1166,11 @@ On by default with the values shown; the block only tunes them. The counter sits
 
 ### Personal access tokens
 
-PATs need no configuration block — they are always accepted, and the store is created with the rest of the control-plane schema. What is configurable is the expiry a user may request at issuance: 1 to 366 days, or none for a token that does not expire. See [Security Model](security.md#personal-access-tokens).
+PATs need no configuration block. They're always accepted, and their store is created with the rest of the control-plane schema. What you can configure is the expiry a user may ask for when issuing one: 1 to 366 days, or none for a token that doesn't expire. See [Security Model](security.md#personal-access-tokens).
 
 ### Mutual TLS
 
-Client-certificate verification is configured by environment variable rather than in `provisa.yaml`, alongside the TLS certificate settings it extends.
+Client-certificate verification is configured with environment variables, alongside the TLS certificate settings it extends, and has no place in `provisa.yaml`.
 
 | Variable | Default | Meaning |
 | ---------- | --------- | --------- |
@@ -1178,7 +1178,7 @@ Client-certificate verification is configured by environment variable rather tha
 | `PROVISA_MTLS_MODE` | `required` once a CA is set | `required` or `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the username the connection authenticates as |
 
-Each takes a per-protocol override under the same naming as the TLS settings. A mode set without a CA, or a mode that is neither value, refuses to start rather than serving connections the operator believes are verified.
+Each one takes a per-protocol override, named the same way as the TLS settings. A mode set without a CA, or a mode that is neither `required` nor `optional`, stops startup, so the server never serves connections the operator believes are verified when they aren't.
 
 ### Addressing an org over TLS
 
@@ -1223,7 +1223,7 @@ Nothing to configure. On a multi-org deployment, pgwire and Bolt read the org fr
 
 ## Upsert Mutations
 
-For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. These compile to an upsert in the target dialect — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` on PostgreSQL, `ON DUPLICATE KEY UPDATE` on MySQL.
+For tables with a primary key, Provisa generates `upsert_<table>` mutation fields. These compile to an upsert in the target dialect: `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` on PostgreSQL, `ON DUPLICATE KEY UPDATE` on MySQL.
 
 ```graphql
 mutation {
@@ -1398,7 +1398,7 @@ observability:
 
 ### Telemetry Filters
 
-Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. Each path has its own filter. Filters run inside a wrapping `_FilteringExporter` before spans leave the process — original span objects are never mutated.
+Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. Each path has its own filter. The filters run before spans leave the process, and the original span objects are never changed.
 
 **`telemetry_filter`** — controls what reaches your internal collector.
 
@@ -1428,7 +1428,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### Support Endpoint
 
-`support_endpoint` (or env `PROVISA_SUPPORT_OTLP_ENDPOINT`) forwards telemetry to Provisa support for diagnostics. When unset, no data leaves your infrastructure via this path. The support filter applies independently of the internal filter — you can redact SQL literals from both exports while still sharing span timing and error data with support.
+`support_endpoint` (or the environment variable `PROVISA_SUPPORT_OTLP_ENDPOINT`) forwards telemetry to Provisa support for diagnostics. When it's unset, no data leaves your infrastructure this way. The support filter works independently of the internal one, so you can redact SQL literals from both exports and still share span timing and error data with support.
 
 ### Endpoint Protocol Detection
 
@@ -1436,7 +1436,7 @@ Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starti
 
 ## Federation Engine
 
-Configuring a federation engine is optional. The default is `duckdb` — zero-config, in-process, no external service required. Choose another engine when you need MPP scale or want to reuse an existing warehouse.
+Configuring a federation engine is optional. The default is `duckdb`: zero-config, in-process, with no external service. Choose another engine when you need MPP scale or want to reuse a warehouse you already have.
 
 Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` config field → `duckdb`. Changes take effect on service restart.
 
@@ -1510,7 +1510,7 @@ In-process; no external service. The default engine. `PROVISA_DATA_DIR` controls
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-Materialization store defaults to `~/.provisa/materialize.duckdb` — the only engine with a non-PostgreSQL default store.
+The materialization store defaults to `~/.provisa/materialize.duckdb`. It's the only engine whose default store isn't PostgreSQL.
 
 #### clickhouse (embedded) / clickhouse-server
 
@@ -1631,7 +1631,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service-account key file. For Fabric and Synapse, authenticate with `az login` (developer) or a managed identity (production) — the engine reads credentials via `azure-identity`'s `DefaultAzureCredential`.
+For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service-account key file. For Fabric and Synapse, sign in with `az login` (developer) or a managed identity (production); the engine reads the credentials through `azure-identity`'s `DefaultAzureCredential`.
 
 ## Environment Variables
 

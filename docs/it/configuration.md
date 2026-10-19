@@ -1146,7 +1146,7 @@ auth:
   scram: true
 ```
 
-Fa sì che pgwire annunci SASL con `SCRAM-SHA-256`, così che una password venga dimostrata anziché inviata in chiaro. Si applica al solo provider `basic` — nessun altro provider detiene i verificatori RFC 5802 di cui SCRAM ha bisogno — e il channel binding non viene offerto.
+Fa sì che pgwire annunci SASL con `SCRAM-SHA-256`, così una password viene dimostrata e mai inviata in chiaro. Vale solo per il provider `basic`, perché nessun altro provider conserva i verificatori RFC 5802 di cui SCRAM ha bisogno, e il channel binding non è offerto.
 
 I verificatori non possono essere derivati dagli hash bcrypt esistenti. Ne viene scritto uno ogni volta che una password transita in chiaro, quindi la prima connessione SCRAM di ciascun utente segue la sua prossima registrazione, accesso, modifica della password o reimpostazione da parte dell'amministratore. Fino ad allora le connessioni di quell'utente ripiegano sullo scambio in chiaro su TLS; il canale non rivela chi ha già migrato.
 
@@ -1164,11 +1164,11 @@ Attiva per impostazione predefinita con i valori mostrati; il blocco si limita a
 
 ### Token di accesso personale {: #personal-access-tokens }
 
-I PAT non richiedono alcun blocco di configurazione: sono sempre accettati e l'archivio viene creato insieme al resto dello schema del control plane. Ciò che è configurabile è la scadenza che un utente può richiedere all'emissione: da 1 a 366 giorni, oppure nessuna per un token che non scade. Vedi [Modello di sicurezza](security.md#personal-access-tokens).
+I PAT non richiedono un blocco di configurazione. Sono sempre accettati, e il loro archivio viene creato con il resto dello schema del piano di controllo. Ciò che si configura è la scadenza che un utente può chiedere all'emissione: da 1 a 366 giorni, oppure nessuna per un token che non scade. Vedi [Modello di sicurezza](security.md#personal-access-tokens).
 
 ### TLS reciproco {: #mutual-tls }
 
-La verifica del certificato client si configura tramite variabile d'ambiente anziché in `provisa.yaml`, accanto alle impostazioni del certificato TLS che estende.
+La verifica dei certificati client si configura con variabili d'ambiente, accanto alle impostazioni del certificato TLS che estende, e non ha posto in `provisa.yaml`.
 
 | Variabile | Predefinito | Significato |
 | ---------- | --------- | --------- |
@@ -1176,7 +1176,7 @@ La verifica del certificato client si configura tramite variabile d'ambiente anz
 | `PROVISA_MTLS_MODE` | `required` una volta impostata una CA | `required` oppure `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Richiede che il common name del certificato coincida con il nome utente con cui la connessione si autentica |
 
-Ognuna accetta un override per protocollo con la stessa nomenclatura delle impostazioni TLS. Una modalità impostata senza CA, o una modalità che non è nessuno dei due valori, rifiuta di avviarsi anziché servire connessioni che l'operatore ritiene verificate.
+Ognuna accetta un override per protocollo, con gli stessi nomi delle impostazioni TLS. Una modalità impostata senza CA, o una modalità che non è né `required` né `optional`, blocca l'avvio, così il server non serve mai connessioni che l'operatore crede verificate quando non lo sono.
 
 ### Indirizzare un'organizzazione su TLS {: #addressing-an-org-over-tls }
 
@@ -1221,7 +1221,7 @@ Nulla da configurare. In un deployment multi-organizzazione, pgwire e Bolt leggo
 
 ## Mutation upsert {: #upsert-mutations }
 
-Per le tabelle con una chiave primaria, Provisa genera automaticamente campi mutation `upsert_<table>`. Vengono compilati in un upsert nel dialetto di destinazione — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` su PostgreSQL, `ON DUPLICATE KEY UPDATE` su MySQL.
+Per le tabelle con chiave primaria, Provisa genera campi di mutation `upsert_<table>`. Si compilano in un upsert nel dialetto di destinazione: `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` su PostgreSQL, `ON DUPLICATE KEY UPDATE` su MySQL.
 
 ```graphql
 mutation {
@@ -1396,7 +1396,7 @@ observability:
 
 ### Filtri di telemetria {: #telemetry-filters }
 
-Provisa esegue due percorsi di export OTLP indipendenti: il tuo collector interno e l'endpoint di supporto Provisa opzionale. Ogni percorso ha il proprio filtro. I filtri vengono eseguiti dentro un `_FilteringExporter` che avvolge le span prima che lascino il processo — gli oggetti span originali non vengono mai mutati.
+Provisa gestisce due percorsi di esportazione OTLP indipendenti: il vostro collector interno e l'endpoint di supporto Provisa, facoltativo. Ogni percorso ha il proprio filtro. I filtri girano prima che gli span lascino il processo, e gli oggetti span originali non vengono mai modificati.
 
 **`telemetry_filter`** — controlla cosa raggiunge il tuo collector interno.
 
@@ -1426,7 +1426,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### Endpoint di supporto {: #support-endpoint }
 
-`support_endpoint` (o env `PROVISA_SUPPORT_OTLP_ENDPOINT`) inoltra la telemetria al supporto Provisa per la diagnostica. Quando non impostato, nessun dato lascia la tua infrastruttura tramite questo percorso. Il filtro di supporto si applica indipendentemente dal filtro interno — puoi redigere i letterali SQL da entrambi gli export pur condividendo con il supporto i dati di timing e di errore delle span.
+`support_endpoint` (o la variabile d'ambiente `PROVISA_SUPPORT_OTLP_ENDPOINT`) inoltra la telemetria al supporto Provisa per la diagnostica. Se non è impostato, nessun dato lascia la vostra infrastruttura per questa via. Il filtro di supporto funziona indipendentemente da quello interno, quindi potete oscurare i letterali SQL in entrambe le esportazioni e condividere comunque con il supporto i tempi degli span e i dati degli errori.
 
 ### Rilevamento del protocollo dell'endpoint {: #endpoint-protocol-detection }
 
@@ -1434,7 +1434,7 @@ Provisa seleziona OTLP/HTTP o OTLP/gRPC in base allo schema dell'URL dell'endpoi
 
 ## Motore di federazione {: #federation-engine }
 
-Configurare un motore di federazione è opzionale. Il default è `duckdb` — zero-config, in-process, nessun servizio esterno richiesto. Scegli un altro motore quando hai bisogno di scala MPP o vuoi riusare un warehouse esistente.
+Configurare un motore di federazione è facoltativo. Il predefinito è `duckdb`: senza configurazione, nel processo, senza servizi esterni. Scegliete un altro motore quando vi serve la scala MPP o volete riusare un warehouse che avete già.
 
 Precedenza: variabile d'ambiente `PROVISA_ENGINE` → campo di configurazione persistito `federation_engine` della UI di amministrazione → `duckdb`. Le modifiche hanno effetto al riavvio del servizio.
 
@@ -1508,7 +1508,7 @@ In-process; nessun servizio esterno. Il motore di default. `PROVISA_DATA_DIR` co
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-Lo store di materializzazione è di default `~/.provisa/materialize.duckdb` — l'unico motore con uno store di default non PostgreSQL.
+Lo store di materializzazione predefinito è `~/.provisa/materialize.duckdb`. È l'unico motore il cui store predefinito non è PostgreSQL.
 
 #### clickhouse (embedded) / clickhouse-server
 
@@ -1629,7 +1629,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-Per le origini Google Cloud, imposta `GOOGLE_APPLICATION_CREDENTIALS` al percorso del tuo file di chiave service-account. Per Fabric e Synapse, autenticati con `az login` (sviluppo) o una managed identity (produzione) — il motore legge le credenziali tramite `DefaultAzureCredential` di `azure-identity`.
+Per le origini Google Cloud, impostate `GOOGLE_APPLICATION_CREDENTIALS` sul percorso del file di chiave dell'account di servizio. Per Fabric e Synapse, accedete con `az login` (sviluppo) o con un'identità gestita (produzione); il motore legge le credenziali tramite `DefaultAzureCredential` di `azure-identity`.
 
 ## Variabili d'ambiente {: #environment-variables }
 

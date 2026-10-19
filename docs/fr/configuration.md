@@ -1146,7 +1146,7 @@ auth:
   scram: true
 ```
 
-Fait annoncer SASL avec `SCRAM-SHA-256` par pgwire, de sorte qu'un mot de passe est prouvé plutôt qu'envoyé en clair. Cela ne vaut que pour le fournisseur `basic` — aucun autre fournisseur ne détient les vérificateurs RFC 5802 dont SCRAM a besoin — et le channel binding n'est pas proposé.
+Fait annoncer à pgwire SASL avec `SCRAM-SHA-256`, afin qu'un mot de passe soit prouvé et jamais envoyé en clair. Cela ne s'applique qu'au fournisseur `basic`, car aucun autre fournisseur ne détient les vérificateurs RFC 5802 dont SCRAM a besoin, et le channel binding n'est pas proposé.
 
 Les vérificateurs ne peuvent pas être dérivés des hachages bcrypt existants. Un vérificateur est écrit chaque fois qu'un mot de passe transite en clair, si bien que la première connexion SCRAM d'un utilisateur suit son prochain enregistrement, sa prochaine connexion, son prochain changement de mot de passe ou la prochaine réinitialisation par un administrateur. En attendant, les connexions de cet utilisateur retombent sur l'échange en clair au-dessus de TLS ; le réseau ne révèle pas qui a migré.
 
@@ -1164,11 +1164,11 @@ Activée par défaut avec les valeurs indiquées ; le bloc ne fait que les ajus
 
 ### Jetons d'accès personnels {: #personal-access-tokens }
 
-Les PAT n'ont besoin d'aucun bloc de configuration — ils sont toujours acceptés, et le magasin est créé avec le reste du schéma du plan de contrôle. Ce qui est configurable, c'est l'expiration qu'un utilisateur peut demander à l'émission : de 1 à 366 jours, ou aucune pour un jeton qui n'expire pas. Voir [Modèle de sécurité](security.md#personal-access-tokens).
+Les PAT n'ont besoin d'aucun bloc de configuration. Ils sont toujours acceptés, et leur stockage est créé avec le reste du schéma du plan de contrôle. Ce qui se configure, c'est l'expiration qu'un utilisateur peut demander à l'émission : de 1 à 366 jours, ou aucune pour un jeton qui n'expire pas. Voir [Modèle de sécurité](security.md#personal-access-tokens).
 
 ### TLS mutuel {: #mutual-tls }
 
-La vérification du certificat client se configure par variable d'environnement plutôt que dans `provisa.yaml`, aux côtés des réglages de certificat TLS qu'elle prolonge.
+La vérification des certificats clients se configure par variables d'environnement, à côté des réglages de certificat TLS qu'elle étend, et n'a pas sa place dans `provisa.yaml`.
 
 | Variable | Défaut | Signification |
 | ---------- | --------- | --------- |
@@ -1176,7 +1176,7 @@ La vérification du certificat client se configure par variable d'environnement 
 | `PROVISA_MTLS_MODE` | `required` dès qu'une AC est définie | `required` ou `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Exige que le common name du certificat soit égal au nom d'utilisateur sous lequel la connexion s'authentifie |
 
-Chacune accepte une surcharge par protocole, selon la même nomenclature que les réglages TLS. Un mode défini sans AC, ou un mode qui n'est ni l'une ni l'autre valeur, refuse de démarrer plutôt que de servir des connexions que l'opérateur croit vérifiées.
+Chacune accepte une surcharge par protocole, nommée comme les réglages TLS. Un mode défini sans CA, ou un mode qui n'est ni `required` ni `optional`, empêche le démarrage ; le serveur ne sert donc jamais des connexions que l'exploitant croit vérifiées alors qu'elles ne le sont pas.
 
 ### Adresser une organisation via TLS {: #addressing-an-org-over-tls }
 
@@ -1221,7 +1221,7 @@ Rien à configurer. Sur un déploiement multi-organisations, pgwire et Bolt lise
 
 ## Mutations upsert {: #upsert-mutations }
 
-Pour les tables dotées d'une clé primaire, Provisa génère automatiquement des champs de mutation `upsert_<table>`. Ceux-ci se compilent en un upsert dans le dialecte cible — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` sur PostgreSQL, `ON DUPLICATE KEY UPDATE` sur MySQL.
+Pour les tables avec clé primaire, Provisa génère des champs de mutation `upsert_<table>`. Ils se compilent en upsert dans le dialecte cible : `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` sur PostgreSQL, `ON DUPLICATE KEY UPDATE` sur MySQL.
 
 ```graphql
 mutation {
@@ -1396,7 +1396,7 @@ observability:
 
 ### Filtres de télémétrie {: #telemetry-filters }
 
-Provisa fait tourner deux chemins d'export OTLP indépendants : votre collecteur interne et l'endpoint optionnel du support Provisa. Chaque chemin a son propre filtre. Les filtres s'exécutent à l'intérieur d'un `_FilteringExporter` enveloppant, avant que les spans ne quittent le processus — les objets span d'origine ne sont jamais modifiés.
+Provisa gère deux chemins d'export OTLP indépendants : votre collecteur interne et le point de terminaison de support Provisa, facultatif. Chaque chemin a son propre filtre. Les filtres s'exécutent avant que les spans ne quittent le processus, et les objets span d'origine ne sont jamais modifiés.
 
 **`telemetry_filter`** — contrôle ce qui parvient à votre collecteur interne.
 
@@ -1426,7 +1426,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### Endpoint du support {: #support-endpoint }
 
-`support_endpoint` (ou la variable d'environnement `PROVISA_SUPPORT_OTLP_ENDPOINT`) transmet la télémétrie au support Provisa à des fins de diagnostic. Lorsqu'il n'est pas défini, aucune donnée ne quitte votre infrastructure par ce chemin. Le filtre du support s'applique indépendamment du filtre interne — vous pouvez censurer les littéraux SQL des deux exports tout en partageant avec le support les temps d'exécution des spans et les données d'erreur.
+`support_endpoint` (ou la variable d'environnement `PROVISA_SUPPORT_OTLP_ENDPOINT`) transmet la télémétrie au support Provisa pour le diagnostic. S'il n'est pas défini, aucune donnée ne quitte votre infrastructure par ce chemin. Le filtre de support fonctionne indépendamment du filtre interne ; vous pouvez donc masquer les littéraux SQL dans les deux exports tout en partageant avec le support les durées des spans et les données d'erreur.
 
 ### Détection du protocole d'endpoint {: #endpoint-protocol-detection }
 
@@ -1434,7 +1434,7 @@ Provisa choisit OTLP/HTTP ou OTLP/gRPC d'après le schéma d'URL de l'endpoint. 
 
 ## Moteur de fédération {: #federation-engine }
 
-Configurer un moteur de fédération est facultatif. Le défaut est `duckdb` — sans configuration, en processus, aucun service externe requis. Choisissez un autre moteur lorsque vous avez besoin d'une échelle MPP ou souhaitez réutiliser un entrepôt existant.
+Configurer un moteur de fédération est facultatif. Le défaut est `duckdb` : sans configuration, dans le processus, sans service externe. Choisissez un autre moteur quand vous avez besoin d'une échelle MPP ou voulez réutiliser un entrepôt existant.
 
 Précédence : variable d'environnement `PROVISA_ENGINE` → champ de configuration `federation_engine` persisté par l'interface d'administration → `duckdb`. Les changements prennent effet au redémarrage du service.
 
@@ -1508,7 +1508,7 @@ En processus ; aucun service externe. Le moteur par défaut. `PROVISA_DATA_DIR`
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-Le magasin de matérialisation vaut par défaut `~/.provisa/materialize.duckdb` — le seul moteur dont le magasin par défaut n'est pas PostgreSQL.
+Le magasin de matérialisation est par défaut `~/.provisa/materialize.duckdb`. C'est le seul moteur dont le magasin par défaut n'est pas PostgreSQL.
 
 #### clickhouse (embarqué) / clickhouse-server {: #clickhouse-embedded-clickhouse-server }
 
@@ -1629,7 +1629,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-Pour les sources Google Cloud, pointez `GOOGLE_APPLICATION_CREDENTIALS` vers le chemin de votre fichier de clé de compte de service. Pour Fabric et Synapse, authentifiez-vous avec `az login` (développement) ou une identité managée (production) — le moteur lit les credentials via le `DefaultAzureCredential` d'`azure-identity`.
+Pour les sources Google Cloud, définissez `GOOGLE_APPLICATION_CREDENTIALS` sur le chemin de votre fichier de clé de compte de service. Pour Fabric et Synapse, connectez-vous avec `az login` (développement) ou une identité managée (production) ; le moteur lit les identifiants via `DefaultAzureCredential` d'`azure-identity`.
 
 ## Variables d'environnement {: #environment-variables }
 
