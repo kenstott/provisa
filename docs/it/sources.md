@@ -272,7 +272,7 @@ Una ricerca viene letta per istruzione con i suoi argomenti, le sue righe conser
 
 Tre meccanismi coprono i file. Le origini a file singolo e il crawler di file usano il campo `path` invece di `host`/`port`. Il terzo, [Logs](#logs), indica i propri file con un glob nel suo `mapping` e legge solo file presenti sul server Provisa.
 
-**Origini database su file e a file singolo** — `sqlite`, `duckdb`, `csv`, `parquet` puntano `path` su un singolo file. (Un'origine `duckdb` tiene la sua posizione nel campo `database` del modulo.)
+**Origini database su file e a file singolo.** Un'origine `sqlite`, `duckdb`, `csv` o `parquet` punta `path` a un solo file. (Un'origine `duckdb` tiene la propria posizione nel campo `database` del modulo.)
 
 | Tipo di origine | Posizioni | Mutation |
 | --- | --- | --- |
@@ -312,7 +312,7 @@ Un percorso con qualsiasi altro schema (ad esempio `ftp://`) viene rifiutato: "D
 
 Una cartella condivisa senza cifratura deve essere montata con lock che raggiungono ogni nodo: un mount NFS con il locking attivo, non `nolock` e non `local_lock`. Nessuna verifica lo controlla; è un requisito di deployment.
 
-**Crawler di file (origine `files`)** — punta `path` su un glob, lo esegue in crawling ricorsivamente, e registra la directory come catalogo federato di tabelle. Legge molti formati su molti trasporti; gli insiemi sotto provengono dal connettore file (fork kenstott/calcite).
+**Crawler di file (origine `files`).** Punta `path` a un glob, lo percorre ricorsivamente e registra la directory come catalogo federato di tabelle. Legge molti formati attraverso molti trasporti:
 
 | Formati | Trasporti |
 | --- | --- |
@@ -326,8 +326,7 @@ Una cartella condivisa senza cifratura deve essere montata con lock che raggiung
 
 Qualsiasi origine `files` può anche dichiarare un `crawl` nel proprio mapping, con le stesse impostazioni elencate sotto [Wikipedia](#wikipedia): l'origine legge prima le pagine web e atterra ogni tabella di dati HTML e ogni file di dati collegato nella propria directory come tabella.
 
-Sul motore DuckDB, `files` viene letta nativamente — una vista scanner `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite integrato nel connettore (`pgwire-file`) usato da sharepoint/splunk — vedere [Connettori SaaS enterprise](#enterprise-saas-connectors) sotto.
-
+Sul motore DuckDB, `files` viene letto nativamente, con una vista di scansione `read_csv_auto` per ogni `<table>.csv` sotto la directory risolta. Su un motore senza un proprio connettore `files`, le righe atterrano tramite lo stesso server pgwire Calcite fornito con il connettore (`pgwire-file`) che usano sharepoint e splunk. Vedi [Connettori SaaS enterprise](#enterprise-saas-connectors) più avanti.
 #### Logs {: #logs }
 
 Un'origine `logs` trasforma i file di log sul server Provisa in una tabella. I file si indicano con un percorso completo o con un glob, e si sceglie il formato in cui sono scritti i loro record. Ogni record diventa una riga. Un record che il formato non sa leggere viene conservato, con il testo grezzo e il motivo, mai scartato.

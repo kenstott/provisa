@@ -265,7 +265,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 ### 檔案式 {: #file-based }
 三種機制涵蓋檔案。單一檔案數據來源與檔案爬取器使用 `path` 欄位而非 `host`／`port`。 第三種 [Logs](#logs) 在其 `mapping` 中以萬用字元（glob）指定檔案，而且只讀取 Provisa 伺服器上的檔案。
 
-**檔案數據庫與單一檔案數據來源**——`sqlite`、`duckdb`、`csv`、`parquet` 把 `path` 指向單一檔案。（`duckdb` 數據來源把位置保存在表單的 `database` 欄位中。）
+**檔案數據庫與單一檔案數據來源。** `sqlite`、`duckdb`、`csv` 或 `parquet` 數據來源把 `path` 指向單一檔案。（`duckdb` 數據來源把位置保存在表單的 `database` 欄位中。）
 
 | 數據來源類型 | 位置 | 變更操作 |
 | --- | --- | --- |
@@ -305,7 +305,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 
 未加密共用的資料夾必須以能到達每個節點的鎖進行掛載：啟用鎖定的 NFS 掛載，而不是 `nolock`，也不是 `local_lock`。沒有任何探測檢查這一點；這是部署要求。
 
-**檔案爬取器（`files` 數據來源）**——把 `path` 指向一個 glob，遞迴爬取，並把該目錄註冊為一個由表構成的聯邦目錄。它讀取多種格式、經多種傳輸；下列集合來自檔案連接器（kenstott/calcite fork）。
+**檔案爬取器（`files` 數據來源）。** 它把 `path` 指向一個 glob，遞迴爬取，並把該目錄註冊為一個聯邦資料表目錄。它經多種傳輸方式讀取多種格式：
 
 | 格式 | 傳輸 |
 | --- | --- |
@@ -319,8 +319,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 
 任何 `files` 數據來源也可以在其 mapping 中宣告 `crawl`，設定與 [Wikipedia](#wikipedia) 下列出的相同：此時數據來源會先讀取網頁，並把每個 HTML 數據表與每個連結的數據檔案作為表落地到其目錄中。
 
-在 DuckDB 引擎上，`files` 以原生方式讀取——在解析出的目錄下，為每個 `<table>.csv` 提供一個 `read_csv_auto` 掃描器檢視。在沒有自帶 `files` 連接器的引擎上，資料列經 sharepoint／splunk 所用的同一個連接器隨附 Calcite pgwire 伺服器（`pgwire-file`）落地——見下方的[企業 SaaS 連接器](#enterprise-saas-connectors)。
-
+在 DuckDB 引擎上，`files` 以原生方式讀取，解析出的目錄下每個 `<table>.csv` 對應一個 `read_csv_auto` 掃描器檢視。在沒有自帶 `files` 連接器的引擎上，資料列經 sharepoint 及 splunk 所用、隨連接器提供的同一個 Calcite pgwire 伺服器（`pgwire-file`）落地。見下方的[企業 SaaS 連接器](#enterprise-saas-connectors)。
 #### Logs {: #logs }
 
 `logs` 數據來源把 Provisa 伺服器上的日誌檔案變成一張表。你以完整路徑或萬用字元（glob）指定檔案，並選擇其記錄所用的格式。每條記錄成為一個資料列。格式無法讀取的記錄會連同原始文字與原因一併保留，絕不丟棄。

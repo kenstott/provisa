@@ -272,7 +272,7 @@ Une recherche est lue par instruction sous ses arguments, ses lignes conservées
 
 Trois mécanismes couvrent les fichiers. Les sources à fichier unique et le robot d'exploration de fichiers emploient le champ `path` au lieu de `host`/`port`. Le troisième, [Logs](#logs), désigne ses fichiers par un glob dans son `mapping` et ne lit que des fichiers du serveur Provisa.
 
-**Sources base de données fichier et à fichier unique** — `sqlite`, `duckdb`, `csv`, `parquet` font pointer `path` vers un seul fichier. (Une source `duckdb` garde son emplacement dans le champ `database` du formulaire.)
+**Sources base de données fichier et à fichier unique.** Une source `sqlite`, `duckdb`, `csv` ou `parquet` fait pointer `path` vers un seul fichier. (Une source `duckdb` garde son emplacement dans le champ `database` du formulaire.)
 
 | Type de source | Emplacements | Mutations |
 | --- | --- | --- |
@@ -312,7 +312,7 @@ Un chemin avec un autre schéma (`ftp://`, par exemple) est refusé : "DuckDB re
 
 Un dossier partagé sans chiffrement doit être monté avec des verrous qui atteignent chaque nœud : un montage NFS avec le verrouillage activé, ni `nolock` ni `local_lock`. Aucune sonde ne le vérifie ; c'est une exigence de déploiement.
 
-**Robot d'exploration de fichiers (source `files`)** — fait pointer `path` vers un motif glob, le parcourt récursivement et enregistre le répertoire comme catalogue fédéré de tables. Elle lit de nombreux formats sur de nombreux transports ; les ensembles ci-dessous proviennent du connecteur de fichiers (fork kenstott/calcite).
+**Robot d'exploration de fichiers (source `files`).** Il fait pointer `path` vers un motif glob, le parcourt récursivement et enregistre le répertoire comme catalogue fédéré de tables. Il lit de nombreux formats sur de nombreux transports :
 
 | Formats | Transports |
 | --- | --- |
@@ -326,8 +326,7 @@ Un dossier partagé sans chiffrement doit être monté avec des verrous qui atte
 
 Toute source `files` peut aussi déclarer un `crawl` dans son mapping, avec les mêmes réglages que ceux listés sous [Wikipedia](#wikipedia) : la source lit alors d'abord des pages web et dépose chaque tableau de données HTML et chaque fichier de données lié dans son répertoire sous forme de table.
 
-Sur le moteur DuckDB, `files` est lu nativement — une vue de scan `read_csv_auto` par `<table>.csv` sous le répertoire résolu. Sur un moteur sans connecteur `files` propre, les lignes atterrissent via le même serveur pgwire Calcite intégré au connecteur (`pgwire-file`) qu'utilisent sharepoint/splunk — voir [Connecteurs SaaS d'entreprise](#enterprise-saas-connectors) ci-dessous.
-
+Sur le moteur DuckDB, `files` est lu nativement, avec une vue de scan `read_csv_auto` par `<table>.csv` sous le répertoire résolu. Sur un moteur sans connecteur `files` propre, les lignes atterrissent via le même serveur pgwire Calcite livré avec le connecteur (`pgwire-file`) qu'utilisent sharepoint et splunk. Voir [Connecteurs SaaS d'entreprise](#enterprise-saas-connectors) ci-dessous.
 #### Logs {: #logs }
 
 Une source `logs` transforme des fichiers de journaux du serveur Provisa en une table. Vous désignez les fichiers par un chemin complet ou un glob, et vous choisissez le format dans lequel les enregistrements sont écrits. Chaque enregistrement devient une ligne. Un enregistrement que le format ne sait pas lire est conservé, avec son texte brut et la raison, et n'est jamais écarté.

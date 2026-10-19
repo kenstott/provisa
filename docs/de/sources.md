@@ -272,7 +272,7 @@ Eine Suche wird pro Anweisung unter ihren Argumenten gelesen, ihre Zeilen für d
 
 Drei Mechanismen decken Dateien ab. Einzeldatei-Quellen und der Datei-Crawler verwenden das Feld `path` statt `host`/`port`. Der dritte, [Logs](#logs), benennt seine Dateien durch einen Glob in seinem `mapping` und liest nur Dateien auf dem Provisa-Server.
 
-**Dateidatenbank- und Einzeldatei-Quellen** — `sqlite`, `duckdb`, `csv`, `parquet` richten `path` auf eine Datei. (Eine `duckdb`-Quelle hält ihren Speicherort im Feld `database` des Formulars.)
+**Dateidatenbank- und Einzeldatei-Quellen.** Eine `sqlite`-, `duckdb`-, `csv`- oder `parquet`-Quelle richtet `path` auf eine einzige Datei. (Eine `duckdb`-Quelle hält ihren Speicherort im Feld `database` des Formulars.)
 
 | Quelltyp | Speicherorte | Mutations |
 | --- | --- | --- |
@@ -312,7 +312,7 @@ Ein Pfad mit einem anderen Schema (etwa `ftp://`) wird abgelehnt: "DuckDB reads 
 
 Ein ohne Verschlüsselung gemeinsam genutzter Ordner muss mit Sperren gemountet werden, die jeden Knoten erreichen: ein NFS-Mount mit aktiviertem Locking, nicht `nolock` und nicht `local_lock`. Keine Prüfung kontrolliert das; es ist eine Anforderung an das Deployment.
 
-**Datei-Crawler (`files`-Quelle)** — richtet `path` auf ein Glob-Muster, durchläuft es rekursiv und registriert das Verzeichnis als föderierten Katalog von Tabellen. Sie liest viele Formate über viele Transporte; die untenstehenden Mengen stammen vom File-Connector (kenstott/calcite-Fork).
+**Datei-Crawler (`files`-Quelle).** Er richtet `path` auf ein Glob-Muster, durchläuft es rekursiv und registriert das Verzeichnis als föderierten Katalog von Tabellen. Er liest viele Formate über viele Transporte:
 
 | Formate | Transporte |
 | --- | --- |
@@ -326,8 +326,7 @@ Ein ohne Verschlüsselung gemeinsam genutzter Ordner muss mit Sperren gemountet 
 
 Jede `files`-Quelle kann in ihrem Mapping auch ein `crawl` deklarieren, mit denselben Einstellungen, die unter [Wikipedia](#wikipedia) aufgeführt sind: Die Quelle liest dann zuerst Webseiten und landet jede HTML-Datentabelle und jede verlinkte Datendatei in ihrem Verzeichnis als Tabelle.
 
-Auf der DuckDB-Engine wird `files` nativ gelesen — eine `read_csv_auto`-Scanner-View pro `<table>.csv` unter dem aufgelösten Verzeichnis. Auf einer Engine ohne eigenen `files`-Connector landen Zeilen über denselben connector-gebündelten Calcite-pgwire-Server (`pgwire-file`), den auch sharepoint/splunk verwenden — siehe [Enterprise-SaaS-Connectors](#enterprise-saas-connectors) unten.
-
+Auf der DuckDB-Engine wird `files` nativ gelesen, mit einer `read_csv_auto`-Scanner-View pro `<table>.csv` unter dem aufgelösten Verzeichnis. Auf einer Engine ohne eigenen `files`-Connector landen die Zeilen über denselben mit dem Connector gebündelten Calcite-pgwire-Server (`pgwire-file`), den auch sharepoint und splunk nutzen. Siehe [Enterprise-SaaS-Connectors](#enterprise-saas-connectors) unten.
 #### Logs {: #logs }
 
 Eine `logs`-Quelle macht Logdateien auf dem Provisa-Server zu einer Tabelle. Sie benennen die Dateien mit einem vollständigen Pfad oder einem Glob und wählen das Format, in dem die Einträge geschrieben sind. Jeder Eintrag wird zu einer Zeile. Ein Eintrag, den das Format nicht lesen kann, bleibt mit seinem Rohtext und dem Grund erhalten und wird nie verworfen.

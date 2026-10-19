@@ -272,7 +272,7 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 
 有三种机制覆盖文件类数据源。单文件数据源和文件爬取器使用 `path` 字段而非 `host`/`port`。 第三种 [Logs](#logs) 在其 `mapping` 中用通配符（glob）指定文件，并且只读取 Provisa 服务器上的文件。
 
-**文件数据库与单文件数据源** — `sqlite`、`duckdb`、`csv`、`parquet` 将 `path` 指向单个文件。（`duckdb` 数据源把位置保存在表单的 `database` 字段中。）
+**文件数据库与单文件数据源。** `sqlite`、`duckdb`、`csv` 或 `parquet` 数据源把 `path` 指向单个文件。（`duckdb` 数据源把位置保存在表单的 `database` 字段中。）
 
 | Source Type | 位置 | Mutations |
 | --- | --- | --- |
@@ -312,7 +312,7 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 
 未加密共享的文件夹必须以能到达每个节点的锁进行挂载：启用锁定的 NFS 挂载，而不是 `nolock`，也不是 `local_lock`。没有任何探测检查这一点；这是部署要求。
 
-**文件爬取器（`files` 数据源）** — 将 `path` 指向一个通配符（glob），递归遍历该路径，并将该目录注册为一个联邦目录（catalog）中的表集合。它支持多种格式和多种传输方式；下方的集合来自文件连接器（kenstott/calcite fork）。
+**文件爬取器（`files` 数据源）。** 它把 `path` 指向一个通配符（glob），递归遍历，并把该目录注册为一个联邦表目录。它通过多种传输方式读取多种格式：
 
 | Formats | Transports |
 | --- | --- |
@@ -326,8 +326,7 @@ MotherDuck 数据源只由 DuckDB 和 Postgres 引擎提供服务。其他引擎
 
 任何 `files` 数据源也可以在其 mapping 中声明 `crawl`，设置与 [Wikipedia](#wikipedia) 下列出的相同：此时数据源会先读取网页，并将每个 HTML 数据表和每个链接的数据文件作为表落地到其目录中。
 
-在 DuckDB 引擎上，`files` 以原生方式读取 — 在解析出的目录下，为每个 `<table>.csv` 提供一个 `read_csv_auto` 扫描视图。在没有自带 `files` 连接器的引擎上，数据行通过 sharepoint/splunk 所使用的同一个连接器自带 Calcite pgwire 服务器（`pgwire-file`）落地— 参见下方的[企业级 SaaS 连接器](#enterprise-saas-connectors)。
-
+在 DuckDB 引擎上，`files` 以原生方式读取，解析出的目录下每个 `<table>.csv` 对应一个 `read_csv_auto` 扫描视图。在没有自带 `files` 连接器的引擎上，数据行通过 sharepoint 和 splunk 所用的、随连接器提供的同一个 Calcite pgwire 服务器（`pgwire-file`）落地。参见下方的[企业级 SaaS 连接器](#enterprise-saas-connectors)。
 #### Logs {: #logs }
 
 `logs` 数据源将 Provisa 服务器上的日志文件变成一张表。你用完整路径或通配符（glob）指定文件，并选择其记录所用的格式。每条记录成为一行。格式无法读取的记录会连同原始文本和原因一并保留，绝不丢弃。

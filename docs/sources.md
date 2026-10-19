@@ -272,7 +272,7 @@ A search is read per statement under its arguments, its rows kept under those ar
 
 Three mechanisms cover files. Single-file sources and the file crawler use the `path` field instead of `host`/`port`. The third, [Logs](#logs), names its files by a glob in its `mapping` and reads only files on the Provisa server.
 
-**File-database and single-file sources** — `sqlite`, `duckdb`, `csv`, `parquet` point `path` at one file. (A `duckdb` source keeps its location in the `database` field of the form.)
+**File-database and single-file sources.** A `sqlite`, `duckdb`, `csv` or `parquet` source points `path` at one file. (A `duckdb` source keeps its location in the form's `database` field.)
 
 | Source Type | Locations | Mutations |
 | --- | --- | --- |
@@ -312,7 +312,7 @@ A path with any other scheme (`ftp://`, say) is refused: "DuckDB reads no file a
 
 A folder shared without encryption must be mounted with locks that reach every node: an NFS mount with locking on, not `nolock` and not `local_lock`. No probe checks this; it is a deployment requirement.
 
-**File Crawler (`files` source)** — points `path` at a glob, crawls it recursively, and registers the directory as a federated catalog of tables. It reads many formats over many transports; the sets below come from the file connector (kenstott/calcite fork).
+**File Crawler (`files` source).** It points `path` at a glob, crawls it recursively, and registers the directory as a federated catalog of tables. It reads many formats over many transports:
 
 | Formats | Transports |
 | --- | --- |
@@ -326,8 +326,7 @@ A folder shared without encryption must be mounted with locks that reach every n
 
 Any `files` source can also declare a `crawl` in its mapping, with the same settings listed under [Wikipedia](#wikipedia): the source then reads web pages first and lands each HTML data table and each linked data file in its directory as a table.
 
-On the DuckDB engine, `files` is read natively — a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory. On an engine with no `files` connector of its own, rows land through the same connector-bundled Calcite pgwire server (`pgwire-file`) that sharepoint/splunk use — see [Enterprise SaaS Connectors](#enterprise-saas-connectors) below.
-
+On the DuckDB engine, `files` is read natively, with a `read_csv_auto` scanner view per `<table>.csv` under the resolved directory. On an engine with no `files` connector of its own, rows land through the same Calcite pgwire server bundled with the connector (`pgwire-file`) that sharepoint and splunk use. See [Enterprise SaaS Connectors](#enterprise-saas-connectors) below.
 #### Logs {: #logs }
 
 A `logs` source turns log files on the Provisa server into one table. You name the files by a full path or a glob, and pick the format their records are written in. Each record becomes a row. A record the format cannot read is kept, with its raw text and the reason, never dropped.

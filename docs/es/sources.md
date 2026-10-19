@@ -266,7 +266,7 @@ Una búsqueda se lee por instrucción con sus argumentos, y sus filas se conserv
 ### Basados en archivos {: #file-based }
 Tres mecanismos cubren los archivos. Los orígenes de un solo archivo y el rastreador de archivos usan el campo `path` en lugar de `host`/`port`. El tercero, [Logs](#logs), nombra sus archivos mediante un glob en su `mapping` y lee solo archivos del servidor de Provisa.
 
-**Orígenes de base de datos en archivo y de archivo único** — `sqlite`, `duckdb`, `csv`, `parquet` apuntan `path` a un solo archivo. (Un origen `duckdb` guarda su ubicación en el campo `database` del formulario.)
+**Orígenes de base de datos en archivo y de un solo archivo.** Un origen `sqlite`, `duckdb`, `csv` o `parquet` apunta `path` a un único archivo. (Un origen `duckdb` guarda su ubicación en el campo `database` del formulario.)
 
 | Tipo de origen | Ubicaciones | Mutaciones |
 | --- | --- | --- |
@@ -306,7 +306,7 @@ Una ruta con cualquier otro esquema (`ftp://`, por ejemplo) se rechaza: "DuckDB 
 
 Una carpeta compartida sin cifrado debe montarse con bloqueos que lleguen a todos los nodos: un montaje NFS con el bloqueo activado, no `nolock` ni `local_lock`. Ninguna comprobación lo verifica; es un requisito del despliegue.
 
-**Rastreador de archivos (origen `files`)** — apunta `path` a un glob, lo recorre de forma recursiva y registra el directorio como un catálogo federado de tablas. Lee muchos formatos sobre muchos transportes; los conjuntos siguientes provienen del conector de archivos (kenstott/calcite fork).
+**Rastreador de archivos (origen `files`).** Apunta `path` a un glob, lo recorre de forma recursiva y registra el directorio como un catálogo federado de tablas. Lee muchos formatos por muchos transportes:
 
 | Formatos | Transportes |
 | --- | --- |
@@ -320,8 +320,7 @@ Una carpeta compartida sin cifrado debe montarse con bloqueos que lleguen a todo
 
 Cualquier origen `files` también puede declarar un `crawl` en su mapping, con los mismos ajustes que se listan en [Wikipedia](#wikipedia): el origen lee entonces primero páginas web y deja cada tabla de datos HTML y cada archivo de datos enlazado en su directorio como una tabla.
 
-En el motor DuckDB, `files` se lee de forma nativa — una vista de escaneo `read_csv_auto` por cada `<table>.csv` bajo el directorio resuelto. En un motor sin conector `files` propio, las filas aterrizan a través del mismo servidor pgwire de Calcite incluido en el conector (`pgwire-file`) que usan sharepoint/splunk — véase [Conectores SaaS empresariales](#enterprise-saas-connectors) más abajo.
-
+En el motor DuckDB, `files` se lee de forma nativa, con una vista de escaneo `read_csv_auto` por cada `<table>.csv` bajo el directorio resuelto. En un motor sin conector `files` propio, las filas se aterrizan a través del mismo servidor pgwire de Calcite incluido con el conector (`pgwire-file`) que usan sharepoint y splunk. Consulte [Conectores SaaS empresariales](#enterprise-saas-connectors) más abajo.
 #### Logs {: #logs }
 
 Un origen `logs` convierte los archivos de registro del servidor de Provisa en una tabla. Usted indica los archivos con una ruta completa o un glob, y elige el formato en que están escritos los registros. Cada registro se convierte en una fila. Un registro que el formato no puede leer se conserva, con su texto sin procesar y el motivo, y nunca se descarta.

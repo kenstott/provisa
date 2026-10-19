@@ -272,7 +272,7 @@ Uma busca é lida por instrução sob seus argumentos, suas linhas mantidas sob 
 
 Três mecanismos cobrem arquivos. As fontes de arquivo único e o rastreador de arquivos usam o campo `path` em vez de `host`/`port`. O terceiro, [Logs](#logs), indica seus arquivos por um glob em seu `mapping` e lê apenas arquivos que estão no servidor Provisa.
 
-**Fontes de banco de dados em arquivo e de arquivo único** — `sqlite`, `duckdb`, `csv`, `parquet` apontam `path` para um arquivo. (Uma fonte `duckdb` guarda sua localização no campo `database` do formulário.)
+**Fontes de banco de dados em arquivo e de arquivo único.** Uma fonte `sqlite`, `duckdb`, `csv` ou `parquet` aponta `path` para um único arquivo. (Uma fonte `duckdb` guarda sua localização no campo `database` do formulário.)
 
 | Tipo de Fonte | Locais | Mutações |
 | --- | --- | --- |
@@ -312,7 +312,7 @@ Um caminho com qualquer outro esquema (`ftp://`, por exemplo) é recusado: "Duck
 
 Uma pasta compartilhada sem criptografia deve ser montada com bloqueios que alcancem todos os nós: um mount NFS com bloqueio ativado, não `nolock` e não `local_lock`. Nenhuma verificação confere isso; é um requisito de implantação.
 
-**Crawler de arquivos (fonte `files`)** — aponta `path` para um glob, o percorre recursivamente, e registra o diretório como um catálogo federado de tabelas. Ele lê muitos formatos por muitos transportes; os conjuntos abaixo vêm do conector de arquivo (fork kenstott/calcite).
+**Rastreador de arquivos (fonte `files`).** Ele aponta `path` para um glob, percorre-o recursivamente e registra o diretório como um catálogo federado de tabelas. Lê muitos formatos por muitos transportes:
 
 | Formatos | Transportes |
 | --- | --- |
@@ -326,8 +326,7 @@ Uma pasta compartilhada sem criptografia deve ser montada com bloqueios que alca
 
 Qualquer fonte `files` também pode declarar um `crawl` em seu mapping, com as mesmas configurações listadas em [Wikipedia](#wikipedia): a fonte então lê páginas web primeiro e pousa cada tabela de dados HTML e cada arquivo de dados vinculado em seu diretório como uma tabela.
 
-No motor DuckDB, `files` é lido nativamente — uma view scanner `read_csv_auto` por `<table>.csv` sob o diretório resolvido. Em um motor sem conector `files` próprio, as linhas pousam através do mesmo servidor pgwire Calcite empacotado pelo conector (`pgwire-file`) que sharepoint/splunk usam — veja [Conectores SaaS Empresariais](#enterprise-saas-connectors) abaixo.
-
+No motor DuckDB, `files` é lido de forma nativa, com uma visão de varredura `read_csv_auto` por `<table>.csv` sob o diretório resolvido. Num motor sem conector `files` próprio, as linhas pousam pelo mesmo servidor pgwire do Calcite que vem com o conector (`pgwire-file`) e que sharepoint e splunk usam. Veja [Conectores SaaS Empresariais](#enterprise-saas-connectors) abaixo.
 #### Logs {: #logs }
 
 Uma fonte `logs` transforma arquivos de log do servidor Provisa em uma tabela. Você indica os arquivos por um caminho completo ou por um glob, e escolhe o formato em que seus registros são escritos. Cada registro vira uma linha. Um registro que o formato não consegue ler é mantido, com seu texto bruto e o motivo, nunca descartado.
