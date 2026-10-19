@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Tabelas do Excel",
+    "note": "Como as tabelas são encontradas nas pastas de trabalho desta origem. Deixe uma indicação em Detecção automática, a menos que uma pasta de trabalho seja lida errado.",
+    "auto": "Detecção automática",
+    "autoValue": "Detecção automática ({{value}})",
+    "hint": {
+      "header_rows": "Linhas de cabeçalho",
+      "max_header_rows": "Máximo de linhas de cabeçalho",
+      "table_gap_rows": "Linhas em branco entre tabelas",
+      "column_gap": "Colunas em branco entre tabelas",
+      "min_columns": "Mínimo de colunas",
+      "min_data_rows": "Mínimo de linhas de dados",
+      "range": "Intervalo"
+    },
+    "help": {
+      "header_rows": "O número exato de linhas de cabeçalho. Defina-o quando uma linha de dados for lida como cabeçalho, ou um cabeçalho como dados.",
+      "max_header_rows": "O máximo de linhas lidas como cabeçalho. 1 significa que cada tabela tem uma única linha de cabeçalho.",
+      "table_gap_rows": "Quantas linhas em branco seguidas encerram uma tabela. Defina 1 quando as tabelas estiverem separadas por uma linha em branco.",
+      "column_gap": "Quantas colunas em branco seguidas separam tabelas lado a lado. Defina 1 quando uma coluna em branco as separar.",
+      "min_columns": "O mínimo de colunas de uma tabela. Defina 1 para ler tabelas de uma coluna.",
+      "min_data_rows": "O mínimo de linhas de dados de uma tabela. Uma tabela com menos não é lida.",
+      "range": "As células desta tabela, lidas exatamente, como Sheet1!A3:F200. Coloque entre aspas o nome de uma planilha com espaços: 'Q1 results'!A1:D9."
+    },
+    "entriesTitle": "Para uma pasta de trabalho ou tabela",
+    "entriesNote": "Uma indicação aqui prevalece sobre a mesma indicação acima. Uma tabela se chama arquivo__planilha, como aparece na lista.",
+    "scope": "Para",
+    "scopeWorkbook": "Pasta de trabalho",
+    "scopeTable": "Tabela",
+    "workbookName": "Arquivo da pasta de trabalho",
+    "workbookNameHelp": "O nome do arquivo da pasta de trabalho, como report.xlsx.",
+    "tableName": "Tabela",
+    "tableNameHelp": "O nome da tabela como a origem o lista, como report__summary. Com um intervalo, é o nome que a tabela do intervalo recebe.",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "Indicado duas vezes; dê a cada pasta de trabalho ou tabela uma só entrada.",
+    "repeatedFix": "Tabelas do Excel: uma pasta de trabalho ou tabela aparece em duas entradas. Dê a cada uma uma só entrada.",
+    "add": "Adicionar pasta de trabalho ou tabela",
+    "remove": "Remover"
+  }
+}

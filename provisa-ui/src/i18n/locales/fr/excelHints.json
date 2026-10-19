@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Tableaux Excel",
+    "note": "Comment les tableaux sont trouvés dans les classeurs de cette source. Laissez une indication sur Détection automatique sauf si un classeur est mal lu.",
+    "auto": "Détection automatique",
+    "autoValue": "Détection automatique ({{value}})",
+    "hint": {
+      "header_rows": "Lignes d’en-tête",
+      "max_header_rows": "Lignes d’en-tête au plus",
+      "table_gap_rows": "Lignes vides entre tableaux",
+      "column_gap": "Colonnes vides entre tableaux",
+      "min_columns": "Colonnes au moins",
+      "min_data_rows": "Lignes de données au moins",
+      "range": "Plage"
+    },
+    "help": {
+      "header_rows": "Le nombre exact de lignes d’en-tête. Indiquez-le quand une ligne de données est lue comme en-tête, ou un en-tête comme données.",
+      "max_header_rows": "Le plus grand nombre de lignes lues comme en-tête. 1 signifie que chaque tableau a une seule ligne d’en-tête.",
+      "table_gap_rows": "Combien de lignes vides consécutives terminent un tableau. Indiquez 1 quand les tableaux sont séparés par une ligne vide.",
+      "column_gap": "Combien de colonnes vides consécutives séparent des tableaux côte à côte. Indiquez 1 quand une colonne vide les sépare.",
+      "min_columns": "Le plus petit nombre de colonnes d’un tableau. Indiquez 1 pour lire les tableaux d’une colonne.",
+      "min_data_rows": "Le plus petit nombre de lignes de données d’un tableau. Un tableau qui en a moins n’est pas lu.",
+      "range": "Les cellules de ce tableau, lues telles quelles, par exemple Sheet1!A3:F200. Mettez entre apostrophes un nom de feuille avec des espaces : 'Q1 results'!A1:D9."
+    },
+    "entriesTitle": "Pour un classeur ou un tableau",
+    "entriesNote": "Une indication ici l’emporte sur la même indication ci-dessus. Un tableau s’appelle fichier__feuille, comme dans la liste.",
+    "scope": "Pour",
+    "scopeWorkbook": "Classeur",
+    "scopeTable": "Tableau",
+    "workbookName": "Fichier du classeur",
+    "workbookNameHelp": "Le nom de fichier du classeur, par exemple report.xlsx.",
+    "tableName": "Tableau",
+    "tableNameHelp": "Le nom du tableau tel que la source le liste, par exemple report__summary. Avec une plage, c’est le nom que prend le tableau de la plage.",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "Nommé deux fois ; donnez une seule entrée à chaque classeur ou tableau.",
+    "repeatedFix": "Tableaux Excel : un classeur ou un tableau figure dans deux entrées. Donnez-en une seule à chacun.",
+    "add": "Ajouter un classeur ou un tableau",
+    "remove": "Retirer"
+  }
+}

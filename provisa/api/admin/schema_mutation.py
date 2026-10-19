@@ -112,6 +112,7 @@ from provisa.api.admin.schema_common import (  # noqa: E402
     _remove_view_mv,
     _expand_wikipedia_if_needed,
     google_workspace_refusal,
+    excel_hints_refusal,
     logs_refusal,
     sandbox_destination_refusal,
     file_source_path,
@@ -1994,7 +1995,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 ) or await microsoft_365_organisation_refusal(input)  # REQ-1923
                 if _m365_refusal is not None:
                     return _m365_refusal
-                _logs_refusal = logs_refusal(input) or file_source_path(input)  # REQ-1996/1997
+                _logs_refusal = (
+                    logs_refusal(input) or file_source_path(input) or excel_hints_refusal(input)
+                )  # REQ-1996/1997
                 if _logs_refusal is not None:
                     return _logs_refusal
                 # REQ-2006: a sandbox org's source is checked BEFORE the connection that validates
@@ -2376,7 +2379,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             ) or await microsoft_365_organisation_refusal(input)  # REQ-1923
             if _m365_refusal is not None:
                 return _m365_refusal
-            _logs_refusal = logs_refusal(input) or file_source_path(input)  # REQ-1996/1997
+            _logs_refusal = (
+                logs_refusal(input) or file_source_path(input) or excel_hints_refusal(input)
+            )  # REQ-1996/1997
             if _logs_refusal is not None:
                 return _logs_refusal
             # As entered: a value, or a reference the operator typed.

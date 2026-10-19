@@ -1,0 +1,40 @@
+{
+  "excelHints": {
+    "title": "Excel 表格",
+    "note": "在此資料來源的活頁簿中尋找表格的方式。除非某個活頁簿讀取有誤，否則請將提示保留為「自動偵測」。",
+    "auto": "自動偵測",
+    "autoValue": "自動偵測 ({{value}})",
+    "hint": {
+      "header_rows": "標題列",
+      "max_header_rows": "最多標題列",
+      "table_gap_rows": "表格之間的空白列",
+      "column_gap": "表格之間的空白欄",
+      "min_columns": "最少欄數",
+      "min_data_rows": "最少資料列",
+      "range": "範圍"
+    },
+    "help": {
+      "header_rows": "標題列的確實數目。當資料列被讀成標題、或標題被讀成資料時設定。",
+      "max_header_rows": "最多讀作標題列的列數。1 表示每個表格只有一列標題。",
+      "table_gap_rows": "連續多少個空白列結束一個表格。當表格之間以一個空白列分隔時設為 1。",
+      "column_gap": "連續多少個空白欄分隔並排的表格。當一個空白欄分隔它們時設為 1。",
+      "min_columns": "一個表格的最少欄數。設為 1 可讀取單欄表格。",
+      "min_data_rows": "一個表格的最少資料列數。少於此數的表格不會被讀取。",
+      "range": "此表格的儲存格，按原樣讀取，例如 Sheet1!A3:F200。含空格的工作表名稱以引號括起：'Q1 results'!A1:D9。"
+    },
+    "entriesTitle": "針對單一活頁簿或表格",
+    "entriesNote": "此處的提示優先於上方的同一提示。表格名稱為 檔案__工作表，與清單一致。",
+    "scope": "針對",
+    "scopeWorkbook": "活頁簿",
+    "scopeTable": "表格",
+    "workbookName": "活頁簿檔案",
+    "workbookNameHelp": "活頁簿的檔案名稱，例如 report.xlsx。",
+    "tableName": "表格",
+    "tableNameHelp": "資料來源列出的表格名稱，例如 report__summary。指定範圍時，這是該範圍的表格所取的名稱。",
+    "rangePlaceholder": "Sheet1!A3:F200",
+    "repeated": "重複指定；每個活頁簿或表格只保留一項。",
+    "repeatedFix": "Excel 表格：某個活頁簿或表格出現在兩項中。每個只保留一項。",
+    "add": "新增活頁簿或表格",
+    "remove": "移除"
+  }
+}
