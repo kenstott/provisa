@@ -4760,9 +4760,9 @@ pgwire simple-query protocol supports multi-statement queries. Semicolon-separat
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Parameterized queries using `$1`, `$2`, ... positional parameters are supported in both simple-query and extended-query (Bind/Execute) protocol modes. Parameters are substituted as SQL literals before execution — the upstream engine never sees a prepared statement.
+Parameterized queries using `$1`, `$2`, ... positional parameters are supported in both simple-query and extended-query (Bind/Execute) protocol modes. (Amended 2026-10-19, PARAMETERS STAY BOUND, per [REQ-589](#REQ-589):) The statement keeps its $N placeholders and the client's values stay bound through governance and execution to the engine or source; they are never spliced into the SQL text, so a value cannot change the governed shape and every value shares one SQL text. Only the catalog intercept, which answers catalog queries without a governed plan, substitutes the values inline.
 
-**Use case:** Parameterized query support enables standard JDBC/psycopg2 prepared statement patterns. Literal substitution avoids prepared-statement protocol complexity with Trino.
+**Use case:** Parameterized query support enables standard JDBC/psycopg2 prepared statement patterns. Bound values keep the governed shape fixed and let server-side prepares and SQL-text-keyed caches share one statement.
 
 **Code:** `provisa/pgwire/server.py`
 

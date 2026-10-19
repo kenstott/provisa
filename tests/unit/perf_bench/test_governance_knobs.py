@@ -385,6 +385,12 @@ def test_each_table_gets_its_row_rules_each_keeping_every_row(tmp_path: Path) ->
         assert names.count(made) == names.count(undone) > 0
 
 
+def _plain(masks: list[dict]) -> list[dict]:
+    """Mask entries as the bench saves them, without the empty why the editor sends with each
+    (REQ-2094: no why sent keeps the stored one)."""
+    return [{k: v for k, v in e.items() if not (k == "why" and v is None)} for e in masks]
+
+
 def test_masks_go_first_on_the_columns_no_filter_or_join_reads_and_are_put_back(
     tmp_path: Path,
 ) -> None:
@@ -406,10 +412,10 @@ def test_masks_go_first_on_the_columns_no_filter_or_join_reads_and_are_put_back(
     assert report["masked_columns"]["orders"] == ["amount"]
     first = next(s for s in saves if s["tableName"] == f"t{oid}")
     amount = next(c for c in first["columns"] if c["name"] == "amount")
-    assert amount["masks"] == [{"to": ["org_admin"], "mask": governance.NULL_MASK}, *own]
+    assert _plain(amount["masks"]) == [{"to": ["org_admin"], "mask": governance.NULL_MASK}, *own]
     assert all(c["masks"] == [] for c in first["columns"] if c["name"] != "amount")
     restored = [s for s in saves if s["tableName"] == f"t{oid}"][-1]
-    assert next(c for c in restored["columns"] if c["name"] == "amount")["masks"] == own
+    assert _plain(next(c for c in restored["columns"] if c["name"] == "amount")["masks"]) == own
 
 
 def test_too_few_maskable_columns_is_refused_by_name(tmp_path: Path) -> None:

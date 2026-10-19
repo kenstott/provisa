@@ -375,7 +375,7 @@ table_columns = Table(
     Column("fake_stable_version", Integer),
     Column("synthetic_rule", Text),  # REQ-1494, REQ-1939: laid over the fake, for generation
     # REQ-2094: why the column's fake and synthetic rule are what they are (provisa.judgments.why).
-    Column("fake_why", JSON),
+    Column("fake_why", JSON(none_as_null=True)),
     Column("embedding", Boolean, nullable=False, server_default=false()),  # REQ-421
     Column("embedding_model", Text),  # REQ-421
     Column("embedding_source_column", Text),  # REQ-421
@@ -499,7 +499,9 @@ table_write_grants = Table(
     Column("rows_expr", LargeBinary),
     Column("check_expr", LargeBinary),
     Column("presets", JSON, nullable=False, default=list, server_default="[]"),
-    Column("why", JSON),  # REQ-2094: why the grant is what it is (provisa.judgments.why)
+    Column(
+        "why", JSON(none_as_null=True)
+    ),  # REQ-2094: why the grant is what it is (provisa.judgments.why)
     Column("tenant_id", Uuid),
     CheckConstraint(
         "operation IN ('insert', 'update', 'delete')", name="table_write_grants_operation"
@@ -522,7 +524,9 @@ rls_rules = Table(
     # that carries a row filter is refused deletion (repositories.integrity), because removing
     # the filter with the tag would widen what its role reads without anyone saying so.
     Column("tag_id", Text, ForeignKey("tags.id")),
-    Column("why", JSON),  # REQ-2094: why the rule is what it is (provisa.judgments.why)
+    Column(
+        "why", JSON(none_as_null=True)
+    ),  # REQ-2094: why the rule is what it is (provisa.judgments.why)
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "role_id"),
     UniqueConstraint("tag_id", "role_id", name="rls_rules_tag_role_key"),
@@ -603,11 +607,11 @@ tag_assignments = Table(
     # assignment as ``expires_on`` does), and who decided it, when and on what profile evidence,
     # set by the server at each save that changes the assignment or its why.
     Column("purpose", Text),
-    Column("bases", JSON),
+    Column("bases", JSON(none_as_null=True)),
     Column("review_on", Text),  # ISO date
     Column("decided_by", Text),
     Column("decided_at", DateTime(timezone=True)),
-    Column("evidence", JSON),
+    Column("evidence", JSON(none_as_null=True)),
     Column("tenant_id", Uuid),
     UniqueConstraint("base_tag_id", "object_key"),
     CheckConstraint(
@@ -1164,7 +1168,7 @@ judgment_findings = Table(
     # wrong | dated_by_data | dated_by_context | undecided | worth_a_look
     Column("category", Text, nullable=False),
     Column("finding", Text, nullable=False),
-    Column("observed", JSON),
+    Column("observed", JSON(none_as_null=True)),
     Column("first_seen", DateTime(timezone=True), nullable=False),
     Column("last_seen", DateTime(timezone=True), nullable=False),
     Column("resolved_at", DateTime(timezone=True)),

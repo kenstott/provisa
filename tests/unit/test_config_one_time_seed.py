@@ -212,6 +212,25 @@ async def _model(db: Database) -> dict:
         return await store_model(conn)
 
 
+def _given(model: Any) -> Any:
+    """``model`` without the server's record of each judgment -- who decided it, when and on what
+    evidence -- which a model file carries read-only and an import records afresh (REQ-2094)."""
+    from provisa.judgments.why import SERVER
+
+    if isinstance(model, dict):
+        return {
+            k: (
+                {kk: _given(vv) for kk, vv in v.items() if kk not in SERVER}
+                if k in ("why", "fake_why") and isinstance(v, dict)
+                else _given(v)
+            )
+            for k, v in model.items()
+        }
+    if isinstance(model, list):
+        return [_given(v) for v in model]
+    return model
+
+
 async def _rows(db: Database, table: str, *columns: str) -> list[tuple]:
     tbl = metadata.tables[table]
     async with db.acquire() as conn:
@@ -712,7 +731,7 @@ async def test_the_export_round_trips(db, new_plane):
     async with fresh.acquire() as conn:
         await apply_config(parse_config_dict(yaml.safe_load(text)), conn)
 
-    assert await _model(fresh) == await _model(db)
+    assert _given(await _model(fresh)) == _given(await _model(db))
 
 
 async def test_the_export_writes_every_model_section_and_keeps_the_file_s_settings(db):
@@ -825,7 +844,7 @@ async def test_a_demo_rebuild_starts_exactly_as_its_config_says(db, new_plane):
     async with db.acquire() as conn:
         await rebuild_from_config(parse_config_dict(_everything()), conn)
 
-    assert await _model(db) == expected
+    assert _given(await _model(db)) == _given(expected)
     # What the deployment seeds, and who holds a seeded role, stays.
     assert {"analyst", "org_admin"} <= await _ids(db, "roles")
     assert ("ada", "analyst") in await _rows(db, "user_role_assignments", "user_id", "role_id")
@@ -904,9 +923,9 @@ async def test_a_whole_demo_config_seeds_rebuilds_and_round_trips(db, config_fil
     first = await _model(db)
     async with db.acquire() as conn:
         await rebuild_from_config(parse_config_dict(raw), conn)
-    assert await _model(db) == first
+    assert _given(await _model(db)) == _given(first)
     exported = with_store_model(raw, first)
     fresh = await new_plane()
     async with fresh.acquire() as conn:
         await apply_config(parse_config_dict(yaml.safe_load(yaml.safe_dump(exported))), conn)
-    assert await _model(fresh) == first
+    assert _given(await _model(fresh)) == _given(first)
