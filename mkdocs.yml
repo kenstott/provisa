@@ -37,9 +37,6 @@ theme:
     - search.suggest
     - toc.follow
 
-extra_javascript:
-  - assets/javascripts/search-locale-filter.js
-
 markdown_extensions:
   - admonition
   - attr_list
@@ -111,6 +108,9 @@ plugins:
 # Auto-link every REQ-NNN mention to its section on the Requirements page.
 hooks:
   - scripts/mkdocs_hooks.py
+  # Each locale's search reads only that locale's pages: mkdocs-static-i18n merges every locale
+  # into one search index, which this hook splits into one per locale after the build.
+  - scripts/mkdocs_search_per_locale.py
 
 nav:
   - Home: index.md
