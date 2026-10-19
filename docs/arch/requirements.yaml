@@ -20920,8 +20920,8 @@
     is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and [SUPERSEDED by REQ-2014,
     2026-10-13 -- the control plane is PostgreSQL only: there is no SQLite control plane. Kept here for
     history; do not implement against it.] pysqlite on SQLite (REQ-828) [END SUPERSEDED BLOCK]. The platform
-    schema has its own pool or is addressed by fully-qualified names. (Amended 2026-10-13, POSTGRESQL ONLY
-    -- REQ-2014:) The control-plane store is PostgreSQL only, reached through psycopg 3.'
+    schema has its own pool or is addressed by fully-qualified names. (Amended 2026-10-13, POSTGRESQL ONLY,
+    REQ-2014:) The control-plane store is PostgreSQL only, reached through psycopg 3.'
   use_case: Tenant registry and billing data must not co-mingle with per-org application data. A compromised
     org connection cannot enumerate other tenants.
   integration_test: not_required
@@ -25095,8 +25095,7 @@
     The output is not a string but an ordered plan: a prep phase (0..n cache materializations, may be
     empty) feeding a single terminal step (DIRECT driver or federation-engine execute); this is where
     today''s router (DIRECT/TRINO/API) and the cache tiers (hot/warm/MV) converge. (5) EXECUTE: the federation
-    engine runs the terminal step and does its own opaque physical planning (NOT Provisa''s plan); (6)
-    TRANSPORT egress — stream results back over the same client protocol. Stages 1–3 are pure and engine-independent;
+    engine runs the terminal step and does its own opaque physical planning (NOT Provisa''s plan); (6) TRANSPORT egress: stream results back over the same client protocol. Stages 1–3 are pure and engine-independent;
     stage 4 reads mutable freshness state and emits effects, and stages 4–5 vary per engine, so governance-parity conformance (REQ-827) must PIN residency (pre-warm the prep phase) and then test only the codegen
     + execute. No governance or compilation logic is duplicated per engine. Governance is defined in
     the semantic layer and ENFORCED at stage 3; the engine only executes.
@@ -25734,7 +25733,7 @@
     (Amended 2026-09-30, psycopg 3 control plane:) Each URI resolves to the sync driver the control plane
     runs on: psycopg 3 (postgresql+psycopg), pysqlite, PyMySQL or duckdb+provisa. Any other driver name,
     including psycopg2 and the former async drivers, fails loud (REQ-828). (Amended 2026-10-13, POSTGRESQL
-    ONLY -- REQ-2014:) The control plane is PostgreSQL only (REQ-2014): embedded (pgserver) where no URL
+    ONLY, REQ-2014:) The control plane is PostgreSQL only (REQ-2014): embedded (pgserver) where no URL
     is given, an external server otherwise. PLATFORM_DATABASE_URL and TENANT_DATABASE_URL name postgresql
     (postgresql+psycopg); a URI naming another backend is refused by name.'
   use_case: Enables deployment models where platform registry and per-tenant data live in separate databases
@@ -25953,7 +25952,7 @@
     properties that together exclude every other cache: FEDERATABLE (the engine reads it as a real relation it can join/scan, REQ-826; excludes hot tables, which are VALUES-CTE plan injections, and the APQ/result
     memos, which are not relations); DURABLE (survives restart, disk/object-backed; excludes the ephemeral tier); and REFRESHABLE (actively kept in sync by the one centralized freshness gate, REQ-855/856/857/858;
     excludes a passive scanned source, which is federatable and durable but unmanaged). It holds TWO ROLES
-    on ONE categorical axis — whether the entry has a semantic-SQL definition: (1) REPLICA: undefined
+    on ONE categorical axis, whether the entry has a semantic-SQL definition: (1) REPLICA: undefined
     verbatim copies of source rows, no standalone identity; governance/derivation applied at query time
     on top, never baked in. Two population profiles: reactive (source is UNREACHABLE — landed so it is
     queryable at all; on-miss, single-flighted pull-through; REQ-845/847; formerly api_cache, renamed
@@ -26024,7 +26023,7 @@
     : reach(source) == land } for the configured federation engine — generalizing the previously hardcoded
     REST/GraphQL/gRPC pull-through set (renamed from api_cache; the role is source-agnostic). Pull-through
     is TTL/freshness-gated (per the REQ-855 freshness policy) and single-flighted to prevent upstream
-    stampede on concurrent misses. DONE (2026-07): the engine-relative reactive set is derived — provisa/federation/materialization.py::reactive_sources returns { source.id : federate(source, engine) is MATERIALIZED }, so the pull-through
+    stampede on concurrent misses. DONE (2026-07): the engine-relative reactive set is derived: provisa/federation/materialization.py::reactive_sources returns { source.id : federate(source, engine) is MATERIALIZED }, so the pull-through
     set is a function of engine reach (a VIRTUAL/SCAN source is never a reactive replica; an unreachable
     source is excluded). REMAINING (kept in-progress): the TTL/freshness-gated, single-flighted pull-through
     execution that lands rows into the store on miss. It lands with the write face (REQ-848) and the freshness
@@ -27239,7 +27238,7 @@
     ⇒ REQ-855 probe + full re-pull, no delta. Monotonic entries ⇒ delta-as-probe, no separate probe. Validation
     gates: (a) delta_query contains both $wm and {{fields}} placeholders; (b) parses; (c) $wm bind-var
     type is orderable/monotonic-compatible; (d) injected selection valid against row type. DONE (2026-07):
-    the UNIFORM part is implemented — provisa/federation/delta.py: delta_applies gates delta to MATERIALIZED
+    the UNIFORM part is implemented in provisa/federation/delta.py: delta_applies gates delta to MATERIALIZED
     (VIRTUAL/SCAN excluded); render_delta_fields substitutes {{fields}} textually (Provisa never parses
     the source-native filter) leaving $wm for native binding; has_wm_placeholder is the $wm validation
     gate; delta_is_fresh is PROBE==DELTA (empty result ⇒ fresh/no-op, non-empty ⇒ changed/apply); advance_cursor
@@ -27323,7 +27322,7 @@
     (3) GOVERNANCE: the route MUST NOT bypass Stage-2 RLS/masking (REQ-263). When an RLS predicate applies
     to the table for the requesting persona a native total count would over-count the visible subset,
     so the route is disabled and falls back to materialize+count. Fail-closed, the same discipline as
-    cache isolation (REQ-866). DONE (2026-07): the three-guard route decision is implemented — provisa/federation/cardinality.py::can_route_cheap_count(is_bare_count_star, estimate, rls_applies) fires only when the shape is a bare
+    cache isolation (REQ-866). DONE (2026-07): the three-guard route decision is implemented: provisa/federation/cardinality.py::can_route_cheap_count(is_bare_count_star, estimate, rls_applies) fires only when the shape is a bare
     count(*), the REQ-673 estimate is EXACT with a value, and NO RLS predicate applies to the persona;
     any guard failing returns False (fail-closed → materialize+count). REMAINING (kept in-progress): wiring
     it into the endpoint count(*) path so an exact-native-count source answers with one call instead of
@@ -27415,7 +27414,7 @@
     dataset and audit gets row-granular provenance. NATIVE-FIRST: hashing is the fallback, never the
     default: (1) an Iceberg-target MV derives deltas from a snapshot-to-snapshot changelog scan (no hashing,
     no retained state); (2) a watermarked source (REQ-260 watermark_column) derives the delta from the
-    watermark-bounded slice — this IS the output-side mirror of REQ-874 delta-fetch; (3) ONLY an RDB target
+    watermark-bounded slice, which IS the output-side mirror of REQ-874 delta-fetch; (3) ONLY an RDB target
     with no watermark falls back to full-MV row hashing. QUERY-GENERATED, MAKE THE DB THE COMPUTE: the
     row hash and the diff are pushed down as SQL (hash via the engine''s md5/sha over the canonical row
     projection; the delta via a set operation (EXCEPT / anti-join) between the current and the previous
@@ -27525,13 +27524,11 @@
     = this instance owns the refresh. This is the per-MV election: DECENTRALIZED, no global leader; a
     heartbeat renews lease_until during a long refresh, and lease expiry reclaims after a crash. (2) FENCED
     COMMIT: finalize (set materialized_version/status/ snapshot_id) only WHERE writer=me AND lease_until>=now;
-    0 rows means the lease was lost (slow/crashed-then-revived) so the result is DISCARDED — prevents
-    a stale writer clobbering a newer refresh (fencing token). (3) SOURCE OF TRUTH: the store''s committed snapshot (atomic commit, e.g. Iceberg) is authoritative for what is materialized; the catalog is coordination
+    0 rows means the lease was lost (slow/crashed-then-revived) so the result is DISCARDED. That prevents a stale writer clobbering a newer refresh (fencing token). (3) SOURCE OF TRUTH: the store''s committed snapshot (atomic commit, e.g. Iceberg) is authoritative for what is materialized; the catalog is coordination
     metadata reconciled to the store on lease expiry, so a crash mid-write leaves no partial data. NOT
     held pessimistic locks (SELECT FOR UPDATE over a long refresh holds a transaction open and a crash
     leaves a stuck lock); leases + fencing instead. The catalog is the same structure that holds freshness (REQ-855)
-    and the version/lineage stamps (REQ-862). CONSISTENCY KNOB: a per-MV `consistency` setting selects
-    the tier — `shared` (default) engages this coordination catalog (one snapshot-consistent copy); `distributed`
+    and the version/lineage stamps (REQ-862). CONSISTENCY KNOB: a per-MV `consistency` setting selects the tier: `shared` (default) engages this coordination catalog (one snapshot-consistent copy); `distributed`
     per-instance-materializes and does NOT engage it. The distributed tier is only eventually consistent
     under TWO preconditions: (a) a DETERMINISTIC view_sql — enforced at registration (reject now()/random()/uuid/unordered-LIMIT;
     provisa/mv/determinism.py); and (b) source QUIESCENCE — the source must stop changing long enough
@@ -29784,8 +29781,7 @@
   feature: change-events-and-streams-derived-tables
   priority: MUST
   type: structural
-  description: Every MV is SQL, authored to REFERENCE its inputs (SQLGlot extracts the dependency edges
-    — reuse the exp.Table extraction already in provisa/api/admin/_table_ops.py) and DECLARE its full
+  description: Every MV is SQL, authored to REFERENCE its inputs (SQLGlot extracts the dependency edges, reusing the exp.Table extraction already in provisa/api/admin/_table_ops.py) and DECLARE its full
     output schema; columns the SQL doesn't derive are constant placeholders completed by post-processing.
     The input reference (count/key/max(watermark)) doubles as the node's change/freshness token. Guarantees
     lineage is always derivable; no node ever has opaque inputs. DAG is acyclic (cycle detection at registration);
@@ -29807,7 +29803,7 @@
     (post-process completing declared columns, or a UDF sugar; external UDFs deferred to a batched post-process).
     Processor contract: pure function of declared inputs → declared output model, no side effects, deterministic
     (or a declared best-effort). Tiers by robustness: in-engine SQL → in-process UDF → external env. MV
-    compute resources are OPERATOR-SUPPLIED (the fed engine, sized to need — MPP for big views; Provisa
+    compute resources are OPERATOR-SUPPLIED (the fed engine, sized to need, MPP for big views; Provisa
     builds no distributed compute and orchestrates the supplied engine). DQ metrics / ML features / enrichment
     are external processors: bring your compute, and Provisa governs the OUTPUT as a first-class governed
     data product.'
@@ -30219,7 +30215,7 @@
   description: 'The source-creation type dropdown displays the UNION of all possible source types, gated
     and annotated against the currently-configured federation engine to educate users on the impact of
     engine choice. Backend engine_registry() exposes per-engine reach faces: live_source_types (types
-    read LIVE via attach connector — ATTACH_RW/ATTACH_R) and reachable_source_types (every configurable
+    read LIVE via attach connector: ATTACH_RW/ATTACH_R) and reachable_source_types (every configurable
     type = live-attach ∪ _MATERIALIZE_ONLY ∪ Provisa-direct drivers/adapters that land a refreshed replica).
     UI tags each option: LIVE (attach, in place, fresh) or REPLICA (Provisa lands a refreshed copy). An
     unreachable type is disabled and annotated "LIVE w/ {engine labels}" naming the engines that reach
@@ -37469,7 +37465,7 @@
 
 
     CONFORMANCE TARGETS (each is a real extension we do NOT ship an OOTB connector for, chosen to exercise
-    a DIFFERENT descriptor branch than any hardcoded connector — passing them proves the descriptor is
+    a DIFFERENT descriptor branch than any hardcoded connector; passing them proves the descriptor is
     general, not a re-expression of what we already hardcode):
 
     (1) PG SQL/MED → mongo_fdw (EnterpriseDB/mongo_fdw). Reaches the mongo:7 service ALREADY in docker-compose.test.yml
@@ -48259,8 +48255,8 @@
     The control-plane store is reached through synchronous SQLAlchemy engines: psycopg 3 on PostgreSQL and
     [SUPERSEDED by REQ-2014, 2026-10-13 -- the control plane is PostgreSQL only: there is no SQLite control
     plane. Kept here for history; do not implement against it.] pysqlite on SQLite (REQ-828) [END SUPERSEDED
-    BLOCK]. What this text calls an asyncpg call is a psycopg call. (Amended 2026-10-13, POSTGRESQL ONLY
-    -- REQ-2014:) The control-plane store is PostgreSQL only, reached through psycopg 3.'
+    BLOCK]. What this text calls an asyncpg call is a psycopg call. (Amended 2026-10-13, POSTGRESQL ONLY,
+    REQ-2014:) The control-plane store is PostgreSQL only, reached through psycopg 3.'
   use_case: An operator opens the live trace panel, sees it filled with driver-level Postgres spans, and
     turns off the subsystems they do not care about from the Observability tab.
   code:
@@ -54706,8 +54702,7 @@
     only to somebody who may decide it. A state of ``stale`` is the server''s derivation at read time,
     never a column. REPOSITORY (REQ-1524 BROWSE): branches, a branch''s commits, the paths at a ref and
     one file''s text, with an optional read-only diff against a second ref. THE BRANCH LIST IS NOT THE
-    ENVIRONMENT LIST: a ref outlives the environment that wrote it, which is the whole reason an earlier
-    state is loadable -- and a commit sha is a ref like any other. Paths and text are two calls because
+    ENVIRONMENT LIST: a ref outlives the environment that wrote it, which is the whole reason an earlier state is loadable, and a commit sha is a ref like any other. Paths and text are two calls because
     a single call carrying every definition would download the org''s model to draw a sidebar, and the
     file list is held together with the ref it was read at so that a ref change never asks for the previous
     ref''s path. The diff withholds the editable side and the revert arrows: both sides are history, and
@@ -55131,8 +55126,7 @@
     template, never that it is shared across environments. The rows are ESTABLISHED once, by the creating
     act seeding them from the parent, and after that no merge, no load and no checkout writes them. That
     is the whole of the inheritance: a branch STARTS as a copy of what it came from, and immediately owns
-    it. AN INHERITOR CANNOT CHANGE THEM: not in the environment they inherited from and not in their
-    own -- because every role endpoint requires ``user_management``, and REQ-1528 confers on whoever creates
+    it. AN INHERITOR CANNOT CHANGE THEM: not in the environment they inherited from and not in their own, because every role endpoint requires ``user_management``, and REQ-1528 confers on whoever creates
     an environment the seeded ``developer`` role less the data rights, which never held ``user_management``
     to begin with. Nothing about creating a branch is a grant of authority over rights. AN ORG_ADMIN DOES
     CHANGE THEM by editing the role in the environment they are administering: they hold ``user_management``,
@@ -57189,7 +57183,7 @@
   feature: encryption-and-secrets-secrets
   priority: MUST
   type: behavioral
-  description: 'An org''s LLM vendor API key may be the credential itself or a REFERENCE to one held in the deployment''s secrets service. A ${secret:NAME} typed into the API key field on Admin / AI Models is stored verbatim, encrypted, and resolved against the org''s vault on the way OUT, at the moment a call site builds an LLM client, not when the field is saved. An org that keeps every credential in one vault therefore keeps no second copy of its vendor key here, and rotating the vault entry rotates what the LLM client is handed with no visit to the AI Models page at all. Before this, the reference text was handed to the vendor as the key and the generators failed with the vendor''s own authentication error, which names the header and not the reference. WHICH VAULT: the org running the request, resolved exactly as the per-request data plane resolves it -- the bound org, or the boot org where none is bound. An environment resolves to its base org, because a branch is a copy of the model and not a second organization. The core layer cannot see the API layer''s request context, so the API installs a resolver at import, the same seam the domain policy already uses. NO ACTING PERSON is bound, so ${user:NAME} in this field raises naming the scope. A vendor key is a credential the ORGANIZATION owns and no personal vault stands in for it. A reference naming nothing raises saying which name is unset, rather than reaching the vendor with unresolved text. A stored value carrying no reference is handed over untouched and never looked up.'
+  description: 'An org''s LLM vendor API key may be the credential itself or a REFERENCE to one held in the deployment''s secrets service. A ${secret:NAME} typed into the API key field on Admin / AI Models is stored verbatim, encrypted, and resolved against the org''s vault on the way OUT, at the moment a call site builds an LLM client, not when the field is saved. An org that keeps every credential in one vault therefore keeps no second copy of its vendor key here, and rotating the vault entry rotates what the LLM client is handed with no visit to the AI Models page at all. Before this, the reference text was handed to the vendor as the key and the generators failed with the vendor''s own authentication error, which names the header and not the reference. WHICH VAULT: the org running the request, resolved exactly as the per-request data plane resolves it: the bound org, or the boot org where none is bound. An environment resolves to its base org, because a branch is a copy of the model and not a second organization. The core layer cannot see the API layer''s request context, so the API installs a resolver at import, the same seam the domain policy already uses. NO ACTING PERSON is bound, so ${user:NAME} in this field raises naming the scope. A vendor key is a credential the ORGANIZATION owns and no personal vault stands in for it. A reference naming nothing raises saying which name is unset, rather than reaching the vendor with unresolved text. A stored value carrying no reference is handed over untouched and never looked up.'
   use_case: An org admin pastes ${secret:LLM_KEY} into the Anthropic key field and rotates the credential
     thereafter in one place, the secrets vault.
   tests:
@@ -57388,12 +57382,11 @@
     no edge to cross between them; each answer needed a hand-written join over surrogate ids the caller
     had to know. WHAT IS REGISTERED: tag_assignments to tags and back, to registered_tables and back,
     and to table_columns in both directions; tag_expiry, tag_param_values and derived_tags to tags; derived_tags
-    to registered_tables and back. COLUMN-LEVEL TAGS JOIN ON column_key -- the tag_assignments and tag_expiry
+    to registered_tables and back. COLUMN-LEVEL TAGS JOIN ON column_key: the tag_assignments and tag_expiry
     views emit the same synthesized table_id-and-column_name key that table_columns and glossary_term_refs
     emit (REQ-1584), because relationships is single-column and table_columns.id is replaced wholesale
     by the table upsert. The key is null on a source-, relationship- or command-level assignment, which
-    is precisely what makes the join select the column-level tags and nothing else. THE POINT OF THE SHARED
-    KEY -- it closes term to column to pii/deprecated in one traversal, so a business term reaches the
+    is precisely what makes the join select the column-level tags and nothing else. THE POINT OF THE SHARED KEY: it closes term to column to pii/deprecated in one traversal, so a business term reaches the
     governance labels on the columns it binds without any surface knowing about both vocabularies. Cardinality
     is one-to-many from the column side in both directions: a column carries many tags, and a column key
     may hold many refs.'
@@ -57507,12 +57500,10 @@
     rows with the via_* columns filled, written by the same seed loop that writes the FK-backed meta edges
     and read by the same label map that reads a junction a modeller declares on their own table. A second
     code path keyed to glossary_term_edges would let the two shapes drift, and the built-in case is the
-    one that must exercise the general mechanism rather than shortcut it. WHAT THE GRAPH SCHEMA PUBLISHES
-    -- the graph-schema endpoint names, on every relationship type, the junction table it traverses and
+    one that must exercise the general mechanism rather than shortcut it. WHAT THE GRAPH SCHEMA PUBLISHES: the graph-schema endpoint names, on every relationship type, the junction table it traverses and
     the attributes that traversal exposes; both are absent on an FK/PK edge. A client has no other way
     to tell the two apart, because the junction table is deliberately not among the node labels, and it
-    needs to: a junction edge offers filterable attributes and an FK edge offers none. HOW IT IS DEMONSTRATED
-    -- the shipped demo carries a junction of its own, because glossary_term_edges is provisioned into
+    needs to: a junction edge offers filterable attributes and an FK edge offers none. HOW IT IS DEMONSTRATED: the shipped demo carries a junction of its own, because glossary_term_edges is provisioned into
     meta and never appears on the modeling surface a new user opens. pet_companions joins pet_store.pets
     to itself and is declared three times over one table, once per relation_type value, so the demo shows
     the case that separates a junction from a foreign key: several edge types out of one associative table,
@@ -57646,7 +57637,7 @@
     own node: a leg in, a leg out, and the two entities connected by the path rather than by a line that
     hides the hop. THE GAP: the diagram read every relationship as one direct edge, so a junction-backed
     edge either claimed a connection that no foreign key makes, or, when both of its ends are the same
-    table, was dropped by the self-loop guard entirely -- leaving the junction table drawn as an unconnected
+    table, was dropped by the self-loop guard entirely, leaving the junction table drawn as an unconnected
     entity beside the relationship it backs. WHAT IS DRAWN: the junction is a grape diamond carrying
     its table name only, in the same grape as the VIA badge on the relationships list; the legs carry
     cardinality, and the relationship type is written once per path, at the junction end of the inbound
@@ -57655,7 +57646,7 @@
     not one merged pair of legs. WHY THE ID TRAVELS: the diagram keys its nodes by registered-table
     id, so the relationship carries via_table_id as well as via_table_name; matching on the name would
     bind the wrong node wherever two sources register the same table name. WHEN THE JUNCTION IS NOT ON
-    THE CANVAS: its domain hidden or collapsed -- the path collapses back to a single direct edge labeled
+    THE CANVAS: its domain hidden or collapsed. The path collapses back to a single direct edge labeled
     with the relationship type. It is not routed through the domain proxy: a collapsed domain describes
     a group of entities, and hopping a path through it would claim a traversal the diagram cannot show.'
   use_case: A modeller opening the ERD sees that pets relate to pets through pet_companions, and which
@@ -57957,8 +57948,7 @@
     Adding or removing a steward of either kind is itself a curation act, gated the same way: a claim on a term is a privilege act, not a free one. WHERE A TERM MAY BE PLACED: a caller may declare only
     the domains in which they hold ``glossary_rw``, resolved PER CAPABILITY: an identity''s domain_access
     is unioned over the roles that actually carry the named right, never over all its roles, or role A''s
-    right in one domain would compose with role B''s domain into a grant nobody made. THE COST, ACCEPTED
-    -- a term whose authors have all left the org is frozen to everyone but ``org_glossary_rw``. That
+    right in one domain would compose with role B''s domain into a grant nobody made. THE COST, ACCEPTED: a term whose authors have all left the org is frozen to everyone but ``org_glossary_rw``. That
     is what the override exists for. THE TWO STARS NEVER MEET: ``"*"`` on a role''s domain_access is
     unlimited AUTHORITY; ``"*"`` as a term''s scope is unlimited MEMBERSHIP. They are different tables
     and opposite directions and are never read across; creating a domain literally named ``"*"`` is refused
@@ -58069,8 +58059,7 @@
     price is that the loser of a race for the last redemption has already provisioned a schema, so it
     is retired again, branch and all. A ``shared`` environment is NEVER retired by a failed redemption:
     the org published it and other people are working in it. ONE PROVISIONING SEQUENCE: reserve, provision,
-    deploy the model, start the branch, roll every part of it back on any failure -- shared with the admin
-    endpoint rather than re-derived, because the ordering is the part that must not diverge. The GUARD
+    deploy the model, start the branch, roll every part of it back on any failure. It is shared with the admin endpoint rather than re-derived, because the ordering is the part that must not diverge. The GUARD
     is not shared: the endpoint requires a right in the org, while the invitation IS the authorization,
     granted when the org minted the link.'
   tests:
@@ -58180,8 +58169,7 @@
     the other exists on SaaS and not on a laptop, so the two are asserted equal. The re-assertion seams
     that hand ``environment_management``/``environment_switch`` to pre-existing role rows name org_admin
     and developer only: naming sandbox there would give back on the next init_schema exactly what the
-    denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS org_admin -- a column
-    is visible to a role when ``table_columns.visible_to`` NAMES that role, and every grant in an authored
+    denylist took away. WHERE THE SUBTRACTION HAPPENS, AND WHY THE VISITOR ALSO HOLDS org_admin: a column is visible to a role when ``table_columns.visible_to`` NAMES that role, and every grant in an authored
     model names the roles the model was authored against. ``sandbox`` is named by none of them, so a visitor
     holding only that id is shown no column on any table, and schema_gen then drops every table left with none, leaving the tables whose API path/query parameters are exempt from the gate and nothing else.
     That is not a narrower demo; it is an empty one, and it is not fixable by re-granting columns, because
@@ -58257,8 +58245,7 @@
     so a boot does not block for the minute a cold shard takes to wake; ``provisioning_state`` is where
     its progress is read. OWNERLESS BY CONSTRUCTION. ``created_by`` is NULL because there is no account
     to grant org_admin to: its members arrive by redeeming the open invite, and the role that invite carries
-    is ``sandbox`` (REQ-1597). THE SWITCH IS THE COMMERCE SEAM, not an environment variable of its own
-    -- the sandbox exists to hand a stranger the product the platform SELLS, so the deployments that need
+    is ``sandbox`` (REQ-1597). THE SWITCH IS THE COMMERCE SEAM, not an environment variable of its own. The sandbox exists to hand a stranger the product the platform SELLS, so the deployments that need
     one are exactly the deployments that sell it, and a self-hosted install has no public sign-in page,
     no open invite on it, and no reason to carry a spare org''s schema.'
   tests:
@@ -58304,14 +58291,12 @@
     the orgs they are a member of (REQ-1327). An operator answering for what the public "Try it Out" link
     shows a stranger would therefore be unable to open the org it admits them to. So they are seated in
     it THE ORDINARY WAY, exactly as the platform-admin claimant is seated in the bootstrap org (REQ-1296):
-    a membership on the admin plane and a role assignment inside the sandbox''s own schema. THE ROLE IS
-    org_admin, NOT sandbox -- an operator has to reach the environments, the members and the settings
+    a membership on the admin plane and a role assignment inside the sandbox''s own schema. THE ROLE IS org_admin, NOT sandbox: an operator has to reach the environments, the members and the settings
     a visitor''s role deliberately withholds (REQ-1597). THE MEMBERSHIP IS UNPINNED: the env pin (REQ-1596)
     is what confines a stranger to the environment minted for them, and an operator is not a stranger.
     RECONCILED FROM BOTH ENDS, so no boot leaves an administrator outside the org. The list of administrators
-    is read from the ROOT org''s schema, which is the whole list -- platform_admin is only ever conferred
-    there. Seating runs when the sandbox''s build finishes (the moment its schema exists), on every later
-    boot that finds the org ready, and on every conferral of a role thereafter -- the super-admin claim
+    is read from the ROOT org''s schema, which is the whole list; platform_admin is only ever conferred there. Seating runs when the sandbox''s build finishes (the moment its schema exists), on every later
+    boot that finds the org ready, and on every conferral of a role thereafter: the super-admin claim
     and either invitation path. The conferral hook does not ask WHICH role was granted: a gate on a role
     name is exactly what REQ-1337 forbids, and the answer is already in the assignments the seating reads.
     It is a no-op, never an error, for a deployment with no sandbox org and for one whose sandbox is still
@@ -58355,14 +58340,13 @@
   description: 'AN ENVIRONMENT MAY BE GIVEN AWAY FOR A SPAN OF USE RATHER THAN A SPAN OF TIME. REQ-1523''s
     expires_at is a FIXED deadline: it stands where it was written and nothing moves it, which is right
     for a branch cut for a named piece of work. It is wrong for an environment handed to a visitor by
-    an invitation, where the promise is "yours until you walk away" -- an hour of work must not end it,
+    an invitation, where the promise is "yours until you walk away". An hour of work must not end it,
     and an hour of quiet must. So an environment carries an OPTIONAL idle_ttl_seconds, and a value there
     makes its expiry SLIDING: the serving path pushes the deadline out by that many seconds each time
     the environment actually serves a request, which is the last point at which the routing knows the
-    environment was reached. NULL is REQ-1523''s fixed deadline, unchanged -- being used is no argument
+    environment was reached. NULL is REQ-1523''s fixed deadline, unchanged; being used is no argument
     against it. THE RENEWAL IS BOUNDED, not per request: it writes only when less than half the TTL remains,
-    which holds the writes to one per half-TTL and still leaves the environment at least that long to
-    be used again -- a row written per request would put an UPDATE on the serving path for no further
+    which holds the writes to one per half-TTL and still leaves the environment at least that long to be used again. A row written per request would put an UPDATE on the serving path for no further
     guarantee. THE REFUSAL COMES FIRST: an environment already past its deadline is refused rather than
     renewed, because otherwise the request that arrived one second late would be the one that moved the
     deadline and it could never arrive. The reaper (REQ-1523) drops the environment on its next sweep
@@ -58407,12 +58391,10 @@
   priority: MUST
   type: behavioral
   description: 'EVERY ORG_ADMIN MAY MINT AN ENVIRONMENT-PROVISIONING INVITATION FROM THEIR OWN TEAM PAGE.
-    The open link (REQ-1594) and the per-visitor environment (REQ-1595) are not a sandbox arrangement
-    (REQ-1598) -- the sandbox is only the first user of a feature every org_admin has: hand someone a
+    The open link (REQ-1594) and the per-visitor environment (REQ-1595) are not a sandbox arrangement (REQ-1598). The sandbox is only the first user of a feature every org_admin has: hand someone a
     link that seats them in a private environment deployed from production, so they see the real model
     without being able to reach the org, and lose it again once they stop using it. The org_admin''s own
-    invite surface (REQ-1266) therefore carries three further controls: WHO THE LINK ADMITS (a single
-    invitee, or anyone holding it -- an unlimited ceiling), WHAT THE REDEEMER WORKS IN (the org itself,
+    invite surface (REQ-1266) therefore carries three further controls: WHO THE LINK ADMITS (a single invitee, or anyone holding it, an unlimited ceiling), WHAT THE REDEEMER WORKS IN (the org itself,
     or a fresh environment of their own), and HOW LONG AN UNUSED ENVIRONMENT SURVIVES (a span of DISUSE,
     REQ-1600, defaulting to one hour). The TTL control appears only for the per-visitor policy, which
     is the only policy it means anything under. THE INVITE LIST REPORTS WHAT EACH LINK IS: its redemptions
@@ -58455,8 +58437,7 @@
   feature: roles-and-capabilities-sandbox-role
   priority: MUST
   type: behavioral
-  description: 'A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities, a role carries
-    a DEMONSTRATED list -- rights it is deliberately denied whose surfaces are still rendered, labelled
+  description: 'A ROLE MAY BE SHOWN A RIGHT IT DOES NOT HOLD. Alongside its capabilities, a role carries a DEMONSTRATED list: rights it is deliberately denied whose surfaces are still rendered, labelled
     as part of the production system rather than removed from the page. The sandbox role (REQ-1597) is
     the first holder: it is org_admin minus four rights, and a visitor holding it is being shown the product,
     so deleting those four surfaces would advertise a smaller product than the one being sold. The two
@@ -58465,7 +58446,7 @@
     held. THE DEMONSTRATION IS REACHABLE, NOT A DEAD BADGE: a nav entry into a demonstrated region stays
     clickable, the route resolves, and the PAGE carries a banner saying what it is while its contents
     render inert (aria-disabled, dimmed, keyboard- and pointer-refused by the browser itself). An inline
-    control demonstrates in place instead -- greyed, badged, and explained on hover. NOTHING HERE IS AN
+    control demonstrates in place instead: greyed, badged, and explained on hover. NOTHING HERE IS AN
     AUTHORIZATION CHANGE: the server refuses every call behind a demonstrated surface exactly as it refuses
     a denied one, and the client reads a rights list off the role, never a role id (REQ-1337).'
   tests:
@@ -58516,17 +58497,15 @@
   feature: sign-in-and-identity-sessions
   priority: MUST
   type: behavioral
-  description: 'SIGNING OUT ENDS THE SESSION WHERE THE SESSION LIVES. An org subdomain holds no session
-    of its own (REQ-1348) -- it borrows the bearer from the control plane through the relay iframe, and
+  description: 'SIGNING OUT ENDS THE SESSION WHERE THE SESSION LIVES. An org subdomain holds no session of its own (REQ-1348). It borrows the bearer from the control plane through the relay iframe, and
     the identity-provider session that mints that bearer is stored in the control-plane origin, which
     no script on the org origin can reach. A sign-out performed locally therefore ended nothing: it cleared
     this origin, reloaded, and the boot borrowed the same live session straight back, so the user stayed
     signed in. The org host instead clears its own borrowed state and hands the browser to the control
-    plane''s /logout, which is an ENTRY POINT rather than a route -- the boot answers it before React
+    plane''s /logout, which is an ENTRY POINT rather than a route. The boot answers it before React
     mounts, so no signed-in query is issued during the sign-out it exists to perform. There the identity
     session is settled first and only then torn down: on a cold document load no user has been read back
-    out of browser storage yet, and a sign-out issued before that lands on nobody. What is cleared is
-    unchanged (REQ-1326) -- token, org, role and the persisted snapshot.'
+    out of browser storage yet, and a sign-out issued before that lands on nobody. What is cleared is unchanged (REQ-1326): token, org, role and the persisted snapshot.'
   tests:
   - provisa-ui/src/__tests__/SignOutHandoff.test.ts
   code:
@@ -58593,13 +58572,7 @@
   feature: organizations-addressing
   priority: MUST
   type: behavioral
-  description: PLATFORM_ADMIN MAY ACT ACROSS ORGS BUT MAY NOT READ AN ORG'S DATA AT REST WITHOUT ITS OWN
-    MEMBERSHIP THERE. cross_org (REQ-1337) is authority to act in any org for support and recovery --
-    issue an invite, add or remove a member, reset a policy. It is not a grant to browse who is in an
-    org, its join policy, its branding, or its full config export; those are that org's data, and platform_admin
-    sees them only where it also holds a real org-scoped assignment in that org (seeded, the sandbox org,
-    or a REQ-1303 recovery grant taken there) -- the same gate every other caller already passes. Reading
-    them via the bare cross_org right, with no membership anywhere in the target org, is refused.
+  description: 'PLATFORM_ADMIN MAY ACT ACROSS ORGS BUT MAY NOT READ AN ORG''S DATA AT REST WITHOUT ITS OWN MEMBERSHIP THERE. cross_org (REQ-1337) is authority to act in any org for support and recovery: issue an invite, add or remove a member, reset a policy. It is not a grant to browse who is in an org, its join policy, its branding, or its full config export; those are that org''s data, and platform_admin sees them only where it also holds a real org-scoped assignment in that org (seeded, the sandbox org, or a REQ-1303 recovery grant taken there), the same gate every other caller already passes. Reading them via the bare cross_org right, with no membership anywhere in the target org, is refused.'
   tests:
   - tests/unit/test_require_org_admin.py
   code:
@@ -59286,21 +59259,7 @@
   feature: environments-test-data
   priority: MUST
   type: behavioral
-  description: The schema a connection defaults to follows the environment being served. Three seams set
-    a default schema outside the query path - the roles table a runtime build re-asserts tenancy rights
-    into, the currentSchema the provisa_admin Trino catalog resolves an unqualified name in, and the Trino
-    terminal's own default schema - and each named org_<id> outright. Served for a non-prod environment,
-    all three reached prod's copy of the model, so building an environment's runtime wrote prod's roles
-    while the environment's forked copy kept whatever it was created with, and a materialized view landed
-    through prod's catalog. Each now derives its schema from the environment bound to the serving context.
-    A fourth site wrote org_<id> into the search_path the pgwire surface reports; that schema holds none
-    of a pgwire client's tables - the catalog presents them under public and current_schema() answers
-    public - and the value was a process global naming the boot org for every session, so it is removed
-    rather than routed. (Amended 2026-10-07, maintainer -- the provisa_admin catalog has no default schema; this
-    supersedes the second seam above:) the provisa_admin catalog is one catalog per coordinator whose definition is
-    the same for every org and environment and names no default schema; every statement that reaches it names the
-    schema of the org and environment it serves, and a statement naming the catalog without a schema is a defect
-    a test refuses (REQ-1429).
+  description: 'The schema a connection defaults to follows the environment being served. Three seams set a default schema outside the query path - the roles table a runtime build re-asserts tenancy rights into, the currentSchema the provisa_admin Trino catalog resolves an unqualified name in, and the Trino terminal''s own default schema - and each named org_<id> outright. Served for a non-prod environment, all three reached prod''s copy of the model, so building an environment''s runtime wrote prod''s roles while the environment''s forked copy kept whatever it was created with, and a materialized view landed through prod''s catalog. Each now derives its schema from the environment bound to the serving context. A fourth site wrote org_<id> into the search_path the pgwire surface reports; that schema holds none of a pgwire client''s tables - the catalog presents them under public and current_schema() answers public - and the value was a process global naming the boot org for every session, so it is removed rather than routed. (Amended 2026-10-07, maintainer: the provisa_admin catalog has no default schema; this supersedes the second seam above:) the provisa_admin catalog is one catalog per coordinator whose definition is the same for every org and environment and names no default schema; every statement that reaches it names the schema of the org and environment it serves, and a statement naming the catalog without a schema is a defect a test refuses (REQ-1429).'
   code:
   - provisa/core/db.py
   - provisa/api/app.py
@@ -59637,8 +59596,7 @@
     [SUPERSEDED by REQ-1912, 2026-10-03 -- Same rename: the eight runtimes implement land_table and reconcile_replica;
     attach_landed_source is gone. Kept here for history; do not implement against it.] implement both
     `land_table` and `attach_landed_source` [END SUPERSEDED BLOCK] (Databricks'' `land_table` adapts to
-    its own `materialize_source` signature, same pattern as BigQuery''s — verified live via the engine-swap
-    harness, a redis source rebooted into Databricks queried 0 rows with no error before this). [SUPERSEDED
+    its own `materialize_source` signature, same pattern as BigQuery''s; verified live via the engine-swap harness, a redis source rebooted into Databricks queried 0 rows with no error before this). [SUPERSEDED
     by REQ-1633 amendment, 2026-10-03 -- Both runtimes now implement the reconcile and land terminals
     (clickhouse_runtime.py:468,490; mssql_warehouse_runtime.py:287,326; commits fc3c72db0 and 7d866ba02,
     2026-09-21). Kept here for history; do not implement against it.] ClickHouseFederationRuntime and
@@ -59718,11 +59676,9 @@
   priority: SHOULD
   type: behavioral
   target: 2026-Q3
-  description: 'New DataProduct entity, domain-scoped: id, domain_id (required FK — a data product has
-    exactly one owning domain), name, owner (person accountable for this product, distinct from Domain.steward),
+  description: 'New DataProduct entity, domain-scoped: id, domain_id (required FK; a data product has exactly one owning domain), name, owner (person accountable for this product, distinct from Domain.steward),
     description. Table gains product_id: str | None (FK -> DataProduct.id), replacing the boolean data_product
-    flag (REQ-1372) as the signal that a table is a data-product member — membership is product_id being
-    set, not a separate flag. A DataProduct''s member tables must all share its domain_id; a table cannot
+    flag (REQ-1372) as the signal that a table is a data-product member. Membership is product_id being set, not a separate flag. A DataProduct''s member tables must all share its domain_id; a table cannot
     reference a DataProduct in a different domain. A data product needing data from another domain is
     composed via a view defined within the owning domain that sources from the other domain, and that
     view (not the foreign table) is given product_id. MetadataSnapshot (provisa/api/metadata_export/model.py)
@@ -59733,12 +59689,11 @@
     implement against it.] replacing the per-table data_product: bool field REQ-1372 added to TableAsset
     [END SUPERSEDED BLOCK]. build_snapshot (builder.py) populates this from the new DataProduct entity
     instead of the boolean filter. Each vendor adapter (openmetadata.py, atlan.py, collibra.py, datahub.py,
-    atlas.py, openlineage.py — REQ-1069) maps DataProductAsset to that catalog''s native product/collection
+    atlas.py, openlineage.py; REQ-1069) maps DataProductAsset to that catalog''s native product/collection
     construct (e.g. OpenMetadata''s Data Product entity, Collibra''s Data Product asset type) so owner
     and description register as first-class attributes there, not just an inferred flag on each member
     table. The table-edit UI (TableEditForm.tsx, replacing the dataProduct checkbox at TableEditForm.tsx:411-421)
-    presents a product_id picker scoped to DataProducts whose domain_id matches the table''s own domain_id
-    — a table in domain "marketing" is never offered a DataProduct owned by domain "sales" as a choice,
+    presents a product_id picker scoped to DataProducts whose domain_id matches the table''s own domain_id. A table in domain "marketing" is never offered a DataProduct owned by domain "sales" as a choice,
     enforcing the domain-alignment constraint at selection time, not only as a save-time rejection.'
   use_case: Lets a domain create named, owned data products bundling one or more datasets for publication
     (mirroring the collection-oriented "data product" concept in Snowflake Marketplace, Starburst Data
@@ -59774,14 +59729,13 @@
   priority: SHOULD
   type: behavioral
   description: 'New engine-native MetadataExport adapter(s), alongside the vendor-neutral ones (openmetadata.py,
-    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — REQ-1069), that populate a warehouse
+    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py; REQ-1069), that populate a warehouse
     engine''s own native catalog/data-product construct from MetadataSnapshot''s data_products section
     (REQ-1634): snowflake_horizon.py populates Snowflake Horizon Catalog and registers each DataProduct
     as a Snowflake Data Product / Marketplace listing (backed by a share over the product''s member tables).
     Unlike the vendor-neutral adapters, this adapter is engine-aware: it resolves each member TableAsset''s
     semantic_uri/AssetRef to its actual landed Snowflake object identity (database.schema.table in that
-    account) via provisa/federation/snowflake_runtime.py before calling Horizon''s catalog API — vendor-neutral
-    adapters need no such resolution since they only emit portable metadata. Runs only when Snowflake
+    account) via provisa/federation/snowflake_runtime.py before calling Horizon''s catalog API. Vendor-neutral adapters need no such resolution since they only emit portable metadata. Runs only when Snowflake
     is the configured engine and REQ-1633''s Snowflake landing terminal exists for the member tables being
     published; otherwise the adapter has nothing to resolve against and is skipped. A parallel bigquery_dataplex.py
     adapter for BigQuery Analytics Hub listings follows the same pattern if pursued.'
@@ -59827,7 +59781,7 @@
     Same engine-aware shape as REQ-1635: resolves each member TableAsset''s semantic_uri/AssetRef to its
     actual landed BigQuery object identity (project.dataset.table) via provisa/federation/bigquery_runtime.py
     before calling Dataplex/Analytics Hub''s catalog API, unlike the vendor-neutral adapters (openmetadata.py,
-    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py — REQ-1069) which need no such resolution.
+    atlan.py, collibra.py, datahub.py, atlas.py, openlineage.py; REQ-1069), which need no such resolution.
     Runs only when BigQuery is the configured engine and REQ-1633''s BigQuery landing terminal exists
     for the member tables being published; otherwise skipped.'
   use_case: Lets a data product declared in Provisa also show up as a consumable listing of its own inside BigQuery's own catalog/marketplace surface (Dataplex + Analytics Hub) via the same metadata-export
@@ -60700,8 +60654,7 @@
     (the ENGINE-route streaming terminal) and provisa/api/airport/query.py (both its row-streaming scan
     and its schema-only probe). Fixed to match the pattern REQ-1865 established in pgwire/server.py, api/flight/server.py
     and api/rest/cypher_router.py. Without this, a row_materialize table reached only via JOIN through
-    the gRPC ProvisaService or the Airport/ADBC surface silently read its own still-empty replica -- same
-    failure class cypher_cross_engine hit over the HTTP-cypher transport before that fix.
+    the gRPC ProvisaService or the Airport/ADBC surface silently read its own still-empty replica, the same failure class cypher_cross_engine hit over the HTTP-cypher transport before that fix.
 
 
     Also found in the SAME audit, worse than the two above: provisa/api/data/endpoint_executors.py --
@@ -60731,18 +60684,15 @@
 
     (Amended 2026-10-01, the staleness decision is made in memory:) The decision this requirement describes
     is a pure function of each table''s persisted last_refresh_at / last_refresh_ok and the clock, and
-    it ran on every statement of every surface with a land lock and one control-plane read per table of
-    every source the plan reads — including a source the engine reads in place, which never lands (measured
+    it ran on every statement of every surface with a land lock and one control-plane read per table of every source the plan reads, including a source the engine reads in place, which never lands (measured
     on /data/sql: 2.9 ms of a 10.4 ms cached request). It is now asked in memory first. (1) A source that
     does not federate MATERIALIZED on the bound engine is skipped with no lock and no control-plane statement
     (`EngineBackend.pending_lands` with every source taken as stale returns nothing). (2) For a landed
-    source, the tables'' freshness state is held per process in `federation/node_freshness_view.py` —
-    what this process last read from, or stamped into, the control plane; keyed by org and schema generation;
+    source, the tables'' freshness state is held per process in `federation/node_freshness_view.py`: what this process last read from, or stamped into, the control plane; keyed by org and schema generation;
     reused for at most 5 s (the registry caches'' own backstop), which is how another process''s land
     or failed land is seen. A FRESH answer from that state leaves the source alone. A STALE or unknown
     answer is never acted on from memory: the read takes the land locks and reads the persisted state
-    exactly as before, and the refresh itself still runs inline in the request that needs it. The rules
-    above are unchanged — never landed, last land failed, cache_ttl outrun, the REQ-860 gate, REQ-1141
+    exactly as before, and the refresh itself still runs inline in the request that needs it. The rules above are unchanged: never landed, last land failed, cache_ttl outrun, the REQ-860 gate, REQ-1141
     load protection, the REQ-1730 first-touch signal and the REQ-1865 whole-table fallback all decide
     as they did. Overlap: REQ-1907 (per-role tolerance, proposed) changes the same decision and must take
     its inputs from the same in-memory state.'
@@ -60981,8 +60931,7 @@
     columns, and the event loop lands a neo4j table through the same fetch chain as openapi. Endpoint
     shape: POST of the transaction-API envelope `{"statements": [{"statement": cypher}]}` to `/db/<database>/tx/commit`
     (body_encoding `neo4j_tx`), flattened by the `neo4j_tabular` normalizer, which refuses a response
-    carrying errors. The control-plane metadata (`schema_org`) admits `neo4j` in the `api_sources` type
-    check — the SQLite control plane is built from it, and a refused insert must surface: the shared upsert
+    carrying errors. The control-plane metadata (`schema_org`) admits `neo4j` in the `api_sources` type check. The SQLite control plane is built from it, and a refused insert must surface: the shared upsert
     re-raises an INSERT the store refused when its fallback UPDATE matches no row, instead of treating
     every IntegrityError as a lost insert race.'
   code:
@@ -61017,7 +60966,7 @@
   feature: operator-settings-config
   priority: SHOULD
   type: infrastructure
-  description: 'Config files support `includes:` — a list of fragment paths, resolved relative to the
+  description: 'Config files support `includes:`, a list of fragment paths, resolved relative to the
     including file, spliced in at parse (recursively, cycles refused). List-valued sections append after
     the including file''s entries; a scalar/mapping key the including file does not set is taken from
     the fragment; a conflicting value fails the load. `load_control_plane` reads through includes so a
@@ -61603,14 +61552,7 @@
   feature: hasura-migration-permissions
   priority: MUST
   type: behavioral
-  description: Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa's own
-    vocabulary. A role with any select permission (or an action permission, or membership in an inherited
-    role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert,
-    update or delete permission also holds `write` (REQ-868). The former `read` pseudo-capability, which
-    no gate reads, is not emitted. Hasura's admin holds every permission implicitly and is Provisa's `org_admin`,
-    whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every
-    imported column — a tracked table's, a landed remote schema's, and a column-less table's columns typed
-    at preview (REQ-1691), which are visible to org_admin alone.
+  description: 'Imported Hasura roles carry the Provisa rights their permissions imply, in Provisa''s own vocabulary. A role with any select permission (or an action permission, or membership in an inherited role) holds `query_development`, the right the data surfaces gate reads on; a role with an insert, update or delete permission also holds `write` (REQ-868). The former `read` pseudo-capability, which no gate reads, is not emitted. Hasura''s admin holds every permission implicitly and is Provisa''s `org_admin`, whose grants are literal lists, so `org_admin` is named in `visible_to` and `writable_by` of every imported column: a tracked table''s, a landed remote schema''s, and a column-less table''s columns typed at preview (REQ-1691), which are visible to org_admin alone.'
   code:
   - provisa/hasura_v2/mapper.py
   - provisa/hasura_v2/remote_schema.py
@@ -61892,7 +61834,7 @@
     it is also stopped, and forgotten, when that source is deleted (`pgwire_replica.stop_endpoint`, called
     from `delete_source`''s engine-deprovisioning step). Without this, a source recreated under the same
     id (delete + re-add with the same name) kept reusing the first server''s already-running JVM and its
-    `model.json` from whenever it was first started — confirmed live with a `files` source: deleting and
+    `model.json` from whenever it was first started. This was confirmed live with a `files` source: deleting and
     recreating it with the same name/path never re-scanned the directory, because the cached server never
     restarted to notice.
 
@@ -61902,14 +61844,13 @@
     had its own `files` branch, `_native_tables_files`, a leftover hand-rolled `directory.rglob("*.csv")`
     scan that predated this requirement entirely and was never removed when `DuckDBFilesConnector` was
     converted: it always returned a (possibly empty) list, never `None`, so Register Table for a `files`
-    source never once reached the Calcite ATTACH this requirement describes, regardless of `DuckDBFilesConnector`/`_files_operand`
-    being correct — confirmed live by the complete absence of a `.aperio/debug-model-<schema>.json` for
+    source never once reached the Calcite ATTACH this requirement describes, regardless of `DuckDBFilesConnector`/`_files_operand` being correct. This was confirmed live by the complete absence of a `.aperio/debug-model-<schema>.json` for
     a freshly created `files` source (`FileSchemaFactory.create()` was never invoked). Removed the branch
     (and the now-dead `_native_tables_files`) so `files` falls through exactly like sharepoint/splunk
     (neither has ever had a `native_tables` branch) to the ATTACH-backed seam.
 
     (Amended 2026-09-19, update_source needs the same stop too:) `delete_source` stopping the cached endpoint
-    was not enough on its own — editing a pgwire-replica source''s path/mapping IN PLACE (`update_source`)
+    was not enough on its own. Editing a pgwire-replica source''s path/mapping IN PLACE (`update_source`)
     never stopped it either, so a `files` source whose path was corrected from an empty/wrong directory
     to a real one via edit-not-delete kept resolving zero tables afterward, same symptom as the delete+recreate
     bug above, reached by a different UI action. `update_source` now also calls `pgwire_replica.stop_endpoint(input.id)`
@@ -62077,8 +62018,7 @@
   type: behavioral
   description: 'A splunk source carries its two optional connector settings onto the Calcite-pgwire path,
     not the Trino path alone. `mapping.disable_ssl_validation` becomes the `disableSslValidation` operand
-    and `mapping.datamodel_filter` becomes `datamodelFilter`, each written as the type `SplunkSchemaFactory`
-    casts it to — a boolean and a string, never the property-file string "true". Without the first, an
+    and `mapping.datamodel_filter` becomes `datamodelFilter`, each written as the type `SplunkSchemaFactory` casts it to: a boolean and a string, never the property-file string "true". Without the first, an
     instance that serves its management port with a self-signed certificate (REQ-724) cannot be reached
     at all on a non-Trino engine; without the second, discovery lists every Data Model the instance ships.
     A splunk demo source (`demo/sources/splunk`) provisions an instance and seeds an index, events and
@@ -62253,12 +62193,11 @@
   type: behavioral
   description: THE GROUP-BY NODES PROJECTION'S ``?include=`` RESOLVES A DOT-PATH AT ANY DEPTH, NOT JUST
     ONE RELATIONSHIP HOP. ``assignment.employee.id`` (a relationship, then its own relationship, then
-    a column) previously 400'd with "Unknown field 'employee.id' on relationship 'assignment'" — the handler
-    split only the first dot and looked the remainder up as a single column name of the immediate relation,
+    a column) previously 400'd with "Unknown field 'employee.id' on relationship 'assignment'". The handler split only the first dot and looked the remainder up as a single column name of the immediate relation,
     which a nested relationship's own field never is. It now recurses through relationships exactly as
     far as the path goes, translating each physical segment (REQ-1417) to the schema's GQL spelling at
     that depth, mirroring the recursion gRPC's ``include`` (query_ir::_insert_include_path, REQ-1405/REQ-1408)
-    already does — one plan drives every surface. The JSON:API Explorer's Include picker offers two levels
+    already does; one plan drives every surface. The JSON:API Explorer's Include picker offers two levels
     of relationship (a table's direct relationships, plus theirs) so the common case is checkboxes rather
     than a hand-typed path; a path past what the picker offers is still accepted by the backend.
   code:
@@ -62288,7 +62227,7 @@
   description: THE EXPLORE/SQL PAGE'S METRICS/FACTS/DIMENSIONS GROUPS HONOR THE SAME CHECKED-DOMAINS FILTER
     THE SCHEMA TREE DOES. The SchemaBrowser sidebar's SCHEMA section already filtered its table tree by
     the domain checkboxes at the top of the page, but the Metrics/Facts/Dimensions groups above it read
-    the unfiltered table and metric lists straight from the hooks — unchecking a domain hid its tables
+    the unfiltered table and metric lists straight from the hooks. Unchecking a domain hid its tables
     from one panel while its facts, dimensions, and derived metrics kept showing in the other. A metric
     attributes to the fact table it was derived from (``Metric.fromFact``); a hand-authored metric (``fromFact``
     null, no ``FROM`` a fact metric reads from) has no domain to filter by and stays visible under every
@@ -62416,8 +62355,7 @@
     endpoint upserted the `sources` row and the auto-discovered `registered_tables` rows directly, bypassing
     every step the ordinary createSource/registerTable mutations perform: it never populated the in-memory
     `state.source_catalogs` entry catalog_for() needs, and it never re-entered the convergent landed-table
-    reconcile (REQ-846/932) that creates a MATERIALIZED source''s landing schema/view — graphql_remote
-    has no live connector, so every one of its tables is MATERIALIZED-only. A grant on a freshly-registered
+    reconcile (REQ-846/932) that creates a MATERIALIZED source''s landing schema/view. graphql_remote has no live connector, so every one of its tables is MATERIALIZED-only. A grant on a freshly-registered
     table failed "no catalog in org"; a query against one failed "schema graphql does not exist" even
     after the catalog fix. See REQ-1729 for the shared backend fix.'
   code:
@@ -62482,12 +62420,11 @@
   unit_test_reason: Same class of bug as REQ-1727/1728 (missing backfill in a startup-time reconcile step)
     — verifiable only through the real registration-to-query round trip, already covered by source-to-query.spec.ts.
   description: '`_rebuild_schemas` backfills `state.source_types` for any DB-registered source missing
-    from the map (a REST-router registration never sets it) but never backfilled `state.source_catalogs`
-    — the org-scoped physical catalog name `catalog_for()` requires. It now backfills both, mirroring
+    from the map (a REST-router registration never sets it) but never backfilled `state.source_catalogs`, the org-scoped physical catalog name `catalog_for()` requires. It now backfills both, mirroring
     createSource''s own catalog-naming step (`fixed_catalog_for_engine` or `org_prefixed_catalog`). This
     alone fixes any REST-registered, engine-attached source''s catalog resolution; a MATERIALIZED-only
     source (graphql_remote, REQ-1727) additionally needs its REST router to re-enter `federation_engine.reconcile_landed_tables()`,
-    the pass that creates the landing schema/view in the engine catalog — the same reconcile `registerTable`''s
+    the pass that creates the landing schema/view in the engine catalog, the same reconcile `registerTable`''s
     mutation path already re-enters after an ordinary UI registration.'
   code:
   - provisa/api/app.py
@@ -62533,8 +62470,7 @@
     \ the DuckDB->Trino swap harness (engine-swap.spec.ts, since split into engine-swap.spec.ts/-helpers.ts/-registrars.ts\
     \ to stay under the repo's max-lines lint rule) grew from this REQ's original 9-type scope to 27 of\
     \ 54 SourceTypes verified Trino-reachable. For each new type the question was always one of two cases:\
-    \ does Trino have a native connector (and is it correctly instantiated — delta_lake/iceberg/snowflake/csv/parquet/\
-    \ files/bigquery each needed a real fix in provisa/federation/trino_connectors.py, see that file's\
+    \ does Trino have a native connector (and is it correctly instantiated: delta_lake/iceberg/snowflake/csv/parquet/files/bigquery each needed a real fix in provisa/federation/trino_connectors.py, see that file's\
     \ TrinoIcebergConnector/TrinoDeltaLakeConnector/TrinoSnowflakeConnector/TrinoCsvConnector/ TrinoParquetConnector/TrinoBigQueryConnector\
     \ and the TrinoFilesConnector execution-engine fix), or, with no native connector, is Provisa correctly\
     \ landing rows into the Postgres-backed materialize store Trino reads (grpc_remote/graphql_remote/openapi,\
@@ -62552,8 +62488,7 @@
     \ WHOLE per-entry loop with no exception ever logged anywhere, dropping every worklist entry ordered\
     \ after the failing one. Fixed: CASCADE the drop on Postgres specifically (verified live it only drops\
     \ the dependent FK CONSTRAINTS, not the referencing tables).\n2. state.grpc_remote_sources is pure\
-    \ in-process state built only by grpc_remote_router.register_grpc_remote_source's own handler — a\
-    \ process that never itself handled that POST (the Trino-bound backend under this harness; equally\
+    \ in-process state built only by grpc_remote_router.register_grpc_remote_source's own handler. A process that never itself handled that POST (the Trino-bound backend under this harness; equally\
     \ a fresh worker or a restart in production) starts with it empty, so a query against an already-registered\
     \ grpc_remote table found no registration to read from and hung indefinitely with no error. Fixed\
     \ by persisting proto_path/namespace/tls/import_paths/cache_ttl on the source row (`sources.path`\
@@ -62561,8 +62496,7 @@
     \ (app_loaders.py) — wired into both app.py boot and the PUT /admin/config reload call sites, mirroring\
     \ graphql_remote's own existing reload function — which recompiles stubs and reopens the channel for\
     \ every already-registered source a process doesn't yet know about.\n3. That reload function runs\
-    \ as part of _rebuild_schemas(), which _load_and_register already calls INTERNALLY, before it used\
-    \ to populate state.grpc_remote_sources — so the ORIGINAL registration recursed straight back into\
+    \ as part of _rebuild_schemas(), which _load_and_register already calls INTERNALLY, before it used to populate state.grpc_remote_sources, so the ORIGINAL registration recursed straight back into\
     \ itself via the new reload path's \"already known?\" guard, which couldn't see the in-flight registration\
     \ yet. Fixed by reordering grpc_remote_router.py to open the channel and populate state.grpc_remote_sources\
     \ BEFORE calling _rebuild_schemas(), not after.\n4. provisa/compiler/stage2.py's GovernanceContext-building\
@@ -62570,12 +62504,10 @@
     \ as \"nobody visible\" — only a true `None` counted as unrestricted — while provisa/compiler/schema_gen.py's\
     \ own _build_visible_tables, computing the identical per-role schema from the identical data, treats\
     \ empty visible_to as unrestricted (its own documented contract, in a non-lockdown domain). Since\
-    \ `table_columns.visible_to` is a JSON NOT NULL column (schema_org.py), it is NEVER a true SQL NULL\
-    \ — stage2.py's `None` check was effectively dead code against real data, and every freshly-registered,\
+    \ `table_columns.visible_to` is a JSON NOT NULL column (schema_org.py), it is NEVER a true SQL NULL. stage2.py's `None` check was effectively dead code against real data, and every freshly-registered,\
     \ not-yet-granted column failed V003 regardless of any later grant. Fixed to match schema_gen.py's\
     \ contract: empty visible_to is unrestricted outside `_LOCKDOWN_DOMAINS`. This is a genuine pre-existing\
-    \ inconsistency between the two independent governance implementations, not something introduced by\
-    \ grpc_remote's own registration path — it would have surfaced for any adapter-fetched type whose\
+    \ inconsistency between the two independent governance implementations, not something introduced by grpc_remote's own registration path. It would have surfaced for any adapter-fetched type whose\
     \ grant never landed before this session's reload work made the DDL-landing bug (#1) and the missing-registration-state\
     \ bug (#2/#3) visible enough to reach a real query.)\n(Amended 2026-09-17, DATABRICKS: added to the\
     \ swap harness, 28th->29th type. Unlike exasol/bigquery/grpc_remote earlier this session, databricks\
@@ -62627,10 +62559,9 @@
     \ SPLUNK FIXED: the schema-naming mismatch above is fixed for real, upstream — 30th->31st Trino-reachable\
     \ type. Two commits in the `kenstott/calcite` fork (a SEPARATE repo this session's local checkout\
     \ lives in at /Volumes/main/Users/kennethstott/IdeaProjects/calcite, not tracked by provisa's own\
-    \ git history): 1. `28db96ca1` (splunk module) — `SplunkDriver` now registers its Calcite schema under\
+    \ git history): 1. `28db96ca1` (splunk module): `SplunkDriver` now registers its Calcite schema under\
     \ a\n   configurable `schema`/`currentSchema` connection property (defaulting to \"splunk\"), instead\n\
-    \   of the hardcoded literal it always used before, regardless of what was configured.\n2. `4a042e872`\
-    \ (trino-splunk module) — the FIRST fix alone was not enough: Trino's Airlift-based\n   config binding\
+    \   of the hardcoded literal it always used before, regardless of what was configured.\n2. `4a042e872` (trino-splunk module): the FIRST fix alone was not enough: Trino's Airlift-based\n   config binding\
     \ rejects any catalog property its connector's Config class does not declare, so\n   passing `schema=...`\
     \ from Provisa's own catalog properties silently failed `CREATE CATALOG`\n   (surfaced as `CATALOG_NOT_FOUND`,\
     \ not a config error, since `_register_source_on_engine`\n   swallows the exception into a log warning)\
@@ -62641,20 +62572,18 @@
     \ DuckDB addresses the identical physical schema under Trino. Verified passing live end-to-end (4\
     \ rows, identical under both engines). Build note: the calcite repo has no configured Gradle toolchain\
     \ auto-download and no local Java 25 install; rather than trigger the real `publish-trino` GitHub\
-    \ Actions workflow (which does a full public Maven Central + GitHub Release publish — too consequential\
-    \ just to produce a local test jar), a Temurin JDK 25 was downloaded directly from Adoptium into `~/.jdks/`\
+    \ Actions workflow (which does a full public Maven Central + GitHub Release publish, too consequential just to produce a local test jar), a Temurin JDK 25 was downloaded directly from Adoptium into `~/.jdks/`\
     \ and passed via `-Porg.gradle.java.installations.paths=...` for a local `:trino-splunk:trinoPlugin`\
     \ build, with no changes to the repo's own committed Gradle config. `trino/plugins/trino-splunk/`\
-    \ in the provisa repo is gitignored — a fresh provisa clone needs this plugin rebuilt from `kenstott/calcite`\
+    \ in the provisa repo is gitignored. A fresh provisa clone needs this plugin rebuilt from `kenstott/calcite`\
     \ (or eventually a real downloaded release artifact, per the trino-splunk README's own documented\
     \ `gh release download` path) before this specific type passes; every other engine-swap type has no\
     \ such cross-repo dependency.\n(Amended 2026-09-17, SHAREPOINT FIXED: 31st->32nd Trino-reachable type.\
     \ The \"sharepoint has the identical root cause... not yet fixed\" claim just above was an UNVERIFIED\
-    \ assumption based on surface similarity to splunk — wrong once actually checked (this session's own\
+    \ assumption based on surface similarity to splunk, and wrong once actually checked (this session's own\
     \ [[feedback-verify-old-exclusion-labels]] lesson, again). Reading `SharePointConfig.java`/ `SharePointClientModule.java`/`SharePointListDriver.java`\
     \ in the calcite repo BEFORE assuming a fix was needed found the trino-sharepoint plugin already had\
-    \ a fully working, correctly-wired `schema` catalog property end to end — no calcite-repo change needed\
-    \ at all. Only `TrinoSharepointConnector.details()` (trino_connectors.py) needed to start passing\
+    \ a fully working, correctly-wired `schema` catalog property end to end; no calcite-repo change was needed at all. Only `TrinoSharepointConnector.details()` (trino_connectors.py) needed to start passing\
     \ `schema=<sql-normalized source id>`, same value DuckDB's pgwire bridge already uses. A SECOND, genuinely\
     \ separate gap surfaced along the way: `docker-compose.core.yml` had no mount for the CERTIFICATE_AUTH\
     \ `.pfx` file — `SharePointAuthFactory.createCertificateAuth` (calcite's sharepoint-list module) reads\
@@ -62663,72 +62592,58 @@
     \ .../sharepoint.pfx (No such file or directory)`. Fixed with an identity-mount volume line (same\
     \ absolute host path both sides), matching the existing `FILE_LAKE_HOST_DIR` precedent for delta_lake/iceberg.\
     \ Verified passing live end to end after both fixes.)\n(Amended 2026-09-17, KAFKA FIXED: 32nd->33rd\
-    \ Trino-reachable type, and the LAST of this session's re-verified exclusions to actually need new\
-    \ integration work — the user's own question (\"does it derive its catalog from confluent kafka catalog?\"\
+    \ Trino-reachable type, and the LAST of this session's re-verified exclusions to actually need new integration work. The user's own question (\"does it derive its catalog from confluent kafka catalog?\"\
     ) identified the correct mechanism. Unlike every other type here, kafka's static `kafka_sources[]`/\
     \ `register_kafka_catalog` path (app_loaders.py's `_process_kafka_sources`) writes a SEPARATE, config-only\
-    \ `raw_config[\"tables\"]` registry, never the dynamic `registered_tables` DB rows every other type\
-    \ uses — genuinely incompatible with this harness's \"register once\" pattern. The fix instead routes\
+    \ `raw_config[\"tables\"]` registry, never the dynamic `registered_tables` DB rows every other type uses, genuinely incompatible with this harness's \"register once\" pattern. The fix instead routes\
     \ kafka through the SAME dynamic `create_catalog`/ `_register_source_on_engine` path every other type\
     \ already uses: `TrinoKafkaConnector.details()` (trino_connectors.py) now builds real Trino kafka\
     \ connector properties (`kafka.nodes`, `kafka.table-description-supplier=CONFLUENT`, `kafka.confluent-schema-registry-url`)\
-    \ directly from the Source row instead of returning `{}` unconditionally — using Trino's native kafka\
-    \ connector's CONFLUENT table-description-supplier mode, which auto-discovers every topic with a registered\
+    \ directly from the Source row instead of returning `{}` unconditionally, using Trino's native kafka connector's CONFLUENT table-description-supplier mode, which auto-discovers every topic with a registered\
     \ Confluent schema, no per-topic static declaration needed. With no schema registry URL set, `details()`\
-    \ still returns `{}` (kafka stays Trino-unreachable, same as before) — a schema registry is a hard\
-    \ requirement for Trino reach, not an enhancement. The registry URL travels through the Sources form's\
+    \ still returns `{}` (kafka stays Trino-unreachable, same as before); a schema registry is a hard requirement for Trino reach, not an enhancement. The registry URL travels through the Sources form's\
     \ existing \"Schema Registry URL\" kafka field (`SourceFormFieldsExtended.tsx`'s `isKafka` block,\
-    \ already wired to `source.database` — no new UI or backend field needed, contrary to this session's\
+    \ already wired to `source.database`; no new UI or backend field is needed, contrary to this session's\
     \ earlier assumption that one had to be added).\nTwo more gaps surfaced live, both fixed: (1) Trino's\
-    \ CONFLUENT supplier rejects a JSON-typed Confluent schema outright (`NOT_SUPPORTED: Not supported\
-    \ schema: JSON`) — the swap harness's kafka registrar hand-encodes a real Avro/Confluent-wire-format\
+    \ CONFLUENT supplier rejects a JSON-typed Confluent schema outright (`NOT_SUPPORTED: Not supported schema: JSON`). The swap harness's kafka registrar hand-encodes a real Avro/Confluent-wire-format\
     \ message instead (no avro/ fastavro/confluent-kafka dependency exists in this repo; the record is\
     \ two flat string fields, simple enough to hand-encode: Avro string = zigzag-varint length + UTF-8\
     \ bytes, Confluent wire format = 0x00 magic byte + 4-byte big-endian schema id + Avro body). (2) kafka's\
     \ wire protocol is two-hop, unlike every other type's single-hop JDBC/HTTP connection: a client's\
     \ bootstrap connection is handed back the broker's OWN advertised address for the listener it connected\
-    \ through, then reconnects using THAT address for every subsequent request — the demo fixture's HOST\
-    \ listener advertises literally `localhost:<port>`, exactly as unreachable from inside Trino's container\
+    \ through, then reconnects using THAT address for every subsequent request. The demo fixture's HOST listener advertises literally `localhost:<port>`, exactly as unreachable from inside Trino's container\
     \ as the harness's usual `host.docker.internal` rewrite would leave it (reproduced live: `FederationError(...\
     \ KAFKA_SPLIT_ERROR, \"Cannot list splits for table ...\")`). Fixed by joining the kafka fixture onto\
     \ Trino's OWN Docker network under alias \"kafka\" (`provision.py`'s existing `--network`/`--network-alias`\
     \ join, already used by splunk-connector.spec.ts/source-to-query-olap-lake-trino.spec.ts for the same\
     \ class of problem) and routing the Trino-side replay straight at the fixture's existing internal\
-    \ PLAINTEXT listener (already advertised as `kafka:29092`, matching its compose `hostname: kafka`\
-    \ — no compose.yml change needed) instead of the published HOST port.\nAlso fixed along the way: `discovery_schema.py`'s\
+    \ PLAINTEXT listener (already advertised as `kafka:29092`, matching its compose `hostname: kafka`; no compose.yml change needed) instead of the published HOST port.\nAlso fixed along the way: `discovery_schema.py`'s\
     \ kafka branch (REQ-1767's discover-schema flow, DuckDB-side) read its Confluent registry URL only\
-    \ from a transient per-Discover-call hint or `federation_hints.schema_registry_url` (which nothing\
-    \ persists via the UI) — never from the SAME `source.database` field `TrinoKafkaConnector.details()`\
+    \ from a transient per-Discover-call hint or `federation_hints.schema_registry_url` (which nothing persists via the UI), never from the SAME `source.database` field `TrinoKafkaConnector.details()`\
     \ now reads, so the one field an operator fills in on the Sources form silently covered only Trino's\
     \ discovery, not DuckDB's. `registry_url`'s resolution now falls back to `row.get(\"database\")` last,\
     \ so the single persistent field covers both engines. Verified passing live end to end.)\n(Amended\
     \ 2026-09-17, INGEST FIXED: 33rd->34th Trino-reachable type, and TWO real, previously-undiscovered\
-    \ bugs found and fixed while getting it there — neither specific to this harness; both would hit ingest\
+    \ bugs found and fixed while getting it there, neither specific to this harness; both would hit ingest\
     \ in production on a Postgres control plane. (1) `provisa/ingest/engine.py`'s tenant-DB-mirroring\
-    \ path (`app_loaders.py`'s `_init_ingest_engines`, REQ-1745's default) opens a raw SQLAlchemy engine\
-    \ with no org-scoping — unlike `core.database.Database.acquire()`, which issues a per-acquire `SET\
+    \ path (`app_loaders.py`'s `_init_ingest_engines`, REQ-1745's default) opens a raw SQLAlchemy engine with no org-scoping. Unlike `core.database.Database.acquire()`, which issues a per-acquire `SET\
     \ search_path` for every OTHER control-plane connection, this one has no such wrapper, so its DDL/INSERT\
     \ landed wherever the role's own default search_path resolved (`public`), not the org schema `register_table`\
     \ already stamped onto `registered_tables.schema_name`. Invisible under a SQLite control plane (DuckDB's\
-    \ own sqlite ATTACH flattens every schema into `main` regardless) — first exposed by this harness's\
+    \ own sqlite ATTACH flattens every schema into `main` regardless); it was first exposed by this harness's\
     \ Postgres control plane, where DuckDB's postgres ATTACH and Trino's postgres connector both enforce\
     \ real schema boundaries. Fixed: `get_engine` (`provisa/ingest/engine.py`) takes an optional `search_path`,\
     \ applied via asyncpg's `server_settings` at connect time; `_init_ingest_engines`'s tenant-mirroring\
     \ branch passes `active_org_schema(state.org_id, \"\")`. (2) A DEEPER, architectural conflict: `ingest`\
     \ sits in `strategy.py`'s `_MATERIALIZE_ONLY` set (no live/scan connector on any engine), which puts\
-    \ it through `backend.py`'s `landing_worklist` on every engine reload — but unlike every OTHER member\
-    \ of that set, ingest does not land through `store_writer` at all; its rows are written directly into\
+    \ it through `backend.py`'s `landing_worklist` on every engine reload. But unlike every OTHER member of that set, ingest does not land through `store_writer` at all; its rows are written directly into\
     \ its own table by `provisa/ingest/router.py`, whose shape (`ddl.py`) always includes an `id SERIAL\
     \ PRIMARY KEY` and `_received_at`/`_updated_at` columns that the registered `ext_id`/`value` columns\
     \ alone never list. `store_writer.reconcile_table`'s drift check compares the physical column set\
     \ against the registered one verbatim, sees a permanent \"mismatch\" for every ingest table on every\
-    \ single reconcile pass, and drops + recreates it — silently discarding every row ingest had already\
-    \ written. Reproduced live, root-caused with care (a POSTed row committed and was visible via a fresh\
-    \ Postgres connection immediately afterward, confirmed present via three independent connections,\
-    \ then vanished specifically the moment the next engine reload ran `landing_worklist`/`reconcile_table`\
-    \ against it — not a landing delay, not a caching artifact, not this session's own probing). Fixed\
-    \ by excluding `source.type == \"ingest\"` from `landing_worklist` (`backend.py`) — its own DDL/write\
-    \ path is now the sole owner of its table, the same way it already was, by accident of never having\
+    \ single reconcile pass, and drops + recreates it, silently discarding every row ingest had already\
+    \ written. Reproduced live, root-caused with care (a POSTed row committed and was visible via a fresh Postgres connection immediately afterward, confirmed present via three independent connections, then vanished specifically the moment the next engine reload ran `landing_worklist`/`reconcile_table` against it; not a landing delay, not a caching artifact, not this session's own probing). Fixed\
+    \ by excluding `source.type == \"ingest\"` from `landing_worklist` (`backend.py`). Its own DDL/write path is now the sole owner of its table, the same way it already was, by accident of never having\
     \ its reload path exercised, on the DuckDB-native tier. A THIRD, narrower gap was found and DOCUMENTED\
     \ rather than fixed: the SQL page's compiled query resolves a table through a GraphQL-field-name round\
     \ trip (`compiler.naming`/`sql_rewrite.semantic_table_name`) that has no way to mark a word boundary\
@@ -62738,8 +62653,7 @@
     \ there); ingest's physical DDL uses `registered_tables.table_name` verbatim, so this is again ingest-specific.\
     \ A fix sourcing the compiled name from `state.contexts` inside `_init_ingest_engines` was tried and\
     \ reverted: that snapshot is only sometimes populated for a given source_id at the moment a schema\
-    \ rebuild calls this function (which runs multiple times per rebuild), making the corruption non-deterministic\
-    \ instead of consistent — worse than the narrow, well-understood gap it replaced. `engine-swap-registrars.ts`'s\
+    \ rebuild calls this function (which runs multiple times per rebuild), making the corruption non-deterministic instead of consistent, worse than the narrow, well-understood gap it replaced. `engine-swap-registrars.ts`'s\
     \ `registerIngest` works around it by choosing a source id with no \"_<digit>\" boundary (`e2e_swap_ingest_id<stamp>`,\
     \ a letter between the underscore and the digits) rather than every other registrar's bare \"_<stamp>\"\
     \ ending; the zombie-cleanup regex in `engine-swap-helpers.ts` was widened (trailing underscore now\
@@ -62752,21 +62666,19 @@
     \ introspection against the real AskAmerica/US-government-open-data API (`fetch_columns`), so they\
     \ already match its landed physical shape — none of ingest's `reconcile_table` drift-mismatch conflict\
     \ applies here. `registerGovdata` (`engine-swap-registrars.ts`) mirrors `source-to-query-special-cases.spec.ts`'s\
-    \ own proven govdata case verbatim (WEATHER subject, `weather.nws_stations`), gated the same way on\
-    \ `FREE_ASKAMERICA_KEY` in `.env` — no offline mock exists for this type. Verified passing live on\
-    \ the first attempt (~60s).)\n(Amended 2026-09-17, RSS ATTEMPTED — one real bug found+fixed, NOT yet\
+    \ own proven govdata case verbatim (WEATHER subject, `weather.nws_stations`), gated the same way on `FREE_ASKAMERICA_KEY` in `.env`; no offline mock exists for this type. Verified passing live on\
+    \ the first attempt (~60s).)\n(Amended 2026-09-17, RSS ATTEMPTED: one real bug found+fixed, NOT yet\
     \ added to the harness. rss lands through a background POLL job (`wire_new_poll_jobs`, REQ-1770),\
     \ not synchronously on the query like every other `_MATERIALIZE_ONLY` type attempted so far. Root-caused\
     \ with live debug tracing why that poll job never fired for a UI-registered rss table on a fresh backend:\
     \ `provisa/api/admin/db_queries.py`'s `fetch_tables()` never SELECTed `registered_tables .cache_ttl`\
-    \ at all (a real, pre-existing column — `schema_mutation.py`'s `update_table` writes it — simply never\
-    \ read back out), so `federation/registry_view.py`'s `registered_tables()` fell back ENTIRELY to `state.config.tables`\
-    \ (the static YAML config) for `cache_ttl` — always empty for a table that only ever exists as a control-plane\
+    \ at all (a real, pre-existing column that `schema_mutation.py`'s `update_table` writes, simply never read back out), so `federation/registry_view.py`'s `registered_tables()` fell back ENTIRELY to `state.config.tables`\
+    \ (the static YAML config) for `cache_ttl`, always empty for a table that only ever exists as a control-plane\
     \ row, never a YAML entry. `wire_new_poll_jobs`'s `build_source_node_spec` therefore always saw `poll_seconds=None`\
-    \ for such a table and skipped wiring a job — permanently: `state.poll_jobs_registered` marks a node\
+    \ for such a table and skipped wiring a job, permanently: `state.poll_jobs_registered` marks a node\
     \ visited on its FIRST attempt whether a job was wired or not, so this was not a timing race a retry\
     \ could ever win. Fixed both functions (DB query now selects `cache_ttl`; the registry prefers it\
-    \ over the static-config fallback) — verified live the poll job now wires with the correct cadence\
+    \ over the static-config fallback). It was verified live that the poll job now wires with the correct cadence\
     \ (`poll_seconds=5` where it was always `None` before). This fix is real and kept regardless of rss's\
     \ harness status (verified no regression on grpc_remote/govdata, which exercise the same `registered_tables()`\
     \ path).\n[SUPERSEDED by the amendment below, 2026-09-17 -- the \"landing_target mismatch\" theory\
@@ -62783,33 +62695,28 @@
     \ harder than rss's re-pollable static feed — see `registerRss`'s own reasoning, preserved in session\
     \ memory even though the code was reverted). Harness stays at 35/54.] [END SUPERSEDED BLOCK]\n(Amended\
     \ 2026-09-17, RSS FIXED: 35th->36th Trino-reachable type. The \"deeper landing_target issue\" above\
-    \ was chased with `store_writer.land()`/`materialize_exec.land_replace()` instrumentation (added,\
-    \ verified, then fully reverted — no debug code shipped) and turned out to be TWO SEPARATE, much narrower\
+    \ was chased with `store_writer.land()`/`materialize_exec.land_replace()` instrumentation (added, verified, then fully reverted; no debug code shipped) and turned out to be TWO SEPARATE, much narrower\
     \ causes, neither a landing_target mismatch:\n(1) This session's OWN test-fixture bug: `engine-swap.spec.ts`'s\
     \ rss feed fixture omitted `<pubDate>` (unlike `source-to-query-streaming.spec.ts`'s proven original).\
     \ `rss_provider.py`'s `_parse_date()` maps a missing/unparseable date to `_UNPARSEABLE_DATE = datetime.min`,\
-    \ and `poll_once()`'s own watermark for a fresh (per-call) provider ALSO defaults to `datetime.min`\
-    \ — `pub <= watermark` then reads `datetime.min <= datetime.min` (True), silently filtering out every\
+    \ and `poll_once()`'s own watermark for a fresh (per-call) provider ALSO defaults to `datetime.min`, so `pub <= watermark` then reads `datetime.min <= datetime.min` (True), silently filtering out every\
     \ item before it ever reaches `store_writer.land()`. Fixed by restoring `pubDate` in the fixture.\
     \ Separately, `registerRss`'s `sourceId` used the SAME bare `_${stamp}` ending as every other registrar,\
-    \ which per REQ-1730's own ingest amendment collides with the compiler's field-name-round-trip naming\
-    \ gap — fixed the same way ingest was (`_id${stamp}`).\n(2) A REAL, narrow Provisa bug, distinct from\
+    \ which per REQ-1730's own ingest amendment collides with the compiler's field-name-round-trip naming gap; it was fixed the same way ingest was (`_id${stamp}`).\n(2) A REAL, narrow Provisa bug, distinct from\
     \ (1): even with real rows reaching `store_writer.land_replace()`, asyncpg's binary COPY path (`core/database.py\
-    \ Database.bulk_copy`) cannot bind a timezone-AWARE Python `datetime` into a `TIMESTAMP WITHOUT TIME\
-    \ ZONE` column — raises `TypeError: can't subtract offset-naive and offset-aware datetimes` INSIDE\
+    \ Database.bulk_copy`) cannot bind a timezone-AWARE Python `datetime` into a `TIMESTAMP WITHOUT TIME ZONE` column. It raises `TypeError: can't subtract offset-naive and offset-aware datetimes` INSIDE\
     \ the COPY call, past `check_source_drift`'s own earlier check, so `land()`/`land_replace()` both\
     \ appear to run cleanly (the DELETE half of REPLACE executes) while the INSERT half silently never\
     \ lands a single row, reproduced live via direct instrumentation. `rss_provider.py`'s `RSSNotificationProvider.poll_once()`\
     \ always attaches `tzinfo=timezone.utc` to `published` (every parse branch and `_UNPARSEABLE_DATE`\
-    \ alike), while the column type an rss table's \"published\" registers as is a naive TIMESTAMP — a\
-    \ genuine type mismatch between what this ONE provider always produces and what its own landed column\
+    \ alike), while the column type an rss table's \"published\" registers as is a naive TIMESTAMP, a genuine type mismatch between what this ONE provider always produces and what its own landed column\
     \ expects. Fixed at the source: the STORED `row[\"published\"]` value is now normalized to naive UTC\
     \ (`.astimezone(timezone.utc).replace(tzinfo=None)`) before landing; the internal watermark comparison\
     \ keeps using the original tz-aware `pub`, unaffected. `tests/unit/test_rss_provider .py` (16 tests)\
     \ still passes unchanged.\nAlso fixed along the way, unrelated to rss's own data path: `TablesPage.tsx`'s\
     \ row click handler toggles expansion via the bare `<Table.Tr onClick={...}>`, but the SAME row also\
     \ carries an actions-column `<Table.Td onClick={(e) => e.stopPropagation()}>` guard (so an action\
-    \ button click doesn't ALSO toggle the row) — Playwright's default `row.click()` targets the row's\
+    \ button click doesn't ALSO toggle the row). Playwright's default `row.click()` targets the row's\
     \ bounding-box CENTER, which for this harness's specific column layout happened to land on that guarded\
     \ cell, silently swallowing the click (reproduced live: the click resolves and executes with no error,\
     \ the row simply never expands). `registerRss` now clicks the row's FIRST cell instead, outside the\
@@ -62827,21 +62734,18 @@
     \ source type. Per this REQ's own design intent (\"every datasource must have a materialization store\
     \ method, except maybe 1 or 2 outliers\"), added all three to `_MATERIALIZE_ONLY`. sqlite already\
     \ had a working, engine-independent row-fetch (`events/source_loader.py`'s `make_sqlite_loader`, plain\
-    \ stdlib `sqlite3`, wired unconditionally in `build_adapter_loaders`) — the set-membership fix alone\
-    \ was sufficient. firebird/airport had none: no engine but DuckDB ever reaches either (no separate\
+    \ stdlib `sqlite3`, wired unconditionally in `build_adapter_loaders`); the set-membership fix alone was sufficient. firebird/airport had none: no engine but DuckDB ever reaches either (no separate\
     \ Python client library for either wire protocol exists in this codebase, unlike sqlite). Added `make_firebird_loader`/`make_airport_loader`,\
     \ both reading through a THROWAWAY in-memory DuckDB connection ATTACHed via the same `firebird`/`airport`\
-    \ community-extension DDL `DuckDBFirebirdConnector.details()`/`DuckDBAirportConnector.details()` already\
-    \ produce for the live engine — reusing that DDL rather than re-deriving the DSN keeps the loader\
+    \ community-extension DDL `DuckDBFirebirdConnector.details()`/`DuckDBAirportConnector.details()` already produce for the live engine. Reusing that DDL rather than re-deriving the DSN keeps the loader\
     \ from ever drifting out of sync with the real connector. Wired both unconditionally in `build_adapter_loaders`,\
     \ same as sqlite. Extended REQ-1730 scenario 1 (genuine reboot, `engine-swap.spec.ts`'s dedicated\
     \ `runRebootCase` harness) to all three: sqlite is a real cross-engine reboot (`RebootEngineKind`\
-    \ extended to include `\"pg\"` — sqlite reaches pg via `SqliteFdwConnector`, not Trino); firebird/airport\
+    \ extended to include `\"pg\"`; sqlite reaches pg via `SqliteFdwConnector`, not Trino); firebird/airport\
     \ get a real Trino reboot now that landing works. See source-e2e-coverage-audit project memory for\
     \ live-verification status per type.)\n(Amended 2026-09-19, REVERSED-DIRECTION SWAP: the harness's\
     \ runRebootCase primitive (a single backend process genuinely killed and respawned with PROVISA_ENGINE\
-    \ flipped) is extended to cover the reverse of its original DuckDB-first direction — registering a\
-    \ source against the Trino-primary backend from a cold start, then rebooting that SAME process back\
+    \ flipped) is extended to cover the reverse of its original DuckDB-first direction: registering a source against the Trino-primary backend from a cold start, then rebooting that SAME process back\
     \ into DuckDB and requerying, with no mutation replay either direction. This required generalizing\
     \ `rewriteHostForContainerizedEngine` (engine-swap-helpers.ts) to take a `toContainerized` boolean\
     \ so the docker-topology host rewrite (localhost <-> host.docker.internal, kafka's container alias)\
@@ -62851,13 +62755,12 @@
     \ each of whose register* function gained an optional `host` param for this. New coverage: \"scenario\
     \ 1 reversed: same source survives an engine change + reboot, Trino first (REQ-1730)\" in engine-swap.spec.ts.)\n\
     (Amended 2026-09-19, WAREHOUSE ENGINES BEYOND DUCKDB/TRINO: `provisa/federation/engine.py`'s `_ENGINE_BUILDERS`\
-    \ registry defines roughly 30 selectable `PROVISA_ENGINE` values, not just duckdb/trino/pg — snowflake,\
-    \ databricks, bigquery, and mssql (generic sqlalchemy) among them. `RebootEngineKind` (engine-swap-helpers.ts)\
+    \ registry defines roughly 30 selectable `PROVISA_ENGINE` values, not just duckdb/trino/pg: snowflake, databricks, bigquery, and mssql (generic sqlalchemy) among them. `RebootEngineKind` (engine-swap-helpers.ts)\
     \ is extended to include these four, and `rebootEngineExtraEnv()` builds each engine's own `PROVISA_ENGINE_URL`\
     \ DSN (snowflake://, databricks://, bigquery via ambient GOOGLE_CLOUD_PROJECT/ADC with no DSN, mssql+pyodbc://\
     \ against the local demo/sources/sqlserver fixture). This is a different model from registering the\
     \ same product as a SOURCE TYPE (registerSnowflake/registerDatabricks/registerBigquery already existed\
-    \ for that, reached via duckdb/trino as the federation engine) — this instead makes Snowflake/Databricks/BigQuery/mssql\
+    \ for that, reached via duckdb/trino as the federation engine). This instead makes Snowflake/Databricks/BigQuery/mssql\
     \ themselves the federation engine. Availability gates SNOWFLAKE_ENGINE_AVAILABLE/DATABRICKS_ENGINE_AVAILABLE/BIGQUERY_ENGINE_AVAILABLE\
     \ are env-var presence checks, the same vars the existing cloud-warehouse source tests gate on. New\
     \ coverage: \"scenario 1 extended: same source survives an engine change to a warehouse engine (REQ-1730)\"\
@@ -62868,9 +62771,9 @@
     \ and fixed five compounding bugs (closes GH#116, bugs 3-5 below; bugs 1-2 were fixed before the issue\
     \ was filed and aren't tracked separately):\n1. EngineBackend.dialect (backend.py) passed native_store\
     \ (\"mssql\") directly to SQLGlot as the transpile-target dialect name; SQLGlot names it \"tsql\"\
-    . Fixed with a small _SQLGLOT_DIALECT_ALIASES map at that one seam only — native_store itself is untouched\
+    . Fixed with a small _SQLGLOT_DIALECT_ALIASES map at that one seam only; native_store itself is untouched\
     \ everywhere else it identifies the storage backend.\n2. SqlAlchemyFederationRuntime.run() (sqlalchemy_runtime.py)\
-    \ called cur.execute(sql, params or None) — pyodbc treats an explicit None second argument as one\
+    \ called cur.execute(sql, params or None). pyodbc treats an explicit None second argument as one\
     \ NULL parameter, not \"no parameters\" (unlike SQLAlchemy Core's own execution path), so every parameterless\
     \ query raised pyodbc.ProgrammingError. Fixed by omitting the argument entirely when there are no\
     \ params.\n3. fixed_catalog_for_engine (app_loaders.py) hardcoded an allowlist of exactly three engine\
@@ -62886,7 +62789,7 @@
     \ for any runtime lacking attach_landed_source), and build_sqlalchemy_engine's default_materialize_store\
     \ pointed at the shared platform Postgres instead of the engine's own store, so rows that did land\
     \ went to the wrong physical database. Fixed: SqlAlchemyBackend.landing_target lands every MATERIALIZED\
-    \ source unconditionally at its registered (schema_name, table_name) — this engine has no DuckDB-style\
+    \ source unconditionally at its registered (schema_name, table_name). This engine has no DuckDB-style\
     \ ATTACH+view indirection and, unlike Trino, has zero live connectors for anything, so unlike Trino's\
     \ own landing_target override (which checks is_adapter_fetched to exempt types it can reach live)\
     \ there is no type to exempt here. SqlAlchemyFederationRuntime.attach_landed_source does eager DDL\
@@ -62904,34 +62807,29 @@
     \ staleness oracle reads a single freshness clock keyed by node (schema.table) alone, shared across\
     \ every engine a source has ever been queried under. An engine with a live connector for a source\
     \ type (Trino, for mongodb/elasticsearch/redis/ cassandra) never notices this gap because it answers\
-    \ those queries live, bypassing the landed replica entirely — but a genuinely self-only engine's first-ever\
+    \ those queries live, bypassing the landed replica entirely. But a genuinely self-only engine's first-ever\
     \ query against a source landed minutes earlier under a different engine read the shared clock as\
     \ \"fresh\" and skipped landing into its own, still-empty store (0 rows returned, no error). Fixed\
     \ with a narrower fix than changing the persisted freshness table's schema/semantics: EngineBackend.is_first_touch\
     \ (source_id)/mark_landed(source_id), a per-process, per-backend-instance in-memory set, never persisted,\
-    \ OR'd into the is_stale oracle passed to materialize_pending in ensure_resident — forces exactly\
-    \ one land per (backend instance, source) the first time it is genuinely queried, while every later\
+    \ OR'd into the is_stale oracle passed to materialize_pending in ensure_resident. It forces exactly one land per (backend instance, source) the first time it is genuinely queried, while every later\
     \ query on that same process still defers to the real persisted clock.\nAll five confirmed individually\
     \ and together via a live Playwright e2e run (engine-swap.spec.ts, the \"elasticsearch -> mssql\"\
     \ case) against a real dockerized SQL Server 2022 instance: register elasticsearch under DuckDB, genuinely\
     \ kill and respawn the process with PROVISA_ENGINE=mssql, requery with no mutation replay, get the\
     \ correct 6 rows back.)\nAmended 2026-09-27, CLICKHOUSE ADAPTER-LOADER GAP: ClickHouse was the one\
-    \ source type this REQ's own gap-closing pattern (mongodb/redis/cassandra/kafka/prometheus/pinot/druid/hive_s3\
-    \ -- each wired an adapter_loaders entry once its own defect was found) never covered. DuckDB has\
-    \ no ClickHouse connector, so engine_attaches correctly reports False, but build_adapter_loaders had\
-    \ no clickhouse entry either -- SourceRowLoader.load's generic engine-scan fallback then read a SELECT\
+    \ source type this REQ's own gap-closing pattern (mongodb/redis/cassandra/kafka/prometheus/pinot/druid/hive_s3, each wired an adapter_loaders entry once its own defect was found) never covered. DuckDB has\
+    \ no ClickHouse connector, so engine_attaches correctly reports False, but build_adapter_loaders had no clickhouse entry either. SourceRowLoader.load's generic engine-scan fallback then read a SELECT\
     \ * FROM the per-source catalog name, which resolves to the LANDED REPLICA's own physical address\
     \ (there is no live attach for the fallback to read instead), so every land read back its own still-empty\
     \ replica, inserted zero rows, and reported success (last_refresh_ok=True). Confirmed live on the\
     \ perf-bench duckdb-engine benchmark: order_events (60M rows in real ClickHouse) landed empty, so\
     \ federated_join/large_federated_join silently returned 0 rows via sql/flight while graphql (independent\
-    \ per-source root fields, no JOIN) still returned real per-source data -- the divergence that surfaced\
-    \ the gap. Fixed: make_clickhouse_loader (provisa/events/source_loader.py), reusing the existing DIRECT-route\
+    \ per-source root fields, no JOIN) still returned real per-source data, the divergence that surfaced the gap. Fixed: make_clickhouse_loader (provisa/events/source_loader.py), reusing the existing DIRECT-route\
     \ ClickHouseDriver (HTTP via clickhouse-connect) instead of a new connection primitive, wired in build_adapter_loaders\
     \ behind the same engine_attaches gate every other type here uses.\n(Amended 2026-09-27, KEYED LOADER\
     \ GAP CLOSED FOR EVERY REMAINING ADAPTER-FETCHED TYPE: opting order_events into row_materialize still\
-    \ landed zero rows after the whole-table make_clickhouse_loader fix above -- pushdown_row_materialize\
-    \ calls load_keys, not load, and load_keys had the IDENTICAL unfixed gap (build_keyed_adapter_loaders\
+    \ landed zero rows after the whole-table make_clickhouse_loader fix above. pushdown_row_materialize calls load_keys, not load, and load_keys had the IDENTICAL unfixed gap (build_keyed_adapter_loaders\
     \ had no clickhouse entry either, so it fell through to the same self-referential-empty-replica fallback).\
     \ Fixed make_clickhouse_keyed_loader, then audited every OTHER adapter-fetched type for the same exposure\
     \ (a whole-table loader, no keyed loader, not in _ADAPTER_FETCH_ONLY) and closed all of them: cassandra,\
@@ -62940,7 +62838,7 @@
     \ provisa/elasticsearch/fetch.py, provisa/hive/fetch.py, each a new fetch_rows_by_keys alongside the\
     \ existing fetch_rows); redis and kafka have no server-side predicate over their own access pattern\
     \ (a key-value scan, an unbounded log respectively), so their keyed loaders filter client-side after\
-    \ the same whole-table read the unkeyed loader already runs -- correct, not a true pushdown, documented\
+    \ the same whole-table read the unkeyed loader already runs; that is correct, not a true pushdown, documented\
     \ as such; files/sharepoint/splunk (the pgwire-replica bridge, provisa/federation/pgwire_replica.py)\
     \ get a bound = ANY($1) query over the same bundled Calcite connection, sharing one ConnectorReplica/server\
     \ per source id with the whole-table loader via an optional replicas dict now threaded through both\
@@ -63046,12 +62944,11 @@
     the only thing reachable; (2) ``exasol`` — Provisa now reads it directly via pyexasol (Exasol''s own
     WebSocket client) in addition to Trino''s existing JDBC connector, the same shape as the singlestore/snowflake/databricks
     direct drivers. Both verified live: HiveDriver against a real apache/hive:4.0.0 HiveServer2 (new ``hive-server2``
-    compose service, SERVICE_OPTS pointed at the existing hive-metastore — real CREATE TABLE/INSERT/SELECT
-    round-tripped); ExasolDriver''s wiring verified by unit test with the live e2e arch-gated the same
+    compose service, SERVICE_OPTS pointed at the existing hive-metastore; real CREATE TABLE/INSERT/SELECT round-tripped); ExasolDriver''s wiring verified by unit test with the live e2e arch-gated the same
     way test_exasol_source_e2e.py already is (exasol/docker-db is amd64-only, unbootable under arm64 emulation).
     Stock HiveServer2''s default auth (``hive.server2.authentication=NONE``) speaks SASL PLAIN and accepts
     any/empty credentials; impyla''s NOSASL (its Impala-oriented default) skips the SASL handshake and
-    a stock HS2 drops the connection immediately rather than falling back — HiveDriver defaults to PLAIN
+    a stock HS2 drops the connection immediately rather than falling back. HiveDriver defaults to PLAIN
     for exactly this reason, confirmed live before settling on it.
 
     (Amended 2026-09-15, hiveserver2 Register-Table gap:) the driver and pool registration this requirement
@@ -63060,28 +62957,23 @@
     dispatch functions, which every other RDBMS-shaped DIRECT driver (postgresql/mysql/sqlserver/saphana/trino/snowflake/...)
     has an explicit branch in, had NO ``hiveserver2`` branch at all. Falling through to ``return None``
     sends the Register Table schema/table/column pickers to the generic engine-catalog fallback, which
-    has no ATTACH for hiveserver2 on a plain DuckDB core-lane engine pre-registration — same class of
-    gap already fixed for trino/snowflake/databricks/ bigquery/saphana in this same file. The schema picker
+    has no ATTACH for hiveserver2 on a plain DuckDB core-lane engine pre-registration, the same class of gap already fixed for trino/snowflake/databricks/ bigquery/saphana in this same file. The schema picker
     stayed permanently empty, so ``source-to-query-olap-lake.spec.ts``''s hiveserver2 case could never
     get past ``pickSchemaAndTable``. Fixed by adding the three missing branches (``SHOW SCHEMAS``, ``SHOW
-    TABLES IN <schema>``, ``DESCRIBE <schema>.<table>`` — Hive has no information_schema). Separately,
-    that same spec''s own hiveserver2 test never filled the form''s ``required`` Database field (present
-    because hiveserver2 is SIMPLE_RDBMS in constants.ts) — browser-native HTML5 validation silently blocked
+    TABLES IN <schema>``, ``DESCRIBE <schema>.<table>``; Hive has no information_schema). Separately,
+    that same spec''s own hiveserver2 test never filled the form''s ``required`` Database field (present because hiveserver2 is SIMPLE_RDBMS in constants.ts). Browser-native HTML5 validation silently blocked
     submission before any createSource call was even made, which is what actually read as "the form submit
     silently fails." That was a test bug, not a product defect; fixed by filling Database with the fixture''s
     seeded ``wh``.
 
     (Amended 2026-09-15, hiveserver2 dialect gap:) with the two gaps above fixed, the live e2e still failed
     one step further in: querying the registered table raised HS2 ParseException "cannot recognize input
-    near ''\"wh\"''". ``hiveserver2`` was never added to ``core/source_registry.py``''s ``SOURCE_TO_DIALECT``
-    map — only plain ``hive`` (the Trino-scanned lake-storage type, a different SourceType, HS2 never
+    near ''\"wh\"''". ``hiveserver2`` was never added to ``core/source_registry.py``''s ``SOURCE_TO_DIALECT`` map; only plain ``hive`` (the Trino-scanned lake-storage type, a different SourceType, HS2 never
     involved) was. Missing from that map, ``Source.dialect`` returned None, ``schema_mutation.py``''s
     REQ-1757 fix (``model.dialect or ""``) stored dialect="", and ``pgwire/_pipeline.py``''s ``decision.dialect
-    or "postgres"`` fallback then compiled ANSI-double-quoted SQL (``"wh"."widgets"``) for a server that
-    only accepts backtick-quoted identifiers — the exact same silent-wrong-dialect failure mode REQ-1757
+    or "postgres"`` fallback then compiled ANSI-double-quoted SQL (``"wh"."widgets"``) for a server that only accepts backtick-quoted identifiers. That is the exact same silent-wrong-dialect failure mode REQ-1757
     fixed for mariadb/tidb, just for a source type that was never in the map at all rather than one whose
-    dialect field was hardcoded empty. Fixed by mapping ``"hiveserver2": "hive"`` — sqlglot''s ``hive``
-    dialect (already used by plain ``hive``) emits the correct backtick quoting. Verified live: full hiveserver2
+    dialect field was hardcoded empty. Fixed by mapping ``"hiveserver2": "hive"``; sqlglot''s ``hive`` dialect (already used by plain ``hive``) emits the correct backtick quoting. Verified live: full hiveserver2
     e2e case (create source, register table, run a SQL-page query, see live rows) passes end to end.'
   code:
   - provisa/executor/drivers/hive.py
@@ -63141,13 +63033,11 @@
     different seam, `introspect_columns`, unaffected by this). (2) trino-as-a-source has a real DIRECT
     driver (executor/drivers/registry.py''s `_make_trino`, hence a live SourcePool) but no engine attaches
     it live except another Trino — the pre-registration schema/table/column picker (`available_schemas`/`available_tables`/
-    `availableColumnsMetadata`) fell through to the generic engine-catalog query, which finds nothing
-    until a table is registered, a circular dependency. Added a `native_columns` function (introspect.py,
+    `availableColumnsMetadata`) fell through to the generic engine-catalog query, which finds nothing until a table is registered: a circular dependency. Added a `native_columns` function (introspect.py,
     mirroring native_schemas/native_tables'' existing dispatch shape) plus trino branches in all three,
     backed by the SourcePool''s live connection rather than the (nonexistent, pre-registration) engine
     catalog. (3) mysql (and mariadb, the same code path) had a REAL, independent bug in `_native_tables_rdbms`''s
-    mysql/mariadb branch: a literal `?` placeholder, which aiomysql does not support (it requires `%s`)
-    — raised inside pymysql''s own argument escaping and was silently caught by that function''s own `except
+    mysql/mariadb branch: a literal `?` placeholder, which aiomysql does not support (it requires `%s`). It raised inside pymysql''s own argument escaping and was silently caught by that function''s own `except
     Exception: return None`, so the picker just came back empty instead of erroring. Never surfaced before
     because mysql/ mariadb are normally registered under Trino, where a real ATTACH connector answers
     `available_tables` through the engine-catalog fallback instead, this broken pool query never actually
@@ -63224,16 +63114,13 @@
     (`push-debounce-quiet`/`push-debounce-max-delay`) in `LiveDeliveryFieldset.tsx`, shown whenever the
     effective change signal is a push signal (kafka/debezium/native), mirroring `MaterializedViewPanels`''
     existing `mvDebounceQuiet`/`mvDebounceMaxDelay` UI pattern exactly. Two new `Table`/`TableInput` fields,
-    `push_debounce_quiet`/`push_debounce_max_delay` (server_default 0/5, additive columns — REQ-1338/1339''s
-    `add_missing_columns` reconciles them into any pre-existing database at next boot, no migration needed).
+    `push_debounce_quiet`/`push_debounce_max_delay` (server_default 0/5, additive columns; REQ-1338/1339''s `add_missing_columns` reconciles them into any pre-existing database at next boot, no migration needed).
 
     A background task pumps `provider.watch()` into a BOUNDED internal queue (`queue_maxsize`, default
-    10,000) rather than wrapping the async generator''s `__anext__()` directly in `asyncio.wait_for` —
-    a timed-out `wait_for` on the generator itself injects `CancelledError` into whatever the generator
+    10,000) rather than wrapping the async generator''s `__anext__()` directly in `asyncio.wait_for`. A timed-out `wait_for` on the generator itself injects `CancelledError` into whatever the generator
     was awaiting, permanently killing the stream after the first debounce timeout (found and fixed via
     a live regression test before this shipped). The queue bound IS the backpressure mechanism: once full,
-    the pump''s `queue.put()` blocks until a flush drains it, stalling `provider.watch()` itself — for
-    Kafka this stalls aiokafka''s own internal fetch behind the unconsumed `async for`; for WebSocket
+    the pump''s `queue.put()` blocks until a flush drains it, stalling `provider.watch()` itself. For Kafka this stalls aiokafka''s own internal fetch behind the unconsumed `async for`; for WebSocket
     it stops reading the socket, ordinary TCP flow control back to the sender.
 
     The auto-commit/crash-window limitation originally documented here is closed by REQ-1734: KafkaNotificationProvider
@@ -63306,12 +63193,11 @@
     — websocket, mongo, postgres LISTEN/NOTIFY) and an `ack(events)` method, no-op by default. `KafkaNotificationProvider`
     now constructs its `AIOKafkaConsumer` with `enable_auto_commit=False`, stamps `ack_token` on every
     yielded event, and implements `ack()` to commit each `(topic, partition)`''s HIGHEST offset among
-    the given events (+1, the Kafka commit convention) — never "wherever the consumer currently is," which
+    the given events (+1, the Kafka commit convention), never "wherever the consumer currently is," which
     could be past other events still sitting unflushed in a caller''s debounce buffer.
 
     `subscriptions/cdc_landing.py`''s `_flush()` calls `await provider.ack(buffer)` immediately after
-    `apply_cdc` durably lands that buffer, with exactly that flush''s events — so the offset only ever
-    advances past a message once it is actually in the store.'
+    `apply_cdc` durably lands that buffer, with exactly that flush''s events, so the offset only ever advances past a message once it is actually in the store.'
   code:
   - provisa/subscriptions/base.py
   - provisa/subscriptions/kafka_provider.py
@@ -63348,19 +63234,16 @@
   priority: SHOULD
   type: behavioral
   description: 'Closes the last SourceType with zero test coverage at any tier: `delta_lake`. Delta Lake
-    is an open table format (Parquet + a `_delta_log` transaction log), not Databricks-specific — it''s
-    readable by multiple engines'' connectors already in this repo (`DuckDBDeltaConnector`/ `PgDuckdbDeltaConnector`
+    is an open table format (Parquet + a `_delta_log` transaction log), not Databricks-specific. It is readable by multiple engines'' connectors already in this repo (`DuckDBDeltaConnector`/ `PgDuckdbDeltaConnector`
     in connector_duckdb.py, `ClickHouseDeltaLakeConnector`, plus Snowflake/BigQuery/MSSQL-warehouse external-table
     variants); Databricks-as-a-source itself maps onto the same generic `delta_lake` reader in trino_connectors.py
     rather than the other way around.
 
-    Proved the cheapest path: `DuckDBDeltaConnector` (connector_duckdb.py) against a plain embedded `duckdb.connect()`
-    — delta is a CORE DuckDB extension (no compiled-in build required, unlike `PgDuckdbDeltaConnector`''s
+    Proved the cheapest path: `DuckDBDeltaConnector` (connector_duckdb.py) against a plain embedded `duckdb.connect()`. delta is a CORE DuckDB extension (no compiled-in build required, unlike `PgDuckdbDeltaConnector`''s
     pg_duckdb variant), needing zero external services (no S3/MinIO, no JVM, no warehouse) to read a local
     Delta table in place via `delta_scan`.
 
-    Added the `deltalake` package (delta-rs, pure Rust wheel, no JVM) as a base dependency, mirroring
-    `pyiceberg`''s existing placement — DuckDB''s delta extension is read-only (`delta_scan` only), so
+    Added the `deltalake` package (delta-rs, pure Rust wheel, no JVM) as a base dependency, mirroring `pyiceberg`''s existing placement. DuckDB''s delta extension is read-only (`delta_scan` only), so
     producing the fixture''s `_delta_log` for a test needs a real writer.'
   code:
   - provisa/federation/connector_duckdb.py
@@ -63400,34 +63283,29 @@
 
     Also closes a related, structurally identical bug for delta_lake/iceberg: their "Warehouse Path" field
     wrote to `form.database`, but `source.path` (the only field their DuckDB connectors actually read)
-    was only ever submitted for `FILE_SOURCES = {sqlite, csv, parquet}` — so `source.path` was always
-    submitted `null` for these two types regardless of what was typed. Compounding it, their S3 storage
+    was only ever submitted for `FILE_SOURCES = {sqlite, csv, parquet}`, so `source.path` was always submitted `null` for these two types regardless of what was typed. Compounding it, their S3 storage
     credentials were written into `mappingJson`, while the only code that turns credentials into a DuckDB
-    SECRET (`_s3_secret_ddl`) reads `source.federation_hints` — a second, independent field-routing mismatch.
+    SECRET (`_s3_secret_ddl`) reads `source.federation_hints`, a second, independent field-routing mismatch.
     And a THIRD bug, found only by reading the connectors themselves: `DuckDBDeltaConnector`/`DuckDBIcebergConnector`
-    never called `_s3_secret_ddl` in the first place (only `DuckDBParquetConnector` did) — so even with
-    both routing bugs fixed, no SECRET DDL would ever have been emitted for an S3-backed delta_lake/iceberg
+    never called `_s3_secret_ddl` in the first place (only `DuckDBParquetConnector` did), so even with both routing bugs fixed, no SECRET DDL would ever have been emitted for an S3-backed delta_lake/iceberg
     source.
 
     Fix, backend: `DuckDBDeltaConnector.details()`/`DuckDBIcebergConnector.details()` now call `_s3_secret_ddl(source)`
     and include `secret_ddl` in their returned dict when the source has S3 credentials, mirroring the
     existing `DuckDBParquetConnector` pattern exactly. `SourceType` (the GraphQL read type) gained `federation_hints_json:
-    str = "{}"`, populated in `_source_from_row` from the `sources.federation_hints` JSONB column (which
-    already existed — the write side always persisted it, only the read side never exposed it back).
+    str = "{}"`, populated in `_source_from_row` from the `sources.federation_hints` JSONB column (which already existed; the write side always persisted it, only the read side never exposed it back).
 
     Fix, frontend: `SourcesPage.tsx`''s submit path now builds a `federationHints` object per type (Snowflake:
     warehouse/schema/role; Databricks: http_path; BigQuery: credentials_path; delta_lake/ iceberg: access_key_id/secret_access_key/endpoint
     when storage-auth is "aws") and includes it as `federationHintsJson` in the mutation payload, and
     merges Snowflake password-mode / Databricks token-mode `authFields` into the payload''s `username`/`password`.
     The edit-load path (opening an existing source for editing) now parses `federationHintsJson` back
-    into `authFields`/ `authType` for these five types, so editing a source no longer wipes its own extras
-    on save — the same round-trip `mappingJson` already had for hive/google_sheets/sharepoint/splunk.
+    into `authFields`/ `authType` for these five types, so editing a source no longer wipes its own extras on save, the same round-trip `mappingJson` already had for hive/google_sheets/sharepoint/splunk.
     `SourceFormFields.tsx`''s Snowflake "Warehouse/Database" combined field is split into separate Database/Warehouse/Schema/Role
     inputs; Databricks gained a required "SQL Warehouse HTTP Path" field it previously had no input for
     at all; delta_lake/iceberg''s "Warehouse Path" field now writes to `form.path` instead of `form.database`.
 
-    Explicitly NOT fixed (no backend driver support exists for these auth modes — wiring them would not
-    make them functional, only hide that they don''t work): Snowflake key-pair/OAuth auth (SnowflakeDriver
+    Explicitly NOT fixed (no backend driver support exists for these auth modes; wiring them would not make them functional, only hide that they don''t work): Snowflake key-pair/OAuth auth (SnowflakeDriver
     only implements plain password auth) and Databricks OAuth2 M2M (DatabricksDriver only implements personal-access-token
     auth via the `password` slot). These UI options remain present but non-functional, tracked as a follow-up
     requiring new backend auth support, not a wiring fix.'
@@ -63488,8 +63366,7 @@
     and are unchanged here.
   description: 'A full audit found `fabric`, `synapse`, and `exasol` had complete backend connector support
     (provisa/executor/drivers/mssql_warehouse.py and exasol.py, added REQ-1730/REQ-1731) but were entirely
-    absent from `SOURCE_TYPES` in `provisa-ui/src/pages/sources/constants.ts` — there was no way to register
-    one through the Add-Source UI at all.
+    absent from `SOURCE_TYPES` in `provisa-ui/src/pages/sources/constants.ts`. There was no way to register one through the Add-Source UI at all.
 
     Fix: added all three to `SOURCE_TYPES` (fabric/synapse under "Cloud DW", default port 1433 — same
     TDS/ODBC wire protocol as sqlserver; exasol under "RDBMS", default port 8563, its documented client-connection
@@ -63499,7 +63376,7 @@
     read by `MssqlWarehouseDriver._token`) or, absent, the ambient credential (`az login` / managed identity).
     `SourceFormFields.tsx` gained a fabric/synapse block (Server, Database, and an Authentication select:
     "Ambient Credential" vs "Service Principal" with tenant/client id/ secret fields gated behind it)
-    and an exasol block (an Authentication select for an optional TLS-fingerprint pin — `federation_hints["tls_fingerprint"]`,
+    and an exasol block (an Authentication select for an optional TLS-fingerprint pin, `federation_hints["tls_fingerprint"]`,
     read by `Source.jdbc_url` in provisa/core/models.py for a self-signed cert the truststore can''t chain;
     absent, the driver validates against the truststore as usual).
 
@@ -63515,8 +63392,7 @@
 
     No backend gap: both connectors (and the direct drivers backing them) were already complete and tested
     (REQ-1730/REQ-1731); this was purely a missing UI registration path. Exasol carries no `cloud_eligible:
-    false` entry in config/capabilities.yaml (unlike `soda`''s Elastic-License gate) — no hosted-plane
-    refusal gate applies or is needed.'
+    false` entry in config/capabilities.yaml (unlike `soda`''s Elastic-License gate); no hosted-plane refusal gate applies or is needed.'
   code:
   - provisa-ui/src/pages/sources/constants.ts
   - provisa-ui/src/pages/sources/SourceFormFields.tsx
@@ -63571,7 +63447,7 @@
   description: 'Closes a follow-up finding of the Add-Source UI audit (REQ-1736): `hudi`, `hive_s3`, and
     `hiveserver2` all had backend/connector/driver support (`SourceType` enum, `TrinoHiveS3Connector`,
     `ClickHouseHudiConnector`, `HiveDriver`/impyla) but were entirely absent from the "Add Source" dropdown
-    (`SOURCE_TYPES` in `constants.ts`) — `hiveserver2` (REQ-1731, this session''s newest type) had never
+    (`SOURCE_TYPES` in `constants.ts`). `hiveserver2` (REQ-1731, this session''s newest type) had never
     gotten a form branch at all, so none of the three were registerable through the UI regardless of backend
     readiness.
 
@@ -63582,14 +63458,13 @@
     doesn''t support), `handleTypeChange` defaults straight to `authType="aws"`, and the S3 endpoint/region
     fields — optional for plain `hive` — are `required` for `hive_s3` because `_hive_s3_props` (`trino_connectors.py`)
     raises `ValueError` if any of endpoint/access_key_id/secret_access_key/region is missing, with no
-    fallback. `hudi` gets its own block: a single required "Warehouse Path" bound to `form.path` (no metastore/host
-    — ClickHouse''s `Hudi` table engine is path-only), submitted through the same `form.path` routing
+    fallback. `hudi` gets its own block: a single required "Warehouse Path" bound to `form.path` (no metastore/host; ClickHouse''s `Hudi` table engine is path-only), submitted through the same `form.path` routing
     delta_lake/ iceberg use, with optional AWS access-key/secret credentials routed through `federationHintsJson`
     exactly like delta_lake/iceberg (`_clickhouse_s3_creds` reads `access_key_id`/`secret_access_key`
     from `source.federation_hints`). `hiveserver2` fits `SIMPLE_RDBMS`''s host/port/database/username/password
     shape exactly (`HiveDriver.connect`), plus a new "Auth Mechanism" select (PLAIN/LDAP/GSSAPI, mirroring
     `HiveDriver.configure`''s `auth_mechanism` federation_hints key) that only submits a value when the
-    operator picks a non-default mechanism — PLAIN is the driver''s own default, so round-tripping it
+    operator picks a non-default mechanism. PLAIN is the driver''s own default, so round-tripping it
     would be a redundant no-op. The edit-load path gained round-trip parsing for all three so reopening
     any of them for editing doesn''t wipe hive_s3''s mapping-carried storage creds, hudi''s federation_hints
     S3 creds, or hiveserver2''s federation_hints auth_mechanism.'
@@ -63656,8 +63531,7 @@
   type: behavioral
   description: 'A backend/UI parity audit found `websocket`, `rss`, `ingest`, `soda`, and `great_expectations`
     all had real backend support (SourceType enum members, connectors, federation reach) but were entirely
-    absent from the "Add Source" dropdown (`SOURCE_TYPES` in provisa-ui/src/pages/sources/constants.ts)
-    — half the audited streaming/file/DQ group. All five are now selectable, with fields matching what
+    absent from the "Add Source" dropdown (`SOURCE_TYPES` in provisa-ui/src/pages/sources/constants.ts), half the audited streaming/file/DQ group. All five are now selectable, with fields matching what
     each actually reads: websocket/rss get host+port (the `HOST_PORT_ONLY` shape push_wiring.py''s `ws://host:port`
     derivation and subscribe.py''s feed-URL derivation both need, requiring no new SourceInput field)
     plus an optional path and federation_hints extras (use_ssl/subscribe_payload/event_path/ reconnect_interval
@@ -63673,8 +63547,7 @@
     `SourceType` (the query-side GraphQL type) never carried the stored value back, so re-opening ANY
     source''s edit form silently discarded its federation_hints on the next save. Added `SourceType.federation_hints_json`,
     populated in `_source_from_row` from the existing `sources.federation_hints` JSONB column exactly
-    the way `mapping_json` already is, and added it to the `SourcesQuery` GraphQL query and the `Source`
-    TS type — closing that gap for every source type that uses federation_hints, not just the two this
+    the way `mapping_json` already is, and added it to the `SourcesQuery` GraphQL query and the `Source` TS type, closing that gap for every source type that uses federation_hints, not just the two this
     task added.
 
     Separately closed the `ingest` column-path gap: `_extract_row` (provisa/ingest/router.py) reads a
@@ -63782,16 +63655,13 @@
     Moved pinot from `SIMPLE_RDBMS` to `HOST_PORT_ONLY`.
 
     druid: `SIMPLE_RDBMS` rendered a required Database field, but `TrinoDruidConnector.details()` builds
-    its Avatica connection-url from `Source.jdbc_url(host, port)` alone — Druid''s JDBC URL has no database
-    segment, and the connector never reads `source.database`. The field was both dead AND actively misleading
+    its Avatica connection-url from `Source.jdbc_url(host, port)` alone. Druid''s JDBC URL has no database segment, and the connector never reads `source.database`. The field was both dead AND actively misleading
     (marked required). Hidden specifically for druid within the `isSimpleRdbms` block (username/password
     DO reach the connector for druid, unlike pinot, so only the database field is removed, not the whole
     SIMPLE_RDBMS membership).
 
-    sparql: `SparqlSourceConfig.default_graph_uri` (sparql/source.py) — an optional named-graph restriction
-    — was defined on the backend model and consumed by `build_endpoint`''s query params, but nothing ever
-    set it: `_handle_sparql_table` (config_loader.py, the real registration path — `sparql_router.py`''s
-    own dedicated endpoint is dead code per REQ-1736''s audit, the UI never calls it) hardcoded `sparql_config_from_source(source_id=...,
+    sparql: `SparqlSourceConfig.default_graph_uri` (sparql/source.py), an optional named-graph restriction, was defined on the backend model and consumed by `build_endpoint`''s query params, but nothing ever
+    set it: `_handle_sparql_table` (config_loader.py, the real registration path; `sparql_router.py`''s own dedicated endpoint is dead code per REQ-1736''s audit, and the UI never calls it) hardcoded `sparql_config_from_source(source_id=...,
     endpoint_url=...)` with no default_graph_uri parameter at all, and the Sources form had no field for
     it. Fixed by adding `default_graph_uri` as an optional parameter threaded through `sparql_config_from_source`/
     `persist_sparql_table`/`_handle_sparql_table`, sourced from `Source.federation_hints` (`federation_hints["default_graph_uri"]`,
@@ -63799,12 +63669,11 @@
     in `SourceFormFieldsExtended.tsx`.
 
     Explicitly NOT fixed in this pass (documented, not silently left broken): splunk''s optional `datamodel_filter`
-    (trino_connectors.py) still has no UI field — deferred as a minor, purely-additive gap, not a correctness
+    (trino_connectors.py) still has no UI field. It is deferred as a minor, purely-additive gap, not a correctness
     bug (splunk works without it, just can''t restrict to one CIM data model). sparql/neo4j auth (bearer/basic
     token or username/password) is rendered in the Sources form but does not appear to reach persistence
     through the real (generic-flow) registration path either — `_handle_neo4j_table`/`_handle_sparql_table`
-    pass no auth-related argument to their respective `persist_*` functions — this is a materially larger
-    gap than a dead field and was intentionally left for a dedicated follow-up rather than folded into
+    pass no auth-related argument to their respective `persist_*` functions. This is a materially larger gap than a dead field and was intentionally left for a dedicated follow-up rather than folded into
     this pass silently.'
   code:
   - provisa-ui/src/pages/sources/SourceFormFields.tsx
@@ -63860,11 +63729,10 @@
     calls:
 
     hiveserver2 (a DIRECT driver over impyla, provisa/executor/drivers/hive.py, reachable on any engine):
-    demo/sources/hiveserver2 (a hive-metastore + hiveserver2 container pair, apache/hive:4.0.0) was provisioned
-    and primed live -- prime.py created database `wh` + table `widgets`, inserted 3 rows, and the same
+    demo/sources/hiveserver2 (a hive-metastore + hiveserver2 container pair, apache/hive:4.0.0) was provisioned and primed live: prime.py created database `wh` + table `widgets`, inserted 3 rows, and the same
     impyla connection read them back correctly.
 
-    pinot and hive_s3 have NO direct driver -- only a Trino connector (TrinoPinotConnector/ TrinoHiveS3Connector,
+    pinot and hive_s3 have NO direct driver, only a Trino connector (TrinoPinotConnector/ TrinoHiveS3Connector,
     provisa/federation/trino_connectors.py) -- so register_source() is a no-op against the DuckDB backend
     and the schema dropdown can never populate there; the test file routes both to the Trino-backed webServer
     at the network layer (page.route rewriting /admin, /data, /query, /health to TRINO_BACKEND_URL), the
@@ -63879,8 +63747,7 @@
 
     Two real bugs were caught and fixed by that live verification, and are documented on the fixtures
     themselves: demo/sources/pinot/compose.yml had to be made SINGLE-HOMED onto the Trino lane''s own
-    network from container creation (declared as an external network) rather than joined post-hoc -- Pinot''s
-    broker self-registers with ZooKeeper using its own first network interface''s address, and a post-hoc-joined
+    network from container creation (declared as an external network) rather than joined post-hoc. Pinot''s broker self-registers with ZooKeeper using its own first network interface''s address, and a post-hoc-joined
     second network leaves that address unreachable from Trino, which lists schemas fine (that only talks
     to the controller) but fails every real data query with "Server refused connection" to the broker''s
     advertised IP. demo/sources/hive-s3 had to be named "hive-s3" (hyphen) rather than "hive_s3": Trino''s
@@ -63893,15 +63760,14 @@
     does not exist: file:/opt/hive/data/warehouse/wh.db"). Trino''s hive connector reads local/Hadoop-storage
     table data through Trino''s OWN local filesystem at whatever path the metastore recorded, which only
     works when Trino and the metastore share one volume mount at the same container path (exactly how
-    docker-compose.test.yml''s hive fixture is wired, Trino and hive-metastore in the SAME compose project)
-    -- a standalone add-on fixture cannot retrofit that onto an already-running Trino container. druid
+    docker-compose.test.yml''s hive fixture is wired, Trino and hive-metastore in the SAME compose project).
+    A standalone add-on fixture cannot retrofit that onto an already-running Trino container. druid
     is SKIPPED: its working connector needs a 6-service topology (zookeeper + a Postgres metadata store
     + coordinator + historical + middlemanager + broker, per docker-compose.test.yml''s own druid-* block)
     on an amd64-only image, with no lighter single-container quickstart (Druid ships no perl-based all-in-one
     script the way Pinot does). exasol is SKIPPED: exasol/docker-db needs privileged mode, several GB
     RAM, and a multi-minute cold EXAStorage init on an amd64-only image (docker-compose.test.yml''s own
-    exasol fixture documents all three). Both skips are resource/time-budget constraints, not architectural
-    ones -- either can be lifted from docker-compose.test.yml''s existing fixtures into demo/sources/
+    exasol fixture documents all three). Both skips are resource/time-budget constraints, not architectural ones. Either can be lifted from docker-compose.test.yml''s existing fixtures into demo/sources/
     largely unchanged by a session with the spare capacity.'
   code:
   - demo/sources/pinot/compose.yml
@@ -64003,18 +63869,15 @@
     `fetch_tables`/`fetch_columns` against a `GovDataSource` scoped to the "weather" schema returned real
     NOAA/NWS tables (nws_stations, cdo_stations, ghcnd_daily, etc.) and correctly typed columns, in ~19s
     cold (JVM start + catalog-credential fetch from api.askamerica.ai) then near-instant on a warm cache.
-    The browser-driven Register Table flow itself is NOT independently confirmed — the run that reached
+    The browser-driven Register Table flow itself is NOT independently confirmed. The run that reached
     this test came after the google_sheets crash above.
 
     grpc_remote — TWO real bugs fixed, both blocking every real grpc_remote registration in this environment,
     not just this test: (1) provisa/grpc_remote/loader.py''s compile_proto_stubs imported `pkg_resources`,
-    which setuptools >= 81 no longer installs by default (ModuleNotFoundError on every proto compile)
-    — fixed to resolve grpc_tools'' bundled well-known protos from the module''s own `__file__` location
+    which setuptools >= 81 no longer installs by default (ModuleNotFoundError on every proto compile). It was fixed to resolve grpc_tools'' bundled well-known protos from the module''s own `__file__` location
     instead; (2) EVERY handler in provisa/api/admin/grpc_remote_router.py read `request.app.state` (Starlette''s
     bare per-request state object, which has none of provisa''s attributes) instead of provisa''s own
-    app-state singleton (`from provisa.api.app import state` — the pattern every sibling router, e.g.
-    graphql_remote_router.py, already uses) — register/refresh/list/get-proto/put-proto could never have
-    completed (''State'' object has no attribute ''catalog_for''). Fixed across all 5 handlers. A new
+    app-state singleton (`from provisa.api.app import state` — the pattern every sibling router, e.g. graphql_remote_router.py, already uses), so register/refresh/list/get-proto/put-proto could never have completed (''State'' object has no attribute ''catalog_for''). Fixed across all 5 handlers. A new
     minimal proto-based demo fixture was added (demo/grpc_remote_server/{animal_catalog.proto,server.py}, a genuine .proto + a grpc.aio server compiled via the SAME grpc_tools path the connector itself
     uses, unlike the pre-existing demo/grpc_server/server.py, which is deliberately proto-less and cannot
     exercise this connector at all). The full proto -> compile -> register -> query pipeline was verified
@@ -64100,7 +63963,7 @@
   unit_test_reason: The gap this closes (introspect.py's schema-picker fix for these two types) is only
     observable through the real Register-Table UI flow, already covered by source-to-query-file-lake.spec.ts.
   description: 'delta_lake and iceberg gain real e2e coverage through the ordinary Sources-form → Register-Table-form
-    → SQL-page UI flow, against the DuckDB federation engine — no docker, both are local-file-based (DuckDBDeltaConnector/DuckDBIcebergConnector,
+    → SQL-page UI flow, against the DuckDB federation engine, with no docker; both are local-file-based (DuckDBDeltaConnector/DuckDBIcebergConnector,
     connector_duckdb.py, REQ-899: a SCAN-mechanism connector reading the table in place via delta_scan/iceberg_scan,
     one view per source, no ATTACH). Fixtures are a real local Delta table (written with the `deltalake`
     package) and a real local Iceberg table (written with `pyiceberg`), generated once per test run.
@@ -64109,14 +63972,13 @@
     for csv/parquet: `native_schemas`/`native_tables` (introspect.py) had no branch for delta_lake/iceberg,
     so the Register Table picker''s schema/table dropdowns would never populate for them. The REQ-1673
     seam (`duckdb_runtime._attached_alias`) deliberately returns None for a view_ddl-mechanism source
-    (there is no attached database to list schemas/tables from) — `introspect_schemas`/`introspect_tables`
-    then return `[]` (not None), which short-circuits `available_schemas`/`available_tables` (schema_query.py)
+    (there is no attached database to list schemas/tables from). `introspect_schemas`/`introspect_tables` then return `[]` (not None), which short-circuits `available_schemas`/`available_tables` (schema_query.py)
     before the engine-catalog fallback ever runs, since those check `is not None` rather than truthiness.
     Fixed by extending the existing csv/parquet branch to also cover delta_lake/iceberg: a fixed "main"
     placeholder schema, and the source id as the one table (matching each connector''s single `view_ddl`).
 
     hudi is explicitly OUT of scope for the DuckDB engine: there is no DuckDB hudi connector anywhere
-    in connector_duckdb.py (verified by grep — zero "hudi" hits). The only hudi connector is `ClickHouseHudiConnector`
+    in connector_duckdb.py (verified by grep: zero "hudi" hits). The only hudi connector is `ClickHouseHudiConnector`
     (clickhouse_connectors.py, REQ-1178), registered exclusively in the ClickHouse-as-engine connector
     table (federation/engine.py). hudi is reachable only under ClickHouse-as-engine, a structural constraint,
     not a gap to close here.'
@@ -64177,11 +64039,11 @@
     handling across concurrently running agents/worktrees), not a defect in this file''s own new fixtures.
 
     Real finding: sqlserver''s SIMPLE_RDBMS registration path is unreachable on any host missing unixODBC
-    + "ODBC Driver 18 for SQL Server" — provisa/executor/drivers/sqlserver.py links libodbc.so/dylib at
+    + "ODBC Driver 18 for SQL Server". provisa/executor/drivers/sqlserver.py links libodbc.so/dylib at
     import time (via pyodbc/aioodbc), so a host without that driver installed cannot register a sqlserver
     source at all, not even to get a connection-refused error; the container itself boots and is reachable,
     only the app''s own driver import fails. This is the same host dependency tests/integration/test_sqlserver_source_e2e.py
-    already guards with `pytest.importorskip("pyodbc")` — the new e2e test mirrors it with `test.skip()`
+    already guards with `pytest.importorskip("pyodbc")`. The new e2e test mirrors it with `test.skip()`
     rather than letting every assertion fail opaquely after a broken registration.
 
     greenplum is explicitly out of scope for this pass: docker-compose.test.yml''s own `datagrip/greenplum:6.8`
@@ -64241,11 +64103,9 @@
     on the SQL page). Attempting it for rss/websocket/ingest found the Register Table form''s schema/table
     pickers were PERMANENTLY EMPTY for all three: `native_schemas`/`native_tables` (provisa/api/admin/introspect.py)
     had no dispatch branch for them, so `available_schemas`/ `available_tables` (schema_query.py) fell
-    through to an engine-catalog fallback that cannot resolve before any table is registered — the exact
-    chicken-and-egg gap elasticsearch/redis/ prometheus/csv/parquet already have a fixed pattern for (a
+    through to an engine-catalog fallback that cannot resolve before any table is registered, the exact chicken-and-egg gap elasticsearch/redis/ prometheus/csv/parquet already have a fixed pattern for (a
     synthetic "default" schema, or one table named after the source id). Added the same pattern for rss/websocket/ingest.
-    Column introspection had the identical gap (`resolve_available_columns_metadata`) — added rss''s real
-    item shape (id/title/link/description/published, matching `rss_provider.py`''s `parse_feed` exactly)
+    Column introspection had the identical gap (`resolve_available_columns_metadata`). Added rss''s real item shape (id/title/link/description/published, matching `rss_provider.py`''s `parse_feed` exactly)
     and a documented placeholder shape for websocket/ingest (id-or-ext_id/value; "ext_id" rather than
     "id" for ingest specifically, since `provisa/ingest/ddl.py`''s `generate_create_table` always injects
     its own `id SERIAL PRIMARY KEY` and a steward-declared "id" column would collide with it). A genuine
@@ -64256,7 +64116,7 @@
     Separately found the runtime never re-wires a source/table registered against an ALREADY-RUNNING server:
     `_init_ingest_engines()` (provisa/api/app_loaders.py) and `wire_push_listeners()`/`wire_event_loop()`
     (provisa/events/push_wiring.py, app_wiring.py) were each called only once, from the full-boot sequence
-    or from `register_runtime`''s per-org runtime build — never from `_rebuild_schemas()`, which is what
+    or from `register_runtime`''s per-org runtime build, never from `_rebuild_schemas()`, which is what
     registerTable''s mutation actually calls on the default/single-tenant runtime this whole exercise
     targets. A UI- registered ingest source''s `state.ingest_tables`/`state.ingest_engines` entries, and
     a kafka/websocket table''s CDC-landing listener, were therefore NEVER created outside a full server
@@ -64293,7 +64153,7 @@
     for the poll-landing gap described above [END SUPERSEDED BLOCK] (registration itself is fixed and
     was manually exercised while developing the test). ingest and websocket''s registration-flow and re-wire
     fixes are implemented and statically reviewed (tsc/eslint clean) but NOT CONFIRMED PASSING by an actual
-    green Playwright run within this task''s time budget — every real invocation in this session was consumed
+    green Playwright run within this task''s time budget. Every real invocation in this session was consumed
     by shared e2e infrastructure contention across 6 concurrent agents targeting the same docker-compose
     "provisa-e2e" project (containers evicted mid-boot, a venv sync that transiently dropped cassandra-driver,
     stale orphaned dev-server processes from repeated port-isolation retries). [SUPERSEDED by REQ-1745
@@ -64358,7 +64218,7 @@
 
     1. duckdb-as-a-source had no working path to a query at all. SourcesPage.tsx''s submit path routed
     the shared "File Path" input''s value (form.database) into `path` only for `form.type === "firebird"`
-    (REQ-1736''s fix) — duckdb needed the identical routing (its DuckDBDuckdbConnector.details(), connector_duckdb.py,
+    (REQ-1736''s fix). duckdb needed the identical routing (its DuckDBDuckdbConnector.details(), connector_duckdb.py,
     ATTACHes `source.path`, but introspect.py''s native_schemas/native_tables "duckdb" branch reads `source.database`
     via the DIRECT DuckDBDriver) and was missing it, so the query-time engine ATTACHed `None`. Fixed by
     adding "duckdb" alongside "firebird" to that ternary.
@@ -64366,7 +64226,7 @@
     2. Once (1) was fixed, a second bug surfaced: introspect.py''s native_schemas/native_tables "duckdb"
     branches queried information_schema.schemata/tables with no catalog filter. A DuckDBDriver connection
     opened DIRECTLY against an attached .duckdb file always also carries "system" and "temp" catalogs,
-    each with their own "main" schema — so an unfiltered query returned "main" three times (verified live:
+    each with their own "main" schema, so an unfiltered query returned "main" three times (verified live:
     `SELECT catalog_name, schema_name FROM information_schema.schemata` against a fresh file returns system/main,
     temp/main, and <file>/main), which the Register Table schema picker rendered as three duplicate `<option
     value="main">` elements (a React key collision, and the wrong element could bind on select). Fixed
@@ -64374,8 +64234,7 @@
 
     A third, unrelated bug was found while investigating an airport-source query failure: `NativeEngineBackend._attach_tbl`''s
     merged `SimpleNamespace` (provisa/federation/ native_backend.py, the runtime_sources/dynamically-registered-source
-    attach path) omitted `base_url`, which `DuckDBAirportConnector.details()` reads directly (`source.base_url
-    or f"grpc://{host}:{port}"`, no `getattr`) — raising `AttributeError` at attach time, surfaced to
+    attach path) omitted `base_url`, which `DuckDBAirportConnector.details()` reads directly (`source.base_url or f"grpc://{host}:{port}"`, no `getattr`), raising `AttributeError` at attach time, surfaced to
     the UI as a generic SQL-run 400. `NativeEngineBackend._merged_source` (the OTHER merge path, used
     for config-declared sources) already carries `base_url` for exactly this reason (REQ-1693''s comment
     on that line describes the identical failure mode); `_attach_tbl`''s merge needed the same field,
@@ -64386,8 +64245,7 @@
     duckdb.connect() queries reproducing introspect.py''s exact SQL; the exact ATTACH DSN DuckDBFirebirdConnector
     builds, run live against the firebird demo container). The new spec''s four tests are NOT yet confirmed
     green end-to-end through the UI: every playwright run this session either reused another concurrently-running
-    agent''s webServer process on playwright.config.ts''s shared default ports (`reuseExistingServer:
-    !process.env.CI` plus fixed 8901/3901/8907/8908 defaults — a distinct, separately-worth-fixing bug:
+    agent''s webServer process on playwright.config.ts''s shared default ports (`reuseExistingServer: !process.env.CI` plus fixed 8901/3901/8907/8908 defaults, a distinct, separately-worth-fixing bug:
     parallel e2e runs silently test each other''s code) rather than this worktree''s own, or hit a stale
     shared demo-source-containers.ts splunk fixture failing in global-setup before any test in the new
     file ran. [SUPERSEDED by REQ-1746 amendment, 2026-10-03 -- No later requirement; the spec has one
@@ -64452,11 +64310,10 @@
     WarehouseNativeConnector) — so the REQ-1673 engine-catalog seam (DuckDBRuntime.introspect_schemas''s
     `_attached_alias`, which only covers ATTACH-mechanism `details`) also always returned `[]` for them.
     Net effect: the Register Table form''s schema/table pickers were permanently empty for all five types
-    when registered under DuckDB, before any table could ever be registered — the same "no catalog exists
-    pre-registration" gap REQ-1732 fixed for trino/mysql/mariadb, left open for these five.
+    when registered under DuckDB, before any table could ever be registered, the same "no catalog exists pre-registration" gap REQ-1732 fixed for trino/mysql/mariadb, left open for these five.
 
     Fixed by adding a branch for each of the five to native_schemas/native_tables (which already receive
-    a config_conn) and to native_columns (which did not — threaded a config_conn parameter through it
+    a config_conn) and to native_columns (which did not; a config_conn parameter was threaded through it
     from schema_query.py''s resolve_available_columns_metadata, the same way the existing "files" branch
     there already acquires one). databricks/bigquery need the source''s stored catalog/project (read back
     via a new `_source_database` helper) to qualify information_schema, since neither driver''s connection
@@ -64510,8 +64367,7 @@
   feature: connector-catalog-files-and-lake
   priority: MUST
   type: behavioral
-  description: 'Removed `hudi` as a SourceType entirely, per explicit user request — UI, backend connector,
-    and tests. `hudi` (added REQ-1178) was only ever reachable via `ClickHouseHudiConnector` (clickhouse_connectors.py)
+  description: 'Removed `hudi` as a SourceType entirely, per explicit user request: UI, backend connector, and tests. `hudi` (added REQ-1178) was only ever reachable via `ClickHouseHudiConnector` (clickhouse_connectors.py)
     under ClickHouse-as-engine; it had no DuckDB connector at all (REQ-1743 documented this as a structural
     constraint, not a gap). Deleted: `SourceType.hudi` (provisa/core/models.py); `ClickHouseHudiConnector`
     and its registration in `build_clickhouse_engine` (clickhouse_connectors.py, engine.py); the "Apache
@@ -64520,7 +64376,7 @@
     SourcesPage.tsx); `test_hudi_lakehouse_engine_ddl_zero_copy` and the `ClickHouseHudiConnector` import
     (test_clickhouse_connectors.py), and "hudi" dropped from that file''s reachability-list test. Prior
     REQ-1178/1736-1747 entries that mention hudi are left as an unedited historical record of work done
-    while it existed — not retroactively altered.'
+    while it existed, not retroactively altered.'
   code:
   - provisa/core/models.py
   - provisa/federation/clickhouse_connectors.py
@@ -64557,8 +64413,8 @@
     e2e tests in true isolation: tidb was missing from three mysql/mariadb dispatch tuples in provisa/api/admin/introspect.py
     (native_schemas, _native_tables_rdbms, native_columns), despite speaking the identical MySQL wire
     protocol (REQ-950). A tidb source fell through every branch to `return None`, and available_schemas''/available_tables''
-    engine- catalog fallback then queried a Trino/DuckDB catalog that does not exist pre-registration,
-    silently swallowed to an empty list by discovery_fallback — the Register Table form''s schema, table,
+    engine-catalog fallback then queried a Trino/DuckDB catalog that does not exist pre-registration,
+    silently swallowed to an empty list by discovery_fallback. The Register Table form''s schema, table,
     and column pickers stayed permanently empty for a tidb source, with no error ever surfacing to the
     operator. Added "tidb" alongside "mysql"/"mariadb" in all three tuples.'
   code:
@@ -64602,7 +64458,7 @@
     incorrectly claimed duckdb "never needed this" because it is ATTACH-mechanism, but that assumption
     only holds once a table is registered (REQ-1673: the engine attaches a source lazily, on first table
     registration). Pre-registration, native_columns returning None fell through to the engine''s own ATTACH
-    seam (introspect_columns), which sees nothing yet — the Register Table form''s column checkboxes never
+    seam (introspect_columns), which sees nothing yet. The Register Table form''s column checkboxes never
     appeared for a duckdb-type source, even though native_schemas/_native_tables_rdbms already had their
     own "duckdb" branches (REQ-1746) using the DIRECT pool connection specifically to sidestep this same
     gap. Added a matching "duckdb" branch to native_columns, scoped to `current_database()` the same way.'
@@ -64639,7 +64495,7 @@
     runs, against the identical catalog name the failing test run had just created: 0 rows immediately
     after CREATE CATALOG, then the expected "airlinestats" (and 6 other) tables correctly listed several
     minutes later against that same catalog with no code path touching it in between. This is a cold-start
-    race in Trino''s own Pinot connector — its table-list cache (pinot.metadata-expiry, 2 min) is populated
+    race in Trino''s own Pinot connector. Its table-list cache (pinot.metadata-expiry, 2 min) is populated
     from the Pinot controller''s Helix external view, which had not yet converged for the QuickStart demo
     fixture''s freshly-loaded table at the moment create_catalog() ran. Not a defect in TrinoPinotConnector
     or in available_tables'' introspection (both verified correct against the same catalog). Replaced
@@ -64681,15 +64537,14 @@
     for this form); the regression is already asserted end-to-end by source-to-query-olap-lake.spec.ts's
     hive_s3 test, which fills the Region field with the exact displayed default and would fail again if
     the same-value onChange drop returned.
-  description: 'hive_s3''s Register Table schema picker never showed ''wh'' — root-cause isolated by instrumenting
+  description: 'hive_s3''s Register Table schema picker never showed ''wh''. The root cause was isolated by instrumenting
     provisa/core/catalog.py''s create_catalog, provisa/api/admin/schema_common.py''s _register_source_on_engine,
     and SourcesPage.tsx''s submit handler (all temporary, reverted). SourceFormFields.tsx''s Storage Authentication
     "Region" field displayed a fallback default (authFields.region ?? "us-east-1") that was never written
     into authFields — typing that exact string is a same-value write, so React''s controlled-input reconciliation
     drops the change and onChange never fires. The submitted mappingJson then omits "region" entirely,
     _hive_s3_props (trino_connectors.py) raises ValueError, and _register_source_on_engine''s best-effort
-    catch (a deliberate, pre-existing design per its own complexity-gate comment) swallows it — the source
-    row is created but its Trino catalog never is, so the schema picker sits empty with zero visible error.
+    catch (a deliberate, pre-existing design per its own complexity-gate comment) swallows it. The source row is created but its Trino catalog never is, so the schema picker sits empty with zero visible error.
     Fixed by replacing the phantom default with a real placeholder, so what is displayed is never mistaken
     for what is stored.
 
@@ -64740,8 +64595,7 @@
     empty forever, no visible error" class of bug fixed for tidb/duckdb (REQ-1749/1750) this session;
     added branches querying HANA''s own SYS.SCHEMAS/SYS.TABLES/SYS.TABLE_COLUMNS catalog views (not information_schema
     — HANA has none), using $1/$2 placeholders (the generic SQLAlchemyDriver''s paramstyle, same as trino''s
-    own branches). (4) provisa/compiler/type_map.py''s engine-type map had no "nvarchar" (HANA''s default
-    unicode text type — every HANA text column uses it) or "nclob" entry, so introspecting any real HANA
+    own branches). (4) provisa/compiler/type_map.py''s engine-type map had no "nvarchar" (HANA''s default unicode text type; every HANA text column uses it) or "nclob" entry, so introspecting any real HANA
     table failed "Unmapped the engine type: ''nvarchar''" the moment a column of that type was read.'
   code:
   - provisa-ui/src/pages/sources/constants.ts
@@ -64799,7 +64653,7 @@
     SOURCE_TO_DIALECT (which already had all four of these entries correct, plus more pool.py lacked,
     e.g. singlestore''s own real dialect instead of "mysql"). Three near-identical source-type dialect
     registries existed in this codebase at once (_SOURCE_DIALECT here, SOURCE_TO_DIALECT in core/source_registry.py,
-    and the ad-hoc runtime dict at state.source_dialects — see REQ-1757 for that third one''s own defect).
+    and the ad-hoc runtime dict at state.source_dialects; see REQ-1757 for that third one''s own defect).
     Deleted pool.py''s copy entirely; SourcePool.add() now reads SOURCE_TO_DIALECT directly. One registry,
     not three drifting in parallel.'
   code:
@@ -64888,24 +64742,21 @@
     round trip is the real assertion, verified live this session against a real mariadb and a real tidb
     instance.'
   description: 'The SQL page''s query against a mariadb or tidb source failed with a genuine server-side
-    syntax error ("...near ''"provisa_demo"."widgets" AS "widgets" ORDER BY id LIMIT 100''") — MariaDB/TiDB
-    reject ANSI double-quoted identifiers by default. Root-caused by live-tracing the actual query pipeline
+    syntax error ("...near ''"provisa_demo"."widgets" AS "widgets" ORDER BY id LIMIT 100''"). MariaDB/TiDB reject ANSI double-quoted identifiers by default. Root-caused by live-tracing the actual query pipeline
     (pgwire/_pipeline.py''s _govern_and_route -> _execute_plan -> _run_plan_terminal): schema_mutation.py''s
     create_source AND update_source mutations both hardcoded `state.source_dialects[input.id] = ""` for
     every dynamically-registered source, regardless of type. _pipeline.py''s DIRECT-route compile step
-    does `dialect = decision.dialect or "postgres"` — `""` is falsy, so it silently fell back to postgres
+    does `dialect = decision.dialect or "postgres"`. `""` is falsy, so it silently fell back to postgres
     dialect (ANSI double-quoted identifiers) for the physical SQL of ANY source registered through the
     UI admin mutations, not only mariadb/tidb (every other SIMPLE_RDBMS type happened to not trip on it
     only because their engines tolerate double-quoted identifiers, e.g. postgres/oracle/sqlserver/duckdb
     all accept ANSI quoting natively). Fixed by reading the real per-type dialect instead: create_source
     now uses `model.dialect` (core/models.py''s Source.dialect property, already backed by core/source_registry.py''s
     SOURCE_TO_DIALECT); update_source (which has no Source model in scope at that point) reads SOURCE_TO_DIALECT
-    directly. This is the SAME canonical map app_loaders.py''s config-load path already populated state.source_dialects
-    from — the admin mutation path was the one place that never did. This was the actual root cause the
+    directly. This is the SAME canonical map app_loaders.py''s config-load path already populated state.source_dialects from; the admin mutation path was the one place that never did. This was the actual root cause the
     mariadb/tidb SQL-page bug (documented across multiple earlier sessions as "root cause not yet isolated,
     multiple live-traceback attempts defeated by harness instability") had been chasing. REQ-1755''s dialect-map
-    fix (SourcePool''s own registry) was a real but SEPARATE, adjacent defect found while investigating
-    this one — it does not touch the code path this fix does (see REQ-1755''s own amendment).'
+    fix (SourcePool''s own registry) was a real but SEPARATE, adjacent defect found while investigating this one. It does not touch the code path this fix does (see REQ-1755''s own amendment).'
   code:
   - provisa/api/admin/schema_mutation.py
   tests:
@@ -64936,7 +64787,7 @@
     is no "no role_id" mode: a caller that wants unrestricted output MUST select a role that is itself
     unrestricted (no RLS rules, no masking rules attached), never omit the role entirely. Governance is
     therefore always exercised through the same one code path (REQ-1679''s apply_governance stage) for
-    every response, including a deliberately unrestricted one — the difference between a restricted and
+    every response, including a deliberately unrestricted one. The difference between a restricted and
     unrestricted result is which role''s rules were applied, never whether governance ran at all. An endpoint
     MUST NOT accept an optional role_id whose absence causes it to skip governance and return raw rows;
     if unrestricted test/debug output is a real need (e.g. comparing governed vs. effectively-ungoverned
@@ -64986,22 +64837,18 @@
     unit test. Verified by inspecting live GitHub Actions runs after the change (ui-e2e-core.yml/ ui-e2e-trino.yml
     no longer fired on an ordinary main push; Unit Tests fired and ran).
   description: 'ui-e2e-core.yml and ui-e2e-trino.yml ran on every push/PR to main and each routinely took
-    30-60+ minutes (container-heavy Playwright suites, one with a 7g Trino coordinator cold boot) — expensive
-    for the signal given on an ordinary commit. Both now trigger on push to release/** branches, v* tags,
+    30-60+ minutes (container-heavy Playwright suites, one with a 7g Trino coordinator cold boot), expensive for the signal given on an ordinary commit. Both now trigger on push to release/** branches, v* tags,
     and workflow_dispatch (manual, via the Actions tab) only. Added unit-tests.yml as the fast per-commit
-    gate: tests/unit/ (~12K tests, verified no Docker/live-service dependency — none carry an integration/e2e/requires_*
-    marker) on every push/PR, parallelized with pytest-xdist (-n auto; ~2m13s locally on 12 cores vs.
+    gate: tests/unit/ (~12K tests, verified no Docker/live-service dependency; none carry an integration/e2e/requires_* marker) on every push/PR, parallelized with pytest-xdist (-n auto; ~2m13s locally on 12 cores vs.
     an ~50min projected single-process runtime). This closes a real, previously-undiscovered gap: tests/unit/
-    had NO CI coverage at all before this — Requirements CI only ever ran tests/features/''s BDD scenarios,
+    had NO CI coverage at all before this. Requirements CI only ever ran tests/features/''s BDD scenarios,
     never tests/unit/. Running the full suite in CI for the first time surfaced three real defects the
     never-run-in-CI state had hidden: (1) test_core_registration.py''s REQ-414 tests had the maintainer''s
-    own local absolute path ("/Volumes/main/Users/kennethstott/PycharmProjects/provisa/...") hardcoded
-    instead of a REPO_ROOT-relative one — fixed to match test_infra_requirements.py''s own convention.
+    own local absolute path ("/Volumes/main/Users/kennethstott/PycharmProjects/provisa/...") hardcoded instead of a REPO_ROOT-relative one, fixed to match test_infra_requirements.py''s own convention.
     (2) test_infra_requirements.py''s REQ-071 test asserted .claude/agents/requirements-tracker.md exists
-    unconditionally, but .claude/ is deliberately never committed to this repo (a separate private checkout,
-    see claude-dir-separate-repo) — a CI clone can never have it. Changed to skip with an explanation
+    unconditionally, but .claude/ is deliberately never committed to this repo (a separate private checkout, see claude-dir-separate-repo), so a CI clone can never have it. Changed to skip with an explanation
     instead of failing. (3) test_cassandra_fetch.py imports provisa.cassandra.fetch unconditionally (no
-    importorskip) and hard-failed without cassandra-driver installed — declared it in the dev extras group,
+    importorskip) and hard-failed without cassandra-driver installed. It was declared in the dev extras group,
     matching the existing aiomysql/oracledb/firebase-admin convention (comment: "declared so `uv sync`
     installs them and the driver tests run instead of skipping").'
   code:
@@ -65105,17 +64952,13 @@
     hit.'
   description: 'provisa/scheduler/jobs.py''s compact_otel_signals() runs its three OTel signals (logs/metrics/
     traces) concurrently via asyncio.gather() with the default return_exceptions=False. REQ-1428''s own
-    comment states the reason this runs concurrently at all: "no signal''s backlog can starve another''s"
-    — a prior sequential implementation let a stuck `logs`/`metrics` run starve `traces` of its turn entirely,
-    losing 15k trace files. The concurrent version undermined that same guarantee in a different way:
-    gather()''s default behavior returns/raises as soon as ANY task raises, without waiting for siblings
-    to finish — each signal''s _compact_signal runs via asyncio.to_thread(), so a fast-failing signal
+    comment states the reason this runs concurrently at all: "no signal''s backlog can starve another''s". A prior sequential implementation let a stuck `logs`/`metrics` run starve `traces` of its turn entirely,
+    losing 15k trace files. The concurrent version undermined that same guarantee in a different way: gather()''s default behavior returns/raises as soon as ANY task raises, without waiting for siblings to finish. Each signal''s _compact_signal runs via asyncio.to_thread(), so a fast-failing signal
     (e.g. metrics) could propagate its exception before a slower sibling''s to_thread() call had even
     been scheduled a worker thread, silently skipping that signal''s compaction for the tick. Caught by
     CI (not locally: a fast, lightly- loaded local machine schedules the three to_thread() calls close
     enough together that the race rarely loses) once REQ-1759 ran the full unit suite in CI for the first
-    time. Fixed by gathering with return_exceptions=True and re-raising only after every signal has genuinely
-    run to completion — restoring the actual "no signal starves another" guarantee for the success/failure
+    time. Fixed by gathering with return_exceptions=True and re-raising only after every signal has genuinely run to completion, restoring the actual "no signal starves another" guarantee for the success/failure
     boundary, not just the scheduling-order one REQ-1428 already covered.'
   code:
   - provisa/scheduler/jobs.py
@@ -65150,13 +64993,13 @@
     is a plain ATTACH_RW `_DuckDBExtensionConnector` with no special-cased dispatch, so provisa/api/admin/introspect.py''s
     native_schemas/native_tables fall through to `return None` (airport has no direct driver pool entry)
     exactly like postgresql/mssql/mongo/ firebird, and provisa/federation/backend.py''s introspect_schemas/introspect_tables
-    (the REQ-1673 seam) picks it up from there — no missing dispatch branch the way tidb (REQ-1749) and
+    (the REQ-1673 seam) picks it up from there. There is no missing dispatch branch the way tidb (REQ-1749) and
     duckdb-as-a-source (REQ-1750) had. Verified directly against the real airport-shim fixture (tests/fixtures/airport_shim,
     demo/sources/airport/compose.yml): `ATTACH ''grpc://host:port'' AS "_src_<id>" (TYPE AIRPORT)` then
     `information_schema.schemata`/`.tables` filtered by `catalog_name`/`table_catalog` on the attached
     alias correctly return schema "test" and table "widgets". Ran source-to-query-community-ext.spec.ts''s
     airport test twice in true isolation (own webServer, unique ports, no shared agents/docker contention,
-    `test.skip` removed) — both green end to end (source create, schema/table/column pick, SQL query returning
+    `test.skip` removed); both green end to end (source create, schema/table/column pick, SQL query returning
     the 3 seeded rows). No code change was needed; the earlier report was environmental (this session
     runs many concurrent agents sharing docker/ports), not a per-connector defect. Un-skipped the test
     and corrected its comment to the actual finding.'
@@ -65907,8 +65750,8 @@
     on the attached snapshot never grew past whatever was current when the staleness set in). Fixed: change
     detection now uses the main db file''s and its `-wal` sidecar''s own mtime/size (kernel facts, immune
     to a reader''s stuck session state) instead of `PRAGMA data_version`, and the backup source connection
-    is opened fresh for every snapshot instead of kept long-lived. (Amended 2026-10-13, POSTGRESQL ONLY
-    -- REQ-2014:) The control plane is PostgreSQL only (REQ-2014): embedded (pgserver) where no URL is given,
+    is opened fresh for every snapshot instead of kept long-lived. (Amended 2026-10-13, POSTGRESQL ONLY,
+    REQ-2014:) The control plane is PostgreSQL only (REQ-2014): embedded (pgserver) where no URL is given,
     an external server otherwise. The DuckDB engine reads provisa_admin through its postgres extension (ATTACH
     ... TYPE postgres, READ_ONLY), live: a landed row is visible to the next statement with no snapshot.
     The SQLite snapshot and its per-statement rebuild are removed.'
