@@ -68,8 +68,6 @@ GET /auth/provider-type
 
 **回應快取：** 透過操作層級指令 `@cached` 按請求選擇啟用（`query @cached(ttl: 60) { ... }`，`ttl` 可選）；同一指令亦適用於經 Arrow Flight 發送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行選擇啟用，gRPC 以呼叫元數據 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 選擇啟用。沒有該指令時，請求既不讀取也不寫入回應快取。回應標頭 `X-Provisa-Cache` 報告 `HIT` 或 `MISS`。請參閱[快取](configuration.md#per-request-opt-in)。
 
-<a id="response-cache-request-headers"></a>
-
 #### 回應快取請求標頭 {: #response-cache-request-headers }
 
 `/data/graphql`、`/data/cypher`、Neo4j Query API（`/db/{database}/query/v2`）、`/data/rest` 和 `/data/jsonapi` 也接受以請求標頭形式選擇啟用。下列每種形式的行為都與 `@cached(ttl: N)` 相同：

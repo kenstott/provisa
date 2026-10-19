@@ -68,8 +68,6 @@ El campo `extensions` admite el protocolo Automatic Persisted Query (APQ):
 
 **Caché de respuestas:** se activa por solicitud con la directiva de operación `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` opcional); la misma directiva se aplica a GraphQL enviado por Arrow Flight. Cypher se activa con una línea `// @provisa cache=true` o `// @provisa cache_ttl=N`, y gRPC con los metadatos de llamada `x-provisa-cache: true` o `x-provisa-cache-ttl: N`. Sin ella, la solicitud no lee ni escribe la caché de respuestas. El encabezado de respuesta `X-Provisa-Cache` indica `HIT` o `MISS`. Consulte [Caché](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### Encabezados de solicitud de la caché de respuestas {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, la Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` y `/data/jsonapi` también aceptan la activación como encabezado de solicitud. Cada forma siguiente se comporta como `@cached(ttl: N)`:

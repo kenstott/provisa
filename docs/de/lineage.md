@@ -33,7 +33,6 @@ orders.region ─╯
 - `orders.id`, `orders.region` und `orders.geo` sind **source**-Knoten (der schmale
   Eingabe-Contract von `enrich_grpc_set` deklariert `id` und `region`; die vollständige
   Taint-Closure verbindet alle deklarierten Eingaben mit allen Ausgaben).
-
 - `e.embedding` und `e.geo` sind **command**-Knoten an der Grenze von `enrich_grpc_set`.
 - `geo_u` ist ein **derived**-Knoten, erzeugt durch die SQL-Funktion `UPPER`.
 

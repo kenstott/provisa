@@ -68,8 +68,6 @@ GET /auth/provider-type
 
 **Кеш ответов:** включается для отдельного запроса директивой операции `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` необязателен); та же директива действует для GraphQL, отправленного через Arrow Flight. Cypher включает кеш строкой `// @provisa cache=true` или `// @provisa cache_ttl=N`, gRPC — метаданными вызова `x-provisa-cache: true` или `x-provisa-cache-ttl: N`. Без неё запрос не читает кеш ответов и не пишет в него. Заголовок ответа `X-Provisa-Cache` сообщает `HIT` или `MISS`. См. [Кеш](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### Заголовки запроса для кеша ответов {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` и `/data/jsonapi` принимают включение также в виде заголовка запроса. Каждая из форм ниже ведёт себя как `@cached(ttl: N)`:

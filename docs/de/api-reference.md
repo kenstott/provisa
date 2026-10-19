@@ -68,8 +68,6 @@ Das Feld `extensions` unterstützt das Automatic-Persisted-Query-(APQ)-Protokoll
 
 **Antwort-Cache:** opt-in pro Anfrage mit der Operationsdirektive `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` optional); dieselbe Direktive gilt für GraphQL über Arrow Flight. Cypher meldet sich mit einer Zeile `// @provisa cache=true` oder `// @provisa cache_ttl=N` an, gRPC mit den Aufruf-Metadaten `x-provisa-cache: true` oder `x-provisa-cache-ttl: N`. Ohne sie liest und schreibt die Anfrage den Antwort-Cache nicht. Der Antwort-Header `X-Provisa-Cache` meldet `HIT` oder `MISS`. Siehe [Cache](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### Request-Header für den Antwort-Cache {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, die Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` und `/data/jsonapi` nehmen das Opt-in auch als Request-Header entgegen. Jede der folgenden Formen verhält sich wie `@cached(ttl: N)`:

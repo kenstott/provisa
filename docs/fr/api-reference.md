@@ -68,8 +68,6 @@ Le champ `extensions` prend en charge le protocole Automatic Persisted Query (AP
 
 **Cache de réponses :** activation par requête avec la directive d'opération `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` facultatif) ; la même directive s'applique au GraphQL envoyé via Arrow Flight. Cypher s'active avec une ligne `// @provisa cache=true` ou `// @provisa cache_ttl=N`, gRPC avec les métadonnées d'appel `x-provisa-cache: true` ou `x-provisa-cache-ttl: N`. Sans elle, la requête ne lit ni n'écrit le cache de réponses. L'en-tête de réponse `X-Provisa-Cache` indique `HIT` ou `MISS`. Voir [Cache](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### En-têtes de requête du cache de réponses {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, la Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` et `/data/jsonapi` acceptent aussi l'activation sous forme d'en-tête de requête. Chaque forme ci-dessous se comporte comme `@cached(ttl: N)` :

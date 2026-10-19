@@ -68,8 +68,6 @@ GET /auth/provider-type
 
 **מטמון תגובות:** הצטרפות לפי בקשה באמצעות הנחיית הפעולה `@cached` (`query @cached(ttl: 60) { ... }`, `ttl` אופציונלי); אותה הנחיה חלה על GraphQL הנשלח דרך Arrow Flight. Cypher מצטרף בשורה `// @provisa cache=true` או `// @provisa cache_ttl=N`, ו-gRPC במטא-נתוני הקריאה `x-provisa-cache: true` או `x-provisa-cache-ttl: N`. בלעדיה הבקשה אינה קוראת ממטמון התגובות ואינה כותבת אליו. כותרת התגובה `X-Provisa-Cache` מדווחת `HIT` או `MISS`. ראו [מטמון](configuration.md#per-request-opt-in).
 
-<a id="response-cache-request-headers"></a>
-
 #### כותרות בקשה למטמון התגובות {: #response-cache-request-headers }
 
 `/data/graphql`, `/data/cypher`, ה-Neo4j Query API (`/db/{database}/query/v2`), `/data/rest` ו-`/data/jsonapi` מקבלים את ההצטרפות גם ככותרת בקשה. כל אחת מהצורות שלהלן מתנהגת כמו `@cached(ttl: N)`:

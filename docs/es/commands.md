@@ -49,6 +49,7 @@ Ambos contratos se validan de forma estricta (fail-loud) en cada invocación:
 - **Entrada (solo `result_set`):** tras la materialización, Provisa valida las filas contra las
   columnas declaradas. Los campos adicionales, los campos faltantes y los tipos incorrectos
   generan un HTTP 422.
+
 - **Salida:** las filas devueltas por el comando se validan contra `output_columns` antes de
   llegar al llamador.
 - **Proyección estrecha:** cuando se declara un contrato de entrada, la consulta de materialización

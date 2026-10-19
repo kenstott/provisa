@@ -68,8 +68,6 @@ GET /auth/provider-type
 
 **响应缓存：** 通过操作级指令 `@cached` 按请求选择启用（`query @cached(ttl: 60) { ... }`，`ttl` 可选）；同一指令也适用于经 Arrow Flight 发送的 GraphQL。Cypher 以 `// @provisa cache=true` 或 `// @provisa cache_ttl=N` 行选择启用，gRPC 以调用元数据 `x-provisa-cache: true` 或 `x-provisa-cache-ttl: N` 选择启用。没有该指令时，请求既不读取也不写入响应缓存。响应头 `X-Provisa-Cache` 报告 `HIT` 或 `MISS`。请参阅[缓存](configuration.md#per-request-opt-in)。
 
-<a id="response-cache-request-headers"></a>
-
 #### 响应缓存请求头 {: #response-cache-request-headers }
 
 `/data/graphql`、`/data/cypher`、Neo4j Query API（`/db/{database}/query/v2`）、`/data/rest` 和 `/data/jsonapi` 也接受以请求头形式选择启用。下列每种形式的行为都与 `@cached(ttl: N)` 相同：
