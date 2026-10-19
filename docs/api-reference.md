@@ -1484,7 +1484,7 @@ Each tool takes a dataset defined by `sql` and runs it through the same governed
 
 The engine computes what it can over every row the role reads: `describe`'s counts, distinct counts, means, standard deviations, minimums and maximums, and each group's `n`, mean and variance for `compare`. A fitted model, `describe`'s quantiles and top values read at most `mcp.stats_max_rows` rows (Admin → Settings → Limits; 100,000 by default). Every answer that reads rows gives `rows_read`, `row_cap` and `truncated`, and a role's own row limit is reported under `warnings` as it is for `run_sql`.
 
-Stats tools return only results, so the rows behind an analysis never enter the model's context: data minimization by default. Access control is what limits what an agent can learn. To expose only aggregates, publish them as materialized views and grant roles those views, not the underlying tables; aggregates over small groups can identify individuals, and the materialized view decides the grouping a role reads. See [Security](security.md#statistics-over-mcp).
+Stats tools return only results, so the rows behind an analysis never enter the model's context: data minimization by default. Access control is what limits what an agent can learn. To keep identities out of an agent's reach, grant its role only the columns that identify no one; a role that can read a column can aggregate it, and aggregates over small groups can still identify individuals. See [Security](security.md#statistics-over-mcp).
 
 ### Metadata Export
 

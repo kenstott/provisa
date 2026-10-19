@@ -165,10 +165,10 @@
           the model's context: data minimization by default.
         </p>
         <p>
-          Access control is what limits what an agent can learn. To expose only aggregates,
-          publish them as materialized views and grant roles those views, not the underlying
-          tables. Aggregates over small groups can identify individuals, so the materialized view decides
-          the grouping and the smallest group a role reads.
+          Access control is what limits what an agent can learn. To keep identities out of an
+          agent's reach, grant its role only the columns that identify no one; a role that can
+          read a column can aggregate it, and aggregates over small groups can still identify
+          individuals.
         </p>
 
         <h2>What it looks like</h2>

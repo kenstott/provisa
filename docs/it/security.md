@@ -418,7 +418,7 @@ Una sorgente federata tiene i propri log, che Provisa non scrive e non può ragg
 
 Gli strumenti statistici MCP (`describe`, `correlate`, `regress`, `compare`, `forecast`) eseguono l'SQL definito da un agente nella pipeline governata con il ruolo dell'agente, quindi le regole di riga, il mascheramento e l'oscuramento si applicano a ciò che analizzano. Gli strumenti statistici restituiscono solo risultati, quindi le righe dietro un'analisi non entrano mai nel contesto del modello: minimizzazione dei dati per impostazione predefinita.
 
-È il controllo degli accessi a limitare ciò che un agente può apprendere. Per esporre solo aggregati, pubblicateli come viste materializzate e concedete ai ruoli quelle viste, non le tabelle sottostanti. Aggregati su gruppi piccoli possono identificare persone, quindi la vista materializzata decide il raggruppamento e il gruppo più piccolo che un ruolo legge.
+È il controllo degli accessi a limitare ciò che un agente può apprendere. Per tenere le identità fuori dalla portata di un agente, concedete al suo ruolo solo le colonne che non identificano nessuno; un ruolo che può leggere una colonna può aggregarla, e aggregati su gruppi piccoli possono comunque identificare persone.
 
 ## Limitazione della frequenza {: #rate-limiting }
 
