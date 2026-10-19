@@ -1311,6 +1311,86 @@
       "churnRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Governte Daten direkt im Notebook eines Data Scientists: die Maskierung für analyst schon beim Lesen angewendet und ein Modell trainiert, ohne dass die Daten den Browser verlassen. In einem Desktop-Jupyter liest derselbe Code große Datenmengen über Arrow Flight."
+      },
+      "dataroomIntro": {
+        "title": "Ein Datenraum ohne Exporte",
+        "description": "Northfield Supply verkauft sich selbst, und das Clean Team jedes Kaufinteressenten muss das Geschäft kennenlernen, bevor es bietet. Statt Auszüge in einen Datenraum zu exportieren, verbindet der Verkäufer Provisa mit seinen eigenen Systemen und gibt jedem Bieter einen kontrollierten Zugriff, der am Abschlusstag endet. Nichts wird herauskopiert, und keine Kundenidentität verlässt den Raum. Dies ist das Auftrags- und Finanzsystem, eine Postgres-Datenbank, die an Ort und Stelle gelesen wird: 2.400 Kunden, ihre Aufträge seit 2023 und die Rechnung zu jedem."
+      },
+      "dataroomCrm": {
+        "title": "Das CRM",
+        "description": "Das Salesforce des Vertriebs: Konto und Deals jedes Geschäftskunden. Seine Zeilen werden einmal in den Raum übernommen und von dort gelesen, sodass die Fragen der Bieter Salesforce nie erreichen."
+      },
+      "dataroomInvite": {
+        "title": "Den Raum einrichten: die Analysten einladen",
+        "description": "Auf der Seite Benutzer des Verkäufers werden die zwei Analysten von Bieter A als lokale Konten angelegt, jeweils an die Rolle <strong>bidder_a</strong> gebunden. Sie melden sich per HTTPS am Provisa des Verkäufers an. Ein selbst gehosteter Verkäufer stellt nur HTTPS bereit, über seinen eigenen TLS-Edge (ein Ingress oder Reverse Proxy mit öffentlichem Zertifikat), während Speicher, Engine und Datenbankprotokolle privat bleiben; bei gehostetem Provisa bedient die Adresse der Organisation bereits alles. Nichts in dieser Demo öffnet einen Port."
+      },
+      "dataroomGrant": {
+        "title": "Eine Berechtigung, die am Abschlusstag endet",
+        "description": "Die Zuweisung von bidder_a an jeden Analysten trägt ein Enddatum: den Abschlusstag. Ab diesem Moment gehört die Rolle ihnen nicht mehr, bei jeder Anfrage, egal auf welchem Weg sie eintrifft. Ein Konto hat kein eigenes Enddatum; das Ende der Zuweisung beendet den Zugriff."
+      },
+      "dataroomSignedIn": {
+        "title": "Was ein Analyst sieht",
+        "description": "Angemeldet sieht ein Analyst von Bieter A, was bidder_a gewährt ist: die aggregierten Sichten, die Profile, die maskierte Stichprobe und die Datensätze des Verkäufers ohne eine einzige Kundenidentität. Kein Kundenname und kein Firmen- oder Dealname aus dem CRM ist zu lesen."
+      },
+      "dataroomBidder": {
+        "title": "Jetzt als Bieter A",
+        "description": "Die nächsten Anweisungen laufen als <strong>bidder_a</strong>, genau wie die der Analysten."
+      },
+      "dataroomProfile": {
+        "title": "Das Profil der Rechnungen",
+        "description": "Jede Spalte der Rechnungstabelle, wie der Profiler sie vorgefunden hat: Zeilen, Nullwerte, eindeutige Werte und Wertebereich. Ein Bieter erfährt, wie vollständig die Datensätze sind, ohne einen davon zu lesen. Hier sind einige Rechnungen nie bezahlt worden."
+      },
+      "dataroomCounts": {
+        "title": "Kundenzahlen",
+        "description": "Wie viele Kunden jedes Segment und jede Region hat und wie viele in den letzten zwölf Monaten bestellt haben. Eine Zahl, nie ein Kunde."
+      },
+      "dataroomAnswer": {
+        "title": "Umsatz nach Segment",
+        "description": "Aufträge, Umsatz und durchschnittlicher Auftrag je Segment und Jahr, aus den Aufträgen und den Segmenten der Kunden."
+      },
+      "dataroomPipeline": {
+        "title": "Die Vertriebspipeline",
+        "description": "Die Deals des CRM nach Branche und Phase, mit ihrem Wert und ihrem nach Abschlusschance gewichteten Wert. Die Namen der Unternehmen und der Deals bleiben im CRM."
+      },
+      "dataroomQuality": {
+        "title": "Datenqualitätswerte",
+        "description": "Jede Prüfung der Verkäuferdaten und wie viele Zeilen sie nicht bestehen: Kunden ohne E-Mail, Telefonnummern ohne zehn Ziffern, nie bezahlte Rechnungen. Die Mängel, nach denen ein Käufer sucht, gezählt."
+      },
+      "dataroomSample": {
+        "title": "Eine maskierte Stichprobe",
+        "description": "Jeder fünfzigste Kunde, wie ein Bieter ihn liest: kein Name, der Namensteil der E-Mail und die Ziffern der Telefonnummer maskiert. Die Form der Daten, nie die Person."
+      },
+      "dataroomRefused": {
+        "title": "Kundennamen werden abgelehnt",
+        "description": "Bieter A fragt nach den Namen der Kunden. Provisa lehnt ab: Kein Kundenname ist bidder_a gewährt, ebenso wenig die Firmen- und Dealnamen des CRM. Hätte der Analyst die Rolle von Bieter B genannt, die er nicht innehat, wäre die Anfrage ebenfalls abgelehnt und im Sicherheitsprotokoll der Organisation als Rollen-Probing festgehalten worden."
+      },
+      "dataroomBidderB": {
+        "title": "Jetzt als Bieter B",
+        "description": "Das Clean Team von Bieter B hat seine eigene Rolle, <strong>bidder_b</strong>, mit demselben Raum und demselben Enddatum. Keiner der Bieter sieht, was der andere fragt."
+      },
+      "dataroomBidderBCohorts": {
+        "title": "Kohorten, als Bieter B",
+        "description": "Kunden, die erstmals im ersten Quartal 2023 bestellt haben, und wie viele in jedem späteren Quartal noch bestellten, mit ihren Ausgaben. Kundenbindung, ohne einen einzigen Kunden."
+      },
+      "dataroomSeller": {
+        "title": "Zurück zum Verkäufer",
+        "description": "Der Verkäufer handelt wieder als jede Rolle, die er innehat, um zu sehen, was die Bieter getan haben."
+      },
+      "dataroomAudit": {
+        "title": "Was jeder Bieter angesehen hat",
+        "description": "Jede Anweisung wird protokolliert: wer sie ausgeführt hat, mit welcher Rolle, welche Tabellen sie gelesen hat, ob sie beantwortet wurde und wie viele Zeilen sie lieferte. Hier stehen die Anweisungen, die Sie eben als Bieter A und Bieter B ausgeführt haben. Der Verkäufer weiß genau, was den Raum verlassen hat."
+      },
+      "dataroomExpiry": {
+        "title": "Der Zugriff endet am Abschlusstag",
+        "description": "Die Seite Benutzer listet jede Zuweisung mit Enddatum und letzter Nutzung. Nach dem Abschlusstag sind die Zuweisungen weg, vom Zeitplan entfernt und im Protokoll der Organisation erfasst, und nichts verlässt den Raum mehr."
+      },
+      "dataroomRevoke": {
+        "title": "Den Zugriff eines Bieters sofort beenden",
+        "description": "Ein Bieter, der aussteigt, verliert den Zugriff mit einer Aktion: seine Zuweisung entfernen oder die Rolle selbst. Die nächste Anfrage wird abgelehnt. Das Audit von allem, was er gelesen hat, bleibt."
+      },
+      "dataroomRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Ein Datenraum ohne Exporte: die eigenen Systeme des Verkäufers, an Ort und Stelle gelesen und jedem Bieter als Aggregate, Profile, Qualitätswerte, maskierte Stichproben und Datensätze ohne Identitäten gezeigt. Keine Kundenidentität verlässt den Raum. Jeder Bieter hat eine eigene Rolle, gewährt bis zum Abschlusstag, und jede Anweisung wird auditiert."
       }
     },
     "status": {
@@ -1407,6 +1487,10 @@
       "churn": {
         "title": "Kundenabwanderung vorhersagen",
         "summary": "Welche Kunden stehen kurz vor der Kündigung? Ihre regulierten, maskierten Merkmale werden im Browser in pandas gelesen, und im Notebook, das der Demo beiliegt, wird ein scikit-learn-Modell darauf trainiert."
+      },
+      "dataroom": {
+        "title": "Datenraum für einen Verkauf",
+        "summary": "Ein Einzelhändler, der sich selbst verkauft, gibt dem Clean Team jedes Bieters kontrollierten, zeitlich begrenzten Zugriff auf seine eigenen Systeme ohne Exporte: Aggregate, Profile und maskierte Stichproben, und keine Kundenidentität verlässt den Raum."
       }
     }
   }

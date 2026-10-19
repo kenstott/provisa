@@ -1,0 +1,895 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "dataroom" (start-ui-install.sh --demo dataroom; REQ-1858).
+# Northfield Supply is selling itself. Instead of exporting extracts to a data room, it connects
+# Provisa to its own systems and gives each prospective buyer's clean team (bidder_a, bidder_b)
+# governed access until the deal date: aggregate views, profiles, quality scores and masked
+# samples. No customer identity leaves the room.
+#
+#   finance        the order and finance system, Postgres, read live as provisa_reader (db/init.sql)
+#   crm            the Salesforce CRM, its accounts and opportunities, landed once from
+#                  replica_rows/crm/ (cache_ttl -1: nothing reads Salesforce)
+#   room-profiler  the profile of its tables (setup.yaml profiles them once)
+#
+# A bidder reads every column but a customer's identity: the names of the customers, the CRM's
+# businesses and their deals are the seller's alone, and each email and phone is masked.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: dataroom
+  description: 'Northfield Supply''s customers, orders and invoices, and what a prospective buyer''s clean
+    team is shown of them: aggregates, profiles, quality scores and masked samples'
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: bidder_a
+  description: 'Bidder A''s clean team: reads the data room''s aggregate views, profiles, quality scores
+    and masked samples, never a customer''s identity. Granted until the deal date.'
+  capabilities:
+  - query_development
+  domain_access:
+  - dataroom
+- id: bidder_b
+  description: 'Bidder B''s clean team: reads the data room''s aggregate views, profiles, quality scores
+    and masked samples, never a customer''s identity. Granted until the deal date.'
+  capabilities:
+  - query_development
+  domain_access:
+  - dataroom
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 120
+    trino_query_timeout: 120
+sources:
+- id: finance
+  type: postgresql
+  host: ${env:DATAROOM_PG_HOST:-localhost}
+  port: ${env:DATAROOM_PG_PORT:-30032}
+  database: dataroom
+  username: provisa_reader
+  password: provisa_reader
+  description: 'Northfield Supply''s order and finance system: its customers, their orders and the invoices,
+    read in place'
+- id: crm
+  type: salesforce
+  base_url: ${env:SF_LOGIN_URL:-}
+  username: ${env:SF_CONSUMER_KEY:-}
+  password: ${env:SF_CONSUMER_SECRET:-}
+  cache_ttl: -1
+  replicate: 0
+  description: 'Northfield Supply''s Salesforce CRM: its business accounts and their opportunities, landed
+    once from the rows the demo declares'
+- id: room-profiler
+  type: data_profiler
+  description: 'Profile of the order and invoice tables: what each column holds, its nulls, distinct values
+    and ranges, and the duplicates in each table'
+  mapping:
+    cron: 0 2 * * *
+    low_cardinality_max: 100
+    drift_window: 7
+    drift_season: none
+    drift_distance: 3.0
+    drift_slope: 3.0
+    drift_ks: 0.2
+    drift_psi: 0.25
+    correlation_max_columns: 20
+    joint_max_distinct: 20
+    category_max_columns: 10
+tables:
+- source_id: finance
+  domain_id: dataroom
+  schema: public
+  table: customers
+  profiler_source_id: room-profiler
+  description: 'Who each customer is and where they buy: a bidder reads every column but the name, with
+    the email and phone masked'
+  columns:
+  - name: id
+    data_type: integer
+    description: The customer's number
+    visible_to: &id001
+    - org_admin
+    - bidder_a
+    - bidder_b
+    is_primary_key: true
+  - name: name
+    data_type: varchar
+    description: The customer's name; never shown to a bidder
+    visible_to: &id002
+    - org_admin
+  - name: email
+    data_type: varchar
+    description: The customer's email address; its name part masked for a bidder
+    visible_to: *id001
+    masks:
+    - to:
+      - bidder_a
+      - bidder_b
+      mask:
+        type: regex
+        pattern: ^[^@]+
+        replace: '***'
+  - name: phone
+    data_type: varchar
+    description: The customer's phone number; its digits masked for a bidder
+    visible_to: *id001
+    masks:
+    - to:
+      - bidder_a
+      - bidder_b
+      mask:
+        type: regex
+        pattern: '[0-9]'
+        replace: X
+  - name: segment
+    data_type: varchar
+    description: consumer, small business or enterprise
+    visible_to: *id001
+  - name: region
+    data_type: varchar
+    description: northeast, south, midwest or west
+    visible_to: *id001
+  - name: first_order_date
+    data_type: date
+    description: The day of the customer's first order
+    visible_to: *id001
+- source_id: finance
+  domain_id: dataroom
+  schema: public
+  table: orders
+  profiler_source_id: room-profiler
+  description: Every order since 2023
+  columns:
+  - name: id
+    data_type: integer
+    description: The order's number
+    visible_to: *id001
+    is_primary_key: true
+  - name: customer_id
+    data_type: integer
+    description: The customer who placed it
+    visible_to: *id001
+  - name: ordered_at
+    data_type: date
+    description: The day it was placed
+    visible_to: *id001
+  - name: channel
+    data_type: varchar
+    description: web, store or marketplace
+    visible_to: *id001
+  - name: amount
+    data_type: decimal
+    description: The order's total in USD
+    visible_to: *id001
+- source_id: finance
+  domain_id: dataroom
+  schema: public
+  table: invoices
+  profiler_source_id: room-profiler
+  description: The invoice of each order and when it was paid
+  columns:
+  - name: id
+    data_type: integer
+    description: The invoice's number
+    visible_to: *id001
+    is_primary_key: true
+  - name: order_id
+    data_type: integer
+    description: The order it bills
+    visible_to: *id001
+  - name: issued_at
+    data_type: date
+    description: The day it was issued
+    visible_to: *id001
+  - name: paid_at
+    data_type: date
+    description: The day it was paid; empty while unpaid
+    visible_to: *id001
+  - name: amount
+    data_type: decimal
+    description: The amount billed in USD
+    visible_to: *id001
+- source_id: crm
+  domain_id: dataroom
+  schema: crm
+  table: Account
+  alias: accounts
+  description: 'Each business customer''s account in the CRM: a bidder reads every column but the business''s
+    name'
+  columns:
+  - name: Id
+    data_type: varchar
+    description: The account's Salesforce id
+    visible_to: *id001
+    is_primary_key: true
+  - name: Name
+    data_type: varchar
+    description: The business; never shown to a bidder
+    visible_to: *id002
+  - name: Industry
+    data_type: varchar
+    description: Its industry
+    visible_to: *id001
+  - name: Type
+    data_type: varchar
+    description: Customer - Direct or Customer - Channel
+    visible_to: *id001
+  - name: AnnualRevenue
+    data_type: double
+    description: Its annual revenue in USD
+    visible_to: *id001
+  - name: BillingState
+    data_type: varchar
+    description: The state it is billed in
+    visible_to: *id001
+  - name: CustomerNumber__c
+    data_type: integer
+    description: Its customer number in the order system
+    visible_to: *id001
+- source_id: crm
+  domain_id: dataroom
+  schema: crm
+  table: Opportunity
+  alias: opportunities
+  description: 'Each open and closed deal with an account: a bidder reads every column but the deal''s
+    name'
+  columns:
+  - name: Id
+    data_type: varchar
+    description: The opportunity's Salesforce id
+    visible_to: *id001
+    is_primary_key: true
+  - name: AccountId
+    data_type: varchar
+    description: The account it is with
+    visible_to: *id001
+  - name: Name
+    data_type: varchar
+    description: What the deal is; never shown to a bidder
+    visible_to: *id002
+  - name: StageName
+    data_type: varchar
+    description: Where the deal stands
+    visible_to: *id001
+  - name: Amount
+    data_type: double
+    description: Its value in USD
+    visible_to: *id001
+  - name: CloseDate
+    data_type: date
+    description: When it closes or closed
+    visible_to: *id001
+  - name: Probability
+    data_type: integer
+    description: The chance it closes, in percent
+    visible_to: *id001
+- source_id: room-profiler
+  domain_id: dataroom
+  profile_of: customers
+  kind: runs
+  alias: customer_profile_runs
+  description: 'Each profile run of the customers table: when, how many rows, the duplicates it found'
+  columns:
+  - name: run_id
+    data_type: varchar
+    visible_to: &id003
+    - org_admin
+    - bidder_a
+    - bidder_b
+  - name: run_time
+    data_type: timestamp
+    visible_to: *id003
+  - name: region
+    data_type: varchar
+    visible_to: *id003
+  - name: profiled_table
+    data_type: varchar
+    visible_to: *id003
+  - name: row_count
+    data_type: bigint
+    visible_to: *id003
+  - name: sampled
+    data_type: boolean
+    visible_to: *id003
+  - name: sample_method
+    data_type: varchar
+    visible_to: *id003
+  - name: target_fraction
+    data_type: double
+    visible_to: *id003
+  - name: sample_fraction
+    data_type: double
+    visible_to: *id003
+  - name: sample_attempts
+    data_type: varchar
+    visible_to: *id003
+  - name: profiled_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: previous_run_id
+    data_type: varchar
+    visible_to: *id003
+  - name: duplicate_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: duplicate_share
+    data_type: double
+    visible_to: *id003
+  - name: key_duplicates
+    data_type: bigint
+    visible_to: *id003
+  - name: freshness_seconds
+    data_type: double
+    visible_to: *id003
+  - name: window_runs
+    data_type: integer
+    visible_to: *id003
+  - name: dependence_method
+    data_type: varchar
+    visible_to: *id003
+  - name: dependence_fraction
+    data_type: double
+    visible_to: *id003
+  - name: dependence_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: network_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: dependence_attempts
+    data_type: varchar
+    visible_to: *id003
+  - name: duration_ms
+    data_type: bigint
+    visible_to: *id003
+  - name: status
+    data_type: varchar
+    visible_to: *id003
+  - name: error
+    data_type: varchar
+    visible_to: *id003
+- source_id: room-profiler
+  domain_id: dataroom
+  profile_of: orders
+  kind: runs
+  alias: order_profile_runs
+  description: 'Each profile run of the orders table: when, how many rows, the duplicates it found'
+  columns:
+  - name: run_id
+    data_type: varchar
+    visible_to: *id003
+  - name: run_time
+    data_type: timestamp
+    visible_to: *id003
+  - name: region
+    data_type: varchar
+    visible_to: *id003
+  - name: profiled_table
+    data_type: varchar
+    visible_to: *id003
+  - name: row_count
+    data_type: bigint
+    visible_to: *id003
+  - name: sampled
+    data_type: boolean
+    visible_to: *id003
+  - name: sample_method
+    data_type: varchar
+    visible_to: *id003
+  - name: target_fraction
+    data_type: double
+    visible_to: *id003
+  - name: sample_fraction
+    data_type: double
+    visible_to: *id003
+  - name: sample_attempts
+    data_type: varchar
+    visible_to: *id003
+  - name: profiled_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: previous_run_id
+    data_type: varchar
+    visible_to: *id003
+  - name: duplicate_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: duplicate_share
+    data_type: double
+    visible_to: *id003
+  - name: key_duplicates
+    data_type: bigint
+    visible_to: *id003
+  - name: freshness_seconds
+    data_type: double
+    visible_to: *id003
+  - name: window_runs
+    data_type: integer
+    visible_to: *id003
+  - name: dependence_method
+    data_type: varchar
+    visible_to: *id003
+  - name: dependence_fraction
+    data_type: double
+    visible_to: *id003
+  - name: dependence_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: network_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: dependence_attempts
+    data_type: varchar
+    visible_to: *id003
+  - name: duration_ms
+    data_type: bigint
+    visible_to: *id003
+  - name: status
+    data_type: varchar
+    visible_to: *id003
+  - name: error
+    data_type: varchar
+    visible_to: *id003
+- source_id: room-profiler
+  domain_id: dataroom
+  profile_of: orders
+  kind: columns
+  alias: order_profile
+  description: 'What each profile run found in each orders column: its nulls, distinct values, range and
+    moments'
+  columns:
+  - name: run_id
+    data_type: varchar
+    visible_to: *id003
+  - name: run_time
+    data_type: timestamp
+    visible_to: *id003
+  - name: column_name
+    data_type: varchar
+    visible_to: *id003
+  - name: physical_column
+    data_type: varchar
+    visible_to: *id003
+  - name: data_type
+    data_type: varchar
+    visible_to: *id003
+  - name: family
+    data_type: varchar
+    visible_to: *id003
+  - name: row_count
+    data_type: bigint
+    visible_to: *id003
+  - name: null_count
+    data_type: bigint
+    visible_to: *id003
+  - name: null_share
+    data_type: double
+    visible_to: *id003
+  - name: distinct_count
+    data_type: bigint
+    visible_to: *id003
+  - name: distinct_ratio
+    data_type: double
+    visible_to: *id003
+  - name: min_value
+    data_type: varchar
+    visible_to: *id003
+  - name: max_value
+    data_type: varchar
+    visible_to: *id003
+  - name: mean
+    data_type: double
+    visible_to: *id003
+  - name: stddev
+    data_type: double
+    visible_to: *id003
+  - name: variance
+    data_type: double
+    visible_to: *id003
+  - name: skewness
+    data_type: double
+    visible_to: *id003
+  - name: kurtosis
+    data_type: double
+    visible_to: *id003
+  - name: log_mean
+    data_type: double
+    visible_to: *id003
+  - name: log_variance
+    data_type: double
+    visible_to: *id003
+  - name: integer_only
+    data_type: boolean
+    visible_to: *id003
+  - name: zero_share
+    data_type: double
+    visible_to: *id003
+  - name: length_min
+    data_type: bigint
+    visible_to: *id003
+  - name: length_max
+    data_type: bigint
+    visible_to: *id003
+- source_id: room-profiler
+  domain_id: dataroom
+  profile_of: invoices
+  kind: runs
+  alias: invoice_profile_runs
+  description: 'Each profile run of the invoices table: when, how many rows, the duplicates it found'
+  columns:
+  - name: run_id
+    data_type: varchar
+    visible_to: *id003
+  - name: run_time
+    data_type: timestamp
+    visible_to: *id003
+  - name: region
+    data_type: varchar
+    visible_to: *id003
+  - name: profiled_table
+    data_type: varchar
+    visible_to: *id003
+  - name: row_count
+    data_type: bigint
+    visible_to: *id003
+  - name: sampled
+    data_type: boolean
+    visible_to: *id003
+  - name: sample_method
+    data_type: varchar
+    visible_to: *id003
+  - name: target_fraction
+    data_type: double
+    visible_to: *id003
+  - name: sample_fraction
+    data_type: double
+    visible_to: *id003
+  - name: sample_attempts
+    data_type: varchar
+    visible_to: *id003
+  - name: profiled_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: previous_run_id
+    data_type: varchar
+    visible_to: *id003
+  - name: duplicate_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: duplicate_share
+    data_type: double
+    visible_to: *id003
+  - name: key_duplicates
+    data_type: bigint
+    visible_to: *id003
+  - name: freshness_seconds
+    data_type: double
+    visible_to: *id003
+  - name: window_runs
+    data_type: integer
+    visible_to: *id003
+  - name: dependence_method
+    data_type: varchar
+    visible_to: *id003
+  - name: dependence_fraction
+    data_type: double
+    visible_to: *id003
+  - name: dependence_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: network_rows
+    data_type: bigint
+    visible_to: *id003
+  - name: dependence_attempts
+    data_type: varchar
+    visible_to: *id003
+  - name: duration_ms
+    data_type: bigint
+    visible_to: *id003
+  - name: status
+    data_type: varchar
+    visible_to: *id003
+  - name: error
+    data_type: varchar
+    visible_to: *id003
+- source_id: room-profiler
+  domain_id: dataroom
+  profile_of: invoices
+  kind: columns
+  alias: invoice_profile
+  description: 'What each profile run found in each invoices column: its nulls, distinct values, range
+    and moments'
+  columns:
+  - name: run_id
+    data_type: varchar
+    visible_to: *id003
+  - name: run_time
+    data_type: timestamp
+    visible_to: *id003
+  - name: column_name
+    data_type: varchar
+    visible_to: *id003
+  - name: physical_column
+    data_type: varchar
+    visible_to: *id003
+  - name: data_type
+    data_type: varchar
+    visible_to: *id003
+  - name: family
+    data_type: varchar
+    visible_to: *id003
+  - name: row_count
+    data_type: bigint
+    visible_to: *id003
+  - name: null_count
+    data_type: bigint
+    visible_to: *id003
+  - name: null_share
+    data_type: double
+    visible_to: *id003
+  - name: distinct_count
+    data_type: bigint
+    visible_to: *id003
+  - name: distinct_ratio
+    data_type: double
+    visible_to: *id003
+  - name: min_value
+    data_type: varchar
+    visible_to: *id003
+  - name: max_value
+    data_type: varchar
+    visible_to: *id003
+  - name: mean
+    data_type: double
+    visible_to: *id003
+  - name: stddev
+    data_type: double
+    visible_to: *id003
+  - name: variance
+    data_type: double
+    visible_to: *id003
+  - name: skewness
+    data_type: double
+    visible_to: *id003
+  - name: kurtosis
+    data_type: double
+    visible_to: *id003
+  - name: log_mean
+    data_type: double
+    visible_to: *id003
+  - name: log_variance
+    data_type: double
+    visible_to: *id003
+  - name: integer_only
+    data_type: boolean
+    visible_to: *id003
+  - name: zero_share
+    data_type: double
+    visible_to: *id003
+  - name: length_min
+    data_type: bigint
+    visible_to: *id003
+  - name: length_max
+    data_type: bigint
+    visible_to: *id003
+views:
+- id: customer_counts
+  domain_id: dataroom
+  enable_aggregates: true
+  enable_group_by: true
+  description: How many customers each segment and region has, and how many of them ordered in the last
+    twelve months
+  sql: SELECT c.segment, c.region, COUNT(*) AS customers, COUNT(*) FILTER (WHERE c.id IN (SELECT o.customer_id
+    FROM "dataroom"."orders" AS o WHERE o.ordered_at > DATE '2025-09-30')) AS active_customers FROM "dataroom"."customers"
+    AS c GROUP BY c.segment, c.region
+  columns:
+  - name: segment
+    data_type: varchar
+    description: The customers' segment
+    visible_to: *id003
+  - name: region
+    data_type: varchar
+    description: The customers' region
+    visible_to: *id003
+  - name: customers
+    data_type: bigint
+    description: Customers in the segment and region
+    visible_to: *id003
+  - name: active_customers
+    data_type: bigint
+    description: Of them, those who ordered in the twelve months to 2026-09-30
+    visible_to: *id003
+- id: cohorts
+  domain_id: dataroom
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'Each quarterly cohort of new customers: how many of them still ordered in each later quarter,
+    and what they spent'
+  sql: SELECT CAST(EXTRACT(YEAR FROM c.first_order_date) AS INTEGER) * 10 + CAST(EXTRACT(QUARTER FROM
+    c.first_order_date) AS INTEGER) AS cohort, (CAST(EXTRACT(YEAR FROM o.ordered_at) AS INTEGER) * 4 +
+    CAST(EXTRACT(QUARTER FROM o.ordered_at) AS INTEGER)) - (CAST(EXTRACT(YEAR FROM c.first_order_date)
+    AS INTEGER) * 4 + CAST(EXTRACT(QUARTER FROM c.first_order_date) AS INTEGER)) AS quarters_since, COUNT(DISTINCT
+    c.id) AS active_customers, SUM(o.amount) AS revenue FROM "dataroom"."customers" AS c JOIN "dataroom"."orders"
+    AS o ON o.customer_id = c.id GROUP BY 1, 2
+  columns:
+  - name: cohort
+    data_type: integer
+    description: The quarter of the customers' first order, as year and quarter (20231 is 2023 Q1)
+    visible_to: *id003
+  - name: quarters_since
+    data_type: integer
+    description: Quarters after the first order
+    visible_to: *id003
+  - name: active_customers
+    data_type: bigint
+    description: Customers of the cohort who ordered in that quarter
+    visible_to: *id003
+  - name: revenue
+    data_type: decimal
+    description: What they spent in that quarter, in USD
+    visible_to: *id003
+- id: revenue_by_segment
+  domain_id: dataroom
+  enable_aggregates: true
+  enable_group_by: true
+  description: Revenue, orders and the average order of each segment, by year
+  sql: SELECT CAST(EXTRACT(YEAR FROM o.ordered_at) AS INTEGER) AS year, c.segment, COUNT(*) AS orders,
+    SUM(o.amount) AS revenue, ROUND(AVG(o.amount), 2) AS average_order FROM "dataroom"."orders" AS o JOIN
+    "dataroom"."customers" AS c ON c.id = o.customer_id GROUP BY 1, 2
+  columns:
+  - name: year
+    data_type: integer
+    description: The year the orders were placed
+    visible_to: *id003
+  - name: segment
+    data_type: varchar
+    description: The customers' segment
+    visible_to: *id003
+  - name: orders
+    data_type: bigint
+    description: Orders placed
+    visible_to: *id003
+  - name: revenue
+    data_type: decimal
+    description: Their total in USD
+    visible_to: *id003
+  - name: average_order
+    data_type: decimal
+    description: The average order in USD
+    visible_to: *id003
+- id: pipeline
+  domain_id: dataroom
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'The sales pipeline by industry and stage: how many deals, their value, and their value
+    weighted by the chance each closes'
+  sql: SELECT a."Industry" AS industry, o."StageName" AS stage, COUNT(*) AS deals, SUM(o."Amount") AS
+    amount, SUM(o."Amount" * o."Probability" / 100.0) AS weighted_amount FROM "dataroom"."opportunities"
+    AS o JOIN "dataroom"."accounts" AS a ON a."Id" = o."AccountId" GROUP BY 1, 2
+  columns:
+  - name: industry
+    data_type: varchar
+    description: The accounts' industry
+    visible_to: &id004
+    - org_admin
+    - bidder_a
+    - bidder_b
+  - name: stage
+    data_type: varchar
+    description: Where the deals stand
+    visible_to: *id004
+  - name: deals
+    data_type: bigint
+    description: Deals at that stage
+    visible_to: *id004
+  - name: amount
+    data_type: double
+    description: Their value in USD
+    visible_to: *id004
+  - name: weighted_amount
+    data_type: double
+    description: Their value weighted by the chance each closes, in USD
+    visible_to: *id004
+- id: data_quality
+  domain_id: dataroom
+  enable_aggregates: true
+  enable_group_by: true
+  description: 'A score for each check of the seller''s records: the share of rows that pass it'
+  sql: SELECT 'customers' AS table_name, 'has an email' AS data_check, COUNT(*) AS total_rows, COUNT(*)
+    FILTER (WHERE email IS NULL) AS failing_rows FROM "dataroom"."customers" UNION ALL SELECT 'customers',
+    'phone has ten digits', COUNT(*), COUNT(*) FILTER (WHERE LENGTH(REGEXP_REPLACE(phone, '[^0-9X]', '',
+    'g')) <> 10) FROM "dataroom"."customers" UNION ALL SELECT 'invoices', 'paid', COUNT(*), COUNT(*) FILTER
+    (WHERE paid_at IS NULL) FROM "dataroom"."invoices"
+  columns:
+  - name: table_name
+    data_type: varchar
+    description: The table checked
+    visible_to: *id003
+  - name: data_check
+    data_type: varchar
+    description: What each row is checked for
+    visible_to: *id003
+  - name: total_rows
+    data_type: bigint
+    description: Rows checked
+    visible_to: *id003
+  - name: failing_rows
+    data_type: bigint
+    description: Rows that fail the check
+    visible_to: *id003
+- id: customer_sample
+  domain_id: dataroom
+  description: 'One customer in fifty, as a bidder reads them: no name, the email and phone masked'
+  sql: SELECT c.id, c.email, c.phone, c.segment, c.region, c.first_order_date FROM "dataroom"."customers"
+    AS c WHERE c.id % 50 = 0
+  columns:
+  - name: id
+    data_type: integer
+    description: The customer's number
+    visible_to: *id003
+  - name: email
+    data_type: varchar
+    description: The customer's email address, its name part masked for a bidder
+    visible_to: *id003
+  - name: phone
+    data_type: varchar
+    description: The customer's phone number, its digits masked for a bidder
+    visible_to: *id003
+  - name: segment
+    data_type: varchar
+    description: The customer's segment
+    visible_to: *id003
+  - name: region
+    data_type: varchar
+    description: The customer's region
+    visible_to: *id003
+  - name: first_order_date
+    data_type: date
+    description: The day of the customer's first order
+    visible_to: *id003
+relationships:
+- id: order-to-customer
+  alias: PLACED_BY
+  cardinality: many-to-one
+  source_table_id: orders
+  source_column: customer_id
+  target_table_id: customers
+  target_column: id
+- id: invoice-to-order
+  alias: BILLS
+  cardinality: many-to-one
+  source_table_id: invoices
+  source_column: order_id
+  target_table_id: orders
+  target_column: id
+- id: opportunity-to-account
+  alias: WITH
+  cardinality: many-to-one
+  source_table_id: opportunities
+  source_column: AccountId
+  target_table_id: accounts
+  target_column: Id
+- id: account-to-customer
+  alias: IS_CUSTOMER
+  cardinality: many-to-one
+  source_table_id: accounts
+  source_column: CustomerNumber__c
+  target_table_id: customers
+  target_column: id

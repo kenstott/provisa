@@ -1,0 +1,82 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The dataroom demo's own tour (REQ-2006, REQ-2010): Northfield Supply, selling itself, gives each
+# bidder's clean team governed access to its own systems instead of exports. The scenario and the
+# sources; setting the room up (two local accounts for bidder A, bound to bidder_a until the deal
+# date, and what a signed-in analyst sees), as pictures of the seller's Users page; then, as
+# bidder A, the profiles, the aggregate views and the masked sample; customer names refused; the
+# audit of what each bidder read; the grant's end date and the one action that ends a bidder's
+# access; a recap. Step kinds and checks are as tour.yaml of the weblogs demo describes.
+# Where the tour's "Look around on my own" leaves the visitor: the SQL page.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: dataroomIntro
+  route: /sources
+  capability: source_registration
+  source: finance
+- key: dataroomCrm
+  source: crm
+- key: dataroomInvite
+  image: invite.png
+- key: dataroomGrant
+  image: grant.png
+- key: dataroomSignedIn
+  image: signed-in.png
+- key: dataroomBidder
+  route: /sql
+  capability: query_development
+  role: bidder_a
+- key: dataroomProfile
+  sql: >-
+    SELECT column_name, row_count, null_share, distinct_count, min_value, max_value
+    FROM "dataroom"."invoice_profile" ORDER BY column_name
+- key: dataroomCounts
+  sql: >-
+    SELECT segment, region, customers, active_customers FROM "dataroom"."view_customer_counts"
+    ORDER BY segment, region
+- key: dataroomAnswer
+  sql: >-
+    SELECT year, segment, orders, revenue, average_order FROM "dataroom"."view_revenue_by_segment"
+    ORDER BY year, segment
+- key: dataroomPipeline
+  sql: >-
+    SELECT industry, stage, deals, amount, weighted_amount FROM "dataroom"."view_pipeline"
+    ORDER BY industry, stage
+- key: dataroomQuality
+  sql: >-
+    SELECT table_name, data_check, total_rows, failing_rows FROM "dataroom"."view_data_quality"
+- key: dataroomSample
+  sql: >-
+    SELECT id, email, phone, segment, region, first_order_date FROM "dataroom"."view_customer_sample"
+    ORDER BY id
+- key: dataroomRefused
+  image: refused.png
+- key: dataroomBidderB
+  role: bidder_b
+- key: dataroomBidderBCohorts
+  sql: >-
+    SELECT cohort, quarters_since, active_customers, revenue FROM "dataroom"."view_cohorts"
+    WHERE cohort = 20231 ORDER BY quarters_since
+- key: dataroomSeller
+  role: all
+- key: dataroomAudit
+  sql: >-
+    SELECT role_id, table_names, status_code, row_count, logged_at FROM "ops"."query_audit_log"
+    WHERE role_id IN ('bidder_a', 'bidder_b') ORDER BY logged_at
+- key: dataroomExpiry
+  image: grants.png
+- key: dataroomRevoke
+  image: revoke.png
+- key: dataroomRecap
+  route: /tables
+  capability: table_registration
+  table: finance.customers

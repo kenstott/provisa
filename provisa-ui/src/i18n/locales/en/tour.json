@@ -1311,6 +1311,86 @@
       "churnRecap": {
         "title": "What you saw",
         "description": "Governed data straight into a data scientist's notebook: the analyst's mask applied on the way in, and a model trained without the data leaving the browser. In a desktop Jupyter the same code reads large pulls over Arrow Flight."
+      },
+      "dataroomIntro": {
+        "title": "A data room with no exports",
+        "description": "Northfield Supply is selling itself, and each prospective buyer's clean team needs to see the business before it bids. Instead of exporting extracts into a data room, the seller connects Provisa to its own systems and gives each bidder governed access that ends on the deal date. Nothing is copied out, and no customer identity leaves the room. This is the order and finance system, a Postgres database read in place: 2,400 customers, their orders since 2023 and the invoice of each."
+      },
+      "dataroomCrm": {
+        "title": "The CRM",
+        "description": "The sales team's Salesforce: each business customer's account and its deals. Its rows are landed once into the room and read from there, so the bidders' questions never reach Salesforce."
+      },
+      "dataroomInvite": {
+        "title": "Setting up the room: invite the analysts",
+        "description": "On the seller's Users page, bidder A's two analysts are added as local accounts, each bound to the <strong>bidder_a</strong> role. They sign in to the seller's Provisa over HTTPS. A self-hosted seller exposes only HTTPS, through its own TLS edge (an ingress or reverse proxy with a public certificate), while the stores, the engine and the database protocols stay private; on hosted Provisa the org's own address already serves it. Nothing in this demo opens a port."
+      },
+      "dataroomGrant": {
+        "title": "A grant that ends on the deal date",
+        "description": "Each analyst's grant of bidder_a carries an end date: the deal date. From that moment the role is no longer theirs, on every request however it arrives. An account has no end date of its own; the grant's end ends the access."
+      },
+      "dataroomSignedIn": {
+        "title": "What an analyst sees",
+        "description": "Signed in, an analyst of bidder A sees what bidder_a is granted: the aggregate views, the profiles, the masked sample and the seller's records without a single customer identity. No customer's name, and no business or deal name from the CRM, is there to read."
+      },
+      "dataroomBidder": {
+        "title": "Now as bidder A",
+        "description": "The next statements run as <strong>bidder_a</strong>, exactly as the analysts' do."
+      },
+      "dataroomProfile": {
+        "title": "The profile of the invoices",
+        "description": "Each column of the invoices table as the profiler found it: its rows, nulls, distinct values and range. A bidder learns how complete the records are without reading one of them. Here, some invoices have never been paid."
+      },
+      "dataroomCounts": {
+        "title": "Customer counts",
+        "description": "How many customers each segment and region has, and how many ordered in the last twelve months. A count, never a customer."
+      },
+      "dataroomAnswer": {
+        "title": "Revenue by segment",
+        "description": "Orders, revenue and the average order of each segment, by year, from the orders and the customers' segments."
+      },
+      "dataroomPipeline": {
+        "title": "The sales pipeline",
+        "description": "The CRM's deals by industry and stage, with their value and their value weighted by the chance each closes. The businesses' and the deals' names stay in the CRM."
+      },
+      "dataroomQuality": {
+        "title": "Data quality scores",
+        "description": "Each check of the seller's records and how many rows fail it: customers with no email, phone numbers that are not ten digits, invoices never paid. The flaws a buyer looks for, counted."
+      },
+      "dataroomSample": {
+        "title": "A masked sample",
+        "description": "One customer in fifty, as a bidder reads them: no name, the email's name part and the phone's digits masked. The shape of the data, never the person."
+      },
+      "dataroomRefused": {
+        "title": "Customer names are refused",
+        "description": "Bidder A asks for the customers' names. Provisa refuses: no customer name is granted to bidder_a, and neither are the CRM's business and deal names. Had the analyst named bidder B's role, which they do not hold, the request would be refused too, and recorded in the org's security trail as role probing."
+      },
+      "dataroomBidderB": {
+        "title": "Now as bidder B",
+        "description": "Bidder B's clean team holds its own role, <strong>bidder_b</strong>, granted the same room and ending on the same date. Neither bidder sees what the other asks."
+      },
+      "dataroomBidderBCohorts": {
+        "title": "Cohorts, as bidder B",
+        "description": "Customers who first ordered in the first quarter of 2023, and how many still ordered in each quarter after, with what they spent. Retention, without a single customer."
+      },
+      "dataroomSeller": {
+        "title": "Back to the seller",
+        "description": "The seller acts as every role it holds again, to see what the bidders did."
+      },
+      "dataroomAudit": {
+        "title": "What each bidder looked at",
+        "description": "Every statement is audited: who ran it, as which role, the tables it read, whether it was answered and how many rows it returned. Here are the statements you just ran as bidder A and bidder B. The seller knows exactly what left the room."
+      },
+      "dataroomExpiry": {
+        "title": "Access ends on the deal date",
+        "description": "The Users page lists each grant with its end date and its last use. After the deal date the grants are gone, removed by the schedule and recorded in the org's trail, and nothing more leaves the room."
+      },
+      "dataroomRevoke": {
+        "title": "Ending a bidder's access at once",
+        "description": "A bidder that drops out loses access in one action: remove its grant, or the role itself. The next request is refused. The audit of everything it read stays."
+      },
+      "dataroomRecap": {
+        "title": "What you saw",
+        "description": "A data room with no exports: the seller's own systems, read in place, shown to each bidder as aggregates, profiles, quality scores, masked samples and records without identities. No customer identity leaves the room. Each bidder holds a role of its own, granted until the deal date, and every statement is audited."
       }
     },
     "status": {
@@ -1407,6 +1487,10 @@
       "churn": {
         "title": "Predict customer churn",
         "summary": "Which customers are about to cancel? Their governed, masked features are read into pandas in the browser, and a scikit-learn model is trained on them in the notebook that ships with the demo."
+      },
+      "dataroom": {
+        "title": "Data room for a sale",
+        "summary": "A retailer selling itself gives each bidder's clean team governed, time-limited access to its own systems with no exports: aggregates, profiles and masked samples, and no customer identity leaves the room."
       }
     }
   }

@@ -1311,6 +1311,86 @@
       "churnRecap": {
         "title": "O que você viu",
         "description": "Dados governados direto no notebook de um cientista de dados: o mascaramento de analyst aplicado na leitura, e um modelo treinado sem que os dados saiam do navegador. Num Jupyter de desktop, o mesmo código lê grandes volumes por Arrow Flight."
+      },
+      "dataroomIntro": {
+        "title": "Uma data room sem exportações",
+        "description": "A Northfield Supply está à venda, e a clean team de cada comprador potencial precisa conhecer o negócio antes de apresentar uma proposta. Em vez de exportar extratos para uma data room, o vendedor liga o Provisa aos seus próprios sistemas e dá a cada proponente um acesso governado que termina na data da operação. Nada é copiado para fora, e nenhuma identidade de cliente sai da sala. Este é o sistema de pedidos e finanças, uma base de dados Postgres lida no local: 2.400 clientes, os seus pedidos desde 2023 e a fatura de cada um."
+      },
+      "dataroomCrm": {
+        "title": "O CRM",
+        "description": "O Salesforce da equipa comercial: a conta de cada cliente empresarial e os seus negócios. As suas linhas são carregadas uma vez na sala e lidas a partir daí, de modo que as perguntas dos proponentes nunca chegam ao Salesforce."
+      },
+      "dataroomInvite": {
+        "title": "Preparar a sala: convidar os analistas",
+        "description": "Na página Utilizadores do vendedor, os dois analistas do proponente A são adicionados como contas locais, cada uma associada à função <strong>bidder_a</strong>. Iniciam sessão no Provisa do vendedor por HTTPS. Um vendedor com alojamento próprio expõe apenas HTTPS, através do seu próprio edge TLS (um ingress ou reverse proxy com certificado público), enquanto os armazenamentos, o motor e os protocolos de base de dados permanecem privados; no Provisa alojado, o endereço próprio da organização já o serve. Nada nesta demonstração abre uma porta."
+      },
+      "dataroomGrant": {
+        "title": "Uma concessão que termina na data da operação",
+        "description": "A concessão de bidder_a a cada analista tem uma data de fim: a data da operação. A partir desse momento a função deixa de ser deles, em todos os pedidos, seja qual for a forma como chegam. Uma conta não tem data de fim própria; o fim da concessão termina o acesso."
+      },
+      "dataroomSignedIn": {
+        "title": "O que um analista vê",
+        "description": "Com a sessão iniciada, um analista do proponente A vê o que é concedido a bidder_a: as vistas agregadas, os perfis, a amostra mascarada e os registos do vendedor sem uma única identidade de cliente. Não há nome de cliente para ler, nem nome de empresa ou de negócio do CRM."
+      },
+      "dataroomBidder": {
+        "title": "Agora como proponente A",
+        "description": "As instruções seguintes são executadas como <strong>bidder_a</strong>, exatamente como as dos analistas."
+      },
+      "dataroomProfile": {
+        "title": "O perfil das faturas",
+        "description": "Cada coluna da tabela de faturas tal como o profiler a encontrou: linhas, nulos, valores distintos e intervalo. Um proponente fica a saber quão completos estão os registos sem ler nenhum. Aqui, algumas faturas nunca foram pagas."
+      },
+      "dataroomCounts": {
+        "title": "Contagens de clientes",
+        "description": "Quantos clientes tem cada segmento e região, e quantos fizeram pedidos nos últimos doze meses. Uma contagem, nunca um cliente."
+      },
+      "dataroomAnswer": {
+        "title": "Receita por segmento",
+        "description": "Pedidos, receita e pedido médio de cada segmento, por ano, a partir dos pedidos e dos segmentos dos clientes."
+      },
+      "dataroomPipeline": {
+        "title": "O pipeline de vendas",
+        "description": "Os negócios do CRM por setor e fase, com o seu valor e o valor ponderado pela probabilidade de fecho de cada um. Os nomes das empresas e dos negócios ficam no CRM."
+      },
+      "dataroomQuality": {
+        "title": "Pontuações de qualidade dos dados",
+        "description": "Cada verificação dos registos do vendedor e quantas linhas a falham: clientes sem e-mail, números de telefone que não têm dez dígitos, faturas nunca pagas. Os defeitos que um comprador procura, contados."
+      },
+      "dataroomSample": {
+        "title": "Uma amostra mascarada",
+        "description": "Um cliente em cada cinquenta, tal como um proponente o lê: sem nome, com a parte do nome do e-mail e os dígitos do telefone mascarados. A forma dos dados, nunca a pessoa."
+      },
+      "dataroomRefused": {
+        "title": "Os nomes dos clientes são recusados",
+        "description": "O proponente A pede os nomes dos clientes. O Provisa recusa: nenhum nome de cliente é concedido a bidder_a, nem os nomes de empresas e de negócios do CRM. Se o analista tivesse indicado a função do proponente B, que não possui, o pedido também seria recusado e registado na trilha de segurança da organização como sondagem de funções."
+      },
+      "dataroomBidderB": {
+        "title": "Agora como proponente B",
+        "description": "A clean team do proponente B tem a sua própria função, <strong>bidder_b</strong>, concedida sobre a mesma sala e a terminar na mesma data. Nenhum proponente vê o que o outro pergunta."
+      },
+      "dataroomBidderBCohorts": {
+        "title": "Coortes, como proponente B",
+        "description": "Clientes que fizeram o primeiro pedido no primeiro trimestre de 2023, e quantos ainda fizeram pedidos em cada trimestre seguinte, com o que gastaram. Retenção, sem um único cliente."
+      },
+      "dataroomSeller": {
+        "title": "De volta ao vendedor",
+        "description": "O vendedor volta a agir como cada função que possui, para ver o que os proponentes fizeram."
+      },
+      "dataroomAudit": {
+        "title": "O que cada proponente consultou",
+        "description": "Cada instrução é auditada: quem a executou, com que função, as tabelas lidas, se foi respondida e quantas linhas devolveu. Aqui estão as instruções que acabou de executar como proponente A e proponente B. O vendedor sabe exatamente o que saiu da sala."
+      },
+      "dataroomExpiry": {
+        "title": "O acesso termina na data da operação",
+        "description": "A página Utilizadores lista cada concessão com a data de fim e a última utilização. Depois da data da operação, as concessões desaparecem, removidas pelo agendamento e registadas na trilha da organização, e nada mais sai da sala."
+      },
+      "dataroomRevoke": {
+        "title": "Terminar de imediato o acesso de um proponente",
+        "description": "Um proponente que desiste perde o acesso numa só ação: remover a sua concessão ou a própria função. O pedido seguinte é recusado. A auditoria de tudo o que leu permanece."
+      },
+      "dataroomRecap": {
+        "title": "O que viu",
+        "description": "Uma data room sem exportações: os próprios sistemas do vendedor, lidos no local e mostrados a cada proponente como agregados, perfis, pontuações de qualidade, amostras mascaradas e registos sem identidades. Nenhuma identidade de cliente sai da sala. Cada proponente tem uma função própria, concedida até à data da operação, e cada instrução é auditada."
       }
     },
     "status": {
@@ -1407,6 +1487,10 @@
       "churn": {
         "title": "Prever o cancelamento de clientes",
         "summary": "Quais clientes estão prestes a cancelar? As características governadas e mascaradas deles são lidas no pandas dentro do navegador, e um modelo scikit-learn é treinado com elas no notebook que vem com a demo."
+      },
+      "dataroom": {
+        "title": "Data room para uma venda",
+        "summary": "Um retalhista que se vende dá à clean team de cada proponente um acesso governado e limitado no tempo aos seus próprios sistemas, sem exportações: agregados, perfis e amostras mascaradas, e nenhuma identidade de cliente sai da sala."
       }
     }
   }

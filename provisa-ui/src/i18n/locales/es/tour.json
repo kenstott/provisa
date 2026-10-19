@@ -1311,6 +1311,86 @@
       "churnRecap": {
         "title": "Lo que ha visto",
         "description": "Datos gobernados directamente en el notebook de un científico de datos: el enmascaramiento de analyst aplicado al leerlos, y un modelo entrenado sin que los datos salgan del navegador. En un Jupyter de escritorio, el mismo código lee grandes volúmenes por Arrow Flight."
+      },
+      "dataroomIntro": {
+        "title": "Una sala de datos sin exportaciones",
+        "description": "Northfield Supply se vende, y el clean team de cada comprador potencial necesita conocer el negocio antes de pujar. En lugar de exportar extractos a una sala de datos, el vendedor conecta Provisa a sus propios sistemas y da a cada postor un acceso gobernado que termina en la fecha de la operación. No se copia nada hacia fuera, y ninguna identidad de cliente sale de la sala. Este es el sistema de pedidos y finanzas, una base de datos Postgres leída en origen: 2.400 clientes, sus pedidos desde 2023 y la factura de cada uno."
+      },
+      "dataroomCrm": {
+        "title": "El CRM",
+        "description": "El Salesforce del equipo comercial: la cuenta de cada cliente empresarial y sus oportunidades. Sus filas se cargan una vez en la sala y se leen desde allí, de modo que las preguntas de los postores nunca llegan a Salesforce."
+      },
+      "dataroomInvite": {
+        "title": "Preparar la sala: invitar a los analistas",
+        "description": "En la página Usuarios del vendedor, los dos analistas del postor A se añaden como cuentas locales, cada una vinculada al rol <strong>bidder_a</strong>. Inician sesión en el Provisa del vendedor mediante HTTPS. Un vendedor autoalojado expone solo HTTPS, a través de su propio borde TLS (un ingress o proxy inverso con certificado público), mientras que los almacenes, el motor y los protocolos de base de datos siguen siendo privados; en Provisa alojado, la dirección propia de la organización ya lo sirve. Nada en esta demo abre un puerto."
+      },
+      "dataroomGrant": {
+        "title": "Una concesión que termina en la fecha de la operación",
+        "description": "La concesión de bidder_a a cada analista lleva una fecha de fin: la fecha de la operación. Desde ese momento el rol deja de ser suyo, en cada solicitud, llegue como llegue. Una cuenta no tiene fecha de fin propia; el fin de la concesión pone fin al acceso."
+      },
+      "dataroomSignedIn": {
+        "title": "Lo que ve un analista",
+        "description": "Con la sesión iniciada, un analista del postor A ve lo que se concede a bidder_a: las vistas agregadas, los perfiles, la muestra enmascarada y los registros del vendedor sin una sola identidad de cliente. No hay ningún nombre de cliente, ni nombre de empresa o de operación del CRM, que leer."
+      },
+      "dataroomBidder": {
+        "title": "Ahora como postor A",
+        "description": "Las siguientes sentencias se ejecutan como <strong>bidder_a</strong>, exactamente igual que las de los analistas."
+      },
+      "dataroomProfile": {
+        "title": "El perfil de las facturas",
+        "description": "Cada columna de la tabla de facturas tal como la encontró el perfilador: filas, nulos, valores distintos y rango. Un postor averigua lo completos que están los registros sin leer ninguno. Aquí, algunas facturas nunca se han pagado."
+      },
+      "dataroomCounts": {
+        "title": "Recuentos de clientes",
+        "description": "Cuántos clientes tiene cada segmento y región, y cuántos hicieron pedidos en los últimos doce meses. Un recuento, nunca un cliente."
+      },
+      "dataroomAnswer": {
+        "title": "Ingresos por segmento",
+        "description": "Pedidos, ingresos y pedido medio de cada segmento, por año, a partir de los pedidos y de los segmentos de los clientes."
+      },
+      "dataroomPipeline": {
+        "title": "El pipeline de ventas",
+        "description": "Las operaciones del CRM por sector y fase, con su valor y su valor ponderado por la probabilidad de cierre de cada una. Los nombres de las empresas y de las operaciones permanecen en el CRM."
+      },
+      "dataroomQuality": {
+        "title": "Puntuaciones de calidad de datos",
+        "description": "Cada comprobación de los registros del vendedor y cuántas filas la incumplen: clientes sin correo electrónico, teléfonos que no tienen diez dígitos, facturas nunca pagadas. Los defectos que busca un comprador, contados."
+      },
+      "dataroomSample": {
+        "title": "Una muestra enmascarada",
+        "description": "Un cliente de cada cincuenta, tal como lo lee un postor: sin nombre, con la parte del nombre del correo y los dígitos del teléfono enmascarados. La forma de los datos, nunca la persona."
+      },
+      "dataroomRefused": {
+        "title": "Los nombres de clientes se rechazan",
+        "description": "El postor A solicita los nombres de los clientes. Provisa lo rechaza: ningún nombre de cliente se concede a bidder_a, ni tampoco los nombres de empresas y operaciones del CRM. Si el analista hubiera nombrado el rol del postor B, que no tiene, la solicitud también se habría rechazado y quedaría registrada en el historial de seguridad de la organización como sondeo de roles."
+      },
+      "dataroomBidderB": {
+        "title": "Ahora como postor B",
+        "description": "El clean team del postor B tiene su propio rol, <strong>bidder_b</strong>, concedido sobre la misma sala y con la misma fecha de fin. Ningún postor ve lo que pregunta el otro."
+      },
+      "dataroomBidderBCohorts": {
+        "title": "Cohortes, como postor B",
+        "description": "Clientes que hicieron su primer pedido en el primer trimestre de 2023, y cuántos seguían pidiendo en cada trimestre posterior, con lo que gastaron. Retención, sin un solo cliente."
+      },
+      "dataroomSeller": {
+        "title": "De vuelta al vendedor",
+        "description": "El vendedor vuelve a actuar como cada rol que posee, para ver lo que hicieron los postores."
+      },
+      "dataroomAudit": {
+        "title": "Lo que consultó cada postor",
+        "description": "Cada sentencia se audita: quién la ejecutó, con qué rol, las tablas que leyó, si se respondió y cuántas filas devolvió. Aquí están las sentencias que acaba de ejecutar como postor A y postor B. El vendedor sabe exactamente qué salió de la sala."
+      },
+      "dataroomExpiry": {
+        "title": "El acceso termina en la fecha de la operación",
+        "description": "La página Usuarios lista cada concesión con su fecha de fin y su último uso. Pasada la fecha de la operación, las concesiones desaparecen, retiradas por la programación y registradas en el historial de la organización, y nada más sale de la sala."
+      },
+      "dataroomRevoke": {
+        "title": "Poner fin al acceso de un postor de inmediato",
+        "description": "Un postor que se retira pierde el acceso con una sola acción: eliminar su concesión o el propio rol. La siguiente solicitud se rechaza. La auditoría de todo lo que leyó permanece."
+      },
+      "dataroomRecap": {
+        "title": "Lo que ha visto",
+        "description": "Una sala de datos sin exportaciones: los propios sistemas del vendedor, leídos en origen y mostrados a cada postor como agregados, perfiles, puntuaciones de calidad, muestras enmascaradas y registros sin identidades. Ninguna identidad de cliente sale de la sala. Cada postor tiene un rol propio, concedido hasta la fecha de la operación, y cada sentencia queda auditada."
       }
     },
     "status": {
@@ -1407,6 +1487,10 @@
       "churn": {
         "title": "Predecir la baja de clientes",
         "summary": "¿Qué clientes están a punto de darse de baja? Sus características gobernadas y enmascaradas se leen en pandas en el navegador, y se entrena un modelo de scikit-learn con ellas en el cuaderno que incluye la demo."
+      },
+      "dataroom": {
+        "title": "Sala de datos para una venta",
+        "summary": "Un minorista que se vende da al clean team de cada postor acceso gobernado y limitado en el tiempo a sus propios sistemas, sin exportaciones: agregados, perfiles y muestras enmascaradas, y ninguna identidad de cliente sale de la sala."
       }
     }
   }

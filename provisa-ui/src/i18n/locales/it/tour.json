@@ -1311,6 +1311,86 @@
       "churnRecap": {
         "title": "Cosa hai visto",
         "description": "Dati governati direttamente nel notebook di un data scientist: il mascheramento di analyst applicato in lettura, e un modello addestrato senza che i dati lascino il browser. In un Jupyter desktop lo stesso codice legge grandi volumi tramite Arrow Flight."
+      },
+      "dataroomIntro": {
+        "title": "Una data room senza esportazioni",
+        "description": "Northfield Supply è in vendita, e il clean team di ogni potenziale acquirente deve conoscere l'azienda prima di fare un'offerta. Invece di esportare estratti in una data room, il venditore collega Provisa ai propri sistemi e dà a ogni offerente un accesso governato che termina alla data dell'operazione. Nulla viene copiato all'esterno, e nessuna identità di cliente lascia la sala. Questo è il sistema di ordini e finanza, un database Postgres letto sul posto: 2.400 clienti, i loro ordini dal 2023 e la fattura di ciascuno."
+      },
+      "dataroomCrm": {
+        "title": "Il CRM",
+        "description": "Il Salesforce del team vendite: l'account di ogni cliente aziendale e le sue trattative. Le sue righe vengono caricate una volta nella sala e lette da lì, così le domande degli offerenti non raggiungono mai Salesforce."
+      },
+      "dataroomInvite": {
+        "title": "Preparare la sala: invitare gli analisti",
+        "description": "Nella pagina Utenti del venditore, i due analisti dell'offerente A vengono aggiunti come account locali, ciascuno associato al ruolo <strong>bidder_a</strong>. Accedono al Provisa del venditore tramite HTTPS. Un venditore self-hosted espone solo HTTPS, attraverso il proprio edge TLS (un ingress o reverse proxy con certificato pubblico), mentre gli archivi, il motore e i protocolli del database restano privati; su Provisa ospitato, l'indirizzo dell'organizzazione lo serve già. Nulla in questa demo apre una porta."
+      },
+      "dataroomGrant": {
+        "title": "Un'autorizzazione che termina alla data dell'operazione",
+        "description": "L'assegnazione di bidder_a a ciascun analista ha una data di fine: la data dell'operazione. Da quel momento il ruolo non è più loro, per ogni richiesta, comunque arrivi. Un account non ha una data di fine propria; la fine dell'assegnazione termina l'accesso."
+      },
+      "dataroomSignedIn": {
+        "title": "Cosa vede un analista",
+        "description": "Dopo l'accesso, un analista dell'offerente A vede ciò che è concesso a bidder_a: le viste aggregate, i profili, il campione mascherato e i record del venditore senza una sola identità di cliente. Non c'è da leggere alcun nome di cliente, né alcun nome di azienda o di trattativa del CRM."
+      },
+      "dataroomBidder": {
+        "title": "Ora come offerente A",
+        "description": "Le istruzioni successive vengono eseguite come <strong>bidder_a</strong>, esattamente come quelle degli analisti."
+      },
+      "dataroomProfile": {
+        "title": "Il profilo delle fatture",
+        "description": "Ogni colonna della tabella delle fatture così come l'ha trovata il profiler: righe, valori nulli, valori distinti e intervallo. Un offerente scopre quanto sono completi i record senza leggerne uno. Qui, alcune fatture non sono mai state pagate."
+      },
+      "dataroomCounts": {
+        "title": "Conteggi dei clienti",
+        "description": "Quanti clienti ha ogni segmento e regione, e quanti hanno ordinato negli ultimi dodici mesi. Un conteggio, mai un cliente."
+      },
+      "dataroomAnswer": {
+        "title": "Ricavi per segmento",
+        "description": "Ordini, ricavi e ordine medio di ciascun segmento, per anno, a partire dagli ordini e dai segmenti dei clienti."
+      },
+      "dataroomPipeline": {
+        "title": "La pipeline di vendita",
+        "description": "Le trattative del CRM per settore e fase, con il loro valore e il valore ponderato per la probabilità di chiusura di ciascuna. I nomi delle aziende e delle trattative restano nel CRM."
+      },
+      "dataroomQuality": {
+        "title": "Punteggi di qualità dei dati",
+        "description": "Ogni controllo sui dati del venditore e quante righe lo falliscono: clienti senza e-mail, numeri di telefono che non hanno dieci cifre, fatture mai pagate. I difetti che cerca un acquirente, contati."
+      },
+      "dataroomSample": {
+        "title": "Un campione mascherato",
+        "description": "Un cliente su cinquanta, come lo legge un offerente: senza nome, con la parte del nome dell'e-mail e le cifre del telefono mascherate. La forma dei dati, mai la persona."
+      },
+      "dataroomRefused": {
+        "title": "I nomi dei clienti vengono rifiutati",
+        "description": "L'offerente A richiede i nomi dei clienti. Provisa rifiuta: nessun nome di cliente è concesso a bidder_a, né i nomi di aziende e trattative del CRM. Se l'analista avesse indicato il ruolo dell'offerente B, che non possiede, anche la richiesta sarebbe stata rifiutata e registrata nel registro di sicurezza dell'organizzazione come sondaggio dei ruoli."
+      },
+      "dataroomBidderB": {
+        "title": "Ora come offerente B",
+        "description": "Il clean team dell'offerente B ha il proprio ruolo, <strong>bidder_b</strong>, concesso sulla stessa sala e con la stessa data di fine. Nessun offerente vede ciò che chiede l'altro."
+      },
+      "dataroomBidderBCohorts": {
+        "title": "Coorti, come offerente B",
+        "description": "I clienti che hanno ordinato per la prima volta nel primo trimestre 2023, e quanti hanno ordinato ancora in ogni trimestre successivo, con quanto hanno speso. Retention, senza un solo cliente."
+      },
+      "dataroomSeller": {
+        "title": "Di nuovo il venditore",
+        "description": "Il venditore agisce di nuovo come ciascun ruolo che possiede, per vedere cosa hanno fatto gli offerenti."
+      },
+      "dataroomAudit": {
+        "title": "Cosa ha consultato ogni offerente",
+        "description": "Ogni istruzione è sottoposta ad audit: chi l'ha eseguita, con quale ruolo, le tabelle lette, se ha avuto risposta e quante righe ha restituito. Ecco le istruzioni appena eseguite come offerente A e offerente B. Il venditore sa esattamente cosa è uscito dalla sala."
+      },
+      "dataroomExpiry": {
+        "title": "L'accesso termina alla data dell'operazione",
+        "description": "La pagina Utenti elenca ogni assegnazione con la data di fine e l'ultimo utilizzo. Dopo la data dell'operazione le assegnazioni non ci sono più, rimosse dalla pianificazione e registrate nel registro dell'organizzazione, e nulla esce più dalla sala."
+      },
+      "dataroomRevoke": {
+        "title": "Terminare subito l'accesso di un offerente",
+        "description": "Un offerente che si ritira perde l'accesso con una sola azione: rimuovere la sua assegnazione, o il ruolo stesso. La richiesta successiva viene rifiutata. L'audit di tutto ciò che ha letto resta."
+      },
+      "dataroomRecap": {
+        "title": "Cosa hai visto",
+        "description": "Una data room senza esportazioni: i sistemi del venditore, letti sul posto e mostrati a ogni offerente come aggregati, profili, punteggi di qualità, campioni mascherati e record senza identità. Nessuna identità di cliente lascia la sala. Ogni offerente ha un ruolo proprio, concesso fino alla data dell'operazione, e ogni istruzione è sottoposta ad audit."
       }
     },
     "status": {
@@ -1407,6 +1487,10 @@
       "churn": {
         "title": "Prevedere l'abbandono dei clienti",
         "summary": "Quali clienti stanno per disdire? Le loro caratteristiche governate e mascherate vengono lette in pandas nel browser, e su di esse si addestra un modello scikit-learn nel notebook fornito con la demo."
+      },
+      "dataroom": {
+        "title": "Data room per una vendita",
+        "summary": "Un rivenditore che si vende dà al clean team di ogni offerente un accesso governato e a tempo ai propri sistemi, senza esportazioni: aggregati, profili e campioni mascherati, e nessuna identità di cliente lascia la sala."
       }
     }
   }

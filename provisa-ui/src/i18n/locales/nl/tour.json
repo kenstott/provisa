@@ -1311,6 +1311,86 @@
       "churnRecap": {
         "title": "Wat je hebt gezien",
         "description": "Gegovernede data rechtstreeks in het notebook van een data scientist: de maskering van analyst toegepast bij het lezen, en een model getraind zonder dat de data de browser verlaat. In een desktop-Jupyter leest dezelfde code grote hoeveelheden via Arrow Flight."
+      },
+      "dataroomIntro": {
+        "title": "Een datakamer zonder exports",
+        "description": "Northfield Supply wordt verkocht, en het clean team van elke gegadigde koper moet het bedrijf leren kennen voordat het biedt. In plaats van extracten naar een datakamer te exporteren, koppelt de verkoper Provisa aan zijn eigen systemen en geeft elke bieder beheerde toegang die eindigt op de transactiedatum. Er wordt niets naar buiten gekopieerd, en geen enkele klantidentiteit verlaat de kamer. Dit is het order- en financiële systeem, een Postgres-database die ter plekke wordt gelezen: 2.400 klanten, hun orders sinds 2023 en de factuur van elk."
+      },
+      "dataroomCrm": {
+        "title": "Het CRM",
+        "description": "De Salesforce van het verkoopteam: het account van elke zakelijke klant en de bijbehorende deals. De rijen worden eenmaal in de kamer geladen en vandaar gelezen, zodat de vragen van de bieders Salesforce nooit bereiken."
+      },
+      "dataroomInvite": {
+        "title": "De kamer inrichten: de analisten uitnodigen",
+        "description": "Op de pagina Gebruikers van de verkoper worden de twee analisten van bieder A toegevoegd als lokale accounts, elk gekoppeld aan de rol <strong>bidder_a</strong>. Ze melden zich via HTTPS aan bij de Provisa van de verkoper. Een zelf gehoste verkoper stelt alleen HTTPS bloot, via zijn eigen TLS-edge (een ingress of reverse proxy met een openbaar certificaat), terwijl de opslag, de engine en de databaseprotocollen privé blijven; bij gehoste Provisa bedient het eigen adres van de organisatie dit al. Niets in deze demo opent een poort."
+      },
+      "dataroomGrant": {
+        "title": "Een toekenning die eindigt op de transactiedatum",
+        "description": "De toekenning van bidder_a aan elke analist heeft een einddatum: de transactiedatum. Vanaf dat moment is de rol niet meer van hen, bij elk verzoek, hoe het ook binnenkomt. Een account heeft geen eigen einddatum; het einde van de toekenning beëindigt de toegang."
+      },
+      "dataroomSignedIn": {
+        "title": "Wat een analist ziet",
+        "description": "Eenmaal aangemeld ziet een analist van bieder A wat aan bidder_a is toegekend: de geaggregeerde views, de profielen, de gemaskeerde steekproef en de records van de verkoper zonder één klantidentiteit. Er is geen klantnaam te lezen, en ook geen bedrijfs- of dealnaam uit het CRM."
+      },
+      "dataroomBidder": {
+        "title": "Nu als bieder A",
+        "description": "De volgende statements draaien als <strong>bidder_a</strong>, precies zoals die van de analisten."
+      },
+      "dataroomProfile": {
+        "title": "Het profiel van de facturen",
+        "description": "Elke kolom van de factuurtabel zoals de profiler die aantrof: rijen, nulls, unieke waarden en bereik. Een bieder leert hoe volledig de records zijn zonder er één te lezen. Hier zijn sommige facturen nooit betaald."
+      },
+      "dataroomCounts": {
+        "title": "Klantaantallen",
+        "description": "Hoeveel klanten elk segment en elke regio heeft, en hoeveel er in de laatste twaalf maanden hebben besteld. Een aantal, nooit een klant."
+      },
+      "dataroomAnswer": {
+        "title": "Omzet per segment",
+        "description": "Orders, omzet en gemiddelde order van elk segment, per jaar, uit de orders en de segmenten van de klanten."
+      },
+      "dataroomPipeline": {
+        "title": "De verkooppijplijn",
+        "description": "De deals van het CRM per branche en fase, met hun waarde en hun waarde gewogen naar de kans dat elke deal sluit. De namen van de bedrijven en van de deals blijven in het CRM."
+      },
+      "dataroomQuality": {
+        "title": "Datakwaliteitsscores",
+        "description": "Elke controle op de gegevens van de verkoper en hoeveel rijen die niet halen: klanten zonder e-mail, telefoonnummers die geen tien cijfers hebben, nooit betaalde facturen. De gebreken waar een koper naar zoekt, geteld."
+      },
+      "dataroomSample": {
+        "title": "Een gemaskeerde steekproef",
+        "description": "Eén klant op vijftig, zoals een bieder hem leest: geen naam, het naamdeel van het e-mailadres en de cijfers van het telefoonnummer gemaskeerd. De vorm van de data, nooit de persoon."
+      },
+      "dataroomRefused": {
+        "title": "Klantnamen worden geweigerd",
+        "description": "Bieder A vraagt de namen van de klanten op. Provisa weigert dit: geen enkele klantnaam is aan bidder_a toegekend, en de bedrijfs- en dealnamen van het CRM evenmin. Had de analist de rol van bieder B genoemd, die hij niet heeft, dan was het verzoek ook geweigerd en vastgelegd in het beveiligingsspoor van de organisatie als roltesten."
+      },
+      "dataroomBidderB": {
+        "title": "Nu als bieder B",
+        "description": "Het clean team van bieder B heeft een eigen rol, <strong>bidder_b</strong>, toegekend voor dezelfde kamer en eindigend op dezelfde datum. Geen van beide bieders ziet wat de ander vraagt."
+      },
+      "dataroomBidderBCohorts": {
+        "title": "Cohorten, als bieder B",
+        "description": "Klanten die voor het eerst bestelden in het eerste kwartaal van 2023, en hoeveel er in elk volgend kwartaal nog bestelden, met wat ze uitgaven. Retentie, zonder één klant."
+      },
+      "dataroomSeller": {
+        "title": "Terug naar de verkoper",
+        "description": "De verkoper handelt weer als elke rol die hij heeft, om te zien wat de bieders hebben gedaan."
+      },
+      "dataroomAudit": {
+        "title": "Wat elke bieder heeft bekeken",
+        "description": "Elk statement wordt geaudit: wie het uitvoerde, met welke rol, de gelezen tabellen, of het werd beantwoord en hoeveel rijen het teruggaf. Hier staan de statements die u zojuist als bieder A en bieder B hebt uitgevoerd. De verkoper weet precies wat de kamer heeft verlaten."
+      },
+      "dataroomExpiry": {
+        "title": "Toegang eindigt op de transactiedatum",
+        "description": "De pagina Gebruikers toont elke toekenning met de einddatum en het laatste gebruik. Na de transactiedatum zijn de toekenningen weg, verwijderd door het schema en vastgelegd in het spoor van de organisatie, en verlaat er niets meer de kamer."
+      },
+      "dataroomRevoke": {
+        "title": "De toegang van een bieder direct beëindigen",
+        "description": "Een bieder die afhaakt verliest de toegang met één actie: verwijder zijn toekenning, of de rol zelf. Het volgende verzoek wordt geweigerd. De audit van alles wat hij las blijft bestaan."
+      },
+      "dataroomRecap": {
+        "title": "Wat u zag",
+        "description": "Een datakamer zonder exports: de eigen systemen van de verkoper, ter plekke gelezen en aan elke bieder getoond als aggregaten, profielen, kwaliteitsscores, gemaskeerde steekproeven en records zonder identiteiten. Geen enkele klantidentiteit verlaat de kamer. Elke bieder heeft een eigen rol, toegekend tot de transactiedatum, en elk statement wordt geaudit."
       }
     },
     "status": {
@@ -1407,6 +1487,10 @@
       "churn": {
         "title": "Klantverloop voorspellen",
         "summary": "Welke klanten staan op het punt op te zeggen? Hun beheerde, gemaskeerde kenmerken worden in de browser in pandas gelezen, en in het notebook dat bij de demo hoort wordt er een scikit-learn-model op getraind."
+      },
+      "dataroom": {
+        "title": "Datakamer voor een verkoop",
+        "summary": "Een retailer die zichzelf verkoopt geeft het clean team van elke bieder beheerde, tijdelijke toegang tot zijn eigen systemen, zonder exports: aggregaten, profielen en gemaskeerde steekproeven, en geen enkele klantidentiteit verlaat de kamer."
       }
     }
   }

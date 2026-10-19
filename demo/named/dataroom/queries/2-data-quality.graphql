@@ -1,0 +1,9 @@
+# Each check of the seller's records, and how many rows fail it.
+query DataQuality {
+  d__viewDataQuality {
+    tableName
+    dataCheck
+    totalRows
+    failingRows
+  }
+}

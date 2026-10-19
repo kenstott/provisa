@@ -1311,6 +1311,86 @@
       "churnRecap": {
         "title": "Ce que vous avez vu",
         "description": "Des données gouvernées directement dans le notebook d'un data scientist : le masquage d'analyst appliqué à la lecture, et un modèle entraîné sans que les données quittent le navigateur. Dans un Jupyter de bureau, le même code lit les gros volumes via Arrow Flight."
+      },
+      "dataroomIntro": {
+        "title": "Une data room sans exports",
+        "description": "Northfield Supply se vend, et la clean team de chaque acquéreur potentiel doit connaître l'activité avant d'enchérir. Au lieu d'exporter des extraits dans une data room, le vendeur connecte Provisa à ses propres systèmes et donne à chaque enchérisseur un accès gouverné qui prend fin à la date de la transaction. Rien n'est copié à l'extérieur, et aucune identité de client ne quitte la salle. Voici le système de commandes et de finance, une base Postgres lue sur place : 2 400 clients, leurs commandes depuis 2023 et la facture de chacune."
+      },
+      "dataroomCrm": {
+        "title": "Le CRM",
+        "description": "Le Salesforce de l'équipe commerciale : le compte de chaque client professionnel et ses affaires. Ses lignes sont chargées une fois dans la salle et lues à partir de là, de sorte que les questions des enchérisseurs n'atteignent jamais Salesforce."
+      },
+      "dataroomInvite": {
+        "title": "Préparer la salle : inviter les analystes",
+        "description": "Sur la page Utilisateurs du vendeur, les deux analystes de l'enchérisseur A sont ajoutés comme comptes locaux, chacun lié au rôle <strong>bidder_a</strong>. Ils se connectent au Provisa du vendeur en HTTPS. Un vendeur en auto-hébergement n'expose que HTTPS, via son propre point d'entrée TLS (un ingress ou un reverse proxy avec un certificat public), tandis que les stockages, le moteur et les protocoles de base de données restent privés ; sur Provisa hébergé, l'adresse propre de l'organisation le sert déjà. Rien dans cette démo n'ouvre de port."
+      },
+      "dataroomGrant": {
+        "title": "Une autorisation qui prend fin à la date de la transaction",
+        "description": "L'attribution de bidder_a à chaque analyste porte une date de fin : la date de la transaction. À partir de ce moment, le rôle n'est plus le leur, pour chaque requête, quelle que soit sa provenance. Un compte n'a pas de date de fin propre ; la fin de l'attribution met fin à l'accès."
+      },
+      "dataroomSignedIn": {
+        "title": "Ce que voit un analyste",
+        "description": "Connecté, un analyste de l'enchérisseur A voit ce que bidder_a a reçu : les vues agrégées, les profils, l'échantillon masqué et les enregistrements du vendeur sans une seule identité de client. Aucun nom de client, ni nom d'entreprise ou d'affaire du CRM, n'est lisible."
+      },
+      "dataroomBidder": {
+        "title": "Maintenant en tant qu'enchérisseur A",
+        "description": "Les instructions suivantes s'exécutent en tant que <strong>bidder_a</strong>, exactement comme celles des analystes."
+      },
+      "dataroomProfile": {
+        "title": "Le profil des factures",
+        "description": "Chaque colonne de la table des factures telle que le profileur l'a trouvée : lignes, valeurs nulles, valeurs distinctes et plage. Un enchérisseur apprend si les enregistrements sont complets sans en lire un seul. Ici, certaines factures n'ont jamais été payées."
+      },
+      "dataroomCounts": {
+        "title": "Nombre de clients",
+        "description": "Combien de clients compte chaque segment et chaque région, et combien ont commandé au cours des douze derniers mois. Un nombre, jamais un client."
+      },
+      "dataroomAnswer": {
+        "title": "Chiffre d'affaires par segment",
+        "description": "Les commandes, le chiffre d'affaires et la commande moyenne de chaque segment, par année, à partir des commandes et des segments des clients."
+      },
+      "dataroomPipeline": {
+        "title": "Le pipeline commercial",
+        "description": "Les affaires du CRM par secteur et par étape, avec leur valeur et leur valeur pondérée par la probabilité de conclusion de chacune. Les noms des entreprises et des affaires restent dans le CRM."
+      },
+      "dataroomQuality": {
+        "title": "Scores de qualité des données",
+        "description": "Chaque contrôle des données du vendeur et le nombre de lignes qui l'échouent : clients sans e-mail, numéros de téléphone qui n'ont pas dix chiffres, factures jamais payées. Les défauts que cherche un acquéreur, comptés."
+      },
+      "dataroomSample": {
+        "title": "Un échantillon masqué",
+        "description": "Un client sur cinquante, tel qu'un enchérisseur le lit : sans nom, avec la partie nom de l'e-mail et les chiffres du téléphone masqués. La forme des données, jamais la personne."
+      },
+      "dataroomRefused": {
+        "title": "Les noms des clients sont refusés",
+        "description": "L'enchérisseur A demande les noms des clients. Provisa refuse : aucun nom de client n'est accordé à bidder_a, pas plus que les noms d'entreprise et d'affaire du CRM. Si l'analyste avait nommé le rôle de l'enchérisseur B, qu'il ne détient pas, la requête aurait aussi été refusée et consignée dans la piste de sécurité de l'organisation comme sondage de rôle."
+      },
+      "dataroomBidderB": {
+        "title": "Maintenant en tant qu'enchérisseur B",
+        "description": "La clean team de l'enchérisseur B détient son propre rôle, <strong>bidder_b</strong>, accordé sur la même salle et se terminant à la même date. Aucun enchérisseur ne voit ce que l'autre demande."
+      },
+      "dataroomBidderBCohorts": {
+        "title": "Cohortes, en tant qu'enchérisseur B",
+        "description": "Les clients qui ont commandé pour la première fois au premier trimestre 2023, et combien ont encore commandé à chaque trimestre suivant, avec leurs dépenses. La rétention, sans un seul client."
+      },
+      "dataroomSeller": {
+        "title": "Retour au vendeur",
+        "description": "Le vendeur agit de nouveau sous chacun des rôles qu'il détient, pour voir ce qu'ont fait les enchérisseurs."
+      },
+      "dataroomAudit": {
+        "title": "Ce que chaque enchérisseur a consulté",
+        "description": "Chaque instruction est auditée : qui l'a exécutée, sous quel rôle, les tables lues, si elle a reçu une réponse et combien de lignes elle a renvoyées. Voici les instructions que vous venez d'exécuter en tant qu'enchérisseur A et enchérisseur B. Le vendeur sait exactement ce qui a quitté la salle."
+      },
+      "dataroomExpiry": {
+        "title": "L'accès prend fin à la date de la transaction",
+        "description": "La page Utilisateurs liste chaque attribution avec sa date de fin et sa dernière utilisation. Après la date de la transaction, les attributions ont disparu, retirées par la planification et consignées dans la piste de l'organisation, et plus rien ne quitte la salle."
+      },
+      "dataroomRevoke": {
+        "title": "Mettre fin immédiatement à l'accès d'un enchérisseur",
+        "description": "Un enchérisseur qui se retire perd son accès en une seule action : retirer son attribution, ou le rôle lui-même. La requête suivante est refusée. L'audit de tout ce qu'il a lu reste."
+      },
+      "dataroomRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Une data room sans exports : les propres systèmes du vendeur, lus sur place et présentés à chaque enchérisseur sous forme d'agrégats, de profils, de scores de qualité, d'échantillons masqués et d'enregistrements sans identités. Aucune identité de client ne quitte la salle. Chaque enchérisseur détient un rôle propre, accordé jusqu'à la date de la transaction, et chaque instruction est auditée."
       }
     },
     "status": {
@@ -1407,6 +1487,10 @@
       "churn": {
         "title": "Prédire la résiliation des clients",
         "summary": "Quels clients sont sur le point de résilier ? Leurs caractéristiques gouvernées et masquées sont lues dans pandas dans le navigateur, et un modèle scikit-learn est entraîné dessus dans le notebook fourni avec la démo."
+      },
+      "dataroom": {
+        "title": "Data room pour une vente",
+        "summary": "Un détaillant qui se vend donne à la clean team de chaque enchérisseur un accès gouverné et limité dans le temps à ses propres systèmes, sans exports : agrégats, profils et échantillons masqués, et aucune identité de client ne quitte la salle."
       }
     }
   }

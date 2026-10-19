@@ -1,0 +1,10 @@
+# Revenue, orders and the average order of each segment, by year: what a bidder is shown of sales.
+query RevenueBySegment {
+  d__viewRevenueBySegment(order_by: [{ year: asc }, { segment: asc }]) {
+    year
+    segment
+    orders
+    revenue
+    averageOrder
+  }
+}
