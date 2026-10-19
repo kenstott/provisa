@@ -40,6 +40,7 @@ from tests.integration.connector_source_harness import (
     query_semantic,
     rebuild_schemas,
 )
+from tests.conftest import as_deployment_org
 from tests.helpers import registered_id, release_mutation
 
 pytestmark = [
@@ -65,8 +66,6 @@ async def client():
 
     prior_env = os.environ.get("PROVISA_ENGINE")
     os.environ["PROVISA_ENGINE"] = "duckdb"
-    from tests.conftest import as_deployment_org
-
     # The engine is the deployment org's, set as its boot sets it (REQ-1266).
     with as_deployment_org():
         prior_engine = app_mod.state.federation_engine
