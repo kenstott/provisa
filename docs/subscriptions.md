@@ -212,7 +212,7 @@ The server responds `202 Accepted` immediately and starts a background task that
 2. Re-executes the equivalent query on each change
 3. Publishes the result as a JSON message to the named Kafka topic
 
-The sink runs for the lifetime of the server process. (REQ-812) Restart the server to stop it (persistent sink registration via the admin API is planned).
+The sink runs for the lifetime of the server process. (REQ-812) Restart the server to stop it.
 
 **URI format:** `kafka://[broker:port]/topic`
 

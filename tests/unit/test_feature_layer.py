@@ -193,7 +193,9 @@ def model():
 
 def test_features_md_anchors_each_paragraph_and_traces_its_requirements(model):
     text = _script("gen_features_doc").render(*model)
-    assert "### Regions\n\n**In development**" in text
+    # Docs describe the target state: no feature carries a status (shipped or in development).
+    assert "### Regions\n\nData stays where it is placed." in text
+    assert "In development" not in text and "**Available**" not in text
     assert "Data stays where it is placed. More.\n{ #regions-placement }" in text
     assert (
         "    - [Data stays where it is placed.](#regions-placement): "
@@ -216,7 +218,8 @@ def _run(script: str, model, tmp_path, monkeypatch) -> Path:
 
 def test_the_feature_matrix_has_a_row_per_published_feature(model, tmp_path, monkeypatch):
     rows = list(csv.DictReader(_run("gen_feature_matrix", model, tmp_path, monkeypatch).open()))
-    assert [(r["Feature"], r["Status"]) for r in rows] == [("Regions", "In development")]
+    assert [r["Feature"] for r in rows] == ["Regions"]
+    assert "Status" not in rows[0]  # target state: no status column
     assert rows[0]["Paragraphs"] == "regions-placement: REQ-12 REQ-3; regions-reads: REQ-5"
 
 

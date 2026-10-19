@@ -5,10 +5,9 @@ embedded local platform, so the region-specific admin UX is visible end to end. 
 embedded Postgres (the model store and both regions' stores), each runs its own DuckDB engine, and a
 single fakeredis TCP server is the cache.
 
-> Status: scaffolded, not yet provable. Two regions share one Postgres, so it depends on
-> region-qualified schema and cache names (so the regions do not collide). Do not run the launch
-> until that lands; `scripts/launch-demo-regions.sh --check` validates the layout without starting
-> anything.
+Two regions share one Postgres here: every schema and cache name a region keeps carries the
+region, so the two do not collide. `scripts/launch-demo-regions.sh --check` validates the layout
+without starting anything.
 
 ## Start it
 

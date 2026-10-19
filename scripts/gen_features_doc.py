@@ -5,8 +5,7 @@
 # This source code is licensed under the Business Source License 1.1
 """Generate docs/features.md from docs/arch/features.yaml and docs/arch/requirements.yaml.
 
-One section per published feature (internal features are left out): its derived status, its
-paragraphs, each anchored by its id, and a collapsed "Requirements" block listing each
+One section per published feature (internal features are left out): its paragraphs, each anchored by its id, and a collapsed "Requirements" block listing each
 paragraph with the requirements that serve it, linked to their sections in arch/requirements.md.
 
 Usage:
@@ -22,7 +21,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from provisa.tools.feature_schema import FeaturesFile, feature_status  # type: ignore[import]
+from provisa.tools.feature_schema import FeaturesFile  # type: ignore[import]
 from provisa.tools.req_schema import RequirementsFile, Status  # type: ignore[import]
 
 REQS_YAML = Path("docs/arch/requirements.yaml")
@@ -46,10 +45,8 @@ def render(ff: FeaturesFile, rf: RequirementsFile) -> str:
         "<!-- Generated from docs/arch/features.yaml and docs/arch/requirements.yaml"
         " by scripts/gen_features_doc.py. Do not hand-edit. -->",
         "",
-        "What Provisa does, feature by feature. Each feature is marked **Available** when"
-        " everything it describes has shipped, and **In development** while part of it is still"
-        " being built. The Requirements block under each feature lists the detailed requirements"
-        " behind each paragraph.",
+        "What Provisa does, feature by feature. The Requirements block under each feature lists"
+        " the detailed requirements behind each paragraph.",
         "",
     ]
     section = None
@@ -59,8 +56,7 @@ def render(ff: FeaturesFile, rf: RequirementsFile) -> str:
         if f.section != section:
             section = f.section
             lines += [f"## {section}", ""]
-        status = feature_status({p.id for p in f.paragraphs}, reqs)
-        lines += [f"### {f.name}", "", f"**{status}**", ""]
+        lines += [f"### {f.name}", ""]
         for p in f.paragraphs:
             lines += [" ".join(p.text.split()), f"{{ #{p.id} }}", ""]
         lines += ['??? note "Requirements"', ""]

@@ -212,7 +212,7 @@ Der Server antwortet sofort mit `202 Accepted` und startet eine Hintergrundaufga
 2. bei jeder Änderung die entsprechende Abfrage erneut ausführt
 3. das Ergebnis als JSON-Nachricht im angegebenen Kafka-Topic veröffentlicht
 
-Der Sink läuft für die gesamte Lebensdauer des Serverprozesses. (REQ-812) Starten Sie den Server neu, um ihn zu stoppen (eine persistente Sink-Registrierung über die Admin-API ist geplant).
+Der Sink läuft für die gesamte Lebensdauer des Serverprozesses. (REQ-812) Starten Sie den Server neu, um ihn zu stoppen.
 
 **URI-Format:** `kafka://[broker:port]/topic`
 

@@ -208,7 +208,7 @@ O servidor responde `202 Accepted` imediatamente e inicia uma tarefa em segundo 
 2. Reexecuta a consulta equivalente a cada mudança
 3. Publica o resultado como uma mensagem JSON no tópico Kafka nomeado
 
-O sink roda pela vida útil do processo do servidor. (REQ-812) Reinicie o servidor para pará-lo (registro persistente de sink via API de administração está planejado).
+O sink roda pela vida útil do processo do servidor. (REQ-812) Reinicie o servidor para pará-lo.
 
 **Formato de URI:** `kafka://[broker:port]/topic`
 

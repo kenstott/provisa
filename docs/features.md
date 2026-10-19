@@ -2,13 +2,11 @@
 
 <!-- Generated from docs/arch/features.yaml and docs/arch/requirements.yaml by scripts/gen_features_doc.py. Do not hand-edit. -->
 
-What Provisa does, feature by feature. Each feature is marked **Available** when everything it describes has shipped, and **In development** while part of it is still being built. The Requirements block under each feature lists the detailed requirements behind each paragraph.
+What Provisa does, feature by feature. The Requirements block under each feature lists the detailed requirements behind each paragraph.
 
 ## Model your data
 
 ### Source registration
-
-**In development**
 
 You add a source by naming its type and giving the connection details. Provisa checks the connection before it saves anything, and the source is live without a restart. The same registration path serves the Sources page, the chat assistant and approved requests, so a source behaves the same whichever way it arrived. For a file-based source you can upload the file on the form instead of typing a path.
 { #source-registration-connect }
@@ -26,8 +24,6 @@ Register Table lists the schemas and tables the source actually offers, using th
     - [Register Table lists the schemas and tables the source actually offers, using the sourc...](#source-registration-introspection): [REQ-252](arch/requirements.md#REQ-252), [REQ-482](arch/requirements.md#REQ-482), [REQ-635](arch/requirements.md#REQ-635), [REQ-636](arch/requirements.md#REQ-636), [REQ-637](arch/requirements.md#REQ-637), [REQ-638](arch/requirements.md#REQ-638), [REQ-639](arch/requirements.md#REQ-639), [REQ-923](arch/requirements.md#REQ-923), [REQ-944](arch/requirements.md#REQ-944), [REQ-1426](arch/requirements.md#REQ-1426), [REQ-1745](arch/requirements.md#REQ-1745), [REQ-1747](arch/requirements.md#REQ-1747), [REQ-1749](arch/requirements.md#REQ-1749), [REQ-1750](arch/requirements.md#REQ-1750), [REQ-1762](arch/requirements.md#REQ-1762), [REQ-1774](arch/requirements.md#REQ-1774), [REQ-1824](arch/requirements.md#REQ-1824), [REQ-1829](arch/requirements.md#REQ-1829), [REQ-1830](arch/requirements.md#REQ-1830), [REQ-1872](arch/requirements.md#REQ-1872), [REQ-1961](arch/requirements.md#REQ-1961), [REQ-2050](arch/requirements.md#REQ-2050)
 
 ### Connector catalog
-
-**In development**
 
 Provisa reads the common relational databases and cloud warehouses: PostgreSQL, MySQL and their wire-compatible relatives, SQL Server, Oracle, Snowflake, BigQuery, Databricks, Athena and others, plus Trino and HiveServer2 endpoints. You register one with host, credentials and database, and the same registration works whichever engine runs underneath. Operators can also declare their own connectors in configuration when a source is not in the list.
 { #connector-catalog-relational-and-warehouses }
@@ -53,12 +49,10 @@ Event and reference data has its own source types. Kafka topics register with sc
     - [Files are sources too.](#connector-catalog-files-and-lake): [REQ-372](arch/requirements.md#REQ-372), [REQ-499](arch/requirements.md#REQ-499), [REQ-505](arch/requirements.md#REQ-505), [REQ-553](arch/requirements.md#REQ-553), [REQ-736](arch/requirements.md#REQ-736), [REQ-788](arch/requirements.md#REQ-788), [REQ-789](arch/requirements.md#REQ-789), [REQ-790](arch/requirements.md#REQ-790), [REQ-791](arch/requirements.md#REQ-791), [REQ-1650](arch/requirements.md#REQ-1650), [REQ-1726](arch/requirements.md#REQ-1726), [REQ-1738](arch/requirements.md#REQ-1738), [REQ-1748](arch/requirements.md#REQ-1748), [REQ-1780](arch/requirements.md#REQ-1780), [REQ-1781](arch/requirements.md#REQ-1781), [REQ-1784](arch/requirements.md#REQ-1784), [REQ-1785](arch/requirements.md#REQ-1785), [REQ-1786](arch/requirements.md#REQ-1786), [REQ-1787](arch/requirements.md#REQ-1787), [REQ-1788](arch/requirements.md#REQ-1788), [REQ-1960](arch/requirements.md#REQ-1960)
     - [Non-relational stores appear as tables you can join to everything else.](#connector-catalog-nosql-search-and-graph): [REQ-017](arch/requirements.md#REQ-017), [REQ-251](arch/requirements.md#REQ-251), [REQ-295](arch/requirements.md#REQ-295), [REQ-296](arch/requirements.md#REQ-296), [REQ-297](arch/requirements.md#REQ-297), [REQ-298](arch/requirements.md#REQ-298), [REQ-299](arch/requirements.md#REQ-299), [REQ-493](arch/requirements.md#REQ-493), [REQ-494](arch/requirements.md#REQ-494), [REQ-495](arch/requirements.md#REQ-495), [REQ-496](arch/requirements.md#REQ-496), [REQ-497](arch/requirements.md#REQ-497), [REQ-498](arch/requirements.md#REQ-498), [REQ-500](arch/requirements.md#REQ-500), [REQ-512](arch/requirements.md#REQ-512), [REQ-721](arch/requirements.md#REQ-721), [REQ-722](arch/requirements.md#REQ-722), [REQ-723](arch/requirements.md#REQ-723), [REQ-724](arch/requirements.md#REQ-724), [REQ-725](arch/requirements.md#REQ-725), [REQ-735](arch/requirements.md#REQ-735), [REQ-738](arch/requirements.md#REQ-738), [REQ-1668](arch/requirements.md#REQ-1668), [REQ-1672](arch/requirements.md#REQ-1672), [REQ-1675](arch/requirements.md#REQ-1675), [REQ-1683](arch/requirements.md#REQ-1683), [REQ-1689](arch/requirements.md#REQ-1689), [REQ-1980](arch/requirements.md#REQ-1980), [REQ-1982](arch/requirements.md#REQ-1982), [REQ-1983](arch/requirements.md#REQ-1983), [REQ-1985](arch/requirements.md#REQ-1985), [REQ-2017](arch/requirements.md#REQ-2017), [REQ-2018](arch/requirements.md#REQ-2018), [REQ-2019](arch/requirements.md#REQ-2019), [REQ-2020](arch/requirements.md#REQ-2020), [REQ-2021](arch/requirements.md#REQ-2021), [REQ-2022](arch/requirements.md#REQ-2022), [REQ-2023](arch/requirements.md#REQ-2023), [REQ-2024](arch/requirements.md#REQ-2024), [REQ-2025](arch/requirements.md#REQ-2025), [REQ-2026](arch/requirements.md#REQ-2026), [REQ-2027](arch/requirements.md#REQ-2027), [REQ-2028](arch/requirements.md#REQ-2028), [REQ-2029](arch/requirements.md#REQ-2029)
     - [A remote GraphQL, gRPC or OpenAPI service can be registered as a source.](#connector-catalog-remote-schemas): [REQ-307](arch/requirements.md#REQ-307), [REQ-308](arch/requirements.md#REQ-308), [REQ-309](arch/requirements.md#REQ-309), [REQ-310](arch/requirements.md#REQ-310), [REQ-311](arch/requirements.md#REQ-311), [REQ-312](arch/requirements.md#REQ-312), [REQ-313](arch/requirements.md#REQ-313), [REQ-314](arch/requirements.md#REQ-314), [REQ-315](arch/requirements.md#REQ-315), [REQ-316](arch/requirements.md#REQ-316), [REQ-317](arch/requirements.md#REQ-317), [REQ-318](arch/requirements.md#REQ-318), [REQ-319](arch/requirements.md#REQ-319), [REQ-320](arch/requirements.md#REQ-320), [REQ-321](arch/requirements.md#REQ-321), [REQ-322](arch/requirements.md#REQ-322), [REQ-323](arch/requirements.md#REQ-323), [REQ-324](arch/requirements.md#REQ-324), [REQ-325](arch/requirements.md#REQ-325), [REQ-326](arch/requirements.md#REQ-326), [REQ-327](arch/requirements.md#REQ-327), [REQ-328](arch/requirements.md#REQ-328), [REQ-329](arch/requirements.md#REQ-329), [REQ-405](arch/requirements.md#REQ-405), [REQ-406](arch/requirements.md#REQ-406), [REQ-407](arch/requirements.md#REQ-407), [REQ-453](arch/requirements.md#REQ-453), [REQ-454](arch/requirements.md#REQ-454), [REQ-597](arch/requirements.md#REQ-597), [REQ-598](arch/requirements.md#REQ-598), [REQ-599](arch/requirements.md#REQ-599), [REQ-600](arch/requirements.md#REQ-600), [REQ-601](arch/requirements.md#REQ-601), [REQ-602](arch/requirements.md#REQ-602), [REQ-739](arch/requirements.md#REQ-739), [REQ-945](arch/requirements.md#REQ-945), [REQ-1727](arch/requirements.md#REQ-1727), [REQ-1728](arch/requirements.md#REQ-1728), [REQ-1875](arch/requirements.md#REQ-1875)
-    - [Business applications register as named source types: Salesforce, ServiceNow, SharePoin...](#connector-catalog-saas-and-enterprise): [REQ-491](arch/requirements.md#REQ-491), [REQ-511](arch/requirements.md#REQ-511), [REQ-726](arch/requirements.md#REQ-726), [REQ-727](arch/requirements.md#REQ-727), [REQ-728](arch/requirements.md#REQ-728), [REQ-729](arch/requirements.md#REQ-729), [REQ-730](arch/requirements.md#REQ-730), [REQ-731](arch/requirements.md#REQ-731), [REQ-732](arch/requirements.md#REQ-732), [REQ-1445](arch/requirements.md#REQ-1445), [REQ-1690](arch/requirements.md#REQ-1690), [REQ-1693](arch/requirements.md#REQ-1693), [REQ-1694](arch/requirements.md#REQ-1694), [REQ-1923](arch/requirements.md#REQ-1923), [REQ-1924](arch/requirements.md#REQ-1924), [REQ-1946](arch/requirements.md#REQ-1946), [REQ-1947](arch/requirements.md#REQ-1947), [REQ-1954](arch/requirements.md#REQ-1954), [REQ-1957](arch/requirements.md#REQ-1957), [REQ-1994](arch/requirements.md#REQ-1994)
+    - [Business applications register as named source types: Salesforce, ServiceNow, SharePoin...](#connector-catalog-saas-and-enterprise): [REQ-491](arch/requirements.md#REQ-491), [REQ-511](arch/requirements.md#REQ-511), [REQ-726](arch/requirements.md#REQ-726), [REQ-727](arch/requirements.md#REQ-727), [REQ-728](arch/requirements.md#REQ-728), [REQ-729](arch/requirements.md#REQ-729), [REQ-730](arch/requirements.md#REQ-730), [REQ-731](arch/requirements.md#REQ-731), [REQ-732](arch/requirements.md#REQ-732), [REQ-1445](arch/requirements.md#REQ-1445), [REQ-1690](arch/requirements.md#REQ-1690), [REQ-1693](arch/requirements.md#REQ-1693), [REQ-1694](arch/requirements.md#REQ-1694), [REQ-1923](arch/requirements.md#REQ-1923), [REQ-1924](arch/requirements.md#REQ-1924), [REQ-1946](arch/requirements.md#REQ-1946), [REQ-1947](arch/requirements.md#REQ-1947), [REQ-1954](arch/requirements.md#REQ-1954), [REQ-1957](arch/requirements.md#REQ-1957), [REQ-1994](arch/requirements.md#REQ-1994), [REQ-2069](arch/requirements.md#REQ-2069)
     - [Event and reference data has its own source types.](#connector-catalog-streams-logs-and-public-data): [REQ-452](arch/requirements.md#REQ-452), [REQ-492](arch/requirements.md#REQ-492), [REQ-540](arch/requirements.md#REQ-540), [REQ-541](arch/requirements.md#REQ-541), [REQ-1443](arch/requirements.md#REQ-1443), [REQ-1663](arch/requirements.md#REQ-1663), [REQ-1664](arch/requirements.md#REQ-1664), [REQ-1739](arch/requirements.md#REQ-1739), [REQ-1766](arch/requirements.md#REQ-1766), [REQ-1767](arch/requirements.md#REQ-1767), [REQ-1769](arch/requirements.md#REQ-1769), [REQ-1773](arch/requirements.md#REQ-1773), [REQ-1777](arch/requirements.md#REQ-1777), [REQ-1782](arch/requirements.md#REQ-1782), [REQ-1783](arch/requirements.md#REQ-1783), [REQ-1934](arch/requirements.md#REQ-1934), [REQ-1964](arch/requirements.md#REQ-1964), [REQ-1984](arch/requirements.md#REQ-1984), [REQ-1993](arch/requirements.md#REQ-1993), [REQ-1996](arch/requirements.md#REQ-1996)
 
 ### Semantic model
-
-**In development**
 
 Provisa decides every client-facing name in one place. You can alias a table or column, add a description that shows up in the schema, and prefix names with their domain. A naming convention can match Hasura's if you are migrating. Every protocol uses the same names, comparisons go through one normalizer, and nothing is matched by guesswork. A table's SQL address is unique within its domain.
 { #semantic-model-naming }
@@ -89,8 +83,6 @@ The entity relationship diagram opens as a dialog from the Tables and Relationsh
 
 ### Views
 
-**In development**
-
 A view is a computed dataset written in semantic SQL and registered in the model. It gets the same governance as a table: row security, masking, column visibility and role-based schema. Analysts use views to pull cross-domain data into their own domain for reports, and creating one needs approval unless the author already holds the rights to everything underneath.
 { #views-governed-datasets }
 
@@ -108,8 +100,6 @@ A view can be built from metrics, choosing the metrics, dimensions and filters t
 
 ### Metrics and aggregates
 
-**Available**
-
 Every table can offer an aggregate query and a group-by query in the style Hasura users know. A modeler turns them on per table, and roles are gated on whether they may aggregate at all. Gated tables get these on the gRPC, JSON:API and OpenAPI surfaces too. Expensive aggregates can be served from a materialized copy when one matches. A group-by is ordered by its keys and its aggregates, so a limit returns the top groups, such as the ten slowest pages by average time.
 { #metrics-and-aggregates-aggregates }
 
@@ -122,8 +112,6 @@ A metric is a named, governed aggregate with its own definition. You write it on
     - [A metric is a named, governed aggregate with its own definition.](#metrics-and-aggregates-metric-objects): [REQ-1317](arch/requirements.md#REQ-1317), [REQ-1319](arch/requirements.md#REQ-1319), [REQ-1320](arch/requirements.md#REQ-1320), [REQ-1322](arch/requirements.md#REQ-1322), [REQ-1323](arch/requirements.md#REQ-1323), [REQ-1324](arch/requirements.md#REQ-1324), [REQ-1723](arch/requirements.md#REQ-1723)
 
 ### Glossary, tags and ontology
-
-**In development**
 
 The business glossary maps plain-language terms to the physical fields behind them. Terms can be derived from column names or written by hand, scoped to one or more domains, related to other terms, and owned by a curator. A term with relationships cannot be deleted. Reading the glossary and administering it are separate rights.
 { #glossary-tags-ontology-terms }
@@ -141,8 +129,6 @@ The glossary and the tag graph are data. Terms, their physical references and re
     - [The glossary and the tag graph are data.](#glossary-tags-ontology-queryable-metadata): [REQ-1414](arch/requirements.md#REQ-1414), [REQ-1584](arch/requirements.md#REQ-1584), [REQ-1585](arch/requirements.md#REQ-1585)
 
 ### Catalog and discovery
-
-**In development**
 
 People find data in layers that get more governed as they go: the source's own schema, the registered model, the semantic names and the data products. Catalog and schema metadata also say which tables support aggregates and group-by.
 { #catalog-and-discovery-discovery }
@@ -169,8 +155,6 @@ The semantic model can be exported to the standards other tools read: Apache Oss
 
 ### Environments
 
-**In development**
-
 An organization can run its governed model in more than one environment, such as dev, test and prod. Each environment is a schema of its own. Copying one environment into another carries the model and nothing else; connection settings are set per environment, and write authority is never carried over. Copying into an existing environment is a merge. A credential belongs to exactly one environment, and the browser always says which one it is reading.
 { #environments-isolation }
 
@@ -196,8 +180,6 @@ Authority is scoped to an environment, and the usual way to get it is to create 
 
 ### Regions and data residency
 
-**Available**
-
 A deployment can run clusters in several regions off one shared model. The model is declared once; each cluster has its own nodes, engine, replica storage, cache and record, and serves clients that connect to its address. What a reader sees follows the model's rules, wherever they connect.
 { #regions-and-residency-clusters }
 
@@ -210,8 +192,6 @@ Residency is a short list of rules. Row and column rules written on user attribu
     - [Residency is a short list of rules.](#regions-and-residency-residency-rules): [REQ-1921](arch/requirements.md#REQ-1921)
 
 ### Commands and functions
-
-**In development**
 
 Stored procedures and functions in a source can be tracked and exposed as GraphQL mutations or queries. A function returns a registered table or declares its own result shape in JSON Schema. Result rows resolve nested relationships and run directly against the source's connection. Discovered routines are offered for registration, never added automatically.
 { #commands-and-functions-tracked-functions }
@@ -238,8 +218,6 @@ Scheduled triggers run a registered webhook or function on a cron or interval sc
 
 ### Writes
 
-**Available**
-
 Mutations write directly to the one source that owns the table; the engine is never involved. A user needs write rights to the table, and mutation inputs show only the columns the role may write. Row security applies to updates and deletes, and only registered tables get mutations. Transactions across sources are not supported, and non-relational sources are read-only. Upserts, column presets and batched mutations are available.
 { #writes-governed-mutations }
 
@@ -258,8 +236,6 @@ Mutations are classified as writes by contract, not by what the caller says. A g
 ## Govern access
 
 ### Roles and capabilities
-
-**In development**
 
 What a person can do is spelled out as capabilities, and each capability is assigned on its own. Registering sources, defining relationships, writing security rules and administering the organization are separate rights, so an admin builds a role from the pieces it needs. Every gate in the server and the UI tests a capability, never a role name, and every admin handler sits behind one.
 { #roles-and-capabilities-capabilities }
@@ -281,7 +257,7 @@ A join is allowed only where a relationship has been registered and approved. Wh
 
 ??? note "Requirements"
 
-    - [What a person can do is spelled out as capabilities, and each capability is assigned on...](#roles-and-capabilities-capabilities): [REQ-002](arch/requirements.md#REQ-002), [REQ-003](arch/requirements.md#REQ-003), [REQ-042](arch/requirements.md#REQ-042), [REQ-059](arch/requirements.md#REQ-059), [REQ-455](arch/requirements.md#REQ-455), [REQ-746](arch/requirements.md#REQ-746), [REQ-1337](arch/requirements.md#REQ-1337), [REQ-1349](arch/requirements.md#REQ-1349), [REQ-1638](arch/requirements.md#REQ-1638), [REQ-1927](arch/requirements.md#REQ-1927), [REQ-1952](arch/requirements.md#REQ-1952), [REQ-2057](arch/requirements.md#REQ-2057), [REQ-2060](arch/requirements.md#REQ-2060)
+    - [What a person can do is spelled out as capabilities, and each capability is assigned on...](#roles-and-capabilities-capabilities): [REQ-002](arch/requirements.md#REQ-002), [REQ-003](arch/requirements.md#REQ-003), [REQ-042](arch/requirements.md#REQ-042), [REQ-059](arch/requirements.md#REQ-059), [REQ-455](arch/requirements.md#REQ-455), [REQ-746](arch/requirements.md#REQ-746), [REQ-1337](arch/requirements.md#REQ-1337), [REQ-1349](arch/requirements.md#REQ-1349), [REQ-1638](arch/requirements.md#REQ-1638), [REQ-1927](arch/requirements.md#REQ-1927), [REQ-1952](arch/requirements.md#REQ-1952), [REQ-2057](arch/requirements.md#REQ-2057), [REQ-2060](arch/requirements.md#REQ-2060), [REQ-2077](arch/requirements.md#REQ-2077), [REQ-2078](arch/requirements.md#REQ-2078), [REQ-2079](arch/requirements.md#REQ-2079), [REQ-2080](arch/requirements.md#REQ-2080)
     - [A role can inherit from one parent, and the child gets everything the parent holds.](#roles-and-capabilities-inheritance): [REQ-215](arch/requirements.md#REQ-215), [REQ-1677](arch/requirements.md#REQ-1677), [REQ-1807](arch/requirements.md#REQ-1807)
     - [Domains are permission boundaries.](#roles-and-capabilities-domain-access): [REQ-437](arch/requirements.md#REQ-437), [REQ-440](arch/requirements.md#REQ-440), [REQ-1133](arch/requirements.md#REQ-1133), [REQ-1530](arch/requirements.md#REQ-1530), [REQ-1531](arch/requirements.md#REQ-1531), [REQ-1944](arch/requirements.md#REQ-1944)
     - [Platform administration and organization administration are separate roles.](#roles-and-capabilities-platform-admins): [REQ-517](arch/requirements.md#REQ-517), [REQ-1299](arch/requirements.md#REQ-1299), [REQ-1303](arch/requirements.md#REQ-1303), [REQ-1308](arch/requirements.md#REQ-1308), [REQ-1327](arch/requirements.md#REQ-1327), [REQ-1340](arch/requirements.md#REQ-1340), [REQ-1352](arch/requirements.md#REQ-1352)
@@ -289,8 +265,6 @@ A join is allowed only where a relationship has been registered and approved. Wh
     - [A join is allowed only where a relationship has been registered and approved.](#roles-and-capabilities-join-guard): [REQ-463](arch/requirements.md#REQ-463), [REQ-603](arch/requirements.md#REQ-603), [REQ-747](arch/requirements.md#REQ-747), [REQ-1955](arch/requirements.md#REQ-1955), [REQ-1956](arch/requirements.md#REQ-1956)
 
 ### Row-level security, column visibility and masking
-
-**In development**
 
 Access is enforced twice. Schema visibility hides tables and columns a role may not see, so they never appear in the schema or the query builder. Then the SQL layer filters rows and strips columns from every query before it runs, on every surface. No code path returns rows without a role bound to them.
 { #row-security-and-masking-two-layers }
@@ -307,13 +281,11 @@ The metadata about the model is governed like any other data. Core facts about t
 ??? note "Requirements"
 
     - [Access is enforced twice.](#row-security-and-masking-two-layers): [REQ-001](arch/requirements.md#REQ-001), [REQ-038](arch/requirements.md#REQ-038), [REQ-039](arch/requirements.md#REQ-039), [REQ-040](arch/requirements.md#REQ-040), [REQ-263](arch/requirements.md#REQ-263), [REQ-438](arch/requirements.md#REQ-438), [REQ-439](arch/requirements.md#REQ-439), [REQ-1131](arch/requirements.md#REQ-1131), [REQ-1758](arch/requirements.md#REQ-1758), [REQ-1760](arch/requirements.md#REQ-1760), [REQ-1778](arch/requirements.md#REQ-1778), [REQ-1958](arch/requirements.md#REQ-1958)
-    - [Row filters are written as SQL predicates and attached to a table, a whole domain or a...](#row-security-and-masking-row-rules): [REQ-041](arch/requirements.md#REQ-041), [REQ-402](arch/requirements.md#REQ-402), [REQ-403](arch/requirements.md#REQ-403), [REQ-404](arch/requirements.md#REQ-404), [REQ-1381](arch/requirements.md#REQ-1381), [REQ-1382](arch/requirements.md#REQ-1382), [REQ-1383](arch/requirements.md#REQ-1383), [REQ-1384](arch/requirements.md#REQ-1384), [REQ-1614](arch/requirements.md#REQ-1614), [REQ-1676](arch/requirements.md#REQ-1676), [REQ-1679](arch/requirements.md#REQ-1679), [REQ-1682](arch/requirements.md#REQ-1682), [REQ-1686](arch/requirements.md#REQ-1686)
-    - [A column can be masked per role.](#row-security-and-masking-masking): [REQ-087](arch/requirements.md#REQ-087), [REQ-088](arch/requirements.md#REQ-088), [REQ-089](arch/requirements.md#REQ-089), [REQ-090](arch/requirements.md#REQ-090), [REQ-091](arch/requirements.md#REQ-091), [REQ-249](arch/requirements.md#REQ-249), [REQ-531](arch/requirements.md#REQ-531), [REQ-740](arch/requirements.md#REQ-740), [REQ-741](arch/requirements.md#REQ-741), [REQ-742](arch/requirements.md#REQ-742), [REQ-743](arch/requirements.md#REQ-743), [REQ-744](arch/requirements.md#REQ-744), [REQ-745](arch/requirements.md#REQ-745), [REQ-971](arch/requirements.md#REQ-971), [REQ-1494](arch/requirements.md#REQ-1494), [REQ-2058](arch/requirements.md#REQ-2058), [REQ-2059](arch/requirements.md#REQ-2059)
+    - [Row filters are written as SQL predicates and attached to a table, a whole domain or a...](#row-security-and-masking-row-rules): [REQ-041](arch/requirements.md#REQ-041), [REQ-402](arch/requirements.md#REQ-402), [REQ-403](arch/requirements.md#REQ-403), [REQ-404](arch/requirements.md#REQ-404), [REQ-1381](arch/requirements.md#REQ-1381), [REQ-1382](arch/requirements.md#REQ-1382), [REQ-1383](arch/requirements.md#REQ-1383), [REQ-1384](arch/requirements.md#REQ-1384), [REQ-1614](arch/requirements.md#REQ-1614), [REQ-1676](arch/requirements.md#REQ-1676), [REQ-1679](arch/requirements.md#REQ-1679), [REQ-1682](arch/requirements.md#REQ-1682), [REQ-1686](arch/requirements.md#REQ-1686), [REQ-2086](arch/requirements.md#REQ-2086)
+    - [A column can be masked per role.](#row-security-and-masking-masking): [REQ-087](arch/requirements.md#REQ-087), [REQ-088](arch/requirements.md#REQ-088), [REQ-089](arch/requirements.md#REQ-089), [REQ-090](arch/requirements.md#REQ-090), [REQ-091](arch/requirements.md#REQ-091), [REQ-249](arch/requirements.md#REQ-249), [REQ-531](arch/requirements.md#REQ-531), [REQ-740](arch/requirements.md#REQ-740), [REQ-741](arch/requirements.md#REQ-741), [REQ-742](arch/requirements.md#REQ-742), [REQ-743](arch/requirements.md#REQ-743), [REQ-744](arch/requirements.md#REQ-744), [REQ-745](arch/requirements.md#REQ-745), [REQ-971](arch/requirements.md#REQ-971), [REQ-1494](arch/requirements.md#REQ-1494), [REQ-2058](arch/requirements.md#REQ-2058), [REQ-2059](arch/requirements.md#REQ-2059), [REQ-2081](arch/requirements.md#REQ-2081)
     - [The metadata about the model is governed like any other data.](#row-security-and-masking-metadata-visibility): [REQ-1132](arch/requirements.md#REQ-1132), [REQ-1134](arch/requirements.md#REQ-1134)
 
 ### Approvals and query limits
-
-**In development**
 
 For rules too complex to write as row filters, Provisa calls out to an approval hook before a query runs. The hook can be switched on for a table, a source or the whole deployment, and it speaks over a webhook, gRPC or a Unix socket. A circuit breaker protects queries when the hook is unhealthy, and the gRPC channel is reused across calls.
 { #approvals-and-limits-approval-hook }
@@ -336,8 +308,6 @@ Creating a relationship, view, table, source or webhook goes through an approval
 
 ### Lineage and provenance
 
-**In development**
-
 Provisa traces any column back to its sources. From one SQL statement, including commands composed inline, it builds the column-level lineage, and it merges all of them into a single graph across the estate. The graph is drawn with one box per relation and its columns as rows, arrives collapsed when it is large, and is read through a role picked on the lineage form.
 { #lineage-and-provenance-column-lineage }
 
@@ -355,8 +325,6 @@ Because every change is an event and every derived dataset is a view over those 
 
 ### Audit
 
-**Available**
-
 Every query is recorded in an audit log with the tenant, user, role, a hash of the query, the tables touched, the source, status and duration. Query text is never stored in the clear. The record is written at the single governed pipeline, so no surface can skip it.
 { #audit-query-log }
 
@@ -369,8 +337,6 @@ The audit log is append-only, and the database itself blocks updates and deletes
     - [The audit log is append-only, and the database itself blocks updates and deletes.](#audit-append-only): [REQ-613](arch/requirements.md#REQ-613)
 
 ### Public data publishing
-
-**In development**
 
 An organization can publish data to people who are not signed in. A request with no login is routed to its organization by subdomain, and it can see only what has been published.
 { #public-data-publishing-anonymous-access }
@@ -392,8 +358,6 @@ Public endpoints face the internet with no login, so they get the tightest rate 
     - [Public endpoints face the internet with no login, so they get the tightest rate and que...](#public-data-publishing-traffic-caps): [REQ-1060](arch/requirements.md#REQ-1060)
 
 ### Encryption and secrets
-
-**Available**
 
 Sensitive payloads are protected with envelope encryption. Each payload gets its own data key, wrapped by an organization master key. This covers stored API keys and security rules, hot-table row data in Redis and the text of audit entries. Where no OS keychain is available, the master key falls back to a local file so the admin console can still generate a key.
 { #encryption-and-secrets-envelope }
@@ -422,8 +386,6 @@ Credentials in config are references, not values. A reference such as an environ
 
 ### GraphQL
 
-**In development**
-
 Each role gets a GraphQL schema generated from the model, showing only what that role may see. Filtering, ordering and pagination follow the Hasura convention, and ordering can reach into related objects. Nested relationships take the same arguments as a root query, relationship fields use the configured naming convention, and date and time types are typed precisely. GraphQL is the canonical API from which gRPC, JSON:API and OpenAPI are derived.
 { #graphql-schema }
 
@@ -441,8 +403,6 @@ Provisa supports Apollo automatic persisted queries. A client can send the hash 
 
 ### SQL over HTTP
 
-**In development**
-
 Send PostgreSQL-compatible SQL to a REST endpoint and get governed results back. The SQL runs against the model's names, not the physical tables, and goes through the same governance as every other surface. The role comes from the credentials, never from the request body. A test endpoint offers the same guards for trying queries.
 { #sql-over-http-endpoint }
 
@@ -459,8 +419,6 @@ Semantic SQL is the one dialect used throughout. It has no array, struct or map 
     - [Semantic SQL is the one dialect used throughout.](#sql-over-http-semantic-sql): [REQ-1926](arch/requirements.md#REQ-1926), [REQ-1965](arch/requirements.md#REQ-1965)
 
 ### Cypher and graph analytics
-
-**Available**
 
 Send Cypher to an HTTP endpoint and get rows back, with named parameters. Provisa derives labels and relationship types from the model, so there is no graph to load. Cypher can join across sources in one query. Domain boundaries are enforced when the query is parsed, and a graph-schema endpoint lists the labels and relationship types a role can use.
 { #cypher-and-graph-analytics-endpoint }
@@ -491,8 +449,6 @@ Graph analytics run over a query result in the Graph Explorer. A configurable si
 
 ### Natural-language query
 
-**Available**
-
 Ask a question in plain language and Provisa starts an asynchronous job. It generates a SQL, a GraphQL and a Cypher answer in parallel, runs all of them, and returns the results. Seeing the same answer in three languages makes it easy to check and reuse.
 { #natural-language-query-jobs }
 
@@ -509,8 +465,6 @@ In strict mode, one chain turns the question into GraphQL, then SQL, then Cypher
     - [In strict mode, one chain turns the question into GraphQL, then SQL, then Cypher.](#natural-language-query-strict-mode): [REQ-1400](arch/requirements.md#REQ-1400), [REQ-1406](arch/requirements.md#REQ-1406), [REQ-1408](arch/requirements.md#REQ-1408)
 
 ### REST, JSON:API and OpenAPI
-
-**Available**
 
 Every registered table gets a plain REST endpoint and a JSON:API endpoint with no setup. Query-string parameters map to filters, ordering and paging. JSON:API uses the physical column and relationship names throughout, and its total count is computed by pushing a COUNT down to the source.
 { #rest-and-jsonapi-endpoints }
@@ -533,8 +487,6 @@ A semantic URI for a piece of data can be resolved through REST, and by an MCP t
 
 ### gRPC with a per-role proto
 
-**Available**
-
 Provisa generates a gRPC service from the model, and the proto each role downloads shows only that role's tables and columns. The role is selected by a metadata key on every call. Column types map to protobuf scalar types, and field numbers stay stable.
 { #grpc-per-role-proto }
 
@@ -551,8 +503,6 @@ Queries stream their rows lazily, a batch at a time, so a large scan does not ha
     - [Queries stream their rows lazily, a batch at a time, so a large scan does not have to f...](#grpc-streaming): [REQ-1215](arch/requirements.md#REQ-1215), [REQ-1884](arch/requirements.md#REQ-1884), [REQ-1891](arch/requirements.md#REQ-1891), [REQ-1899](arch/requirements.md#REQ-1899)
 
 ### PostgreSQL wire protocol
-
-**Available**
 
 Provisa can speak the PostgreSQL wire protocol, so BI tools and anything with a Postgres driver connect without special support. The listener is off until a port is set. It authenticates through the same auth provider as every other surface, supports TLS, and reports a Postgres-compatible version string. It accepts SQL only, never GraphQL or Cypher.
 { #postgres-wire-protocol-server }
@@ -575,8 +525,6 @@ Provisa ships client libraries for the places where a standard driver is not eno
 
 ### Arrow Flight
 
-**Available**
-
 Provisa runs an Arrow Flight server for high-throughput consumers. Results stream batch by batch, so the full result never sits in memory, and every governance rule applies. Flight SQL is also supported, and engines that cannot produce Arrow natively are adapted by a generic row-to-Arrow converter.
 { #arrow-flight-server }
 
@@ -598,8 +546,6 @@ Provisa also serves the DuckDB Airport protocol, so DuckDB can attach to it as i
 
 ### Neo4j compatibility
 
-**Available**
-
 Provisa answers on the Bolt protocol, so Neo4j Browser, Bloom and the Neo4j drivers can connect and run Cypher. The user is the principal and each of their roles appears as a database, and the active role's domain access is always respected. Relationships get stable integer ids.
 { #neo4j-compatibility-bolt }
 
@@ -612,8 +558,6 @@ A graph visible in Provisa can be exported to a real Neo4j instance. Nodes and r
     - [A graph visible in Provisa can be exported to a real Neo4j instance.](#neo4j-compatibility-export): [REQ-713](arch/requirements.md#REQ-713), [REQ-714](arch/requirements.md#REQ-714), [REQ-715](arch/requirements.md#REQ-715), [REQ-716](arch/requirements.md#REQ-716), [REQ-717](arch/requirements.md#REQ-717), [REQ-718](arch/requirements.md#REQ-718), [REQ-719](arch/requirements.md#REQ-719), [REQ-720](arch/requirements.md#REQ-720), [REQ-795](arch/requirements.md#REQ-795), [REQ-797](arch/requirements.md#REQ-797)
 
 ### MCP server for AI agents
-
-**Available**
 
 Provisa exposes a Model Context Protocol server, so agents such as Claude Desktop can discover the catalog and run governed queries. An agent can also propose a new source or table for a human to approve, but never creates one itself. An optional tool exposes an external decision-evaluation service when its key is configured, and agents can run Cypher under the caller's role.
 { #mcp-server-tools }
@@ -628,11 +572,9 @@ Remote bearer tokens map to Provisa roles. Every tool call is scoped to the capa
 
     - [Provisa exposes a Model Context Protocol server, so agents such as Claude Desktop can d...](#mcp-server-tools): [REQ-1008](arch/requirements.md#REQ-1008), [REQ-1789](arch/requirements.md#REQ-1789), [REQ-1792](arch/requirements.md#REQ-1792), [REQ-1990](arch/requirements.md#REQ-1990)
     - [The desktop build turns on a local MCP server, bound to loopback.](#mcp-server-connect): [REQ-1101](arch/requirements.md#REQ-1101), [REQ-1102](arch/requirements.md#REQ-1102), [REQ-1103](arch/requirements.md#REQ-1103), [REQ-1104](arch/requirements.md#REQ-1104), [REQ-1106](arch/requirements.md#REQ-1106)
-    - [Remote bearer tokens map to Provisa roles.](#mcp-server-identity): [REQ-1105](arch/requirements.md#REQ-1105), [REQ-1857](arch/requirements.md#REQ-1857)
+    - [Remote bearer tokens map to Provisa roles.](#mcp-server-identity): [REQ-1105](arch/requirements.md#REQ-1105), [REQ-1857](arch/requirements.md#REQ-1857), [REQ-2075](arch/requirements.md#REQ-2075), [REQ-2076](arch/requirements.md#REQ-2076), [REQ-2082](arch/requirements.md#REQ-2082)
 
 ### Vector and semantic search
-
-**Available**
 
 Embedding models are declared in a registry with their provider and dimensions. OpenAI-compatible APIs, Ollama and local HuggingFace models are supported. The embed function in SQL returns the embedding of a text from any registered model, and API keys can be secret references.
 { #vector-search-models }
@@ -657,8 +599,6 @@ Embedding columns obey the same governance as other columns: row filters, domain
 
 ### Federation and routing
 
-**In development**
-
 Every query takes one of a few routes, and Provisa picks it for you. A query that touches a single relational source goes straight to that database over its native driver. A query that joins across sources goes to the federation engine. A source the engine cannot reach directly is read through a replica. When the default is wrong for a particular table or view, a steward can override the route. Mutations to a database always go straight to that database, never through the engine.
 { #federation-and-routing-routes }
 
@@ -679,8 +619,6 @@ Compilation happens in two stages. The first turns your request into plain SQL a
     - [Compilation happens in two stages.](#federation-and-routing-governed-pipeline): [REQ-262](arch/requirements.md#REQ-262), [REQ-264](arch/requirements.md#REQ-264), [REQ-1176](arch/requirements.md#REQ-1176)
 
 ### Replicas and freshness
-
-**In development**
 
 Small lookup tables that many queries join against can be held hot in Redis and injected into queries as an inline set of rows, so the join never leaves memory. A table becomes hot automatically when it is the target of a many-to-one relationship or its row count is under a threshold, and you can opt any table out or force it in. Size limits keep a hot table from growing without bound, and governance still applies to the cached rows.
 { #replicas-and-freshness-hot-tables }
@@ -711,8 +649,6 @@ Some sources, such as files, SharePoint and Splunk, are reached through a bundle
 
 ### Response caching
 
-**Available**
-
 Provisa can serve a repeated request from a stored result, but only when the request asks for it. A GraphQL query opts in with a directive, a Cypher query with a comment line, and a gRPC call with request metadata. Without it, the request neither reads nor writes the cache. Every response says whether it was a hit or a miss. A hit is a real route in the planner, not a side check, so a cached answer skips execution entirely. The store is Redis when configured and an embedded fallback otherwise.
 { #response-caching-store-and-opt-in }
 
@@ -730,8 +666,6 @@ A cache hit can never show one person another person's data. The key is built fr
 
 ### Large results
 
-**Available**
-
 Results come back in the shape the consumer needs. JSON keeps the nested structure of the query, and newline-delimited JSON streams one object per line. Tabular exports come as a single flattened table or as normalized tables with their foreign keys, in Parquet or CSV. Normalizing is done on the query itself, not by reshaping a serialized response afterward.
 { #large-results-formats }
 
@@ -748,8 +682,6 @@ Protocols that stream, such as pgwire, Flight SQL and gRPC, receive rows as the 
     - [Protocols that stream, such as pgwire, Flight SQL and gRPC, receive rows as the engine...](#large-results-streaming): [REQ-1185](arch/requirements.md#REQ-1185), [REQ-1186](arch/requirements.md#REQ-1186), [REQ-1187](arch/requirements.md#REQ-1187), [REQ-1188](arch/requirements.md#REQ-1188), [REQ-1189](arch/requirements.md#REQ-1189), [REQ-1190](arch/requirements.md#REQ-1190), [REQ-1217](arch/requirements.md#REQ-1217), [REQ-1218](arch/requirements.md#REQ-1218), [REQ-1222](arch/requirements.md#REQ-1222), [REQ-1223](arch/requirements.md#REQ-1223), [REQ-1225](arch/requirements.md#REQ-1225), [REQ-1231](arch/requirements.md#REQ-1231), [REQ-1893](arch/requirements.md#REQ-1893), [REQ-1898](arch/requirements.md#REQ-1898)
 
 ### Performance and scale
-
-**In development**
 
 Federated joins run well when the engine has statistics, so Provisa analyzes registered tables when you add a source and again on demand, and after each replica load. When a query still needs help, you can attach engine session properties to a table, a view or a source, or put a hint in the query text to broadcast a table or pick a join strategy. A constant filter on one side of a join is also carried to the other side, so each source scans less.
 { #performance-and-scale-optimizer-hints }
@@ -772,8 +704,6 @@ On Trino, work that exceeds memory is retried rather than failed, using fault-to
 
 ### High availability and multi-worker serving
 
-**In development**
-
 Recovery works in two tiers. Reads that hit a transient error are retried with backoff for a bounded time. A watcher restarts failed components within a few minutes. Writes are never retried automatically, so a retry cannot double-apply a change. Machine and cluster failures stay with the operator's own platform. On the hosted platform, recovery times are published and measured in minutes, for the control plane, the admin database and the engine alike. A failover ends queries that were running at the time.
 { #high-availability-recovery }
 
@@ -792,8 +722,6 @@ Provisa is stateless in front of its control-plane database, so you can run any 
 ## Live data
 
 ### Subscriptions and live queries
-
-**Available**
 
 A client can subscribe to a table over server-sent events and receive each insert, update and delete as a JSON event. For PostgreSQL sources, Provisa installs triggers at startup and listens for notifications, so changes arrive without polling. Mutations made through Provisa notify as well. A subscription can select columns from related tables, and a trigger that cannot be installed is reported rather than silently skipped.
 { #subscriptions-and-live-queries-postgres-notify }
@@ -815,8 +743,6 @@ The same live query can feed a Kafka topic instead of a browser. A request heade
     - [The same live query can feed a Kafka topic instead of a browser.](#subscriptions-and-live-queries-sinks): [REQ-286](arch/requirements.md#REQ-286), [REQ-570](arch/requirements.md#REQ-570), [REQ-812](arch/requirements.md#REQ-812)
 
 ### Change events and streams
-
-**In development**
 
 A Kafka cluster registers as a source, and each topic becomes a table you can query. Schemas come from a Schema Registry when there is one, or you declare them by hand. A default time window keeps an unbounded topic from being scanned end to end, and a discriminator filter lets one topic with several message types appear as several tables.
 { #change-events-and-streams-kafka-topics }
@@ -849,8 +775,6 @@ A derived table can be tied to a calendar instead of a fixed interval. Calendars
 
 ### Admin console
 
-**In development**
-
 The console is where you run Provisa: register sources and tables, define relationships, set security, review creation requests and read reports. What a person sees depends on the roles they hold. Destructive actions ask for confirmation and say what will happen, and the test tools show the effect of row filters, hidden columns and schema scope as the role would see them. When the deployment stops answering, the whole application says so in one place, and a query waiting for a stopped engine to start tells you that. A user without the right to create something can file a request that an administrator approves or rejects with a reason.
 { #admin-console-surface }
 
@@ -871,8 +795,6 @@ The interface follows one design language. Forms share a layout in which a field
     - [The interface follows one design language.](#admin-console-design): [REQ-1009](arch/requirements.md#REQ-1009), [REQ-1010](arch/requirements.md#REQ-1010), [REQ-1011](arch/requirements.md#REQ-1011), [REQ-1520](arch/requirements.md#REQ-1520), [REQ-1559](arch/requirements.md#REQ-1559), [REQ-1968](arch/requirements.md#REQ-1968), [REQ-1970](arch/requirements.md#REQ-1970), [REQ-1971](arch/requirements.md#REQ-1971), [REQ-1972](arch/requirements.md#REQ-1972), [REQ-1973](arch/requirements.md#REQ-1973), [REQ-1974](arch/requirements.md#REQ-1974), [REQ-1975](arch/requirements.md#REQ-1975), [REQ-1977](arch/requirements.md#REQ-1977)
 
 ### Explorers
-
-**In development**
 
 The Graph Explorer draws a Cypher result as a graph. Statistics for what is on the canvas and each node's degree are computed in the browser, with no extra query. You can color and group nodes by any property, collapse a group into a single node, and size nodes by a number. These are view changes only, and the underlying data is untouched.
 { #explorers-graph }
@@ -899,8 +821,6 @@ Explore's Python and Notebook tabs run Python in your browser over the data your
 
 ### Chat assistant
 
-**In development**
-
 Polly, the chat assistant, lives in a panel docked beside whatever page you are on, and she knows which page that is without being told. The panel suggests questions when it opens empty, accepts voice input through the browser, and checks that a model is configured before it opens. Messages can be copied, the conversation can be cleared, and while she works the panel shows each tool call as a badge with a spinner.
 { #chat-assistant-panel }
 
@@ -922,8 +842,6 @@ Polly can do the work as well as describe it. She can search for data sources, r
 
 ### Product tour and named demos
 
-**In development**
-
 A new user is offered a short core tour: welcome, Polly, connecting a source, and running a query. Every step has a Deep Dives button that jumps to a menu of topic tours. Each step waits until the page it points at is loaded and ready, and the tour is never offered over a sign-in or registration form.
 { #product-tour-and-demos-guided-tour }
 
@@ -936,12 +854,10 @@ On the hosted service, a prospect can try Provisa with no signup in an ephemeral
 ??? note "Requirements"
 
     - [A new user is offered a short core tour: welcome, Polly, connecting a source, and runni...](#product-tour-and-demos-guided-tour): [REQ-1362](arch/requirements.md#REQ-1362), [REQ-1446](arch/requirements.md#REQ-1446), [REQ-1570](arch/requirements.md#REQ-1570), [REQ-1945](arch/requirements.md#REQ-1945), [REQ-2013](arch/requirements.md#REQ-2013)
-    - [You can start Provisa already loaded with a demo.](#product-tour-and-demos-named-demos): [REQ-414](arch/requirements.md#REQ-414), [REQ-1220](arch/requirements.md#REQ-1220), [REQ-1858](arch/requirements.md#REQ-1858), [REQ-2008](arch/requirements.md#REQ-2008), [REQ-2009](arch/requirements.md#REQ-2009), [REQ-2010](arch/requirements.md#REQ-2010), [REQ-2016](arch/requirements.md#REQ-2016), [REQ-2030](arch/requirements.md#REQ-2030), [REQ-2032](arch/requirements.md#REQ-2032), [REQ-2033](arch/requirements.md#REQ-2033), [REQ-2034](arch/requirements.md#REQ-2034), [REQ-2035](arch/requirements.md#REQ-2035), [REQ-2036](arch/requirements.md#REQ-2036), [REQ-2037](arch/requirements.md#REQ-2037), [REQ-2038](arch/requirements.md#REQ-2038), [REQ-2039](arch/requirements.md#REQ-2039), [REQ-2040](arch/requirements.md#REQ-2040), [REQ-2041](arch/requirements.md#REQ-2041), [REQ-2042](arch/requirements.md#REQ-2042), [REQ-2043](arch/requirements.md#REQ-2043), [REQ-2044](arch/requirements.md#REQ-2044), [REQ-2045](arch/requirements.md#REQ-2045), [REQ-2046](arch/requirements.md#REQ-2046), [REQ-2047](arch/requirements.md#REQ-2047), [REQ-2048](arch/requirements.md#REQ-2048), [REQ-2051](arch/requirements.md#REQ-2051), [REQ-2052](arch/requirements.md#REQ-2052), [REQ-2053](arch/requirements.md#REQ-2053), [REQ-2056](arch/requirements.md#REQ-2056), [REQ-2063](arch/requirements.md#REQ-2063), [REQ-2067](arch/requirements.md#REQ-2067)
+    - [You can start Provisa already loaded with a demo.](#product-tour-and-demos-named-demos): [REQ-414](arch/requirements.md#REQ-414), [REQ-1220](arch/requirements.md#REQ-1220), [REQ-1858](arch/requirements.md#REQ-1858), [REQ-2008](arch/requirements.md#REQ-2008), [REQ-2009](arch/requirements.md#REQ-2009), [REQ-2010](arch/requirements.md#REQ-2010), [REQ-2016](arch/requirements.md#REQ-2016), [REQ-2030](arch/requirements.md#REQ-2030), [REQ-2032](arch/requirements.md#REQ-2032), [REQ-2033](arch/requirements.md#REQ-2033), [REQ-2034](arch/requirements.md#REQ-2034), [REQ-2035](arch/requirements.md#REQ-2035), [REQ-2036](arch/requirements.md#REQ-2036), [REQ-2037](arch/requirements.md#REQ-2037), [REQ-2038](arch/requirements.md#REQ-2038), [REQ-2039](arch/requirements.md#REQ-2039), [REQ-2040](arch/requirements.md#REQ-2040), [REQ-2041](arch/requirements.md#REQ-2041), [REQ-2042](arch/requirements.md#REQ-2042), [REQ-2043](arch/requirements.md#REQ-2043), [REQ-2044](arch/requirements.md#REQ-2044), [REQ-2045](arch/requirements.md#REQ-2045), [REQ-2046](arch/requirements.md#REQ-2046), [REQ-2047](arch/requirements.md#REQ-2047), [REQ-2048](arch/requirements.md#REQ-2048), [REQ-2051](arch/requirements.md#REQ-2051), [REQ-2052](arch/requirements.md#REQ-2052), [REQ-2053](arch/requirements.md#REQ-2053), [REQ-2056](arch/requirements.md#REQ-2056), [REQ-2063](arch/requirements.md#REQ-2063), [REQ-2067](arch/requirements.md#REQ-2067), [REQ-2083](arch/requirements.md#REQ-2083), [REQ-2084](arch/requirements.md#REQ-2084), [REQ-2085](arch/requirements.md#REQ-2085)
     - [On the hosted service, a prospect can try Provisa with no signup in an ephemeral sandbo...](#product-tour-and-demos-sandbox): [REQ-1033](arch/requirements.md#REQ-1033), [REQ-1034](arch/requirements.md#REQ-1034), [REQ-1036](arch/requirements.md#REQ-1036), [REQ-1037](arch/requirements.md#REQ-1037), [REQ-1039](arch/requirements.md#REQ-1039), [REQ-2006](arch/requirements.md#REQ-2006), [REQ-2049](arch/requirements.md#REQ-2049), [REQ-2065](arch/requirements.md#REQ-2065), [REQ-2068](arch/requirements.md#REQ-2068)
 
 ### Internationalization and accessibility
-
-**Available**
 
 The interface is translated into many languages and picks yours from the browser's language setting. No user-facing string is hard-coded. Translations are produced in a working session by the agent and kept in catalogs, with English as the source. Server errors carry stable codes and parameters, so the interface can show them in your language, and the guided tour is translated too.
 { #i18n-and-accessibility-locales }
@@ -961,8 +877,6 @@ The interface targets WCAG Level AA, including focus management and keyboard ope
 ## Identity and organizations
 
 ### Sign-in and identity
-
-**In development**
 
 Provisa signs people in through the identity provider a deployment already has: Firebase, Keycloak, any OIDC provider such as Okta or Azure AD, a simple username-and-password option for testing, or no provider at all in development. The provider is chosen in the admin UI, or by a setting when a cloud deployment is provisioned. One built image can run unsecured, with basic auth or behind a full identity provider, and the login page offers every provider the server advertises at once, so Google, GitHub and email can sit side by side.
 { #sign-in-and-identity-providers }
@@ -984,8 +898,6 @@ Signing in and out behaves the same way everywhere. Interactive sign-in happens 
     - [Signing in and out behaves the same way everywhere.](#sign-in-and-identity-sessions): [REQ-1246](arch/requirements.md#REQ-1246), [REQ-1247](arch/requirements.md#REQ-1247), [REQ-1326](arch/requirements.md#REQ-1326), [REQ-1348](arch/requirements.md#REQ-1348), [REQ-1430](arch/requirements.md#REQ-1430), [REQ-1571](arch/requirements.md#REQ-1571), [REQ-1603](arch/requirements.md#REQ-1603), [REQ-1721](arch/requirements.md#REQ-1721)
 
 ### Organizations
-
-**In development**
 
 Each organization is an isolated tenant. Its model, cache entries, audit log and materialized data live in its own schema, under its own database role, with its own cache-key and object-store prefix, so no query from another org can reach them. Where a backend has no schemas, each org gets a database of its own. An org on the external-engine lane can run an engine of its own kind, and its sources are provisioned onto that engine even while it sleeps. Creating an org builds all of this in the background and tells the creator when it is ready.
 { #organizations-tenancy }
@@ -1016,8 +928,6 @@ An org can make the workspace its own. An admin sets a display name and logo for
 
 ### Hasura migration
 
-**Available**
-
 Point the converter at a Hasura v2 metadata export or a DDN supergraph project and get Provisa YAML back. Tracked tables, relationships with their cardinality, source kinds, column naming and aggregate expressions are carried across, DDN field names are resolved to physical columns, and Hasura filter expressions become SQL. The result either validates as Provisa config or does not come out at all.
 { #hasura-migration-converters }
 
@@ -1040,8 +950,6 @@ What cannot be mapped is reported, not hidden. Event triggers, cron triggers, bo
 ## Install and operate
 
 ### Installation
-
-**In development**
 
 The desktop installer is a single download that extracts into a hidden Provisa directory and is driven by start, stop, status and open commands. By default it runs everything natively with no Docker: DuckDB as the federation engine, an embedded PostgreSQL control plane and an in-memory cache. Trino on Docker or an external engine are opt-in choices in the setup wizard, and Docker or a VM is provisioned only when one of those, or the demo, needs it. The demo is optional and off by default; when it is installed the launcher opens the guided tour.
 { #installation-desktop }
@@ -1068,8 +976,6 @@ Provisa ships in separate packages, a core, an observability add-on and a demo, 
 
 ### Deployment
 
-**In development**
-
 Docker Compose is the quick way to run Provisa for development or a small team: one command brings up the server, the engine and the connectors, and separate compose projects hold the demo upstreams and the telemetry stack so they start and stop on their own. For production on Kubernetes there is a Helm chart that serves the UI, exposes every protocol port, scales engine workers and validates its values. Authentication is chosen at install time and does not require Firebase.
 { #deployment-compose-helm }
 
@@ -1095,8 +1001,6 @@ Provisa keeps its model, its operating state and platform state in a pluggable c
 
 ### Operator settings and configuration
 
-**Available**
-
 Operators configure a deployment from one config file, its fragments and environment variables. A config file can include other files, resolved relative to the including file, so a large estate stays in readable pieces. The config path comes from an explicit environment variable with no default, so an unset one is an error rather than a guess. Every setting an operator can change has a place in the admin settings pages and the settings API, not only in a file.
 { #operator-settings-config }
 
@@ -1113,8 +1017,6 @@ Settings for the systems Provisa talks to are adjustable without code changes. D
     - [Settings for the systems Provisa talks to are adjustable without code changes.](#operator-settings-integrations): [REQ-1076](arch/requirements.md#REQ-1076), [REQ-1077](arch/requirements.md#REQ-1077), [REQ-1576](arch/requirements.md#REQ-1576), [REQ-1577](arch/requirements.md#REQ-1577)
 
 ### Observability
-
-**In development**
 
 Provisa emits OpenTelemetry traces, metrics and logs over OTLP from its API, compiler, executor and engine calls. Tracing is on by default in a lean form, with every request traced and detail added in a debug mode, and individual subsystems can have their traces switched on. Each stage of the query pipeline records the SQL it saw, so a governed query can be followed from request to engine. An opt-in stack of collector, Prometheus and Grafana is available for demonstration.
 { #observability-otel }
@@ -1141,8 +1043,6 @@ Operations reporting is delivered as views in the built-in ops domain: the query
 
 ### Sizing guide
 
-**In development**
-
 The sizing tool measures your own Provisa deployment under a workload you describe in one setup file, and writes a sizing and tuning guide from what it measured: how many physical cores and worker processes the workload needs, and what each setting buys. Every figure in the guide comes from a measurement of your deployment, so after a change to the deployment or the workload you rerun the tool and regenerate the guide. The guide and the steps to run the tool are in the documentation.
 { #sizing-guide-your-workload }
 
@@ -1151,8 +1051,6 @@ The sizing tool measures your own Provisa deployment under a workload you descri
     - [The sizing tool measures your own Provisa deployment under a workload you describe in o...](#sizing-guide-your-workload): [REQ-2005](arch/requirements.md#REQ-2005)
 
 ### Licensing and editions
-
-**In development**
 
 Provisa runs free for an evaluation period. The first-use date is signed and stored in several places outside the install directory, and elapsed time is measured against a high-water mark so setting the clock back does not extend the trial. Once the trial ends without a license, a notice appears on every access surface: a banner in the UI and the native notice channel of each protocol. An Unregistered marker stays in the footer whenever the deployment is not licensed.
 { #licensing-and-editions-trial }

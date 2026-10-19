@@ -7,11 +7,10 @@
 """Generate docs/exports/feature_matrix.csv for buyer-facing feature evaluation.
 
 One row per published feature (docs/arch/features.yaml; internal features are left out). Columns:
-  Feature, Section, Audience, Kind, Status, Description, Paragraphs
+  Feature, Section, Audience, Kind, Description, Paragraphs
 
 Description is the feature's paragraphs. Paragraphs lists each paragraph id with the requirements
-that serve it ("paragraph-id: REQ-1 REQ-2; ..."). Status is Available when none of the feature's
-requirements is still open, else In development.
+that serve it ("paragraph-id: REQ-1 REQ-2; ...")
 
 Usage:
   python scripts/gen_feature_matrix.py
@@ -24,7 +23,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from provisa.tools.feature_schema import FeaturesFile, feature_status  # type: ignore[import]
+from provisa.tools.feature_schema import FeaturesFile  # type: ignore[import]
 from provisa.tools.req_schema import RequirementsFile, Status  # type: ignore[import]
 
 YAML_PATH = Path("docs/arch/requirements.yaml")
@@ -49,9 +48,7 @@ def main() -> int:
 
     with OUT_PATH.open("w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow(
-            ["Feature", "Section", "Audience", "Kind", "Status", "Description", "Paragraphs"]
-        )
+        writer.writerow(["Feature", "Section", "Audience", "Kind", "Description", "Paragraphs"])
         for feat in features:
             writer.writerow(
                 [
@@ -59,7 +56,6 @@ def main() -> int:
                     feat.section,
                     feat.audience.value if feat.audience else "",
                     feat.visibility.value,
-                    feature_status({p.id for p in feat.paragraphs}, reqs),
                     "\n\n".join(" ".join(p.text.split()) for p in feat.paragraphs),
                     "; ".join(
                         f"{p.id}: {' '.join(by_paragraph.get(p.id, []))}" for p in feat.paragraphs

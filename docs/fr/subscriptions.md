@@ -208,7 +208,7 @@ Le serveur répond immédiatement `202 Accepted` et démarre une tâche en arri�
 2. Réexécute la requête équivalente à chaque changement
 3. Publie le résultat sous forme de message JSON dans le topic Kafka indiqué
 
-Le sink s'exécute pendant toute la durée de vie du processus serveur. (REQ-812) Redémarrez le serveur pour l'arrêter (l'enregistrement persistant des sinks via l'API d'administration est prévu).
+Le sink s'exécute pendant toute la durée de vie du processus serveur. (REQ-812) Redémarrez le serveur pour l'arrêter.
 
 **Format d'URI :** `kafka://[broker:port]/topic`
 
