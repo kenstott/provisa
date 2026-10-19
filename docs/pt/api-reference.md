@@ -1414,7 +1414,7 @@ Valores válidos de `kind`: `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Mover uma referência resolve o termo perdedor sob a regra de remover-ou-depreciar. Use isso para consolidar dois termos que a normalização manteve separados — por exemplo, após uma fonte usar uma abreviação não padronizada que ficou fora da tabela de expansão.
+Mover uma referência resolve o termo que a perde pela regra de remover ou depreciar. Use isso para juntar dois termos que a normalização manteve separados, por exemplo quando uma fonte usa uma abreviação fora do padrão que a tabela de expansão não cobre.
 
 Excluir um termo enraizado (um com referências físicas) retorna `400 glossary.invalid`. Remova ou mova todas as referências primeiro.
 
@@ -1432,7 +1432,7 @@ O modelo de IA configurado da organização pode rascunhar definições e propor
 
 **`POST /admin/glossary/definitions/generate`**
 
-Itera por todo termo no glossário, pula qualquer um que já tenha uma definição, e chama o modelo de IA da organização para rascunhar uma para cada termo restante. O rascunho é persistido imediatamente — diferente do endpoint de rascunho por termo (`POST /admin/glossary/terms/{term_id}/definition/generate`), não há etapa de edição. Definições de autoria humana nunca são sobrescritas: a proteção é `if summary["definition"]: continue` antes de qualquer chamada de modelo. Uma notificação de publicação cobre o lote inteiro.
+Percorre todos os termos do glossário, pula os que já têm definição e pede ao modelo de IA da organização que redija uma para cada um dos outros. Cada rascunho é salvo na hora, sem etapa de edição, diferente do endpoint de rascunho por termo (`POST /admin/glossary/terms/{term_id}/definition/generate`). Uma definição escrita por uma pessoa nunca é sobrescrita, porque um termo que já tem uma é pulado antes de qualquer chamada ao modelo. Uma única notificação de publicação cobre o lote inteiro.
 
 Resposta:
 
@@ -1452,7 +1452,7 @@ Resposta:
 {"added": 5}
 ```
 
-`added` é a contagem de arestas escritas. Uma aresta que já existia ainda conta — o upsert é bem-sucedido, mas os dados da aresta não mudam.
+`added` é o número de arestas escritas. Uma aresta que já existia também conta: o upsert dá certo, mas os dados da aresta não mudam.
 
 ### Ferramenta MCP `search_terms` {: #mcp-search_terms-tool }
 
@@ -1500,7 +1500,7 @@ A exportação aplica os mesmos filtros que o restante do snapshot:
 - Termos abstratos publicam incondicionalmente — eles são vocabulário de usuário, não vinculado a colunas físicas.
 - Uma aresta entre dois termos publica apenas quando ambos os termos das extremidades publicam.
 
-Todo adaptador de fornecedor publica o grafo de termos nativamente, em um contêiner de glossário de propriedade do Provisa que ele cria de forma idempotente — nunca em um glossário de catálogo existente:
+Cada adaptador de fornecedor publica o grafo de termos de forma nativa, num contêiner de glossário que pertence ao Provisa e que ele cria de forma idempotente, nunca num glossário de catálogo existente:
 
 | Provedor | Contêiner | Termos | Relações | Depreciação |
 | --- | --- | --- | --- | --- |
@@ -1510,7 +1510,7 @@ Todo adaptador de fornecedor publica o grafo de termos nativamente, em um contê
 | OpenMetadata | Glossário Provisa via `/v1/glossaries` | PUT chaveado por fqn, renomeações PATCH-rebind por UUID armazenado | KIND_OF → hierarquia pai nativa, SYNONYM_OF → `synonyms`, outros → `relatedTerms` | `entityStatus` |
 | Collibra | Domínio tipo Glossário "Provisa Glossary" | ativos Business Term via a Import API | tipos de relação Business Term nativos | status do ativo |
 
-A propriedade é o vínculo, não o nome: o id de fornecedor de cada termo publicado é capturado em `catalog_bindings` sob o URN do termo (`provisa://<org>/terms/<name>`), e o Provisa modifica ou exclui um item de glossário do lado do fornecedor apenas quando detém esse vínculo (ou o item vive no contêiner de propriedade do Provisa que ele criou). Um item de glossário sem vínculo Provisa se originou no sistema externo e nunca é tocado; atualizações fazem read-merge para que campos adicionados por stewards nos próprios termos do Provisa sobrevivam; nada é excluído quando um termo sai do snapshot. Atribuições de termo-para-ativo feitas por stewards permanecem de propriedade externa — nenhum adaptador escreve atribuições de termo-para-ativo (a publicação de atribuições de autoria do Provisa é um follow-on explícito). Especificamente no Collibra, a segurança sob a semântica REPLACE da Import API repousa na contenção: o payload menciona apenas ativos dentro do domínio de glossário Provisa e instâncias de relação apenas entre termos Provisa, de forma que glossários de stewards e suas relações nunca são alcançáveis.
+O que conta é o vínculo, não o nome. O id de fornecedor de cada termo publicado é registrado em `catalog_bindings` sob o URN do termo (`provisa://<org>/terms/<name>`), e o Provisa só altera ou apaga um item de glossário do lado do fornecedor quando tem esse vínculo, ou quando o item está no contêiner que o Provisa criou. Um item de glossário sem vínculo do Provisa veio do sistema externo e nunca é tocado. As atualizações leem e mesclam, então campos que um steward acrescentou aos termos do próprio Provisa sobrevivem, e nada é apagado quando um termo sai do snapshot. As atribuições de termos a ativos feitas por stewards continuam do sistema externo: nenhum adaptador as escreve (publicar atribuições criadas no Provisa é um passo seguinte à parte). No Collibra em particular, a Import API substitui o que recebe, e a segurança se apoia na contenção: a carga só nomeia ativos dentro do domínio de glossário do Provisa e relações só entre termos do Provisa, então os glossários dos stewards e suas relações ficam fora de alcance.
 
 ---
 
@@ -1606,7 +1606,7 @@ Excluir um produto limpa `product_id` de toda tabela membro, removendo sua assoc
 | `support` | `String` | Não | Orientação de suporte em texto livre |
 | `custom_properties` | `JSON` | Não | Metadados arbitrários de chave-valor não cobertos pelos campos padrão |
 
-Dois campos adicionais existem no modelo mas não são expostos no `DataProductType` / `DataProductInput` do Strawberry — são específicos do Snowflake Horizon Catalog:
+Há mais dois campos no modelo que não são expostos em `DataProductType` / `DataProductInput`. Eles são específicos do Snowflake Horizon Catalog:
 
 | Campo | Notas |
 | --- | --- |
@@ -1615,7 +1615,7 @@ Dois campos adicionais existem no modelo mas não são expostos no `DataProductT
 
 ### Associação de tabelas {: #table-membership }
 
-Uma tabela integra um produto de dados ao definir seu campo `product_id` no formulário de edição de tabela. O seletor é limitado a produtos cujo `domain_id` corresponda ao domínio da própria tabela — uma tabela no domínio `marketing` nunca recebe como opção um produto no domínio `sales`.
+Uma tabela entra num data product quando o campo `product_id` dela é definido no formulário de edição da tabela. O seletor só oferece produtos cujo `domain_id` corresponde ao domínio da própria tabela, então uma tabela no domínio `marketing` nunca recebe a oferta de um produto do domínio `sales`.
 
 Comandos do mesmo domínio também podem ser atribuídos como membros.
 
@@ -1623,7 +1623,7 @@ Comandos do mesmo domínio também podem ser atribuídos como membros.
 
 `build_snapshot` aplica `data_products_only=True` para toda publicação em catálogo. Tabelas sem `product_id` são retidas do snapshot, juntamente com suas arestas de relacionamento, arestas de linhagem e tags de governança. Fontes e domínios sempre são publicados. Termos do glossário são publicados somente quando pelo menos uma de suas referências físicas pertence a uma tabela exportada (membro de produto).
 
-Um produto sem membros exportados não gera uma entrada no snapshot — uma listagem sem membros representaria erroneamente o produto ao catálogo.
+Um produto sem membros exportados não ganha entrada no snapshot, porque uma listagem sem membros daria ao catálogo uma imagem errada do produto.
 
 ### Suporte a produto de dados por destino de catálogo {: #data-product-support-by-catalog-target }
 

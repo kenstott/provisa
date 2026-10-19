@@ -1414,7 +1414,7 @@ Valeurs `kind` valides : `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Déplacer une référence règle le terme perdant selon la règle de suppression-ou-dépréciation. Utilisez ceci pour consolider deux termes que la normalisation a gardés séparés — par exemple, après qu'une source utilise une abréviation non standard tombée en dehors de la table d'expansion.
+Déplacer une référence règle le terme qui la perd selon la règle « supprimer ou déprécier ». Servez-vous-en pour fusionner deux termes que la normalisation a gardés séparés, par exemple quand une source emploie une abréviation non standard que la table d'expansion ne couvre pas.
 
 Supprimer un terme ancré (avec des références physiques) renvoie `400 glossary.invalid`. Supprimez ou déplacez d'abord toutes les références.
 
@@ -1432,7 +1432,7 @@ Le modèle IA configuré de l'organisation peut rédiger des définitions et pro
 
 **`POST /admin/glossary/definitions/generate`**
 
-Parcourt chaque terme du glossaire, ignore ceux qui ont déjà une définition, et appelle le modèle IA de l'organisation pour en rédiger une pour chaque terme restant. Le brouillon est persisté immédiatement — contrairement au point de terminaison de brouillon par terme (`POST /admin/glossary/terms/{term_id}/definition/generate`), il n'y a pas d'étape d'édition. Les définitions rédigées par des humains ne sont jamais écrasées : la garde est `if summary["definition"]: continue` avant tout appel au modèle. Une seule notification de publication couvre tout le lot.
+Parcourt chaque terme du glossaire, saute ceux qui ont déjà une définition et demande au modèle d'IA de l'organisation d'en rédiger une pour chacun des autres. Chaque brouillon est enregistré aussitôt, sans étape d'édition, contrairement au point de terminaison de brouillon par terme (`POST /admin/glossary/terms/{term_id}/definition/generate`). Une définition écrite par une personne n'est jamais écrasée, car un terme qui en a une est sauté avant tout appel au modèle. Une seule notification de publication couvre tout le lot.
 
 Réponse :
 
@@ -1452,7 +1452,7 @@ Réponse :
 {"added": 5}
 ```
 
-`added` est le nombre d'arêtes écrites. Une arête déjà existante compte quand même — l'insertion réussit, mais les données de l'arête ne changent pas.
+`added` est le nombre d'arêtes écrites. Une arête qui existait déjà compte aussi : l'upsert réussit, mais les données de l'arête ne changent pas.
 
 ### Outil MCP `search_terms` {: #mcp-search_terms-tool }
 
@@ -1500,7 +1500,7 @@ L'export applique les mêmes filtres que le reste de l'instantané :
 - Les termes abstraits publient sans condition — ce sont du vocabulaire utilisateur, non lié à des colonnes physiques.
 - Une arête entre deux termes ne publie que lorsque les deux termes aux extrémités publient.
 
-Chaque adaptateur fournisseur publie le graphe de termes nativement, dans un conteneur de glossaire propriété de Provisa qu'il crée de façon idempotente — jamais dans un glossaire de catalogue existant :
+Chaque adaptateur de fournisseur publie le graphe des termes nativement, dans un conteneur de glossaire qui appartient à Provisa et qu'il crée de façon idempotente, jamais dans un glossaire de catalogue existant :
 
 | Fournisseur | Conteneur | Termes | Relations | Dépréciation |
 | --- | --- | --- | --- | --- |
@@ -1510,7 +1510,7 @@ Chaque adaptateur fournisseur publie le graphe de termes nativement, dans un con
 | OpenMetadata | Glossaire Provisa via `/v1/glossaries` | PUT indexé par fqn, renommages PATCH-rebind par UUID stocké | KIND_OF → hiérarchie parente native, SYNONYM_OF → `synonyms`, autres → `relatedTerms` | `entityStatus` |
 | Collibra | Domaine de type glossaire « Provisa Glossary » | Actifs Business Term via l'API Import | types de relation Business Term natifs | statut d'actif |
 
-La propriété est le lien contraignant, pas le nom : l'id fournisseur de chaque terme publié est capturé dans `catalog_bindings` sous l'URN du terme (`provisa://<org>/terms/<name>`), et Provisa ne modifie ou ne supprime un élément de glossaire côté fournisseur que lorsqu'il détient ce lien (ou que l'élément vit dans le conteneur propriété de Provisa qu'il a créé). Un élément de glossaire sans lien Provisa provient du système externe et n'est jamais touché ; les mises à jour lisent-fusionnent afin que les champs ajoutés par le steward sur les propres termes de Provisa survivent ; rien n'est supprimé lorsqu'un terme quitte l'instantané. Les affectations terme-vers-actif du steward restent la propriété de l'externe — aucun adaptateur n'écrit d'affectations terme-vers-actif (la publication des affectations rédigées par Provisa est un suivi explicite). Sur Collibra spécifiquement, la sécurité sous la sémantique REPLACE de l'API Import repose sur le confinement : la charge utile ne mentionne que des actifs à l'intérieur du domaine de glossaire Provisa et des instances de relation uniquement entre termes Provisa, de sorte que les glossaires du steward et leurs relations ne sont jamais atteignables.
+Ce qui compte, c'est le lien, pas le nom. L'id fournisseur de chaque terme publié est enregistré dans `catalog_bindings` sous l'URN du terme (`provisa://<org>/terms/<name>`), et Provisa ne modifie ou ne supprime un élément de glossaire côté fournisseur que s'il détient ce lien, ou si l'élément se trouve dans le conteneur que Provisa a créé. Un élément de glossaire sans lien Provisa vient du système externe et n'est jamais touché. Les mises à jour lisent puis fusionnent, si bien que les champs ajoutés par un intendant aux termes propres de Provisa sont conservés, et rien n'est supprimé quand un terme quitte l'instantané. Les affectations de termes aux actifs faites par les intendants restent au système externe : aucun adaptateur ne les écrit (publier les affectations rédigées dans Provisa est une suite à part). Sur Collibra en particulier, l'API d'import remplace ce qu'elle reçoit, et la sécurité repose sur le confinement : la charge utile ne nomme que des actifs du domaine de glossaire Provisa et des relations entre termes Provisa, donc les glossaires des intendants et leurs relations sont hors d'atteinte.
 
 ---
 
@@ -1606,7 +1606,7 @@ Supprimer un produit efface `product_id` de chaque table membre, supprimant leur
 | `support` | `String` | Non | Indications de support en texte libre |
 | `custom_properties` | `JSON` | Non | Métadonnées clé-valeur arbitraires non couvertes par les champs standards |
 
-Deux champs supplémentaires existent sur le modèle mais ne sont pas exposés dans le `DataProductType` / `DataProductInput` Strawberry — ils sont spécifiques à Snowflake Horizon Catalog :
+Deux autres champs existent dans le modèle mais ne sont pas exposés dans `DataProductType` / `DataProductInput`. Ils sont propres au Snowflake Horizon Catalog :
 
 | Champ | Notes |
 | --- | --- |
@@ -1615,7 +1615,7 @@ Deux champs supplémentaires existent sur le modèle mais ne sont pas exposés d
 
 ### Appartenance de table {: #table-membership }
 
-Une table rejoint un produit de données en définissant son champ `product_id` au formulaire d'édition de table. Le sélecteur est délimité aux produits dont le `domain_id` correspond au domaine propre de la table — une table du domaine `marketing` n'est jamais proposée un produit du domaine `sales`.
+Une table rejoint un produit de données quand son champ `product_id` est renseigné dans le formulaire d'édition de la table. Le sélecteur ne propose que les produits dont le `domain_id` correspond au domaine de la table ; une table du domaine `marketing` ne se voit donc jamais proposer un produit du domaine `sales`.
 
 Les commandes du même domaine peuvent aussi être affectées comme membres.
 
@@ -1623,7 +1623,7 @@ Les commandes du même domaine peuvent aussi être affectées comme membres.
 
 `build_snapshot` applique `data_products_only=True` pour chaque publication de catalogue. Les tables sans `product_id` sont retenues de l'instantané, ainsi que leurs arêtes de relation, arêtes de traçabilité, et étiquettes de gouvernance. Les sources et domaines sont toujours publiés. Les termes du glossaire ne publient que lorsqu'au moins une de leurs références physiques appartient à une table exportée (membre d'un produit).
 
-Un produit sans membre exporté ne construit pas d'entrée d'instantané — une fiche sans membre représenterait mal le produit auprès du catalogue.
+Un produit sans membre exporté n'a pas d'entrée dans l'instantané, car une fiche sans membres donnerait au catalogue une image fausse du produit.
 
 ### Prise en charge des produits de données par cible de catalogue {: #data-product-support-by-catalog-target }
 

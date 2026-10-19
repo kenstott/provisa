@@ -1412,7 +1412,7 @@ Valid `kind` values: `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Moving a ref settles the losing term under the remove-or-deprecate rule. Use this to consolidate two terms that normalization kept separate — for example, after a source uses a non-standard abbreviation that fell outside the expansion table.
+Moving a ref settles the term that lost it under the remove-or-deprecate rule. Use it to merge two terms that normalization kept apart, for example when a source uses a non-standard abbreviation that the expansion table doesn't cover.
 
 Deleting a rooted term (one with physical refs) returns `400 glossary.invalid`. Remove or move all refs first.
 
@@ -1430,7 +1430,7 @@ The org's configured AI model can draft definitions and propose relationship edg
 
 **`POST /admin/glossary/definitions/generate`**
 
-Iterates every term in the glossary, skips any that already have a definition, and calls the org's AI model to draft one for each remaining term. The draft is persisted immediately — unlike the per-term draft endpoint (`POST /admin/glossary/terms/{term_id}/definition/generate`), there is no editor step. Human-authored definitions are never overwritten: the guard is `if summary["definition"]: continue` before any model call. One publish notification covers the entire batch.
+Goes through every term in the glossary, skips those that already have a definition, and calls the org's AI model to draft one for each of the rest. Each draft is saved straight away, with no editor step, unlike the per-term draft endpoint (`POST /admin/glossary/terms/{term_id}/definition/generate`). A definition a person wrote is never overwritten, because a term that has one is skipped before any model call. One publish notification covers the whole batch.
 
 Response:
 
@@ -1450,7 +1450,7 @@ Response:
 {"added": 5}
 ```
 
-`added` is the count of edges written. An edge that already existed still counts — the upsert succeeds, but the edge data does not change.
+`added` is the number of edges written. An edge that already existed still counts: the upsert succeeds, but the edge's data doesn't change.
 
 ### MCP `search_terms` Tool
 
@@ -1498,7 +1498,7 @@ The export applies the same filters as the rest of the snapshot:
 - Abstract terms publish unconditionally — they are user vocabulary, not bound to physical columns.
 - An edge between two terms publishes only when both endpoint terms publish.
 
-Every vendor adapter publishes the term graph natively, into a Provisa-owned glossary container it creates idempotently — never into an existing catalog glossary:
+Every vendor adapter publishes the term graph natively, into a glossary container that Provisa owns and creates idempotently, and never into an existing catalog glossary:
 
 | Provider | Container | Terms | Relations | Deprecation |
 | --- | --- | --- | --- | --- |
@@ -1508,7 +1508,7 @@ Every vendor adapter publishes the term graph natively, into a Provisa-owned glo
 | OpenMetadata | Provisa glossary via `/v1/glossaries` | fqn-keyed PUT, renames PATCH-rebind by stored UUID | KIND_OF → native parent hierarchy, SYNONYM_OF → `synonyms`, others → `relatedTerms` | `entityStatus` |
 | Collibra | Glossary-type domain "Provisa Glossary" | Business Term assets via the Import API | native Business Term relation types | asset status |
 
-Ownership is the binding, not the name: each published term's vendor id is captured into `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa modifies or deletes a vendor-side glossary item only when it holds that binding (or the item lives in the Provisa-owned container it created). A glossary item with no Provisa binding originated in the external system and is never touched; updates read-merge so steward-added fields on Provisa's own terms survive; nothing is deleted when a term leaves the snapshot. Steward term-to-asset assignments remain external-owned — no adapter writes term-to-asset assignments (Provisa-authored assignment publishing is an explicit follow-on). On Collibra specifically, safety under the Import API's REPLACE semantics rests on containment: the payload mentions only assets inside the Provisa glossary domain and relation instances only between Provisa terms, so steward glossaries and their relations are never reachable.
+What counts is the binding, not the name. Each published term's vendor id is recorded in `catalog_bindings` under the term's URN (`provisa://<org>/terms/<name>`), and Provisa changes or deletes a glossary item on the vendor side only when it holds that binding, or when the item lives in the container Provisa created. A glossary item with no Provisa binding came from the external system and is never touched. Updates read and merge, so fields a steward added to Provisa's own terms survive, and nothing is deleted when a term leaves the snapshot. Steward assignments of terms to assets stay with the external system: no adapter writes them (publishing assignments authored in Provisa is a separate follow-on). On Collibra in particular, the Import API replaces what it's sent, and safety rests on containment: the payload names only assets inside the Provisa glossary domain and relations only between Provisa terms, so steward glossaries and their relations are out of reach.
 
 ---
 
@@ -1604,7 +1604,7 @@ Deleting a product clears `product_id` from every member table, removing their m
 | `support` | `String` | No | Free-text support guidance |
 | `custom_properties` | `JSON` | No | Arbitrary key-value metadata not covered by the standard fields |
 
-Two additional fields exist on the model but are not exposed in the Strawberry `DataProductType` / `DataProductInput` — they are Snowflake Horizon Catalog-specific:
+Two more fields exist on the model but aren't exposed in `DataProductType` / `DataProductInput`. They are specific to the Snowflake Horizon Catalog:
 
 | Field | Notes |
 | --- | --- |
@@ -1613,7 +1613,7 @@ Two additional fields exist on the model but are not exposed in the Strawberry `
 
 ### Table membership
 
-A table joins a data product by setting its `product_id` field at the table edit form. The picker is scoped to products whose `domain_id` matches the table's own domain — a table in domain `marketing` is never offered a product in domain `sales`.
+A table joins a data product when its `product_id` field is set on the table edit form. The picker offers only products whose `domain_id` matches the table's own domain, so a table in domain `marketing` is never offered a product in domain `sales`.
 
 Commands in the same domain may also be assigned as members.
 
@@ -1621,7 +1621,7 @@ Commands in the same domain may also be assigned as members.
 
 `build_snapshot` applies `data_products_only=True` for every catalog publish. Tables without a `product_id` are withheld from the snapshot, along with their relationship edges, lineage edges, and governance tags. Sources and domains always publish. Glossary terms publish only when at least one of their physical refs belongs to an exported (product-member) table.
 
-A product with no exported members does not build a snapshot entry — a listing with no members would misrepresent the product to the catalog.
+A product with no exported members gets no snapshot entry, because a listing with no members would misrepresent the product to the catalog.
 
 ### Data product support by catalog target
 
