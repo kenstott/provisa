@@ -18,6 +18,9 @@ default address):
                         ``--fact`` values the operator's script states (telemetry, engine)
     GET /cpu            cumulative CPU seconds of ``--pid`` and its descendants (device 1)
     GET /docker-stats   one ``docker stats`` snapshot (device 3's containers)
+    GET /paging         the host's major faults, swap in and out and available memory, and the
+                        major faults of ``--pid`` and its descendants as class ``provisa``
+                        (paging.py); the reader takes one at each end of a step
     GET /rtt/<name>     the TCP round trip to the ``--rtt-target`` of that name
 
 A fact that cannot be read is reported under ``errors`` with the reason, never guessed.
@@ -42,6 +45,7 @@ from pathlib import Path
 from typing import Any
 
 import measurements
+import paging
 from server_cpu_agent import cpu_seconds, parse_listen
 
 _METADATA = "http://metadata.google.internal/computeMetadata/v1/instance/"
@@ -142,6 +146,8 @@ def handler(
             return 200, {"pid": pid, "cpu_seconds": cpu_seconds(pid)}
         if path == "/docker-stats":
             return 200, docker_stats()
+        if path == "/paging":
+            return 200, paging.snapshot({} if pid is None else {"provisa": pid})
         if path.startswith("/rtt/"):
             name = path.removeprefix("/rtt/")
             if name not in rtt_targets:

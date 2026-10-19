@@ -52,6 +52,7 @@ import credential as credential_module
 import governance
 import lookup
 import measurements
+import paging
 import replication
 import request_mix
 import request_render
@@ -110,6 +111,8 @@ class Endpoints:
     # reports beside the sources' (the engine, control plane, Redis, collector).
     docker_stats_url: str | None = None
     backend_containers: tuple[str, ...] = ()
+    # Each benchmark device's host_agent (name, URL): its paging is read at both ends of a step.
+    devices: tuple[tuple[str, str], ...] = ()
 
 
 # --------------------------------------------------------------------------------------------
@@ -735,6 +738,40 @@ def _server_cpu_seconds(server_pid: int | str | None) -> float | None:
     return server_cpu_agent.cpu_seconds(server_pid)
 
 
+def _paging_snapshots(server_pid: int | str | None, devices: tuple[tuple[str, str], ...]) -> dict:
+    """Paging counters now (paging.py): this host's, with the load generator's major faults and
+    the server's when it runs here, and each device agent's."""
+    classes = {"load-generator": os.getpid()}
+    if isinstance(server_pid, int):
+        classes["provisa"] = server_pid
+    out = {"client": paging.snapshot(classes)}
+    if devices:
+        import httpx
+
+        for name, url in devices:
+            resp = httpx.get(f"{url}/paging", timeout=10)
+            resp.raise_for_status()
+            out[name] = resp.json()
+    return out
+
+
+def _paging_text(by_host: Mapping[str, Mapping[str, Any]]) -> str:
+    """A step's paging in one phrase per host: major faults, swap in/out, available memory."""
+    parts = []
+    for host, p in by_host.items():
+        if "error" in p:
+            parts.append(f"{host}: paging not read ({p['error']})")
+            continue
+        classes = ",".join(f"{k}={v}" for k, v in p["majflt"].items())
+        parts.append(
+            f"{host}: majflt={p['pgmajfault']}"
+            + (f" ({classes})" if classes else "")
+            + f" swap_in={p['pswpin']} swap_out={p['pswpout']}"
+            + f" avail={p['mem_available_mb_start']}->{p['mem_available_mb_end']}MB"
+        )
+    return "paging[" + "; ".join(parts) + "]"
+
+
 def _percentile(sorted_values: list[float], q: float) -> float:
     return sorted_values[min(len(sorted_values) - 1, int(q * len(sorted_values)))]
 
@@ -769,6 +806,7 @@ def run_step(
                 p.terminate()
         return {"concurrency": concurrency, "error": failures[0]}
     server_cpu0 = _server_cpu_seconds(server_pid)
+    paging0 = _paging_snapshots(server_pid, ep.devices)
     monitored = {sid: s.container for sid, s in ep.setup.sources.items() if s.container}
     sampler = _sampler(ep, monitored) if monitored or ep.backend_containers else None
     if sampler is not None:
@@ -776,6 +814,7 @@ def run_step(
     go.set()
     results = [out.get(timeout=window_s + 120) for _ in procs]
     server_cpu1 = _server_cpu_seconds(server_pid)
+    paging1 = _paging_snapshots(server_pid, ep.devices)
     if sampler is not None:
         sampler.stop()
     for p in procs:
@@ -802,6 +841,7 @@ def run_step(
     if server_cpu0 is not None and server_cpu1 is not None and attempts:
         step["server_cpu_ms_per_request"] = round((server_cpu1 - server_cpu0) / attempts * 1000, 3)
         step["server_cpu_cores"] = round((server_cpu1 - server_cpu0) / window_s, 2)
+    step["paging"] = {host: paging.delta(paging0[host], paging1[host]) for host in paging0}
     if sampler is not None:
         sampled = sampler.result()
         sources = measurements.SampleResult(
@@ -965,6 +1005,7 @@ def summary_line(report: dict) -> str:
             )
         if "server_cpu_ms_per_request" in step:
             text += f" srv_cpu={step['server_cpu_ms_per_request']}ms/req"
+        text += " " + _paging_text(step["paging"])
         text += f" client_cpu={step['client_cpu_cores']}"
         if step["client_limited"]:
             text += " CLIENT-LIMITED"
@@ -1266,10 +1307,11 @@ def run_from_args(
         endpoints_from_setup(setup),
         docker_stats_url=args.source_cpu_url,
         backend_containers=tuple(args.backend_container),
+        devices=tuple(_device(d) for d in args.device),
     )
     devices = None
     if args.device:
-        devices = collect_devices(dict(_device(d) for d in args.device))
+        devices = collect_devices(dict(ep.devices))
         (output_dir / "devices.json").write_text(json.dumps(devices, indent=2))
     print(governance.check_telemetry(setup, devices), flush=True)
     audit = None

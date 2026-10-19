@@ -33,6 +33,7 @@ import contract_model  # noqa: E402
 import host_agent  # noqa: E402
 import measurements  # noqa: E402
 import optimistic_load as ol  # noqa: E402
+import paging  # noqa: E402
 import three_device as td  # noqa: E402
 
 LSCPU = """Architecture:            x86_64
@@ -149,6 +150,10 @@ def test_the_agent_answers_its_facts_cpu_containers_and_round_trips(agent: str) 
     assert host["rtt_targets"] == ["backends"]
     assert httpx.get(f"{agent}/cpu").json()["pid"] == os.getpid()
     assert httpx.get(f"{agent}/rtt/backends").json()["connects"] == host_agent.RTT_CONNECTS
+    paged = httpx.get(f"{agent}/paging").json()
+    assert set(paged) in ({"error"}, {*paging.VMSTAT_FIELDS, "mem_available_kb", "majflt"})
+    if "majflt" in paged:
+        assert set(paged["majflt"]) == {"provisa"}
     stats = measurements.remote_docker_stats(f"{agent}/docker-stats")()
     assert measurements.parse_docker_stats(stats) == {
         "perf-postgresql-1": 1.5,
@@ -272,6 +277,17 @@ def _step(c: int, rps: float, *, errors: int = 0, limited: bool = False, cpu: fl
         "client_cpu_cores": 3.0,
         "source_cpu_cores": {"bench-postgresql": 0.5},
         "backend_cpu_cores": {"perf-redis-1": 0.2},
+        "paging": {
+            "client": {"error": "FileNotFoundError: /proc/vmstat"},
+            "server": {
+                "pgmajfault": 12,
+                "pswpin": 0,
+                "pswpout": 3,
+                "majflt": {"provisa": 7},
+                "mem_available_mb_start": 900,
+                "mem_available_mb_end": 850,
+            },
+        },
     }
 
 
@@ -299,6 +315,16 @@ def test_the_published_point_is_telemetry_off_over_the_repetitions(tmp_path: Pat
     assert g["repetitions"] == 3 and g["concurrency"] == [64, 64, 64]
     assert g["req_per_s"] == {"median": 2000, "min": 1900, "max": 2100}
     assert g["backend_cpu_cores"]["perf-redis-1"]["median"] == 0.2
+    # paging beside CPU per request: each host's counters over the repetitions, or why not read
+    server = g["paging"]["server"]
+    assert server["pgmajfault"]["median"] == 12 and server["pswpout"]["max"] == 3
+    assert server["majflt"] == {"provisa": {"median": 7, "min": 7, "max": 7}}
+    assert server["mem_available_mb_start"]["median"] == 900
+    assert server["mem_available_mb_end"]["median"] == 850
+    assert g["paging"]["client"] == {
+        "majflt": {},
+        "errors": ["FileNotFoundError: /proc/vmstat"],
+    }
     assert "telemetry_on" not in published and "impact_on_minus_off" not in published
     assert internal["label"] == "internal: not for publication"
     impact = internal["impact_on_minus_off"]["graphql"]

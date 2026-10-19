@@ -171,6 +171,36 @@ def _per_key(steps: Sequence[Mapping[str, Any]], field: str) -> dict[str, dict[s
     }
 
 
+def _paging(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Each host's paging over the repetitions (beside CPU per request, so a rise in it can be
+    told from paging): the spread of every counter, and the reasons a host's was not read."""
+    out: dict[str, Any] = {}
+    for host in sorted({h for s in steps for h in s["paging"]}):
+        read = [s["paging"][host] for s in steps if "error" not in s["paging"][host]]
+        errors = sorted({s["paging"][host]["error"] for s in steps if "error" in s["paging"][host]})
+        fields = (
+            {
+                f: _spread([p[f] for p in read])
+                for f in (
+                    "pgmajfault",
+                    "pswpin",
+                    "pswpout",
+                    "mem_available_mb_start",
+                    "mem_available_mb_end",
+                )
+            }
+            if read
+            else {}
+        )
+        classes = sorted({k for p in read for k in p["majflt"]})
+        out[host] = {
+            **fields,
+            "majflt": {k: _spread([p["majflt"][k] for p in read]) for k in classes},
+            **({"errors": errors} if errors else {}),
+        }
+    return out
+
+
 def summarize(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "repetitions": len(steps),
@@ -183,6 +213,7 @@ def summarize(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         out[f] = _spread(values)
     out["source_cpu_cores"] = _per_key(steps, "source_cpu_cores")
     out["backend_cpu_cores"] = _per_key(steps, "backend_cpu_cores")
+    out["paging"] = _paging(steps)
     return out
 
 
