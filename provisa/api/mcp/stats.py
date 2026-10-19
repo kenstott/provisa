@@ -283,7 +283,7 @@ def forecast(
     seasonal_periods: int | None = None,
     level: float = 0.95,
 ) -> dict[str, Any]:
-    from statsmodels.tsa.exponential_smoothing.ets import ETSModel
+    from statsmodels.tsa.exponential_smoothing.ets import ETSModel, ETSResults
 
     if horizon < 1:
         raise ValueError("horizon is 1 or more")
@@ -296,9 +296,13 @@ def forecast(
     if len(used) < needed:
         raise ValueError(f"forecast needs {needed} or more points; the result has {len(used)}")
     y = pd.Series(_series(used, value).astype(float).to_numpy())  # ETS predictions are indexed
-    fit = ETSModel(
-        y, error="add", trend=trend, seasonal=seasonal, seasonal_periods=seasonal_periods
-    ).fit(disp=False)
+    # statsmodels types fit() as a union of arrays and results; an ETS fit is its results.
+    fit = cast(
+        ETSResults,
+        ETSModel(
+            y, error="add", trend=trend, seasonal=seasonal, seasonal_periods=seasonal_periods
+        ).fit(disp=False),
+    )
     frame_ = fit.get_prediction(start=len(y), end=len(y) + horizon - 1).summary_frame(
         alpha=1 - level
     )
