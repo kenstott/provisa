@@ -130,6 +130,9 @@ _TYPE_MAP: dict[str, GraphQLScalarType] = cast(
     {
         # String types
         "varchar": GraphQLString,
+        # The SQL standard's own name for varchar, as information_schema spells it: hit live
+        # registering a ServiceNow table, whose columns the adapter reports by that name.
+        "character varying": GraphQLString,
         "text": GraphQLString,  # views cast array/jsonb/json columns to text (see app.py)
         "char": GraphQLString,
         "bpchar": GraphQLString,  # postgres blank-padded char

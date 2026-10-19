@@ -28,6 +28,12 @@ def test_column_type_to_graphql_nclob():
     assert column_type_to_graphql("NCLOB") is GraphQLString
 
 
+def test_column_type_to_graphql_character_varying():
+    """A ServiceNow table's text columns arrive as the SQL standard's name for varchar."""
+    assert column_type_to_graphql("character varying") is GraphQLString
+    assert column_type_to_graphql("CHARACTER VARYING(40)") is GraphQLString
+
+
 def test_column_type_to_graphql_postgres_double_precision():
     # A Float column of an ops table on a PostgreSQL control plane (sla_breach_log.observed) is
     # read from information_schema as "double precision"; the server would not start without it.
