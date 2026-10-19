@@ -1,9 +1,6 @@
 # Lineage em Nível de Coluna {: #column-level-lineage }
 
-O Provisa rastreia lineage de dados em nível de coluna de forma estática — computado a partir de definições
-SQL e contratos de command, sem execução necessária. Duas exibições estão disponíveis: um DAG por
-declaração e um grafo de proveniência abrangendo toda a federação, cobrindo todas as exibições e exibições
-materializadas (MVs) registradas.
+O Provisa rastreia a linhagem de dados no nível de coluna de forma estática. Ele a calcula a partir das definições SQL e dos contratos de comandos, então nada precisa rodar. Você tem duas visões: um DAG por instrução e um grafo de proveniência de toda a federação, que abrange cada view e view materializada (MV) registrada.
 
 ## O explorador de lineage {: #the-lineage-explorer }
 
@@ -68,32 +65,25 @@ Uma aresta vinda de uma chamada de command é renderizada como uma linha roxa tr
 
 ## Grafo abrangendo toda a federação {: #federation-wide-graph }
 
-O grafo de federação funde o lineage por declaração de cada MV registrada em um único grafo de proveniência.
-A identidade do nó é `relation.column` — a coluna de saída de uma exibição e a referência de entrada de outra
-exibição à mesma coluna colapsam em um só nó. O resultado é um único DAG das colunas de fonte base até
-cada conjunto de dados derivado na plataforma.
+O grafo da federação junta a linhagem por instrução de cada MV registrada num único grafo de proveniência. A identidade de um nó é `relation.column`, então a coluna de saída de uma view e a referência de entrada de outra view a essa coluna se fundem num nó. O resultado é um único DAG, das colunas das fontes base até cada conjunto de dados derivado da plataforma.
 
 Use `focus`, `direction` e `depth` para delimitar a exibição em escala de federação sem recomputar
 o grafo.
 
 ## Ciclos {: #cycles }
 
-Ciclos são descritos, não rejeitados. O motor de lineage detecta todo ciclo direcionado e o
-**classifica**.
+O motor de linhagem detecta cada ciclo dirigido e o **classifica**. Um ciclo é descrito, nunca rejeitado.
 
 | Classificação | Cor da borda | Significado |
 | --- | --- | --- |
 | `feedback` | Amarelo | O ciclo cruza um nó materializado — um laço de realimentação legítimo e defasado no tempo. O snapshot da MV é a fronteira de versão que o torna bem definido. |
 | `error` | Vermelho | Nenhuma fronteira de materialização no laço — uma definição circular sem ordem de avaliação estável. Provavelmente um erro de projeto. |
 
-Um ciclo `feedback` não é uma falha. Uma MV de enriquecimento que realimenta uma coluna derivada em sua
-própria relação de fonte é um padrão válido desde que um nó do laço seja materializado — o
-snapshot isola as duas metades temporalmente. Um ciclo `error` exige julgamento do operador: normalmente
-significa que duas exibições se referenciam mutuamente sem snapshot no meio.
+Um ciclo `feedback` é um padrão válido. Uma MV de enriquecimento que devolve uma coluna derivada à sua própria relação de origem funciona desde que um nó do laço esteja materializado, porque o snapshot separa as duas metades no tempo. Um ciclo `error` precisa do julgamento de um operador. Em geral significa que duas views se referenciam sem um snapshot no meio.
 
 ## API
 
-Ambos os endpoints são **estáticos** — eles leem definições e contratos, não dados.
+Os dois endpoints são **estáticos**. Eles leem definições e contratos, nunca dados.
 
 ### POST /admin/lineage/graph
 
@@ -229,23 +219,14 @@ chama consegue dizer a qual metade da edição cada artefato está reagindo.
 Pergunte isto **antes** de salvar. Uma coluna renomeada é localizada pelo nome exposto que ela ainda carrega no
 registro; uma vez que o alias tenha sido aplicado, o nome antigo se foi e a consulta não encontra nada.
 
-A página de Tabelas roda a consulta automaticamente quando uma edição pendente muda um alias ou encolhe o
-conjunto de colunas, e lista o que encontra. O aviso é consultivo:
-ele nomeia os artefatos afetados e o administrador decide. Ele não bloqueia o salvamento, porque
-os consumidores do patrimônio não podem ser todos alcançados — um painel externo ou uma aplicação cliente que
-consulta a coluna pelo nome está além do conhecimento do registro. Pela mesma razão, varreduras sobre
-texto SQL livre casam a coluna como um token identificador em vez de resolver escopo, o que pode nomear um
-artefato que acaba não usando a coluna. Reportar demais é a direção segura para um aviso.
+A página de tabelas roda a consulta automaticamente quando uma edição pendente muda um alias ou reduz o conjunto de colunas, e lista o que encontra. O aviso é consultivo. Ele nomeia os artefatos afetados, e o administrador decide. Ele nunca bloqueia o salvamento, porque não dá para alcançar todos os consumidores do patrimônio: um dashboard externo ou uma aplicação cliente que consulta a coluna pelo nome está fora do conhecimento do registro. Pelo mesmo motivo, varreduras em texto SQL livre casam a coluna como token identificador sem resolver o escopo, então podem nomear um artefato que acaba não usando a coluna. Num aviso, relatar demais é a direção segura.
 
 ## Usando lineage para governar contratos de command {: #using-lineage-to-govern-command-contracts }
 
 Como o fechamento de contaminação conecta cada coluna de entrada declarada a cada coluna de saída declarada,
 a amplitude desse fechamento depende inteiramente do que você declara.
 
-Considere um command que recebe uma tabela de orders completa (`id`, `region`, `amount`, `customer_id`,
-`discount`, `notes`, ...) e retorna um `embedding`. Se o contrato de entrada listar todas essas
-colunas, cada coluna a jusante que usar o embedding mostrará lineage a partir de todas elas.
-Isso é preciso mas não é útil — fica difícil dizer o que realmente importou.
+Pense num comando que recebe uma tabela de pedidos completa (`id`, `region`, `amount`, `customer_id`, `discount`, `notes`, ...) e devolve um `embedding`. Se o contrato de entrada lista todas essas colunas, cada coluna a jusante que usa o embedding mostra linhagem de todas elas. Isso é exato, mas não ajuda, porque você não consegue dizer o que de fato importou.
 
 Declare somente `id` e `text` (as colunas que o modelo de embedding de fato lê), e o cone de
 lineage se aperta para essas duas colunas de fonte. A derivação é ao mesmo tempo correta e precisa.

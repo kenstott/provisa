@@ -112,7 +112,7 @@ resize needs a stop/start (same drop); GKE VPA / in-place resize can grow CPU li
 usable heap. So the design goal is to make the coordinator *not need* to grow, and to
 automate the rare resize as a graceful failover — never a live resize.
 
-**1. Make the coordinator memory-light (highest leverage).** Flip
+**1. Make the coordinator memory-light (biggest effect).** Flip
 `node-scheduler.include-coordinator=false` in the SaaS coordinator config (enterprise ships
 `=true`, [trino/etc/config.properties:2](https://github.com/kenstott/provisa/blob/main/trino/etc/config.properties#L2)). Today the
 coordinator also runs scan tasks, which is what makes it memory-hungry; turned off, it only

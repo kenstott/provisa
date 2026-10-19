@@ -647,7 +647,7 @@ A table's `write_grants` state, per role and operation, which columns a write ma
 
 ## GraphQL Voyager Schema Explorer
 
-The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager as an interactive schema visualization. It draws the role-scoped schema as an entity relationship diagram you can navigate, with tables as nodes and relationships as edges. The schema it shows is always filtered to the role currently selected.
+The admin UI (`provisa-ui/src/pages/SchemaExplorer.tsx`) embeds GraphQL Voyager as an interactive schema visualization. It draws the role-scoped schema as an entity relationship diagram you can explore, with tables as nodes and relationships as edges. The schema it shows is always filtered to the role currently selected.
 
 ## Security Enforcement Order
 

@@ -647,7 +647,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## GraphQL Voyager 架构浏览器 {: #graphql-voyager-schema-explorer }
 
-管理界面（`provisa-ui/src/pages/SchemaExplorer.tsx`）嵌入了 GraphQL Voyager，作为交互式的模式可视化工具。它把按角色限定的模式绘制成可导航的实体关系图，表是节点，关系是边。显示的模式始终按当前选中的角色过滤。
+管理界面（`provisa-ui/src/pages/SchemaExplorer.tsx`）嵌入了 GraphQL Voyager，作为交互式的模式可视化工具。它把按角色限定的模式绘制成可供探索的实体关系图，表是节点，关系是边。显示的模式始终按当前选中的角色过滤。
 
 ## 安全强制执行顺序 {: #security-enforcement-order }
 

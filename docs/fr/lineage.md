@@ -1,9 +1,6 @@
 # Traçabilité au niveau des colonnes {: #column-level-lineage }
 
-Provisa suit la traçabilité des données au niveau des colonnes de manière statique — calculée à
-partir des définitions SQL et des contrats de commandes, sans aucune exécution. Deux vues sont
-disponibles : un DAG par instruction et un graphe de provenance à l'échelle de la fédération,
-couvrant toutes les vues et vues matérialisées (MV) enregistrées.
+Provisa suit la traçabilité des données au niveau des colonnes de façon statique. Il la calcule à partir des définitions SQL et des contrats de commandes, donc rien n'a besoin de s'exécuter. Vous disposez de deux vues : un DAG par instruction et un graphe de provenance à l'échelle de la fédération, qui couvre chaque vue et vue matérialisée (MV) enregistrée.
 
 ## L'explorateur de traçabilité {: #the-lineage-explorer }
 
@@ -72,35 +69,25 @@ pointillés.
 
 ## Graphe à l'échelle de la fédération {: #federation-wide-graph }
 
-Le graphe de fédération fusionne la traçabilité par instruction de chaque MV enregistrée en un seul
-graphe de provenance. L'identité d'un nœud est `relation.column` — la colonne de sortie d'une vue
-et la référence d'entrée d'une autre vue vers la même colonne se rabattent sur un seul nœud. Le
-résultat est un DAG unique allant des colonnes sources de base à chaque jeu de données dérivé de la
-plateforme.
+Le graphe de la fédération fusionne la traçabilité par instruction de chaque MV enregistrée en un seul graphe de provenance. L'identité d'un nœud est `relation.column` : la colonne de sortie d'une vue et la référence d'entrée d'une autre vue à cette colonne se confondent en un seul nœud. Le résultat est un DAG unique, des colonnes des sources de base jusqu'à chaque jeu de données dérivé de la plateforme.
 
 Servez-vous de `focus`, `direction` et `depth` pour cadrer la vue à l'échelle de la fédération sans
 recalculer le graphe.
 
 ## Cycles
 
-Les cycles sont décrits, non rejetés. Le moteur de traçabilité détecte chaque cycle orienté et le
-**classe**.
+Le moteur de traçabilité détecte chaque cycle orienté et le **classe**. Un cycle est décrit, jamais rejeté.
 
 | Classement | Couleur de bordure | Signification |
 | --- | --- | --- |
 | `feedback` | Jaune | Le cycle traverse un nœud matérialisé — une boucle de rétroaction licite, décalée dans le temps. L'instantané de la MV est la frontière de version qui la rend bien définie. |
 | `error` | Rouge | Aucune frontière de matérialisation sur la boucle — une définition circulaire sans ordre d'évaluation stable. Probablement une erreur de conception. |
 
-Un cycle `feedback` n'est pas un échec. Une MV d'enrichissement qui réinjecte une colonne dérivée
-dans sa propre relation source est un patron valide tant qu'un nœud de la boucle est matérialisé —
-l'instantané isole temporellement les deux moitiés. Un cycle `error` demande le jugement d'un
-exploitant : il signifie généralement que deux vues se référencent l'une l'autre sans instantané
-entre elles.
+Un cycle `feedback` est un motif valide. Une MV d'enrichissement qui réinjecte une colonne dérivée dans sa propre relation source fonctionne tant qu'un nœud de la boucle est matérialisé, car l'instantané sépare les deux moitiés dans le temps. Un cycle `error` demande le jugement d'un opérateur. Il signifie le plus souvent que deux vues se référencent mutuellement sans instantané entre elles.
 
 ## API
 
-Les deux endpoints sont **statiques** — ils lisent des définitions et des contrats, pas des
-données.
+Les deux points de terminaison sont **statiques**. Ils lisent des définitions et des contrats, jamais des données.
 
 ### POST /admin/lineage/graph
 
@@ -238,24 +225,14 @@ Posez la question **avant** l'enregistrement. Une colonne renommée est localis�
 qu'elle porte encore dans le registre ; une fois l'alias posé, l'ancien nom a disparu et la requête
 ne trouve rien.
 
-La page Tables exécute automatiquement la requête lorsqu'une modification en attente change un
-alias ou réduit l'ensemble des colonnes, et liste ce qu'elle trouve. L'avertissement est
-consultatif : il nomme les artefacts concernés et c'est l'administrateur qui décide. Il ne bloque
-pas l'enregistrement, car les consommateurs du parc ne peuvent pas tous être atteints — un tableau
-de bord extérieur ou une application cliente qui interroge la colonne par son nom échappe à la
-connaissance du registre. Pour la même raison, les balayages de texte SQL libre repèrent la colonne
-comme jeton identifiant plutôt que de résoudre la portée, ce qui peut nommer un artefact qui, en
-fin de compte, n'utilise pas la colonne. Sur-rapporter est la direction sûre pour un avertissement.
+La page Tables lance la requête automatiquement quand une modification en attente change un alias ou réduit l'ensemble des colonnes, et liste ce qu'elle trouve. L'avertissement est consultatif. Il nomme les artefacts touchés, et l'administrateur décide. Il ne bloque jamais l'enregistrement, car on ne peut pas atteindre tous les consommateurs du patrimoine : un tableau de bord externe ou une application cliente qui interroge la colonne par son nom échappe à la connaissance du registre. Pour la même raison, les analyses du texte SQL libre repèrent la colonne comme jeton d'identifiant sans résoudre la portée ; elles peuvent donc nommer un artefact qui, au final, n'utilise pas la colonne. Pour un avertissement, en signaler trop est la direction sûre.
 
 ## Se servir de la traçabilité pour gouverner les contrats de commandes {: #using-lineage-to-govern-command-contracts }
 
 Parce que la clôture de contamination relie chaque colonne d'entrée déclarée à chaque colonne de
 sortie déclarée, l'ampleur de cette clôture dépend entièrement de ce que vous déclarez.
 
-Prenez une commande qui reçoit une table orders complète (`id`, `region`, `amount`, `customer_id`,
-`discount`, `notes`, ...) et renvoie un `embedding`. Si le contrat d'entrée liste toutes ces
-colonnes, chaque colonne en aval qui se sert de l'embedding montrera une traçabilité issue de
-toutes. C'est exact, mais inutilisable — il devient difficile de dire ce qui comptait vraiment.
+Prenez une commande qui reçoit une table de commandes complète (`id`, `region`, `amount`, `customer_id`, `discount`, `notes`, ...) et renvoie un `embedding`. Si le contrat d'entrée liste toutes ces colonnes, chaque colonne en aval qui utilise l'embedding montre une traçabilité venant de toutes. C'est exact, mais cela n'aide pas, car on ne voit pas ce qui a réellement compté.
 
 Ne déclarez que `id` et `text` (les colonnes que le modèle d'embedding lit réellement), et le cône
 de traçabilité se resserre sur ces deux colonnes sources. La dérivation est à la fois correcte et

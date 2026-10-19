@@ -647,7 +647,7 @@ MATCH (o:Order) RETURN o.id, o.amount
 
 ## GraphQL Voyager 結構描述瀏覽器 {: #graphql-voyager-schema-explorer }
 
-管理介面（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌了 GraphQL Voyager，作為互動式的結構描述視覺化工具。它把按角色限定的結構描述繪製成可導覽的實體關係圖，資料表是節點，關係是邊。顯示的結構描述一律按目前選取的角色篩選。
+管理介面（`provisa-ui/src/pages/SchemaExplorer.tsx`）內嵌了 GraphQL Voyager，作為互動式的結構描述視覺化工具。它把按角色限定的結構描述繪製成可供探索的實體關係圖，資料表是節點，關係是邊。顯示的結構描述一律按目前選取的角色篩選。
 
 ## 安全強制執行順序 {: #security-enforcement-order }
 

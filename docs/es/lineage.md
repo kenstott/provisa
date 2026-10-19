@@ -1,9 +1,6 @@
 # Linaje a nivel de columna {: #column-level-lineage }
 
-Provisa rastrea el linaje de datos a nivel de columna de forma estática — calculado a partir de las
-definiciones SQL y los contratos de comandos, sin necesidad de ejecución. Hay dos vistas
-disponibles: un DAG por sentencia y un grafo de procedencia a escala de la federación que abarca
-todas las vistas y vistas materializadas (MV) registradas.
+Provisa sigue el linaje de datos a nivel de columna de forma estática. Lo calcula a partir de las definiciones SQL y los contratos de los comandos, así que no hace falta ejecutar nada. Tiene dos vistas: un DAG por sentencia y un grafo de procedencia de toda la federación que abarca cada vista y vista materializada (MV) registrada.
 
 ## El explorador de linaje {: #the-lineage-explorer }
 
@@ -71,33 +68,25 @@ en la interfaz.
 
 ## Grafo a escala de la federación {: #federation-wide-graph }
 
-El grafo de federación combina el linaje por sentencia de cada MV registrada en un único grafo de
-procedencia. La identidad del nodo es `relation.column` — la columna de salida de una vista y la
-referencia de entrada de otra vista a la misma columna colapsan en un solo nodo. El resultado es un
-único DAG desde las columnas de origen base hasta cada conjunto de datos derivado en la plataforma.
+El grafo de la federación fusiona el linaje por sentencia de cada MV registrada en un único grafo de procedencia. La identidad de un nodo es `relation.column`, así que la columna de salida de una vista y la referencia de entrada de otra vista a esa columna se funden en un nodo. El resultado es un único DAG desde las columnas de las fuentes base hasta cada conjunto de datos derivado de la plataforma.
 
 Use `focus`, `direction` y `depth` para acotar la vista a escala de federación sin recalcular el
 grafo.
 
 ## Ciclos {: #cycles }
 
-Los ciclos se describen, no se rechazan. El motor de linaje detecta cada ciclo dirigido y lo
-**clasifica**.
+El motor de linaje detecta cada ciclo dirigido y lo **clasifica**. Un ciclo se describe y nunca se rechaza.
 
 | Clasificación | Color de borde | Significado |
 | --- | --- | --- |
 | `feedback` | Amarillo | El ciclo atraviesa un nodo materializado — un bucle de retroalimentación legítimo y desfasado en el tiempo. La instantánea de la MV es el límite de versión que lo hace bien definido. |
 | `error` | Rojo | No hay límite de materialización en el bucle — una definición circular sin un orden de evaluación estable. Probablemente un error de diseño. |
 
-Un ciclo `feedback` no es un fallo. Una MV de enriquecimiento que retroalimenta una columna
-derivada hacia su propia relación de origen es un patrón válido siempre que un nodo del bucle esté
-materializado — la instantánea aísla las dos mitades temporalmente. Un ciclo `error` requiere
-criterio del operador: normalmente significa que dos vistas se referencian mutuamente sin ninguna
-instantánea de por medio.
+Un ciclo `feedback` es un patrón válido. Una MV de enriquecimiento que devuelve una columna derivada a su propia relación de origen funciona mientras un nodo del bucle esté materializado, porque la instantánea separa las dos mitades en el tiempo. Un ciclo `error` necesita el criterio de un operador. Suele significar que dos vistas se referencian entre sí sin una instantánea en medio.
 
 ## API
 
-Ambos endpoints son **estáticos** — leen definiciones y contratos, no datos.
+Ambos endpoints son **estáticos**. Leen definiciones y contratos, nunca datos.
 
 ### POST /admin/lineage/graph
 
@@ -237,24 +226,14 @@ Consulte esto **antes** de guardar. Una columna renombrada se localiza por el no
 aún conserva en el registro; una vez que el alias se ha aplicado, el nombre anterior desaparece y
 la consulta no encuentra nada.
 
-La página Tables ejecuta la consulta automáticamente cuando una edición pendiente cambia un alias o
-reduce el conjunto de columnas, y enumera lo que encuentra. La advertencia es
-informativa: nombra los artefactos afectados y el administrador decide. No bloquea el guardado,
-porque no se puede llegar a todos los consumidores del estado — un panel externo o una aplicación
-cliente que consulta la columna por nombre queda fuera del conocimiento del registro. Por la misma
-razón, los escaneos sobre texto SQL libre hacen coincidir la columna como un token identificador en
-lugar de resolver el ámbito, lo que puede nombrar un artefacto que resulte no usar la columna.
-Sobreinformar es la dirección segura para una advertencia.
+La página de tablas ejecuta la consulta automáticamente cuando una edición pendiente cambia un alias o reduce el conjunto de columnas, y enumera lo que encuentra. El aviso es orientativo. Nombra los artefactos afectados, y el administrador decide. Nunca bloquea el guardado, porque no se puede llegar a todos los consumidores del patrimonio: un panel externo o una aplicación cliente que consulta la columna por su nombre queda fuera del conocimiento del registro. Por el mismo motivo, los análisis sobre texto SQL libre buscan la columna como token identificador sin resolver el ámbito, así que pueden nombrar un artefacto que al final no usa la columna. En un aviso, informar de más es la dirección segura.
 
 ## Usar el linaje para gobernar contratos de comandos {: #using-lineage-to-govern-command-contracts }
 
 Dado que el cierre de contaminación conecta cada columna de entrada declarada con cada columna de
 salida declarada, la amplitud de ese cierre depende enteramente de lo que usted declare.
 
-Considere un comando que toma una tabla `orders` completa (`id`, `region`, `amount`,
-`customer_id`, `discount`, `notes`, ...) y devuelve un `embedding`. Si el contrato de entrada
-enumera todas esas columnas, cada columna posterior que use el embedding mostrará linaje de todas
-ellas. Eso es exacto pero no útil — es difícil saber qué fue lo que realmente importó.
+Piense en un comando que recibe una tabla de pedidos completa (`id`, `region`, `amount`, `customer_id`, `discount`, `notes`, ...) y devuelve un `embedding`. Si el contrato de entrada enumera todas esas columnas, cada columna posterior que use el embedding muestra linaje desde todas ellas. Es exacto, pero no ayuda, porque no puede saber qué importó de verdad.
 
 Declare solo `id` y `text` (las columnas que el modelo de embedding realmente lee), y el cono de
 linaje se reduce a esas dos columnas de origen. La derivación es a la vez sólida y precisa.

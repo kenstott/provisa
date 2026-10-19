@@ -1,9 +1,6 @@
 # Derivazione a livello di colonna {: #column-level-lineage }
 
-Provisa traccia la derivazione dei dati a livello di colonna in modo statico — calcolata dalle
-definizioni SQL e dai contratti dei comandi, senza bisogno di alcuna esecuzione. Sono disponibili
-due viste: un DAG per singola istruzione e un grafo di provenienza esteso a tutta la federazione,
-che copre tutte le viste e le viste materializzate (MV) registrate.
+Provisa traccia la derivazione dei dati a livello di colonna in modo statico. La calcola dalle definizioni SQL e dai contratti dei comandi, quindi non serve eseguire nulla. Avete due viste: un DAG per ogni istruzione e un grafo di provenienza a livello di federazione che copre ogni vista e vista materializzata (MV) registrata.
 
 ## L'esploratore della derivazione {: #the-lineage-explorer }
 
@@ -71,32 +68,25 @@ tratteggiata.
 
 ## Grafo esteso alla federazione {: #federation-wide-graph }
 
-Il grafo di federazione unisce la derivazione per istruzione di ogni MV registrata in un unico grafo
-di provenienza. L'identità di un nodo è `relation.column` — la colonna di output di una vista e il
-riferimento in input di un'altra vista alla stessa colonna collassano in un unico nodo. Il risultato
-è un solo DAG che va dalle colonne di origine di base a ogni dataset derivato della piattaforma.
+Il grafo della federazione unisce la derivazione per istruzione di ogni MV registrata in un unico grafo di provenienza. L'identità di un nodo è `relation.column`, quindi la colonna di output di una vista e il riferimento di input di un'altra vista a quella colonna si fondono in un nodo. Il risultato è un unico DAG dalle colonne delle sorgenti di base a ogni dataset derivato della piattaforma.
 
 Usare `focus`, `direction` e `depth` per delimitare la vista su scala di federazione senza
 ricalcolare il grafo.
 
 ## Cicli {: #cycles }
 
-I cicli vengono descritti, non rifiutati. Il motore di derivazione rileva ogni ciclo orientato e lo
-**classifica**.
+Il motore di derivazione rileva ogni ciclo orientato e lo **classifica**. Un ciclo viene descritto, mai rifiutato.
 
 | Classificazione | Colore del bordo | Significato |
 | --- | --- | --- |
 | `feedback` | Giallo | Il ciclo attraversa un nodo materializzato — un anello di retroazione legittimo e sfasato nel tempo. Lo snapshot della MV è il confine di versione che lo rende ben definito. |
 | `error` | Rosso | Nessun confine di materializzazione sull'anello — una definizione circolare senza un ordine di valutazione stabile. Probabilmente un errore di progettazione. |
 
-Un ciclo `feedback` non è un guasto. Una MV di arricchimento che riporta una colonna derivata nella
-propria relazione di origine è uno schema valido finché almeno un nodo dell'anello è materializzato
-— lo snapshot isola temporalmente le due metà. Un ciclo `error` richiede il giudizio di chi opera:
-di solito significa che due viste si riferiscono l'una all'altra senza alcuno snapshot in mezzo.
+Un ciclo `feedback` è un pattern valido. Una MV di arricchimento che riporta una colonna derivata nella propria relazione sorgente funziona finché un nodo del ciclo è materializzato, perché lo snapshot separa le due metà nel tempo. Un ciclo `error` richiede il giudizio di un operatore. Di solito significa che due viste si riferiscono l'una all'altra senza uno snapshot in mezzo.
 
 ## API
 
-Entrambi gli endpoint sono **statici** — leggono definizioni e contratti, non dati.
+Entrambi gli endpoint sono **statici**. Leggono definizioni e contratti, mai dati.
 
 ### POST /admin/lineage/graph
 
@@ -235,24 +225,14 @@ Questa domanda va posta **prima** del salvataggio. Una colonna rinominata viene 
 il nome esposto che porta ancora nel registro; una volta che l'alias è stato applicato, il vecchio
 nome non c'è più e la query non trova nulla.
 
-La pagina Tabelle esegue la query automaticamente quando una modifica in sospeso cambia un alias o
-riduce l'insieme delle colonne, ed elenca ciò che trova. L'avviso è consultivo:
-nomina gli artefatti interessati e la decisione spetta all'amministratore. Non blocca il
-salvataggio, perché non è possibile raggiungere tutti i consumatori del patrimonio informativo — una
-dashboard esterna o un'applicazione client che interroga la colonna per nome è fuori dalla
-conoscenza del registro. Per lo stesso motivo, le scansioni sul testo SQL libero riconoscono la
-colonna come token identificatore anziché risolverne l'ambito, e questo può nominare un artefatto
-che poi non usa affatto la colonna. Per un avviso, l'eccesso di segnalazioni è la direzione sicura.
+La pagina Tabelle esegue la query automaticamente quando una modifica in sospeso cambia un alias o riduce l'insieme delle colonne, ed elenca ciò che trova. L'avviso è consultivo. Nomina gli artefatti coinvolti, e decide l'amministratore. Non blocca mai il salvataggio, perché non si possono raggiungere tutti i consumatori del patrimonio: una dashboard esterna o un'applicazione client che interroga la colonna per nome sfugge alla conoscenza del registro. Per lo stesso motivo, le scansioni sul testo SQL libero riconoscono la colonna come token identificatore senza risolvere l'ambito, quindi possono nominare un artefatto che alla fine non usa la colonna. Per un avviso, segnalare troppo è la direzione sicura.
 
 ## Usare la derivazione per governare i contratti dei comandi {: #using-lineage-to-govern-command-contracts }
 
 Poiché la chiusura per contaminazione collega ogni colonna di input dichiarata a ogni colonna di
 output dichiarata, l'ampiezza di quella chiusura dipende interamente da ciò che si dichiara.
 
-Si consideri un comando che prende un'intera tabella orders (`id`, `region`, `amount`,
-`customer_id`, `discount`, `notes`, ...) e restituisce un `embedding`. Se il contratto di input
-elenca tutte quelle colonne, ogni colonna a valle che usa l'embedding mostrerà una derivazione da
-tutte quante. È accurato ma non utile — diventa difficile capire che cosa abbia contato davvero.
+Considerate un comando che riceve un'intera tabella degli ordini (`id`, `region`, `amount`, `customer_id`, `discount`, `notes`, ...) e restituisce un `embedding`. Se il contratto di input elenca tutte quelle colonne, ogni colonna a valle che usa l'embedding mostra derivazione da tutte. È esatto, ma non aiuta, perché non si capisce cosa abbia contato davvero.
 
 Dichiarando solo `id` e `text` (le colonne che il modello di embedding legge realmente), il cono di
 derivazione si restringe a quelle due colonne di origine. La derivazione risulta insieme corretta e

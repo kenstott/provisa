@@ -1,9 +1,6 @@
 # Column-Level Lineage
 
-Provisa erfasst Column-Level Data Lineage statisch — berechnet aus SQL-Definitionen und
-Command-Contracts, ohne dass eine Ausführung erforderlich ist. Zwei Ansichten stehen zur
-Verfügung: ein DAG pro Statement und ein föderationsweiter Provenance-Graph über alle
-registrierten Views und materialisierten Views (MVs).
+Provisa verfolgt die Lineage auf Spaltenebene statisch. Es berechnet sie aus SQL-Definitionen und Befehlsverträgen, also muss nichts ausgeführt werden. Sie erhalten zwei Ansichten: einen DAG pro Anweisung und einen föderationsweiten Herkunftsgraphen über jede registrierte View und materialisierte View (MV).
 
 ## Der Lineage-Explorer {: #the-lineage-explorer }
 
@@ -70,34 +67,25 @@ Eine Kante aus einem Command-Aufruf wird in der UI als gestrichelte violette Lin
 
 ## Föderationsweiter Graph {: #federation-wide-graph }
 
-Der Föderationsgraph führt die Per-Statement-Lineage jeder registrierten MV zu einem einzigen
-Provenance-Graphen zusammen. Die Knotenidentität ist `relation.column` — die Ausgabespalte einer
-View und die Eingabereferenz einer anderen View auf dieselbe Spalte fallen zu einem Knoten
-zusammen. Das Ergebnis ist ein einziger DAG von Basis-Quellspalten zu jedem abgeleiteten Dataset
-in der Plattform.
+Der Föderationsgraph führt die Lineage jeder registrierten MV pro Anweisung zu einem Herkunftsgraphen zusammen. Die Identität eines Knotens ist `relation.column`, also fallen die Ausgabespalte einer View und die Eingabereferenz einer anderen View auf diese Spalte zu einem Knoten zusammen. Das Ergebnis ist ein einziger DAG von den Basisspalten der Quellen bis zu jedem abgeleiteten Datensatz der Plattform.
 
 Verwenden Sie `focus`, `direction` und `depth`, um die Ansicht auf Föderationsebene einzugrenzen,
 ohne den Graphen neu zu berechnen.
 
 ## Zyklen {: #cycles }
 
-Zyklen werden beschrieben, nicht abgelehnt. Die Lineage-Engine erkennt jeden gerichteten Zyklus
-und **klassifiziert** ihn.
+Die Lineage-Engine erkennt jeden gerichteten Zyklus und **klassifiziert** ihn. Ein Zyklus wird beschrieben und nie abgelehnt.
 
 | Klassifikation | Randfarbe | Bedeutung |
 | --- | --- | --- |
 | `feedback` | Gelb | Der Zyklus durchquert einen materialisierten Knoten — ein legaler, zeitversetzter Feedback-Loop. Der MV-Snapshot ist die Versionsgrenze, die ihn wohldefiniert macht. |
 | `error` | Rot | Keine Materialisierungsgrenze im Loop — eine zirkuläre Definition ohne stabile Auswertungsreihenfolge. Vermutlich ein Designfehler. |
 
-Ein `feedback`-Zyklus ist kein Fehler. Eine Enrichment-MV, die eine abgeleitete Spalte zurück in
-ihre eigene Quellrelation einspeist, ist ein gültiges Muster, solange ein Knoten im Loop
-materialisiert ist — der Snapshot isoliert die beiden Hälften zeitlich. Ein `error`-Zyklus
-erfordert menschliches Urteilsvermögen: Er bedeutet in der Regel, dass sich zwei Views ohne
-dazwischenliegenden Snapshot gegenseitig referenzieren.
+Ein `feedback`-Zyklus ist ein gültiges Muster. Eine Anreicherungs-MV, die eine abgeleitete Spalte in ihre eigene Quellrelation zurückführt, funktioniert, solange ein Knoten der Schleife materialisiert ist, denn der Snapshot trennt die beiden Hälften zeitlich. Ein `error`-Zyklus braucht das Urteil eines Operators. Meist verweisen dann zwei Views aufeinander ohne Snapshot dazwischen.
 
 ## API
 
-Beide Endpunkte sind **statisch** — sie lesen Definitionen und Contracts, keine Daten.
+Beide Endpunkte sind **statisch**. Sie lesen Definitionen und Verträge, nie Daten.
 
 ### POST /admin/lineage/graph
 
@@ -237,25 +225,14 @@ Stellen Sie diese Abfrage **vor** dem Speichern. Eine umbenannte Spalte wird üb
 exponierten Namen gefunden, den sie in der Registry noch trägt; sobald der Alias übernommen
 wurde, ist der alte Name verschwunden und die Abfrage findet nichts.
 
-Die Tables-Seite führt die Abfrage automatisch aus, wenn eine ausstehende Änderung einen Alias
-ändert oder die Spaltenmenge verkleinert, und listet die Ergebnisse auf.
-Die Warnung ist beratend: Sie nennt die betroffenen Artefakte, und der Administrator entscheidet.
-Sie blockiert das Speichern nicht, weil nicht alle Verbraucher des Bestands erreichbar sind — ein
-externes Dashboard oder eine Client-Anwendung, die die Spalte namentlich abfragt, liegt außerhalb
-des Wissens der Registry. Aus demselben Grund matchen Scans über freien SQL-Text die Spalte als
-Bezeichner-Token, statt den Geltungsbereich aufzulösen, was ein Artefakt benennen kann, das die
-Spalte am Ende gar nicht verwendet. Überberichten ist bei einer Warnung die sichere Richtung.
+Die Seite Tabellen führt die Abfrage automatisch aus, wenn eine ausstehende Änderung einen Alias ändert oder die Spaltenmenge verkleinert, und listet die Funde. Die Warnung ist ein Hinweis. Sie nennt die betroffenen Artefakte, und der Administrator entscheidet. Sie blockiert das Speichern nie, denn nicht alle Verbraucher des Bestands sind erreichbar: Ein externes Dashboard oder eine Client-Anwendung, die die Spalte über ihren Namen abfragt, liegt außerhalb des Wissens der Registry. Aus demselben Grund gleichen Scans über freien SQL-Text die Spalte als Bezeichner-Token ab, ohne den Gültigkeitsbereich aufzulösen, und können so ein Artefakt nennen, das die Spalte am Ende nicht nutzt. Bei einer Warnung ist zu viel melden die sichere Richtung.
 
 ## Lineage zur Steuerung von Command-Contracts nutzen {: #using-lineage-to-govern-command-contracts }
 
 Weil die Taint-Closure jede deklarierte Eingabespalte mit jeder deklarierten Ausgabespalte
 verbindet, hängt die Breite dieser Closure vollständig davon ab, was Sie deklarieren.
 
-Betrachten Sie einen Command, der eine vollständige Orders-Tabelle (`id`, `region`, `amount`,
-`customer_id`, `discount`, `notes`, ...) entgegennimmt und ein `embedding` zurückgibt. Listet der
-Eingabe-Contract all diese Spalten auf, zeigt jede nachgelagerte Spalte, die das Embedding
-verwendet, Lineage von allen davon. Das ist korrekt, aber nicht nützlich — es ist schwer zu
-erkennen, was tatsächlich relevant war.
+Nehmen Sie einen Befehl, der eine vollständige Bestelltabelle (`id`, `region`, `amount`, `customer_id`, `discount`, `notes`, ...) annimmt und ein `embedding` zurückgibt. Listet der Eingabevertrag alle diese Spalten, zeigt jede nachgelagerte Spalte, die das Embedding nutzt, Lineage von allen. Das ist korrekt, hilft aber nicht, denn Sie erkennen nicht, was tatsächlich zählte.
 
 Deklarieren Sie nur `id` und `text` (die Spalten, die das Embedding-Modell tatsächlich liest),
 und der Lineage-Kegel verengt sich auf diese beiden Quellspalten. Die Herleitung ist sowohl

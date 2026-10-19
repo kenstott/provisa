@@ -1,8 +1,6 @@
 # Column-Level Lineage
 
-Provisa tracks column-level data lineage statically — computed from SQL definitions and command
-contracts, no execution required. Two views are available: a per-statement DAG and a
-federation-wide provenance graph spanning all registered views and materialized views (MVs).
+Provisa tracks column-level data lineage statically. It computes lineage from SQL definitions and command contracts, so nothing has to run. You get two views: a DAG for each statement, and a federation-wide provenance graph that spans every registered view and materialized view (MV).
 
 ## The lineage explorer
 
@@ -67,32 +65,25 @@ An edge from a command call is rendered as a dashed purple line in the UI.
 
 ## Federation-wide graph
 
-The federation graph merges every registered MV's per-statement lineage into one provenance graph.
-Node identity is `relation.column` — a view's output column and another view's input reference
-to the same column collapse to one node. The result is a single DAG from base source columns to
-every derived dataset in the platform.
+The federation graph merges every registered MV's per-statement lineage into one provenance graph. A node's identity is `relation.column`, so a view's output column and another view's input reference to that column collapse to one node. The result is a single DAG from base source columns to every derived dataset in the platform.
 
 Use `focus`, `direction`, and `depth` to scope the view at federation scale without recomputing
 the graph.
 
 ## Cycles
 
-Cycles are described, not rejected. The lineage engine detects every directed cycle and
-**classifies** it.
+The lineage engine detects every directed cycle and **classifies** it. A cycle is described, and it's never rejected.
 
 | Classification | Border color | Meaning |
 | --- | --- | --- |
 | `feedback` | Yellow | The cycle crosses a materialized node — a legal, time-lagged feedback loop. The MV snapshot is the version boundary that makes it well-defined. |
 | `error` | Red | No materialization boundary on the loop — a circular definition with no stable evaluation order. Likely a design error. |
 
-A `feedback` cycle is not a failure. An enrichment MV that feeds back a derived column into its
-own source relation is a valid pattern as long as one node on the loop is materialized — the
-snapshot isolates the two halves temporally. An `error` cycle needs operator judgment: it usually
-means two views reference each other with no snapshot in between.
+A `feedback` cycle is a valid pattern. An enrichment MV that feeds a derived column back into its own source relation works as long as one node on the loop is materialized, because the snapshot separates the two halves in time. An `error` cycle needs an operator's judgment. It usually means two views reference each other with no snapshot in between.
 
 ## API
 
-Both endpoints are **static** — they read definitions and contracts, not data.
+Both endpoints are **static**. They read definitions and contracts, and never data.
 
 ### POST /admin/lineage/graph
 
@@ -228,23 +219,14 @@ caller can tell which half of the edit each artifact is reacting to.
 Ask this **before** the save. A renamed column is located by the exposed name it still carries in
 the registry; once the alias has landed, the old name is gone and the query finds nothing.
 
-The Tables page runs the query automatically when a pending edit changes an alias or shrinks the
-column set, and lists what it finds. The warning is advisory:
-it names the affected artifacts and the administrator decides. It does not block the save, because
-the estate's consumers cannot all be reached — an outside dashboard or a client application that
-queries the column by name is beyond the registry's knowledge. For the same reason, scans over free
-SQL text match the column as an identifier token rather than resolving scope, which can name an
-artifact that turns out not to use the column. Over-reporting is the safe direction for a warning.
+The Tables page runs the query automatically when a pending edit changes an alias or shrinks the column set, and lists what it finds. The warning is advisory. It names the affected artifacts, and the administrator decides. It never blocks the save, because the estate's consumers can't all be reached: an outside dashboard or a client application that queries the column by name is beyond the registry's knowledge. For the same reason, scans over free SQL text match the column as an identifier token without resolving scope, so they can name an artifact that turns out not to use the column. For a warning, over-reporting is the safe direction.
 
 ## Using lineage to govern command contracts
 
 Because the taint closure connects every declared input column to every declared output column,
 the breadth of that closure depends entirely on what you declare.
 
-Consider a command that takes a full orders table (`id`, `region`, `amount`, `customer_id`,
-`discount`, `notes`, ...) and returns an `embedding`. If the input contract lists all those
-columns, every downstream column that uses the embedding will show lineage from all of them.
-That is accurate but not useful — it is hard to tell what actually mattered.
+Consider a command that takes a full orders table (`id`, `region`, `amount`, `customer_id`, `discount`, `notes`, ...) and returns an `embedding`. If the input contract lists all those columns, every downstream column that uses the embedding shows lineage from all of them. That's accurate, but it doesn't help, because you can't tell what actually mattered.
 
 Declare only `id` and `text` (the columns the embedding model actually reads), and the lineage
 cone tightens to those two source columns. The derivation is both sound and precise.
