@@ -62,9 +62,9 @@
         <h2>Where the imperative code comes from</h2>
         <p>
           Almost nobody writes a pipeline because they wanted a program. They write one
-          because the data arrived in a shape SQL couldn't address — a nested JSON
-          response, a document with an array of sub-documents, a directory of files, a
-          graph, an event stream — and shaping it took code. That first shaping step is
+          because the data arrived in a shape SQL couldn't address, such as a nested
+          JSON response, a document with an array of sub-documents, a directory of
+          files, a graph or an event stream, and shaping it took code. That first shaping step is
           where the procedure enters, and once a procedure is in the path, everything
           downstream inherits it.
         </p>
@@ -81,9 +81,8 @@
         <p>
           Once everything is two-dimensional, the rest is SQL. Which is the whole point:
           SQL is a language a machine can read back, so lineage, governance, rewriting, and
-          audit become properties of the definition. Determinism is still on you — SQL
-          gives you enough rope, and this system will refuse the parts of that rope it can
-          detect. After SQL, the only remaining problem is timing.
+          audit become properties of the definition. Determinism is still on you. SQL gives you enough rope, and Provisa refuses
+          the parts of that rope it can detect. After SQL, the only remaining problem is timing.
         </p>
 
         <h2>The other reason: getting data from A to B</h2>
@@ -93,11 +92,11 @@
           to settle questions that were never theirs to settle: which copy is now
           authoritative, how stale is acceptable, what happens when the pull fails, where a
           write is supposed to land. Those are policy decisions, and they get made in a
-          script, one at a time, by whoever drew the ticket — then they harden, because the
-          answer is now a program somebody depends on.
+          script, one at a time, by whoever drew the ticket. Then they harden, because the answer is now a
+          program somebody depends on.
         </p>
         <p>
-          Here data movement is a property of the system rather than something you do.
+          Here data movement is a property of the system, not something you do.
           Registering a source resolves how it joins the query surface: reached live
           through a connector, read in place as a file, or landed into a store because it
           has no live representation at all. Nobody chooses that; it follows from what the
@@ -105,18 +104,15 @@
           differently on a different engine without anyone rewriting anything.
         </p>
         <p>
-          The questions that used to land on a developer are settled once, as rules. A
-          pull that fails with no fresh cached data is an error, not a silent serve of
-          yesterday's numbers — stale is served only where a freshness policy explicitly
-          says it may be. A write goes to the upstream system of record and invalidates the
-          cached copy, because a cache is never allowed to act like the source of truth. A
-          store the engine cannot read back is rejected at registration rather than
-          discovered later.
+          These decisions are made once, as rules, instead of by whoever picks up the
+          ticket. If a fetch fails and there's no fresh copy, the query fails; Provisa
+          serves older data only where a freshness policy says it may. Writes go to the
+          source system, and the copy is invalidated.
         </p>
         <p>
           Which is why re-pointing is uneventful. Move the source from Oracle to Postgres,
-          move the target to a different store, switch the engine underneath — the strategy
-          re-resolves and the movement follows. There is no pipeline to rewrite, because
+          move the target to a different store, switch the engine underneath: the strategy re-resolves and the movement
+          follows. There is no pipeline to rewrite, because
           there was never a pipeline; there was a registration, and you changed it.
         </p>
 
@@ -130,7 +126,8 @@
         <ul>
           <li><strong>How do you audit it?</strong> By reading the transform. The audit surface is a program, so auditing it is code review, repeated every time anyone changes it.</li>
           <li><strong>What did it actually do?</strong> Whatever the code said on the day it ran. Which columns fed which output is a question you answer by tracing the source by hand.</li>
-          <li><strong>When did it do it?</strong> You get the job's start time, which is incidental — when the machine woke up — rather than semantic: the version of the data it consumed. Those two differ by however late the upstream was, and the log records the one that doesn't matter.</li>
+          <li><strong>When did it do it?</strong> You get the job's start time, which only says when the machine woke up. What
+          matters is the version of the data it consumed. Those two differ by however late the upstream was, and the log records the one that doesn't matter.</li>
           <li><strong>What does the result mean?</strong> The name someone typed on the output table, and a wiki page written at a different time by a different person.</li>
         </ul>
         <p>
@@ -158,14 +155,18 @@
 
         <h2>What happens when the source changes</h2>
         <p>
-          Schema drift is the standing objection to any declarative model, and it deserves
-          four separate answers rather than one.
+          Schema drift is the standing objection to any declarative model, and it has
+          four separate answers.
         </p>
         <ul>
           <li><strong>A column is added.</strong> Nothing happens. A definition names the columns it uses, and one it never named isn't referenced. On the landing side, incoming rows are mapped to target columns by name and extra keys are dropped, so additive drift is a non-event.</li>
-          <li><strong>A column is removed.</strong> If a definition referenced it, the refresh fails — loudly, at that node, rather than quietly producing a NULL column three hops downstream. If the fraction of expected columns present in the incoming data collapses, the land is refused outright rather than writing a mangled table. A schema check on the contract catches it independently of any refresh.</li>
+          <li><strong>A column is removed.</strong> If a definition referenced it, the refresh fails loudly at that node, instead
+          of quietly producing a NULL column three hops downstream. If too few of the
+          expected columns arrive in the incoming data, the land is refused and no
+          mangled table is written. A schema check on the contract catches it independently of any refresh.</li>
           <li><strong>A column changes type.</strong> The schema check is a direct hit: the declared type no longer matches the observed one, which is that check's whole job.</li>
-          <li><strong>A column changes meaning.</strong> This is the hard one, and no system reads intent. But anything consequential enough to change your numbers moves a distribution, and the checks sitting on that distribution — invalid, missing, duplicate, aggregate — fire when it does.</li>
+          <li><strong>A column changes meaning.</strong> This is the hard one, and no system reads intent. But anything consequential enough to change your numbers moves a distribution, and the checks on that distribution (invalid, missing, duplicate, aggregate)
+          fire when it does.</li>
         </ul>
         <p>
           Where detection genuinely ends, the graph takes over. Ask what derives from a
@@ -182,8 +183,8 @@
           Usually it is something a team shipped, and shipping is a thing you can stage.
         </p>
         <p>
-          When the change comes from outside — a vendor feed, a partner's export, an API
-          that shifted under you — nobody can solve that, and we won't claim to. What a
+          When the change comes from outside, from a vendor feed, a partner's export or
+          an API that shifted under you, nobody can prevent it. What a
           system can do is give you the hygiene: checks that fire on the first bad batch,
           a refresh that fails instead of landing garbage, and a list of exactly what is
           downstream. You still get woken up. You just get woken up early, with the answer
@@ -193,40 +194,37 @@
         <h2>Layered by design</h2>
         <p>
           MVs stack on views and on other MVs, so your whole analytics layer becomes one
-          declarative graph — expressed in the same model that describes and governs your
+          declarative graph, expressed in the same model that describes and governs your
           data, not in a second tool with its own scheduler and its own idea of what your
           tables mean.
         </p>
 
         <h2>Recorded transforms</h2>
         <p>
-          Each MV records the SQL or join that built it, plus the input signals it read —
-          an Iceberg snapshot id, a relational watermark. Because the transform is
-          recorded rather than merely executed, queries against the underlying tables are
-          transparently rewritten onto a fresh MV when one covers them, partial join
-          matches included. Nobody has to know the MV exists to benefit from it.
+          Each MV records the SQL or join that built it, plus the input signals it read,
+          such as an Iceberg snapshot id or a relational watermark. Because the transform is recorded, a query against the underlying tables is
+          rewritten onto a fresh MV when one covers it, partial join matches included. Nobody has to know the MV exists to benefit from it.
         </p>
 
         <h2>Refresh by freshness</h2>
         <p>
           An MV rebuilds only when an upstream input actually changed, and a change fans
-          out through the graph to its dependents. Refresh is demand-driven rather than
-          recompute-everything, which is where the compute bill for a derived layer
-          usually goes.
+          out through the graph to its dependents. Nothing recomputes everything on a schedule, which is where the compute bill
+          for a derived layer usually goes.
         </p>
 
         <h2>Refresh by calendar</h2>
         <p>
-          Or on a TTL or interval, when time rather than data is the trigger — a daily
-          close, a monthly snapshot. Freshness and calendars are the only two knobs; there
+          Or on a TTL or interval, when time is the trigger, such as a daily close or a
+          monthly snapshot. Freshness and calendars are the only two knobs; there
           is no hand-maintained schedule to drift out of sync with the model.
         </p>
 
         <h2>A pipeline is a hole in your governance</h2>
         <p>
           A pipeline is a policy bypass. It reads governed data and writes a
-          new table somewhere else, and that new table is outside the policy model — same
-          numbers, no row filter, no masking, no record of who may see it. Every rule you
+          new table somewhere else, and that new table is outside the policy model: same numbers, no row filter,
+          no masking, no record of who may see it. Every rule you
           wrote upstream stops at the write. So the derived layer becomes the reliable way
           around the controls, built by the team that was asked to make data more
           available, and nobody involved intended a bypass.
@@ -251,9 +249,8 @@
         <p>
           What you don't do is build something inside your own organization that sits
           outside the graph. A copy that reads from the published edge is downstream of the
-          model, and you can trace it back. A copy assembled by its own job isn't downstream
-          of anything — it just exists, and now two numbers disagree with no way to say
-          which one is wrong.
+          model, and you can trace it back. A copy assembled by its own job isn't downstream of anything. It just exists,
+          and now two numbers disagree with no way to say which one is wrong.
         </p>
 
         <h2>"But ours is mostly declarative"</h2>
@@ -262,13 +259,13 @@
           between declarative SQL transforms, and the SQL in them is fine. The trouble is
           that the surrounding thing can still do anything, and what a system <em>can</em>
           do is what you have to audit it for. A mostly-declarative pipeline has to be
-          reviewed as a program, because proving it stayed inside the declarative part
-          means reading it — which is the cost you were trying to avoid.
+          reviewed as a program, because proving it stayed inside the declarative part means reading it, which
+          is the cost you were trying to avoid.
         </p>
         <p>
           And it never stays inside. The escape hatch is right there, the deadline is real,
-          and one custom step is always the fastest way through — so the model gets a hook,
-          then a macro that writes SQL, then a step that calls out to a script nobody
+          and one custom step is always the fastest way through. So the model gets a
+          hook, then a macro that writes SQL, then a step that calls out to a script nobody
           revisits. Nobody decides to make the layer untrustworthy. It happens one
           reasonable exception at a time, and afterward you cannot tell by looking which
           datasets went through the clean path.
@@ -276,10 +273,9 @@
         <p>
           A closed vocabulary is the difference. When the only thing you can declare is a
           definition the system can read back, "is this reproducible" stops being a
-          question about the team's discipline. It becomes a property the system can check
-          — which is why a definition that reaches for <code>now()</code> or
-          <code>random()</code> where reproducibility is required gets refused rather than
-          reviewed.
+          question about the team's discipline. It becomes a property the system can check. That is why a definition that
+          reaches for <code>now()</code> or <code>random()</code> where reproducibility
+          is required is refused, not reviewed.
         </p>
 
         <h2>Custom logic is fine. Undeclared custom logic isn't.</h2>
@@ -290,8 +286,8 @@
         </p>
         <p>
           The price of admission is a two-dimensional transform: models in, a model out,
-          with data quality checked on both sides. Most of the ones you need already ship
-          as declarations — that's what the source shaping rules are. What's left is the
+          with data quality checked on both sides. Most of the ones you need already ship as declarations: the source shaping
+          rules. What's left is the
           rare case, and it enters the same way everything else does.
         </p>
         <p>
@@ -302,15 +298,15 @@
           node you can go and look at.
         </p>
         <p>
-          The comparison flatters the procedure, anyway. A stored procedure declares a
-          <em>signature</em> — scalar arguments, maybe an untyped result set — and most of
-          the real data flow doesn't pass through it at all: it reads whatever tables it
+          The comparison flatters the procedure, anyway. A stored procedure declares a <em>signature</em>, scalar arguments and maybe
+          an untyped result set, and most of the real data flow doesn't pass through it
+          at all: it reads whatever tables it
           likes and writes wherever it wants, none of which appears in the declaration. A
           signature tells you how to call something. A contract names the datasets going in
           and the dataset coming out, which is a statement about data flow, and data flow is
-          what lineage is made of. You can derive edges from one and nothing from the other
-          — which is why tracing a procedure estate means parsing bodies to guess, and why
-          the guess is always partial.
+          what lineage is made of. You can derive edges from one and nothing from the other. That is why tracing
+          a procedure estate means parsing bodies to guess, and why the guess is always
+          partial.
         </p>
 
         <h2>What you end up with</h2>
@@ -327,7 +323,7 @@
           is stamped on the refresh, the policy is the same policy that governs the source,
           and the decision about whether to move data at all belongs to the system. What
           you have at the end is not a set of output tables and the scripts that made them.
-          It is a model — and a model is a thing you can ask questions of.
+          It is a model, and a model is a thing you can ask questions of.
         </p>
       </div>
 
