@@ -16,7 +16,7 @@ description: >-
   Risk Index, the US Forest Service's wildfire risk and NOAA's storm damage from government data:
   where is our property exposure concentrated against hazard risk?
 screenshot: card.png
-published: false
+published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
 # by name. The first release carrying the demo.
 requires_provisa: 0.1.0a488
