@@ -435,6 +435,9 @@ services:
       # The SQLite sample data of the deployment's demo config, which this tier also builds at
       # startup (first-launch.sh writes the same on a node set up since).
       PROVISA_DEMO_DIR: "/app/config/demo/files"
+      # 2026-10-19: the sandbox VM is 8 vCPUs / 32 GB (was 2 / 16); the maintainer raised the
+      # concurrent-sandbox cap from the default 10 to 20.
+      PROVISA_SANDBOX_MAX_CONCURRENT: "20"
 YAML
   local want have
   want="$(shasum -a 256 "$STAGE/docker-compose.overlay.yml" | cut -d' ' -f1)"
