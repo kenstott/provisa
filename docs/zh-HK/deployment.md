@@ -17,19 +17,19 @@ Provisa 支援六條部署路徑。請依你的受眾與營運脈絡選擇：
 
 兩者都是企業級的。VM／AppImage 路徑較簡單：毋須佈建叢集、毋須設定 CNI 或 RBAC 政策，且 AppImage 完全自足。它自然地融入既有的伺服器管理工具（Ansible、Puppet、Datadog agent、Splunk forwarder 等）。
 
-只有在你的團隊已在營運 K8s 叢集，並希望 Provisa 參與該營運模式（滾動部署、HPA、統一可觀測性）時，才選 Kubernetes。兩者能力相當——Kubernetes 增加的是營運開銷，不是能力。
+只有當團隊已經在營運 K8s 叢集、並希望 Provisa 融入這套營運方式（滾動部署、HPA、統一可觀測性）時，才選擇 Kubernetes。兩者能力相同；Kubernetes 只會增加營運負擔。
 
 ### 映像取得與安全掃描 {: #image-acquisition-and-security-scanning }
 
-所有正式環境路徑，在任何部署可以執行之前，都必須先取得 Provisa 構件。「氣隙」指的是安裝時在目標機器上發生的事——構件必須先取得。
+每條生產路徑都要先取得 Provisa 的製品，任何部署才能執行。「Air-gapped」（隔離環境）描述的是在目標機器上安裝時的情形，所以製品要先準備好。
 
-**macOS 與 Windows 安裝程式：** 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載。完整打包；下載後毋須網際網路。用於開發／評估，不用於正式環境——不預期有映像掃描閘門。
+**macOS 及 Windows 安裝程式：** 從 [GitHub 發佈頁面](https://github.com/provisa/provisa/releases)下載。它們是完整打包的，下載後毋須連網。它們面向開發及評估，所以不需要映像掃描關卡。
 
-**AppImage 路徑：** 自 [GitHub 發行頁面](https://github.com/provisa/provisa/releases) 下載並傳輸到目標機器。AppImage 把所有元件映像以 tarball 形式打包在一個 squashfs 檔案系統內——多數登錄檔掃描器無法就地檢視它們。請聯絡你的 Provisa 客戶團隊索取元件映像摘要，以便獨立地與你的掃描器比對驗證。
+**AppImage 路徑：** 從 [GitHub 發佈頁面](https://github.com/provisa/provisa/releases)下載，並複製到目標機器。AppImage 把每個元件映像以 tarball 形式打包在 squashfs 檔案系統中，大多數映像登錄庫掃描器無法就地檢查。請向您的 Provisa 客戶團隊索取元件映像的摘要，以便自行用掃描器核對。
 
-**Terraform 路徑：** 執行 `terraform/deploy.sh` 之前，必須先把 AppImage 上載到 S3。EC2 節點於開機時經 IAM 角色下載它——它們需要對外的 S3 存取（直接或經 VPC 閘道端點）。套用與 AppImage 路徑相同的掃描政策。
+**Terraform 路徑：** 在執行 `terraform/deploy.sh` 之前，先把 AppImage 上載到 S3。EC2 節點會在啟動時經其 IAM 角色下載它，所以它們需要能對外存取 S3，可以直連，亦可以經 VPC 閘道端點。掃描政策與 AppImage 路徑相同。
 
-**Helm／Kubernetes 路徑：** 各個映像必須推送到叢集可觸及的登錄檔。這條路徑與以登錄檔為基礎的掃描（Prisma Cloud、Aqua、Trivy、AWS Inspector）最相容——映像是掃描器原生理解的一等物件。氣隙叢集請把映像鏡像到內部登錄檔，並在 `values.yaml` 中覆寫參照。
+**Helm / Kubernetes 路徑：** 把各個映像推送到叢集能存取的映像登錄庫。這條路徑與基於映像登錄庫的掃描（Prisma Cloud、Aqua、Trivy、AWS Inspector）最契合，因為映像本來就是掃描器理解的物件。對於隔離叢集，把映像同步到內部映像登錄庫，並在 `values.yaml` 中覆寫參照。
 
 ---
 
@@ -141,13 +141,7 @@ OTLP/HTTP 接收器，把追蹤、量度與記錄寫入由 SQLAlchemy URL 選定
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | 中等量 |
 | `trino://user@host:8080/otel` | Trino／Iceberg | 技術上可行，**不建議**——見下文 |
 
-**關於 `trino://`：** SQLAlchemy Trino 方言發出有效的 Trino DDL 與
-`INSERT`，因此作為 `otlp2sql` 後端在技術上是可行的。除了低擷取速率之外，
-都不建議這麼做。每一次批次排清都變成一次分散式 Trino `INSERT`
-外加一次 Iceberg 快照，因此高速率遙測會
-產生許多小檔案與快照，而且仍需要定期執行
-`ALTER TABLE ... EXECUTE optimize`／`expire_snapshots`——而 `otlp2sql` 並
-不會跑這些。它同時把查詢引擎放進擷取的熱路徑上。
+**使用 `trino://` 時：** SQLAlchemy 的 Trino 方言能產生合法的 Trino DDL 及 `INSERT`，所以可以充當 `otlp2sql` 的後端，但我們只建議在低寫入速率下使用。每次批次清空都會變成一次分散式 Trino `INSERT` 外加一個 Iceberg 快照，所以高速率遙測會產生大量小檔案及快照，而且仍需要定期執行 `ALTER TABLE ... EXECUTE optimize` / `expire_snapshots`，而 `otlp2sql` 不會執行這些。它亦會把查詢引擎放到寫入的熱路徑上。
 
 要把大量遙測送進 Trino／Iceberg，請改用 `otlp2parquet`：它
 不經 Trino 就把 parquet 寫入物件儲存，再由排程的
@@ -162,9 +156,9 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
 ## macOS 安裝程式 {: #macos-installer }
 
-供開發者工作站與評估使用。完全氣隙——下載後毋須網際網路。
+適用於開發工作站及評估。完全離線運作，下載後毋須連網。
 
-基礎安裝程式是**原生安裝**：DuckDB 聯邦引擎 + 內嵌 PostgreSQL 控制平面（pgserver） + 記憶體內（fakeredis）快取，沒有 Docker、VM、Trino、Redis 或 MinIO。聯邦引擎是精靈中的一項選擇——DuckDB（原生，預設）、Trino-on-Docker，或外部引擎。可觀測性是一律開啟的自我遙測，可在管理介面中檢視；Docker 的 collector／Prometheus／Grafana 堆疊是選用的外部示範，不是一個開關。示範數據包是選用的，且預設關閉。Trino、Docker 可觀測性堆疊與示範，都是採本地優先解析的重量級附加元件（安裝程式鄰近目錄、掛載的磁碟區、`~/Downloads`，然後才是 GitHub 發行），因此企業可為氣隙安裝預先備妥 tarball。
+基礎安裝程式是一種**原生安裝**：DuckDB 聯邦引擎、內嵌 PostgreSQL 控制平面（pgserver）及記憶體快取（fakeredis），不需要 Docker、虛擬機器、Trino、Redis 或 MinIO。聯邦引擎在精靈中選擇：DuckDB（原生，預設）、Docker 上的 Trino，或外部引擎。可觀測性是一直開啟的自身遙測，可在 Admin 中查看；Docker 的 collector、Prometheus 及 Grafana 組合是另一個可選的示範，不負責開關它。示範數據包是可選的，預設關閉。Trino、Docker 可觀測性組合及示範都是較重的附加元件。它們會先在本機尋找（安裝程式旁的目錄、已掛載的磁碟區、`~/Downloads`），找不到才從 GitHub release 取得，所以企業可以為離線安裝預先準備好 tarball。
 
 ### 步驟 {: #steps }
 
@@ -187,7 +181,7 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 
 ## Windows 安裝程式 {: #windows-installer }
 
-供開發者工作站與評估使用。完全氣隙——下載後毋須網際網路。
+適用於開發工作站及評估。完全離線運作，下載後毋須連網。
 
 與 macOS 一樣，基礎的 Windows 安裝程式是**原生層**：一份獨立的 Python 執行階段 + provisa wheel + DuckDB/pg_duckdb + 內嵌 PostgreSQL 控制平面（pgserver），不隨附 Docker、不隨附 VM，也不隨附容器映像。聯邦引擎（Trino）、可觀測性堆疊與示範數據包，稍後經個別的分層安裝程式依序加入：先是 Container 安裝程式（`Provisa-Container-<version>.exe`，它加入 WSL2 + containerd + Trino），然後是 Obs 安裝程式（需要容器層），最後是 Demo 安裝程式（需要 Core + Obs）。首次啟動的指引會說明如何執行 Container 安裝程式來初始化聯邦引擎。
 
@@ -219,7 +213,7 @@ Trino 壓實把原始檔案捲進上線中的 Iceberg 表。若要單一
 - 所有容器映像 tarball（PostgreSQL、PgBouncer、MinIO、Redis、聯邦引擎、Provisa API）
 - Provisa CLI 包裝器與首次啟動設定腳本
 
-Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
+Provisa 映像在打包時建構，從不包含 Python 原始碼。
 
 ### 何時使用 {: #when-to-use }
 
@@ -376,7 +370,7 @@ Provisa 映像在封裝時已預先建置——絕不含 Python 原始碼。
 
 ## 雲端 VM 部署——Terraform（AWS） {: #cloud-vm-deployment-terraform-aws }
 
-以一道互動式命令，在 AWS 上佈建一整套多節點 Provisa 叢集——VPC、安全群組、EC2 執行個體、ALB、NLB。
+一條互動式命令即可在 AWS 上建立完整的多節點 Provisa 叢集：VPC、安全群組、EC2 執行個體、ALB 及 NLB。
 
 ### 檔案 {: #files }
 
@@ -495,7 +489,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 你的團隊已在營運 Kubernetes 叢集，並希望 Provisa 參與該營運模式。如果你正在評估 Provisa，或在沒有既有叢集的情況下作內部部署，AppImage 路徑較簡單。
 
-注意：Provisa AppImage 無法在 Kubernetes pod 內執行——它需要 FUSE 與一個無 root 的 Docker 常駐程式，而標準 pod 安全設定檔並不提供這兩者。
+注意：Provisa AppImage 無法在 Kubernetes Pod 內執行。它需要 FUSE 及無 root 的 Docker 守護程序，而標準 Pod 安全設定兩者都不容許。
 
 ### 步驟 {: #steps_3 }
 
@@ -636,7 +630,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-聯邦引擎工作處理程序獨立擴展——工作處理程序愈多，輸送量與並行查詢容量愈高。
+聯邦引擎的 worker 可以獨立擴展，worker 越多，吞吐量及並行查詢數就越高。
 
 ### 更新設定 {: #updating-config }
 
@@ -656,7 +650,7 @@ Provisa 在所有部署模式上套用一套雙層復原模型：
 - **第 1 層——暫時性錯誤。** 讀取操作在遇到暫時性錯誤時，以帶完整抖動的指數退避重試最多 30 秒。以 `PROVISA_RETRY_BUDGET_SECS` 調校該預算。寫入操作絕不在內部重試，且記憶體錯誤絕不可重試。
 - **第 2 層——元件故障。** 一個內部引擎監看器會在 2–3 分鐘內偵測並重新啟動故障的軟體元件。
 
-機器層級與叢集層級的故障仍由營運者負責——請佈建冗餘節點與負載平衡器（上文的 Terraform 與 Helm 路徑）以容忍節點遺失。
+機器級及叢集級故障仍由營運者負責。為了能承受節點遺失，請部署備援節點及負載平衡器（見上文的 Terraform 及 Helm 路徑）。
 
 ### 元資料缺失的遙測表 {: #telemetry-table-whose-metadata-is-missing }
 
@@ -682,7 +676,7 @@ Provisa 在所有部署模式上套用一套雙層復原模型：
 
 倉庫聯邦引擎需要 Provisa 預設安裝之外的 Python 套件與系統層級元件。此處列出的所有 Python 套件都宣告於 `pyproject.toml`，並作為標準 `pip install provisa` 或 `pip install -e .` 的一部分安裝。
 
-這些 Python 套件隨 Provisa 預設安裝一併出貨——任何倉庫引擎都毋須選用附加項。系統層級的項目（ODBC 驅動程式、雲端 CLI、服務帳戶金鑰）必須另行安裝。
+Python 套件隨 Provisa 的預設安裝一併提供，所以任何數據倉庫引擎都不需要可選的額外套件。系統級元件（ODBC 驅動程式、雲端 CLI、服務帳戶金鑰）需要另行安裝。
 
 ### Python 套件（已在核心相依項中） {: #python-packages-already-in-core-dependencies }
 
@@ -701,11 +695,11 @@ Provisa 在所有部署模式上套用一套雙層復原模型：
 
 ### 系統層級需求 {: #system-level-requirements }
 
-這些不是 Python 套件——它們必須安裝在執行 Provisa 的主機或容器上。
+這些不是 Python 套件，需要安裝在執行 Provisa 的主機或容器上。
 
 **Microsoft Fabric 與 Azure Synapse（ODBC）**
 
-`pyodbc` 經 Microsoft ODBC Driver for SQL Server（`msodbcsql18`）連線。該驅動程式必須安裝在主機上——不能經 pip。
+`pyodbc` 經 Microsoft ODBC Driver for SQL Server（`msodbcsql18`）連接。請直接在主機上安裝該驅動程式；pip 無法安裝它。
 
 macOS：
 
@@ -737,7 +731,7 @@ export PROVISA_MSSQL_ODBC_DRIVER="ODBC Driver 17 for SQL Server"
 az login
 ```
 
-正式環境請用受管身份（在 Azure VM 或 AKS 上）——毋須管理憑證。若要用服務主體驗證，請設定：
+在生產環境中，請使用受控識別（在 Azure 虛擬機器或 AKS 上），毋須管理憑證。如使用服務主體驗證，請設定：
 
 ```bash
 export AZURE_TENANT_ID=<tenant>
@@ -753,7 +747,7 @@ export AZURE_CLIENT_SECRET=<secret>
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 ```
 
-在 GCP 上的正式環境（Cloud Run、帶 Workload Identity 的 GKE、Compute Engine），程式庫會自動取用所附掛的服務帳戶——毋須環境變數。
+在 GCP 生產環境中（Cloud Run、啟用 Workload Identity 的 GKE、Compute Engine），該程式庫會自動使用附加的服務帳戶，毋須環境變數。
 
 該服務帳戶需要：
 
@@ -770,7 +764,7 @@ export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 ```
 
-Databricks 連接器從 `requests` 繼承此設定——毋須 Databricks 專屬的環境變數。
+Databricks 連接器從 `requests` 繼承這項設定，所以毋須 Databricks 專用的環境變數。
 
 ### 逐引擎檢查清單 {: #per-engine-checklist }
 
@@ -867,7 +861,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 ### 設定晉升工作流程（dev → test → prod） {: #config-promotion-workflow-dev-test-prod }
 
-所有環境專屬的設定（連線字串、密鑰、連接埠）都屬於環境變數或密鑰管理員——不屬於匯出的設定。匯出的 YAML 擷取的是你的語意模型：數據來源、網域、角色、檢視。
+所有與環境相關的設定（連線字串、密鑰、連接埠）都應放在環境變數或密鑰管理器中，不放進匯出的設定。匯出的 YAML 記錄的是您的語義模型：數據來源、領域、角色及檢視。
 
 ```bash
 # On dev — export after making changes in the UI

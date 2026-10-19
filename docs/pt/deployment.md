@@ -17,19 +17,19 @@ O Provisa suporta seis caminhos de implantação. Escolha com base no seu públi
 
 Ambos são de nível empresarial. O caminho VM/AppImage é mais simples: nenhum cluster para provisionar, nenhuma política de CNI ou RBAC para configurar, e o AppImage é inteiramente autocontido. Ele se encaixa naturalmente em ferramentas de gerenciamento de servidor existentes (Ansible, Puppet, agentes Datadog, forwarders Splunk, etc.).
 
-Escolha Kubernetes apenas se seu time já opera um cluster K8s e quer que o Provisa participe desse modelo operacional (deploys contínuos, HPA, observabilidade unificada). As capacidades são equivalentes — Kubernetes adiciona overhead operacional, não capacidade.
+Escolha Kubernetes só se sua equipe já opera um cluster K8s e quer que o Provisa se encaixe nesse jeito de operar (deploys graduais, HPA, observabilidade unificada). Os dois oferecem as mesmas capacidades; o Kubernetes acrescenta carga operacional.
 
 ### Aquisição de imagem e varredura de segurança {: #image-acquisition-and-security-scanning }
 
-Todos os caminhos de produção exigem obter os artefatos do Provisa antes que qualquer implantação possa rodar. "Air-gapped" se refere ao que acontece no momento da instalação na máquina alvo — os artefatos devem ser adquiridos primeiro.
+Todo caminho de produção precisa dos artefatos do Provisa antes que qualquer deployment possa rodar. "Air-gapped" descreve o que acontece na hora da instalação na máquina de destino, então você obtém os artefatos antes.
 
-**Instaladores macOS e Windows:** Baixe da [página de releases do GitHub](https://github.com/provisa/provisa/releases). Totalmente empacotado; nenhuma internet necessária após o download. Destinado a dev/avaliação, não produção — nenhum gate de varredura de imagem esperado.
+**Instaladores para macOS e Windows:** Baixe-os na [página de releases do GitHub](https://github.com/provisa/provisa/releases). Eles vêm completos e não precisam de internet depois do download. São feitos para desenvolvimento e avaliação, então não se espera uma barreira de varredura de imagens.
 
-**Caminho AppImage:** Baixe da [página de releases do GitHub](https://github.com/provisa/provisa/releases) e transfira para a máquina alvo. O AppImage empacota todas as imagens de componente como tarballs dentro de um sistema de arquivos squashfs — a maioria dos scanners de registro não consegue inspecioná-las no local. Contate sua equipe de conta Provisa para digests de imagem de componente para verificar contra seu scanner independentemente.
+**Caminho AppImage:** Baixe-o na [página de releases do GitHub](https://github.com/provisa/provisa/releases) e copie-o para a máquina de destino. O AppImage empacota cada imagem de componente como um tarball dentro de um sistema de arquivos squashfs, que a maioria dos scanners de registro não consegue inspecionar no lugar. Peça à sua equipe de conta do Provisa os digests das imagens de componentes para conferi-los você mesmo no seu scanner.
 
-**Caminho Terraform:** O AppImage deve ser enviado ao S3 antes de rodar `terraform/deploy.sh`. Nós EC2 o baixam na inicialização via função IAM — eles exigem acesso S3 de saída (direto ou via endpoint de gateway VPC). Aplique a mesma política de varredura do caminho AppImage.
+**Caminho Terraform:** Envie o AppImage para o S3 antes de rodar `terraform/deploy.sh`. Os nós EC2 o baixam na inicialização pelo papel IAM, então precisam de acesso de saída ao S3, direto ou por um endpoint de gateway da VPC. Aplique a mesma política de varredura do caminho AppImage.
 
-**Caminho Helm / Kubernetes:** Imagens individuais devem ser enviadas a um registro que o cluster consiga alcançar. Este caminho é mais compatível com varredura baseada em registro (Prisma Cloud, Aqua, Trivy, AWS Inspector) — imagens são objetos de primeira classe que os scanners entendem nativamente. Para clusters air-gapped, espelhe imagens para um registro interno e sobreponha referências em `values.yaml`.
+**Caminho Helm / Kubernetes:** Envie as imagens individuais para um registro que o cluster alcance. Esse caminho é o que melhor combina com varredura baseada em registro (Prisma Cloud, Aqua, Trivy, AWS Inspector), porque as imagens são objetos que os scanners já entendem. Para um cluster isolado, espelhe as imagens num registro interno e sobrescreva as referências em `values.yaml`.
 
 ---
 
@@ -141,13 +141,7 @@ o backend com `PROVISA_OPS_DB_URL`:
 | `postgresql+psycopg2://user@host/otel` | PostgreSQL | volume moderado |
 | `trino://user@host:8080/otel` | Trino / Iceberg | tecnicamente funciona, **não recomendado** — veja abaixo |
 
-**Sobre `trino://`:** o dialeto SQLAlchemy Trino emite DDL Trino válido e
-`INSERT`s, então é tecnicamente viável como backend `otlp2sql`. Não é
-recomendado para nada além de taxas de ingestão baixas. Cada flush de lote se torna um
-`INSERT` distribuído do Trino mais um snapshot Iceberg, então telemetria de alta taxa
-produz muitos arquivos e snapshots pequenos e ainda precisa de
-`ALTER TABLE ... EXECUTE optimize` / `expire_snapshots` periódico — que o `otlp2sql`
-não roda. Também coloca o motor de consulta no caminho crítico de ingestão.
+**Com `trino://`:** o dialeto Trino do SQLAlchemy emite DDL e `INSERT` válidos do Trino, então pode servir de backend do `otlp2sql`, mas só o recomendamos para taxas de ingestão baixas. Cada descarga de lote vira um `INSERT` distribuído do Trino mais um snapshot do Iceberg, então telemetria em alta taxa gera muitos arquivos e snapshots pequenos e ainda precisa de um `ALTER TABLE ... EXECUTE optimize` / `expire_snapshots` periódico, que o `otlp2sql` não roda. Também coloca o motor de consultas no caminho crítico da ingestão.
 
 Para telemetria de alto volume no Trino/Iceberg, use `otlp2parquet` em vez disso: ele
 escreve parquet no armazenamento de objeto sem passar pelo Trino, e uma compactação Trino
@@ -162,9 +156,9 @@ endpoint `otlp2sql`, e registre o domínio ops contra a mesma
 
 ## Instalador macOS {: #macos-installer }
 
-Para estações de trabalho de desenvolvedor e avaliação. Totalmente air-gapped — nenhuma internet necessária após o download.
+Para estações de trabalho de desenvolvimento e avaliação. Totalmente isolado; não precisa de internet depois do download.
 
-O instalador base é uma **instalação nativa**: motor de federação DuckDB + control plane PostgreSQL embarcado (pgserver) + cache em memória (fakeredis), sem Docker, VM, Trino, Redis, ou MinIO. O motor de federação é uma escolha do assistente — DuckDB (nativo, padrão), Trino-on-Docker, ou um motor externo. A observabilidade é auto-telemetria sempre ativa visível na Administração; a stack Docker de coletor/Prometheus/Grafana é uma demonstração externa opcional, não um interruptor ligado/desligado. O pacote de dados de demonstração é opcional e desligado por padrão. Trino, a stack de observabilidade Docker, e a demonstração são add-ons pesados resolvidos local-first (diretório adjacente ao instalador, volumes montados, `~/Downloads`, depois release do GitHub), para que empresas possam pré-preparar tarballs para instalações air-gapped.
+O instalador base é uma **instalação nativa**: o motor de federação DuckDB, um plano de controle PostgreSQL embutido (pgserver) e um cache em memória (fakeredis), sem Docker, VM, Trino, Redis ou MinIO. O motor de federação é escolhido no assistente: DuckDB (nativo, o padrão), Trino no Docker ou um motor externo. A observabilidade é autotelemetria sempre ligada e visível em Admin; a stack Docker de collector, Prometheus e Grafana é uma demonstração opcional à parte e não a liga nem desliga. O pacote de dados de demonstração é opcional e vem desligado. Trino, a stack de observabilidade no Docker e a demo são complementos pesados. Eles são procurados primeiro localmente (o diretório ao lado do instalador, volumes montados, `~/Downloads`) e só depois baixados da release do GitHub, para que empresas possam deixar os tarballs preparados para instalações isoladas.
 
 ### Passos {: #steps }
 
@@ -187,7 +181,7 @@ Todos os dados são armazenados em `~/.provisa/`. Para remover tudo: `provisa un
 
 ## Instalador Windows {: #windows-installer }
 
-Para estações de trabalho de desenvolvedor e avaliação. Totalmente air-gapped — nenhuma internet necessária após o download.
+Para estações de trabalho de desenvolvimento e avaliação. Totalmente isolado; não precisa de internet depois do download.
 
 Assim como no macOS, o instalador base do Windows é um **nível nativo**: um runtime Python autônomo + wheel provisa + DuckDB/pg_duckdb + control plane PostgreSQL embarcado (pgserver), sem enviar Docker, sem VM, e sem imagens de container. O motor de federação (Trino), a stack de observabilidade, e o pacote de dados de demonstração são adicionados depois via instaladores em camadas separados, em ordem: o instalador Container (`Provisa-Container-<version>.exe`, que adiciona WSL2 + containerd + Trino), depois o instalador Obs (exige o nível container), depois o instalador Demo (exige Core + Obs). A orientação de primeiro lançamento explica como inicializar o motor de federação rodando o instalador Container.
 
@@ -219,7 +213,7 @@ Todos os dados são armazenados em `%USERPROFILE%\.provisa\`.
 - Todos os tarballs de imagem de container (PostgreSQL, PgBouncer, MinIO, Redis, motor de federação, API Provisa)
 - O wrapper de CLI do Provisa e o script de configuração de primeiro lançamento
 
-A imagem Provisa é pré-construída no momento do empacotamento — código-fonte Python nunca é incluído.
+A imagem do Provisa é construída no empacotamento, e o código-fonte Python nunca é incluído.
 
 ### Quando usar {: #when-to-use }
 
@@ -376,7 +370,7 @@ O modo não interativo instala uma unit systemd (`/etc/systemd/system/provisa.se
 
 ## Implantação de VM em Nuvem — Terraform (AWS) {: #cloud-vm-deployment-terraform-aws }
 
-Provisiona um cluster Provisa multi-nó completo na AWS — VPC, security groups, instâncias EC2, ALB, NLB — em um comando interativo.
+Um único comando interativo provisiona um cluster completo do Provisa com vários nós na AWS: VPC, grupos de segurança, instâncias EC2, ALB e NLB.
 
 ### Arquivos {: #files }
 
@@ -495,7 +489,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
 
 Seu time já opera um cluster Kubernetes e quer que o Provisa participe desse modelo operacional. Se você está avaliando o Provisa ou implantando on-premises sem um cluster existente, o caminho AppImage é mais simples.
 
-Nota: o AppImage do Provisa não consegue rodar dentro de um pod Kubernetes — ele exige FUSE e um daemon Docker rootless, que não estão disponíveis em perfis de segurança de pod padrão.
+Observação: o AppImage do Provisa não roda dentro de um pod do Kubernetes. Ele precisa de FUSE e de um daemon Docker sem root, e os perfis de segurança de pod padrão não permitem nenhum dos dois.
 
 ### Passos {: #steps_3 }
 
@@ -636,7 +630,7 @@ Nota: o AppImage do Provisa não consegue rodar dentro de um pod Kubernetes — 
 kubectl scale deployment/provisa --replicas=5 --namespace provisa
 ```
 
-Workers do motor de federação escalam independentemente — mais workers aumentam a vazão e a capacidade de consulta concorrente.
+Os workers do motor de federação escalam de forma independente, e mais workers significam mais vazão e mais consultas ao mesmo tempo.
 
 ### Atualizando config {: #updating-config }
 
@@ -656,7 +650,7 @@ O Provisa aplica um modelo de recuperação em duas camadas em todos os modos de
 - **Camada 1 — erros transitórios.** Operações de leitura tentam novamente por até 30 segundos em erros transitórios usando backoff exponencial com jitter completo. Ajuste o orçamento com `PROVISA_RETRY_BUDGET_SECS`. Operações de escrita nunca são retentadas internamente, e erros de memória nunca são retentáveis.
 - **Camada 2 — falha de componente.** Um observador interno do motor detecta e reinicia componentes de software falhados em 2–3 minutos.
 
-Falhas em nível de máquina e cluster continuam sendo responsabilidade do operador — provisione nós redundantes e um balanceador de carga (caminhos Terraform e Helm acima) para tolerância à perda de nó.
+Falhas de máquina e de cluster continuam sendo responsabilidade do operador. Para tolerar a perda de um nó, provisione nós redundantes e um balanceador de carga (os caminhos Terraform e Helm acima).
 
 ### Tabela de telemetria cujos metadados estão ausentes {: #telemetry-table-whose-metadata-is-missing }
 
@@ -682,7 +676,7 @@ Não execute `remove_orphan_files` em uma tabela que está sendo recuperada. Ele
 
 Os motores de federação de warehouse exigem pacotes Python e componentes de nível de sistema além da instalação padrão do Provisa. Todos os pacotes Python listados aqui são declarados em `pyproject.toml` e instalados como parte do `pip install provisa` ou `pip install -e .` padrão.
 
-Os pacotes Python vêm com a instalação padrão do Provisa — nenhum extra opcional exigido para qualquer motor de warehouse. Os itens de nível de sistema (driver ODBC, CLIs de nuvem, chaves de conta de serviço) devem ser instalados separadamente.
+Os pacotes Python vêm com a instalação padrão do Provisa, então nenhum motor de warehouse precisa de extra opcional. Os itens de sistema (o driver ODBC, as CLIs de nuvem, as chaves de contas de serviço) precisam ser instalados à parte.
 
 ### Pacotes Python (já nas dependências core) {: #python-packages-already-in-core-dependencies }
 
@@ -701,11 +695,11 @@ Os pacotes Python vêm com a instalação padrão do Provisa — nenhum extra op
 
 ### Requisitos de nível de sistema {: #system-level-requirements }
 
-Esses não são pacotes Python — devem ser instalados no host ou container que roda o Provisa.
+Não são pacotes Python. Instale-os no host ou contêiner que roda o Provisa.
 
 **Microsoft Fabric e Azure Synapse (ODBC)**
 
-`pyodbc` se conecta através do Microsoft ODBC Driver for SQL Server (`msodbcsql18`). O driver deve ser instalado no host — não via pip.
+O `pyodbc` se conecta pelo Microsoft ODBC Driver for SQL Server (`msodbcsql18`). Instale o driver no próprio host; o pip não consegue instalá-lo.
 
 macOS:
 
@@ -737,7 +731,7 @@ Para desenvolvimento local, `az login` é o caminho mais simples:
 az login
 ```
 
-Para produção, use identidade gerenciada (em VMs Azure ou AKS) — nenhum gerenciamento de credencial necessário. Para autenticação por service-principal, defina:
+Em produção, use identidade gerenciada (em VMs do Azure ou AKS), que dispensa gerenciar credenciais. Para autenticação por service principal, defina:
 
 ```bash
 export AZURE_TENANT_ID=<tenant>
@@ -753,7 +747,7 @@ export AZURE_CLIENT_SECRET=<secret>
 export GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa-key.json
 ```
 
-Para produção em GCP (Cloud Run, GKE com Workload Identity, Compute Engine), a biblioteca detecta a conta de serviço anexada automaticamente — nenhuma variável de ambiente necessária.
+Em produção no GCP (Cloud Run, GKE com Workload Identity, Compute Engine), a biblioteca pega sozinha a conta de serviço anexada, sem variável de ambiente.
 
 A conta de serviço precisa de:
 
@@ -770,7 +764,7 @@ Se o Provisa roda atrás de um proxy que intercepta TLS (Charles, mitmproxy, pro
 export REQUESTS_CA_BUNDLE=/path/to/your/proxy-ca.pem
 ```
 
-O conector Databricks herda isso do `requests` — nenhuma variável de ambiente específica do Databricks é necessária.
+O conector do Databricks herda isso do `requests`, então não precisa de variável de ambiente específica do Databricks.
 
 ### Lista de verificação por motor {: #per-engine-checklist }
 
@@ -867,7 +861,7 @@ provisa import FILE        # Replace running config with YAML from FILE
 
 ### Fluxo de promoção de config (dev → test → prod) {: #config-promotion-workflow-dev-test-prod }
 
-Todas as configurações específicas de ambiente (strings de conexão, segredos, portas) pertencem a variáveis de ambiente ou gerenciadores de segredo — não à config exportada. O YAML exportado captura seu modelo semântico: fontes, domínios, funções, views.
+Toda configuração específica de ambiente (strings de conexão, segredos, portas) vai em variáveis de ambiente ou num gerenciador de segredos, fora da configuração exportada. O YAML exportado captura seu modelo semântico: fontes, domínios, papéis e views.
 
 ```bash
 # On dev — export after making changes in the UI

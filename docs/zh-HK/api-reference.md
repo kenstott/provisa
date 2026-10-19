@@ -1414,7 +1414,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-移動參照會使失去參照的術語依「移除或淘汰」規則結算。用它來整併正規化未能合併的兩個術語 — 例如某個數據來源使用了落在展開對照表之外的非標準縮寫。
+移動參照後，失去它的那個術語會按「刪除或棄用」規則處置。可以用它合併正規化未能合併的兩個術語，例如某個數據來源使用了擴充表未涵蓋的非標準縮寫時。
 
 刪除已扎根的術語（帶有實體參照者）會傳回 `400 glossary.invalid`。請先移除或移動所有參照。
 
@@ -1432,7 +1432,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 
 **`POST /admin/glossary/definitions/generate`**
 
-逐一走訪詞彙表中的每個術語，略過已有定義者，並呼叫組織的 AI 模型為其餘術語各草擬一則定義。草稿會立即保存 — 與逐術語草擬端點（`POST /admin/glossary/terms/{term_id}/definition/generate`）不同，這裡沒有編輯步驟。人工撰寫的定義永不被覆寫：在任何模型呼叫之前的防護是 `if summary["definition"]: continue`。整批只發出一次發佈通知。
+遍歷詞彙表中的每個術語，略過已有定義的術語，並呼叫機構的 AI 模型為其餘每個術語起草定義。每份草稿都會即時儲存，沒有編輯步驟，這一點不同於單一術語的草稿端點（`POST /admin/glossary/terms/{term_id}/definition/generate`）。人手撰寫的定義永遠不會被覆寫，因為已有定義的術語在呼叫模型之前已被略過。整批只發一條發佈通知。
 
 回應：
 
@@ -1452,7 +1452,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 {"added": 5}
 ```
 
-`added` 是已寫入的邊數量。已存在的邊仍會計入 — upsert 成功，只是邊的數據沒有改變。
+`added` 是寫入的邊數。已經存在的邊亦計入：upsert 會成功，但邊的數據不會改變。
 
 ### MCP `search_terms` 工具 {: #mcp-search_terms-tool }
 
@@ -1500,7 +1500,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 - 抽象術語無條件發佈 — 它們是使用者詞彙，不繫結於實體欄位。
 - 兩個術語之間的邊，只有在兩端術語都發佈時才會發佈。
 
-每個廠商配接器都原生發佈術語圖，寫入一個由它冪等建立、由 Provisa 擁有的詞彙表容器 — 絕不寫入既有的目錄詞彙表：
+每個供應商配接器都以原生方式發佈術語圖，寫入一個歸 Provisa 所有、以冪等方式建立的詞彙表容器，從不寫入已有的目錄詞彙表：
 
 | 提供者 | 容器 | 術語 | 關聯 | 淘汰 |
 | --- | --- | --- | --- | --- |
@@ -1510,7 +1510,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 | OpenMetadata | 透過 `/v1/glossaries` 的 Provisa 詞彙表 | 以 fqn 為索引鍵的 PUT，重新命名則以已儲存的 UUID 進行 PATCH 重新繫結 | KIND_OF → 原生父階層、SYNONYM_OF → `synonyms`、其餘 → `relatedTerms` | `entityStatus` |
 | Collibra | 詞彙表類型的網域「Provisa Glossary」 | 透過 Import API 的 Business Term 資產 | 原生 Business Term 關聯類型 | 資產狀態 |
 
-繫結的依據是所有權，而非名稱：每個已發佈術語的廠商 id 都會擷取到 `catalog_bindings` 中該術語的 URN（`provisa://<org>/terms/<name>`）之下，而 Provisa 只在持有該繫結時（或該項目位於它自己建立、由 Provisa 擁有的容器內）才會修改或刪除廠商端的詞彙表項目。沒有 Provisa 繫結的詞彙表項目源自外部系統，永不被觸碰；更新採讀取合併，因此數據管家在 Provisa 自有術語上新增的欄位得以保留；當術語離開快照時，不會刪除任何東西。管家的術語對資產指派仍由外部擁有 — 沒有任何配接器寫入術語對資產的指派（由 Provisa 撰寫的指派發佈是明確的後續工作）。在 Collibra 上尤其如此：在 Import API 的 REPLACE 語意下，安全性建立在包含關係上 — 酬載只提及 Provisa 詞彙表網域內的資產，關聯實例也只存在於 Provisa 術語之間，因此管家的詞彙表及其關聯永遠不會被觸及。
+關鍵在於繫結，而不是名稱。每個已發佈術語的供應商 id 都會以該術語的 URN（`provisa://<org>/terms/<name>`）記錄在 `catalog_bindings` 中，只有當 Provisa 持有該繫結，或該條目位於 Provisa 建立的容器中時，Provisa 才會修改或刪除供應商一側的詞彙表條目。沒有 Provisa 繫結的詞彙表條目來自外部系統，永遠不會被觸碰。更新會先讀取再合併，所以數據管家在 Provisa 自有術語上加入的欄位會保留；術語離開快照時亦不會刪除任何東西。數據管家所作的術語到資產的指派仍歸外部系統所有：沒有任何配接器寫入它們（發佈在 Provisa 中編寫的指派是另一項後續工作）。具體到 Collibra，Import API 會取代收到的內容，安全性依靠範圍限定：負載只提及 Provisa 詞彙表領域內的資產，以及 Provisa 術語之間的關係，所以數據管家的詞彙表及其關係都不會被觸及。
 
 ---
 
@@ -1606,7 +1606,7 @@ mutation {
 | `support` | `String` | 否 | 自由文字支援指引 |
 | `custom_properties` | `JSON` | 否 | 標準欄位未涵蓋的任意鍵值中繼資料 |
 
-模型上還有另外兩個欄位，但未在 Strawberry `DataProductType` / `DataProductInput` 中公開 —— 它們是 Snowflake Horizon Catalog 專屬：
+模型中還有兩個欄位，但沒有在 `DataProductType` / `DataProductInput` 中公開。它們專用於 Snowflake Horizon Catalog：
 
 | 欄位 | 備註 |
 | --- | --- |
@@ -1615,7 +1615,7 @@ mutation {
 
 ### 資料表成員資格 {: #table-membership }
 
-資料表透過在資料表編輯表單設定其 `product_id` 欄位加入數據產品。挑選器的範圍限定於 `domain_id` 與該資料表自身網域相符的產品 — `marketing` 網域中的資料表永遠不會被提供 `sales` 網域的產品。
+在資料表編輯表單中設定資料表的 `product_id` 欄位後，該資料表就加入了某個數據產品。選擇器只列出 `domain_id` 與該資料表所屬領域相同的產品，所以 `marketing` 領域中的資料表永遠不會看到 `sales` 領域的產品。
 
 同一網域中的命令亦可指派為成員。
 
@@ -1623,7 +1623,7 @@ mutation {
 
 `build_snapshot` 在每次目錄發佈時套用 `data_products_only=True`。沒有 `product_id` 的資料表會連同其關係邊、血緣邊與治理標籤一併從快照中保留。數據來源與網域一律發佈。詞彙表術語只在其至少一個實體參照所屬的資料表屬於已匯出（產品成員）資料表時才會發佈。
 
-沒有已匯出成員的產品不會建立快照項目 —— 沒有成員的清單會向目錄誤呈該產品。
+沒有匯出成員的產品不會產生快照條目，因為沒有成員的清單會令目錄對該產品產生錯誤認識。
 
 ### 依目錄目標劃分的數據產品支援 {: #data-product-support-by-catalog-target }
 

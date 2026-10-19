@@ -1414,7 +1414,7 @@ Gültige `kind`-Werte: `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Das Verschieben einer Referenz schließt den verlierenden Begriff nach der Regel "Entfernen oder als veraltet markieren" ab. Verwenden Sie dies, um zwei Begriffe zu konsolidieren, die die Normalisierung getrennt gehalten hat — zum Beispiel, nachdem eine Quelle eine nicht standardmäßige Abkürzung verwendet, die außerhalb der Expansionstabelle lag.
+Das Verschieben einer Referenz erledigt den Begriff, der sie verliert, nach der Regel „entfernen oder als veraltet markieren“. Nutzen Sie das, um zwei Begriffe zusammenzuführen, die die Normalisierung getrennt gehalten hat, etwa wenn eine Quelle eine unübliche Abkürzung verwendet, die die Erweiterungstabelle nicht abdeckt.
 
 Das Löschen eines verwurzelten Begriffs (mit physischen Referenzen) gibt `400 glossary.invalid` zurück. Entfernen oder verschieben Sie zuerst alle Referenzen.
 
@@ -1432,7 +1432,7 @@ Das konfigurierte KI-Modell der Org kann Definitionen entwerfen und in einer ein
 
 **`POST /admin/glossary/definitions/generate`**
 
-Iteriert über jeden Begriff im Glossar, überspringt jeden, der bereits eine Definition hat, und ruft das KI-Modell der Org auf, um für jeden verbleibenden Begriff einen Entwurf zu erstellen. Der Entwurf wird sofort persistiert — anders als beim Pro-Begriff-Entwurfs-Endpunkt (`POST /admin/glossary/terms/{term_id}/definition/generate`) gibt es keinen Editor-Schritt. Von Menschen verfasste Definitionen werden nie überschrieben: Die Schutzklausel ist `if summary["definition"]: continue` vor jedem Modellaufruf. Eine einzige Veröffentlichungsbenachrichtigung deckt den gesamten Batch ab.
+Geht jeden Begriff im Glossar durch, überspringt die, die schon eine Definition haben, und lässt für jeden übrigen vom KI-Modell der Organisation eine entwerfen. Jeder Entwurf wird sofort gespeichert, ohne Editorschritt, anders als beim Entwurfs-Endpunkt für einzelne Begriffe (`POST /admin/glossary/terms/{term_id}/definition/generate`). Eine von Menschen geschriebene Definition wird nie überschrieben, weil ein Begriff mit Definition vor jedem Modellaufruf übersprungen wird. Eine Veröffentlichungsbenachrichtigung deckt den ganzen Stapel ab.
 
 Antwort:
 
@@ -1452,7 +1452,7 @@ Antwort:
 {"added": 5}
 ```
 
-`added` ist die Anzahl der geschriebenen Kanten. Eine bereits existierende Kante zählt weiterhin mit — der Upsert gelingt, aber die Kantendaten ändern sich nicht.
+`added` ist die Zahl der geschriebenen Kanten. Eine bereits vorhandene Kante zählt mit: Das Upsert gelingt, aber die Daten der Kante ändern sich nicht.
 
 ### MCP-Tool `search_terms` {: #mcp-search_terms-tool }
 
@@ -1500,7 +1500,7 @@ Der Export wendet dieselben Filter wie der Rest des Snapshots an:
 - Abstrakte Begriffe werden bedingungslos veröffentlicht — sie sind Benutzervokabular, nicht an physische Spalten gebunden.
 - Eine Kante zwischen zwei Begriffen wird nur veröffentlicht, wenn beide Endpunkt-Begriffe veröffentlicht werden.
 
-Jeder Vendor-Adapter veröffentlicht den Begriffsgraphen nativ, in einen von ihm idempotent erstellten, Provisa-eigenen Glossar-Container — nie in ein bestehendes Katalog-Glossar:
+Jeder Anbieter-Adapter veröffentlicht den Begriffsgraphen nativ, in einen Glossar-Container, der Provisa gehört und den es idempotent anlegt, nie in ein bestehendes Katalogglossar:
 
 | Provider | Container | Begriffe | Beziehungen | Deprecation |
 | --- | --- | --- | --- | --- |
@@ -1510,7 +1510,7 @@ Jeder Vendor-Adapter veröffentlicht den Begriffsgraphen nativ, in einen von ihm
 | OpenMetadata | Provisa-Glossar über `/v1/glossaries` | fqn-keyed PUT, Umbenennungen PATCH-rebind nach gespeicherter UUID | KIND_OF → native Elternhierarchie, SYNONYM_OF → `synonyms`, andere → `relatedTerms` | `entityStatus` |
 | Collibra | Glossary-Typ-Domäne "Provisa Glossary" | Business-Term-Assets über die Import-API | native Business-Term-Beziehungstypen | Asset-Status |
 
-Die Eigentümerschaft ist die Bindung, nicht der Name: Die Vendor-ID jedes veröffentlichten Begriffs wird unter der URN des Begriffs (`provisa://<org>/terms/<name>`) in `catalog_bindings` erfasst, und Provisa ändert oder löscht ein vendorseitiges Glossarelement nur, wenn es diese Bindung hält (oder das Element im von ihm erstellten, Provisa-eigenen Container liegt). Ein Glossarelement ohne Provisa-Bindung stammt aus dem externen System und wird nie angefasst; Updates werden read-merge durchgeführt, sodass von Stewards hinzugefügte Felder auf Provisas eigenen Begriffen erhalten bleiben; nichts wird gelöscht, wenn ein Begriff den Snapshot verlässt. Steward-Zuweisungen von Begriff zu Asset bleiben extern verwaltet — kein Adapter schreibt Begriff-zu-Asset-Zuweisungen (die Veröffentlichung von Provisa-verfassten Zuweisungen ist ein expliziter Folgeschritt). Speziell bei Collibra beruht die Sicherheit unter den REPLACE-Semantiken der Import-API auf Containment: Die Payload erwähnt nur Assets innerhalb der Provisa-Glossar-Domäne und Beziehungsinstanzen nur zwischen Provisa-Begriffen, sodass Steward-Glossare und ihre Beziehungen nie erreichbar sind.
+Entscheidend ist die Bindung, nicht der Name. Die Anbieter-ID jedes veröffentlichten Begriffs wird in `catalog_bindings` unter der URN des Begriffs (`provisa://<org>/terms/<name>`) festgehalten, und Provisa ändert oder löscht einen Glossareintrag auf Anbieterseite nur, wenn es diese Bindung hält oder der Eintrag in dem Container liegt, den Provisa angelegt hat. Ein Glossareintrag ohne Provisa-Bindung stammt aus dem externen System und wird nie angefasst. Aktualisierungen lesen und führen zusammen, sodass Felder, die ein Steward an Provisas eigenen Begriffen ergänzt hat, erhalten bleiben, und nichts wird gelöscht, wenn ein Begriff den Snapshot verlässt. Die Zuordnungen von Begriffen zu Assets durch Stewards bleiben beim externen System: Kein Adapter schreibt sie (das Veröffentlichen von in Provisa erstellten Zuordnungen ist ein eigener Folgeschritt). Bei Collibra ersetzt die Import-API, was sie erhält, und die Sicherheit beruht auf Eingrenzung: Die Nutzlast nennt nur Assets innerhalb der Provisa-Glossardomäne und Relationen nur zwischen Provisa-Begriffen, sodass Steward-Glossare und ihre Relationen außer Reichweite sind.
 
 ---
 
@@ -1606,7 +1606,7 @@ Das Löschen eines Produkts entfernt `product_id` von jeder Mitgliedstabelle und
 | `support` | `String` | Nein | Freitext-Support-Hinweise |
 | `custom_properties` | `JSON` | Nein | Beliebige Schlüssel-Wert-Metadaten, die nicht von den Standardfeldern abgedeckt werden |
 
-Zwei zusätzliche Felder existieren im Modell, sind aber nicht im Strawberry-`DataProductType`/`DataProductInput` exponiert — sie sind spezifisch für den Snowflake Horizon Catalog:
+Zwei weitere Felder gibt es im Modell, sie sind aber in `DataProductType` / `DataProductInput` nicht verfügbar. Sie gelten nur für den Snowflake Horizon Catalog:
 
 | Feld | Anmerkungen |
 | --- | --- |
@@ -1615,7 +1615,7 @@ Zwei zusätzliche Felder existieren im Modell, sind aber nicht im Strawberry-`Da
 
 ### Tabellenmitgliedschaft {: #table-membership }
 
-Eine Tabelle tritt einem Datenprodukt bei, indem im Tabellen-Bearbeitungsformular ihr Feld `product_id` gesetzt wird. Der Picker ist auf Produkte beschränkt, deren `domain_id` mit der eigenen Domäne der Tabelle übereinstimmt — eine Tabelle in der Domäne `marketing` wird nie ein Produkt in der Domäne `sales` angeboten.
+Eine Tabelle tritt einem Datenprodukt bei, wenn im Bearbeitungsformular der Tabelle ihr Feld `product_id` gesetzt wird. Die Auswahl bietet nur Produkte an, deren `domain_id` zur eigenen Domäne der Tabelle passt; einer Tabelle in der Domäne `marketing` wird also nie ein Produkt der Domäne `sales` angeboten.
 
 Commands in derselben Domäne können ebenfalls als Mitglieder zugewiesen werden.
 
@@ -1623,7 +1623,7 @@ Commands in derselben Domäne können ebenfalls als Mitglieder zugewiesen werden
 
 `build_snapshot` wendet für jede Katalog-Veröffentlichung `data_products_only=True` an. Tabellen ohne `product_id` werden aus dem Snapshot zurückgehalten, ebenso ihre Beziehungskanten, Lineage-Kanten und Governance-Tags. Quellen und Domänen werden immer veröffentlicht. Glossarbegriffe werden nur veröffentlicht, wenn mindestens eine ihrer physischen Referenzen zu einer exportierten (Produktmitglieds-)Tabelle gehört.
 
-Ein Produkt ohne exportierte Mitglieder erzeugt keinen Snapshot-Eintrag — ein Listing ohne Mitglieder würde das Produkt gegenüber dem Katalog falsch darstellen.
+Ein Produkt ohne exportierte Mitglieder bekommt keinen Snapshot-Eintrag, weil eine Auflistung ohne Mitglieder das Produkt im Katalog falsch darstellen würde.
 
 ### Datenprodukt-Unterstützung nach Katalogziel {: #data-product-support-by-catalog-target }
 

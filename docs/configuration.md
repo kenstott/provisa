@@ -134,11 +134,11 @@ All sources share a common field set.
 
 ### Source type reference
 
-Types needing non-obvious config each have a short entry below. RDBMS types (postgresql, mysql, etc.) use only the common fields above — no additional section needed.
+Each type that needs non-obvious config has a short entry below. RDBMS types (postgresql, mysql and so on) use only the common fields above and need no section of their own.
 
 #### GovData
 
-`govdata` sources use a separate top-level model, `GovDataSource`, not the generic `Source`. Access is partitioned by subject grouping.
+`govdata` sources use a top-level model of their own, `GovDataSource`, instead of the generic `Source`. Access is divided up by subject grouping.
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ Each subject maps to one or more GovData schemas. Configuring a `govdata` source
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-The `ref` and `geo` schemas are always included as linker schemas — not configurable and not listed above. Use subject `ALL` to grant access to every schema.
+The `ref` and `geo` schemas are always included as linker schemas. They can't be configured and aren't listed above. Use the subject `ALL` to grant access to every schema.
 
 #### Kafka
 
-The `kafka` row in `sources:` is registration-only. Its connector's `details()` returns `{}` — the real configuration lives in the top-level `kafka_sources[]` block, not in a `sources:` row. Kafka is always a VIRTUAL_SOURCE (routes through the engine; no direct pool).
+The `kafka` row in `sources:` only registers the source. Its connector's `details()` returns `{}`; the real configuration lives in the top-level `kafka_sources[]` block. Kafka is always a VIRTUAL_SOURCE: it routes through the engine and has no direct pool.
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`http_path` in `federation_hints` is required. `password` carries the personal access token. `catalog` is optional (carried in SQL/hints, not the `database` field).
+`http_path` in `federation_hints` is required. `password` carries the personal access token. `catalog` is optional and goes in SQL or the hints; the `database` field doesn't hold it.
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-Both use T-SQL over TDS with Azure AD authentication. Authenticate with `az login` (developer) or a managed identity (production) — the engine reads credentials via `azure-identity`'s `DefaultAzureCredential`. Connection details come from env vars: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) or `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), or via `PROVISA_ENGINE_URL`.
+Both use T-SQL over TDS with Azure AD authentication. Sign in with `az login` (developer) or a managed identity (production); the engine reads the credentials through `azure-identity`'s `DefaultAzureCredential`. Connection details come from environment variables, `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) or `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), or from `PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` and `port` point to the Hive Thrift metastore (default port 9083). For `hive`, set `mapping["storage"]` to choose the object store backend. Missing required keys fail loud — no fallback.
+`host` and `port` point to the Hive Thrift metastore (default port 9083). For `hive`, set `mapping["storage"]` to choose the object store backend. A missing required key fails loudly, with no fallback.
 
 `hive_s3` is a distinct type that always declares S3 storage; no `mapping.storage` needed.
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**Kaggle datasets** cannot be added through this file — they require a live token and dataset picker available in the Sources form (Sources → Subscriptions → Kaggle). A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Re-downloading from Kaggle requires the `refreshKaggleSource` mutation or the UI refresh flow, not a YAML edit. See [Kaggle datasets](sources.md#kaggle-datasets) in the source types reference.
+**Kaggle datasets** can't be added through this file, because they need a live token and the dataset picker in the Sources form (Sources → Subscriptions → Kaggle). A Kaggle source exported to YAML appears as `type: files` with `kaggle_owner` and `kaggle_ref` in `federation_hints`. Downloading from Kaggle again takes the `refreshKaggleSource` mutation or the refresh in the UI; editing the YAML won't do it. See [Kaggle datasets](sources.md#kaggle-datasets) in the source types reference.
 
 #### API / Remote sources
 
@@ -543,7 +543,7 @@ sources:
 
 #### Data quality checkers (soda / great_expectations)
 
-A checker source points at Provisa's own pgwire endpoint, so one postgres driver scans the federated view of a Snowflake- or Iceberg-backed table. The scan identity is declared, never inherited — policy applies to that connection, and a filtered row set must not produce a silently passing check. Connection keys come from `mapping`: `host`, `port`, `database`, `user`, `password`.
+A checker source points at Provisa's own pgwire endpoint, so one postgres driver scans the federated view of a table backed by Snowflake or Iceberg. You declare the scan identity; it's never inherited. Policy applies to that connection, and a filtered set of rows must not let a check pass silently. Connection keys come from `mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Each results table carries `dq_contract` — Soda contract YAML or a Great Expectations suite JSON, verbatim. Columns, watermark and promotions are derived from it; see [Data Quality Checkers](sources.md#data-quality-checkers) for the full derivation.
+Each results table carries `dq_contract`, the Soda contract YAML or Great Expectations suite JSON word for word. Columns, watermark and promotions are derived from it; see [Data Quality Checkers](sources.md#data-quality-checkers) for how.
 
-**Install-time selection.** The checker is not linked in — the scan runs in a child interpreter, and the library is installed only when an operator names it. Every installer path (`install.sh`, `packaging/linux/first-launch.sh`, and the macOS wizard through `PROVISA_DQ_CHECKER`) writes the choice to `~/.provisa/config.yaml`:
+**Install-time selection.** The checker isn't linked in: the scan runs in a child interpreter, and the library is installed only when an operator names it. Every installer path (`install.sh`, `packaging/linux/first-launch.sh`, and the macOS wizard through `PROVISA_DQ_CHECKER`) writes the choice to `~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 Installing the demo dataset raises `none` to `gx` and says so, because the demo config registers a Great Expectations suite over `pet_store.pets` and its quality scorecard would otherwise have nothing to show. Naming `soda` keeps `soda`.
 
-Reaching the demo through pip rather than an installer skips that wizard step, so the `demo` extra carries the same checker: `pip install 'provisa[embedded,demo]'` is what `provisa run --demo` needs for its scan to run. Without it the scan reports `data-quality checker 'great_expectations' is not installed`, naming the install command.
+If you reach the demo through pip instead of an installer, you skip that wizard step, so the `demo` extra carries the same checker: `provisa run --demo` needs `pip install 'provisa[embedded,demo]'` for its scan to run. Without it the scan reports `data-quality checker 'great_expectations' is not installed` and names the install command.
 
-Any other value stops the launcher rather than starting without the checker the operator asked for. The `soda` extra pulls `soda-postgres`; `gx` pulls `great-expectations[postgresql]`. Soda Core is Elastic License 2.0 — `config/capabilities.yaml` marks the option `cloud_eligible: false`, and the hosted plane refuses it.
+Any other value stops the launcher, so it never starts without the checker the operator asked for. The `soda` extra pulls in `soda-postgres`, and `gx` pulls in `great-expectations[postgresql]`. Soda Core is under the Elastic License 2.0: `config/capabilities.yaml` marks the option `cloud_eligible: false`, and the hosted plane refuses it.
 
 ## Domains
 
@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**: Provisa creates a table via CTAS and refreshes it on a schedule. Faster queries but data may be stale by up to `refresh_interval` seconds.
 - **`materialize: false`**: Provisa creates a federated view. Queries always return live data but may be slower for complex aggregations.
 
-Views go through the same governance pipeline as tables — RLS, masking, sampling, and role-based visibility. This ensures no new semantics can be added to the platform without steward oversight.
+Views go through the same governance pipeline as tables: RLS, masking, sampling and role-based visibility. That way nothing can add new semantics to the platform without a steward's oversight.
 
 ### Views with history (time travel)
 
@@ -935,7 +935,7 @@ views:
 | `bitemporal_key` | Yes | The columns a version belongs to |
 | `bitemporal_source_time` | No | The column holding when each row changed in the source: the clock time travel reads on |
 
-**Choosing the clock.** With `bitemporal_source_time`, versions are ordered and read by the source's own time: "as of last Tuesday" is last Tuesday in the source. Without it, they are ordered and read by when Provisa landed each change, so they follow the refresh cadence rather than when the row changed in the source. Either is a choice. Load time suits a frequent refresh cadence, data whose source timing does not matter, and reads that are meant to be about load time, such as auditing what Provisa held and when.
+**Choosing the clock.** With `bitemporal_source_time`, versions are ordered and read by the source's own time: "as of last Tuesday" means last Tuesday in the source. Without it, they're ordered and read by when Provisa landed each change, which follows the refresh cadence and not the moment the row changed in the source. Both are valid choices. Load time suits a frequent refresh cadence, data whose timing in the source doesn't matter, and reads that are meant to be about load time, such as auditing what Provisa held and when.
 
 A version is in force from its time to the next version's. A delete has no source change time and takes effect when Provisa recorded it.
 
@@ -955,7 +955,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `X-Provisa-As-Recorded` alone, the read answers the version of each key in force as recorded then. It is one time, not a range; a range or a malformed value is refused with HTTP 400 (`data.invalid_as_recorded`). The same value is the `as_recorded` argument of `resolve`, the REST `as_recorded` query parameter and the `as_recorded` option of an Arrow Flight ticket. The audit record of each statement keeps both times it read with, `as_of` and `as_recorded`. The same value is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter, and the `as_of` option of an Arrow Flight ticket. A range given to `resolve` answers the row's `versions` in place of its `row`. Rights, masks and row rules apply as to any read. A malformed value, or a range whose end is not after its start, is refused with HTTP 400 (`data.invalid_as_of`).
+Every version recorded after that time is left out, and the as-of then picks the version in force at its own time. With `X-Provisa-As-Recorded` alone, the read answers the version of each key in force as recorded then. It takes one time, not a range; a range or a malformed value is refused with HTTP 400 (`data.invalid_as_recorded`).
+
+Both times also reach Provisa without the headers. The as-of time is the `as_of` argument of `resolve` (GraphQL, gRPC, MCP), the REST `as_of` query parameter and the `as_of` option of an Arrow Flight ticket, and a range given to `resolve` answers the row's `versions` in place of its `row`. The as-recorded time is the `as_recorded` argument of `resolve`, the REST `as_recorded` query parameter and the `as_recorded` option of an Arrow Flight ticket. The audit record of each statement keeps both times it read with, `as_of` and `as_recorded`. Rights, masks and row rules apply as to any read. A malformed as-of value, or a range whose end isn't after its start, is refused with HTTP 400 (`data.invalid_as_of`).
 
 Every view with history answers three more columns, granted as its source-time column (else its first key column) is:
 
@@ -1146,7 +1148,7 @@ auth:
   scram: true
 ```
 
-Makes pgwire advertise SASL with `SCRAM-SHA-256`, so a password is proved rather than sent in cleartext. It applies to the `basic` provider only — no other provider holds the RFC 5802 verifiers SCRAM needs — and channel binding is not offered.
+Makes pgwire advertise SASL with `SCRAM-SHA-256`, so a password is proved and never sent in cleartext. It applies only to the `basic` provider, since no other provider holds the RFC 5802 verifiers SCRAM needs, and channel binding isn't offered.
 
 Verifiers cannot be derived from existing bcrypt hashes. One is written whenever a password passes through in plaintext, so each user's first SCRAM connection follows their next signup, login, password change or admin reset. Until then that user's connections fall back to the cleartext exchange over TLS; the wire does not reveal who has migrated.
 
@@ -1164,11 +1166,11 @@ On by default with the values shown; the block only tunes them. The counter sits
 
 ### Personal access tokens
 
-PATs need no configuration block — they are always accepted, and the store is created with the rest of the control-plane schema. What is configurable is the expiry a user may request at issuance: 1 to 366 days, or none for a token that does not expire. See [Security Model](security.md#personal-access-tokens).
+PATs need no configuration block. They're always accepted, and their store is created with the rest of the control-plane schema. What you can configure is the expiry a user may ask for when issuing one: 1 to 366 days, or none for a token that doesn't expire. See [Security Model](security.md#personal-access-tokens).
 
 ### Mutual TLS
 
-Client-certificate verification is configured by environment variable rather than in `provisa.yaml`, alongside the TLS certificate settings it extends.
+Client-certificate verification is configured with environment variables, alongside the TLS certificate settings it extends, and has no place in `provisa.yaml`.
 
 | Variable | Default | Meaning |
 | ---------- | --------- | --------- |
@@ -1176,7 +1178,7 @@ Client-certificate verification is configured by environment variable rather tha
 | `PROVISA_MTLS_MODE` | `required` once a CA is set | `required` or `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the username the connection authenticates as |
 
-Each takes a per-protocol override under the same naming as the TLS settings. A mode set without a CA, or a mode that is neither value, refuses to start rather than serving connections the operator believes are verified.
+Each one takes a per-protocol override, named the same way as the TLS settings. A mode set without a CA, or a mode that is neither `required` nor `optional`, stops startup, so the server never serves connections the operator believes are verified when they aren't.
 
 ### Addressing an org over TLS
 
@@ -1221,7 +1223,7 @@ Nothing to configure. On a multi-org deployment, pgwire and Bolt read the org fr
 
 ## Upsert Mutations
 
-For tables with a primary key, Provisa auto-generates `upsert_<table>` mutation fields. These compile to an upsert in the target dialect — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` on PostgreSQL, `ON DUPLICATE KEY UPDATE` on MySQL.
+For tables with a primary key, Provisa generates `upsert_<table>` mutation fields. These compile to an upsert in the target dialect: `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` on PostgreSQL, `ON DUPLICATE KEY UPDATE` on MySQL.
 
 ```graphql
 mutation {
@@ -1396,7 +1398,7 @@ observability:
 
 ### Telemetry Filters
 
-Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. Each path has its own filter. Filters run inside a wrapping `_FilteringExporter` before spans leave the process — original span objects are never mutated.
+Provisa runs two independent OTLP export paths: your internal collector and the optional Provisa support endpoint. Each path has its own filter. The filters run before spans leave the process, and the original span objects are never changed.
 
 **`telemetry_filter`** — controls what reaches your internal collector.
 
@@ -1426,7 +1428,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### Support Endpoint
 
-`support_endpoint` (or env `PROVISA_SUPPORT_OTLP_ENDPOINT`) forwards telemetry to Provisa support for diagnostics. When unset, no data leaves your infrastructure via this path. The support filter applies independently of the internal filter — you can redact SQL literals from both exports while still sharing span timing and error data with support.
+`support_endpoint` (or the environment variable `PROVISA_SUPPORT_OTLP_ENDPOINT`) forwards telemetry to Provisa support for diagnostics. When it's unset, no data leaves your infrastructure this way. The support filter works independently of the internal one, so you can redact SQL literals from both exports and still share span timing and error data with support.
 
 ### Endpoint Protocol Detection
 
@@ -1434,7 +1436,7 @@ Provisa selects OTLP/HTTP or OTLP/gRPC from the endpoint URL scheme. URLs starti
 
 ## Federation Engine
 
-Configuring a federation engine is optional. The default is `duckdb` — zero-config, in-process, no external service required. Choose another engine when you need MPP scale or want to reuse an existing warehouse.
+Configuring a federation engine is optional. The default is `duckdb`: zero-config, in-process, with no external service. Choose another engine when you need MPP scale or want to reuse a warehouse you already have.
 
 Precedence: `PROVISA_ENGINE` env var → persisted admin-UI `federation_engine` config field → `duckdb`. Changes take effect on service restart.
 
@@ -1508,7 +1510,7 @@ In-process; no external service. The default engine. `PROVISA_DATA_DIR` controls
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-Materialization store defaults to `~/.provisa/materialize.duckdb` — the only engine with a non-PostgreSQL default store.
+The materialization store defaults to `~/.provisa/materialize.duckdb`. It's the only engine whose default store isn't PostgreSQL.
 
 #### clickhouse (embedded) / clickhouse-server
 
@@ -1629,7 +1631,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service-account key file. For Fabric and Synapse, authenticate with `az login` (developer) or a managed identity (production) — the engine reads credentials via `azure-identity`'s `DefaultAzureCredential`.
+For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of your service-account key file. For Fabric and Synapse, sign in with `az login` (developer) or a managed identity (production); the engine reads the credentials through `azure-identity`'s `DefaultAzureCredential`.
 
 ## Environment Variables
 

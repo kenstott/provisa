@@ -134,11 +134,11 @@ sources:
 
 ### רפרנס סוג מקור {: #source-type-reference }
 
-לסוגים הדורשים תצורה לא-מובנת-מאליה יש ערך קצר למטה. סוגי RDBMS (postgresql, mysql וכו') משתמשים רק בשדות המשותפים לעיל — אין צורך בסעיף נוסף.
+לכל סוג שצריך תצורה לא מובנת מאליה יש רשומה קצרה למטה. סוגי RDBMS (postgresql, mysql וכו') משתמשים רק בשדות המשותפים שלמעלה ולא צריכים מקטע משלהם.
 
 #### GovData
 
-מקורות `govdata` משתמשים במודל ברמה עליונה נפרד, `GovDataSource`, לא ב-`Source` הגנרי. הגישה מחולקת לפי קיבוץ subject.
+מקורות `govdata` משתמשים במודל עליון משלהם, `GovDataSource`, במקום ה-`Source` הכללי. הגישה מחולקת לפי קיבוץ נושאים.
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-הסכמות `ref` ו-`geo` תמיד כלולות כסכמות מקשרות (linker) — אינן ניתנות להגדרה ואינן מופיעות ברשימה לעיל. השתמשו ב-subject `ALL` כדי להעניק גישה לכל הסכמות.
+הסכמות `ref` ו-`geo` תמיד כלולות כסכמות מקשרות. אי אפשר להגדיר אותן והן לא מופיעות ברשימה שלמעלה. השתמשו בנושא `ALL` כדי להעניק גישה לכל הסכמות.
 
 #### Kafka
 
-השורה `kafka` תחת `sources:` היא רישום בלבד. ה-`details()` של המחבר שלה מחזיר `{}` — התצורה האמיתית נמצאת בבלוק `kafka_sources[]` ברמה העליונה, לא בשורת `sources:`. Kafka תמיד VIRTUAL_SOURCE (מנותב דרך המנוע; ללא pool ישיר).
+השורה `kafka` ב-`sources:` רק רושמת את המקור. ה-`details()` של המחבר שלה מחזיר `{}`; התצורה האמיתית נמצאת בבלוק העליון `kafka_sources[]`. Kafka הוא תמיד VIRTUAL_SOURCE: הוא עובר דרך המנוע ואין לו pool ישיר.
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`http_path` ב-`federation_hints` נדרש. `password` נושא את ה-personal access token. `catalog` אופציונלי (נישא ב-SQL/hints, לא בשדה `database`).
+`http_path` ב-`federation_hints` הוא חובה. `password` נושא את טוקן הגישה האישי. `catalog` אופציונלי ונכנס ל-SQL או לרמזים; השדה `database` לא מחזיק אותו.
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-שניהם משתמשים ב-T-SQL על גבי TDS עם אימות Azure AD. התאמתו עם `az login` (פיתוח) או זהות מנוהלת (ייצור) — המנוע קורא את האישורים דרך `DefaultAzureCredential` של `azure-identity`. פרטי חיבור מגיעים ממשתני סביבה: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) או `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), או דרך `PROVISA_ENGINE_URL`.
+שניהם משתמשים ב-T-SQL על גבי TDS עם אימות Azure AD. התחברו עם `az login` (פיתוח) או עם זהות מנוהלת (ייצור); המנוע קורא את פרטי ההתחברות דרך `DefaultAzureCredential` של `azure-identity`. פרטי החיבור מגיעים ממשתני סביבה, `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) או `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), או מ-`PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` ו-`port` מצביעים על ה-Hive Thrift metastore (פורט ברירת מחדל 9083). עבור `hive`, הגדירו `mapping["storage"]` כדי לבחור את ה-backend של אחסון האובייקטים. מפתחות חובה חסרים נכשלים בקול רם — ללא נפילה-חוזרת.
+`host` ו-`port` מצביעים על ה-metastore של Hive מסוג Thrift (פורט ברירת מחדל 9083). עבור `hive`, הגדירו `mapping["storage"]` כדי לבחור את ה-backend של אחסון האובייקטים. מפתח חובה חסר נכשל בקול רם, בלי ערך חלופי.
 
 `hive_s3` הוא סוג נבדל שתמיד מצהיר על אחסון S3; אין צורך ב-`mapping.storage`.
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**ערכות נתונים של Kaggle** לא ניתנות להוספה דרך קובץ זה — הן דורשות אסימון חי ובורר ערכת נתונים הזמינים בטופס המקורות (Sources → Subscriptions → Kaggle). מקור Kaggle שיוצא ל-YAML מופיע כ-`type: files` עם `kaggle_owner` ו-`kaggle_ref` תחת `federation_hints`. הורדה מחדש מ-Kaggle דורשת את ה-mutation‏ `refreshKaggleSource` או את תהליך הרענון ב-UI, לא עריכת YAML. ראו [ערכות נתונים של Kaggle](sources.md#kaggle-datasets) בהפניה של סוגי המקורות.
+אי אפשר להוסיף **ערכות נתונים של Kaggle** דרך הקובץ הזה, כי הן צריכות טוקן תקף ואת בורר ערכות הנתונים שבטופס המקורות (Sources → Subscriptions → Kaggle). מקור Kaggle שיוצא ל-YAML מופיע כ-`type: files` עם `kaggle_owner` ו-`kaggle_ref` ב-`federation_hints`. הורדה חוזרת מ-Kaggle דורשת את המוטציה `refreshKaggleSource` או את הרענון בממשק; עריכת ה-YAML לא עושה את זה. ראו [ערכות נתונים של Kaggle](sources.md#kaggle-datasets) בהפניה לסוגי המקורות.
 
 #### מקורות API / מרוחקים {: #api-remote-sources }
 
@@ -543,7 +543,7 @@ sources:
 
 #### בודקי איכות נתונים (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
-מקור בודק מצביע על נקודת הקצה pgwire של Provisa עצמה, כך שמנהל התקן postgres אחד סורק את התצוגה המפודררת של טבלה מגובית Snowflake או Iceberg. זהות הסריקה מוצהרת, לעולם לא נירשת — המדיניות חלה על אותו חיבור, וקבוצת שורות מסוננת אסור שתגרום לבדיקה שעוברת בשקט. מפתחות החיבור מגיעים מ-`mapping`: `host`, `port`, `database`, `user`, `password`.
+מקור בודק מצביע על נקודת הקצה pgwire של Provisa עצמו, כך שדרייבר postgres יחיד סורק את התצוגה המפודררת של טבלה שמאחוריה Snowflake או Iceberg. את זהות הסריקה מצהירים; היא לעולם לא עוברת בירושה. על החיבור הזה חלה המדיניות, וקבוצת שורות מסוננת לא אמורה להעביר בדיקה בשקט. מפתחות החיבור מגיעים מ-`mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-כל טבלת תוצאות נושאת `dq_contract` — YAML של חוזה Soda או JSON של סוויטת Great Expectations, כלשונו. עמודות, watermark וקידומים נגזרים ממנו; ראו [בודקי איכות נתונים](sources.md#data-quality-checkers) לגזירה המלאה.
+כל טבלת תוצאות נושאת את `dq_contract`, ה-YAML של חוזה Soda או ה-JSON של suite של Great Expectations, מילה במילה. העמודות, ה-watermark והקידומים נגזרים ממנו; איך בדיוק, ראו ב-[בודקי איכות נתונים](sources.md#data-quality-checkers).
 
-**בחירה בזמן התקנה.** הבודק אינו מקושר-פנימה — הסריקה רצה בפרשן-ילד, והספרייה מותקנת רק כשמפעיל מציין אותה בשם. כל נתיב מתקין (`install.sh`, `packaging/linux/first-launch.sh`, ואשף macOS דרך `PROVISA_DQ_CHECKER`) כותב את הבחירה ל-`~/.provisa/config.yaml`:
+**בחירה בזמן ההתקנה.** הבודק לא מקושר פנימה: הסריקה רצה במפרש-בן, והספרייה מותקנת רק כשמפעיל מציין אותה. כל נתיב התקנה (`install.sh`, `packaging/linux/first-launch.sh`, ואשף ה-macOS דרך `PROVISA_DQ_CHECKER`) כותב את הבחירה ל-`~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 התקנת מערך הדגמה מעלה את `none` ל-`gx` ומודיעה על כך, כיוון שתצורת ההדגמה רושמת סוויטת Great Expectations על `pet_store.pets` וכרטיס האיכות שלה לא היה לו מה להציג אחרת. ציון `soda` בשם משאיר `soda`.
 
-הגעה להדגמה דרך pip ולא דרך מתקין מדלגת על שלב האשף הזה, כך שהתוסף `demo` נושא את אותו בודק: `pip install 'provisa[embedded,demo]'` הוא מה ש-`provisa run --demo` צריך כדי שהסריקה שלו תרוץ. בלעדיו הסריקה מדווחת `data-quality checker 'great_expectations' is not installed`, ומציינת את פקודת ההתקנה.
+אם מגיעים להדגמה דרך pip ולא דרך תוכנת התקנה, מדלגים על שלב האשף הזה, ולכן התוספת `demo` כוללת את אותו בודק: `provisa run --demo` צריך את `pip install 'provisa[embedded,demo]'` כדי שהסריקה שלו תרוץ. בלעדיו, הסריקה מדווחת `data-quality checker 'great_expectations' is not installed` ומציינת את פקודת ההתקנה.
 
-כל ערך אחר עוצר את המשגר במקום להתחיל בלי הבודק שהמפעיל ביקש. התוסף `soda` מושך את `soda-postgres`; `gx` מושך את `great-expectations[postgresql]`. Soda Core היא Elastic License 2.0 — `config/capabilities.yaml` מסמן את האפשרות `cloud_eligible: false`, והמישור המתארח דוחה אותה.
+כל ערך אחר עוצר את המשגר, כך שהוא לעולם לא עולה בלי הבודק שהמפעיל ביקש. התוספת `soda` מושכת את `soda-postgres`, ו-`gx` מושכת את `great-expectations[postgresql]`. Soda Core נמצא תחת Elastic License 2.0: `config/capabilities.yaml` מסמן את האפשרות כ-`cloud_eligible: false`, והמישור המתארח דוחה אותה.
 
 ## דומיינים {: #domains }
 
@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**: Provisa יוצרת טבלה דרך CTAS ומרעננת אותה בלוח זמנים. שאילתות מהירות יותר אך הנתונים עלולים להיות מיושנים עד `refresh_interval` שניות.
 - **`materialize: false`**: Provisa יוצרת view פדרטיבי. שאילתות תמיד מחזירות נתונים חיים אך עלולות להיות איטיות יותר עבור אגרגציות מורכבות.
 
-Views עוברות באותו צינור ממשל כמו טבלאות — RLS, מיסוך, דגימה, ונראות מבוססת-תפקיד. זה מבטיח שלא ניתן להוסיף סמנטיקה חדשה לפלטפורמה בלי פיקוח steward.
+תצוגות עוברות דרך אותו צינור ממשל כמו טבלאות: RLS, מיסוך, דגימה ונראות לפי תפקיד. כך שום דבר לא יכול להוסיף סמנטיקה חדשה לפלטפורמה בלי פיקוח של Steward.
 
 ### תצוגות עם היסטוריה (מסע בזמן) {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | כן | העמודות שגרסה שייכת אליהן |
 | `bitemporal_source_time` | לא | עמודה המחזיקה את הרגע שבו כל שורה השתנתה במקור: השעון שלפיו קורא מסע בזמן |
 
-**בחירת השעון.** עם `bitemporal_source_time`, הגרסאות מסודרות ונקראות לפי הזמן של המקור עצמו: "ביום שלישי שעבר" הוא יום שלישי שעבר במקור. בלעדיו, הן מסודרות ונקראות לפי הרגע שבו Provisa טענה כל שינוי, ולכן הן עוקבות אחר קצב הרענון ולא אחר הרגע שבו השורה השתנתה במקור. שתי האפשרויות הן בחירה. זמן הטעינה מתאים לקצב רענון תכוף, לנתונים שבהם הרגע במקור אינו חשוב, ולקריאות שעוסקות בזמן הטעינה, כמו ביקורת על מה ש-Provisa החזיקה ומתי.
+**בחירת השעון.** עם `bitemporal_source_time`, הגרסאות מסודרות ונקראות לפי הזמן של המקור עצמו: "נכון ליום שלישי שעבר" פירושו יום שלישי שעבר במקור. בלעדיו, הן מסודרות ונקראות לפי הזמן שבו Provisa הנחית כל שינוי, וזה הולך לפי קצב הרענון ולא לפי הרגע שבו השורה השתנתה במקור. שתי האפשרויות לגיטימיות. זמן הטעינה מתאים לקצב רענון תכוף, לנתונים שהזמן שלהם במקור לא חשוב, ולקריאות שאמורות לעסוק בזמן הטעינה, כמו ביקורת על מה ש-Provisa החזיק ומתי.
 
 גרסה תקפה מהרגע שלה עד הרגע של הגרסה הבאה. למחיקה אין זמן שינוי במקור, והיא נכנסת לתוקף כש-Provisa רשמה אותה.
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-כל גרסה שנרשמה אחרי הזמן הזה נשארת בחוץ, וה-as-of בוחר אז את הגרסה שבתוקף בזמן שלו. עם `X-Provisa-As-Recorded` לבדו, הקריאה מחזירה את הגרסה של כל מפתח שהייתה בתוקף כפי שנרשמה אז. זהו זמן אחד, לא טווח; טווח או ערך פגום נדחים עם HTTP 400 (`data.invalid_as_recorded`). אותו ערך הוא הארגומנט `as_recorded` של `resolve`, פרמטר השאילתה `as_recorded` של REST והאפשרות `as_recorded` של כרטיס Arrow Flight. רשומת הביקורת של כל משפט שומרת את שני הזמנים שבהם הוא קרא, `as_of` ו-`as_recorded`. אותו ערך הוא הארגומנט `as_of` של `resolve` (GraphQL, gRPC, MCP), פרמטר השאילתה `as_of` של REST והאפשרות `as_of` של כרטיס Arrow Flight. טווח שמועבר ל-`resolve` מחזיר את ה-`versions` של השורה במקום את ה-`row` שלה. הרשאות, מסכות וכללי שורות חלים כמו בכל קריאה. ערך פגום, או טווח שסופו אינו אחרי תחילתו, נדחה עם HTTP 400 (`data.invalid_as_of`).
+כל גרסה שנרשמה אחרי הזמן הזה נשארת בחוץ, וה-as-of בוחר אז את הגרסה שהייתה בתוקף בזמן שלו. עם `X-Provisa-As-Recorded` לבדו, הקריאה מחזירה את הגרסה של כל מפתח שהייתה בתוקף לפי מה שנרשם אז. הוא מקבל נקודת זמן אחת, לא טווח; טווח או ערך פגום נדחים עם HTTP 400 (`data.invalid_as_recorded`).
+
+שני הזמנים מגיעים ל-Provisa גם בלי הכותרות. זמן ה-as-of הוא הארגומנט `as_of` של `resolve` (GraphQL, gRPC, MCP), פרמטר השאילתה `as_of` ב-REST והאפשרות `as_of` של כרטיס Arrow Flight, וטווח שמועבר ל-`resolve` מחזיר את ה-`versions` של השורה במקום את ה-`row` שלה. זמן ה-as-recorded הוא הארגומנט `as_recorded` של `resolve`, פרמטר השאילתה `as_recorded` ב-REST והאפשרות `as_recorded` של כרטיס Arrow Flight. רשומת הביקורת של כל הצהרה שומרת את שני הזמנים שבהם היא קראה, `as_of` ו-`as_recorded`. הרשאות, מסכות וכללי שורה חלים כמו בכל קריאה. ערך as-of פגום, או טווח שסופו אינו אחרי תחילתו, נדחים עם HTTP 400 (`data.invalid_as_of`).
 
 כל תצוגה עם היסטוריה מחזירה שלוש עמודות נוספות, המוענקות כמו עמודת זמן המקור שלה (אחרת עמודת המפתח הראשונה):
 
@@ -1144,7 +1146,7 @@ auth:
   scram: true
 ```
 
-גורם ל-pgwire להכריז על SASL עם `SCRAM-SHA-256`, כך שסיסמה מוכחת במקום להישלח כטקסט גלוי. הדבר חל על הספק `basic` בלבד — אף ספק אחר אינו מחזיק את מאמתי RFC 5802 ש-SCRAM זקוק להם — וקשירת ערוץ אינה מוצעת.
+גורם ל-pgwire להציע SASL עם `SCRAM-SHA-256`, כך שסיסמה מוכחת ולעולם לא נשלחת כטקסט גלוי. זה חל רק על הספק `basic`, כי אף ספק אחר לא מחזיק את המאמתים של RFC 5802 ש-SCRAM צריך, ו-channel binding לא מוצע.
 
 לא ניתן לגזור מאמתים מגיבובי bcrypt קיימים. מאמת נכתב בכל פעם שסיסמה עוברת כטקסט גלוי, ולכן החיבור הראשון ב-SCRAM של כל משתמש בא לאחר ההרשמה, ההתחברות, שינוי הסיסמה או איפוס המנהל הבאים שלו. עד אז חיבוריו של אותו משתמש נסוגים לחילופין בטקסט גלוי מעל TLS; הקו אינו חושף מי כבר עבר.
 
@@ -1162,11 +1164,11 @@ auth:
 
 ### אסימוני גישה אישיים {: #personal-access-tokens }
 
-PAT אינם דורשים בלוק תצורה — הם מתקבלים תמיד, והמאגר נוצר יחד עם שאר סכמת מישור הבקרה. מה שניתן להגדרה הוא תוקף התפוגה שמשתמש רשאי לבקש בעת ההנפקה: 1 עד 366 ימים, או ללא תפוגה עבור אסימון שאינו פג. ראו [מודל אבטחה](security.md#personal-access-tokens).
+PATs לא צריכים בלוק תצורה. הם תמיד מתקבלים, והמאגר שלהם נוצר יחד עם שאר הסכמה של מישור הבקרה. מה שאפשר להגדיר הוא התפוגה שמשתמש רשאי לבקש בעת ההנפקה: 1 עד 366 ימים, או ללא, לטוקן שלא פג תוקפו. ראו [מודל האבטחה](security.md#personal-access-tokens).
 
 ### TLS הדדי {: #mutual-tls }
 
-אימות תעודת לקוח מוגדר באמצעות משתני סביבה ולא ב-`provisa.yaml`, לצד הגדרות תעודת ה-TLS שהוא מרחיב.
+אימות תעודות לקוח מוגדר במשתני סביבה, לצד הגדרות תעודת ה-TLS שהוא מרחיב, ואין לו מקום ב-`provisa.yaml`.
 
 | משתנה | ברירת מחדל | משמעות |
 | ---------- | --------- | --------- |
@@ -1174,7 +1176,7 @@ PAT אינם דורשים בלוק תצורה — הם מתקבלים תמיד, 
 | `PROVISA_MTLS_MODE` | `required` לאחר שהוגדרה רשות אישורים | `required` או `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | דורש שה-common name של התעודה יהיה זהה לשם המשתמש שאיתו החיבור מאמת |
 
-לכל אחד יש דריסה לפי פרוטוקול תחת אותה מוסכמת שמות כמו הגדרות ה-TLS. מצב שהוגדר ללא רשות אישורים, או מצב שאינו אף אחד משני הערכים, מסרב לעלות במקום לשרת חיבורים שהמפעיל מאמין שנבדקו.
+כל אחד מקבל דריסה לפי פרוטוקול, בשמות כמו של הגדרות ה-TLS. מצב שמוגדר בלי CA, או מצב שאינו `required` ואינו `optional`, עוצר את ההפעלה, כך שהשרת לעולם לא מגיש חיבורים שהמפעיל חושב שהם מאומתים כשהם לא.
 
 ### מיעון ארגון מעל TLS {: #addressing-an-org-over-tls }
 
@@ -1219,7 +1221,7 @@ PAT אינם דורשים בלוק תצורה — הם מתקבלים תמיד, 
 
 ## מוטציות Upsert {: #upsert-mutations }
 
-עבור טבלאות עם מפתח ראשי, Provisa מחוללת אוטומטית שדות מוטציה `upsert_<table>`. אלה מתקמפלים ל-upsert בדיאלקט היעד — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` ב-PostgreSQL, `ON DUPLICATE KEY UPDATE` ב-MySQL.
+לטבלאות עם מפתח ראשי, Provisa יוצר שדות מוטציה `upsert_<table>`. הם מהודרים ל-upsert בניב היעד: `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` ב-PostgreSQL, `ON DUPLICATE KEY UPDATE` ב-MySQL.
 
 ```graphql
 mutation {
@@ -1394,7 +1396,7 @@ observability:
 
 ### מסנני טלמטריה {: #telemetry-filters }
 
-Provisa מריצה שני נתיבי ייצוא OTLP עצמאיים: הקולקטור הפנימי שלכם ונקודת הקצה האופציונלית לתמיכה של Provisa. לכל נתיב מסנן משלו. המסננים רצים בתוך `_FilteringExporter` עוטף לפני שה-spans עוזבים את התהליך — אובייקטי span המקוריים לעולם אינם משתנים.
+Provisa מפעיל שני נתיבי ייצוא OTLP עצמאיים: ה-collector הפנימי שלכם ונקודת הקצה האופציונלית של התמיכה של Provisa. לכל נתיב יש מסנן משלו. המסננים רצים לפני שה-spans יוצאים מהתהליך, ואובייקטי ה-span המקוריים לעולם לא משתנים.
 
 **`telemetry_filter`** — שולט במה שמגיע לקולקטור הפנימי שלכם.
 
@@ -1424,7 +1426,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### נקודת קצה לתמיכה {: #support-endpoint }
 
-`support_endpoint` (או משתנה סביבה `PROVISA_SUPPORT_OTLP_ENDPOINT`) מעביר טלמטריה לתמיכה של Provisa לצורכי אבחון. כאשר לא מוגדר, שום נתון אינו עוזב את התשתית שלכם דרך נתיב זה. מסנן התמיכה חל באופן עצמאי מהמסנן הפנימי — ניתן לערוך מילוליים SQL משני הייצואים בעודכם משתפים עם התמיכה את נתוני תזמון וטעויות ה-span.
+`support_endpoint` (או משתנה הסביבה `PROVISA_SUPPORT_OTLP_ENDPOINT`) מעביר טלמטריה לתמיכה של Provisa לצורך אבחון. כשהוא לא מוגדר, שום נתון לא יוצא מהתשתית שלכם בדרך הזו. מסנן התמיכה פועל בנפרד מהמסנן הפנימי, כך שאפשר להסתיר ליטרלים של SQL בשני הייצואים ועדיין לשתף עם התמיכה את זמני ה-spans ונתוני השגיאות.
 
 ### זיהוי פרוטוקול נקודת קצה {: #endpoint-protocol-detection }
 
@@ -1432,7 +1434,7 @@ Provisa בוחרת OTLP/HTTP או OTLP/gRPC לפי סכימת ה-URL של נקו
 
 ## מנוע פדרציה {: #federation-engine }
 
-הגדרת מנוע פדרציה אופציונלית. ברירת המחדל היא `duckdb` — ללא תצורה, בתוך-התהליך, ללא צורך בשירות חיצוני. בחרו מנוע אחר כשאתם זקוקים לקנה מידה MPP או רוצים להשתמש שוב ב-warehouse קיים.
+הגדרת מנוע פדרציה היא אופציונלית. ברירת המחדל היא `duckdb`: בלי תצורה, בתוך התהליך, בלי שירות חיצוני. בחרו מנוע אחר כשצריך היקף MPP או כשרוצים להשתמש מחדש במחסן קיים.
 
 עדיפות: משתנה סביבה `PROVISA_ENGINE` ← שדה תצורה `federation_engine` שמור בממשק הניהול ← `duckdb`. שינויים נכנסים לתוקף בהפעלה מחדש של השירות.
 
@@ -1506,7 +1508,7 @@ PROVISA_ENGINE=pg
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-מאגר המימוש ברירת מחדל `~/.provisa/materialize.duckdb` — המנוע היחיד עם מאגר ברירת מחדל שאינו PostgreSQL.
+מחסן המטריאליזציה הוא כברירת מחדל `~/.provisa/materialize.duckdb`. זה המנוע היחיד שמחסן ברירת המחדל שלו אינו PostgreSQL.
 
 #### clickhouse (embedded) / clickhouse-server
 
@@ -1627,7 +1629,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-עבור מקורות Google Cloud, הגדירו `GOOGLE_APPLICATION_CREDENTIALS` לנתיב קובץ מפתח ה-service-account שלכם. עבור Fabric ו-Synapse, התאמתו עם `az login` (פיתוח) או זהות מנוהלת (ייצור) — המנוע קורא אישורים דרך `DefaultAzureCredential` של `azure-identity`.
+למקורות של Google Cloud, הגדירו את `GOOGLE_APPLICATION_CREDENTIALS` לנתיב של קובץ המפתח של חשבון השירות שלכם. ל-Fabric ול-Synapse, התחברו עם `az login` (פיתוח) או עם זהות מנוהלת (ייצור); המנוע קורא את פרטי ההתחברות דרך `DefaultAzureCredential` של `azure-identity`.
 
 ## משתני סביבה {: #environment-variables }
 

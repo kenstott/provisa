@@ -1414,7 +1414,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-移动一个引用会在移除或弃用规则下处理被移出的那个术语。用它来合并被规范化算法分开的两个术语——例如，当某个数据源使用了缩写表之外的非标准缩写时。
+移动引用后，失去它的那个术语会按“删除或弃用”规则处置。可以用它合并规范化没能合并的两个术语，例如某个数据源使用了扩展表未覆盖的非标准缩写时。
 
 删除一个有根术语（拥有物理引用的术语）会返回 `400 glossary.invalid`。请先移除或移动所有引用。
 
@@ -1432,7 +1432,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 
 **`POST /admin/glossary/definitions/generate`**
 
-遍历术语表中的每个术语，跳过已有定义的术语，并调用组织的 AI 模型为每个剩余术语起草一条定义。草稿会立即持久化——与逐个术语的起草端点（`POST /admin/glossary/terms/{term_id}/definition/generate`）不同，这里没有编辑步骤。人工撰写的定义从不会被覆盖：在任何模型调用之前都有 `if summary["definition"]: continue` 这一保护。一次发布通知覆盖整个批次。
+遍历术语表中的每个术语，跳过已有定义的术语，并调用组织的 AI 模型为其余每个术语起草定义。每份草稿都会立即保存，没有编辑步骤，这一点不同于单个术语的草稿端点（`POST /admin/glossary/terms/{term_id}/definition/generate`）。人工撰写的定义永远不会被覆盖，因为已有定义的术语在调用模型之前就会被跳过。整批只发一条发布通知。
 
 响应：
 
@@ -1452,7 +1452,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 {"added": 5}
 ```
 
-`added` 是写入的边数量。已存在的边仍会计入——更新插入操作成功执行，但边数据不会改变。
+`added` 是写入的边数。已经存在的边也计入：upsert 会成功，但边的数据不会改变。
 
 ### MCP `search_terms` 工具 {: #mcp-search_terms-tool }
 
@@ -1500,7 +1500,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 - 抽象术语无条件发布——它们是用户词汇，不绑定到物理列。
 - 两个术语之间的边只有在两端术语都发布时才会发布。
 
-每个厂商适配器都会原生发布术语图，写入一个由 Provisa 幂等创建的、Provisa 拥有的术语表容器——从不写入已有的目录术语表：
+每个供应商适配器都以原生方式发布术语图，写入一个归 Provisa 所有、以幂等方式创建的术语表容器，从不写入已有的目录术语表：
 
 | 提供程序 | 容器 | 术语 | 关系 | 弃用 |
 | --- | --- | --- | --- | --- |
@@ -1510,7 +1510,7 @@ forecast(sql, time, value, horizon, seasonal_periods=None, role=None)
 | OpenMetadata | 通过 `/v1/glossaries` 的 Provisa 术语表 | 以 fqn 为键的 PUT，重命名通过存储的 UUID 进行 PATCH 重绑定 | KIND_OF → 原生父级层级，SYNONYM_OF → `synonyms`，其他 → `relatedTerms` | `entityStatus` |
 | Collibra | 术语表类型域 "Provisa Glossary" | 通过 Import API 创建的 Business Term 资产 | 原生 Business Term 关系类型 | 资产状态 |
 
-绑定关系依据的是所有权，而不是名称：每个已发布术语的厂商 id 会被捕获进该术语 URN（`provisa://<org>/terms/<name>`）下的 `catalog_bindings`，Provisa 只有在持有该绑定（或该条目位于其自己创建的 Provisa 拥有容器中）时才会修改或删除厂商侧的术语表条目。没有 Provisa 绑定的术语表条目源自外部系统，从不会被触碰；更新采用读取合并方式，因此策展人在 Provisa 自身术语上添加的字段得以保留；当某个术语离开快照时，不会删除任何内容。数据管家的术语到资产指派仍归外部所有——没有适配器会写入术语到资产的指派（Provisa 撰写的指派发布是明确的后续工作）。特别是在 Collibra 上，Import API 的 REPLACE 语义下的安全性依赖于遏制范围：负载只提及 Provisa 术语表域内的资产，以及仅在 Provisa 术语之间的关系实例，因此数据管家的术语表及其关系永远不会被触及。
+关键在于绑定，而不是名称。每个已发布术语的供应商 id 都会以该术语的 URN（`provisa://<org>/terms/<name>`）记录在 `catalog_bindings` 中，只有当 Provisa 持有该绑定，或该条目位于 Provisa 创建的容器中时，Provisa 才会修改或删除供应商一侧的术语表条目。没有 Provisa 绑定的术语表条目来自外部系统，永远不会被触碰。更新会先读取再合并，所以数据管家在 Provisa 自有术语上添加的字段会保留；术语离开快照时也不会删除任何东西。数据管家所做的术语到资产的分配仍归外部系统所有：没有任何适配器写入它们（发布在 Provisa 中编写的分配是另一项后续工作）。具体到 Collibra，Import API 会替换收到的内容，安全性依靠范围限定：载荷只提及 Provisa 术语表领域内的资产，以及 Provisa 术语之间的关系，所以数据管家的术语表及其关系都不会被触及。
 
 ---
 
@@ -1606,7 +1606,7 @@ mutation {
 | `support` | `String` | 否 | 自由文本支持指南 |
 | `custom_properties` | `JSON` | 否 | 标准字段未覆盖的任意键值元数据 |
 
-模型上还存在两个额外字段，但未在 Strawberry 的 `DataProductType` / `DataProductInput` 中暴露——它们是 Snowflake Horizon Catalog 专属的：
+模型中还有两个字段，但没有在 `DataProductType` / `DataProductInput` 中公开。它们专用于 Snowflake Horizon Catalog：
 
 | 字段 | 说明 |
 | --- | --- |
@@ -1615,7 +1615,7 @@ mutation {
 
 ### 表成员关系 {: #table-membership }
 
-一张表通过在表编辑表单中设置其 `product_id` 字段来加入某个数据产品。选择器的范围限定为 `domain_id` 与该表自身域相匹配的产品——`marketing` 域中的表永远不会被提供 `sales` 域中的产品。
+在表编辑表单中设置表的 `product_id` 字段后，该表就加入了某个数据产品。选择器只列出 `domain_id` 与该表所属领域相同的产品，所以 `marketing` 领域中的表永远不会看到 `sales` 领域的产品。
 
 同一域中的命令也可以被指派为成员。
 
@@ -1623,7 +1623,7 @@ mutation {
 
 `build_snapshot` 在每次目录发布时应用 `data_products_only=True`。没有 `product_id` 的表会被从快照中排除，连同其关系边、血缘边和治理标签一起。数据源和域始终发布。术语表术语只有在其至少一个物理引用属于某个已导出（产品成员）表时才会发布。
 
-一个没有已导出成员的产品不会构建快照条目——一个没有成员的列表会向目录错误地呈现该产品。
+没有导出成员的产品不会生成快照条目，因为没有成员的列表会让目录对该产品产生错误认识。
 
 ### 按目录目标的数据产品支持 {: #data-product-support-by-catalog-target }
 

@@ -134,11 +134,11 @@ sources:
 
 ### 数据源类型参考 {: #source-type-reference }
 
-需要非显而易见配置的类型各自在下方有简短条目。关系型数据库类型（postgresql、mysql 等）仅使用上面的通用字段——无需额外小节。
+需要非显而易见配置的每种类型在下面都有一个简短条目。RDBMS 类型（postgresql、mysql 等）只使用上面的通用字段，不需要单独的小节。
 
 #### GovData
 
-`govdata` 数据源使用独立的顶层模型 `GovDataSource`，而非通用的 `Source`。访问权限按主题分组进行分区。
+`govdata` 数据源使用自己的顶层模型 `GovDataSource`，而不是通用的 `Source`。访问权限按主题分组划分。
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ sources:
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`、`fec` |
 
-`ref` 和 `geo` 架构始终作为关联架构被包含在内——不可配置，也未在上表中列出。使用 subject `ALL` 可授予对所有架构的访问权限。
+`ref` 和 `geo` 模式始终作为关联模式包含在内，无法配置，也不在上面的列表中。使用主题 `ALL` 可授予对所有模式的访问权。
 
 #### Kafka
 
-`sources:` 中的 `kafka` 行仅用于注册。其连接器的 `details()` 返回 `{}`——真实配置位于顶层的 `kafka_sources[]` 块中，而不在 `sources:` 行中。Kafka 始终是 VIRTUAL_SOURCE（通过引擎路由；无直接连接池）。
+`sources:` 中的 `kafka` 行只用于注册数据源。其连接器的 `details()` 返回 `{}`；真正的配置在顶层的 `kafka_sources[]` 块中。Kafka 始终是 VIRTUAL_SOURCE：经由引擎路由，没有直连连接池。
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`federation_hints` 中的 `http_path` 为必填项。`password` 携带个人访问令牌。`catalog` 为可选项（携带在 SQL/提示中，而非 `database` 字段）。
+`federation_hints` 中的 `http_path` 是必需的。`password` 承载个人访问令牌。`catalog` 是可选的，放在 SQL 或 hints 中；`database` 字段不存放它。
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-两者都使用基于 TDS 的 T-SQL，并采用 Azure AD 认证。使用 `az login`（开发环境）或托管身份（生产环境）进行认证——引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。连接详情来自环境变量：`FABRIC_SQL_SERVER` / `FABRIC_DATABASE`（Fabric）或 `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE`（Synapse），或通过 `PROVISA_ENGINE_URL`。
+两者都通过 TDS 使用 T-SQL，并采用 Azure AD 认证。用 `az login`（开发）或托管标识（生产）登录；引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。连接信息来自环境变量 `FABRIC_SQL_SERVER` / `FABRIC_DATABASE`（Fabric）或 `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE`（Synapse），也可以来自 `PROVISA_ENGINE_URL`。
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` 和 `port` 指向 Hive Thrift 元存储（默认端口 9083）。对于 `hive`，设置 `mapping["storage"]` 以选择对象存储后端。缺失必填键会明确失败——没有回退值。
+`host` 和 `port` 指向 Hive Thrift 元数据存储（默认端口 9083）。对于 `hive`，用 `mapping["storage"]` 选择对象存储后端。缺少必需的键会明确报错，没有回退值。
 
 `hive_s3` 是一个独立类型，始终声明 S3 存储；无需 `mapping.storage`。
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**Kaggle 数据集**无法通过此文件添加——它们需要实时令牌以及仅在“数据源”表单中提供的数据集选择器（数据源 → 订阅 → Kaggle）。导出为 YAML 的 Kaggle 数据源会显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。从 Kaggle 重新下载需要 `refreshKaggleSource` 变更（mutation）或 UI 刷新流程，而不是编辑 YAML。参见数据源类型参考中的 [Kaggle 数据集](sources.md#kaggle-datasets)。
+**Kaggle 数据集**不能通过此文件添加，因为它们需要有效令牌以及数据源表单中的数据集选择器（数据源 → 订阅 → Kaggle）。导出为 YAML 的 Kaggle 数据源显示为 `type: files`，并在 `federation_hints` 中带有 `kaggle_owner` 和 `kaggle_ref`。要重新从 Kaggle 下载，需要使用 `refreshKaggleSource` 变更或界面中的刷新；编辑 YAML 做不到。参见数据源类型参考中的 [Kaggle 数据集](sources.md#kaggle-datasets)。
 
 #### API / 远程数据源 {: #api-remote-sources }
 
@@ -543,7 +543,7 @@ sources:
 
 #### 数据质量检查器（soda / great_expectations） {: #data-quality-checkers-soda-great_expectations }
 
-检查器数据源指向 Provisa 自身的 pgwire 端点，因此一个 postgres 驱动就能扫描由 Snowflake 或 Iceberg 支撑的表的联邦视图。扫描所用的身份是显式声明的，而非隐式继承——策略应用于该连接，经过过滤的行集不得产生静默通过的检查。连接键来自 `mapping`：`host`、`port`、`database`、`user`、`password`。
+检查器数据源指向 Provisa 自己的 pgwire 端点，因此一个 postgres 驱动就能扫描背后是 Snowflake 或 Iceberg 的表的联邦视图。扫描身份需要显式声明，从不继承。策略作用于这个连接，被过滤的行集不能让检查悄悄通过。连接键来自 `mapping`：`host`、`port`、`database`、`user`、`password`。
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-每个结果表都携带 `dq_contract`——原样保存的 Soda 契约 YAML 或 Great Expectations 套件 JSON。列、水位线（watermark）和推广（promotion）均由此派生；完整的派生过程参见[数据质量检查器](sources.md#data-quality-checkers)。
+每个结果表都带有 `dq_contract`，即原样保存的 Soda 契约 YAML 或 Great Expectations 套件 JSON。列、水位线和提升都由它推导；具体方式见[数据质量检查器](sources.md#data-quality-checkers)。
 
-**安装期选择。**检查器不会被链接进来——扫描运行在一个子解释器中，只有在运维人员指定其名称时才会安装该库。每条安装路径（`install.sh`、`packaging/linux/first-launch.sh`，以及通过 `PROVISA_DQ_CHECKER` 的 macOS 向导）都会将选择写入 `~/.provisa/config.yaml`：
+**安装时选择。** 检查器不会被链接进来：扫描在子解释器中运行，只有运营方指定时才安装相应的库。每条安装路径（`install.sh`、`packaging/linux/first-launch.sh`，以及通过 `PROVISA_DQ_CHECKER` 的 macOS 向导）都会把选择写入 `~/.provisa/config.yaml`：
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 安装演示数据集会将 `none` 提升为 `gx` 并说明原因，因为演示配置为 `pet_store.pets` 注册了一个 Great Expectations 套件，否则其数据质量记分卡将无内容可展示。指定 `soda` 时则保持 `soda`。
 
-通过 pip 而非安装程序获取演示环境会跳过该向导步骤，因此 `demo` 扩展会携带相同的检查器：`provisa run --demo` 的扫描所需要的正是 `pip install 'provisa[embedded,demo]'`。若缺少它，扫描会报告 `data-quality checker 'great_expectations' is not installed`，并给出安装命令。
+如果通过 pip 而不是安装程序进入演示，就会跳过那一步向导，所以 `demo` 额外依赖包含同一个检查器：`provisa run --demo` 需要 `pip install 'provisa[embedded,demo]'` 才能运行扫描。缺少它时，扫描会报告 `data-quality checker 'great_expectations' is not installed`，并给出安装命令。
 
-任何其他值都会阻止启动器运行，而不是在缺少运维人员所要求的检查器的情况下启动。`soda` 扩展会拉取 `soda-postgres`；`gx` 会拉取 `great-expectations[postgresql]`。Soda Core 采用 Elastic License 2.0——`config/capabilities.yaml` 将该选项标记为 `cloud_eligible: false`，托管平面会拒绝它。
+任何其他值都会让启动器停止，所以它不会在缺少运营方所要求检查器的情况下启动。`soda` 额外依赖会拉取 `soda-postgres`，`gx` 会拉取 `great-expectations[postgresql]`。Soda Core 采用 Elastic License 2.0：`config/capabilities.yaml` 把该选项标为 `cloud_eligible: false`，托管平面会拒绝它。
 
 ## 域（Domains） {: #domains }
 
@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**：Provisa 通过 CTAS 创建一张表，并按计划刷新它。查询更快，但数据可能会滞后至多 `refresh_interval` 秒。
 - **`materialize: false`**：Provisa 创建一个联邦视图。查询始终返回实时数据，但对于复杂聚合可能较慢。
 
-视图与表经过相同的治理流水线——行级安全（RLS）、脱敏、采样，以及基于角色的可见性。这确保了在没有数据管家（steward）监督的情况下，不会有新语义被加入平台。
+视图与表经过同样的治理管道：RLS、脱敏、采样和基于角色的可见性。这样，任何新语义都无法在没有数据管家监督的情况下进入平台。
 
 ### 带历史的视图（时间旅行） {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | 是 | 版本所属的列 |
 | `bitemporal_source_time` | 否 | 保存每一行在数据源中发生变化的时刻的列：时间旅行据以读取的时钟 |
 
-**选择时钟。** 有 `bitemporal_source_time` 时，版本按数据源自己的时间排序和读取：“上周二”就是数据源中的上周二。没有它时，版本按 Provisa 加载每次变化的时刻排序和读取，因此跟随刷新节奏，而不是行在数据源中发生变化的时刻。两者都是一种选择。加载时间适合频繁的刷新节奏、数据源时刻并不重要的数据，以及关心加载时间的读取，例如审计 Provisa 在何时保存了什么。
+**选择时钟。** 设置 `bitemporal_source_time` 时，版本按数据源自身的时间排序和读取：“截至上周二”指的是数据源中的上周二。不设置时，版本按 Provisa 落地每次变更的时间排序和读取，这跟随刷新节奏，而不是行在数据源中发生变化的时刻。两种选择都成立。加载时间适合刷新频繁的情况、数据源时间无关紧要的数据，以及本来就关心加载时间的读取，例如审计 Provisa 在什么时候持有什么数据。
 
 一个版本从它自己的时刻起有效，直到下一个版本的时刻。删除没有数据源变更时间，在 Provisa 记录它时生效。
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-在该时间之后记录的每个版本都会被排除，然后 as-of 选出在其自身时间点生效的版本。只用 `X-Provisa-As-Recorded` 时，读取返回按当时记录生效的每个键的版本。它是一个时间点而不是范围；范围或格式错误的值会以 HTTP 400 拒绝（`data.invalid_as_recorded`）。同一个值也是 `resolve` 的 `as_recorded` 参数、REST 的 `as_recorded` 查询参数，以及 Arrow Flight 票据的 `as_recorded` 选项。每条语句的审计记录会保存它读取时使用的两个时间，`as_of` 和 `as_recorded`。同一个值也是 `resolve`（GraphQL、gRPC、MCP）的 `as_of` 参数、REST 查询参数 `as_of`，以及 Arrow Flight ticket 的 `as_of` 选项。传给 `resolve` 的范围返回该行的 `versions`，而不是它的 `row`。权限、脱敏和行规则与任何读取一样适用。格式错误的值，或结束不晚于开始的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
+在该时间之后记录的所有版本都会被排除，然后 as-of 选出在其自身时间生效的版本。只使用 `X-Provisa-As-Recorded` 时，读取返回按当时记录各键生效的版本。它只接受一个时间点，不接受范围；范围或格式错误的值会以 HTTP 400（`data.invalid_as_recorded`）被拒绝。
+
+这两个时间也可以不通过请求头传给 Provisa。as-of 时间是 `resolve` 的 `as_of` 参数（GraphQL、gRPC、MCP）、REST 的 `as_of` 查询参数以及 Arrow Flight 票据的 `as_of` 选项；传给 `resolve` 的范围会返回行的 `versions`，而不是它的 `row`。as-recorded 时间是 `resolve` 的 `as_recorded` 参数、REST 的 `as_recorded` 查询参数以及 Arrow Flight 票据的 `as_recorded` 选项。每条语句的审计记录都会保存它读取时使用的两个时间，`as_of` 和 `as_recorded`。权限、掩码和行规则与任何读取一样适用。格式错误的 as-of 值，或结束时间不晚于开始时间的范围，会以 HTTP 400（`data.invalid_as_of`）被拒绝。
 
 每个带历史的视图还会返回三列，其授权方式与它的数据源时间列相同（没有时则与第一个键列相同）：
 
@@ -1144,7 +1146,7 @@ auth:
   scram: true
 ```
 
-使 pgwire 通过 `SCRAM-SHA-256` 播发 SASL，从而以证明的方式验证密码，而不是以明文发送。它仅适用于 `basic` 提供方——没有其他提供方持有 SCRAM 所需的 RFC 5802 验证器——且不提供通道绑定（channel binding）。
+让 pgwire 通告带 `SCRAM-SHA-256` 的 SASL，使密码以证明方式校验，从不以明文发送。它只适用于 `basic` 提供方，因为没有其他提供方保存 SCRAM 所需的 RFC 5802 验证数据，并且不提供通道绑定。
 
 验证器无法从现有的 bcrypt 哈希派生。每当密码以明文形式经过一次，就会写入一个验证器，因此每个用户的首次 SCRAM 连接紧随其下一次注册、登录、修改密码或管理员重置之后。在此之前，该用户的连接会回退为通过 TLS 的明文交换；线路上不会暴露谁已经完成了迁移。
 
@@ -1162,11 +1164,11 @@ auth:
 
 ### 个人访问令牌 {: #personal-access-tokens }
 
-个人访问令牌（PAT）不需要任何配置块——它们始终被接受，其存储与其余控制平面架构一同创建。可配置的是用户在签发时可以请求的有效期：1 到 366 天，或者选择永不过期。参见[安全模型](security.md#personal-access-tokens)。
+PAT 不需要配置块。它们始终被接受，其存储会与控制平面的其余模式一起创建。可配置的是用户签发时可申请的有效期：1 到 366 天，或者不设期限，即永不过期的令牌。参见[安全模型](security.md#personal-access-tokens)。
 
 ### 双向 TLS（Mutual TLS） {: #mutual-tls }
 
-客户端证书校验是通过环境变量配置的，而非在 `provisa.yaml` 中，它扩展自 TLS 证书设置所在的同一组环境变量。
+客户端证书校验通过环境变量配置，与它所扩展的 TLS 证书设置放在一起，不写在 `provisa.yaml` 中。
 
 | 变量 | 默认值 | 含义 |
 | ---------- | --------- | --------- |
@@ -1174,7 +1176,7 @@ auth:
 | `PROVISA_MTLS_MODE` | 一旦设置了 CA 则为 `required` | `required` 或 `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | 要求证书的通用名称（common name）与连接认证所使用的用户名一致 |
 
-每一项都可以按协议使用与 TLS 设置相同的命名方式进行覆盖。设置了模式却未设置 CA，或者模式取值既非 `required` 也非 `optional`，都会拒绝启动，而不是让运维人员误以为连接已经过验证。
+每一项都可以按协议覆盖，命名方式与 TLS 设置相同。设置了模式却没有 CA，或模式既不是 `required` 也不是 `optional`，都会阻止启动，所以服务器永远不会在运营方以为已校验、实际未校验的情况下提供连接。
 
 ### 通过 TLS 寻址组织 {: #addressing-an-org-over-tls }
 
@@ -1219,7 +1221,7 @@ auth:
 
 ## Upsert 变更（Mutation） {: #upsert-mutations }
 
-对于拥有主键的表，Provisa 会自动生成 `upsert_<table>` 变更字段。它们会编译为目标方言中的 upsert 语句——在 PostgreSQL 上是 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，在 MySQL 上是 `ON DUPLICATE KEY UPDATE`。
+对于有主键的表，Provisa 会生成 `upsert_<table>` 变更字段。它们编译为目标方言的 upsert：PostgreSQL 上是 `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...`，MySQL 上是 `ON DUPLICATE KEY UPDATE`。
 
 ```graphql
 mutation {
@@ -1394,7 +1396,7 @@ observability:
 
 ### 遥测过滤器 {: #telemetry-filters }
 
-Provisa 运行两条独立的 OTLP 导出路径：你自己的内部采集器和可选的 Provisa 支持端点。每条路径都有各自的过滤器。过滤器在跨度（span）离开进程之前，运行在一个包裹层 `_FilteringExporter` 内部——原始的跨度对象永远不会被修改。
+Provisa 有两条相互独立的 OTLP 导出路径：您的内部 collector，以及可选的 Provisa 支持端点。每条路径都有自己的过滤器。过滤器在 span 离开进程之前运行，原始的 span 对象永远不会被修改。
 
 **`telemetry_filter`** —— 控制哪些数据到达你的内部采集器。
 
@@ -1424,7 +1426,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### 支持端点 {: #support-endpoint }
 
-`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会将遥测数据转发给 Provisa 支持团队用于诊断。未设置时，不会有任何数据通过此路径离开你的基础设施。支持端点的过滤器独立于内部过滤器生效——你可以对两条导出路径都做 SQL 字面值涂黑，同时仍与支持团队共享跨度的时间和错误数据。
+`support_endpoint`（或环境变量 `PROVISA_SUPPORT_OTLP_ENDPOINT`）会把遥测转发给 Provisa 支持团队用于诊断。未设置时，任何数据都不会经由这条路径离开您的基础设施。支持过滤器独立于内部过滤器工作，所以您可以在两路导出中都隐去 SQL 字面量，同时仍与支持团队共享 span 耗时和错误数据。
 
 ### 端点协议探测 {: #endpoint-protocol-detection }
 
@@ -1432,7 +1434,7 @@ Provisa 会根据端点 URL 的 scheme 选择 OTLP/HTTP 或 OTLP/gRPC。以 `htt
 
 ## 联邦引擎 {: #federation-engine }
 
-配置联邦引擎是可选的。默认值为 `duckdb`——零配置、进程内运行、无需外部服务。当你需要 MPP 规模，或想复用现有数据仓库时，可选择其他引擎。
+配置联邦引擎是可选的。默认是 `duckdb`：零配置、进程内运行、无需外部服务。需要 MPP 规模，或想复用已有数仓时，再选择其他引擎。
 
 优先级：`PROVISA_ENGINE` 环境变量 → 持久化的管理界面 `federation_engine` 配置字段 → `duckdb`。更改在服务重启后生效。
 
@@ -1506,7 +1508,7 @@ PROVISA_ENGINE=pg
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-物化存储默认使用 `~/.provisa/materialize.duckdb`——是唯一默认存储不是 PostgreSQL 的引擎。
+物化存储默认为 `~/.provisa/materialize.duckdb`。它是唯一默认存储不是 PostgreSQL 的引擎。
 
 #### clickhouse（嵌入式）/ clickhouse-server {: #clickhouse-embedded-clickhouse-server }
 
@@ -1627,7 +1629,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-对于 Google Cloud 数据源，将 `GOOGLE_APPLICATION_CREDENTIALS` 设置为服务账号密钥文件的路径。对于 Fabric 和 Synapse，使用 `az login`（开发环境）或托管身份（生产环境）进行认证——引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。
+对于 Google Cloud 数据源，将 `GOOGLE_APPLICATION_CREDENTIALS` 设置为服务账号密钥文件的路径。对于 Fabric 和 Synapse，用 `az login`（开发）或托管标识（生产）登录；引擎通过 `azure-identity` 的 `DefaultAzureCredential` 读取凭据。
 
 ## 环境变量 {: #environment-variables }
 

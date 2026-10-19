@@ -134,11 +134,11 @@ Todos los orígenes comparten un conjunto común de campos.
 
 ### Referencia de tipos de origen {: #source-type-reference }
 
-Los tipos que necesitan configuración no obvia tienen una entrada breve a continuación. Los tipos RDBMS (postgresql, mysql, etc.) usan solo los campos comunes de arriba — no necesitan sección adicional.
+Cada tipo que necesita una configuración poco evidente tiene una entrada breve abajo. Los tipos RDBMS (postgresql, mysql, etc.) usan solo los campos comunes de arriba y no necesitan sección propia.
 
 #### GovData
 
-Los orígenes `govdata` usan un modelo de nivel superior separado, `GovDataSource`, no el `Source` genérico. El acceso se particiona por agrupación de subject.
+Los orígenes `govdata` usan un modelo de nivel superior propio, `GovDataSource`, en lugar del `Source` genérico. El acceso se reparte por agrupación de temas.
 
 ```yaml
 sources:
@@ -166,11 +166,11 @@ Cada subject se asigna a uno o más esquemas de GovData. Configurar un origen `g
 | `ENERGY` | `energy` |
 | `GOVERNMENT` | `fedregister`, `fec` |
 
-Los esquemas `ref` y `geo` siempre se incluyen como esquemas de enlace — no son configurables y no se listan arriba. Use el subject `ALL` para conceder acceso a todos los esquemas.
+Los esquemas `ref` y `geo` se incluyen siempre como esquemas de enlace. No se pueden configurar y no aparecen en la lista de arriba. Use el tema `ALL` para conceder acceso a todos los esquemas.
 
 #### Kafka
 
-La fila `kafka` en `sources:` es solo de registro. El `details()` de su conector devuelve `{}` — la configuración real vive en el bloque de nivel superior `kafka_sources[]`, no en una fila de `sources:`. Kafka siempre es un VIRTUAL_SOURCE (enruta a través del motor; sin pool directo).
+La fila `kafka` de `sources:` solo registra el origen. El `details()` de su conector devuelve `{}`; la configuración real está en el bloque de nivel superior `kafka_sources[]`. Kafka es siempre un VIRTUAL_SOURCE: pasa por el motor y no tiene pool directo.
 
 ```yaml
 kafka_sources:
@@ -243,7 +243,7 @@ sources:
 
 #### Databricks
 
-`http_path` en `federation_hints` es requerido. `password` lleva el token de acceso personal. `catalog` es opcional (se transporta en SQL/hints, no en el campo `database`).
+`http_path` en `federation_hints` es obligatorio. `password` lleva el token de acceso personal. `catalog` es opcional y va en el SQL o en los hints; el campo `database` no lo contiene.
 
 ```yaml
 sources:
@@ -270,7 +270,7 @@ sources:
 
 #### Fabric / Synapse
 
-Ambos usan T-SQL sobre TDS con autenticación Azure AD. Autentíquese con `az login` (desarrollo) o una identidad administrada (producción) — el motor lee las credenciales mediante `DefaultAzureCredential` de `azure-identity`. Los detalles de conexión provienen de variables de entorno: `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) o `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), o mediante `PROVISA_ENGINE_URL`.
+Ambos usan T-SQL sobre TDS con autenticación de Azure AD. Inicie sesión con `az login` (desarrollo) o con una identidad administrada (producción); el motor lee las credenciales mediante `DefaultAzureCredential` de `azure-identity`. Los datos de conexión vienen de variables de entorno, `FABRIC_SQL_SERVER` / `FABRIC_DATABASE` (Fabric) o `SYNAPSE_SQL_SERVER` / `SYNAPSE_DATABASE` (Synapse), o de `PROVISA_ENGINE_URL`.
 
 ```yaml
 sources:
@@ -318,7 +318,7 @@ sources:
 
 #### Hive / Hive S3
 
-`host` y `port` apuntan al metastore Thrift de Hive (puerto por defecto 9083). Para `hive`, configure `mapping["storage"]` para elegir el backend de almacenamiento de objetos. Las claves requeridas faltantes fallan de forma ruidosa — sin reserva silenciosa.
+`host` y `port` apuntan al metastore Thrift de Hive (puerto predeterminado 9083). Para `hive`, defina `mapping["storage"]` para elegir el backend de almacenamiento de objetos. Una clave obligatoria que falte falla de forma visible, sin valor de reserva.
 
 `hive_s3` es un tipo distinto que siempre declara almacenamiento S3; no necesita `mapping.storage`.
 
@@ -448,7 +448,7 @@ sources:
     path: /data/lake/         # directory; each file becomes a table
 ```
 
-**Los conjuntos de datos de Kaggle** no pueden agregarse mediante este archivo — requieren un token en vivo y el selector de conjuntos de datos disponible en el formulario de Orígenes (Orígenes → Suscripciones → Kaggle). Un origen de Kaggle exportado a YAML aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Volver a descargar desde Kaggle requiere la mutación `refreshKaggleSource` o el flujo de actualización de la UI, no una edición de YAML. Véase [Conjuntos de datos de Kaggle](sources.md#kaggle-datasets) en la referencia de tipos de origen.
+Los **conjuntos de datos de Kaggle** no se pueden añadir con este archivo, porque necesitan un token válido y el selector de conjuntos de datos del formulario de orígenes (Orígenes → Suscripciones → Kaggle). Un origen de Kaggle exportado a YAML aparece como `type: files` con `kaggle_owner` y `kaggle_ref` en `federation_hints`. Volver a descargar de Kaggle requiere la mutación `refreshKaggleSource` o la actualización en la UI; editar el YAML no lo hace. Consulte [Conjuntos de datos de Kaggle](sources.md#kaggle-datasets) en la referencia de tipos de origen.
 
 #### Orígenes de API / remotos {: #api-remote-sources }
 
@@ -543,7 +543,7 @@ sources:
 
 #### Verificadores de calidad de datos (soda / great_expectations) {: #data-quality-checkers-soda-great_expectations }
 
-Un origen verificador apunta al propio endpoint pgwire de Provisa, de modo que un driver de postgres explora la vista federada de una tabla respaldada por Snowflake o Iceberg. La identidad del escaneo se declara, nunca se hereda — la política se aplica a esa conexión, y un conjunto de filas filtrado no debe producir un chequeo que pase silenciosamente. Las claves de conexión provienen de `mapping`: `host`, `port`, `database`, `user`, `password`.
+Un origen verificador apunta al propio endpoint pgwire de Provisa, así que un solo driver de postgres escanea la vista federada de una tabla respaldada por Snowflake o Iceberg. La identidad del escaneo se declara; nunca se hereda. La política se aplica a esa conexión, y un conjunto de filas filtrado no debe dejar pasar una comprobación sin que nadie lo note. Las claves de conexión salen de `mapping`: `host`, `port`, `database`, `user`, `password`.
 
 ```yaml
 sources:
@@ -558,9 +558,9 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-Cada tabla de resultados lleva `dq_contract` — YAML de contrato Soda o JSON de un suite de Great Expectations, textual. Las columnas, la marca de agua y las promociones se derivan de él; ver [Verificadores de calidad de datos](sources.md#data-quality-checkers) para la derivación completa.
+Cada tabla de resultados lleva `dq_contract`, el YAML del contrato de Soda o el JSON de la suite de Great Expectations palabra por palabra. Las columnas, la marca de agua y las promociones se derivan de él; consulte cómo en [Verificadores de calidad de datos](sources.md#data-quality-checkers).
 
-**Selección en tiempo de instalación.** El verificador no se enlaza de forma estática — el escaneo se ejecuta en un intérprete hijo, y la biblioteca se instala solo cuando un operador la nombra. Cada ruta de instalador (`install.sh`, `packaging/linux/first-launch.sh` y el asistente de macOS mediante `PROVISA_DQ_CHECKER`) escribe la elección en `~/.provisa/config.yaml`:
+**Selección al instalar.** El verificador no se enlaza: el escaneo se ejecuta en un intérprete hijo, y la biblioteca solo se instala cuando un operador la nombra. Cada ruta de instalación (`install.sh`, `packaging/linux/first-launch.sh` y el asistente de macOS mediante `PROVISA_DQ_CHECKER`) escribe la elección en `~/.provisa/config.yaml`:
 
 ```yaml
 dq_checker: none        # none | soda | gx
@@ -576,9 +576,9 @@ dq_checker: none        # none | soda | gx
 
 Instalar el conjunto de datos de demostración eleva `none` a `gx` y lo indica, porque la configuración de demo registra un suite de Great Expectations sobre `pet_store.pets` y, de lo contrario, su tablero de calidad no tendría nada que mostrar. Nombrar `soda` mantiene `soda`.
 
-Llegar a la demo mediante pip en lugar de un instalador omite ese paso del asistente, así que el extra `demo` lleva el mismo verificador: `pip install 'provisa[embedded,demo]'` es lo que `provisa run --demo` necesita para que su escaneo se ejecute. Sin él, el escaneo informa `data-quality checker 'great_expectations' is not installed`, nombrando el comando de instalación.
+Si llega a la demo con pip en lugar de con un instalador, se salta ese paso del asistente, así que el extra `demo` lleva el mismo verificador: `provisa run --demo` necesita `pip install 'provisa[embedded,demo]'` para que su escaneo se ejecute. Sin él, el escaneo informa `data-quality checker 'great_expectations' is not installed` e indica el comando de instalación.
 
-Cualquier otro valor detiene el lanzador en lugar de iniciar sin el verificador que el operador pidió. El extra `soda` trae `soda-postgres`; `gx` trae `great-expectations[postgresql]`. Soda Core está bajo Elastic License 2.0 — `config/capabilities.yaml` marca la opción como `cloud_eligible: false`, y el plano alojado la rechaza.
+Cualquier otro valor detiene el lanzador, de modo que nunca arranca sin el verificador que pidió el operador. El extra `soda` trae `soda-postgres` y `gx` trae `great-expectations[postgresql]`. Soda Core está bajo la Elastic License 2.0: `config/capabilities.yaml` marca la opción como `cloud_eligible: false`, y el plano alojado la rechaza.
 
 ## Dominios {: #domains }
 
@@ -908,7 +908,7 @@ views:
 - **`materialize: true`**: Provisa crea una tabla mediante CTAS y la actualiza según un horario. Consultas más rápidas, pero los datos pueden estar obsoletos hasta `refresh_interval` segundos.
 - **`materialize: false`**: Provisa crea una vista federada. Las consultas siempre devuelven datos en vivo, pero pueden ser más lentas para agregaciones complejas.
 
-Las vistas pasan por el mismo pipeline de gobierno que las tablas — RLS, enmascaramiento, muestreo y visibilidad basada en roles. Esto asegura que no pueda añadirse ninguna semántica nueva a la plataforma sin supervisión de un steward.
+Las vistas pasan por el mismo pipeline de gobernanza que las tablas: RLS, enmascaramiento, muestreo y visibilidad por rol. Así nada puede añadir semántica nueva a la plataforma sin la supervisión de un steward.
 
 ### Vistas con historial (viaje en el tiempo) {: #views-with-history-time-travel }
 
@@ -934,7 +934,7 @@ views:
 | `bitemporal_key` | Sí | Las columnas a las que pertenece una versión |
 | `bitemporal_source_time` | No | La columna que indica cuándo cambió cada fila en el origen: el reloj con el que lee el viaje en el tiempo |
 
-**Elegir el reloj.** Con `bitemporal_source_time`, las versiones se ordenan y se leen según la hora propia del origen: "a fecha del martes pasado" es el martes pasado en el origen. Sin ella, se ordenan y se leen según cuándo aterrizó Provisa cada cambio, así que siguen la cadencia de actualización y no el momento en que la fila cambió en el origen. Ambas son una elección. La hora de carga conviene a una cadencia de actualización frecuente, a datos cuyo momento en el origen no importa y a lecturas que deben tratar de la hora de carga, como auditar qué tenía Provisa y cuándo.
+**Elegir el reloj.** Con `bitemporal_source_time`, las versiones se ordenan y leen por la hora del propio origen: "a fecha del martes pasado" significa el martes pasado en el origen. Sin él, se ordenan y leen por el momento en que Provisa aterrizó cada cambio, que sigue la cadencia de actualización y no el momento en que la fila cambió en el origen. Las dos opciones son válidas. La hora de carga va bien con una cadencia de actualización frecuente, con datos cuya hora en el origen no importa y con lecturas que deben referirse a la hora de carga, como auditar qué tenía Provisa y cuándo.
 
 Una versión rige desde su momento hasta el de la versión siguiente. Un borrado no tiene hora de cambio en el origen y surte efecto cuando Provisa lo registró.
 
@@ -953,7 +953,9 @@ X-Provisa-As-Of: 2026-09-30T12:00:00
 X-Provisa-As-Recorded: 2026-10-01T00:00:00
 ```
 
-Toda versión registrada después de ese momento queda fuera, y el as-of elige entonces la versión vigente en su propio momento. Con `X-Provisa-As-Recorded` solo, la lectura responde la versión de cada clave vigente según lo registrado entonces. Es un instante, no un rango; un rango o un valor mal formado se rechaza con HTTP 400 (`data.invalid_as_recorded`). El mismo valor es el argumento `as_recorded` de `resolve`, el parámetro de consulta REST `as_recorded` y la opción `as_recorded` de un ticket de Arrow Flight. El registro de auditoría de cada sentencia guarda los dos momentos con que leyó, `as_of` y `as_recorded`. El mismo valor es el argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), el parámetro de consulta REST `as_of` y la opción `as_of` de un ticket de Arrow Flight. Un rango dado a `resolve` responde las `versions` de la fila en lugar de su `row`. Los derechos, las máscaras y las reglas de filas se aplican como en cualquier lectura. Un valor mal formado, o un rango cuyo fin no es posterior a su inicio, se rechaza con HTTP 400 (`data.invalid_as_of`).
+Toda versión registrada después de ese momento queda fuera, y el as-of elige entonces la versión vigente en su propio momento. Con `X-Provisa-As-Recorded` solo, la lectura responde con la versión de cada clave vigente según lo registrado entonces. Admite un momento, no un rango; un rango o un valor mal formado se rechaza con HTTP 400 (`data.invalid_as_recorded`).
+
+Los dos momentos llegan también a Provisa sin las cabeceras. El momento as-of es el argumento `as_of` de `resolve` (GraphQL, gRPC, MCP), el parámetro de consulta REST `as_of` y la opción `as_of` de un ticket de Arrow Flight, y un rango pasado a `resolve` responde con las `versions` de la fila en lugar de su `row`. El momento as-recorded es el argumento `as_recorded` de `resolve`, el parámetro de consulta REST `as_recorded` y la opción `as_recorded` de un ticket de Arrow Flight. El registro de auditoría de cada instrucción guarda los dos momentos con que leyó, `as_of` y `as_recorded`. Los derechos, las máscaras y las reglas de fila se aplican como en cualquier lectura. Un valor as-of mal formado, o un rango cuyo final no es posterior a su inicio, se rechaza con HTTP 400 (`data.invalid_as_of`).
 
 Toda vista con historial responde tres columnas más, concedidas como lo está su columna de hora de origen (si no, su primera columna de clave):
 
@@ -1144,7 +1146,7 @@ auth:
   scram: true
 ```
 
-Hace que pgwire anuncie SASL con `SCRAM-SHA-256`, de modo que una contraseña se demuestra en lugar de enviarse en texto claro. Se aplica solo al proveedor `basic` — ningún otro proveedor mantiene los verificadores RFC 5802 que SCRAM necesita — y no se ofrece channel binding.
+Hace que pgwire anuncie SASL con `SCRAM-SHA-256`, de modo que la contraseña se demuestra y nunca se envía en claro. Solo se aplica al proveedor `basic`, porque ningún otro proveedor guarda los verificadores RFC 5802 que SCRAM necesita, y no se ofrece channel binding.
 
 Los verificadores no pueden derivarse de hashes bcrypt existentes. Se escribe uno cada vez que una contraseña pasa en texto plano, así que la primera conexión SCRAM de cada usuario sigue a su siguiente registro, inicio de sesión, cambio de contraseña o restablecimiento por un administrador. Hasta entonces, las conexiones de ese usuario recurren al intercambio en texto claro sobre TLS; el cable no revela quién ha migrado.
 
@@ -1162,11 +1164,11 @@ Activado por defecto con los valores mostrados; el bloque solo los ajusta. El co
 
 ### Tokens de acceso personal {: #personal-access-tokens }
 
-Los PAT no necesitan ningún bloque de configuración — siempre se aceptan, y el almacén se crea junto con el resto del esquema del plano de control. Lo configurable es la expiración que un usuario puede solicitar al emitirlo: de 1 a 366 días, o ninguna para un token que no expira. Ver [Modelo de seguridad](security.md#personal-access-tokens).
+Los PAT no necesitan bloque de configuración. Se aceptan siempre, y su almacén se crea con el resto del esquema del plano de control. Lo configurable es la caducidad que un usuario puede pedir al emitirlo: de 1 a 366 días, o ninguna para un token que no caduca. Consulte [Modelo de seguridad](security.md#personal-access-tokens).
 
 ### TLS mutuo {: #mutual-tls }
 
-La verificación de certificado de cliente se configura mediante variable de entorno en lugar de en `provisa.yaml`, junto a la configuración de certificado TLS que extiende.
+La verificación de certificados de cliente se configura con variables de entorno, junto a los ajustes de certificado TLS que amplía, y no tiene sitio en `provisa.yaml`.
 
 | Variable | Por defecto | Significado |
 | ---------- | --------- | --------- |
@@ -1174,7 +1176,7 @@ La verificación de certificado de cliente se configura mediante variable de ent
 | `PROVISA_MTLS_MODE` | `required` una vez configurada una CA | `required` u `optional` |
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Requiere que el nombre común del certificado sea igual al nombre de usuario con el que se autentica la conexión |
 
-Cada una admite una anulación por protocolo bajo el mismo esquema de nombres que la configuración TLS. Un modo configurado sin una CA, o un modo que no sea ninguno de los dos valores, se niega a iniciar en lugar de servir conexiones que el operador cree verificadas.
+Cada una admite una sobrescritura por protocolo, con los mismos nombres que los ajustes de TLS. Un modo sin CA, o un modo que no es ni `required` ni `optional`, impide el arranque, de modo que el servidor nunca atiende conexiones que el operador cree verificadas sin que lo estén.
 
 ### Dirigirse a una org sobre TLS {: #addressing-an-org-over-tls }
 
@@ -1219,7 +1221,7 @@ Nada que configurar. En un despliegue multiorg, pgwire y Bolt leen la org a part
 
 ## Mutaciones Upsert {: #upsert-mutations }
 
-Para tablas con clave primaria, Provisa autogenera campos de mutación `upsert_<table>`. Estos se compilan a un upsert en el dialecto destino — `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` en PostgreSQL, `ON DUPLICATE KEY UPDATE` en MySQL.
+Para tablas con clave primaria, Provisa genera campos de mutación `upsert_<table>`. Se compilan a un upsert en el dialecto de destino: `INSERT ... ON CONFLICT (pk) DO UPDATE SET ...` en PostgreSQL, `ON DUPLICATE KEY UPDATE` en MySQL.
 
 ```graphql
 mutation {
@@ -1394,7 +1396,7 @@ observability:
 
 ### Filtros de telemetría {: #telemetry-filters }
 
-Provisa ejecuta dos rutas de exportación OTLP independientes: su colector interno y el endpoint opcional de soporte de Provisa. Cada ruta tiene su propio filtro. Los filtros se ejecutan dentro de un `_FilteringExporter` envolvente antes de que los spans salgan del proceso — los objetos span originales nunca se mutan.
+Provisa tiene dos vías de exportación OTLP independientes: su collector interno y el endpoint de soporte opcional de Provisa. Cada vía tiene su propio filtro. Los filtros se ejecutan antes de que los spans salgan del proceso, y los objetos span originales nunca se modifican.
 
 **`telemetry_filter`** — controla qué llega a su colector interno.
 
@@ -1424,7 +1426,7 @@ db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 
 ### Endpoint de soporte {: #support-endpoint }
 
-`support_endpoint` (o la variable de entorno `PROVISA_SUPPORT_OTLP_ENDPOINT`) reenvía la telemetría al soporte de Provisa para diagnóstico. Cuando no está configurada, ningún dato sale de su infraestructura por esta ruta. El filtro de soporte se aplica de forma independiente al filtro interno — puede redactar literales SQL de ambas exportaciones y aun así compartir el tiempo de span y los datos de error con soporte.
+`support_endpoint` (o la variable de entorno `PROVISA_SUPPORT_OTLP_ENDPOINT`) reenvía telemetría al soporte de Provisa para diagnóstico. Si no está definido, ningún dato sale de su infraestructura por esta vía. El filtro de soporte funciona con independencia del interno, así que puede ocultar los literales SQL en ambas exportaciones y seguir compartiendo con soporte los tiempos de los spans y los datos de errores.
 
 ### Detección de protocolo de endpoint {: #endpoint-protocol-detection }
 
@@ -1432,7 +1434,7 @@ Provisa selecciona OTLP/HTTP u OTLP/gRPC a partir del esquema de la URL del endp
 
 ## Motor de federación {: #federation-engine }
 
-Configurar un motor de federación es opcional. El valor por defecto es `duckdb` — sin configuración, en proceso, sin servicio externo requerido. Elija otro motor cuando necesite escala MPP o quiera reutilizar un almacén existente.
+Configurar un motor de federación es opcional. El predeterminado es `duckdb`: sin configuración, dentro del proceso, sin ningún servicio externo. Elija otro motor cuando necesite escala MPP o quiera reutilizar un almacén de datos que ya tiene.
 
 Precedencia: variable de entorno `PROVISA_ENGINE` → campo de configuración `federation_engine` persistido en la interfaz de administración → `duckdb`. Los cambios surten efecto al reiniciar el servicio.
 
@@ -1506,7 +1508,7 @@ En proceso; sin servicio externo. El motor por defecto. `PROVISA_DATA_DIR` contr
 PROVISA_ENGINE=duckdb   # or omit — this is the default
 ```
 
-El almacén de materialización usa por defecto `~/.provisa/materialize.duckdb` — el único motor con un almacén por defecto que no es PostgreSQL.
+El almacén de materialización es por defecto `~/.provisa/materialize.duckdb`. Es el único motor cuyo almacén predeterminado no es PostgreSQL.
 
 #### clickhouse (integrado) / clickhouse-server {: #clickhouse-embedded-clickhouse-server }
 
@@ -1627,7 +1629,7 @@ sources:
       account_id: ${env:R2_ACCOUNT_ID}   # Cloudflare R2 account (S3-compatible)
 ```
 
-Para orígenes de Google Cloud, configure `GOOGLE_APPLICATION_CREDENTIALS` con la ruta de su archivo de clave de cuenta de servicio. Para Fabric y Synapse, autentíquese con `az login` (desarrollo) o una identidad administrada (producción) — el motor lee las credenciales mediante `DefaultAzureCredential` de `azure-identity`.
+Para orígenes de Google Cloud, defina `GOOGLE_APPLICATION_CREDENTIALS` con la ruta del archivo de clave de su cuenta de servicio. Para Fabric y Synapse, inicie sesión con `az login` (desarrollo) o una identidad administrada (producción); el motor lee las credenciales mediante `DefaultAzureCredential` de `azure-identity`.
 
 ## Variables de entorno {: #environment-variables }
 

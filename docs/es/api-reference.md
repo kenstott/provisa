@@ -1414,7 +1414,7 @@ Valores válidos de `kind`: `expert`, `author`.
 {"table_id": 7, "column_name": "cust_id", "to_term_id": 12}
 ```
 
-Mover una referencia resuelve el término perdedor bajo la regla de eliminar-o-marcar-obsoleto. Use esto para consolidar dos términos que la normalización mantuvo separados — por ejemplo, después de que un origen use una abreviatura no estándar que quedó fuera de la tabla de expansión.
+Mover una referencia resuelve el término que la pierde con la regla de eliminar o depreciar. Úselo para fusionar dos términos que la normalización mantuvo separados, por ejemplo cuando un origen usa una abreviatura no estándar que la tabla de expansión no cubre.
 
 Eliminar un término enraizado (uno con referencias físicas) devuelve `400 glossary.invalid`. Elimine o mueva primero todas las referencias.
 
@@ -1432,7 +1432,7 @@ El modelo de IA configurado de la organización puede redactar definiciones y pr
 
 **`POST /admin/glossary/definitions/generate`**
 
-Itera sobre cada término del glosario, omite cualquiera que ya tenga una definición, y llama al modelo de IA de la organización para redactar una para cada término restante. El borrador se persiste de inmediato — a diferencia del endpoint de borrador por término (`POST /admin/glossary/terms/{term_id}/definition/generate`), no hay un paso de editor. Las definiciones redactadas por humanos nunca se sobrescriben: la protección es `if summary["definition"]: continue` antes de cualquier llamada al modelo. Una sola notificación de publicación cubre todo el lote.
+Recorre todos los términos del glosario, omite los que ya tienen definición y pide al modelo de IA de la organización que redacte una para cada uno de los demás. Cada borrador se guarda al momento, sin paso de edición, a diferencia del endpoint de borrador por término (`POST /admin/glossary/terms/{term_id}/definition/generate`). Una definición escrita por una persona nunca se sobrescribe, porque un término que ya la tiene se omite antes de cualquier llamada al modelo. Una sola notificación de publicación cubre todo el lote.
 
 Respuesta:
 
@@ -1452,7 +1452,7 @@ Respuesta:
 {"added": 5}
 ```
 
-`added` es el recuento de aristas escritas. Una arista que ya existía sigue contando — el upsert tiene éxito, pero los datos de la arista no cambian.
+`added` es el número de aristas escritas. Una arista que ya existía también cuenta: el upsert tiene éxito, pero los datos de la arista no cambian.
 
 ### Herramienta MCP `search_terms` {: #mcp-search_terms-tool }
 
@@ -1500,7 +1500,7 @@ La exportación aplica los mismos filtros que el resto del snapshot:
 - Los términos abstractos se publican incondicionalmente — son vocabulario de usuario, no están vinculados a columnas físicas.
 - Una arista entre dos términos se publica solo cuando ambos términos extremos se publican.
 
-Cada adaptador de proveedor publica el grafo de términos de forma nativa, en un contenedor de glosario propiedad de Provisa que crea de forma idempotente — nunca en un glosario de catálogo existente:
+Cada adaptador de proveedor publica el grafo de términos de forma nativa, en un contenedor de glosario que es de Provisa y que crea de forma idempotente, nunca en un glosario de catálogo existente:
 
 | Proveedor | Contenedor | Términos | Relaciones | Obsolescencia |
 | --- | --- | --- | --- | --- |
@@ -1510,7 +1510,7 @@ Cada adaptador de proveedor publica el grafo de términos de forma nativa, en un
 | OpenMetadata | Glosario de Provisa vía `/v1/glossaries` | PUT indexado por fqn, los renombrados hacen PATCH-rebind por UUID almacenado | KIND_OF → jerarquía padre nativa, SYNONYM_OF → `synonyms`, otros → `relatedTerms` | `entityStatus` |
 | Collibra | Dominio de tipo Glosario "Provisa Glossary" | activos Business Term vía la Import API | tipos de relación Business Term nativos | estado del activo |
 
-La propiedad es el vínculo, no el nombre: el id del proveedor de cada término publicado se captura en `catalog_bindings` bajo el URN del término (`provisa://<org>/terms/<name>`), y Provisa modifica o elimina un elemento de glosario del lado del proveedor solo cuando posee ese vínculo (o el elemento vive en el contenedor propiedad de Provisa que creó). Un elemento de glosario sin vínculo de Provisa se originó en el sistema externo y nunca se toca; las actualizaciones se fusionan por lectura (read-merge) para que los campos agregados por el steward en los términos propios de Provisa sobrevivan; nada se elimina cuando un término sale del snapshot. Las asignaciones de término a activo hechas por stewards permanecen bajo propiedad externa — ningún adaptador escribe asignaciones de término a activo (la publicación de asignaciones autoradas por Provisa es un seguimiento explícito). En Collibra específicamente, la seguridad bajo la semántica REPLACE de la Import API descansa en la contención: el payload menciona solo activos dentro del dominio de glosario de Provisa e instancias de relación solo entre términos de Provisa, de modo que los glosarios de los stewards y sus relaciones nunca son alcanzables.
+Lo que cuenta es el vínculo, no el nombre. El id de proveedor de cada término publicado se guarda en `catalog_bindings` bajo el URN del término (`provisa://<org>/terms/<name>`), y Provisa modifica o borra un elemento de glosario del lado del proveedor solo cuando tiene ese vínculo, o cuando el elemento está en el contenedor que Provisa creó. Un elemento de glosario sin vínculo de Provisa vino del sistema externo y nunca se toca. Las actualizaciones leen y combinan, así que los campos que un steward añadió a los términos propios de Provisa se conservan, y nada se borra cuando un término sale de la instantánea. Las asignaciones de términos a activos hechas por stewards siguen siendo del sistema externo: ningún adaptador las escribe (publicar asignaciones creadas en Provisa es una continuación aparte). En Collibra en concreto, la Import API reemplaza lo que recibe, y la seguridad se basa en la contención: la carga solo nombra activos dentro del dominio de glosario de Provisa y relaciones solo entre términos de Provisa, así que los glosarios de los stewards y sus relaciones quedan fuera de alcance.
 
 ---
 
@@ -1606,7 +1606,7 @@ Eliminar un producto limpia `product_id` de cada tabla miembro, eliminando su pe
 | `support` | `String` | No | Orientación de soporte en texto libre |
 | `custom_properties` | `JSON` | No | Metadatos clave-valor arbitrarios no cubiertos por los campos estándar |
 
-Dos campos adicionales existen en el modelo pero no están expuestos en el `DataProductType` / `DataProductInput` de Strawberry — son específicos del Catálogo Snowflake Horizon:
+Hay dos campos más en el modelo que no se exponen en `DataProductType` / `DataProductInput`. Son propios del Snowflake Horizon Catalog:
 
 | Campo | Notas |
 | --- | --- |
@@ -1615,7 +1615,7 @@ Dos campos adicionales existen en el modelo pero no están expuestos en el `Data
 
 ### Pertenencia de tablas {: #table-membership }
 
-Una tabla se une a un producto de datos estableciendo su campo `product_id` en el formulario de edición de la tabla. El selector se limita a los productos cuyo `domain_id` coincide con el dominio propio de la tabla — una tabla en el dominio `marketing` nunca se ofrece un producto en el dominio `sales`.
+Una tabla se une a un producto de datos cuando se establece su campo `product_id` en el formulario de edición de la tabla. El selector solo ofrece productos cuyo `domain_id` coincide con el dominio de la tabla, así que a una tabla del dominio `marketing` nunca se le ofrece un producto del dominio `sales`.
 
 Los comandos del mismo dominio también pueden asignarse como miembros.
 
@@ -1623,7 +1623,7 @@ Los comandos del mismo dominio también pueden asignarse como miembros.
 
 `build_snapshot` aplica `data_products_only=True` en cada publicación de catálogo. Las tablas sin `product_id` se retienen del snapshot, junto con sus aristas de relación, aristas de linaje y etiquetas de gobierno. Los orígenes y dominios siempre se publican. Los términos del glosario se publican solo cuando al menos una de sus referencias físicas pertenece a una tabla exportada (miembro de un producto).
 
-Un producto sin miembros exportados no genera una entrada en el snapshot: una ficha sin miembros representaría erróneamente el producto ante el catálogo.
+Un producto sin miembros exportados no recibe entrada en la instantánea, porque un listado sin miembros daría al catálogo una imagen falsa del producto.
 
 ### Soporte de productos de datos por destino de catálogo {: #data-product-support-by-catalog-target }
 
