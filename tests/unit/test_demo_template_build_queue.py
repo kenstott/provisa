@@ -110,3 +110,24 @@ async def test_each_template_says_whether_it_waits_is_built_is_ready_or_failed()
         "b": "failed",
         "c": "failed",
     }
+
+
+async def test_a_template_queued_after_the_workers_stopped_is_built_by_new_ones():
+    """REQ-2049: workers stop when nothing waits; a template queued later claims new ones, and
+    one queued while some work is taken by them."""
+    queue = TemplateBuilds()
+    built: list[str] = []
+
+    async def _prepare(demo, _build):
+        built.append(demo.name)
+        return True
+
+    queue.add(_demo("a"), build=True)
+    assert queue.claim() is True
+    assert queue.claim() is False  # claimed, starting: not claimed again
+    await asyncio.wait_for(queue.run(2, _prepare), 5)
+    queue.add(_demo("b"), build=True)
+    assert queue.claim() is True  # the workers stopped: new ones are started
+    await asyncio.wait_for(queue.run(2, _prepare), 5)
+    assert built == ["a", "b"]
+    assert queue.state_of("b") == "ready"

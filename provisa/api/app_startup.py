@@ -612,6 +612,18 @@ def _start_scheduler(_log: logging.Logger) -> None:
                 max_instances=1,
                 coalesce=True,
             )
+            from provisa.scheduler.jobs import queue_late_demo_templates
+
+            # REQ-2049: a bundle the node marks ready after the start has its template built.
+            scheduler.add_job(
+                queue_late_demo_templates,
+                trigger=CronTrigger.from_crontab("* * * * *"),
+                id="sandbox_late_templates",
+                name="sandboxes:queue_late_templates",
+                replace_existing=True,
+                max_instances=1,
+                coalesce=True,
+            )
             from provisa import sandbox_wake
 
             if sandbox_wake.SANDBOX_INSTANCE is not None:

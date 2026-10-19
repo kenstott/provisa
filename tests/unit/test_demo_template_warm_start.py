@@ -159,3 +159,48 @@ async def test_the_start_serves_an_unchanged_template_and_queues_only_the_change
 class _Task:
     def add_done_callback(self, _callback) -> None:
         pass
+
+
+async def test_a_bundle_ready_after_the_start_has_its_template_queued(platform, monkeypatch):
+    """REQ-2049: the node marks a bundle ready after the tier started; the tier's scheduled pass
+    queues its template as the start queued the others, and starts the builds once."""
+    import threading
+
+    first, late = _demo("alpha"), _demo("beta")
+    _on_disk(monkeypatch, {})
+    queue = TemplateBuilds()
+    published = {"alpha": first}
+    rows: list[str] = []
+    spawned: list[str] = []
+
+    async def _template_row(_pool, demo):
+        rows.append(demo.name)
+        return True
+
+    def _spawn(coro, *, name):
+        spawned.append(name)
+        coro.close()
+        return _Task()
+
+    monkeypatch.setattr(demo_templates, "template_builds", queue)
+    monkeypatch.setattr(demo_templates, "_startup_queued", threading.Event())
+    monkeypatch.setattr(demo_templates, "published_demos", lambda: dict(published))
+    monkeypatch.setattr(demo_templates, "bundled_demos", lambda: ())
+    monkeypatch.setattr(demo_templates, "seeding_release", lambda: False)
+    monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: False)
+    monkeypatch.setattr(demo_templates, "_template_row", _template_row)
+    monkeypatch.setattr(demo_templates, "_mark_templated", lambda _demo: None)
+    monkeypatch.setattr(demo_templates, "_templated", lambda _name: None)
+    monkeypatch.setattr("provisa.core.connection_loop.spawn_background", _spawn)
+    monkeypatch.setattr("provisa.core.settings_registry.value", lambda _key: 2)
+    # Before the start has queued its own, the pass queues nothing.
+    assert await demo_templates.queue_late_templates(platform) == []
+    await demo_templates.ensure_demo_templates(platform)
+    published["beta"] = late
+    assert queue.state_of("beta") == "unknown"
+    assert await demo_templates.queue_late_templates(platform) == ["beta"]
+    assert queue.state_of("beta") == "queued"
+    assert rows == ["alpha", "beta"]
+    # The start's workers had not begun (the spawn above ran nothing): no second start.
+    assert spawned == ["demo-templates"]
+    assert await demo_templates.queue_late_templates(platform) == []
