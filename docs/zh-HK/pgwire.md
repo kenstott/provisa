@@ -1,6 +1,6 @@
 # Provisa pgwire 伺服器 {: #provisa-pgwire-server }
 
-Provisa 公開一個 PostgreSQL 網絡協定（pgwire）端點。任何支援 PostgreSQL 客戶端協定的工具——psycopg2、asyncpg、DBeaver、Tableau、JDBC——都可以連接並透過與 HTTP API 相同的治理管線查詢 Provisa 數據。
+Provisa 提供一個 PostgreSQL 線路協定（pgwire）端點。任何支援 PostgreSQL 用戶端協定的工具，例如 psycopg2、asyncpg、DBeaver、Tableau 或 JDBC，都可以連接並經與 HTTP API 相同的治理管道查詢 Provisa 數據。
 
 查詢會經過完整的治理堆疊：行級安全執行、遮罩規則、關係防護、域訪問檢查。pgwire 介面並非繞過機制。
 
@@ -39,7 +39,7 @@ trust 模式（`provider: none`，或驗證中介軟件未啟用）是例外：�
 
 **客戶端憑證。** 設定 `PROVISA_MTLS_CLIENT_CA` 後，伺服器會在交握期間、檢查任何憑證之前驗證客戶端憑證。啟用 `PROVISA_MTLS_BIND_PRINCIPAL` 時，憑證的 common name 必須與該連接隨後用於驗證的 `user` 相同。參見[設定](configuration.md#mutual-tls)。
 
-**失敗嘗試會被計數。** 五分鐘內五次失敗會將帳戶鎖定十五分鐘，且該計數器與 HTTP 和 Bolt 共用——在任一介面上招致的鎖定，在所有介面上都生效。
+**失敗嘗試會被計數。** 五分鐘內失敗五次，帳戶會被鎖定十五分鐘。計數器與 HTTP 及 Bolt 共用，所以在任何一個入口觸發的鎖定，在所有入口都生效。
 
 **選擇組織。** 在多組織部署中，連接至 `<org>.<your-domain>`，pgwire 會從 TLS ClientHello 的主機名稱中讀取組織，方式與 HTTP 從 `Host` 標頭中讀取相同。主機名稱是在請求某個組織，而不是授予它；在該組織中沒有成員資格的主體會被拒絕。透過 IP 位址連接則不請求任何組織。
 
@@ -64,7 +64,7 @@ trust 模式（`provider: none`，或驗證中介軟件未啟用）是例外：�
 
 ### 游標（DECLARE / FETCH / MOVE / CLOSE） {: #cursors-declare-fetch-move-close }
 
-Provisa 在簡單查詢協定上處理 SQL 游標的文字語法。 把 `DECLARE`/`FETCH`/`MOVE`/`CLOSE` 作為一般 SQL 陳述式傳送的用戶端，會得到真正的伺服器端串流，而不是協定錯誤或在用戶端記憶體中緩衝整個結果。
+Provisa 在簡單查詢協定上支援文字形式的 SQL 遊標語法。以一般 SQL 語句傳送 `DECLARE`/`FETCH`/`MOVE`/`CLOSE` 的用戶端可以獲得真正的伺服器端串流，不會出現協定錯誤，亦不會把整個結果載入用戶端記憶體。
 
 **這與以 portal 為基礎的串流不同。** 延伸查詢協定——帶有資料列上限欄位的 Bind/Execute——是另一種線路協定機制。asyncpg 及大多數現代 PostgreSQL 驅動程式會自動使用它，不需要游標 SQL。如果你的驅動程式已經使用 portal，你便不需要這種語法。`DECLARE CURSOR` 是為按字面傳送游標 SQL 的用戶端而設：psycopg2 的具名/伺服器端游標（`conn.cursor(name="...")`）、部分 BI 工具及一些較舊的 JDBC 驅動程式。
 
@@ -75,7 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
-內部的 SELECT 會經過 Provisa 一般的受治理管線——與任何獨立 SELECT 相同的行層級安全執行、相同的遮罩，以及相同的網域存取檢查。 宣告游標不會繞過治理。
+內部的 SELECT 會經過 Provisa 正常的受治理管道，與任何單獨的 SELECT 一樣執行 RLS、遮罩及領域存取檢查。宣告遊標並不能繞過治理。
 
 `SCROLL` 關鍵字同時控制允許的導覽及游標的記憶體佔用：
 
@@ -116,7 +116,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 ```
 `CLOSE` 釋放底層的結果串流，並從工作階段中移除游標。 不執行 `CLOSE` 便中斷連線是安全的：`ProvisaSession.close()` 會在中斷連線時自動釋放所有仍然開啟的游標。
 
-**游標生命週期。** Provisa 的 pgwire 伺服器沒有交易狀態機（`ProvisaSession.in_transaction()` 固定傳回 `False`）。因此每個游標的行為都如同宣告了 `WITH HOLD`：它在整個連線期間存續，而不是直至 `COMMIT` 為止。 關鍵字 `WITH HOLD` 及 `WITHOUT HOLD` 會被接受並靜默忽略——沒有需要執行的按交易劃分的游標生命週期。
+**遊標生命週期。** Provisa 的 pgwire 伺服器沒有交易狀態機（`ProvisaSession.in_transaction()` 固定傳回 `False`）。因此每個遊標的行為都像宣告了 `WITH HOLD`：它在連線存續期間一直存在，`COMMIT` 不會結束它。`WITH HOLD` 及 `WITHOUT HOLD` 關鍵字會被接受並略過，因為不存在按交易管理的遊標生命週期。
 
 ### 定義（CREATE、ALTER、DROP） {: #definitions-create-alter-drop }
 
@@ -179,7 +179,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 
 ### 交易與工作階段命令 {: #transactions-and-session-commands }
 
-SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEALLOCATE 會被攔截並返回空的成功回應。伺服器就交易而言屬於無狀態——不存在交易隔離或回滾支援。
+SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEALLOCATE 會被攔截，並傳回空的成功回應。伺服器不保存交易狀態，所以沒有交易隔離，亦不支援回復。
 
 ---
 
@@ -195,7 +195,7 @@ SET、BEGIN、COMMIT、ROLLBACK、SAVEPOINT、RELEASE、DISCARD、RESET 及 DEAL
 
 `pg_constraint` 會以從域模型的 `pk_columns` 及 `joins` 欄位衍生的真實主索引鍵及外部索引鍵數據填充。檢查外部索引鍵關係的 BI 工具（Tableau、DBeaver 等）將看到 Provisa 所知的連接圖。 同一來源/目標配對之間的單欄位連接，若其目標欄位共同組成該目標的複合主索引鍵，會被合併為單一 FK 行，並以多元素的 `conkey`/`confkey` 陣列表示。
 
-由聯結資料表支撐的關係不會產生 FK 行。它是穿過關聯資料表的一條邊，而不是一對欄位，而 `pg_constraint` 沒有可容納兩跳的形態——因此網域模型不會把它放進 `joins`，聯結資料表則表現為一張普通資料表，各自持有指向兩端的外部索引鍵。SQL 客戶端透過聯結該資料表來存取它；Cypher 客戶端則把它當作單條關係走訪。
+經由關聯表的關係不會產生外鍵列。它是一條穿過關聯表的邊，而 `pg_constraint` 無法表達兩跳，所以領域模型不會把它放進 `joins`，關聯表以一般資料表的形式出現，帶有指向兩端的外鍵。SQL 用戶端經聯結這個資料表來存取它；Cypher 用戶端把它作為一個關係來遍歷。
 
 `pg_index` 會就每個主索引鍵及 UNIQUE 約束填充一行（`indrelid` = 資料表 oid，`indkey` = 已排序的鍵值 attnum，`indisprimary`/`indisunique` 已設定）。透過 `pg_index.indkey` 而非 `pg_constraint` 解析鍵值欄位的客戶端——例如 DataGrip——會透過標準的 `pg_index` → `pg_attribute` 連接找出正確的欄位。
 

@@ -1,6 +1,6 @@
 # Servidor pgwire de Provisa {: #provisa-pgwire-server }
 
-Provisa expone un endpoint del protocolo de cable de PostgreSQL (pgwire). Cualquier herramienta que hable el protocolo de cliente de PostgreSQL — psycopg2, asyncpg, DBeaver, Tableau, JDBC — puede conectarse y consultar datos de Provisa a través del mismo pipeline de gobierno que gobierna la API HTTP.
+Provisa expone un endpoint del protocolo de red de PostgreSQL (pgwire). Cualquier herramienta que hable el protocolo de cliente de PostgreSQL, como psycopg2, asyncpg, DBeaver, Tableau o JDBC, puede conectarse y consultar datos de Provisa a través del mismo pipeline de gobernanza que rige la API HTTP.
 
 Las consultas pasan por el stack de gobierno completo: aplicación de RLS, reglas de enmascaramiento, guardas de relación, verificaciones de acceso a dominio. La interfaz pgwire no es un mecanismo de evasión.
 
@@ -39,7 +39,7 @@ El modo trust (`provider: none`, o middleware de autenticación inactivo) es la 
 
 **Certificados de cliente.** Defina `PROVISA_MTLS_CLIENT_CA` y el servidor verificará un certificado de cliente durante el handshake, antes de examinar cualquier credencial. Con `PROVISA_MTLS_BIND_PRINCIPAL`, el common name del certificado debe coincidir con el `user` con el que la conexión se autentica después. Consulte [Configuración](configuration.md#mutual-tls).
 
-**Los intentos fallidos se cuentan.** Cinco fallos en cinco minutos bloquean la cuenta durante quince minutos, y el contador se comparte con HTTP y Bolt: un bloqueo conseguido en cualquier superficie rige en todas.
+**Los intentos fallidos se cuentan.** Cinco fallos en cinco minutos bloquean la cuenta durante quince minutos. El contador se comparte con HTTP y Bolt, así que un bloqueo ganado en cualquier superficie vale en todas.
 
 **Elegir una organización.** En un despliegue multiorganización, conéctese a `<org>.<your-domain>` y pgwire leerá la organización del nombre de host en el ClientHello de TLS, igual que HTTP la lee de la cabecera `Host`. El nombre de host solicita una organización; no la concede, y un principal sin pertenencia a ella queda rechazado. Conectarse por dirección IP no solicita ninguna organización.
 
@@ -64,7 +64,7 @@ Las consultas parametrizadas (`$1`, `$2`, ...) se admiten tanto en el modo de co
 
 ### Cursores (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
-Provisa maneja la sintaxis textual de cursores SQL sobre el protocolo de consulta simple. Los clientes que envían `DECLARE`/`FETCH`/`MOVE`/`CLOSE` como sentencias SQL simples obtienen streaming real del lado del servidor en lugar de un error de protocolo o de un búfer con el resultado completo cargado en la memoria del cliente.
+Provisa admite la sintaxis textual de cursores SQL sobre el protocolo de consulta simple. Los clientes que envían `DECLARE`/`FETCH`/`MOVE`/`CLOSE` como instrucciones SQL normales obtienen streaming real del lado del servidor, sin error de protocolo y sin cargar el resultado entero en la memoria del cliente.
 
 **Esto es distinto del streaming basado en portales.** El protocolo de consulta extendida — Bind/Execute con un campo de límite de filas — es un mecanismo distinto del protocolo de cable. asyncpg y la mayoría de los controladores modernos de PostgreSQL lo usan automáticamente sin SQL de cursores. Si su controlador ya usa portales, no necesita esta sintaxis. `DECLARE CURSOR` es para clientes que envían SQL de cursores literalmente: la función de cursores con nombre/del lado del servidor de psycopg2 (`conn.cursor(name="...")`), ciertas herramientas de BI y algunos controladores JDBC antiguos.
 
@@ -75,7 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
-El SELECT interior pasa por el pipeline gobernado normal de Provisa: la misma aplicación de RLS, el enmascaramiento y las comprobaciones de acceso a dominios que se aplican a cualquier SELECT independiente. Declarar un cursor no es una forma de saltarse el gobierno.
+El SELECT interior pasa por el pipeline gobernado normal de Provisa, con la misma aplicación de RLS, el mismo enmascaramiento y las mismas comprobaciones de acceso por dominio que cualquier SELECT independiente. Declarar un cursor no esquiva la gobernanza.
 
 La palabra clave `SCROLL` controla tanto la navegación permitida como la memoria que usa el cursor:
 
@@ -116,7 +116,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 ```
 `CLOSE` libera el flujo de resultados subyacente y quita el cursor de la sesión. Desconectarse sin emitir `CLOSE` es seguro: `ProvisaSession.close()` libera automáticamente todos los cursores aún abiertos al desconectar.
 
-**Duración del cursor.** El servidor pgwire de Provisa no tiene máquina de estados de transacción (`ProvisaSession.in_transaction()` está fijado a `False`). Por eso cada cursor se comporta como si se hubiera declarado `WITH HOLD`: vive mientras dura la conexión, no hasta `COMMIT`. Las palabras clave `WITH HOLD` y `WITHOUT HOLD` se aceptan y se ignoran sin aviso: no hay ciclo de vida de cursores por transacción que aplicar.
+**Vida de un cursor.** El servidor pgwire de Provisa no tiene máquina de estados de transacción (`ProvisaSession.in_transaction()` devuelve siempre `False`). Por eso todo cursor se comporta como si se hubiera declarado `WITH HOLD`: vive lo que dura la conexión, y `COMMIT` no lo termina. Las palabras clave `WITH HOLD` y `WITHOUT HOLD` se aceptan y se ignoran, ya que no hay ciclo de vida de cursor por transacción que aplicar.
 
 ### Definiciones (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
@@ -179,7 +179,7 @@ Formatos admitidos: `text` (delimitado por tabulaciones, predeterminado), `csv` 
 
 ### Transacciones y comandos de sesión {: #transactions-and-session-commands }
 
-SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET y DEALLOCATE se interceptan y devuelven una respuesta de éxito vacía. El servidor no mantiene estado respecto a las transacciones — no hay aislamiento de transacciones ni soporte de reversión.
+SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET y DEALLOCATE se interceptan y se responden con un éxito vacío. El servidor no guarda estado de transacción, así que no hay aislamiento de transacciones ni rollback.
 
 ---
 
@@ -195,7 +195,7 @@ Tablas interceptadas:
 
 `pg_constraint` se puebla con datos reales de PK y FK derivados de los campos `pk_columns` y `joins` del modelo de dominio. Las herramientas de BI que inspeccionan relaciones de clave foránea (Tableau, DBeaver, etc.) verán el grafo de joins que Provisa conoce. Los joins de una sola columna entre el mismo par origen/destino cuyas columnas de destino forman en conjunto la clave primaria compuesta del destino se colapsan en una sola fila de FK con arreglos `conkey`/`confkey` de varios elementos.
 
-Una relación respaldada por una tabla de unión (junction) no produce ninguna fila FK. Es una arista a través de una tabla asociativa, no un par de columnas, y `pg_constraint` no tiene forma para dos saltos — por eso el modelo de dominio la deja fuera de `joins` y la tabla de unión aparece como una tabla corriente con sus propias claves foráneas hacia cada extremo. Los clientes SQL llegan a ella haciendo join con esa tabla; los clientes Cypher la recorren como una única relación.
+Una relación respaldada por tabla de unión no produce fila FK. Es una arista a través de una tabla asociativa, y `pg_constraint` no tiene forma para dos saltos, así que el modelo de dominio la deja fuera de `joins` y la tabla de unión aparece como una tabla normal con sus propias claves foráneas a cada extremo. Los clientes SQL llegan a ella uniendo esa tabla; los clientes Cypher la recorren como una sola relación.
 
 `pg_index` se puebla con una fila por cada restricción de clave primaria y UNIQUE (`indrelid` = oid de la tabla, `indkey` = attnums de clave ordenados, `indisprimary`/`indisunique` establecidos). Los clientes que resuelven columnas clave mediante `pg_index.indkey` en lugar de `pg_constraint` — DataGrip, por ejemplo — descubren las columnas correctas a través del join estándar `pg_index` → `pg_attribute`.
 

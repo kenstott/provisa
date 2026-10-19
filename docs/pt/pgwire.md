@@ -1,9 +1,6 @@
 # Servidor pgwire do Provisa {: #provisa-pgwire-server }
 
-O Provisa expõe um endpoint de protocolo de wire do PostgreSQL (pgwire). Qualquer ferramenta que
-fale o protocolo de cliente PostgreSQL — psycopg2, asyncpg, DBeaver, Tableau, JDBC — consegue se
-conectar e consultar dados do Provisa através do mesmo pipeline de governança que governa a API
-HTTP.
+O Provisa expõe um endpoint do protocolo de rede do PostgreSQL (pgwire). Qualquer ferramenta que fale o protocolo de cliente do PostgreSQL, como psycopg2, asyncpg, DBeaver, Tableau ou JDBC, pode se conectar e consultar dados do Provisa pelo mesmo pipeline de governança que governa a API HTTP.
 
 Consultas passam pela stack de governança completa: aplicação de RLS, regras de mascaramento,
 guards de relacionamento, verificações de acesso a domínio. A interface
@@ -62,9 +59,7 @@ cliente durante o handshake, antes de qualquer credencial ser examinada. Com
 `PROVISA_MTLS_BIND_PRINCIPAL` o common name do certificado deve ser igual ao `user` com que a
 conexão então se autentica. Veja [Configuração](configuration.md#mutual-tls).
 
-**Tentativas falhas são contadas.** Cinco falhas em cinco minutos bloqueiam a conta por quinze
-minutos, e o contador é compartilhado com HTTP e Bolt — um bloqueio conquistado em qualquer
-superfície vale em todas.
+**Tentativas que falham são contadas.** Cinco falhas em cinco minutos bloqueiam a conta por quinze minutos. O contador é compartilhado com HTTP e Bolt, então um bloqueio ganho em qualquer superfície vale em todas.
 
 **Escolhendo uma organização.** Em um deployment multi-organização, conecte-se a
 `<org>.<your-domain>` e o pgwire lê a organização do hostname no ClientHello do TLS, do mesmo modo
@@ -99,7 +94,7 @@ executor.
 
 ### Cursores (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
-O Provisa trata a sintaxe textual de cursores SQL sobre o protocolo de consulta simples. Clientes que enviam `DECLARE`/`FETCH`/`MOVE`/`CLOSE` como instruções SQL simples recebem streaming real do lado do servidor em vez de um erro de protocolo ou de um buffer com o resultado completo carregado na memória do cliente.
+O Provisa trata a sintaxe textual de cursores SQL pelo protocolo de consulta simples. Clientes que enviam `DECLARE`/`FETCH`/`MOVE`/`CLOSE` como instruções SQL comuns ganham streaming real no servidor, sem erro de protocolo e sem o resultado inteiro carregado na memória do cliente.
 
 **Isso é diferente do streaming baseado em portais.** O protocolo de consulta estendida — Bind/Execute com um campo de limite de linhas — é um mecanismo diferente do protocolo de transmissão. O asyncpg e a maioria dos drivers PostgreSQL modernos o usam automaticamente, sem SQL de cursor. Se o seu driver já usa portais, você não precisa desta sintaxe. `DECLARE CURSOR` é para clientes que enviam SQL de cursor literalmente: os cursores nomeados/do lado do servidor do psycopg2 (`conn.cursor(name="...")`), certas ferramentas de BI e alguns drivers JDBC antigos.
 
@@ -110,7 +105,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
-O SELECT interno passa pelo pipeline governado normal do Provisa — a mesma aplicação de RLS, o mesmo mascaramento e as mesmas verificações de acesso a domínios que valem para qualquer SELECT avulso. Declarar um cursor não contorna a governança.
+O SELECT interno passa pelo pipeline governado normal do Provisa, com a mesma aplicação de RLS, o mesmo mascaramento e as mesmas verificações de acesso por domínio de qualquer SELECT isolado. Declarar um cursor não contorna a governança.
 
 A palavra-chave `SCROLL` controla tanto a navegação permitida quanto a memória que o cursor usa:
 
@@ -151,7 +146,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 ```
 `CLOSE` libera o fluxo de resultados subjacente e remove o cursor da sessão. Desconectar sem emitir `CLOSE` é seguro: `ProvisaSession.close()` libera automaticamente todos os cursores ainda abertos na desconexão.
 
-**Duração do cursor.** O servidor pgwire do Provisa não tem máquina de estados de transação (`ProvisaSession.in_transaction()` é fixo em `False`). Por isso cada cursor se comporta como se tivesse sido declarado `WITH HOLD`: vive durante toda a conexão, não até o `COMMIT`. As palavras-chave `WITH HOLD` e `WITHOUT HOLD` são aceitas e ignoradas sem aviso — não há ciclo de vida de cursor por transação a aplicar.
+**Vida de um cursor.** O servidor pgwire do Provisa não tem máquina de estados de transação (`ProvisaSession.in_transaction()` devolve sempre `False`). Por isso todo cursor se comporta como se tivesse sido declarado `WITH HOLD`: vive enquanto a conexão durar, e o `COMMIT` não o encerra. As palavras-chave `WITH HOLD` e `WITHOUT HOLD` são aceitas e ignoradas, já que não há ciclo de vida de cursor por transação para impor.
 
 ### Definições (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
@@ -214,9 +209,7 @@ Formatos suportados: `text` (delimitado por tabulação, padrão), `csv` e `bina
 
 ### Transações e Comandos de Sessão {: #transactions-and-session-commands }
 
-SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, e DEALLOCATE são interceptados e
-retornam uma resposta de sucesso vazia. O servidor é stateless em relação a transações —
-não há isolamento de transação ou suporte a rollback.
+SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET e DEALLOCATE são interceptados e respondidos com um sucesso vazio. O servidor não guarda estado de transação, então não há isolamento de transações nem rollback.
 
 ---
 
@@ -242,7 +235,7 @@ estrangeira (Tableau, DBeaver, etc.) verão o grafo de join que o Provisa conhec
 formam a chave primária composta do alvo são colapsados em uma única linha FK com arrays
 `conkey`/`confkey` multi-elemento.
 
-Uma relação apoiada em junção não produz nenhuma linha FK. É uma aresta através de uma tabela associativa, não um par de colunas, e `pg_constraint` não tem forma para dois saltos — por isso o modelo de domínio a deixa de fora de `joins` e a tabela de junção aparece como uma tabela comum com as suas próprias chaves estrangeiras para cada extremidade. Clientes SQL chegam a ela fazendo join com essa tabela; clientes Cypher percorrem-na como uma única relação.
+Um relacionamento apoiado em tabela de junção não gera linha de FK. Ele é uma aresta por uma tabela associativa, e o `pg_constraint` não tem forma para dois saltos, então o modelo de domínio o deixa fora de `joins`, e a tabela de junção aparece como uma tabela comum com chaves estrangeiras próprias para cada ponta. Clientes SQL chegam a ele unindo essa tabela; clientes Cypher o percorrem como um único relacionamento.
 
 `pg_index` é populada com uma linha por restrição de chave primária e UNIQUE (`indrelid` = oid da
 tabela, `indkey` = attnums de chave ordenados, `indisprimary`/`indisunique` definidos). Clientes que

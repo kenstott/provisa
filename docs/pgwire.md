@@ -1,6 +1,6 @@
 # Provisa pgwire Server
 
-Provisa exposes a PostgreSQL wire protocol (pgwire) endpoint. Any tool that speaks the PostgreSQL client protocol — psycopg2, asyncpg, DBeaver, Tableau, JDBC — can connect and query Provisa data through the same governance pipeline that governs the HTTP API.
+Provisa exposes a PostgreSQL wire protocol (pgwire) endpoint. Any tool that speaks the PostgreSQL client protocol, such as psycopg2, asyncpg, DBeaver, Tableau or JDBC, can connect and query Provisa data through the same governance pipeline that governs the HTTP API.
 
 Queries go through the full governance stack: RLS enforcement, masking rules, relationship guards, domain-access checks. The pgwire interface is not a bypass.
 
@@ -39,7 +39,7 @@ Trust mode (`provider: none`, or auth middleware inactive) is the exception: the
 
 **Client certificates.** Set `PROVISA_MTLS_CLIENT_CA` and the server verifies a client certificate during the handshake, before any credential is examined. With `PROVISA_MTLS_BIND_PRINCIPAL` the certificate's common name must equal the `user` the connection then authenticates as. See [Configuration](configuration.md#mutual-tls).
 
-**Failed attempts are counted.** Five failures in five minutes locks the account out for fifteen minutes, and the counter is shared with HTTP and Bolt — a lockout earned on any surface holds on all of them.
+**Failed attempts are counted.** Five failures in five minutes lock the account for fifteen minutes. The counter is shared with HTTP and Bolt, so a lockout earned on any surface holds on all of them.
 
 **Choosing an org.** On a multi-org deployment, connect to `<org>.<your-domain>` and pgwire reads the org from the hostname in the TLS ClientHello, the same way HTTP reads it from the `Host` header. The hostname requests an org; it does not grant one, and a principal with no membership there is refused. Connecting by IP address requests no org.
 
@@ -64,7 +64,7 @@ Parameterized queries (`$1`, `$2`, ...) are supported in both simple-query and e
 
 ### Cursors (DECLARE / FETCH / MOVE / CLOSE)
 
-Provisa handles textual SQL cursor syntax over the simple-query protocol. Clients that send `DECLARE`/`FETCH`/`MOVE`/`CLOSE` as plain SQL statements get real server-side streaming rather than a protocol error or a full-result buffer loaded into client memory.
+Provisa handles textual SQL cursor syntax over the simple-query protocol. Clients that send `DECLARE`/`FETCH`/`MOVE`/`CLOSE` as plain SQL statements get real server-side streaming, with no protocol error and no full result buffered in client memory.
 
 **This is separate from portal-based streaming.** The extended-query protocol — Bind/Execute with a row-limit field — is a different wire mechanism. asyncpg and most modern PostgreSQL drivers use it automatically without any cursor SQL. If your driver already uses portals, you don't need this syntax. `DECLARE CURSOR` is for clients that send cursor SQL literally: psycopg2's named/server-side cursor feature (`conn.cursor(name="...")`), certain BI tools, and some legacy JDBC drivers.
 
@@ -76,7 +76,7 @@ DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
 
-The inner SELECT runs through Provisa's normal governed pipeline — the same RLS enforcement, masking, and domain-access checks that apply to any standalone SELECT. Declaring a cursor is not a governance bypass.
+The inner SELECT runs through Provisa's normal governed pipeline, with the same RLS enforcement, masking and domain-access checks as any standalone SELECT. Declaring a cursor doesn't get around governance.
 
 The `SCROLL` keyword controls both what navigation is allowed and how much memory the cursor uses:
 
@@ -119,7 +119,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 
 `CLOSE` releases the underlying result stream and removes the cursor from the session. Disconnecting without issuing `CLOSE` is safe: `ProvisaSession.close()` releases all still-open cursors automatically on disconnect.
 
-**Cursor lifetime.** Provisa's pgwire server has no transaction state machine (`ProvisaSession.in_transaction()` is hardcoded `False`). Every cursor therefore behaves as if declared `WITH HOLD`: it lives for the duration of the connection, not until `COMMIT`. The `WITH HOLD` and `WITHOUT HOLD` keywords are accepted and silently ignored — there is no per-transaction cursor lifecycle to enforce.
+**Cursor lifetime.** Provisa's pgwire server has no transaction state machine (`ProvisaSession.in_transaction()` is hardcoded to `False`). So every cursor behaves as if declared `WITH HOLD`: it lives for the connection, and `COMMIT` doesn't end it. The `WITH HOLD` and `WITHOUT HOLD` keywords are accepted and ignored, since there's no per-transaction cursor lifecycle to enforce.
 
 ### Definitions (CREATE, ALTER, DROP)
 
@@ -184,7 +184,7 @@ Supported formats: `text` (tab-delimited, default), `csv` and `binary`, PostgreS
 
 ### Transactions and Session Commands
 
-SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, and DEALLOCATE are intercepted and return an empty success response. The server is stateless with respect to transactions — there is no transaction isolation or rollback support.
+SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET and DEALLOCATE are intercepted and answered with an empty success. The server keeps no transaction state, so there's no transaction isolation and no rollback.
 
 ---
 
@@ -200,7 +200,7 @@ Intercepted tables:
 
 `pg_constraint` is populated with real PK and FK data derived from the domain model's `pk_columns` and `joins`. BI tools that inspect foreign-key relationships (Tableau, DBeaver, etc.) will see the join graph Provisa knows about. Single-column joins between the same source/target pair whose target columns together form the target's composite primary key are collapsed into one FK row with multi-element `conkey`/`confkey` arrays.
 
-A junction-backed relationship produces no FK row. It is an edge through an associative table, not a column pair, and `pg_constraint` has no shape for two hops — so the domain model leaves it out of `joins` and the junction table appears as an ordinary table with its own foreign keys to each endpoint. SQL clients reach it by joining that table; Cypher clients traverse it as a single relationship.
+A junction-backed relationship produces no FK row. It's an edge through an associative table, and `pg_constraint` has no shape for two hops, so the domain model leaves it out of `joins` and the junction table appears as an ordinary table with its own foreign keys to each end. SQL clients reach it by joining that table; Cypher clients traverse it as a single relationship.
 
 `pg_index` is populated with one row per primary-key and UNIQUE constraint (`indrelid` = table oid, `indkey` = ordered key attnums, `indisprimary`/`indisunique` set). Clients that resolve key columns via `pg_index.indkey` rather than `pg_constraint` — DataGrip, for example — discover the correct columns through the standard `pg_index` → `pg_attribute` join.
 

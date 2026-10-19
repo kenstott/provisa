@@ -1,6 +1,6 @@
 # Provisa-pgwire-Server
 
-Provisa stellt einen Endpunkt für das PostgreSQL-Wire-Protokoll (pgwire) bereit. Jedes Tool, das das PostgreSQL-Client-Protokoll spricht — psycopg2, asyncpg, DBeaver, Tableau, JDBC —, kann sich verbinden und Provisa-Daten über dieselbe Governance-Pipeline abfragen, die auch die HTTP-API steuert.
+Provisa stellt einen Endpunkt für das PostgreSQL-Wire-Protokoll (pgwire) bereit. Jedes Werkzeug, das das PostgreSQL-Client-Protokoll spricht, etwa psycopg2, asyncpg, DBeaver, Tableau oder JDBC, kann sich verbinden und Provisa-Daten über dieselbe Governance-Pipeline abfragen, die auch die HTTP-API steuert.
 
 Abfragen durchlaufen den vollständigen Governance-Stack: Durchsetzung der Sicherheit auf Zeilenebene, Maskierungsregeln, Beziehungsschutz, Domänenzugriffsprüfungen. Die pgwire-Schnittstelle ist kein Umgehungsweg.
 
@@ -39,7 +39,7 @@ Der Trust-Modus (`provider: none` oder inaktive Auth-Middleware) ist die Ausnahm
 
 **Client-Zertifikate.** Setzen Sie `PROVISA_MTLS_CLIENT_CA`, und der Server prüft während des Handshakes ein Client-Zertifikat, bevor irgendein Credential betrachtet wird. Mit `PROVISA_MTLS_BIND_PRINCIPAL` muss der Common Name des Zertifikats dem `user` entsprechen, als den sich die Verbindung anschließend authentifiziert. Siehe [Konfiguration](configuration.md#mutual-tls).
 
-**Fehlversuche werden gezählt.** Fünf Fehlversuche in fünf Minuten sperren das Konto für fünfzehn Minuten, und der Zähler wird mit HTTP und Bolt geteilt — eine auf einer Oberfläche erwirkte Sperre gilt auf allen.
+**Fehlversuche werden gezählt.** Fünf Fehlschläge in fünf Minuten sperren das Konto für fünfzehn Minuten. Der Zähler wird mit HTTP und Bolt geteilt, eine Sperre auf einer Oberfläche gilt also auf allen.
 
 **Auswahl einer Organisation.** In einem Multi-Org-Deployment verbinden Sie sich mit `<org>.<your-domain>`, und pgwire liest die Organisation aus dem Hostnamen im TLS-ClientHello — so, wie HTTP sie aus dem `Host`-Header liest. Der Hostname fordert eine Organisation an; er gewährt sie nicht, und ein Principal ohne Mitgliedschaft dort wird abgewiesen. Eine Verbindung über eine IP-Adresse fordert keine Organisation an.
 
@@ -64,7 +64,7 @@ Parametrisierte Abfragen (`$1`, `$2`, ...) werden sowohl im Simple-Query- als au
 
 ### Cursor (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
-Provisa verarbeitet textuelle SQL-Cursor-Syntax über das Simple-Query-Protokoll. Clients, die `DECLARE`/`FETCH`/`MOVE`/`CLOSE` als einfache SQL-Anweisungen senden, erhalten echtes serverseitiges Streaming statt eines Protokollfehlers oder eines vollständigen, in den Client-Speicher geladenen Ergebnispuffers.
+Provisa verarbeitet textuelle SQL-Cursor-Syntax über das Simple-Query-Protokoll. Clients, die `DECLARE`/`FETCH`/`MOVE`/`CLOSE` als gewöhnliche SQL-Anweisungen senden, bekommen echtes serverseitiges Streaming, ohne Protokollfehler und ohne das ganze Ergebnis im Client-Speicher.
 
 **Das ist etwas anderes als Portal-basiertes Streaming.** Das Extended-Query-Protokoll — Bind/Execute mit einem Zeilenlimit-Feld — ist ein anderer Mechanismus auf dem Wire-Protokoll. asyncpg und die meisten modernen PostgreSQL-Treiber nutzen es automatisch, ganz ohne Cursor-SQL. Wenn Ihr Treiber bereits Portale verwendet, brauchen Sie diese Syntax nicht. `DECLARE CURSOR` ist für Clients gedacht, die Cursor-SQL wörtlich senden: die benannten/serverseitigen Cursor von psycopg2 (`conn.cursor(name="...")`), bestimmte BI-Tools und einige ältere JDBC-Treiber.
 
@@ -75,7 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
-Das innere SELECT läuft durch die normale regulierte Pipeline von Provisa — dieselbe RLS-Durchsetzung, Maskierung und Domänenzugriffsprüfung wie bei jedem eigenständigen SELECT. Einen Cursor zu deklarieren umgeht die Governance nicht.
+Das innere SELECT läuft durch die normale gesteuerte Pipeline von Provisa, mit denselben RLS-Regeln, derselben Maskierung und denselben Domänenzugriffsprüfungen wie jedes eigenständige SELECT. Einen Cursor zu deklarieren, umgeht die Governance nicht.
 
 Das Schlüsselwort `SCROLL` bestimmt sowohl, welche Navigation erlaubt ist, als auch, wie viel Speicher der Cursor belegt:
 
@@ -116,7 +116,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 ```
 `CLOSE` gibt den zugrunde liegenden Ergebnisstream frei und entfernt den Cursor aus der Sitzung. Die Verbindung ohne `CLOSE` zu trennen ist sicher: `ProvisaSession.close()` gibt beim Trennen alle noch offenen Cursor automatisch frei.
 
-**Cursor-Lebensdauer.** Der pgwire-Server von Provisa hat keinen Transaktionszustandsautomaten (`ProvisaSession.in_transaction()` ist fest auf `False` codiert). Jeder Cursor verhält sich daher, als wäre er mit `WITH HOLD` deklariert: Er lebt für die Dauer der Verbindung, nicht bis `COMMIT`. Die Schlüsselwörter `WITH HOLD` und `WITHOUT HOLD` werden akzeptiert und stillschweigend ignoriert — es gibt keinen Cursor-Lebenszyklus pro Transaktion, der durchzusetzen wäre.
+**Lebensdauer eines Cursors.** Der pgwire-Server von Provisa hat keinen Transaktionszustand (`ProvisaSession.in_transaction()` liefert fest `False`). Jeder Cursor verhält sich daher, als wäre er mit `WITH HOLD` deklariert: Er lebt so lange wie die Verbindung, und `COMMIT` beendet ihn nicht. Die Schlüsselwörter `WITH HOLD` und `WITHOUT HOLD` werden angenommen und ignoriert, da es keinen Cursor-Lebenszyklus pro Transaktion gibt.
 
 ### Definitionen (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
@@ -179,7 +179,7 @@ Unterstützte Formate: `text` (tabulatorgetrennt, Standard), `csv` und `binary`,
 
 ### Transaktionen und Sitzungsbefehle {: #transactions-and-session-commands }
 
-SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET und DEALLOCATE werden abgefangen und liefern eine leere Erfolgsantwort. Der Server ist hinsichtlich Transaktionen zustandslos — es gibt weder Transaktionsisolation noch Rollback-Unterstützung.
+SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET und DEALLOCATE werden abgefangen und mit einem leeren Erfolg beantwortet. Der Server hält keinen Transaktionszustand, es gibt also keine Transaktionsisolation und kein Rollback.
 
 ---
 
@@ -195,7 +195,7 @@ Abgefangene Tabellen:
 
 `pg_constraint` wird mit echten PK- und FK-Daten befüllt, die aus den Feldern `pk_columns` und `joins` des Domänenmodells abgeleitet werden. BI-Tools, die Fremdschlüsselbeziehungen untersuchen (Tableau, DBeaver usw.), sehen den Join-Graphen, den Provisa kennt. Einspaltige Joins zwischen demselben Quelle/Ziel-Paar, deren Zielspalten zusammen den zusammengesetzten Primärschlüssel des Ziels bilden, werden zu einer einzigen FK-Zeile mit mehrelementigen `conkey`/`confkey`-Arrays zusammengefasst.
 
-Eine Junction-gestützte Beziehung erzeugt keine FK-Zeile. Sie ist eine Kante über eine Zuordnungstabelle, kein Spaltenpaar, und `pg_constraint` hat keine Form für zwei Sprünge — deshalb lässt das Domänenmodell sie aus `joins` heraus, und die Junction-Tabelle erscheint als gewöhnliche Tabelle mit eigenen Fremdschlüsseln auf beide Endpunkte. SQL-Clients erreichen sie, indem sie diese Tabelle joinen; Cypher-Clients traversieren sie als eine einzige Beziehung.
+Eine Junction-Beziehung erzeugt keine FK-Zeile. Sie ist eine Kante über eine assoziative Tabelle, und `pg_constraint` hat keine Form für zwei Hops, daher lässt das Domänenmodell sie in `joins` weg, und die Junction-Tabelle erscheint als gewöhnliche Tabelle mit eigenen Fremdschlüsseln zu beiden Enden. SQL-Clients erreichen sie, indem sie diese Tabelle joinen; Cypher-Clients traversieren sie als eine Beziehung.
 
 `pg_index` wird mit einer Zeile pro Primärschlüssel- und UNIQUE-Constraint befüllt (`indrelid` = OID der Tabelle, `indkey` = geordnete Schlüssel-Attnums, `indisprimary`/`indisunique` gesetzt). Clients, die Schlüsselspalten über `pg_index.indkey` statt über `pg_constraint` auflösen — zum Beispiel DataGrip —, ermitteln die korrekten Spalten über den Standard-Join `pg_index` → `pg_attribute`.
 

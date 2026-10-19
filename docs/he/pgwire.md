@@ -1,6 +1,6 @@
 # שרת ה-pgwire של Provisa {: #provisa-pgwire-server }
 
-Provisa חושפת נקודת קצה של פרוטוקול חיווט PostgreSQL (pgwire). כל כלי שדובר את פרוטוקול הלקוח של PostgreSQL — psycopg2, asyncpg, DBeaver, Tableau, JDBC — יכול להתחבר ולשאול נתוני Provisa דרך אותו צינור ממשל השולט ב-API של HTTP.
+Provisa חושף נקודת קצה של פרוטוקול התקשורת של PostgreSQL (pgwire). כל כלי שמדבר בפרוטוקול הלקוח של PostgreSQL, כמו psycopg2, asyncpg, DBeaver, Tableau או JDBC, יכול להתחבר ולשאול נתונים של Provisa דרך אותו צינור ממשל שמנהל את ה-API של HTTP.
 
 שאילתות עוברות דרך מחסנית הממשל המלאה: אכיפת RLS, כללי מיסוך, שומרי קשר, בדיקות גישת-דומיין. ממשק ה-pgwire אינו עוקף.
 
@@ -39,7 +39,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 **תעודות לקוח.** הגדירו `PROVISA_MTLS_CLIENT_CA` והשרת יאמת תעודת לקוח במהלך ה-handshake, לפני בחינת כל אישור. עם `PROVISA_MTLS_BIND_PRINCIPAL` ה-common name של התעודה חייב להיות זהה ל-`user` שהחיבור מתאמת בשמו לאחר מכן. ראו [תצורה](configuration.md#mutual-tls).
 
-**ניסיונות כושלים נספרים.** חמישה כשלונות בחמש דקות נועלים את החשבון לחמש-עשרה דקות, והמונה משותף עם HTTP ועם Bolt — נעילה שהושגה בכל אחת מהממשקים חלה על כולם.
+**ניסיונות כושלים נספרים.** חמישה כישלונות בתוך חמש דקות נועלים את החשבון לחמש עשרה דקות. המונה משותף עם HTTP ו-Bolt, כך שנעילה שנגרמה במשטח אחד חלה על כולם.
 
 **בחירת ארגון.** בפריסה מרובת-ארגונים, התחברו אל `<org>.<your-domain>` ו-pgwire יקרא את הארגון משם המארח שב-ClientHello של TLS, בדיוק כפי ש-HTTP קורא אותו מכותרת `Host`. שם המארח מבקש ארגון; הוא אינו מעניק אותו, ו-principal שאינו חבר בו נדחה. התחברות לפי כתובת IP אינה מבקשת ארגון כלל.
 
@@ -64,7 +64,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 ### סמנים (DECLARE / FETCH / MOVE / CLOSE) {: #cursors-declare-fetch-move-close }
 
-Provisa מטפלת בתחביר הטקסטואלי של סמני SQL על פרוטוקול השאילתה הפשוטה. לקוחות ששולחים `DECLARE`/`FETCH`/`MOVE`/`CLOSE` כהצהרות SQL רגילות מקבלים הזרמה אמיתית בצד השרת במקום שגיאת פרוטוקול או חוצץ של התוצאה כולה בזיכרון הלקוח.
+Provisa מטפל בתחביר הטקסטואלי של סמני SQL על גבי פרוטוקול השאילתה הפשוט. לקוחות ששולחים `DECLARE`/`FETCH`/`MOVE`/`CLOSE` כהצהרות SQL רגילות מקבלים הזרמה אמיתית בצד השרת, בלי שגיאת פרוטוקול ובלי שהתוצאה כולה נטענת לזיכרון של הלקוח.
 
 **זה שונה מהזרמה מבוססת portal.** פרוטוקול השאילתה המורחבת — Bind/Execute עם שדה מגבלת שורות — הוא מנגנון אחר של פרוטוקול התעבורה. asyncpg ורוב הדרייברים המודרניים של PostgreSQL משתמשים בו אוטומטית, ללא SQL של סמנים. אם הדרייבר שלכם כבר משתמש ב-portals, אינכם צריכים את התחביר הזה. `DECLARE CURSOR` מיועד ללקוחות ששולחים SQL של סמנים כלשונו: סמנים בעלי שם/בצד השרת של psycopg2 (`conn.cursor(name="...")`), חלק מכלי ה-BI וחלק מדרייברי JDBC ישנים.
 
@@ -75,7 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
-ה-SELECT הפנימי עובר בצינור המנוהל הרגיל של Provisa — אותה אכיפת RLS, אותה מיסוך ואותן בדיקות גישה לדומיין כמו כל SELECT עצמאי. הצהרה על סמן אינה עוקפת את הממשל.
+ה-SELECT הפנימי עובר דרך הצינור המנוהל הרגיל של Provisa, עם אותה אכיפת RLS, אותו מיסוך ואותן בדיקות גישה לתחום כמו כל SELECT עצמאי. הצהרה על סמן לא עוקפת את הממשל.
 
 מילת המפתח `SCROLL` שולטת הן בניווט המותר והן בטביעת הזיכרון של הסמן:
 
@@ -116,7 +116,7 @@ CLOSE ALL;   -- release every open cursor on this connection
 ```
 `CLOSE` משחרר את זרם התוצאות שמתחת ומסיר את הסמן מהסשן. ניתוק בלי `CLOSE` בטוח: `ProvisaSession.close()` משחרר אוטומטית בניתוק כל סמן שעדיין פתוח.
 
-**משך החיים של סמן.** לשרת ה-pgwire של Provisa אין מכונת מצבים של טרנזקציות (`ProvisaSession.in_transaction()` מחזיר קבוע `False`). לכן כל סמן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי לאורך כל החיבור, לא עד `COMMIT`. מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמים מהן בשקט — אין מחזור חיים של סמנים לפי טרנזקציה לאכוף.
+**אורך החיים של סמן.** לשרת ה-pgwire של Provisa אין מכונת מצבים של טרנזקציות (`ProvisaSession.in_transaction()` מחזיר תמיד `False`). לכן כל סמן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי כל עוד החיבור קיים, ו-`COMMIT` לא מסיים אותו. מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמים מהן, כי אין מחזור חיים של סמן לכל טרנזקציה שצריך לאכוף.
 
 ### הגדרות (CREATE, ALTER, DROP) {: #definitions-create-alter-drop }
 
@@ -179,7 +179,7 @@ COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 
 ### עסקאות ופקודות Session {: #transactions-and-session-commands }
 
-SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE מיורטים ומחזירים תגובת הצלחה ריקה. השרת חסר-מצב (stateless) ביחס לעסקאות — אין תמיכה בבידוד עסקאות או rollback.
+SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET ו-DEALLOCATE מיורטים ונענים בהצלחה ריקה. השרת לא שומר מצב טרנזקציה, ולכן אין בידוד טרנזקציות ואין rollback.
 
 ---
 
@@ -195,7 +195,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 
 `pg_constraint` מאוכלס בנתוני PK ו-FK אמיתיים הנגזרים מ-`pk_columns` ו-`joins` של מודל הדומיין. כלי BI הבודקים קשרי מפתח-זר (Tableau, DBeaver וכו') יראו את גרף ה-join ש-Provisa מכירה. joins חד-עמודתיים בין אותו זוג מקור/יעד שעמודות היעד שלהם יחד מהוות את המפתח הראשי המורכב של היעד מכווצים לשורת FK אחת עם מערכי `conkey`/`confkey` מרובי-איברים.
 
-קשר מגובה junction אינו מייצר שורת FK. זוהי קשת דרך טבלת שיוך, לא זוג עמודות, ול-`pg_constraint` אין צורה לשתי קפיצות — ולכן מודל הדומיין משמיט אותה מ-`joins`, וטבלת ה-junction מופיעה כטבלה רגילה עם מפתחות זרים משלה לכל אחד מהקצוות. לקוחות SQL מגיעים אליה על ידי join לטבלה הזו; לקוחות Cypher חוצים אותה כקשר יחיד.
+קשר שמבוסס על טבלת קישור לא יוצר שורת FK. הוא קשת דרך טבלה מקשרת, ול-`pg_constraint` אין צורה לשתי קפיצות, ולכן מודל התחום משאיר אותו מחוץ ל-`joins`, וטבלת הקישור מופיעה כטבלה רגילה עם מפתחות זרים משלה לכל קצה. לקוחות SQL מגיעים אליו דרך join לטבלה הזו; לקוחות Cypher עוברים עליו כקשר אחד.
 
 `pg_index` מאוכלס בשורה אחת לכל אילוץ primary-key ו-UNIQUE (`indrelid` = oid הטבלה, `indkey` = attnums מפתח מסודרים, `indisprimary`/`indisunique` מוגדרים). לקוחות הפותרים עמודות מפתח דרך `pg_index.indkey` ולא `pg_constraint` — DataGrip, לדוגמה — מגלים את העמודות הנכונות דרך ה-join הסטנדרטי `pg_index` → `pg_attribute`.
 
