@@ -1477,11 +1477,11 @@ auth:
 
 ## Routage d'exécution {: #execution-routing }
 
-**Exécution directe** — les requêtes SGBDR mono-source sont routées vers le pilote natif pour une latence inférieure à 100 ms. Les sources exigent à la fois une entrée `SOURCE_TO_DIALECT` et une entrée `SOURCE_TO_CONNECTOR` pour emprunter ce chemin.
+**Exécution directe.** Une requête qui ne touche qu'une source relationnelle va directement au pilote propre de cette source, en moins de 100 ms. Un type de source emprunte ce chemin quand Provisa connaît à la fois son dialecte SQL et son connecteur.
 
-**Exécution fédérée** — les requêtes multi-sources et les sources dépourvues de pilote direct passent par le moteur de fédération. Provisa embarque un moteur de fédération ; pointez vers votre propre cluster compatible pour les déploiements à grande échelle.
+**Exécution fédérée.** Une requête sur plusieurs sources, ou sur une source sans pilote direct, passe par le moteur de fédération. Provisa en fournit un embarqué ; pour les grands déploiements, faites-le pointer vers votre propre cluster compatible.
 
-**Statistiques** — à l'enregistrement, Provisa exécute `ANALYZE` contre chaque table publiée pour amorcer l'optimiseur fondé sur les coûts (nombre de lignes, fraction de valeurs nulles, valeurs distinctes, min/max). Les échecs sont journalisés et ne bloquent pas l'enregistrement.
+**Statistiques.** Quand une table est enregistrée, Provisa exécute `ANALYZE` sur chaque table publiée afin que l'optimiseur fondé sur les coûts dispose des nombres de lignes, des proportions de nulls, des valeurs distinctes et des min/max. En cas d'échec, l'échec est journalisé et l'enregistrement continue.
 
 ---
 

@@ -1503,11 +1503,11 @@ auth:
 
 ## Execution Routing
 
-**Direct execution** — Single-source RDBMS queries route to the native driver for sub-100ms latency. Sources require both a `SOURCE_TO_DIALECT` entry and a `SOURCE_TO_CONNECTOR` entry to support this path.
+**Direct execution.** A query that touches one relational source goes straight to that source's own driver, in under 100 ms. A source type takes this path when Provisa knows both its SQL dialect and its connector.
 
-**Federated execution** — Multi-source queries and sources without a direct driver route through the federation engine. Provisa includes an embedded federation engine; point to your own compatible cluster for large-scale deployments.
+**Federated execution.** A query across sources, or on a source with no direct driver, goes through the federation engine. Provisa ships an embedded one; for large deployments, point it at your own compatible cluster.
 
-**Statistics** — On registration, Provisa runs `ANALYZE` against each published table to prime the cost-based optimizer (row counts, null fraction, distinct values, min/max). Failures are logged and do not block registration.
+**Statistics.** When a table is registered, Provisa runs `ANALYZE` on each published table so the cost-based optimizer has row counts, null fractions, distinct values and min/max. If that fails, the failure is logged and the registration goes ahead.
 
 ---
 

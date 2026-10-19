@@ -1477,11 +1477,11 @@ auth:
 
 ## Routing di esecuzione {: #execution-routing }
 
-**Esecuzione diretta** — Le query a singola origine RDBMS vengono instradate al driver nativo per latenza sub-100ms. Le origini richiedono sia una voce `SOURCE_TO_DIALECT` che una voce `SOURCE_TO_CONNECTOR` per supportare questo percorso.
+**Esecuzione diretta.** Una query che tocca una sola origine relazionale va direttamente al driver proprio di quell'origine, in meno di 100 ms. Un tipo di origine segue questo percorso quando Provisa conosce sia il suo dialetto SQL sia il suo connettore.
 
-**Esecuzione federata** — Le query multi-source e le origini senza driver diretto vengono instradate attraverso il motore di federazione. Provisa include un motore di federazione integrato; punta al tuo cluster compatibile per deployment su larga scala.
+**Esecuzione federata.** Una query su più origini, o su un'origine senza driver diretto, passa dal motore di federazione. Provisa ne include uno integrato; per i deployment grandi, puntatelo al vostro cluster compatibile.
 
-**Statistiche** — Alla registrazione, Provisa esegue `ANALYZE` su ogni tabella pubblicata per innescare l'ottimizzatore cost-based (conteggio righe, frazione null, valori distinti, min/max). I fallimenti vengono loggati e non bloccano la registrazione.
+**Statistiche.** Quando una tabella viene registrata, Provisa esegue `ANALYZE` su ogni tabella pubblicata, così l'ottimizzatore basato sui costi ha conteggi di righe, frazioni di null, valori distinti e min/max. Se fallisce, l'errore viene registrato nel log e la registrazione prosegue.
 
 ---
 

@@ -1492,11 +1492,11 @@ auth:
 
 ## Ausführungs-Routing {: #execution-routing }
 
-**Direkte Ausführung** — Einzelquellen-RDBMS-Abfragen routen zum nativen Treiber für Latenz unter 100 ms. Quellen benötigen sowohl einen `SOURCE_TO_DIALECT`-Eintrag als auch einen `SOURCE_TO_CONNECTOR`-Eintrag, um diesen Pfad zu unterstützen.
+**Direkte Ausführung.** Eine Abfrage, die nur eine relationale Quelle betrifft, geht direkt an deren eigenen Treiber, in unter 100 ms. Ein Quelltyp nimmt diesen Weg, wenn Provisa sowohl seinen SQL-Dialekt als auch seinen Connector kennt.
 
-**Föderierte Ausführung** — Mehrquellen-Abfragen und Quellen ohne direkten Treiber routen über die Federation-Engine. Provisa enthält eine eingebettete Federation-Engine; verweisen Sie für großangelegte Deployments auf Ihren eigenen kompatiblen Cluster.
+**Föderierte Ausführung.** Eine quellenübergreifende Abfrage oder eine Abfrage an eine Quelle ohne direkten Treiber läuft über die Federation-Engine. Provisa bringt eine eingebettete mit; für große Deployments lassen Sie sie auf Ihren eigenen kompatiblen Cluster zeigen.
 
-**Statistiken** — Bei der Registrierung führt Provisa `ANALYZE` gegen jede veröffentlichte Tabelle aus, um den kostenbasierten Optimizer zu initialisieren (Zeilenanzahlen, Null-Anteil, eindeutige Werte, Min/Max). Fehler werden protokolliert und blockieren die Registrierung nicht.
+**Statistiken.** Wenn eine Tabelle registriert wird, führt Provisa `ANALYZE` für jede veröffentlichte Tabelle aus, damit der kostenbasierte Optimierer Zeilenzahlen, Null-Anteile, eindeutige Werte und Min/Max hat. Schlägt das fehl, wird der Fehler protokolliert und die Registrierung läuft weiter.
 
 ---
 

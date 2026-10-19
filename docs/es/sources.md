@@ -1438,11 +1438,12 @@ auth:
 ---
 
 ## Enrutamiento de ejecución {: #execution-routing }
-**Ejecución directa** — Las consultas RDBMS de un solo origen se enrutan al controlador nativo para lograr una latencia menor a 100 ms. Los orígenes requieren tanto una entrada en `SOURCE_TO_DIALECT` como una en `SOURCE_TO_CONNECTOR` para soportar esta ruta.
 
-**Ejecución federada** — Las consultas de varios orígenes y los orígenes sin controlador directo se enrutan a través del motor de federación. Provisa incluye un motor de federación embebido; apunte a su propio clúster compatible para despliegues a gran escala.
+**Ejecución directa.** Una consulta que toca un solo origen relacional va directa al driver propio de ese origen, en menos de 100 ms. Un tipo de origen toma este camino cuando Provisa conoce tanto su dialecto SQL como su conector.
 
-**Estadísticas** — Al registrar, Provisa ejecuta `ANALYZE` contra cada tabla publicada para preparar el optimizador basado en costos (conteo de filas, fracción de nulos, valores distintos, mínimo/máximo). Los fallos se registran en el log y no bloquean el registro.
+**Ejecución federada.** Una consulta entre orígenes, o sobre un origen sin driver directo, pasa por el motor de federación. Provisa incluye uno embebido; para despliegues grandes, apúntelo a su propio clúster compatible.
+
+**Estadísticas.** Cuando se registra una tabla, Provisa ejecuta `ANALYZE` sobre cada tabla publicada para que el optimizador basado en costes tenga recuentos de filas, fracciones de nulos, valores distintos y mín/máx. Si falla, el fallo se registra en el log y el registro sigue adelante.
 
 ---
 

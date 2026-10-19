@@ -1477,11 +1477,11 @@ auth:
 
 ## Roteamento de Execução {: #execution-routing }
 
-**Execução direta** — Consultas RDBMS de fonte única roteiam para o driver nativo para latência sub-100ms. Fontes exigem tanto uma entrada `SOURCE_TO_DIALECT` quanto uma entrada `SOURCE_TO_CONNECTOR` para suportar este caminho.
+**Execução direta.** Uma consulta que toca uma só fonte relacional vai direto ao driver próprio dessa fonte, em menos de 100 ms. Um tipo de fonte segue esse caminho quando o Provisa conhece tanto o dialeto SQL quanto o conector dele.
 
-**Execução federada** — Consultas multi-fonte e fontes sem driver direto roteiam através do motor de federação. O Provisa inclui um motor de federação embutido; aponte para seu próprio cluster compatível para implantações em grande escala.
+**Execução federada.** Uma consulta entre fontes, ou sobre uma fonte sem driver direto, passa pelo motor de federação. O Provisa traz um embutido; em deployments grandes, aponte-o para o seu próprio cluster compatível.
 
-**Estatísticas** — No registro, o Provisa executa `ANALYZE` contra cada tabela publicada para preparar o otimizador baseado em custo (contagens de linha, fração de nulos, valores distintos, mín/máx). Falhas são registradas e não bloqueiam o registro.
+**Estatísticas.** Quando uma tabela é registrada, o Provisa roda `ANALYZE` em cada tabela publicada para que o otimizador baseado em custo tenha contagens de linhas, frações de nulos, valores distintos e mín/máx. Se falhar, a falha é registrada no log e o registro segue em frente.
 
 ---
 
