@@ -3308,6 +3308,16 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
     # worker's own change, and the reload of another worker's change all pass here, so no save
     # or delete path asks for a build or a drop itself. Detached: the model build must not
     # wait on, or be stopped by, a replica store or a source.
+    if _stamped_runtime.env == PROD:
+        # REQ-2089: the replicas the org's config directory declares the rows of (a demo whose
+        # source has no tenant to read) land first, so convergence finds them built: a demo
+        # template's from its demo's directory, the deployment org's from its launch config's.
+        from provisa.api.demo_templates import declared_rows_directory
+        from provisa.federation.declared_replica_rows import adopt_declared_rows
+
+        _rows_directory = declared_rows_directory(_stamped_runtime.org_id)
+        if _rows_directory is not None:
+            await adopt_declared_rows(state, _rows_directory)
     from provisa.core import process_mode as _process_mode
 
     if _process_mode.runs_background_work():

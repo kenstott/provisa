@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import os
 import socket
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -221,10 +222,16 @@ class IsolatedServer:
             cfg["auth"] = self._auth
         if self._materialize_store_url is not None:
             cfg["materialize_store_url"] = self._materialize_store_url
-        tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False)
-        yaml.safe_dump(cfg, tmp)
-        tmp.close()
-        return tmp.name
+        # In a directory of its own, beside what the base config's directory declares beside it:
+        # its declared replica rows (REQ-2089), read from the directory of the config served.
+        directory = Path(tempfile.mkdtemp(prefix="isolated-server-config-"))
+        rows = base.parent / "replica_rows"
+        if rows.is_dir():
+            (directory / "replica_rows").symlink_to(rows, target_is_directory=True)
+        path = directory / base.name
+        with open(path, "w") as f:
+            yaml.safe_dump(cfg, f)
+        return str(path)
 
     def _control_plane_env(self) -> dict:
         """Env overriding the control-plane store. ``own`` (REQ-2014) gives the server a PostgreSQL
@@ -383,7 +390,7 @@ class IsolatedServer:
                 self._proc.kill()
             self._proc = None
         if self._cfg_path is not None:
-            Path(self._cfg_path).unlink(missing_ok=True)
+            shutil.rmtree(Path(self._cfg_path).parent)
             self._cfg_path = None
         if self.plane is not None:
             self.plane.close()
