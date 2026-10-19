@@ -538,6 +538,42 @@ push_obs_config() {
 DEMO_STORES_BIN="/root/.provisa/bin/demo_stores_sync.sh"
 DEMO_STORES_UNITS="/etc/systemd/system"
 
+# The sandbox VM's demo-stores sync settings (/root/.provisa/demo-stores.env), as
+# terraform/gcp-saas/sandbox.tf writes them at boot: packaging/linux/demo-stores/sandbox-vm.env.tpl
+# with both tiers' demos (packaging/linux/demo-stores/*-tier-bundles) that have a bundle -- a demo
+# is bundled only once it is published (demo.yaml `published: true`).
+DEMO_STORES_ENV="/root/.provisa/demo-stores.env"
+
+demo_stores_env() {
+  local lists name bundles=()
+  lists="$(tr -d '[:space:]' < "$REPO/packaging/linux/demo-stores/sandbox-tier-bundles"),$(tr -d '[:space:]' < "$REPO/packaging/linux/demo-stores/regions-tier-bundles")"
+  IFS=',' read -r -a names <<<"$lists"
+  for name in "${names[@]}"; do
+    [ -n "$name" ] && [ -f "$REPO/demo/named/$name/demo.yaml" ] \
+      && grep -qx 'published: true' "$REPO/demo/named/$name/demo.yaml" && bundles+=("$name")
+  done
+  local joined
+  joined="$(IFS=,; echo "${bundles[*]}")"
+  printf '%s\n' "$(sed "s|\${bundles}|$joined|" "$REPO/packaging/linux/demo-stores/sandbox-vm.env.tpl")"
+}
+
+# A patch refreshes the VM's sync settings: the file is written at boot from the startup script,
+# which changes only with a terraform apply, so a demo added to a tier's list would otherwise never
+# be pulled. Rewritten only when it differs, then the sync runs at once.
+push_demo_stores_env() {
+  local want have
+  demo_stores_env > "$STAGE/demo-stores.env"
+  want="$(shasum -a 256 "$STAGE/demo-stores.env" | cut -d' ' -f1)"
+  have="$(ssh_node "sudo shasum -a 256 $DEMO_STORES_ENV 2>/dev/null" | tr -d '\r' | cut -d' ' -f1)" || have=""
+  if [ "$want" = "$have" ]; then
+    echo "== demo stores: settings up to date"
+    return
+  fi
+  scp_node "$STAGE/demo-stores.env" /tmp/demo-stores.env
+  ssh_node "sudo install -m 644 /tmp/demo-stores.env $DEMO_STORES_ENV && sudo systemctl start --no-block provisa-demo-stores.service"
+  echo "== demo stores: settings updated ($(grep '^PROVISA_DEMO_BUNDLES=' "$STAGE/demo-stores.env"))"
+}
+
 push_demo_stores() {
   local changed=0 f name dest want have
   # A coordinator whose sandbox tier runs on its own VM runs no demo stores: deploy_sandbox_vm
@@ -896,7 +932,7 @@ deploy_sandbox_vm() {
     sleep 15
   done
   echo "== sandbox VM: $SANDBOX_NODE"
-  push_demo_stores; push_overlay
+  push_demo_stores; push_demo_stores_env; push_overlay
   # What this deploy built: the api arm has no configs, the cfg arm no package.
   [ -f "$STAGE/api.tgz" ] && { push_api; push_plugins; }
   [ -f "$STAGE/cfg.tgz" ] && push_cfg
