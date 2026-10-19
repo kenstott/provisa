@@ -686,7 +686,7 @@ An optional external policy hook that fires before query execution. When configu
 
 ### Scoping
 
-The hook only fires when the query touches a scoped table or source. Zero overhead for everything else.
+The hook fires only when a query touches a scoped table or source, so every other query runs with no added cost.
 
 | Config | Effect |
 | -------- | -------- |

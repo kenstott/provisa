@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 内部的 SELECT 会经过 Provisa 正常的受治理管道，与任何单独的 SELECT 一样执行 RLS、脱敏和领域访问检查。声明游标并不能绕过治理。
 
 `SCROLL` 关键字同时控制允许的导航和游标的内存占用：
@@ -102,6 +103,7 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
+
 `FETCH` 返回行并发送命令标签 `FETCH <n>`，其中 `n` 是实际返回的数量，当游标到达末尾时可能少于请求的数量。`MOVE` 移动位置而不返回行，并发送 `MOVE <n>`。
 
 `FROM` 和 `IN` 在游标名之前可以互换。未加引号的游标名会转为小写；加引号的名称（`"CaseSensitive"`）保留大小写。
@@ -114,6 +116,7 @@ MOVE 100 FROM c1             -- advance position without returning rows
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` 释放底层的结果流，并从会话中移除游标。 不执行 `CLOSE` 就断开连接是安全的：`ProvisaSession.close()` 会在断开时自动释放所有仍处于打开状态的游标。
 
 **游标生命周期。** Provisa 的 pgwire 服务器没有事务状态机（`ProvisaSession.in_transaction()` 固定返回 `False`）。因此每个游标的行为都像声明了 `WITH HOLD`：它在连接存续期间一直存在，`COMMIT` 不会结束它。`WITH HOLD` 和 `WITHOUT HOLD` 关键字会被接受并忽略，因为不存在按事务管理的游标生命周期。
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **创建** —— `CREATE TEMP TABLE name (column type, ...)` 或 `CREATE TEMP TABLE name AS SELECT ...`。名称不接受 schema。它所基于的 `SELECT` 与其他任何读取一样：角色的行规则、脱敏、伪造数据和行数上限都适用于它取得的行。
 - **列类型**：`smallint`、`integer`、`bigint`、`real`、`double precision`、`boolean`、`date`、`timestamp`、`text`、`varchar` 以及 `DECIMAL(precision, scale)`。小数保留其精度和标度。其他任何类型都会被拒绝，并指明列和类型：值绝不会以非其本身的类型存储。由 `SELECT` 创建的列采用其值的类型；没有可推断类型的值的列会被拒绝，因此请在 `SELECT` 中使用 `CAST`。
 - **行数上限。** `CREATE ... AS SELECT` 或 `INSERT ... SELECT` 取得的行，按角色读取任何内容的方式读取，因此角色的行数上限适用。由被上限截断的读取填充的临时表，会带有与任何被截断读取相同的语句警告（`statement.rows_cut`），并指明上限。
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 支持的格式：`text`（制表符分隔，默认）、`csv` 和 `binary`，即 PostgreSQL 的二进制 COPY 格式，DuckDB 的 postgres 扩展用它读取。
 
 **COPY FROM STDIN** 是对现有已注册表的数据写入：它与相同行的 `INSERT` 经由同一个写入准入，另加一个条件：`insert` 授权不得带有预设（参见[数据写入](#data-writes-insert-update-delete-merge-copy-from-stdin)）。它读取 `text`（默认）和 `csv`。任何其他格式都会在发送任何数据之前以 SQLSTATE 0A000 被拒绝，并指明该格式。

@@ -199,6 +199,7 @@ quelle que soit la manière dont l'opération est invoquée.
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### Options acceptées par chaque sous-commande {: #flags-every-subcommand-takes }
 
 | Option | Obligatoire | Notes |
@@ -230,6 +231,7 @@ Liste les environnements de l'organisation et le build où se trouve chacun. Auc
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 Affiche un environnement et son build actuel. Sort avec 1 et `environments.unknown` lorsque
@@ -238,6 +240,7 @@ l'environnement n'existe pas.
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 Crée un environnement contenant le modèle d'un autre, avec ses données choisies à la création. L'API
@@ -247,6 +250,7 @@ décide quels choix l'appelant peut faire.
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | Option | Obligatoire | Notes |
 | --- | --- | --- |
 | `--env` | oui | Nom du nouvel environnement |
@@ -258,6 +262,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 Retire un environnement. Ses branches ne partent que si elles sont nommées.
@@ -265,6 +270,7 @@ Retire un environnement. Ses branches ne partent que si elles sont nommées.
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | Option | Notes |
 | --- | --- |
 | `--delete-branch` | Supprime aussi sa branche |
@@ -278,6 +284,7 @@ pas écrire ; confiez-le à un runner qui ne doit rien changer.
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | Option | Obligatoire | Notes |
 | --- | --- | --- |
 | `--from` | oui | Environnement depuis lequel on fusionne |
@@ -294,6 +301,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | Option | Obligatoire | Notes |
 | --- | --- | --- |
 | `--from` | oui | Environnement depuis lequel on fusionne |
@@ -314,6 +322,7 @@ invocation portant une identité contre un plan de contrôle nommé.
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | Option | Obligatoire | Notes |
 | --- | --- | --- |
 | `--env` | oui | Environnement qui contiendra le modèle déployé |
@@ -333,6 +342,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 Ramène un environnement à un build précédent. Sans `--to`, il recule d'un commit
@@ -341,6 +351,7 @@ dans l'historique propre de l'environnement. Avec `--to`, c'est le déploiement 
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | Option | Obligatoire | Notes |
 | --- | --- | --- |
 | `--env` | oui | Environnement à ramener |
@@ -354,6 +365,7 @@ Avance de nouveau vers le build dont un retour en arrière est parti.
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 Récupère les branches distantes de l'organisation dans son dépôt Provisa. Exécutez-la avant un déploiement
@@ -362,6 +374,7 @@ lorsque vous voulez nommer `origin/<branch>`. Provisa ne l'exécute jamais sur m
 ```
 provisa env fetch --org ORG
 ```
+
 Affiche une ligne par branche récupérée, `origin/<name>  <sha12>`.
 
 ```bash
@@ -369,6 +382,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 Envoie la branche d'un environnement vers le distant de l'organisation. Affiche `nothing to send` lorsqu'il
@@ -377,6 +391,7 @@ n'y a rien à envoyer.
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 Applique ce que le distant détient pour un environnement. Affiche
@@ -386,6 +401,7 @@ pour deploy.
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 Pour l'explication complète des classes d'environnement, des règles de protection, des rapports de fusion et du
 cycle de vie des approbations, voir [Environnements](environments.md#the-env-cli-commands).
 

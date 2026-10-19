@@ -198,6 +198,7 @@ provisa metadata export \
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### דגלים שכל תת-פקודה מקבלת {: #flags-every-subcommand-takes }
 
 | דגל | חובה | הערות |
@@ -229,6 +230,7 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 מציג סביבה אחת ואת ה-build הנוכחי שלה. יוצא עם 1 ו-`environments.unknown` אם
@@ -237,6 +239,7 @@ provisa env list --org ORG [--json]
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 יוצר סביבה המחזיקה את המודל של סביבה אחרת, עם הנתונים שנבחרו ביצירה. ה-API
@@ -246,6 +249,7 @@ provisa env show --org ORG --env ENV [--json]
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | דגל | חובה | הערות |
 | --- | --- | --- |
 | `--env` | כן | שם הסביבה החדשה |
@@ -257,6 +261,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 מוציא סביבה משימוש. הענפים שלה נמחקים רק כשנוקבים בהם.
@@ -264,6 +269,7 @@ provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | דגל | הערות |
 | --- | --- |
 | `--delete-branch` | מוחק גם את הענף שלה |
@@ -277,6 +283,7 @@ provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | דגל | חובה | הערות |
 | --- | --- | --- |
 | `--from` | כן | הסביבה שממנה ממזגים |
@@ -293,6 +300,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | דגל | חובה | הערות |
 | --- | --- | --- |
 | `--from` | כן | הסביבה שממנה ממזגים |
@@ -313,6 +321,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | דגל | חובה | הערות |
 | --- | --- | --- |
 | `--env` | כן | הסביבה שתחזיק את המודל הנפרס |
@@ -332,6 +341,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 מחזיר סביבה ל-build קודם. בלי `--to` הוא נסוג commit אחד
@@ -340,6 +350,7 @@ provisa env deploy \
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | דגל | חובה | הערות |
 | --- | --- | --- |
 | `--env` | כן | הסביבה להחזרה |
@@ -353,6 +364,7 @@ provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 מושך את הענפים המרוחקים של הארגון לתוך מאגר ה-Provisa שלו. הריצו אותו לפני פריסה
@@ -361,6 +373,7 @@ provisa env redo --org ORG --env ENV
 ```
 provisa env fetch --org ORG
 ```
+
 מדפיס שורה לכל ענף שנמשך, `origin/<name>  <sha12>`.
 
 ```bash
@@ -368,6 +381,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 שולח את הענף של סביבה למאגר המרוחק של הארגון. מדפיס `nothing to send` כשאין
@@ -376,6 +390,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 מחיל את מה שהמאגר המרוחק מחזיק עבור סביבה. מדפיס
@@ -385,6 +400,7 @@ provisa env push --org ORG --env ENV
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 להסבר המלא של מחלקות הסביבה, כללי ההגנה, דוחות המיזוג ו
 מחזור החיים של האישורים, ראו [סביבות](environments.md#the-env-cli-commands).
 

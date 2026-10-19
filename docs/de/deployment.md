@@ -61,7 +61,7 @@ UI:      http://localhost:3000
 
 **Optionen:**
 
-`--reset-volumes` — Führt `docker compose down -v` vor dem Start aus und zerstört dabei alle Docker-Volumes (PostgreSQL-Daten, MinIO-Objekte, Redis-Zustand usw.). Verwenden Sie dies, wenn Sie einen vollständig sauberen Zustand wünschen — nach einer Schemaänderung während der Entwicklung oder wenn Docker abgestürzt ist und beschädigte Volumes hinterlassen hat. **Alle Daten gehen verloren.**
+`--reset-volumes` — Führt `docker compose down -v` vor dem Start aus und zerstört dabei alle Docker-Volumes (PostgreSQL-Daten, MinIO-Objekte, Redis-Zustand usw.). Verwenden Sie dies, wenn Sie einen vollständig sauberen Zustand wünschen: nach einer Schemaänderung während der Entwicklung oder wenn Docker abgestürzt ist und beschädigte Volumes hinterlassen hat. **Alle Daten gehen verloren.**
 
 `--observability` — Fügt vollständige Tracing- und Metrics-Instrumentierung hinzu. Lädt den OpenTelemetry-Java-Agent herunter und patcht Trinos `jvm.config`, um ihn zu laden, instrumentiert das Provisa-Backend mit OTLP-Export und startet den OTel-Collector, Prometheus, Tempo und Grafana (`http://localhost:3100`). Der `jvm.config`-Patch wird bei Strg+C automatisch rückgängig gemacht.
 
@@ -164,7 +164,7 @@ Das Basis-Installationsprogramm ist eine **native Installation**: die DuckDB-Fed
 
 1. Laden Sie `Provisa-<version>-macOS.dmg` von der [GitHub-Releases-Seite](https://github.com/provisa/provisa/releases) herunter
 2. Öffnen Sie das DMG und ziehen Sie **Provisa.app** nach `/Applications`
-3. Doppelklicken Sie auf **Provisa.app** — die Erstlaunch-Einrichtung läuft einmalig; der Assistent bietet die oben genannten Wahlmöglichkeiten für Engine, Observability und Demo an
+3. Doppelklicken Sie auf **Provisa.app**. Die Erstlaunch-Einrichtung läuft einmalig, und der Assistent bietet die oben genannten Wahlmöglichkeiten für Engine, Observability und Demo an
 4. Öffnen Sie das Terminal:
 
    ```bash
@@ -188,8 +188,8 @@ Wie bei macOS ist der Basis-Windows-Installer eine **native Stufe**: eine eigens
 ### Schritte {: #steps_1 }
 
 1. Laden Sie `Provisa-<version>-windows-x64.exe` von der [GitHub-Releases-Seite](https://github.com/provisa/provisa/releases) herunter
-2. Führen Sie den Installer aus — keine Administratorrechte erforderlich; installiert nach `%LOCALAPPDATA%\Programs\Provisa\`
-3. Öffnen Sie **Provisa First Launch** über das Startmenü — die native Einrichtung läuft einmalig und gibt die Anleitung für die nächsten Schritte zu den geschichteten Add-ons aus
+2. Führen Sie den Installer aus. Er braucht keine Administratorrechte und installiert nach `%LOCALAPPDATA%\Programs\Provisa\`
+3. Öffnen Sie **Provisa First Launch** über das Startmenü. Die native Einrichtung läuft einmalig und gibt die Anleitung für die nächsten Schritte zu den geschichteten Add-ons aus
 4. Öffnen Sie ein neues Terminal:
 
    ```text
@@ -209,7 +209,7 @@ Alle Daten werden in `%USERPROFILE%\.provisa\` gespeichert.
 
 `Provisa.AppImage` ist eine einzelne eigenständige ausführbare Datei, die Folgendes bündelt:
 
-- Einen rootlosen Docker-Daemon (`dockerd-rootless.sh` + `rootlesskit`) — kein System-Docker oder Root erforderlich
+- Einen rootlosen Docker-Daemon (`dockerd-rootless.sh` + `rootlesskit`), sodass weder System-Docker noch Root nötig sind
 - Alle Container-Image-Tarballs (PostgreSQL, PgBouncer, MinIO, Redis, Föderations-Engine, Provisa-API)
 - Den Provisa-CLI-Wrapper und das Erstlaunch-Einrichtungsskript
 
@@ -280,7 +280,7 @@ Führen Sie diese Schritte zuerst auf dem primären Node aus. Sekundäre Nodes m
    - **Rolle** → wählen Sie `primary`
    - **RAM-Budget**, **Hostname**, **API-Port** → antworten Sie wie bei Single Node
 5. Notieren Sie sich nach Abschluss der Einrichtung die **private IP** dieser Maschine. Sekundäre Nodes benötigen sie sowie die Store-Anmeldedaten, die der primäre Node generiert hat: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`). Kopieren Sie diese Datei über einen sicheren Kanal auf jeden sekundären Node
-6. Der Assistent gibt einen nginx-Upstream-Block aus — speichern Sie ihn für Ihre Load-Balancer-Konfiguration
+6. Der Assistent gibt einen nginx-Upstream-Block aus; speichern Sie ihn für Ihre Load-Balancer-Konfiguration
 7. Überprüfen:
 
    ```bash
@@ -313,7 +313,7 @@ Wiederholen Sie diese Schritte auf jedem zusätzlichen Node, nachdem der primär
    - **Rolle** → wählen Sie `secondary`
    - **Primary-IP** → geben Sie die IP des primären Nodes ein (die Konnektivität wird live überprüft)
    - **RAM-Budget**, **Hostname**, **API-Port** → antworten Sie wie oben
-5. Die Einrichtung lädt einen reduzierten Image-Satz (ohne PostgreSQL, PgBouncer, MinIO, Redis — diese laufen nur auf dem primären Node), startet die Provisa-API und einen Föderations-Engine-Worker
+5. Die Einrichtung lädt einen reduzierten Image-Satz (ohne PostgreSQL, PgBouncer, MinIO und Redis, die nur auf dem primären Node laufen), startet die Provisa-API und einen Föderations-Engine-Worker
 6. Überprüfen:
 
    ```bash
@@ -347,7 +347,7 @@ Der gesamte Anwendungszustand fließt über das PostgreSQL des primären Nodes. 
 
 ### Nicht-interaktiver (automatisierter) Erstlaunch {: #non-interactive-automated-first-launch }
 
-Für Terraform, Cloud-Init oder Ansible — übergeben Sie Flags anstatt Eingabeaufforderungen zu beantworten:
+Für Terraform, Cloud-Init oder Ansible übergeben Sie Flags, anstatt Eingabeaufforderungen zu beantworten:
 
 ```bash
 # Primary
@@ -587,7 +587,7 @@ Hinweis: Das Provisa-AppImage läuft nicht in einem Kubernetes-Pod. Es braucht F
    curl http://localhost:8000/health
    ```
 
-8. (Optional) Aktivieren Sie Ingress für externen Zugriff — setzen Sie `ingress.enabled: true` und konfigurieren Sie Ihren Ingress-Controller
+8. (Optional) Aktivieren Sie Ingress für externen Zugriff: Setzen Sie `ingress.enabled: true` und konfigurieren Sie Ihren Ingress-Controller
 
 ### Checkliste der Voraussetzungen {: #prerequisites-checklist_1 }
 
@@ -674,9 +674,9 @@ Führen Sie `remove_orphan_files` nicht auf einer Tabelle aus, die wiederhergest
 
 ## Abhängigkeiten der Föderations-Engine {: #federation-engine-dependencies }
 
-Die Warehouse-Föderations-Engines erfordern Python-Pakete und Komponenten auf Systemebene, die über die Standardinstallation von Provisa hinausgehen. Alle hier aufgeführten Python-Pakete sind in `pyproject.toml` deklariert und werden im Rahmen der Standardinstallation von `pip install provisa` oder `pip install -e .` installiert.
+Die Warehouse-Föderations-Engines brauchen Python-Pakete und Komponenten auf Systemebene. Die Python-Pakete sind in `pyproject.toml` deklariert und kommen mit dem normalen `pip install provisa` oder `pip install -e .`, also braucht keine Warehouse-Engine ein optionales Extra.
 
-Die Python-Pakete kommen mit der Standardinstallation von Provisa, keine Warehouse-Engine braucht also ein optionales Extra. Die Dinge auf Systemebene (der ODBC-Treiber, Cloud-CLIs, Dienstkonto-Schlüssel) müssen Sie getrennt installieren.
+Die Dinge auf Systemebene (der ODBC-Treiber, Cloud-CLIs, Dienstkonto-Schlüssel) müssen Sie getrennt installieren.
 
 ### Python-Pakete (bereits in den Core-Abhängigkeiten) {: #python-packages-already-in-core-dependencies }
 

@@ -242,8 +242,8 @@ provisa start && provisa open
 ### Windows
 
 1. Descargue [Provisa-windows-x64.exe](https://provisa.dev/dl/windows) (siempre la última versión)
-2. Ejecute el instalador. No requiere derechos de administrador
-3. Abra **Provisa First Launch** desde el Menú Inicio. Completa una configuración única (~5 min, sin necesidad de internet)
+2. Ejecute el instalador. No necesita derechos de administrador.
+3. Abra **Provisa First Launch** desde el Menú Inicio. Completa una configuración única (~5 min, sin necesidad de internet).
 4. Abra una nueva terminal:
 
 ```bash
@@ -320,7 +320,7 @@ TLS se habilita configurando `PROVISA_PGWIRE_CERT` y `PROVISA_PGWIRE_KEY`. El pu
 
 Provisa también habla el protocolo **Bolt** de Neo4j, así que las herramientas nativas de grafos se conectan directamente y ejecutan Cypher contra el grafo federado. No se exporta nada, y no necesita una base de datos de grafos aparte. Apunte **Neo4j Browser** o **Bloom** a Provisa y recorra relaciones entre fuentes con la misma gobernanza (acceso a dominios, RLS, enmascaramiento).
 
-Neo4j Browser ejecutando Cypher contra Provisa. Las etiquetas de nodo, los tipos de relación y las claves de propiedad provienen directamente del esquema registrado:
+Aquí Neo4j Browser ejecuta Cypher contra Provisa. Las etiquetas de nodo, los tipos de relación y las claves de propiedad provienen directamente del esquema registrado:
 
 ![Provisa en Neo4j Browser sobre Bolt](docs/images/bolt-neo4j-browser.png)
 

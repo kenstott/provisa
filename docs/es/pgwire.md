@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 El SELECT interior pasa por el pipeline gobernado normal de Provisa, con la misma aplicación de RLS, el mismo enmascaramiento y las mismas comprobaciones de acceso por dominio que cualquier SELECT independiente. Declarar un cursor no esquiva la gobernanza.
 
 La palabra clave `SCROLL` controla tanto la navegación permitida como la memoria que usa el cursor:
@@ -102,6 +103,7 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
+
 `FETCH` devuelve filas y envía la etiqueta de comando `FETCH <n>`, donde `n` es el número real devuelto, que puede ser menor que el pedido cuando el cursor llega al final. `MOVE` avanza la posición sin devolver filas y envía `MOVE <n>`.
 
 `FROM` e `IN` son intercambiables como introducción del nombre del cursor. Los nombres de cursor sin comillas se pasan a minúsculas; los nombres entre comillas (`"CaseSensitive"`) conservan las mayúsculas.
@@ -114,6 +116,7 @@ La navegación hacia atrás (`BACKWARD`, `ABSOLUTE`, `FIRST`, `LAST`, `RELATIVE`
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` libera el flujo de resultados subyacente y quita el cursor de la sesión. Desconectarse sin emitir `CLOSE` es seguro: `ProvisaSession.close()` libera automáticamente todos los cursores aún abiertos al desconectar.
 
 **Vida de un cursor.** El servidor pgwire de Provisa no tiene máquina de estados de transacción (`ProvisaSession.in_transaction()` devuelve siempre `False`). Por eso todo cursor se comporta como si se hubiera declarado `WITH HOLD`: vive lo que dura la conexión, y `COMMIT` no lo termina. Las palabras clave `WITH HOLD` y `WITHOUT HOLD` se aceptan y se ignoran, ya que no hay ciclo de vida de cursor por transacción que aplicar.
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **Crear** con `CREATE TEMP TABLE name (column type, ...)` o `CREATE TEMP TABLE name AS SELECT ...`. El nombre no lleva esquema. Un `SELECT` a partir del que se crea es una lectura como cualquier otra: las reglas de filas, las máscaras, los datos falsos y el límite de filas del rol se aplican a las filas que toma.
 - **Tipos de columna**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` y `DECIMAL(precision, scale)`. Un decimal conserva su precisión y escala. Cualquier otro tipo se rechaza, nombrando la columna y el tipo: un valor nunca se guarda como un tipo distinto del suyo. Una columna creada a partir de un `SELECT` toma el tipo de sus valores; una sin valor con el que deducir un tipo se rechaza, así que aplique `CAST` en el `SELECT`.
 - **Límite de filas.** Las filas que toma un `CREATE ... AS SELECT` o un `INSERT ... SELECT` se leen como el rol lee cualquier cosa, así que se aplica el límite de filas del rol. Una tabla temporal llenada desde una lectura que el límite recortó lleva la misma advertencia de sentencia que cualquier lectura recortada (`statement.rows_cut`), con el límite.
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 Formatos admitidos: `text` (delimitado por tabulaciones, predeterminado), `csv` y `binary`, el formato COPY binario de PostgreSQL, con el que lee la extensión postgres de DuckDB.
 
 **COPY FROM STDIN** es una escritura de datos en una tabla registrada existente: la admite la misma admisión de escritura que un `INSERT` de las mismas filas, con la condición añadida de que el permiso `insert` no tenga presets (véase [Escrituras de datos](#data-writes-insert-update-delete-merge-copy-from-stdin)). Lee `text` (por defecto) y `csv`. Cualquier otro formato se rechaza con SQLSTATE 0A000, nombrándolo, antes de enviar ningún dato.

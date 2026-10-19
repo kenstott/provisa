@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 Внутренний SELECT проходит обычный управляемый конвейер Provisa, с тем же применением RLS, тем же маскированием и теми же проверками доступа к доменам, что и любой самостоятельный SELECT. Объявление курсора не обходит управление.
 
 Ключевое слово `SCROLL` управляет и допустимой навигацией, и объёмом памяти курсора:
@@ -102,6 +103,7 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
+
 `FETCH` возвращает строки и отправляет тег команды `FETCH <n>`, где `n` — фактически возвращённое число, которое может быть меньше запрошенного, когда курсор доходит до конца. `MOVE` сдвигает позицию, не возвращая строк, и отправляет `MOVE <n>`.
 
 `FROM` и `IN` взаимозаменяемы перед именем курсора. Имена курсоров без кавычек приводятся к нижнему регистру; имена в кавычках (`"CaseSensitive"`) сохраняют регистр.
@@ -114,6 +116,7 @@ MOVE 100 FROM c1             -- advance position without returning rows
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` освобождает нижележащий поток результатов и удаляет курсор из сеанса. Отключение без `CLOSE` безопасно: `ProvisaSession.close()` автоматически освобождает все ещё открытые курсоры при отключении.
 
 **Время жизни курсора.** У pgwire-сервера Provisa нет конечного автомата транзакций (`ProvisaSession.in_transaction()` всегда возвращает `False`). Поэтому любой курсор ведёт себя так, будто объявлен `WITH HOLD`: он живёт столько же, сколько подключение, и `COMMIT` его не завершает. Ключевые слова `WITH HOLD` и `WITHOUT HOLD` принимаются и игнорируются, поскольку жизненного цикла курсора на уровне транзакции нет.
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **Создание** — `CREATE TEMP TABLE name (column type, ...)` или `CREATE TEMP TABLE name AS SELECT ...`. Имя не принимает схему. `SELECT`, из которого она создаётся, — это такое же чтение, как любое другое: правила строк, маски, поддельные данные и лимит строк роли применяются к строкам, которые он берёт.
 - **Типы колонок**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` и `DECIMAL(precision, scale)`. Десятичное число сохраняет точность и масштаб. Любой другой тип отклоняется с указанием колонки и типа: значение никогда не хранится как тип, отличный от собственного. Колонка, созданная из `SELECT`, принимает тип своих значений; колонка без значения, по которому можно определить тип, отклоняется, поэтому примените `CAST` в `SELECT`.
 - **Лимит строк.** Строки, которые берёт `CREATE ... AS SELECT` или `INSERT ... SELECT`, читаются так, как роль читает что угодно, поэтому действует лимит строк роли. Временная таблица, заполненная из чтения, урезанного лимитом, несёт то же предупреждение инструкции, что и любое урезанное чтение (`statement.rows_cut`), с указанием лимита.
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 Поддерживаемые форматы: `text` (с разделителями-табуляциями, по умолчанию), `csv` и `binary` — двоичный формат COPY PostgreSQL, которым читает расширение postgres в DuckDB.
 
 **COPY FROM STDIN** — это запись данных в существующую зарегистрированную таблицу: она допускается тем же допущением записи, что и `INSERT` тех же строк, с дополнительным условием, что у разрешения `insert` нет пресетов (см. [Запись данных](#data-writes-insert-update-delete-merge-copy-from-stdin)). Он читает `text` (по умолчанию) и `csv`. Любой другой формат отклоняется с SQLSTATE 0A000 с указанием его имени до отправки каких-либо данных.

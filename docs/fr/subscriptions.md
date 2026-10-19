@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## Quand un flux se termine sur un échec {: #when-a-stream-ends-on-a-failure }
 
 Un flux qui s'est ouvert a déjà répondu `200`, donc un échec après ce point ne peut pas être un statut HTTP. L'abonné reçoit une dernière trame qui dit pourquoi, puis le flux se ferme. Un flux ne se ferme jamais sur un échec sans cette trame.
@@ -176,6 +177,7 @@ L'abonnement de table (`/data/subscribe/{table}`) envoie le corps comme les donn
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 L'événement ne s'appelle pas `error`, car un `EventSource` déclenche son propre événement `error` lorsqu'une connexion tombe et un écouteur ne pourrait pas distinguer les deux. Écoutez-le par son nom :
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 Un abonnement GraphQL garde la forme de réponse GraphQL, avec le code et les params sous `extensions` :
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 Un cas ne termine pas un abonnement GraphQL : quand la relecture après un seul changement échoue, cette trame est envoyée sous la même forme et le flux passe au changement suivant. Un échec de la lecture initiale, du flux de changements lui-même ou de son démarrage est la dernière trame.
 
 ## Redirection vers un sink Kafka {: #kafka-sink-redirect }

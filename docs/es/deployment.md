@@ -674,9 +674,9 @@ No ejecute `remove_orphan_files` sobre una tabla que se está recuperando. Borra
 
 ## Dependencias del motor de federación {: #federation-engine-dependencies }
 
-Los motores de federación de almacenes de datos requieren paquetes de Python y componentes a nivel de sistema más allá de la instalación por defecto de Provisa. Todos los paquetes de Python listados aquí están declarados en `pyproject.toml` y se instalan como parte de `pip install provisa` o `pip install -e .` estándar.
+Los motores de federación de almacén necesitan paquetes de Python y componentes del sistema. Los paquetes de Python están declarados en `pyproject.toml` y llegan con el `pip install provisa` o `pip install -e .` estándar, así que ningún motor de almacén necesita un extra opcional.
 
-Los paquetes de Python vienen con la instalación predeterminada de Provisa, así que ningún motor de almacén de datos necesita extras opcionales. Los elementos del sistema (el driver ODBC, las CLI de la nube, las claves de cuentas de servicio) hay que instalarlos aparte.
+Los elementos del sistema (el driver ODBC, las CLI de nube, las claves de cuentas de servicio) se instalan por separado.
 
 ### Paquetes de Python (ya en las dependencias core) {: #python-packages-already-in-core-dependencies }
 

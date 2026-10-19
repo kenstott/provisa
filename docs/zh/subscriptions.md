@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## 流失败时 {: #when-a-stream-ends-on-a-failure }
 
 已经打开的流已经应答了 `200`，因此之后的失败不能再是 HTTP 状态。订阅者会收到说明原因的最后一帧，然后流关闭。流绝不会在没有这一帧的情况下因失败而关闭。
@@ -176,6 +177,7 @@ sources:
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 该事件不叫 `error`，因为 `EventSource` 在连接中断时会自行产生一个 `error` 事件，监听器将无法区分两者。请按名称监听它：
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 GraphQL 订阅保持 GraphQL 应答的形式，代码和 params 位于 `extensions` 中：
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 有一种情况不会结束 GraphQL 订阅：当某次变更之后的重新读取失败时，会以同样的形式发送该帧，然后流继续处理下一次变更。初始读取、变更流本身或其启动的失败是最后一帧。
 
 ## Kafka 接收器重定向 {: #kafka-sink-redirect }

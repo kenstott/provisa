@@ -61,7 +61,7 @@ UI:      http://localhost:3000
 
 **Opzioni:**
 
-`--reset-volumes` — Esegue `docker compose down -v` prima di avviare, distruggendo tutti i volumi Docker (dati PostgreSQL, oggetti MinIO, stato Redis, ecc.). Usalo quando vuoi uno stato completamente pulito — dopo una modifica dello schema durante lo sviluppo, o quando Docker è andato in crash e ha lasciato volumi corrotti. **Tutti i dati andranno persi.**
+`--reset-volumes` — Esegue `docker compose down -v` prima di avviare, distruggendo tutti i volumi Docker (dati PostgreSQL, oggetti MinIO, stato Redis, ecc.). Usalo quando vuoi uno stato completamente pulito: dopo una modifica dello schema durante lo sviluppo, o quando Docker è andato in crash e ha lasciato volumi corrotti. **Tutti i dati andranno persi.**
 
 `--observability` — Aggiunge strumentazione completa di tracing e metriche. Scarica l'OpenTelemetry Java agent e applica una patch a `jvm.config` di Trino per caricarlo, strumenta il backend Provisa con export OTLP, e avvia l'OTel collector, Prometheus, Tempo, e Grafana (`http://localhost:3100`). La patch a `jvm.config` viene automaticamente ripristinata su Ctrl+C.
 
@@ -164,7 +164,7 @@ Il programma di installazione di base è un'**installazione nativa**: il motore 
 
 1. Scarica `Provisa-<version>-macOS.dmg` dalla [pagina GitHub releases](https://github.com/provisa/provisa/releases)
 2. Apri il DMG e trascina **Provisa.app** su `/Applications`
-3. Fai doppio clic su **Provisa.app** — la configurazione al primo avvio viene eseguita una volta; il wizard offre le scelte di motore, osservabilità, e demo di cui sopra
+3. Fai doppio clic su **Provisa.app**. La configurazione al primo avvio viene eseguita una volta, e il wizard offre le scelte di motore, osservabilità, e demo di cui sopra
 4. Apri Terminal:
 
    ```bash
@@ -188,8 +188,8 @@ Come macOS, l'installer Windows base è un **tier nativo**: un runtime Python st
 ### Passi {: #steps_1 }
 
 1. Scarica `Provisa-<version>-windows-x64.exe` dalla [pagina GitHub releases](https://github.com/provisa/provisa/releases)
-2. Esegui l'installer — nessun diritto admin richiesto; installa in `%LOCALAPPDATA%\Programs\Provisa\`
-3. Apri **Provisa First Launch** dal menu Start — la configurazione nativa viene eseguita una volta e stampa la guida ai passi successivi per gli add-on a strati
+2. Esegui l'installer. Non richiede diritti admin e installa in `%LOCALAPPDATA%\Programs\Provisa\`
+3. Apri **Provisa First Launch** dal menu Start. La configurazione nativa viene eseguita una volta e stampa la guida ai passi successivi per gli add-on a strati
 4. Apri un nuovo terminale:
 
    ```text
@@ -209,7 +209,7 @@ Tutti i dati sono memorizzati in `%USERPROFILE%\.provisa\`.
 
 `Provisa.AppImage` è un unico eseguibile self-contained che impacchetta:
 
-- Un daemon Docker rootless (`dockerd-rootless.sh` + `rootlesskit`) — nessun Docker di sistema o root richiesto
+- Un daemon Docker rootless (`dockerd-rootless.sh` + `rootlesskit`), quindi non servono Docker di sistema né root
 - Tutte le tarball delle immagini container (PostgreSQL, PgBouncer, MinIO, Redis, Motore di federazione, API Provisa)
 - Il wrapper CLI Provisa e lo script di configurazione al primo avvio
 
@@ -280,7 +280,7 @@ Esegui questi passi prima sul nodo primary. I secondary devono essere configurat
    - **Ruolo** → seleziona `primary`
    - **Budget RAM**, **hostname**, **porta API** → rispondi come per il nodo singolo
 5. Dopo il completamento della configurazione, annota il **IP privato** di questa macchina. I secondary ne hanno bisogno, insieme alle credenziali degli store generate dal primary: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`). Copia quel file su ogni secondary tramite un canale sicuro
-6. Il wizard stampa un blocco upstream nginx — salvalo per la configurazione del tuo load balancer
+6. Il wizard stampa un blocco upstream nginx; salvalo per la configurazione del tuo load balancer
 7. Verifica:
 
    ```bash
@@ -313,7 +313,7 @@ Ripeti questi passi su ogni nodo aggiuntivo dopo che il primary è in esecuzione
    - **Ruolo** → seleziona `secondary`
    - **IP primary** → inserisci l'IP del nodo primary (la connettività viene verificata live)
    - **Budget RAM**, **hostname**, **porta API** → rispondi come sopra
-5. La configurazione carica un set ridotto di immagini (nessun PostgreSQL, PgBouncer, MinIO, Redis — quelli girano solo sul primary), avvia l'API Provisa e un worker del motore di federazione
+5. La configurazione carica un set ridotto di immagini (senza PostgreSQL, PgBouncer, MinIO e Redis, che girano solo sul primary), avvia l'API Provisa e un worker del motore di federazione
 6. Verifica:
 
    ```bash
@@ -347,7 +347,7 @@ Tutto lo stato applicativo passa attraverso il PostgreSQL del primary. Nessuna s
 
 ### Primo avvio non interattivo (automatizzato) {: #non-interactive-automated-first-launch }
 
-Per Terraform, cloud-init, o Ansible — passa flag invece di rispondere ai prompt:
+Per Terraform, cloud-init, o Ansible, passa flag invece di rispondere ai prompt:
 
 ```bash
 # Primary
@@ -587,7 +587,7 @@ Nota: l'AppImage di Provisa non può girare dentro un pod Kubernetes. Richiede F
    curl http://localhost:8000/health
    ```
 
-8. (Opzionale) Abilita ingress per accesso esterno — imposta `ingress.enabled: true` e configura il tuo ingress controller
+8. (Opzionale) Abilita ingress per accesso esterno: imposta `ingress.enabled: true` e configura il tuo ingress controller
 
 ### Checklist prerequisiti {: #prerequisites-checklist_1 }
 
@@ -674,9 +674,9 @@ Non eseguire `remove_orphan_files` su una tabella in fase di recupero. Elimina i
 
 ## Dipendenze del motore di federazione {: #federation-engine-dependencies }
 
-I motori di federazione warehouse richiedono pacchetti Python e componenti a livello di sistema oltre all'installazione di default di Provisa. Tutti i pacchetti Python elencati qui sono dichiarati in `pyproject.toml` e installati come parte della `pip install provisa` o `pip install -e .` standard.
+I motori di federazione dei warehouse hanno bisogno di pacchetti Python e di componenti di sistema. I pacchetti Python sono dichiarati in `pyproject.toml` e arrivano con il normale `pip install provisa` o `pip install -e .`, quindi nessun motore di warehouse richiede un extra opzionale.
 
-I pacchetti Python arrivano con l'installazione predefinita di Provisa, quindi nessun motore di warehouse richiede extra facoltativi. Gli elementi di sistema (il driver ODBC, le CLI cloud, le chiavi degli account di servizio) vanno installati a parte.
+Gli elementi di sistema (il driver ODBC, le CLI cloud, le chiavi dei service account) vanno installati a parte.
 
 ### Pacchetti Python (già nelle dipendenze core) {: #python-packages-already-in-core-dependencies }
 

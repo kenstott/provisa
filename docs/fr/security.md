@@ -686,7 +686,7 @@ Un point d'ancrage de politique externe facultatif qui se déclenche avant l'ex�
 
 ### Portée {: #scoping }
 
-Le point d'ancrage ne se déclenche que lorsque la requête touche une table ou une source incluse. Aucun surcoût pour tout le reste.
+Le point d'ancrage ne se déclenche que lorsqu'une requête touche une table ou une source incluse ; toute autre requête s'exécute donc sans surcoût.
 
 | Configuration | Effet |
 | -------- | -------- |

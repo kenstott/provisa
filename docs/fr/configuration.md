@@ -928,6 +928,7 @@ views:
       - {name: tier, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
+
 | Champ | Obligatoire | Description |
 | ------- | ---------- | ------------- |
 | `bitemporal_mode` | Oui | `snapshot` ajoute le résultat complet à chaque rafraîchissement ; `delta` n'ajoute que ce qui a changé |
@@ -944,6 +945,7 @@ Une version est en vigueur de son instant jusqu'à celui de la version suivante.
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
+
 Un instant renvoie la version de chaque clé en vigueur à ce moment. Une plage renvoie chaque version en vigueur à un moment quelconque de cette plage, une ligne par version.
 
 **Tel qu'enregistré.** Une correction enregistrée plus tard change ce qu'une vue dit du passé : la version en vigueur le 30 septembre est la version corrigée une fois la correction enregistrée. Pour lire la vue telle que Provisa l'avait enregistrée à un instant, avant toute correction ultérieure, ajoutez `X-Provisa-As-Recorded`, un instant ISO 8601 :

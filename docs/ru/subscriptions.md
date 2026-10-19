@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## Когда поток завершается ошибкой {: #when-a-stream-ends-on-a-failure }
 
 Открывшийся поток уже ответил `200`, поэтому ошибка после этого не может быть статусом HTTP. Подписчик получает последний кадр, в котором сказано почему, и затем поток закрывается. Поток никогда не закрывается из-за ошибки без этого кадра.
@@ -176,6 +177,7 @@ sources:
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 Событие не называется `error`, потому что `EventSource` сам порождает событие `error` при обрыве соединения, и слушатель не смог бы их различить. Слушайте его по имени:
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 Подписка GraphQL сохраняет форму ответа GraphQL, с кодом и params в `extensions`:
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 Один случай не завершает подписку GraphQL: когда повторное чтение после одного изменения не удаётся, этот кадр отправляется в той же форме, и поток переходит к следующему изменению. Ошибка начального чтения, самого потока изменений или его запуска — последний кадр.
 
 ## Перенаправление приёмника Kafka {: #kafka-sink-redirect }

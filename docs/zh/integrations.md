@@ -65,7 +65,7 @@ engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa
 - 仅支持 SQL。通过 pgwire 不接受 GraphQL 及 Cypher。
 - 并非只读。已注册表的行通过 `INSERT`、`UPDATE`、`DELETE`、`MERGE`、`TRUNCATE` 和 `COPY ... FROM STDIN` 写入，每一种都由角色的 `write` 权利、其列授权和其行过滤放行；参见[数据写入](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin)。
 - 不支持定义：`CREATE`、`ALTER` 和 `DROP` 会以 SQLSTATE 0A000 被拒绝，会话自己的临时表除外；参见[定义](pgwire.md#definitions-create-alter-drop)。`COPY ... TO STDOUT` 以 `text`、`csv` 和 `binary` 导出；`COPY ... FROM STDIN` 读取 `text` 和 `csv`。
-- 针对 `information_schema` 及 `pg_catalog` 的查询会被拦截，并由 DuckDB 目录垫片响应 —— 架构发现工具可正常工作。
+- 针对 `information_schema` 及 `pg_catalog` 的查询会被拦截，并由 DuckDB 目录垫片响应，因此架构发现工具可正常工作。
 
 ---
 
@@ -98,7 +98,7 @@ jdbc:provisa://<host>:8815
 3. URL：`jdbc:provisa://localhost:8815`
 4. 在系统提示时输入用户名及密码
 
-**DBeaver**（JDBC 方式 —— pgwire 方式见上文）
+**DBeaver**（JDBC 方式；pgwire 方式见上文）
 
 1. 数据库 → 新建连接 → JDBC
 2. 驱动：添加 `provisa-jdbc.jar`
@@ -115,7 +115,7 @@ Arrow Flight（端口 8815）是支持此功能的数据工具推荐使用的方
 
 ### Python（`provisa-client`） {: #python-provisa-client }
 
-推荐使用的 Python 方式 —— 同时封装 GraphQL 及 Arrow Flight：
+推荐使用的 Python 方式同时封装 GraphQL 及 Arrow Flight：
 
 ```bash
 pip install provisa-client
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight 在 JSON 负载中以 `token` 字段承载凭据——可以是提供程序 bearer 令牌或个人访问令牌。握手与每个票据都接受它，且两者的校验方式相同，因此在握手时已完成认证的客户端在每次 `do_get` 时仍需出示该令牌。与之并列的 `role` 字段是*请求*一个角色；服务器会推导该身份获准的角色集合并替换为已授权的取值，因此票据中的角色字符串绝不是身份本身。 参见[安全模型](security.md#surfaces-and-credentials)。
+Flight 在 JSON 负载中以 `token` 字段承载凭据，其中可以是提供程序 bearer 令牌或个人访问令牌。握手与每个票据都接受它，且两者的校验方式相同，因此在握手时已完成认证的客户端在每次 `do_get` 时仍需出示该令牌。与之并列的 `role` 字段是*请求*一个角色；服务器会推导该身份获准的角色集合并替换为已授权的取值，因此票据中的角色字符串绝不是身份本身。 参见[安全模型](security.md#surfaces-and-credentials)。
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -208,7 +208,7 @@ spark = SparkSession.builder \
 
 ## Protobuf gRPC（端口 50051） {: #protobuf-grpc-port-50051 }
 
-服务到服务方式。Provisa 按角色生成 `.proto`，并在模型或角色变化时重新生成 —— 每个角色只能看到其有权访问的表和列。服务为角色架构根部的每张表提供一个 RPC；关联表与 GraphQL 中一样，通过其关系访问。
+服务到服务方式。Provisa 按角色生成 `.proto`，并在模型或角色变化时重新生成，每个角色只能看到其有权访问的表和列。服务为角色架构根部的每张表提供一个 RPC；关联表与 GraphQL 中一样，通过其关系访问。
 
 下载你角色的 proto：
 
@@ -222,7 +222,7 @@ curl http://localhost:8001/data/proto/analyst > provisa_analyst.proto
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-每次 RPC 都必须在 `authorization` 元数据键中携带凭据——提供程序令牌或个人访问令牌。`x-provisa-role` 是从该身份获准的集合中请求一个角色；它不是凭据，而且从来都不是。支持客户端证书。参见[安全模型](security.md#surfaces-and-credentials)。
+每次 RPC 都必须在 `authorization` 元数据键中携带凭据，可以是提供程序令牌或个人访问令牌。`x-provisa-role` 是从该身份获准的集合中请求一个角色；它不是凭据，而且从来都不是。支持客户端证书。参见[安全模型](security.md#surfaces-and-credentials)。
 
 流式查询会逐行发出消息；变更操作（mutation）则为一元操作。
 
@@ -230,7 +230,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 
 ## 跨协议调用命令 {: #invoking-commands-across-protocols }
 
-**命令**是在 Provisa 模型注册的已跟踪函数或 webhook —— 一个可调用元素，具有 `kind`（`query` 或 `mutation`）及描述其运行方式的 `impl_kind`。所有接口都通过单一受治理的执行器（`invoke_tracked_function`）路由调用，统一强制执行 命令的分配（`visible_to`）、变更所需的 `write` 权利 及治理。
+**命令**是在 Provisa 模型注册的已跟踪函数或 webhook，即一个可调用元素，具有 `kind`（`query` 或 `mutation`）及描述其运行方式的 `impl_kind`。所有接口都通过单一受治理的执行器（`invoke_tracked_function`）路由调用，统一强制执行 命令的分配（`visible_to`）、变更所需的 `write` 权利 及治理。
 
 | `impl_kind` | 执行内容 | 绑定字段 |
 | ------------ | ----------- | --------------- |
@@ -240,7 +240,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 | `grpc` | 对外部服务器的出站 gRPC 调用 | `target`、`method` |
 | `python` | 由 Provisa 托管的 Python 可调用对象 | `callable`（例如 `demo.py_functions:random_dataset`） |
 
-当命令声明 `return_schema`（`type: array, items: object` 的 JSON Schema）时，即为集合返回型 —— 每个接口都会将其投影为类型化的行集。演示命令 `random_python_set`（impl_kind 为 `python`）及 `random_grpc_set`（impl_kind 为 `grpc`）分别演示了一个托管的可调用对象及一个返回随机值行的外部 gRPC 桥接；两者均已在 `config/provisa-install.yaml` 中注册。
+当命令声明 `return_schema`（`type: array, items: object` 的 JSON Schema）时，即为集合返回型，每个接口都会将其投影为类型化的行集。演示命令 `random_python_set`（impl_kind 为 `python`）及 `random_grpc_set`（impl_kind 为 `grpc`）分别演示了一个托管的可调用对象及一个返回随机值行的外部 gRPC 桥接；两者均已在 `config/provisa-install.yaml` 中注册。
 
 ### 协议对照表 {: #protocol-matrix }
 
@@ -306,7 +306,7 @@ Provisa 会响应 `_entities` 查询，以进行跨子图连接。任何具有�
 
 ## 数据质量检查器 {: #data-quality-checkers }
 
-Soda Core 和 Great Expectations 连接 Provisa 的方式与任何其他 postgres 客户端相同——通过 pgwire。这就是全部的集成方式：检查器只持有一个 postgres 驱动，并扫描联邦视图，因此 Snowflake 表、Iceberg 表和 Mongo 集合都由同一种合约方言检查，无需针对每个系统单独编写检查器。
+Soda Core 和 Great Expectations 像任何其他 postgres 客户端一样，通过 pgwire 连接 Provisa。这就是全部的集成方式：检查器只持有一个 postgres 驱动，并扫描联邦视图，因此 Snowflake 表、Iceberg 表和 Mongo 集合都由同一种合约方言检查，无需针对每个系统单独编写检查器。
 
 扫描运行在一个子解释器中——`python -m provisa.dq.worker`——这是唯一导入 `soda_core` 或 `great_expectations` 的地方。两者都不会链接进服务器进程，检查器崩溃只会拖垮一个子进程，而不会拖垮事件循环。
 
@@ -327,9 +327,7 @@ Elastic License 2.0 禁止将该软件以托管服务的形式提供给第三方
 
 ## Apache Ossie 语义互操作 {: #apache-ossie-semantic-interchange }
 
-Provisa 通过一个边界适配器与 Apache Ossie（规范 0.2.0.dev0，孵化中；前身为 Open
-Semantic Interchange）交换语义模型。Provisa 的内部词汇从不改名为
-Ossie 的词汇——该规范声明可能发生破坏性变更，因此耦合被限制在适配器内。
+Provisa 通过一个边界适配器与 Apache Ossie（规范 0.2.0.dev0，孵化中；前身为 Open Semantic Interchange）交换语义模型。Provisa 的内部词汇从不改名为 Ossie 的词汇。该规范声明可能发生破坏性变更，因此耦合被限制在适配器内。
 
 草案规范曾在不改变版本字符串的情况下改变形态。适配器遵循
 `apache/ossie` 提交 `642cb894`（2026-10-10）时的规范：每个文档一个模型，
@@ -339,12 +337,12 @@ Ossie 的词汇——该规范声明可能发生破坏性变更，因此耦合�
 
 ### 导出 {: #export }
 
-规范的导出界面是一个实时 HTTP 端点。它在每次请求时从实时状态推导出 Ossie 文档
-——没有缓存，也没有生成步骤。
+规范的导出界面是一个实时 HTTP 端点。它在每次请求时从实时状态推导出 Ossie 文档，没有缓存，也没有生成步骤。
 
 ```http
 GET /admin/ossie
 ```
+
 响应是一个 YAML 文档，带有 `Content-Disposition: attachment; filename=provisa.ossie.yaml`。
 
 指标页面在 Ossie Interchange 面板上还提供一个**下载**按钮和可复制的端点 URL，
@@ -392,8 +390,7 @@ Ossie 的 `Decimal` 不携带精度和标度，因此 `numeric(10,2)` 导出为 
 
 ### 导入 {: #import }
 
-导入接受一个 Ossie 文档（YAML 或 JSON）并返回注册建议。不会自动注册任何
-内容——导入的定义从不绕过审查步骤。
+导入接受一个 Ossie 文档（YAML 或 JSON）并返回注册建议。不会自动注册任何内容，导入的定义也从不绕过审查步骤。
 
 ```http
 POST /admin/ossie/import
@@ -401,6 +398,7 @@ Content-Type: text/yaml   (or application/json)
 
 <ossie document>
 ```
+
 服务器用 `parse_ossie_model` 解析文档，它校验结构并返回一个
 `OssieImport` dataclass，其中建议的表、关系和指标以普通字典表示。
 任何结构问题都是一个 `400`，其错误按路径指明，例如
@@ -464,11 +462,7 @@ ThoughtSpot、Sigma、Omni、Hex、GoodData 等的转换器；每个都有自己
 
 #### 审查屏幕 {: #the-review-screen }
 
-在界面中，**导入**按钮（指标页面 → Ossie Interchange 面板）会打开文件选择器。
-文档提交并解析后，会打开一个审查对话框，其中每个建议的表、
-关系和指标都以已勾选的条目列出。建模者可以取消勾选任何内容以将其排除。
-**应用**会通过现有的注册变更注册已勾选的条目——先注册
-表，再注册关系（它们引用表），然后注册指标。
+在界面中，**导入**按钮（指标页面 → Ossie Interchange 面板）会打开文件选择器。文档提交并解析后，会打开一个审查对话框，其中每个建议的表、关系和指标都以已勾选的条目列出。建模者可以取消勾选任何内容以将其排除。 **应用**会通过现有的注册变更注册已勾选的条目：先注册表，再注册关系（它们引用表），然后注册指标。
 
 保存在 Provisa 导出的 Ossie 文档中的建模角色和历史，在导入时能正确往返。
 
@@ -480,6 +474,7 @@ ThoughtSpot、Sigma、Omni、Hex、GoodData 等的转换器；每个都有自己
 ```http
 GET /admin/dbt/sources?role=<role id>
 ```
+
 响应是 YAML，带有 `Content-Disposition: attachment; filename=provisa.sources.yml`。
 调用者需要 `org_settings`，且 `role` 必须是其持有的角色；持有
 `access_config` 者可以指定任何角色。指标页面上的互操作面板为当前使用的角色
@@ -536,7 +531,7 @@ GROUP BY region, month;
 编译器会在治理执行之前，将 `metrics.<name>` 形式展开为实际的分组聚合。列描述会以
 `pg_description` 条目呈现，因此 DBeaver 及 psql 的 `\d+` 均可显示。
 
-`SELECT *` 会被拒绝 —— 请明确指定列名。
+`SELECT *` 会被拒绝，因此请明确指定所需的列名。
 
 ### GraphQL
 

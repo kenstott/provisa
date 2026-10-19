@@ -50,7 +50,7 @@ Nada técnico limita a profundidade com que views se compõem. O controle de qua
 
 Toda view carrega um propósito de negócio declarado, estabelecido no momento da criação:
 
-- Parte do artefato governado — stewards aprovam sabendo para que a view serve
+- Parte do artefato governado, então os stewards aprovam sabendo para que a view serve
 - Referenciado por solicitações de acesso sob o Princípio 7 para que o steward possa avaliar a
   adequação
 - Acompanha a view desde a criação através de todo o fluxo de governança
@@ -142,10 +142,8 @@ Três estágios, em ordem.
 
 - O analista constrói a Query em qualquer linguagem suportada (SQL, GraphQL, Cypher), percorrendo
   caminhos de relacionamento aprovados
-- Somente relacionamentos de catálogo aprovados são percorríveis — o compilador aplica isso
-  estruturalmente
-- Nenhuma aprovação necessária — visibilidade de coluna e aprovação de relacionamento são os únicos
-  portões
+- Somente relacionamentos de catálogo aprovados são percorríveis, e o compilador aplica isso estruturalmente
+- Nenhuma aprovação necessária: visibilidade de coluna e aprovação de relacionamento são os únicos portões
 
 ### HITL como o Controle Primário {: #hitl-as-the-primary-control }
 
@@ -184,8 +182,7 @@ Restrições FK pertencem a uma única fonte, então não podem abranger fontes.
 Dentro de uma fonte:
 
 - Restrições FK são expostas automaticamente como relacionamentos candidatos no registro da fonte
-- Elas representam intenção explícita de modelagem — não aplicada na maioria dos sistemas SQL
-  analíticos mas declarada propositalmente
+- Elas representam intenção explícita de modelagem: não aplicada na maioria dos sistemas SQL analíticos mas declarada propositalmente
 - A validação do steward ainda é necessária antes que um candidato se torne um relacionamento
   aprovado
 
@@ -220,7 +217,7 @@ candidatas, e caminhos de travessia classificados por confiança.
 - Relacionamentos candidatos classificados por confiança
 - Tabelas não reivindicadas que podem satisfazer uma necessidade de dados, com um prompt para
   iniciar a reivindicação
-- Ausência de qualquer candidato — sinal para escalonar ao admin
+- A ausência de qualquer candidato é o sinal para escalonar ao admin
 
 **Design de view a partir de descrição de negócio:**
 
@@ -263,7 +260,7 @@ formalmente criada.
 Ele abre como modal na página de relacionamentos. O propósito é construir o modelo semântico: encontrar caminhos de join estruturais antes de formalizá-los como relacionamentos governados.
 
 1. O analista escreve SQL livre contra tabelas acessíveis (RLS e mascaramento ainda aplicados)
-2. A AST do SQL é analisada — cada condição JOIN se torna uma proposta de Relationship candidata
+2. A AST do SQL é analisada, e cada condição JOIN se torna uma proposta de Relationship candidata
 3. A lista de candidatos é mostrada ao lado de candidatos sugeridos por máquina (inferência de FK,
    inferência semântica) para revisão unificada
 4. O analista promove candidatos selecionados a solicitações de Relationship formais
@@ -281,7 +278,7 @@ Toda consulta que toca um ativo de domínio é registrada em um `query_audit_log
 Cada entrada captura:
 
 - `tenant_id`, `user_id`, `role_id` — o contexto de identidade
-- Um hash SHA-256 da consulta — o texto literal da consulta nunca é armazenado
+- Um hash SHA-256 da consulta; o texto literal da consulta nunca é armazenado
 - `table_ids` — os ativos de domínio que a consulta tocou
 - `source`, `status_code`, `duration_ms`
 - `logged_at` — o timestamp

@@ -686,7 +686,7 @@ Ein optionaler externer Richtlinien-Hook, der vor der Abfrageausführung auslös
 
 ### Geltungsbereich {: #scoping }
 
-Der Hook löst nur aus, wenn die Abfrage eine einbezogene Tabelle oder Quelle berührt. Kein Overhead für alles andere.
+Der Hook löst nur aus, wenn eine Abfrage eine einbezogene Tabelle oder Quelle berührt, also läuft jede andere Abfrage ohne zusätzlichen Aufwand.
 
 | Konfiguration | Wirkung |
 | -------- | -------- |

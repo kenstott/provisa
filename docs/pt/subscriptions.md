@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## Quando um fluxo termina com uma falha {: #when-a-stream-ends-on-a-failure }
 
 Um fluxo que abriu já respondeu `200`, então uma falha depois disso não pode ser um status HTTP. O assinante recebe um último quadro dizendo por quê, e então o fluxo fecha. Um fluxo nunca fecha por uma falha sem esse quadro.
@@ -176,6 +177,7 @@ A assinatura de tabela (`/data/subscribe/{table}`) envia o corpo como os dados d
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 O evento não se chama `error`, porque um `EventSource` dispara seu próprio evento `error` quando uma conexão cai e um ouvinte não conseguiria distinguir os dois. Escute-o pelo nome:
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 Uma assinatura GraphQL mantém a forma de resposta do GraphQL, com o código e os params em `extensions`:
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 Um caso não encerra uma assinatura GraphQL: quando a releitura após uma única mudança falha, esse quadro é enviado na mesma forma e o fluxo segue para a próxima mudança. Uma falha da leitura inicial, do próprio feed de mudanças ou do seu início é o último quadro.
 
 ## Redirecionamento de Sink Kafka {: #kafka-sink-redirect }

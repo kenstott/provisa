@@ -15,7 +15,7 @@ Provisa supports six deployment paths. Choose based on your audience and operati
 
 ### VM vs Kubernetes
 
-Both are enterprise-grade. The VM/AppImage path is simpler: no cluster to provision, no CNI or RBAC policies to configure, and the AppImage is entirely self-contained. It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).
+Both suit production. The VM/AppImage path is simpler: no cluster to provision, no CNI or RBAC policies to configure, and the AppImage is entirely self-contained. It fits naturally into existing server management tooling (Ansible, Puppet, Datadog agents, Splunk forwarders, etc.).
 
 Choose Kubernetes only if your team already runs a K8s cluster and wants Provisa to fit that way of operating (rolling deploys, HPA, unified observability). Both give you the same capabilities; Kubernetes adds operational overhead.
 
@@ -37,7 +37,7 @@ Every production path needs the Provisa artifacts before any deployment can run.
 
 ### Recommended: `start-ui.sh`
 
-The easiest way to run Provisa from source. Starts all infrastructure, the backend API, and the UI dev server in one command. Ctrl+C shuts everything down cleanly.
+This is the easiest way to run Provisa from source. One command starts all infrastructure, the backend API and the UI dev server, and Ctrl+C shuts everything down cleanly.
 
 **Prerequisites:** Docker Desktop, Node.js, Python virtualenv at `.venv/`
 
@@ -61,7 +61,7 @@ UI:      http://localhost:3000
 
 **Options:**
 
-`--reset-volumes` — Runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.). Use when you want a completely clean slate — after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
+`--reset-volumes` — Runs `docker compose down -v` before starting, destroying all Docker volumes (PostgreSQL data, MinIO objects, Redis state, etc.). Use when you want a completely clean slate: after a schema change during development, or when Docker has crashed and left volumes corrupt. **All data will be lost.**
 
 `--observability` — Adds full tracing and metrics instrumentation. Downloads the OpenTelemetry Java agent and patches Trino's `jvm.config` to load it, instruments the Provisa backend with OTLP export, and starts the OTel collector, Prometheus, Tempo, and Grafana (`http://localhost:3100`). The `jvm.config` patch is automatically reverted on Ctrl+C.
 
@@ -164,7 +164,7 @@ The base installer is a **native install**: the DuckDB federation engine, an emb
 
 1. Download `Provisa-<version>-macOS.dmg` from the [GitHub releases page](https://github.com/provisa/provisa/releases)
 2. Open the DMG and drag **Provisa.app** to `/Applications`
-3. Double-click **Provisa.app** — first-launch setup runs once; the wizard offers the engine, observability, and demo choices above
+3. Double-click **Provisa.app**. First-launch setup runs once, and the wizard offers the engine, observability, and demo choices above
 4. Open Terminal:
 
    ```bash
@@ -188,8 +188,8 @@ Like macOS, the base Windows installer is a **native tier**: a standalone Python
 ### Steps
 
 1. Download `Provisa-<version>-windows-x64.exe` from the [GitHub releases page](https://github.com/provisa/provisa/releases)
-2. Run the installer — no admin rights required; installs to `%LOCALAPPDATA%\Programs\Provisa\`
-3. Open **Provisa First Launch** from the Start Menu — native setup runs once and prints the next-steps guidance for the layered add-ons
+2. Run the installer. It needs no admin rights and installs to `%LOCALAPPDATA%\Programs\Provisa\`
+3. Open **Provisa First Launch** from the Start Menu. Native setup runs once and prints the next-steps guidance for the layered add-ons
 4. Open a new terminal:
 
    ```text
@@ -209,7 +209,7 @@ All data is stored in `%USERPROFILE%\.provisa\`.
 
 `Provisa.AppImage` is a single self-contained executable bundling:
 
-- A rootless Docker daemon (`dockerd-rootless.sh` + `rootlesskit`) — no system Docker or root required
+- A rootless Docker daemon (`dockerd-rootless.sh` + `rootlesskit`), so no system Docker or root is needed
 - All container image tarballs (PostgreSQL, PgBouncer, MinIO, Redis, Federation engine, Provisa API)
 - The Provisa CLI wrapper and first-launch setup script
 
@@ -280,7 +280,7 @@ Run these steps on the primary node first. Secondaries must be set up after the 
    - **Role** → select `primary`
    - **RAM budget**, **hostname**, **API port** → answer as for single node
 5. After setup completes, note the **private IP** of this machine. Secondaries need it, and the store credentials the primary generated: `~/.provisa/store-credentials.env` (`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`). Copy that file to each secondary over a secure channel
-6. The wizard prints an nginx upstream block — save it for your load balancer configuration
+6. The wizard prints an nginx upstream block; save it for your load balancer configuration
 7. Verify:
 
    ```bash
@@ -313,7 +313,7 @@ Repeat these steps on each additional node after the primary is running and reac
    - **Role** → select `secondary`
    - **Primary IP** → enter the primary node's IP (connectivity is verified live)
    - **RAM budget**, **hostname**, **API port** → answer as above
-5. Setup loads a reduced image set (no PostgreSQL, PgBouncer, MinIO, Redis — those run only on primary), starts the Provisa API and a federation engine worker
+5. Setup loads a reduced image set (no PostgreSQL, PgBouncer, MinIO or Redis, which run only on the primary) and starts the Provisa API and a federation engine worker
 6. Verify:
 
    ```bash
@@ -347,7 +347,7 @@ All application state flows through the primary's PostgreSQL. No manual sync req
 
 ### Non-interactive (automated) first-launch
 
-For Terraform, cloud-init, or Ansible — pass flags instead of answering prompts:
+For Terraform, cloud-init or Ansible, pass flags instead of answering prompts:
 
 ```bash
 # Primary
@@ -587,7 +587,7 @@ Note: the Provisa AppImage can't run inside a Kubernetes pod. It needs FUSE and 
    curl http://localhost:8000/health
    ```
 
-8. (Optional) Enable ingress for external access — set `ingress.enabled: true` and configure your ingress controller
+8. (Optional) Enable ingress for external access: set `ingress.enabled: true` and configure your ingress controller
 
 ### Prerequisites checklist
 
@@ -674,9 +674,9 @@ Do not run `remove_orphan_files` on a table that is being recovered. It deletes 
 
 ## Federation Engine Dependencies
 
-The warehouse federation engines require Python packages and system-level components beyond Provisa's default install. All Python packages listed here are declared in `pyproject.toml` and installed as part of the standard `pip install provisa` or `pip install -e .`.
+The warehouse federation engines need Python packages and system-level components. The Python packages are declared in `pyproject.toml` and come with the standard `pip install provisa` or `pip install -e .`, so no warehouse engine needs an optional extra.
 
-The Python packages come with Provisa's default install, so no warehouse engine needs an optional extra. The system-level items (the ODBC driver, cloud CLIs, service-account keys) have to be installed separately.
+The system-level items (the ODBC driver, cloud CLIs, service-account keys) have to be installed separately.
 
 ### Python packages (already in core dependencies)
 

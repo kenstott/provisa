@@ -198,6 +198,7 @@ provisa metadata export \
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### 每個子命令都接受的旗標 {: #flags-every-subcommand-takes }
 
 | 旗標 | 必填 | 說明 |
@@ -229,6 +230,7 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 顯示一個環境及其目前建構。如果
@@ -237,6 +239,7 @@ provisa env list --org ORG [--json]
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 建立一個持有另一個環境模型的環境，其數據在建立時選定。由 API
@@ -246,6 +249,7 @@ provisa env show --org ORG --env ENV [--json]
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | 旗標 | 必填 | 說明 |
 | --- | --- | --- |
 | `--env` | 是 | 新環境的名稱 |
@@ -257,6 +261,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 停用一個環境。只有點名時才刪除其分支。
@@ -264,6 +269,7 @@ provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | 旗標 | 說明 |
 | --- | --- |
 | `--delete-branch` | 同時刪除其分支 |
@@ -277,6 +283,7 @@ provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | 旗標 | 必填 | 說明 |
 | --- | --- | --- |
 | `--from` | 是 | 合併來源環境 |
@@ -293,6 +300,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | 旗標 | 必填 | 說明 |
 | --- | --- | --- |
 | `--from` | 是 | 合併來源環境 |
@@ -313,6 +321,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | 旗標 | 必填 | 說明 |
 | --- | --- | --- |
 | `--env` | 是 | 將持有所部署模型的環境 |
@@ -332,6 +341,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 將環境退回到之前的建構。不帶 `--to` 時，它在環境自己的歷史中
@@ -340,6 +350,7 @@ provisa env deploy \
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | 旗標 | 必填 | 說明 |
 | --- | --- | --- |
 | `--env` | 是 | 要退回的環境 |
@@ -353,6 +364,7 @@ provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 將組織的遠端分支拉取到其 Provisa 儲存庫中。當你想指定 `origin/<branch>` 時，
@@ -361,6 +373,7 @@ provisa env redo --org ORG --env ENV
 ```
 provisa env fetch --org ORG
 ```
+
 每拉取一個分支印出一行，`origin/<name>  <sha12>`。
 
 ```bash
@@ -368,6 +381,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 將環境的分支發送到組織的遠端儲存庫。沒有可發送的內容時
@@ -376,6 +390,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 應用遠端儲存庫為某個環境持有的內容。沒有可應用的內容時印出
@@ -385,6 +400,7 @@ deploy 相同。
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 關於環境類別、保護規則、合併報告以及
 批准生命週期的完整說明，請參閱[環境](environments.md#the-env-cli-commands)。
 

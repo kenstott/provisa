@@ -199,6 +199,7 @@ API администратора, который вызывает интерфе
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### Флаги, которые принимает каждая подкоманда {: #flags-every-subcommand-takes }
 
 | Флаг | Обязательный | Примечания |
@@ -230,6 +231,7 @@ provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pu
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 Показывает одно окружение и его текущую сборку. Завершается с 1 и `environments.unknown`, если
@@ -238,6 +240,7 @@ provisa env list --org ORG [--json]
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 Создаёт окружение, содержащее модель другого, с данными, выбранными при создании. API
@@ -247,6 +250,7 @@ provisa env show --org ORG --env ENV [--json]
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | Флаг | Обязательный | Примечания |
 | --- | --- | --- |
 | `--env` | да | Имя нового окружения |
@@ -258,6 +262,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 Выводит окружение из эксплуатации. Его ветки удаляются, только если названы.
@@ -265,6 +270,7 @@ provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | Флаг | Примечания |
 | --- | --- |
 | `--delete-branch` | Удаляет также его ветку |
@@ -278,6 +284,7 @@ provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | Флаг | Обязательный | Примечания |
 | --- | --- | --- |
 | `--from` | да | Окружение, из которого сливают |
@@ -294,6 +301,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | Флаг | Обязательный | Примечания |
 | --- | --- | --- |
 | `--from` | да | Окружение, из которого сливают |
@@ -314,6 +322,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | Флаг | Обязательный | Примечания |
 | --- | --- | --- |
 | `--env` | да | Окружение, которое будет содержать развёрнутую модель |
@@ -333,6 +342,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 Возвращает окружение к предыдущей сборке. Без `--to` отступает на один коммит
@@ -341,6 +351,7 @@ provisa env deploy \
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | Флаг | Обязательный | Примечания |
 | --- | --- | --- |
 | `--env` | да | Окружение для возврата |
@@ -354,6 +365,7 @@ provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 Получает удалённые ветки организации в её репозиторий Provisa. Запускайте перед развёртыванием,
@@ -362,6 +374,7 @@ provisa env redo --org ORG --env ENV
 ```
 provisa env fetch --org ORG
 ```
+
 Печатает по строке на полученную ветку, `origin/<name>  <sha12>`.
 
 ```bash
@@ -369,6 +382,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 Отправляет ветку окружения в удалённый репозиторий организации. Печатает `nothing to send`, когда
@@ -377,6 +391,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 Применяет то, что удалённый репозиторий содержит для окружения. Печатает
@@ -386,6 +401,7 @@ provisa env push --org ORG --env ENV
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 Полное объяснение классов окружений, правил защиты, отчётов о слиянии и
 жизненного цикла одобрений см. в разделе [Окружения](environments.md#the-env-cli-commands).
 

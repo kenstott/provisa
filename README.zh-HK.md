@@ -241,8 +241,8 @@ provisa start && provisa open
 ### Windows
 
 1. 下載 [Provisa-windows-x64.exe](https://provisa.dev/dl/windows)（一律為最新版本）
-2. 執行安裝程式。毋須管理員權限
-3. 自「開始」功能表開啟 **Provisa First Launch**。完成一次性設定（約 5 分鐘，毋須網際網路）
+2. 執行安裝程式，它毋須管理員權限。
+3. 自「開始」功能表開啟 **Provisa First Launch**，它會完成一次性設定（約 5 分鐘，毋須網際網路）。
 4. 打開一個新的終端機：
 
 ```bash
@@ -319,7 +319,7 @@ DataGrip 透過 pgwire 瀏覽受治理的結構描述及其外鍵關係圖，無
 
 Provisa 亦支援 Neo4j 的 **Bolt** 協定，所以圖原生工具可以直接連接，並對聯邦圖執行 Cypher。無須匯出任何資料，亦不需要獨立的圖資料庫。把 **Neo4j Browser** 或 **Bloom** 指向 Provisa，即可在相同的治理（領域存取、RLS、遮罩）下跨數據來源走訪關係。
 
-Neo4j Browser 針對 Provisa 執行 Cypher。節點標籤、關係類型與屬性索引鍵，全部直接來自已註冊的結構描述：
+這裏 Neo4j Browser 正在針對 Provisa 執行 Cypher，節點標籤、關係類型與屬性索引鍵全部直接來自已註冊的結構描述：
 
 ![以 Bolt 在 Neo4j Browser 中的 Provisa](docs/images/bolt-neo4j-browser.png)
 

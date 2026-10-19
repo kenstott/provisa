@@ -61,6 +61,7 @@ tables:
     table_name: customers
     region: eu
 ```
+
 Einige Folgen:
 
 - Keine andere Region liest die Quelle der Tabelle; sie lesen nur das Replikat der Heimat. Eine Quelle, die Sie replizieren, um sie vor Last zu schützen, bleibt geschützt.

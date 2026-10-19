@@ -61,6 +61,7 @@ tables:
     table_name: customers
     region: eu
 ```
+
 Quelques conséquences :
 
 - Aucune autre région ne lit la source de la table ; elles ne lisent que le réplica de la région d'origine. Une source que vous répliquez pour la protéger de la charge reste protégée.

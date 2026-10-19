@@ -928,6 +928,7 @@ views:
       - {name: tier, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
+
 | Campo | Obrigatório | Descrição |
 | ------- | ---------- | ------------- |
 | `bitemporal_mode` | Sim | `snapshot` acrescenta o resultado inteiro a cada atualização; `delta` acrescenta só o que mudou |
@@ -944,6 +945,7 @@ Uma versão vigora do seu momento até o da versão seguinte. Uma exclusão não
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
+
 Um momento responde a versão de cada chave vigente então. Um intervalo responde cada versão vigente em algum momento dentro dele, uma linha por versão.
 
 **Como registrado.** Uma correção registrada depois muda o que uma visão diz sobre o passado: a versão em vigor em 30 de setembro passa a ser a corrigida assim que a correção é registrada. Para ler a visão como o Provisa a tinha registrado num momento, antes de qualquer correção posterior, adicione `X-Provisa-As-Recorded`, um instante ISO 8601:

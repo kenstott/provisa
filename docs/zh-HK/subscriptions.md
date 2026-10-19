@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## 串流失敗時 {: #when-a-stream-ends-on-a-failure }
 
 已開啟的串流已經回應了 `200`，因此之後的失敗不能再是 HTTP 狀態。訂閱者會收到說明原因的最後一個訊框，然後串流關閉。串流絕不會在沒有這個訊框的情況下因失敗而關閉。
@@ -176,6 +177,7 @@ sources:
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 該事件不叫 `error`，因為 `EventSource` 在連線中斷時會自行產生一個 `error` 事件，監聽器將無法區分兩者。請按名稱監聽它：
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 GraphQL 訂閱保持 GraphQL 回應的形態，代碼及 params 位於 `extensions` 之中：
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 有一種情況不會結束 GraphQL 訂閱：當某次變更之後的重新讀取失敗時，會以同樣的形態傳送該訊框，然後串流繼續處理下一次變更。初始讀取、變更串流本身或其啟動的失敗是最後一個訊框。
 
 ## Kafka 接收器重新導向 {: #kafka-sink-redirect }

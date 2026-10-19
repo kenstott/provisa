@@ -686,7 +686,7 @@ Un hook di policy esterno facoltativo che scatta prima dell'esecuzione della que
 
 ### Ambito {: #scoping }
 
-L'hook scatta solo quando la query tocca una tabella o una sorgente incluse. Nessun sovraccarico per tutto il resto.
+L'hook scatta solo quando una query tocca una tabella o una sorgente incluse, quindi ogni altra query gira senza costi aggiuntivi.
 
 | Configurazione | Effetto |
 | -------- | -------- |

@@ -928,6 +928,7 @@ views:
       - {name: tier, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
+
 | Campo | Obligatorio | Descripción |
 | ------- | ---------- | ------------- |
 | `bitemporal_mode` | Sí | `snapshot` añade el resultado completo en cada actualización; `delta` añade solo lo que cambió |
@@ -944,6 +945,7 @@ Una versión rige desde su momento hasta el de la versión siguiente. Un borrado
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
+
 Un momento responde la versión de cada clave vigente entonces. Un rango responde cada versión vigente en algún momento dentro de él, una fila por versión.
 
 **Según lo registrado.** Una corrección registrada después cambia lo que una vista dice del pasado: la versión vigente el 30 de septiembre es la corregida una vez registrada la corrección. Para leer la vista tal como Provisa la tenía registrada en un momento, antes de cualquier corrección posterior, añada `X-Provisa-As-Recorded`, un instante ISO 8601:

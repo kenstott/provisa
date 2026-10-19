@@ -928,6 +928,7 @@ views:
       - {name: tier, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
+
 | Campo | Obbligatorio | Descrizione |
 | ------- | ---------- | ------------- |
 | `bitemporal_mode` | Sì | `snapshot` aggiunge l'intero risultato a ogni aggiornamento; `delta` aggiunge solo ciò che è cambiato |
@@ -944,6 +945,7 @@ Una versione è in vigore dal suo istante fino a quello della versione successiv
 X-Provisa-As-Of: 2026-03-01T00:00:00
 X-Provisa-As-Of: 2026-01-01T00:00:00/2026-04-01T00:00:00
 ```
+
 Un istante restituisce la versione di ogni chiave in vigore in quel momento. Un intervallo restituisce ogni versione in vigore in qualsiasi momento al suo interno, una riga per versione.
 
 **Come registrato.** Una correzione registrata in seguito cambia ciò che una vista dice del passato: la versione in vigore il 30 settembre è quella corretta una volta registrata la correzione. Per leggere la vista come Provisa l'aveva registrata in un momento, prima di qualsiasi correzione successiva, aggiungete `X-Provisa-As-Recorded`, un istante ISO 8601:

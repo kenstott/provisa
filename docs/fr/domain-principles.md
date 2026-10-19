@@ -42,7 +42,7 @@ Rien de technique ne limite la profondeur de composition des vues. Le contrôle 
 
 Chaque vue porte une finalité métier déclarée, énoncée à sa création :
 
-- Fait partie de l'artefact gouverné — les stewards approuvent en sachant à quoi sert la vue
+- Fait partie de l'artefact gouverné, si bien que les stewards approuvent en sachant à quoi sert la vue
 - Référencée par les demandes d'accès selon le principe 7 afin que le steward puisse en évaluer la pertinence
 - Accompagne la vue depuis sa création tout au long du flux de gouvernance
 
@@ -127,8 +127,8 @@ Trois étapes, dans l'ordre.
 **Étape 3 — Création de requête :**
 
 - L'analyste construit la requête dans n'importe quel langage pris en charge (SQL, GraphQL, Cypher), en parcourant des chemins de relation approuvés
-- Seules les relations approuvées du catalogue sont franchissables — le compilateur l'impose de façon structurelle
-- Aucune approbation requise — la visibilité des colonnes et l'approbation des relations sont les seuls contrôles
+- Seules les relations approuvées du catalogue sont franchissables, et le compilateur l'impose de façon structurelle
+- Aucune approbation requise : la visibilité des colonnes et l'approbation des relations sont les seuls contrôles
 
 ### HITL comme contrôle principal {: #hitl-as-the-primary-control }
 
@@ -164,7 +164,7 @@ Les contraintes FK appartiennent à une seule source, elles ne peuvent donc pas 
 Au sein d'une source :
 
 - Les contraintes de clé étrangère sont automatiquement présentées comme des relations candidates lors de l'enregistrement de la source
-- Elles représentent une intention de modélisation explicite — non appliquée dans la plupart des systèmes SQL analytiques mais délibérément déclarée
+- Elles représentent une intention de modélisation explicite : non appliquée dans la plupart des systèmes SQL analytiques mais délibérément déclarée
 - La validation par le steward reste requise avant qu'un candidat ne devienne une relation approuvée
 
 ### Hiérarchie de confiance des relations {: #relationship-confidence-hierarchy }
@@ -196,7 +196,7 @@ Le LLM opère simultanément sur les cinq paliers, suggérant des relations, des
 
 - Des relations candidates classées par confiance
 - Des tables non revendiquées susceptibles de satisfaire un besoin de données, avec une invitation à initier la revendication
-- L'absence de tout candidat — signal d'escalade vers l'admin
+- L'absence de tout candidat est le signal d'escalade vers l'admin
 
 **Conception de vue à partir d'une description métier :**
 
@@ -233,7 +233,7 @@ La description métier devient la finalité métier déclarée de la vue une foi
 Il s'ouvre en fenêtre modale depuis la page Relations. Son but est de construire le modèle sémantique : trouver des chemins de jointure structurels avant de les formaliser en relations gouvernées.
 
 1. L'analyste écrit du SQL libre sur les tables accessibles (la sécurité au niveau des lignes et le masquage restent appliqués)
-2. L'AST SQL est analysé — chaque condition JOIN devient une proposition de relation candidate
+2. L'AST SQL est analysé, et chaque condition JOIN devient une proposition de relation candidate
 3. La liste des candidats est affichée aux côtés des candidats suggérés par la machine (inférence par clé étrangère, inférence sémantique) pour une revue unifiée
 4. L'analyste promeut les candidats sélectionnés vers des demandes de relation formelles
 5. Les relations approuvées sont ajoutées au catalogue et deviennent franchissables dans les requêtes
@@ -249,7 +249,7 @@ Pour l'exploration structurelle, l'outil de modélisation peut montrer toutes le
 Chaque requête qui touche un actif de domaine est enregistrée dans un `query_audit_log` en ajout seul. Chaque entrée capture :
 
 - `tenant_id`, `user_id`, `role_id` — le contexte d'identité
-- Un hachage SHA-256 de la requête — le texte littéral de la requête n'est jamais stocké
+- Un hachage SHA-256 de la requête ; le texte littéral de la requête n'est jamais stocké
 - `table_ids` — les actifs de domaine touchés par la requête
 - `source`, `status_code`, `duration_ms`
 - `logged_at` — l'horodatage

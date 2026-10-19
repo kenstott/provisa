@@ -61,7 +61,7 @@ UI:      http://localhost:3000
 
 **选项：**
 
-`--reset-volumes` —— 在启动前运行 `docker compose down -v`，销毁所有 Docker 卷（PostgreSQL 数据、MinIO 对象、Redis 状态等）。当您需要完全干净的环境时使用——例如开发过程中发生架构变更之后，或者 Docker 崩溃导致卷损坏时。**所有数据都会丢失。**
+`--reset-volumes` —— 在启动前运行 `docker compose down -v`，销毁所有 Docker 卷（PostgreSQL 数据、MinIO 对象、Redis 状态等）。当您需要完全干净的环境时使用，例如开发过程中发生架构变更之后，或者 Docker 崩溃导致卷损坏时。**所有数据都会丢失。**
 
 `--observability` —— 添加完整的追踪和指标插桩。下载 OpenTelemetry Java agent 并修补 Trino 的 `jvm.config` 以加载它，为 Provisa 后端插入 OTLP 导出，并启动 OTel collector、Prometheus、Tempo 和 Grafana（`http://localhost:3100`）。对 `jvm.config` 的修补会在 Ctrl+C 时自动还原。
 
@@ -153,7 +153,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 1. 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载 `Provisa-<version>-macOS.dmg`
 2. 打开 DMG，将 **Provisa.app** 拖到 `/Applications`
-3. 双击 **Provisa.app**——首次启动的设置只运行一次；向导会提供上述引擎、可观测性和演示数据的选择
+3. 双击 **Provisa.app**。首次启动的设置只运行一次，向导会提供上述引擎、可观测性和演示数据的选择
 4. 打开终端：
 
    ```bash
@@ -177,8 +177,8 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 ### 步骤 {: #steps_1 }
 
 1. 从 [GitHub releases 页面](https://github.com/provisa/provisa/releases)下载 `Provisa-<version>-windows-x64.exe`
-2. 运行安装程序——无需管理员权限；安装到 `%LOCALAPPDATA%\Programs\Provisa\`
-3. 从开始菜单打开 **Provisa First Launch**——原生设置只运行一次，并打印出针对分层附加组件的后续步骤指引
+2. 运行安装程序。它不需要管理员权限，会安装到 `%LOCALAPPDATA%\Programs\Provisa\`
+3. 从开始菜单打开 **Provisa First Launch**。原生设置只运行一次，并打印出针对分层附加组件的后续步骤指引
 4. 打开新终端：
 
    ```text
@@ -198,7 +198,7 @@ docker compose -f docker-compose.core.yml -f docker-compose.app.yml up -d
 
 `Provisa.AppImage` 是一个单一的自包含可执行文件，其中打包了：
 
-- 一个无根 Docker 守护进程（`dockerd-rootless.sh` + `rootlesskit`）——无需系统级 Docker 或 root 权限
+- 一个无根 Docker 守护进程（`dockerd-rootless.sh` + `rootlesskit`），因此无需系统级 Docker 或 root 权限
 - 所有容器镜像的 tarball（PostgreSQL、PgBouncer、MinIO、Redis、联邦查询引擎、Provisa API）
 - Provisa CLI 包装器和首次启动设置脚本
 
@@ -269,7 +269,7 @@ Provisa 镜像在打包时构建，从不包含 Python 源代码。
    - **角色** → 选择 `primary`
    - **RAM 预算**、**主机名**、**API 端口** → 与单节点相同的方式回答
 5. 设置完成后，记下这台机器的**私有 IP**。从节点需要它，也需要主节点生成的存储凭据：`~/.provisa/store-credentials.env`（`PROVISA_PG_PASSWORD`, `PROVISA_REDIS_PASSWORD`, `PROVISA_MINIO_ROOT_PASSWORD`, `PROVISA_GRAFANA_ADMIN_PASSWORD`, `PROVISA_TRINO_SHARED_SECRET`）。通过安全渠道将该文件复制到每个从节点
-6. 向导会打印一个 nginx upstream 配置块——请保存它，用于负载均衡器配置
+6. 向导会打印一个 nginx upstream 配置块，请保存它，用于负载均衡器配置
 7. 验证：
 
    ```bash
@@ -302,7 +302,7 @@ Provisa 镜像在打包时构建，从不包含 Python 源代码。
    - **角色** → 选择 `secondary`
    - **主节点 IP** → 输入主节点的 IP（会实时验证连通性）
    - **RAM 预算**、**主机名**、**API 端口** → 与上文相同方式回答
-5. 设置过程会加载一个精简的镜像集合（不含 PostgreSQL、PgBouncer、MinIO、Redis——这些只在主节点运行），启动 Provisa API 和一个联邦查询引擎 worker
+5. 设置过程会加载一个精简的镜像集合（不含 PostgreSQL、PgBouncer、MinIO、Redis，这些只在主节点运行），启动 Provisa API 和一个联邦查询引擎 worker
 6. 验证：
 
    ```bash
@@ -336,7 +336,7 @@ Provisa 镜像在打包时构建，从不包含 Python 源代码。
 
 ### 非交互式（自动化）首次启动 {: #non-interactive-automated-first-launch }
 
-用于 Terraform、cloud-init 或 Ansible——通过传入参数而非回答提示：
+用于 Terraform、cloud-init 或 Ansible 时，请传入参数，不要逐个回答提示：
 
 ```bash
 # Primary
@@ -576,7 +576,7 @@ ssh ubuntu@<primary-public-ip> cat ~/.provisa/config.yaml | grep admin_token
    curl http://localhost:8000/health
    ```
 
-7.（可选）为外部访问启用 ingress——设置 `ingress.enabled: true` 并配置您的 ingress controller
+7.（可选）为外部访问启用 ingress：设置 `ingress.enabled: true` 并配置您的 ingress controller
 
 ### 前置条件清单 {: #prerequisites-checklist_1 }
 
@@ -663,9 +663,9 @@ Provisa 在所有部署模式下都采用两层恢复模型：
 
 ## 联邦查询引擎依赖 {: #federation-engine-dependencies }
 
-数据仓库联邦查询引擎需要 Provisa 默认安装之外的 Python 包和系统级组件。此处列出的所有 Python 包都声明在 `pyproject.toml` 中，并作为标准 `pip install provisa` 或 `pip install -e .` 的一部分安装。
+数据仓库联邦查询引擎需要 Python 包和系统级组件。Python 包都声明在 `pyproject.toml` 中，随标准的 `pip install provisa` 或 `pip install -e .` 一起安装，所以任何数仓引擎都不需要可选的额外包。
 
-Python 包随 Provisa 的默认安装一起提供，所以任何数仓引擎都不需要可选的额外包。系统级组件（ODBC 驱动、云 CLI、服务账号密钥）需要另行安装。
+系统级组件（ODBC 驱动、云 CLI、服务账号密钥）需要另行安装。
 
 ### Python 包（已包含在核心依赖中） {: #python-packages-already-in-core-dependencies }
 

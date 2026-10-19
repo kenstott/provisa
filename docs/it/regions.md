@@ -61,6 +61,7 @@ tables:
     table_name: customers
     region: eu
 ```
+
 Alcune conseguenze:
 
 - Nessun'altra regione legge la sorgente della tabella; leggono solo la replica della regione di casa. Una sorgente che replicate per proteggerla dal carico resta protetta.

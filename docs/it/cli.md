@@ -199,6 +199,7 @@ comunque venga invocata l'operazione.
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### Opzioni accettate da ogni sottocomando {: #flags-every-subcommand-takes }
 
 | Opzione | Obbligatoria | Note |
@@ -230,6 +231,7 @@ Elenca gli ambienti dell'organizzazione e la build in cui si trova ciascuno. Nes
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 Mostra un ambiente e la sua build attuale. Esce con 1 e `environments.unknown` quando
@@ -238,6 +240,7 @@ l'ambiente non esiste.
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 Crea un ambiente che contiene il modello di un altro, con i dati scelti alla creazione. L'API
@@ -247,6 +250,7 @@ decide quali scelte può fare il chiamante.
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | Opzione | Obbligatoria | Note |
 | --- | --- | --- |
 | `--env` | sì | Nome del nuovo ambiente |
@@ -258,6 +262,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 Ritira un ambiente. I suoi branch vengono rimossi solo se nominati.
@@ -265,6 +270,7 @@ Ritira un ambiente. I suoi branch vengono rimossi solo se nominati.
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | Opzione | Note |
 | --- | --- |
 | `--delete-branch` | Elimina anche il suo branch |
@@ -278,6 +284,7 @@ non può scrivere; affidatelo a un runner che non deve cambiare nulla.
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | Opzione | Obbligatoria | Note |
 | --- | --- | --- |
 | `--from` | sì | Ambiente da cui si fa il merge |
@@ -294,6 +301,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | Opzione | Obbligatoria | Note |
 | --- | --- | --- |
 | `--from` | sì | Ambiente da cui si fa il merge |
@@ -314,6 +322,7 @@ un'invocazione che porta un'identità verso un control plane nominato.
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | Opzione | Obbligatoria | Note |
 | --- | --- | --- |
 | `--env` | sì | Ambiente che conterrà il modello distribuito |
@@ -333,6 +342,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 Riporta un ambiente a una build precedente. Senza `--to` torna indietro di un commit
@@ -341,6 +351,7 @@ nella cronologia propria dell'ambiente. Con `--to` è il normale deploy di quell
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | Opzione | Obbligatoria | Note |
 | --- | --- | --- |
 | `--env` | sì | Ambiente da ripristinare |
@@ -354,6 +365,7 @@ Va di nuovo avanti verso la build da cui un revert era partito.
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 Recupera i branch remoti dell'organizzazione nel suo repository Provisa. Eseguitelo prima di un deploy
@@ -362,6 +374,7 @@ quando volete nominare `origin/<branch>`. Provisa non lo esegue mai a tempo.
 ```
 provisa env fetch --org ORG
 ```
+
 Stampa una riga per ogni branch recuperato, `origin/<name>  <sha12>`.
 
 ```bash
@@ -369,6 +382,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 Invia il branch di un ambiente al remote dell'organizzazione. Stampa `nothing to send` quando
@@ -377,6 +391,7 @@ non c'è nulla da inviare.
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 Applica ciò che il remote contiene per un ambiente. Stampa
@@ -386,6 +401,7 @@ per deploy.
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 Per la spiegazione completa delle classi di ambiente, delle regole di protezione, dei rapporti di merge e del
 ciclo di vita delle approvazioni, vedere [Ambienti](environments.md#the-env-cli-commands).
 

@@ -5,7 +5,7 @@
 | Client type | Recommended path | Why |
 | ------------- | ----------------- | ----- |
 | BI tools (Tableau, Power BI, Looker) | JDBC | Arrow Flight columnar streaming over the wire; BI tools have a built-in JDBC wizard and benefit from high-throughput columnar delivery for large result sets |
-| psql, DBeaver, any PG-compatible tool | pgwire (native PG driver) | Zero-friction default — no custom driver needed; use what you already have |
+| psql, DBeaver, any PG-compatible tool | pgwire (native PG driver) | Uses the driver you already have, with nothing extra to install |
 | Python data stack (pandas, pyarrow) | `provisa-client` or raw ADBC | Streaming Arrow batches; no row serialization overhead |
 | Spark, DuckDB, high-throughput pipelines | Arrow Flight (ADBC) | Unbounded columnar streaming direct to Arrow memory |
 | Service-to-service (typed contracts) | Protobuf gRPC | Per-role generated proto; streaming rows; type safety |
@@ -65,7 +65,7 @@ The full surface × method table is in [Security Model](security.md#surfaces-and
 - SQL only. GraphQL and Cypher are not accepted over pgwire.
 - Not read-only. Rows of registered tables are written with `INSERT`, `UPDATE`, `DELETE`, `MERGE`, `TRUNCATE` and `COPY ... FROM STDIN`, each admitted by the role's `write` right, its column grants and its row filter; see [Data writes](pgwire.md#data-writes-insert-update-delete-merge-copy-from-stdin).
 - No definitions: `CREATE`, `ALTER` and `DROP` are refused with SQLSTATE 0A000, except a session's own temporary table; see [Definitions](pgwire.md#definitions-create-alter-drop). `COPY ... TO STDOUT` exports in `text`, `csv` and `binary`; `COPY ... FROM STDIN` reads `text` and `csv`.
-- `information_schema` and `pg_catalog` queries are intercepted and answered from a DuckDB catalog shim — schema discovery tools work correctly.
+- `information_schema` and `pg_catalog` queries are intercepted and answered from a DuckDB catalog shim, so schema discovery tools work correctly.
 
 ---
 
@@ -98,7 +98,7 @@ Authentication uses standard JDBC `user` / `password` properties. The driver exc
 3. URL: `jdbc:provisa://localhost:8815`
 4. Enter your username and password when prompted
 
-**DBeaver** (JDBC path — for pgwire path see above)
+**DBeaver** (the JDBC path; the pgwire path is above)
 
 1. Database → New Connection → JDBC
 2. Driver: add `provisa-jdbc.jar`
@@ -115,7 +115,7 @@ Arrow Flight (port 8815) is the recommended path for data tools that support it.
 
 ### Python (`provisa-client`)
 
-The recommended Python path — wraps both GraphQL and Arrow Flight:
+The recommended Python path wraps both GraphQL and Arrow Flight:
 
 ```bash
 pip install provisa-client
@@ -148,7 +148,7 @@ ticket = flight.Ticket(b'{"query": "SELECT id, amount FROM sales.orders"}')
 df = client.do_get(ticket).read_all().to_pandas()
 ```
 
-Flight carries its credential in the JSON payload, as a `token` field — a provider bearer token or a personal access token. Both the handshake and every ticket accept it, and both validate it the same way, so a client that authenticated at handshake still presents the token on each `do_get`. A `role` field alongside it *requests* a role; the server derives the identity's permitted roles and substitutes the authorized value, so a role string in a ticket is never the identity. See [Security Model](security.md#surfaces-and-credentials).
+Flight carries its credential in the JSON payload, as a `token` field, which holds a provider bearer token or a personal access token. Both the handshake and every ticket accept it, and both validate it the same way, so a client that authenticated at handshake still presents the token on each `do_get`. A `role` field alongside it *requests* a role; the server derives the identity's permitted roles and substitutes the authorized value, so a role string in a ticket is never the identity. See [Security Model](security.md#surfaces-and-credentials).
 
 ```python
 ticket = flight.Ticket(json.dumps({
@@ -208,7 +208,7 @@ spark = SparkSession.builder \
 
 ## Protobuf gRPC (port 50051)
 
-Service-to-service path. Provisa generates a `.proto` per role, and regenerates it whenever the model or the role changes — each role sees only the tables and columns it has access to. The service has an RPC for each table at the root of the role's schema; related tables are reached through their relationships, as in GraphQL.
+Service-to-service path. Provisa generates a `.proto` per role and regenerates it whenever the model or the role changes. Each role sees only the tables and columns it has access to. The service has an RPC for each table at the root of the role's schema; related tables are reached through their relationships, as in GraphQL.
 
 Download the proto for your role:
 
@@ -222,7 +222,7 @@ Use `grpc_server_reflection` to discover the schema programmatically. Reflection
 grpcurl -plaintext -H 'x-provisa-role: analyst' localhost:50051 list
 ```
 
-Every RPC must carry a credential in the `authorization` metadata key — a provider token or a personal access token. `x-provisa-role` requests a role from the identity's permitted set; it is not a credential and never was. Client certificates are supported. See [Security Model](security.md#surfaces-and-credentials).
+Every RPC must carry a credential in the `authorization` metadata key, either a provider token or a personal access token. `x-provisa-role` requests a role from the identity's permitted set; it is not a credential and never was. Client certificates are supported. See [Security Model](security.md#surfaces-and-credentials).
 
 Streaming queries emit one message per row; mutations are unary.
 
@@ -230,7 +230,7 @@ Streaming queries emit one message per row; mutations are unary.
 
 ## Invoking Commands Across Protocols
 
-A **command** is a registered tracked function or webhook — a callable registered in the Provisa model with a `kind` (`query` or `mutation`) and an `impl_kind` that describes how it runs. Every surface routes invocations through a single governed executor (`invoke_tracked_function`) that enforces command assignment (`visible_to`), the `write` right for a mutation, and governance uniformly.
+A **command** is a registered tracked function or webhook: a callable registered in the Provisa model with a `kind` (`query` or `mutation`) and an `impl_kind` that describes how it runs. Every surface routes invocations through a single governed executor (`invoke_tracked_function`) that enforces command assignment (`visible_to`), the `write` right for a mutation, and governance uniformly.
 
 | `impl_kind` | What runs | Binding fields |
 | ------------ | ----------- | --------------- |
@@ -240,7 +240,7 @@ A **command** is a registered tracked function or webhook — a callable registe
 | `grpc` | Outbound gRPC call to an external server | `target`, `method` |
 | `python` | Python callable hosted by Provisa | `callable` (e.g. `demo.py_functions:random_dataset`) |
 
-When a command declares a `return_schema` (JSON Schema with `type: array, items: object`), it is set-returning — every surface projects it as a typed row set. The demo commands `random_python_set` (impl_kind `python`) and `random_grpc_set` (impl_kind `grpc`) illustrate both a hosted callable and an external gRPC bridge returning random-valued rows; both are registered in `config/provisa-install.yaml`.
+When a command declares a `return_schema` (JSON Schema with `type: array, items: object`), it is set-returning, and every surface projects it as a typed row set. The demo commands `random_python_set` (impl_kind `python`) and `random_grpc_set` (impl_kind `grpc`) illustrate both a hosted callable and an external gRPC bridge returning random-valued rows; both are registered in `config/provisa-install.yaml`.
 
 ### Protocol matrix
 
@@ -252,7 +252,7 @@ When a command declares a `return_schema` (JSON Schema with `type: array, items:
 | Bolt (Neo4j Browser / driver) | `CALL fn(args)` — positional args map to declared argument names | `CALL random_python_set(3, 7)` |
 | Provisa gRPC (port 50051) | Unary `CallCommand(CommandRequest{name, args_json})` → `CommandResponse{rows_json}` | `grpcurl -d '{"name":"random_python_set","args_json":"{\"rows\":5}"}' ... ProvisaService/CallCommand` |
 
-The `kind` field controls GraphQL placement only — SQL, Cypher, Bolt, and gRPC surfaces accept both `query` and `mutation` commands identically.
+The `kind` field controls GraphQL placement only. The SQL, Cypher, Bolt and gRPC surfaces accept both `query` and `mutation` commands identically.
 
 ---
 
@@ -306,7 +306,7 @@ See [docs/sources.md](sources.md#kafka-sources) for Kafka topic configuration as
 
 ## Data Quality Checkers
 
-Soda Core and Great Expectations connect to Provisa the same way any other postgres client does — through pgwire. That is the whole integration: the checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker.
+Soda Core and Great Expectations connect to Provisa through pgwire, like any other postgres client. That is the whole integration: the checker holds one postgres driver and scans the federated view, so a Snowflake table, an Iceberg table and a Mongo collection are all checked by the same contract dialect with no per-system checker.
 
 The scan runs in a child interpreter — `python -m provisa.dq.worker` — which is the only place `soda_core` or `great_expectations` is imported. Nothing is linked into the server process, and a checker crash takes down a subprocess rather than the event loop.
 
@@ -327,9 +327,7 @@ Elastic License 2.0 bars providing the software to third parties as a hosted ser
 
 ## Apache Ossie Semantic Interchange
 
-Provisa exchanges semantic models with Apache Ossie (spec 0.2.0.dev0, incubating; formerly Open
-Semantic Interchange) through a boundary adapter. Provisa's internal vocabulary is never renamed
-to Ossie's — the spec declares breaking changes as likely, so coupling is confined to the adapter.
+Provisa exchanges semantic models with Apache Ossie (spec 0.2.0.dev0, incubating; formerly Open Semantic Interchange) through a boundary adapter. Provisa's internal vocabulary is never renamed to Ossie's. The spec says breaking changes are likely, so the coupling stays inside the adapter.
 
 The draft spec has changed shape without changing its version string. The adapter follows the
 spec as it stands at `apache/ossie` commit `642cb894` (2026-10-10): one model per document,
@@ -339,8 +337,7 @@ an enumerated `datatype`. The export is checked in the unit tests against that c
 
 ### Export
 
-The canonical export surface is a live HTTP endpoint. It derives the Ossie document from live state
-on every request — no caching, no generation step.
+The canonical export surface is a live HTTP endpoint. It derives the Ossie document from live state on every request, with no cache and no generation step.
 
 ```http
 GET /admin/ossie
@@ -395,8 +392,7 @@ and comes back from an import as `decimal`.
 
 ### Import
 
-Import accepts an Ossie document (YAML or JSON) and returns registration proposals. Nothing is
-registered automatically — imported definitions never bypass the review step.
+Import accepts an Ossie document (YAML or JSON) and returns registration proposals. Nothing is registered automatically, and imported definitions never skip the review step.
 
 ```http
 POST /admin/ossie/import
@@ -470,11 +466,7 @@ columns ("MetricFlow entities cannot represent composite keys losslessly").
 
 #### The review screen
 
-In the UI, the **Import** button (Metrics page → Ossie Interchange panel) opens a file picker.
-After the document is posted and parsed, a review modal opens with every proposed table,
-relationship, and metric listed as a checked item. The modeler can uncheck anything to exclude it.
-Clicking **Apply** registers the checked items through the existing registration mutations — tables
-first, then relationships (which reference tables), then metrics.
+In the UI, the **Import** button (Metrics page → Ossie Interchange panel) opens a file picker. After the document is posted and parsed, a review modal opens with every proposed table, relationship, and metric listed as a checked item. The modeler can uncheck anything to exclude it. Clicking **Apply** registers the checked items through the existing registration mutations: tables first, then relationships (which reference tables), then metrics.
 
 The modeling role and history stored in a Provisa-exported Ossie document round-trip correctly
 through import.
@@ -546,7 +538,7 @@ The compiler expands the `metrics.<name>` form into the real grouped aggregate b
 runs. Column descriptions are surfaced as `pg_description` entries, so DBeaver and psql `\d+`
 show them.
 
-`SELECT *` is rejected — name the columns explicitly.
+`SELECT *` is rejected, so name the columns you want.
 
 ### GraphQL
 

@@ -156,6 +156,7 @@ sources:
       schema_registry_password: ${secret:registry_password}
       schema_registry_ca: /etc/provisa/registry-ca.pem
 ```
+
 ## כשזרם נכשל {: #when-a-stream-ends-on-a-failure }
 
 זרם שנפתח כבר ענה `200`, ולכן כשל לאחר מכן אינו יכול להיות סטטוס HTTP. המנוי מקבל פריים אחרון שאומר מדוע, ואז הזרם נסגר. זרם לעולם אינו נסגר בגלל כשל בלי הפריים הזה.
@@ -176,6 +177,7 @@ sources:
 event: stream_error
 data: {"detail": "Topic 'debezium.app.orders' carries Avro messages, and its source names no schema registry to read them with: set the source's schema registry URL", "code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}
 ```
+
 האירוע אינו נקרא `error`, כי `EventSource` מייצר בעצמו אירוע `error` כשהחיבור נקטע, ומאזין לא היה יכול להבחין ביניהם. האזינו לו בשמו:
 
 ```javascript
@@ -184,11 +186,13 @@ source.addEventListener("stream_error", (e) => {
   source.close();
 });
 ```
+
 מינוי GraphQL שומר על צורת התגובה של GraphQL, עם הקוד וה-params ב-`extensions`:
 
 ```json
 {"errors": [{"message": "…", "extensions": {"code": "subscribe.avro_topic_without_registry", "params": {"topic": "debezium.app.orders"}, "subscription_id": "5f0c2a9d41b7e386"}}]}
 ```
+
 מקרה אחד אינו מסיים מינוי GraphQL: כשקריאה חוזרת לאחר שינוי אחד נכשלת, הפריים הזה נשלח באותה צורה, והזרם ממשיך לשינוי הבא. כשל בקריאה הראשונית, בזרם השינויים עצמו או בהפעלתו הוא הפריים האחרון.
 
 ## הפניית Sink ל-Kafka {: #kafka-sink-redirect }

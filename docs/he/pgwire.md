@@ -75,6 +75,7 @@ DECLARE c1 CURSOR FOR SELECT id, amount FROM orders WHERE region = 'us-west';
 DECLARE c2 SCROLL CURSOR FOR SELECT * FROM events ORDER BY ts;
 DECLARE "CaseSensitive" NO SCROLL CURSOR FOR SELECT * FROM large_table;
 ```
+
 ה-SELECT הפנימי עובר דרך הצינור המנוהל הרגיל של Provisa, עם אותה אכיפת RLS, אותו מיסוך ואותן בדיקות גישה לתחום כמו כל SELECT עצמאי. הצהרה על סמן לא עוקפת את הממשל.
 
 מילת המפתח `SCROLL` שולטת הן בניווט המותר והן בטביעת הזיכרון של הסמן:
@@ -102,6 +103,7 @@ FETCH FIRST FROM c1          -- row 1 (SCROLL cursors only)
 FETCH LAST FROM c1           -- the final row (SCROLL cursors only)
 MOVE 100 FROM c1             -- advance position without returning rows
 ```
+
 `FETCH` מחזיר שורות ושולח את תג הפקודה `FETCH <n>`, כאשר `n` הוא המספר שהוחזר בפועל, שעשוי להיות קטן מהמבוקש כשהסמן מגיע לסוף. `MOVE` מזיז את המיקום בלי להחזיר שורות ושולח `MOVE <n>`.
 
 `FROM` ו-`IN` ניתנים להחלפה לפני שם הסמן. שמות סמנים ללא מירכאות מומרים לאותיות קטנות; שמות במירכאות (`"CaseSensitive"`) שומרים על הרישיות.
@@ -114,6 +116,7 @@ MOVE 100 FROM c1             -- advance position without returning rows
 CLOSE c1;    -- release one cursor and free its result stream
 CLOSE ALL;   -- release every open cursor on this connection
 ```
+
 `CLOSE` משחרר את זרם התוצאות שמתחת ומסיר את הסמן מהסשן. ניתוק בלי `CLOSE` בטוח: `ProvisaSession.close()` משחרר אוטומטית בניתוק כל סמן שעדיין פתוח.
 
 **אורך החיים של סמן.** לשרת ה-pgwire של Provisa אין מכונת מצבים של טרנזקציות (`ProvisaSession.in_transaction()` מחזיר תמיד `False`). לכן כל סמן מתנהג כאילו הוצהר `WITH HOLD`: הוא חי כל עוד החיבור קיים, ו-`COMMIT` לא מסיים אותו. מילות המפתח `WITH HOLD` ו-`WITHOUT HOLD` מתקבלות ומתעלמים מהן, כי אין מחזור חיים של סמן לכל טרנזקציה שצריך לאכוף.
@@ -136,6 +139,7 @@ DELETE FROM busy WHERE n < 5;
 SELECT c.name, b.n FROM sales.customers c JOIN busy b ON b.customer_id = c.id;
 DROP TABLE busy;
 ```
+
 - **יצירה** — `CREATE TEMP TABLE name (column type, ...)` או `CREATE TEMP TABLE name AS SELECT ...`. השם אינו מקבל סכמה. ה-`SELECT` שממנו היא נוצרת הוא קריאה כמו כל קריאה אחרת: כללי השורות, המסכות, הנתונים המזויפים ומגבלת השורות של התפקיד חלים על השורות שהוא לוקח.
 - **סוגי עמודות**: `smallint`, `integer`, `bigint`, `real`, `double precision`, `boolean`, `date`, `timestamp`, `text`, `varchar` ו-`DECIMAL(precision, scale)`. מספר עשרוני שומר על הדיוק וקנה המידה שלו. כל סוג אחר נדחה תוך ציון העמודה והסוג: ערך לעולם אינו נשמר כסוג שאינו שלו. עמודה שנוצרה מ-`SELECT` לוקחת את סוג הערכים שלה; עמודה בלי ערך שממנו אפשר לקבוע סוג נדחית, אז החילו `CAST` ב-`SELECT`.
 - **מגבלת שורות.** השורות ש-`CREATE ... AS SELECT` או `INSERT ... SELECT` לוקחים נקראות כפי שהתפקיד קורא כל דבר, ולכן מגבלת השורות של התפקיד חלה. טבלה זמנית שמולאה מקריאה שהמגבלה קיצצה נושאת את אותה אזהרת הצהרה כמו כל קריאה מקוצצת (`statement.rows_cut`), עם ציון המגבלה.
@@ -173,6 +177,7 @@ COPY my_table TO STDOUT WITH (FORMAT csv)
 -- Arbitrary query
 COPY (SELECT col1, col2 FROM my_table WHERE ...) TO STDOUT WITH (FORMAT text)
 ```
+
 פורמטים נתמכים: `text` (מופרד בטאבים, ברירת מחדל), `csv` ו-`binary`, פורמט ה-COPY הבינארי של PostgreSQL, שבו קוראת הרחבת postgres של DuckDB.
 
 **COPY FROM STDIN** הוא כתיבת נתונים לטבלה רשומה קיימת: הוא מאושר באותו אישור כתיבה כמו `INSERT` של אותן שורות, בתוספת התנאי שלהרשאת `insert` אין presets (ראו [כתיבות נתונים](#data-writes-insert-update-delete-merge-copy-from-stdin)). הוא קורא `text` (ברירת מחדל) ו-`csv`. כל פורמט אחר נדחה עם SQLSTATE 0A000, בציון שמו, לפני שנשלחים נתונים.

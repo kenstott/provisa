@@ -686,7 +686,7 @@ Um hook de política externo opcional que dispara antes da execução da consult
 
 ### Escopo {: #scoping }
 
-O hook só dispara quando a consulta toca uma tabela ou fonte incluída. Nenhum custo extra para todo o resto.
+O hook só dispara quando uma consulta toca uma tabela ou fonte incluída, então qualquer outra consulta roda sem custo extra.
 
 | Configuração | Efeito |
 | -------- | -------- |

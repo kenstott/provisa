@@ -1633,6 +1633,7 @@ Register Table funciona de la misma manera que para Neo4j: elija el origen, escr
 ```
 
 ### Consulta entre orígenes {: #cross-source-query }
+
 ```graphql
 {
   orders(where: {region: {eq: "us"}}) {

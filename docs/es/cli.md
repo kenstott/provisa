@@ -200,6 +200,7 @@ se invoque como se invoque la operación.
 ```
 provisa env {list,show,create,delete,diff,merge,deploy,revert,redo,fetch,push,pull} --org ORG ...
 ```
+
 ### Flags que acepta cada subcomando {: #flags-every-subcommand-takes }
 
 | Flag | Obligatorio | Notas |
@@ -231,6 +232,7 @@ Lista los entornos de la organización y la build en la que está cada uno. Sin 
 ```
 provisa env list --org ORG [--json]
 ```
+
 ### provisa env show
 
 Muestra un entorno y su build actual. Sale con 1 y `environments.unknown` cuando el
@@ -239,6 +241,7 @@ entorno no existe.
 ```
 provisa env show --org ORG --env ENV [--json]
 ```
+
 ### provisa env create
 
 Crea un entorno que contiene el modelo de otro, con sus datos elegidos al crearlo. La API
@@ -248,6 +251,7 @@ decide qué opciones puede tomar quien llama.
 provisa env create --org ORG --env NAME --data-mode MODE
                    [--from SOURCE] [--mutation-handling HANDLING] [--expires-at ISO8601]
 ```
+
 | Flag | Obligatorio | Notas |
 | --- | --- | --- |
 | `--env` | sí | Nombre del nuevo entorno |
@@ -259,6 +263,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 ```bash
 provisa env create --org acme --env feature-x --from prod --data-mode test_fake
 ```
+
 ### provisa env delete
 
 Retira un entorno. Sus ramas solo se van cuando se nombran.
@@ -266,6 +271,7 @@ Retira un entorno. Sus ramas solo se van cuando se nombran.
 ```
 provisa env delete --org ORG --env ENV [--delete-branch] [--delete-remote-branch]
 ```
+
 | Flag | Notas |
 | --- | --- |
 | `--delete-branch` | Elimina también su rama |
@@ -279,6 +285,7 @@ no puede escribir; déselo a un runner que no deba cambiar nada.
 ```
 provisa env diff --org ORG --from SOURCE --into TARGET [--removals] [--select PATH ...]
 ```
+
 | Flag | Obligatorio | Notas |
 | --- | --- | --- |
 | `--from` | sí | Entorno desde el que se fusiona |
@@ -295,6 +302,7 @@ provisa env merge --org ORG --from SOURCE --into TARGET
                   [--removals] [--select PATH ...] [--dry-run] [--message MSG]
                   [--retire-source] [--retire-remote]
 ```
+
 | Flag | Obligatorio | Notas |
 | --- | --- | --- |
 | `--from` | sí | Entorno desde el que se fusiona |
@@ -315,6 +323,7 @@ invocación con una identidad contra un plano de control nombrado.
 ```
 provisa env deploy --org ORG --env ENV --ref REF [--dry-run] [--message MSG]
 ```
+
 | Flag | Obligatorio | Notas |
 | --- | --- | --- |
 | `--env` | sí | Entorno que tendrá el modelo desplegado |
@@ -334,6 +343,7 @@ provisa env deploy \
   --message "release: $GIT_COMMIT_MSG" \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 ```
+
 ### provisa env revert
 
 Devuelve un entorno a una build anterior. Sin `--to` retrocede un commit
@@ -342,6 +352,7 @@ en la historia propia del entorno. Con `--to` es el despliegue ordinario de esa 
 ```
 provisa env revert --org ORG --env ENV [--to BUILD] [--message MSG]
 ```
+
 | Flag | Obligatorio | Notas |
 | --- | --- | --- |
 | `--env` | sí | Entorno que se revierte |
@@ -355,6 +366,7 @@ Avanza de nuevo hacia la build de la que partió una reversión.
 ```
 provisa env redo --org ORG --env ENV
 ```
+
 ### provisa env fetch
 
 Trae las ramas remotas de la organización a su repositorio de Provisa. Ejecútelo antes de un despliegue
@@ -363,6 +375,7 @@ cuando quiera nombrar `origin/<branch>`. Provisa nunca lo ejecuta con un tempori
 ```
 provisa env fetch --org ORG
 ```
+
 Imprime una línea por rama traída, `origin/<name>  <sha12>`.
 
 ```bash
@@ -370,6 +383,7 @@ provisa env fetch --org acme --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKE
 # origin/main  a1b2c3d4e5f6
 # origin/dev   9f8e7d6c5b4a
 ```
+
 ### provisa env push
 
 Envía la rama de un entorno al remoto de la organización. Imprime `nothing to send` cuando
@@ -378,6 +392,7 @@ no hay nada que enviar.
 ```
 provisa env push --org ORG --env ENV
 ```
+
 ### provisa env pull
 
 Aplica lo que el remoto tiene para un entorno. Imprime
@@ -387,6 +402,7 @@ que en deploy.
 ```
 provisa env pull --org ORG --env ENV
 ```
+
 Para la explicación completa de las clases de entorno, las reglas de protección, los informes de fusión y el
 ciclo de vida de aprobación, consulte [Entornos](environments.md#the-env-cli-commands).
 
