@@ -114,6 +114,27 @@ async def _open_count(conn: Any) -> int:
     )
 
 
+async def demo_status(name: str) -> dict:
+    """Whether published demo ``name`` can be opened now, and how many places are free (REQ-2006):
+    its template's place in the tier's builds (demo_templates.TemplateBuilds.state_of) and the cap
+    less the sandboxes open. Read only: it opens nothing, builds nothing, follows no newer version
+    and marks no sandbox in use. An unknown or unpublished demo is refused by name."""
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.api.demo_templates import template_builds
+
+    demo = published_demo(name)
+    state = template_builds.state_of(demo.name)
+    cap = int(settings_registry.value("sandbox.max_concurrent"))
+    async with _admin_pool().acquire() as conn:
+        open_now = await _open_count(conn)
+    return {
+        "demo": demo.name,
+        "ready": state == "ready",
+        "state": state,
+        "places_free": max(cap - open_now, 0),
+    }
+
+
 async def named_sandbox_of(user_id: str, demo: str) -> str | None:
     """The named sandbox ``user_id`` already has open of ``demo``, if any."""
     from provisa.api.admin.orgs_router import _admin_pool

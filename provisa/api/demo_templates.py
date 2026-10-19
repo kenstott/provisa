@@ -522,6 +522,25 @@ class TemplateBuilds:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._waiting: list[tuple[Any, bool]] = []
+        #: The demos whose templates are being built now, and each finished one's outcome.
+        self._building: set[str] = set()
+        self._finished: dict[str, str] = {}
+
+    def state_of(self, name: str) -> str:
+        """Where demo ``name``'s template is: ``queued``, ``building``, ``ready``, ``failed``, or
+        ``unknown`` when this process has not been asked to build it (the tier has not started its
+        builds). Read without building or loading anything."""
+        with self._lock:
+            if any(demo.name == name for demo, _build in self._waiting):
+                return "queued"
+            if name in self._building:
+                return "building"
+            return self._finished.get(name, "unknown")
+
+    def record(self, name: str, ready: bool) -> None:
+        """A template built (or replaced) outside the queue: its outcome (``follow_latest``)."""
+        with self._lock:
+            self._finished[name] = "ready" if ready else "failed"
 
     def add(self, demo: Any, *, build: bool) -> None:
         with self._lock:
@@ -538,9 +557,19 @@ class TemplateBuilds:
 
     def _next(self) -> tuple[Any, bool] | None:
         with self._lock:
-            return self._waiting.pop(0) if self._waiting else None
+            if not self._waiting:
+                return None
+            demo, build = self._waiting.pop(0)
+            self._building.add(demo.name)
+            self._finished.pop(demo.name, None)
+            return demo, build
 
-    async def run(self, at_once: int, prepare: Callable[[Any, bool], Awaitable[None]]) -> None:
+    def _done(self, name: str, state: str) -> None:
+        with self._lock:
+            self._building.discard(name)
+            self._finished[name] = state
+
+    async def run(self, at_once: int, prepare: Callable[[Any, bool], Awaitable[bool]]) -> None:
         """Build every waiting template, ``at_once`` at a time."""
         import logging
 
@@ -550,9 +579,11 @@ class TemplateBuilds:
             while (waiting := self._next()) is not None:
                 demo, build = waiting
                 try:
-                    await prepare(demo, build)
+                    ready = await prepare(demo, build)
                 except Exception:  # allow-ble: one template that cannot be built leaves the others to build; logged with its cause, and its demo is refused as not ready by name
                     log.exception("demo template %s could not be prepared", demo.name)
+                    ready = False
+                self._done(demo.name, "ready" if ready else "failed")
 
         await asyncio.gather(*(_work() for _ in range(max(at_once, 1))))
 
@@ -621,7 +652,7 @@ async def follow_latest(name: str) -> None:
         demo = published_demo(name)
         build = await _template_row(_admin_pool(), demo)
         _mark_templated(demo)
-        await _prepare(demo, build)
+        template_builds.record(name, await _prepare(demo, build))
 
 
 async def _retire_template(name: str) -> None:
@@ -686,7 +717,7 @@ async def _template_row(pool, demo: PublishedDemo) -> bool:
     return build
 
 
-async def _prepare(demo: PublishedDemo, build: bool) -> None:
+async def _prepare(demo: PublishedDemo, build: bool) -> bool:
     """Build (or only load) the template, wait until every replica it declares has landed, then
     run the ready hooks. A replica whose build failed stops the wait: the template is not ready,
     and a visitor is told so by name (demo_sandbox._template_ready)."""
@@ -710,7 +741,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> None:
         landed, failed, declared = await _replica_progress(rt)
         if failed:
             log.error("demo template %s: replicas failed to land: %s", demo.name, failed)
-            return
+            return False
         # Every table of a demo is replicated always (template_seed): its template is ready when
         # each one has a landed replica, whether or not convergence has asked for all yet.
         if landed >= declared:
@@ -738,6 +769,7 @@ async def _prepare(demo: PublishedDemo, build: bool) -> None:
                 log.exception("demo template %s: ready hook %r failed", demo.name, hook)
     finally:
         reset_current_org(token)
+    return True
 
 
 async def _replica_progress(rt) -> tuple[int, list[str], int]:

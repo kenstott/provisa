@@ -80,3 +80,33 @@ async def test_a_template_whose_build_fails_does_not_stop_the_others():
 
     await asyncio.wait_for(queue.run(1, _prepare), 5)
     assert built == ["b", "c"]
+
+
+async def test_each_template_says_whether_it_waits_is_built_is_ready_or_failed():
+    queue = TemplateBuilds()
+    assert queue.state_of("a") == "unknown"  # never queued: the tier has not started its builds
+    for name in ("a", "b", "c"):
+        queue.add(_demo(name), build=True)
+    seen: dict[str, dict[str, str]] = {}
+    release = asyncio.Event()
+
+    async def _prepare(demo, _build):
+        seen[demo.name] = {n: queue.state_of(n) for n in ("a", "b", "c")}
+        if demo.name == "a":
+            await release.wait()
+        if demo.name == "b":
+            return False  # its replicas failed to land
+        if demo.name == "c":
+            raise RuntimeError("its source is unreachable")
+        return True
+
+    builds = asyncio.ensure_future(queue.run(1, _prepare))
+    await asyncio.sleep(0.05)
+    assert seen["a"] == {"a": "building", "b": "queued", "c": "queued"}
+    release.set()
+    await asyncio.wait_for(builds, 5)
+    assert {n: queue.state_of(n) for n in ("a", "b", "c")} == {
+        "a": "ready",
+        "b": "failed",
+        "c": "failed",
+    }

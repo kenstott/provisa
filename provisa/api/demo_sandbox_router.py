@@ -12,7 +12,8 @@
 
 ``POST /public/demos/{name}`` needs no sign-in: it opens a visitor's sandbox of the published demo
 ``name`` and answers the sandbox's org and the visitor's token, which the page keeps and the
-sandbox's own address is then used with. Served by the sandbox tier only (the UI server routes the
+sandbox's own address is then used with. ``GET /public/demos/{name}/status`` says whether the
+demo can be opened now and how many places are free, and opens nothing. Served by the sandbox tier only (the UI server routes the
 path there, ui_server.DEMO_OPEN_PREFIXES); every other process refuses it by name."""
 
 # Requirements: REQ-2006, REQ-1035
@@ -49,6 +50,16 @@ async def open_demo(name: str, request: Request) -> dict:
     assert opened.token is not None  # a visitor's sandbox is always opened with its token
     warm_tour(request.app, opened.org_id, opened.demo, {"Authorization": f"Bearer {opened.token}"})
     return {"org_id": opened.org_id, "demo": opened.demo, "token": opened.token}
+
+
+@router.get("/{name}/status")
+async def demo_status(name: str) -> dict:
+    """Whether the published demo ``name`` can be opened now, and how many places are free: a
+    probe for the live demos page and for monitoring, which opens nothing (REQ-2006)."""
+    from provisa.api.demo_sandbox import demo_status as _status
+
+    _require_tier()
+    return await _status(name)
 
 
 @named_router.post("/closing", status_code=204)
