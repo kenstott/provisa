@@ -172,7 +172,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                 from provisa.mv.bitemporal import view_read_sql
 
                 _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
-                    state.org_id
+                    state.active_org_id
                 )
                 from provisa.mv.models import stored_table_ref
 
@@ -204,7 +204,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                     # Target the store the ACTIVE engine materializes into (DuckDB attaches its store
                     # as ``mat_store``, not ``postgresql``), matching _sync_view_mv.
                     _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
-                        state.org_id
+                        state.active_org_id
                     )
                     # A saved view coming back into memory, not a save: registered as it is.
                     # If an input has since stopped being readable (a table switched to

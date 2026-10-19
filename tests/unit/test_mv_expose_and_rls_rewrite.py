@@ -33,7 +33,9 @@ class _Engine:
 
 def _load(monkeypatch, raw_config: dict) -> tuple[list[MVDefinition], MVRegistry]:
     registry = MVRegistry()
-    st = types.SimpleNamespace(mv_registry=registry, federation_engine=_Engine(), org_id="root")
+    st = types.SimpleNamespace(
+        mv_registry=registry, federation_engine=_Engine(), org_id="root", active_org_id="root"
+    )
     monkeypatch.setattr("provisa.api.app.state", st, raising=False)
     return app_loaders._load_mv_and_views_config(raw_config), registry
 

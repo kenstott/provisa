@@ -152,18 +152,28 @@ def test_a_visitor_reads_eu_customers_served_from_eus_store_with_no_eu_node(tier
     rows = _rows(
         server,
         sandbox,
-        'SELECT subsidiary, customer FROM "retail"."view_group_customers"',
+        # The EU rows: the view lists the US ones first, and the demo answers 100 rows at most.
+        'SELECT subsidiary, customer FROM "retail"."view_group_customers" '
+        "WHERE subsidiary = 'eu'",
         "group_analyst",
     )
     eu = [r["customer"] for r in rows if r["subsidiary"] == "eu"]
     assert eu and all(re.fullmatch(r"[0-9a-f]{32}", c) for c in eu), rows[:5]
-    record = _rows(
-        server,
-        sandbox,
-        'SELECT region FROM "ops"."queries" WHERE domain_id = \'retail\'',
-        "org_admin",
-    )
-    assert any(r["region"] == "eu" for r in record), record
+    # The visitor's own role reads the sandbox's record; a statement is recorded once answered.
+    from provisa.api.demo_sandbox import SANDBOX_ROLE
+
+    deadline = time.monotonic() + 60
+    while True:
+        record = _rows(
+            server,
+            sandbox,
+            'SELECT region FROM "ops"."queries" WHERE domain_id = \'retail\'',
+            SANDBOX_ROLE,
+        )
+        if any(r["region"] == "eu" for r in record):
+            break
+        assert time.monotonic() < deadline, record
+        time.sleep(2)
     # The sandbox's copy of eu's replicas is in eu's own store; us's holds no EU customer.
     with psycopg.connect(stack.url(stack.engine_port, "eu_store")) as conn:
         schemas = {

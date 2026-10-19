@@ -413,7 +413,7 @@ async def register_table(
             from provisa.api.app import state as _mv_state
 
             _, model.schema_name = _mv_state.federation_engine.materialize_store_target(
-                _mv_state.org_id
+                _mv_state.active_org_id
             )
         from provisa.api.admin._landing_ttl import TableTtl, landing_ttl_refusal
 
