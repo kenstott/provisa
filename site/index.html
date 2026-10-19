@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Provisa — Query all your data in 3 languages and 9 protocols</title>
-  <meta name="description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher — from psql, Tableau, Neo4j Browser, or an AI agent. Governance is compiled into every query plan, so there is no way in that goes around it. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync." />
+  <meta name="description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher, from psql, Tableau, Neo4j Browser or an AI agent. Governance is compiled into every query plan, so there is no way in that goes around it. Federation, metrics, ontology and governance from a single model. Nothing to keep in sync." />
   <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -12,7 +12,7 @@
   <link rel="stylesheet" href="styles.css" />
 
   <meta property="og:title" content="Provisa — Query all your data in 3 languages and 9 protocols" />
-  <meta property="og:description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher over nine wire protocols — psql, Neo4j Browser, Tableau, or an AI agent. Governance no one can go around." />
+  <meta property="og:description" content="Connect your databases once, then query them in GraphQL, SQL, or Cypher over nine wire protocols, from psql, Neo4j Browser, Tableau or an AI agent. Governance no one can go around." />
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://provisa.dev" />
   <link rel="canonical" href="https://provisa.dev/" />
@@ -57,7 +57,7 @@
         <h1>Query all your data<br />in 3 languages in any tool.<br />In 5 minutes.</h1>
         <p class="lead">
           Connect your data once. Query in <strong>GraphQL, SQL, or
-          Cypher</strong> — from psql, Tableau, Neo4j Browser, or an AI agent. Governance
+          Cypher</strong>, from psql, Tableau, Neo4j Browser or an AI agent. Governance
           is compiled into the query plan, so there's no way in that goes around it.
         </p>
         <div class="hero-actions">
@@ -160,9 +160,9 @@
           </div>
 
           <p class="proto-note">
-            One model, three languages — and if you want none of them, generated REST.
+            One model, three languages, and generated REST if you want none of them.
             <strong>RLS, masking, and approval are already applied</strong> on whichever
-            tab you pick — nothing to remember, and nothing to re-implement per protocol.
+            tab you pick. There is nothing to re-implement per protocol.
           </p>
         </div>
 
@@ -202,8 +202,8 @@
           <h3>One API over sources that don't match.</h3>
           <p>
             The app needs Postgres, a document store, and two internal REST services in
-            the same response. Declare the relationships once and the API spans all of
-            them — per-role, filtered, paginated — in whichever shape your client wants:
+            the same response. Declare the relationships once and the API spans all of them, per role,
+            filtered and paginated, in whichever shape your client wants:
             GraphQL/OpenAPI, JSON:API, or gRPC. No BFF service to maintain.
           </p>
           <span class="job-more">The interfaces, and the Hasura path in &rarr;</span>
@@ -212,10 +212,10 @@
           <p class="job-tag">BI without a warehouse</p>
           <h3>Tableau over the sources you actually have.</h3>
           <p>
-            Postgres, Mongo, Elasticsearch, a Google Sheet, an S3 prefix of extracts —
+            Postgres, Mongo, Elasticsearch, a Google Sheet, an S3 prefix of extracts,
             and the SaaS systems the business runs on, Salesforce, ServiceNow, Jira and Stripe
-            among them. Connect the BI tool over JDBC or pgwire and join across all of
-            them — no pipeline into a warehouse first, no copy in the middle.
+            among them. Connect the BI tool over JDBC or pgwire and join across all of them, with no pipeline into a warehouse first and no copy
+            in the middle.
           </p>
           <span class="job-more">All 73 connectors &rarr;</span>
         </a>
@@ -225,9 +225,9 @@
           <p>
             Register the sources once and the whole team queries them from a Jupyter
             notebook (<code>%%sql</code>, <code>%%graphql</code> or <code>%%cypher</code>
-            cells straight into a DataFrame), pandas, Polars, or DuckDB. Arrow Flight streams record batches columnar all the way
-            out — no row-by-row serialization, nothing materialized server-side while
-            you read — and single-source queries route straight to the driver. To train
+            cells straight into a DataFrame), pandas, Polars, or DuckDB. Arrow Flight streams record batches columnar all the way out, with no
+            row-by-row serialization and nothing materialized server-side while you
+            read, and single-source queries route straight to the driver. To train
             without PII, point at our auto-generated synthetic data.
           </p>
           <a class="job-more" href="/why/interfaces">Flight, Airport, and pgwire &rarr;</a>
@@ -238,9 +238,9 @@
           <p class="job-tag">Provision data to other teams</p>
           <h3>Hand over a result set, not a pipeline.</h3>
           <p>
-            The consuming team writes SQL and gets it back fast: Arrow streams over
-            Flight, typed gRPC, and — past a row threshold — a presigned S3 URL for
-            multi-GB deliveries instead of a timed-out HTTP response. Kafka carries the
+            The consuming team writes SQL and gets it back fast: Arrow streams over Flight, typed gRPC, and, past a row threshold, a
+            presigned S3 URL for multi-GB deliveries instead of a timed-out HTTP
+            response. Kafka carries the
             change notifications, so they pull the delta rather than the snapshot.
           </p>
           <span class="job-more">How the governance follows the data &rarr;</span>
@@ -252,7 +252,7 @@
     <section class="whatis">
       <div class="container">
         <p>
-          You describe your data once — sources, tables, relationships, who may see what.
+          You describe your data once: sources, tables, relationships, who may see what.
           Everything else is generated from that one description: the APIs, the legal join
           paths, the governance, and the audit trail. <em>There is no second place to keep
           in sync.</em>
@@ -265,7 +265,7 @@
           can do.
         </p>
         <a class="more" href="/why/one-model">One model — what each part covers</a>
-        <a class="more" href="/why/no-lock-in#promote-config">Every change is versioned — promotion is a simple patch</a>
+        <a class="more" href="/why/no-lock-in#promote-config">Every change is versioned, and promoted through environments</a>
       </div>
     </section>
 
@@ -275,9 +275,9 @@
         <h3>Three languages, one model</h3>
         <p>
           GraphQL, Cypher, and SQL all query the same federated model and retarget to
-          any source dialect. Domains carve it into namespaces — a domain is the schema
-          a SQL client sees — and governance applies identically across all three
-          languages: <em>not three integrations, but one</em>.
+          any source dialect. Domains carve it into namespaces (a domain is the schema a SQL client sees),
+          and governance applies identically across all three languages: <em>one
+          integration, not three</em>.
         </p>
       </article>
       <article class="pillar">
@@ -305,12 +305,11 @@
           <h2>Write in three languages. Connect your way.</h2>
           <p class="section-sub">
             Transport, language, and interface contract are three independent choices,
-            not one bundled "protocol." The transport moves the bytes — HTTP, gRPC, a
-            native driver. The language is what you write — SQL, GraphQL, Cypher. The
-            interface contract is what your tooling expects — JDBC, JSON:API, a typed
-            gRPC schema. Which combination fits is a function of your tooling
-            constraints and performance requirements, not a rule fixed here — and the
-            same governance reaches every combination.
+            not one bundled "protocol." The transport moves the bytes: HTTP, gRPC, a native driver. The language is
+            what you write: SQL, GraphQL, Cypher. The interface contract is what your
+            tooling expects: JDBC, JSON:API, a typed gRPC schema. Your tooling and
+            performance needs decide the combination, and the same governance reaches
+            every one.
           </p>
         </header>
 
@@ -362,7 +361,8 @@
               </div>
               <ul class="iface-list">
                 <li><strong>MCP server</strong> — agents query your governed data as tools. The OAuth token maps to a role, so agents get no bypass.</li>
-                <li><strong>Natural language</strong> — NL→SQL, Cypher, or GraphQL powered by Claude, with a validation loop before anything runs.</li>
+                <li><strong>Natural language</strong> — natural language to SQL, Cypher or GraphQL on the language model you
+                configure, with a validation loop before anything runs.</li>
               </ul>
             </div>
           </div>
@@ -388,7 +388,7 @@
           <p class="eyebrow">Access control, compiled in</p>
           <h2>Six access layers. Every language. Every transport.</h2>
           <p class="section-sub">
-            You do not configure any of this to get started — one source and a role is
+            You do not configure any of this to get started; one source and a role are
             enough. It matters later, when the project you started alone has to survive
             an auditor: access control is applied uniformly, there is no query path that
             bypasses it, and adding a source, column, or relationship applies every layer
@@ -420,15 +420,15 @@
 
         <p class="gov-claim">
           All six are applied while the query is <em>compiled</em>, not checked against a
-          policy list afterwards. What executes is already the controlled query — so there is
-          no version of it that could have run ungoverned.
+          policy list afterwards. What executes is already the controlled query, so no version of it could have
+          run ungoverned.
         </p>
 
         <p class="section-note">
-          <strong>Relationships are governed too.</strong> A JOIN or a graph traversal is
-          legal only if it matches a registered, approved relationship — so people and
-          agents can roam the model freely while every path stays inside what policy
-          sanctioned. It's a per-role flag: trusted roles can turn it off.
+          <strong>Relationships are governed too.</strong> A JOIN or a graph traversal is legal only if it matches a registered, approved
+          relationship, so people and agents can explore the whole model while every
+          path stays inside what policy approved. It's a right on the role: a trusted
+          role can be granted the way around it.
         </p>
         <a class="more" href="/why/governance">Governance, in its complete sense</a>
       </div>
@@ -441,9 +441,9 @@
           <p class="eyebrow">Data sources</p>
           <h2>73 connectors reaching 85+ kinds of source.</h2>
           <p class="section-sub">
-            Graph and RDF sources are first-class, not adapters. Register REST, GraphQL,
-            gRPC, WebSocket, or RSS endpoints as governed tables — federated joins across
-            API and relational sources work transparently.
+            Graph and RDF sources take part in the model like any other. Register REST,
+            GraphQL, gRPC, WebSocket or RSS endpoints as governed tables, and federated
+            joins reach them like any table.
           </p>
         </header>
 
@@ -473,7 +473,7 @@
             <li>
               <span class="spot-step-n">1</span>
               <h4>Point</h4>
-              <p>A local or network folder, an S3 bucket, a SharePoint site, an HDFS path, or an HTTP, FTP, or SFTP host — one location, not one table.</p>
+              <p>A local or network folder, an S3 bucket, a SharePoint site, an HDFS path, or an HTTP, FTP or SFTP host: one location, not one table.</p>
             </li>
             <li>
               <span class="spot-step-n">2</span>
@@ -483,7 +483,8 @@
             <li>
               <span class="spot-step-n">3</span>
               <h4>Register</h4>
-              <p>You pick which of the discovered tables to register — and they land under the same six access-control layers as everything else.</p>
+              <p>You pick which of the discovered tables to register, and they land under
+              the same six access-control layers as everything else.</p>
             </li>
           </ol>
 
@@ -530,17 +531,16 @@
           <div class="card">
             <h4>Declared datasets, not pipelines</h4>
             <p>
-              A pipeline is a program that ran; to audit one you read code. Declare the
-              dataset instead and the definition is the record — column-level lineage,
-              the data version consumed, the rules that produced it. No orchestration DAG.
+              A pipeline is a program that ran; to audit one you read code. Declare the dataset instead and the definition is the record: column-level
+              lineage, the data version consumed, the rules that produced it. No orchestration DAG.
             </p>
           </div>
           <div class="card">
             <h4>Feeds the catalog you bought</h4>
             <p>
-              One registration publishes to OpenMetadata, DataHub, Collibra, Atlan, Apache
-              Atlas, and OpenLineage — with lineage stitched on business identity, so
-              re-platforming doesn't reset it.
+              One registration publishes to OpenMetadata, DataHub, Collibra, Atlan,
+              Apache Atlas, OpenLineage, BigQuery Dataplex and Snowflake Horizon, with
+              lineage stitched on business identity, so re-platforming doesn't reset it.
             </p>
           </div>
           <div class="card">
@@ -575,8 +575,8 @@
           <p class="eyebrow">Enterprise-ready</p>
           <h2>Airgap-ready. Install from PyPI.</h2>
           <p class="section-sub">
-            The embedded profile ships the entire runnable system — precompiled UI and all
-            — as a single Python wheel. Regulated and airgapped orgs already trust
+            The embedded profile ships the entire runnable system, precompiled UI
+            included, as a single Python wheel. Regulated and airgapped orgs already trust
             Artifactory-as-PyPI, so there's no new supply chain to approve: no Docker
             registry to mirror, no JVM, no root.
           </p>
@@ -606,11 +606,12 @@
           </svg>
         </div>
         <div>
-          <h3>Locked-in ecosystems become replaceable execution engines</h3>
+          <h3>The platforms you're locked into become engines you can replace</h3>
           <p>
             Your model, semantics, and governance live <em>above</em> the infrastructure,
-            not inside it. Swap the engine — embedded to Trino to your warehouse; new CTO,
-            switch it to Databricks — and the queries and policies don't change. Re-point a
+            not inside it. Swap the engine from embedded to Trino, or to your warehouse, or to
+            Databricks when a new CTO brings a new strategy, and the queries and
+            policies don't change. Re-point a
             table from Oracle to Postgres and consumers never see it move.
           </p>
           <p>
@@ -630,19 +631,19 @@
           <h2>Download and run in 5 minutes.</h2>
           <p class="section-sub">
             Desktop installers for every OS (the macOS app signed and notarized), or <code>pip install</code> the Sigstore-attested
-            embedded runtime. The whole working system runs on your desktop in about five
-            minutes — no Docker, no JVM, no cluster. Launch it and pick the guided demo:
+            embedded runtime. The whole working system runs on your desktop in about five minutes, with no
+            Docker, no JVM and no cluster. Launch it and pick the guided demo:
             a sample federation is already bundled, so you can run SQL, GraphQL, and
             Cypher over it before you connect anything of your own.
             Prefer not to install anything? The same runtime is hosted for you at
-            <a href="https://cloud.provisa.dev" target="_blank" rel="noopener">cloud.provisa.dev</a> — start a free
-            trial — or connect your own sources in the browser at
+            <a href="https://cloud.provisa.dev" target="_blank"
+            rel="noopener">cloud.provisa.dev</a> with a free trial, or connect your own
+            sources in the browser at
             <a href="https://sandbox.provisa.dev/register?invite=eca0374b-fce8-45bd-8347-5f9d6e7931c3" target="_blank" rel="noopener">sandbox.provisa.dev</a>.
           </p>
           <p class="section-sub dl-license">
             Business Source License 1.1. Non-production use, including evaluation, is
-            free forever, for any size organization — evaluate it for as long as you
-            like. Production use is also free for any organization that, together with
+            free forever, for any size organization. Production use is also free for any organization that, together with
             its affiliates, has fewer than
             100 employees and contractors and under $1,000,000 in annual revenue, budget,
             or expenditures. Grow past that and you get a 90-day grace period to get a
@@ -687,7 +688,7 @@
           <div class="pip-copy">
             <h3>Or install from PyPI</h3>
             <p>
-              The whole runnable system — precompiled UI included — as a single wheel.
+              The whole runnable system, precompiled UI included, as a single wheel.
               Airgap-ready over an Artifactory PyPI mirror: no Docker, no JVM, no root.
             </p>
           </div>
@@ -709,7 +710,7 @@
       <div class="container">
         <header class="section-head">
           <p class="eyebrow">Deploy anywhere</p>
-          <h2>From a laptop to a cluster — same platform.</h2>
+          <h2>From a laptop to a cluster, the same platform.</h2>
         </header>
 
         <div class="grid grid-4">
@@ -723,7 +724,8 @@
           </div>
           <div class="card">
             <h4>Kubernetes · Helm</h4>
-            <p>A production chart deploys the control plane, workers, and engine — scale the federation tier horizontally.</p>
+            <p>A production chart deploys the control plane, workers and engine, and the
+            federation tier scales horizontally.</p>
           </div>
           <div class="card">
             <h4>Cloud &amp; VM · Terraform</h4>
@@ -746,10 +748,9 @@
             <summary>Is Provisa a database, or does it replace my warehouse?</summary>
             <p>
               Neither. Provisa is a semantic and governance layer that runs on an engine
-              you choose — Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks,
-              BigQuery, or the embedded Trino-compatible engine in the box. Your warehouse
-              becomes a replaceable execution engine rather than the place your semantics
-              live.
+              you choose: Trino, DuckDB, ClickHouse, Postgres, Snowflake, Databricks,
+              BigQuery, or the embedded DuckDB engine in the box. Your warehouse becomes
+              a replaceable execution engine, not the place your semantics live.
             </p>
             <a class="more" href="/why/no-lock-in">Why that matters</a>
           </details>
@@ -758,8 +759,7 @@
             <summary>How is this different from Starburst or Denodo?</summary>
             <p>
               Starburst is a query engine; Provisa sits above one and can use Starburst as
-              its engine. Denodo is the closest comparison — same category, different
-              center of gravity: Provisa adds GraphQL and Cypher as peers to SQL, nine wire
+              its engine. Denodo is the closest comparison, in the same category: Provisa adds GraphQL and Cypher as peers to SQL, nine wire
               protocols including pgwire and Bolt, engine choice, and a deployment that
               starts at one <code>pip install</code>.
             </p>
@@ -792,8 +792,8 @@
           <details>
             <summary>Can AI agents query my data safely?</summary>
             <p>
-              An MCP server — stdio and remote Streamable HTTP — exposes governed tables as
-              tools. The OAuth token maps to a role, so every agent call passes the same six
+              An MCP server, over stdio or remote Streamable HTTP, exposes governed
+              tables as tools. The OAuth token maps to a role, so every agent call passes the same six
               access-control layers as a human query, and traversals are limited to registered
               relationships. Agents get no bypass and there's no second policy to keep in
               sync.
@@ -814,8 +814,8 @@
           <details>
             <summary>What happens to my model if I stop using Provisa?</summary>
             <p>
-              You keep it. Provisa is a handful of primitives — domains, tables,
-              relationships, masking, views — compiled deterministically. The model is
+              You keep it. Provisa is a handful of primitives (domains, tables, relationships,
+              masking, views) compiled deterministically. The model is
               portable declarative config held in git, and the SQL it compiles is yours to
               read and export. The semantics you write don't die with the tool.
             </p>
@@ -837,7 +837,8 @@
         </div>
 
         <form id="signup" class="signup" novalidate>
-          <p class="signup-lead">Want the release notes? Get new features and platform updates by email — no waiting required, the hosted service is already open.</p>
+          <p class="signup-lead">Want the release notes? Get new features and platform updates by email. The hosted service is already
+          open.</p>
           <div class="signup-row">
             <input type="text" name="name" placeholder="Your name" autocomplete="name" aria-label="Your name" required />
             <input type="email" name="email" placeholder="you@company.com" autocomplete="email" aria-label="Email address" required />
@@ -846,7 +847,7 @@
           <!-- honeypot: hidden from users; bots fill it and get silently dropped -->
           <input type="text" name="company" class="hp" tabindex="-1" autocomplete="off" aria-hidden="true" />
           <p class="signup-status" role="status" aria-live="polite"></p>
-          <p class="signup-fine">Product updates only. No spam, unsubscribe anytime. We only ask for your name and email — see the <a href="/privacy">privacy policy</a> and <a href="/terms">terms</a>.</p>
+          <p class="signup-fine">Product updates only. No spam, unsubscribe anytime. We only ask for your name and email. See the <a href="/privacy">privacy policy</a> and <a href="/terms">terms</a>.</p>
         </form>
       </div>
     </section>
