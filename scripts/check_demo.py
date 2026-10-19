@@ -189,6 +189,8 @@ def check_run_compose(home: Path, name: str) -> list[str]:
 
 
 def check_locales(name: str, home: Path, locales: Path = LOCALES) -> list[str]:
+    if not (home / "tour.yaml").is_file():
+        return []  # toured by the core tour (demo.yaml tour: core): no words of its own
     keys = [s["key"] for s in yaml.safe_load((home / "tour.yaml").read_text())["steps"]]
 
     def words(locale: str) -> dict:

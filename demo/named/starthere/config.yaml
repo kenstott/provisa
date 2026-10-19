@@ -1,0 +1,660 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The Start here demo: the standard demo (config/provisa-install.yaml) on its own two SQLite files
+# -- the pet store and its inquiries -- with the quality checkers and profiler, the derived pet
+# dimension and inquiry fact, the metric and the Pet Health data product: the objects every Deep
+# Dive is told with. Its data is the standard demo's own (data/ links demo/files). The folder is
+# named by PROVISA_NAMED_DEMO_DIR.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+naming:
+  domain_prefix: true
+  rules: []
+server:
+  limits:
+    default_row_limit: 100
+    request_timeout: 60
+    trino_query_timeout: 120
+federation_engine: duckdb
+domains:
+- description: Pet store — its pets, vets, visits and playgroups, and its customers' inquiries, two
+    SQLite files federated into one virtual database
+  id: pet-store
+roles:
+- capabilities:
+  - query_development
+  domain_access:
+  - pet-store
+  id: analyst
+  description: Queries the pet store's data.
+sources:
+- description: Great Expectations quality scans — each results table is one suite's per-check outcomes,
+    kept across scans
+  id: dq-checker
+  mapping:
+    database: provisa
+    host: ${env:PROVISA_DQ_HOST:-localhost}
+    password: ''
+    port: ${env:PROVISA_PGWIRE_PORT:-5439}
+    user: ${env:PROVISA_DQ_USER:-org_admin}
+  type: great_expectations
+- description: Soda quality scans — each results table is one contract's per-check outcomes, kept across
+    scans
+  id: dq-soda
+  mapping:
+    database: provisa
+    host: ${env:PROVISA_DQ_HOST:-localhost}
+    password: ''
+    port: ${env:PROVISA_PGWIRE_PORT:-5439}
+    user: ${env:PROVISA_DQ_USER:-org_admin}
+  type: soda
+- description: Nightly profile of the pet store's tables — distributions, drift, duplicates, dependence
+    and proposed constraints, one run per night
+  id: demo-profiler
+  mapping:
+    cron: 0 2 * * *
+    low_cardinality_max: 100
+    drift_window: 7
+    drift_season: none
+    drift_distance: 3.0
+    drift_slope: 3.0
+    drift_ks: 0.2
+    drift_psi: 0.25
+    correlation_max_columns: 20
+    joint_max_distinct: 20
+    category_max_columns: 10
+  type: data_profiler
+- description: Customer adoption inquiry records — prospective pet owner interest submissions tracked
+    by the front-desk team, including inquiry type, message, and resolution status
+  id: inquiries-sqlite
+  path: ${env:PROVISA_NAMED_DEMO_DIR}/data/inquiries.sqlite
+  type: sqlite
+- description: Internal pet store inventory — tracks animals available for sale, pricing, species, and
+    breed assignments managed by the inventory department
+  id: pet-store-sqlite
+  path: ${env:PROVISA_NAMED_DEMO_DIR}/data/pet_store.sqlite
+  type: sqlite
+tables:
+- columns:
+  - description: Whether the pet is currently available for purchase
+    name: available
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Breed of the pet
+    name: breed_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Identifier of the pet record
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Name the pet is known by
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Sale price of the pet in USD
+    name: price
+    data_type: double
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Species of the pet (e.g. dog, cat, bird)
+    name: species
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Pet dimension — entity projection of the pet inventory (star-schema demo)
+  domain_id: pet-store
+  materialize: true
+  modeling_role: dimension
+  schema: views
+  source_id: __derived__
+  table: dim_pet
+  view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM "pet_store_sqlite"."pet_store"."pets"
+- columns:
+  - description: Identifier of the inquiry
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet the inquiry is about
+    name: pet_id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  description: Inquiry fact at pet grain — inquiry count per pet, linked to dim_pet (star-schema demo)
+  domain_id: pet-store
+  materialize: true
+  modeling_role: fact
+  schema: views
+  source_id: __derived__
+  table: fact_pet_inquiries
+  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "inquiries_sqlite"."default"."inquiries" GROUP BY
+    "pet_id"
+- columns:
+  - description: Identifier of the inquiry
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Kind of inquiry - adoption, price, or availability
+    name: inquiry_type
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Free-text message the customer wrote
+    name: message
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Pet the inquiry is about
+    name: pet_id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Where the inquiry stands - new, contacted, or closed
+    name: status
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: When the inquiry was submitted
+    name: submitted_at
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer who submitted the inquiry
+    name: user_id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  description: Customer adoption inquiries — managed by the front-desk/CRM team
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  schema: default
+  profiler_source_id: demo-profiler
+  source_id: inquiries-sqlite
+  table: inquiries
+- columns:
+  - description: Whether the pet is currently available for purchase
+    name: available
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Breed of the pet
+    name: breed_name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Unique identifier for the pet record
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Name of the pet
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Sale price of the pet in USD
+    name: price
+    data_type: double
+    visible_to:
+    - org_admin
+  - description: Species of the pet (e.g. dog, cat, bird)
+    name: species
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  description: Pet inventory — managed by the inventory department
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  product_id: pet_health
+  schema: pet_store
+  profiler_source_id: demo-profiler
+  source_id: pet-store-sqlite
+  table: pets
+- columns:
+  - description: Unique identifier for the companion link
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet the companion link starts from
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet the companion link points at
+    name: companion_pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Which kind of companionship this row records
+    name: relation_type
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date the two pets were first paired
+    name: since
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Care note explaining the pairing
+    name: note
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Pet-to-pet companion links — the junction behind the BONDED_PAIR, LITTERMATE, and SHARES_ENCLOSURE
+    relationships
+  domain_id: pet-store
+  schema: pet_store
+  source_id: pet-store-sqlite
+  table: pet_companions
+- columns:
+  - description: Unique identifier for the vet
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Vet's name
+    name: name
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Practice the vet works out of
+    name: clinic
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Kind of animal the vet is licensed to treat
+    name: specialty
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Veterinarians the store refers pets to
+  domain_id: pet-store
+  product_id: pet_health
+  schema: pet_store
+  profiler_source_id: demo-profiler
+  source_id: pet-store-sqlite
+  table: vets
+- columns:
+  - description: Unique identifier for the visit
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet that was seen
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Vet who saw the pet
+    name: vet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date of the visit
+    name: visit_date
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Why the pet was brought in
+    name: reason
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Vet visits — the junction behind the TREATED_BY relationship between pets and vets
+  domain_id: pet-store
+  schema: pet_store
+  profiler_source_id: demo-profiler
+  source_id: pet-store-sqlite
+  table: pet_visits
+- columns:
+  - description: Unique identifier for the playgroup
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Name the playgroup is scheduled under
+    name: name
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Yard the playgroup runs in
+    name: yard
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Most pets the yard takes at once
+    name: max_size
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  description: Supervised exercise groups run in the store yards
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  schema: pet_store
+  source_id: pet-store-sqlite
+  table: playgroups
+- columns:
+  - description: Unique identifier for the membership
+    name: id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Pet enrolled in the playgroup
+    name: pet_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Playgroup the pet is enrolled in
+    name: playgroup_id
+    data_type: integer
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Date the pet joined the playgroup
+    name: joined_on
+    data_type: date
+    visible_to:
+    - analyst
+    - org_admin
+  - description: Handling note for this pet in this group
+    name: note
+    data_type: varchar
+    visible_to:
+    - analyst
+    - org_admin
+  description: Playgroup enrolment — the junction behind the PLAYGROUP_MEMBERS relationship between pets
+    and playgroups
+  domain_id: pet-store
+  enable_aggregates: true
+  enable_group_by: true
+  schema: pet_store
+  source_id: pet-store-sqlite
+  table: playgroup_members
+- columns:
+  - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
+    name: scan_id
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  cache_ttl: 3600
+  description: Quality scan results for the pet inventory — one row per check per scan, with outcome,
+    metric value and threshold
+  domain_id: pet-store
+  dq_contract: "name: pets_quality\nmeta:\n  dataset: provisa/pet_store/pets\nexpectations:\n  - type:\
+    \ expect_table_row_count_to_be_between\n    kwargs:\n      min_value: 1\n  - type: expect_column_values_to_not_be_null\n\
+    \    kwargs:\n      column: name\n  - type: expect_column_values_to_be_between\n    kwargs:\n    \
+    \  column: price\n      min_value: 0\n  - type: expect_column_values_to_not_be_null\n    kwargs:\n\
+    \      column: species\n"
+  source_id: dq-checker
+  table: pets_quality
+- columns:
+  - description: Placeholder carrying visible_to; replaced by the shipped results schema at parse
+    name: scan_id
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  cache_ttl: 3600
+  description: Quality scan results for the referral vets — one row per check per scan, with outcome,
+    metric value and threshold
+  domain_id: pet-store
+  dq_contract: "dataset: provisa/pet_store/vets\ncolumns:\n  - name: name\n    checks:\n      - missing:\n\
+    \      - duplicate:\n  - name: clinic\n    checks:\n      - missing:\n  - name: specialty\n    checks:\n\
+    \      - missing:\nchecks:\n  - row_count:\n      must_be_greater_than: 0\n"
+  source_id: dq-soda
+  table: vets_quality
+- columns:
+  - description: When the customer record was created
+    name: created_at
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer's email address
+    name: email
+    data_type: varchar
+    visible_to:
+    - org_admin
+  - description: Identifier of the customer
+    name: id
+    data_type: bigint
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer's full name
+    name: name
+    data_type: varchar
+    visible_to:
+    - org_admin
+    - analyst
+  - description: Customer's phone number
+    name: phone
+    data_type: varchar
+    visible_to:
+    - org_admin
+  description: Prospective adopters who have submitted inquiries
+  domain_id: pet-store
+  schema: default
+  source_id: inquiries-sqlite
+  table: users
+  write_grants:
+  - role: org_admin
+    operation: insert
+    columns:
+    - created_at
+    - email
+    - id
+    - name
+    - phone
+  - role: org_admin
+    operation: update
+    columns:
+    - created_at
+    - email
+    - id
+    - name
+    - phone
+  - role: org_admin
+    operation: delete
+relationships:
+- alias: ABOUT_PET
+  cardinality: many-to-one
+  id: fact_pet_inquiries__pet_id
+  source_column: pet_id
+  source_table_id: fact_pet_inquiries
+  target_column: id
+  target_table_id: dim_pet
+- alias: HAS_PETS
+  cardinality: many-to-one
+  id: inquiries-to-pets
+  source_column: pet_id
+  source_table_id: inquiries
+  target_column: id
+  target_table_id: pets
+- alias: SUBMITTED_BY
+  cardinality: many-to-one
+  id: inquiries-to-users
+  source_column: user_id
+  source_table_id: inquiries
+  target_column: id
+  target_table_id: users
+- alias: HAS_INQUIRY
+  cardinality: one-to-many
+  id: pets-to-inquiries
+  source_column: id
+  source_table_id: pets
+  target_column: pet_id
+  target_table_id: inquiries
+- alias: SUBMITTED
+  cardinality: one-to-many
+  id: users-to-inquiries
+  source_column: id
+  source_table_id: users
+  target_column: user_id
+  target_table_id: inquiries
+- cardinality: one-to-many
+  id: pets-bonded-pair
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: bonded pair
+  via_label_source: column
+- cardinality: one-to-many
+  id: pets-littermate
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: littermate
+  via_label_source: column
+- cardinality: one-to-many
+  id: pets-shares-enclosure
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: pets
+  via_table: pet_companions
+  via_source_column: pet_id
+  via_target_column: companion_pet_id
+  via_type_column: relation_type
+  via_type_value: shares enclosure
+  via_label_source: column
+- alias: TREATED_BY
+  cardinality: one-to-many
+  id: pets-treated-by-vets
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: vets
+  via_table: pet_visits
+  via_source_column: pet_id
+  via_target_column: vet_id
+  via_label_source: fixed
+- cardinality: one-to-many
+  id: pets-in-playgroups
+  source_column: id
+  source_table_id: pets
+  target_column: id
+  target_table_id: playgroups
+  via_table: playgroup_members
+  via_source_column: pet_id
+  via_target_column: playgroup_id
+  via_label_source: table
+metrics:
+- datatype: bigint
+  description: Number of customer inquiries, re-grainable by any dim_pet attribute
+  expression: COUNT(fact_pet_inquiries.id)
+  from_fact: fact_pet_inquiries
+  name: fact_pet_inquiries_id_count
+  visible_to:
+  - org_admin
+  - analyst
+data_products:
+- purpose: Pet health records — inventory and referral vets for care history
+  domain_id: pet-store
+  id: pet_health
+  name: Pet Health
+  owner: org_admin
+  support_contact: kennethstott@gmail.com
+glossary_terms:
+- name: referral
+  definition: The act of sending a pet to an outside veterinary practice for care beyond in-house capability.
+  domains:
+  - pet-store
+  edges:
+  - to: clinic
+    rel_type: RELATED_TO
+  - to: specialty
+    rel_type: RELATED_TO
+- name: clinic
+  definition: The outside veterinary practice a pet is referred to.
+  domains:
+  - pet-store
+- name: specialty
+  definition: The area of veterinary care a referral clinic focuses on.
+  domains:
+  - pet-store
+tag_assignments:
+- tag_id: pii
+  object_type: column
+  table_ref: inquiries-sqlite.default.users
+  column_name: email
+- tag_id: pii
+  object_type: column
+  table_ref: inquiries-sqlite.default.users
+  column_name: phone

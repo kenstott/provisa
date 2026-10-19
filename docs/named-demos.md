@@ -284,6 +284,8 @@ requires_provisa: 0.1.0a483
 | `description` | for published | The card text on the live demos page |
 | `screenshot` | for published | `card.png`, a PNG in the same directory |
 | `extras` | optional | Python extras to install before the bundle build (e.g. `[vector]` for sentence-transformers) |
+| `order` | optional | A positive integer: demos with one are listed first on the live demos page and by `--list-demos`, lowest first; the rest follow by name |
+| `tour` | optional | `core`: the demo is toured by the product's core tour and its Deep Dives, and has no `tour.yaml` of its own |
 
 The `extras` field installs additional Provisa optional dependencies before the demo's setup
 runs. The `sonnets` demo uses `[vector]` to install the sentence-transformers package needed to
@@ -434,7 +436,7 @@ of only local or file sources has no seed to write and no replica to serve.
 
 ## tour.yaml — the demo's guided tour
 
-Every published demo has a `tour.yaml`. It describes the demo step by step — what it is, how
+Every published demo has a `tour.yaml`, except one whose `demo.yaml` says `tour: core` (`starthere`). It describes the demo step by step — what it is, how
 its pieces fit, and then the answer it shows. The UI renders it as an interactive tour, with each
 step's words in `tour.json` (per locale, in `provisa-ui/src/i18n/`). [tool-verified: comments in
 `demo/named/weblogs/tour.yaml`, `demo/named/sonnets/tour.yaml`]

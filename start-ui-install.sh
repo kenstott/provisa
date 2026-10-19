@@ -40,12 +40,14 @@ while [ "$_i" -lt "${#_ARGV[@]}" ]; do
     --list-demos)
       _here="$(cd "$(dirname "$0")" && pwd)"
       printf '%-18s %-12s %s\n' "NAME" "STATUS" "TITLE"
+      # A demo.yaml's order puts it first, lowest first; the rest follow by name.
       for _spec in "$_here"/demo/named/*/demo.yaml; do
         _name="$(basename "$(dirname "$_spec")")"
         _title="$(sed -n 's/^title: *//p' "$_spec" | head -1)"
+        _order="$(sed -n 's/^order: *//p' "$_spec" | head -1)"
         if grep -q '^published: *true' "$_spec"; then _status=published; else _status=unpublished; fi
-        printf '%-18s %-12s %s\n' "$_name" "$_status" "$_title"
-      done
+        printf '%s\t%s\t%-18s %-12s %s\n' "${_order:-999999}" "$_name" "$_name" "$_status" "$_title"
+      done | sort -t "$(printf '\t')" -k1,1n -k2,2 | cut -f3-
       echo
       echo "Run one:  $0 --demo <name>   (a published demo is pulled as its bundle; the others run from this checkout)"
       exit 0
