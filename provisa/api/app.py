@@ -113,6 +113,7 @@ from provisa.api.org_runtime import (
     ActiveOrgPool,
     OrgRegistry,
     OrgRuntime,
+    retire_hooks,
     runtime_key,
 )
 from provisa.core.runtime_gone import RuntimeNotBuilt, left_to_the_next_runtime
@@ -1211,6 +1212,17 @@ class AppState:
 
 
 state = AppState()
+
+
+def _stop_retired_runtime_listeners(runtime: OrgRuntime) -> None:
+    """REQ-1733: a retired runtime's push listeners stop with it; its org's next build wires
+    them again (``push_wiring.stop_runtime_listeners``)."""
+    from provisa.events.push_wiring import stop_runtime_listeners
+
+    stop_runtime_listeners(state, runtime.org_id, runtime.env)
+
+
+retire_hooks.append(_stop_retired_runtime_listeners)
 
 # REQ-1678: the engine layer asks for the active org's own engine DSN (REQ-1418) and the persisted
 # platform config through core.request_context, never by importing this module.

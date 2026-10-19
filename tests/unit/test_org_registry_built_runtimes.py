@@ -33,6 +33,7 @@ def _runtime(org_id: str, tenant_db) -> SimpleNamespace:
     """A runtime as the registry and its retirement read one."""
     return SimpleNamespace(
         org_id=org_id,
+        env="prod",
         tenant_db=tenant_db,
         live_engine=None,
         federation_engine=None,
