@@ -1,67 +1,67 @@
 # Sicherheitsmodell {: #security-model }
 
-Provisa setzt ein mehrschichtiges Sicherheitsmodell über jede Abfragesprache (GraphQL, SQL, Cypher) und jeden Transport (REST, gRPC, Arrow Flight, JDBC, WebSocket) hinweg durch. Governance wird einheitlich angewendet — es gibt keinen Abfragepfad, der sie umgeht.
+Jede Abfrage durchläuft dieselbe Governance, gleich in welcher Sprache sie geschrieben ist (GraphQL, SQL, Cypher) und auf welchem Weg sie ankommt (REST, gRPC, Arrow Flight, JDBC, WebSocket). Es gibt keinen Weg daran vorbei.
 
-Die Schichten gelten der Reihe nach. Eine Anfrage muss jede Schicht durchlaufen, bevor die nächste ausgewertet wird.
+Die Prüfungen laufen der Reihe nach. Eine Anfrage muss jede bestehen, bevor die nächste angesehen wird.
 
 ## Schichtenmodell {: #layered-model }
 
 ### Schicht 0 — Introspektionsfilterung {: #layer-0-introspection-filtering }
 
-Das Schema und der Katalog, die einer Rolle angezeigt werden, enthalten nur die Tabellen aus ihrer `domain_access`-Liste und die Spalten, die die spaltenspezifischen `visible_to`-Regeln erfüllen. Objekte außerhalb des Zugriffs einer Rolle sind zum Zeitpunkt der Erkennung unsichtbar — sie können weder abgefragt noch autovervollständigt noch als existent abgeleitet werden. Das gilt für das GraphQL-Schema, den SQL-Katalog und den Schema-Browser des Abfrage-Editors.
+Eine Rolle sieht nur die Tabellen, die ihr `domain_access` erreicht, und die Spalten, die ihre `visible_to`-Regeln zulassen. Alles andere existiert für diese Rolle nicht: Es lässt sich weder abfragen noch autovervollständigen noch erraten. Das GraphQL-Schema, der SQL-Katalog und der Schema-Browser des Abfrage-Editors zeigen alle dieselbe eingeschränkte Sicht.
 
 Siehe [Schema-Sichtbarkeit](#schema-visibility).
 
 ### Schicht 1 — Öffentlicher Zugriff {: #layer-1-public-access }
 
-Eine mit dem Geltungsbereich `public` veröffentlichte Spalte wird jeder Rolle der Org bereitgestellt, auch Rollen, deren `domain_access` die Domäne der Tabelle nicht erreicht; eine solche Rolle sieht die Tabelle nur mit ihren öffentlichen Spalten. Nichts ist öffentlich, solange der Registrierer einer Tabelle es nicht sagt. Siehe [Öffentliche Spalten](#public-columns).
+Eine Spalte, die mit dem Scope `public` veröffentlicht ist, wird jeder Rolle der Organisation ausgeliefert, auch einer, deren `domain_access` die Domäne der Tabelle nicht erreicht. Diese Rolle sieht die Tabelle mit ihren öffentlichen Spalten und sonst nichts. Nichts ist öffentlich, bis die Person, die die Tabelle registriert hat, es so festlegt. Siehe [Öffentliche Spalten](#public-columns).
 
 ### Schicht 2 — Domänenzugriff {: #layer-2-domain-access }
 
-Jede Rolle trägt eine `domain_access`-Liste von Domänen-IDs. Eine Abfrage, die eine Tabelle außerhalb dieser Domänen berührt, wird vor der Ausführung abgelehnt. Das ist die grobe Eigentumsgrenze — eine HR-Rolle erreicht keine Finanztabellen, wie auch immer das SQL geschrieben ist.
+Jede Rolle hat eine `domain_access`-Liste von Domänen-IDs, und eine Abfrage, die eine Tabelle in einer anderen Domäne berührt, wird abgelehnt, bevor sie läuft. Das ist die grobe Eigentumsgrenze. Eine HR-Rolle erreicht keine Finanztabellen, wie auch immer das SQL geschrieben ist.
 
 Siehe [Rechtemodell](#rights-model).
 
-### Schicht 3 — Sicherheit auf Zeilenebene {: #layer-3-row-level-security }
+### Schicht 3 — Zeilenbasierte Sicherheit {: #layer-3-row-level-security }
 
-Nachdem der Domänenzugriff bestätigt ist, werden tabellen- und rollenspezifische `WHERE`-Prädikate zur Ausführungszeit in jedes `SELECT` eingefügt. Die Prädikate werden gegen die Rohdaten ausgewertet. Ein regionaler Manager, der eine gemeinsame Auftragstabelle abfragt, sieht selbst bei `SELECT *` nur die Zeilen seiner Region.
+Sobald der Domänenzugriff geklärt ist, wird der Zeilenfilter der Rolle für jede Tabelle als `WHERE`-Prädikat zu jedem `SELECT` hinzugefügt und gegen die Rohdaten ausgewertet. Ein regionaler Manager, der `SELECT *` auf die gemeinsame Bestelltabelle ausführt, bekommt trotzdem nur die Zeilen seiner Region zurück.
 
-Siehe [Sicherheit auf Zeilenebene (RLS)](#row-level-security-rls).
+Siehe [Zeilenbasierte Sicherheit (RLS)](#row-level-security-rls).
 
 ### Schicht 4 — Spaltensichtbarkeit und Maskierung {: #layer-4-column-visibility-and-masking }
 
-Spalten mit einer `visible_to`-Liste, die die anfragende Rolle ausschließt, werden aus der Abfrageausgabe entfernt. Bei Spalten mit einer Maskierungsregel werden die Werte ersetzt — Regex-Schwärzung, konstanter Ersatz oder Kürzung —, bevor die Ergebnisse den Server verlassen. Die Maskierung gilt in allen Abfragesprachen und Ausgabeformaten.
+Eine Spalte, deren `visible_to`-Liste Ihre Rolle nicht enthält, fällt aus der Ausgabe. Bei einer maskierten Spalte werden die Werte ersetzt, bevor sie den Server verlassen, durch einen regulären Ausdruck, eine Konstante oder eine Kürzung. Das gilt in jeder Abfragesprache und jedem Ausgabeformat.
 
-Siehe [Spaltenberechtigungsmodell](#column-permission-model) und [Maskierung auf Spaltenebene](#column-level-masking).
+Siehe [Spaltenberechtigungsmodell](#column-permission-model) und [Spaltenmaskierung](#column-level-masking).
 
-### Schicht 5 — Prädikatsschutz {: #layer-5-predicate-guard }
+### Schicht 5 — Prädikatschutz {: #layer-5-predicate-guard }
 
-Maskierte Spalten werden in `WHERE`- und `HAVING`-Klauseln abgelehnt. Ohne das könnte ein Aufrufer den unmaskierten Wert durch binäre Suche in einem Filter erschließen, obwohl die Ausgabe maskiert ist. Die Ablehnung wird beim Parsen der Abfrage durchgesetzt, vor der Ausführung.
+Auf eine maskierte Spalte können Sie nicht filtern: `WHERE` und `HAVING` lehnen sie schon beim Parsen der Abfrage ab. Sonst könnte ein Aufrufer den echten Wert per Binärsuche zurückgewinnen, Filter für Filter, obwohl jedes Ergebnis, das er sah, maskiert war.
 
-### Governance der Beziehungen (V002) {: #relationship-governance-v002 }
+### Beziehungs-Governance (V002) {: #relationship-governance-v002 }
 
-JOIN-Bedingungen in SQL müssen einer registrierten, genehmigten Beziehung zwischen Tabellen entsprechen. Nicht genehmigte Joins werden abgelehnt. Jede Beziehung trägt einen menschenlesbaren Grund und eine Beschreibung — eine Orientierung für Benutzer und autonome Agenten, warum ein Traversierungspfad existiert. Das ist eine Governance-Richtlinie, keine harte Sicherheitsgrenze: Die Schichten 2–5 gelten unabhängig von der Join-Struktur, sodass eine bewusste Umgehung keine Daten offenlegt, die die Rolle nicht auch über zwei getrennte Abfragen erreichen könnte. Umgehungsversuche werden protokolliert und sind prüfbar.
+Ein SQL-Join muss einer registrierten und genehmigten Beziehung folgen, jeder andere Join wird abgelehnt. Jede Beziehung trägt einen Grund und eine Beschreibung, die Menschen und Agenten sagen, warum es den Pfad gibt. Verstehen Sie das als Governance-Richtlinie, nicht als Sicherheitsgrenze. Die Schichten 2 bis 5 gelten, wie auch immer die Joins aussehen, sodass ein Umgehen der Prüfung nichts preisgibt, was die Rolle nicht auch mit zwei getrennten Abfragen lesen könnte. Umgehungsversuche werden protokolliert.
 
-**Umgehungsmechanismen** — V002 kann auf zwei Wegen umgangen werden. Der erste ist eine Capability: Eine Rolle mit `ignore_relationships` joint über Relationen, die der Katalog nicht abdeckt. Unter den vorab angelegten Systemrollen hält nur `modeler` sie — die Erkundungsrolle, deren Aufgabe es ist, das Modell zu bestimmen statt es durchzusetzen. `analyst` hält sie nicht.
+Es gibt zwei Wege an V002 vorbei. Der erste ist eine Fähigkeit: Eine Rolle mit `ignore_relationships` kann Relationen verknüpfen, die der Katalog nicht abdeckt. Von den mitgelieferten Rollen hat nur `modeler` sie, weil ihre Aufgabe ist, das Modell erst herauszuarbeiten; `analyst` hat sie nicht.
 
-Der zweite ist ein Opt-out mit zwei Bedingungen, die beide erfüllt sein müssen:
+Der zweite braucht zwei Dinge gleichzeitig:
 
-1. **Rollen-Flag** — `relationship_guard: false` in der Rollendefinition (Standard: `true`).
-2. **Opt-out pro Abfrage** — das SQL enthält den Kommentar `--relationship-guard=false`.
+1. **Rollen-Flag**: `relationship_guard: false` in der Rollendefinition (Standard ist `true`).
+2. **Opt-out pro Abfrage**: der Kommentar `--relationship-guard=false` im SQL.
 
-Das Rollen-Flag allein umgeht V002 nicht; der Kommentar allein umgeht V002 nicht.
+Jedes für sich bewirkt nichts.
 
-**Der Hochsicherheitsmodus fixiert den Schutz.** Unter `security.mode: high` greift keine der beiden Umgehungen: `ignore_relationships` wird ignoriert, `relationship_guard: false` wird ignoriert, und jeder Join muss im Katalog genehmigter Beziehungen stehen. Das ist bewusste Redundanz — eine Produktionsrolle, der die Capability versehentlich erteilt wurde, kann trotzdem nicht aus dem Modell ausbrechen.
+**Der Hochsicherheitsmodus fixiert die Prüfung.** Unter `security.mode: high` funktioniert keiner der beiden Wege. `ignore_relationships` und `relationship_guard: false` werden beide ignoriert, und jeder Join muss im genehmigten Katalog stehen. Die Redundanz ist gewollt: Eine Produktionsrolle, der die Fähigkeit versehentlich erteilt wurde, kann trotzdem nicht aus dem Modell ausbrechen.
 
-**GraphQL-Pfad** — V002 wird bei GraphQL-Abfragen bedingungslos übersprungen. In der SDL definierte Beziehungen sind konstruktionsbedingt vorab genehmigt; die Prüfung ist redundant und wird nicht angewendet.
+**GraphQL** überspringt V002. Seine Beziehungen kommen aus dem Modell und sind damit bereits genehmigt.
 
-**SQL- und Cypher-Pfade** — V002 ist standardmäßig aktiv. Sowohl `endpoint_dev.py` als auch `cypher_router.py` wenden die Prüfung mit zwei Bedingungen an, bevor sie `validate_sql` aufrufen.
+**SQL und Cypher** wenden V002 standardmäßig an, mit dem oben beschriebenen Opt-out aus zwei Bedingungen.
 
-**pgwire-Pfad** — dieselbe Prüfung mit zwei Bedingungen wie bei SQL. Der Kommentar `--relationship-guard=false` wird vor der Ausführung aus der Abfrage entfernt; er erreicht die Datenbank nicht.
+**pgwire** wendet dieselbe Prüfung an wie SQL. Der Kommentar `--relationship-guard=false` wird entfernt, bevor die Abfrage die Datenbank erreicht.
 
 ---
 
-Diese Schichten wirken zusammen. Eine Rolle mit Domänenzugriff, RLS und maskierten Spalten hat alle fünf Beschränkungen gleichzeitig aktiv. Eine neue Datenquelle, Spalte oder Beziehung hinzuzufügen erfordert nicht, jede Regel anzupassen — jede Schicht wird unabhängig konfiguriert und gilt automatisch für jede Abfrage, die regulierte Objekte berührt.
+Die Schichten stapeln sich. Eine Rolle mit Domänenzugriff, Zeilenfiltern und maskierten Spalten hat alle gleichzeitig in Kraft. Eine neue Quelle, Spalte oder Beziehung bedeutet nicht, jede Regel anzufassen, denn jede Schicht wird für sich konfiguriert und gilt für jede Abfrage, die erreicht, was sie regelt.
 
 ---
 
@@ -293,21 +293,17 @@ In diesem Beispiel:
 
 ## Mutationsautorisierung {: #mutation-authorization }
 
-Registrierte Mutationen (Remote-GraphQL, OpenAPI, gRPC, Hasura) werden durch zwei unabhängige Prüfungen geschützt. Eine Rolle darf eine Mutation nur aufrufen, wenn sie die globale Capability `write` besitzt UND der Befehl ihr über `visible_to` zugewiesen ist (eine leere Liste weist ihn jeder Rolle zu). Ein Befehl hat keine Liste `writable_by`; die Konfiguration lehnt eine solche namentlich ab.
+Eine registrierte Mutation (Remote-GraphQL, OpenAPI, gRPC, Hasura) besteht zwei Prüfungen. Die Rolle muss die globale Fähigkeit `write` haben, und der Befehl muss ihr über `visible_to` zugewiesen sein; eine leere Liste weist ihn jeder Rolle zu. Ein Befehl hat keine `writable_by`-Liste, und die Konfiguration lehnt eine solche mit Namen ab.
 
-Mutationen werden per Vertrag als Schreibvorgänge eingestuft, nicht nach Angabe des Aufrufers. Ein `SELECT`, das eine Funktion der Art Mutation referenziert, wird zum Schreibvorgang heraufgestuft und unterliegt derselben Prüfung mit zwei Gates, sodass ein Aufrufer eine Mutation nicht als Lesevorgang getarnt aufrufen kann. Eine Mutation als lesesicher umzustufen erfordert die Capability `access_config` und wird als Governance-Entscheidung festgehalten; es gibt kein Opt-out pro Anfrage.
+Ob etwas ein Schreibvorgang ist, entscheidet sein Vertrag, nicht die Angabe des Aufrufers. Ein `SELECT`, das eine Funktion vom Typ Mutation aufruft, gilt als Schreibvorgang und durchläuft dieselben zwei Prüfungen, sodass Sie keine Mutation als Lesezugriff getarnt ausführen können. Eine Mutation als lesesicher einzustufen, erfordert die Fähigkeit `access_config` und wird als Governance-Entscheidung festgehalten. Keine Anfrage kann sich davon ausnehmen.
 
 ## Schema-Sichtbarkeit {: #schema-visibility }
 
-Rollenspezifische GraphQL-Schemas verbergen nicht autorisierte Inhalte:
-
-- **Domänenzugriff**: Eine Rolle sieht Tabellen nur in ihren `domain_access`-Domänen (`"*"` = alle)
-- **Spaltensichtbarkeit**: Spalten, die für eine Rolle nicht in `visible_to` stehen, fehlen in der SDL
-- Nicht autorisierte Tabellen/Spalten erscheinen nicht im Schema
+Jede Rolle bekommt ihr eigenes GraphQL-Schema. Tabellen erscheinen nur aus den Domänen in ihrem `domain_access` (`"*"` steht für alle), und eine Spalte, die für die Rolle nicht in `visible_to` steht, fehlt auch im SDL. Was die Rolle nicht lesen darf, sieht sie nicht.
 
 ## Sicherheit auf Zeilenebene (RLS) {: #row-level-security-rls }
 
-Tabellen- und rollenspezifische Injektion von SQL-WHERE-Klauseln. Angewendet nach der Kompilierung, vor der Ausführung.
+Ein Zeilenfilter ist ein `WHERE`-Prädikat für eine Tabelle und eine Rolle, eingefügt nach der Kompilierung und vor der Ausführung.
 
 ```yaml
 rls_rules:
@@ -316,11 +312,16 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
     description: Analysts read only their own region's orders.
 ```
-Der Filter wird per AND in die WHERE-Klausel der Abfrage eingefügt. Funktioniert für Abfragen und Mutationen (UPDATE/DELETE).
 
-Ein Term `current_setting('provisa.<name>')` wird gegen die Sitzungsvariablen aufgelöst, die die Anfrage bindet: `user_id` aus der authentifizierten Identität, `role` aus der handelnden Rolle und jeden skalaren Claim des Tokens unter seinem kleingeschriebenen Namen, Bindestriche als Unterstriche. Eine Hasura-Sitzungsvariable behält ihren eigenen Namen: `X-Hasura-User-Id` ist `hasura_user_id`, gelesen aus dem Claim `x-hasura-user-id` des Tokens (auf oberster Ebene oder im Hasura-Claims-Objekt wie `https://hasura.io/jwt/claims`) oder als Attribut `hasura_user_id` für das Mitglied erfasst. Ein importierter Hasura-Filter auf `X-Hasura-User-Id` liest daher `provisa.hasura_user_id`. `provisa.user_id` ist immer die angemeldete Identität; kein Claim ersetzt sie. Die konfigurierten `session_vars` einer Rolle sind die darunterliegenden Konstanten; die Bindungen der Anfrage überlagern sie. Eine Rolle, die von einer anderen erbt, übernimmt die Konstanten ihrer Vorfahren unter ihren eigenen, für jeden Namen den Wert der nächstgelegenen Rolle. `user_id`, `role`, `region` und `org` werden von der Anfrage oder vom Node gebunden und können nicht als Konstanten konfiguriert werden. Im ungesicherten Modus bindet ein Header `x-provisa-session-<name>` den Namen `<name>`. Eine nirgends gebundene Variable wird zu NULL aufgelöst und trifft keine Zeilen.
+Der Filter wird per AND in die `WHERE`-Klausel der Abfrage eingefügt, bei Lesezugriffen ebenso wie bei `UPDATE` und `DELETE`.
 
-Eine Rollenkonstante ist das Gegenstück zu einer abgeleiteten Rolle. Eine abgeleitete Rolle macht aus einem Wert, den ein Mitglied hat, eine Rolle; eine Rollenkonstante gibt jeder Anfrage, die als die Rolle handelt, einen Wert, den eine Zeilenregel liest wie einen Claim. Eine Rollenkonstante kann ein Verweis `${env:NAME}` oder `${secret:NAME}` sein, der über denselben Resolver wie jeder andere Verweis aufgelöst wird, wenn eine Abfrage ihn verwendet; das Modell behält den Verweis, nie das, worauf er aufgelöst wurde, und ein Verweis, der sich auf nichts auflöst, lässt die Abfrage fehlschlagen und nennt die Konstante. Eine aufgelöste Konstante ist Teil der Abfrage. Provisas eigene Aufzeichnungen der Abfrage werden durch die zentrale Schwärzung abgedeckt; die eigenen Protokolle einer föderierten Quelle liegen außerhalb der Reichweite von Provisa.
+Ein Filter liest die Anfrage über `current_setting('provisa.<name>')`. Die Anfrage bindet `user_id` aus der angemeldeten Identität, `role` aus der handelnden Rolle und jeden skalaren Claim des Tokens, kleingeschrieben und mit Unterstrichen statt Bindestrichen. `provisa.user_id` ist immer die angemeldete Identität, und kein Claim kann sie ersetzen.
+
+Hasuras Sitzungsvariablen behalten ihre Namen. `X-Hasura-User-Id` ist `hasura_user_id`, gelesen aus dem Claim `x-hasura-user-id` des Tokens (auf oberster Ebene oder im Hasura-Claims-Objekt, etwa `https://hasura.io/jwt/claims`) oder aus dem für das Mitglied hinterlegten Attribut `hasura_user_id`. Ein importierter Hasura-Filter auf `X-Hasura-User-Id` liest also `provisa.hasura_user_id`.
+
+Unter den Werten der Anfrage liegen die konfigurierten `session_vars` der Rolle, die die Anfrage überschreibt. Eine erbende Rolle übernimmt die Konstanten ihrer Vorfahren unter ihren eigenen, wobei für jeden Namen die nächstgelegene Rolle gewinnt. `user_id`, `role`, `region` und `org` kommen aus der Anfrage oder vom Knoten und lassen sich nicht als Konstanten konfigurieren. Im ungesicherten Modus bindet ein Header `x-provisa-session-<name>` den Wert `<name>`. Eine nirgends gebundene Variable ist NULL, und ein Filter darauf trifft keine Zeile.
+
+Eine Rollenkonstante funktioniert umgekehrt wie eine abgeleitete Rolle. Eine abgeleitete Rolle macht aus einem Wert, den ein Mitglied hat, eine Rolle. Eine Rollenkonstante gibt jeder Anfrage, die als die Rolle gestellt wird, einen Wert, den eine Zeilenregel genauso liest wie einen Claim. Die Konstante kann eine Referenz `${env:NAME}` oder `${secret:NAME}` sein, die derselbe Resolver wie jede andere Referenz auflöst, sobald eine Abfrage sie verwendet. Das Modell behält die Referenz, nie den Wert, und eine Referenz, die sich zu nichts auflöst, lässt die Abfrage scheitern und nennt die Konstante. Aufgelöst ist der Wert Teil der Abfrage: Die eigenen Aufzeichnungen von Provisa darüber deckt die zentrale Schwärzung ab, die Logs einer föderierten Quelle liegen jedoch außerhalb der Reichweite von Provisa.
 
 ## Maskierung auf Spaltenebene {: #column-level-masking }
 
@@ -361,29 +362,29 @@ masks:
 ```
 ## Regulierung von Aktionsantworten {: #governing-action-responses }
 
-Die Antwort einer getrackten Funktion oder eines Webhooks wird wie die Zeilen einer Tabelle reguliert. Die Zeilen, die eine Aktion liefert, werden als Relation gebunden, deren Spalten der deklarierte Ausgabevertrag der Aktion sind — `output_columns` bei einer Funktion, `inline_return_type` bei einem Webhook oder die Objekteigenschaften des Array-`return_schema` einer Funktion —, und diese Relation durchläuft dieselbe Governance-Stufe wie jeder Tabellenlesevorgang, über eine VALUES-CTE mit den Zeilen. Nichts an RLS, Maskierung oder Sichtbarkeit wird für Aktionen neu implementiert.
+Was eine verfolgte Funktion oder ein Webhook zurückgibt, wird wie die Zeilen einer Tabelle reguliert. Provisa bindet die zurückgegebenen Zeilen als Relation, deren Spalten die deklarierte Ausgabe der Aktion sind: `output_columns` bei einer Funktion, `inline_return_type` bei einem Webhook oder die Objekteigenschaften des Array-`return_schema` einer Funktion. Diese Relation durchläuft dann dieselbe Governance-Stufe wie jeder Tabellenzugriff, über eine VALUES-CTE mit den Zeilen, sodass Zeilensicherheit, Maskierung und Sichtbarkeit für Aktionen nicht neu implementiert werden.
 
-Drei Dinge gelten, in derselben Reihenfolge wie bei einer Tabelle.
+Drei Regeln gelten, in derselben Reihenfolge wie bei einer Tabelle:
 
-- Ein Zeilenfilter: die RLS-Regel der Rolle, unter dem Namen der Aktion gespeichert (`upsertRlsRule` mit `actionName`), oder, wenn die Aktion keine eigene hat, die Domänenregel der Domäne der Aktion. Das Prädikat wird beim Speichern gegen den Vertrag validiert, so wie eine Tabellenregel.
-- Spaltensichtbarkeit: Eine Vertragsspalte, die `visible_to` deklariert, wird für eine Rolle entfernt, die die Liste nicht nennt; eine Spalte, die keines deklariert, gehört zur öffentlichen Form der Aktion und bleibt.
-- Masken: Eine Vertragsspalte trägt `masks`, dieselbe geordnete Maskenliste wie eine Tabellenspalte.
+- **Zeilenfilter.** Die RLS-Regel der Rolle, die unter dem Namen der Aktion gespeichert ist (`upsertRlsRule` mit `actionName`), oder die Domänenregel der Aktion, wenn sie keine eigene hat. Das Prädikat wird beim Speichern gegen den Vertrag geprüft, wie bei einer Tabellenregel.
+- **Spaltensichtbarkeit.** Eine Vertragsspalte, die `visible_to` deklariert, entfällt für jede Rolle, die die Liste nicht nennt. Eine Spalte ohne diese Angabe gehört zur öffentlichen Form der Aktion und bleibt.
+- **Masken.** Eine Vertragsspalte trägt `masks`, dieselbe geordnete Liste wie eine Tabellenspalte.
 
-Die Rollenvererbung löst die Kette für alle drei auf. Eine Antwort, die eine Spalte außerhalb des deklarierten Vertrags liefert, wird mit 502 abgelehnt statt unreguliert durchgereicht. Eine Aktion, die keinen Spaltenvertrag deklariert, liefert einen Skalar und hat nichts zu binden; sie wird unverändert geliefert. Der Admin-Testaufruf berichtet die angewendeten Filter, Ausschlüsse und Masken, und die regulierte Anweisung wird ins Abfrage-Audit-Log geschrieben.
+Die Rollenvererbung löst die Kette für alle drei auf. Gibt eine Antwort eine Spalte außerhalb ihres deklarierten Vertrags zurück, scheitert der Aufruf mit 502, statt sie unreguliert durchzureichen. Eine Aktion, die keine Spalten deklariert, gibt einen Skalar zurück, der nichts zu binden hat, und kommt unverändert zurück. Der Testaufruf im Admin-Bereich meldet, welche Filter, Ausschlüsse und Masken griffen, und die regulierte Anweisung landet im Abfrage-Audit-Log.
 
 ## Stichproben {: #sampling }
 
-Alle Rollen sehen Stichprobenergebnisse (Standard: 100 Zeilen), sofern sie nicht die Capability `full_results` haben. Gesteuert über die Umgebungsvariable `PROVISA_SAMPLE_SIZE`.
+Jede Rolle bekommt eine Stichprobe der Ergebnisse, standardmäßig 100 Zeilen, sofern sie nicht die Fähigkeit `full_results` hat. Die Größe stellen Sie mit der Umgebungsvariable `PROVISA_SAMPLE_SIZE` ein.
 
 ## Audit-Protokollierung {: #audit-logging }
 
-Jede Abfrage, die ein Domänen-Asset berührt, wird in `query_audit_log` erfasst. Das Audit-Log gehört der Org, nicht der Plattform: Das eigene Register der Plattform für Orgs, Benutzer und Einladungen enthält keine Audit-Einträge. Das `query_audit_log` jeder Org ist eine Tabelle im eigenen Schema dieser Org, in dem Speicher, den die Org für ihre Aufzeichnung in jeder von ihr gewählten Region benennt. Eine Org, die keine Regionen deklariert, behält dieses Schema in der Control-Plane-Datenbank des Deployments, neben ihrem Modell.
+Jede Abfrage, die ein Domänen-Asset berührt, wird in `query_audit_log` geschrieben. Das Log gehört der Organisation, nicht der Plattform: Das eigene Register der Plattform mit Organisationen, Benutzern und Einladungen enthält keine Audit-Einträge. Das Log jeder Organisation ist eine Tabelle in deren Schema, in dem Speicher, den die Organisation für ihre Aufzeichnungen in jeder gewählten Region nennt. Eine Organisation ohne Regionen hält es in der Control-Plane-Datenbank des Deployments, neben ihrem Modell.
 
-Jede Zeile hält `tenant_id` (die Org), `user_id`, `role_id`, einen SHA-256-Hash des Abfragetexts, den Abfragetext selbst verschlüsselt, `table_ids` und `table_names`, `source`, `status_code`, `duration_ms`, die Route und die Zeilenanzahl, was auf die Anweisung durchgesetzt wurde, und `logged_at`. Der Abfragetext wird mit dem Schlüssel der Org verschlüsselt, wenn die Org einen gesetzt hat, sonst mit dem Schlüssel des Deployments. Ein Deployment, das keinen Verschlüsselungs-Provider konfiguriert, speichert ihn unverschlüsselt. Der Text wird in den abfragbaren Ops-Tabellen nie offengelegt und nur bei autorisierten Admin-Lesevorgängen entschlüsselt.
+Eine Zeile hält `tenant_id` (die Organisation), `user_id`, `role_id`, einen SHA-256-Hash des Abfragetexts, den Abfragetext selbst (verschlüsselt), `table_ids` und `table_names`, `source`, `status_code`, `duration_ms`, die Route und die Zeilenzahl, was auf die Anweisung angewendet wurde, und `logged_at` fest. Der Text wird mit dem Schlüssel der Organisation verschlüsselt, wenn sie einen gesetzt hat, sonst mit dem des Deployments. Ein Deployment ohne Verschlüsselungsanbieter speichert ihn unverschlüsselt. In keinem Fall erscheint er in den abfragbaren Ops-Tabellen, und er wird nur für berechtigte Admin-Lesezugriffe entschlüsselt.
 
-Das Log ist auf Datenbankebene nur anhängbar: PostgreSQL-Regeln machen `DELETE` und `UPDATE` auf `query_audit_log` zu No-ops. Zwei Indizes, `(tenant_id, logged_at)` und `(user_id, logged_at)`, unterstützen org-bezogene und benutzerbezogene Compliance-Abfragen über Zeiträume.
+Das Log ist in der Datenbank selbst nur anhängbar: PostgreSQL-Regeln machen `DELETE` und `UPDATE` auf `query_audit_log` wirkungslos. Zwei Indizes, `(tenant_id, logged_at)` und `(user_id, logged_at)`, halten organisationsweite und benutzerbezogene Compliance-Abfragen über einen Zeitraum schnell.
 
-Aufbewahrung: Zeilen werden unbegrenzt behalten. Provisa hat keine Einstellung für die Aufbewahrung und löscht das Audit-Log nie; da `DELETE` ein No-op ist, bedeutet das Entfernen alter Zeilen, dass ein Operator die Daten der Tabelle außerhalb von Provisa löscht oder archiviert.
+Zeilen bleiben dauerhaft erhalten. Provisa hat keine Aufbewahrungseinstellung und bereinigt das Log nie, und da `DELETE` nichts bewirkt, heißt alte Zeilen entfernen, dass ein Betreiber die Daten der Tabelle außerhalb von Provisa löscht oder archiviert.
 
 ## Schwärzung {: #redaction }
 
@@ -415,11 +416,11 @@ Eine föderierte Quelle führt ihre eigenen Logs, die Provisa weder schreibt noc
 
 ## Ratenbegrenzung {: #rate-limiting }
 
-Rollenspezifische Ratenlimits werden in `provisa.yaml` konfiguriert: maximale Anfragen pro Sekunde, maximale gleichzeitige SSE-Subscriptions und maximale gleichzeitige Arrow-Flight-Streams. Die Limits werden auf der API-Schicht vor Kompilierung und Ausführung durchgesetzt; Anfragen über dem Limit werden mit HTTP 429 und einem `Retry-After`-Header abgelehnt.
+Limits pro Rolle legen Sie in `provisa.yaml` fest: Anfragen pro Sekunde, gleichzeitige SSE-Abonnements und gleichzeitige Arrow-Flight-Streams. Sie werden an der API geprüft, bevor irgendetwas kompiliert oder ausgeführt wird, und eine Anfrage über dem Limit bekommt HTTP 429 mit einem `Retry-After`-Header.
 
-Der NL-Abfragedienst (`POST /query/nl`) hat über `nl.rate_limit` ein eigenes Limit (Anfragen pro Minute und Rolle). Anfragen über dem Limit werden abgelehnt, bevor ein LLM-Aufruf erfolgt.
+Abfragen in natürlicher Sprache (`POST /query/nl`) haben ein eigenes Limit, `nl.rate_limit`, in Anfragen pro Minute und Rolle. Eine Anfrage darüber wird abgewiesen, bevor ein LLM-Aufruf erfolgt.
 
-Der Zustand der Ratenlimits liegt in Redis (`cache.redis_url`) als Zähler mit gleitendem Fenster — kein Zustand pro Instanz —, sodass die Limits über alle horizontalen Provisa-Instanzen gelten.
+Die Zähler liegen als gleitende Fenster in Redis (`cache.redis_url`), ohne Zustand pro Instanz, sodass ein Limit gilt, gleich wie viele Provisa-Instanzen Sie betreiben.
 
 ## Limit für Abfragekomplexität {: #query-complexity-limit }
 
@@ -462,7 +463,7 @@ Ein in `provisa.yaml` konfigurierter Superuser (Benutzername plus ein Passwort a
 
 ### Oberflächen und Anmeldedaten {: #surfaces-and-credentials }
 
-Jede Oberfläche authentifiziert über denselben Provider-Vertrag, sodass ein Credential, das auf einer funktioniert, auf allen funktioniert, wo immer das Protokoll es tragen kann. Diese Tabelle ist die einzige Referenz; die Dokumente der einzelnen Oberflächen wiederholen sie nicht.
+Jede Oberfläche meldet Aufrufer über denselben Provider an, sodass ein Credential, das auf einer funktioniert, auf allen funktioniert, wo immer das Protokoll Platz dafür hat.
 
 | Oberfläche | Passwort | Provider-Token | Personal Access Token | Client-Zertifikat (mTLS) |
 | --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
@@ -474,24 +475,21 @@ Jede Oberfläche authentifiziert über denselben Provider-Vertrag, sodass ein Cr
 | Airport (DuckDB-Erweiterung `airport`, Opt-in) | — | `authorization: Bearer` (das `auth_token` des Secrets) | dasselbe | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | über einen terminierenden Proxy |
 
-Die einzige Authentifizierungsoption der DuckDB-Erweiterung `airport` ist das Bearer-`auth_token` ihres Secrets, daher legt ein DuckDB-Client dort ein Provider-Token oder ein Personal Access Token vor und handelt als die Rolle, zu der seine Identität aufgelöst wird. Ein Client, der Aufruf-Header setzen kann, kann in `x-provisa-role` eine gehaltene Rolle oder eine kommagetrennte Menge davon anfordern.
+Die DuckDB-Erweiterung `airport` kann nur das Bearer-`auth_token` ihres Secrets senden. Ein DuckDB-Client trägt dort ein Provider-Token oder ein Personal Access Token ein und handelt als die Rolle, zu der seine Identität aufgelöst wird. Jeder Client, der Aufruf-Header setzen kann, darf in `x-provisa-role` eine seiner Rollen oder eine kommagetrennte Menge davon anfordern.
 
-Eine Ablehnung sagt auf jeder dieser Oberflächen, welcher Art sie ist. Ein fehlendes, abgelehntes oder unbrauchbares Credential ist eine Authentifizierungsablehnung: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight und Airport `Unauthenticated`. Ein gültiges Credential, das als eine Rolle handeln will, die seine Identität nicht hält, ist eine Autorisierungsablehnung, mit der Rolle benannt: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight und Airport `Unauthorized`. Eine Ausnahme liegt in der Arrow-Client-Bibliothek, nicht im Server: Eine Ablehnung des Flight-Aufrufs `get_schema` erreicht einen Python-Client als allgemeiner Arrow-Fehler mit dem Grund des Servers, ohne seine Art; `list_flights`, `get_flight_info` und `do_get` liefern die Art.
+Jede Oberfläche sagt Ihnen, welche Art von Ablehnung Sie bekommen haben. Ein fehlendes, abgelehntes oder unbrauchbares Credential ist eine Authentifizierungsablehnung: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight und Airport `Unauthenticated`. Ein gültiges Credential, das als eine Rolle handeln will, die seine Identität nicht hat, ist eine Autorisierungsablehnung und nennt die Rolle: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight und Airport `Unauthorized`. Eine Ausnahme kommt aus der Arrow-Client-Bibliothek, nicht vom Server. Wird `get_schema` von Flight abgelehnt, sieht ein Python-Client einen allgemeinen Arrow-Fehler, der den Grund des Servers trägt, aber nicht die Art; `list_flights`, `get_flight_info` und `do_get` liefern die Art mit.
 
-Wo eine Zelle `—` zeigt, trägt das Protokoll kein Benutzernamenfeld, mit dem ein Passwort gepaart werden könnte; die Token-Formen decken es ab. pgwire ist der Spiegelfall: Das Startup-Paket hat ein Secret-Feld und kein Schema, daher bestimmt, was das Secret *ist*, die Methode — ein PAT wird an seinem Präfix erkannt, das Secret wird als Bearer-Token gelesen, wenn der konfigurierte Provider ein Token-Provider ist, und alles andere ist ein Passwort. Die Wahl wird einmal getroffen — ein Credential, das der gewählte Validator ablehnt, wird nicht gegen einen anderen erneut versucht.
-
-Die Matrix wird durch `tests/unit/test_auth_surface_conformance.py` durchgesetzt, das den echten Validierungseinstieg jeder Oberfläche ansteuert und fehlschlägt, wenn eine neue Oberfläche ohne Zeile hinzukommt.
+Ein `—` in der Tabelle bedeutet, dass das Protokoll kein Benutzernamenfeld hat, mit dem sich ein Passwort koppeln ließe; die Token-Formen decken es ab. pgwire ist der umgekehrte Fall. Sein Startpaket hat ein einziges Secret-Feld und kein Schema, also entscheidet das Secret selbst über die Methode: Ein Personal Access Token wird an seinem Präfix erkannt, das Secret wird als Bearer-Token gelesen, wenn der konfigurierte Provider Tokens ausgibt, und alles andere ist ein Passwort. Diese Wahl fällt einmal, und ein Credential, das der gewählte Validator ablehnt, wird nicht gegen einen anderen geprüft.
 
 ### Personal Access Tokens {: #personal-access-tokens }
 
-Ein PAT ist ein langlebiges Bearer-Secret, das ein Benutzer für einen Client erzeugt, der keine interaktive Anmeldung durchlaufen kann — ein Skript, ein BI-Tool, ein Treiber. Es trägt seine eigene Org und Rolle, und jede Oberfläche löst es über denselben Validator auf, sodass keine Oberfläche wissen muss, was ein PAT ist.
+Ein Personal Access Token ist ein langlebiges Bearer-Secret, das Sie für einen Client erzeugen, der kein interaktives Login schafft: ein Skript, ein BI-Tool, einen Treiber. Es trägt seine eigene Organisation und Rolle, und jede Oberfläche prüft es mit demselben Validator, sodass keine Oberfläche wissen muss, was es ist.
 
-Die Wire-Form ist `provisa_pat_`, gefolgt von 43 URL-sicheren Base64-Zeichen. Das Präfix leitet ein vorgelegtes Secret zum Token-Speicher statt zum Identity Provider, und es macht ein geleaktes Token in Logs und Repositorys auffindbar.
+Auf der Leitung ist es `provisa_pat_`, gefolgt von 43 URL-sicheren Base64-Zeichen. Das Präfix leitet ein vorgelegtes Secret an den Token-Speicher statt an den Identitätsanbieter, und es macht ein geleaktes Token in Logs und Repositories leicht auffindbar.
 
-- **Speicherung** — nur der SHA-256 des Secrets wird gehalten. Das Secret selbst wird genau einmal angezeigt, bei der Erstellung, und lässt sich nicht wiederherstellen. Die Liste trägt das Anzeigepräfix und die Lebenszyklus-Zeitstempel, nie ein funktionierendes Credential.
-- **Ausgabe und Widerruf** — `POST /auth/tokens`, `GET /auth/tokens`, `DELETE /auth/tokens/{token_hash}` sowie der Selbstbedienungsbereich im eigenen Profil des Benutzers in der Admin-UI. Ein Credential zu erzeugen und zu widerrufen ist ein Akt des Token-Inhabers.
-- **Zuordnung** — ein validiertes PAT wird zum Konto seines Eigentümers aufgelöst: Benutzer-ID, E-Mail und Anzeigename. Ein unter einem PAT geschriebener Audit-Eintrag oder Nutzungsbericht nennt daher die Person, nicht das Credential. Welches Token dieser Person gehandelt hat, wird getrennt in `raw_claims["token_name"]` geführt.
-- **Ablauf** — ein Token kann ein Ablaufdatum tragen; ein abgelaufenes Token wird bei der Validierung abgelehnt. Das Löschen der Mitgliedschaft eines Benutzers widerruft seine Tokens mit.
+Gespeichert wird nur der SHA-256 des Secrets. Sie sehen das Secret einmal, beim Erstellen, und danach lässt es sich nicht wiederherstellen; die Liste Ihrer Tokens zeigt ein Anzeigepräfix und Zeitpunkte, nie ein funktionierendes Credential. Ihre eigenen Tokens erstellen, auflisten und widerrufen Sie mit `POST /auth/tokens`, `GET /auth/tokens` und `DELETE /auth/tokens/{token_hash}` oder im Token-Bereich Ihres Profils in der Admin-Oberfläche.
+
+Ein gültiges Token wird zum Konto seines Besitzers aufgelöst, mit Benutzer-ID, E-Mail und Anzeigename, sodass ein Audit-Eintrag oder Nutzungsbericht unter einem Token die Person nennt und nicht das Credential. Welches ihrer Tokens gehandelt hat, wird getrennt festgehalten, in `raw_claims["token_name"]`. Ein Token kann ein Ablaufdatum tragen, nach dem es abgelehnt wird, und das Entfernen der Mitgliedschaft eines Benutzers widerruft seine Tokens mit.
 
 ### SCRAM-SHA-256 auf pgwire {: #scram-sha-256-on-pgwire }
 

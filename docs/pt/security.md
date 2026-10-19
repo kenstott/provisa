@@ -1,67 +1,67 @@
 # Modelo de segurança {: #security-model }
 
-O Provisa aplica um modelo de segurança em várias camadas em toda linguagem de consulta (GraphQL, SQL, Cypher) e todo transporte (REST, gRPC, Arrow Flight, JDBC, WebSocket). A governança é aplicada de forma uniforme — não existe caminho de consulta que a contorne.
+Toda consulta passa pela mesma governança, seja qual for a linguagem em que é escrita (GraphQL, SQL, Cypher) e o caminho por onde chega (REST, gRPC, Arrow Flight, JDBC, WebSocket). Não há como contorná-la.
 
-As camadas se aplicam em ordem. Uma requisição precisa passar por cada camada antes que a próxima seja avaliada.
+As verificações acontecem em ordem. Uma requisição precisa passar por cada uma antes que a próxima seja examinada.
 
 ## Modelo em camadas {: #layered-model }
 
-### Camada 0 — Filtragem da introspecção {: #layer-0-introspection-filtering }
+### Camada 0 — Filtragem de introspecção {: #layer-0-introspection-filtering }
 
-O esquema e o catálogo apresentados a uma função contêm apenas as tabelas da sua lista `domain_access` e as colunas que passam pelas regras `visible_to` de cada coluna. Objetos fora do acesso de uma função são invisíveis no momento da descoberta — não podem ser consultados, autocompletados nem ter sua existência deduzida. Isso vale para o esquema GraphQL, o catálogo SQL e o navegador de esquema do editor de consultas.
+Um papel vê apenas as tabelas que seu `domain_access` alcança e as colunas que suas regras `visible_to` permitem. O resto não existe para esse papel: não dá para consultar, autocompletar nem adivinhar. O esquema GraphQL, o catálogo SQL e o navegador de esquema do editor de consultas mostram todos a mesma visão restrita.
 
 Veja [Visibilidade do esquema](#schema-visibility).
 
 ### Camada 1 — Acesso público {: #layer-1-public-access }
 
-Uma coluna publicada com o escopo `public` é servida a toda função da organização, inclusive funções cujo `domain_access` não alcança o domínio da tabela; uma função assim vê a tabela apenas com suas colunas públicas. Nada é público a menos que quem registra uma tabela diga isso. Veja [Colunas públicas](#public-columns).
+Uma coluna publicada com o escopo `public` é servida a todos os papéis da organização, até a um cujo `domain_access` não alcança o domínio da tabela. Esse papel vê a tabela com as colunas públicas e mais nada. Nada é público até que quem registrou a tabela decida que é. Veja [Colunas públicas](#public-columns).
 
-### Camada 2 — Acesso a domínios {: #layer-2-domain-access }
+### Camada 2 — Acesso por domínio {: #layer-2-domain-access }
 
-Cada função traz uma lista `domain_access` de ids de domínio. Uma consulta que toca uma tabela fora desses domínios é recusada antes da execução. Essa é a fronteira grossa de propriedade — uma função de RH não alcança tabelas financeiras, seja como for escrito o SQL.
+Cada papel tem uma lista `domain_access` de IDs de domínio, e uma consulta que toca uma tabela de outro domínio é recusada antes de rodar. É a fronteira grossa de propriedade. Um papel de RH não alcança as tabelas de finanças, não importa como o SQL seja escrito.
 
 Veja [Modelo de direitos](#rights-model).
 
 ### Camada 3 — Segurança em nível de linha {: #layer-3-row-level-security }
 
-Depois que o acesso ao domínio é confirmado, predicados `WHERE` por tabela e por função são injetados em cada `SELECT` no momento da execução. Os predicados são avaliados sobre os dados brutos. Um gerente regional que consulta uma tabela de pedidos compartilhada vê apenas as linhas da sua região, mesmo com `SELECT *`.
+Resolvido o acesso por domínio, o filtro de linhas do papel para cada tabela é acrescentado a todo `SELECT` como predicado `WHERE` e avaliado sobre os dados brutos. Um gerente regional que roda `SELECT *` na tabela compartilhada de pedidos continua recebendo só as linhas da sua região.
 
 Veja [Segurança em nível de linha (RLS)](#row-level-security-rls).
 
 ### Camada 4 — Visibilidade e mascaramento de colunas {: #layer-4-column-visibility-and-masking }
 
-Colunas com uma lista `visible_to` que exclui a função solicitante são removidas da saída da consulta. Colunas com uma regra de mascaramento têm seus valores substituídos — supressão por regex, substituição por constante ou truncamento — antes que os resultados deixem o servidor. O mascaramento se aplica em todas as linguagens de consulta e formatos de saída.
+Uma coluna cuja lista `visible_to` deixa seu papel de fora some do resultado. Uma coluna mascarada tem os valores substituídos antes de saírem do servidor, por uma expressão regular, uma constante ou um truncamento. Isso vale em toda linguagem de consulta e todo formato de saída.
 
-Veja [Modelo de permissões de coluna](#column-permission-model) e [Mascaramento em nível de coluna](#column-level-masking).
+Veja [Modelo de permissões de coluna](#column-permission-model) e [Mascaramento de colunas](#column-level-masking).
 
 ### Camada 5 — Proteção de predicados {: #layer-5-predicate-guard }
 
-Colunas mascaradas são recusadas em cláusulas `WHERE` e `HAVING`. Sem isso, um chamador poderia deduzir o valor não mascarado buscando-o por bisseção em um filtro, mesmo com a saída mascarada. A recusa é aplicada na análise da consulta, antes da execução.
+Você não pode filtrar por uma coluna mascarada: `WHERE` e `HAVING` a recusam já na análise da consulta. Do contrário, quem chama poderia recuperar o valor real por busca binária, um filtro de cada vez, mesmo que todo resultado visto estivesse mascarado.
 
 ### Governança de relacionamentos (V002) {: #relationship-governance-v002 }
 
-Condições JOIN em SQL precisam corresponder a um relacionamento registrado e aprovado entre tabelas. Joins não aprovados são recusados. Cada relacionamento traz um motivo e uma descrição legíveis — uma orientação para usuários e agentes autônomos sobre por que um caminho de travessia existe. Isso é uma política de governança, não uma fronteira rígida de segurança: as camadas 2–5 valem independentemente da estrutura do join, então um contorno deliberado não expõe dados que a função não pudesse alcançar com duas consultas separadas. Tentativas de contorno são registradas e auditáveis.
+Um join de SQL precisa seguir um relacionamento registrado e aprovado, e qualquer outro join é recusado. Cada relacionamento traz um motivo e uma descrição que explicam a pessoas e agentes por que aquele caminho existe. Trate isso como política de governança, não como fronteira de segurança. As camadas 2 a 5 valem seja como forem os joins, então contornar a verificação não expõe nada que o papel não pudesse ler com duas consultas separadas. As tentativas de contorno ficam registradas.
 
-**Mecanismos de contorno** — o V002 pode ser contornado de duas formas. A primeira é uma capacidade: uma função que tem `ignore_relationships` faz joins entre relações que o catálogo não cobre. Entre as funções de sistema pré-criadas, só `modeler` a tem — a função de descoberta, cujo trabalho é determinar o modelo em vez de aplicá-lo. `analyst` não a tem.
+Há duas maneiras de passar pelo V002. A primeira é uma capacidade: um papel com `ignore_relationships` pode unir relações que o catálogo não cobre. Dos papéis já criados, só `modeler` a tem, porque seu trabalho é descobrir o modelo; `analyst` não tem.
 
-A segunda é uma exclusão com duas condições, que precisam ser verdadeiras ambas:
+A segunda exige duas coisas ao mesmo tempo:
 
-1. **Flag da função** — `relationship_guard: false` na definição da função (padrão: `true`).
-2. **Exclusão por consulta** — o SQL contém o comentário `--relationship-guard=false`.
+1. **Flag do papel**: `relationship_guard: false` na definição do papel (o padrão é `true`).
+2. **Exclusão por consulta**: o comentário `--relationship-guard=false` no SQL.
 
-A flag da função sozinha não contorna o V002; o comentário sozinho não contorna o V002.
+Qualquer uma sozinha não faz nada.
 
-**O modo de alta segurança fixa a proteção.** Com `security.mode: high` nenhum contorno se aplica: `ignore_relationships` é ignorado, `relationship_guard: false` é ignorado, e todo join precisa existir no catálogo de relacionamentos aprovados. É uma redundância deliberada — uma função de produção que recebeu a capacidade por engano ainda não consegue sair do modelo.
+**O modo de alta segurança trava a verificação.** Com `security.mode: high`, nenhuma das duas maneiras funciona. `ignore_relationships` e `relationship_guard: false` são ambos ignorados, e todo join precisa estar no catálogo aprovado. A redundância é proposital: um papel de produção que recebeu a capacidade por engano continua sem conseguir sair do modelo.
 
-**Caminho GraphQL** — o V002 é sempre ignorado em consultas GraphQL. Relacionamentos definidos no SDL são pré-aprovados por concepção; a verificação é redundante e não é aplicada.
+**GraphQL** pula o V002. Seus relacionamentos vêm do modelo, então já estão aprovados.
 
-**Caminhos SQL e Cypher** — o V002 fica ativo por padrão. Tanto `endpoint_dev.py` quanto `cypher_router.py` aplicam a verificação de duas condições antes de chamar `validate_sql`.
+**SQL e Cypher** aplicam o V002 por padrão, com a exclusão de duas condições descrita acima.
 
-**Caminho pgwire** — a mesma verificação de duas condições do SQL. O comentário `--relationship-guard=false` é removido da consulta antes da execução; ele não chega ao banco de dados.
+**pgwire** aplica a mesma verificação que o SQL. O comentário `--relationship-guard=false` é removido antes de a consulta chegar ao banco.
 
 ---
 
-Essas camadas se combinam. Uma função com acesso a domínios, RLS e colunas mascaradas tem as cinco restrições ativas ao mesmo tempo. Adicionar uma fonte de dados, coluna ou relacionamento não exige atualizar cada regra — cada camada é configurada de forma independente e se aplica automaticamente a qualquer consulta que toque objetos governados.
+As camadas se somam. Um papel com acesso por domínio, filtros de linhas e colunas mascaradas tem tudo isso em vigor ao mesmo tempo. Adicionar uma fonte, uma coluna ou um relacionamento não obriga a mexer em cada regra, porque cada camada é configurada à parte e vale para qualquer consulta que alcance o que ela governa.
 
 ---
 
@@ -293,21 +293,17 @@ Neste exemplo:
 
 ## Autorização de mutações {: #mutation-authorization }
 
-As mutações registradas (GraphQL remoto, OpenAPI, gRPC, Hasura) são protegidas por duas verificações independentes. Uma função só pode invocar uma mutação se tiver a capacidade global `write` E o comando estiver atribuído a ela por `visible_to` (uma lista vazia o atribui a todas as funções). Um comando não tem lista `writable_by`; a configuração recusa uma pelo nome.
+Uma mutação registrada (GraphQL remoto, OpenAPI, gRPC, Hasura) passa por duas verificações. O papel precisa ter a capacidade global `write`, e o comando precisa estar atribuído a ele por `visible_to`; uma lista vazia o atribui a todos os papéis. Um comando não tem lista `writable_by`, e a configuração recusa uma pelo nome.
 
-Mutações são classificadas como escritas por contrato, não pela declaração do chamador. Um `SELECT` que referencia uma função do tipo mutação é promovido a escrita e sujeito à mesma verificação de duas portas, então um chamador não consegue invocar uma mutação disfarçando-a de leitura. Reclassificar uma mutação como segura para leitura exige a capacidade `access_config` e é registrado como uma decisão de governança; não há exclusão por requisição.
+O que decide se algo é uma escrita é o seu contrato, não o que diz quem chama. Um `SELECT` que chama uma função do tipo mutação é tratado como escrita e passa pelas mesmas duas verificações, então você não consegue rodar uma mutação disfarçada de leitura. Marcar uma mutação como segura para leitura exige a capacidade `access_config` e fica registrado como decisão de governança. Nenhuma requisição pode se isentar.
 
 ## Visibilidade do esquema {: #schema-visibility }
 
-Esquemas GraphQL por função ocultam conteúdo não autorizado:
-
-- **Acesso a domínios**: uma função vê tabelas apenas nos seus domínios `domain_access` (`"*"` = todos)
-- **Visibilidade de colunas**: colunas fora de `visible_to` para uma função são omitidas do SDL
-- Tabelas/colunas não autorizadas não aparecem no esquema
+Cada papel tem o próprio esquema GraphQL. Só aparecem tabelas dos domínios do seu `domain_access` (`"*"` são todos), e uma coluna fora de `visible_to` para o papel também fica fora do SDL. O que o papel não pode ler, ele não vê.
 
 ## Segurança em nível de linha (RLS) {: #row-level-security-rls }
 
-Injeção de cláusulas SQL WHERE por tabela e por função. Aplicada depois da compilação, antes da execução.
+Um filtro de linhas é um predicado `WHERE` para uma tabela e um papel, acrescentado depois da compilação e antes da execução.
 
 ```yaml
 rls_rules:
@@ -316,11 +312,16 @@ rls_rules:
     filter: "region = current_setting('provisa.user_region')"
     description: Analysts read only their own region's orders.
 ```
-O filtro é combinado com AND na cláusula WHERE da consulta. Funciona para consultas e mutações (UPDATE/DELETE).
 
-Um termo `current_setting('provisa.<name>')` é resolvido contra as variáveis de sessão que a requisição vincula: `user_id` a partir da identidade autenticada, `role` a partir da função atuante, e cada claim escalar do token pelo seu nome em minúsculas, com hifens como sublinhados. Uma variável de sessão do Hasura mantém o próprio nome: `X-Hasura-User-Id` é `hasura_user_id`, lida do claim `x-hasura-user-id` do token (no nível superior ou dentro do objeto de claims do Hasura, como `https://hasura.io/jwt/claims`) ou registrada para o membro como o atributo `hasura_user_id`. Por isso um filtro Hasura importado sobre `X-Hasura-User-Id` lê `provisa.hasura_user_id`. `provisa.user_id` é sempre a identidade autenticada; nenhum claim a substitui. As `session_vars` configuradas de uma função são as constantes de base; os vínculos da requisição as sobrepõem. Um papel que herda de outro recebe as constantes dos seus ancestrais por baixo das suas, com o valor do papel mais próximo para cada nome. `user_id`, `role`, `region` e `org` são vinculados pela requisição ou pelo nó e não podem ser configurados como constantes. No modo sem segurança, um cabeçalho `x-provisa-session-<name>` vincula `<name>`. Uma variável não vinculada em lugar nenhum resolve para NULL e não corresponde a nenhuma linha.
+O filtro entra com AND na cláusula `WHERE` da consulta, tanto em leituras quanto em `UPDATE` e `DELETE`.
 
-Uma constante de papel é o inverso de um papel derivado. Um papel derivado transforma em papel um valor que um membro tem; uma constante de papel dá a cada requisição que age como o papel um valor, que uma regra de linha lê como lê um claim. Uma constante de papel pode ser uma referência `${env:NAME}` ou `${secret:NAME}`, resolvida pelo mesmo resolvedor de qualquer outra referência quando uma consulta a usa; o modelo mantém a referência, nunca o valor resolvido, e uma referência que não se resolve em nada faz a consulta falhar, nomeando a constante. Uma constante resolvida faz parte da consulta. Os registros que o próprio Provisa faz da consulta são cobertos pela ocultação central; os logs da própria fonte federada estão fora do alcance do Provisa.
+Um filtro lê a requisição por `current_setting('provisa.<name>')`. A requisição vincula `user_id` a partir da identidade conectada, `role` a partir do papel em ação e cada claim escalar do token, em minúsculas e com sublinhados no lugar de hífens. `provisa.user_id` é sempre a identidade conectada, e nenhum claim pode substituí-la.
+
+As variáveis de sessão do Hasura mantêm o nome. `X-Hasura-User-Id` é `hasura_user_id`, lido do claim `x-hasura-user-id` do token (no nível superior ou dentro do objeto de claims do Hasura, como `https://hasura.io/jwt/claims`) ou do atributo `hasura_user_id` registrado para o membro. Assim, um filtro do Hasura importado sobre `X-Hasura-User-Id` lê `provisa.hasura_user_id`.
+
+Debaixo dos valores da requisição ficam os `session_vars` configurados do papel, que a requisição sobrescreve. Um papel que herda recebe as constantes dos antecessores sob as suas, e para cada nome vence o papel mais próximo. `user_id`, `role`, `region` e `org` vêm da requisição ou do nó e não podem ser configurados como constantes. No modo sem segurança, um cabeçalho `x-provisa-session-<name>` vincula `<name>`. Uma variável não vinculada em lugar nenhum é NULL, e um filtro sobre ela não encontra linhas.
+
+Uma constante de papel funciona ao contrário de um papel derivado. Um papel derivado transforma em papel um valor que um membro tem. Uma constante de papel dá um valor a toda requisição feita como aquele papel, e uma regra de linhas o lê do mesmo jeito que lê um claim. A constante pode ser uma referência `${env:NAME}` ou `${secret:NAME}`, resolvida pelo mesmo resolvedor de qualquer outra referência quando uma consulta a usa. O modelo guarda a referência, nunca o valor, e uma referência que não resolve para nada faz a consulta falhar, nomeando a constante. Depois de resolvido, o valor faz parte da consulta: os registros do próprio Provisa ficam cobertos pela ocultação central, mas os logs próprios de uma fonte federada ficam fora do alcance do Provisa.
 
 ## Mascaramento em nível de coluna {: #column-level-masking }
 
@@ -361,29 +362,29 @@ masks:
 ```
 ## Governança das respostas de ações {: #governing-action-responses }
 
-A resposta de uma função rastreada ou de um webhook é governada como as linhas de uma tabela. As linhas que uma ação retorna são vinculadas como uma relação cujas colunas são o contrato de saída declarado da ação — `output_columns` para uma função, `inline_return_type` para um webhook, ou as propriedades de objeto do `return_schema` de tipo array de uma função — e essa relação passa pela mesma etapa de governança que toda leitura de tabela, sobre uma CTE VALUES com as linhas. Nada de RLS, mascaramento ou visibilidade é reimplementado para as ações.
+O que uma função rastreada ou um webhook retorna é governado como as linhas de uma tabela. O Provisa vincula as linhas retornadas como uma relação cujas colunas são a saída declarada da ação: `output_columns` para uma função, `inline_return_type` para um webhook, ou as propriedades do objeto do `return_schema` do tipo array de uma função. Essa relação passa então pela mesma etapa de governança de qualquer leitura de tabela, sobre uma CTE VALUES com as linhas, de modo que segurança de linhas, mascaramento e visibilidade não são reimplementados para ações.
 
-Três coisas se aplicam, na mesma ordem que para uma tabela.
+Valem três regras, na mesma ordem de uma tabela:
 
-- Um filtro de linha: a regra RLS da função salva contra a ação pelo nome (`upsertRlsRule` com `actionName`), ou, quando a ação não tem uma própria, a regra de domínio do domínio da ação. O predicado é validado contra o contrato ao salvar, como uma regra de tabela.
-- Visibilidade de colunas: uma coluna do contrato que declara `visible_to` é removida para uma função que a lista não nomeia; uma coluna que não declara nenhum faz parte da forma pública da ação e fica.
-- Máscaras: uma coluna do contrato traz `masks`, a mesma lista ordenada de máscaras que uma coluna de tabela.
+- **Filtro de linhas.** A regra RLS do papel salva para a ação pelo nome (`upsertRlsRule` com `actionName`), ou a regra do domínio da ação quando ela não tem uma própria. O predicado é verificado contra o contrato ao ser salvo, como uma regra de tabela.
+- **Visibilidade de colunas.** Uma coluna do contrato que declara `visible_to` é retirada para qualquer papel que a lista deixe de fora. Uma coluna que não declara faz parte da forma pública da ação e permanece.
+- **Máscaras.** Uma coluna do contrato traz `masks`, a mesma lista ordenada de uma coluna de tabela.
 
-A herança de funções resolve a cadeia para as três. Uma resposta que retorna uma coluna fora do contrato declarado é recusada com um 502 em vez de passar sem governança. Uma ação que não declara contrato de colunas retorna um escalar e não tem nada a vincular; ela é retornada como está. A invocação de teste da administração informa os filtros, as exclusões e as máscaras aplicados, e a instrução governada é gravada no log de auditoria de consultas.
+A herança de papéis resolve a cadeia para as três. Se uma resposta retornar uma coluna fora do contrato declarado, a chamada falha com 502 em vez de deixá-la passar sem governança. Uma ação que não declara colunas retorna um escalar, que não tem nada a vincular, e ele volta como está. A invocação de teste da administração informa quais filtros, exclusões e máscaras se aplicaram, e a instrução governada vai para o log de auditoria de consultas.
 
 ## Amostragem {: #sampling }
 
-Todas as funções veem resultados amostrados (padrão: 100 linhas) a menos que tenham a capacidade `full_results`. Controlado pela variável de ambiente `PROVISA_SAMPLE_SIZE`.
+Todo papel recebe uma amostra dos resultados, 100 linhas por padrão, a menos que tenha a capacidade `full_results`. Defina o tamanho com a variável de ambiente `PROVISA_SAMPLE_SIZE`.
 
 ## Registro de auditoria {: #audit-logging }
 
-Toda consulta que toca um ativo de domínio é registrada em `query_audit_log`. O log de auditoria pertence à organização, não à plataforma: o registro próprio da plataforma de organizações, usuários e convites não contém registros de auditoria. O `query_audit_log` de cada organização é uma tabela no schema próprio da organização, no store que a organização nomeia para o seu registro em cada região que seleciona. Uma organização que não declara regiões mantém esse schema no banco de dados do control plane da implantação, junto ao seu modelo.
+Toda consulta que toca um ativo de domínio é escrita em `query_audit_log`. O log pertence à organização, não à plataforma: o registro da própria plataforma, com organizações, usuários e convites, não guarda entradas de auditoria. O log de cada organização é uma tabela no esquema dela, no armazenamento que a organização indica para seus registros em cada região que escolhe. Uma organização sem regiões o mantém no banco do plano de controle da implantação, ao lado do modelo.
 
-Cada linha guarda `tenant_id` (a organização), `user_id`, `role_id`, um hash SHA-256 do texto da consulta, o próprio texto da consulta cifrado, `table_ids` e `table_names`, `source`, `status_code`, `duration_ms`, a rota e a contagem de linhas, o que foi imposto à instrução, e `logged_at`. O texto da consulta é cifrado com a chave da organização quando a organização definiu uma, caso contrário com a chave da implantação. Uma implantação que não configura nenhum provedor de cifragem o armazena sem cifrar. O texto nunca é exposto nas tabelas ops consultáveis e é decifrado apenas em leituras de administração autorizadas.
+Uma linha registra `tenant_id` (a organização), `user_id`, `role_id`, um hash SHA-256 do texto da consulta, o próprio texto (criptografado), `table_ids` e `table_names`, `source`, `status_code`, `duration_ms`, a rota e a contagem de linhas, o que foi aplicado à instrução e `logged_at`. O texto é criptografado com a chave da organização, se ela tiver definido uma, e com a da implantação caso contrário. Uma implantação sem provedor de criptografia o guarda sem criptografia. Em nenhum caso ele aparece nas tabelas de operação consultáveis, e só é descriptografado em leituras administrativas autorizadas.
 
-O log é somente de acréscimo no nível do banco de dados: regras do PostgreSQL transformam `DELETE` e `UPDATE` em `query_audit_log` em operações nulas. Dois índices, `(tenant_id, logged_at)` e `(user_id, logged_at)`, dão suporte a consultas de conformidade por organização e por usuário em intervalos de tempo.
+O log aceita só acréscimos, no próprio banco: regras do PostgreSQL transformam `DELETE` e `UPDATE` em `query_audit_log` em operações sem efeito. Dois índices, `(tenant_id, logged_at)` e `(user_id, logged_at)`, deixam rápidas as consultas de conformidade por organização e por usuário dentro de um intervalo de tempo.
 
-Retenção: as linhas são mantidas indefinidamente. O Provisa não tem configuração de retenção e nunca apaga o log de auditoria; como `DELETE` é uma operação nula, remover linhas antigas significa que um operador descarta ou arquiva os dados da tabela fora do Provisa.
+As linhas são mantidas para sempre. O Provisa não tem configuração de retenção e nunca expurga o log, e como `DELETE` não faz nada, apagar linhas antigas significa um operador excluir ou arquivar os dados da tabela fora do Provisa.
 
 ## Ocultação {: #redaction }
 
@@ -415,11 +416,11 @@ Uma fonte federada mantém os próprios logs, que o Provisa não escreve e não 
 
 ## Limitação de taxa {: #rate-limiting }
 
-Limites de taxa por função são configurados em `provisa.yaml`: máximo de requisições por segundo, máximo de assinaturas SSE simultâneas e máximo de fluxos Arrow Flight simultâneos. Os limites são aplicados na camada de API antes da compilação ou execução; requisições acima do limite são recusadas com HTTP 429 e um cabeçalho `Retry-After`.
+Você define limites por papel em `provisa.yaml`: requisições por segundo, assinaturas SSE simultâneas e fluxos Arrow Flight simultâneos. Eles são verificados na API, antes de qualquer compilação ou execução, e uma requisição acima do limite recebe HTTP 429 com um cabeçalho `Retry-After`.
 
-O serviço de consultas NL (`POST /query/nl`) tem um limite independente via `nl.rate_limit` (requisições por minuto por função). Requisições acima do limite são recusadas antes de qualquer chamada a um LLM.
+Consultas em linguagem natural (`POST /query/nl`) têm um limite próprio, `nl.rate_limit`, em requisições por minuto por papel. Uma requisição acima dele é recusada antes de qualquer chamada ao LLM.
 
-O estado dos limites de taxa fica no Redis (`cache.redis_url`) como um contador de janela deslizante — sem estado por instância — então os limites valem em todas as instâncias horizontais do Provisa.
+As contagens ficam no Redis (`cache.redis_url`) como janelas deslizantes, sem nada guardado por instância, então um limite vale não importa quantas instâncias do Provisa você rode.
 
 ## Limite de complexidade de consulta {: #query-complexity-limit }
 
@@ -462,7 +463,7 @@ Um superusuário configurado em `provisa.yaml` (nome de usuário mais uma senha 
 
 ### Superfícies e credenciais {: #surfaces-and-credentials }
 
-Toda superfície se autentica pelo mesmo contrato de provedor, então uma credencial que funciona em uma funciona em todas, onde quer que o protocolo possa levá-la. Esta tabela é a única referência; a documentação de cada superfície não a repete.
+Toda superfície autentica quem chama pelo mesmo provedor, então uma credencial que funciona em uma funciona em todas, onde quer que o protocolo tenha lugar para levá-la.
 
 | Superfície | Senha | Token do provedor | Token de acesso pessoal | Certificado de cliente (mTLS) |
 | --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
@@ -474,24 +475,21 @@ Toda superfície se autentica pelo mesmo contrato de provedor, então uma creden
 | Airport (extensão `airport` do DuckDB, opcional) | — | `authorization: Bearer` (o `auth_token` do segredo) | o mesmo | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | via proxy de terminação |
 
-A única opção de autenticação da extensão `airport` do DuckDB é o `auth_token` bearer do seu segredo, então um cliente DuckDB apresenta ali um token do provedor ou um token de acesso pessoal e age como a função para a qual sua identidade se resolve. Um cliente que pode definir cabeçalhos de chamada pode pedir uma função tida, ou um conjunto separado por vírgulas, em `x-provisa-role`.
+A extensão `airport` do DuckDB só consegue enviar o `auth_token` bearer do seu segredo. Um cliente DuckDB coloca ali um token do provedor ou um token de acesso pessoal e age como o papel para o qual sua identidade é resolvida. Qualquer cliente que consiga definir cabeçalhos de chamada pode pedir um dos seus papéis, ou um conjunto separado por vírgulas, em `x-provisa-role`.
 
-Uma recusa diz de que tipo é em cada uma dessas superfícies. Uma credencial ausente, rejeitada ou inutilizável é uma recusa de autenticação: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight e Airport `Unauthenticated`. Uma credencial válida que pede para agir como uma função que sua identidade não tem é uma recusa de autorização, com a função nomeada: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight e Airport `Unauthorized`. Uma exceção está na biblioteca cliente do Arrow, não no servidor: uma recusa da chamada `get_schema` do Flight chega a um cliente Python como um erro genérico do Arrow com o motivo do servidor, sem o seu tipo; `list_flights`, `get_flight_info` e `do_get` entregam o tipo.
+Toda superfície diz que tipo de recusa você recebeu. Uma credencial ausente, rejeitada ou inutilizável é uma recusa de autenticação: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight e Airport `Unauthenticated`. Uma credencial válida que pede para agir como um papel que sua identidade não tem é uma recusa de autorização, e nomeia o papel: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight e Airport `Unauthorized`. Uma exceção vem da biblioteca cliente do Arrow, não do servidor. Quando o `get_schema` do Flight é recusado, um cliente Python vê um erro genérico do Arrow que traz o motivo do servidor mas não o tipo; `list_flights`, `get_flight_info` e `do_get` entregam o tipo.
 
-Onde uma célula mostra `—`, o protocolo não traz um campo de nome de usuário para parear com uma senha; as formas de token cobrem isso. O pgwire é o caso inverso: o pacote de inicialização tem um campo secreto e nenhum esquema, então o que o segredo *é* escolhe o método — um PAT é reconhecido pelo prefixo, o segredo é lido como token bearer quando o provedor configurado é um provedor de tokens, e qualquer outra coisa é uma senha. A escolha é feita uma vez — uma credencial que o validador escolhido recusa não é tentada de novo com outro.
-
-A matriz é imposta por `tests/unit/test_auth_surface_conformance.py`, que exercita o ponto de entrada real de validação de cada superfície e falha quando uma nova superfície é adicionada sem linha.
+Um `—` na tabela significa que o protocolo não tem campo de nome de usuário para parear com uma senha, e as formas de token cobrem o caso. O pgwire é o caso oposto. Seu pacote de inicialização tem um único campo secreto e nenhum esquema, então o próprio segredo decide o método: um token de acesso pessoal é reconhecido pelo prefixo, o segredo é lido como token bearer quando o provedor configurado emite tokens, e todo o resto é uma senha. Essa escolha é feita uma vez, e uma credencial recusada pelo validador escolhido não é tentada em outro.
 
 ### Tokens de acesso pessoal {: #personal-access-tokens }
 
-Um PAT é um segredo bearer de longa duração que um usuário gera para um cliente que não consegue concluir um login interativo — um script, uma ferramenta de BI, um driver. Ele traz sua própria organização e função, e toda superfície o resolve pelo mesmo validador, então nenhuma superfície precisa saber o que é um PAT.
+Um token de acesso pessoal é um segredo bearer de longa duração que você cria para um cliente que não consegue fazer login interativo: um script, uma ferramenta de BI, um driver. Ele traz a própria organização e o próprio papel, e toda superfície o verifica com o mesmo validador, então nenhuma precisa saber o que ele é.
 
-A forma de transmissão é `provisa_pat_` seguido de 43 caracteres base64 seguros para URL. O prefixo é o que direciona um segredo apresentado ao armazenamento de tokens em vez do provedor de identidade, e torna um token vazado localizável em logs e repositórios.
+Na rede, ele é `provisa_pat_` seguido de 43 caracteres base64 seguros para URL. O prefixo é o que manda um segredo apresentado para o armazenamento de tokens em vez do provedor de identidade, e deixa um token vazado fácil de achar em logs e repositórios.
 
-- **Armazenamento** — só o SHA-256 do segredo é guardado. O segredo em si é mostrado exatamente uma vez, na criação, e não pode ser recuperado. A listagem traz o prefixo de exibição e os timestamps do ciclo de vida, nunca uma credencial funcional.
-- **Emissão e revogação** — `POST /auth/tokens`, `GET /auth/tokens`, `DELETE /auth/tokens/{token_hash}`, mais a seção de autoatendimento no próprio perfil do usuário na interface de administração. Gerar e revogar uma credencial é um ato do titular do token.
-- **Atribuição** — um PAT validado é resolvido para a conta do seu dono: id de usuário, e-mail e nome de exibição. Uma linha de auditoria ou um relatório de uso escrito sob um PAT nomeia, portanto, a pessoa, não a credencial. Qual dos tokens dessa pessoa agiu é levado à parte, em `raw_claims["token_name"]`.
-- **Expiração** — um token pode ter uma expiração; um token expirado é recusado na validação. Excluir a associação de um usuário revoga seus tokens junto.
+Só o SHA-256 do segredo é guardado. Você vê o segredo uma vez, ao criá-lo, e depois ele não pode ser recuperado; a lista dos seus tokens mostra um prefixo de exibição e datas, nunca uma credencial que funcione. Você cria, lista e revoga os próprios tokens com `POST /auth/tokens`, `GET /auth/tokens` e `DELETE /auth/tokens/{token_hash}`, ou na seção de tokens do seu perfil na interface de administração.
+
+Um token válido é resolvido para a conta do dono, com id de usuário, e-mail e nome de exibição, de modo que uma linha de auditoria ou um relatório de uso gravado com um token nomeia a pessoa, não a credencial. Qual dos tokens dela agiu fica registrado à parte, em `raw_claims["token_name"]`. Um token pode ter validade, depois da qual é recusado, e remover a associação de um usuário revoga também os tokens dele.
 
 ### SCRAM-SHA-256 no pgwire {: #scram-sha-256-on-pgwire }
 

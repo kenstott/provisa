@@ -1,67 +1,67 @@
 # Security Model
 
-Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, WebSocket). Governance is applied uniformly — there is no query path that bypasses it.
+Every query passes the same governance, whichever language it's written in (GraphQL, SQL, Cypher) and however it arrives (REST, gRPC, Arrow Flight, JDBC, WebSocket). There is no path around it.
 
-The layers apply in order. A request must clear each layer before the next is evaluated.
+The checks run in order. A request has to pass each one before the next is looked at.
 
 ## Layered Model
 
 ### Layer 0 — Introspection filtering
 
-The schema and catalog presented to a role contain only the tables in its `domain_access` list and the columns that pass per-column `visible_to` rules. Objects outside a role's access are invisible at discovery time — they cannot be queried, autocompleted, or inferred to exist. This applies to the GraphQL schema, SQL catalog, and the query editor's schema browser.
+A role is shown only the tables its `domain_access` reaches and the columns its `visible_to` rules allow. Anything else doesn't exist as far as that role can tell: it can't be queried, autocompleted or guessed at. The GraphQL schema, the SQL catalog and the query editor's schema browser all show the same narrowed view.
 
 See [Schema Visibility](#schema-visibility).
 
 ### Layer 1 — Public access
 
-A column published with scope `public` is served to every role of the org, including roles whose `domain_access` does not reach the table's domain; such a role sees the table with its public columns only. Nothing is public unless a table's registrar says so. See [Public columns](#public-columns).
+A column published with scope `public` is served to every role in the org, even one whose `domain_access` doesn't reach the table's domain. That role sees the table with its public columns and nothing else. Nothing is public until whoever registered the table says so. See [Public columns](#public-columns).
 
 ### Layer 2 — Domain access
 
-Each role carries a `domain_access` list of domain IDs. A query that touches a table outside those domains is rejected before execution. This is the coarse ownership boundary — an HR role cannot reach finance tables regardless of how the SQL is written.
+Each role has a `domain_access` list of domain IDs, and a query that touches a table in any other domain is refused before it runs. This is the coarse ownership line. An HR role can't reach finance tables, however the SQL is written.
 
 See [Rights Model](#rights-model).
 
 ### Layer 3 — Row-level security
 
-After domain access is confirmed, per-table, per-role `WHERE` predicates are injected into every `SELECT` at execution time. The predicates evaluate against raw data. A regional manager querying a shared orders table sees only their region's rows even on a `SELECT *`.
+Once domain access is settled, the role's row filter for each table is added to every `SELECT` as a `WHERE` predicate, evaluated against the raw data. A regional manager who runs `SELECT *` on the shared orders table still gets back only their region's rows.
 
 See [Row-Level Security (RLS)](#row-level-security-rls).
 
 ### Layer 4 — Column visibility and masking
 
-Columns with a `visible_to` list that excludes the requesting role are stripped from query output. Columns with a masking rule have their values replaced — regex redaction, constant replacement, or truncation — before results leave the server. Masking applies in all query languages and output formats.
+A column whose `visible_to` list leaves out your role is dropped from the output. A masked column has its values replaced before they leave the server, by a regex, a constant or a truncation. That holds in every query language and every output format.
 
 See [Column Permission Model](#column-permission-model) and [Column-Level Masking](#column-level-masking).
 
 ### Layer 5 — Predicate guard
 
-Masked columns are rejected from `WHERE` and `HAVING` clauses. Without this, a caller could infer the unmasked value by binary-searching it in a filter even though the output is masked. Rejection is enforced at query parse time, before execution.
+You can't filter on a masked column: `WHERE` and `HAVING` refuse it when the query is parsed. Otherwise a caller could recover the real value by binary search, one filter at a time, even though every result it saw was masked.
 
 ### Relationship governance (V002)
 
-JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate queries. Circumvention attempts are logged and auditable.
+A SQL join has to follow a relationship that has been registered and approved, and any other join is refused. Each relationship carries a reason and a description that tell people and agents why the path exists. Treat this as governance policy rather than a security boundary. Layers 2 to 5 hold whatever the joins look like, so getting around the guard exposes nothing the role couldn't read with two separate queries. Attempts to get around it are logged.
 
-**Bypass mechanisms** — V002 can be bypassed two ways. The first is a capability: a role holding `ignore_relationships` joins across relations the catalog does not cover. Among the seeded system roles only `modeler` holds it — the discovery role whose job is to determine the model rather than enforce it. `analyst` does not.
+There are two ways past V002. The first is a capability: a role holding `ignore_relationships` can join relations the catalog doesn't cover. Of the seeded roles only `modeler` has it, because its job is to work the model out, and `analyst` doesn't.
 
-The second is a two-condition opt-out, where both must be true:
+The second needs two things at once:
 
-1. **Role flag** — `relationship_guard: false` on the role definition (default: `true`).
-2. **Per-query opt-out** — the SQL contains the comment `--relationship-guard=false`.
+1. **Role flag**: `relationship_guard: false` on the role definition (the default is `true`).
+2. **Per-query opt-out**: the comment `--relationship-guard=false` in the SQL.
 
-The role flag alone does not bypass V002; the comment alone does not bypass V002.
+Either one on its own does nothing.
 
-**High-security mode pins the guard.** Under `security.mode: high` neither bypass applies: `ignore_relationships` is ignored, `relationship_guard: false` is ignored, and every join must exist in the approved relationship catalog. This is deliberate redundancy — a production role that was granted the capability by mistake still cannot break out of the model.
+**High-security mode pins the guard.** Under `security.mode: high` neither way works. `ignore_relationships` and `relationship_guard: false` are both ignored, and every join must be in the approved catalog. The redundancy is on purpose: a production role given the capability by mistake still can't step outside the model.
 
-**GraphQL path** — V002 is unconditionally skipped for GraphQL queries. SDL-defined relationships are pre-approved by design; the check is redundant and is not applied.
+**GraphQL** skips V002. Its relationships come from the model, so they're approved already.
 
-**SQL and Cypher paths** — V002 is active by default. Both `endpoint_dev.py` and `cypher_router.py` apply the two-condition check before calling `validate_sql`.
+**SQL and Cypher** apply V002 by default, with the two-condition opt-out above.
 
-**pgwire path** — same two-condition check as SQL. The `--relationship-guard=false` comment is stripped from the query before execution; it does not reach the database.
+**pgwire** applies the same check as SQL. The `--relationship-guard=false` comment is stripped before the query reaches the database.
 
 ---
 
-These layers compose. A role with domain access, RLS, and masked columns has all five constraints active simultaneously. Adding a new data source, column, or relationship does not require updating every rule — each layer is configured independently and applies automatically to any query that touches governed objects.
+The layers stack. A role with domain access, row filters and masked columns has all of them in force at once. Adding a source, a column or a relationship doesn't mean touching every rule, because each layer is configured on its own and applies to any query that reaches what it governs.
 
 ---
 
@@ -294,21 +294,17 @@ In this example:
 
 ## Mutation Authorization
 
-Registered mutations (remote GraphQL, OpenAPI, gRPC, Hasura) are gated by two independent checks. A role may invoke a mutation only if it holds the global `write` capability AND the command is assigned to it by `visible_to` (an empty list assigns it to every role). A command has no `writable_by` list; the configuration refuses one by name.
+A registered mutation (remote GraphQL, OpenAPI, gRPC, Hasura) passes two checks. The role must hold the global `write` capability, and the command must be assigned to it by `visible_to`; an empty list assigns it to every role. A command has no `writable_by` list, and the configuration refuses one by name.
 
-Mutations are classified as writes by contract, not by caller declaration. A `SELECT` that references a mutation-kind function is promoted to a write and subject to the same two-gate check, so a caller cannot invoke a mutation by disguising it as a read. Reclassifying a mutation to read-safe requires the `access_config` capability and is recorded as a governance decision; there is no per-request opt-out.
+Whether something is a write is decided by its contract, not by what the caller says. A `SELECT` that calls a mutation-kind function is treated as a write and goes through the same two checks, so you can't run a mutation by dressing it up as a read. Marking a mutation read-safe takes the `access_config` capability and is recorded as a governance decision. No request can opt out.
 
 ## Schema Visibility
 
-Per-role GraphQL schemas hide unauthorized content:
-
-- **Domain access**: Role sees tables only in its `domain_access` domains (`"*"` = all)
-- **Column visibility**: Columns not in `visible_to` for a role are omitted from the SDL
-- Unauthorized tables/columns do not appear in the schema
+Each role gets its own GraphQL schema. Tables appear only from the domains in its `domain_access` (`"*"` is all of them), and a column left out of `visible_to` for the role is left out of the SDL too. What the role can't read, it doesn't see.
 
 ## Row-Level Security (RLS)
 
-Per-table, per-role SQL WHERE clause injection. Applied after compilation, before execution.
+A row filter is a `WHERE` predicate for one table and one role, added after compilation and before execution.
 
 ```yaml
 rls_rules:
@@ -318,11 +314,15 @@ rls_rules:
     description: Analysts read only their own region's orders.
 ```
 
-The filter is ANDed into the query's WHERE clause. Works for both queries and mutations (UPDATE/DELETE).
+The filter is ANDed into the query's `WHERE` clause, for reads and for `UPDATE` and `DELETE` alike.
 
-A `current_setting('provisa.<name>')` term resolves against the session variables the request binds: `user_id` from the authenticated identity, `role` from the acting role, and every scalar claim of the token under its lower-cased name, dashes as underscores. A Hasura session variable keeps its own name: `X-Hasura-User-Id` is `hasura_user_id`, read from the token's `x-hasura-user-id` claim (top level, or inside the Hasura claims object such as `https://hasura.io/jwt/claims`) or recorded for the member as the attribute `hasura_user_id`. An imported Hasura filter on `X-Hasura-User-Id` therefore reads `provisa.hasura_user_id`. `provisa.user_id` is always the signed-in identity; no claim replaces it. A role's configured `session_vars` are the constants underneath; the request's bindings overlay them. A role inheriting from another takes its ancestors' constants under its own, the nearest role's value for each name. `user_id`, `role`, `region` and `org` are bound by the request or the node and cannot be configured as constants. In unsecured mode a `x-provisa-session-<name>` header binds `<name>`. A variable bound nowhere resolves to NULL and matches no rows.
+A filter reads the request through `current_setting('provisa.<name>')`. The request binds `user_id` from the signed-in identity, `role` from the acting role, and every scalar claim in the token, lower-cased with dashes turned into underscores. `provisa.user_id` is always the signed-in identity, and no claim can replace it.
 
-A role constant is the inverse of a derived role. A derived role turns a value a member holds into a role; a role constant gives every request acting as the role a value, which a row rule reads as it reads a claim. A role constant may be a `${env:NAME}` or `${secret:NAME}` reference, resolved through the same resolver as every other reference, when a query uses it; the model keeps the reference, never what it resolved to, and a reference that resolves to nothing fails the query, naming the constant. A resolved constant takes part in the query. Provisa's own records of the query are covered by central redaction; a federated source's own logs are out of Provisa's reach.
+Hasura's session variables keep their names. `X-Hasura-User-Id` is `hasura_user_id`, read from the token's `x-hasura-user-id` claim (at the top level or inside the Hasura claims object, such as `https://hasura.io/jwt/claims`) or from the member's recorded `hasura_user_id` attribute. So an imported Hasura filter on `X-Hasura-User-Id` reads `provisa.hasura_user_id`.
+
+Underneath the request's values sit the role's configured `session_vars`, which the request overrides. A role that inherits takes its ancestors' constants under its own, the nearest role winning for each name. `user_id`, `role`, `region` and `org` come from the request or the node and can't be configured as constants. In unsecured mode an `x-provisa-session-<name>` header binds `<name>`. A variable bound nowhere is NULL, and a filter on it matches no rows.
+
+A role constant works the other way round from a derived role. A derived role turns a value a member holds into a role. A role constant hands every request made as the role a value, which a row rule reads just as it reads a claim. The constant can be a `${env:NAME}` or `${secret:NAME}` reference, resolved by the same resolver as every other reference when a query uses it. The model keeps the reference, never the value, and a reference that resolves to nothing fails the query and names the constant. Once resolved, the value is part of the query: Provisa's own records of it are covered by central redaction, but a federated source's own logs are beyond Provisa's reach.
 
 ## Column-Level Masking
 
@@ -364,29 +364,29 @@ masks:
 
 ## Governing Action Responses
 
-A tracked function's or webhook's response is governed like a table's rows. The rows an action returns are bound as a relation whose columns are the action's declared output contract — `output_columns` for a function, `inline_return_type` for a webhook, or the object properties of a function's array `return_schema` — and that relation runs through the same governance stage every table read runs through, over a VALUES CTE holding the rows. Nothing about RLS, masking or visibility is reimplemented for actions.
+What a tracked function or a webhook returns is governed like a table's rows. Provisa binds the returned rows as a relation whose columns are the action's declared output: `output_columns` for a function, `inline_return_type` for a webhook, or the object properties of a function's array `return_schema`. That relation then goes through the same governance stage as any table read, over a VALUES CTE holding the rows, so row security, masking and visibility aren't reimplemented for actions.
 
-Three things apply, in the same order as for a table.
+Three rules apply, in the same order as for a table:
 
-- A row filter: the role's RLS rule saved against the action by name (`upsertRlsRule` with `actionName`), or, when the action has none of its own, the domain rule of the action's domain. The predicate is validated against the contract at save the way a table rule is.
-- Column visibility: a contract column that declares `visible_to` is dropped for a role the list does not name; a column that declares none is part of the action's public shape and stays.
-- Masks: a contract column carries `masks`, the same ordered mask list a table column carries.
+- **Row filter.** The role's RLS rule saved against the action by name (`upsertRlsRule` with `actionName`), or the action's domain rule when the action has none of its own. The predicate is checked against the contract when it's saved, as a table rule is.
+- **Column visibility.** A contract column that declares `visible_to` is dropped for any role the list leaves out. A column that declares none is part of the action's public shape and stays.
+- **Masks.** A contract column carries `masks`, the same ordered list a table column carries.
 
-Role inheritance resolves the chain for all three. A response that returns a column outside the declared contract is refused with a 502 rather than passed through ungoverned. An action that declares no column contract returns a scalar and has nothing to bind; it is returned as is. The admin test-invoke reports the filters, exclusions and masks that applied, and the governed statement is written to the query audit log.
+Role inheritance resolves the chain for all three. If a response returns a column outside its declared contract, the call fails with a 502 rather than passing it through ungoverned. An action that declares no columns returns a scalar, which has nothing to bind, and comes back as it is. The admin test-invoke reports which filters, exclusions and masks applied, and the governed statement goes to the query audit log.
 
 ## Sampling
 
-All roles see sampled results (default: 100 rows) unless they have `full_results` capability. Controlled via `PROVISA_SAMPLE_SIZE` env var.
+Every role gets a sample of the results, 100 rows by default, unless it holds the `full_results` capability. Set the size with the `PROVISA_SAMPLE_SIZE` environment variable.
 
 ## Audit Logging
 
-Every query that touches a domain asset is recorded in `query_audit_log`. The audit log belongs to the org, not to the platform: the platform's own registry of orgs, users and invitations holds no audit records. Each org's `query_audit_log` is a table in that org's own schema, in the store the org names for its record in each region it selects. An org that declares no regions keeps that schema in the deployment's control-plane database, alongside its model.
+Every query that touches a domain asset is written to `query_audit_log`. The log belongs to the org, not the platform: the platform's own registry of orgs, users and invitations holds no audit records. Each org's log is a table in that org's schema, in the store the org names for its record in each region it selects. An org that declares no regions keeps it in the deployment's control-plane database, beside its model.
 
-Each row captures `tenant_id` (the org), `user_id`, `role_id`, a SHA-256 hash of the query text, the query text itself encrypted, `table_ids` and `table_names`, `source`, `status_code`, `duration_ms`, the route and row count, what was enforced on the statement, and `logged_at`. The query text is encrypted with the org's key when the org has set one, otherwise with the deployment's key. A deployment that configures no encryption provider stores it unencrypted. The text is never exposed in the queryable ops tables, and is decrypted only on authorized admin reads.
+A row records `tenant_id` (the org), `user_id`, `role_id`, a SHA-256 hash of the query text, the query text itself (encrypted), `table_ids` and `table_names`, `source`, `status_code`, `duration_ms`, the route and row count, what was enforced on the statement, and `logged_at`. The text is encrypted with the org's key if the org has set one, and with the deployment's key otherwise. A deployment with no encryption provider stores it unencrypted. Either way it never appears in the queryable ops tables, and it's decrypted only for authorized admin reads.
 
-The log is append-only at the database level: PostgreSQL rules turn `DELETE` and `UPDATE` on `query_audit_log` into no-ops. Two indexes, `(tenant_id, logged_at)` and `(user_id, logged_at)`, support org-scoped and per-user time-range compliance queries.
+The log is append-only in the database itself, where PostgreSQL rules turn `DELETE` and `UPDATE` on `query_audit_log` into no-ops. Two indexes, `(tenant_id, logged_at)` and `(user_id, logged_at)`, keep org-wide and per-user compliance queries over a time range fast.
 
-Retention: rows are kept indefinitely. Provisa has no retention setting and never purges the audit log; because `DELETE` is a no-op, removing old rows means an operator dropping or archiving the table's data outside Provisa.
+Rows are kept for good. Provisa has no retention setting and never purges the log, and since `DELETE` does nothing, clearing old rows means an operator dropping or archiving the table's data outside Provisa.
 
 ## Redaction
 
@@ -418,11 +418,11 @@ A federated source keeps its own logs, which Provisa does not write and cannot r
 
 ## Rate Limiting
 
-Per-role rate limits are configured in `provisa.yaml`: max requests per second, max concurrent SSE subscriptions, and max concurrent Arrow Flight streams. Limits are enforced at the API layer before compilation or execution; requests over the limit are rejected with HTTP 429 and a `Retry-After` header.
+You set per-role limits in `provisa.yaml`: requests per second, concurrent SSE subscriptions and concurrent Arrow Flight streams. They're checked at the API, before anything is compiled or run, and a request over the limit gets HTTP 429 with a `Retry-After` header.
 
-The NL query service (`POST /query/nl`) has an independent limit via `nl.rate_limit` (requests per minute per role). Requests over the limit are rejected before any LLM call is made.
+Natural-language queries (`POST /query/nl`) have a limit of their own, `nl.rate_limit`, in requests per minute per role. A request over it is turned away before any LLM call is made.
 
-Rate limit state lives in Redis (`cache.redis_url`) as a sliding-window counter — no per-instance state — so limits hold across all horizontal Provisa instances.
+The counts live in Redis (`cache.redis_url`) as sliding windows, with nothing held per instance, so a limit holds however many Provisa instances you run.
 
 ## Query Complexity Limit
 
@@ -466,7 +466,7 @@ A superuser configured in `provisa.yaml` (username plus a password from an env s
 
 ### Surfaces and credentials
 
-Every surface authenticates through the same provider contract, so a credential that works on one works on all of them wherever the protocol can carry it. This table is the single reference; the per-surface docs do not restate it.
+Every surface signs callers in through the same provider, so a credential that works on one works on all of them, wherever the protocol has a place to carry it.
 
 | Surface | Password | Provider token | Personal access token | Client certificate (mTLS) |
 | --------- | ---------- | ---------------- | ----------------------- | --------------------------- |
@@ -478,24 +478,21 @@ Every surface authenticates through the same provider contract, so a credential 
 | Airport (DuckDB `airport` extension, opt-in) | — | `authorization: Bearer` (the secret's `auth_token`) | same | — |
 | MCP | — | `Authorization: Bearer` | `Authorization: Bearer` | via terminating proxy |
 
-The DuckDB `airport` extension's only authentication option is the bearer `auth_token` of its secret, so a DuckDB client presents a provider token or a personal access token there and acts as the role its identity resolves to. A client that can set call headers may request one held role, or a comma-separated set of them, in `x-provisa-role`.
+The DuckDB `airport` extension can only send the bearer `auth_token` of its secret. A DuckDB client puts a provider token or a personal access token there and acts as the role its identity resolves to. Any client that can set call headers may ask for one of its roles, or a comma-separated set of them, in `x-provisa-role`.
 
-A refusal says which kind it is on every one of these surfaces. A missing, rejected or unusable credential is an authentication refusal: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight and Airport `Unauthenticated`. A valid credential asking to act as a role its identity does not hold is an authorization refusal, with the role named: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight and Airport `Unauthorized`. One exception is in the Arrow client library, not the server: a refusal of Flight's `get_schema` call reaches a Python client as a generic Arrow error carrying the server's reason, without its kind; `list_flights`, `get_flight_info` and `do_get` deliver the kind.
+Every surface tells you which kind of refusal you got. A missing, rejected or unusable credential is an authentication refusal: HTTP 401, gRPC `UNAUTHENTICATED`, Arrow Flight and Airport `Unauthenticated`. A valid credential asking to act as a role its identity doesn't hold is an authorization refusal, and it names the role: HTTP 403, gRPC `PERMISSION_DENIED`, Arrow Flight and Airport `Unauthorized`. One exception comes from the Arrow client library, not the server. When Flight's `get_schema` is refused, a Python client sees a generic Arrow error that carries the server's reason but not the kind; `list_flights`, `get_flight_info` and `do_get` do deliver the kind.
 
-Where a cell reads `—` the protocol carries no username field to pair a password with; the token forms cover it. pgwire is the mirror case: the startup packet has one secret field and no scheme, so what the secret *is* picks the method — a PAT is recognized by its prefix, the secret is read as a bearer token when the configured provider is a token provider, and anything else is a password. The choice is made once — a credential the selected validator refuses is not retried against another.
-
-The matrix is enforced by `tests/unit/test_auth_surface_conformance.py`, which drives each surface's real validation entry point and fails when a new surface is added without a row.
+A `—` in the table means the protocol has no username field to pair a password with, and the token forms cover it. pgwire is the opposite case. Its startup packet has one secret field and no scheme, so the secret itself decides the method: a personal access token is recognized by its prefix, the secret is read as a bearer token when the configured provider issues tokens, and anything else is a password. That choice is made once, and a credential the chosen validator refuses isn't tried against another.
 
 ### Personal access tokens
 
-A PAT is a long-lived bearer secret a user mints for a client that cannot complete an interactive login — a script, a BI tool, a driver. It carries its own org and role, and every surface resolves it through the same validator, so no surface needs to know what a PAT is.
+A personal access token is a long-lived bearer secret you mint for a client that can't do an interactive login: a script, a BI tool, a driver. It carries its own org and role, and every surface checks it with the same validator, so no surface needs to know what one is.
 
-The wire form is `provisa_pat_` followed by 43 url-safe base64 characters. The prefix is what routes a presented secret to the token store instead of the identity provider, and it makes a leaked token greppable in logs and repositories.
+On the wire it is `provisa_pat_` followed by 43 URL-safe base64 characters. The prefix is what sends a presented secret to the token store instead of the identity provider, and it makes a leaked token easy to find in logs and repositories.
 
-- **Storage** — only the SHA-256 of the secret is kept. The secret itself is shown exactly once, at creation, and cannot be recovered. The listing carries the display prefix and the lifecycle timestamps, never a working credential.
-- **Issuance and revocation** — `POST /auth/tokens`, `GET /auth/tokens`, `DELETE /auth/tokens/{token_hash}`, plus the self-service section on the user's own profile in the admin UI. Minting and revoking a credential is the token holder's act.
-- **Attribution** — a validated PAT resolves to its owner's account: user id, email and display name. An audit row or usage report written under a PAT therefore names the person, not the credential. Which of that person's tokens acted is carried separately, in `raw_claims["token_name"]`.
-- **Expiry** — a token may carry an expiry; an expired token is refused at validation. Deleting a user's membership revokes their tokens with it.
+Only the SHA-256 of the secret is stored. You see the secret once, when it's created, and it can't be recovered afterwards; the list of your tokens shows a display prefix and dates, never a working credential. You mint, list and revoke your own tokens with `POST /auth/tokens`, `GET /auth/tokens` and `DELETE /auth/tokens/{token_hash}`, or in the tokens section of your profile in the admin UI.
+
+A valid token resolves to its owner's account, with user id, email and display name, so an audit row or usage report written under a token names the person rather than the credential. Which of their tokens acted is recorded separately, in `raw_claims["token_name"]`. A token can carry an expiry, after which it's refused, and removing a user's membership revokes their tokens with it.
 
 ### SCRAM-SHA-256 on pgwire
 
