@@ -172,7 +172,7 @@ Resultados acima de um limite de linhas configurado (ou quando `X-Provisa-Redire
 | `text/csv` | Provisa | Limitado por memória |
 | `application/vnd.apache.arrow.stream` | Provisa | Limitado por memória |
 
-Para grandes exportações analíticas, use redirecionamento Parquet ou ORC. O motor de federação grava diretamente no S3 em paralelo — nenhum dado passa pelo Provisa.
+Para exportações analíticas grandes, use o redirecionamento para Parquet ou ORC. O motor de federação escreve direto no S3 em paralelo, e nenhum dado passa pelo Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ Executa SQL bruto através do pipeline de governança de Estágio 2.
 }
 ```
 
-Os valores são vinculados quando a instrução é executada — pelo motor ou pelo driver da fonte — e nunca escritos na instrução, então um valor não pode mudar o que a instrução é. Eles acompanham exatamente uma instrução cujos marcadores os numeram exatamente: um lote de instruções, um marcador sem valor ou um valor que nenhum marcador recebe é recusado com `400` e o código `data.sql_parameters_do_not_fit` antes de a instrução ser governada ou executada. Uma instrução sem marcadores é enviada sem `params`, como antes.
+Os valores são vinculados quando a instrução roda, pelo motor ou pelo driver da fonte, e nunca são escritos na instrução, então um valor não pode mudar o que a instrução é. Eles acompanham exatamente uma instrução cujos marcadores os numeram exatamente. Um lote de instruções, um marcador sem valor ou um valor que nenhum marcador recebe é recusado com `400` e o código `data.sql_parameters_do_not_fit` antes de a instrução ser governada ou executada. Uma instrução sem marcadores é enviada sem `params`, como antes.
 
 **Capacidades exigidas:** `QUERY_DEVELOPMENT`.
 
@@ -215,7 +215,7 @@ Violações de governança em `POST /data/sql` retornam HTTP 403.
 
 ### `POST /data/query`
 
-Endpoint de consulta unificado. Aceita GraphQL, SQL ou Cypher — a sintaxe é auto-detectada.
+Um único endpoint para toda linguagem de consulta. Ele aceita GraphQL, SQL ou Cypher e detecta qual recebeu.
 
 Consultas Cypher também podem ser enviadas ao endpoint exclusivo Cypher `POST /query/cypher`.
 
@@ -238,7 +238,7 @@ Retorna `{"data": ...}` para GraphQL, `{"columns": [...], "rows": [...]}` para S
 
 Explique ou analise uma instrução SQL pelo pipeline governado.
 
-O endpoint envolve o SQL **governado** — a instrução que de fato roda sob a função de quem chama, depois de RLS e mascaramento — na sintaxe EXPLAIN do dialeto. O que o plano mostra é a versão autorizada da consulta, não a entrada bruta.
+O endpoint envolve o SQL **governado** na sintaxe EXPLAIN do dialeto: a instrução que realmente roda sob o papel de quem chama, depois de RLS e mascaramento. Então o plano que você vê é o da versão autorizada da consulta, não o da entrada bruta.
 
 **Corpo da requisição:**
 
@@ -262,7 +262,7 @@ Defina `analyze: true` para executar EXPLAIN ANALYZE. A consulta é executada e 
 
 Retorna o estado atual do shard do motor sem acordá-lo.
 
-A UI consulta este endpoint para exibir um aviso de inicialização enquanto o motor faz cold start. Ele nunca dispara um despertar — a consulta é segura e não conta como atividade para o coletor de ociosidade.
+A UI consulta este endpoint para mostrar um aviso de inicialização enquanto o motor faz partida a frio. Ele nunca acorda o motor, então consultá-lo é seguro e não conta como atividade para o desligamento por ociosidade.
 
 **Resposta:**
 
@@ -285,7 +285,7 @@ Valores possíveis:
 
 Dispara um despertar do motor sem executar uma consulta.
 
-Retorna `202 Accepted` imediatamente. O despertar roda em segundo plano. Use isto se quiser o motor pronto antes que a primeira consulta chegue — por exemplo, a partir de um agendador que executa consultas alguns minutos depois.
+Retorna `202 Accepted` na hora, e o despertar roda em segundo plano. Use quando quiser o motor pronto antes de chegar a primeira consulta, por exemplo a partir de um agendador que roda consultas alguns minutos depois.
 
 **Resposta:** `202 Accepted`, corpo `{"started": true}`
 
@@ -312,11 +312,11 @@ A função autenticada é exigida; requisições não autenticadas retornam `401
 
 #### Explorador OpenAPI / Swagger UI {: #openapi-swagger-ui-explorer }
 
-A página do explorador OpenAPI (`/app/openapi`) incorpora o Swagger UI em um iframe isolado (sandboxed). A especificação é restrita por função — apenas tabelas e colunas visíveis à função atual aparecem — e opcionalmente filtrada por domínio via o seletor de domínio. A UI alterna entre os temas claro e escuro automaticamente.
+A página do explorador OpenAPI (`/app/openapi`) incorpora o Swagger UI num iframe isolado. A especificação é limitada ao papel, então só aparecem as tabelas e colunas que o papel atual pode ver, e o seletor de domínio pode restringi-la ainda mais. A UI alterna sozinha entre os temas claro e escuro.
 
-A página carrega o HTML da especificação via `fetch()` em vez de um `src` de iframe direto, de forma que a requisição carrega o token bearer da sessão e as próprias requisições relativas do Swagger UI são resolvidas corretamente contra a mesma origem.
+A página carrega o HTML da especificação com `fetch()` em vez de um `src` direto do iframe. Assim a requisição leva o token bearer da sessão, e as requisições relativas do próprio Swagger UI se resolvem contra a mesma origem.
 
-Quando navegado a partir de um link NL "Open in OpenAPI", a página expande automaticamente o endpoint alvo, popula os parâmetros de consulta a partir da URL gerada por NL (ex.: `aggregate`, `groupBy`), e clica em Execute — usando polling do DOM para garantir que cada etapa seja concluída antes que a próxima seja acionada.
+Aberta a partir de um link NL "Abrir no OpenAPI", a página expande o endpoint de destino, preenche os parâmetros de consulta a partir da URL gerada pelo NL (ex. `aggregate`, `groupBy`) e clica em Execute, consultando o DOM para que cada etapa termine antes de a próxima começar.
 
 ---
 
@@ -392,11 +392,11 @@ Três laços de geração (Cypher, GraphQL, SQL) rodam em paralelo, cada um vali
 }
 ```
 
-Um ramo que esgota seu limite de iteração retorna `query: null`, `result: null`, e uma string `error`. Toda consulta gerada executa sob os direitos do consumidor com a governança de Estágio 2 aplicada — o serviço nunca contorna a governança.
+Um ramo que esgota suas iterações devolve `query: null`, `result: null` e uma string `error`. Toda consulta gerada roda com os direitos do consumidor e a governança do estágio 2 aplicada; o serviço nunca contorna a governança.
 
 #### Agrupamento NL com Detalhes de Dimensão {: #nl-group-by-with-dimension-details }
 
-Quando uma consulta NL de agrupamento também projeta colunas de uma tabela de dimensão unida — por exemplo, "contagem de consultas por usuário com nome de usuário e email" — o executor deriva caminhos ponto a ponto por campo (`dim_paths`) a partir das colunas de dimensão projetadas no SELECT. Esses caminhos populam o parâmetro `includeNodes=` nas URLs geradas pelos painéis JSON:API e OpenAPI, de forma que esses painéis solicitam os mesmos campos de dimensão unida que os ramos SQL e GraphQL resolveram. Sem isso, `includeNodes=true` retornaria apenas os campos escalares próprios da tabela de agregação base.
+Pense numa consulta NL com group-by que também projeta colunas de uma tabela de dimensão unida, como "contagem de solicitações por usuário com nome de usuário e e-mail". O executor deriva caminhos com pontos por campo (`dim_paths`) das colunas de dimensão do SELECT. Esses caminhos preenchem o parâmetro `includeNodes=` nas URLs geradas para os painéis JSON:API e OpenAPI, para que esses painéis peçam os mesmos campos de dimensão unida que os ramos SQL e GraphQL resolveram. Sem eles, `includeNodes=true` devolveria só os campos escalares da própria tabela agregada base.
 
 No painel gRPC, o `{Type}GroupByRequest` gerado carrega `include_nodes` (bool) e `include` (string repetida de nomes de campo de relacionamento). O `{Type}GroupByRow` retornado inclui um campo `nodes` tipado com as linhas de detalhe de dimensão.
 
@@ -434,7 +434,7 @@ Retorna a visão em grafo do esquema da função: rótulos de nó e seus tipos d
 
 **Resposta:** `application/json` com `node_labels` (cada um carregando `pk`/`pk_columns`) e `relationship_types`.
 
-Cada tipo de relacionamento carrega também `junction_table_name` e `properties`. Em uma aresta apoiada em junção, o primeiro nomeia a tabela associativa que ela percorre e o segundo lista as colunas dessa tabela legíveis como `r.attr` e filtráveis em `WHERE`; em uma aresta apoiada em chave estrangeira o nome é `null` e a lista de propriedades fica vazia, que é como um cliente distingue as duas. A própria tabela de junção nunca é um rótulo de nó — ela é a aresta, portanto não tem pílula em um cliente de grafo nem linha em `node_labels`.
+Cada tipo de relacionamento também traz `junction_table_name` e `properties`. Numa aresta de junção, o primeiro nomeia a tabela associativa que ela percorre, e o segundo lista as colunas dessa tabela, legíveis como `r.attr` e filtráveis em `WHERE`. Numa aresta de chave estrangeira o nome é `null` e a lista fica vazia, e é assim que um cliente distingue as duas. A tabela de junção nunca é um rótulo de nó. Ela é a aresta, então não tem etiqueta num cliente de grafos nem linha em `node_labels`.
 
 ---
 
@@ -528,7 +528,7 @@ Em falha de recarregamento: `{"success": false, "message": "<error>"}`.
 
 #### `GET /admin/config/live`
 
-Baixa o modelo como está, escrito como arquivo de configuração: as configurações do arquivo da implantação com cada seção do modelo lida do model store — stores, regiões, fontes, domínios, funções, produtos de dados, termos do glossário, tabelas e suas colunas, relacionamentos, métricas, tags e suas atribuições, filtros de linha, comandos, webhooks, gatilhos agendados e regras de nomenclatura. Aplicado a um model store vazio, o arquivo constrói o mesmo modelo. O que a implantação semeia em todo store (as fontes embutidas e suas tabelas, os domínios de sistema, `org_admin` e `platform_admin`) fica de fora.
+Baixa o modelo como está, escrito como arquivo de configuração. Ele traz as configurações do arquivo de deployment, com cada seção do modelo lida do model store: stores, regiões, fontes, domínios, papéis, data products, termos do glossário, tabelas e suas colunas, relacionamentos, métricas, tags e suas atribuições, filtros de linha, commands, webhooks, gatilhos agendados e regras de nomes. Aplicado a um model store vazio, o arquivo constrói o mesmo modelo. O que o deployment semeia em todo store (as fontes embutidas e suas tabelas, os domínios de sistema, `org_admin` e `platform_admin`) fica de fora.
 
 **Parâmetro de consulta:** `sections` (opcional) — uma lista de seções do modelo separadas por vírgulas, por exemplo `sources,tables`. Só essas seções são escritas; um nome desconhecido responde 400 `settings.export_unknown_section`.
 
@@ -538,7 +538,7 @@ Retorna `application/x-yaml` com `Content-Disposition: attachment; filename=prov
 
 #### `GET /admin/config/diff`
 
-Retorna os dois lados do diff de configuração — `original` (a linha de base da inicialização) e `current` (o estado vivo) — normalizados de forma idêntica, de modo que a comparação mostre apenas mudanças genuínas, não reordenação ou variação de comentários.
+Devolve os dois lados do diff de configuração, `original` (a base na inicialização) e `current` (o estado ao vivo), normalizados do mesmo jeito, para que a comparação mostre só mudanças reais e ignore reordenações e alterações de comentários.
 
 **Resposta:**
 
@@ -550,7 +550,7 @@ Retorna os dois lados do diff de configuração — `original` (a linha de base 
 
 Gera um patch em diff unificado da linha de base para a configuração enviada.
 
-Envie o YAML revisado como corpo da requisição. A resposta é um arquivo `text/x-patch` (`provisa.config.patch`) que `git apply` ou `patch` consegue consumir diretamente — útil para submeter mudanças de configuração feitas pela UI através de um pipeline de CI/CD.
+Envie o YAML revisado como corpo da requisição. A resposta é um arquivo `text/x-patch` (`provisa.config.patch`) que `git apply` ou `patch` aplicam como está, útil para fazer commit, por um pipeline de CI/CD, de mudanças de configuração feitas na UI.
 
 ---
 
@@ -596,7 +596,7 @@ Retorna as configurações atuais da plataforma como JSON.
 
 #### `PUT /admin/settings`
 
-Atualiza as configurações da plataforma em tempo de execução. Todos os campos são opcionais — apenas chaves presentes no corpo são atualizadas.
+Atualiza as configurações da plataforma em tempo de execução. Todo campo é opcional, e só mudam as chaves presentes no corpo.
 
 **Corpo da requisição (exemplo parcial):**
 
@@ -648,7 +648,7 @@ Retorna as atribuições de modelo de IA da organização atuante, o registro de
 }
 ```
 
-Chaves de API nunca são devolvidas — `api_keys_set` informa apenas se cada fornecedor tem uma chave configurada. As mudanças entram em vigor na próxima requisição; nenhuma reinicialização é necessária.
+As chaves de API nunca são devolvidas: `api_keys_set` só diz se cada fornecedor tem uma chave configurada. As mudanças valem a partir da próxima requisição, sem reiniciar.
 
 #### `PUT /admin/ai-models`
 
@@ -658,7 +658,7 @@ Atualiza as atribuições de modelo de IA da organização, o registro de modelo
 
 Retorna os nomes de modelo que um fornecedor serve no momento, para o seletor de modelos.
 
-A lista é lida ao vivo da própria API de listagem de modelos do fornecedor usando a chave configurada da organização — ou a credencial da implantação, quando nenhuma chave da organização está definida. Um modelo lançado depois deste build é selecionável no mesmo dia em que o fornecedor o serve.
+A lista é lida ao vivo da própria API de listagem de modelos do fornecedor, com a chave configurada da organização, ou com a credencial do deployment quando a organização não tem chave. Um modelo lançado depois desta build pode ser escolhido no mesmo dia em que o fornecedor começa a servi-lo.
 
 Retorna `400` quando o fornecedor não publica uma API de listagem de modelos (nesse caso, digite o nome do modelo diretamente) ou quando nenhuma chave está disponível.
 
@@ -696,7 +696,7 @@ Persiste uma seleção de motor de federação.
 {"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
 ```
 
-A seleção é escrita na configuração da plataforma. Ela entra em vigor após a próxima reinicialização do serviço — o motor é escolhido uma vez, na inicialização.
+A seleção é gravada na configuração da plataforma e vale após o próximo reinício do serviço, porque o motor é escolhido uma vez na inicialização.
 
 ---
 
@@ -816,7 +816,7 @@ Busca tabelas disponíveis (ainda não registradas) em uma fonte por nome.
 
 #### `POST /admin/tables/{table_id}/profile`
 
-Executa um perfil de coluna em uma tabela registrada — cardinalidade, mín/máx, taxas de nulo.
+Roda um perfil de colunas numa tabela registrada: cardinalidade, mín/máx e taxas de nulos.
 
 ---
 
@@ -846,7 +846,7 @@ Registra (ou limpa) o armazenamento de materialização da própria organizaçã
 {"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
 ```
 
-O DSN é validado contra o motor de federação antes de ser aceito — um DSN inutilizável falha no registro, e não horas depois durante uma atualização. O valor é criptografado em repouso e nunca é devolvido pelo GET.
+O DSN é verificado contra o motor de federação antes de ser aceito, então um DSN inutilizável falha no registro e não horas depois numa atualização. O valor fica criptografado em repouso e nunca é devolvido pelo GET.
 
 Envie `storage_url: null` para limpar o armazenamento próprio da organização e devolver suas materializações ao armazenamento da plataforma (e à cota). O runtime da organização é reconstruído na mesma chamada, então o novo armazenamento passa a valer imediatamente.
 
@@ -870,7 +870,7 @@ Define ou rotaciona a chave de criptografia em repouso da organização.
 {"key_b64": "<32 raw bytes, base64-encoded>"}
 ```
 
-Omita `key_b64` para que o Provisa gere uma chave — o caminho mais seguro, já que a chave nunca aparece em uma área de transferência ou log de requisição. Fornecer `key_b64` traz sua própria chave.
+Omita `key_b64` para o Provisa gerar uma chave. É a opção mais segura, porque a chave nunca aparece numa área de transferência nem num log de requisições. Informar `key_b64` traz a sua própria chave.
 
 A rotação adiciona uma nova entrada ativa ao chaveiro e mantém a antiga, de modo que dados escritos sob a chave anterior seguem legíveis. Rotação não é recriptografia. Não há endpoint de exclusão: aposentar a última chave tornaria ilegível todo payload envolvido por ela.
 
@@ -935,7 +935,7 @@ Uma importação é um seed explícito e único do model store da organização 
 
 Exporta o modelo governado da organização como um documento YAML do Apache Ossie (incubating).
 
-O documento é derivado do estado vivo a cada requisição — nunca armazenado em cache — portanto não pode ficar desatualizado. Tabelas viram objetos `dataset`, colunas viram objetos `field` e relacionamentos mapeiam para objetos `relationship` do Ossie.
+O documento é montado a partir do estado ao vivo a cada requisição e nunca vai para cache, então não pode ficar desatualizado. Tabelas viram objetos `dataset`, colunas viram objetos `field`, e relacionamentos são mapeados para objetos `relationship` do Ossie.
 
 Retorna `text/yaml` com `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 
@@ -972,7 +972,7 @@ Nada é registrado. Use a tela de revisão da interface de administração para 
 
 Todos os endpoints estão sob o prefixo `/admin/actions`.
 
-Toda invocação — de GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, e gRPC Provisa — passa por um único executor governado que aplica a atribuição do comando (`visible_to`), o direito `write` para uma mutação e governança de forma uniforme. Veja [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para a sintaxe de chamada por protocolo.
+Toda chamada, venha de GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` ou Provisa gRPC, passa por um único executor governado. Ele impõe a atribuição de commands (`visible_to`), o direito `write` para uma mutation e a governança, sempre do mesmo jeito. Veja [docs/integrations.md](integrations.md#invoking-commands-across-protocols) para a sintaxe de chamada de cada protocolo.
 
 #### `GET /admin/actions`
 
@@ -1052,7 +1052,7 @@ Exclui uma função rastreada pelo nome.
 
 #### `POST /admin/actions/webhooks`
 
-Registra um webhook rastreado. Registrar ou atualizar um webhook enfileira uma requisição de aprovação de steward — o webhook se torna ativo em todas as superfícies apenas após um steward aprová-lo. Webhooks declarados em config são auto-aprovados. **Campos do corpo da requisição:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
+Registra um webhook rastreado. Registrar ou atualizar um webhook coloca na fila um pedido de aprovação para o steward, e o webhook só fica ativo em todas as superfícies depois que um steward o aprova. Webhooks declarados na configuração são aprovados automaticamente. **Campos do corpo da requisição:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
 
 #### `PUT /admin/actions/webhooks/{name}`
 
@@ -1282,7 +1282,7 @@ Quando uma tabela tem `enable_aggregates` definido, o proto gerado inclui dois R
 - **`Query{TypeName}Aggregate`** — retorna escalares de agregação para a tabela (`count`; `sum`, `avg`, `stddev`, `variance` por coluna numérica; `min`, `max` por coluna comparável)
 - **`Query{TypeName}GroupBy`** — retorna uma linha por chave de grupo com subcampos de agregação e, opcionalmente, escalares da tabela base e linhas de dimensão unida em um campo `nodes`
 
-Ambos passam pelo mesmo pipeline de agregação do compilador que os campos raiz `{field}_aggregate` e `{field}_group_by` do GraphQL — sem implementação de agregação separada.
+Ambos passam pelo mesmo pipeline de agregação do compilador que os campos raiz `{field}_aggregate` e `{field}_group_by` do GraphQL, então não há uma implementação de agregação separada.
 
 **Campo `funcs`.** A mensagem de requisição aceita um campo `funcs` de string repetida. Os valores válidos são `count`, `sum`, `avg`, `stddev`, `variance`, `min`, e `max`. Quando `funcs` é omitido, toda função que o esquema expõe para essa tabela é solicitada. Quando definido, apenas as funções nomeadas aparecem. Se nenhuma das funções nomeadas se aplicar aos tipos de coluna da tabela, a consulta recorre a `count`.
 
@@ -1327,7 +1327,7 @@ Subscriptions SSE estão disponíveis em `GET /data/subscribe/{table}`. A entreg
 
 ## Glossário de Negócios {: #business-glossary }
 
-O glossário de negócios mapeia nomes de campo físicos — como existem nos bancos de dados de origem — para um vocabulário humano compartilhado. Toda coluna registrada no modelo recebe um termo automaticamente. Nenhuma entrada manual é necessária para popular o glossário; curadores adicionam definições, relacionamentos e especialistas sobre o que o sistema deriva.
+O glossário de negócios mapeia os nomes físicos dos campos, como aparecem nos bancos de origem, para um vocabulário humano compartilhado. Toda coluna registrada no modelo recebe um termo automaticamente, então ninguém precisa digitar nada para preencher o glossário. Os curadores acrescentam definições, relacionamentos e especialistas sobre o que o sistema deriva.
 
 ### Como os Termos São Derivados {: #how-terms-are-derived }
 
@@ -1352,15 +1352,15 @@ Como `id`, `key`, `pk`, e `sk` todos se expandem para `identifier` antes da veri
 | `CUSTOMER_KEY` | `customer` |
 | `txn_amt` | `transaction amount` |
 
-Os três primeiros colapsam em um termo. `transaction amount` mantém ambos os tokens porque `amount` não é um proxy. Uma coluna `id` simples — sem tokens precedentes — não pode ser removida; ela normaliza para `identifier` para que o termo não fique vazio.
+Os três primeiros se reduzem a um único termo. `transaction amount` mantém os dois tokens porque `amount` não é um substituto. Uma coluna `id` sozinha, sem tokens antes, não pode ser cortada, então é normalizada para `identifier` e o termo não fica vazio.
 
 ### Ciclo de Vida {: #lifecycle }
 
-Termos são **derivados da associação ao modelo**, não criados sob demanda por usuários. O repositório de tabela é o único caminho de escrita: `sync_table_refs` roda dentro de todo upsert de conjunto de colunas, e `sweep_refless_terms` roda após qualquer caminho de exclusão.
+Os termos são **derivados da participação na camada semântica**; os usuários não os criam sob demanda. O repositório de tabelas é o único caminho de escrita: `sync_table_refs` roda dentro de cada upsert de conjunto de colunas, e `sweep_refless_terms` roda depois de qualquer caminho de exclusão.
 
 **Quando uma coluna é adicionada:** o Provisa busca o termo normalizado pelo nome. Se ele já existir, a coluna recebe uma referência a ele (e se o termo estava depreciado, ele é revivido — `deprecated` é definido de volta para `False`). Se nenhum termo existir ainda, um é criado.
 
-**Quando uma coluna sai** (mudança de esquema ou remoção de tabela): sua referência é excluída e o termo é **resolvido** sob uma regra de remover-ou-depreciar. Um termo enraizado sem referências restantes é removido completamente — junto com suas arestas e atribuições de especialista — a menos que removê-lo deixasse um termo abstrato desconectado de todos os termos enraizados (sem caminho através do grafo de termos). Nesse caso, o termo é **depreciado** (marcado `deprecated=True`) em vez de excluído, para que a âncora de grafo do termo abstrato sobreviva.
+**Quando uma coluna sai** (uma mudança de esquema ou a remoção de uma tabela), a referência dela é apagada e o termo é **resolvido** por uma regra de remover ou depreciar. Um termo enraizado sem referências restantes é removido de vez, com suas arestas e atribuições de especialistas, a menos que removê-lo deixe um termo abstrato sem caminho no grafo de termos até algum termo enraizado. Nesse caso o termo é **depreciado** (marcado `deprecated=True`) em vez de apagado, para que o termo abstrato mantenha sua âncora no grafo.
 
 Termos abstratos nunca são removidos automaticamente; eles existem fora do ciclo de vida físico e são excluídos apenas explicitamente via a API de administração.
 

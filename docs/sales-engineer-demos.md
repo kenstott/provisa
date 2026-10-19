@@ -121,7 +121,7 @@ The hosted demos page works the same way: when a visitor opens a sandbox, the sa
 ./start-ui-install.sh --demo --source=redis
 ```
 
-See [Add one toy source](#add-one-toy-source-with---source).
+See [Add one toy source](#add-one-toy-source-with-source).
 
 ### Stop and reset
 

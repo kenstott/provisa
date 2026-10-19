@@ -170,7 +170,7 @@ Results above a configured row threshold (or when `X-Provisa-Redirect: true`) ar
 | `text/csv` | Provisa | Memory-bound |
 | `application/vnd.apache.arrow.stream` | Provisa | Memory-bound |
 
-For large analytical exports, use Parquet or ORC redirect. The federation engine writes directly to S3 in parallel — no data passes through Provisa.
+For large analytical exports, use the Parquet or ORC redirect. The federation engine writes straight to S3 in parallel, and no data passes through Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -201,7 +201,7 @@ Execute raw SQL through the Stage 2 governance pipeline.
 }
 ```
 
-The values are bound when the statement runs — by the engine or the source's driver — and are never written into the statement, so a value cannot change what the statement is. They go with exactly one statement whose placeholders number them exactly: a batch of statements, a placeholder with no value or a value no placeholder takes is refused with `400` and code `data.sql_parameters_do_not_fit` before the statement is governed or run. A statement without placeholders is sent without `params`, as before.
+The values are bound when the statement runs, by the engine or the source's driver, and are never written into the statement, so a value can't change what the statement is. They go with exactly one statement whose placeholders number them exactly. A batch of statements, a placeholder with no value, or a value no placeholder takes is refused with `400` and code `data.sql_parameters_do_not_fit` before the statement is governed or run. A statement without placeholders is sent without `params`, as before.
 
 **Required capabilities:** `QUERY_DEVELOPMENT`.
 
@@ -213,7 +213,7 @@ Governance violations on `POST /data/sql` return HTTP 403.
 
 ### `POST /data/query`
 
-Unified query endpoint. Accepts GraphQL, SQL, or Cypher — syntax is auto-detected.
+One endpoint for every query language. It accepts GraphQL, SQL or Cypher and detects which one it got.
 
 Cypher queries can also be submitted to the Cypher-only `POST /query/cypher` endpoint.
 
@@ -236,7 +236,7 @@ Returns `{"data": ...}` for GraphQL, `{"columns": [...], "rows": [...]}` for SQL
 
 Explain or analyze a SQL statement through the governed pipeline.
 
-The endpoint wraps the **governed** SQL — the statement that actually runs under the caller's role, after RLS and masking — in the dialect's EXPLAIN syntax. What the plan shows is the authorized version of the query, not the raw input.
+The endpoint wraps the **governed** SQL in the dialect's EXPLAIN syntax: the statement that actually runs under the caller's role, after RLS and masking. So the plan you see is for the authorized version of the query, not the raw input.
 
 **Request body:**
 
@@ -260,7 +260,7 @@ Set `analyze: true` to run EXPLAIN ANALYZE. The query executes and the plan carr
 
 Return the engine shard's current state without waking it.
 
-The UI polls this endpoint to show a startup banner while the engine is cold-starting. It never triggers a wake — polling is safe and does not count as activity for the idle reaper.
+The UI polls this endpoint to show a startup banner while the engine is cold-starting. It never wakes the engine, so polling is safe and doesn't count as activity for the idle reaper.
 
 **Response:**
 
@@ -283,7 +283,7 @@ Possible values:
 
 Trigger an engine wake without running a query.
 
-Returns `202 Accepted` immediately. The wake runs in the background. Use this if you want the engine ready before the first query arrives — for example, from a scheduler that runs queries a few minutes later.
+Returns `202 Accepted` immediately, and the wake runs in the background. Use it when you want the engine ready before the first query arrives, for example from a scheduler that runs queries a few minutes later.
 
 **Response:** `202 Accepted`, body `{"started": true}`
 
@@ -310,11 +310,11 @@ The authenticated role is required; unauthenticated requests return `401`. An Op
 
 #### OpenAPI / Swagger UI Explorer
 
-The OpenAPI explorer page (`/app/openapi`) embeds the Swagger UI in a sandboxed iframe. The spec is role-scoped — only tables and columns visible to the current role appear — and optionally domain-filtered via the domain selector. The UI switches between light and dark themes automatically.
+The OpenAPI explorer page (`/app/openapi`) embeds the Swagger UI in a sandboxed iframe. The spec is scoped to the role, so only tables and columns the current role can see appear, and the domain selector can narrow it further. The UI switches between light and dark themes by itself.
 
-The page loads the spec HTML via `fetch()` rather than a direct iframe `src`, so the request carries the session's bearer token and Swagger UI's own relative requests resolve correctly against the same origin.
+The page loads the spec HTML with `fetch()` instead of a direct iframe `src`. That way the request carries the session's bearer token, and Swagger UI's own relative requests resolve against the same origin.
 
-When navigated from an NL "Open in OpenAPI" link, the page auto-expands the target endpoint, populates query parameters from the NL-generated URL (e.g. `aggregate`, `groupBy`), and clicks Execute — using DOM polling to ensure each step completes before the next fires.
+Opened from an NL "Open in OpenAPI" link, the page expands the target endpoint, fills in the query parameters from the NL-generated URL (e.g. `aggregate`, `groupBy`) and clicks Execute, polling the DOM so that each step finishes before the next starts.
 
 ---
 
@@ -390,11 +390,11 @@ Three generation loops (Cypher, GraphQL, SQL) run in parallel, each validated th
 }
 ```
 
-A branch that exhausts its iteration limit returns `query: null`, `result: null`, and an `error` string. Every generated query executes under the consumer's rights with Stage 2 governance applied — the service never bypasses governance.
+A branch that runs out of iterations returns `query: null`, `result: null` and an `error` string. Every generated query runs under the consumer's rights with Stage 2 governance applied; the service never goes around governance.
 
 #### NL Group-By with Dimension Details
 
-When an NL group-by query also projects columns from a joined dimension table — for example, "count of inquiries by user with user name and email" — the runner derives per-field dot-paths (`dim_paths`) from the SELECT-projected dimension columns. These paths populate the `includeNodes=` parameter on the JSON:API and OpenAPI panels' generated URLs, so those panels request the same joined-dimension fields the SQL and GraphQL branches resolved. Without this, `includeNodes=true` would return only the base aggregate table's own scalar fields.
+Take an NL group-by query that also projects columns from a joined dimension table, such as "count of inquiries by user with user name and email". The runner derives per-field dot-paths (`dim_paths`) from the dimension columns in the SELECT. Those paths fill the `includeNodes=` parameter in the URLs generated for the JSON:API and OpenAPI panels, so those panels ask for the same joined-dimension fields the SQL and GraphQL branches resolved. Without them, `includeNodes=true` would return only the base aggregate table's own scalar fields.
 
 On the gRPC panel, the generated `{Type}GroupByRequest` carries `include_nodes` (bool) and `include` (repeated string of relationship field names). The returned `{Type}GroupByRow` includes a typed `nodes` field with the dimension-detail rows.
 
@@ -432,7 +432,7 @@ Return the graph view of the role's schema: node labels and their relationship t
 
 **Response:** `application/json` with `node_labels` (each carrying `pk`/`pk_columns`) and `relationship_types`.
 
-Each relationship type also carries `junction_table_name` and `properties`. On a junction-backed edge the first names the associative table it traverses and the second lists the columns of that table readable as `r.attr` and filterable in `WHERE`; on a foreign-key-backed edge the name is `null` and the property list is empty, which is how a client tells the two apart. The junction table itself is never a node label — it is the edge, so it has no pill in a graph client and no row in `node_labels`.
+Each relationship type also carries `junction_table_name` and `properties`. On a junction-backed edge, the first names the associative table it traverses, and the second lists that table's columns readable as `r.attr` and filterable in `WHERE`. On a foreign-key-backed edge the name is `null` and the property list is empty, which is how a client tells the two apart. The junction table itself is never a node label. It is the edge, so it has no pill in a graph client and no row in `node_labels`.
 
 ---
 
@@ -526,7 +526,7 @@ On reload failure: `{"success": false, "message": "<error>"}`.
 
 #### `GET /admin/config/live`
 
-Download the model as it stands, written as a configuration file: the deployment file's settings with every model section read from the model store — stores, regions, sources, domains, roles, data products, glossary terms, tables and their columns, relationships, metrics, tags and their assignments, row filters, commands, webhooks, scheduled triggers and naming rules. Applied to an empty model store, the file builds the same model. What the deployment seeds into every store (the built-in sources and their tables, the system domains, `org_admin` and `platform_admin`) is left out.
+Download the model as it stands, written as a configuration file. It holds the deployment file's settings, with every model section read from the model store: stores, regions, sources, domains, roles, data products, glossary terms, tables and their columns, relationships, metrics, tags and their assignments, row filters, commands, webhooks, scheduled triggers and naming rules. Applied to an empty model store, the file builds the same model. What the deployment seeds into every store (the built-in sources and their tables, the system domains, `org_admin` and `platform_admin`) is left out.
 
 **Query parameter:** `sections` (optional) — a comma-separated list of model sections, e.g. `sources,tables`. Only those sections are written; an unknown name answers 400 `settings.export_unknown_section`.
 
@@ -536,7 +536,7 @@ Returns `application/x-yaml` with `Content-Disposition: attachment; filename=pro
 
 #### `GET /admin/config/diff`
 
-Return both sides of the config diff — `original` (the startup baseline) and `current` (live state) — normalized identically, so the comparison shows only genuine changes, not reordering or comment drift.
+Returns both sides of the config diff, `original` (the startup baseline) and `current` (the live state), normalized the same way, so the comparison shows only real changes and ignores reordering and comment drift.
 
 **Response:**
 
@@ -548,7 +548,7 @@ Return both sides of the config diff — `original` (the startup baseline) and `
 
 Generate a unified-diff patch from the baseline to the posted config.
 
-Send the revised YAML as the request body. The response is a `text/x-patch` file (`provisa.config.patch`) that `git apply` or `patch` can consume directly — useful for committing UI-driven config changes through a CI/CD pipeline.
+Send the revised YAML as the request body. The response is a `text/x-patch` file (`provisa.config.patch`) that `git apply` or `patch` can apply as it is, which is handy for committing config changes made in the UI through a CI/CD pipeline.
 
 ---
 
@@ -594,7 +594,7 @@ Return current platform settings as JSON.
 
 #### `PUT /admin/settings`
 
-Update platform settings at runtime. All fields are optional — only keys present in the body are updated.
+Updates platform settings at runtime. Every field is optional, and only keys present in the body are changed.
 
 **Request body (partial example):**
 
@@ -646,7 +646,7 @@ Return the acting org's AI-model assignments, vector-model registry, and NL rate
 }
 ```
 
-API keys are never echoed back — `api_keys_set` reports only whether each vendor has a key configured. Changes take effect on the next request; no restart is needed.
+API keys are never sent back: `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
 
 #### `PUT /admin/ai-models`
 
@@ -656,7 +656,7 @@ Update the org's AI-model assignments, vector-model registry, or NL rate limit. 
 
 Return the model names a vendor currently serves, for the model picker.
 
-The list is read live from the vendor's own list-models API using the org's configured key — or the deployment credential when no org key is set. A model released after this build shipped is selectable the same day the vendor serves it.
+The list is read live from the vendor's own list-models API, with the org's configured key, or with the deployment credential when the org has no key. A model released after this build shipped can be selected the same day the vendor starts serving it.
 
 Returns `400` when the vendor publishes no list-models API (enter the model name directly in that case) or when no key is available.
 
@@ -694,7 +694,7 @@ Persist a federation-engine selection.
 {"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
 ```
 
-The selection is written to the platform config. It takes effect after the next service restart — the engine is chosen once at boot.
+The selection is written to the platform config and takes effect after the next service restart, because the engine is chosen once at boot.
 
 ---
 
@@ -814,7 +814,7 @@ Search available (not yet registered) tables in a source by name.
 
 #### `POST /admin/tables/{table_id}/profile`
 
-Run a column profile on a registered table — cardinality, min/max, null rates.
+Runs a column profile on a registered table: cardinality, min/max and null rates.
 
 ---
 
@@ -844,7 +844,7 @@ Register (or clear) the org's own materialization store.
 {"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
 ```
 
-The DSN is validated against the federation engine before being accepted — an unusable DSN fails at registration, not hours later during a refresh. The value is encrypted at rest and never returned by GET.
+The DSN is checked against the federation engine before it's accepted, so an unusable DSN fails at registration instead of hours later during a refresh. The value is encrypted at rest and never returned by GET.
 
 Send `storage_url: null` to clear the org's own store and return its materializations to the platform store (and allowance). The org runtime is rebuilt in the same call, so the new store is effective immediately.
 
@@ -868,7 +868,7 @@ Set or rotate the org's at-rest encryption key.
 {"key_b64": "<32 raw bytes, base64-encoded>"}
 ```
 
-Omit `key_b64` to have Provisa generate a key — the safest path, as the key never appears in a clipboard or request log. Supplying `key_b64` brings your own key.
+Leave out `key_b64` to have Provisa generate a key. That's the safest choice, since the key never shows up in a clipboard or a request log. Supplying `key_b64` brings your own key.
 
 Rotation adds a new active entry to the key ring and retains the old one, so data written under the previous key remains readable. Rotation is not re-encryption. There is no delete endpoint: retiring the last key would make every wrapped payload unreadable.
 
@@ -933,7 +933,7 @@ An import is an explicit one-time seed of the acting org's model store, the same
 
 Export the org's governed model as an Apache Ossie (incubating) YAML document.
 
-The document is derived from live state on every request — never cached — so it cannot be stale. Tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects.
+The document is built from live state on every request and never cached, so it can't be stale. Tables become `dataset` objects, columns become `field` objects, and relationships map to Ossie `relationship` objects.
 
 Returns `text/yaml` with `Content-Disposition: attachment; filename=provisa.ossie.yaml`.
 
@@ -970,7 +970,7 @@ Nothing is registered. Use the admin UI's review screen to accept or trim propos
 
 All endpoints are under the `/admin/actions` prefix.
 
-Every invocation — from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql`, and Provisa gRPC — routes through a single governed executor that enforces command assignment (`visible_to`), the `write` right for a mutation, and governance uniformly. See [docs/integrations.md](integrations.md#invoking-commands-across-protocols) for the per-protocol call syntax.
+Every invocation, whether from GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` or Provisa gRPC, goes through one governed executor. It enforces command assignment (`visible_to`), the `write` right for a mutation, and governance, the same way each time. See [docs/integrations.md](integrations.md#invoking-commands-across-protocols) for the call syntax of each protocol.
 
 #### `GET /admin/actions`
 
@@ -1050,7 +1050,7 @@ Delete a tracked function by name.
 
 #### `POST /admin/actions/webhooks`
 
-Register a tracked webhook. Registering or updating a webhook enqueues a steward approval request — the webhook becomes active on all surfaces only after a steward approves it. Config-declared webhooks are auto-approved. **Request body fields:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
+Registers a tracked webhook. Registering or updating a webhook queues a steward approval request, and the webhook becomes active on every surface only once a steward approves it. Webhooks declared in config are approved automatically. **Request body fields:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
 
 #### `PUT /admin/actions/webhooks/{name}`
 
@@ -1280,7 +1280,7 @@ When a table has `enable_aggregates` set, the generated proto includes two addit
 - **`Query{TypeName}Aggregate`** — returns aggregate scalars for the table (`count`; `sum`, `avg`, `stddev`, `variance` per numeric column; `min`, `max` per comparable column)
 - **`Query{TypeName}GroupBy`** — returns one row per group key with aggregate sub-fields and, optionally, base-table scalars and joined-dimension rows in a `nodes` field
 
-Both route through the same compiler aggregate pipeline as GraphQL's `{field}_aggregate` and `{field}_group_by` root fields — no separate aggregate implementation.
+Both go through the same compiler aggregate pipeline as GraphQL's `{field}_aggregate` and `{field}_group_by` root fields, so there's no separate aggregate implementation.
 
 **`funcs` field.** The request message accepts a `funcs` repeated-string field. Valid values are `count`, `sum`, `avg`, `stddev`, `variance`, `min`, and `max`. When `funcs` is omitted, every function the schema exposes for that table is requested. When set, only the named functions appear. If none of the named functions apply to the table's column types, the query falls back to `count`.
 
@@ -1325,7 +1325,7 @@ SSE subscriptions are available at `GET /data/subscribe/{table}`. Notification d
 
 ## Business Glossary
 
-The business glossary maps physical field names — as they exist in source databases — onto a shared human vocabulary. Every column registered in the model gets a term automatically. No manual entry is required to populate the glossary; curators add definitions, relationships, and experts on top of what the system derives.
+The business glossary maps physical field names, as they appear in the source databases, onto a shared human vocabulary. Every column registered in the model gets a term automatically, so nobody has to enter anything to fill the glossary. Curators add definitions, relationships and experts on top of what the system derives.
 
 ### How Terms Are Derived
 
@@ -1350,15 +1350,15 @@ Because `id`, `key`, `pk`, and `sk` all expand to `identifier` before the proxy 
 | `CUSTOMER_KEY` | `customer` |
 | `txn_amt` | `transaction amount` |
 
-The first three collapse to one term. `transaction amount` keeps both tokens because `amount` is not a proxy. A bare `id` column — no preceding tokens — cannot be stripped; it normalizes to `identifier` so the term is non-empty.
+The first three collapse to one term. `transaction amount` keeps both tokens because `amount` isn't a proxy. A bare `id` column, with no tokens before it, can't be stripped, so it normalizes to `identifier` and the term isn't empty.
 
 ### Lifecycle
 
-Terms are **derived from semantic-layer membership**, not created on demand by users. The table repository is the single write path: `sync_table_refs` runs inside every column-set upsert, and `sweep_refless_terms` runs after any deletion path.
+Terms are **derived from semantic-layer membership**; users don't create them on demand. The table repository is the one write path: `sync_table_refs` runs inside every column-set upsert, and `sweep_refless_terms` runs after any deletion path.
 
 **When a column is added:** Provisa looks up the normalized term by name. If it already exists, the column gets a ref to it (and if the term was deprecated, it is revived — `deprecated` is set back to `False`). If no term exists yet, one is created.
 
-**When a column departs** (schema change or table removal): its ref is deleted and the term is **settled** under a remove-or-deprecate rule. A rooted term with no remaining refs is removed outright — along with its edges and expert assignments — unless removing it would leave an abstract term disconnected from all rooted terms (no path through the term graph). In that case, the term is **deprecated** (marked `deprecated=True`) rather than deleted, so the abstract term's graph anchor survives.
+**When a column departs** (a schema change or a table removal), its ref is deleted and the term is **settled** under a remove-or-deprecate rule. A rooted term with no refs left is removed outright, with its edges and expert assignments, unless removing it would leave an abstract term with no path through the term graph to any rooted term. In that case the term is **deprecated** (marked `deprecated=True`) instead of deleted, so the abstract term keeps its anchor in the graph.
 
 Abstract terms are never auto-removed; they exist outside the physical lifecycle and are only deleted explicitly via the admin API.
 

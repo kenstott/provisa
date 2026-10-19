@@ -172,7 +172,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 | `text/csv` | Provisa | 受内存限制 |
 | `application/vnd.apache.arrow.stream` | Provisa | 受内存限制 |
 
-对于大型分析导出，请使用 Parquet 或 ORC 重定向。联邦引擎并行直接写入 S3——数据不经过 Provisa。
+对于大型分析导出，请使用 Parquet 或 ORC 重定向。联邦引擎会并行直接写入 S3，数据不经过 Provisa。
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-这些值在语句运行时由引擎或数据源的驱动绑定，从不写入语句，因此值无法改变语句本身。它们只属于一条语句，其占位符精确地为它们编号：语句批次、没有值的占位符，或没有占位符接收的值，都会在语句被治理或运行之前以 `400` 和代码 `data.sql_parameters_do_not_fit` 被拒绝。没有占位符的语句不带 `params` 发送，与之前一样。
+这些值在语句运行时由引擎或数据源驱动绑定，从不写进语句本身，所以值无法改变语句是什么。它们只随一条语句一起发送，该语句的占位符与它们一一编号对应。语句批次、没有值的占位符，或没有占位符接收的值，都会在语句受治理或运行之前以 `400` 和代码 `data.sql_parameters_do_not_fit` 被拒绝。没有占位符的语句和以前一样，不带 `params` 发送。
 
 **所需能力：** `QUERY_DEVELOPMENT`。
 
@@ -215,7 +215,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/query`
 
-统一查询端点。接受 GraphQL、SQL 或 Cypher——语法自动检测。
+所有查询语言共用一个端点。它接受 GraphQL、SQL 或 Cypher，并自动识别收到的是哪一种。
 
 Cypher 查询也可以提交到仅支持 Cypher 的 `POST /query/cypher` 端点。
 
@@ -238,7 +238,7 @@ GraphQL 返回 `{"data": ...}`，SQL 和 Cypher 返回 `{"columns": [...], "rows
 
 通过治理管道解释或分析一条 SQL 语句。
 
-该端点将**治理后**的 SQL——即在调用者角色下、经过行级安全与脱敏处理后实际运行的语句——包装在对应方言的 EXPLAIN 语法中。计划展示的是查询的授权版本，而不是原始输入。
+该端点把**受治理的** SQL 包进方言的 EXPLAIN 语法中：也就是在调用者角色下、经过 RLS 和脱敏之后真正运行的语句。所以您看到的计划对应的是查询的授权版本，而不是原始输入。
 
 **请求体：**
 
@@ -262,7 +262,7 @@ GraphQL 返回 `{"data": ...}`，SQL 和 Cypher 返回 `{"columns": [...], "rows
 
 返回引擎分片的当前状态，而不唤醒它。
 
-UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不触发唤醒——轮询是安全的，也不会被空闲回收器计为活动。
+UI 会轮询该端点，在引擎冷启动期间显示启动横幅。它从不唤醒引擎，所以轮询是安全的，也不会被空闲回收机制算作活动。
 
 **响应：**
 
@@ -285,7 +285,7 @@ UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不�
 
 触发引擎唤醒而不运行查询。
 
-立即返回 `202 Accepted`。唤醒过程在后台运行。如果希望在第一个查询到达前引擎已就绪——例如调度程序会在几分钟后运行查询——可使用此端点。
+立即返回 `202 Accepted`，唤醒在后台进行。如果您希望引擎在第一个查询到来之前就准备好，就调用它，例如从几分钟后才运行查询的调度器中调用。
 
 **响应：** `202 Accepted`，响应体 `{"started": true}`
 
@@ -312,11 +312,11 @@ UI 会轮询此端点，在引擎冷启动期间显示启动横幅。它从不�
 
 #### OpenAPI / Swagger UI 浏览器 {: #openapi-swagger-ui-explorer }
 
-OpenAPI 浏览器页面（`/app/openapi`）在一个沙盒 iframe 中嵌入 Swagger UI。该规范按角色范围限定——只有当前角色可见的表和列会出现——并可通过域选择器进一步按域过滤。UI 会自动在浅色和深色主题之间切换。
+OpenAPI 浏览器页面（`/app/openapi`）在沙箱化的 iframe 中嵌入 Swagger UI。规范按角色限定，只显示当前角色能看到的表和列，还可以用域选择器进一步筛选。UI 会自动在浅色和深色主题之间切换。
 
-该页面通过 `fetch()` 而不是直接的 iframe `src` 加载规范 HTML，因此请求会携带会话的持有者令牌，且 Swagger UI 自身的相对请求能正确解析到同一源。
+页面用 `fetch()` 加载规范 HTML，而不是直接设置 iframe 的 `src`。这样请求会携带会话的 bearer 令牌，Swagger UI 自身的相对请求也会基于同一源解析。
 
-当从 NL「在 OpenAPI 中打开」链接导航而来时，页面会自动展开目标端点，从 NL 生成的 URL 中填充查询参数（例如 `aggregate`、`groupBy`），并点击 Execute——使用 DOM 轮询确保每一步在下一步触发前完成。
+从 NL 的“在 OpenAPI 中打开”链接进入时，页面会展开目标端点，用 NL 生成的 URL 填好查询参数（例如 `aggregate`、`groupBy`），然后点击 Execute，并轮询 DOM，确保每一步完成后才开始下一步。
 
 ---
 
@@ -392,11 +392,11 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 }
 ```
 
-耗尽迭代次数上限的分支返回 `query: null`、`result: null`，并附带一个 `error` 字符串。每个生成的查询都在使用者的权限下执行，并应用第二阶段治理——该服务从不绕过治理。
+耗尽迭代次数的分支返回 `query: null`、`result: null` 和一个 `error` 字符串。每个生成的查询都以使用者的权限运行，并应用第 2 阶段治理；服务从不绕过治理。
 
 #### 带维度详情的 NL 分组查询 {: #nl-group-by-with-dimension-details }
 
-当 NL 分组查询还从已联接的维度表中投影列时——例如「按用户统计的询价数量，附带用户名和邮箱」——运行器会从 SELECT 投影的维度列中派生每字段的点路径（`dim_paths`）。这些路径填充到 JSON:API 和 OpenAPI 面板生成的 URL 上的 `includeNodes=` 参数中，使这些面板请求与 SQL 和 GraphQL 分支所解析出的相同已联接维度字段。若没有此机制，`includeNodes=true` 将只返回基础聚合表自身的标量字段。
+以一个同时投影所联接维度表列的 NL 分组查询为例，例如“按用户统计咨询次数，并显示用户名和邮箱”。运行器会从 SELECT 中的维度列推导出每个字段的点路径（`dim_paths`）。这些路径会填入为 JSON:API 和 OpenAPI 面板生成的 URL 中的 `includeNodes=` 参数，让这些面板请求与 SQL、GraphQL 分支所解析的相同的维度字段。没有它们，`includeNodes=true` 只会返回基础聚合表自身的标量字段。
 
 在 gRPC 面板上，生成的 `{Type}GroupByRequest` 携带 `include_nodes`（布尔值）和 `include`（关系字段名的重复字符串）。返回的 `{Type}GroupByRow` 包含一个带有维度详情行的类型化 `nodes` 字段。
 
@@ -434,7 +434,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 **响应：** `application/json`，含 `node_labels`（每个携带 `pk`/`pk_columns`）和 `relationship_types`。
 
-每种关系类型还携带 `junction_table_name` 和 `properties`。在联结表支撑的边上，前者命名它所遍历的关联表，后者列出该表中可作为 `r.attr` 读取并可在 `WHERE` 中过滤的列；在外键支撑的边上，名称为 `null` 且属性列表为空，这就是客户端区分两者的方式。联结表本身从不是节点标签——它是边，因此在图客户端中没有对应的图钉，在 `node_labels` 中也没有对应的行。
+每种关系类型还带有 `junction_table_name` 和 `properties`。对于经由关联表的边，前者指明它所穿过的关联表，后者列出该表可作为 `r.attr` 读取、可在 `WHERE` 中过滤的列。对于基于外键的边，名称为 `null`，属性列表为空，客户端据此区分两者。关联表本身永远不是节点标签。它就是边，所以在图客户端中没有标签，在 `node_labels` 中也没有对应行。
 
 ---
 
@@ -528,7 +528,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 #### `GET /admin/config/live`
 
-以配置文件的形式下载当前的模型：部署文件的设置，以及从模型存储读取的每个模型部分——存储、区域、数据源、域、角色、数据产品、术语表术语、表及其列、关系、指标、标签及其分配、行过滤、命令、webhook、定时触发器和命名规则。应用到空的模型存储时，该文件会构建出相同的模型。部署为每个存储添加的内容（内置数据源及其表、系统域、`org_admin` 和 `platform_admin`）不包括在内。
+下载当前状态的模型，写成配置文件。文件包含部署文件的设置，每个模型部分都从模型存储读取：存储、区域、数据源、领域、角色、数据产品、术语表术语、表及其列、关系、指标、标签及其分配、行过滤器、命令、Webhook、计划触发器和命名规则。把该文件应用到空的模型存储，会构建出同样的模型。部署向每个存储预置的内容（内置数据源及其表、系统领域、`org_admin` 和 `platform_admin`）不包含在内。
 
 **查询参数：** `sections`（可选）——以逗号分隔的模型部分列表，例如 `sources,tables`。只写出这些部分；未知名称应答 400 `settings.export_unknown_section`。
 
@@ -538,7 +538,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 #### `GET /admin/config/diff`
 
-返回配置差异的两侧——`original`（启动时的基线）和 `current`（实时状态）——经过相同的规范化处理，因此比较结果只显示真实的变更，而不是重新排序或注释漂移。
+返回配置差异的两侧：`original`（启动时的基线）和 `current`（当前实时状态），两者按同样方式规范化，因此比较只显示真正的变更，忽略顺序调整和注释变化。
 
 **响应：**
 
@@ -550,7 +550,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 从基线到所提交配置生成统一差异补丁。
 
-在请求体中发送修订后的 YAML。响应是一个 `text/x-patch` 文件（`provisa.config.patch`），`git apply` 或 `patch` 可以直接使用——便于通过 CI/CD 流水线提交 UI 驱动的配置变更。
+把修改后的 YAML 作为请求体发送。响应是一个 `text/x-patch` 文件（`provisa.config.patch`），`git apply` 或 `patch` 可以直接应用，便于把在 UI 中做的配置变更通过 CI/CD 流水线提交。
 
 ---
 
@@ -596,7 +596,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 
 #### `PUT /admin/settings`
 
-在运行时更新平台设置。所有字段都是可选的——只有请求体中出现的键才会被更新。
+在运行时更新平台设置。所有字段都是可选的，只有请求体中出现的键会被修改。
 
 **请求体（部分示例）：**
 
@@ -648,7 +648,7 @@ JSON:API 浏览器页面（`/app/jsonapi`）是这些端点之上的浏览器 UI
 }
 ```
 
-API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了密钥。更改在下一次请求时生效；无需重启。
+API 密钥永远不会回传：`api_keys_set` 只说明每个供应商是否已配置密钥。更改从下一个请求起生效，无需重启。
 
 #### `PUT /admin/ai-models`
 
@@ -658,7 +658,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 返回某个厂商当前提供的模型名称，用于模型选择器。
 
-该列表使用组织配置的密钥（若未设置组织密钥则使用部署凭据）从厂商自身的模型列表 API 实时读取。此构建发布之后新发布的模型，在厂商开始提供的当天即可选用。
+该列表实时从供应商自己的模型列表 API 读取，使用组织配置的密钥；组织没有密钥时使用部署的凭据。在此版本发布之后才推出的模型，在供应商开始提供它的当天就能选用。
 
 当厂商未发布模型列表 API 时（此时请直接输入模型名称）或没有可用密钥时，返回 `400`。
 
@@ -696,7 +696,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 {"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
 ```
 
-该选择被写入平台配置。它在下一次服务重启后生效——引擎在启动时确定一次。
+选择会写入平台配置，并在下次服务重启后生效，因为引擎只在启动时选定一次。
 
 ---
 
@@ -816,7 +816,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 
 #### `POST /admin/tables/{table_id}/profile`
 
-对已注册表运行列画像分析——基数、最小值/最大值、空值率。
+对已注册的表运行列画像：基数、最小/最大值和空值率。
 
 ---
 
@@ -846,7 +846,7 @@ API 密钥从不回显——`api_keys_set` 仅报告每个厂商是否配置了�
 {"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
 ```
 
-DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在注册时就会失败，而不是等到几小时后的刷新时才发现。该值在静态存储时被加密，且 GET 从不返回它。
+DSN 在被接受之前会先针对联邦引擎校验，所以不可用的 DSN 会在注册时就失败，而不是几小时后在刷新时才失败。该值静态加密存储，GET 永远不会返回它。
 
 发送 `storage_url: null` 以清除组织自己的存储，并将其物化结果归还给平台存储（及配额）。组织运行时在同一调用中被重建，因此新存储会立即生效。
 
@@ -870,7 +870,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 {"key_b64": "<32 raw bytes, base64-encoded>"}
 ```
 
-省略 `key_b64` 可让 Provisa 生成一个密钥——这是最安全的方式，因为密钥不会出现在剪贴板或请求日志中。提供 `key_b64` 则表示自带密钥。
+省略 `key_b64`，由 Provisa 生成密钥。这是最安全的做法，因为密钥永远不会出现在剪贴板或请求日志中。提供 `key_b64` 则表示使用您自己的密钥。
 
 轮换会向密钥环添加一个新的活动条目，并保留旧条目，因此在旧密钥下写入的数据仍然可读。轮换不是重新加密。没有删除端点：撤销最后一个密钥会使所有已封装的负载都变得不可读。
 
@@ -935,7 +935,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 将组织的治理模型导出为 Apache Ossie（孵化中）YAML 文档。
 
-该文档在每次请求时都从实时状态派生——从不缓存——因此不会过时。表变为 `dataset` 对象，列变为 `field` 对象，关系映射到 Ossie 的 `relationship` 对象。
+该文档在每次请求时都根据实时状态生成，从不缓存，所以不可能过时。表变成 `dataset` 对象，列变成 `field` 对象，关系映射为 Ossie 的 `relationship` 对象。
 
 返回 `text/yaml`，带 `Content-Disposition: attachment; filename=provisa.ossie.yaml`。
 
@@ -972,7 +972,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 所有端点都在 `/admin/actions` 前缀下。
 
-来自 GraphQL、SQL、Cypher、Bolt、Arrow Flight、MCP `run_sql` 和 Provisa gRPC 的每一次调用，都会经过一个统一的治理执行器，一致地强制执行 命令的分配（`visible_to`）、变更所需的 `write` 权利 和治理规则。 各协议的具体调用语法参见 [docs/integrations.md](integrations.md#invoking-commands-across-protocols)。
+无论来自 GraphQL、SQL、Cypher、Bolt、Arrow Flight、MCP `run_sql` 还是 Provisa gRPC，每次调用都经过同一个受治理的执行器。它每次都以同样方式强制执行命令分配（`visible_to`）、变更所需的 `write` 权限以及治理。各协议的调用语法见 [docs/integrations.md](integrations.md#invoking-commands-across-protocols)。
 
 #### `GET /admin/actions`
 
@@ -1052,7 +1052,7 @@ DSN 在被接受前会针对联邦引擎进行校验——不可用的 DSN 在�
 
 #### `POST /admin/actions/webhooks`
 
-注册一个已跟踪 Webhook。 注册或更新一个 Webhook 会加入一个数据管家审批请求队列——该 Webhook 只有在数据管家批准后才会在所有界面上生效。配置声明的 Webhook 自动获批准。**请求体字段：** `name`、`url`、`method`、`timeoutMs`、`returns`、`inlineReturnType`、`arguments`、`visibleTo`、`domainId`、`description`、`kind`。
+注册一个受跟踪的 Webhook。注册或更新 Webhook 会排入一个待数据管家审批的请求，只有数据管家批准后，该 Webhook 才会在所有入口生效。配置中声明的 Webhook 会自动批准。**请求体字段：**`name`、`url`、`method`、`timeoutMs`、`returns`、`inlineReturnType`、`arguments`、`visibleTo`、`domainId`、`description`、`kind`。
 
 #### `PUT /admin/actions/webhooks/{name}`
 
@@ -1282,7 +1282,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 - **`Query{TypeName}Aggregate`** —— 返回该表的聚合标量（`count`；每个数值列的 `sum`、`avg`、`stddev`、`variance`；每个可比较列的 `min`、`max`）
 - **`Query{TypeName}GroupBy`** —— 每个分组键返回一行，包含聚合子字段，以及可选的基表标量和已联接维度行
 
-两者都经过与 GraphQL 的 `{field}_aggregate` 和 `{field}_group_by` 根字段相同的编译器聚合管道——没有单独的聚合实现。
+两者都经过与 GraphQL 根字段 `{field}_aggregate`、`{field}_group_by` 相同的编译器聚合管道，所以没有单独的聚合实现。
 
 **`funcs` 字段。** 请求消息接受一个 `funcs` 重复字符串字段。有效取值为 `count`、`sum`、`avg`、`stddev`、`variance`、`min` 和 `max`。省略 `funcs` 时，会请求架构为该表暴露的每个函数。设置后，只出现所命名的函数。如果所命名的函数都不适用于该表的列类型，查询会回退到 `count`。
 
@@ -1327,7 +1327,7 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 
 ## 业务术语表 {: #business-glossary }
 
-业务术语表将物理字段名——即它们在源数据库中存在的样子——映射到一套共享的人类可读词汇。模型中注册的每一列都会自动获得一个术语。填充术语表无需任何手动录入；策展人在系统派生的基础上添加定义、关系和专家。
+业务术语表把源数据库中的物理字段名映射到一套共享的人类词汇上。模型中注册的每一列都会自动获得一个术语，所以无需手工录入就能填满术语表。管理员在系统推导出的内容之上补充定义、关系和专家。
 
 ### 术语如何派生 {: #how-terms-are-derived }
 
@@ -1352,15 +1352,15 @@ SSE 订阅在 `GET /data/subscribe/{table}` 处提供。 通知投递使用按�
 | `CUSTOMER_KEY` | `customer` |
 | `txn_amt` | `transaction amount` |
 
-前三者合并为一个术语。`transaction amount` 保留两个标记，因为 `amount` 不是代理标记。裸 `id` 列——前面没有其他标记——无法被剥除；它规范化为 `identifier`，使术语非空。
+前三个会合并为同一个术语。`transaction amount` 保留两个词元，因为 `amount` 不是替代词。单独的 `id` 列前面没有词元，无法裁剪，所以规范化为 `identifier`，以免术语为空。
 
 ### 生命周期 {: #lifecycle }
 
-术语是**从模型成员关系中派生**的，而不是由用户按需创建的。表存储库是唯一的写入路径：`sync_table_refs` 会在每次列集更新（upsert）中运行，`sweep_refless_terms` 会在任何删除路径之后运行。
+术语**由语义层的成员关系推导而来**，不由用户按需创建。表仓库是唯一的写入路径：`sync_table_refs` 在每次列集 upsert 内运行，`sweep_refless_terms` 在任何删除路径之后运行。
 
 **添加一列时：** Provisa 按名称查找规范化术语。如果已存在，该列会获得对它的引用（如果该术语曾被弃用，则会被恢复——`deprecated` 会被设回 `False`）。如果尚不存在术语，则创建一个。
 
-**一列被移除时**（架构变更或表删除）：其引用被删除，术语在一条移除或弃用规则下被**处理**。没有剩余引用的有根术语会被彻底移除——连同其边和专家指派——除非移除它会导致某个抽象术语与所有有根术语失去连接（在术语图中没有可达路径）。在这种情况下，该术语会被**弃用**（标记为 `deprecated=True`）而不是删除，从而使该抽象术语在图中的锚点得以保留。
+**当某列移除时**（模式变更或删除表），其引用会被删除，术语按“删除或弃用”规则**处置**。没有剩余引用的根术语会连同其边和专家分配被直接删除，除非删除它会让某个抽象术语在术语图中再也没有通往任何根术语的路径。在这种情况下，该术语会被**弃用**（标记 `deprecated=True`）而不是删除，从而让抽象术语保留它在图中的锚点。
 
 抽象术语从不会被自动移除；它们存在于物理生命周期之外，只能通过管理 API 显式删除。
 

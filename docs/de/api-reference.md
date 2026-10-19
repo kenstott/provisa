@@ -172,7 +172,7 @@ Ergebnisse oberhalb eines konfigurierten Zeilenschwellenwerts (oder wenn `X-Prov
 | `text/csv` | Provisa | Speicherbegrenzt |
 | `application/vnd.apache.arrow.stream` | Provisa | Speicherbegrenzt |
 
-Für große analytische Exporte verwenden Sie den Parquet- oder ORC-Redirect. Die Föderations-Engine schreibt direkt und parallel nach S3 — keine Daten laufen durch Provisa.
+Für große analytische Exporte nutzen Sie die Parquet- oder ORC-Umleitung. Die Federation-Engine schreibt parallel direkt nach S3, und keine Daten laufen durch Provisa.
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ Führt rohes SQL durch die Stage-2-Governance-Pipeline aus.
 }
 ```
 
-Die Werte werden gebunden, wenn die Anweisung läuft — von der Engine oder vom Treiber der Quelle —, und nie in die Anweisung geschrieben, sodass ein Wert nicht ändern kann, was die Anweisung ist. Sie gehören zu genau einer Anweisung, deren Platzhalter sie genau durchnummerieren: Ein Batch von Anweisungen, ein Platzhalter ohne Wert oder ein Wert, den kein Platzhalter nimmt, wird mit `400` und Code `data.sql_parameters_do_not_fit` abgelehnt, bevor die Anweisung reguliert oder ausgeführt wird. Eine Anweisung ohne Platzhalter wird wie bisher ohne `params` gesendet.
+Die Werte werden beim Ausführen der Anweisung gebunden, von der Engine oder vom Treiber der Quelle, und nie in die Anweisung geschrieben, sodass ein Wert nicht verändern kann, was die Anweisung ist. Sie gehören zu genau einer Anweisung, deren Platzhalter sie genau durchnummerieren. Ein Stapel von Anweisungen, ein Platzhalter ohne Wert oder ein Wert, den kein Platzhalter aufnimmt, wird mit `400` und dem Code `data.sql_parameters_do_not_fit` abgelehnt, bevor die Anweisung gesteuert oder ausgeführt wird. Eine Anweisung ohne Platzhalter wird wie bisher ohne `params` gesendet.
 
 **Erforderliche Capabilities:** `QUERY_DEVELOPMENT`.
 
@@ -215,7 +215,7 @@ Governance-Verstöße bei `POST /data/sql` geben HTTP 403 zurück.
 
 ### `POST /data/query`
 
-Vereinheitlichter Abfrage-Endpunkt. Akzeptiert GraphQL, SQL oder Cypher — die Syntax wird automatisch erkannt.
+Ein Endpunkt für jede Abfragesprache. Er nimmt GraphQL, SQL oder Cypher an und erkennt, was er bekommen hat.
 
 Cypher-Abfragen können auch an den reinen Cypher-Endpunkt `POST /query/cypher` gesendet werden.
 
@@ -238,7 +238,7 @@ Gibt `{"data": ...}` für GraphQL und `{"columns": [...], "rows": [...]}` für S
 
 Erklärt oder analysiert eine SQL-Anweisung durch die governte Pipeline.
 
-Der Endpunkt umschließt das **governte** SQL — die Anweisung, die tatsächlich unter der Rolle des Aufrufers nach RLS und Maskierung läuft — mit der EXPLAIN-Syntax des Dialekts. Was der Plan zeigt, ist die autorisierte Version der Abfrage, nicht die rohe Eingabe.
+Der Endpunkt hüllt das **gesteuerte** SQL in die EXPLAIN-Syntax des Dialekts: die Anweisung, die unter der Rolle des Aufrufers tatsächlich läuft, nach RLS und Maskierung. Der Plan, den Sie sehen, gilt also für die autorisierte Fassung der Abfrage, nicht für die Roheingabe.
 
 **Request-Body:**
 
@@ -262,7 +262,7 @@ Setzen Sie `analyze: true`, um EXPLAIN ANALYZE auszuführen. Die Abfrage wird au
 
 Gibt den aktuellen Zustand des Engine-Shards zurück, ohne ihn zu wecken.
 
-Die UI pollt diesen Endpunkt, um während des Kaltstarts der Engine ein Startbanner anzuzeigen. Er löst nie ein Aufwecken aus — Polling ist sicher und zählt nicht als Aktivität für den Idle-Reaper.
+Die UI fragt diesen Endpunkt ab, um während des Kaltstarts der Engine ein Startbanner zu zeigen. Er weckt die Engine nie, daher ist das Abfragen gefahrlos und zählt für den Leerlauf-Abschalter nicht als Aktivität.
 
 **Antwort:**
 
@@ -285,7 +285,7 @@ Mögliche Werte:
 
 Löst ein Aufwecken der Engine aus, ohne eine Abfrage auszuführen.
 
-Gibt sofort `202 Accepted` zurück. Das Aufwecken läuft im Hintergrund. Verwenden Sie dies, wenn die Engine bereit sein soll, bevor die erste Abfrage eintrifft — zum Beispiel von einem Scheduler, der Abfragen erst einige Minuten später ausführt.
+Gibt sofort `202 Accepted` zurück, und das Wecken läuft im Hintergrund. Nutzen Sie das, wenn die Engine vor der ersten Abfrage bereit sein soll, etwa aus einem Scheduler, der ein paar Minuten später Abfragen ausführt.
 
 **Antwort:** `202 Accepted`, Body `{"started": true}`
 
@@ -312,11 +312,11 @@ Die authentifizierte Rolle ist erforderlich; nicht authentifizierte Anfragen geb
 
 #### OpenAPI-/Swagger-UI-Explorer
 
-Die OpenAPI-Explorer-Seite (`/app/openapi`) bettet die Swagger UI in einem sandboxed iframe ein. Die Spezifikation ist rollenbezogen — nur für die aktuelle Rolle sichtbare Tabellen und Spalten erscheinen — und optional über den Domänenselektor domänengefiltert. Die UI wechselt automatisch zwischen hellem und dunklem Theme.
+Die OpenAPI-Explorer-Seite (`/app/openapi`) bettet die Swagger UI in einen abgeschotteten iframe ein. Die Spezifikation ist auf die Rolle zugeschnitten, es erscheinen also nur Tabellen und Spalten, die die aktuelle Rolle sehen kann, und die Domänenauswahl kann sie weiter eingrenzen. Die UI wechselt selbständig zwischen hellem und dunklem Design.
 
-Die Seite lädt das Spec-HTML über `fetch()` statt über ein direktes iframe-`src`, sodass die Anfrage das Bearer-Token der Sitzung trägt und die eigenen relativen Anfragen der Swagger UI korrekt gegen denselben Origin aufgelöst werden.
+Die Seite lädt das Spezifikations-HTML mit `fetch()` statt über ein direktes iframe-`src`. So trägt die Anfrage das Bearer-Token der Sitzung, und die eigenen relativen Anfragen der Swagger UI werden gegen denselben Ursprung aufgelöst.
 
-Bei Navigation über einen NL-Link "In OpenAPI öffnen" klappt die Seite den Ziel-Endpunkt automatisch auf, füllt Query-Parameter aus der NL-generierten URL (z. B. `aggregate`, `groupBy`) und klickt Execute — mittels DOM-Polling, um sicherzustellen, dass jeder Schritt abgeschlossen ist, bevor der nächste ausgelöst wird.
+Über einen NL-Link „In OpenAPI öffnen“ aufgerufen, klappt die Seite den Ziel-Endpunkt auf, füllt die Abfrageparameter aus der NL-generierten URL aus (z. B. `aggregate`, `groupBy`) und klickt auf Execute, wobei sie das DOM abfragt, damit jeder Schritt fertig ist, bevor der nächste beginnt.
 
 ---
 
@@ -392,11 +392,11 @@ Drei Generierungsschleifen (Cypher, GraphQL, SQL) laufen parallel, jede über de
 }
 ```
 
-Ein Branch, der sein Iterationslimit erschöpft, gibt `query: null`, `result: null` und eine `error`-Zeichenkette zurück. Jede generierte Abfrage wird unter den Rechten des Konsumenten mit angewandter Stage-2-Governance ausgeführt — der Dienst umgeht Governance nie.
+Ein Zweig, dem die Iterationen ausgehen, liefert `query: null`, `result: null` und einen `error`-String. Jede generierte Abfrage läuft unter den Rechten des Nutzers mit der Governance der Stufe 2; der Dienst umgeht die Governance nie.
 
 #### NL Group-By mit Dimensionsdetails {: #nl-group-by-with-dimension-details }
 
-Wenn eine NL-Group-by-Abfrage auch Spalten aus einer verbundenen Dimensionstabelle projiziert — zum Beispiel "Anzahl der Anfragen nach Benutzer mit Benutzername und E-Mail" — leitet der Runner Pro-Feld-Punktpfade (`dim_paths`) aus den in der SELECT projizierten Dimensionsspalten ab. Diese Pfade befüllen den Parameter `includeNodes=` in den generierten URLs der JSON:API- und OpenAPI-Panels, sodass diese Panels dieselben verbundenen Dimensionsfelder anfordern, die die SQL- und GraphQL-Branches aufgelöst haben. Ohne dies würde `includeNodes=true` nur die eigenen skalaren Felder der Basis-Aggregattabelle zurückgeben.
+Nehmen Sie eine NL-Group-by-Abfrage, die auch Spalten aus einer angebundenen Dimensionstabelle projiziert, etwa „Anzahl der Anfragen pro Benutzer mit Benutzername und E-Mail“. Der Runner leitet aus den Dimensionsspalten im SELECT Punktpfade pro Feld ab (`dim_paths`). Diese Pfade füllen den Parameter `includeNodes=` in den URLs, die für die Panels JSON:API und OpenAPI erzeugt werden, sodass diese Panels dieselben Felder der angebundenen Dimension anfordern, die die Zweige SQL und GraphQL aufgelöst haben. Ohne sie würde `includeNodes=true` nur die eigenen Skalarfelder der Basis-Aggregattabelle liefern.
 
 Im gRPC-Panel trägt die generierte `{Type}GroupByRequest` `include_nodes` (bool) und `include` (repeated string mit Beziehungsfeldnamen). Die zurückgegebene `{Type}GroupByRow` enthält ein typisiertes `nodes`-Feld mit den Dimensionsdetail-Zeilen.
 
@@ -434,7 +434,7 @@ Gibt die Graphansicht des Schemas der Rolle zurück: Knoten-Labels und ihre Bezi
 
 **Antwort:** `application/json` mit `node_labels` (jeweils mit `pk`/`pk_columns`) und `relationship_types`.
 
-Jeder Beziehungstyp trägt auch `junction_table_name` und `properties`. Bei einer über eine Junction realisierten Kante benennt das erste die assoziative Tabelle, die durchlaufen wird, und das zweite listet die Spalten dieser Tabelle auf, die als `r.attr` lesbar und in `WHERE` filterbar sind; bei einer über einen Fremdschlüssel realisierten Kante ist der Name `null` und die Property-Liste leer, woran ein Client die beiden unterscheidet. Die Junction-Tabelle selbst ist nie ein Knoten-Label — sie ist die Kante, hat also keine Pille in einem Graph-Client und keine Zeile in `node_labels`.
+Jeder Beziehungstyp trägt außerdem `junction_table_name` und `properties`. Bei einer Junction-Kante nennt das erste die assoziative Tabelle, die sie traversiert, und das zweite listet deren Spalten, lesbar als `r.attr` und filterbar in `WHERE`. Bei einer Fremdschlüssel-Kante ist der Name `null` und die Liste leer; daran unterscheidet ein Client die beiden. Die Junction-Tabelle selbst ist nie eine Knotenbezeichnung. Sie ist die Kante, hat also in einem Graph-Client kein Etikett und keine Zeile in `node_labels`.
 
 ---
 
@@ -528,7 +528,7 @@ Bei Reload-Fehler: `{"success": false, "message": "<error>"}`.
 
 #### `GET /admin/config/live`
 
-Lädt das Modell in seinem aktuellen Stand herunter, als Konfigurationsdatei geschrieben: die Einstellungen der Deployment-Datei mit jedem Modellabschnitt aus dem Model Store gelesen — Stores, Regionen, Quellen, Domänen, Rollen, Datenprodukte, Glossarbegriffe, Tabellen und ihre Spalten, Beziehungen, Metriken, Tags und ihre Zuweisungen, Zeilenfilter, Commands, Webhooks, geplante Trigger und Namensregeln. Auf einen leeren Model Store angewendet, baut die Datei dasselbe Modell. Was das Deployment in jeden Store vorab anlegt (die eingebauten Quellen und ihre Tabellen, die Systemdomänen, `org_admin` und `platform_admin`), wird weggelassen.
+Lädt das Modell im aktuellen Zustand als Konfigurationsdatei herunter. Sie enthält die Einstellungen der Deployment-Datei, wobei jeder Modellabschnitt aus dem Model Store gelesen wird: Stores, Regionen, Quellen, Domänen, Rollen, Datenprodukte, Glossarbegriffe, Tabellen und ihre Spalten, Beziehungen, Metriken, Tags und ihre Zuordnungen, Zeilenfilter, Commands, Webhooks, geplante Trigger und Benennungsregeln. Auf einen leeren Model Store angewendet, baut die Datei dasselbe Modell. Was das Deployment in jeden Store einspielt (die eingebauten Quellen und ihre Tabellen, die Systemdomänen, `org_admin` und `platform_admin`), bleibt weg.
 
 **Query-Parameter:** `sections` (optional) — eine kommagetrennte Liste von Modellabschnitten, z. B. `sources,tables`. Nur diese Abschnitte werden geschrieben; ein unbekannter Name antwortet mit 400 `settings.export_unknown_section`.
 
@@ -538,7 +538,7 @@ Gibt `application/x-yaml` mit `Content-Disposition: attachment; filename=provisa
 
 #### `GET /admin/config/diff`
 
-Gibt beide Seiten des Config-Diffs zurück — `original` (die Startbaseline) und `current` (Live-Zustand) — identisch normalisiert, sodass der Vergleich nur echte Änderungen zeigt, keine Umordnung oder Kommentar-Drift.
+Gibt beide Seiten des Konfigurationsvergleichs zurück, `original` (die Ausgangsbasis beim Start) und `current` (den aktuellen Zustand), gleich normalisiert, sodass der Vergleich nur echte Änderungen zeigt und Umsortierungen und Kommentaränderungen übergeht.
 
 **Antwort:**
 
@@ -550,7 +550,7 @@ Gibt beide Seiten des Config-Diffs zurück — `original` (die Startbaseline) un
 
 Erzeugt einen unified-diff-Patch von der Baseline zur eingesendeten Konfiguration.
 
-Senden Sie das überarbeitete YAML als Request-Body. Die Antwort ist eine `text/x-patch`-Datei (`provisa.config.patch`), die `git apply` oder `patch` direkt verarbeiten kann — nützlich, um UI-getriebene Konfigurationsänderungen über eine CI/CD-Pipeline zu committen.
+Senden Sie das überarbeitete YAML als Request-Body. Die Antwort ist eine `text/x-patch`-Datei (`provisa.config.patch`), die `git apply` oder `patch` direkt anwenden kann; praktisch, um in der UI gemachte Konfigurationsänderungen über eine CI/CD-Pipeline einzuchecken.
 
 ---
 
@@ -596,7 +596,7 @@ Gibt aktuelle Plattformeinstellungen als JSON zurück.
 
 #### `PUT /admin/settings`
 
-Aktualisiert Plattformeinstellungen zur Laufzeit. Alle Felder sind optional — nur im Body vorhandene Schlüssel werden aktualisiert.
+Ändert Plattformeinstellungen zur Laufzeit. Jedes Feld ist optional, und nur die im Body vorhandenen Schlüssel werden geändert.
 
 **Request-Body (partielles Beispiel):**
 
@@ -648,7 +648,7 @@ Gibt die KI-Modell-Zuweisungen, die Vektor-Modell-Registry und das NL-Ratenlimit
 }
 ```
 
-API-Schlüssel werden nie zurückgespiegelt — `api_keys_set` meldet nur, ob für jeden Anbieter ein Schlüssel konfiguriert ist. Änderungen wirken sich auf die nächste Anfrage aus; kein Neustart erforderlich.
+API-Schlüssel werden nie zurückgegeben: `api_keys_set` sagt nur, ob für jeden Anbieter ein Schlüssel eingerichtet ist. Änderungen gelten ab der nächsten Anfrage, ohne Neustart.
 
 #### `PUT /admin/ai-models`
 
@@ -658,7 +658,7 @@ Aktualisiert die KI-Modell-Zuweisungen, die Vektor-Modell-Registry oder das NL-R
 
 Gibt die Modellnamen zurück, die ein Anbieter derzeit bereitstellt, für den Modell-Picker.
 
-Die Liste wird live aus der eigenen List-Models-API des Anbieters gelesen, unter Verwendung des konfigurierten Schlüssels der Org — oder der Deployment-Anmeldedaten, wenn kein Org-Schlüssel gesetzt ist. Ein Modell, das nach dem Ausliefern dieses Builds veröffentlicht wurde, ist am selben Tag auswählbar, an dem der Anbieter es bereitstellt.
+Die Liste wird live aus der eigenen List-Models-API des Anbieters gelesen, mit dem Schlüssel der Organisation oder, wenn sie keinen hat, mit der Anmeldung des Deployments. Ein Modell, das nach Auslieferung dieses Builds erscheint, ist am selben Tag auswählbar, an dem der Anbieter es bereitstellt.
 
 Gibt `400` zurück, wenn der Anbieter keine List-Models-API veröffentlicht (in diesem Fall den Modellnamen direkt eingeben) oder wenn kein Schlüssel verfügbar ist.
 
@@ -696,7 +696,7 @@ Persistiert eine Auswahl der Föderations-Engine.
 {"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
 ```
 
-Die Auswahl wird in die Plattformkonfiguration geschrieben. Sie wird nach dem nächsten Dienstneustart wirksam — die Engine wird nur einmal beim Boot gewählt.
+Die Auswahl wird in die Plattformkonfiguration geschrieben und gilt nach dem nächsten Neustart des Dienstes, weil die Engine einmal beim Start gewählt wird.
 
 ---
 
@@ -816,7 +816,7 @@ Sucht nach Namen in verfügbaren (noch nicht registrierten) Tabellen einer Quell
 
 #### `POST /admin/tables/{table_id}/profile`
 
-Führt ein Spaltenprofil für eine registrierte Tabelle aus — Kardinalität, Min/Max, Null-Raten.
+Erstellt ein Spaltenprofil für eine registrierte Tabelle: Kardinalität, Min/Max und Null-Anteile.
 
 ---
 
@@ -846,7 +846,7 @@ Registriert (oder löscht) den eigenen Materialisierungsspeicher der Org.
 {"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
 ```
 
-Der DSN wird vor der Annahme gegen die Föderations-Engine validiert — ein unbrauchbarer DSN schlägt bei der Registrierung fehl, nicht erst Stunden später bei einem Refresh. Der Wert wird ruhend verschlüsselt und nie von GET zurückgegeben.
+Der DSN wird gegen die Federation-Engine geprüft, bevor er angenommen wird; ein unbrauchbarer DSN scheitert also bei der Registrierung und nicht Stunden später bei einer Aktualisierung. Der Wert wird verschlüsselt gespeichert und von GET nie zurückgegeben.
 
 Senden Sie `storage_url: null`, um den eigenen Store der Org zu löschen und ihre Materialisierungen zum Plattform-Store (und der Zuteilung) zurückzugeben. Die Laufzeitumgebung der Org wird im selben Aufruf neu aufgebaut, sodass der neue Store sofort wirksam ist.
 
@@ -870,7 +870,7 @@ Setzt oder rotiert den At-Rest-Verschlüsselungsschlüssel der Org.
 {"key_b64": "<32 raw bytes, base64-encoded>"}
 ```
 
-`key_b64` weglassen, damit Provisa einen Schlüssel generiert — der sicherste Weg, da der Schlüssel nie in einer Zwischenablage oder einem Request-Log erscheint. Die Angabe von `key_b64` bringt einen eigenen Schlüssel mit.
+Lassen Sie `key_b64` weg, damit Provisa einen Schlüssel erzeugt. Das ist die sicherste Wahl, weil der Schlüssel nie in einer Zwischenablage oder einem Anfrageprotokoll auftaucht. Mit `key_b64` bringen Sie Ihren eigenen Schlüssel mit.
 
 Die Rotation fügt dem Key Ring einen neuen aktiven Eintrag hinzu und behält den alten bei, sodass unter dem vorherigen Schlüssel geschriebene Daten weiterhin lesbar bleiben. Rotation ist keine Neuverschlüsselung. Es gibt keinen Delete-Endpunkt: Das Entfernen des letzten Schlüssels würde jede gewrappte Payload unlesbar machen.
 
@@ -935,7 +935,7 @@ Ein Import ist ein ausdrückliches, einmaliges Seed des Model Store der handelnd
 
 Exportiert das governte Modell der Org als Apache-Ossie-(incubating)-YAML-Dokument.
 
-Das Dokument wird bei jeder Anfrage aus dem Live-Zustand abgeleitet — nie zwischengespeichert — sodass es nie veraltet sein kann. Tabellen werden zu `dataset`-Objekten, Spalten werden zu `field`-Objekten, und Beziehungen werden auf Ossie-`relationship`-Objekte abgebildet.
+Das Dokument wird bei jeder Anfrage aus dem aktuellen Zustand gebaut und nie zwischengespeichert, kann also nicht veraltet sein. Tabellen werden zu `dataset`-Objekten, Spalten zu `field`-Objekten, und Beziehungen werden auf Ossie-`relationship`-Objekte abgebildet.
 
 Gibt `text/yaml` mit `Content-Disposition: attachment; filename=provisa.ossie.yaml` zurück.
 
@@ -972,7 +972,7 @@ Es wird nichts registriert. Verwenden Sie den Prüfbildschirm der Admin-UI, um V
 
 Alle Endpunkte liegen unter dem Präfix `/admin/actions`.
 
-Jeder Aufruf — von GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` und Provisa gRPC — läuft durch einen einzigen governten Executor, der die Befehlszuweisung (`visible_to`), das Recht `write` für Mutationen und Governance einheitlich durchsetzt. Siehe [docs/integrations.md](integrations.md#invoking-commands-across-protocols) für die protokollspezifische Aufrufsyntax.
+Jeder Aufruf, ob aus GraphQL, SQL, Cypher, Bolt, Arrow Flight, MCP `run_sql` oder Provisa gRPC, läuft durch einen gesteuerten Executor. Er setzt die Command-Zuweisung (`visible_to`), das Recht `write` für eine Mutation und die Governance jedes Mal gleich durch. Die Aufrufsyntax je Protokoll steht in [docs/integrations.md](integrations.md#invoking-commands-across-protocols).
 
 #### `GET /admin/actions`
 
@@ -1052,7 +1052,7 @@ Löscht eine nachverfolgte Funktion nach Namen.
 
 #### `POST /admin/actions/webhooks`
 
-Registriert einen nachverfolgten Webhook. Das Registrieren oder Aktualisieren eines Webhooks stellt eine Steward-Genehmigungsanfrage in die Warteschlange — der Webhook wird auf allen Oberflächen erst aktiv, nachdem ihn ein Steward genehmigt hat. Config-deklarierte Webhooks sind automatisch genehmigt. **Request-Body-Felder:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
+Registriert einen verfolgten Webhook. Das Registrieren oder Ändern eines Webhooks stellt eine Genehmigungsanfrage an den Steward in die Warteschlange, und der Webhook wird erst auf allen Oberflächen aktiv, wenn ein Steward ihn genehmigt. In der Konfiguration deklarierte Webhooks werden automatisch genehmigt. **Felder im Request-Body:** `name`, `url`, `method`, `timeoutMs`, `returns`, `inlineReturnType`, `arguments`, `visibleTo`, `domainId`, `description`, `kind`.
 
 #### `PUT /admin/actions/webhooks/{name}`
 
@@ -1282,7 +1282,7 @@ Wenn für eine Tabelle `enable_aggregates` gesetzt ist, enthält das generierte 
 - **`Query{TypeName}Aggregate`** — gibt Aggregat-Skalare für die Tabelle zurück (`count`; `sum`, `avg`, `stddev`, `variance` pro numerischer Spalte; `min`, `max` pro vergleichbarer Spalte)
 - **`Query{TypeName}GroupBy`** — gibt eine Zeile pro Gruppenschlüssel mit Aggregat-Unterfeldern und optional Skalaren der Basistabelle sowie verbundenen Dimensionszeilen in einem `nodes`-Feld zurück
 
-Beide laufen durch dieselbe Compiler-Aggregat-Pipeline wie die GraphQL-Root-Felder `{field}_aggregate` und `{field}_group_by` — keine separate Aggregat-Implementierung.
+Beide laufen durch dieselbe Aggregat-Pipeline des Compilers wie die GraphQL-Root-Felder `{field}_aggregate` und `{field}_group_by`; eine eigene Aggregat-Implementierung gibt es nicht.
 
 **Feld `funcs`.** Die Request-Message akzeptiert ein repeated-string-Feld `funcs`. Gültige Werte sind `count`, `sum`, `avg`, `stddev`, `variance`, `min` und `max`. Wenn `funcs` weggelassen wird, wird jede Funktion angefordert, die das Schema für diese Tabelle bereitstellt. Wenn gesetzt, erscheinen nur die genannten Funktionen. Wenn keine der genannten Funktionen auf die Spaltentypen der Tabelle zutrifft, fällt die Abfrage auf `count` zurück.
 
@@ -1327,7 +1327,7 @@ SSE-Subscriptions sind unter `GET /data/subscribe/{table}` verfügbar. Die Benac
 
 ## Business-Glossar {: #business-glossary }
 
-Das Business-Glossar bildet physische Feldnamen — wie sie in Quelldatenbanken existieren — auf ein gemeinsames menschliches Vokabular ab. Jede im Modell registrierte Spalte erhält automatisch einen Begriff. Es ist keine manuelle Eingabe erforderlich, um das Glossar zu befüllen; Kuratoren fügen Definitionen, Beziehungen und Experten auf dem hinzu, was das System ableitet.
+Das Geschäftsglossar bildet physische Feldnamen, wie sie in den Quelldatenbanken stehen, auf ein gemeinsames menschliches Vokabular ab. Jede im Modell registrierte Spalte bekommt automatisch einen Begriff, niemand muss also etwas eintragen, um das Glossar zu füllen. Kuratoren ergänzen Definitionen, Beziehungen und Experten zu dem, was das System ableitet.
 
 ### Wie Begriffe abgeleitet werden {: #how-terms-are-derived }
 
@@ -1352,15 +1352,15 @@ Da `id`, `key`, `pk` und `sk` alle vor der Proxy-Prüfung zu `identifier` expand
 | `CUSTOMER_KEY` | `customer` |
 | `txn_amt` | `transaction amount` |
 
-Die ersten drei fallen zu einem Begriff zusammen. `transaction amount` behält beide Tokens, da `amount` kein Proxy ist. Eine bloße `id`-Spalte — ohne vorangehende Tokens — kann nicht entfernt werden; sie normalisiert zu `identifier`, damit der Begriff nicht leer ist.
+Die ersten drei fallen zu einem Begriff zusammen. `transaction amount` behält beide Token, weil `amount` kein Platzhalter ist. Eine bloße `id`-Spalte ohne vorangehende Token lässt sich nicht kürzen; sie wird zu `identifier` normalisiert, damit der Begriff nicht leer ist.
 
 ### Lebenszyklus {: #lifecycle }
 
-Begriffe werden **aus der Mitgliedschaft im Modell abgeleitet**, nicht auf Anforderung von Benutzern erstellt. Das Tabellen-Repository ist der einzige Schreibpfad: `sync_table_refs` läuft bei jedem Spaltensatz-Upsert, und `sweep_refless_terms` läuft nach jedem Löschpfad.
+Begriffe werden **aus der Zugehörigkeit zur semantischen Schicht abgeleitet**; Benutzer legen sie nicht nach Bedarf an. Das Tabellen-Repository ist der einzige Schreibweg: `sync_table_refs` läuft in jedem Upsert eines Spaltensatzes, und `sweep_refless_terms` läuft nach jedem Löschpfad.
 
 **Wenn eine Spalte hinzugefügt wird:** Provisa sucht den normalisierten Begriff nach Name. Existiert er bereits, erhält die Spalte eine Referenz darauf (und wurde der Begriff als veraltet markiert, wird er wiederbelebt — `deprecated` wird zurück auf `False` gesetzt). Existiert noch kein Begriff, wird einer erstellt.
 
-**Wenn eine Spalte entfällt** (Schemaänderung oder Tabellenentfernung): Ihre Referenz wird gelöscht, und der Begriff wird nach einer Regel "Entfernen oder als veraltet markieren" **abgeschlossen**. Ein verwurzelter Begriff ohne verbleibende Referenzen wird vollständig entfernt — zusammen mit seinen Kanten und Expertenzuweisungen — es sei denn, das Entfernen würde einen abstrakten Begriff von allen verwurzelten Begriffen trennen (kein Pfad durch den Begriffsgraphen). In diesem Fall wird der Begriff **als veraltet markiert** (`deprecated=True`), statt gelöscht zu werden, damit der Graph-Anker des abstrakten Begriffs erhalten bleibt.
+**Wenn eine Spalte wegfällt** (Schemaänderung oder Entfernen einer Tabelle), wird ihre Referenz gelöscht und der Begriff nach einer Regel „entfernen oder als veraltet markieren“ **erledigt**. Ein verwurzelter Begriff ohne verbleibende Referenzen wird samt Kanten und Expertenzuordnungen gleich entfernt, außer das Entfernen ließe einen abstrakten Begriff ohne Pfad durch den Begriffsgraphen zu einem verwurzelten Begriff zurück. Dann wird der Begriff **als veraltet markiert** (`deprecated=True`) statt gelöscht, sodass der abstrakte Begriff seinen Anker im Graphen behält.
 
 Abstrakte Begriffe werden nie automatisch entfernt; sie existieren außerhalb des physischen Lebenszyklus und werden nur explizit über die Admin-API gelöscht.
 

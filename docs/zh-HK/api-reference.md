@@ -172,7 +172,7 @@ curl -H 'Cache-Control: max-age=120' -H 'X-Provisa-Role: analyst' \
 | `text/csv` | Provisa | 受記憶體限制 |
 | `application/vnd.apache.arrow.stream` | Provisa | 受記憶體限制 |
 
-大型分析匯出請使用 Parquet 或 ORC 重新導向。聯邦引擎會並行直接寫入 S3 — 數據不經過 Provisa。
+對於大型分析匯出，請使用 Parquet 或 ORC 重新導向。聯邦引擎會並行直接寫入 S3，數據不經過 Provisa。
 
 ```yaml
 X-Provisa-Redirect-Format: application/vnd.apache.parquet
@@ -203,7 +203,7 @@ X-Provisa-Redirect-Threshold: 1000
 }
 ```
 
-這些值在陳述式執行時由引擎或數據來源的驅動程式綁定，從不寫入陳述式，因此值無法改變陳述式本身。它們只屬於一條陳述式，其預留位置精確地為它們編號：陳述式批次、沒有值的預留位置，或沒有預留位置接收的值，都會在陳述式被治理或執行之前以 `400` 及代碼 `data.sql_parameters_do_not_fit` 被拒絕。沒有預留位置的陳述式不帶 `params` 傳送，與以往一樣。
+這些值在語句執行時由引擎或數據來源的驅動程式繫結，從不寫進語句本身，所以值無法改變語句是甚麼。它們只隨一條語句一起傳送，該語句的預留位置與它們逐一編號對應。語句批次、沒有值的預留位置，或沒有預留位置接收的值，都會在語句受治理或執行之前以 `400` 及代碼 `data.sql_parameters_do_not_fit` 被拒絕。沒有預留位置的語句與以前一樣，不帶 `params` 傳送。
 
 **必要能力：** `QUERY_DEVELOPMENT`。
 
@@ -215,7 +215,7 @@ X-Provisa-Redirect-Threshold: 1000
 
 ### `POST /data/query`
 
-統一查詢端點。接受 GraphQL、SQL 或 Cypher — 語法會自動偵測。
+所有查詢語言共用一個端點。它接受 GraphQL、SQL 或 Cypher，並自動識別收到的是哪一種。
 
 Cypher 查詢也可以提交到僅限 Cypher 的 `POST /query/cypher` 端點。
 
@@ -238,7 +238,7 @@ GraphQL 傳回 `{"data": ...}`，SQL 與 Cypher 傳回 `{"columns": [...], "rows
 
 透過受治理的管線說明或分析 SQL 陳述式。
 
-該端點會將**受治理的** SQL — 即在呼叫者角色下、套用 RLS 與遮罩後實際執行的陳述式 — 包裝在該方言的 EXPLAIN 語法中。計劃顯示的是查詢的已授權版本，而非原始輸入。
+該端點把**受治理的** SQL 包進方言的 EXPLAIN 語法中：亦即在呼叫者角色下、經過 RLS 及遮罩之後真正執行的語句。所以您看到的計劃對應的是查詢的授權版本，而不是原始輸入。
 
 **請求主體：**
 
@@ -262,7 +262,7 @@ GraphQL 傳回 `{"data": ...}`，SQL 與 Cypher 傳回 `{"columns": [...], "rows
 
 在不喚醒引擎的情況下傳回引擎分區的目前狀態。
 
-UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從不觸發喚醒 — 輪詢是安全的，也不會被閒置回收器視為活動。
+UI 會輪詢該端點，在引擎冷啟動期間顯示啟動橫額。它從不喚醒引擎，所以輪詢是安全的，亦不會被閒置回收機制算作活動。
 
 **回應：**
 
@@ -285,7 +285,7 @@ UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從�
 
 在不執行查詢的情況下觸發引擎喚醒。
 
-立即傳回 `202 Accepted`。喚醒在背景執行。如果你希望引擎在第一個查詢抵達之前就緒，可使用此端點 — 例如由數分鐘後才執行查詢的排程器呼叫。
+立即傳回 `202 Accepted`，喚醒在背景進行。如您希望引擎在第一個查詢到來之前已準備好，就呼叫它，例如從幾分鐘後才執行查詢的排程器中呼叫。
 
 **回應：** `202 Accepted`，主體為 `{"started": true}`
 
@@ -312,11 +312,11 @@ UI 會輪詢此端點，以在引擎冷啟動期間顯示啟動橫幅。它從�
 
 #### OpenAPI / Swagger UI 探索工具 {: #openapi-swagger-ui-explorer }
 
-OpenAPI 探索工具頁面（`/app/openapi`）在沙箱化的 iframe 中內嵌 Swagger UI。規格以角色為範圍 — 只會出現目前角色可見的資料表與欄位 — 並可透過網域選擇器選擇性地依網域篩選。UI 會自動在淺色與深色佈景主題之間切換。
+OpenAPI 瀏覽器頁面（`/app/openapi`）在沙盒化的 iframe 中嵌入 Swagger UI。規格按角色限定，只顯示當前角色能看到的資料表及資料行，亦可以用領域選擇器進一步篩選。UI 會自動在淺色及深色主題之間切換。
 
-該頁面透過 `fetch()` 而非直接使用 iframe `src` 載入規格 HTML，因此請求會攜帶工作階段的 bearer 權杖，而 Swagger UI 本身的相對請求也能正確解析到同一來源。
+頁面用 `fetch()` 載入規格 HTML，而不是直接設定 iframe 的 `src`。這樣請求會攜帶工作階段的 bearer 權杖，Swagger UI 自身的相對請求亦會基於同一來源解析。
 
-從自然語言的「Open in OpenAPI」連結導覽而來時，該頁面會自動展開目標端點、以自然語言產生的 URL 填入查詢參數（例如 `aggregate`、`groupBy`），並按下 Execute — 使用 DOM 輪詢確保每一步在下一步觸發前已完成。
+從 NL 的「在 OpenAPI 中開啟」連結進入時，頁面會展開目標端點，用 NL 產生的 URL 填好查詢參數（例如 `aggregate`、`groupBy`），然後點擊 Execute，並輪詢 DOM，確保每一步完成後才開始下一步。
 
 ---
 
@@ -392,11 +392,11 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 }
 ```
 
-耗盡疊代上限的分支會傳回 `query: null`、`result: null` 與一個 `error` 字串。每個產生的查詢都在消費者的權限下執行，並套用第 2 階段治理 — 服務從不繞過治理。
+耗盡迭代次數的分支傳回 `query: null`、`result: null` 及一個 `error` 字串。每個產生的查詢都以使用者的權限執行，並套用第 2 階段治理；服務從不繞過治理。
 
 #### 帶維度明細的自然語言分組查詢 {: #nl-group-by-with-dimension-details }
 
-當自然語言分組查詢同時投影聯結維度資料表的欄位時 — 例如「按使用者統計查詢數，並附使用者名稱與電郵」— 執行器會從 SELECT 投影的維度欄位推導出每個欄位的點路徑（`dim_paths`）。這些路徑會填入 JSON:API 與 OpenAPI 面板所產生 URL 的 `includeNodes=` 參數，讓這些面板要求與 SQL 及 GraphQL 分支所解析的相同聯結維度欄位。若無此機制，`includeNodes=true` 只會傳回基礎彙總資料表自身的純量欄位。
+以一個同時投影所聯結維度表資料行的 NL 分組查詢為例，例如「按使用者統計查詢次數，並顯示使用者名稱及電郵」。執行器會從 SELECT 中的維度資料行推導出每個欄位的點路徑（`dim_paths`）。這些路徑會填入為 JSON:API 及 OpenAPI 面板產生的 URL 中的 `includeNodes=` 參數，令這些面板請求與 SQL、GraphQL 分支所解析的相同維度欄位。沒有它們，`includeNodes=true` 只會傳回基礎彙總表自身的純量欄位。
 
 在 gRPC 面板上，產生的 `{Type}GroupByRequest` 帶有 `include_nodes`（布林值）與 `include`（關聯欄位名稱的重複字串）。傳回的 `{Type}GroupByRow` 包含帶有維度明細資料列的具型別 `nodes` 欄位。
 
@@ -434,7 +434,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 **回應：** `application/json`，包含 `node_labels`（各自帶有 `pk`/`pk_columns`）與 `relationship_types`。
 
-每種關係類型還帶有 `junction_table_name` 與 `properties`。在由聯結資料表支撐的邊上，前者給出它所穿過的關聯資料表名稱，後者列出該資料表中可作為 `r.attr` 讀取並可在 `WHERE` 中過濾的欄位；在由外部索引鍵支撐的邊上，該名稱為 `null`，屬性清單為空——用戶端正是據此區分兩者。聯結資料表本身永遠不是節點標籤——它就是邊，因此在圖用戶端中沒有對應的標籤膠囊，在 `node_labels` 中也沒有對應資料列。
+每種關係類型還帶有 `junction_table_name` 及 `properties`。對於經由關聯表的邊，前者指明它所穿過的關聯表，後者列出該表可作為 `r.attr` 讀取、可在 `WHERE` 中篩選的資料行。對於基於外鍵的邊，名稱為 `null`，屬性清單為空，用戶端據此區分兩者。關聯表本身永遠不是節點標籤。它就是邊，所以在圖用戶端中沒有標籤，在 `node_labels` 中亦沒有對應列。
 
 ---
 
@@ -528,7 +528,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 #### `GET /admin/config/live`
 
-以設定檔的形式下載目前的模型：部署檔案的設定，以及從模型儲存讀取的每個模型部分——儲存、區域、數據來源、網域、角色、數據產品、詞彙表詞彙、資料表及其欄位、關係、指標、標籤及其指派、資料列過濾、命令、webhook、排程觸發器及命名規則。套用至空白的模型儲存時，該檔案會建構出相同的模型。部署為每個儲存加入的內容（內建數據來源及其資料表、系統網域、`org_admin` 及 `platform_admin`）不包括在內。
+下載當前狀態的模型，寫成設定檔。檔案包含部署檔的設定，每個模型部分都從模型儲存讀取：儲存、區域、數據來源、領域、角色、數據產品、詞彙表術語、資料表及其資料行、關係、指標、標籤及其指派、資料列篩選器、命令、Webhook、排程觸發器及命名規則。把該檔案套用到空的模型儲存，會建構出同樣的模型。部署向每個儲存預置的內容（內建數據來源及其資料表、系統領域、`org_admin` 及 `platform_admin`）不包含在內。
 
 **查詢參數：** `sections`（可選）——以逗號分隔的模型部分清單，例如 `sources,tables`。只會寫出這些部分；未知的名稱會回應 400 `settings.export_unknown_section`。
 
@@ -538,7 +538,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 #### `GET /admin/config/diff`
 
-傳回組態差異的兩側 — `original`（啟動時的基準）與 `current`（即時狀態） — 兩者以相同方式正規化，因此比較結果只顯示真正的變更，而非重新排序或註解漂移。
+傳回設定差異的兩側：`original`（啟動時的基線）及 `current`（目前即時狀態），兩者以同樣方式正規化，因此比較只顯示真正的變更，略過次序調整及註解變化。
 
 **回應：**
 
@@ -550,7 +550,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 從基準到所張貼組態產生統一差異修補檔。
 
-將修訂後的 YAML 作為請求主體送出。回應是一個 `text/x-patch` 檔案（`provisa.config.patch`），可直接由 `git apply` 或 `patch` 使用 — 適合透過 CI/CD 管線提交 UI 驅動的組態變更。
+把修改後的 YAML 作為請求主體傳送。回應是一個 `text/x-patch` 檔案（`provisa.config.patch`），`git apply` 或 `patch` 可以直接套用，便於把在 UI 中作出的設定變更經 CI/CD 管線提交。
 
 ---
 
@@ -596,7 +596,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 
 #### `PUT /admin/settings`
 
-在執行階段更新平台設定。所有欄位皆為選填 — 只有主體中出現的索引鍵會被更新。
+在執行時更新平台設定。所有欄位都是可選的，只有請求主體中出現的鍵會被修改。
 
 **請求主體（部分範例）：**
 
@@ -648,7 +648,7 @@ JSON:API 探索工具頁面（`/app/jsonapi`）是這些端點之上的瀏覽器
 }
 ```
 
-API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設定密鑰。變更在下一個請求生效；無需重新啟動。
+API 金鑰永遠不會傳回：`api_keys_set` 只說明每個供應商是否已設定金鑰。變更由下一個請求起生效，毋須重新啟動。
 
 #### `PUT /admin/ai-models`
 
@@ -658,7 +658,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 傳回某供應商目前提供的模型名稱，供模型挑選器使用。
 
-清單使用組織已設定的密鑰 — 或在未設定組織密鑰時使用部署層級的憑證 — 從供應商自身的 list-models API 即時讀取。在此組建發佈之後才推出的模型，供應商提供的當天即可選用。
+該清單即時從供應商自己的模型清單 API 讀取，使用機構設定的金鑰；機構沒有金鑰時使用部署的憑證。在此版本發佈之後才推出的模型，在供應商開始提供它的當天就能選用。
 
 當供應商未發佈 list-models API（此時請直接輸入模型名稱），或沒有可用密鑰時，傳回 `400`。
 
@@ -696,7 +696,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 {"engine": "trino", "federation_engine_url": "http://trino-coordinator:8080"}
 ```
 
-選擇會寫入平台組態。它在服務下次重新啟動後生效 — 引擎只在開機時選定一次。
+選擇會寫入平台設定，並在下次服務重新啟動後生效，因為引擎只在啟動時選定一次。
 
 ---
 
@@ -816,7 +816,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 
 #### `POST /admin/tables/{table_id}/profile`
 
-對已註冊的資料表執行欄位剖析 — 基數、最小／最大值、空值比率。
+對已註冊的資料表執行資料行剖析：基數、最小/最大值及空值率。
 
 ---
 
@@ -846,7 +846,7 @@ API 密鑰從不回傳 — `api_keys_set` 只回報每個供應商是否已設�
 {"storage_url": "s3://my-bucket/provisa?region=us-east-1&access_key=..."}
 ```
 
-DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註冊時就失敗，而不是數小時後在重新整理時才發現。該值靜態加密儲存，GET 從不傳回。
+DSN 在被接受之前會先針對聯邦引擎驗證，所以不可用的 DSN 會在註冊時已經失敗，而不是幾小時後在重新整理時才失敗。該值靜態加密儲存，GET 永遠不會傳回它。
 
 送出 `storage_url: null` 可清除組織自有的儲存區，並將其具體化資料歸還平台儲存區（與配額）。組織執行階段會在同一次呼叫中重建，因此新儲存區立即生效。
 
@@ -870,7 +870,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 {"key_b64": "<32 raw bytes, base64-encoded>"}
 ```
 
-省略 `key_b64` 可讓 Provisa 產生密鑰 — 這是最安全的做法，因為密鑰不會出現在剪貼簿或請求記錄中。提供 `key_b64` 則是自備密鑰。
+省略 `key_b64`，由 Provisa 產生金鑰。這是最安全的做法，因為金鑰永遠不會出現在剪貼簿或請求日誌中。提供 `key_b64` 則表示使用您自己的金鑰。
 
 輪換會在密鑰環中加入新的作用中項目並保留舊的，因此以先前密鑰寫入的數據仍可讀取。輪換不等於重新加密。沒有刪除端點：淘汰最後一把密鑰會使所有已包裝的酬載無法讀取。
 
@@ -935,7 +935,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 將組織受治理的模型匯出為 Apache Ossie（孵化中）YAML 文件。
 
-該文件在每次請求時由即時狀態衍生 — 從不快取 — 因此不可能過時。資料表成為 `dataset` 物件，欄位成為 `field` 物件，關聯對映為 Ossie 的 `relationship` 物件。
+該文件在每次請求時都根據即時狀態產生，從不快取，所以不可能過時。資料表變成 `dataset` 物件，資料行變成 `field` 物件，關係對應為 Ossie 的 `relationship` 物件。
 
 傳回 `text/yaml`，並附帶 `Content-Disposition: attachment; filename=provisa.ossie.yaml`。
 
@@ -972,7 +972,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 所有端點都在 `/admin/actions` 前綴之下。
 
-每一次呼叫 — 來自 GraphQL、SQL、Cypher、Bolt、Arrow Flight、MCP `run_sql` 以及 Provisa gRPC — 都會經由單一受治理的執行器路由，統一強制執行 指令的分配（`visible_to`）、變更所需的 `write` 權利 與治理。 各通訊協定的呼叫語法請見 [docs/integrations.md](integrations.md#invoking-commands-across-protocols)。
+無論來自 GraphQL、SQL、Cypher、Bolt、Arrow Flight、MCP `run_sql` 還是 Provisa gRPC，每次呼叫都經過同一個受治理的執行器。它每次都以同樣方式強制執行命令指派（`visible_to`）、變更所需的 `write` 權限以及治理。各協定的呼叫語法見 [docs/integrations.md](integrations.md#invoking-commands-across-protocols)。
 
 #### `GET /admin/actions`
 
@@ -1052,7 +1052,7 @@ DSN 在被接受之前會先對聯邦引擎驗證 — 無法使用的 DSN 在註
 
 #### `POST /admin/actions/webhooks`
 
-註冊受追蹤的 webhook。 註冊或更新 webhook 會排入一個數據管家核准請求 — webhook 只有在管家核准後才會在所有介面上生效。組態中宣告的 webhook 自動核准。**請求主體欄位：** `name`、`url`、`method`、`timeoutMs`、`returns`、`inlineReturnType`、`arguments`、`visibleTo`、`domainId`、`description`、`kind`。
+註冊一個受追蹤的 Webhook。註冊或更新 Webhook 會排入一個待數據管家審批的請求，只有數據管家批准後，該 Webhook 才會在所有入口生效。設定中宣告的 Webhook 會自動批准。**請求主體欄位：**`name`、`url`、`method`、`timeoutMs`、`returns`、`inlineReturnType`、`arguments`、`visibleTo`、`domainId`、`description`、`kind`。
 
 #### `PUT /admin/actions/webhooks/{name}`
 
@@ -1282,7 +1282,7 @@ grpcurl -plaintext -H 'x-provisa-role: analyst' \
 - **`Query{TypeName}Aggregate`** — 傳回該資料表的彙總純量（`count`；每個數值欄位的 `sum`、`avg`、`stddev`、`variance`；每個可比較欄位的 `min`、`max`）
 - **`Query{TypeName}GroupBy`** — 每個分組索引鍵傳回一列，帶有彙總子欄位，並可選擇性地在 `nodes` 欄位中帶有基礎資料表純量與聯結維度資料列
 
-兩者都經由與 GraphQL 的 `{field}_aggregate` 及 `{field}_group_by` 根欄位相同的編譯器彙總管線 — 沒有另一套獨立的彙總實作。
+兩者都經過與 GraphQL 根欄位 `{field}_aggregate`、`{field}_group_by` 相同的編譯器彙總管道，所以沒有獨立的彙總實作。
 
 **`funcs` 欄位。** 請求訊息接受一個 `funcs` 重複字串欄位。有效值為 `count`、`sum`、`avg`、`stddev`、`variance`、`min` 與 `max`。省略 `funcs` 時，會要求結構描述為該資料表公開的每一個函式。設定後，只有指名的函式會出現。若指名的函式都不適用於該資料表的欄位類型，查詢會退回 `count`。
 
@@ -1327,7 +1327,7 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 
 ## 業務詞彙表 {: #business-glossary }
 
-業務詞彙表把實體欄位名稱 — 即它們在來源資料庫中的樣子 — 對映到共用的人類詞彙。模型中註冊的每個欄位都會自動取得一個術語。填充詞彙表無需手動輸入；策展人只在系統推導出的內容之上補充定義、關聯與專家。
+業務詞彙表把來源資料庫中的實體欄位名稱對應到一套共用的人類詞彙上。模型中註冊的每個資料行都會自動獲得一個術語，所以毋須人手輸入就能填滿詞彙表。管理員在系統推導出的內容之上補充定義、關係及專家。
 
 ### 術語如何推導 {: #how-terms-are-derived }
 
@@ -1352,15 +1352,15 @@ SSE 訂閱位於 `GET /data/subscribe/{table}`。 通知傳遞採用依數據來
 | `CUSTOMER_KEY` | `customer` |
 | `txn_amt` | `transaction amount` |
 
-前三者收斂為一個術語。`transaction amount` 保留兩個權杖，因為 `amount` 不是代理。裸 `id` 欄位 — 前面沒有其他權杖 — 無法被移除；它正規化為 `identifier`，因此術語不會為空。
+首三個會合併為同一個術語。`transaction amount` 保留兩個詞元，因為 `amount` 不是替代詞。單獨的 `id` 資料行前面沒有詞元，無法裁剪，所以正規化為 `identifier`，以免術語為空。
 
 ### 生命週期 {: #lifecycle }
 
-術語是**從模型成員資格推導而來**，而非由使用者按需建立。資料表儲存庫是唯一的寫入路徑：`sync_table_refs` 在每一次欄位集 upsert 內執行，`sweep_refless_terms` 則在任何刪除路徑之後執行。
+術語**由語義層的成員關係推導而來**，不由使用者按需建立。資料表儲存庫是唯一的寫入路徑：`sync_table_refs` 在每次資料行集 upsert 內執行，`sweep_refless_terms` 在任何刪除路徑之後執行。
 
 **新增欄位時：** Provisa 依名稱查找正規化後的術語。若已存在，該欄位會取得一個指向它的參照（若該術語先前已淘汰，則會復原 — `deprecated` 會設回 `False`）。若尚無術語，則建立一個。
 
-**欄位離開時**（結構描述變更或資料表移除）：其參照會被刪除，術語則依「移除或淘汰」規則結算。已扎根、且不再有任何參照的術語會被整個移除 — 連同其邊與專家指派 — 除非移除它會讓某個抽象術語與所有已扎根術語失去連結（在術語圖中無路徑可達）。在那種情況下，術語會被**淘汰**（標記 `deprecated=True`）而非刪除，讓抽象術語的圖形錨點得以保留。
+**當某資料行移除時**（結構描述變更或刪除資料表），其參照會被刪除，術語按「刪除或棄用」規則**處置**。沒有剩餘參照的根術語會連同其邊及專家指派被直接刪除，除非刪除它會令某個抽象術語在術語圖中再沒有通往任何根術語的路徑。在這種情況下，該術語會被**棄用**（標記 `deprecated=True`）而不是刪除，從而令抽象術語保留它在圖中的錨點。
 
 抽象術語永不自動移除；它們存在於實體生命週期之外，只能透過管理員 API 明確刪除。
 
