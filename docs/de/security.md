@@ -420,6 +420,10 @@ Die MCP-Statistik-Tools (`describe`, `correlate`, `regress`, `compare`, `forecas
 
 Die Zugriffskontrolle begrenzt, was ein Agent erfahren kann. Um Identitäten außer Reichweite eines Agenten zu halten, erteilen Sie seiner Rolle nur die Spalten, die niemanden identifizieren; eine Rolle, die eine Spalte lesen kann, kann sie aggregieren, und Aggregate über kleine Gruppen können dennoch Einzelpersonen identifizieren.
 
+## Abdeckung sensibler Spalten {: #sensitive-column-coverage }
+
+Die View `sensitive_coverage` in der Meta-Domäne listet jede sensible Spalte der Organisation mit dem Fake-Wert und der Syntheseregel, die sie deklariert, und einem Status: `covered`, `no_fake` oder `inadequate`, wenn eine der Angemessenheitsprüfungen von Provisa fehlgeschlagen ist. Die Prüfungen suchen nach einem Fake-Wert, der echte Werte unverändert lässt, einem Fake-Wert, dessen Art nicht zu dem passt, was die Spalte enthält, und einem Fake-Wert oder einer Regel, die den echten Wert einer anderen sensiblen Spalte liest. Ein Data Steward sieht die Spalten ohne Fake-Wert in den Details jeder Umgebung, und eine Test-(fake)-Umgebung verweigert die Auslieferung von Daten, bis jede sensible Spalte einen hat. Die Prüfungen und die View sind unter [Testumgebungen aufbauen](test-data.md#coverage-and-adequacy-checks) beschrieben.
+
 ## Ratenbegrenzung {: #rate-limiting }
 
 Limits pro Rolle legen Sie in `provisa.yaml` fest: Anfragen pro Sekunde, gleichzeitige SSE-Abonnements und gleichzeitige Arrow-Flight-Streams. Sie werden an der API geprüft, bevor irgendetwas kompiliert oder ausgeführt wird, und eine Anfrage über dem Limit bekommt HTTP 429 mit einem `Retry-After`-Header.

@@ -420,6 +420,10 @@ MCP 統計工具（`describe`、`correlate`、`regress`、`compare`、`forecast`
 
 限制智能體所能得知內容的是存取控制。要讓身份資訊不在智能體可及範圍內，只向其角色授予不識別任何人的欄；能讀取某欄的角色就能對其聚合，而對小分組的聚合仍可能識別出個人。
 
+## 敏感欄覆蓋 {: #sensitive-column-coverage }
+
+meta 域中的 `sensitive_coverage` 檢視列出組織的每個敏感欄，附上其聲明的虛構值和合成規則，以及狀態：`covered`、`no_fake`，或當 Provisa 的某項充分性檢查未通過時為 `inadequate`。這些檢查尋找：讓真實值保持不變的虛構值、種類與欄中內容不符的虛構值，以及讀取另一敏感欄真實值的虛構值或規則。數據管家可在每個環境的詳情中看到沒有虛構值的欄；在每個敏感欄都有虛構值之前，Test (fake) 環境拒絕提供數據。檢查和檢視的說明見[建立測試環境](test-data.md#coverage-and-adequacy-checks)。
+
 ## 速率限制 {: #rate-limiting }
 
 按角色的限制在 `provisa.yaml` 中設定：每秒請求數、同時 SSE 訂閱數及同時 Arrow Flight 串流數。它們在 API 層檢查，早於任何編譯或執行；超出限制的請求會收到 HTTP 429 及 `Retry-After` 回應標頭。

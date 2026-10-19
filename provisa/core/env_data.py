@@ -336,24 +336,22 @@ async def restore_synthetic(conn: "Connection", schema: str) -> list[str]:
 async def uncovered_sensitive(conn: "Connection", schema: str) -> list[str]:
     """Every sensitive column that declares no fake, as ``table.column``, in the environment whose
     schema is ``schema``: what Test (fake) would show real (REQ-1942, REQ-1943)."""
-    from provisa.security.sensitive import sensitive_tag_ids
+    from provisa.security.sensitive import sensitive_assignments
 
-    rt = _table("registered_tables", schema)
     tc = _table("table_columns", schema)
-    ta = _table("tag_assignments", schema)
-    sensitive = await sensitive_tag_ids(conn, _table("tags", schema))
+    sens = sensitive_assignments(
+        _table("tag_assignments", schema),
+        _table("registered_tables", schema),
+        _table("tags", schema),
+    ).subquery()
     result = await conn.execute_core(
-        select(rt.c.table_name, ta.c.column_name)
+        select(sens.c.table_name, sens.c.column_name)
         .select_from(
-            ta.join(rt, rt.c.id == ta.c.table_id).join(
-                tc, (tc.c.table_id == ta.c.table_id) & (tc.c.column_name == ta.c.column_name)
+            sens.join(
+                tc, (tc.c.table_id == sens.c.table_id) & (tc.c.column_name == sens.c.column_name)
             )
         )
-        .where(
-            ta.c.object_type == "column",
-            ta.c.base_tag_id.in_(sorted(sensitive)),
-            tc.c.fake.is_(None),
-        )
+        .where(tc.c.fake.is_(None))
     )
     return sorted({f"{t}.{c}" for t, c in result.fetchall()})
 

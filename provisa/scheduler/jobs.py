@@ -1116,6 +1116,10 @@ async def register_org_triggers(  # REQ-1003, REQ-1266
         from provisa.auth.role_grants import register_org_role_grants
 
         register_org_role_grants(scheduler, org_id)
+        # REQ-2091: and its sensitive columns' fakes and rules, checked for adequacy.
+        from provisa.fakes.adequacy import register_org as register_org_fake_checks
+
+        register_org_fake_checks(scheduler, org_id)
     finally:
         reset_current_env(env_token)
         reset_current_org(org_token)

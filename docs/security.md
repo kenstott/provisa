@@ -422,6 +422,10 @@ The MCP statistics tools (`describe`, `correlate`, `regress`, `compare`, `foreca
 
 Access control is what limits what an agent can learn. To keep identities out of an agent's reach, grant its role only the columns that identify no one; a role that can read a column can aggregate it, and aggregates over small groups can still identify individuals.
 
+## Sensitive-column coverage
+
+The `sensitive_coverage` view in the meta domain lists every sensitive column of the organization with the fake and synthetic rule it declares and a status: `covered`, `no_fake`, or `inadequate` when one of Provisa's adequacy checks failed. The checks look for a fake that leaves real values unchanged, a fake whose kind does not fit what the column holds, and a fake or rule that reads another sensitive column's real value. A data steward sees the columns with no fake in each environment's detail, and a Test (fake) environment refuses to serve data until every sensitive column has one. The checks and the view are described in [Building test environments](test-data.md#coverage-and-adequacy-checks).
+
 ## Rate Limiting
 
 You set per-role limits in `provisa.yaml`: requests per second, concurrent SSE subscriptions and concurrent Arrow Flight streams. They're checked at the API, before anything is compiled or run, and a request over the limit gets HTTP 429 with a `Retry-After` header.

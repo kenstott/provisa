@@ -420,6 +420,10 @@ As ferramentas de estatística do MCP (`describe`, `correlate`, `regress`, `comp
 
 É o controle de acesso que limita o que um agente pode saber. Para manter identidades fora do alcance de um agente, conceda ao papel dele apenas as colunas que não identificam ninguém; um papel que pode ler uma coluna pode agregá-la, e agregados sobre grupos pequenos ainda podem identificar pessoas.
 
+## Cobertura de colunas sensíveis {: #sensitive-column-coverage }
+
+A view `sensitive_coverage` no domínio meta lista cada coluna sensível da organização com o valor fictício e a regra sintética que declara e um status: `covered`, `no_fake`, ou `inadequate` quando uma das verificações de adequação do Provisa falhou. As verificações procuram um valor fictício que deixa os valores reais inalterados, um valor fictício cujo tipo não corresponde ao que a coluna contém, e um valor fictício ou uma regra que lê o valor real de outra coluna sensível. Um data steward vê as colunas sem valor fictício no detalhe de cada ambiente, e um ambiente Test (fake) se recusa a servir dados até que cada coluna sensível tenha um. As verificações e a view são descritas em [Construir ambientes de teste](test-data.md#coverage-and-adequacy-checks).
+
 ## Limitação de taxa {: #rate-limiting }
 
 Você define limites por papel em `provisa.yaml`: requisições por segundo, assinaturas SSE simultâneas e fluxos Arrow Flight simultâneos. Eles são verificados na API, antes de qualquer compilação ou execução, e uma requisição acima do limite recebe HTTP 429 com um cabeçalho `Retry-After`.

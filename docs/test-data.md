@@ -68,6 +68,18 @@ In a Test (synthetic) environment, a sensitive column may not take a rule that c
 
 A Test (fake) environment never shows a sensitive column unless that column declares a fake. While any such column has no fake, creating or switching to Test (fake) is refused, and so is every request into a Test (fake) environment. The refusal names the columns. A holder of the `sensitive_data` right can declare their fakes.
 
+### Coverage and adequacy checks
+
+A data steward sees which sensitive columns have no fake in each environment's detail. For audits and evidence, the `sensitive_coverage` view in the meta domain lists every sensitive column of the organization, one row each: its tags, the fake and synthetic rule it declares, the fake's kind, whether the fake is stable across engines and whether it is computed from the real value, and a status of `covered`, `no_fake` or `inadequate` with the reason. A Test (fake) environment refuses to serve data while any sensitive column has no fake.
+
+A fake or rule written by hand can fall short. Provisa runs three checks on each sensitive column's fake and synthetic rule, every day and when an operator asks (`POST /admin/fakes/adequacy`, with the `sensitive_data` right):
+
+- **Leak rate.** Over a sample of up to 1,000 of the column's values, the share whose fake equals the real value; for `truncate`, `prefix` and `bucket`, also the share that keeps the part the fake keeps. The check fails above the **Fake leak-rate threshold** setting (Admin → Settings → Security; 0.001 by default). A fake computed from measurement or from other columns is not sampled.
+- **Kind mismatch.** The fake's kind against what the column's latest profile run says it plausibly holds. A column the profile reads as email addresses, faked with `city()`, fails.
+- **Copies real values.** A fake or synthetic rule that names a sensitive column with no fake reads that column's real value, and fails.
+
+Only Provisa reads the real values, as the profiler does. A check's result is a share or a flag with its reason, never a value. Each run is stored with its time, and the view shows the latest run of each check. A column with a failed check is `inadequate`; the checks refuse nothing.
+
 ### Mutation handling
 
 Mutation handling is chosen alongside the data mode and applies to any of them. A new environment's mutation handling is **Refused**.

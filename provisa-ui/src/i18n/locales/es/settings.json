@@ -848,6 +848,12 @@
         "label": "Mínimo de disponibilidad",
         "help": "La proporción de consultas de una organización en la última hora que debe tener éxito. Por debajo, se abre una infracción de disponibilidad que se mantiene en el registro de infracciones del nivel de servicio hasta que la disponibilidad se recupere."
       }
+    },
+    "fakes": {
+      "leak_rate_threshold": {
+        "label": "Umbral de tasa de fuga de los valores ficticios",
+        "help": "La proporción de los valores de muestra de una columna sensible que su valor ficticio puede dejar igual al valor real antes de que la comprobación de tasa de fuga lo marque como inadecuado. 0 hace fallar un valor ficticio que deja cualquier valor sin cambiar."
+      }
     }
   }
 }

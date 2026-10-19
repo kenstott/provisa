@@ -25543,3 +25543,19 @@ Request deadlines are watched by one shared watchdog thread per process instead 
 **Code:** `provisa/core/request_deadline.py`
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2091 · Column-Level Masking {#REQ-2091}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A meta-domain view, sensitive_coverage, lists every sensitive column of the org (any tag with the Sensitive data option, pii included), one row each, read through the same statement that decides a Test (fake) environment's uncovered columns (provisa.security.sensitive.sensitive_assignments): its tags; has_fake and has_synthetic_rule; the fake as declared, its kind, that it is deterministic, whether it is stable across engines and whether it is computed from the real value; the synthetic rule as declared; and a status of covered, no_fake or inadequate with the reason. The fake and synthetic_rule columns are governance columns, read with view_governance as masks are. Provisa runs three adequacy checks on each sensitive column's fake and synthetic rule, daily per org and on demand (POST /admin/fakes/adequacy, sensitive_data right), and stores each run's result with its time; the view reads each check's latest: leak_rate (over a sample of up to 1,000 real values read as the org admin, the share whose fake equals the real value and, for truncate, prefix and bucket, the share keeping the part they keep; failed above the fakes.leak_rate_threshold setting, default 0.001; a fake computed from measurement or other columns is not sampled), kind_mismatch (an identifying fake kind other than the one the column's latest profile run proposes for a confident plausible type) and copies_real (a fake or synthetic rule naming a sensitive column with no fake, which it reads real). A column with a failed check is inadequate. Results are shares, flags and reasons, never values. The checks refuse nothing. docs say where coverage is reported (each environment's detail for the steward, the view for audits and evidence) and that a Test (fake) environment refuses to serve data until every sensitive column has a fake.
+
+**Use case:** An auditor asks which sensitive columns test environments could expose; the steward answers with a query over sensitive_coverage, which shows each column's fake, its latest adequacy checks and why any column is not covered.
+
+**Code:** `provisa/fakes/adequacy.py`, `provisa/security/sensitive.py`, `provisa/core/env_data.py`, `provisa/api/_meta_views.py`, `provisa/core/schema_org.py`, `provisa/api/admin/fakes_router.py`, `provisa/core/settings_catalog.py`
+
+**Tests:** `tests/unit/test_sensitive_coverage.py`
+
+**Docs:** [security.md](../security.md), [test-data.md](../test-data.md)

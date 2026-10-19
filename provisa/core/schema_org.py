@@ -1120,6 +1120,26 @@ synthetic_generations = Table(
     Column("seconds", Float, nullable=False),
 )
 
+# REQ-2091: the adequacy checks Provisa runs on each sensitive column's fake and synthetic rule,
+# one row per check per run, so the sensitive_coverage view reads each check's latest. A result is
+# a number and a flag, never a value: ``measure`` is a share or a count, ``detail`` says why.
+fake_adequacy_checks = Table(
+    "fake_adequacy_checks",
+    metadata,
+    Column(
+        "table_id",
+        Integer,
+        ForeignKey("registered_tables.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column("column_name", Text, primary_key=True),
+    Column("check_name", Text, primary_key=True),  # leak_rate | kind_mismatch | copies_real
+    Column("checked_at", DateTime(timezone=True), primary_key=True),
+    Column("status", Text, nullable=False),  # passed | failed | not_run
+    Column("measure", Float),
+    Column("detail", Text, nullable=False),
+)
+
 synthetic_source_bindings = Table(
     "synthetic_source_bindings",
     metadata,

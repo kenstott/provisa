@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 
 from provisa.core.column_scope import SCOPE_DOMAIN
 
@@ -55,6 +55,33 @@ def system_sensitive_tag_ids() -> frozenset[str]:
     from provisa.core.models import SYSTEM_TAGS
 
     return frozenset(t.id for t in SYSTEM_TAGS if t.sensitive)
+
+
+def sensitive_assignments(tag_assignments: Any, registered_tables: Any, tags_table: Any) -> Any:
+    """Each (table_id, table_name, column_name, base_tag_id) a sensitive tag is assigned to a
+    column at: a built-in sensitive tag, or one of the organisation's own with the option set.
+    One statement, so the environment's data choice (provisa.core.env_data) and the
+    sensitive_coverage meta view read sensitivity alike; the tables are passed so another
+    environment's schema can be addressed."""
+    ta, rt = tag_assignments, registered_tables
+    return (
+        select(
+            rt.c.id.label("table_id"),
+            rt.c.table_name,
+            ta.c.column_name,
+            ta.c.base_tag_id,
+        )
+        .select_from(ta.join(rt, rt.c.id == ta.c.table_id))
+        .where(
+            ta.c.object_type == "column",
+            or_(
+                ta.c.base_tag_id.in_(sorted(system_sensitive_tag_ids())),
+                ta.c.base_tag_id.in_(
+                    select(tags_table.c.id).where(tags_table.c.sensitive.is_(True))
+                ),
+            ),
+        )
+    )
 
 
 async def sensitive_tag_ids(conn: "Connection", tags_table: Any = None) -> frozenset[str]:

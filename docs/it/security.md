@@ -420,6 +420,10 @@ Gli strumenti statistici MCP (`describe`, `correlate`, `regress`, `compare`, `fo
 
 È il controllo degli accessi a limitare ciò che un agente può apprendere. Per tenere le identità fuori dalla portata di un agente, concedete al suo ruolo solo le colonne che non identificano nessuno; un ruolo che può leggere una colonna può aggregarla, e aggregati su gruppi piccoli possono comunque identificare persone.
 
+## Copertura delle colonne sensibili {: #sensitive-column-coverage }
+
+La vista `sensitive_coverage` nel dominio meta elenca ogni colonna sensibile dell'organizzazione con il valore fittizio e la regola sintetica che dichiara e uno stato: `covered`, `no_fake`, oppure `inadequate` quando uno dei controlli di adeguatezza di Provisa è fallito. I controlli cercano un valore fittizio che lascia invariati i valori reali, un valore fittizio il cui tipo non corrisponde a ciò che la colonna contiene, e un valore fittizio o una regola che legge il valore reale di un'altra colonna sensibile. Un data steward vede le colonne senza valore fittizio nel dettaglio di ogni ambiente, e un ambiente Test (fake) rifiuta di servire dati finché ogni colonna sensibile non ne ha uno. I controlli e la vista sono descritti in [Costruire ambienti di test](test-data.md#coverage-and-adequacy-checks).
+
 ## Limitazione della frequenza {: #rate-limiting }
 
 I limiti per ruolo si impostano in `provisa.yaml`: richieste al secondo, sottoscrizioni SSE contemporanee e flussi Arrow Flight contemporanei. Vengono controllati nell'API, prima che qualcosa sia compilato o eseguito, e una richiesta oltre il limite riceve HTTP 429 con un header `Retry-After`.

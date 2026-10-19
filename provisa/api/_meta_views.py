@@ -54,6 +54,100 @@ def _system_tag_rows_sql() -> str:
 _CHECKER_TYPES_SQL = ", ".join(f"'{name}'" for name in sorted(CHECKERS))
 
 
+def _sensitive_assignments_sql() -> str:
+    """REQ-2091: the sensitive (table, column, tag) assignments, as the one statement
+    provisa.security.sensitive.sensitive_assignments defines -- the same reading of sensitivity
+    the environment's Test (fake) choice applies (provisa.core.env_data)."""
+    from sqlalchemy.dialects import postgresql
+
+    from provisa.core.schema_org import registered_tables, tag_assignments, tags
+    from provisa.security.sensitive import sensitive_assignments
+
+    statement = sensitive_assignments(tag_assignments, registered_tables, tags)
+    return str(
+        statement.compile(dialect=postgresql.dialect(), compile_kwargs={"literal_binds": True})
+    )
+
+
+def _sql_names(names: tuple[str, ...]) -> str:
+    return ", ".join(f"'{n}'" for n in names)
+
+
+def _sensitive_coverage_sql() -> str:
+    """REQ-2091: one row per sensitive column -- its tags, its fake and synthetic rule as declared,
+    and whether it is covered, has no fake, or has a fake or rule an adequacy check failed (the
+    latest run of each check, provisa.fakes.adequacy)."""
+    from provisa.fakes.adequacy import COPIES_REAL, DERIVES_FROM_REAL, KIND_MISMATCH, LEAK_RATE
+
+    kind = (
+        "CASE WHEN POSITION('(' IN tc.fake) > 0 "
+        "THEN SUBSTR(tc.fake, 1, POSITION('(' IN tc.fake) - 1) ELSE tc.fake END"
+    )
+
+    def latest(check: str, alias: str) -> str:
+        return (
+            f"LEFT JOIN latest {alias} ON {alias}.table_id = c.table_id "
+            f"AND {alias}.column_name = c.column_name AND {alias}.check_name = '{check}'"
+        )
+
+    return f"""
+        CREATE OR REPLACE VIEW sensitive_coverage AS
+        WITH sens AS ({_sensitive_assignments_sql()}),
+        cols AS (
+            SELECT table_id, table_name, column_name,
+                   STRING_AGG(DISTINCT base_tag_id, ', ' ORDER BY base_tag_id) AS tags
+            FROM sens
+            GROUP BY table_id, table_name, column_name
+        ),
+        latest AS (
+            SELECT k.table_id, k.column_name, k.check_name, k.status, k.measure, k.detail,
+                   k.checked_at
+            FROM fake_adequacy_checks k
+            WHERE k.checked_at = (
+                SELECT MAX(x.checked_at) FROM fake_adequacy_checks x
+                WHERE x.table_id = k.table_id AND x.column_name = k.column_name
+                  AND x.check_name = k.check_name
+            )
+        ),
+        failed AS (
+            SELECT table_id, column_name,
+                   STRING_AGG(check_name || ': ' || detail, '; ' ORDER BY check_name) AS reason
+            FROM latest
+            WHERE status = 'failed'
+            GROUP BY table_id, column_name
+        )
+        SELECT CAST(c.table_id AS TEXT) || ':' || c.column_name AS column_key,
+               c.table_id, c.table_name, rt.domain_id, c.column_name, c.tags,
+               CASE WHEN tc.fake IS NOT NULL THEN TRUE ELSE FALSE END AS has_fake,
+               CASE WHEN tc.synthetic_rule IS NOT NULL THEN TRUE ELSE FALSE END
+                   AS has_synthetic_rule,
+               tc.fake,
+               CASE WHEN tc.fake IS NULL THEN NULL ELSE {kind} END AS fake_kind,
+               CASE WHEN tc.fake IS NULL THEN NULL ELSE TRUE END AS fake_deterministic,
+               CASE WHEN tc.fake IS NULL THEN NULL ELSE tc.fake_stable END AS fake_stable,
+               CASE WHEN tc.fake IS NULL THEN NULL
+                    WHEN {kind} IN ({_sql_names(DERIVES_FROM_REAL)}) THEN TRUE
+                    ELSE FALSE END AS fake_derives_from_real,
+               tc.synthetic_rule,
+               CASE WHEN tc.fake IS NULL THEN 'no_fake'
+                    WHEN f.reason IS NOT NULL THEN 'inadequate'
+                    ELSE 'covered' END AS status,
+               CASE WHEN tc.fake IS NULL THEN 'no fake declared' ELSE f.reason END AS reason,
+               lr.measure AS leak_rate, lr.status AS leak_rate_status,
+               km.status AS kind_mismatch_status, cr.status AS copies_real_status,
+               (SELECT MAX(l.checked_at) FROM latest l
+                WHERE l.table_id = c.table_id AND l.column_name = c.column_name) AS checked_at,
+               CAST(rt.tenant_id AS TEXT) AS tenant_id
+        FROM cols c
+        JOIN registered_tables rt ON rt.id = c.table_id
+        JOIN table_columns tc ON tc.table_id = c.table_id AND tc.column_name = c.column_name
+        LEFT JOIN failed f ON f.table_id = c.table_id AND f.column_name = c.column_name
+        {latest(LEAK_RATE, "lr")}
+        {latest(KIND_MISMATCH, "km")}
+        {latest(COPIES_REAL, "cr")}
+    """
+
+
 _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-1373/1377: the tag registry and its assignments as queryable metadata, so
     # governance reporting (e.g. expiring deprecations) runs through the governed pipeline.
@@ -89,6 +183,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN sources s ON s.id = rt.source_id
         WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
     """,
+    # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
+    "sensitive_coverage": _sensitive_coverage_sql(),
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
         SELECT id, tag_id, base_tag_id, object_type, source_id, table_id, column_name,

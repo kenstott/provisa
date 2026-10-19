@@ -848,6 +848,12 @@
         "label": "Verfügbarkeitsuntergrenze",
         "help": "Der Anteil der Abfragen einer Organisation in der letzten Stunde, der erfolgreich sein muss. Darunter wird eine Verfügbarkeitsverletzung eröffnet und im Protokoll der Service-Level-Verletzungen geführt, bis sich die Verfügbarkeit erholt."
       }
+    },
+    "fakes": {
+      "leak_rate_threshold": {
+        "label": "Leckraten-Schwelle für Fake-Werte",
+        "help": "Der Anteil der Stichprobenwerte einer sensiblen Spalte, den ihr Fake-Wert gleich dem echten Wert lassen darf, bevor die Leckraten-Prüfung den Fake-Wert als unzureichend markiert. 0 lässt einen Fake-Wert scheitern, der irgendeinen Wert unverändert lässt."
+      }
     }
   }
 }
