@@ -884,13 +884,17 @@
         "title": "As temporadas mais secas, em GraphQL",
         "description": "A mesma vista em GraphQL, com as temporadas de menos chuva primeiro: são as de maior sinistralidade e menor produtividade."
       },
+      "agricultureNotebook": {
+        "title": "Quanto o clima explica?",
+        "description": "O notebook da demo, executado no seu navegador: cada temporada de condado lida no pandas como analyst, a sinistralidade correlacionada com a chuva da temporada, os seus dias acima de 32 °C e a parte das perdas do mercado atribuída à seca e ao calor, uma regressão ajustada sobre elas e o gráfico. O clima explica 54% da variação da sinistralidade. Cada 10 dias acima de 32 °C somam 20 pontos de sinistralidade, 100 mm a menos de chuva somam 7 e 10 pontos a mais das perdas do mercado devidas a seca e calor somam 9. Na carteira atual, uma temporada como a de 2012 tem uma sinistralidade esperada de 1,75."
+      },
       "agricultureRest": {
         "title": "Por ano via REST",
         "description": "A vista também é um endpoint REST, agrupada por ano agrícola e somada no servidor. Qualquer cliente que fale HTTP obtém a resposta sem escrever SQL."
       },
       "agricultureRecap": {
         "title": "O que você viu",
-        "description": "Você viu os dados da própria seguradora, lidos ao vivo e cruzados por condado e ano de safra com dados públicos de perdas, clima e produtividade carregados uma vez, tudo em um modelo governado. Uma view responde se o clima explica as perdas, em SQL, GraphQL e REST."
+        "description": "Você viu os dados da própria seguradora, lidos ao vivo e cruzados por condado e ano de safra com dados públicos de perdas, clima e produtividade carregados uma vez, tudo em um modelo governado. Uma view responde se o clima explica as perdas, em SQL, GraphQL e REST. O notebook mede-o: o clima explica 54% da variação da sinistralidade e, na carteira atual, uma temporada como a de 2012 tem uma sinistralidade esperada de 1,75."
       },
       "retailScenario": {
         "title": "Um grupo, duas regiões",

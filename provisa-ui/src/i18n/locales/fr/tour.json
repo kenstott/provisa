@@ -884,13 +884,17 @@
         "title": "Les saisons les plus sèches, en GraphQL",
         "description": "La même vue en GraphQL, les saisons les moins pluvieuses d'abord : ce sont celles aux ratios sinistres/primes les plus élevés et aux rendements les plus bas."
       },
+      "agricultureNotebook": {
+        "title": "Quelle part la météo explique-t-elle ?",
+        "description": "Le notebook de la démo, exécuté dans votre navigateur : chaque saison de comté lue dans pandas en tant qu'analyst, le ratio sinistres/primes corrélé à la pluie de la saison, à ses jours au-dessus de 32 °C et à la part des pertes du marché due à la sécheresse et à la chaleur, une régression ajustée sur ces mesures et le graphique. La météo explique 54 % de la variation du ratio sinistres/primes. Chaque tranche de 10 jours au-dessus de 32 °C ajoute 20 points de ratio, 100 mm de pluie en moins en ajoutent 7, et 10 points de plus des pertes du marché dues à la sécheresse et à la chaleur en ajoutent 9. Sur le portefeuille actuel, une saison comme 2012 a un ratio attendu de 1,75."
+      },
       "agricultureRest": {
         "title": "Par année via REST",
         "description": "La vue est aussi un point de terminaison REST, groupé par année de récolte et totalisé sur le serveur. Tout client qui parle HTTP obtient la réponse sans écrire de SQL."
       },
       "agricultureRecap": {
         "title": "Ce que vous avez vu",
-        "description": "Vous avez vu les données propres de l'assureur, lues en direct et rapprochées par comté et année de récolte de données publiques sur les sinistres, la météo et les rendements chargées une fois, le tout dans un modèle gouverné. Une vue indique si la météo explique les sinistres, en SQL, GraphQL et REST."
+        "description": "Vous avez vu les données propres de l'assureur, lues en direct et rapprochées par comté et année de récolte de données publiques sur les sinistres, la météo et les rendements chargées une fois, le tout dans un modèle gouverné. Une vue indique si la météo explique les sinistres, en SQL, GraphQL et REST. Le notebook le mesure : la météo explique 54 % de la variation du ratio sinistres/primes, et sur le portefeuille actuel une saison comme 2012 a un ratio attendu de 1,75."
       },
       "retailScenario": {
         "title": "Un groupe, deux régions",
