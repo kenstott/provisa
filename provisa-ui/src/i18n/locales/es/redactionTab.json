@@ -1,13 +1,13 @@
 {
   "redactionTab": {
-    "panelTitle": "Reglas de ocultación",
+    "panelTitle": "Reglas de redacción",
     "loading": "Cargando…",
-    "intro": "El texto que coincide con estas reglas se sustituye por [REDACTED:<rule>] antes de salir de Provisa: en las trazas y los registros exportados, la salida de los contenedores, el registro de auditoría y los mensajes de error devueltos a los clientes. Los secretos propios de la organización se ocultan automáticamente.",
-    "bestEffort": "La ocultación se hace en la medida de lo posible. Los patrones integrados son un conjunto inicial, no una garantía: añada aquí patrones para los formatos sensibles propios de su organización. Los registros propios de una fuente quedan fuera del alcance de Provisa.",
-    "unresolved": "Estas reglas de referencia no se resuelven y no ocultan nada: {{names}}",
+    "intro": "El texto que coincide con estas reglas se sustituye por [REDACTED:<rule>] antes de salir de Provisa: en las trazas y los registros exportados, la salida de los contenedores, el registro de auditoría y los mensajes de error devueltos a los clientes. Los secretos propios de la organización se redactan automáticamente.",
+    "bestEffort": "La redacción se hace en la medida de lo posible. Los patrones integrados son un conjunto inicial, no una garantía: añada aquí patrones para los formatos sensibles propios de su organización. Los registros propios de una fuente quedan fuera del alcance de Provisa.",
+    "unresolved": "Estas reglas de referencia no se resuelven y no redactan nada: {{names}}",
     "orgTitle": "Reglas de esta organización",
     "deploymentTitle": "Reglas del despliegue (todas las organizaciones)",
-    "automaticTitle": "Secretos ocultados automáticamente",
+    "automaticTitle": "Secretos redactados automáticamente",
     "automaticHelp": "Los secretos de la bóveda de esta organización y cada secreto que nombra su modelo, solo por su nombre. Los valores resueltos para usuarios concretos se añaden a medida que se usan ({{count}} hasta ahora).",
     "builtinTitle": "Patrones integrados",
     "none": "Ninguna",
