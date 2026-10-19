@@ -176,43 +176,45 @@ Les relations sont enregistrées, approuvées et appliquées comme les seuls che
 
 ## Modèle de sécurité {: #security-model }
 
-C'est ici que « sur le chemin qu'emprunte déjà chaque requête » cesse d'être un slogan. Provisa applique un modèle de sécurité multicouche à travers chaque langage de requête (GraphQL, SQL, Cypher) et chaque transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). La gouvernance s'applique uniformément — aucun chemin de requête ne la contourne. La couverture est totale par construction, non par diligence : ajoutez une source, une colonne ou une relation et chaque couche s'y applique automatiquement, sans rien à penser à enregistrer.
+C'est ici que « sur le chemin que prend déjà chaque requête » doit tenir. Provisa applique un même modèle de sécurité en couches à chaque langage de requête (GraphQL, SQL, Cypher) et à chaque transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket), et aucun chemin de requête ne le contourne. La couverture vient de la conception, donc personne n'a rien à retenir : ajoutez une source, une colonne ou une relation, et chaque couche s'y applique aussitôt, sans rien de plus à enregistrer.
 
-Les couches s'appliquent dans l'ordre. Une demande doit franchir chaque couche avant que la suivante soit évaluée.
+Les couches s'appliquent dans l'ordre, et une requête doit franchir chacune avant que la suivante soit vérifiée.
 
 ### Couche 0 — Filtrage de l'introspection {: #layer-0-introspection-filtering }
 
-Le schéma et le catalogue présentés à un rôle ne contiennent que les tables de sa liste `domain_access` et les colonnes qui passent les règles `visible_to` par colonne. Les objets hors de l'accès d'un rôle sont invisibles au moment de la découverte — ils ne peuvent être ni interrogés, ni autocomplétés, ni supposés exister. Cela vaut pour le schéma GraphQL, le catalogue SQL et l'explorateur de schéma de l'éditeur de requêtes.
+Le schéma et le catalogue qu'un rôle voit ne contiennent que les tables de sa liste `domain_access` et les colonnes qui passent leurs règles `visible_to`. Tout ce qui sort de l'accès du rôle est invisible d'emblée : impossible de l'interroger, de l'autocompléter, ni même d'en déduire l'existence. Cela couvre le schéma GraphQL, le catalogue SQL et le navigateur de schéma de l'éditeur de requêtes.
 
 ### Couche 1 — Accès public {: #layer-1-public-access }
 
-Les tables des domaines sans restriction `domain_access` sont visibles de toutes les identités authentifiées, sans configuration supplémentaire. Zéro friction pour les données réellement publiques.
+Les tables des domaines sans restriction `domain_access` sont visibles par toute identité authentifiée, sans rien de plus à configurer. Les données vraiment publiques ne demandent aucun effort.
 
 ### Couche 2 — Accès au domaine {: #layer-2-domain-access }
 
-Chaque rôle porte une liste `domain_access` d'identifiants de domaines. Une requête qui touche une table hors de ces domaines est rejetée avant exécution. C'est la limite grossière de propriété — un rôle RH ne peut pas atteindre les tables financières, quelle que soit la façon dont le SQL est écrit.
+Chaque rôle porte une liste `domain_access` d'ID de domaines, et une requête qui touche une table hors de ces domaines est refusée avant de s'exécuter. C'est la grande frontière de propriété : un rôle RH n'atteint pas les tables financières, quelle que soit l'écriture du SQL.
 
 ### Couche 3 — Sécurité au niveau des lignes {: #layer-3-row-level-security }
 
-Une fois l'accès au domaine confirmé, des prédicats `WHERE` par table et par rôle sont injectés dans chaque `SELECT` au moment de l'exécution. Les prédicats s'évaluent contre les données brutes. Un responsable régional interrogeant une table de commandes partagée ne voit que les lignes de sa région, même sur un `SELECT *`.
+Une fois l'accès au domaine confirmé, des prédicats `WHERE` par table et par rôle sont ajoutés à chaque `SELECT` à l'exécution, et évalués sur les données brutes. Une responsable régionale qui interroge une table de commandes partagée ne voit que les lignes de sa région, même avec `SELECT *`.
 
 ### Couche 4 — Visibilité et masquage des colonnes {: #layer-4-column-visibility-and-masking }
 
-Les colonnes dont la liste `visible_to` exclut le rôle demandeur sont retirées de la sortie de requête. Les colonnes portant une règle de masquage voient leurs valeurs remplacées — caviardage par expression régulière, remplacement par une constante ou troncature — avant que les résultats quittent le serveur. Le masquage s'applique dans tous les langages de requête et tous les formats de sortie.
+Les colonnes dont la liste `visible_to` exclut le rôle demandeur sont retirées de la sortie. Les colonnes soumises à une règle de masquage voient leurs valeurs remplacées par un caviardage regex, une constante ou une troncature avant que les résultats ne quittent le serveur. Le masquage s'applique dans chaque langage de requête et chaque format de sortie.
 
 ### Couche 5 — Garde des prédicats {: #layer-5-predicate-guard }
 
-Les colonnes masquées sont rejetées des clauses `WHERE` et `HAVING`. Sans cela, un appelant pourrait déduire la valeur non masquée en la cherchant par dichotomie dans un filtre, alors même que la sortie est masquée. Le rejet est appliqué à l'analyse de la requête, avant exécution.
+Les colonnes masquées sont refusées dans les clauses `WHERE` et `HAVING`. Sinon, un appelant pourrait retrouver la vraie valeur par recherche dichotomique dans un filtre, même avec une sortie masquée. Le refus a lieu à l'analyse de la requête, avant toute exécution.
 
 ### Gouvernance des relations {: #relationship-governance }
 
-Les conditions de JOIN en SQL doivent correspondre à une relation enregistrée et approuvée entre tables. Les jointures non approuvées sont rejetées. Chaque relation porte une raison et une description lisibles — un guide, tant pour les utilisateurs que pour les agents autonomes, sur la raison d'être d'un chemin de parcours. C'est une politique de gouvernance, non une frontière de sécurité dure : les couches 2 à 5 tiennent quelle que soit la structure de jointure, si bien qu'un contournement délibéré n'expose pas de données que le rôle ne pourrait atteindre par deux requêtes séparées. Les tentatives de contournement sont journalisées et auditables.
+En SQL, une condition JOIN doit correspondre à une relation enregistrée et approuvée entre les tables, et une jointure non approuvée est refusée. Chaque relation porte une raison et une description lisibles, qui disent aux personnes comme aux agents autonomes pourquoi ce chemin existe. C'est une politique de gouvernance et non une frontière de sécurité stricte. Les couches 2 à 5 tiennent quelle que soit la forme de la jointure, donc un contournement délibéré n'expose rien que le rôle ne pourrait atteindre avec deux requêtes séparées, et chaque tentative est journalisée pour l'audit.
 
-Aucune jointure invalide ne s'exécute jamais sur vos données. Les rôles sont gouvernés par défaut ; s'en exclure est un octroi délibéré du droit `ignore_relationships` à un rôle de confiance. Le jeton OAuth d'un agent correspond à un rôle, si bien qu'un agent reçoit les mêmes couches qu'une personne. Les catalogues de données qui fournissent une couche de contexte disent à un agent ce qu'il devrait faire ; Provisa impose ce qu'il peut faire.
+Aucune jointure invalide ne s'exécute jamais sur vos données. Les rôles sont gouvernés par défaut, et en sortir veut dire accorder délibérément le droit `ignore_relationships` à un rôle de confiance. Le jeton OAuth d'un agent correspond à un rôle, donc un agent reçoit les mêmes couches qu'une personne. Les catalogues de données dotés d'une couche de contexte disent à un agent ce qu'il devrait faire ; Provisa impose ce qu'il peut faire.
 
 ---
 
-Ces couches se composent. Un rôle avec accès au domaine, RLS et colonnes masquées a les cinq contraintes actives simultanément. Ajouter une nouvelle source de données, colonne ou relation n'exige pas de mettre à jour chaque règle — chaque couche se configure indépendamment et s'applique automatiquement à toute requête qui touche des objets gouvernés.
+Ces couches se combinent. Un rôle avec accès aux domaines, RLS et colonnes masquées a toutes les couches actives à la fois. Ajouter une source, une colonne ou une relation n'oblige pas à mettre à jour chaque règle, car chaque couche se configure à part et s'applique d'elle-même à toute requête qui touche des objets gouvernés.
+
+## Démarrage rapide {: #quick-start }
 
 ### macOS
 

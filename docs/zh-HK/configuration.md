@@ -63,7 +63,7 @@ sources:
 | `allowed_domains` | `[]` | 將此數據來源限制於特定網域 ID；空值 = 不限制 |
 | `description` | `""` | |
 
-### 支援的數據來源類型 {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### 支援的數據來源類型 {: #supported-source-types }
 
 | 類型 | 連線方式 | 備註 |
 | ------ | ----------------- | ------- |
@@ -1392,7 +1392,7 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### 遙測篩選器 {: #telemetry-filters-tool-verified }
+### 遙測篩選器 {: #telemetry-filters }
 
 Provisa 執行兩條獨立的 OTLP 匯出路徑：你的內部收集器，以及選用的 Provisa 支援端點。 每條路徑各有自己的篩選器。篩選器在跨距離開處理程序之前，於包覆的 `_FilteringExporter` 內執行 — 原始跨距物件永不被變更。
 
@@ -1422,11 +1422,11 @@ db.statement: SELECT * FROM orders WHERE region = 'us-west' AND amount > 500
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### 支援端點 {: #support-endpoint-tool-verified }
+### 支援端點 {: #support-endpoint }
 
 `support_endpoint`（或環境變數 `PROVISA_SUPPORT_OTLP_ENDPOINT`）會將遙測轉送給 Provisa 支援以供診斷。 未設定時，沒有數據會經由這條路徑離開你的基礎架構。 支援篩選器獨立於內部篩選器運作 — 你可以在兩邊匯出中都塗黑 SQL 字面值，同時仍與支援分享跨距時間與錯誤數據。
 
-### 端點協定偵測 {: #endpoint-protocol-detection-tool-verified }
+### 端點協定偵測 {: #endpoint-protocol-detection }
 
 Provisa 從端點 URL 的配置選擇 OTLP/HTTP 或 OTLP/gRPC。 以 `http://` 或 `https://` 開頭的 URL 使用 OTLP/HTTP，並自動附加 `/v1/traces`、`/v1/metrics` 與 `/v1/logs`。 其他任何配置皆使用 OTLP/gRPC 並帶 `insecure=True`。
 
@@ -1436,7 +1436,7 @@ Provisa 從端點 URL 的配置選擇 OTLP/HTTP 或 OTLP/gRPC。 以 `http://` �
 
 優先順序：`PROVISA_ENGINE` 環境變數 → 持久化的管理員 UI `federation_engine` 組態欄位 → `duckdb`。變更於服務重新啟動時生效。
 
-### 引擎總覽 {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### 引擎總覽 {: #engine-overview }
 
 | 引擎鍵 | 標籤 | 方言 | MPP | 外部連結機制 | 驗證 |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

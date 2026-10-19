@@ -526,7 +526,7 @@ Dois relacionamentos registrados: `OrderCustomerLink.customer_id → CustomerHub
 `OrderCustomerLink.order_id → OrderHub`, ambos many-to-one
 .
 
-#### Bridge / aggregate link
+#### Bridge / link agregado {: #bridge-aggregate-link }
 
 Adicione medidas ao link e o Provisa emite o `GROUP BY`, produzindo um bridge pré-agregado. No grão
 `order_id` com um cliente por pedido, o resultado é uma linha agregada por pedido:
@@ -631,7 +631,7 @@ FK do fact.
 Metrics auto-registrados aparecem na página Metrics com um badge **fact**. Você pode editá-los
 como qualquer outro metric.
 
-### Views compostas por metric (view_metrics) {: #metric-composed-views-view_metrics-req-1318 }
+### Views compostas por metric (view_metrics) {: #metric-composed-views-view_metrics }
 
 Uma view `view_metrics` fecha o grão de um metric no momento da definição. Declare os nomes dos
 metrics, colunas de dimensão, e filtros opcionais; o compilador gera o SELECT.

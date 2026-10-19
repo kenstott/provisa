@@ -176,43 +176,45 @@ Relationships are registered, approved, and enforced as the only legal JOIN path
 
 ## Security Model
 
-This is where "on the path every query already takes" stops being a slogan. Provisa enforces a multi-layered security model across every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket). Governance is applied uniformly — there is no query path that bypasses it. Coverage is total by construction, not by diligence: add a source, column, or relationship and every layer applies to it automatically, with nothing to remember to register.
+This is where "on the path every query already takes" has to hold up. Provisa applies one layered security model to every query language (GraphQL, SQL, Cypher) and every transport (REST, gRPC, Arrow Flight, JDBC, pgwire, Bolt, WebSocket), and no query path goes around it. Coverage comes from the design, so nobody has to remember anything: add a source, a column or a relationship, and every layer applies to it at once, with nothing extra to register.
 
-The layers apply in order. A request must clear each layer before the next is evaluated.
+The layers apply in order, and a request must clear each one before the next is checked.
 
 ### Layer 0 — Introspection filtering
 
-The schema and catalog presented to a role contain only the tables in its `domain_access` list and the columns that pass per-column `visible_to` rules. Objects outside a role's access are invisible at discovery time — they cannot be queried, autocompleted, or inferred to exist. This applies to the GraphQL schema, SQL catalog, and the query editor's schema browser.
+The schema and catalog a role sees hold only the tables in its `domain_access` list and the columns that pass their `visible_to` rules. Anything outside the role's access is invisible from the start: it can't be queried, autocompleted or even inferred to exist. This covers the GraphQL schema, the SQL catalog and the query editor's schema browser.
 
 ### Layer 1 — Public access
 
-Tables in domains with no `domain_access` restriction are visible to all authenticated identities with no additional configuration. Zero friction for genuinely public data.
+Tables in domains with no `domain_access` restriction are visible to every authenticated identity, with nothing more to configure. Data that really is public takes no effort.
 
 ### Layer 2 — Domain access
 
-Each role carries a `domain_access` list of domain IDs. A query that touches a table outside those domains is rejected before execution. This is the coarse ownership boundary — an HR role cannot reach finance tables regardless of how the SQL is written.
+Each role carries a `domain_access` list of domain IDs, and a query that touches a table outside those domains is refused before it runs. This is the broad ownership boundary: an HR role can't reach finance tables, however the SQL is written.
 
 ### Layer 3 — Row-level security
 
-After domain access is confirmed, per-table, per-role `WHERE` predicates are injected into every `SELECT` at execution time. The predicates evaluate against raw data. A regional manager querying a shared orders table sees only their region's rows even on a `SELECT *`.
+Once domain access is confirmed, per-table, per-role `WHERE` predicates are added to every `SELECT` at execution time, and they're evaluated against the raw data. A regional manager querying a shared orders table sees only their region's rows, even with `SELECT *`.
 
 ### Layer 4 — Column visibility and masking
 
-Columns with a `visible_to` list that excludes the requesting role are stripped from query output. Columns with a masking rule have their values replaced — regex redaction, constant replacement, or truncation — before results leave the server. Masking applies in all query languages and output formats.
+Columns whose `visible_to` list leaves out the requesting role are removed from the output. Columns with a masking rule have their values replaced by regex redaction, a constant or truncation before the results leave the server. Masking applies in every query language and every output format.
 
 ### Layer 5 — Predicate guard
 
-Masked columns are rejected from `WHERE` and `HAVING` clauses. Without this, a caller could infer the unmasked value by binary-searching it in a filter even though the output is masked. Rejection is enforced at query parse time, before execution.
+Masked columns are refused in `WHERE` and `HAVING` clauses. Otherwise a caller could work out the real value by binary-searching it in a filter, even though the output is masked. The refusal happens when the query is parsed, before anything runs.
 
 ### Relationship governance
 
-JOIN conditions in SQL must match a registered, approved relationship between tables. Unapproved joins are rejected. Each relationship carries a human-readable reason and description — guidance for both users and autonomous agents about why a traversal path exists. This is governance policy, not a hard security boundary: Layers 2–5 hold regardless of join structure, so a deliberate circumvention does not expose data the role could not reach through two separate queries. Circumvention attempts are logged and auditable.
+In SQL, a JOIN condition must match a registered, approved relationship between the tables, and an unapproved join is refused. Each relationship carries a readable reason and description, which tell people and autonomous agents why the path exists. This is governance policy and not a hard security boundary. Layers 2 to 5 hold whatever the join looks like, so a deliberate workaround exposes nothing the role couldn't reach with two separate queries, and every attempt is logged for audit.
 
-No invalid join ever runs on your data. Roles are governed by default; opting out is a deliberate grant of the `ignore_relationships` right to a role you trust. An agent's OAuth token maps to a role, so an agent gets the same layers a person does. Data catalogs that provide a context layer tell an agent what it should do; Provisa enforces what it can do.
+No invalid join ever runs on your data. Roles are governed by default, and opting out means deliberately granting the `ignore_relationships` right to a role you trust. An agent's OAuth token maps to a role, so an agent gets the same layers a person does. Data catalogs with a context layer tell an agent what it should do; Provisa enforces what it can do.
 
 ---
 
-These layers compose. A role with domain access, RLS, and masked columns has all five constraints active simultaneously. Adding a new data source, column, or relationship does not require updating every rule — each layer is configured independently and applies automatically to any query that touches governed objects.
+These layers compose. A role with domain access, RLS and masked columns has every layer active at once. Adding a source, a column or a relationship doesn't mean updating every rule, because each layer is configured on its own and applies by itself to any query that touches governed objects.
+
+## Quick Start
 
 ### macOS
 

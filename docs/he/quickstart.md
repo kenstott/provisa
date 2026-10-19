@@ -1,8 +1,8 @@
 # מדריך התחלה מהירה למפתחים {: #developer-quick-start }
 
-להערכת Provisa ללא בנייה מהמקור, ראו [התחלה מהירה](index.md) — הורידו את מתקין ה-macOS, Windows או Linux והריצו `provisa start`.
+כדי להעריך את Provisa בלי לבנות מקוד המקור, ראו את [ההתחלה המהירה](index.md): הורידו את תוכנת ההתקנה ל-macOS, Windows או Linux והריצו `provisa start`.
 
-מדריך זה מיועד להרצת Provisa **מתוך המאגר (repository)** — לפיתוח פעיל, דיבוג, או תרומת קוד.
+המדריך הזה מסביר איך להריץ את Provisa **מתוך המאגר (repository)**, כשאתם מפתחים, מדבגים או תורמים קוד.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - שכבת הפיתוח של Docker Compose (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - Backend API בפורט 8001 (טעינה חוזרת חמה (hot-reload) בעת שינויים ב-`provisa/` וב-`config/`)
 - שרת הפיתוח של Vite עבור ה-UI בפורט 3000 (HMR)
-- מעקב (tracing) של OpenTelemetry ו-Grafana בכתובת `http://localhost:3100`. מחסנית ה-Observability היא פרופיל `observability` אופציונלי (opt-in) של docker-compose (OTel Collector, Prometheus, Tempo, Grafana), שאינו פעיל כברירת מחדל ברמת הפלטפורמה; `start-ui.sh` מפעיל אותה כנוחות של סקריפט פיתוח אלא אם מעבירים `--no-observability`.
+- מעקב (tracing) של OpenTelemetry ו-Grafana בכתובת `http://localhost:3100`. מחסנית ה-Observability (OTel Collector, Prometheus, Tempo, Grafana) היא פרופיל `observability` אופציונלי של docker-compose, והיא כבויה כברירת מחדל בפלטפורמה; `start-ui.sh` מפעיל אותה לנוחות בפיתוח, אלא אם תעבירו `--no-observability`.
 
-**Ctrl+C** עוצר את הכול — Backend, UI, וכל שירותי ה-Docker — ומבטל כל תיקוני (patches) קונפיגורציה.
+**Ctrl+C** עוצר הכול (Backend, UI וכל שירותי ה-Docker) ומבטל כל תיקון (patch) בקונפיגורציה.
 
 **Ctrl+R** מפעיל מחדש רק את ה-Backend (שימושי לאחר שינוי קונפיגורציה שה-hot-reload לא תופס).
 
@@ -82,7 +82,7 @@ Provisa running:
 | `sparql` | 23030 | Apache Jena Fuseki; המקור וטבלה אחת מבוססת שאילתה (`volunteer`) רשומים מתוך ה-fragment, הגרף מוזרע על ידי `prime.py`; טבלאות נוספות דרך Register Table (שאילתה + תצוגה מקדימה) |
 | `prometheus` | 29090 | המקור רשום; השרת גורף (scrapes) את עצמו, כך ש-`up` והמדדים `prometheus_*` נרשמים כטבלאות דרך Register Table |
 | `elasticsearch` | 29200 | המקור ומיפוי האינדקס רשומים; אינדקס `support_tickets` מוזרע על ידי `prime.py`; נקרא דרך HTTP על ידי המנוע הטבעי, ודרך המחבר (connector) ב-Trino |
-| `splunk` | mgmt 8089, HEC 8088 | המקור רשום עם אימות באמצעות טוקן (token auth) ו-`disable_ssl_validation` (תעודת הקונטיינר חתומה עצמית); אינדקס, שבעה אירועי התרעה של מקלט (shelter-alert) ומודל הנתונים (Data Model)‏ `shelter_alerts` מוזרעים על ידי `prime.py`, אשר גם מטביע (mints) את טוקן ה-API שה-fragment קורא כ-`PROVISA_DEMO_SPLUNK_TOKEN`. מודלי נתונים נרשמים כטבלאות דרך Register Table — ב-Trino דרך הקטלוג `splunk`, ובכל מנוע אחר דרך שרת ה-Calcite pgwire המובנה שהמנוע מצרף |
+| `splunk` | mgmt 8089, HEC 8088 | המקור רשום עם אימות באמצעות טוקן (token auth) ו-`disable_ssl_validation` (תעודת הקונטיינר חתומה עצמית); אינדקס, שבעה אירועי התרעה של מקלט (shelter-alert) ומודל הנתונים (Data Model)‏ `shelter_alerts` מוזרעים על ידי `prime.py`, אשר גם מטביע (mints) את טוקן ה-API שה-fragment קורא כ-`PROVISA_DEMO_SPLUNK_TOKEN`. מודלי נתונים נרשמים כטבלאות דרך Register Table: ב-Trino דרך הקטלוג `splunk`, ובכל מנוע אחר דרך נקודת הקצה pgwire של דרייבר Splunk, שהמנוע מצרף |
 | `chinook` | 25433 | Postgres המחזיק את קבוצת המשנה של Chinook ב-snake_case שה-metadata לדוגמה של Hasura עוקב אחריה, מוזרע על ידי `prime.py` מתוך `tests/fixtures/hasura_v2_t1_seed.sql`; המקור רשום מתוך ה-fragment, וזהו המקור שעליו נוחת ייבוא Hasura v2 של `tests/fixtures/hasura_v2_t1_metadata.json` |
 
 `--idp=basic|firebase` — מפעיל ספק זהות (identity provider) לאימות. ללא דגל זה, ה-Backend פועל ללא ספק אימות וכל הבקשות מטופלות כ-`admin`.
@@ -91,7 +91,7 @@ Provisa running:
 
 ## 3. חיבור מקור נתונים {: #3-connect-a-data-source }
 
-Provisa קוראת קונפיגורציה מתוך `config/`. הוסיפו קובץ מקור — לדוגמה `config/sources/my-db.yaml`:
+Provisa קורא את הקונפיגורציה שלו מתוך `config/`. הוסיפו קובץ מקור, למשל `config/sources/my-db.yaml`:
 
 ```yaml
 sources:

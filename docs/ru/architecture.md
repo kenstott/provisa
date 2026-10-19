@@ -174,7 +174,7 @@ Provisa выбирает движок федерации при старте ч�
 
 Каждый движок — это экземпляр `FederationEngine`, определённый в `provisa/federation/engine.py`. Экземпляр владеет набором коннекторов, определяющим, какие типы источников движок может читать вживую (ATTACH), а какие сначала должны попасть в хранилище материализации движка.
 
-### Классы драйверов {: #driver-classes-tool-verified-enginepy-driverclass }
+### Классы драйверов {: #driver-classes }
 
 | Класс | Значение | Примеры |
 | ------- | --------- | --------- |
@@ -182,7 +182,7 @@ Provisa выбирает движок федерации при старте ч�
 | `PARTIAL` | Достигает подмножества (реляционные, файлы, облачное объектное хранилище/lake), а всё остальное приземляет | DuckDB, PostgreSQL, ClickHouse, Databricks, Snowflake, BigQuery, Fabric, Synapse |
 | `SELF_ONLY` | Достигает только собственного хранилища; всё остальное приземляется | SQLAlchemy |
 
-### Доступные движки {: #available-engines-tool-verified-enginepy-engine_builders }
+### Доступные движки {: #available-engines }
 
 | Ключ движка | Диалект | MPP | Механизм внешней связи | Аутентификация |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Provisa выбирает движок федерации при старте ч�
 | `synapse` | T-SQL | Да | ADLS OPENROWSET / внешние таблицы | Azure AD |
 | `sqlalchemy` | Любой диалект SQLAlchemy | Нет | Нет (только приземление) | Учётные данные для каждого диалекта |
 
-### Готовый к работе без конфигурации по умолчанию: DuckDB {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
+### Готовый к работе без конфигурации по умолчанию: DuckDB {: #zero-config-default-duckdb }
 
 Когда `PROVISA_ENGINE` не задан, Provisa использует полностью встроенный внутрипроцессный движок DuckDB. Хранилище материализации DuckDB — это встроенный файл DuckDB по пути `$PROVISA_DATA_DIR/materialize.duckdb` (по умолчанию `~/.provisa/materialize.duckdb`). Внешняя база данных или сервис не требуются.
 
 Поскольку DuckDB допускает только одного писателя на файл, `store_connection.py` пишет во встроенное хранилище через собственное соединение движка — никогда через второе независимое соединение. Это единственный случай, когда движок и хранилище материализации намеренно разделяют один файловый дескриптор.
 
-### Нативный для Arrow транспорт чтения {: #arrow-native-read-transport-tool-verified-enginepy-build__engine-capabilities }
+### Нативный для Arrow транспорт чтения {: #arrow-native-read-transport }
 
 ClickHouse, DuckDB, Snowflake, Databricks, BigQuery, Fabric и Synapse — все заявляют `EngineCapability.ARROW` и `EngineCapability.ARROW_STREAM`. Запросы к этим движкам возвращают RecordBatches Arrow напрямую — путь сериализации строк полностью минуется. Flight-сервер передаёт эти батчи клиентам потоково, не материализуя полный результат в памяти процесса Provisa. Для Trino потоковая передача Arrow опирается на прокси Zaychik; для движков хранилищ данных — на собственный Arrow-нативный API движка (Cloud Fetch для Databricks, Storage Read API для BigQuery, `fetch_arrow_table` для DuckDB и Snowflake), питающий поток Flight.
 
-### Внешние связи с данными (ATTACH) {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
+### Внешние связи с данными (ATTACH) {: #external-data-links-attach }
 
 Каждый движок хранилища данных может сканировать облачные объектные/lake-данные на месте, не приземляя копию. Файлы Parquet, CSV, Iceberg и Delta Lake на S3, GCS или OneLake присоединяются к движку напрямую, как будто это нативные таблицы. Стратегия — ATTACH (сканирование на месте) или LAND (копирование в хранилище) — определяется объявленным `Mechanism` коннектора; в планировщике нет ветвления, специфичного для движка. Коннектор `Mechanism.ATTACH_R` запускает сканирование с нулевым копированием; `Mechanism.DIRECT` или отсутствие коннектора запускает приземление.
 
@@ -223,7 +223,7 @@ Attach автоматически подготавливает все предп
 
 Учётные данные для облачного хранилища передаются в `federation_hints` источника (см. [Sources](sources.md#warehouses-as-named-sources)). Любой тип источника, который не может выполнить ATTACH, сначала приземляется в хранилище материализации движка.
 
-### Колоночные записи материализации {: #columnar-materialization-writes-tool-verified-coredatabasepy436-store_connectionpy99 }
+### Колоночные записи материализации {: #columnar-materialization-writes }
 
 `Connection.bulk_copy` в `provisa/core/database.py` выбирает самый быстрый путь массовой загрузки для каждого диалекта хранилища: бинарный `COPY` (`copy_records_to_table` asyncpg) для хранилищ PostgreSQL и один подготовленный запрос `executemany` для всех остальных реляционных хранилищ. Встроенное хранилище DuckDB приземляется через `land_duckdb_native` в `store_connection.py` — один вызов `executemany` на весь батч, никогда построчный цикл.
 

@@ -69,7 +69,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 | `CASE WHEN … THEN … ELSE … END` | ✓ | ישיר (צורות searched ו-simple) |
 | GROUP BY משתמע | ✓ | פריטי RETURN לא-מצוברים הופכים למפתחות GROUP BY כאשר לפריט כלשהו יש אגרגט |
 
-### הקרנות מפה (Map Projections)
+### הקרנות מפה (Map Projections) {: #map-projections }
 
 | תחביר | מיפוי SQL |
 | -------- | ------------ |
@@ -168,7 +168,7 @@ Provisa מתרגמת תת-קבוצה של openCypher ל-SQL דרך המודול 
 
 ---
 
-## כתיבות (Writes)
+## כתיבות (Writes) {: #writes }
 
 Cypher תומכת בשלושה דפוסי כתיבה דרך נקודת הקצה `/data/cypher`, המבוצעים על ידי `provisa/cypher/write_translator.py`.
 

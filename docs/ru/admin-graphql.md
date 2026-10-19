@@ -47,7 +47,7 @@ type MutationResult {
 
 ---
 
-## Запросы (Queries)
+## Запросы (Queries) {: #queries }
 
 ### Источники {: #sources }
 

@@ -71,10 +71,9 @@ Referenz für jeden Quelltyp, den Provisa unterstützt. „Direkter Treiber" bed
 | `saphana` | SQLAlchemy (`hana+hdbcli`) | — | — | Nein |
 | `hiveserver2` | impyla (HiveServer2 über Thrift) | — | hive | Nein |
 
-Wire-kompatible Datenbanken verwenden den JDBC-Treiber, den nativen Async-Treiber und den Dialekt eines Basis-Wire-Protokolls wieder — CockroachDB, YugabyteDB und Greenplum reiten auf dem PostgreSQL-Wire; TiDB reitet auf dem MySQL-Wire. Sie benötigen nur Registry-Einträge, keinen neuen Connector-Code.
+Wire-kompatible Datenbanken nutzen den JDBC-Treiber, den nativen Async-Treiber und den Dialekt eines Basisprotokolls mit. CockroachDB, YugabyteDB und Greenplum laufen über das PostgreSQL-Protokoll, TiDB über das MySQL-Protokoll. Sie brauchen nur Registry-Einträge und keinen neuen Connector-Code.
 
-`firebird` (Firebird 3/4/5) und `airport` (Arrow-Flight-Server) sind registrierte Quelltypen, die vor Ort über DuckDB-Community-Erweiterungen erreicht werden, wenn DuckDB die aktive Engine ist — kein direkter Treiber, kein föderierter Connector.
-
+`firebird` (Firebird 3/4/5) und `airport` (Arrow-Flight-Server) sind registrierte Quelltypen, die DuckDB-Community-Erweiterungen an Ort und Stelle erreichen, wenn DuckDB die aktive Engine ist. Sie haben weder einen direkten Treiber noch einen föderierten Connector.
 #### `saphana`
 
 SAP HANA wird über einen eigenen Treiber gelesen und in den Store der aktiven Engine repliziert, ist also auf jeder Engine erreichbar. Das Formular verlangt Host, Port (Standard 39015), Benutzername, Passwort und Datenbank; bei einem Multi-Tenant-System benennt die Datenbank den Tenant. Register Table listet die Schemas auf, die der Benutzer lesen darf; die Systemschemas von HANA bleiben außen vor.
@@ -98,9 +97,9 @@ Ein HiveServer2-Endpunkt, direkt über Thrift gelesen, für ein Hive-Deployment,
 
 #### `athena`
 
-Amazon Athena ist ein serverloser Abfragedienst für Daten in S3, abgerechnet pro gelesenes Byte. Eine Anweisung ausschließlich auf Athena-Tabellen wird direkt in Athena ausgeführt: Filter, Spaltenlisten und `LIMIT` werden vollständig übergeben, sodass nur die Bytes gescannt und abgerechnet werden, die Athena zur Beantwortung benötigt. Eine Anweisung, die eine Athena-Tabelle mit einer anderen Quelle verbindet, landet zuerst ein vollständiges Replikat aus Athena — die gesamte Tabelle wird gelesen und Athena rechnet sie ab —, dann läuft der Join gegen dieses Replikat. Die Replikations- und Lastschutzeinstellungen der Quelle regeln, wie oft eine Landung stattfindet; der Docs-Hinweis ist die einzige Regel.
+Amazon Athena ist ein serverloser Abfragedienst über Daten in S3, abgerechnet pro gescanntem Byte. Eine Anweisung nur auf Athenas Tabellen geht direkt an Athena, mit weitergereichten Filtern, Spaltenlisten und `LIMIT`, sodass Athena nur die Bytes scannt und berechnet, die diese Anweisung braucht. Eine Anweisung, die eine Athena-Tabelle mit einer anderen Quelle joint, landet zuerst ein vollständiges Replikat aus Athena. Dabei wird die ganze Tabelle gelesen, und Athena berechnet das; danach läuft der Join gegen das Replikat. Die Einstellungen Replicate und Lastschutz der Quelle bestimmen, wie oft gelandet wird, und dieser Hinweis ist die einzige Warnung vor diesen Kosten.
 
-**Discovery.** Register Table ruft die Metadata-API von Athena auf — `ListDatabases`, `ListTableMetadata`, `GetTableMetadata`. Diese Aufrufe führen keine Abfrage aus, sodass das Auflisten von Datenbanken und Tabellen sowie das Lesen der Spalten einer Tabelle keine Bytes kostet. Die Spalten einer Tabelle werden erst gelesen, wenn die Tabelle ausgewählt wird. Partitionsschlüssel folgen den regulären Spalten. Typen werden über den Eintrag `athena` in `provisa/core/ir_types.py` zugeordnet: `array<…>`, `map<…>` und `struct<…>` werden zu `text`; ein unbekannter Typ wird unter Nennung seines Namens abgelehnt.
+**Erkennung.** Register Table ruft Athenas Metadaten-API auf: `ListDatabases`, `ListTableMetadata` und `GetTableMetadata`. Diese Aufrufe führen keine Abfrage aus, daher kostet das Auflisten von Datenbanken und Tabellen und das Lesen der Spalten einer Tabelle nichts pro Byte. Die Spalten einer Tabelle werden erst geholt, wenn Sie diese Tabelle auswählen, mit den Partitionsschlüsseln nach den regulären Spalten. `array<…>`, `map<…>` und `struct<…>` werden zu `text`, und ein unbekannter Typ wird mit Namen abgelehnt.
 
 **Quellfelder.**
 
@@ -117,7 +116,7 @@ Amazon Athena ist ein serverloser Abfragedienst für Daten in S3, abgerechnet pr
 
 Wenn sowohl `username` als auch `password` leer sind, wird die Credential-Chain von boto3 verwendet: Instanzrolle, Umgebungsvariablen (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) oder ein benanntes Profil. Eines ohne das andere wird abgelehnt.
 
-**Schreiboperationen.** Jede registrierte Tabelle akzeptiert `INSERT`. `UPDATE`, `DELETE` und `MERGE` sind nur für Iceberg-Tabellen verfügbar; das Format wird bei der Registrierung gespeichert (`registered_tables.table_format`). Eine Schreiboperation auf einer Hive-Tabelle, die `UPDATE`, `DELETE` oder `MERGE` anfordert, wird unter Nennung der Tabelle und der Operation abgelehnt. Athena gibt keine geschriebenen Zeilen zurück — eine `RETURNING`-Klausel wird abgelehnt, und GraphQL bietet für diese Tabellen keine Mutation-Felder; `INSERT`, `UPDATE`, `DELETE` und `COPY` sind die Schreibpfade. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` und `TRUNCATE` werden unter Nennung der Form abgelehnt.
+**Schreiben.** Jede registrierte Tabelle nimmt `INSERT` an. `UPDATE`, `DELETE` und `MERGE` funktionieren nur auf einer Iceberg-Tabelle, und das Format wird bei der Registrierung festgehalten (`registered_tables.table_format`). Auf einer Hive-Tabelle wird ein Schreibvorgang, der `UPDATE`, `DELETE` oder `MERGE` verlangt, unter Nennung von Tabelle und Operation abgelehnt. Athena gibt keine geschriebenen Zeilen zurück, daher wird eine `RETURNING`-Klausel abgelehnt, und GraphQL bietet für diese Tabellen keine Mutationsfelder. Die Schreibwege sind `INSERT`, `UPDATE`, `DELETE` und `COPY`. `INSERT … ON CONFLICT`, `UPDATE … FROM`, `DELETE … USING` und `TRUNCATE` werden unter Nennung der Form abgelehnt.
 
 ```yaml
 - id: analytics-athena
@@ -272,7 +271,7 @@ Eine Suche wird pro Anweisung unter ihren Argumenten gelesen, ihre Zeilen für d
 
 Drei Mechanismen decken Dateien ab. Einzeldatei-Quellen und der Datei-Crawler verwenden das Feld `path` statt `host`/`port`. Der dritte, [Logs](#logs), benennt seine Dateien durch einen Glob in seinem `mapping` und liest nur Dateien auf dem Provisa-Server.
 
-**Dateidatenbank- und Einzeldatei-Quellen** — `sqlite`, `duckdb`, `csv`, `parquet` richten `path` auf eine Datei. (Eine `duckdb`-Quelle hält ihren Speicherort im Feld `database` des Formulars.)
+**Dateidatenbank- und Einzeldatei-Quellen.** Eine `sqlite`-, `duckdb`-, `csv`- oder `parquet`-Quelle richtet `path` auf eine einzige Datei. (Eine `duckdb`-Quelle hält ihren Speicherort im Feld `database` des Formulars.)
 
 | Quelltyp | Speicherorte | Mutations |
 | --- | --- | --- |
@@ -312,7 +311,7 @@ Ein Pfad mit einem anderen Schema (etwa `ftp://`) wird abgelehnt: "DuckDB reads 
 
 Ein ohne Verschlüsselung gemeinsam genutzter Ordner muss mit Sperren gemountet werden, die jeden Knoten erreichen: ein NFS-Mount mit aktiviertem Locking, nicht `nolock` und nicht `local_lock`. Keine Prüfung kontrolliert das; es ist eine Anforderung an das Deployment.
 
-**Datei-Crawler (`files`-Quelle)** — richtet `path` auf ein Glob-Muster, durchläuft es rekursiv und registriert das Verzeichnis als föderierten Katalog von Tabellen. Sie liest viele Formate über viele Transporte; die untenstehenden Mengen stammen vom File-Connector (kenstott/calcite-Fork).
+**Datei-Crawler (`files`-Quelle).** Er richtet `path` auf ein Glob-Muster, durchläuft es rekursiv und registriert das Verzeichnis als föderierten Katalog von Tabellen. Er liest viele Formate über viele Transporte:
 
 | Formate | Transporte |
 | --- | --- |
@@ -326,8 +325,7 @@ Ein ohne Verschlüsselung gemeinsam genutzter Ordner muss mit Sperren gemountet 
 
 Jede `files`-Quelle kann in ihrem Mapping auch ein `crawl` deklarieren, mit denselben Einstellungen, die unter [Wikipedia](#wikipedia) aufgeführt sind: Die Quelle liest dann zuerst Webseiten und landet jede HTML-Datentabelle und jede verlinkte Datendatei in ihrem Verzeichnis als Tabelle.
 
-Auf der DuckDB-Engine wird `files` nativ gelesen — eine `read_csv_auto`-Scanner-View pro `<table>.csv` unter dem aufgelösten Verzeichnis. Auf einer Engine ohne eigenen `files`-Connector landen Zeilen über denselben connector-gebündelten Calcite-pgwire-Server (`pgwire-file`), den auch sharepoint/splunk verwenden — siehe [Enterprise-SaaS-Connectors](#enterprise-saas-connectors) unten.
-
+Auf der DuckDB-Engine wird `files` nativ gelesen, mit einer `read_csv_auto`-Scanner-View pro `<table>.csv` unter dem aufgelösten Verzeichnis. Auf einer Engine ohne eigenen `files`-Connector landen die Zeilen über denselben mit dem Connector gebündelten Calcite-pgwire-Server (`pgwire-file`), den auch sharepoint und splunk nutzen. Siehe [Enterprise-SaaS-Connectors](#enterprise-saas-connectors) unten.
 #### Logs {: #logs }
 
 Eine `logs`-Quelle macht Logdateien auf dem Provisa-Server zu einer Tabelle. Sie benennen die Dateien mit einem vollständigen Pfad oder einem Glob und wählen das Format, in dem die Einträge geschrieben sind. Jeder Eintrag wird zu einer Zeile. Ein Eintrag, den das Format nicht lesen kann, bleibt mit seinem Rohtext und dem Grund erhalten und wird nie verworfen.
@@ -512,8 +510,7 @@ Nur Tabellen, die Redakteure als Datentabellen markieren (`table.wikitable`), we
 
 ### Enterprise-SaaS-Connectors
 
-Google Workspace und Microsoft 365 werden von eigenen Loadern gelesen; siehe [Google Workspace und Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, Cloud-Inventar und Splunk registrieren sich über Apache-Calcite-Connectors (kenstott/calcite-Fork). Keiner hat einen direkten Treiber — Provisa startet den mitgelieferten Calcite-pgwire-Server des Connectors (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`) und erreicht ihn als generischen PostgreSQL-Endpunkt. Auf der DuckDB-Engine wird dieser Endpunkt live über die postgres-Erweiterung angehängt: Register Table listet die Tabellen des Connectors aus dem angehängten Katalog, Abfragen lesen den Connector vor Ort, und Filter und Projektionen werden zu Calcite heruntergeschoben. Jede andere Engine landet die Zeilen im Materialisierungs-Store für die Federation. Die Bundles werden pro OS/Architektur aus dem gepinnten `kenstott/calcite`-Release abgerufen (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64) Ein Operator kann stattdessen pro Connector einen Bundle-Ordner benennen, der für diesen Host erstellt wurde, unter Admin → Einstellungen → Connector-Server (`connectors.<connector>.bundle_dir`); siehe [Admin](admin.md).. Alle fünf Trino-Connectors (Jira hat keinen) aktivieren immer Groß-/Kleinschreibung-unabhängigen Namensabgleich, entsprechend der eigenen case-insensitiven Semantik des jeweiligen Produkts.
-
+Google Workspace und Microsoft 365 werden von eigenen Loadern gelesen; siehe [Google Workspace und Microsoft 365](#google-workspace-and-microsoft-365). SharePoint, Salesforce, ServiceNow, Jira, Cloud-Inventar und Splunk werden über Treiber gelesen, die als eigener Prozess laufen und das PostgreSQL-Wire-Protokoll sprechen (`pgwire-sharepoint`, `pgwire-salesforce`, `pgwire-servicenow`, `pgwire-jira`, `pgwire-cloudops`, `pgwire-splunk`); keiner von ihnen hat also einen direkten Treiber. Auf der DuckDB-Engine wird der Endpunkt des Treibers über die postgres-Erweiterung live angebunden: Register Table listet die Tabellen des Connectors aus dem angebundenen Katalog, Abfragen lesen den Connector an Ort und Stelle, und Filter und Projektionen werden an ihn weitergereicht. Jede andere Engine landet die Zeilen für die Federation im Materialisierungs-Store. Die Treiberpakete werden pro Betriebssystem und Architektur aus einem festgelegten Release geholt (`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`; macOS arm64, Linux x86_64, Windows x86_64). Ein Betreiber kann stattdessen pro Connector einen für diesen Host gebauten Paketordner unter Admin → Einstellungen → Connector-Server angeben (`connectors.<connector>.bundle_dir`); siehe [Admin](admin.md). Alle fünf Trino-Connectors (Jira hat keinen) vergleichen Namen immer ohne Rücksicht auf Groß- und Kleinschreibung, wie es jedes Produkt selbst tut.
 #### `sharepoint`
 
 SharePoint-Listen werden als Schemas aufgezählt und als abfragbare Tabellen offengelegt. Zwei Auth-Methoden: `CLIENT_CREDENTIALS` (Standard) und zertifikatbasiert über ein PFX-Zertifikat. Secret-Werte in `mapping` werden über die Secrets-Engine aufgelöst, bevor sie den Connector erreichen.
@@ -609,7 +606,7 @@ Benutzername-Passwort-Flow:
 
 #### `servicenow`
 
-Jede Tabelle der Instanz steht zur Registrierung bereit; nichts wird automatisch registriert. Auf einer vollen Instanz können es Tausende Tabellen sein; Register Table gruppiert sie daher nach Thema — jedes Thema ist der Anzeigename eines ServiceNow-Pakets oder „(kein Paket)", wenn eine Tabelle keinem Paket angehört. Jede Tabelle wird als `name — label` angezeigt. Die Auswahl einer Tabelle liest deren Spalten aus der Instanz; das bloße Auflisten liest keine.
+Jede Tabelle der Instanz steht zur Registrierung bereit, und nichts wird automatisch registriert. Eine viel genutzte Instanz hat Tausende Tabellen, daher gruppiert Register Table sie nach Thema. Jedes Thema ist der Anzeigename eines ServiceNow-Pakets oder „(no package)“ für eine Tabelle, die zu keinem gehört. Jede Tabelle wird als `name — label` aufgeführt. Die Auswahl einer Tabelle liest deren Spalten von der Instanz; das Auflisten der Tabellen tut das nicht.
 
 Eine ServiceNow-Quelle nennt die vollständige `https://…`-URL der Instanz sowie Benutzername und Passwort. Die URL stammt aus `base_url` oder `host`; ein blosser Host oder ein anderes Schema wird abgelehnt und das Feld benannt (`instanceUrl`). Ein fehlender Benutzername oder ein fehlendes Passwort wird abgelehnt und das jeweilige Feld benannt. Jeder Wert kann eine `${secret:…}`- oder `${env:…}`-Referenz sein. Ein als Literal eingegebenes Geheimnis wird im Tresor der Organisation abgelegt, und die Quelle behält ihre Referenz.
 
@@ -731,7 +728,7 @@ Splunk-Suchergebnisse sind als Tabellen abfragbar (z. B. `internal_server`). Die
 | `mapping.datamodel_filter` | `datamodel-filter` | auf ein Data Model filtern |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | für selbstsignierte Zertifikate |
 
-Auf dem pgwire-Replica-Pfad (jede Engine außer Trino) werden dieselben vier optionalen Einstellungen zu den Calcite-`model.json`-Operanden-Keys `app`, `token`/`username`+`password`, `datamodelFilter` und `disableSslValidation` — die letzten beiden in den Typen, in die `SplunkSchemaFactory` sie castet, ein String und ein Boolean.
+Auf dem pgwire-Replikat-Pfad (jede Engine außer Trino) werden dieselben vier optionalen Einstellungen zu den Calcite-`model.json`-Operandenschlüsseln `app`, `token`/`username`+`password`, `datamodelFilter` und `disableSslValidation`. Die letzten beiden haben die Typen, in die `SplunkSchemaFactory` sie umwandelt: einen String und einen Boolean.
 
 ```yaml
 - id: ops-splunk
@@ -1067,8 +1064,7 @@ Die Datei wird leer ausgeliefert. Die eingebauten Connectors decken ab, was ohne
 
 **ClickHouse unterstützt drei Mechanismen**, einen pro Integrations-Engine-Form: eine relationale DATABASE-Engine, die automatisch jede entfernte Tabelle offenlegt (`clickhouse_database`, z. B. Redis/MySQL), eine Pro-Tabelle-Engine, deren Spalten die Registry liefert (`clickhouse_table`, z. B. die JDBC-/ODBC-Brücke — der `engine_template` kann einen `{table}`-Platzhalter tragen, den die Laufzeit bindet), und eine Datei-/Lake-/URL-Engine, deren Schema ClickHouse ableitet (`clickhouse_scan`, z. B. HDFS/URL). SQLite (DATABASE-Engine, Datei, kein Server) und Hudi (Lakehouse, Zero-Copy) werden OOTB ausgeliefert.
 
-Ein unbekannter `kind`-Wert schlägt beim Start laut fehl — ein Deskriptor-Tippfehler darf einen Quelltyp nicht stillschweigend unerreichbar machen.
-
+Ein unbekannter `kind`-Wert scheitert beim Start lautstark, sodass ein Tippfehler in einem Deskriptor einen Quelltyp nie stillschweigend unerreichbar lässt.
 ### Probe-Gating
 
 Verfügbarkeit wird zur Attach-Zeit gegen den Standard-Discovery-Katalog jeder Engine geprüft:
@@ -1083,7 +1079,7 @@ Eine deklarierte Erweiterung, die nicht installierbar ist, schlägt laut fehl. K
 
 Jeder `server_options`-Wert, `user_mapping`-Wert, `attach_template` und `scan_template` kann `{field}`-Platzhalter verwenden. Verfügbare Felder:
 
-`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}`, plus jeder Key aus `federation_hints`. DuckDB-Attach-Templates erhalten außerdem `{alias}` — den internen Katalog-Alias, den Provisa der angehängten Datenbank zuweist.
+`{id}`, `{host}`, `{port}`, `{database}`, `{username}`, `{password}`, `{path}`, `{schema_name}`, `{table_name}` sowie jeder Schlüssel aus `federation_hints`. DuckDB-Attach-Templates erhalten außerdem `{alias}`, den internen Katalog-Alias, den Provisa der angebundenen Datenbank gibt.
 
 Ein Template, das ein unbekanntes Feld referenziert, schlägt zur Attach-Zeit laut fehl und macht eine Deskriptor-/Quell-Fehlpassung sichtbar, bevor defektes DDL die Engine erreicht.
 
@@ -1131,7 +1127,7 @@ Sobald einer der beiden Deskriptoren vorhanden ist, routet die Registrierung ein
 
 Snowflake, Databricks und ClickHouse können unabhängig davon, welche Federation-Engine aktiv ist, als benannte Quellen registriert werden.
 
-Bei Registrierung liest Provisa das Warehouse über den DirectDriver der Quelle und landet ein Replikat im Materialisierungs-Store der aktiven Engine. Die Abfrage läuft dann gegen dieses Replikat. Das unterscheidet sich vom traditionellen direktfähigen Pfad (asyncpg, aiomysql), bei dem die Engine vollständig umgangen wird — hier führt die Engine die Abfrage weiterhin aus, aber gegen ein lokales Replikat statt bei jeder Anfrage über die Leitung zum Warehouse.
+Nach der Registrierung wird das Warehouse über den DirectDriver der Quelle gelesen, der ein Replikat im Materialisierungs-Store der aktiven Engine landet, und die Abfrage läuft gegen dieses Replikat. Auf dem üblichen direkten Weg (asyncpg, aiomysql) wird die Engine ganz übersprungen. Hier führt die Engine die Abfrage weiterhin aus, aber gegen ein lokales Replikat, statt bei jeder Anfrage über die Leitung zum Warehouse zu gehen.
 
 Reads sind Arrow-nativ, wo das Warehouse es unterstützt: Databricks verwendet Cloud Fetch, Snowflake verwendet `fetch_arrow_table`, und ClickHouse verwendet die native columnar HTTP-Schnittstelle.
 
@@ -1169,7 +1165,7 @@ sources:
 
 Die Registrierung als benannte Quelle ist unabhängig davon, ob dasselbe Warehouse als Federation-Engine gewählt wird. Eine Snowflake-Quelle auf einer DuckDB-Engine landet ein Replikat in DuckDB, nicht in Snowflake.
 
-Cloud-Objekt-/Lake-Daten (Parquet-, CSV-, Iceberg-, Delta-Lake-Dateien auf S3 / GCS / R2) sind ein separater Quelltyp, der vor Ort angehängt wird, wenn die aktive Engine einen ATTACH-Connector für diesen Typ hat. Kein Replikat wird gelandet — die Engine scannt den Objektspeicher direkt. Zugangsdaten für diese Quellen gehen ebenfalls in `federation_hints`:
+Cloud-Objekt- und Lake-Daten (parquet-, csv-, iceberg- und delta_lake-Dateien auf S3, GCS oder R2) sind ein eigener Quelltyp. Sie werden an Ort und Stelle angebunden, wenn die aktive Engine einen ATTACH-Connector für diesen Typ hat; es wird also kein Replikat gelandet, und die Engine scannt den Objektspeicher direkt. Auch die Anmeldedaten dieser Quellen gehören in `federation_hints`:
 
 ```yaml
 sources:
@@ -1308,8 +1304,7 @@ relationships:
 
 ### Junction-gestützte Beziehungen {: #junction-backed-relationships }
 
-Eine assoziative Tabelle kann als erstklassige Cypher-Beziehung statt als Knoten deklariert werden, sodass ihre
-eigenen Spalten zu den Attributen dieser Beziehung werden:
+Sie können eine assoziative Tabelle als eigenständige Cypher-Beziehung deklarieren statt als Knoten. Ihre Spalten werden dann zu den Attributen der Beziehung:
 
 ```yaml
 relationships:
@@ -1328,29 +1323,16 @@ relationships:
     via_label_source: column
 ```
 
-Die Junction ist eine registrierte Tabelle wie jede andere und muss registriert sein, bevor eine Beziehung sie
-benennen kann. Deklarieren Sie sie einmal pro Diskriminatorwert: Drei Zeilen über `pet_companions` erzeugen
-`BONDED_PAIR`, `LITTERMATE` und `SHARES_ENCLOSURE` als drei unterschiedliche Cypher-Typen, jeder mit den
-verbleibenden Spalten der Junction-Zeile als Kanteneigenschaften. Die mitgelieferte Demo-Konfiguration
-deklariert genau dies.
+Die Junction ist eine registrierte Tabelle wie jede andere, und sie muss registriert sein, bevor eine Beziehung sie nennen kann. Deklarieren Sie eine Beziehung pro Diskriminatorwert. Drei Zeilen über `pet_companions` ergeben `BONDED_PAIR`, `LITTERMATE` und `SHARES_ENCLOSURE` als drei getrennte Cypher-Typen, jeder mit den übrigen Spalten der Junction-Zeile als Kanteneigenschaften. Die mitgelieferte Demo-Konfiguration deklariert genau das.
 
-Eine Junction-Kante ist eine Cypher-Beziehung, kein GraphQL-Join-Feld: Der GraphQL-Join-Emitter baut
-seine `ON`-Klausel für ein einzelnes Spaltenpaar und hat keinen Platz für den zweiten Hop, sodass Junction-Kanten
-von der generierten SDL und von `pg_constraint` ausgeschlossen sind.
-Die Junction-Tabelle bleibt als eigenes Root-Feld abfragbar und wird aus der Knotenseite des
-Cypher-Graph-Schemas entfernt, sodass sie nie als Knotenbezeichnung erscheint.
+Eine Junction-Kante gibt es nur in Cypher. Der GraphQL-Join-Emitter baut seine `ON`-Klausel für ein einziges Spaltenpaar und hat keinen Platz für den zweiten Hop, daher fehlen Junction-Kanten in der generierten SDL und in `pg_constraint`. Die Junction-Tabelle selbst bleibt als eigenes Root-Feld abfragbar. Aus der Knotenseite des Cypher-Graph-Schemas wird sie entfernt, sodass sie nie als Knotenbezeichnung erscheint.
 
-`materialize: true` funktioniert auf einer Junction-Kante, und was sie materialisiert, ist die Traversierung statt
-eines direkten `pets`-zu-`pets`-Joins: Die Sicht hält den Quell-Hop, den Junction-Hop, den Diskriminator
-und die eigenen Spalten der Junction neben denen des Ziels. Da die Junction ein drittes Bein des Joins ist,
-wird beurteilt, ob die Kante quellenübergreifend ist, über alle drei Tabellen hinweg — eine Junction in einer anderen Quelle
-als die beiden, die sie verbindet, wird materialisiert, selbst wenn diese beiden übereinstimmen. Eine Deklaration materialisiert einen
-Kantentyp, sodass eine für `bonded pair` gebaute Sicht nie eine `littermate`-Traversierung beantwortet.
+`materialize: true` funktioniert auch auf einer Junction-Kante. Materialisiert wird die ganze Traversierung: Die Sicht hält den Quell-Hop, den Junction-Hop, den Diskriminator und die eigenen Spalten der Junction neben denen des Ziels. Die Junction ist ein drittes Bein des Joins, also wird über alle drei Tabellen beurteilt, ob die Kante quellenübergreifend ist. Eine Junction, die in einer anderen Quelle liegt als die beiden Tabellen, die sie verbindet, wird materialisiert, auch wenn diese beiden in derselben Quelle liegen. Jede Deklaration materialisiert einen Kantentyp, sodass eine für `bonded pair` gebaute Sicht nie eine `littermate`-Traversierung beantwortet.
 
 Kardinalitätswerte:
 
-- `many-to-one` — jede Quellzeile bildet auf eine Zielzeile ab (FK auf PK)
-- `one-to-many` — jede Quellzeile bildet auf mehrere Zielzeilen ab (Umkehrung des Obigen)
+- `many-to-one`: Jede Quellzeile gehört zu einer Zielzeile (FK zu PK)
+- `one-to-many`: Jede Quellzeile gehört zu mehreren Zielzeilen (die Umkehrung)
 
 ---
 
@@ -1506,8 +1488,7 @@ auth:
 
 Registrieren Sie eine Neo4j-Graphdatenbank als abfragbare Quelle. Stewards verfassen Cypher-Abfragen, die skalare Werte projizieren; Provisa cacht Ergebnisse und legt sie als GraphQL-Typen offen.
 
-Cypher-Abfragen müssen Property-Zugriffe in der `RETURN`-Klausel verwenden (`RETURN n.id AS id, n.name AS name`) — die Rückgabe von Knotenobjekten wird bei der Registrierung abgelehnt.
-
+Cypher-Abfragen müssen in der `RETURN`-Klausel Eigenschaftszugriffe verwenden (`RETURN n.id AS id, n.name AS name`). Die Registrierung lehnt eine Abfrage ab, die Knotenobjekte zurückgibt.
 #### Konfigurationsdatei-Registrierung {: #config-file-registration }
 
 Deklarieren Sie eine `neo4j`-Quelle und ihre Tabellen in YAML. Jede Tabelle benötigt ein `query_template` (das Cypher, das ihre Zeilen erzeugt) und typisierte Spalten. Der Key `query_template` ist unter jedem anderen Quelltyp ungültig.
@@ -1524,7 +1505,7 @@ Jede Spalte benötigt `data_type`. Der Loader bildet Konfigurationstypen auf den
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` und `decimal(10,2)` werden akzeptiert — der Basistyp vor der Klammer wird verwendet.
+`varchar(N)` und `decimal(10,2)` werden akzeptiert, und der Basistyp vor der Klammer wird verwendet.
 
 Die Registrierung persistiert eine `api_sources`-Zeile und eine `api_endpoints`-Zeile pro Tabelle, sodass die Tabellen einen Neustart überstehen, ohne die Datei erneut zu lesen. Die Admin-REST-Endpunkte unter `/admin/sources/neo4j` schreiben dieselben Zeilen.
 

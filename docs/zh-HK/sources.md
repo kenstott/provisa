@@ -69,10 +69,9 @@ Provisa 支援的每一種數據來源類型的參照。「直接驅動程式」
 | `saphana` | SQLAlchemy（`hana+hdbcli`） | — | — | 否 |
 | `hiveserver2` | impyla（HiveServer2 over Thrift） | — | hive | 否 |
 
-wire 相容的資料庫重用基礎 wire 的 JDBC 驅動程式、原生非同步驅動程式與方言——CockroachDB、YugabyteDB 與 Greenplum 走 PostgreSQL wire；TiDB 走 MySQL wire。它們只需要登錄項目，毋須新的連接器程式碼。
+協定相容的資料庫重用某個基礎協定的 JDBC 驅動程式、原生非同步驅動程式及方言。CockroachDB、YugabyteDB 及 Greenplum 使用 PostgreSQL 協定，TiDB 使用 MySQL 協定。它們只需要登錄項目，不需要新的連接器程式碼。
 
-`firebird`（Firebird 3/4/5）與 `airport`（Arrow Flight 伺服器）是已註冊的數據來源類型，當 DuckDB 為啟用中的引擎時，經 DuckDB 社群擴充就地觸及——沒有直接驅動程式，也沒有聯邦連接器。
-
+`firebird`（Firebird 3/4/5）及 `airport`（Arrow Flight 伺服器）是已登記的數據來源類型，當 DuckDB 是啟用中的引擎時，由 DuckDB 社群擴充功能就地觸及。它們沒有直接驅動程式，亦沒有聯邦連接器。
 #### `saphana`
 
 SAP HANA 經它自己的驅動程式讀取，並複製到啟用中引擎的儲存區，因此在每個引擎上都可觸及。表單需要主機、連接埠（預設 39015）、使用者名稱、密碼與資料庫；在多租用戶系統中，資料庫指定租用戶。Register Table 列出使用者可讀取的結構描述，不含 HANA 的系統結構描述。
@@ -96,9 +95,9 @@ SAP HANA 經它自己的驅動程式讀取，並複製到啟用中引擎的儲�
 
 #### `athena`
 
-Amazon Athena 是一項針對 S3 資料的無伺服器查詢服務，按掃描位元組計費。僅涉及 Athena 資料表的語句直接路由到 Athena 執行：篩選條件、欄位清單和 `LIMIT` 全部下推，因此只有 Athena 滿足該語句所需的位元組才會被掃描和計費。將 Athena 資料表與其他來源聯結的語句會先從 Athena 落地完整副本——讀取整張表並計費——然後聯結針對該副本執行。來源的 Replicate 和負載保護設定控制落地頻率；文件中的說明是唯一的規則。
+Amazon Athena 是建基於 S3 數據的無伺服器查詢服務，按掃描的位元組收費。只涉及 Athena 資料表的語句直接交給 Athena，篩選條件、資料行清單及 `LIMIT` 都會下推，所以 Athena 只掃描並收取該語句所需位元組的費用。把 Athena 資料表與其他任何數據來源聯結的語句，會先從 Athena 落地一份完整副本。這會讀取整個資料表，Athena 會為此收費；之後聯結針對該副本執行。數據來源的 Replicate 及負載保護設定決定落地的頻率，而本說明是關於這項費用的唯一提醒。
 
-**探索。** Register Table 呼叫 Athena 的中繼資料 API——`ListDatabases`、`ListTableMetadata`、`GetTableMetadata`。這些呼叫不執行任何查詢，因此列出資料庫和資料表以及讀取資料表的欄位不產生任何位元組費用。僅在選取某張資料表時才讀取其欄位。分區鍵跟在一般欄位之後。類型透過 `provisa/core/ir_types.py` 中的 `athena` 條目映射：`array<…>`、`map<…>` 和 `struct<…>` 映射為 `text`；未知類型被拒絕，並指明其名稱。
+**探索。** Register Table 呼叫 Athena 的中繼資料 API：`ListDatabases`、`ListTableMetadata` 及 `GetTableMetadata`。這些呼叫不執行任何查詢，所以列出資料庫及資料表、讀取資料表的資料行都不產生按位元組計的費用。只有在您選取某個資料表時才會取得它的資料行，分區鍵排在一般資料行之後。`array<…>`、`map<…>` 及 `struct<…>` 會變成 `text`，未知類型會被拒絕並指明其名稱。
 
 **來源欄位。**
 
@@ -115,7 +114,7 @@ Amazon Athena 是一項針對 S3 資料的無伺服器查詢服務，按掃描�
 
 `username` 和 `password` 均為空時，使用 boto3 的憑證鏈：執行個體角色、環境變數（`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`）或命名 profile。只填其中一個將被拒絕。
 
-**寫入。** 每張已登錄資料表均接受 `INSERT`。`UPDATE`、`DELETE` 和 `MERGE` 僅在 Iceberg 資料表上可用；格式在登錄時記錄（`registered_tables.table_format`）。對 Hive 資料表請求 `UPDATE`、`DELETE` 或 `MERGE` 的寫入將被拒絕，並指明資料表名稱和操作。Athena 不傳回已寫入的列——`RETURNING` 子句被拒絕，GraphQL 不為這些資料表提供 mutation 欄位；`INSERT`、`UPDATE`、`DELETE` 和 `COPY` 是寫入路徑。`INSERT … ON CONFLICT`、`UPDATE … FROM`、`DELETE … USING` 和 `TRUNCATE` 被拒絕，並指明形式。
+**寫入。** 每個已註冊的資料表都接受 `INSERT`。`UPDATE`、`DELETE` 及 `MERGE` 只適用於 Iceberg 資料表，格式在註冊時記錄（`registered_tables.table_format`）。在 Hive 資料表上，要求 `UPDATE`、`DELETE` 或 `MERGE` 的寫入會被拒絕，並指明資料表及操作。Athena 不傳回寫入的資料列，所以 `RETURNING` 子句會被拒絕，GraphQL 亦不為這些資料表提供變更欄位。寫入途徑是 `INSERT`、`UPDATE`、`DELETE` 及 `COPY`。`INSERT … ON CONFLICT`、`UPDATE … FROM`、`DELETE … USING` 及 `TRUNCATE` 會被拒絕，並指明其形式。
 
 ```yaml
 - id: analytics-athena
@@ -265,7 +264,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 ### 檔案式 {: #file-based }
 三種機制涵蓋檔案。單一檔案數據來源與檔案爬取器使用 `path` 欄位而非 `host`／`port`。 第三種 [Logs](#logs) 在其 `mapping` 中以萬用字元（glob）指定檔案，而且只讀取 Provisa 伺服器上的檔案。
 
-**檔案數據庫與單一檔案數據來源**——`sqlite`、`duckdb`、`csv`、`parquet` 把 `path` 指向單一檔案。（`duckdb` 數據來源把位置保存在表單的 `database` 欄位中。）
+**檔案數據庫與單一檔案數據來源。** `sqlite`、`duckdb`、`csv` 或 `parquet` 數據來源把 `path` 指向單一檔案。（`duckdb` 數據來源把位置保存在表單的 `database` 欄位中。）
 
 | 數據來源類型 | 位置 | 變更操作 |
 | --- | --- | --- |
@@ -305,7 +304,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 
 未加密共用的資料夾必須以能到達每個節點的鎖進行掛載：啟用鎖定的 NFS 掛載，而不是 `nolock`，也不是 `local_lock`。沒有任何探測檢查這一點；這是部署要求。
 
-**檔案爬取器（`files` 數據來源）**——把 `path` 指向一個 glob，遞迴爬取，並把該目錄註冊為一個由表構成的聯邦目錄。它讀取多種格式、經多種傳輸；下列集合來自檔案連接器（kenstott/calcite fork）。
+**檔案爬取器（`files` 數據來源）。** 它把 `path` 指向一個 glob，遞迴爬取，並把該目錄註冊為一個聯邦資料表目錄。它經多種傳輸方式讀取多種格式：
 
 | 格式 | 傳輸 |
 | --- | --- |
@@ -319,8 +318,7 @@ MotherDuck 數據來源只由 DuckDB 和 Postgres 引擎提供服務。其他引
 
 任何 `files` 數據來源也可以在其 mapping 中宣告 `crawl`，設定與 [Wikipedia](#wikipedia) 下列出的相同：此時數據來源會先讀取網頁，並把每個 HTML 數據表與每個連結的數據檔案作為表落地到其目錄中。
 
-在 DuckDB 引擎上，`files` 以原生方式讀取——在解析出的目錄下，為每個 `<table>.csv` 提供一個 `read_csv_auto` 掃描器檢視。在沒有自帶 `files` 連接器的引擎上，資料列經 sharepoint／splunk 所用的同一個連接器隨附 Calcite pgwire 伺服器（`pgwire-file`）落地——見下方的[企業 SaaS 連接器](#enterprise-saas-connectors)。
-
+在 DuckDB 引擎上，`files` 以原生方式讀取，解析出的目錄下每個 `<table>.csv` 對應一個 `read_csv_auto` 掃描器檢視。在沒有自帶 `files` 連接器的引擎上，資料列經 sharepoint 及 splunk 所用、隨連接器提供的同一個 Calcite pgwire 伺服器（`pgwire-file`）落地。見下方的[企業 SaaS 連接器](#enterprise-saas-connectors)。
 #### Logs {: #logs }
 
 `logs` 數據來源把 Provisa 伺服器上的日誌檔案變成一張表。你以完整路徑或萬用字元（glob）指定檔案，並選擇其記錄所用的格式。每條記錄成為一個資料列。格式無法讀取的記錄會連同原始文字與原因一併保留，絕不丟棄。
@@ -502,9 +500,7 @@ Provisa 知道這些語言版本的「See also」標題：`en`、`de`、`es`、`
 | `google_sheets` | —（經具體化） | 否 |
 | `prometheus` | prometheus | 否 | 一個指標即為一張表，一個樣本即為一列（`timestamp`、`value`，每個標籤一個資料行）；在沒有即時連接器的每個引擎上，Provisa 讀取 HTTP API——Register Table 取得指標名稱與標籤，落地時對該表的範圍使用 `query_range`
 
-### 企業 SaaS 連接器 {: #enterprise-saas-connectors }
-Google Workspace 與 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 與 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、雲端資源清單與 Splunk 經 Apache Calcite 連接器（kenstott/calcite fork）註冊。它們都沒有直接驅動程式——Provisa 啟動連接器隨附的 Calcite pgwire 伺服器（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），以通用 PostgreSQL 端點的身分連線。在 DuckDB 引擎上，該端點經 postgres 擴充即時附掛：Register Table 從已附掛的目錄列出連接器的表，查詢就地讀取該連接器，篩選與投影會下推到 Calcite。其他每個引擎都把資料列落地到具體化儲存區供聯邦使用。這些套件依作業系統／架構，從固定版本的 `kenstott/calcite` release 取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64） 營運者也可以為每個連接器單獨指定一個為此主機建置的套件資料夾，位於 Admin → 設定 → 連接器伺服器（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。。五個 Trino 連接器（Jira 沒有）都一律啟用不分大小寫的名稱比對，以配合各產品自身不分大小寫的語意。
-
+Google Workspace 及 Microsoft 365 由各自的載入器讀取；見 [Google Workspace 及 Microsoft 365](#google-workspace-and-microsoft-365)。SharePoint、Salesforce、ServiceNow、Jira、雲端資源清單及 Splunk 經以獨立程序執行、使用 PostgreSQL 協定通訊的驅動程式讀取（`pgwire-sharepoint`、`pgwire-salesforce`、`pgwire-servicenow`、`pgwire-jira`、`pgwire-cloudops`、`pgwire-splunk`），所以它們都沒有直接驅動程式。在 DuckDB 引擎上，驅動程式的端點透過 postgres 擴充功能即時掛載：Register Table 從已掛載的目錄中列出連接器的資料表，查詢就地讀取連接器，篩選及投影會下推給它。其他所有引擎都把資料列落地到具體化儲存區以用於聯邦。驅動程式套件按作業系統及架構從固定版本的 release 中取得（`pgwire-<connector>-<version>-<os>-<arch>.tar.gz`；macOS arm64、Linux x86_64、Windows x86_64）。營運者亦可以在 Admin → 設定 → 連接器伺服器中，按連接器指定一個為本主機建構的套件資料夾（`connectors.<connector>.bundle_dir`）；見 [Admin](admin.md)。五個 Trino 連接器（Jira 沒有）一律以不分大小寫的方式比對名稱，與各產品自身一致。
 #### `sharepoint`
 
 SharePoint 清單被列舉為結構描述，並以可查詢的表對外呈現。兩種驗證方式：`CLIENT_CREDENTIALS`（預設）與經 PFX 憑證的憑證式驗證。`mapping` 中的密鑰值在抵達連接器之前，先經密鑰引擎解析。
@@ -600,7 +596,7 @@ Salesforce 數據來源需要指定機構的「我的網域」登入 URL 和一�
 
 #### `servicenow`
 
-執行個體的每張資料表均可供註冊；不會自動註冊任何內容。完整執行個體可能有數千張資料表；Register Table 按主題將它們分組——每個主題是 ServiceNow 套件的顯示名稱，當資料表不屬於任何套件時顯示「(無套件)」。每張資料表以 `name — label` 的形式列出。選取一張資料表會從執行個體讀取其欄位；列出資料表不會這樣做。
+實例中的每個資料表都可以註冊，不會自動註冊任何資料表。繁忙的實例有成千上萬個資料表，所以 Register Table 按主題分組。每個主題是一個 ServiceNow 套件的顯示名稱；不屬於任何套件的資料表歸入「(no package)」。每個資料表顯示為 `name — label`。選取一個資料表時才會從實例讀取它的資料行，列出資料表時不會。
 
 ServiceNow 數據來源指定執行個體的完整 `https://…` URL 以及使用者名稱和密碼。URL 從 `base_url` 或 `host` 取得；裸主機或其他配置（scheme）將被拒絕，並指出欄位名稱（`instanceUrl`）。缺少使用者名稱或密碼時將被拒絕，並指出欄位名稱。每個值都可以是 `${secret:…}` 或 `${env:…}` 參考。以字面值輸入的密鑰會存入機構的保管庫，數據來源保留其參考。
 
@@ -722,7 +718,7 @@ Splunk 搜尋結果可作為表查詢（例如 `internal_server`）。連接器 
 | `mapping.datamodel_filter` | `datamodel-filter` | 篩選至某個數據模型 |
 | `mapping.disable_ssl_validation` | `disable-ssl-validation` | 供自簽憑證使用 |
 
-在 pgwire-replica 路徑上（除 Trino 以外的每個引擎），同樣這四個選用設定會成為 Calcite `model.json` operand 的索引鍵 `app`、`token`/`username`+`password`、`datamodelFilter` 與 `disableSslValidation`——後兩者依 `SplunkSchemaFactory` 轉換的類型，分別為字串與布林值。
+在 pgwire 副本路徑上（除 Trino 外的所有引擎），同樣這四項可選設定會成為 Calcite `model.json` 的運算元鍵 `app`、`token`/`username`+`password`、`datamodelFilter` 及 `disableSslValidation`。後兩項採用 `SplunkSchemaFactory` 轉換後的類型，即字串及布林值。
 
 ```yaml
 - id: ops-splunk
@@ -735,7 +731,7 @@ Splunk 搜尋結果可作為表查詢（例如 `internal_server`）。連接器 
     disable_ssl_validation: true
 ```
 
-#### Google Workspace and Microsoft 365 {: #google-workspace-and-microsoft-365 }
+#### Google Workspace 及 Microsoft 365 {: #google-workspace-and-microsoft-365 }
 
 `google_workspace` 與 `microsoft_365` 讀取數據來源所指定帳戶的郵件、日曆與工作，並把它們落地為副本。它們不是 Calcite 連接器：各自有自己的載入器，呼叫供應商的 API——一邊是 Gmail、Google Calendar 與 Google Tasks，另一邊是 Microsoft Graph。表單在 Enterprise 之下把它們列為「Google Workspace (Gmail)」與「Microsoft 365 (Outlook, Exchange)」。
 
@@ -1039,8 +1035,7 @@ tables:
 
 **ClickHouse 支援三種機制**，各對應一種整合引擎形狀：一個自動呈現每張遠端表的關聯式 DATABASE 引擎（`clickhouse_database`，例如 Redis/MySQL）、一個資料行由登錄提供的逐表引擎（`clickhouse_table`，例如 JDBC/ODBC 橋接——`engine_template` 可帶一個由執行階段繫結的 `{table}` 佔位符），以及一個由 ClickHouse 推斷結構描述的檔案／湖／URL 引擎（`clickhouse_scan`，例如 HDFS/URL）。SQLite（DATABASE 引擎、檔案、無伺服器）與 Hudi（湖倉、零複製）開箱即有。
 
-未知的 `kind` 值會在啟動時大聲失敗——描述元的一個錯字絕不可悄悄讓某個數據來源類型變成不可達。
-
+未知的 `kind` 值會在啟動時明確報錯，所以描述元裏的拼寫錯誤永遠不會令某種數據來源類型悄悄變得無法觸及。
 ### 探測閘門 {: #probe-gating }
 可用性在附掛時針對各引擎的標準探索目錄驗證：
 
@@ -1053,7 +1048,7 @@ tables:
 ### 樣板變數 {: #template-variables }
 每個 `server_options` 值、`user_mapping` 值、`attach_template` 與 `scan_template` 都可使用 `{field}` 佔位符。可用欄位：
 
-`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，加上 `federation_hints` 中的任何索引鍵。DuckDB 的 attach 樣板另外收到 `{alias}`——Provisa 指派給所附掛資料庫的內部目錄別名。
+`{id}`、`{host}`、`{port}`、`{database}`、`{username}`、`{password}`、`{path}`、`{schema_name}`、`{table_name}`，以及 `federation_hints` 中的任何鍵。DuckDB 的 attach 範本亦會收到 `{alias}`，即 Provisa 為掛載的資料庫指派的內部目錄別名。
 
 引用未知欄位的樣板會在附掛時大聲失敗，讓描述元與數據來源的不相符在損壞的 DDL 抵達引擎之前浮現。
 
@@ -1099,7 +1094,7 @@ connectors:
 ## 作為具名數據來源的倉庫 {: #warehouses-as-named-sources }
 Snowflake、Databricks 與 ClickHouse 可註冊為具名數據來源，與哪個聯邦引擎啟用中無關。
 
-註冊後，Provisa 經該數據來源的 DirectDriver 讀取倉庫，並把一份副本落地到啟用中引擎的具體化儲存區。查詢隨後針對該副本執行。這有別於傳統的可直接執行路徑（asyncpg、aiomysql），後者完全繞過引擎——這裡引擎仍然執行查詢，但針對的是一份本地副本，而不是每次請求都經網路連往倉庫。
+註冊後，倉庫經數據來源的 DirectDriver 讀取，它把副本落地到啟用中引擎的具體化儲存區，查詢針對該副本執行。在一般的直接路徑上（asyncpg、aiomysql），引擎被完全略過。而這裏仍由引擎執行查詢，只是針對本機副本，而不是每次請求都經網絡存取倉庫。
 
 在倉庫支援之處，讀取是 Arrow 原生的：Databricks 用 Cloud Fetch，Snowflake 用 `fetch_arrow_table`，ClickHouse 用原生資料行式 HTTP 介面。
 
@@ -1137,7 +1132,7 @@ sources:
 
 註冊為具名數據來源，與把同一個倉庫選為聯邦引擎是彼此獨立的。在 DuckDB 引擎上的一個 Snowflake 數據來源，把副本落地到 DuckDB，不是落到 Snowflake。
 
-雲端物件／湖數據（S3／GCS／R2 上的 parquet、csv、iceberg、delta_lake 檔案）是另一種數據來源類型，當啟用中的引擎有該類型的 ATTACH 連接器時，就地附掛。不落地副本——引擎直接掃描物件儲存。那些數據來源的憑證同樣放進 `federation_hints`：
+雲端物件與數據湖數據（S3、GCS 或 R2 上的 parquet、csv、iceberg 及 delta_lake 檔案）是一種獨立的數據來源類型。當啟用中的引擎有該類型的 ATTACH 連接器時，它就地掛載，因此不落地副本，引擎直接掃描物件儲存。這些數據來源的憑證同樣放在 `federation_hints` 中：
 
 ```yaml
 sources:
@@ -1272,7 +1267,7 @@ relationships:
 
 ### 由聯結資料表支撐的關係 {: #junction-backed-relationships }
 
-關聯資料表可以被宣告為一等的 Cypher 關係而不是節點，這樣它自己的欄位就成為該關係的屬性：
+您可以把關聯表宣告為一個獨立的 Cypher 關係，而不是節點。這樣它的資料行就成為該關係的屬性：
 
 ```yaml
 relationships:
@@ -1291,16 +1286,16 @@ relationships:
     via_label_source: column
 ```
 
-聯結資料表和其他資料表一樣是一張已註冊的資料表，必須先註冊，關係才能指向它。按判別值逐一宣告：`pet_companions` 上的三個資料列產生 `BONDED_PAIR`、`LITTERMATE` 與 `SHARES_ENCLOSURE` 三種不同的 Cypher 類型，每一種都把聯結資料列其餘的欄位作為邊屬性攜帶。隨附的示範設定宣告的正是這樣。
+關聯表與其他資料表一樣是已註冊的資料表，關係要引用它，它必須先註冊。每個判別值宣告一個關係。基於 `pet_companions` 的三行會產生 `BONDED_PAIR`、`LITTERMATE` 及 `SHARES_ENCLOSURE` 三種不同的 Cypher 類型，每種都把關聯列的其餘資料行作為邊屬性。隨附的示範設定正是這樣宣告的。
 
-聯結邊是 Cypher 關係，而不是 GraphQL join 欄位：GraphQL join 產生器為單一欄位對建構它的 `ON` 子句，沒有位置容納第二跳，因此聯結邊被排除在產生的 SDL 與 `pg_constraint` 之外。 聯結資料表仍可作為它自己的根欄位被查詢，並且會從 Cypher 圖綱要的節點一側移除，因此永遠不會作為節點標籤出現。
+經由關聯表的邊只存在於 Cypher 中。GraphQL 聯結產生器只為一對資料行建構 `ON` 子句，沒有地方放第二跳，所以這類邊不會出現在產生的 SDL 及 `pg_constraint` 中。關聯表本身仍可作為獨立的根欄位查詢。它會從 Cypher 圖結構描述的節點一側移除，因此永遠不會作為節點標籤出現。
 
-`materialize: true` 在聯結邊上同樣有效，它具體化的是走訪，而不是一次直接的 `pets` 到 `pets` join：檢視保存來源端跳、聯結跳、判別欄，以及聯結資料表自身的欄位與目標資料表的欄位並列。由於聯結資料表是 join 的第三條腿，這條邊是否跨來源要跨三張資料表來判斷——若聯結資料表所在的來源與它連接的兩張資料表不同，即使那兩張資料表同源也會被具體化。一次宣告具體化一種邊類型，因此為 `bonded pair` 建構的檢視永遠不會回答 `littermate` 的走訪。
+`materialize: true` 同樣適用於這類邊。具體化的是整條遍歷：檢視包含來源一跳、關聯表一跳、判別值，以及關聯表自身的資料行與目標的資料行。關聯表是聯結的第三條腿，所以邊是否跨數據來源，要看全部三個資料表。如果關聯表所在的數據來源與它連接的兩個資料表不同，即使那兩個資料表同屬一個數據來源，亦會具體化。每個宣告具體化一種邊類型，所以為 `bonded pair` 建構的檢視永遠不會回答 `littermate` 遍歷。
 
-基數值：
+基數取值：
 
-- `many-to-one`——每一列來源資料列對應一列目標資料列（FK 對 PK）
-- `one-to-many`——每一列來源資料列對應多列目標資料列（上者的反向）
+- `many-to-one`：每個來源列對應一個目標列（FK 指向 PK）
+- `one-to-many`：每個來源列對應多個目標列（與上相反）
 
 ---
 
@@ -1450,8 +1445,7 @@ auth:
 
 把一個 Neo4j 圖形資料庫註冊為可查詢的數據來源。管理員撰寫投影出純量值的 Cypher 查詢；Provisa 快取結果並把它們呈現為 GraphQL 類型。
 
-Cypher 查詢必須在 `RETURN` 子句中使用屬性存取子（`RETURN n.id AS id, n.name AS name`）——回傳節點物件在註冊時即被拒絕。
-
+Cypher 查詢必須在 `RETURN` 子句中使用屬性存取（`RETURN n.id AS id, n.name AS name`）。傳回節點物件的查詢會在註冊時被拒絕。
 #### 以設定檔註冊 {: #config-file-registration }
 
 在 YAML 中宣告一個 `neo4j` 數據來源及其表。每張表需要一個 `query_template`（產生其資料列的 Cypher）與具型別的資料行。`query_template` 索引鍵在任何其他數據來源類型下都無效。
@@ -1468,7 +1462,7 @@ Cypher 查詢必須在 `RETURN` 子句中使用屬性存取子（`RETURN n.id AS
 | `boolean`, `bool` | boolean |
 | `json`, `jsonb` | jsonb |
 
-`varchar(N)` 與 `decimal(10,2)` 可被接受——使用括號之前的基底類型。
+接受 `varchar(N)` 及 `decimal(10,2)`，使用括號前的基礎類型。
 
 註冊會持久化一列 `api_sources` 與每張表一列 `api_endpoints`，因此這些表在重新啟動後仍在，毋須重新讀取該檔案。`/admin/sources/neo4j` 之下的 admin REST 端點會寫入相同的資料列。
 

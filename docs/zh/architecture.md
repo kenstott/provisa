@@ -174,7 +174,7 @@ Provisa 在启动时通过 `PROVISA_ENGINE` 环境变量、持久化的管理 UI
 
 每个引擎都是定义在 `provisa/federation/engine.py` 中的 `FederationEngine` 实例。该实例拥有一个连接器集合，决定引擎可以实时读取（ATTACH）哪些数据源类型，以及哪些必须先落地到引擎的物化存储中。
 
-### 驱动类别 {: #driver-classes-tool-verified-enginepy-driverclass }
+### 驱动类别 {: #driver-classes }
 
 | 类别 | 含义 | 示例 |
 | ------- | --------- | --------- |
@@ -182,7 +182,7 @@ Provisa 在启动时通过 `PROVISA_ENGINE` 环境变量、持久化的管理 UI
 | `PARTIAL` | 触达一个子集（关系型、文件、云对象/湖）；其余全部落地 | DuckDB、PostgreSQL、ClickHouse、Databricks、Snowflake、BigQuery、Fabric、Synapse |
 | `SELF_ONLY` | 只能触达自身存储；其他所有数据源都要落地 | SQLAlchemy |
 
-### 可用引擎 {: #available-engines-tool-verified-enginepy-engine_builders }
+### 可用引擎 {: #available-engines }
 
 | 引擎键 | 方言 | MPP | 外部链接机制 | 认证 |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Provisa 在启动时通过 `PROVISA_ENGINE` 环境变量、持久化的管理 UI
 | `synapse` | T-SQL | 是 | ADLS OPENROWSET / 外部表 | Azure AD |
 | `sqlalchemy` | 任意 SQLAlchemy 方言 | 否 | 无（仅落地） | 按方言的凭据 |
 
-### 零配置默认引擎：DuckDB {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
+### 零配置默认引擎：DuckDB {: #zero-config-default-duckdb }
 
 当 `PROVISA_ENGINE` 未设置时，Provisa 使用完全内嵌的进程内 DuckDB 引擎。DuckDB 的物化存储是一个内嵌的 DuckDB 文件，路径为 `$PROVISA_DATA_DIR/materialize.duckdb`（默认 `~/.provisa/materialize.duckdb`）。不需要任何外部数据库或服务。
 
 由于 DuckDB 对每个文件强制要求单一写入者，`store_connection.py` 通过引擎自身的连接写入内嵌存储——绝不使用第二条独立连接。这是引擎与物化存储按设计共享同一文件句柄的唯一情形。
 
-### Arrow 原生读取传输 {: #arrow-native-read-transport-tool-verified-enginepy-build__engine-capabilities }
+### Arrow 原生读取传输 {: #arrow-native-read-transport }
 
 ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 和 Synapse 都声明了 `EngineCapability.ARROW` 和 `EngineCapability.ARROW_STREAM`。针对这些引擎的查询会直接返回 Arrow RecordBatches——完全绕过行序列化路径。Flight 服务器将这些批次流式传输给客户端，而不会在 Provisa 进程内存中物化完整结果。对于 Trino，Arrow 流依赖 Zaychik 代理；对于各仓库引擎，则由其自身的 Arrow 原生 API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 和 Snowflake 的 `fetch_arrow_table`）为 Flight 流供数。
 
-### 外部数据链接（ATTACH） {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
+### 外部数据链接（ATTACH） {: #external-data-links-attach }
 
 每个仓库引擎都能就地扫描云对象/湖数据，而无需复制一份。S3、GCS 或 OneLake 上的 Parquet、CSV、Iceberg 和 Delta Lake 文件可直接挂载到引擎中，如同原生表一样。策略——ATTACH（就地扫描）还是 LAND（复制进存储）——由连接器所声明的 `Mechanism` 决定；规划器中不存在特定引擎的分支逻辑。`Mechanism.ATTACH_R` 连接器会触发零拷贝扫描；`Mechanism.DIRECT` 或缺省连接器会触发落地。
 
@@ -223,7 +223,7 @@ Attach 会在挂载时自动预配所有前置条件：
 
 云存储凭据通过数据源的 `federation_hints` 传递（参见[数据源](sources.md#warehouses-as-named-sources)）。任何无法 ATTACH 的数据源类型都会先落地到引擎的物化存储中。
 
-### 列式物化写入 {: #columnar-materialization-writes-tool-verified-coredatabasepy436-store_connectionpy99 }
+### 列式物化写入 {: #columnar-materialization-writes }
 
 `provisa/core/database.py` 中的 `Connection.bulk_copy` 会为每种存储方言选择最快的批量写入路径：对 PostgreSQL 存储使用二进制 `COPY`（asyncpg 的 `copy_records_to_table`），对其他所有关系型存储使用单条 `executemany` 预编译语句。DuckDB 内嵌存储通过 `store_connection.py` 中的 `land_duckdb_native` 落地——对整个批次只调用一次 `executemany`，绝不逐行循环。
 

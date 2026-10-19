@@ -1,8 +1,8 @@
 # Guide de démarrage rapide pour les développeurs {: #developer-quick-start }
 
-Pour évaluer Provisa sans compiler à partir du code source, consultez le [Guide de démarrage rapide](index.md) — téléchargez le programme d'installation pour macOS, Windows ou Linux et exécutez `provisa start`.
+Pour évaluer Provisa sans compiler depuis les sources, voir le [Démarrage rapide](index.md) : téléchargez l'installateur macOS, Windows ou Linux et lancez `provisa start`.
 
-Ce guide est destiné à l'exécution de Provisa **depuis le dépôt** — développement actif, débogage ou contribution.
+Ce guide explique comment exécuter Provisa **depuis le dépôt**, quand vous développez, déboguez ou contribuez.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Surcouche de développement Docker Compose (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - API backend sur le port 8001 (rechargement à chaud lors des modifications de `provisa/` et `config/`)
 - Serveur de développement Vite de l'UI sur le port 3000 (HMR)
-- Traçage OpenTelemetry et Grafana sur `http://localhost:3100`. La pile d'observabilité est un profil docker-compose `observability` facultatif (OTel Collector, Prometheus, Tempo, Grafana), non activé par défaut au niveau de la plateforme ; `start-ui.sh` l'active par commodité de script de développement, sauf si vous passez `--no-observability`.
+- Traçage OpenTelemetry et Grafana sur `http://localhost:3100`. La pile d'observabilité (OTel Collector, Prometheus, Tempo, Grafana) est un profil docker-compose `observability` facultatif, désactivé par défaut sur la plateforme ; `start-ui.sh` l'active par commodité en développement, sauf si vous passez `--no-observability`.
 
-**Ctrl+C** arrête tout — backend, UI et tous les services Docker — et annule tout correctif de configuration.
+**Ctrl+C** arrête tout (backend, UI et tous les services Docker) et annule tout correctif de configuration.
 
 **Ctrl+R** redémarre uniquement le backend (utile après une modification de configuration que le rechargement à chaud ne détecte pas).
 
@@ -82,7 +82,7 @@ Sources fournies :
 | `sparql` | 23030 | Apache Jena Fuseki ; source et une table adossée à une requête (`volunteer`) enregistrées depuis le fragment, graphe alimenté par `prime.py` ; d'autres tables via Register Table (requête + Aperçu) |
 | `prometheus` | 29090 | Source enregistrée ; le serveur s'auto-scrute, de sorte que `up` et les métriques `prometheus_*` s'enregistrent comme tables via Register Table |
 | `elasticsearch` | 29200 | Source et mapping d'index enregistrés ; index `support_tickets` alimenté par `prime.py` ; lu en HTTP par le moteur natif, via le connecteur sur Trino |
-| `splunk` | mgmt 8089, HEC 8088 | Source enregistrée avec authentification par jeton et `disable_ssl_validation` (le certificat du conteneur est autosigné) ; un index, sept événements d'alerte shelter et le Data Model `shelter_alerts` alimentés par `prime.py`, qui génère aussi le jeton API lu par le fragment comme `PROVISA_DEMO_SPLUNK_TOKEN`. Les Data Models s'enregistrent comme tables via Register Table — sur Trino via le catalogue `splunk`, sur tous les autres moteurs via le serveur pgwire Calcite intégré que le moteur rattache |
+| `splunk` | mgmt 8089, HEC 8088 | Source enregistrée avec authentification par jeton et `disable_ssl_validation` (le certificat du conteneur est autosigné) ; un index, sept événements d'alerte shelter et le Data Model `shelter_alerts` alimentés par `prime.py`, qui génère aussi le jeton API lu par le fragment comme `PROVISA_DEMO_SPLUNK_TOKEN`. Les Data Models s'enregistrent comme tables via Register Table : sur Trino via le catalogue `splunk`, et sur tous les autres moteurs via le point de terminaison pgwire du pilote Splunk, que le moteur rattache |
 | `chinook` | 25433 | Postgres contenant le sous-ensemble Chinook en snake_case que suit l'échantillon de métadonnées Hasura, alimenté par `prime.py` depuis `tests/fixtures/hasura_v2_t1_seed.sql` ; source enregistrée depuis le fragment, et la source sur laquelle atterrit un import Hasura v2 de `tests/fixtures/hasura_v2_t1_metadata.json` |
 
 `--idp=basic|firebase` — Active un fournisseur d'identité pour l'authentification. Sans cet indicateur, le backend s'exécute sans fournisseur d'authentification et toutes les requêtes sont traitées comme `admin`.
@@ -91,7 +91,7 @@ Sources fournies :
 
 ## 3. Connecter une source de données {: #3-connect-a-data-source }
 
-Provisa lit la configuration depuis `config/`. Ajoutez un fichier source — par exemple `config/sources/my-db.yaml` :
+Provisa lit sa configuration depuis `config/`. Ajoutez un fichier source, par exemple `config/sources/my-db.yaml` :
 
 ```yaml
 sources:

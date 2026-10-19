@@ -138,7 +138,7 @@ flowchart TD
 
 路由所消費的是治理後優化階段的輸出，永遠不是優化前、已治理的 SQL。治理階段可能會 ADD（新增）來源（RLS 子查詢判斷式）；優化階段可能會將其 REMOVE（移除）（熱資料表的 VALUES-CTE 內嵌、API 快取重寫、union 分支剪枝）。因此，一個經過內嵌後收合為單一現用來源的聯邦查詢，會被重新路由為直接查詢。
 
-### 多根查詢 (Multi-Root Queries)
+### 多根查詢 (Multi-Root Queries) {: #multi-root-queries }
 
 具有多個根欄位的 GraphQL 查詢（例如 `{ orders { id } customers { name } }`）會被編譯為個別的 SQL 查詢，並各自獨立執行。SQL 及 Cypher 請求依定義為單根 (single-root)。多個結果會被合併為單一回應：
 
@@ -174,7 +174,7 @@ Provisa 在啟動時，透過 `PROVISA_ENGINE` 環境變數、持久化的管理
 
 每一個引擎都是 `provisa/federation/engine.py` 中定義的一個 `FederationEngine` 實例。該實例擁有一組連接器集合，決定該引擎可以即時讀取（ATTACH）哪些來源類型，以及哪些必須先落地至該引擎的具體化儲存區。
 
-### 驅動程式類別 {: #driver-classes-tool-verified-enginepy-driverclass }
+### 驅動程式類別 {: #driver-classes }
 
 | 類別 | 意義 | 範例 |
 | ------- | --------- | --------- |
@@ -182,7 +182,7 @@ Provisa 在啟動時，透過 `PROVISA_ENGINE` 環境變數、持久化的管理
 | `PARTIAL` | 觸及一個子集（關聯式、檔案、雲端物件/數據湖），並落地其餘一切 | DuckDB、PostgreSQL、ClickHouse、Databricks、Snowflake、BigQuery、Fabric、Synapse |
 | `SELF_ONLY` | 僅觸及自身的儲存區；其他每一種來源皆需落地 | SQLAlchemy |
 
-### 可用引擎 {: #available-engines-tool-verified-enginepy-engine_builders }
+### 可用引擎 {: #available-engines }
 
 | 引擎鍵值 | 方言 | MPP | 外部連結機制 | 身分驗證 |
 | ----------- | --------- | ----- | ------------------------ | ------ |
@@ -197,17 +197,17 @@ Provisa 在啟動時，透過 `PROVISA_ENGINE` 環境變數、持久化的管理
 | `synapse` | T-SQL | 是 | ADLS OPENROWSET / 外部資料表 | Azure AD |
 | `sqlalchemy` | 任何 SQLAlchemy 方言 | 否 | 無（僅限落地） | 依方言而定的憑證 |
 
-### 零設定預設值：DuckDB {: #zero-config-default-duckdb-req-989-tool-verified-enginepy-build_duckdb_engine-embedded_duckdb_materialize_default }
+### 零設定預設值：DuckDB {: #zero-config-default-duckdb }
 
 當 `PROVISA_ENGINE` 未設定時，Provisa 使用完全內嵌、行程內執行的 DuckDB 引擎。DuckDB 的具體化儲存區是位於 `$PROVISA_DATA_DIR/materialize.duckdb` 的一個內嵌 DuckDB 檔案（預設為 `~/.provisa/materialize.duckdb`）。不需要任何外部資料庫或服務。
 
 由於 DuckDB 對每個檔案僅允許一個寫入者，`store_connection.py` 是透過引擎自身的連線寫入內嵌儲存區——絕不會另開第二條獨立連線。這是引擎與具體化儲存區依設計共用同一個檔案控制代碼的唯一案例。
 
-### Arrow 原生讀取傳輸 {: #arrow-native-read-transport-tool-verified-enginepy-build__engine-capabilities }
+### Arrow 原生讀取傳輸 {: #arrow-native-read-transport }
 
 ClickHouse、DuckDB、Snowflake、Databricks、BigQuery、Fabric 及 Synapse 全部宣告支援 `EngineCapability.ARROW` 及 `EngineCapability.ARROW_STREAM`。針對這些引擎的查詢會直接傳回 Arrow RecordBatches——完全繞過資料列序列化路徑。Flight 伺服器會將這些批次串流給用戶端，而不會在 Provisa 的行程記憶體中具體化完整結果。對 Trino 而言，Arrow 串流依賴 Zaychik 代理伺服器；對數據倉庫引擎而言，則由該引擎自身原生的 Arrow API（Databricks 的 Cloud Fetch、BigQuery 的 Storage Read API、DuckDB 及 Snowflake 的 `fetch_arrow_table`）餵送 Flight 串流。
 
-### 外部數據連結（ATTACH） {: #external-data-links-attach-tool-verified-enginepy-warehouse_connectors }
+### 外部數據連結（ATTACH） {: #external-data-links-attach }
 
 每一個數據倉庫引擎皆可就地掃描雲端物件/數據湖數據，而不落地任何複本。位於 S3、GCS 或 OneLake 上的 Parquet、CSV、Iceberg 及 Delta Lake 檔案，可直接以原生資料表的方式附加至引擎。ATTACH（就地掃描）或 LAND（複製進儲存區）這項策略，是由連接器所宣告的 `Mechanism` 決定；規劃器 (planner) 中不存在任何依引擎而異的分支邏輯。`Mechanism.ATTACH_R` 連接器觸發零複製掃描；`Mechanism.DIRECT` 或缺席的連接器則觸發落地。
 
@@ -223,7 +223,7 @@ Attach 會在附加時自動佈建所有先決條件：
 
 雲端儲存體的憑證放在該來源的 `federation_hints` 中傳遞（見[來源](sources.md#warehouses-as-named-sources)）。任何無法 ATTACH 的來源類型，會先落地至該引擎的具體化儲存區。
 
-### 欄式具體化寫入 {: #columnar-materialization-writes-tool-verified-coredatabasepy436-store_connectionpy99 }
+### 欄式具體化寫入 {: #columnar-materialization-writes }
 
 `provisa/core/database.py` 中的 `Connection.bulk_copy`，會依儲存區方言選擇最快的批量匯入路徑：PostgreSQL 儲存區使用二進位 `COPY`（asyncpg 的 `copy_records_to_table`），其餘所有關聯式儲存區則使用單一個 `executemany` 預備陳述式。DuckDB 內嵌儲存區則透過 `store_connection.py` 中的 `land_duckdb_native` 落地——整批僅呼叫一次 `executemany`，絕不逐列迴圈處理。
 
@@ -336,7 +336,7 @@ mutation {
 
 當某個來源自登記以來已收到大量新數據時，此功能十分有用。
 
-## 具體化檢視 (Materialized Views)
+## 具體化檢視 (Materialized Views) {: #materialized-views }
 
 MV 藉由預先運算並快取結果，透明地優化昂貴的查詢。
 
@@ -350,7 +350,7 @@ MV 藉由預先運算並快取結果，透明地優化昂貴的查詢。
 
 實際的結果是：核准一項關聯的數據管家，同時也隱含地決定了該 join 是否適合作為具體化的候選對象。治理行為與優化提示，是同一項宣告。
 
-### 模式 (Modes)
+### 模式 (Modes) {: #modes }
 
 | 模式 | 設定 | 行為 |
 | ------ | -------- | ---------- |

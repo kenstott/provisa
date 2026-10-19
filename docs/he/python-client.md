@@ -307,7 +307,7 @@ cur.execute(
 )
 ```
 
-### מנהלי הקשר (Context managers)
+### מנהלי הקשר (Context managers) {: #context-managers }
 
 ```python
 with connect("http://localhost:8001", username="alice", password="secret") as conn:
@@ -411,7 +411,7 @@ print(cur.description)
 # [('id', None, ...), ('amount', None, ...)]
 ```
 
-### מנהל הקשר (Context manager)
+### מנהל הקשר (Context manager) {: #context-manager }
 
 ```python
 with adbc_connect("http://localhost:8001", user="alice", password="secret") as conn:

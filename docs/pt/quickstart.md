@@ -1,8 +1,8 @@
 # Início Rápido para Desenvolvedores {: #developer-quick-start }
 
-Para avaliar o Provisa sem compilar a partir do código-fonte, veja o [Início Rápido](index.md) — baixe o instalador para macOS, Windows ou Linux e execute `provisa start`.
+Para avaliar o Provisa sem compilar a partir do código-fonte, veja o [Início rápido](index.md): baixe o instalador para macOS, Windows ou Linux e rode `provisa start`.
 
-Este guia é para rodar o Provisa **a partir do repositório** — desenvolvimento ativo, depuração ou contribuição.
+Este guia explica como rodar o Provisa **a partir do repositório**, quando você está desenvolvendo, depurando ou contribuindo.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Overlay de desenvolvimento do Docker Compose (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - API de backend na porta 8001 (hot-reload em mudanças em `provisa/` e `config/`)
 - Servidor de desenvolvimento Vite da UI na porta 3000 (HMR)
-- Rastreamento OpenTelemetry e Grafana em `http://localhost:3100`. A stack de observabilidade é um perfil docker-compose `observability` opcional (OTel Collector, Prometheus, Tempo, Grafana), não ativado por padrão no nível da plataforma; `start-ui.sh` o habilita como conveniência de script de desenvolvimento, a menos que você passe `--no-observability`.
+- Rastreamento OpenTelemetry e Grafana em `http://localhost:3100`. A stack de observabilidade (OTel Collector, Prometheus, Tempo, Grafana) é um perfil docker-compose `observability` opcional, desligado por padrão na plataforma; o `start-ui.sh` a liga por conveniência no desenvolvimento, a menos que você passe `--no-observability`.
 
-**Ctrl+C** para tudo — backend, UI e todos os serviços Docker — e reverte quaisquer patches de configuração.
+**Ctrl+C** para tudo (backend, UI e todos os serviços Docker) e reverte quaisquer patches de configuração.
 
 **Ctrl+R** reinicia apenas o backend (útil após uma mudança de configuração que o hot-reload não capta).
 
@@ -82,7 +82,7 @@ Fontes incluídas:
 | `sparql` | 23030 | Apache Jena Fuseki; fonte e uma tabela apoiada em consulta (`volunteer`) registradas a partir do fragment, grafo semeado por `prime.py`; mais tabelas através de Register Table (query + Preview) |
 | `prometheus` | 29090 | Fonte registrada; o servidor faz scrape de si mesmo, então `up` e as métricas `prometheus_*` se registram como tabelas através de Register Table |
 | `elasticsearch` | 29200 | Fonte e mapeamento de índice registrados; índice `support_tickets` semeado por `prime.py`; lido via HTTP pelo motor nativo, através do conector no Trino |
-| `splunk` | mgmt 8089, HEC 8088 | Fonte registrada com autenticação por token e `disable_ssl_validation` (o certificado do container é autoassinado); um índice, sete eventos shelter-alert e o Data Model `shelter_alerts` semeados por `prime.py`, que também gera o token de API que o fragment lê como `PROVISA_DEMO_SPLUNK_TOKEN`. Data Models se registram como tabelas através de Register Table — no Trino através do catálogo `splunk`, em todo outro motor através do servidor pgwire Calcite embutido que o motor conecta |
+| `splunk` | mgmt 8089, HEC 8088 | Fonte registrada com autenticação por token e `disable_ssl_validation` (o certificado do container é autoassinado); um índice, sete eventos shelter-alert e o Data Model `shelter_alerts` semeados por `prime.py`, que também gera o token de API que o fragment lê como `PROVISA_DEMO_SPLUNK_TOKEN`. Data Models se registram como tabelas através de Register Table: no Trino através do catálogo `splunk`, e em todo outro motor através do endpoint pgwire do driver do Splunk, que o motor conecta |
 | `chinook` | 25433 | Postgres contendo o subconjunto Chinook em snake_case que a amostra de metadados do Hasura rastreia, semeado por `prime.py` a partir de `tests/fixtures/hasura_v2_t1_seed.sql`; fonte registrada a partir do fragment, e a fonte na qual uma importação Hasura v2 de `tests/fixtures/hasura_v2_t1_metadata.json` pousa |
 
 `--idp=basic|firebase` — Habilita um provedor de identidade para autenticação. Sem essa flag, o backend roda sem provedor de autenticação e todas as requisições são tratadas como `admin`.
@@ -91,7 +91,7 @@ Fontes incluídas:
 
 ## 3. Conectar uma fonte de dados {: #3-connect-a-data-source }
 
-O Provisa lê a configuração de `config/`. Adicione um arquivo de fonte — por exemplo `config/sources/my-db.yaml`:
+O Provisa lê a configuração de `config/`. Adicione um arquivo de fonte, por exemplo `config/sources/my-db.yaml`:
 
 ```yaml
 sources:

@@ -54,7 +54,7 @@ df = pd.read_sql("SELECT * FROM sales.orders", engine)
 engine = create_engine("postgresql+asyncpg://alice:secret@localhost:5433/provisa")
 ```
 
-### אימות (Authentication)
+### אימות (Authentication) {: #authentication }
 
 שדה ה-`password` של חבילת ה-startup נושא את האישור (credential), ומה שהאישור *הוא* קובע את השיטה: אסימון גישה אישי, אסימון bearer של OIDC, או סיסמה כנגד הספק המוגדר. תחת ספק ה-`basic` עם `auth.scram: true` הסיסמה מוכחת דרך SCRAM-SHA-256 במקום להישלח. תעודות לקוח (client certificates) נתמכות. במצב אמון (`none`) שם המשתמש ממופה ישירות לתפקיד והסיסמה מתעלמת.
 
@@ -286,7 +286,7 @@ subgraphs:
 
 הריצו `rover supergraph compose --config supergraph.yaml` לייצור סכמת ה-supergraph.
 
-### ישויות (Entities)
+### ישויות (Entities) {: #entities }
 
 Provisa מגיבה לשאילתות `_entities` עבור joins חוצי-subgraph. כל טבלה עם מפתח ראשי ניתנת לפתירה אוטומטית כישות Federation.
 
@@ -304,7 +304,7 @@ Provisa מגיבה לשאילתות `_entities` עבור joins חוצי-subgraph
 
 ---
 
-## בודקי איכות נתונים (Data Quality Checkers)
+## בודקי איכות נתונים (Data Quality Checkers) {: #data-quality-checkers }
 
 Soda Core ו-Great Expectations מתחברים ל-Provisa באותו אופן שבו כל לקוח postgres אחר מתחבר — דרך pgwire. זו כל האינטגרציה: הבודק מחזיק מנהל התקן postgres אחד וסורק את התצוגה הפדרטיבית, כך שטבלת Snowflake, טבלת Iceberg, ואוסף Mongo נבדקים כולם על ידי אותו dialect חוזה, ללא בודק פר-מערכת.
 
@@ -589,7 +589,7 @@ SQL סמנטי.
 טבלאות Fact מתויגות `[fact]` בפרומפט ה-NL; טבלאות dimension מתויגות `[dimension]`. המתאם
 מטה נתיבי join מ-fact ל-dimension בעת פתירת שאלות.
 
-### זרימה (Streaming)
+### זרימה (Streaming) {: #streaming }
 
 שילוב `view_metrics` עם `materialize` שומר view של מדדים עדכני כשהקלטים שלו משתנים, באמצעות
 מכניקת ההמחשה הקיימת. אין צורך ב-pipeline חדש.

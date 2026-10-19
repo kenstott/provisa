@@ -63,7 +63,7 @@ Alle Quellen teilen sich einen gemeinsamen Feldsatz.
 | `allowed_domains` | `[]` | Beschränkt diese Quelle auf bestimmte Domänen-IDs; leer = uneingeschränkt |
 | `description` | `""` | |
 
-### Unterstützte Quellentypen {: #supported-source-types-tool-verified-provisacoremodelspy36-101 }
+### Unterstützte Quellentypen {: #supported-source-types }
 
 | Typ | Verbindungsstil | Hinweise |
 | ------ | ----------------- | ------- |
@@ -1394,7 +1394,7 @@ observability:
     redact_attributes: []             # additional keys dropped before sending to support
 ```
 
-### Telemetriefilter {: #telemetry-filters-tool-verified }
+### Telemetriefilter {: #telemetry-filters }
 
 Provisa betreibt zwei unabhängige OTLP-Exportpfade: Ihren internen Collector und den optionalen Provisa-Support-Endpunkt. Jeder Pfad hat seinen eigenen Filter. Filter laufen innerhalb eines umschließenden `_FilteringExporter`, bevor Spans den Prozess verlassen — ursprüngliche Span-Objekte werden nie mutiert.
 
@@ -1424,11 +1424,11 @@ zu:
 db.statement: SELECT * FROM orders WHERE region = ? AND amount > ?
 ```
 
-### Support-Endpunkt {: #support-endpoint-tool-verified }
+### Support-Endpunkt {: #support-endpoint }
 
 `support_endpoint` (oder env `PROVISA_SUPPORT_OTLP_ENDPOINT`) leitet Telemetriedaten zu Provisa-Support für Diagnosezwecke weiter. Wenn nicht gesetzt, verlässt über diesen Pfad keine Daten Ihre Infrastruktur. Der Support-Filter gilt unabhängig vom internen Filter — Sie können SQL-Literale bei beiden Exports schwärzen und dennoch Span-Timing- und Fehlerdaten mit dem Support teilen.
 
-### Endpunkt-Protokollerkennung {: #endpoint-protocol-detection-tool-verified }
+### Endpunkt-Protokollerkennung {: #endpoint-protocol-detection }
 
 Provisa wählt OTLP/HTTP oder OTLP/gRPC anhand des URL-Schemas des Endpunkts. URLs, die mit `http://` oder `https://` beginnen, verwenden OTLP/HTTP, wobei `/v1/traces`, `/v1/metrics` und `/v1/logs` automatisch angehängt werden. Jedes andere Schema verwendet OTLP/gRPC mit `insecure=True`.
 
@@ -1438,7 +1438,7 @@ Die Konfiguration einer Föderations-Engine ist optional. Der Standard ist `duck
 
 Vorrang: `PROVISA_ENGINE`-Umgebungsvariable → persistiertes Admin-UI-Konfigurationsfeld `federation_engine` → `duckdb`. Änderungen werden beim Neustart des Dienstes wirksam.
 
-### Engine-Übersicht {: #engine-overview-tool-verified-enginepy-engine_registry-engine_builders }
+### Engine-Übersicht {: #engine-overview }
 
 | Engine-Schlüssel | Bezeichnung | Dialekt | MPP | Externer-Link-Mechanismus | Auth |
 | ----------- | ------- | --------- | ----- | ------------------------ | ------ |

@@ -1,8 +1,8 @@
 # 开发者快速入门 {: #developer-quick-start }
 
-如需在不从源代码构建的情况下评估 Provisa，请参见[快速入门](index.md)——下载 macOS、Windows 或 Linux 安装程序并运行 `provisa start`。
+如果想在不从源码构建的情况下试用 Provisa，请参阅[快速开始](index.md)：下载 macOS、Windows 或 Linux 安装程序，然后运行 `provisa start`。
 
-本指南适用于**从代码仓库**运行 Provisa——用于日常开发、调试或贡献代码。
+本指南介绍如何**从代码仓库**运行 Provisa，适用于开发、调试或贡献代码。
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Docker Compose 开发叠加层（`docker-compose.dev.yml`）—— MinIO、Kafka、MongoDB、Elasticsearch、Neo4j、Fuseki、Debezium、Schema Registry
 - 8001 端口上的后端 API（对 `provisa/` 和 `config/` 的改动支持热重载）
 - 3000 端口上的 Vite UI 开发服务器（支持 HMR）
-- `http://localhost:3100` 上的 OpenTelemetry 追踪和 Grafana。可观测性技术栈是一个可选启用的 docker-compose `observability` 配置文件（OTel Collector、Prometheus、Tempo、Grafana），在平台层面默认不启用；`start-ui.sh` 会将其作为开发脚本的便利功能默认启用，除非您传入 `--no-observability`。
+- `http://localhost:3100` 上的 OpenTelemetry 追踪和 Grafana。可观测性技术栈（OTel Collector、Prometheus、Tempo、Grafana）是一个可选的 docker-compose `observability` 配置文件，在平台上默认关闭；`start-ui.sh` 为了开发方便会把它打开，除非您传入 `--no-observability`。
 
-**Ctrl+C** 会停止一切——后端、UI 以及所有 Docker 服务——并还原任何配置补丁。
+**Ctrl+C** 会停止一切（后端、UI 以及所有 Docker 服务），并还原所有配置补丁。
 
 **Ctrl+R** 只重启后端（在热重载未能捕获的配置更改之后很有用）。
 
@@ -82,7 +82,7 @@ UI 端到端测试套件用来搭建这些数据源的正是同一个 `provision
 | `sparql` | 23030 | Apache Jena Fuseki；数据源和一张基于查询的表（`volunteer`）从片段中注册，图数据由 `prime.py` 播种；可通过“注册表”（查询 + 预览）注册更多表 |
 | `prometheus` | 29090 | 数据源已注册；服务器自我抓取，因此 `up` 和 `prometheus_*` 指标可通过“注册表”注册为表 |
 | `elasticsearch` | 29200 | 数据源和索引映射已注册；`support_tickets` 索引由 `prime.py` 播种；由原生引擎通过 HTTP 读取，在 Trino 上则通过连接器读取 |
-| `splunk` | mgmt 8089, HEC 8088 | 数据源以令牌鉴权和 `disable_ssl_validation` 方式注册（该容器的证书是自签名的）；一个索引、七个庇护所警报事件以及 `shelter_alerts` 数据模型由 `prime.py` 播种，该脚本同时生成片段中作为 `PROVISA_DEMO_SPLUNK_TOKEN` 读取的 API 令牌。数据模型通过“注册表”注册为表——在 Trino 上通过 `splunk` 目录注册，在其他每种引擎上都通过该引擎所附带的内置 Calcite pgwire 服务器注册 |
+| `splunk` | mgmt 8089, HEC 8088 | 数据源以令牌鉴权和 `disable_ssl_validation` 方式注册（该容器的证书是自签名的）；一个索引、七个庇护所警报事件以及 `shelter_alerts` 数据模型由 `prime.py` 播种，该脚本同时生成片段中作为 `PROVISA_DEMO_SPLUNK_TOKEN` 读取的 API 令牌。数据模型通过“注册表”注册为表：在 Trino 上通过 `splunk` 目录注册，在其他每种引擎上通过引擎挂载的 Splunk 驱动 pgwire 端点注册 |
 | `chinook` | 25433 | 一个持有 snake_case Chinook 子集的 Postgres 数据库，该子集是 Hasura 元数据示例所追踪的对象，由 `prime.py` 从 `tests/fixtures/hasura_v2_t1_seed.sql` 播种；数据源从片段中注册，也是 `tests/fixtures/hasura_v2_t1_metadata.json` 的 Hasura v2 导入所落地的数据源 |
 
 `--idp=basic|firebase` —— 为身份验证启用一个身份提供程序。不带此标志时，后端在没有身份验证提供程序的情况下运行，所有请求都被视为 `admin`。
@@ -91,7 +91,7 @@ UI 端到端测试套件用来搭建这些数据源的正是同一个 `provision
 
 ## 3. 连接一个数据源 {: #3-connect-a-data-source }
 
-Provisa 从 `config/` 读取配置。添加一个数据源文件——例如 `config/sources/my-db.yaml`：
+Provisa 从 `config/` 读取配置。添加一个数据源文件，例如 `config/sources/my-db.yaml`：
 
 ```yaml
 sources:

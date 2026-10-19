@@ -378,7 +378,7 @@ GROUP BY "order_id", "customer_id", "product_id", "order_date"
 | `Sales.product_id → Product` | many-to-one |
 | `Sales.order_date → DateDim` | many-to-one |
 
-#### ממדים תואמים (Conformed dimensions)
+#### ממדים תואמים (Conformed dimensions) {: #conformed-dimensions }
 
 ממד תואם נרשם פעם אחת ומופנה לפי שם ממספר בלתי-מוגבל של facts. נניח
 ש-`raw.returns` מחזיק `return_id`, `customer_id`, `product_id`, ו-`amount`. ה-fact Returns עושה שימוש חוזר
@@ -522,7 +522,7 @@ SELECT "order_id", "customer_id" FROM "raw"."orders"
 `OrderCustomerLink.order_id → OrderHub`, שניהם many-to-one
 .
 
-#### Bridge / aggregate link
+#### Bridge / link מצטבר {: #bridge-aggregate-link }
 
 הוסיפו מדדים ל-link ו-Provisa פולטת את ה-`GROUP BY`, ומייצרת bridge מצובר-מראש. ב-
 grain‏ `order_id` עם לקוח אחד לכל הזמנה, התוצאה היא שורה מצוברת אחת לכל הזמנה:
@@ -556,7 +556,7 @@ GROUP BY "order_id", "customer_id"
 המודל אינו מחליט את המתודולוגיה. Grain, תאימות (conformance), בחירת SCD, ופיצול
 hub/satellite נשארים החלטות המעצב. Provisa מבצעת אותן.
 
-## מטריקות (Metrics)
+## מטריקות (Metrics) {: #metrics }
 
 **מטריקה (metric)** היא הגדרת אגרגט בעלת-שם, מנוהלת, ללא grain משלה. ה-grain — ה-
 ממדים שהאגרגט מפורק לפיהם — נקשר בזמן שאילתה על ידי הקורא, לא בזמן ההגדרה.
@@ -625,7 +625,7 @@ SELECT region, month, value FROM metrics.net_revenue GROUP BY region, month;
 מטריקות רשומות-אוטומטית מופיעות בעמוד Metrics עם badge של **fact**. תוכלו לערוך אותן כמו
 כל metric אחרת.
 
-### תצוגות מורכבות-מטריקה (view_metrics) {: #metric-composed-views-view_metrics-req-1318 }
+### תצוגות מורכבות-מטריקה (view_metrics) {: #metric-composed-views-view_metrics }
 
 תצוגת `view_metrics` נועלת את ה-grain של metric בזמן ההגדרה. הצהירו את שמות ה-metric,
 עמודות הממד, ופילטרים אופציונליים; הקומפיילר יוצר את ה-SELECT.

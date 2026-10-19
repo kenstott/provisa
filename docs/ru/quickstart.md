@@ -1,8 +1,8 @@
 # Быстрый старт для разработчиков {: #developer-quick-start }
 
-Чтобы оценить Provisa без сборки из исходников, см. [Быстрый старт](index.md) — скачайте установщик для macOS, Windows или Linux и запустите `provisa start`.
+Чтобы попробовать Provisa без сборки из исходников, см. [Быстрый старт](index.md): скачайте установщик для macOS, Windows или Linux и запустите `provisa start`.
 
-Это руководство описывает запуск Provisa **из репозитория** — для активной разработки, отладки или внесения вклада в проект.
+Это руководство о том, как запускать Provisa **из репозитория**, когда вы разрабатываете, отлаживаете или вносите вклад в проект.
 
 ---
 
@@ -47,9 +47,9 @@ Provisa running:
 - Оверлей для разработки Docker Compose (`docker-compose.dev.yml`) — MinIO, Kafka, MongoDB, Elasticsearch, Neo4j, Fuseki, Debezium, Schema Registry
 - Backend API на порту 8001 (горячая перезагрузка при изменениях в `provisa/` и `config/`)
 - Dev-сервер Vite UI на порту 3000 (HMR)
-- Трассировка OpenTelemetry и Grafana по адресу `http://localhost:3100`. Стек наблюдаемости — это опциональный профиль docker-compose `observability` (OTel Collector, Prometheus, Tempo, Grafana), не включённый по умолчанию на уровне платформы; `start-ui.sh` включает его как удобство dev-скрипта, если вы не передадите `--no-observability`.
+- Трассировка OpenTelemetry и Grafana по адресу `http://localhost:3100`. Стек наблюдаемости (OTel Collector, Prometheus, Tempo, Grafana) — необязательный профиль docker-compose `observability`, по умолчанию на платформе выключенный; `start-ui.sh` включает его для удобства разработки, если вы не передадите `--no-observability`.
 
-**Ctrl+C** останавливает всё — backend, UI и все сервисы Docker — и отменяет любые патчи конфигурации.
+**Ctrl+C** останавливает всё (backend, UI и все сервисы Docker) и отменяет любые патчи конфигурации.
 
 **Ctrl+R** перезапускает только backend (полезно после изменения конфигурации, которое не подхватывается горячей перезагрузкой).
 
@@ -82,7 +82,7 @@ Provisa running:
 | `sparql` | 23030 | Apache Jena Fuseki; источник и одна таблица на основе запроса (`volunteer`) регистрируются из фрагмента, граф наполняется `prime.py`; другие таблицы — через Register Table (запрос + Preview) |
 | `prometheus` | 29090 | Источник зарегистрирован; сервер опрашивает сам себя, поэтому `up` и метрики `prometheus_*` регистрируются как таблицы через Register Table |
 | `elasticsearch` | 29200 | Источник и отображение индекса зарегистрированы; индекс `support_tickets` наполняется `prime.py`; читается по HTTP нативным движком, через коннектор в Trino |
-| `splunk` | mgmt 8089, HEC 8088 | Источник зарегистрирован с аутентификацией по токену и `disable_ssl_validation` (сертификат контейнера самоподписан); индекс, семь событий-оповещений приюта и модель данных `shelter_alerts` наполняются `prime.py`, который также создаёт API-токен, читаемый фрагментом как `PROVISA_DEMO_SPLUNK_TOKEN`. Модели данных регистрируются как таблицы через Register Table — в Trino через каталог `splunk`, в любом другом движке через встроенный сервер Calcite pgwire, который подключает движок |
+| `splunk` | mgmt 8089, HEC 8088 | Источник зарегистрирован с аутентификацией по токену и `disable_ssl_validation` (сертификат контейнера самоподписан); индекс, семь событий-оповещений приюта и модель данных `shelter_alerts` наполняются `prime.py`, который также создаёт API-токен, читаемый фрагментом как `PROVISA_DEMO_SPLUNK_TOKEN`. Модели данных регистрируются как таблицы через Register Table: в Trino через каталог `splunk`, а в любом другом движке через pgwire-endpoint драйвера Splunk, который подключает движок |
 | `chinook` | 25433 | Postgres с подмножеством Chinook в snake_case, которое отслеживает пример метаданных Hasura, наполняемый `prime.py` из `tests/fixtures/hasura_v2_t1_seed.sql`; источник регистрируется из фрагмента, и именно на него попадает импорт Hasura v2 из `tests/fixtures/hasura_v2_t1_metadata.json` |
 
 `--idp=basic|firebase` — Включает провайдера идентификации для аутентификации. Без этого флага backend работает без провайдера аутентификации, и все запросы обрабатываются как `admin`.
@@ -91,7 +91,7 @@ Provisa running:
 
 ## 3. Подключение источника данных {: #3-connect-a-data-source }
 
-Provisa читает конфигурацию из `config/`. Добавьте файл источника — например, `config/sources/my-db.yaml`:
+Provisa читает конфигурацию из `config/`. Добавьте файл источника, например `config/sources/my-db.yaml`:
 
 ```yaml
 sources:

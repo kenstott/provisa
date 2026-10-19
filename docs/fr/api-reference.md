@@ -1068,7 +1068,7 @@ Teste une action (fonction ou webhook) par nom.
 
 ---
 
-### Rôles
+### Rôles {: #roles }
 
 Tous les points de terminaison sont sous le préfixe `/admin/roles`.
 

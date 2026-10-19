@@ -133,7 +133,7 @@ derived_roles:
 
 Pensez à un JWT : ses claims sont des faits sur la personne. Les rôles dérivés transforment des faits choisis en rôles, de sorte qu'une autorisation peut les viser sans créer un rôle par combinaison.
 
-### Méta-rôles
+### Méta-rôles {: #meta-roles }
 
 Lorsqu'une requête nomme plus d'un rôle, Provisa construit un méta-rôle éphémère identifié comme `meta:<ids sorted, joined by +>`. C'est un enfant unique de chaque rôle de l'ensemble nommé. Tout le pipeline s'exécute alors avec lui comme un rôle unique ordinaire.
 

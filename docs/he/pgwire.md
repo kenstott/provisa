@@ -21,7 +21,7 @@ Port: $PROVISA_PGWIRE_PORT
 
 ---
 
-## אימות (Authentication)
+## אימות (Authentication) {: #authentication }
 
 חבילת ה-startup נושאת שם משתמש ושדה סוד יחיד, וללא סכימה שתאמר מהו אותו סוד. Provisa מכריעה לפי הסוד עצמו, כך שלקוח אינו זקוק לתצורה מעבר ל-`user` ול-`password`:
 
@@ -183,7 +183,7 @@ SET, BEGIN, COMMIT, ROLLBACK, SAVEPOINT, RELEASE, DISCARD, RESET, ו-DEALLOCATE 
 
 ---
 
-## יירוט קטלוג (Catalog Intercept)
+## יירוט קטלוג (Catalog Intercept) {: #catalog-intercept }
 
 שאילתות מול `information_schema` ו-`pg_catalog` נענות מקומית ללא round-trip ל-Trino. שכבת היירוט בונה מסד נתונים DuckDB בזיכרון לכל בקשה, מאוכלס מהקשר הקימפול של התפקיד.
 
