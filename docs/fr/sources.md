@@ -970,20 +970,20 @@ Un profileur de données est une source qui détient un nom, un calendrier et de
 
 ### Vérificateurs de qualité des données {: #data-quality-checkers }
 
-Un vérificateur de qualité des données est un type de source, non un sous-système. Sa sortie de balayage est une donnée : un résultat de contrôle est une observation, il atterrit donc par le chemin ordinaire des sources et hérite de la cadence, de la fraîcheur, des événements, de la traçabilité, de la gouvernance, du RLS, de la grille et de l'export comme toute autre source.
+Un vérificateur de qualité des données n'est qu'un type de source de plus. Ce qu'il produit en scannant, ce sont des données : chaque résultat de contrôle est une observation, déposée par le chemin ordinaire des sources, et elle reçoit ce que reçoit toute autre source, de la cadence, la fraîcheur, les événements et la traçabilité jusqu'à la gouvernance, la RLS, la grille et l'export.
 
-Deux sont pris en charge, et le choix relève autant de la licence que de la fonctionnalité.
+Deux vérificateurs sont pris en charge, et choisir entre eux relève autant de la licence que des fonctionnalités.
 
 | Type de source | Dialecte de contrat | Extra | Licence | Plan cloud hébergé |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | YAML de contrat Soda | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refusé — voir ci-dessous |
 | `great_expectations` | JSON de suite d'attentes | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Autorisé |
 
-La licence Elastic License 2.0 interdit de fournir le logiciel à des tiers comme service hébergé ou managé, et exécuter Soda dans le plan SaaS pour le compte d'un locataire est exactement cela. `config/capabilities.yaml` porte cette scission sous la forme `cloud_eligible: false` sur l'option `soda`, et le plan hébergé lit ce drapeau. Un déploiement hébergé qui souhaite Soda atteint un endpoint Soda fourni par l'exploitant, que celui-ci exécute lui-même.
+L'Elastic License 2.0 interdit de fournir le logiciel à des tiers comme service hébergé ou géré, et exécuter Soda dans le plan SaaS pour le compte d'un locataire serait exactement cela. `config/capabilities.yaml` le note par `cloud_eligible: false` sur l'option `soda`, et le plan hébergé lit cet indicateur. Un déploiement hébergé qui veut Soda pointe vers un endpoint Soda que l'exploitant fait tourner lui-même.
 
-Provisa n'intègre ni ne lie quoi que ce soit. Le balayage s'exécute dans un interpréteur enfant (`python -m provisa.dq.worker`), seul endroit où `soda_core` ou `great_expectations` est importé, de sorte qu'un vérificateur à source disponible n'atteint jamais le processus serveur et qu'un plantage du vérificateur tue un sous-processus plutôt que la boucle d'événements.
+Provisa n'embarque et ne lie rien. Le scan tourne dans un interpréteur enfant (`python -m provisa.dq.worker`), le seul endroit où `soda_core` ou `great_expectations` est importé. Un vérificateur à source disponible n'atteint donc jamais le processus serveur, et si un vérificateur plante, il emporte un sous-processus et laisse la boucle d'événements tranquille.
 
-**La source pointe vers l'endpoint pgwire de Provisa lui-même.** C'est ce qui permet à un unique pilote postgres de contrôler une table adossée à Snowflake ou à Iceberg : le vérificateur balaie la vue fédérée, non le système sous-jacent. Parce que la politique s'applique à cette connexion, l'identité de balayage est déclarée plutôt qu'héritée — un jeu de lignes filtré ne doit jamais produire un contrôle silencieusement réussi.
+**La source pointe vers l'endpoint pgwire de Provisa lui-même.** C'est ce qui permet à un seul pilote postgres de contrôler une table adossée à Snowflake ou à Iceberg : le vérificateur scanne la vue fédérée, jamais le système en dessous. La politique s'applique à cette connexion, donc vous déclarez explicitement l'identité du scan. Si elle était héritée, un ensemble de lignes filtré pourrait faire passer un contrôle sans que personne ne s'en aperçoive.
 
 ```yaml
 sources:
@@ -1000,7 +1000,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Une table de résultats par contrat, et le contrat constitue tout l'enregistrement.** La table porte `dq_contract` — le texte du contrat tel quel — et rien d'autre quant à sa forme. Colonnes, filigrane et promotions en sont tous dérivés.
+**Une table de résultats par contrat, et le contrat est tout l'enregistrement.** La table porte `dq_contract`, le texte du contrat mot pour mot, et rien d'autre sur sa forme. Les colonnes, le filigrane et les promotions en sont tous dérivés.
 
 ```yaml
 tables:
@@ -1028,18 +1028,18 @@ tables:
             must_be_greater_than: 0
 ```
 
-Ce que l'enregistrement dérive de ce texte :
+L'enregistrement tire quatre choses de ce texte :
 
-- **Traçabilité.** Le contrat nomme déjà son jeu de données cible, si bien que l'enregistrement l'analyse comme `extract_inputs` analyse le SQL et le résout vers la table gouvernée. Une seule définition, aucune seconde copie susceptible de dériver. Un contrat nommant un jeu de données non gouverné échoue bruyamment à l'enregistrement plutôt que de déposer des lignes que personne n'a demandées.
-- **Colonnes.** L'enveloppe de résultat appartient au vérificateur, non à l'exploitant — 16 colonnes livrées, de `scan_id` à `diagnostics`. Les colonnes déclarées ne sont lues que pour leur `visible_to`, qui doit être unanime, puis elles sont remplacées.
-- **Filigrane.** `scan_time` devient le filigrane, ce qui fait du dépôt un ajout. L'historique des balayages s'accumule sans sous-système d'historique.
-- **Promotions.** `freshness_max_timestamp` et `dataset_rows_tested` sont promus hors du jsonb `diagnostics` comme colonnes typées. Ajoutez-en d'autres comme vous le feriez sur n'importe quelle autre colonne jsonb.
+- **Traçabilité.** Le contrat nomme déjà son jeu de données cible, donc l'enregistrement l'analyse comme `extract_inputs` analyse le SQL et le résout vers la table gouvernée. Il y a une seule définition et aucune seconde copie qui pourrait diverger. Un contrat qui nomme un jeu de données non gouverné échoue bruyamment à l'enregistrement, et ne dépose donc jamais de lignes que personne n'a demandées.
+- **Colonnes.** L'enveloppe de résultat appartient au vérificateur : 16 colonnes fournies, de `scan_id` à `diagnostics`. Les colonnes déclarées ne sont lues que pour leur `visible_to`, qui doit être identique sur toutes, puis remplacées.
+- **Filigrane.** `scan_time` devient le filigrane, ce qui fait du dépôt un ajout. L'historique des scans s'accumule sans sous-système d'historique.
+- **Promotions.** `freshness_max_timestamp` et `dataset_rows_tested` sont promus hors du jsonb `diagnostics` en colonnes typées. Vous pouvez en ajouter d'autres comme sur n'importe quelle colonne jsonb.
 
-Le calendrier n'introduit aucun champ nouveau. `change_signal` plus `cache_ttl` donnent la cadence d'interrogation ; `mv_debounce_quiet` et `mv_debounce_max_delay` regroupent une rafale amont en un seul balayage ; un grain calendaire le rend périodique ; `expected_events` retient le balayage jusqu'à ce que ses entrées soient fraîches sur toute la fenêtre. La boucle d'interrogation est l'ordonnanceur des balayages.
+Le rythme ne demande aucun nouveau champ. `change_signal` plus `cache_ttl` fixent la fréquence d'interrogation, `mv_debounce_quiet` et `mv_debounce_max_delay` regroupent une rafale de changements en amont en un seul scan, un grain calendaire le rend périodique, et `expected_events` retient le scan jusqu'à ce que ses entrées soient fraîches sur toute la fenêtre. La boucle d'interrogation est l'ordonnanceur des scans.
 
-`outcome` vaut `pass`, `fail`, `warn`, `error` ou `skipped`. Aucune de ces valeurs n'est un verdict — l'application, si elle est souhaitée, est une déclaration distincte, plus tard : un contrôle préalable ou une MV sur les résultats déposés. Parce qu'une observation déposée ne porte aucune obligation de déterminisme, des contrôles non déterministes sont admissibles ici alors qu'ils ne pourraient jamais tenir sur une barrière de contrôle préalable — score d'anomalie, variation sur fenêtre glissante, fraîcheur par rapport à maintenant.
+`outcome` vaut `pass`, `fail`, `warn`, `error` ou `skipped`. Aucune de ces valeurs n'impose quoi que ce soit à elle seule. Si vous voulez imposer, déclarez-le à part : un preflight, ou une MV sur les résultats déposés. Une observation déposée n'a pas à être déterministe, donc des contrôles qui ne pourraient jamais commander un preflight ont leur place ici, comme un score d'anomalie, une variation sur une fenêtre glissante ou une fraîcheur mesurée par rapport à maintenant.
 
-Le contrat est rédigé dans l'interface, dans le panneau de qualité des données de la surface d'édition de table, et le texte brut du contrat y fait toujours foi. Une exécution à blanc exécute le contrat contre la table vivante et montre les résultats sans les déposer — c'est ainsi que l'on attrape un contrat dont le nom de jeu de données s'est résolu vers un endroit inattendu et qui ne déposerait sinon que des lignes en réussite.
+Vous rédigez le contrat dans l'interface, dans le panneau qualité des données de la page d'édition de la table, et le texte brut du contrat qui s'y trouve fait toujours foi. Une exécution à blanc applique le contrat à la table en direct et montre les résultats sans les déposer. Servez-vous-en pour repérer un contrat dont le nom de jeu de données s'est résolu à un endroit inattendu et qui, sinon, ne déposerait que des lignes réussies.
 
 ---
 

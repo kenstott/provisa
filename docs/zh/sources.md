@@ -965,20 +965,20 @@ sources:
 
 ### Data Quality Checkers {: #data-quality-checkers }
 
-数据质量检查器是一种数据源类型，而不是一个子系统。其扫描输出即为数据：一条检查结果就是一次观测，因此它通过普通的数据源路径落地，并从其他任何数据源那里继承节奏、新鲜度、事件、血缘、治理、RLS、网格和导出能力。
+数据质量检查器只是另一种数据源类型。它的扫描输出就是数据：每个检查结果都是一次观测，所以它经由普通的数据源路径落地，并获得其他数据源都有的一切，从节奏、新鲜度、事件和血缘，到治理、RLS、表格视图和导出。
 
-支持两种，选择哪一种既是许可证的选择，也是功能的选择。
+支持两种检查器，在两者之间做选择，许可证和功能同样重要。
 
 | Source Type | Contract Dialect | Extra | Licence | Hosted cloud plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda contract YAML | `pip install .[soda]`（`soda-postgres`） | Elastic License 2.0 | 拒绝 — 见下文 |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]`（`great-expectations[postgresql]`） | Apache 2.0 | 允许 |
 
-Elastic License 2.0 禁止将该软件以托管或受管服务的形式提供给第三方，而在 SaaS 平面内为某个租户运行 Soda 正是这种情况。`config/capabilities.yaml` 将这一区别体现为 `soda` 选项上的 `cloud_eligible: false`，托管平面会读取该标志。想要使用 Soda 的托管部署，需要连接到由运营方自行运行的运营方提供的 Soda 端点。
+Elastic License 2.0 禁止把软件作为托管或受管服务提供给第三方，而代表租户在 SaaS 平面内运行 Soda 正是这种情况。`config/capabilities.yaml` 在 `soda` 选项上把这一点记为 `cloud_eligible: false`，托管平面会读取这个标志。需要 Soda 的托管部署指向运营方自己运行的 Soda 端点。
 
-Provisa 不打包也不链接任何东西。扫描在一个子解释器中运行（`python -m provisa.dq.worker`），这是唯一导入 `soda_core` 或 `great_expectations` 的地方，因此一个源码可用（source-available）的检查器永远不会进入服务器进程，检查器崩溃只会杀死一个子进程，而不会影响事件循环。
+Provisa 不内置也不链接任何东西。扫描在一个子解释器（`python -m provisa.dq.worker`）中运行，这是唯一导入 `soda_core` 或 `great_expectations` 的地方。因此源码可用的检查器永远不会进入服务器进程；检查器崩溃时，只会带走一个子进程，事件循环不受影响。
 
-**该数据源指向的是 Provisa 自身的 pgwire 端点。** 正是这一点使得一个 postgres 驱动就能检查一个由 Snowflake 或 Iceberg 支持的表：检查器扫描的是联邦视图，而不是底层系统。由于策略应用于该连接，扫描身份是显式声明的而非继承而来 — 一个被过滤过的行集绝不能产生一个静默通过的检查。
+**数据源指向 Provisa 自己的 pgwire 端点。** 正因如此，一个 postgres 驱动就能检查背后是 Snowflake 或 Iceberg 的表：检查器扫描的是联邦视图，从不扫描底层系统。策略作用于这个连接，所以扫描身份要显式声明。如果它是继承来的，一组被过滤的行可能会让检查悄悄通过，而没人察觉。
 
 ```yaml
 sources:
@@ -995,7 +995,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**每个契约一张结果表，而契约就是全部注册内容。** 该表携带 `dq_contract` — 契约原文本身 — 以及关于其结构的其他任何信息均由此推导。列、水位线和提升（promotion）都是派生出来的。
+**每个契约一张结果表，契约就是全部注册内容。** 这张表带有 `dq_contract`，即契约原文，此外不带任何关于其结构的信息。列、水位线和提升都由它推导而来。
 
 ```yaml
 tables:
@@ -1023,18 +1023,18 @@ tables:
             must_be_greater_than: 0
 ```
 
-注册过程从该文本中派生出的内容：
+注册会从这段文本中推导出四样东西：
 
-- **血缘。** 契约本身已经命名了其目标数据集，因此注册过程会按照 `extract_inputs` 解析 SQL 的方式解析它，并将其解析到已被治理的表。只有一份定义，不存在可能发生偏差的第二份副本。命名了一个未受治理数据集的契约会在注册时直接报错失败，而不会落地任何无人要求的行。
-- **列。** 结果信封（envelope）是检查器自身的，而不是运营方的 — 16 个内置列，从 `scan_id` 到 `diagnostics`。已声明的列仅会被读取其 `visible_to`，该值必须一致，随后会被替换。
-- **水位线。** `scan_time` 成为水位线，这使得落地成为一次追加操作。扫描历史在没有历史子系统的情况下不断累积。
-- **提升。** `freshness_max_timestamp` 和 `dataset_rows_tested` 从 `diagnostics` jsonb 中被提升为有类型的列。可以像对待其他任何 jsonb 列一样添加更多列。
+- **血缘。** 契约已经指明了目标数据集，所以注册会像 `extract_inputs` 解析 SQL 那样解析它，并解析到受治理的表。只有一份定义，没有可能偏离的第二份副本。指向未受治理数据集的契约会在注册时明确报错，因此永远不会落地没人要的行。
+- **列。** 结果信封属于检查器：16 个内置列，从 `scan_id` 到 `diagnostics`。已声明的列只读取其 `visible_to`，所有列上的值必须一致，之后这些列会被替换。
+- **水位线。** `scan_time` 成为水位线，这使落地成为追加。扫描历史不断累积，无需历史子系统。
+- **提升。** `freshness_max_timestamp` 和 `dataset_rows_tested` 从 `diagnostics` jsonb 中提升为有类型的列。您可以像对待其他 jsonb 列一样添加更多。
 
-时机（timing）不引入任何新字段。`change_signal` 加上 `cache_ttl` 给出轮询节奏；`mv_debounce_quiet` 和 `mv_debounce_max_delay` 将上游的一次突发合并为一次扫描；日历粒度使其成为周期性的；`expected_events` 会等待其输入在窗口内变新鲜后再执行扫描。轮询循环就是扫描调度器。
+时间安排不需要新字段。`change_signal` 加上 `cache_ttl` 决定轮询频率，`mv_debounce_quiet` 和 `mv_debounce_max_delay` 把上游的一阵变更合并为一次扫描，日历粒度让它周期性运行，`expected_events` 则把扫描推迟到其输入在整个窗口内都已新鲜为止。轮询循环就是扫描调度器。
 
-`outcome` 是 `pass`、`fail`、`warn`、`error`、`skipped` 之一。它们都不是一个裁定 — 如果需要强制执行，那是之后一个独立的声明：一个 preflight 或一个建立在落地结果之上的 MV。由于一次落地的观测不承担确定性义务，因此这里可以接受一些在 preflight 门控上永远无法存在的非确定性检查 — 异常分数、尾随窗口变化、相对于当前时刻的新鲜度。
+`outcome` 取 `pass`、`fail`、`warn`、`error` 或 `skipped` 之一。它们本身都不强制执行任何东西。如果需要强制执行，请另行声明：一个 preflight，或一个基于已落地结果的 MV。已落地的观测不必是确定性的，所以这里可以放那些永远无法作为 preflight 关卡的检查，例如异常分数、滑动窗口内的变化，或相对于当前时刻的新鲜度。
 
-契约在 UI 中编写，位于表编辑界面的数据质量面板中，那里的契约原文始终是事实来源。试运行（dry run）会针对实时表执行该契约并显示结果而不落地它们 — 这正是你捕获一个数据集名称解析到意外位置、否则只会落地全是通过结果的行的契约的方式。
+契约在界面中编写，位于表编辑页面的数据质量面板里，那里的原始契约文本始终是唯一依据。试运行会针对实时表执行契约并显示结果，但不落地。用它来发现数据集名称解析到了意外位置的契约，否则这种契约只会落地全部通过的行。
 
 ---
 

@@ -982,20 +982,20 @@ A data profiler is a source that holds a name, a schedule and run defaults, and 
 
 ### Data Quality Checkers
 
-A data-quality checker is a source type, not a subsystem. Its scan output is data: a check result is an observation, so it lands through the ordinary source path and inherits cadence, freshness, events, lineage, governance, RLS, grid and export from every other source.
+A data-quality checker is just another source type. Its scan output is data: each check result is an observation, so it lands through the ordinary source path and gets what every other source gets, from cadence, freshness, events and lineage to governance, RLS, the grid and export.
 
-Two are supported, and the choice is a licence choice as much as a feature one.
+Two checkers are supported, and choosing between them is as much about the licence as about features.
 
 | Source Type | Contract Dialect | Extra | Licence | Hosted cloud plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Refused — see below |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Allowed |
 
-Elastic License 2.0 prohibits providing the software to third parties as a hosted or managed service, and running Soda inside the SaaS plane on a tenant's behalf is exactly that. `config/capabilities.yaml` carries the split as `cloud_eligible: false` on the `soda` option, and the hosted plane reads that flag. A hosted deployment that wants Soda reaches an operator-supplied Soda endpoint the operator runs themselves.
+Elastic License 2.0 forbids providing the software to third parties as a hosted or managed service, and running Soda inside the SaaS plane on a tenant's behalf would be exactly that. `config/capabilities.yaml` records this as `cloud_eligible: false` on the `soda` option, and the hosted plane reads that flag. A hosted deployment that wants Soda points at a Soda endpoint the operator runs themselves.
 
-Provisa vendors and links nothing. The scan runs in a child interpreter (`python -m provisa.dq.worker`), which is the only place `soda_core` or `great_expectations` is imported, so a source-available checker never reaches the server process and a checker crash kills a subprocess rather than the event loop.
+Provisa vendors and links nothing. The scan runs in a child interpreter (`python -m provisa.dq.worker`), the only place `soda_core` or `great_expectations` is imported. A source-available checker therefore never reaches the server process, and if a checker crashes, it takes down a subprocess and leaves the event loop alone.
 
-**The source points at Provisa's own pgwire endpoint.** That is what lets one postgres driver check a Snowflake- or Iceberg-backed table: the checker scans the federated view, not the underlying system. Because policy applies to that connection, the scan identity is declared rather than inherited — a filtered row set must never produce a silently passing check.
+**The source points at Provisa's own pgwire endpoint.** That's how one postgres driver can check a table backed by Snowflake or Iceberg: the checker scans the federated view, never the system underneath. Policy applies to that connection, so you declare the scan identity explicitly. If it were inherited, a filtered set of rows could make a check pass without anyone noticing.
 
 ```yaml
 sources:
@@ -1012,7 +1012,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**One results table per contract, and the contract is the whole registration.** The table carries `dq_contract` — the contract text verbatim — and nothing else about its shape. Columns, watermark and promotions are all derived.
+**One results table per contract, and the contract is the whole registration.** The table carries `dq_contract`, the contract text word for word, and nothing else about its shape. Columns, watermark and promotions are all derived from it.
 
 ```yaml
 tables:
@@ -1040,18 +1040,18 @@ tables:
             must_be_greater_than: 0
 ```
 
-What the registration derives from that text:
+The registration derives four things from that text:
 
-- **Lineage.** The contract already names its target dataset, so the registration parses it the way `extract_inputs` parses SQL and resolves it to the governed table. One definition, no second copy that can drift. A contract naming an ungoverned dataset fails loud at registration rather than landing rows nobody asked for.
-- **Columns.** The result envelope is the checker's, not the operator's — 16 shipped columns from `scan_id` through `diagnostics`. Declared columns are read only for their `visible_to`, which must be unanimous, and are then replaced.
-- **Watermark.** `scan_time` becomes the watermark, which makes the landing an append. Scan history accumulates with no history subsystem.
-- **Promotions.** `freshness_max_timestamp` and `dataset_rows_tested` are promoted out of the `diagnostics` jsonb as typed columns. Add more the way you would on any other jsonb column.
+- **Lineage.** The contract already names its target dataset, so the registration parses it the way `extract_inputs` parses SQL and resolves it to the governed table. There's one definition and no second copy to drift. A contract that names an ungoverned dataset fails loudly at registration, so it never lands rows nobody asked for.
+- **Columns.** The result envelope belongs to the checker: 16 shipped columns, from `scan_id` through `diagnostics`. Declared columns are read only for their `visible_to`, which must be the same on all of them, and are then replaced.
+- **Watermark.** `scan_time` becomes the watermark, which makes the landing an append. Scan history builds up with no history subsystem.
+- **Promotions.** `freshness_max_timestamp` and `dataset_rows_tested` are promoted out of the `diagnostics` jsonb as typed columns. You can add more the way you would on any other jsonb column.
 
-Timing introduces no new fields. `change_signal` plus `cache_ttl` give the poll cadence; `mv_debounce_quiet` and `mv_debounce_max_delay` collapse an upstream burst into one scan; a calendar grain makes it periodic; `expected_events` holds the scan until its inputs are fresh through the window. The poll loop is the scan scheduler.
+Timing needs no new fields. `change_signal` plus `cache_ttl` set how often it polls, `mv_debounce_quiet` and `mv_debounce_max_delay` fold a burst of upstream changes into one scan, a calendar grain makes it periodic, and `expected_events` holds the scan until its inputs are fresh through the window. The poll loop is the scan scheduler.
 
-`outcome` is one of `pass`, `fail`, `warn`, `error`, `skipped`. None of them is a verdict — enforcement, if wanted, is a separate declaration later: a preflight or an MV over the landed results. Because a landed observation carries no determinism obligation, non-deterministic checks are admissible here that could never sit on a preflight gate — anomaly score, trailing-window change, freshness against now.
+`outcome` is one of `pass`, `fail`, `warn`, `error` or `skipped`. None of them enforces anything by itself. If you want enforcement, declare it separately: a preflight, or an MV over the landed results. A landed observation doesn't have to be deterministic, so checks that could never gate a preflight are fine here, such as an anomaly score, a change over a trailing window, or freshness measured against now.
 
-The contract is authored in the UI, in the table edit surface's data-quality panel, and the raw contract text there is always the source of truth. A dry run executes the contract against the live table and shows the outcomes without landing them — which is how you catch a contract whose dataset name resolved somewhere unexpected and would otherwise land nothing but passing rows.
+You write the contract in the UI, in the data-quality panel of the table's edit page, and the raw contract text there is always the source of truth. A dry run executes the contract against the live table and shows the outcomes without landing them. Use it to catch a contract whose dataset name resolved somewhere unexpected, which would otherwise land nothing but passing rows.
 
 ---
 

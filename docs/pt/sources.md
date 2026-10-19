@@ -970,20 +970,20 @@ Um data profiler é uma fonte que guarda um nome, uma agenda e os padrões de ex
 
 ### Verificadores de Qualidade de Dados {: #data-quality-checkers }
 
-Um verificador de qualidade de dados é um tipo de fonte, não um subsistema. Sua saída de scan é dado: um resultado de verificação é uma observação, então ela chega pelo caminho de fonte comum e herda cadência, frescor, eventos, linhagem, governança, RLS, grid e exportação de qualquer outra fonte.
+Um verificador de qualidade de dados é só mais um tipo de fonte. A saída da varredura são dados: cada resultado de verificação é uma observação, então ela é pousada pelo caminho comum das fontes e recebe o que qualquer outra fonte recebe, de cadência, atualidade, eventos e linhagem até governança, RLS, a grade e a exportação.
 
-Dois são suportados, e a escolha é tanto uma escolha de licença quanto de funcionalidade.
+Dois verificadores são suportados, e escolher entre eles é tanto uma questão de licença quanto de recursos.
 
 | Tipo de Fonte | Dialeto do Contrato | Extra | Licença | Plano de nuvem hospedado |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | YAML de contrato Soda | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Recusado — veja abaixo |
 | `great_expectations` | JSON de suíte de expectativas | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Permitido |
 
-A Elastic License 2.0 proíbe fornecer o software a terceiros como serviço hospedado ou gerenciado, e executar o Soda dentro do plano SaaS em nome de um locatário é exatamente isso. `config/capabilities.yaml` carrega essa divisão como `cloud_eligible: false` na opção `soda`, e o plano hospedado lê essa flag. Uma implantação hospedada que quer usar o Soda alcança um endpoint Soda fornecido pelo operador, que o próprio operador executa.
+A Elastic License 2.0 proíbe oferecer o software a terceiros como serviço hospedado ou gerenciado, e rodar o Soda dentro do plano SaaS em nome de um inquilino seria exatamente isso. O `config/capabilities.yaml` registra isso como `cloud_eligible: false` na opção `soda`, e o plano hospedado lê essa flag. Um deployment hospedado que queira Soda aponta para um endpoint Soda que o próprio operador roda.
 
-O Provisa não empacota nem vincula nada. O scan roda em um interpretador filho (`python -m provisa.dq.worker`), que é o único lugar onde `soda_core` ou `great_expectations` é importado, então um verificador source-available nunca alcança o processo do servidor e uma falha do verificador mata um subprocesso em vez do event loop.
+O Provisa não embute nem vincula nada. A varredura roda num interpretador filho (`python -m provisa.dq.worker`), o único lugar onde `soda_core` ou `great_expectations` é importado. Assim, um verificador source-available nunca chega ao processo do servidor, e se um verificador falhar, ele derruba um subprocesso e deixa o loop de eventos em paz.
 
-**A fonte aponta para o próprio endpoint pgwire do Provisa.** É isso que permite que um único driver postgres verifique uma tabela apoiada em Snowflake ou Iceberg: o verificador escaneia a exibição federada, não o sistema subjacente. Como a política se aplica a essa conexão, a identidade do scan é declarada em vez de herdada — um conjunto de linhas filtrado nunca deve produzir uma verificação que passe silenciosamente.
+**A fonte aponta para o próprio endpoint pgwire do Provisa.** É assim que um único driver postgres consegue verificar uma tabela apoiada em Snowflake ou Iceberg: o verificador varre a visão federada, nunca o sistema por baixo. A política se aplica a essa conexão, então você declara a identidade da varredura de forma explícita. Se ela fosse herdada, um conjunto filtrado de linhas poderia fazer uma verificação passar sem ninguém notar.
 
 ```yaml
 sources:
@@ -1000,7 +1000,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Uma tabela de resultados por contrato, e o contrato é todo o registro.** A tabela carrega `dq_contract` — o texto do contrato ao pé da letra — e nada mais sobre sua forma. Colunas, marca d'água e promoções são todas derivadas.
+**Uma tabela de resultados por contrato, e o contrato é todo o registro.** A tabela carrega `dq_contract`, o texto do contrato palavra por palavra, e nada mais sobre sua forma. Colunas, marca d'água e promoções são todas derivadas dele.
 
 ```yaml
 tables:
@@ -1028,18 +1028,18 @@ tables:
             must_be_greater_than: 0
 ```
 
-O que o registro deriva desse texto:
+O registro deriva quatro coisas desse texto:
 
-- **Linhagem.** O contrato já nomeia seu conjunto de dados alvo, então o registro o interpreta da mesma forma que `extract_inputs` interpreta SQL e o resolve para a tabela governada. Uma única definição, sem segunda cópia que possa divergir. Um contrato que nomeia um conjunto de dados não governado falha alto no registro em vez de pousar linhas que ninguém pediu.
-- **Colunas.** O envelope de resultado é do verificador, não do operador — 16 colunas entregues, de `scan_id` até `diagnostics`. Colunas declaradas são lidas apenas por seu `visible_to`, que deve ser unânime, e então são substituídas.
-- **Marca d'água.** `scan_time` se torna a marca d'água, o que torna o pouso um append. O histórico de scans se acumula sem um subsistema de histórico.
-- **Promoções.** `freshness_max_timestamp` e `dataset_rows_tested` são promovidos para fora do jsonb `diagnostics` como colunas tipadas. Adicione mais da mesma forma que faria em qualquer outra coluna jsonb.
+- **Linhagem.** O contrato já nomeia seu conjunto de dados alvo, então o registro o interpreta como `extract_inputs` interpreta SQL e o resolve para a tabela governada. Há uma definição só e nenhuma segunda cópia que possa divergir. Um contrato que nomeia um conjunto de dados não governado falha de forma visível no registro, então nunca pousa linhas que ninguém pediu.
+- **Colunas.** O envelope de resultado pertence ao verificador: 16 colunas incluídas, de `scan_id` a `diagnostics`. Das colunas declaradas só se lê o `visible_to`, que deve ser igual em todas, e depois elas são substituídas.
+- **Marca d'água.** `scan_time` se torna a marca d'água, o que faz do pouso um append. O histórico de varreduras cresce sem um subsistema de histórico.
+- **Promoções.** `freshness_max_timestamp` e `dataset_rows_tested` são promovidos para fora do jsonb `diagnostics` como colunas tipadas. Você pode adicionar outras como faria em qualquer outra coluna jsonb.
 
-A temporização não introduz novos campos. `change_signal` somado a `cache_ttl` fornece a cadência de polling; `mv_debounce_quiet` e `mv_debounce_max_delay` colapsam uma rajada upstream em um único scan; um grão de calendário o torna periódico; `expected_events` retém o scan até que suas entradas estejam frescas ao longo da janela. O loop de polling é o agendador do scan.
+O agendamento não pede campos novos. `change_signal` mais `cache_ttl` definem a frequência de consulta, `mv_debounce_quiet` e `mv_debounce_max_delay` juntam uma rajada de mudanças a montante numa só varredura, uma granularidade de calendário a torna periódica e `expected_events` segura a varredura até que suas entradas estejam atualizadas em toda a janela. O loop de consulta é o agendador de varreduras.
 
-`outcome` é um de `pass`, `fail`, `warn`, `error`, `skipped`. Nenhum deles é um veredito — a aplicação, se desejada, é uma declaração separada posterior: um preflight ou uma MV sobre os resultados pousados. Como uma observação pousada não carrega nenhuma obrigação de determinismo, verificações não determinísticas são admissíveis aqui que nunca poderiam estar em um gate de preflight — pontuação de anomalia, mudança de janela móvel, frescor em relação a agora.
+`outcome` é um de `pass`, `fail`, `warn`, `error` ou `skipped`. Nenhum deles impõe nada por si só. Se você quiser imposição, declare-a à parte: um preflight, ou uma MV sobre os resultados pousados. Uma observação pousada não precisa ser determinística, então aqui cabem verificações que nunca poderiam controlar um preflight, como uma pontuação de anomalia, uma variação numa janela móvel ou a atualidade medida em relação a agora.
 
-O contrato é escrito na UI, no painel de qualidade de dados da superfície de edição de tabela, e o texto bruto do contrato ali é sempre a fonte da verdade. Um dry run executa o contrato contra a tabela ao vivo e mostra os resultados sem pousá-los — assim é como você detecta um contrato cujo nome de conjunto de dados foi resolvido para algo inesperado e que, de outra forma, pousaria apenas linhas aprovadas.
+Você escreve o contrato na UI, no painel de qualidade de dados da página de edição da tabela, e o texto bruto do contrato ali é sempre a fonte da verdade. Uma execução de teste aplica o contrato à tabela ao vivo e mostra os resultados sem pousá-los. Use-a para pegar um contrato cujo nome de conjunto de dados foi resolvido num lugar inesperado e que, de outra forma, só pousaria linhas aprovadas.
 
 ---
 

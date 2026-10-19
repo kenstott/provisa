@@ -970,34 +970,20 @@ Un data profiler è un'origine che contiene un nome, una pianificazione e i valo
 
 ### Controlli di qualità dei dati {: #data-quality-checkers }
 
-Un checker di qualità dei dati è un tipo di origine, non un sottosistema. Il suo output di
-scansione è dato: un risultato di controllo è un'osservazione, quindi percorre il normale percorso
-di origine ed eredita cadenza, freschezza, eventi, derivazione, governance, RLS, griglia ed
-esportazione da ogni altra origine.
+Un checker di qualità dei dati è semplicemente un altro tipo di origine. Il suo output di scansione sono dati: ogni risultato di controllo è un'osservazione, quindi viene depositato per il percorso ordinario delle origini e riceve ciò che riceve ogni altra origine, da cadenza, freschezza, eventi e derivazione fino a governance, RLS, griglia ed esportazione.
 
-Ne sono supportati due, e la scelta è tanto una scelta di licenza quanto una scelta funzionale.
+Sono supportati due checker, e scegliere tra loro è una questione di licenza quanto di funzionalità.
 
 | Tipo di origine | Dialetto di contratto | Extra | Licenza | Piano cloud ospitato |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda contract YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Rifiutato — vedi sotto |
 | `great_expectations` | Expectation suite JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Consentito |
 
-La Elastic License 2.0 vieta di fornire il software a terzi come servizio ospitato o gestito, ed
-eseguire Soda all'interno del piano SaaS per conto di un tenant è esattamente questo.
-`config/capabilities.yaml` porta la distinzione come `cloud_eligible: false` sull'opzione `soda`, e
-il piano ospitato legge quel flag. Una distribuzione ospitata che desideri Soda raggiunge un
-endpoint Soda fornito dall'operatore, gestito direttamente da quest'ultimo.
+La Elastic License 2.0 vieta di fornire il software a terzi come servizio ospitato o gestito, ed eseguire Soda nel piano SaaS per conto di un tenant sarebbe esattamente questo. `config/capabilities.yaml` lo registra come `cloud_eligible: false` sull'opzione `soda`, e il piano ospitato legge quel flag. Un deployment ospitato che vuole Soda punta a un endpoint Soda che l'operatore gestisce in proprio.
 
-Provisa non fa vendoring né linking di nulla. La scansione viene eseguita in un interprete figlio
-(`python -m provisa.dq.worker`), l'unico punto in cui vengono importati `soda_core` o
-`great_expectations`, così un checker source-available non raggiunge mai il processo del server e
-un crash del checker abbatte un sottoprocesso anziché l'event loop.
+Provisa non include né collega nulla. La scansione gira in un interprete figlio (`python -m provisa.dq.worker`), l'unico punto in cui si importa `soda_core` o `great_expectations`. Un checker source-available quindi non raggiunge mai il processo server, e se un checker va in crash si porta via un sottoprocesso e lascia in pace l'event loop.
 
-**L'origine punta al proprio endpoint pgwire di Provisa.** Questo è ciò che permette a un unico
-driver postgres di controllare una tabella supportata da Snowflake o Iceberg: il checker analizza
-la vista federata, non il sistema sottostante. Poiché la policy si applica a quella connessione,
-l'identità di scansione è dichiarata anziché ereditata — un insieme di righe filtrato non deve mai
-produrre un controllo che passa silenziosamente.
+**L'origine punta all'endpoint pgwire di Provisa stesso.** È così che un solo driver postgres può controllare una tabella basata su Snowflake o Iceberg: il checker scansiona la vista federata, mai il sistema sottostante. Su quella connessione si applica la policy, quindi l'identità della scansione si dichiara esplicitamente. Se fosse ereditata, un insieme di righe filtrato potrebbe far passare un controllo senza che nessuno se ne accorga.
 
 ```yaml
 sources:
@@ -1014,9 +1000,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Una tabella dei risultati per contratto, e il contratto è l'intera registrazione.** La tabella
-porta `dq_contract` — il testo del contratto testuale — e nient'altro riguardo alla propria forma.
-Colonne, watermark e promozioni sono tutte derivate.
+**Una tabella di risultati per contratto, e il contratto è tutta la registrazione.** La tabella porta `dq_contract`, il testo del contratto parola per parola, e nient'altro sulla sua forma. Colonne, watermark e promozioni derivano tutti da lì.
 
 ```yaml
 tables:
@@ -1044,40 +1028,18 @@ tables:
             must_be_greater_than: 0
 ```
 
-Ciò che la registrazione deriva da quel testo:
+Da quel testo la registrazione ricava quattro cose:
 
-- **Derivazione.** Il contratto nomina già il proprio dataset di destinazione, quindi la
-  registrazione lo analizza nello stesso modo in cui `extract_inputs` analizza SQL e lo
-  risolve nella tabella governata. Un'unica definizione, nessuna seconda copia che possa
-  divergere. Un contratto che nomina un dataset non governato fallisce rumorosamente alla
-  registrazione anziché depositare righe che nessuno ha richiesto.
-- **Colonne.** L'involucro del risultato è quello del checker, non dell'operatore — 16 colonne
-  fornite di serie da `scan_id` a `diagnostics`. Le colonne dichiarate vengono lette solo per il
-  loro `visible_to`, che deve essere unanime, e vengono poi sostituite.
-- **Watermark.** `scan_time` diventa il watermark, il che rende il deposito un append.
-  La cronologia delle scansioni si accumula senza un sottosistema di cronologia.
-- **Promozioni.** `freshness_max_timestamp` e `dataset_rows_tested` vengono promossi dal jsonb
-  `diagnostics` a colonne tipizzate. Aggiungerne altre nello stesso modo in cui si
-  farebbe su qualsiasi altra colonna jsonb.
+- **Derivazione.** Il contratto nomina già il proprio dataset di destinazione, quindi la registrazione lo analizza come `extract_inputs` analizza l'SQL e lo risolve nella tabella governata. C'è una sola definizione e nessuna seconda copia che possa divergere. Un contratto che nomina un dataset non governato fallisce in modo evidente alla registrazione, così non deposita mai righe che nessuno ha chiesto.
+- **Colonne.** L'involucro del risultato appartiene al checker: 16 colonne fornite, da `scan_id` a `diagnostics`. Delle colonne dichiarate si legge solo il `visible_to`, che deve essere uguale su tutte, e poi vengono sostituite.
+- **Watermark.** `scan_time` diventa il watermark, il che rende il deposito un append. La cronologia delle scansioni si accumula senza un sottosistema di cronologia.
+- **Promozioni.** `freshness_max_timestamp` e `dataset_rows_tested` vengono promossi dal jsonb `diagnostics` come colonne tipizzate. Potete aggiungerne altre come su qualsiasi altra colonna jsonb.
 
-La temporizzazione non introduce nuovi campi. `change_signal` più `cache_ttl` forniscono la
-cadenza di polling; `mv_debounce_quiet` e `mv_debounce_max_delay` collassano un burst a monte in
-una sola scansione; un grano di calendario la rende periodica;
-`expected_events` trattiene la scansione finché i suoi input non sono aggiornati entro la finestra
-. Il ciclo di polling è lo scheduler della scansione.
+I tempi non richiedono campi nuovi. `change_signal` più `cache_ttl` stabiliscono ogni quanto si interroga, `mv_debounce_quiet` e `mv_debounce_max_delay` raccolgono una raffica di modifiche a monte in una sola scansione, una granularità di calendario la rende periodica e `expected_events` trattiene la scansione finché i suoi input non sono freschi su tutta la finestra. Il ciclo di polling è lo scheduler delle scansioni.
 
-`outcome` è uno tra `pass`, `fail`, `warn`, `error`, `skipped`. Nessuno di essi è un verdetto —
-l'applicazione, se desiderata, è una dichiarazione separata successiva: un preflight o una MV sui
-risultati depositati. Poiché un'osservazione depositata non porta alcun obbligo di determinismo
-, qui sono ammissibili controlli non deterministici che non potrebbero mai stare su un
-gate di preflight — punteggio di anomalia, variazione su finestra mobile, freschezza rispetto
-all'istante presente.
+`outcome` vale `pass`, `fail`, `warn`, `error` o `skipped`. Nessuno di questi impone nulla da solo. Se volete un'imposizione, dichiaratela a parte: un preflight, o una MV sui risultati depositati. Un'osservazione depositata non deve essere deterministica, quindi qui vanno bene controlli che non potrebbero mai governare un preflight, come un punteggio di anomalia, una variazione su una finestra mobile o la freschezza misurata rispetto ad adesso.
 
-Il contratto viene redatto nell'interfaccia utente, nel pannello di qualità dei dati della
-superficie di modifica tabella, e il testo del contratto grezzo lì presente è sempre la fonte di
-verità. Un dry run esegue il contratto sulla tabella live e mostra gli esiti senza depositarli —
-questo è il modo per individuare un contratto il cui nome di dataset si è risolto in un punto
-inatteso e che altrimenti non depositerebbe altro che righe che passano.
+Il contratto si scrive nella UI, nel pannello qualità dei dati della pagina di modifica della tabella, e il testo grezzo del contratto lì presente è sempre la fonte di verità. Un'esecuzione di prova applica il contratto alla tabella live e mostra gli esiti senza depositarli. Usatela per scovare un contratto il cui nome di dataset si è risolto in un punto inatteso e che altrimenti depositerebbe solo righe superate.
 
 ---
 

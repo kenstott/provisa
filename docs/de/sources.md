@@ -971,20 +971,20 @@ Ein Data Profiler ist eine Quelle, die einen Namen, einen Zeitplan und Lauf-Stan
 
 ### Data-Quality-Checker {: #data-quality-checkers }
 
-Ein Data-Quality-Checker ist ein Quelltyp, kein Subsystem. Seine Scan-Ausgabe sind Daten: Ein Check-Ergebnis ist eine Beobachtung, sodass es über den gewöhnlichen Quellpfad landet und Kadenz, Freshness, Events, Lineage, Governance, RLS, Grid und Export von jeder anderen Quelle erbt.
+Ein Data-Quality-Checker ist einfach ein weiterer Quelltyp. Seine Scan-Ausgabe sind Daten: Jedes Prüfergebnis ist eine Beobachtung, landet also über den gewöhnlichen Quellpfad und bekommt alles, was jede andere Quelle bekommt, von Takt, Aktualität, Ereignissen und Lineage bis zu Governance, RLS, Grid und Export.
 
-Zwei werden unterstützt, und die Wahl ist ebenso eine Lizenzfrage wie eine Feature-Frage.
+Zwei Checker werden unterstützt, und die Wahl zwischen ihnen ist ebenso eine Lizenz- wie eine Funktionsfrage.
 
 | Quelltyp | Vertrags-Dialekt | Extra | Lizenz | Gehostete Cloud-Plane |
 | ------------ | ----------------- | ------- | --------- | -------------------- |
 | `soda` | Soda-Contract-YAML | `pip install .[soda]` (`soda-postgres`) | Elastic License 2.0 | Abgelehnt — siehe unten |
 | `great_expectations` | Expectation-Suite-JSON | `pip install .[gx]` (`great-expectations[postgresql]`) | Apache 2.0 | Erlaubt |
 
-Die Elastic License 2.0 verbietet, die Software Dritten als gehosteten oder verwalteten Dienst bereitzustellen, und Soda innerhalb der SaaS-Plane im Namen eines Mandanten laufen zu lassen ist genau das. `config/capabilities.yaml` trägt die Aufteilung als `cloud_eligible: false` auf der `soda`-Option, und die gehostete Plane liest dieses Flag. Ein gehostetes Deployment, das Soda möchte, erreicht einen vom Betreiber bereitgestellten Soda-Endpunkt, den der Betreiber selbst betreibt.
+Die Elastic License 2.0 verbietet, die Software Dritten als gehosteten oder verwalteten Dienst bereitzustellen, und Soda im SaaS-Plane im Auftrag eines Mandanten auszuführen wäre genau das. `config/capabilities.yaml` hält das als `cloud_eligible: false` an der Option `soda` fest, und das gehostete Plane liest dieses Flag. Ein gehostetes Deployment, das Soda will, verweist auf einen Soda-Endpunkt, den der Betreiber selbst betreibt.
 
-Provisa bündelt und verlinkt nichts. Der Scan läuft in einem Kind-Interpreter (`python -m provisa.dq.worker`), dem einzigen Ort, an dem `soda_core` oder `great_expectations` importiert wird, sodass ein source-available Checker den Serverprozess nie erreicht und ein Checker-Absturz einen Subprozess tötet statt die Event-Loop.
+Provisa liefert nichts mit und linkt nichts. Der Scan läuft in einem Kind-Interpreter (`python -m provisa.dq.worker`), dem einzigen Ort, an dem `soda_core` oder `great_expectations` importiert wird. Ein Source-Available-Checker erreicht den Serverprozess deshalb nie, und stürzt ein Checker ab, reißt er einen Unterprozess mit und lässt die Event-Loop in Ruhe.
 
-**Die Quelle zeigt auf Provisas eigenen pgwire-Endpunkt.** Das ist, was es einem Postgres-Treiber erlaubt, eine Snowflake- oder Iceberg-gestützte Tabelle zu prüfen: Der Checker scannt die föderierte Sicht, nicht das darunterliegende System. Weil Richtlinie auf diese Verbindung angewendet wird, wird die Scan-Identität deklariert statt geerbt — eine gefilterte Zeilenmenge darf nie einen stillschweigend bestehenden Check erzeugen.
+**Die Quelle zeigt auf Provisas eigenen pgwire-Endpunkt.** So kann ein einziger Postgres-Treiber eine Tabelle prüfen, hinter der Snowflake oder Iceberg steht: Der Checker scannt die föderierte Sicht, nie das System darunter. Auf dieser Verbindung gilt die Policy, deshalb deklarieren Sie die Scan-Identität ausdrücklich. Würde sie geerbt, könnte eine gefilterte Zeilenmenge eine Prüfung bestehen lassen, ohne dass es jemand merkt.
 
 ```yaml
 sources:
@@ -1001,7 +1001,7 @@ sources:
       password: ${env:PROVISA_DQ_PASSWORD}
 ```
 
-**Eine Ergebnistabelle pro Vertrag, und der Vertrag ist die gesamte Registrierung.** Die Tabelle trägt `dq_contract` — den Vertragstext wortwörtlich — und sonst nichts über ihre Form. Spalten, Watermark und Promotions werden alle abgeleitet.
+**Eine Ergebnistabelle pro Vertrag, und der Vertrag ist die ganze Registrierung.** Die Tabelle trägt `dq_contract`, den Vertragstext Wort für Wort, und sonst nichts über ihre Form. Spalten, Watermark und Promotions werden alle daraus abgeleitet.
 
 ```yaml
 tables:
@@ -1029,18 +1029,18 @@ tables:
             must_be_greater_than: 0
 ```
 
-Was die Registrierung aus diesem Text ableitet:
+Aus diesem Text leitet die Registrierung vier Dinge ab:
 
-- **Lineage.** Der Vertrag benennt bereits sein Zieldataset, sodass die Registrierung ihn so parst, wie `extract_inputs` SQL parst, und ihn auf die geregelte Tabelle auflöst. Eine Definition, keine zweite Kopie, die driften kann. Ein Vertrag, der ein ungeregeltes Dataset benennt, schlägt bei der Registrierung laut fehl, statt Zeilen zu landen, die niemand angefordert hat.
-- **Spalten.** Der Ergebnis-Umschlag gehört dem Checker, nicht dem Betreiber — 16 mitgelieferte Spalten von `scan_id` bis `diagnostics`. Deklarierte Spalten werden nur für ihr `visible_to` gelesen, das einstimmig sein muss, und dann ersetzt.
-- **Watermark.** `scan_time` wird zum Watermark, was das Landen zu einem Append macht. Scan-Historie akkumuliert ohne Historien-Subsystem.
-- **Promotions.** `freshness_max_timestamp` und `dataset_rows_tested` werden aus dem `diagnostics`-jsonb als typisierte Spalten hochgestuft. Fügen Sie weitere hinzu, wie Sie es bei jeder anderen jsonb-Spalte täten.
+- **Lineage.** Der Vertrag nennt sein Zieldataset bereits, also parst die Registrierung ihn so, wie `extract_inputs` SQL parst, und löst ihn auf die gesteuerte Tabelle auf. Es gibt eine Definition und keine zweite Kopie, die abweichen könnte. Ein Vertrag, der ein nicht gesteuertes Dataset nennt, scheitert bei der Registrierung lautstark und landet so nie Zeilen, die niemand angefordert hat.
+- **Spalten.** Der Ergebnis-Umschlag gehört dem Checker: 16 mitgelieferte Spalten, von `scan_id` bis `diagnostics`. Deklarierte Spalten werden nur auf ihr `visible_to` gelesen, das bei allen gleich sein muss, und dann ersetzt.
+- **Watermark.** `scan_time` wird zum Watermark, was das Landen zu einem Append macht. Die Scan-Historie wächst ohne eigenes Historien-Subsystem.
+- **Promotions.** `freshness_max_timestamp` und `dataset_rows_tested` werden aus dem `diagnostics`-jsonb als typisierte Spalten hervorgehoben. Weitere fügen Sie hinzu wie bei jeder anderen jsonb-Spalte.
 
-Timing führt keine neuen Felder ein. `change_signal` plus `cache_ttl` geben die Poll-Kadenz vor; `mv_debounce_quiet` und `mv_debounce_max_delay` fassen einen vorgelagerten Burst zu einem Scan zusammen; eine Kalendergranularität macht ihn periodisch; `expected_events` hält den Scan zurück, bis seine Eingaben durch das Fenster frisch sind. Die Poll-Schleife ist der Scan-Scheduler.
+Für das Timing braucht es keine neuen Felder. `change_signal` plus `cache_ttl` legen fest, wie oft abgefragt wird, `mv_debounce_quiet` und `mv_debounce_max_delay` fassen einen Schwall vorgelagerter Änderungen zu einem Scan zusammen, ein Kalenderraster macht ihn periodisch, und `expected_events` hält den Scan zurück, bis seine Eingaben über das Fenster aktuell sind. Die Poll-Schleife ist der Scan-Scheduler.
 
-`outcome` ist eines von `pass`, `fail`, `warn`, `error`, `skipped`. Keines davon ist ein Urteil — Durchsetzung, falls gewünscht, ist eine separate, spätere Deklaration: ein Preflight oder eine materialisierte Sicht über den gelandeten Ergebnissen. Weil eine gelandete Beobachtung keine Determinismus-Verpflichtung trägt, sind hier nichtdeterministische Checks zulässig, die auf einem Preflight-Gate nie sitzen könnten — Anomalie-Score, Trailing-Window-Änderung, Freshness gegen jetzt.
+`outcome` ist einer der Werte `pass`, `fail`, `warn`, `error` oder `skipped`. Keiner davon setzt von sich aus etwas durch. Wenn Sie Durchsetzung wollen, deklarieren Sie sie getrennt: als Preflight oder als MV über die gelandeten Ergebnisse. Eine gelandete Beobachtung muss nicht deterministisch sein, also sind hier Prüfungen in Ordnung, die nie einen Preflight steuern könnten, etwa ein Anomalie-Score, eine Veränderung über ein gleitendes Fenster oder Aktualität gemessen an jetzt.
 
-Der Vertrag wird in der UI verfasst, im Data-Quality-Panel der Tabellen-Bearbeitungsoberfläche, und der rohe Vertragstext dort ist immer die Source of Truth. Ein Trockenlauf führt den Vertrag gegen die Live-Tabelle aus und zeigt die Ergebnisse, ohne sie zu landen — so erwischen Sie einen Vertrag, dessen Datasetname an eine unerwartete Stelle aufgelöst wurde und der sonst nichts als bestehende Zeilen landen würde.
+Sie schreiben den Vertrag in der UI, im Data-Quality-Panel der Bearbeitungsseite der Tabelle, und der rohe Vertragstext dort ist immer die maßgebliche Quelle. Ein Probelauf führt den Vertrag gegen die Live-Tabelle aus und zeigt die Ergebnisse, ohne sie zu landen. Damit fangen Sie einen Vertrag ab, dessen Datasetname unerwartet aufgelöst wurde und der sonst nur bestandene Zeilen landen würde.
 
 ---
 
