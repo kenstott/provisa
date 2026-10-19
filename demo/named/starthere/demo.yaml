@@ -14,7 +14,7 @@ description: >-
   The whole product on one small dataset, with every Deep Dive: connect, relationships, model,
   govern, quality, query, test data, publish, operate.
 screenshot: card.png
-published: false
+published: true
 # Listed first on the live demos page and in --list-demos.
 order: 1
 # Its tour is the product's core tour, with the Deep Dives after it: it has no tour.yaml of its own.
