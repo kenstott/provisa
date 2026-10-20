@@ -25608,6 +25608,18 @@ A named demo declares its secrets in secrets.yaml beside its config.yaml (secret
 
 ## 4. Source Connectors
 
+### REQ-2106 · Source Connectors {#REQ-2106}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Provisa's services to a code source's code are a module always present where the code runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls -- secrets.get ([REQ-2104](#REQ-2104)), settings.get (the source's declared non-secret settings, mapping settings, edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers, JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source's own vector collection, embedded through the org's vector models as [REQ-2105](#REQ-2105) routes them; never a governed table's data, which reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress allow-list the worker's own egress is, through the deployment's outbound proxy and CA bundle, recorded in the org's trail), llm ([REQ-2105](#REQ-2105)) and log and metric (attached to the request the call serves). The host puts the module on the path of every local worker and of every built image; it is not distributed, and outside Provisa it is absent, so authors test by mocking it. With no $PROVISA_SERVICES every call raises, naming the service. Each services request names the call it serves, so its work reports into that request. Telemetry: every call to the code is a stage of the triggering request ([REQ-1910](#REQ-1910): its facts on the request span at normal detail, a child span at debug detail) -- function, kind, argument count (no values), rows, batches, duration, the worker's CPU, local or remote, code hash -- and every services call is a stage too (cache hit or miss, model and tokens, HTTP host and status, secret name, never a value). The request's traceparent goes to the worker, so the code's own OpenTelemetry joins the same trace. Remote hosts' services wait for remote wiring.
+
+**Use case:** A Python scoring table caches the rates it fetches from a partner API through http.get, reads its threshold from a setting a steward tunes, logs what it scored, and its calls show on the request's trace beside the query that triggered them.
+
+**Code:** `provisa/codesource/service_ops.py`, `provisa/codesource/services.py`, `provisa/codesource/egress.py`, `provisa/codesource/worker.py`, `provisa/codesource/llm_service.py`, `provisa/codesource/image_build.py`, `provisa/python/services/provisa_services/__init__.py`, `provisa/python/host.py`, `provisa/python/reader.py`, `provisa/node/services.mjs`, `provisa/node/host-core.mjs`, `provisa/node/worker.py`, `provisa/otel_compat.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa-ui/src/pages/sources/CodeSourceFields.tsx`, `provisa-ui/src/pages/sources/codeSource.ts`
+
+**Tests:** `tests/unit/test_code_service_ops.py`, `tests/unit/test_code_services_module_python.py`, `tests/integration/test_code_services_contract_js.py`, `tests/integration/test_code_source_services_e2e.py`, `tests/fixtures/code_services_contract.json`
+
 ### REQ-2105 · Source Connectors {#REQ-2105}
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
