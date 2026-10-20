@@ -59,7 +59,7 @@ _SCALARS: dict[str, pa.DataType] = {
 _AS_TEXT = frozenset({"numeric", "json"})
 
 
-def _field(name: str, shape: Shape, manifest: Manifest) -> pa.Field:
+def field_of(name: str, shape: Shape, manifest: Manifest) -> pa.Field:
     if isinstance(shape, Scalar):
         if shape.ir in _AS_TEXT:
             return pa.field(name, pa.utf8(), metadata={IR_KEY: shape.ir.encode()})
@@ -69,12 +69,14 @@ def _field(name: str, shape: Shape, manifest: Manifest) -> pa.Field:
     if isinstance(shape, EnumOf):
         return pa.field(name, pa.utf8())
     if isinstance(shape, ListOf):
-        return pa.field(name, pa.list_(_field("item", shape.element, manifest)))
+        return pa.field(name, pa.list_(field_of("item", shape.element, manifest)))
     if isinstance(shape, Named):
         fields = manifest.types[shape.name].fields
-        return pa.field(name, pa.struct([_field(f.name, f.shape, manifest) for f in fields]))
+        return pa.field(name, pa.struct([field_of(f.name, f.shape, manifest) for f in fields]))
     if isinstance(shape, Anonymous):
-        return pa.field(name, pa.struct([_field(f.name, f.shape, manifest) for f in shape.fields]))
+        return pa.field(
+            name, pa.struct([field_of(f.name, f.shape, manifest) for f in shape.fields])
+        )
     raise TypeError(f"field {name!r}: no Arrow form for {shape!r}")
 
 
@@ -88,7 +90,7 @@ def row_schema(manifest: Manifest, export: Export) -> pa.Schema:
         fields = shape.fields
     else:
         return pa.schema([pa.field(WHOLE_ROW, pa.utf8(), metadata={IR_KEY: b"json"})])
-    return pa.schema([_field(f.name, f.shape, manifest) for f in fields])
+    return pa.schema([field_of(f.name, f.shape, manifest) for f in fields])
 
 
 def schema_text(schema: pa.Schema) -> str:

@@ -247,6 +247,24 @@ async def _mat_pipeline_table(
     )
 
 
+async def land_deferred(exec_sql: str, state) -> str:
+    """REQ-2100: ``exec_sql``, routed to the engine, reading the rows of each code table held for
+    a DIRECT read (``codesource.direct.defer``), landed now as any code table's are."""
+    from provisa.api_source.engine_cache import rewrite_all_from_cache
+    from provisa.cache.values_cte import build_values_ctes_sql
+    from provisa.codesource.direct import take
+
+    held = take()
+    if not held:
+        return exec_sql
+    cache_rewrites: dict = {}
+    values_cte_entries: dict = {}
+    for tn, (table, arguments) in held.items():
+        await _mat_pipeline_table(tn, table, state, cache_rewrites, values_cte_entries, arguments)
+    exec_sql = build_values_ctes_sql(exec_sql, values_cte_entries)
+    return rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
+
+
 async def mat_live_part(
     tn: str, part, state, cache_rewrites: dict, values_cte_entries: dict
 ) -> None:
@@ -1296,9 +1314,11 @@ async def _materialize_api_to_engine_cache(
         ``nf_extractor.apply_dropped_tables`` raises the reason for it. A remote that fails is
         never dropped: its error fails the query (REQ-1661, amended 2026-09-30).
     """
+    from provisa.codesource import direct as code_direct
     from provisa.codesource.table import is_code_table
     from provisa.compiler.nf_extractor import find_api_table_names
 
+    code_direct.begin()
     cache_rewrites: dict = {}
     values_cte_entries: dict = {}
     dropped_tables: dict[str, str] = {}
@@ -1365,6 +1385,15 @@ async def _materialize_api_to_engine_cache(
             )
             continue
         if pipeline_table is not None:
+            if (
+                len(table_names) == 1
+                and tn not in (read_args or {})
+                and is_code_table(pipeline_table, state.source_types)
+            ):
+                # REQ-2100: a read of one code table alone is its source's to answer, DIRECT; it
+                # is landed only if the statement is routed to the engine after all.
+                code_direct.defer(tn, pipeline_table, nf_args)
+                continue
             await _mat_pipeline_table(
                 tn, pipeline_table, state, cache_rewrites, values_cte_entries, nf_args
             )

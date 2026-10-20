@@ -25584,9 +25584,9 @@ A Node or Python code source's tables are reached two more ways beside landing (
 
 **Use case:** A data team's pricing function returns quotes with a score column: an analyst filters WHERE score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse's customers; the single-table read is answered by the host directly, the join by the engine attaching the host, and the function's author wrote no filtering, sorting or SQL.
 
-**Code:** `provisa/codesource/pushdown.py`, `provisa/codesource/names.py`, `provisa/codesource/manifest.py`, `provisa/python/reader.py`, `provisa/node/reader.mjs`
+**Code:** `provisa/codesource/pushdown.py`, `provisa/codesource/names.py`, `provisa/codesource/manifest.py`, `provisa/python/reader.py`, `provisa/node/reader.mjs`, `provisa/codehost/residual.py`, `provisa/codesource/direct.py`, `provisa/codesource/worker.py`, `provisa/transpiler/router.py`, `provisa/api/data/materialization.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_code_pushdown.py`
+**Tests:** `tests/unit/test_code_pushdown.py`, `tests/unit/test_code_direct.py`
 
 **Docs:** [code-sources.md](../code-sources.md)
 
