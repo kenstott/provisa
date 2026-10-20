@@ -53,6 +53,7 @@ import { ResultsPanel } from "./sql/ResultsPanel";
 import { ViewModal } from "./sql/ViewModal";
 import { domainToSqlName } from "../naming";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { isInternalDomain } from "../lib/internalDomains";
 
 // ── SqlPage ──────────────────────────────────────────────────────────────────
 
@@ -363,8 +364,9 @@ export function SqlPage() {
   // panel while its facts, dimensions, and derived metrics keep showing in the other.
   const isDomainVisible = useCallback(
     (domainId: string) => {
-      const isImplicitDomain = domainId === "meta" || domainId === "ops";
-      return isImplicitDomain || checkedDomains.size === 0 || checkedDomains.has(domainId);
+      return (
+        isInternalDomain(domainId) || checkedDomains.size === 0 || checkedDomains.has(domainId)
+      );
     },
     [checkedDomains],
   );

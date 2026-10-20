@@ -38,6 +38,7 @@ import {
 } from "../../api/importer";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { FieldGroup, FormField, FormLayout } from "../form/FormLayout";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 const EMPTY_OVERRIDE: SourceOverride = {
   host: "",
@@ -88,7 +89,7 @@ export function ImportTab() {
   // preview is design time: with a reachable connection it types every column from the source.
   const [sources, setSources] = useState<Record<string, SourceOverride>>({});
   const { domains: existingDomains } = useDomains();
-  const existingDomainIds = existingDomains.map((d) => d.id);
+  const existingDomainIds = assignableDomainIds(existingDomains.map((d) => d.id));
   const [preview, setPreview] = useState<ImportPreview | null>(null);
   const [yamlText, setYamlText] = useState("");
   const [busy, setBusy] = useState("");

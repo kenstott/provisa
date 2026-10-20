@@ -28,6 +28,7 @@ import { CustomPropertiesEditor } from "./CustomPropertiesEditor";
 import type { DataProductForm } from "./types";
 import { relationName } from "../../naming";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 export interface DataProductFormCardProps {
   editingId: string | null;
@@ -158,7 +159,7 @@ export function DataProductFormCard({
                 required
                 value={form.domainId}
                 onChange={(v) => setForm((f) => ({ ...f, domainId: v ?? "" }))}
-                data={domainOptions}
+                data={assignableDomainIds(domainOptions)}
                 searchable
                 error={err(missing.domainId)}
                 data-testid="data-product-domain-input"

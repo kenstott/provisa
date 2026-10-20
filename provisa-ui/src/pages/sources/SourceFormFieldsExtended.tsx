@@ -68,6 +68,7 @@ import {
   FormFolds,
   FormSection,
 } from "../../components/form/FormLayout";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 export function SourceFormFieldsExtended({
   form,
@@ -919,7 +920,10 @@ export function SourceFormFieldsExtended({
             <FormField size="long" hint={t("sourceFormFieldsExtended.allowedDomainsHint")}>
               <MultiSelect
                 label={t("sourceFormFieldsExtended.allowedDomains")}
-                options={domains.map((d) => ({ id: d.id, label: d.id }))}
+                options={assignableDomainIds(domains.map((d) => d.id)).map((id) => ({
+                  id,
+                  label: id,
+                }))}
                 value={form.allowedDomains
                   .split(",")
                   .map((s) => s.trim())
