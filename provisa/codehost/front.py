@@ -492,7 +492,7 @@ def main(argv: list[str]) -> int:
     if pairing is not None:
         sys.stderr.write(f"pairing code: {pairing}\n")
     server = Front(int(port), identity, worker, names)
-    sys.stderr.write(f"remote host listening on {port}\n")
+    sys.stderr.write(f"remote host listening on {server.server_address[1]}\n")
     server.serve_forever()
     return 0
 

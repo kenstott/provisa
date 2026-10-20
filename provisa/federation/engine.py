@@ -623,12 +623,16 @@ def build_duckdb_engine(
         DuckDBSplunkConnector,
         DuckDBSqliteConnector,
     )
+    from provisa.federation.codehost_connectors import DuckDBCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
 
     return FederationEngine(
         name,
         [
             DuckDBPostgresConnector(),
+            # REQ-2100: a built code host, attached as the Postgres server it speaks as.
+            DuckDBCodeHostConnector("node"),
+            DuckDBCodeHostConnector("python"),
             DuckDBSqliteConnector(),
             DuckDBDuckdbConnector(),  # DuckDB attaches another DuckDB database in place (core)
             DuckDBCsvConnector(),
@@ -784,6 +788,7 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         SqliteFdwConnector,
         TdsFdwConnector,
     )
+    from provisa.federation.codehost_connectors import PgCodeHostConnector
     from provisa.federation.custom_connectors import load_custom_connectors
     from provisa.federation.pg_backend import PgBackend
 
@@ -791,6 +796,10 @@ def build_pg_engine(name: str = "postgres") -> FederationEngine:  # REQ-904
         name,
         [
             PostgresFdwConnector(),  # postgresql
+            # REQ-2100: a built code host, through postgres_fdw (probe: a directory shared for its
+            # identity).
+            PgCodeHostConnector("node"),
+            PgCodeHostConnector("python"),
             PgFilesConnector(),  # files (pgwire bridge, live attach — REQ-1730)
             PgSharepointConnector(),  # sharepoint (pgwire bridge, live attach — REQ-1730)
             PgSalesforceConnector(),  # salesforce (pgwire bridge, live attach — REQ-1946)

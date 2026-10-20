@@ -18,7 +18,6 @@ worker is the remote host, dialled again with backoff when it stops answering.""
 from __future__ import annotations
 
 import os
-import socket
 import subprocess
 import sys
 import textwrap
@@ -147,12 +146,6 @@ def test_a_host_that_failed_is_dialled_again_only_after_its_wait(monkeypatch):
 # -- connect ------------------------------------------------------------------------------------
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture
 def host(tmp_path):
     """A Python remote host serving the shop code; its port, pairing code and code hash."""
@@ -160,7 +153,7 @@ def host(tmp_path):
     code.mkdir()
     (code / "shop.py").write_text(_CODE)
     hashed = content_hash(code)
-    port = _free_port()
+    port = 0
     names = tmp_path / "names.json"
     names.write_text("{}")
     process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
@@ -183,7 +176,9 @@ def host(tmp_path):
         line = process.stderr.readline()
         if line.startswith("pairing code: "):
             pairing = line.removeprefix("pairing code: ").strip()
-        if line.startswith("remote host listening"):
+        if line.startswith("remote host listening on "):
+            # Bound by the host itself (port 0): no other test can take it first.
+            port = int(line.rsplit(" ", 1)[1])
             break
     assert pairing is not None
     yield port, pairing, hashed

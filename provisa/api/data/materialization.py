@@ -115,21 +115,25 @@ def _sql_name(name: str) -> str:
     return apply_sql_name(name)
 
 
-def is_native_read(table: dict, types: dict[str, str]) -> bool:
+def is_native_read(table: dict, types: dict[str, str], state: Any) -> bool:
     """Whether Provisa reads ``table`` itself, per statement, under the statement's arguments: a
     MongoDB pipeline table (REQ-1980), a Cosmos DB table with a query or parameters (REQ-1982),
     a Qdrant search (REQ-1983), an Elasticsearch native search (REQ-2017), or a code source's
-    table, a function run in its worker (REQ-1984, REQ-1993). No engine runs any of them."""
+    table, a function run in its worker (REQ-1984, REQ-1993) -- unless the engine attaches its
+    built host (REQ-2100, codesource.attach). No engine runs any of them."""
     from provisa.codesource.table import is_code_table
     from provisa.cosmosdb.table import has_parameters
     from provisa.elasticsearch.native_table import is_native_search_table
     from provisa.mongodb.pipeline_table import is_pipeline_table
     from provisa.qdrant.table import is_search
 
+    if is_code_table(table, types):
+        from provisa.codesource.attach import attached
+
+        return not attached(state, table)
     if (
         is_pipeline_table(table, types)
         or is_search(table, types)
-        or is_code_table(table, types)
         or is_native_search_table(table, types)
     ):
         return True
@@ -155,8 +159,33 @@ def _pipeline_tables(state, table_ids: Iterable[int]) -> dict[str, dict]:
     return {
         _sql_name(t["table_name"]): t
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and is_native_read(t, types) and not _kept_for_good(state, t)
+        if t.get("id") in ids and is_native_read(t, types, state) and not _kept_for_good(state, t)
     }
+
+
+def _attached_code_tables(state, table_ids: Iterable[int]) -> dict[str, dict]:
+    """REQ-2100: the code tables the statement reads that the engine attaches
+    (codesource.attach), by their sql names."""
+    from provisa.codesource.attach import attached
+
+    ids = set(table_ids)
+    return {
+        _sql_name(t["table_name"]): t
+        for t in (getattr(state, "tables", None) or [])
+        if t.get("id") in ids and attached(state, t)
+    }
+
+
+def _given_in_statement(exec_sql: str, table: dict) -> dict[str, object]:
+    """REQ-2100: the parameters of an attached code table the statement gives a value in its own
+    conditions (``_nf_{name} = value``, a literal or a bound parameter), by name."""
+    from provisa.compiler.nf_extractor import extract_nf_args
+    from provisa.core.parameters import is_parameter
+
+    names = {c["column_name"] for c in table["columns"] if is_parameter(c)}
+    _sql, _params, given = extract_nf_args(exec_sql, [], names)
+    # A value bound when the statement runs ($N) is given, though not known here.
+    return {name: "$bound" if value is None else value for name, value in given.items()}
 
 
 def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str | None]:
@@ -170,7 +199,11 @@ def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str |
     types = getattr(state, "source_types", None) or {}
     filters: dict[str, str | None] = {}
     for t in getattr(state, "tables", None) or []:
-        if t.get("id") not in ids or not is_native_read(t, types) or not _kept_for_good(state, t):
+        if (
+            t.get("id") not in ids
+            or not is_native_read(t, types, state)
+            or not _kept_for_good(state, t)
+        ):
             continue
         landed = {c["column_name"] for c in t["columns"] if not is_parameter(c)}
         for c in t["columns"]:
@@ -254,12 +287,16 @@ async def land_deferred(exec_sql: str, state) -> str:
     from provisa.cache.values_cte import build_values_ctes_sql
     from provisa.codesource.direct import take
 
+    from provisa.codesource.attach import attached
+
     held = take()
     if not held:
         return exec_sql
     cache_rewrites: dict = {}
     values_cte_entries: dict = {}
     for tn, (table, arguments) in held.items():
+        if attached(state, table):
+            continue  # the engine reads it from its host, its parameters in the statement
         await _mat_pipeline_table(tn, table, state, cache_rewrites, values_cte_entries, arguments)
     exec_sql = build_values_ctes_sql(exec_sql, values_cte_entries)
     return rewrite_all_from_cache(exec_sql, cache_rewrites) if cache_rewrites else exec_sql
@@ -387,7 +424,7 @@ def _parameter_tables(state, table_ids: Iterable[int]) -> dict[str, list]:
     return {
         apply_sql_name(t["table_name"]): [c for c in t["columns"] if is_parameter(c)]
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and not (is_native_read(t, types) and _kept_for_good(state, t))
+        if t.get("id") in ids and not (is_native_read(t, types, state) and _kept_for_good(state, t))
     }
 
 
@@ -1348,11 +1385,23 @@ async def _materialize_api_to_engine_cache(
 
     params_of = _parameter_tables(state, table_ids)
     pipelines = _pipeline_tables(state, table_ids)
+    attached_tables = _attached_code_tables(state, table_ids)
     statement_args = nf_args
     for tn in table_names:
         # A read named for itself is its table's, under its own arguments; its rows are put in
         # under its own name, so the statement's other reads of the table keep theirs.
         table, nf_args = (read_args or {}).get(tn, (tn, statement_args))
+        attached_table = attached_tables.get(_sql_name(table))
+        if attached_table is not None:
+            # REQ-2100: the engine reads it from its host, its parameters' conditions left in the
+            # statement for the host; a read of it alone is its source's to answer, DIRECT.
+            given = {**(nf_args or {}), **_given_in_statement(exec_sql, attached_table)}
+            missing = _missing_parameters(params_of, table, None, given, ctx, None)
+            if missing:
+                _refuse_or_drop(exec_sql, tn, missing, dropped_tables)
+            elif len(table_names) == 1 and tn not in (read_args or {}):
+                code_direct.defer(tn, attached_table, nf_args)
+            continue
         pipeline_table = pipelines.get(_sql_name(table))
         # REQ-2099: a code table the statement joins to a table whose relationship feeds its
         # parameters is given them by the join.

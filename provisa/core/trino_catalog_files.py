@@ -299,12 +299,18 @@ def write_kafka_client_file(path: Path, text: str) -> None:  # REQ-147, REQ-2073
     """Write a Kafka catalog's client properties, which can hold a SASL password, for Trino alone.
 
     Trino's Kafka connector reads its client settings only from a file (``kafka.config.resources``),
-    so this one file of a catalog is written. It is mode 0600 in a 0700 directory. Where the app runs
-    as root (the app image) the file and directory are given to Trino's user; otherwise the app
-    runs as that user itself (the development image, uid 1000) or beside a Trino of its own user,
-    and they are already its. In the containerized stack the directory is a tmpfs shared with the
-    engine (docker-compose.app.yml), so the file never reaches a disk.
+    so this one file of a catalog is written (:func:`write_engine_secret_file`). In the
+    containerized stack the directory is a tmpfs shared with the engine (docker-compose.app.yml),
+    so the file never reaches a disk.
     """
+    write_engine_secret_file(path, text.encode("utf-8"), TRINO_UID)
+
+
+def write_engine_secret_file(path: Path, data: bytes, engine_uid: int) -> None:  # REQ-2073
+    """Write a file that holds a secret for an engine process alone: mode 0600 in a 0700
+    directory. Where the app runs as root (the app image) the file and directory are given to the
+    engine's user (``engine_uid``); otherwise the app runs as that user itself (the development
+    image, uid 1000) or beside an engine of its own user, and they are already its."""
     path.parent.mkdir(parents=True, exist_ok=True)
     os.chmod(path.parent, 0o700)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -312,11 +318,11 @@ def write_kafka_client_file(path: Path, text: str) -> None:  # REQ-147, REQ-2073
         # O_CREAT's mode applies to a new file only; one left by an earlier write is narrowed too.
         os.fchmod(fd, 0o600)
         # Only root can give a file away; os.geteuid exists on POSIX alone (a native Windows
-        # process runs no Trino container to give it to).
+        # process runs no engine container to give it to).
         if os.name == "posix" and os.geteuid() == 0:
-            os.fchown(fd, TRINO_UID, TRINO_UID)
-            os.chown(path.parent, TRINO_UID, TRINO_UID)
-        os.write(fd, text.encode("utf-8"))
+            os.fchown(fd, engine_uid, engine_uid)
+            os.chown(path.parent, engine_uid, engine_uid)
+        os.write(fd, data)
     finally:
         os.close(fd)
 

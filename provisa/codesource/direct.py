@@ -158,8 +158,13 @@ async def read(state: Any, table: dict, name: str, sql: str, arguments: dict | N
         for p in export.parameters
         if p.pushes is not None
     }
-    # An argument the statement names itself is the one the function is given.
-    given = {**residual.pushed(sql, DIALECT, name, pushdown), **(arguments or {})}
+    # An argument the statement names itself is the one the function is given: taken out of the
+    # statement before it was routed, or (a table the engine attaches, REQ-2100) left in it.
+    given = {
+        **residual.pushed(sql, DIALECT, name, pushdown),
+        **residual.nf_given(sql, DIALECT, name),
+        **(arguments or {}),
+    }
     args, names = call_arguments(table, export, given)
     schema = row_schema(prepared.manifest, export)
     worker = prepared.worker()
@@ -172,8 +177,14 @@ async def read(state: Any, table: dict, name: str, sql: str, arguments: dict | N
         [{f.name: _argument(values.get(f.name), f) for f in fields}], schema=pa.schema(fields)
     )
 
+    from provisa.codesource.arrow_rows import WHOLE_ROW
+
+    # A row type typed by a preview: each row comes whole, and the table's registered columns
+    # are what the statement names, read out of it as a landed read reads them.
+    loose = schema.names == [WHOLE_ROW]
+
     def _run() -> Any:
-        if worker.where_kind == "remote":
+        if worker.where_kind == "remote" and not loose:
             # The host's front end applies the statement to the rows itself.
             answered = [
                 pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
@@ -193,12 +204,8 @@ async def read(state: Any, table: dict, name: str, sql: str, arguments: dict | N
                 )
             ]
             return pa.concat_tables(answered)
-        batches = [
-            batch
-            for ipc in worker.batches(function, "table", args, names, schema=schema_text(schema))
-            for batch in pa.ipc.open_stream(pa.py_buffer(ipc)).read_all().to_batches()
-        ]
-        rows = pa.Table.from_batches(batches) if batches else schema.empty_table()
+        ipcs = list(worker.batches(function, "table", args, names, schema=schema_text(schema)))
+        rows = _registered(table, name, ipcs) if loose else _as_returned(ipcs, schema)
         return residual.answer(sql, DIALECT, name, residual.with_arguments(rows, argument_row))
 
     return await asyncio.to_thread(_run)
@@ -231,3 +238,72 @@ def _ipc_text(table: Any) -> str:  # a pyarrow Table
     with pa.ipc.new_stream(sink, table.schema) as stream:
         stream.write_table(table)
     return base64.b64encode(sink.getvalue().to_pybytes()).decode()
+
+
+def _as_returned(ipcs: list[bytes], schema: Any) -> Any:  # a pyarrow Schema
+    """The function's rows as its host sent them, typed by its row type."""
+    import pyarrow as pa
+
+    batches = [
+        b for ipc in ipcs for b in pa.ipc.open_stream(pa.py_buffer(ipc)).read_all().to_batches()
+    ]
+    return pa.Table.from_batches(batches) if batches else schema.empty_table()
+
+
+#: A registered column's Arrow form, by its IR type; a numeric's digits and a json value's text,
+#: as every host sends them (provisa/codesource/arrow_rows.py).
+def _arrow_field(name: str, data_type: str) -> Any:
+    import pyarrow as pa
+
+    from provisa.codesource.arrow_rows import IR_KEY
+
+    kinds = {
+        "text": pa.utf8(),
+        "bigint": pa.int64(),
+        "integer": pa.int64(),
+        "double": pa.float64(),
+        "real": pa.float64(),
+        "boolean": pa.bool_(),
+        "timestamp": pa.timestamp("us", tz="UTC"),
+        "date": pa.date32(),
+    }
+    if data_type in kinds:
+        return pa.field(name, kinds[data_type])
+    if data_type in ("numeric", "json"):
+        return pa.field(name, pa.utf8(), metadata={IR_KEY: data_type.encode()})
+    raise TypeError(f"column {name!r}: the IR type {data_type!r} has no Arrow form")
+
+
+def _registered(table: dict, name: str, ipcs: list[bytes]) -> Any:
+    """Whole rows read out into ``table``'s registered columns (``pipeline_rows.project``)."""
+    import json
+
+    import pyarrow as pa
+
+    from provisa.codesource.arrow_rows import rows_of
+    from provisa.codesource.worker import encode
+    from provisa.mongodb.pipeline_rows import OutputColumn, project
+
+    outputs = [
+        OutputColumn(c["column_name"], c["data_type"], c.get("path"))
+        for c in table["columns"]
+        if c["native_filter_type"] is None
+    ]
+    fields = [_arrow_field(c.name, c.data_type) for c in outputs]
+
+    def _cell(value: Any, data_type: str) -> Any:
+        if value is None:
+            return None
+        if data_type == "numeric":
+            return str(value)
+        if data_type == "json":
+            return json.dumps(encode(value), separators=(",", ":"))
+        return value
+
+    rows = [
+        {c.name: _cell(row[c.name], c.data_type) for c in outputs}
+        for ipc in ipcs
+        for whole in rows_of(ipc)
+        for row in [project(name, whole, outputs)]
+    ]
+    return pa.Table.from_pylist(rows, schema=pa.schema(fields))

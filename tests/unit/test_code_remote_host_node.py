@@ -46,17 +46,11 @@ def _node() -> str:
     return found
 
 
-def _free_port() -> int:
-    with socket.socket() as s:
-        s.bind(("127.0.0.1", 0))
-        return s.getsockname()[1]
-
-
 @pytest.fixture
 def started(tmp_path):
     """A Node remote host on a free port, its state in a directory of its own; its pairing code."""
     (tmp_path / "index.mjs").write_text(_CODE)
-    port = _free_port()
+    port = 0
     names = tmp_path / "names.json"
     names.write_text("{}")
     worker = [_node(), str(HOST), "{fd}", str(tmp_path / "index.mjs")]
@@ -73,7 +67,9 @@ def started(tmp_path):
         line = process.stderr.readline()
         if line.startswith("pairing code: "):
             pairing = line.removeprefix("pairing code: ").strip()
-        if line.startswith("remote host listening"):
+        if line.startswith("remote host listening on "):
+            # Bound by the host itself (port 0): no other test can take it first.
+            port = int(line.rsplit(" ", 1)[1])
             break
     assert pairing is not None, "the host printed no pairing code"
     yield port, pairing, tmp_path / "state"

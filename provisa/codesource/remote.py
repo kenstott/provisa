@@ -151,6 +151,17 @@ def _dial(
     return conn
 
 
+def host_certificate(
+    address: str, port: int, pin: str, identity: Identity, timeout: float = 10.0
+) -> str:
+    """REQ-2100: the paired host's certificate (PEM), checked against its ``pin``: what an engine
+    attaching the host verifies it by (sslmode=verify-ca), as Provisa's own dials do by the pin."""
+    with _dial(address, port, pin, identity, timeout) as conn:
+        der = conn.getpeercert(binary_form=True)
+    assert der is not None  # _dial checked it against the pin
+    return ssl.DER_cert_to_PEM_cert(der)
+
+
 def pair(address: str, port: int, code: str, identity: Identity, timeout: float = 10.0) -> str:
     """Pair with the remote host at ``address:port`` using its pairing ``code``: it keeps
     ``identity``'s certificate as Provisa's. The host's fingerprint, to pin."""

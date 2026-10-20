@@ -62,7 +62,7 @@ def started(tmp_path):
     code = tmp_path / "code"
     code.mkdir()
     (code / "shop.py").write_text(_CODE)
-    port = _free_port()
+    port = 0
     names = tmp_path / "names.json"
     names.write_text("{}")
     worker = [sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"]
@@ -79,7 +79,9 @@ def started(tmp_path):
         line = process.stderr.readline()
         if line.startswith("pairing code: "):
             pairing = line.removeprefix("pairing code: ").strip()
-        if line.startswith("remote host listening"):
+        if line.startswith("remote host listening on "):
+            # Bound by the host itself (port 0): no other test can take it first.
+            port = int(line.rsplit(" ", 1)[1])
             break
     assert pairing is not None, "the host printed no pairing code"
     yield port, pairing

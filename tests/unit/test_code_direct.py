@@ -319,3 +319,59 @@ async def test_a_read_held_for_its_driver_is_landed_when_the_engine_answers(monk
     assert landed == [("scores", "scores", {"as_of": "x"})]
     assert sql == "SELECT 1 /*['scores']*/"
     assert code_direct.deferred() == {}
+
+
+LOOSE_CODE = """
+def currencies() -> list[dict]:
+    \"\"\"@table\"\"\"
+    return [{"code": c, "rate": r} for c, r in (("EUR", 0.9), ("GBP", 0.8), ("USD", 1.0))]
+"""
+
+
+async def test_a_table_typed_by_a_preview_is_read_into_its_registered_columns(
+    tmp_path, monkeypatch
+):
+    code = tmp_path / "code"
+    code.mkdir()
+    (code / "fx.py").write_text(LOOSE_CODE)
+    done = subprocess.run(
+        [sys.executable, "-I", str(READER), str(code), "fx"], capture_output=True, text=True
+    )
+    assert done.returncode == 0, done.stderr
+    manifest = read_manifest(json.loads(done.stdout), PYTHON_RULES)
+    command = w.HostCommand(
+        argv=lambda address: [sys.executable, "-I", str(HOST), address, str(code), "fx"],
+        env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
+        cwd=code,
+    )
+    ready = code_source.Prepared("fx-src", "h1", manifest, command, "acme")
+    source = SimpleNamespace(id="fx-src", type=SimpleNamespace(value="python"), mapping={})
+
+    async def _registered(_state):
+        return [source]
+
+    async def _prepare(*_args):
+        return ready
+
+    async def _context(_state):
+        return None
+
+    monkeypatch.setattr("provisa.federation.registry_view.registered_sources", _registered)
+    monkeypatch.setattr(code_source, "prepare", _prepare)
+    monkeypatch.setattr(code_source, "context_for", _context)
+    table = {
+        "table_name": "currencies",
+        "source_id": "fx-src",
+        "columns": [_column("code", "text"), _column("rate", "double")],
+    }
+    try:
+        answer = await code_direct.read(
+            None,
+            table,
+            "currencies",
+            'SELECT code FROM "default".currencies WHERE rate < 1 ORDER BY code',
+            None,
+        )
+    finally:
+        w.pool.stop_source("fx-src")
+    assert answer.column("code").to_pylist() == ["EUR", "GBP"]
