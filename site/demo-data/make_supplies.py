@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: b57ffabb-ae7e-404b-82bd-7c2d674cae2d
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Write supplies.parquet: the animal shelter's supplies inventory by location, the file the demo
 adds as a Parquet source (REQ-2113), published at https://provisa.dev/demo-data/supplies.parquet.
 

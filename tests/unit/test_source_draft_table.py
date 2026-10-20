@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6bcc4a47-21c3-40b7-b14c-743d3ab9bd65
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-2113: a single-file CSV or Parquet source's table is set up with it, as a draft, when the
 create form (or Polly) asks: named after the source, typed from its file as Register Table
 proposes it, every role seeing every column. When it cannot be, the source stands and why is

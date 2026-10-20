@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: febd5df2-9c4f-4620-86ca-b7b783b6c538
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """REQ-2113: a CSV or Parquet source's file, given by download -- from a file mount path under a
 directory the operator allows, an https:// URL or an s3:// URL -- kept in the org's folder under
 files/<source>/ through the upload path, with its limit; a mount path outside the allowed
