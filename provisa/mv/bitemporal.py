@@ -31,12 +31,13 @@ TWO HARD RULES shape the design:
        an INSERT ... SELECT), never folded in Provisa. Smaller storage; needs an entity key.
 
 SYSTEM time (transaction time — when Provisa recorded it) is Provisa-managed via one append stamp.
-SOURCE time (REQ-1163 as amended, REQ-2064) is the clock reads travel on: the view declares the
-column holding the source's own change time (an updated_at, or the commit time a CDC landing
-carries), and a version is in force from its source time to the next version's. The recorded time
-stays beside it as the answer to when Provisa knew.
-VALID time (business time — when a fact is true) is NOT computed here: the view's own SELECT
-supplies the ``valid_from``/``valid_to`` columns and this module only preserves and queries them.
+VALID time (business time — when a fact is true) is the clock reads travel on (REQ-1163 as amended
+2026-10-20, REQ-2064, REQ-2109): the view's own column holding it -- the ``valid_time`` it declares,
+or for a view that inherits its versions from the one versioned table it groups
+(:mod:`provisa.mv.bitemporal_inherit`), its output column that is that table's valid time
+unchanged. A read answers, per key, the latest recorded version among those valid at or before a
+point, or every version valid within a range. The RECORDED clock is a second axis (as recorded):
+the view's declared ``recorded_time`` column, else the append stamp.
 
 Efficiency varies by engine — a MERGE/UPDATE store could maintain fewer rows, an Iceberg store
 could lean on native snapshots — which is exactly why the strategy is DECLARED, not hardcoded.
@@ -58,6 +59,20 @@ MODES = frozenset({MODE_SNAPSHOT, MODE_DELTA})
 _SPACESHIP_DIALECTS = frozenset({"mysql", "mariadb"})
 _OP_UPSERT = "upsert"
 _OP_DELETE = "delete"
+#: REQ-2109: the managed column an inherited view's every appended row carries -- the latest
+#: recorded time of its input that append read. Its maximum over the log is the view's watermark,
+#: so the watermark advances only with an append that commits and survives a restart.
+WATERMARK_COLUMN = "sys_input_recorded"
+
+
+@dataclass(frozen=True)
+class InheritedInput:
+    """REQ-2109: the one versioned table a view inherits its versions from: its reference as the
+    view's SQL spells it, and its own valid and recorded time columns."""
+
+    ref: str
+    valid_time: str
+    recorded_time: str
 
 
 @dataclass(frozen=True)
@@ -75,6 +90,10 @@ class BitemporalSpec:
     op_column: str = "sys_op"
     valid_from: str | None = None
     valid_to: str | None = None
+    # REQ-2109: the view's column holding its valid time -- the clock its reads travel on.
+    valid_column: str | None = None
+    # REQ-2109: set when the view inherits its versions from one versioned table (no declaration).
+    inherited: InheritedInput | None = None
     # The view's declared columns: what a snapshot view's read compares to tell a row recorded
     # again unchanged from a correction (the read columns and system columns are left out).
     columns: tuple[str, ...] = ()
@@ -86,7 +105,13 @@ class BitemporalSpec:
             )
         if self.mode == MODE_DELTA and not self.key:
             raise ValueError("delta bitemporal mode requires an entity key (no key ⇒ no delta)")
-        managed = [self.system_column, *([self.op_column] if self.mode == MODE_DELTA else [])]
+        if self.inherited is not None and not (self.is_delta and self.valid_column):
+            raise ValueError("an inherited bitemporal view appends deltas on its valid column")
+        managed = [
+            self.system_column,
+            *([self.op_column] if self.mode == MODE_DELTA else []),
+            *([self.watermark_column] if self.watermark_column else []),
+        ]
         valid = [c for c in (self.valid_from, self.valid_to, self.source_column) if c]
         allcols = managed + valid
         if len(set(allcols)) != len(allcols):
@@ -95,6 +120,17 @@ class BitemporalSpec:
     @property
     def is_delta(self) -> bool:
         return self.mode == MODE_DELTA
+
+    @property
+    def watermark_column(self) -> str | None:
+        """The managed watermark column (REQ-2109): an inherited view's only."""
+        return WATERMARK_COLUMN if self.inherited is not None else None
+
+    @property
+    def recorded_clock(self) -> str:
+        """The column an as-recorded read cuts the log on: the declared recorded time, else the
+        append stamp."""
+        return self.source_column or self.system_column
 
 
 def _q(ident: str) -> str:
@@ -118,14 +154,36 @@ def system_columns_ddl(spec: BitemporalSpec) -> list[tuple[str, str]]:
     cols = [(spec.system_column, "TIMESTAMP")]
     if spec.is_delta:
         cols.append((spec.op_column, "VARCHAR"))
+    if spec.watermark_column:
+        cols.append((spec.watermark_column, "TIMESTAMP"))
     return cols
 
 
-def create_sql(target: str, select_sql: str, spec: BitemporalSpec, now_ts: str) -> str:
-    """First materialization: append the whole fresh dataset as the initial state (both modes)."""
+def _watermark(spec: BitemporalSpec, watermark_sql: str | None) -> str | None:
+    """The watermark stamp an inherited view's append carries, as SQL; None for any other view.
+    An inherited view's append without one is a defect, refused."""
+    if spec.watermark_column is None:
+        return None
+    if watermark_sql is None:
+        raise ValueError("an inherited bitemporal view's append carries its input's watermark")
+    return f"CAST({watermark_sql} AS TIMESTAMP)"
+
+
+def create_sql(
+    target: str,
+    select_sql: str,
+    spec: BitemporalSpec,
+    now_ts: str,
+    watermark_sql: str | None = None,
+) -> str:
+    """First materialization: append the whole fresh dataset as the initial state (both modes).
+    ``watermark_sql`` is an inherited view's watermark stamp (REQ-2109)."""
     stamp = f"{now_ts} AS {_q(spec.system_column)}"
     if spec.is_delta:
         stamp += f", '{_OP_UPSERT}' AS {_q(spec.op_column)}"
+    wm = _watermark(spec, watermark_sql)
+    if wm is not None:
+        stamp += f", {wm} AS {_q(WATERMARK_COLUMN)}"
     return f"CREATE TABLE {target} AS SELECT _s.*, {stamp} FROM ({select_sql}) _s"
 
 
@@ -136,16 +194,25 @@ def append_sql(
     business_cols: list[str],
     now_ts: str,
     dialect: str,
+    *,
+    watermark_sql: str | None = None,
+    scope: str | None = None,
 ) -> list[str]:
     """Ordered APPEND-ONLY statements advancing the versioned table by one refresh.
 
     Snapshot: one INSERT of the whole fresh dataset. Delta: one INSERT of upsert rows (fresh rows
     with no identical currently-effective row — the engine computes this via anti-join) and one
     INSERT of tombstones (currently-effective keys absent from the fresh set). No UPDATE, no DELETE.
+
+    REQ-2109, an inherited view: ``watermark_sql`` stamps its upserts; ``scope`` (a condition on
+    the current state, alias ``c``) confines its tombstones to the valid dates the refresh rebuilt,
+    since the fresh set holds only those.
     """
     if not spec.is_delta:
         return [_append_snapshot(target, select_sql, spec, business_cols, now_ts)]
-    return _append_delta(target, select_sql, spec, business_cols, now_ts, dialect)
+    return _append_delta(
+        target, select_sql, spec, business_cols, now_ts, dialect, watermark_sql, scope
+    )
 
 
 def _append_snapshot(
@@ -167,16 +234,23 @@ def _append_delta(
     business_cols: list[str],
     now_ts: str,
     dialect: str,
+    watermark_sql: str | None = None,
+    scope: str | None = None,
 ) -> list[str]:
     cols = ", ".join(_q(c) for c in business_cols)
     sys, op = _q(spec.system_column), _q(spec.op_column)
     current = current_state_sql(target, spec, business_cols)  # the engine reconstructs "now"
+    wm = _watermark(spec, watermark_sql)
+    # REQ-2109: an inherited view's watermark is carried by its upserts alone, appended last: a
+    # failed upsert leaves the watermark where it was, so the next refresh reads the same changes
+    # again; a tombstone carries none (NULL).
+    wm_col = f", {_q(WATERMARK_COLUMN)}" if wm is not None else ""
 
     # Upserts: fresh rows not identical to any currently-effective row (new keys + changed rows).
     f_cols = ", ".join(f"{_q('f')}.{_q(c)}" for c in business_cols)
     upserts = (
-        f"INSERT INTO {target} ({cols}, {sys}, {op}) "
-        f"SELECT {f_cols}, {now_ts}, '{_OP_UPSERT}' "
+        f"INSERT INTO {target} ({cols}, {sys}, {op}{wm_col}) "
+        f"SELECT {f_cols}, {now_ts}, '{_OP_UPSERT}'{f', {wm}' if wm is not None else ''} "
         f"FROM ({select_sql}) {_q('f')} "
         f"WHERE NOT EXISTS (SELECT 1 FROM ({current}) {_q('c')} "
         f"WHERE {_match(business_cols, 'c', 'f', dialect)})"
@@ -192,13 +266,16 @@ def _append_delta(
         [f"{_q('c')}.{_q(c)}" for c in key] + [f"NULL AS {_q(c)}" for c in non_key]
     )
     ordered = ", ".join(_q(c) for c in (key + non_key))
+    scoped = f"({scope}) AND " if scope is not None else ""
     tombstones = (
         f"INSERT INTO {target} ({ordered}, {sys}, {op}) "
         f"SELECT {tomb_select}, {now_ts}, '{_OP_DELETE}' "
         f"FROM ({current}) {_q('c')} "
-        f"WHERE NOT EXISTS (SELECT 1 FROM ({select_sql}) {_q('f')} "
+        f"WHERE {scoped}NOT EXISTS (SELECT 1 FROM ({select_sql}) {_q('f')} "
         f"WHERE {_match(key, 'c', 'f', dialect)})"
     )
+    if wm is not None:
+        return [tombstones, upserts]
     return [upserts, tombstones]
 
 
@@ -238,7 +315,8 @@ def reconstruct_as_of_sql(
 
 
 #: REQ-2064: the columns every read of a bitemporal view answers beside its own: the version's
-#: source time, the next version's (NULL while it is in force), and when Provisa recorded it.
+#: valid time, the valid time of its key's next version (NULL for the last), and when Provisa
+#: recorded it.
 SOURCE_FROM = "source_from"
 SOURCE_TO = "source_to"
 RECORDED_AT = "recorded_at"
@@ -251,15 +329,17 @@ _READ_DESCRIPTIONS = {
 
 
 def declared_spec(
-    business_key: list[str], recorded_time: str | None, columns: list[str]
+    business_key: list[str], valid_time: str, recorded_time: str, columns: list[str]
 ) -> BitemporalSpec:
     """REQ-2109: how a view declaring business_key, valid_time and recorded_time keeps its
     versions. Provisa picks the mechanism: each refresh appends what changed (delta) keyed on the
-    business key, read on the recorded time."""
+    business key; its reads travel on the valid time and are cut as recorded on the recorded
+    time."""
     return BitemporalSpec(
         key=tuple(business_key),
         mode=MODE_DELTA,
         source_column=recorded_time,
+        valid_column=valid_time,
         columns=tuple(columns),
     )
 
@@ -287,14 +367,15 @@ def with_read_columns(columns: list[dict], key: list[str], source_time: str | No
 
 @dataclass(frozen=True)
 class AsOf:
-    """A request's time travel (REQ-1163, REQ-2064), as validated SQL timestamp literals.
+    """A request's time travel (REQ-1163 as amended 2026-10-20, REQ-2064), as validated SQL
+    timestamp literals.
 
-    On the view's clock (its source time, else its recorded time): a point (``end_sql`` None)
-    answers the version of each key in force then; a range ``[start_sql, end_sql)`` answers every
-    version in force at any time within it; neither (``start_sql`` None) the version in force now.
-    ``recorded_sql``, when given, is a second axis: the view as Provisa had recorded it at that
-    time, every version recorded later left out -- so a correction recorded since does not change
-    what is answered about the past."""
+    On the view's valid time: a point (``end_sql`` None) answers, of each key's versions valid at
+    or before it, the latest recorded; a range ``[start_sql, end_sql)`` answers every version
+    whose valid time falls in it; neither (``start_sql`` None) the latest version of each key.
+    ``recorded_sql``, when given, is a second axis: the log as it was recorded then, every version
+    recorded later left out first -- so a correction recorded since does not change what is
+    answered about the past."""
 
     start_sql: str | None
     end_sql: str | None = None
@@ -332,34 +413,9 @@ class AsOf:
         )
 
 
-def _versions_sql(mv_ref: str, spec: BitemporalSpec, recorded_sql: str | None = None) -> str:
-    """Each version of each key with the span it is in force on source time: ``_bt_from`` its
-    source time, ``_bt_to`` the next version's (NULL while current). Tombstones end a span and are
-    not versions themselves. With ``recorded_sql`` the log is read as it stood then: every row
-    recorded later is left out before any span is drawn (REQ-1163, as recorded)."""
-    sys = _q(spec.system_column)
-    if recorded_sql is not None:
-        mv_ref = f"(SELECT * FROM {mv_ref} WHERE {sys} <= {recorded_sql})"
-    # REQ-1163 (amended): a view that names no source-time column travels on Provisa's recorded
-    # time instead -- its declared clock, which depends on refresh timing, not on when the source
-    # changed.
-    src = sys if spec.source_column is None else _q(spec.source_column)
-    part = ", ".join(_q(c) for c in spec.key)
-    if spec.is_delta:
-        op = _q(spec.op_column)
-        # REQ-2064: a tombstone has no source change time -- a disappearance is known only when it
-        # was recorded -- so it takes effect, ending the version before it, at its recorded time.
-        eff = f"CASE WHEN {op} = '{_OP_DELETE}' THEN {sys} ELSE {src} END"
-        spans = (
-            f"SELECT *, {eff} AS _bt_from, LEAD({eff}) OVER "
-            f"(PARTITION BY {part} ORDER BY {eff}, {sys}) AS _bt_to FROM {mv_ref} _bl"
-        )
-        return f"SELECT * FROM ({spans}) _bv WHERE _bv.{op} <> '{_OP_DELETE}'"
-    # Snapshot: each refresh appends the whole dataset, so a row recorded again unchanged is no
-    # new version. A recording whose content differs from the one before it at the same (key,
-    # source time) is a correction; of those, the latest recorded is in force -- as a delta view's
-    # is -- and its record is when that content was first recorded. A key absent from a later
-    # batch is gone from that batch's recorded time.
+def _content_columns(spec: BitemporalSpec) -> list[str]:
+    """A snapshot view's declared business columns: what tells a row recorded again unchanged
+    from a new version, and what its derived tombstones are written over."""
     content = [
         c
         for c in spec.columns
@@ -370,51 +426,116 @@ def _versions_sql(mv_ref: str, spec: BitemporalSpec, recorded_sql: str | None = 
             "a snapshot bitemporal view's read names no columns: its declared columns tell a "
             "row recorded again unchanged from a correction"
         )
-    same_version = f"PARTITION BY {part}, {src} ORDER BY {sys}"
+    return content
+
+
+def _snapshot_log_sql(mv_ref: str, spec: BitemporalSpec) -> str:
+    """A snapshot view's log as versions and tombstones, as a delta view's is: of each key's
+    recordings, those whose content differs from the one before it (or that follow a batch the key
+    was absent from), and a tombstone at the first batch a key is absent from after one it was
+    in."""
+    content = _content_columns(spec)
+    sys = _q(spec.system_column)
+    part = ", ".join(_q(c) for c in spec.key)
+    by_key = f"PARTITION BY {part} ORDER BY {sys}"
     changed = " OR ".join(
-        [f"LAG({sys}) OVER ({same_version}) IS NULL"]
-        + [f"{_q(c)} IS DISTINCT FROM LAG({_q(c)}) OVER ({same_version})" for c in content]
+        ["_bn._bt_prev IS DISTINCT FROM _bn._bt_batch - 1"]
+        + [f"_bn.{_q(c)} IS DISTINCT FROM _bn.{_q('_bt_lag_' + c)}" for c in content]
+    )
+    lags = ", ".join(f"LAG({_q(c)}) OVER ({by_key}) AS {_q('_bt_lag_' + c)}" for c in content)
+    batches = f"SELECT {sys}, DENSE_RANK() OVER (ORDER BY {sys}) AS _bt_batch FROM {mv_ref}"
+    numbered = (
+        f"SELECT _bl.*, _bb._bt_batch FROM {mv_ref} _bl "
+        f"JOIN (SELECT DISTINCT * FROM ({batches}) _bd) _bb ON _bb.{sys} = _bl.{sys}"
     )
     marked = (
-        f"SELECT *, CASE WHEN {changed} THEN 1 ELSE 0 END AS _bt_changed, "
-        f"MAX({sys}) OVER (PARTITION BY {part}) AS _bt_last_seen FROM {mv_ref} _bl"
+        f"SELECT *, LAG(_bt_batch) OVER ({by_key}) AS _bt_prev, "
+        f"LEAD(_bt_batch) OVER ({by_key}) AS _bt_next, {lags} FROM ({numbered}) _bm"
     )
-    latest = (
-        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part}, {src} ORDER BY {sys} DESC) "
-        f"AS _bt_latest FROM ({marked}) _bm WHERE _bm._bt_changed = 1"
+    versions = (
+        f"SELECT {', '.join(f'_bn.{_q(c)}' for c in content)}, _bn.{sys}, 0 AS _bt_gone "
+        f"FROM ({marked}) _bn WHERE {changed}"
     )
-    gone = f"(SELECT MIN(_bb.{sys}) FROM {mv_ref} _bb WHERE _bb.{sys} > _bd._bt_last_seen)"
-    return (
-        f"SELECT *, {src} AS _bt_from, COALESCE(LEAD({src}) OVER "
-        f"(PARTITION BY {part} ORDER BY {src}, {sys}), {gone}) AS _bt_to "
-        f"FROM ({latest}) _bd WHERE _bd._bt_latest = 1"
+    tomb_cols = ", ".join(f"_bn.{_q(c)}" if c in spec.key else f"NULL AS {_q(c)}" for c in content)
+    tombstones = (
+        f"SELECT {tomb_cols}, _bx.{sys}, 1 AS _bt_gone FROM ({marked}) _bn "
+        f"JOIN (SELECT DISTINCT * FROM ({batches}) _bd) _bx ON _bx._bt_batch = _bn._bt_batch + 1 "
+        f"WHERE _bn._bt_next IS DISTINCT FROM _bn._bt_batch + 1"
     )
+    return f"{versions} UNION ALL {tombstones}"
+
+
+def _versions_sql(mv_ref: str, spec: BitemporalSpec, recorded_sql: str | None = None) -> str:
+    """Every version and tombstone of the log, each with ``_bt_gone`` (1 for a tombstone) and
+    ``_bt_clock`` (when it was recorded: the view's recorded clock, a tombstone's append stamp --
+    a disappearance is known only when it was recorded). With ``recorded_sql`` the log is read as
+    it stood then: every row recorded later is left out first (REQ-1163, as recorded)."""
+    sys = _q(spec.system_column)
+    src = _q(spec.recorded_clock)
+    if spec.is_delta:
+        op = _q(spec.op_column)
+        log = (
+            f"SELECT *, CASE WHEN {op} = '{_OP_DELETE}' THEN 1 ELSE 0 END AS _bt_gone "
+            f"FROM {mv_ref} _bl"
+        )
+    else:
+        log = _snapshot_log_sql(mv_ref, spec)
+    clocked = (
+        f"SELECT *, CASE WHEN _bg._bt_gone = 1 THEN _bg.{sys} ELSE _bg.{src} END AS _bt_clock "
+        f"FROM ({log}) _bg"
+    )
+    if recorded_sql is None:
+        return clocked
+    return f"SELECT * FROM ({clocked}) _bc WHERE _bc._bt_clock <= {recorded_sql}"
 
 
 def view_read_sql(mv_ref: str, spec: BitemporalSpec, as_of: AsOf | None = None) -> str:
-    """A SELECT over the append log that yields the versions a read answers, on source time
-    (REQ-1163, REQ-2064): the version of each key in force now (``as_of`` None) or at a point, or
-    every version in force within a range -- each with its source time, the next version's and its
-    recorded time (``READ_COLUMNS``). Used where a bitemporal view's read is expanded inline.
+    """A SELECT over the append log that yields the versions a read answers, on valid time
+    (REQ-1163 as amended 2026-10-20, REQ-2064, REQ-2109): the latest recorded version of each key
+    (``as_of`` None), of those valid at or before a point, or every version valid within a range
+    -- each with its valid time, its key's next version's and when Provisa recorded it
+    (``READ_COLUMNS``). A key whose latest is a tombstone is answered by none. Used where a
+    bitemporal view's read is expanded inline.
 
     It projects ``*`` (business and system columns), because the caller inlines it as
     ``(<this>) alias`` and the outer consumer query selects columns by name."""
-    if as_of is None or as_of.start_sql is None:
-        when = "_bt._bt_to IS NULL"
-    elif as_of.end_sql is None:
-        t = as_of.start_sql
-        when = f"_bt._bt_from <= {t} AND (_bt._bt_to IS NULL OR _bt._bt_to > {t})"
-    else:
-        when = (
-            f"_bt._bt_from < {as_of.end_sql} "
-            f"AND (_bt._bt_to IS NULL OR _bt._bt_to > {as_of.start_sql})"
-        )
-    return (
-        f"SELECT *, _bt._bt_from AS {_q(SOURCE_FROM)}, _bt._bt_to AS {_q(SOURCE_TO)}, "
-        f"_bt.{_q(spec.system_column)} AS {_q(RECORDED_AT)} "
-        f"FROM ({_versions_sql(mv_ref, spec, as_of.recorded_sql if as_of else None)}) _bt "
-        f"WHERE {when}"
+    sys = _q(spec.system_column)
+    # A spec that names no valid column travels on when Provisa recorded each version, as it did
+    # before valid time was declared (REQ-1163 as amended 2026-10-16).
+    valid = sys if spec.valid_column is None else _q(spec.valid_column)
+    part = ", ".join(_q(c) for c in spec.key)
+    versions = _versions_sql(mv_ref, spec, as_of.recorded_sql if as_of else None)
+    # REQ-2064: a tombstone of a key that does not hold the valid time has none of its own -- a
+    # disappearance is known only when it was recorded -- so it takes effect at its append stamp.
+    effective = (
+        f"CASE WHEN _be._bt_gone = 1 AND _be.{valid} IS NULL THEN _be.{sys} ELSE _be.{valid} END"
     )
+    timed = f"SELECT *, {effective} AS _bt_eff FROM ({versions}) _be"
+    # Each version's valid time, and the time its key's next version (or tombstone) took effect.
+    spans = (
+        f"SELECT *, _bs.{valid} AS _bt_from, CASE WHEN _bs._bt_gone = 0 THEN LEAD(_bs._bt_eff) "
+        f"OVER (PARTITION BY {part} ORDER BY _bs._bt_eff, _bs.{sys}) END AS _bt_to "
+        f"FROM ({timed}) _bs"
+    )
+    read = (
+        f"SELECT *, _bt._bt_from AS {_q(SOURCE_FROM)}, _bt._bt_to AS {_q(SOURCE_TO)}, "
+        f"_bt.{sys} AS {_q(RECORDED_AT)} FROM "
+    )
+    if as_of is not None and as_of.is_range:
+        return (
+            f"{read}({spans}) _bt WHERE _bt._bt_gone = 0 "
+            f"AND _bt.{valid} >= {as_of.start_sql} AND _bt.{valid} < {as_of.end_sql}"
+        )
+    upto = (
+        f" WHERE _bp._bt_eff <= {as_of.start_sql}"
+        if as_of is not None and as_of.start_sql is not None
+        else ""
+    )
+    ranked = (
+        f"SELECT *, ROW_NUMBER() OVER (PARTITION BY {part} ORDER BY _bp.{sys} DESC, "
+        f"_bp._bt_gone DESC) AS _bt_rank FROM ({spans}) _bp{upto}"
+    )
+    return f"{read}({ranked}) _bt WHERE _bt._bt_rank = 1 AND _bt._bt_gone = 0"
 
 
 _TS_FMT = "%Y-%m-%d %H:%M:%S.%f"
@@ -474,8 +595,9 @@ def as_of_view_map(
     as_of: AsOf | str,
 ) -> dict[str, str]:
     """Overlay a request-level as-of onto the inline-expansion map (REQ-1163): each bitemporal view's
-    entry is replaced with an as-of reconstruction over its append log, so the whole query reads as of
-    ``as_of``. Non-bitemporal views are untouched. Returns a new map (input not mutated)."""
+    entry is replaced with its read over its append log under ``as_of`` (:func:`view_read_sql`, on
+    valid time), so the whole query reads as of ``as_of``. Non-bitemporal views are untouched.
+    Returns a new map (input not mutated)."""
     if not bitemporal_reads:
         return view_sql_map
     point = AsOf.from_key(as_of) if isinstance(as_of, str) else as_of

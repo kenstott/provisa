@@ -94,8 +94,12 @@ async def start_org_live_engine(scheduler: Any) -> None:  # REQ-286, REQ-1266
         await _reconcile_live_engine(conn)
 
 
-async def _register_user_views_in_state(conn: "Connection", raw_config: dict | None) -> None:
-    """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal."""
+async def _register_user_views_in_state(
+    conn: "Connection", raw_config: dict | None, tables: list[dict]
+) -> None:
+    """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal.
+    ``tables`` are the registered table rows this build loaded: what a view inheriting its
+    versions is judged against (REQ-2109) -- ``state.tables`` is published only after this."""
     from provisa.api.app import state
 
     with tolerate_startup_failure("user views for inline expansion"):
@@ -112,6 +116,7 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.change_signal,
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
                         _registered_tables_t.c.business_key,  # REQ-2109
+                        _registered_tables_t.c.valid_time,  # REQ-2109
                         _registered_tables_t.c.recorded_time,  # REQ-2109
                         _registered_tables_t.c.mv_persist,  # REQ-965
                         _registered_tables_t.c.mv_primary_key,  # REQ-970
@@ -153,15 +158,23 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             # is unqueryable: its raw source catalog (e.g. __derived__) reaches the engine and fails
             # with "Catalog __derived__ does not exist".
             _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
-            # REQ-1162, REQ-2109: reconstruct the bitemporal spec from the persisted declaration
-            # (None = ordinary).
+            # REQ-1162, REQ-2109: reconstruct the bitemporal spec from the persisted declaration;
+            # a materialized view declaring none may inherit its versions from the one versioned
+            # table it groups (None = ordinary).
             _bt_spec = None
             if _vr["business_key"]:
                 from provisa.mv.bitemporal import declared_spec
 
                 _bt_spec = declared_spec(
-                    list(_vr["business_key"]), _vr["recorded_time"], _view_columns[_vr["id"]]
+                    list(_vr["business_key"]),
+                    _vr["valid_time"],
+                    _vr["recorded_time"],
+                    _view_columns[_vr["id"]],
                 )
+            elif _vr.get("materialize"):
+                from provisa.mv.bitemporal_inherit import inherited_spec
+
+                _bt_spec = inherited_spec(_semantic_sql, tables)
             if _bt_spec is not None and _vr.get("materialize"):
                 # REQ-1163: a bitemporal MV is served from its materialized append log — the read
                 # reconstructs CURRENT state (the live view SQL would carry no history). Point the

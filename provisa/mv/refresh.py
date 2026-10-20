@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
 from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl
+from provisa.mv.bitemporal_inherit import InheritedBuild, inherited_build
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
 from provisa.observability.ops_schema import MV_REFRESH_LINEAGE_SPAN
@@ -110,6 +111,36 @@ async def _store_statement(engine, sql: str, authorization: SystemAuth) -> list:
     return (await engine.execute_engine(sql, authorization=authorization)).rows
 
 
+async def _target_columns(
+    engine, mv: MVDefinition, target: str, authorization: SystemAuth
+) -> list[str] | None:
+    """The columns of ``mv``'s stored table, or None when it is not built yet: the broker's
+    listing for an embedded DuckDB-file store (REQ-1901), else an engine probe (``SELECT *`` so
+    the column names carry the existing shape; an engine-agnostic probe whose failure means
+    absent -- it cannot name the engine-specific exception)."""
+    broker = _mv_store_broker(engine)
+    if broker is not None:
+        return await _in_executor(lambda: broker.table_columns(mv.target_schema, mv.target_table))
+    try:
+        result = await engine.execute_engine(
+            f"SELECT * FROM {target} LIMIT 0", authorization=authorization
+        )
+    except Exception:
+        return None
+    return list(result.column_names)
+
+
+async def _inherited(
+    engine, mv: MVDefinition, target: str, authorization: SystemAuth, full: bool
+) -> InheritedBuild | None:
+    """REQ-2109: this refresh of a view inheriting its versions (``mv.bitemporal_inherit``), or
+    None for any other view."""
+    if mv.bitemporal is None or mv.bitemporal.inherited is None:
+        return None
+    existing = await _target_columns(engine, mv, target, authorization)
+    return await inherited_build(engine, mv, authorization, existing, full=full)
+
+
 def _replace_plan(mv: MVDefinition, target: str):
     def plan(existing: list[str] | None, fresh_cols: list[str]) -> list[str]:
         if existing is None:
@@ -128,13 +159,18 @@ def _replace_plan(mv: MVDefinition, target: str):
     return plan
 
 
-def _bitemporal_plan(mv: MVDefinition, target: str, now_ts: str):
+def _bitemporal_plan(
+    mv: MVDefinition, target: str, now_ts: str, inherited: InheritedBuild | None = None
+):
     spec = mv.bitemporal
     assert spec is not None
+    # The broker's store is DuckDB: the statements below run there.
+    watermark = inherited.watermark_sql("duckdb") if inherited is not None else None
+    scope = inherited.scope_sql(spec, "duckdb") if inherited is not None else None
 
     def plan(existing: list[str] | None, fresh_cols: list[str]) -> list[str]:
         if existing is None:
-            return [create_sql(target, _FRESH, spec, now_ts)]
+            return [create_sql(target, _FRESH, spec, now_ts, watermark)]
         sys_names = {c for c, _ in system_columns_ddl(spec)}
         business = [c for c in existing if c not in sys_names]
         if fresh_cols != business:
@@ -146,8 +182,23 @@ def _bitemporal_plan(mv: MVDefinition, target: str, now_ts: str):
                 len(business),
                 len(fresh_cols),
             )
-            return [f"DROP TABLE {target}", create_sql(target, _FRESH, spec, now_ts)]
-        return list(append_sql(target, _FRESH, spec, fresh_cols, now_ts, "duckdb"))
+            if scope is not None:
+                # inherited_build rebuilds every date when the shape changed; a scoped build here
+                # would reset the log to the rebuilt dates alone.
+                raise RuntimeError(f"MV {mv.id}: a scoped build cannot rebuild its log")
+            return [f"DROP TABLE {target}", create_sql(target, _FRESH, spec, now_ts, watermark)]
+        return list(
+            append_sql(
+                target,
+                _FRESH,
+                spec,
+                fresh_cols,
+                now_ts,
+                "duckdb",
+                watermark_sql=watermark,
+                scope=scope,
+            )
+        )
 
     return plan
 
@@ -182,6 +233,7 @@ async def _refresh_bitemporal(
     existing_cols: list[str],
     system_ts: str | None = None,
     authorization: SystemAuth | None = None,
+    inherited: InheritedBuild | None = None,
 ) -> None:
     """Advance a bitemporal MV by APPENDING this refresh (REQ-1162): first materialization creates
     the log; subsequent refreshes append a full snapshot or an engine-computed delta. No UPDATE/
@@ -190,13 +242,18 @@ async def _refresh_bitemporal(
 
     ``system_ts`` is the append stamp as a SQL literal. None = wall-clock (a live refresh). A CALENDAR
     boundary (``window.end`` via ``system_ts_literal``) makes the seal DETERMINISTIC and addressable
-    as-of that window — the periodic-snapshot binding (REQ-1166/1167)."""
+    as-of that window — the periodic-snapshot binding (REQ-1166/1167).
+
+    ``inherited`` is an inherited view's build (REQ-2109): its watermark stamps the append, its
+    rebuilt dates confine the tombstones."""
     spec = mv.bitemporal
     assert spec is not None
     now_ts = system_ts or _now_ts_literal()
+    watermark = inherited.watermark_sql(engine.dialect) if inherited is not None else None
+    scope = inherited.scope_sql(spec, engine.dialect) if inherited is not None else None
     if not table_exists:
         await engine.execute_engine(
-            create_sql(target, select_sql, spec, now_ts), authorization=authorization
+            create_sql(target, select_sql, spec, now_ts, watermark), authorization=authorization
         )
         return
 
@@ -210,6 +267,10 @@ async def _refresh_bitemporal(
         ).column_names
     )
     if new_cols != existing_business:
+        if scope is not None:
+            # inherited_build rebuilds every date when the shape changed; a scoped build here
+            # would reset the log to the rebuilt dates alone.
+            raise RuntimeError(f"MV {mv.id}: a scoped build cannot rebuild its log")
         log.info(
             "MV %s: bitemporal target %s business shape drifted (%d→%d cols) — rebuilding "
             "(history reset)",
@@ -220,11 +281,20 @@ async def _refresh_bitemporal(
         )
         await engine.execute_engine(f"DROP TABLE {target}", authorization=authorization)
         await engine.execute_engine(
-            create_sql(target, select_sql, spec, now_ts), authorization=authorization
+            create_sql(target, select_sql, spec, now_ts, watermark), authorization=authorization
         )
         return
 
-    for stmt in append_sql(target, select_sql, spec, new_cols, now_ts, engine.dialect):
+    for stmt in append_sql(
+        target,
+        select_sql,
+        spec,
+        new_cols,
+        now_ts,
+        engine.dialect,
+        watermark_sql=watermark,
+        scope=scope,
+    ):
         await engine.execute_engine(stmt, authorization=authorization)
 
 
@@ -239,12 +309,19 @@ async def apply_bitemporal_append(engine, mv: MVDefinition, *, system_ts: str | 
     governance is enforced on read of the MV, not on this landing write)."""
     target = _target_ref(mv)
     authorization = SystemAuth(mint_system_token(), reason=f"mv_bitemporal_append:{mv.id}")
-    select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
+    inherited = await _inherited(engine, mv, target, authorization, full=False)
+    if inherited is not None and inherited.select_sql is None:
+        return target  # REQ-2109: no input row changed since its watermark — nothing appended
+    select_sql = (
+        inherited.select_sql
+        if inherited is not None and inherited.select_sql is not None
+        else await _build_refresh_sql(mv, engine, authorization=authorization)
+    )
     broker = _mv_store_broker(engine)
     if broker is not None:
         # REQ-1901: embedded DuckDB-file store — the broker writes the append (see refresh_mv).
         _require_broker_target(mv)
-        plan = _bitemporal_plan(mv, target, system_ts or _now_ts_literal())
+        plan = _bitemporal_plan(mv, target, system_ts or _now_ts_literal(), inherited)
         await _in_executor(
             lambda: _write_via_broker(engine, broker, mv, select_sql, plan, authorization)
         )
@@ -253,24 +330,17 @@ async def apply_bitemporal_append(engine, mv: MVDefinition, *, system_ts: str | 
         _create_schema_sql(engine, mv.target_catalog, mv.target_schema),
         authorization=authorization,
     )
-    try:
-        existing_cols = (
-            await engine.execute_engine(
-                f"SELECT * FROM {target} LIMIT 0", authorization=authorization
-            )
-        ).column_names
-        table_exists = True
-    except Exception:
-        existing_cols, table_exists = [], False
+    existing = await _target_columns(engine, mv, target, authorization)
     await _refresh_bitemporal(
         engine,
         mv,
         target,
         select_sql,
-        table_exists,
-        existing_cols,
+        existing is not None,
+        existing if existing is not None else [],
         system_ts=system_ts,
         authorization=authorization,
+        inherited=inherited,
     )
     return target
 
@@ -512,8 +582,14 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     store=None,
     writer: str | None = None,
     ledger=None,
+    *,
+    full: bool = False,
 ) -> None:
     """Refresh a single MV through the engine terminal.
+
+    ``full`` (REQ-2109): a view inheriting its versions ignores its watermark and rebuilds every
+    valid date, its tombstones unconfined -- what a row moved between dates or a source that
+    hard-deletes needs (``mv.bitemporal_inherit``). Every other view's refresh is full already.
 
     First refresh: CREATE TABLE AS SELECT.
     Subsequent: DELETE FROM target; INSERT INTO target SELECT.
@@ -650,7 +726,31 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 log.warning("MV %s: %s", mv.id, quota_exc.detail)
                 return
 
-        select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
+        # REQ-2109: a view inheriting its versions rebuilds only the valid dates its input changed
+        # since its watermark; with none changed nothing is appended.
+        inherited = await _inherited(engine, mv, target, authorization, full)
+        if inherited is not None and inherited.select_sql is None:
+            if coordinated:
+                assert ledger is not None and writer is not None
+                from provisa.mv.coordination import commit_refresh  # noqa: PLC0415
+
+                await commit_refresh(
+                    ledger,
+                    mv.id,
+                    writer,
+                    row_count=mv.row_count if mv.row_count is not None else 0,
+                    input_version=target_token,
+                    definition_version=_mv_definition_version(mv),
+                    snapshot_id=None,
+                )
+            registry.mark_unchanged(mv.id)
+            log.info("MV %s: no input row changed since its watermark — nothing appended", mv.id)
+            return
+        select_sql = (
+            inherited.select_sql
+            if inherited is not None and inherited.select_sql is not None
+            else await _build_refresh_sql(mv, engine, authorization=authorization)
+        )
         # Size guard: probe source count before materializing
         source_count = await _probe_source_count(engine, select_sql, authorization=authorization)
         if source_count > mv.max_rows:
@@ -704,15 +804,13 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             # REQ-1901: the store is an embedded DuckDB file the engine connection never ATTACHes —
             # the engine computes the fresh rows, the broker writes them into the store.
             _require_broker_target(mv)
-            existing = await _in_executor(
-                lambda: broker.table_columns(mv.target_schema, mv.target_table)
-            )
+            existing = await _target_columns(engine, mv, target, authorization)
             table_exists = existing is not None
             prev_rows = await _snapshot_prev_rows(
                 engine, mv, ledger, target, table_exists=table_exists, authorization=authorization
             )
             plan = (
-                _bitemporal_plan(mv, target, _now_ts_literal())
+                _bitemporal_plan(mv, target, _now_ts_literal(), inherited)
                 if mv.bitemporal is not None
                 else _replace_plan(mv, target)
             )
@@ -733,18 +831,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 authorization=authorization,
             )
 
-            # Check if target table exists — probe through the engine (empty rows on absence).
-            # SELECT * (not SELECT 1) so column_names carries the existing target shape.
-            try:
-                existing_cols = (
-                    await engine.execute_engine(
-                        f"SELECT * FROM {target} LIMIT 0", authorization=authorization
-                    )
-                ).column_names
-                table_exists = True
-            except Exception:
-                existing_cols = []
-                table_exists = False
+            # Check if target table exists, and its existing shape.
+            probed = await _target_columns(engine, mv, target, authorization)
+            table_exists = probed is not None
+            existing_cols = probed if probed is not None else []
 
             # REQ-877: snapshot the prior landed rows BEFORE any mutation, so the post-refresh diff sees
             # the true previous state (empty unless this MV captures deltas and the target exists).
@@ -762,6 +852,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                     table_exists,
                     existing_cols,
                     authorization=authorization,
+                    inherited=inherited,
                 )
             else:
                 # DELETE+INSERT only reconciles rows, not shape. If the view SQL was edited so its

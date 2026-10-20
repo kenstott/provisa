@@ -179,10 +179,12 @@ def test_the_config_refuses_the_old_view_keys(old):
 def test_a_declared_view_keeps_its_versions_keyed_on_its_business_key():
     from provisa.mv.bitemporal import MODE_DELTA, declared_spec
 
-    spec = declared_spec(["trade_id"], "updated_at", list(_COLUMNS))
-    assert (spec.key, spec.mode, spec.source_column, spec.columns) == (
+    spec = declared_spec(["trade_id"], "trade_date", "updated_at", list(_COLUMNS))
+    # Its reads travel on its valid time and are cut as recorded on its recorded time (REQ-2109).
+    assert (spec.key, spec.mode, spec.valid_column, spec.source_column, spec.columns) == (
         ("trade_id",),
         MODE_DELTA,
+        "trade_date",
         "updated_at",
         _COLUMNS,
     )

@@ -53,8 +53,13 @@ class VersionedTable:
 def versioned_tables(state: Any) -> dict[int, VersionedTable]:
     """Every registered table (not a view) mapping the three values whose business key is not its
     primary key, by table id."""
+    return versioned_table_rows(getattr(state, "tables", None) or [])
+
+
+def versioned_table_rows(tables: list[dict]) -> dict[int, VersionedTable]:
+    """:func:`versioned_tables` of the registered table rows ``tables`` (as a build loads them)."""
     out: dict[int, VersionedTable] = {}
-    for table in getattr(state, "tables", None) or []:
+    for table in tables:
         key = table.get("business_key") or []
         if not key or table.get("view_sql"):
             continue

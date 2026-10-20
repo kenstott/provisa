@@ -632,6 +632,7 @@ async def register_table(
             consistency=input.mv_consistency,  # REQ-879
             preprocess=input.mv_preprocess,  # REQ-957
             business_key=list(input.business_key),  # REQ-2109
+            valid_time=input.valid_time,  # REQ-2109
             recorded_time=input.recorded_time,  # REQ-2109
             bitemporal_columns=[c.name for c in model.columns],
             persist=input.mv_persist,  # REQ-965

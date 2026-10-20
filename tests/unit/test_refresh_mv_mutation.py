@@ -61,7 +61,7 @@ def _info(monkeypatch):
 async def test_a_failed_refresh_is_reported_with_the_views_error(view, monkeypatch):
     mv, registry = view
 
-    async def _fails(_engine, target, reg, store=None, ledger=None):
+    async def _fails(_engine, target, reg, store=None, ledger=None, full=False):
         reg.mark_refresh_failed(target.id, "relation sales.orders does not exist")
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _fails)
@@ -77,7 +77,7 @@ async def test_a_refresh_that_built_the_view_is_reported_as_refreshed(view, monk
     mv, registry = view
     mv.last_error = "an earlier failure"
 
-    async def _builds(_engine, target, reg, store=None, ledger=None):
+    async def _builds(_engine, target, reg, store=None, ledger=None, full=False):
         reg.mark_refreshed(target.id, row_count=4)
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _builds)
@@ -86,6 +86,22 @@ async def test_a_refresh_that_built_the_view_is_reported_as_refreshed(view, monk
     assert result.success is True
     assert result.code == "schema.mv_refreshed"
     assert mv.last_error is None and mv.status == MVStatus.FRESH
+
+
+async def test_a_full_refresh_is_asked_of_the_refresh(view, monkeypatch):
+    """REQ-2109: the admin refresh's ``full`` reaches the refresh, which then ignores an inherited
+    view's watermark."""
+    mv, _registry = view
+    asked: list[bool] = []
+
+    async def _builds(_engine, target, reg, store=None, ledger=None, full=False):
+        asked.append(full)
+        reg.mark_refreshed(target.id, row_count=4)
+
+    monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _builds)
+    await Mutation().refresh_mv(_info(monkeypatch), mv_id="view-sales")
+    await Mutation().refresh_mv(_info(monkeypatch), mv_id="view-sales", full=True)
+    assert asked == [False, True]
 
 
 async def test_a_view_refused_for_an_unreadable_input_is_reported_with_that_reason(

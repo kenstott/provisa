@@ -8,14 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Time travel on the source's clock (REQ-1163 as amended) and over a range (REQ-2064).
+"""Time travel on the view's valid time (REQ-1163 as amended 2026-10-20) and over a range
+(REQ-2064).
 
-A bitemporal view's versions are ordered by the source time it names -- else by when Provisa
-recorded them -- and each is in force from its time to the next version's. A point answers the
-version of each key in force then; a range answers every version in force within it, each with
-its source time, the next version's and its recorded time. Run on DuckDB."""
+A point answers, of each key's versions valid at or before it, the latest recorded; a range
+answers every version whose valid time falls in it, each with its valid time, the time its key's
+next version took effect and its recorded time. A tombstone takes effect when it was recorded.
+Run on DuckDB."""
 
-# Requirements: REQ-1163, REQ-2064
+# Requirements: REQ-1163, REQ-2064, REQ-2109
 
 from __future__ import annotations
 
@@ -51,8 +52,9 @@ def _log(mode: str):
         f"CREATE TABLE log(id INT, v VARCHAR, updated_at TIMESTAMP, sys_recorded_at TIMESTAMP{op})"
     )
     con.execute(_DELTA if mode == MODE_DELTA else _SNAPSHOT)
+    # updated_at is when each version took effect in the source: the view's valid time.
     return con, BitemporalSpec(
-        key=("id",), mode=mode, source_column="updated_at", columns=("id", "v", "updated_at")
+        key=("id",), mode=mode, valid_column="updated_at", columns=("id", "v", "updated_at")
     )
 
 
@@ -79,7 +81,7 @@ def test_a_point_reads_on_the_sources_time_not_provisas(mode):
 
 
 @pytest.mark.parametrize("mode", [MODE_DELTA, MODE_SNAPSHOT])
-def test_a_range_answers_every_version_in_force_within_it(mode):
+def test_a_range_answers_every_version_whose_valid_time_falls_in_it(mode):
     con, spec = _log(mode)
     rows = _read(con, spec, parse_as_of("2026-01-01/2026-03-15"))
     assert [r[:2] for r in rows] == [(1, "a"), (1, "b"), (2, "x")]
@@ -108,7 +110,7 @@ def test_each_version_says_when_provisa_recorded_it():
     assert [(r[0], r[1], str(r[2])) for r in rows] == [(1, "b", "2026-02-03")]
 
 
-def test_with_no_source_time_the_clock_is_when_provisa_recorded_each_version():
+def test_with_no_valid_time_the_clock_is_when_provisa_recorded_each_version():
     con = duckdb.connect()
     con.execute("CREATE TABLE log(id INT, v VARCHAR, sys_recorded_at TIMESTAMP, sys_op VARCHAR)")
     con.execute(

@@ -810,7 +810,8 @@ async def _sync_view_mv(
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
     business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
-    recorded_time: str | None = None,  # REQ-2109: the column its versions are read on
+    valid_time: str | None = None,  # REQ-2109: the column its reads travel on
+    recorded_time: str | None = None,  # REQ-2109: the column its versions are cut on as recorded
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance
@@ -832,22 +833,28 @@ async def _sync_view_mv(
         )
     from provisa.api.app import state
     from provisa.mv.bitemporal import declared_spec  # REQ-1162, REQ-2109
+    from provisa.mv.bitemporal_inherit import inherited_spec  # REQ-2109
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.mv.readable_inputs import read_table_names
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
     from provisa.mv.determinism import check_view_determinism  # REQ-964
     from provisa.mv.preprocess import validate_preprocess  # REQ-957
 
-    # REQ-1162, REQ-2109: a view declaring its business key keeps every version (None = ordinary
-    # MV); the declaration's all-three-or-none rule is the Table model's.
-    bitemporal = (
-        declared_spec(business_key, recorded_time, bitemporal_columns) if business_key else None
-    )
+    # REQ-1162, REQ-2109: a view declaring its business key keeps every version; the
+    # declaration's all-three-or-none rule is the Table model's. One declaring none may inherit
+    # its versions from the one versioned table it groups, judged against the model as last built
+    # -- the schema rebuild every save runs next judges it again against the rows it loads
+    # (app_rebuild._register_user_views_in_state). None = ordinary MV.
+    if business_key:
+        assert valid_time is not None and recorded_time is not None  # the Table model's rule
+        bitemporal = declared_spec(business_key, valid_time, recorded_time, bitemporal_columns)
+    else:
+        bitemporal = inherited_spec(view_sql, state.tables)
     # REQ-1162: a bitemporal MV manages its own append-only persistence (refresh.py routes it to
     # _refresh_bitemporal ahead of the persist dispatch, ignoring `persist` entirely) — reject a
     # non-default `persist` here instead of silently dropping it, so a declaration never implies
     # replace/upsert semantics the MV will not actually get.
-    if bitemporal is not None and persist != "replace":
+    if business_key and persist != "replace":
         raise ValueError(
             f"MV {table_name!r}: persist={persist!r} is incompatible with a declared business_key "
             "— a view keeping every version is append-only by construction; omit "

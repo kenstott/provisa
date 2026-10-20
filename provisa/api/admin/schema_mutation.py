@@ -3486,6 +3486,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     consistency=input.mv_consistency,  # REQ-879
                     preprocess=input.mv_preprocess,  # REQ-957
                     business_key=list(input.business_key),  # REQ-2109
+                    valid_time=input.valid_time,  # REQ-2109
                     recorded_time=input.recorded_time,  # REQ-2109
                     bitemporal_columns=[c.name for c in model.columns],
                     persist=input.mv_persist,  # REQ-965
@@ -5109,9 +5110,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def refresh_mv(
-        self, info: StrawberryInfo, mv_id: str
-    ) -> MutationResult:  # REQ-133, REQ-158
-        """Trigger a manual refresh of a materialized view."""
+        self, info: StrawberryInfo, mv_id: str, full: bool = False
+    ) -> MutationResult:  # REQ-133, REQ-158, REQ-2109
+        """Trigger a manual refresh of a materialized view. ``full`` rebuilds every valid date of
+        a view inheriting its versions, ignoring its watermark (REQ-2109)."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
 
@@ -5134,6 +5136,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 state.mv_registry,
                 store=state.model_db,
                 ledger=state.tenant_db,
+                full=full,
             )
             # refresh_mv records a failed refresh on the view and returns (it runs on the
             # scheduler too, where there is nobody to raise to). The mutation answers the
