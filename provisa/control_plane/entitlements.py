@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from enum import Enum
 
-from provisa.control_plane.store import ControlPlaneStore
 from provisa.core.demo import is_demo
 
 
@@ -54,9 +53,10 @@ _MIN_TIER: dict[Feature, Tier] = {
 class EntitlementError(RuntimeError):  # REQ-1073
     """Raised when an org's tier does not entitle it to a feature."""
 
-    def __init__(self, org_id: str, feature: Feature, tier: str, required: Tier) -> None:
+    def __init__(self, org_id: str, feature: Feature, tier: str | None, required: Tier) -> None:
+        held = f"is on tier {tier!r}" if tier is not None else "has no tier set"
         super().__init__(
-            f"org {org_id!r} is on tier {tier!r}; feature {feature.value!r} requires "
+            f"org {org_id!r} {held}; feature {feature.value!r} requires "
             f"tier {required.value!r} or higher"
         )
         self.org_id = org_id
@@ -95,19 +95,23 @@ def min_tier(feature: Feature) -> Tier:  # REQ-1053
     return _MIN_TIER[feature]
 
 
-def require_feature(store: ControlPlaneStore, org_id: str, feature: Feature) -> None:  # REQ-1073
-    """Raise unless the org registered as ``org_id`` is entitled to ``feature``.
+async def require_feature(org_id: str, feature: Feature) -> None:  # REQ-1073, REQ-1066
+    """Raise unless ``org_id`` is entitled to ``feature`` by the tier stored with it.
 
-    Propagates ``KeyError`` for an unregistered org: an org that the control plane does not
-    know about has no tier to check, and inventing one would be the silent-pass this gate
-    exists to prevent.
+    The tier is the org's own row in the platform registry (``provisa.core.org_tier``, REQ-1066
+    amended 2026-10-20). An org with no tier set is entitled to no tier-gated feature, and an org
+    with no row raises ``KeyError``: neither is given a tier it was never set.
 
     Demo mode (``--demo`` → PROVISA_DEMO) is exempt by design: the demo showcases every
     feature, so tier gates are not enforced there.
     """
     if is_demo():
         return
-    org = store.get_org(org_id)
-    tier = parse_tier(org_id, org.tier)
+    from provisa.core.org_tier import read_org_tier
+
+    stored = await read_org_tier(org_id)
+    if stored is None:
+        raise EntitlementError(org_id, feature, None, _MIN_TIER[feature])
+    tier = parse_tier(org_id, stored)
     if not tier_allows(tier, feature):
-        raise EntitlementError(org_id, feature, org.tier, _MIN_TIER[feature])
+        raise EntitlementError(org_id, feature, stored, _MIN_TIER[feature])

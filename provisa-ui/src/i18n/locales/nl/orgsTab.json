@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "Het verwijderen van \"{{id}}\" vernietigt elke bron, elk domein, elke tabel en elke rol erin, voor iedereen erin. Dit kan niet ongedaan worden gemaakt. Typ {{id}} om te bevestigen.",
     "colId": "ID",
     "colName": "Naam",
+    "colTier": "Abonnement",
     "colMembers": "Leden",
     "colActions": "Acties",
     "empty": "Geen organisaties",
@@ -52,6 +53,11 @@
     "revokeInvite": "Uitnodiging voor {{org}} intrekken",
     "invitePagination": "Paginering uitnodigingslinks",
     "orgIdDesc": "2-40 tekens, kleine letters en cijfers, beginnend met een letter. Dit wordt de schemanaam en het subdomein en kan later niet worden gewijzigd.",
-    "spentStatus": "Volledig ingewisseld"
+    "spentStatus": "Volledig ingewisseld",
+    "tierFor": "Abonnement van {{name}}",
+    "tierNotSet": "Niet ingesteld",
+    "tier_free": "Gratis",
+    "tier_standard": "Standaard",
+    "tier_premium": "Premium"
   }
 }

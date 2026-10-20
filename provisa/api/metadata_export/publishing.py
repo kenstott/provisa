@@ -131,11 +131,10 @@ async def _export_config(org_id: str) -> MetadataExportConfig:
     otherwise keep publishing after the plan lapsed.
     """
     from provisa.api.app import state
-    from provisa.control_plane.store import control_plane_store
     from provisa.core.org_settings import resolve_org_config
 
     try:
-        require_feature(control_plane_store(), org_id, Feature.METADATA_EXPORT)
+        await require_feature(org_id, Feature.METADATA_EXPORT)
     except (EntitlementError, KeyError, UnknownTierError) as exc:
         raise ExportNotAllowed(f"org {org_id!r} is not entitled to metadata export: {exc}") from exc
     model_db = state.model_db

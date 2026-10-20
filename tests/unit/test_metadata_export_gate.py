@@ -25,8 +25,6 @@ import types
 import pytest
 
 from provisa.api.metadata_export import publishing
-from provisa.control_plane.models import Org
-from provisa.control_plane.store import control_plane_store
 
 ORG_ID = "acme"
 
@@ -55,10 +53,16 @@ def org(monkeypatch):
         raising=False,
     )
 
+    # The tier stored with the org (REQ-1066), as provisa.core.org_tier reads it.
+    tiers: dict[str, str] = {}
+
+    async def _tier(org_id: str) -> str | None:
+        return tiers.get(org_id)
+
+    monkeypatch.setattr("provisa.core.org_tier.read_org_tier", _tier)
+
     def _at(tier: str):
-        control_plane_store().register_org(
-            Org(id=ORG_ID, name=ORG_ID, data_plane_id="dp", created_at="2026-01-01", tier=tier)
-        )
+        tiers[ORG_ID] = tier
 
     return _at
 

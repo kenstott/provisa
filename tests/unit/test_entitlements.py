@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import pytest
 
+import types
+
 from provisa.control_plane.entitlements import (
     EntitlementError,
     Feature,
@@ -24,32 +26,43 @@ from provisa.control_plane.entitlements import (
     require_feature,
     tier_allows,
 )
-from provisa.control_plane.models import Org
-from provisa.control_plane.store import ControlPlaneStore
 
 
-def _store_with(tier: str) -> ControlPlaneStore:
-    store = ControlPlaneStore()
-    store.register_org(
-        Org(
-            id="o1",
-            name="Acme",
-            data_plane_id="dp1",
-            created_at="2026-01-01T00:00:00+00:00",
-            tier=tier,
-        )
+@pytest.fixture
+def tiered(control_plane, monkeypatch):
+    """Set an org's tier where it is stored: its row in the platform registry (REQ-1066)."""
+    from sqlalchemy.dialects.postgresql import insert
+
+    from provisa.core.schema_admin import orgs
+
+    admin_db = control_plane.platform
+    monkeypatch.setattr(
+        "provisa.api.app.state", types.SimpleNamespace(admin_db=admin_db), raising=False
     )
-    return store
+
+    async def _set(tier: str | None, org_id: str = "o1") -> None:
+        async with admin_db.acquire() as conn:
+            await conn.execute_core(
+                insert(orgs)
+                .values(id=org_id, name=org_id, tier=tier)
+                .on_conflict_do_update(index_elements=[orgs.c.id], set_={"tier": tier})
+            )
+
+    return _set
 
 
-def test_premium_org_is_entitled_to_metadata_export():  # REQ-1073
-    require_feature(_store_with("premium"), "o1", Feature.METADATA_EXPORT)
+@pytest.mark.asyncio
+async def test_premium_org_is_entitled_to_metadata_export(tiered):  # REQ-1073
+    await tiered("premium")
+    await require_feature("o1", Feature.METADATA_EXPORT)
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tier", ["free", "standard"])
-def test_below_premium_is_denied_metadata_export(tier):  # REQ-1073
+async def test_below_premium_is_denied_metadata_export(tiered, tier):  # REQ-1073
+    await tiered(tier)
     with pytest.raises(EntitlementError) as exc:
-        require_feature(_store_with(tier), "o1", Feature.METADATA_EXPORT)
+        await require_feature("o1", Feature.METADATA_EXPORT)
     assert exc.value.org_id == "o1"
     assert exc.value.feature is Feature.METADATA_EXPORT
     assert exc.value.required is Tier.PREMIUM
@@ -57,27 +70,54 @@ def test_below_premium_is_denied_metadata_export(tier):  # REQ-1073
     assert "metadata_export" in str(exc.value)
 
 
+@pytest.mark.asyncio
+async def test_an_org_with_no_tier_set_is_entitled_to_nothing(tiered):  # REQ-1066
+    await tiered(None)
+    with pytest.raises(EntitlementError) as exc:
+        await require_feature("o1", Feature.METADATA_EXPORT)
+    assert exc.value.tier is None
+    assert "has no tier set" in str(exc.value)
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("tier", ["free", "standard", "premium"])
-def test_demo_mode_exempts_every_tier(tier, monkeypatch):  # REQ-1073
+async def test_demo_mode_exempts_every_tier(tiered, tier, monkeypatch):  # REQ-1073
+    await tiered(tier)
     monkeypatch.setenv("PROVISA_DEMO", "1")
-    require_feature(_store_with(tier), "o1", Feature.METADATA_EXPORT)
+    await require_feature("o1", Feature.METADATA_EXPORT)
 
 
-def test_demo_mode_exempts_even_unregistered_orgs(monkeypatch):  # REQ-1073
+@pytest.mark.asyncio
+async def test_demo_mode_exempts_even_unregistered_orgs(tiered, monkeypatch):  # REQ-1073
     monkeypatch.setenv("PROVISA_DEMO", "1")
-    require_feature(ControlPlaneStore(), "ghost", Feature.METADATA_EXPORT)
+    await require_feature("ghost", Feature.METADATA_EXPORT)
 
 
-def test_unknown_tier_is_denied_not_defaulted():  # REQ-1073
+@pytest.mark.asyncio
+async def test_unknown_tier_is_denied_not_defaulted(tiered, monkeypatch):  # REQ-1073
+    # The column refuses a tier outside the vocabulary; one read from elsewhere is refused too.
+    async def _platinum(_org_id):
+        return "platinum"
+
+    monkeypatch.setattr("provisa.core.org_tier.read_org_tier", _platinum)
     with pytest.raises(UnknownTierError) as exc:
-        require_feature(_store_with("platinum"), "o1", Feature.METADATA_EXPORT)
+        await require_feature("o1", Feature.METADATA_EXPORT)
     assert exc.value.tier == "platinum"
     assert "free" in str(exc.value)
 
 
-def test_unregistered_org_raises_keyerror():  # REQ-1073
+@pytest.mark.asyncio
+async def test_unregistered_org_raises_keyerror(tiered):  # REQ-1073
     with pytest.raises(KeyError):
-        require_feature(ControlPlaneStore(), "nonexistent", Feature.METADATA_EXPORT)
+        await require_feature("nonexistent", Feature.METADATA_EXPORT)
+
+
+@pytest.mark.asyncio
+async def test_the_stored_tier_refuses_a_value_outside_the_vocabulary(tiered):  # REQ-1066
+    from sqlalchemy.exc import IntegrityError
+
+    with pytest.raises(IntegrityError):
+        await tiered("platinum")
 
 
 def test_parse_tier_round_trips_every_tier():  # REQ-1053

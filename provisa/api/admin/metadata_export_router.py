@@ -42,7 +42,6 @@ from provisa.control_plane.entitlements import (
     UnknownTierError,
     min_tier,
 )
-from provisa.control_plane.store import control_plane_store
 from provisa.core.models import MetadataExportConfig
 
 router = APIRouter()
@@ -71,12 +70,12 @@ _PLAIN_FIELDS = (
 _LAST_PUBLISH: dict[str, dict[str, Any]] = {}
 
 
-def _require_entitled(org_id: str) -> None:
+async def _require_entitled(org_id: str) -> None:
     """REQ-1073: refuse the whole surface below the premium tier."""
     from provisa.control_plane.entitlements import require_feature
 
     try:
-        require_feature(control_plane_store(), org_id, Feature.METADATA_EXPORT)
+        await require_feature(org_id, Feature.METADATA_EXPORT)
     except EntitlementError as exc:
         raise ApiError(403, "metadata_export.not_entitled", str(exc)) from exc
     except (KeyError, UnknownTierError) as exc:
@@ -87,12 +86,12 @@ def _require_entitled(org_id: str) -> None:
         ) from exc
 
 
-def _is_entitled(org_id: str) -> bool:
+async def _is_entitled(org_id: str) -> bool:
     """Whether the org may use the feature — the flag the tab renders its gate from."""
     from provisa.control_plane.entitlements import require_feature
 
     try:
-        require_feature(control_plane_store(), org_id, Feature.METADATA_EXPORT)
+        await require_feature(org_id, Feature.METADATA_EXPORT)
     except (EntitlementError, KeyError, UnknownTierError):
         return False
     return True
@@ -144,7 +143,7 @@ async def get_metadata_export(request: Request) -> dict:  # REQ-1074
     stored = await _stored()
     config = _export_config(stored)
     return {
-        "entitled": _is_entitled(org_id),
+        "entitled": await _is_entitled(org_id),
         "required_tier": min_tier(Feature.METADATA_EXPORT).value,
         "providers": sorted(registered_providers()),
         "config": {
@@ -168,7 +167,7 @@ async def set_metadata_export(request: Request) -> dict:  # REQ-1074
     """
     require_org_settings(request)
     org_id = require_active_org_id(request)
-    _require_entitled(org_id)
+    await _require_entitled(org_id)
 
     from provisa.api.app import state
     from provisa.core.org_settings import write_org_overrides
@@ -207,7 +206,7 @@ async def check_metadata_export(request: Request) -> dict:  # REQ-1074
     """Ask the configured adapter whether the target accepts it, and report what it said."""
     require_org_settings(request)
     org_id = require_active_org_id(request)
-    _require_entitled(org_id)
+    await _require_entitled(org_id)
     config = _export_config(await _stored())
     try:
         # Adapter construction is inside the try on purpose: a not-yet-saved or disabled
@@ -227,7 +226,7 @@ async def publish_metadata_export(request: Request) -> dict:  # REQ-1072, REQ-10
     """Publish a full snapshot now — the on-demand form of the REQ-1072 reconcile."""
     require_org_settings(request)
     org_id = require_active_org_id(request)
-    _require_entitled(org_id)
+    await _require_entitled(org_id)
 
     from provisa.api.metadata_export.publishing import ExportNotAllowed, publish_snapshot
 

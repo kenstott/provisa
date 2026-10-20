@@ -26,8 +26,6 @@ import types
 import pytest
 
 from provisa.api.errors import ApiError
-from provisa.control_plane.models import Org
-from provisa.control_plane.store import control_plane_store
 from provisa.core.models import ProvisaConfig
 from tests.role_state import RoleState
 
@@ -104,10 +102,16 @@ def surface(monkeypatch, control_plane):
         raising=False,
     )
 
+    # The tier stored with the org (REQ-1066), as provisa.core.org_tier reads it.
+    tiers: dict[str, str] = {}
+
+    async def _tier(org_id: str) -> str | None:
+        return tiers.get(org_id)
+
+    monkeypatch.setattr("provisa.core.org_tier.read_org_tier", _tier)
+
     def _org(tier: str = "premium", org_id: str = ORG_ID):
-        control_plane_store().register_org(
-            Org(id=org_id, name=org_id, data_plane_id="dp", created_at="2026-01-01", tier=tier)
-        )
+        tiers[org_id] = tier
 
     _org()
     return types.SimpleNamespace(stored=stored, written=written, org=_org)

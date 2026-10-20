@@ -24,13 +24,16 @@ import os
 import httpx
 import pytest
 
-from provisa.api.metadata_export import metadata_export
 from provisa.api.metadata_export.openmetadata import CLASSIFICATION
-from provisa.core.models import MetadataExportConfig
-from tests.integration.metadata_export_fixture import (
+from tests.integration.metadata_export_server import (
     MASK_PATTERN,
+    ORDERS_AMOUNT_DESCRIPTION,
     RLS_FILTER,
-    governed_snapshot,
+    SCHEMA,
+    SOURCE,
+    VIEW,
+    publish,
+    published_server,
 )
 
 pytestmark = [
@@ -39,8 +42,9 @@ pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),
 ]
 
-ORDERS_FQN = "wh.default.public.orders"
-TOTALS_FQN = "wh.default.public.order_totals"
+ORG = "mdx_openmetadata_e2e"
+ORDERS_FQN = f"{SOURCE}.default.{SCHEMA}.orders"
+TOTALS_FQN = f"__derived__.default.views.{VIEW}"
 
 
 def _base_url() -> str:
@@ -77,18 +81,20 @@ async def token() -> str:
 # and lands the same state each time.
 @pytest.fixture
 async def published(token) -> dict:
-    export = metadata_export(
-        MetadataExportConfig(
-            enabled=True,
-            provider="openmetadata",
-            endpoint=_base_url(),
-            token=token,
-            timeout_seconds=60,
+    """The production publish (REQ-2119): a Provisa server saves OpenMetadata as its target and
+    publishes over the admin API."""
+    async with published_server(ORG) as client:
+        result = await publish(
+            client,
+            {
+                "provider": "openmetadata",
+                "endpoint": _base_url(),
+                "auth_mode": "bearer",
+                "token": token,
+                "timeout_seconds": 60,
+            },
         )
-    )
-    await export.health()
-    result = await export.publish(governed_snapshot())
-    assert result.ok, [e.message for e in result.errors]
+    assert result["ok"], result["errors"]
     return {"result": result}
 
 
@@ -104,14 +110,14 @@ async def _get(token: str, path: str, **params) -> dict:
 
 
 async def test_every_governed_table_and_column_lands_in_the_catalog(published, token):
-    assert published["result"].published["table"] == 3
+    assert published["result"]["published"]["table"] == 3
     table = await _get(token, f"/api/v1/tables/name/{ORDERS_FQN}", fields="columns,tags")
     columns = {c["name"]: c for c in table["columns"]}
-    assert set(columns) == {"id", "amount", "customer_id", "ssn", "margin"}
+    assert set(columns) == {"id", "customer_id", "amount", "region", "ssn", "margin"}
     # dataType is OpenMetadata's own enum; the source type rides in dataTypeDisplay so nothing
     # about the real column type is lost in translation.
     assert columns["amount"]["dataTypeDisplay"] == "numeric"
-    assert columns["amount"]["description"] == "Order total in cents"
+    assert columns["amount"]["description"] == ORDERS_AMOUNT_DESCRIPTION
 
 
 async def test_governance_signals_arrive_as_classification_tags(published, token):
@@ -126,7 +132,7 @@ async def test_governance_signals_arrive_as_classification_tags(published, token
 
 
 async def test_column_lineage_of_the_derived_view_is_queryable(published, token):
-    assert published["result"].published["lineage"] == 1
+    assert published["result"]["published"]["lineage"] == 1
     graph = await _get(
         token, f"/api/v1/lineage/table/name/{TOTALS_FQN}", upstreamDepth=1, downstreamDepth=0
     )
@@ -148,13 +154,13 @@ async def test_the_unstewarded_domain_publishes_without_a_fabricated_owner(publi
     assert not lab.get("owners")
     assert "governance pending" in lab["description"].lower()
     sales = await _get(token, "/api/v1/domains/name/sales", fields="owners")
-    assert [o["name"] for o in sales["owners"]] == ["data-steward"]
+    assert [o["name"] for o in sales["owners"]] == ["data_owner"]
 
 
 async def test_the_catalog_is_never_handed_a_path_to_the_source(published, token):
     """OpenMetadata must reach the data only through Provisa — a real connection config would
     give it an ungoverned route to the warehouse."""
-    service = await _get(token, "/api/v1/services/databaseServices/name/wh")
+    service = await _get(token, f"/api/v1/services/databaseServices/name/{SOURCE}")
     config = service["connection"]["config"]
     assert config["type"] == "CustomDatabase"
     assert "password" not in config and "hostPort" not in config

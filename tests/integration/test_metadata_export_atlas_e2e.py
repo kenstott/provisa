@@ -32,13 +32,17 @@ import time
 import httpx
 import pytest
 
-from provisa.api.metadata_export import metadata_export
 from provisa.api.metadata_export.atlas import CLUSTER
-from provisa.core.models import MetadataExportConfig
-from tests.integration.metadata_export_fixture import (
+from tests.integration.metadata_export_server import (
+    DOMAIN,
     MASK_PATTERN,
+    ORDERS_AMOUNT_DESCRIPTION,
     RLS_FILTER,
-    governed_snapshot,
+    SCHEMA,
+    SOURCE,
+    VIEW,
+    publish,
+    published_server,
 )
 
 # REQ-1388/1389: the native Atlas path (to_native_entities) rides its own typed attribute,
@@ -57,28 +61,28 @@ pytestmark = [
 ATLAS_USER = "admin"
 ATLAS_PASSWORD = "admin"
 
-ORDERS = f"wh.public.orders@{CLUSTER}"
-CUSTOMERS = f"wh.public.customers@{CLUSTER}"
-TOTALS = f"wh.public.order_totals@{CLUSTER}"
-DERIVATION = f"wh.public.order_totals.derivation@{CLUSTER}"
+ORG = "mdx_atlas_e2e"
+_ORDERS = f"{SOURCE}.{SCHEMA}.orders"
+_TOTALS = f"__derived__.views.{VIEW}"
+ORDERS = f"{_ORDERS}@{CLUSTER}"
+CUSTOMERS = f"{SOURCE}.{SCHEMA}.customers@{CLUSTER}"
+TOTALS = f"{_TOTALS}@{CLUSTER}"
+DERIVATION = f"{_TOTALS}.derivation@{CLUSTER}"
 
 
 def _base_url() -> str:
     return f"http://localhost:{os.environ['ATLAS_PORT']}"
 
 
-def _export():
-    return metadata_export(
-        MetadataExportConfig(
-            enabled=True,
-            provider="atlas",
-            endpoint=_base_url(),
-            auth_mode="basic",
-            username=ATLAS_USER,
-            token=ATLAS_PASSWORD,
-            timeout_seconds=60,
-        )
-    )
+def _target() -> dict:
+    return {
+        "provider": "atlas",
+        "endpoint": _base_url(),
+        "auth_mode": "basic",
+        "username": ATLAS_USER,
+        "token": ATLAS_PASSWORD,
+        "timeout_seconds": 60,
+    }
 
 
 # Per test, not per module: the heavy-service fixture provisions Atlas for one test and removes
@@ -87,11 +91,12 @@ def _export():
 # and lands the same state each time.
 @pytest.fixture
 async def published():
-    export = _export()
-    await export.health()
-    result = await export.publish(governed_snapshot())
-    assert result.ok, [e.message for e in result.errors]
-    return result
+    """The production publish (REQ-2119): a Provisa server saves Atlas as its target and
+    publishes over the admin API. The server stays up for the test, which republishes."""
+    async with published_server(ORG) as client:
+        result = await publish(client, _target())
+        assert result["ok"], result["errors"]
+        yield client, result
 
 
 async def _entity(type_name: str, qualified_name: str) -> dict:
@@ -119,34 +124,35 @@ async def _entity(type_name: str, qualified_name: str) -> dict:
 
 
 async def test_every_governed_table_and_column_lands_in_the_catalog(published):
-    assert published.published["table"] == 3
-    assert published.published["column"] == 9
+    assert published[1]["published"]["table"] == 3
+    assert published[1]["published"]["column"] == 10
     orders = await _entity("provisa_table", ORDERS)
     assert orders["attributes"]["name"] == "orders"
     for qualified_name in (ORDERS, CUSTOMERS, TOTALS):
         assert (await _entity("provisa_table", qualified_name))["status"] == "ACTIVE"
-    ssn = await _entity("provisa_column", f"wh.public.orders.ssn@{CLUSTER}")
+    ssn = await _entity("provisa_column", f"{_ORDERS}.ssn@{CLUSTER}")
     assert ssn["attributes"]["dataType"] == "text"
-    amount = await _entity("provisa_column", f"wh.public.orders.amount@{CLUSTER}")
-    assert amount["attributes"]["description"] == "Order total in cents"
+    amount = await _entity("provisa_column", f"{_ORDERS}.amount@{CLUSTER}")
+    assert amount["attributes"]["description"] == ORDERS_AMOUNT_DESCRIPTION
 
 
 async def test_governance_signals_arrive_as_atlas_classifications(published):
-    ssn = await _entity("provisa_column", f"wh.public.orders.ssn@{CLUSTER}")
+    ssn = await _entity("provisa_column", f"{_ORDERS}.ssn@{CLUSTER}")
     masked = next(c for c in ssn["classifications"] if c["typeName"] == "provisa_masked")
     assert (
-        masked["attributes"]["ruleId"] == "mask:provisa://acme/sales/tables/orders#field:ssn:regex"
+        masked["attributes"]["ruleId"]
+        == f"mask:provisa://{ORG}/{DOMAIN}/tables/orders#field:ssn:regex"
     )
     assert masked["attributes"]["exemptRoles"] == ["admin"]
-    assert masked["attributes"]["restrictedRoles"] == ["analyst"]
+    assert masked["attributes"]["restrictedRoles"] == ["analyst", "data_owner"]
 
-    margin = await _entity("provisa_column", f"wh.public.orders.margin@{CLUSTER}")
+    margin = await _entity("provisa_column", f"{_ORDERS}.margin@{CLUSTER}")
     assert [c["typeName"] for c in margin["classifications"]] == ["provisa_visibility_restricted"]
 
     orders = await _entity("provisa_table", ORDERS)
     assert [c["typeName"] for c in orders["classifications"]] == ["provisa_rls_restricted"]
 
-    identifier = await _entity("provisa_column", f"wh.public.orders.id@{CLUSTER}")
+    identifier = await _entity("provisa_column", f"{_ORDERS}.id@{CLUSTER}")
     assert not identifier.get("classifications")
 
 
@@ -154,18 +160,18 @@ async def test_the_steward_and_the_approved_relationship_are_readable_from_the_c
     orders = await _entity("provisa_table", ORDERS)
     # Atlas's own accountability field, so a catalog reader finds the steward where they already
     # look for an owner (REQ-609).
-    assert orders["attributes"]["owner"] == "data-steward"
+    assert orders["attributes"]["owner"] == "data_owner"
     document = json.loads(orders["attributes"][NATIVE_GOVERNANCE_ATTRIBUTE])
-    assert document["domain"]["id"] == "sales"
-    assert document["domain"]["steward"] == "data-steward"
+    assert document["domain"]["id"] == DOMAIN
+    assert document["domain"]["steward"] == "data_owner"
     approved = document["approvedRelationships"]
     assert [edge["id"] for edge in approved] == ["orders-to-customers"]
-    assert approved[0]["target"] == "wh.public.customers"
+    assert approved[0]["target"] == f"{SOURCE}.{SCHEMA}.customers"
     assert approved[0]["sourceColumn"] == "customer_id"
 
 
 async def test_column_lineage_of_the_derived_view_is_a_process_between_the_two_tables(published):
-    assert published.published["lineage"] == 1
+    assert published[1]["published"]["lineage"] == 1
     process = await _entity("Process", DERIVATION)
     orders = await _entity("provisa_table", ORDERS)
     totals = await _entity("provisa_table", TOTALS)
@@ -176,16 +182,17 @@ async def test_column_lineage_of_the_derived_view_is_a_process_between_the_two_t
     transforms = {
         edge["to"]: edge["transforms"] for edge in json.loads(process["attributes"]["description"])
     }
-    assert transforms["wh.public.order_totals.net"] == ["orders.amount * 2"]
-    assert transforms["wh.public.order_totals.id"] == ["orders.id"]
+    assert transforms[f"{_TOTALS}.net"] == ["o.amount * 2"]
+    assert transforms[f"{_TOTALS}.id"] == ["o.id"]
 
 
 async def test_republishing_lands_the_same_catalog_state(published):
     """REQ-1072's reconcile republishes the whole snapshot on a schedule, so a second publish
     has to be an upsert rather than a duplicate."""
-    again = await _export().publish(governed_snapshot())
-    assert again.ok, [e.message for e in again.errors]
-    assert again.published == published.published
+    client, first = published
+    again = (await client.post("/admin/metadata-export/publish")).json()
+    assert again["ok"], again["errors"]
+    assert again["published"] == first["published"]
     orders = await _entity("provisa_table", ORDERS)
     assert [c["typeName"] for c in orders["classifications"]] == ["provisa_rls_restricted"]
 
@@ -193,7 +200,7 @@ async def test_republishing_lands_the_same_catalog_state(published):
 async def test_the_catalog_is_never_handed_a_path_to_the_source(published):
     """Atlas must reach the data only through Provisa — a real connection config would give it
     an ungoverned route to the warehouse."""
-    instance = await _entity("provisa_source", f"wh@{CLUSTER}")
+    instance = await _entity("provisa_source", f"{SOURCE}@{CLUSTER}")
     assert instance["attributes"]["sourceType"] == "postgresql"
     assert not instance["attributes"].get("hostname")
     assert not instance["attributes"].get("connectionString")
@@ -203,8 +210,8 @@ async def test_no_rule_body_is_stored_in_the_external_catalog(published):
     stored = json.dumps(
         [
             await _entity("provisa_table", ORDERS),
-            await _entity("provisa_column", f"wh.public.orders.ssn@{CLUSTER}"),
-            await _entity("provisa_column", f"wh.public.orders.margin@{CLUSTER}"),
+            await _entity("provisa_column", f"{_ORDERS}.ssn@{CLUSTER}"),
+            await _entity("provisa_column", f"{_ORDERS}.margin@{CLUSTER}"),
             await _entity("Process", DERIVATION),
         ]
     )

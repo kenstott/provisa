@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "Supprimer « {{id}} » détruit toutes ses sources, domaines, tables et rôles, pour tous ses membres. Cette action est irréversible. Saisissez {{id}} pour confirmer.",
     "colId": "ID",
     "colName": "Nom",
+    "colTier": "Offre",
     "colMembers": "Membres",
     "colActions": "Actions",
     "empty": "Aucune organisation",
@@ -52,6 +53,11 @@
     "revokeInvite": "Révoquer l'invitation pour {{org}}",
     "invitePagination": "Pagination des liens d'invitation",
     "orgIdDesc": "2 à 40 caractères, lettres minuscules et chiffres, commençant par une lettre. Il devient le nom du schéma et le sous-domaine, et ne peut plus être modifié ensuite.",
-    "spentStatus": "Entièrement utilisée"
+    "spentStatus": "Entièrement utilisée",
+    "tierFor": "Offre de {{name}}",
+    "tierNotSet": "Non définie",
+    "tier_free": "Gratuite",
+    "tier_standard": "Standard",
+    "tier_premium": "Premium"
   }
 }
