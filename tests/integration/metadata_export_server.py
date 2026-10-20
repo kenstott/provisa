@@ -144,8 +144,13 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                 "description": "Customers of the shop",
                 "product_id": PRODUCT,
                 "columns": [
-                    {"name": "id", "visible_to": everyone},
-                    {"name": "name", "visible_to": everyone, "description": "Full name"},
+                    {"name": "id", "data_type": "integer", "visible_to": everyone},
+                    {
+                        "name": "name",
+                        "data_type": "text",
+                        "visible_to": everyone,
+                        "description": "Full name",
+                    },
                 ],
             },
             {
@@ -156,16 +161,18 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                 "description": "Orders placed",
                 "product_id": PRODUCT,
                 "columns": [
-                    {"name": "id", "visible_to": everyone},
-                    {"name": "customer_id", "visible_to": everyone},
+                    {"name": "id", "data_type": "integer", "visible_to": everyone},
+                    {"name": "customer_id", "data_type": "integer", "visible_to": everyone},
                     {
                         "name": "amount",
+                        "data_type": "numeric",
                         "visible_to": everyone,
                         "description": ORDERS_AMOUNT_DESCRIPTION,
                     },
-                    {"name": "region", "visible_to": everyone},
+                    {"name": "region", "data_type": "text", "visible_to": everyone},
                     {
                         "name": "ssn",
+                        "data_type": "text",
                         "visible_to": everyone,
                         "masks": [
                             {"to": ["admin"], "mask": None},
@@ -179,7 +186,7 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                             },
                         ],
                     },
-                    {"name": "margin", "visible_to": ["admin"]},
+                    {"name": "margin", "data_type": "numeric", "visible_to": ["admin"]},
                 ],
             },
             {
@@ -191,8 +198,8 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                 "product_id": PRODUCT,
                 "view_sql": VIEW_SQL,
                 "columns": [
-                    {"name": "id", "visible_to": everyone},
-                    {"name": "net", "visible_to": everyone},
+                    {"name": "id", "data_type": "integer", "visible_to": everyone},
+                    {"name": "net", "data_type": "numeric", "visible_to": everyone},
                 ],
             },
         ],

@@ -109,6 +109,8 @@ def surface(monkeypatch, control_plane):
         return tiers.get(org_id)
 
     monkeypatch.setattr("provisa.core.org_tier.read_org_tier", _tier)
+    # A commercial deployment, where the stored tier decides (REQ-1066).
+    monkeypatch.setattr("provisa.core.commerce.enabled", lambda: True)
 
     def _org(tier: str = "premium", org_id: str = ORG_ID):
         tiers[org_id] = tier

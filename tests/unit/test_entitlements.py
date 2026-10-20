@@ -39,6 +39,8 @@ def tiered(control_plane, monkeypatch):
     monkeypatch.setattr(
         "provisa.api.app.state", types.SimpleNamespace(admin_db=admin_db), raising=False
     )
+    # A commercial deployment: only there does the stored tier decide (REQ-1066).
+    monkeypatch.setattr("provisa.core.commerce.enabled", lambda: True)
 
     async def _set(tier: str | None, org_id: str = "o1") -> None:
         async with admin_db.acquire() as conn:
@@ -104,6 +106,16 @@ async def test_unknown_tier_is_denied_not_defaulted(tiered, monkeypatch):  # REQ
         await require_feature("o1", Feature.METADATA_EXPORT)
     assert exc.value.tier == "platinum"
     assert "free" in str(exc.value)
+
+
+@pytest.mark.asyncio
+async def test_a_self_hosted_install_has_no_feature_gate(tiered, monkeypatch):  # REQ-1066
+    """Without the commercial plugin there is no subscription, so no tier, set or not, gates a
+    feature: the owner already has the software."""
+    monkeypatch.setattr("provisa.core.commerce.enabled", lambda: False)
+    await tiered(None)
+    await require_feature("o1", Feature.METADATA_EXPORT)
+    await require_feature("never-registered", Feature.METADATA_EXPORT)
 
 
 @pytest.mark.asyncio

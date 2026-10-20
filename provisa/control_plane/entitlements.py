@@ -103,9 +103,13 @@ async def require_feature(org_id: str, feature: Feature) -> None:  # REQ-1073, R
     with no row raises ``KeyError``: neither is given a tier it was never set.
 
     Demo mode (``--demo`` → PROVISA_DEMO) is exempt by design: the demo showcases every
-    feature, so tier gates are not enforced there.
+    feature, so tier gates are not enforced there. So is a deployment without the commercial
+    plugin (``provisa.core.commerce``): a self-hosted install has no subscription, and a gate
+    there would be a paywall on software its owner already has (REQ-1066, amended 2026-10-20).
     """
-    if is_demo():
+    from provisa.core import commerce
+
+    if is_demo() or not commerce.enabled():
         return
     from provisa.core.org_tier import read_org_tier
 

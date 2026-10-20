@@ -60,6 +60,8 @@ def org(monkeypatch):
         return tiers.get(org_id)
 
     monkeypatch.setattr("provisa.core.org_tier.read_org_tier", _tier)
+    # A commercial deployment, where the stored tier decides (REQ-1066).
+    monkeypatch.setattr("provisa.core.commerce.enabled", lambda: True)
 
     def _at(tier: str):
         tiers[ORG_ID] = tier
