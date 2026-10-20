@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 5ae8c327-5ade-481e-9078-253a7f6ee59d
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // The churn model's fitted coefficients, written by ../train.py from the same fit as
 // churn_model/model.joblib. Do not edit.
 export const MODEL = {
