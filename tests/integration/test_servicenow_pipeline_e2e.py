@@ -201,15 +201,14 @@ async def test_an_unbound_tables_insert_update_and_delete_are_written_to_it(clie
     try:
         written = await _data(
             client,
-            f'mutation {{ {insert}(input: {{short_description: "{name}"}}) '
-            "{ affected_rows returning { sys_id short_description } } }",
+            f'mutation {{ {insert}(input: {{shortDescription: "{name}"}}) {{ affected_rows }} }}',
         )
         assert written[insert]["affected_rows"] == 1
-        assert written[insert]["returning"][0]["short_description"] == name
+        assert [r["short_description"] for r in await _incidents_named(client, name)] == [name]
         await _data(
             client,
-            f'mutation {{ {update}(where: {{short_description: {{eq: "{name}"}}}}, '
-            f'set: {{short_description: "{name} changed"}}) {{ affected_rows }} }}',
+            f'mutation {{ {update}(where: {{shortDescription: {{eq: "{name}"}}}}, '
+            f'set: {{shortDescription: "{name} changed"}}) {{ affected_rows }} }}',
         )
         assert [r["short_description"] for r in await _incidents_named(client, name)] == [
             f"{name} changed"
@@ -217,7 +216,7 @@ async def test_an_unbound_tables_insert_update_and_delete_are_written_to_it(clie
     finally:
         await _data(
             client,
-            f'mutation {{ {delete}(where: {{short_description: {{like: "{name}%"}}}}) '
+            f'mutation {{ {delete}(where: {{shortDescription: {{like: "{name}%"}}}}) '
             "{ affected_rows } }",
         )
     assert await _incidents_named(client, name) == []
@@ -231,21 +230,25 @@ async def test_a_bound_tables_insert_goes_through_its_import_set(client, registe
     try:
         written = await _data(
             client,
-            f'mutation {{ {insert}(input: {{user_name: "{name}", first_name: "Provisa"}}) '
-            "{ affected_rows returning { sys_id user_name } } }",
+            f'mutation {{ {insert}(input: {{userName: "{name}", firstName: "Provisa"}}) '
+            "{ affected_rows } }",
         )
-        # The returned row is the record the transform wrote into sys_user.
-        assert written[insert]["returning"][0]["user_name"] == name
-        assert written[insert]["returning"][0]["sys_id"]
+        assert written[insert]["affected_rows"] == 1
+        # The record the transform wrote into sys_user.
+        (row,) = await _users_named(client, name)
+        assert row["sys_id"]
     finally:
         await _data(
             client,
-            f'mutation {{ {delete}(where: {{user_name: {{eq: "{name}"}}}}) {{ affected_rows }} }}',
+            f'mutation {{ {delete}(where: {{userName: {{eq: "{name}"}}}}) {{ affected_rows }} }}',
         )
-    rows = await query_semantic(
+    assert await _users_named(client, name) == []
+
+
+async def _users_named(client: AsyncClient, name: str) -> list[dict[str, Any]]:
+    return await query_semantic(
         client, f'SELECT "sys_id" FROM "{_DOMAIN}"."sys_user" WHERE "user_name" = \'{name}\''
     )
-    assert rows == []
 
 
 # -- the instance's own APIs, as commands ---------------------------------------------------------
@@ -342,7 +345,7 @@ async def test_an_import_set_row_goes_through_its_transform_map(client, register
             if row.get("sys_id"):
                 await _data(
                     client,
-                    f'mutation {{ {delete}(where: {{sys_id: {{eq: "{row["sys_id"]}"}}}}) '
+                    f'mutation {{ {delete}(where: {{sysId: {{eq: "{row["sys_id"]}"}}}}) '
                     "{ affected_rows } }",
                 )
 
@@ -376,6 +379,6 @@ async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
     finally:
         await _data(
             client,
-            f'mutation {{ {delete}(where: {{sys_id: {{eq: "{request["sys_id"]}"}}}}) '
+            f'mutation {{ {delete}(where: {{sysId: {{eq: "{request["sys_id"]}"}}}}) '
             "{ affected_rows } }",
         )
