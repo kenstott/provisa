@@ -43,7 +43,7 @@ as an equality on any other column of it does.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import product
 from typing import Any
 
@@ -58,6 +58,14 @@ class _Base:
     instance: int  # id() of the exp.Table node reading it
     table_id: int
     column: str
+    #: The same column as each marked view it is read through gives it, outermost last: a column
+    #: a view passes through is that view's column too, related along the view's relationships as
+    #: well as its table's.
+    views: tuple["_Base", ...] = ()
+
+    def as_read(self) -> tuple["_Base", ...]:
+        """The column, and the same column of each view it is read through."""
+        return (self, *self.views)
 
 
 #: Why two tables are related outside the registered relationships.
@@ -310,7 +318,13 @@ class _Resolver:
                 out |= self.resolve(scope, exp.column(name, table=table or None), seen)
             elif select.alias_or_name == name and isinstance(inner, exp.Column):
                 named = True
-                out |= self.resolve(scope, inner, seen)
+                passed = self.resolve(scope, inner, seen)
+                if id(scope) in self._view_scopes:
+                    # A column a view passes through is also a column of the view.
+                    instance, view_id = self._view_scopes[id(scope)]
+                    own = _Base(instance, view_id, name)
+                    passed = {replace(b, views=(*b.views, own)) for b in passed}
+                out |= passed
             elif select.alias_or_name == name and id(scope) in self._view_scopes:
                 # A constant or an expression a view gives: a column of the view itself.
                 instance, view_id = self._view_scopes[id(scope)]
@@ -470,6 +484,21 @@ def _unrelated_in(
         for a in left:
             for b in right:
                 if a.instance == b.instance or exempt(a.instance) or exempt(b.instance):
+                    continue
+                through = next(
+                    (
+                        (x, y)
+                        for x in a.as_read()
+                        for y in b.as_read()
+                        if (a.views or b.views)
+                        and x.instance != y.instance
+                        and (x.table_id, y.table_id, x.column, y.column) in registered
+                    ),
+                    None,
+                )
+                if through is not None:
+                    # Related along a relationship of a view one side is read through.
+                    edges.add(frozenset({through[0].instance, through[1].instance}))
                     continue
                 if a.table_id == b.table_id and filters_only(a.instance, b.instance):
                     edges.add(frozenset({a.instance, b.instance}))
