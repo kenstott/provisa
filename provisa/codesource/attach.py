@@ -158,3 +158,16 @@ async def prepare(state: Any) -> None:
         else:
             written = engine_identity.for_this_process(org_id, me, roots)
         connector.remember(org_id, dataclasses.replace(written, schemas=schemas))
+        if connector.files_for == "trino":
+            # Trino's catalog of each built source is created now that its identity is written.
+            _register_on_engine(state, list(mine))
+
+
+def _register_on_engine(state: Any, source_ids: list[str]) -> None:
+    """Provision each of ``source_ids`` on the bound engine again (its catalog)."""
+    config = getattr(state, "config", None)
+    for source in getattr(config, "sources", None) or []:
+        if source.id in source_ids:
+            state.federation_engine.register_source(
+                source, "", catalog_name=state.source_catalogs[source.id]
+            )

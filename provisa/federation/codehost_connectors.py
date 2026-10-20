@@ -111,6 +111,10 @@ class CodeHost:
         with _lock:
             held[org_id] = prepared
 
+    def ready(self) -> bool:
+        """Whether the schema build wrote the bound organisation's identity for this engine."""
+        return _org() in self._held()
+
     def prepared(self) -> Prepared:
         org_id = _org()
         found = self._held().get(org_id)

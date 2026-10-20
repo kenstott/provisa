@@ -1132,6 +1132,12 @@ class TrinoCodeHostConnector(CodeHost, _TrinoConnector):  # REQ-2100
         return Capability(predicate_pushdown=True)
 
     def details(self, source: Source) -> dict:
+        mapping = getattr(source, "mapping", None) or {}
+        # A dev-mode source is landed, never attached: it has no catalog. A built one's catalog
+        # is created by the schema build once its identity is written where Trino reads it
+        # (codesource.attach.prepare), which registers the source on the engine again.
+        if mapping.get("mode") != "built" or not self.ready():
+            return {}
         return trino_details(self, source)
 
 

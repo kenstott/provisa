@@ -85509,6 +85509,7 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - tests/unit/test_code_image_build.py
   - tests/unit/test_code_pgfront.py
   - tests/unit/test_code_attach.py
+  - tests/integration/test_code_source_attach_trino.py
   docs:
   - code-sources.md
 - id: REQ-2098

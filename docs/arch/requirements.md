@@ -25586,7 +25586,7 @@ A Node or Python code source's tables are reached two more ways beside landing (
 
 **Code:** `provisa/codesource/pushdown.py`, `provisa/codesource/names.py`, `provisa/codesource/manifest.py`, `provisa/python/reader.py`, `provisa/node/reader.mjs`, `provisa/codehost/residual.py`, `provisa/codehost/front.py`, `provisa/codehost/front_requirements.txt`, `provisa/codesource/image_build.py`, `provisa/codesource/builds.py`, `provisa/codesource/remote.py`, `provisa/codesource/direct.py`, `provisa/codesource/worker.py`, `provisa/transpiler/router.py`, `provisa/api/data/materialization.py`, `provisa/pgwire/_pipeline.py`, `provisa/codehost/pgfront.py`, `provisa/codehost/pgcatalog.py`, `provisa/codesource/attach.py`, `provisa/codesource/engine_identity.py`, `provisa/federation/codehost_connectors.py`, `provisa/federation/k8s_provisioner.py`, `provisa/core/trino_catalog_files.py`, `docker-compose.app.yml`, `docker-compose.core.yml`
 
-**Tests:** `tests/unit/test_code_pushdown.py`, `tests/unit/test_code_direct.py`, `tests/unit/test_code_remote_host.py`, `tests/unit/test_code_remote_host_node.py`, `tests/unit/test_code_image_build.py`, `tests/unit/test_code_pgfront.py`, `tests/unit/test_code_attach.py`
+**Tests:** `tests/unit/test_code_pushdown.py`, `tests/unit/test_code_direct.py`, `tests/unit/test_code_remote_host.py`, `tests/unit/test_code_remote_host_node.py`, `tests/unit/test_code_image_build.py`, `tests/unit/test_code_pgfront.py`, `tests/unit/test_code_attach.py`, `tests/integration/test_code_source_attach_trino.py`
 
 **Docs:** [code-sources.md](../code-sources.md)
 

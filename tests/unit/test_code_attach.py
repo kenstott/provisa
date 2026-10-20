@@ -318,3 +318,15 @@ async def test_the_schema_build_writes_the_identity_and_names_each_sources_schem
     assert prepared.schemas_of("scores-src") == "default,ml"
     assert Path(prepared.root("scores-src")).read_text() == "HOST PEM"
     assert Path(prepared.certificate).read_text() == identity.certificate
+
+
+def test_trino_gets_no_catalog_for_a_dev_source_or_before_its_identity_is_written(
+    registered, tmp_path
+):
+    connector = TrinoCodeHostConnector("python")
+    assert connector.details(_source()) == {}  # built, but the schema build has not written it
+    _files(connector, tmp_path)
+    dev = _source()
+    dev.mapping = {"mode": "dev"}
+    assert connector.details(dev) == {}  # landed, never attached
+    assert connector.details(_source())["connection-user"] == "provisa"
