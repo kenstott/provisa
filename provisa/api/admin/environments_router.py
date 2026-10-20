@@ -347,7 +347,7 @@ class CreateEnvBody(BaseModel):
     from_env: str = PROD
     expires_at: datetime | None = None
     # REQ-1942: where the new environment's data comes from, chosen when it is created -- inherit
-    # (``from_env``'s connections by reference), unbound (none, until it binds its own),
+    # (``from_env``'s connections, copied as written there), unbound (none, until it binds its own),
     # test_fake or test_synthetic -- and what a mutation in it does (refused by default). Every
     # data choice but unbound and refused needs the environment_data right; the model is copied
     # whole and no credential is, whatever the mode (REQ-1491).

@@ -405,7 +405,7 @@ describe("EnvironmentsTab", () => {
       expect(mockCreate).toHaveBeenCalledWith("acme", {
         name: "feature",
         from_env: "prod",
-        // REQ-1538: nobody touched the box, so the new environment does NOT resolve prod's
+        // REQ-1942: nobody touched the data mode, so the new environment does NOT copy prod's
         // connections. The safe answer is the default.
         data_mode: "unbound",
       }),
@@ -432,9 +432,7 @@ describe("EnvironmentsTab", () => {
     // was branched from — so dev's merge is previewed against prod with nothing else chosen.
     fireEvent.click(await screen.findByTestId("env-merge-dev"));
     fireEvent.click(await screen.findByTestId("env-merge-preview-run"));
-    await waitFor(() =>
-      expect(mockPreview).toHaveBeenCalledWith("acme", "prod", "dev", false, []),
-    );
+    await waitFor(() => expect(mockPreview).toHaveBeenCalledWith("acme", "prod", "dev", false, []));
     expect(mockMerge).not.toHaveBeenCalled();
     expect(await screen.findByTestId("env-merge-preview")).toHaveTextContent("+2 / ~1 / -0");
   });
@@ -662,13 +660,43 @@ describe("EnvironmentsTab", () => {
     expect(screen.getByTestId("env-merge-preview-run")).toBeDisabled();
   });
 
-  it("explains the two switches that decide how an environment behaves", async () => {
-    // "Inherit connections" and Protected each change what the platform will do later, and neither
-    // says so from its label alone (REQ-1504, REQ-1538).
+  it("explains the two choices that decide how an environment behaves", async () => {
+    // The data mode and Protected each change what the platform will do later, and neither says
+    // so from its label alone (REQ-1504, REQ-1942).
     mockList.mockResolvedValue([env("prod", { protected: true }), env("dev")]);
     render(<EnvironmentsTab />);
-    expect(await screen.findByTestId("env-inherit-help")).toBeInTheDocument();
+    expect(
+      await screen.findByRole("img", { name: /Where the new environment's data comes from/ }),
+    ).toBeInTheDocument();
     expect(screen.getByTestId("env-protected-help")).toBeInTheDocument();
+  });
+
+  it("creates an environment in the data mode that was chosen", async () => {
+    // REQ-1942: every data mode is offered at creation, and the chosen one is what is sent.
+    mockCreate.mockResolvedValue({
+      environment: env("qa"),
+      copy: { added: 3, changed: 0, removed: 0 },
+    });
+    render(<EnvironmentsTab />);
+    fireEvent.change(await screen.findByTestId("env-new-name"), { target: { value: "qa" } });
+    fireEvent.click(screen.getByRole("textbox", { name: /^Data/ }));
+    for (const label of ["Inherit", "Unbound", "Test (fake)", "Test (synthetic)"]) {
+      expect(await screen.findByRole("option", { name: label, hidden: true })).toBeInTheDocument();
+    }
+    fireEvent.click(screen.getByRole("option", { name: "Test (fake)", hidden: true }));
+    expect(
+      await screen.findByText(
+        "The parent's rows, with every column that declares a fake read through it.",
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("env-create"));
+    await waitFor(() =>
+      expect(mockCreate).toHaveBeenCalledWith("acme", {
+        name: "qa",
+        from_env: "prod",
+        data_mode: "test_fake",
+      }),
+    );
   });
 
   it("does not offer an administrator's controls to a member", async () => {
@@ -676,12 +704,12 @@ describe("EnvironmentsTab", () => {
     render(<EnvironmentsTab />);
     expect(await screen.findByTestId("env-merge-dev")).toBeInTheDocument();
     expect(screen.queryByTestId("env-delete-dev")).toBeNull();
-    // REQ-1538/REQ-1529: the box stays visible and is forced on — inheriting is the only kind of
-    // environment a non-administering member may create, and hiding it would send a request the
+    // REQ-1529: the choice stays visible, set to Inherit and disabled — inheriting is the only kind
+    // of environment a non-administering member may create, and hiding it would send a request the
     // server answers 403 with nothing on screen to explain it.
-    const inherit = screen.getByTestId("env-new-inherit") as HTMLInputElement;
-    expect(inherit.checked).toBe(true);
-    expect(inherit.disabled).toBe(true);
+    const mode = screen.getByTestId("env-new-data-mode") as HTMLInputElement;
+    expect(mode.value).toBe("Inherit");
+    expect(mode.disabled).toBe(true);
   });
 
   it("creates an inheriting environment when a member without org_settings creates one", async () => {

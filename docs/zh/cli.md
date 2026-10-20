@@ -252,7 +252,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 | --- | --- | --- |
 | `--env` | 是 | 新环境的名称 |
 | `--from` | 否 | 作为起点的环境；默认 `prod` |
-| `--data-mode` | 是 | `inherit`、`unbound`、`test_fake` 或 `test_synthetic`：按引用使用数据源连接、在绑定自己的连接之前没有连接，或测试数据 |
+| `--data-mode` | 是 | `inherit`、`unbound`、`test_fake` 或 `test_synthetic`：按原样复制 `--from` 环境中的连接、在绑定自己的连接之前没有连接，或测试数据 |
 | `--mutation-handling` | 否 | `refused`、`reversible` 或 `direct`；默认 `refused` |
 | `--expires-at` | 否 | ISO-8601 时刻，此后环境被移除 |
 

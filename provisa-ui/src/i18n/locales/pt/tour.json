@@ -213,8 +213,8 @@
         "description": "✨ <strong>Preencher a partir do perfil</strong> propõe, com base no perfil mais recente da tabela, valores fictícios para as colunas identificadoras e regras sintéticas para as demais. Nada é salvo até que você salve o formulário."
       },
       "stepEnvKinds": {
-        "title": "Ambientes e suas conexões",
-        "description": "Um ambiente é uma <strong>branch</strong> do seu modelo, e a lista mostra de qual ambiente cada um foi criado. Ao criar um, você escolhe se ele <strong>herda as conexões</strong>. Ligado, o novo ambiente usa por referência as conexões de fonte do pai, então quando uma credencial é trocada lá, ela muda aqui também. Desligado, o padrão, você recebe o modelo inteiro sem conexões e aponta cada fonte para o seu próprio banco."
+        "title": "Ambientes e seus dados",
+        "description": "Um ambiente é um <strong>branch</strong> do seu modelo, e a lista mostra de qual ambiente cada um foi criado. Ao criar um, você escolhe os <strong>dados</strong> dele. <strong>Inherit</strong> copia a conexão de cada fonte do ambiente pai, de modo que as tabelas mostram os dados dele. <strong>Unbound</strong>, o padrão, dá a você o modelo inteiro sem conexões, e você aponta cada fonte para o seu próprio banco de dados. <strong>Test (fake)</strong> lê as linhas do ambiente pai por meio do valor fictício de cada coluna, e <strong>Test (synthetic)</strong> lê linhas geradas a partir das execuções de perfil do ambiente pai. Um valor de conexão que referencia um segredo ou uma variável de ambiente é copiado como essa referência, de modo que a rotação da credencial chega a todo ambiente que a usa."
       },
       "stepSynthetic": {
         "title": "Gerar dados sintéticos",

@@ -213,8 +213,8 @@
         "description": "✨ <strong>Rellenar desde el perfil</strong> propone, a partir del último perfil de la tabla, valores ficticios para las columnas identificativas y reglas sintéticas para el resto. No se guarda nada hasta que guarde el formulario."
       },
       "stepEnvKinds": {
-        "title": "Entornos y sus conexiones",
-        "description": "Un entorno es una <strong>rama</strong> de su modelo, y la lista muestra de qué entorno salió cada uno. Al crear uno, elige si <strong>hereda las conexiones</strong>. Si lo activa, el nuevo entorno usa por referencia las conexiones de fuente de su padre, de modo que si allí se rota una credencial, aquí también. Si lo deja desactivado, el valor predeterminado, obtiene todo el modelo sin conexiones y apunta cada fuente a su propia base de datos."
+        "title": "Entornos y sus datos",
+        "description": "Un entorno es una <strong>rama</strong> de su modelo, y la lista muestra de qué entorno se creó cada uno. Al crear uno, elige sus <strong>datos</strong>. <strong>Inherit</strong> copia la conexión de cada origen desde el entorno padre, así que las tablas muestran sus datos. <strong>Unbound</strong>, el valor predeterminado, le da el modelo completo sin conexiones, y usted apunta cada origen a su propia base de datos. <strong>Test (fake)</strong> lee las filas del entorno padre a través del valor ficticio de cada columna, y <strong>Test (synthetic)</strong> lee filas generadas a partir de las ejecuciones de perfil del entorno padre. Un valor de conexión que hace referencia a un secreto o a una variable de entorno se copia como esa referencia, de modo que rotar la credencial llega a todos los entornos que la usan."
       },
       "stepSynthetic": {
         "title": "Generar datos sintéticos",

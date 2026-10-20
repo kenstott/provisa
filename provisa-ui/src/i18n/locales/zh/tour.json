@@ -213,8 +213,8 @@
         "description": "✨ <strong>根据画像填充</strong>会依据该表最新的画像，为识别性的列建议虚构值，为其余的列建议合成规则。在你保存表单之前不会保存任何内容。"
       },
       "stepEnvKinds": {
-        "title": "环境及其连接",
-        "description": "环境是您模型的一个<strong>分支</strong>，列表会显示每个环境是从哪个环境创建的。创建时，您可以选择是否<strong>继承连接</strong>。打开时，新环境按引用使用父环境的数据源连接，因此那边轮换了凭据，这边也会随之更新。关闭时（默认），您得到不含任何连接的完整模型，再把每个数据源指向您自己的数据库。"
+        "title": "环境及其数据",
+        "description": "环境是您的模型的一个<strong>分支</strong>，列表显示每个环境是从哪个环境创建的。创建环境时，您要选择它的<strong>数据</strong>。<strong>Inherit</strong> 从父环境复制每个数据源的连接，因此表显示父环境的数据。默认的 <strong>Unbound</strong> 给您不带连接的整个模型，由您将每个数据源指向自己的数据库。<strong>Test (fake)</strong> 通过每列的虚构值读取父环境的行，<strong>Test (synthetic)</strong> 读取根据父环境的画像运行生成的行。引用密钥或环境变量的连接值会按该引用复制，因此轮换凭据会作用到每个使用它的环境。"
       },
       "stepSynthetic": {
         "title": "生成合成数据",

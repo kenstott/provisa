@@ -213,8 +213,8 @@
         "description": "✨ <strong>Compila dal profilo</strong> propone, dall'ultimo profilo della tabella, valori fittizi per le colonne identificative e regole sintetiche per le altre. Nulla viene salvato finché non salva il modulo."
       },
       "stepEnvKinds": {
-        "title": "Ambienti e loro connessioni",
-        "description": "Un ambiente è un <strong>branch</strong> del vostro modello, e l'elenco mostra da quale ambiente è nato ciascuno. Quando ne create uno, scegliete se <strong>ereditare le connessioni</strong>. Se è attivo, il nuovo ambiente usa per riferimento le connessioni delle sorgenti del suo genitore, quindi se lì una credenziale viene ruotata, cambia anche qui. Se è disattivato, il valore predefinito, ottenete l'intero modello senza connessioni e puntate ogni sorgente al vostro database."
+        "title": "Ambienti e i loro dati",
+        "description": "Un ambiente è un <strong>branch</strong> del tuo modello, e l'elenco mostra da quale ambiente è stato creato ciascuno. Quando ne crei uno, scegli i suoi <strong>dati</strong>. <strong>Inherit</strong> copia la connessione di ogni sorgente dall'ambiente padre, così le tabelle mostrano i suoi dati. <strong>Unbound</strong>, l'impostazione predefinita, ti dà l'intero modello senza connessioni, e punti ogni sorgente al tuo database. <strong>Test (fake)</strong> legge le righe dell'ambiente padre attraverso il valore fittizio di ogni colonna, e <strong>Test (synthetic)</strong> legge righe generate dalle esecuzioni di profilo dell'ambiente padre. Un valore di connessione che fa riferimento a un segreto o a una variabile d'ambiente viene copiato come quel riferimento, così la rotazione della credenziale raggiunge ogni ambiente che lo usa."
       },
       "stepSynthetic": {
         "title": "Generare dati sintetici",

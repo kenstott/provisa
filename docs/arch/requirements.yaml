@@ -54669,8 +54669,9 @@
     2026-10-03 -- branch_writable is removed: the column, the policy endpoint and the switch. Kept here
     for history; do not implement against it.] drifted, protected, branch_writable, what it was branched
     from [END SUPERSEDED BLOCK] -- plus create (naming what to branch from, [SUPERSEDED by REQ-1538, 2026-10-03
-    -- The choice is presented as ''Inherit connections'', off by default (wire field inherit_connections).
-    Kept here for history; do not implement against it.] and whether it is a BASE per REQ-1529 [END SUPERSEDED
+    -- The choice is presented as ''Inherit connections'', off by default (wire field inherit_connections),
+    itself superseded by REQ-1942, 2026-10-19: the choice is the data mode, Unbound by default (wire field
+    data_mode). Kept here for history; do not implement against it.] and whether it is a BASE per REQ-1529 [END SUPERSEDED
     BLOCK]), [SUPERSEDED by REQ-1539, 2026-10-03 -- There is no branch-write policy; data rights are the
     roles''. Kept here for history; do not implement against it.] delete, protect, and the branch-write
     policy [END SUPERSEDED BLOCK]. Delete is withheld for prod rather than offered and refused. MERGE:
@@ -54988,13 +54989,13 @@
   status: complete
   since: 2026-10
   target: 2026-Q4
-  description: 'THE CHOICE REQ-1529 CALLS BASE-OR-BRANCH MUST BE PRESENTED AS "INHERIT CONNECTIONS", AND
-    MUST DEFAULT TO OFF. The governing use case is making a dev environment from prod: the operator wants
+  description: '[SUPERSEDED by REQ-1942, 2026-10-19 -- The choice is the new environment''s data mode (Inherit, Unbound, Test (fake), Test (synthetic)), Unbound by default; Inherit copies the parent''s connections as written. Kept here for history; do not implement against it.] THE CHOICE REQ-1529 CALLS BASE-OR-BRANCH MUST BE PRESENTED AS "INHERIT CONNECTIONS", AND
+    MUST DEFAULT TO OFF. [END SUPERSEDED BLOCK] The governing use case is making a dev environment from prod: the operator wants
     prod''s whole model and specifically does NOT want prod''s connection strings, so the outcome reached
     by touching nothing has to be the one that points nowhere yet. The earlier "Base" checkbox inverted
     that -- left alone it produced an environment resolving production''s host, port, database and username
     by reference -- and named the concept after a position in a tree rather than after what the operator
-    is deciding. WHY "CONNECTIONS" AND NOT "CREDENTIALS": sources carries no password column at all; what
+    is deciding. [SUPERSEDED by REQ-1942, 2026-10-19 -- The choice is the new environment''s data mode (Inherit, Unbound, Test (fake), Test (synthetic)), Unbound by default; Inherit copies the parent''s connections as written. Kept here for history; do not implement against it.] WHY "CONNECTIONS" AND NOT "CREDENTIALS": sources carries no password column at all; what
     a copy would carry forward is the connection coordinates -- host, port, database, username, dialect,
     path, federation_hints, mapping, cdc, base_url, spec_url, bootstrap_servers, topic -- while the credential
     itself lives in secrets and is never copied by anything (REQ-1491, REQ-1525). Naming the box after
@@ -55004,13 +55005,20 @@
     from it will behave. The wire field is inherit_connections, false by default. A member who cannot
     administer the org sees the box checked and disabled rather than hidden, because inheriting is the
     only kind of environment REQ-1529 lets them create and a hidden box would leave them pressing Create
-    into a 403 with nothing on screen to explain it.'
+    into a 403 with nothing on screen to explain it. [END SUPERSEDED BLOCK] (Amended 2026-10-19, THE CHOICE IS THE DATA MODE, REQ-1942:) the choice is presented as the new
+    environment''s data mode -- Inherit, Unbound, Test (fake) or Test (synthetic) -- and defaults to Unbound,
+    so touching nothing still gives the whole model with none of the parent''s connections. The wire field is
+    data_mode. Inherit copies each source''s connection from the parent as written there; a value that references
+    a secret or an environment variable is copied as that reference, so rotating the credential reaches the copy.
+    A member who cannot administer the org sees the choice set to Inherit and disabled rather than hidden,
+    because inheriting is the only kind of environment REQ-1529 lets them create and a hidden choice would leave
+    them pressing Create into a 403 with nothing on screen to explain it.'
   use_case: An operator creating dev from prod gets prod's model with no connections and binds each source
     to their own database, without having had to notice a checkbox to avoid pointing at prod.
   scenario: 'Given an operator creating an environment from prod
 
 
-    When they leave the "Inherit connections" box alone
+    When they leave the data mode at its default, Unbound
 
 
     Then the new environment carries prod''s model and none of prod''s connections
@@ -55030,6 +55038,7 @@
   - REQ-1525
   - REQ-1528
   - REQ-1529
+  - REQ-1942
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1539
   status: complete

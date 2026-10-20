@@ -253,7 +253,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 | --- | --- | --- |
 | `--env` | да | Имя нового окружения |
 | `--from` | нет | Окружение, от которого начинать; по умолчанию `prod` |
-| `--data-mode` | да | `inherit`, `unbound`, `test_fake` или `test_synthetic`: подключения источника по ссылке, никаких, пока оно не привяжет свои, или тестовые данные |
+| `--data-mode` | да | `inherit`, `unbound`, `test_fake` или `test_synthetic`: подключения окружения `--from`, скопированные в том виде, в каком они там записаны, никаких, пока оно не привяжет свои, или тестовые данные |
 | `--mutation-handling` | нет | `refused`, `reversible` или `direct`; по умолчанию `refused` |
 | `--expires-at` | нет | Момент ISO-8601, после которого окружение удаляется |
 

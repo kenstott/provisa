@@ -431,8 +431,8 @@ def register(sub) -> None:
         "--data-mode",
         required=True,
         choices=["inherit", "unbound", "test_fake", "test_synthetic"],
-        help="Where its data comes from: the source's connections by reference, none until it "
-        "binds its own, or test data",
+        help="Where its data comes from: the connections of --from, copied as written there, "
+        "none until it binds its own, or test data",
     )
     create.add_argument(
         "--mutation-handling",

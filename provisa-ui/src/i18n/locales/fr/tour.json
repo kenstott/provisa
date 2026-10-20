@@ -213,8 +213,8 @@
         "description": "✨ <strong>Remplir depuis le profil</strong> propose, d'après le dernier profil de la table, des valeurs fictives pour les colonnes identifiantes et des règles synthétiques pour les autres. Rien n'est enregistré avant que vous enregistriez le formulaire."
       },
       "stepEnvKinds": {
-        "title": "Environnements et leurs connexions",
-        "description": "Un environnement est une <strong>branche</strong> de votre modèle, et la liste montre de quel environnement chacun est issu. À sa création, vous choisissez s'il <strong>hérite des connexions</strong>. Si c'est activé, le nouvel environnement utilise par référence les connexions de source de son parent : si un identifiant y est renouvelé, il l'est ici aussi. Si c'est désactivé, la valeur par défaut, vous obtenez tout le modèle sans aucune connexion, et vous pointez chaque source vers votre propre base de données."
+        "title": "Environnements et leurs données",
+        "description": "Un environnement est une <strong>branche</strong> de votre modèle, et la liste indique à partir de quel environnement chacun a été créé. Lorsque vous en créez un, vous choisissez ses <strong>données</strong>. <strong>Inherit</strong> copie la connexion de chaque source depuis l'environnement parent, si bien que les tables montrent ses données. <strong>Unbound</strong>, le choix par défaut, vous donne le modèle entier sans connexion, et vous pointez chaque source vers votre propre base de données. <strong>Test (fake)</strong> lit les lignes de l'environnement parent à travers la valeur fictive de chaque colonne, et <strong>Test (synthetic)</strong> lit des lignes générées à partir des exécutions de profil de l'environnement parent. Une valeur de connexion qui fait référence à un secret ou à une variable d'environnement est copiée comme cette référence, si bien que la rotation de l'identifiant atteint chaque environnement qui l'utilise."
       },
       "stepSynthetic": {
         "title": "Générer des données synthétiques",

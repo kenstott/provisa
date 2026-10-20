@@ -213,8 +213,8 @@
         "description": "✨ <strong>Vullen vanuit profiel</strong> stelt, op basis van het nieuwste profiel van de tabel, nepwaarden voor identificerende kolommen voor en synthetische regels voor de rest. Er wordt niets opgeslagen voordat u het formulier opslaat."
       },
       "stepEnvKinds": {
-        "title": "Omgevingen en hun verbindingen",
-        "description": "Een omgeving is een <strong>branch</strong> van uw model, en de lijst laat zien uit welke omgeving elke omgeving is gemaakt. Bij het aanmaken kiest u of ze <strong>verbindingen erft</strong>. Staat dat aan, dan gebruikt de nieuwe omgeving de bronverbindingen van haar ouder via een verwijzing, dus als daar een credential wordt vervangen, gebeurt dat hier ook. Staat het uit, de standaard, dan krijgt u het hele model zonder verbindingen en richt u elke bron op uw eigen database."
+        "title": "Omgevingen en hun data",
+        "description": "Een omgeving is een <strong>branch</strong> van uw model, en de lijst toont uit welke omgeving elke omgeving is gemaakt. Als u er een aanmaakt, kiest u de <strong>data</strong>. <strong>Inherit</strong> kopieert de verbinding van elke bron uit de bovenliggende omgeving, zodat de tabellen haar data tonen. <strong>Unbound</strong>, de standaard, geeft u het hele model zonder verbindingen, en u richt elke bron op uw eigen database. <strong>Test (fake)</strong> leest de rijen van de bovenliggende omgeving via de fake van elke kolom, en <strong>Test (synthetic)</strong> leest rijen die uit de profielruns van de bovenliggende omgeving zijn gegenereerd. Een verbindingswaarde die naar een secret of een omgevingsvariabele verwijst, wordt als die verwijzing gekopieerd, zodat het roteren van de referentie elke omgeving bereikt die haar gebruikt."
       },
       "stepSynthetic": {
         "title": "Synthetische data genereren",
