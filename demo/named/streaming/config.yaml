@@ -90,7 +90,7 @@ tables:
   live:
     strategy: kafka
     kafka:
-      topic: orders
+      topic: orders${env:STREAMING_KAFKA_NS}
   push_debounce_quiet: 0.5
   push_debounce_max_delay: 2
   enable_aggregates: true

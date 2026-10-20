@@ -618,6 +618,7 @@ def _sync(tmp_path, *args: str, requested: bool = False, in_use: str | None = No
         "DEMO_STORES": str(fake / "demo_stores.py"),
         "DEMO_STORES_SHARED": "/shared.yml",
         "DEMO_STORES_PROJECT": "provisa-demo-stores",
+        "DEMO_STORES_KAFKA_PORT": "29092",
     }
     run = subprocess.run(
         ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), *args],
@@ -680,6 +681,7 @@ def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):
             "DEMO_STORES": "unused",
             "DEMO_STORES_SHARED": "unused",
             "DEMO_STORES_PROJECT": "unused",
+            "DEMO_STORES_KAFKA_PORT": "unused",
         },
         capture_output=True,
         text=True,

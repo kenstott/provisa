@@ -315,8 +315,9 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
 
 
 _REFERENCE = "${"
-#: A table's fields that name its data where it is: stored resolved (_as_written).
-_TABLE_NAMES = frozenset({"schema_name", "table_name", "alias", "query_template"})
+#: A table's fields that name its data where it is: stored resolved (_as_written). Its live
+#: block names the Kafka topic it follows, and the broker a change is published to.
+_TABLE_NAMES = frozenset({"schema_name", "table_name", "alias", "query_template", "live"})
 
 
 def _raw_of(raw: dict, model: BaseModel, name: str) -> Any:

@@ -89,7 +89,7 @@ services:
       retries: 60
       start_period: 30s
   producer:
-    image: provisa-demo-streaming-producer:1
+    image: provisa-demo-streaming-producer:2
     build:
       context: .
       dockerfile: Dockerfile.producer
@@ -99,6 +99,7 @@ services:
       com.provisa.demo.role: producer
     environment:
       ORDERS_BOOTSTRAP: kafka:9092
+      TOPIC_SUFFIX: ${STREAMING_KAFKA_NS-}
       ORDERS_PER_SECOND: "4"
     depends_on:
       kafka:

@@ -242,7 +242,7 @@ def _shared(registry, bundles: Path, *args: str) -> subprocess.CompletedProcess:
 
     return subprocess.run(
         ["docker", "compose", "-p", registry.stores_project, "-f", str(_SHARED), *args],
-        env={**os.environ, "DEMO_BUNDLES_DIR": str(bundles)},
+        env=registry.stores_env(bundles),
         capture_output=True,
         text=True,
         timeout=300,

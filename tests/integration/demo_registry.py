@@ -129,6 +129,7 @@ class DemoRegistry:
         # The node's shared stores, a compose project of this registry's own (the node's is
         # provisa-demo-stores); taken down with their volumes at stop.
         self.stores_project = f"provisa-demo-stores-{self.port}"
+        (self.kafka_port,) = lease_ports(1)
         self._bundles: Path | None = None
 
     def start(self) -> None:
@@ -141,7 +142,7 @@ class DemoRegistry:
             subprocess.run(
                 ["docker", "compose", "-p", self.stores_project, "-f", str(_SHARED)]
                 + ["down", "-v", "--remove-orphans"],
-                env={**os.environ, "DEMO_BUNDLES_DIR": str(self._bundles)},
+                env=self.stores_env(self._bundles),
                 capture_output=True,
                 timeout=300,
                 check=False,
@@ -179,6 +180,17 @@ class DemoRegistry:
             timeout=300,
         )
 
+    def stores_env(self, bundles: Path) -> dict[str, str]:
+        """What a compose command on the shared stores is run with, as the node's sync runs it:
+        their compose file names the Qdrant key and the Kafka port (unset, it refuses)."""
+        key = bundles / ".demo-stores" / "qdrant.key"
+        return {
+            **os.environ,
+            "DEMO_BUNDLES_DIR": str(bundles),
+            "DEMO_STORES_QDRANT_KEY": key.read_text().strip() if key.is_file() else "unset",
+            "DEMO_STORES_KAFKA_PORT": str(self.kafka_port),
+        }
+
     def sync(
         self, demos: str, bundles: Path, *, requested: bool = True
     ) -> subprocess.CompletedProcess:
@@ -207,5 +219,6 @@ class DemoRegistry:
                 "DEMO_STORES": str(_STORES),
                 "DEMO_STORES_SHARED": str(_SHARED),
                 "DEMO_STORES_PROJECT": self.stores_project,
+                "DEMO_STORES_KAFKA_PORT": str(self.kafka_port),
             },
         )

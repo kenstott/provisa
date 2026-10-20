@@ -70,6 +70,8 @@ services:
       # scripts/demo_stores_sync.sh). No port_env: a broker advertises the port its clients dial,
       # so its port is never one docker picks (see the header).
       com.provisa.demo.host_env: PROVISIONING_KAFKA_HOST
+      com.provisa.demo.port_env: PROVISIONING_KAFKA_PORT
+      com.provisa.demo.ns_env: PROVISIONING_KAFKA_NS
       com.provisa.demo.port: "${PROVISIONING_KAFKA_PORT:-29192}"
     environment:
       KAFKA_NODE_ID: 1
@@ -106,7 +108,7 @@ services:
       retries: 60
       start_period: 30s
   producer:
-    image: provisa-demo-provisioning-producer:1
+    image: provisa-demo-provisioning-producer:2
     build:
       context: .
       dockerfile: Dockerfile.producer
@@ -116,6 +118,7 @@ services:
       com.provisa.demo.role: producer
     environment:
       FEEDS_BOOTSTRAP: kafka:9092
+      TOPIC_SUFFIX: ${PROVISIONING_KAFKA_NS-}
       # Each sandbox lands the feeds into its own tables: a shorter history than a local start's.
       ORDERS_HISTORY: "50000"
       ORDERS_PER_SECOND: "5"

@@ -95,7 +95,7 @@ services:
       retries: 60
       start_period: 30s
   producer:
-    image: provisa-demo-provisioning-producer:1
+    image: provisa-demo-provisioning-producer:2
     build:
       context: .
       dockerfile: Dockerfile.producer
@@ -105,6 +105,7 @@ services:
       com.provisa.demo.role: producer
     environment:
       FEEDS_BOOTSTRAP: kafka:9092
+      TOPIC_SUFFIX: ${PROVISIONING_KAFKA_NS-}
       ORDERS_HISTORY: "${PROVISIONING_ORDERS_HISTORY:-200000}"
       ORDERS_PER_SECOND: "5"
     healthcheck:
@@ -117,7 +118,7 @@ services:
       kafka:
         condition: service_healthy
   consumer:
-    image: provisa-demo-provisioning-consumer:1
+    image: provisa-demo-provisioning-consumer:2
     build:
       context: .
       dockerfile: Dockerfile.consumer
@@ -127,6 +128,7 @@ services:
       com.provisa.demo.role: client
     environment:
       FEEDS_BOOTSTRAP: kafka:9092
+      TOPIC_SUFFIX: ${PROVISIONING_KAFKA_NS-}
       # Provisa's Arrow Flight, on the host this demo's stores run on.
       PROVISA_FLIGHT: "${PROVISIONING_PROVISA_FLIGHT:-grpc://host.docker.internal:8815}"
       CONSUMERS: finance,data_science
