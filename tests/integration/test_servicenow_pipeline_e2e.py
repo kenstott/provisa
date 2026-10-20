@@ -165,13 +165,18 @@ async def registered(client):
     assert maps, "the instance has no active transform map into sys_user"
     import_set = maps[0]["importSet"]
     await _register(client, "incident", ["sys_id", "number", "short_description", "active"])
-    await _register(client, "sys_user", ["sys_id", "user_name", "first_name"], import_set)
+    await _register(client, "sys_user", ["sys_id", "user_name", "first_name", "email"], import_set)
     await rebuild_schemas(client)
     return import_set
 
 
 def _own_name() -> str:
     return f"provisa-itest-{uuid.uuid4().hex[:12]}"
+
+
+def _email(name: str) -> str:
+    """The email of user ``name``: the instance's transform map into sys_user coalesces on it."""
+    return f"{name}@example.invalid"
 
 
 async def test_a_registered_table_is_read_through_a_filter_and_a_limit(client, registered):
@@ -230,8 +235,8 @@ async def test_a_bound_tables_insert_goes_through_its_import_set(client, registe
     try:
         written = await _data(
             client,
-            f'mutation {{ {insert}(input: {{userName: "{name}", firstName: "Provisa"}}) '
-            "{ affected_rows } }",
+            f'mutation {{ {insert}(input: {{userName: "{name}", firstName: "Provisa", '
+            f'email: "{_email(name)}"}}) {{ affected_rows }} }}',
         )
         assert written[insert]["affected_rows"] == 1
         # The record the transform wrote into sys_user.
@@ -330,12 +335,16 @@ async def test_an_import_set_row_goes_through_its_transform_map(client, register
         if not c["name"].startswith("sys_")
     ]
     user_field = next(c for c in staging_columns if "user_name" in c or "user_id" in c)
+    email_field = next(c for c in staging_columns if "email" in c)
     field = await _register_command(
         client, "snowImportUser", _operation(offered, "POST", f"/api/now/import/{import_set}")
     )
     name = _own_name()
     delete = await _mutation(client, "delete", "sys_user")
-    answer = await _data(client, f'mutation {{ {field}(body: {{ {user_field}: "{name}" }}) }}')
+    answer = await _data(
+        client,
+        f'mutation {{ {field}(body: {{ {user_field}: "{name}", {email_field}: "{_email(name)}" }}) }}',
+    )
     rows = answer[field]
     try:
         assert rows and rows[0]["status"] in ("inserted", "updated"), rows

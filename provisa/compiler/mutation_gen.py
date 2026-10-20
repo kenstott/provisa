@@ -28,7 +28,7 @@ from graphql import DocumentNode, FieldNode, OperationDefinitionNode
 from provisa.compiler.params import ParamCollector
 from provisa.compiler.sql_gen import CompilationContext, TableMeta, _q
 from provisa.compiler.sql_rewrite import translate_epoch_temporal_columns
-from provisa.compiler.sql_where import _extract_value
+from provisa.compiler.sql_where import _compile_where, _extract_value
 
 
 # NoSQL source types — mutations not supported
@@ -91,6 +91,21 @@ def _physical(table: TableMeta, ctx: CompilationContext) -> Callable[[str], str]
 
 def _physical_keys(data: dict, phys: Callable[[str], str]) -> dict:
     return {phys(k): v for k, v in data.items()}
+
+
+def _mutation_where(
+    where: dict, table: TableMeta, ctx: CompilationContext, collector: ParamCollector
+) -> str:
+    """An update's or delete's ``where``, compiled as a read's is: every operator its input type
+    offers, ``_and``/``_or``, and columns named by their published names."""
+    return _compile_where(
+        where,
+        collector,
+        None,
+        ctx.virtual_columns.get(table.table_id),
+        table.table_id,
+        ctx.exposed_to_physical,
+    )
 
 
 def compile_upsert(  # REQ-212, REQ-036
@@ -207,12 +222,10 @@ def compile_update(  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    phys = _physical(table, ctx)
-    set_data = _physical_keys(args.get("set", {}), phys)
-    where_data = _physical_keys(args.get("where", {}), phys)
+    set_data = _physical_keys(args.get("set", {}), _physical(table, ctx))
     if not set_data:
         raise ValueError("update mutation requires 'set' argument")
-    if not where_data:
+    if not args.get("where"):
         raise ValueError("update mutation requires 'where' argument")
 
     # SET clause
@@ -222,14 +235,7 @@ def compile_update(  # REQ-032, REQ-033, REQ-034, REQ-035, REQ-036
         set_parts.append(f"{_q(col)} = {placeholder}")
     set_sql = ", ".join(set_parts)
 
-    # WHERE clause (simple equality filters)
-    where_parts = []
-    for col, filter_obj in where_data.items():
-        for op, val in filter_obj.items():
-            placeholder = collector.add(val)
-            if op == "eq":
-                where_parts.append(f"{_q(col)} = {placeholder}")
-    where_sql = " AND ".join(where_parts)
+    where_sql = _mutation_where(args["where"], table, ctx, collector)
 
     updated_cols = list(set_data.keys())
     returning = ", ".join(_q(c) for c in updated_cols)
@@ -264,17 +270,9 @@ def compile_delete(  # REQ-032, REQ-033, REQ-035, REQ-036
         for arg in field_node.arguments:
             args[arg.name.value] = _extract_value(arg.value, variables)
 
-    where_data = _physical_keys(args.get("where", {}), _physical(table, ctx))
-    if not where_data:
+    if not args.get("where"):
         raise ValueError("delete mutation requires 'where' argument")
-
-    where_parts = []
-    for col, filter_obj in where_data.items():
-        for op, val in filter_obj.items():
-            placeholder = collector.add(val)
-            if op == "eq":
-                where_parts.append(f"{_q(col)} = {placeholder}")
-    where_sql = " AND ".join(where_parts)
+    where_sql = _mutation_where(args["where"], table, ctx, collector)
 
     sql = (
         f"DELETE FROM {_q(table.schema_name)}.{_q(table.table_name)} WHERE {where_sql} RETURNING *"
