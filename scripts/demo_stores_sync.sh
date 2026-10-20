@@ -26,7 +26,7 @@
 # docker starts), it clears what the node's last run left: no demo is asked for or ready, since
 # none of its stores is running.
 # Run at boot, on a timer, and whenever the tier touches <bundles>/.wanted (systemd units in
-# packaging/linux/demo-stores/).
+# packaging/linux/demo-stores/), and again at once when the tier touches it during a run.
 #
 # Environment:
 #   PROVISA_DEMO_BUNDLES   the demos, comma-separated (as the tier is told)
@@ -112,18 +112,28 @@ fi
 
 failed=0
 IFS=',' read -r -a demos <<< "$PROVISA_DEMO_BUNDLES"
-for name in "${demos[@]}"; do
-  name="$(echo "$name" | tr -d '[:space:]')"
-  [ -n "$name" ] || continue
-  # One demo that cannot be synced does not keep the others from theirs; the run still fails. Not
-  # `( ... ) || ...`: bash ignores errexit inside a command on the left of ||.
-  set +e
-  ( set -e; sync_demo "$name" )
-  status=$?
-  set -e
-  if [ "$status" -ne 0 ]; then
-    echo "demo $name: not synced" >&2
-    failed=1
-  fi
+# The tier touches <bundles>/.wanted after each ask. One made while a run is going starts no
+# other (systemd drops a path unit's trigger while its service runs), so a run takes the signal
+# as it starts and goes again while the tier has touched it since: the ask is served now, not at
+# the timer's next tick.
+signal="$DEMO_BUNDLES_DIR/.wanted"
+while :; do
+  rm -f "$signal"
+  for name in "${demos[@]}"; do
+    name="$(echo "$name" | tr -d '[:space:]')"
+    [ -n "$name" ] || continue
+    # One demo that cannot be synced does not keep the others from theirs; the run still fails.
+    # Not `( ... ) || ...`: bash ignores errexit inside a command on the left of ||.
+    set +e
+    ( set -e; sync_demo "$name" )
+    status=$?
+    set -e
+    if [ "$status" -ne 0 ]; then
+      echo "demo $name: not synced" >&2
+      failed=1
+    fi
+  done
+  [ -e "$signal" ] || break
+  echo "demo stores: asked for again during the run; syncing again"
 done
 exit "$failed"
