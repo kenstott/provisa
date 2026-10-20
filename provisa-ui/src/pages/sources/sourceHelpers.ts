@@ -28,9 +28,22 @@ export function sourceBrand(federationHintsJson: string | null | undefined): str
   return typeof brand === "string" && brand in BRAND_CARRIER ? brand : null;
 }
 
-/** The type a source is shown as: its brand when it has one, else its own type. */
+/** "kaggle" for a files source staged from a Kaggle dataset (REQ-1780): KaggleFormSection
+ * records the dataset it came from (kaggle_owner, kaggle_ref) so it can be staged again. It is
+ * not a brand carrier (its form searches Kaggle; an edit of the source is the files form). */
+function kaggleOrigin(federationHintsJson: string | null | undefined): "kaggle" | null {
+  if (!federationHintsJson) return null;
+  const hints = JSON.parse(federationHintsJson) as Record<string, unknown>;
+  return typeof hints.kaggle_owner === "string" && typeof hints.kaggle_ref === "string"
+    ? "kaggle"
+    : null;
+}
+
+/** The type a source is shown as: its brand when it has one, Kaggle for a source staged from a
+ * Kaggle dataset, else its own type. */
 export function sourceTypeLabel(type: string, federationHintsJson: string | null | undefined) {
-  const shown = sourceBrand(federationHintsJson) ?? uiType(type);
+  const shown =
+    sourceBrand(federationHintsJson) ?? kaggleOrigin(federationHintsJson) ?? uiType(type);
   return SOURCE_TYPES.find((st) => st.value === shown)?.label ?? type;
 }
 
@@ -57,10 +70,7 @@ export interface ReachInfo {
 // Classify a source type against the CURRENTLY-configured engine, so the dropdown can annotate and
 // gate it — LIVE (engine attaches it in place), REPLICA (Provisa lands a refreshed copy the engine
 // reads), or unreachable here but LIVE on another engine (REQ-947). Educates on the engine choice.
-export function reachInfoFor(
-  uiValue: string,
-  reach: SourceReach | null,
-): ReachInfo {
+export function reachInfoFor(uiValue: string, reach: SourceReach | null): ReachInfo {
   if (!reach) return { tag: "live", selectable: true, liveEngines: [] };
   const t = backendType(uiValue);
   // kaggle (REQ-1780) is a client-side staging/download step, not a federated source type — it
