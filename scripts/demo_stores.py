@@ -614,7 +614,11 @@ class Demo:
         ]
 
     def stores(self) -> list[Store]:
-        return stores_of(json.loads(self.runner.run(self._compose("config", "--format", "json"))))
+        # Not interpolated: the file names its stores' data by variables (<STEM>_NS) this reading
+        # is what sets, so it cannot need them set (required as ${VAR?...} where a service reads
+        # one, a producer's TOPIC_SUFFIX). A store's own labels and image are literal.
+        config = self._compose("config", "--format", "json", "--no-interpolate")
+        return stores_of(json.loads(self.runner.run(config)))
 
     def up(self) -> dict[str, str]:
         """Start what the demo version needs, load its data, and say where its stores are."""
@@ -625,7 +629,14 @@ class Demo:
             for s in stores
             if s.kind is None and s.labels.get("com.provisa.demo.port_env")
         )
-        found: dict[str, str] = {}
+        # Every store's data names, before any compose command reads them: a shared store's data
+        # is under the version's suffix, a store the demo runs itself holds it under its own names
+        # (empty: a Postgres with pgvector, which no shared instance is, runs so).
+        for store in stores:
+            ns_env = store.labels.get("com.provisa.demo.ns_env")
+            if ns_env:
+                self.names[ns_env] = "" if store.kind is None else self.suffix
+        found: dict[str, str] = dict(self.names)
         for store in stores:
             if store.kind is None:
                 continue
@@ -649,8 +660,6 @@ class Demo:
             # Kafka holds no data of a bundle's: its topics are the producers', named with the suffix.
             host, port = self.shared.address(store.kind, self.network)
             found.update(self._where(store, host, port))
-            found[store.labels["com.provisa.demo.ns_env"]] = self.suffix
-            self.names[store.labels["com.provisa.demo.ns_env"]] = self.suffix
         own = [s.service for s in stores if s.kind is None]
         if own:
             # The demo's own services alone: a shared store it names is not started for it.
@@ -675,11 +684,6 @@ class Demo:
             for store in stores:
                 if store.kind is None and store.labels.get("com.provisa.demo.host_env"):
                     found.update(self._where(store, *self._own_address(store)))
-                # A store the demo runs itself holds its data under its own names: the suffix its
-                # config names them with is empty (a Postgres with pgvector, which no shared
-                # instance is, runs so).
-                if store.kind is None and store.labels.get("com.provisa.demo.ns_env"):
-                    found[store.labels["com.provisa.demo.ns_env"]] = ""
         return found
 
     def _where(self, store: Store, host: str, port: str) -> dict[str, str]:
