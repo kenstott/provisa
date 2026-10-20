@@ -281,7 +281,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const [saving, setSaving] = useState(false);
   // REQ-2109 (settled): a table or view being created -- what its create step chose. Its settings
   // are edited in the same sections as an editor's (editingTable holds them) until Save registers it.
-  const [creating, setCreating] = useState<Registration | null>(null);
+  const [newRegistration, setNewRegistration] = useState<Registration | null>(null);
   const createTable = useCreateTable();
 
   // Cache state
@@ -542,7 +542,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   const cancelEditing = () => {
     setEditingTable(null);
-    setCreating(null);
+    setNewRegistration(null);
   };
 
   // REQ-2109 (settled): the create step chose what is registered; its settings follow in the same
@@ -553,7 +553,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     setExpanded(null);
     setSection("identity");
     startEditing(draftFromRegistration(registration));
-    setCreating(registration);
+    setNewRegistration(registration);
   };
   // A view handed over from the SQL editor's + View is created here, with every setting.
   useNavPayload<{ createView?: Registration }>((payload) => {
@@ -562,7 +562,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
 
   // One Save registers the table with every setting its form holds, then shows it.
   const handleCreate = async () => {
-    if (!editingTable || !creating) return;
+    if (!editingTable || !newRegistration) return;
     setError(null);
     const problem = saveProblem(editingTable);
     if (problem !== null) {
@@ -574,7 +574,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       staged === undefined ? editingTable.cacheTtl : staged === "" ? null : Number(staged);
     setSaving(true);
     try {
-      const outcome = await createTable(editingTable, creating, cacheTtl);
+      const outcome = await createTable(editingTable, newRegistration, cacheTtl);
       if (outcome.refused) {
         setError(serverMessage(outcome.refused, outcome.refused.message));
         return;
@@ -583,7 +583,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       // would otherwise stay hidden from the list until a reload.
       ensureDomainChecked(editingTable.domainId);
       setEditingTable(null);
-      setCreating(null);
+      setNewRegistration(null);
       await reload();
       // The table just registered is selected and its detail shown.
       if (outcome.registered) setExpanded(outcome.registered.id);
@@ -802,7 +802,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     </ReplicaBuildsContext.Provider>
   );
   const panelBody =
-    creating !== null && editingTable !== null ? (
+    newRegistration !== null && editingTable !== null ? (
       editForm(editingTable, null)
     ) : editingViewDef ? (
       // REQ-1318: a view's definition is edited in the panel, with a way back to its detail: a
@@ -949,7 +949,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     previewTable === null &&
     editingViewDef === null;
   const panelTitle =
-    creating !== null
+    newRegistration !== null
       ? translate(viewsOnly ? "tablesPage.panelNewView" : "tablesPage.panelRegisterTable")
       : showForm && !viewsOnly
         ? translate("tablesPage.panelRegisterTable")
