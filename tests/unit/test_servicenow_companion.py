@@ -29,7 +29,10 @@ pytestmark = pytest.mark.asyncio
 def model_db(control_plane, monkeypatch):
     from provisa.core import secrets_providers
 
+    from provisa.api.app import state
+
     monkeypatch.setattr(companion, "_forget_spec", lambda cid: None)
+    monkeypatch.setattr(state, "source_types", {})
     # A deployment of one organization: what the API layer says at import (provisa.api.app),
     # which this module does not import. Saving a source asks it (sandbox_egress.pinned_source).
     monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
@@ -68,6 +71,9 @@ async def test_the_companion_is_written_from_the_stored_source(model_db):
         row = await source_repo.get(conn, "helpdesk-api")
         api = (await conn.execute_core(select(api_sources))).fetchone()
     assert (row["type"], row["path"]) == ("openapi", "servicenow:helpdesk")
+    from provisa.api.app import state
+
+    assert state.source_types["helpdesk-api"] == "openapi"
     assert row["mapping"][MAPPING_KEY] == {
         "source": "helpdesk",
         "instance_url": "https://acme.service-now.com",
