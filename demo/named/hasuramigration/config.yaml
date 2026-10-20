@@ -52,7 +52,7 @@ sources:
   type: postgresql
   host: ${env:HASURAMIGRATION_PG_HOST:-localhost}
   port: ${env:HASURAMIGRATION_PG_PORT:-29732}
-  database: hasuramigration
+  database: hasuramigration${env:HASURAMIGRATION_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The store's database, which the Hasura app read and wrote

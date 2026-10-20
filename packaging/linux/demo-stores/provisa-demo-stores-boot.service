@@ -1,0 +1,23 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The sandbox tier's demo stores at the node's start (REQ-2049): before docker starts, and so
+# before the tier, no demo is asked for or ready -- none of their stores is running. The node
+# starts a demo's when the tier first asks for it (provisa-demo-stores.service).
+[Unit]
+Description=Provisa sandbox tier: no demo's stores asked for at the node's start
+Before=docker.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/root/.provisa/demo-stores.env
+ExecStart=/root/.provisa/bin/demo_stores_sync.sh --boot
+
+[Install]
+WantedBy=multi-user.target

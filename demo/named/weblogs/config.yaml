@@ -66,7 +66,7 @@ sources:
   type: postgresql
   host: ${env:WEBLOGS_PG_HOST:-localhost}
   port: ${env:WEBLOGS_PG_PORT:-28432}
-  database: shop
+  database: shop${env:WEBLOGS_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The web shop's database -- customers, products and the orders they place

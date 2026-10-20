@@ -364,6 +364,15 @@ if [ -n "$DEMO_NAME" ]; then
       find "$_NAMED_DIR/logs" -type f ! -name .gitignore -delete
     fi
   fi
+  # The names its stores' data has here. Every name config.yaml gives a store's data (a database,
+  # an index) ends with the variable that store's com.provisa.demo.ns_env label names; here, where
+  # the demo runs its stores alone, each is empty. The sandbox tier's node sets them for its
+  # shared stores (scripts/demo_stores.py).
+  if [ -f "$_NAMED_DIR/docker-compose.run.yml" ]; then
+    for _ns_env in $(sed -n 's/^ *com\.provisa\.demo\.ns_env: *\([A-Z0-9_]*\) *$/\1/p' "$_NAMED_DIR/docker-compose.run.yml"); do
+      export "$_ns_env="
+    done
+  fi
   # Exactly one demo's stores run here: whatever another named demo left up -- a bundle's run-time
   # stores or a checkout-built stack -- is stopped first (its volumes kept), or the next one cannot
   # bind the ports they hold (28432: weblogs' shop database, bundled or not).

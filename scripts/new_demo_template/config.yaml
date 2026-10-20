@@ -45,7 +45,7 @@ sources:
   type: postgresql
   host: ${env:__ENV___PG_HOST:-localhost}
   port: ${env:__ENV___PG_PORT:-__PORT__}
-  database: __NAME__
+  database: __NAME__${env:__ENV___PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: TODO -- the demo's database

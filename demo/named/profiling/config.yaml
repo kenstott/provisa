@@ -50,7 +50,7 @@ sources:
   type: postgresql
   host: ${env:PROFILING_PG_HOST:-localhost}
   port: ${env:PROFILING_PG_PORT:-28732}
-  database: profiling
+  database: profiling${env:PROFILING_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: Harbor Outfitters' CRM database, as it came with the acquisition -- its customers and

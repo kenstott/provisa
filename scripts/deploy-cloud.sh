@@ -582,10 +582,15 @@ push_demo_stores() {
     echo "== demo stores: on $SANDBOX_NODE, not $NODE"
     return
   fi
-  for f in "$REPO/scripts/demo_stores_sync.sh" "$REPO"/packaging/linux/demo-stores/provisa-demo-stores.*; do
+  for f in "$REPO/scripts/demo_stores_sync.sh" "$REPO/scripts/demo_stores.py" \
+      "$REPO/packaging/linux/demo-stores/docker-compose.shared.yml" \
+      "$REPO"/packaging/linux/demo-stores/provisa-demo-stores.* \
+      "$REPO/packaging/linux/demo-stores/provisa-demo-stores-boot.service"; do
     name="$(basename "$f")"
     case "$name" in
       demo_stores_sync.sh) dest="$DEMO_STORES_BIN" ;;
+      demo_stores.py) dest="$(dirname "$DEMO_STORES_BIN")/demo_stores.py" ;;
+      docker-compose.shared.yml) dest="$(dirname "$DEMO_STORES_BIN")/demo-stores-shared.yml" ;;
       *) dest="$DEMO_STORES_UNITS/$name" ;;
     esac
     want="$(shasum -a 256 "$f" | cut -d' ' -f1)"
@@ -600,7 +605,7 @@ push_demo_stores() {
     echo "== demo stores: up to date"
     return
   fi
-  ssh_node "sudo systemctl daemon-reload && sudo systemctl start --no-block provisa-demo-stores.service"
+  ssh_node "sudo systemctl daemon-reload && sudo systemctl enable provisa-demo-stores-boot.service && sudo systemctl start --no-block provisa-demo-stores.service"
 }
 
 # The app overlay itself. ${PROVISA_HOME}/compose/docker-compose.app.yml is whatever the release

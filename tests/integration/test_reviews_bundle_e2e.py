@@ -32,7 +32,8 @@ import httpx
 import pytest
 import yaml
 
-from tests.integration.test_weblogs_bundle_e2e import walk_tour
+from provisa.core.demo_bundles import store_namespaces
+from tests.integration.test_weblogs_bundle_e2e import _shared, _shared_running, walk_tour
 
 pytestmark = [pytest.mark.integration]
 
@@ -184,6 +185,8 @@ def test_the_cli_pulls_the_bundle_and_walks_the_tour_from_its_stores(published, 
             env={
                 "PROVISA_NAMED_DEMO_DIR": str(demo),
                 **run.ports,
+                # Its own stores, as start-ui-install.sh --demo runs them: no suffix.
+                **store_namespaces(demo),
                 "PROVISA_DATA_DIR": str(home / "provisa"),
             },
         )
@@ -194,8 +197,109 @@ def test_the_cli_pulls_the_bundle_and_walks_the_tour_from_its_stores(published, 
             print(server.dump_stderr_debug()[-6000:])
             raise
         print("\n".join(walked))
-        assert len(walked) == len(yaml.safe_load((demo / "tour.yaml").read_text())["steps"]) - 3
+        # Every step but those a page alone shows: a table's detail panel, the graph grouped.
+        steps = yaml.safe_load((demo / "tour.yaml").read_text())["steps"]
+        assert len(walked) == len([s for s in steps if not {"table", "group_by"} & s.keys()])
     finally:
         if server is not None:
             server.stop_process()
         run.compose("down", "-v", "--remove-orphans")
+
+
+def test_a_visitor_sandbox_of_reviews_reads_the_shared_stores(published, tmp_path_factory):
+    """The sandbox tier's node: the demo's MongoDB catalog and Elasticsearch index loaded into the
+    node's shared instances under its version's names, its Neo4j graph its version's own
+    container; a visitor's sandbox reads each (REQ-2049)."""
+    import time
+
+    from tests.integration.isolated_server import IsolatedServer
+    from tests.integration.test_demo_sandboxes_e2e import _JWT_SECRET, _deployment_config
+
+    registry = published
+    work = tmp_path_factory.mktemp("reviews_tier")
+    bundles = work / "data" / "demo-bundles"
+    synced = registry.sync("reviews", bundles)
+    print(synced.stdout, synced.stderr)
+    assert synced.returncode == 0, (synced.stdout, synced.stderr)
+    version = (bundles / "reviews" / "ready").read_text().strip()
+    stores = dict(
+        line.split("=", 1)
+        for line in (bundles / "reviews" / version / "stores.env").read_text().split()
+    )
+    print(stores)
+    suffix = stores["REVIEWS_MONGO_NS"]
+    assert suffix.startswith("_reviews_") and stores["REVIEWS_ES_NS"] == suffix, stores
+    assert _shared_running(registry) == {"mongo", "elasticsearch"}
+    databases = _shared(
+        registry,
+        bundles,
+        *("exec", "-T", "mongo", "mongosh", "--quiet", "-u", "root", "-p", "root"),
+        *("--authenticationDatabase", "admin"),
+        "--eval",
+        "db.adminCommand({listDatabases: 1}).databases.forEach(d => print(d.name))",
+    ).stdout.split()
+    assert f"catalog{suffix}" in databases and "catalog" not in databases, databases
+    indices = _shared(
+        registry,
+        bundles,
+        *("exec", "-T", "elasticsearch", "curl", "-s"),
+        "http://localhost:9200/_cat/indices?h=index",
+    ).stdout.split()
+    assert f"reviews{suffix}" in indices, indices
+    project = f"provisa-demo-reviews-{version}"
+    own = subprocess.run(
+        ["docker", "compose", "-p", project, "ps", "--services"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.split()
+    assert own == ["neo4j"], own
+
+    config = work / "config.yaml"
+    _deployment_config(config)
+    tier = IsolatedServer(
+        "reviewstiere2e",
+        engine="duckdb",
+        config=str(config),
+        auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
+        env={
+            "PROVISA_SANDBOX_TIER": "true",
+            "PROVISA_DEMO_BUNDLES": "reviews",
+            "PROVISA_DEMO_REGISTRY": registry.url,
+            "PROVISA_DATA_DIR": str(work / "data"),
+        },
+    )
+    tier.start(timeout=300)
+    try:
+        deadline = time.monotonic() + 900
+        while True:
+            opened = httpx.post(f"{tier.base_url}/public/demos/reviews", timeout=600)
+            if opened.status_code == 200:
+                break
+            assert opened.json().get("code") == "sandbox.demo_not_ready", (
+                opened.text,
+                tier.dump_stderr_debug()[-6000:],
+            )
+            assert time.monotonic() < deadline, tier.dump_stderr_debug()[-6000:]
+            time.sleep(3)
+        sandbox = opened.json()
+        headers = {
+            "Authorization": f"Bearer {sandbox['token']}",
+            "x-org-provisa": sandbox["org_id"],
+        }
+        for table, store in (
+            ("products", "MongoDB"),
+            ("reviews", "Elasticsearch"),
+            ("customers", "Neo4j"),
+        ):
+            rows = httpx.post(
+                f"{tier.base_url}/data/sql",
+                json={"sql": f'SELECT COUNT(*) AS n FROM "store"."{table}"'},
+                headers=headers,
+                timeout=300,
+            )
+            assert rows.status_code == 200, (store, rows.text, tier.dump_stderr_debug()[-6000:])
+            assert rows.json()["data"]["sql"][0]["n"] > 0, (store, rows.text)
+    finally:
+        tier.stop_process()
+        subprocess.run(["docker", "compose", "-p", project, "down", "-v"], check=False)

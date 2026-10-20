@@ -139,6 +139,11 @@ def test_a_demo_template_waits_only_for_what_it_serves_from_replicas(monkeypatch
 
     monkeypatch.setenv("PROVISA_NAMED_DEMO_DIR", str(tmp_path))
     weblogs = Path(__file__).resolve().parents[2] / "demo" / "named" / "weblogs" / "config.yaml"
+    from provisa.core.demo_bundles import store_namespaces
+
+    # As a launcher running the demo's own stores sets them (start-ui-install.sh --demo).
+    for name, value in store_namespaces(weblogs.parent).items():
+        monkeypatch.setenv(name, value)
     raw = read_config_with_includes(weblogs)
     assert len(parse_config_dict(raw).tables) == 12  # six tables and six views
     assert replicated_tables(parse_config_dict(raw)) == []
@@ -219,6 +224,10 @@ async def test_a_demos_own_embedding_models_reach_its_sandboxes(monkeypatch):
 
     monkeypatch.setattr(org_settings, "write_org_overrides", write)
     root = Path(__file__).resolve().parents[2]
+    from provisa.core.demo_bundles import store_namespaces
+
+    for name, value in store_namespaces(root / "demo/named/sonnets").items():
+        monkeypatch.setenv(name, value)
     seed = parse_config_dict(read_config_with_includes(root / "demo/named/sonnets/config.yaml"))
     db = object()
     await write_declared_vector_models(db, seed)

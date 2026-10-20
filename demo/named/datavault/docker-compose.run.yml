@@ -12,8 +12,8 @@
 # the bundle's build left in them -- its setup.yaml had run: every scripted change made. The
 # vault's satellites keep the history of those changes in the bundle's seeded/views.duckdb.
 #
-#   orders  the order system, loaded from dump/orders.sql, read only (db/run-orders.sql)
-#   crm     the CRM, loaded from dump/crm.sql, read only (db/run-crm.sql)
+#   orders  the order system, loaded from dump/orders/, read only (db/run-orders.sql)
+#   crm     the CRM, loaded from dump/crm/, read only (db/run-crm.sql)
 #
 # Both are shared by every sandbox of the demo. Ports: 29232 and 29233, on the loopback only;
 # each moved by its variable, and set empty, published on a free one.
@@ -31,6 +31,8 @@ services:
       com.provisa.demo.role: rdb
       # Where config.yaml reads it (the sandbox tier's node writes stores.env from these).
       com.provisa.demo.host_env: DATAVAULT_ORDERS_HOST
+      com.provisa.demo.ns_env: DATAVAULT_ORDERS_NS
+      com.provisa.demo.access: db/run-orders.sql
       com.provisa.demo.port_env: DATAVAULT_ORDERS_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -43,7 +45,8 @@ services:
       - "127.0.0.1:${DATAVAULT_ORDERS_PORT-29232}:5432"
     volumes:
       - datavault_run_orders:/var/lib/postgresql/data
-      - ./dump/orders.sql:/docker-entrypoint-initdb.d/10-orders.sql:ro
+      - ./dump/orders:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/run-orders.sql:/docker-entrypoint-initdb.d/20-access.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:
@@ -62,6 +65,8 @@ services:
       com.provisa.demo.role: rdb
       # Where config.yaml reads it (the sandbox tier's node writes stores.env from these).
       com.provisa.demo.host_env: DATAVAULT_CRM_HOST
+      com.provisa.demo.ns_env: DATAVAULT_CRM_NS
+      com.provisa.demo.access: db/run-crm.sql
       com.provisa.demo.port_env: DATAVAULT_CRM_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -74,7 +79,8 @@ services:
       - "127.0.0.1:${DATAVAULT_CRM_PORT-29233}:5432"
     volumes:
       - datavault_run_crm:/var/lib/postgresql/data
-      - ./dump/crm.sql:/docker-entrypoint-initdb.d/10-crm.sql:ro
+      - ./dump/crm:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/run-crm.sql:/docker-entrypoint-initdb.d/20-access.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:

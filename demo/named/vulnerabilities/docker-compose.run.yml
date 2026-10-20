@@ -8,7 +8,7 @@
 # permission from the copyright holder.
 #
 # The vulnerabilities demo where it runs from its bundle (start-ui-install.sh --demo vulnerabilities; REQ-2049):
-# the database, loaded from the dump the bundle build wrote (dump/postgres.sql), read only.
+# the database, loaded from the dump the bundle build wrote (dump/postgres/<database>.sql), read only.
 
 x-demo-labels: &demo-labels
   com.provisa.demo: vulnerabilities
@@ -25,6 +25,8 @@ services:
       # Where config.yaml's vulnerabilities-db reads it, for the sandbox tier's node (REQ-2049,
       # scripts/demo_stores_sync.sh): it writes these two into the bundle's stores.env.
       com.provisa.demo.host_env: VULNERABILITIES_PG_HOST
+      com.provisa.demo.ns_env: VULNERABILITIES_PG_NS
+      com.provisa.demo.access: db/reader.sql
       com.provisa.demo.port_env: VULNERABILITIES_PG_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -37,7 +39,8 @@ services:
       - "127.0.0.1:${VULNERABILITIES_PG_PORT-28332}:5432"
     volumes:
       - vulnerabilities_run_pg:/var/lib/postgresql/data
-      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-vulnerabilities.sql:ro
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/reader.sql:/docker-entrypoint-initdb.d/20-reader.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:

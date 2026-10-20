@@ -50,6 +50,9 @@ locals {
     install -d /root/.provisa/bin
     echo '${base64encode(file("${path.module}/../../scripts/demo_stores_sync.sh"))}' | base64 -d > /root/.provisa/bin/demo_stores_sync.sh
     chmod 755 /root/.provisa/bin/demo_stores_sync.sh
+    echo '${base64encode(file("${path.module}/../../scripts/demo_stores.py"))}' | base64 -d > /root/.provisa/bin/demo_stores.py
+    echo '${base64encode(file("${path.module}/../../packaging/linux/demo-stores/docker-compose.shared.yml"))}' | base64 -d > /root/.provisa/bin/demo-stores-shared.yml
+    echo '${base64encode(file("${path.module}/../../packaging/linux/demo-stores/provisa-demo-stores-boot.service"))}' | base64 -d > /etc/systemd/system/provisa-demo-stores-boot.service
     for unit in service timer path; do
       case "$unit" in
         service) b64='${base64encode(file("${path.module}/../../packaging/linux/demo-stores/provisa-demo-stores.service"))}' ;;
@@ -63,6 +66,8 @@ locals {
     ENV
     systemctl daemon-reload
     # --now: a unit enabled while the VM boots does not start until the next boot.
+    # The boot unit runs at every later start, before docker; this start's markers are new.
+    systemctl enable provisa-demo-stores-boot.service
     systemctl enable --now provisa-demo-stores.timer provisa-demo-stores.path
   SHELL
 }

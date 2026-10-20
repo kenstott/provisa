@@ -31,6 +31,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 pytestmark = [pytest.mark.integration, pytest.mark.requires_vector]
@@ -52,7 +54,11 @@ class SonnetsStack:
 
     @property
     def env(self) -> dict[str, str]:
-        return {"SONNETS_PG_PORT": str(self.pg_port), "SONNETS_QDRANT_PORT": str(self.qdrant_port)}
+        return {
+            "SONNETS_PG_PORT": str(self.pg_port),
+            "SONNETS_QDRANT_PORT": str(self.qdrant_port),
+            **store_namespaces(_DEMO),
+        }
 
     def _compose(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         return subprocess.run(

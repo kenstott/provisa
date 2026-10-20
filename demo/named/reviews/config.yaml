@@ -58,7 +58,7 @@ sources:
   type: mongodb
   host: ${env:REVIEWS_MONGO_HOST:-localhost}
   port: ${env:REVIEWS_MONGO_PORT:-28617}
-  database: catalog
+  database: catalog${env:REVIEWS_MONGO_NS}
   # A reader (db/mongo-reader.js): the store is shared, and Provisa writes nothing to it.
   username: reviews_reader
   password: reviews_reader
@@ -80,7 +80,7 @@ sources:
 tables:
 - source_id: catalog
   domain_id: store
-  schema: catalog
+  schema: catalog${env:REVIEWS_MONGO_NS}
   table: products
   description: What the shop sells, one MongoDB document a product
   columns:
@@ -93,7 +93,7 @@ tables:
   - {name: weight_g, data_type: integer, path: specs.weight_g, description: 'Its weight in grams (nested: specs.weight_g)', visible_to: [org_admin, analyst]}
 - source_id: catalog
   domain_id: store
-  schema: catalog
+  schema: catalog${env:REVIEWS_MONGO_NS}
   table: ratings_by_product
   description: Each product's star ratings, summed up by a MongoDB aggregation pipeline over the
     ratings collection
@@ -109,7 +109,9 @@ tables:
 - source_id: reviews
   domain_id: store
   schema: default
-  table: reviews
+  # The index, by its name where it is loaded; queried by the name the demo gives it.
+  table: reviews${env:REVIEWS_ES_NS}
+  alias: reviews
   description: Every review a customer wrote, one Elasticsearch document a review
   # GraphQL's Aggregate and GroupBy fields, which the example queries (queries/) use.
   enable_aggregates: true
@@ -128,7 +130,7 @@ tables:
   table: reviews_matching
   description: The reviews whose text holds a phrase, as an Elasticsearch search with the phrase
     highlighted; set the phrase with its phrase parameter
-  query_template: '{"index": "reviews", "size": 1000, "query": {"match_phrase": {"text": "{{phrase}}"}},
+  query_template: '{"index": "reviews${env:REVIEWS_ES_NS}", "size": 1000, "query": {"match_phrase": {"text": "{{phrase}}"}},
     "highlight": {"fields": {"text": {}}}}'
   columns:
   - {name: review_id, data_type: varchar, description: The review, visible_to: [org_admin, analyst]}

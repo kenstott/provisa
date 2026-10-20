@@ -31,6 +31,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 pytestmark = [pytest.mark.integration]
@@ -56,6 +58,7 @@ class ReviewsStack:
         return {
             "PROVISA_NAMED_DEMO_DIR": str(self.home),
             "REVIEWS_MONGO_PORT": str(self.mongo_port),
+            **store_namespaces(_DEMO),
             "REVIEWS_ES_PORT": str(self.es_port),
             "REVIEWS_NEO4J_HTTP_PORT": str(self.http_port),
             "REVIEWS_NEO4J_BOLT_PORT": str(self.bolt_port),

@@ -50,7 +50,7 @@ sources:
   type: postgresql
   host: ${env:CHURN_PG_HOST:-localhost}
   port: ${env:CHURN_PG_PORT:-29932}
-  database: churn
+  database: churn${env:CHURN_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The subscription business's customer database

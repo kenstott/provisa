@@ -192,8 +192,10 @@ def test_a_bundled_demo_runs_only_its_environment_steps_where_it_runs():
 def test_the_sonnets_run_time_compose_loads_what_its_build_saves():
     run = yaml.safe_load((_SONNETS / "docker-compose.run.yml").read_text())
     postgres, qdrant = run["services"]["postgres"], run["services"]["qdrant"]
+    # Each database the build dumped (dump/postgres/<database>.sql), loaded by the loader it wrote.
+    assert "./dump/postgres:/dumps:ro" in postgres["volumes"]
     assert (
-        "./dump/postgres.sql:/docker-entrypoint-initdb.d/10-sonnets.sql:ro" in postgres["volumes"]
+        "./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro" in postgres["volumes"]
     )
     assert "./dump/qdrant:/snapshots:ro" in qdrant["volumes"]
     # Recovered at every start from the snapshot the build saved,
@@ -583,55 +585,108 @@ def test_every_store_loaded_at_its_first_start_is_healthy_only_once_loaded():
     assert checked >= 12, checked
 
 
-def test_a_store_that_never_turns_healthy_has_its_volumes_recreated_once(tmp_path):
-    """scripts/demo_stores_sync.sh: a version whose stores do not come up healthy is taken down
-    with its volumes and started again; a second failure is the demo's, reported as not synced."""
+_VERSION = "202610160000-abc1234"
+
+
+def _sync(tmp_path, *args: str, requested: bool = False, in_use: str | None = None):
+    """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
+    that record what they were asked."""
     import os
     import subprocess
 
     bundles = tmp_path / "bundles"
-    version = "202610160000-abc1234"
-    (bundles / "weblogs" / version).mkdir(parents=True)
-    (bundles / "weblogs" / version / "docker-compose.run.yml").write_text("services: {}\n")
+    (bundles / "weblogs" / _VERSION).mkdir(parents=True)
+    (bundles / "weblogs" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
+    if requested:
+        (bundles / "weblogs" / "requested").write_text("requested\n")
+    if in_use is not None:
+        (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
     calls = tmp_path / "calls"
     fake = tmp_path / "bin"
     fake.mkdir()
-    (fake / "docker").write_text(
-        f"""#!/usr/bin/env bash
-echo "$*" >> {calls}
-case "$*" in
-  *"config --format json"*) echo '{{"services": {{}}}}' ;;
-  *" up -d --wait"*) [ "$(grep -c ' up -d --wait' {calls})" -ge 2 ] || exit 1 ;;
-  *"compose ls"*) echo '[]' ;;
-esac
-"""
+    (fake / "pull").write_text(f"#!/usr/bin/env bash\necho {bundles}/weblogs/{_VERSION}\n")
+    (fake / "pull").chmod(0o755)
+    (fake / "demo_stores.py").write_text(
+        f"import sys\nopen({str(calls)!r}, 'a').write(' '.join(sys.argv[1:]) + '\\n')\n"
     )
-    (fake / "pull").write_text(f"#!/usr/bin/env bash\necho {bundles}/weblogs/{version}\n")
-    for f in fake.iterdir():
-        f.chmod(0o755)
     env = {
         **os.environ,
-        "PATH": f"{fake}:{os.environ['PATH']}",
         "PROVISA_DEMO_BUNDLES": "weblogs",
         "DEMO_BUNDLES_DIR": str(bundles),
         "DEMO_PULL": str(fake / "pull"),
         "DEMO_PULL_INTO": str(bundles),
+        "DEMO_STORES": str(fake / "demo_stores.py"),
+        "DEMO_STORES_SHARED": "/shared.yml",
+        "DEMO_STORES_PROJECT": "provisa-demo-stores",
     }
     run = subprocess.run(
-        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh")],
+        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), *args],
         env=env,
         capture_output=True,
         text=True,
     )
+    asked = calls.read_text().splitlines() if calls.exists() else []
+    return run, bundles / "weblogs", asked
+
+
+def test_a_demo_not_asked_for_is_pulled_and_offered_and_none_of_its_stores_started(tmp_path):
+    """scripts/demo_stores_sync.sh: a demo is offered once pulled; its stores are started only once
+    the tier asks for it (REQ-2049)."""
+    run, demo, asked = _sync(tmp_path)
     assert run.returncode == 0, run.stderr
-    ran = [
-        line.split(" -f ")[1].split(" ", 1)[1]
-        for line in calls.read_text().splitlines()
-        if " -f " in line and ("up" in line or "down" in line)
+    assert (demo / "pulled").read_text().strip() == _VERSION
+    assert not (demo / "ready").exists()
+    assert asked == []
+
+
+def test_a_demo_asked_for_has_its_stores_brought_up_and_its_version_marked_ready(tmp_path):
+    run, demo, asked = _sync(tmp_path, requested=True)
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert (demo / "ready").read_text().strip() == _VERSION
+
+
+def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_path):
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-old0001", "202601020000-old0002"):
+        (bundles / old).mkdir(parents=True)
+        (bundles / old / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
+    run, demo, asked = _sync(tmp_path, requested=True, in_use="202601020000-old0002")
+    assert run.returncode == 0, run.stderr
+    assert asked == [
+        f"up weblogs {_VERSION} {demo / _VERSION}",
+        "drop weblogs 202601010000-old0001",
     ]
-    assert ran == ["up -d --wait", "down -v --remove-orphans", "up -d --wait"], ran
-    assert "recreating their volumes" in run.stderr
-    assert (bundles / "weblogs" / "ready").read_text().strip() == version
+    assert not (demo / "202601010000-old0001" / "stores.env").exists()
+    assert (demo / "202601020000-old0002" / "stores.env").exists()
+
+
+def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):
+    """Run before docker at the node's start (provisa-demo-stores-boot.service): none of the
+    demos' stores is running, so none is ready or asked for, and none is started at boot."""
+    run, demo, asked = _sync(tmp_path, requested=True)
+    assert (demo / "ready").exists()
+    import os
+    import subprocess
+
+    boot = subprocess.run(
+        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), "--boot"],
+        env={
+            **os.environ,
+            "PROVISA_DEMO_BUNDLES": "weblogs",
+            "DEMO_BUNDLES_DIR": str(demo.parent),
+            "DEMO_PULL": "unused",
+            "DEMO_PULL_INTO": str(demo.parent),
+            "DEMO_STORES": "unused",
+            "DEMO_STORES_SHARED": "unused",
+            "DEMO_STORES_PROJECT": "unused",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert boot.returncode == 0, boot.stderr
+    assert not (demo / "ready").exists() and not (demo / "requested").exists()
+    assert (demo / "pulled").read_text().strip() == _VERSION
 
 
 def test_a_demo_in_regions_refuses_an_empty_replica_of_any_region(tmp_path):

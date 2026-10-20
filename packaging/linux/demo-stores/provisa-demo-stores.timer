@@ -1,5 +1,5 @@
-# The demo stores sync at boot and every quarter hour: a demo published since is pulled and its
-# stores brought up even before a visitor's sandbox asks for it (REQ-2049).
+# The demo stores sync at boot and every quarter hour: a demo published since is pulled, and its
+# stores brought up once a visitor's open has asked for the demo (REQ-2049).
 [Unit]
 Description=Provisa sandbox tier: demo stores sync, at boot and periodically
 

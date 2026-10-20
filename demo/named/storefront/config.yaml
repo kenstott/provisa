@@ -62,7 +62,7 @@ sources:
   type: postgresql
   host: ${env:STOREFRONT_PG_HOST:-localhost}
   port: ${env:STOREFRONT_PG_PORT:-29632}
-  database: storefront
+  database: storefront${env:STOREFRONT_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The storefront's order database -- customers, their orders and each order's lines
@@ -70,7 +70,7 @@ sources:
   type: mongodb
   host: ${env:STOREFRONT_MONGO_HOST:-localhost}
   port: ${env:STOREFRONT_MONGO_PORT:-29617}
-  database: catalog
+  database: catalog${env:STOREFRONT_MONGO_NS}
   username: storefront_reader
   password: storefront_reader
   cache_ttl: 300
@@ -115,7 +115,7 @@ tables:
   - {name: unit_price, data_type: decimal, description: The price of one in USD, visible_to: [org_admin, customer, analyst]}
 - source_id: catalog
   domain_id: shop
-  schema: catalog
+  schema: catalog${env:STOREFRONT_MONGO_NS}
   table: products
   description: What the storefront sells, one MongoDB document a product
   columns:

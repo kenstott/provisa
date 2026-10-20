@@ -12,7 +12,7 @@
 # it -- its setup.yaml had run: the clean batch promoted to gold, the bad batch landed and refused at
 # silver, every check's result recorded.
 #
-#   postgres  the chain's database, loaded from dump/postgres.sql, with the role Provisa reads it as,
+#   postgres  the chain's database, loaded from dump/postgres/, with the role Provisa reads it as,
 #             read only (db/run-access.sql): the store is shared by every sandbox of the demo.
 #
 # Port: 28632 the database, on the loopback only; moved by its variable. Set empty, it is published
@@ -31,6 +31,8 @@ services:
       com.provisa.demo.role: rdb
       # Where the config reads it (the sandbox tier's node writes stores.env from these).
       com.provisa.demo.host_env: QUALITY_PG_HOST
+      com.provisa.demo.ns_env: QUALITY_PG_NS
+      com.provisa.demo.access: db/run-access.sql
       com.provisa.demo.port_env: QUALITY_PG_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -41,7 +43,8 @@ services:
       - "127.0.0.1:${QUALITY_PG_PORT-28632}:5432"
     volumes:
       - quality_run_pg:/var/lib/postgresql/data
-      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-sales.sql:ro
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/run-access.sql:/docker-entrypoint-initdb.d/20-access.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:

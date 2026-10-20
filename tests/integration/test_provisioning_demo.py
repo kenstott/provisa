@@ -37,6 +37,8 @@ from typing import Any
 
 import httpx
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 pytestmark = [pytest.mark.integration]
@@ -84,6 +86,7 @@ class ProvisioningStack:
     def env(self) -> dict[str, str]:
         return {
             "PROVISIONING_PG_PORT": str(self.pg_port),
+            **store_namespaces(_DEMO),
             "PROVISIONING_KAFKA_PORT": str(self.kafka_port),
             "PROVISIONING_ORDERS_HISTORY": str(_HISTORY),
         }

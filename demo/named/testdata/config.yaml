@@ -54,7 +54,7 @@ sources:
   type: postgresql
   host: ${env:TESTDATA_PG_HOST:-localhost}
   port: ${env:TESTDATA_PG_PORT:-29432}
-  database: testdata
+  database: testdata${env:TESTDATA_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The shop's production database
