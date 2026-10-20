@@ -10,12 +10,10 @@
 
 // REQ-2109 (settled): one Save registers a table or view with every setting its create form
 // holds, in one registerTable: the server applies all of them in one transaction, and a refusal
-// of any one registers nothing. A profiler result table's row rules are rules of their own, saved
-// once the table exists.
+// of any one registers nothing -- a profiler result table's row rules among them.
 
 import { useRegisterTable } from "../../hooks/useAdminQueries";
 import { writeGrantInputs } from "../../hooks/useWriteGrants";
-import { useUpsertRlsRule } from "../../hooks/useSecurityQueries";
 import type { MutationResult, RegisteredTable } from "../../types/admin";
 import { buildTableUpdateInput } from "./helpers";
 import { declaredPaging, pagingInput } from "./paging";
@@ -34,6 +32,7 @@ export function registrationInput(
   cacheTtl: number | null,
 ): Record<string, unknown> {
   const paging = declaredPaging(draft.pagination);
+  const rowRules = registration.rowRules.filter((rule) => rule.filter.trim());
   return {
     ...registration.input,
     ...buildTableUpdateInput(draft),
@@ -41,6 +40,16 @@ export function registrationInput(
     ...("region" in registration.input ? { region: draft.region } : {}),
     cacheTtl: cacheTtl ?? undefined,
     pagination: paging === null ? undefined : pagingInput(paging),
+    // REQ-1934: a profiler result table's row rules, saved with it.
+    ...(rowRules.length > 0
+      ? {
+          rowRules: rowRules.map((rule) => ({
+            roleId: rule.roleId,
+            filterExpr: rule.filter.trim(),
+            description: rule.description.trim(),
+          })),
+        }
+      : {}),
     // REQ-2074: write grants are governance (masking_config); sent only when the form set some.
     ...(draft.writeGrants && draft.writeGrants.length > 0
       ? { writeGrants: writeGrantInputs(draft.writeGrants) }
@@ -50,7 +59,6 @@ export function registrationInput(
 
 export function useCreateTable() {
   const { registerTable } = useRegisterTable();
-  const { upsertRlsRule } = useUpsertRlsRule();
 
   return async (
     draft: RegisteredTable,
@@ -59,18 +67,7 @@ export function useCreateTable() {
   ): Promise<CreateOutcome> => {
     const result = await registerTable(registrationInput(draft, registration, cacheTtl));
     if (!result.success) return { refused: result };
-    const made = registeredTable(result);
-    // A request queued for approval registers nothing yet: there is no table to save rules on.
-    if (made === null) return { registered: null };
-    for (const rule of registration.rowRules.filter((r) => r.filter.trim())) {
-      const saved: MutationResult = await upsertRlsRule({
-        tableId: draft.tableName,
-        roleId: rule.roleId,
-        filterExpr: rule.filter.trim(),
-        description: rule.description.trim(),
-      });
-      if (!saved.success) return { refused: saved };
-    }
-    return { registered: made };
+    // A request queued for approval registers nothing yet; registeredTable says so (null).
+    return { registered: registeredTable(result) };
   };
 }

@@ -80,9 +80,14 @@ from provisa.api.admin._live_mappers import table_model_from_input as _table_mod
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
     carried,
+    load_protection_refusal,
+    save_carried_paging,
+    save_carried_region,
+    save_row_rules,
     invalid_replicate as _invalid_replicate,
     naming_refusal,
     role_ttl_refusal,
+    row_rule_refusal,
     save_carried_after_store,
     save_naming,
     with_carried_settings,
@@ -111,6 +116,7 @@ from provisa.api.admin._row_mappers import (  # noqa: E402
     _parse_mapping_json,
 )
 from provisa.api.admin.schema_common import (  # noqa: E402
+    check_view_mv,
     _add_source_pool,
     _analyze_source_on_engine,
     _fire_catalog_indexing,
@@ -3277,6 +3283,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     from provisa.api.admin.region_defaults import kept_placement
 
                     model.region, model.draft = await kept_placement(_conn, model)  # REQ-1921
+                    _stored_region, _stored_draft = model.region, model.draft
                     _conflict = await _domain_table_conflict(
                         _conn,
                         model.domain_id,
@@ -3323,6 +3330,25 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     # REQ-2109: the settings the update carries replace the stored ones, checked as
                     # their own mutations check them; one refused refuses the whole update.
                     model = await with_carried_settings(info, _conn, input, model)
+                    _lp_refusal = await load_protection_refusal(_conn, model)  # REQ-1141
+                    if _lp_refusal is not None:
+                        raise TableSaveRefused(_lp_refusal)
+                    if input.view_sql and input.materialize:
+                        # REQ-964, REQ-2109: the view's definition is judged before the save commits, so a
+                        # refused one leaves nothing saved.
+                        try:
+                            check_view_mv(
+                                input.table_name,
+                                input.view_sql,
+                                consistency=input.mv_consistency,
+                                preprocess=input.mv_preprocess,
+                                business_key=list(input.business_key),
+                                persist=input.mv_persist,
+                            )
+                        except ValueError as _mv_err:
+                            raise TableSaveRefused(
+                                MutationResult(success=False, message=str(_mv_err))
+                            )
                     _ttl_refusal = await landing_ttl_refusal(
                         _conn,
                         model.source_id,
@@ -3502,6 +3528,19 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         await _rel_repo.mark_relationships_for_review(
                             _conn, table_id, [c.name for c in model.columns]
                         )
+                    # REQ-2109: the region, row rules and paging the update carries; paging last,
+                    # as the endpoint this process serves the table from takes it too.
+                    await save_carried_region(
+                        info,
+                        _conn,
+                        input,
+                        table_id,
+                        stored_region=_stored_region,
+                        stored_draft=_stored_draft,
+                        draft=model.draft,
+                    )
+                    await save_row_rules(info, _conn, input, model)
+                    await save_carried_paging(_conn, input, table_id)
         except TableSaveRefused as _refused:
             # The transaction rolled back: nothing of the save is stored.
             return _refused.result
@@ -3851,27 +3890,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         pool = await _get_pool()
         # A rule binds to a registered role: one naming no role, or a role that does not exist,
         # is refused with the reason here rather than by the role_id foreign key at insert.
-        if not input.role_id:
-            return MutationResult(
-                success=False, message="RLS rule names no role", code="schema.rls_rule_no_role"
-            )
-        if not input.description.strip():  # REQ-2081
-            return MutationResult(
-                success=False,
-                message="A row rule needs a description of what it is for",
-                code="schema.rls_rule_description_missing",
-            )
-        from provisa.core.repositories import role as role_repo
-
         async with pool.acquire() as _rconn:
-            known_role = await role_repo.get(cast("Connection", _rconn), input.role_id)
-        if known_role is None:
-            return MutationResult(
-                success=False,
-                message=f"Role {input.role_id!r} not found",
-                code="schema.role_not_found",
-                params={"role": input.role_id},
+            _rule_refusal = await row_rule_refusal(
+                cast("Connection", _rconn), input.role_id, input.description
             )
+        if _rule_refusal is not None:
+            return _rule_refusal
         if input.action_name:  # REQ-1679: the target is a tracked function or webhook
             return await _upsert_action_rls_rule(info, input)
         if input.tag_id:  # REQ-1384: the target is every table carrying a tag

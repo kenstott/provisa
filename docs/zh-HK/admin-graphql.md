@@ -396,11 +396,11 @@ query {
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-將一張新資料表（或檢視）註冊到某個網域中，並在一個交易中套用輸入攜帶的每項設定，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants` 和 `draft`：任何一項被拒絕，就不會註冊任何內容。需要 `table_registration` 能力以及目標網域的成員身份；攜帶 `writeGrants` 亦需要該網域的 `masking_config`。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
+將一張新資料表（或檢視）註冊到某個網域中，並在一個交易中套用輸入攜帶的每項設定，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules` 和 `draft`：任何一項被拒絕，就不會註冊任何內容。需要 `table_registration` 能力以及目標網域的成員身份；攜帶 `writeGrants` 亦需要該網域的 `masking_config`。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定、即時投遞設定，以及輸入攜帶的設定（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`draft`），在一個交易中完成：任何一項被拒絕，就不會儲存任何內容。省略的設定保留其已儲存的值。需要 `table_registration`。
+更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定、即時投遞設定，以及輸入攜帶的設定（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`cacheTtl`、`pagination`、`region`、`rowRules`、`draft`），在一個交易中完成：任何一項被拒絕，就不會儲存任何內容。省略的設定保留其已儲存的值。需要 `table_registration`。
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -744,6 +744,10 @@ mutation {
 | `replicate` | 資料表幾時由其副本提供；`null` 繼承數據來源的值 |
 | `writeGrants` | 資料表完整的寫入授權集合；需要 `masking_config` |
 | `draft` | `false` 發佈該資料表；否則註冊後為草稿 |
+| `cacheTtl` | 資料表自身的 Cache TTL；`null` 表示冇自身的 |
+| `pagination` | 資料表聲明的分頁；`null` 表示唔聲明 |
+| `region` | 資料表數據所在位置；更新時畀出另一個區域會遷移該資料表，檢查方式同 `setTableRegion` 一樣 |
+| `rowRules` | 資料表的行規則（`RLSRuleInput`），隨資料表一齊儲存；需要 `masking_config` |
 
 ### `RelationshipInput`
 

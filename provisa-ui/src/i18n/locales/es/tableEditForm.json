@@ -5,7 +5,7 @@
     "sqlAliasHelp": "El nombre de campo GraphQL/Cypher expuesto en la API. De forma predeterminada es el nombre de la tabla. Cambiarlo renombra la entidad en todas las consultas y en la documentación SDL.",
     "sqlAliasPlaceholder": "Nombre semántico alternativo",
     "namingConventionLabel": "Convención de nomenclatura",
-    "namingConventionHelp": "Controla cómo se escribe el alias en el esquema de la API. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Heredar' usa la convención del origen. Afecta a los nombres de campo GraphQL, las etiquetas Cypher y la salida SDL.",
+    "namingConventionHelp": "Controla cómo se escribe el alias en el esquema de la API: Snake y Hasura dan my_table, Apollo da myTable. «Heredar» usa la convención de la fuente. Afecta a los nombres de campo de GraphQL, las etiquetas de Cypher y la salida SDL.",
     "cacheTtlLabel": "TTL de caché (segundos)",
     "cacheTtlHelp": "Cuánto tiempo se almacenan en memoria los resultados de consulta de esta tabla. 0 deshabilita la caché. Deje en blanco para heredar el TTL a nivel de origen. Reduce la carga sobre la base de datos de origen en tablas consultadas con frecuencia.",
     "cacheTtlPlaceholder": "heredar",

@@ -12,7 +12,7 @@ import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
 import { resultRedirectText } from "../components/resultRedirectText";
 import { Tip } from "../components/Tip";
-import { useSetTableDraft, useSetTableRegion, useRegionChoices } from "../hooks/useRegionQueries";
+import { useSetTableDraft, useRegionChoices } from "../hooks/useRegionQueries";
 import { useRegionSelection } from "../hooks/useRegionSelection";
 import { filterByRegion } from "../hooks/regionFilter";
 import { RegionSelector } from "../components/RegionSelector";
@@ -47,19 +47,13 @@ import {
   useColumnDependents,
   useUpdateTable,
   useDeleteTable,
-  useUpdateTableCache,
-  useUpdateTableLoadProtection,
   useDeployViewToDb,
   useSuggestTableAlias,
   useForceRegen,
   useAllRelationships,
   useDataProducts, // REQ-1634
 } from "../hooks/useAdminQueries";
-import {
-  usePurgeCacheByTable,
-  useReplicaBuilds,
-  useUpdateTablePaging,
-} from "../hooks/useAdminOpsQueries";
+import { usePurgeCacheByTable, useReplicaBuilds } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -67,7 +61,7 @@ import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { diffEditedColumns } from "./tables/columnDiff";
-import { NAMING_CONVENTIONS } from "./tables/constants";
+import { namingConventionLabel } from "../hooks/useNamingConventions";
 import { buildTableUpdateInput } from "./tables/helpers";
 import { RegisterTableForm } from "./tables/RegisterTableForm";
 import { ViewDefinitionForm } from "./tables/ViewDefinitionForm";
@@ -90,7 +84,7 @@ import { useCreateTable } from "./tables/useCreateTable";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { roleTtlValid, tableTtlSignalError } from "./tables/roleTtl";
-import { declaredPaging, pagingChanged, pagingProblem } from "./tables/paging";
+import { declaredPaging, pagingChanged, pagingInput, pagingProblem } from "./tables/paging";
 import { refusalError, serverMessage } from "../i18n/serverMessage";
 import {
   replicateContradictsLoadProtection,
@@ -138,11 +132,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const getColumnDependents = useColumnDependents();
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
-  const { updateTableCache } = useUpdateTableCache();
-  const { updateTablePaging } = useUpdateTablePaging();
-  const setTableRegion = useSetTableRegion();
   const setTableDraft = useSetTableDraft();
-  const { updateTableLoadProtection } = useUpdateTableLoadProtection();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
@@ -392,26 +382,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     if (source?.cacheTtl != null) return `${source.cacheTtl}s (from source)`;
     if (settings) return `${settings.cache.default_ttl}s (global)`;
     return "default";
-  };
-
-  const handleSaveTableCache = async (tableId: number) => {
-    const edit = cacheTtlEdits[tableId];
-    setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], saving: true } }));
-    setError(null);
-    try {
-      const ttlValue = edit.value.trim() === "" ? null : parseInt(edit.value, 10);
-      if (ttlValue !== null && isNaN(ttlValue)) throw new Error("TTL must be a number");
-      const result = await updateTableCache(tableId, ttlValue);
-      if (!result.success) throw refusalError(result);
-      setCacheTtlEdits((prev) => ({
-        ...prev,
-        [tableId]: { ...prev[tableId], dirty: false, saving: false },
-      }));
-      reload();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-      setCacheTtlEdits((prev) => ({ ...prev, [tableId]: { ...prev[tableId], saving: false } }));
-    }
   };
 
   // A table whose source caches its results (a remote API's) has a cache to drop; the panel's
@@ -721,79 +691,47 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setError(problem);
       return;
     }
-    // REQ-1921: a draft table is claimed by its destination alone, so a move between regions is
-    // draft, re-region, release: a release that comes with a move is saved after the move.
     const saved = tables.find((tbl) => tbl.id === editingTable.id);
-    const savedRegion = saved?.region ?? null;
-    const regionChanged = savedRegion !== editingTable.region;
-    const releaseAfterMove = regionChanged && (saved?.draft ?? false) && !editingTable.draft;
+    // The Cache TTL as typed (staged apart from the table), carried only when it was changed.
+    const ttlEdit = cacheTtlEdits[editingTable.id];
+    const typedTtl =
+      ttlEdit?.dirty !== true
+        ? undefined
+        : ttlEdit.value.trim() === ""
+          ? null
+          : parseInt(ttlEdit.value, 10);
+    if (typedTtl !== undefined && typedTtl !== null && isNaN(typedTtl)) {
+      setError(translate("tableEditForm.loadManagementFixErrors"));
+      return;
+    }
+    const paging = declaredPaging(editingTable.pagination);
     setSaving(true);
     try {
-      // REQ-2109 (settled): the table and its settings -- its naming convention, role TTLs,
-      // replicate, load protection and draft -- in one save, applied in one transaction.
+      // REQ-2109 (settled): the table and every setting of it -- naming convention, role TTLs,
+      // replicate, load protection, draft, region, Cache TTL and paging -- in one save, applied
+      // in one transaction: a refusal of any one saves nothing. A caller who may change only how
+      // columns are hidden (REQ-1944) sends the table's other settings as they are stored.
       const result = await updateTable({
         ...buildTableUpdateInput(editingTable),
-        ...(releaseAfterMove ? { draft: true } : {}),
+        ...(hidingOnly
+          ? {}
+          : {
+              region: editingTable.region,
+              ...(typedTtl === undefined ? {} : { cacheTtl: typedTtl }),
+              ...(pagingChanged(saved?.pagination ?? null, editingTable.pagination)
+                ? { pagination: paging === null ? null : pagingInput(paging) }
+                : {}),
+            }),
       });
       if (!result.success) {
         setError(serverMessage(result, result.message));
         return;
       }
-      if (hidingOnly) {
-        // REQ-1944: a governance-only editor changed how columns are hidden and nothing else; the
-        // table's naming, TTLs, paging, replication and load protection are the table editor's.
-        await reload();
-        setEditingTable(null);
-        return;
-      }
-      // What the update does not take is saved on its own, and only when it changed: every one
-      // rebuilds the model and refetches what is shown.
-      const ttlEdit = cacheTtlEdits[editingTable.id];
-      if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
-      // REQ-318: persist the table's paging only when it changed; nothing declared clears it.
-      const savedPaging = saved?.pagination ?? null;
-      if (pagingChanged(savedPaging, editingTable.pagination)) {
-        const pagingResult = await updateTablePaging(
-          editingTable.id,
-          declaredPaging(editingTable.pagination),
-        );
-        if (!pagingResult.success) {
-          setError(serverMessage(pagingResult, pagingResult.message));
-          return;
-        }
-      }
-      // REQ-1921: the region changes through its own mutation, which judges residency.
-      if (regionChanged) {
-        const regionResult = await setTableRegion(editingTable.id, editingTable.region);
-        if (!regionResult.success) {
-          setError(serverMessage(regionResult, regionResult.message));
-          return;
-        }
-      }
-      if (releaseAfterMove) {
-        const draftResult = await setTableDraft(editingTable.id, false);
-        if (!draftResult.success) {
-          setError(serverMessage(draftResult, draftResult.message));
-          return;
-        }
-      }
-      // REQ-1141: the update stored load protection with the table; its own mutation also judges
-      // that a load-protected table arms at least one refresh gate.
-      const loadProtectionChanged =
-        (saved?.loadProtected ?? null) !== editingTable.loadProtected ||
-        (saved?.offPeakWindow ?? null) !== editingTable.offPeakWindow ||
-        (saved?.offPeakTz ?? null) !== editingTable.offPeakTz;
-      if (loadProtectionChanged) {
-        const lpResult = await updateTableLoadProtection(
-          editingTable.id,
-          editingTable.loadProtected,
-          editingTable.offPeakWindow,
-          editingTable.offPeakTz,
-        );
-        if (!lpResult.success) {
-          setError(serverMessage(lpResult, lpResult.message));
-          return;
-        }
+      if (typedTtl !== undefined) {
+        setCacheTtlEdits((prev) => ({
+          ...prev,
+          [editingTable.id]: { ...prev[editingTable.id], dirty: false, saving: false },
+        }));
       }
       // Await the reload before clearing the form. The refetches are otherwise fire-and-forget, so
       // the read view (and any editor re-opened from it) would render off the pre-save cache entry
@@ -1363,11 +1301,9 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
                             </Group>
                           </Table.Td>
                           <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
-                            {NAMING_CONVENTIONS.find(
-                              (nc) => nc.value === (t.gqlNamingConvention ?? ""),
-                            )?.label ??
-                              t.gqlNamingConvention ??
-                              translate("tablesPage.inheritSource")}
+                            {t.gqlNamingConvention
+                              ? namingConventionLabel(translate, t.gqlNamingConvention)
+                              : translate("tablesPage.inheritSource")}
                           </Table.Td>
                           <Table.Td style={{ color: "var(--text-muted)", fontSize: "0.85rem" }}>
                             {t.cacheTtl != null

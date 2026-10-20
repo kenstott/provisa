@@ -5,7 +5,7 @@
     "sqlAliasHelp": "APIで公開されるGraphQL/Cypherフィールド名です。デフォルトはテーブル名です。変更すると、すべてのクエリとSDLドキュメントにわたってエンティティ名が変更されます。",
     "sqlAliasPlaceholder": "セマンティック名の上書き",
     "namingConventionLabel": "命名規則",
-    "namingConventionHelp": "APIスキーマでのエイリアスの大文字・小文字の扱いを制御します。snake_case → my_table、camelCase → myTable、PascalCase → MyTable。「継承」はソースの規則を使用します。GraphQLフィールド名、Cypherラベル、SDL出力に影響します。",
+    "namingConventionHelp": "APIスキーマでのエイリアスの書き方を制御します。Snake と Hasura は my_table、Apollo は myTable になります。「継承」はソースの規則を使用します。GraphQLフィールド名、Cypherラベル、SDL出力に影響します。",
     "cacheTtlLabel": "キャッシュTTL（秒）",
     "cacheTtlHelp": "このテーブルのクエリ結果をメモリにキャッシュする期間です。0でキャッシュを無効化します。空欄の場合はソースレベルのTTLを継承します。頻繁にクエリされるテーブルについて、ソースデータベースへの負荷を軽減します。",
     "cacheTtlPlaceholder": "継承",

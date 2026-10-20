@@ -41,12 +41,15 @@ from provisa.api.admin._live_mappers import table_model_from_input as _table_mod
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
     carried,
+    load_protection_refusal,
+    save_row_rules,
     save_carried_after_store,
     with_carried_settings,
 )
 from provisa.api.admin.schema_common import (
     _queue_creation_request,
     _sync_view_mv,
+    check_view_mv,
 )
 
 if TYPE_CHECKING:
@@ -320,7 +323,7 @@ async def register_table(
         return MutationResult(success=False, message=str(_map_err))
     # REQ-1907: a table that lands needs its clock to be registered at all, so the registration
     # may state the table's own cache_ttl (#208). Afterwards updateTableCache changes it.
-    if input.cache_ttl is not None:
+    if carried(input.cache_ttl) and input.cache_ttl is not None:
         from provisa.core.cache_ttl import cache_ttl_refusal  # REQ-2031
 
         _ttl_err = cache_ttl_refusal(input.cache_ttl)
@@ -400,6 +403,9 @@ async def register_table(
                 # REQ-2109: the settings the registration carries, checked as their own mutations
                 # check them; one refused refuses the registration.
                 model = await with_carried_settings(info, _conn, input, model)
+                _lp_refusal = await load_protection_refusal(_conn, model)  # REQ-1141
+                if _lp_refusal is not None:
+                    raise TableSaveRefused(_lp_refusal)
                 from provisa.api.admin.capabilities import require_residency_change
                 from provisa.security.residency import CREATED, ResidencyRefused
 
@@ -436,6 +442,20 @@ async def register_table(
                     _, model.schema_name = _mv_state.federation_engine.materialize_store_target(
                         _mv_state.active_org_id
                     )
+                if _effective_view_sql and input.materialize:
+                    # REQ-964, REQ-2109: the view's definition is judged before the save commits, so a
+                    # refused one leaves nothing saved.
+                    try:
+                        check_view_mv(
+                            input.table_name,
+                            _effective_view_sql,
+                            consistency=input.mv_consistency,
+                            preprocess=input.mv_preprocess,
+                            business_key=list(input.business_key),
+                            persist=input.mv_persist,
+                        )
+                    except ValueError as _mv_err:
+                        raise TableSaveRefused(MutationResult(success=False, message=str(_mv_err)))
                 from provisa.api.admin._landing_ttl import TableTtl, landing_ttl_refusal
 
                 _ttl_refusal = await landing_ttl_refusal(  # REQ-1907
@@ -521,7 +541,7 @@ async def register_table(
                 _pipeline_refusal = await pipeline_table_refusal(_conn, model)  # REQ-1980
                 if _pipeline_refusal is not None:
                     raise TableSaveRefused(_pipeline_refusal)
-                if input.pagination is not None:
+                if carried(input.pagination) and input.pagination is not None:
                     # REQ-318: the paging the steward registers the table with (accepted or edited from
                     # what the source suggested), refused by name when the table cannot take it.
                     from provisa.api.admin._table_paging import declared_paging
@@ -665,6 +685,9 @@ async def register_table(
                             input.schema_name,
                             input.table_name,
                         )
+                # REQ-1934, REQ-2109: the row rules the registration carries (a profiler result
+                # table's), saved with the table.
+                await save_row_rules(info, _conn, input, model)
     except TableSaveRefused as _refused:
         # The transaction rolled back: nothing of the save is stored.
         return _refused.result

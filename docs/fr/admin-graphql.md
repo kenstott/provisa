@@ -396,11 +396,11 @@ Exécuter `ANALYZE` sur toutes les tables enregistrées d'une source. Améliore 
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Enregistre une nouvelle table (ou vue) dans un domaine, avec chaque réglage que porte l'entrée, dont `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants` et `draft`, en une transaction : si l'un d'eux est refusé, rien n'est enregistré. Requiert la capacité `table_registration` et l'appartenance au domaine cible ; porter `writeGrants` requiert aussi `masking_config` dans ce domaine. Un appelant sans `create_relationship` qui soumet une vue est mis en file comme demande de création, à approuver par un détenteur des droits.
+Enregistre une nouvelle table (ou vue) dans un domaine, avec chaque réglage que porte l'entrée, dont `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` et `draft`, en une transaction : si l'un d'eux est refusé, rien n'est enregistré. Requiert la capacité `table_registration` et l'appartenance au domaine cible ; porter `writeGrants` requiert aussi `masking_config` dans ce domaine. Un appelant sans `create_relationship` qui soumet une vue est mis en file comme demande de création, à approuver par un détenteur des droits.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Met à jour l'alias, la description, les métadonnées de colonnes, les réglages de MV, la configuration de diffusion en direct d'une table existante et les réglages que porte l'entrée (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `draft`), en une transaction : si l'un d'eux est refusé, rien n'est enregistré. Un réglage omis garde sa valeur stockée. Requiert `table_registration`.
+Met à jour l'alias, la description, les métadonnées de colonnes, les réglages de MV, la configuration de diffusion en direct d'une table existante et les réglages que porte l'entrée (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), en une transaction : si l'un d'eux est refusé, rien n'est enregistré. Un réglage omis garde sa valeur stockée. Requiert `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -744,6 +744,10 @@ L'entrée principale d'enregistrement de table. Champs clés au-delà des bases 
 | `replicate` | Quand la table est servie depuis sa réplique ; `null` hérite la valeur de la source |
 | `writeGrants` | L'ensemble entier des droits d'écriture de la table ; requiert `masking_config` |
 | `draft` | `false` publie la table ; sinon un enregistrement commence en brouillon |
+| `cacheTtl` | Le Cache TTL propre à la table ; `null` n'en a pas |
+| `pagination` | La pagination déclarée de la table ; `null` n'en déclare aucune |
+| `region` | Où vivent les données de la table ; lors d'une mise à jour, une autre région la déplace, jugée comme `setTableRegion` la juge |
+| `rowRules` | Règles de ligne de la table (`RLSRuleInput`), enregistrées avec elle ; requiert `masking_config` |
 
 ### `RelationshipInput`
 

@@ -357,9 +357,11 @@ def normalize_convention(convention: str) -> str:  # REQ-195, REQ-416
     return _CONVENTION_ALIASES.get(convention, convention)
 
 
-VALID_CONVENTIONS = frozenset(
-    {"snake", "hasura_graphql", "apollo_graphql"} | set(_CONVENTION_ALIASES)
-)
+#: REQ-416: the naming conventions a table, a source or the deployment may name, in the order the
+#: admin offers them; VALID_CONVENTIONS adds the Hasura/DDN literals that resolve to them.
+PRESET_CONVENTIONS: tuple[str, ...] = ("snake", "hasura_graphql", "apollo_graphql")
+
+VALID_CONVENTIONS = frozenset(set(PRESET_CONVENTIONS) | set(_CONVENTION_ALIASES))
 
 
 def validation_error_for_convention(convention: str) -> str | None:  # REQ-416

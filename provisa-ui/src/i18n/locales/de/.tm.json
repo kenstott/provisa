@@ -5748,7 +5748,7 @@
   "de/tableEditForm.json::tableEditForm.mvPrimaryKeyMissing": "Upsert and incremental maintenance need a row-identity key. Mark the key column(s) as Primary Key in the columns list below.",
   "de/tableEditForm.json::tableEditForm.mvReadWindowHelp": "When users and clients may read this view, as HH:MM-HH:MM (24h). Outside it their reads are refused, saying when it next opens; Provisa's own refreshes and scheduled jobs still run. Leave blank to allow reads at any time.",
   "de/tableEditForm.json::tableEditForm.mvReadWindowHint": "Users and clients may read this view only within this window; without one, at any time.",
-  "de/tableEditForm.json::tableEditForm.namingConventionHelp": "Controls how the alias is cased in the API schema. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output.",
+  "de/tableEditForm.json::tableEditForm.namingConventionHelp": "Controls how the alias is cased in the API schema: Snake and Hasura give my_table, Apollo gives myTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output.",
   "de/tableEditForm.json::tableEditForm.namingConventionLabel": "Naming Convention",
   "de/tableEditForm.json::tableEditForm.noPkBold": "PK",
   "de/tableEditForm.json::tableEditForm.noPkPost": "column below.",
@@ -7198,5 +7198,6 @@
   "de/tablesPage.json::tablesPage.history.badge": "history",
   "de/tablesPage.json::tablesPage.history.title": "Keeps history: query it as of or as recorded (Time Travel)",
   "de/registerTableForm.json::registerTableForm.continue": "Continue",
-  "de/writeGrants.json::writeGrants.kept": "Kept: saved with the table."
+  "de/writeGrants.json::writeGrants.kept": "Kept: saved with the table.",
+  "de/sourceFormFieldsExtended.json::sourceFormFieldsExtended.namingInherit": "Inherit (global)"
 }

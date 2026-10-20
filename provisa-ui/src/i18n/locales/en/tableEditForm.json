@@ -5,7 +5,7 @@
     "sqlAliasHelp": "The GraphQL/Cypher field name exposed in the API. Defaults to the table name. Changing this renames the entity across all queries and SDL docs.",
     "sqlAliasPlaceholder": "Semantic name override",
     "namingConventionLabel": "Naming Convention",
-    "namingConventionHelp": "Controls how the alias is cased in the API schema. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output.",
+    "namingConventionHelp": "Controls how the alias is cased in the API schema: Snake and Hasura give my_table, Apollo gives myTable. 'Inherit' uses the source's convention. Affects GraphQL field names, Cypher labels, and SDL output.",
     "cacheTtlLabel": "Cache TTL (seconds)",
     "cacheTtlHelp": "How long query results for this table are cached in memory. 0 disables caching. Leave blank to inherit the source-level TTL. Reduces load on the source database for frequently-queried tables.",
     "cacheTtlPlaceholder": "inherit",

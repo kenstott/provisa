@@ -5,7 +5,7 @@
     "sqlAliasHelp": "Il nome del campo GraphQL/Cypher esposto nell'API. Per impostazione predefinita corrisponde al nome della tabella. Modificandolo, l'entità viene rinominata in tutte le query e nella documentazione SDL.",
     "sqlAliasPlaceholder": "Override del nome semantico",
     "namingConventionLabel": "Convenzione di denominazione",
-    "namingConventionHelp": "Controlla il formato dell'alias nello schema API. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Eredita' usa la convenzione dell'origine. Influisce sui nomi dei campi GraphQL, sulle etichette Cypher e sull'output SDL.",
+    "namingConventionHelp": "Controlla come viene scritto l'alias nello schema dell'API: Snake e Hasura danno my_table, Apollo dà myTable. «Eredita» usa la convenzione della sorgente. Influisce sui nomi dei campi GraphQL, sulle etichette Cypher e sull'output SDL.",
     "cacheTtlLabel": "TTL della cache (secondi)",
     "cacheTtlHelp": "Durata di conservazione in memoria dei risultati delle query per questa tabella. 0 disabilita la cache. Lasciare vuoto per ereditare il TTL a livello di origine. Riduce il carico sul database di origine per le tabelle interrogate di frequente.",
     "cacheTtlPlaceholder": "eredita",

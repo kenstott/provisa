@@ -1135,9 +1135,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     schema_name: str
     table_name: str
     columns: list[ColumnInput]
-    # REQ-318: the table's paging at registration (the steward's, from what the source
-    # suggested). An edit of the table saves it through updateTablePaging instead.
-    pagination: PagingInput | None = None
+    # REQ-318: the table's paging (the steward's, from what the source suggested); null declares
+    # none. Left out, a registration declares none and an update keeps the stored paging.
+    pagination: PagingInput | None = strawberry.UNSET
     alias: str | None = None
     description: str | None = None
     watermark_column: str | None = None
@@ -1147,7 +1147,8 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     view_sql: str | None = None
     # REQ-1921: the region the table's data lives in. Left out, a new table starts in its
     # source's region, else the connected one (a view: the connected one); null = no region.
-    # Ignored by updateTable: a region changes through setTableRegion.
+    # On updateTable a region given moves the table (residency judged as setTableRegion judges
+    # it); left out, the table stays where it is.
     region: str | None = strawberry.UNSET
     # REQ-1443: the data-quality contract (soda contract / GX suite) this table's rows are the scan
     # results of. The contract names what it scans, so the observed target is DERIVED from it
@@ -1177,9 +1178,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     off_peak_window: str | None = None  # REQ-1141: per-table "HH:MM-HH:MM" window override
     off_peak_tz: str | None = None  # REQ-1141: per-table window zone override
     change_signal: str | None = None  # REQ-929: override source change signal; None = inherit
-    # REQ-1907: the table's own landing cache_ttl, stated when it is registered. A table that
-    # already has one keeps it (updateTableCache is what changes it); None = the source's.
-    cache_ttl: int | None = None
+    # REQ-1907: the table's own landing Cache TTL; null: none of its own (the source's applies).
+    # Left out, a registration has none and an update keeps the stored one.
+    cache_ttl: int | None = strawberry.UNSET
     probe_query: str | None = None  # REQ-929: source-native freshness probe
     probe_type: str | None = None  # REQ-982: input-probe method; None = resolve per source class
     materialize: bool = False
@@ -1221,6 +1222,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     replicate: int | None = strawberry.UNSET  # REQ-826: null inherits the source's value
     write_grants: list[WriteGrantInput] | None = strawberry.UNSET  # REQ-2074: the whole set
     draft: bool | None = strawberry.UNSET  # REQ-1921: false releases it
+    # REQ-1934, REQ-2109: row rules of this table (table_id is the table being saved), saved with
+    # it: a profiler result table is registered with the rules its profiled table has.
+    row_rules: list[RLSRuleInput] | None = strawberry.UNSET
 
 
 @strawberry.type

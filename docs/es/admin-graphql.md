@@ -396,11 +396,11 @@ Ejecuta `ANALYZE` en todas las tablas registradas de un origen. Mejora las decis
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Registra una tabla (o vista) nueva en un dominio, con cada ajuste que lleva la entrada, entre ellos `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants` y `draft`, en una transacción: si se rechaza cualquiera de ellos, no se registra nada. Requiere la capacidad `table_registration` y pertenecer al dominio de destino; llevar `writeGrants` requiere además `masking_config` allí. Un llamante sin `create_relationship` que envía una vista queda en cola como solicitud de creación para que la apruebe quien tenga los derechos.
+Registra una tabla (o vista) nueva en un dominio, con cada ajuste que lleva la entrada, entre ellos `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` y `draft`, en una transacción: si se rechaza cualquiera de ellos, no se registra nada. Requiere la capacidad `table_registration` y pertenecer al dominio de destino; llevar `writeGrants` requiere además `masking_config` allí. Un llamante sin `create_relationship` que envía una vista queda en cola como solicitud de creación para que la apruebe quien tenga los derechos.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Actualiza el alias, la descripción, los metadatos de columnas, los ajustes de MV, la configuración de entrega en vivo de una tabla existente y los ajustes que lleva la entrada (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `draft`), en una transacción: si se rechaza cualquiera de ellos, no se guarda nada. Un ajuste omitido conserva su valor guardado. Requiere `table_registration`.
+Actualiza el alias, la descripción, los metadatos de columnas, los ajustes de MV, la configuración de entrega en vivo de una tabla existente y los ajustes que lleva la entrada (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), en una transacción: si se rechaza cualquiera de ellos, no se guarda nada. Un ajuste omitido conserva su valor guardado. Requiere `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -744,6 +744,10 @@ La entrada central de registro de tablas. Campos clave más allá de lo básico:
 | `replicate` | Cuándo se sirve la tabla desde su réplica; `null` hereda el valor de la fuente |
 | `writeGrants` | El conjunto completo de permisos de escritura de la tabla; requiere `masking_config` |
 | `draft` | `false` libera la tabla; si no, un registro empieza como borrador |
+| `cacheTtl` | El Cache TTL propio de la tabla; `null` no tiene propio |
+| `pagination` | La paginación declarada de la tabla; `null` no declara ninguna |
+| `region` | Dónde viven los datos de la tabla; en una actualización, otra región la mueve, juzgada como la juzga `setTableRegion` |
+| `rowRules` | Reglas de fila de la tabla (`RLSRuleInput`), guardadas con ella; requiere `masking_config` |
 
 ### `RelationshipInput`
 

@@ -396,11 +396,11 @@ Führt `ANALYZE` auf allen registrierten Tabellen einer Quelle aus. Verbessert J
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Registriert eine neue Tabelle (oder Sicht) in einer Domäne, mit jeder Einstellung, die die Eingabe mitführt, darunter `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants` und `draft`, in einer Transaktion: Wird eine davon abgelehnt, wird nichts registriert. Erfordert die Capability `table_registration` und Mitgliedschaft in der Zieldomäne; wer `writeGrants` mitführt, braucht dort auch `masking_config`. Ein Aufrufer ohne `create_relationship`, der eine Sicht einreicht, wird als Erstellungsanfrage für einen Rechteinhaber zur Genehmigung eingereiht.
+Registriert eine neue Tabelle (oder Sicht) in einer Domäne, mit jeder Einstellung, die die Eingabe mitführt, darunter `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` und `draft`, in einer Transaktion: Wird eine davon abgelehnt, wird nichts registriert. Erfordert die Capability `table_registration` und Mitgliedschaft in der Zieldomäne; wer `writeGrants` mitführt, braucht dort auch `masking_config`. Ein Aufrufer ohne `create_relationship`, der eine Sicht einreicht, wird als Erstellungsanfrage für einen Rechteinhaber zur Genehmigung eingereiht.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Aktualisiert Alias, Beschreibung, Spaltenmetadaten, MV-Einstellungen und Live-Delivery-Konfiguration einer bestehenden Tabelle sowie die Einstellungen, die die Eingabe mitführt (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `draft`), in einer Transaktion: Wird eine davon abgelehnt, wird nichts gespeichert. Eine weggelassene Einstellung behält ihren gespeicherten Wert. Erfordert `table_registration`.
+Aktualisiert Alias, Beschreibung, Spaltenmetadaten, MV-Einstellungen und Live-Delivery-Konfiguration einer bestehenden Tabelle sowie die Einstellungen, die die Eingabe mitführt (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), in einer Transaktion: Wird eine davon abgelehnt, wird nichts gespeichert. Eine weggelassene Einstellung behält ihren gespeicherten Wert. Erfordert `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -744,6 +744,10 @@ Die zentrale Eingabe zur Tabellenregistrierung. Wichtige Felder über die Grundl
 | `replicate` | Wann die Tabelle aus ihrem Replikat bedient wird; `null` erbt den Wert der Quelle |
 | `writeGrants` | Die ganze Menge der Schreibberechtigungen der Tabelle; erfordert `masking_config` |
 | `draft` | `false` gibt die Tabelle frei; sonst beginnt eine Registrierung als Entwurf |
+| `cacheTtl` | Die eigene Cache-TTL der Tabelle; `null` hat keine eigene |
+| `pagination` | Das deklarierte Paging der Tabelle; `null` deklariert keines |
+| `region` | Wo die Daten der Tabelle liegen; bei einer Aktualisierung verschiebt eine andere Region sie, geprüft wie bei `setTableRegion` |
+| `rowRules` | Zeilenregeln der Tabelle (`RLSRuleInput`), mit ihr gespeichert; erfordert `masking_config` |
 
 ### `RelationshipInput`
 

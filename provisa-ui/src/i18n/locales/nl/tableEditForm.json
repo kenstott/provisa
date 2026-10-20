@@ -5,7 +5,7 @@
     "sqlAliasHelp": "De GraphQL/Cypher-veldnaam die in de API wordt getoond. Standaard de tabelnaam. Wijzigen hernoemt de entiteit in alle query's en SDL-documentatie.",
     "sqlAliasPlaceholder": "Semantische naamoverschrijving",
     "namingConventionLabel": "Naamgevingsconventie",
-    "namingConventionHelp": "Bepaalt hoe de alias in het API-schema wordt geschreven. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. 'Overnemen' gebruikt de conventie van de bron. Beïnvloedt GraphQL-veldnamen, Cypher-labels en SDL-uitvoer.",
+    "namingConventionHelp": "Bepaalt hoe de alias in het API-schema wordt geschreven: Snake en Hasura geven my_table, Apollo geeft myTable. 'Overnemen' gebruikt de conventie van de bron. Beïnvloedt GraphQL-veldnamen, Cypher-labels en SDL-uitvoer.",
     "cacheTtlLabel": "Cache-TTL (seconden)",
     "cacheTtlHelp": "Hoe lang queryresultaten voor deze tabel in het geheugen worden gecachet. 0 schakelt caching uit. Laat leeg om de TTL op bronniveau over te nemen. Vermindert de belasting van de brondatabase voor veelbevraagde tabellen.",
     "cacheTtlPlaceholder": "overnemen",

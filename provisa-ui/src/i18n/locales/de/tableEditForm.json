@@ -5,7 +5,7 @@
     "sqlAliasHelp": "Der in der API sichtbare GraphQL-/Cypher-Feldname. Standard ist der Tabellenname. Eine Änderung benennt die Entität in allen Abfragen und SDL-Dokumenten um.",
     "sqlAliasPlaceholder": "Semantischen Namen überschreiben",
     "namingConventionLabel": "Namenskonvention",
-    "namingConventionHelp": "Steuert die Schreibweise des Alias im API-Schema. snake_case → my_table, camelCase → myTable, PascalCase → MyTable. „Erben“ übernimmt die Konvention der Quelle. Wirkt sich auf GraphQL-Feldnamen, Cypher-Labels und die SDL-Ausgabe aus.",
+    "namingConventionHelp": "Steuert die Schreibweise des Alias im API-Schema: Snake und Hasura ergeben my_table, Apollo ergibt myTable. „Erben“ übernimmt die Konvention der Quelle. Wirkt sich auf GraphQL-Feldnamen, Cypher-Labels und die SDL-Ausgabe aus.",
     "cacheTtlLabel": "Cache-TTL (Sekunden)",
     "cacheTtlHelp": "Wie lange Abfrageergebnisse dieser Tabelle im Speicher zwischengespeichert werden. 0 deaktiviert das Caching. Leer lassen, um das TTL der Quellebene zu erben. Reduziert die Last auf der Quelldatenbank bei häufig abgefragten Tabellen.",
     "cacheTtlPlaceholder": "erben",

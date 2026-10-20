@@ -396,11 +396,11 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-רושם טבלה (או view) חדשה בתוך domain, עם כל הגדרה שהקלט נושא, ובהן `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants` ו-`draft`, בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נרשם. דורש את היכולת `table_registration` וחברות ב-domain היעד; נשיאת `writeGrants` דורשת שם גם `masking_config`. קורא בלי `create_relationship` שמגיש view נכנס לתור כבקשת יצירה שבעל ההרשאות יאשר.
+רושם טבלה (או view) חדשה בתוך domain, עם כל הגדרה שהקלט נושא, ובהן `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules` ו-`draft`, בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נרשם. דורש את היכולת `table_registration` וחברות ב-domain היעד; נשיאת `writeGrants` דורשת שם גם `masking_config`. קורא בלי `create_relationship` שמגיש view נכנס לתור כבקשת יצירה שבעל ההרשאות יאשר.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-מעדכן את הכינוי, התיאור, מטא-נתוני העמודות, הגדרות ה-MV ותצורת המסירה החיה של טבלה קיימת, ואת ההגדרות שהקלט נושא (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `draft`), בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נשמר. הגדרה שהושמטה שומרת את הערך השמור שלה. דורש `table_registration`.
+מעדכן את הכינוי, התיאור, מטא-נתוני העמודות, הגדרות ה-MV ותצורת המסירה החיה של טבלה קיימת, ואת ההגדרות שהקלט נושא (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `cacheTtl`, `pagination`, `region`, `rowRules`, `draft`), בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נשמר. הגדרה שהושמטה שומרת את הערך השמור שלה. דורש `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -744,6 +744,10 @@ mutation {
 | `replicate` | מתי הטבלה מוגשת מהעותק שלה; `null` יורש את ערך המקור |
 | `writeGrants` | כל קבוצת הרשאות הכתיבה של הטבלה; דורש `masking_config` |
 | `draft` | `false` משחרר את הטבלה; אחרת רישום מתחיל כטיוטה |
+| `cacheTtl` | ה-Cache TTL של הטבלה עצמה; `null` – אין לה משלה |
+| `pagination` | העימוד המוצהר של הטבלה; `null` לא מצהיר על עימוד |
+| `region` | איפה נמצאים נתוני הטבלה; בעדכון, אזור אחר מעביר אותה, ונבדק כמו ב-`setTableRegion` |
+| `rowRules` | כללי השורות של הטבלה (`RLSRuleInput`), נשמרים איתה; דורש `masking_config` |
 
 ### `RelationshipInput`
 

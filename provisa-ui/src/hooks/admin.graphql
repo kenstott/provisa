@@ -1474,3 +1474,8 @@ query SampleOpenapiColumns($sourceId: String!, $tableName: String!, $params: JSO
     dataType
   }
 }
+
+# REQ-416: the naming conventions the server takes -- the one list the admin offers.
+query NamingConventions {
+  namingConventions
+}

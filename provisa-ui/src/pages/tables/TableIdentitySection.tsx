@@ -18,7 +18,7 @@ import {
   FormIdentifiers,
   FormLayout,
 } from "../../components/form/FormLayout";
-import { NAMING_CONVENTIONS } from "./constants";
+import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
 import { TableDraftTick, TableRegionField } from "./TablePlacementFields";
@@ -37,6 +37,7 @@ export function TableIdentitySection({
   describe?: () => Promise<string>;
 }) {
   const { t } = useTranslation();
+  const conventions = useNamingConventions();
   const [generatingDesc, setGeneratingDesc] = useState(false);
   return (
     <FormLayout className="form-card" data-testid="table-section-identity-panel">
@@ -94,10 +95,11 @@ export function TableIdentitySection({
       <FormField help={t("tableEditForm.namingConventionHelp")} size="medium">
         <Select
           label={t("tableEditForm.namingConventionLabel")}
-          data={NAMING_CONVENTIONS.map((nc) => ({
-            value: nc.value,
-            label: nc.label,
-          }))}
+          // REQ-416: the server's conventions; none of its own is the source's.
+          data={[
+            { value: "", label: t("tablesPage.inheritSource") },
+            ...conventions.map((c) => ({ value: c, label: namingConventionLabel(t, c) })),
+          ]}
           value={editingTable.gqlNamingConvention ?? ""}
           onChange={(v) =>
             setEditingTable({

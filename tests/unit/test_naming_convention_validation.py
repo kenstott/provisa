@@ -40,3 +40,13 @@ def test_literal_aliases_pass():
     # Aliases like "hasura-default"/"graphql" are in VALID_CONVENTIONS and must be accepted.
     for alias in VALID_CONVENTIONS:
         assert validation_error_for_convention(alias) is None
+
+
+def test_the_admin_lists_the_presets_the_server_takes():
+    """REQ-416: the admin offers the conventions read from the server, each one it accepts."""
+    from provisa.api.admin.schema_query import Query
+    from provisa.compiler.naming import validation_error_for_convention
+
+    listed = Query().naming_conventions()
+    assert listed == ["snake", "hasura_graphql", "apollo_graphql"]
+    assert all(validation_error_for_convention(c) is None for c in listed)

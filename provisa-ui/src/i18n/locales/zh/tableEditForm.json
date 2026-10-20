@@ -5,7 +5,7 @@
     "sqlAliasHelp": "在 API 中公开的 GraphQL/Cypher 字段名。默认为表名。修改后将在所有查询和 SDL 文档中重命名该实体。",
     "sqlAliasPlaceholder": "语义名称覆盖",
     "namingConventionLabel": "命名规范",
-    "namingConventionHelp": "控制别名在 API 架构中的大小写形式。snake_case → my_table，camelCase → myTable，PascalCase → MyTable。“继承”使用数据源的规范。影响 GraphQL 字段名、Cypher 标签和 SDL 输出。",
+    "namingConventionHelp": "控制别名在 API 模式中的大小写写法：Snake 和 Hasura 得到 my_table，Apollo 得到 myTable。“继承”使用数据源的约定。影响 GraphQL 字段名、Cypher 标签和 SDL 输出。",
     "cacheTtlLabel": "缓存 TTL（秒）",
     "cacheTtlHelp": "此表的查询结果在内存中缓存的时长。0 表示禁用缓存。留空则继承数据源级 TTL。可降低频繁查询的表对源数据库的负载。",
     "cacheTtlPlaceholder": "继承",

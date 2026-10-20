@@ -1361,6 +1361,14 @@ class Query:  # REQ-021, REQ-042
     # ── Admin: Materialized Views ──
 
     @strawberry.field
+    def naming_conventions(self) -> list[str]:  # REQ-416
+        """The naming conventions the server takes for a table, a source or the deployment: the
+        one list the admin offers."""
+        from provisa.compiler.naming import PRESET_CONVENTIONS
+
+        return list(PRESET_CONVENTIONS)
+
+    @strawberry.field
     async def mv_list(self, info: StrawberryInfo) -> list[MVType]:
         """List all materialized views with status."""
         require_capability(info, "observability")

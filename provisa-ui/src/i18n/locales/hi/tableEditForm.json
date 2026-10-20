@@ -5,7 +5,7 @@
     "sqlAliasHelp": "API में एक्सपोज़ किया गया GraphQL/Cypher फ़ील्ड नाम। डिफ़ॉल्ट रूप से टेबल का नाम होता है। इसे बदलने से सभी क्वेरियों और SDL दस्तावेज़ों में एंटिटी का नाम बदल जाता है।",
     "sqlAliasPlaceholder": "सिमेंटिक नाम ओवरराइड",
     "namingConventionLabel": "नामकरण परिपाटी",
-    "namingConventionHelp": "नियंत्रित करता है कि API स्कीमा में उपनाम का केस कैसा होगा। snake_case → my_table, camelCase → myTable, PascalCase → MyTable। 'इनहेरिट करें' स्रोत की परिपाटी का उपयोग करता है। GraphQL फ़ील्ड नामों, Cypher लेबलों और SDL आउटपुट को प्रभावित करता है।",
+    "namingConventionHelp": "API स्कीमा में उपनाम की लिखावट तय करता है: Snake और Hasura से my_table बनता है, Apollo से myTable। 'इनहेरिट' स्रोत की परिपाटी लेता है। GraphQL फ़ील्ड नामों, Cypher लेबल और SDL आउटपुट पर असर डालता है।",
     "cacheTtlLabel": "कैश TTL (सेकंड)",
     "cacheTtlHelp": "इस टेबल के क्वेरी परिणाम मेमोरी में कितने समय तक कैश रहते हैं। 0 कैशिंग को अक्षम करता है। स्रोत-स्तरीय TTL इनहेरिट करने के लिए खाली छोड़ें। बार-बार क्वेरी की जाने वाली टेबलों के लिए स्रोत डेटाबेस पर लोड कम करता है।",
     "cacheTtlPlaceholder": "इनहेरिट",

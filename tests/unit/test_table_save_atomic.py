@@ -23,12 +23,15 @@ import types
 from typing import Any
 
 import pytest
-from sqlalchemy import insert, select
+import strawberry
+from sqlalchemy import insert, select, update
 
 import provisa.api.app as appmod
 from provisa.api.admin import _table_ops, schema_mutation, schema_mutation_ops
 from provisa.api.admin.types import (
     ColumnInput,
+    PagingInput,
+    RLSRuleInput,
     RoleTtlInput,
     TableInput,
     WriteGrantInput,
@@ -36,7 +39,15 @@ from provisa.api.admin.types import (
 from provisa.core.database import Database
 from provisa.core.models import Column
 from provisa.core.repositories import write_grant as write_grant_repo
-from provisa.core.schema_org import domains, registered_tables, roles, sources, table_columns
+from provisa.core.models import DERIVED_SOURCE_ID
+from provisa.core.schema_org import (
+    domains,
+    registered_tables,
+    rls_rules,
+    roles,
+    sources,
+    table_columns,
+)
 
 
 @pytest.fixture
@@ -44,6 +55,10 @@ async def plane(monkeypatch, control_plane) -> Database:
     db = control_plane.org()
     async with db.acquire() as conn:
         await conn.execute_core(insert(sources).values(id="pg", type="postgresql", cache_ttl=300))
+        # A source arming no refresh gate of its own: no Cache TTL, no probing signal.
+        await conn.execute_core(
+            insert(sources).values(id="bare", type="postgresql", change_signal="debezium")
+        )
         await conn.execute_core(insert(domains).values(id="sales"))
         await conn.execute_core(
             insert(roles).values(id="support", capabilities=["write"], domain_access=["sales"])
@@ -60,10 +75,18 @@ async def plane(monkeypatch, control_plane) -> Database:
             Column(name=c.name, data_type=c.data_type, visible_to=c.visible_to) for c in inp.columns
         ], None
 
-    engine = types.SimpleNamespace(reconcile_landed_tables=_nothing)
+    engine = types.SimpleNamespace(
+        name="duckdb",
+        reconcile_landed_tables=_nothing,
+        materialize_store_target=lambda _org: ("mat_store", "views"),
+    )
     monkeypatch.setattr(appmod.state, "tenant_db", db, raising=False)
-    monkeypatch.setattr(appmod.state, "source_types", {"pg": "postgresql"}, raising=False)
+    monkeypatch.setattr(
+        appmod.state, "source_types", {"pg": "postgresql", "bare": "postgresql"}, raising=False
+    )
     monkeypatch.setattr(appmod.state, "federation_engine", engine, raising=False)
+    config = types.SimpleNamespace(graphql_remote=types.SimpleNamespace(max_rows=1000))
+    monkeypatch.setattr(appmod.state, "config", config, raising=False)
     for module in (schema_mutation, schema_mutation_ops):
         monkeypatch.setattr(module, "_get_pool", _pool)
         monkeypatch.setattr(module, "_rebuild_schemas", _nothing)
@@ -73,6 +96,10 @@ async def plane(monkeypatch, control_plane) -> Database:
     monkeypatch.setattr(schema_mutation_ops, "reprovision_source_after_registration", _nothing)
     monkeypatch.setattr("provisa.dq.scan.reschedule_org_checkers", _nothing)
     monkeypatch.setattr("provisa.core.deployment_settings.auto_track_fk", lambda: False)
+    monkeypatch.setattr(schema_mutation_ops, "_apply_mv_relationship_gate", _nothing)
+    monkeypatch.setattr(schema_mutation, "_sync_view_mv", _nothing)
+    monkeypatch.setattr(schema_mutation_ops, "_sync_view_mv", _nothing)
+    monkeypatch.setattr("provisa.api.admin.schema_common.activate_view_mv", _nothing)
     return db
 
 
@@ -233,3 +260,154 @@ async def test_an_update_leaving_a_setting_out_keeps_the_stored_one(plane):
         False,
     )
     assert dict(table["role_ttl"]) == {"support": 60} and len(grants) == 1
+
+
+# --- REQ-2109: the Cache TTL, paging, region, load protection, row rules and a materialized view's
+# definition, in the same one save.
+
+
+def _rule(**kw) -> RLSRuleInput:
+    return RLSRuleInput(
+        **{
+            "role_id": "support",
+            "filter_expr": "status = 'placed'",
+            "description": "Keeps the placed orders support may read.",
+            **kw,
+        }
+    )
+
+
+async def _rules(db: Database) -> list[tuple[str, str]]:
+    async with db.acquire() as conn:
+        return [
+            (r.role_id, r.description)
+            for r in (
+                await conn.execute_core(select(rls_rules.c.role_id, rls_rules.c.description))
+            ).fetchall()
+        ]
+
+
+async def test_a_registration_stores_its_cache_ttl_load_protection_and_row_rules(plane):
+    result = await _register(
+        cache_ttl=600,
+        load_protected=True,
+        off_peak_window="01:00-05:00",
+        row_rules=[_rule()],
+    )
+    assert result.success, result.message
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None
+    assert (table["cache_ttl"], table["load_protected"], table["off_peak_window"]) == (
+        600,
+        True,
+        "01:00-05:00",
+    )
+    assert await _rules(plane) == [("support", "Keeps the placed orders support may read.")]
+
+
+@pytest.mark.parametrize(
+    ("refused", "code"),
+    [
+        ({"cache_ttl": -5}, "schema.invalid_cache_ttl"),
+        ({"pagination": PagingInput(type="offset", page_size=10)}, None),
+        (
+            {"source_id": "bare", "load_protected": True, "write_grants": strawberry.UNSET},
+            "schema.load_protection_gate_required",
+        ),
+        ({"row_rules": [_rule(filter_expr="nope = 1")]}, "schema.rls_rule_invalid"),
+        ({"row_rules": [_rule(role_id="nobody")]}, "schema.role_not_found"),
+        ({"row_rules": [_rule(description=" ")]}, "schema.rls_rule_description_missing"),
+    ],
+)
+async def test_a_registration_refused_on_a_carried_setting_stores_nothing(plane, refused, code):
+    result = await _register(**{**EVERYTHING, **refused})
+    assert result.success is False
+    if code is not None:
+        assert result.code == code, result.message
+    assert await _stored(plane) == (None, [], [])
+    assert await _rules(plane) == []
+
+
+async def test_a_view_whose_sql_is_not_deterministic_is_not_registered(plane):
+    result = await _register(
+        source_id=DERIVED_SOURCE_ID,
+        schema_name="views",
+        view_sql="SELECT random() AS r",
+        materialize=True,
+        columns=[ColumnInput(name="r", data_type="double", visible_to=["support"])],
+    )
+    assert result.success is False
+    assert "non-deterministic" in result.message
+    async with plane.acquire() as conn:
+        assert (await conn.execute_core(select(registered_tables.c.id))).fetchall() == []
+
+
+async def test_an_update_stores_its_cache_ttl_region_row_rules_and_paging(plane, monkeypatch):
+    assert (await _register(**EVERYTHING)).success
+    moved: list[tuple] = []
+
+    async def _set_region(conn, table_id, region):
+        moved.append((table_id, region))
+        await conn.execute_core(
+            registered_tables.update()
+            .where(registered_tables.c.id == table_id)
+            .values(region=region)
+        )
+        return "orders"
+
+    monkeypatch.setattr("provisa.core.repositories.region.set_table_region", _set_region)
+    result = await schema_mutation.Mutation().update_table(
+        _info(),
+        _input(**EVERYTHING, cache_ttl=900, region="eu", row_rules=[_rule()], pagination=None),
+    )
+    assert result.success, result.message
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None
+    assert (table["cache_ttl"], table["region"]) == (900, "eu")
+    assert len(moved) == 1
+    assert await _rules(plane) == [("support", "Keeps the placed orders support may read.")]
+
+
+@pytest.mark.parametrize(
+    ("refused", "code"),
+    [
+        ({"cache_ttl": -5}, "schema.invalid_cache_ttl"),
+        ({"pagination": PagingInput(type="offset", page_size=10)}, None),
+        (
+            {"load_protected": True, "replicate": None, "cache_ttl": None, "_bare_source": True},
+            "schema.load_protection_gate_required",
+        ),
+        ({"row_rules": [_rule(filter_expr="nope = 1")]}, "schema.rls_rule_invalid"),
+        ({"region": "mars"}, "schema.region_refused"),
+        ({"region": "eu", "_residency": True}, "security.data_residency_refused"),
+        ({"view_sql": "SELECT now() AS t", "materialize": True}, None),
+    ],
+)
+async def test_an_update_refused_on_a_carried_setting_leaves_the_table_as_it_was(
+    plane, monkeypatch, refused, code
+):
+    assert (await _register(**EVERYTHING)).success
+    before = await _stored(plane)
+    refused = dict(refused)
+    if refused.pop("_residency", False):
+        from provisa.security.residency import ResidencyRefused
+
+        def _refuse(_info, what, _before, after, *, draft=False):
+            raise ResidencyRefused(what, after or "", holds_right=True)
+
+        monkeypatch.setattr("provisa.api.admin.capabilities.require_residency_change", _refuse)
+    if refused.pop("_bare_source", False):
+        # The source no longer arms a refresh gate either: protected, the table has none.
+        async with plane.acquire() as conn:
+            await conn.execute_core(
+                update(sources)
+                .where(sources.c.id == "pg")
+                .values(cache_ttl=None, change_signal="debezium")
+            )
+    changed = _input(**{**EVERYTHING, "description": "changed", **refused})
+    result = await schema_mutation.Mutation().update_table(_info(), changed)
+    assert result.success is False, result.message
+    if code is not None:
+        assert result.code == code, result.message
+    assert await _stored(plane) == before
+    assert await _rules(plane) == []

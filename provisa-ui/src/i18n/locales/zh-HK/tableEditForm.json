@@ -5,7 +5,7 @@
     "sqlAliasHelp": "在 API 中公開的 GraphQL/Cypher 欄位名稱。預設為數據表名稱。變更此項會在所有查詢及 SDL 文件中重新命名該實體。",
     "sqlAliasPlaceholder": "語義名稱覆寫",
     "namingConventionLabel": "命名慣例",
-    "namingConventionHelp": "控制別名在 API 結構描述中的大小寫格式。snake_case → my_table，camelCase → myTable，PascalCase → MyTable。「繼承」使用數據來源的慣例。影響 GraphQL 欄位名稱、Cypher 標籤及 SDL 輸出。",
+    "namingConventionHelp": "控制別名喺 API 結構描述中的大小寫寫法：Snake 同 Hasura 得到 my_table，Apollo 得到 myTable。「繼承」使用數據來源的慣例。影響 GraphQL 欄位名稱、Cypher 標籤同 SDL 輸出。",
     "cacheTtlLabel": "快取 TTL（秒）",
     "cacheTtlHelp": "此數據表的查詢結果在記憶體中快取的時間長度。0 表示停用快取。留空則繼承數據來源層級的 TTL。可減少常被查詢的數據表對來源數據庫的負載。",
     "cacheTtlPlaceholder": "繼承",

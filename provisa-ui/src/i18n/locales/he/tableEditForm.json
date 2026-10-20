@@ -5,7 +5,7 @@
     "sqlAliasHelp": "שם השדה ב-GraphQL/Cypher שנחשף ב-API. ברירת המחדל היא שם הטבלה. שינוי הערך משנה את שם הישות בכל השאילתות ובתיעוד ה-SDL.",
     "sqlAliasPlaceholder": "עקיפת שם סמנטי",
     "namingConventionLabel": "מוסכמת שמות",
-    "namingConventionHelp": "קובעת את סגנון הרישיות של הכינוי בסכמת ה-API. snake_case ← my_table, camelCase ← myTable, PascalCase ← MyTable. 'Inherit' משתמש במוסכמה של המקור. משפיע על שמות שדות ב-GraphQL, על תוויות Cypher ועל פלט SDL.",
+    "namingConventionHelp": "קובע את צורת הכתיבה של הכינוי בסכימת ה-API: Snake ו-Hasura נותנים my_table, Apollo נותן myTable. 'ירושה' משתמש במוסכמה של המקור. משפיע על שמות השדות ב-GraphQL, על תוויות Cypher ועל פלט ה-SDL.",
     "cacheTtlLabel": "TTL של מטמון (שניות)",
     "cacheTtlHelp": "כמה זמן תוצאות שאילתה עבור טבלה זו נשמרות במטמון בזיכרון. 0 מבטל את המטמון. השארה ריקה יורשת את ה-TTL ברמת המקור. מפחית עומס על מסד הנתונים של המקור עבור טבלאות שנשאלות בתדירות גבוהה.",
     "cacheTtlPlaceholder": "ירושה",
