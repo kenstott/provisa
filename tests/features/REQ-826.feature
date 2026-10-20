@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-826 — Caching
-  # Federation strategy and freshness management — the datasources → federation engine arrow of REQ-825. The binding between…
+  # Federation strategy and freshness management: the datasources → federation engine arrow of REQ-825. The binding between…
 
   Scenario: REQ-826 default behaviour
     Given an engine that can only materialize an OpenAPI datasource

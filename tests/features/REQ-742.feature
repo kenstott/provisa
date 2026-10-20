@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-742 — Security
-  # Masking respects column type constraints — NULL masks allowed only on nullable columns; regex and truncate masks validat…
+  # Masking respects column type constraints. NULL masks are allowed only on nullable columns; regex and truncate masks vali…
 
   Scenario: REQ-742 default behaviour
     Given a masking rule configured with an incompatible type

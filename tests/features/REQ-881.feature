@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-881 — Materialization Store
-  # Probe-based freshness gate on the MV REFRESH path, opt-in per MV — the refresh-time application of REQ-855's centralized…
+  # Probe-based freshness gate on the MV REFRESH path, opt-in per MV: the refresh-time application of REQ-855's centralized…
 
   Scenario: REQ-881 default behaviour
     Given a relationship MV with freshness_mode="probe" over an Iceberg-backed source and a last_input_token equal to the source's current snapshot id

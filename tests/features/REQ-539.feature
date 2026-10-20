@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-539 — Infrastructure
-  # The `GET /health` (or `HEAD /health`) and `GET /setup/status` endpoints are always unauthenticated — they bypass the `Au…
+  # The `GET /health` (or `HEAD /health`) and `GET /setup/status` endpoints are always unauthenticated. They bypass the `Aut…
 
   Scenario: REQ-539 default behaviour
     Given an auth provider is configured
