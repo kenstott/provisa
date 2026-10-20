@@ -12,8 +12,8 @@
 
 The ``test`` instance: an isolated server on Trino. A Python code source's image is built
 through the API, loaded and run on the stack's compose network, where both Trino and this host
-reach it, and connected, which switches the source to built mode. Its table declares no landing
-TTL, so a read joining it to a Postgres table is the engine's, Trino attaching the host over
+reach it, and connected, which switches the source to built mode. Its table declares a landing TTL
+of 0, so a read joining it to a Postgres table is the engine's, Trino attaching the host over
 pgwire with Provisa's identity and verifying the host by its pinned certificate: the join is
 answered, the host's function called once with the read's parameter, and the plan reads the code
 table from the host's catalog, not from a landed copy. A read of the code table alone is answered
@@ -176,11 +176,12 @@ def code_source(server):
         _column("asked", "text"),
         _parameter("tag", "text", required=False),
     ]
-    # No landing TTL of its own: once built, a read across sources attaches the host.
+    # A landing TTL of 0: in dev mode each read lands its rows for itself alone (REQ-1907 asks a
+    # landed table for one), and once built, a read across sources attaches the host (REQ-2100).
     registered = _admin(
         server,
         f'registerTable(input: {{sourceId: "{_SOURCE}", domainId: "fx", schemaName: "default", '
-        f'tableName: "regions", columns: [{", ".join(columns)}]}})',
+        f'tableName: "regions", cacheTtl: 0, columns: [{", ".join(columns)}]}})',
     )
     _admin(server, release_field(registered_id(registered["message"])))
 
