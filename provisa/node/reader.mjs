@@ -131,12 +131,32 @@ function write(type, at) {
   return { kind: "object", name: null, fields: properties.map((p) => field(p, at)) };
 }
 
+// REQ-2100: a tag's argument (`@gte_signup since`) and an inline declaration before a parameter
+// (`/* @gte_signup */ since?: Date`).
+const INLINE = /^\/\*\s*@([A-Za-z_][A-Za-z0-9_]*)\s*\*\/$/;
+
+function tagText(tag) {
+  const comment = typeof tag.comment === "string" ? tag.comment : ts.getTextOfJSDocComment(tag.comment);
+  return (comment ?? "").trim();
+}
+
+function inlinePushdown(parameter) {
+  const text = parameter.getSourceFile().getFullText();
+  return (ts.getLeadingCommentRanges(text, parameter.pos) ?? [])
+    .map((r) => INLINE.exec(text.slice(r.pos, r.end)))
+    .filter(Boolean)
+    .map((m) => m[1]);
+}
+
 function exported(symbol) {
   const target = symbol.flags & ts.SymbolFlags.Alias ? checker.getAliasedSymbol(symbol) : symbol;
   const declaration = target.valueDeclaration ?? target.declarations?.[0];
-  const tags = declaration ? ts.getJSDocTags(declaration).map((t) => t.tagName.text) : [];
+  const jsdoc = declaration ? ts.getJSDocTags(declaration) : [];
+  const tags = jsdoc.map((t) => t.tagName.text);
+  // Which of these declare a pushdown is Provisa's (provisa/codesource/manifest.py).
+  const tagArguments = jsdoc.map((t) => ({ tag: t.tagName.text, text: tagText(t) }));
   const description = ts.displayPartsToString(target.getDocumentationComment(checker)).trim();
-  const out = { name: symbol.getName(), tags, description, signatures: [] };
+  const out = { name: symbol.getName(), tags, tag_arguments: tagArguments, description, signatures: [] };
   if (!declaration) return out;
   const type = checker.getTypeOfSymbolAtLocation(target, declaration);
   for (const signature of type.getCallSignatures()) {
@@ -148,6 +168,7 @@ function exported(symbol) {
           optional: checker.isOptionalParameter(d),
           rest: Boolean(d.dotDotDotToken),
           type: write(checker.getTypeOfSymbolAtLocation(p, d), d),
+          pushdown: ts.isParameter(d) ? inlinePushdown(d) : [],
         };
       }),
       returns: write(signature.getReturnType(), declaration),

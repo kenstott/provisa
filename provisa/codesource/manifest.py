@@ -37,10 +37,12 @@ Every problem is collected, and the bundle is refused with all of them at once.
 # Requirements: REQ-1984, REQ-1993
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import Any
 
 from provisa.codesource.bundle import BundleRefused
+from provisa.codesource.pushdown import Pushdown, parse, type_problem
 
 TABLE, COMMAND, STREAM = "table", "command", "stream"
 PROVISA_TAGS = frozenset({TABLE, COMMAND, STREAM})
@@ -139,6 +141,8 @@ class Parameter:
     nullable: bool
     #: A non-optional parameter is required by the source (REQ-1986's native_filter_required).
     required: bool
+    #: REQ-2100: the predicate on a return column this parameter is given, if any.
+    pushes: Pushdown | None = None
 
 
 @dataclass(frozen=True)
@@ -229,6 +233,9 @@ def manifest_json(manifest: Manifest) -> dict:
                         "shape": _shape_json(p.shape),
                         "nullable": p.nullable,
                         "required": p.required,
+                        "pushes": None
+                        if p.pushes is None
+                        else {"column": p.pushes.column, "op": p.pushes.op},
                     }
                     for p in e.parameters
                 ],
@@ -253,7 +260,10 @@ def manifest_from_json(raw: dict) -> Manifest:
         for p in e["parameters"]:
             shape = _shape(p["shape"])
             assert shape is not None
-            parameters.append(Parameter(p["name"], shape, p["nullable"], p["required"]))
+            pushes = p["pushes"] and Pushdown(p["pushes"]["column"], p["pushes"]["op"])
+            parameters.append(
+                Parameter(p["name"], shape, p["nullable"], p["required"], pushes or None)
+            )
         exports.append(
             Export(
                 e["name"],
@@ -385,6 +395,116 @@ def _rows(mapper: _Mapper, export: str, element: dict) -> tuple[Shape, bool]:
     return shape, False
 
 
+def ir_of(shape: Shape) -> str:
+    """The IR type of a value of ``shape``: a scalar's own, an enum's text, a list's ``list``, and
+    an object's json."""
+    if isinstance(shape, Scalar):
+        return shape.ir
+    if isinstance(shape, EnumOf):
+        return "text"
+    if isinstance(shape, ListOf):
+        return "list"
+    return "json"
+
+
+def _declared_pushdown(entry: dict, signature: dict, rules: Rules) -> dict[str, list[str]]:
+    """Each parameter's explicit pushdown declarations (REQ-2100), by parameter: the tag lines
+    naming it, then its inline comment or ``Annotated`` strings, as the reader wrote them."""
+    declared: dict[str, list[str]] = {
+        p["name"]: list(p.get("pushdown", [])) for p in signature["parameters"]
+    }
+    for tag, parameter in _pushdown_tags(entry, rules):
+        declared.setdefault(parameter, []).insert(0, tag)
+    return declared
+
+
+_IDENTIFIER = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
+
+
+def _pushdown_tags(entry: dict, rules: Rules) -> list[tuple[str, str]]:
+    """REQ-2100: the export's pushdown tag lines, ``(tag, parameter)``: a tag that is neither
+    Provisa's nor one of the language's own, whose argument is one identifier."""
+    return [
+        (t["tag"], t["text"])
+        for t in entry.get("tag_arguments", [])
+        if t["tag"] not in PROVISA_TAGS
+        and t["tag"] not in rules.standard_tags
+        and _IDENTIFIER.match(t["text"])
+    ]
+
+
+def _resolve_pushdown(
+    mapper: _Mapper,
+    name: str,
+    parameters: list[Parameter],
+    declared: dict[str, list[str]],
+    row: Shape,
+    preview: bool,
+) -> list[Parameter]:
+    """``parameters`` with the predicate each is given (REQ-2100), every problem collected."""
+    problems = mapper.problems
+    known = {p.name for p in parameters}
+    for parameter in sorted(p for p, d in declared.items() if d and p not in known):
+        problems.append(
+            f"{name}: @{declared[parameter][0]} names {parameter}, which is not a parameter"
+        )
+    explicit = {p: d for p, d in declared.items() if d and p in known}
+    if preview:
+        for parameter in explicit:
+            problems.append(
+                f"{name}({parameter}): its rows' columns are found by a preview, so no predicate "
+                "can be pushed to it"
+            )
+        return parameters
+    fields = (
+        mapper.types[row.name].fields
+        if isinstance(row, Named) and row.name in mapper.types
+        else row.fields
+        if isinstance(row, Anonymous)
+        else ()
+    )
+    columns = {f.name: f for f in fields}
+    names = frozenset(columns)
+    out: list[Parameter] = []
+    taken: dict[Pushdown, str] = {}
+    for p in parameters:
+        spellings = explicit.get(p.name, [])
+        if len(spellings) > 1:
+            problems.append(f"{name}({p.name}): declared to take two predicates, {spellings}")
+            out.append(p)
+            continue
+        if spellings:
+            pushes = parse(spellings[0], names)
+            if pushes is None:
+                problems.append(
+                    f"{name}({p.name}): {spellings[0]} names no return column of {name}"
+                )
+                out.append(p)
+                continue
+        else:
+            pushes = parse(p.name, names)
+            if pushes is None:
+                out.append(p)
+                continue
+        column = columns[pushes.column]
+        element = ir_of(p.shape.element) if isinstance(p.shape, ListOf) else None
+        problem = type_problem(pushes.op, ir_of(column.shape), ir_of(p.shape), element)
+        if problem:
+            problems.append(f"{name}({p.name}): {problem}")
+            out.append(p)
+            continue
+        if pushes in taken:
+            problems.append(
+                f"{name}: {pushes.op} on {pushes.column} is pushed to both {taken[pushes]} and "
+                f"{p.name}"
+            )
+            out.append(p)
+            continue
+        taken[pushes] = p.name
+        out.append(Parameter(p.name, p.shape, p.nullable, p.required, pushes))
+    return out
+
+
 def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     """The bundle's tables, commands and streams, from the reader's output, under its language's
     ``rules``; refused with every problem when any rule is broken."""
@@ -395,8 +515,9 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     exports: list[Export] = []
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
+        pushdown_tags = {tag for tag, _ in _pushdown_tags(entry, rules)}
         for tag in tags:
-            if tag not in PROVISA_TAGS and tag not in rules.standard_tags:
+            if tag not in PROVISA_TAGS and tag not in rules.standard_tags | pushdown_tags:
                 problems.append(f"{name}: unknown tag @{tag}")
         kinds = sorted(PROVISA_TAGS.intersection(tags))
         if not kinds:
@@ -430,6 +551,9 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 problems.append(f"{name}: @table returns a single value, not a collection of rows")
                 continue
             row, preview = _rows(mapper, name, element)
+            parameters = _resolve_pushdown(
+                mapper, name, parameters, _declared_pushdown(entry, signature, rules), row, preview
+            )
             exports.append(
                 Export(name, kind, entry["description"], tuple(parameters), row, preview)
             )
@@ -442,10 +566,19 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 )
                 continue
             row, preview = _rows(mapper, name, returns["element"])
+            parameters = _resolve_pushdown(
+                mapper, name, parameters, _declared_pushdown(entry, signature, rules), row, preview
+            )
             exports.append(
                 Export(name, kind, entry["description"], tuple(parameters), row, preview)
             )
         else:
+            for parameter, spellings in _declared_pushdown(entry, signature, rules).items():
+                if spellings:
+                    problems.append(
+                        f"{name}({parameter}): @{spellings[0]} pushes a predicate, and a "
+                        "@command has no columns to filter"
+                    )
             result = _unwrap_promise(returns)
             if result["kind"] == "undefined":
                 shape, many = None, False
