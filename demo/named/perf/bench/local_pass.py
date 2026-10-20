@@ -130,13 +130,20 @@ def postgres_only_config(text: str) -> str:
     """The perf config without the bench stores the pass does not start: their sources, their
     tables and every relationship that names one of those tables."""
     config = yaml.safe_load(text)
-    gone = {t["table"] for t in config["tables"] if t.get("source_id") in OTHER_STORES}
+    # a relationship names a table by its name or its alias, at either end or as its via table
+    gone = {
+        name
+        for t in config["tables"]
+        if t.get("source_id") in OTHER_STORES
+        for name in (t["table"], t.get("alias"))
+        if name
+    }
     config["sources"] = [s for s in config["sources"] if s["id"] not in OTHER_STORES]
     config["tables"] = [t for t in config["tables"] if t.get("source_id") not in OTHER_STORES]
     config["relationships"] = [
         r
         for r in config["relationships"]
-        if r.get("source_table_id") not in gone and r.get("target_table_id") not in gone
+        if not {r.get("source_table_id"), r.get("target_table_id"), r.get("via_table")} & gone
     ]
     return yaml.safe_dump(config, sort_keys=False)
 
