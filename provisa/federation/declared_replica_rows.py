@@ -159,6 +159,16 @@ def declared_files(directory: Path) -> list[Path]:
     return sorted(root.glob("*/*.tsv")) if root.is_dir() else []
 
 
+def declares_rows(source_id: str) -> bool:
+    """Whether the bound org's config declares the rows of ``source_id``'s tables: a source its
+    demo fakes (a cloud inventory, an incident system) that is never contacted."""
+    from provisa.api.demo_templates import declared_rows_directory
+    from provisa.core.request_context import require_current_org
+
+    directory = declared_rows_directory(require_current_org())
+    return directory is not None and (directory / ROWS_DIR / source_id).is_dir()
+
+
 async def adopt_declared_rows(state: Any, directory: Path) -> list[tuple[str, str, str]]:
     """Land each table declared under ``directory``'s ``replica_rows`` as the bound org's replica
     and record it built; a table already landed here from these very rows is left as it is.
