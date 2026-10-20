@@ -72,6 +72,7 @@ import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
+import { assignableDomainIds } from "../lib/internalDomains";
 
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
@@ -211,8 +212,8 @@ export function AdminPage() {
   const domainsEnabled = settings?.naming.use_domains !== false;
 
   // REQ-1940: sort and group are the shared list mechanism.
-  const IMPLICIT_DOMAIN_IDS = new Set(["", "meta", "ops"]);
-  const userDomains = domains.filter((d) => !IMPLICIT_DOMAIN_IDS.has(d.id));
+  const assignable = new Set(assignableDomainIds(domains.map((d) => d.id)));
+  const userDomains = domains.filter((d) => assignable.has(d.id));
   const domainColumns: ListColumn<(typeof domains)[number]>[] = [
     { key: "id", label: t("adminPage.colId"), sortValue: (d) => d.id },
     {

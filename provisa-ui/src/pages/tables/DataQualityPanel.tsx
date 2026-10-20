@@ -49,11 +49,11 @@ import { useDqContract, useTables } from "../../hooks/useAdminQueries";
 import type { DqCheck, DqCheckCatalog, DqCheckKind, DqDryRun } from "../../types/admin";
 import { CollapsibleSection } from "./CollapsibleSection";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
+import { isInternalDomain } from "../../lib/internalDomains";
 
 /** A column-less key for the dataset-level checks, matching the server's empty `column_name`. */
 const DATASET_SCOPE = "";
 /** The platform's own domains — never a scan target. */
-const SYSTEM_DOMAIN_IDS = new Set(["meta", "ops"]);
 
 interface DataQualityPanelProps {
   /** The checker source type this results table's scans come from — soda | great_expectations. */
@@ -288,7 +288,7 @@ export function DataQualityPanel({
               data={governedTables
                 // Provisa's own meta/ops tables are governed too, but a checker observes the
                 // operator's data, not the platform's bookkeeping.
-                .filter((tbl) => tbl.dqDataset !== null && !SYSTEM_DOMAIN_IDS.has(tbl.domainId))
+                .filter((tbl) => tbl.dqDataset !== null && !isInternalDomain(tbl.domainId))
                 .map((tbl) => {
                   const [, domain, table] = (tbl.dqDataset as string).split("/");
                   return { value: tbl.dqDataset as string, label: `${domain}.${table}` };
