@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import functools
 import re
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from typing import Any
 
 import sqlglot
@@ -91,14 +91,22 @@ def _resolve_value(val_expr: exp.Expr, params: list[Any]) -> tuple[Any, int | No
 
 
 def extract_nf_args(
-    sql: str, params: list[Any], parameters: Collection[str]
-) -> tuple[str, list[Any], dict[str, Any]]:  # REQ-301, REQ-1986
+    sql: str,
+    params: list[Any],
+    parameters: Collection[str],
+    frozen: Mapping[str, str | None] | None = None,
+) -> tuple[str, list[Any], dict[str, Any]]:  # REQ-301, REQ-1986, REQ-2031
     """Extract _nf_* WHERE conditions from SQL (postgres dialect).
 
     ``parameters`` are the parameter columns of the statement's context
     (``CompilationContext.native_filter_columns``): only a condition on one of them is a native
     argument. A ``_nf_`` column that is no parameter there -- a generated table's parameter in a
     Test (synthetic) environment, an ordinary column of its copy (REQ-1942) -- stays a filter.
+
+    ``frozen``: the parameters of a table kept for good, each with the landed column its value
+    filters (``materialization.frozen_parameter_filters``, REQ-2031). Its rows are landed, never
+    fetched under an argument, so a condition on one is kept as a filter on that column; one with
+    no such column is refused by name.
 
     Returns (clean_sql, clean_params, nf_args) where:
     - clean_sql has _nf_* conditions removed and $N refs renumbered
@@ -116,7 +124,20 @@ def extract_nf_args(
     if where is None:
         return sql, params, {}
 
-    known = {p.lower() for p in parameters if p.startswith(_NF_PREFIX)}
+    landed = {k.lower(): v for k, v in (frozen or {}).items()}
+    renamed = False
+    for column in where.find_all(exp.Column):
+        if column.name.lower() not in landed:
+            continue
+        target = landed[column.name.lower()]
+        if target is None:
+            raise ValueError(
+                f"{column.name} is a parameter of a table read from its landed rows, and they hold"
+                f" no column {column.name[len(_NF_PREFIX) :]!r} for it to filter"
+            )
+        column.set("this", exp.to_identifier(target, quoted=True))
+        renamed = True
+    known = {p.lower() for p in parameters if p.startswith(_NF_PREFIX)} - set(landed)
     conditions = _flatten_and(where.this)
     nf_args: dict[str, Any] = {}
     consumed_indices: set[int] = set()
@@ -144,7 +165,7 @@ def extract_nf_args(
         keep.append(cond)
 
     if not nf_args:
-        return sql, params, {}
+        return (ast.sql(dialect="postgres") if renamed else sql), params, {}
 
     new_condition = _rebuild_and(keep)
     if new_condition is None:

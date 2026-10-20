@@ -25,6 +25,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from provisa.federation.replica_address import ReplicaRoutes
+
 from provisa.core.models import Column, Table
 from provisa.cosmosdb.fetch import CosmosConnection, CosmosSourceInvalid, iter_query_batches
 from provisa.cosmosdb.table import CosmosTableRefused, check_table, plan
@@ -287,6 +289,7 @@ async def test_a_required_partition_key_left_out_is_refused_before_any_read():
         api_endpoints={},
         graphql_remote_sources={},
         source_types={"cosmos": "cosmosdb"},
+        replica_routes=ReplicaRoutes(),
         tables=[table],
     )
     with patch("provisa.cosmosdb.table.read", AsyncMock()) as ran:
@@ -312,6 +315,7 @@ async def test_a_parameterized_cosmos_table_is_read_per_statement_and_landed():
         api_endpoints={},
         graphql_remote_sources={},
         source_types={"cosmos": "cosmosdb"},
+        replica_routes=ReplicaRoutes(),
         tables=[table],
         federation_engine=engine,
         source_cache={},
