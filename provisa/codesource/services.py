@@ -60,6 +60,8 @@ class ServiceGrant:
     source_id: str
     secrets: Mapping[str, str] = field(default_factory=dict)
     admin_db: Any = None
+    #: REQ-2105: the source's monthly (UTC) cap on what its LLM calls cost, USD; None: no cap.
+    llm_cap_usd: float | None = None
 
 
 class ServiceRefused(Exception):
@@ -99,6 +101,21 @@ def declared(raw: Any) -> dict[str, str]:
     raise BundleRefused("secrets_invalid", "a source's secrets are a list of names or a mapping")
 
 
+def llm_cap(raw: Any) -> float | None:
+    """A mapping's ``llm.cap_usd`` (REQ-2105): the source's monthly cap on what its LLM calls
+    cost, USD. Refused by name when it is not a number of zero or more."""
+    from provisa.codesource.bundle import BundleRefused
+
+    if raw is None:
+        return None
+    cap = raw.get("cap_usd") if isinstance(raw, dict) else raw
+    if cap is None:
+        return None
+    if isinstance(cap, bool) or not isinstance(cap, (int, float)) or cap < 0:
+        raise BundleRefused("llm_cap_invalid", "a source's llm.cap_usd is a number of 0 or more")
+    return float(cap)
+
+
 def _is_reference(value: str) -> bool:
     return (value.startswith("${secret:") or value.startswith("${env:")) and value.endswith("}")
 
@@ -121,20 +138,48 @@ def address(token: str) -> str:
     return f"http://{SERVICES_HOST}/{token}"
 
 
-def answer(method: str, path: str) -> tuple[int, bytes]:
-    """The answer to one request the proxy took for :data:`SERVICES_HOST`: its status and body."""
-    try:
-        return 200, _answer(method, path).encode()
-    except ServiceRefused as refused:
-        return refused.status, refused.reason.encode()
+#: The answer's content type: a secret is its value, as text; the LLM service speaks JSON.
+TEXT = "text/plain; charset=utf-8"
+JSON = "application/json"
 
 
-def _answer(method: str, path: str) -> str:
+def answer(method: str, path: str, body: bytes = b"") -> tuple[int, str, bytes]:
+    """The answer to one request the proxy took for :data:`SERVICES_HOST`: its status, content
+    type and body. A refusal from the LLM service is JSON, as an OpenAI-compatible SDK reads one."""
     token, _, rest = path.lstrip("/").partition("/")
+    service = rest.partition("/")[0]
+    try:
+        if service == "llm":
+            return 200, JSON, _llm(token, method, rest.partition("/")[2], body)
+        return 200, TEXT, _answer(token, method, rest).encode()
+    except ServiceRefused as refused:
+        if service == "llm":
+            from provisa.codesource.llm_service import refusal_body
+
+            return refused.status, JSON, refusal_body(refused.reason, refused.status)
+        return refused.status, TEXT, refused.reason.encode()
+
+
+def _grant(token: str) -> ServiceGrant:
     with _lock:
         grant = _grants.get(token)
     if grant is None:
         raise ServiceRefused(401, "the services token is not valid; its worker has stopped")
+    return grant
+
+
+def _llm(token: str, method: str, path: str, body: bytes) -> bytes:
+    """REQ-2105: the OpenAI-compatible LLM service (provisa/codesource/llm_service.py)."""
+    from provisa.codesource import llm_service
+    from provisa.core.connection_loop import connection_loop
+
+    grant = _grant(token)
+    with connection_loop() as cl:
+        return cl.run(llm_service.answer(grant, method, path.split("?", 1)[0], body))
+
+
+def _answer(token: str, method: str, rest: str) -> str:
+    grant = _grant(token)
     service, _, name = rest.partition("/")
     if service != "secrets":
         raise ServiceRefused(404, f"Provisa offers no service {service!r} to code")

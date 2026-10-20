@@ -79,6 +79,44 @@ The request goes through the same egress proxy as the rest of your code's traffi
 
 A name the source doesn't list is refused, and so is a secret that can't be resolved. The refusal names the secret, never its value. Every read is recorded in the organization's audit trail with the source, the name and the time, and no value is ever written to a log. The host the API is on still has to be on the egress allow-list.
 
+## Calling a model {: #calling-a-model }
+
+Your code can call a language model through Provisa instead of holding a vendor key. `$PROVISA_SERVICES/llm/v1` is an OpenAI-compatible endpoint, so any OpenAI SDK works when you point its base URL there. The address is the credential, so the key the SDK asks for can be any text. In Python:
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url=f"{os.environ['PROVISA_SERVICES']}/llm/v1", api_key="unused")
+reply = client.chat.completions.create(
+    model="provisa:sql_generation",
+    messages=[{"role": "user", "content": "Summarise this account's last quarter."}],
+)
+```
+
+In TypeScript:
+
+```typescript
+import OpenAI from "openai";
+
+const client = new OpenAI({ baseURL: `${process.env.PROVISA_SERVICES}/llm/v1`, apiKey: "unused" });
+const reply = await client.chat.completions.create({
+  model: "provisa:sql_generation",
+  messages: [{ role: "user", content: "Summarise this account's last quarter." }],
+});
+```
+
+Name a model by its role, as `provisa:<role>`: you get whichever model your organization assigns that role under **Admin → AI Models**, and it follows that choice when an administrator changes it. You can also name a model directly when a role is assigned it. For embeddings, `$PROVISA_SERVICES/llm/v1/embeddings` takes any of your organization's vector models. Any other model is refused by name. The call goes out through your organization's own vendors, endpoints and keys, and what it sends passes through Provisa's redaction rules first. Streaming isn't offered: send `stream: false`, which is the default.
+
+Every call is recorded for the source, with the model, its tokens and its cost at the model's entry in **Polly model prices**, and is written to the organization's audit trail. To limit what a source spends, set **LLM monthly cap** on its form, in USD. In a config file it goes in the mapping:
+
+```yaml
+mapping:
+  llm: {cap_usd: 20}
+```
+
+A source with a cap can call only models that have a price there. Once its spending for the month (UTC) reaches the cap, its calls are refused until the month turns. Calls already under way when the cap is reached still finish, so the month can end slightly over the cap.
+
 ## Reading a table {: #reading-a-table }
 
 A code source's table is landed, never read in place. Provisa calls the function with the read's arguments, checks each row against the columns, and keeps the rows under those arguments for the table's cache TTL. Visibility, masks and row rules then apply to the landed rows, as they do for any table.

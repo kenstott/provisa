@@ -28,6 +28,9 @@
     "kept": "Kept: {{name}}",
     "secrets": "Secrets",
     "secretsHint": "The organization secrets this code may read. It fetches each one when it runs, from $PROVISA_SERVICES/secrets/<name>; nothing else in the vault is readable, and every read is audited.",
-    "secretsPlaceholder": "No secrets"
+    "secretsPlaceholder": "No secrets",
+    "llmCap": "LLM monthly cap",
+    "llmCapHint": "What this code's calls to $PROVISA_SERVICES/llm may cost each month (UTC), in USD. With a cap, it may use only models priced in Polly model prices, and its calls are refused once the month reaches the cap. Empty: no cap.",
+    "llmCapPlaceholder": "No cap"
   }
 }

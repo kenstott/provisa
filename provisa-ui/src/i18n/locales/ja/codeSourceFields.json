@@ -28,6 +28,9 @@
     "kept": "保存済み: {{name}}",
     "secrets": "シークレット",
     "secretsHint": "このコードが読み取れる組織のシークレット。実行時に $PROVISA_SERVICES/secrets/<name> から一つずつ取得します。ボールト内のほかのものは読み取れず、すべての読み取りが監査されます。",
-    "secretsPlaceholder": "シークレットなし"
+    "secretsPlaceholder": "シークレットなし",
+    "llmCap": "LLM 月額上限",
+    "llmCapHint": "このコードによる $PROVISA_SERVICES/llm への呼び出しが毎月 (UTC) かけられる費用 (USD)。上限がある場合、Polly のモデル価格に価格のあるモデルのみ使用でき、その月の費用が上限に達すると呼び出しは拒否されます。空欄: 上限なし。",
+    "llmCapPlaceholder": "上限なし"
   }
 }

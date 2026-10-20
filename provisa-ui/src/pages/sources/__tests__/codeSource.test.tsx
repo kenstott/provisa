@@ -12,6 +12,7 @@
 // lockfile beside it), a Git repository at a commit, or an uploaded archive -- and, for Node, the
 // runtime it runs on. What the form holds is the source's mapping, and an edit refills the form.
 // REQ-2104: the org secrets its code may read, picked by name.
+// REQ-2105: the monthly cap on what its calls to the LLM service cost.
 
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -107,6 +108,18 @@ describe("what a code source saves", () => {
     expect(JSON.parse(codeMappingJson("python", { code_package: "a", code_version: "1" }))).not.toHaveProperty(
       "secrets",
     );
+  });
+
+  it("keeps a monthly LLM cap, and none when the field is empty", () => {
+    const capped = JSON.parse(
+      codeMappingJson("python", { code_package: "a", code_version: "1", code_llm_cap: "12.5" }),
+    );
+    expect(capped.llm).toEqual({ cap_usd: 12.5 });
+    expect(codeFieldsFromMapping(JSON.stringify(capped)).code_llm_cap).toBe("12.5");
+    expect(codeFieldsFromMapping(JSON.stringify({ ...capped, llm: { cap_usd: 0 } })).code_llm_cap).toBe("0");
+    expect(
+      JSON.parse(codeMappingJson("python", { code_package: "a", code_version: "1", code_llm_cap: "" })),
+    ).not.toHaveProperty("llm");
   });
 
   it("needs what its origin names, and a full commit", () => {

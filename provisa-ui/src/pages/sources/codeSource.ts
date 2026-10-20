@@ -17,6 +17,7 @@
 //   entry     a Python source's entry module, when its code has more than one
 //   secrets   REQ-2104: the names its code may read through Provisa's services, each a vault
 //             reference (the names alone when each is the org secret of that name)
+//   llm       REQ-2105: {cap_usd}, the monthly cap on what its calls to the LLM service cost
 //
 // The content hash of the code is pinned by the server when the source is saved.
 
@@ -87,12 +88,14 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
       : null;
   const entry = (fields.code_entry ?? "").trim();
   const secrets = secretsMapping(declaredSecrets(fields));
+  const cap = (fields.code_llm_cap ?? "").trim();
   return JSON.stringify({
     runtime: type === PYTHON ? PYTHON : (fields.code_runtime ?? "node"),
     code,
     ...(lockfile ? { lockfile } : {}),
     ...(type === PYTHON && entry ? { entry } : {}),
     ...(secrets ? { secrets } : {}),
+    ...(cap ? { llm: { cap_usd: Number(cap) } } : {}),
   });
 }
 
@@ -104,6 +107,7 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     lockfile?: { filename: string; upload: string } | null;
     entry?: string;
     secrets?: string[] | Record<string, string>;
+    llm?: { cap_usd?: number };
   };
   const code = m.code ?? {};
   const secrets = Array.isArray(m.secrets)
@@ -125,6 +129,7 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     lockfile_filename: m.lockfile?.filename ?? "",
     code_entry: m.entry ?? "",
     code_secrets: Object.keys(secrets).length ? JSON.stringify(secrets) : "",
+    code_llm_cap: m.llm?.cap_usd === undefined ? "" : String(m.llm.cap_usd),
   };
 }
 

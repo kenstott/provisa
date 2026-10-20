@@ -1782,6 +1782,24 @@ preserved_snapshots = Table(
 # REQ-1303/REQ-1308: the org's administrative trail — grants, revocations, offboardings and role
 # changes performed against THIS org, including a platform_admin's intervention. Distinct from
 # query_audit_log, which records data access. Mirrors the schema.sql DDL of the same name.
+# REQ-2105: what each code source's calls to Provisa's LLM service used and cost, one row a call;
+# a source's monthly cap is read against the sum of its month's rows.
+code_source_llm_usage = Table(
+    "code_source_llm_usage",
+    metadata,
+    Column("id", BigInteger(), primary_key=True, autoincrement=True),
+    Column("source_id", Text, nullable=False),
+    Column("month", Text, nullable=False),  # YYYY-MM, UTC
+    Column("model", Text, nullable=False),
+    Column("input_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("output_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("cache_read_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("cache_write_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("cost_usd", Float, nullable=True),  # None: the model has no polly.model_prices entry
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+
 admin_audit_log = Table(
     "admin_audit_log",
     metadata,

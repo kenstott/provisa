@@ -45,6 +45,9 @@ CONNECT_TIMEOUT_S = 30.0
 
 _MAX_HEAD = 64 * 1024
 
+#: The largest request body Provisa's services read (an LLM call's messages, REQ-2105).
+_MAX_BODY = 32 * 1024 * 1024
+
 
 def _host_port(target: str, default_port: int) -> tuple[str, int]:
     if target.startswith("["):  # [v6]:port
@@ -141,7 +144,7 @@ class EgressProxy:
         authority, _, path = target[len("http://") :].partition("/")
         host, port = _host_port(authority, 80)
         if host.lower() == services.SERVICES_HOST:
-            self._services(client, method, f"/{path}")
+            self._services(client, method, f"/{path}", head)
             return
         upstream = self._open(client, host, port)
         if upstream is None:
@@ -206,12 +209,34 @@ class EgressProxy:
         if len(parts) != 3:
             self._refuse(client, 400, "a request the proxy cannot read")
             return
-        self._services(client, parts[0], parts[1])
+        self._services(client, parts[0], parts[1], head)
 
-    def _services(self, client: socket.socket, method: str, path: str) -> None:
+    def _body(self, client: socket.socket, head: bytes) -> bytes | None:
+        """The request's body, by its Content-Length: what was read with the head, and the rest."""
+        headers, _, body = head.partition(b"\r\n\r\n")
+        length = 0
+        for line in headers.split(b"\r\n")[1:]:
+            name, _, value = line.partition(b":")
+            if name.strip().lower() == b"content-length":
+                if not value.strip().isdigit() or int(value) > _MAX_BODY:
+                    self._refuse(client, 413, "a request body larger than the services read")
+                    return None
+                length = int(value)
+        while len(body) < length:
+            chunk = client.recv(65536)
+            if not chunk:
+                return None
+            body += chunk
+        return body[:length]
+
+    def _services(self, client: socket.socket, method: str, path: str, head: bytes) -> None:
         """Answer a request to Provisa's services: a value or a refusal, never forwarded."""
+        request = self._body(client, head)
+        if request is None:
+            return
+        content_type = services.TEXT
         try:
-            status, body = services.answer(method, path)
+            status, content_type, body = services.answer(method, path, request)
         except Exception as exc:  # allow-ble: a failure of the services themselves (the vault or the audit trail unreachable) is answered as one, by its type alone; its message could carry what it read
             log.exception("code-source services failed on %s", method)
             status, body = 500, f"Provisa's services failed: {type(exc).__name__}".encode()
@@ -220,7 +245,7 @@ class EgressProxy:
         try:
             client.sendall(
                 f"HTTP/1.1 {status} {'OK' if status == 200 else 'Refused'}\r\n"
-                f"Content-Type: text/plain; charset=utf-8\r\nContent-Length: {len(body)}\r\n"
+                f"Content-Type: {content_type}\r\nContent-Length: {len(body)}\r\n"
                 "Cache-Control: no-store\r\nConnection: close\r\n\r\n".encode()
                 + body
             )

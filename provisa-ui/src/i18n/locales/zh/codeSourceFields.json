@@ -28,6 +28,9 @@
     "kept": "已保存：{{name}}",
     "secrets": "密钥",
     "secretsHint": "此代码可读取的组织密钥。它在运行时从 $PROVISA_SERVICES/secrets/<name> 逐个获取；保管库中的其他内容均不可读，且每次读取都会被审计。",
-    "secretsPlaceholder": "无密钥"
+    "secretsPlaceholder": "无密钥",
+    "llmCap": "LLM 每月上限",
+    "llmCapHint": "此代码对 $PROVISA_SERVICES/llm 的调用每月 (UTC) 可花费的金额，单位为美元。设置上限后，它只能使用在 Polly 模型价格中有价格的模型，且当月费用达到上限后其调用会被拒绝。留空：无上限。",
+    "llmCapPlaceholder": "无上限"
   }
 }

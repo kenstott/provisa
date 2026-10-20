@@ -1836,6 +1836,23 @@ CREATE TABLE IF NOT EXISTS preserved_snapshots (
 );
 
 
+-- REQ-2105: what each code source's calls to Provisa's LLM service used and cost, one row a call;
+-- a source's monthly cap is read against the sum of its month's rows. Mirrors
+-- schema_org.code_source_llm_usage.
+CREATE TABLE IF NOT EXISTS code_source_llm_usage (
+    id                 BIGSERIAL PRIMARY KEY,
+    source_id          TEXT NOT NULL,
+    month              TEXT NOT NULL,               -- YYYY-MM, UTC
+    model              TEXT NOT NULL,
+    input_tokens       BIGINT NOT NULL DEFAULT 0,
+    output_tokens      BIGINT NOT NULL DEFAULT 0,
+    cache_read_tokens  BIGINT NOT NULL DEFAULT 0,
+    cache_write_tokens BIGINT NOT NULL DEFAULT 0,
+    cost_usd           DOUBLE PRECISION,            -- NULL: the model has no polly.model_prices entry
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
 -- offboarded, a member's role changed. Separate from query_audit_log (which records data access):
 -- an intervention by a platform_admin must be visible to the org afterward, and the query trail is

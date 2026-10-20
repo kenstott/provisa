@@ -69,6 +69,8 @@ class CodeConfig:
     content_hash: str | None
     #: REQ-2104: the names the code may read, each its vault reference, as written.
     secrets: dict[str, str] = field(default_factory=dict)
+    #: REQ-2105: the monthly cap on what its LLM calls cost, USD; None: no cap.
+    llm_cap_usd: float | None = None
 
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
@@ -111,6 +113,7 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         entry=mapping.get("entry") or None,
         content_hash=mapping.get("content_hash") or None,
         secrets=services.declared(mapping.get("secrets")),
+        llm_cap_usd=services.llm_cap(mapping.get("llm")),
     )
 
 
@@ -217,7 +220,11 @@ def _prepare_node(
 def _granted(command: HostCommand, source_id: str, config: CodeConfig, ctx: Context) -> HostCommand:
     """``command`` with the source's services grant: its org and declared secrets (REQ-2104)."""
     grant = services.ServiceGrant(
-        org_id=ctx.org_id, source_id=source_id, secrets=config.secrets, admin_db=ctx.admin_db
+        org_id=ctx.org_id,
+        source_id=source_id,
+        secrets=config.secrets,
+        admin_db=ctx.admin_db,
+        llm_cap_usd=config.llm_cap_usd,
     )
     return replace(command, services=grant)
 

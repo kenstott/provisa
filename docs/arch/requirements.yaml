@@ -85437,6 +85437,41 @@ And its prod source reads the shop's database with it, while the stored source k
   - ops
   docs:
   - named-demos.md
+- id: REQ-2105
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: MUST
+  type: behavioral
+  description: "Provisa's services to a code source's worker (REQ-2104) include an OpenAI-compatible LLM service at $PROVISA_SERVICES/llm/v1: POST chat/completions and embeddings, so any SDK works with its base URL there and no key, the worker's scoped token being in the address; the egress proxy answers it for a local worker. A request names a model as provisa:<role>, the model the org's AI Models assign that role, or by a model id a role is assigned (for embeddings, one of the org's vector models); any other is refused naming it. The call is routed through the org's AI Models configuration -- its vendors, endpoints and keys, a sandbox-tier org's through the tier's sandbox.ai_* settings -- and what goes out is redacted centrally. Streaming is refused by name. Every call is metered for its source in code_source_llm_usage (tokens, and cost at the model's polly.model_prices entry) and audited in the org's administrative trail (source, model, tokens, time). A source's mapping may set llm.cap_usd, a calendar-month (UTC) cap on its metered cost: a capped source may call only models with a price, and once its month's cost reaches the cap its calls are refused (429) naming the source and the cap; an uncapped source's calls to an unpriced model are metered as tokens only. The source form has an LLM monthly cap field."
+  use_case: "A Python code table that summarises each account calls provisa:sql_generation with the OpenAI SDK, getting whichever model the org assigns that role through the org's own keys, its spend held under a monthly cap and every call visible in the audit trail."
+  scenario: "Given a python source summaries with llm.cap_usd 20 and the org's AI Models assigning sql_generation a priced model
+
+When its worker POSTs $PROVISA_SERVICES/llm/v1/chat/completions with model provisa:sql_generation
+
+Then the call is answered by that model through the org's endpoint, its prompt redacted, and metered and audited for summaries
+
+And a request naming a model the org does not assign is refused naming the model
+
+And once summaries' cost this month reaches 20 USD its calls are refused naming the source and the cap"
+  code:
+  - provisa/codesource/llm_service.py
+  - provisa/codesource/services.py
+  - provisa/codesource/egress.py
+  - provisa/codesource/source.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/vector/providers.py
+  - provisa-ui/src/pages/sources/CodeSourceFields.tsx
+  - provisa-ui/src/pages/sources/codeSource.ts
+  tests:
+  - tests/unit/test_code_source_llm_service.py
+  - tests/integration/test_code_source_llm.py
+  - provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx
+  stakeholders:
+  - data-engineer
 - id: REQ-2104
   status: complete
   since: 2026-10

@@ -13,9 +13,10 @@
 // dependencies), a Git repository at a commit, or an uploaded archive. The server installs and
 // reads the code when the source is saved, and refuses code it cannot use by name.
 // REQ-2104: the org secrets its code may read through Provisa's services, picked by name.
+// REQ-2105: the monthly cap on what its calls to Provisa's LLM service cost.
 
 import { useEffect, useState } from "react";
-import { FileInput, MultiSelect, Select, TextInput } from "@mantine/core";
+import { FileInput, MultiSelect, NumberInput, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { uploadCodeArchive, uploadLockfile } from "../../api/codeUploads";
 import { fetchSecrets } from "../../api/secrets";
@@ -223,6 +224,18 @@ export function CodeSourceFields({ type, fields, setFields }: Props) {
             onChange={(names) => set({ code_secrets: withSecretNames(fields, names) })}
             error={secretsFailed || undefined}
             data-testid="code-secrets"
+          />
+        </FormField>
+        <FormField size="short" help={t("codeSourceFields.llmCapHint")}>
+          <NumberInput
+            label={t("codeSourceFields.llmCap")}
+            placeholder={t("codeSourceFields.llmCapPlaceholder")}
+            min={0}
+            decimalScale={2}
+            prefix="$"
+            value={fields.code_llm_cap ?? ""}
+            onChange={(v) => set({ code_llm_cap: v === "" ? "" : String(v) })}
+            data-testid="code-llm-cap"
           />
         </FormField>
       </FieldGroup>

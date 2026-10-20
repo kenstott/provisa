@@ -28,6 +28,9 @@
     "kept": "Conservé : {{name}}",
     "secrets": "Secrets",
     "secretsHint": "Les secrets de l'organisation que ce code peut lire. Il récupère chacun à l'exécution, depuis $PROVISA_SERVICES/secrets/<name> ; rien d'autre du coffre n'est lisible, et chaque lecture est auditée.",
-    "secretsPlaceholder": "Aucun secret"
+    "secretsPlaceholder": "Aucun secret",
+    "llmCap": "Plafond LLM mensuel",
+    "llmCapHint": "Ce que les appels de ce code à $PROVISA_SERVICES/llm peuvent coûter chaque mois (UTC), en USD. Avec un plafond, il ne peut utiliser que des modèles ayant un prix dans Prix des modèles de Polly, et ses appels sont refusés une fois le plafond atteint pour le mois. Vide : aucun plafond.",
+    "llmCapPlaceholder": "Aucun plafond"
   }
 }

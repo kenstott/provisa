@@ -52,6 +52,13 @@ def vault(monkeypatch: pytest.MonkeyPatch) -> dict:
     return held
 
 
+def _ask(method: str, path: str) -> tuple[int, bytes]:
+    """A secret request's status and body (a secret is answered as text)."""
+    status, content_type, body = services.answer(method, path)
+    assert content_type == services.TEXT
+    return status, body
+
+
 def _grant(**secrets: str) -> services.ServiceGrant:
     return services.ServiceGrant(org_id="acme", source_id="rates", secrets=secrets, admin_db=None)
 
@@ -114,18 +121,18 @@ def test_a_config_naming_a_secret_nobody_has_stored_loads_with_the_references_as
 
 
 def test_a_declared_secret_is_read_from_the_orgs_vault_and_audited(vault, token):
-    assert services.answer("GET", f"/{token}/secrets/openrouter") == (200, _VALUE.encode())
+    assert _ask("GET", f"/{token}/secrets/openrouter") == (200, _VALUE.encode())
     assert vault["audited"] == [("rates", "openrouter", "read")]
 
 
 def test_a_rotated_secret_is_read_on_the_next_fetch(vault, token):
-    services.answer("GET", f"/{token}/secrets/openrouter")
+    _ask("GET", f"/{token}/secrets/openrouter")
     vault["values"]["openrouter"] = "sk-or-v1-rotated"
-    assert services.answer("GET", f"/{token}/secrets/openrouter") == (200, b"sk-or-v1-rotated")
+    assert _ask("GET", f"/{token}/secrets/openrouter") == (200, b"sk-or-v1-rotated")
 
 
 def test_an_undeclared_name_is_refused_by_name_and_audited(vault, token):
-    status, body = services.answer("GET", f"/{token}/secrets/stripe")
+    status, body = _ask("GET", f"/{token}/secrets/stripe")
     assert status == 403
     assert "'stripe'" in body.decode() and "'rates'" in body.decode()
     assert vault["audited"] == [("rates", "stripe", "undeclared")]
@@ -133,11 +140,11 @@ def test_an_undeclared_name_is_refused_by_name_and_audited(vault, token):
 
 def test_an_unresolvable_secret_is_refused_by_name_never_by_value(vault, token, caplog):
     caplog.set_level(logging.DEBUG)
-    status, body = services.answer("GET", f"/{token}/secrets/missing")
+    status, body = _ask("GET", f"/{token}/secrets/missing")
     assert status == 404
     assert "'missing'" in body.decode() and "${secret:nope}" in body.decode()
     assert vault["audited"] == [("rates", "missing", "unresolved")]
-    services.answer("GET", f"/{token}/secrets/openrouter")
+    _ask("GET", f"/{token}/secrets/openrouter")
     assert _VALUE not in caplog.text
 
 
@@ -145,7 +152,7 @@ def test_an_env_reference_resolves_from_the_deployments_environment(vault, monke
     monkeypatch.setenv("PROVISA_TEST_CODE_KEY", "from-env")
     issued = services.issue(_grant(key="${env:PROVISA_TEST_CODE_KEY}"))
     try:
-        assert services.answer("GET", f"/{issued}/secrets/key") == (200, b"from-env")
+        assert _ask("GET", f"/{issued}/secrets/key") == (200, b"from-env")
     finally:
         services.revoke(issued)
 
@@ -154,14 +161,14 @@ def test_a_revoked_or_unknown_token_reads_nothing(vault):
     issued = services.issue(_grant(openrouter="${secret:openrouter}"))
     services.revoke(issued)
     for path in (f"/{issued}/secrets/openrouter", "/not-a-token/secrets/openrouter"):
-        status, body = services.answer("GET", path)
+        status, body = _ask("GET", path)
         assert status == 401 and _VALUE.encode() not in body
     assert vault["audited"] == []
 
 
 def test_another_service_or_method_is_refused_by_name(vault, token):
-    assert services.answer("GET", f"/{token}/cache/x")[0] == 404
-    assert services.answer("POST", f"/{token}/secrets/openrouter")[0] == 405
+    assert _ask("GET", f"/{token}/cache/x")[0] == 404
+    assert _ask("POST", f"/{token}/secrets/openrouter")[0] == 405
 
 
 # -- through the egress proxy -----------------------------------------------------------------
@@ -225,9 +232,9 @@ def test_a_worker_gets_only_the_address_and_its_token_is_revoked_when_it_ends(
     assert _VALUE not in "".join(env.values())  # nothing is resolved as the worker starts
     assert vault["audited"] == []
     token = base.rsplit("/", 1)[1]
-    assert services.answer("GET", f"/{token}/secrets/openrouter")[0] == 200
+    assert _ask("GET", f"/{token}/secrets/openrouter")[0] == 200
     w._end("the worker was stopped")  # noqa: SLF001
-    assert services.answer("GET", f"/{token}/secrets/openrouter")[0] == 401
+    assert _ask("GET", f"/{token}/secrets/openrouter")[0] == 401
 
 
 def test_one_orgs_worker_never_serves_another_orgs_calls(monkeypatch, tmp_path: Path):
