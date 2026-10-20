@@ -25774,7 +25774,7 @@ Lineage reaches below the registered table to the source itself. Each source nod
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_lineage_native.py`, `provisa-ui/src/components/lineage/__tests__/lineage-native.test.ts`, `provisa-ui/src/__tests__/tourRouteCapabilities.test.ts`
 
 ### REQ-2117 · Data Catalog Integration {#REQ-2117}
 
