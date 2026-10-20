@@ -85641,7 +85641,7 @@ Then the image is built through Provisa's Build image API and the compose snippe
   feature: source-registration-connect
   priority: SHOULD
   type: behavioral
-  description: "A CSV or Parquet source can be given its file by download, a third way beside a path and an upload (REQ-1997). The steward gives one fully resolved path to a single file: a file mount path, an https:// URL or an s3:// URL. Provisa fetches it with the source's credential and headers where the address needs them, and streams the bytes through the upload path into the org's folder under files/<source id>/<name>, with the same size limit (sources.max_upload_bytes), encryption and one-rename swap as an upload. From then on the source reads that local file, and an environment fork copies it as it copies an upload. When the file is fetched again follows the source's freshness declaration: a TTL fetches it again once it lapses, TTL -1 fetches it once and keeps it. A file mount path may only name a file under a directory the operator lists in a setting, which has its admin UI as every setting does, as logs.allowed_roots does for log sources; a path outside them is refused by name. On a multi-tenant deployment (multitenancy: true) a file mount path is refused by name whatever the setting holds: the server's disk is the platform's, shared by every org, so no tenant may copy from it; only https:// and s3:// are offered there, in the form and by Polly. Polly offers the same: given one fully resolved path to a single file, she works out CSV or Parquet from the file, fills in the download form and proposes the source through propose_source. She creates it and runs the download only after the user confirms in the conversation (create_source_now), and can then register its table (register_table_now). She tells the two kinds of request apart by what the path names: a path to one CSV or Parquet file is a single-file CSV or Parquet source given its file by download; a directory, a glob or several files is a files source (REQ-788) over that path, proposed and confirmed the same way, its tables registered from what the source offers (list_native_tables, propose_table). She acts as the chatting user, so only a user with source_registration can do this through her."
+  description: "A CSV or Parquet source can be given its file by download, a third way beside a path and an upload (REQ-1997). The steward gives one fully resolved path to a single file: a file mount path, an https:// URL or an s3:// URL. Provisa fetches it with the source's credential and headers where the address needs them, and streams the bytes through the upload path into the org's folder under files/<source id>/<name>, with the same size limit (sources.max_upload_bytes), encryption and one-rename swap as an upload. From then on the source reads that local file, and an environment fork copies it as it copies an upload. When the file is fetched again follows the source's freshness declaration: a TTL fetches it again once it lapses, TTL -1 fetches it once and keeps it. A file mount path may only name a file under a directory the operator lists in a setting, which has its admin UI as every setting does, as logs.allowed_roots does for log sources; a path outside them is refused by name. On a multi-tenant deployment (multitenancy: true) a file mount path is refused by name whatever the setting holds: the server's disk is the platform's, shared by every org, so no tenant may copy from it; only https:// and s3:// are offered there, in the form and by Polly. Polly offers the same: given one fully resolved path to a single file, she works out CSV or Parquet from the file, fills in the download form and proposes the source through propose_source. She creates it and runs the download only after the user confirms in the conversation (create_source_now), and can then register its table (register_table_now). The create form of a single-file CSV or Parquet source offers to set up its table at once, as a draft (out of service until a steward takes it out of draft; REQ-1921), named and typed from the file as the Register Table form would propose it; the choice is on by default, and Polly makes the same draft table when she creates such a source. She tells the two kinds of request apart by what the path names: a path to one CSV or Parquet file is a single-file CSV or Parquet source given its file by download; a directory, a glob or several files is a files source (REQ-788) over that path, proposed and confirmed the same way, its tables registered from what the source offers (list_native_tables, propose_table). She acts as the chatting user, so only a user with source_registration can do this through her."
   use_case: An analyst pastes the URL of a public Parquet file into Polly's chat, confirms, and queries a governed table read from the org's own copy of the file.
   scenario: "Given a user with source_registration and an https URL of a Parquet file
 
@@ -85657,4 +85657,52 @@ Then it is refused by name and nothing is copied"
   related_reqs:
   - REQ-1997
   - REQ-1992
-  notes: "Maintainer 2026-10-20, through the lead: download a CSV or Parquet source's file into the org folder and /files; Polly can take a fully resolved path (file mount, http, s3) to a single file, add it to the download UI and run it. Queued as one requirement, with the allowed-directories setting for mount paths. Maintainer: a file mount cannot work in a multi-tenant org, so it is single-tenant only. Maintainer: Polly differentiates a single CSV or Parquet source request from a more complex file request."
+  notes: "Maintainer 2026-10-20, through the lead: download a CSV or Parquet source's file into the org folder and /files; Polly can take a fully resolved path (file mount, http, s3) to a single file, add it to the download UI and run it. Queued as one requirement, with the allowed-directories setting for mount paths. Maintainer: a file mount cannot work in a multi-tenant org, so it is single-tenant only. Maintainer: Polly differentiates a single CSV or Parquet source request from a more complex file request. Maintainer: a single CSV or Parquet source gets its table set up at once, in draft, as a choice when the source is created."
+- id: REQ-2114
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Catalog Explore
+  feature: chat-assistant-panel
+  priority: SHOULD
+  type: behavioral
+  description: "Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses. She has two general tools in place of one tool per action: one reads the admin GraphQL schema and runs its queries, so she finds what exists as the UI does; the other proposes an admin mutation, shows it in the chat, and runs it as the user once the user confirms in the conversation, so it meets the same capability checks the UI meets. Every admin mutation is hers, createRelationship included, and a mutation added later is hers with no Polly change. propose_source/create_source_now and propose_table/register_table_now become cases of the general pair. A UI action that is a REST route and not an admin mutation (a file upload, a settings change, the org folder's encryption, a code archive upload and the like) is listed and reached as well, route by route. Given 'Create any relationships to the new table', she runs the existing relationship discovery (provisa/discovery) for that table, lists its candidates, and accepts the ones the user confirms through the path the admin UI uses. generate_explore_queries covers every query surface: GraphQL, Cypher, SQL, gRPC, JSON:API, OpenAPI, Natural Language, Python and Notebook."
+  use_case: "A presenter asks Polly to add a Parquet file, create any relationships to the new table, and write a query with a join on every query surface, and each step is done live as the presenter, with a confirmation in the chat for each change."
+  scenario: "Given a user who holds relationship registration and two registered tables that share a key
+
+When the user asks Polly to create any relationships to one of them and confirms her proposal
+
+Then the relationship is created by the same admin mutation the Relationships page uses, as that user
+
+Given a user without relationship registration
+
+When the user asks the same
+
+Then the mutation is refused as it is in the UI"
+  related_reqs:
+  - REQ-1092
+  - REQ-2113
+  notes: "Maintainer 2026-10-20, through the lead: Polly ought to be able to create a relationship; virtually every UI element ought to be able to be touched by Polly. Queued separately from REQ-2113."
+- id: REQ-2115
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Catalog Explore
+  feature: chat-assistant-panel
+  priority: SHOULD
+  type: behavioral
+  description: "Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions (REQ-2114)."
+  use_case: A new user asks Polly how to add a source; she opens the Sources page, fills in the form in front of them, and presses Create once they confirm.
+  scenario: "Given the user is on any page and asks Polly to set up a CSV source from a URL
+
+When Polly acts
+
+Then the Sources page opens, its form fields fill in visibly, and Create is pressed after the user confirms in the chat
+
+When Polly names a field the form does not have
+
+Then she is told by name and the form is unchanged"
+  related_reqs:
+  - REQ-1092
+  - REQ-2113
+  notes: "Maintainer 2026-10-20, through the lead: separately, Polly needs to be able to fill in fields, navigate to screens and press buttons."
