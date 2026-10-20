@@ -59,6 +59,13 @@ function routeCapabilities(): Record<string, string> {
     const cap = /capability=\{?"([a-z_]+)"/.exec(block);
     if (cap) out[path[1]] = cap[1];
   }
+  // Paths sharing one gate are a list mapped onto a single <Route path={path}> (the Python and
+  // Notebook tabs).
+  for (const m of source.matchAll(
+    /\{\[((?:\s*"\/[^"]+",?)+)\s*\]\.map\(\(path\)[\s\S]*?capability=\{?"([a-z_]+)"/g,
+  )) {
+    for (const path of m[1].matchAll(/"([^"]+)"/g)) out[path[1]] = m[2];
+  }
   // The Admin surfaces are a `[path, capability]` table rather than JSX routes.
   for (const m of source.matchAll(/\["(\/admin\/[^"]+)",\s*"([a-z_]+)"\]/g)) out[m[1]] = m[2];
   return out;

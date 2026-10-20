@@ -97,36 +97,44 @@
         "description": "💬 Preguntas en el lenguaje o con la herramienta que ya usas (SQL, GraphQL, Cypher, lenguaje natural a través de Polly, o una herramienta de BI o un controlador), y todas leen el mismo modelo gobernado, así que la respuesta y las reglas son las mismas elijas la que elijas."
       },
       "step6": {
-        "title": "SQL (1 de 7 superficies)",
+        "title": "SQL (1 de 9 superficies)",
         "description": "SQL vive en el explorador de SQL. SQL estándar federado en todos los orígenes: une Postgres con Mongo y con un CSV en una sola sentencia. Los propios metadatos del modelo y cada traza de actividad son también tablas consultables aquí, así que puedes unir tu registro de auditoría o el linaje directamente con datos en vivo.<p>🔌 El mismo SQL gobernado se ejecuta a través de varios protocolos de conexión además de este explorador; tu herramienta elige el que ya conoce:</p><ul><li><strong>pgwire</strong>: todo cliente compatible con Postgres (psql, DBeaver, Tableau, Power BI) se conecta sin configuración adicional.</li><li><strong>JDBC</strong>: encaja en cualquier aplicación Java/JVM, pipeline de ETL o herramienta de BI compatible con JDBC.</li><li><strong>Arrow Flight SQL</strong>: streaming columnar para clientes ADBC, sin recodificar filas, pensado para grandes volúmenes de resultados.</li><li><strong>DuckDB · airport</strong>: haz ATTACH de Provisa desde DuckDB y consulta la federación gobernada in situ.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 de 7 superficies)",
+        "title": "GraphQL (2 de 9 superficies)",
         "description": "◈ La misma consulta, expresada como GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Agrupaciones y agregados sobre tus relaciones: 🎯 un solo endpoint, 📖 un esquema autodocumentado.</p><p>🔌 Llámalo desde <strong>cualquier cliente GraphQL</strong>, como Apollo, Relay o urql. Con la federación activada, Provisa se une a un <strong>Apollo supergraph como subgraph</strong>, de modo que tu modelo federado se compone junto a tus grafos existentes.</p>"
       },
       "step8": {
-        "title": "Cypher (3 de 7 superficies)",
+        "title": "Cypher (3 de 9 superficies)",
         "description": "🕸️ Recorre el modelo federado como un grafo con Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Ese recorrido se ejecuta <strong>a través de varios orígenes</strong>, sin necesidad de una única base de datos de grafos.</p><p>🔌 Cualquier cliente <strong>Bolt</strong>, como Neo4j Browser o Bloom, ejecuta ese mismo recorrido a través del protocolo, sin cambiar el código.</p>"
       },
       "step9": {
-        "title": "gRPC (4 de 7 superficies)",
+        "title": "gRPC (4 de 9 superficies)",
         "description": "⚙️ Cada entidad registrada es también un servicio gRPC:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Llámalo desde cualquier cliente gRPC: 📐 fuertemente tipado, 🚀 de alto rendimiento.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 de 7 superficies)",
+        "title": "JSON:API (5 de 9 superficies)",
         "description": "🧩 Una superficie JSON:API conforme a la especificación:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paginación y 🔍 filtrado sin configuración adicional.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 de 7 superficies)",
+        "title": "OpenAPI / REST (6 de 9 superficies)",
         "description": "🌐 Y un endpoint REST sencillo, descrito mediante OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Totalmente documentado, para que cualquier cliente REST o generador de código pueda consumirlo.</p>"
       },
       "step12": {
-        "title": "MCP (7 de 7 superficies)",
-        "description": "🤖 La séptima superficie permite que un agente <strong>razone con tus datos</strong>. Utiliza esas mismas herramientas gobernadas (buscar en el catálogo, describir tablas, ejecutar SQL, seguir relaciones) y las <em>encadena</em> para responder preguntas que ninguna consulta aislada podría resolver, con cada llamada sujeta a la gobernanza de <strong>tu</strong> rol.<p>🔌 El mismo <strong>servidor MCP</strong> se conecta a Claude Desktop, Claude Code o cualquier cliente MCP, para que los agentes exploren y razonen sobre tu modelo de forma gobernada.</p><p>🔑 Usa tu propia clave de LLM; este intercambio es un ejemplo preconfigurado.</p><p>Queda una superficie: la que escribe las otras siete por ti. →</p>"
+        "title": "MCP (7 de 9 superficies)",
+        "description": "🤖 La séptima superficie permite que un agente <strong>razone con tus datos</strong>. Utiliza esas mismas herramientas gobernadas (buscar en el catálogo, describir tablas, ejecutar SQL, seguir relaciones) y las <em>encadena</em> para responder preguntas que ninguna consulta aislada podría resolver, con cada llamada sujeta a la gobernanza de <strong>tu</strong> rol.<p>🔌 El mismo <strong>servidor MCP</strong> se conecta a Claude Desktop, Claude Code o cualquier cliente MCP, para que los agentes exploren y razonen sobre tu modelo de forma gobernada.</p><p>🔑 Usa tu propia clave de LLM; este intercambio es un ejemplo preconfigurado.</p><p>Dos más leen los mismos datos gobernados desde Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 de 9 superficies)",
+        "description": "🐍 La pestaña Python ejecuta Python en tu navegador, con tu sesión iniciada:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>La respuesta llega como un DataFrame de pandas, leído por la misma canalización gobernada, así que las reglas de filas y las máscaras de tu rol también se aplican.</p><p>🔌 El mismo paquete <strong>provisa-client</strong> se instala con pip en cualquier Python de escritorio, así que un script escrito aquí funciona sin cambios en tu propio entorno.</p>"
+      },
+      "stepNotebook": {
+        "title": "Cuaderno (9 de 9 superficies)",
+        "description": "📓 La pestaña Cuaderno es JupyterLite: un cuaderno de Jupyter que se ejecuta en tu navegador. Su primera celda inicia sesión y la siguiente lee la misma consulta como un DataFrame para graficarlo o unirlo con otros datos.<p>⬇️ Descarga el cuaderno y se abre en cualquier Jupyter de escritorio, donde las mismas celdas leen de Provisa igual que aquí.</p><p>Queda una superficie: la que escribe tus consultas por ti. →</p>"
       },
       "step13": {
-        "title": "Simplemente pregunta: la superficie que escribe las otras siete",
-        "description": "💬 <em>\"cuántas mascotas hay por especie\"</em><p><strong>No necesitas aprender ninguna de esas siete.</strong> Pregunta en español llano y Provisa compila tu pregunta en todos los lenguajes de consulta a la vez: cada panel de abajo es esa misma frase expresada en SQL, GraphQL, Cypher, gRPC, JSON:API y REST.</p><p>Usa la superficie que ya hablan tus herramientas, o sáltatelas todas y simplemente pregunta.</p><p>🔑 Las consultas en lenguaje natural en vivo usan tu propia clave de LLM; esta es un ejemplo preconfigurado.</p><p>✅ Un modelo, <strong>ocho superficies</strong>: siete para consultar y la que las escribe.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Simplemente pregunta: la superficie que escribe tus consultas",
+        "description": "💬 <em>\"cuántas mascotas hay por especie\"</em><p><strong>No necesitas aprender ninguno de esos lenguajes de consulta.</strong> Pregunta en lenguaje natural y Provisa compila tu pregunta en los siete a la vez: cada panel de abajo es esa misma frase como SQL, GraphQL, Cypher, gRPC, JSON:API y REST.</p><p>No puede abrir Python ni el Cuaderno directamente, pero siempre puedes pedirle a Polly que lleve una consulta a cualquiera de los dos.</p><p>🔑 Las consultas en lenguaje natural en vivo usan tu propia clave de LLM; esta es un ejemplo preparado.</p><p>✅ Un modelo detrás de las <strong>nueve superficies</strong>, y el lenguaje natural escribe las consultas por ti.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Cuaderno</span></div>"
       },
       "step14": {
         "title": "Ese es el núcleo de cinco minutos",

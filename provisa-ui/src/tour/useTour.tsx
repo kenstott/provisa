@@ -33,6 +33,7 @@ import {
   stepRoute,
   tourItinerary,
   stepsTheOrgCanShow,
+  PET_STORE_DEMO_SQL,
   LINEAGE_DEMO_SQL,
   type RunScope,
   type TopicId,
@@ -99,8 +100,7 @@ const NL_BACKUP_KEY = "provisa_tour_nl_backup";
 const NL_DEMO_QUESTION = "how many pets per species";
 const NL_DEMO_BRANCHES = {
   sql: {
-    query:
-      'SELECT species, COUNT(*) AS pet_count FROM "pet_store"."pets" GROUP BY species LIMIT 100',
+    query: PET_STORE_DEMO_SQL,
     result: {
       columns: ["species", "pet_count"],
       rows: [

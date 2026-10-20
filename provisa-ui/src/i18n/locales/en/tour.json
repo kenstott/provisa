@@ -97,36 +97,44 @@
         "description": "💬 You ask in the language or tool you already use (SQL, GraphQL, Cypher, plain language through Polly, or a BI tool or driver), and every one reads the same governed model, so the answer and the rules are the same whichever you pick."
       },
       "step6": {
-        "title": "SQL (1 of 7 surfaces)",
+        "title": "SQL (1 of 9 surfaces)",
         "description": "SQL lives in the SQL explorer. Standard SQL federated across every source: join Postgres to Mongo to a CSV in one statement. The model's own metadata and every activity trace are queryable tables here too, so you can join your audit log or lineage straight to live data.<p>🔌 The same governed SQL runs over several wire protocols besides this explorer; your tool picks the one it already speaks:</p><ul><li><strong>pgwire</strong>: every Postgres-compatible client (psql, DBeaver, Tableau, Power BI) connects out of the box.</li><li><strong>JDBC</strong>: drops into any Java/JVM app, ETL pipeline or JDBC-capable BI tool.</li><li><strong>Arrow Flight SQL</strong>: columnar streaming for ADBC clients, with no row re-encoding, built for large result sets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa from DuckDB and query the governed federation in place.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 of 7 surfaces)",
+        "title": "GraphQL (2 of 9 surfaces)",
         "description": "◈ The same query, typed as GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Grouping and aggregates over your relationships: 🎯 one endpoint, 📖 a self-documenting schema.</p><p>🔌 Call it from <strong>any GraphQL client</strong>, such as Apollo, Relay or urql. With federation enabled, Provisa joins an <strong>Apollo supergraph as a subgraph</strong>, so your federated model composes alongside your existing graphs.</p>"
       },
       "step8": {
-        "title": "Cypher (3 of 7 surfaces)",
+        "title": "Cypher (3 of 9 surfaces)",
         "description": "🕸️ Traverse the federated model as a graph with Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ That traversal runs <strong>across sources</strong>, with no single graph database required.</p><p>🔌 Any <strong>Bolt</strong> client, such as Neo4j Browser or Bloom, runs the same traversal over the wire, with no code change.</p>"
       },
       "step9": {
-        "title": "gRPC (4 of 7 surfaces)",
+        "title": "gRPC (4 of 9 surfaces)",
         "description": "⚙️ Every registered entity is also a gRPC service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Call it from any gRPC client: 📐 strongly typed, 🚀 high-throughput.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 of 7 surfaces)",
+        "title": "JSON:API (5 of 9 surfaces)",
         "description": "🧩 A spec-compliant JSON:API surface:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paging and 🔍 filtering out of the box.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 of 7 surfaces)",
+        "title": "OpenAPI / REST (6 of 9 surfaces)",
         "description": "🌐 And a plain REST endpoint, described by OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Fully described, so any REST client or code generator can consume it.</p>"
       },
       "step12": {
-        "title": "MCP (7 of 7 surfaces)",
-        "description": "🤖 The seventh surface lets an agent <strong>reason with your data</strong>. It drives the same governed tools (search the catalog, describe tables, run SQL, follow relationships) and <em>chains</em> them to answer questions no single query could, every call bound by <strong>your</strong> role's governance.<p>🔌 The same <strong>MCP server</strong> plugs into Claude Desktop, Claude Code or any MCP client, so agents explore and reason over your model the governed way.</p><p>🔑 Uses your own LLM key; this exchange is a canned example.</p><p>One surface left: the one that writes all seven for you. →</p>"
+        "title": "MCP (7 of 9 surfaces)",
+        "description": "🤖 The seventh surface lets an agent <strong>reason with your data</strong>. It drives the same governed tools (search the catalog, describe tables, run SQL, follow relationships) and <em>chains</em> them to answer questions no single query could, every call bound by <strong>your</strong> role's governance.<p>🔌 The same <strong>MCP server</strong> plugs into Claude Desktop, Claude Code or any MCP client, so agents explore and reason over your model the governed way.</p><p>🔑 Uses your own LLM key; this exchange is a canned example.</p><p>Two more read the same governed data from Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 of 9 surfaces)",
+        "description": "🐍 The Python tab runs Python in your browser, signed in as you:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>The answer comes back as a pandas DataFrame, read through the same governed pipeline, so your role's row rules and masks apply to it too.</p><p>🔌 The same <strong>provisa-client</strong> package installs with pip on any desktop Python, so a script written here runs unchanged in your own environment.</p>"
+      },
+      "stepNotebook": {
+        "title": "Notebook (9 of 9 surfaces)",
+        "description": "📓 The Notebook tab is JupyterLite: a Jupyter notebook running in your browser. Its first cell signs in, and the next reads the same statement as a DataFrame to chart or join with other data.<p>⬇️ Download the notebook and it opens in any desktop Jupyter, where the same cells read from Provisa as they do here.</p><p>One surface left: the one that writes your queries for you. →</p>"
       },
       "step13": {
-        "title": "Just ask: the surface that writes all seven",
-        "description": "💬 <em>\"how many pets per species\"</em><p><strong>You don't have to learn any of those seven.</strong> Ask in plain English and Provisa compiles your question into every query language at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>Use the surface your tools already speak, or skip them all and ask.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model, <strong>eight surfaces</strong>: seven to query, and the one that writes them.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Just ask: the surface that writes your queries",
+        "description": "💬 <em>\"how many pets per species\"</em><p><strong>You don't have to learn any of those query languages.</strong> Ask in plain English and Provisa compiles your question into all seven at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>It can't open Python or the Notebook directly, but you can always ask Polly to move a query into either one.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model behind all <strong>nine surfaces</strong>, and plain English writes the queries for you.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "That's the five-minute core",

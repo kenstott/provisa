@@ -97,36 +97,44 @@
         "description": "💬 Você pergunta na linguagem ou com a ferramenta que já usa (SQL, GraphQL, Cypher, linguagem natural pelo Polly, ou uma ferramenta de BI ou um driver), e todas leem o mesmo modelo governado, então a resposta e as regras são as mesmas, qualquer que seja a sua escolha."
       },
       "step6": {
-        "title": "SQL (1 de 7 interfaces)",
+        "title": "SQL (1 de 9 interfaces)",
         "description": "O SQL vive no explorador SQL. SQL padrão federado em todas as fontes: junte Postgres, Mongo e um CSV em uma única instrução. Os próprios metadados do modelo e todo rastro de atividade também são tabelas consultáveis aqui, então você pode juntar seu log de auditoria ou linhagem diretamente aos dados em tempo real.<p>🔌 O mesmo SQL governado roda por vários protocolos de conexão além deste explorador; sua ferramenta escolhe aquele que já fala:</p><ul><li><strong>pgwire</strong>: qualquer cliente compatível com Postgres (psql, DBeaver, Tableau, Power BI) conecta imediatamente.</li><li><strong>JDBC</strong>: funciona em qualquer aplicação Java/JVM, pipeline de ETL ou ferramenta de BI compatível com JDBC.</li><li><strong>Arrow Flight SQL</strong>: streaming colunar para clientes ADBC, sem recodificação de linhas, feito para grandes conjuntos de resultados.</li><li><strong>DuckDB · airport</strong>: faça ATTACH do Provisa a partir do DuckDB e consulte a federação governada diretamente.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 de 7 interfaces)",
+        "title": "GraphQL (2 de 9 interfaces)",
         "description": "◈ A mesma consulta, tipada como GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Agrupamento e agregações sobre seus relacionamentos: 🎯 um único endpoint, 📖 um esquema autodocumentado.</p><p>🔌 Chame a partir de <strong>qualquer cliente GraphQL</strong>, como Apollo, Relay ou urql. Com a federação ativada, o Provisa entra em um <strong>Apollo supergraph como um subgraph</strong>, para que seu modelo federado componha junto com seus grafos existentes.</p>"
       },
       "step8": {
-        "title": "Cypher (3 de 7 interfaces)",
+        "title": "Cypher (3 de 9 interfaces)",
         "description": "🕸️ Percorra o modelo federado como um grafo com Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Esse percurso é executado <strong>entre fontes</strong>, sem exigir um banco de dados de grafos único.</p><p>🔌 Qualquer cliente <strong>Bolt</strong>, como Neo4j Browser ou Bloom, executa o mesmo percurso pela conexão, sem alteração de código.</p>"
       },
       "step9": {
-        "title": "gRPC (4 de 7 interfaces)",
+        "title": "gRPC (4 de 9 interfaces)",
         "description": "⚙️ Toda entidade registrada também é um serviço gRPC:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Chame a partir de qualquer cliente gRPC: 📐 fortemente tipado, 🚀 alta taxa de transferência.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 de 7 interfaces)",
+        "title": "JSON:API (5 de 9 interfaces)",
         "description": "🧩 Uma interface JSON:API em conformidade com a especificação:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paginação e 🔍 filtragem prontas para uso.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 de 7 interfaces)",
+        "title": "OpenAPI / REST (6 de 9 interfaces)",
         "description": "🌐 E um endpoint REST simples, descrito pelo OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Totalmente descrito, para que qualquer cliente REST ou gerador de código possa consumi-lo.</p>"
       },
       "step12": {
-        "title": "MCP (7 de 7 interfaces)",
-        "description": "🤖 A sétima interface permite que um agente <strong>raciocine com seus dados</strong>. Ele aciona as mesmas ferramentas governadas (pesquisar o catálogo, descrever tabelas, executar SQL, seguir relacionamentos) e as <em>encadeia</em> para responder a perguntas que nenhuma consulta isolada conseguiria, cada chamada limitada pela governança da <strong>sua</strong> função.<p>🔌 O mesmo <strong>servidor MCP</strong> se conecta ao Claude Desktop, Claude Code ou qualquer cliente MCP, para que agentes explorem e raciocinem sobre seu modelo de forma governada.</p><p>🔑 Usa sua própria chave de LLM; esta troca é um exemplo pré-preparado.</p><p>Falta uma interface: a que escreve todas as outras sete para você. →</p>"
+        "title": "MCP (7 de 9 interfaces)",
+        "description": "🤖 A sétima interface permite que um agente <strong>raciocine com seus dados</strong>. Ele aciona as mesmas ferramentas governadas (pesquisar o catálogo, descrever tabelas, executar SQL, seguir relacionamentos) e as <em>encadeia</em> para responder a perguntas que nenhuma consulta isolada conseguiria, cada chamada limitada pela governança da <strong>sua</strong> função.<p>🔌 O mesmo <strong>servidor MCP</strong> se conecta ao Claude Desktop, Claude Code ou qualquer cliente MCP, para que agentes explorem e raciocinem sobre seu modelo de forma governada.</p><p>🔑 Usa sua própria chave de LLM; esta troca é um exemplo pré-preparado.</p><p>Mais duas leem os mesmos dados governados a partir do Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 de 9 interfaces)",
+        "description": "🐍 A aba Python executa Python no seu navegador, conectado como você:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>A resposta volta como um DataFrame do pandas, lida pelo mesmo pipeline governado, então as regras de linhas e as máscaras do seu papel também se aplicam a ela.</p><p>🔌 O mesmo pacote <strong>provisa-client</strong> é instalado com pip em qualquer Python de desktop, então um script escrito aqui roda sem alterações no seu próprio ambiente.</p>"
+      },
+      "stepNotebook": {
+        "title": "Notebook (9 de 9 interfaces)",
+        "description": "📓 A aba Notebook é o JupyterLite: um notebook Jupyter rodando no seu navegador. A primeira célula faz o login, e a seguinte lê a mesma consulta como um DataFrame para virar gráfico ou ser combinado com outros dados.<p>⬇️ Baixe o notebook e ele abre em qualquer Jupyter de desktop, onde as mesmas células leem do Provisa como aqui.</p><p>Falta uma interface: a que escreve suas consultas para você. →</p>"
       },
       "step13": {
-        "title": "Basta perguntar: a interface que escreve as outras sete",
-        "description": "💬 <em>\"quantos animais de estimação por espécie\"</em><p><strong>Você não precisa aprender nenhuma dessas sete.</strong> Pergunte em português claro e o Provisa compila sua pergunta em todas as linguagens de consulta ao mesmo tempo: cada painel abaixo é essa mesma frase em SQL, GraphQL, Cypher, gRPC, JSON:API e REST.</p><p>Use a interface que suas ferramentas já falam, ou ignore todas e simplesmente pergunte.</p><p>🔑 Consultas em linguagem natural ao vivo usam sua própria chave de LLM; esta é um exemplo pré-preparado.</p><p>✅ Um modelo, <strong>oito interfaces</strong>: sete para consultar e a que as escreve.</p><div class='tour-tags'><span>Linguagem Natural</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Basta perguntar: a interface que escreve suas consultas",
+        "description": "💬 <em>\"quantos animais de estimação por espécie\"</em><p><strong>Você não precisa aprender nenhuma dessas linguagens de consulta.</strong> Pergunte em linguagem natural e o Provisa compila sua pergunta nas sete de uma vez: cada painel abaixo é essa mesma frase em SQL, GraphQL, Cypher, gRPC, JSON:API e REST.</p><p>Ele não abre o Python nem o Notebook diretamente, mas você sempre pode pedir à Polly para levar uma consulta para qualquer um dos dois.</p><p>🔑 Consultas ao vivo em linguagem natural usam sua própria chave de LLM; esta é um exemplo pronto.</p><p>✅ Um modelo por trás de todas as <strong>nove interfaces</strong>, e a linguagem natural escreve as consultas para você.</p><div class='tour-tags'><span>Linguagem Natural</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "Esse é o núcleo de cinco minutos",
