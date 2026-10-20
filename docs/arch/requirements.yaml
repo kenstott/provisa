@@ -85442,6 +85442,74 @@ And its prod source reads the shop's database with it, while the stored source k
   - ops
   docs:
   - named-demos.md
+- id: REQ-2105
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: MUST
+  type: behavioral
+  description: "Provisa's services to a code source's worker (REQ-2104) include an OpenAI-compatible LLM service at $PROVISA_SERVICES/llm/v1: POST chat/completions and embeddings, so any SDK works with its base URL there and no key, the worker's scoped token being in the address; the egress proxy answers it for a local worker. A request names a model as provisa:<role>, the model the org's AI Models assign that role, or by a model id a role is assigned (for embeddings, one of the org's vector models); any other is refused naming it. The call is routed through the org's AI Models configuration -- its vendors, endpoints and keys, a sandbox-tier org's through the tier's sandbox.ai_* settings -- and what goes out is redacted centrally. Streaming is refused by name. Every call is metered for its source in code_source_llm_usage (tokens, and cost at the model's polly.model_prices entry) and audited in the org's administrative trail (source, model, tokens, time). A source's mapping may set llm.cap_usd, a calendar-month (UTC) cap on its metered cost: a capped source may call only models with a price, and once its month's cost reaches the cap its calls are refused (429) naming the source and the cap; an uncapped source's calls to an unpriced model are metered as tokens only. The source form has an LLM monthly cap field."
+  use_case: "A Python code table that summarises each account calls provisa:sql_generation with the OpenAI SDK, getting whichever model the org assigns that role through the org's own keys, its spend held under a monthly cap and every call visible in the audit trail."
+  scenario: "Given a python source summaries with llm.cap_usd 20 and the org's AI Models assigning sql_generation a priced model
+
+When its worker POSTs $PROVISA_SERVICES/llm/v1/chat/completions with model provisa:sql_generation
+
+Then the call is answered by that model through the org's endpoint, its prompt redacted, and metered and audited for summaries
+
+And a request naming a model the org does not assign is refused naming the model
+
+And once summaries' cost this month reaches 20 USD its calls are refused naming the source and the cap"
+  code:
+  - provisa/codesource/llm_service.py
+  - provisa/codesource/services.py
+  - provisa/codesource/egress.py
+  - provisa/codesource/source.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/vector/providers.py
+  - provisa-ui/src/pages/sources/CodeSourceFields.tsx
+  - provisa-ui/src/pages/sources/codeSource.ts
+  tests:
+  - tests/unit/test_code_source_llm_service.py
+  - tests/integration/test_code_source_llm.py
+  - provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx
+  stakeholders:
+  - data-engineer
+- id: REQ-2104
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: MUST
+  type: behavioral
+  description: "A Node or Python code source declares the names its code may read (secrets in its mapping): a list of names, each the org secret of that name, or a mapping of name to vault reference (${secret:NAME} or ${env:NAME}). The references are kept as written through config load and storage and never resolved at load, so a config naming a secret not yet stored loads. When the source's worker starts, Provisa issues a token scoped to the org, the source and its declared names, revoked when the worker stops, and gives the worker one environment variable, PROVISA_SERVICES, an address on a host only the egress proxy answers (http://provisa-services/<token>). The code reads a secret with GET $PROVISA_SERVICES/secrets/<name>; the proxy answers it itself, resolving the reference in the org's vault at that moment, so a rotated secret is read on the next fetch. Further services sit beside secrets/ under the same address. Nothing else of Provisa is reachable: the proxy still never connects to loopback, and the API's host must be on the egress allow-list. An undeclared name, or one that cannot be resolved, is refused naming the name, never the value. Every read is audited in the org's administrative trail (source, name, time, outcome); a value is never logged, never in a refusal, and never part of the code's content hash. A worker serves only the org it was prepared for. The source form has a Secrets field that picks the org's secrets by name."
+  use_case: "A Python code table that calls an LLM through OpenRouter reads the org's openrouter secret when it runs, without the key ever being written into its code, its config or Provisa's logs."
+  scenario: "Given a python source rates with secrets [openrouter] and the org secret openrouter stored
+
+When its worker GETs $PROVISA_SERVICES/secrets/openrouter
+
+Then the proxy answers with the secret's current value and the read is recorded in the org's audit trail
+
+And a GET of $PROVISA_SERVICES/secrets/stripe is refused naming stripe
+
+And once the worker stops its address reads nothing"
+  code:
+  - provisa/codesource/services.py
+  - provisa/codesource/egress.py
+  - provisa/codesource/worker.py
+  - provisa/codesource/source.py
+  - provisa/core/config_loader.py
+  - provisa-ui/src/pages/sources/CodeSourceFields.tsx
+  - provisa-ui/src/pages/sources/codeSource.ts
+  tests:
+  - tests/unit/test_code_source_services.py
+  - tests/integration/test_code_source_secrets.py
+  - provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx
+  stakeholders:
+  - data-engineer
 - id: REQ-2101
   status: complete
   since: 2026-10

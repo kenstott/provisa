@@ -26,15 +26,16 @@ manifest read, and how its worker starts. It is done once per source and content
 process, at its first use; the worker itself is the shared pool's.
 """
 
-# Requirements: REQ-1984, REQ-1993
+# Requirements: REQ-1984, REQ-1993, REQ-2104
 from __future__ import annotations
 
 import asyncio
 import threading
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from provisa.codesource import services
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.install import GitCode, Lockfile
 from provisa.codesource.manifest import Manifest
@@ -66,6 +67,10 @@ class CodeConfig:
     lockfile: dict[str, str] | None
     entry: str | None
     content_hash: str | None
+    #: REQ-2104: the names the code may read, each its vault reference, as written.
+    secrets: dict[str, str | None] = field(default_factory=dict)
+    #: REQ-2105: the monthly cap on what its LLM calls cost, USD; None: no cap.
+    llm_cap_usd: float | None = None
 
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
@@ -107,6 +112,8 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         lockfile=lockfile,
         entry=mapping.get("entry") or None,
         content_hash=mapping.get("content_hash") or None,
+        secrets=services.declared(mapping.get("secrets")),
+        llm_cap_usd=services.llm_cap(mapping.get("llm")),
     )
 
 
@@ -118,9 +125,12 @@ class Prepared:
     content_hash: str
     manifest: Manifest
     command: HostCommand
+    #: The org it was prepared for: its worker carries that org's services grant (REQ-2104), so
+    #: no other org's calls reach it.
+    org_id: str
 
     def worker(self) -> Worker:
-        return pool.get(self.source_id, self.content_hash, lambda: self.command)
+        return pool.get(self.source_id, self.content_hash, lambda: self.command, org=self.org_id)
 
 
 @dataclass(frozen=True)
@@ -135,7 +145,7 @@ class Context:
     org_id: str
 
 
-_prepared: dict[tuple[str, str], Prepared] = {}
+_prepared: dict[tuple[str, str, str], Prepared] = {}  # org, source, content hash
 _lock = threading.Lock()
 
 
@@ -198,7 +208,25 @@ def _prepare_node(
         egress=ctx.egress,
         host_lib=host_lib,
     )
-    return Prepared(source_id, installed.content_hash, manifest, command)
+    return Prepared(
+        source_id,
+        installed.content_hash,
+        manifest,
+        _granted(command, source_id, config, ctx),
+        ctx.org_id,
+    )
+
+
+def _granted(command: HostCommand, source_id: str, config: CodeConfig, ctx: Context) -> HostCommand:
+    """``command`` with the source's services grant: its org and declared secrets (REQ-2104)."""
+    grant = services.ServiceGrant(
+        org_id=ctx.org_id,
+        source_id=source_id,
+        secrets=config.secrets,
+        admin_db=ctx.admin_db,
+        llm_cap_usd=config.llm_cap_usd,
+    )
+    return replace(command, services=grant)
 
 
 def _prepare_python(
@@ -237,7 +265,13 @@ def _prepare_python(
         egress=ctx.egress,
         host_lib=host_lib,
     )
-    return Prepared(source_id, installed.content_hash, manifest, command)
+    return Prepared(
+        source_id,
+        installed.content_hash,
+        manifest,
+        _granted(command, source_id, config, ctx),
+        ctx.org_id,
+    )
 
 
 async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context) -> Prepared:
@@ -248,7 +282,7 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
     config = config_of(source_type, mapping)
     if config.content_hash is not None:
         with _lock:
-            held = _prepared.get((source_id, config.content_hash))
+            held = _prepared.get((ctx.org_id, source_id, config.content_hash))
         if held is not None:
             return held
     code = await _code_reference(config, ctx)
@@ -257,14 +291,14 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
     # Fetching, installing and reading block: off the event loop.
     ready = await asyncio.to_thread(build, source_id, config, code, lock, ctx)
     with _lock:
-        _prepared[(source_id, ready.content_hash)] = ready
+        _prepared[(ctx.org_id, source_id, ready.content_hash)] = ready
     return ready
 
 
 def forget(source_id: str) -> None:
     """The source was edited or deleted: what was prepared for it, and its workers, go."""
     with _lock:
-        for key in [k for k in _prepared if k[0] == source_id]:
+        for key in [k for k in _prepared if k[1] == source_id]:
             del _prepared[key]
     pool.stop_source(source_id)
 

@@ -15,6 +15,9 @@
 //   code      a package at an exact version, a Git repository at a commit, or an uploaded archive
 //   lockfile  a lockfile given beside a package reference (a published package carries none)
 //   entry     a Python source's entry module, when its code has more than one
+//   secrets   REQ-2104: the names its code may read through Provisa's services, each a vault
+//             reference (the names alone when each is the org secret of that name)
+//   llm       REQ-2105: {cap_usd}, the monthly cap on what its calls to the LLM service cost
 //
 // The content hash of the code is pinned by the server when the source is saved.
 
@@ -37,6 +40,32 @@ export const LOCKFILES: Record<string, string[]> = {
 };
 
 const COMMIT = /^[0-9a-f]{40}$/;
+
+/** REQ-2104: the source's declared secrets, from the form's `code_secrets`: each name with the
+ * reference typed for it, or null for the org secret of that name. The form spells no reference
+ * of its own: a name picked from the org's secrets stays a name. */
+export function declaredSecrets(fields: Record<string, string>): Record<string, string | null> {
+  return fields.code_secrets
+    ? (JSON.parse(fields.code_secrets) as Record<string, string | null>)
+    : {};
+}
+
+/** The `secrets` a mapping stores: the names alone when each is the org secret of that name,
+ * else each name with its reference or null (an `${env:...}` one is kept as written). */
+function secretsMapping(
+  declared: Record<string, string | null>,
+): string[] | Record<string, string | null> | null {
+  const names = Object.keys(declared);
+  if (names.length === 0) return null;
+  return names.every((n) => declared[n] === null) ? names : declared;
+}
+
+/** The form's `code_secrets` with the org secrets `names` declared, keeping any reference a
+ * declared name already has. */
+export function withSecretNames(fields: Record<string, string>, names: string[]): string {
+  const held = declaredSecrets(fields);
+  return JSON.stringify(Object.fromEntries(names.map((n) => [n, held[n] ?? null])));
+}
 
 /** The source's mapping, as the server stores it, from the form's fields. */
 export function codeMappingJson(type: string, fields: Record<string, string>): string {
@@ -61,11 +90,15 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
       ? { filename: fields.lockfile_filename, upload: fields.lockfile_upload }
       : null;
   const entry = (fields.code_entry ?? "").trim();
+  const secrets = secretsMapping(declaredSecrets(fields));
+  const cap = (fields.code_llm_cap ?? "").trim();
   return JSON.stringify({
     runtime: type === PYTHON ? PYTHON : (fields.code_runtime ?? "node"),
     code,
     ...(lockfile ? { lockfile } : {}),
     ...(type === PYTHON && entry ? { entry } : {}),
+    ...(secrets ? { secrets } : {}),
+    ...(cap ? { llm: { cap_usd: Number(cap) } } : {}),
   });
 }
 
@@ -76,8 +109,13 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code?: Record<string, string>;
     lockfile?: { filename: string; upload: string } | null;
     entry?: string;
+    secrets?: string[] | Record<string, string | null>;
+    llm?: { cap_usd?: number };
   };
   const code = m.code ?? {};
+  const secrets = Array.isArray(m.secrets)
+    ? Object.fromEntries(m.secrets.map((n) => [n, null]))
+    : (m.secrets ?? {});
   const origin: CodeOrigin =
     code.kind === "git" ? "git" : code.kind === "upload" ? "upload" : "package";
   return {
@@ -93,6 +131,8 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     lockfile_upload: m.lockfile?.upload ?? "",
     lockfile_filename: m.lockfile?.filename ?? "",
     code_entry: m.entry ?? "",
+    code_secrets: Object.keys(secrets).length ? JSON.stringify(secrets) : "",
+    code_llm_cap: m.llm?.cap_usd === undefined ? "" : String(m.llm.cap_usd),
   };
 }
 

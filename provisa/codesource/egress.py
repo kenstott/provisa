@@ -17,11 +17,16 @@ allow-list: an HTTPS ``CONNECT host:port`` tunnel, or a plain HTTP request in ab
 Anything else is answered 403, naming the host. Loopback is never reached, whatever the list says
 and whatever a name resolves to: Provisa's own ports are not a code source's to call.
 
+One host is answered by the proxy itself, never connected to: Provisa's services to code
+(``provisa-services``, REQ-2104, provisa/codesource/services.py), plain HTTP -- sent to the proxy
+in absolute form (Python), or through a ``CONNECT provisa-services:80`` tunnel, which Node's,
+Bun's and Deno's fetch open for a plain ``http://`` address too.
+
 The runtime is pointed at the proxy with ``HTTP_PROXY`` and ``HTTPS_PROXY`` (and Node 24's
 ``NODE_USE_ENV_PROXY=1``, without which its built-in fetch ignores them).
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-885
+# Requirements: REQ-1984, REQ-1993, REQ-885, REQ-2104
 from __future__ import annotations
 
 import ipaddress
@@ -31,12 +36,17 @@ import socketserver
 import threading
 from collections.abc import Iterable
 
+from provisa.codesource import services
+
 log = logging.getLogger(__name__)
 
 #: How long a proxied connection may wait to be accepted by its upstream.
 CONNECT_TIMEOUT_S = 30.0
 
 _MAX_HEAD = 64 * 1024
+
+#: The largest request body Provisa's services read (an LLM call's messages, REQ-2105).
+_MAX_BODY = 32 * 1024 * 1024
 
 
 def _host_port(target: str, default_port: int) -> tuple[str, int]:
@@ -119,6 +129,9 @@ class EgressProxy:
         method, target, version = parts
         if method == "CONNECT":
             host, port = _host_port(target, 443)
+            if host.lower() == services.SERVICES_HOST:
+                self._services_tunnel(client, version, port, head.split(b"\r\n\r\n", 1)[1])
+                return
             upstream = self._open(client, host, port)
             if upstream is None:
                 return
@@ -130,6 +143,9 @@ class EgressProxy:
             return
         authority, _, path = target[len("http://") :].partition("/")
         host, port = _host_port(authority, 80)
+        if host.lower() == services.SERVICES_HOST:
+            self._services(client, method, f"/{path}", head)
+            return
         upstream = self._open(client, host, port)
         if upstream is None:
             return
@@ -137,9 +153,9 @@ class EgressProxy:
         first = f"{method} /{path} {version}\r\n".encode("latin-1")
         self._pipe(client, upstream, first + rest)
 
-    def _read_head(self, client: socket.socket) -> bytes | None:
-        """The request's head, through the blank line, and any body bytes read with it."""
-        data = b""
+    def _read_head(self, client: socket.socket, data: bytes = b"") -> bytes | None:
+        """The request's head, through the blank line, and any body bytes read with it;
+        ``data``: what was already read of it."""
         while b"\r\n\r\n" not in data:
             chunk = client.recv(4096)
             if not chunk:
@@ -174,6 +190,67 @@ class EgressProxy:
             return upstream
         self._refuse(client, 502, f"{host}:{port} did not accept the connection")
         return None
+
+    def _services_tunnel(self, client: socket.socket, version: str, port: int, read: bytes) -> None:
+        """A tunnel to Provisa's services: accepted, and the one request sent through it answered
+        here, as a plain request to them is. ``read``: what came after the CONNECT's head."""
+        if port != 80:
+            self._refuse(
+                client,
+                400,
+                f"Provisa's services are http://{services.SERVICES_HOST}, not port {port}",
+            )
+            return
+        client.sendall(f"{version} 200 Connection Established\r\n\r\n".encode())
+        head = self._read_head(client, read)
+        if head is None:
+            return
+        parts = head.split(b"\r\n", 1)[0].decode("latin-1").split(" ")
+        if len(parts) != 3:
+            self._refuse(client, 400, "a request the proxy cannot read")
+            return
+        self._services(client, parts[0], parts[1], head)
+
+    def _body(self, client: socket.socket, head: bytes) -> bytes | None:
+        """The request's body, by its Content-Length: what was read with the head, and the rest."""
+        headers, _, body = head.partition(b"\r\n\r\n")
+        length = 0
+        for line in headers.split(b"\r\n")[1:]:
+            name, _, value = line.partition(b":")
+            if name.strip().lower() == b"content-length":
+                if not value.strip().isdigit() or int(value) > _MAX_BODY:
+                    self._refuse(client, 413, "a request body larger than the services read")
+                    return None
+                length = int(value)
+        while len(body) < length:
+            chunk = client.recv(65536)
+            if not chunk:
+                return None
+            body += chunk
+        return body[:length]
+
+    def _services(self, client: socket.socket, method: str, path: str, head: bytes) -> None:
+        """Answer a request to Provisa's services: a value or a refusal, never forwarded."""
+        request = self._body(client, head)
+        if request is None:
+            return
+        content_type = services.TEXT
+        try:
+            status, content_type, body = services.answer(method, path, request)
+        except Exception as exc:  # allow-ble: a failure of the services themselves (the vault or the audit trail unreachable) is answered as one, by its type alone; its message could carry what it read
+            log.exception("code-source services failed on %s", method)
+            status, body = 500, f"Provisa's services failed: {type(exc).__name__}".encode()
+        if status != 200:
+            log.info("code-source services refused: %s", body.decode())
+        try:
+            client.sendall(
+                f"HTTP/1.1 {status} {'OK' if status == 200 else 'Refused'}\r\n"
+                f"Content-Type: {content_type}\r\nContent-Length: {len(body)}\r\n"
+                "Cache-Control: no-store\r\nConnection: close\r\n\r\n".encode()
+                + body
+            )
+        except OSError:
+            pass  # the client has gone: there is no one to answer
 
     def _refuse(self, client: socket.socket, status: int, reason: str) -> None:
         log.info("code-source egress refused: %s", reason)
