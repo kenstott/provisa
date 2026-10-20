@@ -1678,6 +1678,14 @@ async def govern_statement(
             normalized_sql, _view_map, state, gov_ctx
         )
         _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
+    # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
+    from provisa.mv.bitemporal_tables import read_versions
+
+    _versioned = read_versions(normalized_sql, state, gov_ctx, as_of)
+    if _versioned != normalized_sql:
+        normalized_sql = _versioned
+        _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
+        _parsed_input = await _off_loop(lambda: sqlglot.parse_one(normalized_sql, read="postgres"))
     await _guard_complexity(sql, role_id, _parsed_input, gov_ctx, ctx, state)
 
     _bypass_guard = product_statement or relationship_guard_bypassed(
@@ -4619,6 +4627,14 @@ async def _govern_compiled(
 
         _views = views_read(sql, _view_map)
         sql, _validated_sql = semantic_statement(sql, _view_map, state, gov_ctx)
+        _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
+    # REQ-2109: a table whose rows are its versions is read as of the request's time travel.
+    from provisa.mv.bitemporal_tables import read_versions
+
+    _versioned = read_versions(sql, state, gov_ctx, as_of)
+    if _versioned != sql:
+        sql = _versioned
+        _validated_sql = read_versions(_validated_sql, state, gov_ctx, as_of)
         _compiled_tree = await _off_loop(lambda: _sg.parse_one(sql, read="postgres"))
     await _guard_complexity(sql, role_id, _compiled_tree, gov_ctx, ctx, state)
     # The V-rules every statement meets (a masked column in a filter, a hidden column, tables
