@@ -426,6 +426,25 @@ def test_the_answering_config_asks_polly_through_openrouter_on_the_sandbox_model
     assert config["domains"] == [{"id": "bank"}]  # the demo's own config, kept
 
 
+def test_the_answering_config_is_served_beside_what_the_demo_declares(tmp_path):
+    """The build's server reads a demo's declared replica rows and code archives from the
+    directory of the config it serves: an answering config written anywhere else left a demo
+    with both a Polly step and declared rows (cloudpolicy) calling its faked sources' services,
+    and its code source without its upload."""
+    demo = _toured(tmp_path, _ASKING)
+    (demo / "replica_rows" / "crm").mkdir(parents=True)
+    (demo / "replica_rows" / "crm" / "crm.Account.tsv").write_text("Id\n1\n")
+    (demo / "code").mkdir()
+    (demo / "code" / "reader.tar.gz").write_bytes(b"archive")
+    (demo / "secrets.yaml").write_text("{}\n")
+    work = tmp_path / "work"
+    work.mkdir()
+    served = builder.answering_config(work, demo).parent
+    assert (served / "replica_rows" / "crm" / "crm.Account.tsv").read_text() == "Id\n1\n"
+    assert (served / "code" / "reader.tar.gz").read_bytes() == b"archive"
+    assert (served / "secrets.yaml").is_file()
+
+
 _encode = json.dumps  # the stream below takes a json= keyword, as httpx.stream does
 
 

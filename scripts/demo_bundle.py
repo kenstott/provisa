@@ -537,7 +537,14 @@ def answering_config(work: Path, demo: Path) -> Path:
         **(config.get("ai_models") or {}),
         "mcp_chat": {"vendor": "openrouter", "model": setting("sandbox.ai_model").default},
     }
-    path = work / "answering.yaml"
+    # In a directory of its own, beside what the demo declares beside its config.yaml: its
+    # replica rows and code archives are read from the directory of the config served.
+    from provisa.core.demo_bundles import link_declared
+
+    directory = work / "answering"
+    directory.mkdir()
+    link_declared(demo, directory)
+    path = directory / "config.yaml"
     path.write_text(yaml.safe_dump(config))
     return path
 

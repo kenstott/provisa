@@ -163,6 +163,22 @@ def check_directory(directory: Path) -> None:
         check_runs_here(BundleManifest.read(json.loads(record.read_text())), running_provisa())
 
 
+def link_declared(directory: Path, beside: Path) -> None:
+    """Link into ``beside`` what the config in ``directory`` declares beside it: its replica rows
+    (REQ-2089), its code archives (REQ-2101) and its secrets (REQ-2095). Each is read from the
+    directory of the config served, so a copy of the config served from elsewhere (the bundle
+    build's answering config, a test server's) is given them where it is."""
+    from provisa.codesource.declared_code import CODE_DIRECTORY
+    from provisa.core.demo_secrets import FILE as SECRETS_FILE
+    from provisa.federation.declared_replica_rows import ROWS_DIR
+
+    for folder in (ROWS_DIR, CODE_DIRECTORY):
+        if (directory / folder).is_dir():
+            (beside / folder).symlink_to((directory / folder).resolve(), target_is_directory=True)
+    if (directory / SECRETS_FILE).is_file():
+        (beside / SECRETS_FILE).symlink_to((directory / SECRETS_FILE).resolve())
+
+
 #: Where the project publishes its demos (demo-bundles.yml): what ``start-ui-install.sh --demo``
 #: and a deployment's sandbox tier pull from unless told another registry (a test's own).
 PUBLISHED_AT = "https://ghcr.io/kenstott"
