@@ -693,7 +693,7 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: `/lineage?sql=${encodeURIComponent(LINEAGE_DEMO_SQL)}`,
-    capability: "table_registration",
+    capability: "view_governance",
     prefetch: "lineageDemo",
     element: '[data-testid="lineage-dag"]',
     // The DAG mounts only once LineagePage's deep-link effect has finished analyzing the statement

@@ -82,7 +82,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { to: "/commands", labelKey: "navBar.itemCommands", capability: "table_registration" },
       // REQ-1160/1161: gated with the rest of the Model group. `admin` is the platform wildcard, so
       // naming it here hid Lineage from every org role while the endpoint required nothing.
-      { to: "/lineage", labelKey: "navBar.itemLineage", capability: "table_registration" },
+      { to: "/lineage", labelKey: "navBar.itemLineage", capability: "view_governance" },
     ],
   },
   {

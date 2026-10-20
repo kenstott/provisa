@@ -8,7 +8,7 @@
 //   node scripts/gen-site-source-picker.mjs --check    exit 1 when a page or a count is out of step
 //
 // Source of truth: provisa-ui/src/pages/sources/constants.ts (SOURCE_TYPES: order, labels,
-// categories, the hosted Postgres services in `managed`) and provisa-ui/src/components/SourceLogo.tsx
+// categories, the hosted Postgres services in `managed`) and provisa-ui/src/components/sourceLogoMarks.ts
 // (which types have a published simple-icons mark, which a bundled logo file under
 // provisa-ui/src/assets/source-logos, copied to site/assets; the rest are lettered tiles in the
 // category's colour). REQUIREMENT_ONLY lists what the requirements add that the picker does not have yet;
@@ -51,7 +51,7 @@ async function loadSourceTypes() {
 
 function loadMarks() {
   const simple = require("simple-icons");
-  const logo = fs.readFileSync(path.join(UI, "src/components/SourceLogo.tsx"), "utf8");
+  const logo = fs.readFileSync(path.join(UI, "src/components/sourceLogoMarks.ts"), "utf8");
   const marks = {};
   // A mark's line may end in a comment naming why (google_workspace's does).
   for (const m of logo.matchAll(/^\s+(\w+): (si\w+),(\s*\/\/.*)?$/gm)) marks[m[1]] = simple[m[2]];

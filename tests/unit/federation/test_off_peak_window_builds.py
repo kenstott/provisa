@@ -20,6 +20,8 @@ never held -- reads of it wait on that one. A window-only table is due once per 
 
 from __future__ import annotations
 
+import uuid
+
 import asyncio
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
@@ -39,6 +41,12 @@ from provisa.federation.scheduled_refresh import (
 )
 
 ORG = "org1"
+
+# PostgreSQL advisory locks are held server-wide, not per database: every xdist worker's control
+# plane shares one server, so each worker process names an engine of its own, or a slot another
+# worker's test holds reads here as taken.
+ENGINE = f"trino@engine-{uuid.uuid4().hex[:8]}:8080"
+
 ORDERS = ("shop", "public", "orders")
 
 
@@ -86,7 +94,7 @@ def _runner(control_plane, tmp_path, *, build, deferred_until, tasks):
         db=control_plane.org(),
         org_id=ORG,
         locks=locks,
-        engine_key=lambda: "trino@engine:8080",
+        engine_key=lambda: ENGINE,
         build=build,
         source_cap=none,
         permits=None,

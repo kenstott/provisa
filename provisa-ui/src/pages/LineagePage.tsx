@@ -15,7 +15,7 @@
 import { LINEAGE_EDITOR_PANEL_STYLE, LINEAGE_CONTROLS_PANEL_STYLE } from "./lineageLayout";
 import { Trans, useTranslation } from "react-i18next";
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   ActionIcon,
   Alert,
@@ -38,6 +38,8 @@ import { sql as sqlLang, PostgreSQL } from "@codemirror/lang-sql";
 import { EditorView } from "@codemirror/view";
 import { LineageDag } from "../components/lineage/LineageDag";
 import { columnDescriber } from "../components/lineage/column-descriptions";
+import { lineageLinks } from "../components/lineage/lineage-links";
+import { meetsRequirement } from "../lib/capabilities";
 import { useTables } from "../hooks/useAdminQueries";
 import { fetchLineageGraph, fetchFederationGraph } from "../api/lineage";
 import type { LineageGraphData } from "../api/lineage";
@@ -98,7 +100,8 @@ export function LineagePage(): React.ReactElement {
   // able to name ANY role in the org — including ones they do not hold — to see what that role's data
   // is derived from. The right to do that is view_governance, the same right the visible_to columns
   // carry, enforced on the endpoint and gated here so the control is absent without it.
-  const { selectedRoles, activeOrgId } = useAuth();
+  const { selectedRoles, activeOrgId, capabilities } = useAuth();
+  const navigate = useNavigate();
   const [orgRoles, setOrgRoles] = useState<string[]>([]);
   // The user's current roles are the natural opening perspective; empty means "every role".
   const [lineageRoles, setLineageRoles] = useState<string[]>(() => selectedRoles.map((r) => r.id));
@@ -196,6 +199,14 @@ export function LineagePage(): React.ReactElement {
   // Registered column descriptions, shown at the cursor over a field.
   const { tables: registeredTables } = useTables();
   const describeColumn = useMemo(() => columnDescriber(registeredTables), [registeredTables]);
+  // REQ-2116: each element opens where it is defined, as far as the user's rights reach.
+  const links = useMemo(
+    () =>
+      graph
+        ? lineageLinks(graph, registeredTables, (req) => meetsRequirement(capabilities, req))
+        : undefined,
+    [graph, registeredTables, capabilities],
+  );
 
   const sqlExtensions = useMemo(
     () => [sqlLang({ dialect: PostgreSQL }), EditorView.lineWrapping],
@@ -382,6 +393,8 @@ export function LineagePage(): React.ReactElement {
               legend
               stats
               describeColumn={describeColumn}
+              links={links}
+              onOpenLink={navigate}
               collapsedRelations={collapsed}
               allColumns={complete}
               onToggleRelation={toggleRelation}
@@ -412,6 +425,8 @@ export function LineagePage(): React.ReactElement {
               legend
               stats
               describeColumn={describeColumn}
+              links={links}
+              onOpenLink={navigate}
               collapsedRelations={collapsed}
               allColumns={complete}
               onToggleRelation={toggleRelation}
