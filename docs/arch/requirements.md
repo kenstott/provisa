@@ -25659,3 +25659,29 @@ A named demo, World Cup: public sources about the World Cup whose country names 
 **Code:** `demo/named/worldcup/config.yaml`, `demo/named/worldcup/country_alias/country_alias.py`
 
 **Tests:** `tests/integration/test_worldcup_demo.py`
+
+### REQ-2102 · UI {#REQ-2102}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo cloudpolicy reviews a cloud security policy after the fact, read only. The policy says every disk attached to a virtual machine uses a customer-managed key (CMEK, §4.2), with CISO-approved exceptions that expire after 90 days (§4.3), no public addresses on database servers (§5.1) and remediation deadlines by incident priority (§6.1), among seven controls. Its sources are faked with their real types: the cloud inventory (cloudops: compute_resources, and storage_resources with key_id and attached_instance_id across Azure managed disks, EBS volumes and GCP persistent disks) and the security team's ServiceNow incidents (number, short_description, state, priority, category, opened_at, resolved_at, u_policy_control, assignment_group and cmdb_ci with their display values), each a TTL -1 replica of declared rows that never contacts the service. The policy is an HTML document shipped in a Python code source whose policy_sections(url) reads it into section, heading, clause and effective date; each clause is embedded into the demo's pgvector store for search by meaning. Relationships join disk to virtual machine, incident to disk and incident to the clause it cites. Views state §4.2 (attached disks without CMEK), §5.1, the incidents citing a wrong or withdrawn section, the controls no check enforces, and the daily review classifying each attached disk as compliant, covered by an exception, exception expired, violation ticketed, overdue past §6.1, closed while still not compliant, or never filed. A daily scheduled SQL trigger writes the day's review into review_history through the governed pipeline under its write grant; fourteen days of history are seeded. The auditor reads every account; the payments team's row rules keep it to its own resources and incidents. The tour walks the scenario, the three sources, the model, the policy as a view, the trigger and its history (a tour step may name a scheduled trigger, trigger: <id>, its row on the Triggers page), four Polly questions with stored answers, the same list as the payments team, a Superset compliance dashboard as a picture and a recap.
+
+**Use case:** A security lead reviews one policy across three clouds from records already kept, and each application team sees only its own findings.
+
+**Code:** `demo/named/cloudpolicy/config.yaml`, `demo/named/cloudpolicy/tour.yaml`, `demo/named/cloudpolicy/generate.py`, `demo/named/cloudpolicy/policy/policy_reader/policy_reader.py`, `demo/named/cloudpolicy/db/init.sql`, `provisa-ui/src/tour/demoTour.ts`
+
+**Tests:** `tests/integration/test_cloudpolicy_demo.py`, `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`
+
+## 4. Source Connectors
+
+### REQ-2112 · Source Connectors {#REQ-2112}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms; REQ-2100) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses ([REQ-2098](#REQ-2098)), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest; REQ-2104, REQ-2105, REQ-2106) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how.
+
+**Use case:** A developer writes a Python function in VS Code, sees the table Provisa would make of it, queries it against a Provisa instance in dev mode as they edit, and builds its image without leaving the editor.
+
+**Code:** —
+
+**Tests:** —
