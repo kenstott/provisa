@@ -87,6 +87,7 @@ def _endpoints(setup: contract_model.Setup) -> ol.Endpoints:
         flight_port=8815,
         grpc_host="localhost",
         grpc_port=50051,
+        mcp_url="http://localhost:8765/mcp",
         role="org_admin",
         setup=setup,
         credential=None,
@@ -236,7 +237,9 @@ def test_contract_request_equals_the_pre_contract_request(
 
 
 def test_every_client_transport_has_a_golden_request() -> None:
-    assert set(ol.CLIENTS) == set(GOLDEN)
+    # MCP came after the contract, so it has no pre-contract request to equal: its request is
+    # checked against a real MCP server (test_mcp_client.py).
+    assert set(ol.CLIENTS) - {"mcp"} == set(GOLDEN)
 
 
 def test_endpoints_come_from_the_contract() -> None:

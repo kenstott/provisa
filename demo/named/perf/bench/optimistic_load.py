@@ -246,7 +246,10 @@ class McpClient:
         )
         if result.get("isError"):
             raise RuntimeError(f"MCP run_sql: {result['content'][0]['text'][:300]}")
-        out = result["structuredContent"]
+        # run_sql is declared ``-> dict``, which gives the tool no output schema: its answer is
+        # the dict as JSON text, the call's one content item
+        (item,) = result["content"]
+        out = json.loads(item["text"])
         return len(out["rows"]), len(out["columns"]), None
 
     def close(self) -> None:

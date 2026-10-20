@@ -35,6 +35,7 @@ import lookup
 import yaml
 from contract_checks import (
     _check_governance,
+    _check_endpoints,
     _check_implemented,
     _check_joins,
     _check_ranges,
@@ -172,6 +173,7 @@ def setup_from_dict(
         ),
     )
     _check_implemented(setup)
+    _check_endpoints(setup)
     _check_governance(setup)
     _check_route(setup)
     _check_ranges(setup)

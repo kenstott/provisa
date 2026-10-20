@@ -24,6 +24,8 @@ deployment:
     bolt: {host: localhost, port: 17687}
     flight: {host: localhost, port: 8815}
     grpc: {host: localhost, port: 50051}
+    # The MCP Streamable HTTP server (orchestrate.sh starts it on loopback, its role pinned).
+    mcp: {url: "http://localhost:8765/mcp"}
   # --demo perf runs with auth.provider: none. A deployment with auth names the environment
   # variable that holds the credential: {mode: env, env: NAME}. A secret never appears here.
   credentials: {mode: none}
@@ -190,6 +192,7 @@ transports:
   grpc: {}
   rest: {}
   jsonapi: {}
+  mcp: {}
 
 load:
   mode: closed_loop
