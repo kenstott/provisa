@@ -708,7 +708,8 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
         account, role, region = _organization_context(runtime)
         manifest = listing_manifest(
             product.name,
-            product.description,
+            # REQ-2118: a listing has a description and no field for the rest of the ODPS fields.
+            product.described(),
             account=account,
             role=role,
             region=region,

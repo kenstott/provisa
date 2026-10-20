@@ -158,6 +158,9 @@ async def test_the_organization_listing_carries_the_products_fields(published):
         conn.close()
     manifest = yaml.safe_load(listing["manifest_yaml"])
     assert manifest["title"] == PRODUCT_FIELDS["name"]
-    assert manifest["description"] == PRODUCT_FIELDS["purpose"]
+    # REQ-2118: the purpose, then the product's other ODPS fields.
+    assert manifest["description"].startswith(PRODUCT_FIELDS["purpose"])
+    assert f"Limitations: {PRODUCT_FIELDS['limitations']}" in manifest["description"]
+    assert f"Version: {PRODUCT_FIELDS['version']}" in manifest["description"]
     assert manifest["support_contact"] == PRODUCT_FIELDS["support_contact"]
     assert manifest["organization_profile"] == "INTERNAL"

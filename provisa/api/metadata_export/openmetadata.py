@@ -333,7 +333,9 @@ def _data_product_entity(product: DataProductAsset) -> Entity:
     body: dict[str, Any] = {
         "name": product.id,
         "domain": product.domain_id,
-        "description": product.description,
+        # REQ-2118: OpenMetadata's data product has a description and no field for the rest of
+        # the ODPS fields, so they follow the purpose in it.
+        "description": product.described(),
         "assets": [{"fullyQualifiedName": ref.fqn(), "type": "table"} for ref in product.members],
     }
     if product.name and product.name != product.id:

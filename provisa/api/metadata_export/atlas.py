@@ -198,6 +198,8 @@ def entity_type_defs() -> list[dict[str, Any]]:  # REQ-1388
             "attributeDefs": [
                 _attr_def("provisaDomain"),
                 _attr_def("provisaUri"),
+                # REQ-2118: the product's ODPS fields, as one JSON document by ODPS name.
+                _attr_def("provisaOdps"),
             ],
         },
     ]
@@ -613,6 +615,7 @@ def _data_product_entities(
                     "description": product.description,
                     "provisaDomain": product.domain_id,
                     "provisaUri": product.semantic_uri,
+                    "provisaOdps": json.dumps(product.odps_fields(), sort_keys=True),
                     **({"owner": product.owner.id} if product.owner is not None else {}),
                 },
                 classifications=_classifications(snapshot, product.ref.fqn()),

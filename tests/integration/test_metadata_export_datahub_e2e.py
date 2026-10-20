@@ -122,6 +122,21 @@ async def _the_data_product_holds_its_members_and_fields(published: dict) -> Non
     product = await _aspect(urn, "dataProductProperties")
     assert product["name"] == PRODUCT_FIELDS["name"]
     assert product["customProperties"]["provisaDomain"] == DOMAIN
+    # REQ-2118: every ODPS field, under its ODPS name.
+    odps = {k: v for k, v in product["customProperties"].items() if k.startswith("odps.")}
+    assert odps == {
+        "odps.purpose": PRODUCT_FIELDS["purpose"],
+        "odps.ownerRole": PRODUCT_FIELDS["owner_role"],
+        "odps.teamRole": PRODUCT_FIELDS["team_role"],
+        "odps.limitations": PRODUCT_FIELDS["limitations"],
+        "odps.usage": PRODUCT_FIELDS["usage"],
+        "odps.version": PRODUCT_FIELDS["version"],
+        "odps.status": PRODUCT_FIELDS["status"],
+        "odps.sla": PRODUCT_FIELDS["sla"],
+        "odps.support": PRODUCT_FIELDS["support"],
+        "odps.supportContact": PRODUCT_FIELDS["support_contact"],
+        "odps.custom.cost_center": "CC-42",
+    }
     assert {a["destinationUrn"] for a in product["assets"]} == {
         _dataset("orders"),
         _dataset("customers"),

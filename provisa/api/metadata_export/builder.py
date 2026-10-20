@@ -235,6 +235,14 @@ def _data_product_assets(
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
                 publish=product.publish,
+                team_role=product.team_role,
+                limitations=product.limitations,
+                usage=product.usage,
+                version=product.version,
+                status=product.status,
+                sla=product.sla,
+                support=product.support,
+                custom_properties=dict(product.custom_properties),
                 documentation_url=(
                     data_product_page_url(documentation_base_url, page_org_id, product.id)
                     if documentation_base_url
