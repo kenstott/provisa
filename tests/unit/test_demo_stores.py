@@ -649,3 +649,56 @@ def test_a_postgres_with_pgvector_is_the_demos_own_and_names_its_data_unsuffixed
         "CLOUDPOLICY_PG_NS": "",
     }
     assert not any("/shared.yml up" in line for line in runner.lines())
+
+
+# -- every <STEM>_NS is set before any compose command reads it -------------------------------------
+
+
+def _published_run_files() -> list[Path]:
+    import yaml
+
+    return sorted(
+        run
+        for run in (_REPO / "demo" / "named").glob("*/docker-compose.run.yml")
+        if (yaml.safe_load((run.parent / "demo.yaml").read_text()) or {}).get("published") is True
+    )
+
+
+def test_a_version_reads_its_stores_without_interpolating_the_file(monkeypatch, tmp_path):
+    """The run file names its data by the <STEM>_NS this reading sets; reading it must not need
+    them (visitor walk 39480892669: STREAMING_KAFKA_NS required and unset at `compose config`)."""
+    runner = FakeRunner({"ps -q kafka": "kcid", "ps -q producer": "pcid", " ps -q": "pcid"})
+    _demo(monkeypatch, tmp_path, runner, _STREAMING).up()
+    [config] = [line for line in runner.lines() if " config " in line]
+    assert "--no-interpolate" in config
+
+
+def test_a_store_the_demo_runs_itself_has_its_names_set_before_its_first_start(
+    monkeypatch, tmp_path
+):
+    runner = FakeRunner(
+        {"ps -q postgres": "pgcid", "port postgres 5432": "127.0.0.1:43000", " ps -q": "pgcid"}
+    )
+    _demo(monkeypatch, tmp_path, runner, _PGVECTOR).up()
+    first_up = next(line for line in runner.lines() if " up -d" in line)
+    assert "CLOUDPOLICY_PG_NS= " in first_up
+
+
+@pytest.mark.parametrize("run", _published_run_files(), ids=lambda p: p.parent.name)
+def test_every_variable_a_published_demo_requires_is_a_name_its_stores_set(run):
+    """Every ${VAR?...} a published demo's run file requires is the ns_env of one of its stores:
+    set by the sandbox tier's node (Demo.up, shared or own) and by the bundle build and a local
+    start (demo_bundles.store_namespaces)."""
+    import re
+
+    import yaml
+
+    from provisa.core.demo_bundles import store_namespaces
+
+    stores = ds.stores_of(yaml.safe_load(run.read_text()))
+    named = {
+        s.labels["com.provisa.demo.ns_env"] for s in stores if "com.provisa.demo.ns_env" in s.labels
+    }
+    required = set(re.findall(r"\$\{([A-Za-z0-9_]+)\?", run.read_text()))
+    assert required <= named, f"{run.parent.name} requires {sorted(required - named)} unset"
+    assert set(store_namespaces(run.parent)) == named
