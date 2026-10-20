@@ -267,11 +267,12 @@ class TestAdopting:
 
 
 class TestTheSchemaBuild:
-    """The declared rows land before the routes are published, so a source of them alone is kept
-    (and never contacted) from the first read on."""
+    """The declared code archives are kept, then the declared rows land, before the routes are
+    published, so a source of them alone is kept (and never contacted) from the first read on."""
 
     def _record(self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
-        from provisa.api import demo_templates, model_reload
+        from provisa.api import app, demo_templates, model_reload
+        from provisa.codesource import declared_code
 
         calls: list[str] = []
 
@@ -282,7 +283,13 @@ class TestTheSchemaBuild:
         async def publish(rt):
             calls.append("publish")
 
+        async def adopt_code(admin_db, org_id, directory):
+            calls.append(f"code {directory.name}")
+            return []
+
+        monkeypatch.setattr(app.state, "admin_db", object())
         monkeypatch.setattr(demo_templates, "declared_rows_directory", lambda org_id: tmp_path)
+        monkeypatch.setattr(declared_code, "adopt_declared_code", adopt_code)
         monkeypatch.setattr(drr, "adopt_declared_rows", adopt)
         monkeypatch.setattr(model_reload, "publish_replica_routes", publish)
         return calls
@@ -295,7 +302,7 @@ class TestTheSchemaBuild:
 
         calls = self._record(monkeypatch, tmp_path)
         asyncio.run(publish_routes_over_declared_rows(SimpleNamespace(env=PROD, org_id="o")))
-        assert calls == [f"adopt {tmp_path.name}", "publish"]
+        assert calls == [f"code {tmp_path.name}", f"adopt {tmp_path.name}", "publish"]
 
     def test_another_environment_publishes_its_routes_alone(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
