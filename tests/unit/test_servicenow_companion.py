@@ -27,7 +27,12 @@ pytestmark = pytest.mark.asyncio
 
 @pytest.fixture
 def model_db(control_plane, monkeypatch):
+    from provisa.core import secrets_providers
+
     monkeypatch.setattr(companion, "_forget_spec", lambda cid: None)
+    # A deployment of one organization: what the API layer says at import (provisa.api.app),
+    # which this module does not import. Saving a source asks it (sandbox_egress.pinned_source).
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
     # The stored credential is a reference: encrypted at rest without a key service here.
     from provisa.encryption import encryption_service
 
