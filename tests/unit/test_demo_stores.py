@@ -614,3 +614,38 @@ def test_a_demo_version_reads_the_shared_qdrant_with_a_token_of_its_own(monkeypa
     assert found["SONNETS_QDRANT_NS"] == suffix
     assert found["SONNETS_QDRANT_KEY"] == ds.qdrant_token(key, [f"sonnet_lines{suffix}"])
     assert (found["SONNETS_QDRANT_HOST"], found["SONNETS_QDRANT_PORT"]) == ("127.0.0.1", "46333")
+
+
+_PGVECTOR = {
+    "services": {
+        "postgres": {
+            "image": "pgvector/pgvector:pg16",
+            "labels": {
+                "com.provisa.demo.role": "rdb",
+                "com.provisa.demo.host_env": "CLOUDPOLICY_PG_HOST",
+                "com.provisa.demo.port_env": "CLOUDPOLICY_PG_PORT",
+                "com.provisa.demo.port": "5432",
+                "com.provisa.demo.ns_env": "CLOUDPOLICY_PG_NS",
+                "com.provisa.demo.access": "db/reader.sql",
+            },
+            "environment": {"POSTGRES_DB": "cloudpolicy"},
+        },
+    }
+}
+
+
+def test_a_postgres_with_pgvector_is_the_demos_own_and_names_its_data_unsuffixed(
+    monkeypatch, tmp_path
+):
+    """No shared instance has pgvector: such a store runs as the demo's own, its database under
+    its own name, so the suffix its config names its data with is empty (cloudpolicy)."""
+    runner = FakeRunner(
+        {"ps -q postgres": "pgcid", "port postgres 5432": "127.0.0.1:43000", " ps -q": "pgcid"}
+    )
+    found = _demo(monkeypatch, tmp_path, runner, _PGVECTOR).up()
+    assert found == {
+        "CLOUDPOLICY_PG_HOST": "127.0.0.1",
+        "CLOUDPOLICY_PG_PORT": "43000",
+        "CLOUDPOLICY_PG_NS": "",
+    }
+    assert not any("/shared.yml up" in line for line in runner.lines())

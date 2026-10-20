@@ -79,6 +79,9 @@ import yaml
 _REPO = Path(__file__).resolve().parents[1]
 #: What a demo's own Postgres container loads the bundle's dumps with (dump/load-postgres.sh).
 LOAD_POSTGRES = _REPO / "scripts" / "demo_run" / "load-postgres.sh"
+#: The images a demo's relational store is Postgres in, dumped with pg_dump: Postgres itself, and
+#: Postgres with pgvector (the cloudpolicy demo's clause embeddings).
+POSTGRES_IMAGES = ("postgres:", "pgvector/pgvector:")
 sys.path.insert(0, str(_REPO))
 
 from provisa.core import demo as demo_module  # noqa: E402
@@ -263,7 +266,7 @@ class Stores:
                 continue
             if role != "rdb":
                 continue
-            if not str(service["image"]).startswith("postgres:"):
+            if not str(service["image"]).startswith(POSTGRES_IMAGES):
                 raise SystemExit(f"{self.demo.name}: data store {name} is not Postgres; no dump")
             env = service["environment"]
             user = env["POSTGRES_USER"]

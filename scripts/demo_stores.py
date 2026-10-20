@@ -675,6 +675,11 @@ class Demo:
             for store in stores:
                 if store.kind is None and store.labels.get("com.provisa.demo.host_env"):
                     found.update(self._where(store, *self._own_address(store)))
+                # A store the demo runs itself holds its data under its own names: the suffix its
+                # config names them with is empty (a Postgres with pgvector, which no shared
+                # instance is, runs so).
+                if store.kind is None and store.labels.get("com.provisa.demo.ns_env"):
+                    found[store.labels["com.provisa.demo.ns_env"]] = ""
         return found
 
     def _where(self, store: Store, host: str, port: str) -> dict[str, str]:

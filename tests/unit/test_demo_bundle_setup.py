@@ -782,3 +782,20 @@ def test_the_build_fetches_the_demos_connector_bundles_before_any_server_starts(
     )
     builder._prefetch_connector_bundles(demo)
     assert fetched == ["pgwire-govdata"]
+
+
+def test_every_demos_relational_store_is_one_the_build_dumps():
+    """The build dumps a demo's relational store (role rdb) with pg_dump: its image is Postgres,
+    or Postgres with pgvector. One it does not know fails the build after the demo is set up
+    (cloudpolicy's pgvector store, at its first bundle build)."""
+    named = Path(__file__).resolve().parents[2] / "demo" / "named"
+    unknown = {
+        f"{compose.parent.name}/{name}": service["image"]
+        for compose in sorted(named.glob("*/docker-compose.yml"))
+        # A published demo's bundle is built; an unpublished one (perf) is not.
+        if yaml.safe_load((compose.parent / "demo.yaml").read_text()).get("published")
+        for name, service in (yaml.safe_load(compose.read_text()).get("services") or {}).items()
+        if (service.get("labels") or {}).get("com.provisa.demo.role") == "rdb"
+        and not str(service.get("image", "")).startswith(builder.POSTGRES_IMAGES)
+    }
+    assert unknown == {}
