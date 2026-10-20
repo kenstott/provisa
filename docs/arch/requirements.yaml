@@ -84348,6 +84348,10 @@ And a reload within the grace period keeps the sandbox'
   related_reqs:
   - REQ-2006
   notes: 'Maintainer 2026-10-16: when a live demo browser window is closed, send a signal so the backend can remove it.'
+  tests:
+  - tests/unit/test_sandbox_closing.py
+  - provisa-ui/src/__tests__/sandboxClosing.test.ts
+  - tests/integration/test_demo_sandbox_status_close_e2e.py
 - id: REQ-2066
   status: complete
   since: 2026-10
@@ -84697,6 +84701,7 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_write_grants_admission.py
   - tests/unit/test_write_grants_model.py
   - tests/unit/test_role_inheritance.py
+  - tests/integration/test_write_admission_every_surface.py
   integration_test: required
   integration_test_reason: A grant's rows, check and presets are proved by writing through a running server
     and reading the rows at the source.
@@ -85571,6 +85576,8 @@ Then every row is an EU customer's, each email address arrives masked, and the N
   - demo/named/worldcup/country_alias/country_alias.py
   tests:
   - tests/integration/test_worldcup_demo.py
+  - tests/unit/test_worldcup_demo.py
+  - tests/unit/test_named_demo_tour.py
 - id: REQ-2102
   status: complete
   since: 2026-10

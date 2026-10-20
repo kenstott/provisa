@@ -25148,7 +25148,7 @@ A visitor's demo sandbox is released soon after its tab closes. When the visitor
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_sandbox_closing.py`, `provisa-ui/src/__tests__/sandboxClosing.test.ts`, `tests/integration/test_demo_sandbox_status_close_e2e.py`
 
 ## 6. Execution, Routing, Caching & Performance
 
@@ -25280,7 +25280,7 @@ Per-table write grants. What a role may write to a table is stated per operation
 
 **Code:** `provisa/core/models.py`, `provisa/compiler/write_admission.py`, `provisa/compiler/stage2.py`, `provisa/compiler/schema_gen.py`, `provisa/grpc/proto_gen.py`, `provisa/core/repositories/write_grant.py`, `provisa/core/repositories/table.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/security/inheritance.py`, `provisa/security/meta_role.py`, `provisa/hasura_v2/mapper.py`
 
-**Tests:** `tests/unit/test_write_grants_admission.py`, `tests/unit/test_write_grants_model.py`, `tests/unit/test_role_inheritance.py`
+**Tests:** `tests/unit/test_write_grants_admission.py`, `tests/unit/test_write_grants_model.py`, `tests/unit/test_role_inheritance.py`, `tests/integration/test_write_admission_every_surface.py`
 
 **Docs:** [architecture.md](../architecture.md), [configuration.md](../configuration.md), [pgwire.md](../pgwire.md), [security.md](../security.md)
 
@@ -25658,7 +25658,7 @@ A named demo, World Cup: public sources about the World Cup whose country names 
 
 **Code:** `demo/named/worldcup/config.yaml`, `demo/named/worldcup/country_alias/country_alias.py`
 
-**Tests:** `tests/integration/test_worldcup_demo.py`
+**Tests:** `tests/integration/test_worldcup_demo.py`, `tests/unit/test_worldcup_demo.py`, `tests/unit/test_named_demo_tour.py`
 
 ### REQ-2102 · UI {#REQ-2102}
 
