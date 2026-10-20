@@ -14,12 +14,24 @@
 // the runner's whole window on a visitor's screen; run here, it fails by the step's key.
 
 import { fireEvent, waitFor } from "@testing-library/react";
-import { TOUR_STEPS, type TourStep } from "../tour/tourSteps";
+import { TOUR_SCOPES, TOUR_STEPS, type TourStep } from "../tour/tourSteps";
 
 export function tourStep(key: string): TourStep {
   const step = TOUR_STEPS.find((s) => s.key === key);
   if (step === undefined) throw new Error(`no tour step ${key}`);
   return step;
+}
+
+/** The page step ``key`` runs on: its own route, or, routeless, the one the steps before it in its
+ * scope left the tour on. */
+export function stepRoute(key: string): string {
+  const keys = Object.values(TOUR_SCOPES).find((scope) => scope.includes(key));
+  if (keys === undefined) throw new Error(`tour step ${key} is in no scope`);
+  for (let i = keys.indexOf(key); i >= 0; i--) {
+    const route = tourStep(keys[i]).route;
+    if (route !== undefined) return route;
+  }
+  throw new Error(`tour step ${key} runs on no route`);
 }
 
 async function found(selector: string, what: string): Promise<HTMLElement> {
@@ -41,4 +53,22 @@ export async function walkTourStep(key: string): Promise<HTMLElement> {
   if (step.clickBefore) fireEvent.click(await found(step.clickBefore, `${key} clickBefore`));
   if (step.readySelector) await found(step.readySelector, `${key} readySelector`);
   return found(step.element, `${key} anchor`);
+}
+
+/** Step ``key``'s page ready on the page rendered now: its readySelector, for a step whose anchor is
+ * the app's shell (tourAnchors.nav) and whose page gates it. */
+export async function stepPageReady(key: string): Promise<HTMLElement> {
+  const step = tourStep(key);
+  if (!step.readySelector) throw new Error(`tour step ${key} has no readySelector`);
+  return found(step.readySelector, `${key} readySelector`);
+}
+
+/** Steps ``keys`` in order on the page rendered now, each left by its Next (clickAfterNext) as the
+ * runner leaves it, for a step that starts from where the one before it left the page. */
+export async function walkTourSteps(keys: readonly string[]): Promise<void> {
+  for (const key of keys) {
+    await walkTourStep(key);
+    const after = tourStep(key).clickAfterNext;
+    if (after) fireEvent.click(await found(after, `${key} clickAfterNext`));
+  }
 }

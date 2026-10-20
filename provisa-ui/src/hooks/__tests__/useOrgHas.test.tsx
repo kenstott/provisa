@@ -59,6 +59,11 @@ vi.mock("@apollo/client/react", async (importOriginal) => {
   };
 });
 
+const chat = vi.hoisted(() => ({ configured: true }));
+vi.mock("../../api/mcpChat", () => ({
+  fetchMcpChatStatus: vi.fn(async () => ({ configured: chat.configured, reason: "" })),
+}));
+
 const { useOrgHas, READ_ATTEMPTS } = await import("../useOrgHas");
 
 describe("what the org has, read for the tour", () => {
@@ -69,6 +74,7 @@ describe("what the org has, read for the tour", () => {
       expect([...has.sources]).toEqual(["shop-db"]);
       expect([...has.tables]).toEqual(["shop-db.orders"]);
       expect(has.dataProducts).toBe(1);
+      expect(has.pollyConfigured).toBe(true);
     }
     expect(executed).toHaveLength(3); // one read, shared
   });
@@ -95,5 +101,12 @@ describe("what the org has, read for the tour", () => {
     const { result } = renderHook(() => useOrgHas());
     await expect(result.current()).rejects.toThrow("The operation was aborted.");
     reset.pending = 0;
+  });
+
+  it("says whether Polly has a model to answer with", async () => {
+    chat.configured = false;
+    const { result } = renderHook(() => useOrgHas());
+    expect((await result.current()).pollyConfigured).toBe(false);
+    chat.configured = true;
   });
 });

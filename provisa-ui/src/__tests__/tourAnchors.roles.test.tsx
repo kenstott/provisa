@@ -8,14 +8,15 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// Tour anchors (test-utils/tourAnchor): the Govern tour's steps on the Roles page as it is. The
+// Tour anchors (test-utils/tourAnchor): the Govern tour's steps on the Roles and RLS pages: RBAC and
+// row rules point at the section navigation (tourAnchors.nav) once their page is ready. The
 // role-inheritance step's openers (ensureOpen, then clickBefore) reach the role form and its parent
 // select, and Next (clickAfterNext) closes it. "+ Role" became a menu (a granted role, or one derived from an
 // attribute) and the step, still clicking "+ Role" for the form, waited forever.
 
 import { describe, it, expect, vi } from "vitest";
 import { render, fireEvent, waitFor } from "../test-utils/render";
-import { tourStep, walkTourStep } from "../test-utils/tourAnchor";
+import { stepPageReady, tourStep, walkTourStep } from "../test-utils/tourAnchor";
 
 vi.mock("../context/DomainFilterContext", () => ({
   useDomainFilter: () => ({
@@ -57,6 +58,7 @@ vi.mock("../api/admin", async (importOriginal) => ({
 }));
 
 import { SecurityPage } from "../pages/SecurityPage";
+import { SecurityRlsPage } from "../pages/security/SecurityRlsPage";
 
 describe("the role-inheritance tour step on the Roles page", () => {
   it("reaches the role form's parent select through its openers, and Next closes the form", async () => {
@@ -65,5 +67,16 @@ describe("the role-inheritance tour step on the Roles page", () => {
     expect(await walkTourStep("stepRoleInherit")).toBeInTheDocument();
     fireEvent.click(document.querySelector<HTMLElement>(step.clickAfterNext!)!);
     await waitFor(() => expect(document.querySelector(step.element)).toBeNull());
+  });
+});
+
+describe("the Govern tour's navigation steps wait on their pages", () => {
+  it("is ready for step18 on the Roles page", async () => {
+    render(<SecurityPage />, { initialEntries: [tourStep("step18").route!] });
+    expect(await stepPageReady("step18")).toBeInTheDocument();
+  });
+  it("is ready for step19 on the RLS page", async () => {
+    render(<SecurityRlsPage />, { initialEntries: [tourStep("step19").route!] });
+    expect(await stepPageReady("step19")).toBeInTheDocument();
   });
 });

@@ -345,6 +345,7 @@ const WEBLOGS_ORG: OrgHas = {
   sources: new Set(["shop-db", "shop_access", "shop_db_log"]),
   tables: new Set(["shop-db.customers", "shop_access.shop_access"]),
   dataProducts: 0,
+  pollyConfigured: true,
 };
 
 const WEBLOGS: NamedDemo = {
@@ -746,7 +747,7 @@ describe("a freshly onboarded org, started as no named demo", () => {
   });
 
   it("opens the tour without a demo track", async () => {
-    org.current = { sources: new Set(), tables: new Set(), dataProducts: 0 };
+    org.current = { sources: new Set(), tables: new Set(), dataProducts: 0, pollyConfigured: true };
     localStorage.setItem("provisa_tour_seen", "true"); // the tour button opens the menu
     renderTour(namedDemoOf(FRESH));
     fireEvent.click(screen.getByText("launch"));

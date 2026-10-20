@@ -63,6 +63,7 @@ const WEBLOGS_ORG: OrgHas = {
   sources: new Set(["shop-db", "shop_access", "shop_db_log"]),
   tables: new Set(["shop-db.customers", "shop_access.shop_access"]),
   dataProducts: 0,
+  pollyConfigured: true,
 };
 
 describe("a tour's prerequisites", () => {

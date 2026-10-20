@@ -32,6 +32,7 @@ import {
   TOPIC_IDS,
   stepRoute,
   tourItinerary,
+  stepsTheOrgCanShow,
   LINEAGE_DEMO_SQL,
   type RunScope,
   type TopicId,
@@ -542,8 +543,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
     out.demo = tourItinerary(meets, "demo", allSteps);
     return out;
   }, [capabilities, allSteps]);
-  // The active tour's steps. Everything below that walked "the tour" walks this.
-  const itinerary = itineraries[activeScope ?? "core"];
+  // The active tour's steps. Everything below that walked "the tour" walks this. A tour starts only
+  // once what the org has is read (startTour sets orgHas before the scope), so a running tour always
+  // walks the steps its org can show; with no read yet, no tour runs and nothing walks this.
+  const itinerary = useMemo(() => {
+    const rights = itineraries[activeScope ?? "core"];
+    return orgHas === null ? rights : stepsTheOrgCanShow(rights, orgHas, allSteps);
+  }, [itineraries, activeScope, orgHas, allSteps]);
   // Read inside handlers whose closure predates a capability refresh. Effects only: startTour reads
   // the memo itself, because a child's effect runs before its parent's — `?tour=1` (TourAutoStart,
   // a child of this provider) called startTour on the very render the rights landed, when this ref
@@ -553,12 +559,12 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // its steps show.
   const offered = useCallback(
     (scope: RunScope, has: OrgHas) =>
-      itineraries[scope].length > 0 &&
+      stepsTheOrgCanShow(itineraries[scope], has, allSteps).length > 0 &&
       prerequisitesMet(
         scope === "demo" ? demoTourPrerequisites(namedDemo.tour) : TOUR_PREREQUISITES[scope],
         has,
       ),
-    [itineraries, namedDemo],
+    [itineraries, namedDemo, allSteps],
   );
   // The Deep Dives menu, opened once the org's prerequisites have been checked.
   const openMenu = useCallback(() => {
@@ -1060,7 +1066,7 @@ export function TourProvider({ children }: { children: ReactNode }) {
             return;
           }
           running = picked.scope;
-          const steps = itineraries[picked.scope];
+          const steps = stepsTheOrgCanShow(itineraries[picked.scope], has, allStepsRef.current);
           void ready.then(() => {
             if (!driverRef.current) {
               setStatus(null);
@@ -1114,10 +1120,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
     [launch, offered, trackDone],
   );
 
-  const menuTopics = TOPIC_IDS.filter((id) => orgHas !== null && offered(id, orgHas)).map((id) => ({
-    id,
-    steps: itineraries[id].length,
-  }));
+  const menuTopics =
+    orgHas === null
+      ? []
+      : TOPIC_IDS.filter((id) => offered(id, orgHas)).map((id) => ({
+          id,
+          steps: stepsTheOrgCanShow(itineraries[id], orgHas, allSteps).length,
+        }));
 
   return (
     <TourContext.Provider
@@ -1140,7 +1149,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
         completed={completedTopics()}
         demo={
           namedDemo.name !== null && orgHas !== null && offered("demo", orgHas)
-            ? { name: namedDemo.name, steps: itineraries.demo.length, done: trackDone }
+            ? {
+                name: namedDemo.name,
+                steps: stepsTheOrgCanShow(itineraries.demo, orgHas, allSteps).length,
+                done: trackDone,
+              }
             : null
         }
         onDemo={() => launch("demo", true)}
