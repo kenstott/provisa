@@ -291,8 +291,19 @@ async def offered(client, registered):
 
 
 def _operation(offered: dict[str, str], method: str, path: str) -> str:
-    (name,) = [n for n, said in offered.items() if said.startswith(f"[{method}] {path}")]
+    """The operation offered as ``method path`` exactly: its comment is that, then its summary."""
+    said_as = f"[{method}] {path}"
+    (name,) = [
+        n for n, said in offered.items() if said == said_as or said.startswith(f"{said_as} — ")
+    ]
     return name
+
+
+def _result(answer: list[dict[str, Any]]) -> Any:
+    """What a ServiceNow REST answer holds: the instance wraps each in ``result``, and a command
+    answers an object as its one row."""
+    (row,) = answer
+    return row["result"]
 
 
 async def _register_command(client: AsyncClient, name: str, operation: str) -> str:
@@ -345,12 +356,12 @@ async def test_an_import_set_row_goes_through_its_transform_map(client, register
         client,
         f'mutation {{ {field}(body: {{ {user_field}: "{name}", {email_field}: "{_email(name)}" }}) }}',
     )
-    rows = answer[field]
+    rows = _result(answer[field])
     try:
         assert rows and rows[0]["status"] in ("inserted", "updated"), rows
         assert rows[0]["table"] == "sys_user"
     finally:
-        for row in rows or []:
+        for row in rows:
             if row.get("sys_id"):
                 await _data(
                     client,
@@ -374,12 +385,12 @@ async def test_a_service_catalog_item_is_ordered_and_its_request_removed(
         _operation(offered, "POST", "/api/sn_sc/servicecatalog/items/{sys_id}/order_now"),
     )
     listed = await _data(client, f"query {{ {items} }}")
-    item = next(i for i in listed[items] if i.get("sys_id"))
+    item = next(i for i in _result(listed[items]) if i.get("sys_id"))
     ordered = await _data(
         client,
         f'mutation {{ {order}(sys_id: "{item["sys_id"]}", body: {{ sysparm_quantity: 1 }}) }}',
     )
-    request = ordered[order][0]
+    request = _result(ordered[order])
     await _register(client, "sc_request", ["sys_id", "number"])
     await rebuild_schemas(client)
     delete = await _mutation(client, "delete", "sc_request")
