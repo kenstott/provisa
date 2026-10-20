@@ -4327,8 +4327,11 @@ def create_app() -> FastAPI:
             await ensure_serving_runtime(env_org, selected_env)
             from provisa.api.sandbox_tier import is_sandbox_tier_org, is_template_org
 
-            if is_sandbox_tier_org(env_org) and not is_template_org(env_org):
-                # REQ-2006, REQ-1600: a request to a demo sandbox restarts its idle expiry.
+            from provisa.api.demo_warmup import WARMING
+
+            if is_sandbox_tier_org(env_org) and not is_template_org(env_org) and not WARMING.get():
+                # REQ-2006, REQ-1600: a request to a demo sandbox restarts its idle expiry -- the
+                # visitor's, not its tour warm-up's (REQ-2065: a closing sandbox stays closing).
                 from provisa.api.demo_sandbox import touch
 
                 await touch(env_org)
