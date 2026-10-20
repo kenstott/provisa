@@ -242,3 +242,39 @@ def test_one_orgs_worker_never_serves_another_orgs_calls(monkeypatch, tmp_path: 
     b = pool.get("rates", "hash", lambda: command, org="globex")
     assert a is not b
     assert pool.get("rates", "hash", lambda: command, org="acme") is a
+
+
+def _tunnel(proxy: EgressProxy, port: int, request: bytes) -> bytes:
+    """What the proxy answers through a CONNECT tunnel, as Node's, Bun's and Deno's fetch open one
+    for a plain http:// address."""
+    import socket
+
+    with socket.create_connection(("127.0.0.1", proxy.port), timeout=10) as conn:
+        conn.sendall(f"CONNECT {services.SERVICES_HOST}:{port} HTTP/1.1\r\n\r\n".encode())
+        established = conn.recv(4096)
+        if b" 200 " not in established:
+            return established
+        conn.sendall(request)
+        answer = b""
+        while chunk := conn.recv(4096):
+            answer += chunk
+        return answer
+
+
+def test_the_services_answer_through_a_connect_tunnel_as_nodes_fetch_opens_one(vault, token):
+    proxy = EgressProxy(allow=[])
+    try:
+        answer = _tunnel(
+            proxy,
+            80,
+            f"GET /{token}/secrets/openrouter HTTP/1.1\r\nHost: {services.SERVICES_HOST}\r\n\r\n".encode(),
+        )
+        assert answer.startswith(b"HTTP/1.1 200 ") and answer.endswith(_VALUE.encode())
+        refused = _tunnel(
+            proxy, 80, f"GET /{token}/secrets/stripe HTTP/1.1\r\nHost: x\r\n\r\n".encode()
+        )
+        assert refused.startswith(b"HTTP/1.1 403 ") and b"'stripe'" in refused
+        # Only plain http: a TLS tunnel to the services has nothing to answer it.
+        assert b" 400 " in _tunnel(proxy, 443, b"")
+    finally:
+        proxy.stop()

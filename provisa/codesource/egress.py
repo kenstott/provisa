@@ -18,7 +18,9 @@ Anything else is answered 403, naming the host. Loopback is never reached, whate
 and whatever a name resolves to: Provisa's own ports are not a code source's to call.
 
 One host is answered by the proxy itself, never connected to: Provisa's services to code
-(``provisa-services``, REQ-2104, provisa/codesource/services.py), a plain HTTP request.
+(``provisa-services``, REQ-2104, provisa/codesource/services.py), plain HTTP -- sent to the proxy
+in absolute form (Python), or through a ``CONNECT provisa-services:80`` tunnel, which Node's,
+Bun's and Deno's fetch open for a plain ``http://`` address too.
 
 The runtime is pointed at the proxy with ``HTTP_PROXY`` and ``HTTPS_PROXY`` (and Node 24's
 ``NODE_USE_ENV_PROXY=1``, without which its built-in fetch ignores them).
@@ -124,6 +126,9 @@ class EgressProxy:
         method, target, version = parts
         if method == "CONNECT":
             host, port = _host_port(target, 443)
+            if host.lower() == services.SERVICES_HOST:
+                self._services_tunnel(client, version, port, head.split(b"\r\n\r\n", 1)[1])
+                return
             upstream = self._open(client, host, port)
             if upstream is None:
                 return
@@ -145,9 +150,9 @@ class EgressProxy:
         first = f"{method} /{path} {version}\r\n".encode("latin-1")
         self._pipe(client, upstream, first + rest)
 
-    def _read_head(self, client: socket.socket) -> bytes | None:
-        """The request's head, through the blank line, and any body bytes read with it."""
-        data = b""
+    def _read_head(self, client: socket.socket, data: bytes = b"") -> bytes | None:
+        """The request's head, through the blank line, and any body bytes read with it;
+        ``data``: what was already read of it."""
         while b"\r\n\r\n" not in data:
             chunk = client.recv(4096)
             if not chunk:
@@ -183,9 +188,33 @@ class EgressProxy:
         self._refuse(client, 502, f"{host}:{port} did not accept the connection")
         return None
 
+    def _services_tunnel(self, client: socket.socket, version: str, port: int, read: bytes) -> None:
+        """A tunnel to Provisa's services: accepted, and the one request sent through it answered
+        here, as a plain request to them is. ``read``: what came after the CONNECT's head."""
+        if port != 80:
+            self._refuse(
+                client,
+                400,
+                f"Provisa's services are http://{services.SERVICES_HOST}, not port {port}",
+            )
+            return
+        client.sendall(f"{version} 200 Connection Established\r\n\r\n".encode())
+        head = self._read_head(client, read)
+        if head is None:
+            return
+        parts = head.split(b"\r\n", 1)[0].decode("latin-1").split(" ")
+        if len(parts) != 3:
+            self._refuse(client, 400, "a request the proxy cannot read")
+            return
+        self._services(client, parts[0], parts[1])
+
     def _services(self, client: socket.socket, method: str, path: str) -> None:
         """Answer a request to Provisa's services: a value or a refusal, never forwarded."""
-        status, body = services.answer(method, path)
+        try:
+            status, body = services.answer(method, path)
+        except Exception as exc:  # allow-ble: a failure of the services themselves (the vault or the audit trail unreachable) is answered as one, by its type alone; its message could carry what it read
+            log.exception("code-source services failed on %s", method)
+            status, body = 500, f"Provisa's services failed: {type(exc).__name__}".encode()
         if status != 200:
             log.info("code-source services refused: %s", body.decode())
         try:
