@@ -10,10 +10,11 @@ import { TOUR_STEPS, TOUR_SCOPES } from "../src/tour/tourSteps";
 // driver.js renders "Next (n/N)" from the 1-based position within the running tour (REQ-1945: the
 // core tour or one Deep Dives topic), derived here so inserting a step re-points the test instead
 // of silently walking it onto the wrong surface.
-const CONNECT_TOTAL = TOUR_SCOPES.connect.length;
-// 1-based position, within the Connect topic, of the first /tables step.
+const CORE_TOTAL = TOUR_SCOPES.core.length;
+// 1-based position, within the core tour (it registers a table before it queries), of the first
+// /tables step.
 const TABLES_POSITION =
-  TOUR_SCOPES.connect.indexOf(TOUR_STEPS.find((s) => s.route === "/tables")!.key) + 1;
+  TOUR_SCOPES.core.indexOf(TOUR_STEPS.find((s) => s.route === "/tables")!.key) + 1;
 
 // The waits below budget 60 s for the first popover alone — the app bundle boot, the identity
 // bootstrap and a first-visit route chunk, all against five other workers. Under the 30 s default
@@ -38,10 +39,9 @@ test("tour does not show a step's popover over a page still loading its data", a
     await route.continue();
   });
 
-  await page.addInitScript(() => localStorage.setItem("provisa_tour_seen", "true"));
+  // A viewer who has not seen the tour: its button starts the core tour.
   await page.goto("/sources");
   await page.locator(".navbar-tour-btn").click();
-  await page.locator('[data-testid="tour-topic-connect"]').click();
 
   const nextBtn = page.locator(".driver-popover-next-btn");
 
@@ -51,7 +51,7 @@ test("tour does not show a step's popover over a page still loading its data", a
   // is visible") guarantees each click lands on the step it's meant to. The first label has the
   // larger budget: reaching it means the topic's prefetch and first route chunk have been paid.
   for (let n = 1; n < TABLES_POSITION; n++) {
-    await expect(nextBtn).toHaveText(`Next (${n}/${CONNECT_TOTAL})`, {
+    await expect(nextBtn).toHaveText(`Next (${n}/${CORE_TOTAL})`, {
       timeout: n === 1 ? 60000 : 5000,
     });
     await nextBtn.click(); // the last click enters the /tables step
@@ -73,7 +73,7 @@ test("tour does not show a step's popover over a page still loading its data", a
       );
       return { loading };
     },
-    [TABLES_POSITION, CONNECT_TOTAL] as [number, number],
+    [TABLES_POSITION, CORE_TOTAL] as [number, number],
     // Entering the step navigates to /tables and pays that route's first-visit chunk fetch, so the
     // wait for its popover is a page transition, not an in-place DOM update. The budget does not
     // weaken the assertion: what is asserted is the loading state captured in the same tick the

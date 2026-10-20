@@ -430,6 +430,9 @@ function waitForElement(
 ): Promise<HTMLElement> {
   const existing = document.querySelector<HTMLElement>(selector);
   if (existing) return Promise.resolve(existing);
+  // An abort raised before this wait began never fires its event again: without this the observer
+  // would run its whole window against a document the provider has already left.
+  if (signal?.aborted) return Promise.reject(new Error(`Tour: wait for ${selector} abandoned`));
   return new Promise((resolve, reject) => {
     const stop = () => {
       observer.disconnect();
@@ -1198,6 +1201,14 @@ function TourStatusOverlay({
           </div>
         ) : (
           <div className="tour-status-actions">
+            {/* A step still waiting can be passed over too: its page may never paint what the
+                step points at, and a step that waits on an answer waits a minute before it is
+                called stuck. */}
+            {status.kind === "waiting" && (
+              <button type="button" className="tour-status-btn" onClick={onSkip}>
+                {t("tour.status.skip")}
+              </button>
+            )}
             <button type="button" className="tour-status-btn" onClick={onExit}>
               {t("tour.status.cancel")}
             </button>

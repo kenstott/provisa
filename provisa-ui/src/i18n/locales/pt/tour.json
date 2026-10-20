@@ -30,10 +30,6 @@
       "thisDemo": "Esta demo"
     },
     "topics": {
-      "connect": {
-        "title": "Conecte seus dados",
-        "summary": "Tipos de fonte, registro de tabelas, réplicas e leituras ao vivo."
-      },
       "relationships": {
         "title": "Relacionamentos",
         "summary": "Declare como as tabelas se relacionam, dentro de uma fonte e entre fontes, a fonte as declare ou não. Declarados uma vez, todas as superfícies os seguem."

@@ -30,10 +30,6 @@
       "thisDemo": "Deze demo"
     },
     "topics": {
-      "connect": {
-        "title": "Verbind je data",
-        "summary": "Brontypen, tabellen registreren, replica's en live lezen."
-      },
       "relationships": {
         "title": "Relaties",
         "summary": "Leg vast hoe tabellen samenhangen, binnen een bron en tussen bronnen, of de bron ze nu declareert of niet. Eén keer vastgelegd volgt elk oppervlak ze."

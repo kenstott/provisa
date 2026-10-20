@@ -30,10 +30,6 @@
       "thisDemo": "Questa demo"
     },
     "topics": {
-      "connect": {
-        "title": "Collega i tuoi dati",
-        "summary": "Tipi di fonte, registrazione delle tabelle, repliche e letture dal vivo."
-      },
       "relationships": {
         "title": "Relazioni",
         "summary": "Dichiara come le tabelle sono collegate, all'interno di una fonte e tra fonti, che la fonte le dichiari o no. Dichiarate una volta, ogni superficie le segue."

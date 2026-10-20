@@ -30,10 +30,6 @@
       "thisDemo": "Diese Demo"
     },
     "topics": {
-      "connect": {
-        "title": "Daten verbinden",
-        "summary": "Quelltypen, Tabellen registrieren, Replikate und Live-Lesezugriffe."
-      },
       "relationships": {
         "title": "Beziehungen",
         "summary": "Legen Sie fest, wie Tabellen zusammenhängen – innerhalb einer Quelle und quellenübergreifend, ob eine Quelle sie deklariert oder nicht. Einmal deklariert, folgt jede Schnittstelle."

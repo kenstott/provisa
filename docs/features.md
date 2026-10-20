@@ -569,7 +569,7 @@ Polly can do the work as well as describe it. She can search for data sources, r
 
 ### Product tour and named demos
 
-A new user is offered a short core tour: welcome, Polly, connecting a source, and running a query. Every step has a Deep Dives button that jumps to a menu of topic tours. Each step waits until the page it points at is loaded and ready, and the tour is never offered over a sign-in or registration form.
+A new user is offered a short core tour: welcome, Polly, registering a source and a table, and running a query. Every step has a Deep Dives button that jumps to a menu of topic tours. Each step waits until the page it points at is loaded and ready, and the tour is never offered over a sign-in or registration form.
 { #product-tour-and-demos-guided-tour }
 
 You can start Provisa already loaded with a demo. Running the launcher with a demo name picks one of the bundled scenarios, and plain demo mode loads the default. In demo mode a complete configuration is loaded instead of the first-run wizard, and tier restrictions are lifted so every feature can be shown. Each demo, instance and organization keeps what you left in the browser, such as the domain filter, saved query tabs and open panels, so switching demos carries none of it across and coming back restores it. A named demo can also tell its own story, a guided track over its own sources, queries and roles, offered before the product tour, with the Deep Dives after it.

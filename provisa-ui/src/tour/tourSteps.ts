@@ -417,8 +417,17 @@ export const TOUR_STEPS: TourStep[] = [
   {
     route: "/security/roles",
     capability: "access_config",
-    readySelector: '[data-testid="toggle-role-form"]',
-    clickBefore: '[data-testid="toggle-role-form"]',
+    // "+ Role" opens a menu (a granted role, or one derived from an attribute): its granted-role
+    // item opens the plain role form, whose parent select this step shows. No readySelector: the
+    // runner checks it after clickBefore, and the open form hides "+ Role"; ensureOpen's wait for
+    // "+ Role" is the page-ready gate.
+    ensureOpen: [
+      {
+        click: '[data-testid="toggle-role-form"]',
+        unlessPresent: '[data-testid="add-granted-role"]',
+      },
+    ],
+    clickBefore: '[data-testid="add-granted-role"]',
     // The opener is hidden while its form is open: the form's own Cancel closes it.
     clickAfterNext: '[data-testid="cancel-role"]',
     element: '[data-testid="role-parent-select"]',
@@ -699,7 +708,6 @@ export const TOUR_STEPS: TourStep[] = [
  * inherits the nearest preceding routed step, wherever that step's own scope lies.
  */
 export const TOPIC_IDS = [
-  "connect",
   "relationships",
   "model",
   "govern",
@@ -731,8 +739,20 @@ export const TOUR_PREREQUISITES: Partial<Record<TourScope, TourPrerequisites>> =
 export type RunScope = TourScope | "demo";
 
 export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
-  core: ["step0", "stepPolly", "step1", "step2", "stepQuery", "step14"],
-  connect: ["step3", "step4", "step5", "stepPreview"],
+  // Registering a source and a table comes before querying it: the type picker, the tables page,
+  // the table form and its preview are the core's, not a Deep Dive's.
+  core: [
+    "step0",
+    "stepPolly",
+    "step1",
+    "step2",
+    "step3",
+    "step4",
+    "step5",
+    "stepPreview",
+    "stepQuery",
+    "step14",
+  ],
   relationships: [
     "step15",
     "stepRelsAgents",

@@ -7021,8 +7021,6 @@
   "pt/tour.json::tour.steps.weblogsStatements.title": "The SQL behind a slow page",
   "pt/tour.json::tour.steps.weblogsTables.description": "Each source's data is registered as tables: the shop's customers, products and orders, and one table for each log, with its lines split into columns such as path, status and time. On top of those, two views add the slowest pages and the SQL each request ran. A view is a saved query.",
   "pt/tour.json::tour.steps.weblogsTables.title": "Sources become tables",
-  "pt/tour.json::tour.topics.connect.summary": "Source types, registering tables, replicas and live reads.",
-  "pt/tour.json::tour.topics.connect.title": "Connect your data",
   "pt/tour.json::tour.topics.govern.summary": "Roles and domains, row rules, masks, sensitive data and the data steward.",
   "pt/tour.json::tour.topics.govern.title": "Govern it",
   "pt/tour.json::tour.topics.model.summary": "Add what your sources don't have: views, calculated columns, metrics and commands, each defined once and used by every surface, environment and role.",

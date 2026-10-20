@@ -131,6 +131,13 @@
   justify-content: center;
   background: rgba(10, 12, 20, 0.45);
 }
+/* driver.js turns pointer events off for everything on the page but its popover and the step's
+   element (.driver-active *) while a tour runs, the card's buttons with them: Retry, Skip, Exit and
+   Cancel showed but took no click. */
+.driver-active .tour-status-overlay,
+.driver-active .tour-status-overlay * {
+  pointer-events: auto;
+}
 .tour-status-card {
   background: var(--mantine-color-body, #fff);
   color: var(--mantine-color-text, #1a1b1e);
