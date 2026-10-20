@@ -84,6 +84,10 @@ START_TIMEOUT_S = 30.0
 #: How often a start checks that its host is still coming while it waits for it to connect.
 _ACCEPT_POLL_S = 0.05
 
+#: REQ-2098: a remote host that failed is dialled again after this, doubling to the most.
+_REMOTE_BACKOFF_S = 1.0
+_REMOTE_BACKOFF_MAX_S = 60.0
+
 #: How many of the host's last stderr lines a crash names.
 STDERR_LINES = 40
 
@@ -586,6 +590,8 @@ class WorkerPool:
 
     def __init__(self) -> None:
         self._workers: dict[tuple[str | None, str, str], Worker] = {}
+        #: REQ-2098: a remote host's failed dials: (count, next try, why).
+        self._failures: dict[tuple[str | None, str, str], tuple[int, float, str]] = {}
         self._lock = threading.Lock()
 
     def get(
@@ -610,10 +616,68 @@ class WorkerPool:
             self._workers[key] = worker
             return worker
 
+    def remote(
+        self, source_id: str, content_hash: str, org: str, make: Callable[[], "Worker"]
+    ) -> "Worker":
+        """REQ-2098: a built source's worker, its remote host dialled on first use and again
+        after it stops answering -- with backoff: a host that failed is not dialled again until
+        its wait (1 s, doubling to a minute) has passed, and a call meanwhile fails naming it."""
+        key = (org, source_id, content_hash)
+        with self._lock:
+            worker = self._workers.get(key)
+            if worker is not None and worker.alive():
+                return worker
+            if worker is not None:
+                worker.stop()
+                self._workers.pop(key, None)
+            failed = self._failures.get(key)
+            if failed is not None and time.monotonic() < failed[1]:
+                raise WorkerFailed(
+                    source_id,
+                    f"{failed[2]} (next try in {failed[1] - time.monotonic():.0f}s)",
+                )
+            worker = make()
+            try:
+                worker.start()
+            except WorkerFailed as exc:
+                count = 1 if failed is None else failed[0] + 1
+                wait = min(_REMOTE_BACKOFF_MAX_S, _REMOTE_BACKOFF_S * 2 ** (count - 1))
+                self._failures[key] = (count, time.monotonic() + wait, str(exc))
+                raise
+            self._failures.pop(key, None)
+            self._workers[key] = worker
+            return worker
+
+    def remote_status(self, org: str, source_id: str) -> dict:
+        """What this process's pool holds for a built source: a live connection, or the last
+        failure and its next try."""
+        with self._lock:
+            live = [
+                k
+                for k, w in self._workers.items()
+                if k[0] == org and k[1] == source_id and w.alive()
+            ]
+            failures = [
+                (k, f) for k, f in self._failures.items() if k[0] == org and k[1] == source_id
+            ]
+        if live:
+            return {"connected": True}
+        if failures:
+            (_key, (count, at, message)) = failures[-1]
+            return {
+                "connected": False,
+                "error": message,
+                "failures": count,
+                "next_try_s": max(0.0, at - time.monotonic()),
+            }
+        return {"connected": False}
+
     def stop_source(self, source_id: str) -> None:
         """Stop every worker of ``source_id``: its source was edited or deleted."""
         with self._lock:
             ending = [k for k in self._workers if k[1] == source_id]
+            for key in [k for k in self._failures if k[1] == source_id]:
+                del self._failures[key]
             workers = [self._workers.pop(k) for k in ending]
         for worker in workers:
             worker.stop()

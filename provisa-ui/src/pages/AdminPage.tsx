@@ -56,6 +56,7 @@ import { McpServerTab } from "../components/admin/McpServerTab";
 import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
+import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
 import { MetadataExportTab } from "../components/admin/MetadataExportTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
@@ -94,6 +95,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/orgs": "Orgs",
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
+  "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
   "/admin/metadata-export": "Metadata Export",
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
@@ -541,6 +543,7 @@ export function AdminPage() {
         {activeTab === "Orgs" && canAdministerAllOrgs && <OrgsTab />}
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
+        {activeTab === "Container Registries" && <ContainerRegistriesTab />}
         {activeTab === "Metadata Export" && <MetadataExportTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}

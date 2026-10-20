@@ -117,6 +117,35 @@ mapping:
 
 A source with a cap can call only models that have a price there. Once its spending for the month (UTC) reaches the cap, its calls are refused until the month turns. Calls already under way when the cap is reached still finish, so the month can end slightly over the cap.
 
+## Running on a remote host {: #running-on-a-remote-host }
+
+A source runs on the Provisa server by default; this is dev mode. When its code needs a machine the server isn't, such as a GPU box or a host inside another network, build its image and run it there. The source then runs in built mode, and its tables, grants and readers stay the same.
+
+**Build the image.** Save the source in dev mode first, so its code is read and pinned. Under **Remote host** on its form, choose the architecture (Linux x86-64 or ARM64) and where the image goes: one of your organization's container registries, entered under **Admin → Container registries**, or a download. Provisa assembles the image itself. It holds the code at its pinned hash, its dependencies installed for that platform from the code's lockfile through your package registries, the pinned runtime, and the remote host program, on a minimal base image. Nothing in the image runs while it is built, and no Docker daemon is involved. The image's tag carries the code hash and Provisa's version, and its labels name the runtime, the code hash and the exports.
+
+**Run it.** The form shows a compose service for the image. A downloaded image is loaded first with `docker load -i <file>`. The container listens on port 7443 inside and keeps its identity on the volume. You choose the host port with `PROVISA_HOST_PORT`; the service won't start without it:
+
+```yaml
+services:
+  provisa-code-rates:
+    image: ghcr.io/example/provisa-code-rates:3f9a1c2e7b40-0.1.0
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
+    volumes:
+      - provisa-code-rates-state:/var/lib/provisa
+volumes:
+  provisa-code-rates-state: {}
+```
+
+On its first start the container prints a line beginning `pairing code:` in its log.
+
+**Connect it.** Back on the form, enter the host Provisa reaches the container at, the port you published, and the pairing code. On a shared Docker network or in Kubernetes, enter the container or Service name and 7443, with nothing published. Provisa pairs with the container over mutual TLS. The code is used once, and from then on each side accepts only the other. Provisa then checks that the container runs the source's code and offers its exports, and switches the source to built mode. Every Provisa process keeps its own connection to the host, and dials again if the host stops answering. While the host doesn't answer, reads of the source's tables fail and name the host.
+
+**If the code changes.** A container that comes back running other code is refused, naming the hash the source is pinned to and the one the host reports, until a steward reviews the code and re-pins it from the form. To change the code itself, switch the source back to dev, save the new code, and build again.
+
+In the container, its network policy is the code's egress boundary; the server's egress allow-list applies to dev mode.
+
 ## Reading a table {: #reading-a-table }
 
 A code source's table is landed, never read in place. Provisa calls the function with the read's arguments, checks each row against the columns, and keeps the rows under those arguments for the table's cache TTL. Visibility, masks and row rules then apply to the landed rows, as they do for any table.

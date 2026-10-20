@@ -219,6 +219,12 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemPackageRegistries",
         capability: "org_settings",
       },
+      // REQ-2098: the registries a code source's built image is pushed to.
+      {
+        to: "/admin/container-registries",
+        labelKey: "navBar.itemContainerRegistries",
+        capability: "org_settings",
+      },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {
         to: "/admin/metadata-export",

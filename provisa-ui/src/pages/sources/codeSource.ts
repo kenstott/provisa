@@ -15,6 +15,9 @@
 //   code      a package at an exact version, a Git repository at a commit, or an uploaded archive
 //   lockfile  a lockfile given beside a package reference (a published package carries none)
 //   entry     a Python source's entry module, when its code has more than one
+//   mode      REQ-2098: dev (its code on this server) or built (its image on a remote host); a
+//             built source also keeps its remote host and the code hash it is pinned to, which
+//             an edit of the form carries through unchanged
 //   secrets   REQ-2104: the names its code may read through Provisa's services, each a vault
 //             reference (the names alone when each is the org secret of that name)
 //   llm       REQ-2105: {cap_usd}, the monthly cap on what its calls to the LLM service cost
@@ -92,6 +95,14 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
   const entry = (fields.code_entry ?? "").trim();
   const secrets = secretsMapping(declaredSecrets(fields));
   const cap = (fields.code_llm_cap ?? "").trim();
+  const built =
+    fields.code_mode === "built"
+      ? {
+          mode: "built",
+          remote: JSON.parse(fields.code_remote || "{}") as Record<string, unknown>,
+          content_hash: fields.code_content_hash ?? "",
+        }
+      : {};
   return JSON.stringify({
     runtime: type === PYTHON ? PYTHON : (fields.code_runtime ?? "node"),
     code,
@@ -99,6 +110,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
     ...(type === PYTHON && entry ? { entry } : {}),
     ...(secrets ? { secrets } : {}),
     ...(cap ? { llm: { cap_usd: Number(cap) } } : {}),
+    ...built,
   });
 }
 
@@ -111,6 +123,9 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     entry?: string;
     secrets?: string[] | Record<string, string | null>;
     llm?: { cap_usd?: number };
+    mode?: string;
+    remote?: Record<string, unknown>;
+    content_hash?: string;
   };
   const code = m.code ?? {};
   const secrets = Array.isArray(m.secrets)
@@ -133,6 +148,9 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code_entry: m.entry ?? "",
     code_secrets: Object.keys(secrets).length ? JSON.stringify(secrets) : "",
     code_llm_cap: m.llm?.cap_usd === undefined ? "" : String(m.llm.cap_usd),
+    code_mode: m.mode ?? "dev",
+    code_remote: m.mode === "built" ? JSON.stringify(m.remote ?? {}) : "",
+    code_content_hash: m.content_hash ?? "",
   };
 }
 

@@ -43,6 +43,9 @@ from provisa.runtime_deps.pgwire_bundles import default_cache_root
 #: The release platforms Provisa runs on (the same three the pgwire bundles are built for).
 DARWIN_ARM64 = ("Darwin", "arm64")
 LINUX_X64 = ("Linux", "x86_64")
+#: REQ-2098: a remote host's image may be built for 64-bit ARM Linux; Provisa itself does not run
+#: there.
+LINUX_ARM64 = ("Linux", "aarch64")
 WINDOWS_X64 = ("Windows", "AMD64")
 
 
@@ -101,6 +104,11 @@ RUNTIMES: dict[str, RuntimePin] = {
                 "6e1db87ef58b8819e5d5402eff1536491b18edd8eb7bee5ef7897876e88dc5ff",
                 "node-v24.21.0-linux-x64/bin/node",
             ),
+            LINUX_ARM64: Asset(
+                "node-v24.21.0-linux-arm64.tar.gz",
+                "724282c3b43aec998aa9527380465b45d229e021b58035f5f4f63095eabfe5d5",
+                "node-v24.21.0-linux-arm64/bin/node",
+            ),
             WINDOWS_X64: Asset(
                 "node-v24.21.0-win-x64.zip",
                 "158f7685b44de51f6c0df1d153526cbcd3e1bc739a8dfc607721cef75de9e541",
@@ -123,6 +131,11 @@ RUNTIMES: dict[str, RuntimePin] = {
                 "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913",
                 "bun-linux-x64/bun",
             ),
+            LINUX_ARM64: Asset(
+                "bun-linux-aarch64.zip",
+                "54328bbc2d9c8e0c9f892c544d66c57a83b84139e34909e5ee81758f1ac8fda7",
+                "bun-linux-aarch64/bun",
+            ),
             WINDOWS_X64: Asset(
                 "bun-windows-x64.zip",
                 "ce4c17497b2f29712a99d3d53f028de28cd42e3bacb8589599e7f000e49b6405",
@@ -143,6 +156,11 @@ RUNTIMES: dict[str, RuntimePin] = {
             LINUX_X64: Asset(
                 "deno-x86_64-unknown-linux-gnu.zip",
                 "c6527f24f4b16031d3ae4fa9f658d5f11534c8d84ce7dc8502420280919c3490",
+                "deno",
+            ),
+            LINUX_ARM64: Asset(
+                "deno-aarch64-unknown-linux-gnu.zip",
+                "c832298b1ad4422481334855f6003e0f54145762c5a134f20a489511d2f65bbf",
                 "deno",
             ),
             WINDOWS_X64: Asset(
@@ -169,6 +187,11 @@ RUNTIMES: dict[str, RuntimePin] = {
             LINUX_X64: Asset(
                 "cpython-3.12.14%2B20260924-x86_64-unknown-linux-gnu-install_only.tar.gz",
                 "5eae8cf79dd47fc2496a4fccc892936be831ce7a84d984b2299dfb1cdb592682",
+                "python/bin/python3.12",
+            ),
+            LINUX_ARM64: Asset(
+                "cpython-3.12.14%2B20260924-aarch64-unknown-linux-gnu-install_only.tar.gz",
+                "c0574c9c9fec561eb192ad510e4e79aaad039929b3531b3bb873e2f630fb14a9",
                 "python/bin/python3.12",
             ),
             WINDOWS_X64: Asset(
@@ -220,6 +243,12 @@ RUNTIMES: dict[str, RuntimePin] = {
                 "6165461f55ef6314f026de6638d661188e3455d3ec49834556a0ebbdbace18bb",
                 "pyarrow/__init__.py",
             ),
+            LINUX_ARM64: Asset(
+                "7c/3b/926382efe8ce27ba729071d3566ade6dfb86bdf112f366000196b2f5780a/"
+                "pyarrow-24.0.0-cp312-cp312-manylinux_2_28_aarch64.whl",
+                "1617043b99bd33e5318ae18eb2919af09c71322ef1ca46566cdafc6e6712fb66",
+                "pyarrow/__init__.py",
+            ),
             WINDOWS_X64: Asset(
                 "66/1c/e3e72c8014ad2743ca64a701652c733cc5cbcee15c0463a32a8c55518d9e/"
                 "pyarrow-24.0.0-cp312-cp312-win_amd64.whl",
@@ -242,6 +271,11 @@ RUNTIMES: dict[str, RuntimePin] = {
                 "package/Arrow.es2015.min.js",
             ),
             LINUX_X64: Asset(
+                "apache-arrow-21.2.0.tgz",
+                "dd63a3a4c380eddeb00c718740414ff33c4ded015c8720798afdfcc61b5dac41",
+                "package/Arrow.es2015.min.js",
+            ),
+            LINUX_ARM64: Asset(
                 "apache-arrow-21.2.0.tgz",
                 "dd63a3a4c380eddeb00c718740414ff33c4ded015c8720798afdfcc61b5dac41",
                 "package/Arrow.es2015.min.js",
@@ -324,6 +358,28 @@ class CodeRuntimeResolver:  # REQ-1984, REQ-1993
     def executable(self, name: str) -> Path:
         pin = self.pin(name)
         return self.home(name) / pin.asset(self._host).executable
+
+    def archive(self, name: str) -> tuple[Asset, bytes]:
+        """The runtime's archive for this resolver's platform, downloaded and checked, its bytes
+        cached unextracted (REQ-2098: an image's layer is written from the archive's own entries,
+        never from files extracted here, which another platform's file names may not suit)."""
+        pin = self.pin(name)
+        asset = pin.asset(self._host)
+        cached = self._root / "code" / "archives" / asset.sha256
+        if cached.is_file():
+            return asset, cached.read_bytes()
+        url = pin.url(asset)
+        data = self._fetch(url)
+        found = hashlib.sha256(data).hexdigest()
+        if found != asset.sha256:
+            raise RuntimeUnavailable(
+                f"{asset.filename} from {url} has SHA-256 {found}, not the pinned {asset.sha256}"
+            )
+        cached.parent.mkdir(parents=True, exist_ok=True)
+        staged = cached.with_name(f".{cached.name}.{os.getpid()}")
+        staged.write_bytes(data)
+        os.replace(staged, cached)
+        return asset, data
 
     def resolve(self, name: str) -> Path:
         """The runtime's executable, downloaded, checked and cached on a miss."""

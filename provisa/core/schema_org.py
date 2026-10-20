@@ -1800,6 +1800,28 @@ code_source_llm_usage = Table(
 )
 
 
+# REQ-2098: a code source's image builds: each one's state, what it made (a pushed image, or an
+# archive kept on the node that built it), and why it failed.
+code_source_builds = Table(
+    "code_source_builds",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("source_id", Text, nullable=False),
+    Column("code_hash", Text, nullable=False),
+    Column("arch", Text, nullable=False),  # amd64 | arm64
+    Column("registry_id", Text, nullable=True),  # pushed there; None: downloaded
+    Column("status", Text, nullable=False),  # building | done | failed
+    Column("image_ref", Text, nullable=True),
+    Column("digest", Text, nullable=True),
+    Column("archive_path", Text, nullable=True),
+    Column("node", Text, nullable=True),  # the node that holds the archive
+    Column("error", Text, nullable=True),
+    Column("started_by", Text, nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+)
+
+
 admin_audit_log = Table(
     "admin_audit_log",
     metadata,

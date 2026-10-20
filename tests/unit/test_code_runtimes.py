@@ -84,10 +84,14 @@ def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on
         "apache-arrow",
     }
     for name, pin in code_runtimes.RUNTIMES.items():
+        # REQ-2098: what goes into an image is pinned for 64-bit ARM Linux too; uv installs on
+        # the server, for any image's platform, and runs nowhere else.
+        image = set() if name == "uv" else {code_runtimes.LINUX_ARM64}
         assert set(pin.assets) == {
             code_runtimes.DARWIN_ARM64,
             code_runtimes.LINUX_X64,
             code_runtimes.WINDOWS_X64,
+            *image,
         }
         for asset in pin.assets.values():
             assert len(asset.sha256) == 64 and int(asset.sha256, 16) >= 0
