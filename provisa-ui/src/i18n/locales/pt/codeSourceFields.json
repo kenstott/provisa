@@ -25,6 +25,9 @@
     "archivePlaceholder": "Escolha um arquivo compactado",
     "entry": "Módulo de entrada",
     "entryHint": "O módulo pelo qual se entra na fonte. Deixe vazio quando o código tiver um único módulo ou pacote de nível superior.",
-    "kept": "Guardado: {{name}}"
+    "kept": "Guardado: {{name}}",
+    "secrets": "Segredos",
+    "secretsHint": "Os segredos da organização que este código pode ler. Ele busca cada um durante a execução, em $PROVISA_SERVICES/secrets/<name>; nada mais no cofre pode ser lido, e cada leitura é auditada.",
+    "secretsPlaceholder": "Nenhum segredo"
   }
 }

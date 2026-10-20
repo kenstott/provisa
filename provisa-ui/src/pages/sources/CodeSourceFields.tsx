@@ -12,14 +12,23 @@
 // comes from: a package at an exact version (with a lockfile beside it when the package declares
 // dependencies), a Git repository at a commit, or an uploaded archive. The server installs and
 // reads the code when the source is saved, and refuses code it cannot use by name.
+// REQ-2104: the org secrets its code may read through Provisa's services, picked by name.
 
-import { useState } from "react";
-import { FileInput, Select, TextInput } from "@mantine/core";
+import { useEffect, useState } from "react";
+import { FileInput, MultiSelect, Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { uploadCodeArchive, uploadLockfile } from "../../api/codeUploads";
+import { fetchSecrets } from "../../api/secrets";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { useAuth } from "../../context/AuthContext";
-import { LOCKFILES, NODE_RUNTIMES, PYTHON, type CodeOrigin } from "./codeSource";
+import {
+  LOCKFILES,
+  NODE_RUNTIMES,
+  PYTHON,
+  declaredSecrets,
+  withSecretNames,
+  type CodeOrigin,
+} from "./codeSource";
 
 interface Props {
   type: string;
@@ -35,6 +44,21 @@ export function CodeSourceFields({ type, fields, setFields }: Props) {
   const origin = (fields.code_origin ?? "package") as CodeOrigin;
   const python = type === PYTHON;
   const set = (patch: Record<string, string>) => setFields({ ...fields, ...patch });
+  const [orgSecrets, setOrgSecrets] = useState<string[]>([]);
+  const [secretsFailed, setSecretsFailed] = useState("");
+
+  useEffect(() => {
+    if (!activeOrgId) return;
+    let live = true;
+    fetchSecrets(activeOrgId, "org")
+      .then((s) => live && setOrgSecrets(s.secrets.map((x) => x.name)))
+      .catch((e) => live && setSecretsFailed(String(e instanceof Error ? e.message : e)));
+    return () => {
+      live = false;
+    };
+  }, [activeOrgId]);
+
+  const declared = Object.keys(declaredSecrets(fields));
 
   const upload = async (key: "code" | "lockfile", file: File | null) => {
     if (!file || !activeOrgId) return;
@@ -186,6 +210,22 @@ export function CodeSourceFields({ type, fields, setFields }: Props) {
           </FormField>
         </FieldGroup>
       )}
+
+      <FieldGroup>
+        <FormField size="long" help={t("codeSourceFields.secretsHint")}>
+          <MultiSelect
+            label={t("codeSourceFields.secrets")}
+            placeholder={declared.length ? undefined : t("codeSourceFields.secretsPlaceholder")}
+            data={[...new Set([...orgSecrets, ...declared])].sort()}
+            value={declared}
+            searchable
+            clearable
+            onChange={(names) => set({ code_secrets: withSecretNames(fields, names) })}
+            error={secretsFailed || undefined}
+            data-testid="code-secrets"
+          />
+        </FormField>
+      </FieldGroup>
 
       {python && (
         <FieldGroup>

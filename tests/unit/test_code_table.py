@@ -218,7 +218,7 @@ def prepared(tmp_path, manifest, monkeypatch):
         env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
         cwd=code,
     )
-    ready = code_source.Prepared("orders-src", "h1", manifest, command)
+    ready = code_source.Prepared("orders-src", "h1", manifest, command, "acme")
     source = SimpleNamespace(id="orders-src", type=SimpleNamespace(value="python"), mapping={})
 
     async def _registered(_state):

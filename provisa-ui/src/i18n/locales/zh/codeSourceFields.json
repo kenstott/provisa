@@ -25,6 +25,9 @@
     "archivePlaceholder": "选择归档",
     "entry": "入口模块",
     "entryHint": "进入数据源的模块。代码只有一个顶层模块或包时留空。",
-    "kept": "已保存：{{name}}"
+    "kept": "已保存：{{name}}",
+    "secrets": "密钥",
+    "secretsHint": "此代码可读取的组织密钥。它在运行时从 $PROVISA_SERVICES/secrets/<name> 逐个获取；保管库中的其他内容均不可读，且每次读取都会被审计。",
+    "secretsPlaceholder": "无密钥"
   }
 }

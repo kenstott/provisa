@@ -25,6 +25,9 @@
     "archivePlaceholder": "Scegli un archivio",
     "entry": "Modulo di ingresso",
     "entryHint": "Il modulo da cui si entra nella sorgente. Lasciate vuoto se il codice ha un solo modulo o pacchetto di primo livello.",
-    "kept": "Conservato: {{name}}"
+    "kept": "Conservato: {{name}}",
+    "secrets": "Segreti",
+    "secretsHint": "I segreti dell'organizzazione che questo codice può leggere. Li recupera uno per uno durante l'esecuzione, da $PROVISA_SERVICES/secrets/<name>; nient'altro del vault è leggibile e ogni lettura viene registrata.",
+    "secretsPlaceholder": "Nessun segreto"
   }
 }

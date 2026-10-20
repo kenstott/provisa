@@ -17,11 +17,14 @@ allow-list: an HTTPS ``CONNECT host:port`` tunnel, or a plain HTTP request in ab
 Anything else is answered 403, naming the host. Loopback is never reached, whatever the list says
 and whatever a name resolves to: Provisa's own ports are not a code source's to call.
 
+One host is answered by the proxy itself, never connected to: Provisa's services to code
+(``provisa-services``, REQ-2104, provisa/codesource/services.py), a plain HTTP request.
+
 The runtime is pointed at the proxy with ``HTTP_PROXY`` and ``HTTPS_PROXY`` (and Node 24's
 ``NODE_USE_ENV_PROXY=1``, without which its built-in fetch ignores them).
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-885
+# Requirements: REQ-1984, REQ-1993, REQ-885, REQ-2104
 from __future__ import annotations
 
 import ipaddress
@@ -30,6 +33,8 @@ import socket
 import socketserver
 import threading
 from collections.abc import Iterable
+
+from provisa.codesource import services
 
 log = logging.getLogger(__name__)
 
@@ -130,6 +135,9 @@ class EgressProxy:
             return
         authority, _, path = target[len("http://") :].partition("/")
         host, port = _host_port(authority, 80)
+        if host.lower() == services.SERVICES_HOST:
+            self._services(client, method, f"/{path}")
+            return
         upstream = self._open(client, host, port)
         if upstream is None:
             return
@@ -174,6 +182,21 @@ class EgressProxy:
             return upstream
         self._refuse(client, 502, f"{host}:{port} did not accept the connection")
         return None
+
+    def _services(self, client: socket.socket, method: str, path: str) -> None:
+        """Answer a request to Provisa's services: a value or a refusal, never forwarded."""
+        status, body = services.answer(method, path)
+        if status != 200:
+            log.info("code-source services refused: %s", body.decode())
+        try:
+            client.sendall(
+                f"HTTP/1.1 {status} {'OK' if status == 200 else 'Refused'}\r\n"
+                f"Content-Type: text/plain; charset=utf-8\r\nContent-Length: {len(body)}\r\n"
+                "Cache-Control: no-store\r\nConnection: close\r\n\r\n".encode()
+                + body
+            )
+        except OSError:
+            pass  # the client has gone: there is no one to answer
 
     def _refuse(self, client: socket.socket, status: int, reason: str) -> None:
         log.info("code-source egress refused: %s", reason)

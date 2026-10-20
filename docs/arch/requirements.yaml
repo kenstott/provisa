@@ -85437,6 +85437,39 @@ And its prod source reads the shop's database with it, while the stored source k
   - ops
   docs:
   - named-demos.md
+- id: REQ-2104
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: MUST
+  type: behavioral
+  description: "A Node or Python code source declares the names its code may read (secrets in its mapping): a list of names, each the org secret of that name, or a mapping of name to vault reference (${secret:NAME} or ${env:NAME}). The references are kept as written through config load and storage and never resolved at load, so a config naming a secret not yet stored loads. When the source's worker starts, Provisa issues a token scoped to the org, the source and its declared names, revoked when the worker stops, and gives the worker one environment variable, PROVISA_SERVICES, an address on a host only the egress proxy answers (http://provisa-services/<token>). The code reads a secret with GET $PROVISA_SERVICES/secrets/<name>; the proxy answers it itself, resolving the reference in the org's vault at that moment, so a rotated secret is read on the next fetch. Further services sit beside secrets/ under the same address. Nothing else of Provisa is reachable: the proxy still never connects to loopback, and the API's host must be on the egress allow-list. An undeclared name, or one that cannot be resolved, is refused naming the name, never the value. Every read is audited in the org's administrative trail (source, name, time, outcome); a value is never logged, never in a refusal, and never part of the code's content hash. A worker serves only the org it was prepared for. The source form has a Secrets field that picks the org's secrets by name."
+  use_case: "A Python code table that calls an LLM through OpenRouter reads the org's openrouter secret when it runs, without the key ever being written into its code, its config or Provisa's logs."
+  scenario: "Given a python source rates with secrets [openrouter] and the org secret openrouter stored
+
+When its worker GETs $PROVISA_SERVICES/secrets/openrouter
+
+Then the proxy answers with the secret's current value and the read is recorded in the org's audit trail
+
+And a GET of $PROVISA_SERVICES/secrets/stripe is refused naming stripe
+
+And once the worker stops its address reads nothing"
+  code:
+  - provisa/codesource/services.py
+  - provisa/codesource/egress.py
+  - provisa/codesource/worker.py
+  - provisa/codesource/source.py
+  - provisa/core/config_loader.py
+  - provisa-ui/src/pages/sources/CodeSourceFields.tsx
+  - provisa-ui/src/pages/sources/codeSource.ts
+  tests:
+  - tests/unit/test_code_source_services.py
+  - tests/integration/test_code_source_secrets.py
+  - provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx
+  stakeholders:
+  - data-engineer
 - id: REQ-2101
   status: complete
   since: 2026-10
