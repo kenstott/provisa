@@ -74,17 +74,18 @@ def _package_entry(bundle: Path) -> str | None:
 
 
 def host_command(
-    *, runtime: str, executable: Path, bundle: Path, egress: Sequence[str]
+    *, runtime: str, executable: Path, bundle: Path, egress: Sequence[str], host_lib: Path
 ) -> HostCommand:
     """How ``runtime`` runs the host on ``bundle``. ``egress`` is the deployment's egress
-    allow-list: hosts, or host:port."""
+    allow-list: hosts, or host:port. ``host_lib`` is where the host's Arrow library is
+    (REQ-2098), which it sends its rows with."""
     entry = entry_module(bundle)
-    env = private_environment(NO_COLOR="1")
+    env = private_environment(NO_COLOR="1", PROVISA_HOST_LIB=str(host_lib))
     if runtime in ("node", "bun"):
         return sandboxed(
             lambda address: [str(executable), str(HOST), address, str(entry)],
             executable=executable,
-            read=[HOST.parent, bundle],
+            read=[HOST.parent, bundle, host_lib],
             env=env,
             cwd=bundle,
             egress=egress,
@@ -95,14 +96,15 @@ def host_command(
 
         def _deno(address: str) -> list[str]:
             socket = Path(address)
-            readable = ",".join(str(p) for p in (HOST.parent, bundle, socket.parent))
+            readable = ",".join(str(p) for p in (HOST.parent, bundle, socket.parent, host_lib))
             argv = [
                 str(executable),
                 "run",
                 "--no-prompt",
                 f"--allow-read={readable}",
                 f"--allow-write={socket.parent}",
-                f"--allow-env={CODE_HASH_ENV}",  # the hello names its code (REQ-2098)
+                # The hello names its code; the Arrow library is found by its path (REQ-2098).
+                f"--allow-env={CODE_HASH_ENV},PROVISA_HOST_LIB",
             ]
             # The socket is a net address to Deno; the allow-list's hosts are the only others.
             argv.append(f"--allow-net={','.join([f'unix:{socket}', *egress])}")

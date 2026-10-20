@@ -22,9 +22,11 @@ import time
 from datetime import UTC, datetime
 from decimal import Decimal
 
+import pyarrow as pa
 import pytest
 
 from provisa.codesource import worker as w
+from provisa.codesource.arrow_rows import schema_text
 from provisa.core import request_deadline
 
 pytestmark = pytest.mark.unit
@@ -33,7 +35,8 @@ pytestmark = pytest.mark.unit
 # is sent in a file beside it, so a test can see the call was stopped in the host.
 _HOST = textwrap.dedent(
     """
-    import json, socket, struct, sys, threading, time
+    import base64, json, socket, struct, sys, threading, time
+    import pyarrow as pa
     path, log = sys.argv[1], sys.argv[2]
     conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     conn.connect(path)
@@ -41,7 +44,16 @@ _HOST = textwrap.dedent(
     cancelled = set()
 
     def send(m):
-        body = json.dumps(m).encode()
+        body = b"J" + json.dumps(m).encode()
+        with lock:
+            conn.sendall(struct.pack(">I", len(body)) + body)
+
+    def send_rows(i, schema, rows):
+        # Protocol 2: rows go as one Arrow IPC stream, against the call's schema.
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, schema) as stream:
+            stream.write_batch(pa.RecordBatch.from_pylist(rows, schema=schema))
+        body = b"A" + struct.pack(">Q", i) + sink.getvalue().to_pybytes()
         with lock:
             conn.sendall(struct.pack(">I", len(body)) + body)
 
@@ -55,15 +67,17 @@ _HOST = textwrap.dedent(
         size, body = struct.unpack(">I", head)[0], b""
         while len(body) < size:
             body += conn.recv(size - len(body))
-        return json.loads(body)
+        return json.loads(body[1:])
 
     def serve(m):
         i, name, args = m["id"], m["export"], m["args"]
+        schema = m["schema"] and pa.ipc.open_stream(pa.py_buffer(base64.b64decode(m["schema"]))).schema
         if name == "many":
             for start in range(0, args[0], 1000):
-                send({"op": "rows", "id": i, "rows": [{"n": n} for n in range(start, min(start + 1000, args[0]))]})
+                send_rows(i, schema, [{"n": n} for n in range(start, min(start + 1000, args[0]))])
         elif name == "echo":
-            send({"op": "rows", "id": i, "rows": [{"args": args}]})
+            # The arguments as they came, wire-encoded: a json field's text is the wire's JSON.
+            send_rows(i, schema, [{"args": json.dumps(args)}])
         elif name == "total":
             send({"op": "value", "id": i, "value": {"$decimal": "12.50"}})
         elif name == "boom":
@@ -72,7 +86,7 @@ _HOST = textwrap.dedent(
         elif name == "ticks":
             n = 0
             while i not in cancelled:
-                send({"op": "rows", "id": i, "rows": [{"tick": n}]})
+                send_rows(i, schema, [{"tick": n}])
                 n += 1
                 time.sleep(0.01)
             with open(log, "a") as record:
@@ -92,7 +106,7 @@ _HOST = textwrap.dedent(
         send({"op": "end", "id": i})
 
     import os
-    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "1")),
+    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "2")),
              "code_hash": os.environ["PROVISA_CODE_HASH"],
              "exports": ["many", "echo", "total", "boom", "slow", "ticks", "die"]}
     send(hello)
@@ -105,6 +119,13 @@ _HOST = textwrap.dedent(
             threading.Thread(target=serve, args=(m,), daemon=True).start()
     """
 )
+
+
+_JSON = {b"provisa.ir": b"json"}
+MANY = schema_text(pa.schema([("n", pa.int64())]))
+ECHO = schema_text(pa.schema([pa.field("args", pa.utf8(), metadata=_JSON)]))
+TICKS = schema_text(pa.schema([("tick", pa.int64())]))
+ANY = MANY  # an export that sends no rows: any schema
 
 
 @pytest.fixture
@@ -133,14 +154,16 @@ def test_the_host_says_which_exports_it_has(worker):
 
 
 def test_a_tables_rows_come_batch_by_batch(worker):
-    batches = list(worker.rows("many", "table", [2500]))
+    batches = list(worker.rows("many", "table", [2500], schema=MANY))
     assert [len(b) for b in batches] == [1000, 1000, 500]
     assert batches[2][-1] == {"n": 2499}
 
 
 def test_values_cross_the_wire_in_their_own_types(worker):
     placed = datetime(2026, 1, 2, 3, 4, 5, tzinfo=UTC)
-    [[row]] = list(worker.rows("echo", "table", [placed, 2**60, Decimal("1.10"), None, "x"]))
+    [[row]] = list(
+        worker.rows("echo", "table", [placed, 2**60, Decimal("1.10"), None, "x"], schema=ECHO)
+    )
     assert row == {"args": [placed, 2**60, Decimal("1.10"), None, "x"]}
 
 
@@ -150,7 +173,7 @@ def test_a_commands_value_comes_whole(worker):
 
 def test_the_codes_own_error_is_named_by_source_and_export(worker):
     with pytest.raises(w.CodeFailed) as failed:
-        list(worker.rows("boom", "table", []))
+        list(worker.rows("boom", "table", [], schema=ANY))
     assert str(failed.value) == "source 'orders-src', export 'boom': no such customer"
     assert failed.value.stack == "at boom"
     assert worker.ping()  # the worker serves on
@@ -161,7 +184,7 @@ def test_a_deadline_cancels_the_call_in_the_host_and_releases_the_thread(worker,
     started = time.monotonic()
     with pytest.raises(TimeoutError):
         with request_deadline.within(0.3):
-            list(worker.rows("slow", "table", []))
+            list(worker.rows("slow", "table", [], schema=ANY))
     assert time.monotonic() - started < 5.0
     # The host records the cancel once the call stops; wait for the record, not only the file.
     until = time.monotonic() + 5.0
@@ -173,7 +196,7 @@ def test_a_deadline_cancels_the_call_in_the_host_and_releases_the_thread(worker,
 
 def test_closing_a_stream_early_cancels_it_in_the_host(worker, command):
     _, log = command
-    rows = worker.rows("ticks", "stream", [])
+    rows = worker.rows("ticks", "stream", [], schema=TICKS)
     assert [next(rows), next(rows)] == [[{"tick": 0}], [{"tick": 1}]]
     rows.close()  # the subscriber left
     until = time.monotonic() + 5.0
@@ -184,7 +207,7 @@ def test_closing_a_stream_early_cancels_it_in_the_host(worker, command):
 
 def test_a_crash_fails_the_call_naming_the_source_the_export_and_what_the_host_said(worker):
     with pytest.raises(w.WorkerFailed) as failed:
-        list(worker.rows("die", "table", []))
+        list(worker.rows("die", "table", [], schema=ANY))
     message = str(failed.value)
     assert message.startswith("source 'orders-src', export 'die': its host ended (exit 3)")
     assert "the code fell over" in message
@@ -249,12 +272,12 @@ def test_a_host_that_neither_connects_nor_exits_is_stopped_at_the_start_timeout(
 def test_a_host_speaking_another_protocol_is_refused_by_name(command, tmp_path):
     """REQ-2098: a host built for another Provisa version is refused, and told why."""
     base = command[0]
-    other = w.HostCommand(argv=base.argv, env={**base.env, "TEST_PROTOCOL": "2"}, cwd=base.cwd)
+    other = w.HostCommand(argv=base.argv, env={**base.env, "TEST_PROTOCOL": "1"}, cwd=base.cwd)
     worker = w.Worker("orders-src", "h1", other)
     with pytest.raises(w.WorkerFailed) as failed:
         worker.start()
     assert str(failed.value) == (
-        "source 'orders-src': its host speaks protocol 2, and this Provisa speaks 1: "
+        "source 'orders-src': its host speaks protocol 1, and this Provisa speaks 2: "
         "run a host built for this Provisa version"
     )
     assert not worker.alive()

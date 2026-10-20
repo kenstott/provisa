@@ -17,16 +17,20 @@ over a Unix domain socket in a private directory: Provisa listens, the host conn
 not the process's output, so nothing the code prints reaches the protocol; what it prints to
 stderr is kept (the last lines) to name a crash.
 
-Frames are a 4-byte big-endian length and that many bytes of UTF-8 JSON. A timestamp travels as
+A frame is a 4-byte big-endian length, then that many bytes: a kind byte and its body. ``J`` is
+a control message, UTF-8 JSON. ``A`` is rows: the call's id (8 bytes, big-endian) and an Arrow IPC
+stream of them, built against the schema the call gave (:mod:`provisa.codesource.arrow_rows`).
+Arrow is the only form rows take (REQ-2098). In a JSON message a timestamp travels as
 ``{"$date": iso}``, an integer outside JSON's exact range as ``{"$bigint": digits}``, a decimal as
 ``{"$decimal": digits}``, a calendar date with no time as ``{"$day": iso}``. An argument the read
 does not give is ``{"$absent": true}`` (:data:`ABSENT`), and ``names`` are the parameters' names in
 the order ``args`` gives them, for a host whose language passes arguments by name.
 
-    Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names}
+    Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names,
+                      schema}  -- the rows' Arrow schema, base64 IPC; null for a single value
                      {op: "cancel", id}      {op: "ping", id}
     host -> Provisa  {op: "hello", protocol, code_hash, exports}
-                     {op: "rows", id, rows}  {op: "value", id, value}
+                     rows (an Arrow frame)   {op: "value", id, value}
                      {op: "end", id}         {op: "error", id, message, stack}  {op: "pong", id}
     Provisa -> host  {op: "refused", message}, in place of any call, before the socket closes
 
@@ -66,7 +70,7 @@ from typing import Any
 from provisa.core import request_deadline
 
 #: The protocol the hosts speak; a host built for another one is refused by name (REQ-2098).
-PROTOCOL = 1
+PROTOCOL = 2
 
 #: The variable a host reads the content hash of its code from, which its hello names.
 CODE_HASH_ENV = "PROVISA_CODE_HASH"
@@ -81,6 +85,9 @@ _ACCEPT_POLL_S = 0.05
 STDERR_LINES = 40
 
 _HEAD = struct.Struct(">I")
+_ID = struct.Struct(">Q")
+JSON_FRAME = b"J"
+ARROW_FRAME = b"A"
 _EXACT = 2**53 - 1
 
 
@@ -177,7 +184,7 @@ def decode(value: Any) -> Any:
 
 
 def _frame(message: dict) -> bytes:
-    body = json.dumps(message, separators=(",", ":")).encode()
+    body = JSON_FRAME + json.dumps(message, separators=(",", ":")).encode()
     return _HEAD.pack(len(body)) + body
 
 
@@ -193,11 +200,19 @@ def _read_exact(conn: socket.socket, size: int) -> bytes | None:
 
 
 def _read_frame(conn: socket.socket) -> dict | None:
+    """The next message: a control message as sent, rows as ``{op: "rows", id, arrow}``."""
     head = _read_exact(conn, _HEAD.size)
     if head is None:
         return None
     body = _read_exact(conn, _HEAD.unpack(head)[0])
-    return None if body is None else json.loads(body)
+    if body is None:
+        return None
+    kind, rest = body[:1], body[1:]
+    if kind == ARROW_FRAME:
+        return {"op": "rows", "id": _ID.unpack(rest[: _ID.size])[0], "arrow": rest[_ID.size :]}
+    if kind != JSON_FRAME:
+        raise ValueError(f"a frame of unknown kind {kind!r}")
+    return json.loads(rest)
 
 
 def refusal(hello: dict, content_hash: str) -> str | None:
@@ -448,10 +463,19 @@ class Worker:
         return message
 
     def rows(
-        self, export: str, kind: str, args: Sequence[Any], names: Sequence[str] = ()
+        self,
+        export: str,
+        kind: str,
+        args: Sequence[Any],
+        names: Sequence[str] = (),
+        *,
+        schema: str,
     ) -> Iterator[list[dict]]:
-        """A table's or a stream's rows, batch by batch, as the host sends them. Closing the
-        iterator before its end cancels the call in the host."""
+        """A table's or a stream's rows, batch by batch, as the host sends them against
+        ``schema`` (arrow_rows.schema_text). Closing the iterator before its end cancels the
+        call in the host."""
+        from provisa.codesource.arrow_rows import rows_of
+
         if kind not in ("table", "stream"):
             raise ValueError(f"rows() serves a table or a stream, not a {kind}")
         call_id, waiting = self._open()
@@ -465,6 +489,7 @@ class Worker:
                     "kind": kind,
                     "args": encode(list(args)),
                     "names": list(names),
+                    "schema": schema,
                 }
             )
             while True:
@@ -473,7 +498,7 @@ class Worker:
                     finished = True
                     return
                 if message["op"] == "rows":
-                    yield decode(message["rows"])
+                    yield rows_of(message["arrow"])
         finally:
             if not finished:
                 try:
@@ -482,8 +507,18 @@ class Worker:
                     pass  # the worker has ended: there is no call left to stop
             self._close(call_id)
 
-    def command(self, export: str, args: Sequence[Any], names: Sequence[str] = ()) -> Any:
-        """A command's result: its single value, or the rows it returned as a list."""
+    def command(
+        self,
+        export: str,
+        args: Sequence[Any],
+        names: Sequence[str] = (),
+        *,
+        schema: str | None = None,
+    ) -> Any:
+        """A command's result: its single value, or -- given its rows' ``schema`` -- the rows it
+        returned, as a list."""
+        from provisa.codesource.arrow_rows import rows_of
+
         call_id, waiting = self._open()
         try:
             self._send(
@@ -494,6 +529,7 @@ class Worker:
                     "kind": "command",
                     "args": encode(list(args)),
                     "names": list(names),
+                    "schema": schema,
                 }
             )
             collected: list[dict] = []
@@ -502,7 +538,7 @@ class Worker:
                 if message["op"] == "value":
                     value = decode(message["value"])
                 elif message["op"] == "rows":
-                    collected.extend(decode(message["rows"]))
+                    collected.extend(rows_of(message["arrow"]))
                     value = collected
             return value
         finally:

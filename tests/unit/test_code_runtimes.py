@@ -74,7 +74,15 @@ class _Fetcher:
 
 
 def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on():
-    assert set(code_runtimes.RUNTIMES) == {"node", "bun", "deno", "python", "uv"}
+    assert set(code_runtimes.RUNTIMES) == {
+        "node",
+        "bun",
+        "deno",
+        "python",
+        "uv",
+        "pyarrow",
+        "apache-arrow",
+    }
     for name, pin in code_runtimes.RUNTIMES.items():
         assert set(pin.assets) == {
             code_runtimes.DARWIN_ARM64,
@@ -84,6 +92,15 @@ def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on
         for asset in pin.assets.values():
             assert len(asset.sha256) == 64 and int(asset.sha256, 16) >= 0
             assert pin.url(asset).startswith("https://")
+
+
+def test_a_pinned_wheel_is_unpacked_as_the_zip_it_is(tmp_path, monkeypatch):
+    """REQ-2098: the host's pyarrow is a wheel, unpacked onto the host's path."""
+    data = _zip({"pyarrow/__init__.py": b"", "pyarrow/lib.py": b""})
+    _pin(monkeypatch, "pyarrow", "ab/cd/pyarrow-9-cp312.whl", data, "pyarrow/__init__.py")
+    resolver = CodeRuntimeResolver(cache_root=tmp_path, fetcher=_Fetcher(data), host=LINUX_X64)
+    marker = resolver.resolve("pyarrow")
+    assert (marker.parent / "lib.py").is_file()
 
 
 def test_a_runtime_is_fetched_checked_extracted_and_made_executable(tmp_path, monkeypatch):

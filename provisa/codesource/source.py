@@ -171,7 +171,8 @@ def _prepare_node(
     from provisa.node.worker import host_command
     from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
 
-    executable = CodeRuntimeResolver(cache_root=ctx.cache_root).resolve(config.runtime)
+    resolver = CodeRuntimeResolver(cache_root=ctx.cache_root)
+    executable = resolver.resolve(config.runtime)
     installed = ensure_installed(
         source_id=source_id,
         runtime=config.runtime,
@@ -188,8 +189,14 @@ def _prepare_node(
         compiler=ensure_typescript(ctx.cache_root, ctx.registries),
         bundle=installed.path,
     )
+    # The host's Arrow library, pinned and fetched as the runtime is (REQ-2098): <home>/package/.
+    host_lib = resolver.resolve("apache-arrow").parent.parent
     command = host_command(
-        runtime=config.runtime, executable=executable, bundle=installed.path, egress=ctx.egress
+        runtime=config.runtime,
+        executable=executable,
+        bundle=installed.path,
+        egress=ctx.egress,
+        host_lib=host_lib,
     )
     return Prepared(source_id, installed.content_hash, manifest, command)
 
@@ -220,8 +227,15 @@ def _prepare_python(
     manifest = read_code(
         python=interpreter, python_home=home, code=root, entry=entry, egress=ctx.egress
     )
+    # The host's pyarrow, pinned and fetched as the runtime is (REQ-2098): <home>/pyarrow/.
+    host_lib = resolver.resolve("pyarrow").parent.parent
     command = host_command(
-        python=interpreter, python_home=home, code=root, entry=entry, egress=ctx.egress
+        python=interpreter,
+        python_home=home,
+        code=root,
+        entry=entry,
+        egress=ctx.egress,
+        host_lib=host_lib,
     )
     return Prepared(source_id, installed.content_hash, manifest, command)
 

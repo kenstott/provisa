@@ -128,12 +128,15 @@ async def columns(state: Any, source_id: str, function: str) -> list[dict] | Non
         return _parameter_columns(export)
     from provisa.codesource.worker import ABSENT
 
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+
     worker = prepared.worker()
     names = [p.name for p in export.parameters]
+    schema = schema_text(row_schema(prepared.manifest, export))
 
     def _sample() -> list[dict]:
         rows: list[dict] = []
-        for batch in worker.rows(function, "table", [ABSENT] * len(names), names):
+        for batch in worker.rows(function, "table", [ABSENT] * len(names), names, schema=schema):
             rows.extend(batch)
             if len(rows) >= PREVIEW_ROWS:
                 break

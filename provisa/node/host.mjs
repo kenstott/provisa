@@ -14,14 +14,19 @@
 //
 // It imports the bundle (the bundle imports nothing of Provisa's), connects to the socket
 // Provisa listens on, says which exports it has, and serves calls until the socket closes, when
-// it exits. Frames are a 4-byte big-endian length and that many bytes of UTF-8 JSON; a Date is
-// written {"$date": iso}, a bigint {"$bigint": digits}, undefined as null; a {"$decimal": digits}
-// argument stays as it is, since JavaScript has no decimal.
+// it exits. A frame is a 4-byte big-endian length and that many bytes: a kind byte and its body.
+// "J" is a control message, UTF-8 JSON, where a Date is written {"$date": iso}, a bigint
+// {"$bigint": digits}, undefined as null, and a {"$decimal": digits} argument stays as it is,
+// since JavaScript has no decimal. "A" is rows (REQ-2098): the call's id (8 bytes) and an Arrow
+// IPC stream of them, built against the schema the call gives (provisa/codesource/arrow_rows.py);
+// a numeric or json field is text, named so in its metadata. Arrow is the only form rows take.
+// The Arrow library is apache-arrow's self-contained build, from PROVISA_HOST_LIB.
 //
-//   Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names}
+//   Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names,
+//                     schema}  -- the rows' schema, base64 IPC; null for a single value
 //                    {op: "cancel", id}      {op: "ping", id}
 //   host -> Provisa  {op: "hello", protocol, code_hash, exports}
-//                    {op: "rows", id, rows}  {op: "value", id, value}
+//                    rows (an Arrow frame)   {op: "value", id, value}
 //                    {op: "end", id}         {op: "error", id, message, stack}  {op: "pong", id}
 //   Provisa -> host  {op: "refused", message}, when it refuses this host's protocol or code
 //
@@ -29,13 +34,21 @@
 // (PROVISA_CODE_HASH in its environment), which Provisa checks.
 
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import net from "node:net";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
 const BATCH = 1000;
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-const PROTOCOL = 1;
+const PROTOCOL = 2;
+const IR_KEY = "provisa.ir";
+const WHOLE_ROW = "$row";
+let Arrow = null;
+function arrow() {
+  Arrow ??= createRequire(import.meta.url)(`${process.env.PROVISA_HOST_LIB}/package/Arrow.es2015.min.js`);
+  return Arrow;
+}
 const [socketPath, entry] = process.argv.slice(2);
 const bundle = await import(pathToFileURL(entry).href);
 
@@ -73,7 +86,48 @@ const socket = inherited
   ? fs.createReadStream(null, { fd, autoClose: false })
   : net.createConnection(socketPath);
 function send(message) {
-  const body = Buffer.from(encode(message), "utf8");
+  write(Buffer.concat([Buffer.from("J"), Buffer.from(encode(message), "utf8")]));
+}
+
+// A value in the form an Arrow field takes it.
+function forField(value, field) {
+  const A = arrow();
+  if (value === null || value === undefined) return null;
+  const ir = field.metadata.get(IR_KEY);
+  if (ir === "json") return encode(value);
+  if (ir === "numeric") return String(value);
+  const type = field.type;
+  if (A.DataType.isStruct(type)) {
+    const out = {};
+    for (const child of type.children) out[child.name] = forField(value[child.name], child);
+    return out;
+  }
+  if (A.DataType.isList(type)) return Array.from(value, (v) => forField(v, type.children[0]));
+  if (A.DataType.isInt(type) && type.bitWidth === 64 && typeof value === "number") return BigInt(value);
+  return value;
+}
+
+function sendRows(id, rows, schema) {
+  const A = arrow();
+  const fields = schema.fields;
+  const values = fields.length === 1 && fields[0].name === WHOLE_ROW ? rows.map((r) => ({ [WHOLE_ROW]: r })) : rows;
+  const children = fields.map((f) => {
+    const builder = A.makeBuilder({ type: f.type, nullValues: [null, undefined] });
+    for (const row of values) builder.append(forField(row?.[f.name], f));
+    return builder.finish().toVector().data[0];
+  });
+  const batch = new A.RecordBatch(
+    schema,
+    A.makeData({ type: new A.Struct(fields), length: values.length, nullCount: 0, children }),
+  );
+  const ipc = A.tableToIPC(new A.Table(batch), "stream");
+  const head = Buffer.alloc(9);
+  head.write("A", 0);
+  head.writeBigUInt64BE(BigInt(id), 1);
+  write(Buffer.concat([head, Buffer.from(ipc)]));
+}
+
+function write(body) {
   const head = Buffer.alloc(4);
   head.writeUInt32BE(body.length, 0);
   const frame = Buffer.concat([head, body]);
@@ -90,7 +144,7 @@ function iterable(result) {
   return result != null && (typeof result[Symbol.asyncIterator] === "function" || typeof result[Symbol.iterator] === "function");
 }
 
-async function serve({ id, export: name, kind, args }) {
+async function serve({ id, export: name, kind, args, schema: schemaText }) {
   const fn = bundle[name];
   if (typeof fn !== "function") throw new Error(`the bundle exports no function ${name}`);
   const state = { cancelled: false, iterator: null };
@@ -98,13 +152,16 @@ async function serve({ id, export: name, kind, args }) {
   try {
     let result = fn(...revive(args));
     if (kind !== "stream") result = await result;
-    if (kind === "command" && !iterable(result)) {
+    if (schemaText === null || schemaText === undefined) {
+      // A single value, or a command whose result is not rows: its JSON value message.
       send({ op: "value", id, value: result ?? null });
       return;
     }
+    const schema = arrow().tableFromIPC(Buffer.from(schemaText, "base64")).schema;
+    if (!iterable(result)) throw new Error(`a ${typeof result} is not a collection of rows`);
     if (Array.isArray(result)) {
       for (let i = 0; i < result.length && !state.cancelled; i += BATCH) {
-        send({ op: "rows", id, rows: result.slice(i, i + BATCH) });
+        sendRows(id, result.slice(i, i + BATCH), schema);
       }
       return;
     }
@@ -115,16 +172,16 @@ async function serve({ id, export: name, kind, args }) {
       const step = await iterator.next();
       if (step.done || state.cancelled) break;
       if (kind === "stream") {
-        send({ op: "rows", id, rows: [step.value] });
+        sendRows(id, [step.value], schema); // a stream's row goes as it comes
       } else {
         batch.push(step.value);
         if (batch.length >= BATCH) {
-          send({ op: "rows", id, rows: batch });
+          sendRows(id, batch, schema);
           batch = [];
         }
       }
     }
-    if (batch.length && !state.cancelled) send({ op: "rows", id, rows: batch });
+    if (batch.length && !state.cancelled) sendRows(id, batch, schema);
   } finally {
     running.delete(id);
   }
@@ -158,7 +215,7 @@ socket.on("data", (chunk) => {
   while (pending.length >= 4) {
     const size = pending.readUInt32BE(0);
     if (pending.length < 4 + size) break;
-    const body = pending.subarray(4, 4 + size).toString("utf8");
+    const body = pending.subarray(5, 4 + size).toString("utf8"); // after the "J" kind byte
     pending = pending.subarray(4 + size);
     dispatch(JSON.parse(body));
   }

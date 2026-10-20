@@ -20,10 +20,14 @@ generator is iterated; any other function runs on a thread, so a slow one holds 
 A table's rows go in batches of 1000, a stream's each as it is yielded. A row is a dict, a
 dataclass, a NamedTuple or an object with annotated fields.
 
-Standard library only: the code's environment is the code's.
+Rows go as Arrow IPC batches against the schema the call gives (REQ-2098,
+provisa/codesource/arrow_rows.py): a field Arrow has no exact form for (a ``numeric``, a ``json``
+value) is text, named so in its metadata. Its one import beside the standard library is pyarrow:
+the pinned copy Provisa gives the local worker (``PROVISA_HOST_LIB``, put after the code's own
+paths, so code that installs its own pyarrow keeps it), or the one in a remote host's image.
 """
 
-# Requirements: REQ-1993
+# Requirements: REQ-1993, REQ-2098
 from __future__ import annotations
 
 import asyncio
@@ -43,9 +47,12 @@ import typing
 
 BATCH = 1000
 #: The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-PROTOCOL = 1
+PROTOCOL = 2
 _EXACT = 2**53 - 1
 _HEAD = struct.Struct(">I")
+_ID = struct.Struct(">Q")
+_IR_KEY = b"provisa.ir"
+_WHOLE_ROW = "$row"
 _DONE = object()
 #: An argument the read does not give: left out of the call, so the function's default applies.
 _ABSENT = object()
@@ -124,6 +131,55 @@ def _call_arguments(args: list, names: list[str]) -> tuple[list, dict]:
     return args[:first], keywords
 
 
+def _arrow() -> typing.Any:  # the pyarrow module
+    lib = os.environ.get("PROVISA_HOST_LIB")
+    # Set for the local worker only (python/source.py): a remote host's image installs pyarrow
+    # into its interpreter, where the import finds it without a path of its own.
+    if lib and lib not in sys.path:
+        sys.path.append(lib)
+    return importlib.import_module("pyarrow")
+
+
+def _plain(value: typing.Any) -> typing.Any:  # a row or a field of one, as the code made it
+    """A record (a dataclass, a NamedTuple, an annotated object) as a dict; an enum as its value."""
+    if isinstance(value, enum.Enum):
+        return value.value
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {f.name: getattr(value, f.name) for f in dataclasses.fields(value)}
+    if isinstance(value, tuple) and hasattr(value, "_asdict"):
+        return typing.cast(typing.Any, value)._asdict()
+    if isinstance(value, (dict, list, tuple, set, frozenset, str, bytes, int, float, bool)):
+        return value
+    if value is None or isinstance(value, (datetime.date, decimal.Decimal)):
+        return value
+    annotations = getattr(type(value), "__annotations__", None)
+    if annotations:
+        return {name: getattr(value, name, None) for name in annotations}
+    return value
+
+
+def _for_field(value: typing.Any, field: typing.Any) -> typing.Any:  # a value; a pyarrow Field
+    """``value`` in the form ``field`` takes it."""
+    pa = _arrow()
+    if value is None:
+        return None
+    ir = (field.metadata or {}).get(_IR_KEY)
+    if ir == b"json":
+        return json.dumps(to_wire(value), separators=(",", ":"))
+    if ir == b"numeric":
+        return str(value)
+    value = _plain(value)
+    kind = field.type
+    if pa.types.is_struct(kind):
+        return {
+            kind.field(i).name: _for_field(value.get(kind.field(i).name), kind.field(i))
+            for i in range(kind.num_fields)
+        }
+    if pa.types.is_list(kind):
+        return [_for_field(v, kind.value_field) for v in value]
+    return value
+
+
 class Host:
     def __init__(self, module: typing.Any, writer: asyncio.StreamWriter) -> None:
         self.module = module
@@ -131,17 +187,53 @@ class Host:
         self.running: dict[int, asyncio.Task] = {}
 
     async def send(self, message: dict) -> None:
-        body = json.dumps(message, separators=(",", ":")).encode()
+        body = b"J" + json.dumps(message, separators=(",", ":")).encode()
         self.writer.write(_HEAD.pack(len(body)) + body)
         await self.writer.drain()
 
-    async def serve(self, call_id: int, name: str, kind: str, args: list, names: list[str]) -> None:
+    async def send_rows(self, call_id: int, rows: list, schema: typing.Any) -> None:
+        """``rows`` as one Arrow IPC frame, against ``schema`` (a pyarrow Schema)."""
+        pa = _arrow()
+        if schema.names == [_WHOLE_ROW]:
+            field = schema.field(_WHOLE_ROW)
+            values = [{_WHOLE_ROW: _for_field(row, field)} for row in rows]
+        else:
+            fields = [schema.field(i) for i in range(len(schema))]
+            values = []
+            for row in rows:
+                plain = _plain(row)
+                if not isinstance(plain, dict):
+                    raise TypeError(f"a {type(row).__name__} is not a row")
+                values.append({f.name: _for_field(plain.get(f.name), f) for f in fields})
+        batch = pa.RecordBatch.from_pylist(values, schema=schema)
+        sink = pa.BufferOutputStream()
+        with pa.ipc.new_stream(sink, schema) as stream:
+            stream.write_batch(batch)
+        body = b"A" + _ID.pack(call_id) + sink.getvalue().to_pybytes()
+        self.writer.write(_HEAD.pack(len(body)) + body)
+        await self.writer.drain()
+
+    async def serve(
+        self,
+        call_id: int,
+        name: str,
+        kind: str,
+        args: list,
+        names: list[str],
+        schema: str | None,
+    ) -> None:
         try:
             fn = getattr(self.module, name, None)
             if not inspect.isfunction(fn) or name not in exported(self.module):
                 raise LookupError(f"the code has no function {name}")
             positional, keywords = _call_arguments(from_wire(args), names)
-            await self._run(call_id, fn, kind, positional, keywords)
+            rows_schema = None
+            if schema is not None:
+                import base64
+
+                pa = _arrow()
+                rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
+            await self._run(call_id, fn, kind, positional, keywords, rows_schema)
             await self.send({"op": "end", "id": call_id})
         except asyncio.CancelledError:
             pass  # Provisa stopped the call and is no longer waiting for it
@@ -158,7 +250,13 @@ class Host:
             self.running.pop(call_id, None)
 
     async def _run(
-        self, call_id: int, fn: typing.Callable, kind: str, args: list, keywords: dict
+        self,
+        call_id: int,
+        fn: typing.Callable,
+        kind: str,
+        args: list,
+        keywords: dict,
+        schema: typing.Any,  # the rows' pyarrow Schema; None for a single value
     ) -> None:
         if inspect.isasyncgenfunction(fn) or inspect.isgeneratorfunction(fn):
             result = fn(*args, **keywords)
@@ -166,19 +264,20 @@ class Host:
             result = await fn(*args, **keywords)
         else:
             result = await asyncio.to_thread(fn, *args, **keywords)
-        if hasattr(result, "__aiter__"):
-            await self._rows(call_id, kind, self._async_rows(result))
+        if schema is None:
+            # A single value, or a command whose result is not rows: its JSON value message.
+            await self.send({"op": "value", "id": call_id, "value": to_wire(result)})
+        elif hasattr(result, "__aiter__"):
+            await self._rows(call_id, kind, self._async_rows(result), schema)
         elif isinstance(result, (list, tuple)) and not hasattr(result, "_asdict"):
             for at in range(0, len(result), BATCH):
-                await self.send(
-                    {"op": "rows", "id": call_id, "rows": to_wire(list(result[at : at + BATCH]))}
-                )
+                await self.send_rows(call_id, list(result[at : at + BATCH]), schema)
         elif inspect.isgenerator(result) or (
-            kind != "command" and hasattr(result, "__iter__") and not isinstance(result, dict)
+            hasattr(result, "__iter__") and not isinstance(result, dict)
         ):
-            await self._rows(call_id, kind, self._sync_rows(iter(result)))
+            await self._rows(call_id, kind, self._sync_rows(iter(result)), schema)
         else:
-            await self.send({"op": "value", "id": call_id, "value": to_wire(result)})
+            raise TypeError(f"a {type(result).__name__} is not a collection of rows")
 
     @staticmethod
     async def _async_rows(rows: typing.AsyncIterator) -> typing.AsyncIterator:
@@ -201,18 +300,20 @@ class Host:
             if close is not None:
                 close()
 
-    async def _rows(self, call_id: int, kind: str, rows: typing.AsyncIterator) -> None:
+    async def _rows(
+        self, call_id: int, kind: str, rows: typing.AsyncIterator, schema: typing.Any
+    ) -> None:
         batch: list = []
         async for row in rows:
             if kind == "stream":
-                await self.send({"op": "rows", "id": call_id, "rows": [to_wire(row)]})
+                await self.send_rows(call_id, [row], schema)  # a stream's row goes as it comes
                 continue
             batch.append(row)
             if len(batch) >= BATCH:
-                await self.send({"op": "rows", "id": call_id, "rows": to_wire(batch)})
+                await self.send_rows(call_id, batch, schema)
                 batch = []
         if batch:
-            await self.send({"op": "rows", "id": call_id, "rows": to_wire(batch)})
+            await self.send_rows(call_id, batch, schema)
 
 
 async def run(address: str, code: str, entry: str) -> None:
@@ -249,7 +350,7 @@ async def serve(
     while True:
         try:
             head = await reader.readexactly(_HEAD.size)
-            message = json.loads(await reader.readexactly(_HEAD.unpack(head)[0]))
+            message = json.loads((await reader.readexactly(_HEAD.unpack(head)[0]))[1:])
         except (asyncio.IncompleteReadError, ConnectionError):
             for task in list(host.running.values()):
                 task.cancel()
@@ -271,6 +372,7 @@ async def serve(
                     message["kind"],
                     message["args"],
                     message["names"],
+                    message["schema"],
                 )
             )
 

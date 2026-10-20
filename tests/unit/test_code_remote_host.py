@@ -22,9 +22,11 @@ import sys
 import textwrap
 import time
 
+import pyarrow as pa
 import pytest
 
 from provisa.codesource import remote
+from provisa.codesource.arrow_rows import schema_text
 from provisa.codesource.worker import WorkerFailed
 from provisa.python.source import HOST
 
@@ -41,6 +43,9 @@ _CODE = textwrap.dedent(
         return [{"n": i} for i in range(n)]
     '''
 )
+
+
+ORDERS = schema_text(pa.schema([("n", pa.int64())]))
 
 
 def _free_port() -> int:
@@ -99,7 +104,9 @@ def test_a_paired_host_serves_the_codes_tables_to_each_provisa_connection(starte
     second.start()  # each Provisa process keeps a connection of its own
     try:
         assert first.exports == ["orders"]
-        assert [row for batch in first.rows("orders", "table", [3]) for row in batch] == [
+        assert [
+            row for batch in first.rows("orders", "table", [3], schema=ORDERS) for row in batch
+        ] == [
             {"n": 0},
             {"n": 1},
             {"n": 2},
