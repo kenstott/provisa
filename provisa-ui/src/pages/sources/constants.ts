@@ -199,17 +199,17 @@ export const SOURCE_TYPES = [
   // REQ-1960: carried by the File Crawler's HTML crawl, with the site's page layout supplied.
   { value: "wikipedia", label: "Wikipedia", category: "File", defaultPort: 0 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
-  // Data Quality (REQ-1443) — a checker scans a governed table through Provisa's own pgwire
-  // endpoint; the source itself needs no connection fields (dq/contract.py). soda is Elastic
+  // Data Quality (REQ-1443) — a checker scans a governed table through a Provisa pgwire endpoint,
+  // whose host, port, database and account its steward enters like any database's (#276). soda is Elastic
   // License 2.0 (self-host only, config/capabilities.yaml cloud_eligible: false) — hidden on a
   // hosted plane at the point this constant is consumed for the dropdown (SourcesPage.tsx
   // typeSelectData), never omitted here, since self-hosted still needs it.
-  { value: "soda", label: "Soda (Data Quality)", category: "Data Quality", defaultPort: 0 },
+  { value: "soda", label: "Soda (Data Quality)", category: "Data Quality", defaultPort: 5439 },
   {
     value: "great_expectations",
     label: "Great Expectations (Data Quality)",
     category: "Data Quality",
-    defaultPort: 0,
+    defaultPort: 5439,
   },
   // REQ-1934: built in — a schedule that profiles its member tables; no connection of its own.
   { value: "data_profiler", label: "Data Profiler", category: "Data Quality", defaultPort: 0 },
@@ -284,6 +284,9 @@ export const SIMPLE_RDBMS = new Set([
   // connection fields for it, so a saphana registration could never even be filled in, let alone
   // submitted. Verified live this session against a real HANA instance once added here.
   "saphana",
+  // #276: a data-quality checker dials a Provisa pgwire endpoint, entered as any database is.
+  "soda",
+  "great_expectations",
 ]);
 
 // Data lake types
@@ -303,11 +306,9 @@ export const DATA_LAKE = new Set(["delta_lake", "iceberg", "hive", "hive_s3"]);
 export const HOST_PORT_ONLY = new Set(["airport", "websocket", "rss", "pinot", "kafka"]);
 
 // Source types needing no connection fields at all beyond id/description (REQ-1739): ingest is a
-// pure push receiver, soda/great_expectations are DQ checkers that scan through pgwire.
+// pure push receiver.
 export const NO_CONNECTION_TYPES = new Set([
   "ingest",
-  "soda",
-  "great_expectations",
   "data_profiler", // REQ-1934
   "node", // REQ-1984: its code, not a connection (CodeSourceFields)
   "python", // REQ-1993: the same

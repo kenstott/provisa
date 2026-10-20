@@ -87,6 +87,18 @@ export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<
 // `.and(page.locator(FORM_FIELD))`.
 export const FORM_FIELD = "input, select, textarea";
 
+/** A data-quality checker source's connection (#276): the pgwire endpoint of the backend at
+ * ``backendUrl``, entered as any database's is. Each backend serves pgwire at its HTTP port + 5
+ * (playwright.config.ts's port block); with no auth provider pgwire trusts the account, so no
+ * password is entered. */
+export async function fillCheckerConnection(page: Page, backendUrl: string = BACKEND_URL) {
+  const pgwirePort = Number(new URL(backendUrl).port) + 5;
+  await page.getByLabel(/^Host/).and(page.locator(FORM_FIELD)).fill("localhost");
+  await page.getByLabel(/^Port/).and(page.locator(FORM_FIELD)).fill(String(pgwirePort));
+  await page.getByLabel(/^Username/).fill("org_admin");
+  await page.getByLabel(/^Database/).and(page.locator(FORM_FIELD)).fill("provisa");
+}
+
 export async function submitSourceAndExpectListed(page: Page, sourceId: string) {
   await page.getByTestId("sources-submit").click();
   await expect(page.locator(".data-table td").filter({ hasText: sourceId })).toBeVisible({

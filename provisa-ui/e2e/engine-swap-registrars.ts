@@ -37,6 +37,7 @@ import {
   registerOfferedTable,
   submitRegisterAndExpectListed,
   ASKAMERICA_SERVING_BUDGET_MS,
+  fillCheckerConnection,
   submitSourceAndExpectListed,
   waitForSourceServing,
   FORM_FIELD,
@@ -427,7 +428,7 @@ export function registerFiles(): (page: Page) => Promise<Registration> {
 /** soda / great_expectations (REQ-1730): data-quality checkers, not conventional data sources —
  * per source-to-query-special-cases.spec.ts's own REQ-1742 investigation, a checker source has no
  * remote table of its own to register+SELECT from; it connects back through Provisa's OWN pgwire
- * endpoint (schema_mutation.py's create_source auto-fills that mapping for a checker type) and
+ * endpoint, whose connection the Sources form takes as any database's (#276), and
  * scans an ALREADY-governed table via a dq_contract. This registrar therefore first registers a
  * small csv scan target (the exact registerSingleFile shape, inlined here for direct access to
  * the compiled table name), then registers the checker source against it, adds one dataset-scope
@@ -469,6 +470,7 @@ function registerDqChecker(
     await openSourcesForm(page);
     await page.getByTestId("sources-id-input").fill(sourceId);
     await page.getByTestId("sources-type-select").selectOption(checkerType);
+    await fillCheckerConnection(page);
     await submitSwapSource(page, sourceId);
 
     // 3. Register Table form: no schema/table picker for a checker, only the DQ contract panel.

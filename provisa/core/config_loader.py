@@ -319,34 +319,52 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
 
 
 def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
-    """``resolve(data)``, but a code source's declared secrets kept as the references written
-    (REQ-2104): each is resolved only when the code reads it, through Provisa's services
-    (provisa/codesource/services.py), so a config naming a secret not yet in the vault loads."""
-    from provisa.codesource.source import CODE_SOURCE_TYPES
+    """``resolve(data)``, but what a source resolves where it is used kept as written:
 
-    held: dict[int, Any] = {}
+    * a code source's declared secrets (REQ-2104): each is resolved only when the code reads it,
+      through Provisa's services (provisa/codesource/services.py), so a config naming a secret
+      not yet in the vault loads;
+    * a data-quality checker source's mapping, the connection its scans dial back through: it is
+      resolved when a scan runs (``dq.scan.checker_connection``), so a model holding a reference
+      whose value is not set loads (#276).
+    """
+    from provisa.codesource.source import CODE_SOURCE_TYPES
+    from provisa.dq.contract import CHECKERS
+
+    held: dict[int, tuple[str, Any]] = {}
     sources = data.get("sources")
     if isinstance(sources, list):
         for i, source in enumerate(sources):
             mapping = source.get("mapping") if isinstance(source, dict) else None
-            if source.get("type") in CODE_SOURCE_TYPES and isinstance(mapping, dict):
-                if "secrets" in mapping:
-                    held[i] = mapping["secrets"]
+            if not isinstance(mapping, dict):
+                continue
+            if source.get("type") in CODE_SOURCE_TYPES and "secrets" in mapping:
+                held[i] = ("secrets", mapping["secrets"])
+            elif source.get("type") in CHECKERS:
+                held[i] = ("mapping", mapping)
     if not held:
         return resolve(data)
+
+    def _without(i: int, s: dict) -> dict:
+        key, _ = held[i]
+        if key == "mapping":
+            return {**s, "mapping": {}}
+        return {**s, "mapping": {k: v for k, v in s["mapping"].items() if k != key}}
+
     resolved = resolve(
         {
             **data,
             "sources": [
-                {**s, "mapping": {k: v for k, v in s["mapping"].items() if k != "secrets"}}
-                if i in held
-                else s
+                _without(i, s) if i in held else s
                 for i, s in enumerate(sources)  # type: ignore[arg-type]
             ],
         }
     )
-    for i, written in held.items():
-        resolved["sources"][i]["mapping"]["secrets"] = written
+    for i, (key, written) in held.items():
+        if key == "mapping":
+            resolved["sources"][i]["mapping"] = written
+        else:
+            resolved["sources"][i]["mapping"][key] = written
     return resolved
 
 

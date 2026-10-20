@@ -18,7 +18,7 @@ rather than from a ProvisaConfig, because a registerTable mutation has no config
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
@@ -60,3 +60,17 @@ async def apply_dq_registration(conn: "Connection", model) -> None:
 
     # Its scans append here (provisa.dq.scan); it reads as an empty history until the first.
     await ensure_relation(conn, model.table_name)
+
+
+def checker_mapping(source: Any) -> dict:  # REQ-1742
+    """The connection a data-quality checker source's scans dial back through: the pgwire endpoint
+    its steward entered in the Sources form (``source`` is its SourceInput), kept as entered -- a
+    value, or a reference they typed -- and resolved where a scan uses it
+    (``dq.scan.checker_connection``), never when the model is read (#276)."""
+    return {
+        "host": source.host,
+        "port": source.port,
+        "database": source.database,
+        "user": source.username,
+        "password": source.password,
+    }
