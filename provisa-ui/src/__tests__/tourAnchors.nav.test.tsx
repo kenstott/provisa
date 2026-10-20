@@ -9,12 +9,12 @@
 // permission from the copyright holder.
 
 // Tour anchors (test-utils/tourAnchor): the steps that point at the navigation, which the app's
-// shell paints on every page (NavBar), found there on each step's own route for a viewer holding
-// the step's right.
+// shell paints on every page (NavBar), found there on the page each step runs on for a viewer
+// holding the step's right.
 
 import { describe, it, expect, vi } from "vitest";
 import { render } from "../test-utils/render";
-import { tourStep } from "../test-utils/tourAnchor";
+import { stepRoute, tourStep } from "../test-utils/tourAnchor";
 
 vi.mock("../context/AuthContext", () => ({
   useAuth: () => ({
@@ -27,6 +27,7 @@ vi.mock("../context/AuthContext", () => ({
       "table_registration",
       "access_config",
       "query_development",
+      "observability",
     ],
     demonstrated: [],
     loading: false,
@@ -48,7 +49,8 @@ vi.mock("../tour/useTour", () => ({
     canResume: false,
     coreSeen: false,
     status: null,
-    available: false,
+    // The tour button (step0, step14) is drawn only while a tour can run.
+    available: true,
   }),
 }));
 vi.mock("../context/subnavExtraSlot", () => ({
@@ -61,10 +63,28 @@ vi.mock("../components/RoleSelector", () => ({ RoleSelector: () => null }));
 import { NavBar } from "../components/NavBar";
 
 describe("tour steps that point at the navigation", () => {
-  for (const key of ["step1", "step4", "step18"]) {
+  for (const key of [
+    "step0",
+    "step1",
+    "step4",
+    "stepQuery",
+    "step6",
+    "step7",
+    "step8",
+    "step9",
+    "step10",
+    "step11",
+    "step12",
+    "step14",
+    "step18",
+    "step19",
+    "step20",
+    "step21",
+    "step23",
+  ]) {
     it(`finds ${key}'s anchor on its route`, async () => {
       const step = tourStep(key);
-      render(<NavBar />, { initialEntries: [step.route!] });
+      render(<NavBar />, { initialEntries: [stepRoute(key)] });
       expect(document.querySelector(step.element)).toBeInTheDocument();
     });
   }

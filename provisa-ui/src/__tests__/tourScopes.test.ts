@@ -20,7 +20,9 @@ import {
   TOUR_SCOPES,
   TOPIC_IDS,
   tourItinerary,
+  stepsTheOrgCanShow,
   type TourScope,
+  type TourStep,
 } from "../tour/tourSteps";
 import { completedTopics, markTopicCompleted } from "../tour/tourTopics";
 import { TOUR_TOPICS_DONE_KEY } from "../tour/tourKeys";
@@ -139,6 +141,37 @@ describe("tour scopes", () => {
     expect(tourItinerary(noOrgSettings, "relationships")).toHaveLength(
       TOUR_SCOPES.relationships.length,
     );
+  });
+
+  it("drops the steps that ask Polly live when the org's Polly has no model, and only those", () => {
+    const keys = (scope: TourScope, pollyConfigured: boolean) =>
+      stepsTheOrgCanShow(tourItinerary(everything, scope), { pollyConfigured }).map(
+        (i) => TOUR_STEPS[i].key,
+      );
+    for (const scope of ALL) {
+      const asking = TOUR_SCOPES[scope].filter(
+        (k) => TOUR_STEPS.find((s) => s.key === k)!.pollyOpen,
+      );
+      expect(keys(scope, true)).toEqual([...TOUR_SCOPES[scope]]);
+      expect(keys(scope, false)).toEqual(TOUR_SCOPES[scope].filter((k) => !asking.includes(k)));
+    }
+    expect(keys("core", false)).not.toContain("stepPolly");
+    expect(keys("relationships", false)).not.toContain("stepRelsAgents");
+  });
+
+  it("keeps a step showing Polly's stored answer, which asks nothing", () => {
+    const steps: TourStep[] = [
+      ...TOUR_STEPS,
+      {
+        key: "demoPolly",
+        element: '[data-testid="chat-panel"]',
+        pollyOpen: true,
+        pollyExchange: { question: "q", answer: "a" },
+      } as TourStep,
+    ];
+    expect(stepsTheOrgCanShow([steps.length - 1], { pollyConfigured: false }, steps)).toEqual([
+      steps.length - 1,
+    ]);
   });
 });
 

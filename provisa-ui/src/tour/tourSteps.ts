@@ -26,7 +26,7 @@
  * narration is translatable. This file only carries the layout/navigation data.
  */
 import type { Capability } from "../types/auth";
-import type { TourPrerequisites } from "./tourPrerequisites";
+import type { OrgHas, TourPrerequisites } from "./tourPrerequisites";
 import PREREQUISITES from "./tourPrerequisites.json";
 
 export interface TourStep {
@@ -808,6 +808,21 @@ export function stepRoute(
     if (route) return route;
   }
   return undefined;
+}
+
+/**
+ * The steps of `itinerary` (indices into `steps`) this org can show. A step that opens Polly
+ * (`pollyOpen`) to ask it live needs a model: without one Polly's launcher shows its
+ * "not configured" notice instead of the panel, and the step's anchor never mounts. A step showing
+ * a stored exchange (`pollyExchange`) asks nothing and stays.
+ */
+export function stepsTheOrgCanShow(
+  itinerary: readonly number[],
+  has: Pick<OrgHas, "pollyConfigured">,
+  steps: readonly TourStep[] = TOUR_STEPS,
+): number[] {
+  if (has.pollyConfigured) return [...itinerary];
+  return itinerary.filter((i) => !(steps[i].pollyOpen && steps[i].pollyExchange === undefined));
 }
 
 /**

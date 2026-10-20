@@ -9,12 +9,12 @@
 // permission from the copyright holder.
 
 // Tour anchors (test-utils/tourAnchor): the core tour's steps on the Tables page, in the state the
-// core is offered in -- the org holds the pet store's tables (tourPrerequisites.json) -- with a
-// table selected and with none.
+// core is offered in -- the org holds the pet store's tables (tourPrerequisites.json) -- and the
+// Quality and Test data Deep Dives' steps there, offered with the checker's and the pets tables.
 
 import { describe, it, expect, vi } from "vitest";
 import { render } from "../test-utils/render";
-import { walkTourStep } from "../test-utils/tourAnchor";
+import { stepPageReady, walkTourStep, walkTourSteps } from "../test-utils/tourAnchor";
 import type { RegisteredTable, RoleTtl } from "../types/admin";
 
 vi.mock("../context/DomainFilterContext", async (importOriginal) => ({
@@ -135,6 +135,21 @@ const SOURCES = [
     path: "pets.db",
     description: "",
   },
+  {
+    id: "dq-checker",
+    type: "great_expectations",
+    host: "localhost",
+    port: 5439,
+    database: "provisa",
+    username: "org_admin",
+    dialect: "postgresql",
+    cacheEnabled: true,
+    cacheTtl: null,
+    allowedDomains: [],
+    namingConvention: null,
+    path: null,
+    description: "",
+  },
 ];
 
 // One value per hook across renders: a fresh array each render reruns the page's effects forever.
@@ -144,6 +159,11 @@ const TABLES = {
   tables: [
     table(1, "pets", [], {
       sourceId: "pet-store-sqlite",
+      domainId: "pet-store",
+      schemaName: "pet_store",
+    }),
+    table(2, "pets_quality_dq_checker_dq", [], {
+      sourceId: "dq-checker",
       domainId: "pet-store",
       schemaName: "pet_store",
     }),
@@ -188,9 +208,35 @@ vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
 import { TablesPage } from "../pages/TablesPage";
 
 describe("the core tour's steps on the Tables page", () => {
+  it("is ready for step4", async () => {
+    render(<TablesPage />, { initialEntries: ["/tables"] });
+    expect(await stepPageReady("step4")).toBeInTheDocument();
+  });
   for (const key of ["step5", "stepPreview"]) {
     it(`finds ${key}'s anchor`, async () => {
       render(<TablesPage />, { initialEntries: ["/tables"] });
+      expect(await walkTourStep(key)).toBeInTheDocument();
+    });
+  }
+});
+
+describe("the Quality and Test data Deep Dives' steps on the Tables page", () => {
+  it("walks the checker table into its Quality panel", async () => {
+    render(<TablesPage />, { initialEntries: ["/tables?source=dq-checker"] });
+    await walkTourSteps(["stepQualityTable", "stepQualityPanel"]);
+  });
+  // Each of the pets table's cards opens its own starting state (PETS_EDIT_OPEN), so each is
+  // entered cold, as Back and resume enter it.
+  for (const key of [
+    "stepQualityProfile",
+    "stepProfilerChecks",
+    "stepTestDataMap",
+    "stepTestDataProfiler",
+    "stepFakes",
+    "stepFakesFill",
+  ]) {
+    it(`finds ${key}'s anchor`, async () => {
+      render(<TablesPage />, { initialEntries: ["/tables?source=pet-store-sqlite"] });
       expect(await walkTourStep(key)).toBeInTheDocument();
     });
   }
