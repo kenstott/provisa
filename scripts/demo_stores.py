@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 1b3d7348-8b3e-4a97-b972-a2eaf10d710d
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
