@@ -131,6 +131,16 @@ def test_the_read_answers_only_the_columns_the_reader_sees(ledger):
         "updated_at",
         "amount",
     ]
+    # a role that does not see the recorded time still reads the latest versions: the time is
+    # read inside to pick them, and is not answered
     hidden_time = frozenset({"payment_id", "business_date", "amount"})
-    with pytest.raises(PermissionError, match="updated_at"):
-        read_versions("SELECT * FROM fin.payments", _state(["row_id"]), _gov(hidden_time), None)
+    out = read_versions("SELECT * FROM fin.payments", _state(["row_id"]), _gov(hidden_time), None)
+    assert ledger.execute(f"SELECT payment_id, amount FROM ({out}) t ORDER BY 1").fetchall() == [
+        ("p1", 120),
+        ("p2", 50),
+    ]
+    assert [d[0] for d in ledger.execute(out).description] == [
+        "payment_id",
+        "business_date",
+        "amount",
+    ]

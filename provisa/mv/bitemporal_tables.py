@@ -76,7 +76,9 @@ def _q(ident: str) -> str:
 
 def version_read_sql(ref: str, table: VersionedTable, columns: list[str], as_of: str | None) -> str:
     """The read of ``ref`` (the table's semantic reference) answering ``columns``, under the
-    request's time travel ``as_of`` (``AsOf.key``; None: current)."""
+    request's time travel ``as_of`` (``AsOf.key``; None: current). The business key and the two
+    times are read inside to pick the versions, whether or not ``columns`` answers them, as a row
+    rule reads a column its reader does not see."""
     from provisa.mv.bitemporal import AsOf
 
     point = AsOf.from_key(as_of) if as_of else None
@@ -89,13 +91,13 @@ def version_read_sql(ref: str, table: VersionedTable, columns: list[str], as_of:
     elif point is not None and point.start_sql is not None:
         where.append(f"{valid} <= {point.start_sql}")
     cols = ", ".join(_q(c) for c in columns)
-    filtered = f"SELECT {cols} FROM {ref}" + (f" WHERE {' AND '.join(where)}" if where else "")
+    where_sql = f" WHERE {' AND '.join(where)}" if where else ""
     if point is not None and point.is_range:
-        return filtered  # every version in the range
+        return f"SELECT {cols} FROM {ref}{where_sql}"  # every version in the range
     key = ", ".join(_q(c) for c in table.business_key)
     ranked = (
         f"SELECT {cols}, ROW_NUMBER() OVER (PARTITION BY {key} ORDER BY {recorded} DESC) "
-        f"AS {_q(_VERSION)} FROM ({filtered}) AS {_q('_provisa_versions')}"
+        f"AS {_q(_VERSION)} FROM {ref}{where_sql}"
     )
     return f"SELECT {cols} FROM ({ranked}) AS {_q('_provisa_ranked')} WHERE {_q(_VERSION)} = 1"
 
@@ -133,15 +135,7 @@ def read_versions(sql: str, state: Any, gov: "GovernanceContext", as_of: str | N
 
 def _readable_columns(table: VersionedTable, gov: "GovernanceContext") -> list[str]:
     """The table's columns this reader may read: the read answers no column governance would
-    refuse it. Its business key and two times must be among them, or the read cannot be drawn."""
+    refuse it."""
     names = [name for name, _ in gov.all_columns.get(table.table_id, [])]
     visible = gov.visible_columns.get(table.table_id)
-    columns = names if visible is None else [n for n in names if n in visible]
-    needed = [*table.business_key, table.valid_time, table.recorded_time]
-    hidden = [c for c in needed if c not in columns]
-    if hidden:
-        raise PermissionError(
-            f"a versioned table's read needs its business key and times, and this role does not "
-            f"see {', '.join(hidden)}"
-        )
-    return columns
+    return names if visible is None else [n for n in names if n in visible]

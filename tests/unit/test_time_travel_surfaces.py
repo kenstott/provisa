@@ -47,7 +47,7 @@ _TYPES = {
 }
 
 
-def _state() -> RoleState:
+def _state(hidden: frozenset[str] = frozenset()) -> RoleState:
     ctx = CompilationContext()
     ctx.tables = {"payments": _PAYMENTS}
     return RoleState(
@@ -72,7 +72,7 @@ def _state() -> RoleState:
                     {
                         "column_name": c,
                         "data_type": _TYPES[c],
-                        "visible_to": ["analyst"],
+                        "visible_to": [] if c in hidden else ["analyst"],
                         "is_primary_key": c == "row_id",
                     }
                     for c in _COLUMNS
@@ -100,17 +100,20 @@ class _Routed(Exception):
         self.governed_semantic = governed_semantic
 
 
-async def _governed(monkeypatch, as_of: str | None) -> str:
+_SQL = "SELECT payment_id, SUM(amount) AS total FROM fin.payments GROUP BY payment_id"
+
+
+async def _governed(monkeypatch, as_of: str | None, hidden: frozenset[str] = frozenset()) -> str:
     """The statement the one pipeline routes for the analyst's read, under ``as_of``."""
     import provisa.api.app as app_mod
     from provisa.pgwire import _pipeline
 
-    monkeypatch.setattr(app_mod, "state", _state(), raising=False)
+    monkeypatch.setattr(app_mod, "state", _state(hidden), raising=False)
 
     async def _routing(_physical, governed_semantic, *_args, **_kwargs):
         raise _Routed(governed_semantic)
 
-    sql = "SELECT payment_id, SUM(amount) AS total FROM fin.payments GROUP BY payment_id"
+    sql = _SQL
     with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_routing)):
         with pytest.raises(_Routed) as routed:
             await _pipeline._govern_and_route(sql, "analyst", as_of=as_of)
@@ -188,3 +191,28 @@ async def test_every_surface_reads_a_versioned_table_with_the_same_meaning(
     assert travel == _http(as_of, as_recorded)  # one canonical value, whichever surface
     governed = await _governed(monkeypatch, travel)
     assert dict(ledger.execute(governed).fetchall()) == answer
+
+
+async def test_the_compiled_stage_reads_a_versioned_table_as_the_raw_stage_does(
+    monkeypatch, ledger
+):
+    """GraphQL, gRPC, REST and Cypher reach the compiled stage, which reads it the same way."""
+    import provisa.api.app as app_mod
+    from provisa.pgwire import _pipeline
+
+    state = _state()
+    monkeypatch.setattr(app_mod, "state", state, raising=False)
+    travel = _http("2026-10-03", "2026-10-04T23:00:00")
+    governed = await _pipeline._govern_compiled(
+        _SQL, "analyst", state, {}, sdl_joins=False, as_of=travel
+    )
+    assert dict(ledger.execute(governed.governed_sql).fetchall()) == {"p1": 100}
+
+
+async def test_a_role_that_does_not_see_the_recorded_time_still_reads_the_latest_versions(
+    monkeypatch, ledger
+):
+    """The times are read inside to pick the versions, as a row rule reads a column its reader
+    does not see; the role is answered only the columns it sees."""
+    governed = await _governed(monkeypatch, None, hidden=frozenset({"updated_at"}))
+    assert dict(ledger.execute(governed).fetchall()) == {"p1": 120, "p2": 50}
