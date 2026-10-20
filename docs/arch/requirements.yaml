@@ -85244,7 +85244,7 @@ Then the report gives per-request server CPU for the governed run beside the run
   stakeholders:
   - ops
 - id: REQ-2109
-  status: in-progress
+  status: complete
   since: 2026-10
   group: 4. Source Connectors
   category: Materialization Store
