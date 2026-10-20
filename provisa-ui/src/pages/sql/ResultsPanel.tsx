@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import type { ResultRedirect } from "../../api/admin";
+import type { ResultRedirect } from "../../types/resultRedirect";
 import { ResultRedirectNotice } from "../../components/ResultRedirectNotice";
 import React from "react";
 import { useTranslation } from "react-i18next";

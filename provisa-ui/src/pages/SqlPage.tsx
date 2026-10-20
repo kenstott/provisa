@@ -22,7 +22,8 @@ import { useTranslation } from "react-i18next";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { runSql, explainSql } from "../api/admin";
-import type { ExplainResponse, ResultRedirect } from "../api/admin";
+import type { ExplainResponse } from "../api/admin";
+import type { ResultRedirect } from "../types/resultRedirect";
 import {
   useRoles,
   useDomains,
