@@ -128,6 +128,7 @@ function source(type: string, extra: Partial<Source> = {}): Source {
     offPeakWindow: null,
     offPeakTz: "UTC",
     sentinelPath: null,
+    downloadFrom: null,
     freshnessGate: false,
     maxLiveConcurrency: null,
     gqlNamingConvention: null,

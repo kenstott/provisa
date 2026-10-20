@@ -101,7 +101,7 @@ import { useCacheTtlRequired } from "./sources/sourceKind";
 import { SourceFormFields } from "./sources/SourceFormFields";
 import { icebergCatalogHints } from "./sources/icebergCatalog";
 import { CLOUD_FILE_TYPES, objectStoreHints, objectStoreOf } from "./sources/objectStoreHints";
-import { fileLocationOf } from "./sources/sourceUpload";
+import { draftTable, fileLocationOf } from "./sources/sourceUpload";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
 import { SourceSectionTabs } from "./sources/SourceSectionTabs";
 import { SourceTablesList } from "./sources/SourceTablesList";
@@ -799,6 +799,12 @@ export function SourcesPage() {
         // save although its TTL was filled in — it used to travel only in the call that follows.
         cacheTtl: sourceFormCacheTtl(_ct),
         sentinelPath: coreForm.sentinelPath.trim() || null,
+        // REQ-2113: read in place, or downloaded into the organization's folder from here; a new
+        // single-file source's table set up with it, as a draft.
+        downloadFrom: coreForm.downloadFrom?.trim() || null,
+        ...(editingSourceId
+          ? { registerTableDraft: false, tableDomainId: null }
+          : draftTable(form, domains)),
         maxLiveConcurrency:
           coreForm.maxLiveConcurrency.trim() === "" ? null : Number(coreForm.maxLiveConcurrency),
         path:

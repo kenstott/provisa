@@ -91,8 +91,14 @@ def env_files_dir(org_id: str, env: str) -> Path:
     return org_root(org_id) / "env_files" / env
 
 
-def _local_path(raw: str) -> Path | None:
-    """``raw`` as a local filesystem path, or None when it addresses a remote store."""
+def _local_path(raw: str, org_id: str | None = None) -> Path | None:
+    """``raw`` as a local filesystem path, or None when it addresses a remote store. A path
+    written with an org token -- an uploaded or downloaded file, ``{files}/<source>/<name>``
+    (REQ-1997, REQ-2113) -- is the place in the org's folder it names."""
+    from provisa.core.org_files import is_org_path, resolve_path
+
+    if is_org_path(raw):
+        return Path(resolve_path(raw, org_id))
     scheme = urlparse(raw).scheme
     if scheme and scheme != "file" and len(scheme) > 1:  # a drive letter is not a scheme
         return None
@@ -122,7 +128,7 @@ async def fork_file_sources(db: "Database", org_id: str, env: str) -> dict[str, 
             source_id, raw = row._mapping["id"], row._mapping["path"]
             if not raw:
                 continue
-            origin = _local_path(raw)
+            origin = _local_path(raw, org_id)
             if origin is None:
                 continue
             if not origin.exists():
@@ -136,10 +142,14 @@ async def fork_file_sources(db: "Database", org_id: str, env: str) -> dict[str, 
                 shutil.copytree(origin, destination, dirs_exist_ok=True)
             else:
                 shutil.copy2(origin, destination)
+            # Written with the org's tokens, as a path in the org's folder is kept and shown.
+            from provisa.core.org_files import token_path
+
+            kept = token_path(str(destination), org_id)
             await conn.execute_core(
-                scoped.update().where(scoped.c.id == source_id).values(path=str(destination))
+                scoped.update().where(scoped.c.id == source_id).values(path=kept)
             )
-            repointed[source_id] = str(destination)
+            repointed[source_id] = kept
 
     if repointed:
         log.info(

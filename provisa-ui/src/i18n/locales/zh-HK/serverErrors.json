@@ -441,7 +441,9 @@
       "role_session_var_name_invalid": "工作階段值名稱 '{{name}}' 只能包含字母、數字及底線，且不能以數字開頭",
       "role_session_var_name_repeated": "工作階段值 '{{name}}' 被指定了兩次",
       "role_description_missing": "角色 '{{role}}' 需要說明其用途",
-      "rls_rule_description_missing": "行規則需要說明其用途"
+      "rls_rule_description_missing": "行規則需要說明其用途",
+      "file_download_refused": "來源 {{source}}：{{reason}}",
+      "source_created_without_table": "已建立來源 {{source}}；其資料表未設定：{{reason}}"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",

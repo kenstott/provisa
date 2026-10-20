@@ -132,6 +132,7 @@ def _source_from_row(row, *, connection: bool) -> SourceType:
         off_peak_tz=row.get("off_peak_tz") or "UTC",  # REQ-1141
         max_live_concurrency=row.get("max_live_concurrency"),  # REQ-1909
         sentinel_path=row.get("sentinel_path"),  # REQ-1148
+        download_from=row.get("download_from"),  # REQ-2113
         freshness_gate=bool(row.get("freshness_gate", False)),  # REQ-860
         gql_naming_convention=row.get("gql_naming_convention"),
         path=row.get("path") if connection else None,

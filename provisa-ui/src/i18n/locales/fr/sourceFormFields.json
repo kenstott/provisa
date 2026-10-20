@@ -97,6 +97,14 @@
     "uploadNeedsId": "Saisissez d'abord l'ID de la source : le fichier est rangé sous celui-ci.",
     "uploadedFileHint": "Le fichier téléversé de cette source, rangé dans le dossier de votre organisation. Téléversez-en un autre pour le remplacer.",
     "fileLocationsHint": "{files}/… dans les fichiers de l'organisation, un chemin sur le serveur, une adresse https://, ou s3://, gs:// ou az:// avec les identifiants du stockage ; ou téléversez le fichier.",
-    "fileDatabaseLocationsHint": "{files}/… dans les fichiers de l'organisation, un chemin sur le serveur, une adresse https://, ou s3://, gs:// ou az:// avec les identifiants du stockage (en lecture seule là-bas) ; ou téléversez le fichier."
+    "fileDatabaseLocationsHint": "{files}/… dans les fichiers de l'organisation, un chemin sur le serveur, une adresse https://, ou s3://, gs:// ou az:// avec les identifiants du stockage (en lecture seule là-bas) ; ou téléversez le fichier.",
+    "fileInPlace": "Le lire là où il est",
+    "fileDownload": "Télécharger une copie",
+    "downloadFrom": "Télécharger depuis",
+    "downloadFromHint": "Un fichier : son chemin sur ce serveur, dans un répertoire que l'opérateur autorise, une adresse https:// ou s3:// avec les identifiants du stockage. Une copie est rangée dans le dossier de votre organisation et récupérée à nouveau quand le TTL de cache de la source expire.",
+    "downloadFromHintRemote": "Un fichier : une adresse https:// ou s3:// avec les identifiants du stockage. Une copie est rangée dans le dossier de votre organisation et récupérée à nouveau quand le TTL de cache de la source expire.",
+    "draftTable": "Mettre en place sa table maintenant, en brouillon",
+    "draftTableHint": "Nommée et typée d'après le fichier, comme Enregistrer une table le proposerait, et hors service jusqu'à ce qu'un steward la sorte du brouillon.",
+    "draftTableDomain": "Domaine de sa table"
   }
 }

@@ -221,7 +221,10 @@ _TOOLS: list[Any] = [
                     "description": (
                         "SourceInput-shaped: at minimum {id, type}, plus whatever of "
                         "host/port/database/username/password/path/description/allowed_domains "
-                        "is known."
+                        "is known. A CSV or Parquet source given its file by download sets "
+                        "download_from (the file's mount path, https:// or s3:// URL) and leaves "
+                        "path out; register_table_draft true with table_domain_id sets up its "
+                        "table with it, as a draft."
                     ),
                 },
                 "reason": {
@@ -814,7 +817,19 @@ _SYSTEM = (
     "(split the dataset's ref on its '/') and any placeholder for path — the server downloads the "
     "real files and overwrites path itself when the source is actually created, so "
     "there is no separate staging/download step to call here or anywhere else. ALWAYS use the "
-    "tool rather than only describing the source in prose. If none of these tools can find "
+    "tool rather than only describing the source in prose. "
+    "A request naming ONE file by a fully resolved path -- a file mount path, an https:// URL or "
+    "an s3:// URL to a single .csv or .parquet file -- is a CSV or Parquet source given its file "
+    "by download: work out csv or parquet from the file's name (ask if it says neither), and "
+    "propose type='csv' or 'parquet' with download_from set to that path, path left out, an id "
+    "from the file's name, register_table_draft true and table_domain_id the domain the user "
+    "named (ask which one if they named none) -- the server copies the file into the "
+    "organization's folder and sets up its table as a draft when the source is created. A server "
+    "of many organizations refuses a file mount path by name: offer an https:// or s3:// address "
+    "there. A directory, a glob or several files is a files source instead (type='files', path "
+    "set to that directory or glob), proposed and confirmed the same way, its tables registered "
+    "from what the source offers (list_native_tables, then propose_table). "
+    "If none of these tools can find "
     "something (an API key, "
     "a customer-specific hostname), say what's still needed rather than inventing it.\n\n"
     "propose_source/propose_table normally queue a pending request a human approves on the "

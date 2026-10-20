@@ -97,6 +97,14 @@
     "uploadNeedsId": "Geben Sie zuerst die ID der Quelle ein: Die Datei wird unter ihr abgelegt.",
     "uploadedFileHint": "Die hochgeladene Datei dieser Quelle, abgelegt im Ordner Ihrer Organisation. Laden Sie eine neue hoch, um sie zu ersetzen.",
     "fileLocationsHint": "{files}/… in den Dateien der Organisation, ein Pfad auf dem Server, eine https://-Adresse oder s3://, gs:// bzw. az:// mit den Zugangsdaten des Speichers; oder laden Sie die Datei hoch.",
-    "fileDatabaseLocationsHint": "{files}/… in den Dateien der Organisation, ein Pfad auf dem Server, eine https://-Adresse oder s3://, gs:// bzw. az:// mit den Zugangsdaten des Speichers (dort nur lesbar); oder laden Sie die Datei hoch."
+    "fileDatabaseLocationsHint": "{files}/… in den Dateien der Organisation, ein Pfad auf dem Server, eine https://-Adresse oder s3://, gs:// bzw. az:// mit den Zugangsdaten des Speichers (dort nur lesbar); oder laden Sie die Datei hoch.",
+    "fileInPlace": "Am Ort lesen",
+    "fileDownload": "Kopie herunterladen",
+    "downloadFrom": "Herunterladen von",
+    "downloadFromHint": "Eine Datei: ihr Pfad auf diesem Server in einem Verzeichnis, das der Betreiber erlaubt, eine https://-Adresse oder s3:// mit den Zugangsdaten des Speichers. Eine Kopie wird im Ordner Ihrer Organisation abgelegt und erneut geholt, sobald die Cache-TTL der Quelle abläuft.",
+    "downloadFromHintRemote": "Eine Datei: eine https://-Adresse oder s3:// mit den Zugangsdaten des Speichers. Eine Kopie wird im Ordner Ihrer Organisation abgelegt und erneut geholt, sobald die Cache-TTL der Quelle abläuft.",
+    "draftTable": "Ihre Tabelle jetzt als Entwurf einrichten",
+    "draftTableHint": "Benannt und typisiert aus der Datei, wie „Tabelle registrieren“ es vorschlagen würde, und außer Betrieb, bis ein Steward sie aus dem Entwurf nimmt.",
+    "draftTableDomain": "Domain ihrer Tabelle"
   }
 }

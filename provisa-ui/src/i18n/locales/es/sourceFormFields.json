@@ -97,6 +97,14 @@
     "uploadNeedsId": "Escriba primero el ID del origen: el archivo se guarda bajo él.",
     "uploadedFileHint": "El archivo subido de este origen, guardado en la carpeta de su organización. Suba otro para reemplazarlo.",
     "fileLocationsHint": "{files}/… en los archivos de la organización, una ruta en el servidor, una dirección https:// o s3://, gs:// o az:// con las credenciales del almacén; o suba el archivo.",
-    "fileDatabaseLocationsHint": "{files}/… en los archivos de la organización, una ruta en el servidor, una dirección https:// o s3://, gs:// o az:// con las credenciales del almacén (allí, solo lectura); o suba el archivo."
+    "fileDatabaseLocationsHint": "{files}/… en los archivos de la organización, una ruta en el servidor, una dirección https:// o s3://, gs:// o az:// con las credenciales del almacén (allí, solo lectura); o suba el archivo.",
+    "fileInPlace": "Leerlo donde está",
+    "fileDownload": "Descargar una copia",
+    "downloadFrom": "Descargar desde",
+    "downloadFromHint": "Un archivo: su ruta en este servidor dentro de un directorio que el operador permite, una dirección https:// o s3:// con las credenciales del almacén. Se guarda una copia en la carpeta de su organización y se vuelve a obtener cuando vence el TTL de caché del origen.",
+    "downloadFromHintRemote": "Un archivo: una dirección https:// o s3:// con las credenciales del almacén. Se guarda una copia en la carpeta de su organización y se vuelve a obtener cuando vence el TTL de caché del origen.",
+    "draftTable": "Configurar su tabla ahora, como borrador",
+    "draftTableHint": "Con el nombre y los tipos que propondría Registrar tabla a partir del archivo, y fuera de servicio hasta que un steward la saque del borrador.",
+    "draftTableDomain": "Dominio de su tabla"
   }
 }

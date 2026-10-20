@@ -68,6 +68,7 @@ def _source_values(source: Source) -> dict:
         "region": source.region,  # REQ-1921
         "max_live_concurrency": source.max_live_concurrency,  # REQ-1909
         "sentinel_path": source.sentinel_path,  # REQ-1148
+        "download_from": source.download_from,  # REQ-2113
         "freshness_gate": source.freshness_gate,  # REQ-860
         # REQ-1919: every setting a configuration can give a source is the store's to hold.
         "base_url": source.base_url,
