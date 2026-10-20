@@ -3,6 +3,43 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.494
+
+Released 2026-10-20.
+
+### Features
+
+#### Source Connectors
+
+- Provisa's services to a code source's code are a module always present where the code runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls -- secrets.get, settings.get (the source's declared non-secret settings, mapping settings, edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers, JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source's own vector collection, embedded through the org's vector models as routes them; never a governed table's data, which reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress allow-list the worker's own egress is, through the deployment's outbound proxy and CA bundle, recorded in the org's trail), llm and log and metric (attached to the request the call serves).
+    - Provisa's services module in every worker, and code-source telemetry
+
+### Changes
+
+#### auth
+
+- A role set's meta-role is built in the environment the request names
+- An environment the request cannot be served by is refused where its meta-role would be built
+
+#### demo-stores
+
+- The sandbox node sets every store's data names before compose reads them
+- The shared Kafka starts: its KRaft cluster id is a UUID; a store that exits says why
+
+#### demos
+
+- A sandbox's tour warm-up no longer revives it once its tab is closing
+- A failed template is refused as not ready; the walk takes a read-window refusal as its step's answer and keeps the tier's log
+- The bundle build dumps a Postgres with pgvector, and the node names its data unsuffixed
+
+#### polly
+
+- Polly operates the screen when asked to show, demo or teach
+
+#### synthetic
+
+- A generated table and a closeness sample land with their org's vault bound
+
 ## v0.1.0-alpha.493
 
 Released 2026-10-20.
