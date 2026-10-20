@@ -747,3 +747,16 @@ def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
         _shared(runner).start("kafka")
     assert "--- docker logs kcid ---" in str(failed.value)
     assert "the cluster id is not a valid UUID" in str(failed.value)
+
+
+@pytest.mark.parametrize("kind", ["postgres", "mongo"])
+def test_a_shared_store_is_healthy_only_once_its_real_server_answers_on_its_address(kind):
+    """Postgres and MongoDB images first initialize with a server on the socket or loopback
+    alone, then restart it. A check there passed before the real server was up: the wait
+    returned, and storefront's first mongosh load failed on the sandbox tier."""
+    import yaml
+
+    shared = _REPO / "packaging" / "linux" / "demo-stores" / "docker-compose.shared.yml"
+    test = yaml.safe_load(shared.read_text())["services"][kind]["healthcheck"]["test"]
+    assert test[0] == "CMD-SHELL", test
+    assert '-h "$$(hostname -i)"' in test[1] or '--host "$$(hostname -i)"' in test[1], test
