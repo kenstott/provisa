@@ -53,6 +53,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.local_platform, pytest.mark.d
 _REPO = Path(__file__).resolve().parents[2]
 _NAMED = _REPO / "demo" / "named"
 _SCRIPT = _REPO / "scripts" / "demo_bundle.py"
+_CLOUD_TIER_CONFIG = _REPO / "config" / "provisa-install-base.yaml"
 #: A directory of bundles already built from this checkout (demo-bundles.yml sets it to the one it
 #: just built, so the bundle it publishes is the one walked here). A demo with no bundle there is
 #: built by this test, as that workflow builds it.
@@ -111,6 +112,12 @@ def tier(request, tmp_path_factory):
         assert (bundles / demo / "ready").read_text().strip() == version
         config = work / "config.yaml"
         _deployment_config(config)
+        # The deployment's naming is the one every org's schema is named by: the cloud's sandbox
+        # tier runs on config/provisa-install-base.yaml (first-launch.sh), whose domain prefix the
+        # demos' example queries and Cypher labels are written against (c__viewChurnFeatures).
+        served = yaml.safe_load(config.read_text())
+        served["naming"] = yaml.safe_load(_CLOUD_TIER_CONFIG.read_text())["naming"]
+        config.write_text(yaml.safe_dump(served))
         server = IsolatedServer(
             f"visitor{demo}",
             engine="duckdb",
@@ -187,6 +194,9 @@ def _answered(what: str, resp: httpx.Response) -> tuple[str, Any]:
     if isinstance(body, dict) and "data" in body:
         assert not body.get("errors"), (what, resp.text[:2000])
         data = body["data"]
+        if isinstance(data, list):  # a JSON:API document: its resources
+            assert data, (what, resp.text[:2000])
+            return f"{what}: {len(data)} rows", data
         assert data and all(data.values()), (what, resp.text[:2000])
         counts = [len(v) if isinstance(v, list) else 1 for v in data.values()]
         return f"{what}: {sum(counts)} rows", data
@@ -308,10 +318,16 @@ def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
 
     walked = Walk(tier, token).run(tier.directory)
     print("\n".join(walked))
-    steps = {s["key"] for s in yaml.safe_load((tier.directory / "tour.yaml").read_text())["steps"]}
-    assert any(line.split(" ", 1)[0] in steps for line in walked), (
-        f"{tier.demo}'s tour runs nothing"
-    )
+    from provisa.core.demo import demo_tour
+
+    steps = {s["key"] for s in demo_tour(tier.directory)}
+    spec = yaml.safe_load((tier.directory / "demo.yaml").read_text())
+    if spec.get("tour") == "core":
+        # Toured by the product's core tour (no tour.yaml of its own): the explorers are walked.
+        assert not steps, f"{tier.demo} is toured by the core tour and has a tour of its own"
+    else:
+        ran = any(line.split(" ", 1)[0] in steps for line in walked)
+        assert ran, f"{tier.demo}'s tour runs nothing"
 
     # What sandboxClosing.ts sends as the visitor's tab unloads.
     closed = httpx.post(f"{tier.base_url}/sandboxes/closing", headers=token, timeout=60)
@@ -319,7 +335,14 @@ def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
     # Deleted once the grace has passed with no request to it (the reaper runs each minute).
     deadline = time.monotonic() + CLOSE_GRACE_S + 180
     while _places_free(tier) != free:
-        assert time.monotonic() < deadline, (tier.demo, tier.dump_stderr_debug()[-6000:])
+        if time.monotonic() > deadline:
+            log = Path(os.environ.get("PROVISA_TEST_LOG_DIR", tier.directory.parent)) / (
+                f"visitor-walk-{tier.demo}-server.log"
+            )
+            log.write_text(tier.dump_stderr_debug())
+            raise AssertionError(
+                f"{tier.demo}: the closed sandbox was not deleted; server log {log}"
+            )
         time.sleep(10)
     gone = httpx.post(
         f"{tier.base_url}/data/sql", json={"sql": "SELECT 1"}, headers=token, timeout=60
