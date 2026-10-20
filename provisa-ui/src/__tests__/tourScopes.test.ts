@@ -15,7 +15,13 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { TOUR_STEPS, TOUR_SCOPES, TOPIC_IDS, tourItinerary, type TourScope } from "../tour/tourSteps";
+import {
+  TOUR_STEPS,
+  TOUR_SCOPES,
+  TOPIC_IDS,
+  tourItinerary,
+  type TourScope,
+} from "../tour/tourSteps";
 import { completedTopics, markTopicCompleted } from "../tour/tourTopics";
 import { TOUR_TOPICS_DONE_KEY } from "../tour/tourKeys";
 import enTour from "../i18n/locales/en/tour.json";
@@ -38,17 +44,38 @@ describe("tour scopes", () => {
   it("makes the core tour welcome, Polly, connecting a source and querying it", () => {
     expect(TOUR_SCOPES.core.slice(0, 2)).toEqual(["step0", "stepPolly"]);
     expect(TOUR_SCOPES.core).toContain("step2"); // register a source
+    // The type picker, then a table registered and previewed, all before the query.
+    const at = (k: string) => TOUR_SCOPES.core.indexOf(k);
+    expect(at("step2") < at("step3") && at("step3") < at("step4")).toBe(true);
+    expect(at("step4") < at("step5") && at("step5") < at("stepPreview")).toBe(true);
+    expect(at("stepPreview") < at("stepQuery")).toBe(true);
     expect(TOUR_SCOPES.core).toContain("stepQuery");
-    expect(TOUR_SCOPES.core.filter((k) => k.startsWith("step") && TOUR_STEPS.find((s) => s.key === k)?.route?.match(/^\/(sql|query|graph|grpc|jsonapi|openapi|explore|nl)$/))).toEqual(["stepQuery"]);
+    expect(
+      TOUR_SCOPES.core.filter(
+        (k) =>
+          k.startsWith("step") &&
+          TOUR_STEPS.find((s) => s.key === k)?.route?.match(
+            /^\/(sql|query|graph|grpc|jsonapi|openapi|explore|nl)$/,
+          ),
+      ),
+    ).toEqual(["stepQuery"]);
   });
 
   it("puts every query surface's detail in the Query it everywhere topic", () => {
-    expect(TOUR_SCOPES.query).toEqual(["step6", "step7", "step8", "step9", "step10", "step11", "step12", "step13"]);
+    expect(TOUR_SCOPES.query).toEqual([
+      "step6",
+      "step7",
+      "step8",
+      "step9",
+      "step10",
+      "step11",
+      "step12",
+      "step13",
+    ]);
   });
 
-  it("lists the Deep Dives topics in menu order, Relationships right after Connect", () => {
+  it("lists the Deep Dives topics in menu order, Relationships first", () => {
     expect(TOPIC_IDS).toEqual([
-      "connect",
       "relationships",
       "model",
       "govern",
@@ -94,9 +121,10 @@ describe("tour scopes", () => {
       const it = tourItinerary(everything, scope);
       expect(it.length, scope).toBe(TOUR_SCOPES[scope].length);
       expect(it, scope).toEqual([...it].sort((a, b) => a - b));
-      expect(it.map((i) => TOUR_STEPS[i].key), scope).toEqual(
-        TOUR_STEPS.filter((s) => TOUR_SCOPES[scope].includes(s.key)).map((s) => s.key),
-      );
+      expect(
+        it.map((i) => TOUR_STEPS[i].key),
+        scope,
+      ).toEqual(TOUR_STEPS.filter((s) => TOUR_SCOPES[scope].includes(s.key)).map((s) => s.key));
       union.push(...it);
     }
     expect(union.sort((a, b) => a - b)).toEqual(TOUR_STEPS.map((_, i) => i));

@@ -1073,7 +1073,7 @@
   audience: consumer
   paragraphs:
   - id: product-tour-and-demos-guided-tour
-    text: 'A new user is offered a short core tour: welcome, Polly, connecting a source, and running a
+    text: 'A new user is offered a short core tour: welcome, Polly, registering a source and a table, and running a
       query. Every step has a Deep Dives button that jumps to a menu of topic tours. Each step waits until
       the page it points at is loaded and ready, and the tour is never offered over a sign-in or registration
       form.'

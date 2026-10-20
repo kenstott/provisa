@@ -30,10 +30,6 @@
       "thisDemo": "This demo"
     },
     "topics": {
-      "connect": {
-        "title": "Connect your data",
-        "summary": "Source types, registering tables, replicas and live reads."
-      },
       "relationships": {
         "title": "Relationships",
         "summary": "Declare how tables relate, within a source and across sources, whether or not a source declares it. Declared once, every surface follows."

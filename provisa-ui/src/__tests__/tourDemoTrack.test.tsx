@@ -425,6 +425,38 @@ describe("the tour button in a named demo", () => {
     );
   });
 
+  for (const when of ["waiting", "stuck"] as const) {
+    it(`skips a step whose object never appears, ${when}, to the track's next step`, async () => {
+      const tour = [
+        WEBLOGS.tour[0],
+        // A source of the org the page here never paints (no sources-row-shop-db): its step waits, then is stuck.
+        { key: "weblogsMissing", source: "shop-db" },
+        WEBLOGS.tour[1],
+      ];
+      renderTour({ ...WEBLOGS, tour });
+      fireEvent.click(screen.getByText("launch"));
+      await act(async () => chunksResolve());
+      expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+      fireEvent.click(document.querySelector<HTMLElement>(".driver-popover-next-btn")!);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(when === "waiting" ? 2000 : 62000);
+      });
+      expect(screen.getByText(`tour.status.${when}`)).toBeInTheDocument();
+
+      fireEvent.click(screen.getByText("tour.status.skip"));
+      expect(await screen.findByText("tour.steps.weblogsDbLog.title")).toBeInTheDocument();
+      expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
+      expect(screen.queryByText("tour.status.stuck")).not.toBeInTheDocument();
+      // Nothing of the skipped step's wait is left to raise its status again.
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(62000);
+      });
+      expect(screen.queryByText("tour.status.waiting")).not.toBeInTheDocument();
+      expect(screen.queryByText("tour.status.stuck")).not.toBeInTheDocument();
+      expect(screen.getByText("tour.steps.weblogsDbLog.title")).toBeInTheDocument();
+    });
+  }
+
   it("counts its steps as it started, though a role step drops one mid-tour", async () => {
     const tour = [
       WEBLOGS.tour[0],
@@ -751,7 +783,7 @@ describe("the Deep Dives menu in a named demo", () => {
       <MantineProvider>
         <TourMenu
           opened
-          topics={[{ id: "connect", steps: 4 }]}
+          topics={[{ id: "relationships", steps: 6 }]}
           completed={[]}
           demo={{ name: "weblogs", steps: 10, done: true }}
           onDemo={onDemo}
@@ -762,7 +794,7 @@ describe("the Deep Dives menu in a named demo", () => {
       </MantineProvider>,
     );
     const track = screen.getByTestId("tour-demo-track");
-    expect(track.compareDocumentPosition(screen.getByTestId("tour-topic-connect"))).toBe(
+    expect(track.compareDocumentPosition(screen.getByTestId("tour-topic-relationships"))).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
     expect(screen.getByText("tour.demos.weblogs.title")).toBeInTheDocument();

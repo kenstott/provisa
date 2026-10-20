@@ -134,7 +134,7 @@ describe("the Deep Dives menu", () => {
     }
     expect(screen.queryByTestId("tour-menu-core-tour")).toBeNull();
     // Those that need nothing but their pages stay.
-    for (const id of ["connect", "relationships", "govern", "operate"]) {
+    for (const id of ["relationships", "govern", "operate"]) {
       expect(screen.getByTestId(`tour-topic-${id}`)).toBeInTheDocument();
     }
   });

@@ -30,10 +30,6 @@
       "thisDemo": "Cette démo"
     },
     "topics": {
-      "connect": {
-        "title": "Connecter vos données",
-        "summary": "Types de sources, enregistrement des tables, réplicas et lectures en direct."
-      },
       "relationships": {
         "title": "Relations",
         "summary": "Déclarez comment les tables sont liées, dans une source et entre sources, que la source les déclare ou non. Déclarées une fois, toutes les surfaces les suivent."
