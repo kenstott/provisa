@@ -1,0 +1,72 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+#
+# The churnprod demo's own tour (REQ-2097): the churn demo's model, put in production. The step
+# kinds and what each names are listed in demo/named/weblogs/tour.yaml; every name here is checked
+# against the demo by tests/unit/test_named_demo_tour.py, and the words of each step are
+# tour.steps.<key> in the UI's tour.json, in every language.
+#
+# The track: the scenario (the churn analysis, linked); the model's package, a source pinned by
+# its content hash; the columns its function's types declare; a read without a customer refused
+# before the code runs; the join that feeds each customer's features to the model, and the at-risk
+# list it answers; the same list as the analyst, emails masked, and as the EU account team, its
+# region's rows only; the Node twin's scores beside the Python ones; and a recap.
+landing:
+  route: /sql
+  capability: query_development
+steps:
+- key: churnprodScenario
+  route: /sources
+  capability: source_registration
+  source: churn-db
+  demo: churn
+- key: churnprodPackage
+  source: churn-model
+- key: churnprodColumns
+  route: /tables
+  capability: table_registration
+  table: churn-model.churn_risk
+  # Its detail panel: the columns and their types, read from the function's own type hints.
+  open: columns.type
+- key: churnprodRefused
+  image: refused.png
+- key: churnprodJoin
+  route: /relationships
+  capability: create_relationship
+  relationship: SCORED_AS
+- key: churnprodAtRisk
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT customer_id, email, region, plan, score, reasons FROM "churn"."view_at_risk"
+    ORDER BY score DESC LIMIT 20
+- key: churnprodAnalyst
+  role: analyst
+- key: churnprodMasked
+  sql: >-
+    SELECT customer_id, email, region, plan, score, reasons FROM "churn"."view_at_risk"
+    ORDER BY score DESC LIMIT 20
+- key: churnprodRegional
+  role: analyst_eu
+- key: churnprodRegionalRows
+  sql: >-
+    SELECT region, COUNT(*) AS customers, ROUND(AVG(score), 3) AS average_score
+    FROM "churn"."view_at_risk" GROUP BY region ORDER BY region
+- key: churnprodNode
+  sql: >-
+    SELECT f.customer_id, r.score AS python_score, n.score AS node_score, n.reasons
+    FROM "churn"."customer_features" AS f
+    JOIN "churn"."churn_risk" AS r ON r.customer_id = f.customer_id
+    JOIN "churn"."churn_risk_js" AS n ON n.customer_id = f.customer_id
+    ORDER BY r.score DESC LIMIT 20
+- key: churnprodRecap
+  route: /sources
+  capability: source_registration
+  source: churn-model-js

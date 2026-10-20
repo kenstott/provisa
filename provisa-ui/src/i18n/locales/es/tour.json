@@ -10,7 +10,8 @@
       "whereNext": "¿Y ahora?",
       "exploreDeepDives": "Explorar los Deep Dives",
       "lookAround": "Mirar por mi cuenta",
-      "anyTime": "Puede reiniciar el recorrido o abrir los Deep Dives cuando quiera desde el botón del recorrido."
+      "anyTime": "Puede reiniciar el recorrido o abrir los Deep Dives cuando quiera desde el botón del recorrido.",
+      "openDemo": "Abrir la demo {{title}}"
     },
     "welcome": {
       "title": "¿Hacer la visita guiada?",
@@ -1258,7 +1259,7 @@
       },
       "churnRecap": {
         "title": "Lo que ha visto",
-        "description": "Datos gobernados directamente en el notebook de un científico de datos: el enmascaramiento de analyst aplicado al leerlos, y un modelo entrenado sin que los datos salgan del navegador. En un Jupyter de escritorio, el mismo código lee grandes volúmenes por Arrow Flight."
+        "description": "Datos gobernados directamente en el notebook de un científico de datos: el enmascaramiento de analyst aplicado al leerlos, y un modelo entrenado sin que los datos salgan del navegador. En un Jupyter de escritorio, el mismo código lee grandes volúmenes por Arrow Flight. La demo churnprod lleva este modelo a producción."
       },
       "dataroomIntro": {
         "title": "Una sala de datos sin exportaciones",
@@ -1411,6 +1412,54 @@
       "testdataDone": {
         "title": "Lo que viste",
         "description": "Un modelo, tres entornos. Prod guarda las filas reales. Preproducción las lee con cada columna sensible ficticia, para todos los roles. Dev se genera a partir del perfil de producción y no contiene nada real. Los valores ficticios se declaran una vez por columna, y un entorno que mostraría una columna sensible sin volverla ficticia se niega a abrirse."
+      },
+      "churnprodScenario": {
+        "title": "De qué trata esta demo",
+        "description": "El científico de datos de la demo de abandono entrenó un modelo de scikit-learn con el uso de los clientes para saber quién está a punto de darse de baja. Aquí ese modelo pasa a producción. Se distribuye como un paquete de Python y puntúa a cada cliente que usted puede ver, con las mismas reglas que cualquier tabla."
+      },
+      "churnprodPackage": {
+        "title": "El modelo, como origen",
+        "description": "El paquete del modelo es un origen, guardado por el hash de contenido de su código. Lleva el modelo entrenado y un lockfile que fija scikit-learn. Sus dependencias se instalan una sola vez desde wheels, y el código se ejecuta en un sandbox."
+      },
+      "churnprodColumns": {
+        "title": "Columnas a partir de los tipos de la función",
+        "description": "churn_risk es una tabla porque su docstring dice @table. Sus columnas son los campos del RiskRow que devuelve. Sus parámetros son sus argumentos: el cliente y cada característica con la que se entrenó el modelo."
+      },
+      "churnprodRefused": {
+        "title": "Una lectura sin cliente, rechazada",
+        "description": "La función no da valor por defecto a customer_id, así que una lectura que lo omite se rechaza antes de ejecutar código alguno. El rechazo nombra cada parámetro que falta."
+      },
+      "churnprodJoin": {
+        "title": "El join que alimenta el modelo",
+        "description": "Esta relación une las características de los clientes con churn_risk y nombra las características que le pasa. Un join sobre ella lee las características que usted puede ver, llama al modelo una vez por cliente y une de nuevo las puntuaciones."
+      },
+      "churnprodAtRisk": {
+        "title": "La lista de clientes en riesgo",
+        "description": "Cada cliente actual, puntuado por el modelo y ordenado por riesgo, con los motivos que más elevan cada puntuación. Es una sola sentencia SQL sobre una vista, y el modelo se llama dentro de ella."
+      },
+      "churnprodAnalyst": {
+        "title": "Ahora como analyst",
+        "description": "El analyst lee la misma lista, como el analyst de la demo de abandono lee sus características."
+      },
+      "churnprodMasked": {
+        "title": "Puntuaciones, correos enmascarados",
+        "description": "Las puntuaciones son las mismas. Las direcciones de correo aparecen enmascaradas, porque el enmascaramiento de analyst se aplica a la lista igual que a la tabla de clientes."
+      },
+      "churnprodRegional": {
+        "title": "Ahora como el equipo de cuentas de la UE",
+        "description": "El equipo de cuentas de la UE atiende a los clientes facturados en la UE."
+      },
+      "churnprodRegionalRows": {
+        "title": "Solo las filas de su región",
+        "description": "Solo aparecen clientes de la UE. La regla de fila está en el propio churn_risk, y una regla sobre una tabla de código se aplica a las filas que devuelve su código."
+      },
+      "churnprodNode": {
+        "title": "El gemelo en Node",
+        "description": "Este es el mismo modelo en JavaScript. Sus coeficientes entrenados se exportaron desde Python, y está registrado como origen Node junto al de Python. Cada cliente obtiene la misma puntuación de ambos."
+      },
+      "churnprodRecap": {
+        "title": "Lo que ha visto",
+        "description": "El modelo de un científico de datos llegó a producción sin un servicio propio que mantener. Su paquete está fijado y se instala una vez. Un join alimenta su función, que se lee como una tabla, y el enmascaramiento y las reglas de fila que tiene toda tabla gobiernan lo que devuelve. SQL, GraphQL y cualquier otra vía de acceso la leen igual."
       }
     },
     "status": {
@@ -1511,6 +1560,10 @@
       "dataroom": {
         "title": "Sala de datos para una venta",
         "summary": "Un minorista que se vende da al clean team de cada postor acceso gobernado y limitado en el tiempo a sus propios sistemas, sin exportaciones: agregados, perfiles y muestras enmascaradas, y ninguna identidad de cliente sale de la sala."
+      },
+      "churnprod": {
+        "title": "Riesgo de abandono en producción",
+        "summary": "El modelo de scikit-learn de la demo de abandono, en producción. Su paquete de Python es un origen y su función es una tabla que puntúa a cada cliente en un join, con el enmascaramiento y las reglas de fila aplicados a lo que devuelve."
       }
     }
   }

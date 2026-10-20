@@ -597,7 +597,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
   // and so does every topic however it ends; only a dismissed core tour saves a position instead.
   const endTour = useCallback(
     // "landed": a named demo's track walked to its end, left with "Look around on my own" -- done,
-    // and no menu: the visitor is taken to the demo's landing page instead.
+    // and no menu: the visitor is taken to the demo's landing page instead -- or left for another
+    // demo a step links.
     (how: "completed" | "dismissed" | "deepdives" | "landed") => {
       setStatus(null);
       setStored(TOUR_SEEN_KEY, "true", { global: true });
@@ -849,6 +850,23 @@ export function TourProvider({ children }: { children: ReactNode }) {
                 popover.description.querySelector<HTMLImageElement>("img.tour-step-image");
               if (image && !image.complete) {
                 image.addEventListener("load", () => driverRef.current?.refresh(), { once: true });
+              }
+              // A named demo's step linking another demo: a button that leaves the tour for it.
+              if (step.demo !== undefined) {
+                const demo = step.demo;
+                const open = document.createElement("button");
+                open.type = "button";
+                open.className = "driver-popover-demo-btn";
+                open.dataset.testid = "tour-open-demo";
+                open.textContent = t("tour.nav.openDemo", {
+                  title: t(`tour.demos.${demo}.title`),
+                });
+                open.addEventListener("click", () => {
+                  clickIfPresent(step.clickAfterNext);
+                  endTour("landed");
+                  navigate(`/demos/${demo}`);
+                });
+                popover.description.after(open);
               }
               if (!isFirst && scopeRef.current === "core") {
                 const startBtn = document.createElement("button");

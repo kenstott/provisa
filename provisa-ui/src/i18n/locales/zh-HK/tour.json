@@ -10,7 +10,8 @@
       "whereNext": "接下來去哪?",
       "exploreDeepDives": "探索 Deep Dives",
       "lookAround": "自己四處看看",
-      "anyTime": "你可以隨時透過導覽按鈕重新開始導覽或開啟 Deep Dives。"
+      "anyTime": "你可以隨時透過導覽按鈕重新開始導覽或開啟 Deep Dives。",
+      "openDemo": "開啟 {{title}} 示範"
     },
     "welcome": {
       "title": "開始導覽？",
@@ -1258,7 +1259,7 @@
       },
       "churnRecap": {
         "title": "你看到了甚麼",
-        "description": "受管治的數據直接進入數據科學家的筆記簿：讀取時即套用 analyst 的遮罩，模型訓練過程中數據不會離開瀏覽器。在桌面版 Jupyter 中，同樣的程式碼經 Arrow Flight 讀取大批量數據。"
+        "description": "受管治的數據直接進入數據科學家的筆記簿：讀取時即套用 analyst 的遮罩，模型訓練過程中數據不會離開瀏覽器。在桌面版 Jupyter 中，同樣的程式碼經 Arrow Flight 讀取大批量數據。churnprod 示範把這個模型投入生產。"
       },
       "dataroomIntro": {
         "title": "沒有匯出的資料室",
@@ -1411,6 +1412,54 @@
       "testdataDone": {
         "title": "您看到了甚麼",
         "description": "一個模型，三個環境。Prod 保存真實的行。預發佈讀取這些行，每個敏感欄都已虛構，對所有角色一致。Dev 由生產的概況生成，不含任何真實數據。虛構值按欄聲明一次，而會顯示未虛構敏感欄的環境會拒絕開啟。"
+      },
+      "churnprodScenario": {
+        "title": "這個示範講甚麼",
+        "description": "流失示範中的數據科學家用客戶的使用數據訓練了一個 scikit-learn 模型，用來找出即將取消訂閱的客戶。在這裏，這個模型投入生產。它以 Python 套件的形式交付，並按照與任何表相同的規則，為你可以看到的每位客戶評分。"
+      },
+      "churnprodPackage": {
+        "title": "作為數據來源的模型",
+        "description": "模型的套件是一個數據來源，按其代碼的內容雜湊保存。它包含訓練好的模型，以及固定 scikit-learn 版本的 lockfile。依賴只從 wheel 安裝一次，代碼在沙盒中運行。"
+      },
+      "churnprodColumns": {
+        "title": "來自函數類型的欄",
+        "description": "churn_risk 是一個表，因為它的 docstring 寫着 @table。它的欄是它回傳的 RiskRow 的欄位。它的參數就是函數的參數：客戶，以及模型訓練時用到的每個特徵。"
+      },
+      "churnprodRefused": {
+        "title": "不指定客戶的讀取被拒絕",
+        "description": "函數沒有為 customer_id 提供預設值，所以省略它的讀取會在任何代碼運行之前被拒絕。拒絕訊息會列出每個缺少的參數。"
+      },
+      "churnprodJoin": {
+        "title": "為模型提供數據的 join",
+        "description": "這個關係把客戶的特徵連接到 churn_risk，並指明它傳入的特徵。基於它的 join 讀取你可以看到的特徵，為每位客戶呼叫一次模型，再把分數連接回來。"
+      },
+      "churnprodAtRisk": {
+        "title": "流失風險客戶清單",
+        "description": "每位現有客戶都由模型評分並按風險排序，附帶最能推高其分數的原因。這是基於一個檢視的一條 SQL 語句，模型就在其中被呼叫。"
+      },
+      "churnprodAnalyst": {
+        "title": "現在以 analyst 身份",
+        "description": "analyst 讀取同一份清單，就像流失示範中的 analyst 讀取特徵一樣。"
+      },
+      "churnprodMasked": {
+        "title": "分數不變，電郵已遮罩",
+        "description": "分數相同。電郵地址已遮罩，因為 analyst 的遮罩規則作用於這份清單，就像作用於客戶表一樣。"
+      },
+      "churnprodRegional": {
+        "title": "現在以歐盟客戶團隊身份",
+        "description": "歐盟客戶團隊負責在歐盟開單的客戶。"
+      },
+      "churnprodRegionalRows": {
+        "title": "只有本地區的行",
+        "description": "清單中只有歐盟客戶。行規則就設在 churn_risk 本身上，而代碼表上的規則作用於其代碼回傳的行。"
+      },
+      "churnprodNode": {
+        "title": "Node 版雙胞胎",
+        "description": "這是同一個模型的 JavaScript 版本。它訓練好的係數從 Python 匯出，並作為 Node 數據來源登記在 Python 數據來源旁邊。每位客戶從兩者得到的分數相同。"
+      },
+      "churnprodRecap": {
+        "title": "你看到了甚麼",
+        "description": "數據科學家的模型投入了生產，無需運行自己的服務。它的套件被固定，只安裝一次。一個 join 為它的函數提供數據，函數讀起來就像一個表，而每個表都有的遮罩和行規則約束它回傳的內容。SQL、GraphQL 以及其他任何存取方式都以同樣的方式讀取它。"
       }
     },
     "status": {
@@ -1511,6 +1560,10 @@
       "dataroom": {
         "title": "用於出售的資料室",
         "summary": "一家出售自身的零售商，為每位競投方的 clean team 提供對其自有系統的受管、限時存取，沒有匯出：彙總、設定檔和遮罩樣本，沒有任何客戶身分離開資料室。"
+      },
+      "churnprod": {
+        "title": "生產環境中的流失風險",
+        "summary": "流失示範中的 scikit-learn 模型投入生產。它的 Python 套件是一個數據來源，它的函數是一個表，在 join 中為每位客戶評分，回傳的結果同樣受遮罩和行規則約束。"
       }
     }
   }

@@ -131,6 +131,9 @@ export interface TourStep {
   /** A picture shown in the step's popover, below its words (a named demo's `image` step): a URL
    *  the browser loads as it is (the server sends a demo's as a data URL). */
   image?: string;
+  /** Another named demo, by name (a named demo's `demo` field): the popover offers to open it, a
+   *  button to `/demos/<name>` titled with that demo's `tour.demos.<name>.title`. */
+  demo?: string;
   /** Key into the `tour.steps` i18n namespace for this step's title/description. */
   key: string;
   /**

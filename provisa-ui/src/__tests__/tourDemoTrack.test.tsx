@@ -127,6 +127,25 @@ describe("a demo's steps, as the runner walks them", () => {
     expect(picture.route).toBeUndefined();
   });
 
+  it("carries a link to another demo beside the step's own target", () => {
+    const [linked, plain] = demoTourSteps(
+      [
+        {
+          key: "a",
+          route: "/sources",
+          capability: "source_registration",
+          source: "shop_access",
+          demo: "churn",
+        },
+        { key: "b", source: "shop_db_log" },
+      ],
+      EXAMPLES,
+    );
+    expect(linked.element).toBe('[data-testid="sources-row-shop_access"]');
+    expect(linked.demo).toBe("churn");
+    expect(plain.demo).toBeUndefined();
+  });
+
   it("refuses a picture with no step before it, or none sent", () => {
     expect(() =>
       demoTourSteps([{ key: "shot", image: "app.png", image_src: "data:," }], EXAMPLES),
@@ -663,6 +682,45 @@ describe("the end of a named demo's tour: where next?", () => {
     expect(localStorage.getItem(storageKey("provisa_tour_demo_track_done"))).toBe(
       demoTrackStamp("weblogs", ENDING.tour),
     );
+  });
+});
+
+describe("a demo step linking another demo", () => {
+  // A demo that builds on another links back to it from its story.
+  const LINKED: NamedDemo = {
+    ...WEBLOGS,
+    tour: [{ ...WEBLOGS.tour[0], demo: "churn" }, WEBLOGS.tour[1]],
+  };
+
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it("opens the other demo from its popover, leaving the tour without the menu", async () => {
+    renderTour(LINKED);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    const open = screen.getByTestId("tour-open-demo");
+    expect(open).toHaveTextContent("tour.nav.openDemo");
+    fireEvent.click(open);
+    await act(async () => {});
+    expect(screen.getByTestId("where")).toHaveTextContent("/demos/churn");
+    expect(screen.queryByTestId("tour-menu")).toBeNull();
+    expect(document.querySelector(".driver-popover")).toBeNull();
+  });
+
+  it("offers no link on a step that names no other demo", async () => {
+    renderTour(LINKED);
+    fireEvent.click(screen.getByText("launch"));
+    await act(async () => chunksResolve());
+    expect(await screen.findByText("tour.steps.weblogsSources.title")).toBeInTheDocument();
+    fireEvent.click(document.querySelector<HTMLElement>(".driver-popover-next-btn")!);
+    expect(await screen.findByText("tour.steps.weblogsDbLog.title")).toBeInTheDocument();
+    expect(screen.queryByTestId("tour-open-demo")).toBeNull();
   });
 });
 

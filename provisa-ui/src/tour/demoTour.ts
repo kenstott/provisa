@@ -119,6 +119,9 @@ export interface DemoTourStepDef {
    *  step before it is on; the server sends it as `image_src`, a data URL. */
   image?: string;
   image_src?: string;
+  /** Beside any target: another named demo, by name, its popover's "Open the <title> demo" button
+   *  going to `/demos/<name>` (a demo that builds on another links back to it, and on to it). */
+  demo?: string;
 }
 
 /** Answers that come from the server are slow on a loaded demo; a run's result waits this long. */
@@ -151,7 +154,8 @@ export function demoTourSteps(
     if (def.as_of !== undefined) context.asOf = def.as_of;
     if (def.as_recorded !== undefined) context.asRecorded = def.as_recorded;
     if (def.sql !== undefined) ran.set(def.key, { sql: def.sql, ...context });
-    steps.push(demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran));
+    const step = demoTourStep(def, examples, notebook, steps[steps.length - 1], onPage, ran);
+    steps.push(def.demo !== undefined ? { ...step, demo: def.demo } : step);
   }
   return steps;
 }

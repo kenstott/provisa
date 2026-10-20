@@ -223,11 +223,12 @@ class IsolatedServer:
         if self._materialize_store_url is not None:
             cfg["materialize_store_url"] = self._materialize_store_url
         # In a directory of its own, beside what the base config's directory declares beside it:
-        # its declared replica rows (REQ-2089), read from the directory of the config served.
+        # its declared replica rows (REQ-2089) and code archives (REQ-2101), read from the
+        # directory of the config served.
         directory = Path(tempfile.mkdtemp(prefix="isolated-server-config-"))
-        rows = base.parent / "replica_rows"
-        if rows.is_dir():
-            (directory / "replica_rows").symlink_to(rows, target_is_directory=True)
+        for declared in ("replica_rows", "code"):
+            if (base.parent / declared).is_dir():
+                (directory / declared).symlink_to(base.parent / declared, target_is_directory=True)
         # And the secrets it names (REQ-2095), read from the directory of the config served.
         from provisa.core.demo_secrets import FILE as SECRETS_FILE
 

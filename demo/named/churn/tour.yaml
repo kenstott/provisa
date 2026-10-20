@@ -18,7 +18,8 @@
 # SQL and over GraphQL; then the demo's notebook (notebook.ipynb, REQ-2084) run in the Notebook
 # tab -- the same features read into pandas as the analyst, a model trained and the customers most
 # at risk listed, email addresses still masked; and a recap, with how a desktop notebook reads
-# large pulls over Arrow Flight with the same code.
+# large pulls over Arrow Flight with the same code, and the churnprod demo, where the model runs in
+# production, opened from it.
 landing:
   route: /notebook
   capability: query_development
@@ -60,3 +61,5 @@ steps:
   route: /tables
   capability: table_registration
   table: churn-db.usage
+  # The same model in production: the churnprod demo, opened from the recap.
+  demo: churnprod

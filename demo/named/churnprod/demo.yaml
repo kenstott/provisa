@@ -1,0 +1,22 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The churnprod demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Churn risk in production
+description: >-
+  Which customers are about to cancel, scored in production? The churn model ships as a Python
+  package whose function is a table: joined to the customers, it ranks every one, emails masked for
+  the analyst and only its own region's rows for the EU team, with a Node twin beside it.
+screenshot: card.png
+published: true
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo's shipped code and the join that feeds it.
+requires_provisa: 0.1.0a493

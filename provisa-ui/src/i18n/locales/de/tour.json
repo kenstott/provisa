@@ -10,7 +10,8 @@
       "whereNext": "Wie weiter?",
       "exploreDeepDives": "Die Deep Dives erkunden",
       "lookAround": "Mich selbst umsehen",
-      "anyTime": "Sie können die Tour jederzeit über die Tour-Schaltfläche neu starten oder die Deep Dives öffnen."
+      "anyTime": "Sie können die Tour jederzeit über die Tour-Schaltfläche neu starten oder die Deep Dives öffnen.",
+      "openDemo": "Demo {{title}} öffnen"
     },
     "welcome": {
       "title": "Geführte Tour starten?",
@@ -1258,7 +1259,7 @@
       },
       "churnRecap": {
         "title": "Was Sie gesehen haben",
-        "description": "Governte Daten direkt im Notebook eines Data Scientists: die Maskierung für analyst schon beim Lesen angewendet und ein Modell trainiert, ohne dass die Daten den Browser verlassen. In einem Desktop-Jupyter liest derselbe Code große Datenmengen über Arrow Flight."
+        "description": "Governte Daten direkt im Notebook eines Data Scientists: die Maskierung für analyst schon beim Lesen angewendet und ein Modell trainiert, ohne dass die Daten den Browser verlassen. In einem Desktop-Jupyter liest derselbe Code große Datenmengen über Arrow Flight. Die Demo churnprod bringt dieses Modell in Produktion."
       },
       "dataroomIntro": {
         "title": "Ein Datenraum ohne Exporte",
@@ -1411,6 +1412,54 @@
       "testdataDone": {
         "title": "Was Sie gesehen haben",
         "description": "Ein Modell, drei Umgebungen. Prod hält die echten Zeilen. Pre-Prod liest sie mit gefakten sensiblen Spalten, für jede Rolle. Dev wird aus dem Profil der Produktion erzeugt und enthält nichts Echtes. Fakes werden einmal pro Spalte deklariert, und eine Umgebung, die eine sensible Spalte ungefakt zeigen würde, öffnet sich nicht."
+      },
+      "churnprodScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Der Data Scientist der Churn-Demo hat ein scikit-learn-Modell auf der Nutzung der Kunden trainiert, um zu finden, wer kurz vor der Kündigung steht. Hier geht dieses Modell in Produktion. Es kommt als Python-Paket und bewertet jeden Kunden, den Sie sehen dürfen, nach denselben Regeln wie jede Tabelle."
+      },
+      "churnprodPackage": {
+        "title": "Das Modell als Quelle",
+        "description": "Das Paket des Modells ist eine Quelle, festgehalten über den Inhalts-Hash seines Codes. Es enthält das trainierte Modell und eine Lockfile, die scikit-learn festlegt. Seine Abhängigkeiten werden einmal aus Wheels installiert, und der Code läuft in einer Sandbox."
+      },
+      "churnprodColumns": {
+        "title": "Spalten aus den Typen der Funktion",
+        "description": "churn_risk ist eine Tabelle, weil ihr Docstring @table sagt. Ihre Spalten sind die Felder der RiskRow, die sie zurückgibt. Ihre Parameter sind ihre Argumente: der Kunde und jedes Merkmal, auf dem das Modell trainiert wurde."
+      },
+      "churnprodRefused": {
+        "title": "Ein Lesen ohne Kunden, abgelehnt",
+        "description": "Die Funktion gibt customer_id keinen Standardwert, also wird ein Lesen ohne ihn abgelehnt, bevor Code läuft. Die Ablehnung nennt jeden fehlenden Parameter."
+      },
+      "churnprodJoin": {
+        "title": "Der Join, der das Modell speist",
+        "description": "Diese Beziehung verbindet die Merkmale der Kunden mit churn_risk und nennt die Merkmale, die sie übergibt. Ein Join über sie liest die Merkmale, die Sie sehen dürfen, ruft das Modell einmal je Kunde auf und fügt die Scores wieder an."
+      },
+      "churnprodAtRisk": {
+        "title": "Die Liste der gefährdeten Kunden",
+        "description": "Jeder aktuelle Kunde, vom Modell bewertet und nach Risiko geordnet, mit den Gründen, die seinen Score am stärksten erhöhen. Es ist eine SQL-Anweisung über eine Sicht, und das Modell wird in ihr aufgerufen."
+      },
+      "churnprodAnalyst": {
+        "title": "Jetzt als analyst",
+        "description": "Der analyst liest dieselbe Liste, so wie der analyst der Churn-Demo ihre Merkmale liest."
+      },
+      "churnprodMasked": {
+        "title": "Scores, E-Mails maskiert",
+        "description": "Die Scores sind dieselben. Die E-Mail-Adressen sind maskiert, denn die Maskierung für analyst gilt für die Liste wie für die Kundentabelle."
+      },
+      "churnprodRegional": {
+        "title": "Jetzt als EU-Account-Team",
+        "description": "Das EU-Account-Team betreut die Kunden, die in der EU abgerechnet werden."
+      },
+      "churnprodRegionalRows": {
+        "title": "Nur die Zeilen seiner Region",
+        "description": "Nur EU-Kunden werden aufgeführt. Die Zeilenregel liegt auf churn_risk selbst, und eine Regel auf einer Code-Tabelle gilt für die Zeilen, die ihr Code zurückgibt."
+      },
+      "churnprodNode": {
+        "title": "Der Node-Zwilling",
+        "description": "Hier ist dasselbe Modell in JavaScript. Seine trainierten Koeffizienten wurden aus Python exportiert, und es ist als Node-Quelle neben der Python-Quelle registriert. Jeder Kunde erhält von beiden denselben Score."
+      },
+      "churnprodRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Das Modell eines Data Scientists ging in Produktion, ohne eigenen Dienst. Sein Paket ist festgelegt und wird einmal installiert. Ein Join speist seine Funktion, die sich wie eine Tabelle liest, und die Maskierung und Zeilenregeln, die jede Tabelle hat, regeln, was sie zurückgibt. SQL, GraphQL und jeder andere Zugang lesen sie gleich."
       }
     },
     "status": {
@@ -1511,6 +1560,10 @@
       "dataroom": {
         "title": "Datenraum für einen Verkauf",
         "summary": "Ein Einzelhändler, der sich selbst verkauft, gibt dem Clean Team jedes Bieters kontrollierten, zeitlich begrenzten Zugriff auf seine eigenen Systeme ohne Exporte: Aggregate, Profile und maskierte Stichproben, und keine Kundenidentität verlässt den Raum."
+      },
+      "churnprod": {
+        "title": "Abwanderungsrisiko in Produktion",
+        "summary": "Das scikit-learn-Modell der Churn-Demo in Produktion. Sein Python-Paket ist eine Quelle, und seine Funktion ist eine Tabelle, die in einem Join jeden Kunden bewertet, mit Maskierung und Zeilenregeln auf dem, was sie zurückgibt."
       }
     }
   }

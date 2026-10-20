@@ -209,6 +209,23 @@
   background: rgba(99, 102, 241, 0.12);
 }
 
+/* A named demo's step linking another demo: "Open the <title> demo", below the step's words. */
+.driver-popover-demo-btn {
+  display: block;
+  margin-top: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 5px 12px;
+  border-radius: 5px;
+  color: #4f46e5;
+  background: rgba(99, 102, 241, 0.1);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  text-shadow: none;
+}
+.driver-popover-demo-btn:hover {
+  filter: brightness(1.08);
+}
+
 /* A named demo's last card: "Where next?", its two ways on, and how to come back. */
 .tour-where-next {
   margin-top: 10px;

@@ -10,7 +10,8 @@
       "whereNext": "Hoe verder?",
       "exploreDeepDives": "De Deep Dives verkennen",
       "lookAround": "Zelf rondkijken",
-      "anyTime": "U kunt de rondleiding op elk moment opnieuw starten of de Deep Dives openen via de rondleidingsknop."
+      "anyTime": "U kunt de rondleiding op elk moment opnieuw starten of de Deep Dives openen via de rondleidingsknop.",
+      "openDemo": "Open de demo {{title}}"
     },
     "welcome": {
       "title": "De rondleiding volgen?",
@@ -1258,7 +1259,7 @@
       },
       "churnRecap": {
         "title": "Wat je hebt gezien",
-        "description": "Gegovernede data rechtstreeks in het notebook van een data scientist: de maskering van analyst toegepast bij het lezen, en een model getraind zonder dat de data de browser verlaat. In een desktop-Jupyter leest dezelfde code grote hoeveelheden via Arrow Flight."
+        "description": "Gegovernede data rechtstreeks in het notebook van een data scientist: de maskering van analyst toegepast bij het lezen, en een model getraind zonder dat de data de browser verlaat. In een desktop-Jupyter leest dezelfde code grote hoeveelheden via Arrow Flight. De demo churnprod brengt dit model in productie."
       },
       "dataroomIntro": {
         "title": "Een datakamer zonder exports",
@@ -1411,6 +1412,54 @@
       "testdataDone": {
         "title": "Wat je zag",
         "description": "Eén model, drie omgevingen. Prod bevat de echte rijen. Pre-productie leest ze met elke gevoelige kolom nagemaakt, voor elke rol. Dev wordt gegenereerd uit het profiel van productie en bevat niets echts. Nepwaarden worden één keer per kolom gedeclareerd, en een omgeving die een gevoelige kolom niet-nagemaakt zou tonen, weigert te openen."
+      },
+      "churnprodScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "De data scientist van de churn-demo trainde een scikit-learn-model op het gebruik van de klanten om te vinden wie op het punt staat op te zeggen. Hier gaat dat model in productie. Het komt als Python-pakket en geeft elke klant die u mag zien een score, onder dezelfde regels als elke tabel."
+      },
+      "churnprodPackage": {
+        "title": "Het model als bron",
+        "description": "Het pakket van het model is een bron, bewaard op de content-hash van de code. Het bevat het getrainde model en een lockfile die scikit-learn vastlegt. De afhankelijkheden worden eenmaal geïnstalleerd, uit wheels, en de code draait in een sandbox."
+      },
+      "churnprodColumns": {
+        "title": "Kolommen uit de typen van de functie",
+        "description": "churn_risk is een tabel omdat de docstring @table zegt. De kolommen zijn de velden van de RiskRow die ze teruggeeft. De parameters zijn de argumenten: de klant en elk kenmerk waarop het model is getraind."
+      },
+      "churnprodRefused": {
+        "title": "Een lezing zonder klant, geweigerd",
+        "description": "De functie geeft customer_id geen standaardwaarde, dus een lezing die hem weglaat wordt geweigerd voordat er code draait. De weigering noemt elke ontbrekende parameter."
+      },
+      "churnprodJoin": {
+        "title": "De join die het model voedt",
+        "description": "Deze relatie koppelt de kenmerken van de klanten aan churn_risk en noemt de kenmerken die ze doorgeeft. Een join erover leest de kenmerken die u mag zien, roept het model één keer per klant aan en voegt de scores weer toe."
+      },
+      "churnprodAtRisk": {
+        "title": "De lijst van klanten met risico",
+        "description": "Elke huidige klant, gescoord door het model en gerangschikt op risico, met de redenen die elke score het meest verhogen. Het is één SQL-statement over een view, en het model wordt erin aangeroepen."
+      },
+      "churnprodAnalyst": {
+        "title": "Nu als analyst",
+        "description": "De analyst leest dezelfde lijst, zoals de analyst van de churn-demo zijn kenmerken leest."
+      },
+      "churnprodMasked": {
+        "title": "Scores, e-mails gemaskeerd",
+        "description": "De scores zijn dezelfde. De e-mailadressen zijn gemaskeerd, omdat de maskering van analyst voor de lijst geldt zoals voor de klantentabel."
+      },
+      "churnprodRegional": {
+        "title": "Nu als het EU-accountteam",
+        "description": "Het EU-accountteam beheert de klanten die in de EU worden gefactureerd."
+      },
+      "churnprodRegionalRows": {
+        "title": "Alleen de rijen van de eigen regio",
+        "description": "Alleen EU-klanten staan in de lijst. De rijregel staat op churn_risk zelf, en een regel op een codetabel geldt voor de rijen die de code teruggeeft."
+      },
+      "churnprodNode": {
+        "title": "De Node-tweeling",
+        "description": "Hier is hetzelfde model in JavaScript. De getrainde coëfficiënten zijn uit Python geëxporteerd, en het is geregistreerd als Node-bron naast de Python-bron. Elke klant krijgt van beide dezelfde score."
+      },
+      "churnprodRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "Het model van een data scientist ging in productie zonder een eigen dienst om te draaien. Het pakket is vastgelegd en wordt eenmaal geïnstalleerd. Een join voedt de functie, die zich als een tabel laat lezen, en de maskering en rijregels die elke tabel heeft bepalen wat ze teruggeeft. SQL, GraphQL en elke andere toegang lezen haar op dezelfde manier."
       }
     },
     "status": {
@@ -1511,6 +1560,10 @@
       "dataroom": {
         "title": "Datakamer voor een verkoop",
         "summary": "Een retailer die zichzelf verkoopt geeft het clean team van elke bieder beheerde, tijdelijke toegang tot zijn eigen systemen, zonder exports: aggregaten, profielen en gemaskeerde steekproeven, en geen enkele klantidentiteit verlaat de kamer."
+      },
+      "churnprod": {
+        "title": "Opzeggingsrisico in productie",
+        "summary": "Het scikit-learn-model van de churn-demo in productie. Het Python-pakket is een bron, en de functie is een tabel die in een join elke klant een score geeft, met maskering en rijregels op wat ze teruggeeft."
       }
     }
   }

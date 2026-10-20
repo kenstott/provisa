@@ -10,7 +10,8 @@
       "whereNext": "E agora?",
       "exploreDeepDives": "Explorar os Deep Dives",
       "lookAround": "Explorar por conta própria",
-      "anyTime": "Você pode reiniciar o tour ou abrir os Deep Dives a qualquer momento pelo botão do tour."
+      "anyTime": "Você pode reiniciar o tour ou abrir os Deep Dives a qualquer momento pelo botão do tour.",
+      "openDemo": "Abrir a demo {{title}}"
     },
     "welcome": {
       "title": "Fazer a visita guiada?",
@@ -1258,7 +1259,7 @@
       },
       "churnRecap": {
         "title": "O que você viu",
-        "description": "Dados governados direto no notebook de um cientista de dados: o mascaramento de analyst aplicado na leitura, e um modelo treinado sem que os dados saiam do navegador. Num Jupyter de desktop, o mesmo código lê grandes volumes por Arrow Flight."
+        "description": "Dados governados direto no notebook de um cientista de dados: o mascaramento de analyst aplicado na leitura, e um modelo treinado sem que os dados saiam do navegador. Num Jupyter de desktop, o mesmo código lê grandes volumes por Arrow Flight. A demo churnprod leva este modelo para produção."
       },
       "dataroomIntro": {
         "title": "Uma data room sem exportações",
@@ -1411,6 +1412,54 @@
       "testdataDone": {
         "title": "O que você viu",
         "description": "Um modelo, três ambientes. Prod guarda as linhas reais. A pré-produção as lê com cada coluna sensível tornada fictícia, para toda função. Dev é gerado a partir do perfil da produção e não contém nada real. Os valores fictícios são declarados uma vez por coluna, e um ambiente que mostraria uma coluna sensível sem torná-la fictícia se recusa a abrir."
+      },
+      "churnprodScenario": {
+        "title": "Do que trata esta demo",
+        "description": "O cientista de dados da demo de cancelamento treinou um modelo scikit-learn com o uso dos clientes para descobrir quem está prestes a cancelar. Aqui esse modelo vai para produção. Ele é entregue como um pacote Python e pontua cada cliente que você pode ver, com as mesmas regras de qualquer tabela."
+      },
+      "churnprodPackage": {
+        "title": "O modelo, como fonte",
+        "description": "O pacote do modelo é uma fonte, guardada pelo hash do conteúdo do seu código. Ele traz o modelo treinado e um lockfile que fixa o scikit-learn. Suas dependências são instaladas uma vez, a partir de wheels, e o código roda em um sandbox."
+      },
+      "churnprodColumns": {
+        "title": "Colunas a partir dos tipos da função",
+        "description": "churn_risk é uma tabela porque sua docstring diz @table. Suas colunas são os campos do RiskRow que ela retorna. Seus parâmetros são seus argumentos: o cliente e cada atributo com que o modelo foi treinado."
+      },
+      "churnprodRefused": {
+        "title": "Uma leitura sem cliente, recusada",
+        "description": "A função não dá valor padrão a customer_id, então uma leitura que o omite é recusada antes de qualquer código rodar. A recusa nomeia cada parâmetro que falta."
+      },
+      "churnprodJoin": {
+        "title": "O join que alimenta o modelo",
+        "description": "Este relacionamento liga os atributos dos clientes a churn_risk e nomeia os atributos que repassa. Um join sobre ele lê os atributos que você pode ver, chama o modelo uma vez por cliente e junta de volta as pontuações."
+      },
+      "churnprodAtRisk": {
+        "title": "A lista de clientes em risco",
+        "description": "Cada cliente atual, pontuado pelo modelo e ordenado por risco, com os motivos que mais elevam cada pontuação. É uma única instrução SQL sobre uma exibição, e o modelo é chamado dentro dela."
+      },
+      "churnprodAnalyst": {
+        "title": "Agora como analyst",
+        "description": "O analyst lê a mesma lista, como o analyst da demo de cancelamento lê seus atributos."
+      },
+      "churnprodMasked": {
+        "title": "Pontuações, e-mails mascarados",
+        "description": "As pontuações são as mesmas. Os endereços de e-mail aparecem mascarados, porque o mascaramento de analyst vale para a lista como vale para a tabela de clientes."
+      },
+      "churnprodRegional": {
+        "title": "Agora como a equipe de contas da UE",
+        "description": "A equipe de contas da UE cuida dos clientes faturados na UE."
+      },
+      "churnprodRegionalRows": {
+        "title": "Só as linhas da sua região",
+        "description": "Só aparecem clientes da UE. A regra de linha está no próprio churn_risk, e uma regra em uma tabela de código vale para as linhas que seu código retorna."
+      },
+      "churnprodNode": {
+        "title": "O gêmeo em Node",
+        "description": "Aqui está o mesmo modelo em JavaScript. Seus coeficientes treinados foram exportados do Python, e ele está registrado como fonte Node ao lado da fonte Python. Cada cliente recebe a mesma pontuação dos dois."
+      },
+      "churnprodRecap": {
+        "title": "O que você viu",
+        "description": "O modelo de um cientista de dados chegou à produção sem um serviço próprio para manter. Seu pacote é fixado e instalado uma vez. Um join alimenta sua função, que se lê como uma tabela, e o mascaramento e as regras de linha que toda tabela tem governam o que ela retorna. SQL, GraphQL e qualquer outra via de acesso a leem da mesma forma."
       }
     },
     "status": {
@@ -1511,6 +1560,10 @@
       "dataroom": {
         "title": "Data room para uma venda",
         "summary": "Um retalhista que se vende dá à clean team de cada proponente um acesso governado e limitado no tempo aos seus próprios sistemas, sem exportações: agregados, perfis e amostras mascaradas, e nenhuma identidade de cliente sai da sala."
+      },
+      "churnprod": {
+        "title": "Risco de cancelamento em produção",
+        "summary": "O modelo scikit-learn da demo de cancelamento, em produção. Seu pacote Python é uma fonte, e sua função é uma tabela que pontua cada cliente em um join, com o mascaramento e as regras de linha aplicados ao que ela retorna."
       }
     }
   }

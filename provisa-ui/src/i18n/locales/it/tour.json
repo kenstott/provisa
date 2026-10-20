@@ -10,7 +10,8 @@
       "whereNext": "E adesso?",
       "exploreDeepDives": "Esplorare i Deep Dives",
       "lookAround": "Guardarmi intorno da solo",
-      "anyTime": "Puoi riavviare il tour o aprire i Deep Dives in qualsiasi momento dal pulsante del tour."
+      "anyTime": "Puoi riavviare il tour o aprire i Deep Dives in qualsiasi momento dal pulsante del tour.",
+      "openDemo": "Apri la demo {{title}}"
     },
     "welcome": {
       "title": "Vuoi fare il tour guidato?",
@@ -1258,7 +1259,7 @@
       },
       "churnRecap": {
         "title": "Cosa hai visto",
-        "description": "Dati governati direttamente nel notebook di un data scientist: il mascheramento di analyst applicato in lettura, e un modello addestrato senza che i dati lascino il browser. In un Jupyter desktop lo stesso codice legge grandi volumi tramite Arrow Flight."
+        "description": "Dati governati direttamente nel notebook di un data scientist: il mascheramento di analyst applicato in lettura, e un modello addestrato senza che i dati lascino il browser. In un Jupyter desktop lo stesso codice legge grandi volumi tramite Arrow Flight. La demo churnprod porta questo modello in produzione."
       },
       "dataroomIntro": {
         "title": "Una data room senza esportazioni",
@@ -1411,6 +1412,54 @@
       "testdataDone": {
         "title": "Cosa hai visto",
         "description": "Un modello, tre ambienti. Prod contiene le righe reali. La pre-produzione le legge con ogni colonna sensibile resa fittizia, per ogni ruolo. Dev è generato dal profilo della produzione e non contiene nulla di reale. I valori fittizi si dichiarano una volta per colonna, e un ambiente che mostrerebbe una colonna sensibile non fittizia rifiuta di aprirsi."
+      },
+      "churnprodScenario": {
+        "title": "Di cosa tratta questa demo",
+        "description": "Il data scientist della demo sull'abbandono ha addestrato un modello scikit-learn sull'uso dei clienti per capire chi sta per disdire. Qui quel modello va in produzione. Viene distribuito come pacchetto Python e assegna un punteggio a ogni cliente che puoi vedere, con le stesse regole di qualsiasi tabella."
+      },
+      "churnprodPackage": {
+        "title": "Il modello, come origine",
+        "description": "Il pacchetto del modello è un'origine, conservata tramite l'hash del contenuto del suo codice. Contiene il modello addestrato e un lockfile che fissa scikit-learn. Le sue dipendenze si installano una volta, da wheel, e il codice gira in una sandbox."
+      },
+      "churnprodColumns": {
+        "title": "Colonne dai tipi della funzione",
+        "description": "churn_risk è una tabella perché la sua docstring dice @table. Le sue colonne sono i campi del RiskRow che restituisce. I suoi parametri sono i suoi argomenti: il cliente e ogni caratteristica su cui il modello è stato addestrato."
+      },
+      "churnprodRefused": {
+        "title": "Una lettura senza cliente, rifiutata",
+        "description": "La funzione non dà a customer_id un valore predefinito, quindi una lettura che lo omette viene rifiutata prima che giri qualsiasi codice. Il rifiuto nomina ogni parametro mancante."
+      },
+      "churnprodJoin": {
+        "title": "Il join che alimenta il modello",
+        "description": "Questa relazione collega le caratteristiche dei clienti a churn_risk e nomina le caratteristiche che passa. Un join su di essa legge le caratteristiche che puoi vedere, chiama il modello una volta per cliente e ricongiunge i punteggi."
+      },
+      "churnprodAtRisk": {
+        "title": "L'elenco dei clienti a rischio",
+        "description": "Ogni cliente attuale, valutato dal modello e ordinato per rischio, con i motivi che più alzano ogni punteggio. È una sola istruzione SQL su una vista, e il modello viene chiamato al suo interno."
+      },
+      "churnprodAnalyst": {
+        "title": "Ora come analyst",
+        "description": "L'analyst legge lo stesso elenco, come l'analyst della demo sull'abbandono ne legge le caratteristiche."
+      },
+      "churnprodMasked": {
+        "title": "Punteggi, email mascherate",
+        "description": "I punteggi sono gli stessi. Gli indirizzi email sono mascherati, perché il mascheramento di analyst vale per l'elenco come per la tabella dei clienti."
+      },
+      "churnprodRegional": {
+        "title": "Ora come team account UE",
+        "description": "Il team account UE segue i clienti fatturati nell'UE."
+      },
+      "churnprodRegionalRows": {
+        "title": "Solo le righe della sua regione",
+        "description": "Compaiono solo clienti UE. La regola di riga sta su churn_risk stesso, e una regola su una tabella di codice vale per le righe che il suo codice restituisce."
+      },
+      "churnprodNode": {
+        "title": "Il gemello Node",
+        "description": "Ecco lo stesso modello in JavaScript. I suoi coefficienti addestrati sono stati esportati da Python, ed è registrato come origine Node accanto a quella Python. Ogni cliente riceve lo stesso punteggio da entrambi."
+      },
+      "churnprodRecap": {
+        "title": "Cosa hai visto",
+        "description": "Il modello di un data scientist è andato in produzione senza un servizio proprio da gestire. Il suo pacchetto è fissato e si installa una volta. Un join alimenta la sua funzione, che si legge come una tabella, e il mascheramento e le regole di riga di ogni tabella governano ciò che restituisce. SQL, GraphQL e ogni altro accesso la leggono allo stesso modo."
       }
     },
     "status": {
@@ -1511,6 +1560,10 @@
       "dataroom": {
         "title": "Data room per una vendita",
         "summary": "Un rivenditore che si vende dà al clean team di ogni offerente un accesso governato e a tempo ai propri sistemi, senza esportazioni: aggregati, profili e campioni mascherati, e nessuna identità di cliente lascia la sala."
+      },
+      "churnprod": {
+        "title": "Il rischio di abbandono in produzione",
+        "summary": "Il modello scikit-learn della demo sull'abbandono, in produzione. Il suo pacchetto Python è un'origine, e la sua funzione è una tabella che assegna un punteggio a ogni cliente in un join, con il mascheramento e le regole di riga applicati a ciò che restituisce."
       }
     }
   }

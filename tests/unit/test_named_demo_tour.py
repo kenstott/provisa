@@ -235,7 +235,7 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
         previous, before = before, step
         named = [k for k in _TARGETS if k in step]
         assert len(named) == 1, f"{step['key']}: names {named}, not one target"
-        assert set(step) <= {"key", "route", "capability", "open", *_TARGETS}, step
+        assert set(step) <= {"key", "route", "capability", "open", "demo", *_TARGETS}, step
         if "route" in step:
             assert gates.get(step["route"]) == step["capability"], step
         else:
@@ -275,6 +275,16 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             # A demo with no bake-off questions of its own has none a step may ask.
             asked = {q.text for q in QUESTIONS.get(home.name, ())}
             assert step["polly"] in asked, f"{step['key']}: not one of the demo's own questions"
+        if "demo" in step:
+            # Another named demo, opened from the step's popover: one that is published, its words
+            # in the tour menu.
+            linked = _NAMED / step["demo"]
+            assert step["demo"] != home.name, f"{step['key']}: a demo links another demo"
+            assert (linked / "tour.yaml").is_file(), (
+                f"{step['key']}: no named demo {step['demo']!r}"
+            )
+            published = yaml.safe_load((linked / "demo.yaml").read_text()).get("published")
+            assert published is True, f"{step['key']}: {step['demo']} is not published"
         if "image" in step:
             # A picture beside tour.yaml, shown over the page of the step before it.
             assert previous is not None, f"{step['key']}: an image shows beside a step before it"

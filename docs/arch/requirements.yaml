@@ -85494,3 +85494,34 @@ And SELECT score FROM churn_risk is refused for its required parameters before t
   - tests/unit/test_relationship_fed_code_table.py
   stakeholders:
   - data-engineer
+- id: REQ-2097
+  status: complete
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: "The named demo churnprod puts the churn demo's model in production. The data scientist's scikit-learn model ships inside the demo as a Python package (code/churn_model.tar.gz, its fitted model and a pinned uv.lock of wheels inside) whose function churn_risk(customer_id, ..., as_of=None) returns RiskRow rows (customer_id, score, reasons, computed_at) and is a table; its Node twin (code/churn-model-js.tar.gz), computing from the same exported coefficients, is a second table beside it. Its tour shows the scenario (linking back to the churn demo), the source registered from the shipped package, discovery offering the columns from the function's types, a read without customer_id refused before the code runs, the join from the current customers' features to churn_risk giving the at-risk list, the analyst reading the same scores with email addresses masked, the EU account team reading only EU customers' scores because the row rule is on the code's output, the Node twin's score beside the Python one, and a recap. A tour step may carry demo: <name>, rendered as a button opening that demo; the churn demo's recap links forward to churnprod."
+  use_case: A data scientist's model becomes a governed table that every role reads through the same masks and row rules as any other table.
+  scenario: "Given the churnprod demo started
+
+When the EU account team reads the at-risk list
+
+Then every row is an EU customer's, each email address arrives masked, and the Node twin scores each customer as the Python model does"
+  related_reqs:
+  - REQ-2085
+  - REQ-2099
+  - REQ-2101
+  code:
+  - demo/named/churnprod/config.yaml
+  - demo/named/churnprod/tour.yaml
+  - demo/named/churnprod/model/churn_model/churn_model.py
+  - demo/named/churnprod/model/churn-model-js/index.js
+  - demo/named/churnprod/db/init.sql
+  - provisa-ui/src/tour/useTour.tsx
+  - provisa-ui/src/tour/demoTour.ts
+  tests:
+  - tests/integration/test_churnprod_demo.py
+  - tests/unit/test_named_demo_tour.py
+  - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
