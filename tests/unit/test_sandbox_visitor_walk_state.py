@@ -14,10 +14,11 @@ sets them: a role picked on the SQL explorer is its run-as and reaches only its 
 picked elsewhere is the app's, a set of roles goes to the explorer, an environment reaches every
 request after it, and time travel reaches only statements."""
 
-# Requirements: REQ-2006
+# Requirements: REQ-2006, REQ-2066
 
 from __future__ import annotations
 
+import httpx
 import pytest
 
 from tests.integration import test_sandbox_visitor_walk as walk_module
@@ -96,3 +97,35 @@ def test_every_published_demo_is_a_parameter():
     names = walk_module.published_demos()
     assert "testdata" in names and "weblogs" in names
     assert "retail" not in names  # published: false
+
+
+_CLOSE = 'SELECT c.category FROM "provisioning"."view_close_by_category" AS c'
+
+
+def _refused(view: str) -> httpx.Response:
+    return httpx.Response(
+        503,
+        json={
+            "detail": f"the view {view!r} can be read only within its read window",
+            "code": "data.view_outside_load_window",
+            "params": {"view": view, "opens_at": "2026-10-20T02:00+00:00"},
+        },
+    )
+
+
+def test_a_step_reading_a_view_outside_its_read_window_is_answered_by_the_refusal():
+    """REQ-2066: outside its window the page shows the refusal naming the view (the provisioning
+    tour's close step is written for it), so the walk takes it as the step's answer."""
+    said, answer = walk_module._answered("close (sql)", _refused("view_close_by_category"), _CLOSE)
+    assert answer is None
+    assert said == "close (sql): refused outside view_close_by_category's read window"
+
+
+def test_a_refusal_for_a_view_the_step_does_not_read_fails_it():
+    with pytest.raises(AssertionError):
+        walk_module._answered("close (sql)", _refused("view_order_margins"), _CLOSE)
+
+
+def test_a_refusal_off_the_sql_explorer_fails_the_step():
+    with pytest.raises(AssertionError):
+        walk_module._answered("close (graphql)", _refused("view_close_by_category"))

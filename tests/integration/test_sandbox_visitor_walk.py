@@ -20,7 +20,8 @@ page and the tour do it:
   place;
 - each tour step that runs something runs as the visitor, with the visitor's token, through the
   transport its page uses, in the role, environment and time travel the steps before it chose (as
-  provisa-ui/src/tour/demoTour.ts sets them), and answers with rows;
+  provisa-ui/src/tour/demoTour.ts sets them), and answers with rows (or, reading a materialized
+  view outside its read window, with the refusal naming it, as the page shows then);
 - the tab closes it (``POST /sandboxes/closing``): once the grace has passed it is deleted, its place
   is free again, and its token reaches nothing.
 
@@ -150,22 +151,37 @@ def _open_sandbox(tier) -> dict:
         opened = httpx.post(f"{tier.base_url}/public/demos/{tier.demo}", timeout=600)
         if opened.status_code == 200:
             return opened.json()
-        assert (
+        if not (
             opened.status_code == 503 and opened.json().get("code") == "sandbox.demo_not_ready"
-        ), (
-            tier.demo,
-            opened.status_code,
-            opened.text,
-            tier.dump_stderr_debug()[-6000:],
-        )
-        assert time.monotonic() < deadline, (tier.demo, tier.dump_stderr_debug()[-6000:])
+        ):
+            raise _failed(tier, f"opening it answered {opened.status_code}: {opened.text}")
+        if _status(tier)["state"] == "failed":
+            raise _failed(tier, "its template could not be prepared")
+        if time.monotonic() > deadline:
+            raise _failed(tier, "its template was never ready")
         time.sleep(5)
 
 
-def _places_free(tier) -> int:
+def _failed(tier, why: str) -> AssertionError:
+    """A failure of ``tier``'s demo, its server's whole log kept beside the run's results (the
+    workflow uploads PROVISA_TEST_LOG_DIR) and its end in the message, unshortened."""
+    text = tier.dump_stderr_debug()
+    log = Path(os.environ.get("PROVISA_TEST_LOG_DIR", tier.directory.parent)) / (
+        f"visitor-walk-{tier.demo}-server.log"
+    )
+    log.parent.mkdir(parents=True, exist_ok=True)
+    log.write_text(text)
+    return AssertionError(f"{tier.demo}: {why}\nserver log {log}; its end:\n{text[-6000:]}")
+
+
+def _status(tier) -> dict:
     status = httpx.get(f"{tier.base_url}/public/demos/{tier.demo}/status", timeout=60)
     assert status.status_code == 200, status.text
-    return status.json()["places_free"]
+    return status.json()
+
+
+def _places_free(tier) -> int:
+    return _status(tier)["places_free"]
 
 
 def _all_roles(tier, token: dict[str, str]) -> str:
@@ -187,8 +203,15 @@ def _all_roles(tier, token: dict[str, str]) -> str:
     return ",".join(r["id"] for r in roles)
 
 
-def _answered(what: str, resp: httpx.Response) -> tuple[str, Any]:
-    """A step's request, answered as its page shows it: with rows, or a spec or schema."""
+def _answered(what: str, resp: httpx.Response, sql: str | None = None) -> tuple[str, Any]:
+    """A step's request, answered as its page shows it: with rows, or a spec or schema -- or, for a
+    step reading a materialized view outside its read window, the refusal naming that view, which
+    is what the page shows then (REQ-2066; the provisioning tour's close step)."""
+    if resp.status_code == 503 and sql is not None:
+        refused = resp.json()
+        view = refused.get("params", {}).get("view")
+        if refused.get("code") == "data.view_outside_load_window" and view and view in sql:
+            return f"{what}: refused outside {view}'s read window", None
     assert resp.status_code == 200, (what, resp.status_code, resp.text[:2000])
     body = resp.json()
     if isinstance(body, dict) and "data" in body:
@@ -254,7 +277,9 @@ class Walk:
             sent["X-Provisa-As-Recorded"] = self.as_recorded
         return sent
 
-    def send(self, what: str, method: str, path: str, body: dict | None, *, sql: bool) -> Any:
+    def send(
+        self, what: str, method: str, path: str, body: dict | None, *, sql: str | None = None
+    ) -> Any:
         # A step reading what the sandbox lands after it opens (a demo's log files, first read on
         # their first query) waits for it, as the visitor's page does.
         deadline = time.monotonic() + 300
@@ -263,17 +288,16 @@ class Walk:
                 method,
                 f"{self.tier.base_url}{path}",
                 json=body,
-                headers=self.headers(sql=sql),
+                headers=self.headers(sql=sql is not None),
                 timeout=300,
             )
             try:
-                said, answer = _answered(what, resp)
+                said, answer = _answered(what, resp, sql)
                 self.walked.append(said)
                 return answer
-            except AssertionError:
+            except AssertionError as unanswered:
                 if time.monotonic() > deadline:
-                    print(self.tier.dump_stderr_debug()[-6000:])
-                    raise
+                    raise _failed(self.tier, str(unanswered)) from unanswered
                 time.sleep(5)
 
     def run(self, directory: Path) -> list[str]:
@@ -287,24 +311,23 @@ class Walk:
             key = step["key"]
             if "sql" in step:
                 answer = self.send(
-                    f"{key} (sql)", "POST", "/data/sql", {"sql": step["sql"]}, sql=True
+                    f"{key} (sql)", "POST", "/data/sql", {"sql": step["sql"]}, sql=step["sql"]
                 )
-                self.answers[key] = answer["sql"]
+                if answer is not None:  # None: refused outside a view's read window (_answered)
+                    self.answers[key] = answer["sql"]
             if "cypher" in step:
-                self.send(
-                    f"{key} (cypher)", "POST", "/data/cypher", {"query": step["cypher"]}, sql=False
-                )
+                self.send(f"{key} (cypher)", "POST", "/data/cypher", {"query": step["cypher"]})
             if "example" in step and not _is_subscription(examples[step["example"]]):
                 query = {"query": examples[step["example"]]}
-                self.send(f"{key} (graphql)", "POST", "/data/graphql", query, sql=False)
+                self.send(f"{key} (graphql)", "POST", "/data/graphql", query)
             for kind in ("api", "jsonapi"):
                 if kind in step:
                     method, _, path = (
                         step[kind].partition(" ") if kind == "api" else ("GET", "", step[kind])
                     )
-                    self.send(f"{key} ({kind})", method, path, None, sql=False)
+                    self.send(f"{key} ({kind})", method, path, None)
         for method, path, body in _EXPLORERS:
-            self.send(path, method, path, body, sql=False)
+            self.send(path, method, path, body)
         return self.walked
 
 
@@ -336,13 +359,7 @@ def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
     deadline = time.monotonic() + CLOSE_GRACE_S + 180
     while _places_free(tier) != free:
         if time.monotonic() > deadline:
-            log = Path(os.environ.get("PROVISA_TEST_LOG_DIR", tier.directory.parent)) / (
-                f"visitor-walk-{tier.demo}-server.log"
-            )
-            log.write_text(tier.dump_stderr_debug())
-            raise AssertionError(
-                f"{tier.demo}: the closed sandbox was not deleted; server log {log}"
-            )
+            raise _failed(tier, "the closed sandbox was not deleted")
         time.sleep(10)
     gone = httpx.post(
         f"{tier.base_url}/data/sql", json={"sql": "SELECT 1"}, headers=token, timeout=60

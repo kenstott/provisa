@@ -92,7 +92,9 @@ async def _template_ready(demo: PublishedDemo) -> None:
     # Still being prepared here: its preparation (its profile runs among it, REQ-2052) is what a
     # sandbox is cloned from. A demo with no replica read as ready from its provisioning alone,
     # and its first sandbox was cloned before the template had profiled anything.
-    ready = building not in ("queued", "building")
+    # One whose preparation failed (TemplateBuilds.run) is refused too: its Test (synthetic)
+    # environments or profile runs are not there to copy, and opening it failed on the copy.
+    ready = building not in ("queued", "building", "failed")
     async with _admin_pool().acquire() as conn:
         row = (
             await conn.execute_core(

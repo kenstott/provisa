@@ -331,8 +331,8 @@ async def copy_to_sandbox(template_org: str, org_id: str, envs: list[str]) -> No
         row = await _env_row(template_org, env)
         if row["data_status"] != "ready":
             raise RuntimeError(
-                f"the {template_org} environment {env!r} is not generated ({row['data_status']}); "
-                "its sandbox cannot be given its rows"
+                f"the {template_org} environment {env!r} is not generated ({row['data_status']}: "
+                f"{row['data_error']}); its sandbox cannot be given its rows"
             )
         await _land(
             org_id,

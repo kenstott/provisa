@@ -123,10 +123,19 @@ jobs:
         env:
           DEMO: ${{ matrix.demo }}
           PROVISA_TEST_DEMO_BUNDLES_DIR: dist/demos
+          # A failed walk keeps its sandbox tier's whole server log here, uploaded below.
+          PROVISA_TEST_LOG_DIR: results/walk
         run: |
           bash scripts/ci/lanes/suite-prepare.sh
           PROVISA_LANE_TESTS="tests/integration/test_sandbox_visitor_walk.py::test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it[$DEMO]" \
             uv run python scripts/ci/run_lane.py demo_walk
+      - name: Upload the walk's server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-${{ matrix.demo }}
+          path: results/walk/
+          if-no-files-found: ignore
       - name: Cache Trino plugins
         if: always()
         uses: ./.github/actions/trino-plugins
