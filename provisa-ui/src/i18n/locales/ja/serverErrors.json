@@ -314,6 +314,7 @@
       "mv_enabled": "MV「{{mv}}」を有効にしました",
       "mv_not_found": "MV「{{mv}}」が見つかりません",
       "mv_refreshed": "MV「{{mv}}」を更新しました",
+      "mv_window_needs_calendar": "MV「{{mv}}」はカレンダーを指定していません：営業日の締めで確定するビルドにはカレンダーが必要です",
       "version_log_updated": "バージョンログ '{{mv}}' を更新しました",
       "naming_convention_set": "命名規則を「{{convention}}」に設定しました",
       "new_id_empty": "新しいIDは空にできません",

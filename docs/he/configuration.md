@@ -987,6 +987,72 @@ X-Provisa-As-Recorded: 2026-10-01T00:00:00
 
 נושאי Kafka ללא מעטפת Debezium אינם נושאים זמן commit.
 
+### תצוגות לפי לוח שנה {: #views-on-a-calendar }
+
+תצוגה ממומשת יכולה לקבל את לוח הזמנים שלה מלוח שנה: היא נבנית בסגירת כל חלון שלוח השנה נותן לה (יום עסקים, שבוע, חודש, רבעון או שנה), ותצוגה ששומרת היסטוריה מחתימה כל גרסה בזמן הסגירה הזה. תצורה מצהירה על לוחות השנה שלה תחת `calendars:`:
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| שדה | חובה | תיאור |
+| ------- | ---------- | ------------- |
+| `name` | כן | השם שתצוגה מציינת כ-`calendar` שלה |
+| `version` | כן | תווית הגרסה. לשם אחד יכולות להיות כמה גרסאות, לכל אחת חגים משלה. |
+| `base_system` | לא | `gregorian` (ברירת מחדל), `fiscal` או `retail_445` |
+| `tz` | לא | אזור הזמן IANA שבו נמצאים ימי לוח השנה (ברירת מחדל `UTC`) |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | לא | החודש והיום שבהם מתחילה שנת כספים (ברירת מחדל 1 ו-1) |
+| `retail_anchor` | לא | התאריך הראשון של שנת 4-4-5 לדוגמה; `retail_445` דורש אותו |
+| `week_start` | לא | היום שבו מתחיל שבוע, 0 = שני עד 6 = ראשון (ברירת מחדל 0) |
+| `holidays` | לא | תאריכים שאינם ימי עסקים |
+| `weekend` | לא | ימי השבוע שאינם ימי עסקים, 0 = שני (ברירת מחדל `[5, 6]`) |
+| `day_close` | לא | השעה המקומית שבה נסגר יום עסקים, `"HH:MM"`. יום D נמשך אז מסגירת היום הקודם עד סגירת D. בלעדיה יום מסתיים בחצות. הקיפו אותה במירכאות: YAML קורא `18:00` ללא מירכאות כמספר. |
+
+לוח שנה נשמר לפני הטבלאות, כך שהתצוגות שמציינות אותו מוצאות אותו. רשומה שהמוטציה `createCalendar` הייתה דוחה נדחית באותה הודעה `invalid calendar: ...`, והתצורה אינה נטענת. ייצוא המודל כותב כל לוח שנה תחת `calendars:`.
+
+תצוגה מציינת את לוח השנה שלה במפתחות האלה. רשומה תחת `tables:` מקבלת אותם בשמות `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` ו-`mv_expected_events`.
+
+| שדה | תיאור |
+| ------- | ------------- |
+| `calendar` | ה-`name` של לוח השנה |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` או `annual`; יום n בשבוע כמו `3WE` (יום רביעי השלישי) או `LFR` (יום שישי האחרון); או כלל RFC 5545 כמו `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`: חלון יומי קיים רק ביום עסקים, ולכן שום בנייה לא רצה בסוף שבוע או בחג |
+| `allowed_lateness` | שניות אחרי סגירת חלון שבהן הבנייה ממתינה לקלט שנרשם באיחור (ברירת מחדל 0) |
+| `expected_events` | הקלטים שחייבים להיות עדכניים עד סגירת החלון. אם המפתח חסר, כל קלט שהתצוגה קוראת; `[]`, אף אחד. |
+
+תצוגה שמציינת לוח שנה ששום תצורה ושום `createCalendar` לא הצהירו עליו נדחית בשמו כשלולאת האירועים מתחילה: `unknown calendar 'ledger'; registered: [...]`.
+
+**בניית יום עסקים אחד.** הארגומנט `window` של המוטציה `refreshMv`, תאריך, בונה את התצוגה חתומה בסגירת יום העסקים הזה:
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+מה שהבנייה מוסיפה מוחתם בזמן הסגירה של חלון לוח השנה לתאריך הזה, כפי שהבנייה בזמן הסגירה עצמה הייתה מחתימה אותו, ולכן קריאה כפי שנרשמה בסגירה הזו מחזירה אותו. תצוגה עם היסטוריה שנבנית כך בונה מחדש את התאריכים שהקלט שלהם השתנה מאז הבנייה האחרונה שלה, ולכן תיקון שנרשם לפני הבנייה של היום הבא נקלט לתאריך שלו. תצוגה שאינה מציינת לוח שנה נדחית (`schema.mv_window_needs_calendar`), וכך גם תאריך שאין בו חלון בלוח השנה שלה, כמו חג בגרעיניות של ימי עסקים.
+
 ### Views לקריאה בלבד {: #query-only-views }
 
 גם views עם `materialize: true` וגם עם `materialize: false` חושפים את טיפוס ה-GraphQL שלהם כלקריאה-בלבד. לא מחוללות מוטציות insert, upsert, update, או delete עבור יחסים מבוססי-`view_sql`.

@@ -85297,6 +85297,40 @@ And at 18:00 the window is 7 October's"
   - provisa-ui/src/pages/tables/__tests__/CalendarCreateModal.test.tsx
   stakeholders:
   - data-engineer
+- id: REQ-2120
+  status: complete
+  since: 2026-10
+  group: 9. Live Data & Events
+  category: Derived / MV Processor
+  feature: change-events-and-streams-calendars
+  priority: MUST
+  type: behavioral
+  description: "A config declares its calendars in a calendars: section (name and version required, then base_system, tz, fiscal_anchor_month, fiscal_anchor_day, retail_anchor, week_start, holidays, weekend and day_close), stored before the tables whose views name one and refused for exactly what the createCalendar mutation refuses; the model export writes them back. A views: entry takes a view's snapshot schedule as calendar, grain, business_day_grain, allowed_lateness and expected_events. The refreshMv mutation takes an optional window, a date: it builds a view that names a calendar sealed at that business day's close, its append stamped by the end of the calendar's window for that date (its day_close in its time zone), as the event loop's build at the close stamps it, through the same refresh. A view that names no calendar is refused by name."
+  use_case: "A bank declares its 18:00 New York close in its config and rebuilds the end-of-day report for a past business day, stamped at that day's close."
+  scenario: "Given a config declaring calendar bank, closing at 18:00 America/New_York, and a daily view naming it
+
+When the view is refreshed with window 2026-10-02 and then with window 2026-10-05
+
+Then each version is stamped at its day's close, 2026-10-02 22:00 UTC and 2026-10-05 22:00 UTC
+
+And read as recorded at 2026-10-02 22:00 UTC the view answers the first version"
+  related_reqs:
+  - REQ-962
+  - REQ-2109
+  - REQ-2111
+  code:
+  - provisa/core/models.py
+  - provisa/core/config_loader.py
+  - provisa/core/store_config.py
+  - provisa/events/calendars.py
+  - provisa/mv/refresh.py
+  - provisa/api/admin/schema_mutation.py
+  tests:
+  - tests/unit/test_config_calendars.py
+  - tests/unit/test_sealed_build.py
+  - tests/unit/test_refresh_mv_mutation.py
+  stakeholders:
+  - data-engineer
 - id: REQ-2110
   status: complete
   since: 2026-10

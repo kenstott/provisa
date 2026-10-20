@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' enabled",
       "mv_not_found": "MV '{{mv}}' not found",
       "mv_refreshed": "MV '{{mv}}' refreshed",
+      "mv_window_needs_calendar": "MV '{{mv}}' names no calendar: a build sealed at a business day's close needs one",
       "version_log_updated": "Version log '{{mv}}' updated",
       "naming_convention_set": "Naming convention set to '{{convention}}'",
       "new_id_empty": "New ID must not be empty",

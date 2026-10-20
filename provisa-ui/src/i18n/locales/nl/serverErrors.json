@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' ingeschakeld",
       "mv_not_found": "MV '{{mv}}' niet gevonden",
       "mv_refreshed": "MV '{{mv}}' vernieuwd",
+      "mv_window_needs_calendar": "MV '{{mv}}' noemt geen kalender: een build die wordt verzegeld bij het sluiten van een werkdag heeft er een nodig",
       "version_log_updated": "Versielogboek '{{mv}}' bijgewerkt",
       "naming_convention_set": "Naamgevingsconventie ingesteld op '{{convention}}'",
       "new_id_empty": "Nieuwe ID mag niet leeg zijn",

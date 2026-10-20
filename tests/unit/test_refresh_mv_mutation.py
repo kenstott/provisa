@@ -61,7 +61,7 @@ def _info(monkeypatch):
 async def test_a_failed_refresh_is_reported_with_the_views_error(view, monkeypatch):
     mv, registry = view
 
-    async def _fails(_engine, target, reg, store=None, ledger=None, full=False):
+    async def _fails(_engine, target, reg, store=None, ledger=None, full=False, window=None):
         reg.mark_refresh_failed(target.id, "relation sales.orders does not exist")
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _fails)
@@ -77,7 +77,7 @@ async def test_a_refresh_that_built_the_view_is_reported_as_refreshed(view, monk
     mv, registry = view
     mv.last_error = "an earlier failure"
 
-    async def _builds(_engine, target, reg, store=None, ledger=None, full=False):
+    async def _builds(_engine, target, reg, store=None, ledger=None, full=False, window=None):
         reg.mark_refreshed(target.id, row_count=4)
 
     monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _builds)
@@ -94,7 +94,7 @@ async def test_a_full_refresh_is_asked_of_the_refresh(view, monkeypatch):
     mv, _registry = view
     asked: list[bool] = []
 
-    async def _builds(_engine, target, reg, store=None, ledger=None, full=False):
+    async def _builds(_engine, target, reg, store=None, ledger=None, full=False, window=None):
         asked.append(full)
         reg.mark_refreshed(target.id, row_count=4)
 
@@ -129,3 +129,20 @@ async def test_a_view_refused_for_an_unreadable_input_is_reported_with_that_reas
     assert result.success is False
     assert "'sales.orders' is a row-level replicated table" in result.message
     assert result.message == mv.last_error
+
+
+async def test_a_sealed_build_of_a_view_naming_no_calendar_is_refused_by_name(view, monkeypatch):
+    """REQ-2120: ``window`` builds a view sealed at a business day's close, which its calendar
+    says; the real refresh refuses it for a view that names none, before anything is built."""
+    import datetime as dt
+
+    mv, _registry = view
+    result = await Mutation().refresh_mv(
+        _info(monkeypatch), mv_id="view-sales", window=dt.date(2026, 10, 2)
+    )
+
+    assert result.success is False
+    assert result.code == "schema.mv_window_needs_calendar"
+    assert result.params == {"mv": "view-sales"}
+    assert "MV 'view-sales' names no calendar" in result.message
+    assert mv.last_error is None  # nothing was recorded on the view

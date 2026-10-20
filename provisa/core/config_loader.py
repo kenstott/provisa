@@ -141,6 +141,12 @@ _VIEW_KEYS = {
     "region": "region",
     # REQ-1634: a view is a member of a data product as a table is.
     "product_id": "product_id",
+    # REQ-2120: a materialized view's snapshot schedule, as a table entry's mv_* keys (REQ-961/962).
+    "calendar": "mv_calendar",
+    "grain": "mv_grain",
+    "business_day_grain": "mv_business_day_grain",
+    "allowed_lateness": "mv_allowed_lateness",
+    "expected_events": "mv_expected_events",
 }
 
 
@@ -1141,6 +1147,17 @@ async def _apply_in_txn(  # REQ-012, REQ-013, REQ-016, REQ-041, REQ-250, REQ-126
             conn, gt.name, definition=gt.definition, domains=set(gt.domains)
         )
 
+    # 4.7 Calendars (REQ-2120): before the tables, whose views name one as their mv_calendar.
+    from provisa.core.repositories import calendar as calendar_repo
+    from provisa.events.calendars import calendar_of
+
+    for declared in config.calendars:
+        fields = declared.model_dump()
+        # Validated when the config was parsed (CalendarConfig); the column holds a date.
+        await calendar_repo.upsert(
+            conn, {**fields, "retail_anchor": calendar_of(fields).retail_anchor}
+        )
+
     # 5. Tables + columns
     openapi_specs = _load_openapi_specs(config)
     _validate_table_live_delivery(config)
@@ -1872,7 +1889,8 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
             "source",
             await _ids(select(sources.c.id).where(sources.c.id.not_in(sorted(SEEDED_SOURCE_IDS)))),
         ),
-        ("calendar", await _ids(select(calendars.c.name))),
+        # A calendar is removed by name, every version at once (integrity.discard).
+        ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
     for kind, idents in order:
         for ident in idents:

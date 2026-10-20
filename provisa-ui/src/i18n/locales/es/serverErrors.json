@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' habilitada",
       "mv_not_found": "No se encontró la MV '{{mv}}'",
       "mv_refreshed": "MV '{{mv}}' actualizada",
+      "mv_window_needs_calendar": "La MV '{{mv}}' no nombra ningún calendario: una compilación sellada al cierre de un día hábil necesita uno",
       "version_log_updated": "Registro de versiones '{{mv}}' actualizado",
       "naming_convention_set": "Convención de nomenclatura establecida en '{{convention}}'",
       "new_id_empty": "El nuevo ID no debe estar vacío",

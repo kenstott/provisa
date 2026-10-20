@@ -987,6 +987,72 @@ Toda view com histórico responde mais três colunas, concedidas como a sua colu
 
 Tópicos Kafka sem o envelope do Debezium não trazem hora de commit.
 
+### Views em um calendário {: #views-on-a-calendar }
+
+Uma view materializada pode tirar seu agendamento de um calendário: ela é construída no fechamento de cada janela que o calendário lhe dá (um dia útil, uma semana, um mês, um trimestre ou um ano), e uma view que guarda histórico marca cada versão com esse fechamento. Uma configuração declara seus calendários em `calendars:`:
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| Campo | Obrigatório | Descrição |
+| ------- | ---------- | ------------- |
+| `name` | Sim | O nome que uma view informa como seu `calendar` |
+| `version` | Sim | O rótulo da versão. Um nome pode ter várias versões, cada uma com seus próprios feriados. |
+| `base_system` | Não | `gregorian` (padrão), `fiscal` ou `retail_445` |
+| `tz` | Não | O fuso horário IANA em que estão os dias do calendário (padrão `UTC`) |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | Não | O mês e o dia em que começa um ano fiscal (padrão 1 e 1) |
+| `retail_anchor` | Não | A primeira data de um ano 4-4-5 de referência; `retail_445` precisa dela |
+| `week_start` | Não | O dia em que começa uma semana, 0 = segunda a 6 = domingo (padrão 0) |
+| `holidays` | Não | Datas que não são dias úteis |
+| `weekend` | Não | Os dias da semana que não são úteis, 0 = segunda (padrão `[5, 6]`) |
+| `day_close` | Não | A hora local em que um dia útil fecha, `"HH:MM"`. O dia D vai então do fechamento do dia anterior ao fechamento de D. Sem ela, um dia termina à meia-noite. Coloque-a entre aspas: o YAML lê um `18:00` sem aspas como número. |
+
+Um calendário é armazenado antes das tabelas, para que as views que o nomeiam o encontrem. Uma entrada que a mutation `createCalendar` recusaria é recusada com a mesma mensagem `invalid calendar: ...`, e a configuração não é carregada. A exportação do modelo escreve cada calendário em `calendars:`.
+
+Uma view nomeia seu calendário com estas chaves. Uma entrada em `tables:` as recebe como `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` e `mv_expected_events`.
+
+| Campo | Descrição |
+| ------- | ------------- |
+| `calendar` | O `name` do calendário |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` ou `annual`; um enésimo dia da semana como `3WE` (terceira quarta-feira) ou `LFR` (última sexta-feira); ou uma regra RFC 5545 como `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`: uma janela diária só existe em dia útil, então nenhuma construção é executada em fim de semana ou feriado |
+| `allowed_lateness` | Segundos após o fechamento de uma janela em que a construção espera pela entrada confirmada com atraso (padrão 0) |
+| `expected_events` | As entradas que precisam estar atualizadas até o fechamento da janela. Se omitido, cada entrada que a view lê; `[]`, nenhuma. |
+
+Uma view que nomeia um calendário que nenhuma configuração nem `createCalendar` declarou é recusada pelo nome quando o loop de eventos inicia: `unknown calendar 'ledger'; registered: [...]`.
+
+**Construir um dia útil.** O argumento `window` da mutation `refreshMv`, uma data, constrói a view selada no fechamento desse dia útil:
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+O que a construção acrescenta é marcado com o fechamento da janela do calendário para essa data, como a própria construção no fechamento o marcaria, de modo que uma leitura conforme registrado nesse fechamento o devolve. Uma view com histórico construída assim reconstrói as datas cuja entrada mudou desde sua última construção, de modo que uma correção registrada antes da construção do dia seguinte é captada para a sua própria data. Uma view que não nomeia nenhum calendário é recusada (`schema.mv_window_needs_calendar`), assim como uma data em que seu calendário não tem janela, como um feriado com granularidade de dias úteis.
+
 ### Views somente-consulta {: #query-only-views }
 
 Views com `materialize: true` e `materialize: false` expõem seu tipo GraphQL como somente-consulta. Nenhuma mutação de insert, upsert, update ou delete é gerada para relações apoiadas em `view_sql`.

@@ -4253,6 +4253,7 @@
   "it/serverErrors.json::serverErrors.schema.mv_enabled": "MV '{{mv}}' enabled",
   "it/serverErrors.json::serverErrors.schema.mv_not_found": "MV '{{mv}}' not found",
   "it/serverErrors.json::serverErrors.schema.mv_refreshed": "MV '{{mv}}' refreshed",
+  "it/serverErrors.json::serverErrors.schema.mv_window_needs_calendar": "MV '{{mv}}' names no calendar: a build sealed at a business day's close needs one",
   "it/serverErrors.json::serverErrors.schema.naming_convention_set": "Naming convention set to '{{convention}}'",
   "it/serverErrors.json::serverErrors.schema.new_id_empty": "New ID must not be empty",
   "it/serverErrors.json::serverErrors.schema.no_table_refs": "no recognized table references",

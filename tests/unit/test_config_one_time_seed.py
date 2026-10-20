@@ -689,6 +689,17 @@ def _everything() -> dict:
         webhooks=[{"name": "notify", "url": "http://x", "domain_id": "sales"}],
         data_products=[{"id": "core", "domain_id": "sales", "name": "Core"}],
         tags=[{"id": "finance", "description": "money"}],
+        # REQ-2120: two versions of one calendar, a retail anchor kept as a date.
+        calendars=[
+            {"name": "bank", "version": "v1", "tz": "America/New_York", "day_close": "18:00"},
+            {
+                "name": "bank",
+                "version": "v2",
+                "base_system": "retail_445",
+                "retail_anchor": "2026-02-02",
+                "holidays": ["2026-12-25"],
+            },
+        ],
         tag_assignments=[
             {"tag_id": "pii", "object_type": "table", "table_ref": "cfg.public.orders"}
         ],

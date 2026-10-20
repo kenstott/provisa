@@ -16,7 +16,7 @@ Background asyncio task that refreshes stale MVs on schedule.
 Uses the engine CTAS for initial creation, DELETE+INSERT for refresh.
 """
 
-# Requirements: REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235
+# Requirements: REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ-235, REQ-2120
 
 from __future__ import annotations
 
@@ -28,10 +28,10 @@ import logging
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 from provisa.federation.execution_auth import SystemAuth, mint_system_token
-from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl
+from provisa.mv.bitemporal import append_sql, create_sql, system_columns_ddl, system_ts_literal
 from provisa.mv.bitemporal_inherit import InheritedBuild, inherited_build
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
@@ -579,6 +579,43 @@ async def _evaluate_preflight(engine, mv: MVDefinition, select_sql: str):
     return await evaluate_streams(engine, source, inputs, ctx)
 
 
+class SealedBuildRefused(ValueError):
+    """REQ-2120: a build sealed at a business day's close asked of a view that names no
+    calendar -- the calendar is what says when that day closes."""
+
+    def __init__(self, mv_id: str) -> None:
+        self.mv_id = mv_id
+        super().__init__(
+            f"MV {mv_id!r} names no calendar: a build sealed at a business day's close needs one"
+        )
+
+
+async def _sealed_stamp(mv: MVDefinition, day: date, store) -> str:  # REQ-2120
+    """The append stamp of ``mv``'s build sealed at business day ``day``'s close: the end of its
+    calendar's window for that date (REQ-2111: the day's close in its zone), as the event loop's
+    periodic seal stamps it (``events.handlers.make_mv_bitemporal_generate``). The calendar is
+    its latest version in the model store ``store``."""
+    from provisa.core.repositories import calendar as calendar_repo
+    from provisa.events.calendars import calendar_of, window_for_date
+
+    if mv.calendar is None:
+        raise SealedBuildRefused(mv.id)
+    if mv.grain is None:
+        raise ValueError(f"MV {mv.id!r}: calendar declared without a grain")
+    if store is None:
+        raise ValueError(f"MV {mv.id!r}: a sealed build reads its calendar from the model store")
+    async with store.acquire() as conn:
+        row = await calendar_repo.get_latest(conn, mv.calendar)
+    if row is None:
+        raise ValueError(f"unknown calendar {mv.calendar!r}")
+    sealed = window_for_date(calendar_of(row), mv.grain, day, business_day=mv.business_day_grain)
+    if sealed is None:
+        raise ValueError(
+            f"MV {mv.id!r}: calendar {mv.calendar!r} has no {mv.grain} window on {day}"
+        )
+    return system_ts_literal(sealed.end)
+
+
 async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     engine,
     mv: MVDefinition,
@@ -588,12 +625,19 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     ledger=None,
     *,
     full: bool = False,
+    window: date | None = None,
 ) -> None:
     """Refresh a single MV through the engine terminal.
 
     ``full`` (REQ-2109): a view inheriting its versions ignores its watermark and rebuilds every
     valid date, its tombstones unconfined -- what a row moved between dates or a source that
     hard-deletes needs (``mv.bitemporal_inherit``). Every other view's refresh is full already.
+
+    ``window`` (REQ-2120): build the view sealed at that business day's close -- its append
+    stamped by the end of its calendar's window for that date (:func:`_sealed_stamp`), not the
+    wall clock. Refused, raised before anything is claimed or recorded, for a view that names
+    no calendar (:class:`SealedBuildRefused`), an unknown calendar, or a date its calendar has
+    no window on.
 
     First refresh: CREATE TABLE AS SELECT.
     Subsequent: DELETE FROM target; INSERT INTO target SELECT.
@@ -616,6 +660,9 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
     REQ-877, REQ-1922: ``ledger`` is the org region's STATE store, which holds the row-delta
     ledger; ``store`` is its MODEL store, which holds the view's catalog row."""
     from provisa.mv.input_signals import gather_input_signals, input_token  # noqa: PLC0415
+
+    # REQ-2120: the seal of a build for a business day; None = the wall clock at each append.
+    system_ts = await _sealed_stamp(mv, window, store) if window is not None else None
 
     # A view is built only from inputs the engine reads whole (provisa/mv/readable_inputs.py). A
     # view saved while its inputs were readable can stop being so (a table switched to row-level
@@ -814,7 +861,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 engine, mv, ledger, target, table_exists=table_exists, authorization=authorization
             )
             plan = (
-                _bitemporal_plan(mv, target, _now_ts_literal(), inherited)
+                _bitemporal_plan(mv, target, system_ts or _now_ts_literal(), inherited)
                 if mv.bitemporal is not None
                 else _replace_plan(mv, target)
             )
@@ -855,6 +902,7 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                     select_sql,
                     table_exists,
                     existing_cols,
+                    system_ts=system_ts,
                     authorization=authorization,
                     inherited=inherited,
                 )

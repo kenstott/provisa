@@ -987,6 +987,72 @@ Every view with history answers three more columns, granted as its source-time c
 
 Kafka topics without a Debezium envelope carry no commit time.
 
+### Views on a calendar
+
+A materialized view can take its schedule from a calendar: it is built at the close of each window the calendar gives it, a business day, week, month, quarter or year, and a view that keeps history stamps each version with that close. A config declares its calendars under `calendars:`:
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| Field | Required | Description |
+| ------- | ---------- | ------------- |
+| `name` | Yes | The name a view gives as its `calendar` |
+| `version` | Yes | The version label. One name can hold several versions, each with its own holidays. |
+| `base_system` | No | `gregorian` (default), `fiscal` or `retail_445` |
+| `tz` | No | The IANA time zone the calendar's days are in (default `UTC`) |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | No | The month and day a fiscal year starts (default 1 and 1) |
+| `retail_anchor` | No | The first date of a reference 4-4-5 year; `retail_445` needs it |
+| `week_start` | No | The day a week starts, 0 = Monday to 6 = Sunday (default 0) |
+| `holidays` | No | Dates that are not business days |
+| `weekend` | No | The weekdays that are not business days, 0 = Monday (default `[5, 6]`) |
+| `day_close` | No | The local time a business day closes, `"HH:MM"`. Day D then runs from the close of the day before to D's close. Without it a day ends at midnight. Quote it: YAML reads an unquoted `18:00` as a number. |
+
+A calendar is stored before the tables, so the views that name it find it. An entry the `createCalendar` mutation would refuse is refused with the same `invalid calendar: ...` message, and the config is not loaded. The model export writes every calendar under `calendars:`.
+
+A view names its calendar with these keys. An entry under `tables:` takes them as `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` and `mv_expected_events`.
+
+| Field | Description |
+| ------- | ------------- |
+| `calendar` | The calendar's `name` |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` or `annual`; an nth weekday such as `3WE` (third Wednesday) or `LFR` (last Friday); or an RFC 5545 rule such as `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`: a daily window exists only on a business day, so no build runs on a weekend or holiday |
+| `allowed_lateness` | Seconds past a window's close the build waits for input committed late (default 0) |
+| `expected_events` | The inputs that must be fresh through the window's close. Omitted, every input the view reads; `[]`, none. |
+
+A view naming a calendar that no config or `createCalendar` declared is refused by name when the event loop starts: `unknown calendar 'ledger'; registered: [...]`.
+
+**Building one business day.** The `refreshMv` mutation's `window` argument, a date, builds the view sealed at that business day's close:
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+What the build appends is stamped with the close of the calendar's window for that date, as the build at the close itself would stamp it, so a read as recorded at that close answers it. A view with history built this way rebuilds the dates its input changed since its last build, so a correction recorded before the next day's build is picked up for its own date. A view that names no calendar is refused (`schema.mv_window_needs_calendar`), and so is a date its calendar has no window on, such as a holiday on a business-day grain.
+
 ### Query-only views
 
 Both `materialize: true` and `materialize: false` views expose their GraphQL type as query-only. No insert, upsert, update, or delete mutations are generated for `view_sql`-backed relations.

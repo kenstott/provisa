@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' abilitata",
       "mv_not_found": "MV '{{mv}}' non trovata",
       "mv_refreshed": "MV '{{mv}}' aggiornata",
+      "mv_window_needs_calendar": "La MV '{{mv}}' non indica alcun calendario: una build sigillata alla chiusura di un giorno lavorativo ne richiede uno",
       "version_log_updated": "Registro delle versioni '{{mv}}' aggiornato",
       "naming_convention_set": "Convenzione di denominazione impostata su '{{convention}}'",
       "new_id_empty": "Il nuovo ID non deve essere vuoto",

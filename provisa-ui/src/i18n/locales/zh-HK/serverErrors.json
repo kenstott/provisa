@@ -314,6 +314,7 @@
       "mv_enabled": "具體化檢視「{{mv}}」已啟用",
       "mv_not_found": "找不到具體化檢視「{{mv}}」",
       "mv_refreshed": "具體化檢視「{{mv}}」已重新整理",
+      "mv_window_needs_calendar": "具體化檢視「{{mv}}」未指定行事曆：於營業日結束時封存的建置需要行事曆",
       "version_log_updated": "版本日誌 '{{mv}}' 已更新",
       "naming_convention_set": "命名慣例已設為「{{convention}}」",
       "new_id_empty": "新 ID 不可為空",

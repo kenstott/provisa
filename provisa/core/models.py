@@ -15,6 +15,7 @@
 # REQ-250, REQ-251, REQ-281, REQ-369, REQ-370, REQ-393, REQ-399, REQ-400, REQ-415, REQ-419, REQ-421
 
 import re
+from datetime import date
 from enum import Enum
 from typing import Any, Literal
 
@@ -623,6 +624,43 @@ def split_tag_id(tag_id: str) -> tuple[str, str | None]:
 def base_tag_id(tag_id: str) -> str:
     """The registry id an assigned tag id refers to, parameter stripped."""
     return split_tag_id(tag_id)[0]
+
+
+class CalendarConfig(BaseModel):  # REQ-962, REQ-2120
+    """A named, versioned calendar a config declares (``calendars:``): the ``calendars`` table's
+    columns, as the ``createCalendar`` mutation takes them. A view names it as ``mv_calendar``."""
+
+    name: str
+    version: str
+    base_system: str = "gregorian"
+    tz: str = "UTC"
+    fiscal_anchor_month: int = 1
+    fiscal_anchor_day: int = 1
+    retail_anchor: str | None = None
+    week_start: int = 0
+    holidays: list[str] = Field(default_factory=list)
+    weekend: list[int] = Field(default_factory=lambda: [5, 6])
+    day_close: str | None = None  # REQ-2111: "HH:MM", None = midnight
+
+    @field_validator("retail_anchor", mode="before")
+    @classmethod
+    def _anchor_as_text(cls, v: Any) -> Any:
+        # YAML reads an unquoted date as a date; the column's text form is its ISO date.
+        return v.isoformat() if isinstance(v, date) else v
+
+    @field_validator("holidays", mode="before")
+    @classmethod
+    def _holidays_as_text(cls, v: Any) -> Any:
+        if isinstance(v, list):
+            return [d.isoformat() if isinstance(d, date) else d for d in v]
+        return v
+
+    @model_validator(mode="after")
+    def _defines_a_calendar(self) -> "CalendarConfig":
+        from provisa.events.calendars import calendar_of
+
+        calendar_of(self.model_dump())  # the mutation's own validation (raises InvalidCalendar)
+        return self
 
 
 class Tag(BaseModel):  # REQ-1373, REQ-1375
@@ -2975,6 +3013,7 @@ class ProvisaConfig(BaseModel):
     sources: list[Source]
     domains: list[Domain]
     tags: list[Tag] = Field(default_factory=list)  # REQ-1373
+    calendars: list[CalendarConfig] = Field(default_factory=list)  # REQ-2120
     tag_assignments: list[TagAssignment] = Field(default_factory=list)  # REQ-1377
     naming: NamingConfig = Field(default_factory=NamingConfig)
     tables: list[Table]

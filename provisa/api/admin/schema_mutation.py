@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import date
 from provisa.compiler.naming import SqlAddressTaken
 from typing import TYPE_CHECKING, Any, Optional, cast
 
@@ -1809,52 +1810,36 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         the in-memory Calendar (fails loud on a bad base_system/tz/anchor) before it is persisted; a
         rebuild reloads the registry so a periodic MV can resolve it."""
         require_capability(info, "table_registration")
-        from datetime import date, time
-
         from provisa.core.repositories import calendar as calendar_repo
-        from provisa.events.calendars import BaseSystem, Calendar
+        from provisa.events.calendars import InvalidCalendar, calendar_of
 
+        fields = {
+            "name": input.name,
+            "version": input.version,
+            "base_system": input.base_system,
+            "tz": input.tz,
+            "fiscal_anchor_month": input.fiscal_anchor_month,
+            "fiscal_anchor_day": input.fiscal_anchor_day,
+            "retail_anchor": input.retail_anchor,
+            "week_start": input.week_start,
+            "holidays": input.holidays,
+            "weekend": input.weekend,
+            "day_close": input.day_close or None,
+        }
         try:
-            Calendar(  # validation only — raises on an unknown base_system / bad tz
-                name=input.name,
-                version=input.version,
-                base_system=BaseSystem(input.base_system),
-                tz=input.tz,
-                fiscal_anchor=(input.fiscal_anchor_month, input.fiscal_anchor_day),
-                retail_anchor=date.fromisoformat(input.retail_anchor)
-                if input.retail_anchor
-                else None,
-                week_start=input.week_start,
-                holidays=frozenset(date.fromisoformat(d) for d in input.holidays),
-                weekend=frozenset(input.weekend),
-                day_close=time.fromisoformat(input.day_close) if input.day_close else None,
-            )
-        except (ValueError, KeyError) as e:
+            # REQ-2120: the one validation every surface declaring a calendar applies.
+            cal = calendar_of(fields)
+        except InvalidCalendar as e:
             return MutationResult(
                 success=False,
-                message=f"invalid calendar: {e}",
+                message=str(e),
                 code="schema.invalid_calendar",
-                params={"error": str(e)},
+                params={"error": e.reason},
             )
         pool = await _get_pool()
         async with pool.acquire() as conn:
             await calendar_repo.upsert(
-                cast("Connection", conn),
-                {
-                    "name": input.name,
-                    "version": input.version,
-                    "base_system": input.base_system,
-                    "tz": input.tz,
-                    "fiscal_anchor_month": input.fiscal_anchor_month,
-                    "fiscal_anchor_day": input.fiscal_anchor_day,
-                    "retail_anchor": date.fromisoformat(input.retail_anchor)
-                    if input.retail_anchor
-                    else None,
-                    "week_start": input.week_start,
-                    "holidays": input.holidays,
-                    "weekend": input.weekend,
-                    "day_close": input.day_close or None,
-                },
+                cast("Connection", conn), {**fields, "retail_anchor": cal.retail_anchor}
             )
         return MutationResult(
             success=True,
@@ -5104,10 +5089,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def refresh_mv(
-        self, info: StrawberryInfo, mv_id: str, full: bool = False
-    ) -> MutationResult:  # REQ-133, REQ-158, REQ-2109
+        self,
+        info: StrawberryInfo,
+        mv_id: str,
+        full: bool = False,
+        window: Optional[date] = None,
+    ) -> MutationResult:  # REQ-133, REQ-158, REQ-2109, REQ-2120
         """Trigger a manual refresh of a materialized view. ``full`` rebuilds every valid date of
-        a view inheriting its versions, ignoring its watermark (REQ-2109)."""
+        a view inheriting its versions, ignoring its watermark (REQ-2109). ``window`` builds the
+        view sealed at that business day's close, by the calendar it names (REQ-2120)."""
         require_capability(info, "table_registration")
         from provisa.api.app import state
 
@@ -5119,9 +5109,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.mv_not_found",
                 params={"mv": mv_id},
             )
-        try:
-            from provisa.mv.refresh import refresh_failure, refresh_mv
+        from provisa.mv.refresh import SealedBuildRefused, refresh_failure, refresh_mv
 
+        try:
             assert state.federation_engine is not None
             # REQ-879: coordinate the refresh across the fleet via the shared control-plane catalog.
             await refresh_mv(
@@ -5131,6 +5121,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 store=state.model_db,
                 ledger=state.tenant_db,
                 full=full,
+                window=window,
             )
             # refresh_mv records a failed refresh on the view and returns (it runs on the
             # scheduler too, where there is nobody to raise to). The mutation answers the
@@ -5143,6 +5134,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=True,
                 message=f"MV {mv_id!r} refreshed",
                 code="schema.mv_refreshed",
+                params={"mv": mv_id},
+            )
+        except SealedBuildRefused as refused:  # REQ-2120
+            return MutationResult(
+                success=False,
+                message=str(refused),
+                code="schema.mv_window_needs_calendar",
                 params={"mv": mv_id},
             )
         except Exception as e:

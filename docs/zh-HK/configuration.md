@@ -987,6 +987,72 @@ X-Provisa-As-Recorded: 2026-10-01T00:00:00
 
 沒有 Debezium 封裝的 Kafka 主題不攜帶提交時間。
 
+### 按行事曆建置嘅檢視 {: #views-on-a-calendar }
+
+具體化檢視可以由行事曆攞到佢嘅排程：佢喺行事曆畀佢嘅每個窗口（一個營業日、一星期、一個月、一季或一年）結束時建置，保留歷史嘅檢視會用嗰個結束時間為每個版本加上時間戳記。設定檔喺 `calendars:` 下宣告佢嘅行事曆：
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| 欄位 | 必填 | 描述 |
+| ------- | ---------- | ------------- |
+| `name` | 是 | 檢視作為佢嘅 `calendar` 指定嘅名稱 |
+| `version` | 是 | 版本標籤。一個名稱可以有多個版本，每個版本有自己嘅假期。 |
+| `base_system` | 否 | `gregorian`（預設）、`fiscal` 或 `retail_445` |
+| `tz` | 否 | 行事曆入面各日所在嘅 IANA 時區（預設 `UTC`） |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | 否 | 財政年度開始嘅月份同日子（預設 1 同 1） |
+| `retail_anchor` | 否 | 參考 4-4-5 年嘅第一日；`retail_445` 需要佢 |
+| `week_start` | 否 | 一星期開始嘅日子，0 = 星期一至 6 = 星期日（預設 0） |
+| `holidays` | 否 | 唔係營業日嘅日期 |
+| `weekend` | 否 | 唔係營業日嘅星期幾，0 = 星期一（預設 `[5, 6]`） |
+| `day_close` | 否 | 營業日結束嘅本地時間，`"HH:MM"`。第 D 日於是由前一日結束時持續到 D 結束時。冇設定嘅話，一日喺午夜結束。請加引號：YAML 會將冇引號嘅 `18:00` 讀成數字。 |
+
+行事曆會喺資料表之前儲存，所以指定佢嘅檢視搵得到佢。`createCalendar` 變更會拒絕嘅項目，會以同一個 `invalid calendar: ...` 訊息被拒絕，設定檔唔會載入。模型匯出會將每個行事曆寫喺 `calendars:` 下。
+
+檢視用以下鍵指定佢嘅行事曆。`tables:` 下嘅項目以 `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` 同 `mv_expected_events` 接受佢哋。
+
+| 欄位 | 描述 |
+| ------- | ------------- |
+| `calendar` | 行事曆嘅 `name` |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` 或 `annual`；第 n 個星期幾，例如 `3WE`（第三個星期三）或 `LFR`（最後一個星期五）；或者 RFC 5545 規則，例如 `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`：每日窗口只喺營業日存在，所以週末或假期唔會執行建置 |
+| `allowed_lateness` | 窗口結束後建置等候延遲提交嘅輸入嘅秒數（預設 0） |
+| `expected_events` | 必須喺窗口結束前保持新鮮嘅輸入。省略時係檢視讀取嘅每個輸入；`[]` 即係冇。 |
+
+指定咗一個任何設定檔或 `createCalendar` 都冇宣告嘅行事曆嘅檢視，會喺事件迴圈啟動時按名稱被拒絕：`unknown calendar 'ledger'; registered: [...]`。
+
+**建置一個營業日。** `refreshMv` 變更嘅 `window` 引數（一個日期）會建置喺嗰個營業日結束時封存嘅檢視：
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+建置追加嘅內容會以嗰個日期嘅行事曆窗口結束時間加上時間戳記，同喺結束時執行嘅建置本身所加嘅一樣，所以按嗰個結束時間嘅記錄狀態讀取會返回佢。咁樣建置嘅帶歷史檢視，會重建自上次建置以來輸入有變嘅日期，所以喺下一日建置之前記錄嘅更正會按佢自己嘅日期被採納。冇指定行事曆嘅檢視會被拒絕（`schema.mv_window_needs_calendar`），佢嘅行事曆喺某個日期冇窗口時（例如營業日粒度下嘅假期）亦會被拒絕。
+
 ### 僅供查詢的檢視 {: #query-only-views }
 
 `materialize: true` 與 `materialize: false` 的檢視都以僅供查詢的方式公開其 GraphQL 類型。以 `view_sql` 為底的關聯不會產生 insert、upsert、update 或 delete 變更操作。

@@ -987,6 +987,72 @@ Toute vue avec historique renvoie trois colonnes supplémentaires, accordées co
 
 Les topics Kafka sans enveloppe Debezium ne portent pas d'heure de validation.
 
+### Vues sur un calendrier {: #views-on-a-calendar }
+
+Une vue matérialisée peut tirer son planning d'un calendrier : elle est construite à la clôture de chaque fenêtre que le calendrier lui donne (un jour ouvré, une semaine, un mois, un trimestre ou une année), et une vue qui conserve un historique horodate chaque version de cette clôture. Une configuration déclare ses calendriers sous `calendars:` :
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| Champ | Requis | Description |
+| ------- | ---------- | ------------- |
+| `name` | Oui | Le nom qu'une vue donne comme son `calendar` |
+| `version` | Oui | Le libellé de version. Un même nom peut avoir plusieurs versions, chacune avec ses propres jours fériés. |
+| `base_system` | Non | `gregorian` (par défaut), `fiscal` ou `retail_445` |
+| `tz` | Non | Le fuseau horaire IANA des jours du calendrier (par défaut `UTC`) |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | Non | Le mois et le jour où commence un exercice fiscal (par défaut 1 et 1) |
+| `retail_anchor` | Non | La première date d'une année 4-4-5 de référence ; `retail_445` l'exige |
+| `week_start` | Non | Le jour où commence une semaine, 0 = lundi à 6 = dimanche (par défaut 0) |
+| `holidays` | Non | Les dates qui ne sont pas des jours ouvrés |
+| `weekend` | Non | Les jours de la semaine qui ne sont pas ouvrés, 0 = lundi (par défaut `[5, 6]`) |
+| `day_close` | Non | L'heure locale à laquelle un jour ouvré se clôture, `"HH:MM"`. Le jour J court alors de la clôture de la veille à celle de J. Sans elle, un jour se termine à minuit. Mettez-la entre guillemets : YAML lit un `18:00` sans guillemets comme un nombre. |
+
+Un calendrier est enregistré avant les tables, de sorte que les vues qui le nomment le trouvent. Une entrée que la mutation `createCalendar` refuserait est refusée avec le même message `invalid calendar: ...`, et la configuration n'est pas chargée. L'export du modèle écrit chaque calendrier sous `calendars:`.
+
+Une vue nomme son calendrier avec ces clés. Une entrée sous `tables:` les prend sous les noms `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` et `mv_expected_events`.
+
+| Champ | Description |
+| ------- | ------------- |
+| `calendar` | Le `name` du calendrier |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` ou `annual` ; un n-ième jour de la semaine comme `3WE` (troisième mercredi) ou `LFR` (dernier vendredi) ; ou une règle RFC 5545 comme `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true` : une fenêtre quotidienne n'existe qu'un jour ouvré, si bien qu'aucune construction ne s'exécute un week-end ou un jour férié |
+| `allowed_lateness` | Secondes après la clôture d'une fenêtre pendant lesquelles la construction attend les entrées validées en retard (par défaut 0) |
+| `expected_events` | Les entrées qui doivent être à jour jusqu'à la clôture de la fenêtre. Omis, chaque entrée que lit la vue ; `[]`, aucune. |
+
+Une vue qui nomme un calendrier qu'aucune configuration ni `createCalendar` n'a déclaré est refusée par son nom au démarrage de la boucle d'événements : `unknown calendar 'ledger'; registered: [...]`.
+
+**Construire un jour ouvré.** L'argument `window` de la mutation `refreshMv`, une date, construit la vue scellée à la clôture de ce jour ouvré :
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+Ce que la construction ajoute est horodaté de la clôture de la fenêtre du calendrier pour cette date, comme la construction à la clôture elle-même l'horodaterait ; une lecture telle qu'enregistrée à cette clôture le renvoie donc. Une vue avec historique construite ainsi reconstruit les dates dont l'entrée a changé depuis sa dernière construction, de sorte qu'une correction enregistrée avant la construction du jour suivant est prise en compte pour sa propre date. Une vue qui ne nomme aucun calendrier est refusée (`schema.mv_window_needs_calendar`), de même qu'une date où son calendrier n'a pas de fenêtre, comme un jour férié avec une granularité en jours ouvrés.
+
 ### Vues en lecture seule {: #query-only-views }
 
 Les vues, qu'elles soient `materialize: true` ou `materialize: false`, exposent leur type GraphQL en lecture seule. Aucune mutation d'insertion, d'upsert, de mise à jour ou de suppression n'est générée pour les relations adossées à `view_sql`.

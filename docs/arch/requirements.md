@@ -25560,6 +25560,18 @@ A calendar can declare the local time its day closes at, in its time zone (an 18
 
 **Tests:** `tests/unit/test_live_temporal.py`, `tests/unit/test_calendar_repo.py`, `provisa-ui/src/pages/tables/__tests__/CalendarCreateModal.test.tsx`
 
+### REQ-2120 · Derived / MV Processor {#REQ-2120}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A config declares its calendars in a calendars: section (name and version required, then base_system, tz, fiscal_anchor_month, fiscal_anchor_day, retail_anchor, week_start, holidays, weekend and day_close), stored before the tables whose views name one and refused for exactly what the createCalendar mutation refuses; the model export writes them back. A views: entry takes a view's snapshot schedule as calendar, grain, business_day_grain, allowed_lateness and expected_events. The refreshMv mutation takes an optional window, a date: it builds a view that names a calendar sealed at that business day's close, its append stamped by the end of the calendar's window for that date (its day_close in its time zone), as the event loop's build at the close stamps it, through the same refresh. A view that names no calendar is refused by name.
+
+**Use case:** A bank declares its 18:00 New York close in its config and rebuilds the end-of-day report for a past business day, stamped at that day's close.
+
+**Code:** `provisa/core/models.py`, `provisa/core/config_loader.py`, `provisa/core/store_config.py`, `provisa/events/calendars.py`, `provisa/mv/refresh.py`, `provisa/api/admin/schema_mutation.py`
+
+**Tests:** `tests/unit/test_config_calendars.py`, `tests/unit/test_sealed_build.py`, `tests/unit/test_refresh_mv_mutation.py`
+
 ## 4. Source Connectors
 
 ### REQ-2110 · Materialization Store {#REQ-2110}

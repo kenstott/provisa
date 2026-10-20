@@ -987,6 +987,72 @@ X-Provisa-As-Recorded: 2026-10-01T00:00:00
 
 没有 Debezium 信封的 Kafka 主题不携带提交时间。
 
+### 按日历构建的视图 {: #views-on-a-calendar }
+
+物化视图可以从日历获取其计划：它在日历给出的每个窗口（一个营业日、一周、一个月、一个季度或一年）结束时构建，保留历史的视图会用该结束时间为每个版本加盖时间戳。配置在 `calendars:` 下声明其日历：
+
+```yaml
+calendars:
+  - name: bank
+    version: v1
+    tz: America/New_York
+    day_close: "18:00"
+    holidays: [2026-11-26, 2026-12-25]
+
+views:
+  - id: daily-totals
+    sql: |
+      SELECT store, business_date, SUM(amount) AS total
+      FROM fin.payments
+      GROUP BY store, business_date
+    domain_id: finance
+    materialize: true
+    calendar: bank
+    grain: daily
+    business_day_grain: true
+    columns:
+      - {name: store, visible_to: [analyst]}
+      - {name: business_date, visible_to: [analyst]}
+      - {name: total, visible_to: [analyst]}
+```
+
+| 字段 | 是否必需 | 说明 |
+| ------- | ---------- | ------------- |
+| `name` | 是 | 视图作为其 `calendar` 给出的名称 |
+| `version` | 是 | 版本标签。一个名称可以有多个版本，每个版本有各自的节假日。 |
+| `base_system` | 否 | `gregorian`（默认）、`fiscal` 或 `retail_445` |
+| `tz` | 否 | 日历中各天所在的 IANA 时区（默认 `UTC`） |
+| `fiscal_anchor_month`, `fiscal_anchor_day` | 否 | 财年开始的月份和日期（默认 1 和 1） |
+| `retail_anchor` | 否 | 参考 4-4-5 年的第一天；`retail_445` 需要它 |
+| `week_start` | 否 | 一周开始的日子，0 = 星期一到 6 = 星期日（默认 0） |
+| `holidays` | 否 | 不是营业日的日期 |
+| `weekend` | 否 | 不是营业日的星期几，0 = 星期一（默认 `[5, 6]`） |
+| `day_close` | 否 | 营业日结束的本地时间，`"HH:MM"`。第 D 天于是从前一天结束时持续到 D 结束时。不设置时，一天在午夜结束。请加引号：YAML 会把不带引号的 `18:00` 读成数字。 |
+
+日历先于表存储，因此引用它的视图能找到它。`createCalendar` 变更会拒绝的条目，会以同样的 `invalid calendar: ...` 消息被拒绝，配置不会加载。模型导出会把每个日历写在 `calendars:` 下。
+
+视图用以下键指定其日历。`tables:` 下的条目以 `mv_calendar`, `mv_grain`, `mv_business_day_grain`, `mv_allowed_lateness` 和 `mv_expected_events` 接受它们。
+
+| 字段 | 说明 |
+| ------- | ------------- |
+| `calendar` | 日历的 `name` |
+| `grain` | `daily`, `weekly`, `monthly`, `quarterly` 或 `annual`；第 n 个星期几，例如 `3WE`（第三个星期三）或 `LFR`（最后一个星期五）；或 RFC 5545 规则，例如 `FREQ=WEEKLY;INTERVAL=2;BYDAY=MO` |
+| `business_day_grain` | `true`：每日窗口只在营业日存在，因此周末或节假日不运行构建 |
+| `allowed_lateness` | 窗口结束后构建等待延迟提交的输入的秒数（默认 0） |
+| `expected_events` | 必须在窗口结束前保持新鲜的输入。省略时为视图读取的每个输入；`[]` 表示没有。 |
+
+引用了任何配置或 `createCalendar` 都未声明的日历的视图，会在事件循环启动时按名称被拒绝：`unknown calendar 'ledger'; registered: [...]`。
+
+**构建一个营业日。** `refreshMv` 变更的 `window` 参数（一个日期）会构建在该营业日结束时封存的视图：
+
+```graphql
+mutation {
+  refreshMv(mvId: "daily-totals", window: "2026-10-02") { success message code }
+}
+```
+
+构建追加的内容会以该日期的日历窗口结束时间加盖时间戳，与在结束时运行的构建本身所加的相同，因此按该结束时间的记录状态读取会返回它。以这种方式构建的带历史的视图，会重建自上次构建以来输入发生变化的日期，因此在下一天构建之前记录的更正会按其自身日期被采纳。未指定日历的视图会被拒绝（`schema.mv_window_needs_calendar`），其日历在某个日期没有窗口时（例如营业日粒度下的节假日）也会被拒绝。
+
 ### 只读查询视图 {: #query-only-views }
 
 无论 `materialize: true` 还是 `materialize: false`，视图暴露的 GraphQL 类型都是只读查询的。不会为 `view_sql` 支撑的关系生成 insert、upsert、update 或 delete 变更（Mutation）。
