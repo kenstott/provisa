@@ -129,12 +129,11 @@ _VIEW_KEYS = {
     # REQ-2009: a view offers the GraphQL Aggregate and GroupBy root fields as a table does.
     "enable_aggregates": "enable_aggregates",
     "enable_group_by": "enable_group_by",
-    # REQ-1162: a materialized view keeps every version of its rows, appended (snapshot | delta),
-    # keyed on its business identity.
-    "bitemporal_mode": "mv_bitemporal_mode",
-    "bitemporal_key": "mv_bitemporal_key",
-    # REQ-1163: the column holding the source's change time, the clock its time travel reads on.
-    "bitemporal_source_time": "mv_bitemporal_source_time",
+    # REQ-2109: the bitemporal declaration -- business key, valid time and recorded time, all
+    # three or none; a materialized view declaring them keeps every version of its rows.
+    "business_key": "business_key",
+    "valid_time": "valid_time",
+    "recorded_time": "recorded_time",
     # REQ-2066: a materialized view's load management window, when consumers may read it.
     "off_peak_window": "off_peak_window",
     "off_peak_tz": "off_peak_tz",
@@ -238,14 +237,14 @@ def views_as_tables(raw: dict) -> dict:
             "table": f"view_{view['id'].replace('-', '_')}",
         }
         entry.update({_VIEW_KEYS[k]: v for k, v in view.items() if k in _VIEW_KEYS})
-        if entry.get("mv_bitemporal_mode") and entry.get("columns"):
+        if entry.get("business_key") and entry.get("columns"):
             # REQ-2064: a bitemporal view answers each version's times beside its own columns.
             from provisa.mv.bitemporal import with_read_columns
 
             entry["columns"] = with_read_columns(
                 entry["columns"],
-                list(entry.get("mv_bitemporal_key") or []),
-                entry.get("mv_bitemporal_source_time"),
+                list(entry["business_key"]),
+                entry.get("recorded_time"),
             )
         tables.append(entry)
     return raw

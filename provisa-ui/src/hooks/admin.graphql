@@ -283,9 +283,9 @@ query TablesQuery {
     pushDebounceMaxDelay
     mvConsistency
     mvPreprocess
-    mvBitemporalMode
-    mvBitemporalKey
-    mvBitemporalSourceTime
+    businessKey
+    validTime
+    recordedTime
     mvPersist
     mvPrimaryKey
     mvIncremental

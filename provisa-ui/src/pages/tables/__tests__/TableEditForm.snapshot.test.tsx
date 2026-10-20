@@ -65,8 +65,9 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pushDebounceMaxDelay: 5,
     mvConsistency: "shared",
     mvPreprocess: null,
-    mvBitemporalMode: null,
-    mvBitemporalKey: [],
+    businessKey: [],
+    validTime: null,
+    recordedTime: null,
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
@@ -172,20 +173,34 @@ describe("TableEditForm — Snapshot Schedule panel (REQ-962/1168)", () => {
     expect(screen.queryByTestId("mv-snapshot-panel")).not.toBeInTheDocument();
   });
 
-  it("time-travel toggle switches Store As into history (delta) mode", () => {
-    // off by default → turning it on defaults the store mode to delta (append revisions)
-    const setEditingTable = vi.fn();
-    renderForm(makeTable(), setEditingTable);
+  it("time-travel toggle offers the three history fields in place of Store As", () => {
+    // REQ-2109: off by default; turning it on shows the business key, valid time and recorded time.
+    renderForm(makeTable());
+    expect(screen.getByTestId("mv-persist")).toBeInTheDocument();
+    expect(screen.queryByTestId("business-key")).toBeNull();
     fireEvent.click(screen.getByRole("checkbox", { name: /time travel/i }));
-    expect(setEditingTable).toHaveBeenCalledWith(
-      expect.objectContaining({ mvBitemporalMode: "delta" }),
-    );
+    expect(screen.getByTestId("business-key")).toBeInTheDocument();
+    expect(screen.getByTestId("valid-time")).toBeInTheDocument();
+    expect(screen.getByTestId("recorded-time")).toBeInTheDocument();
+    expect(screen.queryByTestId("mv-persist")).toBeNull();
   });
 
-  it("reflects a set bitemporal mode as time-travel on, with a history key field", () => {
-    renderForm(makeTable({ mvBitemporalMode: "snapshot" }));
+  it("reflects a declared business key as time-travel on, with the history fields", () => {
+    renderForm(makeTable({ businessKey: ["id"], validTime: "booked_at", recordedTime: "ts" }));
     expect(screen.getByRole("checkbox", { name: /time travel/i })).toBeChecked();
-    expect(screen.getByTestId("mv-bitemporal-key")).toBeInTheDocument();
+    expect(screen.getByTestId("business-key")).toBeInTheDocument();
+  });
+
+  it("turning time travel off clears the three", () => {
+    const setEditingTable = vi.fn();
+    renderForm(
+      makeTable({ businessKey: ["id"], validTime: "booked_at", recordedTime: "ts" }),
+      setEditingTable,
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: /time travel/i }));
+    expect(setEditingTable).toHaveBeenCalledWith(
+      expect.objectContaining({ businessKey: [], validTime: null, recordedTime: null }),
+    );
   });
 
   it("opens the new-calendar modal from the picker's + button", async () => {

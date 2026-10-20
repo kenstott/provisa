@@ -45,9 +45,9 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     pushDebounceMaxDelay: t.pushDebounceMaxDelay,
     mvConsistency: t.mvConsistency,
     mvPreprocess: t.mvPreprocess || null, // REQ-957
-    mvBitemporalMode: t.mvBitemporalMode || null, // REQ-1162
-    mvBitemporalKey: t.mvBitemporalKey, // REQ-1162
-    mvBitemporalSourceTime: t.mvBitemporalSourceTime ?? null, // REQ-1163
+    businessKey: t.businessKey, // REQ-2109
+    validTime: t.validTime, // REQ-2109
+    recordedTime: t.recordedTime, // REQ-2109
     mvPersist: t.mvPersist, // REQ-965
     // REQ-970: the MV row-identity key IS the table Primary Key — derive it from the per-column
     // PK checkboxes (single source of truth), not a separate field.

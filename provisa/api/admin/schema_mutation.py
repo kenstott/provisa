@@ -1449,12 +1449,12 @@ def _validate_source_load_management(input: SourceInput) -> "MutationResult | No
 def _snapshot_load_protection_conflict(
     load_protected: bool | None,
     off_peak_window: str | None,
-    mv_bitemporal_mode: str | None,
+    business_key: list[str] | None,
 ) -> bool:  # REQ-1170
     """True when load protection (off-peak window) AND snapshotting are both configured on one
     table — their timing can fight (a snapshot boundary may fall outside the off-peak window), so
     the caller emits a WARNING (not a block)."""
-    return bool((load_protected or off_peak_window) and mv_bitemporal_mode)
+    return bool((load_protected or off_peak_window) and business_key)
 
 
 def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | None":  # REQ-1141
@@ -3485,9 +3485,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     debounce_max_delay=input.mv_debounce_max_delay,  # REQ-963
                     consistency=input.mv_consistency,  # REQ-879
                     preprocess=input.mv_preprocess,  # REQ-957
-                    bitemporal_mode=input.mv_bitemporal_mode,  # REQ-1162
-                    bitemporal_key=list(input.mv_bitemporal_key),  # REQ-1162
-                    bitemporal_source_time=input.mv_bitemporal_source_time,  # REQ-1163
+                    business_key=list(input.business_key),  # REQ-2109
+                    recorded_time=input.recorded_time,  # REQ-2109
                     bitemporal_columns=[c.name for c in model.columns],
                     persist=input.mv_persist,  # REQ-965
                     primary_key=list(input.mv_primary_key),  # REQ-970
@@ -4784,7 +4783,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.cache_ttl,
                     registered_tables.c.change_signal,
                     registered_tables.c.off_peak_window,
-                    registered_tables.c.mv_bitemporal_mode,
+                    registered_tables.c.business_key,
                     registered_tables.c.replicate,
                 ).where(registered_tables.c.id == table_id)
             )
@@ -4802,15 +4801,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             # captures the intended instant. Warn (not block): they compose only when the snapshot
             # deadline can wait for the off-peak refresh (allowed_lateness).
             if _snapshot_load_protection_conflict(
-                load_protected, off_peak_window, row.mv_bitemporal_mode
+                load_protected, off_peak_window, row.business_key
             ):
                 logging.getLogger(__name__).warning(
-                    "table %s: load protection (off-peak window) AND %r snapshotting are both set — "
+                    "table %s: load protection (off-peak window) AND history keyed on %r are both set — "
                     "verify the snapshot boundary falls inside the off-peak refresh window (or that "
                     "allowed_lateness covers the lag), else snapshots may miss their intended instant "
                     "(REQ-1141/1162)",
                     table_id,
-                    row.mv_bitemporal_mode,
+                    row.business_key,
                 )
             _sres = await conn.execute_core(
                 select(

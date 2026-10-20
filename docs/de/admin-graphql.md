@@ -728,7 +728,9 @@ Die zentrale Eingabe zur Tabellenregistrierung. Wichtige Felder über die Grundl
 | `mvRefreshInterval` | Sekunden zwischen Aktualisierungen |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Inkrementelle Wartung |
-| `mvBitemporalMode` | `snapshot` \| `delta` für bitemporale Tabellen |
+| `businessKey` | Spalten, die über alle Versionen hinweg dasselbe Ding bezeichnen; deklariert mit `validTime` und `recordedTime`, alle drei oder keine |
+| `validTime` | Spalte mit dem Datum, das das Unternehmen dem Datensatz gibt |
+| `recordedTime` | Spalte mit dem Zeitpunkt, zu dem diese Version erfasst oder geändert wurde |
 | `mvCalendar` | Snapshot-Kalendername |
 | `mvGrain` | Snapshot-Granularität: `daily`, `weekly`, `monthly`, `annual` oder benutzerdefiniert `3WE` / `LFR` |
 | `viewSql` | SQL für eine abgeleitete Sicht |

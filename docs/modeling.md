@@ -11,7 +11,8 @@ Provisa gives you two declarative primitives, `entity` and `fact`, which cover t
 An **entity** is a keyed, deduplicated, optionally-historized projection of a source relation. You
 name it, point it at a source, declare the entity key and the attributes you want to carry,
 and choose a history mode. Provisa writes the view SQL and registers the MV. When history is
-enabled, the MV is bitemporal.
+enabled, the MV is bitemporal: it declares the entity key as its `business_key` together with
+the valid-time and recorded-time columns you name.
 
 A **fact** is a join to entity keys, reduced to a declared grain, with aggregated measures. Provisa writes an aggregate-MV query (`GROUP BY` grain + FK columns) and registers a relationship for each declared dimension link. A fact with no measures is a pure key set, which is the Data Vault link pattern.
 
@@ -21,15 +22,16 @@ Both constructs are IR. The generated definitions move across engines without re
 
 Three modes are available on an entity:
 
-| Mode | Meaning | Bitemporal mode |
-| --- | --- | --- |
-| `none` | Current-only. No history. | — |
-| `scd2` | Track every change. Append only changed rows (delta) keyed on the entity key. | `delta` |
-| `snapshot` | Track every refresh. Append the full result set each refresh, stamped with system time. | `snapshot` |
+| Mode | Meaning |
+| --- | --- |
+| `none` | Current-only. No history. |
+| `scd2` | Track every change, keyed on the entity key. |
+| `snapshot` | Track every refresh, keyed on the entity key. |
 
-`scd2` needs an entity key to compute the delta. `snapshot` works on any engine but storage grows
-by a full copy per refresh. Pick `scd2` for large, slowly-changing sources; pick `snapshot` when
-you need full history and the source can't supply a key.
+`scd2` and `snapshot` both keep every version, and Provisa picks how it stores them. Either one
+needs a valid-time column and a recorded-time column (`validTime`, `recordedTime`): the date your
+business gives the record, and when this version was entered or changed.
+[Views with history](configuration.md#views-with-history-time-travel) explains the two times.
 
 Facts have no history mode of their own; their coverage over time comes from the history of the entities underneath.
 
@@ -45,7 +47,7 @@ The default aggregation is `sum`.
 
 ### The source tables
 
-- `raw.customers` — id, name, region, tier
+- `raw.customers` — id, name, region, tier, effective_date, updated_at
 - `raw.orders` — order_id, customer_id, amount, quantity
 
 ### Register the Customer entity
@@ -61,6 +63,8 @@ The default aggregation is `sum`.
        - **Entity key:** `id`
        - **Attributes:** `name, region, tier`
        - **History:** `SCD2 (track changes — delta bitemporal)`
+       - **Valid time:** `effective_date`
+       - **Recorded time:** `updated_at`
     4. Click **Create**.
 
 === "GraphQL API"
@@ -74,6 +78,8 @@ The default aggregation is `sum`.
         key: ["id"]
         attributes: ["name", "region", "tier"]
         history: "scd2"
+        validTime: "effective_date"
+        recordedTime: "updated_at"
       }) {
         success
         message
@@ -84,8 +90,9 @@ The default aggregation is `sum`.
 Provisa generates and registers this bitemporal MV:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- registered as a bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- registered as a bitemporal MV: business_key ["id"], valid_time effective_date,
+-- recorded_time updated_at
 ```
 
 ### Register the Sales fact
@@ -155,6 +162,8 @@ A segmented control at the top of the modal switches between **Entity (dimension
 | Entity key | yes | Comma-separated key column(s), e.g. `id` |
 | Attributes | no | Comma-separated attribute columns, e.g. `name, region, tier` |
 | History | no | `none` / `scd2` / `snapshot`; default is `none` |
+| Valid time | with history | The column holding the date your business gives the record |
+| Recorded time | with history | The column holding when this version was entered or changed |
 
 ### Fact fields
 
@@ -194,6 +203,8 @@ mutation RegisterEntity($input: EntityInput!) {
 | `key` | [String] | — | Entity key column(s) |
 | `attributes` | [String] | `[]` | Attribute columns to project |
 | `history` | String | `"none"` | `"none"` \| `"scd2"` \| `"snapshot"` |
+| `validTime` | String | `null` | Valid-time column; required when `history` isn't `"none"` |
+| `recordedTime` | String | `null` | Recorded-time column; required when `history` isn't `"none"` |
 | `visibleTo` | [String] | `["public"]` | Role visibility list |
 
 ### `registerFact`
@@ -246,7 +257,7 @@ History mode is the only dial between SCD Type 1 and Type 2:
 | SCD type | History mode | Effect |
 | --- | --- | --- |
 | Type 1 (current only) | `none` | MV rebuilt on refresh; no row history |
-| Type 2 (versioned) | `scd2` | Bitemporal delta MV; each change appends a new row keyed on the entity key |
+| Type 2 (versioned) | `scd2` | Bitemporal MV; each change adds a new version keyed on the entity key |
 
 Use `scd2` when downstream queries need to join a dimension as it was at transaction time, such as a customer's tier at the moment of purchase instead of their current tier. Use `none` for stable lookups. A date spine never changes, and a product catalog where you only need the current price can rebuild on every refresh.
 
@@ -267,15 +278,17 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
 
-Generates a bitemporal delta MV keyed on `id`:
+Generates a bitemporal MV keyed on `id`:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 **Product** (SCD Type 1 — current catalog, no version history needed):
@@ -450,8 +463,8 @@ SELECT "order_id" FROM "raw"."orders"
 
 #### Satellite
 
-The satellite sits beside the hub key and carries full attribute history. Use `scd2` to append
-only changed rows; use `snapshot` to stamp every full refresh.
+The satellite sits beside the hub key and carries full attribute history. Use `scd2` to track
+every change, or `snapshot` to track every refresh.
 
 ```graphql
 mutation {
@@ -462,6 +475,8 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
@@ -469,8 +484,8 @@ mutation {
 Generates:
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 `CustomerSat` and `CustomerHub` both key on `id`. The hub is the stable join target; the satellite
@@ -658,4 +673,4 @@ The expression textarea remains the escape hatch for arbitrary expressions.
 
 ## The IR payoff
 
-Every registration call goes through the same path as a hand-written MV. The entity and fact spec is an intermediate representation; it isn't a template or a macro. The warehouse it targets is a property of the deployment, and the model doesn't name it. Change the target engine, and the same `entity` / `fact` declarations materialize there, because the generated SQL and the bitemporal modes are engine-neutral by design.
+Every registration call goes through the same path as a hand-written MV. The entity and fact spec is an intermediate representation; it isn't a template or a macro. The warehouse it targets is a property of the deployment, and the model doesn't name it. Change the target engine, and the same `entity` / `fact` declarations materialize there, because the generated SQL and the bitemporal history are engine-neutral by design.

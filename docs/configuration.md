@@ -912,32 +912,45 @@ Views go through the same governance pipeline as tables: RLS, masking, sampling 
 
 ### Views with history (time travel)
 
-A materialized view can keep every version of its rows and be read as of a past time. It declares how it keeps them and which key a version belongs to:
+A table or a materialized view can keep every version of its rows and be read as of a past time. You map three of the source's columns, and you declare all three or none:
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| Field | Required | Description |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | Yes | `snapshot` appends the whole result each refresh; `delta` appends only what changed |
-| `bitemporal_key` | Yes | The columns a version belongs to |
-| `bitemporal_source_time` | No | The column holding when each row changed in the source: the clock time travel reads on |
+| Field | Description |
+| ------- | ------------- |
+| `business_key` | The columns that identify the same thing across versions, such as `transaction_id`. Every version of a record shares this key. |
+| `valid_time` | The column holding the date your business gives the record: when it was agreed, booked or took effect. |
+| `recorded_time` | The column holding when this version of the record was entered or changed, such as `updated_at`. |
 
-**Choosing the clock.** With `bitemporal_source_time`, versions are ordered and read by the source's own time: "as of last Tuesday" means last Tuesday in the source. Without it, they're ordered and read by when Provisa landed each change, which follows the refresh cadence and not the moment the row changed in the source. Both are valid choices. Load time suits a frequent refresh cadence, data whose timing in the source doesn't matter, and reads that are meant to be about load time, such as auditing what Provisa held and when.
+Each one names a column the table or view has. A view that declares them sets `materialize: true`, and Provisa picks how it stores the versions. An entry under `tables:` takes the same three keys.
 
-A version is in force from its time to the next version's. A delete has no source change time and takes effect when Provisa recorded it.
+The two times have other names elsewhere: recorded time, called transaction time in the temporal-database literature and system time in SQL:2011; valid time, called application time in SQL:2011 or effective date.
+
+The two can differ for the same version:
+
+| Example | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| A payment of 100 for 3 Oct is corrected to 120 on 5 Oct. | The correction keeps 3 Oct. | The correction gets 5 Oct. |
+| A field measurement taken 3 Oct 14:10 is keyed in on 6 Oct. A typo in it is fixed on 7 Oct. | 3 Oct 14:10, kept by the fix. | 6 Oct. The fix gets 7 Oct. |
+| A trade is booked at execution with trade date 3 Oct. On 4 Oct its quantity is found wrong and amended. | Trade date 3 Oct, kept by the amendment. | 3 Oct 10:02. The amendment gets 4 Oct. |
+
+Read as recorded on 3 Oct, the trade shows the wrong quantity. Read as known now, it shows the corrected one.
+
+A version is in force from its time to the next version's. A delete takes effect when Provisa records it.
 
 **Reading.** A plain read answers the version of each key in force now. The `X-Provisa-As-Of` header reads as of a time, or over a range given as an ISO 8601 interval `start/end`:
 

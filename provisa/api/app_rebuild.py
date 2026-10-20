@@ -111,9 +111,8 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
                         _registered_tables_t.c.mv_refresh_interval,
                         _registered_tables_t.c.change_signal,
                         _registered_tables_t.c.mv_preprocess,  # REQ-957
-                        _registered_tables_t.c.mv_bitemporal_mode,  # REQ-1162
-                        _registered_tables_t.c.mv_bitemporal_key,  # REQ-1162
-                        _registered_tables_t.c.mv_bitemporal_source_time,  # REQ-1163
+                        _registered_tables_t.c.business_key,  # REQ-2109
+                        _registered_tables_t.c.recorded_time,  # REQ-2109
                         _registered_tables_t.c.mv_persist,  # REQ-965
                         _registered_tables_t.c.mv_primary_key,  # REQ-970
                         _registered_tables_t.c.mv_incremental,  # REQ-969
@@ -154,16 +153,14 @@ async def _register_user_views_in_state(conn: "Connection", raw_config: dict | N
             # is unqueryable: its raw source catalog (e.g. __derived__) reaches the engine and fails
             # with "Catalog __derived__ does not exist".
             _semantic_sql = _vr["view_sql"].rstrip().rstrip(";")
-            # REQ-1162: reconstruct the bitemporal spec from the persisted mode/key (None = ordinary).
+            # REQ-1162, REQ-2109: reconstruct the bitemporal spec from the persisted declaration
+            # (None = ordinary).
             _bt_spec = None
-            if _vr.get("mv_bitemporal_mode"):
-                from provisa.mv.bitemporal import BitemporalSpec
+            if _vr["business_key"]:
+                from provisa.mv.bitemporal import declared_spec
 
-                _bt_spec = BitemporalSpec(
-                    key=tuple(_vr.get("mv_bitemporal_key") or []),
-                    mode=_vr["mv_bitemporal_mode"],
-                    source_column=_vr["mv_bitemporal_source_time"],
-                    columns=tuple(_view_columns[_vr["id"]]),
+                _bt_spec = declared_spec(
+                    list(_vr["business_key"]), _vr["recorded_time"], _view_columns[_vr["id"]]
                 )
             if _bt_spec is not None and _vr.get("materialize"):
                 # REQ-1163: a bitemporal MV is served from its materialized append log — the read

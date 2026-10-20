@@ -90,6 +90,9 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
   const [key, setKey] = useState<string[]>([]);
   const [attributes, setAttributes] = useState<string[]>([]);
   const [history, setHistory] = useState("none");
+  // REQ-2109: a historized entity's valid-time and recorded-time columns, declared with its key.
+  const [validTime, setValidTime] = useState<string | null>(null);
+  const [recordedTime, setRecordedTime] = useState<string | null>(null);
   // fact
   const [grain, setGrain] = useState<string[]>([]);
   const [measures, setMeasures] = useState<Record<string, string>>({}); // column -> agg
@@ -151,6 +154,7 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
           key,
           attributes,
           history,
+          ...(history !== "none" ? { validTime, recordedTime } : {}),
         });
       } else {
         const parsedMeasures = Object.entries(measures).map(([column, agg]) => ({ column, agg }));
@@ -220,6 +224,8 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
               setKey([]);
               setAttributes([]);
               setHistory("none");
+              setValidTime(null);
+              setRecordedTime(null);
               setGrain([]);
               setMeasures({});
               setDimensions([]);
@@ -349,6 +355,42 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
               data-testid="modeling-history"
             />
           </FormField>
+          {history !== "none" && (
+            <>
+              <FormField
+                size="medium"
+                hint={t("tableEditForm.validTimeHint")}
+                help={t("tableEditForm.validTimeHelp")}
+              >
+                <Select
+                  label={t("tableEditForm.validTimeLabel")}
+                  required
+                  data={allColumnOptions}
+                  value={validTime}
+                  onChange={setValidTime}
+                  disabled={noSource}
+                  comboboxProps={{ withinPortal: true }}
+                  data-testid="modeling-valid-time"
+                />
+              </FormField>
+              <FormField
+                size="medium"
+                hint={t("tableEditForm.recordedTimeHint")}
+                help={t("tableEditForm.recordedTimeHelp")}
+              >
+                <Select
+                  label={t("tableEditForm.recordedTimeLabel")}
+                  required
+                  data={allColumnOptions}
+                  value={recordedTime}
+                  onChange={setRecordedTime}
+                  disabled={noSource}
+                  comboboxProps={{ withinPortal: true }}
+                  data-testid="modeling-recorded-time"
+                />
+              </FormField>
+            </>
+          )}
         </>
       ) : (
         <>

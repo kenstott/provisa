@@ -183,12 +183,12 @@ La vista lee los registros de refresco de `"ops"."traces"` y responde en todo mo
 
 ## Una vista tal como estaba y tal como se registró {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Una vista declarada bitemporal conserva cada versión que ha tenido: cada refresco añade, y ninguna versión se reescribe, en cualquier almacén. Una lectura simple responde con el estado actual. Dos cabeceras de la petición leen su pasado:
+Una vista que asigna las columnas de su origen como `business_key`, `valid_time` y `recorded_time` conserva cada versión que ha tenido: cada actualización agrega, y ninguna versión se reescribe, en ningún almacén. Una lectura simple responde el estado actual. Dos cabeceras de solicitud leen su pasado:
 
-- `X-Provisa-As-Of` lee la vista a una fecha, o sobre un rango, según su reloj: el tiempo de cambio propio de la fuente cuando la vista declara `bitemporal_source_time`, el tiempo de carga de Provisa cuando no.
+- `X-Provisa-As-Of` lee la vista en un momento o en un rango.
 - `X-Provisa-As-Recorded` la lee tal como Provisa la tenía registrada en un momento. Las versiones registradas después quedan fuera, así que una corrección registrada más tarde no cambia la reproducción del pasado.
 
-A 30 de septiembre y registrada el 1 de octubre da la cifra original; registrada el 5 de octubre da la corrección. El registro de auditoría de cada sentencia guarda ambos tiempos (`as_of`, `as_recorded`), de modo que un informe se puede reproducir tal como se produjo por primera vez. [Vistas con historial](configuration.md#views-with-history-time-travel) explica cómo declarar una vista bitemporal y cada superficie que acepta los dos valores.
+A 30 de septiembre y registrada el 1 de octubre da la cifra original; registrada el 5 de octubre da la corrección. El registro de auditoría de cada sentencia guarda ambos tiempos (`as_of`, `as_recorded`), de modo que un informe se puede reproducir tal como se produjo por primera vez. [Vistas con historial](configuration.md#views-with-history-time-travel) explica las tres declaraciones, con ejemplos, y cada superficie que acepta los dos valores.
 
 ## Qué rompería un renombrado o una eliminación de columna {: #what-a-column-rename-or-drop-would-break }
 

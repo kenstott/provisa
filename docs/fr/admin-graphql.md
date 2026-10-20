@@ -728,7 +728,9 @@ L'entrée principale d'enregistrement de table. Champs clés au-delà des bases 
 | `mvRefreshInterval` | Secondes entre les rafraîchissements |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Maintenance incrémentale |
-| `mvBitemporalMode` | `snapshot` \| `delta` pour les tables bitemporelles |
+| `businessKey` | Colonnes qui identifient la même chose d'une version à l'autre ; déclarée avec `validTime` et `recordedTime`, les trois ou aucune |
+| `validTime` | Colonne contenant la date que l'activité donne à l'enregistrement |
+| `recordedTime` | Colonne contenant le moment où cette version a été saisie ou modifiée |
 | `mvCalendar` | Nom du calendrier d'instantané |
 | `mvGrain` | Granularité d'instantané : `daily`, `weekly`, `monthly`, `annual`, ou personnalisée `3WE` / `LFR` |
 | `viewSql` | SQL pour une vue dérivée |

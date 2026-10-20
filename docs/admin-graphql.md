@@ -728,7 +728,9 @@ The core table registration input. Key fields beyond the basics:
 | `mvRefreshInterval` | Seconds between refreshes |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Incremental maintenance |
-| `mvBitemporalMode` | `snapshot` \| `delta` for bitemporal tables |
+| `businessKey` | Columns that identify the same thing across versions; declared with `validTime` and `recordedTime`, all three or none |
+| `validTime` | Column holding the date the business gives the record |
+| `recordedTime` | Column holding when this version was entered or changed |
 | `mvCalendar` | Snapshot calendar name |
 | `mvGrain` | Snapshot grain: `daily`, `weekly`, `monthly`, `annual`, or custom `3WE` / `LFR` |
 | `viewSql` | SQL for a derived view |

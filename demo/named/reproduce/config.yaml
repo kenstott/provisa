@@ -67,29 +67,32 @@ tables:
   - {name: notional, data_type: decimal, description: Its notional in its own currency, visible_to: [org_admin, regulator]}
   - {name: fx_rate, data_type: decimal, description: The rate its notional converts to USD at, visible_to: [org_admin, regulator]}
   - {name: valid_from, data_type: timestamp, description: The business date the position and its rate are for, visible_to: [org_admin, regulator]}
+  - {name: entered_at, data_type: timestamp, description: When the position or its rate was last entered or changed, visible_to: [org_admin, regulator]}
   write_grants:
   # The back office's rate corrections: the rate alone, through the governed write path.
-  - {role: org_admin, operation: update, columns: [fx_rate]}
+  - {role: org_admin, operation: update, columns: [fx_rate, entered_at]}
 views:
-# The report: each desk's exposure in USD on its business date. Bitemporal on the business date, so
-# a read as of 30 September answers the figures for that date; every version is kept with when
-# Provisa recorded it, so a read as recorded at a time answers what had been filed by then.
+# The report: each desk's exposure in USD on its business date. Its valid time is the business
+# date and its recorded time when the book last entered or changed a position or rate; every
+# version is kept, keyed on the desk.
 - id: exposure
   domain_id: reproduce
   materialize: true
-  bitemporal_mode: delta
-  bitemporal_key: [desk]
-  bitemporal_source_time: valid_from
+  business_key: [desk]
+  valid_time: valid_from
+  recorded_time: entered_at
   enable_aggregates: true
   description: The regulatory exposure report -- each desk's exposure in USD on its business date
   sql: >-
-    SELECT p.desk, SUM(p.notional * p.fx_rate) AS exposure, MAX(p.valid_from) AS valid_from
+    SELECT p.desk, SUM(p.notional * p.fx_rate) AS exposure, MAX(p.valid_from) AS valid_from,
+      MAX(p.entered_at) AS entered_at
     FROM "reproduce"."positions" AS p
     GROUP BY p.desk
   columns:
   - {name: desk, data_type: varchar, description: The trading desk, visible_to: [org_admin, regulator]}
   - {name: exposure, data_type: decimal, description: 'Its exposure in USD -- each position''s notional at its rate, summed', visible_to: [org_admin, regulator]}
   - {name: valid_from, data_type: timestamp, description: The business date the figure is for, visible_to: [org_admin, regulator]}
+  - {name: entered_at, data_type: timestamp, description: When the book last entered or changed a position or rate behind the figure, visible_to: [org_admin, regulator]}
 relationships: []
 functions:
 # The demo's setup files the report, then corrects a rate (REQ-2016, setup.yaml). Each a governed
@@ -104,7 +107,7 @@ functions:
   visible_to: [org_admin]
   binding:
     sql: >-
-      UPDATE "reproduce"."positions" SET fx_rate = 1.08 WHERE id = 2
+      UPDATE "reproduce"."positions" SET fx_rate = 1.08, entered_at = TIMESTAMP '2026-09-30 08:00' WHERE id = 2
 - name: correct_fx_rate
   function_name: correct_fx_rate
   impl_kind: statement
@@ -115,4 +118,4 @@ functions:
   visible_to: [org_admin]
   binding:
     sql: >-
-      UPDATE "reproduce"."positions" SET fx_rate = 1.10 WHERE id = 2
+      UPDATE "reproduce"."positions" SET fx_rate = 1.10, entered_at = now() WHERE id = 2

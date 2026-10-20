@@ -728,7 +728,9 @@ mutation {
 | `mvRefreshInterval` | 刷新间隔（秒） |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | 增量维护 |
-| `mvBitemporalMode` | 双时态表的 `snapshot` \| `delta` |
+| `businessKey` | 在各个版本之间标识同一事物的列；与 `validTime`、`recordedTime` 一起声明，三者全有或全无 |
+| `validTime` | 保存业务赋予该记录的日期的列 |
+| `recordedTime` | 保存该版本何时录入或修改的列 |
 | `mvCalendar` | 快照日历名称 |
 | `mvGrain` | 快照粒度：`daily`、`weekly`、`monthly`、`annual`，或自定义的 `3WE` / `LFR` |
 | `viewSql` | 派生视图的 SQL |

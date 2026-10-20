@@ -728,7 +728,9 @@ mutation {
 | `mvRefreshInterval` | Секунды между обновлениями |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Инкрементальное обслуживание |
-| `mvBitemporalMode` | `snapshot` \| `delta` для битемпоральных таблиц |
+| `businessKey` | Столбцы, которые обозначают одно и то же во всех версиях; объявляется вместе с `validTime` и `recordedTime`, все три или ни одного |
+| `validTime` | Столбец с датой, которую бизнес даёт записи |
+| `recordedTime` | Столбец с моментом, когда эта версия была введена или изменена |
 | `mvCalendar` | Имя календаря снимков |
 | `mvGrain` | Гранулярность снимка: `daily`, `weekly`, `monthly`, `annual` или пользовательская `3WE` / `LFR` |
 | `viewSql` | SQL для производного представления |

@@ -728,7 +728,9 @@ La entrada central de registro de tablas. Campos clave más allá de lo básico:
 | `mvRefreshInterval` | Segundos entre actualizaciones |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Mantenimiento incremental |
-| `mvBitemporalMode` | `snapshot` \| `delta` para tablas bitemporales |
+| `businessKey` | Columnas que identifican la misma cosa entre versiones; se declara con `validTime` y `recordedTime`, las tres o ninguna |
+| `validTime` | Columna con la fecha que el negocio da al registro |
+| `recordedTime` | Columna con el momento en que se introdujo o modificó esta versión |
 | `mvCalendar` | Nombre del calendario de instantáneas |
 | `mvGrain` | Grano de instantánea: `daily`, `weekly`, `monthly`, `annual`, o personalizado `3WE` / `LFR` |
 | `viewSql` | SQL para una vista derivada |

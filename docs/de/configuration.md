@@ -912,32 +912,45 @@ Sichten durchlaufen dieselbe Governance-Pipeline wie Tabellen: RLS, Maskierung, 
 
 ### Sichten mit Historie (Zeitreise) {: #views-with-history-time-travel }
 
-Eine materialisierte Sicht kann jede Version ihrer Zeilen behalten und zu einem vergangenen Zeitpunkt gelesen werden. Sie deklariert, wie sie sie behält und zu welchem Schlüssel eine Version gehört:
+Eine Tabelle oder eine materialisierte Sicht kann jede Version ihrer Zeilen behalten und zu einem vergangenen Zeitpunkt gelesen werden. Sie bilden dafür drei Spalten der Quelle ab, und Sie deklarieren alle drei oder keine:
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| Feld | Erforderlich | Beschreibung |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | Ja | `snapshot` hängt bei jedem Refresh das ganze Ergebnis an; `delta` hängt nur an, was sich geändert hat |
-| `bitemporal_key` | Ja | Die Spalten, zu denen eine Version gehört |
-| `bitemporal_source_time` | Nein | Die Spalte, die festhält, wann sich jede Zeile in der Quelle geändert hat: die Uhr, nach der die Zeitreise liest |
+| Feld | Beschreibung |
+| ------- | ------------- |
+| `business_key` | Die Spalten, die über alle Versionen hinweg dasselbe Ding bezeichnen, etwa `transaction_id`. Jede Version eines Datensatzes hat diesen Schlüssel. |
+| `valid_time` | Die Spalte mit dem Datum, das Ihr Unternehmen dem Datensatz gibt: wann er vereinbart, gebucht oder wirksam wurde. |
+| `recorded_time` | Die Spalte mit dem Zeitpunkt, zu dem diese Version des Datensatzes erfasst oder geändert wurde, etwa `updated_at`. |
 
-**Die Uhr wählen.** Mit `bitemporal_source_time` werden Versionen nach der Zeit der Quelle geordnet und gelesen: „Stand letzter Dienstag“ heißt letzter Dienstag in der Quelle. Ohne sie werden sie danach geordnet und gelesen, wann Provisa jede Änderung gelandet hat; das folgt dem Aktualisierungstakt und nicht dem Moment, in dem sich die Zeile in der Quelle geändert hat. Beides ist eine gültige Wahl. Die Ladezeit passt zu einem häufigen Aktualisierungstakt, zu Daten, bei denen der Zeitpunkt in der Quelle keine Rolle spielt, und zu Abfragen, die sich auf die Ladezeit beziehen sollen, etwa um zu prüfen, was Provisa wann gehalten hat.
+Jede davon nennt eine Spalte der Tabelle oder Sicht. Eine Sicht, die sie deklariert, setzt `materialize: true`, und Provisa wählt, wie die Versionen gespeichert werden. Ein Eintrag unter `tables:` nimmt dieselben drei Schlüssel an.
 
-Eine Version gilt von ihrem Zeitpunkt bis zu dem der nächsten Version. Ein Löschen hat keine Änderungszeit in der Quelle und wirkt ab dem Zeitpunkt, zu dem Provisa es erfasst hat.
+Die beiden Zeiten heißen anderswo anders: Aufzeichnungszeit (recorded time), in der Literatur zu temporalen Datenbanken Transaktionszeit und in SQL:2011 Systemzeit genannt; Gültigkeitszeit (valid time), in SQL:2011 Anwendungszeit genannt oder Wirksamkeitsdatum (effective date).
+
+Für dieselbe Version können die beiden auseinanderfallen:
+
+| Beispiel | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| Eine Zahlung von 100 für den 3. Oktober wird am 5. Oktober auf 120 korrigiert. | Die Korrektur behält den 3. Oktober. | Die Korrektur erhält den 5. Oktober. |
+| Eine Feldmessung vom 3. Oktober 14:10 wird am 6. Oktober eingegeben. Ein Tippfehler darin wird am 7. Oktober behoben. | 3. Oktober 14:10, von der Korrektur beibehalten. | 6. Oktober. Die Korrektur erhält den 7. Oktober. |
+| Ein Handel wird bei Ausführung mit Handelstag 3. Oktober gebucht. Am 4. Oktober erweist sich die Menge als falsch und wird geändert. | Handelstag 3. Oktober, von der Änderung beibehalten. | 3. Oktober 10:02. Die Änderung erhält den 4. Oktober. |
+
+Gelesen wie am 3. Oktober erfasst, zeigt der Handel die falsche Menge. Gelesen nach heutigem Wissen, zeigt er die korrigierte.
+
+Eine Version gilt von ihrem Zeitpunkt bis zu dem der nächsten Version. Ein Löschen wirkt ab dem Zeitpunkt, zu dem Provisa es erfasst.
 
 **Lesen.** Ein einfacher Lesevorgang liefert die jetzt geltende Version jedes Schlüssels. Der Header `X-Provisa-As-Of` liest zu einem Zeitpunkt oder über einen Bereich, angegeben als ISO-8601-Intervall `start/end`:
 

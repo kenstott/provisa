@@ -186,13 +186,16 @@ tables:
   - {name: counted_at, data_type: timestamp, description: When they were counted (UTC), visible_to: [org_admin, finance, data_science]}
 views:
 # The dataset provisioned: every order with its revenue, cost and margin. Each version of each row
-# is kept (delta), so a pull reads it as of a notice's version time. Readable by users and clients
+# is kept, keyed on the order, so a pull reads it as of a notice's version time. An order is
+# entered on the feed when it is placed and is not changed after, so its placing time is both its
+# valid time and its recorded time. Readable by users and clients
 # all day but 00:00-00:30 UTC; a real warehouse would usually open a narrower, overnight window.
 - id: order_margins
   domain_id: provisioning
   materialize: true
-  bitemporal_mode: delta
-  bitemporal_key: [order_id]
+  business_key: [order_id]
+  valid_time: ordered_at
+  recorded_time: ordered_at
   off_peak_window: '00:30-00:00'
   off_peak_tz: UTC
   enable_aggregates: true

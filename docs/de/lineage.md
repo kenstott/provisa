@@ -181,12 +181,12 @@ Die Sicht liest die Aktualisierungsdatensätze in `"ops"."traces"` und antwortet
 
 ## Eine Sicht, wie sie stand und wie sie erfasst wurde {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Eine als bitemporal deklarierte Sicht behält jede Version, die sie je hatte: Jede Aktualisierung hängt an, und keine Version wird überschrieben, auf jedem Speicher. Ein einfacher Lesezugriff liefert den aktuellen Stand. Zwei Request-Header lesen ihre Vergangenheit:
+Eine Sicht, die die Spalten ihrer Quelle als `business_key`, `valid_time` und `recorded_time` abbildet, behält jede Version, die sie je hatte: Jede Aktualisierung hängt an, und keine Version wird überschrieben, auf jedem Speicher. Ein einfacher Lesezugriff liefert den aktuellen Stand. Zwei Request-Header lesen ihre Vergangenheit:
 
-- `X-Provisa-As-Of` liest die Sicht zu einem Zeitpunkt oder über einen Zeitraum, auf ihrer Uhr: der eigenen Änderungszeit der Quelle, wo die Sicht `bitemporal_source_time` deklariert, sonst der Ladezeit von Provisa.
+- `X-Provisa-As-Of` liest die Sicht zu einem Zeitpunkt oder über einen Zeitraum.
 - `X-Provisa-As-Recorded` liest sie so, wie Provisa sie zu einem Zeitpunkt erfasst hatte. Später erfasste Versionen bleiben außen vor, sodass eine später erfasste Korrektur die Wiedergabe der Vergangenheit nicht ändert.
 
-Stand 30. September, erfasst am 1. Oktober, ergibt den ursprünglichen Wert; erfasst am 5. Oktober ergibt die Korrektur. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest (`as_of`, `as_recorded`), sodass sich ein Bericht so reproduzieren lässt, wie er zuerst erstellt wurde. [Sichten mit Historie](configuration.md#views-with-history-time-travel) beschreibt, wie eine bitemporale Sicht deklariert wird, und jede Oberfläche, die die beiden Werte annimmt.
+Stand 30. September, erfasst am 1. Oktober, ergibt den ursprünglichen Wert; erfasst am 5. Oktober ergibt die Korrektur. Der Audit-Eintrag jeder Anweisung hält beide Zeitpunkte fest (`as_of`, `as_recorded`), sodass sich ein Bericht so reproduzieren lässt, wie er zuerst erstellt wurde. [Sichten mit Historie](configuration.md#views-with-history-time-travel) beschreibt die drei Deklarationen mit Beispielen und jede Oberfläche, die die beiden Werte annimmt.
 
 ## Was eine Spaltenumbenennung oder -löschung beeinträchtigen würde {: #what-a-column-rename-or-drop-would-break }
 

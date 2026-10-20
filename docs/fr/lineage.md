@@ -184,12 +184,12 @@ La vue lit les enregistrements de rafraîchissement dans `"ops"."traces"` et ré
 
 ## Une vue telle qu'elle était, et telle qu'elle a été enregistrée {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Une vue déclarée bitemporelle conserve chaque version qu'elle a eue : chaque rafraîchissement ajoute, et aucune version n'est réécrite, sur n'importe quel stockage. Une lecture simple répond avec l'état actuel. Deux en-têtes de requête lisent son passé :
+Une vue qui associe les colonnes de sa source comme `business_key`, `valid_time` et `recorded_time` conserve chaque version qu'elle a connue : chaque rafraîchissement ajoute, et aucune version n'est réécrite, sur aucun stockage. Une lecture simple renvoie l'état actuel. Deux en-têtes de requête lisent son passé :
 
-- `X-Provisa-As-Of` lit la vue à une date, ou sur une plage, selon son horloge : l'heure de modification propre à la source lorsque la vue déclare `bitemporal_source_time`, l'heure de chargement de Provisa sinon.
+- `X-Provisa-As-Of` lit la vue à une date ou sur une plage.
 - `X-Provisa-As-Recorded` la lit telle que Provisa l'avait enregistrée à une date. Les versions enregistrées après cette date sont écartées, si bien qu'une correction enregistrée plus tard ne change pas la relecture du passé.
 
-Au 30 septembre et enregistrée le 1er octobre donne le chiffre d'origine ; enregistrée le 5 octobre donne la correction. L'enregistrement d'audit de chaque instruction conserve les deux dates (`as_of`, `as_recorded`), de sorte qu'un rapport peut être reproduit tel qu'il a été produit la première fois. [Vues avec historique](configuration.md#views-with-history-time-travel) décrit la déclaration d'une vue bitemporelle et chaque surface qui accepte les deux valeurs.
+Au 30 septembre et enregistrée le 1er octobre donne le chiffre d'origine ; enregistrée le 5 octobre donne la correction. L'enregistrement d'audit de chaque instruction conserve les deux dates (`as_of`, `as_recorded`), de sorte qu'un rapport peut être reproduit tel qu'il a été produit la première fois. [Vues avec historique](configuration.md#views-with-history-time-travel) décrit les trois déclarations, avec des exemples, et chaque surface qui accepte les deux valeurs.
 
 ## Ce que renommer ou supprimer une colonne casserait {: #what-a-column-rename-or-drop-would-break }
 

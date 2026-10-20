@@ -19,11 +19,12 @@ CREATE TABLE positions (
   currency varchar NOT NULL,
   notional numeric(14, 2) NOT NULL,
   fx_rate numeric(10, 6) NOT NULL,
-  valid_from timestamp NOT NULL
+  valid_from timestamp NOT NULL,
+  entered_at timestamp NOT NULL  -- when the book last entered or changed the row
 );
 INSERT INTO positions VALUES
-  (1, 'rates', 'UST 10Y', 'USD', 1000000.00, 1.000000, '2026-09-30 00:00'),
-  (2, 'rates', 'Bund 10Y', 'EUR', 500000.00, 1.080000, '2026-09-30 00:00'),
-  (3, 'credit', 'CDX IG', 'USD', 750000.00, 1.000000, '2026-09-30 00:00'),
-  (4, 'credit', 'iTraxx Main', 'EUR', 400000.00, 1.080000, '2026-09-30 00:00'),
-  (5, 'fx', 'GBPUSD forward', 'GBP', 300000.00, 1.270000, '2026-09-30 00:00');
+  (1, 'rates', 'UST 10Y', 'USD', 1000000.00, 1.000000, '2026-09-30 00:00', '2026-09-30 08:00'),
+  (2, 'rates', 'Bund 10Y', 'EUR', 500000.00, 1.080000, '2026-09-30 00:00', '2026-09-30 08:00'),
+  (3, 'credit', 'CDX IG', 'USD', 750000.00, 1.000000, '2026-09-30 00:00', '2026-09-30 08:00'),
+  (4, 'credit', 'iTraxx Main', 'EUR', 400000.00, 1.080000, '2026-09-30 00:00', '2026-09-30 08:00'),
+  (5, 'fx', 'GBPUSD forward', 'GBP', 300000.00, 1.270000, '2026-09-30 00:00', '2026-09-30 08:00');

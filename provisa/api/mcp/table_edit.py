@@ -166,9 +166,9 @@ def table_input(t: Any) -> Any:
         push_debounce_max_delay=t.push_debounce_max_delay,
         mv_consistency=t.mv_consistency,
         mv_preprocess=t.mv_preprocess or None,
-        mv_bitemporal_mode=t.mv_bitemporal_mode or None,
-        mv_bitemporal_key=list(t.mv_bitemporal_key),
-        mv_bitemporal_source_time=t.mv_bitemporal_source_time,
+        business_key=list(t.business_key),
+        valid_time=t.valid_time,
+        recorded_time=t.recorded_time,
         mv_persist=t.mv_persist,
         # REQ-970: the MV row-identity key IS the table's primary key, as the editor derives it.
         mv_primary_key=[c.column_name for c in t.columns if c.is_primary_key],

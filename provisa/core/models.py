@@ -1464,15 +1464,14 @@ class Table(
     # land. None = identity. MUST be deterministic (REQ-964): purity-checked at registration
     # (provisa.mv.preprocess) and executed in a restricted namespace with no dangerous builtins.
     mv_preprocess: str | None = None
-    # REQ-1162: append-only bitemporal materialization. None = ordinary MV; "snapshot" appends the
-    # whole fresh dataset each refresh; "delta" appends only engine-computed changes. mv_bitemporal_key
-    # is the business identity a version belongs to (required for delta). Time travel ("as of") is then
-    # derived at read time from the immutable append log — no UPDATE ever retires a row.
-    mv_bitemporal_mode: str | None = None
-    mv_bitemporal_key: list[str] = []
-    # REQ-1163: the view's column holding the source's own change time (an updated_at, or the
-    # commit time a CDC landing carries, source_committed_at): the clock its time travel reads on.
-    mv_bitemporal_source_time: str | None = None
+    # REQ-2109: the bitemporal declaration of a table or a view, all three or none. business_key
+    # names the columns identifying the same thing across versions; valid_time the column holding
+    # the date the business gives the record (when it was agreed, booked or took effect);
+    # recorded_time the column holding when this version was entered or changed. A view declaring
+    # them is materialized and keeps every version, appended (REQ-1162), read on recorded_time.
+    business_key: list[str] = []
+    valid_time: str | None = None
+    recorded_time: str | None = None
     # REQ-965/969/970: how a materialized view's recompute is applied to its own store, and whether
     # it is maintained incrementally. mv_persist ∈ replace|append|upsert; mv_primary_key is the row
     # identity (required for upsert and for incremental); mv_incremental applies upstream deltas
@@ -1518,18 +1517,43 @@ class Table(
                 )
         return self
 
+    @property
+    def is_bitemporal(self) -> bool:
+        """REQ-2109: the table or view declares its business key, valid time and recorded time."""
+        return bool(self.business_key)
+
     @model_validator(mode="after")
-    def _bitemporal_reads_on_source_time(self) -> "Table":
-        """REQ-1163, REQ-2064: a bitemporal view names the key its versions belong to. Its clock is
-        its source-time column when it names one, else Provisa's recorded time (REQ-1163 as
-        amended); its three read columns are added where it is declared or saved
+    def _bitemporal_declares_all_three(self) -> "Table":
+        """REQ-2109: business_key, valid_time and recorded_time are declared together or not at
+        all, each naming a column the table has (where its columns are known); a view declaring
+        them is materialized. Its read columns are added where it is declared or saved
         (mv.bitemporal.with_read_columns)."""
-        if not self.mv_bitemporal_mode:
+        declared = {
+            "business_key": bool(self.business_key),
+            "valid_time": bool(self.valid_time),
+            "recorded_time": bool(self.recorded_time),
+        }
+        if not any(declared.values()):
             return self
-        if not self.mv_bitemporal_key:
+        missing = [name for name, given in declared.items() if not given]
+        if missing:
             raise ValueError(
-                f"view {self.table_name!r}: a bitemporal view names the key its versions belong "
-                "to (bitemporal_key)"
+                f"table {self.table_name!r}: business_key, valid_time and recorded_time are "
+                f"declared together; missing {', '.join(missing)}"
+            )
+        names = {c.name for c in self.columns}
+        if names and "*" not in names:
+            named = [*self.business_key, self.valid_time, self.recorded_time]
+            unknown = [c for c in named if c not in names]
+            if unknown:
+                raise ValueError(
+                    f"table {self.table_name!r}: business_key, valid_time and recorded_time name "
+                    f"columns the table does not have: {unknown}"
+                )
+        if (self.view_sql is not None or self.view_metrics is not None) and not self.materialize:
+            raise ValueError(
+                f"view {self.table_name!r}: a view declaring business_key, valid_time and "
+                "recorded_time is materialized (materialize: true)"
             )
         return self
 

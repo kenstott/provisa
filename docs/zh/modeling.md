@@ -11,6 +11,7 @@ Provisa 提供两个声明式原语 `entity` 和 `fact`，涵盖了构成每个�
 **entity** 是源关系的一个带键、去重、可选历史化的投影。你为其命名、指向一个数据源、
 声明 entity key 和要保留的属性，并选择一种历史模式。Provisa 会编写视图的 SQL 并注册该
 物化视图。启用历史时，该物化视图为双时态。
+此时它将 entity key 声明为 `business_key`，并附上你指定的有效时间列和记录时间列。
 
 **fact** 是一个连到实体键的联接，归约到声明的粒度，并带有聚合度量。Provisa 会写出一个聚合 MV 查询（`GROUP BY` 粒度 + 外键列），并为每个声明的维度链接注册一个关系。没有度量的 fact 是纯键集合，也就是 Data Vault 的 link 模式。
 
@@ -20,15 +21,13 @@ Provisa 提供两个声明式原语 `entity` 和 `fact`，涵盖了构成每个�
 
 entity 有三种可用模式：
 
-| 模式 | 含义 | 双时态模式 |
-| --- | --- | --- |
-| `none` | 仅当前状态，无历史。 | — |
-| `scd2` | 追踪每次变更。仅追加变更的行（delta），以 entity key 为键。 | `delta` |
-| `snapshot` | 追踪每次刷新。每次刷新都追加完整结果集，并加盖系统时间戳。 | `snapshot` |
+| 模式 | 含义 |
+| --- | --- |
+| `none` | 仅当前状态，无历史。 |
+| `scd2` | 追踪每次变更，以 entity key 为键。 |
+| `snapshot` | 追踪每次刷新，以 entity key 为键。 |
 
-`scd2` 需要一个 entity key 来计算 delta。`snapshot` 可在任何引擎上运行，但每次刷新的
-存储空间都会增加一份完整副本。对大型、缓慢变化的数据源选用 `scd2`；当需要完整历史而
-数据源无法提供键时，选用 `snapshot`。
+`scd2` 和 `snapshot` 都保留每个版本，由 Provisa 决定如何存储。两者都需要一个有效时间列和一个记录时间列（`validTime`、`recordedTime`）：业务赋予该记录的日期，以及该版本何时录入或修改。[带历史的视图](configuration.md#views-with-history-time-travel)解释这两种时间。
 
 fact 没有自己的历史模式；它们在时间上的覆盖来自下层实体的历史。
 
@@ -44,7 +43,7 @@ fact 没有自己的历史模式；它们在时间上的覆盖来自下层实体
 
 ### 源表 {: #the-source-tables }
 
-- `raw.customers`——id、name、region、tier
+- `raw.customers`——id、name、region、tier, effective_date, updated_at
 - `raw.orders`——order_id、customer_id、amount、quantity
 
 ### 注册 Customer entity {: #register-the-customer-entity }
@@ -60,6 +59,8 @@ fact 没有自己的历史模式；它们在时间上的覆盖来自下层实体
        - **Entity key：** `id`
        - **Attributes：** `name, region, tier`
        - **History：** `SCD2 (track changes — delta bitemporal)`
+       - **Valid time：** `effective_date`
+       - **Recorded time：** `updated_at`
     4. 点击 **Create**。
 
 === "GraphQL API"
@@ -73,6 +74,8 @@ fact 没有自己的历史模式；它们在时间上的覆盖来自下层实体
         key: ["id"]
         attributes: ["name", "region", "tier"]
         history: "scd2"
+        validTime: "effective_date"
+        recordedTime: "updated_at"
       }) {
         success
         message
@@ -83,8 +86,9 @@ fact 没有自己的历史模式；它们在时间上的覆盖来自下层实体
 Provisa 会生成并注册这个双时态物化视图：
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- registered as a bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- registered as a bitemporal MV: business_key ["id"], valid_time effective_date,
+-- recorded_time updated_at
 ```
 
 ### 注册 Sales fact {: #register-the-sales-fact }
@@ -154,6 +158,8 @@ Data Vault)"）。
 | Entity key | 是 | 逗号分隔的键列，例如 `id` |
 | Attributes | 否 | 逗号分隔的属性列，例如 `name, region, tier` |
 | History | 否 | `none` / `scd2` / `snapshot`；默认为 `none` |
+| Valid time | 启用历史时 | 保存业务赋予该记录的日期的列 |
+| Recorded time | 启用历史时 | 保存该版本何时录入或修改的列 |
 
 ### Fact 字段 {: #fact-fields }
 
@@ -193,6 +199,8 @@ mutation RegisterEntity($input: EntityInput!) {
 | `key` | [String] | — | Entity key 列 |
 | `attributes` | [String] | `[]` | 要投影的属性列 |
 | `history` | String | `"none"` | `"none"` \| `"scd2"` \| `"snapshot"` |
+| `validTime` | String | `null` | 有效时间列；`history` 不是 `"none"` 时必填 |
+| `recordedTime` | String | `null` | 记录时间列；`history` 不是 `"none"` 时必填 |
 | `visibleTo` | [String] | `["public"]` | 角色可见性列表 |
 
 ### `registerFact`
@@ -245,7 +253,7 @@ mutation RegisterFact($input: FactInput!) {
 | SCD 类型 | 历史模式 | 效果 |
 | --- | --- | --- |
 | Type 1（仅当前） | `none` | 每次刷新时重建物化视图；无行历史 |
-| Type 2（版本化） | `scd2` | 双时态 delta 物化视图；每次变更都追加一行新记录，以 entity key 为键 |
+| Type 2（版本化） | `scd2` | 双时态物化视图；每次变更都新增一个版本，以 entity key 为键 |
 
 当下游查询需要按交易发生时的状态联接维度时，使用 `scd2`，例如购买时客户所在的等级，而不是当前等级。稳定的查找表用 `none`。日期轴永远不变；只需要当前价格的产品目录可以在每次刷新时重建。
 
@@ -266,15 +274,17 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
 
-生成一个以 `id` 为键的双时态 delta 物化视图：
+生成一个以 `id` 为键的双时态物化视图：
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 **Product**（SCD Type 1——当前目录，不需要版本历史）：
@@ -448,8 +458,7 @@ SELECT "order_id" FROM "raw"."orders"
 
 #### Satellite
 
-Satellite 位于 hub key 旁边，携带完整的属性历史。使用 `scd2` 仅追加变更的行；使用
-`snapshot` 为每次完整刷新加盖时间戳。
+Satellite 位于 hub key 旁边，携带完整的属性历史。使用 `scd2` 追踪每次变更，或使用 `snapshot` 追踪每次刷新。
 
 ```graphql
 mutation {
@@ -460,6 +469,8 @@ mutation {
     key: ["id"]
     attributes: ["name", "region", "tier"]
     history: "scd2"
+    validTime: "effective_date"
+    recordedTime: "updated_at"
   }) { success message }
 }
 ```
@@ -467,8 +478,8 @@ mutation {
 生成：
 
 ```sql
-SELECT "id", "name", "region", "tier" FROM "raw"."customers"
--- bitemporal delta MV, entity key: ["id"]
+SELECT "id", "name", "region", "tier", "effective_date", "updated_at" FROM "raw"."customers"
+-- bitemporal MV: business_key ["id"], valid_time effective_date, recorded_time updated_at
 ```
 
 `CustomerSat` 和 `CustomerHub` 都以 `id` 为键。Hub 是稳定的连接目标；satellite 通过
@@ -654,4 +665,4 @@ GROUP BY orders.region, orders.month
 
 ## IR 带来的收益 {: #the-ir-payoff }
 
-每次注册调用都与手写的 MV 走同一条路径。entity 和 fact 规格是一种中间表示，不是模板，也不是宏。它面向哪个数仓是部署的属性，模型本身不指定。更换目标引擎后，同样的 `entity` / `fact` 声明会在那里物化，因为生成的 SQL 和双时态模式在设计上就与引擎无关。
+每次注册调用都与手写的 MV 走同一条路径。entity 和 fact 规格是一种中间表示，不是模板，也不是宏。它面向哪个数仓是部署的属性，模型本身不指定。更换目标引擎后，同样的 `entity` / `fact` 声明会在那里物化，因为生成的 SQL 和双时态历史在设计上就与引擎无关。

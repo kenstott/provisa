@@ -37,6 +37,7 @@ import { DescriptionField } from "./DescriptionField";
 import { ColumnNameCell } from "./ColumnNameCell";
 import { FieldLabel } from "./FieldLabel";
 import { MaterializedViewPanels } from "./MaterializedViewPanels";
+import { BitemporalFields } from "./BitemporalFields";
 import { LiveDeliveryFieldset } from "./LiveDeliveryFieldset";
 import { DeltaFieldset } from "./DeltaFieldset";
 import { LandingScopeFields } from "./LandingScopeFields";
@@ -674,6 +675,11 @@ export function TableEditForm({
                 editingTable={editingTable}
                 setEditingTable={setEditingTable}
               />
+              {/* REQ-2109: a table declares the columns it keeps its versions by; a view does so
+                  where it keeps history (MaterializedViewPanels). */}
+              {!isView && (
+                <BitemporalFields editingTable={editingTable} setEditingTable={setEditingTable} />
+              )}
               {!isView && (
                 <LandingScopeFields
                   editingTable={editingTable}

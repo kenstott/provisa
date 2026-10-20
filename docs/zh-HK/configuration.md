@@ -912,32 +912,45 @@ views:
 
 ### 帶歷史的檢視（時間旅行） {: #views-with-history-time-travel }
 
-具體化檢視可以保存其資料列的每一個版本，並按過去某個時刻讀取。 它宣告如何保存這些版本，以及版本屬於哪個鍵：
+資料表或具體化檢視可以保留其行的每個版本，並按過去某個時間讀取。為此你映射來源的三欄，三欄要麼全部宣告，要麼全部不宣告：
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| 欄位 | 必填 | 說明 |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | 是 | `snapshot` 在每次重新整理時附加整個結果；`delta` 只附加有變化的部分 |
-| `bitemporal_key` | 是 | 版本所屬的欄位 |
-| `bitemporal_source_time` | 否 | 保存每個資料列在數據來源中發生變化的時刻的欄位：時間旅行據以讀取的時鐘 |
+| 欄位 | 說明 |
+| ------- | ------------- |
+| `business_key` | 喺各個版本之間標識同一事物嘅欄，例如 `transaction_id`。一條記錄嘅每個版本都共用呢個鍵。 |
+| `valid_time` | 儲存業務賦予該記錄嘅日期嘅欄：佢幾時議定、入帳或生效。 |
+| `recorded_time` | 儲存該記錄呢個版本幾時輸入或修改嘅欄，例如 `updated_at`。 |
 
-**選擇時鐘。** 設定 `bitemporal_source_time` 時，版本按數據來源自身的時間排序及讀取：「截至上週二」指的是數據來源中的上週二。不設定時，版本按 Provisa 落地每次變更的時間排序及讀取，這跟隨重新整理節奏，而不是資料列在數據來源中發生變化的時刻。兩種選擇都成立。載入時間適合重新整理頻繁的情況、數據來源時間無關重要的數據，以及本來就關心載入時間的讀取，例如稽核 Provisa 在甚麼時候持有甚麼數據。
+每一項都指向資料表或檢視已有嘅欄。宣告佢哋嘅檢視須設定 `materialize: true`，由 Provisa 決定點樣儲存各個版本。`tables:` 下嘅項目接受同樣嘅三個鍵。
 
-一個版本由其本身的時刻起生效，直至下一個版本的時刻。刪除沒有數據來源的變更時間，在 Provisa 記錄它時生效。
+呢兩種時間喺其他地方另有名稱：記錄時間（recorded time），喺時態資料庫文獻中稱為交易時間，喺 SQL:2011 中稱為系統時間；有效時間（valid time），喺 SQL:2011 中稱為應用時間，亦叫生效日期。
+
+同一個版本嘅兩種時間可以唔同：
+
+| 示例 | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| 一筆 10月3日 嘅 100 元付款喺 10月5日 更正為 120。 | 更正保留 10月3日。 | 更正得到 10月5日。 |
+| 10月3日 14:10 採集嘅現場量度值喺 10月6日 輸入。其中一處筆誤喺 10月7日 修正。 | 10月3日 14:10，修正後保留。 | 10月6日。修正得到 10月7日。 |
+| 一筆交易喺執行時入帳，交易日期為 10月3日。10月4日 發現數量有誤並作修改。 | 交易日期 10月3日，修改後保留。 | 10月3日 10:02。修改得到 10月4日。 |
+
+按 10月3日 記錄嘅狀態讀取，呢筆交易顯示錯誤嘅數量；按而家所知讀取，顯示更正後嘅數量。
+
+一個版本由佢嘅時間起生效，直到下一個版本嘅時間。刪除喺 Provisa 記錄佢時生效。
 
 **讀取。** 一般讀取傳回每個鍵目前生效的版本。標頭 `X-Provisa-As-Of` 按某一時刻或某一範圍讀取，範圍以 ISO 8601 區間 `start/end` 表示：
 

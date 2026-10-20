@@ -158,25 +158,26 @@ def test_a_config_view_gains_them_and_names_its_key():
                 "domain_id": "d",
                 "sql": "SELECT 1",
                 "materialize": True,
-                "bitemporal_mode": "delta",
-                "bitemporal_key": ["id"],
-                "bitemporal_source_time": "updated_at",
+                "business_key": ["id"],
+                "valid_time": "effective_at",
+                "recorded_time": "updated_at",
                 "columns": [
                     {"name": "id", "visible_to": ["a"]},
+                    {"name": "effective_at", "visible_to": ["a"]},
                     {"name": "updated_at", "visible_to": ["a"]},
                 ],
             }
         ]
     }
     [entry] = views_as_tables(raw)["tables"]
-    assert entry["mv_bitemporal_source_time"] == "updated_at"
+    assert entry["recorded_time"] == "updated_at"
     assert [c["name"] for c in entry["columns"]][-3:] == ["source_from", "source_to", "recorded_at"]
 
 
 def test_a_bitemporal_view_with_no_key_is_refused_by_name():
     from provisa.core.models import Table
 
-    with pytest.raises(ValueError, match="view 'v': a bitemporal view names the key"):
+    with pytest.raises(ValueError, match="table 'v': .* missing business_key"):
         Table(
             source_id="__derived__",
             domain_id="d",
@@ -184,7 +185,8 @@ def test_a_bitemporal_view_with_no_key_is_refused_by_name():
             table_name="v",
             view_sql="SELECT 1",
             materialize=True,
-            mv_bitemporal_mode="snapshot",
+            valid_time="effective_at",
+            recorded_time="updated_at",
             columns=[],
         )
 

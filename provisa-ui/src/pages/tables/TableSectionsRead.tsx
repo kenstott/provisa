@@ -27,6 +27,7 @@ import {
 } from "./tableSectionFields";
 import {
   deltaFields,
+  historyFields,
   liveFields,
   mvStoreFields,
   offPeakFields,
@@ -212,6 +213,8 @@ export function LoadRead({ table, source }: { table: RegisteredTable; source?: S
                   },
                 ]
             : []),
+          // REQ-2109: the columns the table keeps its versions by, when it declares them.
+          ...historyFields(t, table),
         ]),
     { label: t("tableEditForm.delta.enable"), value: yesNo(t, table.delta != null) },
     ...deltaFields(t, table),

@@ -809,9 +809,8 @@ async def _sync_view_mv(
     debounce_max_delay: float | None = None,
     consistency: str = "shared",  # REQ-879
     preprocess: str | None = None,  # REQ-957
-    bitemporal_mode: str | None = None,  # REQ-1162: None | "snapshot" | "delta"
-    bitemporal_key: list[str] | None = None,  # REQ-1162: entity key (required for delta)
-    bitemporal_source_time: str | None = None,  # REQ-1163: the source's change-time column
+    business_key: list[str] | None = None,  # REQ-2109: declared with valid and recorded time
+    recorded_time: str | None = None,  # REQ-2109: the column its versions are read on
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance
@@ -832,24 +831,17 @@ async def _sync_view_mv(
             f"invalid MV consistency {consistency!r}: expected 'shared' or 'distributed'"
         )
     from provisa.api.app import state
-    from provisa.mv.bitemporal import BitemporalSpec  # REQ-1162
+    from provisa.mv.bitemporal import declared_spec  # REQ-1162, REQ-2109
     from provisa.mv.models import MVDefinition, MVStatus
     from provisa.mv.readable_inputs import read_table_names
     from provisa.core.change_signal import resolve, to_freshness_mode  # REQ-932
     from provisa.mv.determinism import check_view_determinism  # REQ-964
     from provisa.mv.preprocess import validate_preprocess  # REQ-957
 
-    # REQ-1162: build the bitemporal spec from the declared mode/key (None = ordinary MV). Spec
-    # construction validates the mode and that delta has a key — a bad declaration fails loud here.
+    # REQ-1162, REQ-2109: a view declaring its business key keeps every version (None = ordinary
+    # MV); the declaration's all-three-or-none rule is the Table model's.
     bitemporal = (
-        BitemporalSpec(
-            key=tuple(bitemporal_key or []),
-            mode=bitemporal_mode,
-            source_column=bitemporal_source_time,
-            columns=tuple(bitemporal_columns),
-        )
-        if bitemporal_mode
-        else None
+        declared_spec(business_key, recorded_time, bitemporal_columns) if business_key else None
     )
     # REQ-1162: a bitemporal MV manages its own append-only persistence (refresh.py routes it to
     # _refresh_bitemporal ahead of the persist dispatch, ignoring `persist` entirely) — reject a
@@ -857,8 +849,8 @@ async def _sync_view_mv(
     # replace/upsert semantics the MV will not actually get.
     if bitemporal is not None and persist != "replace":
         raise ValueError(
-            f"MV {table_name!r}: persist={persist!r} is incompatible with bitemporal_mode "
-            f"={bitemporal_mode!r} — bitemporal MVs are append-only by construction; omit "
+            f"MV {table_name!r}: persist={persist!r} is incompatible with a declared business_key "
+            "— a view keeping every version is append-only by construction; omit "
             "persist (or leave it at its default) instead of declaring append/upsert"
         )
 

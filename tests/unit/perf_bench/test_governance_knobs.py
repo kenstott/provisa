@@ -228,7 +228,7 @@ def _table(tid: int, columns: list[dict[str, Any]]) -> dict[str, Any]:
             "schemaName": "public",
             "tableName": f"t{tid}",
             "arguments": None,
-            "mvBitemporalKey": [],
+            "businessKey": [],
             "productId": None,
             "live": None,
             "uniqueConstraints": [],
@@ -551,7 +551,7 @@ def test_the_table_save_is_the_editor_s(tmp_path: Path) -> None:
             "description": "every order",
             "arguments": {"since": "2026-01-01"},
             "materialize": True,
-            "mvBitemporalKey": ["order_id"],
+            "businessKey": ["order_id"],
             "enableAggregates": True,
             "uniqueConstraints": [{"name": "u", "columns": ["order_id"]}],
             "live": {

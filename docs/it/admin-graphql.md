@@ -728,7 +728,9 @@ L'input principale di registrazione tabella. Campi chiave oltre alle basi:
 | `mvRefreshInterval` | Secondi tra i refresh |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | Manutenzione incrementale |
-| `mvBitemporalMode` | `snapshot` \| `delta` per tabelle bitemporali |
+| `businessKey` | Colonne che identificano la stessa cosa tra le versioni; dichiarata con `validTime` e `recordedTime`, tutte e tre o nessuna |
+| `validTime` | Colonna con la data che l'azienda dà al record |
+| `recordedTime` | Colonna con il momento in cui questa versione è stata inserita o modificata |
 | `mvCalendar` | Nome del calendario snapshot |
 | `mvGrain` | Grana dello snapshot: `daily`, `weekly`, `monthly`, `annual`, o custom `3WE` / `LFR` |
 | `viewSql` | SQL per una vista derivata |

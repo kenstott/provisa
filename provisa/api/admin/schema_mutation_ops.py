@@ -631,9 +631,8 @@ async def register_table(
             input.change_signal,
             consistency=input.mv_consistency,  # REQ-879
             preprocess=input.mv_preprocess,  # REQ-957
-            bitemporal_mode=input.mv_bitemporal_mode,  # REQ-1162
-            bitemporal_key=list(input.mv_bitemporal_key),  # REQ-1162
-            bitemporal_source_time=input.mv_bitemporal_source_time,  # REQ-1163
+            business_key=list(input.business_key),  # REQ-2109
+            recorded_time=input.recorded_time,  # REQ-2109
             bitemporal_columns=[c.name for c in model.columns],
             persist=input.mv_persist,  # REQ-965
             primary_key=list(input.mv_primary_key),  # REQ-970

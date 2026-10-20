@@ -250,6 +250,20 @@ _READ_DESCRIPTIONS = {
 }
 
 
+def declared_spec(
+    business_key: list[str], recorded_time: str | None, columns: list[str]
+) -> BitemporalSpec:
+    """REQ-2109: how a view declaring business_key, valid_time and recorded_time keeps its
+    versions. Provisa picks the mechanism: each refresh appends what changed (delta) keyed on the
+    business key, read on the recorded time."""
+    return BitemporalSpec(
+        key=tuple(business_key),
+        mode=MODE_DELTA,
+        source_column=recorded_time,
+        columns=tuple(columns),
+    )
+
+
 def with_read_columns(columns: list[dict], key: list[str], source_time: str | None) -> list[dict]:
     """A bitemporal view's columns (as a config or a save gives them, ``name`` and ``visible_to``
     each) with the three read columns it answers (REQ-2064) appended where missing, granted as its

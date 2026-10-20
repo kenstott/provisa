@@ -183,12 +183,12 @@ La vista legge i record di refresh in `"ops"."traces"` e risponde su ogni motore
 
 ## Una vista com'era, e com'era stata registrata {: #a-view-as-it-stood-and-as-it-was-recorded }
 
-Una vista dichiarata bitemporale conserva ogni versione che ha avuto: ogni refresh aggiunge, e nessuna versione viene riscritta, su qualsiasi archivio. Una lettura semplice risponde con lo stato attuale. Due header della richiesta ne leggono il passato:
+Una vista che mappa le colonne della sua origine come `business_key`, `valid_time` e `recorded_time` conserva ogni versione che ha avuto: ogni aggiornamento aggiunge, e nessuna versione viene riscritta, su nessuno store. Una lettura semplice restituisce lo stato attuale. Due header di richiesta leggono il suo passato:
 
-- `X-Provisa-As-Of` legge la vista a una data, o su un intervallo, secondo il suo orologio: l'ora di modifica propria della sorgente dove la vista dichiara `bitemporal_source_time`, l'ora di caricamento di Provisa dove non la dichiara.
+- `X-Provisa-As-Of` legge la vista a un momento o su un intervallo.
 - `X-Provisa-As-Recorded` la legge come Provisa l'aveva registrata a una data. Le versioni registrate dopo restano escluse, quindi una correzione registrata in seguito non cambia la riproduzione del passato.
 
-Al 30 settembre e registrata il 1° ottobre dà il dato originale; registrata il 5 ottobre dà la correzione. Il record di audit di ogni istruzione conserva entrambe le date (`as_of`, `as_recorded`), così un report si può riprodurre com'era stato prodotto la prima volta. [Viste con cronologia](configuration.md#views-with-history-time-travel) descrive come dichiarare una vista bitemporale e ogni superficie che accetta i due valori.
+Al 30 settembre e registrata il 1° ottobre dà il dato originale; registrata il 5 ottobre dà la correzione. Il record di audit di ogni istruzione conserva entrambe le date (`as_of`, `as_recorded`), così un report si può riprodurre com'era stato prodotto la prima volta. [Viste con cronologia](configuration.md#views-with-history-time-travel) descrive le tre dichiarazioni, con esempi, e ogni superficie che accetta i due valori.
 
 ## Che cosa romperebbe la ridenominazione o la rimozione di una colonna {: #what-a-column-rename-or-drop-would-break }
 

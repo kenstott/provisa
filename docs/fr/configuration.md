@@ -912,32 +912,45 @@ Les vues passent par le même pipeline de gouvernance que les tables : RLS, masq
 
 ### Vues avec historique (voyage dans le temps) {: #views-with-history-time-travel }
 
-Une vue matérialisée peut conserver chaque version de ses lignes et être lue à un instant passé. Elle déclare comment elle les conserve et à quelle clé appartient une version :
+Une table ou une vue matérialisée peut conserver chaque version de ses lignes et être lue à une date passée. Vous associez pour cela trois colonnes de la source, et vous déclarez les trois ou aucune :
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| Champ | Obligatoire | Description |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | Oui | `snapshot` ajoute le résultat complet à chaque rafraîchissement ; `delta` n'ajoute que ce qui a changé |
-| `bitemporal_key` | Oui | Les colonnes auxquelles appartient une version |
-| `bitemporal_source_time` | Non | La colonne qui indique quand chaque ligne a changé dans la source : l'horloge sur laquelle lit le voyage dans le temps |
+| Champ | Description |
+| ------- | ------------- |
+| `business_key` | Les colonnes qui identifient la même chose d'une version à l'autre, par exemple `transaction_id`. Toutes les versions d'un enregistrement partagent cette clé. |
+| `valid_time` | La colonne contenant la date que votre activité donne à l'enregistrement : quand il a été convenu, comptabilisé ou est entré en vigueur. |
+| `recorded_time` | La colonne contenant le moment où cette version de l'enregistrement a été saisie ou modifiée, par exemple `updated_at`. |
 
-**Choisir l'horloge.** Avec `bitemporal_source_time`, les versions sont ordonnées et lues selon l'heure de la source : « au mardi dernier » veut dire mardi dernier dans la source. Sans lui, elles sont ordonnées et lues selon le moment où Provisa a déposé chaque changement, ce qui suit la cadence de rafraîchissement et non l'instant où la ligne a changé dans la source. Les deux choix sont valables. L'heure de chargement convient à une cadence de rafraîchissement fréquente, à des données dont l'heure dans la source importe peu, et aux lectures censées porter sur l'heure de chargement, comme vérifier ce que Provisa détenait et quand.
+Chacune nomme une colonne de la table ou de la vue. Une vue qui les déclare indique `materialize: true`, et Provisa choisit comment elle stocke les versions. Une entrée sous `tables:` accepte les trois mêmes clés.
 
-Une version est en vigueur de son instant jusqu'à celui de la version suivante. Une suppression n'a pas d'heure de changement dans la source et prend effet au moment où Provisa l'a enregistrée.
+Les deux temps portent d'autres noms ailleurs : le temps d'enregistrement (recorded time), appelé temps de transaction dans la littérature sur les bases de données temporelles et temps système dans SQL:2011 ; le temps de validité (valid time), appelé temps applicatif dans SQL:2011 ou date d'effet.
+
+Les deux peuvent différer pour une même version :
+
+| Exemple | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| Un paiement de 100 daté du 3 octobre est corrigé à 120 le 5 octobre. | La correction garde le 3 octobre. | La correction reçoit le 5 octobre. |
+| Une mesure de terrain prise le 3 octobre à 14:10 est saisie le 6 octobre. Une faute de frappe y est corrigée le 7 octobre. | 3 octobre 14:10, gardé par la correction. | 6 octobre. La correction reçoit le 7 octobre. |
+| Une opération est enregistrée à l'exécution avec la date d'opération 3 octobre. Le 4 octobre, sa quantité s'avère fausse et est modifiée. | Date d'opération 3 octobre, gardée par la modification. | 3 octobre 10:02. La modification reçoit le 4 octobre. |
+
+Lue telle qu'enregistrée le 3 octobre, l'opération montre la quantité fausse. Lue selon ce que l'on sait aujourd'hui, elle montre la quantité corrigée.
+
+Une version est en vigueur de son moment à celui de la version suivante. Une suppression prend effet quand Provisa l'enregistre.
 
 **Lecture.** Une lecture simple renvoie la version de chaque clé en vigueur maintenant. L'en-tête `X-Provisa-As-Of` lit à un instant, ou sur une plage donnée sous forme d'intervalle ISO 8601 `start/end` :
 

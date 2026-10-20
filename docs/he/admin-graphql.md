@@ -728,7 +728,9 @@ mutation {
 | `mvRefreshInterval` | שניות בין רענונים |
 | `mvPersist` | `replace` \| `append` \| `upsert` |
 | `mvIncremental` | תחזוקה מצטברת |
-| `mvBitemporalMode` | `snapshot` \| `delta` עבור טבלאות דו-זמניות |
+| `businessKey` | עמודות שמזהות את אותו הדבר לאורך הגרסאות; מוצהר יחד עם `validTime` ו-`recordedTime`, שלושתם או אף אחד |
+| `validTime` | עמודה שמחזיקה את התאריך שהעסק נותן לרשומה |
+| `recordedTime` | עמודה שמחזיקה את המועד שבו גרסה זו הוזנה או שונתה |
 | `mvCalendar` | שם לוח שנה של תמונת מצב |
 | `mvGrain` | גרעיניות תמונת מצב: `daily`, `weekly`, `monthly`, `annual`, או מותאם `3WE` / `LFR` |
 | `viewSql` | SQL עבור view נגזר |

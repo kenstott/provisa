@@ -127,36 +127,36 @@ export function deltaFields(t: TFunction, table: RegisteredTable): DetailField[]
   ];
 }
 
+/** REQ-2109: the business key, valid time and recorded time a table or view keeps its versions
+ * by, when it declares them. */
+export function historyFields(t: TFunction, table: RegisteredTable): DetailField[] {
+  if (!table.businessKey.length) return [];
+  return [
+    { label: t("tableEditForm.businessKeyLabel"), value: table.businessKey.join(", ") },
+    { label: t("tableEditForm.validTimeLabel"), value: orDash(table.validTime ?? "") },
+    { label: t("tableEditForm.recordedTimeLabel"), value: orDash(table.recordedTime ?? "") },
+  ];
+}
+
 /** A materialized view's store: how it keeps its rows, and what runs before a refresh. */
 export function mvStoreFields(t: TFunction, table: RegisteredTable): DetailField[] {
   if (!(table.viewSql != null && table.materialize)) return [];
-  const timeTravel = Boolean(table.mvBitemporalMode);
-  const store = timeTravel
-    ? table.mvBitemporalMode
-    : table.mvPersist === "upsert"
-      ? "upsert"
-      : "replace";
-  const storeLabel: Record<string, string> = {
-    snapshot: t("tableEditForm.storeSnapshot"),
-    delta: t("tableEditForm.storeDelta"),
-    replace: t("tableEditForm.storeReplace"),
-    upsert: t("tableEditForm.storeUpsert"),
-  };
+  const timeTravel = table.businessKey.length > 0;
   return [
-    { label: t("tableEditForm.persistLabel"), value: storeLabel[store as string] ?? store },
-    { label: t("tableEditForm.timeTravelToggleLabel"), value: yesNo(t, timeTravel) },
     ...(timeTravel
-      ? [
+      ? []
+      : [
           {
-            label: t("tableEditForm.bitemporalKeyLabel"),
-            value: orDash(table.mvBitemporalKey.join(", ")),
+            label: t("tableEditForm.persistLabel"),
+            value: t(
+              table.mvPersist === "upsert"
+                ? "tableEditForm.storeUpsert"
+                : "tableEditForm.storeReplace",
+            ),
           },
-          {
-            label: t("tableEditForm.bitemporalSourceTimeLabel"),
-            value: table.mvBitemporalSourceTime ?? t("tableEditForm.bitemporalSourceTimeNone"),
-          },
-        ]
-      : []),
+        ]),
+    { label: t("tableEditForm.timeTravelToggleLabel"), value: yesNo(t, timeTravel) },
+    ...historyFields(t, table),
     { label: t("tableEditForm.incrementalLabel"), value: yesNo(t, table.mvIncremental) },
     {
       label: t("tableEditForm.preprocessLabel"),

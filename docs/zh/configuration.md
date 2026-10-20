@@ -912,32 +912,45 @@ views:
 
 ### 带历史的视图（时间旅行） {: #views-with-history-time-travel }
 
-物化视图可以保存其行的每一个版本，并按过去的某个时刻读取。 它声明如何保存这些版本，以及版本属于哪个键：
+表或物化视图可以保留其行的每个版本，并按过去的某个时间读取。为此你映射源的三列，三列要么全部声明，要么都不声明：
 
 ```yaml
 views:
   - id: customer-history
-    sql: SELECT customer_id, tier, updated_at FROM crm.customers
+    sql: SELECT customer_id, tier, effective_date, updated_at FROM crm.customers
     domain_id: sales
     materialize: true
-    bitemporal_mode: delta            # snapshot | delta
-    bitemporal_key: [customer_id]     # required
-    bitemporal_source_time: updated_at  # optional: the source's change time
+    business_key: [customer_id]
+    valid_time: effective_date
+    recorded_time: updated_at
     columns:
       - {name: customer_id, visible_to: [analyst]}
       - {name: tier, visible_to: [analyst]}
+      - {name: effective_date, visible_to: [analyst]}
       - {name: updated_at, visible_to: [analyst]}
 ```
 
-| 字段 | 必填 | 说明 |
-| ------- | ---------- | ------------- |
-| `bitemporal_mode` | 是 | `snapshot` 在每次刷新时追加整个结果；`delta` 只追加发生变化的部分 |
-| `bitemporal_key` | 是 | 版本所属的列 |
-| `bitemporal_source_time` | 否 | 保存每一行在数据源中发生变化的时刻的列：时间旅行据以读取的时钟 |
+| 字段 | 说明 |
+| ------- | ------------- |
+| `business_key` | 在各个版本之间标识同一事物的列，例如 `transaction_id`。一条记录的每个版本都共享这个键。 |
+| `valid_time` | 保存业务赋予该记录的日期的列：它何时商定、入账或生效。 |
+| `recorded_time` | 保存该记录这个版本何时录入或修改的列，例如 `updated_at`。 |
 
-**选择时钟。** 设置 `bitemporal_source_time` 时，版本按数据源自身的时间排序和读取：“截至上周二”指的是数据源中的上周二。不设置时，版本按 Provisa 落地每次变更的时间排序和读取，这跟随刷新节奏，而不是行在数据源中发生变化的时刻。两种选择都成立。加载时间适合刷新频繁的情况、数据源时间无关紧要的数据，以及本来就关心加载时间的读取，例如审计 Provisa 在什么时候持有什么数据。
+每一项都指向表或视图中已有的列。声明它们的视图须设置 `materialize: true`，由 Provisa 决定如何存储各个版本。`tables:` 下的条目接受同样的三个键。
 
-一个版本从它自己的时刻起有效，直到下一个版本的时刻。删除没有数据源变更时间，在 Provisa 记录它时生效。
+这两种时间在别处另有名称：记录时间（recorded time），在时态数据库文献中称为事务时间，在 SQL:2011 中称为系统时间；有效时间（valid time），在 SQL:2011 中称为应用时间，也叫生效日期。
+
+同一个版本的两种时间可以不同：
+
+| 示例 | `valid_time` | `recorded_time` |
+| ------- | ------------ | --------------- |
+| 一笔 10月3日 的 100 元付款在 10月5日 更正为 120。 | 更正保留 10月3日。 | 更正得到 10月5日。 |
+| 10月3日 14:10 采集的现场测量值在 10月6日 录入。其中的一处笔误在 10月7日 修正。 | 10月3日 14:10，修正后保留。 | 10月6日。修正得到 10月7日。 |
+| 一笔交易在执行时入账，交易日期为 10月3日。10月4日 发现数量有误并作修改。 | 交易日期 10月3日，修改后保留。 | 10月3日 10:02。修改得到 10月4日。 |
+
+按 10月3日 记录的状态读取，这笔交易显示错误的数量；按现在所知读取，显示更正后的数量。
+
+一个版本从它的时间起生效，直到下一个版本的时间。删除在 Provisa 记录它时生效。
 
 **读取。** 普通读取返回每个键当前有效的版本。标头 `X-Provisa-As-Of` 按某一时刻或某一范围读取，范围以 ISO 8601 区间 `start/end` 给出：
 
