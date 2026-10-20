@@ -13,6 +13,7 @@
 // runtime it runs on. What the form holds is the source's mapping, and an edit refills the form.
 // REQ-2104: the org secrets its code may read, picked by name.
 // REQ-2105: the monthly cap on what its calls to the LLM service cost.
+// REQ-2106: its non-secret settings, which its code reads through Provisa's services.
 
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -131,6 +132,23 @@ describe("what a code source saves", () => {
         codeMappingJson("python", { code_package: "a", code_version: "1", code_llm_cap: "" }),
       ),
     ).not.toHaveProperty("llm");
+  });
+
+  it("keeps its settings, one name = value to a line", () => {
+    const mapping = JSON.parse(
+      codeMappingJson("python", {
+        code_package: "a",
+        code_version: "1",
+        code_settings: "region = eu-west\n\n threshold = 0.8 \nflag",
+      }),
+    );
+    expect(mapping.settings).toEqual({ region: "eu-west", threshold: "0.8", flag: "" });
+    expect(codeFieldsFromMapping(JSON.stringify(mapping)).code_settings).toBe(
+      "region = eu-west\nthreshold = 0.8\nflag = ",
+    );
+    expect(
+      JSON.parse(codeMappingJson("python", { code_package: "a", code_version: "1" })),
+    ).not.toHaveProperty("settings");
   });
 
   it("needs what its origin names, and a full commit", () => {

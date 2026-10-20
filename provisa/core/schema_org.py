@@ -1822,6 +1822,30 @@ code_source_builds = Table(
 )
 
 
+# REQ-2106: a code source's own cache, shared by every worker of it in every process; a value is
+# JSON, gone at expires_at (None: kept until deleted or replaced).
+code_source_cache = Table(
+    "code_source_cache",
+    metadata,
+    Column("source_id", Text, primary_key=True),
+    Column("key", Text, primary_key=True),
+    Column("value", Text, nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=True),
+)
+
+# REQ-2106: a code source's own vector collection, which its code builds and searches; never a
+# governed table's data. ``vector`` is the embedding as a JSON array of floats.
+code_source_vectors = Table(
+    "code_source_vectors",
+    metadata,
+    Column("source_id", Text, primary_key=True),
+    Column("item_id", Text, primary_key=True),
+    Column("vector", Text, nullable=False),
+    Column("text", Text, nullable=True),
+    Column("item_metadata", Text, nullable=False, server_default="{}"),
+)
+
+
 admin_audit_log = Table(
     "admin_audit_log",
     metadata,

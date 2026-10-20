@@ -14,9 +14,18 @@
 // reads the code when the source is saved, and refuses code it cannot use by name.
 // REQ-2104: the org secrets its code may read through Provisa's services, picked by name.
 // REQ-2105: the monthly cap on what its calls to Provisa's LLM service cost.
+// REQ-2106: its non-secret settings, which its code reads through Provisa's services.
 
 import { useEffect, useState, type ReactNode } from "react";
-import { FileInput, MultiSelect, NumberInput, Select, Text, TextInput } from "@mantine/core";
+import {
+  FileInput,
+  MultiSelect,
+  NumberInput,
+  Select,
+  Text,
+  Textarea,
+  TextInput,
+} from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { uploadCodeArchive, uploadLockfile } from "../../api/codeUploads";
 import { fetchSecrets } from "../../api/secrets";
@@ -270,6 +279,21 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
               value={fields.code_llm_cap ?? ""}
               onChange={(v) => set({ code_llm_cap: v === "" ? "" : String(v) })}
               data-testid="code-llm-cap"
+            />
+          </FormField>
+        </FieldGroup>
+        <FieldGroup>
+          <FormField size="long" help={t("codeSourceFields.settingsHint")}>
+            <Textarea
+              label={t("codeSourceFields.settings")}
+              placeholder={"region = eu-west\nthreshold = 0.8"}
+              value={fields.code_settings ?? ""}
+              onChange={(e) => set({ code_settings: e.currentTarget.value })}
+              autosize
+              minRows={2}
+              maxRows={10}
+              styles={{ input: { fontFamily: "var(--mantine-font-family-monospace)" } }}
+              data-testid="code-settings"
             />
           </FormField>
         </FieldGroup>

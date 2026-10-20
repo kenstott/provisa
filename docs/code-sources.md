@@ -117,6 +117,42 @@ mapping:
 
 A source with a cap can call only models that have a price there. Once its spending for the month (UTC) reaches the cap, its calls are refused until the month turns. Calls already under way when the cap is reached still finish, so the month can end slightly over the cap.
 
+## Provisa's services {: #provisas-services }
+
+Your code can import one module that Provisa always provides wherever it runs: `provisa_services` in Python, and `@provisa/services` in Node.js, Bun and Deno. Nothing needs installing, and it isn't on any package registry. Outside Provisa the module doesn't exist, so tests of your functions mock it.
+
+```python
+import provisa_services as ps
+
+region = ps.settings.get("region")
+rates = ps.cache.get("rates") or fetch_rates()
+ps.cache.set("rates", rates, ttl=3600)
+```
+
+```typescript
+import { settings, cache } from "@provisa/services";
+
+const region = await settings.get("region");
+const rates = (await cache.get("rates")) ?? (await fetchRates());
+await cache.set("rates", rates, 3600);
+```
+
+| Call | What it does |
+|---|---|
+| `secrets.get(name)` | One of the source's declared secrets, read from the vault now. See [Secrets](#secrets). |
+| `settings.get(name, default)` | One of the source's settings, from **Settings** on its form, which a steward can change without changing the code. Missing with no default, it raises. |
+| `cache.get(key, default)`, `cache.set(key, value, ttl)`, `cache.delete(key)` | The source's own cache, shared by every worker of it. A value is anything JSON can hold, up to 1 MB, kept for `ttl` seconds or until replaced. |
+| `vectors.upsert(items, model)`, `vectors.search(query, k, model)`, `vectors.embed(texts, model)`, `vectors.delete(ids)` | The source's own vector collection, for its own reference data. An item has an `id` and a `text` or a `vector`; a text is embedded by one of your organization's vector models. It can't search your governed tables: their data reaches code only as parameters. |
+| `http.get(url)`, `http.post(url, ...)` | A fetch Provisa makes for the code, through the deployment's outbound proxy and certificate authorities. The host must be on the egress allow-list, and each fetch is recorded in the audit trail. |
+| `llm.chat(model, messages)`, `llm.embeddings(model, input)`, `llm.base_url()` (`llm.baseUrl()` in JavaScript) | Provisa's LLM service. See [Calling a model](#calling-a-model). |
+| `log(message, level, fields)`, `metric(name, value, kind, attributes)` | A log line, and a metric point named `code_source.<name>`, attached to the request your code is serving. |
+
+A call the service refuses raises a `ServiceError` that names the service and says why.
+
+The services answer code running on the Provisa server. On a remote host they aren't reachable yet, and every call raises.
+
+Each call to your code is traced as part of the request that triggered it, with the function, its kind, how many arguments it got (never their values), the rows and batches it returned, its duration and the worker's CPU. Each service call is traced the same way. At the normal trace detail these facts are on the request's span; at debug detail each call is a span of its own. If your code uses OpenTelemetry, its spans join the same trace.
+
 ## Running on a remote host {: #running-on-a-remote-host }
 
 A source runs on the Provisa server by default; this is dev mode. When its code needs a machine the server isn't, such as a GPU box or a host inside another network, build its image and run it there. The source then runs in built mode, and its tables, grants and readers stay the same.

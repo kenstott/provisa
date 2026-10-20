@@ -68,6 +68,16 @@ def _loopback(host: str) -> bool:
         return False
 
 
+def admitted(allow: Iterable[str], host: str, port: int) -> bool:
+    """Whether ``allow`` names ``host`` (or ``host:port``), and it is not loopback: the egress
+    allow-list's one test, for the proxy and for a fetch Provisa makes for a source (REQ-2106)."""
+    host = host.lower()
+    if _loopback(host):
+        return False
+    names = {a.strip().lower() for a in allow if a.strip()}
+    return host in names or f"{host}:{port}" in names
+
+
 class EgressProxy:
     """One proxy on 127.0.0.1, on a port of its own, for the process's sandboxed workers."""
 
@@ -110,10 +120,7 @@ class EgressProxy:
 
     def admits(self, host: str, port: int) -> bool:
         """Whether the allow-list names ``host`` (or ``host:port``), and it is not loopback."""
-        host = host.lower()
-        if _loopback(host):
-            return False
-        return host in self.allow or f"{host}:{port}" in self.allow
+        return admitted(self.allow, host, port)
 
     # -- one connection -------------------------------------------------------------------------
 
@@ -211,32 +218,35 @@ class EgressProxy:
             return
         self._services(client, parts[0], parts[1], head)
 
-    def _body(self, client: socket.socket, head: bytes) -> bytes | None:
-        """The request's body, by its Content-Length: what was read with the head, and the rest."""
-        headers, _, body = head.partition(b"\r\n\r\n")
-        length = 0
-        for line in headers.split(b"\r\n")[1:]:
+    def _body(self, client: socket.socket, head: bytes) -> tuple[bytes, dict[str, str]] | None:
+        """The request's body, by its Content-Length (what was read with the head, and the rest),
+        and its headers, by lower-case name."""
+        raw, _, body = head.partition(b"\r\n\r\n")
+        headers: dict[str, str] = {}
+        for line in raw.split(b"\r\n")[1:]:
             name, _, value = line.partition(b":")
-            if name.strip().lower() == b"content-length":
-                if not value.strip().isdigit() or int(value) > _MAX_BODY:
-                    self._refuse(client, 413, "a request body larger than the services read")
-                    return None
-                length = int(value)
+            headers[name.strip().lower().decode("latin-1")] = value.strip().decode("latin-1")
+        length_text = headers.get("content-length", "0")
+        if not length_text.isdigit() or int(length_text) > _MAX_BODY:
+            self._refuse(client, 413, "a request body larger than the services read")
+            return None
+        length = int(length_text)
         while len(body) < length:
             chunk = client.recv(65536)
             if not chunk:
                 return None
             body += chunk
-        return body[:length]
+        return body[:length], headers
 
     def _services(self, client: socket.socket, method: str, path: str, head: bytes) -> None:
         """Answer a request to Provisa's services: a value or a refusal, never forwarded."""
-        request = self._body(client, head)
-        if request is None:
+        read = self._body(client, head)
+        if read is None:
             return
+        request, headers = read
         content_type = services.TEXT
         try:
-            status, content_type, body = services.answer(method, path, request)
+            status, content_type, body = services.answer(method, path, request, headers)
         except Exception as exc:  # allow-ble: a failure of the services themselves (the vault or the audit trail unreachable) is answered as one, by its type alone; its message could carry what it read
             log.exception("code-source services failed on %s", method)
             status, body = 500, f"Provisa's services failed: {type(exc).__name__}".encode()

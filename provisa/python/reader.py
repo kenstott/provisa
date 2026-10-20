@@ -217,6 +217,9 @@ def read(entry: str) -> dict:
 def main(argv: list[str]) -> int:
     code, entry = argv
     sys.path.insert(0, code)
+    # REQ-2106: Provisa's services module, always present where the code runs, so code that
+    # imports it is read as it runs (services/ beside this reader, readable in its sandbox).
+    sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), "services"))
     # What the code prints while it is imported goes to stderr; the document is stdout's alone.
     out = os.dup(1)
     os.dup2(2, 1)

@@ -75,6 +75,8 @@ class CodeConfig:
     mode: str = "dev"
     #: REQ-2098: a built source's remote host: host, port, pin, exports and kept manifest.
     remote: dict | None = None
+    #: REQ-2106: its non-secret settings, which its code reads through Provisa's services.
+    settings: dict[str, Any] = field(default_factory=dict)
 
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
@@ -122,6 +124,7 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         remote=remote_sources.remote_of(mapping)
         if remote_sources.mode_of(mapping) == remote_sources.BUILT
         else None,
+        settings=services.declared_settings(mapping.get("settings")),
     )
 
 
@@ -246,6 +249,8 @@ def _granted(command: HostCommand, source_id: str, config: CodeConfig, ctx: Cont
         secrets=config.secrets,
         admin_db=ctx.admin_db,
         llm_cap_usd=config.llm_cap_usd,
+        settings=config.settings,
+        egress=tuple(ctx.egress),
     )
     return replace(command, services=grant)
 

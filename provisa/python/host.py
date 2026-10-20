@@ -42,8 +42,10 @@ import os
 import socket
 import struct
 import sys
+import time
 import traceback
 import typing
+from pathlib import Path
 
 BATCH = 1000
 #: The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
@@ -180,6 +182,21 @@ def _for_field(value: typing.Any, field: typing.Any) -> typing.Any:  # a value; 
     return value
 
 
+def _bind_call(call_id: int, traceparent: str | None) -> None:
+    """REQ-2106: the call this task serves, for Provisa's services (provisa_services, on the path
+    beside this host), and the request's trace for the code's own OpenTelemetry, when it has it.
+    Bound in the call's task, so a thread the call runs code on carries it too."""
+    services = sys.modules.get("provisa_services")
+    if services is not None:
+        services._bind(call_id, traceparent)
+    if traceparent:
+        try:
+            from opentelemetry import context, propagate
+        except ImportError:
+            return  # the code does not trace itself: there is no trace of its own to join
+        context.attach(propagate.extract({"traceparent": traceparent}))
+
+
 class Host:
     def __init__(self, module: typing.Any, writer: asyncio.StreamWriter) -> None:
         self.module = module
@@ -221,7 +238,10 @@ class Host:
         args: list,
         names: list[str],
         schema: str | None,
+        traceparent: str | None = None,
     ) -> None:
+        started = time.process_time()
+        _bind_call(call_id, traceparent)
         try:
             fn = getattr(self.module, name, None)
             if not inspect.isfunction(fn) or name not in exported(self.module):
@@ -234,7 +254,9 @@ class Host:
                 pa = _arrow()
                 rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
             await self._run(call_id, fn, kind, positional, keywords, rows_schema)
-            await self.send({"op": "end", "id": call_id})
+            # REQ-2106: the CPU the call took in this process (every thread of it).
+            cpu_ms = round((time.process_time() - started) * 1000, 3)
+            await self.send({"op": "end", "id": call_id, "cpu_ms": cpu_ms})
         except asyncio.CancelledError:
             pass  # Provisa stopped the call and is no longer waiting for it
         except BaseException as exc:  # noqa: BLE001 -- the code's own failure, sent back by name
@@ -330,6 +352,10 @@ async def run(address: str, code: str, entry: str) -> None:
 
 def load(code: str, entry: str) -> typing.Any:  # the code's entry module
     sys.path.insert(0, code)
+    # REQ-2106: Provisa's services module, always present: services/ beside this host, here and in
+    # a built image alike. The host runs isolated (-I), so it is put on the path here.
+    sys.path.insert(1, str(Path(__file__).resolve().parent / "services"))
+    importlib.import_module("provisa_services")
     return importlib.import_module(entry)
 
 
@@ -373,6 +399,7 @@ async def serve(
                     message["args"],
                     message["names"],
                     message["schema"],
+                    message.get("traceparent"),
                 )
             )
 

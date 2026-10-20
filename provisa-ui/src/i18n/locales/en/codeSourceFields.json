@@ -31,6 +31,8 @@
     "secretsPlaceholder": "No secrets",
     "llmCap": "LLM monthly cap",
     "llmCapHint": "What this code's calls to $PROVISA_SERVICES/llm may cost each month (UTC), in USD. With a cap, it may use only models priced in Polly model prices, and its calls are refused once the month reaches the cap. Empty: no cap.",
-    "llmCapPlaceholder": "No cap"
+    "llmCapPlaceholder": "No cap",
+    "settings": "Settings",
+    "settingsHint": "Values the code reads with settings.get(name), one name = value to a line. Not for secrets: those go under Secrets. A steward changes them here without changing the code."
   }
 }

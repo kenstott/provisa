@@ -21,6 +21,7 @@
 //   secrets   REQ-2104: the names its code may read through Provisa's services, each a vault
 //             reference (the names alone when each is the org secret of that name)
 //   llm       REQ-2105: {cap_usd}, the monthly cap on what its calls to the LLM service cost
+//   settings  REQ-2106: its non-secret settings, name -> value, which its code reads
 //
 // The content hash of the code is pinned by the server when the source is saved.
 
@@ -70,6 +71,18 @@ export function withSecretNames(fields: Record<string, string>, names: string[])
   return JSON.stringify(Object.fromEntries(names.map((n) => [n, held[n] ?? null])));
 }
 
+/** REQ-2106: the source's non-secret settings from the form's `code_settings`, one `name = value`
+ * to a line; a blank line is skipped. */
+export function settingsOf(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const line of text.split("\n")) {
+    const at = line.indexOf("=");
+    const name = (at < 0 ? line : line.slice(0, at)).trim();
+    if (name) out[name] = at < 0 ? "" : line.slice(at + 1).trim();
+  }
+  return out;
+}
+
 /** The source's mapping, as the server stores it, from the form's fields. */
 export function codeMappingJson(type: string, fields: Record<string, string>): string {
   const origin = (fields.code_origin ?? "package") as CodeOrigin;
@@ -95,6 +108,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
   const entry = (fields.code_entry ?? "").trim();
   const secrets = secretsMapping(declaredSecrets(fields));
   const cap = (fields.code_llm_cap ?? "").trim();
+  const settings = settingsOf(fields.code_settings ?? "");
   const built =
     fields.code_mode === "built"
       ? {
@@ -110,6 +124,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
     ...(type === PYTHON && entry ? { entry } : {}),
     ...(secrets ? { secrets } : {}),
     ...(cap ? { llm: { cap_usd: Number(cap) } } : {}),
+    ...(Object.keys(settings).length ? { settings } : {}),
     ...built,
   });
 }
@@ -123,6 +138,7 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     entry?: string;
     secrets?: string[] | Record<string, string | null>;
     llm?: { cap_usd?: number };
+    settings?: Record<string, string | number | boolean>;
     mode?: string;
     remote?: Record<string, unknown>;
     content_hash?: string;
@@ -148,6 +164,9 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code_entry: m.entry ?? "",
     code_secrets: Object.keys(secrets).length ? JSON.stringify(secrets) : "",
     code_llm_cap: m.llm?.cap_usd === undefined ? "" : String(m.llm.cap_usd),
+    code_settings: Object.entries(m.settings ?? {})
+      .map(([name, value]) => `${name} = ${String(value)}`)
+      .join("\n"),
     code_mode: m.mode ?? "dev",
     code_remote: m.mode === "built" ? JSON.stringify(m.remote ?? {}) : "",
     code_content_hash: m.content_hash ?? "",

@@ -31,6 +31,8 @@
     "secretsPlaceholder": "Keine Secrets",
     "llmCap": "Monatliches LLM-Limit",
     "llmCapHint": "Was die Aufrufe dieses Codes an $PROVISA_SERVICES/llm pro Monat (UTC) kosten dürfen, in USD. Mit Limit darf er nur Modelle mit einem Preis in den Polly-Modellpreisen nutzen, und seine Aufrufe werden abgelehnt, sobald der Monat das Limit erreicht. Leer: kein Limit.",
-    "llmCapPlaceholder": "Kein Limit"
+    "llmCapPlaceholder": "Kein Limit",
+    "settings": "Einstellungen",
+    "settingsHint": "Werte, die der Code mit settings.get(name) liest, eine Zeile name = wert pro Eintrag. Nicht für Secrets: diese gehören unter Secrets. Ein Steward ändert sie hier, ohne den Code zu ändern."
   }
 }

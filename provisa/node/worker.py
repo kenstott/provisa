@@ -29,6 +29,8 @@ from provisa.codesource.sandbox import sandboxed
 from provisa.codesource.worker import CODE_HASH_ENV, HostCommand, private_environment
 
 HOST = Path(__file__).with_name("host.mjs")
+#: REQ-2106: "@provisa/services" for Deno, which resolves bare names only through an import map.
+SERVICES_IMPORT_MAP = Path(__file__).with_name("services-import-map.json")
 
 #: The files a package with no ``main`` or ``exports`` is entered by, in order.
 _INDEXES = ("index.mjs", "index.js", "index.cjs")
@@ -91,8 +93,16 @@ def host_command(
             egress=egress,
         )
     if runtime == "deno":
+        from provisa.codesource.sandbox import egress_proxy
+        from provisa.codesource.services import SERVICES_ENV, SERVICES_HOST
+
         # Deno's npm packages were installed into the bundle's own cache (node/install.py).
         env["DENO_DIR"] = str(bundle / ".deno")
+        # REQ-2104, REQ-2106: its fetch goes through the egress proxy, as the other runtimes'
+        # does, which answers Provisa's services itself; Deno checks each target against
+        # --allow-net, so the services host is named there beside the allow-list's.
+        proxy = egress_proxy(egress)
+        env.update(proxy.environment())
 
         def _deno(address: str) -> list[str]:
             socket = Path(address)
@@ -103,11 +113,16 @@ def host_command(
                 "--no-prompt",
                 f"--allow-read={readable}",
                 f"--allow-write={socket.parent}",
-                # The hello names its code; the Arrow library is found by its path (REQ-2098).
-                f"--allow-env={CODE_HASH_ENV},PROVISA_HOST_LIB",
+                # The hello names its code; the Arrow library is found by its path (REQ-2098);
+                # the services' address and the proxy its fetch goes through (REQ-2106).
+                f"--allow-env={CODE_HASH_ENV},PROVISA_HOST_LIB,{SERVICES_ENV},"
+                "HTTP_PROXY,HTTPS_PROXY,http_proxy,https_proxy",
+                f"--import-map={SERVICES_IMPORT_MAP}",
             ]
-            # The socket is a net address to Deno; the allow-list's hosts are the only others.
-            argv.append(f"--allow-net={','.join([f'unix:{socket}', *egress])}")
+            # The socket is a net address to Deno; the proxy, the services host and the
+            # allow-list's hosts are the only others.
+            reach = [f"unix:{socket}", f"127.0.0.1:{proxy.port}", SERVICES_HOST, *egress]
+            argv.append(f"--allow-net={','.join(reach)}")
             return [*argv, str(HOST), str(socket), str(entry)]
 
         return HostCommand(argv=_deno, env=env, cwd=bundle)

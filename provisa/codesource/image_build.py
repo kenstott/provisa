@@ -319,6 +319,8 @@ def _python(
         _runtime(target, "python", f"{ROOT}/runtime"),
         _runtime(target, "pyarrow", f"{ROOT}/hostlib"),
         _files(HOST.parent, f"{ROOT}/host", ["host.py", "remote_host.py"]),
+        # REQ-2106: Provisa's services module, beside the host as it is on the server.
+        oci.tree(HOST.parent / "services", f"{ROOT}/host/services"),
         venv,
         oci.tree(code, f"{ROOT}/code"),
     ]
@@ -398,7 +400,8 @@ def _node(
     if runtime == "deno":
         entrypoint = [
             exe, "run", "--no-prompt", "--allow-net", f"--allow-read={ROOT}",
-            f"--allow-write={STATE}", "--allow-env", *host,
+            f"--allow-write={STATE}", "--allow-env",
+            f"--import-map={ROOT}/host/services-import-map.json", *host,
         ]  # fmt: skip
         env = {"DENO_DIR": f"{ROOT}/code/.deno", "NO_COLOR": "1"}
     else:
@@ -407,7 +410,18 @@ def _node(
     layers = [
         _runtime(target, runtime, f"{ROOT}/runtime"),
         _runtime(target, "apache-arrow", f"{ROOT}/hostlib"),
-        _files(HOST.parent, f"{ROOT}/host", ["host-core.mjs", "host.mjs", "remote_host.mjs"]),
+        _files(
+            HOST.parent,
+            f"{ROOT}/host",
+            # REQ-2106: "@provisa/services", and Deno's import map naming it.
+            [
+                "host-core.mjs",
+                "host.mjs",
+                "remote_host.mjs",
+                "services.mjs",
+                "services-import-map.json",
+            ],
+        ),
         oci.tree(root, f"{ROOT}/code"),
     ]
     return layers, entrypoint, env

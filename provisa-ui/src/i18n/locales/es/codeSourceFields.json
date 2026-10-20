@@ -31,6 +31,8 @@
     "secretsPlaceholder": "Sin secretos",
     "llmCap": "Límite mensual de LLM",
     "llmCapHint": "Lo que pueden costar al mes (UTC) las llamadas de este código a $PROVISA_SERVICES/llm, en USD. Con un límite, solo puede usar modelos con precio en Precios de modelos de Polly, y sus llamadas se rechazan cuando el mes alcanza el límite. Vacío: sin límite.",
-    "llmCapPlaceholder": "Sin límite"
+    "llmCapPlaceholder": "Sin límite",
+    "settings": "Ajustes",
+    "settingsHint": "Valores que el código lee con settings.get(name), uno por línea como nombre = valor. No para secretos: esos van en Secretos. Un responsable los cambia aquí sin cambiar el código."
   }
 }
