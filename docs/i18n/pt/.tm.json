@@ -15,7 +15,7 @@
   "lineage.md": "e79a79df6bdbc3fd1dcf89767e8351d1ae8b3e22b63243425684fc4c0a854c6a",
   "migration/hasura-ddn.md": "08402b12f53b7dfde3716e9ac0ffffa525102d43e6bfd35740a72d4aff8ccdf4",
   "migration/hasura-v2.md": "34f9b7024b33ca49ddddb99d6952bbc3e8415f3e63bfca35b5d1fed24eff9c2f",
-  "modeling.md": "b75a50bf9584d1bc3b727fa4a6bd30250265ecbef9006e956559e619c760c739",
+  "modeling.md": "baf89e4e1e6ddbc352737e65cda7bc6940edeb51295ee027ee09b0626cc8c191",
   "pgwire.md": "b975b7574c379db350a0d16505120302e23e9118f83b5ad4ee3ea72f3e464e34",
   "python-client.md": "72587a15c990d156e03ee427c950f92fde4eec3d59bd4bab690ef294f7955588",
   "quickstart.md": "70d5d3868168470098b422e159b2cc6849fa976090ef390dac5282f6d24f3c4c",
@@ -32,5 +32,6 @@
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
   "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
-  "code-sources.md": "a6257cda81c05a73dc45bd57314de1be68262b511e9fc87aad911ed1a2fcab0d"
+  "code-sources.md": "a6257cda81c05a73dc45bd57314de1be68262b511e9fc87aad911ed1a2fcab0d",
+  "bitemporal-views.md": "86adc4c1ff4dd025bcafe207de8fccaac4041944e390d08baf54fd3a5468b588"
 }

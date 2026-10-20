@@ -111,8 +111,6 @@
     "persistAria": "MV 存储方式模式",
     "storeReplace": "replace（覆盖当前状态）",
     "storeUpsert": "upsert（按键合并当前状态）",
-    "timeTravelToggleLabel": "时间旅行（保留变更历史）",
-    "keepsHistoryHelp": "保留每一行的每个版本。请在下方声明业务键、有效时间和记录时间；版本如何存储由 Provisa 决定。",
     "businessKeyLabel": "业务键",
     "businessKeyHint": "在各个版本之间标识同一对象的列，例如 transaction_id。",
     "businessKeyHelp": "一条记录的各个版本共享此键：之后被更正的付款仍是同一笔付款，因此两个版本带有相同的 transaction_id。当需要多列才能标识记录时，请选择多列。",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "继承：此表的来源仅按计划读取。",
     "mvReadWindowHelp": "用户和客户端可以读取此视图的时间，格式为 HH:MM-HH:MM（24 小时制）。在此之外，他们的读取会被拒绝，并说明下次开放的时间；Provisa 自身的刷新和计划作业照常运行。留空则任何时间都可读取。",
-    "mvReadWindowHint": "用户和客户端只能在此时段内读取此视图；未设置时段则任何时间都可读取。"
+    "mvReadWindowHint": "用户和客户端只能在此时段内读取此视图；未设置时段则任何时间都可读取。",
+    "timeTravelPanel": "时间旅行",
+    "timeTravelSectionHelp": "双时态同时保留两者：何时发生，以及何时记录。这样可以按某个日期读取数据，或按某个日期记录时的样子读取。将业务键、有效时间和记录时间映射到列；版本如何保存由 Provisa 决定。",
+    "timeTravelLabel": "保留历史",
+    "timeTravelOff": "关",
+    "timeTravelBitemporal": "双时态"
   }
 }

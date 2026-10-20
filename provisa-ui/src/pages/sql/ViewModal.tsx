@@ -144,7 +144,8 @@ export function ViewModal({
             {viewSaving
               ? t("sqlViewModal.saving")
               : canCreateView
-                ? t("sqlViewModal.create")
+                ? // REQ-2109: every setting of the view follows on the Views page.
+                  t("registerTableForm.continue")
                 : t("sqlViewModal.submitRequest")}
           </Button>
         </Group>

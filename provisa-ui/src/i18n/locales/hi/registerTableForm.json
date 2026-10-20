@@ -135,6 +135,7 @@
     "qdrantSearchPlaceholder": "{\"collection\": \"docs\", \"query\": \"@query_vector\", \"using\": \"text\", \"filter\": {\"must\": [{\"key\": \"lang\", \"match\": {\"value\": \"@lang\"}}]}, \"limit\": \"@k\", \"model\": \"text-embedding-3-small\"}",
     "qdrantVectors": "{{collection}} के वेक्टर",
     "qdrantVector": "{{name}}: {{size}} आयाम, {{distance}} से स्कोर किए गए",
-    "qdrantUnnamedVector": "(बिना नाम)"
+    "qdrantUnnamedVector": "(बिना नाम)",
+    "continue": "जारी रखें"
   }
 }

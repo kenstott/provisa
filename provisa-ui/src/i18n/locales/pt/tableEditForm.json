@@ -111,8 +111,6 @@
     "persistAria": "Modo armazenar-como da MV",
     "storeReplace": "replace (sobrescrever o estado atual)",
     "storeUpsert": "upsert (mesclar o estado atual por chave)",
-    "timeTravelToggleLabel": "Viagem no tempo (manter histórico de mudanças)",
-    "keepsHistoryHelp": "Mantenha cada versão de cada linha. Declare abaixo a chave de negócio, o tempo válido e o tempo de registro; o Provisa decide como as versões são armazenadas.",
     "businessKeyLabel": "Chave de negócio",
     "businessKeyHint": "A coluna que identifica a mesma coisa entre versões, p. ex. transaction_id.",
     "businessKeyHelp": "Cada versão de um registro compartilha esta chave: um pagamento corrigido depois continua sendo o mesmo pagamento, então as duas versões têm o mesmo transaction_id. Escolha mais de uma coluna quando forem necessárias várias para identificar o registro.",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "Herdado: a origem desta tabela só é lida de acordo com o agendamento.",
     "mvReadWindowHelp": "Quando usuários e clientes podem ler esta view, no formato HH:MM-HH:MM (24 h). Fora dela, as leituras são recusadas, informando quando ela abre novamente; as atualizações e os jobs agendados do Provisa continuam. Deixe em branco para permitir leituras a qualquer momento.",
-    "mvReadWindowHint": "Usuários e clientes só podem ler esta view dentro desta janela; sem ela, a qualquer momento."
+    "mvReadWindowHint": "Usuários e clientes só podem ler esta view dentro desta janela; sem ela, a qualquer momento.",
+    "timeTravelPanel": "Viagem no tempo",
+    "timeTravelSectionHelp": "Bitemporal guarda as duas coisas: quando aconteceu e quando foi registrado. Assim os dados podem ser lidos em uma data, ou como estavam registrados em uma data. Mapeie a chave de negócio, o tempo válido e o tempo de registro para colunas; o Provisa decide como as versões são guardadas.",
+    "timeTravelLabel": "Guardar histórico",
+    "timeTravelOff": "Desativado",
+    "timeTravelBitemporal": "Bitemporal"
   }
 }

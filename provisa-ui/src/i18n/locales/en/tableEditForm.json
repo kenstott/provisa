@@ -111,8 +111,6 @@
     "persistAria": "MV store-as mode",
     "storeReplace": "replace (overwrite current state)",
     "storeUpsert": "upsert (merge current state by key)",
-    "timeTravelToggleLabel": "Time travel (keep change history)",
-    "keepsHistoryHelp": "Keep every version of each row. Declare the business key, valid time and recorded time below; Provisa decides how the versions are stored.",
     "businessKeyLabel": "Business key",
     "businessKeyHint": "The column that identifies the same thing across versions, e.g. transaction_id.",
     "businessKeyHelp": "Each version of a record shares this key: a payment corrected later is still the same payment, so both versions carry the same transaction_id. Pick more than one column when it takes several to identify the record.",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "Inherited: this table's source is read only on schedule.",
     "mvReadWindowHelp": "When users and clients may read this view, as HH:MM-HH:MM (24h). Outside it their reads are refused, saying when it next opens; Provisa's own refreshes and scheduled jobs still run. Leave blank to allow reads at any time.",
-    "mvReadWindowHint": "Users and clients may read this view only within this window; without one, at any time."
+    "mvReadWindowHint": "Users and clients may read this view only within this window; without one, at any time.",
+    "timeTravelPanel": "Time Travel",
+    "timeTravelSectionHelp": "Bitemporal keeps both when it happened and when it was recorded, so the data can be read as of a date, or as it was recorded on a date. Map the business key, valid time and recorded time to columns; Provisa decides how the versions are kept.",
+    "timeTravelLabel": "Keep history",
+    "timeTravelOff": "Off",
+    "timeTravelBitemporal": "Bitemporal"
   }
 }

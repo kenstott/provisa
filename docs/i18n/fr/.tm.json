@@ -11,7 +11,7 @@
   "releasing.md": "ce1a860c7ccb962f92bf13e718c261300054cada8312eecdff93f503c5cb396d",
   "cypher.md": "46c53c7329e6bef77fab84e68da404a6e4ec2c974ebbd565b793a313c153702b",
   "lineage.md": "e79a79df6bdbc3fd1dcf89767e8351d1ae8b3e22b63243425684fc4c0a854c6a",
-  "modeling.md": "b75a50bf9584d1bc3b727fa4a6bd30250265ecbef9006e956559e619c760c739",
+  "modeling.md": "baf89e4e1e6ddbc352737e65cda7bc6940edeb51295ee027ee09b0626cc8c191",
   "pgwire.md": "b975b7574c379db350a0d16505120302e23e9118f83b5ad4ee3ea72f3e464e34",
   "remote-schemas.md": "d07b277d22e5c242c7bc21ad7c955e3850c9e02e70376a77a48a529286b4b17f",
   "domain-principles.md": "ac5ce74bdab4406aa19e12feae69b13fcc403b2a97798875760587d2c08e98d1",
@@ -32,5 +32,6 @@
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
   "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
-  "code-sources.md": "a6257cda81c05a73dc45bd57314de1be68262b511e9fc87aad911ed1a2fcab0d"
+  "code-sources.md": "a6257cda81c05a73dc45bd57314de1be68262b511e9fc87aad911ed1a2fcab0d",
+  "bitemporal-views.md": "86adc4c1ff4dd025bcafe207de8fccaac4041944e390d08baf54fd3a5468b588"
 }

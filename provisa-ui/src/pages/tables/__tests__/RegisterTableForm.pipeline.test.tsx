@@ -38,7 +38,7 @@ const NATIVE = JSON.stringify({
 });
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   const setError = vi.fn();
   render(
     <RegisterTableForm
@@ -53,13 +53,12 @@ function renderForm() {
       roles={[{ id: "analyst" } as never]}
       getAvailableColumnsMetadata={vi.fn().mockResolvedValue([])}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={setError}
     />,
   );
-  return { registerTable, setError };
+  return { onContinue, setError };
 }
 
 async function pickPipeline() {
@@ -111,15 +110,15 @@ describe("RegisterTableForm on a MongoDB pipeline (REQ-1980)", () => {
   });
 
   it("refuses to register before a preview typed the output columns", async () => {
-    const { registerTable, setError } = renderForm();
+    const { onContinue, setError } = renderForm();
     await pickPipeline();
     fireEvent.click(screen.getByTestId("register-table-submit"));
     await waitFor(() => expect(setError).toHaveBeenCalled());
-    expect(registerTable).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
   });
 
   it("registers the native query with its arguments as parameters under the database", async () => {
-    const { registerTable } = renderForm();
+    const { onContinue } = renderForm();
     const user = await pickPipeline();
     const row = screen.getByTestId("register-table-pipeline-arg-0");
     await user.click(within(row).getByRole("switch"));
@@ -128,8 +127,8 @@ describe("RegisterTableForm on a MongoDB pipeline (REQ-1980)", () => {
       expect(screen.getByTestId("register-table-col-selected-title")).toBeChecked(),
     );
     fireEvent.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalledTimes(1));
-    const input = registerTable.mock.calls[0][0];
+    await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
+    const input = onContinue.mock.calls[0][0].input;
     expect(input).toMatchObject({
       sourceId: "atlas",
       schemaName: "sample_mflix",

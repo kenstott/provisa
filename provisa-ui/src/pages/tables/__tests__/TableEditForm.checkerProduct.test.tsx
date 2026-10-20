@@ -132,6 +132,7 @@ function renderForm(table: RegisteredTable, sources: Source[]) {
       onSectionChange={vi.fn()}
       savedProfilerId={null}
       editingTable={table}
+      savedTable={table}
       setEditingTable={vi.fn()}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
@@ -141,10 +142,6 @@ function renderForm(table: RegisteredTable, sources: Source[]) {
       dataProducts={PRODUCTS}
       settings={null}
       saving={false}
-      generatingDesc={false}
-      setGeneratingDesc={vi.fn()}
-      generatingColDesc={null}
-      setGeneratingColDesc={vi.fn()}
       generateTableDescription={vi.fn()}
       generateColumnDescription={vi.fn()}
       cancelEditing={vi.fn()}

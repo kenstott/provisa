@@ -91,6 +91,8 @@ for (const c of CHECKERS) {
     // The table scans on this interval; each scan's rows are kept (REQ-1443).
     await page.getByTestId("register-table-dq-scan-interval").fill("3600");
     await page.getByTestId("register-table-submit").click();
+    // REQ-2109: the chosen table's settings follow in the editor's sections; Save registers it.
+    await page.getByTestId("table-edit-save").click();
 
     // The registered row lands in the list carrying the checker it runs under, registered under
     // its result relation's name, <name>_<source>_dq.

@@ -130,11 +130,19 @@ export function deltaFields(t: TFunction, table: RegisteredTable): DetailField[]
 /** REQ-2109: the business key, valid time and recorded time a table or view keeps its versions
  * by, when it declares them. */
 export function historyFields(t: TFunction, table: RegisteredTable): DetailField[] {
-  if (!table.businessKey.length) return [];
+  const on = table.businessKey.length > 0;
   return [
-    { label: t("tableEditForm.businessKeyLabel"), value: table.businessKey.join(", ") },
-    { label: t("tableEditForm.validTimeLabel"), value: orDash(table.validTime ?? "") },
-    { label: t("tableEditForm.recordedTimeLabel"), value: orDash(table.recordedTime ?? "") },
+    {
+      label: t("tableEditForm.timeTravelLabel"),
+      value: t(on ? "tableEditForm.timeTravelBitemporal" : "tableEditForm.timeTravelOff"),
+    },
+    ...(on
+      ? [
+          { label: t("tableEditForm.businessKeyLabel"), value: table.businessKey.join(", ") },
+          { label: t("tableEditForm.validTimeLabel"), value: orDash(table.validTime ?? "") },
+          { label: t("tableEditForm.recordedTimeLabel"), value: orDash(table.recordedTime ?? "") },
+        ]
+      : []),
   ];
 }
 
@@ -155,7 +163,6 @@ export function mvStoreFields(t: TFunction, table: RegisteredTable): DetailField
             ),
           },
         ]),
-    { label: t("tableEditForm.timeTravelToggleLabel"), value: yesNo(t, timeTravel) },
     ...historyFields(t, table),
     { label: t("tableEditForm.incrementalLabel"), value: yesNo(t, table.mvIncremental) },
     {

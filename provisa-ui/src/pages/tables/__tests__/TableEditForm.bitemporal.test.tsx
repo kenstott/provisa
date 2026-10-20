@@ -1,4 +1,5 @@
 // Copyright (c) 2026 Kenneth Stott
+// Canary: 326b547a-2d9e-40a3-8348-7b20e7ef43b3
 //
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
@@ -102,6 +103,7 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       onSectionChange={vi.fn()}
       savedProfilerId={null}
       editingTable={table}
+      savedTable={table}
       setEditingTable={setEditingTable}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
@@ -111,10 +113,6 @@ function renderForm(table: RegisteredTable, setEditingTable = vi.fn()) {
       dataProducts={[]}
       settings={null}
       saving={false}
-      generatingDesc={false}
-      setGeneratingDesc={vi.fn()}
-      generatingColDesc={null}
-      setGeneratingColDesc={vi.fn()}
       generateTableDescription={vi.fn()}
       generateColumnDescription={vi.fn()}
       cancelEditing={vi.fn()}
@@ -162,11 +160,12 @@ describe("TableEditForm — the three history columns (REQ-2109)", () => {
   it("the view editor offers them with their hints once the view keeps history", () => {
     renderForm(makeTable({ columns: COLUMNS }));
     expect(screen.queryByTestId("business-key")).toBeNull();
-    fireEvent.click(screen.getByRole("checkbox", { name: /time travel/i }));
+    fireEvent.click(screen.getByRole("textbox", { name: t("tableEditForm.timeTravelLabel") }));
+    fireEvent.click(screen.getByRole("option", { name: t("tableEditForm.timeTravelBitemporal") }));
     expectTheThree();
   });
 
-  it("the table editor offers them with their hints", () => {
+  it("the table editor offers them with their hints once Bitemporal is picked", () => {
     renderForm(
       makeTable({
         viewSql: null,
@@ -174,6 +173,9 @@ describe("TableEditForm — the three history columns (REQ-2109)", () => {
         columns: COLUMNS,
       }),
     );
+    expect(screen.queryByTestId("business-key")).toBeNull();
+    fireEvent.click(screen.getByRole("textbox", { name: t("tableEditForm.timeTravelLabel") }));
+    fireEvent.click(screen.getByRole("option", { name: t("tableEditForm.timeTravelBitemporal") }));
     expectTheThree();
   });
 
@@ -185,6 +187,8 @@ describe("TableEditForm — the three history columns (REQ-2109)", () => {
         columns: COLUMNS,
       }),
     );
+    fireEvent.click(screen.getByRole("textbox", { name: t("tableEditForm.timeTravelLabel") }));
+    fireEvent.click(screen.getByRole("option", { name: t("tableEditForm.timeTravelBitemporal") }));
     fireEvent.click(screen.getByRole("textbox", { name: t("tableEditForm.validTimeLabel") }));
     fireEvent.click(screen.getByRole("option", { name: "trade_date" }));
     expect(setEditingTable).toHaveBeenCalledWith(

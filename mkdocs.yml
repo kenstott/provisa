@@ -136,6 +136,7 @@ nav:
       - Import (Hasura / DDN): import.md
   - Modeling, Commands & Lineage:
       - Data Modeling (Entities & Facts): modeling.md
+      - Create a Bitemporal View: bitemporal-views.md
       - Commands: commands.md
       - Column-Level Lineage: lineage.md
       - Environments: environments.md

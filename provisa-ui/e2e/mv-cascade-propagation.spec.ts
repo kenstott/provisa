@@ -121,11 +121,11 @@ async function createView(page: import("@playwright/test").Page, sql: string, al
   await page.getByTestId("view-domain-select").click();
   await page.getByRole("option", { name: /pet-store/i }).first().click();
   await page.getByTestId("save-view-button").click();
-
-  // The save blocks server-side on a full schema rebuild and MV activation (see the timeout
-  // note above); on the 2-core runner with four workers that has taken over 30s.
-  await expect(page.getByTestId("view-saved-close-button")).toBeVisible({ timeout: 120000 });
-  await page.getByTestId("view-saved-close-button").click();
+  // REQ-2109: the view's settings follow on the Views page, in the editor's sections; Save there
+  // registers it. The save blocks server-side on a full schema rebuild and MV activation (see the
+  // timeout note above); on the 2-core runner with four workers that has taken over 30s.
+  await page.getByTestId("table-edit-save").click();
+  await expect(page.getByTestId("tables-split-title")).toHaveText(alias, { timeout: 120000 });
   // REQ-1921: saved through the admin, the view starts as draft; released, it is read and built.
   expect(await releaseDraftTables(page, { tableName: alias })).toBe(1);
 }

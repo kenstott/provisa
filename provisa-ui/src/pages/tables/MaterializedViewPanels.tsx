@@ -4,7 +4,6 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { useState } from "react";
 import { Alert, Checkbox, NumberInput, Select, Text, Textarea } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { RegisteredTable } from "../../types/admin";
@@ -13,7 +12,8 @@ import { CollapsibleSection } from "./CollapsibleSection";
 import { SnapshotSchedulePanel } from "./SnapshotSchedulePanel";
 import { FieldGroup, FormChecks, FormField, FormLayout } from "../../components/form/FormLayout";
 import { OffPeakWindowFields } from "../../components/admin/OffPeakWindowFields";
-import { BitemporalFields } from "./BitemporalFields";
+import { TimeTravelEditor } from "./TimeTravelSection";
+import { useHistoryChoice } from "./timeTravel";
 
 // REQ-961/962/965/969/970/1168/1169: the materialized-view configuration cluster — refresh cadence &
 // NRT debounce, fleet consistency, keeping history (REQ-2109), the calendar snapshot schedule, and
@@ -22,20 +22,21 @@ import { BitemporalFields } from "./BitemporalFields";
 export function MaterializedViewPanels({
   editingTable,
   setEditingTable,
+  saved,
 }: {
   editingTable: RegisteredTable;
   setEditingTable: (t: RegisteredTable) => void;
+  /** The view as last saved, whether its versions exist is judged on it; null while created. */
+  saved: RegisteredTable | null;
 }) {
   const { t } = useTranslation();
   const { materializeStoreInfo: storeInfo } = useMaterializeStoreInfo();
   // REQ-2109: a view keeps history by declaring its business key, valid time and recorded time;
-  // Provisa picks how the versions are stored. The checkbox shows the three fields, and clearing it
-  // clears them. Without history the store is replace or upsert (current state).
-  const declared = Boolean(
-    editingTable.businessKey.length || editingTable.validTime || editingTable.recordedTime,
+  // Provisa picks how the versions are stored. Without history the store is replace or upsert.
+  const choice = useHistoryChoice(editingTable, (next) =>
+    setEditingTable({ ...editingTable, ...next }),
   );
-  const [keepsHistory, setKeepsHistory] = useState(declared);
-  const timeTravel = keepsHistory || declared;
+  const timeTravel = choice.on;
   const storeAsValue = editingTable.mvPersist === "upsert" ? "upsert" : "replace";
   return (
     <>
@@ -134,6 +135,14 @@ export function MaterializedViewPanels({
       {editingTable.materialize && (
         <SnapshotSchedulePanel editingTable={editingTable} setEditingTable={setEditingTable} />
       )}
+      {editingTable.materialize && (
+        <TimeTravelEditor
+          editingTable={editingTable}
+          setEditingTable={setEditingTable}
+          saved={saved}
+          choice={choice}
+        />
+      )}
       {/* Store As… — current state (replace / upsert), offered when the view keeps no history: a view
           keeping history appends its versions (REQ-965/1162/2109). Incremental is the separate
           compute optimization. */}
@@ -155,29 +164,6 @@ export function MaterializedViewPanels({
         </FormField>
       )}
       <FormChecks>
-        {editingTable.materialize && (
-          <FormField help={t("tableEditForm.keepsHistoryHelp")} size="short">
-            <Checkbox
-              mt="1.75rem"
-              data-testid="mv-timetravel"
-              checked={timeTravel}
-              label={t("tableEditForm.timeTravelToggleLabel")}
-              onChange={(e) => {
-                const on = e.currentTarget.checked;
-                setKeepsHistory(on);
-                // OFF clears the declaration, so the view keeps its current state only.
-                if (!on) {
-                  setEditingTable({
-                    ...editingTable,
-                    businessKey: [],
-                    validTime: null,
-                    recordedTime: null,
-                  });
-                }
-              }}
-            />
-          </FormField>
-        )}
         {editingTable.materialize && !timeTravel && (
           <FormField help={t("tableEditForm.incrementalHelp")} size="short">
             <Checkbox
@@ -192,9 +178,6 @@ export function MaterializedViewPanels({
           </FormField>
         )}
       </FormChecks>
-      {editingTable.materialize && timeTravel && (
-        <BitemporalFields editingTable={editingTable} setEditingTable={setEditingTable} />
-      )}
       {/* REQ-970: upsert / incremental need a row-identity key. That key IS the table's Primary Key,
           set via the per-column checkboxes in the columns list below — no second definition here.
           Surface what's derived (or prompt to set it) so the requirement is visible where it's used. */}
@@ -263,5 +246,32 @@ export function MaterializedViewPanels({
         </FormField>
       )}
     </>
+  );
+}
+
+/** A view's Materialized View tick, which its materialization panels follow. */
+export function ViewMaterializeTick({
+  editingTable,
+  setEditingTable,
+}: {
+  editingTable: RegisteredTable;
+  setEditingTable: (t: RegisteredTable) => void;
+}) {
+  const { t } = useTranslation();
+  return (
+    <FormChecks>
+      <FormField
+        size="short"
+        help={`${t("tableEditForm.materializedViewDesc")} ${t("tableEditForm.materializedViewHelp")}`}
+      >
+        <Checkbox
+          checked={editingTable.materialize}
+          onChange={(e) =>
+            setEditingTable({ ...editingTable, materialize: e.currentTarget.checked })
+          }
+          label={t("tableEditForm.materializedViewLabel")}
+        />
+      </FormField>
+    </FormChecks>
   );
 }

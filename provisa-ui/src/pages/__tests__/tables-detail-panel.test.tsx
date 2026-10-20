@@ -293,11 +293,12 @@ describe("TablesPage — the detail panel", () => {
     expect(within(head).queryByTestId("table-edit-save")).toBeNull();
   });
 
-  it("puts a create form's Save and Cancel in the head too", async () => {
+  it("puts a create form's Continue and Cancel in the head too", async () => {
     render(<TablesPage />);
     await userEvent.click(await screen.findByTestId("tables-add-toggle"));
     const head = (await screen.findByTestId("tables-split-title")).parentElement as HTMLElement;
-    expect(await within(head).findByTestId("register-table-submit")).toHaveTextContent("Save");
+    // Choosing what is registered continues to its settings, where Save registers it (REQ-2109).
+    expect(await within(head).findByTestId("register-table-submit")).toHaveTextContent("Continue");
     expect(within(head).getByTestId("register-table-cancel")).toHaveTextContent("Cancel");
     const body = screen.getByTestId("tables-split-panel").querySelector(".split-pane__body")!;
     expect(body.querySelector(".form-footer")).toBeNull();

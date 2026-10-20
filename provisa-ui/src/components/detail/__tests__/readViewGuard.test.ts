@@ -142,11 +142,21 @@ const PANELS: Readonly<Record<string, Panel>> = {
     ],
     form: [
       "pages/tables/TableEditForm.tsx",
+      // REQ-2109: the editor's sections, shared with the create form.
+      "pages/tables/TableIdentitySection.tsx",
+      "pages/tables/TableAssociationsSection.tsx",
+      "pages/tables/TableLoadSection.tsx",
+      "pages/tables/TableQuerySection.tsx",
+      "pages/tables/TableQualitySection.tsx",
+      "pages/tables/TableColumnsSection.tsx",
       "pages/tables/TableLoadManagementFields.tsx",
       "pages/tables/TablePlacementFields.tsx",
       "pages/tables/LiveDeliveryFieldset.tsx",
       "pages/tables/DeltaFieldset.tsx",
       "pages/tables/MaterializedViewPanels.tsx",
+      // REQ-2109: the one Time Travel section, and the three columns it maps.
+      "pages/tables/TimeTravelSection.tsx",
+      "pages/tables/BitemporalFields.tsx",
       "pages/tables/SnapshotSchedulePanel.tsx",
       "pages/tables/PagingField.tsx",
       "pages/tables/RecurrenceBuilder.tsx",
@@ -197,9 +207,6 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "modelingForm.domainLabel":
         "a create step: the model is lowered to a view, read as that view",
       "modelingForm.grainLabel": "a create step: the model is lowered to a view, read as that view",
-      "modelingForm.historyLabel":
-        "a create step: the model is lowered to a view, read as that view",
-      "modelingForm.keyLabel": "a create step: the model is lowered to a view, read as that view",
       "modelingForm.kindLabel": "a create step: the model is lowered to a view, read as that view",
       "modelingForm.measuresLabel":
         "a create step: the model is lowered to a view, read as that view",
@@ -223,6 +230,8 @@ const PANELS: Readonly<Record<string, Panel>> = {
       "dataQualityPanel.unitLabel":
         "a step of the builder that composes a check: shown in the contract's checks",
       "tableEditForm.calBaseSystemLabel":
+        "creates a calendar, which the table names: shown as Calendar",
+      "tableEditForm.calDayCloseLabel":
         "creates a calendar, which the table names: shown as Calendar",
       "tableEditForm.calFiscalAnchorDayLabel":
         "creates a calendar, which the table names: shown as Calendar",

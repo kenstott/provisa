@@ -111,8 +111,6 @@
     "persistAria": "Mode de stockage de la vue matérialisée",
     "storeReplace": "replace (écraser l'état courant)",
     "storeUpsert": "upsert (fusionner l'état courant par clé)",
-    "timeTravelToggleLabel": "Voyage dans le temps (conserver l'historique des changements)",
-    "keepsHistoryHelp": "Conserver chaque version de chaque ligne. Déclarez ci-dessous la clé métier, le temps de validité et le temps d'enregistrement ; Provisa choisit comment les versions sont stockées.",
     "businessKeyLabel": "Clé métier",
     "businessKeyHint": "La colonne qui identifie la même chose d'une version à l'autre, p. ex. transaction_id.",
     "businessKeyHelp": "Chaque version d'un enregistrement partage cette clé : un paiement corrigé plus tard reste le même paiement, donc les deux versions portent le même transaction_id. Choisissez plusieurs colonnes lorsqu'il en faut plusieurs pour identifier l'enregistrement.",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "Hérité : la source de cette table n'est lue que selon la planification.",
     "mvReadWindowHelp": "Quand les utilisateurs et les clients peuvent lire cette vue, au format HH:MM-HH:MM (24 h). En dehors, leurs lectures sont refusées en indiquant quand elle rouvre ; les actualisations et tâches planifiées de Provisa continuent. Laissez vide pour autoriser la lecture à tout moment.",
-    "mvReadWindowHint": "Les utilisateurs et les clients ne peuvent lire cette vue que pendant cette fenêtre ; sans fenêtre, à tout moment."
+    "mvReadWindowHint": "Les utilisateurs et les clients ne peuvent lire cette vue que pendant cette fenêtre ; sans fenêtre, à tout moment.",
+    "timeTravelPanel": "Voyage dans le temps",
+    "timeTravelSectionHelp": "Bitemporel conserve les deux : quand c'est arrivé et quand cela a été enregistré. Les données se lisent ainsi à une date, ou telles qu'elles étaient enregistrées à une date. Associez la clé métier, le temps de validité et le temps d'enregistrement à des colonnes ; Provisa décide comment les versions sont conservées.",
+    "timeTravelLabel": "Conserver l'historique",
+    "timeTravelOff": "Désactivé",
+    "timeTravelBitemporal": "Bitemporel"
   }
 }

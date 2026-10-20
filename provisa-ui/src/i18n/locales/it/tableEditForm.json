@@ -111,8 +111,6 @@
     "persistAria": "Modalità di salvataggio della MV",
     "storeReplace": "replace (sovrascrive lo stato corrente)",
     "storeUpsert": "upsert (unisce lo stato corrente per chiave)",
-    "timeTravelToggleLabel": "Viaggio nel tempo (conserva la cronologia delle modifiche)",
-    "keepsHistoryHelp": "Conserva ogni versione di ogni riga. Dichiara qui sotto la chiave di business, il tempo di validità e il tempo di registrazione; Provisa decide come memorizzare le versioni.",
     "businessKeyLabel": "Chiave di business",
     "businessKeyHint": "La colonna che identifica la stessa cosa in tutte le versioni, ad es. transaction_id.",
     "businessKeyHelp": "Ogni versione di un record condivide questa chiave: un pagamento corretto in seguito resta lo stesso pagamento, quindi entrambe le versioni hanno lo stesso transaction_id. Scegli più colonne quando ne servono diverse per identificare il record.",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "Ereditato: l'origine di questa tabella viene letta solo secondo la pianificazione.",
     "mvReadWindowHelp": "Quando utenti e client possono leggere questa vista, nel formato HH:MM-HH:MM (24 h). Al di fuori, le loro letture vengono rifiutate indicando quando si riapre; gli aggiornamenti e i job pianificati di Provisa continuano. Lasciare vuoto per consentire la lettura in qualsiasi momento.",
-    "mvReadWindowHint": "Utenti e client possono leggere questa vista solo in questa finestra; senza, in qualsiasi momento."
+    "mvReadWindowHint": "Utenti e client possono leggere questa vista solo in questa finestra; senza, in qualsiasi momento.",
+    "timeTravelPanel": "Viaggio nel tempo",
+    "timeTravelSectionHelp": "Bitemporale conserva entrambe le cose: quando è accaduto e quando è stato registrato. Così i dati si leggono a una data, o come erano registrati a una data. Associa la chiave di business, il tempo di validità e il tempo di registrazione a colonne; Provisa decide come conservare le versioni.",
+    "timeTravelLabel": "Conserva cronologia",
+    "timeTravelOff": "Disattivato",
+    "timeTravelBitemporal": "Bitemporale"
   }
 }

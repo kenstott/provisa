@@ -29,6 +29,7 @@
     "addGrant": "Ajouter une autorisation",
     "removeGrant": "Retirer cette autorisation",
     "save": "Enregistrer les autorisations",
-    "saved": "Autorisations enregistrées."
+    "saved": "Autorisations enregistrées.",
+    "kept": "Conservé : enregistré avec la table."
   }
 }

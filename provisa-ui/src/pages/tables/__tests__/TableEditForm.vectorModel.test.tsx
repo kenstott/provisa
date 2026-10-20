@@ -130,6 +130,7 @@ function renderForm(updateEditCol = vi.fn()) {
       hidingOnly={false}
       savedProfilerId={null}
       editingTable={makeTable({ columns: COLUMNS })}
+      savedTable={makeTable({ columns: COLUMNS })}
       setEditingTable={vi.fn()}
       editingColumnTypes={{}}
       cacheTtlEdits={{}}
@@ -139,10 +140,6 @@ function renderForm(updateEditCol = vi.fn()) {
       dataProducts={[]}
       settings={null}
       saving={false}
-      generatingDesc={false}
-      setGeneratingDesc={vi.fn()}
-      generatingColDesc={null}
-      setGeneratingColDesc={vi.fn()}
       generateTableDescription={vi.fn()}
       generateColumnDescription={vi.fn()}
       cancelEditing={vi.fn()}
@@ -158,8 +155,9 @@ describe("TableEditForm on a Qdrant collection: a vector's model (REQ-2000)", ()
   it("offers each vector the models of its size, and nothing for any other column", () => {
     useVectorModels.mockReturnValue({ "": ["minilm"], image: [] });
     const updateEditCol = renderForm();
-    expect(useVectorModels).toHaveBeenLastCalledWith("vec", "docs", true);
     fireEvent.click(screen.getByTestId("table-section-columns"));
+    // The Columns section asks for the models it offers.
+    expect(useVectorModels).toHaveBeenLastCalledWith("vec", "docs", true);
     fireEvent.click(screen.getByTestId("column-tab-type"));
     expect(screen.queryByTestId("vector-model-title")).toBeNull();
     expect(screen.queryByTestId("vector-model-none-title")).toBeNull();

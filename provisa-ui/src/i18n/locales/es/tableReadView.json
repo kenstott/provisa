@@ -50,6 +50,8 @@
     "draftLabel": "Borrador",
     "draftTooltip": "Borrador: fuera de servicio; no está en ningún esquema y nadie la lee. Desmarque para publicar la tabla; marque para retirarla del servicio.",
     "draftNoRightTooltip": "Publicar una tabla, o devolverla a borrador, requiere el derecho de Registro de tablas en el dominio de la tabla.",
-    "draftPreviewNote": "Vista previa de borrador: los lectores aún no pueden ver esta tabla."
+    "draftPreviewNote": "Vista previa de borrador: los lectores aún no pueden ver esta tabla.",
+    "keepsHistory": "Guarda historial: cada versión, con cuándo ocurrió y cuándo se registró.",
+    "keepsHistoryQuery": "Consultarlo a una fecha o tal como se registró"
   }
 }

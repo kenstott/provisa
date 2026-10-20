@@ -51,6 +51,7 @@ import { JoinCanvas } from "./sql/JoinCanvas";
 import { SqlEditorPanel } from "./sql/SqlEditorPanel";
 import { ResultsPanel } from "./sql/ResultsPanel";
 import { ViewModal } from "./sql/ViewModal";
+import type { Registration } from "./tables/draftTable";
 import { domainToSqlName } from "../naming";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
 
@@ -609,7 +610,7 @@ export function SqlPage() {
         visibleTo: c.visibleTo,
         masks: c.masks,
       }));
-      const result = await registerTable({
+      const input = {
         sourceId: DERIVED_SOURCE_ID,
         domainId: viewDomainId.trim(),
         schemaName: "views",
@@ -627,7 +628,23 @@ export function SqlPage() {
               }
             : undefined,
         columns,
-      });
+      };
+      // REQ-2109 (settled): a view this editor may create is created on the Views page, in the same
+      // sections as its editor, where every setting of it is set before one Save registers it.
+      if (canCreateView) {
+        const registration: Registration = {
+          input,
+          pagination: null,
+          pagingKind: null,
+          pagingCeilingRows: null,
+          rowRules: [],
+        };
+        setViewModal(false);
+        setViewColumns([]);
+        navigate("/views", { state: { createView: registration } });
+        return;
+      }
+      const result = await registerTable(input);
       const idMatch = result.message.match(/\(id=(\d+)\)/);
       const newTableId = idMatch ? parseInt(idMatch[1], 10) : null;
       setViewMsg(canCreateView ? "View created." : "View request submitted.");
@@ -659,6 +676,7 @@ export function SqlPage() {
     refetchTables,
     refetchRelationships,
     ensureDomainChecked,
+    navigate,
   ]);
 
   // REQ-1519: describe the statement through the ONE pipeline instead of running it. The plan

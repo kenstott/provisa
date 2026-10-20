@@ -111,8 +111,6 @@
     "persistAria": "MV opslaan-als-modus",
     "storeReplace": "replace (huidige toestand overschrijven)",
     "storeUpsert": "upsert (huidige toestand samenvoegen op sleutel)",
-    "timeTravelToggleLabel": "Tijdreizen (wijzigingshistorie bewaren)",
-    "keepsHistoryHelp": "Bewaar elke versie van elke rij. Leg hieronder de bedrijfssleutel, geldigheidstijd en registratietijd vast; Provisa bepaalt hoe de versies worden opgeslagen.",
     "businessKeyLabel": "Bedrijfssleutel",
     "businessKeyHint": "De kolom die over versies heen hetzelfde ding identificeert, bijv. transaction_id.",
     "businessKeyHelp": "Elke versie van een record deelt deze sleutel: een later gecorrigeerde betaling is nog steeds dezelfde betaling, dus beide versies hebben dezelfde transaction_id. Kies meer dan één kolom als er meerdere nodig zijn om het record te identificeren.",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "Overgenomen: de bron van deze tabel wordt alleen volgens schema gelezen.",
     "mvReadWindowHelp": "Wanneer gebruikers en clients deze view mogen lezen, als HH:MM-HH:MM (24 u). Daarbuiten worden hun leesacties geweigerd, met de melding wanneer het weer opent; de eigen verversingen en geplande taken van Provisa lopen door. Laat leeg om lezen altijd toe te staan.",
-    "mvReadWindowHint": "Gebruikers en clients mogen deze view alleen binnen dit venster lezen; zonder venster altijd."
+    "mvReadWindowHint": "Gebruikers en clients mogen deze view alleen binnen dit venster lezen; zonder venster altijd.",
+    "timeTravelPanel": "Tijdreizen",
+    "timeTravelSectionHelp": "Bitemporeel bewaart beide: wanneer het gebeurde en wanneer het werd vastgelegd. Zo zijn de gegevens te lezen per een datum, of zoals ze op een datum waren vastgelegd. Koppel de bedrijfssleutel, geldigheidstijd en registratietijd aan kolommen; Provisa bepaalt hoe de versies worden bewaard.",
+    "timeTravelLabel": "Historie bewaren",
+    "timeTravelOff": "Uit",
+    "timeTravelBitemporal": "Bitemporeel"
   }
 }

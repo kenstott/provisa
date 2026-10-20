@@ -111,8 +111,6 @@
     "persistAria": "Modo de almacenamiento de la MV",
     "storeReplace": "replace (sobrescribir el estado actual)",
     "storeUpsert": "upsert (fusionar el estado actual por clave)",
-    "timeTravelToggleLabel": "Viaje en el tiempo (conservar el historial de cambios)",
-    "keepsHistoryHelp": "Conservar cada versión de cada fila. Declare abajo la clave de negocio, el tiempo válido y el tiempo de registro; Provisa decide cómo se almacenan las versiones.",
     "businessKeyLabel": "Clave de negocio",
     "businessKeyHint": "La columna que identifica lo mismo en todas sus versiones, p. ej. transaction_id.",
     "businessKeyHelp": "Cada versión de un registro comparte esta clave: un pago corregido después sigue siendo el mismo pago, así que ambas versiones llevan el mismo transaction_id. Elija más de una columna cuando hagan falta varias para identificar el registro.",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "Heredado: el origen de esta tabla solo se lee según la programación.",
     "mvReadWindowHelp": "Cuándo pueden leer esta vista los usuarios y clientes, como HH:MM-HH:MM (24 h). Fuera de ella sus lecturas se rechazan, indicando cuándo vuelve a abrirse; las actualizaciones y trabajos programados de Provisa siguen ejecutándose. Déjelo vacío para permitir lecturas en cualquier momento.",
-    "mvReadWindowHint": "Usuarios y clientes solo pueden leer esta vista dentro de esta ventana; sin ella, en cualquier momento."
+    "mvReadWindowHint": "Usuarios y clientes solo pueden leer esta vista dentro de esta ventana; sin ella, en cualquier momento.",
+    "timeTravelPanel": "Viaje en el tiempo",
+    "timeTravelSectionHelp": "Bitemporal guarda las dos cosas: cuándo ocurrió y cuándo se registró. Así los datos se pueden leer a una fecha, o tal como estaban registrados en una fecha. Asigne la clave de negocio, el tiempo válido y el tiempo de registro a columnas; Provisa decide cómo se guardan las versiones.",
+    "timeTravelLabel": "Guardar historial",
+    "timeTravelOff": "Desactivado",
+    "timeTravelBitemporal": "Bitemporal"
   }
 }

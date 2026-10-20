@@ -37,7 +37,7 @@ const COLUMNS = [
 ];
 
 function renderForm() {
-  const registerTable = vi.fn().mockResolvedValue({ success: true, message: "" });
+  const onContinue = vi.fn();
   const setError = vi.fn();
   render(
     <RegisterTableForm
@@ -50,13 +50,12 @@ function renderForm() {
       roles={[{ id: "admin" } as never]}
       getAvailableColumnsMetadata={vi.fn().mockResolvedValue(COLUMNS)}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      registerTable={registerTable}
-      onSuccess={vi.fn()}
+      onContinue={onContinue}
       onCancel={() => {}}
       setError={setError}
     />,
   );
-  return { registerTable, setError };
+  return { onContinue, setError };
 }
 
 /** Drive the source → schema → table cascade so the column rows render. */
@@ -83,16 +82,16 @@ describe("RegisterTableForm data types (REQ-1426)", () => {
   });
 
   it("refuses to register while a selected column has no type", async () => {
-    const { registerTable, setError } = renderForm();
+    const { onContinue, setError } = renderForm();
     const user = await pickTable();
     await user.click(screen.getByTestId("register-table-submit"));
     await waitFor(() => expect(setError).toHaveBeenCalled());
     expect(setError.mock.calls.at(-1)?.[0]).toContain("payload");
-    expect(registerTable).not.toHaveBeenCalled();
+    expect(onContinue).not.toHaveBeenCalled();
   });
 
   it("registers once the steward assigns the missing type, and sends it", async () => {
-    const { registerTable, setError } = renderForm();
+    const { onContinue, setError } = renderForm();
     const user = await pickTable();
     await user.click(screen.getByTestId("register-table-type-payload"));
     await user.keyboard("timestamp");
@@ -102,9 +101,9 @@ describe("RegisterTableForm data types (REQ-1426)", () => {
     );
     await user.keyboard("{Escape}");
     await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(registerTable).toHaveBeenCalled());
+    await waitFor(() => expect(onContinue).toHaveBeenCalled());
     expect(setError).toHaveBeenLastCalledWith(null);
-    const cols = registerTable.mock.calls[0][0].columns as { name: string; dataType: string }[];
+    const cols = onContinue.mock.calls[0][0].input.columns as { name: string; dataType: string }[];
     expect(cols.map((c) => [c.name, c.dataType])).toEqual([
       ["id", "integer"],
       ["payload", "timestamp"],

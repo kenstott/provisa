@@ -35,6 +35,7 @@ import { TableAssociations } from "./TableAssociations";
 import { ParametersPanel } from "./ParametersPanel";
 import { IdentityRead, LoadRead, QualityRead, QueryRead } from "./TableSectionsRead";
 import { dataProductField } from "./tableSectionFields";
+import { KeepsHistoryNote } from "./KeepsHistoryNote";
 
 interface TableProfileResult {
   columns: string[];
@@ -311,6 +312,7 @@ export function TableReadView({
 
   return (
     <>
+      <KeepsHistoryNote table={table} navigate={navigate} />
       {/* The same seven sections as the edit form, each read-only. */}
       <TableSectionTabs value={section} onChange={setSection} />
       {/* The section in view, as a demo tour step anchors on it (`open: <section>`); Columns
@@ -770,6 +772,7 @@ export function TableReadView({
             grants={table.writeGrants}
             columns={table.columns.map((c) => c.columnName)}
             roles={[]}
+            kept={false}
           />
         )}
       </div>

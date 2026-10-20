@@ -41,6 +41,7 @@ import {
   FormIdentifiers,
   FormLayout,
 } from "../../components/form/FormLayout";
+import type { Registration } from "./draftTable";
 
 type DefinitionMode = "sql" | "metrics";
 
@@ -50,10 +51,14 @@ interface ViewDefinitionFormProps {
   tables: RegisteredTable[];
   relationships: Relationship[];
   domainHints: string[];
-  registerTable: (input: Record<string, unknown>) => Promise<MutationResult>;
   updateTable: (input: Record<string, unknown>) => Promise<MutationResult>;
-  /** Told the name of the view it created, so the page can select it; nothing for an edit. */
-  onSuccess: (created?: string) => void;
+  /**
+   * REQ-2109 (settled): a new view's definition is chosen here; every setting of it follows in
+   * the same sections as its editor, and Save there registers it.
+   */
+  onContinue: (registration: Registration) => void;
+  /** An edited definition was saved. */
+  onSuccess: () => void;
   onCancel: () => void;
 }
 
@@ -62,8 +67,8 @@ export function ViewDefinitionForm({
   tables,
   relationships,
   domainHints,
-  registerTable,
   updateTable,
+  onContinue,
   onSuccess,
   onCancel,
 }: ViewDefinitionFormProps) {
@@ -121,31 +126,36 @@ export function ViewDefinitionForm({
           .map((f) => f.trim())
           .filter(Boolean),
       };
-      let result: MutationResult;
-      if (editing) {
-        // Explicit user action: the definition becomes metric-composed. viewSql is
-        // omitted — the server compiles it from the spec (mutually exclusive inputs).
-        result = await updateTable({
-          ...buildTableUpdateInput(editing),
-          viewSql: undefined,
-          viewMetrics: spec,
+      if (!editing) {
+        onContinue({
+          input: {
+            sourceId: DERIVED_SOURCE_ID,
+            domainId: domainId.trim(),
+            schemaName: "views",
+            tableName: name.trim(),
+            alias: name.trim(),
+            viewMetrics: spec,
+            // View output columns = the spec dimensions plus one column per metric.
+            columns: [...selectedDims, ...selectedMetrics].map((n) => ({
+              name: n,
+              visibleTo: ["*"],
+            })),
+          },
+          pagination: null,
+          pagingKind: null,
+          pagingCeilingRows: null,
+          rowRules: [],
         });
-      } else {
-        result = await registerTable({
-          sourceId: DERIVED_SOURCE_ID,
-          domainId: domainId.trim(),
-          schemaName: "views",
-          tableName: name.trim(),
-          alias: name.trim(),
-          viewMetrics: spec,
-          // View output columns = the spec dimensions plus one column per metric.
-          columns: [...selectedDims, ...selectedMetrics].map((n) => ({
-            name: n,
-            visibleTo: ["*"],
-          })),
-        });
+        return;
       }
-      if (result.success) onSuccess(editing ? undefined : name.trim());
+      // Explicit user action: the definition becomes metric-composed. viewSql is
+      // omitted — the server compiles it from the spec (mutually exclusive inputs).
+      const result = await updateTable({
+        ...buildTableUpdateInput(editing),
+        viewSql: undefined,
+        viewMetrics: spec,
+      });
+      if (result.success) onSuccess();
       else setMsg(result.message || t("viewDefinitionForm.saveFailed"));
     } catch (e) {
       setMsg(e instanceof Error ? e.message : String(e));
@@ -265,11 +275,29 @@ export function ViewDefinitionForm({
           )}
           <FormFooter
             panel
-            onSave={handleSaveMetrics}
-            saving={saving}
-            saveProps={{ "data-testid": "view-definition-save", disabled: metricsSaveDisabled }}
             onCancel={onCancel}
             cancelProps={{ "data-testid": "view-definition-cancel" }}
+            {...(editing
+              ? {
+                  onSave: handleSaveMetrics,
+                  saving,
+                  saveProps: {
+                    "data-testid": "view-definition-save",
+                    disabled: metricsSaveDisabled,
+                  },
+                }
+              : {
+                  // Choosing the definition is not a save: every setting of the view follows.
+                  action: (
+                    <Button
+                      onClick={handleSaveMetrics}
+                      disabled={metricsSaveDisabled}
+                      data-testid="view-definition-save"
+                    >
+                      {t("registerTableForm.continue")}
+                    </Button>
+                  ),
+                })}
           />
         </FormLayout>
       )}

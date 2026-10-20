@@ -50,6 +50,8 @@
     "draftLabel": "Brouillon",
     "draftTooltip": "Brouillon : hors service — dans aucun schéma et lu par personne. Décochez pour publier la table ; cochez pour la mettre hors service.",
     "draftNoRightTooltip": "Publier une table, ou la remettre en brouillon, nécessite le droit Enregistrement de tables dans le domaine de la table.",
-    "draftPreviewNote": "Aperçu du brouillon : les lecteurs ne peuvent pas encore voir cette table."
+    "draftPreviewNote": "Aperçu du brouillon : les lecteurs ne peuvent pas encore voir cette table.",
+    "keepsHistory": "Conserve l'historique : chaque version, avec le moment où c'est arrivé et le moment de son enregistrement.",
+    "keepsHistoryQuery": "L'interroger à une date ou tel qu'enregistré"
   }
 }

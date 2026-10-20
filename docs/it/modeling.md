@@ -58,9 +58,9 @@ L'aggregazione predefinita è `sum`.
        - **Name:** `Customer`
        - **Source relation:** `raw.customers`
        - **Domain:** *(il proprio dominio)*
-       - **Entity key:** `id`
+       - **Business key:** `id`
        - **Attributes:** `name, region, tier`
-       - **History:** `SCD2 (track changes — delta bitemporal)`
+       - **Keep history:** `Bitemporal`
        - **Valid time:** `effective_date`
        - **Recorded time:** `updated_at`
     4. Fare clic su **Create**.

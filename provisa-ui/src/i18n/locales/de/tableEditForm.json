@@ -111,8 +111,6 @@
     "persistAria": "MV-Speichermodus",
     "storeReplace": "Replace (aktuellen Zustand überschreiben)",
     "storeUpsert": "Upsert (aktuellen Zustand per Schlüssel zusammenführen)",
-    "timeTravelToggleLabel": "Time Travel (Änderungshistorie behalten)",
-    "keepsHistoryHelp": "Jede Version jeder Zeile behalten. Geben Sie unten Geschäftsschlüssel, Gültigkeitszeit und Erfassungszeit an; Provisa entscheidet, wie die Versionen gespeichert werden.",
     "businessKeyLabel": "Geschäftsschlüssel",
     "businessKeyHint": "Die Spalte, die dasselbe Objekt über alle Versionen hinweg kennzeichnet, z. B. transaction_id.",
     "businessKeyHelp": "Jede Version eines Datensatzes hat diesen Schlüssel gemeinsam: Eine später korrigierte Zahlung bleibt dieselbe Zahlung, daher tragen beide Versionen dieselbe transaction_id. Wählen Sie mehrere Spalten, wenn erst mehrere den Datensatz kennzeichnen.",
@@ -277,6 +275,11 @@
     },
     "offPeakInherited": "Geerbt: Die Quelle dieser Tabelle wird nur nach Zeitplan gelesen.",
     "mvReadWindowHelp": "Wann Benutzer und Clients diese View lesen dürfen, als HH:MM-HH:MM (24 h). Außerhalb davon werden ihre Lesezugriffe abgelehnt, mit dem Hinweis, wann es sich wieder öffnet; die eigenen Aktualisierungen und geplanten Jobs von Provisa laufen weiter. Leer lassen, um Lesen jederzeit zu erlauben.",
-    "mvReadWindowHint": "Benutzer und Clients dürfen diese View nur innerhalb dieses Fensters lesen; ohne Fenster jederzeit."
+    "mvReadWindowHint": "Benutzer und Clients dürfen diese View nur innerhalb dieses Fensters lesen; ohne Fenster jederzeit.",
+    "timeTravelPanel": "Time Travel",
+    "timeTravelSectionHelp": "Bitemporal hält beides fest: wann etwas geschah und wann es erfasst wurde. So lassen sich die Daten zum Stand eines Datums lesen oder so, wie sie an einem Datum erfasst waren. Ordnen Sie Geschäftsschlüssel, Gültigkeitszeit und Erfassungszeit Spalten zu; Provisa entscheidet, wie die Versionen gespeichert werden.",
+    "timeTravelLabel": "Historie führen",
+    "timeTravelOff": "Aus",
+    "timeTravelBitemporal": "Bitemporal"
   }
 }

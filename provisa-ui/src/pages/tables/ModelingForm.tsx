@@ -29,6 +29,7 @@ import { useRegisterEntity, useRegisterFact, useTables } from "../../hooks/useAd
 import type { Domain, RegisteredTable, TableColumn } from "../../types/admin";
 import { DERIVED_SOURCE_ID } from "../../types/admin";
 import { FieldLabel } from "./FieldLabel";
+import { TimeTravelSection } from "./TimeTravelSection";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
@@ -89,10 +90,21 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
   // entity
   const [key, setKey] = useState<string[]>([]);
   const [attributes, setAttributes] = useState<string[]>([]);
-  const [history, setHistory] = useState("none");
-  // REQ-2109: a historized entity's valid-time and recorded-time columns, declared with its key.
+  // REQ-2109: Time Travel. The entity's key is its business key; Bitemporal adds the valid-time
+  // and recorded-time columns, and Off clears them.
+  const [historized, setHistorized] = useState(false);
   const [validTime, setValidTime] = useState<string | null>(null);
   const [recordedTime, setRecordedTime] = useState<string | null>(null);
+  const historyChoice = {
+    on: historized,
+    onToggle: (on: boolean) => {
+      setHistorized(on);
+      if (!on) {
+        setValidTime(null);
+        setRecordedTime(null);
+      }
+    },
+  };
   // fact
   const [grain, setGrain] = useState<string[]>([]);
   const [measures, setMeasures] = useState<Record<string, string>>({}); // column -> agg
@@ -153,8 +165,10 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
           domainId,
           key,
           attributes,
-          history,
-          ...(history !== "none" ? { validTime, recordedTime } : {}),
+          // Provisa picks how the versions are kept: scd2 and snapshot lower alike since REQ-2109,
+          // to the key as business key with the two times; scd2 records that history is kept.
+          history: historized ? "scd2" : "none",
+          ...(historized ? { validTime, recordedTime } : {}),
         });
       } else {
         const parsedMeasures = Object.entries(measures).map(([column, agg]) => ({ column, agg }));
@@ -178,7 +192,7 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
         kind,
         name: name.trim(),
         domainId,
-        historized: kind === "entity" && history !== "none",
+        historized: kind === "entity" && historized,
         dimCount: dimensions.filter((d) => d.entity && d.via).length,
       });
     } catch (e) {
@@ -223,7 +237,7 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
               setSource(null);
               setKey([]);
               setAttributes([]);
-              setHistory("none");
+              setHistorized(false);
               setValidTime(null);
               setRecordedTime(null);
               setGrain([]);
@@ -302,7 +316,7 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
         <>
           <FormField size="long" help={t("modelingForm.keyHelp")} hint={t("modelingForm.keyHint")}>
             <MultiSelect
-              label={t("modelingForm.keyLabel")}
+              label={t("tableEditForm.businessKeyLabel")}
               required
               searchable
               data={keyColumnOptions}
@@ -340,57 +354,17 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
               </Button>
             </FormField>
           )}
-          <FormField size="medium" help={t("modelingForm.historyHelp")}>
-            <Select
-              label={t("modelingForm.historyLabel")}
-              data={[
-                { value: "none", label: t("modelingForm.historyNone") },
-                { value: "scd2", label: t("modelingForm.historyScd2") },
-                { value: "snapshot", label: t("modelingForm.historySnapshot") },
-              ]}
-              value={history}
-              onChange={(v) => setHistory(v ?? "none")}
-              comboboxProps={{ withinPortal: true }}
-              allowDeselect={false}
-              data-testid="modeling-history"
-            />
-          </FormField>
-          {history !== "none" && (
-            <>
-              <FormField
-                size="medium"
-                hint={t("tableEditForm.validTimeHint")}
-                help={t("tableEditForm.validTimeHelp")}
-              >
-                <Select
-                  label={t("tableEditForm.validTimeLabel")}
-                  required
-                  data={allColumnOptions}
-                  value={validTime}
-                  onChange={setValidTime}
-                  disabled={noSource}
-                  comboboxProps={{ withinPortal: true }}
-                  data-testid="modeling-valid-time"
-                />
-              </FormField>
-              <FormField
-                size="medium"
-                hint={t("tableEditForm.recordedTimeHint")}
-                help={t("tableEditForm.recordedTimeHelp")}
-              >
-                <Select
-                  label={t("tableEditForm.recordedTimeLabel")}
-                  required
-                  data={allColumnOptions}
-                  value={recordedTime}
-                  onChange={setRecordedTime}
-                  disabled={noSource}
-                  comboboxProps={{ withinPortal: true }}
-                  data-testid="modeling-recorded-time"
-                />
-              </FormField>
-            </>
-          )}
+          <TimeTravelSection
+            choice={historyChoice}
+            value={{ businessKey: key, validTime, recordedTime }}
+            columns={columns.map((c) => c.columnName)}
+            onChange={(next) => {
+              setValidTime(next.validTime);
+              setRecordedTime(next.recordedTime);
+            }}
+            locked={false}
+            withBusinessKey={false}
+          />
         </>
       ) : (
         <>

@@ -60,9 +60,9 @@ The default aggregation is `sum`.
        - **Name:** `Customer`
        - **Source relation:** `raw.customers`
        - **Domain:** *(your domain)*
-       - **Entity key:** `id`
+       - **Business key:** `id`
        - **Attributes:** `name, region, tier`
-       - **History:** `SCD2 (track changes — delta bitemporal)`
+       - **Keep history:** `Bitemporal`
        - **Valid time:** `effective_date`
        - **Recorded time:** `updated_at`
     4. Click **Create**.
@@ -159,9 +159,9 @@ A segmented control at the top of the modal switches between **Entity (dimension
 | Name | yes | The MV name in the catalog |
 | Source relation | yes | Dotted relation, e.g. `raw.customers` |
 | Domain | yes | Domain the MV belongs to |
-| Entity key | yes | Comma-separated key column(s), e.g. `id` |
+| Business key | yes | Comma-separated key column(s), e.g. `id` |
 | Attributes | no | Comma-separated attribute columns, e.g. `name, region, tier` |
-| History | no | `none` / `scd2` / `snapshot`; default is `none` |
+| Keep history (Time Travel) | no | `Off` or `Bitemporal`; default is `Off` |
 | Valid time | with history | The column holding the date your business gives the record |
 | Recorded time | with history | The column holding when this version was entered or changed |
 

@@ -56,9 +56,9 @@ fact 没有自己的历史模式；它们在时间上的覆盖来自下层实体
        - **Name：** `Customer`
        - **Source relation：** `raw.customers`
        - **Domain：** *（你的 domain）*
-       - **Entity key：** `id`
+       - **Business key：** `id`
        - **Attributes：** `name, region, tier`
-       - **History：** `SCD2 (track changes — delta bitemporal)`
+       - **Keep history：** `Bitemporal`
        - **Valid time：** `effective_date`
        - **Recorded time：** `updated_at`
     4. 点击 **Create**。
