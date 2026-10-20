@@ -383,6 +383,19 @@ async def replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
     return _served_from_replica(engine, registry, registry.promoted)
 
 
+async def served_tables(
+    state: Any,
+) -> tuple[list[dict], dict[str, Any], frozenset[tuple[str, str, str]]]:
+    """The registered tables, their sources by id, and the keys of the tables whose reads go to
+    their replica now (REQ-2116) -- what ``replica_routes`` routes, read once."""
+    registry = await _registry(state)
+    engine = state.federation_engine.engine
+    served = frozenset(
+        _replica_key(reg) for _, reg in _served_from_replica(engine, registry, registry.serving)
+    )
+    return registry.registered, registry.sources, served
+
+
 async def draft_replica_tables(engine: Any, state: Any) -> list[tuple[Any, dict]]:
     """Every DRAFT table that has, or may come to have, a replica on ``engine`` (REQ-1921), by
     the same decision as :func:`replica_tables`. A draft is offered to no reader, and it may hold

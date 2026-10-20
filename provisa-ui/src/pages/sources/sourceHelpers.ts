@@ -42,9 +42,14 @@ function kaggleOrigin(federationHintsJson: string | null | undefined): "kaggle" 
 /** The type a source is shown as: its brand when it has one, Kaggle for a source staged from a
  * Kaggle dataset, else its own type. */
 export function sourceTypeLabel(type: string, federationHintsJson: string | null | undefined) {
-  const shown =
-    sourceBrand(federationHintsJson) ?? kaggleOrigin(federationHintsJson) ?? uiType(type);
+  const shown = shownSourceType(type, federationHintsJson);
   return SOURCE_TYPES.find((st) => st.value === shown)?.label ?? type;
+}
+
+/** The type value a source is shown as (its brand, Kaggle, else its own type), by which its logo
+ * and category are looked up. */
+export function shownSourceType(type: string, federationHintsJson: string | null | undefined) {
+  return sourceBrand(federationHintsJson) ?? kaggleOrigin(federationHintsJson) ?? uiType(type);
 }
 
 /** A source type as the type picker offers it: its name, then the hosted services that are that

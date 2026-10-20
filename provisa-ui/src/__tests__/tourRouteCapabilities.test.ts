@@ -145,7 +145,9 @@ describe("tour itinerary", () => {
     const keys = kept.map((i) => TOUR_STEPS[i].key);
     expect(keys).toContain("step0"); // /sources — source_registration, untouched
     expect(keys).not.toContain("step20"); // /views
-    expect(keys).not.toContain("step22"); // /lineage
+    expect(keys).toContain("step22"); // /lineage — view_governance, untouched
+    const ungoverned = tourItinerary((c) => c !== "view_governance").map((i) => TOUR_STEPS[i].key);
+    expect(ungoverned).not.toContain("step22");
   });
 
   it("refuses a routed step that names no capability", () => {
