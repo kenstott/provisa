@@ -33,6 +33,8 @@ import httpx
 import pytest
 import yaml
 
+from provisa.core.demo_bundles import store_namespaces
+
 pytestmark = [pytest.mark.integration]
 
 _REPO = Path(__file__).resolve().parents[2]
@@ -53,7 +55,7 @@ class ChurnStack:
 
     @property
     def env(self) -> dict[str, str]:
-        return {"CHURNPROD_PG_PORT": str(self.port)}
+        return {"CHURNPROD_PG_PORT": str(self.port), **store_namespaces(_DEMO)}
 
     def _compose(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
         return subprocess.run(

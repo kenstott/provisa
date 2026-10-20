@@ -172,6 +172,57 @@ def test_a_run_compose_off_the_loopback_or_unlabelled_is_reported(tmp_path):
     ]
 
 
+def test_a_shared_store_without_its_namespace_or_access_is_reported(tmp_path):
+    """The sandbox tier's node loads a shared store's data under the demo version's suffix, with
+    the demo's own roles and grants: a Postgres store with neither (churnprod as first shipped)
+    fails a visitor's walk before its first step, so check_demo reports it."""
+    (tmp_path / "config.yaml").write_text(
+        "host: ${env:X_PG_HOST:-localhost}\nport: ${env:X_PG_PORT:-1}\ndatabase: x\n"
+    )
+    store = {
+        "image": "postgres:16",
+        "labels": {
+            "com.provisa.demo": "x",
+            "com.provisa.demo.role": "rdb",
+            "com.provisa.demo.host_env": "X_PG_HOST",
+            "com.provisa.demo.port_env": "X_PG_PORT",
+            "com.provisa.demo.port": "5432",
+        },
+        "ports": ["127.0.0.1:1:5432"],
+    }
+    run = tmp_path / "docker-compose.run.yml"
+    run.write_text(yaml.safe_dump({"services": {"postgres": store}}))
+    assert check_demo.check_run_compose(tmp_path, "x") == [
+        "postgres: a shared postgres store with no com.provisa.demo.ns_env label",
+        "postgres: a shared postgres store with no com.provisa.demo.access label",
+    ]
+    store["labels"] |= {
+        "com.provisa.demo.ns_env": "X_PG_NS",
+        "com.provisa.demo.access": "db/reader.sql",
+    }
+    run.write_text(yaml.safe_dump({"services": {"postgres": store}}))
+    assert check_demo.check_run_compose(tmp_path, "x") == [
+        "postgres: config.yaml does not name its data with X_PG_NS",
+        "postgres: its access script db/reader.sql is not in the demo",
+    ]
+    (tmp_path / "config.yaml").write_text(
+        "host: ${env:X_PG_HOST:-localhost}\nport: ${env:X_PG_PORT:-1}\ndatabase: x${env:X_PG_NS}\n"
+    )
+    (tmp_path / "db").mkdir()
+    (tmp_path / "db" / "reader.sql").write_text("CREATE ROLE r;\n")
+    assert check_demo.check_run_compose(tmp_path, "x") == []
+
+
+def test_every_demo_s_run_compose_passes():
+    """Each demo's run compose, as the sandbox tier's node reads it."""
+    found = {
+        home.name: check_demo.check_run_compose(home, home.name)
+        for home in sorted(_NAMED.iterdir())
+        if (home / "docker-compose.run.yml").is_file()
+    }
+    assert {name: problems for name, problems in found.items() if problems} == {}
+
+
 def test_a_demo_with_stores_and_no_run_compose_is_reported(tmp_path):
     (tmp_path / "docker-compose.yml").write_text("services: {}\n")
     assert check_demo.check_run_compose(tmp_path, "x") == [
