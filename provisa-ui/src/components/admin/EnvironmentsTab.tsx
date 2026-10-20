@@ -51,7 +51,13 @@ import {
 import { EnvironmentInUse, isBase } from "../../api/environments";
 import { DependentsDialog } from "../DependentsDialog";
 import type { Dependent } from "../../lib/dependents";
-import type { BranchSync, Conflict, CopyReport, Environment } from "../../api/environments";
+import type {
+  BranchSync,
+  Conflict,
+  CopyReport,
+  DataMode,
+  Environment,
+} from "../../api/environments";
 import type { NotificationData } from "@mantine/notifications";
 import { MergeRequestsPanel } from "./MergeRequestsPanel";
 import { RepoBrowser } from "./RepoBrowser";
@@ -65,6 +71,21 @@ import { SortGroupTable } from "../list/SortGroupTable";
 import { Tip } from "../Tip";
 
 const PROD = "prod";
+
+/** REQ-1942: the data modes a new environment can be created with, in the order offered. */
+const DATA_MODES: DataMode[] = ["inherit", "unbound", "test_fake", "test_synthetic"];
+const DATA_MODE_LABELS: Record<DataMode, string> = {
+  inherit: "environmentsTab.dataModeInherit",
+  unbound: "environmentsTab.dataModeUnbound",
+  test_fake: "environmentsTab.dataModeTestFake",
+  test_synthetic: "environmentsTab.dataModeTestSynthetic",
+};
+const DATA_MODE_HINTS: Record<DataMode, string> = {
+  inherit: "environmentsTab.dataModeInheritHint",
+  unbound: "environmentsTab.dataModeUnboundHint",
+  test_fake: "environmentsTab.dataModeTestFakeHint",
+  test_synthetic: "environmentsTab.dataModeTestSyntheticHint",
+};
 
 /**
  * The objects a pull collided on, inside the notification that reports it (REQ-1556).
@@ -124,15 +145,14 @@ export function EnvironmentsTab() {
   const [envs, setEnvs] = useState<Environment[]>([]);
   const [name, setName] = useState("");
   const [from, setFrom] = useState<string>(PROD);
-  // REQ-1538: OFF by default. Off means the new environment gets the model and none of the
-  // connections; on means it resolves them from `from`, production included. The safe answer is
-  // the one you reach by touching nothing.
-  const [inheritConnections, setInheritConnections] = useState(false);
+  // REQ-1942: Unbound by default -- the whole model and none of the connections. The safe answer
+  // is the one you reach by touching nothing.
+  const [dataMode, setDataMode] = useState<DataMode>("unbound");
   // REQ-1529: giving an environment its OWN connections is an org_admin's act, so a member who
-  // cannot administer the org has exactly one way to create one — inheriting. The box is shown to
-  // them checked and disabled rather than hidden, because a hidden box would leave them looking at
-  // a Create button that answers 403 with nothing on screen to explain it.
-  const inherits = inheritConnections || !canAdminister;
+  // cannot administer the org has exactly one way to create one -- inheriting. The choice is shown
+  // to them set to Inherit and disabled rather than hidden, because a hidden one would leave them
+  // looking at a Create button that answers 403 with nothing on screen to explain it.
+  const mode: DataMode = canAdminister ? dataMode : "inherit";
   const [creating, setCreating] = useState(false);
   const [tab, setTab] = useState<string | null>("environments");
   const newName = useRef<HTMLInputElement>(null);
@@ -206,7 +226,7 @@ export function EnvironmentsTab() {
       const made = await createEnvironment(orgId, {
         name,
         from_env: from,
-        data_mode: inherits ? "inherit" : "unbound",
+        data_mode: mode,
         ...(synthetic ? { synthetic } : {}),
       });
       notifications.show({
@@ -530,28 +550,23 @@ export function EnvironmentsTab() {
                   data-testid="env-new-from"
                 />
               </FormField>
-              {/* The ticks together after the fields; the fields the second one opens follow. */}
+              <FormField
+                size="medium"
+                help={t("environmentsTab.dataModeHelp")}
+                hint={t(DATA_MODE_HINTS[mode])}
+              >
+                <Select
+                  label={t("environmentsTab.dataMode")}
+                  data={DATA_MODES.map((m) => ({ value: m, label: t(DATA_MODE_LABELS[m]) }))}
+                  value={mode}
+                  onChange={(v) => v && setDataMode(v as DataMode)}
+                  allowDeselect={false}
+                  disabled={!canAdminister}
+                  data-testid="env-new-data-mode"
+                />
+              </FormField>
+              {/* The tick after the fields; the fields it opens follow. */}
               <FormChecks>
-                <FormField size="short">
-                  <Group gap={4} align="center" wrap="nowrap">
-                    <Checkbox
-                      label={t("environmentsTab.inheritConnections")}
-                      checked={inherits}
-                      disabled={!canAdminister}
-                      onChange={(e) => setInheritConnections(e.currentTarget.checked)}
-                      data-testid="env-new-inherit"
-                    />
-                    <HelpBubble
-                      title={t("environmentsTab.inheritTitle")}
-                      paragraphs={[
-                        t("environmentsTab.inheritHelp"),
-                        t("environmentsTab.inheritHelp2"),
-                      ]}
-                      ariaLabel={t("environmentsTab.inheritTitle")}
-                      testId="env-inherit-help"
-                    />
-                  </Group>
-                </FormField>
                 <SyntheticSeedTick seed={synthetic} setSeed={setSynthetic} />
               </FormChecks>
               <SyntheticSeedFields envs={names} seed={synthetic} setSeed={setSynthetic} />

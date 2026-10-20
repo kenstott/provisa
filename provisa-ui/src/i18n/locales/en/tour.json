@@ -217,8 +217,8 @@
         "description": "✨ <strong>Fill from profile</strong> proposes fakes for identifying columns, and synthetic rules for the rest, from the table's latest profile. Nothing saves until you save the form."
       },
       "stepEnvKinds": {
-        "title": "Environments and their connections",
-        "description": "An environment is a <strong>branch</strong> of your model, and the list shows which environment each one was made from. When you create one, you choose whether to <strong>Inherit connections</strong>. With it on, the new environment uses its parent's source connections by reference, so when a credential is rotated there, it is rotated here too. With it off, the default, you get the whole model with no connections, and you point each source at your own database."
+        "title": "Environments and their data",
+        "description": "An environment is a <strong>branch</strong> of your model, and the list shows which environment each one was made from. When you create one, you choose its <strong>data</strong>. <strong>Inherit</strong> copies each source's connection from the parent, so the tables show the parent's data. <strong>Unbound</strong>, the default, gives you the whole model with no connections, and you point each source at your own database. <strong>Test (fake)</strong> reads the parent's rows through each column's fake, and <strong>Test (synthetic)</strong> reads rows generated from the parent's profile runs. A connection value that references a secret or an environment variable is copied as that reference, so rotating the credential reaches every environment that uses it."
       },
       "stepSynthetic": {
         "title": "Generate synthetic data",

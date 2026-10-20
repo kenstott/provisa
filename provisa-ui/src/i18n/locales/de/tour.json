@@ -217,8 +217,8 @@
         "description": "✨ <strong>Aus Profil füllen</strong> schlägt aus dem neuesten Profil der Tabelle Fake-Werte für identifizierende Spalten und synthetische Regeln für die übrigen vor. Gespeichert wird erst, wenn Sie das Formular speichern."
       },
       "stepEnvKinds": {
-        "title": "Umgebungen und ihre Verbindungen",
-        "description": "Eine Umgebung ist ein <strong>Branch</strong> Ihres Modells, und die Liste zeigt, aus welcher Umgebung jede entstanden ist. Beim Anlegen wählen Sie, ob Sie <strong>Verbindungen erben</strong>. Ist das an, nutzt die neue Umgebung die Quellverbindungen ihrer Elternumgebung per Referenz; wird dort ein Credential rotiert, gilt das auch hier. Ist es aus, der Standard, bekommen Sie das ganze Modell ohne Verbindungen und richten jede Quelle auf Ihre eigene Datenbank."
+        "title": "Umgebungen und ihre Daten",
+        "description": "Eine Umgebung ist ein <strong>Branch</strong> Ihres Modells, und die Liste zeigt, aus welcher Umgebung jede erstellt wurde. Beim Anlegen wählen Sie ihre <strong>Daten</strong>. <strong>Inherit</strong> kopiert die Verbindung jeder Quelle aus der übergeordneten Umgebung, sodass die Tabellen deren Daten zeigen. <strong>Unbound</strong>, die Voreinstellung, gibt Ihnen das ganze Modell ohne Verbindungen, und Sie richten jede Quelle auf Ihre eigene Datenbank aus. <strong>Test (fake)</strong> liest die Zeilen der übergeordneten Umgebung über den Fake jeder Spalte, und <strong>Test (synthetic)</strong> liest Zeilen, die aus den Profilläufen der übergeordneten Umgebung generiert werden. Ein Verbindungswert, der auf ein Secret oder eine Umgebungsvariable verweist, wird als dieser Verweis kopiert, sodass die Rotation der Anmeldedaten jede Umgebung erreicht, die ihn verwendet."
       },
       "stepSynthetic": {
         "title": "Synthetische Daten erzeugen",

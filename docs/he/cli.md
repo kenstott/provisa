@@ -252,7 +252,7 @@ provisa env create --org ORG --env NAME --data-mode MODE
 | --- | --- | --- |
 | `--env` | כן | שם הסביבה החדשה |
 | `--from` | לא | הסביבה שממנה מתחילים; ברירת מחדל `prod` |
-| `--data-mode` | כן | `inherit`, `unbound`, `test_fake` או `test_synthetic`: חיבורי המקור בהפניה, אף אחד עד שהיא קושרת את שלה, או נתוני בדיקה |
+| `--data-mode` | כן | `inherit`, `unbound`, `test_fake` או `test_synthetic`: החיבורים של סביבת `--from`, מועתקים כפי שהם כתובים שם, אף אחד עד שהיא קושרת את שלה, או נתוני בדיקה |
 | `--mutation-handling` | לא | `refused`, `reversible` או `direct`; ברירת מחדל `refused` |
 | `--expires-at` | לא | רגע ISO-8601 שלאחריו הסביבה מוסרת |
 

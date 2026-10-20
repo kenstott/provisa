@@ -552,9 +552,8 @@ export const TOUR_STEPS: TourStep[] = [
     clickAfterNext: PROFILER_ROW,
   },
   {
-    // REQ-1493, REQ-1942: an environment is a branch of the model; at creation it inherits its
-    // parent's connections or starts unbound. Both are set on the Environments page; its root is
-    // the anchor.
+    // REQ-1493, REQ-1942: an environment is a branch of the model; at creation it takes one of the
+    // data modes. Both are set on the Environments page; its root is the anchor.
     route: "/admin/environments",
     capability: "environment_management",
     element: '[data-testid="environments-tab"]',
