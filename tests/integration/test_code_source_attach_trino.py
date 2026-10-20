@@ -184,6 +184,13 @@ def code_source(server):
         f'tableName: "regions", cacheTtl: 0, columns: [{", ".join(columns)}]}})',
     )
     _admin(server, release_field(registered_id(registered["message"])))
+    # An approved relationship: governance admits a join only along one (V002).
+    _admin(
+        server,
+        'createRelationship(input: {id: "orders-regions", sourceTableId: "orders", '
+        'targetTableId: "regions", sourceColumn: "region", targetColumn: "region", '
+        'cardinality: "many-to-one"})',
+    )
 
 
 def _docker(*argv: str) -> str:
@@ -279,7 +286,12 @@ def test_trino_attaches_the_host_and_joins_its_function_to_postgres(server, buil
 
 
 def test_the_join_reads_the_code_table_from_the_hosts_catalog_not_a_landed_copy(server, built):
-    plan = _sql(server, f"EXPLAIN {_JOIN}")
+    plan = httpx.post(
+        f"{server.base_url}/data/sql/explain",
+        json={"sql": _JOIN},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
     assert plan.status_code == 200, plan.text
     text = json.dumps(plan.json())
     assert "regions" in text
