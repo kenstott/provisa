@@ -720,3 +720,23 @@ def test_the_backends_device_alone_can_be_given_a_larger_machine(tmp_path: Path)
     assert plan.index("backends_machine_type=c4d-standard-4") < plan.index(
         "backends_machine_type=c4d-highmem-8"
     )
+
+
+def test_each_image_the_stack_builds_is_built_by_one_service() -> None:
+    """Two services building one image tag at once fail ("image already exists"), so a tag is
+    built by one service and the others only run it."""
+    import collections
+
+    import yaml
+
+    compose = yaml.safe_load((BENCH.parent / "docker-compose.yml").read_text())
+    builders = collections.Counter(
+        svc["image"] for svc in compose["services"].values() if "build" in svc and "image" in svc
+    )
+    assert [tag for tag, n in builders.items() if n > 1] == []
+    runners = {
+        name: svc
+        for name, svc in compose["services"].items()
+        if "build" not in svc and svc.get("image") in builders
+    }
+    assert runners and all(svc.get("pull_policy") == "never" for svc in runners.values())
