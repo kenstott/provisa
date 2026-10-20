@@ -50,39 +50,14 @@ import local_proof  # noqa: E402
 import optimistic_load as ol  # noqa: E402
 import contract_model  # noqa: E402
 import three_device  # noqa: E402
+from governance_variants import CACHE, VARIANTS, governance, table  # noqa: E402
 
 TRANSPORTS = ("graphql", "data_sql", "pgwire", "flight_sql", "grpc", "rest", "jsonapi", "mcp")
-ZERO = {
-    "row_rules_per_table": 0,
-    "masked_column_share": 0,
-    "central_redaction": False,
-    "role_depth": 0,
-    "derived_roles": 0,
-}
-# One knob at a time, then all together: the difference from "zero" is that knob's cost.
-VARIANTS: dict[str, dict[str, Any]] = {
-    "zero": {},
-    "row_rules_2": {"row_rules_per_table": 2},
-    "masked_quarter": {"masked_column_share": 0.25},
-    "redaction": {"central_redaction": True},
-    "role_depth_2": {"role_depth": 2},
-    "derived_roles_2": {"derived_roles": 2},
-    "all": {
-        "row_rules_per_table": 2,
-        "masked_column_share": 0.25,
-        "central_redaction": True,
-        "role_depth": 2,
-        "derived_roles": 2,
-    },
-    # zero again, last: how far the server drifted over the pass
-    "zero_end": {},
-}
-CACHE = {"cached": 1.0, "uncached": 0.0}
 WARMUP_S = 5
 
 
 def contract(
-    base: dict[str, Any], variant: dict[str, Any], cache: float, steps: list[int], window_s: float
+    base: dict[str, Any], variant: str, cache: float, steps: list[int], window_s: float
 ) -> dict[str, Any]:
     raw = json.loads(json.dumps(base))
     raw["sources"] = {"bench-postgresql": raw["sources"]["bench-postgresql"]}
@@ -95,7 +70,7 @@ def contract(
         "distribution": {"kind": "constant", "value": len(orders["columns"])},
     }
     raw["knobs"]["cache"] = {"probability": cache}
-    raw["knobs"]["governance"] = {**ZERO, **variant, "telemetry": True}
+    raw["knobs"]["governance"] = governance(variant, telemetry=True)
     raw["transports"] = {t: {} for t in TRANSPORTS}
     raw["load"]["steps"] = steps
     raw["load"]["window_s"] = window_s
@@ -231,54 +206,6 @@ def run_variant(path: Path, out: Path, server: Any, receiver_port: int) -> list[
     return ol.run_from_args(args, out, argv=["local_pass"])
 
 
-def table(results: dict[str, list[dict]]) -> list[dict[str, Any]]:
-    """One row per variant, cache setting, transport and step: server CPU per request, its
-    difference from the zero variant, the stages' thread CPU per request and the paging."""
-    rows = []
-    for key, reports in results.items():
-        variant, cache = key.split("/")
-        for report in reports:
-            for step in report.get("steps", []):
-                if "error" in step:
-                    rows.append(
-                        {
-                            "variant": variant,
-                            "cache": cache,
-                            "transport": report["transport"],
-                            "error": step["error"],
-                        }
-                    )
-                    continue
-                stages = {
-                    f"{t}.{name}": s["cpu_ms_per_request"]
-                    for t, v in step.get("stages", {}).items()
-                    for name, s in v["stages"].items()
-                }
-                rows.append(
-                    {
-                        "variant": variant,
-                        "cache": cache,
-                        "transport": report["transport"],
-                        "concurrency": step["concurrency"],
-                        "req_per_s": step["req_per_s"],
-                        "errors": step["errors"],
-                        "server_cpu_ms_per_request": step.get("server_cpu_ms_per_request"),
-                        "stage_cpu_ms_per_request": stages,
-                        "paging": step["paging"],
-                    }
-                )
-    zero = {
-        (r["cache"], r["transport"], r.get("concurrency")): r.get("server_cpu_ms_per_request")
-        for r in rows
-        if r["variant"] == "zero"
-    }
-    for r in rows:
-        base = zero.get((r["cache"], r["transport"], r.get("concurrency")))
-        cpu = r.get("server_cpu_ms_per_request")
-        r["over_zero_ms"] = round(cpu - base, 3) if cpu is not None and base is not None else None
-    return rows
-
-
 def main() -> int:
     parser = argparse.ArgumentParser(description="Governed vs zero, per request, locally")
     parser.add_argument("--output-dir", required=True)
@@ -320,7 +247,7 @@ def main() -> int:
                 run_dir = out / variant / cache
                 run_dir.mkdir(parents=True, exist_ok=True)
                 path = run_dir / "setup.yaml"
-                raw = contract(base, VARIANTS[variant], CACHE[cache], steps, args.window_s)
+                raw = contract(base, variant, CACHE[cache], steps, args.window_s)
                 path.write_text(yaml.safe_dump(raw, sort_keys=False))
                 local_proof.log(f"== {key}")
                 results[key] = run_variant(path, run_dir, server, receiver_port)

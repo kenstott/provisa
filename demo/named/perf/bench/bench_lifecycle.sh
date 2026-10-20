@@ -18,7 +18,12 @@
 # Usage:
 #   bench_lifecycle.sh --project P --zone Z --commit SHA --ssh-cidr CIDR
 #                      [--provisioning-model SPOT|ON_DEMAND] [--reps 5] [--engine pg]
-#                      [--ready-timeout 7200] [--keep] [--dry-run]
+#                      [--ready-timeout 7200] [--keep] [--dry-run] [--machine-type TYPE]
+#                      [--variants ... --caches ... --telemetry ... --steps ... --window-s ...
+#                       --warmup-s ...]
+#   --machine-type  every device's machine type (terraform/perf's default otherwise); a cheap
+#                   stage uses a small one.
+#   --variants ...  a governance pass (three_device_run.sh), the six flags together.
 #   --dry-run   terraform plan and the run's commands (three_device_run.sh --dry-run); nothing
 #               is created.
 #   --keep      leave the devices up afterwards (their state stays in the run directory; destroy
@@ -33,7 +38,7 @@ MODULE="$REPO_ROOT/terraform/perf"
 REPO_DIR=/opt/provisa  # terraform/perf's repo_dir default: PERF_REPO on every device
 
 PROJECT="" ZONE="" COMMIT="" SSH_CIDR="" MODEL=SPOT REPS=5 ENGINE=pg
-READY_TIMEOUT=7200 KEEP="" DRY_RUN=""
+READY_TIMEOUT=7200 KEEP="" DRY_RUN="" MACHINE_TYPE="" PASS_ARGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project) PROJECT="$2"; shift 2 ;;
@@ -46,6 +51,8 @@ while [ "$#" -gt 0 ]; do
     --ready-timeout) READY_TIMEOUT="$2"; shift 2 ;;
     --keep) KEEP=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --machine-type) MACHINE_TYPE="$2"; shift 2 ;;
+    --variants|--caches|--telemetry|--steps|--window-s|--warmup-s) PASS_ARGS+=("$1" "$2"); shift 2 ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
 done
@@ -61,6 +68,10 @@ cp "$MODULE"/*.tf "$MODULE"/*.tftpl "$RUN_DIR/tf/"
 TF=(terraform -chdir="$RUN_DIR/tf")
 VARS=(-var "project=$PROJECT" -var "region=$REGION" -var "zone=$ZONE" -var "commit=$COMMIT"
   -var "operator_ssh_cidrs=[\"$SSH_CIDR\"]" -var "provisioning_model=$MODEL")
+if [ -n "$MACHINE_TYPE" ]; then
+  VARS+=(-var "server_machine_type=$MACHINE_TYPE" -var "client_machine_type=$MACHINE_TYPE"
+    -var "backends_machine_type=$MACHINE_TYPE")
+fi
 "${TF[@]}" init -input=false -backend=false >/dev/null
 echo "run directory: $RUN_DIR"
 
@@ -68,7 +79,7 @@ if [ -n "$DRY_RUN" ]; then
   "${TF[@]}" plan -input=false "${VARS[@]}"
   PERF_ZONE="$ZONE" PERF_REPO="$REPO_DIR" PERF_SERVER_IP="<server private ip>" \
     PERF_BACKENDS_IP="<backends private ip>" PERF_LOCAL_OUT="$RUN_DIR/results" \
-    bash "$HERE/three_device_run.sh" --reps "$REPS" --engine "$ENGINE" --dry-run
+    bash "$HERE/three_device_run.sh" --reps "$REPS" --engine "$ENGINE" ${PASS_ARGS[@]+"${PASS_ARGS[@]}"} --dry-run
   exit 0
 fi
 
@@ -106,5 +117,5 @@ done
 
 CLOUDSDK_CORE_PROJECT="$PROJECT" PERF_ZONE="$ZONE" PERF_REPO="$REPO_DIR" \
   PERF_SERVER_IP="$SERVER_IP" PERF_BACKENDS_IP="$BACKENDS_IP" PERF_LOCAL_OUT="$RUN_DIR/results" \
-  bash "$HERE/three_device_run.sh" --reps "$REPS" --engine "$ENGINE"
+  bash "$HERE/three_device_run.sh" --reps "$REPS" --engine "$ENGINE" ${PASS_ARGS[@]+"${PASS_ARGS[@]}"}
 echo "results: $RUN_DIR/results-report (published.json, internal.json)"

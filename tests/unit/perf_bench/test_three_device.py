@@ -493,3 +493,124 @@ def test_the_results_go_where_the_lifecycle_says() -> None:
         check=True,
     ).stdout
     assert "/runs/x/results/" in out and "--out /runs/x/results-report" in out
+
+
+# --- a governance pass (REQ-2092) --------------------------------------------------------------
+
+
+def test_a_pass_run_states_its_variant_cache_and_load() -> None:
+    import governance_variants as gv
+
+    text = (BENCH / "setups" / "three-device.yaml").read_text()
+    c = yaml.safe_load(
+        td.variant_contract(
+            text,
+            telemetry="off",
+            variant="all",
+            cache="uncached",
+            steps=[1, 16],
+            window_s=15,
+            warmup_s=15,
+        )
+    )
+    assert c["knobs"]["governance"] == {**gv.ZERO, **gv.VARIANTS["all"], "telemetry": False}
+    assert c["knobs"]["cache"] == {"probability": 0.0}
+    assert c["knobs"]["fields"]["distribution"] == {"kind": "constant", "value": 5}
+    assert (c["load"]["steps"], c["load"]["window_s"], c["load"]["warmup_s"]) == ([1, 16], 15, 15)
+    with pytest.raises(ValueError, match="variant must be one of"):
+        td.variant_contract(
+            text, telemetry="off", variant="most", cache="cached", steps=[1], window_s=1, warmup_s=0
+        )
+
+
+def _pass_run(root: Path, variant: str, cache: str, cpu: float) -> None:
+    out = root / f"1-{variant}-{cache}-off" / "optimistic"
+    out.mkdir(parents=True)
+    report = {"transport": "graphql", "steps": [_step(1, 400.0, cpu=cpu)]}
+    (out / "graphql.json").write_text(json.dumps(report))
+    (out / "devices.json").write_text(json.dumps({"server": {}}))
+
+
+def test_the_pass_report_gives_each_variant_over_zero(tmp_path: Path) -> None:
+    _pass_run(tmp_path, "zero", "cached", 1.0)
+    _pass_run(tmp_path, "row_rules_2", "cached", 1.25)
+    _pass_run(tmp_path, "zero_end", "cached", 1.1)
+    rows = {r["variant"]: r for r in td.variant_rows(tmp_path)}
+    assert rows["row_rules_2"]["over_zero_ms"] == 0.25
+    assert rows["zero_end"]["over_zero_ms"] == 0.1
+    assert rows["row_rules_2"]["paging"]["server"]["pgmajfault"] == 12
+
+
+def test_the_pass_dry_run_runs_every_variant_and_cache_and_reports_the_pass() -> None:
+    import os
+    import subprocess
+
+    out = subprocess.run(
+        [
+            "bash",
+            str(BENCH / "three_device_run.sh"),
+            "--reps",
+            "1",
+            "--variants",
+            "zero,all",
+            "--caches",
+            "cached,uncached",
+            "--telemetry",
+            "off",
+            "--steps",
+            "1,16",
+            "--window-s",
+            "15",
+            "--warmup-s",
+            "15",
+            "--dry-run",
+        ],
+        env={
+            **os.environ,
+            "PERF_ZONE": "us-east1-b",
+            "PERF_REPO": "/opt/provisa",
+            "PERF_SERVER_IP": "10.90.0.2",
+            "PERF_BACKENDS_IP": "10.90.0.4",
+            "PERF_LOCAL_OUT": "/runs/x/results",
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    runs = [line.split()[2] for line in out.splitlines() if line.startswith("=== run ")]
+    assert runs == [
+        "1-zero-cached-off",
+        "1-zero-uncached-off",
+        "1-all-cached-off",
+        "1-all-uncached-off",
+    ]
+    assert "--variant all --cache uncached --steps 1,16 --window-s 15 --warmup-s 15" in out
+    assert "--telemetry on" not in out
+    assert "three_device.py variant-report --root /runs/x/results" in out
+
+
+def test_a_pass_needs_all_its_flags() -> None:
+    import os
+    import subprocess
+
+    done = subprocess.run(
+        ["bash", str(BENCH / "three_device_run.sh"), "--variants", "zero", "--dry-run"],
+        env={
+            **os.environ,
+            "PERF_ZONE": "z",
+            "PERF_REPO": "/r",
+            "PERF_SERVER_IP": "a",
+            "PERF_BACKENDS_IP": "b",
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 2 and "a governance pass needs" in done.stdout
+
+
+def test_the_lifecycle_sizes_every_device_with_one_flag() -> None:
+    text = _LIFECYCLE.read_text()
+    for device in ("server", "client", "backends"):
+        assert f'-var "{device}_machine_type=$MACHINE_TYPE"' in text
