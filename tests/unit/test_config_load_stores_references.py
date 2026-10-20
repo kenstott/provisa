@@ -274,7 +274,10 @@ def test_what_names_a_tables_data_is_stored_as_its_value_and_its_sources_credent
             "tables": [
                 {"source_id": "catalog", "domain_id": "store", "schema": "catalog${env:IT_NS}",
                  "table": "reviews${env:IT_NS}", "alias": "reviews",
-                 "query_template": '{"index": "reviews${env:IT_NS}"}', "columns": []}
+                 "query_template": '{"index": "reviews${env:IT_NS}"}', "columns": []},
+                {"source_id": "catalog", "domain_id": "store", "schema": "public", "table": "orders",
+                 "live": {"strategy": "kafka", "kafka": {"topic": "orders${env:IT_NS}"}},
+                 "columns": []},
             ],
         }
     )  # fmt: skip
@@ -282,6 +285,7 @@ def test_what_names_a_tables_data_is_stored_as_its_value_and_its_sources_credent
     assert table.schema_name == "catalog_reviews_1a2b3c4d"
     assert table.table_name == "reviews_reviews_1a2b3c4d" and table.alias == "reviews"
     assert table.query_template == '{"index": "reviews_reviews_1a2b3c4d"}'
+    assert config.written.tables[1].live.kafka.topic == "orders_reviews_1a2b3c4d"
     assert config.written.sources[0].password == "${env:IT_PG_PASSWORD}"
 
 

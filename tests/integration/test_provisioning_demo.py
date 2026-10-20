@@ -218,6 +218,9 @@ def consumer(stack, landed):
         "PROVISA_FLIGHT": f"grpc://127.0.0.1:{landed.flight_port}",
         "CONSUMERS": "finance,data_science",
         "PULLS_DSN": f"postgresql://consumer:consumer@127.0.0.1:{stack.pg_port}/provisioning",
+        # The broker's topics are named as the stack names them (store_namespaces: no suffix on
+        # the demo's own broker), as the compose file hands the producer.
+        "TOPIC_SUFFIX": stack.env["PROVISIONING_KAFKA_NS"],
     }
     proc = subprocess.Popen(
         [sys.executable, str(_DEMO / "consumer.py")],
