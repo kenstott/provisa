@@ -131,6 +131,27 @@ def _bodies(scope: Scope) -> list[Scope]:
     return found
 
 
+def _by_position(scope: Scope, name: str) -> list[tuple[Scope, str]]:
+    """Each branch of ``scope`` with the name its own column gives the column ``name``: in a
+    UNION / INTERSECT / EXCEPT the first branch names the columns and every branch fills them by
+    position (``SELECT winners AS name ... UNION ALL SELECT team ...``). A scope with no set
+    operation is itself, with ``name``."""
+    leaves = [b for b in _bodies(scope) if not b.set_operation_scopes]
+    first = _selects(leaves[0])
+    names = [s.alias_or_name for s in first]
+    if name not in names or any(s.is_star for s in first):
+        return [(b, name) for b in leaves]
+    at = names.index(name)
+    out: list[tuple[Scope, str]] = []
+    for branch in leaves:
+        selects = _selects(branch)
+        if at < len(selects) and not any(s.is_star for s in selects):
+            out.append((branch, selects[at].alias_or_name))
+        else:
+            out.append((branch, name))
+    return out
+
+
 class _Resolver:
     def __init__(self, resolve_table_id: Any, columns_of: Any) -> None:
         self._table_id = resolve_table_id
@@ -267,8 +288,7 @@ class _Resolver:
                 if base is not None:
                     out.add(_Base(base.instance, base.table_id, column.name))
             elif isinstance(source, Scope):
-                for branch in source.set_operation_scopes or [source]:
-                    out |= self._projection(branch, column.name, seen)
+                out |= self._projection(source, column.name, seen)
         return out
 
     def touched(self, scope: Scope, column: exp.Column, seen: frozenset = frozenset()) -> set[int]:
@@ -296,9 +316,9 @@ class _Resolver:
         for source in sources:
             if not isinstance(source, Scope):
                 continue
-            for branch in source.set_operation_scopes or [source]:
+            for branch, name in _by_position(source, column.name):
                 for select in _selects(branch):
-                    if select.alias_or_name != column.name:
+                    if select.alias_or_name != name:
                         continue
                     for inner in select.find_all(exp.Column):
                         out |= self.touched(branch, inner, seen)
@@ -307,7 +327,7 @@ class _Resolver:
     def _projection(self, scope: Scope, name: str, seen: frozenset) -> set[_Base]:
         if scope.set_operation_scopes:
             return set().union(
-                *(self._projection(b, name, seen) for b in scope.set_operation_scopes)
+                *(self._projection(b, n, seen) for b, n in _by_position(scope, name))
             )
         out: set[_Base] = set()
         named = False  # the scope projects a column of this name

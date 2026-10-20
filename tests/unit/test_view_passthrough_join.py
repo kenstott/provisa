@@ -31,7 +31,16 @@ from provisa.compiler.view_expand import expand_view_refs
 pytestmark = pytest.mark.unit
 
 _ROLE = {"id": "analyst", "capabilities": [], "domain_access": ["*"]}
-_IDS = {"afc": 1, "uefa": 2, "alias": 3, "countries": 4, "names": 5, "finals": 6}
+_IDS = {
+    "afc": 1,
+    "uefa": 2,
+    "alias": 3,
+    "countries": 4,
+    "names": 5,
+    "finals": 6,
+    "goalscorers": 7,
+    "positional": 8,
+}
 _COLUMNS = {
     1: ["code", "name"],
     2: ["code", "name"],
@@ -39,6 +48,8 @@ _COLUMNS = {
     4: ["code", "country", "confederation"],
     5: ["name"],
     6: ["year", "winners"],
+    7: ["team", "scorer"],
+    8: ["name"],
 }
 _VIEWS = {
     "countries": (
@@ -115,3 +126,33 @@ def test_a_pairing_neither_the_view_nor_its_tables_have_is_refused():
             "SELECT c.country FROM countries c JOIN finals f ON f.winners = c.country", _BY_CODE
         )
     )
+
+
+def test_a_union_branch_fills_the_view_s_column_by_position():
+    # The second branch's column is ``team``: it is the view's ``name`` by position, so the
+    # goalscorers it reads are related through the view like the finals.
+    _VIEWS["positional"] = (
+        "SELECT name FROM (SELECT f.winners AS name FROM finals f "
+        "UNION ALL SELECT g.team FROM goalscorers g) AS n"
+    )
+    try:
+        assert (
+            _v002(
+                "SELECT p.name, a.fifa_code FROM positional p JOIN alias a ON a.name = p.name",
+                {("Positional", "alias"): _join("alias", "name", "name")},
+            )
+            == []
+        )
+    finally:
+        del _VIEWS["positional"]
+
+
+def test_a_union_a_caller_writes_still_needs_each_branch_s_relationship():
+    # No view: each branch's table is paired with alias on its own column, by position, and
+    # goalscorers.team has no relationship to alias.
+    written = (
+        "SELECT n.name FROM (SELECT f.winners AS name FROM finals f "
+        "UNION ALL SELECT g.team FROM goalscorers g) AS n JOIN alias a ON a.name = n.name"
+    )
+    refused = _v002(written, {("Finals", "alias"): _join("alias", "winners", "name")})
+    assert any("goalscorers.team" in m and "no approved relationship" in m for m in refused)
