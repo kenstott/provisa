@@ -240,6 +240,10 @@ async def test_a_copy_within_its_ttl_or_kept_for_good_is_not_fetched_again(org, 
         return None, 0
 
     monkeypatch.setattr(source_downloads, "download", _download)
+    # The table's declared TTL: each call below hands the TTL in the table's place.
+    from provisa.federation import role_ttl
+
+    monkeypatch.setattr(role_ttl, "declared_cache_ttl", lambda table, source: table)
     copy = org_files.folder(org) / "files" / "s" / "a.csv"
     copy.parent.mkdir(parents=True)
     copy.write_text("a\n1\n")

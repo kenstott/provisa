@@ -4990,6 +4990,7 @@
   "ja/sourceFormFields.json::sourceFormFields.fileDownload": "Download a copy",
   "ja/sourceFormFields.json::sourceFormFields.fileInPlace": "Read it where it is",
   "ja/sourceFormFields.json::sourceFormFields.fileLocationsHint": "{files}/… in the organization's files, a path on the server, an https:// address, or s3://, gs:// or az:// with the store's credentials; or upload the file.",
+  "ja/sourceFormFields.json::sourceFormFields.fileMode": "Its file",
   "ja/sourceFormFields.json::sourceFormFields.filePath": "File Path",
   "ja/sourceFormFields.json::sourceFormFields.filePathPlaceholder": "/path/to/db.duckdb",
   "ja/sourceFormFields.json::sourceFormFields.filesGlob": "Directory Glob",

@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "一個檔案：https:// 地址，或帶有儲存憑證的 s3://。副本存放在您機構的資料夾中，並在來源的快取 TTL 到期時重新取得。",
     "draftTable": "立即將其資料表設定為草稿",
     "draftTableHint": "按 Register Table 根據檔案提出的名稱和類型命名，在 steward 取消草稿之前不提供服務。",
-    "draftTableDomain": "其資料表的網域"
+    "draftTableDomain": "其資料表的網域",
+    "fileMode": "其檔案"
   }
 }

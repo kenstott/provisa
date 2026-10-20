@@ -10,7 +10,7 @@
 // folder from where it is (a file mount path, https:// or s3://; on a server of many
 // organizations https:// or s3:// only); a new one may set up its table at once, as a draft.
 
-import { Checkbox, SegmentedControl, Select, TextInput } from "@mantine/core";
+import { Checkbox, Select, TextInput } from "@mantine/core";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
@@ -45,10 +45,12 @@ export function FileLocationFields({ form, setForm, creating }: Props) {
   return (
     <FieldGroup>
       {downloadable && (
-        <FormField size="long">
-          <SegmentedControl
+        <FormField size="medium">
+          <Select
+            label={t("sourceFormFields.fileMode")}
             value={mode}
-            onChange={choose}
+            onChange={(next) => next && choose(next)}
+            allowDeselect={false}
             data={[
               { value: "location", label: t("sourceFormFields.fileInPlace") },
               { value: "download", label: t("sourceFormFields.fileDownload") },
@@ -78,7 +80,7 @@ function DownloadFields({ form, setForm }: Omit<Props, "creating">) {
   return (
     <FormField
       size="long"
-      hint={t(
+      help={t(
         multitenancy ? "sourceFormFields.downloadFromHintRemote" : "sourceFormFields.downloadFromHint",
       )}
     >
@@ -101,7 +103,7 @@ function DraftTableFields({ form, setForm }: Omit<Props, "creating">) {
   const choices = domains.map((d) => ({ value: d.id, label: d.id }));
   return (
     <>
-      <FormField size="long" hint={t("sourceFormFields.draftTableHint")}>
+      <FormField size="long" help={t("sourceFormFields.draftTableHint")}>
         <Checkbox
           label={t("sourceFormFields.draftTable")}
           checked={draft}

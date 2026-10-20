@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "Eine Datei: eine https://-Adresse oder s3:// mit den Zugangsdaten des Speichers. Eine Kopie wird im Ordner Ihrer Organisation abgelegt und erneut geholt, sobald die Cache-TTL der Quelle abläuft.",
     "draftTable": "Ihre Tabelle jetzt als Entwurf einrichten",
     "draftTableHint": "Benannt und typisiert aus der Datei, wie „Tabelle registrieren“ es vorschlagen würde, und außer Betrieb, bis ein Steward sie aus dem Entwurf nimmt.",
-    "draftTableDomain": "Domain ihrer Tabelle"
+    "draftTableDomain": "Domain ihrer Tabelle",
+    "fileMode": "Ihre Datei"
   }
 }

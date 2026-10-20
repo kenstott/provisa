@@ -255,18 +255,23 @@ async def download(
     return await source_uploads.receive(source_id, name, _https_chunks(address), None, org_id)
 
 
-async def refetched(source: Any, ttl: int | None) -> bool:
-    """Fetch ``source``'s file again when its copy has outlived its TTL (the table's declared
-    cache TTL, ``ttl``), before its replica is built from it; whether it did. TTL -1, or none,
-    keeps the copy it has: it is fetched again only when it is not there."""
+async def refetched(source: Any, table: Any) -> bool:
+    """Fetch ``source``'s file again when its copy has outlived its TTL (``table``'s declared
+    cache TTL), before ``table``'s replica is built from it; whether it did. TTL -1, or none,
+    keeps the copy it has: it is fetched again only when it is not there. A source read where
+    it is has nothing to fetch."""
     from datetime import UTC, datetime
 
     from provisa.core import org_files
     from provisa.core.cache_ttl import NEVER_EXPIRES
+    from provisa.federation.role_ttl import declared_cache_ttl
 
-    kind = getattr(source.type, "value", source.type)
-    if not source.download_from or kind not in DOWNLOAD_TYPES or not source.path:
+    if not getattr(source, "download_from", None):
         return False
+    kind = getattr(source.type, "value", source.type)
+    if kind not in DOWNLOAD_TYPES or not source.path:
+        return False
+    ttl = declared_cache_ttl(table, source)
     copy = Path(org_files.resolve_path(source.path))
     if copy.is_file():
         if ttl is None or ttl == NEVER_EXPIRES:

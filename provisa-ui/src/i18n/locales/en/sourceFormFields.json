@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "One file, by an https:// address or s3:// with the store's credentials. A copy is kept in your organization's folder and fetched again as the source's cache TTL lapses.",
     "draftTable": "Set up its table now, as a draft",
     "draftTableHint": "Named and typed from the file as Register Table would propose it, and out of service until a steward takes it out of draft.",
-    "draftTableDomain": "Its table's domain"
+    "draftTableDomain": "Its table's domain",
+    "fileMode": "Its file"
   }
 }

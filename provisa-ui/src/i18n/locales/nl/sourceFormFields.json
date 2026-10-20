@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "Eén bestand: een https://-adres of s3:// met de gegevens van de opslag. Een kopie wordt in de map van uw organisatie bewaard en opnieuw opgehaald zodra de cache-TTL van de bron verloopt.",
     "draftTable": "De tabel nu inrichten, als concept",
     "draftTableHint": "Benoemd en getypeerd vanuit het bestand zoals Tabel registreren het zou voorstellen, en buiten gebruik tot een steward het concept vrijgeeft.",
-    "draftTableDomain": "Domein van de tabel"
+    "draftTableDomain": "Domein van de tabel",
+    "fileMode": "Het bestand"
   }
 }

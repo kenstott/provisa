@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "Un fichier : une adresse https:// ou s3:// avec les identifiants du stockage. Une copie est rangée dans le dossier de votre organisation et récupérée à nouveau quand le TTL de cache de la source expire.",
     "draftTable": "Mettre en place sa table maintenant, en brouillon",
     "draftTableHint": "Nommée et typée d'après le fichier, comme Enregistrer une table le proposerait, et hors service jusqu'à ce qu'un steward la sorte du brouillon.",
-    "draftTableDomain": "Domaine de sa table"
+    "draftTableDomain": "Domaine de sa table",
+    "fileMode": "Son fichier"
   }
 }

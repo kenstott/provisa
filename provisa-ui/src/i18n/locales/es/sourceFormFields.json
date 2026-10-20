@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "Un archivo: una dirección https:// o s3:// con las credenciales del almacén. Se guarda una copia en la carpeta de su organización y se vuelve a obtener cuando vence el TTL de caché del origen.",
     "draftTable": "Configurar su tabla ahora, como borrador",
     "draftTableHint": "Con el nombre y los tipos que propondría Registrar tabla a partir del archivo, y fuera de servicio hasta que un steward la saque del borrador.",
-    "draftTableDomain": "Dominio de su tabla"
+    "draftTableDomain": "Dominio de su tabla",
+    "fileMode": "Su archivo"
   }
 }

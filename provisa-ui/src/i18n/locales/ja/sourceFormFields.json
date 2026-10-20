@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "1 つのファイル：https:// アドレス、またはストアの認証情報付きの s3://。コピーは組織のフォルダーに保存され、ソースのキャッシュ TTL が切れると再取得されます。",
     "draftTable": "テーブルを今すぐ下書きとして設定する",
     "draftTableHint": "Register Table がファイルから提案するとおりの名前と型を付け、steward が下書きを解除するまでサービス外になります。",
-    "draftTableDomain": "テーブルのドメイン"
+    "draftTableDomain": "テーブルのドメイン",
+    "fileMode": "ファイル"
   }
 }

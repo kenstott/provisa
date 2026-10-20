@@ -71,6 +71,12 @@ const DOMAINS = [
 
 let seen: SourceFormState | null = null;
 
+/** Choose where the source's file is, in the form's "Its file" choice. */
+function pick(label: string) {
+  fireEvent.click(screen.getByTestId("source-file-mode"));
+  fireEvent.click(screen.getByRole("option", { name: label }));
+}
+
 function Harness({ start, editing = null }: { start: Partial<SourceFormState>; editing?: string | null }) {
   const [form, setForm] = useState<SourceFormState>({ ...BASE, ...start });
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
@@ -97,7 +103,7 @@ describe("a CSV or Parquet source's file, given by download", () => {
     renderInForm(<Harness start={{}} />, { mocks: DOMAINS });
     expect(screen.getByTestId("source-file-location")).toBeInTheDocument();
     expect(screen.queryByTestId("source-download-from")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByText("Download a copy"));
+    pick("Download a copy");
     const address = screen.getByTestId("source-download-from");
     fireEvent.change(address, {
       target: { value: "https://provisa.dev/demo-data/supplies.parquet" },
@@ -105,7 +111,7 @@ describe("a CSV or Parquet source's file, given by download", () => {
     expect(seen?.downloadFrom).toBe("https://provisa.dev/demo-data/supplies.parquet");
     expect(screen.queryByTestId("source-file-location")).not.toBeInTheDocument();
     // Back to reading it in place: no address is kept.
-    fireEvent.click(screen.getByText("Read it where it is"));
+    pick("Read it where it is");
     expect(seen?.downloadFrom).toBe("");
   });
 
@@ -113,8 +119,10 @@ describe("a CSV or Parquet source's file, given by download", () => {
     auth.multitenancy = true;
     try {
       renderInForm(<Harness start={{ downloadFrom: "https://x/a.parquet" }} />, { mocks: DOMAINS });
-      expect(screen.getByText(/by an https:\/\/ address or s3:\/\//)).toBeInTheDocument();
-      expect(screen.queryByText(/its path on this server/)).not.toBeInTheDocument();
+      // The help, behind its (?), describes the address field.
+      const address = screen.getByTestId("source-download-from");
+      expect(address).toHaveAccessibleDescription(/by an https:\/\/ address or s3:\/\//);
+      expect(address).not.toHaveAccessibleDescription(/its path on this server/);
     } finally {
       auth.multitenancy = false;
     }

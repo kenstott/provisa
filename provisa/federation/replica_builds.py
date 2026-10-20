@@ -176,9 +176,8 @@ async def build_replica(state: Any, key: ReplicaKey, progress: Progress) -> Buil
     # REQ-2113: a source given its file by download reads the org's copy; the copy is fetched
     # again first when the table's TTL has lapsed since it was made.
     from provisa.core.source_downloads import refetched
-    from provisa.federation.role_ttl import declared_cache_ttl
 
-    await refetched(source, declared_cache_ttl(table, source))
+    await refetched(source, table)
     engine = state.federation_engine
     if not whole_copy(source, table, engine):
         raise NoWholeCopy(key)  # nothing asks for one; a build that ran would call a function bare

@@ -105,6 +105,7 @@
     "downloadFromHintRemote": "Um arquivo: um endereço https:// ou s3:// com as credenciais do armazenamento. Uma cópia é guardada na pasta da sua organização e baixada de novo quando o TTL de cache da fonte expira.",
     "draftTable": "Configurar a tabela agora, como rascunho",
     "draftTableHint": "Com o nome e os tipos que Registrar tabela proporia a partir do arquivo, e fora de serviço até um steward tirá-la do rascunho.",
-    "draftTableDomain": "Domínio da tabela"
+    "draftTableDomain": "Domínio da tabela",
+    "fileMode": "Seu arquivo"
   }
 }
