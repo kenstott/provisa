@@ -24364,7 +24364,7 @@ provisa.dev has a live demos page with one card for each published named demo: i
 
 **Code:** `scripts/gen-site-demos.mjs`, `site/demos.html`, `provisa/api/sandbox_tier.py`, `provisa/api/demo_templates.py`, `provisa/api/demo_sandbox.py`, `provisa/api/demo_sandbox_router.py`, `provisa/security/sandbox_egress.py`, `provisa/core/sandbox_limits.py`, `provisa/core/settings_catalog_sandbox.py`, `provisa-ui/src/pages/demos/DemoOpenPage.tsx`, `provisa-ui/src/lib/sandboxSession.ts`, `provisa-ui/src/components/JoinNotice.tsx`, `docs/hosted-sandbox.md`
 
-**Tests:** —
+**Tests:** `tests/integration/test_sandbox_visitor_walk.py`, `tests/unit/test_sandbox_visitor_walk_state.py`
 
 ## 4. Source Connectors
 
