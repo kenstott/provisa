@@ -1,66 +1,42 @@
 {
-  "version": "v0.1.0-alpha.491",
-  "previous": "v0.1.0-alpha.490",
-  "date": "2026-10-18",
+  "version": "v0.1.0-alpha.492",
+  "previous": "v0.1.0-alpha.491",
+  "date": "2026-10-19",
   "features": [
     {
-      "category": "Infrastructure",
+      "category": "Column-Level Masking",
       "entries": [
         {
-          "text": "Trino internal TLS is an operator option, off by default.",
+          "text": "A meta-domain view, sensitive_coverage, lists every sensitive column of the org (any tag with the Sensitive data option, pii included), one row each, read through the same statement that decides a Test (fake) environment's uncovered columns (provisa.security.sensitive.sensitive_assignments): its tags; has_fake and has_synthetic_rule; the fake as declared, its kind, that it is deterministic, whether it is stable across engines and whether it is computed from the real value; the synthetic rule as declared; and a status of covered, no_fake or inadequate with the reason.",
           "changes": [
-            "Name the coordinator Service's HTTP port, so internal TLS's second port is accepted",
-            "Trino internal TLS uses a chart-generated certificate naming the coordinator Service and the namespace's pods; no address pinned"
-          ]
-        },
-        {
-          "text": "Engine catalogs and their credentials live only in the engine's memory.",
-          "changes": [
-            "A worker gets no catalog store, which it refuses"
+            "sensitive_coverage meta view and fake adequacy checks",
+            "fake_adequacy_checks is classified, inventoried and in schema.sql"
           ]
         }
       ]
     },
     {
-      "category": "MCP Authentication",
+      "category": "Demo Provisioning",
       "entries": [
         {
-          "text": "An MCP agent never acts beyond the roles it was given.",
+          "text": "A configuration may declare a replica's rows instead of landing them from its source: replica_rows/<source_id>/<schema>.<table>.tsv beside its config.yaml, its first line the table's columns in their order, tab separated, each line after one row (\\N is NULL; \\t, \\n, \\r and \\\\ a tab, newline, carriage return and backslash; an integer, floating or boolean column's cells read as that type, every other as its text).",
           "changes": [
-            "A stdio call acts only within the roles the server was pinned to",
-            "Derived Roles in the Roles list; every role and row rule says what it is for"
-          ]
-        },
-        {
-          "text": "Naming a role the caller does not hold is a high-severity security event, detected on every transport (the HTTP API, MCP, pgwire, Bolt, Arrow Flight, the airport Flight service and gRPC).",
-          "changes": [
-            "Naming a role the caller does not hold is a high-severity security event, refused, recorded, notified, and suspending the credential where no browser shares it",
-            "On the HTTP API a refused role is named to every credential but a personal access token"
+            "A config's declared replica rows land as its replica; its source is never read",
+            "A config's declared rows land in its model build, beside the config a test server serves",
+            "Declared rows land before the schema build publishes its replica routes",
+            "Hasuramigration and provisioning bundles build"
           ]
         }
       ]
     },
     {
-      "category": "Role Assignments",
+      "category": "MCP & AI Integration",
       "entries": [
         {
-          "text": "A role grant Provisa holds (a user_role_assignments row) may be time-limited, and a role may remove its grants once they go unused.",
+          "text": "The MCP server offers five statistics tools over a dataset the caller defines in SQL: describe (per column count, missing, distinct, mean, sd, quantiles and top values), correlate (pearson or spearman matrix and n), regress (linear: coefficients, standard errors, p-values, R²; logistic: the same with pseudo R² and AUC), compare (Welch's t-test for two groups, one-way ANOVA for more, with Cohen's d or eta squared) and forecast (exponential smoothing, ETS, with prediction intervals).",
           "changes": [
-            "A role grant can expire, and a role removes its grants once unused",
-            "The role form and detail panel carry remove grants unused for N days",
-            "An org schema made before role grant expiry gets its columns before the org registry view reads them",
-            "Each org's grant table is reconciled before the view reads its expiry"
-          ]
-        }
-      ]
-    },
-    {
-      "category": "SQL & Multi-Protocol Client Access",
-      "entries": [
-        {
-          "text": "The Python client reads a governed SQL, GraphQL or Cypher statement into a pandas DataFrame with one call, query(text, role=None), the same on a desktop Python and in the browser (Pyodide), with aquery as its awaitable form.",
-          "changes": [
-            "The notebook and browser-reads requirement is"
+            "describe, correlate, regress, compare and forecast over governed SQL",
+            "stats.forecast casts its ETS fit to its results, which pyright refused as a union"
           ]
         }
       ]
@@ -69,25 +45,36 @@
       "category": "Security",
       "entries": [
         {
-          "text": "A role constant (session_vars) may be a ${env:NAME} or ${secret:NAME} reference, resolved through the same resolver as every other reference (provisa.core.secrets.resolve_secrets), at use: when a request's session variables are formed, when the regional administrator's are, and when a meta-role inlines a member's constant.",
+          "text": "Central redaction: one list of rules is applied to text before it leaves Provisa.",
           "changes": [
-            "A role constant may be a ${env:} or ${secret:} reference, resolved at use",
-            "Saving a role refuses a ${secret:} constant, which takes part in the query and can be logged; the docs and the role editor say so",
-            "A role constant's ${secret:} reference is saved like any other; its records are covered by central redaction"
+            "Central redaction of spans, logs, audit text and client errors",
+            "Redaction rules -- one name column width, monospace values with plain labels",
+            "Redaction -- a bearer token is 16+ token characters; names resolve through the backend"
+          ]
+        },
+        {
+          "text": "Judgments under review (docs/arch/judgment-review-design.md, phases 1-3).",
+          "changes": [
+            "Judgments under review -- why, bases, findings, the review and posture",
+            "Judgment review -- nullable JSON stores SQL NULL; exports compare without the server's stamps",
+            "A profiler member never run gives no evidence instead of failing the seed"
+          ]
+        },
+        {
+          "text": "A named demo declares its secrets in secrets.yaml beside its config.yaml (secrets: a mapping of each name to its value), carried in its bundle with the rest of its directory.",
+          "changes": [
+            "A demo seeds its secrets; testdata reads prod as Provisa's own secret"
           ]
         }
       ]
     },
     {
-      "category": "Write Admission",
+      "category": "Source Connectors",
       "entries": [
         {
-          "text": "Per-table write grants.",
+          "text": "Package registries reach a proxy such as Artifactory and the Git servers GitLab, Bitbucket Cloud and Bitbucket Data Center as well as GitHub.",
           "changes": [
-            "per-table write grants replace column writable_by",
-            "A meta role's write grants fold as its reads do; presets proved on GraphQL",
-            "A table's Writes section reads and edits its write grants",
-            "A table's mutations name its columns as its reads do"
+            "Package registries reach Artifactory, GitLab and Bitbucket, behind a private CA"
           ]
         }
       ]
@@ -95,496 +82,172 @@
   ],
   "changes": [
     {
-      "scope": "admin",
+      "scope": "bench",
       "entries": [
-        "The admin GraphQL API answers HTTP alone; a request nobody was resolved for is answered no catalog"
+        "Governance knobs in the benchmark contract, set up in the deployment for each run"
       ]
     },
     {
-      "scope": "auth",
+      "scope": "bundles",
       "entries": [
-        "With no auth provider the admin catalog is the named role's; a demo seeded into an org reaches its own sources",
-        "A first start with no config declares no derived roles"
+        "Concurrent fetches of one connector bundle download it once and each finds it whole"
       ]
     },
     {
-      "scope": "bitemporal",
+      "scope": "codesource",
       "entries": [
-        "Read a view as recorded at a time, beside as of"
+        "A host's hello names its protocol and code hash, refused by name otherwise",
+        "A remote host over mutual TLS, paired once, dialled by each Provisa process",
+        "A Python source's rows travel as Arrow IPC batches, protocol 2",
+        "A Node source's rows travel as Arrow IPC batches, protocol 2"
       ]
     },
     {
-      "scope": "cdc",
+      "scope": "compiler",
       "entries": [
-        "A captured table carries its source commit time, source_committed_at",
-        "An upsert of the row a landed table already holds is no change, and fires no trigger",
-        "Each org environment holds its own logical replication slot"
-      ]
-    },
-    {
-      "scope": "client",
-      "entries": [
-        "query() reads as a DataFrame on desktop and in Pyodide; %%sql/%%graphql/%%cypher magics; connection from env or profile",
-        "The SQLAlchemy dialect reflects the SQL catalog the role is served"
-      ]
-    },
-    {
-      "scope": "config",
-      "entries": [
-        "A relationship the configuration declares is registered or the load fails by its name"
-      ]
-    },
-    {
-      "scope": "cypher",
-      "entries": [
-        "A node's property is its column's published name"
-      ]
-    },
-    {
-      "scope": "database",
-      "entries": [
-        "A pooled connection drops its prepared statements when its org scope changes"
+        "A lowered reference names its own source's table, not another of the same name",
+        "A draft is refused under the catalog-physical name its served table answers to"
       ]
     },
     {
       "scope": "demo",
       "entries": [
-        "Hasuramigration -- a Hasura v2 storefront imported in one step, then joined to Salesforce",
-        "hasuramigration's tour visits Salesforce before it signs in as a role",
-        "Hasuramigration requires 0.1.0a491",
-        "Reproduce -- a regulator's exposure report traced and reproduced as filed",
-        "A sandbox carries the refresh records of the history it was copied from",
-        "reproduce's card, the report as filed, from its real answers",
-        "Churn -- governed, masked features into pandas and a model trained in the Notebook tab; a named demo ships its own notebook"
+        "Cards for provisioning and retail, from their real answers",
+        "Agriculture -- the notebook measures how much of the portfolio's losses the weather explains",
+        "Agriculture -- the 2012-like scenario prices the portfolio's latest book, and each empty step says which",
+        "Agriculture -- the scenario is the data's driest season, priced at each county's latest premium; the answer is captured before the notebook runs",
+        "Agriculture -- a pull of every county season (320 rows) is not cut at 100",
+        "Agriculture -- the card is the notebook's plot, and the tour says what the notebook measured"
       ]
     },
     {
       "scope": "demo bundle",
       "entries": [
-        "A build's servers are told where DuckDB finds its extensions",
-        "A setup server's store missing where the views are exported from is said with every store the build holds"
+        "A build's servers are given the stores' addresses, not the build's whole environment"
       ]
     },
     {
-      "scope": "demo bundles",
+      "scope": "demo-stores",
       "entries": [
-        "A build's servers take their own Flight, gRPC, pgwire and Bolt ports"
-      ]
-    },
-    {
-      "scope": "demo regions",
-      "entries": [
-        "A template's replica store is read for the template org, whoever waits for it",
-        "A template's first build lands in its region's store"
+        "A demo's stores start at its first open, its data in one shared instance of each store type"
       ]
     },
     {
       "scope": "demos",
       "entries": [
-        "The agriculture demo, does weather explain crop insurance losses",
-        "The provisioning demo -- datasets told ready on Kafka and pulled over Arrow Flight as of that moment",
-        "main's failing demo and UI guards; the provisioning demo needs 0.1.0a491",
-        "A setup step runs a demo's own client; the provisioning bundle records a pull for each team",
-        "Every demo's stores publish ports no other demo's do",
-        "A sandbox's \"tour warmed\" line shows at the hosted tier's WARNING level",
-        "The hosted sandbox tier offers the quality demo",
-        "The pharma demo -- which of our products face shortage or recall risk",
-        "A regions sandbox tier, so a demo in regions runs live",
-        "pharma's store publishes 29532 and is healthy only once loaded",
-        "Opioids registers the columns its landing filters name",
-        "The sandbox tier loads the demos' embedding models at startup",
-        "Storefront -- one model serving an app's backend and its BI",
-        "storefront's other locales drop the scaffold's step words English no longer has",
-        "storefront's GraphQL example runs as the customer, as its words say",
-        "provisioning's close joins along its relationships; its feeds ready before Provisa reads them",
-        "opioids' fiscal year term no longer relates to itself",
-        "Opioids reads the two govdata year columns as the text govdata serves",
-        "agriculture's answer relationship names its view by its registered name",
-        "A season with indemnity and none for dry weather has a dry share of 0; the relationship check skips no demo",
-        "Publish vulnerabilities, agriculture, streaming, storefront, hasuramigration and churn"
+        "opioids' public dashboard is a view that reads no allocation",
+        "Publish provisioning and hasuramigration",
+        "Publish insurance",
+        "Start here, the standard demo's objects with every Deep Dive",
+        "Start here's links to the standard demo's files are tracked",
+        "Publish Start here, listed first",
+        "Live tour steps -- profile runs reach every sandbox, the REST step waits for its docs, a table step opens the panel it describes",
+        "Starthere ships its example query; the card images site/demos.html names are committed",
+        "The data room, a retailer's own systems shown to each bidder with no exports",
+        "Testdata over three environments; a demo's Test (synthetic) environment is generated once and carried to every sandbox"
       ]
     },
     {
-      "scope": "deploy",
+      "scope": "docs",
       "entries": [
-        "The overlay publishes a sandbox VM's tier on its VPC address",
-        "A coordinator with a sandbox VM gets no demo stores of its own",
-        "The API push leaves out the checkout's _graph_render symlink, which the image holds as a directory",
-        "Private plugins go to the containers on each node; the sandbox VM's tier gets them there"
-      ]
-    },
-    {
-      "scope": "duckdb",
-      "entries": [
-        "A PostgreSQL store is attached by the URL libpq reads, without its driver"
-      ]
-    },
-    {
-      "scope": "embedded pg",
-      "entries": [
-        "A killed postmaster's shared memory segment is released before its directory goes"
-      ]
-    },
-    {
-      "scope": "engine",
-      "entries": [
-        "Trino keeps catalogs in memory; Provisa reissues them after a coordinator restart",
-        "Kafka client properties are Trino's alone, on a shared tmpfs; stack start and cloud deploy remove the on-disk catalogs",
-        "A Kafka source's SASL settings reach a hosted engine shard through its in-memory Secret; a restored terminal reissues the Kafka catalogs"
+        "Each locale's search reads only that locale's pages"
       ]
     },
     {
       "scope": "events",
       "entries": [
-        "A view over a view not yet built is wired when that view's first build lands",
-        "A view over a replica not yet landed is wired when the replica lands",
-        "Each org's event loop is held by its own runtime"
+        "A view over a view not built yet is not probed; it awaits that input's first build"
       ]
     },
     {
-      "scope": "explore",
+      "scope": "install",
       "entries": [
-        "Data Science area, Python tab: Pyodide in a Web Worker over governed data, as the page's user",
-        "The Data Science area fills its space, editor and output split by a draggable rule; no repeated heading",
-        "Data Science area, Jupyter Notebook tab: JupyterLite on the shared Pyodide, reading as the page's user",
-        "Python and Notebook tabs of their own, kept alive between visits; Polly writes into and runs either",
-        "The Python tab holds several scripts as tabs, kept across reloads"
-      ]
-    },
-    {
-      "scope": "federation",
-      "entries": [
-        "A table whose server was starting is attached once the statement has waited for it"
-      ]
-    },
-    {
-      "scope": "flight",
-      "entries": [
-        "A Flight ticket reads bitemporal views as of a time"
-      ]
-    },
-    {
-      "scope": "govdata",
-      "entries": [
-        "Every connection to the connector server signs in with the source's AskAmerica key",
-        "A floored AskAmerica source's replica is built through its server"
-      ]
-    },
-    {
-      "scope": "governance",
-      "entries": [
-        "Faked columns read under every published name; joins compare real keys",
-        "An ORDER BY of an output column orders the rows under every role"
-      ]
-    },
-    {
-      "scope": "graphql",
-      "entries": [
-        "A subscription field takes its table's query arguments",
-        "A table's similar input is built once per schema; integration setups follow the product they test"
-      ]
-    },
-    {
-      "scope": "helm",
-      "entries": [
-        "A change to the Trino config rolls the workers, as it does the coordinator"
-      ]
-    },
-    {
-      "scope": "import",
-      "entries": [
-        "A Hasura v2 import that basically works, with a three-part report",
-        "Hasura session variables are claim-supplied attributes of their own",
-        "Name each environment variable a converted handler URL reads"
-      ]
-    },
-    {
-      "scope": "jira",
-      "entries": [
-        "Jira Cloud is a source type read and written through its Calcite connector"
-      ]
-    },
-    {
-      "scope": "jsonapi",
-      "entries": [
-        "A resource's id is its primary key, and what it includes is linked from it"
-      ]
-    },
-    {
-      "scope": "kafka",
-      "entries": [
-        "A table's first listener reads from the earliest offset, missing nothing published after its landing",
-        "What reads a topic onward starts exactly where the table's landing stopped",
-        "A Kafka source without a schema registry is refused when saved for an org on an engine shard, and never stops the boot"
-      ]
-    },
-    {
-      "scope": "launcher",
-      "entries": [
-        "--list-demos lists the named demos; the README says how to try one"
-      ]
-    },
-    {
-      "scope": "lineage",
-      "entries": [
-        "Refresh lineage records are queryable on DuckDB, under the names Trino gives"
-      ]
-    },
-    {
-      "scope": "live",
-      "entries": [
-        "A live Kafka output resolves its broker's address",
-        "A live Kafka output publishes a row with times and decimals"
+        "A rerun of first launch keeps the node's provisa.env settings it did not generate"
       ]
     },
     {
       "scope": "mcp",
       "entries": [
-        "describe_role answers the role an agent acts as and the roles it may switch to"
-      ]
-    },
-    {
-      "scope": "meta",
-      "entries": [
-        "A table links to its registration by its domain and its name as queried"
+        "The forecast's ETS fit is typed as its results"
       ]
     },
     {
       "scope": "mv",
       "entries": [
-        "Time travel on the source's clock, and over a range",
-        "A view the event loop builds is recorded on its region's build row",
-        "A snapshot view's correction at the same source time is the version in force"
+        "A view is materialized in its own org's store schema, not the deployment org's"
       ]
     },
     {
-      "scope": "native engine",
+      "scope": "pipeline",
       "entries": [
-        "The ops signals are never attached as the provisa-otel source"
-      ]
-    },
-    {
-      "scope": "notebook",
-      "entries": [
-        "Assets rebuild when what they are built from changes; the notebook wears the app's colour scheme",
-        "Embed JupyterLab so documents open inside the tab; dev server redirects directory URLs",
-        "A new notebook opens on the starter cell under JupyterLab",
-        "The notebook takes the app's colour scheme only once JupyterLab is restored and its splash gone"
-      ]
-    },
-    {
-      "scope": "ops",
-      "entries": [
-        "Each org reads its own ops signals"
-      ]
-    },
-    {
-      "scope": "orgs",
-      "entries": [
-        "Each org's views and table settings are held on its own runtime",
-        "What each org's build records about its sources and tables is held on its runtime"
-      ]
-    },
-    {
-      "scope": "packaging",
-      "entries": [
-        "provisa-notebook is part of every install",
-        "The macOS DMG builds retry hdiutil create on the runner's Resource busy, bounded"
-      ]
-    },
-    {
-      "scope": "pg engine",
-      "entries": [
-        "A read reports its columns' types, so a view's output is learned and the view scheduled"
-      ]
-    },
-    {
-      "scope": "pgwire",
-      "entries": [
-        "COPY FROM STDIN refuses a format it does not read",
-        "pg_get_constraintdef answers each constraint's definition as PostgreSQL writes it",
-        "A source's server is never given a port another process listens on",
-        "A replica is landed from its server's registered columns",
-        "A stopped server's port is free while its closed connections sit in TIME_WAIT"
-      ]
-    },
-    {
-      "scope": "polly",
-      "entries": [
-        "Polly writes Python into the Data Science area, runs it and reads what it printed, returned and raised"
-      ]
-    },
-    {
-      "scope": "provisioning",
-      "entries": [
-        "The broker's CLUSTER_ID is a 16-byte base64 UUID",
-        "Version time and margin carry no edge to themselves"
-      ]
-    },
-    {
-      "scope": "provisioning demo",
-      "entries": [
-        "The producer reads the orders topic's partitions once the broker has described them",
-        "Each team pulls the whole dataset, not the row limit's first rows"
+        "A statement waits for no server of a source read from its landed replicas alone"
       ]
     },
     {
       "scope": "push",
       "entries": [
-        "A push listener resolves its source's address; a push-fed table's node asks for no build",
-        "Prod and no environment are one listener and one batch poll"
+        "A push listener stops with its runtime and its org's next build wires it again",
+        "A retired runtime's listeners are stopped through a hook the app registers"
       ]
     },
     {
-      "scope": "quality demo",
+      "scope": "regions tier",
       "entries": [
-        "The demo ends on a data product of gold, silver and the checks"
+        "Its auth block is the sandbox tier's"
       ]
     },
     {
-      "scope": "regions",
+      "scope": "runtime",
       "entries": [
-        "Eu builds its views from what lands once, its build record outlasts the sweep, and a reader is not held to another region's view's inputs",
-        "A region's node reads the ops views over the record and state it keeps",
-        "Trino reads a region's ops views over the record and state it keeps",
-        "A demo org's region stores are bound before its model is reset"
-      ]
-    },
-    {
-      "scope": "relationships",
-      "entries": [
-        "A relationship a remote source offers is not kept beside the declared one it is"
-      ]
-    },
-    {
-      "scope": "replica",
-      "entries": [
-        "A landing filter's identifiers are quoted in the read that applies it",
-        "Two processes ensuring one foreign table converge on it"
-      ]
-    },
-    {
-      "scope": "replicas",
-      "entries": [
-        "A SQLite file's table is read through its driver by its name alone"
-      ]
-    },
-    {
-      "scope": "retail",
-      "entries": [
-        "eu-shop lands once and is never re-read, so it states cache_ttl -1",
-        "A us node reads eu's sources, a grouped view keys only on what it outputs, a regions demo builds",
-        "Each request edge has its own type, so the US one is registered and subject_access's US join is approved"
-      ]
-    },
-    {
-      "scope": "roles",
-      "entries": [
-        "main's new role fixtures carry descriptions; the last pseudo names go; the grant picker's test reads its open popover"
-      ]
-    },
-    {
-      "scope": "row limit",
-      "entries": [
-        "A stream drained after its request returned is checked in the request's org"
-      ]
-    },
-    {
-      "scope": "runtime-deps",
-      "entries": [
-        "Every pgwire bundle is fetched from engine-v0.118.0"
-      ]
-    },
-    {
-      "scope": "salesforce",
-      "entries": [
-        "The write route reads its result types from a pgwire server"
+        "A background job walks only the org runtimes that are built",
+        "A runtime being built is resolved only by its own build"
       ]
     },
     {
       "scope": "sandbox",
       "entries": [
-        "A sandbox VM publishes its tier on its VPC address, where the coordinator reaches it",
-        "The sandbox VM starts its demo-stores sync at setup, not at its next boot",
-        "A request that finds the sandbox VM stopping starts it once it is down"
+        "A bundle ready after the tier started has its template built",
+        "A demo sandbox keeps its template's code uploads"
+      ]
+    },
+    {
+      "scope": "sandboxes",
+      "entries": [
+        "Opening a sandbox counts places under the control plane's advisory lock, which holds across request threads",
+        "Two visitors opening one demo while its template is replaced both wait their turn",
+        "The tier builds its demos' templates a few at a time, an opened demo first",
+        "A demo's readiness is asked without opening it",
+        "A restarted sandbox tier serves its unchanged templates as they were built"
       ]
     },
     {
       "scope": "security",
       "entries": [
-        "A role's constant session values",
-        "A request acting as several roles reads and writes each row as the roles whose row filter admitted it",
-        "An approved join reads the real key, and fakes and kept writes are read row by row as the roles that admitted each row"
+        "A demo sandbox visitor's token naming a role it does not hold is refused and recorded, not suspended"
       ]
     },
     {
       "scope": "sources",
       "entries": [
-        "The type list reads its engine reach from the source kinds, not the platform's engine settings",
-        "A Redis source is refused when saved for an org on an engine shard and never stops the boot; no description files for Elasticsearch, which reads none"
-      ]
-    },
-    {
-      "scope": "sql",
-      "entries": [
-        "A table's _name_ and _domain_ read in SQL as GraphQL reads them",
-        "Refuse a statement whose clauses are out of order"
+        "An engine whose driver library is absent is unavailable, and the Sources page still answers"
       ]
     },
     {
       "scope": "subscriptions",
       "entries": [
-        "A landing reaches a subscription bound to prod"
-      ]
-    },
-    {
-      "scope": "telemetry",
-      "entries": [
-        "Metric points and log records record the org they were written for",
-        "Compaction keeps a metric point's and a log record's org as its tenant",
-        "A signal table whose metadata cannot be read is said and left alone"
-      ]
-    },
-    {
-      "scope": "terraform",
-      "entries": [
-        "A node waking with the startup script it last completed sets nothing up again",
-        "Docker waits for the coordinator's object-store disk"
+        "A sandbox's live subscription reaches the browser frame by frame"
       ]
     },
     {
       "scope": "tour",
       "entries": [
-        "A step groups the graph on screen by a property; the reviews tour reads its graph by degree",
-        "A demo tour step opens a data product on its page; the quality tour ends on its product",
-        "A demo tour step can show a picture",
-        "A role step off the SQL explorer picks the role in the header's picker",
-        "The step counter counts the itinerary the tour started with"
-      ]
-    },
-    {
-      "scope": "triggers",
-      "entries": [
-        "A config file's on: {table, event} trigger loads"
+        "An image step's popover is placed again once its picture loads, and the picture fits the window"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "A refused page offers the held roles that grant it",
-        "Claim roles saves a typed claim type, says when it saved, and explains itself plainly"
-      ]
-    },
-    {
-      "scope": "views",
-      "entries": [
-        "A user's read of a stored view outside its read window is refused on every call"
-      ]
-    },
-    {
-      "scope": "",
-      "entries": [
-        "A visitor's first requests record once; __typename is the object's type; walks are per org"
+        "The splash halo centres on the P's loop, not the logo's box"
       ]
     }
   ]
