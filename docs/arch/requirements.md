@@ -25775,3 +25775,15 @@ Lineage reaches below the registered table to the source itself. Each source nod
 **Code:** —
 
 **Tests:** —
+
+### REQ-2117 · Data Catalog Integration {#REQ-2117}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Databricks Unity Catalog joins the data product export (docs/data-products.md, metadata export) as a target that approximates a data product, as the BigQuery Analytics Hub target does ([REQ-1636](#REQ-1636)): Unity Catalog has no data-product entity. One data product becomes one Unity Catalog schema, <catalog>.<product id>, holding the product's member tables, each addressed by its real catalog, schema and table name as the org's Databricks runtime reports it (databricks_runtime.py, the same seam the BigQuery and Snowflake targets use). The product's ODPS fields (owner, team, purpose, limitations, usage, version) are written to the schema's comment and Unity Catalog tags, and each member table and column carries its description and governance tags. The product may also be published as a Delta Share of that schema or as a Databricks Marketplace private listing, the counterpart of the Snowflake share and the Analytics Hub listing. The export's rules hold as for every target: only member tables publish, a product with no exported members does not publish, and masked columns are left out.
+
+**Use case:** A data team on Databricks finds the Customer 360 product as one schema in Catalog Explorer, with its owner, purpose and version, and a partner account subscribes to it through a private Marketplace listing.
+
+**Code:** —
+
+**Tests:** —
