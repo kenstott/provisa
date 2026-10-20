@@ -904,3 +904,52 @@ def test_break_glass_naming_no_org_under_multitenancy_is_refused_by_name():
     resp = TestClient(app).get("/test", headers={"Authorization": f"Basic {basic}"})
     assert resp.status_code == 401
     assert resp.json()["code"] == "auth.org_selection_required"
+
+
+def test_a_role_sets_meta_role_is_built_in_the_environment_the_request_names(monkeypatch):
+    """A role set acts as its meta-role, built in the runtime the request is bound to: the
+    environment it names (x-provisa-env), as _OrgRoutingMiddleware binds it. Built in the one the
+    role read resolves without the header, it was missing where the request ran: a sandbox
+    visitor's "Role: All" in pre-prod was refused "unknown role 'meta:analyst+sandbox'"."""
+    built: list[tuple] = []
+    runtimes: list[tuple] = []
+
+    async def selected(_admin, _org, _identity, requested, _caps):
+        return requested or "prod"
+
+    async def runtime(org_id, env=None):
+        runtimes.append((org_id, env))
+
+    async def caps(_identity, _org):
+        return set()
+
+    def meta_role(acting_set, org_binding, qualifiers=()):
+        built.append((tuple(sorted(acting_set)), org_binding))
+        return "meta:" + "+".join(sorted(acting_set))
+
+    monkeypatch.setattr("provisa.api.env_routing.resolve_selected_env", selected)
+    monkeypatch.setattr("provisa.api.app.ensure_org_runtime", runtime, raising=False)
+    monkeypatch.setattr("provisa.auth.middleware.org_env_capabilities", caps)
+    monkeypatch.setattr(AuthMiddleware, "_meta_role", staticmethod(meta_role))
+    db = _Pool(
+        rows_by_table={
+            "user_role_assignments": [
+                {"role_id": "analyst", "domain_id": "*"},
+                {"role_id": "developer", "domain_id": "*"},
+            ]
+        }
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
+        "/test",
+        headers={
+            **_auth_in("u1", "acme"),
+            "x-provisa-env": "preprod",
+            "X-Provisa-Role": "analyst,developer",
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["role"] == "meta:analyst+developer"
+    assert built == [(("analyst", "developer"), ("acme", "preprod"))]
+    assert ("acme", "preprod") in runtimes
