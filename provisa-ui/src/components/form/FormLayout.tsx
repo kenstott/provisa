@@ -562,6 +562,8 @@ export function FormFooter({
           leftSection={busy ? <Loader size={14} color="currentColor" /> : <Check size={14} />}
           disabled={busy || saveProps?.disabled === true}
           data-saving={busy || undefined}
+          // REQ-2115: what Polly presses here changes something; she asks the user first.
+          data-changes="true"
         >
           {t("common.save")}
         </Button>
@@ -574,6 +576,8 @@ export function FormFooter({
           {...cancelProps}
           type="button"
           onClick={onCancel}
+          // REQ-2115: leaving a form changes nothing; Polly presses it without asking.
+          data-changes="false"
           leftSection={<X size={14} />}
           disabled={busy || cancelProps?.disabled === true}
         >

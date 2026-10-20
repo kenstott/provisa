@@ -15,6 +15,7 @@ import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
 import { serverMessage, requestFailed } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
+import type { ResultRedirect } from "../types/resultRedirect";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -1542,15 +1543,6 @@ export interface StatementWarning {
   code: string;
   params: Record<string, unknown>;
   message: string;
-}
-
-/** Where a result landed in the results store is, as /data/sql's redirect handle names it. */
-export interface ResultRedirect {
-  url: string;
-  rowCount: number;
-  /** Seconds until the stored result expires; null when the store keeps it. */
-  expiresIn: number | null;
-  contentType: string | null;
 }
 
 /** The server's redirect handle (``redirect_url``, ``row_count``, …) as the UI holds it. Every

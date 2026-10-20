@@ -98,36 +98,44 @@
         "description": "💬 你用已在使用的语言或工具提问（SQL、GraphQL、Cypher、通过 Polly 使用自然语言，或 BI 工具或驱动程序），每一种读取的都是同一个受治理的模型，因此无论选哪一种，答案和规则都相同。"
       },
       "step6": {
-        "title": "SQL（七种界面之一）",
+        "title": "SQL（九种界面之一）",
         "description": "SQL 位于 SQL 浏览器中。标准 SQL 可跨所有数据源联邦查询：在一条语句里把 Postgres、Mongo 和一个 CSV 连接起来。模型自身的元数据以及每一条活动追踪记录在这里也是可查询的表，所以可以直接把审计日志或血缘信息与实时数据连接起来。<p>🔌 除了这个浏览器，同一套治理下的 SQL 还通过多种线路协议运行；你的工具用哪种协议就用哪种：</p><ul><li><strong>pgwire</strong>：所有兼容 Postgres 的客户端（psql、DBeaver、Tableau、Power BI）开箱即用地连接。</li><li><strong>JDBC</strong>：可直接接入任何 Java/JVM 应用、ETL 管道，或支持 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：面向 ADBC 客户端的列式流式传输，无需行重编码，专为大型结果集设计。</li><li><strong>DuckDB · airport</strong>：从 DuckDB 中 ATTACH Provisa，直接在原地查询受治理的联邦数据。</li></ul>"
       },
       "step7": {
-        "title": "GraphQL（七种界面之二）",
+        "title": "GraphQL（九种界面之二）",
         "description": "◈ 同样的查询，用 GraphQL 表达：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>对你的关系进行分组和聚合：🎯 一个端点，📖 自描述的架构。</p><p>🔌 从<strong>任意 GraphQL 客户端</strong>调用，例如 Apollo、Relay 或 urql。启用联邦功能后，Provisa 会作为子图接入 <strong>Apollo 超图（supergraph）</strong>，让你的联邦模型与现有的图组合在一起。</p>"
       },
       "step8": {
-        "title": "Cypher（七种界面之三）",
+        "title": "Cypher（九种界面之三）",
         "description": "🕸️ 用 Cypher 把联邦模型当作图来遍历：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ 这个遍历<strong>跨数据源</strong>运行，不需要单一的图数据库。</p><p>🔌 任何 <strong>Bolt</strong> 客户端（例如 Neo4j Browser 或 Bloom）都能在协议层运行同样的遍历，无需修改代码。</p>"
       },
       "step9": {
-        "title": "gRPC（七种界面之四）",
+        "title": "gRPC（九种界面之四）",
         "description": "⚙️ 每个注册的实体同时也是一个 gRPC 服务：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>从任意 gRPC 客户端调用它：📐 强类型，🚀 高吞吐量。</p>"
       },
       "step10": {
-        "title": "JSON:API（七种界面之五）",
+        "title": "JSON:API（九种界面之五）",
         "description": "🧩 一个符合规范的 JSON:API 接口：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 分页与 🔍 过滤，开箱即用。</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST（七种界面之六）",
+        "title": "OpenAPI / REST（九种界面之六）",
         "description": "🌐 还有一个由 OpenAPI 描述的纯 REST 端点：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 描述完整，任何 REST 客户端或代码生成器都能使用它。</p>"
       },
       "step12": {
-        "title": "MCP（七种界面之七）",
-        "description": "🤖 第七种界面让智能体能够<strong>基于你的数据进行推理</strong>。它驱动的是同一套受治理的工具（搜索目录、描述表、运行 SQL、追踪关系），并把它们<em>串联</em>起来，回答任何单条查询都无法解答的问题，每次调用都受<strong>你</strong>所在角色的治理约束。<p>🔌 同一个 <strong>MCP 服务器</strong>可接入 Claude Desktop、Claude Code 或任意 MCP 客户端，让智能体以受治理的方式探索和推理你的模型。</p><p>🔑 使用你自己的 LLM 密钥；此处展示的是一个预设示例。</p><p>还剩一种界面：那个能替你写出全部七种的界面。→</p>"
+        "title": "MCP（九种界面之七）",
+        "description": "🤖 第七种界面让智能体能够<strong>基于你的数据进行推理</strong>。它驱动的是同一套受治理的工具（搜索目录、描述表、运行 SQL、追踪关系），并把它们<em>串联</em>起来，回答任何单条查询都无法解答的问题，每次调用都受<strong>你</strong>所在角色的治理约束。<p>🔌 同一个 <strong>MCP 服务器</strong>可接入 Claude Desktop、Claude Code 或任意 MCP 客户端，让智能体以受治理的方式探索和推理你的模型。</p><p>🔑 使用你自己的 LLM 密钥；此处展示的是一个预设示例。</p><p>还有两种界面从 Python 读取同样受治理的数据。→</p>"
+      },
+      "stepPython": {
+        "title": "Python（九种界面之八）",
+        "description": "🐍 Python 标签页在你的浏览器中运行 Python，并以你的身份登录：<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>结果以 pandas DataFrame 返回，经由同一条受治理的管道读取，因此你所在角色的行规则和掩码同样适用。</p><p>🔌 同一个 <strong>provisa-client</strong> 包可以用 pip 安装到任何桌面 Python，因此在这里写的脚本无需修改即可在你自己的环境中运行。</p>"
+      },
+      "stepNotebook": {
+        "title": "笔记本（九种界面之九）",
+        "description": "📓 笔记本标签页就是 JupyterLite：在你浏览器中运行的 Jupyter 笔记本。第一个单元格完成登录，下一个单元格把同一条查询读成 DataFrame，可以画成图表或与其他数据关联。<p>⬇️ 下载这个笔记本，它可以在任何桌面 Jupyter 中打开，同样的单元格会像在这里一样从 Provisa 读取。</p><p>还剩一种界面：替你写出查询的那种。→</p>"
       },
       "step13": {
-        "title": "直接提问：能写出全部七种的界面",
-        "description": "💬 <em>“按物种统计宠物数量”</em><p><strong>你不必学会前面那七种。</strong>用大白话提问，Provisa 会把你的问题同时编译成每一种查询语言：下面每个面板都是这同一句话对应的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>使用你的工具已经支持的界面，或者干脆全部跳过，直接提问。</p><p>🔑 实时自然语言查询使用你自己的 LLM 密钥；此处为预设示例。</p><p>✅ 一个模型，<strong>八种界面</strong>：七种用于查询，还有一种负责把它们全部写出来。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "直接提问：替你写出查询的界面",
+        "description": "💬 <em>“按物种统计宠物数量”</em><p><strong>这些查询语言你一种都不用学。</strong>用日常语言提问，Provisa 会一次把你的问题编译成全部七种：下面每个面板都是同一句话写成的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>它不能直接打开 Python 或笔记本，但你随时可以让 Polly 把查询移到其中任何一个。</p><p>🔑 实时的自然语言查询使用你自己的 LLM 密钥；这里是一个预先准备的示例。</p><p>✅ 一个模型支撑全部<strong>九种界面</strong>，日常语言替你写出查询。</p><div class='tour-tags'><span>自然语言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>笔记本</span></div>"
       },
       "step14": {
         "title": "这就是五分钟核心内容",
@@ -1460,6 +1468,146 @@
       "churnprodRecap": {
         "title": "你看到了什么",
         "description": "数据科学家的模型投入了生产，无需运行自己的服务。它的包被固定，只安装一次。一个 join 为它的函数提供数据，函数读起来就像一张表，而每张表都有的脱敏和行规则约束它返回的内容。SQL、GraphQL 以及其他任何访问方式都以同样的方式读取它。"
+      },
+      "worldcupIntro": {
+        "title": "四个公开来源，一届世界杯",
+        "description": "谁赢得过世界杯，来自哪个联合会？答案分散在公开数据中：维基百科的决赛列表和各联合会条目，以及 Kaggle 上收录每场世界杯比赛和每个国际比赛进球的两个数据集。每个来源对国家的写法都不同。维基百科写 West Germany，Kaggle 写 Germany FR，联合会的会员表写 Germany。本导览接入这些数据，用一个简短的 Python 函数让名称一致，再把结果作为一张受治理的图来查询。"
+      },
+      "worldcupWikipedia": {
+        "title": "维基百科，几分钟即可注册",
+        "description": "这是一个维基百科数据源。它的爬取读取七个页面：List of FIFA World Cup finals 和六个联合会的条目。这些页面上的每张数据表都成为一张表，以其页面和标题命名，因此决赛表是 <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>。公开数据源和任何内部数据库一样受治理，使用相同的角色、授权和掩码。设置刷新间隔后，这些数据源会自动保持最新。本演示读取固定快照，因此每位访客看到的答案都相同。"
+      },
+      "worldcupFinals": {
+        "title": "维基百科列出的决赛",
+        "description": "1930 年至 2026 年的每场决赛，冠军和亚军都使用当时的名称。维基百科把 1954、1974 和 1990 年的冠军记在 West Germany 名下，把 2014 年的冠军记在 Germany 名下。"
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle 数据集以表的形式到达",
+        "description": "这是一个 Kaggle 数据源：FIFA World Cup 数据集，收录 1930 年至 2014 年的每届赛事、每场比赛和每位球员的出场。它的每个文件都以一张表的形式到达。第二个 Kaggle 数据源收录 1916 年以来的每个国际比赛进球。和维基百科的表一样，它们是公开数据，几分钟即可注册，并像任何内部数据库一样受治理。"
+      },
+      "worldcupMatches": {
+        "title": "以当时名称记录的比赛",
+        "description": "Kaggle 把西德写作 Germany FR，把东德写作 German DR。它的一些名称带有文件残留的标记，例如 <code>rn\"&gt;Republic of Ireland</code>。文件中的空行按数据集原样保留为没有值的行。"
+      },
+      "worldcupDisagree": {
+        "title": "名称对不上",
+        "description": "按维基百科写的名称计数，Germany 有一个冠军，West Germany 有三个，就像是两个国家。Kaggle 把同一支球队写作 Germany FR，所以在来源之间按名称做连接也会漏掉这些冠军。"
+      },
+      "worldcupFunction": {
+        "title": "函数就是那张表",
+        "description": "country_alias 是一个 Python 数据源，这个函数就是每条跨来源关系所经过的那张表。它接收各来源写出的每个球队名称，用组织密钥库中的密钥询问 LLM 该名称代表哪个国际足联会员，并返回该会员的名称和国际足联代码。它会按刷新间隔再次运行，因此新名称一出现就会被匹配。<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "每个名称都已匹配并复核",
+        "description": "这些是与其会员名称不同的名称。Germany FR 和 West Germany 是 Germany，Zaire 是 DR Congo，Soviet Union 是 Russia。每一项匹配都在本演示冻结前经过复核，237 项中有 27 项被更正。成绩未由任何会员继承的球队保留自己的名称：East Germany 仍是 East Germany，因此它在 1974 年对 West Germany 的比赛不会变成 Germany 对 Germany。"
+      },
+      "worldcupJunction": {
+        "title": "经过函数的关系",
+        "description": "WON 通过 country_alias 把联合会的会员与它赢得的决赛连接起来。会员的国际足联代码找到它代表的每个名称，每个名称再找到它的决赛。RUNNER_UP、PLAYED_HOME、PLAYED_AWAY 和 SCORED 也以同样方式连接。"
+      },
+      "worldcupGraph": {
+        "title": "所有冠军汇于一张图",
+        "description": "每个会员都与它赢得的决赛相连，无论当时用的是哪个名称。Germany 的节点汇集了 1954、1974、1990 和 2014 年。"
+      },
+      "worldcupByConfederation": {
+        "title": "按联合会分组",
+        "description": "按联合会分组后，欧足联会员拥有 13 个冠军，南美足联会员拥有 10 个。没有其他联合会赢得过决赛。"
+      },
+      "worldcupSql": {
+        "title": "SQL 中的同一模型",
+        "description": "SQL 中的同一个连接通过 country_alias 统计每个会员的冠军数。Brazil 以五个领先，Germany 和 Italy 各有四个。"
+      },
+      "worldcupGraphql": {
+        "title": "以及 GraphQL",
+        "description": "在 GraphQL 中，每场决赛都有一个经过 country_alias 的 <code>winner</code> 字段，因此 1954、1974 和 1990 年在 West Germany 旁边显示它代表的会员：Germany，GER。"
+      },
+      "worldcupRecap": {
+        "title": "回顾",
+        "description": "来自维基百科和 Kaggle 的公开数据，几分钟内接入并像任何内部数据库一样受治理，用大约十行 Python 让名称一致，并作为一张图来查询。函数的匹配都经过复核，因此这张图把每个冠军只计一次，并记在正确的会员名下。"
+      },
+      "cloudpolicyScenario": {
+        "title": "这个演示讲什么",
+        "description": "你的安全策略规定，挂载到虚拟机的每块磁盘都使用客户管理的密钥。你负责安全，根据已有的记录在 Azure、AWS 和 Google Cloud 上审查这一点。第一个数据源是云资产清单。它列出三个云中的每台机器和每块磁盘，以及加密每块磁盘的密钥。"
+      },
+      "cloudpolicyIncidents": {
+        "title": "事件",
+        "description": "第二个数据源是安全团队的 ServiceNow 事件。每个事件把所涉及的磁盘作为配置项，并引用它所归属的策略章节。例外是 Policy exception 类别的事件。"
+      },
+      "cloudpolicyReader": {
+        "title": "由代码读取的策略",
+        "description": "策略本身是一个网页。这个 Python 包随网页一起发布，把它读成每项控制一行。它的函数是一张表，因此策略与模型的其余部分相连。"
+      },
+      "cloudpolicyPolicy": {
+        "title": "以行呈现的策略",
+        "description": "这里是从 HTML 读取的策略的每项控制，包括标题、条款和生效日期。第 4.2 节是正在审查的磁盘加密控制。"
+      },
+      "cloudpolicySearch": {
+        "title": "按语义搜索策略",
+        "description": "每个条款在演示准备时嵌入一次。按语义搜索能找到磁盘加密控制，即使你的用词与条款不同。"
+      },
+      "cloudpolicyModel": {
+        "title": "三个云，一个模型",
+        "description": "每块磁盘都标明它挂载的机器。这个关系以同样的方式连接 Azure、AWS 和 Google Cloud 中的磁盘和机器。"
+      },
+      "cloudpolicyCites": {
+        "title": "与条款关联的事件",
+        "description": "每个事件引用策略的一个章节。这个关系把它连接到所引用的条款，因此归错章节的事件会显现出来。"
+      },
+      "cloudpolicyViolations": {
+        "title": "作为视图的策略",
+        "description": "第 4.2 节写成了一个视图。它列出每块由云管理密钥的已挂载磁盘，以及磁盘所在的机器。"
+      },
+      "cloudpolicyReview": {
+        "title": "每日审查",
+        "description": "每日审查按策略规则对每块已挂载磁盘分类。没有客户管理密钥的磁盘可能由有效的例外覆盖。如果没有，它的事件要么在期限内，要么已逾期，要么在磁盘仍不合规时被关闭，要么从未登记。"
+      },
+      "cloudpolicyTrigger": {
+        "title": "每日触发器",
+        "description": "每天早上，一个定时触发器运行审查，把当天的行写入审查历史。它像任何语句一样经过同一条受治理的管道写入，使用其角色的写入授权。"
+      },
+      "cloudpolicyTrend": {
+        "title": "十四天的历史",
+        "description": "触发器保留的历史按天显示违规。磁盘在其事件修复后退出，新的违规在出现当天显示。"
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "问 Polly 谁违反了控制",
+        "description": "Polly 读取与你相同的受治理模型。它列出没有客户管理密钥的磁盘，以及要求使用该密钥的章节。"
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "仍然有效的例外",
+        "description": "根据第 4.3 节，例外有效期为 90 天。Polly 找出它仍然覆盖的磁盘。"
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "归错章节的事件",
+        "description": "有些事件引用的章节不是它们所涉及的控制，其中一个引用了策略已撤销的章节。"
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "无人检查的控制",
+        "description": "策略中有些控制没有任何检查来执行。Polly 将策略与团队运行的检查进行比较，并可以起草一个视图供 steward 添加。"
+      },
+      "cloudpolicyAuditor": {
+        "title": "现在以 auditor 身份",
+        "description": "auditor 读取每个云中的每个账户。"
+      },
+      "cloudpolicyOpen": {
+        "title": "审查标记的全部内容",
+        "description": "这里是审查为每个团队标记的每块磁盘。"
+      },
+      "cloudpolicyAppTeam": {
+        "title": "现在以支付团队身份",
+        "description": "支付团队只读取自己的资源和事件。"
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "只有自己的行",
+        "description": "同一条语句只返回支付团队的磁盘。行规则设在资产清单和事件上，基于它们构建的每个视图都会应用这些规则。"
+      },
+      "cloudpolicyDashboard": {
+        "title": "合规仪表板",
+        "description": "Superset 通过 Provisa 的 Postgres 协议读取相同的视图。这是它的合规仪表板，按控制显示违规。"
+      },
+      "cloudpolicyRecap": {
+        "title": "你看到了什么",
+        "description": "你根据已有的记录，在三个云上审查了一项策略。策略是一张表，由代码从它自己的网页读取，每个事件都连接到它引用的条款。每日触发器保留历史，每个角色只能读取其规则允许的内容，无论在 SQL、Polly 还是 Superset 中。"
       }
     },
     "status": {
@@ -1564,6 +1712,14 @@
       "churnprod": {
         "title": "生产环境中的流失风险",
         "summary": "流失演示中的 scikit-learn 模型投入生产。它的 Python 包是一个数据源，它的函数是一张表，在 join 中为每位客户打分，返回的结果同样受脱敏和行规则约束。"
+      },
+      "worldcup": {
+        "title": "World Cup，一张图",
+        "summary": "维基百科和 Kaggle 的世界杯数据在国家名称上对不上。一个简短的 Python 函数用 LLM 匹配每个名称，公开数据源成为一张受治理的图。"
+      },
+      "cloudpolicy": {
+        "title": "云策略审查",
+        "summary": "在 Azure、AWS 和 Google Cloud 上审查一项安全策略。云资产清单、ServiceNow 事件以及由代码从网页读取的策略本身构成一个模型，每日触发器保留审查历史。"
       }
     }
   }

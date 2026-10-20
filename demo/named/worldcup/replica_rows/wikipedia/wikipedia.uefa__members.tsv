@@ -1,0 +1,56 @@
+code	association	national_teams	founded	fifa_affiliation	uefa_affiliation	ioc_member
+ALB	Albania	Men's U21 U19 U17 F BS Women's U19 U17	1930	1932	1954	true
+AND	Andorra	Men's U21 U19 U17 F BS Women's U19 U17	1994	1996	1996	true
+ARM	Armenia	Men's U21 U19 U17 F BS Women's U19 U17	1992	1992	1992	true
+AUT	Austria	Men's U21 U19 U17 F BS Women's U19 U17	1904	1905	1954	true
+AZE	Azerbaijan	Men's U21 U19 U17 F BS Women's U19 U17	1992	1994	1994	true
+BLR	Belarus	Men's U21 U19 U17 F BS Women's U19 U17	1989	1992	1993	true
+BEL	Belgium	Men's U21 U19 U17 F BS Women's U19 U17	1895	1904	1954	true
+BIH	Bosnia and Herzegovina	Men's U21 U19 U17 F BS Women's U19 U17	1920	1996	1998	true
+BUL	Bulgaria	Men's U21 U19 U17 F BS Women's U19 U17	1923	1924	1954	true
+CRO	Croatia	Men's U21 U19 U17 F BS Women's U19 U17	1912	1941	1993	true
+CYP	Cyprus	Men's U21 U19 U17 F BS Women's U19 U17	1934	1948	1962	true
+CZE	Czech Republic	Men's U21 U19 U17 F BS Women's U19 U17	1901	1907	1954	true
+DEN	Denmark	Men's U21 U19 U17 F BS Women's U19 U17	1889	1904	1954	true
+ENG	England	Men's U21 U19 U17 F BS Women's U19 U17	1863	1905	1954	false
+EST	Estonia	Men's U21 U19 U17 F BS Women's U19 U17	1921	1923	1992	true
+FRO	Faroe Islands	Men's U21 U19 U17 F BS Women's U19 U17	1979	1988	1990	false
+FIN	Finland	Men's U21 U19 U17 F BS Women's U19 U17	1907	1908	1954	true
+FRA	France	Men's U21 U19 U17 F BS Women's U19 U17	1919	1904	1954	true
+GEO	Georgia	Men's U21 U19 U17 F BS Women's U19 U17	1990	1992	1992	true
+GER	Germany	Men's U21 U19 U17 F BS Women's U19 U17	1900	1904	1954	true
+GIB	Gibraltar	Men's U21 U19 U17 F BS Women's U19 U17	1895	2016	2013	false
+GRE	Greece	Men's U21 U19 U17 F BS Women's U19 U17	1926	1927	1954	true
+HUN	Hungary	Men's U21 U19 U17 F BS Women's U19 U17	1901	1906	1954	true
+ISL	Iceland	Men's U21 U19 U17 F BS Women's U19 U17	1947	1947	1954	true
+ISR	Israel	Men's U21 U19 U17 F BS Women's U19 U17	1928	1929	1994	true
+ITA	Italy	Men's U21 U19 U17 F BS Women's U19 U17	1898	1905	1954	true
+KAZ	Kazakhstan	Men's U21 U19 U17 F BS Women's U19 U17	1994	1994	2002	true
+KOS	Kosovo	Men's U21 U19 U17 F BS Women's U19 U17	1946	2016	2016	true
+LVA	Latvia	Men's U21 U19 U17 F BS Women's U19 U17	1921	1922	1992	true
+LIE	Liechtenstein	Men's U21 U19 U17 F BS Women's U19 U17	1934	1974	1974	true
+LTU	Lithuania	Men's U21 U19 U17 F BS Women's U19 U17	1922	1923	1992	true
+LUX	Luxembourg	Men's U21 U19 U17 F BS Women's U19 U17	1908	1910	1954	true
+MLT	Malta	Men's U21 U19 U17 F BS Women's U19 U17	1900	1959	1960	true
+MDA	Moldova	Men's U21 U19 U17 F BS Women's U19 U17	1990	1994	1993	true
+MNE	Montenegro	Men's U21 U19 U17 F BS Women's U19 U17	1931	2007	2007	true
+NED	Netherlands	Men's U21 U19 U17 F BS Women's U19 U17	1889	1904	1954	true
+MKD	North Macedonia	Men's U21 U19 U17 F BS Women's U19 U17	1926	1994	1994	true
+NIR	Northern Ireland	Men's U21 U19 U17 F BS Women's U19 U17	1880	1911	1954	false
+NOR	Norway	Men's U21 U19 U17 F BS Women's U19 U17	1902	1908	1954	true
+POL	Poland	Men's U21 U19 U17 F BS Women's U19 U17	1919	1923	1954	true
+POR	Portugal	Men's U21 U19 U17 F BS Women's U19 U17	1914	1923	1954	true
+IRL	Republic of Ireland	Men's U21 U19 U17 F BS Women's U19 U17	1921	1923	1954	true
+ROU	Romania	Men's U21 U19 U17 F BS Women's U19 U17	1909	1923	1954	true
+RUS	Russia	Men's U21 U19 U17 F BS Women's U19 U17	1912	1912	1954	true
+SMR	San Marino	Men's U21 U19 U17 F BS Women's U19 U17	1931	1988	1988	true
+SCO	Scotland	Men's U21 U19 U17 F BS Women's U19 U17	1873	1910	1954	false
+SRB	Serbia	Men's U21 U19 U17 F BS Women's U19 U17	1919	1923	1954	true
+SVK	Slovakia	Men's U21 U19 U17 F BS Women's U19 U17	1938	1939	1993	true
+SVN	Slovenia	Men's U21 U19 U17 F BS Women's U19 U17	1920	1992	1992	true
+ESP	Spain	Men's U21 U19 U17 F BS Women's U19 U17	1909	1904	1954	true
+SWE	Sweden	Men's U21 U19 U17 F BS Women's U19 U17	1904	1904	1954	true
+SUI	Switzerland	Men's U21 U19 U17 F BS Women's U19 U17	1895	1904	1954	true
+TUR	Turkey	Men's U21 U19 U17 F BS Women's U19 U17	1923	1923	1962	true
+UKR	Ukraine	Men's U21 U19 U17 F BS Women's U19 U17	1991	1992	1992	true
+WAL	Wales	Men's U21 U19 U17 F BS Women's U19 U17	1876	1910	1954	false

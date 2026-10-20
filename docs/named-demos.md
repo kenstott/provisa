@@ -159,7 +159,8 @@ needing the compose file open. `com.provisa.demo.role` identifies each service's
 
 The role value determines what the bundle build does with each store:
 
-- `rdb` — a Postgres service: dumped to `dump/<service>.sql` at build.
+- `rdb` — a Postgres service: each of its databases dumped to `dump/<service>/<database>.sql` at
+  build, with `dump/load-postgres.sh`, which loads them into the demo's own container.
 - `vector` — a Qdrant service: each collection saved as `dump/<service>/<collection>.snapshot` at build.
 - `document` — a MongoDB service: every database dumped as one gzipped archive,
   `dump/<service>.archive.gz`, read as the administrator its `MONGO_INITDB_ROOT_USERNAME` and
@@ -390,8 +391,8 @@ A bundle does not run `docker-compose.yml` (the authoring compose, with the seed
 `docker-compose.run.yml`, which brings up only what reading the bundle needs: the stores loaded
 from the build's dumps.
 
-Every service in `docker-compose.run.yml` carries the standard labels plus three that the
-node's sync script reads to build `stores.env`:
+Every service in `docker-compose.run.yml` carries the standard labels plus the ones the node's
+`scripts/demo_stores.py` reads to build `stores.env`:
 
 ```yaml
 # demo/named/weblogs/docker-compose.run.yml (excerpt)
@@ -403,15 +404,18 @@ services:
       com.provisa.demo.host_env: WEBLOGS_PG_HOST    # the env var config.yaml reads for the host
       com.provisa.demo.port_env: WEBLOGS_PG_PORT    # the env var config.yaml reads for the port
       com.provisa.demo.port: "5432"                 # the container port (not the published port)
+      com.provisa.demo.ns_env: WEBLOGS_PG_NS        # the suffix of every name of its data
+      com.provisa.demo.access: db/reader.sql        # its roles and grants
     ports:
       # On the loopback only. ${VAR-default}: unset → default port; set empty → Docker picks one.
       - "127.0.0.1:${WEBLOGS_PG_PORT-28432}:5432"
     volumes:
       - weblogs_run_pg:/var/lib/postgresql/data
-      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-shop.sql:ro
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
 ```
 
-Four things to get right:
+Five things to get right:
 
 - **Ports on the loopback.** Every port binding is `127.0.0.1:<var>:<container port>`. The node
   runs several versions of the same demo at once; each gets its own port, picked by Docker when
@@ -422,6 +426,15 @@ Four things to get right:
 - **The three `host_env`/`port_env`/`port` labels.** The node's `scripts/demo_stores_sync.sh`
   reads them to build `stores.env`, the file that tells the tier where each store is. Without
   them, the node cannot connect the running store to the config's env-var references.
+- **The `ns_env` label, and the names it suffixes.** Every name `config.yaml` gives a store's data
+  ends with the variable its `ns_env` label names, with no default:
+  `database: shop${env:WEBLOGS_PG_NS}`. A Mongo table's `schema` (its database), an
+  Elasticsearch index or Qdrant collection used as a table (`table: reviews${env:REVIEWS_ES_NS}`,
+  with `alias: reviews` keeping the name a query uses), an index or collection inside a
+  `query_template`, and a Kafka `topic` all take it. Where the demo runs its own stores
+  (`start-ui-install.sh --demo`, the bundle build, a test) each variable is set empty; on the
+  sandbox tier's node it holds the version's suffix. A Postgres or MongoDB store also names its
+  access script in `access`: its roles and grants, run in each database the node loads.
 - **Read-only roles.** Give each store a reader credential and use it in `config.yaml`. The store
   is shared by every sandbox of its version, so Provisa should never write to it. The sonnets
   demo's Qdrant store grants Provisa only its read-only key
@@ -449,6 +462,31 @@ start:
       - sonnets_run_qdrant:/qdrant/storage
       - ./dump/qdrant:/snapshots:ro
 ```
+
+### On the sandbox tier's node: shared stores, started on demand
+
+The node runs no demo's stores at boot. `scripts/demo_stores_sync.sh` pulls each bundle and marks
+it offered (`<bundles>/<name>/pulled`); the tier asks for a demo at its first open
+(`<bundles>/<name>/requested`), and only then does the sync bring its stores up and mark the
+version ready. At the node's start, `provisa-demo-stores-boot.service` clears every request and
+ready mark before docker starts, and no store container restarts with docker.
+
+A demo's Postgres, MongoDB, Elasticsearch and Qdrant data, and its Kafka topics, live in the
+node's one instance of each type (`packaging/linux/demo-stores/docker-compose.shared.yml`),
+started the first time any demo needs it and left up until the node stops. Each demo version's
+data has names of its own, the version's suffix `_<demo>_<8 hex of its version>` appended:
+
+| Store | Loaded as |
+|---|---|
+| Postgres | each `dump/<service>/<database>.sql` into the database `<database><suffix>`; the `access` script's roles created once, its grants run in each database |
+| MongoDB | the archive restored with every database renamed `<database><suffix>`; the `access` script's user created, or granted this version's databases |
+| Elasticsearch | the snapshot restored with every index renamed `<index><suffix>`, writes blocked |
+| Qdrant | each `dump/<service>/<collection>.snapshot` uploaded as `<collection><suffix>`; the version reads with a token scoped to its collections, read only, written to the variable its `com.provisa.demo.key_env` label names |
+| Kafka | no data of the bundle's: its producers write `<topic><suffix>` (their `TOPIC_SUFFIX`), joined to the shared stores' network, where the broker is `kafka` |
+
+A Neo4j store, and a demo's producers and APIs, still run as the version's own compose project.
+A version no longer read (`<bundles>/<name>/in-use`) has its data dropped by its suffix and its
+own services taken down; another demo's data, or another version's, is untouched.
 
 ## Data rule — what the bundle serves live vs. from the dump
 

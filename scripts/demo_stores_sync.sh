@@ -38,6 +38,7 @@
 #   DEMO_STORES            scripts/demo_stores.py, as installed beside this script
 #   DEMO_STORES_SHARED     the shared stores' compose file (docker-compose.shared.yml)
 #   DEMO_STORES_PROJECT    the shared stores' compose project
+#   DEMO_STORES_KAFKA_PORT the port the shared Kafka listens, is published and advertised at
 #   DEMO_STORES_NETWORK    the docker network the tier is on: each store joins it and is named by
 #                          its container and container port. Empty: by 127.0.0.1 and its published
 #                          port (a tier on this host, as the test instance runs it).
@@ -51,7 +52,8 @@ set -euo pipefail
 : "${DEMO_STORES:?scripts/demo_stores.py}"
 : "${DEMO_STORES_SHARED:?the shared stores compose file}"
 : "${DEMO_STORES_PROJECT:?the shared stores compose project}"
-export DEMO_BUNDLES_DIR DEMO_STORES_SHARED DEMO_STORES_PROJECT
+: "${DEMO_STORES_KAFKA_PORT:?the port of the shared Kafka}"
+export DEMO_BUNDLES_DIR DEMO_STORES_SHARED DEMO_STORES_PROJECT DEMO_STORES_KAFKA_PORT
 export DEMO_STORES_NETWORK="${DEMO_STORES_NETWORK:-}"
 
 write_atomically() { # path text

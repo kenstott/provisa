@@ -45,7 +45,7 @@ told to stop the call, and the waiting thread is released at once. A crash fails
 flight, naming the source and the export; the next call starts a new process.
 """
 
-# Requirements: REQ-1984, REQ-1993, REQ-1882
+# Requirements: REQ-1984, REQ-1993, REQ-1882, REQ-2104
 from __future__ import annotations
 
 import collections
@@ -65,9 +65,12 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from provisa.core import request_deadline
+
+if TYPE_CHECKING:
+    from provisa.codesource.services import ServiceGrant
 
 #: The protocol the hosts speak; a host built for another one is refused by name (REQ-2098).
 PROTOCOL = 2
@@ -80,6 +83,10 @@ START_TIMEOUT_S = 30.0
 
 #: How often a start checks that its host is still coming while it waits for it to connect.
 _ACCEPT_POLL_S = 0.05
+
+#: REQ-2098: a remote host that failed is dialled again after this, doubling to the most.
+_REMOTE_BACKOFF_S = 1.0
+_REMOTE_BACKOFF_MAX_S = 60.0
 
 #: How many of the host's last stderr lines a crash names.
 STDERR_LINES = 40
@@ -97,12 +104,15 @@ class HostCommand:
     which the host reads as its first argument: a path (inside a private directory the worker
     makes for it, which a sandbox names), or with ``inherit_socket`` ``fd:N``, a socket already
     connected and inherited as descriptor N (the Linux sandbox refuses the host any new socket but
-    TCP, so it cannot connect one). The process gets exactly ``env``, in ``cwd``."""
+    TCP, so it cannot connect one). The process gets exactly ``env``, in ``cwd``, and with
+    ``services`` the address of Provisa's services to code, under a token issued as the process
+    starts and revoked when it stops (REQ-2104)."""
 
     argv: Callable[[str], Sequence[str]]
     env: dict[str, str]
     cwd: Path
     inherit_socket: bool = False
+    services: "ServiceGrant | None" = None
 
     def argv_for(self, address: str) -> list[str]:
         return list(self.argv(address))
@@ -261,6 +271,7 @@ class Worker:
         self._conn: socket.socket | None = None
         self._process: subprocess.Popen | None = None
         self._stderr_thread: threading.Thread | None = None
+        self._services_token: str | None = None
         self.exports: list[str] = []
 
     # -- lifecycle ------------------------------------------------------------------------------
@@ -317,10 +328,16 @@ class Worker:
         ).start()
 
     def _spawn(self, address: str, pass_fds: tuple[int, ...]) -> None:
+        env = {**self._command.env, CODE_HASH_ENV: self.content_hash}
+        if self._command.services is not None:
+            from provisa.codesource import services
+
+            self._services_token = services.issue(self._command.services)
+            env[services.SERVICES_ENV] = services.address(self._services_token)
         self._process = subprocess.Popen(  # nosec B603 - the pinned runtime and Provisa's host
             self._command.argv_for(address),
             cwd=self._command.cwd,
-            env={**self._command.env, CODE_HASH_ENV: self.content_hash},
+            env=env,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
@@ -393,6 +410,10 @@ class Worker:
         return ""
 
     def _end(self, message: str) -> None:
+        if self._services_token is not None:
+            from provisa.codesource import services
+
+            services.revoke(self._services_token)  # an ended worker's token reads nothing
         with self._calls_lock:
             if self._ended is None:
                 self._ended = message
@@ -568,11 +589,22 @@ class WorkerPool:
     whose process has ended is dropped and the next call starts another."""
 
     def __init__(self) -> None:
-        self._workers: dict[tuple[str, str], Worker] = {}
+        self._workers: dict[tuple[str | None, str, str], Worker] = {}
+        #: REQ-2098: a remote host's failed dials: (count, next try, why).
+        self._failures: dict[tuple[str | None, str, str], tuple[int, float, str]] = {}
         self._lock = threading.Lock()
 
-    def get(self, source_id: str, content_hash: str, command: Callable[[], HostCommand]) -> Worker:
-        key = (source_id, content_hash)
+    def get(
+        self,
+        source_id: str,
+        content_hash: str,
+        command: Callable[[], HostCommand],
+        *,
+        org: str | None = None,
+    ) -> Worker:
+        """``org``: the org the worker serves; one org's worker never serves another's calls,
+        since it holds that org's services grant (REQ-2104)."""
+        key = (org, source_id, content_hash)
         with self._lock:
             worker = self._workers.get(key)
             if worker is not None and worker.alive():
@@ -584,10 +616,68 @@ class WorkerPool:
             self._workers[key] = worker
             return worker
 
+    def remote(
+        self, source_id: str, content_hash: str, org: str, make: Callable[[], "Worker"]
+    ) -> "Worker":
+        """REQ-2098: a built source's worker, its remote host dialled on first use and again
+        after it stops answering -- with backoff: a host that failed is not dialled again until
+        its wait (1 s, doubling to a minute) has passed, and a call meanwhile fails naming it."""
+        key = (org, source_id, content_hash)
+        with self._lock:
+            worker = self._workers.get(key)
+            if worker is not None and worker.alive():
+                return worker
+            if worker is not None:
+                worker.stop()
+                self._workers.pop(key, None)
+            failed = self._failures.get(key)
+            if failed is not None and time.monotonic() < failed[1]:
+                raise WorkerFailed(
+                    source_id,
+                    f"{failed[2]} (next try in {failed[1] - time.monotonic():.0f}s)",
+                )
+            worker = make()
+            try:
+                worker.start()
+            except WorkerFailed as exc:
+                count = 1 if failed is None else failed[0] + 1
+                wait = min(_REMOTE_BACKOFF_MAX_S, _REMOTE_BACKOFF_S * 2 ** (count - 1))
+                self._failures[key] = (count, time.monotonic() + wait, str(exc))
+                raise
+            self._failures.pop(key, None)
+            self._workers[key] = worker
+            return worker
+
+    def remote_status(self, org: str, source_id: str) -> dict:
+        """What this process's pool holds for a built source: a live connection, or the last
+        failure and its next try."""
+        with self._lock:
+            live = [
+                k
+                for k, w in self._workers.items()
+                if k[0] == org and k[1] == source_id and w.alive()
+            ]
+            failures = [
+                (k, f) for k, f in self._failures.items() if k[0] == org and k[1] == source_id
+            ]
+        if live:
+            return {"connected": True}
+        if failures:
+            (_key, (count, at, message)) = failures[-1]
+            return {
+                "connected": False,
+                "error": message,
+                "failures": count,
+                "next_try_s": max(0.0, at - time.monotonic()),
+            }
+        return {"connected": False}
+
     def stop_source(self, source_id: str) -> None:
         """Stop every worker of ``source_id``: its source was edited or deleted."""
         with self._lock:
-            ending = [k for k in self._workers if k[0] == source_id]
+            ending = [k for k in self._workers if k[1] == source_id]
+            for key in [k for k in self._failures if k[1] == source_id]:
+                del self._failures[key]
             workers = [self._workers.pop(k) for k in ending]
         for worker in workers:
             worker.stop()

@@ -1,0 +1,19 @@
+{
+  "containerRegistries": {
+    "help": "The registries a code source's built image can be pushed to, for running it on a remote host. Each field can hold a value or a secret reference such as ${secret:registry_token}. With no registry, a built image is downloaded instead.",
+    "add": "Add container registry",
+    "none": "No container registries. Built images can still be downloaded.",
+    "address": "Registry and namespace",
+    "addressHelp": "The registry, with its port where it has one, and the repository namespace images are pushed under, for example ghcr.io/example or registry.example.com:5000/data.",
+    "username": "User name",
+    "credential": "Password or token",
+    "credentialHelp": "The password or access token the user name signs in with, for example a GitHub personal access token with write:packages.",
+    "caBundle": "Certificate authority (PEM)",
+    "caBundleHelp": "Only for a registry whose certificate is signed by your own authority: its PEM certificate, or a secret reference. It is trusted beside the public authorities. Leave empty otherwise.",
+    "default": "Default registry",
+    "defaultHelp": "A build pushes here unless it names another registry. An organization has one default registry.",
+    "saved": "Saved",
+    "removed": "Removed",
+    "remove": "Remove"
+  }
+}

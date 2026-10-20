@@ -1,0 +1,24 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The cloudpolicy demo's card on provisa.dev's live demos page (REQ-2006), generated from this file
+# by scripts/gen-site-demos.mjs. published: true once card.png, a screenshot of the demo in
+# Provisa, is beside it.
+title: Cloud policy review
+description: >-
+  Is every disk attached to a virtual machine encrypted with a customer-managed key? The cloud
+  inventory across Azure, AWS and Google Cloud, the ServiceNow incidents filed against it and the
+  security policy itself, read from its web page by code, reviewed daily by a scheduled trigger.
+screenshot: card.png
+published: true
+# The oldest Provisa this demo's bundle runs on (REQ-2049): a puller running an older one is refused
+# by name. The first release carrying the demo's trigger step.
+requires_provisa: 0.1.0a493
+extras:
+- vector

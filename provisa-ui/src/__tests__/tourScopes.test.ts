@@ -72,6 +72,8 @@ describe("tour scopes", () => {
       "step10",
       "step11",
       "step12",
+      "stepPython",
+      "stepNotebook",
       "step13",
     ]);
   });

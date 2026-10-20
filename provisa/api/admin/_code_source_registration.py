@@ -34,7 +34,10 @@ async def record_code(source_id: str, source_type: str, mapping: dict) -> "Mutat
     if source_type not in CODE_SOURCE_TYPES:
         return None
     forget(source_id)  # whatever was prepared for an earlier save of it
-    mapping.pop("content_hash", None)  # pinned afresh: the code as it is now
+    if mapping.get("mode") != "built":
+        mapping.pop("content_hash", None)  # pinned afresh: the code as it is now
+    # REQ-2098: a built source's code runs on its remote host and is not read here; it keeps the
+    # hash it is pinned to, which only a re-pin (or going back to dev) changes.
     try:
         ready = await prepare(source_id, source_type, mapping, await context_for(state))
     except BundleRefused as refused:

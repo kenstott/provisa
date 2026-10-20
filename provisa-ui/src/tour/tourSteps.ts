@@ -100,9 +100,13 @@ export interface TourStep {
   /**
    * The state handed to `route`'s page once per visit to the step, with no statement: the Graph
    * page's `view` (REQ-2010: `groupBy`, its newest frame grouped by that property, its query kept)
-   * or the Notebook tab's `cells` (REQ-2084: added to the open notebook, and run with `autoRun`).
+   * or the Notebook tab's `cells` (REQ-2084: added to the open notebook, and run with `autoRun`), or
+   * the Python tab's `code` (REQ-2071: into its editor, and run with `autoRun`).
    */
-  navState?: { view: { groupBy: string } } | { cells: string[]; autoRun: boolean };
+  navState?:
+    | { view: { groupBy: string } }
+    | { cells: string[]; autoRun: boolean }
+    | { code: string; autoRun: boolean };
   /**
    * REQ-2010: on Next only, open the picker `open` and choose its option `option`, then advance —
    * a choice the step shows (the picker is highlighted) and makes when the visitor moves on. Back
@@ -119,8 +123,9 @@ export interface TourStep {
    */
   prefetch?: string;
   /**
-   * REQ-1945: the step refers to Polly, so the runner opens the Polly panel (through the launcher's own
-   * handler) before anchoring, and the tour closes it on moving to a step without this flag.
+   * REQ-1945: the step shows Polly's panel, so the runner opens it (through the launcher's own
+   * handler) before anchoring, and the tour closes it on moving to a step without this flag. Set on
+   * the steps that show the panel, not on every step whose words name Polly.
    */
   pollyOpen?: boolean;
   /**
@@ -181,6 +186,19 @@ const VIEWS_READY = '[data-tour="tables-header"]';
 // result trace. LineagePage auto-builds the statement graph from `?sql=` on mount (it only analyzes,
 // never runs), so deep-linking it avoids any click-timing race.
 // Exported so the runner's `lineageDemo` prefetch warms the exact statement this step deep-links.
+// The canned pet-store statement the explorers' cards run (the NL demo's SQL branch, useTour), read
+// from Python: as a script on the Python tab, as cells on the Notebook tab. The last expression is
+// the DataFrame each tab shows as a table.
+export const PET_STORE_DEMO_SQL =
+  'SELECT species, COUNT(*) AS pet_count FROM "pet_store"."pets" GROUP BY species LIMIT 100';
+const PYTHON_DEMO_QUERY = `provisa_client.query(\n    '${PET_STORE_DEMO_SQL}'\n)`;
+const PYTHON_DEMO_CODE = `import provisa_client\nprovisa_client.sign_in()\n\n${PYTHON_DEMO_QUERY}\n`;
+// One cell after the notebook's own starter cell (liteBridge NOTEBOOK_STARTER), whole in itself: a
+// kernel the visitor restarted has the client again before the statement runs.
+const NOTEBOOK_DEMO_CELLS = [
+  `%pip install provisa-client\nimport provisa_client\n\n${PYTHON_DEMO_QUERY}`,
+];
+
 export const LINEAGE_DEMO_SQL =
   "SELECT users.name, UPPER(users.name) AS name_upper, COUNT(inquiries.id) AS inquiry_count " +
   'FROM "pet_store"."inquiries" JOIN "pet_store"."users" ON inquiries.user_id = users.id ' +
@@ -356,6 +374,22 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step12",
   },
   {
+    // The Python tab: the canned pet-store statement read as a DataFrame and run, in the browser.
+    route: "/python",
+    capability: "query_development",
+    navState: { code: PYTHON_DEMO_CODE, autoRun: true },
+    element: '.subnav a[href="/python"]',
+    key: "stepPython",
+  },
+  {
+    // The Notebook tab: the same statement as a cell added after the notebook's starter cell.
+    route: "/notebook",
+    capability: "query_development",
+    navState: { cells: NOTEBOOK_DEMO_CELLS, autoRun: true },
+    element: '.subnav a[href="/notebook"]',
+    key: "stepNotebook",
+  },
+  {
     route: "/nl",
     capability: "query_development",
     prep: "seedNl",
@@ -375,7 +409,7 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step15",
   },
   {
-    // REQ-1945: the agents point refers to Polly, so the runner opens the panel (pollyOpen); the list always renders.
+    // REQ-1945: the agents point shows Polly, so the runner opens the panel (pollyOpen); the list always renders.
     route: "/relationships",
     capability: "create_relationship",
     element: '[data-testid="relationships-list"]',
@@ -765,7 +799,18 @@ export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
   ],
   model: ["step20", "step21", "stepMetrics", "stepCommands", "step22"],
   govern: ["step18", "stepRoleInherit", "step19", "stepDomains", "stepTags", "stepRequests"],
-  query: ["step6", "step7", "step8", "step9", "step10", "step11", "step12", "step13"],
+  query: [
+    "step6",
+    "step7",
+    "step8",
+    "step9",
+    "step10",
+    "step11",
+    "step12",
+    "stepPython",
+    "stepNotebook",
+    "step13",
+  ],
   quality: [
     "stepQualityTable",
     "stepQualityPanel",

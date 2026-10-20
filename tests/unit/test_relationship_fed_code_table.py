@@ -25,6 +25,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import duckdb
 import pytest
 
+from provisa.federation.replica_address import ReplicaRoutes
+
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.executor.result import QueryResult
@@ -108,6 +110,7 @@ def _state() -> SimpleNamespace:
         api_endpoints={},
         graphql_remote_sources={},
         source_types={"model": "python", "pg": "postgresql"},
+        replica_routes=ReplicaRoutes(),
         tables=[_risk_table()],
         relationships=[
             {

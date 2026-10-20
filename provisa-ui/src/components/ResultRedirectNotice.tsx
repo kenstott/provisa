@@ -10,7 +10,7 @@
 
 import { Alert, Anchor, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { ResultRedirect } from "../api/admin";
+import type { ResultRedirect } from "../types/resultRedirect";
 
 /**
  * REQ-1194 / REQ-1224: a result the server landed in the results store, said as that: how many rows

@@ -11,10 +11,12 @@
 // REQ-1984, REQ-1993: a Node or Python source is its code -- a package at an exact version (with a
 // lockfile beside it), a Git repository at a commit, or an uploaded archive -- and, for Node, the
 // runtime it runs on. What the form holds is the source's mapping, and an edit refills the form.
+// REQ-2104: the org secrets its code may read, picked by name.
+// REQ-2105: the monthly cap on what its calls to the LLM service cost.
 
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { fireEvent, renderInForm, screen, waitFor } from "../../../test-utils/render";
+import { fireEvent, renderInForm, screen, waitFor, within } from "../../../test-utils/render";
 
 const auth = vi.hoisted(() => ({ activeOrgId: "acme" as string | null }));
 vi.mock("../../../context/AuthContext", () => ({ useAuth: () => auth }));
@@ -23,7 +25,15 @@ vi.mock("../../../api/codeUploads", () => ({
   uploadLockfile: vi.fn().mockResolvedValue("lock-sha-1"),
 }));
 
+vi.mock("../../../api/secrets", () => ({
+  fetchSecrets: vi.fn().mockResolvedValue({
+    provider: { key: "stored", label: "Stored", writable: true },
+    secrets: [{ name: "openrouter" }, { name: "stripe" }],
+  }),
+}));
+
 import { uploadCodeArchive, uploadLockfile } from "../../../api/codeUploads";
+import { fetchSecrets } from "../../../api/secrets";
 import { CodeSourceFields } from "../CodeSourceFields";
 import { codeFieldsFromMapping, codeMappingJson, missingCodeFields } from "../codeSource";
 import { NO_CONNECTION_TYPES, SOURCE_TYPES } from "../constants";
@@ -74,20 +84,73 @@ describe("what a code source saves", () => {
     };
     expect(JSON.parse(codeMappingJson("node", fields))).toEqual({
       runtime: "bun",
-      code: { kind: "git", repository: fields.code_repository, commit: fields.code_commit, subdirectory: "pkg" },
+      code: {
+        kind: "git",
+        repository: fields.code_repository,
+        commit: fields.code_commit,
+        subdirectory: "pkg",
+      },
     });
   });
 
+  it("declares org secrets by name, and keeps an ${env:...} reference as written", () => {
+    const named = JSON.parse(
+      codeMappingJson("python", {
+        code_package: "acme-rates",
+        code_version: "1.0.0",
+        code_secrets: JSON.stringify({ openrouter: null }),
+      }),
+    );
+    expect(named.secrets).toEqual(["openrouter"]);
+    expect(codeFieldsFromMapping(JSON.stringify(named)).code_secrets).toBe(
+      JSON.stringify({ openrouter: null }),
+    );
+    const written = { key: "${env:OPENROUTER_API_KEY}", openrouter: null };
+    const both = JSON.parse(
+      codeMappingJson("node", {
+        ...codeFieldsFromMapping(JSON.stringify({ code: {}, secrets: written })),
+      }),
+    );
+    expect(both.secrets).toEqual(written);
+    expect(
+      JSON.parse(codeMappingJson("python", { code_package: "a", code_version: "1" })),
+    ).not.toHaveProperty("secrets");
+  });
+
+  it("keeps a monthly LLM cap, and none when the field is empty", () => {
+    const capped = JSON.parse(
+      codeMappingJson("python", { code_package: "a", code_version: "1", code_llm_cap: "12.5" }),
+    );
+    expect(capped.llm).toEqual({ cap_usd: 12.5 });
+    expect(codeFieldsFromMapping(JSON.stringify(capped)).code_llm_cap).toBe("12.5");
+    expect(
+      codeFieldsFromMapping(JSON.stringify({ ...capped, llm: { cap_usd: 0 } })).code_llm_cap,
+    ).toBe("0");
+    expect(
+      JSON.parse(
+        codeMappingJson("python", { code_package: "a", code_version: "1", code_llm_cap: "" }),
+      ),
+    ).not.toHaveProperty("llm");
+  });
+
   it("needs what its origin names, and a full commit", () => {
-    expect(missingCodeFields({ code_origin: "package", code_package: "p" })).toEqual(["code_version"]);
-    expect(missingCodeFields({ code_origin: "git", code_repository: "r", code_commit: "v1.0" })).toEqual([
-      "code_commit",
+    expect(missingCodeFields({ code_origin: "package", code_package: "p" })).toEqual([
+      "code_version",
     ]);
+    expect(
+      missingCodeFields({ code_origin: "git", code_repository: "r", code_commit: "v1.0" }),
+    ).toEqual(["code_commit"]);
     expect(missingCodeFields({ code_origin: "upload", code_upload: "h" })).toEqual([]);
   });
 });
 
-function Harness({ type, onFields }: { type: string; onFields: (f: Record<string, string>) => void }) {
+function Harness({
+  type,
+  onFields,
+}: {
+  type: string;
+  onFields: (f: Record<string, string>) => void;
+}) {
   const [fields, setFields] = useState<Record<string, string>>({});
   return (
     <CodeSourceFields
@@ -124,7 +187,35 @@ describe("the code source's fields", () => {
     fireEvent.change(hidden, { target: { files: [file] } });
     await waitFor(() => expect(uploadCodeArchive).toHaveBeenCalledWith("acme", file));
     await waitFor(() =>
-      expect(seen.at(-1)).toMatchObject({ code_upload: "code-hash-1", code_upload_filename: "rates.zip" }),
+      expect(seen.at(-1)).toMatchObject({
+        code_upload: "code-hash-1",
+        code_upload_filename: "rates.zip",
+      }),
+    );
+  });
+
+  it("pick the org secrets the code may read", async () => {
+    const seen: Record<string, string>[] = [];
+    renderInForm(<Harness type="python" onFields={(f) => seen.push(f)} />);
+    await waitFor(() => expect(fetchSecrets).toHaveBeenCalledWith("acme", "org"));
+    // Mantine MultiSelect in jsdom: floating-ui hides the detached dropdown (all rects are 0), so
+    // the option is found through the input's aria-controls listbox with hidden: true.
+    const picker = screen.getByTestId("code-secrets");
+    fireEvent.click(picker);
+    await waitFor(() => {
+      if (!picker.getAttribute("aria-controls")) throw new Error("dropdown not open");
+    });
+    const listbox = document.getElementById(picker.getAttribute("aria-controls") as string);
+    fireEvent.click(
+      await within(listbox as HTMLElement).findByRole("option", {
+        name: "openrouter",
+        hidden: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(seen.at(-1)).toMatchObject({
+        code_secrets: JSON.stringify({ openrouter: null }),
+      }),
     );
   });
 
@@ -137,7 +228,10 @@ describe("the code source's fields", () => {
     fireEvent.change(hidden, { target: { files: [file] } });
     await waitFor(() => expect(uploadLockfile).toHaveBeenCalledWith("acme", file));
     await waitFor(() =>
-      expect(seen.at(-1)).toMatchObject({ lockfile_upload: "lock-sha-1", lockfile_filename: "package-lock.json" }),
+      expect(seen.at(-1)).toMatchObject({
+        lockfile_upload: "lock-sha-1",
+        lockfile_filename: "package-lock.json",
+      }),
     );
   });
 });

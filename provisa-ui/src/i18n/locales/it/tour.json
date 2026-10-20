@@ -98,36 +98,44 @@
         "description": "💬 Chiedi nel linguaggio o con lo strumento che già usi (SQL, GraphQL, Cypher, linguaggio naturale tramite Polly, oppure uno strumento di BI o un driver), e ognuno legge lo stesso modello governato, quindi la risposta e le regole sono le stesse qualunque tu scelga."
       },
       "step6": {
-        "title": "SQL (1 di 7 superfici)",
+        "title": "SQL (1 di 9 superfici)",
         "description": "SQL vive nell'esploratore SQL. SQL standard federato su ogni sorgente: unisci Postgres a Mongo a un CSV in un'unica istruzione. I metadati stessi del modello e ogni traccia di attività sono qui tabelle interrogabili, così puoi unire il tuo log di audit o la derivazione direttamente ai dati live.<p>🔌 Lo stesso SQL governato passa attraverso più protocolli wire oltre a questo esploratore; il tuo strumento sceglie quello che già parla:</p><ul><li><strong>pgwire</strong>: ogni client compatibile con Postgres (psql, DBeaver, Tableau, Power BI) si connette senza configurazione.</li><li><strong>JDBC</strong>: si integra in qualsiasi app Java/JVM, pipeline ETL o strumento BI capace di JDBC.</li><li><strong>Arrow Flight SQL</strong>: streaming colonnare per client ADBC, senza ri-codifica per riga, pensato per grandi set di risultati.</li><li><strong>DuckDB · airport</strong>: fai ATTACH di Provisa da DuckDB e interroga la federazione governata sul posto.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 di 7 superfici)",
+        "title": "GraphQL (2 di 9 superfici)",
         "description": "◈ La stessa query, tipizzata come GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Raggruppamenti e aggregati sulle tue relazioni: 🎯 un solo endpoint, 📖 uno schema auto-documentante.</p><p>🔌 Chiamala da <strong>qualsiasi client GraphQL</strong>, come Apollo, Relay o urql. Con la federazione abilitata, Provisa entra in un <strong>Apollo supergraph come subgraph</strong>, così il tuo modello federato si compone accanto ai grafi esistenti.</p>"
       },
       "step8": {
-        "title": "Cypher (3 di 7 superfici)",
+        "title": "Cypher (3 di 9 superfici)",
         "description": "🕸️ Attraversa il modello federato come un grafo con Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Quell'attraversamento avviene <strong>tra sorgenti diverse</strong>, senza bisogno di un unico database a grafo.</p><p>🔌 Qualsiasi client <strong>Bolt</strong>, come Neo4j Browser o Bloom, esegue lo stesso attraversamento sul wire, senza modifiche al codice.</p>"
       },
       "step9": {
-        "title": "gRPC (4 di 7 superfici)",
+        "title": "gRPC (4 di 9 superfici)",
         "description": "⚙️ Ogni entità registrata è anche un servizio gRPC:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Chiamalo da qualsiasi client gRPC: 📐 fortemente tipizzato, 🚀 ad alto throughput.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 di 7 superfici)",
+        "title": "JSON:API (5 di 9 superfici)",
         "description": "🧩 Una superficie JSON:API conforme alla specifica:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paginazione e 🔍 filtri già pronti.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 di 7 superfici)",
+        "title": "OpenAPI / REST (6 di 9 superfici)",
         "description": "🌐 E un semplice endpoint REST, descritto da OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Completamente descritto, così qualsiasi client REST o generatore di codice può consumarlo.</p>"
       },
       "step12": {
-        "title": "MCP (7 di 7 superfici)",
-        "description": "🤖 La settima superficie permette a un agente di <strong>ragionare con i tuoi dati</strong>. Usa gli stessi strumenti governati (cerca nel catalogo, descrivi le tabelle, esegui SQL, segui le relazioni) e li <em>concatena</em> per rispondere a domande a cui nessuna singola query potrebbe rispondere, con ogni chiamata vincolata dalla governance del <strong>tuo</strong> ruolo.<p>🔌 Lo stesso <strong>server MCP</strong> si collega a Claude Desktop, Claude Code o qualsiasi client MCP, così gli agenti esplorano e ragionano sul tuo modello in modo governato.</p><p>🔑 Usa la tua chiave LLM; questo scambio è un esempio precompilato.</p><p>Resta una superficie: quella che scrive tutte e sette per te. →</p>"
+        "title": "MCP (7 di 9 superfici)",
+        "description": "🤖 La settima superficie permette a un agente di <strong>ragionare con i tuoi dati</strong>. Usa gli stessi strumenti governati (cerca nel catalogo, descrivi le tabelle, esegui SQL, segui le relazioni) e li <em>concatena</em> per rispondere a domande a cui nessuna singola query potrebbe rispondere, con ogni chiamata vincolata dalla governance del <strong>tuo</strong> ruolo.<p>🔌 Lo stesso <strong>server MCP</strong> si collega a Claude Desktop, Claude Code o qualsiasi client MCP, così gli agenti esplorano e ragionano sul tuo modello in modo governato.</p><p>🔑 Usa la tua chiave LLM; questo scambio è un esempio precompilato.</p><p>Altre due leggono gli stessi dati governati da Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 di 9 superfici)",
+        "description": "🐍 La scheda Python esegue Python nel tuo browser, con il tuo accesso:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>La risposta torna come DataFrame pandas, letta attraverso la stessa pipeline governata, quindi le regole sulle righe e le maschere del tuo ruolo valgono anche qui.</p><p>🔌 Lo stesso pacchetto <strong>provisa-client</strong> si installa con pip su qualsiasi Python desktop, quindi uno script scritto qui gira senza modifiche nel tuo ambiente.</p>"
+      },
+      "stepNotebook": {
+        "title": "Notebook (9 di 9 superfici)",
+        "description": "📓 La scheda Notebook è JupyterLite: un notebook Jupyter che gira nel tuo browser. La prima cella esegue l'accesso, la successiva legge la stessa query come DataFrame da rappresentare in un grafico o unire ad altri dati.<p>⬇️ Scarica il notebook e si apre in qualsiasi Jupyter desktop, dove le stesse celle leggono da Provisa come qui.</p><p>Resta una superficie: quella che scrive le query al posto tuo. →</p>"
       },
       "step13": {
-        "title": "Chiedi e basta: la superficie che scrive tutte e sette",
-        "description": "💬 <em>\"quanti animali ci sono per specie\"</em><p><strong>Non devi imparare nessuna delle sette superfici.</strong> Chiedi in linguaggio naturale e Provisa compila la tua domanda in tutti i linguaggi di interrogazione contemporaneamente: ogni pannello sotto è quella stessa frase come SQL, GraphQL, Cypher, gRPC, JSON:API e REST.</p><p>Usa la superficie che i tuoi strumenti già parlano, oppure saltale tutte e chiedi soltanto.</p><p>🔑 Le query in linguaggio naturale live usano la tua chiave LLM; questa è un esempio precompilato.</p><p>✅ Un modello, <strong>otto superfici</strong>: sette per interrogare e quella che le scrive.</p><div class='tour-tags'><span>Linguaggio naturale</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Chiedi e basta: la superficie che scrive le tue query",
+        "description": "💬 <em>\"quanti animali ci sono per specie\"</em><p><strong>Non devi imparare nessuno di questi linguaggi di query.</strong> Chiedi in linguaggio naturale e Provisa compila la tua domanda in tutti e sette insieme: ogni pannello qui sotto è quella stessa frase in SQL, GraphQL, Cypher, gRPC, JSON:API e REST.</p><p>Non può aprire Python o il Notebook direttamente, ma puoi sempre chiedere a Polly di portare una query in uno dei due.</p><p>🔑 Le query in linguaggio naturale dal vivo usano la tua chiave LLM; questa è un esempio preparato.</p><p>✅ Un solo modello dietro tutte le <strong>nove superfici</strong>, e il linguaggio naturale scrive le query al posto tuo.</p><div class='tour-tags'><span>Linguaggio naturale</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "Ecco il nucleo di cinque minuti",
@@ -1460,6 +1468,146 @@
       "churnprodRecap": {
         "title": "Cosa hai visto",
         "description": "Il modello di un data scientist è andato in produzione senza un servizio proprio da gestire. Il suo pacchetto è fissato e si installa una volta. Un join alimenta la sua funzione, che si legge come una tabella, e il mascheramento e le regole di riga di ogni tabella governano ciò che restituisce. SQL, GraphQL e ogni altro accesso la leggono allo stesso modo."
+      },
+      "worldcupIntro": {
+        "title": "Quattro fonti pubbliche, un Mondiale",
+        "description": "Chi ha vinto il Mondiale, e di quale confederazione? La risposta è sparsa in dati pubblici: l'elenco delle finali di Wikipedia e i suoi articoli sulle confederazioni, e due dataset di Kaggle con ogni partita del Mondiale e ogni gol internazionale. Ogni fonte chiama i paesi a modo suo. Wikipedia scrive West Germany, Kaggle scrive Germany FR e le tabelle dei membri delle confederazioni scrivono Germany. Questo tour acquisisce i dati, mette d'accordo i nomi con una breve funzione Python e interroga il risultato come un unico grafo governato."
+      },
+      "worldcupWikipedia": {
+        "title": "Wikipedia, registrata in pochi minuti",
+        "description": "Questa è una sorgente Wikipedia. La sua scansione legge sette pagine: la List of FIFA World Cup finals e gli articoli delle sei confederazioni. Ogni tabella di dati di quelle pagine diventa una tabella con il nome della sua pagina e della sua didascalia, quindi le finali sono <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>. Una sorgente pubblica è governata come qualsiasi database interno, con gli stessi ruoli, permessi e maschere. Imposta un intervallo di aggiornamento e queste sorgenti restano aggiornate da sole. Questa demo legge un'istantanea fissa, così ogni visitatore vede le stesse risposte."
+      },
+      "worldcupFinals": {
+        "title": "Le finali, come le elenca Wikipedia",
+        "description": "Ogni finale dal 1930 al 2026, con vincitori e finalisti con i nomi del loro tempo. Wikipedia elenca i titoli del 1954, 1974 e 1990 sotto West Germany e quello del 2014 sotto Germany."
+      },
+      "worldcupKaggle": {
+        "title": "I dataset di Kaggle arrivano come tabelle",
+        "description": "Questa è una sorgente Kaggle: il dataset FIFA World Cup, con ogni torneo, partita e presenza di giocatore dal 1930 al 2014. Ognuno dei suoi file arriva come una tabella. Una seconda sorgente Kaggle contiene ogni gol internazionale dal 1916. Come le tabelle di Wikipedia, sono dati pubblici, registrati in pochi minuti e governati come qualsiasi database interno."
+      },
+      "worldcupMatches": {
+        "title": "Partite con i nomi del loro tempo",
+        "description": "Kaggle scrive la Germania Ovest come Germany FR e la Germania Est come German DR. Alcuni suoi nomi portano residui di markup dal file, come <code>rn\"&gt;Republic of Ireland</code>. Le righe vuote del file restano come righe senza valori, così come il dataset le contiene."
+      },
+      "worldcupDisagree": {
+        "title": "I nomi non coincidono",
+        "description": "Contati con i nomi che scrive Wikipedia, Germany ha un titolo e West Germany tre, come se fossero due paesi. Kaggle scrive la stessa squadra come Germany FR, quindi anche un join sui nomi tra le fonti perde quei titoli."
+      },
+      "worldcupFunction": {
+        "title": "La funzione è la tabella",
+        "description": "country_alias è una sorgente Python, e questa funzione è la tabella attraverso cui si unisce ogni relazione tra fonti. Riceve ogni nome di squadra che le fonti scrivono, chiede a un LLM, con una chiave dal vault dell'organizzazione, a quale membro della FIFA corrisponde il nome, e restituisce il nome e il codice FIFA del membro. Viene eseguita di nuovo a ogni intervallo di aggiornamento, così un nome nuovo viene abbinato appena compare.<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "Ogni nome, abbinato e verificato",
+        "description": "Questi sono i nomi che differiscono dal nome del loro membro. Germany FR e West Germany sono Germany, Zaire è DR Congo e la Soviet Union è Russia. Ogni abbinamento è stato verificato prima che questa demo lo congelasse, e 27 dei 237 sono stati corretti. Una squadra i cui risultati non sono passati a nessun membro mantiene il proprio nome: East Germany resta East Germany, quindi la sua partita del 1974 contro West Germany non è Germany contro Germany."
+      },
+      "worldcupJunction": {
+        "title": "Una relazione attraverso la funzione",
+        "description": "WON unisce un membro di una confederazione alle finali che ha vinto attraverso country_alias. Il codice FIFA del membro trova ogni nome a cui corrisponde, e ogni nome trova le sue finali. RUNNER_UP, PLAYED_HOME, PLAYED_AWAY e SCORED si uniscono allo stesso modo."
+      },
+      "worldcupGraph": {
+        "title": "Ogni titolo in un grafo",
+        "description": "Ogni membro è collegato alle finali che ha vinto, con qualunque nome le abbia vinte. Il nodo di Germany riunisce 1954, 1974, 1990 e 2014."
+      },
+      "worldcupByConfederation": {
+        "title": "Raggruppato per confederazione",
+        "description": "Raggruppati per confederazione, i membri della UEFA hanno 13 titoli e quelli della CONMEBOL 10. Nessun'altra confederazione ha vinto una finale."
+      },
+      "worldcupSql": {
+        "title": "Lo stesso modello in SQL",
+        "description": "Lo stesso join in SQL conta i titoli di ogni membro attraverso country_alias. Brazil è in testa con cinque, e Germany e Italy ne hanno quattro ciascuna."
+      },
+      "worldcupGraphql": {
+        "title": "E in GraphQL",
+        "description": "In GraphQL ogni finale ha un campo <code>winner</code> attraverso country_alias, così 1954, 1974 e 1990 mostrano West Germany accanto al membro a cui corrisponde: Germany, GER."
+      },
+      "worldcupRecap": {
+        "title": "Riepilogo",
+        "description": "Dati pubblici da Wikipedia e Kaggle, acquisiti in pochi minuti e governati come qualsiasi database interno, messi d'accordo da una decina di righe di Python e interrogati come un unico grafo. Gli abbinamenti della funzione sono stati verificati, così il grafo conta ogni titolo una volta, sotto il membro giusto."
+      },
+      "cloudpolicyScenario": {
+        "title": "Di cosa parla questa demo",
+        "description": "La tua policy di sicurezza dice che ogni disco collegato a una macchina virtuale usa una chiave gestita dal cliente. Guidi la sicurezza e lo verifichi su Azure, AWS e Google Cloud a partire da ciò che è già registrato. La prima sorgente è l'inventario cloud. Elenca ogni macchina e ogni disco dei tre cloud, con la chiave che cifra ciascun disco."
+      },
+      "cloudpolicyIncidents": {
+        "title": "Gli incident",
+        "description": "La seconda sorgente sono gli incident ServiceNow del team di sicurezza. Ognuno nomina il disco a cui si riferisce come elemento di configurazione e cita la sezione della policy sotto cui è aperto. Un'eccezione è un incident della categoria Policy exception."
+      },
+      "cloudpolicyReader": {
+        "title": "La policy, letta dal codice",
+        "description": "La policy stessa è una pagina web. Questo pacchetto Python viene distribuito con la pagina e la legge in una riga per controllo. La sua funzione è una tabella, quindi la policy si unisce al resto del modello."
+      },
+      "cloudpolicyPolicy": {
+        "title": "La policy come righe",
+        "description": "Ecco ogni controllo della policy, letto dal suo HTML con il titolo, la clausola e il giorno in cui è entrato in vigore. La sezione 4.2 è il controllo sulla cifratura dei dischi sotto revisione."
+      },
+      "cloudpolicySearch": {
+        "title": "La policy, cercata per significato",
+        "description": "Ogni clausola è stata incorporata una volta, alla preparazione della demo. Una ricerca per significato trova il controllo sulla cifratura dei dischi anche quando le tue parole sono diverse da quelle della clausola."
+      },
+      "cloudpolicyModel": {
+        "title": "Un modello per tre cloud",
+        "description": "Ogni disco nomina la macchina a cui è collegato. Questa relazione unisce dischi e macchine allo stesso modo in Azure, AWS e Google Cloud."
+      },
+      "cloudpolicyCites": {
+        "title": "Incident legati alle clausole",
+        "description": "Ogni incident cita una sezione della policy. Questa relazione lo unisce alla clausola che cita, così un incident aperto sotto la sezione sbagliata salta all'occhio."
+      },
+      "cloudpolicyViolations": {
+        "title": "La policy come vista",
+        "description": "La sezione 4.2 è scritta come vista. Elenca ogni disco collegato la cui chiave è gestita dal cloud, accanto alla macchina su cui si trova il disco."
+      },
+      "cloudpolicyReview": {
+        "title": "La revisione giornaliera",
+        "description": "La revisione giornaliera classifica ogni disco collegato secondo le regole della policy. Un disco senza chiave gestita dal cliente può essere coperto da un'eccezione valida. Se non lo è, il suo incident è entro la scadenza o l'ha superata, è stato chiuso con il disco ancora non conforme, oppure non è mai stato aperto."
+      },
+      "cloudpolicyTrigger": {
+        "title": "Il trigger giornaliero",
+        "description": "Ogni mattina un trigger pianificato esegue la revisione e scrive le righe del giorno nello storico delle revisioni. Scrive attraverso la stessa pipeline governata di qualsiasi istruzione, con il permesso di scrittura del suo ruolo."
+      },
+      "cloudpolicyTrend": {
+        "title": "Quattordici giorni di storico",
+        "description": "Lo storico che conserva il trigger mostra le violazioni giorno per giorno. I dischi escono man mano che i loro incident vengono risolti, e una nuova violazione compare il giorno in cui si presenta."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Chiedi a Polly chi viola il controllo",
+        "description": "Polly legge lo stesso modello governato che leggi tu. Nomina i dischi senza chiave gestita dal cliente e la sezione che la richiede."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Eccezioni ancora valide",
+        "description": "Un'eccezione dura 90 giorni secondo la sezione 4.3. Polly trova i dischi che copre ancora."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incident sotto la sezione sbagliata",
+        "description": "Alcuni incident citano una sezione diversa dal controllo di cui parlano, e uno cita una sezione che la policy ha ritirato."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Controlli che nessuno verifica",
+        "description": "La policy ha controlli che nessuna verifica fa rispettare. Polly confronta la policy con le verifiche del team e può proporre una vista che uno steward aggiunga."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Ora come auditor",
+        "description": "L'auditor legge ogni account di ogni cloud."
+      },
+      "cloudpolicyOpen": {
+        "title": "Tutto ciò che la revisione segnala",
+        "description": "Ecco ogni disco che la revisione segnala, per ogni team."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Ora come team pagamenti",
+        "description": "Il team pagamenti legge solo le proprie risorse e i propri incident."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Solo le proprie righe",
+        "description": "La stessa istruzione restituisce solo i dischi del team pagamenti. Le regole di riga stanno sull'inventario e sugli incident, e ogni vista costruita sopra le applica."
+      },
+      "cloudpolicyDashboard": {
+        "title": "La dashboard di conformità",
+        "description": "Superset legge le stesse viste tramite il protocollo Postgres di Provisa. Ecco la sua dashboard di conformità, con le violazioni per controllo."
+      },
+      "cloudpolicyRecap": {
+        "title": "Cosa hai visto",
+        "description": "Hai rivisto una policy su tre cloud a partire da ciò che era già registrato. La policy è una tabella, letta dal codice dalla sua stessa pagina, e ogni incident è unito alla clausola che cita. Un trigger giornaliero conserva lo storico, e ogni ruolo legge solo ciò che le sue regole consentono, in SQL, in Polly e in Superset."
       }
     },
     "status": {
@@ -1564,6 +1712,14 @@
       "churnprod": {
         "title": "Il rischio di abbandono in produzione",
         "summary": "Il modello scikit-learn della demo sull'abbandono, in produzione. Il suo pacchetto Python è un'origine, e la sua funzione è una tabella che assegna un punteggio a ogni cliente in un join, con il mascheramento e le regole di riga applicati a ciò che restituisce."
+      },
+      "worldcup": {
+        "title": "World Cup, un grafo",
+        "summary": "I dati del Mondiale di Wikipedia e di Kaggle non coincidono sui nomi dei paesi. Una breve funzione Python abbina ogni nome con un LLM, e le fonti pubbliche diventano un unico grafo governato."
+      },
+      "cloudpolicy": {
+        "title": "Revisione della policy cloud",
+        "summary": "Una policy di sicurezza rivista su Azure, AWS e Google Cloud. L'inventario cloud, gli incident di ServiceNow e la policy stessa, letta dalla sua pagina web dal codice, sono un unico modello, e un trigger giornaliero conserva lo storico della revisione."
       }
     }
   }

@@ -303,7 +303,11 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     from provisa.core.secrets import resolve_secrets_in_dict
 
     config = ProvisaConfig.model_validate(
-        kafka_topics_as_tables(commit_time_columns(views_as_tables(resolve_secrets_in_dict(data)))),
+        kafka_topics_as_tables(
+            commit_time_columns(
+                views_as_tables(_code_secrets_as_written(data, resolve_secrets_in_dict))
+            )
+        ),
         context={STORED_MODEL: stored},
     )
     # What is STORED is the config as written: a credential stays the reference the file gave,
@@ -314,9 +318,42 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     return config
 
 
+def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
+    """``resolve(data)``, but a code source's declared secrets kept as the references written
+    (REQ-2104): each is resolved only when the code reads it, through Provisa's services
+    (provisa/codesource/services.py), so a config naming a secret not yet in the vault loads."""
+    from provisa.codesource.source import CODE_SOURCE_TYPES
+
+    held: dict[int, Any] = {}
+    sources = data.get("sources")
+    if isinstance(sources, list):
+        for i, source in enumerate(sources):
+            mapping = source.get("mapping") if isinstance(source, dict) else None
+            if source.get("type") in CODE_SOURCE_TYPES and isinstance(mapping, dict):
+                if "secrets" in mapping:
+                    held[i] = mapping["secrets"]
+    if not held:
+        return resolve(data)
+    resolved = resolve(
+        {
+            **data,
+            "sources": [
+                {**s, "mapping": {k: v for k, v in s["mapping"].items() if k != "secrets"}}
+                if i in held
+                else s
+                for i, s in enumerate(sources)  # type: ignore[arg-type]
+            ],
+        }
+    )
+    for i, written in held.items():
+        resolved["sources"][i]["mapping"]["secrets"] = written
+    return resolved
+
+
 _REFERENCE = "${"
-#: A table's fields that name its data where it is: stored resolved (_as_written).
-_TABLE_NAMES = frozenset({"schema_name", "table_name", "alias", "query_template"})
+#: A table's fields that name its data where it is: stored resolved (_as_written). Its live
+#: block names the Kafka topic it follows, and the broker a change is published to.
+_TABLE_NAMES = frozenset({"schema_name", "table_name", "alias", "query_template", "live"})
 
 
 def _raw_of(raw: dict, model: BaseModel, name: str) -> Any:

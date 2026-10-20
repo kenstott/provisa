@@ -84351,6 +84351,10 @@ And a reload within the grace period keeps the sandbox'
   related_reqs:
   - REQ-2006
   notes: 'Maintainer 2026-10-16: when a live demo browser window is closed, send a signal so the backend can remove it.'
+  tests:
+  - tests/unit/test_sandbox_closing.py
+  - provisa-ui/src/__tests__/sandboxClosing.test.ts
+  - tests/integration/test_demo_sandbox_status_close_e2e.py
 - id: REQ-2066
   status: complete
   since: 2026-10
@@ -84700,6 +84704,7 @@ And a cell that reads shop.orders into a DataFrame, fits a model and plots it sh
   - tests/unit/test_write_grants_admission.py
   - tests/unit/test_write_grants_model.py
   - tests/unit/test_role_inheritance.py
+  - tests/integration/test_write_admission_every_surface.py
   integration_test: required
   integration_test_reason: A grant's rows, check and presets are proved by writing through a running server
     and reading the rows at the source.
@@ -85401,9 +85406,32 @@ Then it is refused by name and told to run a host built for this Provisa version
   - provisa/python/host.py
   - provisa/python/remote_host.py
   - provisa/node/host.mjs
+  - provisa/node/host-core.mjs
+  - provisa/node/remote_host.mjs
+  - provisa/codesource/oci.py
+  - provisa/codesource/image_build.py
+  - provisa/codesource/builds.py
+  - provisa/codesource/remote_sources.py
+  - provisa/codesource/manifest.py
+  - provisa/codesource/source.py
+  - provisa/core/container_registries.py
+  - provisa/api/admin/container_registries_router.py
+  - provisa/api/admin/code_hosts_router.py
+  - provisa/runtime_deps/code_runtimes.py
+  - provisa-ui/src/components/admin/ContainerRegistriesTab.tsx
+  - provisa-ui/src/pages/sources/CodeHostPanel.tsx
   tests:
   - tests/unit/test_code_worker.py
   - tests/unit/test_code_remote_host.py
+  - tests/unit/test_code_remote_host_node.py
+  - tests/unit/test_code_image_oci.py
+  - tests/unit/test_code_image_build.py
+  - tests/unit/test_code_image_builds.py
+  - tests/unit/test_code_remote_sources.py
+  - tests/unit/test_container_registries.py
+  - tests/integration/test_code_source_remote_host.py
+  - provisa-ui/src/__tests__/ContainerRegistries.test.tsx
+  - provisa-ui/src/pages/sources/__tests__/CodeHostPanel.test.tsx
   docs:
   - code-sources.md
 - id: REQ-2095
@@ -85440,6 +85468,74 @@ And its prod source reads the shop's database with it, while the stored source k
   - ops
   docs:
   - named-demos.md
+- id: REQ-2105
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: MUST
+  type: behavioral
+  description: "Provisa's services to a code source's worker (REQ-2104) include an OpenAI-compatible LLM service at $PROVISA_SERVICES/llm/v1: POST chat/completions and embeddings, so any SDK works with its base URL there and no key, the worker's scoped token being in the address; the egress proxy answers it for a local worker. A request names a model as provisa:<role>, the model the org's AI Models assign that role, or by a model id a role is assigned (for embeddings, one of the org's vector models); any other is refused naming it. The call is routed through the org's AI Models configuration -- its vendors, endpoints and keys, a sandbox-tier org's through the tier's sandbox.ai_* settings -- and what goes out is redacted centrally. Streaming is refused by name. Every call is metered for its source in code_source_llm_usage (tokens, and cost at the model's polly.model_prices entry) and audited in the org's administrative trail (source, model, tokens, time). A source's mapping may set llm.cap_usd, a calendar-month (UTC) cap on its metered cost: a capped source may call only models with a price, and once its month's cost reaches the cap its calls are refused (429) naming the source and the cap; an uncapped source's calls to an unpriced model are metered as tokens only. The source form has an LLM monthly cap field."
+  use_case: "A Python code table that summarises each account calls provisa:sql_generation with the OpenAI SDK, getting whichever model the org assigns that role through the org's own keys, its spend held under a monthly cap and every call visible in the audit trail."
+  scenario: "Given a python source summaries with llm.cap_usd 20 and the org's AI Models assigning sql_generation a priced model
+
+When its worker POSTs $PROVISA_SERVICES/llm/v1/chat/completions with model provisa:sql_generation
+
+Then the call is answered by that model through the org's endpoint, its prompt redacted, and metered and audited for summaries
+
+And a request naming a model the org does not assign is refused naming the model
+
+And once summaries' cost this month reaches 20 USD its calls are refused naming the source and the cap"
+  code:
+  - provisa/codesource/llm_service.py
+  - provisa/codesource/services.py
+  - provisa/codesource/egress.py
+  - provisa/codesource/source.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  - provisa/vector/providers.py
+  - provisa-ui/src/pages/sources/CodeSourceFields.tsx
+  - provisa-ui/src/pages/sources/codeSource.ts
+  tests:
+  - tests/unit/test_code_source_llm_service.py
+  - tests/integration/test_code_source_llm.py
+  - provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx
+  stakeholders:
+  - data-engineer
+- id: REQ-2104
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: MUST
+  type: behavioral
+  description: "A Node or Python code source declares the names its code may read (secrets in its mapping): a list of names, each the org secret of that name, or a mapping of name to vault reference (${secret:NAME} or ${env:NAME}). The references are kept as written through config load and storage and never resolved at load, so a config naming a secret not yet stored loads. When the source's worker starts, Provisa issues a token scoped to the org, the source and its declared names, revoked when the worker stops, and gives the worker one environment variable, PROVISA_SERVICES, an address on a host only the egress proxy answers (http://provisa-services/<token>). The code reads a secret with GET $PROVISA_SERVICES/secrets/<name>; the proxy answers it itself, resolving the reference in the org's vault at that moment, so a rotated secret is read on the next fetch. Further services sit beside secrets/ under the same address. Nothing else of Provisa is reachable: the proxy still never connects to loopback, and the API's host must be on the egress allow-list. An undeclared name, or one that cannot be resolved, is refused naming the name, never the value. Every read is audited in the org's administrative trail (source, name, time, outcome); a value is never logged, never in a refusal, and never part of the code's content hash. A worker serves only the org it was prepared for. The source form has a Secrets field that picks the org's secrets by name."
+  use_case: "A Python code table that calls an LLM through OpenRouter reads the org's openrouter secret when it runs, without the key ever being written into its code, its config or Provisa's logs."
+  scenario: "Given a python source rates with secrets [openrouter] and the org secret openrouter stored
+
+When its worker GETs $PROVISA_SERVICES/secrets/openrouter
+
+Then the proxy answers with the secret's current value and the read is recorded in the org's audit trail
+
+And a GET of $PROVISA_SERVICES/secrets/stripe is refused naming stripe
+
+And once the worker stops its address reads nothing"
+  code:
+  - provisa/codesource/services.py
+  - provisa/codesource/egress.py
+  - provisa/codesource/worker.py
+  - provisa/codesource/source.py
+  - provisa/core/config_loader.py
+  - provisa-ui/src/pages/sources/CodeSourceFields.tsx
+  - provisa-ui/src/pages/sources/codeSource.ts
+  tests:
+  - tests/unit/test_code_source_services.py
+  - tests/integration/test_code_source_secrets.py
+  - provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx
+  stakeholders:
+  - data-engineer
 - id: REQ-2101
   status: complete
   since: 2026-10
@@ -85528,3 +85624,179 @@ Then every row is an EU customer's, each email address arrives masked, and the N
   - tests/integration/test_churnprod_demo.py
   - tests/unit/test_named_demo_tour.py
   - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
+- id: REQ-2103
+  status: complete
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A named demo, World Cup: public sources about the World Cup whose country names disagree become one
+    governed graph. Wikipedia (the wikipedia source type) crawls the List of FIFA World Cup finals and the six confederation
+    articles, whose Members tables give each FIFA member by confederation, with each table named as the crawl names
+    it. Kaggle (the kaggle source type) gives the FIFA World Cup dataset (WorldCups, WorldCupMatches, WorldCupPlayers)
+    and the international results goalscorers. The junction is a Python code source, country_alias(name), shipped
+    as a declared code archive with its lockfile (REQ-2101): it receives each distinct team name through a relationship''s
+    parameters map (REQ-2099), matches it with an LLM using a key from the org''s vault, and returns the name, the
+    canonical country and its FIFA code. Relationships across the sources are junction-backed through it (REQ-1586),
+    so West Germany''s and Germany FR''s results are Germany''s. Every source, country_alias included, is frozen as
+    declared replica rows (cache_ttl -1, REQ-2089), so a sandbox fetches nothing, calls no LLM and needs no key; the
+    country_alias rows are the function''s output from a real run, each reviewed and corrected before they were frozen.
+    Its tour: the scenario; the Wikipedia tables and the crawl that names them; the Kaggle datasets; a query that misses
+    West Germany''s wins because the names disagree; the country_alias function, the table the graph joins through;
+    the Cypher graph (Country WON Final, Country PLAYED Match, Player SCORED_IN Match) grouped by confederation, with
+    West Germany''s wins under Germany; the same model in SQL and GraphQL; a recap.'
+  use_case: A visitor sees public data sourced in minutes, made to agree by a short Python function, and queried as
+    one graph.
+  scenario: 'Given the World Cup demo started from its template
+
+
+    When a visitor runs the tour''s Cypher step
+
+
+    Then Germany''s WON edges include the 1954, 1974 and 1990 finals that Wikipedia lists under West Germany
+
+
+    And no source, LLM or key is contacted'
+  related_reqs:
+  - REQ-1586
+  - REQ-1960
+  - REQ-2089
+  - REQ-2099
+  - REQ-2101
+  code:
+  - demo/named/worldcup/config.yaml
+  - demo/named/worldcup/country_alias/country_alias.py
+  tests:
+  - tests/integration/test_worldcup_demo.py
+  - tests/unit/test_worldcup_demo.py
+  - tests/unit/test_named_demo_tour.py
+- id: REQ-2102
+  status: complete
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: "The named demo cloudpolicy reviews a cloud security policy after the fact, read only. The policy says every disk attached to a virtual machine uses a customer-managed key (CMEK, §4.2), with CISO-approved exceptions that expire after 90 days (§4.3), no public addresses on database servers (§5.1) and remediation deadlines by incident priority (§6.1), among seven controls. Its sources are faked with their real types: the cloud inventory (cloudops: compute_resources, and storage_resources with key_id and attached_instance_id across Azure managed disks, EBS volumes and GCP persistent disks) and the security team's ServiceNow incidents (number, short_description, state, priority, category, opened_at, resolved_at, u_policy_control, assignment_group and cmdb_ci with their display values), each a TTL -1 replica of declared rows that never contacts the service. The policy is an HTML document shipped in a Python code source whose policy_sections(url) reads it into section, heading, clause and effective date; each clause is embedded into the demo's pgvector store for search by meaning. Relationships join disk to virtual machine, incident to disk and incident to the clause it cites. Views state §4.2 (attached disks without CMEK), §5.1, the incidents citing a wrong or withdrawn section, the controls no check enforces, and the daily review classifying each attached disk as compliant, covered by an exception, exception expired, violation ticketed, overdue past §6.1, closed while still not compliant, or never filed. A daily scheduled SQL trigger writes the day's review into review_history through the governed pipeline under its write grant; fourteen days of history are seeded. The auditor reads every account; the payments team's row rules keep it to its own resources and incidents. The tour walks the scenario, the three sources, the model, the policy as a view, the trigger and its history (a tour step may name a scheduled trigger, trigger: <id>, its row on the Triggers page), four Polly questions with stored answers, the same list as the payments team, a Superset compliance dashboard as a picture and a recap."
+  use_case: A security lead reviews one policy across three clouds from records already kept, and each application team sees only its own findings.
+  scenario: "Given the cloudpolicy demo set up
+
+When the daily review is read as the auditor and as the payments team
+
+Then the auditor sees the 30 attached disks without a customer-managed key, each classified by the policy's rules, and the payments team sees only its own"
+  related_reqs:
+  - REQ-2089
+  - REQ-2101
+  - REQ-2054
+  - REQ-2012
+  code:
+  - demo/named/cloudpolicy/config.yaml
+  - demo/named/cloudpolicy/tour.yaml
+  - demo/named/cloudpolicy/generate.py
+  - demo/named/cloudpolicy/policy/policy_reader/policy_reader.py
+  - demo/named/cloudpolicy/db/init.sql
+  - provisa-ui/src/tour/demoTour.ts
+  tests:
+  - tests/integration/test_cloudpolicy_demo.py
+  - tests/unit/test_named_demo_tour.py
+  - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
+- id: REQ-2112
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: "A Visual Studio Code extension for Node and Python code sources, published on the VS Code Marketplace. In the open workspace it lists the functions Provisa would serve as @table or command, with the columns and parameters Provisa infers for each, before anything is registered. It points a code source at the workspace folder in dev mode against a chosen Provisa instance, so an edit is read by the next query. It marks the pushdown conventions inline (raw column names, {op}_{column} parameters, the tag and Annotated forms) and flags a filter parameter that names no column. From the command palette it runs Build image and copies the compose snippet through the API the Provisa UI uses (REQ-2098), with no backend of its own. It reaches the code-source services shim ($PROVISA_SERVICES: secrets, the LLM endpoint and the rest) locally with the developer's own credentials. It edits no model and offers no query editor: GraphQL, SQL and Cypher authoring use the existing VS Code extensions pointed at Provisa (the role-scoped SDL, pgwire), and a docs page says how."
+  use_case: A developer writes a Python function in VS Code, sees the table Provisa would make of it, queries it against a Provisa instance in dev mode as they edit, and builds its image without leaving the editor.
+  scenario: "Given a Python workspace with a function decorated @table and a Provisa instance the extension is signed in to
+
+When the developer opens the workspace
+
+Then the extension lists the function as a table with the columns and parameters Provisa infers
+
+When the developer runs Build image from the command palette
+
+Then the image is built through Provisa's Build image API and the compose snippet is copied"
+  related_reqs:
+  - REQ-2098
+  - REQ-1984
+  - REQ-1993
+  notes: "Maintainer 2026-10-20, through the lead: a Provisa VS Code plugin, queued after REQ-2098; link the pushdown (2100) and services (2104-2106) requirements when they reach main. Scope agreed: the code-source loop; no model editing; a docs page for the existing GraphQL/SQL extensions instead of a query editor."
+- id: REQ-2113
+  status: proposed
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Source Registration
+  feature: source-registration-connect
+  priority: SHOULD
+  type: behavioral
+  description: "A CSV or Parquet source can be given its file by download, a third way beside a path and an upload (REQ-1997). The steward gives one fully resolved path to a single file: a file mount path, an https:// URL or an s3:// URL. Provisa fetches it (an s3:// address with the source's existing S3 credentials, an https:// address with none), and streams the bytes through the upload path into the org's folder under files/<source id>/<name>, with the same size limit (sources.max_upload_bytes), encryption and one-rename swap as an upload. From then on the source reads that local file, and an environment fork copies it as it copies an upload. When the file is fetched again follows the source's freshness declaration: a TTL fetches it again once it lapses, TTL -1 fetches it once and keeps it. On a multi-tenant deployment an https:// or s3:// address that resolves, at any redirect, to a private, loopback or link-local address is refused by name, so no tenant can make Provisa fetch from inside its network (the cloud metadata server among them). A file mount path may only name a file under a directory the operator lists in a setting, which has its admin UI as every setting does, as logs.allowed_roots does for log sources; a path outside them is refused by name. On a multi-tenant deployment (multitenancy: true) a file mount path is refused by name whatever the setting holds: the server's disk is the platform's, shared by every org, so no tenant may copy from it; only https:// and s3:// are offered there, in the form and by Polly. Polly offers the same: given one fully resolved path to a single file, she works out CSV or Parquet from the file, fills in the download form and proposes the source through propose_source. She creates it and runs the download only after the user confirms in the conversation (create_source_now), and can then register its table (register_table_now). The create form of a single-file CSV or Parquet source offers to set up its table at once, as a draft (out of service until a steward takes it out of draft; REQ-1921), named and typed from the file as the Register Table form would propose it; the choice is on by default, and Polly makes the same draft table when she creates such a source. She tells the two kinds of request apart by what the path names: a path to one CSV or Parquet file is a single-file CSV or Parquet source given its file by download; a directory, a glob or several files is a files source (REQ-788) over that path, proposed and confirmed the same way, its tables registered from what the source offers (list_native_tables, propose_table). She acts as the chatting user, so only a user with source_registration can do this through her."
+  use_case: An analyst pastes the URL of a public Parquet file into Polly's chat, confirms, and queries a governed table read from the org's own copy of the file.
+  scenario: "Given a user with source_registration and an https URL of a Parquet file
+
+When the user gives Polly the URL and confirms her proposal
+
+Then a Parquet source is created whose file is kept under files/<source id>/ in the org's folder and its table answers queries from that copy
+
+Given a file mount path outside the operator's allowed directories
+
+When a download source is created with it
+
+Then it is refused by name and nothing is copied"
+  related_reqs:
+  - REQ-1997
+  - REQ-1992
+  notes: "Maintainer 2026-10-20, through the lead: download a CSV or Parquet source's file into the org folder and /files; Polly can take a fully resolved path (file mount, http, s3) to a single file, add it to the download UI and run it. Queued as one requirement, with the allowed-directories setting for mount paths. Maintainer: a file mount cannot work in a multi-tenant org, so it is single-tenant only. Maintainer: Polly differentiates a single CSV or Parquet source request from a more complex file request. Maintainer: a single CSV or Parquet source gets its table set up at once, in draft, as a choice when the source is created."
+- id: REQ-2114
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Catalog Explore
+  feature: chat-assistant-panel
+  priority: SHOULD
+  type: behavioral
+  description: "Polly can perform every action the UI can, as the chatting user, through the admin API the UI uses. She has two general tools in place of one tool per action: one reads the admin GraphQL schema and runs its queries, so she finds what exists as the UI does; the other proposes an admin mutation, shows it in the chat, and runs it as the user once the user confirms in the conversation, so it meets the same capability checks the UI meets. Every admin mutation is hers, createRelationship included, and a mutation added later is hers with no Polly change. propose_source/create_source_now and propose_table/register_table_now become cases of the general pair. A UI action that is a REST route and not an admin mutation (a file upload, a settings change, the org folder's encryption, a code archive upload and the like) is listed and reached as well, route by route. Given 'Create any relationships to the new table', she runs the existing relationship discovery (provisa/discovery) for that table, lists its candidates, and accepts the ones the user confirms through the path the admin UI uses. generate_explore_queries covers every query surface: GraphQL, Cypher, SQL, gRPC, JSON:API, OpenAPI, Natural Language, Python and Notebook."
+  use_case: "A presenter asks Polly to add a Parquet file, create any relationships to the new table, and write a query with a join on every query surface, and each step is done live as the presenter, with a confirmation in the chat for each change."
+  scenario: "Given a user who holds relationship registration and two registered tables that share a key
+
+When the user asks Polly to create any relationships to one of them and confirms her proposal
+
+Then the relationship is created by the same admin mutation the Relationships page uses, as that user
+
+Given a user without relationship registration
+
+When the user asks the same
+
+Then the mutation is refused as it is in the UI"
+  related_reqs:
+  - REQ-1092
+  - REQ-2113
+  notes: "Maintainer 2026-10-20, through the lead: Polly ought to be able to create a relationship; virtually every UI element ought to be able to be touched by Polly. Queued separately from REQ-2113."
+- id: REQ-2115
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Catalog Explore
+  feature: chat-assistant-panel
+  priority: SHOULD
+  type: behavioral
+  description: "Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. Her usual route for a change is the admin API (REQ-2114). Whenever the user asks her to show, demo or teach something ('do xyz and show me each step', 'show me how to add a source', 'teach me relationships'), she makes each change the UI can make through the UI instead, on its screen: she opens the page, fills in its form and presses its button, so the user sees how it is done there. Creating a source, she opens the source picker with its whole list of source types and lets it be seen before she chooses one, as a user would; the demo shows that list. The product tour uses the same actions: a tour step may carry steps (fill a field, choose an option, press a button, show a list), run by the same code as Polly's, so a tour builds objects live on screen instead of only showing what setup built, and whatever Polly can show a tour can script. A tour step's press of a button that changes something runs as part of the tour the visitor started, without a further question. A tour fills in only values very unlikely to fail, such as a static, known address (a file Provisa publishes, a store the demo itself runs), and manipulates things handled within Provisa itself (registering a table, adding a relationship, defining a view, setting a rule, running a query). Where a step depends on something that could fail live, the tour may fill in the form to show how it is done, press Cancel, and say the demo set it up already, then show the one built at setup. Which objects a demo builds live and which it keeps built at setup is decided demo by demo, on that rule. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions (REQ-2114)."
+  use_case: A new user asks Polly how to add a source; she opens the Sources page, fills in the form in front of them, and presses Create once they confirm.
+  scenario: "Given the user is on any page and asks Polly to set up a CSV source from a URL
+
+When Polly acts
+
+Then the Sources page opens, its form fields fill in visibly, and Create is pressed after the user confirms in the chat
+
+When Polly names a field the form does not have
+
+Then she is told by name and the form is unchanged"
+  related_reqs:
+  - REQ-1092
+  - REQ-2113
+  notes: "Maintainer 2026-10-20, through the lead: separately, Polly needs to be able to fill in fields, navigate to screens and press buttons. Maintainer: in the demo Polly must SHOW the creation via the UI, so in the app she makes a change through its screen. Maintainer: in particular the demo shows the big list of potential sources. Maintainer: Polly uses the APIs as well; the UI route is for when she is asked to do something and show each step. Maintainer: any request to show, demo or teach uses the UI, not the API. Maintainer: extend it to the tour: tour steps fill fields and press buttons with the same actions, since most demos only show the results of setup. Maintainer: tours fill in only what is very unlikely to fail, like a static, known URI, or manipulating something handled within Provisa, or filling a form in, canceling it, and saying it was set up already."

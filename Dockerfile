@@ -65,12 +65,14 @@ RUN apt-get update \
 # pyodbc, which loads the unixODBC driver manager (libodbc.so.2) and Microsoft's "ODBC Driver 18
 # for SQL Server" by name (federation/mssql_warehouse_runtime.py). Without the driver manager the
 # engine registry could not import them and every Sources page answered 500. Microsoft publishes
-# the driver only from its own apt repository; the same install as CI's mssql-odbc action.
+# the driver only from its own apt repository; the same install as CI's mssql-odbc action. Its
+# Debian 13 repository is signed with the 2025 key (EE4D7792F748182B), so the keyring holds both.
 RUN apt-get update \
  && apt-get install -y --no-install-recommends curl gnupg ca-certificates \
  && . /etc/os-release \
- && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc \
-      | gpg --batch --yes --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \
+ && { curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --batch --dearmor; \
+      curl -fsSL https://packages.microsoft.com/keys/microsoft-2025.asc | gpg --batch --dearmor; } \
+      > /usr/share/keyrings/microsoft-prod.gpg \
  && curl -fsSL "https://packages.microsoft.com/config/debian/${VERSION_ID}/prod.list" \
       > /etc/apt/sources.list.d/mssql-release.list \
  && apt-get update \

@@ -13,15 +13,18 @@
 every demo version that needs it (REQ-2049).
 
 A demo bundle's ``docker-compose.run.yml`` names its stores. A Postgres (``rdb``), MongoDB
-(``document``) or Elasticsearch (``search``) store is not run as a container of the demo's own:
-its data is loaded into the node's one instance of that type (``docker-compose.shared.yml``,
-project ``$DEMO_STORES_PROJECT``), started the first time a demo needs it and left running. Every
-other service (a Neo4j store, a Qdrant store, a Kafka broker, a demo's producer or API) runs as
-the demo version's own compose project, as before.
+(``document``), Elasticsearch (``search``) or Qdrant (``vector``) store, or a Kafka broker
+(``stream``), is not run as a container of the demo's own: its data is loaded into the node's one
+instance of that type (``docker-compose.shared.yml``, project ``$DEMO_STORES_PROJECT``), started
+the first time a demo needs it and left running. Every other service (a Neo4j store, a demo's
+producer or API) runs as the demo version's own compose project; a producer joins the shared
+stores' network, where it reaches the shared Kafka as ``kafka``.
 
 Each demo version's data in a shared instance is named with its suffix, ``_<demo>_<8 hex of its
 version>``: a Postgres database ``shop`` loads as ``shop_weblogs_1a2b3c4d``, a MongoDB database
-``catalog`` as ``catalog_reviews_…``, an Elasticsearch index ``reviews`` as ``reviews_reviews_…``.
+``catalog`` as ``catalog_reviews_…``, an Elasticsearch index ``reviews`` as ``reviews_reviews_…``;
+a Qdrant collection and a Kafka topic the same. A demo version reads Qdrant with a token of its
+own (the variable its store's ``com.provisa.demo.key_env`` names), scoped to its collections.
 The suffix reaches the demo's configuration as the variable a store's ``com.provisa.demo.ns_env``
 label names (``WEBLOGS_PG_NS``), written into the bundle's stores.env with where the store is.
 Loading is idempotent: a namespace is dropped and loaded whole, and marked loaded only at the end;
@@ -36,16 +39,20 @@ Environment:
     DEMO_STORES_SHARED    the shared instances' compose file (docker-compose.shared.yml)
     DEMO_BUNDLES_DIR      the bundles directory on this host (the Elasticsearch instance reads
                           each bundle's snapshot repository from it)
+    DEMO_STORES_KAFKA_PORT  the port the shared Kafka listens, is published and advertised at
     DEMO_STORES_NETWORK   the docker network the tier is on; empty: stores are reached on
                           127.0.0.1 at their published ports
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import hmac
 import json
 import os
 import re
+import secrets
 import subprocess
 import sys
 from dataclasses import dataclass
@@ -56,9 +63,11 @@ SHARED_TYPES = {
     ("rdb", "postgres:"): "postgres",
     ("document", "mongo:"): "mongo",
     ("search", "docker.elastic.co/elasticsearch/"): "elasticsearch",
+    ("vector", "qdrant/qdrant:"): "qdrant",
+    ("stream", "confluentinc/cp-kafka:"): "kafka",
 }
 #: Each shared type's container port, as the shared compose file runs it.
-SHARED_PORTS = {"postgres": "5432", "mongo": "27017", "elasticsearch": "9200"}
+SHARED_PORTS = {"postgres": "5432", "mongo": "27017", "elasticsearch": "9200", "qdrant": "6333"}
 #: What marks a namespace loaded: written last, so a load cut off is loaded again.
 LOADED = "provisa-demo-loaded"
 _ES_MARKS = "provisa_demo_marks"
@@ -159,6 +168,14 @@ class Shared:
         cid = self.runner.run(["env", *self._env(), *self.base, "ps", "-q", kind]).strip()
         if not cid:
             raise StoreError(f"the shared {kind} instance is not running")
+        if kind == "kafka":
+            # Advertised as it is reached: its container's name on the tier's network, else the
+            # loopback, at the one port it listens and is published on.
+            port = self.env["DEMO_STORES_KAFKA_PORT"]
+            if network:
+                name = self.runner.run(["docker", "inspect", "-f", "{{.Name}}", cid]).strip()
+                return name.lstrip("/"), port
+            return "127.0.0.1", port
         if network:
             name = self.runner.run(["docker", "inspect", "-f", "{{.Name}}", cid]).strip()
             return name.lstrip("/"), SHARED_PORTS[kind]
@@ -166,6 +183,17 @@ class Shared:
             ["env", *self._env(), *self.base, "port", kind, SHARED_PORTS[kind]]
         ).strip()
         return "127.0.0.1", published.rsplit(":", 1)[1]
+
+    def published(self, kind: str) -> str:
+        """The instance's address on this host, where this tool calls its HTTP API."""
+        published = self.runner.run(
+            ["env", *self._env(), *self.base, "port", kind, SHARED_PORTS[kind]]
+        ).strip()
+        return f"http://127.0.0.1:{published.rsplit(':', 1)[1]}"
+
+    def network(self) -> str:
+        """The shared instances' own network, which a demo's producers join to reach Kafka."""
+        return f"{self.base[3]}_default"
 
     def join(self, kind: str, network: str) -> None:
         if not network:
@@ -463,6 +491,88 @@ def es_drop(shared: Shared, suffix: str) -> None:
     )
 
 
+# -- Qdrant ----------------------------------------------------------------------------------------
+
+
+def _b64(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).rstrip(b"=").decode()
+
+
+def qdrant_token(key: str, collections: list[str]) -> str:
+    """A demo version's key to the shared Qdrant: a token signed with the instance's key (its
+    JWT access control), reading those collections alone."""
+    header = _b64(json.dumps({"alg": "HS256", "typ": "JWT"}, separators=(",", ":")).encode())
+    claims = {"access": [{"collection": c, "access": "r"} for c in collections]}
+    body = _b64(json.dumps(claims, separators=(",", ":")).encode())
+    signed = hmac.new(key.encode(), f"{header}.{body}".encode(), hashlib.sha256).digest()
+    return f"{header}.{body}.{_b64(signed)}"
+
+
+def qdrant_collections(bundle: Path, store: Store) -> list[tuple[str, Path]]:
+    """Each collection a Qdrant store's bundle dump holds: ``dump/<service>/<collection>.snapshot``."""
+    snapshots = sorted((bundle / "dump" / store.service).glob("*.snapshot"))
+    if not snapshots:
+        raise StoreError(f"{bundle}: no dump/{store.service}/<collection>.snapshot to recover")
+    return [(snapshot.stem, snapshot) for snapshot in snapshots]
+
+
+def _qdrant(shared: Shared, key: str, *args: str) -> str:
+    return shared.runner.run(["curl", "-sS", "-H", f"api-key: {key}", *args])
+
+
+def qdrant_load(shared: Shared, bundle: Path, store: Store, suffix: str, key: str) -> list[str]:
+    """Recover each collection the bundle dumped as its namespaced copy; the copies' names."""
+    base = shared.published("qdrant")
+    dumped = qdrant_collections(bundle, store)
+    targets = [f"{collection}{suffix}" for collection, _ in dumped]
+    codes = [
+        _qdrant(shared, key, "-o", "/dev/null", "-w", "%{http_code}", f"{base}/collections/{t}")
+        for t in targets
+    ]
+    if all(code.strip() == "200" for code in codes):
+        return targets
+    for (_, snapshot), target in zip(dumped, targets):
+        _qdrant(shared, key, "-f", "-X", "DELETE", f"{base}/collections/{target}")
+        _qdrant(
+            shared,
+            key,
+            "-f",
+            "-X",
+            "POST",
+            "-F",
+            f"snapshot=@{snapshot}",
+            f"{base}/collections/{target}/snapshots/upload?priority=snapshot&wait=true",
+        )
+    return targets
+
+
+def qdrant_drop(shared: Shared, suffix: str, key: str) -> list[str]:
+    base = shared.published("qdrant")
+    listed = json.loads(_qdrant(shared, key, "-f", f"{base}/collections"))
+    names = [c["name"] for c in listed["result"]["collections"]]
+    dropped = [n for n in names if n.endswith(suffix)]
+    for name in dropped:
+        _qdrant(shared, key, "-f", "-X", "DELETE", f"{base}/collections/{name}")
+    return dropped
+
+
+# -- Kafka -----------------------------------------------------------------------------------------
+
+
+def kafka_drop(shared: Shared, suffix: str) -> None:
+    """Delete a demo version's topics: each ends with its suffix."""
+    shared.exec(
+        "kafka",
+        "kafka-topics",
+        "--bootstrap-server",
+        "localhost:9092",
+        "--delete",
+        "--if-exists",
+        "--topic",
+        f".*{re.escape(suffix)}",
+    )
+
+
 # -- a demo version --------------------------------------------------------------------------------
 
 
@@ -485,12 +595,15 @@ class Demo:
         # Several versions' own services run at once: the port variables they name are left empty,
         # which a run file's ${VAR-default} turns into a port docker picks.
         self.blank_ports: list[str] = []
+        # The names of its shared data, which its own services (a producer) name it by too.
+        self.names: dict[str, str] = {}
 
     def _compose(self, *args: str) -> list[str]:
         assert self.bundle is not None
         return [
             "env",
             *(f"{name}=" for name in self.blank_ports),
+            *(f"{name}={value}" for name, value in sorted(self.names.items())),
             "docker",
             "compose",
             "-p",
@@ -522,14 +635,30 @@ class Demo:
                 pg_load(self.shared, self.bundle, store, self.suffix)
             elif store.kind == "mongo":
                 mongo_load(self.shared, self.bundle, store, self.suffix)
-            else:
+            elif store.kind == "elasticsearch":
                 es_load(self.shared, self.name, self.version, store, self.suffix)
+            elif store.kind == "qdrant":
+                key = self.shared.env["DEMO_STORES_QDRANT_KEY"]
+                collections = qdrant_load(self.shared, self.bundle, store, self.suffix, key)
+                key_env = store.labels.get("com.provisa.demo.key_env")
+                if not key_env:
+                    raise StoreError(
+                        f"Qdrant store {store.service} names no com.provisa.demo.key_env"
+                    )
+                found[key_env] = qdrant_token(key, collections)
+            # Kafka holds no data of a bundle's: its topics are the producers', named with the suffix.
             host, port = self.shared.address(store.kind, self.network)
             found.update(self._where(store, host, port))
             found[store.labels["com.provisa.demo.ns_env"]] = self.suffix
+            self.names[store.labels["com.provisa.demo.ns_env"]] = self.suffix
         own = [s.service for s in stores if s.kind is None]
         if own:
             # The demo's own services alone: a shared store it names is not started for it.
+            if any(s.kind == "kafka" for s in stores):
+                # Its producers reach the shared Kafka as "kafka", on the shared stores' network.
+                self.runner.run(self._compose("up", "-d", "--no-deps", *own))
+                for cid in self.runner.run(self._compose("ps", "-q", *own)).split():
+                    self._connect(cid, self.shared.network())
             up = self._compose("up", "-d", "--wait", "--no-deps", *own)
             try:
                 self.runner.run(up)
@@ -546,6 +675,11 @@ class Demo:
             for store in stores:
                 if store.kind is None and store.labels.get("com.provisa.demo.host_env"):
                     found.update(self._where(store, *self._own_address(store)))
+                # A store the demo runs itself holds its data under its own names: the suffix its
+                # config names them with is empty (a Postgres with pgvector, which no shared
+                # instance is, runs so).
+                if store.kind is None and store.labels.get("com.provisa.demo.ns_env"):
+                    found[store.labels["com.provisa.demo.ns_env"]] = ""
         return found
 
     def _where(self, store: Store, host: str, port: str) -> dict[str, str]:
@@ -554,6 +688,19 @@ class Demo:
         if labels.get("com.provisa.demo.port_env"):
             found[labels["com.provisa.demo.port_env"]] = port
         return found
+
+    def _connect(self, cid: str, network: str) -> None:
+        joined = self.runner.run(
+            [
+                "docker",
+                "inspect",
+                "-f",
+                "{{range $k, $v := .NetworkSettings.Networks}}{{$k}} {{end}}",
+                cid,
+            ]
+        ).split()
+        if network not in joined:
+            self.runner.run(["docker", "network", "connect", network, cid])
 
     def _own_address(self, store: Store) -> tuple[str, str]:
         port = store.labels["com.provisa.demo.port"]
@@ -585,16 +732,39 @@ class Demo:
             mongo_drop(self.shared, self.suffix)
         if "elasticsearch" in shared_kinds:
             es_drop(self.shared, self.suffix)
+        if "qdrant" in shared_kinds:
+            qdrant_drop(self.shared, self.suffix, self.shared.env["DEMO_STORES_QDRANT_KEY"])
+        if "kafka" in shared_kinds:
+            kafka_drop(self.shared, self.suffix)
         self.runner.run(["docker", "compose", "-p", self.project, "down", "-v", "--remove-orphans"])
+
+
+def qdrant_key(bundles: Path) -> str:
+    """The shared Qdrant's key: made once on the node, kept beside the bundles (read by this tool
+    alone), never configured -- each demo version reads with a token it signs."""
+    path = bundles / ".demo-stores" / "qdrant.key"
+    if not path.is_file():
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        staged = path.with_name(".qdrant.key.writing")
+        staged.write_text(secrets.token_hex(32))
+        staged.chmod(0o600)
+        staged.replace(path)
+    return path.read_text().strip()
 
 
 def shared_instances(runner: Runner) -> Shared:
     """The node's shared instances, as its environment names them."""
+    bundles = os.environ["DEMO_BUNDLES_DIR"]
     return Shared(
         runner,
         os.environ["DEMO_STORES_PROJECT"],
         os.environ["DEMO_STORES_SHARED"],
-        {"DEMO_BUNDLES_DIR": os.environ["DEMO_BUNDLES_DIR"]},
+        {
+            "DEMO_BUNDLES_DIR": bundles,
+            "DEMO_STORES_QDRANT_KEY": qdrant_key(Path(bundles)),
+            "DEMO_STORES_KAFKA_PORT": os.environ["DEMO_STORES_KAFKA_PORT"],
+            "DEMO_STORES_NETWORK": os.environ.get("DEMO_STORES_NETWORK", ""),
+        },
     )
 
 

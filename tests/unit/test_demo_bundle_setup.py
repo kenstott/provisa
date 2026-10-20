@@ -426,6 +426,25 @@ def test_the_answering_config_asks_polly_through_openrouter_on_the_sandbox_model
     assert config["domains"] == [{"id": "bank"}]  # the demo's own config, kept
 
 
+def test_the_answering_config_is_served_beside_what_the_demo_declares(tmp_path):
+    """The build's server reads a demo's declared replica rows and code archives from the
+    directory of the config it serves: an answering config written anywhere else left a demo
+    with both a Polly step and declared rows (cloudpolicy) calling its faked sources' services,
+    and its code source without its upload."""
+    demo = _toured(tmp_path, _ASKING)
+    (demo / "replica_rows" / "crm").mkdir(parents=True)
+    (demo / "replica_rows" / "crm" / "crm.Account.tsv").write_text("Id\n1\n")
+    (demo / "code").mkdir()
+    (demo / "code" / "reader.tar.gz").write_bytes(b"archive")
+    (demo / "secrets.yaml").write_text("{}\n")
+    work = tmp_path / "work"
+    work.mkdir()
+    served = builder.answering_config(work, demo).parent
+    assert (served / "replica_rows" / "crm" / "crm.Account.tsv").read_text() == "Id\n1\n"
+    assert (served / "code" / "reader.tar.gz").read_bytes() == b"archive"
+    assert (served / "secrets.yaml").is_file()
+
+
 _encode = json.dumps  # the stream below takes a json= keyword, as httpx.stream does
 
 
@@ -618,6 +637,7 @@ def _sync(tmp_path, *args: str, requested: bool = False, in_use: str | None = No
         "DEMO_STORES": str(fake / "demo_stores.py"),
         "DEMO_STORES_SHARED": "/shared.yml",
         "DEMO_STORES_PROJECT": "provisa-demo-stores",
+        "DEMO_STORES_KAFKA_PORT": "29092",
     }
     run = subprocess.run(
         ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), *args],
@@ -680,6 +700,7 @@ def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):
             "DEMO_STORES": "unused",
             "DEMO_STORES_SHARED": "unused",
             "DEMO_STORES_PROJECT": "unused",
+            "DEMO_STORES_KAFKA_PORT": "unused",
         },
         capture_output=True,
         text=True,
@@ -761,3 +782,20 @@ def test_the_build_fetches_the_demos_connector_bundles_before_any_server_starts(
     )
     builder._prefetch_connector_bundles(demo)
     assert fetched == ["pgwire-govdata"]
+
+
+def test_every_demos_relational_store_is_one_the_build_dumps():
+    """The build dumps a demo's relational store (role rdb) with pg_dump: its image is Postgres,
+    or Postgres with pgvector. One it does not know fails the build after the demo is set up
+    (cloudpolicy's pgvector store, at its first bundle build)."""
+    named = Path(__file__).resolve().parents[2] / "demo" / "named"
+    unknown = {
+        f"{compose.parent.name}/{name}": service["image"]
+        for compose in sorted(named.glob("*/docker-compose.yml"))
+        # A published demo's bundle is built; an unpublished one (perf) is not.
+        if yaml.safe_load((compose.parent / "demo.yaml").read_text()).get("published")
+        for name, service in (yaml.safe_load(compose.read_text()).get("services") or {}).items()
+        if (service.get("labels") or {}).get("com.provisa.demo.role") == "rdb"
+        and not str(service.get("image", "")).startswith(builder.POSTGRES_IMAGES)
+    }
+    assert unknown == {}

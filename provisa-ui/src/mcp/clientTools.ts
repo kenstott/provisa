@@ -10,6 +10,12 @@
 
 import type { NavigateFunction } from "react-router-dom";
 import { awaitRun } from "../dataScience/runReports";
+import { parseUiActions, runUiActions } from "./uiActions";
+
+/** REQ-2115: how long each of Polly's steps on a screen lets itself be seen, and how long a step
+ * waits for its element while the screen mounts. */
+const UI_STEP_PACE_MS = 700;
+const UI_ELEMENT_WAIT_MS = 10_000;
 
 /** REQ-2071: Explore's Python and Notebook tabs, whose runs report back to the model. */
 const RUN_ROUTES: Record<string, string> = {
@@ -96,8 +102,18 @@ export async function executeClientTool(
       ].filter(Boolean);
       return { success: error === null, message: parts.join("\n\n") };
     }
+    // REQ-2115: steps on the screen the route opens, each shown as it is taken.
+    const actions = input.actions === undefined ? [] : parseUiActions(input.actions);
+    if (typeof actions === "string") return { success: false, message: `navigate: ${actions}` };
     ctx.navigate(route, state ? { state } : undefined);
-    return { success: true, message: `Navigated to ${route}` };
+    if (actions.length === 0) return { success: true, message: `Navigated to ${route}` };
+    const { success, steps } = await runUiActions(actions, {
+      confirm: async (question) =>
+        (await ctx.presentChoice({ question, mode: "yes_no" })) === true,
+      paceMs: UI_STEP_PACE_MS,
+      waitMs: UI_ELEMENT_WAIT_MS,
+    });
+    return { success, message: [`Navigated to ${route}.`, ...steps].join("\n") };
   }
 
   if (name === "refresh_mv") {

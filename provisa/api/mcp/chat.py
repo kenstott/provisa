@@ -632,6 +632,44 @@ _CLIENT_TOOLS: list[Any] = [
                         '"autoRun": true alongside whichever key applies.'
                     ),
                 },
+                # REQ-2115: steps taken on the screen the route opens, in order, each shown.
+                "actions": {
+                    "type": "array",
+                    "description": (
+                        "Optional: steps on the screen the route opens, taken in order and shown "
+                        "to the user as each happens -- only when the user asked to be shown, "
+                        "demoed or taught. Each names its element by `target`: "
+                        '{"testId": "<data-testid>"} or {"role": "button"|"textbox"|"combobox"|'
+                        '"checkbox"|"radio"|"switch"|"option"|"tab"|"link", "name": "<its '
+                        'accessible name>"}. Steps: {"do": "fill", "target": ..., "value": '
+                        '"<text>"} types into a field; {"do": "choose", "target": ..., "option": '
+                        '"<option name>"} picks an option in a select or dropdown; {"do": '
+                        '"press", "target": ...} presses a button (add "changes": true when '
+                        "pressing it changes something the screen does not mark; a form's Save "
+                        'or action always waits for the user\'s yes); {"do": "show", '
+                        '"target": ...} shows an element, a list scrolled through end to end. '
+                        "The steps stop at the first that cannot be done, and the result says "
+                        "which, naming an element the screen does not have."
+                    ),
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "do": {"type": "string", "enum": ["fill", "choose", "press", "show"]},
+                            "target": {
+                                "type": "object",
+                                "properties": {
+                                    "testId": {"type": "string"},
+                                    "role": {"type": "string"},
+                                    "name": {"type": "string"},
+                                },
+                            },
+                            "value": {"type": "string"},
+                            "option": {"type": "string"},
+                            "changes": {"type": "boolean"},
+                        },
+                        "required": ["do", "target"],
+                    },
+                },
             },
             "required": ["route"],
         },
@@ -910,7 +948,19 @@ _SYSTEM = (
     "For any of these, do the lookup (if needed) once per table, build the query, navigate with "
     "state once, then stop — report the outcome; never re-run the naming lookup, search_catalog, "
     "or navigate again for the same table in the same turn just to double-check work that already "
-    "succeeded."
+    "succeeded.\n"
+    # REQ-2115: the screen when asked to be shown; the admin API otherwise.
+    "Asked to show, demo or teach something -- 'show me each step', 'show me how to add a "
+    "source', 'teach me relationships' -- do it on the user's screen with navigate's actions, "
+    "never by the admin API: open its page, fill in its form, choose its options and press its "
+    "buttons, so the user watches each step happen there. Any other request to make a change you "
+    "make through the admin API as usual. On the screen, name each element by its test id, or "
+    "by its role and accessible name as the screen labels it; never guess one. An element the "
+    "screen does not have is answered back by name: report it, and never carry on as if the step "
+    "were done. A press of a button that changes something waits for the user's yes in the chat. "
+    "Showing how to add a source, open the source picker (press sources-add-toggle), then show its "
+    "whole list of source types (show source-type-picker-body) before pressing the one chosen "
+    "(source-type-option-<type>), as a user would."
 )
 
 

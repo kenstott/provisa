@@ -23,6 +23,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from provisa.federation.replica_address import ReplicaRoutes
+
 from provisa.core.models import Column, Table
 from provisa.qdrant.fetch import QdrantConnection, QdrantSourceInvalid
 from provisa.qdrant.table import QdrantTableRefused, check_table, plan
@@ -364,6 +366,7 @@ async def test_a_search_is_read_per_statement_and_landed_under_its_arguments():
         api_endpoints={},
         graphql_remote_sources={},
         source_types={"vec": "qdrant"},
+        replica_routes=ReplicaRoutes(),
         tables=[table],
         federation_engine=engine,
         source_cache={},
@@ -396,6 +399,7 @@ async def test_a_search_left_without_its_query_is_refused_before_any_read():
         api_endpoints={},
         graphql_remote_sources={},
         source_types={"vec": "qdrant"},
+        replica_routes=ReplicaRoutes(),
         tables=[_state_table(_SEARCH, *_ARGS)],
     )
     with patch("provisa.qdrant.table.read", AsyncMock()) as ran:

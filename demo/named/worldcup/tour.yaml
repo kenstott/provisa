@@ -1,0 +1,89 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The worldcup demo's own tour (REQ-2103): public sources about the World Cup whose country names
+# disagree become one governed graph. The scenario; the Wikipedia crawl and its finals table; the
+# Kaggle datasets; a query that misses West Germany's titles because the names disagree; the
+# country_alias function, the table the graph joins through; the relationship built on it; the
+# graph of every title, grouped by confederation; the same model in SQL and GraphQL; a recap.
+# Step kinds and checks are as tour.yaml of the weblogs demo describes.
+# Where the tour's "Look around on my own" leaves the visitor: the Graph page.
+landing:
+  route: /graph
+  capability: query_development
+steps:
+- key: worldcupIntro
+  route: /sources
+  capability: source_registration
+  source: wikipedia
+- key: worldcupWikipedia
+  source: wikipedia
+- key: worldcupFinals
+  route: /tables
+  capability: table_registration
+  table: wikipedia.list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals
+- key: worldcupKaggle
+  route: /sources
+  capability: source_registration
+  source: kaggle_worldcup
+- key: worldcupMatches
+  route: /tables
+  capability: table_registration
+  table: kaggle_worldcup.world_cup_matches__world_cup_matches
+- key: worldcupDisagree
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT winners, COUNT(*) AS titles, MIN(year) AS first_title
+    FROM "worldcup"."finals"
+    GROUP BY winners
+    ORDER BY titles DESC, winners
+- key: worldcupFunction
+  route: /sources
+  capability: source_registration
+  source: country_alias
+- key: worldcupAlias
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT a.name, a.canonical_country, a.fifa_code
+    FROM "worldcup"."view_team_names" AS n
+    JOIN "worldcup"."country_alias" AS a ON a.name = n.name
+    WHERE a.name <> a.canonical_country
+    ORDER BY a.fifa_code, a.name
+- key: worldcupJunction
+  route: /relationships
+  capability: create_relationship
+  relationship: WON
+- key: worldcupGraph
+  route: /graph
+  capability: query_development
+  cypher: >-
+    MATCH (c:W__ViewCountries)-[w:WON]->(f:W__Finals) RETURN c, w, f
+- key: worldcupByConfederation
+  group_by: confederation
+- key: worldcupSql
+  route: /sql
+  capability: query_development
+  sql: >-
+    SELECT c.confederation, c.country, COUNT(*) AS titles
+    FROM "worldcup"."view_countries" AS c
+    JOIN "worldcup"."country_alias" AS a ON a.fifa_code = c.code
+    JOIN "worldcup"."finals" AS f ON f.winners = a.name
+    GROUP BY c.confederation, c.country
+    ORDER BY titles DESC, c.country
+- key: worldcupGraphql
+  route: /query
+  capability: query_development
+  example: 1-germany-titles
+- key: worldcupRecap
+  route: /graph
+  capability: query_development
+  cypher: >-
+    MATCH (c:W__ViewCountries)-[w:WON]->(f:W__Finals) WHERE c.code = 'GER' RETURN c, w, f

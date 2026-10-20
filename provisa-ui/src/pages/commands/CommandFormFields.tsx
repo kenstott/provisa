@@ -46,6 +46,7 @@ import {
   FormField,
   FormLayout,
 } from "../../components/form/FormLayout";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 interface CommandFormFieldsProps {
   /** The short step that creates a command: only what it needs in order to exist -- what it
@@ -603,13 +604,14 @@ export function CommandFormFields({
           <Select
             label={t("commandFormFields.domain")}
             placeholder={t("commandFormFields.selectDomain")}
-            data={domainHints}
+            data={assignableDomainIds(domainHints)}
             value={form.domainId || null}
             // REQ-1531: every command and webhook sits in a domain, so one that is chosen cannot
             // be cleared — only replaced. Saving with none is refused by the server.
             allowDeselect={false}
             withAsterisk
             onChange={(val) => setForm({ ...form, domainId: val ?? form.domainId })}
+            data-testid="command-domain-select"
           />
         </FormField>
         {!essential && (

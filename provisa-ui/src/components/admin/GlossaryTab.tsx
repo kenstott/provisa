@@ -84,6 +84,7 @@ import {
 } from "../form/FormLayout";
 import { Tip } from "../Tip";
 import { getStored, setStored } from "../../lib/browserStorage";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 // Per-viewer list-filter preferences; never reachable from other viewers or the server.
 function readStoredBool(key: string, fallback: boolean): boolean {
@@ -305,9 +306,9 @@ export function GlossaryTab() {
       isOrgGlossaryOwner
         ? [
             { value: ENTERPRISE_DOMAIN, label: t("glossaryTab.enterpriseDomainLabel") },
-            ...filterDomains,
+            ...assignableDomainIds(filterDomains),
           ]
-        : filterDomains,
+        : assignableDomainIds(filterDomains),
     [isOrgGlossaryOwner, filterDomains, t],
   );
   const setAddDomains = (next: string[]) => {

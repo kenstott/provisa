@@ -51,6 +51,101 @@ An install is cached by the code's content hash, so the same code installs once.
 
 Your code runs in its own worker process, in a sandbox. It can read its own installed code and nothing else on disk. It can reach only the hosts on the deployment's egress allow-list, through a proxy Provisa runs, and never Provisa's own ports. A host that can't provide the sandbox refuses to start the worker and names what is missing, rather than running the code unconfined. On Windows, code sources are refused.
 
+## Secrets {: #secrets }
+
+Code that calls a paid API needs its key, and the key belongs in your organization's vault, not in the code. Under **Secrets** on the source's form, pick the organization secrets the code may read. In a config file, list them in the source's mapping:
+
+```yaml
+mapping:
+  secrets: [openrouter]
+```
+
+A name on its own is the organization secret of that name. To read a deployment environment variable instead, give the reference: `secrets: {openrouter: "${env:OPENROUTER_API_KEY}"}`. The list is a reference to the vault, never a copy of a value, so a config that names a secret nobody has stored yet still loads.
+
+Your code gets one environment variable, `PROVISA_SERVICES`, and reads a secret from `$PROVISA_SERVICES/secrets/<name>` when it needs it. In Python:
+
+```python
+import os, urllib.request
+key = urllib.request.urlopen(f"{os.environ['PROVISA_SERVICES']}/secrets/openrouter").read().decode()
+```
+
+In TypeScript:
+
+```typescript
+const key = await (await fetch(`${process.env.PROVISA_SERVICES}/secrets/openrouter`)).text();
+```
+
+The request goes through the same egress proxy as the rest of your code's traffic, and the proxy answers it itself. Nothing else of Provisa is reachable that way. The address carries a token that only this source's worker holds; it reads only the names the source lists, and it stops working when the worker stops. Each read resolves the secret in the vault at that moment, so a rotated secret takes effect on the next read.
+
+A name the source doesn't list is refused, and so is a secret that can't be resolved. The refusal names the secret, never its value. Every read is recorded in the organization's audit trail with the source, the name and the time, and no value is ever written to a log. The host the API is on still has to be on the egress allow-list.
+
+## Calling a model {: #calling-a-model }
+
+Your code can call a language model through Provisa instead of holding a vendor key. `$PROVISA_SERVICES/llm/v1` is an OpenAI-compatible endpoint, so any OpenAI SDK works when you point its base URL there. The address is the credential, so the key the SDK asks for can be any text. In Python:
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url=f"{os.environ['PROVISA_SERVICES']}/llm/v1", api_key="unused")
+reply = client.chat.completions.create(
+    model="provisa:sql_generation",
+    messages=[{"role": "user", "content": "Summarise this account's last quarter."}],
+)
+```
+
+In TypeScript:
+
+```typescript
+import OpenAI from "openai";
+
+const client = new OpenAI({ baseURL: `${process.env.PROVISA_SERVICES}/llm/v1`, apiKey: "unused" });
+const reply = await client.chat.completions.create({
+  model: "provisa:sql_generation",
+  messages: [{ role: "user", content: "Summarise this account's last quarter." }],
+});
+```
+
+Name a model by its role, as `provisa:<role>`: you get whichever model your organization assigns that role under **Admin → AI Models**, and it follows that choice when an administrator changes it. You can also name a model directly when a role is assigned it. For embeddings, `$PROVISA_SERVICES/llm/v1/embeddings` takes any of your organization's vector models. Any other model is refused by name. The call goes out through your organization's own vendors, endpoints and keys, and what it sends passes through Provisa's redaction rules first. Streaming isn't offered: send `stream: false`, which is the default.
+
+Every call is recorded for the source, with the model, its tokens and its cost at the model's entry in **Polly model prices**, and is written to the organization's audit trail. To limit what a source spends, set **LLM monthly cap** on its form, in USD. In a config file it goes in the mapping:
+
+```yaml
+mapping:
+  llm: {cap_usd: 20}
+```
+
+A source with a cap can call only models that have a price there. Once its spending for the month (UTC) reaches the cap, its calls are refused until the month turns. Calls already under way when the cap is reached still finish, so the month can end slightly over the cap.
+
+## Running on a remote host {: #running-on-a-remote-host }
+
+A source runs on the Provisa server by default; this is dev mode. When its code needs a machine the server isn't, such as a GPU box or a host inside another network, build its image and run it there. The source then runs in built mode, and its tables, grants and readers stay the same.
+
+**Build the image.** Save the source in dev mode first, so its code is read and pinned. Under **Remote host** on its form, choose the architecture (Linux x86-64 or ARM64) and where the image goes: one of your organization's container registries, entered under **Admin → Container registries**, or a download. Provisa assembles the image itself. It holds the code at its pinned hash, its dependencies installed for that platform from the code's lockfile through your package registries, the pinned runtime, and the remote host program, on a minimal base image. Nothing in the image runs while it is built, and no Docker daemon is involved. The image's tag carries the code hash and Provisa's version, and its labels name the runtime, the code hash and the exports.
+
+**Run it.** The form shows a compose service for the image. A downloaded image is loaded first with `docker load -i <file>`. The container listens on port 7443 inside and keeps its identity on the volume. You choose the host port with `PROVISA_HOST_PORT`; the service won't start without it:
+
+```yaml
+services:
+  provisa-code-rates:
+    image: ghcr.io/example/provisa-code-rates:3f9a1c2e7b40-0.1.0
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
+    volumes:
+      - provisa-code-rates-state:/var/lib/provisa
+volumes:
+  provisa-code-rates-state: {}
+```
+
+On its first start the container prints a line beginning `pairing code:` in its log.
+
+**Connect it.** Back on the form, enter the host Provisa reaches the container at, the port you published, and the pairing code. On a shared Docker network or in Kubernetes, enter the container or Service name and 7443, with nothing published. Provisa pairs with the container over mutual TLS. The code is used once, and from then on each side accepts only the other. Provisa then checks that the container runs the source's code and offers its exports, and switches the source to built mode. Every Provisa process keeps its own connection to the host, and dials again if the host stops answering. While the host doesn't answer, reads of the source's tables fail and name the host.
+
+**If the code changes.** A container that comes back running other code is refused, naming the hash the source is pinned to and the one the host reports, until a steward reviews the code and re-pins it from the form. To change the code itself, switch the source back to dev, save the new code, and build again.
+
+In the container, its network policy is the code's egress boundary; the server's egress allow-list applies to dev mode.
+
 ## Reading a table {: #reading-a-table }
 
 A code source's table is landed, never read in place. Provisa calls the function with the read's arguments, checks each row against the columns, and keeps the rows under those arguments for the table's cache TTL. Visibility, masks and row rules then apply to the landed rows, as they do for any table.

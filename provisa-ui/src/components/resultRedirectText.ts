@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import type { TFunction } from "i18next";
-import type { ResultRedirect } from "../api/admin";
+import type { ResultRedirect } from "../types/resultRedirect";
 
 /** The same, as text, for a surface that cannot show a link (a sample it reads, an error line). */
 export function resultRedirectText(

@@ -66,6 +66,9 @@ services:
       <<: *demo-labels
       com.provisa.demo.role: vector
       com.provisa.demo.host_env: SONNETS_QDRANT_HOST
+      com.provisa.demo.ns_env: SONNETS_QDRANT_NS
+      # The key a reader reads with: on the node, a token scoped to this version's collections.
+      com.provisa.demo.key_env: SONNETS_QDRANT_KEY
       com.provisa.demo.port_env: SONNETS_QDRANT_PORT
       com.provisa.demo.port: "6333"
     ports:

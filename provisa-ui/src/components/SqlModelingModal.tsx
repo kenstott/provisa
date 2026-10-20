@@ -32,7 +32,8 @@ import {
   TextInput,
   useComputedColorScheme,
 } from "@mantine/core";
-import { runSql, nlToSql, type ResultRedirect } from "../api/admin";
+import { runSql, nlToSql } from "../api/admin";
+import type { ResultRedirect } from "../types/resultRedirect";
 import { useRoles, useDomains } from "../hooks/useAdminQueries";
 import type { Domain } from "../types/admin";
 import type {

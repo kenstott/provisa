@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-748 — Security
-  # Inverse relationship collision fix — joins producing inverse relationships (e.g., pets←assignments, assignments→pets) mu…
+  # Inverse relationship collision fix: joins producing inverse relationships (e.g., pets←assignments, assignments→pets) mus…
 
   Scenario: REQ-748 default behaviour
     Given two tables with inverse relationships sharing the same column names

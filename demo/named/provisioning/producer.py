@@ -31,6 +31,10 @@ from pathlib import Path
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
 
 BOOTSTRAP = os.environ["FEEDS_BOOTSTRAP"]
+# Each topic's name ends with the demo's suffix where the broker is shared (the sandbox tier's node).
+ORDERS = "orders" + os.environ["TOPIC_SUFFIX"]
+PRICES = "prices" + os.environ["TOPIC_SUFFIX"]
+INVENTORY = "inventory" + os.environ["TOPIC_SUFFIX"]
 HISTORY = int(os.environ.get("ORDERS_HISTORY", "200000"))
 PER_SECOND = float(os.environ.get("ORDERS_PER_SECOND", "5"))
 PRICE_EVERY = float(os.environ.get("PRICE_EVERY", "20"))
@@ -83,7 +87,7 @@ async def _history(producer: AIOKafkaProducer) -> None:
     start = now - timedelta(days=30)
     step = (now - start) / max(HISTORY, 1)
     for i in range(HISTORY):
-        await _send(producer, "orders", _order(start + step * i))
+        await _send(producer, ORDERS, _order(start + step * i))
     await producer.flush()
     print(f"published {HISTORY} orders of the last 30 days", flush=True)
 
@@ -95,21 +99,21 @@ async def _orders_published() -> bool:
     await consumer.start()
     try:
         # The cluster's topics, fetched now: a broker that never received an order has no topic.
-        if "orders" not in await consumer.topics():
+        if ORDERS not in await consumer.topics():
             return False
         # A started consumer holds metadata for no topic it was not given, and
         # partitions_for_topic answers None until it does (aiokafka 0.14): subscribing (no group)
         # asks the broker for the topic's, which arrive in the background.
-        consumer.subscribe(["orders"])
+        consumer.subscribe([ORDERS])
         deadline = asyncio.get_running_loop().time() + METADATA_WAIT_S
-        while (partitions := consumer.partitions_for_topic("orders")) is None:
+        while (partitions := consumer.partitions_for_topic(ORDERS)) is None:
             if asyncio.get_running_loop().time() >= deadline:
                 raise RuntimeError(
                     f"the broker at {BOOTSTRAP} lists the orders topic but described none of its "
                     f"partitions within {METADATA_WAIT_S:g}s"
                 )
             await asyncio.sleep(0.1)
-        ends = await consumer.end_offsets([TopicPartition("orders", p) for p in partitions])
+        ends = await consumer.end_offsets([TopicPartition(ORDERS, p) for p in partitions])
         return any(ends.values())
     finally:
         await consumer.stop()
@@ -117,7 +121,7 @@ async def _orders_published() -> bool:
 
 async def _orders(producer: AIOKafkaProducer) -> None:
     while True:
-        await _send(producer, "orders", _order(datetime.now(timezone.utc)))
+        await _send(producer, ORDERS, _order(datetime.now(timezone.utc)))
         await asyncio.sleep(random.expovariate(PER_SECOND))
 
 
@@ -126,7 +130,7 @@ async def _prices(producer: AIOKafkaProducer) -> None:
         await asyncio.sleep(PRICE_EVERY)
         sku = random.choice(list(_PRODUCTS))
         _price[sku] = round(_price[sku] * random.uniform(0.95, 1.05), 2)
-        await _send(producer, "prices", _price_message(sku))
+        await _send(producer, PRICES, _price_message(sku))
 
 
 async def _inventory(producer: AIOKafkaProducer) -> None:
@@ -134,7 +138,7 @@ async def _inventory(producer: AIOKafkaProducer) -> None:
         await asyncio.sleep(INVENTORY_EVERY)
         sku = random.choice(list(_PRODUCTS))
         _on_hand[sku] = max(0, _on_hand[sku] + random.randint(-25, 30))
-        await _send(producer, "inventory", _stock_message(sku))
+        await _send(producer, INVENTORY, _stock_message(sku))
 
 
 def _price_message(sku: str) -> dict:
@@ -154,8 +158,8 @@ async def main() -> None:
     await producer.start()
     try:
         for sku in _PRODUCTS:  # every product's price and stock, before any order names it
-            await _send(producer, "prices", _price_message(sku))
-            await _send(producer, "inventory", _stock_message(sku))
+            await _send(producer, PRICES, _price_message(sku))
+            await _send(producer, INVENTORY, _stock_message(sku))
         if not await _orders_published():
             await _history(producer)
         # Its healthcheck: healthy once the broker holds the month of orders, so a Provisa started

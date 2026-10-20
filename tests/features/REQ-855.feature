@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-855 — Materialization Store
-  # materialization_store freshness policy — the ONE centralized freshness gate referenced by REQ-845 (reactive replica pull…
+  # materialization_store freshness policy: the ONE centralized freshness gate referenced by REQ-845 (reactive replica pull-…
 
   Scenario: REQ-855 default behaviour
     Given a reactive replica pull-through source configured with the TTL+probe mode and a TTL floor

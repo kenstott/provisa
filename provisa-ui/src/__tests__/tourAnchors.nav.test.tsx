@@ -75,6 +75,8 @@ describe("tour steps that point at the navigation", () => {
     "step10",
     "step11",
     "step12",
+    "stepPython",
+    "stepNotebook",
     "step14",
     "step18",
     "step19",

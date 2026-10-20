@@ -32,6 +32,7 @@ import { FieldLabel } from "./FieldLabel";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FieldGroup, FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
+import { assignableDomainIds, isAssignableDomain } from "../../lib/internalDomains";
 
 // REQ-1164: declarative entity/fact modeling. The form collects the spec and the backend lowers it
 // to the underlying MV (+ relationships) — the star dimension/fact or Data Vault hub/satellite/link.
@@ -47,11 +48,10 @@ const _isNumeric = (c: TableColumn) => _NUMERIC.test(_t(c));
 const _AGGS = ["sum", "avg", "min", "max", "count"] as const;
 
 // User-defined tables only — exclude Provisa's own system sources/domains from the source picker.
-// Mirrors provisa/core/config_loader.py::_SYSTEM_SOURCE_IDS and domain_policy._SYSTEM_DOMAIN_IDS.
+// Mirrors provisa/core/config_loader.py::_SYSTEM_SOURCE_IDS; the domains are lib/internalDomains'.
 const _SYSTEM_SOURCE_IDS = new Set(["provisa-admin", "provisa-otel", DERIVED_SOURCE_ID]);
-const _SYSTEM_DOMAIN_IDS = new Set(["", "meta", "ops"]);
 const _isUserTable = (tbl: RegisteredTable) =>
-  !_SYSTEM_SOURCE_IDS.has(tbl.sourceId) && !_SYSTEM_DOMAIN_IDS.has(tbl.domainId);
+  !_SYSTEM_SOURCE_IDS.has(tbl.sourceId) && isAssignableDomain(tbl.domainId);
 
 interface ModelingFormProps {
   domains: Domain[];
@@ -285,7 +285,7 @@ export function ModelingForm({ domains, onSuccess, onCancel }: ModelingFormProps
         <Select
           label={t("modelingForm.domainLabel")}
           required
-          data={domains.map((d) => ({ value: d.id, label: d.id }))}
+          data={assignableDomainIds(domains.map((d) => d.id))}
           value={domainId}
           onChange={(v) => setDomainId(v ?? "")}
           comboboxProps={{ withinPortal: true }}

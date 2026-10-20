@@ -70,6 +70,8 @@ export interface DemoTourStepDef {
   open?: string;
   /** A relationship, by alias: its row on the Relationships page. */
   relationship?: string;
+  /** A scheduled trigger, by id: its row on the Triggers page. */
+  trigger?: string;
   /** An example query of the demo, by name: opened in a new GraphiQL tab and run. */
   example?: string;
   /** A statement: opened in a new SQL explorer tab and run. */
@@ -199,6 +201,9 @@ function demoTourStep(
   }
   if (def.relationship !== undefined) {
     return { ...page, element: `[data-tour-relationship="${def.relationship}"]` };
+  }
+  if (def.trigger !== undefined) {
+    return { ...page, element: `[data-testid="scheduled-task-row-${def.trigger}"]` };
   }
   if (def.example !== undefined) {
     const example = examples.find((e) => e.name === def.example);
