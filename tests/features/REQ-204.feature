@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-204 — ABAC Approval Hook
-  # Approval hook scoping — per-table (`approval_hook: true`), per-source (`approval_hook: true` on source config), or globa…
+  # Approval hook scoping: per-table (`approval_hook: true`), per-source (`approval_hook: true` on source config), or global…
 
   Scenario: REQ-204 default behaviour
     Given a query referencing only tables without approval_hook enabled

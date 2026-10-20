@@ -19,7 +19,7 @@ It provisions, runs and tears down everything inside this one command:
   with the four sources on leased ports (tests/port_lease.py), stock images, tiny data
   (``generate_*.py --orders N``);
 * its OWN isolated Provisa server subprocess (``tests/integration/isolated_server.py``: own org,
-  SQLite control plane, embedded Redis, auth disabled, leased ports), with demo/named/perf/config.yaml
+  control plane a database of its own on the stack's Postgres, embedded Redis, auth disabled, leased ports), with demo/named/perf/config.yaml
   as its config. Never the maintainer's local-dev instance, never the perf VM, no process is killed
   by pattern.
 
@@ -199,11 +199,23 @@ def _source_env(ports: dict[str, int]) -> dict[str, str]:
     }
 
 
+def control_plane_on_stack(ports: dict[str, int]) -> None:
+    """Each server's control plane is a database of its own on the stack's Postgres: the test
+    helpers clone one on the PostgreSQL PG_* names (tests/pg_control_plane.py). The container is
+    the stack's, so its load is not in the server's CPU."""
+    os.environ.update(
+        PG_HOST="127.0.0.1",
+        PG_PORT=str(ports["bench-postgresql"]),
+        PG_USER="provisa",
+        PG_PASSWORD="provisa",
+    )
+
+
 def start_server(ports: dict[str, int], tmp: Path) -> Any:
     server = _proof_server_class()(
         f"benchproof{os.getpid()}",
         engine="duckdb",
-        control_plane="sqlite",
+        control_plane="own",
         enable_pgwire=True,
         enable_bolt=True,
         await_flight=True,
@@ -253,7 +265,7 @@ def start_auth_server(ports: dict[str, int], tmp: Path) -> Any:
     server = _proof_server_class()(
         f"benchproofauth{os.getpid()}",
         engine="duckdb",
-        control_plane="sqlite",
+        control_plane="own",
         enable_pgwire=True,
         enable_bolt=True,
         await_flight=True,
@@ -278,7 +290,7 @@ def start_replica_server(ports: dict[str, int], tmp: Path) -> Any:
     server = _proof_server_class()(
         f"benchproofrep{os.getpid()}",
         engine="duckdb",
-        control_plane="sqlite",
+        control_plane="own",
         enable_pgwire=True,
         enable_bolt=True,
         await_flight=True,
@@ -741,6 +753,7 @@ def main() -> int:
         for service in ("postgresql", "mongodb", "clickhouse", "neo4j"):
             run([*compose, "up", "-d", "--wait", service])
         seed(ports)
+        control_plane_on_stack(ports)
         phases = set(args.phases.split(","))
         server = start_server(ports, tmp)
         raw = proof_contract(server, project)

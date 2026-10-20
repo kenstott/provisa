@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-234 — Materialized View Lifecycle
-  # Auto-materialized view storage reclamation -- when a view is removed from config, disabled, or its source table is unreg…
+  # Auto-materialized view storage reclamation: when a view is removed from config, disabled, or its source table is unregis…
 
   Scenario: REQ-234 default behaviour
     Given a materialized view that is removed from config or whose source is unregistered

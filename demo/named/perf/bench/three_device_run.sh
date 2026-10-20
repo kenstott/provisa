@@ -17,7 +17,13 @@
 # under test on all three, at the same path.
 #
 # Usage: three_device_run.sh [--reps 5] [--engine pg] [--dry-run]
+#        [--variants zero,row_rules_2,... --caches cached,uncached --telemetry off
+#         --steps 1,16 --window-s 15 --warmup-s 15]
 #   --dry-run prints every command it would run on each device, and runs none.
+#   --variants runs a governance pass (REQ-2092) instead: per repetition, every variant
+#   (governance_variants.py) at every cache setting and telemetry setting, each its own run
+#   (<rep>-<variant>-<cache>-<telemetry>), at the load the last four flags give; the report is
+#   three_device.py variant-report. All six go together.
 # Needs:
 #   PERF_ZONE                    the devices' zone
 #   PERF_REPO                    the repository's path on every device
@@ -30,14 +36,27 @@ set -euo pipefail
 REPS=5
 ENGINE=pg
 DRY_RUN=""
+VARIANTS="" CACHES="" TELEMETRIES="" STEPS="" WINDOW_S="" WARMUP_S=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --reps) REPS="$2"; shift 2 ;;
     --engine) ENGINE="$2"; shift 2 ;;
     --dry-run) DRY_RUN=1; shift ;;
+    --variants) VARIANTS="$2"; shift 2 ;;
+    --caches) CACHES="$2"; shift 2 ;;
+    --telemetry) TELEMETRIES="$2"; shift 2 ;;
+    --steps) STEPS="$2"; shift 2 ;;
+    --window-s) WINDOW_S="$2"; shift 2 ;;
+    --warmup-s) WARMUP_S="$2"; shift 2 ;;
     *) echo "Unknown option: $1"; exit 2 ;;
   esac
 done
+PASS="$VARIANTS$CACHES$TELEMETRIES$STEPS$WINDOW_S$WARMUP_S"
+if [ -n "$PASS" ]; then
+  for v in VARIANTS CACHES TELEMETRIES STEPS WINDOW_S WARMUP_S; do
+    [ -n "${!v}" ] || { echo "a governance pass needs --variants, --caches, --telemetry, --steps, --window-s and --warmup-s"; exit 2; }
+  done
+fi
 : "${PERF_ZONE:?}" "${PERF_REPO:?}" "${PERF_SERVER_IP:?}" "${PERF_BACKENDS_IP:?}"
 PERF_CONTRACT="${PERF_CONTRACT:-setups/three-device.yaml}"
 
@@ -85,8 +104,12 @@ on "$BACKENDS" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF
   && (pgrep -f host_agent.py >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
       --listen $PERF_BACKENDS_IP:$AGENT_PORT --fact device=backends > ~/host-agent.log 2>&1 < /dev/null &)"
 
-run_one() {  # run_one <rep> <telemetry>
-  local name="$1-$2"
+run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
+  local name="$1-$2" contract_args=""
+  if [ "$#" -eq 4 ]; then
+    name="$1-$3-$4-$2"
+    contract_args="--variant $3 --cache $4 --steps $STEPS --window-s $WINDOW_S --warmup-s $WARMUP_S"
+  fi
   echo "=== run $name (engine $ENGINE) ==="
   on "$SERVER" "export PROVISA_BENCH_BACKENDS_HOST=$PERF_BACKENDS_IP \
     PROVISA_BENCH_AGENT_LISTEN=$PERF_SERVER_IP:$AGENT_PORT; \
@@ -97,7 +120,7 @@ run_one() {  # run_one <rep> <telemetry>
   on "$CLIENT" "for i in \$(seq 1 210); do curl -sf http://$PERF_SERVER_IP:$AGENT_PORT/host >/dev/null && exit 0; sleep 2; done; exit 1"
   # the contract as this run states it: its telemetry the server's (REQ-2092)
   on "$CLIENT" "cd $BENCH && mkdir -p $OUT/$name && $PY three_device.py contract --setup $PERF_CONTRACT --telemetry $2 \
-    --out $OUT/$name/setup.yaml"
+    $contract_args --out $OUT/$name/setup.yaml"
   on "$CLIENT" "cd $BENCH && PROVISA_BENCH_SERVER_HOST=$PERF_SERVER_IP \
     PROVISA_HTTP_BASE_URL=http://$PERF_SERVER_IP:8001 \
     $PY run_benchmark.py --engine $ENGINE --optimistic \
@@ -111,17 +134,33 @@ run_one() {  # run_one <rep> <telemetry>
 }
 
 for rep in $(seq 1 "$REPS"); do
-  run_one "$rep" off
-  run_one "$rep" on
+  if [ -n "$PASS" ]; then
+    for variant in ${VARIANTS//,/ }; do
+      for cache in ${CACHES//,/ }; do
+        for telemetry in ${TELEMETRIES//,/ }; do
+          run_one "$rep" "$telemetry" "$variant" "$cache"
+        done
+      done
+    done
+  else
+    run_one "$rep" off
+    run_one "$rep" on
+  fi
 done
+REPORT=(report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report")
+[ -n "$PASS" ] && REPORT=(variant-report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report")
 
 if [ -n "$DRY_RUN" ]; then
-  printf '\n[operator]\ngcloud compute scp --recurse %s:%s/%s/* %s/\nthree_device.py report --root %s --out %s-report\n' \
-    "$CLIENT" "$BENCH" "$OUT" "$LOCAL_OUT" "$LOCAL_OUT" "$LOCAL_OUT"
+  printf '\n[operator]\ngcloud compute scp --recurse %s:%s/%s/* %s/\nthree_device.py %s\n' \
+    "$CLIENT" "$BENCH" "$OUT" "$LOCAL_OUT" "${REPORT[*]}"
   exit 0
 fi
 mkdir -p "$LOCAL_OUT"
 gcloud compute scp --recurse --zone "$PERF_ZONE" "$CLIENT:$BENCH/$OUT/*" "$LOCAL_OUT/"
 "$(cd "$(dirname "$0")/../../../.." && pwd)/.venv/bin/python3" "$(dirname "$0")/three_device.py" \
-  report --root "$LOCAL_OUT" --out "$LOCAL_OUT-report"
-echo "published: $LOCAL_OUT-report/published.json (telemetry off); internal: $LOCAL_OUT-report/internal.json"
+  "${REPORT[@]}"
+if [ -n "$PASS" ]; then
+  echo "governance pass (internal): $LOCAL_OUT-report/variants.json"
+else
+  echo "published: $LOCAL_OUT-report/published.json (telemetry off); internal: $LOCAL_OUT-report/internal.json"
+fi

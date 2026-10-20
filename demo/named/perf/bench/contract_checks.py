@@ -58,6 +58,14 @@ def _refuse(knob: str) -> None:
     raise SetupError(f"not implemented yet: {knob}")
 
 
+def _check_endpoints(setup: Setup) -> None:
+    """A transport needs the endpoint it is sent to; only MCP's is optional in a contract."""
+    if "mcp" in setup.transports and setup.endpoints.mcp_url is None:
+        raise SetupError(
+            "transports.mcp: needs deployment.endpoints.mcp.url (the MCP server's /mcp)"
+        )
+
+
 def _check_implemented(setup: Setup) -> None:
     """A knob that is set but not implemented is an error, never ignored."""
     for name, knob in setup.knobs.distributions.items():

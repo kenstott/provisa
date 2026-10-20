@@ -37,6 +37,8 @@ from typing import Any
 
 import yaml
 
+import governance_variants
+
 ENGINES = ("pg", "duckdb", "trino")
 TELEMETRY = ("off", "on")
 CAPTION = "single source, direct read; Telemetry OFF"
@@ -171,6 +173,36 @@ def _per_key(steps: Sequence[Mapping[str, Any]], field: str) -> dict[str, dict[s
     }
 
 
+def _paging(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """Each host's paging over the repetitions (beside CPU per request, so a rise in it can be
+    told from paging): the spread of every counter, and the reasons a host's was not read."""
+    out: dict[str, Any] = {}
+    for host in sorted({h for s in steps for h in s["paging"]}):
+        read = [s["paging"][host] for s in steps if "error" not in s["paging"][host]]
+        errors = sorted({s["paging"][host]["error"] for s in steps if "error" in s["paging"][host]})
+        fields = (
+            {
+                f: _spread([p[f] for p in read])
+                for f in (
+                    "pgmajfault",
+                    "pswpin",
+                    "pswpout",
+                    "mem_available_mb_start",
+                    "mem_available_mb_end",
+                )
+            }
+            if read
+            else {}
+        )
+        classes = sorted({k for p in read for k in p["majflt"]})
+        out[host] = {
+            **fields,
+            "majflt": {k: _spread([p["majflt"][k] for p in read]) for k in classes},
+            **({"errors": errors} if errors else {}),
+        }
+    return out
+
+
 def summarize(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     out: dict[str, Any] = {
         "repetitions": len(steps),
@@ -183,6 +215,7 @@ def summarize(steps: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         out[f] = _spread(values)
     out["source_cpu_cores"] = _per_key(steps, "source_cpu_cores")
     out["backend_cpu_cores"] = _per_key(steps, "backend_cpu_cores")
+    out["paging"] = _paging(steps)
     return out
 
 
@@ -258,6 +291,55 @@ def run_contract(contract_text: str, *, telemetry: str) -> str:
     return yaml.safe_dump(contract, sort_keys=False)
 
 
+def variant_contract(
+    contract_text: str,
+    *,
+    telemetry: str,
+    variant: str,
+    cache: str,
+    steps: Sequence[int],
+    window_s: float,
+    warmup_s: int,
+) -> str:
+    """The contract as one run of a governance pass states it (REQ-2092): the variant's
+    governance (governance_variants.py), the cache setting, the pass's load, and every request
+    reading every column of the Postgres orders table, so a masked column is in it."""
+    if variant not in governance_variants.VARIANTS:
+        raise ValueError(f"variant must be one of {', '.join(governance_variants.VARIANTS)}")
+    if cache not in governance_variants.CACHE:
+        raise ValueError(f"cache must be one of {', '.join(governance_variants.CACHE)}")
+    contract = yaml.safe_load(run_contract(contract_text, telemetry=telemetry))
+    knobs = contract["knobs"]
+    knobs["governance"] = governance_variants.governance(variant, telemetry=telemetry == "on")
+    knobs["cache"] = {"probability": governance_variants.CACHE[cache]}
+    orders = next(
+        t for t in contract["sources"]["bench-postgresql"]["tables"] if t["table"] == "orders"
+    )
+    knobs["fields"] = {
+        "probability": 1.0,
+        "distribution": {"kind": "constant", "value": len(orders["columns"])},
+    }
+    contract["load"].update(steps=list(steps), window_s=window_s, warmup_s=warmup_s)
+    return yaml.safe_dump(contract, sort_keys=False)
+
+
+def variant_rows(root: Path) -> list[dict[str, Any]]:
+    """The pass's table (governance_variants.table) from its run directories,
+    ``<root>/<rep>-<variant>-<cache>-<telemetry>/optimistic/<transport>.json``."""
+    results: dict[str, list[Mapping[str, Any]]] = {}
+    for d in sorted(p for p in root.iterdir() if p.is_dir()):
+        rep_, rest = d.name.split("-", 1)
+        variant_cache, _telemetry = rest.rsplit("-", 1)
+        variant, cache = variant_cache.rsplit("-", 1)
+        reports = []
+        for path in sorted((d / "optimistic").glob("*.json")):
+            report = json.loads(path.read_text())
+            if "transport" in report:
+                reports.append(report)
+        results.setdefault(f"{variant}/{cache}", []).extend(reports)
+    return governance_variants.table(results)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="The three-device optimistic benchmark")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -273,13 +355,61 @@ def main() -> int:
     con.add_argument("--setup", required=True)
     con.add_argument("--telemetry", choices=TELEMETRY, required=True)
     con.add_argument("--out", required=True)
+    # a governance pass's run (REQ-2092): all or none of these
+    con.add_argument("--variant", choices=list(governance_variants.VARIANTS))
+    con.add_argument("--cache", choices=list(governance_variants.CACHE))
+    con.add_argument("--steps", help="comma-separated concurrencies")
+    con.add_argument("--window-s", type=float)
+    con.add_argument("--warmup-s", type=int)
+    vrep = sub.add_parser("variant-report", help="a governance pass's table, internal only")
+    vrep.add_argument("--root", required=True)
+    vrep.add_argument("--out", required=True)
     rep = sub.add_parser("report", help="the published point and the telemetry impact")
     rep.add_argument("--root", required=True)
     rep.add_argument("--out", required=True)
     args = parser.parse_args()
     if args.command == "contract":
         out = Path(args.out).expanduser()
-        out.write_text(run_contract(Path(args.setup).read_text(), telemetry=args.telemetry))
+        text = Path(args.setup).read_text()
+        pass_args = (args.variant, args.cache, args.steps, args.window_s, args.warmup_s)
+        if all(a is None for a in pass_args):
+            out.write_text(run_contract(text, telemetry=args.telemetry))
+            return 0
+        if any(a is None for a in pass_args):
+            parser.error("--variant, --cache, --steps, --window-s and --warmup-s go together")
+        out.write_text(
+            variant_contract(
+                text,
+                telemetry=args.telemetry,
+                variant=args.variant,
+                cache=args.cache,
+                steps=[int(c) for c in args.steps.split(",")],
+                window_s=args.window_s,
+                warmup_s=args.warmup_s,
+            )
+        )
+        return 0
+    if args.command == "variant-report":
+        rows = variant_rows(Path(args.root))
+        out = Path(args.out)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "variants.json").write_text(
+            json.dumps({"label": LABEL_INTERNAL, "rows": rows}, indent=2)
+        )
+        for r in rows:
+            paging = {
+                h: (p if "error" in p else {k: p[k] for k in ("pgmajfault", "pswpin", "pswpout")})
+                for h, p in r.get("paging", {}).items()
+            }
+            print(
+                r["variant"],
+                r["cache"],
+                r["transport"],
+                r["concurrency"],
+                r.get("server_cpu_ms_per_request"),
+                r.get("over_zero_ms"),
+                r.get("error") or json.dumps(paging),
+            )
         return 0
     if args.command == "serve-env":
         url = collector_url(args.backends_host) if args.telemetry == "on" else None

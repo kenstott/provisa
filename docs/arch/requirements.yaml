@@ -85271,7 +85271,7 @@ Then the report gives per-request server CPU for the governed run beside the run
   stakeholders:
   - ops
 - id: REQ-2093
-  status: proposed
+  status: complete
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: Performance
@@ -85289,6 +85289,9 @@ Then the request is cancelled with the deadline error
 And no thread was started for that request's deadline"
   code:
   - provisa/core/request_deadline.py
+  tests:
+  - tests/unit/test_request_deadline.py
+  - tests/unit/test_request_deadline_whole_request.py
   stakeholders:
   - ops
 - id: REQ-2091

@@ -458,6 +458,10 @@ def stage(
     span (a stage that runs more than once in a request accumulates, with ``stage.<name>.count``),
     and the attributes the stage sets land on the request span — statement text excepted.
 
+    In either detail the stage's thread CPU is added to ``stage.<name>.cpu_ms`` beside its
+    duration (REQ-2092): the CPU of the thread the stage ran on, which serves this one request
+    (REQ-1882), so work the stage hands to another thread is not in it.
+
     Outside a request (startup, scheduler, discovery, MV refresh) there is no request span to
     report into, so the stage is a span in either detail.
     ``request_only`` is for a stage that exists only to time part of a request (routing, response
@@ -475,7 +479,7 @@ def stage(
             yield span
         return
     key = name or span_name
-    started = time.perf_counter()
+    started, cpu_started = time.perf_counter(), time.thread_time()
     if trace_detail() == "debug":
         # The child span is the detail; the request span still reports the stage's duration, so
         # the request record stands on its own in either detail.
@@ -483,7 +487,7 @@ def stage(
             with tracer.start_as_current_span(span_name) as span:
                 yield span
         finally:
-            _add_stage_time(request, key, (time.perf_counter() - started) * 1000)
+            _add_stage_time(request, key, started, cpu_started)
         return
     try:
         yield _RequestFacts(request, key)
@@ -491,17 +495,22 @@ def stage(
         request.set_attribute(_stage_attr(key, "error"), type(exc).__name__)
         raise
     finally:
-        _add_stage_time(request, key, (time.perf_counter() - started) * 1000)
+        _add_stage_time(request, key, started, cpu_started)
 
 
-def _add_stage_time(request: Any, key: str, elapsed_ms: float) -> None:
-    ms_attr, count_attr = _stage_attr(key, "ms"), _stage_attr(key, "count")
+def _add_stage_time(request: Any, key: str, started: float, cpu_started: float) -> None:
+    elapsed_ms = (time.perf_counter() - started) * 1000
+    cpu_ms = (time.thread_time() - cpu_started) * 1000
+    ms_attr, cpu_attr = _stage_attr(key, "ms"), _stage_attr(key, "cpu_ms")
+    count_attr = _stage_attr(key, "count")
     recorded = request.attributes
     previous = recorded.get(ms_attr)
     if previous is None:
         request.set_attribute(ms_attr, round(elapsed_ms, 3))
+        request.set_attribute(cpu_attr, round(cpu_ms, 3))
         return
     request.set_attribute(ms_attr, round(previous + elapsed_ms, 3))
+    request.set_attribute(cpu_attr, round(recorded[cpu_attr] + cpu_ms, 3))
     request.set_attribute(count_attr, recorded.get(count_attr, 1) + 1)
 
 

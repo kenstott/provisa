@@ -87,6 +87,7 @@ def _endpoints(setup: contract_model.Setup) -> ol.Endpoints:
         flight_port=8815,
         grpc_host="localhost",
         grpc_port=50051,
+        mcp_url="http://localhost:8765/mcp",
         role="org_admin",
         setup=setup,
         credential=None,
@@ -236,7 +237,9 @@ def test_contract_request_equals_the_pre_contract_request(
 
 
 def test_every_client_transport_has_a_golden_request() -> None:
-    assert set(ol.CLIENTS) == set(GOLDEN)
+    # MCP came after the contract, so it has no pre-contract request to equal: its request is
+    # checked against a real MCP server (test_mcp_client.py).
+    assert set(ol.CLIENTS) - {"mcp"} == set(GOLDEN)
 
 
 def test_endpoints_come_from_the_contract() -> None:
@@ -278,6 +281,7 @@ def test_run_from_args_without_setup_is_an_error(tmp_path: Path) -> None:
                 source_cpu_url=None,
                 backend_container=[],
                 device=[],
+                stage_tally_url=None,
                 resolved_names=None,
                 apply_replication=False,
                 skip_route_verification=True,
@@ -305,6 +309,7 @@ def test_flags_the_contract_owns_are_refused(flag: str, tmp_path: Path) -> None:
         source_cpu_url=None,
         backend_container=[],
         device=[],
+        stage_tally_url=None,
         resolved_names=str(_resolved_file(tmp_path)),
         apply_replication=False,
         skip_route_verification=True,
@@ -335,6 +340,7 @@ def test_run_from_args_runs_the_contract(monkeypatch: pytest.MonkeyPatch, tmp_pa
         source_cpu_url=None,
         backend_container=[],
         device=[],
+        stage_tally_url=None,
         resolved_names=str(_resolved_file(tmp_path)),
         apply_replication=False,
         skip_route_verification=True,
@@ -369,6 +375,7 @@ def test_run_from_args_asks_the_deployment_when_no_names_are_given(
         source_cpu_url=None,
         backend_container=[],
         device=[],
+        stage_tally_url=None,
         resolved_names=None,
         apply_replication=False,
         skip_route_verification=True,
@@ -396,6 +403,7 @@ def test_a_lookup_that_cannot_match_the_contract_is_a_setup_error(
         source_cpu_url=None,
         backend_container=[],
         device=[],
+        stage_tally_url=None,
         resolved_names=None,
         apply_replication=False,
         skip_route_verification=True,
@@ -428,6 +436,7 @@ def test_the_optimistic_flag_itself_is_not_refused(
         source_cpu_url=None,
         backend_container=[],
         device=[],
+        stage_tally_url=None,
         resolved_names=str(_resolved_file(tmp_path)),
         apply_replication=False,
         skip_route_verification=True,

@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-121 — Authentication
-  # Firebase Authentication — validates Firebase ID tokens via firebase-admin SDK. Supports all Firebase auth methods (email…
+  # Firebase Authentication validates Firebase ID tokens via firebase-admin SDK. Supports all Firebase auth methods (email/p…
 
   Scenario: REQ-121 default behaviour
     Given Firebase is configured as the auth provider

@@ -193,7 +193,7 @@ class _Resp:
         return self._body
 
 
-def _column(name: str, nullable: bool = True, masks: list | None = None) -> dict[str, Any]:
+def _column(name: str, masks: list | None = None) -> dict[str, Any]:
     return {
         "columnName": name,
         "visibleTo": ["org_admin"],
@@ -213,7 +213,6 @@ def _column(name: str, nullable: bool = True, masks: list | None = None) -> dict
         "fake": "",
         "fakeStable": False,
         "syntheticRule": "",
-        "nullable": nullable,
         "masks": masks or [],
     }
 
@@ -234,9 +233,40 @@ def _table(tid: int, columns: list[dict[str, Any]]) -> dict[str, Any]:
             "live": None,
             "uniqueConstraints": [],
             "columns": columns,
+            # the server's own values where its table type declares one (types.py TableType)
+            "materialize": False,
+            "mvRefreshInterval": 300,
+            "mvDebounceQuiet": 0.0,
+            "mvDebounceMaxDelay": 5.0,
+            "pushDebounceQuiet": 0.0,
+            "pushDebounceMaxDelay": 5.0,
+            "mvConsistency": "shared",
+            "mvPersist": "replace",
+            "mvIncremental": False,
+            "mvAllowedLateness": 0.0,
+            "mvBusinessDayGrain": False,
+            "enableAggregates": False,
+            "enableGroupBy": False,
         }
     )
     return t
+
+
+def _valid_against_the_admin_schema(query: str, variables: dict[str, Any] | None) -> None:
+    """What the bench sends is what the deployment's admin schema takes: its fields, arguments and
+    each variable's value (a table save's whole input among them)."""
+    from graphql import OperationDefinitionNode, parse, validate
+    from graphql.execution.values import get_variable_values
+
+    from provisa.api.admin.schema import admin_schema
+
+    schema = admin_schema._schema
+    document = parse(query)
+    errors = validate(schema, document)
+    assert not errors, f"{query[:200]}: {errors}"
+    op = next(d for d in document.definitions if isinstance(d, OperationDefinitionNode))
+    coerced = get_variable_values(schema, op.variable_definitions or (), variables or {})
+    assert not isinstance(coerced, list), f"{query[:200]}: {coerced}"
 
 
 class _Admin:
@@ -260,6 +290,7 @@ class _Admin:
     def post(self, path: str, json: dict[str, Any], headers: dict[str, str]) -> _Resp:
         assert path == "/admin/graphql" and headers == {"X-Provisa-Role": "org_admin"}
         query = json["query"]
+        _valid_against_the_admin_schema(query, json.get("variables"))
         if query.startswith("{ roles"):
             return _Resp(200, {"data": {"roles": list(self.roles.values())}})
         if query.startswith("{ tables"):
@@ -510,7 +541,7 @@ def test_the_table_save_is_the_editor_s(tmp_path: Path) -> None:
     t = _table(
         7,
         [
-            _column("order_id", nullable=False),
+            _column("order_id"),
             _column("amount", masks=[{"to": ["a"], "mask": dict(governance.NULL_MASK)}]),
         ],
     )

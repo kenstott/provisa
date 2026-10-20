@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-123 — Authentication
-  # Generic OAuth 2.0 / OIDC — works with any OIDC-compliant provider (PingFederate, Okta, Azure AD, Auth0). OIDC discovery…
+  # Generic OAuth 2.0 / OIDC works with any OIDC-compliant provider (PingFederate, Okta, Azure AD, Auth0). OIDC discovery UR…
 
   Scenario: REQ-123 default behaviour
     Given a generic OIDC provider is configured with a discovery URL

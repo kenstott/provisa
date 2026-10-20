@@ -42,11 +42,14 @@ from provisa.security.rights import (
     is_control_plane_role as _is_control_plane_role,
     is_tenant_org as _is_tenant_org,
 )
+from provisa.otel_compat import get_tracer
+from provisa.otel_compat import stage as _stage
 from provisa.security.sni import org_from_host
 
-# Requirements: REQ-120, REQ-125, REQ-273, REQ-1267
+# Requirements: REQ-120, REQ-125, REQ-273, REQ-1267, REQ-2092
 
 logger = logging.getLogger(__name__)
+_tracer = get_tracer(__name__)
 
 
 # The stable code of the refusal of a request that names no org (REQ-1235, REQ-1935): the UI
@@ -452,18 +455,20 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         member's grant is only visible when this runs with THEIR org bound. Applies configured
         default_assignments only when the user has no explicit rows."""
         assert self._db_pool, "no tenant control plane bound for the active org"
-        async with self._db_pool.acquire() as conn:
-            result = await conn.execute_core(
-                select(
-                    user_role_assignments.c.role_id,
-                    user_role_assignments.c.domain_id,
-                ).where(
-                    user_role_assignments.c.user_id == identity.user_id,
-                    # REQ-2077: an expired grant is not held from the instant it expires.
-                    grant_in_force(),
+        # REQ-2092: what reading the grants in force costs a request
+        with _stage(_tracer, "auth.read_assignments", name="assignments", request_only=True):
+            async with self._db_pool.acquire() as conn:
+                result = await conn.execute_core(
+                    select(
+                        user_role_assignments.c.role_id,
+                        user_role_assignments.c.domain_id,
+                    ).where(
+                        user_role_assignments.c.user_id == identity.user_id,
+                        # REQ-2077: an expired grant is not held from the instant it expires.
+                        grant_in_force(),
+                    )
                 )
-            )
-            rows = [dict(r._mapping) for r in result.fetchall()]
+                rows = [dict(r._mapping) for r in result.fetchall()]
         if rows:
             return [RoleAssignment(role_id=r["role_id"], domain_id=r["domain_id"]) for r in rows]
         if self._default_assignments:

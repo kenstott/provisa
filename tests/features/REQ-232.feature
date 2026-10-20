@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-232 — Hot Tables (Redis-Cached Lookups)
-  # Hot table JOIN optimization -- when a query joins a hot table (e.g., `orders JOIN countries ON country_code`), the compi…
+  # Hot table JOIN optimization: when a query joins a hot table (e.g., `orders JOIN countries ON country_code`), the compile…
 
   Scenario: REQ-232 default behaviour
     Given a query that JOINs a hot table

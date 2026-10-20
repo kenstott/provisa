@@ -5,4 +5,4 @@ Feature: REQ-581 — pgwire Server
   Scenario: REQ-581 default behaviour
     Given a JDBC or psycopg2 client using $1, $2 positional parameters
     When the query executes
-    Then parameters are substituted as SQL literals before reaching the upstream engine
+    Then the values stay bound to the $N placeholders through governance and reach the engine or source as bound parameters

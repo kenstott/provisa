@@ -52,6 +52,7 @@ import credential as credential_module
 import governance
 import lookup
 import measurements
+import paging
 import replication
 import request_mix
 import request_render
@@ -69,6 +70,7 @@ TRANSPORTS: dict[str, tuple[str, str | None]] = {
     "grpc": ("gRPC ProvisaService typed RPC", "x-provisa-cache: true metadata"),
     "rest": ("GET /data/rest/{domain}/{table}", "x-provisa-cache: true header"),
     "jsonapi": ("GET /data/jsonapi/{domain}/{table}", "x-provisa-cache: true header"),
+    "mcp": ("MCP tools/call run_sql, Streamable HTTP", "-- @provisa cache=true"),
 }
 
 DEFAULT_STEPS = (1, 16, 64, 256)
@@ -101,6 +103,7 @@ class Endpoints:
     grpc_host: str
     grpc_port: int
     role: str
+    mcp_url: str | None  # the MCP server's /mcp (None: the deployment states none)
     setup: contract_model.Setup  # the contract: knobs, tables and seed behind every request
     # What the deployment's auth requires (credential.py; the secret is read from the environment
     # variable the contract names); None when the contract says credentials mode none.
@@ -110,6 +113,11 @@ class Endpoints:
     # reports beside the sources' (the engine, control plane, Redis, collector).
     docker_stats_url: str | None = None
     backend_containers: tuple[str, ...] = ()
+    # Each benchmark device's host_agent (name, URL): its paging is read at both ends of a step.
+    devices: tuple[tuple[str, str], ...] = ()
+    # The trace receiver's stage tally (noop_otlp_receiver.py --tally, ``GET /stages``): each step
+    # reports its request spans' per-stage time and thread CPU per request. None: not read.
+    stage_tally_url: str | None = None
 
 
 # --------------------------------------------------------------------------------------------
@@ -178,6 +186,74 @@ class CypherHttpClient(_HttpClient):
         # or not (cypher_router builds the header from no cache result), so the header says
         # nothing here.
         return len(body["rows"]), len(body["columns"]), None
+
+
+class McpClient:
+    """MCP over Streamable HTTP, as an agent's client speaks it: one session (initialize, then
+    the initialized notification), then a ``tools/call`` of ``run_sql`` per request. An answer
+    may come as JSON or as one server-sent event; both are read. The tool says nothing of the
+    response cache, so a hit is not known."""
+
+    _PROTOCOL = "2025-03-26"
+
+    def __init__(self, ep: Endpoints) -> None:
+        import httpx
+
+        assert ep.mcp_url is not None  # contract_checks refuses the mcp transport without one
+        self._cred = ep.credential
+        self._url = ep.mcp_url
+        self._http = httpx.Client(timeout=60)
+        self._id = 0
+        self._session: str | None = None
+        self._rpc(
+            "initialize",
+            {
+                "protocolVersion": self._PROTOCOL,
+                "capabilities": {},
+                "clientInfo": {"name": "provisa-bench", "version": "1"},
+            },
+        )
+        self._post({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def _post(self, body: dict[str, Any]) -> Any:
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            **(self._cred.auth_header() if self._cred else {}),
+            **({"mcp-session-id": self._session} if self._session else {}),
+            **({"mcp-protocol-version": self._PROTOCOL} if self._session else {}),
+        }
+        resp = self._http.post(self._url, json=body, headers=headers)
+        resp.raise_for_status()
+        if self._session is None:
+            self._session = resp.headers["mcp-session-id"]
+        return resp
+
+    def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        self._id += 1
+        resp = self._post({"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
+        if resp.headers.get("content-type", "").startswith("text/event-stream"):
+            data = [line[5:] for line in resp.text.splitlines() if line.startswith("data:")]
+            body = next(m for m in (json.loads(d) for d in data) if m.get("id") == self._id)
+        else:
+            body = resp.json()
+        if "error" in body:
+            raise RuntimeError(f"MCP {method}: {body['error']}")
+        return body["result"]
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        result = self._rpc(
+            "tools/call", {"name": "run_sql", "arguments": {"sql": query.sql, "role": role}}
+        )
+        if result.get("isError"):
+            raise RuntimeError(f"MCP run_sql: {result['content'][0]['text'][:300]}")
+        # run_sql is declared ``-> dict``, which gives the tool no output schema: its answer is
+        # the dict as JSON text, the call's one content item
+        (item,) = result["content"]
+        out = json.loads(item["text"])
+        return len(out["rows"]), len(out["columns"]), None
+
+    def close(self) -> None:
+        self._http.close()
 
 
 class RestClient(_HttpClient):
@@ -405,6 +481,7 @@ CLIENTS: dict[str, Any] = {
     "grpc": GrpcClient,
     "rest": RestClient,
     "jsonapi": JsonApiClient,
+    "mcp": McpClient,
 }
 
 
@@ -735,6 +812,71 @@ def _server_cpu_seconds(server_pid: int | str | None) -> float | None:
     return server_cpu_agent.cpu_seconds(server_pid)
 
 
+def _paging_snapshots(server_pid: int | str | None, devices: tuple[tuple[str, str], ...]) -> dict:
+    """Paging counters now (paging.py): this host's, with the load generator's major faults and
+    the server's when it runs here, and each device agent's."""
+    classes = {"load-generator": os.getpid()}
+    if isinstance(server_pid, int):
+        classes["provisa"] = server_pid
+    out = {"client": paging.snapshot(classes)}
+    if devices:
+        import httpx
+
+        for name, url in devices:
+            resp = httpx.get(f"{url}/paging", timeout=10)
+            resp.raise_for_status()
+            out[name] = resp.json()
+    return out
+
+
+def _stage_totals(url: str | None) -> dict | None:
+    if url is None:
+        return None
+    import httpx
+
+    resp = httpx.get(f"{url}/stages", timeout=10)
+    resp.raise_for_status()
+    return resp.json()
+
+
+def stage_delta(before: Mapping[str, Any], after: Mapping[str, Any]) -> dict[str, Any]:
+    """Per transport, the request spans the receiver saw between two tallies and each stage's
+    time, thread CPU and entries per request span. Spans arrive in export batches, so a step's
+    last batch may be counted in the next: per request span, the figures do not depend on it."""
+    out: dict[str, Any] = {}
+    for transport, n1 in after["requests"].items():
+        n = n1 - before["requests"].get(transport, 0)
+        if n <= 0:
+            continue
+        was = before["stages"].get(transport, {})
+        stages = {}
+        for name, figures in after["stages"][transport].items():
+            prior = was.get(name, {})
+            stages[name] = {
+                f"{f}_per_request": round((figures[f] - prior.get(f, 0.0)) / n, 4)
+                for f in ("ms", "cpu_ms", "count")
+            }
+        out[transport] = {"request_spans": n, "stages": stages}
+    return out
+
+
+def _paging_text(by_host: Mapping[str, Mapping[str, Any]]) -> str:
+    """A step's paging in one phrase per host: major faults, swap in/out, available memory."""
+    parts = []
+    for host, p in by_host.items():
+        if "error" in p:
+            parts.append(f"{host}: paging not read ({p['error']})")
+            continue
+        classes = ",".join(f"{k}={v}" for k, v in p["majflt"].items())
+        parts.append(
+            f"{host}: majflt={p['pgmajfault']}"
+            + (f" ({classes})" if classes else "")
+            + f" swap_in={p['pswpin']} swap_out={p['pswpout']}"
+            + f" avail={p['mem_available_mb_start']}->{p['mem_available_mb_end']}MB"
+        )
+    return "paging[" + "; ".join(parts) + "]"
+
+
 def _percentile(sorted_values: list[float], q: float) -> float:
     return sorted_values[min(len(sorted_values) - 1, int(q * len(sorted_values)))]
 
@@ -769,6 +911,8 @@ def run_step(
                 p.terminate()
         return {"concurrency": concurrency, "error": failures[0]}
     server_cpu0 = _server_cpu_seconds(server_pid)
+    paging0 = _paging_snapshots(server_pid, ep.devices)
+    stages0 = _stage_totals(ep.stage_tally_url)
     monitored = {sid: s.container for sid, s in ep.setup.sources.items() if s.container}
     sampler = _sampler(ep, monitored) if monitored or ep.backend_containers else None
     if sampler is not None:
@@ -776,6 +920,8 @@ def run_step(
     go.set()
     results = [out.get(timeout=window_s + 120) for _ in procs]
     server_cpu1 = _server_cpu_seconds(server_pid)
+    paging1 = _paging_snapshots(server_pid, ep.devices)
+    stages1 = _stage_totals(ep.stage_tally_url)
     if sampler is not None:
         sampler.stop()
     for p in procs:
@@ -802,6 +948,9 @@ def run_step(
     if server_cpu0 is not None and server_cpu1 is not None and attempts:
         step["server_cpu_ms_per_request"] = round((server_cpu1 - server_cpu0) / attempts * 1000, 3)
         step["server_cpu_cores"] = round((server_cpu1 - server_cpu0) / window_s, 2)
+    step["paging"] = {host: paging.delta(paging0[host], paging1[host]) for host in paging0}
+    if stages0 is not None and stages1 is not None:
+        step["stages"] = stage_delta(stages0, stages1)
     if sampler is not None:
         sampled = sampler.result()
         sources = measurements.SampleResult(
@@ -965,6 +1114,7 @@ def summary_line(report: dict) -> str:
             )
         if "server_cpu_ms_per_request" in step:
             text += f" srv_cpu={step['server_cpu_ms_per_request']}ms/req"
+        text += " " + _paging_text(step["paging"])
         text += f" client_cpu={step['client_cpu_cores']}"
         if step["client_limited"]:
             text += " CLIENT-LIMITED"
@@ -1119,6 +1269,12 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
         "plane, Redis, collector); repeatable.",
     )
     parser.add_argument(
+        "--stage-tally-url",
+        default=None,
+        help="Base URL of noop_otlp_receiver.py --tally (http://HOST:PORT): each step reports its "
+        "request spans' per-stage time and thread CPU per request (telemetry on).",
+    )
+    parser.add_argument(
         "--device",
         action="append",
         default=[],
@@ -1186,6 +1342,7 @@ def endpoints_from_setup(setup: contract_model.Setup) -> Endpoints:
         flight_port=e.flight.port,
         grpc_host=e.grpc.host,
         grpc_port=e.grpc.port,
+        mcp_url=e.mcp_url,
         role=setup.roles[0].role,
         setup=setup,
         credential=credential,
@@ -1266,10 +1423,12 @@ def run_from_args(
         endpoints_from_setup(setup),
         docker_stats_url=args.source_cpu_url,
         backend_containers=tuple(args.backend_container),
+        devices=tuple(_device(d) for d in args.device),
+        stage_tally_url=args.stage_tally_url,
     )
     devices = None
     if args.device:
-        devices = collect_devices(dict(_device(d) for d in args.device))
+        devices = collect_devices(dict(ep.devices))
         (output_dir / "devices.json").write_text(json.dumps(devices, indent=2))
     print(governance.check_telemetry(setup, devices), flush=True)
     audit = None

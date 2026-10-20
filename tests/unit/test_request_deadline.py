@@ -11,7 +11,7 @@
 """A request's budget holds even while blocking work owns its thread (REQ-1882, amended
 2026-09-29): the watchdog cancels the in-flight statement at the deadline."""
 
-# Requirements: REQ-1882
+# Requirements: REQ-1882, REQ-2093
 
 from __future__ import annotations
 
@@ -155,6 +155,26 @@ def test_a_request_of_several_statements_is_watched_by_the_one_watchdog(thread_s
 
     with connection_loop() as cl:
         assert cl.run(_request(), timeout=2.0) == ["done"] * 3
+    assert thread_starts == []
+    assert len(_watchdog_threads()) == 1
+
+
+def test_a_50ms_deadline_cancels_a_source_that_does_not_answer_and_starts_no_thread(
+    thread_starts,
+) -> None:
+    """REQ-2093: the request's deadline is watched by the process's one watchdog, not by a timer
+    of its own: at expiry the statement is cancelled and the request fails with the deadline's
+    error, and no thread was started for it."""
+    stmt = _BlockingStatement(5.0)  # a source that does not answer
+
+    async def _request() -> str:
+        with request_deadline.cancel_on_deadline(stmt.cancel):
+            return stmt.execute()
+
+    t0 = time.monotonic()
+    with connection_loop() as cl, pytest.raises(TimeoutError, match=r"0\.05s budget"):
+        cl.run(_request(), timeout=0.05)
+    assert time.monotonic() - t0 < 1.0
     assert thread_starts == []
     assert len(_watchdog_threads()) == 1
 

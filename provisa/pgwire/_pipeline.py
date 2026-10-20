@@ -1377,9 +1377,15 @@ async def _govern_and_route_planned(
         )
         plan.temp = _temp
         return plan
-    governed = await govern_statement(
-        sql, role_id, session_vars=session_vars, product_statement=product_statement, as_of=as_of
-    )
+    # REQ-2092: what governing costs a request (a kept plan's lookup included), beside the others
+    with _stage(_tracer, "pipeline.governance", name="governance", request_only=True):
+        governed = await govern_statement(
+            sql,
+            role_id,
+            session_vars=session_vars,
+            product_statement=product_statement,
+            as_of=as_of,
+        )
     return await _route_bounded(
         governed,
         params=params,
@@ -4299,23 +4305,26 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     from provisa.mv.load_window import refuse_named_outside_window
 
     refuse_named_outside_window(state, sql)
-    _governed = _slot.cached()
-    if _governed is None:
-        _governed = await _govern_compiled(
-            sql, role_id, state, _session_vars, exec_params, sdl_joins=sdl_joins, as_of=as_of
-        )
-        # A write is not kept: its admission checks (view writes, unbound branch writes) run per call.
-        if not isinstance(
-            _governed.parsed,
-            (
-                _sg_exp.Insert,
-                _sg_exp.Update,
-                _sg_exp.Delete,
-                _sg_exp.Merge,
-                _sg_exp.TruncateTable,
-            ),
-        ):
-            _slot.keep(_governed)
+    # REQ-2092: what governing costs a request (a kept plan's lookup included), beside the others
+    with _stage(_tracer, "pipeline.governance", name="governance", request_only=True):
+        _governed = _slot.cached()
+        if _governed is None:
+            _governed = await _govern_compiled(
+                sql, role_id, state, _session_vars, exec_params, sdl_joins=sdl_joins, as_of=as_of
+            )
+            # A write is not kept: its admission checks (view writes, unbound branch writes) run
+            # per call.
+            if not isinstance(
+                _governed.parsed,
+                (
+                    _sg_exp.Insert,
+                    _sg_exp.Update,
+                    _sg_exp.Delete,
+                    _sg_exp.Merge,
+                    _sg_exp.TruncateTable,
+                ),
+            ):
+                _slot.keep(_governed)
     sql, _compiled_tree, gov_ctx = _governed.sql, _governed.parsed, _governed.gov_ctx
     _table_ids, governed_sql = _governed.table_ids, _governed.governed_sql
     # REQ-203: the approval hook is asked per call, after governance, on every compiled surface.
