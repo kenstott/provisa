@@ -18,3 +18,6 @@ published: true
 # The oldest Provisa this demo's bundle runs on (REQ-2049): the first release with a live table
 # watched for its views (REQ-2055) and their refresh read as fresh (#268).
 requires_provisa: 0.1.0a489
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Medallion Warehouse. We Got It."

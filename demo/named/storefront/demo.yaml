@@ -22,3 +22,6 @@ published: true
 # The first release carrying the demo and what it needs: its tour's image steps, the pgwire catalog's
 # constraint definitions and virtual columns, and JSON:API's composite ids.
 requires_provisa: 0.1.0a491
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "One Model, Many Clients"

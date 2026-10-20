@@ -20,7 +20,7 @@ Each check is the one the repo already has, run for this demo alone:
   examples    each queries/*.graphql valid against the demo's tables and views, as
               tests/unit/test_named_demo_example_queries.py builds their schema
   card        demo.yaml as scripts/gen-site-demos.mjs reads it (published, title, description, a
-              screenshot beside it), and the site page in step with it
+              screenshot beside it), and the site page in step with it; and its video's tagline
   images      each image step's picture a PNG beside tour.yaml, as the tour serves it
               (provisa.core.demo.tour_image)
   bundle      requires_provisa a Provisa version (scripts/demo_bundle.py's rule), and the
@@ -115,6 +115,10 @@ def check_card(home: Path) -> list[str]:
     shot = spec.get("screenshot")
     if isinstance(shot, str) and shot.strip() and not (home / shot).is_file():
         problems.append(f"demo.yaml: screenshot {shot} is not beside it")
+    video = spec.get("video")
+    tagline = video.get("tagline") if isinstance(video, dict) else None
+    if not isinstance(tagline, str) or not tagline.strip():
+        problems.append("demo.yaml: no video tagline")
     if not problems:
         site = subprocess.run(
             ["node", "scripts/gen-site-demos.mjs", "--check"],
