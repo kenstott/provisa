@@ -25148,7 +25148,7 @@ A visitor's demo sandbox is released soon after its tab closes. When the visitor
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_sandbox_closing.py`, `provisa-ui/src/__tests__/sandboxClosing.test.ts`, `tests/integration/test_demo_sandbox_status_close_e2e.py`
 
 ## 6. Execution, Routing, Caching & Performance
 
@@ -25280,7 +25280,7 @@ Per-table write grants. What a role may write to a table is stated per operation
 
 **Code:** `provisa/core/models.py`, `provisa/compiler/write_admission.py`, `provisa/compiler/stage2.py`, `provisa/compiler/schema_gen.py`, `provisa/grpc/proto_gen.py`, `provisa/core/repositories/write_grant.py`, `provisa/core/repositories/table.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/security/inheritance.py`, `provisa/security/meta_role.py`, `provisa/hasura_v2/mapper.py`
 
-**Tests:** `tests/unit/test_write_grants_admission.py`, `tests/unit/test_write_grants_model.py`, `tests/unit/test_role_inheritance.py`
+**Tests:** `tests/unit/test_write_grants_admission.py`, `tests/unit/test_write_grants_model.py`, `tests/unit/test_role_inheritance.py`, `tests/integration/test_write_admission_every_surface.py`
 
 **Docs:** [architecture.md](../architecture.md), [configuration.md](../configuration.md), [pgwire.md](../pgwire.md), [security.md](../security.md)
 
@@ -25658,4 +25658,16 @@ A named demo, World Cup: public sources about the World Cup whose country names 
 
 **Code:** `demo/named/worldcup/config.yaml`, `demo/named/worldcup/country_alias/country_alias.py`
 
-**Tests:** `tests/integration/test_worldcup_demo.py`
+**Tests:** `tests/integration/test_worldcup_demo.py`, `tests/unit/test_worldcup_demo.py`, `tests/unit/test_named_demo_tour.py`
+
+### REQ-2102 · UI {#REQ-2102}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo cloudpolicy reviews a cloud security policy after the fact, read only. The policy says every disk attached to a virtual machine uses a customer-managed key (CMEK, §4.2), with CISO-approved exceptions that expire after 90 days (§4.3), no public addresses on database servers (§5.1) and remediation deadlines by incident priority (§6.1), among seven controls. Its sources are faked with their real types: the cloud inventory (cloudops: compute_resources, and storage_resources with key_id and attached_instance_id across Azure managed disks, EBS volumes and GCP persistent disks) and the security team's ServiceNow incidents (number, short_description, state, priority, category, opened_at, resolved_at, u_policy_control, assignment_group and cmdb_ci with their display values), each a TTL -1 replica of declared rows that never contacts the service. The policy is an HTML document shipped in a Python code source whose policy_sections(url) reads it into section, heading, clause and effective date; each clause is embedded into the demo's pgvector store for search by meaning. Relationships join disk to virtual machine, incident to disk and incident to the clause it cites. Views state §4.2 (attached disks without CMEK), §5.1, the incidents citing a wrong or withdrawn section, the controls no check enforces, and the daily review classifying each attached disk as compliant, covered by an exception, exception expired, violation ticketed, overdue past §6.1, closed while still not compliant, or never filed. A daily scheduled SQL trigger writes the day's review into review_history through the governed pipeline under its write grant; fourteen days of history are seeded. The auditor reads every account; the payments team's row rules keep it to its own resources and incidents. The tour walks the scenario, the three sources, the model, the policy as a view, the trigger and its history (a tour step may name a scheduled trigger, trigger: <id>, its row on the Triggers page), four Polly questions with stored answers, the same list as the payments team, a Superset compliance dashboard as a picture and a recap.
+
+**Use case:** A security lead reviews one policy across three clouds from records already kept, and each application team sees only its own findings.
+
+**Code:** `demo/named/cloudpolicy/config.yaml`, `demo/named/cloudpolicy/tour.yaml`, `demo/named/cloudpolicy/generate.py`, `demo/named/cloudpolicy/policy/policy_reader/policy_reader.py`, `demo/named/cloudpolicy/db/init.sql`, `provisa-ui/src/tour/demoTour.ts`
+
+**Tests:** `tests/integration/test_cloudpolicy_demo.py`, `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`
