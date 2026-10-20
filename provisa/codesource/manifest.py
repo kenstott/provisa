@@ -490,7 +490,9 @@ def _resolve_pushdown(
         element = ir_of(p.shape.element) if isinstance(p.shape, ListOf) else None
         problem = type_problem(pushes.op, ir_of(column.shape), ir_of(p.shape), element)
         if problem:
-            problems.append(f"{name}({p.name}): {problem}")
+            # Only a declaration is refused: a name that merely looks like one is a parameter.
+            if spellings:
+                problems.append(f"{name}({p.name}): {problem}")
             out.append(p)
             continue
         if pushes in taken:

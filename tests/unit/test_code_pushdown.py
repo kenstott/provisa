@@ -147,17 +147,34 @@ def test_op_column_is_an_ordinary_parameter_when_column_is_not_a_return_column()
 @pytest.mark.parametrize(
     "param, why",
     [
-        (_param("gt_score", S), "orders(gt_score): gt on a double column takes a double"),
-        (_param("in_region", S), "orders(in_region): in on a text column takes a list of text"),
+        (_param("x", S, pushdown=("gt_score",)), "orders(x): gt on a double column takes a double"),
         (
-            _param("like_score", N),
-            "orders(like_score): like takes a text parameter on a text column",
+            _param("x", S, pushdown=("in_region",)),
+            "orders(x): in on a text column takes a list of text",
         ),
-        (_param("status", N), "orders(status): eq on a text column takes a text"),
+        (
+            _param("x", N, pushdown=("like_score",)),
+            "orders(x): like takes a text parameter on a text column",
+        ),
+        (_param("x", N, pushdown=("status",)), "orders(x): eq on a text column takes a text"),
     ],
 )
-def test_a_parameter_whose_type_does_not_fit_its_column_and_operator_is_refused(param, why):
+def test_a_declaration_whose_type_does_not_fit_its_column_and_operator_is_refused(param, why):
     assert _problems(_orders(param)) == [why]
+
+
+@pytest.mark.parametrize(
+    "param",
+    [
+        _param("gt_threshold", N),
+        _param("gt_score", S),
+        _param("in_region", S),
+        _param("like_score", N),
+        _param("status", N),
+    ],
+)
+def test_a_name_that_only_looks_like_a_pushdown_stays_a_plain_parameter(param):
+    assert _pushes(_orders(param)) == {param["name"]: None}
 
 
 def test_a_tag_maps_an_ordinarily_named_parameter():
