@@ -74,7 +74,15 @@ class _Fetcher:
 
 
 def test_every_pinned_runtime_names_an_archive_for_each_platform_provisa_runs_on():
-    assert set(code_runtimes.RUNTIMES) == {"node", "bun", "deno", "python", "uv", "pyarrow"}
+    assert set(code_runtimes.RUNTIMES) == {
+        "node",
+        "bun",
+        "deno",
+        "python",
+        "uv",
+        "pyarrow",
+        "apache-arrow",
+    }
     for name, pin in code_runtimes.RUNTIMES.items():
         assert set(pin.assets) == {
             code_runtimes.DARWIN_ARM64,

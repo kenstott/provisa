@@ -21,9 +21,11 @@ import socket
 import threading
 from datetime import UTC, datetime
 
+import pyarrow as pa
 import pytest
 
 from provisa.codesource import worker as w
+from provisa.codesource.arrow_rows import schema_text
 from provisa.core import request_deadline
 from provisa.node.worker import host_command
 from provisa.runtime_deps.code_runtimes import CodeRuntimeResolver
@@ -72,6 +74,35 @@ export async function outside() {
 """
 
 
+# Each export's rows' schema, as a call gives it (REQ-2098): the bundle is untyped JavaScript.
+_UTC = pa.timestamp("us", tz="UTC")
+SCHEMAS = {
+    "orders": [
+        ("id", pa.int64()),
+        ("customer", pa.utf8()),
+        ("placed", _UTC),
+        ("since", _UTC),
+        ("big", pa.int64()),
+        ("note", pa.utf8()),
+    ],
+    "many": [("i", pa.int64())],
+    "ticks": [("tick", pa.int64())],
+    "forever": [("tick", pa.int64())],
+    "boom": [("x", pa.utf8())],
+    "fetched": [("status", pa.int64()), ("body", pa.utf8())],
+    "direct": [("connected", pa.bool_())],
+    "outside": [("text", pa.int64())],
+}
+
+
+def _schema(export: str) -> str:
+    return schema_text(pa.schema(SCHEMAS[export]))
+
+
+def _host_lib(cache):
+    return CodeRuntimeResolver(cache_root=cache).resolve("apache-arrow").parent.parent
+
+
 @pytest.fixture(scope="module")
 def cache(tmp_path_factory):
     return tmp_path_factory.mktemp("runtime-deps")
@@ -87,7 +118,11 @@ def bundle(tmp_path):
 def _start(runtime, cache, bundle, egress=()):
     executable = CodeRuntimeResolver(cache_root=cache).resolve(runtime)
     command = host_command(
-        runtime=runtime, executable=executable, bundle=bundle, egress=list(egress)
+        runtime=runtime,
+        executable=executable,
+        bundle=bundle,
+        egress=list(egress),
+        host_lib=_host_lib(cache),
     )
     started = w.Worker(f"{runtime}-src", "h", command)
     started.start()
@@ -105,7 +140,7 @@ def test_rows_and_their_values_come_back_in_their_own_types(worker):
     _, started = worker
     assert set(started.exports) >= {"orders", "many", "ticks", "cancelOrder", "boom"}
     since = datetime(2025, 12, 1, tzinfo=UTC)
-    [[row]] = list(started.rows("orders", "table", ["acme", since]))
+    [[row]] = list(started.rows("orders", "table", ["acme", since], schema=_schema("orders")))
     assert row == {
         "id": 1,
         "customer": "acme",
@@ -118,19 +153,23 @@ def test_rows_and_their_values_come_back_in_their_own_types(worker):
 
 def test_a_large_table_comes_in_batches(worker):
     _, started = worker
-    assert [len(b) for b in started.rows("many", "table", [2500])] == [1000, 1000, 500]
+    assert [len(b) for b in started.rows("many", "table", [2500], schema=_schema("many"))] == [
+        1000,
+        1000,
+        500,
+    ]
 
 
 def test_a_commands_value_and_the_codes_own_error(worker):
     _, started = worker
     assert started.command("cancelOrder", [7]) == {"cancelled": 7}
     with pytest.raises(w.CodeFailed, match="no such customer"):
-        list(started.rows("boom", "table", []))
+        list(started.rows("boom", "table", [], schema=_schema("boom")))
 
 
 def test_a_stream_its_subscriber_leaves_is_stopped_and_the_worker_serves_on(worker):
     _, started = worker
-    rows = started.rows("ticks", "stream", [])
+    rows = started.rows("ticks", "stream", [], schema=_schema("ticks"))
     assert [next(rows), next(rows), next(rows)] == [[{"tick": 0}], [{"tick": 1}], [{"tick": 2}]]
     rows.close()
     assert started.ping()
@@ -140,7 +179,7 @@ def test_a_deadline_stops_a_call_that_never_answers(worker):
     _, started = worker
     with pytest.raises(TimeoutError):
         with request_deadline.within(0.5):
-            list(started.rows("forever", "stream", []))
+            list(started.rows("forever", "stream", [], schema=_schema("forever")))
     assert started.ping()
 
 
@@ -149,7 +188,7 @@ def test_no_runtime_reads_outside_the_bundle(runtime, cache, bundle):
     started = _start(runtime, cache, bundle)
     try:
         with pytest.raises(w.CodeFailed):
-            list(started.rows("outside", "table", []))
+            list(started.rows("outside", "table", [], schema=_schema("outside")))
     finally:
         started.stop()
 
@@ -189,13 +228,21 @@ def test_a_host_on_the_allow_list_is_reached_and_no_other(runtime, cache, bundle
     host, port = upstream
     started = _start(runtime, cache, bundle, egress=[f"{host}:{port}"])
     try:
-        [[row]] = list(started.rows("fetched", "table", [f"http://{host}:{port}/rates"]))
+        [[row]] = list(
+            started.rows(
+                "fetched", "table", [f"http://{host}:{port}/rates"], schema=_schema("fetched")
+            )
+        )
         assert row == {"status": 200, "body": "ok"}
         # Off the list: refused before it leaves. A runtime that tunnels plain HTTP (Node) sees
         # the refusal as an error; one that sends it to the proxy as a request (Bun) gets the
         # proxy's 403, naming the host; Deno's own permission refuses it.
         try:
-            [[refused]] = list(started.rows("fetched", "table", [f"http://{host}:{port + 1}/x"]))
+            [[refused]] = list(
+                started.rows(
+                    "fetched", "table", [f"http://{host}:{port + 1}/x"], schema=_schema("fetched")
+                )
+            )
         except w.CodeFailed:
             return
         assert refused["status"] == 403, refused
@@ -212,7 +259,7 @@ def test_a_connection_that_does_not_go_through_the_proxy_is_refused(
     started = _start(runtime, cache, bundle, egress=[f"{host}:{port}"])
     try:
         with pytest.raises(w.CodeFailed):
-            list(started.rows("direct", "table", [host, port]))
+            list(started.rows("direct", "table", [host, port], schema=_schema("direct")))
     finally:
         started.stop()
 
@@ -227,13 +274,16 @@ def test_a_host_serves_over_a_socket_it_inherits(runtime, cache, bundle):
     entry = entry_module(bundle)
     command = w.HostCommand(
         argv=lambda address: [str(executable), str(HOST), address, str(entry)],
-        env=w.private_environment(),
+        env=w.private_environment(PROVISA_HOST_LIB=str(_host_lib(cache))),
         cwd=bundle,
         inherit_socket=True,
     )
     started = w.Worker(f"{runtime}-src", "h", command)
     started.start()
     try:
-        assert [len(b) for b in started.rows("many", "table", [1500])] == [1000, 500]
+        assert [len(b) for b in started.rows("many", "table", [1500], schema=_schema("many"))] == [
+            1000,
+            500,
+        ]
     finally:
         started.stop()

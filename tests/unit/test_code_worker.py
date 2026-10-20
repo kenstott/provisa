@@ -71,7 +71,7 @@ _HOST = textwrap.dedent(
 
     def serve(m):
         i, name, args = m["id"], m["export"], m["args"]
-        schema = m["schema"] and pa.ipc.read_schema(pa.py_buffer(base64.b64decode(m["schema"])))
+        schema = m["schema"] and pa.ipc.open_stream(pa.py_buffer(base64.b64decode(m["schema"]))).schema
         if name == "many":
             for start in range(0, args[0], 1000):
                 send_rows(i, schema, [{"n": n} for n in range(start, min(start + 1000, args[0]))])

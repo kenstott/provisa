@@ -228,6 +228,31 @@ RUNTIMES: dict[str, RuntimePin] = {
             ),
         },
     ),
+    # REQ-2098: the Arrow library a Node source's host program sends its rows with: the npm
+    # package's self-contained build, the same file on every platform and runtime. The sum is
+    # the SHA-256 of the registry's tarball.
+    "apache-arrow": RuntimePin(
+        "apache-arrow",
+        "21.2.0",
+        "https://registry.npmjs.org/apache-arrow/-/{filename}",
+        {
+            DARWIN_ARM64: Asset(
+                "apache-arrow-21.2.0.tgz",
+                "dd63a3a4c380eddeb00c718740414ff33c4ded015c8720798afdfcc61b5dac41",
+                "package/Arrow.es2015.min.js",
+            ),
+            LINUX_X64: Asset(
+                "apache-arrow-21.2.0.tgz",
+                "dd63a3a4c380eddeb00c718740414ff33c4ded015c8720798afdfcc61b5dac41",
+                "package/Arrow.es2015.min.js",
+            ),
+            WINDOWS_X64: Asset(
+                "apache-arrow-21.2.0.tgz",
+                "dd63a3a4c380eddeb00c718740414ff33c4ded015c8720798afdfcc61b5dac41",
+                "package/Arrow.es2015.min.js",
+            ),
+        },
+    ),
 }
 
 #: Fetch an archive's bytes. Injected so tests never touch the network.

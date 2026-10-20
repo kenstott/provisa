@@ -232,7 +232,7 @@ class Host:
                 import base64
 
                 pa = _arrow()
-                rows_schema = pa.ipc.read_schema(pa.py_buffer(base64.b64decode(schema)))
+                rows_schema = pa.ipc.open_stream(pa.py_buffer(base64.b64decode(schema))).schema
             await self._run(call_id, fn, kind, positional, keywords, rows_schema)
             await self.send({"op": "end", "id": call_id})
         except asyncio.CancelledError:

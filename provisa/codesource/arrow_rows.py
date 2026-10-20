@@ -92,8 +92,12 @@ def row_schema(manifest: Manifest, export: Export) -> pa.Schema:
 
 
 def schema_text(schema: pa.Schema) -> str:
-    """``schema`` as a call message carries it: its Arrow IPC form, base64-encoded."""
-    return base64.b64encode(schema.serialize().to_pybytes()).decode()
+    """``schema`` as a call message carries it: an Arrow IPC stream of it with no batches,
+    base64-encoded -- the form every language's Arrow library reads a schema from."""
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, schema):
+        pass  # the schema alone
+    return base64.b64encode(sink.getvalue().to_pybytes()).decode()
 
 
 def _back(value: Any, field: pa.Field) -> Any:
