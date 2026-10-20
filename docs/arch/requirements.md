@@ -25606,6 +25606,32 @@ A named demo declares its secrets in secrets.yaml beside its config.yaml (secret
 
 **Docs:** [named-demos.md](../named-demos.md)
 
+## 4. Source Connectors
+
+### REQ-2105 · Source Connectors {#REQ-2105}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+Provisa's services to a code source's worker ([REQ-2104](#REQ-2104)) include an OpenAI-compatible LLM service at $PROVISA_SERVICES/llm/v1: POST chat/completions and embeddings, so any SDK works with its base URL there and no key, the worker's scoped token being in the address; the egress proxy answers it for a local worker. A request names a model as provisa:<role>, the model the org's AI Models assign that role, or by a model id a role is assigned (for embeddings, one of the org's vector models); any other is refused naming it. The call is routed through the org's AI Models configuration -- its vendors, endpoints and keys, a sandbox-tier org's through the tier's sandbox.ai_* settings -- and what goes out is redacted centrally. Streaming is refused by name. Every call is metered for its source in code_source_llm_usage (tokens, and cost at the model's polly.model_prices entry) and audited in the org's administrative trail (source, model, tokens, time). A source's mapping may set llm.cap_usd, a calendar-month (UTC) cap on its metered cost: a capped source may call only models with a price, and once its month's cost reaches the cap its calls are refused (429) naming the source and the cap; an uncapped source's calls to an unpriced model are metered as tokens only. The source form has an LLM monthly cap field.
+
+**Use case:** A Python code table that summarises each account calls provisa:sql_generation with the OpenAI SDK, getting whichever model the org assigns that role through the org's own keys, its spend held under a monthly cap and every call visible in the audit trail.
+
+**Code:** `provisa/codesource/llm_service.py`, `provisa/codesource/services.py`, `provisa/codesource/egress.py`, `provisa/codesource/source.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`, `provisa/vector/providers.py`, `provisa-ui/src/pages/sources/CodeSourceFields.tsx`, `provisa-ui/src/pages/sources/codeSource.ts`
+
+**Tests:** `tests/unit/test_code_source_llm_service.py`, `tests/integration/test_code_source_llm.py`, `provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx`
+
+### REQ-2104 · Source Connectors {#REQ-2104}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A Node or Python code source declares the names its code may read (secrets in its mapping): a list of names, each the org secret of that name, or a mapping of name to vault reference (${secret:NAME} or ${env:NAME}). The references are kept as written through config load and storage and never resolved at load, so a config naming a secret not yet stored loads. When the source's worker starts, Provisa issues a token scoped to the org, the source and its declared names, revoked when the worker stops, and gives the worker one environment variable, PROVISA_SERVICES, an address on a host only the egress proxy answers (http://provisa-services/<token>). The code reads a secret with GET $PROVISA_SERVICES/secrets/<name>; the proxy answers it itself, resolving the reference in the org's vault at that moment, so a rotated secret is read on the next fetch. Further services sit beside secrets/ under the same address. Nothing else of Provisa is reachable: the proxy still never connects to loopback, and the API's host must be on the egress allow-list. An undeclared name, or one that cannot be resolved, is refused naming the name, never the value. Every read is audited in the org's administrative trail (source, name, time, outcome); a value is never logged, never in a refusal, and never part of the code's content hash. A worker serves only the org it was prepared for. The source form has a Secrets field that picks the org's secrets by name.
+
+**Use case:** A Python code table that calls an LLM through OpenRouter reads the org's openrouter secret when it runs, without the key ever being written into its code, its config or Provisa's logs.
+
+**Code:** `provisa/codesource/services.py`, `provisa/codesource/egress.py`, `provisa/codesource/worker.py`, `provisa/codesource/source.py`, `provisa/core/config_loader.py`, `provisa-ui/src/pages/sources/CodeSourceFields.tsx`, `provisa-ui/src/pages/sources/codeSource.ts`
+
+**Tests:** `tests/unit/test_code_source_services.py`, `tests/integration/test_code_source_secrets.py`, `provisa-ui/src/pages/sources/__tests__/codeSource.test.tsx`
+
 ## 11. Platform, Infrastructure & Delivery
 
 ### REQ-2101 · Demo Provisioning {#REQ-2101}
@@ -25716,7 +25742,7 @@ Polly can perform every action the UI can, as the chatting user, through the adm
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. Her usual route for a change is the admin API ([REQ-2114](#REQ-2114)). Whenever the user asks her to show, demo or teach something ('do xyz and show me each step', 'show me how to add a source', 'teach me relationships'), she makes each change the UI can make through the UI instead, on its screen: she opens the page, fills in its form and presses its button, so the user sees how it is done there. Creating a source, she opens the source picker with its whole list of source types and lets it be seen before she chooses one, as a user would; the demo shows that list. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions ([REQ-2114](#REQ-2114)).
+Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. Her usual route for a change is the admin API ([REQ-2114](#REQ-2114)). Whenever the user asks her to show, demo or teach something ('do xyz and show me each step', 'show me how to add a source', 'teach me relationships'), she makes each change the UI can make through the UI instead, on its screen: she opens the page, fills in its form and presses its button, so the user sees how it is done there. Creating a source, she opens the source picker with its whole list of source types and lets it be seen before she chooses one, as a user would; the demo shows that list. The product tour uses the same actions: a tour step may carry steps (fill a field, choose an option, press a button, show a list), run by the same code as Polly's, so a tour builds objects live on screen instead of only showing what setup built, and whatever Polly can show a tour can script. A tour step's press of a button that changes something runs as part of the tour the visitor started, without a further question. Which objects a demo builds live and which it keeps built at setup is decided demo by demo. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions ([REQ-2114](#REQ-2114)).
 
 **Use case:** A new user asks Polly how to add a source; she opens the Sources page, fills in the form in front of them, and presses Create once they confirm.
 
