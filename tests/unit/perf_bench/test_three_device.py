@@ -615,3 +615,72 @@ def test_the_lifecycle_sizes_every_device_with_one_flag() -> None:
     for device in ("server", "client", "backends"):
         assert f'-var "{device}_machine_type=$MACHINE_TYPE"' in text
     assert '-var "disk_gb=$DISK_GB"' in text
+
+
+def _fake_cloud(bin_dir: Path, log: Path) -> None:
+    """terraform and gcloud stand-ins on PATH: each logs its arguments; the server and client
+    devices are ready at commit abc, the backends device never is."""
+    bin_dir.mkdir()
+    (bin_dir / "terraform").write_text(
+        f"""#!/bin/bash
+echo "terraform $*" >> {log}
+case " $* " in
+  *" output "*) echo '{{"server": "10.90.0.2", "client": "10.90.0.3", "backends": "10.90.0.4"}}' ;;
+esac
+"""
+    )
+    (bin_dir / "gcloud").write_text(
+        f"""#!/bin/bash
+printf 'gcloud' >> {log}; printf ' [%s]' "$@" >> {log}; echo >> {log}
+case "$*" in
+  *journalctl*) echo "setup log of $3" ;;
+  *provisa-perf-backends*) ;;
+  *) echo abc ;;
+esac
+"""
+    )
+    for tool in ("terraform", "gcloud"):
+        (bin_dir / tool).chmod(0o755)
+
+
+def test_a_waiting_device_is_held_up_and_every_setup_log_is_kept_before_destroy(
+    tmp_path: Path,
+) -> None:
+    import shutil
+    import subprocess
+
+    log = tmp_path / "calls.log"
+    _fake_cloud(tmp_path / "bin", log)
+    runs = tmp_path / "runs"
+    done = subprocess.run(
+        [
+            "bash",
+            str(_LIFECYCLE),
+            *("--project", "p", "--zone", "us-east1-b", "--commit", "abc"),
+            *("--ssh-cidr", "203.0.113.10/32", "--ready-timeout", "0"),
+        ],
+        env={
+            "PATH": f"{tmp_path / 'bin'}:{Path(shutil.which('python3')).parent}:/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "PROVISA_BENCH_RUNS": str(runs),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+    assert "provisa-perf-backends was not ready at abc" in done.stdout
+    calls = log.read_text().splitlines()
+    polls = [c for c in calls if "/var/lib/provisa-perf/ready" in c]
+    # server, client, then backends once before the deadline; each poll refreshes the idle hold
+    assert len(polls) == 3
+    assert all("sudo touch /var/lib/provisa-idle/hold;" in c for c in polls)
+    journals = [i for i, c in enumerate(calls) if "journalctl -t provisa-perf-startup" in c]
+    destroy = next(
+        i for i, c in enumerate(calls) if c.startswith("terraform ") and " destroy " in c
+    )
+    assert len(journals) == 3 and max(journals) < destroy
+    (run,) = runs.iterdir()
+    for device in ("server", "client", "backends"):
+        assert (
+            run / f"startup-{device}.log"
+        ).read_text() == f"setup log of provisa-perf-{device}\n"

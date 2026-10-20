@@ -87,7 +87,20 @@ if [ -n "$DRY_RUN" ]; then
   exit 0
 fi
 
+# Each device's setup log (its startup script's journal) is copied into the run directory before
+# destroy, so a device that never became ready names the step that failed.
+copy_journals() {
+  local device
+  for device in server client backends; do
+    gcloud compute ssh "provisa-perf-$device" --zone "$ZONE" --project "$PROJECT" --quiet \
+        --command 'sudo journalctl -t provisa-perf-startup --no-pager' \
+        >"$RUN_DIR/startup-$device.log" 2>&1 \
+      || echo "provisa-perf-$device: its setup log was not copied (see $RUN_DIR/startup-$device.log)"
+  done
+}
+
 destroy() {
+  copy_journals
   if [ -n "$KEEP" ]; then
     echo "--keep: the devices are left up; state in $RUN_DIR/tf"
     return
@@ -103,15 +116,17 @@ ip() { "${TF[@]}" output -json private_ip | python3 -c "import json,sys; print(j
 SERVER_IP="$(ip server)" BACKENDS_IP="$(ip backends)"
 
 # Every device's startup script writes the commit to its ready marker when every step has passed
-# (on the backends device, after the first seed).
+# (on the backends device, after the first seed). Each poll also refreshes the device's idle hold
+# (vm_idle_shutdown.sh), so a device that is ready and waiting for the others is not powered off.
+READY_POLL='sudo touch /var/lib/provisa-idle/hold; cat /var/lib/provisa-perf/ready 2>/dev/null'
 echo "=== waiting for the devices to be ready (up to ${READY_TIMEOUT}s) ==="
 deadline=$(( $(date +%s) + READY_TIMEOUT ))
 for device in server client backends; do
   until [ "$(gcloud compute ssh "provisa-perf-$device" --zone "$ZONE" --project "$PROJECT" --quiet \
-      --command 'cat /var/lib/provisa-perf/ready 2>/dev/null' 2>/dev/null)" = "$COMMIT" ]; do
+      --command "$READY_POLL" 2>/dev/null)" = "$COMMIT" ]; do
     if [ "$(date +%s)" -ge "$deadline" ]; then
       echo "device provisa-perf-$device was not ready at $COMMIT within ${READY_TIMEOUT}s;" \
-        "its setup log: gcloud compute ssh provisa-perf-$device -- journalctl -t provisa-perf-startup"
+        "its setup log is copied to $RUN_DIR/startup-$device.log before destroy"
       exit 1
     fi
     sleep 30
