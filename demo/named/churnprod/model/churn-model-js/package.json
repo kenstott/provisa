@@ -1,0 +1,8 @@
+{
+  "name": "churn-model-js",
+  "version": "1.0.0",
+  "description": "The churn analysis's model in JavaScript: the same fit, its coefficients in model.js.",
+  "type": "module",
+  "main": "index.js",
+  "types": "index.d.ts"
+}
