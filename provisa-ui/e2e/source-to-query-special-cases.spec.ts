@@ -74,6 +74,7 @@ import {
   runSqlOnPage,
   setSourceCacheTtl,
   submitRegisterAndExpectListed,
+  fillCheckerConnection,
   submitSourceAndExpectListed,
   waitForSourceServing,
 } from "./source-to-query-helpers";
@@ -301,11 +302,12 @@ for (const c of [
       const sourceId = `e2e_${c.type}_${stamp}`;
       const resultsTable = `e2e_${c.type}_vets_scan_${stamp}`;
 
-      // 1. Sources form — a checker source needs no connection fields at all (dq/contract.py: the
-      // dataset/contract carries everything the scan needs; NO_CONNECTION_TYPES, constants.ts).
+      // 1. Sources form — a checker source's connection is the pgwire endpoint its scans dial
+      // back through, entered like any database's (#276).
       await openSourcesForm(page);
       await page.getByTestId("sources-id-input").fill(sourceId);
       await page.getByTestId("sources-type-select").selectOption(c.type);
+      await fillCheckerConnection(page);
       await submitSourceAndExpectListed(page, sourceId);
 
       // 2. Register Table form — a checker source has no schema/table picker, only the DQ
