@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2f9092b0-ff8c-44f3-bba1-7ff69208a965
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The named demo ``cloudpolicy`` works as shipped: its inventory and incidents land from the rows
 it declares, its policy is read from the HTML its Python package ships, and its tour's statements
 answer what its words say.
