@@ -25605,3 +25605,17 @@ A named demo declares its secrets in secrets.yaml beside its config.yaml (secret
 **Tests:** `tests/unit/test_demo_secrets.py`, `tests/integration/test_testdata_demo.py`
 
 **Docs:** [named-demos.md](../named-demos.md)
+
+## 11. Platform, Infrastructure & Delivery
+
+### REQ-2101 · Demo Provisioning {#REQ-2101}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A configuration may declare the code its code sources run: code/<name>.tar.gz (or .tgz or .zip) beside its config.yaml, a source naming it as uploaded code by the content hash of the code it unpacks to (code: {kind: upload, upload: <hash>}). When an org's model is built, before its replicas converge -- a demo template's from its demo's directory, the deployment org's from its launch config's directory, the directories whose declared replica rows land ([REQ-2089](#REQ-2089)) -- each archive there is kept as the org's upload under that hash, once however often the model is built, with every guard an upload applies; one that cannot be used is refused by name. A demo sandbox is given its template's uploads with its model, so the bundle build, the demo's template on a deployment, every sandbox of it and a local demo start all run the shipped code, and nothing is fetched from a package registry or a Git host to run it.
+
+**Use case:** The churnprod demo ships its churn model as a Python package archive (its fitted model and uv.lock inside) and its Node twin as a second archive; each sandbox scores customers with them without reaching PyPI, npm or GitHub for the code.
+
+**Code:** `provisa/codesource/declared_code.py`, `provisa/api/model_reload.py`, `provisa/codesource/uploads.py`
+
+**Tests:** `tests/unit/test_declared_code.py`, `tests/unit/test_code_uploads_copied_to_sandbox.py`

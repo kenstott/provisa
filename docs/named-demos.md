@@ -257,6 +257,26 @@ Relationship IDs must be unique within the file. Table IDs referenced here come 
 `table:` field in the `tables:` block above, or from auto-discovered tables for native
 connectors (use the actual table name as the ID for those).
 
+### Code sources: the code ships in the demo
+
+A `python` or `node` source runs code the demo ships. Put the package's archive in `code/` beside
+`config.yaml` (`code/<name>.tar.gz`, `.tgz` or `.zip`) and name it in the source's mapping by the
+content hash of the code it unpacks to:
+
+```yaml
+sources:
+- id: churn-model
+  type: python
+  mapping:
+    runtime: python
+    code: {kind: upload, upload: <content hash>}
+```
+
+When the demo's template is built, each archive in `code/` becomes the org's upload under that
+hash, and every sandbox of the demo is given it. A Python archive carries its `pyproject.toml` and
+`uv.lock` at its root, so its dependencies install from wheels pinned there; nothing is fetched to
+find the code itself.
+
 ## demo.yaml — bundle metadata and page card
 
 `demo.yaml` is required for any demo that will be published as a bundle. It holds three kinds of

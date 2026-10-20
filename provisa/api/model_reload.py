@@ -276,10 +276,15 @@ async def publish_routes_over_declared_rows(rt: "OrgRuntime") -> None:
 
     if rt.env == PROD:
         from provisa.api.demo_templates import declared_rows_directory
+        from provisa.codesource.declared_code import adopt_declared_code
         from provisa.federation.declared_replica_rows import adopt_declared_rows
 
         rows_directory = declared_rows_directory(rt.org_id)
         if rows_directory is not None:
+            # REQ-2101: the code archives the directory declares are the org's uploads, kept
+            # before any of its code sources is read.
+            assert state.admin_db is not None, "the admin plane holds the org's uploads"
+            await adopt_declared_code(state.admin_db, rt.org_id, rows_directory)
             await adopt_declared_rows(state, rows_directory)
     await publish_replica_routes(rt)
 
