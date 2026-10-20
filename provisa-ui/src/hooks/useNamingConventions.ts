@@ -29,7 +29,8 @@ const LABELS: Record<string, string> = {
   apollo_graphql: "adminPage.namingConventionApollo",
 };
 
-/** How a convention the server names reads; one the admin has no words for reads as named. */
+/** How a convention the server names reads: the server stores only its presets (a Hasura or DDN
+ *  spelling is kept as the preset it names), and each has its words here. */
 export function namingConventionLabel(t: TFunction, convention: string): string {
-  return convention in LABELS ? t(LABELS[convention]) : convention;
+  return t(LABELS[convention]);
 }

@@ -342,6 +342,14 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     )
     cache_schema: str = "api_cache"  # schema within that catalog
     gql_naming_convention: str | None = None  # overrides global; None = inherit
+
+    @field_validator("gql_naming_convention")
+    @classmethod
+    def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416
+        from provisa.compiler.naming import stored_convention
+
+        return stored_convention(v)
+
     # REQ-281: Provisa-branded federation hints (join/reorder/broadcast_size, the @provisa
     # vocabulary), translated to the engine session props at query time. Raw the engine keys still pass
     # through for backward compatibility but are deprecated.
@@ -823,6 +831,14 @@ class NamingRule(BaseModel):
 
 class NamingConfig(BaseModel):  # REQ-154, REQ-155, REQ-194, REQ-195, REQ-415, REQ-416
     convention: str = "apollo_graphql"
+
+    @field_validator("convention")
+    @classmethod
+    def _preset_convention(cls, v: str) -> str:  # REQ-195, REQ-416
+        from provisa.compiler.naming import preset_convention
+
+        return preset_convention(v)
+
     sql_convention: str = "snake"
     rules: list[NamingRule] = Field(default_factory=list)
     relay_pagination: bool = False  # opt-in: generate _connection fields + Edge/PageInfo types
@@ -1334,6 +1350,14 @@ class Table(
     off_peak_window: str | None = None
     off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
+
+    @field_validator("gql_naming_convention")
+    @classmethod
+    def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416
+        from provisa.compiler.naming import stored_convention
+
+        return stored_convention(v)
+
     hot: bool | None = None  # None = auto-detect, True = force hot, False = opt out
     relay_pagination: bool | None = None  # None = inherit from source/global NamingConfig
     # REQ-318: how this table is read page by page -- a paged REST endpoint's paging, or a

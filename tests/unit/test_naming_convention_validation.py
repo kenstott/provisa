@@ -50,3 +50,48 @@ def test_the_admin_lists_the_presets_the_server_takes():
     listed = Query().naming_conventions()
     assert listed == ["snake", "hasura_graphql", "apollo_graphql"]
     assert all(validation_error_for_convention(c) is None for c in listed)
+
+
+def test_a_config_names_a_convention_by_a_hasura_spelling_and_holds_its_preset():
+    """REQ-195, REQ-416: a config may spell a convention as Hasura or DDN does; the source, the
+    table and the deployment's naming hold the preset it names, and any other name is refused."""
+    import pytest
+    from pydantic import ValidationError
+
+    from provisa.core.models import NamingConfig, Source, Table
+
+    source = Source.model_validate(
+        {
+            "id": "pg",
+            "type": "postgresql",
+            "host": "h",
+            "database": "d",
+            "username": "u",
+            "gql_naming_convention": "hasura-default",
+        }
+    )
+    assert source.gql_naming_convention == "hasura_graphql"
+    table = Table.model_validate(
+        {
+            "source_id": "pg",
+            "domain_id": "d",
+            "table_name": "t",
+            "columns": [],
+            "gql_naming_convention": "graphql-default",
+        }
+    )
+    assert table.gql_naming_convention == "apollo_graphql"
+    assert NamingConfig(convention="graphql").convention == "apollo_graphql"
+    for bad in ("camelCase", "PascalCase", "none"):
+        with pytest.raises(ValidationError):
+            NamingConfig(convention=bad)
+        with pytest.raises(ValidationError):
+            Table.model_validate(
+                {
+                    "source_id": "pg",
+                    "domain_id": "d",
+                    "table_name": "t",
+                    "columns": [],
+                    "gql_naming_convention": bad,
+                }
+            )

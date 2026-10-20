@@ -188,6 +188,24 @@ async def test_a_registration_carrying_every_setting_stores_all_of_them(plane):
     assert [(g["role"], g["operation"]) for g in grants] == [("support", "update")]
 
 
+@pytest.mark.parametrize(
+    ("given", "kept"), [("hasura-default", "hasura_graphql"), ("graphql", "apollo_graphql")]
+)
+async def test_a_hasura_spelling_of_a_convention_is_stored_as_the_preset_it_names(
+    plane, given, kept
+):
+    """REQ-195, REQ-416: a Hasura/DDN spelling is taken as input; only the preset is stored."""
+    assert (await _register(**{**EVERYTHING, "gql_naming_convention": given})).success
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None and table["gql_naming_convention"] == kept
+    result = await schema_mutation.Mutation().update_table(
+        _info(), _input(**{**EVERYTHING, "gql_naming_convention": given})
+    )
+    assert result.success, result.message
+    table, _cols, _grants = await _stored(plane)
+    assert table is not None and table["gql_naming_convention"] == kept
+
+
 async def test_left_out_a_registration_takes_a_new_tables_values(plane):
     result = await _register()
     assert result.success, result.message

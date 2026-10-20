@@ -364,6 +364,23 @@ PRESET_CONVENTIONS: tuple[str, ...] = ("snake", "hasura_graphql", "apollo_graphq
 VALID_CONVENTIONS = frozenset(set(PRESET_CONVENTIONS) | set(_CONVENTION_ALIASES))
 
 
+def stored_convention(convention: str | None) -> str | None:  # REQ-195, REQ-416
+    """The preset ``convention`` is kept as (None: inherit): a Hasura/DDN spelling is taken as
+    input and stored as the preset it names, so every stored convention is one of
+    PRESET_CONVENTIONS. Raises ValueError for any other name."""
+    return None if convention is None else preset_convention(convention)
+
+
+def preset_convention(convention: str) -> str:  # REQ-195, REQ-416
+    """:func:`stored_convention` of a named convention."""
+    preset = normalize_convention(convention)
+    if preset not in PRESET_CONVENTIONS:
+        raise ValueError(
+            f"unknown naming convention {convention!r}; expected one of {sorted(VALID_CONVENTIONS)}"
+        )
+    return preset
+
+
 def validation_error_for_convention(convention: str) -> str | None:  # REQ-416
     """REQ-416: return an error message if `convention` is not a valid preset, else None.
 

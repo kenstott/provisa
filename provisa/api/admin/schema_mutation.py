@@ -4875,6 +4875,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if err:
             return MutationResult(success=False, message=err)
 
+        convention = _naming.normalize_convention(convention)  # REQ-195: kept as its preset
         state.global_gql_naming_convention = convention
         _naming.configure(gql=convention, sql=state.global_sql_naming_convention)
         await _rebuild_schemas()
@@ -4891,12 +4892,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Update naming convention for a source."""
         require_capability(info, "source_registration")
+        refusal = naming_refusal(gql_naming_convention)
+        if refusal is not None:
+            return refusal
+        from provisa.compiler.naming import stored_convention
+
         pool = await _get_pool()
         async with pool.acquire() as conn:
             result = await conn.execute_core(
                 update(sources)
                 .where(sources.c.id == source_id)
-                .values(gql_naming_convention=gql_naming_convention)
+                .values(gql_naming_convention=stored_convention(gql_naming_convention))
             )
             if (result.rowcount or 0) == 0:
                 return MutationResult(

@@ -169,20 +169,23 @@ def write_grant_predicates_refusal(
 
 
 async def save_naming(conn: "Connection", table_id: int, convention: str | None) -> int:
-    """Set a table's GraphQL naming convention (None: inherit). Returns the rows it changed."""
+    """Set a table's GraphQL naming convention (None: inherit), stored as its preset. Returns
+    the rows it changed."""
+    from provisa.compiler.naming import stored_convention
+
     result = await conn.execute_core(
         update(registered_tables)
         .where(registered_tables.c.id == table_id)
-        .values(gql_naming_convention=convention)
+        .values(gql_naming_convention=stored_convention(convention))
     )
     return result.rowcount or 0
 
 
 def naming_refusal(convention: str | None) -> MutationResult | None:
     """The refusal for a naming convention that is not one of the presets (None inherits)."""
-    from provisa.compiler.naming import VALID_CONVENTIONS, normalize_convention
+    from provisa.compiler.naming import PRESET_CONVENTIONS, VALID_CONVENTIONS, normalize_convention
 
-    if convention is None or normalize_convention(convention) in VALID_CONVENTIONS:
+    if convention is None or normalize_convention(convention) in PRESET_CONVENTIONS:
         return None
     return MutationResult(
         success=False,
@@ -236,7 +239,9 @@ async def with_carried_settings(
         refusal = naming_refusal(inp.gql_naming_convention)
         if refusal is not None:
             raise TableSaveRefused(refusal)
-        updates["gql_naming_convention"] = inp.gql_naming_convention
+        from provisa.compiler.naming import stored_convention
+
+        updates["gql_naming_convention"] = stored_convention(inp.gql_naming_convention)
     if carried(inp.write_grants):
         if inp.write_grants is None:
             raise TableSaveRefused(_null_refused("writeGrants"))
