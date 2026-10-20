@@ -614,3 +614,4 @@ def test_the_lifecycle_sizes_every_device_with_one_flag() -> None:
     text = _LIFECYCLE.read_text()
     for device in ("server", "client", "backends"):
         assert f'-var "{device}_machine_type=$MACHINE_TYPE"' in text
+    assert '-var "disk_gb=$DISK_GB"' in text
