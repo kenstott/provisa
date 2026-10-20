@@ -205,3 +205,40 @@ async def test_a_visitor_cannot_choose_the_model_the_tier_endpoint_runs(tier_ai,
         "model": "anthropic/claude-haiku-5.5",
     }
     assert resolved["ai_models"]["sql_generation"] == {"vendor": "mine", "model": "my-own-model"}
+
+
+async def test_a_sandboxs_polly_runs_on_the_tiers_openrouter_haiku(monkeypatch):
+    """cloud.provisa.dev's tier (scripts/deploy-cloud.sh push_overlay): OpenRouter, the key the
+    node's own OPENROUTER_API_KEY by reference. A sandbox cloned from a template, with no AI
+    settings of its own, has Polly ready on the tier's endpoint and Haiku -- and, without the
+    key, is told which one it needs rather than ANTHROPIC_API_KEY."""
+    from types import SimpleNamespace
+
+    from provisa.api.mcp import chat
+    from provisa.core import org_settings
+
+    monkeypatch.setenv("PROVISA_SANDBOX_AI_BASE_URL", _URL)
+    monkeypatch.setenv("PROVISA_SANDBOX_AI_API_KEY", "${env:OPENROUTER_API_KEY}")
+    monkeypatch.delenv("PROVISA_SANDBOX_AI_MODEL", raising=False)
+    monkeypatch.delenv("PROVISA_MCP_CHAT_MODEL", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    monkeypatch.setenv("ORG_ID", "default")
+
+    async def no_overrides(_db):
+        return {}
+
+    monkeypatch.setattr(org_settings, "read_org_overrides", no_overrides)
+    monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: {"ai_models": {}})
+    state = SimpleNamespace(model_db=object())
+    token = current_org.set("sbx0123456789ab")
+    try:
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-test")
+        assert await chat._resolve_vendor(state) == "provisa-sandbox-ai"
+        assert await chat._resolve_model(state) == "anthropic/claude-haiku-5.5"
+        assert await chat._llm_configured(state) == (True, "")
+        monkeypatch.delenv("OPENROUTER_API_KEY")
+        ready, why = await chat._llm_configured(state)
+    finally:
+        current_org.reset(token)
+    assert not ready
+    assert "OPENROUTER_API_KEY" in why and "ANTHROPIC_API_KEY" not in why
