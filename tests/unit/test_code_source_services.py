@@ -177,7 +177,8 @@ def test_a_revoked_or_unknown_token_reads_nothing(vault):
 
 
 def test_another_service_or_method_is_refused_by_name(vault, token):
-    assert _ask("GET", f"/{token}/cache/x")[0] == 404
+    status, content_type, body = services.answer("GET", f"/{token}/nope/x")
+    assert (status, content_type) == (404, services.JSON) and b"'nope'" in body
     assert _ask("POST", f"/{token}/secrets/openrouter")[0] == 405
 
 

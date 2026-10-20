@@ -1,0 +1,5 @@
+{
+  "imports": {
+    "@provisa/services": "./services.mjs"
+  }
+}

@@ -734,6 +734,8 @@
   "it/codeSourceFields.json::codeSourceFields.secrets": "Secrets",
   "it/codeSourceFields.json::codeSourceFields.secretsHint": "The organization secrets this code may read. It fetches each one when it runs, from $PROVISA_SERVICES/secrets/<name>; nothing else in the vault is readable, and every read is audited.",
   "it/codeSourceFields.json::codeSourceFields.secretsPlaceholder": "No secrets",
+  "it/codeSourceFields.json::codeSourceFields.settings": "Settings",
+  "it/codeSourceFields.json::codeSourceFields.settingsHint": "Values the code reads with settings.get(name), one name = value to a line. Not for secrets: those go under Secrets. A steward changes them here without changing the code.",
   "it/codeSourceFields.json::codeSourceFields.subdirectory": "Subdirectory",
   "it/codeSourceFields.json::codeSourceFields.upload": "Upload",
   "it/codeSourceFields.json::codeSourceFields.version": "Version",

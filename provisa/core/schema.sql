@@ -1873,6 +1873,29 @@ CREATE TABLE IF NOT EXISTS code_source_builds (
 );
 
 
+-- REQ-2106: a code source's own cache, shared by every worker of it in every process; a value is
+-- JSON, gone at expires_at (NULL: kept until deleted or replaced). Mirrors schema_org.code_source_cache.
+CREATE TABLE IF NOT EXISTS code_source_cache (
+    source_id  TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    expires_at TIMESTAMPTZ,
+    PRIMARY KEY (source_id, key)
+);
+
+-- REQ-2106: a code source's own vector collection, which its code builds and searches; never a
+-- governed table's data. vector is the embedding as a JSON array of floats.
+-- Mirrors schema_org.code_source_vectors.
+CREATE TABLE IF NOT EXISTS code_source_vectors (
+    source_id     TEXT NOT NULL,
+    item_id       TEXT NOT NULL,
+    vector        TEXT NOT NULL,
+    text          TEXT,
+    item_metadata TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (source_id, item_id)
+);
+
+
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
 -- offboarded, a member's role changed. Separate from query_audit_log (which records data access):
 -- an intervention by a platform_admin must be visible to the org afterward, and the query trail is

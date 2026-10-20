@@ -172,6 +172,8 @@ class RemoteWorker(Worker):
     """A connection to a remote host, in place of a local host process: the same calls, cancels
     and failures, over TLS. Its exports are checked against the ones the source pinned."""
 
+    where_kind = "remote"  # REQ-2106: on a call's stage
+
     def __init__(
         self,
         source_id: str,

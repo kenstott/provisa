@@ -33,6 +33,8 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -57,11 +59,26 @@ def refusal_body(reason: str, status: int) -> bytes:
     ).encode()
 
 
-async def answer(grant: ServiceGrant, method: str, path: str, body: bytes) -> bytes:
-    """The JSON answer to ``path`` (after ``llm/``) for ``grant``'s source; a refusal is raised."""
+@asynccontextmanager
+async def org_bound(grant: ServiceGrant) -> AsyncIterator[tuple["Database", dict]]:
+    """``grant``'s org bound, with its vault, for the block: its model store and resolved config."""
     from provisa.core import secrets_store
     from provisa.core.request_context import reset_current_org, set_current_org
 
+    token = set_current_org(grant.org_id)
+    try:
+        async with secrets_store.bound(grant.admin_db, grant.org_id):
+            model_db = await _model_db(grant.org_id)
+            yield model_db, await _org_config(model_db)
+    finally:
+        reset_current_org(token)
+
+
+async def answer(
+    grant: ServiceGrant, method: str, path: str, body: bytes, span: Any = None
+) -> bytes:
+    """The JSON answer to ``path`` (after ``llm/``) for ``grant``'s source; a refusal is raised.
+    ``span``: the stage the call reports its model and tokens on (REQ-2106)."""
     if method != "POST":
         raise ServiceRefused(405, f"the LLM service is called with POST, not {method}")
     if path not in ("v1/chat/completions", "v1/embeddings"):
@@ -74,18 +91,27 @@ async def answer(grant: ServiceGrant, method: str, path: str, body: bytes) -> by
         raise ServiceRefused(400, f"the request body is not JSON: {exc}") from None
     if not isinstance(request, dict) or not isinstance(request.get("model"), str):
         raise ServiceRefused(400, "the request names no model")
-    token = set_current_org(grant.org_id)
-    try:
-        async with secrets_store.bound(grant.admin_db, grant.org_id):
-            model_db = await _model_db(grant.org_id)
-            cfg = await _org_config(model_db)
-            if path == "v1/chat/completions":
-                answered = await _chat(grant, model_db, cfg, request)
-            else:
-                answered = await _embeddings(grant, model_db, cfg, request)
-    finally:
-        reset_current_org(token)
+    async with org_bound(grant) as (model_db, cfg):
+        if path == "v1/chat/completions":
+            answered = await _chat(grant, model_db, cfg, request)
+        else:
+            answered = await _embeddings(grant, model_db, cfg, request)
+    if span is not None:
+        span.set_attribute("codesource.llm.model", answered["model"])
+        span.set_attribute("codesource.llm.input_tokens", answered["usage"]["prompt_tokens"])
+        span.set_attribute(
+            "codesource.llm.output_tokens", answered["usage"].get("completion_tokens", 0)
+        )
     return json.dumps(answered, default=str).encode()
+
+
+async def embed(
+    grant: ServiceGrant, model_db: "Database", cfg: dict, model: str, texts: list[str]
+) -> list[list[float]]:
+    """``texts`` embedded by the org's vector model ``model``, metered for the source as an
+    embeddings call is (a source's own vector collection, REQ-2106)."""
+    answered = await _embeddings(grant, model_db, cfg, {"model": model, "input": texts})
+    return [d["embedding"] for d in answered["data"]]
 
 
 async def _model_db(org_id: str) -> "Database":

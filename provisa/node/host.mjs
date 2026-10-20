@@ -40,7 +40,7 @@ import process from "node:process";
 import { Connection, loadBundle } from "./host-core.mjs";
 
 const [socketPath, entry] = process.argv.slice(2);
-const bundle = await loadBundle(entry);
+const loaded = await loadBundle(entry);
 
 // A path is connected to; fd:N is a socket Provisa already connected and handed down (the Linux
 // sandbox refuses the host any new socket but TCP). An inherited one is read and written as a
@@ -59,7 +59,7 @@ function write(frame) {
   for (let at = 0; at < frame.length; ) at += fs.writeSync(fd, frame, at);
 }
 
-const connection = new Connection(bundle, write, (message) => {
+const connection = new Connection(loaded, write, (message) => {
   process.stderr.write(`provisa refused this host: ${message}\n`);
   process.exit(2);
 });

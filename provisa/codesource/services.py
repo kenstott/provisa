@@ -29,7 +29,7 @@ code's content hash. An undeclared name, or one whose reference resolves to noth
 naming the name.
 """
 
-# Requirements: REQ-2104
+# Requirements: REQ-2104, REQ-2105, REQ-2106
 from __future__ import annotations
 
 import logging
@@ -40,7 +40,11 @@ from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import unquote
 
+from provisa.otel_compat import get_tracer, stage
+
 log = logging.getLogger(__name__)
+
+_tracer = get_tracer(__name__)
 
 #: The host the egress proxy answers itself. It resolves nowhere, so only the proxy reaches it.
 SERVICES_HOST = "provisa-services"
@@ -63,6 +67,11 @@ class ServiceGrant:
     admin_db: Any = None
     #: REQ-2105: the source's monthly (UTC) cap on what its LLM calls cost, USD; None: no cap.
     llm_cap_usd: float | None = None
+    #: REQ-2106: the source's declared non-secret settings, as its steward edits them.
+    settings: Mapping[str, Any] = field(default_factory=dict)
+    #: REQ-2106: the egress allow-list a fetch Provisa makes for the source is held to -- the one
+    #: the worker's own egress is.
+    egress: tuple[str, ...] = ()
 
 
 class ServiceRefused(Exception):
@@ -104,6 +113,27 @@ def declared(raw: Any) -> dict[str, str | None]:
                 )
         return dict(raw)
     raise BundleRefused("secrets_invalid", "a source's secrets are a list of names or a mapping")
+
+
+def declared_settings(raw: Any) -> dict[str, Any]:
+    """A mapping's ``settings`` (REQ-2106): the source's non-secret settings, name -> a text,
+    number or true/false. Refused by name when it is anything else."""
+    from provisa.codesource.bundle import BundleRefused
+
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise BundleRefused(
+            "settings_invalid", "a source's settings are a mapping of name to value"
+        )
+    for name, value in raw.items():
+        if not isinstance(name, str) or not name or not isinstance(value, (str, int, float, bool)):
+            raise BundleRefused(
+                "settings_invalid",
+                f"the setting {name!r} is a text, a number or true/false",
+                name=str(name),
+            )
+    return dict(raw)
 
 
 def llm_cap(raw: Any) -> float | None:
@@ -148,21 +178,80 @@ TEXT = "text/plain; charset=utf-8"
 JSON = "application/json"
 
 
-def answer(method: str, path: str, body: bytes = b"") -> tuple[int, str, bytes]:
-    """The answer to one request the proxy took for :data:`SERVICES_HOST`: its status, content
-    type and body. A refusal from the LLM service is JSON, as an OpenAI-compatible SDK reads one."""
-    token, _, rest = path.lstrip("/").partition("/")
-    service = rest.partition("/")[0]
-    try:
-        if service == "llm":
-            return 200, JSON, _llm(token, method, rest.partition("/")[2], body)
-        return 200, TEXT, _answer(token, method, rest).encode()
-    except ServiceRefused as refused:
-        if service == "llm":
-            from provisa.codesource.llm_service import refusal_body
+#: Every service under ``$PROVISA_SERVICES`` (provisa/codesource/service_ops.py for REQ-2106's).
+SERVICES = ("secrets", "llm", "settings", "cache", "vectors", "http", "log", "metric")
 
-            return refused.status, JSON, refusal_body(refused.reason, refused.status)
-        return refused.status, TEXT, refused.reason.encode()
+#: The header a worker's services request names its call by (the call's id), so the services'
+#: stages report to the request that call serves (REQ-2106).
+CALL_HEADER = "x-provisa-call"
+
+
+def answer(
+    method: str, path: str, body: bytes = b"", headers: Mapping[str, str] | None = None
+) -> tuple[int, str, bytes]:
+    """The answer to one request the proxy took for :data:`SERVICES_HOST`: its status, content
+    type and body. A secret is its value, as text; every other service answers JSON, a refusal
+    included, as an OpenAI-compatible SDK reads one."""
+    from provisa.codesource.llm_service import refusal_body
+
+    token, _, rest = path.lstrip("/").partition("/")
+    service, _, sub = rest.partition("/")
+    sub = sub.split("?", 1)[0]
+    kind = TEXT if service == "secrets" else JSON
+    try:
+        grant = _grant(token)
+        if service not in SERVICES:
+            raise ServiceRefused(404, f"Provisa offers no service {service!r} to code")
+        with (
+            _call_scope(token, headers or {}),
+            stage(_tracer, f"codesource.service.{service}") as span,
+        ):
+            span.set_attribute("codesource.source", grant.source_id)
+            return 200, kind, _dispatch(grant, service, method, sub, body, span)
+    except ServiceRefused as refused:
+        if kind == TEXT:
+            return refused.status, TEXT, refused.reason.encode()
+        return refused.status, JSON, refusal_body(refused.reason, refused.status)
+
+
+def _call_scope(token: str, headers: Mapping[str, str]) -> Any:
+    """The tracing scope of the call the request names, or none when it names none running."""
+    from contextlib import nullcontext
+
+    from provisa.codesource.worker import call_scope
+    from provisa.otel_compat import in_carried_scope
+
+    named = headers.get(CALL_HEADER, "")
+    scope = call_scope(token, int(named)) if named.isdigit() else None
+    return nullcontext() if scope is None else in_carried_scope(scope)
+
+
+def _dispatch(
+    grant: ServiceGrant, service: str, method: str, sub: str, body: bytes, span: Any
+) -> bytes:
+    from provisa.codesource import llm_service, service_ops
+    from provisa.core.connection_loop import connection_loop
+
+    if service == "secrets":
+        if method != "GET":
+            raise ServiceRefused(405, f"a secret is read with GET, not {method}")
+        name = unquote(sub)
+        span.set_attribute("codesource.secret", name)  # the name, never the value
+        return read_secret(grant, name).encode()
+    if service == "settings":
+        return service_ops.settings(grant, method, sub, span)
+    if service == "log":
+        return service_ops.log_line(grant, method, body, span)
+    if service == "metric":
+        return service_ops.metric(grant, method, body, span)
+    with connection_loop() as cl:
+        if service == "llm":
+            return cl.run(llm_service.answer(grant, method, sub, body, span))
+        if service == "cache":
+            return cl.run(service_ops.cache(grant, method, sub, body, span))
+        if service == "vectors":
+            return cl.run(service_ops.vectors(grant, method, sub, body, span))
+        return cl.run(service_ops.http(grant, method, body, span))
 
 
 def _grant(token: str) -> ServiceGrant:
@@ -171,27 +260,6 @@ def _grant(token: str) -> ServiceGrant:
     if grant is None:
         raise ServiceRefused(401, "the services token is not valid; its worker has stopped")
     return grant
-
-
-def _llm(token: str, method: str, path: str, body: bytes) -> bytes:
-    """REQ-2105: the OpenAI-compatible LLM service (provisa/codesource/llm_service.py)."""
-    from provisa.codesource import llm_service
-    from provisa.core.connection_loop import connection_loop
-
-    grant = _grant(token)
-    with connection_loop() as cl:
-        return cl.run(llm_service.answer(grant, method, path.split("?", 1)[0], body))
-
-
-def _answer(token: str, method: str, rest: str) -> str:
-    grant = _grant(token)
-    service, _, name = rest.partition("/")
-    if service != "secrets":
-        raise ServiceRefused(404, f"Provisa offers no service {service!r} to code")
-    if method != "GET":
-        raise ServiceRefused(405, f"a secret is read with GET, not {method}")
-    name = unquote(name.split("?", 1)[0])
-    return read_secret(grant, name)
 
 
 def read_secret(grant: ServiceGrant, name: str) -> str:

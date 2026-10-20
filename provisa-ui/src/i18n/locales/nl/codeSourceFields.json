@@ -31,6 +31,8 @@
     "secretsPlaceholder": "Geen secrets",
     "llmCap": "Maandelijks LLM-plafond",
     "llmCapHint": "Wat de aanroepen van deze code naar $PROVISA_SERVICES/llm per maand (UTC) mogen kosten, in USD. Met een plafond mag hij alleen modellen gebruiken met een prijs in Modelprijzen van Polly, en worden zijn aanroepen geweigerd zodra de maand het plafond bereikt. Leeg: geen plafond.",
-    "llmCapPlaceholder": "Geen plafond"
+    "llmCapPlaceholder": "Geen plafond",
+    "settings": "Instellingen",
+    "settingsHint": "Waarden die de code leest met settings.get(name), één name = value per regel. Niet voor secrets: die horen onder Secrets. Een steward wijzigt ze hier zonder de code te wijzigen."
   }
 }

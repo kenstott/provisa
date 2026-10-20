@@ -11,10 +11,16 @@
 // any connection -- the local worker's socket (host.mjs) or a remote host's TLS connections
 // (remote_host.mjs), each served by its own Connection with its own calls. See host.mjs for the
 // frames.
+//
+// REQ-2106: "@provisa/services" resolves to services.mjs beside this host on every runtime --
+// Node by a resolve hook, Bun by a runtime plugin, Deno by the import map its command names
+// (provisa/node/worker.py) -- and each call runs in its call's context (services.mjs __call), and
+// in the request's trace when the code traces itself with @opentelemetry/api. A call's end names
+// the CPU it took in this process.
 
-import { createRequire } from "node:module";
+import module, { createRequire } from "node:module";
 import process from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BATCH = 1000;
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
@@ -27,9 +33,40 @@ function arrow() {
   return Arrow;
 }
 
-/** The code's bundle, imported once per process. */
+// REQ-2106: "@provisa/services" is this host's services.mjs, the one instance calls are bound in.
+const SERVICES = new URL("./services.mjs", import.meta.url).href;
+
+function resolveServices() {
+  if (globalThis.Bun !== undefined) {
+    globalThis.Bun.plugin({
+      name: "provisa-services",
+      setup(build) {
+        build.onResolve({ filter: /^@provisa\/services$/ }, () => ({ path: fileURLToPath(SERVICES) }));
+      },
+    });
+  } else if (globalThis.Deno === undefined) {
+    module.registerHooks({
+      resolve(specifier, context, next) {
+        if (specifier === "@provisa/services") return { url: SERVICES, shortCircuit: true };
+        return next(specifier, context);
+      },
+    });
+  }
+}
+
+/** The code's bundle, imported once per process, with Provisa's services resolvable from it and
+ * the code's own OpenTelemetry (null when it does not trace itself). */
 export async function loadBundle(entry) {
-  return import(pathToFileURL(entry).href);
+  resolveServices();
+  const services = await import(SERVICES);
+  const bundle = await import(pathToFileURL(entry).href);
+  let otel = null;
+  try {
+    otel = createRequire(pathToFileURL(entry).href)("@opentelemetry/api");
+  } catch {
+    otel = null; // the code does not trace itself: there is no trace of its own to join
+  }
+  return { bundle, services, otel };
 }
 
 export function encode(value) {
@@ -89,8 +126,10 @@ export function frame(body) {
 /** One connection's serving: its calls, the frames it reads and the ones it writes (`write`
  * takes a whole frame). `onRefused` is told when Provisa refuses this host. */
 export class Connection {
-  constructor(bundle, write, onRefused) {
-    this.bundle = bundle;
+  constructor(loaded, write, onRefused) {
+    this.bundle = loaded.bundle;
+    this.services = loaded.services;
+    this.otel = loaded.otel;
     this.write = write;
     this.onRefused = onRefused;
     this.running = new Map();
@@ -180,12 +219,24 @@ export class Connection {
       return;
     }
     if (message.op === "call") {
-      this.serve(message).then(
-        () => this.send({ op: "end", id: message.id }),
+      const started = process.cpuUsage();
+      const call = { id: message.id, traceparent: message.traceparent ?? null };
+      this.services.__call.run(call, () => this.inTrace(call.traceparent, () => this.serve(message))).then(
+        () => {
+          const used = process.cpuUsage(started);
+          this.send({ op: "end", id: message.id, cpu_ms: (used.user + used.system) / 1000 });
+        },
         (error) =>
           this.send({ op: "error", id: message.id, message: String(error?.message ?? error), stack: String(error?.stack ?? "") }),
       );
     }
+  }
+
+  /** ``fn`` in the request's trace, when the code traces itself. */
+  inTrace(traceparent, fn) {
+    if (!this.otel || !traceparent) return fn();
+    const ctx = this.otel.propagation.extract(this.otel.context.active(), { traceparent });
+    return this.otel.context.with(ctx, fn);
   }
 
   /** Bytes read from the connection: every whole frame in them dispatched. */
