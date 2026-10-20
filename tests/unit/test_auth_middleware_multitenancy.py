@@ -953,3 +953,56 @@ def test_a_role_sets_meta_role_is_built_in_the_environment_the_request_names(mon
     assert resp.json()["role"] == "meta:analyst+developer"
     assert built == [(("analyst", "developer"), ("acme", "preprod"))]
     assert ("acme", "preprod") in runtimes
+
+
+@pytest.mark.parametrize(
+    ("refusal", "status", "code"),
+    [
+        ("EnvironmentSelectionError", 404, "env.unknown"),
+        ("EnvironmentRightError", 403, "env.switch_forbidden"),
+    ],
+)
+def test_an_environment_the_request_cannot_be_served_by_is_refused_before_any_role_is_built(
+    monkeypatch, refusal, status, code
+):
+    """The environment a request names is resolved where its meta-role would be built, and a
+    refusal there stands, by name, as _OrgRoutingMiddleware gives it: nothing is built elsewhere."""
+    from provisa.api import env_routing
+
+    built: list = []
+
+    async def selected(_admin, _org, _identity, requested, _caps):
+        if requested is not None:
+            raise getattr(env_routing, refusal)(f"org 'acme' cannot serve {requested!r}")
+        return "prod"
+
+    async def caps(_identity, _org):
+        return set()
+
+    monkeypatch.setattr("provisa.api.env_routing.resolve_selected_env", selected)
+    monkeypatch.setattr("provisa.auth.middleware.org_env_capabilities", caps)
+    monkeypatch.setattr(
+        AuthMiddleware, "_meta_role", staticmethod(lambda *a, **k: built.append(a) or "meta:x")
+    )
+    db = _Pool(
+        rows_by_table={
+            "user_role_assignments": [
+                {"role_id": "analyst", "domain_id": "*"},
+                {"role_id": "developer", "domain_id": "*"},
+            ]
+        }
+    )
+    admin = _Pool(rows_by_table={"user_org_memberships": [{"org_id": "acme"}]})
+    app = _make_app(assignments_source="provisa", db_pool=db, admin_pool=admin, multitenancy=True)
+    resp = TestClient(app, base_url="http://cloud.provisa.dev").get(
+        "/test",
+        headers={
+            **_auth_in("u1", "acme"),
+            "x-provisa-env": "gone",
+            "X-Provisa-Role": "analyst,developer",
+        },
+    )
+    assert resp.status_code == status, resp.text
+    assert resp.json()["error"]["code"] == code
+    assert "'gone'" in resp.json()["error"]["message"]
+    assert built == []

@@ -1036,13 +1036,22 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 bound_env = active_env
                 requested_env = env_header_value(request.scope.get("headers") or [])
                 if requested_env is not None:
+                    # Refused here as _OrgRoutingMiddleware refuses it, by name: nothing is built
+                    # in an environment the request will not be served by.
                     try:
                         bound_env = await _resolve_selected_env(
                             self._admin_pool, active_org_id, identity, requested_env, env_caps
                         )
-                    except (EnvironmentSelectionError, EnvironmentRightError):
-                        # _OrgRoutingMiddleware refuses the request for it, by name, below.
-                        bound_env = active_env
+                    except EnvironmentSelectionError as exc:
+                        return JSONResponse(
+                            {"error": {"code": "env.unknown", "message": str(exc)}},
+                            status_code=404,
+                        )
+                    except EnvironmentRightError as exc:
+                        return JSONResponse(
+                            {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
+                            status_code=403,
+                        )
                     if bound_env != active_env:
                         await ensure_org_runtime(active_org_id, bound_env)
                 _org_binding = (active_org_id, bound_env)
