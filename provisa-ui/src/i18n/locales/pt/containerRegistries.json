@@ -1,0 +1,19 @@
+{
+  "containerRegistries": {
+    "help": "Os registros para os quais a imagem construída de uma fonte de código pode ser enviada, para executá-la em um host remoto. Cada campo pode conter um valor ou uma referência a um segredo como ${secret:registry_token}. Sem registro, a imagem construída é baixada em vez disso.",
+    "add": "Adicionar registro de contêineres",
+    "none": "Nenhum registro de contêineres. As imagens construídas ainda podem ser baixadas.",
+    "address": "Registro e namespace",
+    "addressHelp": "O registro, com sua porta se tiver uma, e o namespace de repositório sob o qual as imagens são enviadas, por exemplo ghcr.io/example ou registry.example.com:5000/data.",
+    "username": "Nome de usuário",
+    "credential": "Senha ou token",
+    "credentialHelp": "A senha ou o token de acesso com que o nome de usuário entra, por exemplo um token de acesso pessoal do GitHub com write:packages.",
+    "caBundle": "Autoridade de certificação (PEM)",
+    "caBundleHelp": "Somente para um registro cujo certificado é assinado pela sua própria autoridade: o certificado PEM dela, ou uma referência a um segredo. Ela é confiável junto com as autoridades públicas. Caso contrário, deixe em branco.",
+    "default": "Registro padrão",
+    "defaultHelp": "Uma build envia para cá, a menos que indique outro registro. Uma organização tem um registro padrão.",
+    "saved": "Salvo",
+    "removed": "Removido",
+    "remove": "Remover"
+  }
+}

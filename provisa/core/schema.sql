@@ -1853,6 +1853,26 @@ CREATE TABLE IF NOT EXISTS code_source_llm_usage (
 );
 
 
+-- REQ-2098: a code source's image builds: each one's state, what it made (a pushed image, or an
+-- archive kept on the node that built it), and why it failed. Mirrors schema_org.code_source_builds.
+CREATE TABLE IF NOT EXISTS code_source_builds (
+    id           TEXT PRIMARY KEY,
+    source_id    TEXT NOT NULL,
+    code_hash    TEXT NOT NULL,
+    arch         TEXT NOT NULL,          -- amd64 | arm64
+    registry_id  TEXT,                   -- pushed there; NULL: downloaded
+    status       TEXT NOT NULL,          -- building | done | failed
+    image_ref    TEXT,
+    digest       TEXT,
+    archive_path TEXT,
+    node         TEXT,                   -- the node that holds the archive
+    error        TEXT,
+    started_by   TEXT,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at  TIMESTAMPTZ
+);
+
+
 -- REQ-1303/REQ-1308: administrative acts inside THIS org — org_admin granted or revoked, a member
 -- offboarded, a member's role changed. Separate from query_audit_log (which records data access):
 -- an intervention by a platform_admin must be visible to the org afterward, and the query trail is

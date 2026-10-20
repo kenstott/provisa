@@ -1,0 +1,19 @@
+{
+  "containerRegistries": {
+    "help": "可推送代码源构建镜像的注册表，用于在远程主机上运行。每个字段可填写值，或 ${secret:registry_token} 这样的密钥引用。没有注册表时，构建的镜像会改为下载。",
+    "add": "添加容器注册表",
+    "none": "没有容器注册表。构建的镜像仍可下载。",
+    "address": "注册表和命名空间",
+    "addressHelp": "注册表（如有端口则带端口）以及推送镜像所用的仓库命名空间，例如 ghcr.io/example 或 registry.example.com:5000/data。",
+    "username": "用户名",
+    "credential": "密码或令牌",
+    "credentialHelp": "用户名用于登录的密码或访问令牌，例如具有 write:packages 权限的 GitHub 个人访问令牌。",
+    "caBundle": "证书颁发机构 (PEM)",
+    "caBundleHelp": "仅适用于证书由您自己的颁发机构签名的注册表：其 PEM 证书，或密钥引用。它会与公共颁发机构一同被信任。否则留空。",
+    "default": "默认注册表",
+    "defaultHelp": "除非构建指定其他注册表，否则推送到此处。一个组织只有一个默认注册表。",
+    "saved": "已保存",
+    "removed": "已删除",
+    "remove": "删除"
+  }
+}

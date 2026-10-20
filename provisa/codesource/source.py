@@ -35,7 +35,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from provisa.codesource import services
+from provisa.codesource import remote_sources, services
 from provisa.codesource.bundle import BundleRefused
 from provisa.codesource.install import GitCode, Lockfile
 from provisa.codesource.manifest import Manifest
@@ -71,6 +71,10 @@ class CodeConfig:
     secrets: dict[str, str | None] = field(default_factory=dict)
     #: REQ-2105: the monthly cap on what its LLM calls cost, USD; None: no cap.
     llm_cap_usd: float | None = None
+    #: REQ-2098: dev (its code on this server) or built (its image on a remote host).
+    mode: str = "dev"
+    #: REQ-2098: a built source's remote host: host, port, pin, exports and kept manifest.
+    remote: dict | None = None
 
 
 def config_of(source_type: str, mapping: dict) -> CodeConfig:
@@ -114,6 +118,10 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
         content_hash=mapping.get("content_hash") or None,
         secrets=services.declared(mapping.get("secrets")),
         llm_cap_usd=services.llm_cap(mapping.get("llm")),
+        mode=remote_sources.mode_of(mapping),
+        remote=remote_sources.remote_of(mapping)
+        if remote_sources.mode_of(mapping) == remote_sources.BUILT
+        else None,
     )
 
 
@@ -128,8 +136,21 @@ class Prepared:
     #: The org it was prepared for: its worker carries that org's services grant (REQ-2104), so
     #: no other org's calls reach it.
     org_id: str
+    #: REQ-2098: a built source's remote host, and the identity Provisa presents to it.
+    remote: dict | None = None
+    identity: Any = None
 
     def worker(self) -> Worker:
+        remote = self.remote
+        if remote is not None:
+            return pool.remote(
+                self.source_id,
+                self.content_hash,
+                self.org_id,
+                lambda: remote_sources.worker_for(
+                    self.org_id, self.source_id, self.content_hash, remote, self.identity
+                ),
+            )
         return pool.get(self.source_id, self.content_hash, lambda: self.command, org=self.org_id)
 
 
@@ -285,6 +306,24 @@ async def prepare(source_id: str, source_type: str, mapping: dict, ctx: Context)
             held = _prepared.get((ctx.org_id, source_id, config.content_hash))
         if held is not None:
             return held
+    if config.remote is not None:
+        # REQ-2098: built -- nothing installed or read here; the manifest is the one kept.
+        from provisa.codesource.manifest import manifest_from_json
+
+        if config.content_hash is None:
+            raise BundleRefused("remote_unpinned", "a built source is pinned to its code's hash")
+        ready = Prepared(
+            source_id,
+            config.content_hash,
+            manifest_from_json(config.remote["manifest"]),
+            None,  # pyright: ignore[reportArgumentType] -- no local host command
+            ctx.org_id,
+            remote=config.remote,
+            identity=await remote_sources.identity(ctx.org_id),
+        )
+        with _lock:
+            _prepared[(ctx.org_id, source_id, config.content_hash)] = ready
+        return ready
     code = await _code_reference(config, ctx)
     lock = await _lockfile(config, ctx)
     build = _prepare_node if config.language == "node" else _prepare_python

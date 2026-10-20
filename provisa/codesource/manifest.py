@@ -164,6 +164,114 @@ class Manifest:
         return next(e for e in self.exports if e.name == name)
 
 
+# -- kept with a built source (REQ-2098) -----------------------------------------------------------
+#
+# A source in built mode runs on a remote host and is not read on the server (its code may need
+# what the server does not have), so the manifest it was read with in dev mode is kept with it.
+
+_SHAPES = {"scalar": Scalar, "list": ListOf, "named": Named, "anonymous": Anonymous, "enum": EnumOf}
+
+
+def _shape_json(shape: Shape | None) -> Any:
+    if shape is None:
+        return None
+    if isinstance(shape, Scalar):
+        return {"kind": "scalar", "ir": shape.ir}
+    if isinstance(shape, ListOf):
+        return {"kind": "list", "element": _shape_json(shape.element)}
+    if isinstance(shape, Named):
+        return {"kind": "named", "name": shape.name}
+    if isinstance(shape, Anonymous):
+        return {"kind": "anonymous", "fields": [_field_json(f) for f in shape.fields]}
+    return {"kind": "enum", "name": shape.name, "values": list(shape.values)}
+
+
+def _field_json(field: Field) -> dict:
+    return {"name": field.name, "shape": _shape_json(field.shape), "nullable": field.nullable}
+
+
+def _shape(raw: Any) -> Shape | None:
+    if raw is None:
+        return None
+    kind = raw["kind"]
+    if kind == "scalar":
+        return Scalar(raw["ir"])
+    if kind == "list":
+        element = _shape(raw["element"])
+        assert element is not None
+        return ListOf(element)
+    if kind == "named":
+        return Named(raw["name"])
+    if kind == "anonymous":
+        return Anonymous(tuple(_field(f) for f in raw["fields"]))
+    if kind == "enum":
+        return EnumOf(raw["name"], tuple(raw["values"]))
+    raise ValueError(f"a kept manifest holds an unknown shape {kind!r}")
+
+
+def _field(raw: dict) -> Field:
+    shape = _shape(raw["shape"])
+    assert shape is not None
+    return Field(raw["name"], shape, raw["nullable"])
+
+
+def manifest_json(manifest: Manifest) -> dict:
+    """``manifest`` as JSON, to keep with a built source."""
+    return {
+        "exports": [
+            {
+                "name": e.name,
+                "kind": e.kind,
+                "description": e.description,
+                "parameters": [
+                    {
+                        "name": p.name,
+                        "shape": _shape_json(p.shape),
+                        "nullable": p.nullable,
+                        "required": p.required,
+                    }
+                    for p in e.parameters
+                ],
+                "returns": _shape_json(e.returns),
+                "preview": e.preview,
+                "many": e.many,
+            }
+            for e in manifest.exports
+        ],
+        "types": {
+            name: {"name": t.name, "fields": [_field_json(f) for f in t.fields]}
+            for name, t in manifest.types.items()
+        },
+    }
+
+
+def manifest_from_json(raw: dict) -> Manifest:
+    """A manifest kept with a built source."""
+    exports = []
+    for e in raw["exports"]:
+        parameters = []
+        for p in e["parameters"]:
+            shape = _shape(p["shape"])
+            assert shape is not None
+            parameters.append(Parameter(p["name"], shape, p["nullable"], p["required"]))
+        exports.append(
+            Export(
+                e["name"],
+                e["kind"],
+                e["description"],
+                tuple(parameters),
+                _shape(e["returns"]),
+                e["preview"],
+                e["many"],
+            )
+        )
+    types = {
+        name: ObjectType(t["name"], tuple(_field(f) for f in t["fields"]))
+        for name, t in raw["types"].items()
+    }
+    return Manifest(tuple(exports), types)
+
+
 class ManifestRefused(BundleRefused):
     """A bundle whose declarations break a rule: every problem, each by name."""
 
