@@ -110,7 +110,7 @@ def test_a_demo_name_that_cannot_be_part_of_a_store_name_is_refused():
         ds.namespace("Web-Logs", "1")
 
 
-def test_postgres_mongo_and_elasticsearch_stores_are_shared_and_the_rest_are_the_demos_own():
+def test_postgres_mongo_elasticsearch_qdrant_and_kafka_stores_are_shared_and_the_rest_are_the_demos_own():
     config = {
         "services": {
             "postgres": {"image": "postgres:16", "labels": _pg_store().labels},
@@ -126,19 +126,24 @@ def test_postgres_mongo_and_elasticsearch_stores_are_shared_and_the_rest_are_the
                 "image": "neo4j:5.19-community",
                 "labels": {"com.provisa.demo.role": "graph"},
             },
+            "qdrant": {
+                "image": "qdrant/qdrant:v1.9.0",
+                "labels": {"com.provisa.demo.role": "vector", "com.provisa.demo.ns_env": "Q_NS"},
+            },
             "kafka": {
                 "image": "confluentinc/cp-kafka:7.6.0",
-                "labels": {"com.provisa.demo.role": "stream"},
+                "labels": {"com.provisa.demo.role": "stream", "com.provisa.demo.ns_env": "K_NS"},
             },
         }
     }
     kinds = {s.service: s.kind for s in ds.stores_of(config)}
     assert kinds == {
         "elasticsearch": "elasticsearch",
-        "kafka": None,
+        "kafka": "kafka",
         "mongodb": "mongo",
         "neo4j": None,
         "postgres": "postgres",
+        "qdrant": "qdrant",
     }
 
 

@@ -118,7 +118,7 @@ services:
       com.provisa.demo.role: producer
     environment:
       FEEDS_BOOTSTRAP: kafka:9092
-      TOPIC_SUFFIX: ${PROVISIONING_KAFKA_NS-}
+      TOPIC_SUFFIX: ${PROVISIONING_KAFKA_NS?the suffix of the demo's Kafka topics, empty on its own broker}
       # Each sandbox lands the feeds into its own tables: a shorter history than a local start's.
       ORDERS_HISTORY: "50000"
       ORDERS_PER_SECOND: "5"
