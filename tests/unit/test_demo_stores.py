@@ -649,3 +649,101 @@ def test_a_postgres_with_pgvector_is_the_demos_own_and_names_its_data_unsuffixed
         "CLOUDPOLICY_PG_NS": "",
     }
     assert not any("/shared.yml up" in line for line in runner.lines())
+
+
+# -- every <STEM>_NS is set before any compose command reads it -------------------------------------
+
+
+def _published_run_files() -> list[Path]:
+    import yaml
+
+    return sorted(
+        run
+        for run in (_REPO / "demo" / "named").glob("*/docker-compose.run.yml")
+        if (yaml.safe_load((run.parent / "demo.yaml").read_text()) or {}).get("published") is True
+    )
+
+
+def test_a_version_reads_its_stores_without_interpolating_the_file(monkeypatch, tmp_path):
+    """The run file names its data by the <STEM>_NS this reading sets; reading it must not need
+    them (visitor walk 39480892669: STREAMING_KAFKA_NS required and unset at `compose config`)."""
+    runner = FakeRunner({"ps -q kafka": "kcid", "ps -q producer": "pcid", " ps -q": "pcid"})
+    _demo(monkeypatch, tmp_path, runner, _STREAMING).up()
+    [config] = [line for line in runner.lines() if " config " in line]
+    assert "--no-interpolate" in config
+
+
+def test_a_store_the_demo_runs_itself_has_its_names_set_before_its_first_start(
+    monkeypatch, tmp_path
+):
+    runner = FakeRunner(
+        {"ps -q postgres": "pgcid", "port postgres 5432": "127.0.0.1:43000", " ps -q": "pgcid"}
+    )
+    _demo(monkeypatch, tmp_path, runner, _PGVECTOR).up()
+    first_up = next(line for line in runner.lines() if " up -d" in line)
+    assert "CLOUDPOLICY_PG_NS= " in first_up
+
+
+@pytest.mark.parametrize("run", _published_run_files(), ids=lambda p: p.parent.name)
+def test_every_variable_a_published_demo_requires_is_a_name_its_stores_set(run):
+    """Every ${VAR?...} a published demo's run file requires is the ns_env of one of its stores:
+    set by the sandbox tier's node (Demo.up, shared or own) and by the bundle build and a local
+    start (demo_bundles.store_namespaces)."""
+    import re
+
+    import yaml
+
+    from provisa.core.demo_bundles import store_namespaces
+
+    stores = ds.stores_of(yaml.safe_load(run.read_text()))
+    named = {
+        s.labels["com.provisa.demo.ns_env"] for s in stores if "com.provisa.demo.ns_env" in s.labels
+    }
+    required = set(re.findall(r"\$\{([A-Za-z0-9_]+)\?", run.read_text()))
+    assert required <= named, f"{run.parent.name} requires {sorted(required - named)} unset"
+    assert set(store_namespaces(run.parent)) == named
+
+
+def _compose_files_with_kafka() -> list[Path]:
+    shared = _REPO / "packaging" / "linux" / "demo-stores" / "docker-compose.shared.yml"
+    demos = sorted((_REPO / "demo" / "named").glob("*/docker-compose*.yml"))
+    return [f for f in [shared, *demos] if "CLUSTER_ID" in f.read_text()]
+
+
+@pytest.mark.parametrize(
+    "compose", _compose_files_with_kafka(), ids=lambda p: str(p.relative_to(_REPO))
+)
+def test_every_kafka_cluster_id_is_a_uuid_kraft_can_format(compose):
+    """KRaft formats its storage with CLUSTER_ID, which must be a UUID in base64: 16 bytes. The
+    shared Kafka's was 21 ("provisa-demo-stores-1"), and the broker exited (1) at its first start
+    on the sandbox tier (visitor walk 39485183923); the demos' own brokers' were 16."""
+    import base64
+
+    import yaml
+
+    services = yaml.safe_load(compose.read_text())["services"]
+    ids = {
+        name: str(env["CLUSTER_ID"])
+        for name, svc in services.items()
+        if isinstance(env := svc.get("environment"), dict) and "CLUSTER_ID" in env
+    }
+    assert ids, f"{compose} names CLUSTER_ID outside a service's environment mapping"
+    for name, cluster_id in ids.items():
+        raw = base64.urlsafe_b64decode(cluster_id + "=" * (-len(cluster_id) % 4))
+        assert len(raw) == 16, f"{name}: CLUSTER_ID {cluster_id!r} is {len(raw)} bytes, not 16"
+
+
+def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
+    """A store that exits before it is healthy says why only in its container's log: the error
+    the sync prints carries its end (the walk's Kafka exited (1) with no reason shown)."""
+    runner = FakeRunner(
+        {
+            "ps -a -q kafka": "kcid",
+            "docker logs --tail": "ERROR the cluster id is not a valid UUID",
+        },
+        fail={"up -d --wait kafka"},
+    )
+    with pytest.raises(ds.StoreError) as failed:
+        _shared(runner).start("kafka")
+    assert "--- docker logs kcid ---" in str(failed.value)
+    assert "the cluster id is not a valid UUID" in str(failed.value)

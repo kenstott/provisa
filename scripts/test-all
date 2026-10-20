@@ -85,7 +85,7 @@ rc=0
 # requires_warehouse: cloud-DW e2es needing external SaaS creds run ONLY in the warehouse lane
 # (by path, with .env creds loaded). Excluding them from every default lane means they are never
 # collected credential-less and so never surface as phantom skips in core.
-_BASE="not packaging and not cluster and not isolated and not requires_warehouse and not requires_vector"
+_BASE="not packaging and not cluster and not isolated and not requires_warehouse and not requires_vector and not demo_walk"
 # On a macOS host the RLIMIT_AS cap tests (linux_mem) cannot discriminate — Darwin ignores the cap —
 # so they @skipif on macOS and would surface as phantom skips in the default lanes. The linux-mem
 # container lane below runs them for real instead, so DESELECT them from every default lane on macOS.
@@ -166,6 +166,12 @@ COVERAGE_FILE=.coverage.isolated pytest tests --ignore=tests/e2e -o addopts="" -
 if [[ "${TEST_ALL_CLUSTER:-}" == "1" ]]; then
   echo "== lane: cluster (helm/minikube) =="
   COVERAGE_FILE=.coverage.cluster pytest tests/e2e/test_helm_minikube.py -o addopts="" -m cluster "${COV_ARGS[@]}" "$@" || rc=1
+fi
+
+if [[ "${TEST_ALL_DEMO_WALK:-}" == "1" ]]; then
+  echo "== lane: demo_walk (every published demo's bundle, built and walked as a visitor) =="
+  # Each demo's bundle is built first (scripts/demo_bundle.py build), with the keys its build needs.
+  COVERAGE_FILE=.coverage.demo_walk pytest tests/integration/test_sandbox_visitor_walk.py -o addopts="" -m "demo_walk and not requires_warehouse" "${COV_ARGS[@]}" "$@" || rc=1
 fi
 
 if [[ "${TEST_ALL_PACKAGING:-}" == "1" ]]; then
