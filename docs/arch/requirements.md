@@ -25685,3 +25685,15 @@ A Visual Studio Code extension for Node and Python code sources, published on th
 **Code:** —
 
 **Tests:** —
+
+### REQ-2113 · Source Registration {#REQ-2113}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+A CSV or Parquet source can be given its file by download, a third way beside a path and an upload ([REQ-1997](#REQ-1997)). The steward gives one fully resolved path to a single file: a file mount path, an https:// URL or an s3:// URL. Provisa fetches it with the source's credential and headers where the address needs them, and streams the bytes through the upload path into the org's folder under files/<source id>/<name>, with the same size limit (sources.max_upload_bytes), encryption and one-rename swap as an upload. From then on the source reads that local file, and an environment fork copies it as it copies an upload. When the file is fetched again follows the source's freshness declaration: a TTL fetches it again once it lapses, TTL -1 fetches it once and keeps it. A file mount path may only name a file under a directory the operator lists in a setting, which has its admin UI as every setting does, as logs.allowed_roots does for log sources; a path outside them is refused by name. Polly offers the same: given one fully resolved path to a single file, she works out CSV or Parquet from the file, fills in the download form and proposes the source through propose_source. She creates it and runs the download only after the user confirms in the conversation (create_source_now), and can then register its table (register_table_now). She acts as the chatting user, so only a user with source_registration can do this through her.
+
+**Use case:** An analyst pastes the URL of a public Parquet file into Polly's chat, confirms, and queries a governed table read from the org's own copy of the file.
+
+**Code:** —
+
+**Tests:** —
