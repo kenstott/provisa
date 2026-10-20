@@ -1524,6 +1524,90 @@
       "worldcupRecap": {
         "title": "Recap",
         "description": "Public data from Wikipedia and Kaggle, sourced in minutes and governed like any internal database, made to agree by about ten lines of Python and queried as one graph. The function's matches were reviewed, so the graph counts every title once, under the right member."
+      },
+      "cloudpolicyScenario": {
+        "title": "What this demo is",
+        "description": "Your security policy says every disk attached to a virtual machine uses a customer-managed key. You lead security, and you review that across Azure, AWS and Google Cloud from what is already recorded. The first source is the cloud inventory. It lists every machine and disk in the three clouds, with the key each disk is encrypted with."
+      },
+      "cloudpolicyIncidents": {
+        "title": "The incidents",
+        "description": "The second source is the security team's ServiceNow incidents. Each one names the disk it is about as its configuration item, and it cites the policy section it is filed under. An exception is an incident in the Policy exception category."
+      },
+      "cloudpolicyReader": {
+        "title": "The policy, read by code",
+        "description": "The policy itself is a web page. This Python package ships with the page and reads it into a row for each control. Its function is a table, so the policy joins the rest of the model."
+      },
+      "cloudpolicyPolicy": {
+        "title": "The policy as rows",
+        "description": "Here is every control of the policy, read from its HTML with its heading, its clause and the day it took effect. Section 4.2 is the disk-encryption control under review."
+      },
+      "cloudpolicySearch": {
+        "title": "The policy, searched by meaning",
+        "description": "Each clause was embedded once, when the demo was set up. A search by meaning finds the control about disk encryption even when your words differ from the clause's."
+      },
+      "cloudpolicyModel": {
+        "title": "One model across three clouds",
+        "description": "Each disk names the machine it is attached to. This relationship joins disks to machines in Azure, AWS and Google Cloud alike."
+      },
+      "cloudpolicyCites": {
+        "title": "Incidents tied to clauses",
+        "description": "Each incident cites a policy section. This relationship joins it to the clause it cites, so an incident filed under the wrong section shows up."
+      },
+      "cloudpolicyViolations": {
+        "title": "The policy as a view",
+        "description": "Section 4.2 is written as a view. It lists every attached disk whose key the cloud manages, beside the machine the disk is on."
+      },
+      "cloudpolicyReview": {
+        "title": "The daily review",
+        "description": "The daily review classifies each attached disk by the policy's rules. A disk without a customer-managed key may be covered by an exception in date. If it is not, its incident is within its deadline or past it, closed with the disk still not compliant, or never filed."
+      },
+      "cloudpolicyTrigger": {
+        "title": "The daily trigger",
+        "description": "Each morning a scheduled trigger runs the review and writes the day's rows to the review history. It writes through the same governed pipeline as any statement, under its role's write grant."
+      },
+      "cloudpolicyTrend": {
+        "title": "Fourteen days of history",
+        "description": "The history the trigger keeps shows the violations day by day. Disks drop out as their incidents are fixed, and a new violation shows up the day it appears."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Ask Polly who breaks the control",
+        "description": "Polly reads the same governed model you do. It names the disks without a customer-managed key and the section that requires one."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Exceptions still in date",
+        "description": "An exception lasts 90 days under section 4.3. Polly finds the disks it still covers."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incidents under the wrong section",
+        "description": "Some incidents cite a section other than the control they are about, and one cites a section the policy withdrew."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Controls nothing checks",
+        "description": "The policy has controls that no check enforces. Polly compares the policy with the checks the team runs, and it can draft a view for a steward to add."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Now as the auditor",
+        "description": "The auditor reads every account in every cloud."
+      },
+      "cloudpolicyOpen": {
+        "title": "Everything the review flags",
+        "description": "Here is every disk the review flags, for every team."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Now as the payments team",
+        "description": "The payments team reads its own resources and incidents only."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Its own rows only",
+        "description": "The same statement returns only the payments team's disks. The row rules sit on the inventory and the incidents, and every view built on them applies them."
+      },
+      "cloudpolicyDashboard": {
+        "title": "The compliance dashboard",
+        "description": "Superset reads the same views through Provisa's Postgres protocol. Here is its compliance dashboard, with the violations by control."
+      },
+      "cloudpolicyRecap": {
+        "title": "What you saw",
+        "description": "You reviewed one policy across three clouds from what was already recorded. The policy is a table, read by code from its own page, and each incident joins the clause it cites. A daily trigger keeps the history, and each role reads only what its rules allow, in SQL, in Polly and in Superset."
       }
     },
     "status": {
@@ -1632,6 +1716,10 @@
       "worldcup": {
         "title": "World Cup, one graph",
         "summary": "Wikipedia's and Kaggle's World Cup data disagree on country names. A short Python function matches every name with an LLM, and the public sources become one governed graph."
+      },
+      "cloudpolicy": {
+        "title": "Cloud policy review",
+        "summary": "A security policy reviewed across Azure, AWS and Google Cloud. The cloud inventory, the ServiceNow incidents and the policy itself, read from its web page by code, are one model, and a daily trigger keeps the review's history."
       }
     }
   }

@@ -1,0 +1,9 @@
+# Every attached disk the daily review flags, by team: its status and the incident that decides it.
+query OpenReview {
+  c__viewDailyReview(where: { status: { neq: "compliant" } }, order_by: [{ application: asc }, { status: asc }], limit: 50) {
+    application
+    resourceName
+    status
+    incidentNumber
+  }
+}

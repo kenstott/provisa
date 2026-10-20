@@ -85,6 +85,26 @@ const { TourMenu } = await import("../tour/TourMenu");
 const EXAMPLES = [{ name: "1-slowest-pages-by-path", query: "query SlowestPagesByPath { a }" }];
 
 describe("a demo's steps, as the runner walks them", () => {
+  it("points a trigger step at the trigger's row on the Triggers page", () => {
+    const [trigger] = demoTourSteps(
+      [
+        {
+          key: "t",
+          route: "/admin/scheduled-tasks",
+          capability: "org_settings",
+          trigger: "daily-review",
+        },
+      ],
+      EXAMPLES,
+    );
+    expect(trigger).toEqual({
+      key: "t",
+      route: "/admin/scheduled-tasks",
+      capability: "org_settings",
+      element: '[data-testid="scheduled-task-row-daily-review"]',
+    });
+  });
+
   it("points each target at the demo's object on its page", () => {
     const defs: DemoTourStepDef[] = [
       { key: "a", route: "/sources", capability: "source_registration", source: "shop_access" },

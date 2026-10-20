@@ -1524,6 +1524,90 @@
       "worldcupRecap": {
         "title": "Samenvatting",
         "description": "Openbare data van Wikipedia en Kaggle, in minuten binnengehaald en beheerd als elke interne database, met zo'n tien regels Python in overeenstemming gebracht en bevraagd als één graaf. De koppelingen van de functie zijn gecontroleerd, dus de graaf telt elke titel één keer, bij het juiste lid."
+      },
+      "cloudpolicyScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Uw beveiligingsbeleid zegt dat elke schijf die aan een virtuele machine hangt een door de klant beheerde sleutel gebruikt. U leidt de beveiliging en controleert dat over Azure, AWS en Google Cloud aan de hand van wat al is vastgelegd. De eerste bron is de cloudinventaris. Die toont elke machine en elke schijf in de drie clouds, met de sleutel waarmee elke schijf is versleuteld."
+      },
+      "cloudpolicyIncidents": {
+        "title": "De incidenten",
+        "description": "De tweede bron zijn de ServiceNow-incidenten van het beveiligingsteam. Elk incident noemt de schijf waar het om gaat als configuratie-item en verwijst naar de sectie van het beleid waaronder het is gemeld. Een uitzondering is een incident in de categorie Policy exception."
+      },
+      "cloudpolicyReader": {
+        "title": "Het beleid, door code gelezen",
+        "description": "Het beleid zelf is een webpagina. Dit Python-pakket wordt met de pagina meegeleverd en leest die in tot één rij per maatregel. De functie ervan is een tabel, dus het beleid sluit aan op de rest van het model."
+      },
+      "cloudpolicyPolicy": {
+        "title": "Het beleid als rijen",
+        "description": "Hier staat elke maatregel van het beleid, gelezen uit de HTML, met kop, bepaling en de dag waarop hij inging. Sectie 4.2 is de maatregel voor schijfversleuteling die wordt beoordeeld."
+      },
+      "cloudpolicySearch": {
+        "title": "Het beleid, doorzocht op betekenis",
+        "description": "Elke bepaling is één keer ingebed, toen de demo werd ingericht. Een zoekopdracht op betekenis vindt de maatregel over schijfversleuteling, ook als uw woorden afwijken van die van de bepaling."
+      },
+      "cloudpolicyModel": {
+        "title": "Eén model over drie clouds",
+        "description": "Elke schijf noemt de machine waaraan hij hangt. Deze relatie verbindt schijven en machines op dezelfde manier in Azure, AWS en Google Cloud."
+      },
+      "cloudpolicyCites": {
+        "title": "Incidenten gekoppeld aan bepalingen",
+        "description": "Elk incident verwijst naar een sectie van het beleid. Deze relatie koppelt het aan de bepaling waarnaar het verwijst, zodat een incident onder de verkeerde sectie opvalt."
+      },
+      "cloudpolicyViolations": {
+        "title": "Het beleid als view",
+        "description": "Sectie 4.2 is als view geschreven. Die toont elke aangekoppelde schijf waarvan de cloud de sleutel beheert, naast de machine waaraan de schijf hangt."
+      },
+      "cloudpolicyReview": {
+        "title": "De dagelijkse beoordeling",
+        "description": "De dagelijkse beoordeling deelt elke aangekoppelde schijf in volgens de regels van het beleid. Een schijf zonder door de klant beheerde sleutel kan onder een geldige uitzondering vallen. Is dat niet zo, dan ligt het incident binnen of na de termijn, is het gesloten terwijl de schijf nog niet voldoet, of is het nooit gemeld."
+      },
+      "cloudpolicyTrigger": {
+        "title": "De dagelijkse trigger",
+        "description": "Elke ochtend voert een geplande trigger de beoordeling uit en schrijft de rijen van die dag naar de beoordelingsgeschiedenis. Hij schrijft via dezelfde gegovernde pipeline als elke opdracht, met de schrijfrechten van zijn rol."
+      },
+      "cloudpolicyTrend": {
+        "title": "Veertien dagen geschiedenis",
+        "description": "De geschiedenis die de trigger bijhoudt, toont de overtredingen per dag. Schijven vallen weg zodra hun incidenten zijn opgelost, en een nieuwe overtreding verschijnt op de dag dat die ontstaat."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Vraag Polly wie de maatregel overtreedt",
+        "description": "Polly leest hetzelfde gegovernde model als u. Ze noemt de schijven zonder door de klant beheerde sleutel en de sectie die er een vereist."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Uitzonderingen die nog gelden",
+        "description": "Een uitzondering geldt 90 dagen volgens sectie 4.3. Polly vindt de schijven die er nog onder vallen."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incidenten onder de verkeerde sectie",
+        "description": "Sommige incidenten verwijzen naar een andere sectie dan de maatregel waar ze over gaan, en één verwijst naar een sectie die het beleid heeft ingetrokken."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Maatregelen die niets controleert",
+        "description": "Het beleid heeft maatregelen die geen enkele controle afdwingt. Polly vergelijkt het beleid met de controles van het team en kan een view ontwerpen die een steward toevoegt."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Nu als auditor",
+        "description": "De auditor leest elk account in elke cloud."
+      },
+      "cloudpolicyOpen": {
+        "title": "Alles wat de beoordeling meldt",
+        "description": "Hier staat elke schijf die de beoordeling meldt, voor elk team."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Nu als het betalingsteam",
+        "description": "Het betalingsteam leest alleen zijn eigen resources en incidenten."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Alleen de eigen rijen",
+        "description": "Dezelfde opdracht geeft alleen de schijven van het betalingsteam terug. De rijregels liggen op de inventaris en de incidenten, en elke view die daarop is gebouwd, past ze toe."
+      },
+      "cloudpolicyDashboard": {
+        "title": "Het compliancedashboard",
+        "description": "Superset leest dezelfde views via het Postgres-protocol van Provisa. Hier is het compliancedashboard, met de overtredingen per maatregel."
+      },
+      "cloudpolicyRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "U hebt een beleid over drie clouds beoordeeld aan de hand van wat al was vastgelegd. Het beleid is een tabel, door code uit de eigen pagina gelezen, en elk incident is gekoppeld aan de bepaling waarnaar het verwijst. Een dagelijkse trigger bewaart de geschiedenis, en elke rol leest alleen wat de regels toestaan, in SQL, in Polly en in Superset."
       }
     },
     "status": {
@@ -1632,6 +1716,10 @@
       "worldcup": {
         "title": "World Cup, één graaf",
         "summary": "De WK-data van Wikipedia en Kaggle zijn het oneens over landnamen. Een korte Python-functie koppelt elke naam met een LLM, en de openbare bronnen worden één beheerde graaf."
+      },
+      "cloudpolicy": {
+        "title": "Beoordeling van het cloudbeleid",
+        "summary": "Een beveiligingsbeleid beoordeeld over Azure, AWS en Google Cloud. De cloudinventaris, de ServiceNow-incidenten en het beleid zelf, door code uit de webpagina gelezen, vormen één model, en een dagelijkse trigger bewaart de geschiedenis van de beoordeling."
       }
     }
   }

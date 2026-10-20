@@ -1524,6 +1524,90 @@
       "worldcupRecap": {
         "title": "Zusammenfassung",
         "description": "Öffentliche Daten von Wikipedia und Kaggle, in Minuten angebunden und verwaltet wie jede interne Datenbank, mit etwa zehn Zeilen Python in Einklang gebracht und als ein Graph abgefragt. Die Zuordnungen der Funktion wurden geprüft, sodass der Graph jeden Titel einmal zählt, beim richtigen Mitglied."
+      },
+      "cloudpolicyScenario": {
+        "title": "Worum es in dieser Demo geht",
+        "description": "Ihre Sicherheitsrichtlinie verlangt, dass jede an eine virtuelle Maschine angehängte Festplatte einen kundenverwalteten Schlüssel nutzt. Sie leiten die Sicherheit und prüfen das über Azure, AWS und Google Cloud anhand dessen, was bereits erfasst ist. Die erste Quelle ist das Cloud-Inventar. Es listet jede Maschine und jede Festplatte der drei Clouds mit dem Schlüssel, mit dem die Festplatte verschlüsselt ist."
+      },
+      "cloudpolicyIncidents": {
+        "title": "Die Incidents",
+        "description": "Die zweite Quelle sind die ServiceNow-Incidents des Sicherheitsteams. Jeder nennt die betroffene Festplatte als Konfigurationselement und verweist auf den Abschnitt der Richtlinie, unter dem er erfasst ist. Eine Ausnahme ist ein Incident in der Kategorie Policy exception."
+      },
+      "cloudpolicyReader": {
+        "title": "Die Richtlinie, per Code gelesen",
+        "description": "Die Richtlinie selbst ist eine Webseite. Dieses Python-Paket wird mit der Seite ausgeliefert und liest sie in eine Zeile je Kontrolle. Seine Funktion ist eine Tabelle, also fügt sich die Richtlinie in das übrige Modell ein."
+      },
+      "cloudpolicyPolicy": {
+        "title": "Die Richtlinie als Zeilen",
+        "description": "Hier steht jede Kontrolle der Richtlinie, aus ihrem HTML gelesen, mit Überschrift, Klausel und dem Tag, an dem sie in Kraft trat. Abschnitt 4.2 ist die geprüfte Kontrolle zur Festplattenverschlüsselung."
+      },
+      "cloudpolicySearch": {
+        "title": "Die Richtlinie, nach Bedeutung durchsucht",
+        "description": "Jede Klausel wurde einmal eingebettet, als die Demo eingerichtet wurde. Eine Suche nach Bedeutung findet die Kontrolle zur Festplattenverschlüsselung, auch wenn Ihre Worte von denen der Klausel abweichen."
+      },
+      "cloudpolicyModel": {
+        "title": "Ein Modell über drei Clouds",
+        "description": "Jede Festplatte nennt die Maschine, an die sie angehängt ist. Diese Beziehung verbindet Festplatten und Maschinen in Azure, AWS und Google Cloud auf dieselbe Weise."
+      },
+      "cloudpolicyCites": {
+        "title": "Incidents an Klauseln gebunden",
+        "description": "Jeder Incident verweist auf einen Abschnitt der Richtlinie. Diese Beziehung verbindet ihn mit der Klausel, auf die er verweist, sodass ein Incident unter dem falschen Abschnitt auffällt."
+      },
+      "cloudpolicyViolations": {
+        "title": "Die Richtlinie als Sicht",
+        "description": "Abschnitt 4.2 ist als Sicht geschrieben. Sie listet jede angehängte Festplatte, deren Schlüssel die Cloud verwaltet, neben der Maschine, an der die Festplatte hängt."
+      },
+      "cloudpolicyReview": {
+        "title": "Die tägliche Prüfung",
+        "description": "Die tägliche Prüfung ordnet jede angehängte Festplatte nach den Regeln der Richtlinie ein. Eine Festplatte ohne kundenverwalteten Schlüssel kann durch eine gültige Ausnahme gedeckt sein. Ist sie es nicht, liegt ihr Incident innerhalb seiner Frist oder darüber, ist geschlossen, obwohl die Festplatte weiter nicht konform ist, oder wurde nie erfasst."
+      },
+      "cloudpolicyTrigger": {
+        "title": "Der tägliche Trigger",
+        "description": "Jeden Morgen führt ein geplanter Trigger die Prüfung aus und schreibt die Zeilen des Tages in den Prüfverlauf. Er schreibt über dieselbe governte Pipeline wie jede Anweisung, mit der Schreibberechtigung seiner Rolle."
+      },
+      "cloudpolicyTrend": {
+        "title": "Vierzehn Tage Verlauf",
+        "description": "Der Verlauf, den der Trigger festhält, zeigt die Verstöße Tag für Tag. Festplatten fallen heraus, sobald ihre Incidents behoben sind, und ein neuer Verstoß erscheint an dem Tag, an dem er auftritt."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Fragen Sie Polly, wer die Kontrolle verletzt",
+        "description": "Polly liest dasselbe governte Modell wie Sie. Sie nennt die Festplatten ohne kundenverwalteten Schlüssel und den Abschnitt, der einen verlangt."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Noch gültige Ausnahmen",
+        "description": "Eine Ausnahme gilt nach Abschnitt 4.3 für 90 Tage. Polly findet die Festplatten, die sie noch deckt."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incidents unter dem falschen Abschnitt",
+        "description": "Einige Incidents verweisen auf einen anderen Abschnitt als die Kontrolle, um die es geht, und einer auf einen Abschnitt, den die Richtlinie zurückgezogen hat."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Kontrollen, die nichts prüft",
+        "description": "Die Richtlinie hat Kontrollen, die keine Prüfung durchsetzt. Polly vergleicht die Richtlinie mit den Prüfungen, die das Team ausführt, und kann eine Sicht entwerfen, die ein Steward hinzufügt."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Jetzt als auditor",
+        "description": "Der auditor liest jedes Konto in jeder Cloud."
+      },
+      "cloudpolicyOpen": {
+        "title": "Alles, was die Prüfung meldet",
+        "description": "Hier steht jede Festplatte, die die Prüfung meldet, für jedes Team."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Jetzt als Payments-Team",
+        "description": "Das Payments-Team liest nur seine eigenen Ressourcen und Incidents."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Nur die eigenen Zeilen",
+        "description": "Dieselbe Anweisung liefert nur die Festplatten des Payments-Teams. Die Zeilenregeln liegen auf dem Inventar und den Incidents, und jede darauf aufbauende Sicht wendet sie an."
+      },
+      "cloudpolicyDashboard": {
+        "title": "Das Compliance-Dashboard",
+        "description": "Superset liest dieselben Sichten über das Postgres-Protokoll von Provisa. Hier ist sein Compliance-Dashboard mit den Verstößen je Kontrolle."
+      },
+      "cloudpolicyRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Sie haben eine Richtlinie über drei Clouds anhand dessen geprüft, was bereits erfasst war. Die Richtlinie ist eine Tabelle, per Code aus ihrer eigenen Seite gelesen, und jeder Incident ist mit der Klausel verbunden, auf die er verweist. Ein täglicher Trigger hält den Verlauf fest, und jede Rolle liest nur, was ihre Regeln erlauben, in SQL, in Polly und in Superset."
       }
     },
     "status": {
@@ -1632,6 +1716,10 @@
       "worldcup": {
         "title": "World Cup, ein Graph",
         "summary": "Die WM-Daten von Wikipedia und Kaggle widersprechen sich bei den Ländernamen. Eine kurze Python-Funktion ordnet jeden Namen mit einem LLM zu, und die öffentlichen Quellen werden zu einem verwalteten Graphen."
+      },
+      "cloudpolicy": {
+        "title": "Prüfung der Cloud-Richtlinie",
+        "summary": "Eine Sicherheitsrichtlinie, geprüft über Azure, AWS und Google Cloud. Das Cloud-Inventar, die ServiceNow-Incidents und die Richtlinie selbst, per Code aus ihrer Webseite gelesen, bilden ein Modell, und ein täglicher Trigger hält den Verlauf der Prüfung fest."
       }
     }
   }

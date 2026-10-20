@@ -1524,6 +1524,90 @@
       "worldcupRecap": {
         "title": "回顧",
         "description": "來自維基百科和 Kaggle 的公開數據，幾分鐘內接入並像任何內部資料庫一樣受管治，用大約十行 Python 令名稱一致，並作為一張圖來查詢。函數的配對都經過覆核，因此這張圖把每個冠軍只計一次，並記在正確的會員名下。"
+      },
+      "cloudpolicyScenario": {
+        "title": "這個示範講甚麼",
+        "description": "你的安全策略規定，掛載到虛擬機的每塊磁碟都使用客戶管理的密鑰。你負責安全，根據已有的記錄在 Azure、AWS 和 Google Cloud 上審查這一點。第一個數據源是雲端資產清單。它列出三個雲端中的每部機器和每塊磁碟，以及加密每塊磁碟的密鑰。"
+      },
+      "cloudpolicyIncidents": {
+        "title": "事件",
+        "description": "第二個數據源是安全團隊的 ServiceNow 事件。每個事件把所涉及的磁碟作為配置項，並引用它所歸屬的策略章節。例外是 Policy exception 類別的事件。"
+      },
+      "cloudpolicyReader": {
+        "title": "由代碼讀取的策略",
+        "description": "策略本身是一個網頁。這個 Python 套件隨網頁一起發佈，把它讀成每項控制一行。它的函數是一張表，因此策略與模型的其餘部分相連。"
+      },
+      "cloudpolicyPolicy": {
+        "title": "以行呈現的策略",
+        "description": "這裏是從 HTML 讀取的策略的每項控制，包括標題、條款和生效日期。第 4.2 節是正在審查的磁碟加密控制。"
+      },
+      "cloudpolicySearch": {
+        "title": "按語義搜尋策略",
+        "description": "每個條款在示範準備時嵌入一次。按語義搜尋能找到磁碟加密控制，即使你的用詞與條款不同。"
+      },
+      "cloudpolicyModel": {
+        "title": "三個雲端，一個模型",
+        "description": "每塊磁碟都標明它掛載的機器。這個關係以同樣的方式連接 Azure、AWS 和 Google Cloud 中的磁碟和機器。"
+      },
+      "cloudpolicyCites": {
+        "title": "與條款關聯的事件",
+        "description": "每個事件引用策略的一個章節。這個關係把它連接到所引用的條款，因此歸錯章節的事件會顯現出來。"
+      },
+      "cloudpolicyViolations": {
+        "title": "作為視圖的策略",
+        "description": "第 4.2 節寫成了一個視圖。它列出每塊由雲端管理密鑰的已掛載磁碟，以及磁碟所在的機器。"
+      },
+      "cloudpolicyReview": {
+        "title": "每日審查",
+        "description": "每日審查按策略規則為每塊已掛載磁碟分類。沒有客戶管理密鑰的磁碟可能由有效的例外覆蓋。如果沒有，它的事件要麼在期限內，要麼已逾期，要麼在磁碟仍不合規時被關閉，要麼從未登記。"
+      },
+      "cloudpolicyTrigger": {
+        "title": "每日觸發器",
+        "description": "每天早上，一個定時觸發器執行審查，把當天的行寫入審查歷史。它像任何語句一樣經過同一條受治理的管道寫入，使用其角色的寫入授權。"
+      },
+      "cloudpolicyTrend": {
+        "title": "十四天的歷史",
+        "description": "觸發器保留的歷史按天顯示違規。磁碟在其事件修復後退出，新的違規在出現當天顯示。"
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "問 Polly 誰違反了控制",
+        "description": "Polly 讀取與你相同的受治理模型。它列出沒有客戶管理密鑰的磁碟，以及要求使用該密鑰的章節。"
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "仍然有效的例外",
+        "description": "根據第 4.3 節，例外有效期為 90 天。Polly 找出它仍然覆蓋的磁碟。"
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "歸錯章節的事件",
+        "description": "有些事件引用的章節不是它們所涉及的控制，其中一個引用了策略已撤銷的章節。"
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "無人檢查的控制",
+        "description": "策略中有些控制沒有任何檢查來執行。Polly 將策略與團隊執行的檢查比較，並可以起草一個視圖供 steward 加入。"
+      },
+      "cloudpolicyAuditor": {
+        "title": "現在以 auditor 身份",
+        "description": "auditor 讀取每個雲端中的每個帳戶。"
+      },
+      "cloudpolicyOpen": {
+        "title": "審查標記的全部內容",
+        "description": "這裏是審查為每個團隊標記的每塊磁碟。"
+      },
+      "cloudpolicyAppTeam": {
+        "title": "現在以支付團隊身份",
+        "description": "支付團隊只讀取自己的資源和事件。"
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "只有自己的行",
+        "description": "同一條語句只回傳支付團隊的磁碟。行規則設在資產清單和事件上，基於它們建立的每個視圖都會套用這些規則。"
+      },
+      "cloudpolicyDashboard": {
+        "title": "合規儀表板",
+        "description": "Superset 透過 Provisa 的 Postgres 協定讀取相同的視圖。這是它的合規儀表板，按控制顯示違規。"
+      },
+      "cloudpolicyRecap": {
+        "title": "你看到了甚麼",
+        "description": "你根據已有的記錄，在三個雲端上審查了一項策略。策略是一張表，由代碼從它自己的網頁讀取，每個事件都連接到它引用的條款。每日觸發器保留歷史，每個角色只能讀取其規則允許的內容，無論在 SQL、Polly 還是 Superset 中。"
       }
     },
     "status": {
@@ -1632,6 +1716,10 @@
       "worldcup": {
         "title": "World Cup，一張圖",
         "summary": "維基百科和 Kaggle 的世界盃數據在國家名稱上對不上。一個簡短的 Python 函數用 LLM 配對每個名稱，公開數據來源成為一張受管治的圖。"
+      },
+      "cloudpolicy": {
+        "title": "雲端策略審查",
+        "summary": "在 Azure、AWS 和 Google Cloud 上審查一項安全策略。雲端資產清單、ServiceNow 事件以及由代碼從網頁讀取的策略本身構成一個模型，每日觸發器保留審查歷史。"
       }
     }
   }

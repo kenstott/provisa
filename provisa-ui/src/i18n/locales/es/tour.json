@@ -1524,6 +1524,90 @@
       "worldcupRecap": {
         "title": "Resumen",
         "description": "Datos públicos de Wikipedia y Kaggle, obtenidos en minutos y gobernados como cualquier base de datos interna, puestos de acuerdo con unas diez líneas de Python y consultados como un único grafo. Los emparejamientos de la función se revisaron, así que el grafo cuenta cada título una vez, en el miembro correcto."
+      },
+      "cloudpolicyScenario": {
+        "title": "De qué trata esta demo",
+        "description": "Su política de seguridad dice que cada disco conectado a una máquina virtual usa una clave administrada por el cliente. Usted dirige la seguridad y lo revisa en Azure, AWS y Google Cloud a partir de lo que ya está registrado. El primer origen es el inventario de nube. Enumera cada máquina y cada disco de las tres nubes, con la clave con la que está cifrado cada disco."
+      },
+      "cloudpolicyIncidents": {
+        "title": "Los incidentes",
+        "description": "El segundo origen son los incidentes de ServiceNow del equipo de seguridad. Cada uno nombra el disco al que se refiere como su elemento de configuración y cita la sección de la política bajo la que se registró. Una excepción es un incidente de la categoría Policy exception."
+      },
+      "cloudpolicyReader": {
+        "title": "La política, leída por código",
+        "description": "La propia política es una página web. Este paquete de Python se distribuye con la página y la lee en una fila por control. Su función es una tabla, así que la política se une al resto del modelo."
+      },
+      "cloudpolicyPolicy": {
+        "title": "La política como filas",
+        "description": "Aquí está cada control de la política, leído de su HTML con su título, su cláusula y el día en que entró en vigor. La sección 4.2 es el control de cifrado de discos que se revisa."
+      },
+      "cloudpolicySearch": {
+        "title": "La política, buscada por significado",
+        "description": "Cada cláusula se incrustó una vez, al preparar la demo. Una búsqueda por significado encuentra el control sobre el cifrado de discos aunque sus palabras no sean las de la cláusula."
+      },
+      "cloudpolicyModel": {
+        "title": "Un modelo para tres nubes",
+        "description": "Cada disco nombra la máquina a la que está conectado. Esta relación une discos y máquinas en Azure, AWS y Google Cloud de la misma manera."
+      },
+      "cloudpolicyCites": {
+        "title": "Incidentes unidos a cláusulas",
+        "description": "Cada incidente cita una sección de la política. Esta relación lo une a la cláusula que cita, de modo que un incidente registrado bajo la sección equivocada salta a la vista."
+      },
+      "cloudpolicyViolations": {
+        "title": "La política como vista",
+        "description": "La sección 4.2 está escrita como una vista. Enumera cada disco conectado cuya clave administra la nube, junto a la máquina en la que está el disco."
+      },
+      "cloudpolicyReview": {
+        "title": "La revisión diaria",
+        "description": "La revisión diaria clasifica cada disco conectado según las reglas de la política. Un disco sin clave administrada por el cliente puede estar cubierto por una excepción vigente. Si no lo está, su incidente está dentro de su plazo o lo ha superado, se cerró con el disco aún sin cumplir, o nunca se registró."
+      },
+      "cloudpolicyTrigger": {
+        "title": "El trigger diario",
+        "description": "Cada mañana un trigger programado ejecuta la revisión y escribe las filas del día en el historial de revisiones. Escribe por el mismo pipeline gobernado que cualquier instrucción, con el permiso de escritura de su rol."
+      },
+      "cloudpolicyTrend": {
+        "title": "Catorce días de historial",
+        "description": "El historial que guarda el trigger muestra las infracciones día a día. Los discos salen a medida que se corrigen sus incidentes, y una infracción nueva aparece el día en que surge."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Pregunte a Polly quién incumple el control",
+        "description": "Polly lee el mismo modelo gobernado que usted. Nombra los discos sin clave administrada por el cliente y la sección que la exige."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Excepciones aún vigentes",
+        "description": "Una excepción dura 90 días según la sección 4.3. Polly encuentra los discos que todavía cubre."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incidentes bajo la sección equivocada",
+        "description": "Algunos incidentes citan una sección distinta del control al que se refieren, y uno cita una sección que la política retiró."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Controles que nada verifica",
+        "description": "La política tiene controles que ninguna verificación hace cumplir. Polly compara la política con las verificaciones que ejecuta el equipo y puede redactar una vista para que un steward la añada."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Ahora como auditor",
+        "description": "El auditor lee todas las cuentas de todas las nubes."
+      },
+      "cloudpolicyOpen": {
+        "title": "Todo lo que señala la revisión",
+        "description": "Aquí está cada disco que señala la revisión, de todos los equipos."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Ahora como el equipo de pagos",
+        "description": "El equipo de pagos solo lee sus propios recursos e incidentes."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Solo sus propias filas",
+        "description": "La misma instrucción devuelve solo los discos del equipo de pagos. Las reglas de fila están en el inventario y en los incidentes, y cada vista construida sobre ellos las aplica."
+      },
+      "cloudpolicyDashboard": {
+        "title": "El panel de cumplimiento",
+        "description": "Superset lee las mismas vistas por el protocolo de Postgres de Provisa. Este es su panel de cumplimiento, con las infracciones por control."
+      },
+      "cloudpolicyRecap": {
+        "title": "Lo que ha visto",
+        "description": "Usted revisó una política en tres nubes a partir de lo que ya estaba registrado. La política es una tabla, leída por código de su propia página, y cada incidente se une a la cláusula que cita. Un trigger diario conserva el historial, y cada rol lee solo lo que sus reglas permiten, en SQL, en Polly y en Superset."
       }
     },
     "status": {
@@ -1632,6 +1716,10 @@
       "worldcup": {
         "title": "World Cup, un grafo",
         "summary": "Los datos del Mundial de Wikipedia y de Kaggle no coinciden en los nombres de los países. Una breve función de Python empareja cada nombre con un LLM, y las fuentes públicas se convierten en un único grafo gobernado."
+      },
+      "cloudpolicy": {
+        "title": "Revisión de la política de nube",
+        "summary": "Una política de seguridad revisada en Azure, AWS y Google Cloud. El inventario de nube, los incidentes de ServiceNow y la propia política, leída de su página web por código, forman un solo modelo, y un trigger diario conserva el historial de la revisión."
       }
     }
   }
