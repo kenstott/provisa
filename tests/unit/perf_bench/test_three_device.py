@@ -684,3 +684,39 @@ def test_a_waiting_device_is_held_up_and_every_setup_log_is_kept_before_destroy(
         assert (
             run / f"startup-{device}.log"
         ).read_text() == f"setup log of provisa-perf-{device}\n"
+
+
+def test_the_backends_device_alone_can_be_given_a_larger_machine(tmp_path: Path) -> None:
+    """Its stores are sized for a large box: a cheap stage sizes the backends device apart, after
+    --machine-type, and keeps the server and client small."""
+    import shutil
+    import subprocess
+
+    log = tmp_path / "calls.log"
+    _fake_cloud(tmp_path / "bin", log)
+    done = subprocess.run(
+        [
+            "bash",
+            str(_LIFECYCLE),
+            *("--project", "p", "--zone", "us-east1-b", "--commit", "abc"),
+            *("--ssh-cidr", "203.0.113.10/32", "--dry-run"),
+            *("--machine-type", "c4d-standard-4", "--backends-machine-type", "c4d-highmem-8"),
+        ],
+        env={
+            "PATH": f"{tmp_path / 'bin'}:{Path(shutil.which('python3')).parent}:/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "PROVISA_BENCH_RUNS": str(tmp_path / "runs"),
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    (plan,) = [
+        c for c in log.read_text().splitlines() if c.startswith("terraform ") and " plan " in c
+    ]
+    assert "-var server_machine_type=c4d-standard-4" in plan
+    assert "-var client_machine_type=c4d-standard-4" in plan
+    # the later value is the one terraform keeps
+    assert plan.index("backends_machine_type=c4d-standard-4") < plan.index(
+        "backends_machine_type=c4d-highmem-8"
+    )

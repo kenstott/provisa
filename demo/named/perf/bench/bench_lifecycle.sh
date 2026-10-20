@@ -19,10 +19,14 @@
 #   bench_lifecycle.sh --project P --zone Z --commit SHA --ssh-cidr CIDR
 #                      [--provisioning-model SPOT|ON_DEMAND] [--reps 5] [--engine pg]
 #                      [--ready-timeout 7200] [--keep] [--dry-run] [--machine-type TYPE]
+#                      [--backends-machine-type TYPE] [--disk-gb GB]
 #                      [--variants ... --caches ... --telemetry ... --steps ... --window-s ...
 #                       --warmup-s ...]
 #   --machine-type  every device's machine type (terraform/perf's default otherwise); a cheap
 #                   stage uses a small one.
+#   --backends-machine-type  the backends device's machine type alone (after --machine-type):
+#                   its stores are sized for a large box (shared_buffers), so a cheap stage gives it
+#                   the memory they need and keeps the others small.
 #   --disk-gb       every device's boot disk, GB (terraform/perf's default otherwise): the three
 #                   share the region's Hyperdisk quota.
 #   --variants ...  a governance pass (three_device_run.sh), the six flags together.
@@ -40,7 +44,7 @@ MODULE="$REPO_ROOT/terraform/perf"
 REPO_DIR=/opt/provisa  # terraform/perf's repo_dir default: PERF_REPO on every device
 
 PROJECT="" ZONE="" COMMIT="" SSH_CIDR="" MODEL=SPOT REPS=5 ENGINE=pg
-READY_TIMEOUT=7200 KEEP="" DRY_RUN="" MACHINE_TYPE="" DISK_GB="" PASS_ARGS=()
+READY_TIMEOUT=7200 KEEP="" DRY_RUN="" MACHINE_TYPE="" BACKENDS_MACHINE_TYPE="" DISK_GB="" PASS_ARGS=()
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --project) PROJECT="$2"; shift 2 ;;
@@ -54,6 +58,7 @@ while [ "$#" -gt 0 ]; do
     --keep) KEEP=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
     --machine-type) MACHINE_TYPE="$2"; shift 2 ;;
+    --backends-machine-type) BACKENDS_MACHINE_TYPE="$2"; shift 2 ;;
     --disk-gb) DISK_GB="$2"; shift 2 ;;
     --variants|--caches|--telemetry|--steps|--window-s|--warmup-s) PASS_ARGS+=("$1" "$2"); shift 2 ;;
     *) echo "Unknown option: $1"; exit 2 ;;
@@ -75,6 +80,7 @@ if [ -n "$MACHINE_TYPE" ]; then
   VARS+=(-var "server_machine_type=$MACHINE_TYPE" -var "client_machine_type=$MACHINE_TYPE"
     -var "backends_machine_type=$MACHINE_TYPE")
 fi
+[ -z "$BACKENDS_MACHINE_TYPE" ] || VARS+=(-var "backends_machine_type=$BACKENDS_MACHINE_TYPE")
 [ -z "$DISK_GB" ] || VARS+=(-var "disk_gb=$DISK_GB")
 "${TF[@]}" init -input=false -backend=false >/dev/null
 echo "run directory: $RUN_DIR"
