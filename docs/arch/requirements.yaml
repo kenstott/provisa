@@ -85878,6 +85878,10 @@ Then the graph shows GET /v2/customers, the row location data.items, the raw fie
 When a user without source registration opens it
 
 Then the graph starts at customers.postal_code"
+  tests:
+  - tests/unit/test_lineage_native.py
+  - provisa-ui/src/components/lineage/__tests__/lineage-native.test.ts
+  - provisa-ui/src/__tests__/tourRouteCapabilities.test.ts
   related_reqs:
   - REQ-1160
   - REQ-862
