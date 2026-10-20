@@ -498,6 +498,20 @@ DECLARED: list[Setting] = [
         guard="confirm",  # each entry opens an outbound path for hosted functions
     ),
     Setting(
+        key="sources.download_roots",
+        card="security",
+        type="list",
+        effect="live",  # read when a source's file is downloaded
+        # REQ-2113: the directories a CSV or Parquet source's file may be downloaded from by a
+        # file mount path, after following symlinks. None by default: each entry lets the
+        # server's own files under it be copied into an org's folder. Refused whatever it holds
+        # on a server of many organizations.
+        req="REQ-2113",
+        env="PROVISA_SOURCES_DOWNLOAD_ROOTS",
+        default=(),
+        guard="confirm",
+    ),
+    Setting(
         key="logs.allowed_roots",
         card="security",
         type="list",

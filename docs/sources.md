@@ -303,6 +303,14 @@ A path with any other scheme (`ftp://`, say) is refused: "DuckDB reads no file a
 - **Names.** The source id and file name may use letters, digits, `.`, `_` and `-` only.
 - **Storage.** An upload is stored like any org file: under the org's folder, encrypted when the org's folder is, and seen by every node on a shared mount.
 
+**Downloading a file.** A `csv` or `parquet` source can instead be given its file by download. Choose **Download a copy** on the source form and name one file: a path on the server, an `https://` address, or an `s3://` address read with the credentials the form keeps for the store. Provisa streams the file through the upload path into `files/<source id>/<file name>` in the organization's folder, with the same size limit, storage and replacement as an upload, and the source reads that copy.
+
+- **When it is fetched again.** The source's cache TTL decides. A table built from the source fetches the file again first once its TTL has lapsed since the copy was made. With a TTL of -1 the file is fetched once and kept.
+- **Paths on the server.** A server path must be a file under a directory listed in the setting `sources.download_roots` (environment `PROVISA_SOURCES_DOWNLOAD_ROOTS`), once its symlinks are followed. None is listed by default. A path outside them is refused by name and nothing is copied.
+- **Many organizations.** On a server of many organizations (`multitenancy: true`) a server path is refused by name whatever the setting holds, and only `https://` and `s3://` are offered. An address whose host resolves inside the server's own network (private, loopback or link-local) is refused by name too, at every redirect.
+- **Its table, as a draft.** When the source is created, the form offers to set up its table at once, as a draft, in the domain you pick. The table is named after the source and typed from the file as Register Table would propose it, and it stays out of service until a steward takes it out of draft. The choice is on by default.
+- **Through Polly.** Give Polly one fully resolved path to a single CSV or Parquet file and she proposes the source with its download and draft table, and creates it once you confirm. A directory, a glob or several files becomes a files source instead.
+
 **Writes to a local SQLite or DuckDB file, and locks.** A write takes the file's lock and never waits for it. When another process or node holds the file, the write is refused, naming the source and that its file is locked.
 
 - **SQLite.** The write sets `PRAGMA busy_timeout = 0`, so a locked file fails at once.

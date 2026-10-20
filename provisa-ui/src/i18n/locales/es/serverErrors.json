@@ -441,7 +441,9 @@
       "role_session_var_name_invalid": "El nombre del valor de sesión '{{name}}' debe contener letras, dígitos y guiones bajos, y no debe empezar por un dígito",
       "role_session_var_name_repeated": "El valor de sesión '{{name}}' se nombra dos veces",
       "role_description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve",
-      "rls_rule_description_missing": "Una regla de fila necesita una descripción de para qué sirve"
+      "rls_rule_description_missing": "Una regla de fila necesita una descripción de para qué sirve",
+      "file_download_refused": "Origen {{source}}: {{reason}}",
+      "source_created_without_table": "Origen {{source}} creado; su tabla no se configuró: {{reason}}"
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",

@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS sources (
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
     max_live_concurrency INTEGER,  -- REQ-1909: cap on concurrent LIVE reads of this source; NULL = no cap
     sentinel_path TEXT,  -- REQ-1148: freshness marker URL (file/ftp/sftp/http(s))
+    download_from TEXT,  -- REQ-2113: where a CSV or Parquet source's file is downloaded from (mount path, https, s3)
     freshness_gate BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-860: gate reads on the source's freshness decision
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,

@@ -141,3 +141,21 @@ def test_a_page_is_opened_besides_the_answer_not_instead():
     assert (
         "Answer in the chat: opening a page is in addition to the answer, never instead of it" in s
     )
+
+
+class TestOneFileOrMany:  # REQ-2113
+    def test_one_file_is_a_csv_or_parquet_source_given_its_file_by_download(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "ONE file by a fully resolved path" in s
+        assert "download_from set to that path" in s
+        assert "register_table_draft true" in s
+        assert "refuses a file mount path by name: offer an https:// or s3:// address" in s
+
+    def test_a_directory_a_glob_or_several_files_is_a_files_source(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "A directory, a glob or several files is a files source instead (type='files'" in s
+
+    def test_the_proposal_carries_the_download_fields(self):
+        spec = next(t for t in chat_mod._TOOLS if t["name"] == "propose_source")
+        described = _flat(spec["input_schema"]["properties"]["source"]["description"])
+        assert "download_from" in described and "table_domain_id" in described

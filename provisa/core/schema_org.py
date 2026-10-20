@@ -122,6 +122,7 @@ sources = Table(
     Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
     Column("max_live_concurrency", Integer),  # REQ-1909: NULL = no cap
     Column("sentinel_path", Text),  # REQ-1148
+    Column("download_from", Text),  # REQ-2113
     Column("freshness_gate", Boolean, nullable=False, server_default=false()),  # REQ-860
     Column("gql_naming_convention", Text),
     Column("path", Text),

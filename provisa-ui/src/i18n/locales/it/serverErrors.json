@@ -441,7 +441,9 @@
       "role_session_var_name_invalid": "Il nome del valore di sessione '{{name}}' deve contenere lettere, cifre e trattini bassi, e non deve iniziare con una cifra",
       "role_session_var_name_repeated": "Il valore di sessione '{{name}}' è indicato due volte",
       "role_description_missing": "Il ruolo '{{role}}' ha bisogno di una descrizione di a cosa serve",
-      "rls_rule_description_missing": "Una regola di riga ha bisogno di una descrizione di a cosa serve"
+      "rls_rule_description_missing": "Una regola di riga ha bisogno di una descrizione di a cosa serve",
+      "file_download_refused": "Sorgente {{source}}: {{reason}}",
+      "source_created_without_table": "Sorgente {{source}} creata; la sua tabella non è stata impostata: {{reason}}"
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",

@@ -14,6 +14,23 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 /** The source types whose path names one file, which an upload can be. */
 export const UPLOAD_TYPES = new Set(["sqlite", "duckdb", "csv", "parquet"]);
 
+/** REQ-2113: the source types whose one file may be downloaded into the organization's folder. */
+export const DOWNLOAD_TYPES = new Set(["csv", "parquet"]);
+
+/** What a new source's form asks of its table (REQ-2113): set up with it as a draft -- on by
+ * default, a single-file source having one table -- in the domain picked, else the only or
+ * first one. Nothing for a source whose file is not one CSV or Parquet file. */
+export function draftTable(
+  form: { type: string; registerTableDraft?: boolean; tableDomainId?: string | null },
+  domains: { id: string }[],
+): { registerTableDraft: boolean; tableDomainId: string | null } {
+  if (!DOWNLOAD_TYPES.has(form.type)) return { registerTableDraft: false, tableDomainId: null };
+  return {
+    registerTableDraft: form.registerTableDraft ?? true,
+    tableDomainId: form.tableDomainId ?? domains[0]?.id ?? null,
+  };
+}
+
 /** The file databases, which a location elsewhere attaches read-only. */
 export const FILE_DATABASES = new Set(["sqlite", "duckdb"]);
 

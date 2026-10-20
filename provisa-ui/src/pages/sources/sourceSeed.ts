@@ -267,6 +267,7 @@ export function seedSource(s: Source, govdataCatalog: GovdataSubjectCatalog | nu
       offPeakTz: s.offPeakTz ?? "UTC",
       changeSignal: s.changeSignal || sourceChangeSignals(uiType(s.type))[0],
       sentinelPath: s.sentinelPath ?? "",
+      downloadFrom: s.downloadFrom ?? "",
       freshnessGate: s.freshnessGate,
       maxLiveConcurrency: s.maxLiveConcurrency != null ? String(s.maxLiveConcurrency) : "",
       path: s.type === "files" ? parseFilesPath(s.path ?? "").path : (s.path ?? ""),

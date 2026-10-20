@@ -85771,7 +85771,7 @@ Then the image is built through Provisa's Build image API and the compose snippe
   - REQ-1993
   notes: "Maintainer 2026-10-20, through the lead: a Provisa VS Code plugin, queued after REQ-2098; link the pushdown (2100) and services (2104-2106) requirements when they reach main. Scope agreed: the code-source loop; no model editing; a docs page for the existing GraphQL/SQL extensions instead of a query editor."
 - id: REQ-2113
-  status: proposed
+  status: complete
   since: 2026-10
   group: 4. Source Connectors
   category: Source Registration
@@ -85794,6 +85794,22 @@ Then it is refused by name and nothing is copied"
   related_reqs:
   - REQ-1997
   - REQ-1992
+  code:
+  - provisa/core/source_downloads.py
+  - provisa/api/admin/schema_common.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa/core/settings_catalog.py
+  - provisa/core/env_source_files.py
+  - provisa/federation/replica_builds.py
+  - provisa/api/mcp/chat.py
+  - provisa-ui/src/pages/sources/FileLocationFields.tsx
+  - site/demo-data/make_supplies.py
+  tests:
+  - tests/unit/test_source_downloads.py
+  - tests/unit/test_source_draft_table.py
+  - tests/unit/test_env_source_files.py
+  - tests/unit/test_mcp_chat_prompt_rules.py
+  - provisa-ui/src/pages/sources/__tests__/fileDownload.test.tsx
   notes: "Maintainer 2026-10-20, through the lead: download a CSV or Parquet source's file into the org folder and /files; Polly can take a fully resolved path (file mount, http, s3) to a single file, add it to the download UI and run it. Queued as one requirement, with the allowed-directories setting for mount paths. Maintainer: a file mount cannot work in a multi-tenant org, so it is single-tenant only. Maintainer: Polly differentiates a single CSV or Parquet source request from a more complex file request. Maintainer: a single CSV or Parquet source gets its table set up at once, in draft, as a choice when the source is created."
 - id: REQ-2114
   status: proposed
