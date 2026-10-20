@@ -89,6 +89,9 @@ class Endpoints:
     bolt: HostPort
     flight: HostPort
     grpc: HostPort
+    # The MCP Streamable HTTP endpoint (``http://HOST:PORT/mcp``); None: the deployment states
+    # none, and the mcp transport cannot run (REQ-2092).
+    mcp_url: str | None
 
 
 @dataclass(frozen=True)
@@ -421,11 +424,12 @@ TRANSPORT_LANGUAGE = {
     "grpc": "grpc",
     "rest": "rest",
     "jsonapi": "jsonapi",
+    "mcp": "sql",  # the run_sql tool: the same SQL /data/sql takes
 }
 
 
 # Transports whose request language can express a join (gRPC, REST and JSON:API read one table).
-JOIN_TRANSPORTS = ("graphql", "data_sql", "cypher_http", "pgwire", "flight_sql", "bolt")
+JOIN_TRANSPORTS = ("graphql", "data_sql", "cypher_http", "pgwire", "flight_sql", "bolt", "mcp")
 
 
 def chain_role(role: str, level: int) -> str:

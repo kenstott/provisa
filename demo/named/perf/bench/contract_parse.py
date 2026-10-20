@@ -232,14 +232,16 @@ def _host_port(raw: Any, path: str, environ: Mapping[str, str]) -> HostPort:
 
 
 def _endpoints(raw: Any, path: str, environ: Mapping[str, str]) -> Endpoints:
-    _mapping(raw, path, required=("http", "pgwire", "bolt", "flight", "grpc"))
+    _mapping(raw, path, required=("http", "pgwire", "bolt", "flight", "grpc"), optional=("mcp",))
     http = _mapping(raw["http"], f"{path}.http", required=("base_url",))
+    mcp = _mapping(raw["mcp"], f"{path}.mcp", required=("url",)) if "mcp" in raw else None
     return Endpoints(
         http_base_url=_resolve(http["base_url"], f"{path}.http.base_url", environ),
         pgwire=_host_port(raw["pgwire"], f"{path}.pgwire", environ),
         bolt=_host_port(raw["bolt"], f"{path}.bolt", environ),
         flight=_host_port(raw["flight"], f"{path}.flight", environ),
         grpc=_host_port(raw["grpc"], f"{path}.grpc", environ),
+        mcp_url=_resolve(mcp["url"], f"{path}.mcp.url", environ) if mcp is not None else None,
     )
 
 

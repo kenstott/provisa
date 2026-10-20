@@ -70,6 +70,7 @@ TRANSPORTS: dict[str, tuple[str, str | None]] = {
     "grpc": ("gRPC ProvisaService typed RPC", "x-provisa-cache: true metadata"),
     "rest": ("GET /data/rest/{domain}/{table}", "x-provisa-cache: true header"),
     "jsonapi": ("GET /data/jsonapi/{domain}/{table}", "x-provisa-cache: true header"),
+    "mcp": ("MCP tools/call run_sql, Streamable HTTP", "-- @provisa cache=true"),
 }
 
 DEFAULT_STEPS = (1, 16, 64, 256)
@@ -102,6 +103,7 @@ class Endpoints:
     grpc_host: str
     grpc_port: int
     role: str
+    mcp_url: str | None  # the MCP server's /mcp (None: the deployment states none)
     setup: contract_model.Setup  # the contract: knobs, tables and seed behind every request
     # What the deployment's auth requires (credential.py; the secret is read from the environment
     # variable the contract names); None when the contract says credentials mode none.
@@ -184,6 +186,71 @@ class CypherHttpClient(_HttpClient):
         # or not (cypher_router builds the header from no cache result), so the header says
         # nothing here.
         return len(body["rows"]), len(body["columns"]), None
+
+
+class McpClient:
+    """MCP over Streamable HTTP, as an agent's client speaks it: one session (initialize, then
+    the initialized notification), then a ``tools/call`` of ``run_sql`` per request. An answer
+    may come as JSON or as one server-sent event; both are read. The tool says nothing of the
+    response cache, so a hit is not known."""
+
+    _PROTOCOL = "2025-03-26"
+
+    def __init__(self, ep: Endpoints) -> None:
+        import httpx
+
+        assert ep.mcp_url is not None  # contract_checks refuses the mcp transport without one
+        self._cred = ep.credential
+        self._url = ep.mcp_url
+        self._http = httpx.Client(timeout=60)
+        self._id = 0
+        self._session: str | None = None
+        self._rpc(
+            "initialize",
+            {
+                "protocolVersion": self._PROTOCOL,
+                "capabilities": {},
+                "clientInfo": {"name": "provisa-bench", "version": "1"},
+            },
+        )
+        self._post({"jsonrpc": "2.0", "method": "notifications/initialized"})
+
+    def _post(self, body: dict[str, Any]) -> Any:
+        headers = {
+            "Accept": "application/json, text/event-stream",
+            **(self._cred.auth_header() if self._cred else {}),
+            **({"mcp-session-id": self._session} if self._session else {}),
+            **({"mcp-protocol-version": self._PROTOCOL} if self._session else {}),
+        }
+        resp = self._http.post(self._url, json=body, headers=headers)
+        resp.raise_for_status()
+        if self._session is None:
+            self._session = resp.headers["mcp-session-id"]
+        return resp
+
+    def _rpc(self, method: str, params: dict[str, Any]) -> dict[str, Any]:
+        self._id += 1
+        resp = self._post({"jsonrpc": "2.0", "id": self._id, "method": method, "params": params})
+        if resp.headers.get("content-type", "").startswith("text/event-stream"):
+            data = [line[5:] for line in resp.text.splitlines() if line.startswith("data:")]
+            body = next(m for m in (json.loads(d) for d in data) if m.get("id") == self._id)
+        else:
+            body = resp.json()
+        if "error" in body:
+            raise RuntimeError(f"MCP {method}: {body['error']}")
+        return body["result"]
+
+    def call(self, query: Query, role: str) -> tuple[int, int, bool | None]:
+        result = self._rpc(
+            "tools/call", {"name": "run_sql", "arguments": {"sql": query.sql, "role": role}}
+        )
+        if result.get("isError"):
+            raise RuntimeError(f"MCP run_sql: {result['content'][0]['text'][:300]}")
+        out = result["structuredContent"]
+        return len(out["rows"]), len(out["columns"]), None
+
+    def close(self) -> None:
+        self._http.close()
 
 
 class RestClient(_HttpClient):
@@ -411,6 +478,7 @@ CLIENTS: dict[str, Any] = {
     "grpc": GrpcClient,
     "rest": RestClient,
     "jsonapi": JsonApiClient,
+    "mcp": McpClient,
 }
 
 
@@ -1271,6 +1339,7 @@ def endpoints_from_setup(setup: contract_model.Setup) -> Endpoints:
         flight_port=e.flight.port,
         grpc_host=e.grpc.host,
         grpc_port=e.grpc.port,
+        mcp_url=e.mcp_url,
         role=setup.roles[0].role,
         setup=setup,
         credential=credential,

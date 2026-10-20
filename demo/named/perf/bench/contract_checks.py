@@ -138,6 +138,10 @@ def _check_sources_reachable(setup: Setup) -> None:
     for transport in setup.transports:
         if transport not in TRANSPORT_LANGUAGE:
             raise SetupError(f"transports.{transport}: no request language is known for it")
+        if transport == "mcp" and setup.endpoints.mcp_url is None:
+            raise SetupError(
+                "transports.mcp: needs deployment.endpoints.mcp.url (the MCP server's /mcp)"
+            )
         language = TRANSPORT_LANGUAGE[transport]
         where = (
             f"transports.{transport}.knobs.source_weights"
