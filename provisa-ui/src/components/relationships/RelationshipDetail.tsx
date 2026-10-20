@@ -23,6 +23,7 @@ import { tableRef, type RelForm } from "./relationship-types";
 import { domainToSqlName } from "../../naming";
 import { RelationshipRead } from "./RelationshipRead";
 import { JunctionPanel } from "./JunctionPanel";
+import { ParametersPanel } from "./ParametersPanel";
 import { PanelActions } from "../list/SplitPane";
 import { Tip } from "../Tip";
 
@@ -368,6 +369,16 @@ export function RelationshipDetail({
               <Text c="orange.7" fz="0.78rem">
                 {t("relationshipRow.cardinalityWarning")}
               </Text>
+            </FormField>
+          )}
+          {editingRel.targetType === "table" && (
+            <FormField size="full">
+              <ParametersPanel
+                form={editingRel}
+                setForm={setEditingRel}
+                tables={tables}
+                testIdPrefix="rel-edit"
+              />
             </FormField>
           )}
           {editingRel.targetType === "table" && (

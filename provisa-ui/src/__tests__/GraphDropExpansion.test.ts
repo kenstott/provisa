@@ -40,6 +40,7 @@ function rel(over: Partial<Relationship>): Relationship {
     viaTypeColumn: null,
     viaTypeValue: null,
     viaLabelSource: null,
+    parameters: [],
     ...over,
   };
 }

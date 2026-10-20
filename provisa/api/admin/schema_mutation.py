@@ -834,6 +834,8 @@ async def save_relationship(
         via_type_column=input.via_type_column or None,
         via_type_value=input.via_type_value or None,
         via_label_source=input.via_label_source,
+        # REQ-2099: the parameters the edge feeds travel with it on save.
+        parameters={p.parameter: p.source_column for p in input.parameters},
         owner=owner,
     )
     async with pool.acquire() as conn:

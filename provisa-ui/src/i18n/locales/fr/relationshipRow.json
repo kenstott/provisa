@@ -38,6 +38,9 @@
     "junctionBadge": "via",
     "junctionBadgeTitle": "Relation reposant sur une table de jonction via {{table}}",
     "deleteTitle": "Supprimer la relation « {{id}} » ?",
-    "deleteConsequence": "La relation est supprimée du modèle. Les requêtes ne peuvent plus joindre par elle."
+    "deleteConsequence": "La relation est supprimée du modèle. Les requêtes ne peuvent plus joindre par elle.",
+    "parametersFed": "Paramètres alimentés",
+    "parametersFedHelp": "Une jointure sur cette relation donne à la cible ces valeurs de chaque ligne source.",
+    "parameterNotFed": "Non alimenté"
   }
 }

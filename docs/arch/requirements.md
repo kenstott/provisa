@@ -25619,3 +25619,17 @@ A configuration may declare the code its code sources run: code/<name>.tar.gz (o
 **Code:** `provisa/codesource/declared_code.py`, `provisa/api/model_reload.py`, `provisa/codesource/uploads.py`
 
 **Tests:** `tests/unit/test_declared_code.py`, `tests/unit/test_code_uploads_copied_to_sandbox.py`
+
+## 3. Source Registration & Data Modeling
+
+### REQ-2099 · Relationships {#REQ-2099}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column). A statement that reads the target together with the relationship's source -- a code table joined to the table whose rows it scores -- is not refused for the fed parameters. Before the engine joins, the source's mapped columns are read through the one governed pipeline as the statement's role, with its session values (SELECT DISTINCT over the source), so the role's row rules choose which rows are fed and its masks the values; the target is called once per distinct set of values, with the statement's own arguments for the parameters the relationship does not feed, and the calls' rows are landed together for the statement, kept under those argument sets for the target's TTL (inline or scratch at TTL 0), and joined. Every row of the source the role reads is fed; the statement's own conditions on the source do not narrow the feed. A read of the target without the source is refused for its required parameters before any code runs, as before. The relationship form shows a Parameters fed section, a source column per parameter, when the target takes parameters, and the relationship's detail lists them.
+
+**Use case:** A churn model packaged as a Python code table, churn_risk(customer_id, plan, tenure_months, ...), is joined to the customers' features view: each customer the analyst may read is scored with that customer's features, emails masked, and a regional role's join scores only its region's customers.
+
+**Code:** `provisa/api/data/materialization.py`, `provisa/codesource/table.py`, `provisa/core/models.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/repositories/relationship.py`, `provisa/api/admin/types.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/components/relationships/ParametersPanel.tsx`
+
+**Tests:** `tests/unit/test_relationship_fed_code_table.py`

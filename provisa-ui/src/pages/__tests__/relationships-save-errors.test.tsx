@@ -37,6 +37,7 @@ const FORWARD = {
   computedCypherAlias: null,
   autoSuggested: false,
   disableCypher: false,
+  parameters: [],
   viaTableId: null,
   viaTableName: null,
 };

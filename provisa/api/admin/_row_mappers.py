@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from provisa.api.admin.types import (
     DomainType,
+    RelationshipParameterType,
     RelationshipType,
     RLSRuleType,
     RoleRateLimitType,
@@ -254,6 +255,10 @@ def _rel_from_row(row, convention: str = "apollo_graphql") -> RelationshipType:
         via_type_column=row.get("via_type_column"),
         via_type_value=row.get("via_type_value"),
         via_label_source=row.get("via_label_source"),
+        parameters=[
+            RelationshipParameterType(parameter=k, source_column=v)
+            for k, v in row["parameters"].items()
+        ],
     )
 
 

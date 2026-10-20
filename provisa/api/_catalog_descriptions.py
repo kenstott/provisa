@@ -204,6 +204,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "disable_cypher": "Whether the edge is hidden from Cypher traversal",
         "hide_target_meta": "Whether the target's metadata is withheld from consumers of the edge",
         "source_json_key": "Key inside a JSON source column that carries the join value",
+        "parameters": "Target parameters the edge feeds, each from a source column",
         "via_table_id": "Junction table the edge traverses through, for a junction-backed edge",
         "via_source_column": "Junction columns, in order, that match the source key",
         "via_target_column": "Junction columns, in order, that match the target key",

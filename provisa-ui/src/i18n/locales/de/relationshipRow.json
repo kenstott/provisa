@@ -38,6 +38,9 @@
     "junctionBadge": "über",
     "junctionBadgeTitle": "Junction-gestützte Beziehung über {{table}}",
     "deleteTitle": "Beziehung „{{id}}“ löschen?",
-    "deleteConsequence": "Die Beziehung wird aus dem Modell entfernt. Abfragen können nicht mehr über sie verknüpfen."
+    "deleteConsequence": "Die Beziehung wird aus dem Modell entfernt. Abfragen können nicht mehr über sie verknüpfen.",
+    "parametersFed": "Übergebene Parameter",
+    "parametersFedHelp": "Ein Join über diese Beziehung übergibt dem Ziel diese Werte aus jeder Quellzeile.",
+    "parameterNotFed": "Nicht übergeben"
   }
 }

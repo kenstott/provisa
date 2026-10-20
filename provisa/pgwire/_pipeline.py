@@ -393,6 +393,7 @@ async def _optimize_and_route(
         table_ids=table_ids,
         ctx=ctx,
         read_args=read_args,
+        role_id=gov_ctx.role_id,
     )
     _actually_dropped: set[str] = set()
     if _dropped:

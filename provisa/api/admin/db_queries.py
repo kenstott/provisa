@@ -218,6 +218,8 @@ async def fetch_relationships(
         # the two-hop join, and label_map reads via_label_source to name the exposed type.
         "r.via_table_id, r.via_source_column, r.via_target_column, r.via_type_column, "
         "r.via_type_value, r.via_label_source, "
+        # REQ-2099: the target's parameters the edge feeds, read by the materialize stage.
+        "r.parameters, "
         "t.table_name AS target_table_name, "
         "v.table_name AS via_table_name "
         "FROM relationships r "

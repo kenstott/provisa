@@ -38,6 +38,9 @@
     "junctionBadge": "via",
     "junctionBadgeTitle": "Relacionamento baseado em junção por meio de {{table}}",
     "deleteTitle": "Excluir o relacionamento \"{{id}}\"?",
-    "deleteConsequence": "O relacionamento é removido do modelo. As consultas não podem mais fazer junções por ele."
+    "deleteConsequence": "O relacionamento é removido do modelo. As consultas não podem mais fazer junções por ele.",
+    "parametersFed": "Parâmetros alimentados",
+    "parametersFedHelp": "Uma junção por esta relação passa ao destino estes valores de cada linha de origem.",
+    "parameterNotFed": "Não alimentado"
   }
 }

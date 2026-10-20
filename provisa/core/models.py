@@ -1761,6 +1761,10 @@ class Relationship(BaseModel):  # REQ-019, REQ-020, REQ-158, REQ-159, REQ-399, R
     source_json_key: str | None = (
         None  # when set, JOIN extracts this key from source column as JSON object
     )
+    # REQ-2099: the target table's parameters this edge feeds, {parameter: source column}. A
+    # statement joining the target over this edge calls it once per distinct set of the source's
+    # values, read as the statement's role reads them.
+    parameters: dict[str, str] = Field(default_factory=dict)
     # REQ-020: defining-steward ownership, version, and re-review flag.
     owner: str | None = None  # role/user id of the defining steward
     version: int = 1  # bumped on every upsert and on re-review flagging

@@ -418,6 +418,8 @@ relationships = Table(
         name="relationships_via_label_source_check",
     ),
     Column("source_json_key", Text),
+    # REQ-2099: the target's parameters this edge feeds, {parameter: source column}.
+    Column("parameters", JSON, nullable=False, default=dict, server_default="{}"),
     Column("owner", Text),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("needs_review", Boolean, nullable=False, server_default=false()),

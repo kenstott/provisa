@@ -38,6 +38,9 @@
     "junctionBadge": "דרך",
     "junctionBadgeTitle": "קשר מבוסס טבלת צומת דרך {{table}}",
     "deleteTitle": "למחוק את הקשר \"{{id}}\"?",
-    "deleteConsequence": "הקשר יוסר מהמודל. שאילתות לא יוכלו עוד לבצע צירוף דרכו."
+    "deleteConsequence": "הקשר יוסר מהמודל. שאילתות לא יוכלו עוד לבצע צירוף דרכו.",
+    "parametersFed": "פרמטרים מוזנים",
+    "parametersFedHelp": "צירוף דרך קשר זה מעביר ליעד את הערכים האלה מכל שורת מקור.",
+    "parameterNotFed": "לא מוזן"
   }
 }

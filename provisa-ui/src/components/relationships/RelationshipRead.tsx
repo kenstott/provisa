@@ -120,6 +120,15 @@ export function RelationshipRead({
           },
         ]}
       />
+      {r.parameters.length > 0 && (
+        <>
+          <ReadHeading>{t("relationshipRow.parametersFed")}</ReadHeading>
+          <DetailFields
+            testId="relationship-read-parameters"
+            fields={r.parameters.map((p) => ({ label: p.parameter, value: p.sourceColumn }))}
+          />
+        </>
+      )}
       {!isFunction && (
         <>
           <ReadHeading>{t("addRelationshipForm.junctionTitle")}</ReadHeading>
