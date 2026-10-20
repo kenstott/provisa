@@ -22,10 +22,17 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
 log = logging.getLogger(__name__)
+
+#: REQ-2065: set on the warm-up's own requests. They are the tier's, not the visitor's: they neither
+#: restart the sandbox's idle expiry nor revive one whose tab said it was closing (demo_sandbox.touch).
+#: A request thread runs in the context it was handed (core/request_thread.py), so the middleware
+#: reads it.
+WARMING: ContextVar[bool] = ContextVar("provisa_tour_warmup", default=False)
 
 #: The specs and the schema every sandbox's explorers read on opening.
 _EXPLORERS: tuple[tuple[str, str, dict | None], ...] = (
@@ -76,6 +83,7 @@ def _is_subscription(query: str) -> bool:
 async def _warm(app: Any, org_id: str, headers: dict[str, str], directory: Path) -> None:
     import httpx
 
+    WARMING.set(True)
     sent = {**headers, "x-org-provisa": org_id}
     transport = httpx.ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://warmup") as client:

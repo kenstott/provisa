@@ -7,8 +7,15 @@
 # the sandbox tier fetches <name>-latest when it opens a sandbox, and `start-ui-install.sh --demo
 # <name>` pulls it, so a demo updated here is served with no release and no redeploy.
 #
-# A push to main rebuilds only the demos it changed; a dispatch rebuilds the one it names. A
-# version is never published twice (the push refuses one that exists).
+# A push to main rebuilds only the demos it changed; a dispatch rebuilds the one it names, or every
+# published demo (`all`). A version is never published twice (the push refuses one that exists).
+#
+# REQ-2006: before a bundle is published, a visitor walks it (tests/integration/
+# test_sandbox_visitor_walk.py, the demo_walk lane): a sandbox tier serving it opens a sandbox
+# through the public route, runs each tour step's query as the visitor and closes it. A demo that
+# cannot be opened, or a step that fails, is not published. A dispatch with `publish: false` walks
+# without publishing (`all` with it walks every published demo and leaves the cloud's bundles as
+# they are).
 name: "Demo bundles"
 
 on:
@@ -19,9 +26,13 @@ on:
   workflow_dispatch:
     inputs:
       demo:
-        description: The published named demo to build and publish (weblogs).
+        description: The published named demo to build and publish (weblogs), or all of them (all).
         type: string
         required: true
+      publish:
+        description: Publish each bundle once it is walked; false walks without publishing.
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -47,7 +58,9 @@ jobs:
           NAMED: ${{ inputs.demo }}
           BEFORE: ${{ github.event.before }}
         run: |
-          if [ "$EVENT" = workflow_dispatch ]; then
+          if [ "$EVENT" = workflow_dispatch ] && [ "$NAMED" = all ]; then
+            changed="$(ls demo/named)"
+          elif [ "$EVENT" = workflow_dispatch ]; then
             changed="$NAMED"
           else
             changed="$(git diff --name-only "$BEFORE" "$GITHUB_SHA" -- demo/named/ | cut -d/ -f3 | sort -u)"
@@ -55,7 +68,7 @@ jobs:
           demos=()
           for name in $changed; do
             spec="demo/named/$name/demo.yaml"
-            if [ "$EVENT" = workflow_dispatch ] && ! grep -qx 'published: true' "$spec"; then
+            if [ "$EVENT" = workflow_dispatch ] && [ "$NAMED" != all ] && ! grep -qx 'published: true' "$spec"; then
               echo "::error::$name is not a published named demo ($spec)"; exit 1
             fi
             if [ -f "$spec" ] && grep -qx 'published: true' "$spec"; then demos+=("$name"); fi
@@ -67,7 +80,8 @@ jobs:
     needs: plan
     if: needs.plan.outputs.demos != '[]'
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # The build, then the walk: the demo's template built from the bundle and every tour step.
+    timeout-minutes: 150
     permissions:
       contents: read
       packages: write # the bundle, to ghcr.io/<owner>/provisa-demos
@@ -96,7 +110,40 @@ jobs:
         uses: ./.github/actions/demo-bundle
         with:
           demo: ${{ matrix.demo }}
+      # The walk collects tests/integration, whose conftest fetches the pinned Trino plugin jars.
+      - name: Restore Trino plugins
+        id: trino-plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
+      # REQ-2006: a visitor's walk through the bundle just built, on a sandbox tier serving it
+      # (the demo_walk lane, its own steps: this job carries the build's live keys). The tier's
+      # control plane is the local platform's; the demo's own stores run in Docker.
+      - name: Walk the bundle as a visitor
+        env:
+          DEMO: ${{ matrix.demo }}
+          PROVISA_TEST_DEMO_BUNDLES_DIR: dist/demos
+          # A failed walk keeps its sandbox tier's whole server log here, uploaded below.
+          PROVISA_TEST_LOG_DIR: results/walk
+        run: |
+          bash scripts/ci/lanes/suite-prepare.sh
+          PROVISA_LANE_TESTS="tests/integration/test_sandbox_visitor_walk.py::test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it[$DEMO]" \
+            uv run python scripts/ci/run_lane.py demo_walk
+      - name: Upload the walk's server log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: walk-${{ matrix.demo }}
+          path: results/walk/
+          if-no-files-found: ignore
+      - name: Cache Trino plugins
+        if: always()
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: save
+          cache-hit: ${{ steps.trino-plugins.outputs.cache-hit }}
       - name: Publish the bundle
+        if: github.event_name != 'workflow_dispatch' || inputs.publish
         env:
           BUNDLE: ${{ steps.build.outputs.bundle }}
           PROVISA_DEMO_REGISTRY_USER: ${{ github.actor }}

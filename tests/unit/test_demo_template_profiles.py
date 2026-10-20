@@ -59,7 +59,9 @@ def test_the_template_runs_each_profiler_and_names_a_failed_run(tmp_path, monkey
 def test_a_template_still_being_prepared_is_not_ready(monkeypatch):
     """Its preparation -- its profile runs among it -- is what a sandbox is cloned from. A demo
     with no replica read as ready from its provisioning alone, so the profiling demo's first
-    sandbox was cloned before its template had profiled anything."""
+    sandbox was cloned before its template had profiled anything. One whose preparation failed is
+    refused too: testdata's sandbox was opened from a template whose dev was never generated, and
+    the visitor was answered 500 by the copy."""
     import pytest
 
     from provisa.api import demo_sandbox
@@ -82,7 +84,7 @@ def test_a_template_still_being_prepared_is_not_ready(monkeypatch):
 
     monkeypatch.setattr(orgs_router, "_admin_pool", lambda: _Pool())
     demo = SimpleNamespace(name="profiling", template_org="sbxtplprofiling", title="Profiling")
-    for state in ("queued", "building"):
+    for state in ("queued", "building", "failed"):
         monkeypatch.setattr(demo_templates.template_builds, "state_of", lambda _n, s=state: s)
         with pytest.raises(ApiError) as refused:
             asyncio.run(demo_sandbox._template_ready(demo))
