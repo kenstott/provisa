@@ -10,8 +10,9 @@
 
 """Provisa's services to a code source's worker (REQ-2104): its declared secrets, read at use.
 
-A code source declares the names its code may read (``secrets`` in its mapping), each a reference
-into the org's vault: ``${secret:NAME}`` or ``${env:NAME}``. The reference is kept as written
+A code source declares the names its code may read (``secrets`` in its mapping): each the org
+secret of that name, or a reference the steward typed into the org's vault or the deployment's
+environment (``${secret:NAME}``, ``${env:NAME}``). What was entered is kept as written
 through config load and storage; nothing resolves it until the code asks.
 
 When a worker starts it is given one environment variable, ``PROVISA_SERVICES``: an address on a
@@ -53,12 +54,12 @@ SECRET_READ = "code_source.secret.read"
 
 @dataclass(frozen=True)
 class ServiceGrant:
-    """What one source's worker may ask for: its declared names, each the vault reference it
-    reads, in the org it is registered in."""
+    """What one source's worker may ask for: its declared names, each the reference typed for it
+    (None: the org secret of that name), in the org it is registered in."""
 
     org_id: str
     source_id: str
-    secrets: Mapping[str, str] = field(default_factory=dict)
+    secrets: Mapping[str, str | None] = field(default_factory=dict)
     admin_db: Any = None
     #: REQ-2105: the source's monthly (UTC) cap on what its LLM calls cost, USD; None: no cap.
     llm_cap_usd: float | None = None
@@ -78,9 +79,10 @@ _grants: dict[str, ServiceGrant] = {}
 _lock = threading.Lock()
 
 
-def declared(raw: Any) -> dict[str, str]:
-    """A mapping's ``secrets``, as name -> reference. A bare name is the org secret of that name;
-    a mapping names each reference itself. Refused by name when it is neither."""
+def declared(raw: Any) -> dict[str, str | None]:
+    """A mapping's ``secrets``, as name -> the reference typed for it, or None for the org secret
+    of that name: a list of names, or a mapping whose values are references or null. Refused by
+    name when it is neither."""
     from provisa.codesource.bundle import BundleRefused
 
     if raw is None:
@@ -88,13 +90,16 @@ def declared(raw: Any) -> dict[str, str]:
     if isinstance(raw, list):
         if not all(isinstance(n, str) and n for n in raw):
             raise BundleRefused("secrets_invalid", "a source's secrets are names")
-        return {n: f"${{secret:{n}}}" for n in raw}
+        return dict.fromkeys(raw)
     if isinstance(raw, dict):
         for name, reference in raw.items():
-            if not (isinstance(reference, str) and _is_reference(reference)):
+            if reference is not None and not (
+                isinstance(reference, str) and _is_reference(reference)
+            ):
                 raise BundleRefused(
                     "secrets_invalid",
-                    f"the secret {name!r} is a reference, ${{secret:NAME}} or ${{env:NAME}}",
+                    f"the secret {name!r} is a reference to the vault or the environment, as "
+                    "entered, or null for the organization secret of that name",
                     name=str(name),
                 )
         return dict(raw)
@@ -199,38 +204,42 @@ def read_secret(grant: ServiceGrant, name: str) -> str:
 
 
 async def _read(grant: ServiceGrant, name: str) -> str:
-    reference = grant.secrets.get(name)
-    if reference is None:
+    if name not in grant.secrets:
         await _audit(grant, name, "undeclared")
         raise ServiceRefused(
             403, f"the source {grant.source_id!r} does not declare the secret {name!r}"
         )
+    reference = grant.secrets[name]
+    # What a refusal names it by: the reference typed for it, or that it is the org secret.
+    named = reference or "the organization secret of that name"
     try:
-        value = await _resolve(grant, reference)
+        value = await _resolve(grant, name, reference)
     except Exception as exc:  # allow-ble: any failure to resolve is the one refusal of the read, by name; the vault's message could carry what it read, so only its type is kept
         await _audit(grant, name, "unresolved")
         log.warning(
             "code source %s: secret %r (%s) could not be resolved: %s",
             grant.source_id,
             name,
-            reference,
+            named,
             type(exc).__name__,
         )
         raise ServiceRefused(
-            404, f"the secret {name!r} ({reference}) could not be resolved in the org's vault"
+            404, f"the secret {name!r} ({named}) could not be resolved in the org's vault"
         ) from None
     if not value:
         await _audit(grant, name, "unresolved")
-        raise ServiceRefused(404, f"the secret {name!r} ({reference}) resolves to nothing")
+        raise ServiceRefused(404, f"the secret {name!r} ({named}) resolves to nothing")
     await _audit(grant, name, "read")
     return value
 
 
-async def _resolve(grant: ServiceGrant, reference: str) -> str:
+async def _resolve(grant: ServiceGrant, name: str, reference: str | None) -> str:
     from provisa.core import secrets_store
-    from provisa.core.secrets import resolve_secrets
+    from provisa.core.secrets import resolve_secret_name, resolve_secrets
 
     async with secrets_store.bound(grant.admin_db, grant.org_id):
+        if reference is None:
+            return resolve_secret_name(name)
         return resolve_secrets(reference, providers=("env", "secret"))
 
 

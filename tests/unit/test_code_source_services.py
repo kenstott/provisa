@@ -59,7 +59,7 @@ def _ask(method: str, path: str) -> tuple[int, bytes]:
     return status, body
 
 
-def _grant(**secrets: str) -> services.ServiceGrant:
+def _grant(**secrets: str | None) -> services.ServiceGrant:
     return services.ServiceGrant(org_id="acme", source_id="rates", secrets=secrets, admin_db=None)
 
 
@@ -75,7 +75,9 @@ def token():
 
 def test_a_name_is_the_org_secret_of_that_name_and_a_mapping_names_its_references():
     assert services.declared(None) == {}
-    assert services.declared(["openrouter"]) == {"openrouter": "${secret:openrouter}"}
+    # A listed name is kept as the name, never spelled into a reference (the product writes none).
+    assert services.declared(["openrouter"]) == {"openrouter": None}
+    assert services.declared({"openrouter": None}) == {"openrouter": None}
     assert services.declared({"key": "${env:OPENROUTER_API_KEY}"}) == {
         "key": "${env:OPENROUTER_API_KEY}"
     }
@@ -123,6 +125,14 @@ def test_a_config_naming_a_secret_nobody_has_stored_loads_with_the_references_as
 def test_a_declared_secret_is_read_from_the_orgs_vault_and_audited(vault, token):
     assert _ask("GET", f"/{token}/secrets/openrouter") == (200, _VALUE.encode())
     assert vault["audited"] == [("rates", "openrouter", "read")]
+
+
+def test_a_listed_name_is_the_org_secret_of_that_name(vault):
+    issued = services.issue(_grant(openrouter=None))
+    try:
+        assert _ask("GET", f"/{issued}/secrets/openrouter") == (200, _VALUE.encode())
+    finally:
+        services.revoke(issued)
 
 
 def test_a_rotated_secret_is_read_on_the_next_fetch(vault, token):

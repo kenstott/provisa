@@ -68,7 +68,7 @@ class CodeConfig:
     entry: str | None
     content_hash: str | None
     #: REQ-2104: the names the code may read, each its vault reference, as written.
-    secrets: dict[str, str] = field(default_factory=dict)
+    secrets: dict[str, str | None] = field(default_factory=dict)
     #: REQ-2105: the monthly cap on what its LLM calls cost, USD; None: no cap.
     llm_cap_usd: float | None = None
 

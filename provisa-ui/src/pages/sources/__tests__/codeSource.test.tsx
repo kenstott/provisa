@@ -84,7 +84,12 @@ describe("what a code source saves", () => {
     };
     expect(JSON.parse(codeMappingJson("node", fields))).toEqual({
       runtime: "bun",
-      code: { kind: "git", repository: fields.code_repository, commit: fields.code_commit, subdirectory: "pkg" },
+      code: {
+        kind: "git",
+        repository: fields.code_repository,
+        commit: fields.code_commit,
+        subdirectory: "pkg",
+      },
     });
   });
 
@@ -93,21 +98,23 @@ describe("what a code source saves", () => {
       codeMappingJson("python", {
         code_package: "acme-rates",
         code_version: "1.0.0",
-        code_secrets: JSON.stringify({ openrouter: "${secret:openrouter}" }),
+        code_secrets: JSON.stringify({ openrouter: null }),
       }),
     );
     expect(named.secrets).toEqual(["openrouter"]);
     expect(codeFieldsFromMapping(JSON.stringify(named)).code_secrets).toBe(
-      JSON.stringify({ openrouter: "${secret:openrouter}" }),
+      JSON.stringify({ openrouter: null }),
     );
-    const written = { key: "${env:OPENROUTER_API_KEY}", openrouter: "${secret:openrouter}" };
+    const written = { key: "${env:OPENROUTER_API_KEY}", openrouter: null };
     const both = JSON.parse(
-      codeMappingJson("node", { ...codeFieldsFromMapping(JSON.stringify({ code: {}, secrets: written })) }),
+      codeMappingJson("node", {
+        ...codeFieldsFromMapping(JSON.stringify({ code: {}, secrets: written })),
+      }),
     );
     expect(both.secrets).toEqual(written);
-    expect(JSON.parse(codeMappingJson("python", { code_package: "a", code_version: "1" }))).not.toHaveProperty(
-      "secrets",
-    );
+    expect(
+      JSON.parse(codeMappingJson("python", { code_package: "a", code_version: "1" })),
+    ).not.toHaveProperty("secrets");
   });
 
   it("keeps a monthly LLM cap, and none when the field is empty", () => {
@@ -116,22 +123,34 @@ describe("what a code source saves", () => {
     );
     expect(capped.llm).toEqual({ cap_usd: 12.5 });
     expect(codeFieldsFromMapping(JSON.stringify(capped)).code_llm_cap).toBe("12.5");
-    expect(codeFieldsFromMapping(JSON.stringify({ ...capped, llm: { cap_usd: 0 } })).code_llm_cap).toBe("0");
     expect(
-      JSON.parse(codeMappingJson("python", { code_package: "a", code_version: "1", code_llm_cap: "" })),
+      codeFieldsFromMapping(JSON.stringify({ ...capped, llm: { cap_usd: 0 } })).code_llm_cap,
+    ).toBe("0");
+    expect(
+      JSON.parse(
+        codeMappingJson("python", { code_package: "a", code_version: "1", code_llm_cap: "" }),
+      ),
     ).not.toHaveProperty("llm");
   });
 
   it("needs what its origin names, and a full commit", () => {
-    expect(missingCodeFields({ code_origin: "package", code_package: "p" })).toEqual(["code_version"]);
-    expect(missingCodeFields({ code_origin: "git", code_repository: "r", code_commit: "v1.0" })).toEqual([
-      "code_commit",
+    expect(missingCodeFields({ code_origin: "package", code_package: "p" })).toEqual([
+      "code_version",
     ]);
+    expect(
+      missingCodeFields({ code_origin: "git", code_repository: "r", code_commit: "v1.0" }),
+    ).toEqual(["code_commit"]);
     expect(missingCodeFields({ code_origin: "upload", code_upload: "h" })).toEqual([]);
   });
 });
 
-function Harness({ type, onFields }: { type: string; onFields: (f: Record<string, string>) => void }) {
+function Harness({
+  type,
+  onFields,
+}: {
+  type: string;
+  onFields: (f: Record<string, string>) => void;
+}) {
   const [fields, setFields] = useState<Record<string, string>>({});
   return (
     <CodeSourceFields
@@ -168,7 +187,10 @@ describe("the code source's fields", () => {
     fireEvent.change(hidden, { target: { files: [file] } });
     await waitFor(() => expect(uploadCodeArchive).toHaveBeenCalledWith("acme", file));
     await waitFor(() =>
-      expect(seen.at(-1)).toMatchObject({ code_upload: "code-hash-1", code_upload_filename: "rates.zip" }),
+      expect(seen.at(-1)).toMatchObject({
+        code_upload: "code-hash-1",
+        code_upload_filename: "rates.zip",
+      }),
     );
   });
 
@@ -185,11 +207,14 @@ describe("the code source's fields", () => {
     });
     const listbox = document.getElementById(picker.getAttribute("aria-controls") as string);
     fireEvent.click(
-      await within(listbox as HTMLElement).findByRole("option", { name: "openrouter", hidden: true }),
+      await within(listbox as HTMLElement).findByRole("option", {
+        name: "openrouter",
+        hidden: true,
+      }),
     );
     await waitFor(() =>
       expect(seen.at(-1)).toMatchObject({
-        code_secrets: JSON.stringify({ openrouter: "${secret:openrouter}" }),
+        code_secrets: JSON.stringify({ openrouter: null }),
       }),
     );
   });
@@ -203,7 +228,10 @@ describe("the code source's fields", () => {
     fireEvent.change(hidden, { target: { files: [file] } });
     await waitFor(() => expect(uploadLockfile).toHaveBeenCalledWith("acme", file));
     await waitFor(() =>
-      expect(seen.at(-1)).toMatchObject({ lockfile_upload: "lock-sha-1", lockfile_filename: "package-lock.json" }),
+      expect(seen.at(-1)).toMatchObject({
+        lockfile_upload: "lock-sha-1",
+        lockfile_filename: "package-lock.json",
+      }),
     );
   });
 });

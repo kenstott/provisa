@@ -41,27 +41,30 @@ export const LOCKFILES: Record<string, string[]> = {
 
 const COMMIT = /^[0-9a-f]{40}$/;
 
-/** REQ-2104: a declared secret's reference when it is the org secret of the same name. */
-const orgSecretRef = (name: string) => `\${secret:${name}}`;
-
-/** The source's declared secrets, name -> vault reference, from the form's `code_secrets`. */
-export function declaredSecrets(fields: Record<string, string>): Record<string, string> {
-  return fields.code_secrets ? (JSON.parse(fields.code_secrets) as Record<string, string>) : {};
+/** REQ-2104: the source's declared secrets, from the form's `code_secrets`: each name with the
+ * reference typed for it, or null for the org secret of that name. The form spells no reference
+ * of its own: a name picked from the org's secrets stays a name. */
+export function declaredSecrets(fields: Record<string, string>): Record<string, string | null> {
+  return fields.code_secrets
+    ? (JSON.parse(fields.code_secrets) as Record<string, string | null>)
+    : {};
 }
 
 /** The `secrets` a mapping stores: the names alone when each is the org secret of that name,
- * else each name with its reference (an `${env:...}` one is kept as written). */
-function secretsMapping(declared: Record<string, string>): string[] | Record<string, string> | null {
+ * else each name with its reference or null (an `${env:...}` one is kept as written). */
+function secretsMapping(
+  declared: Record<string, string | null>,
+): string[] | Record<string, string | null> | null {
   const names = Object.keys(declared);
   if (names.length === 0) return null;
-  return names.every((n) => declared[n] === orgSecretRef(n)) ? names : declared;
+  return names.every((n) => declared[n] === null) ? names : declared;
 }
 
-/** The form's `code_secrets` with the org secrets `names` declared, keeping any other reference
- * a declared name already has. */
+/** The form's `code_secrets` with the org secrets `names` declared, keeping any reference a
+ * declared name already has. */
 export function withSecretNames(fields: Record<string, string>, names: string[]): string {
   const held = declaredSecrets(fields);
-  return JSON.stringify(Object.fromEntries(names.map((n) => [n, held[n] ?? orgSecretRef(n)])));
+  return JSON.stringify(Object.fromEntries(names.map((n) => [n, held[n] ?? null])));
 }
 
 /** The source's mapping, as the server stores it, from the form's fields. */
@@ -106,12 +109,12 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code?: Record<string, string>;
     lockfile?: { filename: string; upload: string } | null;
     entry?: string;
-    secrets?: string[] | Record<string, string>;
+    secrets?: string[] | Record<string, string | null>;
     llm?: { cap_usd?: number };
   };
   const code = m.code ?? {};
   const secrets = Array.isArray(m.secrets)
-    ? Object.fromEntries(m.secrets.map((n) => [n, orgSecretRef(n)]))
+    ? Object.fromEntries(m.secrets.map((n) => [n, null]))
     : (m.secrets ?? {});
   const origin: CodeOrigin =
     code.kind === "git" ? "git" : code.kind === "upload" ? "upload" : "package";
