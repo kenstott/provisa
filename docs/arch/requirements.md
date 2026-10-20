@@ -25532,6 +25532,20 @@ The benchmark contract has governance knobs: row rules per table, the share of c
 
 **Tests:** —
 
+## 4. Source Connectors
+
+### REQ-2110 · Materialization Store {#REQ-2110}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A pgwire session sets its time travel with SET provisa.as_of and SET provisa.as_recorded (RESET either, or set it TO DEFAULT); every statement the session then runs, COPY included, reads as a request carrying the matching X-Provisa-As-Of / X-Provisa-As-Recorded headers does. A value that cannot be read is refused naming the setting; a statement prepared under other settings is governed again.
+
+**Use case:** A BI tool connected over pgwire shows a report as it was reported on a past date, with no HTTP headers to send.
+
+**Code:** `provisa/pgwire/server.py`, `provisa/pgwire/_pipeline.py`, `provisa/pgwire/copy_handler.py`
+
+**Tests:** `tests/unit/pgwire/test_wire_protocol.py`, `tests/unit/pgwire/test_statement_stages.py`
+
 ## 9. Live Data & Events
 
 ### REQ-2108 · Derived / MV Processor {#REQ-2108}

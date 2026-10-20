@@ -145,10 +145,12 @@ def pgwire_port():
 
     state = _build_state()
 
-    async def _fake_plan(sql: str, role_id: str):
+    async def _fake_plan(sql: str, role_id: str, *, as_of=None):
         return _pl._Plan(route=Route.DIRECT, sql=sql, source_id="sales-pg", dialect="postgres")
 
-    async def _fake_govern(sql: str, role_id: str, params=None, wire_formats=None, *, deliver):
+    async def _fake_govern(
+        sql: str, role_id: str, params=None, wire_formats=None, *, deliver, as_of=None
+    ):
         return _pl._Plan(route=Route.DIRECT, sql=sql, source_id="sales-pg", dialect="postgres")
 
     async def _fake_execute_plan(plan, _state=None):

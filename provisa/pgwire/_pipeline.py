@@ -1492,6 +1492,9 @@ class _Governed:
     stamp: str
     # Facts derived from this governed statement, kept with it (pgwire's result shape).
     memo: dict[str, Any] = field(default_factory=dict)
+    # The time travel it was governed under (``AsOf.key``; REQ-1163): a held statement governed
+    # under another is governed again (REQ-2110, a pgwire session's SET provisa.as_of).
+    as_of: str | None = None
 
 
 def _calls_a_registered_command(tree: Any, state: Any) -> bool:
@@ -1506,13 +1509,16 @@ def _calls_a_registered_command(tree: Any, state: Any) -> bool:
     return bool(commands) and any(n.name in commands for n in tree.find_all(exp.Anonymous))
 
 
-def governed_statement_is_current(governed: _Governed, state: Any) -> bool:
-    """Whether ``governed`` may still be routed: minted by this process's ``govern_statement`` and
-    governed under the schema generation that is still live. A caller holding a stale one governs
-    the statement again."""
-    return stamp_is_valid(governed.stamp) and governed.schema_generation == (
-        state.schema_boot_id,
-        state.schema_version,
+def governed_statement_is_current(
+    governed: _Governed, state: Any, *, as_of: str | None = None
+) -> bool:
+    """Whether ``governed`` may still be routed: minted by this process's ``govern_statement``,
+    governed under the schema generation that is still live and under the time travel ``as_of``
+    the caller now reads at (REQ-2110). A caller holding a stale one governs the statement again."""
+    return (
+        stamp_is_valid(governed.stamp)
+        and governed.schema_generation == (state.schema_boot_id, state.schema_version)
+        and governed.as_of == as_of
     )
 
 
@@ -1801,6 +1807,7 @@ async def govern_statement(
         schema_generation=(state.schema_boot_id, state.schema_version),
         stamp=_mint_stamp(),
         memo=_memo,
+        as_of=as_of,
     )
     # Not kept: a write (its admission checks run per call) and a statement that runs a registered
     # command while it is prepared. The slot itself refuses one governed while a schema rebuild
@@ -5064,8 +5071,11 @@ def opening_write_verb(sql: str) -> str | None:
     return m.group("verb").upper() if m else None
 
 
-async def plan_pgwire_sql(sql: str, role_id: str) -> _Plan:  # REQ-267
-    return await _govern_and_route(sql, role_id)
+async def plan_pgwire_sql(  # REQ-267
+    sql: str, role_id: str, *, as_of: str | None = None
+) -> _Plan:
+    """A COPY's query, governed and routed; ``as_of`` is the session's time travel (REQ-2110)."""
+    return await _govern_and_route(sql, role_id, as_of=as_of)
 
 
 async def govern_pgwire_plan(  # REQ-028, REQ-266
@@ -5075,8 +5085,12 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
     wire_formats: list[int] | None = None,
     *,
     deliver: Delivery | None,
+    as_of: str | None = None,
 ) -> _Plan | QueryResult:
     """Govern a pgwire statement to its last-mile plan WITHOUT executing the ENGINE terminal.
+
+    ``as_of`` — the session's time travel (``SET provisa.as_of`` / ``provisa.as_recorded``,
+    REQ-2110), applied to the statement as a request's headers are on the HTTP transports.
 
     ``deliver`` — the forced redirect the session asked for (REQ-1194), or None; pgwire is a
     streaming transport and is never delivered automatically (REQ-1224 amended 2026-10-04).
@@ -5125,7 +5139,13 @@ async def govern_pgwire_plan(  # REQ-028, REQ-266
         return fn_result
 
     plan = await _govern_and_route(
-        sql, role_id, params=params, serve_cached=True, wire_formats=wire_formats, deliver=deliver
+        sql,
+        role_id,
+        params=params,
+        serve_cached=True,
+        wire_formats=wire_formats,
+        deliver=deliver,
+        as_of=as_of,
     )
     return plan
 
@@ -5161,7 +5181,9 @@ def _function_call_shape(name: str, state: Any) -> list[tuple[str, str]]:
     return [(c["name"], c["type"]) for c in declared]
 
 
-async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # REQ-589
+async def describe_pgwire_statement(  # REQ-589
+    sql: str, role_id: str, *, as_of: str | None = None
+) -> _Described:
     """Govern *sql* and derive its result columns from registered metadata — nothing is routed,
     executed or sent to a source. The Execute continues from the returned governed statement
     (:func:`plan_pgwire_statement`), so the statement is governed exactly once."""
@@ -5182,7 +5204,7 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
         return _Described([], None)
 
     await _wake_before_governing(state)
-    governed = await govern_statement(sql, role_id)
+    governed = await govern_statement(sql, role_id, as_of=as_of)  # REQ-2110: the session's
     # REQ-1882: the derivation parses and may annotate the statement (sqlglot); off-loaded like the
     # pipeline's other parse work (see _off_loop).
     shape = governed.memo.get("result_shape")
@@ -5215,11 +5237,17 @@ async def plan_pgwire_statement(  # REQ-589
 ) -> _Plan:
     """The executable plan for a statement :func:`describe_pgwire_statement` already governed, with
     the Bind's parameter values. Routing runs here, against live state; governance does not run
-    again. ``wire_formats`` and ``deliver``: see :func:`govern_pgwire_plan`."""
+    again. ``wire_formats`` and ``deliver``: see :func:`govern_pgwire_plan`. It is routed under
+    the time travel it was governed under (REQ-2110)."""
     from provisa.api.app import state
 
     plan = await _route_bounded(
-        governed, params=params, serve_cached=True, wire_formats=wire_formats, deliver=deliver
+        governed,
+        params=params,
+        serve_cached=True,
+        wire_formats=wire_formats,
+        deliver=deliver,
+        as_of=governed.as_of,
     )
     return await _attach_live_caps(await _attach_tier_caps(plan, state), state)
 

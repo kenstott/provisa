@@ -85270,6 +85270,32 @@ When the benchmark runs locally
 Then the report gives per-request server CPU for the governed run beside the run with every knob at zero"
   stakeholders:
   - ops
+- id: REQ-2110
+  status: complete
+  since: 2026-10
+  group: 4. Source Connectors
+  category: Materialization Store
+  feature: lineage-and-provenance-point-in-time
+  priority: MUST
+  type: behavioral
+  description: "A pgwire session sets its time travel with SET provisa.as_of and SET provisa.as_recorded (RESET either, or set it TO DEFAULT); every statement the session then runs, COPY included, reads as a request carrying the matching X-Provisa-As-Of / X-Provisa-As-Recorded headers does. A value that cannot be read is refused naming the setting; a statement prepared under other settings is governed again."
+  use_case: "A BI tool connected over pgwire shows a report as it was reported on a past date, with no HTTP headers to send."
+  scenario: "Given a pgwire session that ran SET provisa.as_recorded = '2026-10-03T18:00:00'
+
+When it runs a query over a bitemporal view
+
+Then the query reads the versions recorded by 3 Oct 18:00
+
+And after RESET provisa.as_recorded the next query reads the current versions"
+  code:
+  - provisa/pgwire/server.py
+  - provisa/pgwire/_pipeline.py
+  - provisa/pgwire/copy_handler.py
+  tests:
+  - tests/unit/pgwire/test_wire_protocol.py
+  - tests/unit/pgwire/test_statement_stages.py
+  stakeholders:
+  - app-developer
 - id: REQ-2108
   status: complete
   since: 2026-10
