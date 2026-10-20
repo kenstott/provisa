@@ -68,6 +68,7 @@ def test_a_scaffolded_demo_passes_every_check_but_its_authors(scaffolded):
     assert check_demo.check_card(home) == [
         "demo.yaml: published is not true, so the demo has no card",
         "demo.yaml: screenshot card.png is not beside it",
+        "demo.yaml: no video tagline",
     ]
     untranslated = check_demo.check_locales("harbor", home, locales)
     assert len(untranslated) == len(list(locales.iterdir())) - 1  # every locale but English
@@ -81,6 +82,34 @@ def test_the_scaffold_writes_no_template_stamp_and_no_token(scaffolded):
         assert "Canary:" not in text and not re.search(r"__[A-Z]+__", text), path
     words = json.loads((scaffolded[1] / "en" / "tour.json").read_text())["tour"]
     assert words["demos"]["harbor"]["title"] == "Harbor"
+
+
+def test_every_published_demo_names_its_video_s_tagline():
+    published = [
+        spec.parent.name
+        for spec in sorted(_NAMED.glob("*/demo.yaml"))
+        if yaml.safe_load(spec.read_text()).get("published") is True
+    ]
+    assert published
+    for name in published:
+        video = yaml.safe_load((_NAMED / name / "demo.yaml").read_text()).get("video")
+        assert isinstance(video, dict) and isinstance(video.get("tagline"), str), name
+        assert video["tagline"].strip(), name
+
+
+@pytest.mark.parametrize("video", [None, "Logs are Tables", {}, {"tagline": "  "}, {"tagline": 3}])
+def test_a_demo_without_a_video_tagline_is_reported(tmp_path, video):
+    spec = {"title": "T", "description": "D", "screenshot": "card.png", "published": False}
+    if video is not None:
+        spec["video"] = video
+    (tmp_path / "demo.yaml").write_text(yaml.safe_dump(spec))
+    assert "demo.yaml: no video tagline" in check_demo.check_card(tmp_path)
+
+
+def test_a_demo_with_a_video_tagline_is_not_reported_for_it(tmp_path):
+    spec = {"published": False, "video": {"tagline": "Logs are Tables"}}
+    (tmp_path / "demo.yaml").write_text(yaml.safe_dump(spec))
+    assert "demo.yaml: no video tagline" not in check_demo.check_card(tmp_path)
 
 
 def test_a_name_no_demo_can_have_or_one_a_demo_has_is_refused(tmp_path):

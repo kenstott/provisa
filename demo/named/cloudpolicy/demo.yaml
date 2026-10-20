@@ -22,3 +22,6 @@ published: true
 requires_provisa: 0.1.0a493
 extras:
 - vector
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Cloud Security Compliance"
