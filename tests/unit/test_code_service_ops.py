@@ -223,7 +223,8 @@ def fetched(monkeypatch, org) -> dict:
 
     def answer(request: httpx.Request) -> httpx.Response:
         held["request"] = request
-        return httpx.Response(200, json={"ok": True})
+        respond = held.get("respond")
+        return respond(request) if respond else httpx.Response(200, json={"ok": True})
 
     real = httpx.AsyncClient
 
@@ -264,15 +265,8 @@ def test_a_fetch_off_the_allow_list_or_to_loopback_is_refused_by_name(token, fet
     assert "request" not in fetched
 
 
-def test_a_binary_answer_comes_back_as_base64(token, fetched, monkeypatch):
-    real = httpx.AsyncClient
-    monkeypatch.setattr(
-        httpx,
-        "AsyncClient",
-        lambda **kw: real(
-            transport=httpx.MockTransport(lambda r: httpx.Response(200, content=b"\xff\x00"))
-        ),
-    )
+def test_a_binary_answer_comes_back_as_base64(token, fetched):
+    fetched["respond"] = lambda request: httpx.Response(200, content=b"\xff\x00")
     _status, answered = _call(token, "POST", "http", {"url": "https://api.example.com/b"})
     assert answered["body_base64"] == "/wA="
 
