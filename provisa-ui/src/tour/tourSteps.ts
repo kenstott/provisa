@@ -123,8 +123,9 @@ export interface TourStep {
    */
   prefetch?: string;
   /**
-   * REQ-1945: the step refers to Polly, so the runner opens the Polly panel (through the launcher's own
-   * handler) before anchoring, and the tour closes it on moving to a step without this flag.
+   * REQ-1945: the step shows Polly's panel, so the runner opens it (through the launcher's own
+   * handler) before anchoring, and the tour closes it on moving to a step without this flag. Set on
+   * the steps that show the panel, not on every step whose words name Polly.
    */
   pollyOpen?: boolean;
   /**
@@ -390,8 +391,6 @@ export const TOUR_STEPS: TourStep[] = [
     capability: "query_development",
     prep: "seedNl",
     element: '[data-testid="nl-question-input"]',
-    // Its words send the visitor to Polly to move a query into Python or the Notebook.
-    pollyOpen: true,
     key: "step13",
   },
   // ─── DIVIDER: the core is done; everything past here is optional depth. A natural bail point. ───
@@ -407,7 +406,7 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step15",
   },
   {
-    // REQ-1945: the agents point refers to Polly, so the runner opens the panel (pollyOpen); the list always renders.
+    // REQ-1945: the agents point shows Polly, so the runner opens the panel (pollyOpen); the list always renders.
     route: "/relationships",
     capability: "create_relationship",
     element: '[data-testid="relationships-list"]',

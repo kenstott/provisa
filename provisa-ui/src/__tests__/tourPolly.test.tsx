@@ -98,16 +98,15 @@ describe("tour opens Polly", () => {
     org.pollyConfigured = true;
   });
 
-  it("marks exactly the steps whose text refers to Polly", async () => {
-    const { default: en } = await import("../i18n/locales/en/tour.json");
-    const steps = en.tour.steps as unknown as Record<
-      string,
-      { title: string; description: string }
-    >;
-    for (const step of TOUR_STEPS) {
-      const refers = /\bPolly\b/.test(`${steps[step.key].title} ${steps[step.key].description}`);
-      expect(step.pollyOpen === true, `step ${step.key}`).toBe(refers);
-    }
+  it("opens Polly on the steps that show its panel, and on no other", () => {
+    // An explicit flag: a step whose words only name Polly ("Just ask" sends the visitor to it)
+    // leaves the panel shut.
+    expect(TOUR_STEPS.filter((s) => s.pollyOpen).map((s) => s.key)).toEqual([
+      "stepPolly",
+      "stepQuery",
+      "stepRelsAgents",
+    ]);
+    expect(TOUR_STEPS.find((s) => s.key === "step13")?.pollyOpen).toBeUndefined();
   });
 
   it("has Polly open when the Polly step is shown", async () => {
