@@ -16,7 +16,11 @@ every column and parameter as the code declares it, beside each form it takes el
 - ``sql``: what Provisa's catalog calls it, by Provisa's own live mapper
   (:func:`provisa.compiler.naming.apply_sql_name`), never a second implementation;
 - ``quoted`` and ``folded``: its pgwire forms, the exact quoted identifier and the case-folded one
-  an unquoted identifier arrives as.
+  an unquoted identifier arrives as;
+- ``type``: its IR type, as its catalog column is typed.
+
+Each table also carries its function's row ``schema``, the Arrow schema a call of it gives
+(provisa/codesource/arrow_rows.py), for a front end that calls the function itself (pgwire).
 
 A parameter is a column too, ``_nf_{name}``, as every source's parameters are. The tables are made
 at Build image and at dev-mode discovery, baked into the image and reported in its hello; at
@@ -29,11 +33,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from provisa.codesource.manifest import Anonymous, Manifest, ManifestRefused, Named
+from provisa.codesource.manifest import Anonymous, Manifest, ManifestRefused, Named, Shape
 from provisa.core.parameters import NF_PREFIX
 
 
-def _forms(name: str) -> dict[str, str]:
+def _forms(name: str, shape: Shape) -> dict[str, str]:
+    from provisa.codesource.discovery import data_type
+    from provisa.codesource.manifest import ListOf
     from provisa.compiler.naming import apply_sql_name
 
     return {
@@ -41,11 +47,14 @@ def _forms(name: str) -> dict[str, str]:
         "sql": apply_sql_name(name),
         "quoted": '"' + name.replace('"', '""') + '"',
         "folded": name.lower(),
+        "type": "list" if isinstance(shape, ListOf) else data_type(shape),
     }
 
 
 def name_tables(manifest: Manifest) -> dict[str, dict[str, Any]]:
     """Each row-returning function's name table, by function; refused with every collision."""
+    from provisa.codesource.arrow_rows import row_schema, schema_text
+
     problems: list[str] = []
     tables: dict[str, dict[str, Any]] = {}
     for export in manifest.exports:
@@ -59,9 +68,10 @@ def name_tables(manifest: Manifest) -> dict[str, dict[str, Any]]:
             if isinstance(row, Anonymous)
             else ()
         )
-        columns = [_forms(f.name) for f in fields]
+        columns = [_forms(f.name, f.shape) for f in fields]
         parameters = [
-            {**_forms(f"{NF_PREFIX}{p.name}"), "parameter": p.name} for p in export.parameters
+            {**_forms(f"{NF_PREFIX}{p.name}", p.shape), "parameter": p.name}
+            for p in export.parameters
         ]
         for form in ("folded", "sql"):
             seen: dict[str, str] = {}
@@ -73,6 +83,7 @@ def name_tables(manifest: Manifest) -> dict[str, dict[str, Any]]:
                         + ("on pgwire" if form == "folded" else "in the catalog")
                     )
         tables[export.name] = {
+            "schema": schema_text(row_schema(manifest, export)),
             "columns": columns,
             "parameters": parameters,
             "pushdown": {

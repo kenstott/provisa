@@ -224,6 +224,27 @@ class Connection:
                 self.open = False
 
 
+class _Collector:
+    """A call's answer, collected for the front end itself: its batches, then its end."""
+
+    def __init__(self) -> None:
+        self.batches: list[bytes] = []
+        self.error: str | None = None
+        self.done = threading.Event()
+
+    def send(self, data: bytes) -> None:
+        body = data[_HEAD.size :]
+        if body[:1] == _ARROW:
+            self.batches.append(body[1 + _ID.size :])
+            return
+        message = json.loads(body[1:])
+        if message["op"] == "error":
+            self.error = message.get("message", "the call failed")
+            self.done.set()
+        elif message["op"] == "end":
+            self.done.set()
+
+
 class _Call:
     def __init__(self, connection: Connection, call_id: int, residual: dict | None) -> None:
         self.connection = connection
@@ -262,6 +283,28 @@ class Worker:
         with self._lock:
             self._calls[own] = _Call(connection, message["id"], residual)
         self._send({**message, "id": own})
+
+    def read(self, export: str, args: list, names: list[str], schema: str) -> list[bytes]:
+        """REQ-2100: a table function's rows, each batch an Arrow IPC stream, for a read the front
+        end answers itself (pgfront.py)."""
+        collector = _Collector()
+        self.call(
+            collector,  # pyright: ignore[reportArgumentType]
+            {
+                "op": "call",
+                "id": 1,
+                "export": export,
+                "kind": "table",
+                "args": args,
+                "names": names,
+                "schema": schema,
+                "traceparent": None,
+            },
+        )
+        collector.done.wait()
+        if collector.error is not None:
+            raise RuntimeError(f"{export}: {collector.error}")
+        return collector.batches
 
     def forward(self, connection: Connection, message: dict) -> None:
         """A connection's cancel or ping, for the call it names."""

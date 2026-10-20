@@ -313,7 +313,9 @@ def test_the_name_tables_pair_each_declared_name_with_its_catalog_and_wire_forms
         "sql": "customer_name",
         "quoted": '"customerName"',
         "folded": "customername",
+        "type": "text",
     }
+    assert table["schema"]
     assert [p["parameter"] for p in table["parameters"]] == ["gte_score", "as_of"]
     assert table["parameters"][1]["name"] == "_nf_as_of"
     assert table["pushdown"] == {"gte_score": {"column": "score", "op": "gte"}}

@@ -159,6 +159,26 @@ def pushed(
     return out
 
 
+def nf_given(sql: str, dialect: str, table: str) -> dict[str, Any]:
+    """The values a statement's top-level ``_nf_{name} = literal`` conjuncts on ``table`` give
+    its parameters, by name: what an engine that attached the host hands it."""
+    tree = sqlglot.parse_one(sql, read=dialect)
+    given: dict[str, Any] = {}
+    for read in _reading(tree, table):
+        select = read.parent_select
+        where = select.args.get("where") if select is not None else None
+        for conjunct in _conjuncts(where.this if where is not None else None):
+            if not isinstance(conjunct, exp.EQ):
+                continue
+            for column, value in ((conjunct.left, conjunct.right), (conjunct.right, conjunct.left)):
+                if isinstance(column, exp.Column) and column.name.startswith("_nf_"):
+                    try:
+                        given.setdefault(column.name[len("_nf_") :], _value(value))
+                    except _NotLiteral:
+                        pass
+    return given
+
+
 def _typed(rows: pa.Table) -> pa.Table:
     """The function's rows with each numeric field (exact digits on the wire) as a decimal wide
     enough for every value it holds."""
