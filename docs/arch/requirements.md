@@ -25761,3 +25761,17 @@ Polly can operate the UI in the user's browser: navigate to a screen, fill in fi
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2116 · Column-Level Lineage Graph {#REQ-2116}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Lineage reaches below the registered table to the source itself. Each source node of the lineage graph ([REQ-1160](#REQ-1160)) gains one hop beneath it: the native address the rows are read from and the raw field each column is taken from, with any renaming on the way (row location, path flattening, naming convention, alias). For an API (OpenAPI, remote GraphQL, a branded source) that is the operation with its address and fixed parameters, the row location and each raw field path (billing.postal_code becoming billing_postal_code). For a document or search store it is the collection or index and the field path. For a file it is the path or glob, sheet and header. For Kafka it is the topic and message field. For a code source it is the function and the field it returns. For a SQL database it is the native schema, table and column. The landing node says how the table is served: virtual (read at each statement) or a replica, with its freshness and last load. Credentials and secret references are never shown. The native hop is shown only to a user who can see the source's configuration (source registration); anyone else sees lineage from the registered table upward, as before.
+
+**Use case:** An auditor asks where a masked column physically comes from and is shown the API endpoint and raw field path that land in the table, and through which views it reaches the report.
+
+**Code:** —
+
+**Tests:** —

@@ -85840,3 +85840,26 @@ Then she is told by name and the form is unchanged"
   - REQ-1092
   - REQ-2113
   notes: "Maintainer 2026-10-20, through the lead: separately, Polly needs to be able to fill in fields, navigate to screens and press buttons. Maintainer: in the demo Polly must SHOW the creation via the UI, so in the app she makes a change through its screen. Maintainer: in particular the demo shows the big list of potential sources. Maintainer: Polly uses the APIs as well; the UI route is for when she is asked to do something and show each step. Maintainer: any request to show, demo or teach uses the UI, not the API. Maintainer: extend it to the tour: tour steps fill fields and press buttons with the same actions, since most demos only show the results of setup. Maintainer: tours fill in only what is very unlikely to fail, like a static, known URI, or manipulating something handled within Provisa, or filling a form in, canceling it, and saying it was set up already."
+- id: REQ-2116
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Column-Level Lineage Graph
+  feature: lineage-and-provenance-column-lineage
+  priority: SHOULD
+  type: behavioral
+  description: "Lineage reaches below the registered table to the source itself. Each source node of the lineage graph (REQ-1160) gains one hop beneath it: the native address the rows are read from and the raw field each column is taken from, with any renaming on the way (row location, path flattening, naming convention, alias). For an API (OpenAPI, remote GraphQL, a branded source) that is the operation with its address and fixed parameters, the row location and each raw field path (billing.postal_code becoming billing_postal_code). For a document or search store it is the collection or index and the field path. For a file it is the path or glob, sheet and header. For Kafka it is the topic and message field. For a code source it is the function and the field it returns. For a SQL database it is the native schema, table and column. The landing node says how the table is served: virtual (read at each statement) or a replica, with its freshness and last load. Credentials and secret references are never shown. The native hop is shown only to a user who can see the source's configuration (source registration); anyone else sees lineage from the registered table upward, as before."
+  use_case: An auditor asks where a masked column physically comes from and is shown the API endpoint and raw field path that land in the table, and through which views it reaches the report.
+  scenario: "Given an OpenAPI source whose GET /v2/customers rows sit under data.items and whose billing.postal_code field is registered as billing_postal_code
+
+When a user with source registration opens the lineage of a view that reads billing_postal_code
+
+Then the graph shows GET /v2/customers, the row location data.items, the raw field billing.postal_code, the virtual table customers and the view
+
+When a user without source registration opens it
+
+Then the graph starts at customers.billing_postal_code"
+  related_reqs:
+  - REQ-1160
+  - REQ-862
+  notes: "Maintainer 2026-10-20, through the lead: lineage shows the original back data source; for an API, the actual endpoint and the raw names moving into the landing table, even if virtual. Queued."
