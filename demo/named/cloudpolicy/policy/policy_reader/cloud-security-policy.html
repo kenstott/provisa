@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Cloud Security Policy</title>
+</head>
+<body>
+<h1>Cloud Security Policy</h1>
+<p class="owner">Owner: the Chief Information Security Officer. Applies to every account the company runs on Azure, AWS and Google Cloud.</p>
+
+<section id="s4-2" data-section="4.2" data-effective="2026-01-01">
+<h2>4.2 Disk encryption with customer-managed keys</h2>
+<p>Every disk attached to a virtual machine is encrypted with a customer-managed key (CMEK) held in the company's key service for that cloud. A disk encrypted only with the provider's own key does not meet this control.</p>
+</section>
+
+<section id="s4-3" data-section="4.3" data-effective="2026-01-01">
+<h2>4.3 Exceptions</h2>
+<p>A resource may be excused from a control only by an exception the CISO approves. An exception is recorded as an incident in the Policy exception category that names the resource and cites this section. It expires 90 days after it is opened, and the resource then meets the control or is covered by a new exception.</p>
+</section>
+
+<section id="s4-4" data-section="4.4" data-effective="2026-01-01">
+<h2>4.4 Key rotation</h2>
+<p>Every customer-managed key used for disk encryption is rotated at least once every 365 days.</p>
+</section>
+
+<section id="s5-1" data-section="5.1" data-effective="2026-03-01">
+<h2>5.1 No public addresses on database servers</h2>
+<p>A virtual machine that runs a database has no public IP address. It is reached only from the company's private networks.</p>
+</section>
+
+<section id="s5-2" data-section="5.2" data-effective="2026-03-01">
+<h2>5.2 Private storage</h2>
+<p>No storage bucket or storage account allows public access.</p>
+</section>
+
+<section id="s6-1" data-section="6.1" data-effective="2026-01-01">
+<h2>6.1 Remediation deadlines</h2>
+<p>A violation is fixed within a deadline set by its incident's priority, counted from the day the incident is opened: 7 days for priority 1 (critical), 14 days for priority 2 (high), 30 days for priority 3 (moderate) and 90 days for priority 4 (low).</p>
+</section>
+
+<section id="s7-1" data-section="7.1" data-effective="2026-01-01">
+<h2>7.1 Audit log retention</h2>
+<p>Every cloud account keeps its control-plane audit log for at least 365 days.</p>
+</section>
+
+<p class="revision">Revision of 2026-03-01: section 4.1, which allowed provider-managed keys on disks of non-production machines, is withdrawn. Section 4.2 applies to every disk.</p>
+</body>
+</html>
