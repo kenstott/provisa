@@ -12,7 +12,7 @@
 # what the bundle's build left in them -- its setup.yaml had run: every line embedded, the echoes
 # written.
 #
-#   postgres  the sonnets' database, loaded from dump/postgres.sql, with the role Provisa reads it
+#   postgres  the sonnets' database, loaded from dump/postgres/, with the role Provisa reads it
 #             as, read only (db/run-access.sql).
 #   qdrant    the vector store, its collection recovered from dump/qdrant/sonnet_lines.snapshot at
 #             every start (Qdrant's --snapshot with --force-snapshot: without it, a restart that
@@ -35,6 +35,8 @@ services:
       com.provisa.demo.role: rdb
       # Where the config reads it (the sandbox tier's node writes stores.env from these).
       com.provisa.demo.host_env: SONNETS_PG_HOST
+      com.provisa.demo.ns_env: SONNETS_PG_NS
+      com.provisa.demo.access: db/run-access.sql
       com.provisa.demo.port_env: SONNETS_PG_PORT
       com.provisa.demo.port: "5432"
     environment:
@@ -45,7 +47,8 @@ services:
       - "127.0.0.1:${SONNETS_PG_PORT-28532}:5432"
     volumes:
       - sonnets_run_pg:/var/lib/postgresql/data
-      - ./dump/postgres.sql:/docker-entrypoint-initdb.d/10-sonnets.sql:ro
+      - ./dump/postgres:/dumps:ro
+      - ./dump/load-postgres.sh:/docker-entrypoint-initdb.d/10-load.sh:ro
       - ./db/run-access.sql:/docker-entrypoint-initdb.d/20-access.sql:ro
       - ./db/init-complete.sh:/docker-entrypoint-initdb.d/99-complete.sh:ro
     healthcheck:

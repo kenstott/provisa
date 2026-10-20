@@ -29,8 +29,9 @@ where the demo runs:
        writes the seed -- ``seeded/replicas.duckdb`` and ``seeded/replicas.json``
        (provisa/api/demo_replicas.py);
     3. each data store is dumped by its ``com.provisa.demo.role``, for the demo's run-time compose
-       file (docker-compose.run.yml) to load and restore: a Postgres store (``rdb``) to
-       ``dump/<service>.sql``, a Qdrant store (``vector``) as one snapshot a collection,
+       file (docker-compose.run.yml) to load and restore: a Postgres store (``rdb``) one
+       plain dump a database, ``dump/<service>/<database>.sql`` (with ``dump/load-postgres.sh``),
+       a Qdrant store (``vector``) as one snapshot a collection,
        ``dump/<service>/<collection>.snapshot``, a MongoDB store (``document``) as one archive,
        ``dump/<service>.archive.gz``, an Elasticsearch store (``search``) as a snapshot repository,
        ``dump/<service>/``, and a Neo4j store (``graph``) as ``dump/<service>/neo4j.dump``;
@@ -76,6 +77,8 @@ import httpx
 import yaml
 
 _REPO = Path(__file__).resolve().parents[1]
+#: What a demo's own Postgres container loads the bundle's dumps with (dump/load-postgres.sh).
+LOAD_POSTGRES = _REPO / "scripts" / "demo_run" / "load-postgres.sh"
 sys.path.insert(0, str(_REPO))
 
 from provisa.core import demo as demo_module  # noqa: E402
@@ -196,7 +199,11 @@ class Stores:
         # environment -- a server given it would take this process's settings for its own (a test
         # session's PROVISA_MATERIALIZE_URL kept the setup server's views in the session's
         # PostgreSQL instead of its DuckDB file, CI run 39239941042).
-        self.addresses = {"PROVISA_NAMED_DEMO_DIR": str(demo), **self.ports}
+        self.addresses = {
+            "PROVISA_NAMED_DEMO_DIR": str(demo),
+            **self.ports,
+            **bundles.store_namespaces(demo),
+        }
         # What compose and the build's client steps run with: this process's environment, and
         # where the stores are.
         self.env = {**os.environ, **self.addresses}
@@ -228,8 +235,8 @@ class Stores:
             self._compose("run", "--rm", "--no-deps", "seeder")
 
     def dump(self) -> list[str]:
-        """Each data store, by its role: a Postgres database (rdb) to dump/<service>.sql, a Qdrant
-        store (vector) a snapshot a collection, a MongoDB store (document) one archive, an
+        """Each data store, by its role: a Postgres store (rdb) one dump a database in
+        dump/<service>/, a Qdrant store (vector) a snapshot a collection, a MongoDB store (document) one archive, an
         Elasticsearch store (search) one snapshot of its indices, and a Neo4j store (graph) its
         database's dump. A graph store is dumped last: it is stopped to be dumped."""
         if not self.compose_file.exists():
@@ -259,12 +266,10 @@ class Stores:
             if not str(service["image"]).startswith("postgres:"):
                 raise SystemExit(f"{self.demo.name}: data store {name} is not Postgres; no dump")
             env = service["environment"]
-            target = self.demo / "dump" / f"{name}.sql"
-            target.parent.mkdir(exist_ok=True)
             user = env["POSTGRES_USER"]
-            # Its POSTGRES_DB, which the run-time container creates, then every other database the
-            # store holds, each with the statement that creates it: the retail demo keeps its data
-            # in three databases of one server, and a dump of POSTGRES_DB alone restored none.
+            # One plain dump a database the store holds, each loaded into a database of its own name
+            # where the bundle runs (scripts/demo_stores.py on the node, LOAD_POSTGRES in a demo's
+            # own container): the retail demo keeps its data in three databases of one server.
             listed = self._compose(
                 "exec",
                 "-T",
@@ -279,10 +284,13 @@ class Stores:
                 capture_output=True,
                 text=True,
             ).stdout.split()
-            others = [db for db in listed if db not in (env["POSTGRES_DB"], "postgres")]
-            with target.open("w") as out:
-                for database, create in [(env["POSTGRES_DB"], False), *((d, True) for d in others)]:
-                    out.flush()
+            databases = [db for db in listed if db != "postgres"]
+            if not databases:
+                raise SystemExit(f"{self.demo.name}: data store {name} holds no database to dump")
+            target = self.demo / "dump" / name
+            target.mkdir(parents=True, exist_ok=True)
+            for database in databases:
+                with (target / f"{database}.sql").open("w") as out:
                     self._compose(
                         "exec",
                         "-T",
@@ -292,10 +300,10 @@ class Stores:
                         user,
                         "--no-owner",
                         "--no-acl",
-                        *(["--create"] if create else []),
                         database,
                         stdout=out,
                     )
+            shutil.copy(LOAD_POSTGRES, self.demo / "dump" / LOAD_POSTGRES.name)
             dumped.append(name)
         for name, service in graphs:
             dumped.append(self._neo4j_dump(name, service))

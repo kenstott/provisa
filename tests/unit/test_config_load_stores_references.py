@@ -69,6 +69,11 @@ _SPEC = {
 
 @pytest.fixture
 async def db(monkeypatch, control_plane) -> Database:
+    from provisa.core import secrets_providers
+
+    # A deployment of one organisation, as the API layer says at import (provisa.api.app): run
+    # alone, nothing here imports it, and storing a source's secret asks.
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
     for name, value in SECRETS.items():
         monkeypatch.setenv(name, value)
 
@@ -245,6 +250,39 @@ def test_a_reference_in_a_field_that_is_not_text_is_resolved_in_both_forms(monke
         }
     )  # fmt: skip
     assert config.sources[0].port == 6543 and config.written.sources[0].port == 6543
+
+
+def test_what_names_a_tables_data_is_stored_as_its_value_and_its_sources_credential_as_written(
+    monkeypatch,
+):
+    """A table's schema, name, alias and query template name its data where it is, read wherever
+    the table is: stored resolved. Its source's credential stays the reference (REQ-2049: a
+    demo's shared stores name its data by a variable, ``catalog${env:IT_NS}``)."""
+    from provisa.core.config_loader import parse_config_dict
+
+    monkeypatch.setenv("IT_NS", "_reviews_1a2b3c4d")
+    monkeypatch.setenv("IT_PG_PASSWORD", SECRETS["IT_PG_PASSWORD"])
+    config = parse_config_dict(
+        {
+            "domains": [{"id": "store"}],
+            "roles": [],
+            "sources": [
+                {"id": "catalog", "type": "postgresql", "host": "h", "port": 5432,
+                 "database": "catalog${env:IT_NS}", "username": "u",
+                 "password": "${env:IT_PG_PASSWORD}"}
+            ],
+            "tables": [
+                {"source_id": "catalog", "domain_id": "store", "schema": "catalog${env:IT_NS}",
+                 "table": "reviews${env:IT_NS}", "alias": "reviews",
+                 "query_template": '{"index": "reviews${env:IT_NS}"}', "columns": []}
+            ],
+        }
+    )  # fmt: skip
+    table = config.written.tables[0]
+    assert table.schema_name == "catalog_reviews_1a2b3c4d"
+    assert table.table_name == "reviews_reviews_1a2b3c4d" and table.alias == "reviews"
+    assert table.query_template == '{"index": "reviews_reviews_1a2b3c4d"}'
+    assert config.written.sources[0].password == "${env:IT_PG_PASSWORD}"
 
 
 @pytest.mark.parametrize(

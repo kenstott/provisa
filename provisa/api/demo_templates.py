@@ -91,9 +91,10 @@ def latest_published(name: str) -> str:
 
 
 def _demo_directories() -> list[Path]:
-    """Each named demo's directory: the ready version of each bundled demo the node has one of,
-    else every one under ``named_demos_dir()``."""
-    from provisa.core.demo_bundles import ready_version
+    """Each named demo's directory: of each bundled demo the node has pulled, the version whose
+    stores are up (ready), else the version pulled -- offered, its stores started at its first
+    open; else every one under ``named_demos_dir()``."""
+    from provisa.core.demo_bundles import pulled_version, ready_version
 
     names = bundled_demos()
     if not names:
@@ -102,7 +103,7 @@ def _demo_directories() -> list[Path]:
 
     found = []
     for name in names:
-        version = ready_version(name)
+        version = ready_version(name) or pulled_version(name)
         if version is not None:
             check_directory(bundles_root() / name / version)
             found.append(bundles_root() / name / version)
@@ -118,6 +119,17 @@ class PublishedDemo:
     @property
     def template_org(self) -> str:
         return template_org_id(self.name)
+
+    @property
+    def stores_ready(self) -> bool:
+        """Whether its stores are up where it is served: a bundled demo's once the node has brought
+        this version's up since it started (its stores.env written); a demo served from its
+        directory runs its stores itself."""
+        if not bundled_demos():
+            return True
+        from provisa.core.demo_bundles import ready_version
+
+        return ready_version(self.name) == self.directory.name
 
 
 def published_demos() -> dict[str, PublishedDemo]:
@@ -282,10 +294,17 @@ def template_seed(org_id: str) -> Any:  # a ProvisaConfig
         read_config_with_includes(demo.directory / "config.yaml"), str(demo.directory)
     )
     if bundled_demos():
-        # The demo's own stores, where the node runs them (its sources are read live there).
+        # The demo's own stores, where the node runs them (its sources are read live there), and
+        # the names of their data in the node's shared stores.
         from provisa.core.demo_bundles import stores_env
 
         raw = _with_stores(raw, stores_env(demo.directory))
+    else:
+        # Served from its directory, the demo runs its stores as its own: its data has the names
+        # its configuration gives it, with no suffix.
+        from provisa.core.demo_bundles import store_namespaces
+
+        raw = _with_stores(raw, store_namespaces(demo.directory))
     _sandbox_sees_what_its_rights_cover(raw, _role_rights(raw))
     from provisa.core.demo_secrets import resolving
 
@@ -316,6 +335,7 @@ def connector_bundles() -> list[Any]:  # list[BundleSpec]
     types = {
         _source_type(source)
         for demo in published_demos().values()
+        if demo.stores_ready
         for source in template_seed(demo.template_org).sources
     }
     return [bundle_spec_for(t) for t in sorted(types) if t in BUNDLE_CONNECTOR]
@@ -352,6 +372,10 @@ def embedding_models() -> list[Any]:  # list[VectorModelConfig]
     each: the sonnets demo's, which its search tables embed a phrase with."""
     seen: dict[str, Any] = {}
     for demo in published_demos().values():
+        if not demo.stores_ready:
+            # Its configuration names its stores' data only once they are up; a model it
+            # declares is then loaded by the request that embeds with it.
+            continue
         for model in template_seed(demo.template_org).vector_models:
             if model.provider == "huggingface" and model.enabled:
                 seen.setdefault(model.id, model)
@@ -547,8 +571,19 @@ async def ensure_demo_templates(pool) -> dict[str, str]:
     template is a demo organisation (``seeded_demo``), so its model is the demo's configuration.
     A bundled demo's template built from another version than the ready one is replaced. What
     each demo's template did: ``"ready"`` (built before; its runtime is built now) or
-    ``"building"``."""
-    outcome = {demo.name: await _queue_template(pool, demo) for demo in published_demos().values()}
+    ``"building"``.
+
+    A bundled demo whose stores the node has not brought up is not built here: the node starts
+    no demo's stores at boot, and a template is built from its stores. One served as built is
+    served so; any other is built at the demo's first open (follow_latest)."""
+    outcome = {}
+    for demo in published_demos().values():
+        if demo.stores_ready:
+            outcome[demo.name] = await _queue_template(pool, demo)
+        elif await _served_as_built(pool, demo):
+            outcome[demo.name] = "ready (as built)"
+        else:
+            outcome[demo.name] = "built at its first open"
     _start_builds()
     _startup_queued.set()
     return outcome
@@ -566,6 +601,9 @@ async def queue_late_templates(pool) -> list[str]:
     for demo in published_demos().values():
         lock = _following.setdefault(demo.name, CrossLoopLock())
         async with lock:
+            # Its stores not up: its first open asks for them and builds it (follow_latest).
+            if not demo.stores_ready:
+                continue
             # A visitor's open builds a newer version itself (follow_latest), marked first.
             if template_builds.state_of(demo.name) != "unknown" or (
                 _templated(demo.name) == demo.directory.name
@@ -578,15 +616,22 @@ async def queue_late_templates(pool) -> list[str]:
     return queued
 
 
-async def _queue_template(pool, demo: PublishedDemo) -> str:
-    """Queue ``demo``'s template, or serve it as built; what its template did."""
+async def _served_as_built(pool, demo: PublishedDemo) -> bool:
+    """Whether ``demo``'s template is served as it is, recorded ready: a template built from this
+    demo version by this release, its store on disk as recorded, is served at once -- no build, no
+    runtime, no wait for its replicas. Its runtime is built when a sandbox of it is first opened.
+    A regions tier's stores are its regions' own."""
     from provisa.api.demo_region_seed import regional
 
-    # A template built from this demo version by this release, its store on disk as recorded,
-    # is served at once: no build, no runtime, no wait for its replicas. Its runtime is built
-    # when a sandbox of it is first opened. A regions tier's stores are its regions' own.
-    if not regional() and not seeding_release() and await warm_ready(pool, demo):
-        template_builds.record(demo.name, True)
+    if regional() or seeding_release() or not await warm_ready(pool, demo):
+        return False
+    template_builds.record(demo.name, True)
+    return True
+
+
+async def _queue_template(pool, demo: PublishedDemo) -> str:
+    """Queue ``demo``'s template, or serve it as built; what its template did."""
+    if await _served_as_built(pool, demo):
         return "ready (as built)"
     if bundled_demos() and _templated(demo.name) != demo.directory.name:
         await _retire_template(demo.name)
@@ -794,12 +839,17 @@ async def follow_latest(name: str) -> None:
     """Before a sandbox of bundled demo ``name`` is opened: ask the node for a newer published
     version, if there is one, and serve the ready one -- its template replaced first when it was
     built from another version. The visitor never waits for a newer version's stores: they are
-    served it from the next sandbox opened after the node has it ready."""
+    served it from the next sandbox opened after the node has it ready.
+
+    The node starts no demo's stores until the demo is asked for: the first open since it started
+    asks for them, and is told the demo is being prepared until they are up. A template not built
+    from the version served is then queued to be built (template_builds), not built while the
+    visitor waits; the open is told the same until it is ready (demo_sandbox._template_ready)."""
     import logging
 
     import httpx
 
-    from provisa.core.demo_bundles import BundleError, ready_version, want
+    from provisa.core.demo_bundles import BundleError, pulled_version, ready_version, want
 
     if name not in bundled_demos():
         return
@@ -817,6 +867,11 @@ async def follow_latest(name: str) -> None:
             await asyncio.to_thread(want, name, latest)
     ready = ready_version(name)
     if ready is None:
+        # Its stores are not up since the node started: asked for, as the version it has pulled
+        # when the registry named none newer (want above asked for that one).
+        pulled = pulled_version(name)
+        if pulled is not None:
+            await asyncio.to_thread(want, name, pulled)
         raise ApiError(
             503,
             "sandbox.demo_not_ready",
@@ -825,15 +880,13 @@ async def follow_latest(name: str) -> None:
         )
     lock = _following.setdefault(name, CrossLoopLock())
     async with lock:
-        if _templated(name) == ready:
+        if _templated(name) == ready and template_builds.state_of(name) != "unknown":
             return
-        await _retire_template(name)
         from provisa.api.admin.orgs_router import _admin_pool
 
-        demo = published_demo(name)
-        build = await _template_row(_admin_pool(), demo)
-        _mark_templated(demo)
-        template_builds.record(name, await _prepare(demo, build))
+        # _queue_template replaces a template built from another version.
+        await _queue_template(_admin_pool(), published_demo(name))
+        _start_builds()
 
 
 async def _retire_template(name: str) -> None:

@@ -72,7 +72,7 @@ sources:
   type: postgresql
   host: ${env:PROVISIONING_PG_HOST:-localhost}
   port: ${env:PROVISIONING_PG_PORT:-28032}
-  database: provisioning
+  database: provisioning${env:PROVISIONING_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The warehouse's own database -- its products, the notices it sends and the pulls

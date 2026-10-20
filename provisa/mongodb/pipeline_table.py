@@ -84,8 +84,11 @@ async def read(state: Any, table: dict, given: dict | None) -> PipelineRead:
     if not found:
         raise ValueError(f"Table {name!r}: its source {table['source_id']!r} is not registered")
     source = found[0]
+    from provisa.core.secrets import resolve_secrets
+
     conn = MongoConnection.from_source(source)
-    database = source.database or table["schema_name"]
+    # Resolved here, at use, as its connection's host and credentials are (MongoConnection).
+    database = resolve_secrets(source.database) if source.database else table["schema_name"]
 
     def _run() -> list[dict]:
         return [

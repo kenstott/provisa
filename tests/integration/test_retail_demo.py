@@ -33,6 +33,8 @@ import httpx
 import psycopg
 from psycopg import sql
 import pytest
+
+from provisa.core.demo_bundles import store_namespaces
 import yaml
 
 from tests.integration.test_region_read_in_place_e2e import _MASTER_KEY, _Stack
@@ -60,7 +62,7 @@ class _Databases:
         return subprocess.run(
             ["docker", "compose", "-p", f"retail-itest-{self.port}"]
             + ["-f", str(_DEMO / "docker-compose.yml"), *args],
-            env={**os.environ, "RETAIL_PG_PORT": str(self.port)},
+            env={**os.environ, "RETAIL_PG_PORT": str(self.port), **store_namespaces(_DEMO)},
             capture_output=True,
             text=True,
             check=check,
@@ -110,6 +112,7 @@ def nodes(tmp_path_factory):
                     "PROVISA_DEMO_US_PG_URL": stack.url(stack.engine_port, "us_store", "+psycopg"),
                     "REDIS_URL": f"redis://127.0.0.1:{stack.redis_port}/0",
                     "RETAIL_PG_PORT": str(databases.port),
+                    **store_namespaces(_DEMO),
                 },
             )
             srv.start(timeout=600)

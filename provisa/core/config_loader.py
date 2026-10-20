@@ -315,6 +315,8 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
 
 
 _REFERENCE = "${"
+#: A table's fields that name its data where it is: stored resolved (_as_written).
+_TABLE_NAMES = frozenset({"schema_name", "table_name", "alias", "query_template"})
 
 
 def _raw_of(raw: dict, model: BaseModel, name: str) -> Any:
@@ -345,9 +347,14 @@ def _as_written(resolved: Any, raw: Any) -> Any:
     if isinstance(resolved, BaseModel):
         if not isinstance(raw, dict):
             return resolved
+        # What names a table's data is no credential: stored as resolved, it is read wherever the
+        # table is, as its source's fields are not (resolved_source). A demo's shared stores name
+        # its data by a variable its launcher sets (``catalog${env:REVIEWS_MONGO_NS}``).
+        named = _TABLE_NAMES if isinstance(resolved, Table) else frozenset()
         update = {
             name: _as_written(getattr(resolved, name), _raw_of(raw, resolved, name))
             for name in type(resolved).model_fields
+            if name not in named
         }
         return resolved.model_copy(update=update)
     if isinstance(resolved, dict):

@@ -54,7 +54,7 @@ sources:
   type: postgresql
   host: ${env:SONNETS_PG_HOST:-localhost}
   port: ${env:SONNETS_PG_PORT:-28532}
-  database: sonnets
+  database: sonnets${env:SONNETS_PG_NS}
   username: provisa
   password: provisa
   description: Shakespeare's sonnets, a row a sonnet and a row a line, from Project Gutenberg

@@ -56,7 +56,7 @@ sources:
   type: postgresql
   host: ${env:PHARMA_PG_HOST:-localhost}
   port: ${env:PHARMA_PG_PORT:-29532}
-  database: pharma
+  database: pharma${env:PHARMA_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The pharmacy's own database -- its manufacturers, formulary and stock

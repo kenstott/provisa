@@ -402,11 +402,14 @@ def _ok(response: httpx.Response, what: str) -> None:
 # -- where a deployment's demos are (REQ-2049) ----------------------------------------------------
 #
 # A deployment offering demos as bundles (the sandbox tier) names them in PROVISA_DEMO_BUNDLES. The
-# node runs each demo's own stores (scripts/demo_stores_sync.sh): it pulls the version the tier
-# wants, brings up the bundle's docker-compose.run.yml, writes the bundle's stores.env (where the
-# stores are) and marks the version ready. The tier serves the ready version; it asks for a newer
-# one by writing <name>/wanted, and records in <name>/in-use the versions its open sandboxes and
-# template read, which the node keeps running.
+# node pulls each bundle (scripts/demo_stores_sync.sh) and marks its version offered
+# (<name>/pulled); it starts the demo's stores only once the tier has asked for the demo since the
+# node started (<name>/requested, which the node clears when it starts, with <name>/ready): its
+# data is loaded into the node's shared stores, its stores.env written (where its stores are, and
+# the names of its data), and the version marked ready (<name>/ready). The tier asks for a demo at
+# its first open;
+# it asks for a newer version by writing <name>/wanted, and records in <name>/in-use the versions
+# its open sandboxes and template read, which the node keeps.
 
 _PKG_NAMED = Path(__file__).resolve().parents[1] / "_config" / "demo" / "named"
 _REPO_NAMED = Path(__file__).resolve().parents[2] / "demo" / "named"
@@ -453,16 +456,30 @@ def _write(path: Path, text: str) -> None:
     staged.replace(path)
 
 
+def pulled_version(name: str) -> str | None:
+    """The version of demo ``name`` the node has pulled: the one offered."""
+    return _read(bundles_root() / name / "pulled")
+
+
 def ready_version(name: str) -> str | None:
-    """The version of demo ``name`` whose stores the node has up: the one served."""
+    """The version of demo ``name`` whose stores the node has up: the one served. The node clears
+    it when it starts (scripts/demo_stores_sync.sh --boot), before docker does, as its stores are
+    not running then."""
     return _read(bundles_root() / name / "ready")
+
+
+def request(name: str) -> None:
+    """Ask the node to bring demo ``name``'s stores up: they are started only once it is asked for
+    (its first open since the node started)."""
+    _write(bundles_root() / name / "requested", "requested")
+    (bundles_root() / WANTED_SIGNAL).touch()
 
 
 def want(name: str, version: str) -> None:
     """Ask the node for ``version`` of demo ``name``: its stores are brought up, and it is served
     once marked ready."""
     _write(bundles_root() / name / "wanted", version)
-    (bundles_root() / WANTED_SIGNAL).touch()
+    request(name)
 
 
 def record_in_use(name: str, versions: set[str]) -> None:
@@ -505,6 +522,25 @@ def stores_env(directory: Path) -> dict[str, str]:
             key, _, value = line.partition("=")
             values[key.strip()] = value.strip()
     return values
+
+
+def store_namespaces(directory: Path) -> dict[str, str]:
+    """The names of a demo's stores' data where the demo runs its stores itself -- its checkout's
+    or a bundle's own containers (start-ui-install.sh --demo, the bundle build, a test instance):
+    each variable a store of its run compose file names (``com.provisa.demo.ns_env``), empty. The
+    sandbox tier's node sets them for its shared stores in the bundle's stores.env
+    (scripts/demo_stores.py)."""
+    import yaml
+
+    run = directory / "docker-compose.run.yml"
+    if not run.is_file():
+        return {}
+    services = (yaml.safe_load(run.read_text()) or {}).get("services") or {}
+    return {
+        labels["com.provisa.demo.ns_env"]: ""
+        for labels in ((spec.get("labels") or {}) for spec in services.values())
+        if labels.get("com.provisa.demo.ns_env")
+    }
 
 
 def pull_into(spec: str, into: Path, registry_url: str) -> Path:

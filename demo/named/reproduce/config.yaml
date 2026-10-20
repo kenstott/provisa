@@ -49,7 +49,7 @@ sources:
   type: postgresql
   host: ${env:REPRODUCE_PG_HOST:-localhost}
   port: ${env:REPRODUCE_PG_PORT:-29832}
-  database: reproduce
+  database: reproduce${env:REPRODUCE_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The bank's trading book system

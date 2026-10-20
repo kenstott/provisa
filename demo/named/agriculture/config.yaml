@@ -51,7 +51,7 @@ sources:
   type: postgresql
   host: ${env:AGRICULTURE_PG_HOST:-localhost}
   port: ${env:AGRICULTURE_PG_PORT:-28932}
-  database: agriculture
+  database: agriculture${env:AGRICULTURE_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The crop insurer's own database -- its counties, farms, policies and claims

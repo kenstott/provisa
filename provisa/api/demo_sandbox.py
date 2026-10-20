@@ -140,7 +140,8 @@ async def demo_status(name: str) -> dict:
         open_now = await _open_count(conn)
     return {
         "demo": demo.name,
-        "ready": state == "ready",
+        # Opened at once only with its stores up too: the node starts a demo's at its first open.
+        "ready": state == "ready" and demo.stores_ready,
         "state": state,
         "places_free": max(cap - open_now, 0),
     }

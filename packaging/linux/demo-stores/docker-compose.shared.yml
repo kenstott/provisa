@@ -1,0 +1,87 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The sandbox tier node's shared demo stores (REQ-2049, scripts/demo_stores.py): one instance of
+# each store type every demo bundle's stores load into, each demo version's data under names of
+# its own. A service is started the first time a demo version that needs it is wanted, and left
+# running until the node stops: none restarts when docker does, so the node's next start starts
+# none (scripts/demo_stores_sync.sh starts what the tier asks for). Ports are published on the
+# loopback only, at ports docker picks: a tier on another network reaches them by container name
+# (DEMO_STORES_NETWORK).
+#
+# DEMO_BUNDLES_DIR: the bundles directory on this host, read by Elasticsearch as its snapshot
+# repositories' root (each bundle's dump/<service>/).
+
+name: provisa-demo-stores
+
+x-labels: &labels
+  com.provisa.demo.shared: "true"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: "no"
+    labels: *labels
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "127.0.0.1::5432"
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  mongo:
+    image: mongo:7
+    restart: "no"
+    labels: *labels
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: root
+      MONGO_INITDB_ROOT_PASSWORD: root
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    ports:
+      - "127.0.0.1::27017"
+    volumes:
+      - mongo:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.0
+    restart: "no"
+    labels: *labels
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+      path.repo: /bundles
+      # A demo version's indices are dropped by its suffix (*_<demo>_<hex>).
+      action.destructive_requires_name: "false"
+    ports:
+      - "127.0.0.1::9200"
+    volumes:
+      - elasticsearch:/usr/share/elasticsearch/data
+      - ${DEMO_BUNDLES_DIR:?the bundles directory on this host}:/bundles:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+volumes:
+  postgres:
+  mongo:
+  elasticsearch:

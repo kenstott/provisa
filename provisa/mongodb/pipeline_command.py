@@ -52,8 +52,11 @@ async def run_command(state: Any, fn: dict, args: dict) -> list[dict]:
     if not found or found[0].type.value != "mongodb":
         raise ValueError(f"Command {name!r}: its source {fn['source_id']!r} is no MongoDB source")
     source = found[0]
+    from provisa.core.secrets import resolve_secrets
+
     conn = MongoConnection.from_source(source)
-    database = source.database or fn["schema_name"]
+    # Resolved here, at use, as its connection's host and credentials are (MongoConnection).
+    database = resolve_secrets(source.database) if source.database else fn["schema_name"]
 
     def _run() -> list[dict]:
         return [

@@ -77,7 +77,7 @@ sources:
   type: postgresql
   host: ${env:INSIDER_PG_HOST:-localhost}
   port: ${env:INSIDER_PG_PORT:-28232}
-  database: insider
+  database: insider${env:INSIDER_PG_NS}
   username: provisa
   password: provisa
   description: Northgate Partners' database, read live

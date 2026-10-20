@@ -165,7 +165,8 @@ jobs:
           set -euo pipefail
           listed="$(tar -tzf "$BUNDLE")"
           for member in bundle.json config.yaml demo.yaml tour.yaml docker-compose.run.yml \
-                        seeded/replicas.duckdb seeded/replicas.json dump/postgres.sql; do
+                        seeded/replicas.duckdb seeded/replicas.json dump/postgres/shop.sql \
+                        dump/load-postgres.sh; do
             grep -qx "$member" <<<"$listed" || { echo "::error::$BUNDLE has no $member"; exit 1; }
           done
           grep -q '^logs/nginx/access.json' <<<"$listed"
