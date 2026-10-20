@@ -39,6 +39,17 @@ Las tres se declaran juntas o ninguna. Provisa rechaza una vista que nombra solo
 
 Una tabla recibe las mismas secciones al registrarla: elíjala en **+ Table**, haga clic en **Continue** y su sección Time Travel está en **Load and timeliness**. Un modelo recibe la sección al crearlo (**+ Model**). En un modelo, su clave es la clave de negocio, así que la sección solo pide los dos tiempos.
 
+## Una tabla que se actualiza en su lugar {: #a-table-updated-in-place }
+
+Algunas tablas guardan cada versión como una fila propia, de modo que una corrección añade una fila con la misma clave de negocio. Otras mantienen una fila por clave y la sobrescriben, así que su clave de negocio es su clave primaria. Para una tabla del segundo tipo, Provisa guarda las versiones por sí mismo en un registro de versiones:
+
+- Cada captura lee las filas registradas desde la última hora de registro que contiene el registro, y añade las que cambiaron.
+- El retraso permitido del registro amplía esa ventana, de modo que una fila confirmada tarde con una hora de registro anterior se sigue leyendo.
+- Una captura no ve una fila que la fuente eliminó. **Full capture** vuelve a leer toda la tabla y marca cada fila eliminada como desaparecida.
+- El registro empieza en su primera captura: antes de ella, cada fila solo tiene la versión que tenía entonces.
+
+El registro aparece en **Cache**, en la pestaña **Materialized Store**, como **Version log of** la tabla, con su botón **Full capture**. Una lectura simple de la tabla lee la tabla; una lectura a una fecha, o tal como se registró en una fecha, lee su registro.
+
 ## Leerla {: #read-it }
 
 La vista aparece en la lista **Views** con la insignia **HISTORY**. Su panel de detalle indica que guarda historial y enlaza al explorador SQL con la vista seleccionada. Ponga los selectores **As of** y **As recorded at** del explorador en los momentos que quiera y ejecute la consulta.

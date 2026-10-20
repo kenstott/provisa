@@ -430,7 +430,7 @@ export function HotTablesTab({ platform }: { platform: boolean }) {
   );
 }
 
-function MaterializedStoreTab({ platform }: { platform: boolean }) {
+export function MaterializedStoreTab({ platform }: { platform: boolean }) {
   const { t } = useTranslation();
   const unknown = t("cacheManager.materialized.unknown");
   const navigate = useNavigate();
@@ -443,11 +443,11 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
 
   // Why the last refresh did not start: the server's refusal, or the error it raised.
   const [refreshMsg, setRefreshMsg] = useState("");
-  const handleRefresh = async (id: string) => {
+  const handleRefresh = async (id: string, full = false) => {
     setRefreshing(id);
     setRefreshMsg("");
     try {
-      const result = await refreshMV(id);
+      const result = await refreshMV(id, full);
       if (!result.success) setRefreshMsg(result.message);
     } catch (e) {
       setRefreshMsg(e instanceof Error ? e.message : String(e));
@@ -551,8 +551,13 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
             render={(mv) => (
               <ListRow key={mv.id}>
                 <Table.Td>
-                  {/* Show the user's alias; mv.id stays the action key below. */}
-                  <code>{displayMvName(mv.id)}</code>
+                  {/* Show the user's alias; mv.id stays the action key below. A table's version
+                      log is named for its table. */}
+                  {mv.versionLogOf ? (
+                    t("cacheManager.materialized.versionLog", { table: mv.versionLogOf })
+                  ) : (
+                    <code>{displayMvName(mv.id)}</code>
+                  )}
                 </Table.Td>
                 <Table.Td>{mv.sourceTables.join(", ")}</Table.Td>
                 <Table.Td>
@@ -586,16 +591,31 @@ function MaterializedStoreTab({ platform }: { platform: boolean }) {
                         ? t("cacheManager.materialized.refreshing")
                         : t("cacheManager.materialized.refresh")}
                     </Button>
-                    <Button
-                      size="xs"
-                      variant="subtle"
-                      onClick={() => toggleMV(mv.id, !mv.enabled)}
-                      data-testid={`mv-toggle-btn-${mv.id}`}
-                    >
-                      {mv.enabled
-                        ? t("cacheManager.materialized.disable")
-                        : t("cacheManager.materialized.enable")}
-                    </Button>
+                    {mv.versionLogOf ? (
+                      // A version log is kept as its table declares: it is read-only here but for
+                      // a full capture, which records what the table deleted.
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        onClick={() => handleRefresh(mv.id, true)}
+                        disabled={refreshing === mv.id}
+                        title={t("cacheManager.materialized.fullCaptureHelp")}
+                        data-testid={`mv-full-capture-btn-${mv.id}`}
+                      >
+                        {t("cacheManager.materialized.fullCapture")}
+                      </Button>
+                    ) : (
+                      <Button
+                        size="xs"
+                        variant="subtle"
+                        onClick={() => toggleMV(mv.id, !mv.enabled)}
+                        data-testid={`mv-toggle-btn-${mv.id}`}
+                      >
+                        {mv.enabled
+                          ? t("cacheManager.materialized.disable")
+                          : t("cacheManager.materialized.enable")}
+                      </Button>
+                    )}
                   </Group>
                 </Table.Td>
               </ListRow>

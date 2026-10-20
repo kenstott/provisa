@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "השבתה",
       "enable": "הפעלה",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "יומן הגרסאות של {{table}}",
+      "fullCapture": "לכידה מלאה",
+      "fullCaptureHelp": "קורא שוב את כל הטבלה ורושם את השורות שנמחקו מאז הלכידה האחרונה."
     },
     "pagination": {
       "first": "עמוד ראשון",

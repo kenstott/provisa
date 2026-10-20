@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "Disable",
       "enable": "Enable",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "Version log of {{table}}",
+      "fullCapture": "Full capture",
+      "fullCaptureHelp": "Read the whole table again, recording any rows it has deleted since the last capture."
     },
     "pagination": {
       "first": "First page",

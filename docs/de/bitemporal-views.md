@@ -39,6 +39,17 @@ Die drei werden zusammen oder gar nicht angegeben. Provisa weist eine Sicht ab, 
 
 Eine Tabelle erhält dieselben Abschnitte bei der Registrierung: Wählen Sie sie unter **+ Table**, klicken Sie auf **Continue**, und ihr Abschnitt Time Travel steht unter **Load and timeliness**. Ein Modell erhält den Abschnitt beim Anlegen (**+ Model**). Bei einem Modell ist sein Schlüssel der Geschäftsschlüssel, daher fragt der Abschnitt nur nach den beiden Zeiten.
 
+## Eine Tabelle, die an Ort und Stelle geändert wird {: #a-table-updated-in-place }
+
+Manche Tabellen führen jede Version als eigene Zeile, sodass eine Korrektur eine Zeile mit demselben Geschäftsschlüssel hinzufügt. Andere halten eine Zeile je Schlüssel und überschreiben sie; ihr Geschäftsschlüssel ist also ihr Primärschlüssel. Für eine Tabelle der zweiten Art führt Provisa die Versionen selbst in einem Versionsprotokoll:
+
+- Jede Erfassung liest die Zeilen, die seit der letzten Erfassungszeit im Protokoll erfasst wurden, und fügt die geänderten hinzu.
+- Die zulässige Verspätung des Protokolls erweitert dieses Fenster, sodass eine verspätet übernommene Zeile mit einer früheren Erfassungszeit trotzdem gelesen wird.
+- Eine Erfassung sieht keine Zeile, die die Quelle gelöscht hat. **Full capture** liest die ganze Tabelle erneut und vermerkt jede gelöschte Zeile als entfernt.
+- Das Protokoll beginnt mit seiner ersten Erfassung: Davor hat jede Zeile nur die Version, die sie damals hatte.
+
+Das Protokoll steht unter **Cache** auf dem Reiter **Materialized Store** als **Version log of** der Tabelle, mit seiner Schaltfläche **Full capture**. Ein einfaches Lesen der Tabelle liest die Tabelle; ein Lesen zum Stand einer Zeit oder wie zu einer Zeit erfasst liest ihr Protokoll.
+
 ## Sie lesen {: #read-it }
 
 Die Sicht erscheint in der Liste **Views** mit dem Abzeichen **HISTORY**. Ihr Detailbereich sagt, dass sie Historie führt, und verlinkt auf den SQL-Explorer mit der ausgewählten Sicht. Stellen Sie die Auswahlfelder **As of** und **As recorded at** des Explorers auf die gewünschten Zeiten und starten Sie die Abfrage.

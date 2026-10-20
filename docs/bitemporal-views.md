@@ -39,6 +39,17 @@ The three are declared together or not at all. Provisa refuses a view that names
 
 A table takes the same sections when you register it: pick it under **+ Table**, click **Continue**, and its Time Travel section is on **Load and timeliness**. A model takes the section when you create one (**+ Model**). For a model, its key is the business key, so the section asks only for the two times.
 
+## A table updated in place
+
+Some tables keep every version as its own row, so a correction adds a row with the same business key. Others hold one row per key and overwrite it, so their business key is their primary key. For a table of the second kind, Provisa keeps the versions itself in a version log:
+
+- Each capture reads the rows recorded since the latest recorded time the log holds, and adds those that changed.
+- The log's allowed lateness widens that window, so a row committed late with an earlier recorded time is still read.
+- A capture cannot see a row the source deleted. **Full capture** reads the whole table again and records each deleted row as gone.
+- The log begins at its first capture: before it, each row has only the version it had then.
+
+The log is listed under **Cache**, on the **Materialized Store** tab, as **Version log of** the table, with its **Full capture** button. A plain read of the table reads the table; a read as of a time, or as recorded at a time, reads its log.
+
 ## Read it
 
 The view appears in the **Views** list with a **HISTORY** badge. Its detail panel says it keeps history and links to the SQL explorer with the view selected. Set the explorer's **As of** and **As recorded at** pickers to the times you want, then run the query.

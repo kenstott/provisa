@@ -1373,7 +1373,9 @@ class Query:  # REQ-021, REQ-042
         """List all materialized views with status."""
         require_capability(info, "observability")
         from provisa.api.app import state
+        from provisa.mv.bitemporal_capture import logged_table_id
 
+        names = {row["id"]: row["table_name"] for row in state.tables}
         return [
             MVType(
                 id=mv.id,
@@ -1385,6 +1387,7 @@ class Query:  # REQ-021, REQ-042
                 last_refresh_at=mv.last_refresh_at,
                 row_count=mv.row_count,
                 last_error=mv.last_error,
+                version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
             for mv in state.mv_registry._mvs.values()
         ]

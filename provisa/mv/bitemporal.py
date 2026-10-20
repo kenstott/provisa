@@ -94,6 +94,9 @@ class BitemporalSpec:
     valid_column: str | None = None
     # REQ-2109: set when the view inherits its versions from one versioned table (no declaration).
     inherited: InheritedInput | None = None
+    # REQ-2109: set on the log Provisa keeps of a table updated in place (bitemporal_capture):
+    # each capture reads the rows recorded since the latest recorded time the log holds.
+    captures: bool = False
     # The view's declared columns: what a snapshot view's read compares to tell a row recorded
     # again unchanged from a correction (the read columns and system columns are left out).
     columns: tuple[str, ...] = ()
@@ -107,6 +110,10 @@ class BitemporalSpec:
             raise ValueError("delta bitemporal mode requires an entity key (no key ⇒ no delta)")
         if self.inherited is not None and not (self.is_delta and self.valid_column):
             raise ValueError("an inherited bitemporal view appends deltas on its valid column")
+        if self.captures and not (self.is_delta and self.source_column and self.valid_column):
+            raise ValueError(
+                "a table's version log appends deltas on its valid and recorded time columns"
+            )
         managed = [
             self.system_column,
             *([self.op_column] if self.mode == MODE_DELTA else []),

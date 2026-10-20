@@ -298,6 +298,11 @@ async def _register_user_views_in_state(
             state.bitemporal_view_reads.pop(_vr["table_name"], None)
             if not _vr.get("materialize") and state.mv_registry.get(f"view-{_vr['table_name']}"):
                 state.mv_registry.unregister(f"view-{_vr['table_name']}")
+        # REQ-2109: a bitemporal table updated in place keeps its versions in a log Provisa
+        # captures, an MV of its own refreshed on that MV's interval.
+        from provisa.mv.bitemporal_capture import register_logs
+
+        register_logs(state, tables, int(_mv_default_ttl))
 
 
 async def serve_registered_tables(state) -> None:

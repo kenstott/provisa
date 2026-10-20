@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "Отключить",
       "enable": "Включить",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "Журнал версий {{table}}",
+      "fullCapture": "Полный захват",
+      "fullCaptureHelp": "Заново читает всю таблицу и записывает строки, удалённые после последнего захвата."
     },
     "pagination": {
       "first": "Первая страница",

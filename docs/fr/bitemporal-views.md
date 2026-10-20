@@ -39,6 +39,17 @@ Les trois se déclarent ensemble ou pas du tout. Provisa refuse une vue qui n'en
 
 Une table reçoit les mêmes sections quand vous l'enregistrez : choisissez-la sous **+ Table**, cliquez sur **Continue**, et sa section Time Travel se trouve dans **Load and timeliness**. Un modèle reçoit la section quand vous le créez (**+ Model**). Pour un modèle, sa clé est la clé métier, donc la section ne demande que les deux temps.
 
+## Une table mise à jour sur place {: #a-table-updated-in-place }
+
+Certaines tables gardent chaque version dans sa propre ligne : une correction ajoute une ligne avec la même clé métier. D'autres gardent une ligne par clé et l'écrasent ; leur clé métier est donc leur clé primaire. Pour une table du second type, Provisa garde lui-même les versions dans un journal des versions :
+
+- Chaque capture lit les lignes enregistrées depuis la dernière heure d'enregistrement que contient le journal, et ajoute celles qui ont changé.
+- Le retard admis du journal élargit cette fenêtre : une ligne validée en retard avec une heure d'enregistrement antérieure est quand même lue.
+- Une capture ne voit pas une ligne que la source a supprimée. **Full capture** relit toute la table et note chaque ligne supprimée comme disparue.
+- Le journal commence à sa première capture : avant elle, chaque ligne n'a que la version qu'elle avait alors.
+
+Le journal figure sous **Cache**, dans l'onglet **Materialized Store**, comme **Version log of** la table, avec son bouton **Full capture**. Une lecture simple de la table lit la table ; une lecture à une date, ou telle qu'enregistrée à une date, lit son journal.
+
 ## La lire {: #read-it }
 
 La vue apparaît dans la liste **Views** avec le badge **HISTORY**. Son panneau de détail indique qu'elle conserve un historique et renvoie vers l'explorateur SQL avec la vue sélectionnée. Réglez les sélecteurs **As of** et **As recorded at** de l'explorateur sur les moments voulus, puis lancez la requête.

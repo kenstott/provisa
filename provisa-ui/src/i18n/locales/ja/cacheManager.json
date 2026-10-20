@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "無効化",
       "enable": "有効化",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "{{table}} のバージョンログ",
+      "fullCapture": "完全キャプチャ",
+      "fullCaptureHelp": "テーブル全体を読み直し、前回のキャプチャ以降に削除された行を記録します。"
     },
     "pagination": {
       "first": "最初のページ",

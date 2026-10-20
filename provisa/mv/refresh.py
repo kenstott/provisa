@@ -133,11 +133,15 @@ async def _target_columns(
 async def _inherited(
     engine, mv: MVDefinition, target: str, authorization: SystemAuth, full: bool
 ) -> InheritedBuild | None:
-    """REQ-2109: this refresh of a view inheriting its versions (``mv.bitemporal_inherit``), or
-    None for any other view."""
-    if mv.bitemporal is None or mv.bitemporal.inherited is None:
+    """REQ-2109: this refresh of a view inheriting its versions (``mv.bitemporal_inherit``) or of
+    a table's version log (``mv.bitemporal_capture``), or None for any other view."""
+    if mv.bitemporal is None or (mv.bitemporal.inherited is None and not mv.bitemporal.captures):
         return None
     existing = await _target_columns(engine, mv, target, authorization)
+    if mv.bitemporal.captures:
+        from provisa.mv.bitemporal_capture import capture_build
+
+        return await capture_build(engine, mv, authorization, existing, full=full)
     return await inherited_build(engine, mv, authorization, existing, full=full)
 
 

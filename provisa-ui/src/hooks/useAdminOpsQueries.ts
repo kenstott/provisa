@@ -137,8 +137,9 @@ export function useRefreshMV() {
     refetchQueries: [{ query: MV_LIST_QUERY }],
   });
   return {
-    refreshMV: async (mvId: string) => {
-      const result = await refreshMv({ variables: { mvId } });
+    /** ``full``: a table's version log reads the whole table, recording what it deleted. */
+    refreshMV: async (mvId: string, full = false) => {
+      const result = await refreshMv({ variables: { mvId, full } });
       return (result.data?.refreshMv ?? { success: false, message: "" }) as MutationResult;
     },
     loading,

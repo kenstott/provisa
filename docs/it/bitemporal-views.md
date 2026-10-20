@@ -39,6 +39,17 @@ Le tre si dichiarano insieme o per niente. Provisa rifiuta una vista che ne nomi
 
 Una tabella riceve le stesse sezioni quando la registri: sceglila in **+ Table**, fai clic su **Continue**, e la sua sezione Time Travel è in **Load and timeliness**. Un modello riceve la sezione quando lo crei (**+ Model**). Per un modello, la sua chiave è la chiave di business, quindi la sezione chiede solo i due tempi.
 
+## Una tabella aggiornata sul posto {: #a-table-updated-in-place }
+
+Alcune tabelle tengono ogni versione come riga a sé, quindi una correzione aggiunge una riga con la stessa chiave di business. Altre tengono una riga per chiave e la sovrascrivono, quindi la loro chiave di business è la loro chiave primaria. Per una tabella del secondo tipo, Provisa tiene le versioni da sé in un registro delle versioni:
+
+- Ogni acquisizione legge le righe registrate dopo l'ultima ora di registrazione presente nel registro, e aggiunge quelle cambiate.
+- Il ritardo ammesso del registro allarga questa finestra, così una riga confermata in ritardo con un'ora di registrazione precedente viene comunque letta.
+- Un'acquisizione non vede una riga che la sorgente ha eliminato. **Full capture** rilegge l'intera tabella e registra ogni riga eliminata come scomparsa.
+- Il registro inizia dalla sua prima acquisizione: prima di essa, ogni riga ha solo la versione che aveva allora.
+
+Il registro compare in **Cache**, nella scheda **Materialized Store**, come **Version log of** la tabella, con il suo pulsante **Full capture**. Una lettura semplice della tabella legge la tabella; una lettura a una data, o come registrata a una data, legge il suo registro.
+
 ## Leggerla {: #read-it }
 
 La vista compare nell'elenco **Views** con il badge **HISTORY**. Il suo pannello di dettaglio indica che conserva la cronologia e rimanda all'explorer SQL con la vista selezionata. Imposta i selettori **As of** e **As recorded at** dell'explorer sui momenti che vuoi, poi esegui la query.

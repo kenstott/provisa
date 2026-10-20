@@ -145,10 +145,13 @@ class InheritedBuild:
     select_sql: str | None
     watermark: Any = None
     dates: tuple[Any, ...] | None = None
+    # A table's version log read since its watermark (bitemporal_capture) appends no tombstones:
+    # a row missing from what it read is a row not changed since, not a row deleted.
+    tombstones: bool = True
 
     @property
     def scoped(self) -> bool:
-        return self.dates is not None
+        return self.dates is not None or not self.tombstones
 
     def watermark_sql(self, dialect: str) -> str:
         from provisa.compiler.sql_literals import sql_literal
@@ -158,6 +161,8 @@ class InheritedBuild:
     def scope_sql(self, spec: BitemporalSpec, dialect: str) -> str | None:
         """The condition confining tombstones to the rebuilt dates, on the current state's alias
         ``c`` (:func:`provisa.mv.bitemporal.append_sql`); None for a full build."""
+        if not self.tombstones:
+            return "1 = 0"
         if self.dates is None:
             return None
         assert spec.valid_column is not None  # an inherited spec always has one

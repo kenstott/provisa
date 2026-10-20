@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "禁用",
       "enable": "启用",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "{{table}} 的版本日志",
+      "fullCapture": "完整捕获",
+      "fullCaptureHelp": "重新读取整张表，并记录自上次捕获以来删除的行。"
     },
     "pagination": {
       "first": "第一页",

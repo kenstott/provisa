@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "अक्षम करें",
       "enable": "सक्षम करें",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "{{table}} का संस्करण लॉग",
+      "fullCapture": "पूर्ण कैप्चर",
+      "fullCaptureHelp": "पूरी तालिका फिर से पढ़ता है और पिछले कैप्चर के बाद हटाई गई पंक्तियाँ दर्ज करता है।"
     },
     "pagination": {
       "first": "पहला पृष्ठ",

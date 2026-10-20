@@ -2217,6 +2217,21 @@ async def route_governed(
                 route=Route.ENGINE, source_id=None, dialect=None, reason="query references a view"
             )
 
+    # REQ-2109: a table updated in place, read under as_of or as_recorded, is read from its
+    # version log, kept in the engine's store: the engine computes the statement.
+    if decision.route != Route.ENGINE:
+        from provisa.mv.bitemporal_capture import reads_a_log
+
+        if reads_a_log(_table_ids, state, as_of):
+            from provisa.transpiler.router import RouteDecision
+
+            decision = RouteDecision(
+                route=Route.ENGINE,
+                source_id=None,
+                dialect=None,
+                reason="query reads a table's version log",
+            )
+
     # REQ-1194/REQ-1195: a delivery request materializes the result via the federation engine's
     # CTAS-to-object-store terminal, so the plan MUST carry engine-physical SQL regardless of the
     # route the rows would otherwise take. Force ENGINE so the physical_sql branch below runs.
@@ -2396,6 +2411,10 @@ async def route_governed(
             # newly-introduced semantic refs to catalog-physical (same pass the outer SQL
             # went through at line 456 before routing).
             _qualified = lower_to_catalog_physical(_qualified, ctx)
+        # REQ-2109: a table updated in place is read from its version log under as_of.
+        from provisa.mv.bitemporal_capture import read_logs
+
+        _qualified = read_logs(_qualified, state, ctx, as_of)
 
         _routed_sql = _qualified
         physical_sql = await _kept_engine_form(
@@ -4794,6 +4813,10 @@ async def _route_compiled(
         _exec_sql = expand_view_refs(
             _exec_sql, unnarrowed_view_bodies(_exec_sql, _view_map, state, as_of=as_of)
         )
+    # REQ-2109: a table updated in place is read from its version log under as_of.
+    from provisa.mv.bitemporal_capture import read_logs
+
+    _exec_sql = read_logs(_exec_sql, state, ctx, as_of)
     from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
     from provisa.vector import similarity as _similarity
 

@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "Uitschakelen",
       "enable": "Inschakelen",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "Versielogboek van {{table}}",
+      "fullCapture": "Volledige vastlegging",
+      "fullCaptureHelp": "Leest de hele tabel opnieuw en legt rijen vast die sinds de laatste vastlegging zijn verwijderd."
     },
     "pagination": {
       "first": "Eerste pagina",

@@ -1586,6 +1586,8 @@ class MVType:  # REQ-135, REQ-158, REQ-159, REQ-160
     last_refresh_at: float | None
     row_count: int | None
     last_error: str | None
+    # REQ-2109: the table whose version log this view is (bitemporal_capture); None for any other.
+    version_log_of: str | None = None
 
 
 @strawberry.type

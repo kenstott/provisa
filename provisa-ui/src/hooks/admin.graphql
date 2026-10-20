@@ -777,6 +777,7 @@ query MVList {
     lastRefreshAt
     rowCount
     lastError
+    versionLogOf
   }
 }
 
@@ -1296,8 +1297,8 @@ mutation DeployViewToDb($tableId: Int!) {
   }
 }
 
-mutation RefreshMv($mvId: String!) {
-  refreshMv(mvId: $mvId) {
+mutation RefreshMv($mvId: String!, $full: Boolean! = false) {
+  refreshMv(mvId: $mvId, full: $full) {
     ...MutationResult
   }
 }

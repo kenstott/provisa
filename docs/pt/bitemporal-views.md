@@ -39,6 +39,17 @@ As três são declaradas juntas ou nenhuma. O Provisa recusa uma exibição que 
 
 Uma tabela recebe as mesmas seções quando você a registra: escolha-a em **+ Table**, clique em **Continue**, e a seção Time Travel dela fica em **Load and timeliness**. Um modelo recebe a seção quando você o cria (**+ Model**). Em um modelo, a chave dele é a chave de negócio, então a seção pede apenas os dois tempos.
 
+## Uma tabela atualizada no lugar {: #a-table-updated-in-place }
+
+Algumas tabelas guardam cada versão como uma linha própria, de modo que uma correção acrescenta uma linha com a mesma chave de negócio. Outras mantêm uma linha por chave e a sobrescrevem, então sua chave de negócio é sua chave primária. Para uma tabela do segundo tipo, o Provisa guarda as versões por conta própria em um registro de versões:
+
+- Cada captura lê as linhas registradas desde o último horário de registro que o registro contém, e acrescenta as que mudaram.
+- O atraso permitido do registro amplia essa janela, de modo que uma linha confirmada com atraso e com um horário de registro anterior ainda é lida.
+- Uma captura não vê uma linha que a fonte excluiu. **Full capture** lê a tabela inteira de novo e registra cada linha excluída como removida.
+- O registro começa na sua primeira captura: antes dela, cada linha tem só a versão que tinha então.
+
+O registro aparece em **Cache**, na aba **Materialized Store**, como **Version log of** a tabela, com seu botão **Full capture**. Uma leitura simples da tabela lê a tabela; uma leitura em uma data, ou como registrada em uma data, lê seu registro.
+
 ## Lê-la {: #read-it }
 
 A exibição aparece na lista **Views** com o selo **HISTORY**. O painel de detalhes dela diz que guarda histórico e leva ao explorador SQL com a exibição selecionada. Ajuste os seletores **As of** e **As recorded at** do explorador para os momentos desejados e execute a consulta.

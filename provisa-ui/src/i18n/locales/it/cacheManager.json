@@ -67,7 +67,10 @@
       "refreshing": "...",
       "disable": "Disabilita",
       "enable": "Abilita",
-      "unknown": "—"
+      "unknown": "—",
+      "versionLog": "Registro delle versioni di {{table}}",
+      "fullCapture": "Acquisizione completa",
+      "fullCaptureHelp": "Rilegge l'intera tabella e registra le righe eliminate dall'ultima acquisizione."
     },
     "pagination": {
       "first": "Prima pagina",
