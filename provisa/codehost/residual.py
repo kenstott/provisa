@@ -178,15 +178,13 @@ def _typed(rows: pa.Table) -> pa.Table:
     return pa.Table.from_arrays(columns, schema=pa.schema(fields))
 
 
-def with_arguments(
-    rows: pa.Table, arguments: Mapping[str, Any], types: Mapping[str, pa.DataType]
-) -> pa.Table:
-    """``rows`` with a column per parameter, ``_nf_{name}``, every row holding the value the read
-    gave it (null when it gave none)."""
-    for name, kind in types.items():
-        value = arguments.get(name)
+def with_arguments(rows: pa.Table, arguments: pa.Table) -> pa.Table:
+    """``rows`` with a column per parameter, ``_nf_{name}``: the one-row ``arguments``' value for
+    it (null when the read gave none) on every row."""
+    for field, column in zip(arguments.schema, arguments.columns, strict=True):
         rows = rows.append_column(
-            pa.field(f"_nf_{name}", kind), pa.array([value] * rows.num_rows, type=kind)
+            pa.field(f"_nf_{field.name}", field.type, metadata=field.metadata),
+            pa.repeat(column[0], rows.num_rows).cast(field.type),
         )
     return rows
 

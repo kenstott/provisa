@@ -27,6 +27,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from provisa.codehost import front
 from provisa.codesource import remote, remote_sources
 from provisa.codesource.bundle import content_hash
 from provisa.codesource.manifest import (
@@ -160,14 +161,16 @@ def host(tmp_path):
     (code / "shop.py").write_text(_CODE)
     hashed = content_hash(code)
     port = _free_port()
-    process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's host
+    names = tmp_path / "names.json"
+    names.write_text("{}")
+    process = subprocess.Popen(  # noqa: S603 -- the test's own interpreter and Provisa's front end
         [
             sys.executable,
-            str(HOST.with_name("remote_host.py")),
+            front.__file__,
             str(port),
             str(tmp_path / "state"),
-            str(code),
-            "shop",
+            str(names),
+            *[sys.executable, "-I", str(HOST), "{fd}", str(code), "shop"],
         ],
         env={**os.environ, "PROVISA_CODE_HASH": hashed},
         stderr=subprocess.PIPE,

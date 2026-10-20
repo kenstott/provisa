@@ -362,8 +362,8 @@ def load(code: str, entry: str) -> typing.Any:  # the code's entry module
 async def serve(
     module: typing.Any, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
 ) -> None:
-    """Say hello on one connection to Provisa and serve its calls until it closes. A remote host
-    serves one connection per Provisa process (remote_host.py), each with its own calls."""
+    """Say hello on the connection and serve its calls until it closes: Provisa's, or in a built
+    image its front end's (provisa/codehost/front.py, REQ-2100)."""
     host = Host(module, writer)
     await host.send(
         {

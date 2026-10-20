@@ -188,6 +188,7 @@ async def _finish(build_id: str, **values: Any) -> None:
 
 async def _run(source: Any, config: Any, ctx: Any, arch: str, registry: Any, build_id: str) -> None:
     """The build itself, on a background worker: its row says how it ended."""
+    from provisa.codesource.names import name_tables
     from provisa.codesource.source import _code_reference, _lockfile, prepare
     from provisa.core.demo_bundles import running_provisa
 
@@ -201,6 +202,7 @@ async def _run(source: Any, config: Any, ctx: Any, arch: str, registry: Any, bui
             code_hash=config.content_hash,
             entry=config.entry,
             exports=[e.name for e in prepared.manifest.exports],
+            names=name_tables(prepared.manifest),
             registries=list(ctx.registries),
             cache_root=ctx.cache_root,
             version=running_provisa(),

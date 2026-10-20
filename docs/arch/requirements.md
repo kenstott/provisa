@@ -25584,9 +25584,9 @@ A Node or Python code source's tables are reached two more ways beside landing (
 
 **Use case:** A data team's pricing function returns quotes with a score column: an analyst filters WHERE score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse's customers; the single-table read is answered by the host directly, the join by the engine attaching the host, and the function's author wrote no filtering, sorting or SQL.
 
-**Code:** `provisa/codesource/pushdown.py`, `provisa/codesource/names.py`, `provisa/codesource/manifest.py`, `provisa/python/reader.py`, `provisa/node/reader.mjs`, `provisa/codehost/residual.py`, `provisa/codesource/direct.py`, `provisa/codesource/worker.py`, `provisa/transpiler/router.py`, `provisa/api/data/materialization.py`, `provisa/pgwire/_pipeline.py`
+**Code:** `provisa/codesource/pushdown.py`, `provisa/codesource/names.py`, `provisa/codesource/manifest.py`, `provisa/python/reader.py`, `provisa/node/reader.mjs`, `provisa/codehost/residual.py`, `provisa/codehost/front.py`, `provisa/codehost/front_requirements.txt`, `provisa/codesource/image_build.py`, `provisa/codesource/builds.py`, `provisa/codesource/remote.py`, `provisa/codesource/direct.py`, `provisa/codesource/worker.py`, `provisa/transpiler/router.py`, `provisa/api/data/materialization.py`, `provisa/pgwire/_pipeline.py`
 
-**Tests:** `tests/unit/test_code_pushdown.py`, `tests/unit/test_code_direct.py`
+**Tests:** `tests/unit/test_code_pushdown.py`, `tests/unit/test_code_direct.py`, `tests/unit/test_code_remote_host.py`, `tests/unit/test_code_remote_host_node.py`, `tests/unit/test_code_image_build.py`
 
 **Docs:** [code-sources.md](../code-sources.md)
 
@@ -25598,7 +25598,7 @@ A Node or Python code source runs in one of two modes. DEV: its code on the Prov
 
 **Use case:** A data team's scoring code needs a GPU box the Provisa server does not have: they build the Python source's image from its form, run it on the GPU box with the compose snippet, enter its host, port and pairing code, and its tables are read under the same governance as any other.
 
-**Code:** `provisa/codesource/worker.py`, `provisa/codesource/remote.py`, `provisa/python/host.py`, `provisa/python/remote_host.py`, `provisa/node/host.mjs`, `provisa/node/host-core.mjs`, `provisa/node/remote_host.mjs`, `provisa/codesource/oci.py`, `provisa/codesource/image_build.py`, `provisa/codesource/builds.py`, `provisa/codesource/remote_sources.py`, `provisa/codesource/manifest.py`, `provisa/codesource/source.py`, `provisa/core/container_registries.py`, `provisa/api/admin/container_registries_router.py`, `provisa/api/admin/code_hosts_router.py`, `provisa/runtime_deps/code_runtimes.py`, `provisa-ui/src/components/admin/ContainerRegistriesTab.tsx`, `provisa-ui/src/pages/sources/CodeHostPanel.tsx`
+**Code:** `provisa/codesource/worker.py`, `provisa/codesource/remote.py`, `provisa/python/host.py`, `provisa/codehost/front.py`, `provisa/node/host.mjs`, `provisa/node/host-core.mjs`, `provisa/codesource/oci.py`, `provisa/codesource/image_build.py`, `provisa/codesource/builds.py`, `provisa/codesource/remote_sources.py`, `provisa/codesource/manifest.py`, `provisa/codesource/source.py`, `provisa/core/container_registries.py`, `provisa/api/admin/container_registries_router.py`, `provisa/api/admin/code_hosts_router.py`, `provisa/runtime_deps/code_runtimes.py`, `provisa-ui/src/components/admin/ContainerRegistriesTab.tsx`, `provisa-ui/src/pages/sources/CodeHostPanel.tsx`
 
 **Tests:** `tests/unit/test_code_worker.py`, `tests/unit/test_code_remote_host.py`, `tests/unit/test_code_remote_host_node.py`, `tests/unit/test_code_image_oci.py`, `tests/unit/test_code_image_build.py`, `tests/unit/test_code_image_builds.py`, `tests/unit/test_code_remote_sources.py`, `tests/unit/test_container_registries.py`, `tests/integration/test_code_source_remote_host.py`, `provisa-ui/src/__tests__/ContainerRegistries.test.tsx`, `provisa-ui/src/pages/sources/__tests__/CodeHostPanel.test.tsx`
 

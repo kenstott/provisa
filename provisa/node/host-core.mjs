@@ -8,9 +8,8 @@
 // permission from the copyright holder.
 
 // REQ-1984, REQ-2098: the protocol a Node source's host speaks (provisa/codesource/worker.py), over
-// any connection -- the local worker's socket (host.mjs) or a remote host's TLS connections
-// (remote_host.mjs), each served by its own Connection with its own calls. See host.mjs for the
-// frames.
+// the socket it is given (host.mjs): the local worker's, or a built image's front end's
+// (provisa/codehost/front.py, REQ-2100). See host.mjs for the frames.
 //
 // REQ-2106: "@provisa/services" resolves to services.mjs beside this host on every runtime --
 // Node by a resolve hook, Bun by a runtime plugin, Deno by the import map its command names

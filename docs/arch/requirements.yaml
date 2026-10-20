@@ -85474,6 +85474,11 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - provisa/python/reader.py
   - provisa/node/reader.mjs
   - provisa/codehost/residual.py
+  - provisa/codehost/front.py
+  - provisa/codehost/front_requirements.txt
+  - provisa/codesource/image_build.py
+  - provisa/codesource/builds.py
+  - provisa/codesource/remote.py
   - provisa/codesource/direct.py
   - provisa/codesource/worker.py
   - provisa/transpiler/router.py
@@ -85482,6 +85487,9 @@ And reaffirming it records the tag again with today's decider and evidence and r
   tests:
   - tests/unit/test_code_pushdown.py
   - tests/unit/test_code_direct.py
+  - tests/unit/test_code_remote_host.py
+  - tests/unit/test_code_remote_host_node.py
+  - tests/unit/test_code_image_build.py
   docs:
   - code-sources.md
 - id: REQ-2098
@@ -85511,10 +85519,9 @@ Then it is refused by name and told to run a host built for this Provisa version
   - provisa/codesource/worker.py
   - provisa/codesource/remote.py
   - provisa/python/host.py
-  - provisa/python/remote_host.py
+  - provisa/codehost/front.py
   - provisa/node/host.mjs
   - provisa/node/host-core.mjs
-  - provisa/node/remote_host.mjs
   - provisa/codesource/oci.py
   - provisa/codesource/image_build.py
   - provisa/codesource/builds.py

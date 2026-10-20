@@ -164,19 +164,70 @@ async def read(state: Any, table: dict, name: str, sql: str, arguments: dict | N
     schema = row_schema(prepared.manifest, export)
     worker = prepared.worker()
 
+    from provisa.codesource.worker import ABSENT
+
+    values = {n: (None if a is ABSENT else a) for n, a in zip(names, args, strict=True)}
+    fields = [field_of(p.name, p.shape, prepared.manifest) for p in export.parameters]
+    argument_row = pa.Table.from_pylist(
+        [{f.name: _argument(values.get(f.name), f) for f in fields}], schema=pa.schema(fields)
+    )
+
     def _run() -> Any:
+        if worker.where_kind == "remote":
+            # The host's front end applies the statement to the rows itself.
+            answered = [
+                pa.ipc.open_stream(pa.py_buffer(ipc)).read_all()
+                for ipc in worker.batches(
+                    function,
+                    "table",
+                    args,
+                    names,
+                    schema=schema_text(schema),
+                    residual={
+                        "sql": sql,
+                        "dialect": DIALECT,
+                        "table": name,
+                        "schema": schema_text(schema),
+                        "arguments": _ipc_text(argument_row),
+                    },
+                )
+            ]
+            return pa.concat_tables(answered)
         batches = [
             batch
             for ipc in worker.batches(function, "table", args, names, schema=schema_text(schema))
             for batch in pa.ipc.open_stream(pa.py_buffer(ipc)).read_all().to_batches()
         ]
         rows = pa.Table.from_batches(batches) if batches else schema.empty_table()
-        from provisa.codesource.worker import ABSENT
-
-        values = {n: (None if a is ABSENT else a) for n, a in zip(names, args, strict=True)}
-        types = {
-            p.name: field_of(p.name, p.shape, prepared.manifest).type for p in export.parameters
-        }
-        return residual.answer(sql, DIALECT, name, residual.with_arguments(rows, values, types))
+        return residual.answer(sql, DIALECT, name, residual.with_arguments(rows, argument_row))
 
     return await asyncio.to_thread(_run)
+
+
+def _argument(value: Any, field: Any) -> Any:  # a converted argument; a pyarrow Field
+    """An argument in the form its Arrow field takes it: a numeric's digits and a json value's
+    text, as every host sends them (provisa/codesource/arrow_rows.py)."""
+    import json
+
+    from provisa.codesource.arrow_rows import IR_KEY
+    from provisa.codesource.worker import encode
+
+    if value is None:
+        return None
+    ir = (field.metadata or {}).get(IR_KEY)
+    if ir == b"numeric":
+        return str(value)
+    if ir == b"json":
+        return json.dumps(encode(value), separators=(",", ":"))
+    return value
+
+
+def _ipc_text(table: Any) -> str:  # a pyarrow Table
+    import base64
+
+    import pyarrow as pa
+
+    sink = pa.BufferOutputStream()
+    with pa.ipc.new_stream(sink, table.schema) as stream:
+        stream.write_table(table)
+    return base64.b64encode(sink.getvalue().to_pybytes()).decode()

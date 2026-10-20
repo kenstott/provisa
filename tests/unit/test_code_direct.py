@@ -135,7 +135,8 @@ def test_an_aggregate_and_a_schema_qualified_column_are_the_rows():
 
 
 def test_a_parameters_column_holds_its_value_on_every_row():
-    rows = residual.with_arguments(_rows(), {"as_of": "2026"}, {"as_of": pa.utf8(), "x": pa.utf8()})
+    arguments = pa.table({"as_of": pa.array(["2026"]), "x": pa.array([None], pa.utf8())})
+    rows = residual.with_arguments(_rows(), arguments)
     answer = residual.answer(
         "SELECT id FROM scores WHERE _nf_as_of = '2026' AND _nf_x IS NULL ORDER BY id",
         "duckdb",

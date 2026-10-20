@@ -534,8 +534,11 @@ class Worker:
         names: Sequence[str] = (),
         *,
         schema: str,
+        residual: dict | None = None,
     ) -> Iterator[bytes]:
-        """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent."""
+        """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent. With a
+        ``residual`` (a remote host's front end, provisa/codehost/front.py), the batches are the
+        statement's answer over the function's rows."""
         import pyarrow as pa
 
         if kind not in ("table", "stream"):
@@ -546,7 +549,10 @@ class Worker:
             finished = False
             rows = batches = 0
             try:
-                self._send(self._call_frame(call_id, export, kind, args, names, schema))
+                frame = self._call_frame(call_id, export, kind, args, names, schema)
+                if residual is not None:
+                    frame["residual"] = residual
+                self._send(frame)
                 while True:
                     message = self._next(call_id, waiting, export)
                     if message["op"] == "end":
