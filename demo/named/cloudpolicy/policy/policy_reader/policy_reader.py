@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 6d08b3c9-55cf-4b64-b438-247c79b64b68
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The security team's policy, read from its published HTML: one row a control, with its section
 number, heading, the clause's words and the day it took effect.
 

@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: aea7f4b8-8308-4a61-9996-c0c6b7d36b45
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """Write the cloudpolicy demo's data: the cloud inventory and the ServiceNow incidents as the rows
 the demo declares for its two faked sources (replica_rows/), and fourteen days of the daily review
 (db/history.sql), each day classified by the same rules as the daily_review view:
