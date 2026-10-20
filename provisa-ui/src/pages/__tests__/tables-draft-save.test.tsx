@@ -245,10 +245,15 @@ describe("TablesPage — draft (REQ-1921)", () => {
   });
 
   it("goes to draft before it moves region", async () => {
+    // REQ-2109: the draft goes with the table's own save, which comes before the move.
+    updateTable.mockImplementation(async (input: { draft: boolean }) => {
+      calls.push(`update draft ${input.draft}`);
+      return ok;
+    });
     await userEvent.click(await openEditor("orders"));
     await pickRegion("us");
     await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() => expect(calls).toEqual(["draft 7 true", "region 7 us"]));
+    await waitFor(() => expect(calls).toEqual(["update draft true", "region 7 us"]));
   });
 
   it("is claimed by its new region before it is released", async () => {

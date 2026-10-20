@@ -396,11 +396,11 @@ query {
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-将一张新表（或视图）注册到某个域中。需要 `table_registration` 能力以及目标域的成员身份。缺少 `create_relationship` 能力而提交视图的调用者，会被加入待权限持有者批准的创建请求队列。
+将一张新表（或视图）注册到某个 domain，并在一个事务中应用输入携带的每项设置，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants` 和 `draft`：任何一项被拒绝，就不注册任何内容。需要 `table_registration` 能力和目标 domain 的成员身份；携带 `writeGrants` 还需要该 domain 的 `masking_config`。缺少 `create_relationship` 而提交视图的调用者，会作为创建请求排队，等待权限持有者批准。
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-更新一张现有表的别名、描述、列元数据、物化视图设置和实时投递配置。需要 `table_registration`。
+更新现有表的别名、描述、列元数据、MV 设置、实时投递配置，以及输入携带的设置（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`draft`），在一个事务中完成：任何一项被拒绝，就不保存任何内容。省略的设置保留其已存储的值。需要 `table_registration`。
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -739,6 +739,11 @@ mutation {
 | `queryTemplate` | Neo4j 表的 Cypher |
 | `live` | SSE/Kafka 推送的实时投递配置 |
 | `discover` | 在注册时从实时数据源推断列 |
+| `gqlNamingConvention` | 表的 GraphQL 命名约定；`null` 表示继承。省略时，新表继承，更新保留已存储的值 |
+| `roleTtl` | 完整的角色到 TTL 列表，`[{ role, ttl }]` |
+| `replicate` | 表何时由其副本提供；`null` 继承数据源的值 |
+| `writeGrants` | 表的完整写入授权集合；需要 `masking_config` |
+| `draft` | `false` 发布该表；否则注册后为草稿 |
 
 ### `RelationshipInput`
 

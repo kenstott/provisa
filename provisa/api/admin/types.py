@@ -1212,6 +1212,15 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     discover: bool = False  # REQ-252: infer columns from the live NoSQL source at registration
     live: LiveDeliveryConfigInput | None = None  # REQ-565: live delivery config
     delta: DeltaConfigInput | None = None  # REQ-874: incremental-reload declaration
+    # REQ-2109 (settled): the settings that also have mutations of their own travel with the table,
+    # so one registerTable / updateTable applies all of them in one control-plane transaction and a
+    # refusal of any one leaves nothing saved. Left out (UNSET), a registration takes a new table's
+    # value and an update keeps the stored one.
+    gql_naming_convention: str | None = strawberry.UNSET
+    role_ttl: list[RoleTtlInput] | None = strawberry.UNSET  # REQ-1907: the whole list
+    replicate: int | None = strawberry.UNSET  # REQ-826: null inherits the source's value
+    write_grants: list[WriteGrantInput] | None = strawberry.UNSET  # REQ-2074: the whole set
+    draft: bool | None = strawberry.UNSET  # REQ-1921: false releases it
 
 
 @strawberry.type

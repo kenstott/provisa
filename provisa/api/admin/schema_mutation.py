@@ -28,7 +28,6 @@ from provisa.core.schema_org import (
     registered_tables,
     relationship_candidates,
     relationships,
-    roles,
     sources,
     tracked_webhooks,
 )
@@ -78,6 +77,20 @@ from provisa.api.admin.schema_helpers import (
     _rebuild_schemas,
 )
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
+from provisa.api.admin._table_settings import (
+    TableSaveRefused,
+    carried,
+    invalid_replicate as _invalid_replicate,
+    naming_refusal,
+    role_ttl_refusal,
+    save_carried_after_store,
+    save_naming,
+    with_carried_settings,
+    write_grant_invalid,
+    write_grant_models,
+    write_grant_predicates_refusal,
+    write_grant_roles_refusal,
+)
 from provisa.api.admin._landing_ttl import (  # REQ-1907, REQ-826
     SourceTtl,
     TableTtl,
@@ -1562,22 +1575,6 @@ def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # 
         code="schema.source_type_not_hosted",
         params={"type": source_type},
     )
-
-
-def _invalid_replicate(replicate: int | None) -> MutationResult | None:  # REQ-826
-    """The refusal for a ``replicate`` value that is not one the setting has, else None."""
-    from provisa.core.replicate import check_replicate
-
-    try:
-        check_replicate(replicate)
-    except ValueError as exc:
-        return MutationResult(
-            success=False,
-            message=str(exc),
-            code="schema.replicate_invalid",
-            params={"value": str(replicate)},
-        )
-    return None
 
 
 def _residency_refusal(
@@ -3242,238 +3239,272 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         if window_err is not None:
             return window_err
         model = _table_model_from_input(input, columns, input.alias)
-        async with pool.acquire() as conn:
-            _conn = cast("Connection", conn)
-            from provisa.api.admin.domain_guard import require_current_domain
+        try:
+            async with pool.acquire() as conn:
+                _conn = cast("Connection", conn)
+                async with _conn.transaction():
+                    from provisa.api.admin.domain_guard import require_current_domain
 
-            await require_current_domain(info, _conn, model)  # REQ-1531
-            from provisa.api.admin._parameter_guard import source_parameter_refusal
+                    await require_current_domain(info, _conn, model)  # REQ-1531
+                    from provisa.api.admin._parameter_guard import source_parameter_refusal
 
-            _param_refusal = await source_parameter_refusal(_conn, model)  # REQ-1986
-            if _param_refusal is not None:
-                return MutationResult(
-                    success=False,
-                    message=_param_refusal,
-                    code="schema.parameter_set_by_source",
-                    params={"table": model.table_name},
-                )
-            from provisa.api.admin._query_api_registration import pipeline_table_refusal
+                    _param_refusal = await source_parameter_refusal(_conn, model)  # REQ-1986
+                    if _param_refusal is not None:
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=_param_refusal,
+                                code="schema.parameter_set_by_source",
+                                params={"table": model.table_name},
+                            )
+                        )
+                    from provisa.api.admin._query_api_registration import pipeline_table_refusal
 
-            _pipeline_refusal = await pipeline_table_refusal(_conn, model)  # REQ-1980
-            if _pipeline_refusal is not None:
-                return _pipeline_refusal
-            # REQ-1443: same contract-driven derivation the register path and the YAML loader run.
-            from provisa.api.admin._dq_registration import apply_dq_registration
+                    _pipeline_refusal = await pipeline_table_refusal(_conn, model)  # REQ-1980
+                    if _pipeline_refusal is not None:
+                        raise TableSaveRefused(_pipeline_refusal)
+                    # REQ-1443: same contract-driven derivation the register path and the YAML loader run.
+                    from provisa.api.admin._dq_registration import apply_dq_registration
 
-            try:
-                await apply_dq_registration(_conn, model)
-                # REQ-1934: a profile result table's derivation, and a table's profiler membership.
-                from provisa.profiler.registration import apply_registration
+                    try:
+                        await apply_dq_registration(_conn, model)
+                        # REQ-1934: a profile result table's derivation, and a table's profiler membership.
+                        from provisa.profiler.registration import apply_registration
 
-                await apply_registration(_conn, model)
-            except ValueError as _dq_err:
-                return MutationResult(success=False, message=str(_dq_err))
-            from provisa.api.admin.region_defaults import kept_placement
+                        await apply_registration(_conn, model)
+                    except ValueError as _dq_err:
+                        raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))
+                    from provisa.api.admin.region_defaults import kept_placement
 
-            model.region, model.draft = await kept_placement(_conn, model)  # REQ-1921
-            _conflict = await _domain_table_conflict(
-                _conn,
-                model.domain_id,
-                model.table_name,
-                model.source_id,
-                model.schema_name,
-                input.alias,
-            )
-            if _conflict:
-                return MutationResult(success=False, message=_conflict)
-            _owner_conflict = await _dataset_ownership_conflict(
-                _conn, model.source_id, model.table_name, model.domain_id
-            )
-            if _owner_conflict:
-                return MutationResult(success=False, message=_owner_conflict)
-            # REQ-1907/REQ-318: TableInput carries no cache_ttl / role_ttl / row_materialize /
-            # pagination -- they are saved through updateTableCache / updateTableRoleTtl /
-            # updateTablePaging -- so the upsert keeps the stored values instead of resetting them.
-            _kept = await _conn.execute_core(
-                select(
-                    registered_tables.c.cache_ttl,
-                    registered_tables.c.role_ttl,
-                    registered_tables.c.row_materialize,
-                    registered_tables.c.replicate,
-                    registered_tables.c.pagination,
-                ).where(
-                    (registered_tables.c.source_id == model.source_id)
-                    & (registered_tables.c.schema_name == model.schema_name)
-                    & (registered_tables.c.table_name == model.table_name)
-                )
-            )
-            _kept_row = _kept.fetchone()
-            if _kept_row is not None:
-                model.cache_ttl = _kept_row.cache_ttl
-                model.role_ttl = dict(_kept_row.role_ttl)
-                model.pagination = stored_paging(_kept_row.pagination)
-                model.row_materialize = bool(_kept_row.row_materialize)
-                # replicate is saved through updateTableReplicate, never by this upsert: the
-                # stored value is kept (and is the one the checks below judge).
-                model.replicate = _kept_row.replicate
-            _ttl_refusal = await landing_ttl_refusal(
-                _conn,
-                model.source_id,
-                table=TableTtl(
-                    model.schema_name,
-                    model.table_name,
-                    model.change_signal,
-                    model.cache_ttl,
-                    model.materialize,
-                    model.row_materialize,
-                    model.replicate,
-                    model.load_protected,
-                ),
-            )
-            if _ttl_refusal is not None:
-                return _ttl_refusal
-            from provisa.api.admin._change_feed import table_change_feed_refusal
-
-            _feed_refusal = await table_change_feed_refusal(  # REQ-1861
-                _conn,
-                model.source_id,
-                model.change_signal,
-                kafka_topic=model.live.kafka.topic if model.live and model.live.kafka else None,
-                table_name=model.table_name,
-            )
-            if _feed_refusal is not None:
-                return _feed_refusal
-            from provisa.api.admin._file_glob import table_file_glob_refusal
-
-            _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
-            if _glob_refusal is not None:
-                return _glob_refusal
-            from provisa.api.app import state as _app_state
-
-            if _app_state.source_types.get(model.source_id) == "athena":
-                # REQ-1981: its format, from the source, decides the writes it takes.
-                from provisa.api.admin.introspect import athena_table_format
-
-                model.table_format = await athena_table_format(
-                    model.source_id, model.schema_name, model.table_name
-                )
-            if _app_state.source_types.get(model.source_id) == "jira":
-                # REQ-2069: a form's project and issue type, and each column's field, from the
-                # account's form and field lists -- the steward picks a form and its columns.
-                from provisa.api.admin.introspect import complete_jira_form
-
-                try:
-                    await complete_jira_form(model)
-                except ValueError as exc:
-                    return MutationResult(
-                        success=False,
-                        message=str(exc),
-                        code="schema.jira_form_unresolved",
-                        params={"table": model.table_name, "source": model.source_id},
+                    model.region, model.draft = await kept_placement(_conn, model)  # REQ-1921
+                    _conflict = await _domain_table_conflict(
+                        _conn,
+                        model.domain_id,
+                        model.table_name,
+                        model.source_id,
+                        model.schema_name,
+                        input.alias,
                     )
-
-            from provisa.api.admin._import_set import table_import_set_refusal
-
-            _import_set_refusal = await table_import_set_refusal(_conn, model)  # REQ-1954
-            if _import_set_refusal is not None:
-                return _import_set_refusal
-            from provisa.api.admin._import_set import table_arguments_refusal
-
-            _arguments_refusal = await table_arguments_refusal(_conn, model)  # REQ-2061
-            if _arguments_refusal is not None:
-                return _arguments_refusal
-            from provisa.api.admin._fake_guard import table_fake_refusal
-
-            _fake_refusal = await table_fake_refusal(_conn, model)  # REQ-1494
-            if _fake_refusal is not None:
-                return _fake_refusal
-            from provisa.api.admin._delta_guard import table_delta_refusal
-
-            _delta_refusal = await table_delta_refusal(_conn, model)  # REQ-874
-            if _delta_refusal is not None:
-                return _delta_refusal
-            from provisa.api.admin._hiding_guard import table_hiding_refusal
-
-            _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
-                info, _conn, model, editor=_editor
-            )
-            if _hiding_refusal is not None:
-                return _hiding_refusal
-            refuse_governance_sets(_governance_sets)  # REQ-1958
-            try:
-                model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
-                table_id = await table_repo.upsert(_conn, model)
-            except table_repo.ViewLoopRefused as _loop:
-                # REQ-1918: a view that would read itself through other views is refused at save.
-                return MutationResult(
-                    success=False,
-                    message=str(_loop),
-                    code="schema.view_reads_itself",
-                    params={"view": _loop.loop[0], "loop": _loop.loop},
-                )
-            except table_repo.NumericSizeRefused as _size:
-                # REQ-1961: a size no numeric can have is not saved; the column is named.
-                return MutationResult(
-                    success=False,
-                    message=str(_size),
-                    code="schema.numeric_size_invalid",
-                    params={
-                        "table": _size.table_name,
-                        "column": _size.column,
-                        "declared": _size.declared,
-                    },
-                )
-            except table_repo.ColumnDropRefused as _drop:
-                # REQ-1918: a column something still refers to is not dropped; each is named.
-                return MutationResult(
-                    success=False,
-                    message=str(_drop),
-                    code="schema.column_has_dependents",
-                    params={"table": _drop.table_name, "columns": _drop.report()},
-                )
-            except SqlAddressTaken as _taken:
-                # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
-                return MutationResult(
-                    success=False,
-                    message=str(_taken),
-                    code="schema.sql_address_taken",
-                    params={
-                        "domain": _taken.domain_id,
-                        "address": _taken.address,
-                        "holder": _taken.holder,
-                    },
-                )
-            if model.query_template:
-                # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
-                from provisa.api.admin._query_api_registration import persist_query_api_registration
-
-                _neo_err = await persist_query_api_registration(_conn, model)
-                if _neo_err is not None:
-                    return _neo_err
-            # REQ-316/REQ-318: an OpenAPI table's endpoint row follows its registration.
-            from provisa.api.admin._openapi_table_registration import persist_openapi_endpoint
-            from provisa.api.app import state as _app_state
-
-            _oa_err = await persist_openapi_endpoint(_app_state, _conn, model)
-            if _oa_err is not None:
-                return _oa_err
-            if table_id is not None:
-                await _conn.execute_core(
-                    update(registered_tables)
-                    .where(registered_tables.c.id == table_id)
-                    .values(
-                        enable_aggregates=input.enable_aggregates,
-                        enable_group_by=input.enable_group_by,
+                    if _conflict:
+                        raise TableSaveRefused(MutationResult(success=False, message=_conflict))
+                    _owner_conflict = await _dataset_ownership_conflict(
+                        _conn, model.source_id, model.table_name, model.domain_id
                     )
-                )
-            # REQ-020: a column change may invalidate a relationship's join field — flag
-            # any relationship whose join column on this table is no longer present.
-            from provisa.core.repositories import relationship as _rel_repo
+                    if _owner_conflict:
+                        raise TableSaveRefused(
+                            MutationResult(success=False, message=_owner_conflict)
+                        )
+                    # REQ-1907/REQ-318: an update does not take cache_ttl / row_materialize / pagination
+                    # -- they are saved through updateTableCache / updateTablePaging -- so the upsert
+                    # keeps the stored values; role_ttl and replicate likewise unless the input
+                    # carries them (REQ-2109, applied just below).
+                    _kept = await _conn.execute_core(
+                        select(
+                            registered_tables.c.cache_ttl,
+                            registered_tables.c.role_ttl,
+                            registered_tables.c.row_materialize,
+                            registered_tables.c.replicate,
+                            registered_tables.c.pagination,
+                        ).where(
+                            (registered_tables.c.source_id == model.source_id)
+                            & (registered_tables.c.schema_name == model.schema_name)
+                            & (registered_tables.c.table_name == model.table_name)
+                        )
+                    )
+                    _kept_row = _kept.fetchone()
+                    if _kept_row is not None:
+                        model.cache_ttl = _kept_row.cache_ttl
+                        model.role_ttl = dict(_kept_row.role_ttl)
+                        model.pagination = stored_paging(_kept_row.pagination)
+                        model.row_materialize = bool(_kept_row.row_materialize)
+                        # replicate is saved through updateTableReplicate, never by this upsert: the
+                        # stored value is kept (and is the one the checks below judge).
+                        model.replicate = _kept_row.replicate
+                    # REQ-2109: the settings the update carries replace the stored ones, checked as
+                    # their own mutations check them; one refused refuses the whole update.
+                    model = await with_carried_settings(info, _conn, input, model)
+                    _ttl_refusal = await landing_ttl_refusal(
+                        _conn,
+                        model.source_id,
+                        table=TableTtl(
+                            model.schema_name,
+                            model.table_name,
+                            model.change_signal,
+                            model.cache_ttl,
+                            model.materialize,
+                            model.row_materialize,
+                            model.replicate,
+                            model.load_protected,
+                        ),
+                    )
+                    if _ttl_refusal is not None:
+                        raise TableSaveRefused(_ttl_refusal)
+                    from provisa.api.admin._change_feed import table_change_feed_refusal
 
-            if table_id is not None:
-                await _rel_repo.mark_relationships_for_review(
-                    _conn, table_id, [c.name for c in model.columns]
-                )
+                    _feed_refusal = await table_change_feed_refusal(  # REQ-1861
+                        _conn,
+                        model.source_id,
+                        model.change_signal,
+                        kafka_topic=model.live.kafka.topic
+                        if model.live and model.live.kafka
+                        else None,
+                        table_name=model.table_name,
+                    )
+                    if _feed_refusal is not None:
+                        raise TableSaveRefused(_feed_refusal)
+                    from provisa.api.admin._file_glob import table_file_glob_refusal
+
+                    _glob_refusal = await table_file_glob_refusal(_conn, model)  # REQ-788
+                    if _glob_refusal is not None:
+                        raise TableSaveRefused(_glob_refusal)
+                    from provisa.api.app import state as _app_state
+
+                    if _app_state.source_types.get(model.source_id) == "athena":
+                        # REQ-1981: its format, from the source, decides the writes it takes.
+                        from provisa.api.admin.introspect import athena_table_format
+
+                        model.table_format = await athena_table_format(
+                            model.source_id, model.schema_name, model.table_name
+                        )
+                    if _app_state.source_types.get(model.source_id) == "jira":
+                        # REQ-2069: a form's project and issue type, and each column's field, from the
+                        # account's form and field lists -- the steward picks a form and its columns.
+                        from provisa.api.admin.introspect import complete_jira_form
+
+                        try:
+                            await complete_jira_form(model)
+                        except ValueError as exc:
+                            raise TableSaveRefused(
+                                MutationResult(
+                                    success=False,
+                                    message=str(exc),
+                                    code="schema.jira_form_unresolved",
+                                    params={"table": model.table_name, "source": model.source_id},
+                                )
+                            )
+
+                    from provisa.api.admin._import_set import table_import_set_refusal
+
+                    _import_set_refusal = await table_import_set_refusal(_conn, model)  # REQ-1954
+                    if _import_set_refusal is not None:
+                        raise TableSaveRefused(_import_set_refusal)
+                    from provisa.api.admin._import_set import table_arguments_refusal
+
+                    _arguments_refusal = await table_arguments_refusal(_conn, model)  # REQ-2061
+                    if _arguments_refusal is not None:
+                        raise TableSaveRefused(_arguments_refusal)
+                    from provisa.api.admin._fake_guard import table_fake_refusal
+
+                    _fake_refusal = await table_fake_refusal(_conn, model)  # REQ-1494
+                    if _fake_refusal is not None:
+                        raise TableSaveRefused(_fake_refusal)
+                    from provisa.api.admin._delta_guard import table_delta_refusal
+
+                    _delta_refusal = await table_delta_refusal(_conn, model)  # REQ-874
+                    if _delta_refusal is not None:
+                        raise TableSaveRefused(_delta_refusal)
+                    from provisa.api.admin._hiding_guard import table_hiding_refusal
+
+                    _hiding_refusal = await table_hiding_refusal(  # REQ-1943, REQ-1944
+                        info, _conn, model, editor=_editor
+                    )
+                    if _hiding_refusal is not None:
+                        raise TableSaveRefused(_hiding_refusal)
+                    refuse_governance_sets(_governance_sets)  # REQ-1958
+                    try:
+                        _carried_grants = model.write_grants  # REQ-2074, REQ-2109
+                        model = await table_repo.keep_unedited(_conn, model)  # REQ-1919
+                        if carried(input.write_grants):
+                            model = model.model_copy(update={"write_grants": _carried_grants})
+                        table_id = await table_repo.upsert(_conn, model)
+                    except table_repo.ViewLoopRefused as _loop:
+                        # REQ-1918: a view that would read itself through other views is refused at save.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_loop),
+                                code="schema.view_reads_itself",
+                                params={"view": _loop.loop[0], "loop": _loop.loop},
+                            )
+                        )
+                    except table_repo.NumericSizeRefused as _size:
+                        # REQ-1961: a size no numeric can have is not saved; the column is named.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_size),
+                                code="schema.numeric_size_invalid",
+                                params={
+                                    "table": _size.table_name,
+                                    "column": _size.column,
+                                    "declared": _size.declared,
+                                },
+                            )
+                        )
+                    except table_repo.ColumnDropRefused as _drop:
+                        # REQ-1918: a column something still refers to is not dropped; each is named.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_drop),
+                                code="schema.column_has_dependents",
+                                params={"table": _drop.table_name, "columns": _drop.report()},
+                            )
+                        )
+                    except SqlAddressTaken as _taken:
+                        # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=str(_taken),
+                                code="schema.sql_address_taken",
+                                params={
+                                    "domain": _taken.domain_id,
+                                    "address": _taken.address,
+                                    "holder": _taken.holder,
+                                },
+                            )
+                        )
+                    assert table_id is not None  # the upsert returns the id it wrote
+                    await save_carried_after_store(_conn, input, model, table_id)  # REQ-2109
+                    if model.query_template:
+                        # REQ-1670/REQ-1683: an edited query re-persists the endpoint the table serves from.
+                        from provisa.api.admin._query_api_registration import (
+                            persist_query_api_registration,
+                        )
+
+                        _neo_err = await persist_query_api_registration(_conn, model)
+                        if _neo_err is not None:
+                            raise TableSaveRefused(_neo_err)
+                    # REQ-316/REQ-318: an OpenAPI table's endpoint row follows its registration.
+                    from provisa.api.admin._openapi_table_registration import (
+                        persist_openapi_endpoint,
+                    )
+                    from provisa.api.app import state as _app_state
+
+                    _oa_err = await persist_openapi_endpoint(_app_state, _conn, model)
+                    if _oa_err is not None:
+                        raise TableSaveRefused(_oa_err)
+                    if table_id is not None:
+                        await _conn.execute_core(
+                            update(registered_tables)
+                            .where(registered_tables.c.id == table_id)
+                            .values(
+                                enable_aggregates=input.enable_aggregates,
+                                enable_group_by=input.enable_group_by,
+                            )
+                        )
+                    # REQ-020: a column change may invalidate a relationship's join field — flag
+                    # any relationship whose join column on this table is no longer present.
+                    from provisa.core.repositories import relationship as _rel_repo
+
+                    if table_id is not None:
+                        await _rel_repo.mark_relationships_for_review(
+                            _conn, table_id, [c.name for c in model.columns]
+                        )
+        except TableSaveRefused as _refused:
+            # The transaction rolled back: nothing of the save is stored.
+            return _refused.result
         if input.view_sql and input.materialize:
             try:
                 await _sync_view_mv(
@@ -3751,12 +3782,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from pydantic import ValidationError
 
         from provisa.api.admin.capabilities import require_capability
-        from provisa.compiler.rls_validate import validate_rls_predicate
         from provisa.core import model_change
         from provisa.core.models import Column as ColumnModel
         from provisa.core.models import Table as TableModel
-        from provisa.core.models import WriteGrant
-        from provisa.core.repositories import role as role_repo
         from provisa.core.repositories import table as table_repo
         from provisa.core.repositories import write_grant as write_grant_repo
 
@@ -3773,43 +3801,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"id": table_id},
                 )
             require_right_in_domains(info, "masking_config", {row["domain_id"]})
-            for role_id in sorted({g.role for g in grants}):
-                if await role_repo.get(c, role_id) is None:
-                    return MutationResult(
-                        success=False,
-                        message=f"Role {role_id!r} not found",
-                        code="schema.role_not_found",
-                        params={"role": role_id},
-                    )
+            refusal = await write_grant_roles_refusal(c, grants)
+            if refusal is not None:
+                return refusal
             columns = await table_repo.load_columns(c, table_id)
             registry = await table_repo.list_all(c)
             unheld = await table_repo._control_plane_role_ids(c)
-
-        def _invalid(reason: str) -> MutationResult:
-            return MutationResult(
-                success=False,
-                message=reason,
-                code="schema.write_grant_invalid",
-                params={"reason": reason},
-            )
-
         try:
-            models = [
-                WriteGrant.model_validate(
-                    {
-                        "role": g.role,
-                        "operation": g.operation,
-                        "columns": list(g.columns),
-                        "rows": g.rows,
-                        "check": g.check,
-                        "why": g.why,  # REQ-2094
-                        "presets": [
-                            {k: v for k, v in vars(p).items() if v is not None} for p in g.presets
-                        ],
-                    }
-                )
-                for g in grants
-            ]
+            models = write_grant_models(grants)
             # The table's own rules for its grants: one per role and operation, its columns.
             TableModel(
                 source_id=row["source_id"],
@@ -3820,15 +3819,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 write_grants=models,
             )
         except ValidationError as refused:
-            return _invalid("; ".join(e["msg"] for e in refused.errors()))
-        target = [t for t in registry if t["id"] == table_id]
-        for grant in models:
-            for stated in (grant.rows, grant.check):
-                if stated is None:
-                    continue
-                problem = validate_rls_predicate(stated, target, registry)
-                if problem is not None:
-                    return _invalid(f"{grant.operation} grant for {grant.role!r}: {problem}")
+            return write_grant_invalid("; ".join(e["msg"] for e in refused.errors()))
+        refusal = write_grant_predicates_refusal(table_id, models, registry)
+        if refusal is not None:
+            return refusal
         model_change.name("set", "write grants", f"on table {table_id}")
         async with pool.acquire() as conn:
             await write_grant_repo.replace_for_table(
@@ -4356,39 +4350,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Full-replace a table's role -> TTL list. Every role must exist, appear once, and carry a
         non-negative TTL; any violation rejects the whole list."""
         require_capability(info, "table_registration")
-        seen: set[str] = set()
-        for entry in role_ttl:
-            if entry.role in seen:
-                return MutationResult(
-                    success=False,
-                    message=f"Role {entry.role!r} appears more than once",
-                    code="schema.role_ttl_duplicate_role",
-                    params={"role": entry.role},
-                )
-            seen.add(entry.role)
-            if entry.ttl < 0:
-                return MutationResult(
-                    success=False,
-                    message=f"TTL for role {entry.role!r} must be >= 0, got {entry.ttl}",
-                    code="schema.role_ttl_negative",
-                    params={"role": entry.role, "ttl": entry.ttl},
-                )
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            known = {
-                r[0]
-                for r in (
-                    await conn.execute_core(select(roles.c.id).where(roles.c.id.in_(seen)))
-                ).fetchall()
-            }
-            for entry in role_ttl:
-                if entry.role not in known:
-                    return MutationResult(
-                        success=False,
-                        message=f"Role {entry.role!r} does not exist",
-                        code="schema.role_ttl_unknown_role",
-                        params={"role": entry.role},
-                    )
+            refusal = await role_ttl_refusal(conn, role_ttl)
+            if refusal is not None:
+                return refusal
             result = await conn.execute_core(
                 update(registered_tables)
                 .where(registered_tables.c.id == table_id)
@@ -4977,14 +4943,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:
         """Update naming convention for a registered table."""
         require_capability(info, "table_registration")
+        refusal = naming_refusal(gql_naming_convention)
+        if refusal is not None:
+            return refusal
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            result = await conn.execute_core(
-                update(registered_tables)
-                .where(registered_tables.c.id == table_id)
-                .values(gql_naming_convention=gql_naming_convention)
-            )
-            if (result.rowcount or 0) == 0:
+            if await save_naming(cast("Connection", conn), table_id, gql_naming_convention) == 0:
                 return MutationResult(
                     success=False,
                     message=f"Table {table_id} not found",

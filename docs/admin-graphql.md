@@ -396,11 +396,11 @@ Run `ANALYZE` on all registered tables for a source. Improves join-order and bro
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Register a new table (or view) into a domain. Requires `table_registration` capability and membership in the target domain. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
+Register a new table (or view) into a domain, with every setting the input carries, among them `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants` and `draft`, in one transaction: a refusal of any one registers nothing. Requires `table_registration` capability and membership in the target domain; carrying `writeGrants` also requires `masking_config` there. A caller lacking `create_relationship` who submits a view is queued as a creation request for a rights-holder to approve.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Update an existing table's alias, description, column metadata, MV settings, and live-delivery config. Requires `table_registration`.
+Update an existing table's alias, description, column metadata, MV settings, live-delivery config and the settings the input carries (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `draft`), in one transaction: a refusal of any one saves nothing. A setting left out keeps its stored value. Requires `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -739,6 +739,11 @@ The core table registration input. Key fields beyond the basics:
 | `queryTemplate` | Cypher for a Neo4j table |
 | `live` | Live delivery config for SSE/Kafka push |
 | `discover` | Infer columns from the live source at registration time |
+| `gqlNamingConvention` | Per-table GraphQL naming convention; `null` inherits. Left out, a new table inherits and an update keeps the stored one |
+| `roleTtl` | The whole role-to-TTL list, `[{ role, ttl }]` |
+| `replicate` | When the table is served from its replica; `null` inherits the source's value |
+| `writeGrants` | The table's whole set of write grants; requires `masking_config` |
+| `draft` | `false` releases the table; a registration otherwise starts as draft |
 
 ### `RelationshipInput`
 

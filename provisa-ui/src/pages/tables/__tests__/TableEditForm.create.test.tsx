@@ -145,8 +145,26 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
     );
   });
 
-  it("registers every setting of the form in one input", () => {
-    const set = { ...draft, enableAggregates: true, materialize: false, alias: "trade_log" };
+  it("registers every setting of the form in one input, its own-mutation settings with it", () => {
+    const set: RegisteredTable = {
+      ...draft,
+      enableAggregates: true,
+      alias: "trade_log",
+      gqlNamingConvention: "snake",
+      roleTtl: [{ role: "analyst", ttl: 60 }],
+      replicate: -1,
+      draft: false,
+      writeGrants: [
+        {
+          role: "analyst",
+          operation: "update",
+          columns: ["trade_date"],
+          rows: null,
+          check: null,
+          presets: [],
+        },
+      ],
+    };
     const input = registrationInput(set, REGISTRATION, 600);
     expect(input).toMatchObject({
       sourceId: "sales-pg",
@@ -155,11 +173,20 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
       enableAggregates: true,
       cacheTtl: 600,
       discover: false,
+      gqlNamingConvention: "snake",
+      roleTtl: [{ role: "analyst", ttl: 60 }],
+      replicate: -1,
+      draft: false,
+      writeGrants: [{ role: "analyst", operation: "update", columns: ["trade_date"] }],
     });
     expect((input.columns as { name: string }[]).map((c) => c.name)).toEqual([
       "trade_id",
       "trade_date",
       "updated_at",
     ]);
+  });
+
+  it("sends no write grants when the form set none: they are governance of their own", () => {
+    expect(registrationInput(draft, REGISTRATION, null)).not.toHaveProperty("writeGrants");
   });
 });

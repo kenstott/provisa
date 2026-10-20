@@ -396,11 +396,11 @@ Esegue `ANALYZE` su tutte le tabelle registrate per un'origine. Migliora le deci
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-Registra una nuova tabella (o vista) in un dominio. Richiede la capability `table_registration` e l'appartenenza al dominio di destinazione. Un chiamante privo di `create_relationship` che invia una vista viene accodato come richiesta di creazione per l'approvazione di un titolare di diritti.
+Registra una nuova tabella (o vista) in un dominio, con ogni impostazione che l'input porta, tra cui `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants` e `draft`, in una transazione: se una qualsiasi viene rifiutata, non si registra nulla. Richiede la capability `table_registration` e l'appartenenza al dominio di destinazione; portare `writeGrants` richiede anche `masking_config` lì. Un chiamante senza `create_relationship` che invia una vista viene messo in coda come richiesta di creazione da far approvare a chi ha i diritti.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-Aggiorna l'alias, la descrizione, i metadati delle colonne, le impostazioni MV e la config di live-delivery di una tabella esistente. Richiede `table_registration`.
+Aggiorna alias, descrizione, metadati delle colonne, impostazioni MV, configurazione di consegna live di una tabella esistente e le impostazioni che l'input porta (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `draft`), in una transazione: se una qualsiasi viene rifiutata, non si salva nulla. Un'impostazione omessa mantiene il valore salvato. Richiede `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -739,6 +739,11 @@ L'input principale di registrazione tabella. Campi chiave oltre alle basi:
 | `queryTemplate` | Cypher per una tabella Neo4j |
 | `live` | Config di live-delivery per push SSE/Kafka |
 | `discover` | Inferisce le colonne dall'origine live al momento della registrazione |
+| `gqlNamingConvention` | Convenzione di denominazione GraphQL della tabella; `null` eredita. Omessa, una nuova tabella eredita e un aggiornamento mantiene quella salvata |
+| `roleTtl` | L'intero elenco da ruolo a TTL, `[{ role, ttl }]` |
+| `replicate` | Quando la tabella è servita dalla sua replica; `null` eredita il valore della sorgente |
+| `writeGrants` | L'intero insieme dei permessi di scrittura della tabella; richiede `masking_config` |
+| `draft` | `false` rilascia la tabella; altrimenti una registrazione inizia come bozza |
 
 ### `RelationshipInput`
 

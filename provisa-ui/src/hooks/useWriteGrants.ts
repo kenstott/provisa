@@ -14,6 +14,26 @@ import { useMutation } from "@apollo/client/react";
 import type { MutationResult, WriteGrant } from "../types/admin";
 import { SetTableWriteGrants, TablesQuery } from "./admin.graphql";
 
+/** The grants as the admin API takes them (WriteGrantInput): what each operation can carry. */
+export function writeGrantInputs(grants: WriteGrant[]) {
+  return grants.map((g) => ({
+    role: g.role,
+    operation: g.operation,
+    columns: g.operation === "delete" ? [] : g.columns,
+    rows: g.operation === "insert" ? null : g.rows,
+    check: g.operation === "delete" ? null : g.check,
+    presets:
+      g.operation === "delete"
+        ? []
+        : g.presets.map((p) => ({
+            column: p.column,
+            source: p.source,
+            name: p.name,
+            value: p.value,
+          })),
+  }));
+}
+
 export function useSetTableWriteGrants() {
   const [run, { loading }] = useMutation<{ setTableWriteGrants: MutationResult }>(
     SetTableWriteGrants,
@@ -24,22 +44,7 @@ export function useSetTableWriteGrants() {
       const result = await run({
         variables: {
           tableId,
-          grants: grants.map((g) => ({
-            role: g.role,
-            operation: g.operation,
-            columns: g.operation === "delete" ? [] : g.columns,
-            rows: g.operation === "insert" ? null : g.rows,
-            check: g.operation === "delete" ? null : g.check,
-            presets:
-              g.operation === "delete"
-                ? []
-                : g.presets.map((p) => ({
-                    column: p.column,
-                    source: p.source,
-                    name: p.name,
-                    value: p.value,
-                  })),
-          })),
+          grants: writeGrantInputs(grants),
         },
       });
       return (result.data?.setTableWriteGrants ?? {

@@ -9,17 +9,12 @@
 // permission from the copyright holder.
 
 // REQ-2109 (settled): one Save registers a table or view with every setting its create form
-// holds. The registration input carries what TableInput takes; the settings it does not take are
-// saved on the new table straight after, with the mutations the editor saves them with.
+// holds, in one registerTable: the server applies all of them in one transaction, and a refusal
+// of any one registers nothing. A profiler result table's row rules are rules of their own, saved
+// once the table exists.
 
-import {
-  useRegisterTable,
-  useUpdateTableNaming,
-  useUpdateTableReplicate,
-} from "../../hooks/useAdminQueries";
-import { useUpdateTableRoleTtl } from "../../hooks/useAdminOpsQueries";
-import { useSetTableDraft } from "../../hooks/useRegionQueries";
-import { useSetTableWriteGrants } from "../../hooks/useWriteGrants";
+import { useRegisterTable } from "../../hooks/useAdminQueries";
+import { writeGrantInputs } from "../../hooks/useWriteGrants";
 import { useUpsertRlsRule } from "../../hooks/useSecurityQueries";
 import type { MutationResult, RegisteredTable } from "../../types/admin";
 import { buildTableUpdateInput } from "./helpers";
@@ -46,19 +41,15 @@ export function registrationInput(
     ...("region" in registration.input ? { region: draft.region } : {}),
     cacheTtl: cacheTtl ?? undefined,
     pagination: paging === null ? undefined : pagingInput(paging),
-    loadProtected: draft.loadProtected,
-    offPeakWindow: draft.offPeakWindow,
-    offPeakTz: draft.offPeakTz,
+    // REQ-2074: write grants are governance (masking_config); sent only when the form set some.
+    ...(draft.writeGrants && draft.writeGrants.length > 0
+      ? { writeGrants: writeGrantInputs(draft.writeGrants) }
+      : {}),
   };
 }
 
 export function useCreateTable() {
   const { registerTable } = useRegisterTable();
-  const { updateTableNaming } = useUpdateTableNaming();
-  const { updateTableReplicate } = useUpdateTableReplicate();
-  const { updateTableRoleTtl } = useUpdateTableRoleTtl();
-  const setTableDraft = useSetTableDraft();
-  const { setTableWriteGrants } = useSetTableWriteGrants();
   const { upsertRlsRule } = useUpsertRlsRule();
 
   return async (
@@ -69,36 +60,16 @@ export function useCreateTable() {
     const result = await registerTable(registrationInput(draft, registration, cacheTtl));
     if (!result.success) return { refused: result };
     const made = registeredTable(result);
-    // A request queued for approval registers nothing yet: there is no table to save more on.
+    // A request queued for approval registers nothing yet: there is no table to save rules on.
     if (made === null) return { registered: null };
-    const id = made.id;
-    const steps: (() => Promise<MutationResult>)[] = [
-      ...(draft.gqlNamingConvention
-        ? [() => updateTableNaming(id, draft.gqlNamingConvention)]
-        : []),
-      ...(draft.roleTtl.length > 0 ? [() => updateTableRoleTtl(id, draft.roleTtl)] : []),
-      ...(draft.replicate !== null ? [() => updateTableReplicate(id, draft.replicate)] : []),
-      ...(draft.writeGrants && draft.writeGrants.length > 0
-        ? [() => setTableWriteGrants(id, draft.writeGrants ?? [])]
-        : []),
-      ...registration.rowRules
-        .filter((rule) => rule.filter.trim())
-        .map(
-          (rule) => () =>
-            upsertRlsRule({
-              tableId: draft.tableName,
-              roleId: rule.roleId,
-              filterExpr: rule.filter.trim(),
-              description: rule.description.trim(),
-            }),
-        ),
-      // Registered through the admin, a table starts as draft (REQ-1921): released last, once
-      // everything else of it is saved.
-      ...(draft.draft ? [] : [() => setTableDraft(id, false)]),
-    ];
-    for (const step of steps) {
-      const done = await step();
-      if (!done.success) return { refused: done };
+    for (const rule of registration.rowRules.filter((r) => r.filter.trim())) {
+      const saved: MutationResult = await upsertRlsRule({
+        tableId: draft.tableName,
+        roleId: rule.roleId,
+        filterExpr: rule.filter.trim(),
+        description: rule.description.trim(),
+      });
+      if (!saved.success) return { refused: saved };
     }
     return { registered: made };
   };

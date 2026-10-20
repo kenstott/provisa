@@ -396,11 +396,11 @@ hash מסוג SHA-256 של מצב הסכמה הנוכחי (תחומים, מזה�
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-רישום טבלה (או view) חדשה לתוך תחום. דורש את היכולת `table_registration` וחברות בתחום היעד. קורא שאין לו `create_relationship` המגיש view מועמד בתור כבקשת יצירה שמחזיק זכות חייב לאשר.
+רושם טבלה (או view) חדשה בתוך domain, עם כל הגדרה שהקלט נושא, ובהן `gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants` ו-`draft`, בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נרשם. דורש את היכולת `table_registration` וחברות ב-domain היעד; נשיאת `writeGrants` דורשת שם גם `masking_config`. קורא בלי `create_relationship` שמגיש view נכנס לתור כבקשת יצירה שבעל ההרשאות יאשר.
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-עדכון כינוי, תיאור, מטא-דאטה של עמודות, הגדרות MV, והגדרות אספקה חיה של טבלה קיימת. דורש `table_registration`.
+מעדכן את הכינוי, התיאור, מטא-נתוני העמודות, הגדרות ה-MV ותצורת המסירה החיה של טבלה קיימת, ואת ההגדרות שהקלט נושא (`gqlNamingConvention`, `roleTtl`, `replicate`, `writeGrants`, `draft`), בטרנזקציה אחת: אם אחת מהן נדחית, שום דבר לא נשמר. הגדרה שהושמטה שומרת את הערך השמור שלה. דורש `table_registration`.
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -739,6 +739,11 @@ mutation {
 | `queryTemplate` | Cypher עבור טבלת Neo4j |
 | `live` | הגדרת אספקה חיה עבור דחיפת SSE/Kafka |
 | `discover` | הסק עמודות מהמקור החי בעת הרישום |
+| `gqlNamingConvention` | מוסכמת השמות של GraphQL לטבלה; `null` יורש. אם הושמטה, טבלה חדשה יורשת ועדכון שומר את השמורה |
+| `roleTtl` | כל רשימת התפקיד ל-TTL, `[{ role, ttl }]` |
+| `replicate` | מתי הטבלה מוגשת מהעותק שלה; `null` יורש את ערך המקור |
+| `writeGrants` | כל קבוצת הרשאות הכתיבה של הטבלה; דורש `masking_config` |
+| `draft` | `false` משחרר את הטבלה; אחרת רישום מתחיל כטיוטה |
 
 ### `RelationshipInput`
 

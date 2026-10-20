@@ -396,11 +396,11 @@ query {
 
 #### `registerTable(input: TableInput!) → MutationResult`
 
-將一張新資料表（或檢視）註冊到某個網域中。需要 `table_registration` 能力以及目標網域的成員身份。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
+將一張新資料表（或檢視）註冊到某個網域中，並在一個交易中套用輸入攜帶的每項設定，其中包括 `gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants` 和 `draft`：任何一項被拒絕，就不會註冊任何內容。需要 `table_registration` 能力以及目標網域的成員身份；攜帶 `writeGrants` 亦需要該網域的 `masking_config`。缺少 `create_relationship` 能力而提交檢視的呼叫者，會被加入待權限持有者批准的建立請求佇列。
 
 #### `updateTable(input: TableInput!) → MutationResult`
 
-更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定和即時投遞設定。需要 `table_registration`。
+更新一張現有資料表的別名、描述、欄位中繼資料、具體化檢視設定、即時投遞設定，以及輸入攜帶的設定（`gqlNamingConvention`、`roleTtl`、`replicate`、`writeGrants`、`draft`），在一個交易中完成：任何一項被拒絕，就不會儲存任何內容。省略的設定保留其已儲存的值。需要 `table_registration`。
 
 #### `deleteTable(id: Int!) → MutationResult`
 
@@ -739,6 +739,11 @@ mutation {
 | `queryTemplate` | Neo4j 資料表的 Cypher |
 | `live` | SSE/Kafka 推送的即時投遞設定 |
 | `discover` | 在註冊時從即時數據來源推斷欄位 |
+| `gqlNamingConvention` | 資料表的 GraphQL 命名慣例；`null` 表示繼承。省略時，新資料表繼承，更新則保留已儲存的值 |
+| `roleTtl` | 完整的角色對 TTL 清單，`[{ role, ttl }]` |
+| `replicate` | 資料表幾時由其副本提供；`null` 繼承數據來源的值 |
+| `writeGrants` | 資料表完整的寫入授權集合；需要 `masking_config` |
+| `draft` | `false` 發佈該資料表；否則註冊後為草稿 |
 
 ### `RelationshipInput`
 

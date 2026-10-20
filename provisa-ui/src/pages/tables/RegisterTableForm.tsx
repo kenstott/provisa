@@ -14,15 +14,11 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { UntypedColumns } from "./UntypedColumns";
 import { ProfilerRowRulesField } from "./ProfilerRowRulesField";
 import { QueryTableFields } from "./QueryTableFields";
-import {
-  argumentName,
-  isPipelineArgument,
-  NATIVE_QUERY_MODES,
-  previewedColumn,
-} from "./queryTables";
+import { isPipelineArgument, NATIVE_QUERY_MODES, previewedColumn } from "./queryTables";
 import { QDRANT, QDRANT_SCHEMA, offeredUnselected, searchQueryArgument } from "../sources/qdrant";
 import { QdrantVectorsNote } from "./QdrantVectorsNote";
 import { RegisterColumnsField } from "./RegisterColumnsField";
+import { DQ_PLACEHOLDER_COLUMN, registeredColumns } from "./registrationColumns";
 import { QdrantVectorColumns } from "./QdrantVectorColumns";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { isFilesSourceType } from "./tableSectionFields";
@@ -70,7 +66,8 @@ import {
 import { useSourceKind } from "../sources/sourceKind";
 import { ttlSignalMissingCacheTtl } from "../sources/loadManagement";
 import { usePanelDirty } from "../../components/list/panelLeave";
-import { TableOptions } from "./TableOptions";
+import { ProfilerResultSelect } from "./ProfilerResultSelect";
+import { SchemaTableSelects } from "./SchemaTableSelects";
 import { DeclaredColumns } from "./DeclaredColumns";
 import { ImportSetField } from "./ImportSetField";
 
@@ -82,9 +79,6 @@ const DQ_RESULTS_SCHEMA = "default";
 const PROFILER_RESULTS_SCHEMA = "default";
 // REQ-1670/REQ-1683: a query-API source lists one schema, named after its type.
 const QUERY_API_TYPES = ["neo4j", "sparql"] as const;
-// REQ-1443: the results envelope replaces whatever columns are declared; the one declared column
-// exists to carry visible_to, exactly as the YAML demo registers it.
-const DQ_PLACEHOLDER_COLUMN = { name: "scan_id", dataType: "varchar" };
 
 interface RegisterTableFormProps {
   sources: Source[];
@@ -504,28 +498,7 @@ export function RegisterTableForm({
     // REQ-1983: a Qdrant search's query is the one argument Qdrant requires.
     const searchQuery =
       isPipeline && sourceType === QDRANT ? searchQueryArgument(cypher.trim()) : null;
-    const selectedCols = columns
-      .filter((c) => c.selected)
-      .map((c) => ({
-        name: c.name,
-        dataType: c.dataType,
-        visibleTo: c.visibleTo,
-        masks: c.masks,
-        alias: c.alias || undefined,
-        description: c.description || undefined,
-        nativeFilterType: c.nativeFilterType || undefined,
-        nativeFilterRequired:
-          searchQuery !== null && isPipelineArgument(c) && argumentName(c) === searchQuery
-            ? true
-            : (c.nativeFilterRequired ?? undefined),
-        requiredBySteward: c.requiredBySteward || undefined, // REQ-1986
-        isPrimaryKey: c.isPrimaryKey || undefined,
-        scope: c.scope || "domain",
-        path: c.path?.trim() || undefined, // REQ-1739: ingest per-column JSON extraction path
-        // REQ-2000: a vector column's registered model.
-        embedding: c.embeddingModel ? true : undefined,
-        embeddingModel: c.embeddingModel || undefined,
-      }));
+    const selectedCols = registeredColumns(columns, searchQuery);
     if (!sourceId || !schemaName || !tableName) {
       setError(t("registerTableForm.errorRequiredFields"));
       return;
@@ -758,90 +731,25 @@ export function RegisterTableForm({
           </FormField>
         )}
         {isProfiler && (
-          <FormField size="medium">
-            <label>
-              {t("registerTableForm.profilerResultLabel")}
-              <select
-                className="form-select"
-                value={tableName}
-                onChange={(e) => setTableName(e.target.value)}
-                disabled={profilerCatalog == null}
-                data-testid="register-table-profiler-select"
-              >
-                <option value="">
-                  {profilerCatalog == null
-                    ? t("registerTableForm.schemaLoading")
-                    : profilerCatalog.length === 0
-                      ? t("registerTableForm.profilerNoMembers")
-                      : t("registerTableForm.profilerResultPlaceholder")}
-                </option>
-                {(profilerCatalog ?? []).flatMap((entry) =>
-                  entry.tables.map((tb) => (
-                    <option key={tb.tableName} value={tb.tableName}>
-                      {t("registerTableForm.profilerResultOption", {
-                        member: entry.member,
-                        kind: tb.kind,
-                      })}
-                    </option>
-                  )),
-                )}
-              </select>
-            </label>
-          </FormField>
+          <ProfilerResultSelect
+            catalog={profilerCatalog}
+            value={tableName}
+            onChange={setTableName}
+          />
         )}
         {!isChecker && !isQueryApi && !isProfiler && (
           <>
-            <FormField size="medium">
-              <label>
-                {t("registerTableForm.schemaLabel")}
-                <select
-                  className="form-select"
-                  value={schemaName}
-                  onChange={(e) => setSchemaName(e.target.value)}
-                  disabled={!sourceId || loadingSchemas || isFixedSchema}
-                  data-testid="register-table-schema-select"
-                >
-                  <option value="">
-                    {loadingSchemas
-                      ? t("registerTableForm.schemaLoading")
-                      : t("registerTableForm.schemaPlaceholder")}
-                  </option>
-                  {availableSchemas.map((s) => (
-                    <option key={s} value={s}>
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </FormField>
-            <FormField size="medium">
-              <label>
-                {t("registerTableForm.tableLabel")}
-                <select
-                  className="form-select"
-                  value={tableName}
-                  onChange={(e) => setTableName(e.target.value)}
-                  disabled={!schemaName || loadingTables || allTablesRegistered}
-                  data-testid="register-table-table-select"
-                >
-                  <option value="">
-                    {startingTables
-                      ? t("registerTableForm.tableStarting")
-                      : loadingTables
-                        ? t("registerTableForm.tableLoading")
-                        : allTablesRegistered
-                          ? t("registerTableForm.tableAllRegistered")
-                          : t("registerTableForm.tablePlaceholder")}
-                  </option>
-                  <TableOptions tables={availableTables} isRegistered={isRegistered} />
-                </select>
-                {startingTablesTimedOut && (
-                  <Text size="xs" c="red" mt={4} data-testid="register-table-starting-timeout">
-                    {t("registerTableForm.tableStartingTimedOut")}
-                  </Text>
-                )}
-              </label>
-            </FormField>
+            <SchemaTableSelects
+              {...{ sourceId, schemaName, setSchemaName, tableName, setTableName, isRegistered }}
+              schemas={availableSchemas}
+              loadingSchemas={loadingSchemas}
+              fixedSchema={isFixedSchema}
+              tables={availableTables}
+              loadingTables={loadingTables}
+              allRegistered={allTablesRegistered}
+              starting={startingTables}
+              startingTimedOut={startingTablesTimedOut}
+            />
             {sourceType === "servicenow" && tableName && (
               <ImportSetField
                 {...{ sourceId, schemaName, tableName, value: importSet, onChange: setImportSet }}

@@ -64,6 +64,16 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     productId: t.dqContract ? null : t.productId,
     enableAggregates: t.enableAggregates,
     enableGroupBy: t.enableGroupBy,
+    // REQ-1141: the table's load protection, saved with it (left out, the update cleared it).
+    loadProtected: t.loadProtected,
+    offPeakWindow: t.offPeakWindow,
+    offPeakTz: t.offPeakTz,
+    // REQ-2109 (settled): settings with mutations of their own travel with the table, so one save
+    // applies them all in one transaction. Write grants are saved on their own section's Save.
+    gqlNamingConvention: t.gqlNamingConvention || null,
+    roleTtl: t.roleTtl.map(({ role, ttl }) => ({ role, ttl })),
+    replicate: t.replicate,
+    draft: t.draft,
     live: t.live
       ? {
           queryId: t.live.queryId ?? undefined,

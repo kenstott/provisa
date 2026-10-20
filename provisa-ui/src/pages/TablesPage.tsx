@@ -48,9 +48,7 @@ import {
   useUpdateTable,
   useDeleteTable,
   useUpdateTableCache,
-  useUpdateTableReplicate,
   useUpdateTableLoadProtection,
-  useUpdateTableNaming,
   useDeployViewToDb,
   useSuggestTableAlias,
   useForceRegen,
@@ -61,7 +59,6 @@ import {
   usePurgeCacheByTable,
   useReplicaBuilds,
   useUpdateTablePaging,
-  useUpdateTableRoleTtl,
 } from "../hooks/useAdminOpsQueries";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
@@ -142,13 +139,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
   const { updateTableCache } = useUpdateTableCache();
-  const { updateTableRoleTtl } = useUpdateTableRoleTtl();
   const { updateTablePaging } = useUpdateTablePaging();
-  const { updateTableReplicate } = useUpdateTableReplicate();
   const setTableRegion = useSetTableRegion();
   const setTableDraft = useSetTableDraft();
   const { updateTableLoadProtection } = useUpdateTableLoadProtection();
-  const { updateTableNaming } = useUpdateTableNaming();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
@@ -727,11 +721,20 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
       setError(problem);
       return;
     }
-    const source = sources.find((s) => s.id === editingTable.sourceId);
-    const effectiveLoadProtected = editingTable.loadProtected ?? source?.loadProtected ?? false;
+    // REQ-1921: a draft table is claimed by its destination alone, so a move between regions is
+    // draft, re-region, release: a release that comes with a move is saved after the move.
+    const saved = tables.find((tbl) => tbl.id === editingTable.id);
+    const savedRegion = saved?.region ?? null;
+    const regionChanged = savedRegion !== editingTable.region;
+    const releaseAfterMove = regionChanged && (saved?.draft ?? false) && !editingTable.draft;
     setSaving(true);
     try {
-      const result = await updateTable(buildTableUpdateInput(editingTable));
+      // REQ-2109 (settled): the table and its settings -- its naming convention, role TTLs,
+      // replicate, load protection and draft -- in one save, applied in one transaction.
+      const result = await updateTable({
+        ...buildTableUpdateInput(editingTable),
+        ...(releaseAfterMove ? { draft: true } : {}),
+      });
       if (!result.success) {
         setError(serverMessage(result, result.message));
         return;
@@ -743,37 +746,10 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
         setEditingTable(null);
         return;
       }
-      // Each of the table's own settings below is saved on its own, and only when it changed: every
-      // one of them rebuilds the model and refetches what is shown, so a save that sent them all
-      // took four rebuilds for a one-field edit -- past 15s on a loaded CI runner.
-      const saved = tables.find((tbl) => tbl.id === editingTable.id);
-      // Apply naming convention directly — skip handleNamingChange to avoid its intermediate
-      // reload() call which fires refetchTables() and races with updateTable's refetchQueries.
-      const _namingVal = editingTable.gqlNamingConvention ?? "";
-      if ((saved?.gqlNamingConvention ?? "") !== _namingVal) {
-        const namingResult = await updateTableNaming(
-          editingTable.id,
-          _namingVal === "" ? null : _namingVal,
-        );
-        if (!namingResult.success) {
-          setError(serverMessage(namingResult, namingResult.message));
-          return;
-        }
-      }
+      // What the update does not take is saved on its own, and only when it changed: every one
+      // rebuilds the model and refetches what is shown.
       const ttlEdit = cacheTtlEdits[editingTable.id];
       if (ttlEdit?.dirty) await handleSaveTableCache(editingTable.id);
-      // REQ-1907: persist the role → TTL list (full replace) only when it changed.
-      const savedRoleTtl = saved?.roleTtl;
-      const roleTtlChanged =
-        JSON.stringify(savedRoleTtl?.map(({ role, ttl }) => ({ role, ttl }))) !==
-        JSON.stringify(editingTable.roleTtl.map(({ role, ttl }) => ({ role, ttl })));
-      if (roleTtlChanged) {
-        const roleTtlResult = await updateTableRoleTtl(editingTable.id, editingTable.roleTtl);
-        if (!roleTtlResult.success) {
-          setError(serverMessage(roleTtlResult, roleTtlResult.message));
-          return;
-        }
-      }
       // REQ-318: persist the table's paging only when it changed; nothing declared clears it.
       const savedPaging = saved?.pagination ?? null;
       if (pagingChanged(savedPaging, editingTable.pagination)) {
@@ -786,58 +762,36 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
           return;
         }
       }
-      // REQ-1921: the region is saved on its own, and only when it changed.
-      // REQ-1921: draft and region are saved on their own, each only when it changed. Going to
-      // draft is saved before a region change and a release after it: a draft table is claimed
-      // by its destination alone, so a move between regions is draft, re-region, release.
-      const savedRegion = saved?.region ?? null;
-      const savedDraft = saved?.draft ?? false;
-      const saveDraft = async () => {
-        if (savedDraft === editingTable.draft) return true;
-        const draftResult = await setTableDraft(editingTable.id, editingTable.draft);
-        if (!draftResult.success) setError(serverMessage(draftResult, draftResult.message));
-        return draftResult.success;
-      };
-      if (editingTable.draft && !(await saveDraft())) return;
-      if (savedRegion !== editingTable.region) {
+      // REQ-1921: the region changes through its own mutation, which judges residency.
+      if (regionChanged) {
         const regionResult = await setTableRegion(editingTable.id, editingTable.region);
         if (!regionResult.success) {
           setError(serverMessage(regionResult, regionResult.message));
           return;
         }
       }
-      if (!editingTable.draft && !(await saveDraft())) return;
-      // REQ-826 / REQ-1141: persist Replicate and load protection + off-peak window (the ≥1-gate
-      // rule is validated server-side). The server refuses load protection with Replicate = Never,
-      // judged against what is stored at each save, so the one that is being turned off goes
-      // first: load protection off before a Never, a non-Never Replicate before load protection.
-      const saveReplicate = () => updateTableReplicate(editingTable.id, editingTable.replicate);
-      const saveLoadProtection = () =>
-        updateTableLoadProtection(
+      if (releaseAfterMove) {
+        const draftResult = await setTableDraft(editingTable.id, false);
+        if (!draftResult.success) {
+          setError(serverMessage(draftResult, draftResult.message));
+          return;
+        }
+      }
+      // REQ-1141: the update stored load protection with the table; its own mutation also judges
+      // that a load-protected table arms at least one refresh gate.
+      const loadProtectionChanged =
+        (saved?.loadProtected ?? null) !== editingTable.loadProtected ||
+        (saved?.offPeakWindow ?? null) !== editingTable.offPeakWindow ||
+        (saved?.offPeakTz ?? null) !== editingTable.offPeakTz;
+      if (loadProtectionChanged) {
+        const lpResult = await updateTableLoadProtection(
           editingTable.id,
           editingTable.loadProtected,
           editingTable.offPeakWindow,
           editingTable.offPeakTz,
         );
-      const replicateChanged = (saved?.replicate ?? null) !== editingTable.replicate;
-      const loadProtectionChanged =
-        (saved?.loadProtected ?? null) !== editingTable.loadProtected ||
-        (saved?.offPeakWindow ?? null) !== editingTable.offPeakWindow ||
-        (saved?.offPeakTz ?? null) !== editingTable.offPeakTz;
-      const saves: [boolean, typeof saveReplicate][] = effectiveLoadProtected
-        ? [
-            [replicateChanged, saveReplicate],
-            [loadProtectionChanged, saveLoadProtection],
-          ]
-        : [
-            [loadProtectionChanged, saveLoadProtection],
-            [replicateChanged, saveReplicate],
-          ];
-      for (const [changed, save] of saves) {
-        if (!changed) continue;
-        const result = await save();
-        if (!result.success) {
-          setError(serverMessage(result, result.message));
+        if (!lpResult.success) {
+          setError(serverMessage(lpResult, lpResult.message));
           return;
         }
       }
