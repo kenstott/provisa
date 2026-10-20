@@ -2212,6 +2212,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         columns = await resolve_available_columns_metadata(input.id, "main", input.id)
         if not columns:
             return _without("its file has no columns")
+        import re
+
+        def _snake(name: str) -> str:
+            # As the Register Table form names a column's alias (naming.ts toSnakeCase).
+            name = re.sub(r"([A-Z]+)([A-Z][a-z])", r"\1_\2", name)
+            return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", name).lower()
+
+        # What the Register Table form gives a new table by default: every role sees each column,
+        # in domain scope (REQ-1959), unmasked, aliased snake_case where its name is not.
         roles = sorted(state.roles or {})
         table = TableInput(
             source_id=input.id,
@@ -2220,7 +2229,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             table_name=input.id,
             columns=[
                 ColumnInput(
-                    name=c.name, visible_to=roles, data_type=c.data_type, description=c.comment
+                    name=c.name,
+                    visible_to=roles,
+                    alias=_snake(c.name) if _snake(c.name) != c.name else None,
+                    data_type=c.data_type,
+                    description=c.comment,
                 )
                 for c in columns
             ],

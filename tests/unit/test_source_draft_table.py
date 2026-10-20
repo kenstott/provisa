@@ -35,6 +35,7 @@ def registered(monkeypatch):
         return [
             AvailableColumnType(name="item", data_type="varchar", comment=None),
             AvailableColumnType(name="on_hand", data_type="integer", comment="How many"),
+            AvailableColumnType(name="lastCounted", data_type="date", comment=None),
         ]
 
     async def _register(self, info, table):
@@ -59,9 +60,14 @@ async def test_the_draft_table_is_named_and_typed_from_the_file(registered):
         "main",
         "supplies",
     )
-    assert [(c.name, c.data_type, c.visible_to) for c in table.columns] == [
-        ("item", "varchar", ["admin", "analyst"]),
-        ("on_hand", "integer", ["admin", "analyst"]),
+    # As the Register Table form gives a new table: every role, domain scope, no mask, and a
+    # snake_case alias only where the name is not one.
+    assert [
+        (c.name, c.alias, c.data_type, c.visible_to, c.scope, c.masks) for c in table.columns
+    ] == [
+        ("item", None, "varchar", ["admin", "analyst"], "domain", []),
+        ("on_hand", None, "integer", ["admin", "analyst"], "domain", []),
+        ("lastCounted", "last_counted", "date", ["admin", "analyst"], "domain", []),
     ]
 
 
