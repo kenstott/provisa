@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "Ajouter",
     "calWeekendLabel": "Jours de week-end",
     "calWeekendHelp": "Jours de semaine traités comme non ouvrés pour la récurrence en jours ouvrés (par défaut samedi + dimanche).",
+    "calDayCloseLabel": "La journée se clôt à",
+    "calDayCloseHelp": "L'heure locale à laquelle une journée se termine, par exemple une clôture à 18:00. Une journée va alors de la clôture de la veille à la sienne, et une vue quotidienne est actualisée à la clôture. Laissez vide pour minuit.",
     "calNameLabel": "Nom",
     "calVersionLabel": "Version",
     "calBaseSystemLabel": "Système de base",

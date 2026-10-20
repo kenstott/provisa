@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "Add",
     "calWeekendLabel": "Weekend days",
     "calWeekendHelp": "Weekdays treated as non-business days for business-day-grain gating (default Saturday + Sunday).",
+    "calDayCloseLabel": "Day closes at",
+    "calDayCloseHelp": "The local time a day ends, such as an 18:00 close of business. A day then runs from the previous day's close to its own, and a daily view refreshes at the close. Leave empty for midnight.",
     "calNameLabel": "Name",
     "calVersionLabel": "Version",
     "calBaseSystemLabel": "Base system",

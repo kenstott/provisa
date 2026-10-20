@@ -44,6 +44,7 @@ class CalendarType:  # REQ-962: a named, versioned snapshot-boundary calendar
     week_start: int = 0  # 0 = Monday
     holidays: list[str] = strawberry.field(default_factory=list)  # ISO dates, immutable per version
     weekend: list[int] = strawberry.field(default_factory=lambda: [5, 6])  # weekday ints (Sat, Sun)
+    day_close: str | None = None  # REQ-2111: local close of the day, "HH:MM"; None = midnight
 
 
 @strawberry.input
@@ -58,6 +59,7 @@ class CalendarInput:  # REQ-962
     week_start: int = 0
     holidays: list[str] = strawberry.field(default_factory=list)
     weekend: list[int] = strawberry.field(default_factory=lambda: [5, 6])
+    day_close: str | None = None  # REQ-2111
 
 
 @strawberry.type

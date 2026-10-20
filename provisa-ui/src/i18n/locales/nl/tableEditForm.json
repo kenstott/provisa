@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "Toevoegen",
     "calWeekendLabel": "Weekenddagen",
     "calWeekendHelp": "Weekdagen die als niet-werkdagen worden behandeld voor werkdaggranulariteitspoorten (standaard zaterdag + zondag).",
+    "calDayCloseLabel": "Dag sluit om",
+    "calDayCloseHelp": "De lokale tijd waarop een dag eindigt, zoals een sluiting om 18:00. Een dag loopt dan van de sluiting van de vorige dag tot de eigen sluiting, en een dagelijkse view wordt bij de sluiting ververst. Laat leeg voor middernacht.",
     "calNameLabel": "Naam",
     "calVersionLabel": "Versie",
     "calBaseSystemLabel": "Basissysteem",

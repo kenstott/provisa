@@ -7202,5 +7202,7 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/tableEditForm.json::tableEditForm.calDayCloseLabel": "Day closes at",
+  "zh-HK/tableEditForm.json::tableEditForm.calDayCloseHelp": "The local time a day ends, such as an 18:00 close of business. A day then runs from the previous day's close to its own, and a daily view refreshes at the close. Leave empty for midnight."
 }

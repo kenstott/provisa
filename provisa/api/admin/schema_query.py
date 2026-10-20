@@ -466,6 +466,7 @@ class Query:  # REQ-021, REQ-042
                 week_start=r["week_start"],
                 holidays=list(r["holidays"] or []),
                 weekend=list(r["weekend"] or [5, 6]),
+                day_close=r["day_close"],
             )
             for r in rows
         ]

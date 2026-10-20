@@ -31,7 +31,7 @@ default.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from enum import Enum
 from zoneinfo import ZoneInfo
 
@@ -103,6 +103,9 @@ class Calendar:
     week_start: int = 0  # 0 = Monday (date.weekday convention)
     holidays: frozenset[date] = field(default_factory=frozenset)
     weekend: frozenset[int] = frozenset({5, 6})  # Sat, Sun (date.weekday convention)
+    # REQ-2111: the local wall-clock time a day closes at (a bank's 18:00 close of business).
+    # None = local midnight. A day ends at its close, so day D runs from D-1's close to D's.
+    day_close: time | None = None
 
     @property
     def zone(self) -> ZoneInfo:
@@ -125,18 +128,27 @@ def _utc(local_naive: datetime, cal: Calendar) -> datetime:
     return local_naive.replace(tzinfo=cal.zone).astimezone(timezone.utc)
 
 
+def _day_start(cal: Calendar, d: date) -> datetime:
+    """The UTC instant local day ``d`` starts: its civil midnight, or the previous day's close
+    when the calendar declares one (REQ-2111)."""
+    if cal.day_close is None:
+        return _utc(datetime(d.year, d.month, d.day), cal)
+    return _utc(datetime.combine(d - timedelta(days=1), cal.day_close), cal)
+
+
 def _window(cal: Calendar, start_d: date, end_d: date, window_id: str) -> Window:
-    return Window(
-        start=_utc(datetime(start_d.year, start_d.month, start_d.day), cal),
-        end=_utc(datetime(end_d.year, end_d.month, end_d.day), cal),
-        window_id=window_id,
-    )
+    return Window(start=_day_start(cal, start_d), end=_day_start(cal, end_d), window_id=window_id)
 
 
 def _local_date(cal: Calendar, instant: datetime) -> date:
+    """The local day ``instant`` falls in; at or after the calendar's close it is the next day's
+    (REQ-2111)."""
     if instant.tzinfo is None:
         instant = instant.replace(tzinfo=timezone.utc)
-    return instant.astimezone(cal.zone).date()
+    local = instant.astimezone(cal.zone)
+    if cal.day_close is not None and local.time() >= cal.day_close:
+        return local.date() + timedelta(days=1)
+    return local.date()
 
 
 # -- fiscal year ---------------------------------------------------------------

@@ -839,6 +839,7 @@ CREATE TABLE IF NOT EXISTS calendars (
     week_start          INTEGER NOT NULL DEFAULT 0,
     holidays            JSONB NOT NULL DEFAULT '[]',
     weekend             JSONB NOT NULL DEFAULT '[5, 6]',
+    day_close           TEXT,
     created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     PRIMARY KEY (name, version)
 );

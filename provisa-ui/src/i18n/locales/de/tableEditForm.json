@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "Hinzufügen",
     "calWeekendLabel": "Wochenendtage",
     "calWeekendHelp": "Wochentage, die für das Gating mit Geschäftstagsgranularität als geschäftsfrei gelten (Standard Samstag + Sonntag).",
+    "calDayCloseLabel": "Tagesschluss um",
+    "calDayCloseHelp": "Die lokale Uhrzeit, zu der ein Tag endet, etwa ein Geschäftsschluss um 18:00. Ein Tag reicht dann vom Schluss des Vortags bis zu seinem eigenen, und eine tägliche Ansicht wird zum Schluss aktualisiert. Leer lassen für Mitternacht.",
     "calNameLabel": "Name",
     "calVersionLabel": "Version",
     "calBaseSystemLabel": "Basissystem",

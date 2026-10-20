@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "Adicionar",
     "calWeekendLabel": "Dias de fim de semana",
     "calWeekendHelp": "Dias da semana tratados como não úteis para o gating por granularidade de dias úteis (padrão sábado + domingo).",
+    "calDayCloseLabel": "O dia fecha às",
+    "calDayCloseHelp": "A hora local em que um dia termina, como um fechamento às 18:00. Um dia vai então do fechamento do dia anterior ao seu próprio, e uma view diária é atualizada no fechamento. Deixe em branco para meia-noite.",
     "calNameLabel": "Nome",
     "calVersionLabel": "Versão",
     "calBaseSystemLabel": "Sistema base",

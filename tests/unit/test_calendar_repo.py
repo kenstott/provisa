@@ -65,6 +65,20 @@ async def test_upsert_list_and_versioning(control_plane):
     assert latest is not None and latest["version"] in {"v1", "v2"}
 
 
+async def test_a_calendar_keeps_the_time_its_day_closes_at(control_plane):
+    """REQ-2111: the close of the day is kept with its version; none means midnight."""
+    async with _db(control_plane) as db:
+        async with db.acquire() as conn:
+            await calendar_repo.upsert(
+                conn,
+                {"name": "ldn", "version": "v1", "tz": "Europe/London", "day_close": "18:00"},
+            )
+            await calendar_repo.upsert(conn, {"name": "mid", "version": "v1"})
+            rows = {r["name"]: r for r in await calendar_repo.list_all(conn)}
+    assert rows["ldn"]["day_close"] == "18:00"
+    assert rows["mid"]["day_close"] is None
+
+
 async def test_usage_count_and_delete_when_unused(control_plane):
     async with _db(control_plane) as db:
         async with db.acquire() as conn:

@@ -802,6 +802,8 @@ calendars = Table(
     Column(
         "weekend", JSON(none_as_null=True), default=list, server_default="[5, 6]"
     ),  # weekday ints (Sat, Sun)
+    # REQ-2111: the local time a day closes at ("18:00"); NULL = local midnight.
+    Column("day_close", Text),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint(
         "base_system IN ('gregorian', 'fiscal', 'retail_445')",

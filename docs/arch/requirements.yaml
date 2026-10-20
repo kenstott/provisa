@@ -85270,6 +85270,34 @@ When the benchmark runs locally
 Then the report gives per-request server CPU for the governed run beside the run with every knob at zero"
   stakeholders:
   - ops
+- id: REQ-2111
+  status: complete
+  since: 2026-10
+  group: 9. Live Data & Events
+  category: Derived / MV Processor
+  feature: change-events-and-streams-calendars
+  priority: MUST
+  type: behavioral
+  description: "A calendar can declare the local time its day closes at, in its time zone (an 18:00 close of business in Europe/London); a day then runs from the previous day's close to its own, every grain's boundary moves with it, and a daily view refreshes at the close. With no close declared a day ends at local midnight."
+  use_case: "A bank's end-of-day aggregate is recorded at its 18:00 close, and a transaction booked after the close belongs to the next business day."
+  scenario: "Given a calendar in Europe/London whose day closes at 18:00
+
+When a daily window is taken at 17:59 London time on 6 October
+
+Then it is business day 6 October, running from 5 October 18:00 to 6 October 18:00
+
+And at 18:00 the window is 7 October's"
+  code:
+  - provisa/events/calendars.py
+  - provisa/core/repositories/calendar.py
+  - provisa/api/admin/schema_mutation.py
+  - provisa-ui/src/pages/tables/CalendarCreateModal.tsx
+  tests:
+  - tests/unit/test_live_temporal.py
+  - tests/unit/test_calendar_repo.py
+  - provisa-ui/src/pages/tables/__tests__/CalendarCreateModal.test.tsx
+  stakeholders:
+  - data-engineer
 - id: REQ-2110
   status: complete
   since: 2026-10

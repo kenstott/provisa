@@ -25532,6 +25532,20 @@ The benchmark contract has governance knobs: row rules per table, the share of c
 
 **Tests:** —
 
+## 9. Live Data & Events
+
+### REQ-2111 · Derived / MV Processor {#REQ-2111}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A calendar can declare the local time its day closes at, in its time zone (an 18:00 close of business in Europe/London); a day then runs from the previous day's close to its own, every grain's boundary moves with it, and a daily view refreshes at the close. With no close declared a day ends at local midnight.
+
+**Use case:** A bank's end-of-day aggregate is recorded at its 18:00 close, and a transaction booked after the close belongs to the next business day.
+
+**Code:** `provisa/events/calendars.py`, `provisa/core/repositories/calendar.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/pages/tables/CalendarCreateModal.tsx`
+
+**Tests:** `tests/unit/test_live_temporal.py`, `tests/unit/test_calendar_repo.py`, `provisa-ui/src/pages/tables/__tests__/CalendarCreateModal.test.tsx`
+
 ## 4. Source Connectors
 
 ### REQ-2110 · Materialization Store {#REQ-2110}

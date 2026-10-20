@@ -46,7 +46,7 @@ async def _load_calendar_registry(db: Any) -> Any:
     a versioned :class:`Calendar` (the immutable holiday/business-day set). An empty table yields an
     empty registry; an MV that then declares an unknown calendar fails loud at wiring (never a silent
     default calendar)."""
-    from datetime import date
+    from datetime import date, time
 
     from sqlalchemy import select
 
@@ -70,6 +70,7 @@ async def _load_calendar_registry(db: Any) -> Any:
                 week_start=m["week_start"],
                 holidays=frozenset(date.fromisoformat(d) for d in (m["holidays"] or [])),
                 weekend=frozenset(m["weekend"] or [5, 6]),
+                day_close=time.fromisoformat(m["day_close"]) if m["day_close"] else None,
             )
         )
     return registry

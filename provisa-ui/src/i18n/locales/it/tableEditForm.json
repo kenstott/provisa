@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "Aggiungi",
     "calWeekendLabel": "Giorni del fine settimana",
     "calWeekendHelp": "Giorni della settimana considerati non lavorativi per il controllo a granularità di giorno lavorativo (predefinito sabato + domenica).",
+    "calDayCloseLabel": "La giornata chiude alle",
+    "calDayCloseHelp": "L'ora locale in cui termina una giornata, ad esempio una chiusura alle 18:00. Una giornata va quindi dalla chiusura del giorno precedente alla propria, e una vista giornaliera si aggiorna alla chiusura. Lasciare vuoto per la mezzanotte.",
     "calNameLabel": "Nome",
     "calVersionLabel": "Versione",
     "calBaseSystemLabel": "Sistema di base",

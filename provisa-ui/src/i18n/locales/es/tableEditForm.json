@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "Añadir",
     "calWeekendLabel": "Días de fin de semana",
     "calWeekendHelp": "Días de la semana tratados como no hábiles para la condición de recurrencia por día hábil (predeterminado sábado + domingo).",
+    "calDayCloseLabel": "El día cierra a las",
+    "calDayCloseHelp": "La hora local en que termina un día, como un cierre de jornada a las 18:00. Un día va entonces del cierre del día anterior al suyo, y una vista diaria se actualiza al cierre. Déjelo vacío para medianoche.",
     "calNameLabel": "Nombre",
     "calVersionLabel": "Versión",
     "calBaseSystemLabel": "Sistema base",

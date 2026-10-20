@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "加入",
     "calWeekendLabel": "週末日",
     "calWeekendHelp": "在營業日粒度閘控中視為非營業日的星期日子（預設為星期六 + 星期日）。",
+    "calDayCloseLabel": "每日截止時間",
+    "calDayCloseHelp": "一天結束的本地時間，例如 18:00 的營業截止。這樣一天由前一天的截止時間持續至當天的截止時間，每日視圖在截止時更新。留空表示午夜。",
     "calNameLabel": "名稱",
     "calVersionLabel": "版本",
     "calBaseSystemLabel": "基準系統",

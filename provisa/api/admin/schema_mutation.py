@@ -1806,7 +1806,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         the in-memory Calendar (fails loud on a bad base_system/tz/anchor) before it is persisted; a
         rebuild reloads the registry so a periodic MV can resolve it."""
         require_capability(info, "table_registration")
-        from datetime import date
+        from datetime import date, time
 
         from provisa.core.repositories import calendar as calendar_repo
         from provisa.events.calendars import BaseSystem, Calendar
@@ -1824,6 +1824,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 week_start=input.week_start,
                 holidays=frozenset(date.fromisoformat(d) for d in input.holidays),
                 weekend=frozenset(input.weekend),
+                day_close=time.fromisoformat(input.day_close) if input.day_close else None,
             )
         except (ValueError, KeyError) as e:
             return MutationResult(
@@ -1849,6 +1850,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     "week_start": input.week_start,
                     "holidays": input.holidays,
                     "weekend": input.weekend,
+                    "day_close": input.day_close or None,
                 },
             )
         return MutationResult(

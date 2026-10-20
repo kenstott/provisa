@@ -94,6 +94,8 @@
     "calHolidayPresetAdd": "追加",
     "calWeekendLabel": "週末の曜日",
     "calWeekendHelp": "営業日粒度のゲート判定で非営業日として扱う曜日です（デフォルトは土曜 + 日曜）。",
+    "calDayCloseLabel": "1日の締め時刻",
+    "calDayCloseHelp": "1日が終わる現地時刻です（例: 18:00 の営業終了）。1日は前日の締めから当日の締めまでとなり、日次のビューは締めの時点で更新されます。深夜0時にする場合は空欄のままにします。",
     "calNameLabel": "名前",
     "calVersionLabel": "バージョン",
     "calBaseSystemLabel": "基準体系",
