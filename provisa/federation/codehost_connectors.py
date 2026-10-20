@@ -101,6 +101,9 @@ class CodeHost:
     (codesource.engine_identity)."""
 
     files_for = ""
+    #: A code source's own reach lands it (its worker's rows); the engine attaches its host only
+    #: for a built source, which asks for it by its mode (FederationEngine.asks_in_place).
+    opt_in_reach = True
 
     def _held(self) -> dict[str, Prepared]:
         with _lock:

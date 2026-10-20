@@ -77,7 +77,7 @@ def _state(*, mode="built", engine_connector=True, floored=False, ttl=0, tables=
     return SimpleNamespace(
         source_types={"scores-src": "python", "pg": "postgresql"},
         runtime_sources={"scores-src": {"mapping": {**_BUILT, "mode": mode}}},
-        federation_engine=SimpleNamespace(engine=SimpleNamespace(connectors=connectors)),
+        federation_engine=SimpleNamespace(engine=SimpleNamespace(scan_connectors=connectors)),
         replica_routes=ReplicaRoutes(floored={4: ("scores-src", "replicate")} if floored else {}),
         source_cache={},
         response_cache_default_ttl=ttl,
@@ -313,7 +313,7 @@ async def test_the_schema_build_writes_the_identity_and_names_each_sources_schem
         mapping={**_BUILT, "remote": {**_BUILT["remote"], "certificate": "HOST PEM"}},
     )
     await attach.prepare(state)
-    connector = state.federation_engine.engine.connectors["python"]
+    connector = state.federation_engine.engine.scan_connectors["python"]
     prepared = connector.prepared()
     assert prepared.schemas_of("scores-src") == "default,ml"
     assert Path(prepared.root("scores-src")).read_text() == "HOST PEM"
@@ -330,3 +330,15 @@ def test_trino_gets_no_catalog_for_a_dev_source_or_before_its_identity_is_writte
     dev.mapping = {"mode": "dev"}
     assert connector.details(dev) == {}  # landed, never attached
     assert connector.details(_source())["connection-user"] == "provisa"
+
+
+def test_a_dev_source_keeps_its_types_reach_and_a_built_one_asks_for_the_hosts():
+    from provisa.federation.engine import build_duckdb_engine
+
+    engine = build_duckdb_engine()
+    dev = SimpleNamespace(id="s", type=SimpleNamespace(value="python"), mapping={"mode": "dev"})
+    built = SimpleNamespace(id="s", type=SimpleNamespace(value="python"), mapping=_BUILT)
+    # Its own reach lands it: the code-host attach is an opt-in reach, never the type's.
+    assert not isinstance(engine.connectors.get("python"), DuckDBCodeHostConnector)
+    assert not isinstance(engine.connector_for_source(dev), DuckDBCodeHostConnector)
+    assert isinstance(engine.connector_for_source(built), DuckDBCodeHostConnector)

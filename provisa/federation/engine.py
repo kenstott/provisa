@@ -349,6 +349,9 @@ class FederationEngine:  # REQ-840
         (:meth:`connector_for`). A source that asks for a reach this engine does not have for its
         type, or names a reach that does not exist, is refused by name."""
         source_type = source.type.value
+        if self.asks_in_place(source) and source_type in self.code_host_types:
+            # REQ-2100: a built code source, its host attached as a Postgres catalog.
+            return self.scan_connectors[source_type]
         hints = getattr(source, "federation_hints", None) or {}
         reach = hints.get("reach")
         if reach is None or reach == "replica":
@@ -367,6 +370,24 @@ class FederationEngine:  # REQ-840
                 f"{self.name!r} engine cannot read {source_type!r} sources in place",
             )
         return connector
+
+    @property
+    def code_host_types(self) -> frozenset[str]:
+        """REQ-2100: the code source types whose built hosts this engine attaches."""
+        from provisa.codesource.source import CODE_SOURCE_TYPES
+
+        return frozenset(t for t in self.scan_connectors if t in CODE_SOURCE_TYPES)
+
+    @staticmethod
+    def asks_in_place(source: Any) -> bool:
+        """Whether ``source`` asks to be read in place: ``reach: "scan"`` in its federation hints
+        (REQ-1867), or a code source in built mode, its image on a remote host (REQ-2100)."""
+        from provisa.codesource.source import CODE_SOURCE_TYPES
+
+        if (getattr(source, "federation_hints", None) or {}).get("reach") == "scan":
+            return True
+        mapping = getattr(source, "mapping", None) or {}
+        return source.type.value in CODE_SOURCE_TYPES and mapping.get("mode") == "built"
 
     def connector_for(self, source_type: str) -> Connector:
         connector = self.connectors.get(source_type)

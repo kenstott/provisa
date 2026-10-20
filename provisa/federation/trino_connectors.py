@@ -1124,6 +1124,7 @@ class TrinoCodeHostConnector(CodeHost, _TrinoConnector):  # REQ-2100
     trino_connector = "postgresql"
     mechanism = Mechanism.ATTACH_R
     files_for = "trino"
+    opt_in_reach = True
 
     def __init__(self, source_type: str) -> None:
         self.source_type = source_type

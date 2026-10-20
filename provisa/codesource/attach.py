@@ -46,7 +46,9 @@ def engine_attaches(state: Any, source_type: str) -> bool:
     from provisa.federation.connector_base import Mechanism
 
     engine = getattr(getattr(state, "federation_engine", None), "engine", None)
-    connector = getattr(engine, "connectors", {}).get(source_type) if engine is not None else None
+    # An opt-in reach (codehost_connectors): a built source asks for it by its mode.
+    reaches = getattr(engine, "scan_connectors", {}) if engine is not None else {}
+    connector = reaches.get(source_type)
     return connector is not None and connector.mechanism in (
         Mechanism.ATTACH_R,
         Mechanism.ATTACH_RW,
@@ -119,7 +121,7 @@ async def prepare(state: Any) -> None:
     from provisa.federation.codehost_connectors import CodeHost
 
     engine = getattr(getattr(state, "federation_engine", None), "engine", None)
-    connectors = getattr(engine, "connectors", {}) if engine is not None else {}
+    connectors = getattr(engine, "scan_connectors", {}) if engine is not None else {}
     rows = getattr(state, "runtime_sources", None) or {}
     built = {
         sid: row
