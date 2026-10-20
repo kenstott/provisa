@@ -38,6 +38,9 @@
     "junctionBadge": "vía",
     "junctionBadgeTitle": "Relación respaldada por una tabla de unión a través de {{table}}",
     "deleteTitle": "¿Eliminar la relación \"{{id}}\"?",
-    "deleteConsequence": "La relación se elimina del modelo. Las consultas ya no pueden unir a través de ella."
+    "deleteConsequence": "La relación se elimina del modelo. Las consultas ya no pueden unir a través de ella.",
+    "parametersFed": "Parámetros alimentados",
+    "parametersFedHelp": "Una unión por esta relación da al destino estos valores de cada fila de origen.",
+    "parameterNotFed": "Sin alimentar"
   }
 }

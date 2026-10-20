@@ -606,6 +606,13 @@ export interface Relationship {
   viaTypeColumn: string | null;
   viaTypeValue: string | null;
   viaLabelSource: string | null;
+  // REQ-2099: the target's parameters this edge feeds, each from a source column.
+  parameters: RelationshipParameter[];
+}
+
+export interface RelationshipParameter {
+  parameter: string;
+  sourceColumn: string;
 }
 
 export interface RLSRule {

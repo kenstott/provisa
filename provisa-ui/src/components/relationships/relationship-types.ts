@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { domainToSqlName } from "../../naming";
-import type { RegisteredTable, Relationship } from "../../types/admin";
+import type { RegisteredTable, Relationship, RelationshipParameter } from "../../types/admin";
 
 /** The name a relationship gives a table, and the one its save resolves: the table's alias when
  *  it has one, its table name otherwise (the virtual name, REQ-014). */
@@ -57,6 +57,8 @@ export const EMPTY_FORM = {
   viaTypeColumn: "",
   viaTypeValue: "",
   viaLabelSource: "",
+  // REQ-2099: the target's parameters this edge feeds, each from a source column.
+  parameters: [] as RelationshipParameter[],
 };
 
 export type RelForm = typeof EMPTY_FORM;

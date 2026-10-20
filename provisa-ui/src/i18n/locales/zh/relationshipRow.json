@@ -38,6 +38,9 @@
     "junctionBadge": "经由",
     "junctionBadgeTitle": "经由 {{table}} 的联接表关系",
     "deleteTitle": "删除关系“{{id}}”？",
-    "deleteConsequence": "该关系将从模型中移除。查询将无法再通过它进行联接。"
+    "deleteConsequence": "该关系将从模型中移除。查询将无法再通过它进行联接。",
+    "parametersFed": "传入的参数",
+    "parametersFedHelp": "通过此关系的联接会把每个源行中的这些值传给目标。",
+    "parameterNotFed": "不传入"
   }
 }

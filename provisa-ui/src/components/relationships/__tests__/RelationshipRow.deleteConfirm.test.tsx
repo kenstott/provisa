@@ -30,6 +30,7 @@ function row(onDelete: () => void) {
       sourceColumn: "customer_id",
       targetColumn: "id",
       cardinality: "many-to-one",
+      parameters: [],
     },
     editingRel: null,
     setEditingRel: vi.fn(),

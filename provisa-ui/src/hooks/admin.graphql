@@ -596,6 +596,10 @@ query RelationshipsQuery {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    parameters {
+      parameter
+      sourceColumn
+    }
   }
 }
 
@@ -627,6 +631,10 @@ query AllRelationshipsQuery {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    parameters {
+      parameter
+      sourceColumn
+    }
   }
 }
 

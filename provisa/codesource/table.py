@@ -22,6 +22,7 @@ value for is passed as absent, so the function's own default applies.
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Sequence
 from typing import Any
 
 from provisa.codesource.source import CODE_SOURCE_TYPES
@@ -134,6 +135,13 @@ def call_arguments(table: dict, export: Any, given: dict | None) -> tuple[list, 
 
 async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app state
     """Call ``table``'s function with the arguments ``given`` and return its checked rows."""
+    return await read_each(state, table, [given])
+
+
+async def read_each(state: Any, table: dict, argument_sets: Sequence[dict | None]) -> Any:
+    """Call ``table``'s function once for each of ``argument_sets`` and return their checked rows
+    together (REQ-2099: a join over a relationship that feeds the table's parameters calls it
+    once per distinct set of the parent's values)."""
     from provisa.codesource.source import context_for, prepare
     from provisa.core.ir_types import to_ir
     from provisa.federation.registry_view import registered_sources
@@ -152,7 +160,7 @@ async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app s
     )
     if export is None:
         raise CodeTableRefused(name, f"its source's code has no @table function {function!r}")
-    args, names = call_arguments(table, export, given)
+    calls = [call_arguments(table, export, given) for given in argument_sets]
     outputs = [
         OutputColumn(c["column_name"], c["data_type"], c.get("path"))
         for c in table["columns"]
@@ -163,6 +171,7 @@ async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app s
     def _run() -> list[dict]:
         return [
             project(name, row, outputs)
+            for args, names in calls
             for batch in worker.rows(function, "table", args, names)
             for row in batch
         ]

@@ -88,6 +88,7 @@ async def upsert(
         "via_type_value": rel.via_type_value or None,
         "via_label_source": rel.via_label_source or None,
         "source_json_key": rel.source_json_key or None,
+        "parameters": rel.parameters,
         "owner": rel.owner or None,
         "version": rel.version,
         "needs_review": rel.needs_review,
@@ -120,6 +121,7 @@ async def upsert(
                 "via_type_value",
                 "via_label_source",
                 "source_json_key",
+                "parameters",
             ],
             set_extra={"version": relationships.c.version + 1, "needs_review": False},
         )

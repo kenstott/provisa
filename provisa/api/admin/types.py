@@ -819,6 +819,8 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     via_type_column: str | None = None
     via_type_value: str | None = None
     via_label_source: str | None = None
+    # REQ-2099: the target's parameters this edge feeds, each from a source column.
+    parameters: list["RelationshipParameterType"] = strawberry.field(default_factory=list)
 
     @strawberry.field
     def auto_suggested(self) -> bool:
@@ -1208,6 +1210,21 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     delta: DeltaConfigInput | None = None  # REQ-874: incremental-reload declaration
 
 
+@strawberry.type
+class RelationshipParameterType:  # REQ-2099
+    """A parameter of a relationship's target that the edge feeds, and the source column whose
+    value it is given."""
+
+    parameter: str
+    source_column: str
+
+
+@strawberry.input
+class RelationshipParameterInput:  # REQ-2099
+    parameter: str
+    source_column: str
+
+
 @strawberry.input
 class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     id: str
@@ -1231,6 +1248,8 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     via_type_column: str | None = None
     via_type_value: str | None = None
     via_label_source: str = ""
+    # REQ-2099: the target's parameters this edge feeds, each from a source column.
+    parameters: list[RelationshipParameterInput] = strawberry.field(default_factory=list)
     record_candidate: bool = False  # when True, also insert accepted relationship_candidates record
 
 

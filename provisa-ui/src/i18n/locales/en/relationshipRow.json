@@ -38,6 +38,9 @@
     "junctionBadge": "via",
     "junctionBadgeTitle": "Junction-backed relationship through {{table}}",
     "deleteTitle": "Delete relationship \"{{id}}\"?",
-    "deleteConsequence": "The relationship is removed from the model. Queries can no longer join through it."
+    "deleteConsequence": "The relationship is removed from the model. Queries can no longer join through it.",
+    "parametersFed": "Parameters fed",
+    "parametersFedHelp": "A join over this relationship gives the target these values from each source row.",
+    "parameterNotFed": "Not fed"
   }
 }

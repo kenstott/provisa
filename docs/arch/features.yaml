@@ -90,7 +90,9 @@
       elsewhere. Provisa proposes candidates from foreign keys and ranks them by how much evidence backs
       each one, and a steward confirms or rejects them. Cross-source relationships are declared by hand
       with a cardinality. Saving a relationship marks the key columns on both sides, and a relationship
-      alias becomes the type name in Cypher.
+      alias becomes the type name in Cypher. A relationship can feed a parameterized table, such as a
+      code source's function, from its source's columns, so a join scores each source row the role
+      reads, with the role's masks applied to the values passed.
   - id: semantic-model-domains
     text: Domains group tables by business area. Each domain has a steward, can nest under a parent, and
       decides which other domains may read its tables. Views, relationships and grants that cross a domain

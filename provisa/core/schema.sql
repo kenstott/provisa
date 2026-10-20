@@ -355,6 +355,9 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- this row. All three are upper-snake-cased before they are exposed, so a junction edge names
     -- itself the same way every other relationship type does.
     via_label_source  TEXT CHECK (via_label_source IN ('column', 'table', 'fixed')),
+    -- REQ-2099: the target table's parameters this edge feeds, {parameter: source column}. A join
+    -- to a parameterized target (a code table) over this edge calls it with the source's values.
+    parameters        JSONB NOT NULL DEFAULT '{}',
     CONSTRAINT relationships_via_complete CHECK (
         (via_table_id IS NULL AND via_source_column IS NULL AND via_target_column IS NULL
          AND via_label_source IS NULL)

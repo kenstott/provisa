@@ -38,6 +38,9 @@
     "junctionBadge": "経由",
     "junctionBadgeTitle": "{{table}} を経由するジャンクション型のリレーションシップ",
     "deleteTitle": "リレーションシップ「{{id}}」を削除しますか？",
-    "deleteConsequence": "リレーションシップはモデルから削除されます。クエリはこれを介して結合できなくなります。"
+    "deleteConsequence": "リレーションシップはモデルから削除されます。クエリはこれを介して結合できなくなります。",
+    "parametersFed": "渡すパラメーター",
+    "parametersFedHelp": "このリレーションシップでの結合は、ソースの各行からこれらの値をターゲットに渡します。",
+    "parameterNotFed": "渡さない"
   }
 }
