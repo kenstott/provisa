@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useState, useCallback } from "react";
-import type { ResultRedirect } from "../../api/admin";
+import type { ResultRedirect } from "../../types/resultRedirect";
 import type { FrameData, GNode, GEdge } from "./graph-model";
 import { getStored, setStored } from "../../lib/browserStorage";
 
