@@ -13,8 +13,8 @@ the request with every knob at zero. Run it through the machine-wide one-heavy-j
     ~/.provisa-agent/heavy.sh .venv/bin/python3 demo/named/perf/bench/local_pass.py \\
         --output-dir ~/bench_local_pass
 
-It brings up local_proof's stack (its own compose project, the four sources on leased ports, tiny
-data) and one isolated Provisa server on it with telemetry on, exporting to a trace receiver that
+It brings up the Postgres store of local_proof's stack (its own compose project, a leased port,
+tiny data; the other three bench stores are not started, and the config leaves them out) and one isolated Provisa server on it with telemetry on, exporting to a trace receiver that
 tallies the request spans' stages (noop_otlp_receiver.py --tally). Then, for each governance
 variant and each cache setting, it runs the contract (governance.py sets the variant up in the
 deployment and removes it after) and reads, per step, the server's CPU per request (its process
@@ -122,6 +122,44 @@ def start_receiver(port: int, log_dir: Path) -> subprocess.Popen:
     raise RuntimeError(f"the trace receiver did not answer on {port}")
 
 
+# The pass reads only the Postgres orders table: the other three bench stores are not started.
+OTHER_STORES = ("bench-clickhouse", "bench-mongodb", "bench-neo4j")
+
+
+def postgres_only_config(text: str) -> str:
+    """The perf config without the bench stores the pass does not start: their sources, their
+    tables and every relationship that names one of those tables."""
+    config = yaml.safe_load(text)
+    gone = {t["table"] for t in config["tables"] if t.get("source_id") in OTHER_STORES}
+    config["sources"] = [s for s in config["sources"] if s["id"] not in OTHER_STORES]
+    config["tables"] = [t for t in config["tables"] if t.get("source_id") not in OTHER_STORES]
+    config["relationships"] = [
+        r
+        for r in config["relationships"]
+        if r.get("source_table_id") not in gone and r.get("target_table_id") not in gone
+    ]
+    return yaml.safe_dump(config, sort_keys=False)
+
+
+def seed_postgres(ports: dict[str, int]) -> None:
+    env = {
+        **os.environ,
+        "PROVISA_BENCH_POSTGRESQL_HOST": "localhost",
+        "PROVISA_BENCH_POSTGRESQL_PORT": str(ports["bench-postgresql"]),
+    }
+    args = [
+        "--orders",
+        str(local_proof.ORDERS),
+        "--items-per-order",
+        str(local_proof.ITEMS_PER_ORDER),
+    ]
+    local_proof.run(
+        [sys.executable, str(local_proof.PERF / "generate_postgres.py"), *args],
+        env=env,
+        cwd=str(local_proof.PERF),
+    )
+
+
 def mcp_roles(role: str) -> str:
     """The roles the MCP server may act as over loopback (``mcp.role``, a pin: a local call with
     no bearer names only these): the contract's role and every role a variant's request names."""
@@ -144,7 +182,7 @@ def start_server(ports: dict[str, int], tmp: Path, receiver_port: int, mcp_port:
     config = tmp / "perf-telemetry-on.yaml"
     config.write_text(
         three_device.run_config(
-            (local_proof.PERF / "config.yaml").read_text(),
+            postgres_only_config((local_proof.PERF / "config.yaml").read_text()),
             telemetry="on",
             collector_url=f"http://127.0.0.1:{receiver_port}",
         )
@@ -263,9 +301,8 @@ def main() -> int:
     receiver = server = None
     results: dict[str, list[dict]] = {}
     try:
-        for service in ("postgresql", "mongodb", "clickhouse", "neo4j"):
-            local_proof.run([*compose, "up", "-d", "--wait", service])
-        local_proof.seed(ports)
+        local_proof.run([*compose, "up", "-d", "--wait", "postgresql"])
+        seed_postgres(ports)
         receiver = start_receiver(receiver_port, out)
         server = start_server(ports, tmp, receiver_port, mcp_port)
         base = local_proof.proof_contract(server, project)
