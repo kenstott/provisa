@@ -307,7 +307,8 @@ def _result(answer: list[dict[str, Any]]) -> Any:
 
 
 async def _register_command(client: AsyncClient, name: str, operation: str) -> str:
-    """Register ``operation`` as a command of the companion; the data GraphQL field it runs as."""
+    """Register ``operation`` as a command of the companion; the data GraphQL field it runs as:
+    a query field for an operation that reads, a mutation field otherwise."""
     resp = await client.post(
         "/admin/actions/functions",
         json={
@@ -321,10 +322,14 @@ async def _register_command(client: AsyncClient, name: str, operation: str) -> s
     )
     assert resp.status_code == 200, resp.text
     await rebuild_schemas(client)
-    data = await _data(client, "{ __schema { mutationType { fields { name } } } }")
+    data = await _data(
+        client,
+        "{ __schema { queryType { fields { name } } mutationType { fields { name } } } }",
+    )
     (field,) = [
         f["name"]
-        for f in data["__schema"]["mutationType"]["fields"]
+        for root in ("queryType", "mutationType")
+        for f in data["__schema"][root]["fields"]
         if f["name"].split("__")[-1] == name
     ]
     return field
