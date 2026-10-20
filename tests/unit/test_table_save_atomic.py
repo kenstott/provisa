@@ -72,7 +72,13 @@ async def plane(monkeypatch, control_plane) -> Database:
 
     async def _columns(_pool, inp):
         return [
-            Column(name=c.name, data_type=c.data_type, visible_to=c.visible_to) for c in inp.columns
+            Column(
+                name=c.name,
+                data_type=c.data_type,
+                visible_to=c.visible_to,
+                is_primary_key=c.is_primary_key,
+            )
+            for c in inp.columns
         ], None
 
     engine = types.SimpleNamespace(
@@ -429,3 +435,80 @@ async def test_an_update_refused_on_a_carried_setting_leaves_the_table_as_it_was
         assert result.code == code, result.message
     assert await _stored(plane) == before
     assert await _rules(plane) == []
+
+
+async def test_the_build_loads_what_a_bitemporal_table_maps(plane):
+    """REQ-2109: the rows the schema build reads carry the three declarations, so a table whose
+    key is its primary key gets its version log, with its log's interval and lateness."""
+    from provisa.api.admin.db_queries import fetch_tables
+    from provisa.mv.bitemporal_capture import captured_table_rows
+
+    columns = [
+        ColumnInput(name="id", data_type="integer", visible_to=["support"], is_primary_key=True),
+        ColumnInput(name="status", data_type="varchar", visible_to=["support"]),
+        ColumnInput(name="placed_on", data_type="date", visible_to=["support"]),
+        ColumnInput(name="updated_at", data_type="timestamp", visible_to=["support"]),
+    ]
+    result = await _register(
+        columns=columns,
+        business_key=["id"],
+        valid_time="placed_on",
+        recorded_time="updated_at",
+        mv_refresh_interval=90,
+        mv_allowed_lateness=30.0,
+        draft=False,
+    )
+    assert result.success, result.message
+    async with plane.acquire() as conn:
+        (row,) = [t for t in await fetch_tables(conn) if t["table_name"] == "orders"]
+    assert (row["business_key"], row["valid_time"], row["recorded_time"]) == (
+        ["id"],
+        "placed_on",
+        "updated_at",
+    )
+    assert (row["mv_refresh_interval"], row["mv_allowed_lateness"]) == (90, 30.0)
+    assert set(captured_table_rows([row])) == {row["id"]}
+
+
+async def test_a_version_logs_interval_and_lateness_are_kept_on_its_tables_row(plane, monkeypatch):
+    """REQ-2109: set on the log, kept on its table's row, which every rebuild builds it from."""
+    from provisa.api.admin.db_queries import fetch_tables
+    from provisa.mv.bitemporal_capture import register_logs
+    from provisa.mv.registry import MVRegistry
+
+    columns = [
+        ColumnInput(name="id", data_type="integer", visible_to=["support"], is_primary_key=True),
+        ColumnInput(name="placed_on", data_type="date", visible_to=["support"]),
+        ColumnInput(name="updated_at", data_type="timestamp", visible_to=["support"]),
+    ]
+    assert (
+        await _register(
+            columns=columns,
+            business_key=["id"],
+            valid_time="placed_on",
+            recorded_time="updated_at",
+            draft=False,
+        )
+    ).success
+    registry = MVRegistry()
+    monkeypatch.setattr(appmod.state, "mv_registry", registry, raising=False)
+    monkeypatch.setattr(
+        appmod.state.federation_engine,
+        "engine",
+        types.SimpleNamespace(catalog_qualified=True),
+        raising=False,
+    )
+    async with plane.acquire() as conn:
+        rows = await fetch_tables(conn)
+    register_logs(appmod.state, rows, 300)
+    (log,) = registry.all()
+    result = await schema_mutation.Mutation().update_version_log(_info(), log.id, 60, 900.0)
+    assert result.success, result.message
+    assert (log.refresh_interval, log.allowed_lateness) == (60, 900.0)
+    async with plane.acquire() as conn:
+        rows = await fetch_tables(conn)
+    fresh = MVRegistry()
+    monkeypatch.setattr(appmod.state, "mv_registry", fresh, raising=False)
+    register_logs(appmod.state, rows, 300)
+    (rebuilt,) = fresh.all()
+    assert (rebuilt.refresh_interval, rebuilt.allowed_lateness) == (60, 900.0)

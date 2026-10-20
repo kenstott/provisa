@@ -28,6 +28,7 @@ const mv = (over: Partial<MVInfo>): MVInfo => ({
   rowCount: 4,
   lastError: null,
   versionLogOf: null,
+  allowedLateness: 0,
   ...over,
 });
 const rows = [
@@ -36,12 +37,14 @@ const rows = [
 ];
 const refreshMV = vi.fn(async () => ({ success: true, message: "" }));
 const toggleMV = vi.fn();
+const updateVersionLog = vi.fn(async () => ({ success: true, message: "" }));
 
 vi.mock("../../../hooks/useAdminOpsQueries", async (orig) => ({
   ...(await orig<typeof import("../../../hooks/useAdminOpsQueries")>()),
   useMVList: () => ({ mvList: rows, loading: false, error: undefined, refetch: vi.fn() }),
   useRefreshMV: () => ({ refreshMV, loading: false }),
   useToggleMV: () => ({ toggleMV, loading: false }),
+  useUpdateVersionLog: () => ({ updateVersionLog, loading: false }),
   useMaterializeStoreInfo: () => ({ materializeStoreInfo: null }),
 }));
 
@@ -52,11 +55,25 @@ describe("a table's version log in the materialized store", () => {
     render(<MaterializedStoreTab platform={false} />);
     const log = screen.getByText("Version log of payments").closest("tr") as HTMLElement;
     expect(within(log).queryByTestId("mv-toggle-btn-versions-7")).toBeNull();
-    await userEvent.click(within(log).getByTestId("mv-full-capture-btn-versions-7"));
+    await userEvent.click(within(log).getByTestId("mv-log-settings-btn-versions-7"));
+    await userEvent.click(await screen.findByTestId("mv-full-capture-btn-versions-7"));
     expect(refreshMV).toHaveBeenCalledWith("versions-7", true);
     // its ordinary capture is the refresh every view has
     await userEvent.click(within(log).getByTestId("mv-refresh-btn-versions-7"));
     expect(refreshMV).toHaveBeenLastCalledWith("versions-7", false);
+  });
+
+  it("sets how often it is captured and how late a row it reads may be committed", async () => {
+    render(<MaterializedStoreTab platform={false} />);
+    await userEvent.click(screen.getByTestId("mv-log-settings-btn-versions-7"));
+    const interval = await screen.findByTestId("mv-log-interval-versions-7");
+    await userEvent.clear(interval);
+    await userEvent.type(interval, "60");
+    const lateness = screen.getByTestId("mv-log-lateness-versions-7");
+    await userEvent.clear(lateness);
+    await userEvent.type(lateness, "900");
+    await userEvent.click(screen.getByTestId("mv-log-save-versions-7"));
+    expect(updateVersionLog).toHaveBeenCalledWith("versions-7", 60, 900);
   });
 
   it("leaves every other view as it was", () => {
@@ -64,5 +81,6 @@ describe("a table's version log in the materialized store", () => {
     const view = screen.getByText("daily_totals").closest("tr") as HTMLElement;
     expect(within(view).getByTestId("mv-toggle-btn-view-daily_totals")).toBeInTheDocument();
     expect(within(view).queryByTestId("mv-full-capture-btn-view-daily_totals")).toBeNull();
+    expect(within(view).queryByTestId("mv-log-settings-btn-view-daily_totals")).toBeNull();
   });
 });

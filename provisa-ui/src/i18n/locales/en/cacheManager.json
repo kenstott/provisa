@@ -70,7 +70,13 @@
       "unknown": "—",
       "versionLog": "Version log of {{table}}",
       "fullCapture": "Full capture",
-      "fullCaptureHelp": "Read the whole table again, recording any rows it has deleted since the last capture."
+      "fullCaptureHelp": "Read the whole table again, recording any rows it has deleted since the last capture.",
+      "logSettings": "Settings",
+      "logInterval": "Capture interval (seconds)",
+      "logIntervalHelp": "How often the table is read for rows recorded since the last capture.",
+      "logLateness": "Allowed lateness (seconds)",
+      "logLatenessHelp": "How far before the last recorded time each capture reads again, so a row committed late is still kept.",
+      "logSave": "Save"
     },
     "pagination": {
       "first": "First page",

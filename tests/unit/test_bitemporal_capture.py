@@ -233,9 +233,19 @@ async def test_a_table_no_longer_updated_in_place_has_its_log_dropped():
     registry = MVRegistry()
     state = _state(registry)
     capture.register_logs(state, state.tables, 300)
-    assert registry.get("versions-7") is not None
-    registry.get("versions-7").refresh_interval = 60  # set on that view, like any other
-    capture.register_logs(state, state.tables, 300)
-    assert registry.get("versions-7").refresh_interval == 60
+    assert (
+        registry.get("versions-7").refresh_interval,
+        registry.get("versions-7").allowed_lateness,
+    ) == (300, 0.0)
+    # its interval and lateness are what its table's row holds for it
+    row = {**_row(["payment_id"]), "mv_refresh_interval": 60, "mv_allowed_lateness": 900.0}
+    capture.register_logs(state, [row], 300)
+    assert (
+        registry.get("versions-7").refresh_interval,
+        registry.get("versions-7").allowed_lateness,
+    ) == (60, 900.0)
+    # a draft table keeps its log, uncaptured
+    capture.register_logs(state, [{**row, "draft": True}], 300)
+    assert registry.get("versions-7").enabled is False
     capture.register_logs(state, [_row(["row_id"])], 300)
     assert registry.get("versions-7") is None

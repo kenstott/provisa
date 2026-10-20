@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' aktiviert",
       "mv_not_found": "MV '{{mv}}' nicht gefunden",
       "mv_refreshed": "MV '{{mv}}' aktualisiert",
+      "version_log_updated": "Versionsprotokoll '{{mv}}' aktualisiert",
       "naming_convention_set": "Namenskonvention auf '{{convention}}' gesetzt",
       "new_id_empty": "Neue ID darf nicht leer sein",
       "no_table_refs": "keine erkannten Tabellenreferenzen",

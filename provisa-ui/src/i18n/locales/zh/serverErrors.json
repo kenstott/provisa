@@ -314,6 +314,7 @@
       "mv_enabled": "物化视图 '{{mv}}' 已启用",
       "mv_not_found": "未找到物化视图 '{{mv}}'",
       "mv_refreshed": "物化视图 '{{mv}}' 已刷新",
+      "version_log_updated": "版本日志 '{{mv}}' 已更新",
       "naming_convention_set": "命名约定已设置为 '{{convention}}'",
       "new_id_empty": "新 ID 不能为空",
       "no_table_refs": "没有可识别的表引用",

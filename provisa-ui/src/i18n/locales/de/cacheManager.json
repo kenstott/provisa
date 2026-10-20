@@ -70,7 +70,13 @@
       "unknown": "—",
       "versionLog": "Versionsprotokoll von {{table}}",
       "fullCapture": "Vollständige Erfassung",
-      "fullCaptureHelp": "Liest die ganze Tabelle erneut und erfasst alle Zeilen, die seit der letzten Erfassung gelöscht wurden."
+      "fullCaptureHelp": "Liest die ganze Tabelle erneut und erfasst alle Zeilen, die seit der letzten Erfassung gelöscht wurden.",
+      "logSettings": "Einstellungen",
+      "logInterval": "Erfassungsintervall (Sekunden)",
+      "logIntervalHelp": "Wie oft die Tabelle nach Zeilen gelesen wird, die seit der letzten Erfassung erfasst wurden.",
+      "logLateness": "Zulässige Verspätung (Sekunden)",
+      "logLatenessHelp": "Wie weit vor der letzten Erfassungszeit jede Erfassung erneut liest, damit eine verspätet übernommene Zeile trotzdem erhalten bleibt.",
+      "logSave": "Speichern"
     },
     "pagination": {
       "first": "Erste Seite",

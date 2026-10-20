@@ -314,6 +314,7 @@
       "mv_enabled": "Vue matérialisée « {{mv}} » activée",
       "mv_not_found": "Vue matérialisée « {{mv}} » introuvable",
       "mv_refreshed": "Vue matérialisée « {{mv}} » actualisée",
+      "version_log_updated": "Journal des versions '{{mv}}' mis à jour",
       "naming_convention_set": "Convention de nommage définie sur « {{convention}} »",
       "new_id_empty": "Le nouvel ID ne doit pas être vide",
       "no_table_refs": "aucune référence de table reconnue",

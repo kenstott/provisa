@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' enabled",
       "mv_not_found": "MV '{{mv}}' not found",
       "mv_refreshed": "MV '{{mv}}' refreshed",
+      "version_log_updated": "Version log '{{mv}}' updated",
       "naming_convention_set": "Naming convention set to '{{convention}}'",
       "new_id_empty": "New ID must not be empty",
       "no_table_refs": "no recognized table references",

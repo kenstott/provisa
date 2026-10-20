@@ -1387,6 +1387,7 @@ class Query:  # REQ-021, REQ-042
                 last_refresh_at=mv.last_refresh_at,
                 row_count=mv.row_count,
                 last_error=mv.last_error,
+                allowed_lateness=mv.allowed_lateness,
                 version_log_of=(None if (tid := logged_table_id(mv.id)) is None else names[tid]),
             )
             for mv in state.mv_registry._mvs.values()

@@ -136,8 +136,10 @@ def log_mv(
 
 def register_logs(state: Any, tables: list[dict], refresh_interval: int) -> None:
     """Register the version log of every table updated in place among ``tables`` (the rows this
-    build loaded), keep the refresh interval and allowed lateness set on one already registered,
-    and drop the log of a table no longer captured."""
+    build loaded, draft ones among them), with the refresh interval and allowed lateness its
+    table's row holds for it (``mv_refresh_interval``, ``mv_allowed_lateness``; the interval
+    ``refresh_interval`` when the row names none), and drop the log of a table no longer
+    captured."""
     captured = captured_table_rows(tables)
     rows = {row["id"]: row for row in tables}
     catalog, schema = state.federation_engine.materialize_store_target(state.active_org_id)
@@ -152,13 +154,17 @@ def register_logs(state: Any, tables: list[dict], refresh_interval: int) -> None
             target_catalog=catalog,
             target_schema=schema,
             catalog_qualified=state.federation_engine.engine.catalog_qualified,
-            refresh_interval=refresh_interval,
+            # REQ-199: a view naming no interval is refreshed on the configured default.
+            refresh_interval=int(rows[tid].get("mv_refresh_interval") or refresh_interval),
         )
+        fresh.allowed_lateness = float(rows[tid].get("mv_allowed_lateness") or 0.0)  # REQ-961
         kept = state.mv_registry.get(fresh.id)
         if kept is None:
             state.mv_registry.register(fresh)
             continue
         kept.enabled = fresh.enabled
+        kept.refresh_interval = fresh.refresh_interval
+        kept.allowed_lateness = fresh.allowed_lateness
         kept.region = fresh.region
         kept.bitemporal = fresh.bitemporal
         kept.semantic_sql = fresh.semantic_sql

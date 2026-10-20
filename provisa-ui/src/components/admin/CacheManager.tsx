@@ -25,6 +25,7 @@ import {
   Text,
 } from "@mantine/core";
 import { usePurgeCache, useTables } from "../../hooks/useAdminQueries";
+import { VersionLogSettings } from "./VersionLogSettings";
 import {
   useCacheStats,
   useCacheTableStats,
@@ -592,18 +593,13 @@ export function MaterializedStoreTab({ platform }: { platform: boolean }) {
                         : t("cacheManager.materialized.refresh")}
                     </Button>
                     {mv.versionLogOf ? (
-                      // A version log is kept as its table declares: it is read-only here but for
-                      // a full capture, which records what the table deleted.
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        onClick={() => handleRefresh(mv.id, true)}
-                        disabled={refreshing === mv.id}
-                        title={t("cacheManager.materialized.fullCaptureHelp")}
-                        data-testid={`mv-full-capture-btn-${mv.id}`}
-                      >
-                        {t("cacheManager.materialized.fullCapture")}
-                      </Button>
+                      // A version log is kept as its table declares: here only its capture
+                      // settings, and a full capture, which records what the table deleted.
+                      <VersionLogSettings
+                        log={mv}
+                        capturing={refreshing === mv.id}
+                        onFullCapture={() => handleRefresh(mv.id, true)}
+                      />
                     ) : (
                       <Button
                         size="xs"

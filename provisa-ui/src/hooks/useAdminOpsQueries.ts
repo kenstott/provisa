@@ -37,6 +37,7 @@ import {
   ScheduledTasks as SCHEDULED_TASKS_QUERY,
   RefreshMv,
   ToggleMv,
+  UpdateVersionLog,
   ToggleScheduledTask,
   CreateScheduledTask,
   UpdateScheduledTask,
@@ -154,6 +155,23 @@ export function useToggleMV() {
     toggleMV: async (mvId: string, enabled: boolean) => {
       const result = await toggleMv({ variables: { mvId, enabled } });
       return (result.data?.toggleMv ?? { success: false, message: "" }) as MutationResult;
+    },
+    loading,
+  };
+}
+
+/** REQ-2109: how often a table's version log is captured, and how late a row it reads may be. */
+export function useUpdateVersionLog() {
+  const [updateVersionLog, { loading }] = useMutation<{ updateVersionLog: MutationResult }>(
+    UpdateVersionLog,
+    { refetchQueries: [{ query: MV_LIST_QUERY }] },
+  );
+  return {
+    updateVersionLog: async (mvId: string, refreshInterval: number, allowedLateness: number) => {
+      const result = await updateVersionLog({
+        variables: { mvId, refreshInterval, allowedLateness },
+      });
+      return (result.data?.updateVersionLog ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
   };

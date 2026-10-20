@@ -5176,6 +5176,41 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             params={"mv": mv_id},
         )
 
+    @strawberry.mutation
+    async def update_version_log(
+        self, info: StrawberryInfo, mv_id: str, refresh_interval: int, allowed_lateness: float
+    ) -> MutationResult:  # REQ-2109
+        """Set how often a table's version log is captured and how late a row it reads may be
+        committed: kept on the table's own row, which the log is built from at every rebuild."""
+        require_capability(info, "table_registration")
+        from provisa.api.app import state
+        from provisa.mv.bitemporal_capture import logged_table_id
+
+        mv = state.mv_registry.get(mv_id)
+        table_id = logged_table_id(mv_id)
+        if mv is None or table_id is None:
+            return MutationResult(
+                success=False,
+                message=f"No version log {mv_id!r}",
+                code="schema.mv_not_found",
+                params={"mv": mv_id},
+            )
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute_core(
+                update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(mv_refresh_interval=refresh_interval, mv_allowed_lateness=allowed_lateness)
+            )
+        mv.refresh_interval = refresh_interval
+        mv.allowed_lateness = allowed_lateness
+        return MutationResult(
+            success=True,
+            message=f"Version log {mv_id!r} updated",
+            code="schema.version_log_updated",
+            params={"mv": mv_id},
+        )
+
     # ── Admin: Cache Management ──
 
     @strawberry.mutation

@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' सक्षम किया गया",
       "mv_not_found": "MV '{{mv}}' नहीं मिला",
       "mv_refreshed": "MV '{{mv}}' रीफ़्रेश किया गया",
+      "version_log_updated": "संस्करण लॉग '{{mv}}' अपडेट किया गया",
       "naming_convention_set": "नामकरण परंपरा '{{convention}}' पर सेट की गई",
       "new_id_empty": "नई ID खाली नहीं होनी चाहिए",
       "no_table_refs": "कोई मान्यता-प्राप्त टेबल संदर्भ नहीं",

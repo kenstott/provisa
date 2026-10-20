@@ -95,11 +95,12 @@ async def start_org_live_engine(scheduler: Any) -> None:  # REQ-286, REQ-1266
 
 
 async def _register_user_views_in_state(
-    conn: "Connection", raw_config: dict | None, tables: list[dict]
+    conn: "Connection", raw_config: dict | None, tables: list[dict], draft_tables: list[dict]
 ) -> None:
     """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal.
     ``tables`` are the registered table rows this build loaded: what a view inheriting its
-    versions is judged against (REQ-2109) -- ``state.tables`` is published only after this."""
+    versions is judged against (REQ-2109) -- ``state.tables`` is published only after this.
+    ``draft_tables`` are its draft ones: a draft table keeps its version log, uncaptured."""
     from provisa.api.app import state
 
     with tolerate_startup_failure("user views for inline expansion"):
@@ -302,7 +303,7 @@ async def _register_user_views_in_state(
         # captures, an MV of its own refreshed on that MV's interval.
         from provisa.mv.bitemporal_capture import register_logs
 
-        register_logs(state, tables, int(_mv_default_ttl))
+        register_logs(state, [*tables, *draft_tables], int(_mv_default_ttl))
 
 
 async def serve_registered_tables(state) -> None:

@@ -314,6 +314,7 @@
       "mv_enabled": "具體化檢視「{{mv}}」已啟用",
       "mv_not_found": "找不到具體化檢視「{{mv}}」",
       "mv_refreshed": "具體化檢視「{{mv}}」已重新整理",
+      "version_log_updated": "版本日誌 '{{mv}}' 已更新",
       "naming_convention_set": "命名慣例已設為「{{convention}}」",
       "new_id_empty": "新 ID 不可為空",
       "no_table_refs": "沒有可識別的資料表參考",

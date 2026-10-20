@@ -70,7 +70,13 @@
       "unknown": "—",
       "versionLog": "{{table}} 的版本日誌",
       "fullCapture": "完整擷取",
-      "fullCaptureHelp": "重新讀取整張表，並記錄自上次擷取以來刪除的列。"
+      "fullCaptureHelp": "重新讀取整張表，並記錄自上次擷取以來刪除的列。",
+      "logSettings": "設定",
+      "logInterval": "擷取間隔（秒）",
+      "logIntervalHelp": "多久讀取一次該表，查找自上次擷取以來記錄的列。",
+      "logLateness": "容許延遲（秒）",
+      "logLatenessHelp": "每次擷取從最新記錄時間往前多久重新讀取，以便延遲提交的列也能保留。",
+      "logSave": "儲存"
     },
     "pagination": {
       "first": "第一頁",

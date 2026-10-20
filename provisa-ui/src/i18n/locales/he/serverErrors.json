@@ -314,6 +314,7 @@
       "mv_enabled": "MV '{{mv}}' הופעל",
       "mv_not_found": "MV '{{mv}}' לא נמצא",
       "mv_refreshed": "MV '{{mv}}' רוענן",
+      "version_log_updated": "יומן הגרסאות '{{mv}}' עודכן",
       "naming_convention_set": "מוסכמת השמות הוגדרה כ-'{{convention}}'",
       "new_id_empty": "מזהה חדש אינו יכול להיות ריק",
       "no_table_refs": "לא זוהו הפניות לטבלאות",

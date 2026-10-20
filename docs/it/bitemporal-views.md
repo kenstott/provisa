@@ -48,7 +48,7 @@ Alcune tabelle tengono ogni versione come riga a sé, quindi una correzione aggi
 - Un'acquisizione non vede una riga che la sorgente ha eliminato. **Full capture** rilegge l'intera tabella e registra ogni riga eliminata come scomparsa.
 - Il registro inizia dalla sua prima acquisizione: prima di essa, ogni riga ha solo la versione che aveva allora.
 
-Il registro compare in **Cache**, nella scheda **Materialized Store**, come **Version log of** la tabella, con il suo pulsante **Full capture**. Una lettura semplice della tabella legge la tabella; una lettura a una data, o come registrata a una data, legge il suo registro.
+Il registro compare in **Cache**, nella scheda **Materialized Store**, come **Version log of** la tabella. Le sue **Settings** stabiliscono ogni quanto viene acquisito e il ritardo ammesso; **Full capture** è accanto. Una lettura semplice della tabella legge la tabella; una lettura a una data, o come registrata a una data, legge il suo registro.
 
 ## Leggerla {: #read-it }
 

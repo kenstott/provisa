@@ -48,7 +48,7 @@ Algumas tabelas guardam cada versão como uma linha própria, de modo que uma co
 - Uma captura não vê uma linha que a fonte excluiu. **Full capture** lê a tabela inteira de novo e registra cada linha excluída como removida.
 - O registro começa na sua primeira captura: antes dela, cada linha tem só a versão que tinha então.
 
-O registro aparece em **Cache**, na aba **Materialized Store**, como **Version log of** a tabela, com seu botão **Full capture**. Uma leitura simples da tabela lê a tabela; uma leitura em uma data, ou como registrada em uma data, lê seu registro.
+O registro aparece em **Cache**, na aba **Materialized Store**, como **Version log of** a tabela. Suas **Settings** definem com que frequência ele é capturado e o atraso permitido; **Full capture** fica ao lado. Uma leitura simples da tabela lê a tabela; uma leitura em uma data, ou como registrada em uma data, lê seu registro.
 
 ## Lê-la {: #read-it }
 

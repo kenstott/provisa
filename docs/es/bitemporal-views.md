@@ -48,7 +48,7 @@ Algunas tablas guardan cada versión como una fila propia, de modo que una corre
 - Una captura no ve una fila que la fuente eliminó. **Full capture** vuelve a leer toda la tabla y marca cada fila eliminada como desaparecida.
 - El registro empieza en su primera captura: antes de ella, cada fila solo tiene la versión que tenía entonces.
 
-El registro aparece en **Cache**, en la pestaña **Materialized Store**, como **Version log of** la tabla, con su botón **Full capture**. Una lectura simple de la tabla lee la tabla; una lectura a una fecha, o tal como se registró en una fecha, lee su registro.
+El registro aparece en **Cache**, en la pestaña **Materialized Store**, como **Version log of** la tabla. Su **Settings** fija con qué frecuencia se captura y su retraso permitido; **Full capture** está al lado. Una lectura simple de la tabla lee la tabla; una lectura a una fecha, o tal como se registró en una fecha, lee su registro.
 
 ## Leerla {: #read-it }
 

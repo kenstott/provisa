@@ -96,7 +96,7 @@ def rebuilt(model, monkeypatch):
     async def _rebuild(name: str, *, draft: bool, materialize: bool = True):
         async with model.acquire() as conn:
             await _save_view(conn, name, draft=draft, materialize=materialize)
-            await app_rebuild._register_user_views_in_state(conn, None, [])
+            await app_rebuild._register_user_views_in_state(conn, None, [], [])
         return state
 
     return _rebuild

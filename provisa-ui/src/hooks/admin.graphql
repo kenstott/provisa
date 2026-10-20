@@ -778,6 +778,7 @@ query MVList {
     rowCount
     lastError
     versionLogOf
+    allowedLateness
   }
 }
 
@@ -1299,6 +1300,12 @@ mutation DeployViewToDb($tableId: Int!) {
 
 mutation RefreshMv($mvId: String!, $full: Boolean! = false) {
   refreshMv(mvId: $mvId, full: $full) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateVersionLog($mvId: String!, $refreshInterval: Int!, $allowedLateness: Float!) {
+  updateVersionLog(mvId: $mvId, refreshInterval: $refreshInterval, allowedLateness: $allowedLateness) {
     ...MutationResult
   }
 }

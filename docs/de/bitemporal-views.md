@@ -48,7 +48,7 @@ Manche Tabellen führen jede Version als eigene Zeile, sodass eine Korrektur ein
 - Eine Erfassung sieht keine Zeile, die die Quelle gelöscht hat. **Full capture** liest die ganze Tabelle erneut und vermerkt jede gelöschte Zeile als entfernt.
 - Das Protokoll beginnt mit seiner ersten Erfassung: Davor hat jede Zeile nur die Version, die sie damals hatte.
 
-Das Protokoll steht unter **Cache** auf dem Reiter **Materialized Store** als **Version log of** der Tabelle, mit seiner Schaltfläche **Full capture**. Ein einfaches Lesen der Tabelle liest die Tabelle; ein Lesen zum Stand einer Zeit oder wie zu einer Zeit erfasst liest ihr Protokoll.
+Das Protokoll steht unter **Cache** auf dem Reiter **Materialized Store** als **Version log of** der Tabelle. Seine **Settings** legen fest, wie oft es erfasst wird und welche Verspätung zulässig ist; **Full capture** steht daneben. Ein einfaches Lesen der Tabelle liest die Tabelle; ein Lesen zum Stand einer Zeit oder wie zu einer Zeit erfasst liest ihr Protokoll.
 
 ## Sie lesen {: #read-it }
 

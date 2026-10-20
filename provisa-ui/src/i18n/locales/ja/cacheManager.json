@@ -70,7 +70,13 @@
       "unknown": "—",
       "versionLog": "{{table}} のバージョンログ",
       "fullCapture": "完全キャプチャ",
-      "fullCaptureHelp": "テーブル全体を読み直し、前回のキャプチャ以降に削除された行を記録します。"
+      "fullCaptureHelp": "テーブル全体を読み直し、前回のキャプチャ以降に削除された行を記録します。",
+      "logSettings": "設定",
+      "logInterval": "キャプチャ間隔（秒）",
+      "logIntervalHelp": "前回のキャプチャ以降に記録された行を読むために、テーブルを読む頻度。",
+      "logLateness": "許容遅延（秒）",
+      "logLatenessHelp": "各キャプチャが最後の記録時刻からどれだけさかのぼって読み直すか。遅れてコミットされた行も保持されます。",
+      "logSave": "保存"
     },
     "pagination": {
       "first": "最初のページ",

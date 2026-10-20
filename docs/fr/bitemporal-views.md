@@ -48,7 +48,7 @@ Certaines tables gardent chaque version dans sa propre ligne : une correction aj
 - Une capture ne voit pas une ligne que la source a supprimée. **Full capture** relit toute la table et note chaque ligne supprimée comme disparue.
 - Le journal commence à sa première capture : avant elle, chaque ligne n'a que la version qu'elle avait alors.
 
-Le journal figure sous **Cache**, dans l'onglet **Materialized Store**, comme **Version log of** la table, avec son bouton **Full capture**. Une lecture simple de la table lit la table ; une lecture à une date, ou telle qu'enregistrée à une date, lit son journal.
+Le journal figure sous **Cache**, dans l'onglet **Materialized Store**, comme **Version log of** la table. Ses **Settings** fixent la fréquence de capture et le retard admis ; **Full capture** est à côté. Une lecture simple de la table lit la table ; une lecture à une date, ou telle qu'enregistrée à une date, lit son journal.
 
 ## La lire {: #read-it }
 

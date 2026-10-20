@@ -89,6 +89,7 @@ declare module "*.graphql" {
   export const DeployViewToDb: DocumentNode;
   export const RefreshMv: DocumentNode;
   export const ToggleMv: DocumentNode;
+  export const UpdateVersionLog: DocumentNode;
   export const ToggleScheduledTask: DocumentNode;
   export const CreateScheduledTask: DocumentNode;
   export const UpdateScheduledTask: DocumentNode;
@@ -217,6 +218,7 @@ declare module "*.gql" {
   export const DeployViewToDb: DocumentNode;
   export const RefreshMv: DocumentNode;
   export const ToggleMv: DocumentNode;
+  export const UpdateVersionLog: DocumentNode;
   export const ToggleScheduledTask: DocumentNode;
   export const CreateScheduledTask: DocumentNode;
   export const UpdateScheduledTask: DocumentNode;

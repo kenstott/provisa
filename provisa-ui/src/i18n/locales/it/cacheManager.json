@@ -70,7 +70,13 @@
       "unknown": "—",
       "versionLog": "Registro delle versioni di {{table}}",
       "fullCapture": "Acquisizione completa",
-      "fullCaptureHelp": "Rilegge l'intera tabella e registra le righe eliminate dall'ultima acquisizione."
+      "fullCaptureHelp": "Rilegge l'intera tabella e registra le righe eliminate dall'ultima acquisizione.",
+      "logSettings": "Impostazioni",
+      "logInterval": "Intervallo di acquisizione (secondi)",
+      "logIntervalHelp": "Ogni quanto la tabella viene letta per le righe registrate dopo l'ultima acquisizione.",
+      "logLateness": "Ritardo ammesso (secondi)",
+      "logLatenessHelp": "Quanto prima dell'ultima ora di registrazione ogni acquisizione rilegge, così una riga confermata in ritardo viene comunque tenuta.",
+      "logSave": "Salva"
     },
     "pagination": {
       "first": "Prima pagina",
