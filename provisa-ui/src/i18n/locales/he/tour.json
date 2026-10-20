@@ -1468,6 +1468,62 @@
       "churnprodRecap": {
         "title": "מה ראית",
         "description": "המודל של מדען נתונים עבר לייצור בלי שירות משלו להפעיל. החבילה שלו מקובעת ומותקנת פעם אחת. join מזין את הפונקציה שלו, שנקראת כמו טבלה, והמיסוך וחוקי השורה שיש לכל טבלה קובעים מה היא מחזירה. SQL, GraphQL וכל דרך גישה אחרת קוראים אותה באותו אופן."
+      },
+      "worldcupIntro": {
+        "title": "ארבעה מקורות ציבוריים, מונדיאל אחד",
+        "description": "מי זכתה במונדיאל, ומאיזו קונפדרציה? התשובה פזורה בנתונים ציבוריים: רשימת הגמרים של ויקיפדיה ומאמרי הקונפדרציות שלה, ושני מערכי נתונים של Kaggle עם כל משחק מונדיאל וכל שער בינלאומי. כל מקור קורא למדינות בדרכו. ויקיפדיה כותבת West Germany, ‏Kaggle כותב Germany FR, וטבלאות החברות של הקונפדרציות כותבות Germany. הסיור הזה מביא את הנתונים, מיישב את השמות בפונקציית Python קצרה, ושואל את התוצאה כגרף מנוהל אחד."
+      },
+      "worldcupWikipedia": {
+        "title": "ויקיפדיה, רשומה בתוך דקות",
+        "description": "זהו מקור ויקיפדיה. הסריקה שלו קוראת שבעה דפים: את List of FIFA World Cup finals ואת מאמרי שש הקונפדרציות. כל טבלת נתונים בדפים האלה הופכת לטבלה שנקראת על שם הדף והכיתוב שלה, כך שהגמרים הם <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>. מקור ציבורי מנוהל כמו כל מסד נתונים פנימי, עם אותם תפקידים, הרשאות ומסכות. הגדירו מרווח רענון, והמקורות האלה נשארים עדכניים מעצמם. ההדגמה הזו קוראת תמונת מצב קבועה, כדי שכל מבקר יראה את אותן תשובות."
+      },
+      "worldcupFinals": {
+        "title": "הגמרים, כפי שוויקיפדיה מונה אותם",
+        "description": "כל גמר מ-1930 עד 2026, עם הזוכות והסגניות בשמות של תקופתן. ויקיפדיה רושמת את התארים של 1954,‏ 1974 ו-1990 תחת West Germany ואת התואר של 2014 תחת Germany."
+      },
+      "worldcupKaggle": {
+        "title": "מערכי הנתונים של Kaggle מגיעים כטבלאות",
+        "description": "זהו מקור Kaggle: מערך הנתונים FIFA World Cup, עם כל טורניר, משחק והופעת שחקן מ-1930 עד 2014. כל אחד מקבציו מגיע כטבלה. מקור Kaggle שני מחזיק כל שער בינלאומי מאז 1916. כמו טבלאות ויקיפדיה, אלה נתונים ציבוריים, רשומים בתוך דקות ומנוהלים כמו כל מסד נתונים פנימי."
+      },
+      "worldcupMatches": {
+        "title": "משחקים בשמות של תקופתם",
+        "description": "‏Kaggle כותב את מערב גרמניה כ-Germany FR ואת מזרח גרמניה כ-German DR. כמה משמותיו נושאים שאריות של סימון מהקובץ, כמו <code>rn\"&gt;Republic of Ireland</code>. השורות הריקות של הקובץ נשמרות כשורות בלי ערכים, כפי שהן במערך הנתונים."
+      },
+      "worldcupDisagree": {
+        "title": "השמות אינם תואמים",
+        "description": "כשסופרים לפי השמות שוויקיפדיה כותבת, ל-Germany יש תואר אחד ול-West Germany שלושה, כאילו היו שתי מדינות. ‏Kaggle כותב את אותה נבחרת כ-Germany FR, כך שגם צירוף לפי שמות בין המקורות מחמיץ את התארים האלה."
+      },
+      "worldcupFunction": {
+        "title": "הפונקציה היא הטבלה",
+        "description": "‏country_alias הוא מקור Python, והפונקציה הזו היא הטבלה שדרכה מצטרף כל קשר בין מקורות. היא מקבלת כל שם נבחרת שהמקורות כותבים, שואלת LLM, עם מפתח מהכספת של הארגון, לאיזה חבר FIFA השם מתייחס, ומחזירה את שם החבר ואת קוד ה-FIFA שלו. היא רצה שוב במרווח הרענון שלה, כך ששם חדש מותאם ברגע שהוא מופיע.<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "כל שם, מותאם ונבדק",
+        "description": "אלה השמות ששונים משם החבר שלהם. ‏Germany FR ו-West Germany הם Germany, ‏Zaire היא DR Congo וה-Soviet Union היא Russia. כל התאמה נבדקה לפני שההדגמה הזו הקפיאה אותה, ו-27 מתוך 237 תוקנו. נבחרת שתוצאותיה לא עברו לאף חבר שומרת על שמה: East Germany נשארת East Germany, כך שהמשחק שלה ב-1974 מול West Germany אינו Germany מול Germany."
+      },
+      "worldcupJunction": {
+        "title": "קשר דרך הפונקציה",
+        "description": "‏WON מקשר חבר בקונפדרציה לגמרים שבהם זכה, דרך country_alias. קוד ה-FIFA של החבר מוצא כל שם שהוא מייצג, וכל שם מוצא את הגמרים שלו. ‏RUNNER_UP,‏ PLAYED_HOME,‏ PLAYED_AWAY ו-SCORED מתקשרים באותה דרך."
+      },
+      "worldcupGraph": {
+        "title": "כל תואר בגרף אחד",
+        "description": "כל חבר מקושר לגמרים שבהם זכה, תחת כל שם שבו זכה בהם. הצומת של Germany מחזיק את 1954,‏ 1974,‏ 1990 ו-2014."
+      },
+      "worldcupByConfederation": {
+        "title": "מקובץ לפי קונפדרציה",
+        "description": "בקיבוץ לפי קונפדרציה, לחברות אופ\"א יש 13 תארים ולחברות CONMEBOL ‏10. אף קונפדרציה אחרת לא זכתה בגמר."
+      },
+      "worldcupSql": {
+        "title": "אותו מודל ב-SQL",
+        "description": "אותו צירוף ב-SQL סופר את התארים של כל חבר דרך country_alias. ‏Brazil מובילה עם חמישה, ול-Germany ול-Italy יש ארבעה לכל אחת."
+      },
+      "worldcupGraphql": {
+        "title": "וגם ב-GraphQL",
+        "description": "ב-GraphQL לכל גמר יש שדה <code>winner</code> דרך country_alias, כך ש-1954,‏ 1974 ו-1990 מציגים את West Germany לצד החבר שהוא מייצג: Germany,‏ GER."
+      },
+      "worldcupRecap": {
+        "title": "סיכום",
+        "description": "נתונים ציבוריים מוויקיפדיה ומ-Kaggle, שהובאו בתוך דקות ומנוהלים כמו כל מסד נתונים פנימי, יושבו בכעשר שורות Python ונשאלים כגרף אחד. ההתאמות של הפונקציה נבדקו, כך שהגרף סופר כל תואר פעם אחת, אצל החבר הנכון."
       }
     },
     "status": {
@@ -1572,6 +1628,10 @@
       "churnprod": {
         "title": "סיכון נטישה בייצור",
         "summary": "מודל ה-scikit-learn של דמו הנטישה, בייצור. חבילת ה-Python שלו היא מקור, והפונקציה שלו היא טבלה שנותנת ציון לכל לקוח ב-join, עם מיסוך וחוקי שורה שחלים על מה שהיא מחזירה."
+      },
+      "worldcup": {
+        "title": "World Cup, גרף אחד",
+        "summary": "נתוני המונדיאל של ויקיפדיה ושל Kaggle אינם תואמים בשמות המדינות. פונקציית Python קצרה מתאימה כל שם בעזרת LLM, והמקורות הציבוריים הופכים לגרף מנוהל אחד."
       }
     }
   }

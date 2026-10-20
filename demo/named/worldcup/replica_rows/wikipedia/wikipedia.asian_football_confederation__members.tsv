@@ -1,0 +1,48 @@
+code	association	national_teams	founded	fifa_affiliation	afc_affiliation	sub__confederation	ioc_member
+AFG	Afghanistan	Men's U23 U20 U17 F BS Women's U20 U17	1933	1948	1954	CAFA	true
+AUS	Australia	Men's U23 U20 U17 F BS Women's U20 U17	1961	1963	2006	AFF	true
+BHR	Bahrain	Men's U23 U20 U17 F BS Women's U20 U17	1957	1968	1969	WAFF	true
+BAN	Bangladesh	Men's U23 U20 U17 F BS Women's U20 U17	1972	1976	1974	SAFF	true
+BHU	Bhutan	Men's U23 U20 U17 F BS Women's U20 U17	1983	2000	1993	SAFF	true
+BRU	Brunei	Men's U23 U20 U17 F BS Women's U20 U17	1952	1972	1969	AFF	true
+CAM	Cambodia	Men's U23 U20 U17 F BS Women's U20 U17	1933	1954	1954	AFF	true
+CHN	China	Men's U23 U20 U17 F BS Women's U20 U17	1924	1931	1974	EAFF	true
+TPE	Chinese Taipei	Men's U23 U20 U17 F BS Women's U20 U17	1936	1954	1954	EAFF	true
+GUM	Guam	Men's U23 U20 U17 F BS Women's U20 U17	1975	1996	1991	EAFF	true
+HKG	Hong Kong	Men's U23 U20 U17 F BS Women's U20 U17	1914	1954	1954	EAFF	true
+IND	India	Men's U23 U20 U17 F BS Women's U20 U17	1937	1948	1954	SAFF	true
+IDN	Indonesia	Men's U23 U20 U17 F BS Women's U20 U17	1930	1952	1954	AFF	true
+IRN	Iran	Men's U23 U20 U17 F BS Women's U20 U17	1920	1948	1958	CAFA	true
+IRQ	Iraq	Men's U23 U20 U17 F BS Women's U20 U17	1948	1950	1970	WAFF	true
+JPN	Japan	Men's U23 U20 U17 F BS Women's U20 U17	1921	1929	1954	EAFF	true
+JOR	Jordan	Men's U23 U20 U17 F BS Women's U20 U17	1949	1956	1970	WAFF	true
+KUW	Kuwait	Men's U23 U20 U17 F BS Women's U20 U17	1952	1964	1964	WAFF	true
+KGZ	Kyrgyzstan	Men's U23 U20 U17 F BS Women's U20 U17	1992	1994	1993	CAFA	true
+LAO	Laos	Men's U23 U20 U17 F BS Women's U20 U17	1951	1952	1968	AFF	true
+LBN	Lebanon	Men's U23 U20 U17 F BS Women's U20 U17	1933	1936	1964	WAFF	true
+MAC	Macau	Men's U23 U20 U17 F BS Women's U20 U17	1939	1978	1978	EAFF	false
+MAS	Malaysia	Men's U23 U20 U17 F BS Women's U20 U17	1933	1954	1954	AFF	true
+MDV	Maldives	Men's U23 U20 U17 F BS Women's U20 U17	1982	1986	1984	SAFF	true
+MNG	Mongolia	Men's U23 U20 U17 F BS Women's U20 U17	1959	1998	1993	EAFF	true
+MYA	Myanmar	Men's U23 U20 U17 F BS Women's U20 U17	1947	1948	1954	AFF	true
+NEP	Nepal	Men's U23 U20 U17 F BS Women's U20 U17	1951	1972	1954	SAFF	true
+PRK	North Korea	Men's U23 U20 U17 F BS Women's U20 U17	1945	1958	1974	EAFF	true
+NMI	Northern Mariana Islands	Men's U23 U20 U17 F BS Women's U20 U17	2005	\N	2020	EAFF	false
+OMA	Oman	Men's U23 U20 U17 F BS Women's U20 U17	1978	1980	1980	WAFF	true
+PAK	Pakistan	Men's U23 U20 U17 F BS Women's U20 U17	1947	1948	1954	SAFF	true
+PLE	Palestine	Men's U23 U20 U17 F BS Women's U20 U17	1998	1998	1998	WAFF	true
+PHI	Philippines	Men's U23 U20 U17 F BS Women's U20 U17	1907	1930	1954	AFF	true
+QAT	Qatar	Men's U23 U20 U17 F BS Women's U20 U17	1960	1972	1974	WAFF	true
+KSA	Saudi Arabia	Men's U23 U20 U17 F BS Women's U20 U17	1956	1956	1972	WAFF	true
+SGP	Singapore	Men's U23 U20 U17 F BS Women's U20 U17	1892	1952	1954	AFF	true
+KOR	South Korea	Men's U23 U20 U17 F BS Women's U20 U17	1928	1948	1954	EAFF	true
+SRI	Sri Lanka	Men's U23 U20 U17 F BS Women's U20 U17	1939	1952	1954	SAFF	true
+SYR	Syria	Men's U23 U20 U17 F BS Women's U20 U17	1936	1937	1970	WAFF	true
+TJK	Tajikistan	Men's U23 U20 U17 F BS Women's U20 U17	1936	1994	1993	CAFA	true
+THA	Thailand	Men's U23 U20 U17 F BS Women's U20 U17	1916	1925	1954	AFF	true
+TLS	Timor-Leste	Men's U23 U20 U17 F BS Women's U20 U17	2002	2005	2002	AFF	true
+TKM	Turkmenistan	Men's U23 U20 U17 F BS Women's U20 U17	1992	1994	1993	CAFA	true
+UAE	United Arab Emirates	Men's U23 U20 U17 F BS Women's U20 U17	1971	1974	1974	WAFF	true
+UZB	Uzbekistan	Men's U23 U20 U17 F BS Women's U20 U17	1946	1994	1993	CAFA	true
+VIE	Vietnam	Men's U23 U20 U17 F BS Women's U20 U17	1960	1952	1954	AFF	true
+YEM	Yemen	Men's U23 U20 U17 F BS Women's U20 U17	1962	1980	1980	WAFF	true

@@ -1,0 +1,13 @@
+# Every final with the FIFA member its winners stand for, through country_alias: the titles
+# Wikipedia lists under West Germany are those of Germany.
+query FinalsAndTheirWinners {
+  w__finals(order_by: [{ year: asc }]) {
+    year
+    winners
+    score
+    winner {
+      canonicalCountry
+      fifaCode
+    }
+  }
+}

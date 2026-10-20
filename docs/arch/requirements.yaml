@@ -85525,3 +85525,49 @@ Then every row is an EU customer's, each email address arrives masked, and the N
   - tests/integration/test_churnprod_demo.py
   - tests/unit/test_named_demo_tour.py
   - provisa-ui/src/__tests__/tourDemoTrack.test.tsx
+- id: REQ-2103
+  status: complete
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A named demo, World Cup: public sources about the World Cup whose country names disagree become one
+    governed graph. Wikipedia (the wikipedia source type) crawls the List of FIFA World Cup finals and the six confederation
+    articles, whose Members tables give each FIFA member by confederation, with each table named as the crawl names
+    it. Kaggle (the kaggle source type) gives the FIFA World Cup dataset (WorldCups, WorldCupMatches, WorldCupPlayers)
+    and the international results goalscorers. The junction is a Python code source, country_alias(name), shipped
+    as a declared code archive with its lockfile (REQ-2101): it receives each distinct team name through a relationship''s
+    parameters map (REQ-2099), matches it with an LLM using a key from the org''s vault, and returns the name, the
+    canonical country and its FIFA code. Relationships across the sources are junction-backed through it (REQ-1586),
+    so West Germany''s and Germany FR''s results are Germany''s. Every source, country_alias included, is frozen as
+    declared replica rows (cache_ttl -1, REQ-2089), so a sandbox fetches nothing, calls no LLM and needs no key; the
+    country_alias rows are the function''s output from a real run, each reviewed and corrected before they were frozen.
+    Its tour: the scenario; the Wikipedia tables and the crawl that names them; the Kaggle datasets; a query that misses
+    West Germany''s wins because the names disagree; the country_alias function, the table the graph joins through;
+    the Cypher graph (Country WON Final, Country PLAYED Match, Player SCORED_IN Match) grouped by confederation, with
+    West Germany''s wins under Germany; the same model in SQL and GraphQL; a recap.'
+  use_case: A visitor sees public data sourced in minutes, made to agree by a short Python function, and queried as
+    one graph.
+  scenario: 'Given the World Cup demo started from its template
+
+
+    When a visitor runs the tour''s Cypher step
+
+
+    Then Germany''s WON edges include the 1954, 1974 and 1990 finals that Wikipedia lists under West Germany
+
+
+    And no source, LLM or key is contacted'
+  related_reqs:
+  - REQ-1586
+  - REQ-1960
+  - REQ-2089
+  - REQ-2099
+  - REQ-2101
+  code:
+  - demo/named/worldcup/config.yaml
+  - demo/named/worldcup/country_alias/country_alias.py
+  tests:
+  - tests/integration/test_worldcup_demo.py

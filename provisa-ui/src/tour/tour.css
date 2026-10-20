@@ -34,6 +34,23 @@
   border-radius: 4px;
   padding: 0.05em 0.4em;
 }
+/* A step that shows code: the popover widens for it, and a line still too long scrolls inside its
+ * block instead of running past the popover's edge. */
+.driver-popover:has(pre) {
+  max-width: 720px;
+}
+.driver-popover-description pre {
+  margin: 10px 0 2px;
+  padding: 8px 10px;
+  overflow-x: auto;
+  background: rgba(99, 102, 241, 0.08);
+  border-radius: 6px;
+}
+.driver-popover-description pre code {
+  font-size: 0.78em;
+  background: none;
+  padding: 0;
+}
 .driver-popover-description kbd {
   border: 1px solid rgba(0, 0, 0, 0.18);
   border-bottom-width: 2px;

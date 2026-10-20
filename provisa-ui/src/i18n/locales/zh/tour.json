@@ -1468,6 +1468,62 @@
       "churnprodRecap": {
         "title": "你看到了什么",
         "description": "数据科学家的模型投入了生产，无需运行自己的服务。它的包被固定，只安装一次。一个 join 为它的函数提供数据，函数读起来就像一张表，而每张表都有的脱敏和行规则约束它返回的内容。SQL、GraphQL 以及其他任何访问方式都以同样的方式读取它。"
+      },
+      "worldcupIntro": {
+        "title": "四个公开来源，一届世界杯",
+        "description": "谁赢得过世界杯，来自哪个联合会？答案分散在公开数据中：维基百科的决赛列表和各联合会条目，以及 Kaggle 上收录每场世界杯比赛和每个国际比赛进球的两个数据集。每个来源对国家的写法都不同。维基百科写 West Germany，Kaggle 写 Germany FR，联合会的会员表写 Germany。本导览接入这些数据，用一个简短的 Python 函数让名称一致，再把结果作为一张受治理的图来查询。"
+      },
+      "worldcupWikipedia": {
+        "title": "维基百科，几分钟即可注册",
+        "description": "这是一个维基百科数据源。它的爬取读取七个页面：List of FIFA World Cup finals 和六个联合会的条目。这些页面上的每张数据表都成为一张表，以其页面和标题命名，因此决赛表是 <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>。公开数据源和任何内部数据库一样受治理，使用相同的角色、授权和掩码。设置刷新间隔后，这些数据源会自动保持最新。本演示读取固定快照，因此每位访客看到的答案都相同。"
+      },
+      "worldcupFinals": {
+        "title": "维基百科列出的决赛",
+        "description": "1930 年至 2026 年的每场决赛，冠军和亚军都使用当时的名称。维基百科把 1954、1974 和 1990 年的冠军记在 West Germany 名下，把 2014 年的冠军记在 Germany 名下。"
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle 数据集以表的形式到达",
+        "description": "这是一个 Kaggle 数据源：FIFA World Cup 数据集，收录 1930 年至 2014 年的每届赛事、每场比赛和每位球员的出场。它的每个文件都以一张表的形式到达。第二个 Kaggle 数据源收录 1916 年以来的每个国际比赛进球。和维基百科的表一样，它们是公开数据，几分钟即可注册，并像任何内部数据库一样受治理。"
+      },
+      "worldcupMatches": {
+        "title": "以当时名称记录的比赛",
+        "description": "Kaggle 把西德写作 Germany FR，把东德写作 German DR。它的一些名称带有文件残留的标记，例如 <code>rn\"&gt;Republic of Ireland</code>。文件中的空行按数据集原样保留为没有值的行。"
+      },
+      "worldcupDisagree": {
+        "title": "名称对不上",
+        "description": "按维基百科写的名称计数，Germany 有一个冠军，West Germany 有三个，就像是两个国家。Kaggle 把同一支球队写作 Germany FR，所以在来源之间按名称做连接也会漏掉这些冠军。"
+      },
+      "worldcupFunction": {
+        "title": "函数就是那张表",
+        "description": "country_alias 是一个 Python 数据源，这个函数就是每条跨来源关系所经过的那张表。它接收各来源写出的每个球队名称，用组织密钥库中的密钥询问 LLM 该名称代表哪个国际足联会员，并返回该会员的名称和国际足联代码。它会按刷新间隔再次运行，因此新名称一出现就会被匹配。<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "每个名称都已匹配并复核",
+        "description": "这些是与其会员名称不同的名称。Germany FR 和 West Germany 是 Germany，Zaire 是 DR Congo，Soviet Union 是 Russia。每一项匹配都在本演示冻结前经过复核，237 项中有 27 项被更正。成绩未由任何会员继承的球队保留自己的名称：East Germany 仍是 East Germany，因此它在 1974 年对 West Germany 的比赛不会变成 Germany 对 Germany。"
+      },
+      "worldcupJunction": {
+        "title": "经过函数的关系",
+        "description": "WON 通过 country_alias 把联合会的会员与它赢得的决赛连接起来。会员的国际足联代码找到它代表的每个名称，每个名称再找到它的决赛。RUNNER_UP、PLAYED_HOME、PLAYED_AWAY 和 SCORED 也以同样方式连接。"
+      },
+      "worldcupGraph": {
+        "title": "所有冠军汇于一张图",
+        "description": "每个会员都与它赢得的决赛相连，无论当时用的是哪个名称。Germany 的节点汇集了 1954、1974、1990 和 2014 年。"
+      },
+      "worldcupByConfederation": {
+        "title": "按联合会分组",
+        "description": "按联合会分组后，欧足联会员拥有 13 个冠军，南美足联会员拥有 10 个。没有其他联合会赢得过决赛。"
+      },
+      "worldcupSql": {
+        "title": "SQL 中的同一模型",
+        "description": "SQL 中的同一个连接通过 country_alias 统计每个会员的冠军数。Brazil 以五个领先，Germany 和 Italy 各有四个。"
+      },
+      "worldcupGraphql": {
+        "title": "以及 GraphQL",
+        "description": "在 GraphQL 中，每场决赛都有一个经过 country_alias 的 <code>winner</code> 字段，因此 1954、1974 和 1990 年在 West Germany 旁边显示它代表的会员：Germany，GER。"
+      },
+      "worldcupRecap": {
+        "title": "回顾",
+        "description": "来自维基百科和 Kaggle 的公开数据，几分钟内接入并像任何内部数据库一样受治理，用大约十行 Python 让名称一致，并作为一张图来查询。函数的匹配都经过复核，因此这张图把每个冠军只计一次，并记在正确的会员名下。"
       }
     },
     "status": {
@@ -1572,6 +1628,10 @@
       "churnprod": {
         "title": "生产环境中的流失风险",
         "summary": "流失演示中的 scikit-learn 模型投入生产。它的 Python 包是一个数据源，它的函数是一张表，在 join 中为每位客户打分，返回的结果同样受脱敏和行规则约束。"
+      },
+      "worldcup": {
+        "title": "World Cup，一张图",
+        "summary": "维基百科和 Kaggle 的世界杯数据在国家名称上对不上。一个简短的 Python 函数用 LLM 匹配每个名称，公开数据源成为一张受治理的图。"
       }
     }
   }

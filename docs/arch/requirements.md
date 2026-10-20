@@ -25633,3 +25633,29 @@ A relationship may feed its target table's parameters from its source table: its
 **Code:** `provisa/api/data/materialization.py`, `provisa/codesource/table.py`, `provisa/core/models.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/repositories/relationship.py`, `provisa/api/admin/types.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/components/relationships/ParametersPanel.tsx`
 
 **Tests:** `tests/unit/test_relationship_fed_code_table.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-2097 · UI {#REQ-2097}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo churnprod puts the churn demo's model in production. The data scientist's scikit-learn model ships inside the demo as a Python package (code/churn_model.tar.gz, its fitted model and a pinned uv.lock of wheels inside) whose function churn_risk(customer_id, ..., as_of=None) returns RiskRow rows (customer_id, score, reasons, computed_at) and is a table; its Node twin (code/churn-model-js.tar.gz), computing from the same exported coefficients, is a second table beside it. Its tour shows the scenario (linking back to the churn demo), the source registered from the shipped package, discovery offering the columns from the function's types, a read without customer_id refused before the code runs, the join from the current customers' features to churn_risk giving the at-risk list, the analyst reading the same scores with email addresses masked, the EU account team reading only EU customers' scores because the row rule is on the code's output, the Node twin's score beside the Python one, and a recap. A tour step may carry demo: <name>, rendered as a button opening that demo; the churn demo's recap links forward to churnprod.
+
+**Use case:** A data scientist's model becomes a governed table that every role reads through the same masks and row rules as any other table.
+
+**Code:** `demo/named/churnprod/config.yaml`, `demo/named/churnprod/tour.yaml`, `demo/named/churnprod/model/churn_model/churn_model.py`, `demo/named/churnprod/model/churn-model-js/index.js`, `demo/named/churnprod/db/init.sql`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/demoTour.ts`
+
+**Tests:** `tests/integration/test_churnprod_demo.py`, `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`
+
+### REQ-2103 · UI {#REQ-2103}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+A named demo, World Cup: public sources about the World Cup whose country names disagree become one governed graph. Wikipedia (the wikipedia source type) crawls the List of FIFA World Cup finals and the six confederation articles, whose Members tables give each FIFA member by confederation, with each table named as the crawl names it. Kaggle (the kaggle source type) gives the FIFA World Cup dataset (WorldCups, WorldCupMatches, WorldCupPlayers) and the international results goalscorers. The junction is a Python code source, country_alias(name), shipped as a declared code archive with its lockfile ([REQ-2101](#REQ-2101)): it receives each distinct team name through a relationship's parameters map ([REQ-2099](#REQ-2099)), matches it with an LLM using a key from the org's vault, and returns the name, the canonical country and its FIFA code. Relationships across the sources are junction-backed through it ([REQ-1586](#REQ-1586)), so West Germany's and Germany FR's results are Germany's. Every source, country_alias included, is frozen as declared replica rows (cache_ttl -1, [REQ-2089](#REQ-2089)), so a sandbox fetches nothing, calls no LLM and needs no key; the country_alias rows are the function's output from a real run, each reviewed and corrected before they were frozen. Its tour: the scenario; the Wikipedia tables and the crawl that names them; the Kaggle datasets; a query that misses West Germany's wins because the names disagree; the country_alias function, the table the graph joins through; the Cypher graph (Country WON Final, Country PLAYED Match, Player SCORED_IN Match) grouped by confederation, with West Germany's wins under Germany; the same model in SQL and GraphQL; a recap.
+
+**Use case:** A visitor sees public data sourced in minutes, made to agree by a short Python function, and queried as one graph.
+
+**Code:** `demo/named/worldcup/config.yaml`, `demo/named/worldcup/country_alias/country_alias.py`
+
+**Tests:** `tests/integration/test_worldcup_demo.py`

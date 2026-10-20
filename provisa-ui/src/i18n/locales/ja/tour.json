@@ -1468,6 +1468,62 @@
       "churnprodRecap": {
         "title": "ここまでの内容",
         "description": "データサイエンティストのモデルが、専用のサービスを動かさずに本番に入りました。パッケージは固定され、一度だけインストールされます。join が関数にデータを渡し、関数はテーブルとして読めます。返す内容は、どのテーブルにもあるマスキングと行ルールが管理します。SQL、GraphQL、そのほかのどの経路からも同じように読めます。"
+      },
+      "worldcupIntro": {
+        "title": "4つの公開ソース、1つのワールドカップ",
+        "description": "ワールドカップを制したのは誰で、どの連盟の国でしょうか。答えは公開データに散らばっています。Wikipediaの決勝の一覧と各連盟の記事、そしてワールドカップの全試合と国際試合の全ゴールを収めたKaggleの2つのデータセットです。ソースごとに国名の書き方が違います。WikipediaはWest Germany、KaggleはGermany FR、連盟の加盟国表はGermanyと書きます。このツアーではデータを取り込み、短いPython関数で国名をそろえ、その結果を1つのガバナンスされたグラフとして問い合わせます。"
+      },
+      "worldcupWikipedia": {
+        "title": "Wikipedia、数分で登録",
+        "description": "これはWikipediaソースです。そのクロールは7ページを読みます。List of FIFA World Cup finalsと6つの連盟の記事です。各ページのデータ表はページ名とキャプションで名付けられたテーブルになり、決勝は<code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>です。公開ソースも、社内のデータベースと同じロール、権限、マスクでガバナンスされます。更新間隔を設定すれば、これらのソースは自動で最新に保たれます。このデモは固定のスナップショットを読むため、どの訪問者にも同じ答えが表示されます。"
+      },
+      "worldcupFinals": {
+        "title": "Wikipediaが挙げる決勝",
+        "description": "1930年から2026年までの全決勝を、優勝国と準優勝国の当時の名前とともに収めています。Wikipediaは1954年、1974年、1990年の優勝をWest Germany、2014年の優勝をGermanyとしています。"
+      },
+      "worldcupKaggle": {
+        "title": "Kaggleのデータセットはテーブルとして届く",
+        "description": "これはKaggleソースです。FIFA World Cupデータセットには、1930年から2014年までの全大会、全試合、全選手の出場記録があります。各ファイルがテーブルとして届きます。2つ目のKaggleソースには1916年以降の国際試合の全ゴールがあります。Wikipediaのテーブルと同じく公開データで、数分で登録でき、社内のデータベースと同じようにガバナンスされます。"
+      },
+      "worldcupMatches": {
+        "title": "当時の名前で記録された試合",
+        "description": "Kaggleは西ドイツをGermany FR、東ドイツをGerman DRと書きます。一部の名前には、<code>rn\"&gt;Republic of Ireland</code>のようにファイル由来のマークアップの残りが付いています。ファイルの空行は、データセットのとおり値のない行として残しています。"
+      },
+      "worldcupDisagree": {
+        "title": "国名がそろわない",
+        "description": "Wikipediaの書く名前で数えると、Germanyは1回、West Germanyは3回優勝しており、まるで2つの国のようです。Kaggleは同じチームをGermany FRと書くため、ソース間で名前で結合してもこれらの優勝は漏れます。"
+      },
+      "worldcupFunction": {
+        "title": "関数がそのままテーブル",
+        "description": "country_aliasはPythonソースで、この関数こそ、ソースをまたぐすべてのリレーションシップが経由するテーブルです。各ソースが書くチーム名を受け取り、組織のボールトにあるキーでLLMに、その名前がどのFIFA加盟国を指すかを尋ね、加盟国の名前とFIFAコードを返します。更新間隔ごとに再実行されるため、新しい名前も現れた時点で照合されます。<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "すべての名前を照合し確認",
+        "description": "これは加盟国の名前と異なる名前の一覧です。Germany FRとWest GermanyはGermany、ZaireはDR Congo、Soviet UnionはRussiaです。このデモで固定する前にすべての照合を確認し、237件のうち27件を修正しました。成績がどの加盟国にも引き継がれなかったチームは自分の名前のままです。East GermanyはEast Germanyのままなので、1974年のWest Germany戦はGermany対Germanyにはなりません。"
+      },
+      "worldcupJunction": {
+        "title": "関数を経由するリレーションシップ",
+        "description": "WONは、連盟の加盟国をcountry_aliasを経由して、その国が優勝した決勝と結びます。加盟国のFIFAコードがその国を指すすべての名前を見つけ、各名前が決勝を見つけます。RUNNER_UP、PLAYED_HOME、PLAYED_AWAY、SCOREDも同じように結びます。"
+      },
+      "worldcupGraph": {
+        "title": "すべての優勝を1つのグラフに",
+        "description": "各加盟国は、どの名前で優勝したかにかかわらず、優勝した決勝と結ばれています。Germanyのノードには1954年、1974年、1990年、2014年が集まります。"
+      },
+      "worldcupByConfederation": {
+        "title": "連盟ごとにグループ化",
+        "description": "連盟ごとにグループ化すると、UEFAの加盟国が13回、CONMEBOLの加盟国が10回優勝しています。ほかの連盟は決勝で勝ったことがありません。"
+      },
+      "worldcupSql": {
+        "title": "SQLでも同じモデル",
+        "description": "SQLでも同じ結合で、country_aliasを経由して各加盟国の優勝回数を数えます。Brazilが5回で首位、GermanyとItalyが4回ずつです。"
+      },
+      "worldcupGraphql": {
+        "title": "GraphQLでも",
+        "description": "GraphQLでは各決勝にcountry_aliasを経由する<code>winner</code>フィールドがあり、1954年、1974年、1990年はWest Germanyの横に、それが指す加盟国Germany(GER)が表示されます。"
+      },
+      "worldcupRecap": {
+        "title": "まとめ",
+        "description": "WikipediaとKaggleの公開データを数分で取り込み、社内のデータベースと同じようにガバナンスし、約10行のPythonで国名をそろえ、1つのグラフとして問い合わせました。関数の照合は確認済みなので、グラフはすべての優勝を一度ずつ、正しい加盟国に数えます。"
       }
     },
     "status": {
@@ -1572,6 +1628,10 @@
       "churnprod": {
         "title": "本番環境での解約リスク",
         "summary": "解約デモの scikit-learn モデルを本番で運用します。Python パッケージがソースになり、その関数は join の中ですべての顧客をスコアリングするテーブルになります。返す行にはマスキングと行ルールが適用されます。"
+      },
+      "worldcup": {
+        "title": "World Cup、1つのグラフ",
+        "summary": "WikipediaとKaggleのワールドカップのデータは国名が一致しません。短いPython関数がLLMで各名前を照合し、公開ソースが1つのガバナンスされたグラフになります。"
       }
     }
   }

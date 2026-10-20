@@ -1468,6 +1468,62 @@
       "churnprodRecap": {
         "title": "你看到了甚麼",
         "description": "數據科學家的模型投入了生產，無需運行自己的服務。它的套件被固定，只安裝一次。一個 join 為它的函數提供數據，函數讀起來就像一個表，而每個表都有的遮罩和行規則約束它回傳的內容。SQL、GraphQL 以及其他任何存取方式都以同樣的方式讀取它。"
+      },
+      "worldcupIntro": {
+        "title": "四個公開來源，一屆世界盃",
+        "description": "誰贏過世界盃，來自哪個聯會？答案分散在公開數據中：維基百科的決賽列表和各聯會條目，以及 Kaggle 上收錄每場世界盃比賽和每個國際賽入球的兩個數據集。每個來源對國家的寫法都不同。維基百科寫 West Germany，Kaggle 寫 Germany FR，聯會的會員表寫 Germany。本導覽接入這些數據，用一個簡短的 Python 函數令名稱一致，再把結果作為一張受管治的圖來查詢。"
+      },
+      "worldcupWikipedia": {
+        "title": "維基百科，幾分鐘即可登記",
+        "description": "這是一個維基百科數據來源。它的爬取讀取七個頁面：List of FIFA World Cup finals 和六個聯會的條目。這些頁面上的每張數據表都成為一張表格，以其頁面和標題命名，因此決賽表格是 <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>。公開數據來源和任何內部資料庫一樣受管治，使用相同的角色、授權和遮罩。設定刷新間隔後，這些數據來源會自動保持最新。本示範讀取固定快照，因此每位訪客看到的答案都相同。"
+      },
+      "worldcupFinals": {
+        "title": "維基百科列出的決賽",
+        "description": "1930 年至 2026 年的每場決賽，冠軍和亞軍都使用當時的名稱。維基百科把 1954、1974 和 1990 年的冠軍記在 West Germany 名下，把 2014 年的冠軍記在 Germany 名下。"
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle 數據集以表格形式到達",
+        "description": "這是一個 Kaggle 數據來源：FIFA World Cup 數據集，收錄 1930 年至 2014 年的每屆賽事、每場比賽和每位球員的出場。它的每個檔案都以一張表格的形式到達。第二個 Kaggle 數據來源收錄 1916 年以來的每個國際賽入球。和維基百科的表格一樣，它們是公開數據，幾分鐘即可登記，並像任何內部資料庫一樣受管治。"
+      },
+      "worldcupMatches": {
+        "title": "以當時名稱記錄的比賽",
+        "description": "Kaggle 把西德寫作 Germany FR，把東德寫作 German DR。它的一些名稱帶有檔案殘留的標記，例如 <code>rn\"&gt;Republic of Ireland</code>。檔案中的空行按數據集原樣保留為沒有值的列。"
+      },
+      "worldcupDisagree": {
+        "title": "名稱對不上",
+        "description": "按維基百科寫的名稱計算，Germany 有一個冠軍，West Germany 有三個，就像是兩個國家。Kaggle 把同一支球隊寫作 Germany FR，所以在來源之間按名稱做連接也會漏掉這些冠軍。"
+      },
+      "worldcupFunction": {
+        "title": "函數就是那張表格",
+        "description": "country_alias 是一個 Python 數據來源，這個函數就是每條跨來源關係所經過的那張表格。它接收各來源寫出的每個球隊名稱，用機構密碼庫中的密鑰詢問 LLM 該名稱代表哪個國際足協會員，並傳回該會員的名稱和國際足協代碼。它會按刷新間隔再次執行，因此新名稱一出現就會被配對。<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "每個名稱都已配對並覆核",
+        "description": "這些是與其會員名稱不同的名稱。Germany FR 和 West Germany 是 Germany，Zaire 是 DR Congo，Soviet Union 是 Russia。每一項配對都在本示範凍結前經過覆核，237 項中有 27 項被更正。成績未由任何會員繼承的球隊保留自己的名稱：East Germany 仍是 East Germany，因此它在 1974 年對 West Germany 的比賽不會變成 Germany 對 Germany。"
+      },
+      "worldcupJunction": {
+        "title": "經過函數的關係",
+        "description": "WON 透過 country_alias 把聯會的會員與它贏得的決賽連接起來。會員的國際足協代碼找到它代表的每個名稱，每個名稱再找到它的決賽。RUNNER_UP、PLAYED_HOME、PLAYED_AWAY 和 SCORED 也以同樣方式連接。"
+      },
+      "worldcupGraph": {
+        "title": "所有冠軍匯於一張圖",
+        "description": "每個會員都與它贏得的決賽相連，無論當時用的是哪個名稱。Germany 的節點匯集了 1954、1974、1990 和 2014 年。"
+      },
+      "worldcupByConfederation": {
+        "title": "按聯會分組",
+        "description": "按聯會分組後，歐洲足協會員擁有 13 個冠軍，南美洲足協會員擁有 10 個。沒有其他聯會贏過決賽。"
+      },
+      "worldcupSql": {
+        "title": "SQL 中的同一模型",
+        "description": "SQL 中的同一個連接透過 country_alias 統計每個會員的冠軍數。Brazil 以五個領先，Germany 和 Italy 各有四個。"
+      },
+      "worldcupGraphql": {
+        "title": "以及 GraphQL",
+        "description": "在 GraphQL 中，每場決賽都有一個經過 country_alias 的 <code>winner</code> 欄位，因此 1954、1974 和 1990 年在 West Germany 旁邊顯示它代表的會員：Germany，GER。"
+      },
+      "worldcupRecap": {
+        "title": "回顧",
+        "description": "來自維基百科和 Kaggle 的公開數據，幾分鐘內接入並像任何內部資料庫一樣受管治，用大約十行 Python 令名稱一致，並作為一張圖來查詢。函數的配對都經過覆核，因此這張圖把每個冠軍只計一次，並記在正確的會員名下。"
       }
     },
     "status": {
@@ -1572,6 +1628,10 @@
       "churnprod": {
         "title": "生產環境中的流失風險",
         "summary": "流失示範中的 scikit-learn 模型投入生產。它的 Python 套件是一個數據來源，它的函數是一個表，在 join 中為每位客戶評分，回傳的結果同樣受遮罩和行規則約束。"
+      },
+      "worldcup": {
+        "title": "World Cup，一張圖",
+        "summary": "維基百科和 Kaggle 的世界盃數據在國家名稱上對不上。一個簡短的 Python 函數用 LLM 配對每個名稱，公開數據來源成為一張受管治的圖。"
       }
     }
   }

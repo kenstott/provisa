@@ -1468,6 +1468,62 @@
       "churnprodRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Das Modell eines Data Scientists ging in Produktion, ohne eigenen Dienst. Sein Paket ist festgelegt und wird einmal installiert. Ein Join speist seine Funktion, die sich wie eine Tabelle liest, und die Maskierung und Zeilenregeln, die jede Tabelle hat, regeln, was sie zurückgibt. SQL, GraphQL und jeder andere Zugang lesen sie gleich."
+      },
+      "worldcupIntro": {
+        "title": "Vier öffentliche Quellen, eine Weltmeisterschaft",
+        "description": "Wer hat die Weltmeisterschaft gewonnen, und aus welcher Konföderation? Die Antwort steckt in öffentlichen Daten: in Wikipedias Liste der Endspiele und den Artikeln der Konföderationen und in zwei Kaggle-Datensätzen mit jedem WM-Spiel und jedem Länderspieltor. Jede Quelle benennt die Länder auf ihre Weise. Wikipedia schreibt West Germany, Kaggle schreibt Germany FR, und die Mitgliedertabellen der Konföderationen schreiben Germany. Diese Tour bindet die Daten an, bringt die Namen mit einer kurzen Python-Funktion in Einklang und fragt das Ergebnis als einen verwalteten Graphen ab."
+      },
+      "worldcupWikipedia": {
+        "title": "Wikipedia, in Minuten registriert",
+        "description": "Das ist eine Wikipedia-Quelle. Ihr Crawl liest sieben Seiten: die List of FIFA World Cup finals und die Artikel der sechs Konföderationen. Jede Datentabelle dieser Seiten wird zu einer Tabelle, benannt nach ihrer Seite und ihrer Beschriftung, die Endspiele also als <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>. Eine öffentliche Quelle wird wie jede interne Datenbank verwaltet, mit denselben Rollen, Berechtigungen und Masken. Legen Sie ein Aktualisierungsintervall fest, und diese Quellen bleiben von selbst aktuell. Diese Demo liest einen festen Stand, damit jeder Besucher dieselben Antworten sieht."
+      },
+      "worldcupFinals": {
+        "title": "Die Endspiele, wie Wikipedia sie aufführt",
+        "description": "Jedes Endspiel von 1930 bis 2026, mit Siegern und Finalisten unter den Namen ihrer Zeit. Wikipedia führt die Titel von 1954, 1974 und 1990 unter West Germany und den Titel von 2014 unter Germany."
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle-Datensätze kommen als Tabellen an",
+        "description": "Das ist eine Kaggle-Quelle: der FIFA-World-Cup-Datensatz mit jedem Turnier, jedem Spiel und jedem Spielereinsatz von 1930 bis 2014. Jede seiner Dateien kommt als Tabelle an. Eine zweite Kaggle-Quelle enthält jedes Länderspieltor seit 1916. Wie die Wikipedia-Tabellen sind es öffentliche Daten, in Minuten registriert und verwaltet wie jede interne Datenbank."
+      },
+      "worldcupMatches": {
+        "title": "Spiele unter den Namen ihrer Zeit",
+        "description": "Kaggle schreibt Westdeutschland als Germany FR und die DDR als German DR. Einige seiner Namen tragen Reste von Markup aus der Datei, etwa <code>rn\"&gt;Republic of Ireland</code>. Die Leerzeilen der Datei bleiben als Zeilen ohne Werte erhalten, so wie der Datensatz sie enthält."
+      },
+      "worldcupDisagree": {
+        "title": "Die Namen widersprechen sich",
+        "description": "Nach den Namen gezählt, die Wikipedia schreibt, hat Germany einen Titel und West Germany drei, als wären es zwei Länder. Kaggle schreibt dieselbe Mannschaft als Germany FR, sodass auch ein Join über die Namen zwischen den Quellen diese Titel verfehlt."
+      },
+      "worldcupFunction": {
+        "title": "Die Funktion ist die Tabelle",
+        "description": "country_alias ist eine Python-Quelle, und diese Funktion ist die Tabelle, über die jede quellenübergreifende Beziehung verknüpft. Sie erhält jeden Mannschaftsnamen, den die Quellen schreiben, fragt ein LLM mit einem Schlüssel aus dem Tresor der Organisation, für welches FIFA-Mitglied der Name steht, und gibt dessen Namen und FIFA-Code zurück. Sie läuft in ihrem Aktualisierungsintervall erneut, sodass ein neuer Name zugeordnet wird, sobald er auftaucht.<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "Jeder Name, zugeordnet und geprüft",
+        "description": "Das sind die Namen, die vom Namen ihres Mitglieds abweichen. Germany FR und West Germany sind Germany, Zaire ist DR Congo und die Soviet Union ist Russia. Jede Zuordnung wurde geprüft, bevor diese Demo sie eingefroren hat, und 27 der 237 wurden korrigiert. Eine Mannschaft, deren Ergebnisse an kein Mitglied übergingen, behält ihren eigenen Namen: East Germany bleibt East Germany, sodass ihr Spiel von 1974 gegen West Germany nicht Germany gegen Germany ist."
+      },
+      "worldcupJunction": {
+        "title": "Eine Beziehung über die Funktion",
+        "description": "WON verknüpft ein Mitglied einer Konföderation über country_alias mit den Endspielen, die es gewonnen hat. Der FIFA-Code des Mitglieds findet jeden Namen, für den es steht, und jeder Name findet seine Endspiele. RUNNER_UP, PLAYED_HOME, PLAYED_AWAY und SCORED verknüpfen auf dieselbe Weise."
+      },
+      "worldcupGraph": {
+        "title": "Jeder Titel in einem Graphen",
+        "description": "Jedes Mitglied ist mit den Endspielen verbunden, die es gewonnen hat, unter welchem Namen auch immer. Der Knoten von Germany hält 1954, 1974, 1990 und 2014."
+      },
+      "worldcupByConfederation": {
+        "title": "Nach Konföderation gruppiert",
+        "description": "Nach Konföderation gruppiert halten die Mitglieder der UEFA 13 Titel und die der CONMEBOL 10. Keine andere Konföderation hat ein Endspiel gewonnen."
+      },
+      "worldcupSql": {
+        "title": "Dasselbe Modell in SQL",
+        "description": "Derselbe Join in SQL zählt die Titel jedes Mitglieds über country_alias. Brazil führt mit fünf, Germany und Italy haben je vier."
+      },
+      "worldcupGraphql": {
+        "title": "Und in GraphQL",
+        "description": "In GraphQL hat jedes Endspiel über country_alias ein Feld <code>winner</code>, sodass 1954, 1974 und 1990 West Germany neben dem Mitglied zeigen, für das es steht: Germany, GER."
+      },
+      "worldcupRecap": {
+        "title": "Zusammenfassung",
+        "description": "Öffentliche Daten von Wikipedia und Kaggle, in Minuten angebunden und verwaltet wie jede interne Datenbank, mit etwa zehn Zeilen Python in Einklang gebracht und als ein Graph abgefragt. Die Zuordnungen der Funktion wurden geprüft, sodass der Graph jeden Titel einmal zählt, beim richtigen Mitglied."
       }
     },
     "status": {
@@ -1572,6 +1628,10 @@
       "churnprod": {
         "title": "Abwanderungsrisiko in Produktion",
         "summary": "Das scikit-learn-Modell der Churn-Demo in Produktion. Sein Python-Paket ist eine Quelle, und seine Funktion ist eine Tabelle, die in einem Join jeden Kunden bewertet, mit Maskierung und Zeilenregeln auf dem, was sie zurückgibt."
+      },
+      "worldcup": {
+        "title": "World Cup, ein Graph",
+        "summary": "Die WM-Daten von Wikipedia und Kaggle widersprechen sich bei den Ländernamen. Eine kurze Python-Funktion ordnet jeden Namen mit einem LLM zu, und die öffentlichen Quellen werden zu einem verwalteten Graphen."
       }
     }
   }
