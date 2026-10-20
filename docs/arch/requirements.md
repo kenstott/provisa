@@ -25532,6 +25532,22 @@ The benchmark contract has governance knobs: row rules per table, the share of c
 
 **Tests:** —
 
+## 9. Live Data & Events
+
+### REQ-2108 · Derived / MV Processor {#REQ-2108}
+
+**Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
+
+A materialized view's build takes the same route decision a query with its definition takes: a definition one source reads whole runs at that source, on any engine kind, and only its result rows come back; they are staged beside the view's table and every build step reads them there. The size guard counts the staged rows, so the source is read once.
+
+**Use case:** An end-of-day aggregate over a large transaction table is computed where the table lives, and only the grouped rows reach the store, whatever engine the region runs.
+
+**Code:** `provisa/mv/governed_build.py`, `provisa/mv/refresh.py`, `provisa/events/app_wiring.py`
+
+**Tests:** `tests/unit/test_mv_governed_build.py`, `tests/unit/test_mv_lifecycle.py`
+
+## 11. Platform, Infrastructure & Delivery
+
 ### REQ-2093 · Performance {#REQ-2093}
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
@@ -25633,3 +25649,17 @@ A relationship may feed its target table's parameters from its source table: its
 **Code:** `provisa/api/data/materialization.py`, `provisa/codesource/table.py`, `provisa/core/models.py`, `provisa/core/schema.sql`, `provisa/core/schema_org.py`, `provisa/core/repositories/relationship.py`, `provisa/api/admin/types.py`, `provisa/api/admin/schema_mutation.py`, `provisa-ui/src/components/relationships/ParametersPanel.tsx`
 
 **Tests:** `tests/unit/test_relationship_fed_code_table.py`
+
+## 10. UI & Admin Surfaces
+
+### REQ-2097 · UI {#REQ-2097}
+
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
+
+The named demo churnprod puts the churn demo's model in production. The data scientist's scikit-learn model ships inside the demo as a Python package (code/churn_model.tar.gz, its fitted model and a pinned uv.lock of wheels inside) whose function churn_risk(customer_id, ..., as_of=None) returns RiskRow rows (customer_id, score, reasons, computed_at) and is a table; its Node twin (code/churn-model-js.tar.gz), computing from the same exported coefficients, is a second table beside it. Its tour shows the scenario (linking back to the churn demo), the source registered from the shipped package, discovery offering the columns from the function's types, a read without customer_id refused before the code runs, the join from the current customers' features to churn_risk giving the at-risk list, the analyst reading the same scores with email addresses masked, the EU account team reading only EU customers' scores because the row rule is on the code's output, the Node twin's score beside the Python one, and a recap. A tour step may carry demo: <name>, rendered as a button opening that demo; the churn demo's recap links forward to churnprod.
+
+**Use case:** A data scientist's model becomes a governed table that every role reads through the same masks and row rules as any other table.
+
+**Code:** `demo/named/churnprod/config.yaml`, `demo/named/churnprod/tour.yaml`, `demo/named/churnprod/model/churn_model/churn_model.py`, `demo/named/churnprod/model/churn-model-js/index.js`, `demo/named/churnprod/db/init.sql`, `provisa-ui/src/tour/useTour.tsx`, `provisa-ui/src/tour/demoTour.ts`
+
+**Tests:** `tests/integration/test_churnprod_demo.py`, `tests/unit/test_named_demo_tour.py`, `provisa-ui/src/__tests__/tourDemoTrack.test.tsx`

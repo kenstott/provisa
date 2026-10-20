@@ -470,10 +470,10 @@ async def _post_refresh_delta_capture(  # REQ-877
 
 
 async def _probe_source_count(
-    engine, mv: MVDefinition, authorization: SystemAuth | None = None
+    engine, select_sql: str, authorization: SystemAuth | None = None
 ) -> int:  # REQ-235
-    """Run a COUNT(*) probe against the MV's source query to estimate result size."""
-    select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
+    """Run a COUNT(*) probe over the build's own statement (REQ-2108: a DIRECT build's is its
+    staged rows, so the source is read once) to estimate result size."""
     res = await engine.execute_engine(
         f"SELECT COUNT(*) FROM ({select_sql}) _probe", authorization=authorization
     )
@@ -650,8 +650,9 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 log.warning("MV %s: %s", mv.id, quota_exc.detail)
                 return
 
+        select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
         # Size guard: probe source count before materializing
-        source_count = await _probe_source_count(engine, mv, authorization=authorization)
+        source_count = await _probe_source_count(engine, select_sql, authorization=authorization)
         if source_count > mv.max_rows:
             log.warning(
                 "MV %s source has %d rows (max_rows=%d) — skipping materialization",
@@ -668,8 +669,10 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
             mv.last_error = f"Source row count {source_count} exceeds max_rows {mv.max_rows}"
             return
 
-        select_sql = await _build_refresh_sql(mv, engine, authorization=authorization)
-        _emit_column_lineage_span(mv, select_sql, str(start), input_signals)  # REQ-862
+        from provisa.mv.governed_build import lineage_sql  # noqa: PLC0415
+
+        # REQ-862
+        _emit_column_lineage_span(mv, lineage_sql(mv, select_sql), str(start), input_signals)
 
         # REQ-1165: preflight CHECK — gate the materialization before any write. A SQL-expressible
         # check pushes down as a count probe over the SELECT (engine-side, no rows to Python); a
@@ -927,7 +930,11 @@ async def detect_orphans(  # REQ-234
     # its region changed) is an orphan of this region's store like a removed view's.
     from provisa.federation.replica_converge import builds_here
 
-    known_tables = {mv.target_table for mv in registry.all() if builds_here(mv.region)}
+    from provisa.mv.governed_build import staged_table  # noqa: PLC0415
+
+    # REQ-2108: a view's DIRECT build stages its rows beside it; the staged table is the view's.
+    here = [mv for mv in registry.all() if builds_here(mv.region)]
+    known_tables = {mv.target_table for mv in here} | {staged_table(mv) for mv in here}
     orphans = actual_tables - known_tables
     if orphans:
         log.warning(

@@ -85270,6 +85270,34 @@ When the benchmark runs locally
 Then the report gives per-request server CPU for the governed run beside the run with every knob at zero"
   stakeholders:
   - ops
+- id: REQ-2108
+  status: complete
+  since: 2026-10
+  group: 9. Live Data & Events
+  category: Derived / MV Processor
+  feature: change-events-and-streams-calendars
+  priority: MUST
+  type: behavioral
+  description: "A materialized view's build takes the same route decision a query with its definition takes: a definition one source reads whole runs at that source, on any engine kind, and only its result rows come back; they are staged beside the view's table and every build step reads them there. The size guard counts the staged rows, so the source is read once."
+  use_case: "An end-of-day aggregate over a large transaction table is computed where the table lives, and only the grouped rows reach the store, whatever engine the region runs."
+  scenario: "Given a view whose definition aggregates one Postgres table, in a region whose engine is DuckDB
+
+When the view is refreshed
+
+Then the aggregate runs whole in Postgres
+
+And only the grouped rows are landed in the view's store
+
+And the source is read once"
+  code:
+  - provisa/mv/governed_build.py
+  - provisa/mv/refresh.py
+  - provisa/events/app_wiring.py
+  tests:
+  - tests/unit/test_mv_governed_build.py
+  - tests/unit/test_mv_lifecycle.py
+  stakeholders:
+  - ops
 - id: REQ-2093
   status: complete
   since: 2026-10

@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-841 — Federation Engine Abstraction
-  # A reachable source (one with a connector for the selected engine) is exposed by that connector's mechanism — attach (ref…
+  # A reachable source (one with a connector for the selected engine) is exposed by that connector's mechanism: attach (refe…
 
   Scenario: REQ-841 default behaviour
     Given a source reference and the configured federation engine

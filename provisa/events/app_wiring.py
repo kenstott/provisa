@@ -730,10 +730,10 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 # The statement its build reads (REQ-1922, #257): its definition through the one
                 # pipeline, so a table it reads is read as a direct statement reads it -- a search
                 # table under its arguments among them -- never its physical SQL as written.
-                from provisa.mv.governed_build import view_build_sql
+                from provisa.mv.governed_build import view_shape_sql
 
                 _probe = await engine.execute_engine(
-                    f"SELECT * FROM ({await view_build_sql(_m, engine)}) AS _mv_probe LIMIT 0",
+                    f"SELECT * FROM ({await view_shape_sql(_m)}) AS _mv_probe LIMIT 0",
                     authorization=system_auth("event signal"),
                 )
             except Exception:

@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-212 — Hasura v2 Parity: Low-Complexity Features
-  # Upsert mutations -- `INSERT ... ON CONFLICT ... DO UPDATE`. New `upsert_<table>` mutation field. Conflict columns inferr…
+  # Upsert mutations: `INSERT ... ON CONFLICT ... DO UPDATE`. New `upsert_<table>` mutation field. Conflict columns inferred…
 
   Scenario: REQ-212 default behaviour
     Given a GraphQL upsert_<table> mutation request

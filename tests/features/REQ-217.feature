@@ -1,6 +1,6 @@
 # Generated from docs/arch/requirements.yaml. Do not hand-edit.
 Feature: REQ-217 — Hasura v2 Parity: Low-Complexity Features
-  # Batch mutations already supported by GraphQL spec -- multiple mutations in one request execute sequentially. Document ex…
+  # Batch mutations already supported by the GraphQL spec: multiple mutations in one request execute sequentially. Document…
 
   Scenario: REQ-217 default behaviour
     Given a GraphQL request containing multiple mutations
