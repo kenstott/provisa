@@ -85473,8 +85473,15 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - provisa/codesource/manifest.py
   - provisa/python/reader.py
   - provisa/node/reader.mjs
+  - provisa/codehost/residual.py
+  - provisa/codesource/direct.py
+  - provisa/codesource/worker.py
+  - provisa/transpiler/router.py
+  - provisa/api/data/materialization.py
+  - provisa/pgwire/_pipeline.py
   tests:
   - tests/unit/test_code_pushdown.py
+  - tests/unit/test_code_direct.py
   docs:
   - code-sources.md
 - id: REQ-2098

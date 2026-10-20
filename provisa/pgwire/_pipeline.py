@@ -2369,6 +2369,10 @@ async def route_governed(
 
     await _await_source_servers(decision, _sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_deferred
+
+        # REQ-2100: a code table held for its source's own read is landed for the engine.
+        _qualified = await land_deferred(_qualified, state)
         # REQ-135/REQ-1163: optimization — a view governance kept as its reference (its region's
         # copy, an as-of read of a bitemporal view, a materialized view the reader sees whole) is
         # answered here, BEFORE the unknown-catalog check and transpile (mv/view_read.py). Same
@@ -4943,6 +4947,10 @@ async def _route_compiled(
     # instead. A single-source neo4j query now always falls through to Route.ENGINE.
     await _await_source_servers(decision, sources, state)
     if decision.route == Route.ENGINE:
+        from provisa.api.data.materialization import land_deferred
+
+        # REQ-2100: a code table held for its source's own read is landed for the engine.
+        _exec_sql = await land_deferred(_exec_sql, state)
         _exec_sql, physical_sql = await _engine_forms(_exec_sql)
         _hints = _engine_session_hints(state, sources, session_props, _exec_sql, writes=_is_write)
         return _Plan(

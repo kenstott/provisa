@@ -523,6 +523,21 @@ class Worker:
         call in the host."""
         from provisa.codesource.arrow_rows import rows_of
 
+        for ipc in self.batches(export, kind, args, names, schema=schema):
+            yield rows_of(ipc)
+
+    def batches(
+        self,
+        export: str,
+        kind: str,
+        args: Sequence[Any],
+        names: Sequence[str] = (),
+        *,
+        schema: str,
+    ) -> Iterator[bytes]:
+        """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent."""
+        import pyarrow as pa
+
         if kind not in ("table", "stream"):
             raise ValueError(f"rows() serves a table or a stream, not a {kind}")
         with stage(_tracer, "codesource.call") as span:
@@ -539,9 +554,10 @@ class Worker:
                         span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
                         return
                     if message["op"] == "rows":
-                        batch = rows_of(message["arrow"])
-                        rows, batches = rows + len(batch), batches + 1
-                        yield batch
+                        ipc = message["arrow"]
+                        rows += pa.ipc.open_stream(pa.py_buffer(ipc)).read_all().num_rows
+                        batches += 1
+                        yield ipc
             finally:
                 span.set_attribute("codesource.rows", rows)
                 span.set_attribute("codesource.batches", batches)
