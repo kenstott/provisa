@@ -25799,3 +25799,15 @@ The data product export publishes Provisa's data products as listings in the int
 **Code:** —
 
 **Tests:** —
+
+### REQ-2119 · Data Catalog Integration {#REQ-2119}
+
+**Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
+
+Every metadata export target has an end-to-end test against the real service, and no target is complete without one. Each test publishes a snapshot through the production publish path, with no injected seam or faked transport, and reads the published entities back from the target to check them: the data product with its fields and members, the tables and columns with descriptions and governance tags, glossary terms, lineage and data-quality outcomes where the target takes them. A wiring test publishes through that same path and fails when a configured target receives nothing. Self-hostable targets (OpenMetadata, DataHub, Apache Atlas, an OpenLineage receiver) run in containers the test starts. Cloud and SaaS targets (Snowflake Horizon, BigQuery and Dataplex, Microsoft Purview, AWS DataZone, Databricks Unity Catalog, Collibra, Atlan, Alation) run against the project's own accounts, the same way the warehouse lanes do. A test that cannot reach its target fails; it is never skipped. Unit tests with faked HTTP remain for request shaping but do not count as proof that a target works.
+
+**Use case:** A target whose requests match no real API, or that is never wired in production, fails its end-to-end test instead of passing on a fake.
+
+**Code:** —
+
+**Tests:** —

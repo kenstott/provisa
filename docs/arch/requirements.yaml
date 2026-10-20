@@ -85926,3 +85926,31 @@ Then customer_360's ODPS document and an ODCS 3.1 contract for each member table
   - REQ-1634
   - REQ-1389
   notes: "Maintainer 2026-10-20, through the lead: add the internal-marketplace targets other than Snowflake (which is fine as is), scoped to an enterprise publishing internally to other data teams. Maintainer: this is data team A in enterprise 1 publishing for data team B in enterprise 1, partly just part of Provisa; the issue is when team A uses Provisa and team B does not and uses BigQuery. Maintainer: not one-off ETL flows, but the data products infra creating listings in other locations that match a data product's terminology or, if not available, align to it in spirit. Decisions: several targets per org; contracts per member table; approvers derived from roles; Alation later (no account); others tested on existing cloud accounts. Research: Dataplex data products, Purview Unified Catalog (API in preview), AWS DataZone, Alation, and ODPS/ODCS for the catalogs that import them."
+- id: REQ-2119
+  status: proposed
+  since: 2026-10
+  group: 1. Access Governance & Security
+  category: Data Catalog Integration
+  feature: catalog-and-discovery-warehouse-listings
+  priority: MUST
+  type: behavioral
+  description: "Every metadata export target has an end-to-end test against the real service, and no target is complete without one. Each test publishes a snapshot through the production publish path, with no injected seam or faked transport, and reads the published entities back from the target to check them: the data product with its fields and members, the tables and columns with descriptions and governance tags, glossary terms, lineage and data-quality outcomes where the target takes them. A wiring test publishes through that same path and fails when a configured target receives nothing. Self-hostable targets (OpenMetadata, DataHub, Apache Atlas, an OpenLineage receiver) run in containers the test starts. Cloud and SaaS targets (Snowflake Horizon, BigQuery and Dataplex, Microsoft Purview, AWS DataZone, Databricks Unity Catalog, Collibra, Atlan, Alation) run against the project's own accounts, the same way the warehouse lanes do. A test that cannot reach its target fails; it is never skipped. Unit tests with faked HTTP remain for request shaping but do not count as proof that a target works."
+  use_case: A target whose requests match no real API, or that is never wired in production, fails its end-to-end test instead of passing on a fake.
+  scenario: "Given the Snowflake Horizon target configured against the project's Snowflake account and a data product with two members
+
+When the end-to-end test publishes through the production path
+
+Then it reads back an organization listing and a share holding both members, with the product's fields
+
+Given a target that the production path never calls
+
+When the wiring test publishes
+
+Then it fails naming the target"
+  related_reqs:
+  - REQ-1069
+  - REQ-1635
+  - REQ-1636
+  - REQ-2117
+  - REQ-2118
+  notes: "Maintainer 2026-10-20, through the lead: all must have e2e tests. Prompted by the audit finding that bigquery_dataplex passed unit tests on a faked transport and an injected runtime while matching no Google API and never running in production. Existing e2e: Atlas, OpenLineage, OpenMetadata only."
