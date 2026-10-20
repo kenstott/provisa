@@ -98,36 +98,44 @@
         "description": "💬 你用已在使用的語言或工具提問（SQL、GraphQL、Cypher、透過 Polly 使用自然語言，或 BI 工具或驅動程式），每一種讀取的都是同一個受治理的模型，因此無論選哪一種，答案和規則都相同。"
       },
       "step6": {
-        "title": "SQL（七種介面之一）",
+        "title": "SQL（九種介面之一）",
         "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢：在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。模型自身的中繼數據，以及每一項活動追蹤，在這裡也是可查詢的表格，所以可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 除了這個探索器，同一套受管治的 SQL 還可透過多種線路協定運作；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>：所有 Postgres 相容的客戶端（psql、DBeaver、Tableau、Power BI）開箱即用。</li><li><strong>JDBC</strong>：可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：為 ADBC 客戶端提供欄式串流，毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>：從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li></ul>"
       },
       "step7": {
-        "title": "GraphQL（七種介面之二）",
+        "title": "GraphQL（九種介面之二）",
         "description": "◈ 同一個查詢，以 GraphQL 表達：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>對你的關係進行分組與彙總：🎯 單一端點，📖 自我描述的結構描述。</p><p>🔌 可從<strong>任何 GraphQL 客戶端</strong>呼叫，例如 Apollo、Relay 或 urql。啟用聯邦功能後，Provisa 會作為子圖加入 <strong>Apollo 超級圖（supergraph）</strong>，讓你的聯邦模型與現有圖譜一併組合。</p>"
       },
       "step8": {
-        "title": "Cypher（七種介面之三）",
+        "title": "Cypher（九種介面之三）",
         "description": "🕸️ 用 Cypher 將聯邦模型當作圖譜來遍歷：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ 這個遍歷可<strong>跨數據來源</strong>執行，毋須單一圖數據庫。</p><p>🔌 任何 <strong>Bolt</strong> 客戶端（例如 Neo4j Browser 或 Bloom）都能透過線路執行同樣的遍歷，毋須更改程式碼。</p>"
       },
       "step9": {
-        "title": "gRPC（七種介面之四）",
+        "title": "gRPC（九種介面之四）",
         "description": "⚙️ 每個已登記的實體同時也是一個 gRPC 服務：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>可從任何 gRPC 客戶端呼叫：📐 強型別，🚀 高吞吐量。</p>"
       },
       "step10": {
-        "title": "JSON:API（七種介面之五）",
+        "title": "JSON:API（九種介面之五）",
         "description": "🧩 一個符合規格的 JSON:API 介面：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 分頁與 🔍 篩選開箱即用。</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST（七種介面之六）",
+        "title": "OpenAPI / REST（九種介面之六）",
         "description": "🌐 還有一個以 OpenAPI 描述的純 REST 端點：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 描述完整，任何 REST 客戶端或程式碼產生器都可以使用。</p>"
       },
       "step12": {
-        "title": "MCP（七種介面之七）",
-        "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具（搜尋目錄、描述表格、執行 SQL、追蹤關係），並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還剩最後一種介面：就是那個能替你寫出其餘七種的介面。→</p>"
+        "title": "MCP（九種介面之七）",
+        "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具（搜尋目錄、描述表格、執行 SQL、追蹤關係），並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還有兩種介面從 Python 讀取同樣受管治的數據。→</p>"
+      },
+      "stepPython": {
+        "title": "Python（九種介面之八）",
+        "description": "🐍 Python 分頁在你的瀏覽器中執行 Python，並以你的身份登入：<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>結果以 pandas DataFrame 傳回，經由同一條受管治的管道讀取，所以你角色的行規則和遮罩同樣適用。</p><p>🔌 同一個 <strong>provisa-client</strong> 套件可以用 pip 安裝到任何桌面 Python，所以在這裏寫的腳本毋須修改就能在你自己的環境中執行。</p>"
+      },
+      "stepNotebook": {
+        "title": "筆記本（九種介面之九）",
+        "description": "📓 筆記本分頁就是 JupyterLite：在你瀏覽器中執行的 Jupyter 筆記本。第一個儲存格負責登入，下一個把同一條查詢讀成 DataFrame，可以畫成圖表或與其他數據合併。<p>⬇️ 下載這本筆記本，它可以在任何桌面 Jupyter 中打開，同樣的儲存格會像在這裏一樣從 Provisa 讀取。</p><p>還剩最後一種介面：替你寫出查詢的那種。→</p>"
       },
       "step13": {
-        "title": "直接問：那個替你寫出全部七種的介面",
-        "description": "💬 <em>「顯示每個物種的寵物數目」</em><p><strong>你根本不必學習前面那七種介面。</strong>用日常英語提問，Provisa 會將你的問題同時編譯成每一種查詢語言：下面每個面板，都是同一句話對應的 SQL、GraphQL、Cypher、gRPC、JSON:API 及 REST 版本。</p><p>用你的工具已經懂的介面，或者全部略過，直接發問。</p><p>🔑 即時的自然語言查詢使用你自己的 LLM 金鑰；此範例為預錄示範。</p><p>✅ 一個模型，<strong>八種介面</strong>：七種用來查詢，還有一種能寫出全部七種。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "直接問：替你寫出查詢的介面",
+        "description": "💬 <em>「顯示每個物種的寵物數目」</em><p><strong>這些查詢語言你一種都不用學。</strong>用日常語言發問，Provisa 會一次過把你的問題編譯成全部七種：下面每個面板都是同一句話寫成的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>它不能直接打開 Python 或筆記本，但你隨時可以叫 Polly 把查詢搬到其中任何一個。</p><p>🔑 即時的自然語言查詢會使用你自己的 LLM 金鑰；這裏是一個預先準備的例子。</p><p>✅ 一個模型支撐全部<strong>九種介面</strong>，日常語言替你寫出查詢。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>筆記本</span></div>"
       },
       "step14": {
         "title": "這就是五分鐘的核心內容",

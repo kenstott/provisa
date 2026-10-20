@@ -98,36 +98,44 @@
         "description": "💬 Je vraagt in de taal of met de tool die je al gebruikt (SQL, GraphQL, Cypher, gewone taal via Polly, of een BI-tool of driver), en elk daarvan leest hetzelfde beheerde model, dus het antwoord en de regels zijn hetzelfde, welke je ook kiest."
       },
       "step6": {
-        "title": "SQL (1 van 7 oppervlakken)",
+        "title": "SQL (1 van 9 oppervlakken)",
         "description": "SQL leeft in de SQL-verkenner. Standaard-SQL gefedereerd over elke bron: verbind Postgres met Mongo met een CSV in één statement. De eigen metadata van het model en elk activiteitenspoor zijn hier ook bevraagbare tabellen, dus je kunt je auditlog of lineage rechtstreeks aan live data koppelen.<p>🔌 Dezelfde governed SQL draait naast deze verkenner via meerdere wire-protocollen; je tool kiest degene die hij al spreekt:</p><ul><li><strong>pgwire</strong>: elke Postgres-compatibele client (psql, DBeaver, Tableau, Power BI) verbindt out of the box.</li><li><strong>JDBC</strong>: sluit aan op elke Java/JVM-app, ETL-pipeline of JDBC-geschikte BI-tool.</li><li><strong>Arrow Flight SQL</strong>: kolomgeoriënteerde streaming voor ADBC-clients, zonder rij-hercodering, gebouwd voor grote resultaatsets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa vanuit DuckDB en bevraag de governed federatie ter plekke.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 van 7 oppervlakken)",
+        "title": "GraphQL (2 van 9 oppervlakken)",
         "description": "◈ Dezelfde query, getypeerd als GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Groepering en aggregaties over je relaties: 🎯 één endpoint, 📖 een zelfdocumenterend schema.</p><p>🔌 Roep het aan vanuit <strong>elke GraphQL-client</strong>, zoals Apollo, Relay of urql. Met federatie ingeschakeld sluit Provisa aan op een <strong>Apollo supergraph als subgraph</strong>, zodat je gefedereerde model naast je bestaande grafen samenstelt.</p>"
       },
       "step8": {
-        "title": "Cypher (3 van 7 oppervlakken)",
+        "title": "Cypher (3 van 9 oppervlakken)",
         "description": "🕸️ Doorloop het gefedereerde model als een graaf met Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Die doorloop draait <strong>over bronnen heen</strong>, zonder dat één enkele grafdatabase nodig is.</p><p>🔌 Elke <strong>Bolt</strong>-client, zoals Neo4j Browser of Bloom, voert diezelfde doorloop uit via de wire, zonder codewijziging.</p>"
       },
       "step9": {
-        "title": "gRPC (4 van 7 oppervlakken)",
+        "title": "gRPC (4 van 9 oppervlakken)",
         "description": "⚙️ Elke geregistreerde entiteit is ook een gRPC-service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Roep het aan vanuit elke gRPC-client: 📐 sterk getypeerd, 🚀 hoge doorvoer.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 van 7 oppervlakken)",
+        "title": "JSON:API (5 van 9 oppervlakken)",
         "description": "🧩 Een spec-conform JSON:API-oppervlak:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paginering en 🔍 filtering out of the box.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 van 7 oppervlakken)",
+        "title": "OpenAPI / REST (6 van 9 oppervlakken)",
         "description": "🌐 En een gewoon REST-endpoint, beschreven door OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Volledig beschreven, zodat elke REST-client of codegenerator het kan gebruiken.</p>"
       },
       "step12": {
-        "title": "MCP (7 van 7 oppervlakken)",
-        "description": "🤖 Het zevende oppervlak laat een agent <strong>met je data redeneren</strong>. Het bestuurt dezelfde governed tools (de catalogus doorzoeken, tabellen beschrijven, SQL uitvoeren, relaties volgen) en <em>schakelt</em> ze aaneen om vragen te beantwoorden die geen enkele losse query zou kunnen, waarbij elke aanroep gebonden is aan de governance van <strong>jouw</strong> rol.<p>🔌 Dezelfde <strong>MCP-server</strong> koppelt aan Claude Desktop, Claude Code, of elke MCP-client, zodat agents je model op de governed manier verkennen en erover redeneren.</p><p>🔑 Gebruikt je eigen LLM-sleutel; deze uitwisseling is een kant-en-klaar voorbeeld.</p><p>Nog één oppervlak te gaan: degene die alle zeven voor je schrijft. →</p>"
+        "title": "MCP (7 van 9 oppervlakken)",
+        "description": "🤖 Het zevende oppervlak laat een agent <strong>met je data redeneren</strong>. Het bestuurt dezelfde governed tools (de catalogus doorzoeken, tabellen beschrijven, SQL uitvoeren, relaties volgen) en <em>schakelt</em> ze aaneen om vragen te beantwoorden die geen enkele losse query zou kunnen, waarbij elke aanroep gebonden is aan de governance van <strong>jouw</strong> rol.<p>🔌 Dezelfde <strong>MCP-server</strong> koppelt aan Claude Desktop, Claude Code, of elke MCP-client, zodat agents je model op de governed manier verkennen en erover redeneren.</p><p>🔑 Gebruikt je eigen LLM-sleutel; deze uitwisseling is een kant-en-klaar voorbeeld.</p><p>Nog twee lezen dezelfde beheerde data vanuit Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 van 9 oppervlakken)",
+        "description": "🐍 Het tabblad Python draait Python in je browser, aangemeld als jij:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>Het antwoord komt terug als een pandas-DataFrame, gelezen via dezelfde beheerde pipeline, dus de rijregels en maskers van je rol gelden er ook voor.</p><p>🔌 Hetzelfde pakket <strong>provisa-client</strong> installeer je met pip op elke desktop-Python, dus een script dat je hier schrijft draait ongewijzigd in je eigen omgeving.</p>"
+      },
+      "stepNotebook": {
+        "title": "Notebook (9 van 9 oppervlakken)",
+        "description": "📓 Het tabblad Notebook is JupyterLite: een Jupyter-notebook dat in je browser draait. De eerste cel meldt je aan, de volgende leest dezelfde query als een DataFrame om in een grafiek te zetten of met andere data te combineren.<p>⬇️ Download het notebook en het opent in elke desktop-Jupyter, waar dezelfde cellen net als hier uit Provisa lezen.</p><p>Nog één oppervlak te gaan: degene die je query's voor je schrijft. →</p>"
       },
       "step13": {
-        "title": "Vraag het gewoon: het oppervlak dat alle zeven schrijft",
-        "description": "💬 <em>\"hoeveel huisdieren per diersoort\"</em><p><strong>Je hoeft geen van die zeven te leren.</strong> Vraag het in gewoon Nederlands en Provisa compileert je vraag tegelijk naar elke querytaal: elk paneel hieronder is diezelfde zin als SQL, GraphQL, Cypher, gRPC, JSON:API en REST.</p><p>Gebruik het oppervlak dat je tools al spreken, of sla ze allemaal over en vraag het gewoon.</p><p>🔑 Live natural-language queries gebruiken je eigen LLM-sleutel; dit is een kant-en-klaar voorbeeld.</p><p>✅ Eén model, <strong>acht oppervlakken</strong>: zeven om te bevragen en degene die ze schrijft.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Vraag het gewoon: het oppervlak dat je query's schrijft",
+        "description": "💬 <em>\"hoeveel huisdieren per diersoort\"</em><p><strong>Je hoeft geen van die querytalen te leren.</strong> Vraag het in gewone taal en Provisa zet je vraag in één keer om naar alle zeven: elk paneel hieronder is diezelfde zin als SQL, GraphQL, Cypher, gRPC, JSON:API en REST.</p><p>Het kan Python of het Notebook niet direct openen, maar je kunt Polly altijd vragen een query naar een van beide over te zetten.</p><p>🔑 Live query's in natuurlijke taal gebruiken je eigen LLM-sleutel; dit is een voorbereid voorbeeld.</p><p>✅ Eén model achter alle <strong>negen oppervlakken</strong>, en gewone taal schrijft de query's voor je.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "Dat was de kern van vijf minuten",

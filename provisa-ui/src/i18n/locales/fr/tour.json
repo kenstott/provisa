@@ -98,36 +98,44 @@
         "description": "💬 Vous posez votre question dans le langage ou avec l'outil que vous utilisez déjà (SQL, GraphQL, Cypher, langage naturel via Polly, ou un outil de BI ou un pilote), et chacun lit le même modèle gouverné : la réponse et les règles sont les mêmes, quel que soit votre choix."
       },
       "step6": {
-        "title": "SQL (1 sur 7 surfaces)",
+        "title": "SQL (1 sur 9 surfaces)",
         "description": "Le SQL vit dans l'explorateur SQL. Du SQL standard fédéré sur toutes les sources : joignez Postgres à Mongo et à un CSV en une seule instruction. Les métadonnées du modèle lui-même et toutes les traces d'activité sont aussi des tables interrogeables ici, si bien que vous pouvez joindre votre journal d'audit ou votre traçabilité directement aux données en direct.<p>🔌 Le même SQL gouverné circule via plusieurs protocoles filaires en plus de cet explorateur ; votre outil choisit celui qu'il parle déjà :</p><ul><li><strong>pgwire</strong> : tout client compatible Postgres (psql, DBeaver, Tableau, Power BI) se connecte immédiatement.</li><li><strong>JDBC</strong> : s'intègre dans toute application Java/JVM, tout pipeline ETL ou tout outil BI compatible JDBC.</li><li><strong>Arrow Flight SQL</strong> : diffusion en flux colonnaire pour les clients ADBC, sans réencodage ligne par ligne, conçu pour les gros volumes de résultats.</li><li><strong>DuckDB · airport</strong> : faites un ATTACH de Provisa depuis DuckDB et interrogez la fédération gouvernée sur place.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 sur 7 surfaces)",
+        "title": "GraphQL (2 sur 9 surfaces)",
         "description": "◈ La même requête, exprimée en GraphQL :<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Regroupement et agrégats sur vos relations : 🎯 un seul point de terminaison, 📖 un schéma auto-documenté.</p><p>🔌 Appelez-le depuis <strong>n'importe quel client GraphQL</strong>, comme Apollo, Relay ou urql. Avec la fédération activée, Provisa rejoint un <strong>supergraph Apollo comme sous-graphe</strong>, pour que votre modèle fédéré se compose aux côtés de vos graphes existants.</p>"
       },
       "step8": {
-        "title": "Cypher (3 sur 7 surfaces)",
+        "title": "Cypher (3 sur 9 surfaces)",
         "description": "🕸️ Parcourez le modèle fédéré comme un graphe avec Cypher :<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Ce parcours s'exécute <strong>sur plusieurs sources</strong>, sans qu'aucune base de données graphe unique ne soit requise.</p><p>🔌 Tout client <strong>Bolt</strong>, comme Neo4j Browser ou Bloom, exécute ce même parcours sur le fil, sans aucun changement de code.</p>"
       },
       "step9": {
-        "title": "gRPC (4 sur 7 surfaces)",
+        "title": "gRPC (4 sur 9 surfaces)",
         "description": "⚙️ Chaque entité enregistrée est aussi un service gRPC :<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Appelez-le depuis n'importe quel client gRPC : 📐 fortement typé, 🚀 à haut débit.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 sur 7 surfaces)",
+        "title": "JSON:API (5 sur 9 surfaces)",
         "description": "🧩 Une surface JSON:API conforme à la spécification :<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Pagination et 🔍 filtrage intégrés d'origine.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 sur 7 surfaces)",
+        "title": "OpenAPI / REST (6 sur 9 surfaces)",
         "description": "🌐 Et un point de terminaison REST classique, décrit par OpenAPI :<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Entièrement décrit, pour que tout client REST ou générateur de code puisse le consommer.</p>"
       },
       "step12": {
-        "title": "MCP (7 sur 7 surfaces)",
-        "description": "🤖 La septième surface permet à un agent de <strong>raisonner avec vos données</strong>. Il pilote ces mêmes outils gouvernés (parcourir le catalogue, décrire les tables, exécuter du SQL, suivre les relations) et les <em>enchaîne</em> pour répondre à des questions qu'aucune requête isolée ne pourrait résoudre, chaque appel restant soumis à la gouvernance de <strong>votre</strong> rôle.<p>🔌 Le même <strong>serveur MCP</strong> se branche sur Claude Desktop, Claude Code ou tout client MCP, pour que les agents explorent et raisonnent sur votre modèle de façon gouvernée.</p><p>🔑 Utilise votre propre clé LLM ; cet échange est un exemple préenregistré.</p><p>Il reste une surface : celle qui écrit les sept autres pour vous. →</p>"
+        "title": "MCP (7 sur 9 surfaces)",
+        "description": "🤖 La septième surface permet à un agent de <strong>raisonner avec vos données</strong>. Il pilote ces mêmes outils gouvernés (parcourir le catalogue, décrire les tables, exécuter du SQL, suivre les relations) et les <em>enchaîne</em> pour répondre à des questions qu'aucune requête isolée ne pourrait résoudre, chaque appel restant soumis à la gouvernance de <strong>votre</strong> rôle.<p>🔌 Le même <strong>serveur MCP</strong> se branche sur Claude Desktop, Claude Code ou tout client MCP, pour que les agents explorent et raisonnent sur votre modèle de façon gouvernée.</p><p>🔑 Utilise votre propre clé LLM ; cet échange est un exemple préenregistré.</p><p>Deux autres lisent les mêmes données gouvernées depuis Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 sur 9 surfaces)",
+        "description": "🐍 L'onglet Python exécute Python dans votre navigateur, connecté en votre nom :<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>La réponse revient sous forme de DataFrame pandas, lue par le même pipeline gouverné : les règles de lignes et les masques de votre rôle s'y appliquent aussi.</p><p>🔌 Le même paquet <strong>provisa-client</strong> s'installe avec pip sur n'importe quel Python de bureau, et un script écrit ici s'exécute tel quel dans votre propre environnement.</p>"
+      },
+      "stepNotebook": {
+        "title": "Notebook (9 sur 9 surfaces)",
+        "description": "📓 L'onglet Notebook est JupyterLite : un notebook Jupyter qui s'exécute dans votre navigateur. Sa première cellule vous connecte, la suivante lit la même requête sous forme de DataFrame à tracer ou à joindre à d'autres données.<p>⬇️ Téléchargez le notebook : il s'ouvre dans n'importe quel Jupyter de bureau, où les mêmes cellules lisent Provisa comme ici.</p><p>Il reste une surface : celle qui écrit vos requêtes pour vous. →</p>"
       },
       "step13": {
-        "title": "Demandez simplement : la surface qui écrit les sept autres",
-        "description": "💬 <em>\"combien y a-t-il d'animaux par espèce\"</em><p><strong>Vous n'avez besoin d'apprendre aucune de ces sept surfaces.</strong> Posez votre question en langage naturel et Provisa la compile simultanément dans chaque langage de requête : chaque panneau ci-dessous restitue cette même phrase en SQL, GraphQL, Cypher, gRPC, JSON:API et REST.</p><p>Utilisez la surface que vos outils parlent déjà, ou passez-les toutes et posez simplement la question.</p><p>🔑 Les requêtes en langage naturel en direct utilisent votre propre clé LLM ; celle-ci est un exemple préenregistré.</p><p>✅ Un seul modèle, <strong>huit surfaces</strong> : sept pour interroger, et celle qui les écrit.</p><div class='tour-tags'><span>Langage naturel</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Demandez simplement : la surface qui écrit vos requêtes",
+        "description": "💬 <em>\"combien y a-t-il d'animaux par espèce\"</em><p><strong>Inutile d'apprendre l'un de ces langages de requête.</strong> Posez votre question en langage courant et Provisa la compile dans les sept à la fois : chaque panneau ci-dessous est cette même phrase en SQL, GraphQL, Cypher, gRPC, JSON:API et REST.</p><p>Il ne peut pas ouvrir Python ni le Notebook directement, mais vous pouvez toujours demander à Polly d'y transférer une requête.</p><p>🔑 Les requêtes en langage naturel en direct utilisent votre propre clé LLM ; celle-ci est un exemple préparé.</p><p>✅ Un seul modèle derrière les <strong>neuf surfaces</strong>, et le langage courant écrit les requêtes pour vous.</p><div class='tour-tags'><span>Langage naturel</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "Voilà le cœur en cinq minutes",

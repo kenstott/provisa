@@ -98,36 +98,44 @@
         "description": "💬 普段お使いの言語やツール（SQL、GraphQL、Cypher、Polly を通じた普通の言葉、あるいは BI ツールやドライバー）で質問します。いずれも同じガバナンス済みモデルを読むため、どれを選んでも答えもルールも同じです。"
       },
       "step6": {
-        "title": "SQL（7つのサーフェスのうち1つ目）",
+        "title": "SQL（9つのサーフェスのうち1つ目）",
         "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルなので、監査ログやリネージをライブデータに直接結合できます。<p>🔌 同じガバナンス済み SQL は、このエクスプローラー以外にも複数のワイヤープロトコル経由で動作します。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong>：Postgres 互換のクライアント全般（psql、DBeaver、Tableau、Power BI）がそのまま接続できます。</li><li><strong>JDBC</strong>：あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong>：ADBC クライアント向けの列指向ストリーミングで、行の再エンコードは不要です。大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong>：DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li></ul>"
       },
       "step7": {
-        "title": "GraphQL（7つのサーフェスのうち2つ目）",
+        "title": "GraphQL（9つのサーフェスのうち2つ目）",
         "description": "◈ 同じクエリを GraphQL として表現すると：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>リレーションシップに対するグルーピングと集計：🎯 単一のエンドポイント、📖 自己記述的なスキーマ。</p><p>🔌 Apollo、Relay、urql など<strong>任意の GraphQL クライアント</strong>から呼び出せます。フェデレーションを有効にすれば、Provisa を<strong>Apollo スーパーグラフのサブグラフ</strong>として組み込めます。既存のグラフと並んで、フェデレーテッドモデルを合成できます。</p>"
       },
       "step8": {
-        "title": "Cypher（7つのサーフェスのうち3つ目）",
+        "title": "Cypher（9つのサーフェスのうち3つ目）",
         "description": "🕸️ Cypher でフェデレーテッドモデルをグラフとしてトラバースします：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ このトラバースは<strong>複数のソースをまたいで</strong>実行され、単一のグラフデータベースは不要です。</p><p>🔌 Neo4j Browser や Bloom など、どの<strong>Bolt</strong> クライアントでも、コードを変更せずに同じトラバースをワイヤー経由で実行できます。</p>"
       },
       "step9": {
-        "title": "gRPC（7つのサーフェスのうち4つ目）",
+        "title": "gRPC（9つのサーフェスのうち4つ目）",
         "description": "⚙️ 登録済みのエンティティはすべて gRPC サービスでもあります：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>任意の gRPC クライアントから呼び出せます。📐 強く型付けされ、🚀 高スループットです。</p>"
       },
       "step10": {
-        "title": "JSON:API（7つのサーフェスのうち5つ目）",
+        "title": "JSON:API（9つのサーフェスのうち5つ目）",
         "description": "🧩 仕様準拠の JSON:API サーフェス：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 ページングと 🔍 フィルタリングを標準サポート。</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST（7つのサーフェスのうち6つ目）",
+        "title": "OpenAPI / REST（9つのサーフェスのうち6つ目）",
         "description": "🌐 そして OpenAPI で記述されたシンプルな REST エンドポイント：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 完全に記述されているため、どの REST クライアントやコードジェネレーターからも利用できます。</p>"
       },
       "step12": {
-        "title": "MCP（7つのサーフェスのうち7つ目）",
-        "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群（カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡）を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>残るサーフェスはあと1つ。それが7つすべてをあなたの代わりに書いてくれるものです。→</p>"
+        "title": "MCP（9つのサーフェスのうち7つ目）",
+        "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群（カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡）を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>あと2つのサーフェスは、同じガバナンス下のデータをPythonから読み取ります。→</p>"
+      },
+      "stepPython": {
+        "title": "Python（9つのサーフェスのうち8つ目）",
+        "description": "🐍 Pythonタブは、あなたとしてサインインした状態でブラウザ内でPythonを実行します：<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>結果はpandasのDataFrameとして返ります。同じガバナンス付きパイプラインを通って読み取られるため、あなたのロールの行ルールとマスクもそのまま適用されます。</p><p>🔌 同じ<strong>provisa-client</strong>パッケージはどのデスクトップPythonにもpipでインストールできるため、ここで書いたスクリプトはご自身の環境でもそのまま動きます。</p>"
+      },
+      "stepNotebook": {
+        "title": "ノートブック（9つのサーフェスのうち9つ目）",
+        "description": "📓 ノートブックタブはJupyterLite、つまりブラウザ内で動くJupyterノートブックです。最初のセルでサインインし、次のセルで同じクエリをDataFrameとして読み取り、グラフにしたり他のデータと結合したりできます。<p>⬇️ ノートブックをダウンロードすれば、どのデスクトップJupyterでも開けます。そこでも同じセルがここと同じようにProvisaから読み取ります。</p><p>残るサーフェスはあと1つ。クエリをあなたの代わりに書いてくれるものです。→</p>"
       },
       "step13": {
-        "title": "質問するだけ：7つすべてを書いてくれるサーフェス",
-        "description": "💬 <em>「種ごとのペット数を表示して」</em><p><strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします。以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong>：クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "質問するだけ：クエリを書いてくれるサーフェス",
+        "description": "💬 <em>「種ごとのペット数を表示して」</em><p><strong>これらのクエリ言語を覚える必要はありません。</strong>普段の言葉で質問すれば、Provisaがその質問を7つの言語すべてに一度にコンパイルします。下の各パネルは、その一文をSQL、GraphQL、Cypher、gRPC、JSON:API、RESTにしたものです。</p><p>ここからPythonやノートブックを直接開くことはできませんが、Pollyに頼めばいつでもクエリをどちらかへ移せます。</p><p>🔑 自然言語によるライブクエリにはご自身のLLMキーを使います。これは用意された例です。</p><p>✅ <strong>9つのサーフェス</strong>すべての背後に1つのモデル。そして普段の言葉がクエリを書いてくれます。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>ノートブック</span></div>"
       },
       "step14": {
         "title": "これが5分でわかるコアです",

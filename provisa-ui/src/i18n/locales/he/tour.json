@@ -98,36 +98,44 @@
         "description": "💬 אתם שואלים בשפה או בכלי שאתם כבר משתמשים בהם (SQL, GraphQL, Cypher, שפה רגילה דרך Polly, או כלי BI או מנהל התקן), וכולם קוראים את אותו מודל מנוהל, כך שהתשובה והכללים זהים, בכל דרך שתבחרו."
       },
       "step6": {
-        "title": "SQL (1 מתוך 7 ממשקים)",
+        "title": "SQL (1 מתוך 9 ממשקים)",
         "description": "SQL חי בסייר ה-SQL. SQL תקני ופדרטיבי על פני כל מקור: חיבור Postgres ל-Mongo לקובץ CSV באמירה אחת. גם מטא-הנתונים של המודל עצמו וכל עקבות הפעילות הם כאן טבלאות ניתנות לשאילתה, כך שאפשר לחבר את יומן הביקורת או ה-Lineage ישירות לנתונים חיים.<p>🔌 אותו SQL מבוקר רץ גם דרך מספר פרוטוקולי חיווט מלבד הסייר הזה; הכלי שלכם בוחר את זה שהוא כבר דובר:</p><ul><li><strong>pgwire</strong>: כל לקוח תואם Postgres (psql, DBeaver, Tableau, Power BI) מתחבר ללא הגדרות נוספות.</li><li><strong>JDBC</strong>: נכנס לכל אפליקציית Java/JVM, Pipeline של ETL, או כלי BI תומך JDBC.</li><li><strong>Arrow Flight SQL</strong>: סטרימינג עמודתי ללקוחות ADBC, בלי קידוד מחדש של שורות, בנוי לתוצאות גדולות.</li><li><strong>DuckDB · airport</strong>: ATTACH ל-Provisa מתוך DuckDB ושאילתה על הפדרציה המבוקרת במקום.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 מתוך 7 ממשקים)",
+        "title": "GraphQL (2 מתוך 9 ממשקים)",
         "description": "◈ אותה שאילתה, מוקלדת כ-GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>קיבוץ וצבירות על פני הקשרים שלכם: 🎯 נקודת קצה אחת, 📖 סכמה מתעדת את עצמה.</p><p>🔌 קוראים לו מ<strong>כל לקוח GraphQL</strong>, כמו Apollo, Relay או urql. כשהפדרציה מופעלת, Provisa מצטרף כ<strong>subgraph בתוך Apollo supergraph</strong>, כך שהמודל הפדרטיבי שלכם מורכב יחד עם הגרפים הקיימים שלכם.</p>"
       },
       "step8": {
-        "title": "Cypher (3 מתוך 7 ממשקים)",
+        "title": "Cypher (3 מתוך 9 ממשקים)",
         "description": "🕸️ מעברים על המודל הפדרטיבי כגרף עם Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ המעבר הזה רץ <strong>על פני מקורות</strong>, בלי שנדרש מסד נתוני גרפים בודד.</p><p>🔌 כל לקוח <strong>Bolt</strong>, כמו Neo4j Browser או Bloom, מריץ את אותו המעבר דרך החיווט, בלי שינוי קוד.</p>"
       },
       "step9": {
-        "title": "gRPC (4 מתוך 7 ממשקים)",
+        "title": "gRPC (4 מתוך 9 ממשקים)",
         "description": "⚙️ כל ישות רשומה היא גם שירות gRPC:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>קוראים לו מכל לקוח gRPC: 📐 מוקלד באופן חזק, 🚀 תפוקה גבוהה.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 מתוך 7 ממשקים)",
+        "title": "JSON:API (5 מתוך 9 ממשקים)",
         "description": "🧩 ממשק JSON:API תואם-מפרט:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 עימוד ו-🔍 סינון ללא הגדרות נוספות.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 מתוך 7 ממשקים)",
+        "title": "OpenAPI / REST (6 מתוך 9 ממשקים)",
         "description": "🌐 ונקודת קצה REST רגילה, מתוארת על ידי OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 מתוארת במלואה, כך שכל לקוח REST או מחולל קוד יכול לצרוך אותה.</p>"
       },
       "step12": {
-        "title": "MCP (7 מתוך 7 ממשקים)",
-        "description": "🤖 הממשק השביעי מאפשר לסוכן <strong>לחשוב עם הנתונים שלכם</strong>. הוא מפעיל את אותם כלים מבוקרים (חיפוש בקטלוג, תיאור טבלאות, הרצת SQL, מעקב אחר קשרים) ו<em>משרשר</em> אותם כדי לענות על שאלות שאף שאילתה בודדת לא הייתה יכולה, כאשר כל קריאה כפופה לממשל של התפקיד <strong>שלכם</strong>.<p>🔌 אותו <strong>שרת MCP</strong> מתחבר ל-Claude Desktop, Claude Code, או כל לקוח MCP, כך שסוכנים חוקרים ומנתחים את המודל שלכם בדרך המבוקרת.</p><p>🔑 משתמש במפתח ה-LLM שלכם עצמכם; החילופין האלה הם דוגמה מוכנה מראש.</p><p>נותר ממשק אחד: זה שכותב את כל השבעה עבורכם. →</p>"
+        "title": "MCP (7 מתוך 9 ממשקים)",
+        "description": "🤖 הממשק השביעי מאפשר לסוכן <strong>לחשוב עם הנתונים שלכם</strong>. הוא מפעיל את אותם כלים מבוקרים (חיפוש בקטלוג, תיאור טבלאות, הרצת SQL, מעקב אחר קשרים) ו<em>משרשר</em> אותם כדי לענות על שאלות שאף שאילתה בודדת לא הייתה יכולה, כאשר כל קריאה כפופה לממשל של התפקיד <strong>שלכם</strong>.<p>🔌 אותו <strong>שרת MCP</strong> מתחבר ל-Claude Desktop, Claude Code, או כל לקוח MCP, כך שסוכנים חוקרים ומנתחים את המודל שלכם בדרך המבוקרת.</p><p>🔑 משתמש במפתח ה-LLM שלכם עצמכם; החילופין האלה הם דוגמה מוכנה מראש.</p><p>שניים נוספים קוראים את אותם נתונים מנוהלים מ-Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 מתוך 9 ממשקים)",
+        "description": "🐍 הלשונית Python מריצה Python בדפדפן שלכם, מחוברת בשמכם:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>התשובה חוזרת כ-DataFrame של pandas, נקראת דרך אותו צינור מנוהל, כך שכללי השורות והמסכות של התפקיד שלכם חלים גם עליה.</p><p>🔌 אותה חבילת <strong>provisa-client</strong> מותקנת עם pip בכל Python שולחני, כך שסקריפט שנכתב כאן רץ ללא שינוי בסביבה שלכם.</p>"
+      },
+      "stepNotebook": {
+        "title": "מחברת (9 מתוך 9 ממשקים)",
+        "description": "📓 הלשונית מחברת היא JupyterLite: מחברת Jupyter שרצה בדפדפן שלכם. התא הראשון שלה מחבר אתכם, והבא קורא את אותה שאילתה כ-DataFrame שאפשר להציג בתרשים או לצרף לנתונים אחרים.<p>⬇️ הורידו את המחברת והיא נפתחת בכל Jupyter שולחני, שם אותם תאים קוראים מ-Provisa כמו כאן.</p><p>נותר ממשק אחד: זה שכותב עבורכם את השאילתות. →</p>"
       },
       "step13": {
-        "title": "פשוט שואלים: הממשק שכותב את כל השבעה",
-        "description": "💬 <em>\"how many pets per species\"</em><p><strong>אין צורך ללמוד אף אחד מהשבעה האלה.</strong> שואלים בשפה טבעית ו-Provisa מהדר את השאלה שלכם לכל שפת שאילתות בבת אחת: כל פאנל למטה הוא אותו משפט כ-SQL, GraphQL, Cypher, gRPC, JSON:API, ו-REST.</p><p>משתמשים בממשק שהכלים שלכם כבר דוברים, או מדלגים על כולם ופשוט שואלים.</p><p>🔑 שאילתות שפה טבעית חיות משתמשות במפתח ה-LLM שלכם עצמכם; זו דוגמה מוכנה מראש.</p><p>✅ מודל אחד, <strong>שמונה ממשקים</strong>: שבעה לשאילתה, ואחד שכותב אותם.</p><div class='tour-tags'><span>שפה טבעית</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "פשוט שואלים: הממשק שכותב את השאילתות שלכם",
+        "description": "💬 <em>\"how many pets per species\"</em><p><strong>אין צורך ללמוד אף אחת משפות השאילתה האלה.</strong> שאלו בשפה פשוטה ו-Provisa מתרגמת את השאלה לכל השבע בבת אחת: כל חלונית למטה היא אותו משפט עצמו כ-SQL, GraphQL, Cypher, gRPC, JSON:API ו-REST.</p><p>הוא לא יכול לפתוח את Python או את המחברת ישירות, אבל תמיד אפשר לבקש מ-Polly להעביר שאילתה לאחד מהם.</p><p>🔑 שאילתות חיות בשפה טבעית משתמשות במפתח LLM שלכם; זו דוגמה מוכנה מראש.</p><p>✅ מודל אחד מאחורי כל <strong>תשעת הממשקים</strong>, ושפה פשוטה כותבת עבורכם את השאילתות.</p><div class='tour-tags'><span>שפה טבעית</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>מחברת</span></div>"
       },
       "step14": {
         "title": "זו ליבת חמש הדקות",
