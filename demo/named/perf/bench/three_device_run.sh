@@ -97,11 +97,13 @@ echo "=== device 3: backends ==="
 _profiles="--profile three-device"
 [ "$ENGINE" = trino ] && _profiles+=" --profile three-device-trino"
 # The startup script brought the stack up and seeded it; this is a no-op then, and adds Trino
-# when a run names it. Docker and the agent's docker stats need root.
+# when a run names it. Docker and the agent's docker stats need root. Whether the agent runs is
+# asked of the agent itself: a process match would find the remote shell running this command,
+# whose own command line names the agent, and never start it.
 on "$BACKENDS" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF_BACKENDS_IP \
   && sudo -E docker compose $_profiles up -d --build \
   && sudo -E docker compose up seeder \
-  && (pgrep -f host_agent.py >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
+  && (curl -sf http://$PERF_BACKENDS_IP:$AGENT_PORT/host >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
       --listen $PERF_BACKENDS_IP:$AGENT_PORT --fact device=backends > ~/host-agent.log 2>&1 < /dev/null &)"
 
 run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
@@ -130,7 +132,9 @@ run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
     --device server=http://$PERF_SERVER_IP:$AGENT_PORT \
     --device backends=http://$PERF_BACKENDS_IP:$AGENT_PORT \
     --output-dir $OUT/$name"
-  on "$SERVER" "pkill -INT -f serve_three_device.sh; for i in \$(seq 1 60); do pgrep -f serve_three_device.sh >/dev/null || exit 0; sleep 1; done; exit 1"
+  # '[s]erve...': the pattern does not match the remote shell running this command, whose own
+  # command line names the script.
+  on "$SERVER" "pkill -INT -f '[s]erve_three_device.sh'; for i in \$(seq 1 60); do pgrep -f '[s]erve_three_device.sh' >/dev/null || exit 0; sleep 1; done; exit 1"
 }
 
 for rep in $(seq 1 "$REPS"); do

@@ -740,3 +740,36 @@ def test_each_image_the_stack_builds_is_built_by_one_service() -> None:
         if "build" not in svc and svc.get("image") in builders
     }
     assert runners and all(svc.get("pull_policy") == "never" for svc in runners.values())
+
+
+def test_no_remote_process_match_finds_the_shell_that_runs_it() -> None:
+    """A remote command runs as one shell whose own command line is the command; `pgrep -f` or
+    `pkill -f` with a pattern that matches that text finds the shell itself, so a check never
+    starts what it guards (the backends agent never ran) and a kill signals its own shell."""
+    import os
+    import re
+    import shlex
+    import subprocess
+
+    out = subprocess.run(
+        ["bash", str(BENCH / "three_device_run.sh"), "--reps", "1", "--dry-run"],
+        env={
+            **os.environ,
+            "PERF_ZONE": "us-east1-b",
+            "PERF_REPO": "/opt/provisa",
+            "PERF_SERVER_IP": "10.90.0.2",
+            "PERF_BACKENDS_IP": "10.90.0.4",
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    commands = [block.split("\n", 1)[1] for block in out.split("\n[provisa-perf-")[1:]]
+    checked = 0
+    for command in commands:
+        for match in re.finditer(r"p(?:grep|kill)\s+(?:-\w+\s+)*-f\s+(\S+)", command):
+            pattern = shlex.split(match.group(1))[0]
+            assert re.search(pattern, command) is None, (pattern, command)
+            checked += 1
+    assert checked > 0
