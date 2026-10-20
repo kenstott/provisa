@@ -224,6 +224,9 @@ test.describe.serial("dag-cascade", () => {
       await page.waitForSelector(".cm-content", { timeout: 15000 });
       await createView(page, "SELECT id, name, price FROM pet_store.pets WHERE id = 1", A);
 
+      // A view's settings are saved on the Views page (REQ-2109): the next one starts in the
+      // SQL Explorer again.
+      await page.goto("/sql");
       await page.waitForSelector(".cm-content", { timeout: 15000 });
       await createView(page, `SELECT id, name, price FROM views.${A}`, B);
 
