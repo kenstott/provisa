@@ -151,11 +151,13 @@ def reads(server):
         f'createSource(input: {{id: "{source_id}", type: "{language}", host: "", port: 0, '
         f'database: "", cacheTtl: 0, mappingJson: {json.dumps(json.dumps(mapping))}}})',
     )
+    status_type = "bigint" if language == "python" else "double"
     registered = _admin(
         server,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
         f'schemaName: "default", tableName: "secret_read", cacheTtl: 0, '
-        f"columns: [{_column('name', 'text')}, {_column('status', 'bigint')}, "
+        # A Python int is a bigint; a JavaScript number is a double.
+        f"columns: [{_column('name', 'text')}, {_column('status', status_type)}, "
         f"{_column('body', 'text')}, {_parameter('name', 'text', required=True)}]}})",
     )
     _admin(server, release_field(registered_id(registered["message"])))

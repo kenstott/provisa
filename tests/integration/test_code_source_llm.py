@@ -78,6 +78,14 @@ def ask(model: str, prompt: str) -> list[Answer]:
             return [Answer(model, answered.status, answered.read().decode())]
     except urllib.error.HTTPError as refused:
         return [Answer(model, refused.code, refused.read().decode())]
+
+
+def ask_capped(model: str, prompt: str) -> list[Answer]:
+    """The same, registered from the capped source.
+
+    @table
+    """
+    return ask(model, prompt)
 ''',
 }
 
@@ -92,6 +100,9 @@ export async function ask(model, prompt) {
   });
   return [{ model, status: answered.status, body: await answered.text() }];
 }
+export async function ask_capped(model, prompt) {
+  return ask(model, prompt);
+}
 """,
     "ask/index.d.ts": """
 export interface Answer { model: string; status: number; body: string; }
@@ -100,6 +111,11 @@ export interface Answer { model: string; status: number; body: string; }
  * @table
  */
 export declare function ask(model: string, prompt: string): Promise<Answer[]>;
+/**
+ * The same, registered from the capped source.
+ * @table
+ */
+export declare function ask_capped(model: string, prompt: string): Promise<Answer[]>;
 """,
 }
 
@@ -189,7 +205,7 @@ def server(tmp_path_factory, runtime_cache, endpoint, request):
         srv.stop_process()
 
 
-def _source(srv, source_id: str, mapping_extra: dict) -> None:
+def _source(srv, source_id: str, table: str, mapping_extra: dict) -> None:
     language = srv.language
     upload = httpx.post(
         f"{srv.base_url}/admin/orgs/{srv.org_id}/code-uploads/archive",
@@ -209,11 +225,13 @@ def _source(srv, source_id: str, mapping_extra: dict) -> None:
         f'createSource(input: {{id: "{source_id}", type: "{language}", host: "", port: 0, '
         f'database: "", cacheTtl: 0, mappingJson: {json.dumps(json.dumps(mapping))}}})',
     )
+    status_type = "bigint" if language == "python" else "double"
     registered = _admin(
         srv,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
-        f'schemaName: "default", tableName: "ask", cacheTtl: 0, alias: "{source_id.replace("-", "_")}", '
-        f"columns: [{_column('model', 'text')}, {_column('status', 'bigint')}, "
+        f'schemaName: "default", tableName: "{table}", cacheTtl: 0, '
+        # A Python int is a bigint; a JavaScript number is a double.
+        f"columns: [{_column('model', 'text')}, {_column('status', status_type)}, "
         f"{_column('body', 'text')}, {_parameter('model', 'text', required=True)}, "
         f"{_parameter('prompt', 'text', required=True)}]}})",
     )
@@ -222,9 +240,10 @@ def _source(srv, source_id: str, mapping_extra: dict) -> None:
 
 @pytest.fixture(scope="module")
 def sources(server):
-    """Two sources of the same code: one with no cap, one with a cap of 0."""
-    _source(server, f"ask-{server.language}", {})
-    _source(server, f"capped-{server.language}", {"llm": {"cap_usd": 0}})
+    """Two sources of the same code: one with no cap, read as ask, one with a cap of 0, read as
+    ask_capped."""
+    _source(server, f"ask-{server.language}", "ask", {})
+    _source(server, f"capped-{server.language}", "ask_capped", {"llm": {"cap_usd": 0}})
     return server.language
 
 
@@ -240,7 +259,7 @@ def _ask(srv, table: str, model: str, prompt: str) -> dict:
 
 def test_a_role_names_the_orgs_model_and_what_goes_out_is_redacted(server, sources, endpoint):
     card = "4111 1111 1111 1111"
-    answered = _ask(server, f"ask_{sources}", "provisa:sql_generation", f"churn for {card}?")
+    answered = _ask(server, "ask", "provisa:sql_generation", f"churn for {card}?")
     assert answered["status"] == 200, answered
     assert answered["body"]["choices"][0]["message"]["content"] == "churn is 4%"
     assert answered["body"]["model"] == _MODEL
@@ -250,14 +269,14 @@ def test_a_role_names_the_orgs_model_and_what_goes_out_is_redacted(server, sourc
 
 
 def test_a_model_the_org_does_not_assign_is_refused_by_name(server, sources):
-    answered = _ask(server, f"ask_{sources}", "gpt-9", "hello")
+    answered = _ask(server, "ask", "gpt-9", "hello")
     assert answered["status"] == 403
     assert "'gpt-9'" in answered["body"]["error"]["message"]
 
 
 def test_a_source_at_its_cap_is_refused_by_name(server, sources, endpoint):
     before = len(endpoint.received)
-    answered = _ask(server, f"capped_{sources}", "provisa:sql_generation", "hello")
+    answered = _ask(server, "ask_capped", "provisa:sql_generation", "hello")
     assert answered["status"] == 429
     assert f"'capped-{sources}'" in answered["body"]["error"]["message"]
     assert len(endpoint.received) == before  # refused before any call
