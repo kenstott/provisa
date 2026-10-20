@@ -25787,3 +25787,15 @@ Databricks Unity Catalog joins the data product export (docs/data-products.md, m
 **Code:** —
 
 **Tests:** —
+
+### REQ-2118 · Data Catalog Integration {#REQ-2118}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The data product export gains the internal catalogs an enterprise uses to publish data products to its own data teams. The scope is internal publishing only: an organisation offering its governed data products to other teams inside it, never a public or paid listing. Four targets join the existing ones (Snowflake Horizon, Analytics Hub, OpenMetadata, DataHub, Collibra, Atlas, Atlan, OpenLineage). Google Dataplex data products: one data product becomes one Dataplex data product (dataProducts.create, dataAssets.create) with its owners, description and documentation, its member tables as assets, its access groups and approvers, and its freshness as the refresh-cadence contract aspect. Microsoft Purview Unified Catalog: one data product in its governance domain with owners, use case, member assets and an access policy naming approvers. AWS DataZone / SageMaker Catalog: one data product (CreateDataProduct) in the owning project, its member assets registered, its fields carried in metadata forms, consumers requesting it by subscription. Alation: one data product in its Data Products App through Alation's API. Beside them, an ODPS document and an ODCS 3.1 contract are exported for each data product, so a catalog that imports either standard (Collibra, DataHub, OpenMetadata, Alation) reads the product and its contract from it. Each target follows the export's rules: only member tables publish, a product with no exported members does not publish, masked columns are left out, and the product's ODPS fields (owner, team, purpose, limitations, usage, version) map onto the target's own fields.
+
+**Use case:** A platform team publishes its Customer 360 product once, and data teams across the company find it, read its contract and request access in the catalog their part of the company already uses.
+
+**Code:** —
+
+**Tests:** —
