@@ -14,7 +14,7 @@
     "version": "版本",
     "versionHint": "精确版本，例如 1.2.0。",
     "lockfile": "锁文件",
-    "lockfileHint": "已发布的包很少附带锁文件。包有依赖时请提供一个（{{names}}）。",
+    "lockfileHint": "可选。要让每次安装完全相同（这对测试很重要），代码必须自带锁文件，或在此提供一个（{{names}}）。",
     "lockfilePlaceholder": "无锁文件",
     "repository": "仓库 URL",
     "commit": "提交",

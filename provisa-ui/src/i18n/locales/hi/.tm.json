@@ -719,7 +719,7 @@
   "hi/codeSourceFields.json::codeSourceFields.llmCapHint": "What this code's calls to $PROVISA_SERVICES/llm may cost each month (UTC), in USD. With a cap, it may use only models priced in Polly model prices, and its calls are refused once the month reaches the cap. Empty: no cap.",
   "hi/codeSourceFields.json::codeSourceFields.llmCapPlaceholder": "No cap",
   "hi/codeSourceFields.json::codeSourceFields.lockfile": "Lockfile",
-  "hi/codeSourceFields.json::codeSourceFields.lockfileHint": "A published package rarely carries its lockfile. Give one ({{names}}) when the package has dependencies.",
+  "hi/codeSourceFields.json::codeSourceFields.lockfileHint": "Optional. For identical installs, which matter for testing, the code must carry a lockfile or you give one here ({{names}}).",
   "hi/codeSourceFields.json::codeSourceFields.lockfilePlaceholder": "No lockfile",
   "hi/codeSourceFields.json::codeSourceFields.npm": "npm package",
   "hi/codeSourceFields.json::codeSourceFields.origin": "Code from",

@@ -39,7 +39,7 @@ Code with dependencies needs a lockfile, and every install follows it exactly. W
 | Deno | `deno.lock` |
 | Python | `uv.lock` (with its `pyproject.toml`), `pylock.toml`, or a `requirements.txt` with `--hash` on every line |
 
-A published package rarely carries its lockfile, so the form takes one beside the package reference.
+A lockfile is optional, but without one two installs of the same code can differ, so a test that passes today can fail tomorrow on a new dependency version. For an identical install every time, the code must carry a lockfile, or you create one and give it here. A built image is fixed already. Once you build the source's image ([Build image](#running-on-a-remote-host)), its dependencies are inside it, and if that image is what goes through your testing and CI/CD, the image you tested is the one that runs. A lockfile matters for dev mode and for each new build of the image. Code that carries its own lockfile installs from it: a Git repo or upload with one, or an npm package whose author published `npm-shrinkwrap.json` (npm never publishes `package-lock.json`). Code without one installs with its dependencies floating: a Git repo or upload with no lockfile, most npm packages, and Python packages from PyPI, whose wheels have no place for one. Give a lockfile beside such code so every install is identical. Some code needs none, because the way it is distributed already fixes every dependency.
 
 No package gets to run its own install scripts: npm installs with `--ignore-scripts`, and Python installs wheels only, never building from a source distribution.
 

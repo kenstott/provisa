@@ -14,7 +14,7 @@
     "version": "Versión",
     "versionHint": "Una versión exacta, como 1.2.0.",
     "lockfile": "Archivo de bloqueo",
-    "lockfileHint": "Un paquete publicado rara vez incluye su archivo de bloqueo. Indique uno ({{names}}) cuando el paquete tenga dependencias.",
+    "lockfileHint": "Opcional. Para instalaciones idénticas, que importan en las pruebas, el código debe traer un archivo de bloqueo o usted indica uno aquí ({{names}}).",
     "lockfilePlaceholder": "Sin archivo de bloqueo",
     "repository": "URL del repositorio",
     "commit": "Commit",

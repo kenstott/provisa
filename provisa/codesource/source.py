@@ -17,7 +17,7 @@ type-specific slot):
     code          {"kind": "npm" | "pypi", "package", "version"}
                   {"kind": "git", "repository", "commit", "subdirectory"}
                   {"kind": "upload", "upload": <content hash of the uploaded archive>}
-    lockfile      {"filename", "upload": <SHA-256 of its bytes>}, given beside a package reference
+    lockfile      {"filename", "upload": <SHA-256 of its bytes>}, given beside code that carries none
     entry         a python source's entry module, when its code has more than one
     content_hash  the code's content hash, recorded when the source was saved
 
@@ -106,11 +106,6 @@ def config_of(source_type: str, mapping: dict) -> CodeConfig:
             missing=", ".join(missing),
         )
     lockfile = mapping.get("lockfile") or None
-    if lockfile is not None and code["kind"] not in ("npm", "pypi"):
-        raise BundleRefused(
-            "lockfile_beside_kept_code",
-            "a lockfile is given beside a package reference; Git or uploaded code carries its own",
-        )
     return CodeConfig(
         language=source_type,
         runtime=runtime,

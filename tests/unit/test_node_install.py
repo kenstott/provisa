@@ -368,7 +368,7 @@ def test_dependencies_without_the_runtimes_lockfile_are_refused(tmp_path):
         _ensure(tmp_path, _bundle(**files), runtime="bun")
     assert refused.value.code == "codesource.no_lockfile"
     assert "bun.lock or bun.lockb" in str(refused.value)
-    assert "add one beside the package on the source's form" in str(refused.value)
+    assert "add one beside the code on the source's form" in str(refused.value)
 
 
 NO_LOCK = {k: v for k, v in WITH_DEPS.items() if k != "package-lock.json"}
@@ -393,6 +393,11 @@ def test_a_lockfile_given_beside_the_package_is_installed_from_and_hashed_with_i
     [
         (shared.Lockfile("yarn.lock", b""), NO_LOCK, "codesource.lockfile_kind"),
         (shared.Lockfile("package-lock.json", b"{}"), WITH_DEPS, "codesource.lockfile_twice"),
+        (
+            shared.Lockfile("package-lock.json", b"{}"),
+            {**NO_LOCK, "npm-shrinkwrap.json": "{}"},
+            "codesource.lockfile_twice",
+        ),
     ],
 )
 def test_a_lockfile_beside_the_package_is_one_its_runtime_reads_and_replaces_nothing(
@@ -401,6 +406,69 @@ def test_a_lockfile_beside_the_package_is_one_its_runtime_reads_and_replaces_not
     with pytest.raises(BundleRefused) as refused:
         _ensure(tmp_path, _bundle(**files), lockfile=beside)
     assert refused.value.code == code
+
+
+@pytest.fixture
+def git_code(tmp_path, monkeypatch):
+    """A Git reference to a real one-commit repository holding ``files``, cloned from it."""
+    from dulwich import porcelain
+
+    def make(**files: str) -> GitCode:
+        repo_dir = tmp_path / "git-origin"
+        repo = porcelain.init(str(repo_dir))
+        for name, text in files.items():
+            (repo_dir / name).write_text(text)
+        porcelain.add(repo, [str(repo_dir / name) for name in files])
+        commit = porcelain.commit(repo, b"c", author=b"a <a@x>", committer=b"a <a@x>").decode()
+        real_clone = porcelain.clone
+        monkeypatch.setattr(
+            porcelain,
+            "clone",
+            lambda source, target, **kw: real_clone(
+                str(repo_dir), target, checkout=False, errstream=kw["errstream"]
+            ),
+        )
+        return GitCode("https://git.acme.test/acme/rows.git", commit)
+
+    return make
+
+
+def test_a_git_repository_without_a_lockfile_installs_from_the_one_given_beside_it(
+    tmp_path, git_code
+):
+    runner = _Runner()
+    beside = shared.Lockfile("package-lock.json", b'{"lockfileVersion": 3}')
+    got = _ensure(tmp_path, git_code(**NO_LOCK), runner=runner, lockfile=beside)
+    assert (got.path / "package-lock.json").read_bytes() == beside.data
+    assert runner.calls[0]["argv"][2] == "ci"
+
+
+def test_a_lockfile_beside_a_git_repository_that_carries_its_own_is_refused_by_name(
+    tmp_path, git_code
+):
+    beside = shared.Lockfile("package-lock.json", b"{}")
+    with pytest.raises(BundleRefused) as refused:
+        _ensure(tmp_path, git_code(**WITH_DEPS), lockfile=beside)
+    assert refused.value.code == "codesource.lockfile_twice"
+    assert refused.value.params["filename"] == "package-lock.json"
+    assert "already carries package-lock.json" in str(refused.value)
+
+
+def test_a_package_that_publishes_npm_shrinkwrap_json_installs_from_its_own_lockfile(tmp_path):
+    """npm publishes npm-shrinkwrap.json (never package-lock.json): a package carrying it needs
+    nothing beside it, and a lockfile given beside it is refused, naming the one it carries."""
+    runner = _Runner()
+    shrinkwrapped = {**NO_LOCK, "npm-shrinkwrap.json": '{"lockfileVersion": 3}'}
+    got = _ensure(tmp_path, _bundle(**shrinkwrapped), runner=runner)
+    assert runner.calls[0]["argv"][2] == "ci"
+    assert not (got.path / "package-lock.json").exists()
+    with pytest.raises(BundleRefused) as refused:
+        _ensure(
+            tmp_path / "b",
+            _bundle(**shrinkwrapped),
+            lockfile=shared.Lockfile("package-lock.json", b"{}"),
+        )
+    assert refused.value.params["filename"] == "npm-shrinkwrap.json"
 
 
 def test_a_cached_install_is_used_and_not_installed_again(tmp_path):

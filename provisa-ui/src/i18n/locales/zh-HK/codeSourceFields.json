@@ -14,7 +14,7 @@
     "version": "版本",
     "versionHint": "精確版本，例如 1.2.0。",
     "lockfile": "鎖定檔",
-    "lockfileHint": "已發佈的套件很少附帶鎖定檔。套件有依賴時請提供一個（{{names}}）。",
+    "lockfileHint": "可選。要令每次安裝完全相同（這對測試很重要），程式碼必須自帶鎖定檔，或在此提供一個（{{names}}）。",
     "lockfilePlaceholder": "沒有鎖定檔",
     "repository": "儲存庫 URL",
     "commit": "提交",

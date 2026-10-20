@@ -9,8 +9,8 @@
 // permission from the copyright holder.
 
 // REQ-1984, REQ-1993: what a Node or Python source's code is -- its runtime, and where the code
-// comes from: a package at an exact version (with a lockfile beside it when the package declares
-// dependencies), a Git repository at a commit, or an uploaded archive. The server installs and
+// comes from: a package at an exact version, a Git repository at a commit, or an uploaded archive,
+// with a lockfile beside it when the code carries none. The server installs and
 // reads the code when the source is saved, and refuses code it cannot use by name.
 // REQ-2104: the org secrets its code may read through Provisa's services, picked by name.
 // REQ-2105: the monthly cap on what its calls to Provisa's LLM service cost.
@@ -177,28 +177,6 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 data-testid="code-version"
               />
             </FormField>
-            <FormField
-              size="medium"
-              help={t("codeSourceFields.lockfileHint", { names: LOCKFILES[type].join(", ") })}
-            >
-              <FileInput
-                clearable
-                label={t("codeSourceFields.lockfile")}
-                placeholder={
-                  kept(fields.lockfile_upload ?? "", fields.lockfile_filename ?? "") ??
-                  t("codeSourceFields.lockfilePlaceholder")
-                }
-                accept={LOCKFILES[type].join(",")}
-                disabled={uploading === "lockfile"}
-                onChange={(file) =>
-                  file
-                    ? void upload("lockfile", file)
-                    : set({ lockfile_upload: "", lockfile_filename: "" })
-                }
-                error={failed?.key === "lockfile" ? failed.text : undefined}
-                data-testid="code-lockfile"
-              />
-            </FormField>
           </FieldGroup>
         )}
 
@@ -254,6 +232,31 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
             </FormField>
           </FieldGroup>
         )}
+
+        <FieldGroup>
+          <FormField
+            size="medium"
+            help={t("codeSourceFields.lockfileHint", { names: LOCKFILES[type].join(", ") })}
+          >
+            <FileInput
+              clearable
+              label={t("codeSourceFields.lockfile")}
+              placeholder={
+                kept(fields.lockfile_upload ?? "", fields.lockfile_filename ?? "") ??
+                t("codeSourceFields.lockfilePlaceholder")
+              }
+              accept={LOCKFILES[type].join(",")}
+              disabled={uploading === "lockfile"}
+              onChange={(file) =>
+                file
+                  ? void upload("lockfile", file)
+                  : set({ lockfile_upload: "", lockfile_filename: "" })
+              }
+              error={failed?.key === "lockfile" ? failed.text : undefined}
+              data-testid="code-lockfile"
+            />
+          </FormField>
+        </FieldGroup>
 
         <FieldGroup>
           <FormField size="long" help={t("codeSourceFields.secretsHint")}>

@@ -14,7 +14,7 @@
     "version": "Version",
     "versionHint": "Une version exacte, par exemple 1.2.0.",
     "lockfile": "Fichier de verrouillage",
-    "lockfileHint": "Un paquet publié contient rarement son fichier de verrouillage. Fournissez-en un ({{names}}) lorsque le paquet a des dépendances.",
+    "lockfileHint": "Facultatif. Pour des installations identiques, qui comptent pour les tests, le code doit contenir un fichier de verrouillage, ou vous en fournissez un ici ({{names}}).",
     "lockfilePlaceholder": "Aucun fichier de verrouillage",
     "repository": "URL du dépôt",
     "commit": "Commit",

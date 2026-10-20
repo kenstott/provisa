@@ -39,7 +39,7 @@ Código com dependências precisa de um lockfile, e toda instalação o segue à
 | Deno | `deno.lock` |
 | Python | `uv.lock` (com seu `pyproject.toml`), `pylock.toml` ou um `requirements.txt` com `--hash` em cada linha |
 
-Um pacote publicado raramente traz o seu lockfile, por isso o formulário aceita um ao lado da referência do pacote.
+Um lockfile é opcional, mas sem ele duas instalações do mesmo código podem diferir, e um teste que passa hoje pode falhar amanhã por causa de uma nova versão de uma dependência. Para uma instalação idêntica todas as vezes, o código precisa trazer um lockfile, ou você cria um e o informa aqui. Uma imagem construída já está fixada. Depois que você constrói a imagem da fonte ([Construir imagem](#running-on-a-remote-host)), as suas dependências ficam dentro dela, e se essa imagem é a que passa pelos seus testes e pelo seu CI/CD, a imagem testada é a que roda. Um lockfile importa para o modo dev e para cada nova construção da imagem. Código que traz o seu próprio lockfile é instalado a partir dele: um repositório Git ou um envio que o inclua, ou um pacote npm cujo autor publicou `npm-shrinkwrap.json` (o npm nunca publica `package-lock.json`). Código sem lockfile é instalado com dependências não fixadas: um repositório Git ou um envio sem lockfile, a maioria dos pacotes npm e os pacotes Python do PyPI, cujos wheels não têm lugar para um. Informe um lockfile ao lado desse código para que toda instalação seja idêntica. Há código que não precisa de nenhum, porque a forma como é distribuído já fixa cada dependência.
 
 Nenhum pacote pode rodar os próprios scripts de instalação: o npm instala com `--ignore-scripts`, e o Python instala só wheels, nunca construindo a partir de uma distribuição de código-fonte.
 

@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-1984, REQ-1993: a Node or Python source is its code -- a package at an exact version (with a
-// lockfile beside it), a Git repository at a commit, or an uploaded archive -- and, for Node, the
+// lockfile beside code that carries none), a Git repository at a commit, or an uploaded archive -- and, for Node, the
 // runtime it runs on. What the form holds is the source's mapping, and an edit refills the form.
 // REQ-2104: the org secrets its code may read, picked by name.
 // REQ-2105: the monthly cap on what its calls to the LLM service cost.
@@ -74,14 +74,15 @@ describe("what a code source saves", () => {
     });
   });
 
-  it("is a Git commit for Node on its runtime, with no lockfile beside kept code", () => {
+  it("is a Git commit for Node on its runtime, with the lockfile given beside it", () => {
     const fields = {
       code_runtime: "bun",
       code_origin: "git",
       code_repository: "https://github.com/acme/rates.git",
       code_commit: "a".repeat(40),
       code_subdirectory: "pkg",
-      lockfile_upload: "stale",
+      lockfile_upload: "lock-sha-2",
+      lockfile_filename: "bun.lock",
     };
     expect(JSON.parse(codeMappingJson("node", fields))).toEqual({
       runtime: "bun",
@@ -91,7 +92,14 @@ describe("what a code source saves", () => {
         commit: fields.code_commit,
         subdirectory: "pkg",
       },
+      lockfile: { filename: "bun.lock", upload: "lock-sha-2" },
     });
+  });
+
+  it("is an uploaded archive with no lockfile when none is given", () => {
+    expect(
+      JSON.parse(codeMappingJson("python", { code_origin: "upload", code_upload: "h" })),
+    ).toEqual({ runtime: "python", code: { kind: "upload", upload: "h" } });
   });
 
   it("declares org secrets by name, and keeps an ${env:...} reference as written", () => {
@@ -235,6 +243,26 @@ describe("the code source's fields", () => {
         code_secrets: JSON.stringify({ openrouter: null }),
       }),
     );
+  });
+
+  it.each(["git", "upload"])("offers the lockfile beside %s code too", async (origin) => {
+    renderInForm(<Harness type="python" onFields={() => {}} />);
+    const picker = screen.getByTestId("code-origin");
+    fireEvent.click(picker);
+    const listbox = document.getElementById(picker.getAttribute("aria-controls") as string);
+    const name = origin === "git" ? "Git repository" : "Upload";
+    fireEvent.click(
+      await within(listbox as HTMLElement).findByRole("option", {
+        name: new RegExp(name, "i"),
+        hidden: true,
+      }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(origin === "git" ? "code-repository" : "code-archive"),
+      ).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("code-lockfile")).toBeInTheDocument();
   });
 
   it("upload a lockfile beside a package", async () => {

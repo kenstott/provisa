@@ -326,4 +326,4 @@ def test_a_wheels_dependencies_with_no_lockfile_beside_it_are_refused_saying_to_
             run=_Runner(),
         )
     assert refused.value.code == "codesource.no_lockfile"
-    assert "add one beside the package on the source's form" in str(refused.value)
+    assert "add one beside the code on the source's form" in str(refused.value)
