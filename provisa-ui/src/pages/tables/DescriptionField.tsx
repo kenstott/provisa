@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 import { useCallback, useState } from "react";
-import { Sparkles, X } from "lucide-react";
+import { Library, Sparkles, X } from "lucide-react";
 import { ActionIcon, Group, Stack, Textarea } from "@mantine/core";
 import { Tip } from "../../components/Tip";
 import { useTranslation } from "react-i18next";
@@ -35,6 +35,8 @@ export function DescriptionField({
   rows = 2,
   onGenerate,
   generating,
+  onFromCatalog,
+  readOnly,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -42,6 +44,10 @@ export function DescriptionField({
   rows?: number;
   onGenerate?: () => void;
   generating?: boolean;
+  /** REQ-2122: take the description from a catalog of the table's domain. */
+  onFromCatalog?: () => void;
+  /** REQ-2122: the table is locked to a catalog, which is this field's authority. */
+  readOnly?: boolean;
 }) {
   const { t } = useTranslation();
   const [focused, setFocused] = useState(false);
@@ -71,7 +77,9 @@ export function DescriptionField({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={rows}
+          readOnly={readOnly}
           onFocus={(e) => {
+            if (readOnly) return;
             const slot = e.currentTarget.getBoundingClientRect();
             const top = visibleTop(e.currentTarget);
             setAnchor(slot.bottom - EXPANDED_HEIGHT < top ? "top" : "bottom");
@@ -96,7 +104,20 @@ export function DescriptionField({
       </div>
       <Group gap={4} justify="flex-end" className="desc-field-toolbar">
         <CopyButton text={value} size={11} />
-        {onGenerate && (
+        {onFromCatalog && !readOnly && (
+          <Tip text={t("descriptionField.fromCatalog")} named>
+            <ActionIcon
+              type="button"
+              variant="transparent"
+              aria-label={t("descriptionField.fromCatalog")}
+              data-testid="description-field-from-catalog"
+              onClick={onFromCatalog}
+            >
+              <Library size={11} />
+            </ActionIcon>
+          </Tip>
+        )}
+        {onGenerate && !readOnly && (
           <Tip text={t("descriptionField.generateWithAi")} named>
             <ActionIcon
               type="button"
@@ -110,17 +131,19 @@ export function DescriptionField({
             </ActionIcon>
           </Tip>
         )}
-        <Tip text={t("descriptionField.clear")} named>
-          <ActionIcon
-            type="button"
-            variant="transparent"
-            aria-label={t("descriptionField.clear")}
-            data-testid="description-field-clear"
-            onClick={() => onChange("")}
-          >
-            <X size={11} />
-          </ActionIcon>
-        </Tip>
+        {!readOnly && (
+          <Tip text={t("descriptionField.clear")} named>
+            <ActionIcon
+              type="button"
+              variant="transparent"
+              aria-label={t("descriptionField.clear")}
+              data-testid="description-field-clear"
+              onClick={() => onChange("")}
+            >
+              <X size={11} />
+            </ActionIcon>
+          </Tip>
+        )}
       </Group>
     </Stack>
   );

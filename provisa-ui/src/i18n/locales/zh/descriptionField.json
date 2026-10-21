@@ -1,6 +1,7 @@
 {
   "descriptionField": {
     "generateWithAi": "使用 AI 生成",
-    "clear": "清除"
+    "clear": "清除",
+    "fromCatalog": "从目录获取"
   }
 }

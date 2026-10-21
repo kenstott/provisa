@@ -26,7 +26,7 @@ vi.mock("../api/metadataExport", () => ({
 }));
 
 vi.mock("../api/catalogs", () => ({
-  fetchCatalogs: vi.fn().mockResolvedValue({ providers: [], catalogs: [] }),
+  fetchCatalogs: vi.fn().mockResolvedValue({ providers: [], readable: [], catalogs: [] }),
 }));
 
 import { fetchMetadataExport } from "../api/metadataExport";

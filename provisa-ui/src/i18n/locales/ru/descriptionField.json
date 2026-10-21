@@ -1,6 +1,7 @@
 {
   "descriptionField": {
     "generateWithAi": "Сгенерировать с помощью ИИ",
-    "clear": "Очистить"
+    "clear": "Очистить",
+    "fromCatalog": "Взять из каталога"
   }
 }

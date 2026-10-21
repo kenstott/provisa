@@ -733,6 +733,15 @@ def _start_scheduler(_log: logging.Logger) -> None:
             spawn_background(register_all_orgs(scheduler), name="metadata-export-register")
         except (ImportError, RuntimeError):
             _log.exception("metadata export sync jobs could not be scheduled")
+        # REQ-2122: each catalog's scheduled import.
+        try:
+            from provisa.api.metadata_export.catalog_import import (
+                register_all_orgs as register_catalog_imports,
+            )
+
+            spawn_background(register_catalog_imports(scheduler), name="catalog-import-register")
+        except (ImportError, RuntimeError):
+            _log.exception("catalog import jobs could not be scheduled")
         # Wire the event loop onto the same scheduler (REQ-941) — best-effort, never bricks boot.
         try:
             from provisa.events.app_wiring import wire_event_loop

@@ -38,6 +38,9 @@
     "catalogId": "Nome",
     "catalogIdHelp": "Un nome breve per questo catalogo, univoco nell'organizzazione (ad esempio openmetadata-prod). Due cataloghi possono essere dello stesso tipo.",
     "domains": "Domini",
-    "domainsHelp": "I domini che lavorano con questo catalogo. Le loro tabelle e i loro prodotti dati vi sono pubblicati, e le loro tabelle lo propongono."
+    "domainsHelp": "I domini che lavorano con questo catalogo. Le loro tabelle e i loro prodotti dati vi sono pubblicati, e le loro tabelle lo propongono.",
+    "import": "Importa",
+    "importCron": "Pianificazione dell'importazione",
+    "importCronHelp": "Espressione cron dell'importazione pianificata. Le tabelle bloccate su questo catalogo ne prendono i metadati; le modifiche delle altre attendono una revisione. Lasciate vuoto per nessuna."
   }
 }

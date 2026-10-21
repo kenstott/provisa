@@ -2588,6 +2588,10 @@ class CatalogConnection(BaseModel):  # REQ-2122
     aws_secret_access_key: SecretStr = SecretStr("")
     timeout_seconds: int = 30
     domains: list[str]
+    #: REQ-2122: when the scheduled import runs, as a cron expression; empty runs none. It applies
+    #: the catalog's current metadata to the tables locked to it and holds what changed for the
+    #: other linked tables for a steward's review.
+    import_cron: str = ""
 
     @field_validator("id")
     @classmethod
@@ -2595,6 +2599,18 @@ class CatalogConnection(BaseModel):  # REQ-2122
         if not _SAFE_ID_PATTERN.match(v):
             raise ValueError(f"a catalog's id is a name like 'catalog-1', not {v!r}")
         return v
+
+    @field_validator("import_cron")
+    @classmethod
+    def _validate_import_cron(cls, v: str) -> str:
+        if v.strip():
+            from apscheduler.triggers.cron import CronTrigger
+
+            try:
+                CronTrigger.from_crontab(v)
+            except ValueError as exc:
+                raise ValueError(f"import_cron {v!r} is not a cron expression: {exc}") from exc
+        return v.strip()
 
     @model_validator(mode="after")
     def _validate(self) -> "CatalogConnection":

@@ -673,6 +673,8 @@ CREATE TABLE IF NOT EXISTS catalog_bindings (
     semantic_uri  TEXT NOT NULL,
     vendor_ref    TEXT NOT NULL,
     physical_key  TEXT NOT NULL,
+    -- REQ-2122: a steward picked this asset for the table; the export updates it in place.
+    picked        BOOLEAN NOT NULL DEFAULT FALSE,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (target, semantic_uri)
 );
@@ -681,6 +683,22 @@ DO $$ BEGIN
     ALTER TABLE catalog_bindings ADD COLUMN IF NOT EXISTS tenant_id UUID;
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
+
+-- REQ-2122: what was last imported into a table from each catalog it is linked to (each
+-- descriptive field's value as imported, so a later import tells a local edit from a value it may
+-- replace), and whether the table is locked to that catalog (at most one per table).
+CREATE TABLE IF NOT EXISTS catalog_imports (
+    id           SERIAL PRIMARY KEY,
+    table_id     INTEGER NOT NULL REFERENCES registered_tables(id) ON DELETE CASCADE,
+    catalog      TEXT NOT NULL,
+    imported_at  TIMESTAMPTZ,
+    imported     JSONB,
+    locked       BOOLEAN NOT NULL DEFAULT FALSE,
+    pending      JSONB,
+    pending_at   TIMESTAMPTZ,
+    tenant_id    UUID,
+    UNIQUE (table_id, catalog)
+);
 
 -- REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
 -- field names (the term unit is the phrase — the full normalized field name). Rooted terms

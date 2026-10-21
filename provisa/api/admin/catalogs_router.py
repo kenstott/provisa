@@ -65,6 +65,7 @@ PLAIN_FIELDS = (
     "datazone_domain_id",
     "timeout_seconds",
     "domains",
+    "import_cron",
 )
 
 
@@ -133,8 +134,12 @@ async def get_catalogs(request: Request) -> dict:  # REQ-2122
     require_org_settings(request)
     require_active_org_id(request)
     config = catalogs_config(await stored_settings())
+    from provisa.api.metadata_export.reader import readable_providers
+
     return {
         "providers": sorted(registered_providers()),
+        # REQ-2122: the providers whose catalogs can be read back (imported from, picked from).
+        "readable": readable_providers(),
         "catalogs": [_view(c) for c in config.catalogs],
     }
 
@@ -178,6 +183,15 @@ async def set_catalogs(request: Request) -> dict:  # REQ-2122
     await write_org_overrides(
         _model_db(), {CONFIG_KEY: merged}, updated_by=getattr(identity, "user_id", "anonymous")
     )
+    # Re-arm the scheduled imports against what was just saved, so a changed schedule takes
+    # effect now rather than at the next restart.
+    from provisa.api.app import state
+
+    scheduler = getattr(state, "_scheduler", None)
+    if scheduler is not None:
+        from provisa.api.metadata_export.catalog_import import register_org_jobs
+
+        await register_org_jobs(scheduler, require_active_org_id(request))
     return {"success": True, "catalogs": [c.id for c in config.catalogs]}
 
 
@@ -206,3 +220,65 @@ async def check_catalog(request: Request, catalog_id: str) -> dict:  # REQ-2122
             "error": f"{type(exc).__name__}: {exc}",
         }
     return {"id": catalog_id, "provider": catalog.provider, "ok": True}
+
+
+def _uri_org_id(request: Request) -> str | None:
+    """The org a table's semantic URI names: the org under multitenancy, none otherwise."""
+    from provisa.api.app import state
+
+    return require_active_org_id(request) if state.multitenancy else None
+
+
+def _readable(catalog_id: str, settings: dict[str, Any]) -> Any:
+    from provisa.api.metadata_export.reader import readable_providers
+
+    catalog = catalogs_config(settings).by_id().get(catalog_id)
+    if catalog is None:
+        raise ApiError(404, "catalogs.not_found", f"There is no catalog {catalog_id!r}")
+    if catalog.provider not in readable_providers():
+        raise ApiError(
+            400,
+            "catalog_link.unreadable",
+            f"catalog {catalog_id!r} ({catalog.provider}) holds no table assets to read",
+            catalog=catalog_id,
+        )
+    return catalog
+
+
+@router.get("/admin/catalogs/{catalog_id}/import")
+async def review_import(request: Request, catalog_id: str) -> dict:  # REQ-2122
+    """The catalog's Import review: each linked table of its domains with what its asset holds
+    differently from Provisa's values, and each table not linked to it."""
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.metadata_export import catalog_import
+
+    require_capability_request(request, "table_registration")
+    catalog = _readable(catalog_id, await stored_settings())
+    async with _model_db().acquire() as conn:
+        return await catalog_import.review(conn, catalog, _uri_org_id(request))
+
+
+@router.post("/admin/catalogs/{catalog_id}/import")
+async def accept_import(request: Request, catalog_id: str) -> dict:  # REQ-2122
+    """Accept the catalog's changes for the tables named in ``table_ids``: all at once, or one by
+    one."""
+    from provisa.api.admin.capabilities import require_capability_request
+    from provisa.api.admin.schema_helpers import _rebuild_schemas
+    from provisa.api.metadata_export import catalog_import, linking
+
+    require_capability_request(request, "table_registration")
+    body = await request.json()
+    table_ids = [int(t) for t in body.get("table_ids") or []]
+    catalog = _readable(catalog_id, await stored_settings())
+    async with _model_db().acquire() as conn:
+        try:
+            async with conn.transaction():
+                applied = await catalog_import.accept(
+                    conn, catalog, table_ids, _uri_org_id(request)
+                )
+        except linking.LinkRefused as refused:
+            raise ApiError(
+                refused.status, refused.code, str(refused), None, **refused.params
+            ) from None
+    await _rebuild_schemas()
+    return {"success": True, "applied": {str(k): v for k, v in applied.items()}}

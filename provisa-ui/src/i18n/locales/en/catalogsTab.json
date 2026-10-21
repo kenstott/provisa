@@ -38,6 +38,9 @@
     "catalogId": "Name",
     "catalogIdHelp": "A short name for this catalog, unique in the organization (for example openmetadata-prod). Two catalogs may be of the same type.",
     "domains": "Domains",
-    "domainsHelp": "The domains that work with this catalog. Their tables and data products publish to it, and their tables offer it."
+    "domainsHelp": "The domains that work with this catalog. Their tables and data products publish to it, and their tables offer it.",
+    "import": "Import",
+    "importCron": "Import schedule",
+    "importCronHelp": "Cron expression for the scheduled import. Tables locked to this catalog take its metadata; changes for the others wait for review. Leave empty for none."
   }
 }

@@ -38,6 +38,9 @@
     "catalogId": "Nombre",
     "catalogIdHelp": "Un nombre corto para este catálogo, único en la organización (por ejemplo openmetadata-prod). Dos catálogos pueden ser del mismo tipo.",
     "domains": "Dominios",
-    "domainsHelp": "Los dominios que trabajan con este catálogo. Sus tablas y productos de datos se publican en él, y sus tablas lo ofrecen."
+    "domainsHelp": "Los dominios que trabajan con este catálogo. Sus tablas y productos de datos se publican en él, y sus tablas lo ofrecen.",
+    "import": "Importar",
+    "importCron": "Programación de importación",
+    "importCronHelp": "Expresión cron de la importación programada. Las tablas bloqueadas en este catálogo toman sus metadatos; los cambios de las demás esperan revisión. Déjela vacía para ninguna."
   }
 }

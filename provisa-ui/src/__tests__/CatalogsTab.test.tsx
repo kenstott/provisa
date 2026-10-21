@@ -55,6 +55,7 @@ const MARQUEZ: CatalogConnection = {
   datazone_domain_id: "",
   timeout_seconds: 30,
   domains: ["sales"],
+  import_cron: "",
   api_key_set: true,
   token_set: false,
   entra_client_secret_set: false,
@@ -64,7 +65,11 @@ const MARQUEZ: CatalogConnection = {
 };
 
 function state(catalogs: CatalogConnection[] = [MARQUEZ]): CatalogsState {
-  return { providers: ["atlas", "datazone", "openlineage", "unity_catalog"], catalogs };
+  return {
+    providers: ["atlas", "datazone", "openlineage", "openmetadata", "unity_catalog"],
+    readable: ["openmetadata"],
+    catalogs,
+  };
 }
 
 const SAVED = { success: true, catalogs: ["marquez"] };
@@ -261,5 +266,26 @@ describe("CatalogsTab", () => {
     await waitFor(() => expect(screen.getByTestId("catalogs-none")).toBeInTheDocument());
     fireEvent.click(screen.getByTestId("catalogs-add"));
     expect(screen.getByTestId("catalog-test-0")).toBeDisabled();
+  });
+
+  it("offers Import and its schedule on a catalog that can be read, once it is saved", async () => {
+    mockFetch.mockResolvedValue(
+      state([
+        MARQUEZ,
+        { ...MARQUEZ, id: "om", provider: "openmetadata", import_cron: "0 6 * * *" },
+      ]),
+    );
+    mockSet.mockResolvedValue(SAVED);
+    render(<CatalogsTab />);
+
+    await waitFor(() => expect(screen.getByTestId("catalog-import-1")).toBeInTheDocument());
+    expect(screen.queryByTestId("catalog-import-0")).toBeNull();
+    expect(screen.queryByTestId("catalog-import-cron-0")).toBeNull();
+    expect(screen.getByTestId("catalog-import-cron-1")).toHaveValue("0 6 * * *");
+    fireEvent.change(screen.getByTestId("catalog-import-cron-1"), { target: { value: "" } });
+    fireEvent.click(screen.getByTestId("catalogs-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    expect(mockSet.mock.calls[0][0][1].import_cron).toBe("");
   });
 });

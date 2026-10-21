@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "從 {{catalog}} 匯入",
+    "reading": "正在讀取已連結的資產…",
+    "changedCount_one": "{{count}} 張表在目錄中有不同內容。",
+    "changedCount_other": "{{count}} 張表在目錄中有不同內容。",
+    "nothingChanged": "所有已連結的表都與目錄一致。",
+    "acceptAll": "全部接受",
+    "accept": "接受",
+    "accepted_one": "已為 {{count}} 張表接受。",
+    "accepted_other": "已為 {{count}} 張表接受。",
+    "locked": "已鎖定到此目錄",
+    "inStep": "與目錄一致。",
+    "field": "欄位",
+    "inProvisa": "Provisa 中",
+    "inCatalog": "{{catalog}} 中",
+    "localEdit": "上次匯入後曾在 Provisa 中編輯",
+    "field_description": "描述",
+    "field_column_column": "欄 {{column}} 的描述",
+    "field_tag": "表上的標籤",
+    "field_tag_column": "{{column}} 上的標籤",
+    "field_term": "詞彙表術語",
+    "field_term_column": "{{column}} 的詞彙表術語",
+    "notLinkedTitle": "未連結到此目錄",
+    "notLinkedHelp": "將表匯出到 {{catalog}} 一次,或在表編輯器中從 {{catalog}} 取得其描述,即可連結。"
+  }
+}

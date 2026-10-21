@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "Importeren uit {{catalog}}",
+    "reading": "Gekoppelde assets lezen…",
+    "changedCount_one": "{{count}} tabel wijkt af in de catalogus.",
+    "changedCount_other": "{{count}} tabellen wijken af in de catalogus.",
+    "nothingChanged": "Elke gekoppelde tabel is gelijk aan de catalogus.",
+    "acceptAll": "Alles accepteren",
+    "accept": "Accepteren",
+    "accepted_one": "Geaccepteerd voor {{count}} tabel.",
+    "accepted_other": "Geaccepteerd voor {{count}} tabellen.",
+    "locked": "Vastgezet aan deze catalogus",
+    "inStep": "Gelijk aan de catalogus.",
+    "field": "Veld",
+    "inProvisa": "In Provisa",
+    "inCatalog": "In {{catalog}}",
+    "localEdit": "Bewerkt in Provisa sinds de laatste import",
+    "field_description": "Beschrijving",
+    "field_column_column": "Beschrijving van kolom {{column}}",
+    "field_tag": "Tag op de tabel",
+    "field_tag_column": "Tag op {{column}}",
+    "field_term": "Glossariumterm",
+    "field_term_column": "Glossariumterm van {{column}}",
+    "notLinkedTitle": "Niet gekoppeld aan deze catalogus",
+    "notLinkedHelp": "Koppel een tabel door haar één keer naar {{catalog}} te exporteren, of door in de tabeleditor haar beschrijving uit {{catalog}} over te nemen."
+  }
+}

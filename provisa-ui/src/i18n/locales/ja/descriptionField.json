@@ -1,6 +1,7 @@
 {
   "descriptionField": {
     "generateWithAi": "AIで生成",
-    "clear": "クリア"
+    "clear": "クリア",
+    "fromCatalog": "カタログから取り込む"
   }
 }

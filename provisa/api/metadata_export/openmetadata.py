@@ -67,6 +67,7 @@ import json
 
 from dataclasses import dataclass
 from hashlib import sha256
+from urllib.parse import quote
 from typing import TYPE_CHECKING, Any
 
 import httpx
@@ -79,6 +80,12 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import (
+    AssetMetadata,
+    CatalogAsset,
+    CatalogReader,
+    register_reader,
+)
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -983,14 +990,26 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         self._overlay_live_table(entity, response.json())
 
     def _overlay_live_table(self, entity: Entity, live: dict[str, Any]) -> None:
-        """Carry one live table's human-owned state onto the outgoing PUT body (REQ-1389)."""
-        entity.body["tags"] = self._merged_tags(live.get("tags"), entity.body.get("tags"))
+        """Carry one live table's human-owned state onto the outgoing PUT body (REQ-1389).
+
+        REQ-2122: a table locked to this catalog keeps the catalog's own description, column
+        descriptions and tags; the export does not write them."""
+        locked = entity.body["sourceUrl"] in self.locked
+        if locked:
+            entity.body["description"] = live.get("description") or ""
+            entity.body["tags"] = list(live.get("tags") or [])
+        else:
+            entity.body["tags"] = self._merged_tags(live.get("tags"), entity.body.get("tags"))
         live_columns = {c.get("name"): c for c in live.get("columns") or []}
         for column in entity.body["columns"]:
             live_column = live_columns.get(column["name"])
             if live_column is None:
                 continue
-            column["tags"] = self._merged_tags(live_column.get("tags"), column.get("tags"))
+            if locked:
+                column["description"] = live_column.get("description") or ""
+                column["tags"] = list(live_column.get("tags") or [])
+            else:
+                column["tags"] = self._merged_tags(live_column.get("tags"), column.get("tags"))
         # Extension keys Provisa does not own are somebody's custom properties; only the
         # relationship property tracks the snapshot (including its removal).
         live_extension = {
@@ -1001,6 +1020,87 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         for field in _CARRIED_TABLE_FIELDS:
             if field not in entity.body and live.get(field) is not None:
                 entity.body[field] = live[field]
+
+    async def _publish_to_picked(
+        self,
+        client: httpx.AsyncClient,
+        entity: Entity,
+        table_ids: dict[str, str],
+        result: PublishResult,
+    ) -> None:
+        """Publish a table onto the asset a steward picked for it (REQ-2122).
+
+        The picked entity is the catalog's own, so it is patched rather than replaced: its
+        description, the descriptions of the columns it shares with the table and Provisa's tags
+        (a locked table's descriptive fields are left as the catalog holds them), and its
+        ``sourceUrl``, the table's Provisa address, which links the two both ways. Lineage and the
+        data products address the picked entity in place of an entity of Provisa's own.
+        """
+        uri = entity.body["sourceUrl"]
+        ref, _name = self.picked[uri]
+        response = await client.get(
+            self._url(f"/api/v1/tables/{ref}"),
+            params={"fields": "tags,columns"},
+            headers=self._headers(),
+        )
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: the picked asset {ref} could not be read "
+                        f"(HTTP {response.status_code}): {response.text[:500]}"
+                    ),
+                )
+            )
+            return
+        live = response.json()
+
+        def _set(path: str, value: Any, present: bool) -> dict[str, Any]:
+            return {"op": "replace" if present else "add", "path": path, "value": value}
+
+        patch = [_set("/sourceUrl", uri, live.get("sourceUrl") is not None)]
+        if uri not in self.locked:
+            patch.append(
+                _set(
+                    "/description", entity.body["description"], live.get("description") is not None
+                )
+            )
+            ours = {c["name"].lower(): c for c in entity.body["columns"]}
+            for index, column in enumerate(live.get("columns") or []):
+                mine = ours.get(str(column.get("name", "")).lower())
+                if mine is not None:
+                    patch.append(
+                        _set(
+                            f"/columns/{index}/description",
+                            mine.get("description") or "",
+                            column.get("description") is not None,
+                        )
+                    )
+            tags = self._merged_tags(live.get("tags"), entity.body.get("tags"))
+            if tags != (live.get("tags") or []):
+                patch.append(_set("/tags", tags, live.get("tags") is not None))
+        patched = await client.patch(
+            self._url(f"/api/v1/tables/{ref}"),
+            content=json.dumps(patch),
+            headers={**self._headers(), "Content-Type": "application/json-patch+json"},
+        )
+        if patched.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=entity.asset,
+                    message=(
+                        f"table {entity.asset.fqn()}: the picked asset {live['fullyQualifiedName']} "
+                        f"refused the update (HTTP {patched.status_code}): {patched.text[:500]}"
+                    ),
+                )
+            )
+            return
+        body = patched.json()
+        # Lineage and data products name the table by the FQN Provisa would have given it.
+        table_ids[f"{entity.body['databaseSchema']}.{entity.body['name']}"] = body["id"]
+        result.bindings[uri] = (body["id"], body["fullyQualifiedName"])
+        result.published["table"] = result.published.get("table", 0) + 1
 
     async def _succeed_rebound_table(
         self,
@@ -1458,6 +1558,11 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                             )
                         )
                         continue
+                if entity.kind == "table" and entity.body["sourceUrl"] in self.picked:
+                    # REQ-2122: a steward picked this table's asset, so the table is published
+                    # onto it in place rather than as an entity of Provisa's own.
+                    await self._publish_to_picked(client, entity, table_ids, result)
+                    continue
                 if entity.kind == "table":
                     fqn = f"{entity.body['databaseSchema']}.{entity.body['name']}"
                     stored = self._bindings.get(entity.body["sourceUrl"])
@@ -1535,3 +1640,82 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                 self._url("/api/v1/system/version"), headers=self._headers()
             )
         response.raise_for_status()
+
+
+def _om_labels(labels: list[dict[str, Any]], source: str) -> tuple[str, ...]:
+    """The tag FQNs of ``labels`` from ``source`` ("Classification" or "Glossary")."""
+    return tuple(label["tagFQN"] for label in labels if label.get("source") == source)
+
+
+@register_reader
+class OpenMetadataReader(CatalogReader):  # REQ-2122
+    """Reads an OpenMetadata server's table entities: search through its search index, and a
+    table's description, columns, owners, classification tags and glossary terms by its id."""
+
+    provider_name = "openmetadata"
+
+    def _headers(self) -> dict[str, str]:
+        token = self._catalog.token.get_secret_value() or self._catalog.api_key.get_secret_value()
+        return {"Authorization": f"Bearer {token}"} if token else {}
+
+    def _url(self, path: str) -> str:
+        return f"{self._catalog.endpoint.rstrip('/')}{path}"
+
+    def _asset(self, entity: dict[str, Any]) -> CatalogAsset:
+        fqn = entity["fullyQualifiedName"]
+        physical = tuple(
+            part
+            for part in (
+                (entity.get("database") or {}).get("name"),
+                (entity.get("databaseSchema") or {}).get("name"),
+                entity["name"],
+            )
+            if part
+        )
+        return CatalogAsset(
+            ref=entity["id"],
+            name=fqn,
+            physical=physical,
+            description=entity.get("description") or "",
+            url=self.asset_url(entity["id"], fqn),
+        )
+
+    def asset_url(self, ref: str, name: str) -> str | None:
+        # The OpenMetadata UI serves its table pages beside its API, at /table/<fqn>.
+        del ref
+        return self._url(f"/table/{quote(name, safe='')}")
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            response = await client.get(
+                self._url("/api/v1/search/query"),
+                params={"q": text or "*", "index": "table_search_index", "from": 0, "size": limit},
+                headers=self._headers(),
+            )
+        response.raise_for_status()
+        return [self._asset(hit["_source"]) for hit in response.json()["hits"]["hits"]]
+
+    async def read(self, ref: str) -> AssetMetadata:
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            response = await client.get(
+                self._url(f"/api/v1/tables/{ref}"),
+                params={"fields": "columns,owners,tags"},
+                headers=self._headers(),
+            )
+        response.raise_for_status()
+        entity = response.json()
+        columns = entity.get("columns") or []
+        return AssetMetadata(
+            asset=self._asset(entity),
+            description=entity.get("description") or "",
+            columns={c["name"]: c.get("description") or "" for c in columns},
+            owners=tuple(
+                o.get("displayName") or o.get("name") or o["id"] for o in entity.get("owners") or []
+            ),
+            tags=_om_labels(entity.get("tags") or [], "Classification"),
+            terms=_om_labels(entity.get("tags") or [], "Glossary"),
+            column_tags={
+                c["name"]: _om_labels(c.get("tags") or [], "Classification") for c in columns
+            },
+            column_terms={c["name"]: _om_labels(c.get("tags") or [], "Glossary") for c in columns},
+        )

@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "Import aus {{catalog}}",
+    "reading": "Verknüpfte Assets werden gelesen…",
+    "changedCount_one": "{{count}} Tabelle hat im Katalog abweichende Werte.",
+    "changedCount_other": "{{count}} Tabellen haben im Katalog abweichende Werte.",
+    "nothingChanged": "Jede verknüpfte Tabelle stimmt mit dem Katalog überein.",
+    "acceptAll": "Alle übernehmen",
+    "accept": "Übernehmen",
+    "accepted_one": "Für {{count}} Tabelle übernommen.",
+    "accepted_other": "Für {{count}} Tabellen übernommen.",
+    "locked": "An diesen Katalog gebunden",
+    "inStep": "Stimmt mit dem Katalog überein.",
+    "field": "Feld",
+    "inProvisa": "In Provisa",
+    "inCatalog": "In {{catalog}}",
+    "localEdit": "Seit dem letzten Import in Provisa bearbeitet",
+    "field_description": "Beschreibung",
+    "field_column_column": "Beschreibung der Spalte {{column}}",
+    "field_tag": "Tag an der Tabelle",
+    "field_tag_column": "Tag an {{column}}",
+    "field_term": "Glossarbegriff",
+    "field_term_column": "Glossarbegriff von {{column}}",
+    "notLinkedTitle": "Nicht mit diesem Katalog verknüpft",
+    "notLinkedHelp": "Verknüpfen Sie eine Tabelle, indem Sie sie einmal nach {{catalog}} exportieren oder im Tabelleneditor ihre Beschreibung aus {{catalog}} übernehmen."
+  }
+}

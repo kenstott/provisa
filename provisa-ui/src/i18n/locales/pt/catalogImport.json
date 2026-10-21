@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "Importar de {{catalog}}",
+    "reading": "Lendo os ativos vinculados…",
+    "changedCount_one": "{{count}} tabela tem algo diferente no catálogo.",
+    "changedCount_other": "{{count}} tabelas têm algo diferente no catálogo.",
+    "nothingChanged": "Todas as tabelas vinculadas estão alinhadas ao catálogo.",
+    "acceptAll": "Aceitar tudo",
+    "accept": "Aceitar",
+    "accepted_one": "Aceito para {{count}} tabela.",
+    "accepted_other": "Aceito para {{count}} tabelas.",
+    "locked": "Travada neste catálogo",
+    "inStep": "Alinhada ao catálogo.",
+    "field": "Campo",
+    "inProvisa": "No Provisa",
+    "inCatalog": "Em {{catalog}}",
+    "localEdit": "Editado no Provisa desde a última importação",
+    "field_description": "Descrição",
+    "field_column_column": "Descrição da coluna {{column}}",
+    "field_tag": "Tag da tabela",
+    "field_tag_column": "Tag de {{column}}",
+    "field_term": "Termo do glossário",
+    "field_term_column": "Termo do glossário de {{column}}",
+    "notLinkedTitle": "Não vinculadas a este catálogo",
+    "notLinkedHelp": "Vincule uma tabela exportando-a para {{catalog}} uma vez ou obtendo a descrição dela de {{catalog}} no editor de tabelas."
+  }
+}

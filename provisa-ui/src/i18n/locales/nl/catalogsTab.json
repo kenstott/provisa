@@ -38,6 +38,9 @@
     "catalogId": "Naam",
     "catalogIdHelp": "Een korte naam voor deze catalogus, uniek in de organisatie (bijvoorbeeld openmetadata-prod). Twee catalogi mogen van hetzelfde type zijn.",
     "domains": "Domeinen",
-    "domainsHelp": "De domeinen die met deze catalogus werken. Hun tabellen en dataproducten worden ernaar gepubliceerd, en hun tabellen bieden hem aan."
+    "domainsHelp": "De domeinen die met deze catalogus werken. Hun tabellen en dataproducten worden ernaar gepubliceerd, en hun tabellen bieden hem aan.",
+    "import": "Importeren",
+    "importCron": "Importschema",
+    "importCronHelp": "Cron-expressie voor de geplande import. Tabellen die aan deze catalogus zijn vastgezet nemen de metadata over; wijzigingen voor de andere wachten op beoordeling. Leeg laten voor geen."
   }
 }

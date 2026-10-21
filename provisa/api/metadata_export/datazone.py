@@ -44,6 +44,12 @@ from provisa.api.metadata_export.provider import (
     PublishResult,
 )
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import (
+    AssetMetadata,
+    CatalogAsset,
+    CatalogReader,
+    register_reader,
+)
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import DataProductAsset, MetadataSnapshot, TableAsset
@@ -351,3 +357,122 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                 client.get_project(**self._scope(), identifier=self._config.datazone_project_id)
 
         await asyncio.to_thread(_check)
+
+
+#: The forms DataZone keeps a table's physical address and columns in, by the source it was
+#: harvested from: Glue (``databaseName``, ``tableName``), Redshift (``databaseName``,
+#: ``schemaName``, ``tableName``) and the generic relational form.
+_TABLE_FORMS = ("GlueTableForm", "RedshiftTableForm", "RelationalTableForm")
+
+
+def _dz_forms(asset: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Each of the asset's forms, by its type's name, with its content parsed."""
+    forms: dict[str, dict[str, Any]] = {}
+    for form in asset.get("formsOutput") or []:
+        content = form.get("content")
+        type_name = str(form.get("typeName", "")).split(".")[-1]
+        forms[type_name or form.get("formName", "")] = json.loads(content) if content else {}
+    return forms
+
+
+def _dz_table_form(asset: dict[str, Any]) -> dict[str, Any]:
+    forms = _dz_forms(asset)
+    for name in _TABLE_FORMS:
+        if name in forms:
+            return forms[name]
+    return {}
+
+
+@register_reader
+class DataZoneReader(CatalogReader):  # REQ-2122
+    """Reads an Amazon DataZone domain's table assets: search across the domain's inventory,
+    and an asset's description, its table form's columns, the business metadata's column
+    descriptions and its glossary terms by the asset's id. DataZone keeps no tags on an asset;
+    its owner is the project that owns it."""
+
+    provider_name = "datazone"
+
+    def _client(self) -> Any:
+        from provisa.core.models import CatalogExport
+
+        export = DataZoneExport(
+            self._catalog.export_target(CatalogExport(catalog=self._catalog.id))
+        )
+        return export._client()
+
+    def _scope(self) -> dict[str, str]:
+        return {"domainIdentifier": self._catalog.datazone_domain_id}
+
+    @staticmethod
+    def _physical(asset: dict[str, Any]) -> tuple[str, ...]:
+        """The table the asset is, from its table form; empty for an asset that is no table."""
+        form = _dz_table_form(asset)
+        return tuple(
+            p
+            for p in (form.get("databaseName"), form.get("schemaName"), form.get("tableName"))
+            if p
+        )
+
+    def _asset(self, asset: dict[str, Any], ref: str) -> CatalogAsset:
+        physical = self._physical(asset)
+        return CatalogAsset(
+            ref=ref,
+            name=".".join(physical),
+            physical=physical,
+            description=asset.get("description") or "",
+        )
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        def _search() -> list[CatalogAsset]:
+            client = self._client()
+            found = client.search(
+                **self._scope(),
+                searchScope="ASSET",
+                searchText=text,
+                maxResults=min(limit, 50),
+                additionalAttributes=["FORMS"],
+            )
+            assets = []
+            for item in found.get("items") or []:
+                asset = item.get("assetItem")
+                if asset is None:
+                    continue
+                forms = (asset.get("additionalAttributes") or {}).get("formsOutput") or []
+                shaped = {**asset, "formsOutput": forms}
+                # Only an asset with a table form is a table to offer.
+                if self._physical(shaped):
+                    assets.append(self._asset(shaped, asset["identifier"]))
+            return assets
+
+        return await asyncio.to_thread(_search)
+
+    async def read(self, ref: str) -> AssetMetadata:
+        def _read() -> AssetMetadata:
+            client = self._client()
+            asset = client.get_asset(**self._scope(), identifier=ref)
+            form = _dz_table_form(asset)
+            if not form:
+                raise LookupError(f"DataZone asset {ref} has no table form: it is no table")
+            columns = {
+                c["columnName"]: c.get("description") or ""
+                for c in form.get("columns") or []
+                if c.get("columnName")
+            }
+            business = _dz_forms(asset).get("ColumnBusinessMetadataForm") or {}
+            for c in business.get("columnsBusinessMetadata") or []:
+                if c.get("name") and c.get("description"):
+                    columns[c["name"]] = c["description"]
+            terms = tuple(
+                client.get_glossary_term(**self._scope(), identifier=term_id)["name"]
+                for term_id in asset.get("glossaryTerms") or []
+            )
+            project = client.get_project(**self._scope(), identifier=asset["owningProjectId"])
+            return AssetMetadata(
+                asset=self._asset(asset, asset["id"]),
+                description=asset.get("description") or "",
+                columns=columns,
+                owners=(project["name"],),
+                terms=terms,
+            )
+
+        return await asyncio.to_thread(_read)

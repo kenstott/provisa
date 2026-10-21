@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "Import from {{catalog}}",
+    "reading": "Reading the linked assets…",
+    "changedCount_one": "{{count}} table holds something different in the catalog.",
+    "changedCount_other": "{{count}} tables hold something different in the catalog.",
+    "nothingChanged": "Every linked table is in step with the catalog.",
+    "acceptAll": "Accept all",
+    "accept": "Accept",
+    "accepted_one": "Accepted for {{count}} table.",
+    "accepted_other": "Accepted for {{count}} tables.",
+    "locked": "Locked to this catalog",
+    "inStep": "In step with the catalog.",
+    "field": "Field",
+    "inProvisa": "In Provisa",
+    "inCatalog": "In {{catalog}}",
+    "localEdit": "Edited in Provisa since the last import",
+    "field_description": "Description",
+    "field_column_column": "Column {{column}} description",
+    "field_tag": "Tag on the table",
+    "field_tag_column": "Tag on {{column}}",
+    "field_term": "Glossary term",
+    "field_term_column": "Glossary term of {{column}}",
+    "notLinkedTitle": "Not linked to this catalog",
+    "notLinkedHelp": "Link a table by exporting it to {{catalog}} once, or by taking its description from {{catalog}} in the table editor."
+  }
+}

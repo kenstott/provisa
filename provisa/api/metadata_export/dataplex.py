@@ -42,6 +42,12 @@ import httpx
 
 from provisa.api.metadata_export.provider import AssetError, MetadataExport, PublishResult
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import (
+    AssetMetadata,
+    CatalogAsset,
+    CatalogReader,
+    register_reader,
+)
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -321,3 +327,81 @@ class DataplexExport(MetadataExport):  # REQ-2118
                 self._url(f"{self._parent()}/dataProducts"), params={"pageSize": 1}
             )
         response.raise_for_status()
+
+
+def _aspect(entry: dict[str, Any], suffix: str) -> dict[str, Any]:
+    """The data of the entry's aspect whose key ends with ``suffix`` (keys are
+    ``<project>.<location>.<aspect type>``, so the project part differs between projects)."""
+    for key, aspect in (entry.get("aspects") or {}).items():
+        if key.endswith(suffix):
+            return aspect.get("data") or {}
+    return {}
+
+
+@register_reader
+class DataplexReader(CatalogReader):  # REQ-2122
+    """Reads the Dataplex Universal Catalog's BigQuery table entries: search through
+    ``searchEntries``, and an entry's description, its schema aspect's column descriptions and
+    its contacts aspect's people by the entry's name. Dataplex keeps no tags or glossary links on
+    an entry in the sense the other catalogs do, so none are read."""
+
+    provider_name = "dataplex"
+
+    def _export(self) -> DataplexExport:
+        from provisa.core.models import CatalogExport
+
+        return DataplexExport(self._catalog.export_target(CatalogExport(catalog=self._catalog.id)))
+
+    @staticmethod
+    def _asset(entry: dict[str, Any]) -> CatalogAsset:
+        qualified = entry.get("fullyQualifiedName") or entry["name"]
+        path = qualified.split(":", 1)[-1]
+        source = entry.get("entrySource") or {}
+        return CatalogAsset(
+            ref=entry["name"],
+            name=qualified,
+            physical=tuple(path.split(".")),
+            description=source.get("description") or "",
+        )
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        export = self._export()
+        headers = {"Authorization": f"Bearer {await export._token()}"}
+        async with httpx.AsyncClient(
+            timeout=self._catalog.timeout_seconds, headers=headers
+        ) as client:
+            response = await client.post(
+                export._url(f"projects/{self._catalog.gcp_project}/locations/global:searchEntries"),
+                params={"query": text or "*", "pageSize": limit},
+            )
+        response.raise_for_status()
+        # A table's entry type is ``.../entryTypes/bigquery-table`` and the like; datasets,
+        # views' columns and the rest are not offered.
+        return [
+            self._asset(r["dataplexEntry"])
+            for r in response.json().get("results") or []
+            if str((r.get("dataplexEntry") or {}).get("entryType", "")).endswith("table")
+        ]
+
+    async def read(self, ref: str) -> AssetMetadata:
+        export = self._export()
+        headers = {"Authorization": f"Bearer {await export._token()}"}
+        async with httpx.AsyncClient(
+            timeout=self._catalog.timeout_seconds, headers=headers
+        ) as client:
+            response = await client.get(export._url(ref), params={"view": "ALL"})
+        response.raise_for_status()
+        entry = response.json()
+        columns = {
+            c["column"]: c.get("description") or ""
+            for c in _aspect(entry, ".global.schema").get("columns") or []
+        }
+        contacts = _aspect(entry, ".global.contacts").get("identities") or []
+        return AssetMetadata(
+            asset=self._asset(entry),
+            description=self._asset(entry).description,
+            columns=columns,
+            owners=tuple(
+                c.get("name") or c.get("id") for c in contacts if c.get("name") or c.get("id")
+            ),
+        )

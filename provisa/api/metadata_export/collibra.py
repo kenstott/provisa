@@ -109,6 +109,12 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import (
+    AssetMetadata,
+    CatalogAsset,
+    CatalogReader,
+    register_reader,
+)
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import MetadataSnapshot
@@ -705,3 +711,136 @@ class CollibraExport(MetadataExport):  # REQ-1069
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()
+
+
+#: The public ids of the operating model's types a reader follows: a table's Description, the
+#: relation a column has to its table, and the one a Business Term has to the asset it describes.
+DESCRIPTION_PUBLIC_ID = "Description"
+COLUMN_OF_TABLE_PUBLIC_ID = "ColumnIsPartOfTable"
+TERM_REPRESENTS_PUBLIC_ID = "BusinessAssetRepresentsDataAsset"
+
+
+def _collibra_physical(name: str) -> tuple[str, ...]:
+    """A Collibra table's full name as its path's parts. Collibra's own ingestion separates the
+    parts with ``>`` (``server>db>schema>table``); an imported one may use ``.``."""
+    separator = ">" if ">" in name else "."
+    return tuple(part for part in name.split(separator) if part)
+
+
+@register_reader
+class CollibraReader(CatalogReader):  # REQ-2122
+    """Reads a Collibra instance's Table assets over its REST API: their Description attributes,
+    the columns that are part of them, their tags, the business terms that represent them, and
+    the people responsible for them."""
+
+    provider_name = "collibra"
+
+    def _url(self, path: str) -> str:
+        return f"{self._catalog.endpoint.rstrip('/')}{path}"
+
+    def _headers(self) -> dict[str, str]:
+        token = self._catalog.token.get_secret_value() or self._catalog.api_key.get_secret_value()
+        return {"Authorization": f"Bearer {token}"} if token else {}
+
+    def asset_url(self, ref: str, name: str) -> str | None:
+        del name
+        return self._url(f"/asset/{ref}")
+
+    async def _get(self, client: httpx.AsyncClient, path: str, **params: Any) -> Any:
+        response = await client.get(self._url(path), params=params, headers=self._headers())
+        response.raise_for_status()
+        return response.json()
+
+    async def _type_id(self, client: httpx.AsyncClient, kind: str, public_id: str) -> str:
+        """The id of the operating model's type with ``public_id`` (``attributeTypes`` or
+        ``relationTypes``): list filters take ids, and ids differ between instances."""
+        found = await self._get(client, f"/rest/2.0/{kind}/publicId/{public_id}")
+        return found["id"]
+
+    async def _description(self, client: httpx.AsyncClient, asset_id: str, type_id: str) -> str:
+        attributes = await self._get(
+            client, "/rest/2.0/attributes", assetId=asset_id, typeIds=type_id
+        )
+        values = [a.get("value") or "" for a in attributes.get("results", [])]
+        return values[0] if values else ""
+
+    async def _tags(self, client: httpx.AsyncClient, asset_id: str) -> tuple[str, ...]:
+        return tuple(
+            t["name"] for t in await self._get(client, f"/rest/2.0/assets/{asset_id}/tags")
+        )
+
+    async def _terms(
+        self, client: httpx.AsyncClient, asset_id: str, type_id: str
+    ) -> tuple[str, ...]:
+        relations = await self._get(
+            client, "/rest/2.0/relations", targetId=asset_id, relationTypeId=type_id, limit=1000
+        )
+        return tuple(r["source"]["name"] for r in relations.get("results", []))
+
+    def _asset(self, entry: dict[str, Any], description: str) -> CatalogAsset:
+        name = entry.get("name") or entry.get("displayName") or entry["id"]
+        return CatalogAsset(
+            ref=entry["id"],
+            name=name,
+            physical=_collibra_physical(name),
+            description=description,
+            url=self.asset_url(entry["id"], name),
+        )
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            found = await self._get(
+                client,
+                "/rest/2.0/assets",
+                name=text,
+                nameMatchMode="ANYWHERE",
+                typePublicIds="Table",
+                limit=limit,
+            )
+            return [self._asset(entry, "") for entry in found.get("results", [])]
+
+    async def read(self, ref: str) -> AssetMetadata:
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            described = await self._type_id(client, "attributeTypes", DESCRIPTION_PUBLIC_ID)
+            part_of = await self._type_id(client, "relationTypes", COLUMN_OF_TABLE_PUBLIC_ID)
+            represents = await self._type_id(client, "relationTypes", TERM_REPRESENTS_PUBLIC_ID)
+            entry = await self._get(client, f"/rest/2.0/assets/{ref}")
+            description = await self._description(client, ref, described)
+            parts = await self._get(
+                client, "/rest/2.0/relations", targetId=ref, relationTypeId=part_of, limit=1000
+            )
+            columns: dict[str, str] = {}
+            column_tags: dict[str, tuple[str, ...]] = {}
+            column_terms: dict[str, tuple[str, ...]] = {}
+            for relation in parts.get("results", []):
+                column = relation["source"]
+                # A column's full name ends with its own name, after the table's path.
+                name = _collibra_physical(column["name"])[-1]
+                columns[name] = await self._description(client, column["id"], described)
+                column_tags[name] = await self._tags(client, column["id"])
+                column_terms[name] = await self._terms(client, column["id"], represents)
+            responsible = await self._get(
+                client, "/rest/2.0/responsibilities", resourceIds=ref, limit=100
+            )
+            owners = []
+            for responsibility in responsible.get("results", []):
+                owner = responsibility.get("owner") or {}
+                if owner.get("resourceType") == "User":
+                    user = await self._get(client, f"/rest/2.0/users/{owner['id']}")
+                    owners.append(
+                        " ".join(p for p in (user.get("firstName"), user.get("lastName")) if p)
+                        or user.get("userName")
+                    )
+                elif owner.get("resourceType") == "UserGroup":
+                    group = await self._get(client, f"/rest/2.0/userGroups/{owner['id']}")
+                    owners.append(group.get("name"))
+            return AssetMetadata(
+                asset=self._asset(entry, description),
+                description=description,
+                columns=columns,
+                owners=tuple(o for o in owners if o),
+                tags=await self._tags(client, ref),
+                terms=await self._terms(client, ref, represents),
+                column_tags=column_tags,
+                column_terms=column_terms,
+            )

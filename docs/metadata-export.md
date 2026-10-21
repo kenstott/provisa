@@ -214,6 +214,7 @@ Catalog settings:
 | `aws_region`, `datazone_domain_id` | The DataZone domain a `datazone` catalog is. A `datazone` catalog without both is refused when it is saved. |
 | `aws_access_key_id`, `aws_secret_access_key` | The AWS keys a `datazone` catalog signs its requests with. |
 | `timeout_seconds` | Per-request timeout against the catalog. |
+| `import_cron` | Cron schedule for this catalog's scheduled import; empty runs none. Each run applies the catalog's current descriptions, tags and glossary terms to the tables locked to it, and holds what changed for its other linked tables for a steward's review. |
 | `domains` | The domains that work with this catalog: their tables and data products publish to it, and their tables offer it when a description is taken from a catalog. A catalog serves at least one domain. The glossary publishes to every catalog. |
 
 Export settings:
@@ -273,6 +274,47 @@ A daily export at 06:00:
 ```cron
 0 6 * * *  provisa metadata export --api https://acme.provisa.org >> /var/log/provisa-export.log 2>&1
 ```
+
+## Taking descriptions from a catalog
+
+A table's description field has **Take from a catalog**. It opens a pick list from each catalog of
+the table's domain. The asset the table is already linked to is preselected; if there is none, the
+asset for the same physical table (its database, schema and table) is preselected, and the rest are
+ranked by name and can be searched. The steward picks one asset or none; nothing is matched
+automatically.
+
+The picked asset's description, column descriptions, owners, tags and glossary terms are shown
+beside the table's own, each with its catalog. Columns are matched by name and each match can be
+changed. The steward accepts field by field. Owners are shown for reference and never stored. A tag
+or glossary term applies only when Provisa has a registry tag or a live glossary term of the same
+name; any other is listed as unmatched, and nothing is created. Provisa links glossary terms to
+columns, so a term the catalog puts on the table itself is listed as having nowhere to go.
+
+The pick is stored as the table's link to that catalog: the same link an export records. One link
+per table per catalog is shared by export and import. The next export updates the picked asset in
+place, writing the table's Provisa address into it, rather than creating another asset.
+
+A linked table's editor shows when its descriptions were last imported, from which catalog, and
+offers **Refresh from catalog**. Imported descriptions stay editable.
+
+### Locking a table to a catalog
+
+A steward may lock a table to one catalog it is linked to. That catalog then becomes the authority
+for the table's descriptions, column descriptions, tags and glossary terms. The editor shows them
+read-only, with a link to edit them in the catalog, and the export no longer writes them to that
+catalog. Governance (grants, row rules and masks) is unaffected by a lock.
+
+### Importing from a catalog
+
+**Import** on a catalog in **Admin → Catalogs** reads every table of the catalog's domains that
+is linked to it, whether by an export or by a pick. For each, it lists what the catalog holds
+differently, beside Provisa's values, and marks any value edited in Provisa since its last import.
+The steward accepts changes for all tables at once or table by table. A table not linked to the
+catalog is listed as not linked, with the two ways to link it.
+
+With `import_cron` set, the scheduled import applies the catalog's current metadata to the tables
+locked to it without review. For the other linked tables it holds what changed for review, and never
+overwrites a local edit.
 
 ## What is published
 

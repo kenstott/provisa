@@ -38,6 +38,9 @@
     "catalogId": "名稱",
     "catalogIdHelp": "此目錄的簡短名稱,在組織內唯一(例如 openmetadata-prod)。兩個目錄可以是同一類型。",
     "domains": "網域",
-    "domainsHelp": "使用此目錄的網域。它們的表和數據產品會發佈到此目錄,它們的表亦會提供此目錄。"
+    "domainsHelp": "使用此目錄的網域。它們的表和數據產品會發佈到此目錄,它們的表亦會提供此目錄。",
+    "import": "匯入",
+    "importCron": "匯入排程",
+    "importCronHelp": "排程匯入的 cron 表達式。鎖定到此目錄的表會取得其元數據;其他表的變更會等待審閱。留空則不執行。"
   }
 }

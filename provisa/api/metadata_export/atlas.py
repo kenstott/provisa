@@ -52,6 +52,12 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import (
+    AssetMetadata,
+    CatalogAsset,
+    CatalogReader,
+    register_reader,
+)
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -1511,3 +1517,124 @@ class AtlasExport(MetadataExport):  # REQ-1069
                     raise
                 await asyncio.sleep(2 * (attempt + 1))
         raise AssertionError("unreachable")
+
+
+def _atlas_physical(qualified_name: str) -> tuple[str, ...]:
+    """An Atlas qualifiedName, ``<db>.<schema>.<table>@<cluster>``, as its path's parts."""
+    return tuple(qualified_name.split("@", 1)[0].split("."))
+
+
+def _atlas_description(attributes: dict[str, Any]) -> str:
+    """What a steward reads as the asset's description: the one written in the catalog
+    (``userDescription``) over the one its ingestion brought (``description``)."""
+    return attributes.get("userDescription") or attributes.get("description") or ""
+
+
+def _is_table(type_name: str) -> bool:
+    """Whether an Atlas type is a table's: ``rdbms_table``, ``hive_table``, ``provisa_table`` and
+    the like, never their columns or processes."""
+    lowered = type_name.lower()
+    return lowered.endswith("table") and "column" not in lowered
+
+
+@register_reader
+class AtlasReader(CatalogReader):  # REQ-2122
+    """Reads an Apache Atlas server's table entities: basic search over ``DataSet`` and its
+    subtypes, and a table's description, columns, owner, classifications and glossary terms by
+    its guid. It signs in the way the Atlas export does, through that adapter."""
+
+    provider_name = "atlas"
+    export_class: type[AtlasExport]
+    api_prefix = "/api/atlas/v2"
+
+    def _export(self) -> AtlasExport:
+        from provisa.core.models import CatalogExport
+
+        return type(self).export_class(
+            self._catalog.export_target(CatalogExport(catalog=self._catalog.id))
+        )
+
+    def _url(self, path: str) -> str:
+        return f"{self._catalog.endpoint.rstrip('/')}{self.api_prefix}{path}"
+
+    def asset_url(self, ref: str, name: str) -> str | None:
+        del name
+        return f"{self._catalog.endpoint.rstrip('/')}/index.html#!/detailPage/{ref}"
+
+    def _asset(self, guid: str, type_name: str, attributes: dict[str, Any]) -> CatalogAsset:
+        qualified = attributes.get("qualifiedName") or attributes.get("name") or guid
+        return CatalogAsset(
+            ref=guid,
+            name=qualified,
+            physical=_atlas_physical(qualified),
+            description=_atlas_description(attributes),
+            url=self.asset_url(guid, qualified),
+        )
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        export = self._export()
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            response = await client.post(
+                self._url("/search/basic"),
+                json={
+                    "typeName": "DataSet",
+                    "query": text or "*",
+                    "limit": limit,
+                    "excludeDeletedEntities": True,
+                    "attributes": ["qualifiedName", "name", "description", "userDescription"],
+                },
+                headers=await export._headers(client),
+            )
+        response.raise_for_status()
+        return [
+            self._asset(e["guid"], e["typeName"], e.get("attributes") or {})
+            for e in response.json().get("entities") or []
+            if _is_table(e["typeName"])
+        ]
+
+    async def read(self, ref: str) -> AssetMetadata:
+        export = self._export()
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            response = await client.get(
+                self._url(f"/entity/guid/{ref}"), headers=await export._headers(client)
+            )
+        response.raise_for_status()
+        body = response.json()
+        entity = body["entity"]
+        attributes = entity.get("attributes") or {}
+        referred = body.get("referredEntities") or {}
+        relations = entity.get("relationshipAttributes") or {}
+
+        def _classifications(holder: dict[str, Any]) -> tuple[str, ...]:
+            return tuple(c["typeName"] for c in holder.get("classifications") or [])
+
+        def _meanings(holder: dict[str, Any]) -> tuple[str, ...]:
+            meanings = (holder.get("relationshipAttributes") or {}).get("meanings") or []
+            return tuple(m.get("displayText") or "" for m in meanings if m.get("displayText"))
+
+        columns: dict[str, str] = {}
+        column_tags: dict[str, tuple[str, ...]] = {}
+        column_terms: dict[str, tuple[str, ...]] = {}
+        for column_ref in relations.get("columns") or attributes.get("columns") or []:
+            column = referred.get(column_ref.get("guid", ""))
+            if column is None:
+                continue
+            column_attributes = column.get("attributes") or {}
+            name = column_attributes.get("name") or ""
+            columns[name] = _atlas_description(column_attributes)
+            column_tags[name] = _classifications(column)
+            column_terms[name] = _meanings(column)
+        owner = attributes.get("owner")
+        return AssetMetadata(
+            asset=self._asset(entity["guid"], entity["typeName"], attributes),
+            description=_atlas_description(attributes),
+            columns=columns,
+            owners=(owner,) if owner else (),
+            tags=_classifications(entity),
+            terms=_meanings(entity),
+            column_tags=column_tags,
+            column_terms=column_terms,
+        )
+
+
+AtlasReader.export_class = AtlasExport

@@ -105,6 +105,12 @@ class MetadataExport(ABC):  # REQ-1068
         # by the publish path for a provider that declares ``needs_export_views``; a provider
         # never works the org or the replica-served decision out for itself.
         self._export_views: dict[tuple[str, str, str], tuple[str, str]] | None = None
+        # REQ-2122: the assets stewards picked for tables, ``{semantic_uri: (vendor_ref, name)}``,
+        # and the tables locked to this catalog, by semantic URI. Handed in by the publish path: a
+        # picked table is published onto the picked asset rather than one of the export's own, and
+        # a locked table's descriptive fields are not written.
+        self.picked: dict[str, tuple[str, str]] = {}
+        self.locked: frozenset[str] = frozenset()
 
     @property
     def stored_bindings(self) -> dict[str, tuple[str, str]]:

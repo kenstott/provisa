@@ -89,6 +89,12 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import (
+    AssetMetadata,
+    CatalogAsset,
+    CatalogReader,
+    register_reader,
+)
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot, TableAsset
@@ -840,6 +846,145 @@ class DataHubExport(MetadataExport):  # REQ-1069
         ]
         return replace(proposal, aspect={"tags": human + proposal.aspect["tags"]})
 
+    async def _live_aspect(
+        self, client: httpx.AsyncClient, headers: dict[str, str], urn: str, aspect: str
+    ) -> dict[str, Any] | None:
+        """The live value of one aspect of ``urn``, or None when the entity has none. GMS wraps
+        the value in its record-class key, which is unwrapped here."""
+        route = f"{self.aspects_path}/{quote(urn, safe='')}?aspect={aspect}&version=0"
+        response = await client.get(self._url(route), headers=headers)
+        if response.status_code == 404:
+            return None
+        response.raise_for_status()
+        for value in (response.json().get("aspect") or {}).values():
+            if isinstance(value, dict):
+                return value
+        return None
+
+    async def _retarget(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        snapshot: MetadataSnapshot,
+        proposals: list[AspectProposal],
+    ) -> list[AspectProposal]:
+        """Publish picked tables onto the datasets stewards picked, and leave locked tables'
+        descriptive fields as the catalog holds them (REQ-2122).
+
+        A picked dataset is the customer's own: its ingested aspects stay theirs. The table's
+        description and column descriptions go into the editable aspects DataHub keeps for
+        what is written over ingestion (``editableDatasetProperties``,
+        ``editableSchemaMetadata``), its Provisa address into the live ``datasetProperties``'
+        custom properties, and Provisa's tags into its ``globalTags``. Lineage and data products
+        address the picked dataset in place of one of the export's own. A locked table's
+        description, column descriptions and tags are not written at all.
+        """
+        by_urn = {dataset_urn(t.ref): t for t in snapshot.tables}
+        picked = {
+            urn: self.picked[t.semantic_uri][0]
+            for urn, t in by_urn.items()
+            if t.semantic_uri in self.picked
+        }
+        locked = {urn for urn, t in by_urn.items() if t.semantic_uri in self.locked}
+        out: list[AspectProposal] = []
+        for proposal in proposals:
+            table = by_urn.get(proposal.urn) if proposal.entity_type == "dataset" else None
+            if table is None:
+                text = json.dumps(proposal.aspect)
+                for ours, theirs in picked.items():
+                    text = text.replace(json.dumps(ours)[1:-1], json.dumps(theirs)[1:-1])
+                out.append(replace(proposal, aspect=json.loads(text)))
+                continue
+            target = picked.get(proposal.urn, proposal.urn)
+            is_locked = proposal.urn in locked
+            if proposal.urn not in picked:
+                if is_locked and proposal.aspect_name == "globalTags":
+                    continue
+                if is_locked and proposal.aspect_name in ("datasetProperties", "schemaMetadata"):
+                    proposal = await self._keep_live_descriptions(client, headers, proposal)
+                out.append(proposal)
+                continue
+            if proposal.aspect_name == "datasetProperties":
+                live = await self._live_aspect(client, headers, target, "datasetProperties") or {}
+                custom = {
+                    **(live.get("customProperties") or {}),
+                    **proposal.aspect["customProperties"],
+                }
+                out.append(
+                    replace(
+                        proposal,
+                        urn=target,
+                        aspect={**live, "customProperties": custom},
+                    )
+                )
+                if not is_locked:
+                    out.append(
+                        replace(
+                            proposal,
+                            kind="description",
+                            urn=target,
+                            aspect_name="editableDatasetProperties",
+                            aspect={"description": table.description},
+                        )
+                    )
+            elif proposal.aspect_name == "schemaMetadata":
+                if is_locked:
+                    continue
+                out.append(await self._editable_schema(client, headers, proposal, table, target))
+            elif proposal.aspect_name == "ownership":
+                # The picked dataset's owners are the customer's.
+                continue
+            elif proposal.aspect_name == "globalTags" and is_locked:
+                continue
+            else:
+                out.append(replace(proposal, urn=target))
+        return out
+
+    async def _keep_live_descriptions(
+        self, client: httpx.AsyncClient, headers: dict[str, str], proposal: AspectProposal
+    ) -> AspectProposal:
+        """A locked table's own dataset keeps the descriptions DataHub holds (REQ-2122)."""
+        live = await self._live_aspect(client, headers, proposal.urn, proposal.aspect_name)
+        if live is None:
+            return proposal
+        if proposal.aspect_name == "datasetProperties":
+            return replace(
+                proposal, aspect={**proposal.aspect, "description": live.get("description") or ""}
+            )
+        described = {f["fieldPath"]: f.get("description") for f in live.get("fields") or []}
+        fields = [
+            {**f, "description": described.get(f["fieldPath"]) or ""}
+            for f in proposal.aspect["fields"]
+        ]
+        return replace(proposal, aspect={**proposal.aspect, "fields": fields})
+
+    async def _editable_schema(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        proposal: AspectProposal,
+        table: TableAsset,
+        target: str,
+    ) -> AspectProposal:
+        """The picked dataset's ``editableSchemaMetadata`` with the table's column descriptions on
+        the fields of the same name, every other field's entry kept."""
+        schema = await self._live_aspect(client, headers, target, "schemaMetadata") or {}
+        editable = await self._live_aspect(client, headers, target, "editableSchemaMetadata") or {}
+        ours = {c.name.lower(): c.description for c in table.columns}
+        entries = {e["fieldPath"]: dict(e) for e in editable.get("editableSchemaFieldInfo") or []}
+        for field in schema.get("fields") or []:
+            path = field["fieldPath"]
+            description = ours.get(_dh_column(path).lower())
+            if description is not None:
+                entries.setdefault(path, {"fieldPath": path})["description"] = description
+        return replace(
+            proposal,
+            kind="description",
+            urn=target,
+            aspect_name="editableSchemaMetadata",
+            aspect={**editable, "editableSchemaFieldInfo": list(entries.values())},
+        )
+
     def _rebind_deprecations(self, proposals: list[AspectProposal]) -> list[AspectProposal]:
         """Deprecation aspects for the OLD URNs of physically re-addressed tables (REQ-1389).
 
@@ -920,9 +1065,12 @@ class DataHubExport(MetadataExport):  # REQ-1069
         result = PublishResult(provider_name=self.provider_name)
         headers = self._headers()
         proposals = to_proposals(snapshot)
-        proposals.extend(self._rebind_deprecations(proposals))
-        proposals.extend(self._term_rename_deprecations(snapshot))  # REQ-1387
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            if self.picked or self.locked:
+                # REQ-2122: before the rebind check, so a picked dataset is its own binding.
+                proposals = await self._retarget(client, headers, snapshot, proposals)
+            proposals.extend(self._rebind_deprecations(proposals))
+            proposals.extend(self._term_rename_deprecations(snapshot))  # REQ-1387
             for proposal in proposals:
                 if (
                     self.tag_merge
@@ -950,10 +1098,11 @@ class DataHubExport(MetadataExport):  # REQ-1069
                 result.published[proposal.kind] = result.published.get(proposal.kind, 0) + 1
                 if proposal.aspect_name == "datasetProperties" and proposal.kind == "table":
                     # REQ-1389: the URN IS the vendor id — capture it keyed by the Provisa
-                    # URN so a later publish detects a physical re-address.
+                    # URN so a later publish detects a physical re-address. A picked dataset
+                    # (REQ-2122) may carry no qualified name of its own; its URN names it.
                     result.bindings[proposal.aspect["customProperties"]["provisaUri"]] = (
                         proposal.urn,
-                        proposal.aspect["qualifiedName"],
+                        proposal.aspect.get("qualifiedName") or proposal.urn,
                     )
                 if proposal.aspect_name == "glossaryTermInfo":
                     # REQ-1387/1389: the term URN is the vendor id — captured keyed by the
@@ -970,3 +1119,147 @@ class DataHubExport(MetadataExport):  # REQ-1069
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()
+
+
+_DH_TAGS = "tags { tag { urn properties { name } } }"
+_DH_TERMS = "terms { term { urn properties { name } } }"
+_DH_SEARCH = """
+query search($q: String!, $n: Int!) {
+  search(input: {type: DATASET, query: $q, start: 0, count: $n}) {
+    searchResults { entity { urn ... on Dataset {
+      name
+      properties { name qualifiedName description }
+      editableProperties { description }
+    } } }
+  }
+}
+"""
+_DH_DATASET = f"""
+query dataset($urn: String!) {{
+  dataset(urn: $urn) {{
+    urn name
+    properties {{ name qualifiedName description }}
+    editableProperties {{ description }}
+    schemaMetadata {{ fields {{
+      fieldPath description globalTags {{ {_DH_TAGS} }} glossaryTerms {{ {_DH_TERMS} }}
+    }} }}
+    editableSchemaMetadata {{ editableSchemaFieldInfo {{
+      fieldPath description globalTags {{ {_DH_TAGS} }} glossaryTerms {{ {_DH_TERMS} }}
+    }} }}
+    ownership {{ owners {{ owner {{
+      ... on CorpUser {{ username properties {{ displayName }} }}
+      ... on CorpGroup {{ name properties {{ displayName }} }}
+    }} }} }}
+    globalTags {{ {_DH_TAGS} }}
+    glossaryTerms {{ {_DH_TERMS} }}
+  }}
+}}
+"""
+
+
+def _dh_named(entity: dict[str, Any], urn_prefix: str) -> str:
+    """A tag's or term's name: its properties' name. A tag or term created by ingestion may have
+    no properties, and then its name is its URN's id, which DataHub derives from the name."""
+    name = (entity.get("properties") or {}).get("name")
+    return name if name else entity["urn"].removeprefix(urn_prefix)
+
+
+def _dh_tags(holder: dict[str, Any] | None) -> tuple[str, ...]:
+    return tuple(_dh_named(t["tag"], "urn:li:tag:") for t in ((holder or {}).get("tags") or []))
+
+
+def _dh_terms(holder: dict[str, Any] | None) -> tuple[str, ...]:
+    return tuple(
+        _dh_named(t["term"], "urn:li:glossaryTerm:") for t in ((holder or {}).get("terms") or [])
+    )
+
+
+def _dh_column(field_path: str) -> str:
+    """A schema field's column name: the last segment of its path, without the v2 path's
+    ``[type=...]`` and ``[version=...]`` qualifiers."""
+    parts = [p for p in field_path.split(".") if not p.startswith("[")]
+    return parts[-1] if parts else field_path
+
+
+def _dh_physical(urn: str) -> tuple[str, ...]:
+    """The dataset URN's name, ``(urn:li:dataPlatform:x,<db.schema.table>,PROD)``, as its parts."""
+    inner = urn.removeprefix("urn:li:dataset:(").removesuffix(")")
+    name = inner.split(",")[1] if inner.count(",") >= 2 else inner
+    return tuple(name.split("."))
+
+
+@register_reader
+class DataHubReader(CatalogReader):  # REQ-2122
+    """Reads a DataHub instance's datasets through GMS's GraphQL API, at the endpoint the export
+    publishes to. An edited description (the one stewards write in DataHub) is read over the
+    ingested one, as DataHub itself shows them."""
+
+    provider_name = "datahub"
+
+    def _headers(self) -> dict[str, str]:
+        token = self._catalog.token.get_secret_value() or self._catalog.api_key.get_secret_value()
+        return {"Authorization": f"Bearer {token}"} if token else {}
+
+    async def _graphql(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            response = await client.post(
+                f"{self._catalog.endpoint.rstrip('/')}/api/graphql",
+                json={"query": query, "variables": variables},
+                headers=self._headers(),
+            )
+        response.raise_for_status()
+        body = response.json()
+        if body.get("errors"):
+            raise RuntimeError(f"DataHub refused the query: {body['errors']}")
+        return body["data"]
+
+    @staticmethod
+    def _asset(entity: dict[str, Any]) -> CatalogAsset:
+        properties = entity.get("properties") or {}
+        edited = (entity.get("editableProperties") or {}).get("description")
+        return CatalogAsset(
+            ref=entity["urn"],
+            name=properties.get("qualifiedName") or entity.get("name") or entity["urn"],
+            physical=_dh_physical(entity["urn"]),
+            description=edited or properties.get("description") or "",
+        )
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        data = await self._graphql(_DH_SEARCH, {"q": text or "*", "n": limit})
+        return [self._asset(r["entity"]) for r in data["search"]["searchResults"]]
+
+    async def read(self, ref: str) -> AssetMetadata:
+        dataset = (await self._graphql(_DH_DATASET, {"urn": ref}))["dataset"]
+        if dataset is None:
+            raise LookupError(f"DataHub has no dataset {ref}")
+        columns: dict[str, str] = {}
+        column_tags: dict[str, tuple[str, ...]] = {}
+        column_terms: dict[str, tuple[str, ...]] = {}
+        for field in (dataset.get("schemaMetadata") or {}).get("fields") or []:
+            name = _dh_column(field["fieldPath"])
+            columns[name] = field.get("description") or ""
+            column_tags[name] = _dh_tags(field.get("globalTags"))
+            column_terms[name] = _dh_terms(field.get("glossaryTerms"))
+        # What stewards edited in DataHub is kept apart from what ingestion wrote, and shown over it.
+        edited = (dataset.get("editableSchemaMetadata") or {}).get("editableSchemaFieldInfo") or []
+        for field in edited:
+            name = _dh_column(field["fieldPath"])
+            if field.get("description"):
+                columns[name] = field["description"]
+            column_tags[name] = column_tags.get(name, ()) + _dh_tags(field.get("globalTags"))
+            column_terms[name] = column_terms.get(name, ()) + _dh_terms(field.get("glossaryTerms"))
+        owners = []
+        for entry in (dataset.get("ownership") or {}).get("owners") or []:
+            owner = entry["owner"]
+            shown = (owner.get("properties") or {}).get("displayName")
+            owners.append(shown or owner.get("username") or owner.get("name"))
+        return AssetMetadata(
+            asset=self._asset(dataset),
+            description=self._asset(dataset).description,
+            columns=columns,
+            owners=tuple(o for o in owners if o),
+            tags=_dh_tags(dataset.get("globalTags")),
+            terms=_dh_terms(dataset.get("glossaryTerms")),
+            column_tags=column_tags,
+            column_terms=column_terms,
+        )

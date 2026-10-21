@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "从 {{catalog}} 导入",
+    "reading": "正在读取已关联的资产…",
+    "changedCount_one": "{{count}} 张表在目录中有不同内容。",
+    "changedCount_other": "{{count}} 张表在目录中有不同内容。",
+    "nothingChanged": "所有已关联的表都与目录一致。",
+    "acceptAll": "全部接受",
+    "accept": "接受",
+    "accepted_one": "已为 {{count}} 张表接受。",
+    "accepted_other": "已为 {{count}} 张表接受。",
+    "locked": "已锁定到此目录",
+    "inStep": "与目录一致。",
+    "field": "字段",
+    "inProvisa": "Provisa 中",
+    "inCatalog": "{{catalog}} 中",
+    "localEdit": "上次导入后在 Provisa 中编辑过",
+    "field_description": "描述",
+    "field_column_column": "列 {{column}} 的描述",
+    "field_tag": "表上的标签",
+    "field_tag_column": "{{column}} 上的标签",
+    "field_term": "术语表术语",
+    "field_term_column": "{{column}} 的术语表术语",
+    "notLinkedTitle": "未关联到此目录",
+    "notLinkedHelp": "将表导出到 {{catalog}} 一次,或在表编辑器中从 {{catalog}} 获取其描述,即可关联。"
+  }
+}

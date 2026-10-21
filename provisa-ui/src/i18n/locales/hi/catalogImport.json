@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "{{catalog}} से आयात",
+    "reading": "लिंक किए गए एसेट पढ़े जा रहे हैं…",
+    "changedCount_one": "{{count}} टेबल में कैटलॉग में कुछ अलग है।",
+    "changedCount_other": "{{count}} टेबल में कैटलॉग में कुछ अलग है।",
+    "nothingChanged": "हर लिंक की गई टेबल कैटलॉग से मेल खाती है।",
+    "acceptAll": "सभी स्वीकार करें",
+    "accept": "स्वीकार करें",
+    "accepted_one": "{{count}} टेबल के लिए स्वीकार किया गया।",
+    "accepted_other": "{{count}} टेबल के लिए स्वीकार किया गया।",
+    "locked": "इस कैटलॉग से लॉक",
+    "inStep": "कैटलॉग से मेल खाती है।",
+    "field": "फ़ील्ड",
+    "inProvisa": "Provisa में",
+    "inCatalog": "{{catalog}} में",
+    "localEdit": "पिछले आयात के बाद Provisa में संपादित",
+    "field_description": "विवरण",
+    "field_column_column": "कॉलम {{column}} का विवरण",
+    "field_tag": "टेबल पर टैग",
+    "field_tag_column": "{{column}} पर टैग",
+    "field_term": "ग्लॉसरी शब्द",
+    "field_term_column": "{{column}} का ग्लॉसरी शब्द",
+    "notLinkedTitle": "इस कैटलॉग से लिंक नहीं",
+    "notLinkedHelp": "किसी टेबल को एक बार {{catalog}} में निर्यात करके, या टेबल एडिटर में उसका विवरण {{catalog}} से लेकर लिंक करें।"
+  }
+}

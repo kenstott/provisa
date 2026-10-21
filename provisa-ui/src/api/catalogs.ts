@@ -34,6 +34,8 @@ export interface CatalogConnection {
   timeout_seconds: number;
   /** The domains that work with this catalog. */
   domains: string[];
+  /** When the scheduled import runs (cron); empty runs none. */
+  import_cron: string;
   api_key_set: boolean;
   token_set: boolean;
   entra_client_secret_set: boolean;
@@ -44,6 +46,8 @@ export interface CatalogConnection {
 
 export interface CatalogsState {
   providers: string[];
+  /** The providers whose catalogs can be read back: imported from, picked from. */
+  readable: string[];
   catalogs: CatalogConnection[];
 }
 
@@ -100,5 +104,50 @@ export async function checkCatalog(id: string): Promise<CatalogHealth> {
       method: "POST",
     }),
     "Catalog connection test",
+  );
+}
+
+/** One descriptive field the catalog holds differently from the table. */
+export interface ImportChange {
+  field: "description" | "column" | "tag" | "term";
+  column: string | null;
+  current: string;
+  catalog: string;
+  /** Edited in Provisa since it was last imported. */
+  local_edit: boolean;
+}
+
+export interface ImportReview {
+  catalog: string;
+  linked: {
+    table_id: number;
+    table: string;
+    asset: string;
+    url?: string | null;
+    locked?: boolean;
+    imported_at?: string | null;
+    pending_at?: string | null;
+    changes?: ImportChange[];
+    error?: string;
+  }[];
+  not_linked: { table_id: number; table: string }[];
+}
+
+export async function fetchImportReview(catalog: string): Promise<ImportReview> {
+  return ok(
+    await fetch(`${API_BASE}/admin/catalogs/${encodeURIComponent(catalog)}/import`),
+    "Catalog import review",
+  );
+}
+
+/** Accept the catalog's changes for these tables. */
+export async function acceptImport(catalog: string, tableIds: number[]): Promise<void> {
+  await ok(
+    await fetch(`${API_BASE}/admin/catalogs/${encodeURIComponent(catalog)}/import`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ table_ids: tableIds }),
+    }),
+    "Catalog import",
   );
 }

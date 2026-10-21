@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "{{catalog}} からインポート",
+    "reading": "リンク済みのアセットを読み込んでいます…",
+    "changedCount_one": "{{count}} 件のテーブルでカタログと内容が異なります。",
+    "changedCount_other": "{{count}} 件のテーブルでカタログと内容が異なります。",
+    "nothingChanged": "リンク済みのすべてのテーブルがカタログと一致しています。",
+    "acceptAll": "すべて受け入れる",
+    "accept": "受け入れる",
+    "accepted_one": "{{count}} 件のテーブルに適用しました。",
+    "accepted_other": "{{count}} 件のテーブルに適用しました。",
+    "locked": "このカタログにロック",
+    "inStep": "カタログと一致しています。",
+    "field": "項目",
+    "inProvisa": "Provisa",
+    "inCatalog": "{{catalog}}",
+    "localEdit": "前回のインポート以降に Provisa で編集",
+    "field_description": "説明",
+    "field_column_column": "列 {{column}} の説明",
+    "field_tag": "テーブルのタグ",
+    "field_tag_column": "{{column}} のタグ",
+    "field_term": "用語集の用語",
+    "field_term_column": "{{column}} の用語集の用語",
+    "notLinkedTitle": "このカタログにリンクされていない",
+    "notLinkedHelp": "テーブルを一度 {{catalog}} にエクスポートするか、テーブルエディターで {{catalog}} から説明を取り込むとリンクされます。"
+  }
+}

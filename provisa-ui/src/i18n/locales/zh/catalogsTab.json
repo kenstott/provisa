@@ -38,6 +38,9 @@
     "catalogId": "名称",
     "catalogIdHelp": "此目录的简短名称,在组织内唯一(例如 openmetadata-prod)。两个目录可以是同一类型。",
     "domains": "域",
-    "domainsHelp": "使用此目录的域。它们的表和数据产品会发布到此目录,它们的表也会提供此目录。"
+    "domainsHelp": "使用此目录的域。它们的表和数据产品会发布到此目录,它们的表也会提供此目录。",
+    "import": "导入",
+    "importCron": "导入计划",
+    "importCronHelp": "定时导入的 cron 表达式。锁定到此目录的表会获取其元数据;其他表的变更等待审核。留空则不运行。"
   }
 }

@@ -1,6 +1,7 @@
 {
   "descriptionField": {
     "generateWithAi": "Générer avec l'IA",
-    "clear": "Effacer"
+    "clear": "Effacer",
+    "fromCatalog": "Reprendre d'un catalogue"
   }
 }

@@ -637,9 +637,36 @@ catalog_bindings = Table(
     Column("semantic_uri", Text, nullable=False),
     Column("vendor_ref", Text, nullable=False),
     Column("physical_key", Text, nullable=False),
+    # REQ-2122: a steward picked this asset for the table. The export updates the picked asset in
+    # place; a binding the export captured itself is the export's own entity.
+    Column("picked", Boolean, nullable=False, server_default=false()),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
     UniqueConstraint("target", "semantic_uri"),
+)
+
+# REQ-2122: what was last imported into a table from each catalog it is linked to, and whether
+# the table is locked to that catalog. ``imported`` holds each descriptive field's value as it was
+# imported (description, column descriptions, tags, glossary terms), which is how a later import
+# tells a value edited in Provisa since from one it may replace. A table is locked to at most one
+# catalog; the lock makes that catalog its descriptive fields' authority.
+catalog_imports = Table(
+    "catalog_imports",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("catalog", Text, nullable=False),
+    Column("imported_at", DateTime(timezone=True)),
+    Column("imported", JSON(none_as_null=True)),
+    Column("locked", Boolean, nullable=False, server_default=false()),
+    # What the last scheduled import found changed in the catalog for an unlocked table, held for
+    # a steward's review rather than applied; None when it found nothing.
+    Column("pending", JSON(none_as_null=True)),
+    Column("pending_at", DateTime(timezone=True)),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("table_id", "catalog"),
 )
 
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical

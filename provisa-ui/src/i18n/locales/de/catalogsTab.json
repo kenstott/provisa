@@ -38,6 +38,9 @@
     "catalogId": "Name",
     "catalogIdHelp": "Ein kurzer, in der Organisation eindeutiger Name für diesen Katalog (zum Beispiel openmetadata-prod). Zwei Kataloge dürfen denselben Typ haben.",
     "domains": "Domänen",
-    "domainsHelp": "Die Domänen, die mit diesem Katalog arbeiten. Ihre Tabellen und Datenprodukte werden in ihn veröffentlicht, und ihre Tabellen bieten ihn an."
+    "domainsHelp": "Die Domänen, die mit diesem Katalog arbeiten. Ihre Tabellen und Datenprodukte werden in ihn veröffentlicht, und ihre Tabellen bieten ihn an.",
+    "import": "Importieren",
+    "importCron": "Importzeitplan",
+    "importCronHelp": "Cron-Ausdruck für den geplanten Import. An diesen Katalog gebundene Tabellen übernehmen seine Metadaten; Änderungen der übrigen warten auf Prüfung. Leer lassen für keinen."
   }
 }

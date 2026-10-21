@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "Import depuis {{catalog}}",
+    "reading": "Lecture des actifs liés…",
+    "changedCount_one": "{{count}} table diffère dans le catalogue.",
+    "changedCount_other": "{{count}} tables diffèrent dans le catalogue.",
+    "nothingChanged": "Chaque table liée est en phase avec le catalogue.",
+    "acceptAll": "Tout accepter",
+    "accept": "Accepter",
+    "accepted_one": "Accepté pour {{count}} table.",
+    "accepted_other": "Accepté pour {{count}} tables.",
+    "locked": "Verrouillée sur ce catalogue",
+    "inStep": "En phase avec le catalogue.",
+    "field": "Champ",
+    "inProvisa": "Dans Provisa",
+    "inCatalog": "Dans {{catalog}}",
+    "localEdit": "Modifié dans Provisa depuis le dernier import",
+    "field_description": "Description",
+    "field_column_column": "Description de la colonne {{column}}",
+    "field_tag": "Tag de la table",
+    "field_tag_column": "Tag de {{column}}",
+    "field_term": "Terme du glossaire",
+    "field_term_column": "Terme du glossaire de {{column}}",
+    "notLinkedTitle": "Non liées à ce catalogue",
+    "notLinkedHelp": "Liez une table en l'exportant une fois vers {{catalog}}, ou en reprenant sa description de {{catalog}} dans l'éditeur de table."
+  }
+}

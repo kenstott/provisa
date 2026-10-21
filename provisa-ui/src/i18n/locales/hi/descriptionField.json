@@ -1,6 +1,7 @@
 {
   "descriptionField": {
     "generateWithAi": "AI से जनरेट करें",
-    "clear": "साफ़ करें"
+    "clear": "साफ़ करें",
+    "fromCatalog": "कैटलॉग से लें"
   }
 }

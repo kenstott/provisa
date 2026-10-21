@@ -1,6 +1,7 @@
 {
   "descriptionField": {
     "generateWithAi": "Mit KI generieren",
-    "clear": "Leeren"
+    "clear": "Leeren",
+    "fromCatalog": "Aus einem Katalog übernehmen"
   }
 }

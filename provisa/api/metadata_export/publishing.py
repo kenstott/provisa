@@ -268,7 +268,8 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
     """
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
-    from provisa.core.repositories import catalog_binding
+    from provisa.api.metadata_export.linking import locked_uris
+    from provisa.core.repositories import catalog_binding, catalog_link
 
     token = set_current_org(org_id)
     try:
@@ -286,6 +287,11 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
                 # so a physically re-addressed asset rebinds the SAME catalog entity instead of
                 # trusting the vendor's name-keyed upsert. Kept per target (REQ-2118).
                 exporter.stored_bindings = await catalog_binding.load_bindings(conn, target.id)
+                # REQ-2122: the assets stewards picked here, and the tables locked to this catalog.
+                exporter.picked = await catalog_link.picked_in(conn, target.id)
+                exporter.locked = await locked_uris(
+                    conn, target.id, org_id if state.multitenancy else None
+                )
             if exporter.needs_export_views:
                 # REQ-1912: the org (bound above) and the replica-served decision are worked out
                 # here, by the one decision the reconcile and the reads use, and passed in.

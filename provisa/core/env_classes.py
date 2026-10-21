@@ -148,6 +148,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "code_source_cache",
         "code_source_vectors",
         "catalog_bindings",
+        # REQ-2122: what this environment imported from its catalogs, and its tables' locks.
+        "catalog_imports",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
         # grpc_remote sources — nothing else reads it, and it belongs to the environment that

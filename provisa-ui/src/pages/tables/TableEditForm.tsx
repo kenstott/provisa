@@ -34,6 +34,8 @@ import { TestDataColumns } from "./testdata/TestDataColumns";
 import { MaskListEditor } from "../../components/MaskListEditor";
 import type { MaskEntry } from "../../lib/masks";
 import { DescriptionField } from "./DescriptionField";
+import { TableCatalogSection, type CatalogPick } from "./TableCatalogSection";
+import { useTableCatalogs } from "./useTableCatalogs";
 import { ColumnNameCell } from "./ColumnNameCell";
 import { FieldLabel } from "./FieldLabel";
 import { MaterializedViewPanels } from "./MaterializedViewPanels";
@@ -165,6 +167,11 @@ export function TableEditForm({
       else next.add(column);
       return next;
     });
+
+  // REQ-2122: the catalogs of the table's domain; a lock makes the descriptions read-only.
+  const tableCatalogs = useTableCatalogs(editingTable.id, !hidingOnly);
+  const [catalogPick, setCatalogPick] = useState<CatalogPick>(undefined);
+  const lockedCatalog = tableCatalogs.locked;
 
   // REQ-846: canonical IR type vocabulary for the per-column Data Type override dropdown, fetched
   // from the backend (authoritative list in provisa/core/ir_types.py); fallback if the fetch fails.
@@ -367,6 +374,10 @@ export function TableEditForm({
                   onChange={(v) => setEditingTable({ ...editingTable, description: v || null })}
                   placeholder={t("tableEditForm.descriptionPlaceholder")}
                   rows={2}
+                  readOnly={lockedCatalog !== null}
+                  onFromCatalog={
+                    tableCatalogs.catalogs.length > 0 ? () => setCatalogPick(null) : undefined
+                  }
                   generating={generatingDesc}
                   onGenerate={async () => {
                     setGeneratingDesc(true);
@@ -380,6 +391,13 @@ export function TableEditForm({
                 />
               </div>
             </FormField>
+            <TableCatalogSection
+              tableId={editingTable.id}
+              catalogs={tableCatalogs}
+              pick={catalogPick}
+              onPick={setCatalogPick}
+              setEditingTable={setEditingTable}
+            />
           </FormLayout>
         ))}
       {section === "associations" &&
@@ -823,6 +841,7 @@ export function TableEditForm({
                               ) : (
                                 <DescriptionField
                                   value={c.description || ""}
+                                  readOnly={lockedCatalog !== null}
                                   onChange={(v) => updateEditCol(i, "description", v)}
                                   placeholder={t("tableEditForm.descriptionHeader")}
                                   rows={1}

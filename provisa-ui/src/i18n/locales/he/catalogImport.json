@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "ייבוא מ-{{catalog}}",
+    "reading": "קורא את הנכסים המקושרים…",
+    "changedCount_one": "בטבלה {{count}} יש בקטלוג משהו שונה.",
+    "changedCount_other": "ב-{{count}} טבלאות יש בקטלוג משהו שונה.",
+    "nothingChanged": "כל טבלה מקושרת תואמת את הקטלוג.",
+    "acceptAll": "לקבל הכול",
+    "accept": "לקבל",
+    "accepted_one": "התקבל עבור טבלה {{count}}.",
+    "accepted_other": "התקבל עבור {{count}} טבלאות.",
+    "locked": "נעולה לקטלוג זה",
+    "inStep": "תואמת את הקטלוג.",
+    "field": "שדה",
+    "inProvisa": "ב-Provisa",
+    "inCatalog": "ב-{{catalog}}",
+    "localEdit": "נערך ב-Provisa מאז הייבוא האחרון",
+    "field_description": "תיאור",
+    "field_column_column": "תיאור העמודה {{column}}",
+    "field_tag": "תגית על הטבלה",
+    "field_tag_column": "תגית על {{column}}",
+    "field_term": "מונח מילון",
+    "field_term_column": "מונח המילון של {{column}}",
+    "notLinkedTitle": "לא מקושרות לקטלוג זה",
+    "notLinkedHelp": "קשרו טבלה על ידי ייצוא שלה ל-{{catalog}} פעם אחת, או על ידי לקיחת התיאור שלה מ-{{catalog}} בעורך הטבלה."
+  }
+}

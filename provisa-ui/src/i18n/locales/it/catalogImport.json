@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "Importa da {{catalog}}",
+    "reading": "Lettura degli asset collegati…",
+    "changedCount_one": "{{count}} tabella ha valori diversi nel catalogo.",
+    "changedCount_other": "{{count}} tabelle hanno valori diversi nel catalogo.",
+    "nothingChanged": "Ogni tabella collegata è allineata al catalogo.",
+    "acceptAll": "Accetta tutto",
+    "accept": "Accetta",
+    "accepted_one": "Accettato per {{count}} tabella.",
+    "accepted_other": "Accettato per {{count}} tabelle.",
+    "locked": "Bloccata su questo catalogo",
+    "inStep": "Allineata al catalogo.",
+    "field": "Campo",
+    "inProvisa": "In Provisa",
+    "inCatalog": "In {{catalog}}",
+    "localEdit": "Modificato in Provisa dall'ultima importazione",
+    "field_description": "Descrizione",
+    "field_column_column": "Descrizione della colonna {{column}}",
+    "field_tag": "Tag della tabella",
+    "field_tag_column": "Tag di {{column}}",
+    "field_term": "Termine del glossario",
+    "field_term_column": "Termine del glossario di {{column}}",
+    "notLinkedTitle": "Non collegate a questo catalogo",
+    "notLinkedHelp": "Collegate una tabella esportandola una volta in {{catalog}}, o prendendone la descrizione da {{catalog}} nell'editor della tabella."
+  }
+}

@@ -45,6 +45,7 @@ import {
   type CatalogsState,
 } from "../../api/catalogs";
 import { useDomains } from "../../hooks/useAdminQueries";
+import { CatalogImportModal } from "./CatalogImportModal";
 import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
 
 /** Which credential fields each auth mode uses, so the form asks for exactly those. */
@@ -85,6 +86,7 @@ const blankCatalog = (): CatalogConnection => ({
   datazone_domain_id: "",
   timeout_seconds: 30,
   domains: [],
+  import_cron: "",
   api_key_set: false,
   token_set: false,
   entra_client_secret_set: false,
@@ -102,6 +104,7 @@ export function CatalogsTab() {
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
   const [health, setHealth] = useState<Record<number, CatalogHealth>>({});
+  const [importing, setImporting] = useState<string | null>(null);
 
   const load = (state: CatalogsState) => {
     setS(state);
@@ -144,6 +147,7 @@ export function CatalogsTab() {
           datazone_domain_id: catalog.datazone_domain_id,
           timeout_seconds: catalog.timeout_seconds,
           domains: catalog.domains,
+          import_cron: catalog.import_cron,
           ...secrets,
         })),
       );
@@ -190,6 +194,7 @@ export function CatalogsTab() {
     // A catalog's test ids carry its place in the list, so two of one provider stay apart.
     const tid = (name: string) => `catalog-${name}-${i}`;
     const kept = s.catalogs.some((c) => c.id === catalog.id);
+    const readable = s.readable.includes(catalog.provider);
     const secretField = (field: CatalogSecretField, label: string, isSet: boolean) => (
       <FormField help={t("catalogsTab.secretHelp")} size="medium">
         <TextInput
@@ -222,6 +227,17 @@ export function CatalogsTab() {
             >
               {t("catalogsTab.testConnection")}
             </Button>
+            {readable && (
+              <Button
+                variant="default"
+                size="compact-sm"
+                disabled={!kept}
+                data-testid={tid("import")}
+                onClick={() => setImporting(catalog.id)}
+              >
+                {t("catalogsTab.import")}
+              </Button>
+            )}
             <Button
               variant="subtle"
               color="red"
@@ -383,6 +399,16 @@ export function CatalogsTab() {
               )}
             </>
           )}
+          {readable && (
+            <FormField help={t("catalogsTab.importCronHelp")} size="medium">
+              <TextInput
+                label={t("catalogsTab.importCron")}
+                data-testid={tid("import-cron")}
+                value={catalog.import_cron}
+                onChange={(e) => patchRow(i, { import_cron: e.currentTarget.value })}
+              />
+            </FormField>
+          )}
           <FormField size="short">
             <NumberInput
               label={t("catalogsTab.timeout")}
@@ -438,6 +464,7 @@ export function CatalogsTab() {
             {rows.map(catalogForm)}
           </Stack>
         </FormField>
+        <CatalogImportModal catalog={importing} onClose={() => setImporting(null)} />
         <FormFooter
           onSave={save}
           saving={busy === "save"}

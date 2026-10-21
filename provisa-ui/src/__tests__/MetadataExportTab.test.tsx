@@ -59,6 +59,7 @@ const catalog = (id: string, provider: string): CatalogConnection => ({
   datazone_domain_id: "",
   timeout_seconds: 30,
   domains: ["sales"],
+  import_cron: "",
   api_key_set: false,
   token_set: false,
   entra_client_secret_set: false,
@@ -103,7 +104,7 @@ describe("MetadataExportTab", () => {
     mockHealth.mockReset();
     mockPublish.mockReset();
     mockCatalogs.mockReset();
-    mockCatalogs.mockResolvedValue({ providers: [], catalogs: CATALOGS });
+    mockCatalogs.mockResolvedValue({ providers: [], readable: [], catalogs: CATALOGS });
   });
 
   it("renders each target by the catalog it names", async () => {

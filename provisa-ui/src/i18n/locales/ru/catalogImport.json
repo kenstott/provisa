@@ -1,0 +1,27 @@
+{
+  "catalogImport": {
+    "title": "Импорт из {{catalog}}",
+    "reading": "Чтение связанных активов…",
+    "changedCount_one": "{{count}} таблица отличается от каталога.",
+    "changedCount_other": "Таблиц, отличающихся от каталога: {{count}}.",
+    "nothingChanged": "Все связанные таблицы совпадают с каталогом.",
+    "acceptAll": "Принять всё",
+    "accept": "Принять",
+    "accepted_one": "Принято для {{count}} таблицы.",
+    "accepted_other": "Принято для таблиц: {{count}}.",
+    "locked": "Закреплена за этим каталогом",
+    "inStep": "Совпадает с каталогом.",
+    "field": "Поле",
+    "inProvisa": "В Provisa",
+    "inCatalog": "В {{catalog}}",
+    "localEdit": "Изменено в Provisa после последнего импорта",
+    "field_description": "Описание",
+    "field_column_column": "Описание столбца {{column}}",
+    "field_tag": "Тег таблицы",
+    "field_tag_column": "Тег столбца {{column}}",
+    "field_term": "Термин глоссария",
+    "field_term_column": "Термин глоссария столбца {{column}}",
+    "notLinkedTitle": "Не связаны с этим каталогом",
+    "notLinkedHelp": "Свяжите таблицу, один раз экспортировав её в {{catalog}} или взяв её описание из {{catalog}} в редакторе таблицы."
+  }
+}

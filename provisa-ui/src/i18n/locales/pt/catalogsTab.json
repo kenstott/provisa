@@ -38,6 +38,9 @@
     "catalogId": "Nome",
     "catalogIdHelp": "Um nome curto para este catálogo, único na organização (por exemplo openmetadata-prod). Dois catálogos podem ser do mesmo tipo.",
     "domains": "Domínios",
-    "domainsHelp": "Os domínios que trabalham com este catálogo. Suas tabelas e produtos de dados são publicados nele, e suas tabelas o oferecem."
+    "domainsHelp": "Os domínios que trabalham com este catálogo. Suas tabelas e produtos de dados são publicados nele, e suas tabelas o oferecem.",
+    "import": "Importar",
+    "importCron": "Agendamento da importação",
+    "importCronHelp": "Expressão cron da importação agendada. As tabelas travadas neste catálogo recebem os metadados dele; as alterações das outras aguardam revisão. Deixe vazio para nenhuma."
   }
 }

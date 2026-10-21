@@ -1,6 +1,7 @@
 {
   "descriptionField": {
     "generateWithAi": "Genereren met AI",
-    "clear": "Wissen"
+    "clear": "Wissen",
+    "fromCatalog": "Uit een catalogus overnemen"
   }
 }
