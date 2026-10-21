@@ -905,7 +905,7 @@ tables:
   schema: views
   source_id: __derived__
   table: dim_pet
-  view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM "pet_store_sqlite"."pet_store"."pets"
+  view_sql: SELECT "id", "name", "species", "breed_name", "price", "available" FROM "pet_store"."pets"
 - columns:
   - description: Employee id to fetch - sent to the GraphQL query as an argument
     name: _nf_id
@@ -1048,7 +1048,7 @@ tables:
   schema: views
   source_id: __derived__
   table: fact_pet_inquiries
-  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "inquiries_sqlite"."default"."inquiries" GROUP BY
+  view_sql: SELECT "pet_id", COUNT("id") AS "id" FROM "pet_store"."inquiries" GROUP BY
     "pet_id"
 - alias: pet_by_status
   columns:

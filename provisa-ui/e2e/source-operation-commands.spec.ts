@@ -21,6 +21,11 @@ const ADMIN = { "Content-Type": "application/json", "x-provisa-role": "org_admin
 const STAMP = Date.now();
 const PLACE = `e2e_place_order_${STAMP}`;
 const CANCEL = `e2e_delete_order_${STAMP}`;
+// Each test registers commands of its own: tests of this file can run one after another in one
+// worker, where STAMP is the same, and a second registration of a name is refused
+// (actions.function_exists).
+const REFUSED = `e2e_refused_order_${STAMP}`;
+const COMPOSED = `e2e_composed_delete_${STAMP}`;
 const ORDER_ID = 900000 + (STAMP % 99999);
 
 async function adminGql(request: APIRequestContext, query: string, variables = {}) {
@@ -51,7 +56,7 @@ async function register(request: APIRequestContext, name: string, operation: str
 }
 
 test.afterAll(async ({ request }) => {
-  for (const name of [PLACE, CANCEL]) {
+  for (const name of [PLACE, CANCEL, REFUSED, COMPOSED]) {
     await request.delete(`${BACKEND_URL}/admin/actions/functions/${name}`, { headers: ADMIN });
   }
 });
@@ -127,11 +132,11 @@ test("REQ-1924: a registered operation is called with a JSON object and reaches 
 });
 
 test("REQ-1924: the remote's refusal comes back as the remote stated it", async ({ request }) => {
-  await register(request, PLACE, "placeOrder");
+  await register(request, REFUSED, "placeOrder");
   const sql = await request.post(`${BACKEND_URL}/data/sql`, {
     headers: ADMIN,
     // No order at all: the petstore refuses with 400, "No Order provided".
-    data: { sql: `SELECT * FROM ${PLACE}('null')` },
+    data: { sql: `SELECT * FROM ${REFUSED}('null')` },
   });
   expect(sql.status()).toBe(422);
   const body = await sql.json();
@@ -141,11 +146,11 @@ test("REQ-1924: the remote's refusal comes back as the remote stated it", async 
 });
 
 test("REQ-1924: a write cannot be composed into a larger statement", async ({ request }) => {
-  await register(request, CANCEL, "deleteOrder");
+  await register(request, COMPOSED, "deleteOrder");
   const sql = await request.post(`${BACKEND_URL}/data/sql`, {
     headers: ADMIN,
     data: {
-      sql: `SELECT o.id FROM (SELECT 1 AS id) o JOIN ${CANCEL}('${ORDER_ID}') c ON true`,
+      sql: `SELECT o.id FROM (SELECT 1 AS id) o JOIN ${COMPOSED}('${ORDER_ID}') c ON true`,
     },
   });
   expect(sql.ok()).toBeFalsy();
