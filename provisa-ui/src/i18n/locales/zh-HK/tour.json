@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "即場加入一個數據源",
-        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（在 provisa.dev 發佈的 <code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
+        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（<code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
         "acting": "正在加入數據源"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "每次執行都會保留",
         "description": "一次執行的結果寫入各自的表，每種量度一張，每次執行都與之前的執行一起保留。這裏是 customers 表的執行記錄，包括每次讀取的列數和發現的重複列。"
       },
+      "profilingTerrain": {
+        "title": "以地形呈現的執行",
+        "acting": "正在地形視圖中開啟 customers 表的剖析執行",
+        "description": "customers 的最新一次執行，以地形繪製：每欄一道山脊，高度是每個取值區間的列數，每欄前方是它的空值。"
+      },
       "profilingTerms": {
         "title": "詞彙",
         "description": "詞彙表定義了數據剖析、合理類型、值的形態、重複資料列及佔位值，並把每個詞彙關聯到它所描述的量度。"
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "自上次運行以來有甚麼變化",
         "description": "設定運行了兩次分析器，在兩次運行之間，CRM 的下一次同步把每個美國郵遞區號都寫成了 ZIP+4。漂移表把每個度量與上一次運行的度量比較：postal_code 的變化所改變的度量被標記為漂移，同步沒有觸及的欄則沒有。"
+      },
+      "profilingStrata": {
+        "title": "postal_code，逐次執行",
+        "acting": "正在開啟漂移層",
+        "description": "每次執行中的 postal_code，最早的在最後方：每個值所佔的列比例。正如漂移表所示，最新一次執行被標記為漂移，之前那次沒有。"
       },
       "profilingOriginal": {
         "title": "真實的客戶",
@@ -916,7 +926,7 @@
       },
       "agricultureNotebook": {
         "title": "天氣能解釋多少？",
-        "description": "在瀏覽器中執行示範的筆記簿：以 analyst 身分將每個縣的每一季讀入 pandas，將賠付率與該季的雨量、高於 32 °C 的日數以及市場損失中歸因於乾旱和高溫的份額作相關分析，擬合迴歸並繪圖。天氣解釋了賠付率變動的 54%。每多 10 日高於 32 °C，賠付率增加 20 個百分點；雨量少 100 毫米增加 7 個百分點；市場損失中歸因於乾旱和高溫的份額每多 10 個百分點，增加 9 個百分點。在現時業務上，類似 2012 年的一季預期賠付率為 1.75。"
+        "description": "在瀏覽器中執行示範的筆記簿：以 analyst 身分將每個縣的每一季讀入 pandas，將賠付率與該季的雨量、高於 32 °C 的日數以及市場損失中歸因於乾旱和高溫的份額作相關分析，擬合迴歸並繪圖。"
       },
       "agricultureRest": {
         "title": "以 REST 按年度",

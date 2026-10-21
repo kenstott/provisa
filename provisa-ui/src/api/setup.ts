@@ -33,6 +33,9 @@ export interface SetupStatus {
   // REQ-2084: the code cells of the notebook the named demo ships (notebook.ipynb), in order;
   // none when it ships none. The Notebook tab offers them, and a tour's notebook step runs them.
   demo_notebook: string[];
+  // REQ-2101 (amended): the org files the named demo ships, each in the org's folder as
+  // {files}/<path>; none when it ships none.
+  demo_org_files: string[];
 }
 
 export interface ExampleQuery {

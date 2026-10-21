@@ -54,7 +54,10 @@ export async function walkTourStep(key: string): Promise<HTMLElement> {
   if (step.clickBefore) fireEvent.click(await found(step.clickBefore, `${key} clickBefore`));
   // REQ-2115: a step that acts first does so unless what it builds is on screen already.
   if (step.actions && !document.querySelector(step.element)) {
-    const acted = await runUiActions(step.actions, {
+    // A step's actions read where the tour runs; here, an org whose demo ships no files.
+    const actions =
+      typeof step.actions === "function" ? step.actions({ orgFiles: [] }) : step.actions;
+    const acted = await runUiActions(actions, {
       confirm: async () => true,
       paceMs: 0,
       waitMs: 3000,

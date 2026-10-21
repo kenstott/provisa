@@ -820,6 +820,10 @@
         "label": "Inaktivitätsgrenze einer Demo-Sandbox",
         "help": "Eine Demo-Sandbox, die so lange niemand benutzt hat, wird mit allem darin gelöscht."
       },
+      "demo_stores_linger": {
+        "label": "Demo-Speicher nach Gebrauch behalten",
+        "help": "Wie lange die Datenbanken einer Demo laufen, nachdem ihre letzte Sandbox geschlossen wurde. Wird sie vorher wieder geöffnet, öffnet sie sofort; danach werden sie gestoppt, und der nächste Besucher wartet, während sie starten."
+      },
       "ai_base_url": {
         "label": "KI-Endpunkt der Sandbox",
         "help": "Der Endpunkt im OpenAI-Protokoll (bei OpenRouter https://openrouter.ai/api/v1), den die KI-Funktionen jeder Demo-Sandbox nutzen. Nicht gesetzt: keine KI in Sandboxen."

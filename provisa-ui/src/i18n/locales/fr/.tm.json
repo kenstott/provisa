@@ -6455,7 +6455,7 @@
   "fr/tour.json::tour.steps.agricultureJoin.title": "Joined by county",
   "fr/tour.json::tour.steps.agricultureMarket.description": "The USDA Risk Management Agency publishes every county's crop insurance experience by crop, cause of loss and month: the premium the market earned and the indemnities it paid for drought, heat, excess moisture, hail and the rest. This demo covers the crop years 2010 to 2017.",
   "fr/tour.json::tour.steps.agricultureMarket.title": "The whole market's losses",
-  "fr/tour.json::tour.steps.agricultureNotebook.description": "The demo's notebook, run in your browser: every county season read into pandas as the analyst, the loss ratio correlated with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, a regression fitted on them, and the plot. The weather explains 54% of the variation in loss ratio. Each 10 days above 32 °C adds 20 points of loss ratio, 100 mm less rain adds 7, and 10 points more of the market's losses down to drought and heat add 9. Across today's book, a 2012-like season has an expected loss ratio of 1.75.",
+  "fr/tour.json::tour.steps.agricultureNotebook.description": "The demo's notebook, run in your browser: every county season read into pandas as the analyst, the loss ratio correlated with the season's rain, its days above 32 °C and the share of the market's losses down to drought and heat, a regression fitted on them, and the plot.",
   "fr/tour.json::tour.steps.agricultureNotebook.title": "How much does the weather explain?",
   "fr/tour.json::tour.steps.agricultureRecap.description": "You saw the insurer's own data matched by county and crop year to public losses, weather and yields, all in one governed model. One view answers whether the weather explains the losses, in SQL, GraphQL and REST. The notebook measures it: the weather explains 54% of the variation in loss ratio, and across today's book a 2012-like season has an expected loss ratio of 1.75.",
   "fr/tour.json::tour.steps.agricultureRecap.title": "What you saw",
@@ -6996,7 +6996,7 @@
   "fr/tour.json::tour.steps.step9.description": "⚙️ Every registered entity is also a gRPC service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Call it from any gRPC client: 📐 strongly typed, 🚀 high-throughput.</p>",
   "fr/tour.json::tour.steps.step9.title": "gRPC (4 of 9 surfaces)",
   "fr/tour.json::tour.steps.stepBuildSource.acting": "Adding a source",
-  "fr/tour.json::tour.steps.stepBuildSource.description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>, published at provisa.dev) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+  "fr/tour.json::tour.steps.stepBuildSource.description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
   "fr/tour.json::tour.steps.stepBuildSource.title": "A source, added live",
   "fr/tour.json::tour.steps.stepCache.description": "🗄️ These layers are separate. The response cache holds query results, and a request opts in with @cached or a SQL comment. Small lookup tables are mirrored to speed joins. A replica of a source table that cannot be attached lives in the durable store, beside materialized views.",
   "fr/tour.json::tour.steps.stepCache.title": "Caches and replicas",
@@ -7549,5 +7549,13 @@
   "fr/adminPage.json::adminPage.apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role and every entity it fetches is governed as this role: its row rules, masks and visibility.",
   "fr/serverErrors.json::serverErrors.settings.federation_unknown_field": "Not a federation setting: {{fields}}",
   "fr/serverErrors.json::serverErrors.settings.federation_invalid": "Invalid federation setting: {{error}}",
-  "fr/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization"
+  "fr/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization",
+  "fr/tour.json::tour.steps.profilingTerrain.title": "The run, as terrain",
+  "fr/tour.json::tour.steps.profilingTerrain.acting": "Opening the customers table's profile runs on the terrain",
+  "fr/tour.json::tour.steps.profilingTerrain.description": "The latest run of customers, drawn as terrain: one ridge for each column, its height the rows in each range of values, and each column's nulls in front of it.",
+  "fr/tour.json::tour.steps.profilingStrata.title": "postal_code, run by run",
+  "fr/tour.json::tour.steps.profilingStrata.acting": "Opening the drift strata",
+  "fr/tour.json::tour.steps.profilingStrata.description": "postal_code in each run, the oldest at the back: the share of rows each value holds. The newest run is flagged as drifting, as the drift table showed, and the run before it is not.",
+  "fr/settings.json::settings.sandbox.demo_stores_linger.label": "Demo stores kept after use",
+  "fr/settings.json::settings.sandbox.demo_stores_linger.help": "How long a demo's databases stay up after its last sandbox closes. Opened again before then, it opens at once; after it, they are stopped, and its next visitor waits while they start."
 }

@@ -51,6 +51,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { bridgeAuth } from "../dataScience/bridge";
 import {
   followScheme,
+  lastOutputArea,
   runCells,
   seedNewNotebooks,
   startLiteBridge,
@@ -265,6 +266,43 @@ export const NOTEBOOK_URL = "/lite/lab/index.html?path=Provisa.ipynb";
 /** How long the tab waits for the embedded app before it gives up handing it the user. */
 const LITE_APP_WAIT_MS = 120_000;
 
+/** A box in the notebook tab's coordinates (its pane is the positioned parent). */
+interface AnswerBox {
+  top: number;
+  left: number;
+  width: number;
+  height: number;
+}
+
+/** The last cell's outputs scrolled to the top of the notebook, once their pictures have loaded
+ * (a figure has no height before): the whole of a figure in view, with room below it. */
+async function bringAnswerIntoView(app: LiteApp) {
+  const area = lastOutputArea(app);
+  if (area === null) return;
+  await Promise.all([...area.querySelectorAll("img")].map((img) => img.decode()));
+  area.scrollIntoView({ block: "start" });
+}
+
+/** Where the last cell's outputs are drawn, in the pane's coordinates and inside the frame: null
+ * while there are none, or none is in view. */
+function answerBoxOf(app: LiteApp, iframe: HTMLIFrameElement | null): AnswerBox | null {
+  const area = lastOutputArea(app);
+  const pane = iframe?.parentElement;
+  if (area === null || !iframe || !pane) return null;
+  const at = iframe.getBoundingClientRect();
+  const of = pane.getBoundingClientRect();
+  const out = area.getBoundingClientRect();
+  const top = Math.max(out.top, 0);
+  const bottom = Math.min(out.bottom, at.height);
+  if (bottom <= top) return null;
+  return {
+    top: at.top - of.top + top,
+    left: at.left - of.left + out.left,
+    width: out.width,
+    height: bottom - top,
+  };
+}
+
 function NotebookTab({
   request,
   onOpenDemo,
@@ -284,6 +322,9 @@ function NotebookTab({
   // The last request whose cells have all been handed over (and run, when asked): a tour step
   // waits on it being the request now in hand.
   const [answered, setAnswered] = useState<number | null>(null);
+  // Where the last cell's outputs are drawn, over the frame: a tour step points at them (the
+  // notebook's figure) rather than at the whole tab. Null until cells run for a tour have answered.
+  const [answerBox, setAnswerBox] = useState<AnswerBox | null>(null);
 
   // Cells handed over are added to the open notebook, run when asked, and reported back; where
   // the notebook cannot run, it says why at once.
@@ -298,11 +339,33 @@ function NotebookTab({
     if (app === null) return;
     done.current = request.seq;
     const handOff = () => bridge.current?.handOff() ?? Promise.resolve();
-    void runCells(app, request.cells, request.autoRun, handOff).then((r) => {
+    void runCells(app, request.cells, request.autoRun, handOff).then(async (r) => {
       report(r);
+      if (request.autoRun) {
+        await bringAnswerIntoView(app);
+        setAnswerBox(answerBoxOf(app, frame.current));
+      }
       setAnswered(request.seq);
     });
   }, [request, served, app, t]);
+
+  // The last outputs' box, placed once they have answered, follows the notebook as it scrolls and
+  // the window as it resizes.
+  useEffect(() => {
+    if (app === null || request === null || answered !== request.seq || !request.autoRun) return;
+    const doc = frame.current?.contentDocument;
+    const win = frame.current?.contentWindow;
+    if (!doc || !win) return;
+    const place = () => setAnswerBox(answerBoxOf(app, frame.current));
+    doc.addEventListener("scroll", place, true);
+    win.addEventListener("resize", place);
+    window.addEventListener("resize", place);
+    return () => {
+      doc.removeEventListener("scroll", place, true);
+      win.removeEventListener("resize", place);
+      window.removeEventListener("resize", place);
+    };
+  }, [app, request, answered]);
 
   // The notebook wears the app's colour scheme, and changes with it.
   useEffect(() => {
@@ -384,6 +447,13 @@ function NotebookTab({
       />
       {request !== null && answered === request.seq && (
         <span hidden data-testid="notebook-answered" data-seq={answered} />
+      )}
+      {request !== null && answered === request.seq && answerBox !== null && (
+        <div
+          data-testid="notebook-answer"
+          aria-hidden
+          style={{ position: "absolute", pointerEvents: "none", ...answerBox }}
+        />
       )}
     </>
   );

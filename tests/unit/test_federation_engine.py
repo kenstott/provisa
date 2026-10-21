@@ -27,6 +27,15 @@ from provisa.federation.engine import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _one_organisation(monkeypatch):
+    """The deployment's answer the API layer installs at import: these resolve sources on a
+    deployment of one organisation, whether or not another test imported the API layer first."""
+    from provisa.core import secrets_providers
+
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
 def _src(sid: str, type_: SourceType, **kw) -> Source:
     fields = {"host": "h", "port": 5432, "database": "db", "username": "u", **kw}
     return Source(id=sid, type=type_, **fields)

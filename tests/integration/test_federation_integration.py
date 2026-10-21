@@ -118,12 +118,11 @@ def postgres():
         pg.stop()
 
 
-@pytest.fixture(scope="module")
-def provisa(postgres, tmp_path_factory):
-    from tests.integration.isolated_server import IsolatedServer
-
+def _config(pg_port: int) -> dict:
+    """The isolated server's config: the orders table, the partner role's row rule, mask and
+    hidden column, and the subgraph declared as the partner."""
     both = ["org_admin", _ROLE]
-    cfg = {
+    return {
         "federation_engine": "pg",
         "auth": {
             "provider": "none",
@@ -147,7 +146,7 @@ def provisa(postgres, tmp_path_factory):
                 "id": "fed-pg",
                 "type": "postgresql",
                 "host": "127.0.0.1",
-                "port": postgres.port,
+                "port": pg_port,
                 "database": "provisa",
                 "username": "provisa",
                 "password": "${env:PG_PASSWORD}",
@@ -191,6 +190,13 @@ def provisa(postgres, tmp_path_factory):
         ],
         "federation": {"enabled": True, "role": _ROLE, "subgraph_name": "orders"},
     }
+
+
+@pytest.fixture(scope="module")
+def provisa(postgres, tmp_path_factory):
+    from tests.integration.isolated_server import IsolatedServer
+
+    cfg = _config(postgres.port)
     path = tmp_path_factory.mktemp("apollo_subgraph") / "config.yaml"
     path.write_text(yaml.safe_dump(cfg))
     control_plane = postgres.url("+psycopg")

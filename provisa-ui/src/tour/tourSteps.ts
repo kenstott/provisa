@@ -163,7 +163,7 @@ export interface TourStep {
    * step entered again by Back or a resume finds what it built). Only what is very unlikely to
    * fail live is done so: a static known address, or what Provisa handles itself.
    */
-  actions?: UiAction[];
+  actions?: UiAction[] | ((ctx: TourContext) => UiAction[]);
   /**
    * Selector clicked when the user advances *past* this step via Next — used to
    * undo `clickBefore`, e.g. cancelling the form or closing a modal.
@@ -187,6 +187,23 @@ export interface TourStep {
 const SOURCES_ADD = '[data-tour="sources-add"]';
 // REQ-2115: the Parquet file Provisa publishes (REQ-2113), the core tour's live-built source.
 export const SUPPLIES_PARQUET_URL = "https://provisa.dev/demo-data/supplies.parquet";
+/** REQ-2101 (amended): the copy a demo ships into its org's own folder (starthere's org_files/). */
+export const SUPPLIES_ORG_FILE = "supplies.parquet";
+
+/** What a step's actions may read about where the tour runs. */
+export interface TourContext {
+  /** The org files the demo ships, each in the org's folder as {files}/<path>. */
+  orgFiles: string[];
+}
+
+/** Where the live-built source reads supplies.parquet: the org's own copy where its demo ships
+ * one, read in place with no network (a sandbox may reach no address its demo does not declare);
+ * else the copy Provisa publishes. */
+export function suppliesAddress(orgFiles: string[]): string {
+  return orgFiles.includes(SUPPLIES_ORG_FILE)
+    ? `{files}/${SUPPLIES_ORG_FILE}`
+    : SUPPLIES_PARQUET_URL;
+}
 const SUPPLIES_SOURCE_ID = "supplies";
 const TABLES_ADD = '[data-tour="tables-add"]';
 const RELS_ADD = '[data-tour="rels-add"]';
@@ -296,14 +313,14 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-2115: a source built live, as the visitor would build it: the picker opened and its
-    // whole list shown, Parquet File chosen, the file Provisa publishes given as its address, and
-    // saved. A static known address, so very unlikely to fail; the popover then explains the row.
-    actions: [
+    // whole list shown, Parquet File chosen, the file given as its address, and saved. A static
+    // known address, so very unlikely to fail; the popover then explains the row.
+    actions: ({ orgFiles }) => [
       { do: "press", target: { testId: "sources-add-toggle" } },
       { do: "show", target: { testId: "source-type-picker-body" } },
       { do: "press", target: { testId: "source-type-option-parquet" } },
       { do: "fill", target: { testId: "sources-id-input" }, value: SUPPLIES_SOURCE_ID },
-      { do: "fill", target: { testId: "source-file-location" }, value: SUPPLIES_PARQUET_URL },
+      { do: "fill", target: { testId: "source-file-location" }, value: suppliesAddress(orgFiles) },
       { do: "press", target: { role: "button", name: "Save" } },
     ],
     // The new row's first cell, its ID: the row runs on under the source's detail, which Save
