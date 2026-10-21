@@ -67,7 +67,7 @@ async function polly(page: Page, screens: Screen[]) {
     route.fulfill({ json: { configured: true, reason: "" } }),
   );
   let turn = 0;
-  await page.route("**/admin/mcp/chat", (route) => {
+  await page.route("**/admin/mcp/chat", async (route) => {
     turn += 1;
     let events: object[];
     if (turn === 1) {
@@ -85,6 +85,9 @@ async function polly(page: Page, screens: Screen[]) {
         state: { code, newTab: true, title: SCRIPT_TITLE },
       });
     } else if (turn === 3) {
+      // The Python tab is loaded on first open: Polly reads the screen once it is on it, as a
+      // model's next call comes after the page has drawn.
+      await expect(page.getByTestId("data-science-missing")).toBeVisible({ timeout: 30000 });
       events = awaiting("c3", "read_screen", {});
     } else {
       screens.push(lastScreen(route.request().postData()!));
@@ -111,6 +114,12 @@ test("asked to put the query on screen into the Python explorer, Polly reads it 
   const sql = "SELECT name, species FROM pet_store.pets";
   const screens: Screen[] = [];
   await polly(page, screens);
+  // The Python tab without its runtime, whatever this lane built: the script it is handed is
+  // held in its own state either way, and that is what Polly reads. The manifest answers as the
+  // dev server's page fallback does, which the tab reads as no runtime.
+  await page.route("**/pyodide/manifest.json", (route) =>
+    route.fulfill({ status: 200, contentType: "text/html", body: "<!doctype html>" }),
+  );
 
   await page.goto("/sql");
   await typeSql(page, sql);
