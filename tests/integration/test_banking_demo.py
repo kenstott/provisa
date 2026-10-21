@@ -319,7 +319,10 @@ def test_the_dashboard_and_bi_give_the_same_figure(answers, nodes):
     [totals] = body["data"].values()
     assert any(t["postings"] for t in totals), totals
     corporate_gbp = [t for t in totals if t["product"] == "corporate" and t["currency"] == "GBP"]
-    assert len(corporate_gbp) == 1, totals
+    assert len(corporate_gbp) == 1, "; ".join(
+        f"{t['product']} {t['currency']} {t['netMovement']} ({len(t['postings'])} postings)"
+        for t in totals
+    )
     [dashboard] = corporate_gbp
     day = [r for r in answers["bankingDay"] if r["product"] == "corporate"]
     bi = _total(day, "2026-10-01", "London", "GBP")
@@ -338,7 +341,8 @@ def test_a_pgwire_session_reads_as_recorded_at_a_close(answers, nodes):
         autocommit=True,
     ) as conn:
         conn.execute(f"SET provisa.as_recorded = '{_OCT_1_CLOSE}'")
-        cursor = conn.execute(_CORPORATE)
+        # Its own day only: the corporate totals of every day run past the default row limit.
+        cursor = conn.execute(f"{_CORPORATE} AND e.business_date = DATE '2026-10-01'")
         names = [c.name for c in cursor.description]
         rows = [dict(zip(names, r)) for r in cursor.fetchall()]
     over_pgwire = _total(rows, "2026-10-01", "London", "GBP")
