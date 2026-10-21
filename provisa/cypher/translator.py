@@ -58,6 +58,7 @@ from provisa.cypher.translator_helpers import (
     _rewrite_cypher_fn_node,
     _rewrite_property_access,
     _safe_alias,
+    edge_properties_column,
 )
 from provisa.cypher.translator_types import (
     CypherCrossSourceError as CypherCrossSourceError,  # re-exported for bolt/flight/neo4j error paths
@@ -754,7 +755,7 @@ class _Translator(  # REQ-345, REQ-347, REQ-348, REQ-349, REQ-350, REQ-351, REQ-
         def _replace(m: re.Match) -> str:
             var, prop = m.group(1), m.group(2)
             if var in self._all_rels_rel_vars:
-                return f"JSON_EXTRACT_SCALAR({var}, '$.{prop}')"
+                return f"JSON_EXTRACT_SCALAR({edge_properties_column(var)}, '$.{prop}')"
             if var in self._all_rels_node_vars:
                 return f"JSON_EXTRACT_SCALAR({var}, '$.properties.{prop}')"
             if var in self._map_unwind_vars:

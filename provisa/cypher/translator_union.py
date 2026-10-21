@@ -23,6 +23,7 @@ import sqlglot.expressions as exp
 from provisa.cypher.translator_helpers import (
     _const_literal,
     _make_junction_joins,
+    edge_properties_column,
     via_alias_for,
     via_column,
 )
@@ -227,6 +228,13 @@ class _UnionMixin:  # mixin for _Translator
                 exp.alias_(src_json, src_col),
                 exp.alias_(edge_json, rel_col),
                 exp.alias_(tgt_json, tgt_col),
+                # The edge's own properties alone, which r.<prop> reads: the edge's JSON carries
+                # an id built from both endpoints' keys, and a condition on a value of it would
+                # match the two tables by their keys as well as by the relationship (REQ-603).
+                exp.alias_(
+                    exp.Anonymous(this="JSON_OBJECT", expressions=list(edge_props)),
+                    edge_properties_column(rel_col),
+                ),
             ).from_(
                 exp.alias_(
                     exp.Table(

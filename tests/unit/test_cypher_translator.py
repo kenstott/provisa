@@ -940,10 +940,10 @@ def test_fully_unlabeled_match_produces_all_rels_union():
 
 
 def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
-    """MATCH ()-[r]-() WHERE r.since IS NOT NULL — r's JSON nests attrs under "properties" (per
-    the all-rels union's edge_json in translator_union.py), so property access on an unlabeled
-    rel var must extract "$.properties.since", not the wrong top-level "$.since" (which would
-    make every row's r.since resolve to NULL, filtering out all rows)."""
+    """MATCH ()-[r]-() WHERE r.since IS NOT NULL — r.since is the edge's own attribute: read from
+    the column of its properties the all-rels union carries beside its JSON (translator_union.py),
+    never from the edge's JSON, whose id is built from both endpoints' keys (a condition on it
+    would match the two tables by their keys, which the join guard refuses, REQ-603)."""
     lm = _make_label_map()
     lm.relationships["LITTERMATE"] = RelationshipMapping(
         rel_type="LITTERMATE",
@@ -968,8 +968,8 @@ def test_unlabeled_rel_where_on_junction_property_extracts_from_properties():
     ast = parse_cypher("MATCH ()-[r]-() WHERE r.since IS NOT NULL RETURN r.since LIMIT 25")
     sql_ast, _, _ = cypher_to_sql(ast, lm, {})
     sql = sql_ast.sql(dialect="trino")
-    assert "$.properties.since" in sql
-    assert "$.since" not in sql.replace("$.properties.since", "")
+    assert "JSON_EXTRACT_SCALAR(r__properties, '$.since')" in sql
+    assert "JSON_EXTRACT_SCALAR(r," not in sql
 
 
 def test_domain_labeled_target_filters_rels_union():
