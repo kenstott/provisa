@@ -85478,7 +85478,15 @@ And reaffirming it records the tag again with today's decider and evidence and r
     checked against that type. In a loader call every other parameter is left absent, so the key parameters
     declared beside loader have defaults; a required one fails at the call, by name. A key''s hash is
     the SHA-256 hex of its sparse object''s canonical JSON: keys sorted, compact separators, each value
-    as the code-source wire carries it.'
+    as the code-source wire carries it. (Amended 2026-10-20, LOADER BATCH SIZE:) The developer may declare
+    a loader function''s largest batch (DataLoader''s maxBatchSize), knowing their data and limits (an
+    API''s id cap, a model''s context, memory), with the declaration forms pushdown uses, the text loader
+    N in each: a docstring or JSDoc tag line @loader 100, an inline TypeScript comment /* @loader 100
+    */ before the loader parameter, or a typing.Annotated string on it, Annotated[list[Key] | None, "loader
+    100"]. With none declared, one batch holds every key. With a size, Provisa splits the keys into chunks
+    of that size, calls the function once per chunk, and merges the answers by hash. Discovery refuses
+    by name a size declared on a function with no loader parameter, a size that is not a positive integer,
+    and two sizes declared for one function, as it refuses any other declaration the function cannot take.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and
