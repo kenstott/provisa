@@ -241,6 +241,25 @@ export class GraphScene extends BaseScene<GraphHover> {
     };
   }
 
+  /** REQ-2130: an abstract term drawn hollow (its outline alone), a deprecated one faded. */
+  private nodeMaterial(node: GraphNode): THREE.Material {
+    if (!node.hollow && node.status !== "deprecated") return this.mats[node.type];
+    const key = `${node.type}:${node.hollow ? "hollow" : "solid"}:${node.status === "deprecated" ? "dim" : "lit"}`;
+    let m = this.mats[key];
+    if (!m) {
+      const base = this.mats[node.type] as THREE.MeshStandardMaterial;
+      const made = base.clone();
+      made.wireframe = node.hollow === true;
+      if (node.status === "deprecated") {
+        made.transparent = true;
+        made.opacity = 0.3;
+      }
+      this.mats[key] = made;
+      m = made;
+    }
+    return m;
+  }
+
   private edgeMaterial(kind: EdgeKind): THREE.Material {
     switch (kind) {
       case "in_domain":
@@ -296,14 +315,19 @@ export class GraphScene extends BaseScene<GraphHover> {
       minY = Math.min(minY, p.y);
       extent = Math.max(extent, Math.abs(p.x), Math.abs(p.y), Math.abs(p.z));
       const r = SIZE[node.type];
-      const mesh = new THREE.Mesh(geometry(node.type, r), this.mats[node.type]);
+      const mesh = new THREE.Mesh(geometry(node.type, r), this.nodeMaterial(node));
       mesh.position.copy(p);
       if (node.type === "domain") mesh.rotation.x = Math.PI / 2;
       mesh.castShadow = true;
       mesh.userData.node = node.id;
       world.add(mesh);
-      const label = this.pin(node.label, `p3d-label p3d-node-label g3d-label-${node.type}`, () =>
-        mesh.position.clone().add(new THREE.Vector3(0, r + 0.3, 0)),
+      // REQ-2130: a proposal says why beside its name; a deprecated term's name is dimmed too.
+      const label = this.pin(
+        node.note ? `${node.label} · ${node.note}` : node.label,
+        `p3d-label p3d-node-label g3d-label-${node.type}` +
+          (node.status === "proposed" ? " g3d-label-proposed" : "") +
+          (node.status === "deprecated" ? " g3d-label-dim" : ""),
+        () => mesh.position.clone().add(new THREE.Vector3(0, r + 0.3, 0)),
       );
       this.nodes.push({ node, mesh, radius: r, label });
     }

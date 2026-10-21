@@ -58,6 +58,19 @@
     "edge_owns": "拥有",
     "loadError": "无法读取图：{{error}}",
     "zoomTo": "缩放到此",
-    "edge_column_lineage": "供数给列"
+    "edge_column_lineage": "供数给列",
+    "preset_taxonomy": "分类体系",
+    "layer_domains": "域",
+    "layer_data": "数据",
+    "show": "显示",
+    "status_proposed": "提议中",
+    "status_deprecated": "已弃用",
+    "status_retired": "已停用",
+    "filterEdgeType": "边类型",
+    "why_undefined": "未定义",
+    "why_ungrounded": "未关联数据",
+    "glossaryUnreadable": "你的角色无法读取 meta 域中的术语表。",
+    "ontologyTitle": "术语表本体",
+    "ontologyView": "本体视图"
   }
 }

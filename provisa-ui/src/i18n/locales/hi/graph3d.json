@@ -58,6 +58,19 @@
     "edge_owns": "का मालिक",
     "loadError": "ग्राफ़ पढ़ा नहीं जा सका: {{error}}",
     "zoomTo": "उस पर ज़ूम करें",
-    "edge_column_lineage": "कॉलम को डेटा देता है"
+    "edge_column_lineage": "कॉलम को डेटा देता है",
+    "preset_taxonomy": "टैक्सोनॉमी",
+    "layer_domains": "डोमेन",
+    "layer_data": "डेटा",
+    "show": "दिखाएँ",
+    "status_proposed": "प्रस्तावित",
+    "status_deprecated": "अप्रचलित",
+    "status_retired": "सेवानिवृत्त",
+    "filterEdgeType": "एज प्रकार",
+    "why_undefined": "अपरिभाषित",
+    "why_ungrounded": "डेटा से असंबद्ध",
+    "glossaryUnreadable": "आपकी भूमिका meta डोमेन में शब्दावली नहीं पढ़ सकती।",
+    "ontologyTitle": "शब्दावली ऑन्टोलॉजी",
+    "ontologyView": "ऑन्टोलॉजी दृश्य"
   }
 }

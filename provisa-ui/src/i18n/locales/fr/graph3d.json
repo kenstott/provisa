@@ -58,6 +58,19 @@
     "edge_owns": "possède",
     "loadError": "Impossible de lire le graphe : {{error}}",
     "zoomTo": "Zoomer dessus",
-    "edge_column_lineage": "alimente la colonne"
+    "edge_column_lineage": "alimente la colonne",
+    "preset_taxonomy": "Taxonomie",
+    "layer_domains": "Domaines",
+    "layer_data": "Données",
+    "show": "Afficher",
+    "status_proposed": "Proposé",
+    "status_deprecated": "Obsolète",
+    "status_retired": "Retiré",
+    "filterEdgeType": "Types d'arêtes",
+    "why_undefined": "non défini",
+    "why_ungrounded": "non ancré dans les données",
+    "glossaryUnreadable": "Votre rôle ne peut pas lire le glossaire du domaine meta.",
+    "ontologyTitle": "Ontologie du glossaire",
+    "ontologyView": "Vue ontologie"
   }
 }

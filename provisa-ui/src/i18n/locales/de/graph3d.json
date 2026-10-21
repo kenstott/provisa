@@ -58,6 +58,19 @@
     "edge_owns": "besitzt",
     "loadError": "Der Graph konnte nicht gelesen werden: {{error}}",
     "zoomTo": "Hineinzoomen",
-    "edge_column_lineage": "speist Spalte"
+    "edge_column_lineage": "speist Spalte",
+    "preset_taxonomy": "Taxonomie",
+    "layer_domains": "Domänen",
+    "layer_data": "Daten",
+    "show": "Anzeigen",
+    "status_proposed": "Vorgeschlagen",
+    "status_deprecated": "Veraltet",
+    "status_retired": "Stillgelegt",
+    "filterEdgeType": "Kantentypen",
+    "why_undefined": "undefiniert",
+    "why_ungrounded": "ohne Datenbezug",
+    "glossaryUnreadable": "Ihre Rolle kann das Glossar in der Meta-Domäne nicht lesen.",
+    "ontologyTitle": "Glossar-Ontologie",
+    "ontologyView": "Ontologie-Ansicht"
   }
 }

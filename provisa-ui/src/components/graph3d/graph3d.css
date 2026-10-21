@@ -56,3 +56,16 @@
 .g3d-sw-term {
   background: var(--p3d-cool);
 }
+/* REQ-2130: a proposed term's name, with why; a deprecated one's, dimmed. */
+.g3d-label-proposed {
+  font-style: italic;
+  color: var(--p3d-warn-fg);
+}
+.g3d-label-dim {
+  opacity: 0.45;
+}
+.g3d-inline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--mantine-spacing-xs);
+}

@@ -58,6 +58,19 @@
     "edge_owns": "owns",
     "loadError": "The graph could not be read: {{error}}",
     "zoomTo": "Zoom to it",
-    "edge_column_lineage": "feeds column"
+    "edge_column_lineage": "feeds column",
+    "preset_taxonomy": "Taxonomy",
+    "layer_domains": "Domains",
+    "layer_data": "Data",
+    "show": "Show",
+    "status_proposed": "Proposed",
+    "status_deprecated": "Deprecated",
+    "status_retired": "Retired",
+    "filterEdgeType": "Edge types",
+    "why_undefined": "undefined",
+    "why_ungrounded": "ungrounded",
+    "glossaryUnreadable": "Your role cannot read the glossary in the meta domain.",
+    "ontologyTitle": "Glossary ontology",
+    "ontologyView": "Ontology view"
   }
 }

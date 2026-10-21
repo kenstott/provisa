@@ -58,6 +58,19 @@
     "edge_owns": "בבעלות",
     "loadError": "לא ניתן היה לקרוא את הגרף: {{error}}",
     "zoomTo": "התקרבות",
-    "edge_column_lineage": "מזין עמודה"
+    "edge_column_lineage": "מזין עמודה",
+    "preset_taxonomy": "טקסונומיה",
+    "layer_domains": "תחומים",
+    "layer_data": "נתונים",
+    "show": "הצגה",
+    "status_proposed": "מוצע",
+    "status_deprecated": "מיושן",
+    "status_retired": "הוצא משימוש",
+    "filterEdgeType": "סוגי קשתות",
+    "why_undefined": "לא מוגדר",
+    "why_ungrounded": "לא מעוגן בנתונים",
+    "glossaryUnreadable": "התפקיד שלכם לא יכול לקרוא את מילון המונחים בדומיין ה-meta.",
+    "ontologyTitle": "אונטולוגיית מילון המונחים",
+    "ontologyView": "תצוגת אונטולוגיה"
   }
 }
