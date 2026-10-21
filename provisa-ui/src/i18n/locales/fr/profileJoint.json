@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "Nuage conjoint de {{table}}",
+    "none": "Cette exécution n'a construit aucun réseau de dépendances ; elle ne contient donc aucun effectif conjoint.",
+    "canvasLabel": "Nuage 3D des lignes d'une colonne en regard de ses colonnes parentes",
+    "column": "Colonne",
+    "colorBy": "Colorier par",
+    "colorRows": "Lignes",
+    "colorLift": "Lift",
+    "legendRows": "lignes dans la cellule",
+    "legendLift": "moins qu'en cas d'indépendance · autant · plus",
+    "decile": "D{{n}}",
+    "nullSlot": "null",
+    "otherSlot": "+{{count}} autres",
+    "tipRows": "{{rows}} lignes · {{pct}} · lift ×{{lift}}",
+    "explainOne": "{{column}} (vertical) en regard de son parent {{parent}} (horizontal). Les nombres sont découpés en déciles de rang.",
+    "explainTwo": "{{column}} (vertical) en regard de ses parents {{parent1}} (horizontal) et {{parent2}} (profondeur). Les nombres sont découpés en déciles de rang.",
+    "stat_rows": "Lignes",
+    "stat_cells": "Cellules occupées",
+    "stat_mi": "Information mutuelle (nats)",
+    "stat_uncertainty": "Incertitude éliminée",
+    "over": "Plus souvent qu'en cas d'indépendance",
+    "under": "Moins souvent qu'en cas d'indépendance",
+    "noneListed": "Aucune à 0,5 % des lignes ou plus.",
+    "note": "Le lift est le rapport entre les lignes d'une cellule et les lignes qu'elle contiendrait si les colonnes étaient indépendantes. La taille de la sphère correspond au nombre de lignes."
+  }
+}

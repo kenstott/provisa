@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "Relationships in {{table}}",
+    "none": "This run found no correlations or dependencies between columns.",
+    "canvasLabel": "3D map of the table's columns, joined by their correlations and dependencies",
+    "minStrength": "Strength",
+    "showCorrelation": "Correlations",
+    "showDependence": "Dependencies",
+    "legendPositive": "rises together",
+    "legendNegative": "moves opposite",
+    "legendRatio": "category explains number",
+    "legendDependence": "depends on (arrow points to the dependent column)",
+    "tipLinks_one": "{{count}} relationship",
+    "tipLinks_other": "{{count}} relationships",
+    "columns": "Columns",
+    "noLinks": "No relationships at this strength.",
+    "note": "Rod thickness is strength: |Spearman ρ| for correlations, the share of variance explained for a correlation ratio, and the share of the column's uncertainty its parents remove for a dependence. Grey columns are a parent table's.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "Correlation ratio η²",
+    "measure_dependence": "Dependence (share of uncertainty removed)",
+    "family_numeric": "numeric",
+    "family_temporal": "date/time",
+    "family_text": "text",
+    "family_boolean": "boolean",
+    "family_other": "other",
+    "family_foreign": "parent table column"
+  }
+}

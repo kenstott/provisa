@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "Drift strata of {{table}}",
+    "none": "None of these runs holds values the strata can draw.",
+    "canvasLabel": "3D stack of one column's distribution in each run, oldest at the back",
+    "column": "Column",
+    "legendShare": "share of the run's rows",
+    "legendMedian": "median, run to run",
+    "legendDrift": "run that drifted",
+    "tipShare": "{{pct}} of the run's non-null rows",
+    "tipNullShare": "{{pct}} of the run's rows",
+    "drifted": "Drifted ({{reason}})",
+    "steady": "No drift flagged",
+    "noValues": "No values in this run",
+    "runs": "Runs, newest first",
+    "columnsNote": "Each run's median and null share. The selected run is the newest one shown.",
+    "binning_sketch": "The same bins for every run, cut from each run's quantile sketch; heights are each run's share of its non-null rows.",
+    "binning_categories": "Every run's values counted against the same categories.",
+    "binning_none": "These runs hold no values for this column for your role."
+  }
+}

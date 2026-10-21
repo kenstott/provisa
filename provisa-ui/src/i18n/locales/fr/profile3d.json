@@ -1,0 +1,10 @@
+{
+  "profile3d": {
+    "expand": "Développer la vue",
+    "webglError": "Impossible de démarrer la vue 3D : {{error}}",
+    "hint": "Glisser pour orbiter · défiler pour zoomer · glisser avec le clic droit pour déplacer",
+    "rotate": "Pivoter",
+    "resetView": "Réinitialiser la vue",
+    "zoomTo": "Zoomer sur cette colonne"
+  }
+}
