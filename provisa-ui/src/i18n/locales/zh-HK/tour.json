@@ -85,6 +85,11 @@
         "title": "73 種數據來源類型，14 個類別",
         "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
+      "stepBuildSource": {
+        "title": "即場加入一個數據源",
+        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（在 provisa.dev 發佈的 <code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
+        "acting": "正在加入數據源"
+      },
       "step4": {
         "title": "一切都會變成一個表格",
         "description": "無論數據來源是甚麼，是 Mongo 集合、Kafka 主題、REST 端點還是圖數據，Provisa 都會將它分解成一個二維<strong>表格</strong>：以統一的形態，跨所有數據來源進行查詢。<p>📁 將表格分組成<strong>領域</strong>，每個領域由一位數據管家負責，隨著模型演變守護其品質。</p>"

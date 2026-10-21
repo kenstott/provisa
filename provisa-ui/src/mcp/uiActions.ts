@@ -39,6 +39,8 @@ export interface UiActionContext {
   paceMs: number;
   /** How long a step waits for its element to appear (a screen still mounting). */
   waitMs: number;
+  /** Stops the steps between one and the next (a tour left while they run). */
+  signal?: AbortSignal;
 }
 
 export interface UiActionsResult {
@@ -283,6 +285,10 @@ export async function runUiActions(
 ): Promise<UiActionsResult> {
   const steps: string[] = [];
   for (const action of actions) {
+    if (ctx.signal?.aborted) {
+      steps.push("Stopped: the steps were abandoned.");
+      return { success: false, steps };
+    }
     const found = await located(action.target, ctx.waitMs);
     if ("refusal" in found) {
       steps.push(found.refusal);

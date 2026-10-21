@@ -85,6 +85,11 @@
         "title": "73 types de source, 14 catégories",
         "description": "Un sélecteur liste chaque type, groupé par catégorie : <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Cherchez par nom ou alias, ou filtrez avec les pastilles de catégorie. Chaque type affiche son logo et une icône de portée : ⚡ lu en direct sur place, ou une icône de copie lorsque Provisa lit une réplique rafraîchie.<p>Choisissez-en un, renseignez la connexion, enregistrez.</p>"
       },
+      "stepBuildSource": {
+        "title": "Une source, ajoutée en direct",
+        "description": "Voici comment s'ajoute une source : le sélecteur s'est ouvert sur sa liste complète, <strong>Parquet File</strong> a été choisi, l'adresse du fichier a été saisie (<code>supplies.parquet</code>, publié sur provisa.dev) et Enregistrer l'a créée. La nouvelle source <strong>supplies</strong> lit ce fichier sur place.",
+        "acting": "Ajout d'une source"
+      },
       "step4": {
         "title": "Tout devient une table",
         "description": "Quelle que soit la source, qu'il s'agisse d'une collection Mongo, d'un topic Kafka, d'un point de terminaison REST ou d'un graphe, Provisa la décompose en une <strong>table</strong> 2D : une forme uniforme pour interroger toutes les sources.<p>📁 Regroupez les tables en <strong>domaines</strong>, chacun confié à un intendant des données qui veille sur la qualité du modèle à mesure qu'il évolue.</p>"

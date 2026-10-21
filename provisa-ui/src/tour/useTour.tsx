@@ -67,6 +67,7 @@ import {
   TOUR_TOPICS_DONE_KEY,
 } from "./tourKeys";
 import { getStored, removeStored, setStored } from "../lib/browserStorage";
+import { runUiActions } from "../mcp/uiActions";
 
 /** REQ-2010: the named demo's own track was walked to its end in this browser. Saved per control
  * plane and org (REQ-2008), so each demo, and each fresh start of one, offers its track first. It
@@ -381,6 +382,8 @@ export type TourStatus =
   | { kind: "preparing"; resuming: boolean }
   | { kind: "waiting"; step: number }
   | { kind: "stuck"; step: number }
+  // REQ-2115: the step's own actions running, under its caption, before its popover.
+  | { kind: "acting"; step: number; key: string }
   | null;
 
 interface TourContextValue {
@@ -423,6 +426,12 @@ const ANCHOR_WAIT_MS = 45000;
 // How long an advance may take before the visitor is told the tour is waiting. Short enough that a
 // stall never reads as a dead click, long enough that a normal advance shows no spinner at all.
 const WAITING_HINT_MS = 1200;
+
+// REQ-2115: how long each of a step's actions lets itself be seen, and the body class under which
+// they run: driver.js's overlay and the previous popover are hidden then (tour.css), so what the
+// actions open (a modal, a form) is seen whole.
+const ACTION_PACE_MS = 700;
+const ACTING_CLASS = "tour-acting";
 
 function waitForElement(
   selector: string,
@@ -773,6 +782,32 @@ export function TourProvider({ children }: { children: ReactNode }) {
         if (step.clickBefore) {
           const trigger = await waitForElement(step.clickBefore, undefined, abort.signal);
           trigger.click();
+        }
+        // REQ-2115: act, then explain. A step entered again finds what it built and only explains.
+        if (step.actions && !document.querySelector(step.element)) {
+          // The route just taken re-renders the provider, which supersedes this run: what a step
+          // does is done once, by the run that stays, so it waits a paint and acts only if current.
+          await nextPaint();
+          if (cancelled) return;
+          if (!document.querySelector(step.element)) {
+            settle();
+            setStatus({ kind: "acting", step: i, key: step.key });
+            document.body.classList.add(ACTING_CLASS);
+            let acted;
+            try {
+              acted = await runUiActions(step.actions, {
+                // The visitor started this tour: what it does is theirs, and asks nothing more.
+                confirm: async () => true,
+                paceMs: ACTION_PACE_MS,
+                waitMs: ANCHOR_WAIT_MS,
+                signal: abort.signal,
+              });
+            } finally {
+              document.body.classList.remove(ACTING_CLASS);
+            }
+            if (cancelled) return;
+            if (!acted.success) throw new Error(`Tour: ${acted.steps[acted.steps.length - 1]}`);
+          }
         }
         // Gate on the destination page's own content, not just `step.element` — that selector
         // is sometimes a persistent-shell anchor (navbar/subnav) that exists before the page has
@@ -1211,6 +1246,14 @@ function TourStatusOverlay({
 }) {
   const { t } = useTranslation();
   if (!status) return null;
+  if (status.kind === "acting") {
+    // A caption, not a card: the screen is what the visitor watches while the step acts.
+    return (
+      <div className="tour-acting-caption" role="status" aria-live="polite">
+        {t(`tour.steps.${status.key}.acting`)}
+      </div>
+    );
+  }
   const stuck = status.kind === "stuck";
   const message =
     status.kind === "preparing"

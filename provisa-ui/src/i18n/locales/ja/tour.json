@@ -85,6 +85,11 @@
         "title": "73種類のソース、14カテゴリ",
         "description": "ひとつのピッカーに、カテゴリ別にすべての種類が並びます：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。名前や別名で検索するか、カテゴリのチップで絞り込めます。各種類にはロゴと到達方法のアイコンが付きます。⚡ はその場でライブ読み取り、コピーのアイコンは Provisa が更新済みのレプリカを読む場合です。<p>ひとつ選び、接続を入力して保存します。</p>"
       },
+      "stepBuildSource": {
+        "title": "ソースをその場で追加",
+        "description": "ソースはこうして追加します。ピッカーが一覧全体を表示して開き、<strong>Parquet File</strong> が選ばれ、ファイルのアドレス（provisa.dev で公開している <code>supplies.parquet</code>）が入力され、保存で作成されました。新しい <strong>supplies</strong> ソースは、そのファイルをその場で読み取ります。",
+        "acting": "ソースを追加しています"
+      },
       "step4": {
         "title": "すべてがテーブルになる",
         "description": "ソースが何であれ、Mongo のコレクション、Kafka のトピック、REST エンドポイント、グラフのいずれでも、Provisa はそれを2次元の<strong>テーブル</strong>に分解します。あらゆるソースを横断して同じ形でクエリできます。<p>📁 テーブルは<strong>ドメイン</strong>にグループ化され、それぞれをデータスチュワードが担当し、モデルが進化する中で品質を守ります。</p>"

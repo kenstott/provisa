@@ -80,10 +80,20 @@ beforeEach(() => {
   );
 });
 
+const SUPPLIES = { ...PET_STORE[0], id: "supplies", type: "parquet" } as unknown as Source;
 const STATES: Record<string, Source[]> = {
   "no source registered": NONE,
   "the pet store registered": PET_STORE,
 };
+
+describe("the core tour's live-built source on the Sources page", () => {
+  // Built live by the step's actions (tourActing.test); here, entered again, it explains the row.
+  it("finds stepBuildSource's anchor once the supplies source is there", async () => {
+    SOURCES = { sources: [...PET_STORE, SUPPLIES], loading: false, refetch: REFETCH };
+    render(<SourcesPage />, { initialEntries: ["/sources"] });
+    expect(await walkTourStep("stepBuildSource")).toBeInTheDocument();
+  });
+});
 
 describe("the core tour's steps on the Sources page", () => {
   for (const [name, sources] of Object.entries(STATES)) {

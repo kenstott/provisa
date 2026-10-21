@@ -85,6 +85,11 @@
         "title": "73 tipos de fuente, 14 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
+      "stepBuildSource": {
+        "title": "Un origen, añadido en vivo",
+        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>, publicado en provisa.dev) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
+        "acting": "Añadiendo un origen"
+      },
       "step4": {
         "title": "Todo se convierte en una tabla",
         "description": "Sea cual sea el origen, ya sea una colección de Mongo, un topic de Kafka, un endpoint REST o un grafo, Provisa lo descompone en una <strong>tabla</strong> 2D: una forma uniforme para consultar en cualquier origen.<p>📁 Agrupa las tablas en <strong>dominios</strong>, cada uno a cargo de un data steward que vela por la calidad del modelo a medida que evoluciona.</p>"

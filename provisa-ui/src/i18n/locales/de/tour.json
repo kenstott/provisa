@@ -85,6 +85,11 @@
         "title": "73 Quellentypen, 14 Kategorien",
         "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie.</p>"
       },
+      "stepBuildSource": {
+        "title": "Eine Quelle, live hinzugefügt",
+        "description": "So wird eine Quelle hinzugefügt: Die Auswahl öffnete sich mit ihrer ganzen Liste, <strong>Parquet File</strong> wurde gewählt, die Adresse der Datei eingetragen (<code>supplies.parquet</code>, veröffentlicht auf provisa.dev) und Speichern legte sie an. Die neue Quelle <strong>supplies</strong> liest diese Datei an Ort und Stelle.",
+        "acting": "Quelle wird hinzugefügt"
+      },
       "step4": {
         "title": "Alles wird zu einer Tabelle",
         "description": "Egal welche Quelle, ob eine Mongo-Collection, ein Kafka-Topic, ein REST-Endpunkt oder ein Graph, Provisa zerlegt sie in eine 2D-<strong>Tabelle</strong>: eine einheitliche Form, um über alle Quellen hinweg abzufragen.<p>📁 Tabellen zu <strong>Domänen</strong> gruppieren, jede von einem Data Steward betreut, der die Qualität des Modells bei seiner Weiterentwicklung wahrt.</p>"

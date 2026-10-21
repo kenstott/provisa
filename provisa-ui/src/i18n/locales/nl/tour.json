@@ -85,6 +85,11 @@
         "title": "73 brontypen, 14 categorieën",
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
+      "stepBuildSource": {
+        "title": "Een bron, live toegevoegd",
+        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>, gepubliceerd op provisa.dev) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
+        "acting": "Bron toevoegen"
+      },
       "step4": {
         "title": "Alles wordt een tabel",
         "description": "Wat de bron ook is, of het nu een Mongo-collectie, een Kafka-topic, een REST-endpoint of een graaf is, Provisa ontleedt het tot een 2D-<strong>tabel</strong>: één uniforme vorm om over elke bron te bevragen.<p>📁 Groepeer tabellen in <strong>domeinen</strong>, elk beheerd door een data steward die de kwaliteit van het model bewaakt terwijl het evolueert.</p>"

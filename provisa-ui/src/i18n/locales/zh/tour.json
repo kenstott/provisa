@@ -85,6 +85,11 @@
         "title": "73 种数据源类型，14 个类别",
         "description": "一个选择器按类别列出所有类型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名称或别名搜索，也可以用类别标签缩小范围。每种类型都有徽标和可达性图标：⚡ 表示就地实时读取，复制图标表示 Provisa 读取已刷新的副本。<p>选一个，填写连接，保存。</p>"
       },
+      "stepBuildSource": {
+        "title": "现场添加一个数据源",
+        "description": "数据源就是这样添加的：选择器打开并显示完整列表，选中 <strong>Parquet File</strong>，填入文件地址（在 provisa.dev 发布的 <code>supplies.parquet</code>），然后点击保存创建。新的 <strong>supplies</strong> 数据源直接在原处读取该文件。",
+        "acting": "正在添加数据源"
+      },
       "step4": {
         "title": "一切都会变成表",
         "description": "无论数据源是什么，是 Mongo 集合、Kafka 主题、REST 端点，还是图数据库，Provisa 都会把它分解成一张二维<strong>表</strong>：用统一的形态跨所有数据源进行查询。<p>📁 把表分组到<strong>域</strong>中，每个域都有一位数据管家，负责在模型演进过程中守护其质量。</p>"
