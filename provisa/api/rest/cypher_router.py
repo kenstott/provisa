@@ -678,10 +678,14 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     """Return node labels and relationship types for the current role."""
     from provisa.api.app import state
 
+    from provisa.api.role_surface import role_surface
+
     role_id = _resolve_role_id(request, state)
-    ctx = state.contexts.get(role_id)
-    if ctx is None:
+    # One surface, taken once: its context and its root fields come from the same build.
+    surface = role_surface(state, role_id)
+    if surface is None or surface.context is None:
         return JSONResponse(status_code=503, content={"error": "Schema not loaded"})
+    ctx = surface.context
 
     label_map = _build_label_map(ctx, role_id, state)
     # REQ-2128: each table's root query field in this role's GraphQL schema and the name it is
@@ -690,7 +694,7 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
     # node) has neither.
     root_of = {
         info["table_id"]: (field, info["table_name"])
-        for field, info in state.table_path_maps.get(role_id, {}).items()
+        for field, info in surface.table_path_map.items()
     }
     all_tables: list[dict] = getattr(state, "schema_build_cache", {}).get("tables", [])
     col_types: dict = getattr(state, "schema_build_cache", {}).get("column_types", {})
