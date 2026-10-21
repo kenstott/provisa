@@ -138,6 +138,9 @@ const APP_ROLE = '[data-testid="role-selector-trigger"]';
 // The header's environment switcher: what every request after it is served from.
 const ENV_SWITCHER = '[data-testid="env-switcher-trigger"]';
 const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-grid-empty"])';
+// A statement refused, as the explorer shows it: the provisioning close read outside its view's
+// load window is refused by design, and its step shows the refusal rather than ending the tour.
+const SQL_RESULT_ERROR = '[data-testid="sql-results-error"]';
 
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
@@ -228,9 +231,10 @@ function demoTourStep(
     return {
       ...page,
       openQuery: { stateKey: "sql", text: def.sql },
-      // Its rows, not the table: the grid of an unrun tab is a table that says it has none.
-      readySelector: SQL_RESULT_ROW,
-      element: ".sql-results-table",
+      // Its rows, not the table: the grid of an unrun tab is a table that says it has none. Or
+      // its refusal, which is the answer the page shows then.
+      readySelector: `${SQL_RESULT_ROW}, ${SQL_RESULT_ERROR}`,
+      element: `.sql-results-table, ${SQL_RESULT_ERROR}`,
       waitMs: RESULT_WAIT_MS,
     };
   }

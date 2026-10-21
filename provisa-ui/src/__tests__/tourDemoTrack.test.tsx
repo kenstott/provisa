@@ -214,8 +214,26 @@ describe("a demo's steps, as the runner walks them", () => {
       open: '[data-testid="role-selector-trigger"]',
       option: '[data-role-option="customer"]',
     });
-    expect(sql.element).toBe(".sql-results-table");
+    expect(sql.element).toBe('.sql-results-table, [data-testid="sql-results-error"]');
     expect(onSql.chooseOnNext?.option).toBe('[data-sql-role-option="analyst"]');
+  });
+
+  it("is ready on a statement's refusal as on its rows, and shows the refusal", () => {
+    // The provisioning close, read outside its view's load window, is refused by design: the tour
+    // waited for rows that never came and ended there.
+    const [sql] = demoTourSteps(
+      [{ key: "close", route: "/sql", capability: "query_development", sql: "SELECT 1" }],
+      EXAMPLES,
+    );
+    document.body.innerHTML =
+      '<pre data-testid="sql-results-error">The view view_close_by_category can be read only within its read window.</pre>';
+    const refusal = document.querySelector('[data-testid="sql-results-error"]');
+    expect(document.querySelector(sql.readySelector ?? "")).toBe(refusal);
+    expect(document.querySelector(sql.element as string)).toBe(refusal);
+    document.body.innerHTML =
+      '<table class="sql-results-table"><tbody><tr data-testid="results-grid-empty"><td></td></tr></tbody></table>';
+    expect(document.querySelector(sql.readySelector ?? "")).toBeNull();
+    document.body.innerHTML = "";
   });
 
   it("hands a set of roles, a derived role among them, to the SQL explorer", () => {

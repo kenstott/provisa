@@ -84412,7 +84412,7 @@ And the views own refresh at 05:00 runs, and a read at 02:30 answers'
   - provisa-ui/src/components/admin/OffPeakWindowFields.tsx
   tests:
   - tests/unit/test_mv_load_window.py
-  notes: 'Maintainer 2026-10-16: reuse the exact load management window; for an MV it means do not pull from this MV outside the window; Provisa-scheduled work is told apart from user workloads.'
+  notes: 'Maintainer 2026-10-16: reuse the exact load management window; for an MV it means do not pull from this MV outside the window; Provisa-scheduled work is told apart from user workloads. 2026-10-21, the lead: a demo tour''s sql step is ready on its statement''s refusal as on its rows and highlights the refusal, so the provisioning close read outside its window shows the refusal the step describes instead of ending the tour (provisa-ui/src/tour/demoTour.ts, provisa-ui/src/__tests__/tourDemoTrack.test.tsx).'
 - id: REQ-2067
   status: proposed
   since: 2026-10
