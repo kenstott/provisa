@@ -76,7 +76,9 @@ def _read(shared_data):
 def _navigable(shared_data):
     targets = [value for entry in shared_data["nav"] for value in entry.values()]
     assert "metadata-export.md" in targets, targets
-    excluded = shared_data["mkdocs"].get("exclude_docs", "") or ""
+    # Each line of exclude_docs is a page (or folder) left out; the design note
+    # arch/metadata-export.md is one of them, this page is not.
+    excluded = [ln.strip() for ln in (shared_data["mkdocs"].get("exclude_docs") or "").splitlines()]
     assert "metadata-export.md" not in excluded
 
 
