@@ -728,6 +728,19 @@ _CLIENT_TOOLS: list[Any] = [
             "required": ["method", "path", "summary"],
         },
     },
+    # REQ-2115: what the user is looking at, read in their own browser session.
+    {
+        "name": "read_screen",
+        "description": (
+            "Read the screen the user is looking at, from their own browser session: the current "
+            "route; the open query editor's text (SQL, GraphQL, Cypher or Python) with its "
+            "language and the query tab open; the visible labelled form fields with their values "
+            "(a password shows as dots, as on screen); and each result grid's columns and row "
+            "count, never its rows. Call it whenever the user refers to 'this', 'the query' or "
+            "anything on the screen, before you answer or act on it."
+        ),
+        "input_schema": {"type": "object", "properties": {}},
+    },
 ]
 _CLIENT_TOOL_NAMES = frozenset(t["name"] for t in _CLIENT_TOOLS)
 
@@ -783,7 +796,9 @@ _SYSTEM = (
     "own machinery -- an engine, binder, planner or compiler error ('Execution failed', "
     "'Binder Error', an internal column such as _nf_query) -- is a Provisa error: say so, quote "
     "it, and offer a working way to the same answer (e.g. the same question in SQL over a "
-    "registered view), never a step for the user to fix it. When you're offering the user a decision among a handful of concrete options — which "
+    "registered view), never a step for the user to fix it. When the user refers to 'this', "
+    "'the query', 'these results' or anything else on their screen, call read_screen first and "
+    "work from what it returns; never say you cannot see the screen. When you're offering the user a decision among a handful of concrete options — which "
     "source, which table, proceed or not, pick some of these — call present_choice rather than "
     "listing options in prose and waiting for a typed reply; it's a real UI widget (multiple "
     "choice, checklist, or yes/no) and reads better than typing a number or a name back. Its "

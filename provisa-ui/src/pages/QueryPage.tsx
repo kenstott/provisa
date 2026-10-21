@@ -55,6 +55,7 @@ import { getStored, scopedStorage, setStored, storageKey } from "../lib/browserS
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { operationNameOf } from "./graphqlOperationName";
 import { savedActiveTab } from "./graphiqlSavedTab";
+import { useScreenEditor } from "../mcp/screenState";
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
 monaco.languages.registerCompletionItemProvider("graphql", {
@@ -525,6 +526,15 @@ function createProvisaFetch(
   };
 }
 
+/** REQ-2115: Polly's read_screen reads the operation in the editor and the open tab from here. */
+function PublishToScreen() {
+  // The store's tab, which the editor writes its operations into as they are typed. A tab whose
+  // editor was never written holds no query: its editor is empty.
+  const tab = useGraphiQL((s) => s.tabs[s.activeTabIndex]);
+  useScreenEditor("/query", { language: "graphql", text: tab.query ?? "", tab: tab.title });
+  return null;
+}
+
 /** Opens a new GraphiQL tab holding a query handed to the page, and runs it when asked.
  *  Mounted once per hand-off (keyed by the caller), whether the page was just opened or was
  *  already open. */
@@ -977,6 +987,7 @@ export function QueryPage() {
         initialVariables={savedTab?.variables}
         initialHeaders={savedTab?.headers}
       >
+        <PublishToScreen />
         {handed && <OpenFromNav key={handed.seq} query={handed.query} autoRun={handed.autoRun} />}
         <GraphiQL.Footer>
           <ResponseTableOverlay />
