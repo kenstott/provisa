@@ -71,6 +71,8 @@ class _Receiver(BaseHTTPRequestHandler):
             document = {}
         if isinstance(document, dict):
             document = {**document, "id": str(uuid.uuid4()), "guid": str(uuid.uuid4())}
+            # A catalog names what it created by its fully qualified name (OpenMetadata).
+            document.setdefault("fullyQualifiedName", document.get("name", ""))
         out = json.dumps(document).encode()
         self.send_response(200)
         self.send_header("Content-Type", "application/json")

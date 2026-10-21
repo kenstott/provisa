@@ -562,7 +562,10 @@ def to_native_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:  # REQ-
                 guid=table_guid,
                 attributes=attributes,
                 classifications=_classifications(snapshot, table.ref.fqn()),
-                relationships={"source": {"guid": source_guids[table.ref.parts[0]]}},
+                # A view is Provisa's own, read from no source: it has no source container.
+                relationships=(
+                    {} if table.is_view else {"source": {"guid": source_guids[table.ref.parts[0]]}}
+                ),
             )
         )
         for column in table.columns:
@@ -718,7 +721,8 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
                 guid=table_guid,
                 attributes=attributes,
                 classifications=_classifications(snapshot, table.ref.fqn()),
-                relationships={"db": {"guid": db_guids[source_id]}},
+                # A view is Provisa's own, read from no source: it has no database container.
+                relationships={} if table.is_view else {"db": {"guid": db_guids[source_id]}},
             )
         )
         for column in table.columns:

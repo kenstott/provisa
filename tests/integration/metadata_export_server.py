@@ -103,7 +103,10 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
     """The server's configuration: the governed model every target is published from. A target
     that shares the members' physical objects (Snowflake Horizon) takes the product without the
     view, which is no object of the engine's: two members, as its scenario reads."""
-    everyone = ["analyst", "data_owner", "admin"]
+    roles = ["analyst", "data_owner", "admin"]
+    # The org's own admin reads every member as well: the tests read as org_admin, the role the
+    # server's default assignment gives.
+    everyone = [*roles, "org_admin"]
     config = {
         "federation_engine": engine,
         "auth": {
@@ -132,7 +135,7 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
         ],
         "roles": [
             {"id": r, "description": f"{r} role.", "capabilities": [], "domain_access": ["*"]}
-            for r in everyone
+            for r in roles
         ],
         "data_products": [PRODUCT_FIELDS],
         "tables": [
@@ -173,7 +176,9 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                     {
                         "name": "ssn",
                         "data_type": "text",
-                        "visible_to": everyone,
+                        # The masked column's audience is the model's roles: masked for all but
+                        # admin, as the catalogs' restricted and exempt roles show it.
+                        "visible_to": roles,
                         "masks": [
                             {"to": ["admin"], "mask": None},
                             {
