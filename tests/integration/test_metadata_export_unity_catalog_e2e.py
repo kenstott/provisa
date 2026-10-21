@@ -105,6 +105,8 @@ async def published():
                 )
                 assert read.status_code == 200, read.text
             result = await publish(client, {"provider": "unity_catalog", "delta_share": True})
+        # What the publish refused is the finding: read back only what it says it published.
+        assert result["ok"], result["errors"]
         conn = _connect(creds)
         try:
             views = {
@@ -127,7 +129,9 @@ async def published():
                     f"WHERE schema_name = '{product}'",
                 )
             )
-            shared = [row[0] for row in _rows(conn, f"SHOW ALL IN SHARE `{share}`")]
+            # SHOW ALL IN SHARE: name is share-relative (schema.view); shared_object is the full
+            # name.
+            shared = [row[2] for row in _rows(conn, f"SHOW ALL IN SHARE `{share}`")]
         finally:
             conn.close()
         yield result, views, comment[0], tags, shared, catalog, product

@@ -135,7 +135,9 @@ def governance_statements(
             stmts.append(f"ALTER VIEW {q(*view)} SET TAGS ('{key}' = '{value}')")
         elif fqn in columns:
             stmts.append(
-                f"ALTER VIEW {q(*view)} ALTER COLUMN {q(columns[fqn])} "
+                # A view's column is tagged through ALTER TABLE: Databricks has no ALTER VIEW
+                # ... ALTER COLUMN.
+                f"ALTER TABLE {q(*view)} ALTER COLUMN {q(columns[fqn])} "
                 f"SET TAGS ('{key}' = '{value}')"
             )
     return stmts
@@ -292,7 +294,7 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
         reported."""
         share = share_name(product)
         cur.execute(f"CREATE SHARE IF NOT EXISTS {q(share)}")
-        shared = {str(row[0]) for row in self._rows(cur, f"SHOW ALL IN SHARE {q(share)}")}
+        shared = self._shared_objects(cur, share)
         wanted: set[str] = set()
         for name, view in sorted(views.items()):
             catalog, schema, table = members[name]
@@ -316,6 +318,13 @@ class UnityCatalogExport(MetadataExport):  # REQ-2117
         for stale in sorted(shared - wanted):
             cur.execute(f"ALTER SHARE {q(share)} REMOVE VIEW {q(*stale.split('.'))}")
         result.published["shares"] = result.published.get("shares", 0) + 1
+
+    def _shared_objects(self, cur: Any, share: str) -> set[str]:
+        """The full names of what ``share`` holds (``SHOW ALL IN SHARE``'s ``shared_object``;
+        its ``name`` is the share-relative ``schema.object``)."""
+        cur.execute(f"SHOW ALL IN SHARE {q(share)}")
+        column = [d[0] for d in cur.description].index("shared_object")
+        return {str(row[column]) for row in cur.fetchall()}
 
     async def health(self) -> None:
         runtime = self._runtime_or_none()

@@ -50,10 +50,15 @@ class _Cursor:
     def __init__(self, warehouse: "_Warehouse") -> None:
         self.warehouse = warehouse
         self._rows: list[tuple] = []
+        self.description: list[tuple] = []
 
     def execute(self, sql: str) -> None:
         self.warehouse.statements.append(sql)
         self._rows = self.warehouse.answer(sql)
+        # SHOW ALL IN SHARE names the share-relative object, then the full name.
+        self.description = (
+            [("name",), ("type",), ("shared_object",)] if "SHOW ALL IN SHARE" in sql else []
+        )
 
     def fetchall(self) -> list[tuple]:
         return self._rows
@@ -76,7 +81,7 @@ class _Warehouse:
         if "information_schema.views" in sql:
             return [(v,) for v in self.views]
         if "SHOW ALL IN SHARE" in sql:
-            return [(s,) for s in self.shared]
+            return [(s.split(".", 1)[1], "VIEW", s) for s in self.shared]
         if "data_source_format" in sql:
             table = sql.split("table_name = '")[1].split("'")[0]
             return [(self.formats.get(table, "DELTA"),)]
@@ -209,7 +214,12 @@ async def test_a_product_is_a_schema_of_views_over_its_members_replicas(warehous
     # The mask is a fact about the column, named by its rule, never its pattern.
     masked = [s for s in sql if "provisa_governance:masked" in s]
     assert masked and all("(.*)" not in s for s in masked)
-    assert any("ALTER COLUMN `ssn` SET TAGS" in s for s in masked)
+    # Databricks tags a view's column through ALTER TABLE; it has no ALTER VIEW ... ALTER COLUMN.
+    assert any(
+        s.startswith("ALTER TABLE `main`.`customer_360`.`") and "ALTER COLUMN `ssn` SET TAGS" in s
+        for s in masked
+    )
+    assert not any(s.startswith("ALTER VIEW") and "ALTER COLUMN" in s for s in sql)
     (product,) = snapshot.data_products
     assert result.bindings[product.semantic_uri] == ("main.customer_360", "main.customer_360")
 
