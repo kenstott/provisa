@@ -230,3 +230,29 @@ def test_a_checker_table_without_a_scan_interval_is_refused(ttl):
     results.cache_ttl = ttl
     with pytest.raises(ValueError, match="scans every cache_ttl seconds"):
         _validate_dq_contracts(_config(results, _target_table()))
+
+
+@pytest.mark.parametrize("checker", ["soda", "great_expectations"])
+def test_a_checker_whose_password_the_deployment_has_not_set_loads_as_written(checker, monkeypatch):
+    """A checker source made in the Sources form names its password by reference; the scan
+    resolves it, so a deployment without the variable still loads its org's model."""
+    from provisa.core.config_loader import parse_config_dict
+
+    monkeypatch.delenv("PROVISA_DQ_PASSWORD", raising=False)
+    mapping = {
+        "host": "localhost",
+        "port": 5439,
+        "database": "provisa",
+        "user": "org_admin",
+        "password": "${env:PROVISA_DQ_PASSWORD}",
+    }
+    config = parse_config_dict(
+        {
+            "sources": [{"id": "dq", "type": checker, "mapping": mapping}],
+            "domains": [],
+            "tables": [],
+            "roles": [],
+        }
+    )
+    assert config.sources[0].mapping == mapping
+    assert config.written.sources[0].mapping == mapping
