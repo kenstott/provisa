@@ -83,7 +83,9 @@ def server():
                 engine="pg",
                 config=str(path),
                 control_plane="own",
-                env={"PROVISA_MATERIALIZE_URL": store.dsn()},
+                # The engine runs on the store this test starts, beside its sources: left to the
+                # control plane, it would run in the stack's container, where 127.0.0.1 is not them.
+                env={"PROVISA_MATERIALIZE_URL": store.dsn(), "PROVISA_ENGINE_URL": store.dsn()},
             )
             try:
                 srv.start()
