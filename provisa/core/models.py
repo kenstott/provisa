@@ -2849,10 +2849,11 @@ class ControlPlaneConfig(BaseModel):
     """
 
     # REQ-837: required like the platform's, with no fallback.
-    tenant_url: str = "${env:TENANT_DATABASE_URL}"
+    tenant_url: str = "${env:TENANT_DATABASE_URL}"  # reference-convention: REQ-837
     # REQ-837: PLATFORM_DATABASE_URL is required at startup with no fallback —
     # a missing var raises in resolve_secrets rather than silently defaulting.
-    platform_url: str = "${env:PLATFORM_DATABASE_URL}"
+    platform_url: str = "${env:PLATFORM_DATABASE_URL}"  # reference-convention: REQ-837
+    # reference-convention: REQ-695 -- an unset ORG_ID is the org named "default", by that REQ
     org_id: str = "${env:ORG_ID:-default}"
     pool_min: int = 2
     pool_max: int = 10

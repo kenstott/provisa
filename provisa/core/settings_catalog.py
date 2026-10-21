@@ -289,6 +289,7 @@ DECLARED: list[Setting] = [
         # (maintainer ruling, 2026-10-10: the product resolves what a field holds and makes up
         # no secret names): an operator who already created a secret of this name keeps
         # working, and any other value or reference may be typed over it.
+        # reference-convention: REQ-1798 -- the Kaggle token's fixed secret name
         default="${secret:kaggle_api_token}",
         credential=True,
     ),

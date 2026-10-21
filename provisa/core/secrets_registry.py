@@ -214,7 +214,7 @@ def _register_builtins() -> None:
                     "type": "string",
                     "required": True,
                     "secret": True,
-                    "placeholder": "${env:VAULT_TOKEN}",
+                    "placeholder": "${env:VAR_NAME}",
                 },
                 {
                     "config_key": "mount",

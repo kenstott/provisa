@@ -54,6 +54,7 @@ from provisa.api.sandbox_tier import TEMPLATE_PREFIX, is_template_org, template_
 from provisa.core.replicate import ALWAYS
 from provisa.core.connection_loop import CrossLoopLock
 
+# reference-convention: REQ-1858 -- a demo config's path to its own directory, not a secret
 _DEMO_DIR_REF = "${env:PROVISA_NAMED_DEMO_DIR}"
 
 
