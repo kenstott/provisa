@@ -402,7 +402,9 @@ def _model(monkeypatch, *tables: tuple[str, str, str]) -> SimpleNamespace:
 
     async def _govern_and_route(sql, _role, **_kw):
         calls.routed.append(sql)
-        return SimpleNamespace(route=Route.ENGINE, physical_sql="SELECT 1", exec_params=None)
+        return SimpleNamespace(
+            route=Route.ENGINE, physical_sql="SELECT 1", exec_params=None, columns=None
+        )
 
     async def _resident(_state, plan):
         calls.resident.append(plan.physical_sql)

@@ -733,7 +733,9 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
                 from provisa.mv.governed_build import view_build_sql
 
                 _probe = await engine.execute_engine(
-                    f"SELECT * FROM ({await view_build_sql(_m, engine)}) AS _mv_probe LIMIT 0",
+                    # Its columns alone: a column transform's rows are not computed for a probe.
+                    f"SELECT * FROM ({await view_build_sql(_m, engine, rows=False)}) "
+                    "AS _mv_probe LIMIT 0",
                     authorization=system_auth("event signal"),
                 )
             except Exception:

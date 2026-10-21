@@ -134,7 +134,11 @@ async def lineage_graph(request: Request, body: LineageGraphRequest) -> dict:
     require_capability_request(request, "view_governance")
     from provisa.api.app import state
 
-    commands = getattr(state, "tracked_functions", None) or {}
+    # REQ-2131: a column transform is a named step of the projections that apply it.
+    commands = {
+        **(getattr(state, "tracked_functions", None) or {}),
+        **(getattr(state, "column_transforms", None) or {}),
+    }
     view_rows = await _fetch_view_rows(state)
     views, mats = _registry_views(view_rows, getattr(state, "mv_registry", None))
     natives = await _native_tables(request, state)
@@ -321,7 +325,11 @@ async def federation_graph(
 
     require_capability_request(request, "view_governance")
 
-    commands = getattr(state, "tracked_functions", None) or {}
+    # REQ-2131: a column transform is a named step of the projections that apply it.
+    commands = {
+        **(getattr(state, "tracked_functions", None) or {}),
+        **(getattr(state, "column_transforms", None) or {}),
+    }
     view_rows = await _fetch_view_rows(state)
     column_rows = await _fetch_registry_columns(state)
     domain_filter = {d for d in (domains or "").split(",") if d}

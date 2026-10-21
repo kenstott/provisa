@@ -78,6 +78,8 @@ def test_the_codes_tables_commands_and_streams_are_read_from_docstrings_and_hint
         ("fetched", "table"),
         ("direct", "table"),
         ("greet", "table"),
+        ("clean_address", "columns"),
+        ("short_address", "columns"),
     }
     orders = manifest.export("orders")
     assert orders.description == "Orders of one customer."
@@ -324,7 +326,7 @@ def worker(tmp_path):
 def test_the_host_says_which_functions_it_has_and_not_what_it_imported(worker):
     assert set(worker.exports) == {
         "orders", "many", "placed", "ticks", "forever", "cancel_order", "boom", "outside",
-        "fetched", "direct", "greet", "helper",
+        "fetched", "direct", "greet", "helper", "clean_address", "short_address",
     }  # fmt: skip
 
 
@@ -404,3 +406,26 @@ def test_an_argument_left_out_takes_the_functions_own_default(worker):
         schema=_schema("greet"),
     )
     assert list(rows) == [[{"text": "hi ada!"}]]
+
+
+# -- a batch column transform (REQ-2131) -------------------------------------------------------
+
+
+def test_a_columns_function_is_read_from_its_docstring_and_hints():
+    manifest = read_manifest(_read(FIXTURE, "orders"), PYTHON_RULES)
+    transform = manifest.export("clean_address")
+    assert transform.kind == "columns"
+    assert [(p.name, p.shape) for p in transform.parameters] == [
+        ("raw_address", ListOf(Scalar("text")))
+    ]
+    assert transform.returns == Named("Address")
+
+
+def test_a_columns_call_answers_one_result_a_row_in_order(worker):
+    raw = ["1 Main St, springfield, us", "2 Rue Haute, lyon, fr"]
+    assert worker.columns(
+        "clean_address", [raw], ["raw_address"], schema=_schema("clean_address")
+    ) == [
+        {"street": "1 Main St", "city": "Springfield", "country": "US"},
+        {"street": "2 Rue Haute", "city": "Lyon", "country": "FR"},
+    ]

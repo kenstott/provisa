@@ -26,7 +26,7 @@ administrator in the one default region: its definition is read as a direct stat
 so a search table it reads is read under its arguments (REQ-1922).
 """
 
-# Requirements: REQ-133, REQ-1912, REQ-1921, REQ-1922
+# Requirements: REQ-133, REQ-1912, REQ-1921, REQ-1922, REQ-2131
 
 from __future__ import annotations
 
@@ -36,10 +36,12 @@ if TYPE_CHECKING:
     from provisa.mv.models import MVDefinition
 
 
-async def view_build_sql(mv: "MVDefinition", engine: Any) -> str:
+async def view_build_sql(mv: "MVDefinition", engine: Any, *, rows: bool = True) -> str:
     """The engine statement a build of ``mv`` lands from (the landing itself is the system's
     write): its definition through the one pipeline as the administrator, its inputs made readable
-    as the administrator's read's are. ``engine`` is the FederationEngine it lands through."""
+    as the administrator's read's are. ``engine`` is the FederationEngine it lands through.
+    ``rows=False``: a statement for the view's columns alone (a probe of its shape), which runs no
+    column transform (REQ-2131)."""
     from provisa.api.app import state
     from provisa.federation.query_residency import prepare_engine_residency
 
@@ -48,7 +50,70 @@ async def view_build_sql(mv: "MVDefinition", engine: Any) -> str:
     # Its inputs are made readable as the administrator's read's are, before it runs.
     await prepare_engine_residency(state, plan)
     assert plan.physical_sql is not None  # an ENGINE plan always carries it
+    if plan.columns is not None:
+        # REQ-2131: a column transform's outputs are computed by its function, not the engine:
+        # the build's rows are read and transformed through the one pipeline's terminal, and the
+        # engine lands the view from them. Recomputed at each build, so at each refresh.
+        if not rows:
+            return await _transformed_shape_sql(mv, plan, engine)
+        return await _transformed_rows_sql(state, mv, plan, engine)
     return plan.physical_sql
+
+
+async def _typed_columns(mv: "MVDefinition", plan: Any) -> list[tuple[str, str]]:
+    shape = await plan.result_shape()
+    if shape is None:
+        raise ViewNotBuildable(mv.id, "its result columns cannot be typed from the model")
+    return [(name, str(declared)) for name, declared in shape]
+
+
+async def _transformed_shape_sql(mv: "MVDefinition", plan: Any, engine: Any) -> str:
+    """A statement with the view's columns, typed, and no rows: its shape, with nothing run."""
+    import sqlglot.expressions as exp
+
+    from provisa.core.ir_types import to_physical
+
+    # The engine's SQL dialect as SQLAlchemy names it, as command_localize renders its casts.
+    physical = "postgresql" if engine.dialect == "postgres" else engine.dialect
+    items = [
+        exp.Alias(
+            this=exp.Cast(
+                this=exp.Null(),
+                to=exp.DataType.build(to_physical(ir, physical), dialect=engine.dialect),
+            ),
+            alias=exp.to_identifier(name, quoted=True),
+        )
+        for name, ir in await _typed_columns(mv, plan)
+    ]
+    return exp.select(*items).where(exp.false()).sql(dialect=engine.dialect)
+
+
+async def _transformed_rows_sql(state: Any, mv: "MVDefinition", plan: Any, engine: Any) -> str:
+    """The engine statement that reads ``plan``'s rows, its column transforms applied: the rows
+    landed in the org's cache schema for the build, dropped after it."""
+    from provisa.api_source.engine_cache import (
+        _table_ref,
+        cache_location,
+        ensure_cache_schema,
+        org_cache_schema,
+        resolved_cache_catalog,
+        schedule_drop,
+    )
+    from provisa.executor.redirect import RedirectConfig
+    from provisa.pgwire._pipeline import _execute_plan
+
+    result = await _execute_plan(plan)
+    columns = await _typed_columns(mv, plan)
+    rows = [dict(zip(result.column_names, row)) for row in result.rows]
+    # Where a statement's own landed rows go -- a code table's among them -- not the view store.
+    loc = cache_location(mv.id, resolved_cache_catalog(engine), org_cache_schema(state))
+    table = f"mv_columns_{mv.id}"
+    with engine.isolated_sync() as conn:
+        ensure_cache_schema(conn, loc)
+    await engine.land_source_table(schema=loc.schema, table=table, columns=columns, rows=rows)
+    # The build that reads it runs now; an hour outlasts it.
+    schedule_drop(engine, loc, table, 3600, RedirectConfig.from_env())
+    return f"SELECT * FROM {_table_ref(loc, table, engine.dialect)}"
 
 
 async def view_build_rows(mv: "MVDefinition", engine: Any) -> list[dict]:

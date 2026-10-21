@@ -3310,6 +3310,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
         _editor, input = await require_table_save(info, input)  # REQ-1944
+        from provisa.api.admin._table_ops import land_transform_view
+
+        land_transform_view(input)  # REQ-2131: a view applying a column transform is landed
         from provisa.core.repositories import table as table_repo
 
         pool = await _get_pool()

@@ -23,7 +23,7 @@
 // a numeric or json field is text, named so in its metadata. Arrow is the only form rows take.
 // The Arrow library is apache-arrow's self-contained build, from PROVISA_HOST_LIB.
 //
-//   Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names,
+//   Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream"|"columns", args, names,
 //                     schema}  -- the rows' schema, base64 IPC; null for a single value
 //                    {op: "cancel", id}      {op: "ping", id}
 //   host -> Provisa  {op: "hello", protocol, code_hash, exports}

@@ -26,7 +26,7 @@ Arrow is the only form rows take (REQ-2098). In a JSON message a timestamp trave
 does not give is ``{"$absent": true}`` (:data:`ABSENT`), and ``names`` are the parameters' names in
 the order ``args`` gives them, for a host whose language passes arguments by name.
 
-    Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names,
+    Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream"|"columns", args, names,
                       schema,  -- the rows' Arrow schema, base64 IPC; null for a single value
                       traceparent}  -- the request's trace (W3C), or null (REQ-2106)
                      {op: "call", id, export, kind: "table", calls: [{args, names}, ...], schema,
@@ -635,6 +635,33 @@ class Worker:
             finally:
                 self._close(call_id)
 
+    def columns(
+        self, export: str, columns: Sequence[list], names: Sequence[str], *, schema: str
+    ) -> list[dict]:
+        """REQ-2131: a ``@columns`` function's results for one batch: ``columns`` are its input
+        columns, each a list of the batch's values in row order, and the results come back as
+        rows of its output ``schema``, in order."""
+        from provisa.codesource.arrow_rows import rows_of
+
+        with stage(_tracer, "codesource.call") as span:
+            self._describe(span, export, "columns", columns)
+            call_id, waiting = self._open()
+            try:
+                self._send(
+                    self._call_frame(
+                        call_id, export, "columns", [list(c) for c in columns], names, schema
+                    )
+                )
+                results: list[dict] = []
+                while (message := self._next(call_id, waiting, export))["op"] != "end":
+                    if message["op"] == "rows":
+                        results.extend(rows_of(message["arrow"]))
+                span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
+                span.set_attribute("codesource.rows", len(results))
+                return results
+            finally:
+                self._close(call_id)
+
     def _describe(self, span: Any, export: str, kind: str, args: Sequence[Any]) -> None:
         """What a call is, on its stage: never an argument's value."""
         span.set_attribute("codesource.source", self.source_id)
@@ -692,13 +719,14 @@ class Worker:
 
 
 class WorkerPool:
-    """The process's workers, one per ``(source, content hash)``, started on first use. A worker
-    whose process has ended is dropped and the next call starts another."""
+    """The process's workers, as many per ``(source, content hash)`` as the source runs (REQ-2131:
+    each its ``slot``), each started on first use. A worker whose process has ended is dropped and
+    the next call starts another."""
 
     def __init__(self) -> None:
-        self._workers: dict[tuple[str | None, str, str], Worker] = {}
+        self._workers: dict[tuple[str | None, str, str, int], Worker] = {}
         #: REQ-2098: a remote host's failed dials: (count, next try, why).
-        self._failures: dict[tuple[str | None, str, str], tuple[int, float, str]] = {}
+        self._failures: dict[tuple[str | None, str, str, int], tuple[int, float, str]] = {}
         self._lock = threading.Lock()
 
     def get(
@@ -708,10 +736,12 @@ class WorkerPool:
         command: Callable[[], HostCommand],
         *,
         org: str | None = None,
+        slot: int = 0,
     ) -> Worker:
         """``org``: the org the worker serves; one org's worker never serves another's calls,
-        since it holds that org's services grant (REQ-2104)."""
-        key = (org, source_id, content_hash)
+        since it holds that org's services grant (REQ-2104). ``slot``: which of the source's
+        workers (REQ-2131)."""
+        key = (org, source_id, content_hash, slot)
         with self._lock:
             worker = self._workers.get(key)
             if worker is not None and worker.alive():
@@ -724,12 +754,19 @@ class WorkerPool:
             return worker
 
     def remote(
-        self, source_id: str, content_hash: str, org: str, make: Callable[[], "Worker"]
+        self,
+        source_id: str,
+        content_hash: str,
+        org: str,
+        make: Callable[[], "Worker"],
+        *,
+        slot: int = 0,
     ) -> "Worker":
         """REQ-2098: a built source's worker, its remote host dialled on first use and again
         after it stops answering -- with backoff: a host that failed is not dialled again until
-        its wait (1 s, doubling to a minute) has passed, and a call meanwhile fails naming it."""
-        key = (org, source_id, content_hash)
+        its wait (1 s, doubling to a minute) has passed, and a call meanwhile fails naming it.
+        ``slot``: which of the source's workers, each its own connection (REQ-2131)."""
+        key = (org, source_id, content_hash, slot)
         with self._lock:
             worker = self._workers.get(key)
             if worker is not None and worker.alive():

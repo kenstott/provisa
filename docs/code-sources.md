@@ -4,13 +4,14 @@ Sometimes the data you need sits behind code your team already wrote: a scoring 
 
 ## What a function becomes {: #what-a-function-becomes }
 
-Provisa reads your code's own declarations: JSDoc tags and TypeScript types for Node, docstrings and type hints for Python. Three tags count.
+Provisa reads your code's own declarations: JSDoc tags and TypeScript types for Node, docstrings and type hints for Python. Four tags count.
 
 | Tag | Becomes |
 |---|---|
 | `@table` | A table. The function returns a list or an iterable, and each element is a row |
 | `@command` | A command, run on request |
 | `@stream` | A live table. The function is a generator, and each row is sent as it is yielded |
+| `@columns` | A column transform: a batch of rows in, one result per row out. See [Column transforms](#column-transforms) |
 
 A function without a tag is ignored. A tag Provisa doesn't know is refused, and so is a type it can't map. The refusal names the function and lists every problem at once, so you fix them in one pass.
 
@@ -274,6 +275,46 @@ export async function churnScore(
   return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
+
+## Column transforms: `@columns` {: #column-transforms }
+
+A function tagged `@columns` computes new columns from the columns of rows you already have: it splits an address into its parts, classifies a description, or enriches a name. It takes a batch of rows and returns one result per row, in the same order.
+
+Each parameter is one input column, given as a list of that batch's values in row order. The function returns a list with one object per input row, and the object's fields are the output columns. In Python:
+
+```python
+@dataclass
+class Address:
+    street: str
+    city: str
+    country: str
+
+
+def clean_address(raw_address: list[str]) -> list[Address]:
+    """Each raw address of the batch, as its parts.
+
+    @columns
+    """
+    ...
+```
+
+In TypeScript, declare it as `clean_address(raw_address: string[]): Promise<Address[]>` with `@columns` in its JSDoc.
+
+You register it as a command, one at a time like any other: on the **Commands** page, pick the source, and its `@columns` functions are offered to pick from. The function's declaration supplies the input and output columns. Register it into a domain with the roles that may use it.
+
+Apply it in a select list, and its output columns take the place of the call:
+
+```sql
+SELECT id, clean_address(raw_address) FROM suppliers
+```
+
+This answers `id, street, city, country`. Rename the outputs in an outer query if you need other names. The call has to be an item of the statement's own select list: Provisa runs the function on the rows once they are read, so a call in a `WHERE`, a `JOIN`, a `GROUP BY` or inside another expression is refused by name, and so is an alias on the call. Each output column is a named step of the projection's lineage.
+
+The rows go to the function in batches of 1,000. A function that keeps no state between calls lets the batches run side by side, across the source's workers: set **Workers** on the source's form (`workers` in its mapping) to run more than one, and each added worker adds throughput. A batch answered with a different number of results than rows it was given is refused, naming the function.
+
+The function can call Provisa's services, the LLM service among them, so one model call can clean, classify or enrich a whole batch. Each call is metered and capped against the source like any of its other calls ([Calling a model](#calling-a-model)).
+
+A view that applies a column transform is landed, whether or not you declare it a materialized view: Provisa builds it as it builds a materialized view, calling the function on the view's rows in batches and storing the result, and the view is read from that stored table. A statement can then filter, join or group on the output columns like any other. The outputs are computed again each time the view is refreshed, as its freshness declares. They have no schedule of their own.
 
 ## An example {: #an-example }
 

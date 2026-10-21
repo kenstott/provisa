@@ -74,7 +74,10 @@ def pipeline(monkeypatch):
     async def _govern_and_route(sql, role_id, **kw):
         calls.routed.append((sql, role_id, kw))
         return SimpleNamespace(
-            route=calls.route, physical_sql="SELECT id, home FROM governed", exec_params=None
+            route=calls.route,
+            physical_sql="SELECT id, home FROM governed",
+            exec_params=None,
+            columns=None,
         )
 
     async def _residency(_state, plan):

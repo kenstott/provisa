@@ -216,6 +216,10 @@ class _Plan:
     # select-list columns whose texts are embedded once the rows are read, and the models used,
     # which its audit record names. None: the statement calls no embed().
     embedded: Any = field(default=None)
+    # REQ-2131: the statement's column transform calls as the fold resolved them
+    # (codesource.columns_fold.Folded): each call's input columns, replaced by its output columns
+    # once the rows are read. None: the statement applies no column transform.
+    columns: Any = field(default=None)
     # REQ-1865: row-materialize predicate resolution — the concrete PK bound(s) this statement's
     # compiled plan resolved against every row_materialize table it references (empty when the
     # statement touches no such table, or none of its predicates resolve to a bounded PK set).
@@ -1444,6 +1448,12 @@ class _KeptResultShape:
         except UnderivableColumn as underivable:
             self._memo["read_shape_underivable"] = [str(underivable)]
             return None
+        transformed = self._memo.get("columns")
+        if transformed is not None:
+            from provisa.codesource.columns_fold import reshape
+
+            # REQ-2131: a column transform's inputs are read; its outputs are what is answered.
+            shape = reshape(shape, transformed.calls)
         untyped = [str(declared) for _name, declared in shape if isinstance(declared, Underived)]
         if untyped:
             self._memo["read_shape_underivable"] = untyped
@@ -1770,6 +1780,25 @@ async def govern_statement(
     from provisa.vector import embed_fn as _embed_fn
 
     _memo: dict[str, Any] = {}
+    _transforms = getattr(state, "column_transforms", None) or {}
+    if _transforms:
+        # REQ-2131: a column transform is Provisa's: its select-list call reads its input columns,
+        # and the function's output columns replace them once the rows are read (the plan's
+        # ``columns``). Folded before embed(), whose select-list positions are then the folded ones.
+        from provisa.codesource import columns_fold as _columns_fold
+
+        if _columns_fold.mentions(governed_semantic, _transforms):
+            from provisa.api.data.action_exec import admit_command
+
+            _columns = await _off_loop(
+                _columns_fold.fold,
+                governed_semantic,
+                _transforms,
+                lambda command, name: admit_command(command, state, role_id, name),
+            )
+            governed_semantic = _columns.sql
+            if _columns.calls:
+                _memo["columns"] = _columns
     if _embed_fn.mentions(governed_semantic):
         # REQ-2002: embed() is Provisa's: a literal text is embedded now, a text of rows once the
         # rows are read (the plan's ``embedded``); no source or engine sees the call.
@@ -1823,6 +1852,7 @@ async def _route_bounded(governed: "_Governed", **how: Any) -> _Plan:
     if how.get("explain") is None:
         plan.row_limit = governed.gov_ctx.row_limit
     plan.embedded = governed.memo.get("embed")  # REQ-2002
+    plan.columns = governed.memo.get("columns")  # REQ-2131
     return plan
 
 
@@ -1853,7 +1883,8 @@ def _two_step_insert(governed: "_Governed", written_table_id: int | None, state:
     target_source = sources[written_table_id]
     reads = {sources[t] for t in governed.table_ids if t != written_table_id and t in sources}
     folded = governed.memo.get("embed")
-    if reads <= {target_source} and (folded is None or not folded.rows):
+    transformed = governed.memo.get("columns")  # REQ-2131: its rows' outputs, computed once read
+    if reads <= {target_source} and (folded is None or not folded.rows) and transformed is None:
         return None
     return _TwoStepInsert(governed=governed, template=template, target_source=target_source)
 
@@ -1884,6 +1915,7 @@ async def _two_step_plan(
     read = await route_governed(read_governed, params=params, as_of=as_of)
     read.audit = None  # the statement's one record is the write's
     read.embedded = governed.memo.get("embed")  # REQ-2002: its rows' texts, embedded once read
+    read.columns = governed.memo.get("columns")  # REQ-2131: its rows' outputs, computed once read
     two.read = read
     assert isinstance(two.template, exp.Insert)
     from provisa.compiler.write_admission import written_table_id
@@ -3116,6 +3148,11 @@ async def _execute_plan_bound(plan: _Plan, state: Any) -> QueryResult:
         result = await embed_rows(
             result, plan.embedded.rows, await vector_registry(state), embedding_provider
         )
+    if plan.columns is not None and plan.two_step is None:
+        from provisa.codesource.columns_fold import apply as _apply_columns
+
+        # REQ-2131: each call's input columns become the outputs its function returned per row.
+        result = await _apply_columns(result, plan.columns.calls, state)
     if plan.temp is not None:
         from provisa.pgwire.temp_exec import apply
 
@@ -3200,6 +3237,8 @@ def streams_from_terminal(plan: _Plan) -> bool:  # REQ-2002
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
     if plan.scratch:
         return False  # REQ-1986: its scratch tables are dropped when the terminal is done
+    if plan.columns is not None:
+        return False  # REQ-2131: its column transforms are applied once its rows are read
     return plan.embedded is None or not plan.embedded.rows
 
 
@@ -5210,6 +5249,12 @@ async def describe_pgwire_statement(sql: str, role_id: str) -> _Described:  # RE
             shape = list(shape)
             for spec in folded.rows:
                 shape[spec.position] = (shape[spec.position][0], VECTOR_TYPE)
+        transformed = governed.memo.get("columns")
+        if transformed is not None:
+            from provisa.codesource.columns_fold import reshape
+
+            # REQ-2131: a column transform's inputs are read; its outputs are what is answered.
+            shape = reshape(shape, transformed.calls)
         governed.memo["result_shape"] = shape
     return _Described(shape, governed)
 
