@@ -173,6 +173,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "judgment_findings",
         # REQ-2129: derived from its own compiled views by its own model build.
         "lineage_edges",
+        # REQ-2125: resolved from its own contracts by its own model build.
+        "checker_targets",
     }
 )
 

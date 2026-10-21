@@ -85913,7 +85913,7 @@ Then the mutation is refused as it is in the UI"
   feature: chat-assistant-panel
   priority: SHOULD
   type: behavioral
-  description: "Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. Her usual route for a change is the admin API (REQ-2114). Whenever the user asks her to show, demo or teach something ('do xyz and show me each step', 'show me how to add a source', 'teach me relationships'), she makes each change the UI can make through the UI instead, on its screen: she opens the page, fills in its form and presses its button, so the user sees how it is done there. Creating a source, she opens the source picker with its whole list of source types and lets it be seen before she chooses one, as a user would; the demo shows that list. The product tour uses the same actions: a tour step may carry steps (fill a field, choose an option, press a button, show a list), run by the same code as Polly's, so a tour builds objects live on screen instead of only showing what setup built, and whatever Polly can show a tour can script. A tour step's press of a button that changes something runs as part of the tour the visitor started, without a further question. A tour fills in only values very unlikely to fail, such as a static, known address (a file Provisa publishes, a store the demo itself runs), and manipulates things handled within Provisa itself (registering a table, adding a relationship, defining a view, setting a rule, running a query). Where a step depends on something that could fail live, the tour may fill in the form to show how it is done, press Cancel, and say the demo set it up already, then show the one built at setup. Which objects a demo builds live and which it keeps built at setup is decided demo by demo, on that rule. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions (REQ-2114)."
+  description: "Polly can operate the UI in the user's browser: navigate to a screen, fill in fields, choose options and press buttons, visibly, so the user watches each step happen. Her navigate tool already reaches routes and fills the query surfaces' editors; this extends it to any form. She addresses an element by its stable test id or by its accessible role and name, and the app performs the action as if the user had: the same validation, the same requests, the same permission checks. Each element she acts on is highlighted as she acts. Her usual route for a change is the admin API (REQ-2114). Whenever the user asks her to show, demo or teach something ('do xyz and show me each step', 'show me how to add a source', 'teach me relationships'), she makes each change the UI can make through the UI instead, on its screen: she opens the page, fills in its form and presses its button, so the user sees how it is done there. Creating a source, she opens the source picker with its whole list of source types and lets it be seen before she chooses one, as a user would; the demo shows that list. The product tour uses the same actions: a tour step may carry steps (fill a field, choose an option, press a button, show a list), run by the same code as Polly's, so a tour builds objects live on screen instead of only showing what setup built, and whatever Polly can show a tour can script. A tour step's press of a button that changes something runs as part of the tour the visitor started, without a further question. A tour fills in only values very unlikely to fail, such as a static, known address (a file Provisa publishes, a store the demo itself runs), and manipulates things handled within Provisa itself (registering a table, adding a relationship, defining a view, setting a rule, running a query). Where a step depends on something that could fail live, the tour may fill in the form to show how it is done, press Cancel, and say the demo set it up already, then show the one built at setup. Which objects a demo builds live and which it keeps built at setup is decided demo by demo, on that rule. An element she names that the screen does not have is answered back to her by name, never guessed. A button whose action changes something is pressed only after the user confirms in the conversation, as for her API actions (REQ-2114). (Amended 2026-10-21, READ SCREEN:) Polly can read the screen the user is looking at: a read_screen tool, run in the browser like her others, returns the current route, the open query editor's text (SQL, GraphQL, Cypher or Python, from the editor's own state, never scraped) with the query tab open, the visible labelled form fields with their values, and each result grid's columns and row count, never its rows. It reads only the user's own session, so a masked value stays masked as shown (a password as dots), and its answer is cut at the size her admin requests' answers are. Whenever the user refers to 'this', 'the query' or anything on the screen, she reads it first and never says she cannot see it."
   use_case: A new user asks Polly how to add a source; she opens the Sources page, fills in the form in front of them, and presses Create once they confirm.
   scenario: "Given the user is on any page and asks Polly to set up a CSV source from a URL
 
@@ -86140,7 +86140,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-2123
   target: "2026-Q4"
 - id: REQ-2125
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86182,6 +86182,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1584
   - REQ-1934
   target: "2026-Q4"
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/_catalog_descriptions.py
+  - provisa/api/app_loaders.py
+  - provisa/api/app.py
+  - provisa/dq/registration.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  tests:
+  - tests/unit/test_data_products_meta.py
+  - tests/unit/test_meta_glossary_views.py
+  - tests/integration/test_dq_scan_history_e2e.py
 - id: REQ-2126
   status: complete
   since: 2026-10

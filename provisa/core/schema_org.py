@@ -883,6 +883,15 @@ lineage_edges = Table(
     CheckConstraint("via_kind IN ('view', 'command')", name="lineage_edges_via_kind_check"),
 )
 
+# REQ-2125: the governed table each checker table's contract scans, as the model build resolved it
+# (provisa.dq.registration.write_checker_targets). Derived state: each build replaces every row.
+checker_targets = Table(
+    "checker_targets",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("checked_table_id", Integer, nullable=False),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,

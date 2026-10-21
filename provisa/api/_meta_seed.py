@@ -689,6 +689,31 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "PROFILED_TABLE",
         "profiledTable",
     ),
+    # REQ-2125: a checker table and the table its contract scans.
+    (
+        "meta:registered_tables:checks",
+        _ADMIN,
+        "registered_tables",
+        "checked_table_id",
+        "id",
+        "many-to-one",
+        _ADMIN,
+        "registered_tables",
+        "CHECKS",
+        "checks",
+    ),
+    (
+        "meta:registered_tables:checked_by",
+        _ADMIN,
+        "registered_tables",
+        "id",
+        "checked_table_id",
+        "one-to-many",
+        _ADMIN,
+        "registered_tables",
+        "CHECKED_BY",
+        "checkedBy",
+    ),
     # REQ-2126: a product's links, and the product or table each one reaches.
     (
         "meta:data_products:data_product_edges",

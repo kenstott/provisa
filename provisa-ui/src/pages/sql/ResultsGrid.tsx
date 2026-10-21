@@ -34,6 +34,7 @@ import { COL_MIN, PAGE_SIZES } from "./types";
 import { formatCell } from "./formatCell";
 import { downloadXlsx, type ProvenanceEntry, type XlsxLabels } from "./exportXlsx";
 import type { ResultsGridState } from "./useResultsGrid";
+import { useScreenGrid } from "../../mcp/screenState";
 import { TraceDetailsModal } from "../../components/telemetry/TraceDetailsModal";
 import {
   TELEMETRY_ID_RE,
@@ -78,6 +79,8 @@ export function ResultsGrid({
   selectedRow,
 }: ResultsGridProps) {
   const { t } = useTranslation();
+  // REQ-2115: Polly's read_screen reports the grid's columns and row count, never its rows.
+  useScreenGrid({ columns: grid.baseColumns, rows: totalRowCount, partial: rowsPartial });
   // Trace/span ids in any column drill down to the full span record.
   const [detail, setDetail] = useState<{ kind: TelemetryIdKind; id: string } | null>(null);
   const [exporting, setExporting] = useState(false);

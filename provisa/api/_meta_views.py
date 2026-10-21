@@ -604,7 +604,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN glossary_terms t ON t.id = x.term_id
     """,
     # REQ-2125: dq_contract tells a product's checker members from its output tables, and
-    # profiled_table_id names, for a profile result table, the member table it profiles: the
+    # checked_table_id names the table a checker's contract scans, as the model build resolved
+    # it (checker_targets). profiled_table_id names, for a profile result table, the member table
+    # it profiles: the
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
     # replaced in place.
@@ -622,7 +624,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
                   AND SUBSTR(rt.table_name, 1,
                              LENGTH(m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_'))
                       = m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_')
-                   AS profiled_table_id
+                   AS profiled_table_id,
+               (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
+                   AS checked_table_id
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,

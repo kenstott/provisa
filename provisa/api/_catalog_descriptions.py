@@ -163,6 +163,8 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "of; empty for any other table",
         "profiled_table_id": "For a profile result table, the table it profiles; empty for any "
         "other table",
+        "checked_table_id": "For a checker table, the table its data-quality contract scans; "
+        "empty for any other table",
     },
     # REQ-2126
     "data_product_edges": {

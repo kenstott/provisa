@@ -123,6 +123,23 @@ def check_contract_target(table: Any, dataset: str, contexts: Mapping) -> Any:
     return target
 
 
+async def write_checker_targets(conn: Any, checked: Mapping[int, int]) -> None:
+    """Replace the checker target table with ``checked`` -- each checker table's id with the id
+    of the governed table its contract scans -- as one model build resolved them (REQ-2125).
+    Derived state: the build is its only writer, so it never disagrees with the contracts."""
+    from sqlalchemy import delete, insert
+
+    from provisa.core.schema_org import checker_targets
+
+    await conn.execute_core(delete(checker_targets))
+    if checked:
+        await conn.execute_core(
+            insert(checker_targets).values(
+                [{"table_id": t, "checked_table_id": c} for t, c in sorted(checked.items())]
+            )
+        )
+
+
 def require_scan_interval(table: Any) -> None:
     """A checker table scans every ``cache_ttl`` seconds (REQ-1443), so it must state one."""
     ttl = table.cache_ttl
