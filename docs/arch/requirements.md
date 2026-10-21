@@ -21624,7 +21624,7 @@ Per-user-class staleness tolerance as a table attribute. A table carries a keyed
 
 **Code:** `provisa/federation/role_ttl.py`, `provisa/core/models.py`
 
-**Tests:** `tests/unit/test_role_ttl.py`, `provisa-ui/src/pages/__tests__/tables-role-ttl-save.test.tsx`
+**Tests:** `tests/unit/test_role_ttl.py`, `provisa-ui/src/pages/__tests__/tables-role-ttl-save.test.tsx`, `tests/unit/test_shipped_config_landing_ttl.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [configuration.md](../configuration.md)
 
