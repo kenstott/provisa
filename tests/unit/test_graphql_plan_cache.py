@@ -274,6 +274,7 @@ def _endpoint_harness(monkeypatch, *, approval_hook=None):
         kafka_table_configs={},
         source_types={"sales-pg": "postgresql"},
         settings_overrides={},
+        config=None,  # no config file: no subgraph declared (REQ-259)
         model_stamp=1,
     )
     monkeypatch.setattr(app_module, "state", state)
