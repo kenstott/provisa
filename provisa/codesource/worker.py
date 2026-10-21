@@ -29,6 +29,9 @@ the order ``args`` gives them, for a host whose language passes arguments by nam
     Provisa -> host  {op: "call", id, export, kind: "table"|"command"|"stream", args, names,
                       schema,  -- the rows' Arrow schema, base64 IPC; null for a single value
                       traceparent}  -- the request's trace (W3C), or null (REQ-2106)
+                     {op: "call", id, export, kind: "table", calls: [{args, names}, ...], schema,
+                      traceparent}  -- REQ-2099: a table called once per argument set, in
+                                       order, in the host, its rows sent under the one call id
                      {op: "cancel", id}      {op: "ping", id}
     host -> Provisa  {op: "hello", protocol, code_hash, exports}
                      rows (an Arrow frame)   {op: "value", id, value}
@@ -82,7 +85,7 @@ if TYPE_CHECKING:
     from provisa.codesource.services import ServiceGrant
 
 #: The protocol the hosts speak; a host built for another one is refused by name (REQ-2098).
-PROTOCOL = 2
+PROTOCOL = 3
 
 #: The variable a host reads the content hash of its code from, which its hello names.
 CODE_HASH_ENV = "PROVISA_CODE_HASH"
@@ -532,6 +535,52 @@ class Worker:
             rows = batches = 0
             try:
                 self._send(self._call_frame(call_id, export, kind, args, names, schema))
+                while True:
+                    message = self._next(call_id, waiting, export)
+                    if message["op"] == "end":
+                        finished = True
+                        span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
+                        return
+                    if message["op"] == "rows":
+                        batch = rows_of(message["arrow"])
+                        rows, batches = rows + len(batch), batches + 1
+                        yield batch
+            finally:
+                span.set_attribute("codesource.rows", rows)
+                span.set_attribute("codesource.batches", batches)
+                if not finished:
+                    try:
+                        self._send({"op": "cancel", "id": call_id})
+                    except (OSError, WorkerFailed):
+                        pass  # the worker has ended: there is no call left to stop
+                self._close(call_id)
+
+    def rows_each(
+        self,
+        export: str,
+        calls: Sequence[tuple[Sequence[Any], Sequence[str]]],
+        *,
+        schema: str,
+    ) -> Iterator[list[dict]]:
+        """A table's rows for each of ``calls`` (its arguments and their names), in order, from
+        one call to the host (REQ-2099): the host calls the function once per argument set
+        in-process, so a join that feeds a table many argument sets pays one round trip, not one
+        per set. Closing the iterator before its end cancels the call in the host."""
+        from provisa.codesource.arrow_rows import rows_of
+
+        with stage(_tracer, "codesource.call") as span:
+            self._describe(span, export, "table", calls[0][0] if calls else ())
+            span.set_attribute("codesource.argument_sets", len(calls))
+            call_id, waiting = self._open()
+            finished = False
+            rows = batches = 0
+            try:
+                frame = self._call_frame(call_id, export, "table", (), (), schema)
+                del frame["args"], frame["names"]
+                frame["calls"] = [
+                    {"args": encode(list(args)), "names": list(names)} for args, names in calls
+                ]
+                self._send(frame)
                 while True:
                     message = self._next(call_id, waiting, export)
                     if message["op"] == "end":

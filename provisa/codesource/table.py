@@ -141,7 +141,8 @@ async def read(state: Any, table: dict, given: dict | None) -> Any:  # the app s
 async def read_each(state: Any, table: dict, argument_sets: Sequence[dict | None]) -> Any:
     """Call ``table``'s function once for each of ``argument_sets`` and return their checked rows
     together (REQ-2099: a join over a relationship that feeds the table's parameters calls it
-    once per distinct set of the parent's values)."""
+    once per distinct set of the parent's values) -- every set in one request to the worker,
+    which calls the function per set in its own process."""
     from provisa.codesource.source import context_for, prepare
     from provisa.core.ir_types import to_ir
     from provisa.federation.registry_view import registered_sources
@@ -174,8 +175,7 @@ async def read_each(state: Any, table: dict, argument_sets: Sequence[dict | None
     def _run() -> list[dict]:
         return [
             project(name, row, outputs)
-            for args, names in calls
-            for batch in worker.rows(function, "table", args, names, schema=schema)
+            for batch in worker.rows_each(function, calls, schema=schema)
             for row in batch
         ]
 

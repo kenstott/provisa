@@ -70,7 +70,15 @@ _HOST = textwrap.dedent(
         return json.loads(body[1:])
 
     def serve(m):
-        i, name, args = m["id"], m["export"], m["args"]
+        # Protocol 3: a table's several argument sets come as one call's `calls`, served in order.
+        sets = [c["args"] for c in m["calls"]] if "calls" in m else [m["args"]]
+        for args in sets:
+            if serve_one(m, args) is False:
+                return
+        send({"op": "end", "id": m["id"]})
+
+    def serve_one(m, args):
+        i, name = m["id"], m["export"]
         schema = m["schema"] and pa.ipc.open_stream(pa.py_buffer(base64.b64decode(m["schema"]))).schema
         if name == "many":
             for start in range(0, args[0], 1000):
@@ -82,7 +90,7 @@ _HOST = textwrap.dedent(
             send({"op": "value", "id": i, "value": {"$decimal": "12.50"}})
         elif name == "boom":
             send({"op": "error", "id": i, "message": "no such customer", "stack": "at boom"})
-            return
+            return False
         elif name == "ticks":
             n = 0
             while i not in cancelled:
@@ -91,22 +99,21 @@ _HOST = textwrap.dedent(
                 time.sleep(0.01)
             with open(log, "a") as record:
                 record.write(f"cancelled {i}\\n")
-            return
+            return False
         elif name == "slow":
             while i not in cancelled:
                 time.sleep(0.01)
             with open(log, "a") as record:
                 record.write(f"cancelled {i}\\n")
-            return
+            return False
         elif name == "die":
             sys.stderr.write("the code fell over\\n")
             sys.stderr.flush()
             import os
             os._exit(3)
-        send({"op": "end", "id": i})
 
     import os
-    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "2")),
+    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "3")),
              "code_hash": os.environ["PROVISA_CODE_HASH"],
              "exports": ["many", "echo", "total", "boom", "slow", "ticks", "die"]}
     send(hello)
@@ -165,6 +172,30 @@ def test_values_cross_the_wire_in_their_own_types(worker):
         worker.rows("echo", "table", [placed, 2**60, Decimal("1.10"), None, "x"], schema=ECHO)
     )
     assert row == {"args": [placed, 2**60, Decimal("1.10"), None, "x"]}
+
+
+def test_a_tables_argument_sets_go_in_one_call_and_come_back_in_order(worker):
+    """REQ-2099: every argument set of a read goes to the host in one call, which runs the
+    function per set; their rows come back in the sets' order, under the one call."""
+    calls = [([n], ["n"]) for n in (1, 2, 3)]
+    rows = [row for batch in worker.rows_each("echo", calls, schema=ECHO) for row in batch]
+    assert rows == [{"args": [1]}, {"args": [2]}, {"args": [3]}]
+
+
+def test_a_tables_argument_sets_are_one_round_trip(worker, monkeypatch):
+    """REQ-2099: n argument sets are one request to the host, not n."""
+    sent = []
+    original = w.Worker._send
+
+    def counting(self, message):
+        sent.append(message.get("op"))
+        return original(self, message)
+
+    monkeypatch.setattr(w.Worker, "_send", counting)
+    calls = [([n], ["n"]) for n in range(50)]
+    rows = [row for batch in worker.rows_each("echo", calls, schema=ECHO) for row in batch]
+    assert len(rows) == 50
+    assert sent.count("call") == 1
 
 
 def test_a_commands_value_comes_whole(worker):
@@ -277,7 +308,7 @@ def test_a_host_speaking_another_protocol_is_refused_by_name(command, tmp_path):
     with pytest.raises(w.WorkerFailed) as failed:
         worker.start()
     assert str(failed.value) == (
-        "source 'orders-src': its host speaks protocol 1, and this Provisa speaks 2: "
+        "source 'orders-src': its host speaks protocol 1, and this Provisa speaks 3: "
         "run a host built for this Provisa version"
     )
     assert not worker.alive()
