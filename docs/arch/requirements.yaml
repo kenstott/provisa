@@ -86202,8 +86202,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     kind. When several paths connect the same pair, the row carries the path count and the connecting
     relationship aliases, so the extra paths become detail on one edge rather than separate edges. A
     product-to-product row exists when the target end is a member of another product, so the domain and
-    cross-domain product graph is a query over this view. The view is computed from relationships,
-    registered tables and lineage; nothing is stored.
+    cross-domain product graph is a query over this view. Relationship edges are computed from
+    relationships and registered tables. Lineage edges are read from the lineage edge table
+    (REQ-2129), which each model build derives from its compiled views; nothing in either is edited.
   use_case: >-
     A consumer sees which products and tables a data product joins to or derives from, whether each
     link is direct or through supporting tables, and how many paths connect them, from one meta-domain
@@ -86326,7 +86327,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     edge: the source relation and column, the target relation and column, and the view that derives
     the target. It holds the same edges as the federation column lineage graph (GET
     /admin/lineage/federation) across all domains, so a cross-domain ancestry chain is never cut. It is
-    computed from compiled views and nothing is stored. Its endpoints relate to table_columns_meta, so
+    derived from compiled views: each model build writes its edges to a lineage edge table in the
+    control plane, replacing all of them, with the same function that builds
+    /admin/lineage/federation, so the two never differ. The table is derived state and is never
+    edited. Its endpoints relate to table_columns_meta, so
     a client can traverse from a member column to its upstream columns by relationships. A caller sees
     an edge only if both of its ends are visible to that caller in table_columns_meta. The view is in
     the GOVERNANCE tier and needs view_governance, as REQ-1640's lineage section does.
