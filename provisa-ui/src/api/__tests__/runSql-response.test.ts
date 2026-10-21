@@ -12,8 +12,10 @@
 // the results store when the result was landed there (`{"data":{"sql":null},"redirect":{…}}`).
 // runSql says which it is; it never hands a caller rows and columns it did not get.
 
+import i18n from "i18next";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { runSql } from "../admin";
+import { explainSql, runSql } from "../admin";
+import en from "../../i18n/locales/en/serverErrors.json";
 
 function answer(body: unknown) {
   vi.stubGlobal(
@@ -66,5 +68,53 @@ describe("runSql — what /data/sql answered", () => {
     const r = await runSql("SELECT 1");
     expect(r.columns).toEqual([]);
     expect(r.error).toContain("the engine returned no description");
+  });
+});
+
+describe("runSql — a statement the server refused", () => {
+  function refuse(status: number, body: string) {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(body, { status })));
+  }
+
+  it("says a coded refusal in the reader's words, with its params, not the body it came in", async () => {
+    // The provisioning close, read outside its window: the explorer showed the raw JSON.
+    await i18n.init({ lng: "en", resources: { en: { translation: en } } });
+    refuse(
+      503,
+      JSON.stringify({
+        detail: "the view 'view_close_by_category' can be read only within its read window",
+        code: "data.view_outside_load_window",
+        params: { view: "view_close_by_category", opens_at: "2026-10-22T02:00+00:00" },
+      }),
+    );
+    const r = await runSql("SELECT 1");
+    expect(r.error).toBe(
+      "The view view_close_by_category can be read only within its read window. It next opens at 2026-10-22T02:00+00:00.",
+    );
+  });
+
+  it("says an uncoded refusal in the server's own words", async () => {
+    refuse(400, JSON.stringify({ detail: "syntax error at or near FROM" }));
+    expect((await runSql("SELECT FROM")).error).toBe("syntax error at or near FROM");
+  });
+
+  it("refuses an explain in the same words, as the analyze and detach blocks show it", async () => {
+    await i18n.init({ lng: "en", resources: { en: { translation: en } } });
+    refuse(
+      503,
+      JSON.stringify({
+        detail: "raw",
+        code: "data.view_outside_load_window",
+        params: { view: "v", opens_at: "02:00" },
+      }),
+    );
+    await expect(explainSql("SELECT 1")).rejects.toThrow(
+      "The view v can be read only within its read window. It next opens at 02:00.",
+    );
+  });
+
+  it("says a body that is not JSON as it is", async () => {
+    refuse(502, "Bad Gateway");
+    expect((await runSql("SELECT 1")).error).toBe("Bad Gateway");
   });
 });
