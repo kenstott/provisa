@@ -82,7 +82,7 @@ _MANIFEST = Manifest(
         Export("summary", "command", "", (), Anonymous((Field("ok", Scalar("boolean"), False),))),
         Export("tags", "command", "", (), ListOf(EnumOf("Tag", ("a", "b"))), many=True),
     ),
-    types={"Order": ObjectType("Order", (Field("n", Scalar("bigint"), True),))},
+    types={"Order": ObjectType("Order", (Field("n", Scalar("bigint"), True, "How many."),))},
 )
 
 
