@@ -7538,5 +7538,7 @@
   "pt/profileStrata.json::profileStrata.columnsNote": "Each run's median and null share. The selected run is the newest one shown.",
   "pt/profileStrata.json::profileStrata.binning_sketch": "The same bins for every run, cut from each run's quantile sketch; heights are each run's share of its non-null rows.",
   "pt/profileStrata.json::profileStrata.binning_categories": "Every run's values counted against the same categories.",
-  "pt/profileStrata.json::profileStrata.binning_none": "These runs hold no values for this column for your role."
+  "pt/profileStrata.json::profileStrata.binning_none": "These runs hold no values for this column for your role.",
+  "pt/settings.json::settings.sandbox.demo_stores_linger.label": "Demo stores kept after use",
+  "pt/settings.json::settings.sandbox.demo_stores_linger.help": "How long a demo's databases stay up after its last sandbox closes. Opened again before then, it opens at once; after it, they are stopped, and its next visitor waits while they start."
 }

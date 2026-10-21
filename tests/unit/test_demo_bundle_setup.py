@@ -614,6 +614,7 @@ def _sync(
     in_use: str | None = None,
     ask_on_pull=False,
     wanted: str | None = None,
+    lingering_until: int | None = None,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -625,6 +626,11 @@ def _sync(
     (bundles / "weblogs" / _VERSION / "docker-compose.run.yml").write_text("services: {}\n")
     if requested:
         (bundles / "weblogs" / "requested").write_text("requested\n")
+    if lingering_until is not None:
+        # Its last sandbox closed (provisa.core.demo_bundles.linger) with its stores up.
+        (bundles / "weblogs" / "requested").write_text(f"until {lingering_until}\n")
+        (bundles / "weblogs" / "ready").write_text(_VERSION + "\n")
+        (bundles / "weblogs" / _VERSION / "stores.env").write_text("WEBLOGS_PG_NS=_weblogs_x\n")
     if in_use is not None:
         (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
     if wanted is not None:
@@ -730,6 +736,62 @@ def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served
     assert (demo / "202601020000-inuse02").is_dir()
     assert (demo / _VERSION / "docker-compose.run.yml").is_file()
     assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
+
+
+def test_a_demo_lingered_out_has_its_stores_taken_down_and_its_bundle_kept(tmp_path):
+    """sandbox.demo_stores_linger after its last sandbox closed, with none opened since, the
+    demo's stores are taken down as an older version's are; its next open asks for it again."""
+    import time
+
+    run, demo, asked = _sync(tmp_path, lingering_until=int(time.time()) - 1)
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"drop weblogs {_VERSION}"]
+    assert not (demo / "requested").exists()
+    assert not (demo / "ready").exists()
+    assert not (demo / _VERSION / "stores.env").exists()
+    assert (demo / _VERSION / "docker-compose.run.yml").is_file()
+    assert (demo / "pulled").read_text().strip() == _VERSION
+
+
+def test_a_demo_still_lingering_keeps_its_stores_up(tmp_path):
+    import time
+
+    until = int(time.time()) + 1800
+    run, demo, asked = _sync(tmp_path, lingering_until=until)
+    assert run.returncode == 0, run.stderr
+    assert "drop" not in " ".join(asked)
+    assert (demo / "requested").read_text().strip() == f"until {until}"
+    assert (demo / "ready").read_text().strip() == _VERSION
+    assert (demo / _VERSION / "stores.env").exists()
+
+
+def test_a_demo_asked_for_again_inside_its_linger_is_kept(tmp_path, monkeypatch):
+    """An open before the time marks it requested again (provisa.core.demo_bundles.hold), so the
+    next run keeps its stores up, even once the time has passed."""
+    import time
+
+    from provisa.core import demo_bundles
+
+    root = tmp_path / "bundles"
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: root)
+    (root / "weblogs").mkdir(parents=True)
+    (root / "weblogs" / "requested").write_text("requested\n")
+    demo_bundles.linger("weblogs", time.time() - 1)
+    assert (root / "weblogs" / "requested").read_text().startswith("until ")
+    demo_bundles.hold("weblogs")
+    assert (root / "weblogs" / "requested").read_text().strip() == "requested"
+
+
+def test_a_demo_never_asked_for_is_not_marked_to_linger(tmp_path, monkeypatch):
+    """A demo whose stores were never up has nothing to take down: its last sandbox closing leaves
+    it unasked."""
+    from provisa.core import demo_bundles
+
+    root = tmp_path / "bundles"
+    monkeypatch.setattr(demo_bundles, "bundles_root", lambda: root)
+    demo_bundles.linger("weblogs", 0)
+    demo_bundles.hold("weblogs")
+    assert not (root / "weblogs" / "requested").exists()
 
 
 def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):

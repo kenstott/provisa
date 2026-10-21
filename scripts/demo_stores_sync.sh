@@ -22,9 +22,13 @@
 #      from the shared stores, its own services removed with the images no other container uses,
 #      its bundle directory deleted.
 # Nothing is started at boot: a demo's stores come up the first time it is asked for, and stay
-# up, the shared instances with them, until the node stops. Run with --boot (its own unit, before
-# docker starts), it clears what the node's last run left: no demo is asked for or ready, since
-# none of its stores is running.
+# up while it is used. When its last sandbox closes, the tier rewrites <bundles>/<name>/requested
+# as "until <epoch seconds>" (sandbox.demo_stores_linger after the close); an open before then
+# marks it requested again. Once that time has passed, its stores are taken down as an older
+# version's are in step 4 (its data dropped from the shared stores, its own services removed),
+# its bundle kept, and requested and ready cleared, so its next open asks for it again. Run with
+# --boot (its own unit, before docker starts), it clears what the node's last run left: no demo is
+# asked for or ready, since none of its stores is running.
 # Run at boot, on a timer, and whenever the tier touches <bundles>/.wanted (systemd units in
 # packaging/linux/demo-stores/), and again at once when the tier touches it during a run.
 #
@@ -63,8 +67,24 @@ write_atomically() { # path text
   mv -f "$tmp" "$1"
 }
 
+linger_out() { # name
+  # Its last sandbox closed and none opened since: its stores are taken down, its bundle kept.
+  local name="$1" ready
+  ready=""
+  if [ -f "$DEMO_BUNDLES_DIR/$name/ready" ]; then
+    ready="$(cat "$DEMO_BUNDLES_DIR/$name/ready")"
+  fi
+  rm -f "$DEMO_BUNDLES_DIR/$name/ready"
+  if [ -n "$ready" ] && [ -f "$DEMO_BUNDLES_DIR/$name/$ready/stores.env" ]; then
+    python3 "$DEMO_STORES" drop "$name" "$ready"
+    rm -f "$DEMO_BUNDLES_DIR/$name/$ready/stores.env"
+  fi
+  rm -f "$DEMO_BUNDLES_DIR/$name/requested"
+  echo "demo $name: no sandbox open since it lingered; its stores taken down"
+}
+
 sync_demo() { # name
-  local name="$1" pulled version dir keep old
+  local name="$1" pulled version dir keep old asked
   mkdir -p "$DEMO_BUNDLES_DIR/$name"
   pulled="$($DEMO_PULL pull "$name" --into "$DEMO_PULL_INTO")"
   version="$(basename "$pulled")"
@@ -76,6 +96,15 @@ sync_demo() { # name
     echo "demo $name: $version pulled; not asked for since the node started"
     return 0
   fi
+  asked="$(cat "$DEMO_BUNDLES_DIR/$name/requested")"
+  case "$asked" in
+    "until "*)
+      if [ "$(date +%s)" -ge "${asked#until }" ]; then
+        linger_out "$name"
+        return 0
+      fi
+      ;;
+  esac
   if [ -f "$dir/docker-compose.run.yml" ]; then
     python3 "$DEMO_STORES" up "$name" "$version" "$dir"
   fi
