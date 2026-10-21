@@ -133,7 +133,8 @@ function write(type, at) {
 
 // REQ-2100: a tag's argument (`@gte_signup since`) and an inline declaration before a parameter
 // (`/* @gte_signup */ since?: Date`).
-const INLINE = /^\/\*\s*@([A-Za-z_][A-Za-z0-9_]*)\s*\*\/$/;
+// An inline declaration's argument (`/* @loader 100 */`) is kept with it: "loader 100".
+const INLINE = /^\/\*\s*@([A-Za-z_][A-Za-z0-9_]*)(?:\s+(\S+))?\s*\*\/$/;
 
 function tagText(tag) {
   const comment = typeof tag.comment === "string" ? tag.comment : ts.getTextOfJSDocComment(tag.comment);
@@ -145,7 +146,7 @@ function inlinePushdown(parameter) {
   return (ts.getLeadingCommentRanges(text, parameter.pos) ?? [])
     .map((r) => INLINE.exec(text.slice(r.pos, r.end)))
     .filter(Boolean)
-    .map((m) => m[1]);
+    .map((m) => (m[2] === undefined ? m[1] : `${m[1]} ${m[2]}`));
 }
 
 function exported(symbol) {

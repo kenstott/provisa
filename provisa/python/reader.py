@@ -42,7 +42,7 @@ import typing
 
 _TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)$")
 #: REQ-2100: a pushdown tag line, ``@{op}_{column} parameter``.
-_PUSHDOWN_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z_][A-Za-z0-9_]*)$")
+_PUSHDOWN_TAG = re.compile(r"^@([A-Za-z_][A-Za-z0-9_]*)\s+(\S+)$")
 _NONE = type(None)
 
 

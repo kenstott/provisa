@@ -532,7 +532,7 @@ async def _mat_fed_table(
         cache_rewrites,
         values_cte_entries,
         key,
-        lambda: read_each(state, table, sets),
+        lambda: read_each(state, table, sets, joined=True),
     )
 
 

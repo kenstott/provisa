@@ -583,6 +583,7 @@ class Worker:
         calls: Sequence[tuple[Sequence[Any], Sequence[str]]],
         *,
         schema: str,
+        keyed: bool = False,
     ) -> Iterator[list[dict]]:
         """A table's rows for each of ``calls`` (its arguments and their names), in order, from
         one call to the host (REQ-2099): the host calls the function once per argument set
@@ -602,6 +603,9 @@ class Worker:
                 frame["calls"] = [
                     {"args": encode(list(args)), "names": list(names)} for args, names in calls
                 ]
+                if keyed:
+                    # REQ-2100: a loader call, answered with each key's rows, each with its $key.
+                    frame["keyed"] = True
                 self._send(frame)
                 while True:
                     message = self._next(call_id, waiting, export)

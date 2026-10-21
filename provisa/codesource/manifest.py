@@ -466,7 +466,9 @@ def _loader(
         mapper.problems.append(f"{name}: two batch sizes declared, {sizes[0]} and {sizes[1]}")
         return True, None
     if not sizes[0].isdigit() or int(sizes[0]) < 1:
-        mapper.problems.append(f"{name}: loader {sizes[0]}: a batch size is a positive whole number")
+        mapper.problems.append(
+            f"{name}: loader {sizes[0]}: a batch size is a positive whole number"
+        )
         return True, None
     return True, int(sizes[0])
 
@@ -603,11 +605,27 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 problems.append(f"{name}: @table returns a single value, not a collection of rows")
                 continue
             row, preview = _rows(mapper, name, element)
-            parameters = _resolve_pushdown(
-                mapper, name, parameters, _declared_pushdown(entry, signature, rules), row, preview
+            loader, batch = _loader(mapper, name, entry, signature, parameters)
+            keys = [p for p in parameters if p.name != LOADER]
+            keys = _resolve_pushdown(
+                mapper, name, keys, _declared_pushdown(entry, signature, rules), row, preview
             )
+            # The loader keeps its place among the parameters (the function's own order).
+            resolved: dict[str, Parameter] = {k.name: k for k in keys}
+            ordered: list[Parameter] = [
+                resolved[p.name] if p.name in resolved else p for p in parameters
+            ]
             exports.append(
-                Export(name, kind, entry["description"], tuple(parameters), row, preview)
+                Export(
+                    name,
+                    kind,
+                    entry["description"],
+                    tuple(ordered),
+                    row,
+                    preview,
+                    loader=loader,
+                    loader_batch=batch,
+                )
             )
         elif kind == STREAM:
             if not (returns["kind"] == "iterable" and (returns["async"] or rules.sync_streams)):

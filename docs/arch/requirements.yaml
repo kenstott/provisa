@@ -85550,6 +85550,10 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - provisa/core/trino_catalog_files.py
   - docker-compose.app.yml
   - docker-compose.core.yml
+  - provisa/codesource/loader.py
+  - provisa/codesource/table.py
+  - provisa/python/host.py
+  - provisa/node/host-core.mjs
   tests:
   - tests/unit/test_code_pushdown.py
   - tests/unit/test_code_direct.py
@@ -85559,6 +85563,8 @@ And reaffirming it records the tag again with today's decider and evidence and r
   - tests/unit/test_code_pgfront.py
   - tests/unit/test_code_attach.py
   - tests/integration/test_code_source_attach_trino.py
+  - tests/unit/test_code_loader.py
+  - tests/unit/test_node_host_argument_sets.py
   docs:
   - code-sources.md
 - id: REQ-2098
