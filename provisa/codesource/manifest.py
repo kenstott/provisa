@@ -157,6 +157,16 @@ class Export:
     preview: bool = False
     #: A command's result: rows (a collection) or one value.
     many: bool = False
+    #: REQ-2100: a table that takes a ``loader`` parameter, called with a join's keys in batches.
+    loader: bool = False
+    #: REQ-2100: the largest batch its ``loader`` takes (``loader N``); None, every key in one.
+    loader_batch: int | None = None
+
+
+#: REQ-2100: the parameter a table's function takes a join's keys in, as a hash of sparse keys.
+LOADER = "loader"
+#: A batch-size declaration: ``loader N``, in a tag line, an inline comment or ``Annotated``.
+_LOADER_SIZE = re.compile(r"^loader\s+(\S+)$")
 
 
 @dataclass(frozen=True)
@@ -242,6 +252,8 @@ def manifest_json(manifest: Manifest) -> dict:
                 "returns": _shape_json(e.returns),
                 "preview": e.preview,
                 "many": e.many,
+                "loader": e.loader,
+                "loader_batch": e.loader_batch,
             }
             for e in manifest.exports
         ],
@@ -273,6 +285,8 @@ def manifest_from_json(raw: dict) -> Manifest:
                 _shape(e["returns"]),
                 e["preview"],
                 e["many"],
+                e["loader"],
+                e["loader_batch"],
             )
         )
     types = {
@@ -411,7 +425,8 @@ def _declared_pushdown(entry: dict, signature: dict, rules: Rules) -> dict[str, 
     """Each parameter's explicit pushdown declarations (REQ-2100), by parameter: the tag lines
     naming it, then its inline comment or ``Annotated`` strings, as the reader wrote them."""
     declared: dict[str, list[str]] = {
-        p["name"]: list(p.get("pushdown", [])) for p in signature["parameters"]
+        p["name"]: [d for d in p.get("pushdown", []) if not _LOADER_SIZE.match(d)]
+        for p in signature["parameters"]
     }
     for tag, parameter in _pushdown_tags(entry, rules):
         declared.setdefault(parameter, []).insert(0, tag)
@@ -419,6 +434,41 @@ def _declared_pushdown(entry: dict, signature: dict, rules: Rules) -> dict[str, 
 
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_$][A-Za-z0-9_$]*$")
+
+
+def _loader_sizes(entry: dict, signature: dict) -> list[str]:
+    """REQ-2100: the batch sizes the export declares, as written: ``@loader N`` tag lines, and
+    ``loader N`` on its parameters (an inline comment or an ``Annotated`` string)."""
+    sizes = [t["text"] for t in entry.get("tag_arguments", []) if t["tag"] == LOADER]
+    for p in signature["parameters"]:
+        for declared in p.get("pushdown", []):
+            match = _LOADER_SIZE.match(declared)
+            if match:
+                sizes.append(match.group(1))
+    return sizes
+
+
+def _loader(
+    mapper: _Mapper, name: str, entry: dict, signature: dict, parameters: list[Parameter]
+) -> tuple[bool, int | None]:
+    """REQ-2100: whether the table takes a ``loader`` and the largest batch it declares; a size it
+    cannot take is a problem by name."""
+    has_loader = any(p.name == LOADER for p in parameters)
+    sizes = _loader_sizes(entry, signature)
+    if not sizes:
+        return has_loader, None
+    if not has_loader:
+        mapper.problems.append(
+            f"{name}: loader {sizes[0]} declares a batch size, and {name} has no loader parameter"
+        )
+        return False, None
+    if len(sizes) > 1:
+        mapper.problems.append(f"{name}: two batch sizes declared, {sizes[0]} and {sizes[1]}")
+        return True, None
+    if not sizes[0].isdigit() or int(sizes[0]) < 1:
+        mapper.problems.append(f"{name}: loader {sizes[0]}: a batch size is a positive whole number")
+        return True, None
+    return True, int(sizes[0])
 
 
 def _pushdown_tags(entry: dict, rules: Rules) -> list[tuple[str, str]]:
@@ -517,7 +567,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     exports: list[Export] = []
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
-        pushdown_tags = {tag for tag, _ in _pushdown_tags(entry, rules)}
+        pushdown_tags = {tag for tag, _ in _pushdown_tags(entry, rules)} | {LOADER}
         for tag in tags:
             if tag not in PROVISA_TAGS and tag not in rules.standard_tags | pushdown_tags:
                 problems.append(f"{name}: unknown tag @{tag}")
