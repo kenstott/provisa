@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: a5e800b9-4c6e-47be-a26a-40e09dbb9372
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2123, amended 2026-10-21: in the profile runs modal every table sorts and groups as the app's
 // other lists do, every result table has an expand button (the 3D views' 95% modal), the result
 // tabs read down the side, and View Profile Runs is in the table's read-only panel too.
