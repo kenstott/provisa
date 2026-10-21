@@ -15,8 +15,9 @@ A built host's front end accepts only the certificate of the Provisa it is paire
 (provisa/codehost/front.py), and an engine that attaches the host over pgwire is Provisa's: it
 presents the organisation's identity (provisa/codesource/remote_sources.py ``identity``). Every
 engine's PostgreSQL client reads a client certificate and key from files, so the identity is
-written where the engine's process reads it, readable by that process alone
-(``trino_catalog_files.write_engine_secret_file``):
+written where the engine's process reads it, its keys readable by that process alone
+(``trino_catalog_files.write_engine_secret_file``: the engine's user's, or, beside an engine of
+another user, the engine's group's, REQ-2073):
 
 - Trino: ``codehost-client/`` of the engine tree the app shares with the engine
   (``trino_etc_dir``), read by the engine at ``/etc/trino/codehost-client`` -- a tmpfs in the
@@ -58,6 +59,10 @@ TRINO_AT = "/etc/trino/codehost-client"
 TRINO_DIR = "codehost-client"
 #: The user the postgres image runs as, the reader of a Postgres engine's identity files.
 POSTGRES_UID = 999
+#: REQ-2073: the setting naming the group a Postgres engine's server reads its files as, where
+#: Provisa runs as neither root nor its user; the postgres image runs as gid 999, its default.
+PG_FILES_GID_ENV = "PROVISA_PG_ENGINE_FILES_GID"
+POSTGRES_GID = 999
 
 
 _private: dict[str, Path] = {}
@@ -110,8 +115,15 @@ def _all(contents: tuple[dict, dict]) -> dict[str, bytes]:
 
 
 def _write(
-    directory: Path, at: str, org_id: str, identity: Identity, roots: Mapping[str, str], uid: int
+    directory: Path,
+    at: str,
+    org_id: str,
+    identity: Identity,
+    roots: Mapping[str, str],
+    engine: tuple[int, int, str],
 ) -> Prepared:
+    """The identity written in ``directory`` for the engine (its uid, gid and the setting naming
+    the gid, as ``write_engine_secret_file`` takes them); the paths the engine reads it at."""
     from provisa.core.trino_catalog_files import write_engine_public_file, write_engine_secret_file
 
     contents = _contents(org_id, identity, roots)
@@ -122,7 +134,8 @@ def _write(
         if field == "certificate":
             write_engine_public_file(directory / name, data)
         else:
-            write_engine_secret_file(directory / name, data, uid, directory_mode=0o755)
+            uid, gid, setting = engine
+            write_engine_secret_file(directory / name, data, uid, gid, setting=setting)
     for name, data in pinned.values():
         write_engine_public_file(directory / name, data)
     return _at(at, contents)
@@ -134,7 +147,13 @@ async def for_trino(
     """The identity written for Trino; the paths Trino reads it at. A coordinator the control plane
     provisions shares no directory with it: there the identity goes into the shard's Secret
     (``k8s_provisioner.put_codehost_files``), mounted at the same place."""
-    from provisa.core.trino_catalog_files import TRINO_UID, trino_etc_dir
+    from provisa.core.trino_catalog_files import (
+        TRINO_FILES_GID_ENV,
+        TRINO_GID,
+        TRINO_UID,
+        engine_files_gid,
+        trino_etc_dir,
+    )
     from provisa.federation import k8s_provisioner
 
     if k8s_provisioner.provisioning_available():
@@ -145,11 +164,14 @@ async def for_trino(
             contents = _contents(org_id, identity, roots)
             await k8s_provisioner.put_codehost_files(shard, _all(contents))
             return _at(TRINO_AT, contents)
-    return _write(trino_etc_dir() / TRINO_DIR, TRINO_AT, org_id, identity, roots, TRINO_UID)
+    engine = (TRINO_UID, engine_files_gid(TRINO_FILES_GID_ENV, TRINO_GID), TRINO_FILES_GID_ENV)
+    return _write(trino_etc_dir() / TRINO_DIR, TRINO_AT, org_id, identity, roots, engine)
 
 
 def for_postgres(org_id: str, identity: Identity, roots: Mapping[str, str]) -> Prepared:
     """The identity written for a Postgres engine's server; the paths the server reads it at."""
+    from provisa.core.trino_catalog_files import engine_files_gid
+
     if not postgres_shares_files():
         raise RuntimeError(
             f"no directory is shared with the Postgres engine's server ({PG_FILES_ENV}, "
@@ -161,7 +183,7 @@ def for_postgres(org_id: str, identity: Identity, roots: Mapping[str, str]) -> P
         org_id,
         identity,
         roots,
-        POSTGRES_UID,
+        (POSTGRES_UID, engine_files_gid(PG_FILES_GID_ENV, POSTGRES_GID), PG_FILES_GID_ENV),
     )
 
 
@@ -171,4 +193,7 @@ def for_this_process(org_id: str, identity: Identity, roots: Mapping[str, str]) 
         directory = _private.get(org_id)
         if directory is None:
             directory = _private[org_id] = Path(tempfile.mkdtemp(prefix="provisa-codehost-"))
-    return _write(directory, str(directory), org_id, identity, roots, os.getuid())
+    # The engine is this process: its files are its own user's.
+    return _write(
+        directory, str(directory), org_id, identity, roots, (os.getuid(), os.getgid(), "")
+    )

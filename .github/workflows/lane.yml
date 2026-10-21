@@ -354,11 +354,27 @@ jobs:
           SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
         run: bash ${{ inputs.prepare }}
 
+      # REQ-2073: the lane's app runs as the runner's user beside Trino's container (uid and gid
+      # 1000), and gives the engine's secret files to Trino's group, of which it must be a member
+      # (provisa/core/trino_catalog_files.py write_engine_secret_file). Group 1000 is made if the
+      # image has none, the runner joins it, and the lane runs under it (sg), since a membership
+      # added now reaches only processes started under it.
+      - name: Join Trino's group
+        run: |
+          getent group 1000 >/dev/null || sudo groupadd --gid 1000 trino-engine
+          group="$(getent group 1000 | cut -d: -f1)"
+          sudo usermod --append --groups "$group" "$USER"
+          echo "PROVISA_LANE_ENGINE_GROUP=$group" >> "$GITHUB_ENV"
+
       - name: Run lane
         id: run
         working-directory: ${{ inputs.working-directory }}
         env: *lane-env
-        run: ${{ inputs.run }}
+        run: |
+          cat > "$RUNNER_TEMP/lane-run.sh" <<'PROVISA_LANE_RUN'
+          ${{ inputs.run }}
+          PROVISA_LANE_RUN
+          sg "$PROVISA_LANE_ENGINE_GROUP" -c "bash -eo pipefail $RUNNER_TEMP/lane-run.sh"
 
       - name: After the lane
         if: always() && inputs.after != '' && steps.run.conclusion != 'skipped'

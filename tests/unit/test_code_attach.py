@@ -24,6 +24,7 @@ import pytest
 
 from provisa.codesource import attach, engine_identity
 from provisa.codesource.remote import new_identity
+from provisa.core.trino_catalog_files import TRINO_GID, TRINO_UID
 from provisa.federation.codehost_connectors import (
     PG_FILES_AT_ENV,
     PG_FILES_ENV,
@@ -146,6 +147,7 @@ async def test_trinos_secret_files_are_its_alone_its_roots_public_and_named_by_t
     tmp_path, monkeypatch
 ):
     monkeypatch.setenv("PROVISA_TRINO_ETC_DIR", str(tmp_path))
+    monkeypatch.setattr("provisa.core.trino_catalog_files.os.geteuid", lambda: TRINO_UID)
     monkeypatch.setattr("provisa.federation.k8s_provisioner.provisioning_available", lambda: False)
     identity = new_identity()
     files = await engine_identity.for_trino(None, "acme", identity, {"scores-src": "HOST PEM"})
@@ -166,7 +168,32 @@ async def test_trinos_secret_files_are_its_alone_its_roots_public_and_named_by_t
         "acme.pk8": 0o600,
         "acme.scores-src.root.crt": 0o644,  # public: Trino reads it whoever wrote it
     }
-    assert _mode(str(written)) == 0o755
+    assert _mode(str(written)) == 0o700
+
+
+async def test_beside_trino_of_another_user_its_keys_are_its_groups(tmp_path, monkeypatch):
+    """REQ-2073: a native app beside Trino's container (the integration lane, uid 1001)."""
+    given: list[tuple[int, int]] = []
+    monkeypatch.setenv("PROVISA_TRINO_ETC_DIR", str(tmp_path))
+    monkeypatch.setattr("provisa.federation.k8s_provisioner.provisioning_available", lambda: False)
+    monkeypatch.setattr("provisa.core.trino_catalog_files.os.geteuid", lambda: 1001)
+    monkeypatch.setattr("provisa.core.trino_catalog_files.os.getgroups", lambda: [TRINO_GID])
+    monkeypatch.setattr(
+        "provisa.core.trino_catalog_files.os.fchown", lambda fd, u, g: given.append((u, g))
+    )
+    monkeypatch.setattr(
+        "provisa.core.trino_catalog_files.os.chown", lambda p, u, g: given.append((u, g))
+    )
+    await engine_identity.for_trino(None, "acme", new_identity(), {"scores-src": "HOST PEM"})
+    written = tmp_path / "codehost-client"
+    assert {p.name: _mode(str(p)) for p in written.iterdir()} == {
+        "acme.crt": 0o644,
+        "acme.key": 0o640,
+        "acme.pk8": 0o640,
+        "acme.scores-src.root.crt": 0o644,
+    }
+    assert _mode(str(written)) == 0o750
+    assert set(given) == {(-1, TRINO_GID)}
 
 
 async def test_on_a_provisioned_shard_trinos_files_go_into_its_secret(monkeypatch):
@@ -198,6 +225,9 @@ def test_a_postgres_engine_with_no_shared_directory_is_given_none(monkeypatch):
 def test_a_postgres_engines_files_are_named_where_its_server_reads_them(tmp_path, monkeypatch):
     monkeypatch.setenv(PG_FILES_ENV, str(tmp_path / "app-side"))
     monkeypatch.setenv(PG_FILES_AT_ENV, "/etc/provisa/codehost-client")
+    monkeypatch.setattr(
+        "provisa.core.trino_catalog_files.os.geteuid", lambda: engine_identity.POSTGRES_UID
+    )
     files = engine_identity.for_postgres("acme", new_identity(), {})
     assert files.key == "/etc/provisa/codehost-client/acme.key"
     assert (tmp_path / "app-side" / "acme.key").is_file()

@@ -247,6 +247,14 @@ export PROVISA_API_PORT="${PROVISA_API_PORT:-8001}"
 # REQ-1494: the platform fake key directory, written by this uvicorn and mounted into Trino.
 export PROVISA_FAKE_KEY_DIR="${PROVISA_FAKE_KEY_DIR:-$SCRIPT_DIR/.provisa/fake-key}"
 export PG_PASSWORD="${PG_PASSWORD:-provisa}"
+# REQ-2073: this uvicorn runs as you beside Trino's container and gives the engine's secret files
+# (Kafka client settings, a code host's client key) to the engine's group, of which you must be a
+# member. On macOS, Docker Desktop's bind mounts do not carry the file's owner or group to the
+# container, so any group of yours serves: your own. On Linux, the container's gid 1000 is the
+# default, and you must be in it.
+if [ "$(uname -s)" = Darwin ]; then
+  export PROVISA_ENGINE_FILES_GID="${PROVISA_ENGINE_FILES_GID:-$(id -g)}"
+fi
 export PETSTORE_BASE_URL="${PETSTORE_BASE_URL:-http://localhost:18080/api/v3}"
 # The pet store's GraphQL demo source is registered into the standard demo alone (its shelter
 # domain is the standard demo config's); a named demo is exactly what its own config lists.
