@@ -335,7 +335,7 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
 
         {origin === "directory" && (
           <FieldGroup>
-            <FormField size="long" hint={t("codeSourceFields.directoryHint")}>
+            <FormField size="long" help={t("codeSourceFields.directoryHint")}>
               <TextInput
                 required
                 label={t("codeSourceFields.directory")}
