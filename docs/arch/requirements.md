@@ -25825,3 +25825,17 @@ A Node or Python code source can take its code from a folder on the developer's 
 **Code:** —
 
 **Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2122 · Data Catalog Integration {#REQ-2122}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once: provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection test. A metadata export target names a catalog and keeps only its export settings, in place of its own endpoint and credentials. Description import: a table's description has From catalog, which opens a pick list of the connected catalogs' assets for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by name similarity and searchable; the steward picks one or none, and the picked asset's description, column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated descriptions only fill what the catalog never described, when the steward asks. A pick is stored as the table's catalog binding, the same binding an export records, so export and import share one link per table per catalog, an export updates the asset the steward picked, and a description can be refreshed from it later. Every export target records the catalog's id for what it publishes and, where the catalog's API allows, writes the table's Provisa address into the catalog asset, so after one export each published table is linked both ways. With the links in place, a later step may make a catalog the authority for descriptive metadata (descriptions, owners, glossary terms), read through the links in place of exported; governance stays Provisa's.
+
+**Use case:** A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
+
+**Code:** —
+
+**Tests:** —
