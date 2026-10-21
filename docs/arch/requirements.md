@@ -25650,7 +25650,7 @@ A Node or Python code source declares the names its code may read (secrets in it
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** behavioral
 
-A configuration may declare the code its code sources run: code/<name>.tar.gz (or .tgz or .zip) beside its config.yaml, a source naming it as uploaded code by the content hash of the code it unpacks to (code: {kind: upload, upload: <hash>}). When an org's model is built, before its replicas converge -- a demo template's from its demo's directory, the deployment org's from its launch config's directory, the directories whose declared replica rows land ([REQ-2089](#REQ-2089)) -- each archive there is kept as the org's upload under that hash, once however often the model is built, with every guard an upload applies; one that cannot be used is refused by name. A demo sandbox is given its template's uploads with its model, so the bundle build, the demo's template on a deployment, every sandbox of it and a local demo start all run the shipped code, and nothing is fetched from a package registry or a Git host to run it.
+A configuration may declare the code its code sources run: code/<name>.tar.gz (or .tgz or .zip) beside its config.yaml, a source naming it as uploaded code by the content hash of the code it unpacks to (code: {kind: upload, upload: <hash>}). When an org's model is built, before its replicas converge -- a demo template's from its demo's directory, the deployment org's from its launch config's directory, the directories whose declared replica rows land ([REQ-2089](#REQ-2089)) -- each archive there is kept as the org's upload under that hash, once however often the model is built, with every guard an upload applies; one that cannot be used is refused by name. A demo sandbox is given its template's uploads with its model, so the bundle build, the demo's template on a deployment, every sandbox of it and a local demo start all run the shipped code, and nothing is fetched from a package registry or a Git host to run it. (Amended 2026-10-21, DECLARED ORG FILES; maintainer:) A demo (or a launch config) may also ship files for its organisations' own folder, under org_files/ beside its config.yaml. When an org's model is built -- a demo template's from its demo's directory, a sandbox's from the demo version it was opened from, the deployment org's from its launch config's directory -- each is copied into the org's folder at files/<path>, once: a file already there with the same bytes is left as it is. A source then reads it in place by its org path ({files}/<path>), and nothing is fetched from the network, so it works in a sandbox, which may reach no address its demo does not declare. The status the app loads first names the demo's org files, and the core tour's live-built source ([REQ-2115](#REQ-2115)) reads supplies.parquet from {files}/supplies.parquet where the demo ships it (starthere does), and from the copy Provisa publishes where it does not.
 
 **Use case:** The churnprod demo ships its churn model as a Python package archive (its fitted model and uv.lock inside) and its Node twin as a second archive; each sandbox scores customers with them without reaching PyPI, npm or GitHub for the code.
 
@@ -25861,6 +25861,86 @@ The profile runs modal (ProfileRunsModal, opened from the table editor's profile
 The profile runs modal has three more 3D tabs that share the Terrain tab's controls: drag to rotate, a reset-view control, and an expand button that opens the view in a modal at 95% of the viewport with its own camera. Relationships lays the selected run's columns out as nodes by a seeded 3D force simulation, with edges from Spearman and correlation-ratio correlations and from the in-network dependency sets (an arrow points toward the dependent column), filterable by minimum strength and by kind, and shows a parent table's columns as foreign nodes. Joint cloud shows one column and its in-network parents from joint_counts as a 3D grid of decile or category slots, one sphere per occupied cell sized by rows and coloured by rows or by lift over independence, and lists the most over- and under-represented combinations among cells of at least 0.5% of rows. Drift strata shows one column's distribution in the selected run and up to seven earlier successful runs, re-cut into common bins and stacked oldest to newest, with the median traced across the runs, the null share per run, and the runs that drifted for that column marked. Columns whose values are restricted for the viewer's role show no nodes, cells or strata.
 
 **Use case:** A steward reading a profiled table sees which columns move together and which depend on which, which category combinations are over- or under-represented, and how one column's distribution has drifted across recent runs, without leaving the run.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2125 · Data Catalog Integration {#REQ-2125}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Data products are part of the built-in meta domain. A data_products_meta view over the data_products table has one row per product and a fixed set of columns: id, domain_id, name, owner_role, team_role, purpose, limitations, usage, version, status, sla, support, support_contact, publish and custom_properties. It flattens nothing and holds no arrays or counts; everything one-to-many is reached through meta-domain relationships, so GraphQL, Cypher and SQL clients assemble a product the same way. Each section of the Data Product detail panel can be reached from a data_products_meta row by relationships alone. The domain is reached through domain_id to domains. Member tables are reached through registered_tables_meta.product_id; registered_tables_meta also exposes dq_contract, so the member tables that carry a data-quality contract (the panel's Data Quality section) are told apart from the output tables. Member commands are reached through tracked_functions_meta.product_id. Tags are reached through tag_assignments_meta.product_id. Glossary terms are reached from member columns through glossary_term_refs_meta. Profiling results are reached from each member table to the profile result tables registered for it on its profiler source. Related tables and lineage are reached through data_product_edges. Each of these views keeps its own column tiers (CORE and GOVERNANCE, view_governance), so a caller sees through a relationship only what the target view shows that caller directly.
+
+**Use case:** An analyst, a BI tool or an MCP agent finds a data product and everything that makes it up (its domain, members, commands, tags, terms, data-quality evidence and profiles) by querying the meta domain, with no admin API and no knowledge of the control-plane schema.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2126 · Data Catalog Integration {#REQ-2126}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The meta domain has a view-only data_product_edges view, related to data_products_meta by product_id. It holds the links from a data product to the rest of the model, and the detail panel's Related Tables and Lineage sections read from it. There are two edge kinds. A relationship edge links a product to a table or to another product through approved relationships. It is direct when one relationship joins a member to the other end. It is indirect when the path runs through tables that belong to no product, and then it carries the shortest hop count. A lineage edge links a product to a relation upstream or downstream of a member at relation level: the full upstream ancestry and one hop downstream, crossing domains. There is at most one row per product, target and kind. When several paths connect the same pair, the row carries the path count and the connecting relationship aliases, so the extra paths become detail on one edge rather than separate edges. A product-to-product row exists when the target end is a member of another product, so the domain and cross-domain product graph is a query over this view. The view is computed from relationships, registered tables and lineage; nothing is stored.
+
+**Use case:** A consumer sees which products and tables a data product joins to or derives from, whether each link is direct or through supporting tables, and how many paths connect them, from one meta-domain query that also draws the product graph across domains.
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2127 · Data Products {#REQ-2127}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+The Data Products page and its detail panel get their data by querying the meta domain through the governed pipeline as the signed-in user: data_products_meta and its relationships ([REQ-2125](#REQ-2125)) and data_product_edges ([REQ-2126](#REQ-2126)). They do not use admin endpoints or compute anything in the browser. Related Tables and Lineage are no longer derived in the browser from relationships and the federation lineage graph; they are rows of data_product_edges. A section the user's role cannot read through the meta domain is absent from the panel. The product's GraphQL, SQL and JSON:API queries shown in the panel are the queries the panel itself runs, so a user can copy them and get the same result.
+
+**Use case:** The meta domain is proven complete by the product's own UI: if a section of the panel can't be built from meta-domain queries, an outside consumer can't build it either, and the gap shows up in Provisa's own page first.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2128 · Data Products {#REQ-2128}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+The Data Product detail panel has a Knowledge Graph panel, one of its masonry panels, scoped to the selected product. It shows a simplified graph with a fixed set of layers (the product, its member tables, its commands, and the glossary terms bound to its columns) and no layer controls or filters. three.js loads only when the panel scrolls into view. The panel's expand button opens the full graph at 95% of the viewport, starting on the Knowledge graph preset and focused on that product. The Data Products page has its own entry point that opens the full graph on the Product map preset, because that preset covers every product rather than one. The full graph is one 3D network graph, built on the profile3d scene components (Stage3D, Expandable3D, baseScene and the relations force layout). Its contents are layers that the user turns on and off. Each layer is a node type or an edge kind. The layers are: product and domain; member tables, with each table's columns collapsed into it until the user expands it; commands; data quality (checker tables linked to the table they check through dq_contract) and profile results; tags; ontology (glossary terms, term-to-term edges and term-to-column bindings); relationships between members, on by default; relationships from a member to a table outside the product, off by default; and lineage. Filters by domain, tag, sensitivity, and a focus term or product apply to every layer. Presets are named sets of layers, and each preset also sets the layout. Knowledge graph has every layer except outside relationships, with the force layout. Ontology has terms, term edges, the bound columns and the products that own those columns, with the force layout. Product map has products grouped by domain, with edges from data_product_edges and the force layout. Lineage has lineage edges only, drawn left to right in [REQ-1667](#REQ-1667)'s upstream lanes. Choosing a preset sets the layers and layout; after that the user can add or remove layers. All graph data comes from meta-domain queries run as the signed-in user ([REQ-2125](#REQ-2125), [REQ-2126](#REQ-2126), [REQ-2129](#REQ-2129)), so a layer the user's role cannot read is not offered. Both the panel and the full graph have the shared 3D controls: drag to rotate and a reset-view control.
+
+**Use case:** A steward or consumer sees a data product whole, including structure, meaning, quality and provenance, in one graph. They narrow it to the question at hand by turning layers on and off or picking a preset, instead of moving between separate pages.
+
+**Code:** —
+
+**Tests:** —
+
+## 1. Access Governance & Security
+
+### REQ-2129 · Data Catalog Integration {#REQ-2129}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+The meta domain has a view-only column_lineage_edges view with one row per column-level lineage edge: the source relation and column, the target relation and column, and the view that derives the target. It holds the same edges as the federation column lineage graph (GET /admin/lineage/federation) across all domains, so a cross-domain ancestry chain is never cut. It is computed from compiled views and nothing is stored. Its endpoints relate to table_columns_meta, so a client can traverse from a member column to its upstream columns by relationships. A caller sees an edge only if both of its ends are visible to that caller in table_columns_meta. The view is in the GOVERNANCE tier and needs view_governance, as [REQ-1640](#REQ-1640)'s lineage section does.
+
+**Use case:** Expanding a table to its columns in the data product graph, with the lineage layer on, shows which upstream columns feed each column. Any meta-domain client can answer the same question with one query.
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2130 · Glossary Admin {#REQ-2130}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+The Glossary page has an Ontology View: the [REQ-2128](#REQ-2128) 3D graph engine scoped to the whole glossary rather than one data product, with the same layer, filter and preset controls and the same expand button. Nodes are glossary terms, and edges are term-to-term edges. Edge type (KIND_OF, PART_OF, SYNONYM_OF, REPLACES and the other term edge types) is a filter. The dimensions are as follows. Domain: domains are cluster nodes, and a term links to each domain it belongs to, as the glossary derives them ([REQ-1591](#REQ-1591)), with enterprise-scope terms ([REQ-1592](#REQ-1592)) at the centre; terms are not coloured by domain, because a term can belong to several. Status: a term is proposed when it is in service (neither retired nor deprecated) but not live, meaning it has no definition or is not grounded (no chain of edges from it reaches a term bound to a column), by the one admission rule in live_term_ids ([REQ-1387](#REQ-1387)). Proposed, deprecated and retired are each a filter. Proposed and deprecated are shown by default, deprecated terms are dimmed, and retired terms are hidden by default. A proposed term's node shows whether it is undefined, ungrounded or both. Abstract or concrete: an abstract term (is_abstract) is drawn hollow and a concrete one solid. Data: a layer, off by default, that adds each term's bound columns collapsed into their tables, and the data products those tables belong to. There are two presets. Ontology shows every edge type with the force layout. Taxonomy shows only KIND_OF and PART_OF edges as a top-down tree. All graph data comes from meta-domain queries run as the signed-in user (glossary_terms_meta and its live column, glossary_term_edges_meta, glossary_term_refs_meta, and [REQ-2125](#REQ-2125) for products), so a term the user cannot read is absent. three.js loads only when the view is opened.
+
+**Use case:** A curator sees the shape of the vocabulary: which terms are still proposals and why, where abstract concepts are left without concrete terms under them, which domains share terms, and which terms reach real data and data products.
 
 **Code:** —
 
