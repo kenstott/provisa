@@ -56,6 +56,8 @@
     "edge_relationship_outside": "relacionamento fora do produto",
     "edge_lineage": "alimenta",
     "edge_owns": "possui",
-    "loadError": "Não foi possível ler o grafo: {{error}}"
+    "loadError": "Não foi possível ler o grafo: {{error}}",
+    "zoomTo": "Aproximar",
+    "edge_column_lineage": "alimenta a coluna"
   }
 }

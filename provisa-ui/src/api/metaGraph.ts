@@ -158,8 +158,10 @@ function viewType(m: MetaReader, view: string): string | null {
   return m.schema.exact(m.schema.query, field)?.type ?? null;
 }
 
-/** The selection set of ``sel`` on ``type``, with only what the role can read. */
-export function selectionSet(m: MetaReader, type: string, sel: Selection): string {
+/** The selection set of ``sel`` on ``type``, with only what the role can read: one selection a
+ * line, nested ``depth`` deep, so the query reads as it is shown. */
+export function selectionSet(m: MetaReader, type: string, sel: Selection, depth = 1): string {
+  const pad = "  ".repeat(depth);
   const parts: string[] = [];
   for (const f of sel.fields) {
     const name = m.schema.column(type, f);
@@ -174,10 +176,11 @@ export function selectionSet(m: MetaReader, type: string, sel: Selection): strin
           ? m.schema.reaching(type, target)
           : null;
     if (!found?.type) continue;
-    const body = selectionSet(m, found.type, hop.sel);
+    const body = selectionSet(m, found.type, hop.sel, depth + 1);
     if (body) parts.push(`${key}: ${found.name} ${body}`);
   }
-  return parts.length > 0 ? `{ ${parts.join(" ")} }` : "";
+  if (parts.length === 0) return "";
+  return `{\n${parts.map((p) => pad + p).join("\n")}\n${"  ".repeat(depth - 1)}}`;
 }
 
 /** A root query over the meta view ``view`` (``data_products``), answered under ``view``, with
@@ -192,7 +195,7 @@ export function rootQuery(
   const field = m.roots.get(rootKey("meta", view));
   const type = viewType(m, view);
   if (!field || !type) return null;
-  const body = selectionSet(m, type, sel);
+  const body = selectionSet(m, type, sel, 2);
   if (!body) return null;
   let args = "";
   if (where) {
@@ -205,5 +208,5 @@ export function rootQuery(
     }
     args = `(where: { ${conds.join(", ")} })`;
   }
-  return `query ${name} { ${view}: ${field}${args} ${body} }`;
+  return `query ${name} {\n  ${view}: ${field}${args} ${body}\n}`;
 }

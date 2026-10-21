@@ -111,6 +111,13 @@ describe("the panel's meta reads", () => {
       'data_products: m__dataProducts(where: { id: { eq: "c360" } })',
     );
     expect(q?.graphql).toContain("member_tables: memberTables");
+    // Built a selection a line, as the panel shows it.
+    expect(q?.graphql.split("\n").slice(0, 4)).toEqual([
+      "query DataProductPanel {",
+      '  data_products: m__dataProducts(where: { id: { eq: "c360" } }) {',
+      "    id: id",
+      "    member_tables: memberTables {",
+    ]);
     expect(q?.graphql).not.toContain("tags");
     expect(q?.graphql).not.toContain("edges");
     expect(q?.sql).toBe(

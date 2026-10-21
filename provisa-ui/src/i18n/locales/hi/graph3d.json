@@ -56,6 +56,8 @@
     "edge_relationship_outside": "प्रोडक्ट के बाहर संबंध",
     "edge_lineage": "डेटा देता है",
     "edge_owns": "का मालिक",
-    "loadError": "ग्राफ़ पढ़ा नहीं जा सका: {{error}}"
+    "loadError": "ग्राफ़ पढ़ा नहीं जा सका: {{error}}",
+    "zoomTo": "उस पर ज़ूम करें",
+    "edge_column_lineage": "कॉलम को डेटा देता है"
   }
 }

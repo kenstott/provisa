@@ -134,3 +134,24 @@ describe("the detail panel's graph", () => {
     expect(kinds(g)).toEqual(["command", "member", "term_binding"]);
   });
 });
+
+describe("column lineage (REQ-2129)", () => {
+  const withColumns: GraphData = {
+    nodes: [...DATA.nodes, { id: "c:9:amount", type: "column", label: "raw.orders.amount" }],
+    edges: [
+      ...DATA.edges,
+      { id: "cl", a: "c:9:amount", b: "c:orders.total", kind: "column_lineage", label: "sales.v" },
+    ],
+  };
+
+  it("draws a column's upstream columns once its table is expanded, and not before", () => {
+    const folded = visibleGraph(withColumns, preset("knowledge"), NO_FILTERS, new Set());
+    expect(kinds(folded)).not.toContain("column_lineage");
+    expect(ids(folded)).not.toContain("c:9:amount");
+    const open = visibleGraph(withColumns, preset("knowledge"), NO_FILTERS, new Set(["t:orders"]));
+    expect(open.edges.find((e) => e.kind === "column_lineage")).toMatchObject({
+      a: "c:9:amount",
+      b: "c:orders.total",
+    });
+  });
+});

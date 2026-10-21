@@ -56,6 +56,8 @@
     "edge_relationship_outside": "产品外的关系",
     "edge_lineage": "供数给",
     "edge_owns": "拥有",
-    "loadError": "无法读取图：{{error}}"
+    "loadError": "无法读取图：{{error}}",
+    "zoomTo": "缩放到此",
+    "edge_column_lineage": "供数给列"
   }
 }

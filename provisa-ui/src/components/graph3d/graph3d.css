@@ -1,5 +1,6 @@
 /* REQ-2128: the data product graph, on the 3D profile views' tokens and layout (profile3d.css). */
 .g3d.is-expanded {
+  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--mantine-spacing-xs);
@@ -29,7 +30,7 @@
   background: var(--p3d-accent);
 }
 .g3d-sw-domain {
-  background: var(--p3d-wall-b);
+  background: var(--p3d-fam-temporal);
 }
 .g3d-sw-table {
   background: var(--p3d-fam-numeric);

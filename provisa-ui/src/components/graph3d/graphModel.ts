@@ -42,6 +42,7 @@ export type EdgeKind =
   | "relationship"
   | "relationship_outside"
   | "lineage"
+  | "column_lineage"
   | "owns";
 
 export type LayerId =
@@ -98,7 +99,7 @@ export const LAYERS: Record<LayerId, { nodes: NodeType[]; edges: EdgeKind[] }> =
   ontology: { nodes: ["term"], edges: ["term_edge", "term_binding"] },
   relationships: { nodes: [], edges: ["relationship"] },
   outside: { nodes: [], edges: ["relationship_outside"] },
-  lineage: { nodes: [], edges: ["lineage"] },
+  lineage: { nodes: [], edges: ["lineage", "column_lineage"] },
 };
 
 export const LAYER_ORDER: LayerId[] = [
@@ -227,7 +228,14 @@ export function visibleGraph(
   };
   for (const e of data.edges) {
     const layer = LAYER_OF_EDGE.get(e.kind);
-    if (layer && layers.has(layer)) add(e);
+    if (!layer || !layers.has(layer)) continue;
+    // REQ-2129: a column's upstream columns are drawn once its table is expanded to its columns;
+    // until then the product's relation-level lineage stands for them.
+    if (e.kind === "column_lineage") {
+      const parent = byId.get(e.b)?.parent;
+      if (!parent || !expanded.has(parent)) continue;
+    }
+    add(e);
   }
   const touched = new Set<string>();
   for (const e of edges.values()) touched.add(e.a).add(e.b);
@@ -318,6 +326,7 @@ const PULL: Record<EdgeKind, number> = {
   relationship: 0.5,
   relationship_outside: 0.3,
   lineage: 0.4,
+  column_lineage: 0.4,
 };
 
 const LANE_GAP = 4;

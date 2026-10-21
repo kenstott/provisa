@@ -304,7 +304,8 @@ export function toGraphData(
         node({
           id: cid,
           type: "column",
-          label: c.column_name,
+          // Named with its table: drawn without it (the Ontology preset), "email" alone says little.
+          label: `${t.table_name}.${c.column_name}`,
           parent: tid,
           domains: [t.domain_id],
           tags: tagIds(c),
@@ -316,8 +317,9 @@ export function toGraphData(
           const sid = `c:${u.source_column_key}`;
           // A column outside the product stands alone, named by its relation.
           node({ id: sid, type: "column", label: `${u.source_relation}.${u.source_column}` });
-          const id = `lineage:${sid}>${cid}`;
-          if (!edges.has(id)) edges.set(id, { id, a: sid, b: cid, kind: "lineage", label: u.via });
+          const id = `column_lineage:${sid}>${cid}`;
+          if (!edges.has(id))
+            edges.set(id, { id, a: sid, b: cid, kind: "column_lineage", label: u.via });
         }
         for (const r of c.glossary_ref ?? []) {
           if (!r.term) continue;

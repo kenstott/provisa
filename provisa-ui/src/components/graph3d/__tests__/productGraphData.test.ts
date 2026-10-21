@@ -291,7 +291,7 @@ describe("column lineage (REQ-2129)", () => {
     ];
     const g = toGraphData(rows, null, null);
     expect(g.nodes.find((n) => n.id === "c:9:amount")?.label).toBe("finance.b.amount");
-    expect(g.edges.find((e) => e.kind === "lineage")).toMatchObject({
+    expect(g.edges.find((e) => e.kind === "column_lineage")).toMatchObject({
       a: "c:9:amount",
       b: "c:1:total",
       label: "sales.a",

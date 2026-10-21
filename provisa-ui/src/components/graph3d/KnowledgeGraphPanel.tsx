@@ -52,9 +52,10 @@ function GraphModal({
       onClose={onClose}
       size="95%"
       title={title}
+      // The body takes what the header leaves, so the graph's foot (its legend) is never cut off.
       styles={{
-        content: { height: "95vh" },
-        body: { height: "calc(95vh - 3.5rem)", overflow: "hidden" },
+        content: { height: "95vh", display: "flex", flexDirection: "column" },
+        body: { flex: 1, minHeight: 0, overflow: "hidden" },
       }}
       data-testid="graph3d-modal"
     >

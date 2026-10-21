@@ -56,6 +56,8 @@
     "edge_relationship_outside": "relazione fuori dal prodotto",
     "edge_lineage": "alimenta",
     "edge_owns": "possiede",
-    "loadError": "Impossibile leggere il grafo: {{error}}"
+    "loadError": "Impossibile leggere il grafo: {{error}}",
+    "zoomTo": "Zoom sull'elemento",
+    "edge_column_lineage": "alimenta la colonna"
   }
 }

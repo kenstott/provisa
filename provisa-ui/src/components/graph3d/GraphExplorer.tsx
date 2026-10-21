@@ -293,7 +293,7 @@ function GraphDetail({
               onClick={() => onFocus(node.id)}
               data-testid={`${testId}-zoom`}
             >
-              {t("profile3d.zoomTo")}
+              {t("graph3d.zoomTo")}
             </Button>
             {hasColumns && (
               <Button

@@ -56,6 +56,8 @@
     "edge_relationship_outside": "Beziehung außerhalb des Produkts",
     "edge_lineage": "speist",
     "edge_owns": "besitzt",
-    "loadError": "Der Graph konnte nicht gelesen werden: {{error}}"
+    "loadError": "Der Graph konnte nicht gelesen werden: {{error}}",
+    "zoomTo": "Hineinzoomen",
+    "edge_column_lineage": "speist Spalte"
   }
 }

@@ -174,7 +174,10 @@ function MetaQueries({ core, testId }: { core: ProductCore; testId: string }) {
       label: "GraphQL",
       text: core.queries.graphql,
       icon: <Braces size={14} />,
-      open: () => navigate("/query", { state: { query: core.queries.graphql, autoRun: true } }),
+      open: () =>
+        navigate("/query", {
+          state: { query: core.queries.graphql, autoRun: true },
+        }),
     },
     {
       key: "sql",
@@ -231,7 +234,7 @@ function MetaQueries({ core, testId }: { core: ProductCore; testId: string }) {
             component="pre"
             size="xs"
             ff="monospace"
-            className="dp-meta-query"
+            style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}
             data-testid={`${testId}-${r.key}`}
           >
             {r.text}

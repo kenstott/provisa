@@ -56,6 +56,8 @@
     "edge_relationship_outside": "relatie buiten het product",
     "edge_lineage": "voedt",
     "edge_owns": "bezit",
-    "loadError": "De graaf kon niet worden gelezen: {{error}}"
+    "loadError": "De graaf kon niet worden gelezen: {{error}}",
+    "zoomTo": "Inzoomen",
+    "edge_column_lineage": "voedt kolom"
   }
 }

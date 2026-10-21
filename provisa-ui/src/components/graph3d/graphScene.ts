@@ -167,7 +167,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       new THREE.MeshStandardMaterial({ color, roughness: 0.6, transparent: true, opacity });
     this.mats = {
       product: solid(th.accent),
-      domain: solid(th.wallB),
+      domain: solid(th.family.temporal),
       table: solid(th.family.numeric),
       relation: solid(th.family.foreign),
       column: solid(th.family.other),
@@ -176,7 +176,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       profile: solid(th.qMid),
       tag: solid(th.family.boolean),
       term: solid(th.cool),
-      structure: rod(th.wallLine, 0.7),
+      structure: rod(th.family.other, 0.55),
       link: rod(th.accent),
       quality: rod(th.qTail),
       tagged: rod(th.family.boolean, 0.6),
@@ -193,7 +193,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       halo: new THREE.MeshBasicMaterial({
         color: th.accent,
         transparent: true,
-        opacity: 0.28,
+        opacity: 0.16,
         depthWrite: false,
       }),
       grid: new THREE.LineBasicMaterial({ color: th.grid, transparent: true, opacity: 0.6 }),
@@ -223,6 +223,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       case "relationship_outside":
         return this.mats.outside;
       case "lineage":
+      case "column_lineage":
         return this.mats.lineage;
     }
   }
@@ -284,7 +285,7 @@ export class GraphScene extends BaseScene<GraphHover> {
       rodMesh.userData.edge = e.id;
       world.add(rodMesh);
       const meshes = [rodMesh];
-      if (e.kind === "lineage") {
+      if (e.kind === "lineage" || e.kind === "column_lineage") {
         const rb = radiusOf.get(e.b) ?? 0.3;
         const cone = new THREE.Mesh(new THREE.ConeGeometry(thick * 3 + 0.06, 0.4, 10), mat);
         cone.position.copy(
@@ -344,7 +345,7 @@ export class GraphScene extends BaseScene<GraphHover> {
     const sel = this.nodes.find((n) => n.node.id === this.selected);
     if (sel && this.world) {
       this.halo = new THREE.Mesh(
-        new THREE.SphereGeometry(sel.radius * 1.9, 24, 16),
+        new THREE.SphereGeometry(sel.radius * 1.35, 24, 16),
         this.mats.halo,
       );
       this.halo.position.copy(sel.mesh.position);
