@@ -10,6 +10,7 @@
 
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
+  FONT_CACHE_CODE,
   LITE_SPLASH_ID,
   LITE_THEMES,
   NOTEBOOK_STARTER,
@@ -283,5 +284,33 @@ describe("runCells", () => {
     await runCells(lite, ["a = 1"], false);
     expect(sources).toEqual(["a = 1"]);
     expect(execute).not.toHaveBeenCalled();
+  });
+
+  it("builds matplotlib's font cache silently before cells that draw, and not otherwise", async () => {
+    const { lite, panel, execute } = notebookApp(() => []);
+    const order: string[] = [];
+    execute.mockImplementation(async () => {
+      order.push("run-cell");
+      return true;
+    });
+    const requestExecute = vi.fn(() => {
+      order.push("font-cache");
+      return { done: Promise.resolve() };
+    });
+    Object.assign(panel, {
+      sessionContext: { ready: Promise.resolve(), session: { kernel: { requestExecute } } },
+    });
+    await runCells(lite, ["import matplotlib.pyplot as plt", "plt.show()"], true);
+    expect(requestExecute).toHaveBeenCalledTimes(1);
+    expect(requestExecute).toHaveBeenCalledWith({
+      code: FONT_CACHE_CODE,
+      silent: true,
+      store_history: false,
+    });
+    expect(order).toEqual(["font-cache", "run-cell", "run-cell"]);
+    requestExecute.mockClear();
+    await runCells(lite, ["print(1)"], true);
+    await runCells(lite, ["import matplotlib"], false);
+    expect(requestExecute).not.toHaveBeenCalled();
   });
 });
