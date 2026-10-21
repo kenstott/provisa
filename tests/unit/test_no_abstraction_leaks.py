@@ -88,6 +88,9 @@ OWNERS: dict[str, set[str]] = {
         # The direct driver owns its connector, as the ClickHouse and Snowflake drivers do: it maps
         # the connector's own connection-level error classes to decide a pooled connection is dead.
         "provisa/executor/drivers/databricks.py",
+        # Unity Catalog publishing maps the connector's own error class to report a refused
+        # statement against its product, as Horizon does for Snowflake's (REQ-2117).
+        "provisa/api/metadata_export/unity_catalog.py",
     },
     "google.cloud.bigquery": set(),
     "asyncpg": {
