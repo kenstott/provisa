@@ -246,14 +246,16 @@ def test_a_day_not_yet_closed_has_no_figures_as_reported(answers):
 
 
 def test_the_late_trade_restates_its_own_trade_date(nodes):
+    # Its own day only: the corporate totals of every day run past the server's default row limit.
+    oct_2 = f"{_CORPORATE} AND e.business_date = DATE '2026-10-02'"
     at_its_close = _total(
-        _sql(nodes["warehouse"], _CORPORATE, "analyst", {"as_recorded": _OCT_2_CLOSE}),
+        _sql(nodes["warehouse"], oct_2, "analyst", {"as_recorded": _OCT_2_CLOSE}),
         "2026-10-02",
         "Edinburgh",
         "USD",
     )
     now = _total(
-        _sql(nodes["warehouse"], _CORPORATE, "analyst", {"as_recorded": _LAST_CLOSE}),
+        _sql(nodes["warehouse"], oct_2, "analyst", {"as_recorded": _LAST_CLOSE}),
         "2026-10-02",
         "Edinburgh",
         "USD",
@@ -316,7 +318,9 @@ def test_the_dashboard_and_bi_give_the_same_figure(answers, nodes):
     assert not body.get("errors"), body
     [totals] = body["data"].values()
     assert any(t["postings"] for t in totals), totals
-    [dashboard] = [t for t in totals if t["product"] == "corporate" and t["currency"] == "GBP"]
+    corporate_gbp = [t for t in totals if t["product"] == "corporate" and t["currency"] == "GBP"]
+    assert len(corporate_gbp) == 1, totals
+    [dashboard] = corporate_gbp
     day = [r for r in answers["bankingDay"] if r["product"] == "corporate"]
     bi = _total(day, "2026-10-01", "London", "GBP")
     assert Decimal(str(dashboard["netMovement"])) == bi
