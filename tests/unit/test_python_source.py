@@ -139,6 +139,64 @@ def test_a_typed_dict_and_a_named_tuple_are_row_types(tmp_path):
     )
 
 
+_PYDANTIC_CODE = """
+    from pydantic import BaseModel, Field as Described, PrivateAttr
+
+    class Line(BaseModel):
+        sku: str
+        qty: int
+
+    class Rate(BaseModel):
+        pair: str = Described(description="The currency pair, base first.")
+        mid_rate: float = Described(alias="midRate")
+        note: str | None = None
+        lines: list[Line] = []
+        _seen: int = PrivateAttr(default=0)
+
+    def rates() -> list[Rate]:
+        \"\"\"@table\"\"\"
+        return [Rate(pair="EURUSD", midRate=1.08, lines=[Line(sku="a", qty=2)])]
+    """
+
+
+def test_a_pydantic_model_is_a_row_type_named_as_it_is_sent_and_described(tmp_path):
+    manifest = read_manifest(_read(_code(tmp_path, _PYDANTIC_CODE), "rows"), PYTHON_RULES)
+    assert manifest.types["Rate"].fields == (
+        Field("pair", Scalar("text"), False, "The currency pair, base first."),
+        Field("midRate", Scalar("double"), False),
+        Field("note", Scalar("text"), True),
+        Field("lines", ListOf(Named("Line")), False),
+    )
+    assert manifest.types["Line"].fields == (
+        Field("sku", Scalar("text"), False),
+        Field("qty", Scalar("bigint"), False),
+    )
+
+
+def test_a_pydantic_models_rows_come_back_by_alias_with_nested_models(tmp_path):
+    (tmp_path / "code").mkdir()
+    code = _code(tmp_path / "code", _PYDANTIC_CODE)
+    manifest = read_manifest(_read(code, "rows"), PYTHON_RULES)
+    command = w.HostCommand(
+        argv=lambda address: [sys.executable, "-I", str(HOST), address, str(code), "rows"],
+        env=w.private_environment(PYTHONDONTWRITEBYTECODE="1"),
+        cwd=code,
+    )
+    started = w.Worker("python-src", "h", command)
+    started.start()
+    try:
+        schema = schema_text(row_schema(manifest, manifest.export("rates")))
+        [[row]] = list(started.rows("rates", "table", [], schema=schema))
+    finally:
+        started.stop()
+    assert row == {
+        "pair": "EURUSD",
+        "midRate": 1.08,
+        "note": None,
+        "lines": [{"sku": "a", "qty": 2}],
+    }
+
+
 def test_code_that_breaks_the_rules_is_refused_with_every_problem(tmp_path):
     code = _code(
         tmp_path,

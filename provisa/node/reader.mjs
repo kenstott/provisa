@@ -68,6 +68,8 @@ function field(property, at) {
     name: property.getName(),
     optional: (property.flags & ts.SymbolFlags.Optional) !== 0,
     type: write(checker.getTypeOfSymbolAtLocation(property, declaration), declaration),
+    // The property's own doc comment: its column's description.
+    description: ts.displayPartsToString(property.getDocumentationComment(checker)).trim(),
   };
 }
 
