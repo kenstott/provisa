@@ -148,12 +148,55 @@ async def test_the_start_serves_an_unchanged_template_and_queues_only_the_change
     monkeypatch.setattr(demo_templates, "_mark_templated", lambda _demo: None)
     monkeypatch.setattr("provisa.core.connection_loop.spawn_background", _spawn)
     monkeypatch.setattr("provisa.core.settings_registry.value", lambda _key: 2)
+    retired: list[str] = []
+
+    async def _retire(name: str) -> None:
+        retired.append(name)
+
+    monkeypatch.setattr(demo_templates, "_retire_template", _retire)
     outcome = await demo_templates.ensure_demo_templates(platform)
     assert outcome == {"alpha": "ready (as built)", "beta": "building"}
+    assert retired == ["beta"]  # built for another version: replaced, not loaded
     assert rows == ["beta"]  # the unchanged template is neither marked for building nor queued
     assert queue.state_of("alpha") == "ready"
     assert queue.state_of("beta") == "queued"
     assert spawned == ["demo-templates"]
+
+
+async def test_a_template_another_release_built_is_replaced_not_loaded(platform, monkeypatch):
+    """A template org left ready by the release before (same demo version) has that release's
+    schema; loading it failed every read of a column added since (sources.download_from on the
+    sandbox tier, 500 on opening starthere). It is removed and built again."""
+    from sqlalchemy import delete
+
+    demo = _demo("alpha")
+    await _built(platform, demo, version=f"{demo.directory.name}@0.1.0a480")
+    _on_disk(monkeypatch, {demo.template_org: _BUILT})
+    queue = TemplateBuilds()
+    retired: list[str] = []
+
+    async def _retire(name: str) -> None:
+        retired.append(name)
+        async with platform.acquire() as conn:
+            await conn.execute_core(delete(orgs).where(orgs.c.id == demo.template_org))
+
+    monkeypatch.setattr(demo_templates, "template_builds", queue)
+    monkeypatch.setattr(demo_templates, "bundled_demos", lambda: ("alpha",))
+    monkeypatch.setattr(demo_templates, "_templated", lambda _name: demo.directory.name)
+    monkeypatch.setattr(demo_templates, "seeding_release", lambda: False)
+    monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: False)
+    monkeypatch.setattr(demo_templates, "_retire_template", _retire)
+    monkeypatch.setattr(demo_templates, "_mark_templated", lambda _demo: None)
+    assert await demo_templates._queue_template(platform, demo) == "building"
+    assert retired == ["alpha"]
+    assert queue.state_of("alpha") == "queued"
+    async with platform.acquire() as conn:
+        state = (
+            await conn.execute_core(
+                select(orgs.c.provisioning_state).where(orgs.c.id == demo.template_org)
+            )
+        ).scalar_one()
+    assert state == "provisioning"
 
 
 class _Task:
@@ -193,6 +236,11 @@ async def test_a_bundle_ready_after_the_start_has_its_template_queued(platform, 
     monkeypatch.setattr(demo_templates, "_templated", lambda _name: None)
     monkeypatch.setattr("provisa.core.connection_loop.spawn_background", _spawn)
     monkeypatch.setattr("provisa.core.settings_registry.value", lambda _key: 2)
+
+    async def _retire(_name: str) -> None:
+        pass  # never recorded ready: nothing of it to remove
+
+    monkeypatch.setattr(demo_templates, "_retire_template", _retire)
     # Before the start has queued its own, the pass queues nothing.
     assert await demo_templates.queue_late_templates(platform) == []
     await demo_templates.ensure_demo_templates(platform)

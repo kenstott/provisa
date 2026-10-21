@@ -633,7 +633,11 @@ async def _queue_template(pool, demo: PublishedDemo) -> str:
     """Queue ``demo``'s template, or serve it as built; what its template did."""
     if await _served_as_built(pool, demo):
         return "ready (as built)"
-    if bundled_demos() and _templated(demo.name) != demo.directory.name:
+    # A template another demo version or another Provisa release built is replaced, not loaded: its
+    # schema is that release's (no migrations), and a column added since fails every read of it
+    # (sources.download_from on the sandbox tier).
+    stale = await _built_for(pool, demo) != readiness_version(demo)
+    if stale or (bundled_demos() and _templated(demo.name) != demo.directory.name):
         await _retire_template(demo.name)
     build = await _template_row(pool, demo)
     _mark_templated(demo)
@@ -816,6 +820,24 @@ async def warm_ready(pool, demo: PublishedDemo) -> bool:
         return False
     held = await asyncio.to_thread(store_counts, demo.template_org)
     return held == {"replicas": dict(record.replicas), "views": dict(record.views)}
+
+
+async def _built_for(pool, demo: PublishedDemo) -> str | None:
+    """The demo version and Provisa release ``demo``'s template was recorded ready for
+    (readiness_version); None when it was never recorded ready."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_admin import demo_template_readiness
+
+    async with pool.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(demo_template_readiness.c.version).where(
+                    demo_template_readiness.c.template_org == demo.template_org
+                )
+            )
+        ).fetchone()
+    return row[0] if row is not None else None
 
 
 def _templated(name: str) -> str | None:
