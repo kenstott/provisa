@@ -85331,6 +85331,48 @@ And read as recorded at 2026-10-02 22:00 UTC the view answers the first version"
   - tests/unit/test_refresh_mv_mutation.py
   stakeholders:
   - data-engineer
+- id: REQ-2107
+  status: in-progress
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'A named demo, banking: end-of-day reporting without copying the ledger. Its business question: "Can the warehouse report each day''s close, and every restatement since, without a copy of the ledger?" Two regions on one node, as the retail demo runs them (visitor warehouse, headless ledger), each with its own store. The ledger region homes a Postgres ledger of accounts and an append-only transactions table (business key transaction_id, valid time business_date, recorded time updated_at; a correction is a new row with the same transaction_id, the primary key a row id) that is never replicated (replicate -1), so no posting is ever copied into the warehouse. The warehouse region materializes in its own store the end-of-day totals by business date, branch, product and currency, with one group_key column: a single-source GROUP BY over the ledger table, built whole at the ledger''s Postgres so only grouped rows land, on a declared calendar whose business day closes at 18:00 Europe/London, inheriting the ledger''s versions with no history settings of its own. Faked accounts and postings over 30 business days are loaded a day at a time by the demo''s setup, each day''s totals built sealed at that day''s close, so 30 end-of-day versions exist; two restatements (a reversed payment and a late trade) arrive on later days and become new versions of their past dates, the versions reported at the close kept. A relationship from a total''s group_key to a thin live view of the postings computing the same key is the drill-down. Roles: the reporting analyst reads the totals; operations drills into postings under the ledger''s row rules and masks. Its tour follows the settled demo tour shape and names four focuses in its opening and recap: compute cost, data footprint and so governance surface, the same answer over GraphQL, SQL and MCP, and the cost of change. The solution is predesigned queries: a GraphQL dashboard with the postings nested, SQL as a BI tool runs it over pgwire with SET provisa.as_recorded at a close and as restated since, the postings under the ledger''s rules, and a stored agent answer. A step before the recap shows moving the ledger to a warehouse replica as a two-line placement change (region and replicate) under which the same queries answer. Plain words, no figures.'
+  use_case: 'A bank''s data lead opens the banking demo and sees each day''s end-of-day totals built in the warehouse from a ledger that is never copied there, read as reported at each close and as restated since, with the same numbers on the dashboard, in BI and from an agent.'
+  scenario: 'Given the banking demo started with its setup run
+
+
+    When a visitor walks its tour to the end
+
+
+    Then 1 October''s London corporate GBP total read as recorded at 1 October''s close carries the payment reversed later, and read as recorded at 12 October''s close it does not
+
+
+    And the warehouse region''s stores hold the end-of-day totals and no posting of the ledger
+
+
+    And operations reads the postings behind a total with counterparties withheld and no posting to a staff account'
+  related_reqs:
+  - REQ-2035
+  - REQ-2056
+  - REQ-2108
+  - REQ-2109
+  - REQ-2110
+  - REQ-2111
+  - REQ-2120
+  notes: 'Lead 2026-10-20/21: cost framing, not residency; regions as retail (visitor warehouse, headless [ledger]) on one node; 30 sealed builds through setup.yaml client steps calling refreshMv(window); the placement change is worded as a two-line reviewed diff. Built 2026-10-21: the totals are daily movements (credits, debits, net) rather than running balances, because a restated date rebuilds only its own date. A reader of a view is governed against the tables it reads, so the reporting analyst is served the five ledger columns the totals read (business date, branch, product, currency, amount) and no account, counterparty or transaction id.'
+  code:
+  - demo/named/banking/config.yaml
+  - demo/named/banking/db/init.sql
+  - demo/named/banking/load_days.py
+  - demo/named/banking/setup.yaml
+  - demo/named/banking/tour.yaml
+  tests:
+  - tests/integration/test_banking_demo.py
+  - tests/unit/test_named_demo_tour.py
+  - tests/unit/test_polly_bakeoff_questions.py
 - id: REQ-2110
   status: complete
   since: 2026-10

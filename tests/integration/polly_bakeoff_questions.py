@@ -15,7 +15,7 @@ over its tables: the weblogs demo's by tests/integration/test_polly_bakeoff_e2e.
 may ask Polly any of its own (tests/unit/test_named_demo_tour.py), and every grading query names
 its demo's tables and views as they register (tests/unit/test_polly_bakeoff_questions.py)."""
 
-# Requirements: REQ-2012
+# Requirements: REQ-2012, REQ-2107
 
 from __future__ import annotations
 
@@ -116,5 +116,22 @@ INSIDER = (
     ),
 )
 
+# The banking demo's question (REQ-2107): the agent reads the same end-of-day totals the dashboard
+# and BI read, and names the branch the dashboard's and BI's numbers name.
+_OCT_1 = "DATE '2026-10-01'"
+BANKING = (
+    Question(
+        "Which branch had the largest net outflow on 1 October 2026?",
+        'SELECT branch AS a FROM "banking"."view_eod_totals" '
+        f"WHERE business_date = {_OCT_1} AND net_movement = "
+        '(SELECT MIN(net_movement) FROM "banking"."view_eod_totals" '
+        f"WHERE business_date = {_OCT_1})",
+    ),
+)
+
 # Each named demo's questions, by its name (its directory under demo/named).
-QUESTIONS: dict[str, tuple[Question, ...]] = {"weblogs": WEBLOGS, "insider": INSIDER}
+QUESTIONS: dict[str, tuple[Question, ...]] = {
+    "weblogs": WEBLOGS,
+    "insider": INSIDER,
+    "banking": BANKING,
+}

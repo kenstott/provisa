@@ -1460,6 +1460,82 @@
       "churnprodRecap": {
         "title": "Was Sie gesehen haben",
         "description": "Das Modell eines Data Scientists ging in Produktion, ohne eigenen Dienst. Sein Paket ist festgelegt und wird einmal installiert. Ein Join speist seine Funktion, die sich wie eine Tabelle liest, und die Maskierung und Zeilenregeln, die jede Tabelle hat, regeln, was sie zurückgibt. SQL, GraphQL und jeder andere Zugang lesen sie gleich."
+      },
+      "bankingScenario": {
+        "title": "Tagesabschluss-Reporting, das Hauptbuch bleibt, wo es ist",
+        "description": "Eine Bank meldet ihre Summen an jedem Geschäftsschluss um 18:00 Uhr und korrigiert einen vergangenen Tag, wenn später eine Korrektur eintrifft. Üblicherweise wird dafür zuerst das Hauptbuch ins Warehouse kopiert. Diese Demo tut das nicht. Achten Sie unterwegs auf vier Dinge. Was das Reporting an Rechenleistung kostet. Wie viele Daten das Warehouse hält und wie viel es damit regeln muss. Ob Dashboard, BI und ein Agent dieselbe Antwort geben. Und was es kostet, die Entscheidung später zu ändern."
+      },
+      "bankingJoin": {
+        "title": "Von einer Summe zu ihren Buchungen",
+        "description": "Jede Summe trägt einen Schlüssel aus Tag, Filiale, Produkt und Währung. Diese Beziehung folgt dem Schlüssel zu den Buchungen, die ihn tragen, live aus dem Hauptbuch gelesen. Auch der Drill-down braucht keine Kopie."
+      },
+      "bankingRecap": {
+        "title": "Was Sie gesehen haben",
+        "description": "Die Tagesabschlusssummen wurden im Hauptbuch berechnet, und das Warehouse bezahlte nur für das, was es hält. Das Warehouse hält Summen und nie Buchungen, also gibt es keine zweite Kopie des Hauptbuchs zu regeln. Dashboard, BI und der Agent lasen eine deklarierte Beziehung und gaben dieselben Zahlen. Und erweist sich das Hauptbuch zu Hause als falsch, verlegt es eine Platzierungsänderung von zwei Zeilen, ohne dass sich etwas ändert, das es liest. Wählen Sie jetzt schlank: Ein Irrtum kostet zwei Zeilen, kein Projekt."
+      },
+      "bankingLedger": {
+        "title": "Das Hauptbuch bleibt zu Hause",
+        "description": "Die Transaktionstabelle ist in der Region ledger beheimatet und wird nie repliziert. Keine Kopie einer Buchung landet je im Warehouse, und jede Abfrage über die Tabelle läuft im Hauptbuch. Die Tagesabschlusssummen und die Drill-downs fallen von der Rechnung des Warehouse weg, gegen bescheidene Rechenleistung im Hauptbuch. Nur die Summen erreichen das Warehouse, dazu im Vorbeigehen die Buchungen, die ein Drill-down zeigt. Die Kosten sind niedriger und der Fußabdruck kleiner."
+      },
+      "bankingVersions": {
+        "title": "Eine Korrektur ist eine neue Zeile",
+        "description": "Das Hauptbuch ändert nie eine Buchung. Eine Korrektur ist eine neue Zeile mit derselben Transaktions-ID, und sie behält das Geschäftsdatum. Drei Zuordnungen teilen Provisa das mit. Der Geschäftsschlüssel ist transaction_id, die Gültigkeitszeit business_date und die Erfassungszeit updated_at. Alles, was auf der Tabelle aufbaut, lässt sich dann zu einem Stichtag lesen oder so, wie es zu einem Zeitpunkt erfasst war."
+      },
+      "bankingCompute": {
+        "title": "Was das Hauptbuch braucht",
+        "description": "Das funktioniert, wenn die Seite des Hauptbuchs die Rechenleistung für das GROUP BY zum Tagesabschluss hat. Replizieren ist auch für sie nicht kostenlos. Jede geänderte Zeile muss gefunden, vollständig gelesen und übertragen werden, und an Ort und Stelle zu aggregieren ist oft leichter. Bei hohen Volumina, Berichten, die Summen lesen, und gelegentlichen Drill-downs gewinnt meist das Hauptbuch zu Hause. Die Deklaration lässt Ihnen beide Wege offen."
+      },
+      "bankingCloses": {
+        "title": "Bei jedem Abschluss gebaut",
+        "description": "Die Tagesabschlusssummen sind eine im Warehouse materialisierte View nach dem Kalender der Bank, der um 18:00 Uhr Londoner Zeit schließt. Die View ist ein GROUP BY über die eine Tabelle des Hauptbuchs, daher läuft ihr Aufbau vollständig im Hauptbuch, und nur die gruppierten Zeilen kommen zurück. Sie erbt die Versionen des Hauptbuchs und braucht keine eigenen Historien-Einstellungen. Jeder Tag wurde bei seinem eigenen Abschluss erfasst. Der 1. und 2. Oktober wurden später erneut erfasst, als ihre Korrekturen eintrafen."
+      },
+      "bankingAsOps": {
+        "title": "Als Operations",
+        "description": "Die nächste Abfrage läuft als Operations, das unter den eigenen Regeln des Hauptbuchs in Buchungen hineinsieht. Es sieht keine Buchung auf ein Mitarbeiterkonto, und jede Gegenpartei bleibt verborgen."
+      },
+      "bankingDashboard": {
+        "title": "Das Dashboard über GraphQL",
+        "description": "Londons Summen für den 1. Oktober, jede mit den Buchungen dahinter verschachtelt. Eine Anfrage liest die Summen aus dem Warehouse und die Buchungen aus dem Hauptbuch, verknüpft über die Beziehung, die Sie gerade gesehen haben."
+      },
+      "bankingAsAnalyst": {
+        "title": "Als Reporting-Analyst",
+        "description": "Das folgende SQL läuft als Berichtsanalysten der Bank. Sie lesen die Tagesendsummen und die fünf Hauptbuchspalten, aus denen die Summen gebildet werden: Geschäftsdatum, Filiale, Produkt, Währung und Betrag. Ein Konto, eine Gegenpartei oder einen Inhaber sehen sie nie."
+      },
+      "bankingDay": {
+        "title": "Die Summen eines Tages",
+        "description": "Der 1. Oktober, wie er jetzt steht. Für jede Filiale, jedes Produkt und jede Währung sehen Sie Eingänge, Ausgänge und den Saldo. Ein über pgwire verbundenes BI-Tool führt genau dieses SQL aus."
+      },
+      "bankingAsReported": {
+        "title": "Wie zum Abschluss gemeldet",
+        "description": "Erfasst bis steht jetzt auf dem Abschluss vom 1. Oktober. Ein BI-Tool tut dasselbe mit SET provisa.as_recorded in seiner pgwire-Sitzung. Erfasst bis filtert die Transaktionen nach updated_at und die Tagessummen nach dem Abschluss jedes Tages, sodass Sie die Zahlen sehen, die die Bank an jenem Abend gemeldet hat."
+      },
+      "bankingReported": {
+        "title": "Was gemeldet wurde",
+        "description": "Die Firmenkundensummen für den 1. und 2. Oktober, wie zum Abschluss vom 1. Oktober gemeldet. Londons GBP-Summe enthält noch die später stornierte Zahlung. Der 2. Oktober war noch nicht abgeschlossen und hat daher keine Zahlen."
+      },
+      "bankingAsRestated": {
+        "title": "Wie seither korrigiert",
+        "description": "Erfasst bis rückt auf den Abschluss vom 12. Oktober, den letzten der dreißig Tage. Bis dahin sind die am 6. Oktober eingetragene Stornierung und der am 7. Oktober eingetragene verspätete Handel beide erfasst."
+      },
+      "bankingRestated": {
+        "title": "Was es jetzt sagt",
+        "description": "Dasselbe SQL. Londons Summe vom 1. Oktober enthält die stornierte Zahlung nicht mehr, und Edinburghs USD-Summe vom 2. Oktober enthält jetzt den verspäteten Handel. Die bei jedem Abschluss gemeldeten Versionen bleiben neben den korrigierten erhalten, und recorded_at zeigt, wann jede erfasst wurde."
+      },
+      "bankingAsOpsSql": {
+        "title": "Zurück zu Operations",
+        "description": "Der Explorer läuft jetzt als Operations, weiterhin erfasst bis zum Abschluss vom 12. Oktober."
+      },
+      "bankingPostings": {
+        "title": "Die Buchungen hinter einer Summe",
+        "description": "Londons GBP-Firmenkundenbuchungen für den 1. Oktober, live aus dem Hauptbuch gelesen. Die zurückgerufene Zahlung erscheint in ihrer neuesten Version, storniert. Ihre Gegenpartei bleibt verborgen wie jede andere, und eine Buchung auf ein Mitarbeiterkonto würde nicht erscheinen. Die Regeln des Hauptbuchs gelten für den Drill-down, wo immer er gelesen wird."
+      },
+      "bankingAgent": {
+        "title": "Die Antwort des Agenten",
+        "description": "Ein über MCP verbundener Agent liest dasselbe Modell. Polly beantwortet diese Frage aus denselben Tagesabschlusssummen, die Dashboard und BI lesen, und nennt daher dieselbe Filiale."
+      },
+      "bankingChange": {
+        "title": "Umentscheiden kostet zwei Zeilen",
+        "description": "Angenommen, die Volumina übersteigen die Rechenleistung des Hauptbuchs. Setzen Sie die Region dieser Tabelle auf warehouse und ihre Replikationseinstellung auf Immer, und das Hauptbuch wird ins Warehouse repliziert. Das ist eine Platzierungsänderung von zwei Zeilen, und jede Abfrage, jedes Dashboard, jede BI-Ansicht und jeder Agent antwortet wie zuvor. Von Hand gebaut bedeutet derselbe Schritt neue Pipelines, ein Backfill, neu geschriebene Aggregation und Versionierung, umgestellte Berichte und einen zweiten Satz Zugriffsregeln. Dann folgen Abstimmungstests, Prüfungen von Audit und Lineage, Architektur- und Sicherheitsreview und ein Change Board. Hier ist die Änderung ein geprüfter Diff von zwei Zeilen, also prüfen Test, Audit und Architekturreview einen Diff, keine Migration."
       }
     },
     "status": {
@@ -1564,6 +1640,10 @@
       "churnprod": {
         "title": "Abwanderungsrisiko in Produktion",
         "summary": "Das scikit-learn-Modell der Churn-Demo in Produktion. Sein Python-Paket ist eine Quelle, und seine Funktion ist eine Tabelle, die in einem Join jeden Kunden bewertet, mit Maskierung und Zeilenregeln auf dem, was sie zurückgibt."
+      },
+      "banking": {
+        "title": "Tagesabschluss-Reporting, ohne das Hauptbuch zu kopieren",
+        "summary": "Die Tagesabschlusssummen einer Bank, an jedem Geschäftsschluss direkt aus einem Hauptbuch gebildet, das nie ins Warehouse kopiert wird, gelesen wie gemeldet und wie seither korrigiert, mit derselben Antwort über GraphQL, SQL und einen Agenten."
       }
     }
   }

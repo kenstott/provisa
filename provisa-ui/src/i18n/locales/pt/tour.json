@@ -1460,6 +1460,82 @@
       "churnprodRecap": {
         "title": "O que você viu",
         "description": "O modelo de um cientista de dados chegou à produção sem um serviço próprio para manter. Seu pacote é fixado e instalado uma vez. Um join alimenta sua função, que se lê como uma tabela, e o mascaramento e as regras de linha que toda tabela tem governam o que ela retorna. SQL, GraphQL e qualquer outra via de acesso a leem da mesma forma."
+      },
+      "bankingScenario": {
+        "title": "Relatórios de fechamento, com o razão no lugar",
+        "description": "Um banco reporta seus totais em cada fechamento de dia útil, às 18:00, e corrige um dia passado quando uma correção chega mais tarde. O comum é primeiro copiar o razão para o data warehouse. Esta demo não faz isso. Observe quatro coisas no caminho. Quanto custa calcular os relatórios. Quantos dados o warehouse guarda e, portanto, quanto precisa governar. Se o painel, o BI e um agente dão a mesma resposta. E quanto custa mudar a decisão mais tarde."
+      },
+      "bankingJoin": {
+        "title": "De um total aos seus lançamentos",
+        "description": "Cada total carrega uma chave formada pelo dia, agência, produto e moeda. Esta relação segue essa chave até os lançamentos que a carregam, lidos ao vivo do razão. O detalhamento também não precisa de cópia."
+      },
+      "bankingRecap": {
+        "title": "O que você viu",
+        "description": "Os totais de fechamento foram calculados no razão, e o warehouse pagou só pelo que guarda. O warehouse guarda totais e nunca lançamentos, então não existe uma segunda cópia do razão para governar. O painel, o BI e o agente leram uma relação declarada e deram os mesmos números. E se manter o razão em casa se mostrar errado, uma mudança de posicionamento de duas linhas o move sem que nada do que o lê mude. Escolha o mais enxuto agora: errar custa duas linhas, não um projeto."
+      },
+      "bankingLedger": {
+        "title": "O razão fica em casa",
+        "description": "A tabela de transações está sediada na região ledger e nunca é replicada. Nenhuma cópia de um lançamento chega ao warehouse, e toda consulta sobre a tabela roda no razão. Os totais de fechamento e os detalhamentos saem da conta do warehouse em troca de pouco processamento no razão. Só os totais chegam ao warehouse, além, de passagem, dos lançamentos que um detalhamento mostra. O custo é menor e a pegada, menor também."
+      },
+      "bankingVersions": {
+        "title": "Uma correção é uma linha nova",
+        "description": "O razão nunca altera um lançamento. Uma correção é uma linha nova com o mesmo id de transação, e ela mantém a data contábil. Três mapeamentos dizem isso ao Provisa. A chave de negócio é transaction_id, o tempo de validade é business_date e o tempo de registro é updated_at. Tudo o que for construído sobre a tabela pode então ser lido em uma data, ou como estava registrado em um momento."
+      },
+      "bankingCompute": {
+        "title": "Do que o razão precisa",
+        "description": "Isso funciona quando o lado do razão tem processamento para rodar o GROUP BY do fechamento. Replicar também não sai de graça para ele. Cada linha alterada precisa ser encontrada, lida por inteiro e enviada, e agregar no próprio lugar costuma ser mais leve. Com volumes altos, relatórios que leem totais e um detalhamento de vez em quando, manter o razão em casa tende a ganhar. A declaração deixa você escolher em qualquer direção."
+      },
+      "bankingCloses": {
+        "title": "Gerado em cada fechamento",
+        "description": "Os totais de fechamento são uma view materializada no warehouse segundo o calendário do banco, que fecha às 18:00, horário de Londres. A view é um GROUP BY sobre a única tabela do razão, então sua construção roda inteira no razão e só as linhas agrupadas voltam. Ela herda as versões do razão e não precisa de configurações de histórico próprias. Cada dia foi registrado no seu próprio fechamento. Os dias 1 e 2 de outubro foram registrados de novo mais tarde, quando chegaram suas correções."
+      },
+      "bankingAsOps": {
+        "title": "Como operações",
+        "description": "A próxima consulta roda como operações, que detalha lançamentos sob as regras do próprio razão. Ela não vê nenhum lançamento em conta de funcionário, e toda contraparte fica oculta."
+      },
+      "bankingDashboard": {
+        "title": "O painel, via GraphQL",
+        "description": "Os totais de Londres de 1º de outubro, cada um com os lançamentos por trás dele aninhados. Uma única requisição lê os totais do warehouse e os lançamentos do razão, ligados pela relação que você acabou de ver."
+      },
+      "bankingAsAnalyst": {
+        "title": "Como analista de relatórios",
+        "description": "O SQL a seguir é executado como os analistas de relatórios do banco. Eles leem os totais de fim de dia e as cinco colunas do razão a partir das quais os totais são calculados: data contábil, agência, produto, moeda e valor. Nunca veem uma conta, uma contraparte ou um titular."
+      },
+      "bankingDay": {
+        "title": "Os totais de um dia",
+        "description": "O dia 1º de outubro como está agora. Para cada agência, produto e moeda você vê o que entrou, o que saiu e o líquido. Uma ferramenta de BI conectada por pgwire roda este mesmo SQL."
+      },
+      "bankingAsReported": {
+        "title": "Como reportado no fechamento",
+        "description": "Registrado em agora está no fechamento de 1º de outubro. Uma ferramenta de BI faz o mesmo com SET provisa.as_recorded na sua sessão pgwire. Registrado em filtra as transações por updated_at e os totais diários pelo fechamento de cada dia, então você vê os números que o banco reportou naquela noite."
+      },
+      "bankingReported": {
+        "title": "O que foi reportado",
+        "description": "Os totais corporativos de 1º e 2 de outubro, como reportados no fechamento de 1º de outubro. O total em GBP de Londres ainda inclui o pagamento que depois foi estornado. O dia 2 de outubro ainda não tinha fechado, então não tem números."
+      },
+      "bankingAsRestated": {
+        "title": "Como corrigido desde então",
+        "description": "Registrado em passa para o fechamento de 12 de outubro, o último dos trinta dias. Até lá, o estorno lançado em 6 de outubro e a operação atrasada lançada em 7 de outubro já estão registrados."
+      },
+      "bankingRestated": {
+        "title": "O que diz agora",
+        "description": "O mesmo SQL. O total de 1º de outubro de Londres não inclui mais o pagamento estornado, e o total em USD de 2 de outubro de Edimburgo agora inclui a operação atrasada. As versões reportadas em cada fechamento ficam guardadas ao lado das corrigidas, e recorded_at mostra quando cada uma foi registrada."
+      },
+      "bankingAsOpsSql": {
+        "title": "De volta a operações",
+        "description": "O explorador agora roda como operações, ainda registrado no fechamento de 12 de outubro."
+      },
+      "bankingPostings": {
+        "title": "Os lançamentos por trás de um total",
+        "description": "Os lançamentos corporativos em GBP de Londres de 1º de outubro, lidos ao vivo do razão. O pagamento cancelado aparece na sua versão mais recente, estornado. A contraparte fica oculta, como todas as outras, e um lançamento em conta de funcionário não apareceria. As regras do razão valem para o detalhamento onde quer que ele seja lido."
+      },
+      "bankingAgent": {
+        "title": "A resposta do agente",
+        "description": "Um agente conectado por MCP lê o mesmo modelo. A Polly responde a esta pergunta a partir dos mesmos totais de fechamento que o painel e o BI leem, então ela aponta a mesma agência."
+      },
+      "bankingChange": {
+        "title": "Mudar de ideia custa duas linhas",
+        "description": "Suponha que os volumes superem o processamento do razão. Defina a região desta tabela como warehouse e a replicação como Sempre, e o razão passa a ser replicado no warehouse. É uma mudança de posicionamento de duas linhas, e toda consulta, painel, visão de BI e agente responde como antes. Feito à mão, o mesmo passo significa pipelines novos, uma carga retroativa, agregação e versionamento reescritos, relatórios redirecionados e um segundo conjunto de regras de acesso. Depois vêm os testes de conciliação, as verificações de auditoria e linhagem, a revisão de arquitetura e segurança e um comitê de mudanças. Aqui a mudança é um diff revisado de duas linhas, então testes, auditoria e revisão de arquitetura revisam um diff, não uma migração."
       }
     },
     "status": {
@@ -1564,6 +1640,10 @@
       "churnprod": {
         "title": "Risco de cancelamento em produção",
         "summary": "O modelo scikit-learn da demo de cancelamento, em produção. Seu pacote Python é uma fonte, e sua função é uma tabela que pontua cada cliente em um join, com o mascaramento e as regras de linha aplicados ao que ela retorna."
+      },
+      "banking": {
+        "title": "Relatórios de fechamento sem copiar o razão",
+        "summary": "Os totais de fim de dia de um banco, gerados em cada fechamento direto de um razão que nunca é copiado para o data warehouse, lidos como foram reportados e como foram corrigidos depois, com a mesma resposta via GraphQL, SQL e um agente."
       }
     }
   }

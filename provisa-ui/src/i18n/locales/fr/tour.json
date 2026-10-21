@@ -1460,6 +1460,82 @@
       "churnprodRecap": {
         "title": "Ce que vous avez vu",
         "description": "Le modèle d'un data scientist est passé en production sans service propre à faire tourner. Son paquet est fixé et s'installe une fois. Une jointure alimente sa fonction, qui se lit comme une table, et le masquage et les règles de ligne de toute table gouvernent ce qu'elle renvoie. SQL, GraphQL et tous les autres accès la lisent de la même façon."
+      },
+      "bankingScenario": {
+        "title": "Reporting de clôture, grand livre laissé en place",
+        "description": "Une banque déclare ses totaux à chaque clôture de jour ouvré, à 18 h, et corrige un jour passé quand une correction arrive plus tard. D'habitude, on copie d'abord le grand livre dans l'entrepôt. Cette démo ne le fait pas. Surveillez quatre choses en chemin. Ce que coûte le calcul du reporting. La quantité de données que garde l'entrepôt, et donc ce qu'il doit gouverner. Si le tableau de bord, la BI et un agent donnent la même réponse. Et ce que coûte un changement de décision plus tard."
+      },
+      "bankingJoin": {
+        "title": "D'un total à ses écritures",
+        "description": "Chaque total porte une clé faite de son jour, de son agence, de son produit et de sa devise. Cette relation suit la clé jusqu'aux écritures qui la portent, lues en direct dans le grand livre. L'exploration détaillée n'a pas non plus besoin de copie."
+      },
+      "bankingRecap": {
+        "title": "Ce que vous avez vu",
+        "description": "Les totaux de clôture ont été calculés dans le grand livre, et l'entrepôt n'a payé que ce qu'il garde. L'entrepôt garde des totaux et jamais d'écritures : il n'y a donc pas de seconde copie du grand livre à gouverner. Le tableau de bord, la BI et l'agent ont lu une relation déclarée et donné les mêmes chiffres. Et si garder le grand livre chez lui s'avère une erreur, un changement de placement de deux lignes le déplace sans que rien de ce qui le lit ne change. Choisissez la sobriété maintenant : se tromper coûte deux lignes, pas un projet."
+      },
+      "bankingLedger": {
+        "title": "Le grand livre reste chez lui",
+        "description": "La table des transactions est rattachée à la région ledger et n'est jamais répliquée. Aucune copie d'une écriture n'arrive dans l'entrepôt, et toute requête sur la table s'exécute dans le grand livre. Les totaux de clôture et les explorations détaillées sortent de la facture de l'entrepôt contre un calcul modeste côté grand livre. Seuls les totaux atteignent l'entrepôt, plus, au passage, les écritures qu'affiche une exploration. Le coût est plus bas et l'empreinte plus petite."
+      },
+      "bankingVersions": {
+        "title": "Une correction est une nouvelle ligne",
+        "description": "Le grand livre ne modifie jamais une écriture. Une correction est une nouvelle ligne avec le même identifiant de transaction, et elle garde la date comptable. Trois correspondances l'indiquent à Provisa. La clé métier est transaction_id, le temps de validité business_date et le temps d'enregistrement updated_at. Tout ce qui est construit sur la table peut alors se lire à une date, ou tel qu'enregistré à un instant donné."
+      },
+      "bankingCompute": {
+        "title": "Ce dont le grand livre a besoin",
+        "description": "Cela fonctionne quand le côté grand livre dispose du calcul nécessaire au GROUP BY de clôture. Répliquer n'est pas gratuit pour lui non plus. Chaque ligne modifiée doit être trouvée, lue en entier et expédiée, et agréger sur place est souvent plus léger. Avec de gros volumes, des rapports qui lisent des totaux et une exploration détaillée de temps en temps, garder le grand livre chez lui l'emporte en général. La déclaration vous laisse choisir dans un sens ou dans l'autre."
+      },
+      "bankingCloses": {
+        "title": "Construit à chaque clôture",
+        "description": "Les totaux de clôture sont une vue matérialisée dans l'entrepôt selon le calendrier de la banque, qui clôture à 18 h, heure de Londres. La vue est un GROUP BY sur l'unique table du grand livre : sa construction s'exécute donc entièrement dans le grand livre et seules les lignes regroupées reviennent. Elle hérite des versions du grand livre et n'a besoin d'aucun réglage d'historique propre. Chaque jour a été enregistré à sa propre clôture. Les 1er et 2 octobre ont été réenregistrés plus tard, à l'arrivée de leurs corrections."
+      },
+      "bankingAsOps": {
+        "title": "En tant qu'opérations",
+        "description": "La requête suivante s'exécute en tant qu'opérations, qui explore les écritures selon les règles propres au grand livre. Elle ne voit aucune écriture sur un compte du personnel, et chaque contrepartie est masquée."
+      },
+      "bankingDashboard": {
+        "title": "Le tableau de bord, en GraphQL",
+        "description": "Les totaux de Londres du 1er octobre, chacun avec ses écritures imbriquées. Une seule requête lit les totaux dans l'entrepôt et les écritures dans le grand livre, reliés par la relation que vous venez de voir."
+      },
+      "bankingAsAnalyst": {
+        "title": "En tant qu'analyste reporting",
+        "description": "Le SQL qui suit s'exécute en tant qu'analystes de reporting de la banque. Ils lisent les totaux de fin de journée et les cinq colonnes du grand livre dont ils sont calculés : date d'opération, agence, produit, devise et montant. Ils ne voient jamais un compte, une contrepartie ni un titulaire."
+      },
+      "bankingDay": {
+        "title": "Les totaux d'une journée",
+        "description": "Le 1er octobre tel qu'il est aujourd'hui. Pour chaque agence, produit et devise, vous voyez ce qui est entré, ce qui est sorti et le net. Un outil de BI connecté en pgwire exécute ce même SQL."
+      },
+      "bankingAsReported": {
+        "title": "Tel que déclaré à la clôture",
+        "description": "Enregistré au est maintenant réglé sur la clôture du 1er octobre. Un outil de BI fait de même avec SET provisa.as_recorded dans sa session pgwire. Enregistré au filtre les transactions sur updated_at et les totaux quotidiens sur la clôture de chaque jour : vous voyez les chiffres que la banque a déclarés ce soir-là."
+      },
+      "bankingReported": {
+        "title": "Ce qui a été déclaré",
+        "description": "Les totaux entreprises des 1er et 2 octobre, tels que déclarés à la clôture du 1er octobre. Le total en GBP de Londres contient encore le paiement annulé plus tard. Le 2 octobre n'était pas encore clôturé, il n'a donc aucun chiffre."
+      },
+      "bankingAsRestated": {
+        "title": "Tel que corrigé depuis",
+        "description": "Enregistré au passe à la clôture du 12 octobre, la dernière des trente journées. À cette date, l'annulation saisie le 6 octobre et la transaction tardive saisie le 7 octobre sont toutes deux enregistrées."
+      },
+      "bankingRestated": {
+        "title": "Ce qu'il dit maintenant",
+        "description": "Le même SQL. Le total du 1er octobre de Londres ne contient plus le paiement annulé, et le total en USD du 2 octobre d'Édimbourg inclut désormais la transaction tardive. Les versions déclarées à chaque clôture sont conservées à côté des versions corrigées, et recorded_at indique quand chacune a été enregistrée."
+      },
+      "bankingAsOpsSql": {
+        "title": "Retour aux opérations",
+        "description": "L'explorateur s'exécute maintenant en tant qu'opérations, toujours enregistré à la clôture du 12 octobre."
+      },
+      "bankingPostings": {
+        "title": "Les écritures derrière un total",
+        "description": "Les écritures entreprises en GBP de Londres du 1er octobre, lues en direct dans le grand livre. Le paiement rappelé apparaît dans sa dernière version, annulé. Sa contrepartie est masquée comme toutes les autres, et une écriture sur un compte du personnel n'apparaîtrait pas. Les règles du grand livre s'appliquent à l'exploration, où qu'elle soit lue."
+      },
+      "bankingAgent": {
+        "title": "La réponse de l'agent",
+        "description": "Un agent connecté en MCP lit le même modèle. Polly répond à cette question à partir des mêmes totaux de clôture que le tableau de bord et la BI, et nomme donc la même agence."
+      },
+      "bankingChange": {
+        "title": "Changer d'avis coûte deux lignes",
+        "description": "Supposons que les volumes dépassent la capacité de calcul du grand livre. Mettez la région de cette table sur warehouse et son réglage de réplication sur Toujours, et le grand livre est répliqué dans l'entrepôt. C'est un changement de placement de deux lignes, et chaque requête, tableau de bord, vue BI et agent répond comme avant. Fait à la main, le même mouvement implique de nouveaux pipelines, un rechargement historique, une agrégation et un versionnage réécrits, des rapports redirigés et un second jeu de règles d'accès. Viennent ensuite les tests de rapprochement, les contrôles d'audit et de lignage, la revue d'architecture et de sécurité, et un comité des changements. Ici, le changement est un diff relu de deux lignes : tests, audit et revue d'architecture examinent un diff, pas une migration."
       }
     },
     "status": {
@@ -1564,6 +1640,10 @@
       "churnprod": {
         "title": "Le risque de résiliation en production",
         "summary": "Le modèle scikit-learn de la démo de résiliation, en production. Son paquet Python est une source, et sa fonction est une table qui note chaque client dans une jointure, avec le masquage et les règles de ligne appliqués à ce qu'elle renvoie."
+      },
+      "banking": {
+        "title": "Reporting de clôture sans copier le grand livre",
+        "summary": "Les totaux de fin de journée d'une banque, calculés à chaque clôture directement depuis un grand livre jamais copié dans l'entrepôt, lus tels que déclarés et tels que corrigés depuis, avec la même réponse en GraphQL, en SQL et par un agent."
       }
     }
   }

@@ -25572,6 +25572,20 @@ A config declares its calendars in a calendars: section (name and version requir
 
 **Tests:** `tests/unit/test_config_calendars.py`, `tests/unit/test_sealed_build.py`, `tests/unit/test_refresh_mv_mutation.py`
 
+## 10. UI & Admin Surfaces
+
+### REQ-2107 · UI {#REQ-2107}
+
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** behavioral
+
+A named demo, banking: end-of-day reporting without copying the ledger. Its business question: "Can the warehouse report each day's close, and every restatement since, without a copy of the ledger?" Two regions on one node, as the retail demo runs them (visitor warehouse, headless ledger), each with its own store. The ledger region homes a Postgres ledger of accounts and an append-only transactions table (business key transaction_id, valid time business_date, recorded time updated_at; a correction is a new row with the same transaction_id, the primary key a row id) that is never replicated (replicate -1), so no posting is ever copied into the warehouse. The warehouse region materializes in its own store the end-of-day totals by business date, branch, product and currency, with one group_key column: a single-source GROUP BY over the ledger table, built whole at the ledger's Postgres so only grouped rows land, on a declared calendar whose business day closes at 18:00 Europe/London, inheriting the ledger's versions with no history settings of its own. Faked accounts and postings over 30 business days are loaded a day at a time by the demo's setup, each day's totals built sealed at that day's close, so 30 end-of-day versions exist; two restatements (a reversed payment and a late trade) arrive on later days and become new versions of their past dates, the versions reported at the close kept. A relationship from a total's group_key to a thin live view of the postings computing the same key is the drill-down. Roles: the reporting analyst reads the totals; operations drills into postings under the ledger's row rules and masks. Its tour follows the settled demo tour shape and names four focuses in its opening and recap: compute cost, data footprint and so governance surface, the same answer over GraphQL, SQL and MCP, and the cost of change. The solution is predesigned queries: a GraphQL dashboard with the postings nested, SQL as a BI tool runs it over pgwire with SET provisa.as_recorded at a close and as restated since, the postings under the ledger's rules, and a stored agent answer. A step before the recap shows moving the ledger to a warehouse replica as a two-line placement change (region and replicate) under which the same queries answer. Plain words, no figures.
+
+**Use case:** A bank's data lead opens the banking demo and sees each day's end-of-day totals built in the warehouse from a ledger that is never copied there, read as reported at each close and as restated since, with the same numbers on the dashboard, in BI and from an agent.
+
+**Code:** `demo/named/banking/config.yaml`, `demo/named/banking/db/init.sql`, `demo/named/banking/load_days.py`, `demo/named/banking/setup.yaml`, `demo/named/banking/tour.yaml`
+
+**Tests:** `tests/integration/test_banking_demo.py`, `tests/unit/test_named_demo_tour.py`, `tests/unit/test_polly_bakeoff_questions.py`
+
 ## 4. Source Connectors
 
 ### REQ-2110 · Materialization Store {#REQ-2110}

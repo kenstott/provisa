@@ -1460,6 +1460,82 @@
       "churnprodRecap": {
         "title": "Lo que ha visto",
         "description": "El modelo de un científico de datos llegó a producción sin un servicio propio que mantener. Su paquete está fijado y se instala una vez. Un join alimenta su función, que se lee como una tabla, y el enmascaramiento y las reglas de fila que tiene toda tabla gobiernan lo que devuelve. SQL, GraphQL y cualquier otra vía de acceso la leen igual."
+      },
+      "bankingScenario": {
+        "title": "Informes de cierre, con el libro mayor en su sitio",
+        "description": "Un banco informa sus totales en cada cierre del día hábil, a las 18:00, y corrige un día pasado cuando llega una corrección más tarde. Lo habitual es copiar primero el libro mayor al almacén de datos. Esta demo no lo hace. Fíjese en cuatro cosas por el camino. Cuánto cuesta calcular los informes. Cuántos datos guarda el almacén y, por tanto, cuánto tiene que gobernar. Si el panel, el BI y un agente dan la misma respuesta. Y cuánto cuesta cambiar la decisión más adelante."
+      },
+      "bankingJoin": {
+        "title": "De un total a sus asientos",
+        "description": "Cada total lleva una clave formada por su día, sucursal, producto y moneda. Esta relación sigue esa clave hasta los asientos que la llevan, leídos en vivo del libro mayor. El desglose tampoco necesita copia."
+      },
+      "bankingRecap": {
+        "title": "Lo que ha visto",
+        "description": "Los totales de cierre se calcularon en el libro mayor, y el almacén solo pagó por lo que guarda. El almacén guarda totales y nunca asientos, así que no hay una segunda copia del libro mayor que gobernar. El panel, el BI y el agente leyeron una relación declarada y dieron las mismas cifras. Y si dejar el libro mayor en casa resulta un error, un cambio de ubicación de dos líneas lo traslada sin que cambie nada de lo que lo lee. Elija lo ligero ahora: equivocarse cuesta dos líneas, no un proyecto."
+      },
+      "bankingLedger": {
+        "title": "El libro mayor se queda en casa",
+        "description": "La tabla de transacciones tiene su sede en la región ledger y nunca se replica. Ninguna copia de un asiento llega al almacén, y toda consulta sobre la tabla se ejecuta en el libro mayor. Los totales de cierre y los desgloses salen de la factura del almacén a cambio de un cómputo modesto en el libro mayor. Solo los totales llegan al almacén, y de paso los asientos que muestra un desglose. El coste es menor y la huella, más pequeña."
+      },
+      "bankingVersions": {
+        "title": "Una corrección es una fila nueva",
+        "description": "El libro mayor nunca modifica un asiento. Una corrección es una fila nueva con el mismo id de transacción, y conserva la fecha contable. Tres correspondencias se lo indican a Provisa. La clave de negocio es transaction_id, el tiempo de validez es business_date y el tiempo de registro es updated_at. Todo lo que se construya sobre la tabla puede leerse a una fecha o tal como estaba registrado en un momento dado."
+      },
+      "bankingCompute": {
+        "title": "Lo que necesita el libro mayor",
+        "description": "Esto funciona cuando el lado del libro mayor tiene cómputo para ejecutar el GROUP BY del cierre. Replicar tampoco le sale gratis. Hay que localizar cada fila cambiada, leerla completa y enviarla, y agregar en el sitio suele ser más ligero. Con volúmenes altos, informes que leen totales y algún desglose ocasional, dejar el libro mayor en casa suele ganar. La declaración le permite elegir en cualquier sentido."
+      },
+      "bankingCloses": {
+        "title": "Generado en cada cierre",
+        "description": "Los totales de cierre son una vista materializada en el almacén según el calendario del banco, que cierra a las 18:00 hora de Londres. La vista es un GROUP BY sobre la única tabla del libro mayor, así que su construcción se ejecuta entera en el libro mayor y solo vuelven las filas agrupadas. Hereda las versiones del libro mayor y no necesita ajustes de historial propios. Cada día se registró en su propio cierre. El 1 y el 2 de octubre se volvieron a registrar más tarde, cuando llegaron sus correcciones."
+      },
+      "bankingAsOps": {
+        "title": "Como operaciones",
+        "description": "La siguiente consulta se ejecuta como operaciones, que entra en los asientos bajo las propias reglas del libro mayor. No ve ningún asiento en una cuenta de empleado, y toda contraparte queda oculta."
+      },
+      "bankingDashboard": {
+        "title": "El panel, por GraphQL",
+        "description": "Los totales de Londres del 1 de octubre, cada uno con sus asientos anidados dentro. Una sola petición lee los totales del almacén y los asientos del libro mayor, unidos por la relación que acaba de ver."
+      },
+      "bankingAsAnalyst": {
+        "title": "Como analista de informes",
+        "description": "El SQL que sigue se ejecuta como los analistas de informes del banco. Leen los totales de cierre del día y las cinco columnas del libro mayor con las que se calculan: fecha contable, sucursal, producto, divisa e importe. Nunca ven una cuenta, una contraparte ni un titular."
+      },
+      "bankingDay": {
+        "title": "Los totales de un día",
+        "description": "El 1 de octubre tal como está ahora. Para cada sucursal, producto y moneda ve lo que entró, lo que salió y el neto. Una herramienta de BI conectada por pgwire ejecuta este mismo SQL."
+      },
+      "bankingAsReported": {
+        "title": "Tal como se informó al cierre",
+        "description": "Registrado al está ahora fijado en el cierre del 1 de octubre. Una herramienta de BI hace lo mismo con SET provisa.as_recorded en su sesión pgwire. Registrado al filtra las transacciones por updated_at y los totales diarios por el cierre de cada día, así que ve las cifras que el banco informó esa tarde."
+      },
+      "bankingReported": {
+        "title": "Lo que se informó",
+        "description": "Los totales corporativos del 1 y el 2 de octubre, tal como se informaron al cierre del 1 de octubre. El total en GBP de Londres aún incluye el pago que luego se anuló. El 2 de octubre todavía no había cerrado, así que no tiene cifras."
+      },
+      "bankingAsRestated": {
+        "title": "Tal como se corrigió después",
+        "description": "Registrado al pasa al cierre del 12 de octubre, el último de los treinta días. Para entonces ya están registradas la anulación introducida el 6 de octubre y la operación tardía introducida el 7 de octubre."
+      },
+      "bankingRestated": {
+        "title": "Lo que dice ahora",
+        "description": "El mismo SQL. El total del 1 de octubre de Londres ya no incluye el pago anulado, y el total en USD del 2 de octubre de Edimburgo incluye ahora la operación tardía. Las versiones informadas en cada cierre se conservan junto a las corregidas, y recorded_at muestra cuándo se registró cada una."
+      },
+      "bankingAsOpsSql": {
+        "title": "De vuelta a operaciones",
+        "description": "El explorador se ejecuta ahora como operaciones, todavía registrado al cierre del 12 de octubre."
+      },
+      "bankingPostings": {
+        "title": "Los asientos detrás de un total",
+        "description": "Los asientos corporativos en GBP de Londres del 1 de octubre, leídos en vivo del libro mayor. El pago retirado aparece en su última versión, anulado. Su contraparte queda oculta, como todas, y un asiento en una cuenta de empleado no aparecería. Las reglas del libro mayor se aplican al desglose dondequiera que se lea."
+      },
+      "bankingAgent": {
+        "title": "La respuesta del agente",
+        "description": "Un agente conectado por MCP lee el mismo modelo. Polly responde a esta pregunta con los mismos totales de cierre que leen el panel y el BI, así que nombra la misma sucursal."
+      },
+      "bankingChange": {
+        "title": "Cambiar de idea cuesta dos líneas",
+        "description": "Suponga que los volúmenes superan el cómputo del libro mayor. Ponga la región de esta tabla en warehouse y su ajuste de réplica en Siempre, y el libro mayor se replica en el almacén. Es un cambio de ubicación de dos líneas, y cada consulta, panel, vista de BI y agente responde como antes. Hecho a mano, el mismo paso supone canalizaciones nuevas, una recarga histórica, agregación y versionado reescritos, informes redirigidos y un segundo juego de reglas de acceso. Después vienen las pruebas de conciliación, las comprobaciones de auditoría y linaje, la revisión de arquitectura y seguridad, y un comité de cambios. Aquí el cambio es un diff revisado de dos líneas, así que pruebas, auditoría y revisión de arquitectura revisan un diff, no una migración."
       }
     },
     "status": {
@@ -1564,6 +1640,10 @@
       "churnprod": {
         "title": "Riesgo de abandono en producción",
         "summary": "El modelo de scikit-learn de la demo de abandono, en producción. Su paquete de Python es un origen y su función es una tabla que puntúa a cada cliente en un join, con el enmascaramiento y las reglas de fila aplicados a lo que devuelve."
+      },
+      "banking": {
+        "title": "Informes de cierre sin copiar el libro mayor",
+        "summary": "Los totales de cierre de un banco, generados en cada cierre directamente desde un libro mayor que nunca se copia al almacén de datos, leídos tal como se informaron y tal como se corrigieron después, con la misma respuesta por GraphQL, SQL y un agente."
       }
     }
   }
