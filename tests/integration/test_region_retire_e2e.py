@@ -314,7 +314,9 @@ def _logged_errors(*servers) -> str:
         lines = Path(srv._stderr_file.name).read_text(errors="replace").splitlines()
         blocks, block = [], None
         for ln in lines:
-            if ln.startswith("Traceback") or " ERROR " in ln:
+            # uvicorn's own format starts the line with the level ("ERROR:    ..."); a logger's
+            # puts it mid-line.
+            if ln.startswith(("Traceback", "ERROR:")) or " ERROR " in ln:
                 block = [ln]
                 blocks.append(block)
             elif block is not None:
