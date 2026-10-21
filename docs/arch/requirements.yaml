@@ -86183,7 +86183,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1934
   target: "2026-Q4"
 - id: REQ-2126
-  status: proposed
+  status: complete
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -86225,6 +86225,23 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1640
   - REQ-1667
   target: "2026-Q4"
+  code:
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/_catalog_descriptions.py
+  - provisa/api/app_loaders.py
+  - provisa/api/app.py
+  - provisa/api/admin/lineage_router.py
+  - provisa/lineage/edges.py
+  - provisa/lineage/merge.py
+  - provisa/lineage/commands.py
+  - provisa/security/rights.py
+  - provisa/compiler/stage2.py
+  - provisa/core/schema_org.py
+  - provisa/core/schema.sql
+  tests:
+  - tests/unit/test_data_product_edges.py
+  - tests/unit/test_statement_contract.py
 - id: REQ-2127
   status: proposed
   since: 2026-10

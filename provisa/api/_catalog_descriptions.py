@@ -54,6 +54,10 @@ _META: dict[str, str] = {
     # REQ-2125
     "data_products": "Every data product — one row per product with its own fields; its domain, "
     "member tables, commands, tags, glossary terms and profiles are reached by relationship",
+    # REQ-2126
+    "data_product_edges": "Each data product's links to the rest of the model — the tables and "
+    "products it reaches through relationships, and the relations upstream and downstream of "
+    "its tables in lineage — one row per product, target and kind",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
@@ -159,6 +163,26 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "of; empty for any other table",
         "profiled_table_id": "For a profile result table, the table it profiles; empty for any "
         "other table",
+    },
+    # REQ-2126
+    "data_product_edges": {
+        "id": "Edge identifier: product, kind and target",
+        "product_id": "The data product the edge starts from",
+        "kind": "relationship or lineage",
+        "direction": "For a lineage edge, upstream (the product derives from the target) or "
+        "downstream (the target derives from the product); empty for a relationship edge",
+        "target_product_id": "The other data product the edge reaches, when its end is a member "
+        "of one",
+        "target_table_id": "The table the edge reaches, when its end is a registered table",
+        "target_relation": "For a lineage edge, the relation it reaches (domain.table)",
+        "direct": "True when one relationship, or one derivation, joins a member to the target",
+        "hops": "The shortest number of relationships or derivations between a member and the "
+        "target",
+        "path_count": "How many paths connect the product to the target",
+        "aliases": "The aliases of the relationships on those paths",
+        "relationship_ids": "The relationships on those paths",
+        "supporting_tables": "Tables in no product that a path runs through",
+        "vias": "For a lineage edge, the views and commands on its paths",
     },
     # REQ-2125
     "data_products": {

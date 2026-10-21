@@ -3308,6 +3308,11 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
 
         await persist_field_numbers(conn, _field_numbers)
 
+        # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.
+        from provisa.api.admin.lineage_router import write_lineage_edges
+
+        await write_lineage_edges(conn, state)
+
     # REQ-263, REQ-264, REQ-265: publish filtered table+column dicts for raw-SQL governance
     # (pgwire / Flight SQL / airport). build_governance_context reads state.tables to derive
     # visible_columns and all_columns; without this assignment the list is always empty and

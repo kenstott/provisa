@@ -593,6 +593,13 @@ META_ROW_SCOPED_VIEWS: dict[str, str] = {
 }
 
 
+# REQ-2126: the meta views some of whose ROWS are governance metadata, with the predicate a role
+# without view_governance reads them under -- lineage, as REQ-1640's lineage section is.
+GOVERNANCE_META_ROWS: dict[str, str] = {
+    "data_product_edges": "kind <> 'lineage'",
+}
+
+
 def compute_meta_row_scope(
     role: dict[str, object],
     tables: list[dict],

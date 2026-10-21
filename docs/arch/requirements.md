@@ -25882,15 +25882,15 @@ Data products are part of the built-in meta domain. A data_products_meta view ov
 
 ### REQ-2126 · Data Catalog Integration {#REQ-2126}
 
-**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+**Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
 The meta domain has a view-only data_product_edges view, related to data_products_meta by product_id. It holds the links from a data product to the rest of the model, and the detail panel's Related Tables and Lineage sections read from it. There are two edge kinds. A relationship edge links a product to a table or to another product through approved relationships. It is direct when one relationship joins a member to the other end. It is indirect when the path runs through tables that belong to no product, and then it carries the shortest hop count. A lineage edge links a product to a relation upstream or downstream of a member at relation level: the full upstream ancestry and one hop downstream, crossing domains. There is at most one row per product, target and kind. When several paths connect the same pair, the row carries the path count and the connecting relationship aliases, so the extra paths become detail on one edge rather than separate edges. The path count is the number of distinct relationships leaving the product's members that lead on to the target; the aliases and supporting tables are those on any walk from a member to the target through tables that belong to no product. All of this is computed from reachability, so its cost grows with the model's size rather than with the number of routes through it. A product-to-product row exists when the target end is a member of another product, so the domain and cross-domain product graph is a query over this view. Relationship edges are computed from relationships and registered tables. Lineage edges are read from the lineage edge table ([REQ-2129](#REQ-2129)), which each model build derives from its compiled views; nothing in either is edited.
 
 **Use case:** A consumer sees which products and tables a data product joins to or derives from, whether each link is direct or through supporting tables, and how many paths connect them, from one meta-domain query that also draws the product graph across domains.
 
-**Code:** —
+**Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/app.py`, `provisa/api/admin/lineage_router.py`, `provisa/lineage/edges.py`, `provisa/lineage/merge.py`, `provisa/lineage/commands.py`, `provisa/security/rights.py`, `provisa/compiler/stage2.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** —
+**Tests:** `tests/unit/test_data_product_edges.py`, `tests/unit/test_statement_contract.py`
 
 ## 10. UI & Admin Surfaces
 

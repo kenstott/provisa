@@ -203,6 +203,7 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # meta domain is governed by the tiered rule below.
     from provisa.security.rights import (
         GOVERNANCE_META_COLUMNS,
+        GOVERNANCE_META_ROWS,
         META_DOMAIN_ID,
         META_ROW_SCOPED_VIEWS,
         Capability,
@@ -342,6 +343,20 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
             predicate = f"{scope_col} IN ({id_list})"
             existing = gov.rls_rules.get(tm.table_id)
             # AND with any pre-existing rule (e.g. tenant RLS) — never replace another guard.
+            gov.rls_rules[tm.table_id] = (
+                f"({existing}) AND ({predicate})" if existing else predicate
+            )
+
+    # REQ-2126: the governance rows of a meta view are read only with view_governance, under the
+    # same WHERE-injection as the row scope above.
+    if not _has_view_gov:
+        for tm in ctx.tables.values():
+            if getattr(tm, "domain_id", None) != META_DOMAIN_ID:
+                continue
+            predicate = GOVERNANCE_META_ROWS.get(getattr(tm, "table_name", ""))
+            if predicate is None:
+                continue
+            existing = gov.rls_rules.get(tm.table_id)
             gov.rls_rules[tm.table_id] = (
                 f"({existing}) AND ({predicate})" if existing else predicate
             )

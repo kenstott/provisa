@@ -171,6 +171,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "fake_adequacy_checks",
         # REQ-2094: its own review queue, about its own judgments.
         "judgment_findings",
+        # REQ-2129: derived from its own compiled views by its own model build.
+        "lineage_edges",
     }
 )
 
