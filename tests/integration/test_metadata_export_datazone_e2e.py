@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import uuid
 
 import pytest
@@ -65,8 +66,23 @@ def _client(creds: dict[str, str]):
     )
 
 
-def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict]]:
-    """The run's data product and its member assets, then removed."""
+def _listing(client, scope: dict, product_id: str, name: str) -> dict | None:
+    """The product's catalog listing, which DataZone creates after the publish returns: waited
+    for, up to two minutes."""
+    deadline = time.monotonic() + 120
+    while True:
+        for hit in client.search_listings(**scope, searchText=name)["items"]:
+            listing = hit.get("dataProductListing")
+            if listing and listing["entityId"] == product_id:
+                return listing
+        if time.monotonic() > deadline:
+            return None
+        time.sleep(5)
+
+
+def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict], dict | None]:
+    """The run's data product, its member assets and its listing, then the product removed
+    (the assets stay: they are the members', revised each run)."""
     client = _client(creds)
     scope = {"domainIdentifier": creds["PROVISA_E2E_DATAZONE_DOMAIN_ID"]}
     hits = client.search(
@@ -77,14 +93,16 @@ def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict
     )["items"]
     found = [h["dataProductItem"] for h in hits if h.get("dataProductItem", {}).get("name") == name]
     if not found:
-        return None, []
+        return None, [], None
     product = client.get_data_product(**scope, identifier=found[0]["id"])
     assets = [client.get_asset(**scope, identifier=i["identifier"]) for i in product["items"]]
-    client.create_listing_change_set(
-        **scope, entityIdentifier=product["id"], entityType="DATA_PRODUCT", action="UNPUBLISH"
-    )
+    listing = _listing(client, scope, product["id"], name)
+    if listing is not None:
+        client.create_listing_change_set(
+            **scope, entityIdentifier=product["id"], entityType="DATA_PRODUCT", action="UNPUBLISH"
+        )
     client.delete_data_product(**scope, identifier=product["id"])
-    return product, assets
+    return product, assets, listing
 
 
 @pytest.fixture(scope="module")
@@ -105,14 +123,19 @@ async def published():
                 "timeout_seconds": 120,
             },
         )
-    found, assets = _read_back(creds, name)
-    yield result, found, assets
+    found, assets, listing = _read_back(creds, name)
+    yield result, found, assets, listing
 
 
 async def test_the_publish_reports_the_product_and_its_assets(published):
     result = published[0]
     assert result["ok"], result["errors"]
     assert result["published"] == {"data_products": 1, "data_assets": 2}
+
+
+async def test_the_product_is_listed_for_subscription(published):
+    listing = published[3]
+    assert listing is not None, "the data product was not listed in the catalog"
 
 
 async def test_the_product_carries_its_fields_in_its_form(published):
