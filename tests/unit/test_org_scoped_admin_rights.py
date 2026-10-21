@@ -146,9 +146,11 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "derived_roles",
         # REQ-2087: the org's own redaction rules.
         "redaction",
+        # REQ-259: the org's Apollo subgraph and the role it serves as (not the federation engine).
+        "federation",
     }
     for deployment_wide in (
-        "federation",
+        "federation_engine",
         "encryption",
         "auth",
         "sources",
@@ -206,7 +208,7 @@ async def test_write_rejects_a_key_the_org_does_not_own():
 
     with pytest.raises(ValueError, match="not org-overridable"):
         await write_org_overrides(
-            object(), {"ai_models": {}, "federation": {"engine": "trino"}}, updated_by="alice"
+            object(), {"ai_models": {}, "federation_engine": "trino"}, updated_by="alice"
         )
 
 
