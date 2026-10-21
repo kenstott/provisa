@@ -36,7 +36,7 @@ pytestmark = [pytest.mark.integration]
 # amd64 emulation nor install a linux/arm64 pgserver wheel — there is none). With an
 # external DSN the embedded pgserver is not needed, so only require it otherwise.
 _EXTERNAL_DSN = os.environ.get("PROVISA_MEM_TEST_DSN")
-pgserver = None if _EXTERNAL_DSN else pytest.importorskip("pgserver")
+pgserver = None if _EXTERNAL_DSN else pytest.importorskip("pixeltable_pgserver")
 pytest.importorskip("psycopg2")
 pytest.importorskip("adbc_driver_postgresql")
 

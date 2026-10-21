@@ -3355,22 +3355,6 @@ wheels = [
 ]
 
 [[package]]
-name = "pgserver"
-version = "0.1.4"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "fasteners" },
-    { name = "platformdirs" },
-    { name = "psutil" },
-]
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/92/e3/9f8eea535ab4f2906a9924eccc5fb3a7bcff3e02222fbe338d9c24639750/pgserver-0.1.4-cp312-cp312-macosx_10_9_x86_64.whl", hash = "sha256:dc34f88561b18bc08edd98a84528f99a3720fe713a4e39a4a6210a4d009fe465", size = 10378168, upload-time = "2024-06-08T18:41:40.377Z" },
-    { url = "https://files.pythonhosted.org/packages/23/57/94b5f05a23d0fa683c01bfc2d785224057a9eaf0eb00cbfd6da19547012f/pgserver-0.1.4-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:780fa89f26a960cca0215caf471e70848dd8597bd8ceaeba7faf42170278980c", size = 9822137, upload-time = "2024-06-08T18:41:43.017Z" },
-    { url = "https://files.pythonhosted.org/packages/cf/f1/c9d717f66d2e4a27801577e1ae233c25aa88db875c586ac3ebe7d73b6b75/pgserver-0.1.4-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:1a5d07c61d51f2abfef4ef61e2ef5cd014b994f7e09de8d3c140d2cf370e84a8", size = 11266316, upload-time = "2024-06-08T18:41:48.033Z" },
-    { url = "https://files.pythonhosted.org/packages/85/80/f6304274c1740c283bc7317ababceb3c23c8275ce4995f7379e17b49bc6d/pgserver-0.1.4-cp312-cp312-win_amd64.whl", hash = "sha256:406e9355334e40754160a33d93f18a848720a38cd0b68da50be2ea272c89ed2d", size = 12797714, upload-time = "2024-06-08T18:41:50.774Z" },
-]
-
-[[package]]
 name = "pillow"
 version = "13.0.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3445,6 +3429,25 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/5e/2a/63b574101850e7f7b306ddbdb02cb294380d37948140eecd468fae392b54/pip-requirements-parser-32.0.1.tar.gz", hash = "sha256:b4fa3a7a0be38243123cf9d1f3518da10c51bdb165a2b2985566247f9155a7d3", size = 209359, upload-time = "2022-12-21T15:25:22.732Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/54/d0/d04f1d1e064ac901439699ee097f58688caadea42498ec9c4b4ad2ef84ab/pip_requirements_parser-32.0.1-py3-none-any.whl", hash = "sha256:4659bc2a667783e7a15d190f6fccf8b2486685b6dba4c19c3876314769c57526", size = 35648, upload-time = "2022-12-21T15:25:21.046Z" },
+]
+
+[[package]]
+name = "pixeltable-pgserver"
+version = "0.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "fasteners" },
+    { name = "platformdirs" },
+    { name = "psutil" },
+    { name = "typing-extensions" },
+]
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/45/70/20750824dd4e96c5d64141cf5b9293e9d6f840db2b43ccdf87fefa06e2bd/pixeltable_pgserver-0.5.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:77fcc82ed19add118a9d216e619c230e30c5bd5e81c708a305b185fc7db34185", size = 10539404, upload-time = "2026-01-28T07:11:34.163Z" },
+    { url = "https://files.pythonhosted.org/packages/77/3c/79f346d1c74f2089e66d6be9d1e71973771f66386cea7ce27544bc034701/pixeltable_pgserver-0.5.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:91e07ab512c1856ce32aad0e13aa621b047a704edd11343d43fe894a397ecd7c", size = 10103740, upload-time = "2026-01-28T07:11:35.999Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/53/6fbe5ccb25050e9e55cb299ee44df424a0190e7b3dc819d15e147e3cb2a7/pixeltable_pgserver-0.5.1-cp312-cp312-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a051408b1ab6068e2ca9f07b4ebc8eca9bf79d778913b35fc9042b63f3349b8a", size = 11812797, upload-time = "2026-01-28T07:11:37.991Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/29/f73e1c7360507908d097a0127403cc64ff35421bbf0e72ac2cc00f5632fa/pixeltable_pgserver-0.5.1-cp312-cp312-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:c02f8f5b6b606fa386b8f8cb1a15f97b61262edc85ec7017ad96bebede776d7e", size = 11869861, upload-time = "2026-01-28T07:11:39.896Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/2e/d25f84b1607efda6499658c2bec94650ea84d48ee60792e817ed2bb770a0/pixeltable_pgserver-0.5.1-cp312-cp312-win_amd64.whl", hash = "sha256:c11bcbf82ffe5a27490f7b1605a4878982a49eb9eabb4a3c662b01ea7ae6fe7e", size = 13426032, upload-time = "2026-01-28T07:11:42.281Z" },
+    { url = "https://files.pythonhosted.org/packages/43/5f/daf9ac71e98ff6230315afbe56d85e8cd81b483d22d6008f9f040ed3acc7/pixeltable_pgserver-0.5.1-cp312-cp312-win_arm64.whl", hash = "sha256:21ec2c285a150310d491a668ddfe9bb81f1111e12432778e6fff98add0e7db71", size = 13424991, upload-time = "2026-01-28T07:11:44.947Z" },
 ]
 
 [[package]]
@@ -3594,7 +3597,7 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "orjson" },
     { name = "pandas" },
-    { name = "pgserver", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
+    { name = "pixeltable-pgserver", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
     { name = "protobuf" },
     { name = "provisa-notebook" },
     { name = "psycopg", extra = ["binary"] },
@@ -3834,8 +3837,8 @@ requires-dist = [
     { name = "orjson" },
     { name = "pandas" },
     { name = "pandas", marker = "extra == 'dev'" },
-    { name = "pgserver", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'" },
     { name = "pip-audit", marker = "extra == 'dev'" },
+    { name = "pixeltable-pgserver", marker = "platform_machine != 'aarch64' or sys_platform != 'linux'", specifier = "==0.5.1" },
     { name = "pre-commit", marker = "extra == 'dev'" },
     { name = "protobuf", specifier = ">=6.33.5,<7" },
     { name = "provisa-duckdb-ext", marker = "extra == 'embedded'", specifier = ">=0.1.1" },

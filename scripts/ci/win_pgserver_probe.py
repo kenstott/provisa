@@ -29,7 +29,7 @@ import shutil
 import sys
 from pathlib import Path
 
-import pgserver
+import pixeltable_pgserver as pgserver
 
 
 def _pginstall_dirs():

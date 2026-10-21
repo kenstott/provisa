@@ -33,7 +33,7 @@ import tempfile
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
-import pgserver
+import pixeltable_pgserver as pgserver
 
 REQUIRED = {"file_fdw", "postgres_fdw", "sqlite_fdw", "pg_duckdb", "pg_clickhouse", "mysql_fdw"}
 if sys.platform != "win32":
@@ -162,6 +162,12 @@ def main(bundle: Path) -> int:
         if loaded and key == "pg_duckdb":
             has_iceberg = "iceberg_scan" in db.psql(
                 "SELECT proname FROM pg_proc WHERE proname = 'iceberg_scan'"
+            )
+            # The DuckDB pg_duckdb embeds, for the log: its tag pins it (scripts/build_pg_duckdb.sh).
+            print(
+                db.psql(
+                    "SELECT * FROM duckdb.query($$SELECT library_version FROM pragma_version()$$)"
+                )
             )
             extra = f" (iceberg_scan: {'yes' if has_iceberg else 'NO'})"
             if not has_iceberg:

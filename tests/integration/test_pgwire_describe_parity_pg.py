@@ -25,7 +25,7 @@ import pytest_asyncio
 
 pytestmark = [pytest.mark.integration]
 
-pgserver = pytest.importorskip("pgserver")
+pgserver = pytest.importorskip("pixeltable_pgserver")
 psycopg2 = pytest.importorskip("psycopg2")
 
 from provisa.federation.pg_runtime import PgFederationRuntime  # noqa: E402

@@ -69,14 +69,16 @@ def test_plpython_is_linked_to_the_running_interpreter(tmp_path):
 
 
 def test_the_postmaster_environment_is_set_for_the_start_alone(tmp_path, monkeypatch):
-    import pgserver
+    import pixeltable_pgserver.utils
 
     from provisa.core import control_plane_pg
 
-    fake_pkg = tmp_path / "pgserver"
+    fake_pkg = tmp_path / "pixeltable_pgserver"
     (fake_pkg / "pginstall" / "lib" / "postgresql").mkdir(parents=True)
     (fake_pkg / "pginstall" / "lib" / "postgresql" / "plpython3.so").write_text("")
-    monkeypatch.setattr(pgserver, "__file__", str(fake_pkg / "__init__.py"))
+    monkeypatch.setattr(
+        pixeltable_pgserver.utils, "POSTGRES_BIN_PATH", fake_pkg / "pginstall" / "bin"
+    )
     monkeypatch.delenv("PYTHONHOME", raising=False)
     with control_plane_pg._postmaster_environment():
         assert os.environ["PYTHONHOME"]

@@ -25,7 +25,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration]
 
-pgserver = pytest.importorskip("pgserver")
+pgserver = pytest.importorskip("pixeltable_pgserver")
 
 
 @pytest.fixture(scope="module")

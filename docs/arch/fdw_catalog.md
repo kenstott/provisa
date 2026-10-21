@@ -18,7 +18,7 @@ must be built from source and dropped into the bundled tree.
 | Package | Repo | Bundled PG major | Extra bundled | Status |
 | --- | --- | --- | --- | --- |
 | `pgserver` | orm011/pgserver | 16 (16.2) | pgvector | Unmaintained since mid-2024 |
-| `pixeltable-pgserver` | pixeltable/pixeltable-pgserver | 16 (16.10) | pgvector 0.8.1, pgvectorscale | Active 2026 |
+| `pixeltable-pgserver` | pixeltable/pixeltable-pgserver | 16 (16.11 in 0.5.1, Provisa's pin) | pgvector 0.8.1, pgvectorscale | Active 2026 |
 | `pgembed` | Ladybug-Memory/pgembed | 17 | via separate wheels | Most current; separate-wheel extension model |
 
 Confirm the exact minor with `<pkg>.POSTGRES_BIN_PATH / "pg_config" --version` against the installed wheel. Do not hardcode it.
@@ -26,8 +26,9 @@ Confirm the exact minor with `<pkg>.POSTGRES_BIN_PATH / "pg_config" --version` a
 ### Locating the bundled tree
 
 ```python
-import pgserver, pathlib
-pg_config = pathlib.Path(pgserver.POSTGRES_BIN_PATH) / "pg_config"
+import pathlib
+from pixeltable_pgserver.utils import POSTGRES_BIN_PATH
+pg_config = pathlib.Path(POSTGRES_BIN_PATH) / "pg_config"
 ```
 
 Derive everything else from `pg_config`, never a hardcoded path:

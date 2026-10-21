@@ -6,7 +6,7 @@
 
 """E2E: pg_duckdb reads an Apache Iceberg table IN PLACE inside a stock embedded PG (REQ-908).
 
-No docker. Runs an embedded PG 16.2 from a private pginstall (tests/embedded_pg.py) with the
+No docker. Runs an embedded PG 16.11 from a private pginstall (tests/embedded_pg.py) with the
 pg_duckdb the product ships: the provisa-pg-ext wheel's bundle for this platform (darwin-arm64,
 linux-x64), staged the way the embedded tier stages it. That pg_duckdb is built (via vcpkg) to include
 the DuckDB iceberg extension — aws-sdk-cpp[sso,sts,identity-management] + avro-c + roaring are
