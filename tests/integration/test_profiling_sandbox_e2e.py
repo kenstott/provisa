@@ -14,9 +14,11 @@ Its bundle is built as the Demo bundles workflow builds it, published to a regis
 own and synced as the node syncs it. A sandbox tier serving it opens a visitor's sandbox, and the
 tour's runs step -- the profile runs of the customers table -- is run as its visitor. A profile
 run's results are tables of the org's own schema, carried into each sandbox from its template
-(env_copy.copy_profile_results); the bundle build's runs are on its throwaway control plane, so
-the template profiles the demo's sources itself where the demo is served (REQ-2052). A template
-that did not left every sandbox with no runs, and the step waited out its time on cloud-dev."""
+(env_copy.copy_profile_results); the bundle build's runs, made on its throwaway control plane,
+travel in the bundle and the template loads them (REQ-2052). A template with no runs left every
+sandbox with none, and the step waited out its time on cloud-dev; one that profiled its sources
+itself measured the data as setup left it, and flagged no drift. Each statement runs in the
+environment the tour's switcher last picked: synthetic's rows are generated from the profile."""
 
 # Requirements: REQ-2052, REQ-2049, REQ-2006
 
@@ -123,6 +125,9 @@ def _sql(tier, sandbox: dict, sql: str, travel: dict[str, str]) -> list[dict[str
         headers["X-Provisa-As-Of"] = travel["as_of"]
     if travel.get("as_recorded"):
         headers["X-Provisa-As-Recorded"] = travel["as_recorded"]
+    # The environment the tour's switcher last picked; prod is a request naming none.
+    if travel.get("env", "prod") != "prod":
+        headers["x-provisa-env"] = travel["env"]
     resp = httpx.post(f"{tier.base_url}/data/sql", json={"sql": sql}, headers=headers, timeout=300)
     assert resp.status_code == 200, f"{sql}: HTTP {resp.status_code}: {resp.text}"
     return resp.json()["data"]["sql"]
@@ -147,6 +152,8 @@ def answers(tmp_path_factory, registry) -> dict[str, list[dict[str, Any]]]:
             for step in _STEPS:
                 if "as_of" in step:
                     travel["as_of"] = step["as_of"]
+                if "env" in step:
+                    travel["env"] = step["env"]
                 if "as_recorded_from" in step:
                     taken = step["as_recorded_from"]
                     travel["as_recorded"] = str(out[taken["step"]][taken["row"]][taken["column"]])
@@ -163,3 +170,19 @@ def test_a_new_sandbox_shows_the_templates_profile_runs(answers):
     runs = answers["profilingRuns"]
     assert runs, "the sandbox holds no profile run"
     assert all(r["status"] for r in runs), runs
+
+
+def test_the_second_run_finds_the_column_setup_changed_drifting(answers):
+    """REQ-2052: the build's two runs, carried in the bundle: between them its setup wrote every US
+    postal code as ZIP+4. A template that profiled its sources itself compared two runs of the same
+    data and flagged nothing."""
+    drifting = answers["profilingDrift"]
+    assert drifting, "the latest run flags nothing drifting"
+    assert {r["column_name"] for r in drifting} - {None, ""} == {"postal_code"}, drifting
+
+
+def test_the_synthetic_environment_answers_with_generated_customers_only(answers):
+    real, generated = answers["profilingOriginal"], answers["profilingSynthetic"]
+    assert real and generated
+    assert set(generated[0]) == set(real[0])
+    assert not {tuple(r.values()) for r in generated} & {tuple(r.values()) for r in real}

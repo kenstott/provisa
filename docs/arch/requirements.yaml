@@ -83880,7 +83880,15 @@
     and a profile run is visible on each profiled table. Its tour follows the settled demo tour shape (scenario
     and features; how the pieces fit, each step on its real row; the solution as predesigned queries and views over
     fitting transports; recap; then "Where next?" with its landing page). Its business question: "What is actually
-    in this data?"'
+    in this data?" It shows the profile''s three tiers: its basic metrics; drift, a second run comparing each
+    measure with the first after setup changed one column, which is flagged drifting while the others are not;
+    and a synthetic environment whose tables are generated from the profile, read beside the real ones. (Amended
+    2026-10-21:) A hosted demo''s profile runs are the bundle build''s: the build exports every profile result
+    relation of its setup''s org, each with the table it profiles (source, schema, table), as seeded/profile_results.json
+    beside the seed, and the template loads them under its own table ids instead of profiling the demo''s sources
+    again, since those hold the data as setup left it and a run there measures nothing a setup step changed between
+    two runs. A bundle of a demo whose setup profiles and that carries no runs leaves its template not ready,
+    named; runs of a table the template does not register are refused by name. A local start runs its setup as before.'
   use_case: 'A visitor opens the data profiling demo and sees how Provisa answers: What is actually in this data?'
   scenario: 'Given the data profiling demo started from its bundle
 
@@ -83893,7 +83901,13 @@
   - REQ-2006
   - REQ-2010
   - REQ-2049
-  notes: 'Maintainer 2026-10-14, via the lead: data profiling is its own feature demo, separate from data quality.'
+  tests:
+  - tests/unit/test_profile_carry.py
+  - tests/unit/test_demo_template_profiles.py
+  - tests/integration/test_profiling_sandbox_e2e.py
+  notes: 'Maintainer 2026-10-14, via the lead: data profiling is its own feature demo, separate from data quality.
+    Lead 2026-10-21: the demo shows all three tiers (basic metrics, drift, synthesis); the build''s profile runs
+    travel in the bundle, since a template rebuilt on every Provisa version would otherwise measure no drift.'
 - id: REQ-2053
   status: in-progress
   since: 2026-10

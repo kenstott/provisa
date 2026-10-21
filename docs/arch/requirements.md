@@ -24964,13 +24964,13 @@ A feature demo, data quality (quality): a medallion over the demo's own Postgres
 
 **Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
 
-A feature demo, data profiling: The built-in Data Profiler ([REQ-1934](#REQ-1934)) profiles a demo's tables on a schedule; its results are governed tables the tour shows (nulls, distinct counts, value ranges, outliers), and a profile run is visible on each profiled table. Its tour follows the settled demo tour shape (scenario and features; how the pieces fit, each step on its real row; the solution as predesigned queries and views over fitting transports; recap; then "Where next?" with its landing page). Its business question: "What is actually in this data?"
+A feature demo, data profiling: The built-in Data Profiler ([REQ-1934](#REQ-1934)) profiles a demo's tables on a schedule; its results are governed tables the tour shows (nulls, distinct counts, value ranges, outliers), and a profile run is visible on each profiled table. Its tour follows the settled demo tour shape (scenario and features; how the pieces fit, each step on its real row; the solution as predesigned queries and views over fitting transports; recap; then "Where next?" with its landing page). Its business question: "What is actually in this data?" It shows the profile's three tiers: its basic metrics; drift, a second run comparing each measure with the first after setup changed one column, which is flagged drifting while the others are not; and a synthetic environment whose tables are generated from the profile, read beside the real ones. (Amended 2026-10-21:) A hosted demo's profile runs are the bundle build's: the build exports every profile result relation of its setup's org, each with the table it profiles (source, schema, table), as seeded/profile_results.json beside the seed, and the template loads them under its own table ids instead of profiling the demo's sources again, since those hold the data as setup left it and a run there measures nothing a setup step changed between two runs. A bundle of a demo whose setup profiles and that carries no runs leaves its template not ready, named; runs of a table the template does not register are refused by name. A local start runs its setup as before.
 
 **Use case:** A visitor opens the data profiling demo and sees how Provisa answers: What is actually in this data?
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/unit/test_profile_carry.py`, `tests/unit/test_demo_template_profiles.py`, `tests/integration/test_profiling_sandbox_e2e.py`
 
 ### REQ-2053 · UI {#REQ-2053}
 
