@@ -6997,7 +6997,7 @@
   "es/tour.json::tour.steps.step9.description": "⚙️ Every registered entity is also a gRPC service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Call it from any gRPC client: 📐 strongly typed, 🚀 high-throughput.</p>",
   "es/tour.json::tour.steps.step9.title": "gRPC (4 of 9 surfaces)",
   "es/tour.json::tour.steps.stepBuildSource.acting": "Adding a source",
-  "es/tour.json::tour.steps.stepBuildSource.description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>, published at provisa.dev) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+  "es/tour.json::tour.steps.stepBuildSource.description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
   "es/tour.json::tour.steps.stepBuildSource.title": "A source, added live",
   "es/tour.json::tour.steps.stepCache.description": "🗄️ These layers are separate. The response cache holds query results, and a request opts in with @cached or a SQL comment. Small lookup tables are mirrored to speed joins. A replica of a source table that cannot be attached lives in the durable store, beside materialized views.",
   "es/tour.json::tour.steps.stepCache.title": "Caches and replicas",

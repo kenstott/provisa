@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Uma fonte, adicionada ao vivo",
-        "description": "É assim que se adiciona uma fonte: o seletor abriu com a lista completa, <strong>Parquet File</strong> foi escolhido, o endereço do arquivo foi preenchido (<code>supplies.parquet</code>, publicado em provisa.dev) e Salvar a criou. A nova fonte <strong>supplies</strong> lê esse arquivo no próprio lugar.",
+        "description": "É assim que se adiciona uma fonte: o seletor abriu com a lista completa, <strong>Parquet File</strong> foi escolhido, o endereço do arquivo foi preenchido (<code>supplies.parquet</code>) e Salvar a criou. A nova fonte <strong>supplies</strong> lê esse arquivo no próprio lugar.",
         "acting": "Adicionando uma fonte"
       },
       "step4": {

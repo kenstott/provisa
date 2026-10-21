@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Eine Quelle, live hinzugefügt",
-        "description": "So wird eine Quelle hinzugefügt: Die Auswahl öffnete sich mit ihrer ganzen Liste, <strong>Parquet File</strong> wurde gewählt, die Adresse der Datei eingetragen (<code>supplies.parquet</code>, veröffentlicht auf provisa.dev) und Speichern legte sie an. Die neue Quelle <strong>supplies</strong> liest diese Datei an Ort und Stelle.",
+        "description": "So wird eine Quelle hinzugefügt: Die Auswahl öffnete sich mit ihrer ganzen Liste, <strong>Parquet File</strong> wurde gewählt, die Adresse der Datei eingetragen (<code>supplies.parquet</code>) und Speichern legte sie an. Die neue Quelle <strong>supplies</strong> liest diese Datei an Ort und Stelle.",
         "acting": "Quelle wird hinzugefügt"
       },
       "step4": {
