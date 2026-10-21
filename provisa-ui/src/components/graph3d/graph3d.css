@@ -69,3 +69,9 @@
   flex-direction: column;
   gap: var(--mantine-spacing-xs);
 }
+.g3d-filters .mantine-InputBase-root {
+  width: 200px;
+}
+.g3d-placeholder {
+  color: var(--mantine-color-placeholder);
+}

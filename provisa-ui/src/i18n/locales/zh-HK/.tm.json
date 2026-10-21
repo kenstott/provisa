@@ -1671,6 +1671,8 @@
   "zh-HK/graph3d.json::graph3d.preset_productMap": "Product map",
   "zh-HK/graph3d.json::graph3d.preset_taxonomy": "Taxonomy",
   "zh-HK/graph3d.json::graph3d.productMap": "Product map",
+  "zh-HK/graph3d.json::graph3d.selected_one": "{{count}} selected",
+  "zh-HK/graph3d.json::graph3d.selected_other": "{{count}} selected",
   "zh-HK/graph3d.json::graph3d.show": "Show",
   "zh-HK/graph3d.json::graph3d.showColumns": "Show columns",
   "zh-HK/graph3d.json::graph3d.shown": "Shown",

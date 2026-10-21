@@ -1666,6 +1666,8 @@
   "de/graph3d.json::graph3d.preset_productMap": "Product map",
   "de/graph3d.json::graph3d.preset_taxonomy": "Taxonomy",
   "de/graph3d.json::graph3d.productMap": "Product map",
+  "de/graph3d.json::graph3d.selected_one": "{{count}} selected",
+  "de/graph3d.json::graph3d.selected_other": "{{count}} selected",
   "de/graph3d.json::graph3d.show": "Show",
   "de/graph3d.json::graph3d.showColumns": "Show columns",
   "de/graph3d.json::graph3d.shown": "Shown",

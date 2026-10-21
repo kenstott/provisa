@@ -14,7 +14,8 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, MultiSelect, SegmentedControl, Select, Text } from "@mantine/core";
+import { Button, Chip, Group, SegmentedControl, Select, Text } from "@mantine/core";
+import { SummaryMultiSelect } from "./SummaryMultiSelect";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
 import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
 import {
@@ -204,50 +205,38 @@ export function GraphExplorer({
           </Group>
         )}
         {edgeTypes.length > 0 && (
-          <MultiSelect
-            size="xs"
-            placeholder={t("graph3d.filterEdgeType")}
-            aria-label={t("graph3d.filterEdgeType")}
+          <SummaryMultiSelect
+            label={t("graph3d.filterEdgeType")}
             data={edgeTypes}
             value={filters.edgeTypes}
             onChange={(types) => setFilters((f) => ({ ...f, edgeTypes: types }))}
-            clearable
-            data-testid={`${testId}-filter-edge-type`}
+            testId={`${testId}-filter-edge-type`}
           />
         )}
-        <MultiSelect
-          size="xs"
-          placeholder={t("graph3d.filterDomain")}
-          aria-label={t("graph3d.filterDomain")}
+        <SummaryMultiSelect
+          label={t("graph3d.filterDomain")}
           data={choices.domains}
           value={filters.domains}
           onChange={(domains) => setFilters((f) => ({ ...f, domains }))}
-          clearable
-          data-testid={`${testId}-filter-domain`}
+          testId={`${testId}-filter-domain`}
         />
         {/* A filter with nothing to choose from is not offered. */}
         {choices.tags.length > 0 && (
-          <MultiSelect
-            size="xs"
-            placeholder={t("graph3d.filterTag")}
-            aria-label={t("graph3d.filterTag")}
+          <SummaryMultiSelect
+            label={t("graph3d.filterTag")}
             data={choices.tags}
             value={filters.tags}
             onChange={(tags) => setFilters((f) => ({ ...f, tags }))}
-            clearable
-            data-testid={`${testId}-filter-tag`}
+            testId={`${testId}-filter-tag`}
           />
         )}
         {choices.sensitivities.length > 0 && (
-          <MultiSelect
-            size="xs"
-            placeholder={t("graph3d.filterSensitivity")}
-            aria-label={t("graph3d.filterSensitivity")}
+          <SummaryMultiSelect
+            label={t("graph3d.filterSensitivity")}
             data={choices.sensitivities}
             value={filters.sensitivities}
             onChange={(sensitivities) => setFilters((f) => ({ ...f, sensitivities }))}
-            clearable
-            data-testid={`${testId}-filter-sensitivity`}
+            testId={`${testId}-filter-sensitivity`}
           />
         )}
         <Select

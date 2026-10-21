@@ -71,6 +71,8 @@
     "why_ungrounded": "не связан с данными",
     "glossaryUnreadable": "Ваша роль не может читать глоссарий в домене meta.",
     "ontologyTitle": "Онтология глоссария",
-    "ontologyView": "Вид онтологии"
+    "ontologyView": "Вид онтологии",
+    "selected_one": "Выбрано: {{count}}",
+    "selected_other": "Выбрано: {{count}}"
   }
 }

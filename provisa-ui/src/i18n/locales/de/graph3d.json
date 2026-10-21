@@ -71,6 +71,8 @@
     "why_ungrounded": "ohne Datenbezug",
     "glossaryUnreadable": "Ihre Rolle kann das Glossar in der Meta-Domäne nicht lesen.",
     "ontologyTitle": "Glossar-Ontologie",
-    "ontologyView": "Ontologie-Ansicht"
+    "ontologyView": "Ontologie-Ansicht",
+    "selected_one": "{{count}} ausgewählt",
+    "selected_other": "{{count}} ausgewählt"
   }
 }

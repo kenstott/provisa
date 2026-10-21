@@ -71,6 +71,8 @@
     "why_ungrounded": "未關聯數據",
     "glossaryUnreadable": "你的角色無法讀取 meta 網域中的詞彙表。",
     "ontologyTitle": "詞彙表本體",
-    "ontologyView": "本體檢視"
+    "ontologyView": "本體檢視",
+    "selected_one": "已選 {{count}} 項",
+    "selected_other": "已選 {{count}} 項"
   }
 }

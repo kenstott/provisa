@@ -71,6 +71,8 @@
     "why_ungrounded": "データ未接続",
     "glossaryUnreadable": "あなたのロールは meta ドメインの用語集を読み取れません。",
     "ontologyTitle": "用語集オントロジー",
-    "ontologyView": "オントロジービュー"
+    "ontologyView": "オントロジービュー",
+    "selected_one": "{{count}} 件選択",
+    "selected_other": "{{count}} 件選択"
   }
 }

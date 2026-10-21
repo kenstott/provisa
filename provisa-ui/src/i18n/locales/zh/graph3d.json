@@ -71,6 +71,8 @@
     "why_ungrounded": "未关联数据",
     "glossaryUnreadable": "你的角色无法读取 meta 域中的术语表。",
     "ontologyTitle": "术语表本体",
-    "ontologyView": "本体视图"
+    "ontologyView": "本体视图",
+    "selected_one": "已选 {{count}} 项",
+    "selected_other": "已选 {{count}} 项"
   }
 }

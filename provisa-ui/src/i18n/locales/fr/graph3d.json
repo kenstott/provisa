@@ -71,6 +71,8 @@
     "why_ungrounded": "non ancré dans les données",
     "glossaryUnreadable": "Votre rôle ne peut pas lire le glossaire du domaine meta.",
     "ontologyTitle": "Ontologie du glossaire",
-    "ontologyView": "Vue ontologie"
+    "ontologyView": "Vue ontologie",
+    "selected_one": "{{count}} sélectionné",
+    "selected_other": "{{count}} sélectionnés"
   }
 }

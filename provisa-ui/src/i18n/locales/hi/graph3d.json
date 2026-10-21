@@ -71,6 +71,8 @@
     "why_ungrounded": "डेटा से असंबद्ध",
     "glossaryUnreadable": "आपकी भूमिका meta डोमेन में शब्दावली नहीं पढ़ सकती।",
     "ontologyTitle": "शब्दावली ऑन्टोलॉजी",
-    "ontologyView": "ऑन्टोलॉजी दृश्य"
+    "ontologyView": "ऑन्टोलॉजी दृश्य",
+    "selected_one": "{{count}} चुने गए",
+    "selected_other": "{{count}} चुने गए"
   }
 }

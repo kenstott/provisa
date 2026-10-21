@@ -71,6 +71,8 @@
     "why_ungrounded": "sem vínculo com dados",
     "glossaryUnreadable": "Sua função não pode ler o glossário no domínio meta.",
     "ontologyTitle": "Ontologia do glossário",
-    "ontologyView": "Visão de ontologia"
+    "ontologyView": "Visão de ontologia",
+    "selected_one": "{{count}} selecionado",
+    "selected_other": "{{count}} selecionados"
   }
 }

@@ -71,6 +71,8 @@
     "why_ungrounded": "לא מעוגן בנתונים",
     "glossaryUnreadable": "התפקיד שלכם לא יכול לקרוא את מילון המונחים בדומיין ה-meta.",
     "ontologyTitle": "אונטולוגיית מילון המונחים",
-    "ontologyView": "תצוגת אונטולוגיה"
+    "ontologyView": "תצוגת אונטולוגיה",
+    "selected_one": "נבחרו: {{count}}",
+    "selected_other": "נבחרו: {{count}}"
   }
 }
