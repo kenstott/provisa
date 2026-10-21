@@ -107,22 +107,27 @@ test("a catalog is connected once, kept with its domains, and its credential nev
   }
 });
 
-test("a catalog with no domain is refused when it is saved", async ({ page, request }) => {
-  const id = `e2e-catalog-nodomain-${Date.now().toString(36)}`;
-  try {
-    await openTab(page);
-    const i = await page.locator('[data-testid^="catalog-entry-"]').count();
-    await page.getByTestId("catalogs-add").click();
-    await page.getByTestId(`catalog-id-${i}`).fill(id);
-    await page.getByTestId(`catalog-provider-${i}`).click();
-    await page.getByRole("option", { name: "openmetadata", exact: true }).click();
-    await page.getByTestId(`catalog-endpoint-${i}`).fill(UNREACHABLE);
-    await page.getByTestId("catalogs-save").click();
+test.describe("a refused save", () => {
+  // The refusal is the subject: the browser logs the save's 400 however well the panel answers it.
+  test.use({ allowedBrowserErrors: ["status of 400"] });
 
-    await expect(page.getByTestId("catalogs-error")).toContainText("assigned to no domain");
-    const held = (await (await request.get(CATALOGS)).json()) as { catalogs: { id: string }[] };
-    expect(held.catalogs.map((c) => c.id)).not.toContain(id);
-  } finally {
-    await forget(request, id);
-  }
+  test("a catalog with no domain is refused when it is saved", async ({ page, request }) => {
+    const id = `e2e-catalog-nodomain-${Date.now().toString(36)}`;
+    try {
+      await openTab(page);
+      const i = await page.locator('[data-testid^="catalog-entry-"]').count();
+      await page.getByTestId("catalogs-add").click();
+      await page.getByTestId(`catalog-id-${i}`).fill(id);
+      await page.getByTestId(`catalog-provider-${i}`).click();
+      await page.getByRole("option", { name: "openmetadata", exact: true }).click();
+      await page.getByTestId(`catalog-endpoint-${i}`).fill(UNREACHABLE);
+      await page.getByTestId("catalogs-save").click();
+
+      await expect(page.getByTestId("catalogs-error")).toContainText("assigned to no domain");
+      const held = (await (await request.get(CATALOGS)).json()) as { catalogs: { id: string }[] };
+      expect(held.catalogs.map((c) => c.id)).not.toContain(id);
+    } finally {
+      await forget(request, id);
+    }
+  });
 });
