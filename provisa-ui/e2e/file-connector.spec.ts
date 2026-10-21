@@ -11,6 +11,7 @@ import {
   addSourceOfType,
   openRegisterForm,
   submitSourceAndExpectListed,
+  waitForSourceServing,
 } from "./source-to-query-helpers";
 
 const SOURCE_ID = "e2e-northwind";
@@ -63,7 +64,7 @@ test.afterEach(async () => {
 });
 
 test("file connector: add northwind source and query customers", async ({ page }) => {
-  test.setTimeout(120000);
+  test.setTimeout(300000); // cold pgwire-file JVM start, as file-connector-multi-format allows
 
   // ── 1. Add Files source via UI ────────────────────────────────────────────
   await page.goto("/sources");
@@ -81,6 +82,10 @@ test("file connector: add northwind source and query customers", async ({ page }
   await page.getByTestId("files-path-input").fill(GLOB);
 
   await submitSourceAndExpectListed(page, SOURCE_ID);
+  // The schema is the source's own declaration, answered without its server; the tables come
+  // from the source's pgwire-file server, so wait until it serves (any error but STARTING ends
+  // the wait at once, naming it).
+  expect(await waitForSourceServing(page, SOURCE_ID, SCHEMA_NAME, 180000)).toContain("customers");
 
   // ── 2. Open table form and verify Northwind tables are enumerated ─────────
   await openRegisterForm(page, SOURCE_ID, await getDomainId());
