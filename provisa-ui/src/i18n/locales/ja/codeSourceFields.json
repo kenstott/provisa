@@ -26,6 +26,7 @@
     "entry": "エントリモジュール",
     "entryHint": "ソースの入口となるモジュール。コードの最上位モジュールまたはパッケージが 1 つだけなら空欄にします。",
     "kept": "保存済み: {{name}}",
+    "keptWithHash": "保存済み: {{name}} ({{hash}})",
     "secrets": "シークレット",
     "secretsHint": "このコードが読み取れる組織のシークレット。実行時に $PROVISA_SERVICES/secrets/<name> から一つずつ取得します。ボールト内のほかのものは読み取れず、すべての読み取りが監査されます。",
     "secretsPlaceholder": "シークレットなし",

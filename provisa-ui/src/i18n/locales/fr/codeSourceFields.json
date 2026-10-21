@@ -26,6 +26,7 @@
     "entry": "Module d'entrée",
     "entryHint": "Le module par lequel on entre dans la source. Laissez vide si le code a un seul module ou paquet de premier niveau.",
     "kept": "Conservé : {{name}}",
+    "keptWithHash": "Conservé : {{name}} ({{hash}})",
     "secrets": "Secrets",
     "secretsHint": "Les secrets de l'organisation que ce code peut lire. Il récupère chacun à l'exécution, depuis $PROVISA_SERVICES/secrets/<name> ; rien d'autre du coffre n'est lisible, et chaque lecture est auditée.",
     "secretsPlaceholder": "Aucun secret",

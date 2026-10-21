@@ -7381,5 +7381,6 @@
   "nl/metadataExportTab.json::metadataExportTab.deltaShareHelp": "Other data teams receive the share once a Databricks admin grants it to their recipient. Only members stored in Delta can be shared.",
   "nl/chatPanel.json::chatPanel.confirmed": "Confirmed — go ahead.",
   "nl/chatPanel.json::chatPanel.cancelled": "Cancelled.",
-  "nl/chatPanel.json::chatPanel.chooseFile": "File to send"
+  "nl/chatPanel.json::chatPanel.chooseFile": "File to send",
+  "nl/codeSourceFields.json::codeSourceFields.keptWithHash": "Kept: {{name}} ({{hash}})"
 }

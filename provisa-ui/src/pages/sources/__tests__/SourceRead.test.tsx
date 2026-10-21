@@ -220,4 +220,28 @@ describe("a source read", () => {
     expect(value("Password")).toBe("Set");
     expect(value("Password")).not.toContain("secret");
   });
+
+  it("shows an uploaded archive kept from before by its file's name and its hash", () => {
+    const p = props(
+      source("python", {
+        mappingJson: JSON.stringify({
+          runtime: "python",
+          code: {
+            kind: "upload",
+            upload: "e80be40c584d433f9aa66108a9c9b9015264abfbe3ec43c992ae503ecc79d4ce",
+            filename: "churn_model.tar.gz",
+          },
+        }),
+      }),
+    );
+    render(
+      <FormRead testId="read">
+        <SourceFormFields {...p} />
+      </FormRead>,
+    );
+    const archive = [...screen.getByTestId("read").querySelectorAll("dt")].find(
+      (d) => strip(d.textContent ?? "") === "Archive",
+    )?.nextElementSibling?.textContent;
+    expect(archive).toBe("Kept: churn_model.tar.gz (e80be40c584d)");
+  });
 });
