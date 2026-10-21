@@ -188,6 +188,88 @@ A code source's table is landed, never read in place. Provisa calls the function
 
 You pass arguments the way you pass any table parameter: as `_nf_` conditions in SQL and as field arguments in GraphQL.
 
+## Batched keys: the `loader` parameter {: #batched-keys }
+
+A join can reach a code table: the rows of another table supply its parameters, as in customers joined to their churn score. By default Provisa calls the function once for each distinct set of arguments the joining rows give, and sends all those calls to the worker in one request.
+
+A function that takes a parameter named `loader` is called once per batch instead, the pattern GraphQL's DataLoader made familiar. `loader` is a list of JSON objects, one key each, holding the joining rows' values for the function's other parameters. Provisa de-duplicates the keys, so each distinct combination of values appears once. The list is sparse: a field with no value is left out of its key rather than sent as null, so the function's own default applies, as it does on a single call.
+
+The function returns ordinary rows that carry their key columns, and Provisa joins them back to the joining rows on those columns, never by position. The rows can come back in any order, and a key can give no rows or many.
+
+Use `loader` when one call over many keys does better than many calls over one:
+
+- Scoring a model over a whole batch in one vectorized pass.
+- Batching requests to an API or a language model that accepts many inputs at once.
+- Setting up once per batch, such as loading a model or opening a connection, rather than once per key.
+
+This Python function scores every customer of a batch in one pass:
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    plan: str
+    region: str
+    score: float
+
+
+def churn_score(
+    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
+    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
+    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
+    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+```
+
+Joined to a table of customers, it is called with `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. The second key carries only `customer_id`, so its plan and region take the defaults. Each row returned carries `customer_id`, `plan` and `region`, and Provisa matches it to its customer on them.
+
+The same function in TypeScript:
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  plan: string;
+  region: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id: string,
+  plan = "basic",
+  region = "US",
+  loader?: CustomerKey[],
+): Promise<Score[]> {
+  const keys = loader ?? [{ customer_id, plan, region }];
+  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
+  const scores = await model.predict(rows); // one call for the whole batch
+  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+}
+```
+
 ## An example {: #an-example }
 
 This Python module scores how likely an account is to leave:

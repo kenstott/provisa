@@ -57,6 +57,88 @@ Die Tabelle einer Code-Quelle wird gelandet, nie an Ort und Stelle gelesen. Prov
 
 Argumente übergeben Sie wie jeden Tabellenparameter: als `_nf_`-Bedingungen in SQL und als Feldargumente in GraphQL.
 
+## Gebündelte Schlüssel: der Parameter `loader` {: #batched-keys }
+
+Ein Join kann eine Code-Tabelle erreichen: Die Zeilen einer anderen Tabelle liefern ihre Parameter, etwa Kunden, die mit ihrem Churn-Score verknüpft werden. Standardmäßig ruft Provisa die Funktion einmal für jede eindeutige Kombination von Argumenten auf, die die verknüpften Zeilen liefern, und sendet alle diese Aufrufe in einer Anfrage an den Worker.
+
+Eine Funktion mit einem Parameter namens `loader` wird stattdessen einmal pro Batch aufgerufen, nach dem Muster, das DataLoader aus GraphQL bekannt gemacht hat. `loader` ist eine Liste von JSON-Objekten, je ein Schlüssel, mit den Werten der verknüpften Zeilen für die übrigen Parameter der Funktion. Provisa entfernt doppelte Schlüssel, sodass jede eindeutige Kombination von Werten einmal vorkommt. Die Liste ist dünn besetzt: Ein Feld ohne Wert fehlt in seinem Schlüssel, statt als null gesendet zu werden, sodass der eigene Standardwert der Funktion gilt, wie bei einem einzelnen Aufruf.
+
+Die Funktion gibt gewöhnliche Zeilen zurück, die ihre Schlüsselspalten tragen, und Provisa verknüpft sie über diese Spalten mit den verknüpften Zeilen, nie über die Position. Die Zeilen können in beliebiger Reihenfolge zurückkommen, und ein Schlüssel kann keine oder viele Zeilen liefern.
+
+Verwenden Sie `loader`, wenn ein Aufruf über viele Schlüssel besser ist als viele Aufrufe über je einen:
+
+- Ein Modell über einen ganzen Batch in einem vektorisierten Durchgang bewerten.
+- Anfragen an eine API oder ein Sprachmodell bündeln, das viele Eingaben auf einmal annimmt.
+- Einmal pro Batch vorbereiten, etwa ein Modell laden oder eine Verbindung öffnen, statt einmal pro Schlüssel.
+
+Diese Python-Funktion bewertet jeden Kunden eines Batches in einem Durchgang:
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    plan: str
+    region: str
+    score: float
+
+
+def churn_score(
+    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
+    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
+    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
+    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+```
+
+Mit einer Kundentabelle verknüpft, wird sie mit `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]` aufgerufen. Der zweite Schlüssel trägt nur `customer_id`, also gelten für Plan und Region die Standardwerte. Jede zurückgegebene Zeile trägt `customer_id`, `plan` und `region`, und Provisa ordnet sie darüber ihrem Kunden zu.
+
+Dieselbe Funktion in TypeScript:
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  plan: string;
+  region: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id: string,
+  plan = "basic",
+  region = "US",
+  loader?: CustomerKey[],
+): Promise<Score[]> {
+  const keys = loader ?? [{ customer_id, plan, region }];
+  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
+  const scores = await model.predict(rows); // one call for the whole batch
+  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+}
+```
+
 ## Ein Beispiel {: #an-example }
 
 Dieses Python-Modul bewertet, wie wahrscheinlich es ist, dass ein Konto abwandert:

@@ -57,6 +57,88 @@ Node 代码在 Node.js、Bun 或 Deno 上运行，由您选择。Python 代码�
 
 传参方式与任何表参数相同：在 SQL 中用 `_nf_` 条件，在 GraphQL 中用字段参数。
 
+## 批量键：`loader` 参数 {: #batched-keys }
+
+连接可以到达代码表：另一个表的行为它提供参数，例如把客户连接到他们的流失评分。默认情况下，Provisa 对连接行给出的每一组不同参数调用一次函数，并把所有这些调用放在一个请求中发给 worker。
+
+带有名为 `loader` 参数的函数则改为每个批次调用一次，即 GraphQL 的 DataLoader 推广开来的模式。`loader` 是一个 JSON 对象列表，每个对象是一个键，存放连接行为函数其他参数提供的值。Provisa 会去除重复的键，因此每种不同的取值组合只出现一次。这个列表是稀疏的：没有值的字段会从键中省略，而不是以 null 发送，于是函数自己的默认值生效，与单次调用时一样。
+
+函数返回普通的行，每行带有其键列，Provisa 按这些列把它们连接回连接行，从不按位置。行可以按任意顺序返回，一个键可以对应零行或多行。
+
+当一次处理多个键的调用比多次各处理一个键的调用更好时，使用 `loader`：
+
+- 在一次向量化运算中为整个批次的模型打分。
+- 把请求批量发送给一次可接受多个输入的 API 或语言模型。
+- 每个批次只准备一次，例如加载模型或打开连接，而不是每个键一次。
+
+这个 Python 函数一次为批次中的每个客户打分：
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    plan: str
+    region: str
+    score: float
+
+
+def churn_score(
+    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
+    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
+    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
+    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+```
+
+连接到客户表时，它以 `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]` 被调用。第二个键只带有 `customer_id`，所以它的 plan 和 region 取默认值。返回的每一行都带有 `customer_id`、`plan` 和 `region`，Provisa 按这些列把它匹配到对应的客户。
+
+同一个函数的 TypeScript 写法：
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  plan: string;
+  region: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id: string,
+  plan = "basic",
+  region = "US",
+  loader?: CustomerKey[],
+): Promise<Score[]> {
+  const keys = loader ?? [{ customer_id, plan, region }];
+  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
+  const scores = await model.predict(rows); // one call for the whole batch
+  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+}
+```
+
 ## 示例 {: #an-example }
 
 这个 Python 模块为一个账户流失的可能性打分：

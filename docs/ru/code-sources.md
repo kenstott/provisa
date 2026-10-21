@@ -57,6 +57,88 @@ Lockfile необязателен, но без него две установк�
 
 Аргументы передаются как любой параметр таблицы: условиями `_nf_` в SQL и аргументами полей в GraphQL.
 
+## Ключи пакетом: параметр `loader` {: #batched-keys }
+
+Join может дойти до таблицы кода: строки другой таблицы задают её параметры, например клиенты, соединённые со своей оценкой оттока. По умолчанию Provisa вызывает функцию один раз для каждого отдельного набора аргументов, которые дают соединяемые строки, и отправляет все эти вызовы воркеру одним запросом.
+
+Функция с параметром `loader` вместо этого вызывается один раз на пакет, по образцу DataLoader из GraphQL. `loader` — это список JSON-объектов, по одному ключу в каждом, со значениями соединяемых строк для остальных параметров функции. Provisa убирает повторяющиеся ключи, так что каждое отдельное сочетание значений встречается один раз. Список разрежённый: поле без значения не включается в ключ, а не передаётся как null, поэтому действует собственное значение функции по умолчанию, как при одиночном вызове.
+
+Функция возвращает обычные строки со своими ключевыми столбцами, и Provisa соединяет их обратно с соединяемыми строками по этим столбцам, никогда не по позиции. Строки могут вернуться в любом порядке, а ключ может дать ни одной строки или много.
+
+Используйте `loader`, когда один вызов на много ключей лучше, чем много вызовов на один ключ:
+
+- Оценка моделью целого пакета за один векторизованный проход.
+- Объединение запросов к API или языковой модели, которые принимают много входных данных сразу.
+- Подготовка один раз на пакет, например загрузка модели или открытие соединения, а не один раз на ключ.
+
+Эта функция на Python оценивает каждого клиента пакета за один проход:
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    plan: str
+    region: str
+    score: float
+
+
+def churn_score(
+    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
+    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
+    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
+    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+```
+
+При соединении с таблицей клиентов она вызывается с `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. Второй ключ содержит только `customer_id`, поэтому тариф и регион получают значения по умолчанию. Каждая возвращённая строка содержит `customer_id`, `plan` и `region`, и Provisa сопоставляет её с её клиентом по ним.
+
+Та же функция на TypeScript:
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  plan: string;
+  region: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id: string,
+  plan = "basic",
+  region = "US",
+  loader?: CustomerKey[],
+): Promise<Score[]> {
+  const keys = loader ?? [{ customer_id, plan, region }];
+  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
+  const scores = await model.predict(rows); // one call for the whole batch
+  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+}
+```
+
 ## Пример {: #an-example }
 
 Этот модуль Python оценивает, насколько вероятно, что клиент уйдёт:

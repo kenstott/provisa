@@ -57,6 +57,88 @@ La tabla de una fuente de código se aterriza, nunca se lee en su sitio. Provisa
 
 Los argumentos se pasan como cualquier parámetro de tabla: como condiciones `_nf_` en SQL y como argumentos de campo en GraphQL.
 
+## Claves por lotes: el parámetro `loader` {: #batched-keys }
+
+Un join puede llegar a una tabla de código: las filas de otra tabla aportan sus parámetros, como los clientes unidos a su puntuación de abandono. Por defecto, Provisa llama a la función una vez por cada conjunto distinto de argumentos que aportan las filas que se unen, y envía todas esas llamadas al worker en una sola solicitud.
+
+Una función que recibe un parámetro llamado `loader` se llama en cambio una vez por lote, el patrón que popularizó DataLoader de GraphQL. `loader` es una lista de objetos JSON, una clave cada uno, con los valores de las filas que se unen para los demás parámetros de la función. Provisa elimina las claves duplicadas, de modo que cada combinación distinta de valores aparece una vez. La lista es dispersa: un campo sin valor se omite de su clave en lugar de enviarse como null, así que se aplica el valor por defecto de la propia función, como en una llamada individual.
+
+La función devuelve filas normales que llevan sus columnas clave, y Provisa las une de vuelta a las filas que se unen por esas columnas, nunca por posición. Las filas pueden volver en cualquier orden, y una clave puede dar ninguna fila o muchas.
+
+Use `loader` cuando una llamada sobre muchas claves funciona mejor que muchas llamadas sobre una:
+
+- Puntuar un modelo sobre un lote entero en una sola pasada vectorizada.
+- Agrupar solicitudes a una API o a un modelo de lenguaje que acepta muchas entradas a la vez.
+- Preparar una vez por lote, como cargar un modelo o abrir una conexión, en lugar de una vez por clave.
+
+Esta función de Python puntúa a cada cliente de un lote en una sola pasada:
+
+```python
+from dataclasses import dataclass
+from typing import TypedDict
+
+
+class CustomerKey(TypedDict, total=False):
+    customer_id: str
+    plan: str
+    region: str
+
+
+@dataclass
+class Score:
+    customer_id: str
+    plan: str
+    region: str
+    score: float
+
+
+def churn_score(
+    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+) -> list[Score]:
+    """Churn score of each customer in the batch.
+
+    @table
+    """
+    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
+    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
+    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
+    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+```
+
+Unida a una tabla de clientes, se llama con `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. La segunda clave solo lleva `customer_id`, así que su plan y su región toman los valores por defecto. Cada fila devuelta lleva `customer_id`, `plan` y `region`, y Provisa la empareja con su cliente por ellas.
+
+La misma función en TypeScript:
+
+```typescript
+export interface CustomerKey {
+  customer_id: string;
+  plan?: string;
+  region?: string;
+}
+
+export interface Score {
+  customer_id: string;
+  plan: string;
+  region: string;
+  score: number;
+}
+
+/** Churn score of each customer in the batch.
+ * @table
+ */
+export async function churnScore(
+  customer_id: string,
+  plan = "basic",
+  region = "US",
+  loader?: CustomerKey[],
+): Promise<Score[]> {
+  const keys = loader ?? [{ customer_id, plan, region }];
+  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
+  const scores = await model.predict(rows); // one call for the whole batch
+  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+}
+```
+
 ## Un ejemplo {: #an-example }
 
 Este módulo Python puntúa la probabilidad de que una cuenta se vaya:
