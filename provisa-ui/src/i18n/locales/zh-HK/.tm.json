@@ -7392,5 +7392,13 @@
   "zh-HK/codeSourceFields.json::codeSourceFields.exportsNone": "The code exports no functions",
   "zh-HK/codeSourceFields.json::codeSourceFields.exportKind_table": "table",
   "zh-HK/codeSourceFields.json::codeSourceFields.exportKind_command": "command",
-  "zh-HK/codeSourceFields.json::codeSourceFields.exportKind_stream": "stream"
+  "zh-HK/codeSourceFields.json::codeSourceFields.exportKind_stream": "stream",
+  "zh-HK/codeSourceFields.json::codeSourceFields.directoryOrigin": "Directory on the server",
+  "zh-HK/codeSourceFields.json::codeSourceFields.directory": "Directory",
+  "zh-HK/codeSourceFields.json::codeSourceFields.directoryHint": "A directory under those the operator allows. It is read where it is, so an edit is read by the next query.",
+  "zh-HK/codeSourceFields.json::codeSourceFields.chooseFolder": "Choose folder",
+  "zh-HK/codeSourceFields.json::codeSourceFields.folderKept": "Save zips this folder and sends it again.",
+  "zh-HK/codeSourceFields.json::codeSourceFields.folderAgain": "This browser cannot keep the folder: choose it again to send a newer copy.",
+  "zh-HK/codeSourceFields.json::codeSourceFields.editor": "Editor",
+  "zh-HK/codeSourceFields.json::codeSourceFields.openInVscode": "Open in VS Code"
 }
