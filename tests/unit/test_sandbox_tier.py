@@ -328,6 +328,29 @@ def test_the_demos_embedding_models_are_loaded_outside_any_request(monkeypatch):
     assert loaded == [("sentence-transformers/all-MiniLM-L6-v2", None)]
 
 
+def test_a_bundled_tier_loads_the_models_before_any_demos_stores_are_up(monkeypatch):
+    """A bundled tier starts no demo's stores at boot, and a model left to the first search took
+    it past its 60s request timeout: the models are read from each demo's configuration whether
+    or not its stores are up."""
+    from pathlib import Path
+
+    from provisa.api import demo_templates
+    from provisa.core import demo_bundles
+
+    root = Path(__file__).resolve().parents[2] / "demo" / "named"
+    pulled = {
+        name: demo_templates.PublishedDemo(name, name, root / name)
+        for name in ("sonnets", "cloudpolicy", "churnprod")
+    }
+    monkeypatch.setenv("PROVISA_DEMO_BUNDLES", ",".join(pulled))
+    monkeypatch.setattr(demo_templates, "published_demos", lambda: pulled)
+    monkeypatch.setattr(demo_bundles, "ready_version", lambda name: None)
+    assert not any(demo.stores_ready for demo in pulled.values())
+    assert [m.id for m in demo_templates.embedding_models()] == [
+        "sentence-transformers/all-MiniLM-L6-v2"
+    ]
+
+
 def test_the_sandbox_tier_finds_the_deployments_demo_data():
     """The sandbox tier builds the deployment's org at startup too, so the demo config's SQLite
     sources resolve ${env:PROVISA_DEMO_DIR} there: both the compose a node is set up with and the
