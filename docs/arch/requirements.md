@@ -25878,7 +25878,7 @@ Data products are part of the built-in meta domain. A data_products_meta view ov
 
 **Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/app.py`, `provisa/dq/registration.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** `tests/unit/test_data_products_meta.py`, `tests/unit/test_meta_glossary_views.py`
+**Tests:** `tests/unit/test_data_products_meta.py`, `tests/unit/test_meta_glossary_views.py`, `tests/integration/test_dq_scan_history_e2e.py`
 
 ### REQ-2126 · Data Catalog Integration {#REQ-2126}
 

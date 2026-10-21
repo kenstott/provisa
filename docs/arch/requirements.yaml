@@ -86194,6 +86194,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   tests:
   - tests/unit/test_data_products_meta.py
   - tests/unit/test_meta_glossary_views.py
+  - tests/integration/test_dq_scan_history_e2e.py
 - id: REQ-2126
   status: proposed
   since: 2026-10
