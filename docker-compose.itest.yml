@@ -6,20 +6,10 @@
 # trino_cache volume would start empty every run and the live Salesforce test would describe the
 # whole org (about 1,200 calls of its daily API allowance) each time. This directory is the
 # machine's, kept between sessions; tests/itest_stack.py names it.
-#
-# REQ-2100: the app runs in the test process, as the runner's user, and writes the engine's
-# secret files (the code-host identity and each host's pinned root,
-# provisa/codesource/engine_identity.py) mode 0600 in a 0700 directory that only root could give
-# to Trino's uid 1000 (trino_catalog_files.write_engine_secret_file). On a Linux runner (uid 1001)
-# Trino could not open them; Docker Desktop's bind mounts hide the owner. The engine runs as root
-# here so it reads files its user does not own. The containerized stack is unchanged: there the
-# app runs as root and gives the files to uid 1000 on a tmpfs (docker-compose.app.yml).
 services:
   trino:
-    user: "0"
     volumes:
       - ${PROVISA_ITEST_SALESFORCE_DESCRIBE_HOST:?set by tests/itest_stack.py}:/data/trino/cache/salesforce-describe
   trino-worker:
-    user: "0"
     volumes:
       - ${PROVISA_ITEST_SALESFORCE_DESCRIBE_HOST:?set by tests/itest_stack.py}:/data/trino/cache/salesforce-describe
