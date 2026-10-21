@@ -315,6 +315,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         gov.table_map[
             physical_relation_name(meta.catalog_name, meta.schema_name, meta.table_name)
         ] = meta.table_id
+        # And its physical schema.table, which a statement lowered without a catalog names it by.
+        # For most tables that is also the stored name below; for one read through a physical
+        # alias (a meta view, an ops log view, a Kafka topic's table) it is not, and without it
+        # such a read is refused as unregistered.
+        gov.table_map[f"{meta.schema_name}.{meta.table_name}"] = meta.table_id
 
     # Also allow domain.original_table_name and schema.original_table_name refs
     # (e.g. "meta.registered_tables", "public.registered_tables")
