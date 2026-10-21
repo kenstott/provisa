@@ -584,8 +584,26 @@ _META_TABLE_VIEWS: dict[str, str] = {
                CASE WHEN t.id IN (SELECT id FROM grounded)
                      AND TRIM(COALESCE(t.definition, '')) <> ''
                     THEN TRUE ELSE FALSE END AS live,
-               t.tenant_id
+               t.tenant_id,
+               CASE WHEN t.id IN (SELECT id FROM grounded) THEN TRUE ELSE FALSE END AS grounded
         FROM glossary_terms t
+    """,
+    # REQ-1591: each term's domains by the one rule (provisa.core.repositories.glossary.
+    # term_domains): the domains of the tables its refs point at while it holds refs, its declared
+    # rows otherwise. "*" is the enterprise scope (REQ-1592).
+    "glossary_term_domains": """
+        CREATE OR REPLACE VIEW glossary_term_domains_meta AS
+        SELECT CAST(d.term_id AS TEXT) || ':' || d.domain_id AS id, d.term_id, d.domain_id,
+               d.tenant_id
+        FROM (
+            SELECT DISTINCT r.term_id, rt.domain_id, r.tenant_id
+            FROM glossary_term_refs r
+            JOIN registered_tables rt ON rt.id = r.table_id
+            UNION ALL
+            SELECT g.term_id, g.domain_id, g.tenant_id
+            FROM glossary_term_domains g
+            WHERE NOT EXISTS (SELECT 1 FROM glossary_term_refs r WHERE r.term_id = g.term_id)
+        ) d
     """,
     # A ref binds a term to a COLUMN — (table_id, column_name) — deliberately not
     # table_columns.id, which the table upsert replaces wholesale. `relationships` is

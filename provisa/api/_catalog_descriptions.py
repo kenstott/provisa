@@ -67,6 +67,9 @@ _META: dict[str, str] = {
     # REQ-1584: the business glossary as queryable metadata.
     "glossary_terms": "The business vocabulary — one row per term, with the ref count and the "
     "live flag the export's admission rule computes",
+    # REQ-1591
+    "glossary_term_domains": "Each glossary term's domains, by the one rule: its refs' domains "
+    "while it holds refs, the domains declared for it otherwise",
     "glossary_term_refs": "Each binding of a term to a physical column, resolved to that "
     "column's source, schema, table and domain",
     "glossary_term_edges": "The term graph — how terms relate to one another, with both "
@@ -455,6 +458,17 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "is_rooted": "True when the term holds at least one physical ref of its own",
         "live": "True when the term is in service, defined, and connected over in-service "
         "edges to a term holding a physical ref",
+        "tenant_id": _TENANT,
+        # REQ-1387
+        "grounded": "True when the term is connected over in-service edges to a term holding a "
+        "physical ref, defined or not",
+    },
+    # REQ-1591
+    "glossary_term_domains": {
+        "id": "Term and domain",
+        "term_id": "The term",
+        "domain_id": "A domain the term belongs to: the domains of the tables its refs point at "
+        "while it holds refs, its declared domains otherwise; * is the whole org",
         "tenant_id": _TENANT,
     },
     "glossary_term_refs": {

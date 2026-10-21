@@ -46767,6 +46767,10 @@
   - provisa/api/metadata_export/openmetadata.py
   - provisa/api/metadata_export/collibra.py
   - provisa-ui/src/components/admin/GlossaryTab.tsx
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/_catalog_descriptions.py
+  - provisa/api/app_loaders.py
   tests:
   - tests/unit/test_glossary_normalize.py
   - tests/unit/test_glossary_repository.py
@@ -46784,6 +46788,7 @@
   - provisa-ui/src/__tests__/GlossaryTab.test.tsx
   - provisa-ui/e2e/glossary.spec.ts
   - tests/steps/steps_business_glossary_ontology.py
+  - tests/unit/test_glossary_meta_domains_grounded.py
   stakeholders:
   - data-steward
   - app-developer
@@ -57826,6 +57831,7 @@
   - tests/unit/test_glossary_domain_scope.py
   - tests/integration/test_glossary_domain_authority.py
   - provisa-ui/src/__tests__/glossaryDomainFilter.test.tsx
+  - tests/unit/test_glossary_meta_domains_grounded.py
   code:
   - provisa/core/schema.sql
   - provisa/core/schema_org.py
@@ -57838,6 +57844,10 @@
   - provisa/core/env_project.py
   - provisa/core/env_deploy.py
   - provisa/core/env_classes.py
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/_catalog_descriptions.py
+  - provisa/api/app_loaders.py
   scenario: 'Given a term whose refs point at tables in both the sales and the pet-store domain, and an
     abstract term declaring only sales
 
