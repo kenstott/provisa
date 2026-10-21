@@ -889,7 +889,7 @@ async def follow_latest(name: str) -> None:
 
     import httpx
 
-    from provisa.core.demo_bundles import BundleError, ready_version, request
+    from provisa.core.demo_bundles import BundleError, hold, ready_version, request
 
     if name not in bundled_demos():
         return
@@ -916,6 +916,8 @@ async def follow_latest(name: str) -> None:
             f"The {name} demo is still being prepared; try again shortly",
             demo=name,
         )
+    # Opened while its stores linger after its last sandbox closed: they are kept up.
+    await asyncio.to_thread(hold, name)
     lock = _following.setdefault(name, CrossLoopLock())
     async with lock:
         if _templated(name) == ready and template_builds.state_of(name) != "unknown":

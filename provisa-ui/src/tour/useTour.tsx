@@ -85,6 +85,32 @@ function nextPaint(): Promise<void> {
   );
 }
 
+// How long a step waits for its anchor to stop moving (a smooth scroll bringing it into view).
+const SETTLE_MS = 1000;
+
+/** Resolves once ``element`` holds still for a few frames, or after SETTLE_MS: its popover is
+ * placed against where it stops, not where a smooth scroll found it (View Profile Runs' graph,
+ * scrolled into view inside the window, had its popover drawn over it). */
+function stopped(element: HTMLElement): Promise<void> {
+  const until = performance.now() + SETTLE_MS;
+  const at = () => {
+    const r = element.getBoundingClientRect();
+    return `${r.left},${r.top},${r.width},${r.height}`;
+  };
+  return new Promise((resolve) => {
+    let last = at();
+    let still = 0;
+    const tick = () => {
+      const now = at();
+      still = now === last ? still + 1 : 0;
+      last = now;
+      if (still >= 3 || performance.now() > until) resolve();
+      else requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  });
+}
+
 // localStorage keys owned by NlPage — mirrored here so the tour can seed a
 // canned result (NL needs an external LLM key, which a demo visitor lacks).
 const NL_QUESTION_KEY = "nl-question";
@@ -519,9 +545,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const trackDone = trackStamp !== null && demoTrackDone(trackStamp);
   const allStepsRef = useRef(allSteps);
   // Where the demo's last card's "Look around on my own" leads; read by the runner's closure.
+  // REQ-2101 (amended): the org files the demo ships, read by a step's actions as it runs; held in a
+  // ref, as the landing is, so a step is not run again when the status is read.
+  const orgFilesRef = useRef(namedDemo.orgFiles);
   const landingRef = useRef(namedDemo.landing);
   useEffect(() => {
     landingRef.current = namedDemo.landing;
+    orgFilesRef.current = namedDemo.orgFiles;
   }, [namedDemo]);
   useEffect(() => {
     allStepsRef.current = allSteps;
@@ -796,7 +826,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
             document.body.classList.add(ACTING_CLASS);
             let acted;
             try {
-              acted = await runUiActions(step.actions, {
+              const actions =
+                typeof step.actions === "function"
+                  ? step.actions({ orgFiles: orgFilesRef.current })
+                  : step.actions;
+              acted = await runUiActions(actions, {
                 // The visitor started this tour: what it does is theirs, and asks nothing more.
                 confirm: async () => true,
                 paceMs: ACTION_PACE_MS,
@@ -830,6 +864,8 @@ export function TourProvider({ children }: { children: ReactNode }) {
           element.size = Math.min(12, element.options.length);
         }
         element.scrollIntoView({ block: "center", behavior: "smooth" });
+        await stopped(element);
+        if (cancelled || !driverRef.current) return;
 
         // Position within the itinerary, not within TOUR_STEPS: a viewer whose rights drop a
         // chapter gets "4 of 22", and the step before the dropped one is the one Next skips over.

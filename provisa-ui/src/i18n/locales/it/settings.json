@@ -820,6 +820,10 @@
         "label": "Limite di inattività di una sandbox demo",
         "help": "Una sandbox demo che nessuno ha usato per questo tempo viene eliminata, con tutto ciò che contiene."
       },
+      "demo_stores_linger": {
+        "label": "Archivi della demo mantenuti dopo l'uso",
+        "help": "Per quanto tempo i database di una demo restano attivi dopo la chiusura del suo ultimo sandbox. Se viene riaperta prima, si apre subito; dopo, vengono fermati e il visitatore successivo attende che si avviino."
+      },
       "ai_base_url": {
         "label": "Endpoint IA della sandbox",
         "help": "L'endpoint con protocollo OpenAI (quello di OpenRouter è https://openrouter.ai/api/v1) usato dalle funzioni IA di ogni sandbox demo. Non impostato: nessuna IA nelle sandbox."

@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Une source, ajoutée en direct",
-        "description": "Voici comment s'ajoute une source : le sélecteur s'est ouvert sur sa liste complète, <strong>Parquet File</strong> a été choisi, l'adresse du fichier a été saisie (<code>supplies.parquet</code>, publié sur provisa.dev) et Enregistrer l'a créée. La nouvelle source <strong>supplies</strong> lit ce fichier sur place.",
+        "description": "Voici comment s'ajoute une source : le sélecteur s'est ouvert sur sa liste complète, <strong>Parquet File</strong> a été choisi, l'adresse du fichier a été saisie (<code>supplies.parquet</code>) et Enregistrer l'a créée. La nouvelle source <strong>supplies</strong> lit ce fichier sur place.",
         "acting": "Ajout d'une source"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "Chaque exécution est conservée",
         "description": "Les résultats d'une exécution arrivent dans des tables à part, une par type de mesure, et chaque exécution est conservée à côté des précédentes. Voici les exécutions de la table customers, avec les lignes lues et les lignes répétées trouvées."
       },
+      "profilingTerrain": {
+        "title": "L'exécution, en terrain",
+        "acting": "Ouverture des exécutions de profil de la table customers, sur le terrain",
+        "description": "La dernière exécution de customers, dessinée en terrain : une crête par colonne, sa hauteur les lignes de chaque plage de valeurs, et devant chaque colonne ses valeurs nulles."
+      },
       "profilingTerms": {
         "title": "Le vocabulaire",
         "description": "Le glossaire définit profil de données, type plausible, forme de valeur, ligne en double et valeur de remplissage, et relie chaque terme aux mesures qu'il décrit."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Ce qui a changé depuis la dernière exécution",
         "description": "La mise en place a lancé le profileur deux fois, et entre les deux, la synchronisation suivante du CRM a écrit chaque code postal américain au format ZIP+4. La table de dérive compare chaque mesure à celle de l'exécution précédente : les mesures que le changement de postal_code a déplacées sont signalées en dérive, et les colonnes que la synchronisation n'a pas touchées ne le sont pas."
+      },
+      "profilingStrata": {
+        "title": "postal_code, exécution par exécution",
+        "acting": "Ouverture des strates de dérive",
+        "description": "postal_code dans chaque exécution, la plus ancienne au fond : la part des lignes que détient chaque valeur. La dernière exécution est signalée en dérive, comme l'a montré la table de dérive, et celle d'avant ne l'est pas."
       },
       "profilingOriginal": {
         "title": "Les vrais clients",

@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Un origen, añadido en vivo",
-        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>, publicado en provisa.dev) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
+        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
         "acting": "Añadiendo un origen"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "Cada ejecución se conserva",
         "description": "Los resultados de una ejecución se guardan en tablas propias, una por cada tipo de medida, y cada ejecución se conserva junto a las anteriores. Aquí están las ejecuciones de la tabla customers, con las filas que leyó cada una y las filas repetidas que encontró."
       },
+      "profilingTerrain": {
+        "title": "La ejecución, como terreno",
+        "acting": "Abriendo las ejecuciones de perfil de la tabla customers en el terreno",
+        "description": "La última ejecución de customers, dibujada como terreno: una cresta por columna, su altura las filas de cada rango de valores, y delante de cada columna sus nulos."
+      },
       "profilingTerms": {
         "title": "El vocabulario",
         "description": "El glosario define perfil de datos, tipo plausible, forma del valor, fila duplicada y valor de relleno, y vincula cada término a las medidas que describe."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Qué cambió desde la última ejecución",
         "description": "La configuración ejecutó el perfilador dos veces, y entre ambas la siguiente sincronización del CRM escribió cada código postal de EE. UU. como ZIP+4. La tabla de deriva compara cada medida con la de la ejecución anterior: las medidas que movió el cambio de postal_code están marcadas como en deriva, y las columnas que la sincronización no tocó no lo están."
+      },
+      "profilingStrata": {
+        "title": "postal_code, ejecución a ejecución",
+        "acting": "Abriendo los estratos de deriva",
+        "description": "postal_code en cada ejecución, la más antigua al fondo: la proporción de filas que tiene cada valor. La ejecución más reciente está marcada con deriva, como mostró la tabla de deriva, y la anterior no."
       },
       "profilingOriginal": {
         "title": "Los clientes reales",

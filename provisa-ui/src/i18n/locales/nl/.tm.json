@@ -6996,7 +6996,7 @@
   "nl/tour.json::tour.steps.step9.description": "⚙️ Every registered entity is also a gRPC service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Call it from any gRPC client: 📐 strongly typed, 🚀 high-throughput.</p>",
   "nl/tour.json::tour.steps.step9.title": "gRPC (4 of 9 surfaces)",
   "nl/tour.json::tour.steps.stepBuildSource.acting": "Adding a source",
-  "nl/tour.json::tour.steps.stepBuildSource.description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>, published at provisa.dev) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+  "nl/tour.json::tour.steps.stepBuildSource.description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
   "nl/tour.json::tour.steps.stepBuildSource.title": "A source, added live",
   "nl/tour.json::tour.steps.stepCache.description": "🗄️ These layers are separate. The response cache holds query results, and a request opts in with @cached or a SQL comment. Small lookup tables are mirrored to speed joins. A replica of a source table that cannot be attached lives in the durable store, beside materialized views.",
   "nl/tour.json::tour.steps.stepCache.title": "Caches and replicas",
@@ -7543,5 +7543,13 @@
   "nl/tour.json::tour.steps.churnEveryRole.title": "Back to every role",
   "nl/tour.json::tour.steps.churnEveryRole.description": "Next, the role picker switches back to <strong>All</strong>.",
   "nl/tour.json::tour.steps.retailEveryRole.title": "Back to every role",
-  "nl/tour.json::tour.steps.retailEveryRole.description": "Next, the role picker switches back to <strong>All</strong>."
+  "nl/tour.json::tour.steps.retailEveryRole.description": "Next, the role picker switches back to <strong>All</strong>.",
+  "nl/tour.json::tour.steps.profilingTerrain.title": "The run, as terrain",
+  "nl/tour.json::tour.steps.profilingTerrain.acting": "Opening the customers table's profile runs on the terrain",
+  "nl/tour.json::tour.steps.profilingTerrain.description": "The latest run of customers, drawn as terrain: one ridge for each column, its height the rows in each range of values, and each column's nulls in front of it.",
+  "nl/tour.json::tour.steps.profilingStrata.title": "postal_code, run by run",
+  "nl/tour.json::tour.steps.profilingStrata.acting": "Opening the drift strata",
+  "nl/tour.json::tour.steps.profilingStrata.description": "postal_code in each run, the oldest at the back: the share of rows each value holds. The newest run is flagged as drifting, as the drift table showed, and the run before it is not.",
+  "nl/settings.json::settings.sandbox.demo_stores_linger.label": "Demo stores kept after use",
+  "nl/settings.json::settings.sandbox.demo_stores_linger.help": "How long a demo's databases stay up after its last sandbox closes. Opened again before then, it opens at once; after it, they are stopped, and its next visitor waits while they start."
 }

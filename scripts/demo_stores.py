@@ -34,7 +34,10 @@ a version's data is dropped by its suffix, so another demo's, or another version
 
 Usage (scripts/demo_stores_sync.sh runs it):
     demo_stores.py up <name> <version> <bundle dir>    start, load, write <bundle dir>/stores.env
-    demo_stores.py drop <name> <version>               drop the version's data and own services
+    demo_stores.py drop <name> <version>               drop the version's data and own services,
+                                                       and the images no other container uses
+    demo_stores.py stop <name> <version>               the same, its images kept: a demo whose
+                                                       stores lingered out comes back quickly
 
 Environment:
     DEMO_STORES_PROJECT   the shared instances' compose project (provisa-demo-stores on a node)
@@ -787,8 +790,10 @@ class Demo:
         published = self.runner.run(self._compose("port", store.service, port)).strip()
         return "127.0.0.1", published.rsplit(":", 1)[1]
 
-    def drop(self, shared_kinds: set[str]) -> None:
-        """Remove the version: its data from each shared instance running, its own services."""
+    def drop(self, shared_kinds: set[str], *, keep_images: bool = False) -> None:
+        """Remove the version: its data from each shared instance running, its own services, and
+        -- unless ``keep_images`` (a demo lingered out, to be brought back) -- the images they ran
+        that no other container uses (a superseded version)."""
         if "postgres" in shared_kinds:
             pg_drop(self.shared, self.suffix)
         if "mongo" in shared_kinds:
@@ -813,6 +818,8 @@ class Demo:
             ).split()
         )
         self.runner.run(["docker", "compose", "-p", self.project, "down", "-v", "--remove-orphans"])
+        if keep_images:
+            return
         # The images its services ran, once no container (a newer version's) still uses them:
         # every version pulled leaves its own on the node's disk otherwise.
         for image in sorted(images):
@@ -874,8 +881,10 @@ def main(argv: list[str]) -> int:
             bundle / "stores.env", "".join(f"{k}={v}\n" for k, v in sorted(found.items()))
         )
         return 0
-    if len(argv) == 3 and argv[0] == "drop":
-        Demo(runner, argv[1], argv[2], None).drop(running_shared(runner))
+    if len(argv) == 3 and argv[0] in ("drop", "stop"):
+        Demo(runner, argv[1], argv[2], None).drop(
+            running_shared(runner), keep_images=argv[0] == "stop"
+        )
         return 0
     print(__doc__, file=sys.stderr)
     return 2

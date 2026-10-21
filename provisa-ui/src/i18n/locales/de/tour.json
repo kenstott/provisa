@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Eine Quelle, live hinzugefügt",
-        "description": "So wird eine Quelle hinzugefügt: Die Auswahl öffnete sich mit ihrer ganzen Liste, <strong>Parquet File</strong> wurde gewählt, die Adresse der Datei eingetragen (<code>supplies.parquet</code>, veröffentlicht auf provisa.dev) und Speichern legte sie an. Die neue Quelle <strong>supplies</strong> liest diese Datei an Ort und Stelle.",
+        "description": "So wird eine Quelle hinzugefügt: Die Auswahl öffnete sich mit ihrer ganzen Liste, <strong>Parquet File</strong> wurde gewählt, die Adresse der Datei eingetragen (<code>supplies.parquet</code>) und Speichern legte sie an. Die neue Quelle <strong>supplies</strong> liest diese Datei an Ort und Stelle.",
         "acting": "Quelle wird hinzugefügt"
       },
       "step4": {
@@ -710,6 +710,11 @@
         "title": "Jeder Lauf bleibt erhalten",
         "description": "Die Ergebnisse eines Laufs landen in eigenen Tabellen, eine je Art von Messung, und jeder Lauf bleibt neben den früheren erhalten. Hier die Läufe der Tabelle customers mit den gelesenen Zeilen und den gefundenen wiederholten Zeilen."
       },
+      "profilingTerrain": {
+        "title": "Der Lauf als Terrain",
+        "acting": "Die Profilläufe der Tabelle customers werden im Terrain geöffnet",
+        "description": "Der jüngste Lauf von customers als Terrain: ein Grat je Spalte, seine Höhe die Zeilen in jedem Wertebereich, und vor jeder Spalte ihre Nullwerte."
+      },
       "profilingTerms": {
         "title": "Das Vokabular",
         "description": "Das Glossar definiert Datenprofil, plausibler Typ, Wertform, doppelte Zeile und Platzhalterwert und verknüpft jeden Begriff mit den Messwerten, die er beschreibt."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Was sich seit dem letzten Lauf geändert hat",
         "description": "Die Einrichtung hat den Profiler zweimal laufen lassen, und zwischen den Läufen hat die nächste Synchronisierung des CRM jede US-Postleitzahl als ZIP+4 geschrieben. Die Drift-Tabelle vergleicht jedes Maß mit dem des vorherigen Laufs: Die Maße, die die Änderung an postal_code verschoben hat, sind als driftend markiert, die Spalten, die die Synchronisierung nicht berührt hat, nicht."
+      },
+      "profilingStrata": {
+        "title": "postal_code, Lauf für Lauf",
+        "acting": "Die Drift-Schichten werden geöffnet",
+        "description": "postal_code in jedem Lauf, der älteste hinten: der Anteil der Zeilen, den jeder Wert hat. Der jüngste Lauf ist als driftend markiert, wie die Drift-Tabelle zeigte, der Lauf davor nicht."
       },
       "profilingOriginal": {
         "title": "Die echten Kunden",

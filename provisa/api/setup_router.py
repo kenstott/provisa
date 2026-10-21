@@ -215,7 +215,20 @@ async def setup_status(request: Request):  # REQ-539
         # Where its tour's "Look around on my own" leaves the visitor.
         "demo_landing": demo_landing(directory),
         "demo_notebook": demo_notebook(directory),
+        # REQ-2101 (amended): the org files the demo ships (org_files/), each in the org's own
+        # folder as {files}/<name>; the core tour builds its live source from one when it is here.
+        "demo_org_files": demo_org_files(directory),
     }
+
+
+def demo_org_files(directory) -> list[str]:
+    """The org files the demo in ``directory`` ships, by their path under {files}/."""
+    from provisa.core.declared_org_files import ORG_FILES_DIRECTORY, declared_org_files
+
+    if directory is None:
+        return []
+    root = directory / ORG_FILES_DIRECTORY
+    return [p.relative_to(root).as_posix() for p in declared_org_files(directory)]
 
 
 async def _demo_directory(request: Request):

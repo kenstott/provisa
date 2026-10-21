@@ -331,6 +331,59 @@ class Walk:
         return self.walked
 
 
+_CREATE_SOURCE = "mutation CreateSource($input: SourceInput!) { createSource(input: $input) { success message code } }"
+
+
+def _build_live_source(tier, token: dict[str, str]) -> list[str]:
+    """The core tour's live-built source (REQ-2115), as its Save sends it from the visitor's
+    sandbox: supplies.parquet from the org's own copy its demo ships ({files}/supplies.parquet,
+    REQ-2101 amended), its table set up as a draft. The copy Provisa publishes is refused here --
+    a sandbox may reach no address its demo does not declare -- which is why the demo ships one.
+    Sent as the page sends it, as "Role: All": the sandbox role among them is what may register a
+    source."""
+    acting = {**token, "X-Provisa-Role": _all_roles(tier, token)}
+    status = httpx.get(f"{tier.base_url}/setup/status", headers=token, timeout=60)
+    assert status.status_code == 200, status.text
+    if "supplies.parquet" not in status.json()["demo_org_files"]:
+        return []
+    domains = httpx.post(
+        f"{tier.base_url}/admin/graphql",
+        json={"query": "{ domains { id } }"},
+        headers=acting,
+        timeout=60,
+    )
+    assert domains.status_code == 200 and not domains.json().get("errors"), domains.text
+    domain = domains.json()["data"]["domains"][0]["id"]
+
+    def create(source_id: str, path: str) -> dict:
+        resp = httpx.post(
+            f"{tier.base_url}/admin/graphql",
+            json={
+                "query": _CREATE_SOURCE,
+                "variables": {
+                    "input": {
+                        "id": source_id,
+                        "type": "parquet",
+                        "path": path,
+                        "registerTableDraft": True,
+                        "tableDomainId": domain,
+                    }
+                },
+            },
+            headers=acting,
+            timeout=300,
+        )
+        assert resp.status_code == 200 and not resp.json().get("errors"), resp.text
+        return resp.json()["data"]["createSource"]
+
+    remote = create("supplies_remote", "https://provisa.dev/demo-data/supplies.parquet")
+    assert not remote["success"] and "provisa.dev" in remote["message"], remote
+    made = create("supplies", "{files}/supplies.parquet")
+    if not made["success"]:
+        raise _failed(tier, f"the tour's live source was refused: {made}")
+    return ["stepBuildSource {files}/supplies.parquet saved; the published address refused"]
+
+
 def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
     from provisa.api.demo_sandbox import CLOSE_GRACE_S
 
@@ -346,8 +399,11 @@ def test_a_visitor_opens_the_demo_walks_its_tour_and_closes_it(tier):
     steps = {s["key"] for s in demo_tour(tier.directory)}
     spec = yaml.safe_load((tier.directory / "demo.yaml").read_text())
     if spec.get("tour") == "core":
-        # Toured by the product's core tour (no tour.yaml of its own): the explorers are walked.
+        # Toured by the product's core tour (no tour.yaml of its own): the explorers are walked,
+        # and the tour's live-built source saved from the org's own copy where the demo ships it.
         assert not steps, f"{tier.demo} is toured by the core tour and has a tour of its own"
+        built = _build_live_source(tier, token)
+        print("\n".join(built))
     else:
         ran = any(line.split(" ", 1)[0] in steps for line in walked)
         assert ran, f"{tier.demo}'s tour runs nothing"

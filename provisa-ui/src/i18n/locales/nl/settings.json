@@ -820,6 +820,10 @@
         "label": "Inactiviteitslimiet van een demo-sandbox",
         "help": "Een demo-sandbox die zo lang door niemand is gebruikt, wordt met alles erin verwijderd."
       },
+      "demo_stores_linger": {
+        "label": "Demo-opslag bewaard na gebruik",
+        "help": "Hoelang de databases van een demo actief blijven nadat de laatste sandbox ervan is gesloten. Wordt de demo eerder opnieuw geopend, dan opent hij meteen; daarna worden ze gestopt en wacht de volgende bezoeker tot ze zijn gestart."
+      },
       "ai_base_url": {
         "label": "AI-endpoint van de sandbox",
         "help": "Het endpoint met OpenAI-protocol (dat van OpenRouter is https://openrouter.ai/api/v1) dat de AI-functies van elke demosandbox gebruiken. Niet ingesteld: geen AI in sandboxen."
