@@ -1,10 +1,10 @@
 {
   "metadataExportTab": {
     "loading": "Loading metadata export settings…",
-    "intro": "Publish this organization's governed metadata — tables, columns, domains, stewards, approved relationships and column-level lineage — to an external data catalog. Publication is outbound only: Provisa never reads the target catalog back as a source of truth.",
+    "intro": "Publish this organization's governed metadata — tables, columns, domains, stewards, approved relationships and column-level lineage — to the external data catalogs below. Publication is outbound only: Provisa never reads a target catalog back as a source of truth.",
     "notEntitledTitle": "Not included in this plan",
-    "notEntitled": "Metadata export requires the {{tier}} plan. Upgrade to configure a catalog target.",
-    "enabled": "Publish metadata to an external catalog",
+    "notEntitled": "Metadata export requires the {{tier}} plan. Upgrade to configure catalog targets.",
+    "enabled": "Publish metadata to external catalogs",
     "provider": "Target catalog",
     "endpoint": "Endpoint URL",
     "authMode": "Authentication",
@@ -25,11 +25,18 @@
     "saved": "Settings saved.",
     "testConnection": "Test connection",
     "publishNow": "Publish now",
-    "healthOk": "The target catalog accepted the connection.",
+    "healthOk": "The catalog accepted the connection.",
     "lastPublishHeading": "Last publish",
     "publishComplete": "{{count}} assets published",
     "publishPartial": "{{count}} published, {{failed}} rejected",
     "errorAsset": "Asset",
-    "errorMessage": "Reason the catalog gave"
+    "errorMessage": "Reason the catalog gave",
+    "targetsHeading": "Targets",
+    "addTarget": "+ Target",
+    "removeTarget": "Remove",
+    "newTarget": "New target",
+    "noTargets": "No targets yet. Add the catalogs this organization publishes to.",
+    "targetId": "Name",
+    "targetIdHelp": "A short name for this target, unique in the organization (for example openmetadata-prod). Two targets may use the same catalog type."
   }
 }

@@ -31,8 +31,7 @@ ORG_ID = "acme"
 _CONFIGURED = {
     "metadata_export": {
         "enabled": True,
-        "provider": "atlas",
-        "endpoint": "http://atlas:21000",
+        "targets": [{"id": "atlas", "provider": "atlas", "endpoint": "http://atlas:21000"}],
         "reconcile_cron": "0 * * * *",
     }
 }

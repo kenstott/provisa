@@ -1,10 +1,10 @@
 {
   "metadataExportTab": {
     "loading": "Metadata-exportinstellingen laden…",
-    "intro": "Publiceer de governed metadata van deze organisatie — tabellen, kolommen, domeinen, data stewards, goedgekeurde relaties en lineage op kolomniveau — naar een externe datacatalogus. Publicatie is uitsluitend uitgaand: Provisa leest de doelcatalogus nooit terug als bron van waarheid.",
+    "intro": "Publiceer de governed metadata van deze organisatie — tabellen, kolommen, domeinen, data stewards, goedgekeurde relaties en lineage op kolomniveau — naar de externe datacatalogi hieronder. Publicatie is uitsluitend uitgaand: Provisa leest een doelcatalogus nooit terug als bron van waarheid.",
     "notEntitledTitle": "Niet inbegrepen in dit abonnement",
-    "notEntitled": "Metadata-export vereist het {{tier}}-abonnement. Upgrade om een catalogusdoel te configureren.",
-    "enabled": "Metadata naar een externe catalogus publiceren",
+    "notEntitled": "Metadata-export vereist het {{tier}}-abonnement. Upgrade om catalogusdoelen te configureren.",
+    "enabled": "Metadata naar externe catalogi publiceren",
     "provider": "Doelcatalogus",
     "endpoint": "Endpoint-URL",
     "authMode": "Authenticatie",
@@ -25,11 +25,18 @@
     "saved": "Instellingen opgeslagen.",
     "testConnection": "Verbinding testen",
     "publishNow": "Nu publiceren",
-    "healthOk": "De doelcatalogus heeft de verbinding geaccepteerd.",
+    "healthOk": "De catalogus heeft de verbinding geaccepteerd.",
     "lastPublishHeading": "Laatste publicatie",
     "publishComplete": "{{count}} assets gepubliceerd",
     "publishPartial": "{{count}} gepubliceerd, {{failed}} geweigerd",
     "errorAsset": "Asset",
-    "errorMessage": "Reden opgegeven door de catalogus"
+    "errorMessage": "Reden opgegeven door de catalogus",
+    "targetsHeading": "Doelen",
+    "addTarget": "+ Doel",
+    "removeTarget": "Verwijderen",
+    "newTarget": "Nieuw doel",
+    "noTargets": "Nog geen doelen. Voeg de catalogi toe waarnaar deze organisatie publiceert.",
+    "targetId": "Naam",
+    "targetIdHelp": "Een korte naam voor dit doel, uniek in de organisatie (bijvoorbeeld openmetadata-prod). Twee doelen mogen hetzelfde type catalogus gebruiken."
   }
 }

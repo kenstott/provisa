@@ -1,10 +1,10 @@
 {
   "metadataExportTab": {
     "loading": "Einstellungen für den Metadatenexport werden geladen…",
-    "intro": "Veröffentlicht die governten Metadaten dieser Organisation — Tabellen, Spalten, Domänen, Data Stewards, genehmigte Beziehungen und Lineage auf Spaltenebene — in einem externen Datenkatalog. Die Veröffentlichung ist ausschließlich ausgehend: Provisa liest den Zielkatalog nie als maßgebliche Quelle zurück.",
+    "intro": "Veröffentlicht die governten Metadaten dieser Organisation — Tabellen, Spalten, Domänen, Data Stewards, genehmigte Beziehungen und Lineage auf Spaltenebene — in den unten aufgeführten externen Datenkatalogen. Die Veröffentlichung ist ausschließlich ausgehend: Provisa liest einen Zielkatalog nie als maßgebliche Quelle zurück.",
     "notEntitledTitle": "In diesem Plan nicht enthalten",
-    "notEntitled": "Der Metadatenexport erfordert den {{tier}}-Plan. Führen Sie ein Upgrade durch, um ein Katalogziel zu konfigurieren.",
-    "enabled": "Metadaten in einem externen Katalog veröffentlichen",
+    "notEntitled": "Der Metadatenexport erfordert den {{tier}}-Plan. Führen Sie ein Upgrade durch, um Katalogziele zu konfigurieren.",
+    "enabled": "Metadaten in externen Katalogen veröffentlichen",
     "provider": "Zielkatalog",
     "endpoint": "Endpunkt-URL",
     "authMode": "Authentifizierung",
@@ -25,11 +25,18 @@
     "saved": "Einstellungen gespeichert.",
     "testConnection": "Verbindung testen",
     "publishNow": "Jetzt veröffentlichen",
-    "healthOk": "Der Zielkatalog hat die Verbindung akzeptiert.",
+    "healthOk": "Der Katalog hat die Verbindung akzeptiert.",
     "lastPublishHeading": "Letzte Veröffentlichung",
     "publishComplete": "{{count}} Assets veröffentlicht",
     "publishPartial": "{{count}} veröffentlicht, {{failed}} abgelehnt",
     "errorAsset": "Asset",
-    "errorMessage": "Vom Katalog gemeldeter Grund"
+    "errorMessage": "Vom Katalog gemeldeter Grund",
+    "targetsHeading": "Ziele",
+    "addTarget": "+ Ziel",
+    "removeTarget": "Entfernen",
+    "newTarget": "Neues Ziel",
+    "noTargets": "Noch keine Ziele. Fügen Sie die Kataloge hinzu, in denen diese Organisation veröffentlicht.",
+    "targetId": "Name",
+    "targetIdHelp": "Ein kurzer, in der Organisation eindeutiger Name für dieses Ziel (zum Beispiel openmetadata-prod). Zwei Ziele dürfen denselben Katalogtyp verwenden."
   }
 }

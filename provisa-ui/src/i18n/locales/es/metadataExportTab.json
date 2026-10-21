@@ -1,10 +1,10 @@
 {
   "metadataExportTab": {
     "loading": "Cargando la configuración de exportación de metadatos…",
-    "intro": "Publique los metadatos gobernados de esta organización — tablas, columnas, dominios, stewards, relaciones aprobadas y linaje a nivel de columna — en un catálogo de datos externo. La publicación es solo de salida: Provisa nunca lee el catálogo de destino como fuente de verdad.",
+    "intro": "Publique los metadatos gobernados de esta organización — tablas, columnas, dominios, stewards, relaciones aprobadas y linaje a nivel de columna — en los catálogos de datos externos que figuran abajo. La publicación es solo de salida: Provisa nunca lee un catálogo de destino como fuente de verdad.",
     "notEntitledTitle": "No incluido en este plan",
-    "notEntitled": "La exportación de metadatos requiere el plan {{tier}}. Actualice el plan para configurar un catálogo de destino.",
-    "enabled": "Publicar metadatos en un catálogo externo",
+    "notEntitled": "La exportación de metadatos requiere el plan {{tier}}. Actualice el plan para configurar catálogos de destino.",
+    "enabled": "Publicar metadatos en catálogos externos",
     "provider": "Catálogo de destino",
     "endpoint": "URL del endpoint",
     "authMode": "Autenticación",
@@ -25,11 +25,18 @@
     "saved": "Configuración guardada.",
     "testConnection": "Probar conexión",
     "publishNow": "Publicar ahora",
-    "healthOk": "El catálogo de destino aceptó la conexión.",
+    "healthOk": "El catálogo aceptó la conexión.",
     "lastPublishHeading": "Última publicación",
     "publishComplete": "{{count}} activos publicados",
     "publishPartial": "{{count}} publicados, {{failed}} rechazados",
     "errorAsset": "Activo",
-    "errorMessage": "Motivo indicado por el catálogo"
+    "errorMessage": "Motivo indicado por el catálogo",
+    "targetsHeading": "Destinos",
+    "addTarget": "+ Destino",
+    "removeTarget": "Quitar",
+    "newTarget": "Destino nuevo",
+    "noTargets": "Aún no hay destinos. Añada los catálogos en los que publica esta organización.",
+    "targetId": "Nombre",
+    "targetIdHelp": "Un nombre breve para este destino, único en la organización (por ejemplo openmetadata-prod). Dos destinos pueden usar el mismo tipo de catálogo."
   }
 }

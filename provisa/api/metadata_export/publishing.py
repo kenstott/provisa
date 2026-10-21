@@ -56,6 +56,8 @@ from provisa.events import queue
 if TYPE_CHECKING:
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
+    from provisa.api.metadata_export.model import MetadataSnapshot
+
     from provisa.core.models import ProvisaConfig
 
 logger = logging.getLogger(__name__)
@@ -177,7 +179,13 @@ async def _model_for_export() -> "ProvisaConfig":
     from provisa.core.models import DERIVED_SOURCE_ID
 
     raw["sources"] = [
-        {"id": r["id"], "type": r["type"], "description": r.get("description") or ""}
+        {
+            "id": r["id"],
+            "type": r["type"],
+            "description": r.get("description") or "",
+            # REQ-2118: a member's freshness inherits its source's when it declares none.
+            "cache_ttl": r.get("cache_ttl"),
+        }
         for r in source_rows
         if r["id"] != DERIVED_SOURCE_ID
     ]
@@ -202,8 +210,42 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     return uris
 
 
-async def publish_snapshot(org_id: str) -> PublishResult:
-    """Publish the org's full metadata snapshot to its configured catalog.
+async def org_snapshot(org_id: str) -> "MetadataSnapshot":
+    """The bound org's full metadata snapshot: what every target is published (REQ-1072) and
+    what its ODPS and ODCS documents are built from (REQ-2118). ``org_id`` is the bound org."""
+    from provisa.api.app import state
+
+    model = await _model_for_export()
+    model_db = state.model_db
+    if model_db is None:
+        raise ExportNotAllowed(f"org {org_id!r} has no tenant database bound")
+    # REQ-1387: the term graph exports with the model; it lives only in the DB, so it
+    # hydrates here the way sources do rather than through the config file vocabulary.
+    from provisa.core.repositories import glossary as glossary_repo
+
+    async with model_db.acquire() as conn:
+        glossary = await glossary_repo.export_graph(conn)
+    # REQ-1443: a check's last verdict lives in its results table, which is data rather than
+    # config, so it is read here and handed to the builder exactly as the term graph is.
+    dq_outcomes = await read_latest_outcomes(model)
+    return build_snapshot(
+        model,
+        org_id=org_id,
+        uri_org_id=org_id if state.multitenancy else None,
+        dialect=GOVERNED_DIALECT,
+        glossary=glossary,
+        dq_outcomes=dq_outcomes,
+        contexts=state.contexts,
+        # REQ-1659: the listing's documentation link points back at the product's page, at
+        # the org's public origin -- the one mail.base_url names, for the same reason an
+        # invitation cannot derive it from the request that created it.
+        documentation_base_url=state.config.mail.base_url if state.config else None,
+    )
+
+
+async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
+    """Publish the org's full metadata snapshot to every catalog it is configured to, by target id
+    (REQ-2118: one snapshot, each target in turn).
 
     The single publish path: the admin's **Publish now**, the event drain and the scheduled
     reconcile all arrive here, so what a reconcile sends is what the admin saw it send —
@@ -217,56 +259,37 @@ async def publish_snapshot(org_id: str) -> PublishResult:
     token = set_current_org(org_id)
     try:
         config = await _export_config(org_id)
-        model = await _model_for_export()
+        snapshot = await org_snapshot(org_id)
         model_db = state.model_db
         assert model_db is not None  # _export_config refuses without one
-        # REQ-1387: the term graph exports with the model; it lives only in the DB, so it
-        # hydrates here the way sources do rather than through the config file vocabulary.
-        from provisa.core.repositories import glossary as glossary_repo
-
-        async with model_db.acquire() as conn:
-            glossary = await glossary_repo.export_graph(conn)
-        # REQ-1443: a check's last verdict lives in its results table, which is data rather than
-        # config, so it is read here and handed to the builder exactly as the term graph is.
-        dq_outcomes = await read_latest_outcomes(model)
-        snapshot = build_snapshot(
-            model,
-            org_id=org_id,
-            uri_org_id=org_id if state.multitenancy else None,
-            dialect=GOVERNED_DIALECT,
-            glossary=glossary,
-            dq_outcomes=dq_outcomes,
-            contexts=state.contexts,
-            # REQ-1659: the listing's documentation link points back at the product's page, at
-            # the org's public origin -- the one mail.base_url names, for the same reason an
-            # invitation cannot derive it from the request that created it.
-            documentation_base_url=state.config.mail.base_url if state.config else None,
-        )
-        exporter = metadata_export(config)
-        async with model_db.acquire() as conn:
-            # REQ-1389: hand the provider the vendor ids captured by earlier publishes, so
-            # a physically re-addressed asset rebinds the SAME catalog entity instead of
-            # trusting the vendor's name-keyed upsert.
-            exporter.stored_bindings = await catalog_binding.load_bindings(conn, config.provider)
-        if exporter.needs_export_views:
-            # REQ-1912: the org (bound above) and the replica-served decision are worked out
-            # here, by the one decision the reconcile and the reads use, and passed in.
-            from provisa.federation.replica_routing import export_view_addresses
-
-            exporter.export_views = await export_view_addresses(state)
-        result = await exporter.publish(snapshot)
-        if result.bindings:
+        results: dict[str, PublishResult] = {}
+        for target in config.targets:
+            exporter = metadata_export(target)
             async with model_db.acquire() as conn:
-                await catalog_binding.upsert_bindings(conn, config.provider, result.bindings)
-                await catalog_binding.remove_stale_bindings(
-                    conn, config.provider, keep_uris=_snapshot_uris(snapshot)
-                )
-        return result
+                # REQ-1389: hand the provider the vendor ids captured by its earlier publishes,
+                # so a physically re-addressed asset rebinds the SAME catalog entity instead of
+                # trusting the vendor's name-keyed upsert. Kept per target (REQ-2118).
+                exporter.stored_bindings = await catalog_binding.load_bindings(conn, target.id)
+            if exporter.needs_export_views:
+                # REQ-1912: the org (bound above) and the replica-served decision are worked out
+                # here, by the one decision the reconcile and the reads use, and passed in.
+                from provisa.federation.replica_routing import export_view_addresses
+
+                exporter.export_views = await export_view_addresses(state)
+            result = await exporter.publish(snapshot)
+            if result.bindings:
+                async with model_db.acquire() as conn:
+                    await catalog_binding.upsert_bindings(conn, target.id, result.bindings)
+                    await catalog_binding.remove_stale_bindings(
+                        conn, target.id, keep_uris=_snapshot_uris(snapshot)
+                    )
+            results[target.id] = result
+        return results
     finally:
         reset_current_org(token)
 
 
-async def reconcile_org(org_id: str) -> PublishResult | None:
+async def reconcile_org(org_id: str) -> dict[str, PublishResult] | None:
     """The scheduled full reconcile for one org (REQ-1072).
 
     An org that is disabled or unentitled is not an error on this path — the job fires on a
@@ -275,25 +298,30 @@ async def reconcile_org(org_id: str) -> PublishResult | None:
     catalog drifting with nothing to say so.
     """
     try:
-        result = await publish_snapshot(org_id)
+        results = await publish_snapshot(org_id)
     except ExportNotAllowed as exc:
         logger.debug("metadata export reconcile skipped: %s", exc)
         return None
     except Exception:
         logger.exception("metadata export reconcile failed for org %s", org_id)
         raise
-    if not result.ok:
-        logger.warning(
-            "metadata export reconcile for org %s published %d assets with %d rejected: %s",
-            org_id,
-            result.total_published(),
-            len(result.errors),
-            "; ".join(f"{e.asset.fqn()}: {e.message}" for e in result.errors[:5]),
-        )
-    return result
+    for target_id, result in results.items():
+        if not result.ok:
+            logger.warning(
+                "metadata export reconcile for org %s to %s published %d assets with %d "
+                "rejected: %s",
+                org_id,
+                target_id,
+                result.total_published(),
+                len(result.errors),
+                "; ".join(f"{e.asset.fqn()}: {e.message}" for e in result.errors[:5]),
+            )
+    return results
 
 
-async def drain(conn: Any, org_id: str, *, now: datetime | None = None) -> PublishResult | None:
+async def drain(
+    conn: Any, org_id: str, *, now: datetime | None = None
+) -> dict[str, PublishResult] | None:
     """Claim this org's pending metadata-change work, publish, and complete it (REQ-1072).
 
     Returns None when there was nothing to claim. A publish that fails leaves the work items
@@ -310,16 +338,17 @@ async def drain(conn: Any, org_id: str, *, now: datetime | None = None) -> Publi
     )
     if not claimed:
         return None
-    result = await publish_snapshot(org_id)
-    if not result.ok:
+    results = await publish_snapshot(org_id)
+    rejected = {t: r for t, r in results.items() if not r.ok}
+    if rejected:
         logger.warning(
-            "metadata export publish for org %s rejected %d assets; %d work items stay claimed "
-            "for the reaper",
+            "metadata export publish for org %s rejected assets at %s; %d work items stay "
+            "claimed for the reaper",
             org_id,
-            len(result.errors),
+            ", ".join(f"{t} ({len(r.errors)})" for t, r in rejected.items()),
             len(claimed),
         )
-        return result
+        return results
     for event_id in claimed:
         await queue.complete(
             conn,
@@ -328,10 +357,10 @@ async def drain(conn: Any, org_id: str, *, now: datetime | None = None) -> Publi
             processor_name=PROCESSOR_NAME,
             now=at,
         )
-    return result
+    return results
 
 
-async def drain_org(org_id: str) -> PublishResult | None:
+async def drain_org(org_id: str) -> dict[str, PublishResult] | None:
     """The scheduled drain for one org — what the interval job fires."""
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
@@ -411,7 +440,7 @@ async def register_org_jobs(scheduler: AsyncIOScheduler, org_id: str) -> None:
         org_id,
         DRAIN_SECONDS,
         config.reconcile_cron,
-        config.provider,
+        ", ".join(t.id for t in config.targets),
     )
 
 

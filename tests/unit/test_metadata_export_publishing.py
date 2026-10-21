@@ -79,9 +79,9 @@ async def test_a_metadata_change_queues_work_for_the_export_target(control_plane
 async def test_a_drain_publishes_the_claimed_work_once_and_completes_it(monkeypatch, control_plane):
     published: list[str] = []
 
-    async def _publish(org_id: str) -> PublishResult:
+    async def _publish(org_id: str) -> dict[str, PublishResult]:
         published.append(org_id)
-        return _ok()
+        return {"atlas": _ok()}
 
     monkeypatch.setattr(publishing, "publish_snapshot", _publish)
     async with _conn(control_plane) as conn:
@@ -90,7 +90,7 @@ async def test_a_drain_publishes_the_claimed_work_once_and_completes_it(monkeypa
 
         result = await publishing.drain(conn, "acme", now=_T0)
 
-        assert result is not None and result.ok
+        assert result is not None and result["atlas"].ok
         # Two events, ONE publish: the drain claims the target's whole pending set and coalesces
         # it, so a burst of edits costs one snapshot rather than one per edit.
         assert published == ["acme"]
@@ -99,7 +99,7 @@ async def test_a_drain_publishes_the_claimed_work_once_and_completes_it(monkeypa
 
 @pytest.mark.asyncio
 async def test_a_drain_with_nothing_pending_does_not_publish(monkeypatch, control_plane):
-    async def _publish(org_id: str) -> PublishResult:
+    async def _publish(org_id: str) -> dict[str, PublishResult]:
         raise AssertionError("published with no pending work")
 
     monkeypatch.setattr(publishing, "publish_snapshot", _publish)
@@ -112,14 +112,15 @@ async def test_a_failed_publish_leaves_the_work_reclaimable(monkeypatch, control
     """A completed work item is a promise the catalog holds the change. A partial publish did
     not deliver it, so completing it would drop the change until the next reconcile."""
 
-    async def _publish(org_id: str) -> PublishResult:
-        return _partial()
+    async def _publish(org_id: str) -> dict[str, PublishResult]:
+        # REQ-2118: one target delivered and one did not; the work is not done until both have.
+        return {"datahub": _ok(), "atlas": _partial()}
 
     monkeypatch.setattr(publishing, "publish_snapshot", _publish)
     async with _conn(control_plane) as conn:
         await publishing.notify_metadata_change(conn, table="wh.public.orders", reason="edit")
         result = await publishing.drain(conn, "acme", now=_T0)
-        assert result is not None and not result.ok
+        assert result is not None and not result["atlas"].ok
         assert await _claim_status(conn) == ["claimed"]
 
         # The REQ-959 reaper returns it to the pool once the lease lapses, and the next drain
@@ -132,19 +133,19 @@ async def test_a_failed_publish_leaves_the_work_reclaimable(monkeypatch, control
 
         monkeypatch.setattr(publishing, "publish_snapshot", _succeed)
         retried = await publishing.drain(conn, "acme", now=_T0)
-        assert retried is not None and retried.ok
+        assert retried is not None and all(r.ok for r in retried.values())
         assert await _claim_status(conn) == ["completed"]
 
 
-async def _succeed(org_id: str) -> PublishResult:
-    return _ok()
+async def _succeed(org_id: str) -> dict[str, PublishResult]:
+    return {"datahub": _ok(), "atlas": _ok()}
 
 
 @pytest.mark.asyncio
 async def test_a_publish_that_raises_leaves_the_work_claimed_rather_than_completed(
     monkeypatch, control_plane
 ):
-    async def _publish(org_id: str) -> PublishResult:
+    async def _publish(org_id: str) -> dict[str, PublishResult]:
         raise RuntimeError("the catalog refused the connection")
 
     monkeypatch.setattr(publishing, "publish_snapshot", _publish)
@@ -161,9 +162,9 @@ async def test_two_drains_of_the_same_org_do_not_both_publish(monkeypatch, contr
     is what prevents it — which is why this path claims rather than reading the event stream."""
     published: list[str] = []
 
-    async def _publish(org_id: str) -> PublishResult:
+    async def _publish(org_id: str) -> dict[str, PublishResult]:
         published.append(org_id)
-        return _ok()
+        return {"atlas": _ok()}
 
     monkeypatch.setattr(publishing, "publish_snapshot", _publish)
     async with _conn(control_plane) as conn:

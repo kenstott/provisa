@@ -1,10 +1,10 @@
 {
   "metadataExportTab": {
     "loading": "Chargement des paramètres d'export de métadonnées…",
-    "intro": "Publiez les métadonnées gouvernées de cette organisation — tables, colonnes, domaines, data stewards, relations approuvées et traçabilité au niveau des colonnes — vers un catalogue de données externe. La publication est uniquement sortante : Provisa ne relit jamais le catalogue cible comme source de vérité.",
+    "intro": "Publiez les métadonnées gouvernées de cette organisation — tables, colonnes, domaines, data stewards, relations approuvées et traçabilité au niveau des colonnes — vers les catalogues de données externes ci-dessous. La publication est uniquement sortante : Provisa ne relit jamais un catalogue cible comme source de vérité.",
     "notEntitledTitle": "Non inclus dans ce plan",
-    "notEntitled": "L'export de métadonnées nécessite le plan {{tier}}. Passez à l'offre supérieure pour configurer un catalogue cible.",
-    "enabled": "Publier les métadonnées vers un catalogue externe",
+    "notEntitled": "L'export de métadonnées nécessite le plan {{tier}}. Passez à l'offre supérieure pour configurer des catalogues cibles.",
+    "enabled": "Publier les métadonnées vers des catalogues externes",
     "provider": "Catalogue cible",
     "endpoint": "URL de l'endpoint",
     "authMode": "Authentification",
@@ -25,11 +25,18 @@
     "saved": "Paramètres enregistrés.",
     "testConnection": "Tester la connexion",
     "publishNow": "Publier maintenant",
-    "healthOk": "Le catalogue cible a accepté la connexion.",
+    "healthOk": "Le catalogue a accepté la connexion.",
     "lastPublishHeading": "Dernière publication",
     "publishComplete": "{{count}} ressources publiées",
     "publishPartial": "{{count}} publiées, {{failed}} rejetées",
     "errorAsset": "Ressource",
-    "errorMessage": "Motif indiqué par le catalogue"
+    "errorMessage": "Motif indiqué par le catalogue",
+    "targetsHeading": "Cibles",
+    "addTarget": "+ Cible",
+    "removeTarget": "Retirer",
+    "newTarget": "Nouvelle cible",
+    "noTargets": "Aucune cible pour l'instant. Ajoutez les catalogues vers lesquels cette organisation publie.",
+    "targetId": "Nom",
+    "targetIdHelp": "Un nom court pour cette cible, unique dans l'organisation (par exemple openmetadata-prod). Deux cibles peuvent utiliser le même type de catalogue."
   }
 }

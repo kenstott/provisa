@@ -42,7 +42,7 @@ from provisa.core.models import (
     Column,
     DataProduct,
     Domain,
-    MetadataExportConfig,
+    MetadataExportTarget,
     ProvisaConfig,
     Relationship,
     RLSRule,
@@ -150,9 +150,9 @@ def snapshot():
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
-def _export_config(provider: str) -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True, provider=provider, endpoint="https://catalog.example/", timeout_seconds=5
+def _export_config(provider: str) -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog", provider=provider, endpoint="https://catalog.example/", timeout_seconds=5
     )
 
 

@@ -103,6 +103,11 @@ class TableAsset:  # REQ-1070
     # catalog publish, which exports nothing else; the model report builds over every registered
     # table and carries the flag as a column so a reviewer can filter on it in the spreadsheet.
     data_product: bool = False
+    # REQ-2118: how fresh the table is kept -- its cache_ttl, else its source's (seconds; -1 never
+    # expires); None when neither declares one, which a contract states as no freshness promise.
+    cache_ttl: int | None = None
+    # REQ-2118: a view (defined by SQL over other tables) rather than a table read from a source.
+    is_view: bool = False
 
 
 @dataclass

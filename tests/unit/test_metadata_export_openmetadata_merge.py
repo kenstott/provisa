@@ -33,7 +33,7 @@ from provisa.api.metadata_export.openmetadata import (
 from provisa.core.models import (
     Column,
     Domain,
-    MetadataExportConfig,
+    MetadataExportTarget,
     ProvisaConfig,
     RLSRule,
     Role,
@@ -118,9 +118,9 @@ def snapshot():
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
-def _export_config() -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True,
+def _export_config() -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog",
         provider="openmetadata",
         endpoint="https://catalog.example/",
         timeout_seconds=5,

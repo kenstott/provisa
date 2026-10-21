@@ -12,34 +12,52 @@ import { requestFailed } from "../i18n/serverMessage";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
-// --- Metadata export admin surface (REQ-1068, REQ-1072, REQ-1073, REQ-1074) ---
+// --- Metadata export admin surface (REQ-1068, REQ-1072, REQ-1073, REQ-1074, REQ-2118) ---
 
-/** The org's export settings as the server reports them.
+/** One catalog the org publishes to, as the server reports it (REQ-2118: an org may have several,
+ *  two of one provider among them).
  *
  *  Credentials appear only as `*_set` booleans: the server never returns a stored secret, so
  *  the form has nothing to render into a password field and nothing to send back unchanged.
  */
-export interface MetadataExportConfig {
-  enabled: boolean;
+export interface MetadataExportTarget {
+  id: string;
   provider: string;
   endpoint: string;
   auth_mode: string;
   username: string;
   entra_tenant_id: string;
   entra_client_id: string;
-  reconcile_cron: string;
   timeout_seconds: number;
   api_key_set: boolean;
   token_set: boolean;
   entra_client_secret_set: boolean;
 }
 
-export interface PublishOutcome {
+export interface MetadataExportConfig {
+  enabled: boolean;
+  reconcile_cron: string;
+  targets: MetadataExportTarget[];
+}
+
+export interface TargetOutcome {
+  id: string;
   provider: string;
   ok: boolean;
   published: Record<string, number>;
   total_published: number;
   errors: { asset: string; message: string }[];
+}
+
+/** One publish, to every target. */
+export interface PublishOutcome {
+  ok: boolean;
+  targets: TargetOutcome[];
+}
+
+export interface HealthOutcome {
+  ok: boolean;
+  targets: { id: string; provider: string; ok: boolean; error?: string }[];
 }
 
 export interface MetadataExportState {
@@ -50,20 +68,18 @@ export interface MetadataExportState {
   last_publish: PublishOutcome | null;
 }
 
-/** A credential omitted from the update keeps its stored value; sent empty, it is cleared. */
+/** A target as saved: its settings, and only the credentials the administrator typed. A
+ *  credential omitted keeps the one stored for that target; sent empty, it is cleared. */
+export type MetadataExportTargetUpdate = Omit<
+  MetadataExportTarget,
+  "api_key_set" | "token_set" | "entra_client_secret_set"
+> & { api_key?: string; token?: string; entra_client_secret?: string };
+
+/** The whole list is sent: a target left out of it is removed. */
 export interface MetadataExportUpdate {
   enabled?: boolean;
-  provider?: string;
-  endpoint?: string;
-  auth_mode?: string;
-  username?: string;
-  entra_tenant_id?: string;
-  entra_client_id?: string;
   reconcile_cron?: string;
-  timeout_seconds?: number;
-  api_key?: string;
-  token?: string;
-  entra_client_secret?: string;
+  targets?: MetadataExportTargetUpdate[];
 }
 
 export async function fetchMetadataExport(): Promise<MetadataExportState> {
@@ -74,7 +90,7 @@ export async function fetchMetadataExport(): Promise<MetadataExportState> {
 
 export async function setMetadataExport(
   body: MetadataExportUpdate,
-): Promise<{ success: boolean; provider: string; enabled: boolean }> {
+): Promise<{ success: boolean; enabled: boolean; targets: string[] }> {
   const resp = await fetch(`${API_BASE}/admin/metadata-export`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -84,11 +100,7 @@ export async function setMetadataExport(
   return resp.json();
 }
 
-export async function checkMetadataExport(): Promise<{
-  ok: boolean;
-  provider: string;
-  error?: string;
-}> {
+export async function checkMetadataExport(): Promise<HealthOutcome> {
   const resp = await fetch(`${API_BASE}/admin/metadata-export/health`, { method: "POST" });
   if (!resp.ok) throw new Error(requestFailed("Metadata export health check", resp.status));
   return resp.json();

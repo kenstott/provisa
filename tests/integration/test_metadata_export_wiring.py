@@ -30,6 +30,7 @@ import json
 import threading
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
@@ -83,8 +84,8 @@ class _Receiver(BaseHTTPRequestHandler):
         return
 
 
-@pytest.fixture
-def receiver() -> Iterator[tuple[str, list[tuple[str, str, str]]]]:
+@contextmanager
+def _receiving() -> Iterator[tuple[str, list[tuple[str, str, str]]]]:
     received: list[tuple[str, str, str]] = []
     handler = type("Receiver", (_Receiver,), {"received": received})
     server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
@@ -97,6 +98,12 @@ def receiver() -> Iterator[tuple[str, list[tuple[str, str, str]]]]:
         server.server_close()
 
 
+@pytest.fixture
+def receiver() -> Iterator[tuple[str, list[tuple[str, str, str]]]]:
+    with _receiving() as received:
+        yield received
+
+
 @pytest.fixture(scope="module")
 async def server():
     async with published_server(ORG) as client:
@@ -106,9 +113,9 @@ async def server():
 @pytest.mark.parametrize("provider", sorted(HTTP_TARGETS))
 async def test_the_production_publish_reaches_the_target(server, receiver, provider):
     url, received = receiver
+    target = {"id": provider, "provider": provider, "endpoint": url, **HTTP_TARGETS[provider]}
     response = await server.put(
-        "/admin/metadata-export",
-        json={"enabled": True, "provider": provider, "endpoint": url, **HTTP_TARGETS[provider]},
+        "/admin/metadata-export", json={"enabled": True, "targets": [target]}
     )
     assert response.status_code == 200, response.text
     # The publish's own verdict is the end-to-end test's concern: an echoing receiver is no
@@ -119,6 +126,23 @@ async def test_the_production_publish_reaches_the_target(server, receiver, provi
         f"metadata export target {provider!r} received nothing naming the member table "
         f"{MEMBER!r} from the production publish ({len(received)} requests in all)"
     )
+
+
+async def test_one_publish_reaches_every_target_two_of_one_provider_among_them(server):
+    """REQ-2118: an org publishes to several catalogs at once; each is called by the one publish."""
+    with _receiving() as (first, got_first), _receiving() as (second, got_second):
+        targets = [
+            {"id": "lineage-a", "provider": "openlineage", "endpoint": first},
+            {"id": "lineage-b", "provider": "openlineage", "endpoint": second},
+        ]
+        response = await server.put(
+            "/admin/metadata-export", json={"enabled": True, "targets": targets}
+        )
+        assert response.status_code == 200, response.text
+        published = (await server.post("/admin/metadata-export/publish")).json()
+        assert [t["id"] for t in published["targets"]] == ["lineage-a", "lineage-b"]
+        for name, received in (("lineage-a", got_first), ("lineage-b", got_second)):
+            assert any(MEMBER in r[2] for r in received), f"{name} received nothing"
 
 
 def test_every_registered_target_is_covered() -> None:

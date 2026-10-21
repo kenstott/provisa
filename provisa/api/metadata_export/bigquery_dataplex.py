@@ -63,7 +63,7 @@ def set_runtime_resolver(resolver: RuntimeResolver | None) -> None:
     """Wire (or clear, with ``None``) the org id -> live federation runtime accessor.
 
     See ``snowflake_horizon.set_runtime_resolver`` for the full rationale: the registry
-    (``metadata_export.py``) builds a provider from ``MetadataExportConfig`` alone, so there
+    (``metadata_export.py``) builds a provider from ``MetadataExportTarget`` alone, so there
     is no call site to thread a resolver through the constructor.
     """
     global _get_runtime

@@ -39,7 +39,7 @@ from provisa.api.metadata_export.model import (
     GlossaryTermEdge,
     MetadataSnapshot,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportTarget
 
 ORG = "acme"
 GLOSSARY_QN = _glossary_qn(ORG)
@@ -50,8 +50,8 @@ FOREIGN_TERM_GUID = "foreign-term-guid"
 
 def _export() -> AtlasExport:
     return AtlasExport(
-        MetadataExportConfig(
-            enabled=True,
+        MetadataExportTarget(
+            id="catalog",
             provider="atlas",
             endpoint="http://atlas:21000",
             token="t",

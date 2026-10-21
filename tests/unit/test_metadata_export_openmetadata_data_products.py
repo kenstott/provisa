@@ -23,7 +23,7 @@ from provisa.core.models import (
     Column,
     DataProduct,
     Domain,
-    MetadataExportConfig,
+    MetadataExportTarget,
     ProvisaConfig,
     Source,
     SourceType,
@@ -62,9 +62,9 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
     )
 
 
-def _export_config() -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True,
+def _export_config() -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog",
         provider="openmetadata",
         endpoint="https://catalog.example/",
         timeout_seconds=5,

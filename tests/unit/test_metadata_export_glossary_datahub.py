@@ -39,7 +39,7 @@ from provisa.api.metadata_export.model import (
     MetadataSnapshot,
     TableAsset,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportTarget
 
 ORG = "acme"
 NODE_URN = glossary_node_urn(ORG)
@@ -86,8 +86,8 @@ def _snapshot(
 
 def _export() -> DataHubExport:
     return DataHubExport(
-        MetadataExportConfig(
-            enabled=True, provider="datahub", endpoint="https://gms.example", timeout_seconds=5
+        MetadataExportTarget(
+            id="catalog", provider="datahub", endpoint="https://gms.example", timeout_seconds=5
         )
     )
 

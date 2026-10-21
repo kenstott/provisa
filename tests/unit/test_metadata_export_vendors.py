@@ -52,7 +52,7 @@ from provisa.api.metadata_export.collibra import (
 )
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.datahub import DataHubExport, to_proposals
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportTarget
 from tests.integration.metadata_export_fixture import (
     MASK_PATTERN,
     ORG_ID,
@@ -178,8 +178,8 @@ def test_atlas_payload_carries_no_rule_body(snapshot):
 async def test_atlas_basic_mode_sends_the_credential_as_the_http_pair_atlas_requires():
     """Stock Apache Atlas answers a bearer token with 401; ``basic`` is its own default."""
     export = metadata_export(
-        MetadataExportConfig(
-            enabled=True,
+        MetadataExportTarget(
+            id="catalog",
             provider="atlas",
             endpoint="http://atlas:21000",
             auth_mode="basic",
@@ -197,8 +197,8 @@ async def test_atlas_basic_mode_sends_the_credential_as_the_http_pair_atlas_requ
 
 def test_atlan_retypes_every_entity_into_atlans_own_type_set(snapshot):
     export = metadata_export(
-        MetadataExportConfig(
-            enabled=True, provider="atlan", endpoint="https://tenant.atlan.com", token="t"
+        MetadataExportTarget(
+            id="catalog", provider="atlan", endpoint="https://tenant.atlan.com", token="t"
         )
     )
     entities = export._atlan_entities(snapshot)
@@ -234,8 +234,8 @@ def test_atlas_data_product_aggregates_rdbms_tables_by_fqn():  # REQ-1634
 
 def test_atlan_retypes_the_data_product_via_the_type_map():  # REQ-1634
     export = metadata_export(
-        MetadataExportConfig(
-            enabled=True, provider="atlan", endpoint="https://tenant.atlan.com", token="t"
+        MetadataExportTarget(
+            id="catalog", provider="atlan", endpoint="https://tenant.atlan.com", token="t"
         )
     )
     entities = export._atlan_entities(_snapshot_with_data_product())
@@ -258,8 +258,8 @@ def test_collibra_data_product_row_groups_its_member_tables():  # REQ-1634
 
 def test_atlan_roots_every_asset_at_the_orgs_own_connection(snapshot):
     export = metadata_export(
-        MetadataExportConfig(
-            enabled=True, provider="atlan", endpoint="https://tenant.atlan.com", token="t"
+        MetadataExportTarget(
+            id="catalog", provider="atlan", endpoint="https://tenant.atlan.com", token="t"
         )
     )
     entities = export._atlan_entities(snapshot)
@@ -372,8 +372,8 @@ _STALE_TAG = "urn:li:tag:provisa_stale_signal"
 
 def _datahub_export() -> DataHubExport:
     return DataHubExport(
-        MetadataExportConfig(
-            enabled=True, provider="datahub", endpoint="https://gms.example", timeout_seconds=5
+        MetadataExportTarget(
+            id="catalog", provider="datahub", endpoint="https://gms.example", timeout_seconds=5
         )
     )
 
@@ -578,7 +578,7 @@ async def test_collibra_publish_pins_replace_actions_on_the_import_job(snapshot,
     monkeypatch.setattr(httpx.AsyncClient, "post", _post)
     monkeypatch.setattr(httpx.AsyncClient, "get", _get)
     export = CollibraExport(
-        MetadataExportConfig(enabled=True, provider="collibra", endpoint="https://collibra.example")
+        MetadataExportTarget(id="catalog", provider="collibra", endpoint="https://collibra.example")
     )
     result = await export.publish(snapshot)
     assert result.ok
@@ -602,7 +602,7 @@ async def test_collibra_publish_pins_replace_actions_on_the_import_job(snapshot,
 )
 def test_each_vendor_name_resolves_to_its_adapter(name, expected):
     export = metadata_export(
-        MetadataExportConfig(enabled=True, provider=name, endpoint="https://catalog.example")
+        MetadataExportTarget(id="catalog", provider=name, endpoint="https://catalog.example")
     )
     assert isinstance(export, expected)
     assert export.provider_name == name

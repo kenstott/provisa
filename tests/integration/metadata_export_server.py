@@ -266,9 +266,14 @@ async def published_server(
 
 
 async def publish(client: httpx.AsyncClient, target: dict[str, Any]) -> dict[str, Any]:
-    """Save ``target`` as the org's export settings and publish now, both as an admin does."""
-    saved = await client.put("/admin/metadata-export", json={"enabled": True, **target})
+    """Save ``target`` as the org's one export target and publish now, both as an admin does;
+    what the publish reports for that target. The target is named after its provider."""
+    saved = await client.put(
+        "/admin/metadata-export",
+        json={"enabled": True, "targets": [{"id": target["provider"], **target}]},
+    )
     assert saved.status_code == 200, saved.text
     published = await client.post("/admin/metadata-export/publish")
     assert published.status_code == 200, published.text
-    return published.json()
+    (outcome,) = published.json()["targets"]
+    return outcome

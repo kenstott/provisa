@@ -136,16 +136,26 @@ async def test_the_read_reports_credentials_as_set_and_never_returns_them(surfac
     from provisa.api.admin.metadata_export_router import get_metadata_export
 
     surface.stored.update(
-        {"enabled": True, "provider": "openlineage", "endpoint": "http://mz", "api_key": "s3cr3t"}
+        {
+            "enabled": True,
+            "targets": [
+                {
+                    "id": "mz",
+                    "provider": "openlineage",
+                    "endpoint": "http://mz",
+                    "api_key": "s3cr3t",
+                }
+            ],
+        }
     )
     body = await get_metadata_export(_request())
 
-    config = body["config"]
-    assert config["api_key_set"] is True
-    assert config["token_set"] is False
-    assert "api_key" not in config
+    (target,) = body["config"]["targets"]
+    assert target["api_key_set"] is True
+    assert target["token_set"] is False
+    assert "api_key" not in target
     assert "s3cr3t" not in str(body)
-    assert config["endpoint"] == "http://mz"
+    assert target["endpoint"] == "http://mz"
 
 
 @pytest.mark.asyncio
@@ -179,37 +189,109 @@ async def test_editing_the_endpoint_does_not_erase_the_stored_credential(surface
     connection — and the next publish, not the edit, would be what reported it.
     """
     surface.stored.update(
-        {"enabled": True, "provider": "openlineage", "endpoint": "http://old", "api_key": "keep-me"}
+        {
+            "enabled": True,
+            "targets": [
+                {
+                    "id": "mz",
+                    "provider": "openlineage",
+                    "endpoint": "http://old",
+                    "api_key": "keep-me",
+                }
+            ],
+        }
     )
-    await _put({"endpoint": "http://new"})
+    await _put({"targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://new"}]})
 
-    assert surface.written["metadata_export"]["endpoint"] == "http://new"
-    assert surface.written["metadata_export"]["api_key"] == "keep-me"
+    (written,) = surface.written["metadata_export"]["targets"]
+    assert written["endpoint"] == "http://new"
+    assert written["api_key"] == "keep-me"
+
+
+@pytest.mark.asyncio
+async def test_two_targets_of_one_provider_keep_their_credentials_apart(surface):  # REQ-2118
+    surface.stored.update(
+        {
+            "enabled": True,
+            "targets": [
+                {"id": "om-a", "provider": "openmetadata", "endpoint": "http://a", "token": "ta"},
+                {"id": "om-b", "provider": "openmetadata", "endpoint": "http://b", "token": "tb"},
+            ],
+        }
+    )
+    await _put(
+        {
+            "targets": [
+                {"id": "om-b", "provider": "openmetadata", "endpoint": "http://b2"},
+                {"id": "om-a", "provider": "openmetadata", "endpoint": "http://a"},
+            ]
+        }
+    )
+
+    written = {t["id"]: t for t in surface.written["metadata_export"]["targets"]}
+    assert (written["om-a"]["token"], written["om-b"]["token"]) == ("ta", "tb")
+    assert written["om-b"]["endpoint"] == "http://b2"
+
+
+@pytest.mark.asyncio
+async def test_a_target_left_out_of_the_list_is_removed(surface):  # REQ-2118
+    surface.stored.update(
+        {
+            "enabled": True,
+            "targets": [
+                {"id": "om", "provider": "openmetadata", "endpoint": "http://a"},
+                {"id": "dh", "provider": "datahub", "endpoint": "http://b"},
+            ],
+        }
+    )
+    await _put({"targets": [{"id": "dh", "provider": "datahub", "endpoint": "http://b"}]})
+
+    assert [t["id"] for t in surface.written["metadata_export"]["targets"]] == ["dh"]
 
 
 @pytest.mark.asyncio
 async def test_an_empty_credential_clears_it(surface):
     surface.stored.update(
-        {"enabled": True, "provider": "openlineage", "endpoint": "http://mz", "api_key": "old"}
+        {
+            "enabled": True,
+            "targets": [
+                {"id": "mz", "provider": "openlineage", "endpoint": "http://mz", "api_key": "old"}
+            ],
+        }
     )
-    await _put({"api_key": ""})
+    await _put(
+        {
+            "targets": [
+                {"id": "mz", "provider": "openlineage", "endpoint": "http://mz", "api_key": ""}
+            ]
+        }
+    )
 
-    assert surface.written["metadata_export"]["api_key"] == ""
+    assert surface.written["metadata_export"]["targets"][0]["api_key"] == ""
 
 
 @pytest.mark.asyncio
 async def test_a_key_outside_the_export_settings_is_not_written(surface):
     # The body is an untrusted dict; only the enumerated settings may reach storage, or an admin
     # writes arbitrary config through the export door.
-    await _put({"endpoint": "http://mz", "provider": "openlineage", "enabled": True, "tier": "x"})
+    await _put(
+        {
+            "enabled": True,
+            "tier": "x",
+            "targets": [
+                {"id": "mz", "provider": "openlineage", "endpoint": "http://mz", "tier": "x"}
+            ],
+        }
+    )
 
     assert "tier" not in surface.written["metadata_export"]
+    assert "tier" not in surface.written["metadata_export"]["targets"][0]
 
 
 @pytest.mark.asyncio
 async def test_an_enabled_target_with_no_endpoint_is_refused_at_the_write(surface):
     with pytest.raises(ApiError) as exc:
-        await _put({"enabled": True, "provider": "openlineage"})
+        await _put({"enabled": True, "targets": [{"id": "mz", "provider": "openlineage"}]})
 
     assert exc.value.status_code == 400
     assert surface.written == {}
@@ -234,7 +316,12 @@ async def test_every_operating_handler_refuses_an_unentitled_org(surface, handle
     import provisa.api.admin.metadata_export_router as mod
 
     surface.org(tier="standard")
-    surface.stored.update({"enabled": True, "provider": "openlineage", "endpoint": "http://mz"})
+    surface.stored.update(
+        {
+            "enabled": True,
+            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+        }
+    )
     request = _request()
     request.json = _json_body({"enabled": True})
 
@@ -268,7 +355,12 @@ async def test_health_reports_the_refusal_text_rather_than_a_bare_failure(surfac
     import provisa.api.admin.metadata_export_router as mod
     from provisa.api.admin.metadata_export_router import check_metadata_export
 
-    surface.stored.update({"enabled": True, "provider": "openlineage", "endpoint": "http://mz"})
+    surface.stored.update(
+        {
+            "enabled": True,
+            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+        }
+    )
 
     class _Failing:
         async def health(self):
@@ -278,22 +370,26 @@ async def test_health_reports_the_refusal_text_rather_than_a_bare_failure(surfac
     body = await check_metadata_export(_request())
 
     assert body["ok"] is False
-    assert "Name or service not known" in body["error"]
-    assert "ConnectionError" in body["error"]
+    (check,) = body["targets"]
+    assert check["id"] == "mz"
+    assert "Name or service not known" in check["error"]
+    assert "ConnectionError" in check["error"]
 
 
 @pytest.mark.asyncio
-async def test_health_on_an_unsaved_or_disabled_config_answers_instead_of_500ing(surface):
-    """Pressing Test connection before Save must say WHY, not fail with a bare 500 —
-    adapter construction raises MetadataExportNotConfiguredError and that text is the answer."""
+async def test_health_on_a_target_that_cannot_be_built_answers_instead_of_500ing(surface):
+    """Pressing Test connection must say WHY, not fail with a bare 500 — adapter construction
+    raises MetadataExportNotConfiguredError and that text is the answer."""
     from provisa.api.admin.metadata_export_router import check_metadata_export
 
-    surface.stored.update({"enabled": False, "provider": "atlas", "endpoint": "http://a"})
+    surface.stored.update(
+        {"enabled": False, "targets": [{"id": "x", "provider": "nope", "endpoint": "http://a"}]}
+    )
 
     body = await check_metadata_export(_request())
 
     assert body["ok"] is False
-    assert "disabled" in body["error"]
+    assert "Unknown metadata export provider 'nope'" in body["targets"][0]["error"]
 
 
 @pytest.mark.asyncio
@@ -306,7 +402,12 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     from provisa.api.metadata_export.model import AssetRef
     from provisa.api.metadata_export.provider import AssetError, PublishResult
 
-    surface.stored.update({"enabled": True, "provider": "openlineage", "endpoint": "http://mz"})
+    surface.stored.update(
+        {
+            "enabled": True,
+            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+        }
+    )
     result = PublishResult(
         provider_name="openlineage",
         published={"dataset": 2},
@@ -348,17 +449,23 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     body = await publish_metadata_export(_request())
 
     assert body["ok"] is False
-    assert body["total_published"] == 2
-    assert body["errors"] == [{"asset": "wh.public.orders", "message": "422 unknown field type"}]
+    (target,) = body["targets"]
+    assert (target["id"], target["total_published"]) == ("mz", 2)
+    assert target["errors"] == [{"asset": "wh.public.orders", "message": "422 unknown field type"}]
     # The tab shows the last outcome without re-publishing to find out what it was.
-    assert (await get_metadata_export(_request()))["last_publish"]["errors"] == body["errors"]
+    assert (await get_metadata_export(_request()))["last_publish"] == body
 
 
 @pytest.mark.asyncio
 async def test_publishing_a_disabled_target_is_refused_before_a_snapshot_is_built(surface):
     from provisa.api.admin.metadata_export_router import publish_metadata_export
 
-    surface.stored.update({"enabled": False, "provider": "openlineage", "endpoint": "http://mz"})
+    surface.stored.update(
+        {
+            "enabled": False,
+            "targets": [{"id": "mz", "provider": "openlineage", "endpoint": "http://mz"}],
+        }
+    )
 
     with pytest.raises(ApiError) as exc:
         await publish_metadata_export(_request())

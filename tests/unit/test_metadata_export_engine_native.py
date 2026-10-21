@@ -35,13 +35,13 @@ from provisa.api.metadata_export import bigquery_dataplex
 from provisa.api.metadata_export.bigquery_dataplex import BigQueryDataplexExport
 from provisa.api.metadata_export.builder import build_snapshot
 from provisa.api.metadata_export.registry import metadata_export, registered_providers
-from provisa.core.models import DataProduct, MetadataExportConfig
+from provisa.core.models import DataProduct, MetadataExportTarget
 from tests.integration.metadata_export_fixture import ORG_ID, governed_config
 
 
-def _export_config(provider: str) -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True, provider=provider, endpoint="https://catalog.example/", timeout_seconds=5
+def _export_config(provider: str) -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog", provider=provider, endpoint="https://catalog.example/", timeout_seconds=5
     )
 
 

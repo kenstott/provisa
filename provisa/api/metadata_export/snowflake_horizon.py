@@ -11,7 +11,7 @@
 """Snowflake Horizon Catalog adapter (REQ-1635).
 
 Engine-native, unlike every other adapter in this package: OpenMetadata/Atlas/DataHub/Atlan/
-Collibra all speak to a REMOTE REST catalog reached over ``MetadataExportConfig.endpoint`` with
+Collibra all speak to a REMOTE REST catalog reached over ``MetadataExportTarget.endpoint`` with
 its own credentials. Horizon Catalog is not remote — it is Snowflake's own governance surface,
 living inside the SAME Snowflake account the engine already runs governed SQL against. So this
 adapter opens its own :class:`SnowflakeFederationRuntime` against the engine's configured DSN

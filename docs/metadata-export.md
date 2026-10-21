@@ -110,45 +110,57 @@ table at three columns and an approved relationship carries far more than that.
 
 ## Configuration
 
-Metadata export is a **per-organization** setting: the catalog an org publishes to, and the
-credentials it publishes with, belong to that org rather than to the deployment. Configure it in
-**Admin → Metadata Export**, or under `metadata_export` in the config YAML.
+Metadata export is a **per-organization** setting: the catalogs an org publishes to, and the
+credentials it publishes with, belong to that org rather than to the deployment. An org may publish
+to several catalogs at once, two of one provider among them; one publish reaches every target.
+Configure it in **Admin → Metadata Export**, or under `metadata_export` in the config YAML.
 
 ```yaml
 metadata_export:
   enabled: true
-  provider: openlineage        # openlineage | openmetadata | atlas | atlan | datahub | collibra | snowflake_horizon | bigquery_dataplex
-  endpoint: http://marquez:5000
-  auth_mode: api_key           # api_key | bearer | basic | entra
-  api_key: ${MARQUEZ_API_KEY}
   reconcile_cron: "0 * * * *"
-  timeout_seconds: 30
+  targets:
+    - id: marquez
+      provider: openlineage    # openlineage | openmetadata | atlas | atlan | datahub | collibra | snowflake_horizon | bigquery_dataplex
+      endpoint: http://marquez:5000
+      auth_mode: api_key       # api_key | bearer | basic | entra
+      api_key: ${MARQUEZ_API_KEY}
+      timeout_seconds: 30
+    - id: openmetadata-prod
+      provider: openmetadata
+      endpoint: https://openmetadata.example.com
+      auth_mode: bearer
+      token: ${OPENMETADATA_TOKEN}
 ```
 
 | Setting | Meaning |
 | --- | --- |
-| `enabled` | Whether this org publishes at all. An enabled target with no `provider` or no `endpoint` is refused when it is saved, not at the next publish. |
+| `enabled` | Whether this org publishes at all. An enabled export with no target is refused when it is saved, not at the next publish. |
+| `targets` | The catalogs the org publishes to. A target left out of the list when the settings are saved is removed. |
+| `id` | The target's name within the org, unique there. What Provisa records of each published asset's id in that catalog is kept under it, so two targets of one provider never share it. |
 | `provider` | Which adapter backs the target. An unrecognized name is refused when the adapter is constructed. |
-| `endpoint` | Base URL of the target catalog. Not required for `snowflake_horizon`, which connects off the engine's own configured DSN instead. |
+| `endpoint` | Base URL of the target catalog. A target with no endpoint is refused when it is saved. Not required for `snowflake_horizon`, which connects off the engine's own configured DSN instead. |
 | `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — and `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`. |
 | `username` | The account name for `basic`. Unused by the other modes. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
 | `timeout_seconds` | Per-request timeout against the target. |
 
-Credentials are **write-only through the UI**. The admin surface reports each one as set or not
-set and never returns a stored value, so leaving a credential field blank keeps the stored one and
-clearing it removes it.
+Credentials are **write-only through the UI**. The admin surface reports each target's credentials as
+set or not set and never returns a stored value, so leaving a credential field blank keeps the one
+stored for that target and clearing it removes it.
 
 ### Operating it from the Admin tab
 
-- **Test connection** calls the target and reports the text it refused with, which is what
+- **Test connection** calls each target and reports the text it refused with, which is what
   separates a wrong URL from a rejected credential.
-- **Publish now** pushes a full snapshot and shows the outcome, including the per-asset reasons
-  behind a partial publish. A catalog that rejects one table does not cost the publish the rest:
+- **Publish now** pushes a full snapshot to every target and shows each one's outcome, including
+  the per-asset reasons behind a partial publish. A catalog that rejects one table does not cost the publish the rest:
   each rejection is reported against the asset it belongs to.
 
-The tab is available to holders of the `org_settings` right, and only for organizations whose
-plan includes metadata export. Both the tab and every endpoint behind it enforce that.
+The tab is available to holders of the `org_settings` right. On a self-hosted install nothing else
+gates it. On the hosted service the organization's plan must include metadata export: the plan sets
+the org's tier, which a platform administrator can change in **Admin → Orgs**. Both the tab and every
+endpoint behind it enforce that.
 
 ### From the command line
 
@@ -168,8 +180,9 @@ provisa metadata export \
 | `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments — no `Authorization` header is sent when the token is empty. |
 | `--timeout` | `300` | Seconds before the HTTP call is abandoned. |
 
-Exit code 0 means every asset published. Exit code 1 means partial publish or a connection
-failure. Per-asset errors print to stderr alongside the summary line, so a cron job records them
+Exit code 0 means every asset published to every target. Exit code 1 means a partial publish to any
+target, or a connection failure. Each target gets its own summary line; per-asset errors print to
+stderr, naming the target, so a cron job records them
 in the mail log without obscuring the exit code.
 
 A daily export at 06:00:
@@ -200,6 +213,39 @@ A daily export at 06:00:
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,
 not inferred by scanning a warehouse. A column that a view computes from two upstream columns
 publishes both edges, along with the functions applied.
+
+## Data products as ODPS and ODCS
+
+Each data product is also served in the two open standards a catalog can import without an adapter:
+an [Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) 1.0
+document for the product, and an
+[Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) 3.1
+contract for each of its member tables.
+
+```http
+GET /data-products/{product id}/odps.yaml
+GET /data-products/{product id}/contracts/{source}.{schema}.{table}.yaml
+```
+
+Both are built from the same snapshot the export publishes. Reading them requires the
+`data_product_read` right, and on the hosted service a plan that includes metadata export.
+
+The ODPS document carries the product's purpose, limitations and usage as its description, plus
+its status, version, domain, team roles and support contact. It lists one output port per member,
+naming that member's contract. The SLA stays prose and rides as a custom property, because a product
+spans several members and a structured SLA could not say which one it describes.
+
+Each contract carries the member's columns with their types, descriptions and primary key, plus:
+
+- the governance tags on each column (`masked`, `visibility_restricted`, `rls_restricted`), never
+  the rule behind them;
+- the member's freshness: its `cache_ttl`, else its source's, as a latency promise; a member that
+  declares neither makes no freshness promise;
+- the quality checks registered against the member, as the checker that runs them wrote them.
+
+A member has no version of its own, so its contract takes the product's. A product with no version
+publishes `unversioned`, since both standards require a version and no release was cut. A product
+with no status is `active` when published and `draft` when not.
 
 ## Governance signals in the target catalog
 

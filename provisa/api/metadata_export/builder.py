@@ -134,7 +134,9 @@ def _table_assets(
     org_id: str | None,
     technical_columns: frozenset[tuple[tuple[str, ...], str]],
     product_ids: dict[tuple[str, ...], str | None],
+    source_ttls: Mapping[str, int | None] | None = None,
 ) -> list[TableAsset]:
+    source_ttls = source_ttls or {}
     return [
         TableAsset(
             ref=table_ref(table),
@@ -156,6 +158,11 @@ def _table_assets(
             # REQ-1652: every declared key column, technical-tagged or not -- the physical table
             # carries it whether or not the Data Product exposes it.
             primary_key=tuple(c.name for c in table.columns if getattr(c, "is_primary_key", False)),
+            # REQ-2118: a table with no cache_ttl of its own inherits its source's (cache_ttl.py).
+            cache_ttl=(
+                table.cache_ttl if table.cache_ttl is not None else source_ttls.get(table.source_id)
+            ),
+            is_view=table.view_sql is not None,
         )
         for table in tables
     ]
@@ -669,7 +676,13 @@ def build_snapshot(
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
-    tables = _table_assets(exported, uri_org_id, technical_columns, product_ids)
+    tables = _table_assets(
+        exported,
+        uri_org_id,
+        technical_columns,
+        product_ids,
+        {source.id: source.cache_ttl for source in config.sources},
+    )
     relationships = [
         edge
         for edge in _relationship_edges(config, index, uri_org_id)

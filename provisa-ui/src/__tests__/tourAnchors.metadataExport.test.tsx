@@ -29,17 +29,22 @@ import { fetchMetadataExport } from "../api/metadataExport";
 
 const config: MetadataExportState["config"] = {
   enabled: true,
-  provider: "openlineage",
-  endpoint: "http://marquez:5000",
-  auth_mode: "api_key",
-  username: "",
-  entra_tenant_id: "",
-  entra_client_id: "",
   reconcile_cron: "0 * * * *",
-  timeout_seconds: 30,
-  api_key_set: true,
-  token_set: false,
-  entra_client_secret_set: false,
+  targets: [
+    {
+      id: "marquez",
+      provider: "openlineage",
+      endpoint: "http://marquez:5000",
+      auth_mode: "api_key",
+      username: "",
+      entra_tenant_id: "",
+      entra_client_id: "",
+      timeout_seconds: 30,
+      api_key_set: true,
+      token_set: false,
+      entra_client_secret_set: false,
+    },
+  ],
 };
 
 const STATES: Record<string, MetadataExportState> = {
@@ -54,7 +59,7 @@ const STATES: Record<string, MetadataExportState> = {
     entitled: true,
     required_tier: "premium",
     providers: ["openlineage"],
-    config: { ...config, enabled: false, endpoint: "", api_key_set: false },
+    config: { ...config, enabled: false, targets: [] },
     last_publish: null,
   },
   "not entitled": {

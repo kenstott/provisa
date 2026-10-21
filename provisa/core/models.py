@@ -2444,16 +2444,15 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
         return value if value.strip() else DEFAULT_UI_ORIGIN
 
 
-class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
-    """Outbound publication of governance metadata to an external catalog.
+class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
+    """One external catalog an org's governance metadata is published to.
 
-    Per-org, premium-gated (REQ-1073). Outbound only — there is no ingest counterpart, by
-    design (REQ-1068): Provisa is the upstream, and an external catalog is never read back
-    as the source of truth.
-
+    id: the target's name within the org, unique there; its catalog bindings are kept under it,
+        so two targets of one provider (two OpenMetadata servers) never share them (REQ-2118).
     provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
-        "datahub", "atlan" or "collibra". An unknown name is refused at construction.
+        "datahub", "atlan", "collibra" or "snowflake_horizon". An unknown name is refused at
+        construction.
     endpoint: base URL of the target catalog.
     api_key / token: adapter credentials, held as SecretStr so a config dump or a log line
         renders them redacted.
@@ -2462,13 +2461,10 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
         or "entra" for Purview's Entra ID client-credentials flow, which needs the
         tenant/client fields below.
     username: the account name for "basic". Unused by the other modes.
-    reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
-        dropped events (REQ-1072). Empty disables the reconcile and leaves only the
-        event-driven path.
     """
 
-    enabled: bool = False
-    provider: str = ""
+    id: str
+    provider: str
     endpoint: str = ""
     api_key: SecretStr = SecretStr("")
     token: SecretStr = SecretStr("")
@@ -2477,30 +2473,52 @@ class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073
     entra_tenant_id: str = ""
     entra_client_id: str = ""
     entra_client_secret: SecretStr = SecretStr("")
-    reconcile_cron: str = "0 * * * *"
     timeout_seconds: int = 30
 
+    @field_validator("id")
+    @classmethod
+    def _validate_id(cls, v: str) -> str:
+        if not _SAFE_ID_PATTERN.match(v):
+            raise ValueError(f"a metadata export target's id is a name like 'catalog-1', not {v!r}")
+        return v
+
     @model_validator(mode="after")
-    def _validate_enabled(self) -> "MetadataExportConfig":
-        # REQ-1068: an enabled export with no provider or no endpoint cannot publish. Failing
-        # here names the setting; failing at publish time names a connection.
-        if not self.enabled:
-            return self
-        # REQ-1635: snowflake_horizon is engine-native — it opens its own connection off
-        # configured_engine_url() rather than a remote catalog's endpoint, so endpoint is not
-        # a setting this provider has, and requiring it here would ask for one that can never
-        # be filled in correctly.
-        required = (
-            (("provider", self.provider),)
-            if self.provider == "snowflake_horizon"
-            else (("provider", self.provider), ("endpoint", self.endpoint))
-        )
-        missing = [name for name, value in required if not value]
-        if missing:
-            raise ValueError(
-                f"metadata_export.enabled is true but {', '.join(missing)} "
-                f"{'is' if len(missing) == 1 else 'are'} unset"
-            )
+    def _validate_endpoint(self) -> "MetadataExportTarget":
+        # REQ-1068: a target with no endpoint cannot publish. Failing here names the setting;
+        # failing at publish time names a connection. REQ-1635: snowflake_horizon is
+        # engine-native — it opens its own connection off configured_engine_url() rather than a
+        # remote catalog's endpoint, so endpoint is not a setting this provider has.
+        if self.provider != "snowflake_horizon" and not self.endpoint:
+            raise ValueError(f"metadata export target {self.id!r} has no endpoint")
+        return self
+
+
+class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118
+    """Outbound publication of governance metadata to external catalogs.
+
+    Per-org, premium-gated (REQ-1073). Outbound only — there is no ingest counterpart, by
+    design (REQ-1068): Provisa is the upstream, and an external catalog is never read back
+    as the source of truth.
+
+    targets: every catalog the org publishes to; one publish reaches each (REQ-2118).
+    reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
+        dropped events (REQ-1072). Empty disables the reconcile and leaves only the
+        event-driven path.
+    """
+
+    enabled: bool = False
+    targets: list[MetadataExportTarget] = Field(default_factory=list)
+    reconcile_cron: str = "0 * * * *"
+
+    @model_validator(mode="after")
+    def _validate_targets(self) -> "MetadataExportConfig":
+        ids = [t.id for t in self.targets]
+        repeated = sorted({i for i in ids if ids.count(i) > 1})
+        if repeated:
+            raise ValueError(f"metadata export targets named twice: {', '.join(repeated)}")
+        # REQ-1068: an enabled export with nowhere to publish cannot publish.
+        if self.enabled and not self.targets:
+            raise ValueError("metadata_export.enabled is true but no target is configured")
         return self
 
 

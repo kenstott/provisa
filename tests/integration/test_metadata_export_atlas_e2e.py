@@ -190,7 +190,7 @@ async def test_republishing_lands_the_same_catalog_state(published):
     """REQ-1072's reconcile republishes the whole snapshot on a schedule, so a second publish
     has to be an upsert rather than a duplicate."""
     client, first = published
-    again = (await client.post("/admin/metadata-export/publish")).json()
+    (again,) = (await client.post("/admin/metadata-export/publish")).json()["targets"]
     assert again["ok"], again["errors"]
     assert again["published"] == first["published"]
     orders = await _entity("provisa_table", ORDERS)
