@@ -41,12 +41,15 @@ steps:
   route: /relationships
   capability: create_relationship
   relationship: ASKS_ABOUT_EU
-# Group reporting, as the group's analysts read it.
+# Group reporting, as the group's analysts read it: the header's role, so SQL and GraphQL both
+# read as group_analyst.
 - key: retailAsAnalyst
-  route: /sql
+  route: /query
   capability: query_development
   role: group_analyst
 - key: retailGroupView
+  route: /sql
+  capability: query_development
   sql: >-
     SELECT subsidiary, customer, country, joined_on FROM "retail"."view_group_customers"
     ORDER BY subsidiary, joined_on DESC LIMIT 20
@@ -54,6 +57,9 @@ steps:
   route: /query
   capability: query_development
   example: 1-group-customers
+# Back to every role in the header: the SQL explorer's roles below are picked from all of them.
+- key: retailEveryRole
+  role: all
 # EU marketing reads only the customers who agreed.
 - key: retailAsMarketing
   route: /sql

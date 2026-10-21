@@ -958,7 +958,7 @@
       },
       "retailAsAnalyst": {
         "title": "グループアナリストとして",
-        "description": "次に、SQL エクスプローラーは US でグループレポーティングを担当する group_analyst として実行されます。"
+        "description": "次に、ロール選択が US でグループレポーティングを担当する <strong>group_analyst</strong> に切り替わるので、この後の SQL と GraphQL は group_analyst として実行されます。"
       },
       "retailGroupView": {
         "title": "グループレポーティング、EU 顧客は仮名化",
@@ -967,6 +967,10 @@
       "retailGroupGraphql": {
         "title": "同じことを GraphQL で",
         "description": "同じグループビューを GraphQL で。一つのモデル、あらゆるトランスポート、同じルール。"
+      },
+      "retailEveryRole": {
+        "title": "すべてのロールに戻る",
+        "description": "次に、ロール選択が <strong>All</strong> に戻ります。"
       },
       "retailAsMarketing": {
         "title": "EU マーケティングとして",
@@ -1286,7 +1290,7 @@
       },
       "churnAnalyst": {
         "title": "analyst として読む",
-        "description": "この後のクエリは、データサイエンティストが読み取りに使うロール analyst として実行されます。"
+        "description": "次に、ロール選択がデータサイエンティストが読み取りに使うロール <strong>analyst</strong> に切り替わるので、この後のすべての画面は analyst として実行されます。"
       },
       "churnFeatures": {
         "title": "モデルが学習する特徴量",
@@ -1299,6 +1303,10 @@
       "churnNotebook": {
         "title": "ブラウザで学習させたモデル",
         "description": "デモのノートブックを Notebook タブで実行します。特徴量を analyst として pandas に読み込み、scikit-learn のモデルを学習させ、最もリスクの高い顧客を一覧表示します。Python はブラウザ内で動作し、メールアドレスはマスキングされたままです。"
+      },
+      "churnEveryRole": {
+        "title": "すべてのロールに戻る",
+        "description": "次に、ロール選択が <strong>All</strong> に戻ります。"
       },
       "churnRecap": {
         "title": "ご覧いただいた内容",
