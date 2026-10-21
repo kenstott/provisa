@@ -288,16 +288,11 @@ export function DataProductFormCard({
                 disabled={!form.domainId}
                 value={selectedTableIds}
                 onChange={setSelectedTableIds}
-                // REQ-1634: a table may only join a data product owned by its own domain.
-                // REQ-1443 clause 10: a checker table (one carrying a contract) is a member through the
-                // table it scans, so it is listed but not toggled.
+                // REQ-1634: a table may only join a data product owned by its own domain. A checker
+                // table is toggled as any member is (REQ-1443 PRODUCT ASSIGNMENT).
                 data={tables
                   .filter((tb) => tb.domainId === form.domainId)
-                  .map((tb) => ({
-                    value: String(tb.id),
-                    label: relationName(tb),
-                    disabled: tb.dqContract != null,
-                  }))}
+                  .map((tb) => ({ value: String(tb.id), label: relationName(tb) }))}
                 searchable
                 data-testid="data-product-tables-input"
               />

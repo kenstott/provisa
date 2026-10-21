@@ -143,7 +143,6 @@
     "dataProductLabel": "Produto de dados",
     "dataProductNone": "Nenhum",
     "dataProductDesc": "Publicado no catálogo e exportado para Atlas, Atlan e outros.",
-    "dataProductInherited": "Herdado da tabela que este contrato verifica",
     "enableAggregatesLabel": "Habilitar agregações",
     "enableAggregatesDesc": "(expor o campo raiz _aggregate no GraphQL)",
     "enableGroupByLabel": "Habilitar Group By",

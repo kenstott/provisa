@@ -143,7 +143,6 @@
     "dataProductLabel": "データプロダクト",
     "dataProductNone": "なし",
     "dataProductDesc": "カタログに公開され、Atlas、Atlan などにエクスポートされます。",
-    "dataProductInherited": "このコントラクトがスキャンするテーブルから継承",
     "enableAggregatesLabel": "集計を有効化",
     "enableAggregatesDesc": "（GraphQLで_aggregateルートフィールドを公開）",
     "enableGroupByLabel": "Group Byを有効化",

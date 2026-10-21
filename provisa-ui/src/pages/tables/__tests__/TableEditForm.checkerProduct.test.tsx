@@ -101,7 +101,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     mvAllowedLateness: 0,
     mvExpectedEvents: null,
     mvBusinessDayGrain: false,
-    productId: "orders-product", // server-derived from the scanned table
+    productId: "orders-product", // the product the checker table is assigned to
     enableAggregates: false,
     enableGroupBy: false,
     canDeployToDb: false,
@@ -153,31 +153,30 @@ function renderForm(table: RegisteredTable, sources: Source[]) {
   );
 }
 
-describe("TableEditForm — checker table product membership (REQ-1443 clause 10)", () => {
-  it("shows the inherited product read-only on a checker table", () => {
+describe("TableEditForm — checker table product assignment (REQ-1443 PRODUCT ASSIGNMENT)", () => {
+  it("offers a checker table the same editable product picker as any member", () => {
     renderForm(makeTable(), [CHECKER_SOURCE]);
     const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
+    expect(control).not.toBeDisabled();
     expect(control.value).toBe("Orders");
-    expect(control).toBeDisabled();
-    expect(control).toHaveAttribute("readonly");
-    expect(screen.getByText(t("tableEditForm.dataProductInherited"))).toBeTruthy();
+    expect(screen.getByText(t("tableEditForm.dataProductDesc"))).toBeTruthy();
   });
 
-  it("names no product when the scanned table has none", () => {
+  it("shows no product on a checker table assigned to none", () => {
     renderForm(makeTable({ productId: null }), [CHECKER_SOURCE]);
     const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
-    expect(control.value).toBe(t("tableEditForm.dataProductNone"));
+    expect(control.value).toBe("");
+    expect(control).not.toBeDisabled();
   });
 
   it("keeps the editable picker for an ordinary table", () => {
     renderForm(makeTable({ sourceId: "wh", dqContract: null, productId: null }), [PLAIN_SOURCE]);
     const control = screen.getByTestId("table-edit-product-id") as HTMLInputElement;
     expect(control).not.toBeDisabled();
-    expect(screen.getByText(t("tableEditForm.dataProductDesc"))).toBeTruthy();
   });
 
-  it("never sends a productId for a checker table", () => {
-    expect(buildTableUpdateInput(makeTable()).productId).toBeNull();
+  it("sends a checker table's chosen productId", () => {
+    expect(buildTableUpdateInput(makeTable()).productId).toBe("orders-product");
   });
 
   it("sends the chosen productId for an ordinary table", () => {

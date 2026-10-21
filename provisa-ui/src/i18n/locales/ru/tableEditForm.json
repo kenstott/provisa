@@ -143,7 +143,6 @@
     "dataProductLabel": "Продукт данных",
     "dataProductNone": "Нет",
     "dataProductDesc": "Публикуется в каталоге и экспортируется в Atlas, Atlan и другие.",
-    "dataProductInherited": "Унаследовано от таблицы, которую сканирует этот контракт",
     "enableAggregatesLabel": "Включить агрегаты",
     "enableAggregatesDesc": "(открыть корневое поле _aggregate в GraphQL)",
     "enableGroupByLabel": "Включить группировку",

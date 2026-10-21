@@ -48804,6 +48804,9 @@
   - provisa/api/_meta_views.py
   - provisa/api/_meta_seed.py
   - provisa/api/mcp/table_edit.py
+  - provisa-ui/src/pages/tables/TableEditForm.tsx
+  - provisa-ui/src/pages/tables/helpers.ts
+  - provisa-ui/src/pages/data-products/DataProductFormCard.tsx
   tests:
   - tests/unit/test_app_wiring.py
   - tests/unit/test_metadata_export_data_quality.py

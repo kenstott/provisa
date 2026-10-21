@@ -143,7 +143,6 @@
     "dataProductLabel": "מוצר נתונים",
     "dataProductNone": "ללא",
     "dataProductDesc": "מתפרסם בקטלוג ומיוצא ל-Atlas, Atlan ואחרים.",
-    "dataProductInherited": "בירושה מהטבלה שהחוזה הזה סורק",
     "enableAggregatesLabel": "הפעלת צבירות",
     "enableAggregatesDesc": "(חשיפת שדה השורש _aggregate ב-GraphQL)",
     "enableGroupByLabel": "הפעלת Group By",

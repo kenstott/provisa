@@ -143,7 +143,6 @@
     "dataProductLabel": "數據產品",
     "dataProductNone": "無",
     "dataProductDesc": "發佈到目錄並匯出到 Atlas、Atlan 等。",
-    "dataProductInherited": "繼承自此合約所掃描的數據表",
     "enableAggregatesLabel": "啟用彙總",
     "enableAggregatesDesc": "（在 GraphQL 中公開 _aggregate 根欄位）",
     "enableGroupByLabel": "啟用分組",

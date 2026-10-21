@@ -5789,7 +5789,6 @@
   "hi/tableEditForm.json::tableEditForm.csTtl": "ttl (timer)",
   "hi/tableEditForm.json::tableEditForm.csTtlProbe": "probe + ttl",
   "hi/tableEditForm.json::tableEditForm.dataProductDesc": "Published to the catalog and exported to Atlas, Atlan and others.",
-  "hi/tableEditForm.json::tableEditForm.dataProductInherited": "Inherited from the table this contract scans",
   "hi/tableEditForm.json::tableEditForm.dataProductLabel": "Data Product",
   "hi/tableEditForm.json::tableEditForm.dataProductNone": "None",
   "hi/tableEditForm.json::tableEditForm.dataTypeHeader": "Data Type",

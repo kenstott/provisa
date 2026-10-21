@@ -143,7 +143,6 @@
     "dataProductLabel": "数据产品",
     "dataProductNone": "无",
     "dataProductDesc": "发布到目录并导出到 Atlas、Atlan 等。",
-    "dataProductInherited": "继承自此契约所扫描的表",
     "enableAggregatesLabel": "启用聚合",
     "enableAggregatesDesc": "（在 GraphQL 中公开 _aggregate 根字段）",
     "enableGroupByLabel": "启用分组",
