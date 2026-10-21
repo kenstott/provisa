@@ -142,7 +142,9 @@ def _mode(path: str) -> int:
     return stat.S_IMODE(Path(path).stat().st_mode)
 
 
-async def test_trinos_files_are_its_alone_and_named_by_the_org(tmp_path, monkeypatch):
+async def test_trinos_secret_files_are_its_alone_its_roots_public_and_named_by_the_org(
+    tmp_path, monkeypatch
+):
     monkeypatch.setenv("PROVISA_TRINO_ETC_DIR", str(tmp_path))
     monkeypatch.setattr("provisa.federation.k8s_provisioner.provisioning_available", lambda: False)
     identity = new_identity()
@@ -158,8 +160,13 @@ async def test_trinos_files_are_its_alone_and_named_by_the_org(tmp_path, monkeyp
     assert (written / "acme.pk8").read_bytes()[:1] == b"\x30"  # DER: a SEQUENCE
     assert files.root("scores-src") == "/etc/trino/codehost-client/acme.scores-src.root.crt"
     assert (written / "acme.scores-src.root.crt").read_text() == "HOST PEM"
-    assert {_mode(str(p)) for p in written.iterdir()} == {0o600}
-    assert _mode(str(written)) == 0o700
+    assert {p.name: _mode(str(p)) for p in written.iterdir()} == {
+        "acme.crt": 0o600,
+        "acme.key": 0o600,
+        "acme.pk8": 0o600,
+        "acme.scores-src.root.crt": 0o644,  # public: Trino reads it whoever wrote it
+    }
+    assert _mode(str(written)) == 0o755
 
 
 async def test_on_a_provisioned_shard_trinos_files_go_into_its_secret(monkeypatch):

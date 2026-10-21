@@ -306,13 +306,17 @@ def write_kafka_client_file(path: Path, text: str) -> None:  # REQ-147, REQ-2073
     write_engine_secret_file(path, text.encode("utf-8"), TRINO_UID)
 
 
-def write_engine_secret_file(path: Path, data: bytes, engine_uid: int) -> None:  # REQ-2073
+def write_engine_secret_file(
+    path: Path, data: bytes, engine_uid: int, *, directory_mode: int = 0o700
+) -> None:  # REQ-2073, REQ-2100
     """Write a file that holds a secret for an engine process alone: mode 0600 in a 0700
-    directory. Where the app runs as root (the app image) the file and directory are given to the
-    engine's user (``engine_uid``); otherwise the app runs as that user itself (the development
-    image, uid 1000) or beside an engine of its own user, and they are already its."""
+    directory (``directory_mode``: 0755 where the directory also holds public files the engine
+    must reach whatever their owner, REQ-2100). Where the app runs as root (the app image) the
+    file and directory are given to the engine's user (``engine_uid``); otherwise the app runs as
+    that user itself (the development image, uid 1000) or beside an engine of its own user, and
+    they are already its."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    os.chmod(path.parent, 0o700)
+    os.chmod(path.parent, directory_mode)
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
     try:
         # O_CREAT's mode applies to a new file only; one left by an earlier write is narrowed too.
@@ -322,6 +326,21 @@ def write_engine_secret_file(path: Path, data: bytes, engine_uid: int) -> None: 
         if os.name == "posix" and os.geteuid() == 0:
             os.fchown(fd, engine_uid, engine_uid)
             os.chown(path.parent, engine_uid, engine_uid)
+        os.write(fd, data)
+    finally:
+        os.close(fd)
+
+
+def write_engine_public_file(path: Path, data: bytes) -> None:  # REQ-2100
+    """Write a file an engine reads that holds nothing secret (a CA certificate): mode 0644 in a
+    0755 directory, readable by the engine's process whoever owns it, so no ownership is given."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # The engine runs as another user than the app may: it must traverse the directory; the
+    # secrets beside the certificate are 0600.
+    os.chmod(path.parent, 0o755)  # nosec B103
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o644)
+    try:
+        os.fchmod(fd, 0o644)
         os.write(fd, data)
     finally:
         os.close(fd)

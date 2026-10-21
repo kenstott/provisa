@@ -28,8 +28,9 @@ written where the engine's process reads it, readable by that process alone
 - an engine in the app's own process (DuckDB): a private directory of this process.
 
 Beside it, each built source's host certificate, pinned when it was paired: the root an engine
-verifies the host by (sslmode=verify-ca), as Provisa's own dials check the pin. Written again when
-the source is re-pinned.
+verifies the host by (sslmode=verify-ca), as Provisa's own dials check the pin. A certificate is
+public, so it is written mode 0644 (``write_engine_public_file``) and the engine reads it whatever
+user wrote it. Written again when the source is re-pinned.
 
 Each file is named by the organisation, so two organisations' identities never share one.
 """
@@ -111,11 +112,15 @@ def _all(contents: tuple[dict, dict]) -> dict[str, bytes]:
 def _write(
     directory: Path, at: str, org_id: str, identity: Identity, roots: Mapping[str, str], uid: int
 ) -> Prepared:
-    from provisa.core.trino_catalog_files import write_engine_secret_file
+    from provisa.core.trino_catalog_files import write_engine_public_file, write_engine_secret_file
 
     contents = _contents(org_id, identity, roots)
-    for name, data in _all(contents).items():
-        write_engine_secret_file(directory / name, data, uid)
+    own, pinned = contents
+    for name, data in own.values():
+        write_engine_secret_file(directory / name, data, uid, directory_mode=0o755)
+    # A host's certificate is public: written for any reader, so the engine reads it whoever wrote it.
+    for name, data in pinned.values():
+        write_engine_public_file(directory / name, data)
     return _at(at, contents)
 
 

@@ -85428,11 +85428,13 @@ And reaffirming it records the tag again with today's decider and evidence and r
     is paired with, by REQ-2098''s pairing and pinned certificate, so an engine attaching it presents
     Provisa''s client certificate, and verifies the host as Provisa''s own dials do: by the host certificate
     pinned when it was paired (recorded at connect and again at re-pin), as its root, with sslmode=verify-ca;
-    it is never a public database. Each engine reads the organisation''s identity and the hosts'' certificates
+    it is never a public database. [SUPERSEDED by REQ-2100, 2026-10-21 -- a host''s certificate is public
+    and written for any reader (ROOTS PUBLIC below). Kept here for history; do not implement against it.]
+    Each engine reads the organisation''s identity and the hosts'' certificates
     from files written where its process reads them, readable by it alone: Trino from codehost-client/
     of the engine tree it mounts (a GKE shard from a Secret of its own mounted there), a Postgres engine
     from a directory it shares with Provisa (none shared, as with a managed Postgres, and the table is
-    landed on it), DuckDB from a private directory of Provisa''s process. A connection names the schemas
+    landed on it), DuckDB from a private directory of Provisa''s process. [END SUPERSEDED BLOCK] A connection names the schemas
     the source''s tables are registered under (provisa.schemas), and the host serves each function in
     them. It reports each function''s row count as last answered as pg_class.reltuples, and -1 (unknown)
     before its first call, so the engine''s planner has statistics. RESIDUAL: every read''s parameters
@@ -85513,7 +85515,14 @@ And reaffirming it records the tag again with today's decider and evidence and r
     100"]. With none declared, one batch holds every key. With a size, Provisa splits the keys into chunks
     of that size, calls the function once per chunk, and merges the answers by hash. Discovery refuses
     by name a size declared on a function with no loader parameter, a size that is not a positive integer,
-    and two sizes declared for one function, as it refuses any other declaration the function cannot take.'
+    and two sizes declared for one function, as it refuses any other declaration the function cannot take.
+    (Amended 2026-10-21, ROOTS PUBLIC:) Each engine reads the organisation''s identity and the hosts''
+    certificates from files written where its process reads them: Trino from codehost-client/ of the
+    engine tree it mounts (a GKE shard from a Secret of its own mounted there), a Postgres engine from
+    a directory it shares with Provisa (none shared, as with a managed Postgres, and the table is landed
+    on it), DuckDB from a private directory of Provisa''s process. The directory is 0755. The identity''s
+    files are mode 0600, readable by the engine''s process alone. A host''s pinned certificate is public:
+    it is written mode 0644, so the engine reads it whatever user wrote it, with no ownership given.'
   use_case: 'A data team''s pricing function returns quotes with a score column: an analyst filters WHERE
     score >= 0.8 ORDER BY score DESC LIMIT 10 and joins the quotes to the warehouse''s customers; the
     single-table read is answered by the host directly, the join by the engine attaching the host, and
