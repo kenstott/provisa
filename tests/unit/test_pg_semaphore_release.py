@@ -71,21 +71,35 @@ class _Sets:
 
 def test_only_the_dead_postmasters_own_pg_sets_are_released(monkeypatch):
     removed: list[int] = []
-    _listing(
-        monkeypatch, "linux", _LINUX + "0x0135a0a3 5          runner     600        17\n", removed
-    )
-    monkeypatch.setattr(shm, "_GETVAL", 12)
-    monkeypatch.setattr(shm, "_GETPID", 11)
-    # 3: the dead postmaster's; 4: another postmaster's; 5: not PostgreSQL's (no mark).
-    libc = _Sets({3: (537, 4242), 4: (537, 5151), 5: (1, 4242)})
+    extra = "s 1572866 0x3e22795e --ra------- ken    staff ken    staff     17 15:40:44 15:40:44\n"
+    _listing(monkeypatch, "darwin", _DARWIN + extra, removed)
+    monkeypatch.setattr(shm, "SYSV_SEMAPHORES", True)
+    monkeypatch.setattr(shm, "_GETVAL", 5)
+    monkeypatch.setattr(shm, "_GETPID", 4)
+    # The dead postmaster's; another postmaster's; not PostgreSQL's (no mark).
+    libc = _Sets({1572864: (537, 4242), 1572865: (537, 5151), 1572866: (1, 4242)})
     monkeypatch.setattr(shm.ctypes, "CDLL", lambda *_a, **_k: libc)
     monkeypatch.setattr(shm, "_running", lambda pid: False)
 
     assert shm.release_semaphores(4242) == 1
-    assert removed == [3]
+    assert removed == [1572864]
 
 
 def test_a_running_postmasters_sets_are_left_to_it(monkeypatch):
-    _listing(monkeypatch, "linux", _LINUX)  # no ipcrm may run
+    _listing(monkeypatch, "darwin", _DARWIN)  # no ipcrm may run
+    monkeypatch.setattr(shm, "SYSV_SEMAPHORES", True)
     monkeypatch.setattr(shm, "_running", lambda pid: True)
     assert shm.release_semaphores(4242) == 0
+
+
+def test_where_postgresql_makes_no_sysv_sets_nothing_is_released(monkeypatch):
+    """Linux: PostgreSQL's semaphores are unnamed POSIX ones in its shared memory, so a dead
+    postmaster leaves no System V set, and no set is looked at or removed."""
+    _listing(monkeypatch, "linux", _LINUX)  # no ipcrm may run
+    monkeypatch.setattr(shm, "SYSV_SEMAPHORES", False)
+    monkeypatch.setattr(shm, "_running", lambda pid: False)
+    assert shm.release_semaphores(4242) == 0
+
+
+def test_postgresql_makes_sysv_sets_on_macos_only():
+    assert shm.SYSV_SEMAPHORES is (shm.sys.platform == "darwin")

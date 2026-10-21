@@ -18,7 +18,9 @@ killed (SIGKILL) whose data directory is then deleted leaves it for good: nothin
 macOS allows 32 segments (``kern.sysv.shmmni``), so a few dozen killed servers stopped every later
 ``initdb`` with "could not create shared memory segment: No space left on device".
 
-Its System V semaphore sets leak the same way. PostgreSQL reclaims a dead creator's sets only when
+On macOS its System V semaphore sets leak the same way. (PostgreSQL uses System V semaphores on
+macOS only; on Linux its semaphores are unnamed POSIX ones inside its shared memory, and go with
+it.) PostgreSQL reclaims a dead creator's sets only when
 a later postmaster probes their keys, which start at the data directory's inode: a server on a
 fresh directory never probes them again. macOS allows 87381 semaphores (``kern.sysv.semmns``), 21
 sets of 17 per postmaster, so a few thousand killed servers stopped every later ``initdb`` with
@@ -46,6 +48,10 @@ _SHMEM_LINE = 6
 #: sysv_sema.c). Only the creating postmaster operates on that semaphore, so the pid of the last
 #: operation on it is the creator's.
 _PG_SEMA_MAGIC = 537
+
+#: Whether PostgreSQL makes System V semaphore sets here: on macOS only (Linux builds use unnamed
+#: POSIX semaphores in the shared memory segment).
+SYSV_SEMAPHORES = sys.platform == "darwin"
 
 #: ``semctl`` commands (<sys/sem.h>): they differ between macOS and Linux.
 _GETPID, _GETVAL = (4, 5) if sys.platform == "darwin" else (11, 12)
@@ -113,8 +119,9 @@ def postmaster_semaphore_sets(postmaster_pid: int) -> list[int]:
 
 def release_semaphores(postmaster_pid: int) -> int:
     """Remove the semaphore sets postmaster ``postmaster_pid`` made when it is not running: the
-    number removed. A running postmaster's are left to it."""
-    if _running(postmaster_pid):
+    number removed. A running postmaster's are left to it. Where PostgreSQL makes no System V sets
+    (:data:`SYSV_SEMAPHORES`) there is nothing to remove."""
+    if not SYSV_SEMAPHORES or _running(postmaster_pid):
         return 0
     sets = postmaster_semaphore_sets(postmaster_pid)
     for semid in sets:

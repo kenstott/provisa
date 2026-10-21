@@ -187,6 +187,7 @@ def test_a_killed_postmasters_segment_is_released_when_its_directory_is_reaped()
     postmaster's System V segment. Reaped with the directory that recorded it, it held a slot of
     the machine's 32 until restart; a few dozen such stopped every initdb."""
     from provisa.core.pg_shared_memory import (
+        SYSV_SEMAPHORES,
         _listed,
         postmaster_semaphore_sets,
         recorded_segment,
@@ -198,7 +199,8 @@ def test_a_killed_postmasters_segment_is_released_when_its_directory_is_reaped()
     segment = recorded_segment(orphan_root / "data")
     assert segment is not None and _listed(*segment)
     semaphores = postmaster_semaphore_sets(postmaster)
-    assert semaphores
+    # macOS: System V sets, which outlive a kill. Linux: none (POSIX, in the shared memory).
+    assert bool(semaphores) is SYSV_SEMAPHORES
     starter.send_signal(signal.SIGTERM)
     starter.wait(timeout=30)
     os.kill(postmaster, signal.SIGKILL)
@@ -219,6 +221,7 @@ def test_a_killed_postmasters_segment_is_released_when_its_directory_is_reaped()
 
 def test_a_running_postmasters_segment_is_never_released():
     from provisa.core.pg_shared_memory import (
+        SYSV_SEMAPHORES,
         _listed,
         postmaster_semaphore_sets,
         recorded_segment,
@@ -232,7 +235,7 @@ def test_a_running_postmasters_segment_is_never_released():
         postmaster = _postmaster(pg.root)
         assert postmaster is not None
         semaphores = postmaster_semaphore_sets(postmaster)
-        assert semaphores
+        assert bool(semaphores) is SYSV_SEMAPHORES
         assert release_segment(pg.data) is False
         assert _listed(*segment)
         assert postmaster_semaphore_sets(postmaster) == semaphores
