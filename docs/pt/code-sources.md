@@ -61,9 +61,9 @@ Você passa argumentos como passa qualquer parâmetro de tabela: como condiçõe
 
 Um join pode chegar a uma tabela de código: as linhas de outra tabela fornecem os seus parâmetros, como clientes unidos à sua pontuação de churn. Por padrão, o Provisa chama a função uma vez para cada conjunto distinto de argumentos que as linhas unidas fornecem, e envia todas essas chamadas ao worker numa única requisição.
 
-Uma função que recebe um parâmetro chamado `loader` é chamada, em vez disso, uma vez por lote, o padrão que o DataLoader do GraphQL tornou conhecido. `loader` é uma lista de objetos JSON, uma chave cada, com os valores das linhas unidas para os demais parâmetros da função. O Provisa elimina chaves duplicadas, então cada combinação distinta de valores aparece uma vez. A lista é esparsa: um campo sem valor fica de fora da sua chave em vez de ser enviado como null, de modo que vale o valor padrão da própria função, como numa chamada única.
+Uma função que recebe um parâmetro chamado `loader` é chamada, em vez disso, uma vez por lote, o padrão que o DataLoader do GraphQL tornou conhecido. `loader` é um hash: um dict (um objeto em TypeScript) que vai de um hash estável de cada chave à própria chave, um objeto JSON com os valores das linhas unidas para os demais parâmetros da função. O Provisa elimina chaves duplicadas, então cada combinação distinta de valores aparece uma vez. Uma chave é esparsa: um campo sem valor fica de fora em vez de ser enviado como null, de modo que vale o valor padrão da própria função, como numa chamada única.
 
-A função devolve linhas comuns que trazem as suas colunas de chave, e o Provisa as une de volta às linhas unidas por essas colunas, nunca pela posição. As linhas podem voltar em qualquer ordem, e uma chave pode dar nenhuma linha ou muitas.
+A função devolve a mesma forma: um hash que vai de cada chave recebida às linhas dessa chave, linhas comuns da tabela. O Provisa entrega as linhas de cada chave a todas as linhas unidas que compartilhavam a chave, e uma chave pode corresponder a nenhuma linha ou a muitas. Associar pelo hash, e não pelos valores das linhas, mantém associada uma chave esparsa: a função preenche os campos ausentes com valores padrão, então os valores que ela vê diferem dos da linha unida. O Provisa calcula o hash; a função apenas devolve as chaves que recebeu. A função continua declarando só o seu tipo de linha, uma lista de linhas, e as linhas de cada chave são desse tipo. Os seus parâmetros ao lado de `loader` precisam de valores padrão, porque uma chamada com loader passa só `loader`.
 
 Use `loader` quando uma chamada sobre muitas chaves funciona melhor do que muitas chamadas sobre uma:
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-Unida a uma tabela de clientes, ela é chamada com `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. A segunda chave traz só `customer_id`, então o plano e a região recebem os valores padrão. Cada linha devolvida traz `customer_id`, `plan` e `region`, e o Provisa a associa ao seu cliente por eles.
+Unida a uma tabela de clientes, ela é chamada com um `loader` como `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. A segunda chave traz só `customer_id`, então o plano e a região recebem os valores padrão. A função devolve `{"9f2c...": [...], "41ab...": [...], ...}`, e o Provisa entrega cada lista de linhas a cada linha de cliente que compartilhava essa chave.
 
 A mesma função em TypeScript:
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

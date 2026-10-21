@@ -61,9 +61,9 @@ Node 代码在 Node.js、Bun 或 Deno 上运行，由您选择。Python 代码�
 
 连接可以到达代码表：另一个表的行为它提供参数，例如把客户连接到他们的流失评分。默认情况下，Provisa 对连接行给出的每一组不同参数调用一次函数，并把所有这些调用放在一个请求中发给 worker。
 
-带有名为 `loader` 参数的函数则改为每个批次调用一次，即 GraphQL 的 DataLoader 推广开来的模式。`loader` 是一个 JSON 对象列表，每个对象是一个键，存放连接行为函数其他参数提供的值。Provisa 会去除重复的键，因此每种不同的取值组合只出现一次。这个列表是稀疏的：没有值的字段会从键中省略，而不是以 null 发送，于是函数自己的默认值生效，与单次调用时一样。
+带有名为 `loader` 参数的函数则改为每个批次调用一次，即 GraphQL 的 DataLoader 推广开来的模式。`loader` 是一个哈希：一个字典（在 TypeScript 中是对象），从每个键的稳定哈希映射到键本身，即一个 JSON 对象，存放连接行为函数其他参数提供的值。Provisa 会去除重复的键，因此每种不同的取值组合只出现一次。键是稀疏的：没有值的字段会被省略，而不是以 null 发送，于是函数自己的默认值生效，与单次调用时一样。
 
-函数返回普通的行，每行带有其键列，Provisa 按这些列把它们连接回连接行，从不按位置。行可以按任意顺序返回，一个键可以对应零行或多行。
+函数返回同样的形状：一个哈希，从它收到的每个键映射到该键的行，即表的普通行。Provisa 把每个键的行交给共享该键的每一个连接行，一个键可以对应零行或多行。按哈希而不是按行的取值匹配，能让稀疏键也保持匹配：函数会用默认值填补它缺失的字段，因此函数看到的值与连接行的值不同。哈希由 Provisa 计算；函数只需原样返回它收到的键。函数仍然只声明它的行类型，即行的列表，每个键的行都是这个类型。与 `loader` 并列的参数必须有默认值，因为 loader 调用只传入 `loader`。
 
 当一次处理多个键的调用比多次各处理一个键的调用更好时，使用 `loader`：
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-连接到客户表时，它以 `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]` 被调用。第二个键只带有 `customer_id`，所以它的 plan 和 region 取默认值。返回的每一行都带有 `customer_id`、`plan` 和 `region`，Provisa 按这些列把它匹配到对应的客户。
+连接到客户表时，它以类似 `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` 的 `loader` 被调用。第二个键只带有 `customer_id`，所以它的 plan 和 region 取默认值。函数返回 `{"9f2c...": [...], "41ab...": [...], ...}`，Provisa 把每个行列表交给共享该键的每一个客户行。
 
 同一个函数的 TypeScript 写法：
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

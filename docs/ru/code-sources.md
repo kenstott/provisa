@@ -61,9 +61,9 @@ Lockfile необязателен, но без него две установк�
 
 Join может дойти до таблицы кода: строки другой таблицы задают её параметры, например клиенты, соединённые со своей оценкой оттока. По умолчанию Provisa вызывает функцию один раз для каждого отдельного набора аргументов, которые дают соединяемые строки, и отправляет все эти вызовы воркеру одним запросом.
 
-Функция с параметром `loader` вместо этого вызывается один раз на пакет, по образцу DataLoader из GraphQL. `loader` — это список JSON-объектов, по одному ключу в каждом, со значениями соединяемых строк для остальных параметров функции. Provisa убирает повторяющиеся ключи, так что каждое отдельное сочетание значений встречается один раз. Список разрежённый: поле без значения не включается в ключ, а не передаётся как null, поэтому действует собственное значение функции по умолчанию, как при одиночном вызове.
+Функция с параметром `loader` вместо этого вызывается один раз на пакет, по образцу DataLoader из GraphQL. `loader` — это хеш: словарь (объект в TypeScript), сопоставляющий стабильному хешу каждого ключа сам ключ, JSON-объект со значениями соединяемых строк для остальных параметров функции. Provisa убирает повторяющиеся ключи, так что каждое отдельное сочетание значений встречается один раз. Ключ разрежённый: поле без значения не включается, а не передаётся как null, поэтому действует собственное значение функции по умолчанию, как при одиночном вызове.
 
-Функция возвращает обычные строки со своими ключевыми столбцами, и Provisa соединяет их обратно с соединяемыми строками по этим столбцам, никогда не по позиции. Строки могут вернуться в любом порядке, а ключ может дать ни одной строки или много.
+Функция возвращает ту же форму: хеш, сопоставляющий каждому полученному ключу строки этого ключа, обычные строки таблицы. Provisa отдаёт строки каждого ключа всем соединяемым строкам, у которых был этот ключ, и ключу может соответствовать ни одной строки или много. Сопоставление по хешу, а не по значениям строк, сохраняет сопоставление для разрежённого ключа: функция заполняет его недостающие поля значениями по умолчанию, поэтому значения, которые она видит, отличаются от значений соединяемой строки. Хеш вычисляет Provisa; функция лишь возвращает полученные ключи. Функция по-прежнему объявляет только свой тип строки, список строк, и строки каждого ключа имеют этот тип. Её параметрам рядом с `loader` нужны значения по умолчанию, потому что вызов с loader передаёт только `loader`.
 
 Используйте `loader`, когда один вызов на много ключей лучше, чем много вызовов на один ключ:
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-При соединении с таблицей клиентов она вызывается с `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. Второй ключ содержит только `customer_id`, поэтому тариф и регион получают значения по умолчанию. Каждая возвращённая строка содержит `customer_id`, `plan` и `region`, и Provisa сопоставляет её с её клиентом по ним.
+При соединении с таблицей клиентов она вызывается с `loader` вида `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. Второй ключ содержит только `customer_id`, поэтому тариф и регион получают значения по умолчанию. Функция возвращает `{"9f2c...": [...], "41ab...": [...], ...}`, и Provisa отдаёт каждый список строк каждой строке клиента с этим ключом.
 
 Та же функция на TypeScript:
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

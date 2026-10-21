@@ -61,9 +61,9 @@ Vous passez les arguments comme n'importe quel paramètre de table : en conditio
 
 Une jointure peut atteindre une table de code : les lignes d'une autre table fournissent ses paramètres, comme des clients joints à leur score d'attrition. Par défaut, Provisa appelle la fonction une fois pour chaque ensemble distinct d'arguments que donnent les lignes jointes, et envoie tous ces appels au worker en une seule requête.
 
-Une fonction qui prend un paramètre nommé `loader` est appelée à la place une fois par lot, le motif que DataLoader de GraphQL a rendu familier. `loader` est une liste d'objets JSON, une clé chacun, contenant les valeurs des lignes jointes pour les autres paramètres de la fonction. Provisa dédoublonne les clés, si bien que chaque combinaison distincte de valeurs n'apparaît qu'une fois. La liste est creuse : un champ sans valeur est omis de sa clé au lieu d'être envoyé à null, de sorte que la valeur par défaut de la fonction s'applique, comme lors d'un appel unique.
+Une fonction qui prend un paramètre nommé `loader` est appelée à la place une fois par lot, le motif que DataLoader de GraphQL a rendu familier. `loader` est un hash : un dict (un objet en TypeScript) qui associe un hash stable de chaque clé à la clé elle-même, un objet JSON contenant les valeurs des lignes jointes pour les autres paramètres de la fonction. Provisa dédoublonne les clés, si bien que chaque combinaison distincte de valeurs n'apparaît qu'une fois. Une clé est creuse : un champ sans valeur est omis au lieu d'être envoyé à null, de sorte que la valeur par défaut de la fonction s'applique, comme lors d'un appel unique.
 
-La fonction renvoie des lignes ordinaires qui portent leurs colonnes de clé, et Provisa les rejoint aux lignes jointes sur ces colonnes, jamais par position. Les lignes peuvent revenir dans n'importe quel ordre, et une clé peut donner zéro ou plusieurs lignes.
+La fonction renvoie la même forme : un hash qui associe chaque clé reçue aux lignes de cette clé, des lignes ordinaires de la table. Provisa donne les lignes de chaque clé à toutes les lignes jointes qui partageaient cette clé, et une clé peut correspondre à zéro ou plusieurs lignes. Rapprocher par le hash, et non par les valeurs des lignes, garde une clé creuse rapprochée : la fonction complète ses champs manquants avec des valeurs par défaut, donc les valeurs qu'elle voit diffèrent de celles de la ligne jointe. Provisa calcule le hash ; la fonction ne fait que renvoyer les clés qu'elle a reçues. La fonction déclare toujours son seul type de ligne, une liste de lignes, et les lignes de chaque clé sont de ce type. Ses paramètres à côté de `loader` ont besoin de valeurs par défaut, car un appel avec loader ne passe que `loader`.
 
 Utilisez `loader` quand un appel sur de nombreuses clés fait mieux que de nombreux appels sur une seule :
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-Jointe à une table de clients, elle est appelée avec `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. La deuxième clé ne porte que `customer_id`, donc son plan et sa région prennent les valeurs par défaut. Chaque ligne renvoyée porte `customer_id`, `plan` et `region`, et Provisa la rapproche de son client par ces colonnes.
+Jointe à une table de clients, elle est appelée avec un `loader` tel que `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. La deuxième clé ne porte que `customer_id`, donc son plan et sa région prennent les valeurs par défaut. La fonction renvoie `{"9f2c...": [...], "41ab...": [...], ...}`, et Provisa donne chaque liste de lignes à chaque ligne de client qui partageait cette clé.
 
 La même fonction en TypeScript :
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

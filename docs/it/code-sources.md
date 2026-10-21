@@ -61,9 +61,9 @@ Gli argomenti si passano come qualsiasi parametro di tabella: come condizioni `_
 
 Un join può raggiungere una tabella di codice: le righe di un'altra tabella forniscono i suoi parametri, come i clienti uniti al loro punteggio di abbandono. Per impostazione predefinita Provisa chiama la funzione una volta per ogni insieme distinto di argomenti fornito dalle righe unite, e invia tutte queste chiamate al worker in una sola richiesta.
 
-Una funzione che accetta un parametro chiamato `loader` viene invece chiamata una volta per lotto, lo schema reso familiare da DataLoader di GraphQL. `loader` è una lista di oggetti JSON, una chiave ciascuno, con i valori delle righe unite per gli altri parametri della funzione. Provisa elimina le chiavi duplicate, così ogni combinazione distinta di valori compare una volta. La lista è sparsa: un campo senza valore viene omesso dalla sua chiave invece di essere inviato come null, così vale il valore predefinito della funzione stessa, come in una chiamata singola.
+Una funzione che accetta un parametro chiamato `loader` viene invece chiamata una volta per lotto, lo schema reso familiare da DataLoader di GraphQL. `loader` è un hash: un dict (un oggetto in TypeScript) che associa un hash stabile di ogni chiave alla chiave stessa, un oggetto JSON con i valori delle righe unite per gli altri parametri della funzione. Provisa elimina le chiavi duplicate, così ogni combinazione distinta di valori compare una volta. Una chiave è sparsa: un campo senza valore viene omesso invece di essere inviato come null, così vale il valore predefinito della funzione stessa, come in una chiamata singola.
 
-La funzione restituisce righe normali che portano le loro colonne chiave, e Provisa le riunisce alle righe unite su quelle colonne, mai per posizione. Le righe possono tornare in qualsiasi ordine, e una chiave può dare zero righe o molte.
+La funzione restituisce la stessa forma: un hash da ogni chiave ricevuta alle righe di quella chiave, righe normali della tabella. Provisa assegna le righe di ogni chiave a tutte le righe unite che condividevano quella chiave, e una chiave può corrispondere a zero righe o a molte. Associare tramite l'hash, e non tramite i valori delle righe, mantiene associata una chiave sparsa: la funzione riempie i campi mancanti con i valori predefiniti, quindi i valori che vede differiscono da quelli della riga unita. Provisa calcola l'hash; la funzione si limita a restituire le chiavi ricevute. La funzione dichiara comunque solo il suo tipo di riga, una lista di righe, e le righe di ogni chiave sono di quel tipo. I suoi parametri accanto a `loader` devono avere valori predefiniti, perché una chiamata con loader passa solo `loader`.
 
 Usate `loader` quando una chiamata su molte chiavi rende meglio di molte chiamate su una:
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-Unita a una tabella di clienti, viene chiamata con `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. La seconda chiave porta solo `customer_id`, quindi piano e regione prendono i valori predefiniti. Ogni riga restituita porta `customer_id`, `plan` e `region`, e Provisa la associa al suo cliente in base a questi.
+Unita a una tabella di clienti, viene chiamata con un `loader` come `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. La seconda chiave porta solo `customer_id`, quindi piano e regione prendono i valori predefiniti. La funzione restituisce `{"9f2c...": [...], "41ab...": [...], ...}`, e Provisa assegna ogni lista di righe a ogni riga cliente che condivideva quella chiave.
 
 La stessa funzione in TypeScript:
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

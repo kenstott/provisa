@@ -61,9 +61,9 @@ Node 程式碼在 Node.js、Bun 或 Deno 上執行，由您選擇。Python 程�
 
 連接可以到達程式碼表：另一個表的行為它提供參數，例如把客戶連接到他們的流失評分。預設情況下，Provisa 對連接行給出的每一組不同參數調用一次函數，並把所有這些調用放在一個請求中發給 worker。
 
-帶有名為 `loader` 參數的函數則改為每個批次調用一次，即 GraphQL 的 DataLoader 推廣開來的模式。`loader` 是一個 JSON 物件列表，每個物件是一個鍵，存放連接行為函數其他參數提供的值。Provisa 會去除重複的鍵，因此每種不同的取值組合只出現一次。這個列表是稀疏的：沒有值的欄位會從鍵中省略，而不是以 null 發送，於是函數自己的預設值生效，與單次調用時一樣。
+帶有名為 `loader` 參數的函數則改為每個批次調用一次，即 GraphQL 的 DataLoader 推廣開來的模式。`loader` 是一個雜湊：一個字典（在 TypeScript 中是物件），從每個鍵的穩定雜湊映射到鍵本身，即一個 JSON 物件，存放連接行為函數其他參數提供的值。Provisa 會去除重複的鍵，因此每種不同的取值組合只出現一次。鍵是稀疏的：沒有值的欄位會被省略，而不是以 null 發送，於是函數自己的預設值生效，與單次調用時一樣。
 
-函數返回普通的行，每行帶有其鍵欄，Provisa 按這些欄把它們連接回連接行，從不按位置。行可以按任意順序返回，一個鍵可以對應零行或多行。
+函數返回同樣的形狀：一個雜湊，從它收到的每個鍵映射到該鍵的行，即表的普通行。Provisa 把每個鍵的行交給共享該鍵的每一個連接行，一個鍵可以對應零行或多行。按雜湊而不是按行的取值匹配，能讓稀疏鍵也保持匹配：函數會用預設值填補它缺失的欄位，因此函數看到的值與連接行的值不同。雜湊由 Provisa 計算；函數只需原樣返回它收到的鍵。函數仍然只宣告它的行類型，即行的列表，每個鍵的行都是這個類型。與 `loader` 並列的參數必須有預設值，因為 loader 調用只傳入 `loader`。
 
 當一次處理多個鍵的調用比多次各處理一個鍵的調用更好時，使用 `loader`：
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-連接到客戶表時，它以 `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]` 被調用。第二個鍵只帶有 `customer_id`，所以它的 plan 和 region 取預設值。返回的每一行都帶有 `customer_id`、`plan` 和 `region`，Provisa 按這些欄把它匹配到對應的客戶。
+連接到客戶表時，它以類似 `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` 的 `loader` 被調用。第二個鍵只帶有 `customer_id`，所以它的 plan 和 region 取預設值。函數返回 `{"9f2c...": [...], "41ab...": [...], ...}`，Provisa 把每個行列表交給共享該鍵的每一個客戶行。
 
 同一個函數的 TypeScript 寫法：
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

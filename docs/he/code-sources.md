@@ -61,9 +61,9 @@ lockfile הוא אופציונלי, אבל בלעדיו שתי התקנות של
 
 ‏join יכול להגיע לטבלת קוד: השורות של טבלה אחרת מספקות את הפרמטרים שלה, כמו לקוחות שמצורפים לציון הנטישה שלהם. כברירת מחדל Provisa קורא לפונקציה פעם אחת לכל צירוף נפרד של ארגומנטים שהשורות המצורפות נותנות, ושולח את כל הקריאות האלה ל-worker בבקשה אחת.
 
-פונקציה שמקבלת פרמטר בשם `loader` נקראת במקום זאת פעם אחת לכל אצווה, לפי הדפוס ש-DataLoader של GraphQL הפך למוכר. ‏`loader` הוא רשימה של אובייקטי JSON, מפתח אחד בכל אחד, שמחזיקים את ערכי השורות המצורפות עבור שאר הפרמטרים של הפונקציה. Provisa מסיר מפתחות כפולים, כך שכל צירוף נפרד של ערכים מופיע פעם אחת. הרשימה דלילה: שדה בלי ערך מושמט מהמפתח שלו במקום להישלח כ-null, כך שערך ברירת המחדל של הפונקציה עצמה חל, כמו בקריאה יחידה.
+פונקציה שמקבלת פרמטר בשם `loader` נקראת במקום זאת פעם אחת לכל אצווה, לפי הדפוס ש-DataLoader של GraphQL הפך למוכר. ‏`loader` הוא hash: מילון (אובייקט ב-TypeScript) מ-hash יציב של כל מפתח אל המפתח עצמו, אובייקט JSON שמחזיק את ערכי השורות המצורפות עבור שאר הפרמטרים של הפונקציה. Provisa מסיר מפתחות כפולים, כך שכל צירוף נפרד של ערכים מופיע פעם אחת. מפתח הוא דליל: שדה בלי ערך מושמט במקום להישלח כ-null, כך שערך ברירת המחדל של הפונקציה עצמה חל, כמו בקריאה יחידה.
 
-הפונקציה מחזירה שורות רגילות שנושאות את עמודות המפתח שלהן, ו-Provisa מצרף אותן חזרה לשורות המצורפות לפי העמודות האלה, אף פעם לא לפי מיקום. השורות יכולות לחזור בכל סדר, ומפתח יכול לתת אפס שורות או הרבה.
+הפונקציה מחזירה את אותה צורה: hash מכל מפתח שקיבלה אל השורות של אותו מפתח, שורות רגילות של הטבלה. Provisa נותן את השורות של כל מפתח לכל שורה מצורפת שחלקה את המפתח, ומפתח יכול להצביע על אפס שורות או על הרבה. התאמה לפי ה-hash, ולא לפי ערכי השורות, שומרת על התאמה של מפתח דליל: הפונקציה ממלאת את השדות החסרים שלו בערכי ברירת מחדל, ולכן הערכים שהיא רואה שונים מאלה של השורה המצורפת. ‏Provisa מחשב את ה-hash; הפונקציה רק מחזירה את המפתחות שקיבלה. הפונקציה עדיין מצהירה רק על סוג השורה שלה, רשימת שורות, והשורות של כל מפתח הן מהסוג הזה. הפרמטרים שלה לצד `loader` צריכים ערכי ברירת מחדל, כי קריאת loader מעבירה רק את `loader`.
 
 השתמשו ב-`loader` כשקריאה אחת על מפתחות רבים עדיפה על קריאות רבות על מפתח אחד:
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-כשהיא מצורפת לטבלת לקוחות, היא נקראת עם `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. המפתח השני נושא רק את `customer_id`, ולכן התוכנית והאזור שלו מקבלים את ערכי ברירת המחדל. כל שורה שמוחזרת נושאת `customer_id`, ‏`plan` ו-`region`, ו-Provisa מתאים אותה ללקוח שלה לפיהם.
+כשהיא מצורפת לטבלת לקוחות, היא נקראת עם `loader` כמו `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. המפתח השני נושא רק את `customer_id`, ולכן התוכנית והאזור שלו מקבלים את ערכי ברירת המחדל. הפונקציה מחזירה `{"9f2c...": [...], "41ab...": [...], ...}`, ו-Provisa נותן כל רשימת שורות לכל שורת לקוח שחלקה את המפתח הזה.
 
 אותה פונקציה ב-TypeScript:
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

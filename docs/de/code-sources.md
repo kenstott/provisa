@@ -61,9 +61,9 @@ Argumente übergeben Sie wie jeden Tabellenparameter: als `_nf_`-Bedingungen in 
 
 Ein Join kann eine Code-Tabelle erreichen: Die Zeilen einer anderen Tabelle liefern ihre Parameter, etwa Kunden, die mit ihrem Churn-Score verknüpft werden. Standardmäßig ruft Provisa die Funktion einmal für jede eindeutige Kombination von Argumenten auf, die die verknüpften Zeilen liefern, und sendet alle diese Aufrufe in einer Anfrage an den Worker.
 
-Eine Funktion mit einem Parameter namens `loader` wird stattdessen einmal pro Batch aufgerufen, nach dem Muster, das DataLoader aus GraphQL bekannt gemacht hat. `loader` ist eine Liste von JSON-Objekten, je ein Schlüssel, mit den Werten der verknüpften Zeilen für die übrigen Parameter der Funktion. Provisa entfernt doppelte Schlüssel, sodass jede eindeutige Kombination von Werten einmal vorkommt. Die Liste ist dünn besetzt: Ein Feld ohne Wert fehlt in seinem Schlüssel, statt als null gesendet zu werden, sodass der eigene Standardwert der Funktion gilt, wie bei einem einzelnen Aufruf.
+Eine Funktion mit einem Parameter namens `loader` wird stattdessen einmal pro Batch aufgerufen, nach dem Muster, das DataLoader aus GraphQL bekannt gemacht hat. `loader` ist ein Hash: ein Dict (in TypeScript ein Objekt) von einem stabilen Hash jedes Schlüssels auf den Schlüssel selbst, ein JSON-Objekt mit den Werten der verknüpften Zeilen für die übrigen Parameter der Funktion. Provisa entfernt doppelte Schlüssel, sodass jede eindeutige Kombination von Werten einmal vorkommt. Ein Schlüssel ist dünn besetzt: Ein Feld ohne Wert fehlt, statt als null gesendet zu werden, sodass der eigene Standardwert der Funktion gilt, wie bei einem einzelnen Aufruf.
 
-Die Funktion gibt gewöhnliche Zeilen zurück, die ihre Schlüsselspalten tragen, und Provisa verknüpft sie über diese Spalten mit den verknüpften Zeilen, nie über die Position. Die Zeilen können in beliebiger Reihenfolge zurückkommen, und ein Schlüssel kann keine oder viele Zeilen liefern.
+Die Funktion gibt dieselbe Form zurück: einen Hash von jedem erhaltenen Schlüssel auf die Zeilen dieses Schlüssels, gewöhnliche Zeilen der Tabelle. Provisa gibt die Zeilen jedes Schlüssels an jede verknüpfte Zeile, die diesen Schlüssel teilte, und ein Schlüssel kann auf keine oder viele Zeilen zeigen. Die Zuordnung über den Hash statt über die Werte der Zeilen hält einen dünn besetzten Schlüssel zugeordnet: Die Funktion füllt seine fehlenden Felder mit Standardwerten, also unterscheiden sich die Werte, die sie sieht, von denen der verknüpften Zeile. Provisa berechnet den Hash; die Funktion gibt nur die erhaltenen Schlüssel zurück. Die Funktion deklariert weiterhin nur ihren Zeilentyp, eine Liste von Zeilen, und die Zeilen jedes Schlüssels haben diesen Typ. Ihre Parameter neben `loader` brauchen Standardwerte, weil ein Loader-Aufruf nur `loader` übergibt.
 
 Verwenden Sie `loader`, wenn ein Aufruf über viele Schlüssel besser ist als viele Aufrufe über je einen:
 
@@ -87,25 +87,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-Mit einer Kundentabelle verknüpft, wird sie mit `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]` aufgerufen. Der zweite Schlüssel trägt nur `customer_id`, also gelten für Plan und Region die Standardwerte. Jede zurückgegebene Zeile trägt `customer_id`, `plan` und `region`, und Provisa ordnet sie darüber ihrem Kunden zu.
+Mit einer Kundentabelle verknüpft, wird sie mit einem `loader` wie `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}` aufgerufen. Der zweite Schlüssel trägt nur `customer_id`, also gelten für Plan und Region die Standardwerte. Die Funktion gibt `{"9f2c...": [...], "41ab...": [...], ...}` zurück, und Provisa gibt jede Liste von Zeilen an jede Kundenzeile, die diesen Schlüssel teilte.
 
 Dieselbe Funktion in TypeScript:
 
@@ -118,8 +120,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -127,15 +127,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 

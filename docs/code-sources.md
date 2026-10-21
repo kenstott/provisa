@@ -192,9 +192,9 @@ You pass arguments the way you pass any table parameter: as `_nf_` conditions in
 
 A join can reach a code table: the rows of another table supply its parameters, as in customers joined to their churn score. By default Provisa calls the function once for each distinct set of arguments the joining rows give, and sends all those calls to the worker in one request.
 
-A function that takes a parameter named `loader` is called once per batch instead, the pattern GraphQL's DataLoader made familiar. `loader` is a list of JSON objects, one key each, holding the joining rows' values for the function's other parameters. Provisa de-duplicates the keys, so each distinct combination of values appears once. The list is sparse: a field with no value is left out of its key rather than sent as null, so the function's own default applies, as it does on a single call.
+A function that takes a parameter named `loader` is called once per batch instead, the pattern GraphQL's DataLoader made familiar. `loader` is a hash: a dict (an object in TypeScript) from a stable hash of each key to the key itself, a JSON object holding the joining rows' values for the function's other parameters. Provisa de-duplicates the keys, so each distinct combination of values appears once. A key is sparse: a field with no value is left out rather than sent as null, so the function's own default applies, as it does on a single call.
 
-The function returns ordinary rows that carry their key columns, and Provisa joins them back to the joining rows on those columns, never by position. The rows can come back in any order, and a key can give no rows or many.
+The function returns the same shape: a hash from each key it was given to that key's rows, ordinary rows of the table. Provisa gives each key's rows to every joining row that shared the key, and a key can map to no rows or many. Matching by the hash, not by the rows' values, keeps a sparse key matched: the function fills its missing fields with defaults, so the values it sees differ from the joining row's. Provisa computes the hash; the function only echoes back the keys it was given. The function still declares its row type alone, a list of rows, and each key's rows are of that type. Its parameters beside `loader` need defaults, because a loader call passes `loader` alone.
 
 Use `loader` when one call over many keys does better than many calls over one:
 
@@ -218,25 +218,27 @@ class CustomerKey(TypedDict, total=False):
 @dataclass
 class Score:
     customer_id: str
-    plan: str
-    region: str
     score: float
 
 
 def churn_score(
-    customer_id: str, plan: str = "basic", region: str = "US", loader: list[CustomerKey] | None = None
+    customer_id: str | None = None,
+    plan: str = "basic",
+    region: str = "US",
+    loader: dict[str, CustomerKey] | None = None,
 ) -> list[Score]:
     """Churn score of each customer in the batch.
 
     @table
     """
-    keys = loader or [{"customer_id": customer_id, "plan": plan, "region": region}]
-    rows = [{"plan": "basic", "region": "US", **key} for key in keys]
-    scores = MODEL.predict(features(rows))  # one vectorized call for the whole batch
-    return [Score(r["customer_id"], r["plan"], r["region"], s) for r, s in zip(rows, scores)]
+    keys = loader or {"": {"customer_id": customer_id, "plan": plan, "region": region}}
+    rows = {h: {"plan": "basic", "region": "US", **key} for h, key in keys.items()}
+    scores = MODEL.predict(features(list(rows.values())))  # one vectorized call for the batch
+    out = {h: [Score(r["customer_id"], s)] for (h, r), s in zip(rows.items(), scores)}
+    return out if loader else out[""]  # a loader call returns the hash of key to rows
 ```
 
-Joined to a table of customers, it is called with `loader=[{"customer_id": "637", "plan": "pro", "region": "EU"}, {"customer_id": "638"}, ...]`. The second key carries only `customer_id`, so its plan and region take the defaults. Each row returned carries `customer_id`, `plan` and `region`, and Provisa matches it to its customer on them.
+Joined to a table of customers, it is called with a `loader` such as `{"9f2c...": {"customer_id": "637", "plan": "pro", "region": "EU"}, "41ab...": {"customer_id": "638"}, ...}`. The second key carries only `customer_id`, so its plan and region take the defaults. The function returns `{"9f2c...": [...], "41ab...": [...], ...}`, and Provisa gives each list of rows to every customer row that shared that key.
 
 The same function in TypeScript:
 
@@ -249,8 +251,6 @@ export interface CustomerKey {
 
 export interface Score {
   customer_id: string;
-  plan: string;
-  region: string;
   score: number;
 }
 
@@ -258,15 +258,18 @@ export interface Score {
  * @table
  */
 export async function churnScore(
-  customer_id: string,
+  customer_id?: string,
   plan = "basic",
   region = "US",
-  loader?: CustomerKey[],
+  loader?: Record<string, CustomerKey>,
 ): Promise<Score[]> {
-  const keys = loader ?? [{ customer_id, plan, region }];
-  const rows = keys.map((key) => ({ plan: "basic", region: "US", ...key }));
-  const scores = await model.predict(rows); // one call for the whole batch
-  return rows.map((row, i) => ({ ...row, score: scores[i] }) as Score);
+  const keys = loader ?? { "": { customer_id, plan, region } };
+  const rows = Object.entries(keys).map(([h, key]) => [h, { plan: "basic", region: "US", ...key }] as const);
+  const scores = await model.predict(rows.map(([, row]) => row)); // one call for the whole batch
+  const out = Object.fromEntries(
+    rows.map(([h, row], i) => [h, [{ customer_id: row.customer_id, score: scores[i] }]]),
+  );
+  return loader ? out : out[""]; // a loader call returns the hash of key to rows
 }
 ```
 
