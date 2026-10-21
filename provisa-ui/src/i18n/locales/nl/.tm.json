@@ -7391,5 +7391,15 @@
   "nl/codeSourceFields.json::codeSourceFields.exportsNone": "The code exports no functions",
   "nl/codeSourceFields.json::codeSourceFields.exportKind_table": "table",
   "nl/codeSourceFields.json::codeSourceFields.exportKind_command": "command",
-  "nl/codeSourceFields.json::codeSourceFields.exportKind_stream": "stream"
+  "nl/codeSourceFields.json::codeSourceFields.exportKind_stream": "stream",
+  "nl/tour.json::tour.steps.profilingDrift.title": "What changed since the last run",
+  "nl/tour.json::tour.steps.profilingDrift.description": "Setup ran the profiler twice, and between the runs the CRM's next sync wrote every US postal code as ZIP+4. The drift table compares each measure with the previous run's: the measures postal_code's change moved are flagged drifting, and the columns the sync left alone are not.",
+  "nl/tour.json::tour.steps.profilingOriginal.title": "The real customers",
+  "nl/tour.json::tour.steps.profilingOriginal.description": "Ten customers as the CRM holds them. Next, the same statement in an environment generated from the profile.",
+  "nl/tour.json::tour.steps.profilingToSynthetic.title": "Switch to synthetic",
+  "nl/tour.json::tour.steps.profilingToSynthetic.description": "Next, the switcher moves to <strong>synthetic</strong>, a Test (synthetic) environment.",
+  "nl/tour.json::tour.steps.profilingSynthetic.title": "Generated from the profile",
+  "nl/tour.json::tour.steps.profilingSynthetic.description": "The same statement in synthetic: every row generated from the customers' profile, with the same columns, value shapes and spread, and none of the real customers. The profile is enough to generate test data from.",
+  "nl/tour.json::tour.steps.profilingToProd.title": "Back to production",
+  "nl/tour.json::tour.steps.profilingToProd.description": "Next, the switcher returns to prod."
 }

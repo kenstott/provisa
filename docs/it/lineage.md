@@ -48,6 +48,7 @@ fino a ciascun output.
 | `source` | Verde | Una colonna di tabella di base |
 | `derived` | Blu | Prodotta da un'espressione SQL (funzione, operatore, CTE) |
 | `command` | Viola | Una colonna di output di un comando registrato |
+| `native` | Arancione | Il campo grezzo che una sorgente legge, sotto la colonna di una tabella registrata |
 
 Anelli aggiuntivi su un nodo:
 
@@ -65,6 +66,27 @@ elenco di operazioni nominate: funzioni SQL (`sql_function`), operatori aritmeti
 
 Un arco che nasce da una chiamata a comando viene disegnato nella UI come una linea viola
 tratteggiata.
+
+### Sotto la tabella registrata
+
+Un utente con la registrazione delle sorgenti vede un passaggio in più sotto ogni colonna sorgente: il campo come la sorgente lo legge, in un riquadro per il luogo da cui è letto. Il riquadro porta il logo e l'etichetta di tipo della sorgente, come li mostra la pagina Sources, e l'indirizzo secondo il tipo di sorgente:
+
+| Sorgente | Indirizzo |
+| --- | --- |
+| OpenAPI | L'operazione (`GET /v2/customers`), i suoi parametri fissi e la posizione delle righe |
+| Remote GraphQL | Il campo radice, i suoi argomenti obbligatori e la posizione delle righe |
+| MongoDB, Cosmos DB | Il database e la collezione o il container |
+| Elasticsearch, Qdrant | L'indice o la collezione |
+| CSV, Parquet, file, log | Il percorso, e il pattern di file di una tabella che legge molti file |
+| Kafka | Il topic |
+| Sorgente di codice | La funzione |
+| Qualsiasi altra | Lo schema e la tabella nativi |
+
+Il campo grezzo è il percorso di campo della colonna quando ne ha uno, altrimenti il suo nome. L'arco da esso alla colonna registrata nomina la ridenominazione: `path`, `alias` o `naming` (la convenzione di denominazione). Il riquadro della tabella registrata dice come viene servita: `virtual`, letta a ogni istruzione, o `replica`, con il suo TTL e quando è stata caricata l'ultima volta. Credenziali, riferimenti a secret e l'utente, la password e la query di un URL non vengono mai mostrati. Un utente senza registrazione delle sorgenti vede il lineage dalla tabella registrata in su.
+
+### Collegamenti
+
+Ogni elemento si apre dove è definito, quando i diritti dell'utente aprono quella pagina. Un clic su un campo apre la sua tabella, vista o sorgente; un doppio clic su un riquadro apre la sua relazione; un clic sull'arco di un comando apre il comando. Una funzione SQL integrata non ha pagina né collegamento.
 
 ## Grafo esteso alla federazione {: #federation-wide-graph }
 
@@ -120,6 +142,26 @@ Forma della risposta:
   "outputs": ["id", "embedding"]
 }
 ```
+
+Per un chiamante con la registrazione delle sorgenti, entrambi gli endpoint aggiungono il passaggio nativo: nodi di tipo `native` e un oggetto `natives` con chiave la relazione di ogni riquadro nativo (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+Il `served` di una replica è `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Per qualsiasi altro chiamante `natives` è vuoto.
 
 Restituisce HTTP 422 quando il SQL non può essere analizzato.
 

@@ -51,6 +51,137 @@ Node 程式碼在 Node.js、Bun 或 Deno 上執行，由您選擇。Python 程�
 
 您的程式碼在獨立的 worker 程序中、在沙盒裏執行。它只能讀取自己已安裝的程式碼，磁碟上的其他內容一律不能讀。它只能透過 Provisa 執行的代理伺服器連到部署對外允許清單中的主機，永遠連不到 Provisa 自己的連接埠。無法提供沙盒的主機會拒絕啟動 worker，並說明缺少甚麼，而不是在沒有約束的情況下執行程式碼。在 Windows 上，程式碼數據來源會被拒絕。
 
+## 密鑰 {: #secrets }
+
+調用付费 API 的程式碼需要它的密鑰，而密鑰應放在您組織的保管庫中，而不是程式碼裏。在資料源表單的 **Secrets** 下，選擇程式碼可以讀取的組織密鑰。在設定檔案中，把它們列在資料源的 mapping 裏：
+
+```yaml
+mapping:
+  secrets: [openrouter]
+```
+
+單獨一個名稱就是組織中同名的密鑰。若要改為讀取部署的環境變數，請给出引用：`secrets: {openrouter: "${env:OPENROUTER_API_KEY}"}`。這個列表是對保管庫的引用，從不是值的副本，因此即使設定中提到的密鑰還沒有人儲存，設定也照樣載入。
+
+您的程式碼會得到一個環境變數 `PROVISA_SERVICES`，需要時從 `$PROVISA_SERVICES/secrets/<name>` 讀取密鑰。Python 中：
+
+```python
+import os, urllib.request
+key = urllib.request.urlopen(f"{os.environ['PROVISA_SERVICES']}/secrets/openrouter").read().decode()
+```
+
+TypeScript 中：
+
+```typescript
+const key = await (await fetch(`${process.env.PROVISA_SERVICES}/secrets/openrouter`)).text();
+```
+
+該請求與程式碼的其餘流量經過同一個出站代理，由代理自己應答。通過這條路徑無法訪問 Provisa 的任何其他部分。地址中帶有一個只有該資料源的 worker 持有的令牌；它只能讀取資料源列出的名稱，worker 停止後即失效。每次讀取都在那一刻從保管庫解析密鑰，因此輪換後的密鑰在下一次讀取時生效。
+
+資料源未列出的名稱會被拒絕，無法解析的密鑰也會被拒絕。拒絕資訊會指出密鑰名稱，但從不包含其值。每次讀取都會連同資料源、名稱和時間記錄到組織的審計日誌中，任何值都不會寫入日誌。API 所在的主機仍須在出站允許列表中。
+
+## 調用模型 {: #calling-a-model }
+
+您的程式碼可以通過 Provisa 調用語言模型，而無需持有供應商密鑰。`$PROVISA_SERVICES/llm/v1` 是相容 OpenAI 的端點，因此只要把任何 OpenAI SDK 的基礎 URL 指向那裏即可使用。地址本身就是憑據，因此 SDK 要求的密鑰可以是任意文本。Python 中：
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url=f"{os.environ['PROVISA_SERVICES']}/llm/v1", api_key="unused")
+reply = client.chat.completions.create(
+    model="provisa:sql_generation",
+    messages=[{"role": "user", "content": "Summarise this account's last quarter."}],
+)
+```
+
+TypeScript 中：
+
+```typescript
+import OpenAI from "openai";
+
+const client = new OpenAI({ baseURL: `${process.env.PROVISA_SERVICES}/llm/v1`, apiKey: "unused" });
+const reply = await client.chat.completions.create({
+  model: "provisa:sql_generation",
+  messages: [{ role: "user", content: "Summarise this account's last quarter." }],
+});
+```
+
+按角色指定模型，寫成 `provisa:<role>`：您得到的是組織在 **Admin → AI Models** 下為該角色指定的模型，管理員更改時它會隨之變化。當某個模型被指派給某個角色時，也可以直接寫出它的名稱。對於 embeddings，`$PROVISA_SERVICES/llm/v1/embeddings` 接受您組織的任何向量模型。其他任何模型都會按名稱被拒絕。調用經由您組織自己的供應商、端點和密鑰發出，發送的內容會先經過 Provisa 的脫敏規則。不提供串流輸出：請發送預設值 `stream: false`。
+
+每次調用都會為資料源記錄模型、令牌數，以及按 **Polly model prices** 中該模型條目計算的費用，並寫入組織的審計日誌。要限制資料源的花費，請在其表單中設定 **LLM monthly cap**，單位為 USD。在設定檔案中，它写在 mapping 裏：
+
+```yaml
+mapping:
+  llm: {cap_usd: 20}
+```
+
+設有上限的資料源只能調用在那裏有價格的模型。一旦它當月（UTC）的花費達到上限，其調用就會被拒絕，直到下個月開始。達到上限時已在進行中的調用仍會完成，因此當月可能略微超出上限。
+
+## Provisa 的服務 {: #provisas-services }
+
+您的程式碼可以匯入一個 Provisa 在任何運行位置都會提供的模組：Python 中為 `provisa_services`，Node.js、Bun 和 Deno 中為 `@provisa/services`。無需安裝任何東西，它也不在任何套件倉庫中。在 Provisa 之外該模組並不存在，因此函數的測試會對它進行模擬。
+
+```python
+import provisa_services as ps
+
+region = ps.settings.get("region")
+rates = ps.cache.get("rates") or fetch_rates()
+ps.cache.set("rates", rates, ttl=3600)
+```
+
+```typescript
+import { settings, cache } from "@provisa/services";
+
+const region = await settings.get("region");
+const rates = (await cache.get("rates")) ?? (await fetchRates());
+await cache.set("rates", rates, 3600);
+```
+
+| 調用 | 作用 |
+|---|---|
+| `secrets.get(name)` | 資料源聲明的某個密鑰，此刻從保管庫讀取。參見[密鑰](#secrets)。 |
+| `settings.get(name, default)` | 資料源的某項設定，來自其表單中的 **Settings**，steward 可以在不改程式碼的情況下修改。缺失且沒有預設值時會拋出錯誤。 |
+| `cache.get(key, default)`、`cache.set(key, value, ttl)`、`cache.delete(key)` | 資料源自己的快取，由它的所有 worker 共享。值可以是 JSON 能容納的任何內容，最大 1 MB，保留 `ttl` 秒或直到被替換。 |
+| `vectors.upsert(items, model)`、`vectors.search(query, k, model)`、`vectors.embed(texts, model)`、`vectors.delete(ids)` | 資料源自己的向量集合，用於它自己的參考數據。每個條目有一個 `id`，以及一個 `text` 或 `vector`；文本由您組織的某個向量模型生成嵌入。它不能搜尋您的受治理表：這些表的數據只以參數形式到達程式碼。 |
+| `http.get(url)`、`http.post(url, ...)` | Provisa 代表程式碼發出的請求，經過部署的出站代理和憑證頒發機構。主機必須在出站允許列表中，每次請求都會記錄到審計日誌。 |
+| `llm.chat(model, messages)`、`llm.embeddings(model, input)`、`llm.base_url()`（JavaScript 中為 `llm.baseUrl()`） | Provisa 的 LLM 服務。參見[調用模型](#calling-a-model)。 |
+| `log(message, level, fields)`、`metric(name, value, kind, attributes)` | 一行日誌，以及一個名為 `code_source.<name>` 的指標點，附加到程式碼正在處理的請求上。 |
+
+服務拒絕的調用會拋出 `ServiceError`，其中指出服務名稱和原因。
+
+這些服務應答在 Provisa 伺服器上運行的程式碼。在遠程主機上它們目前還無法訪問，每次調用都會拋出錯誤。
+
+對程式碼的每次調用都作為觸發它的請求的一部分被追蹤，包括函數、其類型、收到的參數個數（從不包括參數值）、返回的行數和批次、耗時以及 worker 的 CPU。每次服務調用也以同樣方式追蹤。在普通追蹤詳細級別下，這些資訊位於請求的 span 上；在除錯級別下，每次調用都是單獨的 span。如果您的程式碼使用 OpenTelemetry，它的 span 會加入同一個 trace。
+
+## 在遠程主機上運行 {: #running-on-a-remote-host }
+
+資料源預設在 Provisa 伺服器上運行，這就是 dev 模式。當它的程式碼需要一台不同於伺服器的機器時，例如 GPU 機器或位於另一個網絡中的主機，就建置它的映像並在那裏運行。此時資料源以 built 模式運行，其表、授權和讀取者保持不變。
+
+**建置映像。** 先在 dev 模式下儲存資料源，使其程式碼被讀取並固定。在其表單的 **Remote host** 下，選擇架構（Linux x86-64 或 ARM64）以及映像的去向：組織在 **Admin → Container registries** 下登記的某個容器倉庫，或者下載。Provisa 自己組裝映像。映像包含固定雜湊的程式碼、通過您的套件倉庫按程式碼的 lockfile 為該平台安裝的依賴、固定的運行時以及遠程主機程式，基於一個最小的基礎映像。建置期間映像中的任何內容都不會運行，也不涉及 Docker 守護程序。映像的標籤帶有程式碼雜湊和 Provisa 版本，其 label 標明運行時、程式碼雜湊和匯出項。
+
+**運行映像。** 表單會顯示該映像的 compose 服務。下載的映像需先用 `docker load -i <file>` 載入。容器在內部監聽 7443 埠，並把它的身份儲存在卷上。主機埠由 `PROVISA_HOST_PORT` 指定；沒有它，服務不會啟動：
+
+```yaml
+services:
+  provisa-code-rates:
+    image: ghcr.io/example/provisa-code-rates:3f9a1c2e7b40-0.1.0
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
+    volumes:
+      - provisa-code-rates-state:/var/lib/provisa
+volumes:
+  provisa-code-rates-state: {}
+```
+
+容器首次啟動時，會在日誌中輸出一行以 `pairing code:` 開頭的內容。
+
+**連接映像。** 回到表單，輸入 Provisa 訪問容器所用的主機、您發佈的埠以及配對碼。在共享的 Docker 網絡或 Kubernetes 中，輸入容器名或 Service 名以及 7443，無需發佈任何埠。Provisa 通過雙向 TLS 與容器配對。配對碼只使用一次，此後雙方只接受彼此。随後 Provisa 檢查容器運行的是該資料源的程式碼並提供其匯出項，然後把資料源切換到 built 模式。每個 Provisa 程序都與主機保持自己的連接，主機不再應答時會重新連接。在主機不應答期間，對該資料源表的讀取會失敗並指出該主機。
+
+**如果程式碼發生變化。** 運行其他程式碼的容器重新連接時會被拒絕，並指出資料源固定的雜湊和主機報告的雜湊，直到 steward 審查程式碼並在表單中重新固定。要修改程式碼本身，請把資料源切回 dev，儲存新程式碼，然後重新建置。
+
+在容器中，其網絡策略就是程式碼的出站邊界；伺服器的出站允許列表适用於 dev 模式。
+
 ## 讀取資料表 {: #reading-a-table }
 
 程式碼數據來源的資料表會先落地，從不就地讀取。Provisa 以讀取的參數呼叫函數，按欄位檢查每一列，並在資料表的快取 TTL 內按這些參數保存這些列。之後，可見性、遮罩及行規則會作用於落地的資料列，與任何資料表一樣。

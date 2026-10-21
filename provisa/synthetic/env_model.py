@@ -121,6 +121,17 @@ def undefined_reason(command: str, source_id: str) -> str:
     )
 
 
+def results_source_types() -> frozenset[str]:
+    """The source types whose tables hold Provisa's own results about the environment's tables
+    (REQ-1942): the Data Profiler's profile runs and the data-quality checkers' results. Like the
+    built-in sources' tables they are not operator data, so a synthetic environment generates none
+    of them and binds none of their sources: generated from prod's profile they would carry its
+    real values, and in the environment they hold what was run there."""
+    from provisa.dq.contract import CHECKERS
+
+    return frozenset({"data_profiler"}) | CHECKERS
+
+
 async def _source_types(conn: Any) -> dict[str, str]:
     """Each source's type as the model gives it: a source already bound to a synthetic store is
     still the API, or the database, it was generated from."""
@@ -208,9 +219,14 @@ async def model_plan(state: Any, conn: Any, parent: str, env: str) -> dict[str, 
     from provisa.synthetic.run import profile_runs_in, uncovered_columns
 
     # The model's own tables: the built-in sources' (the catalog, the observability store) are the
-    # platform's, not the operator's data.
-    tables = [t for t in await fetch_tables(conn) if t["source_id"] not in BUILT_IN_SOURCE_IDS]
+    # platform's, not the operator's data, and a profiler's or checker's are Provisa's results.
     types = await _source_types(conn)
+    results = results_source_types()
+    tables = [
+        t
+        for t in await fetch_tables(conn)
+        if t["source_id"] not in BUILT_IN_SOURCE_IDS and types[t["source_id"]] not in results
+    ]
     api_types = api_source_types()
     runs: dict[int, list[dict]] = {}
     for r in await profile_runs_in(conn, parent, tables):
@@ -456,11 +472,13 @@ async def bind_generated(state: Any, org_id: str, env: str) -> list[str]:
     ):
         row = await get_dataset(conn, DATASET_ID)
         made = {t.table_id for t in row.tables}
+        types = await _source_types(conn)
+        results = results_source_types()
         typed = await parameter_columns(conn)
         generated: dict[str, list[list[str]]] = {}
         parameters: dict[str, dict[str, dict[str, str]]] = {}
         for t in await fetch_tables(conn):
-            if t["source_id"] in BUILT_IN_SOURCE_IDS:
+            if t["source_id"] in BUILT_IN_SOURCE_IDS or types[t["source_id"]] in results:
                 continue
             held = generated.setdefault(t["source_id"], [])
             if t["id"] in made:
