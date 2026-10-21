@@ -443,7 +443,9 @@
       "role_session_var_name_invalid": "セッション値の名前 '{{name}}' は英字、数字、アンダースコアのみで、数字で始めることはできません",
       "role_session_var_name_repeated": "セッション値 '{{name}}' が 2 回指定されています",
       "role_description_missing": "ロール '{{role}}' には目的の説明が必要です",
-      "rls_rule_description_missing": "行ルールには目的の説明が必要です"
+      "rls_rule_description_missing": "行ルールには目的の説明が必要です",
+      "mv_window_held": "MV '{{mv}}' は {{day}} の締めで封印されませんでした: その別のビルドが権利を保持しています",
+      "mv_window_unchanged": "MV '{{mv}}' は {{day}} の締めで封印されませんでした: 前回のビルド以降、読み取る内容に変更はありません"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",

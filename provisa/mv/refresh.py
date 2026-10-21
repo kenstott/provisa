@@ -590,6 +590,21 @@ class SealedBuildRefused(ValueError):
         )
 
 
+class SealedBuildNotDone(ValueError):
+    """REQ-2120: a build sealed at a business day's close that appended nothing -- another
+    instance held the view's build, or nothing it reads changed since its last build -- so no
+    version is recorded at that close."""
+
+    REASONS = {
+        "held": "another build of it holds its claim",
+        "unchanged": "nothing it reads changed since its last build",
+    }
+
+    def __init__(self, mv_id: str, day: date, reason: str) -> None:
+        self.mv_id, self.day, self.reason = mv_id, day, reason
+        super().__init__(f"MV {mv_id!r} was not sealed at {day}'s close: {self.REASONS[reason]}")
+
+
 async def _sealed_stamp(mv: MVDefinition, day: date, store) -> str:  # REQ-2120
     """The append stamp of ``mv``'s build sealed at business day ``day``'s close: the end of its
     calendar's window for that date (REQ-2111: the day's close in its zone), as the event loop's
@@ -722,6 +737,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 "MV %s: refresh claim not won (owned by another instance or already current) — skip",
                 mv.id,
             )
+            if window is not None:
+                raise SealedBuildNotDone(mv.id, window, "held")
             return
 
     registry.mark_refreshing(mv.id)
@@ -747,6 +764,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                     )
                 registry.mark_unchanged(mv.id)
                 log.info("MV %s: sources unchanged (probe) — skipped rebuild", mv.id)
+                if window is not None:
+                    raise SealedBuildNotDone(mv.id, window, "unchanged")
                 return
 
         # REQ-1047: storage guard — refuse to materialize for an org already at its tier's
@@ -796,6 +815,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
                 )
             registry.mark_unchanged(mv.id)
             log.info("MV %s: no input row changed since its watermark — nothing appended", mv.id)
+            if window is not None:
+                raise SealedBuildNotDone(mv.id, window, "unchanged")
             return
         select_sql = (
             inherited.select_sql
@@ -987,6 +1008,8 @@ async def refresh_mv(  # REQ-135, REQ-160, REQ-235, REQ-879, REQ-1760
         await _post_refresh_delta_capture(
             engine, mv, ledger, prev_rows, target, authorization=authorization
         )  # REQ-877
+    except SealedBuildNotDone:
+        raise  # its claim is already released and the view is unchanged, not failed
     except Exception as e:
         if coordinated:
             assert ledger is not None and writer is not None

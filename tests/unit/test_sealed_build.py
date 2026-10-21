@@ -27,7 +27,7 @@ import pytest
 
 from provisa.core.repositories import calendar as calendar_repo
 from provisa.mv.models import MVStatus
-from provisa.mv.refresh import SealedBuildRefused, refresh_mv
+from provisa.mv.refresh import SealedBuildNotDone, SealedBuildRefused, refresh_mv
 from tests.helpers import build_through_a_stand_in_pipeline, hold_registered_tables
 from tests.unit.test_bitemporal_inherit import World
 
@@ -104,6 +104,22 @@ async def test_a_restatement_before_the_next_build_is_picked_up_for_its_past_dat
         ("B", "2026-10-01", 50),
         ("A", "2026-10-02", 70),
     }
+
+
+async def test_a_sealed_build_that_appends_nothing_is_refused_by_name(bank, store):
+    """A build sealed at a close records a version there or says why not: Monday's, with nothing
+    the view reads changed since Friday's, records none and is refused, the view left unchanged."""
+    await _seal(bank, store, FRIDAY)
+    with pytest.raises(
+        SealedBuildNotDone,
+        match=r"MV 'by_store' was not sealed at 2026-10-05's close: nothing it reads changed",
+    ):
+        await refresh_mv(bank.engine, bank.mv, bank.registry, store=store, window=MONDAY)
+    assert bank.mv.last_error is None
+    stamps = bank.con.execute(
+        f"SELECT DISTINCT CAST(sys_recorded_at AS VARCHAR) FROM {bank.target}"
+    ).fetchall()
+    assert stamps == [(FRIDAY_CLOSE,)]
 
 
 async def test_a_day_its_calendar_has_no_window_on_is_refused(bank, store):

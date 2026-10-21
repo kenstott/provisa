@@ -443,7 +443,9 @@
       "role_session_var_name_invalid": "Der Name des Sitzungswerts '{{name}}' darf nur Buchstaben, Ziffern und Unterstriche enthalten und nicht mit einer Ziffer beginnen",
       "role_session_var_name_repeated": "Der Sitzungswert '{{name}}' ist doppelt benannt",
       "role_description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
-      "rls_rule_description_missing": "Eine Zeilenregel braucht eine Beschreibung, wofür sie da ist"
+      "rls_rule_description_missing": "Eine Zeilenregel braucht eine Beschreibung, wofür sie da ist",
+      "mv_window_held": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Ein anderer Build davon hält den Anspruch",
+      "mv_window_unchanged": "MV '{{mv}}' wurde zum Geschäftsschluss am {{day}} nicht versiegelt: Nichts, was sie liest, hat sich seit ihrem letzten Build geändert"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

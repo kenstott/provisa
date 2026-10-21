@@ -443,7 +443,9 @@
       "role_session_var_name_invalid": "工作階段值名稱 '{{name}}' 只能包含字母、數字及底線，且不能以數字開頭",
       "role_session_var_name_repeated": "工作階段值 '{{name}}' 被指定了兩次",
       "role_description_missing": "角色 '{{role}}' 需要說明其用途",
-      "rls_rule_description_missing": "行規則需要說明其用途"
+      "rls_rule_description_missing": "行規則需要說明其用途",
+      "mv_window_held": "MV '{{mv}}' 未在 {{day}} 的收市時封存：它的另一次構建持有認領",
+      "mv_window_unchanged": "MV '{{mv}}' 未在 {{day}} 的收市時封存：自上次構建以來，它讀取的內容沒有任何變化"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",

@@ -146,3 +146,30 @@ async def test_a_sealed_build_of_a_view_naming_no_calendar_is_refused_by_name(vi
     assert result.params == {"mv": "view-sales"}
     assert "MV 'view-sales' names no calendar" in result.message
     assert mv.last_error is None  # nothing was recorded on the view
+
+
+async def test_a_sealed_build_that_appends_nothing_is_reported_as_not_sealed(view, monkeypatch):
+    """REQ-2120: a build sealed at a close that recorded no version there is not a success: the
+    caller is told the view was not sealed, and why, and nothing is recorded on the view."""
+    import datetime as dt
+
+    from provisa.mv.refresh import SealedBuildNotDone
+
+    mv, _registry = view
+
+    async def _unchanged(_engine, view_mv, *_args, window=None, **_kwargs):
+        raise SealedBuildNotDone(view_mv.id, window, "unchanged")
+
+    monkeypatch.setattr("provisa.mv.refresh.refresh_mv", _unchanged)
+    result = await Mutation().refresh_mv(
+        _info(monkeypatch), mv_id="view-sales", window=dt.date(2026, 10, 2)
+    )
+
+    assert result.success is False
+    assert result.code == "schema.mv_window_unchanged"
+    assert result.params == {"mv": "view-sales", "day": "2026-10-02"}
+    assert result.message == (
+        "MV 'view-sales' was not sealed at 2026-10-02's close: nothing it reads changed since "
+        "its last build"
+    )
+    assert mv.last_error is None

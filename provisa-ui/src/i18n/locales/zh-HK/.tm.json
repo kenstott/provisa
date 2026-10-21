@@ -7253,5 +7253,7 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/serverErrors.json::serverErrors.schema.mv_window_held": "MV '{{mv}}' was not sealed at {{day}}'s close: another build of it holds its claim",
+  "zh-HK/serverErrors.json::serverErrors.schema.mv_window_unchanged": "MV '{{mv}}' was not sealed at {{day}}'s close: nothing it reads changed since its last build"
 }

@@ -443,7 +443,9 @@
       "role_session_var_name_invalid": "De naam van sessiewaarde '{{name}}' mag alleen letters, cijfers en underscores bevatten en mag niet met een cijfer beginnen",
       "role_session_var_name_repeated": "Sessiewaarde '{{name}}' is twee keer genoemd",
       "role_description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
-      "rls_rule_description_missing": "Een rijregel heeft een beschrijving nodig van waar hij voor is"
+      "rls_rule_description_missing": "Een rijregel heeft een beschrijving nodig van waar hij voor is",
+      "mv_window_held": "MV '{{mv}}' is niet verzegeld bij de afsluiting van {{day}}: een andere build ervan houdt de claim vast",
+      "mv_window_unchanged": "MV '{{mv}}' is niet verzegeld bij de afsluiting van {{day}}: niets wat ze leest is veranderd sinds haar laatste build"
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",

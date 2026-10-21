@@ -54,6 +54,9 @@ def _ledger() -> psycopg.Connection:
         dbname=f"ledger{os.environ.get('BANKING_PG_NS', '')}",
         user="postgres",
         password="postgres",
+        # Each day's postings are committed before its build reads them: without autocommit the
+        # first statement opens a transaction and each day's block is only a savepoint inside it.
+        autocommit=True,
     )
 
 

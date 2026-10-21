@@ -443,7 +443,9 @@
       "role_session_var_name_invalid": "Le nom de valeur de session '{{name}}' doit comporter des lettres, des chiffres et des traits de soulignement, et ne doit pas commencer par un chiffre",
       "role_session_var_name_repeated": "La valeur de session '{{name}}' est nommée deux fois",
       "role_description_missing": "Le rôle '{{role}}' a besoin d'une description de ce à quoi il sert",
-      "rls_rule_description_missing": "Une règle de ligne a besoin d'une description de ce à quoi elle sert"
+      "rls_rule_description_missing": "Une règle de ligne a besoin d'une description de ce à quoi elle sert",
+      "mv_window_held": "La MV '{{mv}}' n'a pas été scellée à la clôture du {{day}} : une autre construction de celle-ci détient la réservation",
+      "mv_window_unchanged": "La MV '{{mv}}' n'a pas été scellée à la clôture du {{day}} : rien de ce qu'elle lit n'a changé depuis sa dernière construction"
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",

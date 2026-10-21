@@ -5109,7 +5109,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 code="schema.mv_not_found",
                 params={"mv": mv_id},
             )
-        from provisa.mv.refresh import SealedBuildRefused, refresh_failure, refresh_mv
+        from provisa.mv.refresh import (
+            SealedBuildNotDone,
+            SealedBuildRefused,
+            refresh_failure,
+            refresh_mv,
+        )
 
         try:
             assert state.federation_engine is not None
@@ -5142,6 +5147,17 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 message=str(refused),
                 code="schema.mv_window_needs_calendar",
                 params={"mv": mv_id},
+            )
+        except SealedBuildNotDone as unsealed:  # REQ-2120
+            return MutationResult(
+                success=False,
+                message=str(unsealed),
+                code=(
+                    "schema.mv_window_held"
+                    if unsealed.reason == "held"
+                    else "schema.mv_window_unchanged"
+                ),
+                params={"mv": mv_id, "day": unsealed.day.isoformat()},
             )
         except Exception as e:
             logging.getLogger(__name__).exception("refresh_mv %r failed", mv_id)
