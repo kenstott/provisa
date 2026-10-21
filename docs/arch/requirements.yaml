@@ -73870,7 +73870,8 @@
   tests:
   - tests/unit/test_role_ttl.py
   - provisa-ui/src/pages/__tests__/tables-role-ttl-save.test.tsx
-  notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
+  - tests/unit/test_shipped_config_landing_ttl.py
+  notes: 'Roadmap audit 2026-10-13: delivered; verified against the code. 2026-10-21, the lead: cloud-dev''s node, pinned to Trino, refused the install config''s SQLite tables at their first read (DuckDB reads SQLite in place, Trino lands it), and graphql-demo''s whole tables land on every engine; every shipped config is now judged against the rule on the engine it names and the image''s configs on every engine first-launch.sh pins.'
   docs:
   - admin-graphql.md
   - configuration.md

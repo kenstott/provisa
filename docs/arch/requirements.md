@@ -21624,7 +21624,7 @@ Per-user-class staleness tolerance as a table attribute. A table carries a keyed
 
 **Code:** `provisa/federation/role_ttl.py`, `provisa/core/models.py`
 
-**Tests:** `tests/unit/test_role_ttl.py`, `provisa-ui/src/pages/__tests__/tables-role-ttl-save.test.tsx`
+**Tests:** `tests/unit/test_role_ttl.py`, `provisa-ui/src/pages/__tests__/tables-role-ttl-save.test.tsx`, `tests/unit/test_shipped_config_landing_ttl.py`
 
 **Docs:** [admin-graphql.md](../admin-graphql.md), [configuration.md](../configuration.md)
 
@@ -25835,6 +25835,32 @@ A Node or Python code source can take its code from a folder on the developer's 
 Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once: provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection test. A catalog connection is assigned to one or more domains, so each domain works with its own catalogs (sales with one, finance with another): a domain's tables offer only its catalogs in the pick list, Refresh from catalog, import and lock, and its data products publish to its catalogs, a product shared across domains appearing in each listing domain's catalogs. A metadata export target names a catalog and keeps only its export settings, in place of its own endpoint and credentials. Description import: a table's description has From catalog, which opens a pick list of the connected catalogs' assets for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by name similarity and searchable; the steward picks one or none, and the picked asset's description, column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated descriptions only fill what the catalog never described, when the steward asks. A pick is stored as the table's catalog binding, the same binding an export records, so export and import share one link per table per catalog, an export updates the asset the steward picked, and a description can be refreshed from it later. Every export target records the catalog's id for what it publishes and, where the catalog's API allows, writes the table's Provisa address into the catalog asset, so after one export each published table is linked both ways. Catalog import: a catalog's Import action reads, for every table linked to that catalog (by an export or a pick), its current description, column descriptions, owners, tags and glossary links, and shows them as a review list beside Provisa's current values; the steward accepts all or table by table. A table not yet linked is listed as not linked, with the two ways to link it (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor of a linked table offers Refresh from catalog, which reads the linked asset's current description, column descriptions, owners, tags and glossary links and offers the changes beside the current values for the steward to accept. Imported metadata records its provenance: a table shows that its descriptions were last imported from a named catalog at a stated time, and they stay editable; Provisa claims no authority it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog its authority: the locked table's descriptive fields (descriptions, column descriptions, owners, tags, glossary links) are read-only in Provisa's editor with a link to edit them in the catalog, and the export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies a catalog's current metadata without review to the tables locked to it, and for its other linked tables lists what changed for the steward to review, never overwriting a local edit. Governance (grants, row rules, masks) stays Provisa's on every table.
 
 **Use case:** A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
+
+**Code:** —
+
+**Tests:** —
+
+## 10. UI & Admin Surfaces
+
+### REQ-2123 · Profile Runs Terrain View {#REQ-2123}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view of the selected run's column profiles, with one ridge per column arranged front to back from low to high values (categories from most to least common), each ridge's height equal to the rows per range, p5, median and p95 quantile marks, and a null-share block per column. Values beyond 3 times the IQR are excluded from the ridge and counted. Hovering shows the exact range and row count; selecting a column shows a linked 2D histogram and its stats. Columns whose values are restricted for the viewer's role show no ridge. The view has an expand button that opens it in a modal at 95% of the viewport. three.js is loaded lazily, only when the tab opens. (Amended 2026-10-21, TABLES, EXPAND, VERTICAL TABS, READ PANEL; maintainer:) Every table in the profile runs modal (its list of runs, each result relation's table, and the drift table and a measure's history) sorts and groups as the app's other lists do (SortGroupTable): every column sorts, and a column with any value that is not a number groups. Every graph and table of a run's results has an expand button that draws it again in a modal at 95% of the viewport, as the 3D views do. The result tabs are listed down the side of the modal, one title per line, rather than across it. The table detail panel's read-only view offers View Profile Runs too, beside the profiler the table belongs to, opening the same modal (not for a governance-only viewer, who profiles nothing).
+
+**Use case:** A steward scanning a profiled table sees the shape, skew, outliers and null pattern of every column at once, and drills into one column without leaving the run.
+
+**Code:** —
+
+**Tests:** —
+
+### REQ-2124 · Profile Runs 3D Relationship and Distribution Views {#REQ-2124}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** ui
+
+The profile runs modal has three more 3D tabs that share the Terrain tab's controls: drag to rotate, a reset-view control, and an expand button that opens the view in a modal at 95% of the viewport with its own camera. Relationships lays the selected run's columns out as nodes by a seeded 3D force simulation, with edges from Spearman and correlation-ratio correlations and from the in-network dependency sets (an arrow points toward the dependent column), filterable by minimum strength and by kind, and shows a parent table's columns as foreign nodes. Joint cloud shows one column and its in-network parents from joint_counts as a 3D grid of decile or category slots, one sphere per occupied cell sized by rows and coloured by rows or by lift over independence, and lists the most over- and under-represented combinations among cells of at least 0.5% of rows. Drift strata shows one column's distribution in the selected run and up to seven earlier successful runs, re-cut into common bins and stacked oldest to newest, with the median traced across the runs, the null share per run, and the runs that drifted for that column marked. Columns whose values are restricted for the viewer's role show no nodes, cells or strata.
+
+**Use case:** A steward reading a profiled table sees which columns move together and which depend on which, which category combinations are over- or under-represented, and how one column's distribution has drifted across recent runs, without leaving the run.
 
 **Code:** —
 

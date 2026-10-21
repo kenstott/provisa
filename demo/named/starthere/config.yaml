@@ -80,11 +80,17 @@ sources:
   type: data_profiler
 - description: Customer adoption inquiry records — prospective pet owner interest submissions tracked
     by the front-desk team, including inquiry type, message, and resolution status
+  # The engine reads SQLite in place where it can (DuckDB); one that cannot (Trino, the cloud
+  # node's) lands the tables, and a landed ttl table re-reads its source on this clock.
+  cache_ttl: 300
   id: inquiries-sqlite
   path: ${env:PROVISA_NAMED_DEMO_DIR}/files/inquiries.sqlite
   type: sqlite
 - description: Internal pet store inventory — tracks animals available for sale, pricing, species, and
     breed assignments managed by the inventory department
+  # The engine reads SQLite in place where it can (DuckDB); one that cannot (Trino, the cloud
+  # node's) lands the tables, and a landed ttl table re-reads its source on this clock.
+  cache_ttl: 300
   id: pet-store-sqlite
   path: ${env:PROVISA_NAMED_DEMO_DIR}/files/pet_store.sqlite
   type: sqlite
