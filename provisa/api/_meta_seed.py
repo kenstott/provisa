@@ -749,8 +749,8 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "many-to-one",
         _ADMIN,
         "table_columns",
-        "SOURCE_COLUMN",
-        "sourceColumn",
+        "SOURCE",
+        "source",
     ),
     (
         "meta:column_lineage_edges:target_column",
@@ -761,8 +761,8 @@ META_RELATIONSHIPS: list[tuple[str, str, str, str, str, str, str, str, str | Non
         "many-to-one",
         _ADMIN,
         "table_columns",
-        "TARGET_COLUMN",
-        "targetColumn",
+        "TARGET",
+        "target",
     ),
     # REQ-2126: a product's links, and the product or table each one reaches.
     (
