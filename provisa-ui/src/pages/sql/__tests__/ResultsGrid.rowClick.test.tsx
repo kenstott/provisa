@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 0a1410a9-e314-43d1-9624-c089e31f62cc
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2123: a results grid's rows may be clicked, one drawn as selected (the profile runs modal
 // picks a run, or a measure's history); a grid given neither is drawn as before.
 

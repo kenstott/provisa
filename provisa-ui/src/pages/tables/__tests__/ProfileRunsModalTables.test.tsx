@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 2c338b6b-2e03-4ba6-9100-74e116c87552
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2123, amended 2026-10-21: every table of the profile runs modal is the explorer's results
 // grid (sort, group, column filters, xlsx download); a result table expands into the 95% modal;
 // the result tabs read down the side; a click picks a run, or a measure's history; and View
