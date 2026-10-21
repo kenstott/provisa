@@ -891,44 +891,50 @@ def statements_split_and_executed(shared_data):
 
 
 # ===========================================================================
-# REQ-581 — positional parameter substitution ($1, $2 → literals)
+# REQ-581 — $N positional parameters stay bound (amended 2026-10-19, per REQ-589)
 # ===========================================================================
 
 
 @given("a JDBC or psycopg2 client using $1, $2 positional parameters")
 def client_using_positional_params(shared_data):
-    """Prepare a parameterized SQL template and parameter values."""
+    """A parameterized statement and the values a client binds to it."""
     shared_data["sql_template"] = "SELECT * FROM orders WHERE user_id = $1 AND status = $2"
     shared_data["params"] = [42, "active"]
 
 
 @when("the query executes")
-def parameterized_query_executes(shared_data):
-    """Apply _substitute_params to replace $1/$2 with literals."""
-    from provisa.pgwire.server import _substitute_params
+def parameterized_query_executes(shared_data, monkeypatch):
+    """Run the statement through the pgwire session, capturing what reaches governance."""
+    from provisa.core.connection_loop import connection_loop
+    from provisa.executor.result import QueryResult
+    from provisa.pgwire.server import ProvisaSession
 
-    result = _substitute_params(
-        shared_data["sql_template"],
-        shared_data["params"],
-    )
-    shared_data["substituted_sql"] = result
+    captured: dict = {}
+
+    async def _governed(sql, role_id, params=None, wire_formats=None, *, deliver):
+        captured["sql"], captured["params"] = sql, params
+        # A materialized result is wrapped as is: no engine is needed to answer it.
+        return QueryResult(rows=[(1,)], column_names=["user_id"])
+
+    monkeypatch.setattr("provisa.pgwire._pipeline.govern_pgwire_plan", _governed)
+    # The connection thread's loop, bound as ProvisaHandler.handle binds it (REQ-1882).
+    with connection_loop():
+        session = ProvisaSession()
+        session.role_id = session.user_id = "analyst"
+        session.execute_sql(shared_data["sql_template"], shared_data["params"])
+    shared_data["governed"] = captured
 
 
-@then("parameters are substituted as SQL literals before reaching the upstream engine")
-def params_substituted_as_literals(shared_data):
-    """Assert that $1 and $2 are replaced with properly quoted literals."""
-    sql = shared_data["substituted_sql"]
-    assert "$1" not in sql, f"$1 must be replaced; got: {sql!r}"
-    assert "$2" not in sql, f"$2 must be replaced; got: {sql!r}"
-    assert "42" in sql, f"Integer literal 42 must appear; got: {sql!r}"
-    assert "'active'" in sql, f"String literal 'active' must appear; got: {sql!r}"
-
-    # Verify ordering edge case: $10 must not be replaced when substituting $1
-    from provisa.pgwire.server import _substitute_params
-
-    sql10 = _substitute_params("SELECT $1, $10", ["a"] + ["x"] * 9)
-    assert "$1" not in sql10, f"$1 must be replaced in 10-param query; got: {sql10!r}"
-    assert "$10" not in sql10, f"$10 must be replaced; got: {sql10!r}"
+@then(
+    "the values stay bound to the $N placeholders through governance and reach the engine or "
+    "source as bound parameters"
+)
+def params_stay_bound(shared_data):
+    """The statement reaches governance with its placeholders, the values beside it, unspliced."""
+    governed = shared_data["governed"]
+    assert governed["sql"] == shared_data["sql_template"], governed["sql"]
+    assert governed["params"] == [42, "active"], governed["params"]
+    assert "'active'" not in governed["sql"]
 
 
 # ===========================================================================
