@@ -165,7 +165,9 @@ export interface CoreTable {
 }
 
 export interface CoreEdge {
-  kind: "relationship" | "lineage";
+  /** REQ-2126: joins (relationship, the graph's), direct neighbours (related, the panel's),
+   * provenance (lineage) and built-from products (derivation). */
+  kind: "relationship" | "related" | "lineage" | "derivation";
   direction: "upstream" | "downstream" | null;
   target_product_id: string | null;
   target_table_id: number | null;

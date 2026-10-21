@@ -7,13 +7,10 @@
     "profilesHint": "Les tables de résultats de profil enregistrées pour chaque table membre ; ouvrez-en une pour lire ses résultats.",
     "profilesEmpty": "Aucune table membre n'a été profilée.",
     "scans": "contrôle {{table}}",
-    "aProduct": "produit de données",
-    "direct": "direct",
     "hops_one": "{{count}} saut",
     "hops_other": "{{count}} sauts",
     "paths_one": "{{count}} chemin",
     "paths_other": "{{count}} chemins",
-    "through": "via {{tables}}",
     "upstream": "En amont",
     "downstream": "En aval",
     "via": "via {{vias}}",
@@ -55,6 +52,7 @@
     "assignedTo": "attribué à {{product}}",
     "unassigned": "attribué à aucun produit",
     "orphan": "Contrôle orphelin",
-    "orphanWarning": "{{checker}} est attribué à ce produit mais contrôle {{table}}, qui n'est ni une de ses entrées ni un de ses ports de sortie."
+    "orphanWarning": "{{checker}} est attribué à ce produit mais contrôle {{table}}, qui n'est ni une de ses entrées ni un de ses ports de sortie.",
+    "inProduct": "dans {{product}}"
   }
 }

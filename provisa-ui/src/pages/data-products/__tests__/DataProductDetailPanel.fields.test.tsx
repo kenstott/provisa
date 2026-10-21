@@ -49,7 +49,6 @@ function fields(p: DataProduct): [string, string][] {
       internalRelationships={[]}
       canEdit={false}
       canSeeLineage={false}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,

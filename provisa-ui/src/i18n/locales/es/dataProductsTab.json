@@ -97,7 +97,6 @@
         "relatedTables": "Tablas relacionadas",
         "relationships": "Relaciones",
         "lineage": "Linaje",
-        "inputPorts": "Puertos de entrada",
         "dataQuality": "Calidad de datos"
       },
       "dataQualityEmpty": "Sin análisis de calidad",
@@ -111,11 +110,6 @@
       "lineageEmpty": "Sin linaje",
       "lineageLoading": "Cargando linaje…",
       "lineageHint": "Grafo de linaje de columnas que muestra las tablas de este producto como el endpoint publicado, más todas las tablas de origen usadas para derivarlas. Solo informativo: requiere la capacidad view_governance.",
-      "inputPortsEmpty": "No se registran entradas de origen",
-      "inputPortsHint": "Entrada(s) → transformación → salida de un salto, derivadas del linaje. Requiere la capacidad view_governance.",
-      "inputPortsColInputs": "Entrada(s)",
-      "inputPortsColTransform": "Transformación",
-      "inputPortsColOutput": "Salida",
       "outputPortsHint": "La superficie consultable de este producto: sus tablas/columnas y comandos miembros, con consultas de ejemplo más abajo en Consultas y comandos de ejemplo.",
       "customPropertiesEmpty": "Sin propiedades personalizadas"
     },

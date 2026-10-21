@@ -105,7 +105,10 @@ export function DemoOpenPage() {
           </>
         ) : (
           <>
-            <Alert color={TRANSIENT.has(refusal.code ?? "") ? "yellow" : "red"} data-testid="demo-open-refused">
+            <Alert
+              color={TRANSIENT.has(refusal.code ?? "") ? "yellow" : "red"}
+              data-testid="demo-open-refused"
+            >
               {refusal.message}
             </Alert>
             {TRANSIENT.has(refusal.code ?? "") && (

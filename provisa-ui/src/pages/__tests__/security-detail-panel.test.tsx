@@ -33,8 +33,24 @@ const role = (id: string, detailsHidden = false) => ({
 });
 const ROLES = [role("analyst"), role("steward"), role("locked", true)];
 const RULES = [
-  { id: 1, tableId: null, domainId: "sales", actionName: null, roleId: "analyst", filterExpr: "a", description: "A" },
-  { id: 2, tableId: null, domainId: "sales", actionName: null, roleId: "steward", filterExpr: "b", description: "B" },
+  {
+    id: 1,
+    tableId: null,
+    domainId: "sales",
+    actionName: null,
+    roleId: "analyst",
+    filterExpr: "a",
+    description: "A",
+  },
+  {
+    id: 2,
+    tableId: null,
+    domainId: "sales",
+    actionName: null,
+    roleId: "steward",
+    filterExpr: "b",
+    description: "B",
+  },
 ];
 
 vi.mock("../../context/DomainFilterContext", () => ({

@@ -18,7 +18,13 @@ import { useAuth } from "../../context/AuthContext";
 import { useDomains } from "../../hooks/useAdminQueries";
 import { SourceFileUpload } from "./SourceFileUpload";
 import type { SourceFormState } from "./SourceFormFields";
-import { DOWNLOAD_TYPES, FILE_DATABASES, draftTable, fileLocationOf, isUploadPath } from "./sourceUpload";
+import {
+  DOWNLOAD_TYPES,
+  FILE_DATABASES,
+  draftTable,
+  fileLocationOf,
+  isUploadPath,
+} from "./sourceUpload";
 
 interface Props {
   form: SourceFormState;
@@ -81,7 +87,9 @@ function DownloadFields({ form, setForm }: Omit<Props, "creating">) {
     <FormField
       size="long"
       help={t(
-        multitenancy ? "sourceFormFields.downloadFromHintRemote" : "sourceFormFields.downloadFromHint",
+        multitenancy
+          ? "sourceFormFields.downloadFromHintRemote"
+          : "sourceFormFields.downloadFromHint",
       )}
     >
       <TextInput

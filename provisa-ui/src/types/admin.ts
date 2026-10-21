@@ -80,10 +80,10 @@ export interface Domain {
   isSystem: boolean; // domain_policy.system_domain_ids() (meta/ops/"") -- never end-user-picked
 }
 
-// REQ-1634/REQ-1660: a first-class DataProduct entity; a table joins one via product_id.
+// REQ-1634: a first-class DataProduct entity; a table joins one via product_id.
 // Field set aligned to the ODPS (Open Data Product Standard) metamodel — team/owner resolve to
-// individuals via the existing role machinery, tags/authoritativeDefinitions/inputPorts/
-// outputPorts are derived from existing tag assignments/glossary/lineage rather than stored here.
+// individuals via the existing role machinery; tags, terms, inputs and output ports are read
+// from the meta domain (REQ-2125, REQ-2126) rather than stored here.
 export interface DataProduct {
   id: string;
   domainId: string;

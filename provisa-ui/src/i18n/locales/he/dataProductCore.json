@@ -7,13 +7,10 @@
     "profilesHint": "טבלאות תוצאות הפרופיל שנרשמו לכל טבלה חברה; פתחו אחת כדי לקרוא את תוצאותיה.",
     "profilesEmpty": "אף טבלה חברה לא עברה פרופיל.",
     "scans": "בודק את {{table}}",
-    "aProduct": "מוצר נתונים",
-    "direct": "ישיר",
     "hops_one": "צעדים: {{count}}",
     "hops_other": "צעדים: {{count}}",
     "paths_one": "נתיבים: {{count}}",
     "paths_other": "נתיבים: {{count}}",
-    "through": "דרך {{tables}}",
     "upstream": "במעלה הזרם",
     "downstream": "במורד הזרם",
     "via": "באמצעות {{vias}}",
@@ -55,6 +52,7 @@
     "assignedTo": "משויכת ל-{{product}}",
     "unassigned": "לא משויכת לאף מוצר",
     "orphan": "בדיקה יתומה",
-    "orphanWarning": "{{checker}} משויכת למוצר הזה אבל בודקת את {{table}}, שאינה אחד הקלטים שלו ולא אחד מפורטי הפלט שלו."
+    "orphanWarning": "{{checker}} משויכת למוצר הזה אבל בודקת את {{table}}, שאינה אחד הקלטים שלו ולא אחד מפורטי הפלט שלו.",
+    "inProduct": "ב-{{product}}"
   }
 }

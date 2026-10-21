@@ -97,7 +97,6 @@
         "relatedTables": "Tables associées",
         "relationships": "Relations",
         "lineage": "Traçabilité",
-        "inputPorts": "Ports d'entrée",
         "dataQuality": "Qualité des données"
       },
       "dataQualityEmpty": "Aucune analyse de qualité",
@@ -111,11 +110,6 @@
       "lineageEmpty": "Aucune traçabilité",
       "lineageLoading": "Chargement de la traçabilité…",
       "lineageHint": "Graphe de traçabilité des colonnes montrant les tables de ce produit comme endpoint publié, ainsi que chaque table en amont utilisée pour les dériver. À titre informatif uniquement ; nécessite la capacité view_governance.",
-      "inputPortsEmpty": "Aucune entrée en amont enregistrée",
-      "inputPortsHint": "Entrée(s) → transformation → sortie à un saut, dérivées de la traçabilité. Nécessite la capacité view_governance.",
-      "inputPortsColInputs": "Entrée(s)",
-      "inputPortsColTransform": "Transformation",
-      "inputPortsColOutput": "Sortie",
       "outputPortsHint": "La surface interrogeable de ce produit : ses tables/colonnes membres et ses commandes, avec des exemples de requêtes ci-dessous sous Exemples de requêtes et commandes.",
       "customPropertiesEmpty": "Aucune propriété personnalisée"
     },

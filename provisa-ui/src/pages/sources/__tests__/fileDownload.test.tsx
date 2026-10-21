@@ -61,8 +61,26 @@ const DOMAINS = [
     result: {
       data: {
         domains: [
-          { __typename: "Domain", id: "shelter", description: "", graphqlAlias: null, steward: null, isSystem: false, parentDomainId: null, effectiveSteward: null },
-          { __typename: "Domain", id: "finance", description: "", graphqlAlias: null, steward: null, isSystem: false, parentDomainId: null, effectiveSteward: null },
+          {
+            __typename: "Domain",
+            id: "shelter",
+            description: "",
+            graphqlAlias: null,
+            steward: null,
+            isSystem: false,
+            parentDomainId: null,
+            effectiveSteward: null,
+          },
+          {
+            __typename: "Domain",
+            id: "finance",
+            description: "",
+            graphqlAlias: null,
+            steward: null,
+            isSystem: false,
+            parentDomainId: null,
+            effectiveSteward: null,
+          },
         ],
       },
     },
@@ -77,7 +95,13 @@ function pick(label: string) {
   fireEvent.click(screen.getByRole("option", { name: label }));
 }
 
-function Harness({ start, editing = null }: { start: Partial<SourceFormState>; editing?: string | null }) {
+function Harness({
+  start,
+  editing = null,
+}: {
+  start: Partial<SourceFormState>;
+  editing?: string | null;
+}) {
   const [form, setForm] = useState<SourceFormState>({ ...BASE, ...start });
   const [authFields, setAuthFields] = useState<Record<string, string>>({});
   useEffect(() => {

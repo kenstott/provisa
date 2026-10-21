@@ -75,7 +75,10 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   }),
   useTables: () => ({ tables: [], loading: false, refetch: vi.fn() }),
   useRelationships: () => ({ relationships: [], loading: false, refetch: vi.fn() }),
-  useRegisterTable: () => ({ registerTable: (...a: unknown[]) => registerTable(...a), loading: false }),
+  useRegisterTable: () => ({
+    registerTable: (...a: unknown[]) => registerTable(...a),
+    loading: false,
+  }),
   useUpdateTable: () => ({ updateTable: vi.fn(), loading: false }),
 }));
 

@@ -97,7 +97,6 @@
         "relatedTables": "Verwandte Tabellen",
         "relationships": "Beziehungen",
         "lineage": "Lineage",
-        "inputPorts": "Input Ports",
         "dataQuality": "Datenqualität"
       },
       "dataQualityEmpty": "Keine Qualitätsprüfungen",
@@ -111,11 +110,6 @@
       "lineageEmpty": "Keine Lineage",
       "lineageLoading": "Lineage wird geladen…",
       "lineageHint": "Spalten-Lineage-Graph, der die Tabellen dieses Produkts als veröffentlichten Endpunkt zeigt, dazu jede vorgelagerte Tabelle, aus der sie abgeleitet sind. Nur zur Information — erfordert die Capability view_governance.",
-      "inputPortsEmpty": "Keine vorgelagerten Eingaben erfasst",
-      "inputPortsHint": "Eingabe(n) → Transformation → Ausgabe über einen Schritt, aus der Lineage abgeleitet. Erfordert die Capability view_governance.",
-      "inputPortsColInputs": "Eingabe(n)",
-      "inputPortsColTransform": "Transformation",
-      "inputPortsColOutput": "Ausgabe",
       "outputPortsHint": "Die abfragbare Oberfläche dieses Produkts: seine Tabellen/Spalten und Befehle, mit Beispielabfragen weiter unten unter Beispielabfragen und Befehle.",
       "customPropertiesEmpty": "Keine benutzerdefinierten Eigenschaften"
     },

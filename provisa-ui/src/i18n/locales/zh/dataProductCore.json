@@ -7,13 +7,10 @@
     "profilesHint": "为每个成员表注册的画像结果表；打开一个即可读取其结果。",
     "profilesEmpty": "尚无成员表被画像。",
     "scans": "检查 {{table}}",
-    "aProduct": "数据产品",
-    "direct": "直接",
     "hops_one": "{{count}} 跳",
     "hops_other": "{{count}} 跳",
     "paths_one": "{{count}} 条路径",
     "paths_other": "{{count}} 条路径",
-    "through": "经由 {{tables}}",
     "upstream": "上游",
     "downstream": "下游",
     "via": "经由 {{vias}}",
@@ -55,6 +52,7 @@
     "assignedTo": "已分配给 {{product}}",
     "unassigned": "未分配给任何产品",
     "orphan": "孤立检查",
-    "orphanWarning": "{{checker}} 已分配给本产品，但它检查的 {{table}} 既不是本产品的输入，也不是其输出端口。"
+    "orphanWarning": "{{checker}} 已分配给本产品，但它检查的 {{table}} 既不是本产品的输入，也不是其输出端口。",
+    "inProduct": "属于 {{product}}"
   }
 }

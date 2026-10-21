@@ -96,7 +96,6 @@ function renderPanel(tables: CoreTable[], sources: Source[] = SOURCES) {
       internalRelationships={[]}
       canEdit={false}
       canSeeLineage={false}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,

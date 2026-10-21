@@ -74,7 +74,6 @@ function panel(canSeeLineage: boolean) {
       internalRelationships={[]}
       canEdit={false}
       canSeeLineage={canSeeLineage}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
@@ -85,14 +84,17 @@ describe("product detail lineage scope (REQ-1666, REQ-2127)", () => {
   it("lists the ancestry, the farthest first, and the one hop downstream", () => {
     panel(true);
     const up = screen.getByTestId("data-product-detail-lineage-upstream-c360");
-    expect(within(up).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "landing.events 3 hops",
-      "raw.orders 1 hop · via sales.v_orders",
-    ]);
+    expect(
+      within(up)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["landing.events 3 hops", "raw.orders 1 hop · via sales.v_orders"]);
     const down = screen.getByTestId("data-product-detail-lineage-downstream-c360");
-    expect(within(down).getAllByRole("listitem").map((li) => li.textContent)).toEqual([
-      "mart.churn via mart.v_churn",
-    ]);
+    expect(
+      within(down)
+        .getAllByRole("listitem")
+        .map((li) => li.textContent),
+    ).toEqual(["mart.churn via mart.v_churn"]);
   });
 
   it("draws no Lineage section for a role without view_governance", () => {

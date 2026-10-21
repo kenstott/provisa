@@ -70,7 +70,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-
 /* Provisa Tools plugin panel */
 .provisa-tools {
   padding: 12px;
@@ -423,13 +422,20 @@
   background: var(--surface-alt);
   color: var(--text);
 }
-.modal-actions button:hover { background: var(--border); }
+.modal-actions button:hover {
+  background: var(--border);
+}
 .modal-actions button.submit-btn {
   background: var(--primary-strong);
   color: white;
 }
-.modal-actions button.submit-btn:hover { background: var(--primary); }
-.modal-actions button:disabled { opacity: 0.4; cursor: not-allowed; }
+.modal-actions button.submit-btn:hover {
+  background: var(--primary);
+}
+.modal-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
 
 /* Response panel layout for table/JSON toggle */
 .graphiql-container .graphiql-response {
@@ -768,9 +774,15 @@
   border-bottom: 1px solid var(--surface-alt);
 }
 
-.response-table th:hover { color: var(--text); }
-.response-table th.sorted { color: var(--primary); }
-.sort-arrow { font-size: 9px; }
+.response-table th:hover {
+  color: var(--text);
+}
+.response-table th.sorted {
+  color: var(--primary);
+}
+.sort-arrow {
+  font-size: 9px;
+}
 
 .response-table td {
   padding: 4px 10px;
@@ -871,7 +883,10 @@ section.graphiql-editor-tool:has(.provisa-headers-bar) {
   color: hsl(var(--color-neutral));
   cursor: pointer;
   white-space: nowrap;
-  transition: background 0.1s, color 0.1s, border-color 0.1s;
+  transition:
+    background 0.1s,
+    color 0.1s,
+    border-color 0.1s;
 }
 
 .provisa-header-btn:hover {

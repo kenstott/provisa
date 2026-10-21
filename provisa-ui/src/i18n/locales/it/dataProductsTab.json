@@ -97,7 +97,6 @@
         "relatedTables": "Tabelle correlate",
         "relationships": "Relazioni",
         "lineage": "Derivazione",
-        "inputPorts": "Input port",
         "dataQuality": "Qualità dei dati"
       },
       "dataQualityEmpty": "Nessuna scansione di qualità",
@@ -111,11 +110,6 @@
       "lineageEmpty": "Nessuna derivazione",
       "lineageLoading": "Caricamento derivazione…",
       "lineageHint": "Grafo di derivazione delle colonne che mostra le tabelle di questo prodotto come endpoint pubblicato, più ogni tabella a monte usata per derivarle. Solo informativo — richiede la capability view_governance.",
-      "inputPortsEmpty": "Nessun input a monte registrato",
-      "inputPortsHint": "Input a un passo → trasformazione → output, derivati dalla derivazione. Richiede la capability view_governance.",
-      "inputPortsColInputs": "Input",
-      "inputPortsColTransform": "Trasformazione",
-      "inputPortsColOutput": "Output",
       "outputPortsHint": "La superficie interrogabile di questo prodotto: le sue tabelle/colonne e i comandi membri, con query di esempio sotto in Query e comandi di esempio.",
       "customPropertiesEmpty": "Nessuna proprietà personalizzata"
     },

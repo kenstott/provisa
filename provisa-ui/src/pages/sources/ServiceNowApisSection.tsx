@@ -16,16 +16,7 @@
 
 import { useMemo, useState } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Loader,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Alert, Button, Loader, Select, Stack, Text, TextInput } from "@mantine/core";
 import { Trash2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import {

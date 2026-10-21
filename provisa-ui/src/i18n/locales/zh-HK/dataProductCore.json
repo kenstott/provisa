@@ -7,13 +7,10 @@
     "profilesHint": "為每個成員表登記的剖析結果表；打開一個即可讀取其結果。",
     "profilesEmpty": "尚無成員表被剖析。",
     "scans": "檢查 {{table}}",
-    "aProduct": "數據產品",
-    "direct": "直接",
     "hops_one": "{{count}} 跳",
     "hops_other": "{{count}} 跳",
     "paths_one": "{{count}} 條路徑",
     "paths_other": "{{count}} 條路徑",
-    "through": "經由 {{tables}}",
     "upstream": "上游",
     "downstream": "下游",
     "via": "經由 {{vias}}",
@@ -55,6 +52,7 @@
     "assignedTo": "已分配給 {{product}}",
     "unassigned": "未分配給任何產品",
     "orphan": "孤立檢查",
-    "orphanWarning": "{{checker}} 已分配給本產品，但它檢查的 {{table}} 既不是本產品的輸入，也不是其輸出端口。"
+    "orphanWarning": "{{checker}} 已分配給本產品，但它檢查的 {{table}} 既不是本產品的輸入，也不是其輸出端口。",
+    "inProduct": "屬於 {{product}}"
   }
 }

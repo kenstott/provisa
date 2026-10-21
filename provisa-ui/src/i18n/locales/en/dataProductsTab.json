@@ -97,7 +97,6 @@
         "relatedTables": "Related Tables",
         "relationships": "Relationships",
         "lineage": "Lineage",
-        "inputPorts": "Input Ports",
         "dataQuality": "Data Quality"
       },
       "dataQualityEmpty": "No quality scans",
@@ -111,11 +110,6 @@
       "lineageEmpty": "No lineage",
       "lineageLoading": "Loading lineage…",
       "lineageHint": "Column lineage graph showing this product's tables as the published endpoint, plus every upstream table used to derive them. Informational only — requires the view_governance capability.",
-      "inputPortsEmpty": "No upstream inputs recorded",
-      "inputPortsHint": "One-hop input(s) → transform → output, derived from lineage. Requires the view_governance capability.",
-      "inputPortsColInputs": "Input(s)",
-      "inputPortsColTransform": "Transform",
-      "inputPortsColOutput": "Output",
       "outputPortsHint": "This product's queryable surface: its member tables/columns and commands, with example queries below under Sample Queries and Commands.",
       "customPropertiesEmpty": "No custom properties"
     },

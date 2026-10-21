@@ -339,7 +339,10 @@ export function RelationshipsPage() {
         viaTypeColumn: rel.viaTypeColumn ?? "",
         viaTypeValue: rel.viaTypeValue ?? "",
         viaLabelSource: rel.viaLabelSource ?? "",
-        parameters: rel.parameters.map(({ parameter, sourceColumn }) => ({ parameter, sourceColumn })),
+        parameters: rel.parameters.map(({ parameter, sourceColumn }) => ({
+          parameter,
+          sourceColumn,
+        })),
         // The panel opens for a row that already declares a junction; the checkbox only has to
         // hold it open for a row that does not yet name a table.
         junctionDeclared: Boolean(rel.viaTableName),

@@ -7,13 +7,10 @@
     "profilesHint": "各メンバーテーブルに登録されたプロファイル結果テーブルです。開くと結果を読めます。",
     "profilesEmpty": "プロファイルされたメンバーテーブルはありません。",
     "scans": "{{table}} をチェック",
-    "aProduct": "データプロダクト",
-    "direct": "直接",
     "hops_one": "ホップ: {{count}}",
     "hops_other": "ホップ: {{count}}",
     "paths_one": "パス: {{count}}",
     "paths_other": "パス: {{count}}",
-    "through": "経由: {{tables}}",
     "upstream": "アップストリーム",
     "downstream": "ダウンストリーム",
     "via": "経由: {{vias}}",
@@ -55,6 +52,7 @@
     "assignedTo": "{{product}} に割り当て",
     "unassigned": "どのプロダクトにも未割り当て",
     "orphan": "孤立したチェック",
-    "orphanWarning": "{{checker}} はこのプロダクトに割り当てられていますが、入力でも出力ポートでもない {{table}} をチェックしています。"
+    "orphanWarning": "{{checker}} はこのプロダクトに割り当てられていますが、入力でも出力ポートでもない {{table}} をチェックしています。",
+    "inProduct": "{{product}} 内"
   }
 }

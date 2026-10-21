@@ -125,7 +125,6 @@ function panel() {
       internalRelationships={[]}
       canEdit={false}
       canSeeLineage={true}
-      inputPorts={[]}
       onEdit={vi.fn()}
       onDelete={vi.fn()}
     />,
@@ -200,5 +199,73 @@ describe("a set of checks' summary status", () => {
     expect(dqStatus([CHECKS[0]])).toBe("passing");
     const unread = { ...CHECKS[0], checker: { ...CHECKS[0].checker!, latest_outcome: undefined } };
     expect(dqStatus([unread])).toBeNull();
+  });
+});
+
+describe("Related Tables (REQ-2126)", () => {
+  it("lists the directly related tables only; the indirect joins are the graph's", () => {
+    const edge = (over: Partial<CoreEdge>): CoreEdge => ({
+      kind: "related",
+      direction: null,
+      target_product_id: null,
+      target_table_id: null,
+      target_relation: null,
+      direct: true,
+      hops: 1,
+      path_count: 1,
+      aliases: null,
+      supporting_tables: null,
+      vias: null,
+      ...over,
+    });
+    render(
+      <DataProductDetailPanel
+        p={P}
+        core={{
+          ...CORE,
+          edges: [
+            edge({
+              target_table_id: 61,
+              target_product_id: "billing",
+              path_count: 2,
+              aliases: "BILLED_TO, PAID_BY",
+              target_table: {
+                id: 61,
+                domain_id: "finance",
+                table_name: "invoices",
+                description: null,
+              },
+              target_product: { id: "billing", name: "Billing", domain_id: "finance" },
+            }),
+            edge({
+              kind: "relationship",
+              direct: false,
+              hops: 2,
+              target_table_id: 51,
+              supporting_tables: "finance.currencies",
+              target_table: {
+                id: 51,
+                domain_id: "finance",
+                table_name: "fx_rates",
+                description: null,
+              },
+            }),
+          ],
+        }}
+        coreError={null}
+        reader={null}
+        sources={[]}
+        internalRelationships={[]}
+        canEdit={false}
+        canSeeLineage={false}
+        onEdit={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
+    const related = screen.getByTestId("data-product-detail-related-tables-c360");
+    expect(related).toHaveTextContent("finance.invoices");
+    expect(related).toHaveTextContent("in Billing");
+    expect(related).toHaveTextContent("BILLED_TO, PAID_BY · 2 paths");
+    expect(related).not.toHaveTextContent("fx_rates");
   });
 });

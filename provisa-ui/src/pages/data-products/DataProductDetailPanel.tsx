@@ -18,17 +18,7 @@ import { DetailFields, type DetailField } from "../../components/detail/DetailFi
 import React, { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import {
-  ActionIcon,
-  Alert,
-  CopyButton,
-  Group,
-  List,
-  Loader,
-  Stack,
-  Table,
-  Text,
-} from "@mantine/core";
+import { ActionIcon, Alert, CopyButton, Group, List, Loader, Stack, Text } from "@mantine/core";
 import {
   Braces,
   Cable,
@@ -52,14 +42,6 @@ import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPane
 import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
 import { ClaimsCallout, DqIcon, InputsList, PartnersAndOrphans } from "./dataProductDq";
 import { checksIn } from "./dataProductClaims";
-
-// ODPS inputPorts: a derived (not stored) 1-hop input(s) -> transform -> output projection over
-// this product's lineage, computed by the parent page's inputPortsFor() from the raw lineage graph.
-export interface InputPortRow {
-  output: string;
-  transform: string;
-  inputs: string[];
-}
 
 interface TableRef {
   domain_id: string;
@@ -118,10 +100,8 @@ interface DataProductDetailPanelProps {
   internalRelationships: Relationship[];
   // REQ-1634: gates Edit/Delete.
   canEdit: boolean;
-  // REQ-1640: lineage and input ports need view_governance; without it they are absent.
+  // REQ-1640: lineage needs view_governance; without it the lineage-drawn sections are absent.
   canSeeLineage: boolean;
-  // REQ-1660 (ODPS inputPorts): derived by the parent page from the federation lineage graph.
-  inputPorts: InputPortRow[];
   onEdit: () => void;
   onDelete: () => void;
 }
@@ -255,9 +235,9 @@ function MetaQueries({ core, testId }: { core: ProductCore; testId: string }) {
 }
 
 function relatedLabel(e: CoreEdge): string {
-  if (e.target_product) return e.target_product.name;
-  if (e.target_table) return `${e.target_table.domain_id}.${e.target_table.table_name}`;
-  return String(e.target_product_id ?? e.target_table_id);
+  return e.target_table
+    ? `${e.target_table.domain_id}.${e.target_table.table_name}`
+    : String(e.target_table_id);
 }
 
 // Row-click detail view for a data product — same detail-then-edit pattern as
@@ -271,7 +251,6 @@ export function DataProductDetailPanel({
   internalRelationships,
   canEdit,
   canSeeLineage,
-  inputPorts,
   onEdit,
   onDelete,
 }: DataProductDetailPanelProps) {
@@ -316,7 +295,9 @@ export function DataProductDetailPanel({
   const outputTables = core.tables?.filter((tb) => tb.dq_contract == null);
   const dqTables = core.tables?.filter((tb) => tb.dq_contract != null);
   const profiled = outputTables?.filter((tb) => (tb.profile_results ?? []).length > 0);
-  const related = core.edges?.filter((e) => e.kind === "relationship");
+  // REQ-2126: the tables with a direct declared relationship to a member, not themselves members;
+  // the indirect relationship rows are the product graph's, not the panel's.
+  const related = core.edges?.filter((e) => e.kind === "related");
   const lineage = core.edges?.filter((e) => e.kind === "lineage");
   const upstream = lineage
     ?.filter((e) => e.direction === "upstream")
@@ -736,18 +717,16 @@ export function DataProductDetailPanel({
                 {related.map((e) => (
                   <List.Item key={`${e.target_product_id}:${e.target_table_id}`} ff="monospace">
                     {relatedLabel(e)}
-                    {e.target_product && <Muted>({t("dataProductCore.aProduct")})</Muted>}
+                    {e.target_product && (
+                      <Muted>
+                        ({t("dataProductCore.inProduct", { product: e.target_product.name })})
+                      </Muted>
+                    )}
                     <Text size="xs" c="var(--text-muted)">
                       {[
                         e.aliases,
-                        e.direct
-                          ? t("dataProductCore.direct")
-                          : t("dataProductCore.hops", { count: e.hops }),
                         e.path_count > 1
                           ? t("dataProductCore.paths", { count: e.path_count })
-                          : null,
-                        e.supporting_tables
-                          ? t("dataProductCore.through", { tables: e.supporting_tables })
                           : null,
                       ]
                         .filter(Boolean)
@@ -787,40 +766,6 @@ export function DataProductDetailPanel({
             </List>
           )}
         </div>
-        {canSeeLineage && (
-          <div style={panelStyle}>
-            <SectionTitle
-              label={t("dataProductsTab.detail.field.inputPorts")}
-              hint={t("dataProductsTab.detail.inputPortsHint")}
-            />
-            {inputPorts.length === 0 ? (
-              <Empty text={t("dataProductsTab.detail.inputPortsEmpty")} />
-            ) : (
-              <Table
-                striped
-                withTableBorder
-                data-testid={`data-product-detail-input-ports-${p.id}`}
-              >
-                <Table.Thead>
-                  <Table.Tr>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColInputs")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColTransform")}</Table.Th>
-                    <Table.Th>{t("dataProductsTab.detail.inputPortsColOutput")}</Table.Th>
-                  </Table.Tr>
-                </Table.Thead>
-                <Table.Tbody>
-                  {inputPorts.map((row, i) => (
-                    <Table.Tr key={i}>
-                      <Table.Td ff="monospace">{row.inputs.join(", ")}</Table.Td>
-                      <Table.Td ff="monospace">{row.transform}</Table.Td>
-                      <Table.Td ff="monospace">{row.output}</Table.Td>
-                    </Table.Tr>
-                  ))}
-                </Table.Tbody>
-              </Table>
-            )}
-          </div>
-        )}
         {/* REQ-2126, REQ-2132: the nearest inputs and the product's expectations of them; lineage
             rows, so view_governance's like the Lineage section. */}
         {canSeeLineage && core.edges !== undefined && (

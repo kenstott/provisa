@@ -97,7 +97,6 @@
         "relatedTables": "Gerelateerde tabellen",
         "relationships": "Relaties",
         "lineage": "Lineage",
-        "inputPorts": "Invoerpoorten",
         "dataQuality": "Datakwaliteit"
       },
       "dataQualityEmpty": "Geen kwaliteitsscans",
@@ -111,11 +110,6 @@
       "lineageEmpty": "Geen lineage",
       "lineageLoading": "Lineage laden…",
       "lineageHint": "Kolomlineagegrafiek met de tabellen van dit product als gepubliceerd endpoint, plus elke upstreamtabel waaruit ze zijn afgeleid. Alleen ter informatie — vereist de capability view_governance.",
-      "inputPortsEmpty": "Geen upstreaminvoer geregistreerd",
-      "inputPortsHint": "Invoer met één hop → transformatie → uitvoer, afgeleid uit lineage. Vereist de capability view_governance.",
-      "inputPortsColInputs": "Invoer",
-      "inputPortsColTransform": "Transformatie",
-      "inputPortsColOutput": "Uitvoer",
       "outputPortsHint": "Het bevraagbare oppervlak van dit product: de bijbehorende tabellen/kolommen en commando's, met voorbeeldqueries hieronder onder Voorbeeldqueries en commando's.",
       "customPropertiesEmpty": "Geen aangepaste eigenschappen"
     },

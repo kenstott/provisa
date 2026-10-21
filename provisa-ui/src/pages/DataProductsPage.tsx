@@ -31,11 +31,9 @@ import type { DataProduct } from "../types/admin";
 import { fetchActions, saveFunction, type TrackedFunction } from "../api/actions";
 import { HelpBubble } from "../components/HelpBubble";
 import { FilterInput } from "../components/admin/FilterInput";
-import { DataProductDetailPanel, type InputPortRow } from "./data-products/DataProductDetailPanel";
+import { DataProductDetailPanel } from "./data-products/DataProductDetailPanel";
 import { OwnerResolutionIcon } from "../components/OwnerResolution";
 import { useCapability } from "../hooks/useCapability";
-import { fetchFederationGraph, type LineageGraphData } from "../api/lineage";
-import { relationName } from "../naming";
 import { DataProductFormCard } from "./data-products/DataProductFormCard";
 import { useMetaProducts, useMetaReader, useProductCore } from "./data-products/useProductCore";
 import { ProductMapButton } from "../components/graph3d/KnowledgeGraphPanel";
@@ -143,10 +141,6 @@ export function DataProductsPage() {
   const reader = useMetaReader();
   const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
-  // REQ-1640: whole-federation provenance graph, fetched once (no domains filter — scoping
-  // to the product's own domain would sever legitimate cross-domain ancestor chains).
-  const [lineageGraph, setLineageGraph] = useState<LineageGraphData | null>(null);
-  const [lineageError, setLineageError] = useState("");
 
   useEffect(() => {
     // REQ-1634: command <-> data product membership lives on the (REST-served) Function row.
@@ -155,53 +149,9 @@ export function DataProductsPage() {
       .catch(() => setFunctions([]));
   }, []);
 
-  useEffect(() => {
-    if (!canSeeLineage) return;
-    let cancelled = false;
-    fetchFederationGraph()
-      .then((g) => {
-        if (!cancelled) setLineageGraph(g);
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setLineageError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [canSeeLineage]);
-
   const domainOptions = domains.map((d) => d.id);
   const memberTables = (id: string) => tables.filter((tb) => tb.productId === id);
   const memberFunctions = (id: string) => functions.filter((fn) => fn.productId === id);
-
-  // REQ-1660 (ODPS inputPorts): the 1-hop input(s) -> transform -> output edges landing on this
-  // product's member-table columns, grouped by target column. Unlike the Lineage section this does not
-  // walk transitively upstream — inputPorts is the product's direct contract surface, not its
-  // full provenance.
-  const inputPortsFor = (id: string): InputPortRow[] => {
-    if (!lineageGraph) return [];
-    const memberRelations = new Set(memberTables(id).map((tb) => relationName(tb)));
-    const nodesById = new Map(lineageGraph.nodes.map((n) => [n.id, n]));
-    const byTarget = new Map<string, { transform: string; inputs: Set<string> }>();
-    for (const edge of lineageGraph.edges) {
-      const tgt = nodesById.get(edge.target);
-      const src = nodesById.get(edge.source);
-      if (!tgt?.relation || !src || !memberRelations.has(tgt.relation)) continue;
-      const outputLabel = `${tgt.relation}.${tgt.column}`;
-      const inputLabel = src.relation ? `${src.relation}.${src.column}` : src.column;
-      const entry = byTarget.get(outputLabel) ?? {
-        transform: edge.transform,
-        inputs: new Set<string>(),
-      };
-      entry.inputs.add(inputLabel);
-      byTarget.set(outputLabel, entry);
-    }
-    return Array.from(byTarget.entries()).map(([output, { transform, inputs }]) => ({
-      output,
-      transform,
-      inputs: Array.from(inputs),
-    }));
-  };
 
   // Relationships where both endpoints are member tables of this product — the connections that
   // exist entirely within the published surface, as opposed to the Related Tables section's.
@@ -451,11 +401,6 @@ export function DataProductsPage() {
           {t("dataProductCore.unreadable")}
         </Alert>
       )}
-      {lineageError && (
-        <Alert color="red" mb="sm">
-          {lineageError}
-        </Alert>
-      )}
       {msg && !creating && editingId === null && (
         <Alert color="red" mb="sm" withCloseButton onClose={() => setMsg("")}>
           {msg}
@@ -557,7 +502,6 @@ export function DataProductsPage() {
                                 internalRelationships={internalRelationships(p.id)}
                                 canEdit={canEdit}
                                 canSeeLineage={canSeeLineage}
-                                inputPorts={inputPortsFor(p.id)}
                                 onEdit={() => openEdit(p)}
                                 onDelete={() => setDeleteTarget(p.id)}
                               />

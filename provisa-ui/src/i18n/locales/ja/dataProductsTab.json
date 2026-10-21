@@ -97,7 +97,6 @@
         "relatedTables": "関連テーブル",
         "relationships": "リレーションシップ",
         "lineage": "リネージ",
-        "inputPorts": "入力ポート",
         "dataQuality": "データ品質"
       },
       "dataQualityEmpty": "品質スキャンはありません",
@@ -111,11 +110,6 @@
       "lineageEmpty": "リネージはありません",
       "lineageLoading": "リネージを読み込んでいます…",
       "lineageHint": "このプロダクトのテーブルを公開エンドポイントとして示し、それらの導出に使われたすべての上流テーブルを含むカラムリネージグラフ。参考情報のみです。view_governance ケイパビリティが必要です。",
-      "inputPortsEmpty": "記録された上流の入力はありません",
-      "inputPortsHint": "リネージから導出した、1 ホップの入力 → 変換 → 出力。view_governance ケイパビリティが必要です。",
-      "inputPortsColInputs": "入力",
-      "inputPortsColTransform": "変換",
-      "inputPortsColOutput": "出力",
       "outputPortsHint": "このプロダクトのクエリ可能なサーフェス。所属するテーブル/カラムとコマンドが含まれ、クエリ例は下の「サンプルクエリとコマンド」にあります。",
       "customPropertiesEmpty": "カスタムプロパティはありません"
     },
