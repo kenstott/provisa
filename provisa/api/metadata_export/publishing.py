@@ -208,6 +208,8 @@ def _snapshot_uris(snapshot: Any) -> set[str]:
     # pruned term binding would make Provisa's own published term read as external-owned
     # (never modifiable again), so published terms keep their bindings like any asset.
     uris.update(term.semantic_uri for term in snapshot.glossary_terms)
+    # REQ-2118: a catalog that keys its data products by id (DataZone) keeps them bound too.
+    uris.update(product.semantic_uri for product in snapshot.data_products)
     uris.discard("")
     return uris
 

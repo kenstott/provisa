@@ -21,9 +21,13 @@ assets of a Provisa table asset type, which this target creates in the domain th
   version, status, service level, support, documentation).
 
 A member is read through Provisa, the one path that enforces its governance, so DataZone grants
-nothing itself: the producer project approves each subscription. An asset is found again by its
-external identifier, the member's Provisa URI; a product by its name in the project. Each
-publish adds a revision to what changed and publishes it.
+nothing itself: the producer project approves each subscription.
+
+Each asset's and product's DataZone id is recorded in the target's bindings (REQ-1389), and a
+later publish revises it by that id. Only what no earlier publish recorded is looked for with
+the project's search (an asset by its external identifier, the member's Provisa URI; a product
+by its name), which DataZone indexes some seconds late. An entity deleted in DataZone since it
+was recorded is published anew.
 """
 
 # Requirements: REQ-2118
@@ -133,17 +137,54 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         client = self._client()
         tables = {t.ref.fqn(): t for t in snapshot.tables}
         types = self._types(client)
-        assets = self._existing(client, "ASSET", "assetItem", "externalIdentifier", "identifier")
-        products = self._existing(client, "DATA_PRODUCT", "dataProductItem", "name", "id")
+        assets, products = self._known(client, snapshot, tables)
         for product in snapshot.data_products:
             try:
-                count = self._publish_product(client, product, tables, types, assets, products)
+                count = self._publish_product(
+                    client, product, tables, types, assets, products, result
+                )
             except (ClientError, BotoCoreError) as exc:
                 result.errors.append(AssetError(asset=product.ref, message=str(exc)))
                 continue
             result.published["data_products"] = result.published.get("data_products", 0) + 1
             result.published["data_assets"] = result.published.get("data_assets", 0) + count
         return result
+
+    def _known(
+        self, client: Any, snapshot: "MetadataSnapshot", tables: dict[str, "TableAsset"]
+    ) -> tuple[dict[str, str], dict[str, str]]:
+        """The DataZone id of each member asset and each product already published, by Provisa
+        URI: the id an earlier publish recorded in the target's bindings (REQ-1389), else -- the
+        first publish of it -- what the project's search finds under the member's URI or the
+        product's name. The search is eventually consistent, so a bound id is never searched."""
+        bound = self.stored_bindings
+        members = {tables[m.fqn()].semantic_uri for p in snapshot.data_products for m in p.members}
+        assets = {uri: bound[uri][0] for uri in members if uri in bound}
+        products = {
+            p.semantic_uri: bound[p.semantic_uri][0]
+            for p in snapshot.data_products
+            if p.semantic_uri in bound
+        }
+        if members - set(assets):
+            found = self._existing(client, "ASSET", "assetItem", "externalIdentifier", "identifier")
+            assets.update({uri: found[uri] for uri in members - set(assets) if uri in found})
+        if any(p.semantic_uri not in products for p in snapshot.data_products):
+            found = self._existing(client, "DATA_PRODUCT", "dataProductItem", "name", "id")
+            for p in snapshot.data_products:
+                if p.semantic_uri not in products and p.name in found:
+                    products[p.semantic_uri] = found[p.name]
+        return assets, products
+
+    @staticmethod
+    def _revise(client: Any, known: str | None, revise: Any, create: Any) -> dict:
+        """A revision of the entity ``known`` names, or a new one: none is known, or the known
+        one was deleted in DataZone since it was recorded."""
+        if known is not None:
+            try:
+                return revise(known)
+            except client.exceptions.ResourceNotFoundException:
+                pass  # deleted in DataZone since it was bound: published anew below
+        return create()
 
     def _scope(self) -> dict[str, str]:
         return {"domainIdentifier": self._config.datazone_domain_id}
@@ -213,6 +254,7 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         types: dict[str, str],
         assets: dict[str, str],
         products: dict[str, str],
+        result: PublishResult,
     ) -> int:
         """Upsert and publish each member's asset, then the product over them; the number of
         assets it has."""
@@ -228,16 +270,17 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                 }
             ]
             name = table.aliases[0] if table.aliases else table.name
-            if table.semantic_uri in assets:
-                asset = client.create_asset_revision(
+            asset = self._revise(
+                client,
+                assets.get(table.semantic_uri),
+                lambda known, forms=forms, name=name, table=table: client.create_asset_revision(
                     **self._scope(),
-                    identifier=assets[table.semantic_uri],
+                    identifier=known,
                     name=name,
                     description=table.description,
                     formsInput=forms,
-                )
-            else:
-                asset = client.create_asset(
+                ),
+                lambda forms=forms, name=name, table=table: client.create_asset(
                     **self._scope(),
                     name=name,
                     description=table.description,
@@ -246,8 +289,11 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                     typeRevision=types[TABLE_TYPE],
                     formsInput=forms,
                     owningProjectIdentifier=self._config.datazone_project_id,
-                )
-                assets[table.semantic_uri] = asset["id"]
+                ),
+            )
+            assets[table.semantic_uri] = asset["id"]
+            # REQ-1389: the next publish revises this asset by its id, not by a search.
+            result.bindings[table.semantic_uri] = (asset["id"], table.semantic_uri)
             client.create_listing_change_set(
                 **self._scope(),
                 entityIdentifier=asset["id"],
@@ -264,25 +310,29 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                 "content": json.dumps(product_form(product)),
             }
         ]
-        if product.name in products:
-            created = client.create_data_product_revision(
+        created = self._revise(
+            client,
+            products.get(product.semantic_uri),
+            lambda known: client.create_data_product_revision(
                 **self._scope(),
-                identifier=products[product.name],
+                identifier=known,
                 name=product.name,
                 description=product.description,
                 items=items,
                 formsInput=forms,
-            )
-        else:
-            created = client.create_data_product(
+            ),
+            lambda: client.create_data_product(
                 **self._scope(),
                 name=product.name,
                 description=product.description,
                 owningProjectIdentifier=self._config.datazone_project_id,
                 items=items,
                 formsInput=forms,
-            )
-            products[product.name] = created["id"]
+            ),
+        )
+        products[product.semantic_uri] = created["id"]
+        # REQ-1389: the next publish revises this product by its id, not by a search.
+        result.bindings[product.semantic_uri] = (created["id"], product.name)
         client.create_listing_change_set(
             **self._scope(),
             entityIdentifier=created["id"],

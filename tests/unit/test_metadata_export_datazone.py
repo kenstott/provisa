@@ -51,6 +51,7 @@ from provisa.core.models import (
 pytestmark = pytest.mark.unit
 
 DOMAIN = "dzd-1"
+ANY_PARAMS = None  # botocore's Stubber: None leaves the request's parameters unchecked
 PROJECT = "prj-1"
 SCOPE = {"domainIdentifier": DOMAIN}
 
@@ -383,3 +384,97 @@ async def test_a_refused_call_is_reported_against_its_product(stubbed):
     assert len(result.errors) == 1
     assert "not a member of the project" in result.errors[0].message
     assert result.published == {}
+
+
+def _asset(asset_id: str, revision: str, table: Any) -> dict[str, Any]:
+    return {
+        "id": asset_id,
+        "name": table.name,
+        "typeIdentifier": TABLE_TYPE,
+        "typeRevision": "5",
+        "revision": revision,
+        "owningProjectId": PROJECT,
+        "domainId": DOMAIN,
+        "formsOutput": [],
+    }
+
+
+def _product(product_id: str, revision: str) -> dict[str, Any]:
+    return {
+        "domainId": DOMAIN,
+        "id": product_id,
+        "revision": revision,
+        "owningProjectId": PROJECT,
+        "name": "Sales 360",
+        "status": "CREATED",
+    }
+
+
+async def test_two_publishes_in_a_row_reuse_the_bound_ids_without_a_search(stubbed):
+    """REQ-1389: the first publish records each asset's and product's id; the second revises
+    them by those ids and never searches, so DataZone's late index cannot duplicate them."""
+    snapshot = _snapshot()
+    (table,) = snapshot.tables
+    (product,) = snapshot.data_products
+    # The first publish: nothing bound, so the project is searched, and both are created.
+    _types_exist(stubbed)
+    _search(stubbed, "ASSET", [])
+    _search(stubbed, "DATA_PRODUCT", [])
+    stubbed.add_response("create_asset", _asset("asset-1", "1", table), ANY_PARAMS)
+    _listing(stubbed, "asset-1", "ASSET", "1")
+    stubbed.add_response("create_data_product", _product("dp-1", "1"), ANY_PARAMS)
+    _listing(stubbed, "dp-1", "DATA_PRODUCT", "1")
+    first = await metadata_export(_target()).publish(snapshot)
+    assert first.ok, first.errors
+    assert first.bindings == {
+        table.semantic_uri: ("asset-1", table.semantic_uri),
+        product.semantic_uri: ("dp-1", "Sales 360"),
+    }
+    # The second publish, as the publish path loads the bindings in: no search at all.
+    _types_exist(stubbed)
+    stubbed.add_response(
+        "create_asset_revision",
+        _asset("asset-1", "2", table),
+        {**SCOPE, "identifier": "asset-1", "name": ANY, "description": ANY, "formsInput": ANY},
+    )
+    _listing(stubbed, "asset-1", "ASSET", "2")
+    stubbed.add_response(
+        "create_data_product_revision",
+        _product("dp-1", "2"),
+        {
+            **SCOPE,
+            "identifier": "dp-1",
+            "name": "Sales 360",
+            "description": ANY,
+            "items": [{"itemType": "ASSET", "identifier": "asset-1"}],
+            "formsInput": ANY,
+        },
+    )
+    _listing(stubbed, "dp-1", "DATA_PRODUCT", "2")
+    second_export = metadata_export(_target())
+    second_export.stored_bindings = first.bindings
+    second = await second_export.publish(snapshot)
+    assert second.ok, second.errors
+    assert second.bindings == first.bindings
+
+
+async def test_a_bound_asset_deleted_in_datazone_is_published_anew(stubbed):
+    snapshot = _snapshot()
+    (table,) = snapshot.tables
+    (product,) = snapshot.data_products
+    _types_exist(stubbed)
+    stubbed.add_client_error(
+        "create_asset_revision", "ResourceNotFoundException", "Asset not found", 404
+    )
+    stubbed.add_response("create_asset", _asset("asset-2", "1", table), ANY_PARAMS)
+    _listing(stubbed, "asset-2", "ASSET", "1")
+    stubbed.add_response("create_data_product_revision", _product("dp-1", "2"), ANY_PARAMS)
+    _listing(stubbed, "dp-1", "DATA_PRODUCT", "2")
+    exporter = metadata_export(_target())
+    exporter.stored_bindings = {
+        table.semantic_uri: ("asset-gone", table.semantic_uri),
+        product.semantic_uri: ("dp-1", "Sales 360"),
+    }
+    result = await exporter.publish(snapshot)
+    assert result.ok, result.errors
+    assert result.bindings[table.semantic_uri] == ("asset-2", table.semantic_uri)
