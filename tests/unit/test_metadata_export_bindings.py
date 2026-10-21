@@ -489,11 +489,16 @@ async def test_publish_snapshot_loads_persists_and_prunes_bindings(
     exporter = _Exporter()
 
     async def _export_config(org_id):
-        # REQ-2118: the bindings are kept per target, under the target's id.
-        return MetadataExportConfig(
-            enabled=True,
-            targets=[{"id": "atlas", "provider": "atlas", "endpoint": "https://catalog.example"}],
-        )
+        # REQ-2118: the bindings are kept per target, under the target's id. REQ-2122: the
+        # catalog serves the snapshot's domain, so its table is published to it.
+        return MetadataExportConfig(enabled=True, targets=[{"catalog": "atlas"}]), [
+            MetadataExportTarget(
+                id="atlas",
+                provider="atlas",
+                endpoint="https://catalog.example",
+                domains=[snapshot.tables[0].domain_id],
+            )
+        ]
 
     async def _model(*args, **kwargs):
         # An empty config: the publish path reads the DQ outcomes off it (REQ-1443), and a

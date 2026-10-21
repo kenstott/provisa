@@ -50,6 +50,7 @@ ORG_OVERRIDABLE_KEYS: frozenset[str] = frozenset(
         "ai_endpoints",  # REQ-1790
         "nl",
         "metadata_export",
+        "catalogs",  # REQ-2122: the catalogs the org connects to, for export and import
         "naming",
         "redirect",
         "cache",

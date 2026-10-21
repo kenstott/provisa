@@ -16,13 +16,11 @@ publish to several catalogs, two of one provider among them). Every one of them 
 on the ``org_settings`` right, and on the org's REQ-1073 entitlement — because a premium
 feature reachable through an un-entitled org's admin API is not gated at all.
 
-Secrets are write-only through this surface. The GET reports whether each credential is set,
-never its value: an admin who can read the tab must not be able to read back a token the org
-stored, and a redacted-looking string in the field is worse than an explicit "set" flag
-because it gets saved back as the literal redaction.
+A target names a catalog of the Catalogs panel (REQ-2122), which holds its endpoint and
+credentials (``catalogs_router``); the export keeps only its own settings for it.
 """
 
-# Requirements: REQ-1068, REQ-1072, REQ-1073, REQ-1074, REQ-2118
+# Requirements: REQ-1068, REQ-1072, REQ-1073, REQ-1074, REQ-2118, REQ-2122
 
 from __future__ import annotations
 
@@ -43,39 +41,15 @@ from provisa.control_plane.entitlements import (
     UnknownTierError,
     min_tier,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportConfig, MetadataExportTarget
 
 router = APIRouter()
 
 CONFIG_KEY = "metadata_export"
 
-# A target's credential fields, which the read side reports as set/not-set and never returns.
-_SECRET_FIELDS = (
-    "api_key",
-    "token",
-    "entra_client_secret",
-    "google_service_account_json",
-    "aws_access_key_id",
-    "aws_secret_access_key",
-)
-
-# Everything else of a target the admin tab edits, returned verbatim.
-_PLAIN_FIELDS = (
-    "id",
-    "provider",
-    "endpoint",
-    "auth_mode",
-    "username",
-    "entra_tenant_id",
-    "entra_client_id",
-    "gcp_project",
-    "gcp_location",
-    "aws_region",
-    "datazone_domain_id",
-    "datazone_project_id",
-    "delta_share",
-    "timeout_seconds",
-)
+# A target's fields: the catalog it names in the Catalogs panel and its export settings alone
+# (REQ-2122). The catalog holds the endpoint and the credentials.
+_TARGET_FIELDS = ("catalog", "datazone_project_id", "delta_share")
 
 # The settings of the export as a whole.
 _EXPORT_FIELDS = ("enabled", "reconcile_cron")
@@ -141,6 +115,17 @@ def _export_config(stored: dict[str, Any]) -> MetadataExportConfig:
         raise ApiError(400, "metadata_export.invalid_config", str(exc)) from exc
 
 
+async def _targets(config: MetadataExportConfig) -> list[MetadataExportTarget]:
+    """Each target built from the catalog it names (REQ-2122), or a 400 naming the target that
+    names no catalog of the org."""
+    from provisa.api.admin.catalogs_router import catalogs_config, stored_settings
+
+    try:
+        return config.export_targets(catalogs_config(await stored_settings()))
+    except ValueError as exc:
+        raise ApiError(400, "metadata_export.invalid_config", str(exc)) from exc
+
+
 def _publish_payload(results: dict[str, PublishResult]) -> dict[str, Any]:
     return {
         "ok": all(r.ok for r in results.values()),
@@ -158,35 +143,6 @@ def _publish_payload(results: dict[str, PublishResult]) -> dict[str, Any]:
     }
 
 
-def _target_view(target: Any) -> dict[str, Any]:
-    """A target as the tab reads it: its settings, and whether each credential is set."""
-    return {
-        **{name: getattr(target, name) for name in _PLAIN_FIELDS},
-        **{
-            f"{name}_set": bool(getattr(target, name).get_secret_value()) for name in _SECRET_FIELDS
-        },
-    }
-
-
-def _merged_targets(stored: list[dict[str, Any]], sent: list[dict[str, Any]]) -> list[dict]:
-    """The targets as sent, each credential absent from the body kept from the stored target of
-    the same id. A target left out of the body is removed."""
-    by_id = {t.get("id"): t for t in stored}
-    merged = []
-    for target in sent:
-        prior = by_id.get(target.get("id"), {})
-        merged.append(
-            {
-                **{name: target[name] for name in _PLAIN_FIELDS if name in target},
-                **{
-                    name: target[name] if name in target else prior.get(name, "")
-                    for name in _SECRET_FIELDS
-                },
-            }
-        )
-    return merged
-
-
 @router.get("/admin/metadata-export")
 async def get_metadata_export(request: Request) -> dict:  # REQ-1074
     """The org's export settings, with credentials reported as set/not-set."""
@@ -200,7 +156,9 @@ async def get_metadata_export(request: Request) -> dict:  # REQ-1074
         "providers": sorted(registered_providers()),
         "config": {
             **{name: getattr(config, name) for name in _EXPORT_FIELDS},
-            "targets": [_target_view(t) for t in config.targets],
+            "targets": [
+                {name: getattr(t, name) for name in _TARGET_FIELDS} for t in config.targets
+            ],
         },
         "last_publish": _LAST_PUBLISH.get(org_id),
     }
@@ -210,10 +168,9 @@ async def get_metadata_export(request: Request) -> dict:  # REQ-1074
 async def set_metadata_export(request: Request) -> dict:  # REQ-1074
     """Persist the org's export settings: the export's own and its list of targets.
 
-    A target's credential absent from the body keeps the one stored for the target of that id; a
-    credential sent empty CLEARS it. Both are explicit acts — the tab cannot send back a value it
-    was never given, so "absent" has to mean "unchanged" or an admin editing an endpoint would
-    wipe the token. A target the body leaves out of its list is removed.
+    Each target names a catalog of the Catalogs panel, which holds its endpoint and credentials,
+    and carries the export's own settings for it (REQ-2122). A target the body leaves out of its
+    list is removed.
     """
     require_org_settings(request)
     org_id = require_active_org_id(request)
@@ -229,11 +186,14 @@ async def set_metadata_export(request: Request) -> dict:  # REQ-1074
         if name in body:
             updated[name] = body[name]
     if "targets" in body:
-        updated["targets"] = _merged_targets(list(stored.get("targets") or []), body["targets"])
+        updated["targets"] = [
+            {name: t[name] for name in _TARGET_FIELDS if name in t} for t in body["targets"]
+        ]
 
-    # Validate before persisting: an enabled export with no provider or endpoint is refused
-    # here, naming the setting, rather than at the next publish, naming a connection.
+    # Validate before persisting: an enabled export with no target, or a target naming no catalog
+    # of the org, is refused here, naming the setting, rather than at the next publish.
     config = _export_config(updated)
+    await _targets(config)
     identity = getattr(request.state, "identity", None)
     await write_org_overrides(
         _model_db(),
@@ -250,7 +210,7 @@ async def set_metadata_export(request: Request) -> dict:  # REQ-1074
     return {
         "success": True,
         "enabled": config.enabled,
-        "targets": [t.id for t in config.targets],
+        "targets": [t.catalog for t in config.targets],
     }
 
 
@@ -260,9 +220,9 @@ async def check_metadata_export(request: Request) -> dict:  # REQ-1074, REQ-2118
     require_org_settings(request)
     org_id = require_active_org_id(request)
     await _require_entitled(org_id)
-    config = _export_config(await _stored())
+    targets = await _targets(_export_config(await _stored()))
     checks = []
-    for target in config.targets:
+    for target in targets:
         try:
             # Adapter construction is inside the try on purpose: an unknown provider raises
             # MetadataExportNotConfiguredError here, and the admin pressing "Test connection"

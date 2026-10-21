@@ -146,6 +146,8 @@ def test_overridable_keys_exclude_every_deployment_wide_concern():
         "derived_roles",
         # REQ-2087: the org's own redaction rules.
         "redaction",
+        # REQ-2122: the catalogs the org connects to, for export and import.
+        "catalogs",
     }
     for deployment_wide in (
         "federation",

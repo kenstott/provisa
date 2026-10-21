@@ -74,6 +74,7 @@
     "sandboxExitLogOut": "只登出",
     "itemPython": "Python",
     "itemNotebook": "筆記本",
-    "itemContainerRegistries": "容器登錄庫"
+    "itemContainerRegistries": "容器登錄庫",
+    "itemCatalogs": "目錄"
   }
 }

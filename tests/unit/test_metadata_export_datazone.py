@@ -38,9 +38,11 @@ from provisa.api.metadata_export.datazone import (
 )
 from provisa.api.metadata_export.registry import metadata_export
 from provisa.core.models import (
+    CatalogsConfig,
     Column,
     DataProduct,
     Domain,
+    MetadataExportConfig,
     MetadataExportTarget,
     ProvisaConfig,
     Source,
@@ -169,9 +171,33 @@ def _listing(stub: Stubber, entity: str, kind: str, revision: str) -> None:
 
 
 def test_a_datazone_target_names_its_region_domain_and_project():
-    with pytest.raises(ValidationError, match="AWS region, the DataZone domain"):
+    with pytest.raises(ValidationError, match="the AWS region and the DataZone domain"):
         MetadataExportTarget(id="d", provider="datazone", aws_region="us-east-1")
     assert isinstance(metadata_export(_target()), DataZoneExport)
+
+
+def test_the_export_to_a_datazone_catalog_names_the_project_that_owns_its_products():  # REQ-2122
+    catalogs = CatalogsConfig(
+        catalogs=[
+            {
+                "id": "dz",
+                "provider": "datazone",
+                "aws_region": "us-east-1",
+                "datazone_domain_id": "dzd_1",
+                "domains": ["sales"],
+            }
+        ]
+    )
+    with pytest.raises(ValueError, match="needs the DataZone project"):
+        MetadataExportConfig(targets=[{"catalog": "dz"}]).export_targets(catalogs)
+    (target,) = MetadataExportConfig(
+        targets=[{"catalog": "dz", "datazone_project_id": "prj_1"}]
+    ).export_targets(catalogs)
+    assert (target.id, target.datazone_domain_id, target.datazone_project_id) == (
+        "dz",
+        "dzd_1",
+        "prj_1",
+    )
 
 
 def test_the_forms_carry_the_members_and_the_products_fields():

@@ -74,6 +74,7 @@
     "sandboxExitLogOut": "רק להתנתק",
     "itemPython": "Python",
     "itemNotebook": "מחברת",
-    "itemContainerRegistries": "מאגרי קונטיינרים"
+    "itemContainerRegistries": "מאגרי קונטיינרים",
+    "itemCatalogs": "קטלוגים"
   }
 }

@@ -225,6 +225,8 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemContainerRegistries",
         capability: "org_settings",
       },
+      // REQ-2122: the catalogs this org connects to once, for export and import.
+      { to: "/admin/catalogs", labelKey: "navBar.itemCatalogs", capability: "org_settings" },
       // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
       {
         to: "/admin/metadata-export",
