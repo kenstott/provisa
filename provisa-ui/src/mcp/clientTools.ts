@@ -228,7 +228,9 @@ export async function executeClientTool(
 
   // REQ-2115: what the user is looking at, read from their own session.
   if (name === "read_screen") {
-    return { success: true, message: JSON.stringify(readScreen()).slice(0, ANSWER_LIMIT) };
+    const screen = await readScreen(UI_ELEMENT_WAIT_MS);
+    if (typeof screen === "string") return { success: false, message: `read_screen: ${screen}` };
+    return { success: true, message: JSON.stringify(screen).slice(0, ANSWER_LIMIT) };
   }
 
   if (name === "present_choice") {

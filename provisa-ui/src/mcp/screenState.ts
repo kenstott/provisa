@@ -36,12 +36,21 @@ export interface ScreenGrid {
 
 const editors = new Map<string, ScreenEditor>();
 const grids = new Map<symbol, ScreenGrid>();
+/** Waiting for an editor to publish, by route. */
+const awaited = new Map<string, Set<() => void>>();
+
+/** The routes whose page shows a query editor; each publishes it with useScreenEditor. A route
+ * here whose editor has not published yet is still loading (the Python tab is loaded on first
+ * open), never a page without one. */
+export const EDITOR_ROUTES: ReadonlySet<string> = new Set(["/sql", "/query", "/graph", "/python"]);
 
 /** Publish the editor `route` shows, while the calling component is mounted. */
 export function useScreenEditor(route: string, editor: ScreenEditor): void {
   const { language, text, tab } = editor;
   useEffect(() => {
     editors.set(route, { language, text, tab });
+    for (const wake of awaited.get(route) ?? []) wake();
+    awaited.delete(route);
     return () => {
       editors.delete(route);
     };
@@ -101,11 +110,35 @@ export interface Screen {
   results: ScreenGrid[];
 }
 
-/** The screen as read_screen reports it. */
-export function readScreen(): Screen {
+/** Resolves true once `route`'s editor has published, false after `waitMs`. */
+function editorPublished(route: string, waitMs: number): Promise<boolean> {
+  if (editors.has(route)) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const wakers = awaited.get(route) ?? new Set<() => void>();
+    awaited.set(route, wakers);
+    const wake = () => {
+      clearTimeout(timer);
+      resolve(true);
+    };
+    const timer = setTimeout(() => {
+      wakers.delete(wake);
+      resolve(false);
+    }, waitMs);
+    wakers.add(wake);
+  });
+}
+
+/** The screen as read_screen reports it. On a route that shows an editor, waits up to `waitMs`
+ * for it to publish; a string when it has not, naming the route, rather than a screen read as
+ * having no editor. */
+export async function readScreen(waitMs: number): Promise<Screen | string> {
+  const { pathname } = window.location;
+  if (EDITOR_ROUTES.has(pathname) && !(await editorPublished(pathname, waitMs))) {
+    return `the editor on ${pathname} has not loaded within ${waitMs / 1000}s`;
+  }
   return {
     route: `${window.location.pathname}${window.location.search}`,
-    editor: editors.get(window.location.pathname) ?? null,
+    editor: editors.get(pathname) ?? null,
     fields: screenFields(),
     results: [...grids.values()],
   };
