@@ -89,6 +89,23 @@ def _figures_at_close(client: httpx.Client, day: date) -> int:
     return int(row["n"])
 
 
+def _why_none(client: httpx.Client, day: date) -> str:
+    """What the view holds when a day has no figure at its close: its build state, and when each
+    of the day's figures was recorded."""
+    views = _admin(client, "{ mvList { id status rowCount lastError } }")["mvList"]
+    [view] = [v for v in views if v["id"] == MV_ID]
+    response = client.post(
+        "/data/sql",
+        json={
+            "sql": 'SELECT e.recorded_at, COUNT(*) AS n FROM "banking"."view_eod_totals" AS e '
+            f"WHERE e.business_date = DATE '{day.isoformat()}' GROUP BY e.recorded_at"
+        },
+    )
+    if response.status_code != 200:
+        return f"view {view}; its figures unread: HTTP {response.status_code}: {response.text}"
+    return f"view {view}; the day's figures by recorded time: {response.json()['data']['sql']}"
+
+
 def main() -> None:
     with _ledger() as conn, httpx.Client(base_url=URL, headers=ADMIN, timeout=600) as client:
         days = [
@@ -112,7 +129,10 @@ def main() -> None:
             if not built["success"]:
                 raise SystemExit(f"{day}: the end-of-day build failed: {built['message']}")
             if _figures_at_close(client, day) == 0:
-                raise SystemExit(f"{day}: no end-of-day figure is recorded at its close")
+                raise SystemExit(
+                    f"{day}: no end-of-day figure is recorded at its close {close_of(day)} "
+                    f"({built['message']}); {_why_none(client, day)}"
+                )
             print(f"banking: {day} closed", flush=True)
 
 
