@@ -158,17 +158,22 @@ jobs:
         uses: ./.github/actions/demo-bundle
         with:
           demo: weblogs
-      - name: the bundle holds the demo, its seed, its logs and its database
+      - name: the bundle holds the demo, its logs and its database, and no seed
         env:
           BUNDLE: ${{ steps.build.outputs.bundle }}
         run: |
           set -euo pipefail
           listed="$(tar -tzf "$BUNDLE")"
           for member in bundle.json config.yaml demo.yaml tour.yaml docker-compose.run.yml \
-                        seeded/replicas.duckdb seeded/replicas.json dump/postgres/shop.sql \
-                        dump/load-postgres.sh; do
+                        dump/postgres/shop.sql dump/load-postgres.sh; do
             grep -qx "$member" <<<"$listed" || { echo "::error::$BUNDLE has no $member"; exit 1; }
           done
+          # weblogs reads its own sources live and replicates none, so its build lands no seed
+          # (REQ-2049; scripts/demo_bundle.py _replicates).
+          if grep -q '^seeded/replicas' <<<"$listed"; then
+            echo "::error::$BUNDLE carries a replica seed, which a demo replicating nothing never lands"
+            exit 1
+          fi
           grep -q '^logs/nginx/access.json' <<<"$listed"
           test -z "$(docker ps -aq --filter label=com.provisa.demo=weblogs)"
 
