@@ -278,15 +278,16 @@ function demoTourStep(
   }
   if (def.notebook === true) {
     // REQ-2084: the demo's notebook, its cells added to the Notebook tab's open notebook and run;
-    // the step is shown once the last has answered.
+    // the step is shown once the last has answered, on the last cell's outputs (its figure), which
+    // the notebook has scrolled into view.
     if (notebook.length === 0) {
       throw new Error(`Tour: step ${def.key} opens the demo's notebook, and it ships none`);
     }
     return {
       ...page,
       navState: { cells: [...notebook], autoRun: true },
-      readySelector: '[data-testid="notebook-answered"]',
-      element: '[data-testid="notebook-panel"]',
+      readySelector: '[data-testid="notebook-answer"]',
+      element: '[data-testid="notebook-answer"]',
       waitMs: NOTEBOOK_WAIT_MS,
     };
   }

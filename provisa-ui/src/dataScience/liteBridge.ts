@@ -194,7 +194,7 @@ interface NotebookPanel {
       };
     };
     activeCellIndex: number;
-    widgets: ReadonlyArray<{ model: { outputs: { toJSON(): CellOutput[] } } }>;
+    widgets: ReadonlyArray<{ model: { outputs: { toJSON(): CellOutput[] } }; node?: HTMLElement }>;
   };
 }
 
@@ -258,4 +258,15 @@ export async function runCells(
   }
   if (figures > 0) value += `${value ? "\n" : ""}(${figures} figure(s) drawn)`;
   return clipped({ stdout, value, error: null });
+}
+
+/** The open notebook's last cell's outputs as the notebook draws them (a figure, a table, what it
+ * printed): what a tour step points at once its cells have run. Null while no notebook is open or
+ * its last cell has drawn nothing. */
+export function lastOutputArea(app: LiteApp): HTMLElement | null {
+  const notebook = openNotebook(app);
+  if (notebook === null) return null;
+  const { widgets } = notebook.content;
+  const area = widgets[widgets.length - 1]?.node?.querySelector<HTMLElement>(".jp-OutputArea");
+  return area != null && area.childElementCount > 0 ? area : null;
 }
