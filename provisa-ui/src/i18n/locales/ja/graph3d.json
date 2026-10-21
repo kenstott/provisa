@@ -55,6 +55,7 @@
     "edge_relationship": "リレーションシップ",
     "edge_relationship_outside": "プロダクト外のリレーションシップ",
     "edge_lineage": "供給先",
-    "edge_owns": "所有"
+    "edge_owns": "所有",
+    "loadError": "グラフを読み込めませんでした: {{error}}"
   }
 }

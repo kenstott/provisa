@@ -59,30 +59,45 @@ class FakeObserver {
 }
 vi.stubGlobal("IntersectionObserver", FakeObserver);
 
+// The meta-domain read: what each call asked for, answered with the fixture.
+const reads = vi.hoisted(() => ({
+  calls: [] as [string | null, boolean][],
+  data: null as unknown,
+}));
+vi.mock("../useProductGraph", () => ({
+  useProductGraph: (product: string | null, enabled: boolean) => {
+    reads.calls.push([product, enabled]);
+    return { data: enabled ? reads.data : null, error: null };
+  },
+}));
+
 import { KnowledgeGraphPanel, ProductMapButton } from "../KnowledgeGraphPanel";
 
 const last = () => made.scenes[made.scenes.length - 1];
 const drawn = (call: unknown[]) => call[0] as GraphData;
 const nodeIds = (g: GraphData) => g.nodes.map((n) => n.id).sort();
 const kinds = (g: GraphData) => [...new Set(g.edges.map((e) => e.kind))].sort();
-const ZERO = ["t:customers", "t:orders"];
 
 beforeEach(() => {
   made.scenes.length = 0;
   observed.fire.length = 0;
+  reads.calls.length = 0;
+  reads.data = DATA;
 });
 
 function panel() {
-  render(
-    <KnowledgeGraphPanel data={DATA} product="p:c360" productName="customer_360" zero={ZERO} />,
-  );
+  render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
+  // Scrolled into view: the product is read and three.js loads.
+  act(() => observed.fire.forEach((f) => f()));
 }
 
 describe("the Knowledge Graph panel", () => {
   it("loads three.js only once it scrolls into view, and draws the product's core", async () => {
-    panel();
+    render(<KnowledgeGraphPanel productId="c360" productName="customer_360" />);
     expect(made.scenes).toHaveLength(0);
+    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
     act(() => observed.fire.forEach((f) => f()));
+    expect(reads.calls.at(-1)).toEqual(["c360", true]);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     const g = drawn(last().setData.mock.calls[0]);
     expect(nodeIds(g)).toEqual(["f:refresh", "p:c360", "t:customers", "t:orders", "term:customer"]);
@@ -92,9 +107,10 @@ describe("the Knowledge Graph panel", () => {
 
   it("expands to the full graph on Knowledge graph, focused on the product", async () => {
     panel();
-    fireEvent.click(screen.getByTestId("kg-panel-expand"));
+    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
     expect(await screen.findByTestId("graph3d")).toBeInTheDocument();
-    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    // The panel's scene, then the expanded graph's.
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
     expect(screen.getByRole("radio", { name: "Knowledge graph" })).toBeChecked();
     const g = drawn(last().setData.mock.calls[0]);
     expect(kinds(g)).not.toContain("relationship_outside");
@@ -107,8 +123,9 @@ describe("the Knowledge Graph panel", () => {
 
   it("removes only the tags when the tags layer goes, and the Lineage preset draws lineage alone", async () => {
     panel();
-    fireEvent.click(screen.getByTestId("kg-panel-expand"));
-    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    // The panel's scene, then the expanded graph's.
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
     const before = drawn(last().setData.mock.calls[0]);
     fireEvent.click(screen.getByTestId("graph3d-layer-tags"));
     await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(2));
@@ -126,24 +143,18 @@ describe("the Knowledge Graph panel", () => {
   });
 
   it("offers no layer the data has nothing in", async () => {
-    const noLineage = { ...DATA, edges: DATA.edges.filter((e) => e.kind !== "lineage") };
-    render(
-      <KnowledgeGraphPanel
-        data={noLineage}
-        product="p:c360"
-        productName="customer_360"
-        zero={ZERO}
-      />,
-    );
-    fireEvent.click(screen.getByTestId("kg-panel-expand"));
+    reads.data = { ...DATA, edges: DATA.edges.filter((e) => e.kind !== "lineage") };
+    panel();
+    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
     expect(await screen.findByTestId("graph3d-layer-tags")).toBeInTheDocument();
     expect(screen.queryByTestId("graph3d-layer-lineage")).not.toBeInTheDocument();
   });
 
   it("shows a selected table's columns on asking", async () => {
     panel();
-    fireEvent.click(screen.getByTestId("kg-panel-expand"));
-    await waitFor(() => expect(made.scenes).toHaveLength(1));
+    fireEvent.click(await screen.findByTestId("kg-panel-expand"));
+    // The panel's scene, then the expanded graph's.
+    await waitFor(() => expect(made.scenes).toHaveLength(2));
     fireEvent.click(screen.getByTestId("graph3d-link-member:p:c360>t:customers"));
     fireEvent.click(screen.getByTestId("graph3d-columns"));
     await waitFor(() => expect(last().setData).toHaveBeenCalledTimes(2));
@@ -153,8 +164,10 @@ describe("the Knowledge Graph panel", () => {
 
 describe("the Product map entry point", () => {
   it("opens the full graph on the Product map preset, every product shown", async () => {
-    render(<ProductMapButton data={DATA} />);
+    render(<ProductMapButton />);
+    expect(reads.calls.every(([, enabled]) => !enabled)).toBe(true);
     fireEvent.click(screen.getByTestId("product-map-open"));
+    expect(reads.calls.at(-1)).toEqual([null, true]);
     await waitFor(() => expect(made.scenes).toHaveLength(1));
     expect(screen.getByRole("radio", { name: "Product map" })).toBeChecked();
     expect(nodeIds(drawn(last().setData.mock.calls[0]))).toEqual([

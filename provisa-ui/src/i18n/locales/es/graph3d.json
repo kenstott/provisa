@@ -55,6 +55,7 @@
     "edge_relationship": "relación",
     "edge_relationship_outside": "relación fuera del producto",
     "edge_lineage": "alimenta",
-    "edge_owns": "posee"
+    "edge_owns": "posee",
+    "loadError": "No se pudo leer el grafo: {{error}}"
   }
 }

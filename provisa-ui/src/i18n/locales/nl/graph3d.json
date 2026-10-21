@@ -55,6 +55,7 @@
     "edge_relationship": "relatie",
     "edge_relationship_outside": "relatie buiten het product",
     "edge_lineage": "voedt",
-    "edge_owns": "bezit"
+    "edge_owns": "bezit",
+    "loadError": "De graaf kon niet worden gelezen: {{error}}"
   }
 }

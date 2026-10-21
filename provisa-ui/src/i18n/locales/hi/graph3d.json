@@ -55,6 +55,7 @@
     "edge_relationship": "संबंध",
     "edge_relationship_outside": "प्रोडक्ट के बाहर संबंध",
     "edge_lineage": "डेटा देता है",
-    "edge_owns": "का मालिक"
+    "edge_owns": "का मालिक",
+    "loadError": "ग्राफ़ पढ़ा नहीं जा सका: {{error}}"
   }
 }

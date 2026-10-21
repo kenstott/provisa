@@ -68,6 +68,8 @@ export interface GraphNode {
   sensitivities?: string[];
   /** A column's table: the column is drawn inside it until the table is expanded. */
   parent?: string;
+  /** REQ-1667: the lineage lane the node stands in, when the data says (upstream negative). */
+  lane?: number;
 }
 
 export interface GraphEdge {
@@ -339,9 +341,10 @@ export function layoutGraph(
     g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b] as [string, string]),
     zero.filter((z) => ids.includes(z)),
   );
+  const given = new Map(g.nodes.filter((n) => n.lane !== undefined).map((n) => [n.id, n.lane]));
   const lanes = new Map<number, string[]>();
   for (const id of ids) {
-    const l = lane.get(id) ?? 0;
+    const l = given.get(id) ?? lane.get(id) ?? 0;
     lanes.set(l, [...(lanes.get(l) ?? []), id]);
   }
   const all = [...lanes.keys()];

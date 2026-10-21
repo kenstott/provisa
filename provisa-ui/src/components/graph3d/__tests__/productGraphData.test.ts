@@ -195,3 +195,66 @@ describe("the product graph's data", () => {
     expect(g.edges.some((e) => e.kind === "term_edge")).toBe(false);
   });
 });
+
+describe("the product's links (REQ-2126)", () => {
+  const linked: ProductRow[] = [
+    {
+      id: "p1",
+      name: "P1",
+      domain_id: "sales",
+      edges: [
+        {
+          kind: "relationship",
+          direction: null,
+          target_product_id: "p2",
+          target_table_id: null,
+          target_relation: null,
+          hops: 1,
+          path_count: 2,
+          aliases: "BOUGHT, PAID",
+          target_product: { id: "p2", name: "P2", domain_id: "finance" },
+        },
+        {
+          kind: "lineage",
+          direction: "upstream",
+          target_product_id: null,
+          target_table_id: null,
+          target_relation: "raw.d",
+          hops: 2,
+          path_count: 1,
+          aliases: null,
+        },
+        {
+          kind: "lineage",
+          direction: "downstream",
+          target_product_id: null,
+          target_table_id: null,
+          target_relation: "mart.e",
+          hops: 1,
+          path_count: 1,
+          aliases: null,
+        },
+      ],
+    },
+  ];
+
+  it("joins a product to another by one edge carrying its path count and aliases", () => {
+    const g = toGraphData(linked, null, null);
+    expect(g.edges.find((e) => e.kind === "product_link")).toMatchObject({
+      a: "p:p1",
+      b: "p:p2",
+      paths: 2,
+      label: "BOUGHT, PAID",
+    });
+  });
+
+  it("stands lineage in lanes: ancestry by its distance upstream, a consumer one lane down", () => {
+    const g = toGraphData(linked, null, null);
+    const lane = (id: string) => g.nodes.find((n) => n.id === id)?.lane;
+    expect([lane("l:raw.d"), lane("p:p1"), lane("l:mart.e")]).toEqual([-2, 0, 1]);
+    expect(g.edges.filter((e) => e.kind === "lineage").map((e) => [e.a, e.b])).toEqual([
+      ["l:raw.d", "p:p1"],
+      ["p:p1", "l:mart.e"],
+    ]);
+  });
+});

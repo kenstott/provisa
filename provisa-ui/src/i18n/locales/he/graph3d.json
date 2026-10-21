@@ -55,6 +55,7 @@
     "edge_relationship": "קשר",
     "edge_relationship_outside": "קשר מחוץ למוצר",
     "edge_lineage": "מזין",
-    "edge_owns": "בבעלות"
+    "edge_owns": "בבעלות",
+    "loadError": "לא ניתן היה לקרוא את הגרף: {{error}}"
   }
 }

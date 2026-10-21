@@ -55,6 +55,7 @@
     "edge_relationship": "Beziehung",
     "edge_relationship_outside": "Beziehung außerhalb des Produkts",
     "edge_lineage": "speist",
-    "edge_owns": "besitzt"
+    "edge_owns": "besitzt",
+    "loadError": "Der Graph konnte nicht gelesen werden: {{error}}"
   }
 }

@@ -59,6 +59,25 @@ export const PRODUCT: Selection = {
     member_tables: { alias: "memberTables", sel: TABLE },
     commands: { alias: "commands", sel: { fields: ["name", "domain_id"] } },
     tags: { alias: "tags", sel: { fields: ["tag_id"] } },
+    // REQ-2126: the product's links to the rest of the model.
+    edges: {
+      alias: "edges",
+      sel: {
+        fields: [
+          "kind",
+          "direction",
+          "target_product_id",
+          "target_table_id",
+          "target_relation",
+          "hops",
+          "path_count",
+          "aliases",
+        ],
+        rels: {
+          target_product: { alias: "targetProduct", sel: { fields: ["id", "name", "domain_id"] } },
+        },
+      },
+    },
   },
 };
 
@@ -92,12 +111,25 @@ interface TableRow extends Tagged {
   }[];
 }
 
+export interface EdgeRow {
+  kind: "relationship" | "lineage";
+  direction: "upstream" | "downstream" | null;
+  target_product_id: string | null;
+  target_table_id: number | null;
+  target_relation: string | null;
+  hops: number;
+  path_count: number;
+  aliases: string | null;
+  target_product?: { id: string; name: string; domain_id: string } | null;
+}
+
 export interface ProductRow extends Tagged {
   id: string;
   name: string;
   domain_id: string;
   member_tables?: TableRow[];
   commands?: { name: string; domain_id: string }[];
+  edges?: EdgeRow[];
 }
 
 export interface TermEdgeRow {
@@ -195,10 +227,41 @@ export function toGraphData(
 
   for (const p of products) {
     const pid = productNode(p.id);
-    node({ id: pid, type: "product", label: p.name, domains: [p.domain_id], tags: tagIds(p) });
+    // A product another one links to is drawn before its own row is read: its row decides.
+    nodes.set(pid, {
+      id: pid,
+      type: "product",
+      label: p.name,
+      domains: [p.domain_id],
+      tags: tagIds(p),
+      lane: 0,
+    });
     node({ id: `d:${p.domain_id}`, type: "domain", label: p.domain_id });
     edge(pid, `d:${p.domain_id}`, "in_domain");
     tag(p, pid);
+    for (const e of p.edges ?? []) {
+      if (e.kind === "relationship" && e.target_product) {
+        const to = e.target_product;
+        node({ id: productNode(to.id), type: "product", label: to.name, domains: [to.domain_id] });
+        const id = `product_link:${pid}>${productNode(to.id)}`;
+        if (!edges.has(id))
+          edges.set(id, {
+            id,
+            a: pid,
+            b: productNode(to.id),
+            kind: "product_link",
+            paths: e.path_count,
+            ...(e.aliases ? { label: e.aliases } : {}),
+          });
+      } else if (e.kind === "lineage" && e.target_relation) {
+        // Upstream ancestry stands in lanes by its distance; a consumer one lane downstream.
+        const xid = `l:${e.target_relation}`;
+        const lane = e.direction === "upstream" ? -e.hops : 1;
+        node({ id: xid, type: "relation", label: e.target_relation, lane });
+        if (e.direction === "upstream") edge(xid, pid, "lineage");
+        else edge(pid, xid, "lineage");
+      }
+    }
     for (const c of p.commands ?? []) {
       node({ id: `f:${c.name}`, type: "command", label: c.name, domains: [c.domain_id] });
       edge(pid, `f:${c.name}`, "command");

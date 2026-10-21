@@ -55,6 +55,7 @@
     "edge_relationship": "связь",
     "edge_relationship_outside": "связь вне продукта",
     "edge_lineage": "питает",
-    "edge_owns": "владеет"
+    "edge_owns": "владеет",
+    "loadError": "Не удалось прочитать граф: {{error}}"
   }
 }

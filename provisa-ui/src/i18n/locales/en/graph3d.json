@@ -55,6 +55,7 @@
     "edge_relationship": "relationship",
     "edge_relationship_outside": "relationship outside the product",
     "edge_lineage": "feeds",
-    "edge_owns": "owns"
+    "edge_owns": "owns",
+    "loadError": "The graph could not be read: {{error}}"
   }
 }

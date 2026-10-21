@@ -15,7 +15,7 @@
 
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Chip, Group, Modal, Text } from "@mantine/core";
+import { Alert, Button, Chip, Group, Loader, Modal, Text } from "@mantine/core";
 import { Network } from "lucide-react";
 import { ExpandButton } from "../../pages/tables/profile3d/Expandable3D";
 import type { CameraCommand } from "../../pages/tables/profile3d/Stage3D";
@@ -24,6 +24,8 @@ import { GraphStage, type StageState } from "./GraphStage";
 import { layoutGraph, panelGraph, type GraphData, type PresetId } from "./graphModel";
 import type { GraphHover } from "./graphScene";
 import { useInView } from "./useInView";
+import { productNode } from "./productGraphData";
+import { useProductGraph } from "./useProductGraph";
 import "../../pages/tables/profile3d/profile3d.css";
 import "./graph3d.css";
 
@@ -103,51 +105,73 @@ function PanelStage({ graph, product }: { graph: GraphData; product: string }) {
   );
 }
 
+/** The product's member tables: lane 0 of the Lineage preset. */
+function membersOf(data: GraphData, product: string): string[] {
+  return data.edges.filter((e) => e.kind === "member" && e.a === product).map((e) => e.b);
+}
+
+function Loading({ error, testId }: { error: string | null; testId: string }) {
+  const { t } = useTranslation();
+  return error ? (
+    <Alert color="red" data-testid={`${testId}-error`}>
+      {t("graph3d.loadError", { error })}
+    </Alert>
+  ) : (
+    <Loader size="sm" data-testid={`${testId}-loading`} />
+  );
+}
+
 export function KnowledgeGraphPanel({
-  data,
-  product,
+  productId,
   productName,
-  zero,
 }: {
-  data: GraphData;
-  /** The product's node id. */
-  product: string;
+  productId: string;
   productName: string;
-  /** The product's member tables, lane 0 of the Lineage preset. */
-  zero: string[];
 }) {
   const { t } = useTranslation();
   const { ref, seen } = useInView<HTMLDivElement>();
   const [open, setOpen] = useState(false);
-  const graph = useMemo(() => panelGraph(data, product), [data, product]);
+  // Read once the panel is first in view, as three.js is loaded.
+  const { data, error } = useProductGraph(productId, seen);
+  const product = productNode(productId);
+  const graph = useMemo(() => (data ? panelGraph(data, product) : null), [data, product]);
   return (
     <div className="g3d-panel" ref={ref} data-testid="kg-panel">
       <Group justify="space-between" gap="xs">
         <Text c="dimmed" fw={500} size="sm">
           {t("graph3d.panelTitle")}
         </Text>
-        <ExpandButton onClick={() => setOpen(true)} testId="kg-panel-expand" />
+        {data && <ExpandButton onClick={() => setOpen(true)} testId="kg-panel-expand" />}
       </Group>
       <div className="p3d g3d-panel-view">
-        {seen && <PanelStage graph={graph} product={product} />}
+        {seen &&
+          (graph ? (
+            <PanelStage graph={graph} product={product} />
+          ) : (
+            <Loading error={error} testId="kg-panel" />
+          ))}
       </div>
-      <GraphModal
-        opened={open}
-        onClose={() => setOpen(false)}
-        title={t("graph3d.expandTitle", { product: productName })}
-        data={data}
-        preset="knowledge"
-        focus={product}
-        zero={zero}
-      />
+      {data && (
+        <GraphModal
+          opened={open}
+          onClose={() => setOpen(false)}
+          title={t("graph3d.expandTitle", { product: productName })}
+          data={data}
+          preset="knowledge"
+          focus={product}
+          zero={membersOf(data, product)}
+        />
+      )}
     </div>
   );
 }
 
-/** The Data Products page's entry point: the full graph on the Product map preset. */
-export function ProductMapButton({ data }: { data: GraphData }) {
+/** The Data Products page's entry point: the full graph on the Product map preset, every product
+ * read when it is opened. */
+export function ProductMapButton() {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const { data, error } = useProductGraph(null, open);
   return (
     <>
       <Button
@@ -159,15 +183,22 @@ export function ProductMapButton({ data }: { data: GraphData }) {
       >
         {t("graph3d.productMap")}
       </Button>
-      <GraphModal
-        opened={open}
-        onClose={() => setOpen(false)}
-        title={t("graph3d.productMap")}
-        data={data}
-        preset="productMap"
-        focus={null}
-        zero={[]}
-      />
+      {open && !data && (
+        <Modal opened onClose={() => setOpen(false)} title={t("graph3d.productMap")} size="sm">
+          <Loading error={error} testId="product-map" />
+        </Modal>
+      )}
+      {data && (
+        <GraphModal
+          opened={open}
+          onClose={() => setOpen(false)}
+          title={t("graph3d.productMap")}
+          data={data}
+          preset="productMap"
+          focus={null}
+          zero={[]}
+        />
+      )}
     </>
   );
 }

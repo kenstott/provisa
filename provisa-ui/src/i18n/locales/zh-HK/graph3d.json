@@ -55,6 +55,7 @@
     "edge_relationship": "關係",
     "edge_relationship_outside": "產品外的關係",
     "edge_lineage": "供數給",
-    "edge_owns": "擁有"
+    "edge_owns": "擁有",
+    "loadError": "無法讀取圖：{{error}}"
   }
 }
