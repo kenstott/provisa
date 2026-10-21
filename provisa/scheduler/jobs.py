@@ -461,12 +461,17 @@ def _compact_signal(
     # A table registered with its metadata unreadable is said (an ERROR naming it) and left as it
     # is: this signal is not compacted this run, and its files stay where they are for a run after
     # the table is recovered. The other signals carry on (ops_trino.metadata_missing).
-    from provisa.observability.ops_trino import metadata_missing
+    from provisa.observability.ops_trino import metadata_files_gone, metadata_missing
 
-    if metadata_missing(
-        lambda sql: engine.execute_engine_sync(sql, authorization=system_auth("scheduled job")),
-        signal,
-    ):
+    def _rows(sql: str):
+        return engine.execute_engine_sync(sql, authorization=system_auth("scheduled job")).rows
+
+    def _keys_under(bucket: str, prefix: str):
+        for page in paginator.paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                yield obj["Key"]
+
+    if metadata_missing(_rows, signal) or metadata_files_gone(_rows, _keys_under, signal):
         return
 
     try:

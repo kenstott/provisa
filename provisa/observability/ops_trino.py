@@ -17,6 +17,7 @@ engine — native engines land telemetry in the dedicated ops store (see
 from __future__ import annotations
 
 import logging
+import re
 
 from provisa.observability.ops_schema import OPS_TABLES
 
@@ -64,13 +65,41 @@ def metadata_missing(execute, table: str) -> bool:  # REQ-016, REQ-302
             # runs next create it, or fail with the cause.
             return False
         missing = exc
+    _say_missing(table, missing)  # Trino's message names the metadata location it could not find
+    return True
+
+
+def _say_missing(table: str, where: object) -> None:
     logging.getLogger(__name__).error(
         "otel.signals.%s is registered but its metadata cannot be read from the telemetry bucket "
         "(%s): its signals are not compacted or changed until it is recovered by hand -- see the "
         "deployment guide, 'Telemetry table whose metadata is missing'",
         table,
-        missing,  # Trino's message names the metadata location it could not find
+        where,
     )
+
+
+_LOCATION = re.compile(r"location = '(s3://[^']+)'")
+
+
+def metadata_files_gone(rows, keys_under, table: str) -> bool:  # REQ-016, REQ-302
+    """Whether ``otel.signals.<table>``'s location in the bucket holds no metadata file; when it
+    holds none, the same ERROR as :func:`metadata_missing` names the table and the location.
+
+    What :func:`metadata_missing`'s probe cannot see: the catalog caches a table's metadata
+    (``iceberg.metadata-cache.enabled``), and a table with no snapshot yet is answered from that
+    cache without reading the bucket -- and is then written, its lost metadata replaced, as if
+    nothing had happened. ``rows`` runs one statement on the engine and returns its rows;
+    ``keys_under(bucket, prefix)`` lists the bucket's keys under ``prefix``."""
+    [[ddl]] = rows(f"SHOW CREATE TABLE otel.signals.{table}")
+    found = _LOCATION.search(ddl)
+    if found is None:
+        raise ValueError(f"otel.signals.{table} names no location: {ddl}")
+    bucket, prefix = found.group(1).removeprefix("s3://").split("/", 1)
+    metadata = f"{prefix.rstrip('/')}/metadata/"
+    if any(key.endswith(".metadata.json") for key in keys_under(bucket, metadata)):
+        return False
+    _say_missing(table, f"no metadata file under s3://{bucket}/{metadata}")
     return True
 
 

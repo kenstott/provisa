@@ -328,6 +328,13 @@ class TestSignalPartitionLayout:
     so the metrics report read zero rows on a node whose writer produced a file every 15 seconds.
     """
 
+    @pytest.fixture(autouse=True)
+    def _tables_readable(self, monkeypatch):
+        """Each signal's table is readable: these tests are of which files a run takes, not of the
+        probes (test_otel_missing_metadata)."""
+        monkeypatch.setattr("provisa.observability.ops_trino.metadata_missing", lambda *_: False)
+        monkeypatch.setattr("provisa.observability.ops_trino.metadata_files_gone", lambda *_: False)
+
     def _run(self, monkeypatch, signal, keys, max_files=50):
         import boto3
 
