@@ -116,7 +116,10 @@ def _make_app_state_with_orders():
                     table_name="orders",
                     domain_id="default",
                 )
-            }
+            },
+            # The table's columns as compilation lists them: the graph schema names each by the
+            # property it is read by (REQ-471).
+            aggregate_columns={1: [("id", "integer"), ("region", "varchar"), ("amount", "double")]},
         )
     except Exception:
         raise
