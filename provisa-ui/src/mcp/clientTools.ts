@@ -10,6 +10,7 @@
 
 import type { NavigateFunction } from "react-router-dom";
 import { awaitRun } from "../dataScience/runReports";
+import { readScreen } from "./screenState";
 import { parseUiActions, runUiActions } from "./uiActions";
 
 /** REQ-2115: how long each of Polly's steps on a screen lets itself be seen, and how long a step
@@ -87,9 +88,10 @@ export const CLIENT_TOOL_NAMES = new Set([
   "present_choice",
   "admin_mutation",
   "admin_request",
+  "read_screen",
 ]);
 
-/** How much of a REST route's answer goes back to the model. */
+/** How much of a REST route's answer, or of the screen, goes back to the model. */
 const ANSWER_LIMIT = 4000;
 
 /** REQ-2114: one of the UI's admin REST routes, called from the user's session -- the global
@@ -223,6 +225,11 @@ export async function executeClientTool(
   }
 
   if (name === "admin_request") return adminRequest(input, ctx);
+
+  // REQ-2115: what the user is looking at, read from their own session.
+  if (name === "read_screen") {
+    return { success: true, message: JSON.stringify(readScreen()).slice(0, ANSWER_LIMIT) };
+  }
 
   if (name === "present_choice") {
     const question = String(input.question ?? "");
