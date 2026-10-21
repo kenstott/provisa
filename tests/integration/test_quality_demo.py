@@ -156,7 +156,9 @@ def follow(server, done: Callable[[dict], bool]) -> dict:
         state = views(server)
         if done(state):
             return state
-        assert time.monotonic() < deadline, f"the views did not follow the landing: {state}"
+        assert time.monotonic() < deadline, (
+            f"the views did not follow the landing: {state}\n{server.dump_stderr_debug()[-8000:]}"
+        )
         time.sleep(2)
 
 
