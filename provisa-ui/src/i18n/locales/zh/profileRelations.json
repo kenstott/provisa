@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "{{table}} 中的关系",
+    "none": "本次运行未发现列之间的相关性或依赖关系。",
+    "canvasLabel": "表中各列的 3D 图，列之间以相关性和依赖关系相连",
+    "minStrength": "强度",
+    "showCorrelation": "相关性",
+    "showDependence": "依赖关系",
+    "legendPositive": "同向上升",
+    "legendNegative": "反向变化",
+    "legendRatio": "类别解释数值",
+    "legendDependence": "依赖于（箭头指向被依赖的列）",
+    "tipLinks_one": "关系：{{count}}",
+    "tipLinks_other": "关系：{{count}}",
+    "columns": "列",
+    "noLinks": "此强度下没有关系。",
+    "note": "杆的粗细表示强度：相关性为 |Spearman ρ|，相关比为被解释方差的占比，依赖关系为其父列消除的该列不确定性的占比。灰色列属于父表。",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "相关比 η²",
+    "measure_dependence": "依赖度（消除的不确定性占比）",
+    "family_numeric": "数值",
+    "family_temporal": "日期/时间",
+    "family_text": "文本",
+    "family_boolean": "布尔",
+    "family_other": "其他",
+    "family_foreign": "父表的列"
+  }
+}

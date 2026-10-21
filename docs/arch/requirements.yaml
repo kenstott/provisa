@@ -86054,3 +86054,38 @@ Then it updates the linked asset rather than creating another"
   - REQ-2119
   - REQ-1389
   notes: "Maintainer 2026-10-21, through the lead: pull descriptions and references from the customer's catalog when describing a table; a human pick list rather than LLM matching; catalogs as their own admin panel reused by export and import; store each pick; an export records the reference in the catalog too, so the catalog can later become the authority by importing. Maintainer: a catalog import, useful once a table is linked by an export or a pick in the table editor. Maintainer: a scheduled import, so for certain tables the catalog is the authority and they are updated on a stated schedule. Maintainer: authority can't be known for sure, so show when descriptions were last imported from which catalog, and let a steward elect to lock a table to a catalog. Maintainer: the table editor lets you refresh descriptions from the catalog. Maintainer: different domains can use their own catalogs."
+- id: REQ-2123
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Profile Runs Terrain View
+  feature: semantic-model-tables-and-columns
+  priority: SHOULD
+  type: ui
+  description: "The profile runs modal (ProfileRunsModal, opened from the table editor's profiler panel) has a Terrain tab: a rotatable, zoomable 3D view of the selected run's column profiles, with one ridge per column arranged front to back from low to high values (categories from most to least common), each ridge's height equal to the rows per range, p5, median and p95 quantile marks, and a null-share block per column. Values beyond 3 times the IQR are excluded from the ridge and counted. Hovering shows the exact range and row count; selecting a column shows a linked 2D histogram and its stats. Columns whose values are restricted for the viewer's role show no ridge. The view has an expand button that opens it in a modal at 95% of the viewport. three.js is loaded lazily, only when the tab opens."
+  use_case: A steward scanning a profiled table sees the shape, skew, outliers and null pattern of every column at once, and drills into one column without leaving the run.
+  scenario: "Given a completed profile run with numeric and category columns open in the profile runs modal
+
+When the steward selects the Terrain tab
+
+Then each unrestricted column appears as a ridge with its quantile marks and null block, and three.js is loaded only at that moment"
+  target: "2026-Q4"
+- id: REQ-2124
+  status: proposed
+  since: 2026-10
+  group: 10. UI & Admin Surfaces
+  category: Profile Runs 3D Relationship and Distribution Views
+  feature: semantic-model-tables-and-columns
+  priority: SHOULD
+  type: ui
+  description: "The profile runs modal has three more 3D tabs that share the Terrain tab's controls: drag to rotate, a reset-view control, and an expand button that opens the view in a modal at 95% of the viewport with its own camera. Relationships lays the selected run's columns out as nodes by a seeded 3D force simulation, with edges from Spearman and correlation-ratio correlations and from the in-network dependency sets (an arrow points toward the dependent column), filterable by minimum strength and by kind, and shows a parent table's columns as foreign nodes. Joint cloud shows one column and its in-network parents from joint_counts as a 3D grid of decile or category slots, one sphere per occupied cell sized by rows and coloured by rows or by lift over independence, and lists the most over- and under-represented combinations among cells of at least 0.5% of rows. Drift strata shows one column's distribution in the selected run and up to seven earlier successful runs, re-cut into common bins and stacked oldest to newest, with the median traced across the runs, the null share per run, and the runs that drifted for that column marked. Columns whose values are restricted for the viewer's role show no nodes, cells or strata."
+  use_case: A steward reading a profiled table sees which columns move together and which depend on which, which category combinations are over- or under-represented, and how one column's distribution has drifted across recent runs, without leaving the run.
+  scenario: |
+    Given a completed profile run with correlations, dependencies and joint counts, and up to seven earlier successful runs of the same table, open in the profile runs modal
+
+    When the steward selects Relationships, Joint cloud or Drift strata for a column
+
+    Then the tab draws its view with the shared controls, the expand button opens it at 95% of the viewport, and a restricted column appears in none of them
+  related_reqs:
+  - REQ-2123
+  target: "2026-Q4"

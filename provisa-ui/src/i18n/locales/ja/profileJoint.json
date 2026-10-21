@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "{{table}} の同時度数クラウド",
+    "none": "この実行では依存関係ネットワークが構築されなかったため、同時度数がありません。",
+    "canvasLabel": "列の行を親列に対して表した 3D クラウド",
+    "column": "列",
+    "colorBy": "色分け",
+    "colorRows": "行",
+    "colorLift": "リフト",
+    "legendRows": "セル内の行",
+    "legendLift": "独立の場合より少ない · 同数 · 多い",
+    "decile": "D{{n}}",
+    "nullSlot": "null",
+    "otherSlot": "他 {{count}} 件",
+    "tipRows": "{{rows}} 行 · {{pct}} · リフト ×{{lift}}",
+    "explainOne": "{{column}}(縦)と親列 {{parent}}(横)の関係。数値は順位の十分位に分割されます。",
+    "explainTwo": "{{column}}(縦)と親列 {{parent1}}(横)、{{parent2}}(奥行き)の関係。数値は順位の十分位に分割されます。",
+    "stat_rows": "行",
+    "stat_cells": "使用セル",
+    "stat_mi": "相互情報量(ナット)",
+    "stat_uncertainty": "取り除かれた不確実性",
+    "over": "独立の場合より頻繁",
+    "under": "独立の場合より少ない",
+    "noneListed": "行の 0.5% 以上のものはありません。",
+    "note": "リフトは、セルの行数を、列が独立であった場合にそのセルが持つはずの行数で割った値です。球の大きさは行数です。"
+  }
+}

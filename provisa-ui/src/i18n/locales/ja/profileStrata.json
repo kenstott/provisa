@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "{{table}} のドリフト層",
+    "none": "これらの実行には、層が描画できる値がありません。",
+    "canvasLabel": "各実行における 1 つの列の分布を重ねた 3D スタック(最も古い実行が奥)",
+    "column": "列",
+    "legendShare": "実行の行に占める割合",
+    "legendMedian": "実行ごとの中央値",
+    "legendDrift": "ドリフトした実行",
+    "tipShare": "実行の非 null 行の {{pct}}",
+    "tipNullShare": "実行の行の {{pct}}",
+    "drifted": "ドリフト ({{reason}})",
+    "steady": "ドリフトの指摘なし",
+    "noValues": "この実行には値がありません",
+    "runs": "実行(新しい順)",
+    "columnsNote": "各実行の中央値と null の割合。選択中の実行は表示されている中で最新のものです。",
+    "binning_sketch": "全実行で同じビンを使用し、各実行の分位数スケッチから作成しています。高さは各実行の非 null 行に占める割合です。",
+    "binning_categories": "各実行の値を同じカテゴリで集計しています。",
+    "binning_none": "これらの実行には、お客様のロールで参照できるこの列の値がありません。"
+  }
+}

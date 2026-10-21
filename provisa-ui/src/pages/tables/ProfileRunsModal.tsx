@@ -20,6 +20,10 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { ProfileChecksBar } from "./ProfileChecksBar";
 import { ProfileDriftPanel } from "./ProfileDriftPanel";
+import { ProfileDriftStrata } from "./profile3d/drift/ProfileDriftStrata";
+import { ProfileJointCloud } from "./profile3d/joint/ProfileJointCloud";
+import { ProfileRelations } from "./profile3d/relations/ProfileRelations";
+import { ProfileTerrain } from "./profile3d/terrain/ProfileTerrain";
 
 // The result relations shown for a run, in this order; ``runs`` is the list itself.
 const KINDS = [
@@ -43,6 +47,8 @@ const KINDS = [
   "repeats",
 ] as const;
 const RUN_KEY = new Set(["run_id", "run_time"]);
+// REQ-2123, REQ-2124: the 3D views of a run, as tabs ahead of the result relations.
+const VIEWS_3D = ["terrain", "relationsMap", "jointCloud", "driftStrata"] as const;
 
 function cell(value: unknown): string {
   if (value == null) return "";
@@ -208,12 +214,39 @@ export function ProfileRunsModal({
       {results != null && (
         <Tabs defaultValue="columns" keepMounted={false}>
           <Tabs.List>
+            {/* REQ-2123, REQ-2124: the run drawn in 3D, ahead of its result relations. */}
+            {VIEWS_3D.map((v) => (
+              <Tabs.Tab key={v} value={v} data-testid={`profile-tab-${v}`}>
+                {t(`profileRunsModal.kind_${v}`)}
+              </Tabs.Tab>
+            ))}
             {KINDS.map((k) => (
               <Tabs.Tab key={k} value={k} data-testid={`profile-tab-${k}`}>
                 {t(`profileRunsModal.kind_${k}`)}
               </Tabs.Tab>
             ))}
           </Tabs.List>
+          <Tabs.Panel value="terrain" pt="xs">
+            <ProfileTerrain results={results} tableName={tableName} />
+          </Tabs.Panel>
+          <Tabs.Panel value="relationsMap" pt="xs">
+            <ProfileRelations results={results} tableName={tableName} />
+          </Tabs.Panel>
+          <Tabs.Panel value="jointCloud" pt="xs">
+            <ProfileJointCloud results={results} tableName={tableName} />
+          </Tabs.Panel>
+          <Tabs.Panel value="driftStrata" pt="xs">
+            {selected != null && runs != null && role && (
+              <ProfileDriftStrata
+                tableId={tableId}
+                role={role.id}
+                runs={runs}
+                selectedRunId={selected}
+                results={results}
+                tableName={tableName}
+              />
+            )}
+          </Tabs.Panel>
           {KINDS.map((k) => (
             <Tabs.Panel key={k} value={k} pt="xs">
               {k === "drift" && selected != null && role ? (

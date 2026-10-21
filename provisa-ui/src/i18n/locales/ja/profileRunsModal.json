@@ -38,6 +38,10 @@
     "kind_dependencies": "依存関係",
     "kind_joint_counts": "同時度数",
     "kind_constraints": "提案された制約",
-    "kind_constraint_checks": "制約チェック"
+    "kind_constraint_checks": "制約チェック",
+    "kind_terrain": "地形",
+    "kind_relationsMap": "関係",
+    "kind_jointCloud": "同時度数クラウド",
+    "kind_driftStrata": "ドリフト層"
   }
 }

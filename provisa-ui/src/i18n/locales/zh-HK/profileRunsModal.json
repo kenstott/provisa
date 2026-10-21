@@ -38,6 +38,10 @@
     "kind_dependencies": "依賴關係",
     "kind_joint_counts": "聯合計數",
     "kind_constraints": "建議的約束",
-    "kind_constraint_checks": "約束檢查"
+    "kind_constraint_checks": "約束檢查",
+    "kind_terrain": "地形",
+    "kind_relationsMap": "關係",
+    "kind_jointCloud": "聯合雲",
+    "kind_driftStrata": "漂移層"
   }
 }
