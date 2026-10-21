@@ -9344,13 +9344,13 @@ Postgres federation engine's curated v1 connector set: prebuilt FDW/extension bi
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** infrastructure
 
-pg_duckdb v1.0.0 (bundles DuckDB v1.3.2) is the compatible build for embedded PostgreSQL 16.2; later pg_duckdb versions require backend symbols absent from PG16.2. Extension built from pg source against matching major version and layered into pgserver install via build script.
+[SUPERSEDED by REQ-901, 2026-10-21 -- the embedded PostgreSQL is 16.11 and pg_duckdb v1.1.1; kept here for history; do not implement against it.] pg_duckdb v1.0.0 (bundles DuckDB v1.3.2) is the compatible build for embedded PostgreSQL 16.2; later pg_duckdb versions require backend symbols absent from PG16.2. [END SUPERSEDED BLOCK] Extension built from pg source against matching major version and layered into pgserver install via build script. (Amended 2026-10-21, EMBEDDED PG 16.11 AND PG_DUCKDB V1.1.1:) The embedded PostgreSQL is pixeltable-pgserver 0.5.1 (PostgreSQL 16.11), the maintained fork of pgserver, in place of pgserver 0.1.4 (PostgreSQL 16.2, last released 2024). pg_duckdb is v1.1.1, which embeds DuckDB v1.4.3, built against PostgreSQL 16.11 with httpfs at the commit pg_duckdb v1.1.1 pins and iceberg at the commit DuckDB v1.4.3 pins. pg_duckdb calls ExecCheckOneRelPerms from v1.1.0 on, and PostgreSQL declares it from 16.10 on, so v1.1.x does not compile against 16.2. Every member of the provisa-pg-ext bundle is built against 16.11. The embedded data directory needs no conversion: 16.2 to 16.11 is a minor release within one major.
 
-**Use case:** Pinned PostgreSQL 16.2 in pgserver 0.1.4 runtime requires pg_duckdb v1.0.0 to avoid symbol resolution failures at extension load. Build process (scripts/build_pg_duckdb.sh) compiles against PG16 source, and the resulting .dylib/.so is dropped alongside other core FDWs (file_fdw, postgres_fdw).
+**Use case:** [SUPERSEDED by REQ-901, 2026-10-21 -- pixeltable-pgserver 0.5.1 runs PostgreSQL 16.11, so pg_duckdb v1.1.1 builds; kept here for history; do not implement against it.] Pinned PostgreSQL 16.2 in pgserver 0.1.4 runtime requires pg_duckdb v1.0.0 to avoid symbol resolution failures at extension load. [END SUPERSEDED BLOCK] Build process (scripts/build_pg_duckdb.sh) compiles against PG16 source, and the resulting .dylib/.so is dropped alongside other core FDWs (file_fdw, postgres_fdw).
 
-**Code:** `scripts/build_pg_duckdb.sh`, `provisa/federation/engine.py`
+**Code:** `scripts/build_pg_duckdb.sh`, `provisa/federation/engine.py`, `scripts/ci/build_pg_extensions.sh`, `provisa/core/control_plane_pg.py`
 
-**Tests:** `tests/integration/test_embedded_pg_duckdb_engine_e2e.py`
+**Tests:** `tests/integration/test_embedded_pg_duckdb_engine_e2e.py`, `scripts/ci/smoke_pg_extensions.py`
 
 ## 5. Query Languages, Compilation & Operations
 
