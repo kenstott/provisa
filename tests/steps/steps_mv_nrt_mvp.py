@@ -99,6 +99,7 @@ def _register(ctx, monkeypatch):
             get_enabled=lambda: [],
         ),
         org_id="t",
+        active_org_id="t",  # the org the view is materialized for (schema_common._sync_view_mv)
         engine=None,
         # _sync_view_mv resolves the MV's materialize target from the bound engine (REQ: never a
         # hardcoded catalog). Stub the (catalog, schema) the store would expose.
