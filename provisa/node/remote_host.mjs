@@ -48,8 +48,14 @@ const tlv = (tag, content) => Buffer.concat([Buffer.from([tag]), length(content.
 const sequence = (...parts) => tlv(0x30, Buffer.concat(parts));
 const set = (...parts) => tlv(0x31, Buffer.concat(parts));
 const utf8 = (text) => tlv(0x0c, Buffer.from(text, "utf8"));
+// An INTEGER in its one DER form: no leading 0x00 the next byte does not need (a random serial
+// may begin with one, and a certificate carrying it is refused as "illegal padding"), and one
+// added where the value would read as negative.
 function integer(bytes) {
-  return tlv(0x02, bytes[0] & 0x80 ? Buffer.concat([Buffer.from([0]), bytes]) : bytes);
+  let start = 0;
+  while (start < bytes.length - 1 && bytes[start] === 0 && !(bytes[start + 1] & 0x80)) start++;
+  const value = bytes.subarray(start);
+  return tlv(0x02, value[0] & 0x80 ? Buffer.concat([Buffer.from([0]), value]) : value);
 }
 function oid(dotted) {
   const parts = dotted.split(".").map(Number);

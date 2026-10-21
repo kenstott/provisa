@@ -159,3 +159,38 @@ def test_a_host_running_other_code_is_refused_by_name(started):
     with pytest.raises(WorkerFailed) as refused:
         other.start()
     assert "h1" in str(refused.value) and "h2" in str(refused.value)
+
+
+_SERIAL_CHECK = """
+import crypto from "node:crypto";
+const host = await import(process.argv[1]);
+const random = crypto.randomBytes;
+crypto.randomBytes = (n) => {
+  const bytes = random(n);
+  bytes.set(JSON.parse(process.argv[2]));
+  return bytes;
+};
+host.fingerprint(host.selfSigned("provisa remote host").certificate);
+"""
+
+
+@pytest.mark.parametrize("leading", [[0, 1], [0, 0, 1], [0, 0x90], [0x7F, 0xFF]])
+def test_a_serial_with_leading_zero_bytes_makes_a_certificate_the_host_reads(leading):
+    """The host's first start makes its certificate with a random serial. One that begins with a
+    0x00 byte the next does not need (about 1 start in 256) was written as it was, which is not
+    DER: the certificate was refused ("illegal padding") and the host ended before it printed its
+    pairing code."""
+    done = subprocess.run(  # noqa: S603 -- the machine's node and Provisa's host
+        [
+            _node(),
+            "--input-type=module",
+            "-e",
+            _SERIAL_CHECK,
+            REMOTE_HOST.as_uri(),
+            str(leading),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert done.returncode == 0, done.stderr
