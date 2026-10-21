@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Una sorgente, aggiunta dal vivo",
-        "description": "Ecco come si aggiunge una sorgente: il selettore si è aperto con l'elenco completo, è stato scelto <strong>Parquet File</strong>, è stato inserito l'indirizzo del file (<code>supplies.parquet</code>, pubblicato su provisa.dev) e Salva l'ha creata. La nuova sorgente <strong>supplies</strong> legge quel file sul posto.",
+        "description": "Ecco come si aggiunge una sorgente: il selettore si è aperto con l'elenco completo, è stato scelto <strong>Parquet File</strong>, è stato inserito l'indirizzo del file (<code>supplies.parquet</code>) e Salva l'ha creata. La nuova sorgente <strong>supplies</strong> legge quel file sul posto.",
         "acting": "Aggiunta di una sorgente"
       },
       "step4": {

@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "A source, added live",
-        "description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>, published at provisa.dev) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+        "description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
         "acting": "Adding a source"
       },
       "step4": {

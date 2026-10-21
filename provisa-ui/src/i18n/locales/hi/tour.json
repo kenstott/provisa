@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "एक स्रोत, सीधे जोड़ा गया",
-        "description": "स्रोत ऐसे जोड़ा जाता है: चयनकर्ता अपनी पूरी सूची के साथ खुला, <strong>Parquet File</strong> चुना गया, फ़ाइल का पता भरा गया (<code>supplies.parquet</code>, provisa.dev पर प्रकाशित) और सहेजें ने उसे बनाया। नया <strong>supplies</strong> स्रोत उस फ़ाइल को उसी जगह से पढ़ता है।",
+        "description": "स्रोत ऐसे जोड़ा जाता है: चयनकर्ता अपनी पूरी सूची के साथ खुला, <strong>Parquet File</strong> चुना गया, फ़ाइल का पता भरा गया (<code>supplies.parquet</code>) और सहेजें ने उसे बनाया। नया <strong>supplies</strong> स्रोत उस फ़ाइल को उसी जगह से पढ़ता है।",
         "acting": "स्रोत जोड़ा जा रहा है"
       },
       "step4": {

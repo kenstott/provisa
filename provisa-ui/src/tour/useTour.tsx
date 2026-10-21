@@ -519,9 +519,13 @@ export function TourProvider({ children }: { children: ReactNode }) {
   const trackDone = trackStamp !== null && demoTrackDone(trackStamp);
   const allStepsRef = useRef(allSteps);
   // Where the demo's last card's "Look around on my own" leads; read by the runner's closure.
+  // REQ-2101 (amended): the org files the demo ships, read by a step's actions as it runs; held in a
+  // ref, as the landing is, so a step is not run again when the status is read.
+  const orgFilesRef = useRef(namedDemo.orgFiles);
   const landingRef = useRef(namedDemo.landing);
   useEffect(() => {
     landingRef.current = namedDemo.landing;
+    orgFilesRef.current = namedDemo.orgFiles;
   }, [namedDemo]);
   useEffect(() => {
     allStepsRef.current = allSteps;
@@ -796,7 +800,11 @@ export function TourProvider({ children }: { children: ReactNode }) {
             document.body.classList.add(ACTING_CLASS);
             let acted;
             try {
-              acted = await runUiActions(step.actions, {
+              const actions =
+                typeof step.actions === "function"
+                  ? step.actions({ orgFiles: orgFilesRef.current })
+                  : step.actions;
+              acted = await runUiActions(actions, {
                 // The visitor started this tour: what it does is theirs, and asks nothing more.
                 confirm: async () => true,
                 paceMs: ACTION_PACE_MS,

@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Un origen, añadido en vivo",
-        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>, publicado en provisa.dev) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
+        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
         "acting": "Añadiendo un origen"
       },
       "step4": {

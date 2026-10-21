@@ -420,6 +420,7 @@ const WEBLOGS: NamedDemo = {
   ],
   landing: null,
   notebook: [],
+  orgFiles: [],
 };
 
 function Launcher() {
@@ -684,7 +685,14 @@ describe("the tour button in a named demo", () => {
   it("runs the product tour where no named demo has a tour", async () => {
     const { STANDARD_DEMO_ORG } = await import("../test-utils/tourOrg");
     org.current = STANDARD_DEMO_ORG;
-    renderTour({ name: null, exampleQueries: [], tour: [], landing: null, notebook: [] });
+    renderTour({
+      name: null,
+      exampleQueries: [],
+      tour: [],
+      landing: null,
+      notebook: [],
+      orgFiles: [],
+    });
     fireEvent.click(screen.getByText("launch"));
     await act(async () => chunksResolve());
     await act(async () => vi.advanceTimersByTime(2000));
@@ -791,6 +799,8 @@ describe("a freshly onboarded org, started as no named demo", () => {
     demo_tour: [],
     demo_landing: null,
     demo_notebook: [],
+    demo_org_files: [],
+    orgFiles: [],
   };
 
   beforeEach(() => {
@@ -873,6 +883,7 @@ describe("a demo step's statement", () => {
               ],
               landing: null,
               notebook: [],
+              orgFiles: [],
             }}
           >
             <TourProvider>
@@ -931,6 +942,7 @@ describe("a demo step's anchor rendered again", () => {
               ],
               landing: null,
               notebook: [],
+              orgFiles: [],
             }}
           >
             <TourProvider>

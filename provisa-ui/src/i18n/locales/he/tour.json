@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "מקור, שנוסף בשידור חי",
-        "description": "כך מוסיפים מקור: הבורר נפתח עם הרשימה המלאה שלו, נבחר <strong>Parquet File</strong>, הוזנה כתובת הקובץ (<code>supplies.parquet</code>, שמפורסם ב-provisa.dev) ושמירה יצרה אותו. המקור החדש <strong>supplies</strong> קורא את הקובץ הזה במקומו.",
+        "description": "כך מוסיפים מקור: הבורר נפתח עם הרשימה המלאה שלו, נבחר <strong>Parquet File</strong>, הוזנה כתובת הקובץ (<code>supplies.parquet</code>) ושמירה יצרה אותו. המקור החדש <strong>supplies</strong> קורא את הקובץ הזה במקומו.",
         "acting": "מוסיפים מקור"
       },
       "step4": {

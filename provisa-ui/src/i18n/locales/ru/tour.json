@@ -87,7 +87,7 @@
       },
       "stepBuildSource": {
         "title": "Источник, добавленный на ваших глазах",
-        "description": "Так добавляется источник: выбор открылся со всем списком, выбран <strong>Parquet File</strong>, введён адрес файла (<code>supplies.parquet</code>, опубликован на provisa.dev), и «Сохранить» создало источник. Новый источник <strong>supplies</strong> читает этот файл на месте.",
+        "description": "Так добавляется источник: выбор открылся со всем списком, выбран <strong>Parquet File</strong>, введён адрес файла (<code>supplies.parquet</code>), и «Сохранить» создало источник. Новый источник <strong>supplies</strong> читает этот файл на месте.",
         "acting": "Добавляем источник"
       },
       "step4": {
