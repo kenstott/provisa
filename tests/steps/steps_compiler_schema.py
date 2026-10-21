@@ -14,6 +14,7 @@ from typing import Any
 import pytest
 
 from tests.helpers import registry_write_ops, registry_write_returns_rows
+from tests.write_governance import grants_over
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.schema_gen import SchemaInput, generate_schema
 
@@ -733,6 +734,11 @@ def _make_hasura_default_schema_input() -> SchemaInput:
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over(
+                    "admin", ["id", "customer_id", "order_total", "order_status", "created_at"]
+                ).values()
+            ),  # REQ-2074
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -803,6 +809,11 @@ def _make_graphql_default_schema_input() -> SchemaInput:
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over(
+                    "admin", ["id", "customer_id", "order_total", "order_status", "created_at"]
+                ).values()
+            ),  # REQ-2074
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "customer_id", "visible_to": ["admin"]},
@@ -820,6 +831,9 @@ def _make_graphql_default_schema_input() -> SchemaInput:
             "write_ops": registry_write_ops("postgresql"),
             "write_returns_rows": registry_write_returns_rows("postgresql"),
             "write_refused_forms": [],
+            "write_grants": list(
+                grants_over("admin", ["id", "order_id", "product_name", "unit_price"]).values()
+            ),  # REQ-2074
             "columns": [
                 {"column_name": "id", "visible_to": ["admin"]},
                 {"column_name": "order_id", "visible_to": ["admin"]},
