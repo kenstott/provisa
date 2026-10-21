@@ -74,12 +74,14 @@ def test_not_as_root_ownership_is_left_with_the_writer(tmp_path, monkeypatch):
     def _refuse(*a):
         raise AssertionError("only root gives a file away")
 
+    # The writer's own uid, read before os.geteuid is replaced (trino_catalog_files.os is os).
+    writer = os.geteuid()
     monkeypatch.setattr(trino_catalog_files.os, "geteuid", lambda: 501)
     monkeypatch.setattr(trino_catalog_files.os, "fchown", _refuse)
     monkeypatch.setattr(trino_catalog_files.os, "chown", _refuse)
     path = tmp_path / "kafka-client" / "c.properties"
     write_kafka_client_file(path, _SASL)
-    assert path.stat().st_uid == os.geteuid()
+    assert path.stat().st_uid == writer
 
 
 def _compose(name: str) -> dict:
