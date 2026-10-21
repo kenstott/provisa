@@ -7366,5 +7366,10 @@
   "zh-HK/writeGrants.json::writeGrants.saved": "Grants saved.",
   "zh-HK/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "zh-HK/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable"
+  "zh-HK/writeGrants.json::writeGrants.source_session": "A session variable",
+  "zh-HK/metadataExportTab.json::metadataExportTab.gcpProject": "Google Cloud project",
+  "zh-HK/metadataExportTab.json::metadataExportTab.gcpProjectHelp": "The project the data products are created in.",
+  "zh-HK/metadataExportTab.json::metadataExportTab.gcpLocation": "Location",
+  "zh-HK/metadataExportTab.json::metadataExportTab.gcpLocationHelp": "The Dataplex location, such as us or europe-west1.",
+  "zh-HK/metadataExportTab.json::metadataExportTab.googleServiceAccountJson": "Service account key (JSON)"
 }

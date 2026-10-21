@@ -7365,5 +7365,10 @@
   "ru/writeGrants.json::writeGrants.saved": "Grants saved.",
   "ru/writeGrants.json::writeGrants.source_literal": "A fixed value",
   "ru/writeGrants.json::writeGrants.source_now": "The time of the write",
-  "ru/writeGrants.json::writeGrants.source_session": "A session variable"
+  "ru/writeGrants.json::writeGrants.source_session": "A session variable",
+  "ru/metadataExportTab.json::metadataExportTab.gcpProject": "Google Cloud project",
+  "ru/metadataExportTab.json::metadataExportTab.gcpProjectHelp": "The project the data products are created in.",
+  "ru/metadataExportTab.json::metadataExportTab.gcpLocation": "Location",
+  "ru/metadataExportTab.json::metadataExportTab.gcpLocationHelp": "The Dataplex location, such as us or europe-west1.",
+  "ru/metadataExportTab.json::metadataExportTab.googleServiceAccountJson": "Service account key (JSON)"
 }

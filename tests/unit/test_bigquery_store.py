@@ -134,3 +134,54 @@ def test_described_table_removes_a_known_label_no_longer_assigned_and_keeps_othe
     target = KeyTarget(replica=_PETS, view=None, primary_key=("id",))
     assert described_table(table, target, frozenset({"gold", "silver"})) == ["labels"]
     assert table.labels == {"provisa_governance_silver": None, "theirs": "kept"}
+
+
+class _ViewClient:
+    """A BigQuery client holding at most one view, and the statements it was sent."""
+
+    def __init__(self, view_query: str | None) -> None:
+        self.view_query = view_query
+        self.statements: list[str] = []
+        self.datasets: list[str] = []
+
+    def create_dataset(self, dataset, exists_ok: bool) -> None:
+        assert exists_ok
+        self.datasets.append(dataset.dataset_id)
+
+    def get_table(self, name: str):
+        from google.api_core.exceptions import NotFound
+
+        if self.view_query is None:
+            raise NotFound(name)
+        return SimpleNamespace(view_query=self.view_query)
+
+    def query(self, sql: str):
+        self.statements.append(sql)
+        return SimpleNamespace(result=lambda: None)
+
+
+_VIEW = ("p", "org_acme__export", "pg__public__orders")
+_REPLICA = ("p", "org_acme__replicas", "pg__public__orders")
+_CREATE = (
+    "CREATE OR REPLACE VIEW `p.org_acme__export.pg__public__orders` AS "
+    "SELECT * FROM `p.org_acme__replicas.pg__public__orders`"
+)
+
+
+@pytest.mark.parametrize(
+    ("existing", "replace", "created"),
+    [
+        (None, False, True),  # absent: created, in the export dataset
+        ("SELECT * FROM `p.org_acme__replicas.pg__public__orders`", False, False),  # kept
+        ("SELECT * FROM `p.org_acme__replicas.pg__public__orders`", True, True),  # replica remade
+        ("SELECT * FROM `p.gone.pg__public__orders`", False, True),  # reads another table
+    ],
+)
+def test_the_export_view_over_a_replica_is_created_kept_or_replaced(existing, replace, created):
+    """REQ-2118: the view a Dataplex asset names, over the replica (REQ-1912)."""
+    from provisa.federation.bigquery_store import expose_view
+
+    client = _ViewClient(existing)
+    expose_view(client, view=_VIEW, replica=_REPLICA, replace=replace)
+    assert client.datasets == ["org_acme__export"]
+    assert client.statements == ([_CREATE] if created else [])

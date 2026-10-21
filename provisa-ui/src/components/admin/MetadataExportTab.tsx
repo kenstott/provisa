@@ -50,15 +50,17 @@ import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayou
 /** Which credential fields each auth mode uses, so the form asks for exactly those. */
 const ENTRA_MODE = "entra";
 const BASIC_MODE = "basic";
+const GOOGLE_MODE = "google_service_account";
 
 const AUTH_MODES = [
   { value: "api_key", label: "API key" },
   { value: "bearer", label: "Bearer token" },
   { value: BASIC_MODE, label: "Username and password (Apache Atlas)" },
   { value: ENTRA_MODE, label: "Microsoft Entra (Purview)" },
+  { value: GOOGLE_MODE, label: "Google service account (Dataplex)" },
 ];
 
-type SecretField = "api_key" | "token" | "entra_client_secret";
+type SecretField = "api_key" | "token" | "entra_client_secret" | "google_service_account_json";
 
 /** A target being edited, with the credentials typed for it since the last save. */
 interface Row {
@@ -74,10 +76,13 @@ const blankTarget = (): MetadataExportTarget => ({
   username: "",
   entra_tenant_id: "",
   entra_client_id: "",
+  gcp_project: "",
+  gcp_location: "",
   timeout_seconds: 30,
   api_key_set: false,
   token_set: false,
   entra_client_secret_set: false,
+  google_service_account_json_set: false,
 });
 
 export function MetadataExportTab() {
@@ -130,6 +135,8 @@ export function MetadataExportTab() {
           username: target.username,
           entra_tenant_id: target.entra_tenant_id,
           entra_client_id: target.entra_client_id,
+          gcp_project: target.gcp_project,
+          gcp_location: target.gcp_location,
           timeout_seconds: target.timeout_seconds,
           ...secrets,
         })),
@@ -270,7 +277,33 @@ export function MetadataExportTab() {
               onChange={(v) => patchRow(i, { auth_mode: v ?? "api_key" })}
             />
           </FormField>
-          {target.auth_mode === ENTRA_MODE ? (
+          {target.provider === "dataplex" ? (
+            <>
+              <FormField help={t("metadataExportTab.gcpProjectHelp")} size="medium">
+                <TextInput
+                  label={t("metadataExportTab.gcpProject")}
+                  data-testid={tid("gcp-project")}
+                  value={target.gcp_project}
+                  onChange={(e) => patchRow(i, { gcp_project: e.currentTarget.value })}
+                />
+              </FormField>
+              <FormField help={t("metadataExportTab.gcpLocationHelp")} size="short">
+                <TextInput
+                  label={t("metadataExportTab.gcpLocation")}
+                  data-testid={tid("gcp-location")}
+                  value={target.gcp_location}
+                  onChange={(e) => patchRow(i, { gcp_location: e.currentTarget.value })}
+                />
+              </FormField>
+            </>
+          ) : null}
+          {target.auth_mode === GOOGLE_MODE ? (
+            secretField(
+              "google_service_account_json",
+              t("metadataExportTab.googleServiceAccountJson"),
+              target.google_service_account_json_set,
+            )
+          ) : target.auth_mode === ENTRA_MODE ? (
             <>
               <FormField size="medium">
                 <TextInput

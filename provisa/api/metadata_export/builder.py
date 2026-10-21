@@ -88,6 +88,7 @@ def _source_assets(
             source_type=source.type.value,
             description=source.description,
             semantic_uri=source_uri(org_id, source.id),
+            database=source.database or "",
         )
         for source in config.sources
         if source.id in published_source_ids
@@ -213,6 +214,7 @@ def _data_product_assets(
     product_ids: dict[tuple[str, ...], str | None],
     documentation_base_url: str | None = None,
     page_org_id: str = "",
+    owner_emails: Mapping[str, tuple[str, ...]] | None = None,
 ) -> list[DataProductAsset]:
     from provisa.core.mail import data_product_page_url
 
@@ -250,6 +252,7 @@ def _data_product_assets(
                 sla=product.sla,
                 support=product.support,
                 custom_properties=dict(product.custom_properties),
+                owner_emails=(owner_emails or {}).get(product.owner_role or "", ()),
                 documentation_url=(
                     data_product_page_url(documentation_base_url, page_org_id, product.id)
                     if documentation_base_url
@@ -626,6 +629,7 @@ def build_snapshot(
     contexts: Mapping,
     data_products_only: bool = True,
     documentation_base_url: str | None = None,
+    owner_emails: Mapping[str, tuple[str, ...]] | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -639,6 +643,9 @@ def build_snapshot(
     ``dq_outcomes`` publishes every check as never run, which is what a caller with no results to
     read is entitled to say. ``contexts`` is ``state.contexts``, the compiled tables whose pgwire
     names a contract's dataset addresses (REQ-1443).
+
+    ``owner_emails`` (REQ-2118) is each role's holders' email addresses, by role id, read by the
+    caller: a data product's owners are its owner role's holders.
 
     ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
@@ -706,6 +713,7 @@ def build_snapshot(
             product_ids,
             documentation_base_url=documentation_base_url,
             page_org_id=org_id,
+            owner_emails=owner_emails or {},
         ),
         relationships=relationships,
         lineage=[

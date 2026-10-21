@@ -2451,16 +2451,18 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         so two targets of one provider (two OpenMetadata servers) never share them (REQ-2118).
     provider: which MetadataExport adapter backs the port — "openlineage", "openmetadata",
         "atlas" (also the Microsoft Purview path, whose ingestion API is Atlas-compatible),
-        "datahub", "atlan", "collibra" or "snowflake_horizon". An unknown name is refused at
-        construction.
+        "datahub", "atlan", "collibra", "snowflake_horizon" or "dataplex". An unknown name is
+        refused at construction.
     endpoint: base URL of the target catalog.
     api_key / token: adapter credentials, held as SecretStr so a config dump or a log line
         renders them redacted.
     auth_mode: how the adapter authenticates — "api_key", "bearer", "basic" (Apache Atlas's
         own default authentication, which pairs `username` with the secret in token/api_key),
         or "entra" for Purview's Entra ID client-credentials flow, which needs the
-        tenant/client fields below.
+        tenant/client fields below, or "google_service_account" for Dataplex, which signs in
+        with ``google_service_account_json``.
     username: the account name for "basic". Unused by the other modes.
+    gcp_project / gcp_location: where Dataplex keeps the org's data products (REQ-2118).
     """
 
     id: str
@@ -2473,6 +2475,9 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
     entra_tenant_id: str = ""
     entra_client_id: str = ""
     entra_client_secret: SecretStr = SecretStr("")
+    google_service_account_json: SecretStr = SecretStr("")
+    gcp_project: str = ""
+    gcp_location: str = ""
     timeout_seconds: int = 30
 
     @field_validator("id")
@@ -2490,6 +2495,12 @@ class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118
         # remote catalog's endpoint, so endpoint is not a setting this provider has.
         if self.provider != "snowflake_horizon" and not self.endpoint:
             raise ValueError(f"metadata export target {self.id!r} has no endpoint")
+        # REQ-2118: a Dataplex data product lives in a project and a location.
+        if self.provider == "dataplex" and not (self.gcp_project and self.gcp_location):
+            raise ValueError(
+                f"metadata export target {self.id!r} needs the GCP project and location its "
+                "data products are kept in"
+            )
         return self
 
 

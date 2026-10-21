@@ -99,10 +99,12 @@ async def seed_member_tables() -> None:
         await conn.close()
 
 
-def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
+def model_config(engine: str, *, with_view: bool = True, product: str = PRODUCT) -> dict[str, Any]:
     """The server's configuration: the governed model every target is published from. A target
-    that shares the members' physical objects (Snowflake Horizon) takes the product without the
-    view, which is no object of the engine's: two members, as its scenario reads."""
+    that shares the members' physical objects (Snowflake Horizon, Dataplex) takes the product
+    without the view, which is no object of the engine's: two members, as its scenario reads.
+    ``product`` is the data product's id: a test publishing into a shared cloud account names it
+    for the run (provisa_e2e_*)."""
     roles = ["analyst", "data_owner", "admin"]
     # The org's own admin reads every member as well: the tests read as org_admin, the role the
     # server's default assignment gives.
@@ -137,7 +139,7 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
             {"id": r, "description": f"{r} role.", "capabilities": [], "domain_access": ["*"]}
             for r in roles
         ],
-        "data_products": [PRODUCT_FIELDS],
+        "data_products": [{**PRODUCT_FIELDS, "id": product}],
         "tables": [
             {
                 "source_id": SOURCE,
@@ -145,7 +147,7 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                 "schema_name": SCHEMA,
                 "table_name": "customers",
                 "description": "Customers of the shop",
-                "product_id": PRODUCT,
+                "product_id": product,
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},
                     {
@@ -162,7 +164,7 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                 "schema_name": SCHEMA,
                 "table_name": "orders",
                 "description": "Orders placed",
-                "product_id": PRODUCT,
+                "product_id": product,
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},
                     {"name": "customer_id", "data_type": "integer", "visible_to": everyone},
@@ -200,7 +202,7 @@ def model_config(engine: str, *, with_view: bool = True) -> dict[str, Any]:
                 "schema_name": "views",
                 "table_name": VIEW,
                 "description": "Each order's net total",
-                "product_id": PRODUCT,
+                "product_id": product,
                 "view_sql": VIEW_SQL,
                 "columns": [
                     {"name": "id", "data_type": "integer", "visible_to": everyone},
@@ -249,6 +251,7 @@ async def published_server(
     engine: str = "trino",
     env: dict[str, str] | None = None,
     with_view: bool = True,
+    product: str = PRODUCT,
 ) -> AsyncGenerator[httpx.AsyncClient]:
     """A started Provisa server for ``org_id`` with the model above, as an HTTP client."""
     from tests.integration.isolated_server import IsolatedServer, drop_org_schema
@@ -257,7 +260,9 @@ async def published_server(
     with tempfile.TemporaryDirectory() as tmp:
         config = Path(tmp) / "provisa.yaml"
         config.write_text(
-            yaml.safe_dump(model_config(engine, with_view=with_view), sort_keys=False)
+            yaml.safe_dump(
+                model_config(engine, with_view=with_view, product=product), sort_keys=False
+            )
         )
         server = IsolatedServer(org_id, engine=engine, config=str(config), env=env)
         server.start()

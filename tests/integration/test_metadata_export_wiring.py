@@ -53,6 +53,8 @@ HTTP_TARGETS: dict[str, dict] = {
 #: Targets publishing inside the engine, proven by their own end-to-end test.
 ENGINE_NATIVE = {
     "snowflake_horizon": "tests/integration/test_metadata_export_snowflake_horizon_e2e.py",
+    # A Dataplex asset is a BigQuery object: its members are published by the BigQuery engine.
+    "dataplex": "tests/integration/test_metadata_export_dataplex_e2e.py",
 }
 #: What a delivered publish names: one of the data product's member tables.
 MEMBER = "orders"

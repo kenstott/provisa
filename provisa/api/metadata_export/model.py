@@ -141,6 +141,9 @@ class DataProductAsset:  # REQ-1634
     sla: str | None = None  # prose: a product spans several members
     support: str | None = None
     custom_properties: dict[str, str] = field(default_factory=dict)
+    # REQ-2118: the owner role's holders' email addresses -- the product's owners in a catalog
+    # that names owners by address (Dataplex), never a role-to-principal setting.
+    owner_emails: tuple[str, ...] = ()
 
     def odps_fields(self) -> dict[str, str]:
         """The product's ODPS fields that are set, by their ODPS names, for a target's own
@@ -190,6 +193,8 @@ class SourceAsset:  # REQ-1070
     source_type: str
     description: str
     semantic_uri: str = ""  # REQ-1385: provisa://<org>/sources/<source id>
+    # REQ-2118: the source's database -- a BigQuery source's GCP project, where its tables are.
+    database: str = ""
 
 
 @dataclass

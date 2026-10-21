@@ -47,10 +47,13 @@ const MARQUEZ: MetadataExportTarget = {
   username: "",
   entra_tenant_id: "",
   entra_client_id: "",
+  gcp_project: "",
+  gcp_location: "",
   timeout_seconds: 30,
   api_key_set: true,
   token_set: false,
   entra_client_secret_set: false,
+  google_service_account_json_set: false,
 };
 
 function state(
@@ -202,6 +205,43 @@ describe("MetadataExportTab", () => {
     const [sent] = mockSet.mock.calls[0][0].targets!;
     expect(sent.username).toBe("admin");
     expect(sent.token).toBe("secret");
+  });
+
+  it("asks a Dataplex target for its project, location and service account key", async () => {
+    // REQ-2118: a Dataplex data product lives in a project and a location.
+    mockFetch.mockResolvedValue(
+      state({}, [
+        {
+          ...MARQUEZ,
+          id: "dataplex",
+          provider: "dataplex",
+          endpoint: "https://dataplex.googleapis.com",
+          auth_mode: "google_service_account",
+        },
+      ]),
+    );
+    mockSet.mockResolvedValue(SAVED);
+    render(<MetadataExportTab />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("metadata-export-gcp-project-0")).toBeInTheDocument(),
+    );
+    expect(screen.queryByTestId("metadata-export-api-key-0")).toBeNull();
+    fireEvent.change(screen.getByTestId("metadata-export-gcp-project-0"), {
+      target: { value: "acme-data" },
+    });
+    fireEvent.change(screen.getByTestId("metadata-export-gcp-location-0"), {
+      target: { value: "us" },
+    });
+    fireEvent.change(screen.getByTestId("metadata-export-google-service-account-json-0"), {
+      target: { value: "{}" },
+    });
+    fireEvent.click(screen.getByTestId("metadata-export-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    const [sent] = mockSet.mock.calls[0][0].targets!;
+    expect([sent.gcp_project, sent.gcp_location]).toEqual(["acme-data", "us"]);
+    expect(sent.google_service_account_json).toBe("{}");
   });
 
   it("reports the reason each target refused the connection", async () => {

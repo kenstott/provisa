@@ -183,6 +183,8 @@ async def _model_for_export() -> "ProvisaConfig":
             "id": r["id"],
             "type": r["type"],
             "description": r.get("description") or "",
+            # REQ-2118: a BigQuery source's project, where Dataplex finds its tables.
+            "database": r["database"],
             # REQ-2118: a member's freshness inherits its source's when it declares none.
             "cache_ttl": r.get("cache_ttl"),
         }
@@ -223,8 +225,12 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
     # hydrates here the way sources do rather than through the config file vocabulary.
     from provisa.core.repositories import glossary as glossary_repo
 
+    from provisa.auth.role_grants import holder_emails
+
     async with model_db.acquire() as conn:
         glossary = await glossary_repo.export_graph(conn)
+        # REQ-2118: a product's owners are its owner role's holders, by their addresses.
+        owner_emails = await holder_emails(conn)
     # REQ-1443: a check's last verdict lives in its results table, which is data rather than
     # config, so it is read here and handed to the builder exactly as the term graph is.
     dq_outcomes = await read_latest_outcomes(model)
@@ -240,6 +246,7 @@ async def org_snapshot(org_id: str) -> "MetadataSnapshot":
         # the org's public origin -- the one mail.base_url names, for the same reason an
         # invitation cannot derive it from the request that created it.
         documentation_base_url=state.config.mail.base_url if state.config else None,
+        owner_emails=owner_emails,
     )
 
 

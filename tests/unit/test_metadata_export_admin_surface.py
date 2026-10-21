@@ -433,7 +433,7 @@ async def test_publish_returns_the_assets_the_target_rejected(surface, monkeypat
     monkeypatch.setattr(
         sync_mod,
         "build_snapshot",
-        lambda config, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None: (
+        lambda config, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None: (
             object()
         ),
     )

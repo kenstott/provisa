@@ -21,7 +21,7 @@ matches each one's ingestion API.
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
-| `bigquery_dataplex` | BigQuery Analytics Hub (Dataplex) | REST calls to `{endpoint}/v1/dataProducts...` |
+| `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
@@ -67,12 +67,21 @@ BigQuery, where a column tag has no counterpart and is reported withheld. `snowf
 publishes no constraints and no model tags of its own; it still appends governance facts to the
 descriptions of the Data Product tables it publishes.
 
-`bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but, like `snowflake_horizon`, cannot be a pure payload builder: an Analytics Hub listing identifies a table
-by its `project.dataset.table` in the org's real BigQuery project, which `MetadataSnapshot`'s own
-`(source_id, schema_name, table_name)` asset refs don't carry, so the adapter resolves real
-identity from the org's live BigQuery federation runtime. One Data Product becomes one Analytics
-Hub listing backed by a dataset containing the product's member tables. Until the org's BigQuery
-source has a landing terminal attached, `publish` finds no usable runtime and reports nothing published: the documented "otherwise skipped" state, not an error.
+`dataplex` publishes each data product as a Google Dataplex data product in the target's
+`gcp_project` and `gcp_location`. The product's name, purpose, limitations, usage, service level,
+support and documentation link go into its display name and description; its version and status
+become labels. Its owners are the email addresses of the members holding its owner role (a
+grant in force, with an address in the member directory), and the same members approve access
+requests. A product whose owner role has no holder with an address is reported and not sent.
+Access groups are not published yet.
+
+Each member is a data asset, by the BigQuery object it is. A member on a BigQuery source is its
+own table, in the source's project. A member the BigQuery engine serves from a replica is the
+replica's export view in the org's export dataset, which the replica reconcile creates beside the
+replica. Any other member, a view among them, has no BigQuery object and is reported by name. Each
+asset carries its member's freshness as the `provisa-freshness-seconds` label, and an asset whose
+table is no longer a member is removed. Dataplex answers each change with a long-running
+operation; the publish follows each to its end, up to `timeout_seconds`.
 
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
@@ -121,9 +130,9 @@ metadata_export:
   reconcile_cron: "0 * * * *"
   targets:
     - id: marquez
-      provider: openlineage    # openlineage | openmetadata | atlas | atlan | datahub | collibra | snowflake_horizon | bigquery_dataplex
+      provider: openlineage    # openlineage | openmetadata | atlas | atlan | datahub | collibra | snowflake_horizon | dataplex
       endpoint: http://marquez:5000
-      auth_mode: api_key       # api_key | bearer | basic | entra
+      auth_mode: api_key       # api_key | bearer | basic | entra | google_service_account
       api_key: ${MARQUEZ_API_KEY}
       timeout_seconds: 30
     - id: openmetadata-prod
@@ -131,6 +140,13 @@ metadata_export:
       endpoint: https://openmetadata.example.com
       auth_mode: bearer
       token: ${OPENMETADATA_TOKEN}
+    - id: dataplex
+      provider: dataplex
+      endpoint: https://dataplex.googleapis.com
+      auth_mode: google_service_account
+      google_service_account_json: ${DATAPLEX_SERVICE_ACCOUNT_JSON}
+      gcp_project: acme-data
+      gcp_location: us
 ```
 
 | Setting | Meaning |
@@ -140,8 +156,9 @@ metadata_export:
 | `id` | The target's name within the org, unique there. What Provisa records of each published asset's id in that catalog is kept under it, so two targets of one provider never share it. |
 | `provider` | Which adapter backs the target. An unrecognized name is refused when the adapter is constructed. |
 | `endpoint` | Base URL of the target catalog. A target with no endpoint is refused when it is saved. Not required for `snowflake_horizon`, which connects off the engine's own configured DSN instead. |
-| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — and `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`. |
+| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`, and `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
 | `username` | The account name for `basic`. Unused by the other modes. |
+| `gcp_project`, `gcp_location` | Where a `dataplex` target keeps the org's data products. A `dataplex` target without both is refused when it is saved. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
 | `timeout_seconds` | Per-request timeout against the target. |
 
@@ -207,7 +224,7 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `bigquery_dataplex`; glossary terms are silently omitted from their publishes.
+- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `dataplex`; glossary terms are silently omitted from their publishes.
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,

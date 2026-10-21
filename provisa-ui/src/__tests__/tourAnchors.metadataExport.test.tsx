@@ -39,10 +39,13 @@ const config: MetadataExportState["config"] = {
       username: "",
       entra_tenant_id: "",
       entra_client_id: "",
+      gcp_project: "",
+      gcp_location: "",
       timeout_seconds: 30,
       api_key_set: true,
       token_set: false,
       entra_client_secret_set: false,
+      google_service_account_json_set: false,
     },
   ],
 };
