@@ -312,7 +312,7 @@
       },
       "weblogsLogFiles": {
         "title": "Tre fonti",
-        "description": "Il negozio ha tre fonti: <strong>shop-db</strong>, il suo database PostgreSQL, e due fonti di log, <strong>shop_access</strong> e <strong>shop_db_log</strong>. Provisa legge ogni file di log dove si trova, una riga per record, e di nuovo ogni 30 secondi; nulla viene caricato o copiato prima."
+        "description": "Il negozio ha tre fonti: <strong>shop-db</strong>, il suo database PostgreSQL, e due fonti di log, <strong>shop_access</strong> e <strong>shop_db_log</strong>. Provisa legge ogni file di log dove si trova, una riga per record."
       },
       "weblogsTables": {
         "title": "Le fonti diventano tabelle",
@@ -416,7 +416,7 @@
       },
       "reviewsSearchStore": {
         "title": "Le recensioni, in Elasticsearch",
-        "description": "<strong>reviews</strong> è Elasticsearch: le 5.000 recensioni scritte dai clienti, ognuna con il suo prodotto, le sue stelle e il suo testo. Provisa lo legge in tempo reale; nulla viene copiato prima."
+        "description": "<strong>reviews</strong> è Elasticsearch: le 5.000 recensioni scritte dai clienti, ognuna con il suo prodotto, le sue stelle e il suo testo."
       },
       "reviewsGraphStore": {
         "title": "Chi ha comprato cosa, in Neo4j",
@@ -476,15 +476,15 @@
       },
       "insuranceRecap": {
         "title": "Cosa hai visto",
-        "description": "Avete visto i dati propri dell'assicuratore, letti in diretta e uniti per contea a dati pubblici di rischio caricati una volta, tutto in un unico modello governato. Una vista risponde a dove l'esposizione incontra il rischio, in SQL, GraphQL e REST, e ogni ruolo vede solo ciò che gli è consentito."
+        "description": "Avete visto i dati propri dell'assicuratore uniti per contea a dati pubblici di rischio, tutto in un unico modello governato. Una vista risponde a dove l'esposizione incontra il rischio, in SQL, GraphQL e REST, e ogni ruolo vede solo ciò che gli è consentito."
       },
       "insuranceGovdata": {
         "title": "I dati pubblici di rischio",
-        "description": "I dati governativi provengono da AskAmerica, un account reale. Le sue tre tabelle per contea vengono caricate una volta, quando la demo viene costruita, e poi lette per sempre da quella copia: non scadono mai e questa demo non chiama mai l'account."
+        "description": "I dati governativi provengono da AskAmerica."
       },
       "insuranceBook": {
         "title": "Il portafoglio dell'assicuratore",
-        "description": "Ogni polizza in vigore, letta in tempo reale dal database dell'assicuratore: la contea, il ramo, il valore totale assicurato, il premio e la franchigia."
+        "description": "Ogni polizza in vigore: la contea, il ramo, il valore totale assicurato, il premio e la franchigia."
       },
       "insuranceRisk": {
         "title": "Il National Risk Index della FEMA",
@@ -508,7 +508,7 @@
       },
       "qualityBronze": {
         "title": "Bronzo: tipizzato dove è pulito",
-        "description": "<strong>bronze</strong> contiene ogni lotto così come è stato depositato, mai modificato. I dati puliti vengono tipizzati al deposito: l'id di vendita, il momento della vendita, la quantità. I campi disordinati, codice negozio, prodotto e prezzo, restano grezzi fino all'argento. Una sonda lo sorveglia, così un nuovo lotto aggiorna ogni vista successiva."
+        "description": "<strong>bronze</strong> contiene ogni lotto così come è stato depositato, mai modificato. I dati puliti vengono tipizzati al deposito: l'id di vendita, il momento della vendita, la quantità. I campi disordinati, codice negozio, prodotto e prezzo, restano grezzi fino all'argento."
       },
       "qualityRaw": {
         "title": "Grezzo, come lo ha scritto il flusso",
@@ -612,11 +612,11 @@
       },
       "vulnerabilitiesGovdata": {
         "title": "I dati pubblici sulle vulnerabilità",
-        "description": "I dati governativi provengono da AskAmerica, un account reale: i record CVE della NVD, il catalogo delle debolezze software di MITRE e le Known Exploited Vulnerabilities della CISA. Le tabelle vengono caricate una volta, alla creazione della demo, e lette sempre da quella copia: questa demo non chiama mai l'account."
+        "description": "I dati governativi provengono da AskAmerica: i record CVE della NVD, il catalogo delle debolezze software di MITRE e le Known Exploited Vulnerabilities della CISA."
       },
       "vulnerabilitiesAlerts": {
         "title": "Gli avvisi Dependabot",
-        "description": "Un avviso per ogni versione di pacchetto fissata con un advisory pubblicato: il repository, il pacchetto, il CVE, la versione che lo corregge e se l'avviso è aperto, corretto o ignorato. Viene letto in tempo reale dal database dell'azienda."
+        "description": "Un avviso per ogni versione di pacchetto fissata con un advisory pubblicato: il repository, il pacchetto, il CVE, la versione che lo corregge e se l'avviso è aperto, corretto o ignorato."
       },
       "vulnerabilitiesNvd": {
         "title": "I record CVE, caricati attraverso un filtro",
@@ -624,7 +624,7 @@
       },
       "vulnerabilitiesKev": {
         "title": "Le vulnerabilità sfruttate note della CISA",
-        "description": "Ogni CVE che gli attaccanti sono noti sfruttare, con la data entro cui le agenzie federali devono correggerlo e se le campagne ransomware lo usano. Caricato per intero: è piccolo."
+        "description": "Ogni CVE che gli attaccanti sono noti sfruttare, con la data entro cui le agenzie federali devono correggerlo e se le campagne ransomware lo usano."
       },
       "vulnerabilitiesJoin": {
         "title": "Sfruttato, tramite il CVE",
@@ -652,7 +652,7 @@
       },
       "vulnerabilitiesRecap": {
         "title": "Cosa avete visto",
-        "description": "Avete visto i dati del codice dell'azienda, letti in diretta e uniti per CVE a dati pubblici sulle vulnerabilità caricati una volta, e solo quelli che servono agli alert. Una vista in un unico modello governato risponde a quali vulnerabilità sfruttate sono nel codice e di quanto è in ritardo ciascuna, in SQL, GraphQL, Cypher e REST."
+        "description": "Avete visto i dati del codice dell'azienda uniti per CVE a dati pubblici sulle vulnerabilità, solo quelli che servono agli alert. Una vista in un unico modello governato risponde a quali vulnerabilità sfruttate sono nel codice e di quanto è in ritardo ciascuna, in SQL, GraphQL, Cypher e REST."
       },
       "streamingScenario": {
         "title": "Ordini, in diretta",
@@ -668,19 +668,19 @@
       },
       "streamingRecap": {
         "title": "Cosa hai visto",
-        "description": "Un topic Kafka è stato caricato come tabella e unito a un catalogo in diretta. Una vista è rimasta aggiornata a ogni batch arrivato. La stessa risposta è arrivata in SQL, GraphQL e REST, in cache quando richiesto, e una sottoscrizione ha seguito il feed. Continuate a esplorare da soli dalla pagina delle query."
+        "description": "Un topic Kafka è stato caricato come tabella e unito al catalogo. Una vista è rimasta aggiornata a ogni batch arrivato. La stessa risposta è arrivata in SQL, GraphQL e REST, in cache quando richiesto, e una sottoscrizione ha seguito il feed. Continuate a esplorare da soli dalla pagina delle query."
       },
       "streamingCatalog": {
         "title": "Il catalogo",
-        "description": "<strong>catalog</strong> è il Postgres della caffetteria, letto in diretta: cos'è e quanto costa ogni prodotto, e le regioni in cui la caffetteria vende."
+        "description": "<strong>catalog</strong> è il Postgres della caffetteria: cos'è e quanto costa ogni prodotto, e le regioni in cui la caffetteria vende."
       },
       "streamingOrders": {
         "title": "Un topic diventa una tabella",
-        "description": "<strong>orders</strong> è il topic, caricato in una tabella propria man mano che arrivano gli ordini, in un batch al massimo ogni due secondi e con l'id dell'ordine come chiave. Ogni batch che arriva aggiorna le viste che lo leggono e avvisa i loro sottoscrittori."
+        "description": "<strong>orders</strong> è il topic, caricato in una tabella propria man mano che arrivano gli ordini. Ogni batch che arriva aggiorna le viste che lo leggono e avvisa i loro sottoscrittori."
       },
       "streamingFresh": {
         "title": "Gli ordini mentre arrivano",
-        "description": "Gli ordini più recenti nella tabella, pochi secondi dietro al topic. Ogni sandbox carica l'intero topic nella propria tabella, con il proprio gruppo di consumatori."
+        "description": "Gli ordini più recenti nella tabella, pochi secondi dietro al topic."
       },
       "streamingCached": {
         "title": "La risposta in GraphQL, in cache",
@@ -760,7 +760,7 @@
       },
       "profilingRecap": {
         "title": "Cosa avete visto",
-        "description": "Avete visto le tabelle dell'azienda acquisita, lette in diretta, e un loro profilo fatto dal profiler integrato e conservato come tabelle governate. Null, intervalli, formati, tipi plausibili e duplicati dicono ciascuno cosa c'è davvero in questi dati, in SQL, GraphQL e REST, e ogni ruolo vede solo ciò che gli è consentito."
+        "description": "Avete visto le tabelle dell'azienda acquisita e un loro profilo fatto dal profiler integrato e conservato come tabelle governate. Null, intervalli, formati, tipi plausibili e duplicati dicono ciascuno cosa c'è davvero in questi dati, in SQL, GraphQL e REST, e ogni ruolo vede solo ciò che gli è consentito."
       },
       "opioidsScenario": {
         "title": "Che cos'è questa demo",
@@ -776,15 +776,15 @@
       },
       "opioidsRecap": {
         "title": "Che cosa hai visto",
-        "description": "I dati del fondo stesso, letti dal vivo, e i dati di sanità pubblica e del censimento, importati una volta, uniti per contea in un unico modello governato. Due viste conservate rispondono alla domanda: quella del personale, che legge la spesa del fondo, e il cruscotto pubblico, che non ne legge nulla. Ciascuna è servita in SQL, GraphQL e REST ai ruoli autorizzati a leggerla."
+        "description": "I dati del fondo stesso e i dati di sanità pubblica e del censimento, uniti per contea in un unico modello governato. Due viste conservate rispondono alla domanda: quella del personale, che legge la spesa del fondo, e il cruscotto pubblico, che non ne legge nulla. Ciascuna è servita in SQL, GraphQL e REST ai ruoli autorizzati a leggerla."
       },
       "opioidsGovdata": {
         "title": "I dati pubblici",
-        "description": "I dati governativi vengono da AskAmerica, un account reale: morti e tassi di mortalità per overdose dei CDC, popolazione del Census Bureau e spesa federale di USAspending, ciascuno per contea. Solo le contee dell'Ohio e il 2023 vengono caricati, una volta, alla creazione della demo, e letti da quella copia per sempre. Il 2023 è l'anno che coprono tutti."
+        "description": "I dati governativi vengono da AskAmerica: morti e tassi di mortalità per overdose dei CDC, popolazione del Census Bureau e spesa federale di USAspending, ciascuno per contea."
       },
       "opioidsAllocations": {
         "title": "Le assegnazioni del fondo",
-        "description": "Ogni assegnazione del fondo, letta in tempo reale dal suo database: la contea, l'anno fiscale, l'area del programma, il fornitore pagato, quanto assegnato e quanto speso. Il personale vede ogni riga; il ruolo public non ne vede nessuna."
+        "description": "Ogni assegnazione del fondo: la contea, l'anno fiscale, l'area del programma, il fornitore pagato, quanto assegnato e quanto speso. Il personale vede ogni riga; il ruolo public non ne vede nessuna."
       },
       "opioidsDeaths": {
         "title": "I tassi di morte per overdose dei CDC",
@@ -820,7 +820,7 @@
       },
       "datavaultInsertOnly": {
         "title": "Ogni riga conservata",
-        "description": "La tabella dei clienti è insert-only, come la riceve lo staging di un vault: una modifica arriva come nuova riga con la sua data di caricamento e nulla viene sovrascritto. La tabella osserva la propria data di caricamento più recente, così le nuove righe aggiornano ogni vista costruita su di essa tramite la cascata di viste."
+        "description": "La tabella dei clienti è insert-only, come la riceve lo staging di un vault: una modifica arriva come nuova riga con la sua data di caricamento e nulla viene sovrascritto."
       },
       "datavaultArrived": {
         "title": "Cosa è arrivato",
@@ -880,11 +880,11 @@
       },
       "agricultureGovdata": {
         "title": "I dati pubblici",
-        "description": "I dati governativi provengono da AskAmerica, un account attivo. Le sue tre tabelle vengono caricate una sola volta, quando si costruisce la demo, e solo la porzione di cui il portafoglio ha bisogno: le sue 40 contee, mais e soia, gli anni colturali dal 2010 al 2017. Vengono lette da quella copia in via definitiva: non scadono mai e questa demo non chiama mai l'account."
+        "description": "I dati governativi provengono da AskAmerica."
       },
       "agricultureClaims": {
         "title": "I sinistri dell'assicuratore",
-        "description": "Ogni indennizzo pagato dall'assicuratore, letto in tempo reale dal suo database: l'azienda agricola, l'anno colturale, la causa del danno, il mese e l'importo."
+        "description": "Ogni indennizzo pagato dall'assicuratore: l'azienda agricola, l'anno colturale, la causa del danno, il mese e l'importo."
       },
       "agricultureMarket": {
         "title": "Le perdite dell'intero mercato",
@@ -892,7 +892,7 @@
       },
       "agricultureWeather": {
         "title": "Meteo giornaliero per contea",
-        "description": "La temperatura massima giornaliera e le precipitazioni della NOAA per ogni contea, la media delle sue stazioni di rilevamento. Viene caricata solo la stagione di crescita, da maggio ad agosto: quando pioggia e caldo decidono la resa."
+        "description": "La temperatura massima giornaliera e le precipitazioni della NOAA per ogni contea, la media delle sue stazioni di rilevamento, nella stagione di crescita, da maggio ad agosto: quando pioggia e caldo decidono la resa."
       },
       "agricultureJoin": {
         "title": "Unito per contea",
@@ -924,7 +924,7 @@
       },
       "agricultureRecap": {
         "title": "Che cosa hai visto",
-        "description": "Avete visto i dati propri dell'assicuratore, letti in diretta e abbinati per contea e anno di raccolto a dati pubblici su danni, meteo e rese caricati una volta, tutto in un unico modello governato. Una vista risponde se il meteo spiega i danni, in SQL, GraphQL e REST. Il notebook lo misura: il meteo spiega il 54% della variazione del loss ratio e, sul portafoglio di oggi, una stagione come il 2012 ha un loss ratio atteso di 1,75."
+        "description": "Avete visto i dati propri dell'assicuratore abbinati per contea e anno di raccolto a dati pubblici su danni, meteo e rese, tutto in un unico modello governato. Una vista risponde se il meteo spiega i danni, in SQL, GraphQL e REST. Il notebook lo misura: il meteo spiega il 54% della variazione del loss ratio e, sul portafoglio di oggi, una stagione come il 2012 ha un loss ratio atteso di 1,75."
       },
       "retailScenario": {
         "title": "Un gruppo, due regioni",
@@ -1024,7 +1024,7 @@
       },
       "provisioningWarehouse": {
         "title": "Il database del warehouse",
-        "description": "I suoi prodotti e quanto costa ciascuno, gli avvisi che invia quando un dataset è pronto e i prelievi registrati dai consumer dei team. Letto in tempo reale."
+        "description": "I suoi prodotti e quanto costa ciascuno, gli avvisi che invia quando un dataset è pronto e i prelievi registrati dai consumer dei team."
       },
       "provisioningFeeds": {
         "title": "I feed, caricati all'arrivo",
@@ -1040,7 +1040,7 @@
       },
       "provisioningPulls": {
         "title": "I prelievi",
-        "description": "Il consumer di ogni team legge l'avviso e preleva l'intero dataset tramite Arrow Flight all'ora di versione, così un aggiornamento a metà prelievo non può mescolare due versioni. Registra le righe, i secondi e le righe al secondo. Il suo ticket è un oggetto JSON: la query, il ruolo e l'ora as-of (consumer.py). Un avvio locale esegue i consumer in tempo reale; la sandbox ospitata mostra i prelievi registrati quando la demo è stata creata."
+        "description": "Il consumer di ogni team legge l'avviso e preleva l'intero dataset tramite Arrow Flight all'ora di versione, così un aggiornamento a metà prelievo non può mescolare due versioni. Registra le righe, i secondi e le righe al secondo."
       },
       "provisioningAsFinance": {
         "title": "Esegui come finanza",
@@ -1064,7 +1064,7 @@
       },
       "provisioningClose": {
         "title": "Una lettura fuori dalla sua finestra",
-        "description": "close_by_category, la chiusura della finanza, può essere letta solo dalle 02:00 alle 02:15 UTC. Al di fuori questa lettura viene rifiutata, indicando la vista e quando la sua finestra si riapre; gli aggiornamenti propri del warehouse avvengono a qualsiasi ora."
+        "description": "close_by_category, la chiusura della finanza, può essere letta solo dalle 02:00 alle 02:15 UTC. Al di fuori questa lettura viene rifiutata, indicando la vista e quando la sua finestra si riapre."
       },
       "provisioningRest": {
         "title": "I prelievi via REST",
@@ -1076,11 +1076,11 @@
       },
       "pharmaGovdata": {
         "title": "I dati pubblici sui farmaci",
-        "description": "I dati governativi arrivano da AskAmerica, un account reale. Le sue tre tabelle vengono caricate una volta, quando la demo viene costruita, e solo la parte che la demo legge; da allora sono sempre lette da quella copia, e questa demo non chiama mai l'account."
+        "description": "I dati governativi provengono da AskAmerica."
       },
       "pharmaFormulary": {
         "title": "Il prontuario della farmacia",
-        "description": "Ogni prodotto che la farmacia tiene, letto in tempo reale dal suo database: il suo NDC, il nome generico, il produttore, la classe terapeutica e se è critico. Le sue scorte in ogni sede stanno accanto."
+        "description": "Ogni prodotto che la farmacia tiene: il suo NDC, il nome generico, il produttore, la classe terapeutica e se è critico. Le sue scorte in ogni sede stanno accanto."
       },
       "pharmaShortages": {
         "title": "Le carenze della FDA",
@@ -1108,15 +1108,15 @@
       },
       "pharmaRecap": {
         "title": "Che cosa hai visto",
-        "description": "Avete visto i dati propri della farmacia, letti in diretta e uniti per NDC e per azienda a dati pubblici sui farmaci caricati una volta, tutto in un unico modello governato. Una vista risponde a quali prodotti sono a rischio, in SQL, GraphQL e REST, e ogni ruolo vede solo ciò che gli è consentito."
+        "description": "Avete visto i dati propri della farmacia uniti per NDC e per azienda a dati pubblici sui farmaci, tutto in un unico modello governato. Una vista risponde a quali prodotti sono a rischio, in SQL, GraphQL e REST, e ogni ruolo vede solo ciò che gli è consentito."
       },
       "storefrontScenario": {
         "title": "Un modello, un'app e la BI",
-        "description": "Un rivenditore di caffè serve due consumatori da un solo modello. La schermata dello storico ordini della sua app mostra a un cliente autenticato i suoi ordini, e il suo strumento di BI mostra agli analisti i ricavi e le spedizioni in ritardo. Gli ordini sono in <strong>PostgreSQL</strong>, letti in tempo reale: clienti, ordini e le righe di ogni ordine."
+        "description": "Un rivenditore di caffè serve due consumatori da un solo modello. La schermata dello storico ordini della sua app mostra a un cliente autenticato i suoi ordini, e il suo strumento di BI mostra agli analisti i ricavi e le spedizioni in ritardo. Gli ordini sono in <strong>PostgreSQL</strong>: clienti, ordini e le righe di ogni ordine."
       },
       "storefrontCatalog": {
         "title": "Il catalogo, in MongoDB",
-        "description": "Ogni prodotto è un documento <strong>MongoDB</strong>, con nome, categoria, prezzo e immagine. Provisa lo legge in tempo reale, come una tabella."
+        "description": "Ogni prodotto è un documento <strong>MongoDB</strong>, con nome, categoria, prezzo e immagine. Provisa lo legge come una tabella."
       },
       "storefrontShipping": {
         "title": "Le spedizioni, via REST",
@@ -1188,7 +1188,7 @@
       },
       "hasuramigrationSalesforce": {
         "title": "Quello che Hasura non poteva fare: Salesforce",
-        "description": "Il team vendite tiene i suoi account in Salesforce. Provisa registra l'organizzazione come origine e il suo oggetto <strong>Account</strong> come tabella, copiata una volta alla creazione della demo. Ogni cliente aziendale del negozio indica l'account per cui acquista."
+        "description": "Il team vendite tiene i suoi account in Salesforce. Provisa registra l'organizzazione come origine e il suo oggetto <strong>Account</strong> come tabella. Ogni cliente aziendale del negozio indica l'account per cui acquista."
       },
       "hasuramigrationAccount": {
         "title": "Un'altra relazione",
@@ -1264,7 +1264,7 @@
       },
       "churnScenario": {
         "title": "Di cosa parla questa demo",
-        "description": "Un'azienda in abbonamento vuole sapere quali clienti stanno per disdire. I suoi clienti e un anno del loro utilizzo mensile vengono letti in tempo reale dal suo database, e un data scientist addestra un modello su di essi nel browser."
+        "description": "Un'azienda in abbonamento vuole sapere quali clienti stanno per disdire. I suoi clienti e un anno del loro utilizzo mensile sono nel suo database, e un data scientist addestra un modello su di essi nel browser."
       },
       "churnCustomers": {
         "title": "I clienti",
@@ -1376,7 +1376,7 @@
       },
       "testdataScenario": {
         "title": "Tre ambienti su un database di produzione",
-        "description": "<strong>shop-db</strong> è il database di produzione di un negozio: clienti, prodotti e ordini. I team hanno bisogno di dati per sviluppare e testare. Le aziende con dati personali pagano molto per i dati di pre-produzione, perché non hanno buoni valori fittizi o li comprano. Qui un modello serve tre ambienti. <strong>prod</strong> sono le righe reali, la fonte di verità, e nessuno ci costruisce sopra. <strong>preprod</strong> sono i dati stessi della produzione con ogni colonna sensibile resa fittizia, per i test finali. <strong>dev</strong> è generato dal profilo della produzione e non contiene nulla di reale, per il lavoro quotidiano. Provisa fornisce gli strumenti; quale configurazione serva a un'azienda lo decide l'azienda."
+        "description": "<strong>shop-db</strong> è il database di produzione di un negozio: clienti, prodotti e ordini. I team hanno bisogno di dati per sviluppare e testare. Qui un modello serve tre ambienti. <strong>prod</strong> sono le righe reali, la fonte di verità, e nessuno ci costruisce sopra. <strong>preprod</strong> sono i dati stessi della produzione con ogni colonna sensibile resa fittizia, per i test finali. <strong>dev</strong> è generato dal profilo della produzione e non contiene nulla di reale, per il lavoro quotidiano."
       },
       "testdataTables": {
         "title": "Il modello dice quali colonne sono fittizie",
@@ -1452,7 +1452,7 @@
       },
       "churnprodPackage": {
         "title": "Il modello, come origine",
-        "description": "Il pacchetto del modello è un'origine, conservata tramite l'hash del contenuto del suo codice. Contiene il modello addestrato e un lockfile che fissa scikit-learn. Le sue dipendenze si installano una volta, da wheel, e il codice gira in una sandbox."
+        "description": "Il pacchetto del modello è un'origine. Contiene il modello addestrato e un lockfile che fissa scikit-learn."
       },
       "churnprodColumns": {
         "title": "Colonne dai tipi della funzione",
@@ -1488,7 +1488,7 @@
       },
       "churnprodRecap": {
         "title": "Cosa hai visto",
-        "description": "Il modello di un data scientist è andato in produzione senza un servizio proprio da gestire. Il suo pacchetto è fissato e si installa una volta. Un join alimenta la sua funzione, che si legge come una tabella, e il mascheramento e le regole di riga di ogni tabella governano ciò che restituisce. SQL, GraphQL e ogni altro accesso la leggono allo stesso modo."
+        "description": "Il modello di un data scientist è andato in produzione senza un servizio proprio da gestire. Il suo pacchetto è fissato. Un join alimenta la sua funzione, che si legge come una tabella, e il mascheramento e le regole di riga di ogni tabella governano ciò che restituisce. SQL, GraphQL e ogni altro accesso la leggono allo stesso modo."
       },
       "worldcupIntro": {
         "title": "Quattro fonti pubbliche, un Mondiale",
@@ -1564,7 +1564,7 @@
       },
       "cloudpolicySearch": {
         "title": "La policy, cercata per significato",
-        "description": "Ogni clausola è stata incorporata una volta, alla preparazione della demo. Una ricerca per significato trova il controllo sulla cifratura dei dischi anche quando le tue parole sono diverse da quelle della clausola."
+        "description": "Una ricerca per significato trova il controllo sulla cifratura dei dischi anche quando le tue parole sono diverse da quelle della clausola."
       },
       "cloudpolicyModel": {
         "title": "Un modello per tre cloud",
