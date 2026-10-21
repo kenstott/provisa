@@ -57970,13 +57970,14 @@
     and opposite directions and are never read across; creating a domain literally named ``"*"`` is refused
     so the two readings cannot collide. THE PICKER: an author or expert is CHOSEN from the org''s roster,
     never typed. A mistyped user id would attribute the term to nobody and, for an author, lock every
-    curator out of it.'
+    curator out of it. (Amended 2026-10-21, META VIEWS:) The glossary meta views (glossary_terms_meta, glossary_term_edges_meta with both ends readable, glossary_term_refs_meta and glossary_term_domains_meta) follow the same readable-term rule, so the meta domain answers what the glossary API does.'
   tests:
   - tests/unit/test_glossary_rights.py
   - tests/integration/test_glossary_domain_authority.py
   - tests/integration/test_tenancy_role_grants.py
   - provisa-ui/src/__tests__/GlossaryTab.test.tsx
   - provisa-ui/src/__tests__/glossaryDomainFilter.test.tsx
+  - tests/unit/test_glossary_meta_domains_grounded.py
   code:
   - provisa/security/rights.py
   - provisa/api/admin/glossary_router.py
@@ -57988,6 +57989,8 @@
   - provisa-ui/src/api/glossary.ts
   - provisa-ui/src/types/auth.ts
   - provisa-ui/src/context/AuthContext.tsx
+  - provisa/api/_meta_views.py
+  - provisa/compiler/stage2.py
   scenario: 'Given an abstract term scoped to the "sales" domain and authored by one curator
 
     When a second curator holding glossary_rw in "sales" tries to rename it
