@@ -14,7 +14,7 @@
 
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, act, fireEvent } from "@testing-library/react";
+import { render, screen, act, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { MantineProvider } from "@mantine/core";
@@ -598,11 +598,7 @@ describe("the tour button in a named demo", () => {
         <>
           {tourTree(demo)}
           <button type="button" data-testid="role-selector-trigger" />
-          <button
-            type="button"
-            data-role-option="analyst"
-            onClick={pick(["query_development"])}
-          />
+          <button type="button" data-role-option="analyst" onClick={pick(["query_development"])} />
           <button type="button" data-role-option="all" onClick={pick(ALL_RIGHTS)} />
         </>
       );
@@ -619,7 +615,12 @@ describe("the tour button in a named demo", () => {
     expect(rights.current).toEqual(["query_development"]);
     expect(next().textContent).toBe("tour.nav.next 3/4");
     fireEvent.click(next());
-    expect(await screen.findByText("tour.steps.weblogsLast.title")).toBeInTheDocument();
+    // The All pick repaints the step's popover as it lands: read the title the popover shows now.
+    await waitFor(() =>
+      expect(document.querySelector(".driver-popover-title")?.textContent).toBe(
+        "tour.steps.weblogsLast.title",
+      ),
+    );
     expect(rights.current).toEqual(ALL_RIGHTS);
   });
 
