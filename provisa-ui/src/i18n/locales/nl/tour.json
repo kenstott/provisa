@@ -1536,6 +1536,10 @@
       "bankingChange": {
         "title": "Van gedachten veranderen kost twee regels",
         "description": "Stel dat de volumes de rekenkracht van het grootboek ontgroeien. Zet de regio van deze tabel op warehouse en de replicatie op Altijd, en het grootboek wordt naar het warehouse gerepliceerd. Dat is een plaatsingswijziging van twee regels, en elke query, elk dashboard, elke BI-weergave en elke agent antwoordt als voorheen. Met de hand gebouwd betekent dezelfde stap nieuwe pipelines, een backfill, herschreven aggregatie en versiebeheer, omgezette rapporten en een tweede set toegangsregels. Daarna volgen afstemmingstests, audit- en lineagecontroles, een architectuur- en beveiligingsreview en een change board. Hier is de wijziging een beoordeelde diff van twee regels, dus testen, audit en architectuurreview beoordelen een diff, geen migratie."
+      },
+      "bankingAsAdmin": {
+        "title": "Weer als beheerder",
+        "description": "Het dashboard is wat operations ziet. De rest van de rondleiding is weer als beheerder, en elke volgende instructie noemt de rol waarmee ze draait."
       }
     },
     "status": {

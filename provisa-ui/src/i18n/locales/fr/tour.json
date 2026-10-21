@@ -1536,6 +1536,10 @@
       "bankingChange": {
         "title": "Changer d'avis coûte deux lignes",
         "description": "Supposons que les volumes dépassent la capacité de calcul du grand livre. Mettez la région de cette table sur warehouse et son réglage de réplication sur Toujours, et le grand livre est répliqué dans l'entrepôt. C'est un changement de placement de deux lignes, et chaque requête, tableau de bord, vue BI et agent répond comme avant. Fait à la main, le même mouvement implique de nouveaux pipelines, un rechargement historique, une agrégation et un versionnage réécrits, des rapports redirigés et un second jeu de règles d'accès. Viennent ensuite les tests de rapprochement, les contrôles d'audit et de lignage, la revue d'architecture et de sécurité, et un comité des changements. Ici, le changement est un diff relu de deux lignes : tests, audit et revue d'architecture examinent un diff, pas une migration."
+      },
+      "bankingAsAdmin": {
+        "title": "De retour en administrateur",
+        "description": "Le tableau de bord est ce que voient les opérations. La suite de la visite se fait de nouveau en tant qu'administrateur, et chaque instruction qui suit indique le rôle sous lequel elle s'exécute."
       }
     },
     "status": {

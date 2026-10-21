@@ -1536,6 +1536,10 @@
       "bankingChange": {
         "title": "Changing your mind costs two lines",
         "description": "Suppose volumes outgrow the ledger's compute. Set this table's region to warehouse and its replicate setting to Always, and the ledger is replicated into the warehouse. That is a two-line placement change, and every query, dashboard, BI view and agent answers as before. Built by hand, the same move means new pipelines, a backfill, rewritten aggregation and versioning, repointed reports and a second set of access rules. Then come reconciliation testing, audit and lineage checks, architecture and security review, and a change board. Here the change is a two-line reviewed diff, so testing, audit and architecture review a diff, not a migration."
+      },
+      "bankingAsAdmin": {
+        "title": "Back as the administrator",
+        "description": "The dashboard is what operations sees. The rest of the tour is back as the administrator, and each statement that follows names the role it runs as."
       }
     },
     "status": {

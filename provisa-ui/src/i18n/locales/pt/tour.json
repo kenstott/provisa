@@ -1536,6 +1536,10 @@
       "bankingChange": {
         "title": "Mudar de ideia custa duas linhas",
         "description": "Suponha que os volumes superem o processamento do razão. Defina a região desta tabela como warehouse e a replicação como Sempre, e o razão passa a ser replicado no warehouse. É uma mudança de posicionamento de duas linhas, e toda consulta, painel, visão de BI e agente responde como antes. Feito à mão, o mesmo passo significa pipelines novos, uma carga retroativa, agregação e versionamento reescritos, relatórios redirecionados e um segundo conjunto de regras de acesso. Depois vêm os testes de conciliação, as verificações de auditoria e linhagem, a revisão de arquitetura e segurança e um comitê de mudanças. Aqui a mudança é um diff revisado de duas linhas, então testes, auditoria e revisão de arquitetura revisam um diff, não uma migração."
+      },
+      "bankingAsAdmin": {
+        "title": "De volta como administrador",
+        "description": "O painel é o que as operações veem. O resto do tour volta a ser como administrador, e cada instrução que segue indica a função com que é executada."
       }
     },
     "status": {

@@ -1536,6 +1536,10 @@
       "bankingChange": {
         "title": "Cambiare idea costa due righe",
         "description": "Supponiamo che i volumi superino la capacità di calcolo del libro mastro. Imposti la regione di questa tabella su warehouse e la sua replica su Sempre, e il libro mastro viene replicato nel warehouse. È un cambio di collocazione di due righe, e ogni query, dashboard, vista di BI e agente risponde come prima. Fatto a mano, lo stesso spostamento significa nuove pipeline, un caricamento storico, aggregazione e versionamento riscritti, report ripuntati e un secondo insieme di regole di accesso. Poi vengono i test di riconciliazione, i controlli di audit e lineage, la revisione di architettura e sicurezza e un change board. Qui la modifica è un diff revisionato di due righe, quindi test, audit e revisione di architettura esaminano un diff, non una migrazione."
+      },
+      "bankingAsAdmin": {
+        "title": "Di nuovo come amministratore",
+        "description": "La dashboard è ciò che vedono le operazioni. Il resto del tour torna come amministratore, e ogni istruzione che segue indica il ruolo con cui viene eseguita."
       }
     },
     "status": {

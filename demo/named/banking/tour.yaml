@@ -40,6 +40,8 @@ steps:
   open: identity
 # Its versions: a correction is a new row; the three mappings.
 - key: bankingVersions
+  route: /tables
+  capability: table_registration
   table: ledger-db.transactions
   open: load
 # What the ledger's side needs: compute for the end-of-day GROUP BY.
@@ -69,6 +71,11 @@ steps:
   role: ops_analyst
 - key: bankingDashboard
   example: 1-eod-dashboard
+# Back as the administrator, for every page after the dashboard.
+- key: bankingAsAdmin
+  route: /query
+  capability: query_development
+  role: all
 # BI, over SQL: the day's totals, as reported at the close and as restated since.
 - key: bankingAsAnalyst
   route: /sql

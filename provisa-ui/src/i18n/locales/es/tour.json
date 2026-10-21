@@ -1536,6 +1536,10 @@
       "bankingChange": {
         "title": "Cambiar de idea cuesta dos líneas",
         "description": "Suponga que los volúmenes superan el cómputo del libro mayor. Ponga la región de esta tabla en warehouse y su ajuste de réplica en Siempre, y el libro mayor se replica en el almacén. Es un cambio de ubicación de dos líneas, y cada consulta, panel, vista de BI y agente responde como antes. Hecho a mano, el mismo paso supone canalizaciones nuevas, una recarga histórica, agregación y versionado reescritos, informes redirigidos y un segundo juego de reglas de acceso. Después vienen las pruebas de conciliación, las comprobaciones de auditoría y linaje, la revisión de arquitectura y seguridad, y un comité de cambios. Aquí el cambio es un diff revisado de dos líneas, así que pruebas, auditoría y revisión de arquitectura revisan un diff, no una migración."
+      },
+      "bankingAsAdmin": {
+        "title": "De nuevo como administrador",
+        "description": "El panel es lo que ve operaciones. El resto del recorrido vuelve a ser como administrador, y cada sentencia que sigue indica el rol con el que se ejecuta."
       }
     },
     "status": {

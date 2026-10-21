@@ -6392,6 +6392,8 @@
   "es/tour.json::tour.steps.agricultureWorstSeasons.title": "The worst seasons",
   "es/tour.json::tour.steps.bankingAgent.description": "An agent connected over MCP reads the same model. Polly answers this question from the same end-of-day totals the dashboard and BI read, so it names the same branch.",
   "es/tour.json::tour.steps.bankingAgent.title": "The agent's answer",
+  "es/tour.json::tour.steps.bankingAsAdmin.description": "The dashboard is what operations sees. The rest of the tour is back as the administrator, and each statement that follows names the role it runs as.",
+  "es/tour.json::tour.steps.bankingAsAdmin.title": "Back as the administrator",
   "es/tour.json::tour.steps.bankingAsAnalyst.description": "The SQL that follows runs as the bank's reporting analysts. They read the end-of-day totals and the five ledger columns the totals are built from: business date, branch, product, currency and amount. They never see an account, a counterparty or a holder.",
   "es/tour.json::tour.steps.bankingAsAnalyst.title": "As a reporting analyst",
   "es/tour.json::tour.steps.bankingAsOps.description": "The next query runs as operations, who drill into postings under the ledger's own rules. They see no posting to a staff account, and every counterparty is withheld.",

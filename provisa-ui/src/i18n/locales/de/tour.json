@@ -1536,6 +1536,10 @@
       "bankingChange": {
         "title": "Umentscheiden kostet zwei Zeilen",
         "description": "Angenommen, die Volumina übersteigen die Rechenleistung des Hauptbuchs. Setzen Sie die Region dieser Tabelle auf warehouse und ihre Replikationseinstellung auf Immer, und das Hauptbuch wird ins Warehouse repliziert. Das ist eine Platzierungsänderung von zwei Zeilen, und jede Abfrage, jedes Dashboard, jede BI-Ansicht und jeder Agent antwortet wie zuvor. Von Hand gebaut bedeutet derselbe Schritt neue Pipelines, ein Backfill, neu geschriebene Aggregation und Versionierung, umgestellte Berichte und einen zweiten Satz Zugriffsregeln. Dann folgen Abstimmungstests, Prüfungen von Audit und Lineage, Architektur- und Sicherheitsreview und ein Change Board. Hier ist die Änderung ein geprüfter Diff von zwei Zeilen, also prüfen Test, Audit und Architekturreview einen Diff, keine Migration."
+      },
+      "bankingAsAdmin": {
+        "title": "Wieder als Administrator",
+        "description": "Das Dashboard zeigt, was der Betrieb sieht. Der Rest der Tour läuft wieder als Administrator, und jede folgende Anweisung nennt die Rolle, unter der sie läuft."
       }
     },
     "status": {
