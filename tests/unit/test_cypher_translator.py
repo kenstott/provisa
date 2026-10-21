@@ -2538,3 +2538,25 @@ def test_undirected_anonymous_path_includes_all_nodes_and_edges():
 
     node_labels = set(re.findall(r"'label',\s*'([^']+)'", sql))
     assert node_labels == {"Pets", "AnimalBreeds", "Inquiries"}, node_labels
+
+
+def test_an_untyped_relationship_from_a_labeled_node_reads_only_that_node_types_relationships():
+    """MATCH (n:Company)-[r]->(m): only the relationships whose source is a Company. The label was
+    dropped, and the union read every relationship of the model -- any source's edge answered
+    `RETURN r LIMIT 1`, and the whole model's union outran the request deadline (ui-core
+    cypher-api REQ-750 edge spec, 504)."""
+    lm = _make_label_map()
+    lm.relationships["EMPLOYS"] = RelationshipMapping(
+        rel_type="EMPLOYS",
+        source_label="Company",
+        target_label="Person",
+        join_source_column="id",
+        join_target_column="company_id",
+        field_name="employs",
+    )
+    sql_ast, _, _ = cypher_to_sql(
+        parse_cypher("MATCH (n:Company)-[r]->(m) RETURN r LIMIT 1"), lm, {}
+    )
+    sql = sql_ast.sql(dialect="trino")
+    assert "'EMPLOYS'" in sql
+    assert "'WORKS_AT'" not in sql and "'KNOWS'" not in sql

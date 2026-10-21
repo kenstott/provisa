@@ -49,12 +49,16 @@ class _UnionMixin:  # mixin for _Translator
         tgt_var: str | None,
         src_domain: str | None = None,
         tgt_domain: str | None = None,
+        *,
+        src_type: str | None = None,
+        tgt_type: str | None = None,
     ) -> exp.Expression:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Build UNION ALL subquery over all relationship types for fully-unlabeled patterns.
 
         src_domain / tgt_domain constrain the union to only include rels whose
         source / target node belongs to the named domain (PascalCase domain label).
-        Pass None or "__all__" to leave that side unconstrained.
+        Pass None or "__all__" to leave that side unconstrained. src_type / tgt_type constrain it
+        to the rels whose source / target is that node type (an endpoint labeled with a table).
         """
         src_col = src_var or "n"
         rel_col = rel_var or "r"
@@ -98,6 +102,10 @@ class _UnionMixin:  # mixin for _Translator
             if src_type_set is not None and rm.source_label not in src_type_set:
                 continue
             if tgt_type_set is not None and rm.target_label not in tgt_type_set:
+                continue
+            if src_type is not None and rm.source_label != src_type:
+                continue
+            if tgt_type is not None and rm.target_label != tgt_type:
                 continue
             # Skip synthetic constant-join rels (e.g. HAS_TABLE to meta tables).
             # These are not real FK traversals and would pull in unrelated domain nodes.
