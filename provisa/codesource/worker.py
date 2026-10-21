@@ -71,7 +71,7 @@ import subprocess  # nosec B404 - argv-list invocation only, never shell=True
 import tempfile
 import threading
 import time
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -524,10 +524,14 @@ class Worker:
         """A table's or a stream's rows, batch by batch, as the host sends them against
         ``schema`` (arrow_rows.schema_text). Closing the iterator before its end cancels the
         call in the host."""
+        from contextlib import closing
+
         from provisa.codesource.arrow_rows import rows_of
 
-        for ipc in self.batches(export, kind, args, names, schema=schema):
-            yield rows_of(ipc)
+        # Closed here, not by the collector: closing rows is what cancels the call in the host.
+        with closing(self.batches(export, kind, args, names, schema=schema)) as batches:
+            for ipc in batches:
+                yield rows_of(ipc)
 
     def batches(
         self,
@@ -538,7 +542,7 @@ class Worker:
         *,
         schema: str,
         residual: dict | None = None,
-    ) -> Iterator[bytes]:
+    ) -> Generator[bytes, None, None]:
         """REQ-2100: :meth:`rows`, each batch as the Arrow IPC stream the host sent. With a
         ``residual`` (a remote host's front end, provisa/codehost/front.py), the batches are the
         statement's answer over the function's rows."""

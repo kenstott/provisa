@@ -236,6 +236,35 @@ def test_closing_a_stream_early_cancels_it_in_the_host(worker, command):
     assert log.exists()
 
 
+def test_closing_a_stream_early_ends_its_call_while_its_batches_are_still_referenced(
+    worker, command, monkeypatch
+):
+    # rows() reads through batches(); closing rows must close the call itself, not leave it to
+    # the collector, or the call's span stays current for whatever runs next on the thread.
+    _, log = command
+    held = []
+    batches = worker.batches
+
+    def holding(*args, **kwargs):
+        held.append(batches(*args, **kwargs))
+        return held[-1]
+
+    monkeypatch.setattr(worker, "batches", holding)
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+
+    monkeypatch.setattr(w, "_tracer", TracerProvider().get_tracer(__name__))
+    before = trace.get_current_span()
+    rows = worker.rows("ticks", "stream", [], schema=TICKS)
+    assert [next(rows), next(rows)] == [[{"tick": 0}], [{"tick": 1}]]
+    rows.close()
+    assert trace.get_current_span() is before
+    until = time.monotonic() + 5.0
+    while not log.exists() and time.monotonic() < until:
+        time.sleep(0.02)
+    assert log.exists()
+
+
 def test_a_crash_fails_the_call_naming_the_source_the_export_and_what_the_host_said(worker):
     with pytest.raises(w.WorkerFailed) as failed:
         list(worker.rows("die", "table", [], schema=ANY))
