@@ -236,7 +236,14 @@ function MetaQueries({ core, testId }: { core: ProductCore; testId: string }) {
             component="pre"
             size="xs"
             ff="monospace"
-            style={{ whiteSpace: "pre-wrap", wordBreak: "break-all", margin: 0 }}
+            // Bounded, so the nested read does not stand taller than every other section.
+            style={{
+              whiteSpace: "pre-wrap",
+              wordBreak: "break-all",
+              margin: 0,
+              maxHeight: 220,
+              overflowY: "auto",
+            }}
             data-testid={`${testId}-${r.key}`}
           >
             {r.text}
