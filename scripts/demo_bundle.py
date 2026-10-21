@@ -751,6 +751,48 @@ class _SharedRedis:
         self._process.wait(timeout=30)
 
 
+def _replica_states(places: list[tuple[str, str | None]], demo_name: str) -> str:
+    """The build state of each of the demo's template replicas wherever a seeding node keeps it --
+    ``places`` are ``(database url, region)``: the control plane (None) and each region's store --
+    so a seeding run that never finished says what it was waiting on, by table."""
+    from sqlalchemy import create_engine, text
+
+    from provisa.api.sandbox_tier import template_org_id
+    from provisa.core.environments import org_schema
+
+    lines: list[str] = []
+    for url, region in places:
+        schema = org_schema(template_org_id(demo_name), None, region=region)
+        engine = create_engine(url)
+        try:
+            with engine.connect() as conn:
+                held = conn.execute(
+                    text("SELECT to_regclass(:t) IS NOT NULL"),
+                    {"t": f'"{schema}".replica_state'},
+                ).scalar()
+                if not held:
+                    lines.append(f"  {schema}: no replica_state")
+                    continue
+                rows = conn.execute(
+                    text(
+                        "SELECT source_id, schema_name, table_name, build_state, requested_at, "
+                        "requested_reason, build_wait, completed_at, built_store, last_error "
+                        f'FROM "{schema}".replica_state ORDER BY 1, 2, 3'
+                    )
+                ).mappings()
+                found = [
+                    f"  {schema} "
+                    + ".".join((r["source_id"], r["schema_name"], r["table_name"]))
+                    + ": "
+                    + ", ".join(f"{k}={r[k]!r}" for k in list(r.keys())[3:])
+                    for r in rows
+                ]
+                lines.extend(found or [f"  {schema}: no replica recorded"])
+        finally:
+            engine.dispose()
+    return "\n".join(lines)
+
+
 def _seed_node(
     work: Path,
     demo: Path,
@@ -806,7 +848,25 @@ def _seed_node(
             if server.poll() is not None:
                 raise SystemExit(f"the seeding run exited early ({server.returncode})")
             if time.monotonic() > deadline:
-                raise SystemExit(f"{demo.name} not seeded in {timeout:.0f}s")
+                raise SystemExit(
+                    f"{demo.name} not seeded in {timeout:.0f}s; its template's replicas:\n"
+                    + _replica_states(
+                        [
+                            (url, None),
+                            *(
+                                (
+                                    value,
+                                    key.removeprefix("PROVISA_DEMO_")
+                                    .removesuffix("_PG_URL")
+                                    .lower(),
+                                )
+                                for key, value in env.items()
+                                if key.startswith("PROVISA_DEMO_") and key.endswith("_PG_URL")
+                            ),
+                        ],
+                        demo.name,
+                    )
+                )
             time.sleep(2)
         httpx.get(f"http://127.0.0.1:{http_port}/health", timeout=10).raise_for_status()
     finally:
