@@ -303,6 +303,14 @@ Una ruta con cualquier otro esquema (`ftp://`, por ejemplo) se rechaza: "DuckDB 
 - **Nombres.** El id del origen y el nombre del archivo solo pueden usar letras, dígitos, `.`, `_` y `-`.
 - **Almacenamiento.** Un archivo subido se guarda como cualquier archivo de la organización: en la carpeta de la organización, cifrado cuando esa carpeta lo está, y visible para todos los nodos en un montaje compartido.
 
+**Descargar un archivo.** Una fuente `csv` o `parquet` puede recibir su archivo por descarga. Elija **Download a copy** en el formulario de la fuente e indique un archivo: una ruta en el servidor, una dirección `https://` o una dirección `s3://` leída con las credenciales que el formulario guarda para el almacén. Provisa transmite el archivo por la ruta de subida a `files/<source id>/<file name>` en la carpeta de la organización, con el mismo límite de tamaño, almacenamiento y reemplazo que una subida, y la fuente lee esa copia.
+
+- **Cuándo se vuelve a descargar.** Lo decide el TTL de caché de la fuente. Una tabla construida a partir de la fuente vuelve a descargar el archivo primero cuando su TTL ha vencido desde que se hizo la copia. Con un TTL de -1 el archivo se descarga una vez y se conserva.
+- **Rutas en el servidor.** Una ruta del servidor debe ser un archivo bajo un directorio listado en el ajuste `sources.download_roots` (entorno `PROVISA_SOURCES_DOWNLOAD_ROOTS`), una vez seguidos sus enlaces simbólicos. Por defecto no hay ninguno. Una ruta fuera de ellos se rechaza por su nombre y no se copia nada.
+- **Muchas organizaciones.** En un servidor de muchas organizaciones (`multitenancy: true`) una ruta del servidor se rechaza por su nombre contenga lo que contenga el ajuste, y solo se ofrecen `https://` y `s3://`. Una dirección cuyo host se resuelve dentro de la red propia del servidor (privada, loopback o link-local) también se rechaza por su nombre, en cada redirección.
+- **Su tabla, como borrador.** Al crear la fuente, el formulario ofrece crear su tabla de inmediato, como borrador, en el dominio que elija. La tabla toma el nombre de la fuente y se tipa a partir del archivo como lo propondría Register Table, y queda fuera de servicio hasta que un steward la saca del borrador. La opción está activada por defecto.
+- **Con Polly.** Dé a Polly una ruta completamente resuelta a un único archivo CSV o Parquet y ella propone la fuente con su descarga y su tabla en borrador, y la crea cuando usted confirma. Un directorio, un glob o varios archivos se convierten en cambio en una fuente de archivos.
+
 **Escrituras en un archivo SQLite o DuckDB local, y bloqueos.** Una escritura toma el bloqueo del archivo y nunca lo espera. Cuando otro proceso o nodo tiene el archivo, la escritura se rechaza, indicando el origen y que su archivo está bloqueado.
 
 - **SQLite.** La escritura establece `PRAGMA busy_timeout = 0`, así que un archivo bloqueado falla de inmediato.

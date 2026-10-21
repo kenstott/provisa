@@ -26,7 +26,7 @@ from provisa.api.metadata_export.provider import (
 )
 
 if TYPE_CHECKING:
-    from provisa.core.models import MetadataExportConfig
+    from provisa.core.models import MetadataExportTarget
 
 _PROVIDERS: dict[str, type[MetadataExport]] = {}
 
@@ -59,29 +59,17 @@ def registered_providers() -> list[str]:
     return sorted(_PROVIDERS)
 
 
-def metadata_export(config: MetadataExportConfig) -> MetadataExport:
-    """The configured adapter behind the port.
+def metadata_export(target: MetadataExportTarget) -> MetadataExport:
+    """The adapter behind the port for one configured target (REQ-2118: an org may have several).
 
-    Raises when export is disabled rather than returning nothing: a caller that reaches this
-    function has already decided to publish, and handing it a no-op would turn a
-    misconfiguration into silently unpublished metadata.
+    An unknown provider is refused here, naming the setting, rather than handed back as a no-op:
+    a misconfiguration must not turn into silently unpublished metadata.
     """
-    if not config.enabled:
-        raise MetadataExportNotConfiguredError(
-            "Metadata export is disabled (metadata_export.enabled). Enable it and set a "
-            "provider and endpoint to publish to an external catalog."
-        )
-    if not config.provider:
-        raise MetadataExportNotConfiguredError(
-            "No metadata export provider is configured (metadata_export.provider); "
-            f"expected one of: {', '.join(registered_providers())}"
-        )
     try:
-        provider = _PROVIDERS[config.provider]
+        provider = _PROVIDERS[target.provider]
     except KeyError:
         raise MetadataExportNotConfiguredError(
-            f"Unknown metadata export provider {config.provider!r} "
-            f"(metadata_export.provider); expected one of: "
-            f"{', '.join(registered_providers())}"
+            f"Unknown metadata export provider {target.provider!r} for target {target.id!r} "
+            f"(metadata_export.targets); expected one of: {', '.join(registered_providers())}"
         ) from None
-    return provider(config)
+    return provider(target)

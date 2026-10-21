@@ -1,0 +1,10 @@
+{
+  "profile3d": {
+    "expand": "展开视图",
+    "webglError": "无法启动 3D 视图：{{error}}",
+    "hint": "拖动以旋转 · 滚动以缩放 · 右键拖动以平移",
+    "rotate": "旋转",
+    "resetView": "重置视图",
+    "zoomTo": "缩放到此列"
+  }
+}

@@ -209,6 +209,8 @@ describe("navigate with steps", () => {
       confirm: vi.fn(),
       runMutation: vi.fn(),
       presentChoice: vi.fn(async () => true),
+      runAdminMutation: vi.fn(),
+      chooseFile: vi.fn(),
     };
     const out = await executeClientTool(
       "navigate",
@@ -241,6 +243,8 @@ describe("navigate with steps", () => {
       confirm: vi.fn(),
       runMutation: vi.fn(),
       presentChoice: vi.fn(),
+      runAdminMutation: vi.fn(),
+      chooseFile: vi.fn(),
     };
     const out = await executeClientTool(
       "navigate",

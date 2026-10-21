@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "Drift-Schichten von {{table}}",
+    "none": "Keiner dieser Läufe enthält Werte, die die Schichten darstellen können.",
+    "canvasLabel": "3D-Stapel der Verteilung einer Spalte in jedem Lauf, der älteste hinten",
+    "column": "Spalte",
+    "legendShare": "Anteil an den Zeilen des Laufs",
+    "legendMedian": "Median von Lauf zu Lauf",
+    "legendDrift": "Lauf mit Drift",
+    "tipShare": "{{pct}} der Nicht-Null-Zeilen des Laufs",
+    "tipNullShare": "{{pct}} der Zeilen des Laufs",
+    "drifted": "Drift ({{reason}})",
+    "steady": "Keine Drift markiert",
+    "noValues": "Keine Werte in diesem Lauf",
+    "runs": "Läufe, neueste zuerst",
+    "columnsNote": "Median und Nullanteil jedes Laufs. Der ausgewählte Lauf ist der neueste angezeigte.",
+    "binning_sketch": "Dieselben Klassen für jeden Lauf, aus der Quantil-Skizze jedes Laufs gebildet; die Höhen sind der Anteil jedes Laufs an seinen Nicht-Null-Zeilen.",
+    "binning_categories": "Die Werte jedes Laufs, gezählt gegen dieselben Kategorien.",
+    "binning_none": "Diese Läufe enthalten für Ihre Rolle keine Werte für diese Spalte."
+  }
+}

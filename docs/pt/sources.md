@@ -303,6 +303,14 @@ Um caminho com qualquer outro esquema (`ftp://`, por exemplo) é recusado: "Duck
 - **Nomes.** O id da fonte e o nome do arquivo só podem usar letras, dígitos, `.`, `_` e `-`.
 - **Armazenamento.** Um arquivo enviado é armazenado como qualquer arquivo da organização: na pasta da organização, criptografado quando essa pasta é, e visto por todos os nós em um mount compartilhado.
 
+**Baixar um arquivo.** Uma fonte `csv` ou `parquet` pode receber o seu arquivo por download. Escolha **Download a copy** no formulário da fonte e indique um arquivo: um caminho no servidor, um endereço `https://` ou um endereço `s3://` lido com as credenciais que o formulário guarda para o armazenamento. O Provisa transmite o arquivo pelo caminho de upload para `files/<source id>/<file name>` na pasta da organização, com o mesmo limite de tamanho, armazenamento e substituição de um upload, e a fonte lê essa cópia.
+
+- **Quando é baixado de novo.** Quem decide é o TTL de cache da fonte. Uma tabela construída a partir da fonte baixa o arquivo de novo primeiro quando o TTL dela venceu desde que a cópia foi feita. Com um TTL de -1, o arquivo é baixado uma vez e mantido.
+- **Caminhos no servidor.** Um caminho do servidor precisa ser um arquivo sob um diretório listado na configuração `sources.download_roots` (ambiente `PROVISA_SOURCES_DOWNLOAD_ROOTS`), depois de seguidos os links simbólicos. Nenhum é listado por padrão. Um caminho fora deles é recusado pelo nome e nada é copiado.
+- **Muitas organizações.** Num servidor de muitas organizações (`multitenancy: true`), um caminho do servidor é recusado pelo nome seja o que for que a configuração tenha, e só `https://` e `s3://` são oferecidos. Um endereço cujo host resolve dentro da própria rede do servidor (privada, loopback ou link-local) também é recusado pelo nome, em cada redirecionamento.
+- **A tabela dela, como rascunho.** Quando a fonte é criada, o formulário oferece configurar a tabela dela na hora, como rascunho, no domínio que você escolher. A tabela recebe o nome da fonte e é tipada a partir do arquivo como o Register Table a proporia, e fica fora de serviço até que um steward a tire do rascunho. A opção vem ligada por padrão.
+- **Pela Polly.** Dê à Polly um caminho totalmente resolvido para um único arquivo CSV ou Parquet e ela propõe a fonte com o download e a tabela em rascunho, e a cria quando você confirma. Um diretório, um glob ou vários arquivos viram em vez disso uma fonte de arquivos.
+
 **Escritas em um arquivo SQLite ou DuckDB local, e bloqueios.** Uma escrita pega o bloqueio do arquivo e nunca espera por ele. Quando outro processo ou nó detém o arquivo, a escrita é recusada, indicando a fonte e que seu arquivo está bloqueado.
 
 - **SQLite.** A escrita define `PRAGMA busy_timeout = 0`, então um arquivo bloqueado falha na hora.

@@ -304,6 +304,9 @@ _PLATFORM_TRANSFORMS: dict[tuple[str, str], str] = {
 IR_TYPES: frozenset[str] = frozenset(_IR_TO_SA)
 # A parenthesized size anywhere in a type's spelling.
 _SIZES = re.compile(r"\s*\([^)]*\)")
+# A character type's character set, printed after it: Exasol's ``VARCHAR(64) UTF8``,
+# ``CHAR(1) ASCII``. The set is the source's storage; the type is the base type before it.
+_CHARSET = re.compile(r"^((?:var)?char|character(?: varying)?) (?:utf8|ascii)$")
 _NUMERIC_SIZE = re.compile(r"\(\s*(\d+)\s*,\s*(\d+)\s*\)\s*\Z")
 
 # REQ-1908: a registered temporal column whose source stores it as an epoch number declares the
@@ -383,9 +386,12 @@ def _iso8601(months: int, days: int, micros: int) -> str:
 
 
 def type_name(native_type: str) -> str:
-    """A spelling's type name, its sizes aside: ``varchar(64)`` is ``varchar``, ``timestamp(6)
-    with time zone`` is ``timestamp with time zone`` (Oracle prints a size in the middle)."""
-    return " ".join(_SIZES.sub(" ", native_type.strip().lower()).split())
+    """A spelling's type name, its sizes and a character type's character set aside:
+    ``varchar(64)`` is ``varchar``, ``timestamp(6) with time zone`` is ``timestamp with time
+    zone`` (Oracle prints a size in the middle), ``varchar(64) utf8`` is ``varchar`` (Exasol
+    prints the set after)."""
+    name = " ".join(_SIZES.sub(" ", native_type.strip().lower()).split())
+    return _CHARSET.sub(r"\1", name)
 
 
 def value_transform(native_type: str, platform: str | None = None) -> str | None:

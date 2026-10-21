@@ -162,6 +162,14 @@ orgs = Table(
     # the token a push needs never enters the control plane.
     Column("repo_remote", Text),
     Column("repo_status_webhook", Text),
+    # REQ-1066 (amended 2026-10-20): the org's subscription tier, which every tier-gated feature
+    # reads (provisa.control_plane.entitlements). Stored with the org so it holds on a single-org
+    # install and across restarts; set by a platform administrator (Admin > Orgs). NULL: no tier
+    # has been set, and no tier-gated feature is entitled.
+    Column("tier", Text),
+    CheckConstraint(
+        "tier IS NULL OR tier IN ('free', 'standard', 'premium')", name="orgs_tier_check"
+    ),
 )
 
 user_profiles = Table(

@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "Relaciones en {{table}}",
+    "none": "Esta ejecución no encontró correlaciones ni dependencias entre columnas.",
+    "canvasLabel": "Mapa 3D de las columnas de la tabla, unidas por sus correlaciones y dependencias",
+    "minStrength": "Intensidad",
+    "showCorrelation": "Correlaciones",
+    "showDependence": "Dependencias",
+    "legendPositive": "suben juntas",
+    "legendNegative": "se mueven en sentido opuesto",
+    "legendRatio": "la categoría explica el número",
+    "legendDependence": "depende de (la flecha apunta a la columna dependiente)",
+    "tipLinks_one": "Relaciones: {{count}}",
+    "tipLinks_other": "Relaciones: {{count}}",
+    "columns": "Columnas",
+    "noLinks": "No hay relaciones con esta intensidad.",
+    "note": "El grosor de la barra es la intensidad: |Spearman ρ| para las correlaciones, la proporción de varianza explicada para una razón de correlación y la proporción de la incertidumbre de la columna que eliminan sus padres para una dependencia. Las columnas grises son de una tabla padre.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "Razón de correlación η²",
+    "measure_dependence": "Dependencia (proporción de incertidumbre eliminada)",
+    "family_numeric": "numérico",
+    "family_temporal": "fecha/hora",
+    "family_text": "texto",
+    "family_boolean": "booleano",
+    "family_other": "otro",
+    "family_foreign": "columna de la tabla padre"
+  }
+}

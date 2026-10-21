@@ -116,3 +116,18 @@ export async function repin(
 ): Promise<{ content_hash: string }> {
   return ok(await post(`${base(orgId, sourceId)}/repin`, { code_hash: codeHash }), "repin");
 }
+
+/** A function the source's code exports, and what it is. */
+export interface CodeExport {
+  name: string;
+  kind: "table" | "command" | "stream";
+}
+
+export async function fetchExports(orgId: string, sourceId: string): Promise<CodeExport[]> {
+  return (
+    await ok<{ exports: CodeExport[] }>(
+      await fetch(`${base(orgId, sourceId)}/exports`),
+      "fetchExports",
+    )
+  ).exports;
+}

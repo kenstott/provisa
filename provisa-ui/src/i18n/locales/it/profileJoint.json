@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "Nuvola congiunta di {{table}}",
+    "none": "Questa esecuzione non ha costruito alcuna rete di dipendenze, quindi non contiene conteggi congiunti.",
+    "canvasLabel": "Nuvola 3D delle righe di una colonna rispetto alle sue colonne genitore",
+    "column": "Colonna",
+    "colorBy": "Colora per",
+    "colorRows": "Righe",
+    "colorLift": "Lift",
+    "legendRows": "righe nella cella",
+    "legendLift": "meno che con indipendenza · altrettante · di più",
+    "decile": "D{{n}}",
+    "nullSlot": "null",
+    "otherSlot": "+{{count}} altri",
+    "tipRows": "{{rows}} righe · {{pct}} · lift ×{{lift}}",
+    "explainOne": "{{column}} (verticale) rispetto al suo genitore {{parent}} (orizzontale). I numeri sono divisi in decili di rango.",
+    "explainTwo": "{{column}} (verticale) rispetto ai suoi genitori {{parent1}} (orizzontale) e {{parent2}} (profondità). I numeri sono divisi in decili di rango.",
+    "stat_rows": "Righe",
+    "stat_cells": "Celle occupate",
+    "stat_mi": "Informazione mutua (nats)",
+    "stat_uncertainty": "Incertezza eliminata",
+    "over": "Più spesso che con indipendenza",
+    "under": "Meno spesso che con indipendenza",
+    "noneListed": "Nessuna con lo 0,5% delle righe o più.",
+    "note": "Il lift è il rapporto tra le righe di una cella e le righe che conterrebbe se le colonne fossero indipendenti. La dimensione della sfera è il numero di righe."
+  }
+}

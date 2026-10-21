@@ -85,6 +85,11 @@
         "title": "73 Quellentypen, 14 Kategorien",
         "description": "Eine Auswahl listet jeden Typ, nach Kategorie gruppiert: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Suchen Sie nach Name oder Alias oder grenzen Sie mit den Kategorie-Chips ein. Jeder Typ zeigt sein Logo und ein Reichweiten-Symbol: ⚡ direkt vor Ort gelesen, oder ein Kopie-Symbol, wo Provisa ein aktualisiertes Replikat liest.<p>Wählen Sie einen aus, tragen Sie die Verbindung ein, speichern Sie.</p>"
       },
+      "stepBuildSource": {
+        "title": "Eine Quelle, live hinzugefügt",
+        "description": "So wird eine Quelle hinzugefügt: Die Auswahl öffnete sich mit ihrer ganzen Liste, <strong>Parquet File</strong> wurde gewählt, die Adresse der Datei eingetragen (<code>supplies.parquet</code>, veröffentlicht auf provisa.dev) und Speichern legte sie an. Die neue Quelle <strong>supplies</strong> liest diese Datei an Ort und Stelle.",
+        "acting": "Quelle wird hinzugefügt"
+      },
       "step4": {
         "title": "Alles wird zu einer Tabelle",
         "description": "Egal welche Quelle, ob eine Mongo-Collection, ein Kafka-Topic, ein REST-Endpunkt oder ein Graph, Provisa zerlegt sie in eine 2D-<strong>Tabelle</strong>: eine einheitliche Form, um über alle Quellen hinweg abzufragen.<p>📁 Tabellen zu <strong>Domänen</strong> gruppieren, jede von einem Data Steward betreut, der die Qualität des Modells bei seiner Weiterentwicklung wahrt.</p>"
@@ -728,6 +733,26 @@
       "profilingDuplicates": {
         "title": "Die doppelt geschriebenen Zeilen",
         "description": "Das Modell erklärt customer_id zum Schlüssel, doch der Export hatte keine Einschränkung: 150 Kunden stehen zweimal darin, jedes Feld gleich. Das Profil zählt die wiederholten Zeilen und die Schlüsselwerte, die mehr als eine Zeile hat."
+      },
+      "profilingDrift": {
+        "title": "Was sich seit dem letzten Lauf geändert hat",
+        "description": "Die Einrichtung hat den Profiler zweimal laufen lassen, und zwischen den Läufen hat die nächste Synchronisierung des CRM jede US-Postleitzahl als ZIP+4 geschrieben. Die Drift-Tabelle vergleicht jedes Maß mit dem des vorherigen Laufs: Die Maße, die die Änderung an postal_code verschoben hat, sind als driftend markiert, die Spalten, die die Synchronisierung nicht berührt hat, nicht."
+      },
+      "profilingOriginal": {
+        "title": "Die echten Kunden",
+        "description": "Zehn Kunden, wie das CRM sie hält. Als Nächstes dieselbe Anweisung in einer aus dem Profil generierten Umgebung."
+      },
+      "profilingToSynthetic": {
+        "title": "Zu synthetic wechseln",
+        "description": "Als Nächstes wechselt der Umschalter zu <strong>synthetic</strong>, einer Test (synthetic)-Umgebung."
+      },
+      "profilingSynthetic": {
+        "title": "Aus dem Profil generiert",
+        "description": "Dieselbe Anweisung in synthetic: Jede Zeile wurde aus dem Profil der Kunden generiert, mit denselben Spalten, Wertformen und Streuungen und keinem echten Kunden. Das Profil genügt, um Testdaten daraus zu generieren."
+      },
+      "profilingToProd": {
+        "title": "Zurück zur Produktion",
+        "description": "Als Nächstes wechselt der Umschalter zurück zu prod."
       },
       "profilingRest": {
         "title": "Dieselbe Antwort über REST",

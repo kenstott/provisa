@@ -38,6 +38,10 @@
     "kind_dependencies": "תלויות",
     "kind_joint_counts": "ספירות משותפות",
     "kind_constraints": "אילוצים מוצעים",
-    "kind_constraint_checks": "בדיקות אילוצים"
+    "kind_constraint_checks": "בדיקות אילוצים",
+    "kind_terrain": "שטח",
+    "kind_relationsMap": "קשרים",
+    "kind_jointCloud": "ענן משותף",
+    "kind_driftStrata": "שכבות סטייה"
   }
 }

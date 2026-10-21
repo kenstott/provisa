@@ -662,19 +662,19 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 -- REQ-1385/REQ-1389: vendor-side identity bindings captured at publish time. One row per
--- (provider, published asset): vendor_ref is the catalog's own id for the asset (Atlas guid,
+-- (export target, published asset): vendor_ref is the catalog's own id for the asset (Atlas guid,
 -- OpenMetadata entity UUID, Collibra asset UUID, DataHub dataset URN) and physical_key is
 -- the vendor-side name-key the asset was published under. On a physical re-address the
 -- exporter uses the stored vendor_ref to rebind (or deprecate) the SAME catalog entity
 -- instead of relying on the vendor's name-keyed upsert to find it.
 CREATE TABLE IF NOT EXISTS catalog_bindings (
     id            SERIAL PRIMARY KEY,
-    provider      TEXT NOT NULL,
+    target        TEXT NOT NULL,
     semantic_uri  TEXT NOT NULL,
     vendor_ref    TEXT NOT NULL,
     physical_key  TEXT NOT NULL,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (provider, semantic_uri)
+    UNIQUE (target, semantic_uri)
 );
 
 DO $$ BEGIN

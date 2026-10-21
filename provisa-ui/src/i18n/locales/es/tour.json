@@ -85,6 +85,11 @@
         "title": "73 tipos de fuente, 14 categorías",
         "description": "Un selector enumera cada tipo, agrupado por categoría: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Busque por nombre o alias, o acote con los chips de categoría. Cada tipo muestra su logotipo y un icono de alcance: ⚡ lectura en vivo en el origen, o un icono de copia donde Provisa lee una réplica actualizada.<p>Elija uno, rellene la conexión y guarde.</p>"
       },
+      "stepBuildSource": {
+        "title": "Un origen, añadido en vivo",
+        "description": "Así se añade un origen: el selector se abrió con toda su lista, se eligió <strong>Parquet File</strong>, se escribió la dirección del archivo (<code>supplies.parquet</code>, publicado en provisa.dev) y Guardar lo creó. El nuevo origen <strong>supplies</strong> lee ese archivo en su sitio.",
+        "acting": "Añadiendo un origen"
+      },
       "step4": {
         "title": "Todo se convierte en una tabla",
         "description": "Sea cual sea el origen, ya sea una colección de Mongo, un topic de Kafka, un endpoint REST o un grafo, Provisa lo descompone en una <strong>tabla</strong> 2D: una forma uniforme para consultar en cualquier origen.<p>📁 Agrupa las tablas en <strong>dominios</strong>, cada uno a cargo de un data steward que vela por la calidad del modelo a medida que evoluciona.</p>"
@@ -728,6 +733,26 @@
       "profilingDuplicates": {
         "title": "Las filas escritas dos veces",
         "description": "El modelo declara customer_id como clave, pero la exportación no tenía restricción: 150 clientes aparecen dos veces, con todos los campos iguales. El perfil cuenta las filas repetidas y los valores de clave que tienen más de una fila."
+      },
+      "profilingDrift": {
+        "title": "Qué cambió desde la última ejecución",
+        "description": "La configuración ejecutó el perfilador dos veces, y entre ambas la siguiente sincronización del CRM escribió cada código postal de EE. UU. como ZIP+4. La tabla de deriva compara cada medida con la de la ejecución anterior: las medidas que movió el cambio de postal_code están marcadas como en deriva, y las columnas que la sincronización no tocó no lo están."
+      },
+      "profilingOriginal": {
+        "title": "Los clientes reales",
+        "description": "Diez clientes tal como los guarda el CRM. A continuación, la misma sentencia en un entorno generado a partir del perfil."
+      },
+      "profilingToSynthetic": {
+        "title": "Cambiar a synthetic",
+        "description": "A continuación, el selector cambia a <strong>synthetic</strong>, un entorno Test (synthetic)."
+      },
+      "profilingSynthetic": {
+        "title": "Generado a partir del perfil",
+        "description": "La misma sentencia en synthetic: cada fila se generó a partir del perfil de los clientes, con las mismas columnas, formas de valores y dispersión, y ninguno de los clientes reales. El perfil basta para generar datos de prueba."
+      },
+      "profilingToProd": {
+        "title": "De vuelta a producción",
+        "description": "A continuación, el selector vuelve a prod."
       },
       "profilingRest": {
         "title": "La misma respuesta por REST",

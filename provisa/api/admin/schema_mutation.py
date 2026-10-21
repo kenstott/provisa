@@ -2066,6 +2066,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     "user": os.environ.get("PROVISA_DQ_USER", "org_admin"),
                     # A reference, resolved at each scan (dq.scan): unset under an auth
                     # provider, the scan fails naming it. No account's password is assumed.
+                    # reference-convention: REQ-1443 -- docs/configuration.md's checker source
                     "password": "${env:PROVISA_DQ_PASSWORD}",
                 }
         model = SourceModel(

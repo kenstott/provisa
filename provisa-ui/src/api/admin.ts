@@ -143,6 +143,21 @@ export interface Org {
   created_at: string;
   // REQ-1043/REQ-1067: true when the org runs on a dedicated federation engine.
   isolated_engine: boolean;
+  // REQ-1066: the org's subscription tier, which tier-gated features read; null when none is set.
+  tier: OrgTier | null;
+}
+
+export type OrgTier = "free" | "standard" | "premium";
+export const ORG_TIERS: OrgTier[] = ["free", "standard", "premium"];
+
+/** Set an org's subscription tier (null clears it): a platform administrator's act (REQ-1066). */
+export async function setOrgTier(orgId: string, tier: OrgTier | null): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${encodeURIComponent(orgId)}/tier`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tier }),
+  });
+  if (!res.ok) throw httpError("set org tier", res.status);
 }
 
 export async function fetchOrgs(): Promise<Org[]> {

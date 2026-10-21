@@ -423,13 +423,13 @@ def _ok(response: httpx.Response, what: str) -> None:
 # node started (<name>/requested, which the node clears when it starts, with <name>/ready): its
 # data is loaded into the node's shared stores, its stores.env written (where its stores are, and
 # the names of its data), and the version marked ready (<name>/ready). The tier asks for a demo at
-# its first open;
-# it asks for a newer version by writing <name>/wanted, and records in <name>/in-use the versions
-# its open sandboxes and template read, which the node keeps.
+# its first open, and again when the registry names a version newer than the ready one (the node
+# always pulls the latest published); it records in <name>/in-use the versions its open sandboxes
+# and template read, which the node keeps.
 
 _PKG_NAMED = Path(__file__).resolve().parents[1] / "_config" / "demo" / "named"
 _REPO_NAMED = Path(__file__).resolve().parents[2] / "demo" / "named"
-#: Touched whenever a demo's wanted version is written: the node's path unit watches this one file.
+#: Touched whenever the tier asks for a demo: the node's path unit watches this one file.
 WANTED_SIGNAL = ".wanted"
 
 
@@ -489,13 +489,6 @@ def request(name: str) -> None:
     (its first open since the node started)."""
     _write(bundles_root() / name / "requested", "requested")
     (bundles_root() / WANTED_SIGNAL).touch()
-
-
-def want(name: str, version: str) -> None:
-    """Ask the node for ``version`` of demo ``name``: its stores are brought up, and it is served
-    once marked ready."""
-    _write(bundles_root() / name / "wanted", version)
-    request(name)
 
 
 def record_in_use(name: str, versions: set[str]) -> None:

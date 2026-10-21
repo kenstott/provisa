@@ -608,7 +608,12 @@ _VERSION = "202610160000-abc1234"
 
 
 def _sync(
-    tmp_path, *args: str, requested: bool = False, in_use: str | None = None, ask_on_pull=False
+    tmp_path,
+    *args: str,
+    requested: bool = False,
+    in_use: str | None = None,
+    ask_on_pull=False,
+    wanted: str | None = None,
 ):
     """scripts/demo_stores_sync.sh for the weblogs demo, its pull and scripts/demo_stores.py fakes
     that record what they were asked."""
@@ -622,6 +627,8 @@ def _sync(
         (bundles / "weblogs" / "requested").write_text("requested\n")
     if in_use is not None:
         (bundles / "weblogs" / "in-use").write_text(in_use + "\n")
+    if wanted is not None:
+        (bundles / "weblogs" / "wanted").write_text(wanted + "\n")
     calls = tmp_path / "calls"
     fake = tmp_path / "bin"
     fake.mkdir()
@@ -636,8 +643,9 @@ def _sync(
         if ask_on_pull
         else ""
     )
+    # The pull records what it was asked for (tmp_path/pulls), one line per pull.
     (fake / "pull").write_text(
-        f'#!/usr/bin/env bash\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
+        f'#!/usr/bin/env bash\necho "$2" >> {tmp_path}/pulls\n{ask}echo {bundles}/"${{2%%@*}}"/{_VERSION}\n'
     )
     (fake / "pull").chmod(0o755)
     (fake / "demo_stores.py").write_text(
@@ -703,8 +711,25 @@ def test_an_older_version_nothing_reads_is_taken_down_and_one_read_is_kept(tmp_p
         f"up weblogs {_VERSION} {demo / _VERSION}",
         "drop weblogs 202601010000-old0001",
     ]
-    assert not (demo / "202601010000-old0001" / "stores.env").exists()
+    assert not (demo / "202601010000-old0001").exists()
     assert (demo / "202601020000-old0002" / "stores.env").exists()
+
+
+def test_an_older_version_never_brought_up_has_its_bundle_deleted_and_the_served_ones_are_kept(
+    tmp_path,
+):
+    """A bundle directory is deleted with its version, whether or not its stores were ever up:
+    reviews held six versions on cloud-dev's sandbox VM. The pulled, ready and in-use ones stay."""
+    bundles = tmp_path / "bundles" / "weblogs"
+    for old in ("202601010000-never01", "202601020000-inuse02"):
+        (bundles / old).mkdir(parents=True)
+    run, demo, asked = _sync(tmp_path, requested=True, in_use="202601020000-inuse02")
+    assert run.returncode == 0, run.stderr
+    assert asked == [f"up weblogs {_VERSION} {demo / _VERSION}"]
+    assert not (demo / "202601010000-never01").exists()
+    assert (demo / "202601020000-inuse02").is_dir()
+    assert (demo / _VERSION / "docker-compose.run.yml").is_file()
+    assert {p.name for p in demo.iterdir() if p.is_file()} >= {"pulled", "ready", "in-use"}
 
 
 def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):
@@ -734,6 +759,37 @@ def test_the_nodes_start_leaves_no_demo_asked_for_or_ready(tmp_path):
     assert boot.returncode == 0, boot.stderr
     assert not (demo / "ready").exists() and not (demo / "requested").exists()
     assert (demo / "pulled").read_text().strip() == _VERSION
+
+
+def test_a_version_an_earlier_release_pinned_is_not_pulled_and_the_start_clears_it(tmp_path):
+    """<name>/wanted pinned a demo to the version written there, ahead of the latest published;
+    stale ones from an earlier release kept datavault, profiling and vulnerabilities on broken
+    bundles. The sync pulls the latest published alone, and the node's start removes the file."""
+    import os
+    import subprocess
+
+    run, demo, _asked = _sync(tmp_path, requested=True, wanted="202601010000-old0001")
+    assert run.returncode == 0, run.stderr
+    assert (tmp_path / "pulls").read_text().split() == ["weblogs"]
+    assert (demo / "ready").read_text().strip() == _VERSION
+    boot = subprocess.run(
+        ["bash", str(_REPO / "scripts" / "demo_stores_sync.sh"), "--boot"],
+        env={
+            **os.environ,
+            "PROVISA_DEMO_BUNDLES": "weblogs",
+            "DEMO_BUNDLES_DIR": str(demo.parent),
+            "DEMO_PULL": "unused",
+            "DEMO_PULL_INTO": str(demo.parent),
+            "DEMO_STORES": "unused",
+            "DEMO_STORES_SHARED": "unused",
+            "DEMO_STORES_PROJECT": "unused",
+            "DEMO_STORES_KAFKA_PORT": "unused",
+        },
+        capture_output=True,
+        text=True,
+    )
+    assert boot.returncode == 0, boot.stderr
+    assert not (demo / "wanted").exists()
 
 
 def test_a_demo_in_regions_refuses_an_empty_replica_of_any_region(tmp_path):

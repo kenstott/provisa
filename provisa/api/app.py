@@ -3141,6 +3141,17 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         from provisa.api.model_reload import publish_routes_over_declared_rows
 
         await publish_routes_over_declared_rows(_stamped_runtime)
+        # REQ-2098: a code source its configuration declared is pinned as a save pins it, so its
+        # image can be built -- in the background, after its code archives are kept (above).
+        from provisa.api.admin._code_source_registration import pin_in_background
+
+        assert _stamped_runtime.model_db is not None, "an environment's sources are its model"
+        pin_in_background(
+            _stamped_runtime.org_id,
+            _stamped_runtime.env,
+            _stamped_runtime.model_db,
+            _connection_rows,
+        )
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:
@@ -4609,6 +4620,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(metadata_export_router)
+    from provisa.api.admin.data_product_documents_router import (  # REQ-2118
+        router as data_product_documents_router,
+    )
+
+    app.include_router(data_product_documents_router)
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)

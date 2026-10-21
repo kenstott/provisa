@@ -13,7 +13,7 @@
 // only reveals the problem after a message is sent.
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { ApolloClient } from "@apollo/client";
+import { ApolloClient, gql } from "@apollo/client";
 import { render, screen, waitFor, fireEvent } from "../test-utils/render";
 import { ChatPanel } from "../components/ChatPanel";
 
@@ -42,7 +42,10 @@ beforeEach(() => {
 
 describe("ChatPanel preflight", () => {
   it("shows an explanatory modal instead of opening when the LLM isn't configured", async () => {
-    fetchMcpChatStatus.mockResolvedValue({ configured: false, reason: "ANTHROPIC_API_KEY is not set" });
+    fetchMcpChatStatus.mockResolvedValue({
+      configured: false,
+      reason: "ANTHROPIC_API_KEY is not set",
+    });
     render(<ChatPanel />);
 
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
@@ -106,7 +109,9 @@ describe("ChatPanel — suggested questions (REQ-1806)", () => {
     fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
     const fetchMock = vi
       .spyOn(globalThis, "fetch")
-      .mockResolvedValue(sseResponse([{ type: "text", text: "Poly means many!" }, { type: "done" }]));
+      .mockResolvedValue(
+        sseResponse([{ type: "text", text: "Poly means many!" }, { type: "done" }]),
+      );
 
     render(<ChatPanel />);
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
@@ -228,10 +233,17 @@ describe("ChatPanel — present_choice widget (REQ-1810)", () => {
           {
             type: "awaiting_client_tools",
             assistant_content: [
-              { type: "tool_use", id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+              {
+                type: "tool_use",
+                id: "c1",
+                name: "present_choice",
+                input: { question: "Proceed?", mode: "yes_no" },
+              },
             ],
             server_tool_results: [],
-            pending: [{ id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } }],
+            pending: [
+              { id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+            ],
           },
           { type: "done" },
         ]),
@@ -347,7 +359,14 @@ describe("ChatPanel — what Polly hands over: a drawn graph, a file", () => {
     const cypher = "MATCH (l:Line)-[e:EVOKES]->(t:Theme) RETURN l, e, t";
     const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       sseResponse([
-        { type: "artifact", kind: "graph", png: "iVBORw0KGgo=", cypher, nodes: 12, relationships: 9 },
+        {
+          type: "artifact",
+          kind: "graph",
+          png: "iVBORw0KGgo=",
+          cypher,
+          nodes: 12,
+          relationships: 9,
+        },
         {
           type: "artifact",
           kind: "file",
@@ -533,10 +552,17 @@ describe("ChatPanel — present_choice modal positioning (REQ-1812)", () => {
         {
           type: "awaiting_client_tools",
           assistant_content: [
-            { type: "tool_use", id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+            {
+              type: "tool_use",
+              id: "c1",
+              name: "present_choice",
+              input: { question: "Proceed?", mode: "yes_no" },
+            },
           ],
           server_tool_results: [],
-          pending: [{ id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } }],
+          pending: [
+            { id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+          ],
         },
         { type: "done" },
       ]),
@@ -564,10 +590,17 @@ describe("ChatPanel — present_choice dialog is draggable (REQ-1843)", () => {
         {
           type: "awaiting_client_tools",
           assistant_content: [
-            { type: "tool_use", id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+            {
+              type: "tool_use",
+              id: "c1",
+              name: "present_choice",
+              input: { question: "Proceed?", mode: "yes_no" },
+            },
           ],
           server_tool_results: [],
-          pending: [{ id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } }],
+          pending: [
+            { id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+          ],
         },
         { type: "done" },
       ]),
@@ -685,10 +718,17 @@ describe("ChatPanel — separate message per tool-loop round (REQ-1823)", () => 
             type: "awaiting_client_tools",
             assistant_content: [
               { type: "text", text: "Let me check the catalog for that." },
-              { type: "tool_use", id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+              {
+                type: "tool_use",
+                id: "c1",
+                name: "present_choice",
+                input: { question: "Proceed?", mode: "yes_no" },
+              },
             ],
             server_tool_results: [],
-            pending: [{ id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } }],
+            pending: [
+              { id: "c1", name: "present_choice", input: { question: "Proceed?", mode: "yes_no" } },
+            ],
           },
           { type: "done" },
         ]),
@@ -717,37 +757,103 @@ describe("ChatPanel — separate message per tool-loop round (REQ-1823)", () => 
   });
 });
 
-describe("ChatPanel — server tool result triggers a data refresh (REQ-1820)", () => {
-  it("refetches active queries after create_source_now completes", async () => {
-    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
-    const refetchSpy = vi
-      .spyOn(ApolloClient.prototype, "refetchQueries")
-      .mockResolvedValue([]);
-    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
-      sseResponse([
-        { type: "tool_use", name: "create_source_now", input: { source: { id: "kaggle_x" } } },
-        { type: "tool_result", name: "create_source_now", is_error: false },
-        { type: "text", text: "Created it." },
-        { type: "done" },
-      ]),
-    );
+describe("ChatPanel — a change Polly makes through the admin API (REQ-2114)", () => {
+  const mutation = 'mutation { createSource(input: {id: "kaggle_x", type: "files"}) { success } }';
+  const pendingChange = () =>
+    sseResponse([
+      {
+        type: "awaiting_client_tools",
+        assistant_content: [
+          {
+            type: "tool_use",
+            id: "m1",
+            name: "admin_mutation",
+            input: { mutation, summary: "Create the source kaggle_x." },
+          },
+        ],
+        server_tool_results: [],
+        pending: [
+          {
+            id: "m1",
+            name: "admin_mutation",
+            input: { mutation, summary: "Create the source kaggle_x." },
+          },
+        ],
+      },
+      { type: "done" },
+    ]);
 
-    render(<ChatPanel />);
+  it("shows the change in the chat and sends it as the user once they confirm", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    const refetchSpy = vi.spyOn(ApolloClient.prototype, "refetchQueries").mockResolvedValue([]);
+    let sent = 0;
+    const mocks = [
+      {
+        request: { query: gql(mutation) },
+        result: () => {
+          sent += 1;
+          return { data: { createSource: { __typename: "MutationResult", success: true } } };
+        },
+      },
+    ];
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(pendingChange())
+      .mockResolvedValueOnce(
+        sseResponse([{ type: "text", text: "Created it." }, { type: "done" }]),
+      );
+
+    render(<ChatPanel />, { mocks });
     fireEvent.click(screen.getByTestId("chat-panel-toggle"));
     const textarea = await screen.findByPlaceholderText(/Ask me a question/);
-    fireEvent.change(textarea, { target: { value: "create it" } });
+    fireEvent.change(textarea, { target: { value: "add the kaggle dataset" } });
     fireEvent.keyDown(textarea, { key: "Enter" });
 
+    // The change itself is shown before anything is sent.
+    const detail = await screen.findByTestId("chat-confirm-detail");
+    expect(detail).toHaveTextContent("createSource");
+    expect(sent).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Confirm" }));
+
     await waitFor(() => screen.getByText("Created it."));
+    expect(sent).toBe(1);
     expect(refetchSpy).toHaveBeenCalledWith(expect.objectContaining({ include: "active" }));
+    // The exchange stays in the conversation.
+    expect(screen.getByText("Confirmed — go ahead.")).toBeInTheDocument();
     refetchSpy.mockRestore();
   });
 
+  it("sends nothing when the user cancels", async () => {
+    fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
+    let sent = 0;
+    const mocks = [
+      {
+        request: { query: gql(mutation) },
+        result: () => {
+          sent += 1;
+          return { data: { createSource: { __typename: "MutationResult", success: true } } };
+        },
+      },
+    ];
+    vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(pendingChange())
+      .mockResolvedValueOnce(sseResponse([{ type: "text", text: "Left it." }, { type: "done" }]));
+
+    render(<ChatPanel />, { mocks });
+    fireEvent.click(screen.getByTestId("chat-panel-toggle"));
+    const textarea = await screen.findByPlaceholderText(/Ask me a question/);
+    fireEvent.change(textarea, { target: { value: "add the kaggle dataset" } });
+    fireEvent.keyDown(textarea, { key: "Enter" });
+
+    await screen.findByTestId("chat-confirm-detail");
+    fireEvent.click(screen.getByRole("button", { name: /cancel/i }));
+
+    await waitFor(() => screen.getByText("Left it."));
+    expect(sent).toBe(0);
+    expect(screen.getByText("Cancelled.")).toBeInTheDocument();
+  });
   it("does not refetch for tools that don't mutate the catalog", async () => {
     fetchMcpChatStatus.mockResolvedValue({ configured: true, reason: "" });
-    const refetchSpy = vi
-      .spyOn(ApolloClient.prototype, "refetchQueries")
-      .mockResolvedValue([]);
+    const refetchSpy = vi.spyOn(ApolloClient.prototype, "refetchQueries").mockResolvedValue([]);
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(
       sseResponse([
         { type: "tool_use", name: "search_catalog", input: { query: "orders" } },

@@ -27,7 +27,8 @@
  */
 import type { Capability } from "../types/auth";
 import type { OrgHas, TourPrerequisites } from "./tourPrerequisites";
-import PREREQUISITES from "./tourPrerequisites.json";
+import type { UiAction } from "../mcp/uiActions";
+import PREREQUISITES from "./tourPrerequisites.json" with { type: "json" };
 
 export interface TourStep {
   /** Route to navigate to before the step is shown. Omit to stay put. */
@@ -154,6 +155,16 @@ export interface TourStep {
    */
   clickBefore?: string;
   /**
+   * REQ-2115: what the tour does on the step's screen before explaining it (act, then explain):
+   * fill, choose, press and show, run by Polly's own UI actions (mcp/uiActions), outlined as each
+   * is taken, under the step's `tour.steps.<key>.acting` caption and with no popover; then the
+   * popover anchors on `element`, the result. A press that changes something is the visitor's
+   * own tour doing it and asks nothing more. Not run when `element` is on screen already (the
+   * step entered again by Back or a resume finds what it built). Only what is very unlikely to
+   * fail live is done so: a static known address, or what Provisa handles itself.
+   */
+  actions?: UiAction[];
+  /**
    * Selector clicked when the user advances *past* this step via Next — used to
    * undo `clickBefore`, e.g. cancelling the form or closing a modal.
    */
@@ -174,6 +185,9 @@ export interface TourStep {
 }
 
 const SOURCES_ADD = '[data-tour="sources-add"]';
+// REQ-2115: the Parquet file Provisa publishes (REQ-2113), the core tour's live-built source.
+export const SUPPLIES_PARQUET_URL = "https://provisa.dev/demo-data/supplies.parquet";
+const SUPPLIES_SOURCE_ID = "supplies";
 const TABLES_ADD = '[data-tour="tables-add"]';
 const RELS_ADD = '[data-tour="rels-add"]';
 // The Views page is TablesPage in viewsOnly mode, which omits tables-add — its header is the one
@@ -279,6 +293,23 @@ export const TOUR_STEPS: TourStep[] = [
     key: "step3",
     clickBefore: SOURCES_ADD,
     clickAfterNext: '[data-testid="source-type-picker-close"]',
+  },
+  {
+    // REQ-2115: a source built live, as the visitor would build it: the picker opened and its
+    // whole list shown, Parquet File chosen, the file Provisa publishes given as its address, and
+    // saved. A static known address, so very unlikely to fail; the popover then explains the row.
+    actions: [
+      { do: "press", target: { testId: "sources-add-toggle" } },
+      { do: "show", target: { testId: "source-type-picker-body" } },
+      { do: "press", target: { testId: "source-type-option-parquet" } },
+      { do: "fill", target: { testId: "sources-id-input" }, value: SUPPLIES_SOURCE_ID },
+      { do: "fill", target: { testId: "source-file-location" }, value: SUPPLIES_PARQUET_URL },
+      { do: "press", target: { role: "button", name: "Save" } },
+    ],
+    // The new row's first cell, its ID: the row runs on under the source's detail, which Save
+    // opens beside the list, and a spotlight on the whole row lit that panel too.
+    element: `[data-testid="sources-row-${SUPPLIES_SOURCE_ID}"] td:first-child`,
+    key: "stepBuildSource",
   },
   {
     route: "/tables",
@@ -783,6 +814,7 @@ export const TOUR_SCOPES: Record<TourScope, readonly string[]> = {
     "step1",
     "step2",
     "step3",
+    "stepBuildSource",
     "step4",
     "step5",
     "stepPreview",

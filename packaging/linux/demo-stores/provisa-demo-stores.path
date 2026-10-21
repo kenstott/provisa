@@ -1,6 +1,7 @@
-# Runs the demo stores sync as soon as the sandbox tier asks for a newer demo version: the tier
-# touches <bundles>/.wanted after writing <bundles>/<name>/wanted (REQ-2049): the host's view of
-# the tier's data directory (first-launch.sh mounts /root/.provisa/sandbox-data there).
+# Runs the demo stores sync as soon as the sandbox tier asks for a demo, or sees a newer version
+# published: the tier touches <bundles>/.wanted after writing <bundles>/<name>/requested
+# (REQ-2049), in the host's view of the tier's data directory (first-launch.sh mounts
+# /root/.provisa/sandbox-data there).
 [Unit]
 Description=Provisa sandbox tier: a demo version was asked for
 

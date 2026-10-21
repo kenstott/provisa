@@ -76,6 +76,27 @@ async def test_firebase_grants_nobody_by_default_and_bootstraps_the_first_user(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("key_set", [True, False])
+async def test_firebase_names_its_key_only_when_the_deployment_sets_one(
+    key_set, tmp_path, monkeypatch
+):
+    """REQ-1182: the service account key is a reference to the variable the install sets, written
+    only when it is set; with none, no empty default stands in for it."""
+    monkeypatch.setenv("FIREBASE_PROJECT_ID", "provisa-cloud")
+    if key_set:
+        monkeypatch.setenv("FIREBASE_SERVICE_ACCOUNT_KEY", "/etc/provisa/firebase.json")
+    else:
+        monkeypatch.delenv("FIREBASE_SERVICE_ACCOUNT_KEY", raising=False)
+
+    written = await _auto_configure("firebase", tmp_path, monkeypatch)
+
+    expected = {"project_id": "provisa-cloud"}
+    if key_set:
+        expected["service_account_key"] = "${env:FIREBASE_SERVICE_ACCOUNT_KEY}"
+    assert written["auth"]["firebase"] == expected
+
+
+@pytest.mark.asyncio
 async def test_a_non_firebase_provider_seats_its_configured_principal_as_admin(
     tmp_path, monkeypatch
 ):

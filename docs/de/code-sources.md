@@ -51,6 +51,137 @@ Eine Installation wird anhand des Inhalts-Hashes des Codes zwischengespeichert, 
 
 Ihr Code läuft in einem eigenen Worker-Prozess, in einer Sandbox. Er kann seinen eigenen installierten Code lesen und sonst nichts auf der Festplatte. Er erreicht nur die Hosts auf der Egress-Allowlist des Deployments, über einen Proxy, den Provisa betreibt, und nie Provisas eigene Ports. Ein Host, der die Sandbox nicht bereitstellen kann, startet den Worker nicht und nennt, was fehlt, statt den Code ohne Einschränkung auszuführen. Unter Windows werden Code-Quellen abgelehnt.
 
+## Secrets {: #secrets }
+
+Code, der eine kostenpflichtige API aufruft, braucht deren Schlüssel, und der Schlüssel gehört in den Vault Ihrer Organisation, nicht in den Code. Wählen Sie unter **Secrets** im Formular der Quelle die Secrets der Organisation, die der Code lesen darf. In einer Konfigurationsdatei listen Sie sie im Mapping der Quelle auf:
+
+```yaml
+mapping:
+  secrets: [openrouter]
+```
+
+Ein Name allein ist das Secret der Organisation mit diesem Namen. Um stattdessen eine Umgebungsvariable des Deployments zu lesen, geben Sie die Referenz an: `secrets: {openrouter: "${env:OPENROUTER_API_KEY}"}`. Die Liste ist eine Referenz auf den Vault, nie eine Kopie eines Werts, sodass eine Konfiguration, die ein noch von niemandem hinterlegtes Secret nennt, trotzdem lädt.
+
+Ihr Code erhält eine Umgebungsvariable, `PROVISA_SERVICES`, und liest ein Secret bei Bedarf aus `$PROVISA_SERVICES/secrets/<name>`. In Python:
+
+```python
+import os, urllib.request
+key = urllib.request.urlopen(f"{os.environ['PROVISA_SERVICES']}/secrets/openrouter").read().decode()
+```
+
+In TypeScript:
+
+```typescript
+const key = await (await fetch(`${process.env.PROVISA_SERVICES}/secrets/openrouter`)).text();
+```
+
+Die Anfrage geht über denselben Egress-Proxy wie der übrige Datenverkehr Ihres Codes, und der Proxy beantwortet sie selbst. Nichts sonst von Provisa ist auf diesem Weg erreichbar. Die Adresse trägt ein Token, das nur der Worker dieser Quelle hält; es liest nur die Namen, die die Quelle auflistet, und es funktioniert nicht mehr, sobald der Worker stoppt. Jeder Lesezugriff löst das Secret in diesem Moment im Vault auf, sodass ein rotiertes Secret beim nächsten Lesen gilt.
+
+Ein Name, den die Quelle nicht auflistet, wird abgelehnt, ebenso ein Secret, das sich nicht auflösen lässt. Die Ablehnung nennt das Secret, nie seinen Wert. Jeder Lesezugriff wird mit Quelle, Name und Zeit im Audit-Trail der Organisation festgehalten, und kein Wert wird je in ein Log geschrieben. Der Host der API muss trotzdem auf der Egress-Allowlist stehen.
+
+## Ein Modell aufrufen {: #calling-a-model }
+
+Ihr Code kann ein Sprachmodell über Provisa aufrufen, statt einen Anbieterschlüssel zu halten. `$PROVISA_SERVICES/llm/v1` ist ein OpenAI-kompatibler Endpunkt, sodass jedes OpenAI-SDK funktioniert, wenn Sie seine Basis-URL dorthin setzen. Die Adresse ist der Berechtigungsnachweis, sodass der Schlüssel, den das SDK verlangt, beliebiger Text sein kann. In Python:
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url=f"{os.environ['PROVISA_SERVICES']}/llm/v1", api_key="unused")
+reply = client.chat.completions.create(
+    model="provisa:sql_generation",
+    messages=[{"role": "user", "content": "Summarise this account's last quarter."}],
+)
+```
+
+In TypeScript:
+
+```typescript
+import OpenAI from "openai";
+
+const client = new OpenAI({ baseURL: `${process.env.PROVISA_SERVICES}/llm/v1`, apiKey: "unused" });
+const reply = await client.chat.completions.create({
+  model: "provisa:sql_generation",
+  messages: [{ role: "user", content: "Summarise this account's last quarter." }],
+});
+```
+
+Benennen Sie ein Modell über seine Rolle, als `provisa:<role>`: Sie erhalten das Modell, das Ihre Organisation dieser Rolle unter **Admin → AI Models** zuweist, und es folgt dieser Wahl, wenn ein Administrator sie ändert. Sie können ein Modell auch direkt nennen, wenn es einer Rolle zugewiesen ist. Für Embeddings nimmt `$PROVISA_SERVICES/llm/v1/embeddings` jedes der Vektormodelle Ihrer Organisation. Jedes andere Modell wird mit Namen abgelehnt. Der Aufruf geht über die eigenen Anbieter, Endpunkte und Schlüssel Ihrer Organisation hinaus, und was er sendet, durchläuft zuerst die Schwärzungsregeln von Provisa. Streaming wird nicht angeboten: Senden Sie `stream: false`, den Standardwert.
+
+Jeder Aufruf wird für die Quelle festgehalten, mit dem Modell, seinen Tokens und seinen Kosten zum Eintrag des Modells in **Polly model prices**, und in den Audit-Trail der Organisation geschrieben. Um zu begrenzen, was eine Quelle ausgibt, setzen Sie **LLM monthly cap** in ihrem Formular, in USD. In einer Konfigurationsdatei gehört es ins Mapping:
+
+```yaml
+mapping:
+  llm: {cap_usd: 20}
+```
+
+Eine Quelle mit Obergrenze kann nur Modelle aufrufen, die dort einen Preis haben. Sobald ihre Ausgaben im Monat (UTC) die Obergrenze erreichen, werden ihre Aufrufe abgelehnt, bis der Monat wechselt. Aufrufe, die beim Erreichen der Obergrenze schon laufen, werden noch abgeschlossen, sodass der Monat leicht über der Obergrenze enden kann.
+
+## Die Dienste von Provisa {: #provisas-services }
+
+Ihr Code kann ein Modul importieren, das Provisa überall bereitstellt, wo er läuft: `provisa_services` in Python und `@provisa/services` in Node.js, Bun und Deno. Nichts muss installiert werden, und es liegt in keiner Paket-Registry. Außerhalb von Provisa existiert das Modul nicht, daher mocken Tests Ihrer Funktionen es.
+
+```python
+import provisa_services as ps
+
+region = ps.settings.get("region")
+rates = ps.cache.get("rates") or fetch_rates()
+ps.cache.set("rates", rates, ttl=3600)
+```
+
+```typescript
+import { settings, cache } from "@provisa/services";
+
+const region = await settings.get("region");
+const rates = (await cache.get("rates")) ?? (await fetchRates());
+await cache.set("rates", rates, 3600);
+```
+
+| Aufruf | Was er tut |
+|---|---|
+| `secrets.get(name)` | Eines der deklarierten Secrets der Quelle, jetzt aus dem Vault gelesen. Siehe [Secrets](#secrets). |
+| `settings.get(name, default)` | Eine der Einstellungen der Quelle, aus **Settings** in ihrem Formular, die ein Steward ändern kann, ohne den Code zu ändern. Fehlt sie und gibt es keinen Standardwert, wird ein Fehler ausgelöst. |
+| `cache.get(key, default)`, `cache.set(key, value, ttl)`, `cache.delete(key)` | Der eigene Cache der Quelle, den alle ihre Worker teilen. Ein Wert ist alles, was JSON halten kann, bis 1 MB, gehalten für `ttl` Sekunden oder bis er ersetzt wird. |
+| `vectors.upsert(items, model)`, `vectors.search(query, k, model)`, `vectors.embed(texts, model)`, `vectors.delete(ids)` | Die eigene Vektorsammlung der Quelle, für ihre eigenen Referenzdaten. Ein Element hat eine `id` und einen `text` oder einen `vector`; ein Text wird von einem der Vektormodelle Ihrer Organisation eingebettet. Sie kann Ihre verwalteten Tabellen nicht durchsuchen: Deren Daten erreichen Code nur als Parameter. |
+| `http.get(url)`, `http.post(url, ...)` | Ein Abruf, den Provisa für den Code ausführt, über den ausgehenden Proxy und die Zertifizierungsstellen des Deployments. Der Host muss auf der Egress-Allowlist stehen, und jeder Abruf wird im Audit-Trail festgehalten. |
+| `llm.chat(model, messages)`, `llm.embeddings(model, input)`, `llm.base_url()` (`llm.baseUrl()` in JavaScript) | Der LLM-Dienst von Provisa. Siehe [Ein Modell aufrufen](#calling-a-model). |
+| `log(message, level, fields)`, `metric(name, value, kind, attributes)` | Eine Logzeile und ein Metrikpunkt namens `code_source.<name>`, angehängt an die Anfrage, die Ihr Code bedient. |
+
+Ein Aufruf, den der Dienst ablehnt, löst einen `ServiceError` aus, der den Dienst nennt und den Grund angibt.
+
+Die Dienste antworten Code, der auf dem Provisa-Server läuft. Auf einem entfernten Host sind sie noch nicht erreichbar, und jeder Aufruf löst einen Fehler aus.
+
+Jeder Aufruf Ihres Codes wird als Teil der Anfrage verfolgt, die ihn ausgelöst hat, mit der Funktion, ihrer Art, der Zahl ihrer Argumente (nie deren Werte), den zurückgegebenen Zeilen und Batches, ihrer Dauer und der CPU des Workers. Jeder Dienstaufruf wird ebenso verfolgt. Bei normaler Trace-Detailstufe stehen diese Angaben auf dem Span der Anfrage; bei Debug-Detailstufe ist jeder Aufruf ein eigener Span. Wenn Ihr Code OpenTelemetry nutzt, schließen sich seine Spans demselben Trace an.
+
+## Auf einem entfernten Host ausführen {: #running-on-a-remote-host }
+
+Eine Quelle läuft standardmäßig auf dem Provisa-Server; das ist der Dev-Modus. Braucht ihr Code eine Maschine, die der Server nicht ist, etwa einen GPU-Rechner oder einen Host in einem anderen Netzwerk, bauen Sie ihr Image und führen es dort aus. Die Quelle läuft dann im Built-Modus, und ihre Tabellen, Berechtigungen und Leser bleiben gleich.
+
+**Das Image bauen.** Speichern Sie die Quelle zuerst im Dev-Modus, damit ihr Code gelesen und gepinnt wird. Wählen Sie unter **Remote host** in ihrem Formular die Architektur (Linux x86-64 oder ARM64) und wohin das Image geht: in eine der Container-Registries Ihrer Organisation, eingetragen unter **Admin → Container registries**, oder als Download. Provisa setzt das Image selbst zusammen. Es enthält den Code mit seinem gepinnten Hash, seine Abhängigkeiten für diese Plattform aus dem Lockfile des Codes über Ihre Paket-Registries installiert, die gepinnte Laufzeit und das Remote-Host-Programm, auf einem minimalen Basis-Image. Beim Bauen läuft nichts im Image, und kein Docker-Daemon ist beteiligt. Der Tag des Images trägt den Code-Hash und die Version von Provisa, und seine Labels nennen die Laufzeit, den Code-Hash und die Exporte.
+
+**Ausführen.** Das Formular zeigt einen Compose-Dienst für das Image. Ein heruntergeladenes Image wird zuerst mit `docker load -i <file>` geladen. Der Container lauscht intern auf Port 7443 und hält seine Identität auf dem Volume. Den Host-Port wählen Sie mit `PROVISA_HOST_PORT`; ohne ihn startet der Dienst nicht:
+
+```yaml
+services:
+  provisa-code-rates:
+    image: ghcr.io/example/provisa-code-rates:3f9a1c2e7b40-0.1.0
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
+    volumes:
+      - provisa-code-rates-state:/var/lib/provisa
+volumes:
+  provisa-code-rates-state: {}
+```
+
+Beim ersten Start schreibt der Container eine Zeile, die mit `pairing code:` beginnt, in sein Log.
+
+**Verbinden.** Geben Sie zurück im Formular den Host ein, unter dem Provisa den Container erreicht, den veröffentlichten Port und den Pairing-Code. In einem gemeinsamen Docker-Netzwerk oder in Kubernetes geben Sie den Container- oder Service-Namen und 7443 ein, ohne etwas zu veröffentlichen. Provisa koppelt sich über Mutual TLS mit dem Container. Der Code wird einmal verwendet, und danach akzeptiert jede Seite nur noch die andere. Provisa prüft dann, dass der Container den Code der Quelle ausführt und ihre Exporte anbietet, und schaltet die Quelle in den Built-Modus. Jeder Provisa-Prozess hält seine eigene Verbindung zum Host und wählt sich neu ein, wenn der Host nicht mehr antwortet. Solange der Host nicht antwortet, schlagen Lesezugriffe auf die Tabellen der Quelle fehl und nennen den Host.
+
+**Wenn sich der Code ändert.** Ein Container, der mit anderem Code zurückkommt, wird abgelehnt, mit dem Hash, auf den die Quelle gepinnt ist, und dem, den der Host meldet, bis ein Steward den Code prüft und ihn im Formular neu pinnt. Um den Code selbst zu ändern, schalten Sie die Quelle zurück auf Dev, speichern den neuen Code und bauen erneut.
+
+Im Container ist seine Netzwerkrichtlinie die Egress-Grenze des Codes; die Egress-Allowlist des Servers gilt für den Dev-Modus.
+
 ## Eine Tabelle lesen {: #reading-a-table }
 
 Die Tabelle einer Code-Quelle wird gelandet, nie an Ort und Stelle gelesen. Provisa ruft die Funktion mit den Argumenten des Lesezugriffs auf, prüft jede Zeile gegen die Spalten und hält die Zeilen unter diesen Argumenten für die Cache-TTL der Tabelle vor. Sichtbarkeit, Masken und Zeilenregeln gelten dann für die gelandeten Zeilen, wie für jede Tabelle.

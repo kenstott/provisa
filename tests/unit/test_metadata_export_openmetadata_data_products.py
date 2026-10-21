@@ -23,16 +23,16 @@ from provisa.core.models import (
     Column,
     DataProduct,
     Domain,
-    MetadataExportConfig,
+    MetadataExportTarget,
     ProvisaConfig,
     Source,
     SourceType,
     Table,
 )
 
-# Matches AssetRef.fqn() for the "orders" table (source_id.schema_name.table_name), the same
-# identity ``_data_product_entity`` and the lineage requests key member/endpoint resolution by.
-TABLE_FQN = "wh.public.orders"
+# OpenMetadata's FQN of the "orders" table (service.database.schema.table): what its table upsert
+# returns, and the key a data product member and a data contract resolve the table's id by.
+TABLE_FQN = "wh.default.public.orders"
 
 
 def _config(*, owner: str | None = "alice") -> ProvisaConfig:
@@ -62,9 +62,9 @@ def _config(*, owner: str | None = "alice") -> ProvisaConfig:
     )
 
 
-def _export_config() -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True,
+def _export_config() -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog",
         provider="openmetadata",
         endpoint="https://catalog.example/",
         timeout_seconds=5,
@@ -75,7 +75,7 @@ def _mock_transport(monkeypatch):
     """Every PUT succeeds; tables/users echo a server-assigned id for later requests to resolve."""
     puts: list[tuple[str, dict]] = []
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         puts.append((url, json))
         body = dict(json)
         if url.endswith("/tables"):
@@ -107,7 +107,7 @@ async def test_data_product_publishes_with_resolved_member_and_owner(monkeypatch
     assert result.ok, result.errors
     body = _data_product_put(puts)
     assert body["name"] == "customer_360"
-    assert body["domain"] == "sales"
+    assert body["domains"] == ["sales"]
     assert body["assets"] == [
         {"fullyQualifiedName": TABLE_FQN, "type": "table", "id": "table-uuid-1"}
     ]
@@ -144,7 +144,7 @@ async def test_data_product_owner_is_upserted_as_a_user_even_without_a_stewarded
 async def test_data_product_reports_error_when_member_table_upsert_failed(monkeypatch):
     snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         if url.endswith("/tables"):
             return httpx.Response(500, text="boom", request=httpx.Request("PUT", url))
         body = dict(json)
@@ -164,3 +164,56 @@ async def test_data_product_reports_error_when_member_table_upsert_failed(monkey
     messages = [e.message for e in result.errors]
     assert any("was not upserted, so it cannot be addressed" in m for m in messages)
     assert "data_product" not in result.published
+
+
+@pytest.mark.asyncio
+async def test_each_member_contract_is_imported_onto_its_table(monkeypatch):
+    """REQ-2118: the member's ODCS contract goes through OpenMetadata's ODCS import, attached to
+    the table by the id its own upsert returned, replacing whatever contract was there."""
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    contracts: list[tuple[str, dict, dict]] = []
+    puts = _mock_transport(monkeypatch)
+    put = httpx.AsyncClient.put
+
+    async def _put(self, url, json=None, headers=None, params=None):
+        if url.endswith("/dataContracts/odcs"):
+            contracts.append((url, json, params))
+        return await put(self, url, json=json, headers=headers, params=params)
+
+    monkeypatch.setattr(httpx.AsyncClient, "put", _put)
+
+    result = await OpenMetadataExport(_export_config()).publish(snapshot)
+
+    assert result.ok, result.errors
+    ((_, body, params),) = contracts
+    assert params == {"entityId": "table-uuid-1", "entityType": "table", "mode": "replace"}
+    assert body["apiVersion"] == "v3.1.0"
+    assert body["schema"][0]["name"] == "orders"
+    assert result.published["data_contract"] == 1
+    assert puts  # the tables went first
+
+
+@pytest.mark.asyncio
+async def test_a_contract_whose_table_failed_is_reported_not_sent(monkeypatch):
+    snapshot = build_snapshot(_config(), org_id="acme", dialect="postgres", contexts={})
+    sent: list[str] = []
+
+    async def _put(self, url, json=None, headers=None, params=None):
+        sent.append(url)
+        if url.endswith("/tables"):
+            return httpx.Response(500, text="boom", request=httpx.Request("PUT", url))
+        body = dict(json)
+        if url.endswith("/users"):
+            body["id"] = f"user-uuid-{json['name']}"
+        return httpx.Response(200, json=body, request=httpx.Request("PUT", url))
+
+    async def _get(self, url, params=None, headers=None):
+        return httpx.Response(404, text="not found", request=httpx.Request("GET", url))
+
+    monkeypatch.setattr(httpx.AsyncClient, "put", _put)
+    monkeypatch.setattr(httpx.AsyncClient, "get", _get)
+
+    result = await OpenMetadataExport(_export_config()).publish(snapshot)
+
+    assert not any(url.endswith("/dataContracts/odcs") for url in sent)
+    assert any("has nothing to attach to" in e.message for e in result.errors)

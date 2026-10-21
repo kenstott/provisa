@@ -18,7 +18,9 @@ A demo bundle's ``docker-compose.run.yml`` names its stores. A Postgres (``rdb``
 instance of that type (``docker-compose.shared.yml``, project ``$DEMO_STORES_PROJECT``), started
 the first time a demo needs it and left running. Every other service (a Neo4j store, a demo's
 producer or API) runs as the demo version's own compose project; a producer joins the shared
-stores' network, where it reaches the shared Kafka as ``kafka``.
+stores' network, where it reaches the shared Kafka as ``kafka``. The shared Kafka listens at one
+fixed port: a demo version an earlier release ran with a Kafka of its own, still holding it after a
+newer version took over, has its own services taken down before the shared Kafka starts.
 
 Each demo version's data in a shared instance is named with its suffix, ``_<demo>_<8 hex of its
 version>``: a Postgres database ``shop`` loads as ``shop_weblogs_1a2b3c4d``, a MongoDB database
@@ -169,12 +171,40 @@ class Shared:
         self.env = env
 
     def start(self, kind: str) -> None:
+        if kind == "kafka":
+            self._free_kafka_port()
         try:
             self.runner.run(["env", *self._env(), *self.base, "up", "-d", "--wait", kind])
         except StoreError as failed:
             # A store that exits before it is healthy says why only in its own log.
             cids = self.runner.run(["env", *self._env(), *self.base, "ps", "-a", "-q", kind])
             raise StoreError(f"{failed}\n{container_logs(self.runner, cids.split())}") from failed
+
+    def _free_kafka_port(self) -> None:
+        """The shared Kafka listens at one fixed port, which a demo version an earlier release ran
+        with a Kafka of its own still holds after a newer version took over: that version's own
+        services are taken down. A holder that is no demo version's is refused by name."""
+        port = self.env["DEMO_STORES_KAFKA_PORT"]
+        held = self.runner.run(
+            [
+                "docker",
+                "ps",
+                "--filter",
+                f"publish={port}",
+                "--format",
+                '{{.Label "com.docker.compose.project"}} {{.Names}}',
+            ]
+        )
+        for line in held.splitlines():
+            project, _, container = line.strip().rpartition(" ")
+            if not container or project == self.base[3]:
+                continue
+            if not project.startswith("provisa-demo-"):
+                raise StoreError(
+                    f"port {port}, where the shared Kafka listens, is held by {container}, "
+                    "which is no demo version's"
+                )
+            self.runner.run(["docker", "compose", "-p", project, "down", "-v", "--remove-orphans"])
 
     def _env(self) -> list[str]:
         return [f"{k}={v}" for k, v in sorted(self.env.items())]
@@ -686,9 +716,12 @@ class Demo:
         if own:
             # The demo's own services alone: a shared store it names is not started for it.
             if any(s.kind == "kafka" for s in stores):
-                # Its producers reach the shared Kafka as "kafka", on the shared stores' network.
-                self.runner.run(self._compose("up", "-d", "--no-deps", *own))
-                for cid in self.runner.run(self._compose("ps", "-q", *own)).split():
+                # Its producers reach the shared Kafka as "kafka", on the shared stores' network,
+                # joined before they first start: started on their own network alone they cannot
+                # resolve it, exit and are restarted, and a container between restarts has no
+                # network sandbox to connect (the streaming and provisioning walks).
+                self.runner.run(self._compose("up", "--no-start", "--no-deps", *own))
+                for cid in self.runner.run(self._compose("ps", "-a", "-q", *own)).split():
                     self._connect(cid, self.shared.network())
             up = self._compose("up", "-d", "--wait", "--no-deps", *own)
             try:
@@ -766,7 +799,26 @@ class Demo:
             qdrant_drop(self.shared, self.suffix, self.shared.env["DEMO_STORES_QDRANT_KEY"])
         if "kafka" in shared_kinds:
             kafka_drop(self.shared, self.suffix)
+        images = set(
+            self.runner.run(
+                [
+                    "docker",
+                    "ps",
+                    "-a",
+                    "--filter",
+                    f"label=com.docker.compose.project={self.project}",
+                    "--format",
+                    "{{.Image}}",
+                ]
+            ).split()
+        )
         self.runner.run(["docker", "compose", "-p", self.project, "down", "-v", "--remove-orphans"])
+        # The images its services ran, once no container (a newer version's) still uses them:
+        # every version pulled leaves its own on the node's disk otherwise.
+        for image in sorted(images):
+            users = self.runner.run(["docker", "ps", "-a", "-q", "--filter", f"ancestor={image}"])
+            if not users.split():
+                self.runner.run(["docker", "image", "rm", image])
 
 
 def qdrant_key(bundles: Path) -> str:

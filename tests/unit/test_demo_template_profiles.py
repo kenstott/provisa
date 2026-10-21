@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A demo template runs its demo's profilers (REQ-2052). Its sandboxes are cloned with its
-profile runs (env_copy.copy_profile_results); the bundle build's runs are on its throwaway
-control plane, so a template that profiled nothing gave every sandbox of the profiling demo an
-empty run history, and its tour's runs step waited out its time on cloud-dev."""
+"""A demo template loads its demo's profile runs, carried in its bundle (REQ-2052). Its sandboxes
+are cloned with them (env_copy.copy_profile_results). A template that profiled nothing gave every
+sandbox of the profiling demo an empty run history, and its tour's runs step waited out its time
+on cloud-dev; one that profiled its sources itself measured the data as setup left it, so the
+drift setup made between two runs was never seen."""
 
 # Requirements: REQ-2052, REQ-2006
 
@@ -36,24 +37,70 @@ def test_the_profilers_are_the_setup_s_profile_steps(tmp_path):
     assert demo_templates.demo_profilers(tmp_path / "none") == []
 
 
-def test_the_template_runs_each_profiler_and_names_a_failed_run(tmp_path, monkeypatch):
-    from provisa.core.request_context import require_current_org
-    from provisa.profiler import source
+class _Db:
+    """The model database: its one connection, scoped to the org current when it is acquired."""
 
-    ran: list[tuple[str, str | None]] = []
+    def __init__(self, seen: list):
+        self.seen = seen
 
-    async def run_source(_state, profiler):
-        ran.append((profiler, require_current_org()))
-        return [
-            {"table": "customers", "run_id": "r1", "error": None},
-            {"table": "orders", "run_id": None, "error": "no rows"},
-        ]
+    def acquire(self):
+        from contextlib import asynccontextmanager
 
-    monkeypatch.setattr(source, "run_source", run_source)
+        from provisa.core.request_context import require_current_org
+
+        @asynccontextmanager
+        async def conn():
+            self.seen.append(require_current_org())
+            yield object()
+
+        return conn()
+
+
+def test_the_template_loads_the_runs_its_bundle_carries_as_its_own_org(tmp_path, monkeypatch):
+    from provisa.api import app
+    from provisa.profiler import carry
+
+    seen: list = []
+    loaded: list = []
+
+    async def load_runs(_conn, path):
+        loaded.append(path)
+        return ["customers_7_profile_runs"]
+
+    monkeypatch.setattr(type(app.state), "model_db", property(lambda _s: _Db(seen)))
+    monkeypatch.setattr(carry, "load_runs", load_runs)
+    demo = _demo(tmp_path, [{"profile": "harbor-profiler"}])
+    carry.results_path(tmp_path).parent.mkdir()
+    carry.results_path(tmp_path).write_text('{"results": []}')
+    assert asyncio.run(demo_templates.profile_template(demo, "sbxtplprofiling")) == []
+    assert seen == ["sbxtplprofiling"] and loaded == [carry.results_path(tmp_path)]
+
+
+def test_a_bundle_that_carries_no_runs_leaves_the_template_not_ready_by_name(tmp_path):
     demo = _demo(tmp_path, [{"profile": "harbor-profiler"}])
     failed = asyncio.run(demo_templates.profile_template(demo, "sbxtplprofiling"))
-    assert ran == [("harbor-profiler", "sbxtplprofiling")]
-    assert failed == ["harbor-profiler/orders: no rows"]
+    assert failed == ["the bundle carries no profile runs (profile_results.json): rebuild it"]
+
+
+def test_a_demo_that_profiles_nothing_loads_nothing(tmp_path):
+    demo = _demo(tmp_path, [{"command": "x"}])
+    assert asyncio.run(demo_templates.profile_template(demo, "sbxtplprofiling")) == []
+
+
+def test_runs_of_a_table_the_org_does_not_register_are_refused_by_name(tmp_path, monkeypatch):
+    from provisa.api import app
+    from provisa.profiler import carry
+
+    async def load_runs(_conn, _path):
+        raise ValueError("the bundle's profile runs are of table crm.public.gone, ...")
+
+    monkeypatch.setattr(type(app.state), "model_db", property(lambda _s: _Db([])))
+    monkeypatch.setattr(carry, "load_runs", load_runs)
+    demo = _demo(tmp_path, [{"profile": "harbor-profiler"}])
+    carry.results_path(tmp_path).parent.mkdir()
+    carry.results_path(tmp_path).write_text('{"results": []}')
+    failed = asyncio.run(demo_templates.profile_template(demo, "sbxtplprofiling"))
+    assert failed == ["the bundle's profile runs are of table crm.public.gone, ..."]
 
 
 def test_a_template_still_being_prepared_is_not_ready(monkeypatch):

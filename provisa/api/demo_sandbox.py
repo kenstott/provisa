@@ -484,6 +484,50 @@ async def reap(org_id: str) -> None:
         await note_in_use(row[2])
 
 
+def _release_mark() -> Path:
+    """Where this tier records the Provisa release its open sandboxes were provisioned by: one
+    mark for the sandbox tier, one for the regions tier, which reaps its own (REQ-2068)."""
+    from provisa.api.demo_region_seed import regional
+    from provisa.core.org_files import data_dir
+
+    return data_dir() / ("sandbox-release-regions" if regional() else "sandbox-release")
+
+
+async def reap_visitors_of_another_release() -> list[str]:
+    """At the tier's start: once the release has changed since its last start, every open
+    visitor's sandbox has the old release's schema (no migrations), and a column added since fails
+    its reads. Each is reaped; its tab opens a fresh one from the rebuilt template. A named
+    sandbox, a signed-in person's, is kept. This release is then recorded. The sandboxes reaped."""
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.api.demo_region_seed import regional
+    from provisa.core.demo_bundles import running_provisa
+    from provisa.core.org_ids import REGIONS_SANDBOX_PREFIX
+
+    mark = _release_mark()
+    running = running_provisa()
+    if mark.is_file() and mark.read_text().strip() == running:
+        return []
+    async with _admin_pool().acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(demo_sandboxes.c.org_id).where(demo_sandboxes.c.kind == VISITOR)
+            )
+        ).fetchall()
+    reaped = []
+    for (org_id,) in rows:
+        if org_id.startswith(REGIONS_SANDBOX_PREFIX) != regional():
+            continue  # the other tier's
+        try:
+            await reap(org_id)
+        except Exception:  # allow-ble: one sandbox that cannot be removed must not keep the others; logged with its cause, and its idle expiry reaps it
+            log.exception("demo sandbox %s of an earlier release could not be reaped", org_id)
+            continue
+        reaped.append(org_id)
+    mark.parent.mkdir(parents=True, exist_ok=True)
+    mark.write_text(running + "\n")
+    return reaped
+
+
 async def reap_expired() -> list[str]:
     """Reap every sandbox past its idle expiry; the ones reaped."""
     reaped = []

@@ -544,6 +544,38 @@ def test_dropping_a_version_drops_its_data_from_the_shared_stores_running_and_it
     assert lines[-1] == "docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans"
 
 
+def test_dropping_a_version_removes_the_images_its_services_ran_that_no_container_still_uses(
+    monkeypatch, tmp_path
+):
+    """Every version pulled leaves its images on the node's disk (cloud-dev's sandbox VM at 97%,
+    its shared Elasticsearch red): those no other container uses go, and only those."""
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
+    monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
+    monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
+    monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
+    runner = FakeRunner(
+        {
+            "{{.Image}}": "neo4j:5.19-community\nreviews-api:1\nreviews-api:1\n",
+            "ancestor=neo4j:5.19-community": "newercid\n",
+        }
+    )
+    ds.Demo(runner, "reviews", "v1", None).drop(set())
+    lines = runner.lines()
+    down = lines.index("docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans")
+    listed = next(
+        i
+        for i, x in enumerate(lines)
+        if "label=com.docker.compose.project=provisa-demo-reviews-v1" in x
+    )
+    assert listed < down
+    assert lines[down + 1 :] == [
+        "docker ps -a -q --filter ancestor=neo4j:5.19-community",
+        "docker ps -a -q --filter ancestor=reviews-api:1",
+        "docker image rm reviews-api:1",
+    ]
+    assert not any(" prune" in x for x in lines)
+
+
 _STREAMING = {
     "services": {
         "kafka": {
@@ -564,7 +596,18 @@ _STREAMING = {
 
 
 def test_a_demos_producer_writes_its_versions_topics_to_the_shared_kafka(monkeypatch, tmp_path):
-    runner = FakeRunner({"ps -q kafka": "kcid", "ps -q producer": "pcid", " ps -q": "pcid"})
+    """Created, joined to the shared stores' network, then started: a producer started before it
+    joined could not resolve "kafka", exited and was restarted, and connecting a container
+    between restarts failed ("network sandbox ... not found", the streaming and provisioning
+    walks)."""
+    runner = FakeRunner(
+        {
+            "ps -q kafka": "kcid",
+            "ps -a -q producer": "pcid",
+            "ps -q producer": "pcid",
+            " ps -q": "pcid",
+        }
+    )
     demo = _demo(monkeypatch, tmp_path, runner, _STREAMING)
     found = demo.up()
     suffix = ds.namespace("reviews", "v1")
@@ -574,7 +617,8 @@ def test_a_demos_producer_writes_its_versions_topics_to_the_shared_kafka(monkeyp
         "STREAMING_KAFKA_NS": suffix,
     }
     lines = runner.lines()
-    started = next(i for i, line in enumerate(lines) if "up -d --no-deps producer" in line)
+    assert not any("up -d --no-deps producer" in line for line in lines)  # never started unjoined
+    started = next(i for i, line in enumerate(lines) if "up --no-start --no-deps producer" in line)
     joined = next(
         i
         for i, line in enumerate(lines)
@@ -749,14 +793,42 @@ def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
     assert "the cluster id is not a valid UUID" in str(failed.value)
 
 
+def test_a_superseded_versions_own_kafka_on_the_shared_port_is_taken_down_before_it_starts():
+    """A version an earlier release ran with a Kafka of its own keeps the shared Kafka's port
+    after a newer version took over: the shared Kafka could not bind it, and no demo naming Kafka
+    was ready again (cloud-dev's streaming 202610182058)."""
+    old = "provisa-demo-streaming-202610182058-a481c50b2"
+    runner = FakeRunner(
+        {
+            "publish=29092": f"{old} {old}-kafka-1\nprovisa-demo-stores-t provisa-demo-stores-t-kafka-1"
+        }
+    )
+    _shared(runner).start("kafka")
+    lines = runner.lines()
+    down = f"docker compose -p {old} down -v --remove-orphans"
+    assert down in lines
+    assert lines.index(down) < next(i for i, x in enumerate(lines) if "up -d --wait kafka" in x)
+    assert not any("-p provisa-demo-stores-t down" in x for x in lines)
+
+
+def test_the_shared_kafkas_port_held_by_no_demo_version_is_refused_by_name():
+    runner = FakeRunner({"publish=29092": " some-broker"})
+    with pytest.raises(ds.StoreError, match="held by some-broker"):
+        _shared(runner).start("kafka")
+    assert not any("down" in x or "up -d" in x for x in runner.lines())
+
+
 @pytest.mark.parametrize("kind", ["postgres", "mongo"])
 def test_a_shared_store_is_healthy_only_once_its_real_server_answers_on_its_address(kind):
     """Postgres and MongoDB images first initialize with a server on the socket or loopback
     alone, then restart it. A check there passed before the real server was up: the wait
-    returned, and storefront's first mongosh load failed on the sandbox tier."""
+    returned, and storefront's first mongosh load failed on the sandbox tier. On the sandbox
+    node the store sits on two networks, so ``hostname -i`` prints two addresses; the check
+    takes the first, or every probe failed ("172.18.0.45 192.168.96.2:5432 - no response")."""
     import yaml
 
     shared = _REPO / "packaging" / "linux" / "demo-stores" / "docker-compose.shared.yml"
     test = yaml.safe_load(shared.read_text())["services"][kind]["healthcheck"]["test"]
     assert test[0] == "CMD-SHELL", test
-    assert '-h "$$(hostname -i)"' in test[1] or '--host "$$(hostname -i)"' in test[1], test
+    address = "\"$$(hostname -i | cut -d' ' -f1)\""
+    assert f"-h {address}" in test[1] or f"--host {address}" in test[1], test

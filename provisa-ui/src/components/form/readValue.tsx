@@ -13,6 +13,7 @@
 import { Children, isValidElement, type ReactElement, type ReactNode } from "react";
 import {
   Checkbox,
+  FileInput,
   MultiSelect,
   PasswordInput,
   Radio,
@@ -69,6 +70,13 @@ export function readValue(control: ReactElement, t: TFunction): ReactNode {
   const own = (control.type as ReadableControl).readValue;
   if (typeof own === "function") return own(p, t);
   if (control.type === PasswordInput) return p.value ? t("detailFields.set") : null;
+  // A file input reads as the file chosen, else as what it keeps from before (its `data-kept`):
+  // an archive already uploaded holds no File, only its name and hash.
+  if (control.type === FileInput) {
+    return (
+      (p.value as File | null | undefined)?.name ?? (p["data-kept"] as string | undefined) ?? null
+    );
+  }
   if (control.type === Checkbox || control.type === Switch) {
     return t(p.checked ? "detailFields.yes" : "detailFields.no");
   }

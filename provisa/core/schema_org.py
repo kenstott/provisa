@@ -631,13 +631,15 @@ catalog_bindings = Table(
     "catalog_bindings",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("provider", Text, nullable=False),
+    # REQ-2118: the export target (its id in the org's metadata_export.targets), not the provider:
+    # two targets of one provider keep their bindings apart.
+    Column("target", Text, nullable=False),
     Column("semantic_uri", Text, nullable=False),
     Column("vendor_ref", Text, nullable=False),
     Column("physical_key", Text, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
-    UniqueConstraint("provider", "semantic_uri"),
+    UniqueConstraint("target", "semantic_uri"),
 )
 
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical

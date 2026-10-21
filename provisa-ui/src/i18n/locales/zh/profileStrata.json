@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "{{table}} 的漂移层",
+    "none": "这些运行中都没有层可以绘制的值。",
+    "canvasLabel": "一列在每次运行中的分布的 3D 堆叠，最早的在最后",
+    "column": "列",
+    "legendShare": "占该次运行行数的比例",
+    "legendMedian": "各次运行的中位数",
+    "legendDrift": "发生漂移的运行",
+    "tipShare": "占该次运行非空行的 {{pct}}",
+    "tipNullShare": "占该次运行行数的 {{pct}}",
+    "drifted": "已漂移（{{reason}}）",
+    "steady": "未标记漂移",
+    "noValues": "本次运行中没有值",
+    "runs": "运行，最新的在前",
+    "columnsNote": "每次运行的中位数和空值占比。所选运行是所显示运行中最新的一次。",
+    "binning_sketch": "每次运行使用相同的分箱，由各次运行的分位数草图得出；高度为各次运行占其非空行的比例。",
+    "binning_categories": "每次运行的值按相同的类别统计。",
+    "binning_none": "这些运行中没有您的角色可见的此列的值。"
+  }
+}

@@ -270,7 +270,7 @@ async def test_the_server_offers_run_cypher_and_render_graph():
 # --- generate_explore_queries: all six surfaces, under the caller's role ---------------
 
 
-async def test_generate_explore_queries_answers_all_six_surfaces_under_the_caller_s_role():
+async def test_generate_explore_queries_answers_all_nine_surfaces_under_the_caller_s_role():
     from provisa.nl.job import BranchResult
     from provisa.nl.runner import _TARGETS
 
@@ -297,8 +297,11 @@ async def test_generate_explore_queries_answers_all_six_surfaces_under_the_calle
         result = await tools.generate_explore_queries(state, "analyst", "orders by region")
 
     assert sorted(_TARGETS) == ["cypher", "graphql", "grpc", "jsonapi", "openapi", "sql"]
-    assert sorted(result) == sorted(_TARGETS)
+    # REQ-2114: the six the NL pipeline builds, and the three built on its SQL and question.
+    assert sorted(result) == sorted([*_TARGETS, "nl", "python", "notebook"])
     assert all(result[t] == {"query": f"{t} query", "error": None} for t in _TARGETS)
+    assert result["python"]["query"].endswith("df = provisa_client.query('sql query')\ndf")
+    assert result["notebook"]["cells"][-1] == "%%sql\nsql query"
     # The pipeline ran as the caller, and the job it ran was the caller's.
     assert store.job is not None
     assert seen["role"] == "analyst" and store.job.role == "analyst"

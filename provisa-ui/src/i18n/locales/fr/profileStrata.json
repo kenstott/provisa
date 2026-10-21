@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "Strates de dérive de {{table}}",
+    "none": "Aucune de ces exécutions ne contient de valeurs que les strates puissent représenter.",
+    "canvasLabel": "Pile 3D de la distribution d'une colonne dans chaque exécution, la plus ancienne au fond",
+    "column": "Colonne",
+    "legendShare": "part des lignes de l'exécution",
+    "legendMedian": "médiane, d'une exécution à l'autre",
+    "legendDrift": "exécution en dérive",
+    "tipShare": "{{pct}} des lignes non nulles de l'exécution",
+    "tipNullShare": "{{pct}} des lignes de l'exécution",
+    "drifted": "En dérive ({{reason}})",
+    "steady": "Aucune dérive signalée",
+    "noValues": "Aucune valeur dans cette exécution",
+    "runs": "Exécutions, les plus récentes d'abord",
+    "columnsNote": "Médiane et part de valeurs nulles de chaque exécution. L'exécution sélectionnée est la plus récente de celles affichées.",
+    "binning_sketch": "Les mêmes classes pour chaque exécution, issues de l'esquisse de quantiles de chacune ; les hauteurs sont la part de chaque exécution parmi ses lignes non nulles.",
+    "binning_categories": "Les valeurs de chaque exécution, comptées selon les mêmes catégories.",
+    "binning_none": "Ces exécutions ne contiennent aucune valeur pour cette colonne avec votre rôle."
+  }
+}

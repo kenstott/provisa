@@ -101,7 +101,11 @@ def test_the_code_archive_is_the_one_the_config_names():
     archive = _DEMO / "code" / "country_alias.tar.gz"
     with tempfile.TemporaryDirectory() as scratch:
         found = content_hash(unpack(archive.name, archive.read_bytes(), Path(scratch)))
-    assert _SOURCES["country_alias"]["mapping"]["code"] == {"kind": "upload", "upload": found}
+    assert _SOURCES["country_alias"]["mapping"]["code"] == {
+        "kind": "upload",
+        "upload": found,
+        "filename": archive.name,
+    }
 
 
 def test_the_archive_holds_the_function_as_the_demo_shows_it():

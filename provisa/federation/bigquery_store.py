@@ -172,6 +172,24 @@ def reconcile_bigquery_native(
     return "recreated"
 
 
+def expose_view(client: Any, *, view: Parts, replica: Parts, replace: bool) -> None:
+    """The view ``view`` (in the org's export dataset, REQ-1912) over the replica: the object a
+    catalog export publishes (REQ-2118, Dataplex). Created when absent or when it no longer
+    selects from this replica; replaced when the replica was recreated. Left alone otherwise."""
+    from google.api_core.exceptions import NotFound
+    from google.cloud import bigquery
+
+    project, dataset, _ = view
+    client.create_dataset(bigquery.Dataset(f"{project}.{dataset}"), exists_ok=True)
+    body = f"SELECT * FROM {qualified(replica)}"
+    try:
+        current = client.get_table(".".join(view)).view_query
+    except NotFound:
+        current = None
+    if current is None or replace or current.strip() != body:
+        client.query(f"CREATE OR REPLACE VIEW {qualified(view)} AS {body}").result()
+
+
 # -- landed metadata -------------------------------------------------------------------------------
 
 

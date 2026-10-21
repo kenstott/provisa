@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build pg_duckdb (embeds DuckDB v1.5.4 inside Postgres) against our cached PG 16.2 source build,
+# Build pg_duckdb (v1.0.0 embeds DuckDB v1.3.2) against our cached PG 16.2 source build,
 # so the artifact drops into pgserver's embedded PG 16.2 (same major). Long build: compiles DuckDB.
 # Proven install route is the same as file_fdw/postgres_fdw (scripts/prove_embedded_fdw.sh).
 set -euo pipefail
@@ -9,8 +9,9 @@ PREFIX="$CACHE/pg162"
 PGC="$PREFIX/bin/pg_config"
 [ -x "$PGC" ] || { echo "FAIL: cached PG 16.2 not built at $PREFIX (run prove_embedded_fdw.sh first)"; exit 1; }
 
-# v1.0.0 supports PG 14-17 and avoids ExecCheckOneRelPerms (added post-v1.1.1), which pgserver's
-# fixed PG 16.2 backend does not export. HEAD requires a newer 16.x minor than pgserver ships.
+# v1.0.0 supports PG 14-17 and avoids ExecCheckOneRelPerms, which pg_duckdb calls from v1.1.0 on
+# (src/pgduckdb_planner.cpp) and PostgreSQL declares from 16.10 on; pgserver's fixed PG 16.2 backend
+# lacks it, so v1.1.x does not compile here.
 TAG="${PG_DUCKDB_TAG:-v1.0.0}"
 SRC="$CACHE/pg_duckdb-$TAG"
 echo "== 1. clone pg_duckdb $TAG + duckdb submodule (shallow) =="

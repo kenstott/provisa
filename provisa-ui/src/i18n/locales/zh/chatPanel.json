@@ -29,6 +29,9 @@
     "no": "否",
     "typeSomethingElse": "输入其他内容",
     "confirm": "确认",
+    "confirmed": "已确认，请执行。",
+    "cancelled": "已取消。",
+    "chooseFile": "要发送的文件",
     "graphCaption": "节点：{{nodes}} · 关系：{{relationships}}",
     "downloadPng": "下载 PNG",
     "openOnGraphPage": "在图页面打开"

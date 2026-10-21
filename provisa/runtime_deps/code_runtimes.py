@@ -32,6 +32,7 @@ import platform
 import shutil
 import stat
 import tarfile
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from http import HTTPStatus
@@ -376,8 +377,10 @@ class CodeRuntimeResolver:  # REQ-1984, REQ-1993
                 f"{asset.filename} from {url} has SHA-256 {found}, not the pinned {asset.sha256}"
             )
         cached.parent.mkdir(parents=True, exist_ok=True)
-        staged = cached.with_name(f".{cached.name}.{os.getpid()}")
-        staged.write_bytes(data)
+        # Staged under a name of its own: two threads of one process fetch at once.
+        fd, staged = tempfile.mkstemp(dir=cached.parent, prefix=f".{cached.name}.")
+        with os.fdopen(fd, "wb") as out:
+            out.write(data)
         os.replace(staged, cached)
         return asset, data
 
@@ -396,9 +399,15 @@ class CodeRuntimeResolver:  # REQ-1984, REQ-1993
                 f"{asset.filename} from {url} has SHA-256 {found}, not the pinned {asset.sha256}"
             )
         home = self.home(name)
-        staging = home.parent / f".{home.name}.{os.getpid()}.staging"
-        shutil.rmtree(staging, ignore_errors=True)
-        staging.mkdir(parents=True)
+        home.parent.mkdir(parents=True, exist_ok=True)
+        # A staging directory of this resolution's own: two threads of one process (two code
+        # sources prepared at once) resolve a runtime together, and under one shared name the
+        # second cleared what the first had extracted while the first moved the second's
+        # half-written directory into place.
+        staging = Path(
+            tempfile.mkdtemp(dir=home.parent, prefix=f".{home.name}.", suffix=".staging")
+        )
+        staging.chmod(0o755)  # mkdtemp's is the owner's alone; the runtime is read by its workers
         try:
             try:
                 _extract(asset.filename, data, staging)
@@ -409,10 +418,15 @@ class CodeRuntimeResolver:  # REQ-1984, REQ-1993
                 raise RuntimeUnavailable(f"{asset.filename} holds no {asset.executable}")
             # A zip keeps no permission bits: the executable is made executable here.
             staged.chmod(staged.stat().st_mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-            if executable.exists():  # another process resolved it meanwhile
+            if executable.exists():  # another resolution finished meanwhile
                 return executable
-            home.parent.mkdir(parents=True, exist_ok=True)
-            os.replace(staging, home)
+            try:
+                os.replace(staging, home)
+            except OSError:
+                # Another resolution moved its whole directory into place between the check
+                # above and this move (home is then not empty): that one is the cache's.
+                if not executable.exists():
+                    raise
         finally:
             shutil.rmtree(staging, ignore_errors=True)
         return executable
