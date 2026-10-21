@@ -682,3 +682,54 @@ async def test_a_view_over_a_replica_not_yet_landed_is_wired_and_built_once_it_l
 
     assert "analytics.mv_view_margins" in {p.node for p in state.event_loop_processors}
     assert (orders, "replace") in posted and (7, ["analytics.mv_view_margins"]) in posted
+
+
+@pytest.mark.asyncio
+async def test_two_inputs_landing_before_the_rewire_runs_each_give_their_views_a_first_build(
+    monkeypatch,
+):
+    """Two inputs land before the one rewire job (``events:wire-awaiting``) has run: the job
+    the second landing schedules replaces the first's, and must still give the first landing's
+    views their first build, not only the second's."""
+    from provisa.executor.result import QueryResult
+
+    build_through_a_stand_in_pipeline(monkeypatch, lambda mv: f"SELECT d, n FROM {mv.id}")
+    posted: list = []
+
+    async def _post_event(conn, *, source_table, event_type, payload):
+        posted.append((source_table, event_type))
+        return len(posted)
+
+    async def _fan_out(conn, event_id, dependents):
+        posted.append((event_id, list(dependents)))
+        return len(dependents)
+
+    monkeypatch.setattr("provisa.events.queue.post_event", _post_event)
+    monkeypatch.setattr("provisa.events.queue.fan_out", _fan_out)
+    landed: set[str] = set()
+    built: set[str] = set()
+    state, _margins = _state_with_a_view_over_a_view(built, [])
+
+    async def _execute_engine(sql, *a, **k):
+        if "orders" not in landed or ("close" in sql and "margins" not in built):
+            raise RuntimeError("an input has not landed yet")
+        return QueryResult(rows=[], column_names=["d", "n"], column_types=["date", "bigint"])
+
+    state.federation_engine.execute_engine = _execute_engine
+    sched = _RunnableSched()
+    await wire_event_loop(sched, state=state, log=_LOG)
+    orders = "pg/public.orders"
+    assert state.views_awaiting_input == {
+        "analytics.mv_view_margins": {orders},
+        "analytics.mv_view_close": {"analytics.mv_view_margins"},
+    }
+
+    landed.add("orders")
+    state.on_input_landed(orders)  # the replica lands: margins is to be wired and built
+    built.add("margins")
+    state.on_input_landed("analytics.mv_view_margins")  # ... and close, before that job ran
+    await sched.fns["events:wire-awaiting:org_default"]()
+
+    fanned = {node for entry in posted if isinstance(entry[1], list) for node in entry[1]}
+    assert "analytics.mv_view_margins" in {p.node for p in state.event_loop_processors}
+    assert "analytics.mv_view_margins" in fanned, posted  # wired, and given its first build
