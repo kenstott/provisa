@@ -515,6 +515,7 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     await _confined(request, org_id, body.name)
 
     from provisa.api.admin.orgs_router import _org_model_db
+    from provisa.core.env_create import HistoryBranchWithoutEnvironment
     from provisa.core.env_create import create_environment as _create_env
 
     # REQ-1528/REQ-1573: creating an environment is a member's act under environment_management;
@@ -570,6 +571,9 @@ async def create_environment(request: Request, org_id: str, body: CreateEnvBody)
     except EnvironmentNameTaken as exc:
         # A name the organization has an environment by: refused as taken, not as invalid.
         raise ApiError(409, "environments.name_taken", str(exc), org=org_id, env=body.name) from exc
+    except HistoryBranchWithoutEnvironment as exc:
+        # REQ-1554: a branch of the name with no environment behind it, refused and reported.
+        raise ApiError(409, exc.code, str(exc), org=org_id, env=body.name) from exc
     except EnvironmentNameError as exc:
         raise ApiError(
             400, "environments.invalid_name", str(exc), org=org_id, env=body.name
