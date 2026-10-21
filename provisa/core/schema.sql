@@ -908,6 +908,16 @@ CREATE TABLE IF NOT EXISTS checker_targets (
     checked_table_id INTEGER NOT NULL
 );
 
+-- REQ-2132: each checker table's latest scan, written in the scan's own transaction. A table with
+-- no row has never run; the dry run writes none.
+CREATE TABLE IF NOT EXISTS checker_latest_runs (
+    table_id  INTEGER PRIMARY KEY,
+    scan_id   TEXT NOT NULL,
+    scan_time TIMESTAMPTZ NOT NULL,
+    outcome   TEXT NOT NULL CONSTRAINT checker_latest_runs_outcome_check
+              CHECK (outcome IN ('pass', 'fail'))
+);
+
 -- Relationship Discovery Candidates (Phase R)
 CREATE TABLE IF NOT EXISTS relationship_candidates (
     id              SERIAL PRIMARY KEY,

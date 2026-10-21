@@ -830,7 +830,11 @@ _META_TABLE_VIEWS: dict[str, str] = {
                       = m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_')
                    AS profiled_table_id,
                (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
-                   AS checked_table_id
+                   AS checked_table_id,
+               (SELECT r.outcome FROM checker_latest_runs r WHERE r.table_id = rt.id)
+                   AS latest_outcome,
+               (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
+                   AS latest_run_at
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
