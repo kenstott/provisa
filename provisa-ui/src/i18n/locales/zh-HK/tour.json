@@ -948,7 +948,7 @@
       },
       "retailAsAnalyst": {
         "title": "以集團分析員身份",
-        "description": "接下來，SQL 瀏覽器以 group_analyst 的身份運行，他在 US 負責集團報告。"
+        "description": "接下來，角色選擇器會切換到 <strong>group_analyst</strong>，他在 US 負責集團報告，讓之後的 SQL 和 GraphQL 都以 group_analyst 身份執行。"
       },
       "retailGroupView": {
         "title": "集團報告，EU 客戶已假名化",
@@ -957,6 +957,10 @@
       "retailGroupGraphql": {
         "title": "同樣的內容，用 GraphQL",
         "description": "透過 GraphQL 存取同一個集團視圖：一個模型，所有傳輸方式，相同的規則。"
+      },
+      "retailEveryRole": {
+        "title": "回到所有角色",
+        "description": "接下來，角色選擇器切回 <strong>All</strong>。"
       },
       "retailAsMarketing": {
         "title": "以 EU 市場推廣身份",
@@ -1276,7 +1280,7 @@
       },
       "churnAnalyst": {
         "title": "以 analyst 身分讀取",
-        "description": "之後的查詢以 analyst 身分執行，即數據科學家讀取數據所用的角色。"
+        "description": "接下來，角色選擇器會切換到 <strong>analyst</strong>，即數據科學家讀取數據所用的角色，讓之後的每個介面都以 analyst 身分執行。"
       },
       "churnFeatures": {
         "title": "模型學習所用的特徵",
@@ -1289,6 +1293,10 @@
       "churnNotebook": {
         "title": "在你的瀏覽器中訓練的模型",
         "description": "在 Notebook 分頁中執行示範的筆記簿：以 analyst 身分將特徵讀入 pandas，用它們訓練 scikit-learn 模型，並列出風險最高的客戶。Python 在你的瀏覽器中執行，電郵地址仍然是遮罩的。"
+      },
+      "churnEveryRole": {
+        "title": "回到所有角色",
+        "description": "接下來，角色選擇器切回 <strong>All</strong>。"
       },
       "churnRecap": {
         "title": "你看到了甚麼",

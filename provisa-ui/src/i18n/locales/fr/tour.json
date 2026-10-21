@@ -948,7 +948,7 @@
       },
       "retailAsAnalyst": {
         "title": "En tant qu'analyste du groupe",
-        "description": "Ensuite, l'explorateur SQL s'exécute en tant que group_analyst, qui travaille sur le reporting du groupe aux US."
+        "description": "Ensuite, le sélecteur de rôle passe à <strong>group_analyst</strong>, qui travaille sur le reporting du groupe aux US, pour que le SQL et le GraphQL qui suivent s'exécutent en tant que group_analyst."
       },
       "retailGroupView": {
         "title": "Reporting du groupe, clients EU pseudonymisés",
@@ -957,6 +957,10 @@
       "retailGroupGraphql": {
         "title": "La même chose, en GraphQL",
         "description": "La même vue du groupe en GraphQL : un modèle, chaque transport, les mêmes règles."
+      },
+      "retailEveryRole": {
+        "title": "Retour à tous les rôles",
+        "description": "Ensuite, le sélecteur de rôle revient sur <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "En tant que marketing EU",
@@ -1276,7 +1280,7 @@
       },
       "churnAnalyst": {
         "title": "Lu en tant qu'analyst",
-        "description": "Les requêtes qui suivent s'exécutent en tant qu'analyst, le rôle avec lequel lit le data scientist."
+        "description": "Ensuite, le sélecteur de rôle passe à <strong>analyst</strong>, le rôle avec lequel lit le data scientist, pour que chaque surface qui suit s'exécute en tant qu'analyst."
       },
       "churnFeatures": {
         "title": "Les variables dont le modèle apprend",
@@ -1289,6 +1293,10 @@
       "churnNotebook": {
         "title": "Un modèle, entraîné dans votre navigateur",
         "description": "Le notebook de la démo, exécuté dans l'onglet Notebook : les variables lues dans pandas en tant qu'analyst, un modèle scikit-learn entraîné dessus et les clients les plus à risque listés. Python s'exécute dans votre navigateur, et les adresses e-mail restent masquées."
+      },
+      "churnEveryRole": {
+        "title": "Retour à tous les rôles",
+        "description": "Ensuite, le sélecteur de rôle revient sur <strong>All</strong>."
       },
       "churnRecap": {
         "title": "Ce que vous avez vu",

@@ -6473,7 +6473,7 @@
   "ru/tour.json::tour.steps.agricultureWeather.title": "Daily weather by county",
   "ru/tour.json::tour.steps.agricultureWorstSeasons.description": "The county seasons with the highest loss ratios, beside their rain, their days above 32 °C, the share of the market's losses the USDA puts down to drought and heat, and the corn yield NASS recorded.",
   "ru/tour.json::tour.steps.agricultureWorstSeasons.title": "The worst seasons",
-  "ru/tour.json::tour.steps.churnAnalyst.description": "The statements after this run as the analyst, the role the data scientist reads with.",
+  "ru/tour.json::tour.steps.churnAnalyst.description": "Next, the role picker switches to <strong>analyst</strong>, the role the data scientist reads with, so every surface after this runs as the analyst.",
   "ru/tour.json::tour.steps.churnAnalyst.title": "Read as the analyst",
   "ru/tour.json::tour.steps.churnCustomers.description": "Each customer's plan, region, tenure and the day they cancelled, if they have. Their email address is masked for the analyst role: it arrives as *** and its domain.",
   "ru/tour.json::tour.steps.churnCustomers.title": "The customers",
@@ -6867,7 +6867,7 @@
   "ru/tour.json::tour.steps.retailAccess.title": "A request for access, answered",
   "ru/tour.json::tour.steps.retailAsAdmin.description": "Next, the SQL explorer runs as every role again.",
   "ru/tour.json::tour.steps.retailAsAdmin.title": "Back to every role",
-  "ru/tour.json::tour.steps.retailAsAnalyst.description": "Next, the SQL explorer runs as group_analyst, who works on group reporting in the US.",
+  "ru/tour.json::tour.steps.retailAsAnalyst.description": "Next, the role picker switches to <strong>group_analyst</strong>, who works on group reporting in the US, so the SQL and GraphQL after this run as group_analyst.",
   "ru/tour.json::tour.steps.retailAsAnalyst.title": "As a group analyst",
   "ru/tour.json::tour.steps.retailAsDpo.description": "Next, the SQL explorer runs as dpo, who answers data subject requests.",
   "ru/tour.json::tour.steps.retailAsDpo.title": "As the data protection officer",
@@ -7539,5 +7539,9 @@
   "ru/profileStrata.json::profileStrata.binning_sketch": "The same bins for every run, cut from each run's quantile sketch; heights are each run's share of its non-null rows.",
   "ru/profileStrata.json::profileStrata.binning_categories": "Every run's values counted against the same categories.",
   "ru/profileStrata.json::profileStrata.binning_none": "These runs hold no values for this column for your role.",
-  "ru/demoOpenPage.json::demoOpenPage.starting": "Starting this demo…"
+  "ru/demoOpenPage.json::demoOpenPage.starting": "Starting this demo…",
+  "ru/tour.json::tour.steps.churnEveryRole.title": "Back to every role",
+  "ru/tour.json::tour.steps.churnEveryRole.description": "Next, the role picker switches back to <strong>All</strong>.",
+  "ru/tour.json::tour.steps.retailEveryRole.title": "Back to every role",
+  "ru/tour.json::tour.steps.retailEveryRole.description": "Next, the role picker switches back to <strong>All</strong>."
 }

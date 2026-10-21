@@ -948,7 +948,7 @@
       },
       "retailAsAnalyst": {
         "title": "Como analista del grupo",
-        "description": "A continuación, el explorador SQL se ejecuta como group_analyst, que trabaja en los informes del grupo en US."
+        "description": "A continuación, el selector de roles pasa a <strong>group_analyst</strong>, que trabaja en los informes del grupo en US, para que el SQL y el GraphQL que siguen se ejecuten como group_analyst."
       },
       "retailGroupView": {
         "title": "Informes del grupo, clientes de la EU seudonimizados",
@@ -957,6 +957,10 @@
       "retailGroupGraphql": {
         "title": "Lo mismo, en GraphQL",
         "description": "La misma vista del grupo por GraphQL: un modelo, cada transporte, las mismas reglas."
+      },
+      "retailEveryRole": {
+        "title": "De vuelta a todos los roles",
+        "description": "A continuación, el selector de roles vuelve a <strong>All</strong>."
       },
       "retailAsMarketing": {
         "title": "Como marketing de la EU",
@@ -1276,7 +1280,7 @@
       },
       "churnAnalyst": {
         "title": "Leído como analyst",
-        "description": "Las consultas que siguen se ejecutan como analyst, el rol con el que lee el científico de datos."
+        "description": "A continuación, el selector de roles pasa a <strong>analyst</strong>, el rol con el que lee el científico de datos, para que todas las superficies que siguen se ejecuten como analyst."
       },
       "churnFeatures": {
         "title": "Las características de las que aprende el modelo",
@@ -1289,6 +1293,10 @@
       "churnNotebook": {
         "title": "Un modelo, entrenado en su navegador",
         "description": "El notebook de la demo, ejecutado en la pestaña Notebook: las características leídas en pandas como analyst, un modelo de scikit-learn entrenado con ellas y los clientes con más riesgo listados. Python se ejecuta en su navegador, y las direcciones de correo siguen enmascaradas."
+      },
+      "churnEveryRole": {
+        "title": "De vuelta a todos los roles",
+        "description": "A continuación, el selector de roles vuelve a <strong>All</strong>."
       },
       "churnRecap": {
         "title": "Lo que ha visto",
