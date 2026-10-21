@@ -86229,24 +86229,32 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   priority: SHOULD
   type: ui
   description: >-
-    The Data Products page and its detail panel get their data by querying the meta domain through
-    the governed pipeline as the signed-in user: data_products_meta and its relationships (REQ-2125)
-    and data_product_edges (REQ-2126). They do not use admin endpoints or compute anything in the
-    browser. Related Tables and Lineage are no longer derived in the browser from relationships and
-    the federation lineage graph; they are rows of data_product_edges. A section the user's role cannot
-    read through the meta domain is absent from the panel. The product's GraphQL, SQL and JSON:API
-    queries shown in the panel are the queries the panel itself runs, so a user can copy them and get
-    the same result.
+    The Data Products page and the core of its detail panel are drawn from the meta domain through the
+    governed pipeline as the signed-in user: the product list, and each panel section's summary (the
+    product's fields, its domain, member tables, commands, tags, glossary terms, data-quality and
+    profile evidence, related tables and lineage) come from data_products_meta and its relationships
+    (REQ-2125) and data_product_edges (REQ-2126). Related Tables and Lineage are rows of
+    data_product_edges rather than derived in the browser from relationships and the federation lineage
+    graph. A section the user's role cannot read through the meta domain is absent from the panel.
+    Drilling down from a section opens the detail where it lives: a member table's rows, a profile
+    run's results, a checker's results or a command's output are read in their own domains, through the
+    governed pipeline as the same user, not copied into the meta domain. The product's GraphQL, SQL and
+    JSON:API queries shown in the panel are the meta-domain queries the panel itself runs, so a user can
+    copy them and get the same result.
   use_case: >-
-    The meta domain is proven complete by the product's own UI: if a section of the panel can't be
-    built from meta-domain queries, an outside consumer can't build it either, and the gap shows up
-    in Provisa's own page first.
+    The meta domain is proven complete as a catalog by the product's own UI: if the core of the panel
+    can't be built from meta-domain queries, an outside consumer can't find the product's parts either,
+    and the gap shows up in Provisa's own page first. Detail stays in the domain that owns it.
   scenario: |
     Given a user whose role has meta-domain access without view_governance
 
     When the user opens a data product's detail panel
 
-    Then every section is filled from meta-domain queries run as that user, the Lineage section is absent, and copying the panel's GraphQL query returns the same data the panel shows
+    Then every section's summary is filled from meta-domain queries run as that user, the Lineage section is absent, and copying the panel's GraphQL query returns the same data the panel shows
+
+    When the user drills into a member table from the panel
+
+    Then its rows are read from the table's own domain as that user, under that user's row rules and masks
   relates_to:
   - REQ-2125
   - REQ-2126
