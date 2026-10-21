@@ -16,7 +16,8 @@ type-specific slot):
     runtime       node | bun | deno for a node source; python for a python source
     code          {"kind": "npm" | "pypi", "package", "version"}
                   {"kind": "git", "repository", "commit", "subdirectory"}
-                  {"kind": "upload", "upload": <content hash of the uploaded archive>}
+                  {"kind": "upload", "upload": <content hash of the uploaded archive>,
+                   "filename": <the name of the file it was uploaded from, when known>}
     lockfile      {"filename", "upload": <SHA-256 of its bytes>}, given beside code that carries none
     entry         a python source's entry module, when its code has more than one
     content_hash  the code's content hash, recorded when the source was saved

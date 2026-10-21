@@ -83,6 +83,13 @@ export function settingsOf(text: string): Record<string, string> {
   return out;
 }
 
+/** An uploaded archive: its content hash, and the name of the file it was uploaded from when the
+ * form has it, so the form shows what it is. */
+function uploadedCode(fields: Record<string, string>): Record<string, string> {
+  const filename = (fields.code_upload_filename ?? "").trim();
+  return { kind: "upload", upload: fields.code_upload ?? "", ...(filename ? { filename } : {}) };
+}
+
 /** The source's mapping, as the server stores it, from the form's fields. */
 export function codeMappingJson(type: string, fields: Record<string, string>): string {
   const origin = (fields.code_origin ?? "package") as CodeOrigin;
@@ -100,7 +107,7 @@ export function codeMappingJson(type: string, fields: Record<string, string>): s
             commit: (fields.code_commit ?? "").trim(),
             subdirectory: (fields.code_subdirectory ?? "").trim(),
           }
-        : { kind: "upload", upload: fields.code_upload ?? "" };
+        : uploadedCode(fields);
   const lockfile = fields.lockfile_upload
     ? { filename: fields.lockfile_filename, upload: fields.lockfile_upload }
     : null;
@@ -157,7 +164,7 @@ export function codeFieldsFromMapping(mappingJson: string): Record<string, strin
     code_commit: code.commit ?? "",
     code_subdirectory: code.subdirectory ?? "",
     code_upload: code.upload ?? "",
-    code_upload_filename: "",
+    code_upload_filename: code.filename ?? "",
     lockfile_upload: m.lockfile?.upload ?? "",
     lockfile_filename: m.lockfile?.filename ?? "",
     code_entry: m.entry ?? "",

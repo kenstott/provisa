@@ -31,6 +31,7 @@ import { uploadCodeArchive, uploadLockfile } from "../../api/codeUploads";
 import { fetchSecrets } from "../../api/secrets";
 import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import { useFormRead } from "../../components/form/formRead";
+import { CodeExports } from "./CodeExports";
 import { CodeHostPanel } from "./CodeHostPanel";
 import { useAuth } from "../../context/AuthContext";
 import {
@@ -105,8 +106,13 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
     }
   };
 
+  // What is kept: its file's name with the start of its hash beside it, or the hash alone.
   const kept = (hash: string, name: string) =>
-    hash ? t("codeSourceFields.kept", { name: name || hash.slice(0, 12) }) : undefined;
+    !hash
+      ? undefined
+      : name
+        ? t("codeSourceFields.keptWithHash", { name, hash: hash.slice(0, 12) })
+        : t("codeSourceFields.kept", { name: hash.slice(0, 12) });
 
   // REQ-2098: a built source runs the code its image was built from; its code is changed in dev.
   const built = fields.code_mode === "built";
@@ -223,6 +229,7 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                   kept(fields.code_upload ?? "", fields.code_upload_filename ?? "") ??
                   t("codeSourceFields.archivePlaceholder")
                 }
+                data-kept={kept(fields.code_upload ?? "", fields.code_upload_filename ?? "")}
                 accept=".zip,.tgz,.tar.gz"
                 disabled={uploading === "code"}
                 onChange={(file) => void upload("code", file)}
@@ -230,6 +237,12 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 data-testid="code-archive"
               />
             </FormField>
+          </FieldGroup>
+        )}
+
+        {sourceId && activeOrgId && (
+          <FieldGroup row>
+            <CodeExports orgId={activeOrgId} sourceId={sourceId} />
           </FieldGroup>
         )}
 
@@ -245,6 +258,7 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
                 kept(fields.lockfile_upload ?? "", fields.lockfile_filename ?? "") ??
                 t("codeSourceFields.lockfilePlaceholder")
               }
+              data-kept={kept(fields.lockfile_upload ?? "", fields.lockfile_filename ?? "")}
               accept={LOCKFILES[type].join(",")}
               disabled={uploading === "lockfile"}
               onChange={(file) =>

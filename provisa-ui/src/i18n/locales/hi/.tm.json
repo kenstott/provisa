@@ -7383,5 +7383,12 @@
   "hi/metadataExportTab.json::metadataExportTab.deltaShareHelp": "Other data teams receive the share once a Databricks admin grants it to their recipient. Only members stored in Delta can be shared.",
   "hi/chatPanel.json::chatPanel.confirmed": "Confirmed — go ahead.",
   "hi/chatPanel.json::chatPanel.cancelled": "Cancelled.",
-  "hi/chatPanel.json::chatPanel.chooseFile": "File to send"
+  "hi/chatPanel.json::chatPanel.chooseFile": "File to send",
+  "hi/codeSourceFields.json::codeSourceFields.keptWithHash": "Kept: {{name}} ({{hash}})",
+  "hi/codeSourceFields.json::codeSourceFields.exports": "Exports",
+  "hi/codeSourceFields.json::codeSourceFields.exportsLoading": "Reading the code…",
+  "hi/codeSourceFields.json::codeSourceFields.exportsNone": "The code exports no functions",
+  "hi/codeSourceFields.json::codeSourceFields.exportKind_table": "table",
+  "hi/codeSourceFields.json::codeSourceFields.exportKind_command": "command",
+  "hi/codeSourceFields.json::codeSourceFields.exportKind_stream": "stream"
 }

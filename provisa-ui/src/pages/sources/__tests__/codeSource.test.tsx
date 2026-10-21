@@ -102,6 +102,26 @@ describe("what a code source saves", () => {
     ).toEqual({ runtime: "python", code: { kind: "upload", upload: "h" } });
   });
 
+  it("keeps an uploaded archive's filename beside its hash, and reads it back", () => {
+    const mapping = JSON.parse(
+      codeMappingJson("python", {
+        code_origin: "upload",
+        code_upload: "e80be40c",
+        code_upload_filename: "churn_model.tar.gz",
+      }),
+    );
+    expect(mapping.code).toEqual({
+      kind: "upload",
+      upload: "e80be40c",
+      filename: "churn_model.tar.gz",
+    });
+    expect(codeFieldsFromMapping(JSON.stringify(mapping))).toMatchObject({
+      code_origin: "upload",
+      code_upload: "e80be40c",
+      code_upload_filename: "churn_model.tar.gz",
+    });
+  });
+
   it("declares org secrets by name, and keeps an ${env:...} reference as written", () => {
     const named = JSON.parse(
       codeMappingJson("python", {
