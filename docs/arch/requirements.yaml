@@ -79183,14 +79183,18 @@
 
     - 2026-10-06 EXTERNAL EXPECTATIONS.
 
-    - 2026-10-06: scenarios aligned with the consolidated description. Roadmap audit 2026-10-13: delivered; verified against the code'
+    - 2026-10-06: scenarios aligned with the consolidated description. Roadmap audit 2026-10-13: delivered; verified against the code
+
+    - 2026-10-21 SEASONAL AND ROBUST BASELINES: a measure within floating-point rounding (relative 1e-9) of its baseline is the same value; a window whose runs differ only by rounding is constant. An engine summing in parallel differs in the last bits from one run of the same rows to the next.'
   code:
   - provisa/profiler/source.py
   - provisa/profiler/run.py
+  - provisa/profiler/compare.py
   - provisa/core/models.py
   tests:
   - tests/unit/test_profiler_statement.py
   - tests/unit/test_profiler_plausible.py
+  - tests/unit/test_profiler_compare.py
   docs:
   - sources.md
 - id: REQ-1935

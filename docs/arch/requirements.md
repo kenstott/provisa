@@ -23406,9 +23406,9 @@ A DATA PROFILER is a source type, registered and used the way the data-quality c
 
 **Use case:** A steward registers the orders table on the profiler and gives analysts read access to its profile: they see each column's null share, distinct count and spread without reading a row, and a masked column's profile shows its shape but never a real value. A data-quality check written over the profile history flags a column whose null share jumps between runs.
 
-**Code:** `provisa/profiler/source.py`, `provisa/profiler/run.py`, `provisa/core/models.py`
+**Code:** `provisa/profiler/source.py`, `provisa/profiler/run.py`, `provisa/profiler/compare.py`, `provisa/core/models.py`
 
-**Tests:** `tests/unit/test_profiler_statement.py`, `tests/unit/test_profiler_plausible.py`
+**Tests:** `tests/unit/test_profiler_statement.py`, `tests/unit/test_profiler_plausible.py`, `tests/unit/test_profiler_compare.py`
 
 **Docs:** [sources.md](../sources.md)
 
