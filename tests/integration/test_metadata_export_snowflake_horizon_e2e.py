@@ -49,8 +49,9 @@ pytestmark = [
 ]
 
 ORG = "mdx_horizon_e2e"
-SHARE = f"PROVISA_{PRODUCT.upper()}_SHARE"
-LISTING = f"PROVISA_{PRODUCT.upper()}_LISTING"
+# The adapter names both as quoted identifiers, in the product id's own case: provisa_<id>_share.
+SHARE = f"provisa_{PRODUCT}_share"
+LISTING = f"provisa_{PRODUCT}_listing"
 _CREDENTIALS = ("SNOWFLAKE_ACCOUNT", "SNOWFLAKE_USER", "SNOWFLAKE_PASSWORD", "SNOWFLAKE_WAREHOUSE")
 
 
@@ -93,8 +94,8 @@ def engine_database():
         yield creds, database
     finally:
         for stmt in (
-            f"DROP LISTING IF EXISTS {LISTING}",
-            f"DROP SHARE IF EXISTS {SHARE}",
+            f'DROP LISTING IF EXISTS "{LISTING}"',
+            f'DROP SHARE IF EXISTS "{SHARE}"',
             f"DROP DATABASE IF EXISTS {database}",
         ):
             _rows(conn, stmt)
@@ -135,7 +136,7 @@ async def test_the_share_holds_both_members(published):
     conn = _connect(creds, database)
     try:
         assert _rows(conn, f"SHOW SHARES LIKE '{SHARE}'"), f"no share {SHARE}"
-        objects = _rows(conn, f"DESCRIBE SHARE {SHARE}")
+        objects = _rows(conn, f'DESCRIBE SHARE "{SHARE}"')
     finally:
         conn.close()
     # Each member is shared through its replica's export view, named as the replica is.
@@ -153,7 +154,7 @@ async def test_the_organization_listing_carries_the_products_fields(published):
     conn = _connect(creds, database)
     try:
         assert _rows(conn, f"SHOW LISTINGS LIKE '{LISTING}'"), f"no listing {LISTING}"
-        (listing,) = _rows(conn, f"DESCRIBE LISTING {LISTING}")
+        (listing,) = _rows(conn, f'DESCRIBE LISTING "{LISTING}"')
     finally:
         conn.close()
     manifest = yaml.safe_load(listing["manifest_yaml"])
