@@ -75,6 +75,28 @@ def test_strips_qualifier_and_lowercases():
     assert to_ir("Numeric(10, 2)") == "numeric"
 
 
+@pytest.mark.parametrize(
+    "exasol",
+    [
+        "VARCHAR(64) UTF8",
+        "VARCHAR(2000000) ASCII",
+        "CHAR(1) ASCII",
+        "CHAR(10) UTF8",
+        "varchar(64) utf8",
+    ],
+)
+@pytest.mark.parametrize("platform", [None, "duckdb", "exasol"])
+def test_a_character_type_s_character_set_names_its_base_type(exasol, platform):
+    """Exasol prints a character type's character set after it. A replica of an Exasol table landed
+    in DuckDB was refused "unknown SQL type 'varchar(64) utf8' for platform 'duckdb'"."""
+    assert to_ir(exasol, platform) == "text"
+
+
+def test_a_character_set_after_a_type_that_is_not_character_is_still_refused():
+    with pytest.raises(ValueError, match="not in the IR vocabulary"):
+        to_ir("integer utf8")
+
+
 def test_unknown_type_raises_no_varchar_default():
     with pytest.raises(ValueError, match="not in the IR vocabulary"):
         to_ir("geography")
