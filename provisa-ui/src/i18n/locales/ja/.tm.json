@@ -7378,5 +7378,8 @@
   "ja/metadataExportTab.json::metadataExportTab.awsAccessKeyId": "AWS access key ID",
   "ja/metadataExportTab.json::metadataExportTab.awsSecretAccessKey": "AWS secret access key",
   "ja/metadataExportTab.json::metadataExportTab.deltaShare": "Also publish each product as a Delta Share",
-  "ja/metadataExportTab.json::metadataExportTab.deltaShareHelp": "Other data teams receive the share once a Databricks admin grants it to their recipient. Only members stored in Delta can be shared."
+  "ja/metadataExportTab.json::metadataExportTab.deltaShareHelp": "Other data teams receive the share once a Databricks admin grants it to their recipient. Only members stored in Delta can be shared.",
+  "ja/chatPanel.json::chatPanel.confirmed": "Confirmed — go ahead.",
+  "ja/chatPanel.json::chatPanel.cancelled": "Cancelled.",
+  "ja/chatPanel.json::chatPanel.chooseFile": "File to send"
 }

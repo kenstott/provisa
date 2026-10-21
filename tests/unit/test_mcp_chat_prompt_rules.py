@@ -23,32 +23,63 @@ def _navigate_tool() -> dict:
     return next(t for t in chat_mod._CLIENT_TOOLS if t["name"] == "navigate")
 
 
-class TestSingleConfirmation:  # REQ-1832
+class TestSingleConfirmation:  # REQ-1832, REQ-2114
     def test_a_single_candidate_is_proposed_with_no_prior_permission_question(self):
         s = _flat(chat_mod._SYSTEM)
-        assert "call propose_source/propose_table right away" in s
+        assert "If exactly one candidate was found, propose it with admin_mutation right away" in s
+        assert "never ask a separate 'shall I?' question first" in s
+
+    def test_a_multi_candidate_pick_comes_before_any_proposal(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "Then propose that ONE chosen candidate with admin_mutation" in s
         assert (
-            "asking permission to merely propose something is asking permission to ask permission"
-            in s
+            "Never propose a candidate from a multi-candidate result the user has not picked" in s
         )
 
-    def test_a_multi_candidate_pick_is_the_go_ahead_to_propose(self):
+    def test_the_one_confirmation_is_the_change_shown_in_the_chat(self):
+        """REQ-2114: admin_mutation itself shows the change and waits for the user's yes."""
         s = _flat(chat_mod._SYSTEM)
-        assert "Their pick IS the go-ahead" in s
-        assert "no separate 'would you like me to propose it?' question first" in s
-
-    def test_one_real_confirmation_precedes_the_irreversible_create(self):
-        s = _flat(chat_mod._SYSTEM)
-        assert "'Create the <name> source now?'" in s
         assert (
-            "Never call create_source_now or register_table_now without that explicit confirmation"
-            in s
+            "admin_mutation itself shows the user the change and waits for them to confirm it" in s
         )
+        assert "sends it from their own session only when they confirm there" in s
 
     def test_an_outcome_message_and_a_next_step_follow_the_action(self):
         s = _flat(chat_mod._SYSTEM)
         assert "never end the turn silently right after a tool call" in s
-        assert "proactively suggest the natural next step" in s
+        assert "suggest the natural next step" in s
+
+
+class TestTheAdminApi:  # REQ-2114
+    def test_every_change_is_an_admin_mutation_as_the_user(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "you act as the user through the same admin API the UI calls" in s
+        assert "Make every change with admin_mutation" in s
+        assert "exactly as on the admin page" in s
+
+    def test_rest_actions_and_relationship_discovery_are_reached(self):
+        s = _flat(chat_mod._SYSTEM)
+        assert "found with admin_rest_routes and reached with admin_request" in s
+        assert "run discover_relationships for it" in s
+        assert "/admin/discover/candidates/{id}/accept" in s
+
+    def test_show_demo_or_teach_uses_the_screen_not_the_api(self):
+        """REQ-2115's rule stands."""
+        s = _flat(chat_mod._SYSTEM)
+        assert "shown, demoed or taught how something is done, use the screen instead" in s
+
+    def test_the_per_action_source_and_table_tools_are_gone(self):
+        names = {t["name"] for t in chat_mod._TOOLS} | set(chat_mod._CLIENT_TOOL_NAMES)
+        assert not names & {
+            "propose_source",
+            "propose_table",
+            "create_source_now",
+            "register_table_now",
+        }
+        assert {"admin_schema", "admin_query", "admin_rest_routes", "discover_relationships"} <= {
+            t["name"] for t in chat_mod._TOOLS
+        }
+        assert {"admin_mutation", "admin_request"} <= set(chat_mod._CLIENT_TOOL_NAMES)
 
 
 class TestNavigateBeforeAction:  # REQ-1834
@@ -155,7 +186,8 @@ class TestOneFileOrMany:  # REQ-2113
         s = _flat(chat_mod._SYSTEM)
         assert "A directory, a glob or several files is a files source instead (type='files'" in s
 
-    def test_the_proposal_carries_the_download_fields(self):
-        spec = next(t for t in chat_mod._TOOLS if t["name"] == "propose_source")
-        described = _flat(spec["input_schema"]["properties"]["source"]["description"])
-        assert "download_from" in described and "table_domain_id" in described
+    def test_the_create_source_input_carries_the_download_fields(self):
+        """REQ-2114: what the old proposal tool described now guides the createSource input."""
+        s = _flat(chat_mod._SYSTEM)
+        assert "sets download_from and leaves path out" in s
+        assert "register_table_draft with table_domain_id" in s

@@ -371,7 +371,7 @@ async def cypher_field_names(state: Any, role: str, schema: str, table: str) -> 
 
 
 async def generate_explore_queries(state: Any, role: str, question: str) -> dict:  # REQ-1852
-    """Generate ready-to-run queries for ALL SIX Explore query surfaces from one natural-language
+    """Generate ready-to-run queries for EVERY Explore query surface from one natural-language
     question, using the SAME pipeline the NL Explore page runs (REQ-355..359) — an LLM call of
     its own that resolves table selection, joins, and aggregation shape, not a guess. Use this
     (never graphql_field_names/cypher_field_names plus hand-built SQL/filters) for anything beyond
@@ -379,7 +379,11 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     question spanning more than one table. graphql_field_names/cypher_field_names remain the
     right, cheaper choice only for a flat single-table query with no aggregation.
 
-    Returns {target: {"query": ..., "error": ...}} for sql/graphql/cypher/grpc/jsonapi/openapi.
+    Returns {target: {"query": ..., "error": ...}} for sql/graphql/cypher/grpc/jsonapi/openapi,
+    and for the three surfaces built on those (REQ-2114): nl (the question itself, for the
+    Natural Language tab), python (a Python-tab script reading the SQL through provisa_client)
+    and notebook (``"cells"`` in place of ``"query"``: the Notebook tab's cells running the SQL).
+    The python and notebook entries carry the sql entry's error when it has one.
     A target with `error` set could not answer this question on that surface — say so plainly to
     the user rather than guessing a query for it. For every OTHER target, its `query` string is
     already the exact, complete value to navigate with: for jsonapi/openapi it IS the full
@@ -417,10 +421,40 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     job = await job_store.get(job_id)
     if job is None:
         raise ValueError("NL job vanished from its own job store")
-    return {
+    queries: dict[str, dict] = {
         target: {"query": branch.query, "error": branch.error}
         for target, branch in job.branches.items()
     }
+    return {**queries, **science_surfaces(question, queries.get("sql"))}
+
+
+def science_surfaces(question: str, sql: dict | None) -> dict[str, dict]:
+    """The Natural Language, Python and Notebook surfaces of one question (REQ-2114): the question
+    as asked, and the SQL the NL pipeline built for it, read through provisa_client."""
+    surfaces: dict[str, dict] = {"nl": {"query": question, "error": None}}
+    statement = (sql or {}).get("query")
+    error = (sql or {}).get("error") or (None if statement else "no SQL was built for it")
+    if error:
+        surfaces["python"] = {"query": None, "error": error}
+        surfaces["notebook"] = {"cells": None, "error": error}
+        return surfaces
+    surfaces["python"] = {
+        "query": (
+            "import provisa_client\n"
+            "provisa_client.sign_in()\n"
+            f"df = provisa_client.query({statement!r})\n"
+            "df"
+        ),
+        "error": None,
+    }
+    surfaces["notebook"] = {
+        "cells": [
+            "import provisa_client\nprovisa_client.sign_in()\n%load_ext provisa_client",
+            f"%%sql\n{statement}",
+        ],
+        "error": None,
+    }
+    return surfaces
 
 
 async def list_native_tables(

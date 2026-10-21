@@ -29,6 +29,9 @@
     "no": "いいえ",
     "typeSomethingElse": "別の内容を入力",
     "confirm": "確認",
+    "confirmed": "確認しました。実行してください。",
+    "cancelled": "キャンセルしました。",
+    "chooseFile": "送信するファイル",
     "graphCaption": "ノード: {{nodes}} · リレーションシップ: {{relationships}}",
     "downloadPng": "PNG をダウンロード",
     "openOnGraphPage": "グラフページで開く"

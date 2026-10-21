@@ -31,7 +31,18 @@ describe("useMcpChat current_route", () => {
       .mockResolvedValue(sseResponse([{ type: "text", text: "hi" }, { type: "done" }]));
 
     const { result } = renderHook(() =>
-      useMcpChat("analyst", { navigate: vi.fn(), confirm: vi.fn(), runMutation: vi.fn(), presentChoice: vi.fn() }, "/admin/ai-models"),
+      useMcpChat(
+        "analyst",
+        {
+          navigate: vi.fn(),
+          confirm: vi.fn(),
+          runMutation: vi.fn(),
+          presentChoice: vi.fn(),
+          runAdminMutation: vi.fn(),
+          chooseFile: vi.fn(),
+        },
+        "/admin/ai-models",
+      ),
     );
 
     await act(async () => {
@@ -50,7 +61,14 @@ describe("useMcpChat current_route", () => {
       .mockResolvedValue(sseResponse([{ type: "text", text: "hi" }, { type: "done" }]));
 
     const { result } = renderHook(() =>
-      useMcpChat("analyst", { navigate: vi.fn(), confirm: vi.fn(), runMutation: vi.fn(), presentChoice: vi.fn() }),
+      useMcpChat("analyst", {
+        navigate: vi.fn(),
+        confirm: vi.fn(),
+        runMutation: vi.fn(),
+        presentChoice: vi.fn(),
+        runAdminMutation: vi.fn(),
+        chooseFile: vi.fn(),
+      }),
     );
 
     await act(async () => {
@@ -83,7 +101,14 @@ describe("useMcpChat streaming text accumulation", () => {
     );
 
     const { result } = renderHook(() =>
-      useMcpChat("analyst", { navigate: vi.fn(), confirm: vi.fn(), runMutation: vi.fn(), presentChoice: vi.fn() }),
+      useMcpChat("analyst", {
+        navigate: vi.fn(),
+        confirm: vi.fn(),
+        runMutation: vi.fn(),
+        presentChoice: vi.fn(),
+        runAdminMutation: vi.fn(),
+        chooseFile: vi.fn(),
+      }),
     );
 
     await act(async () => {

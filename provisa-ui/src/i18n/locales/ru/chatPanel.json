@@ -29,6 +29,9 @@
     "no": "Нет",
     "typeSomethingElse": "Ввести другое",
     "confirm": "Подтвердить",
+    "confirmed": "Подтверждено — выполняйте.",
+    "cancelled": "Отменено.",
+    "chooseFile": "Файл для отправки",
     "graphCaption": "Узлы: {{nodes}} · Связи: {{relationships}}",
     "downloadPng": "Скачать PNG",
     "openOnGraphPage": "Открыть на странице «Граф»"

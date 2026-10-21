@@ -50,10 +50,24 @@ export interface PresentChoiceRequest {
   options?: string[];
 }
 
+/** What a confirmation shows: a question, and optionally the change itself (REQ-2114). */
+export interface ConfirmRequest {
+  title: string;
+  message: string;
+  detail?: string;
+}
+
 export interface ClientToolContext {
   navigate: NavigateFunction;
-  confirm: (opts: { title: string; message: string }) => Promise<boolean>;
+  confirm: (opts: ConfirmRequest) => Promise<boolean>;
   runMutation: (name: string, variables: Record<string, unknown>) => Promise<ClientToolResult>;
+  // REQ-2114: any admin mutation, sent by the user's own Apollo session; and a file the user
+  // chooses for a route that uploads one (null when they cancel).
+  runAdminMutation: (
+    mutation: string,
+    variables: Record<string, unknown>,
+  ) => Promise<ClientToolResult>;
+  chooseFile: (prompt: string) => Promise<File | null>;
   // REQ-1810: renders a multiple-choice / checklist / yes-no widget and resolves with the user's
   // answer — the same pause-the-loop-and-wait pattern `confirm` already uses for refresh_mv.
   presentChoice: (req: PresentChoiceRequest) => Promise<ChoiceAnswer>;
@@ -67,7 +81,63 @@ export interface ClientToolResult {
   selected?: ChoiceAnswer;
 }
 
-export const CLIENT_TOOL_NAMES = new Set(["navigate", "refresh_mv", "present_choice"]);
+export const CLIENT_TOOL_NAMES = new Set([
+  "navigate",
+  "refresh_mv",
+  "present_choice",
+  "admin_mutation",
+  "admin_request",
+]);
+
+/** How much of a REST route's answer goes back to the model. */
+const ANSWER_LIMIT = 4000;
+
+/** REQ-2114: one of the UI's admin REST routes, called from the user's session -- the global
+ * fetch interceptor attaches their sign-in and acting roles, as for any page's call. */
+async function adminRequest(
+  input: Record<string, unknown>,
+  ctx: ClientToolContext,
+): Promise<ClientToolResult> {
+  const method = String(input.method ?? "GET").toUpperCase();
+  const path = String(input.path ?? "");
+  const summary = String(input.summary ?? "");
+  // The app's own routes only: a path from the root, never another origin ("//host/...").
+  if (!path.startsWith("/") || path.startsWith("//"))
+    return { success: false, message: "admin_request: 'path' must start with /" };
+  const body =
+    input.body && typeof input.body === "object"
+      ? (input.body as Record<string, unknown>)
+      : undefined;
+  const fileField = typeof input.file_field === "string" ? input.file_field : undefined;
+  const init: RequestInit = { method };
+  if (method !== "GET") {
+    const ok = await ctx.confirm({
+      title: "Make this change?",
+      message: summary,
+      detail: [`${method} ${path}`, body ? JSON.stringify(body, null, 2) : ""]
+        .filter(Boolean)
+        .join("\n"),
+    });
+    if (!ok) return { success: false, message: "Cancelled by the user." };
+    if (fileField) {
+      const file = await ctx.chooseFile(summary);
+      if (!file) return { success: false, message: "Cancelled by the user: no file was chosen." };
+      const form = new FormData();
+      form.append(fileField, file);
+      for (const [k, v] of Object.entries(body ?? {})) form.append(k, String(v));
+      init.body = form;
+    } else if (body) {
+      init.headers = { "Content-Type": "application/json" };
+      init.body = JSON.stringify(body);
+    }
+  }
+  const res = await fetch(path, init);
+  const text = await res.text();
+  return {
+    success: res.ok,
+    message: `${res.status} ${res.statusText}\n${text.slice(0, ANSWER_LIMIT)}`,
+  };
+}
 
 export async function executeClientTool(
   name: string,
@@ -108,8 +178,7 @@ export async function executeClientTool(
     ctx.navigate(route, state ? { state } : undefined);
     if (actions.length === 0) return { success: true, message: `Navigated to ${route}` };
     const { success, steps } = await runUiActions(actions, {
-      confirm: async (question) =>
-        (await ctx.presentChoice({ question, mode: "yes_no" })) === true,
+      confirm: async (question) => (await ctx.presentChoice({ question, mode: "yes_no" })) === true,
       paceMs: UI_STEP_PACE_MS,
       waitMs: UI_ELEMENT_WAIT_MS,
     });
@@ -126,6 +195,27 @@ export async function executeClientTool(
     if (!ok) return { success: false, message: "Cancelled by the user." };
     return ctx.runMutation("refresh_mv", { mvId });
   }
+
+  if (name === "admin_mutation") {
+    const mutation = String(input.mutation ?? "");
+    const summary = String(input.summary ?? "");
+    if (!mutation) return { success: false, message: "admin_mutation: 'mutation' is required" };
+    const variables =
+      input.variables && typeof input.variables === "object"
+        ? (input.variables as Record<string, unknown>)
+        : {};
+    const ok = await ctx.confirm({
+      title: "Make this change?",
+      message: summary,
+      detail: Object.keys(variables).length
+        ? `${mutation}\n\n${JSON.stringify(variables, null, 2)}`
+        : mutation,
+    });
+    if (!ok) return { success: false, message: "Cancelled by the user." };
+    return ctx.runAdminMutation(mutation, variables);
+  }
+
+  if (name === "admin_request") return adminRequest(input, ctx);
 
   if (name === "present_choice") {
     const question = String(input.question ?? "");

@@ -29,6 +29,9 @@
     "no": "否",
     "typeSomethingElse": "輸入其他內容",
     "confirm": "確認",
+    "confirmed": "已確認，請執行。",
+    "cancelled": "已取消。",
+    "chooseFile": "要傳送的檔案",
     "graphCaption": "節點：{{nodes}} · 關係：{{relationships}}",
     "downloadPng": "下載 PNG",
     "openOnGraphPage": "在圖形頁面開啟"

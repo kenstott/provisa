@@ -29,6 +29,9 @@
     "no": "No",
     "typeSomethingElse": "Scrivi qualcos'altro",
     "confirm": "Conferma",
+    "confirmed": "Confermato: procedi.",
+    "cancelled": "Annullato.",
+    "chooseFile": "File da inviare",
     "graphCaption": "Nodi: {{nodes}} · Relazioni: {{relationships}}",
     "downloadPng": "Scarica PNG",
     "openOnGraphPage": "Apri nella pagina Grafo"
