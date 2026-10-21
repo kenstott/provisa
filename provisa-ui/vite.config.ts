@@ -123,7 +123,7 @@ const E2E_BACKEND_PORTS = (process.env.PROVISA_E2E_BACKEND_PORTS ?? "").split(",
 
 // Same prefixes `server.proxy` below forwards to the backend. Kept as one list so the two cannot
 // drift into disagreeing about what is an API call.
-const BACKEND_PREFIXES = ["/data", "/admin", "/query", "/health", "/setup", "/auth/"];
+const BACKEND_PREFIXES = ["/data/", "/admin", "/query", "/health", "/setup", "/auth/"];
 
 /** Routes e2e API traffic to the calling worker's own backend.
  *
@@ -294,7 +294,10 @@ export default defineConfig((config) => ({
       ignored: ["**/._*"],
     },
     proxy: {
-      "/data": BACKEND_TARGET,
+      // The trailing slash matters, as for "/auth/" below: a bare "/data" also captured the
+      // /data-products page and forwarded its navigation to the API. Every data endpoint is under
+      // /data/.
+      "/data/": BACKEND_TARGET,
       "/admin": {
         target: BACKEND_TARGET,
         bypass(req) {
