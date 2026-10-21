@@ -106,3 +106,52 @@ variable "repo_dir" {
   type        = string
   default     = "/opt/provisa"
 }
+
+# The seed job (seed_lifecycle.sh) creates the backends device alone; a run creates all three.
+variable "devices" {
+  description = "The devices to create: a subset of server, client, backends."
+  type        = list(string)
+  default     = ["server", "client", "backends"]
+  validation {
+    condition     = length(var.devices) > 0 && alltrue([for d in var.devices : contains(["server", "client", "backends"], d)])
+    error_message = "devices names one or more of server, client, backends."
+  }
+}
+
+# seed: the seed job, which brings the data stack up and seeds it (hours at full scale).
+# from_image: a run, whose backends device boots from the stored seed image and never seeds.
+variable "seed_mode" {
+  description = "seed (the seed job) or from_image (a run, the backends device booted from backends_image)."
+  type        = string
+  validation {
+    condition     = contains(["seed", "from_image"], var.seed_mode)
+    error_message = "seed_mode is seed or from_image."
+  }
+}
+
+variable "backends_image" {
+  description = "The stored seed image the backends device boots from (provisa-perf-seed-<seed hash 12>); seed_mode from_image only."
+  type        = string
+  default     = null
+}
+
+# Unset, the backends device is provisioned as the others are (var.provisioning_model): the
+# --backends-provisioning-model option of bench_lifecycle.sh exists to keep the seeded device
+# on-demand while the server and client stay on Spot, and gives this default in its contract.
+variable "backends_provisioning_model" {
+  description = "SPOT or ON_DEMAND for the backends device alone; unset, the same as provisioning_model."
+  type        = string
+  default     = null
+  validation {
+    condition     = var.backends_provisioning_model == null ? true : contains(["SPOT", "ON_DEMAND"], var.backends_provisioning_model)
+    error_message = "backends_provisioning_model is SPOT or ON_DEMAND."
+  }
+}
+
+# A run's checkpoints: each finished run's results, copied there as soon as it finishes, so a
+# preempted device loses none. The seed job keeps no results and names none.
+variable "results_bucket" {
+  description = "Name of the bucket a run checkpoints its results to (unique per run); null for the seed job."
+  type        = string
+  default     = null
+}

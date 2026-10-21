@@ -422,6 +422,8 @@ def test_the_driver_dry_run_runs_nothing_and_says_what_it_would() -> None:
             "PERF_REPO": "/opt/provisa",
             "PERF_SERVER_IP": "10.90.0.2",
             "PERF_BACKENDS_IP": "10.90.0.4",
+            "PERF_BUCKET": "bkt",
+            "PERF_RUN_ID": "run1",
             "PATH": "/usr/bin:/bin",  # no gcloud: a dry run never calls it
         },
         capture_output=True,
@@ -485,6 +487,8 @@ def test_the_results_go_where_the_lifecycle_says() -> None:
             "PERF_REPO": "/opt/provisa",
             "PERF_SERVER_IP": "10.90.0.2",
             "PERF_BACKENDS_IP": "10.90.0.4",
+            "PERF_BUCKET": "bkt",
+            "PERF_RUN_ID": "run1",
             "PERF_LOCAL_OUT": "/runs/x/results",
             "PATH": "/usr/bin:/bin",
         },
@@ -571,6 +575,8 @@ def test_the_pass_dry_run_runs_every_variant_and_cache_and_reports_the_pass() ->
             "PERF_REPO": "/opt/provisa",
             "PERF_SERVER_IP": "10.90.0.2",
             "PERF_BACKENDS_IP": "10.90.0.4",
+            "PERF_BUCKET": "bkt",
+            "PERF_RUN_ID": "run1",
             "PERF_LOCAL_OUT": "/runs/x/results",
             "PATH": "/usr/bin:/bin",
         },
@@ -602,6 +608,8 @@ def test_a_pass_needs_all_its_flags() -> None:
             "PERF_REPO": "/r",
             "PERF_SERVER_IP": "a",
             "PERF_BACKENDS_IP": "b",
+            "PERF_BUCKET": "bkt",
+            "PERF_RUN_ID": "run1",
             "PATH": "/usr/bin:/bin",
         },
         capture_output=True,
@@ -617,10 +625,136 @@ def test_the_lifecycle_sizes_every_device_with_one_flag() -> None:
     assert '-var "disk_gb=$DISK_GB"' in text
 
 
-def _fake_cloud(bin_dir: Path, log: Path) -> None:
-    """terraform and gcloud stand-ins on PATH: each logs its arguments; the server and client
-    devices are ready at commit abc, the backends device never is."""
+_FAKE_GCLOUD = r"""
+import re
+import shutil
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+S = ROOT / "cloud"
+args = sys.argv[1:]
+with (ROOT / "calls.log").open("a") as f:
+    f.write("gcloud" + "".join(f" [{a}]" for a in args) + "\n")
+
+
+def read(name: str, default: str = "") -> str:
+    p = S / name
+    return p.read_text() if p.exists() else default
+
+
+def write(name: str, text: str) -> None:
+    p = S / name
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(text)
+
+
+verb = args[:3]
+if verb == ["compute", "images", "describe"]:
+    if (S / "images" / args[3]).exists():
+        print(args[3])
+        sys.exit(0)
+    sys.stderr.write(
+        "ERROR: (gcloud.compute.images.describe) Could not fetch resource:\n"
+        f" - The resource 'projects/p/global/images/{args[3]}' was not found\n"
+    )
+    sys.exit(1)
+if verb == ["compute", "images", "create"]:
+    write(f"images/{args[3]}", " ".join(args))
+    sys.exit(0)
+if verb == ["compute", "instances", "describe"]:
+    print(read(f"status/{args[3]}", "RUNNING"))
+    sys.exit(0)
+if verb == ["compute", "instances", "start"]:
+    if (S / "start_fails").exists():
+        sys.exit(1)
+    for name in args[3:]:
+        if name.startswith("--"):
+            break
+        write(f"status/{name}", "RUNNING")
+    sys.exit(0)
+if verb == ["compute", "instances", "stop"]:
+    write(f"status/{args[3]}", "STOPPED")
+    sys.exit(0)
+if args[:2] == ["compute", "scp"]:
+    name = args[-2].rsplit("/", 1)[1]
+    shutil.copytree(S / "fixture" / name, Path(args[-1]) / name)
+    sys.exit(0)
+if args[:2] == ["compute", "ssh"]:
+    device, command = args[2], args[args.index("--command") + 1]
+    if "journalctl" in command:
+        print(f"setup log of {device}")
+    elif "docker compose --profile three-device stop" in command:
+        if (S / "compose_stop_fails").exists():
+            sys.exit(1)
+    elif "/var/lib/provisa-perf/ready" in command:
+        if device not in read("never_ready").split():
+            print(read("commit"))
+    elif "run_benchmark.py" in command:
+        name = re.search(r"--output-dir results/three-device/(\S+)", command).group(1)
+        with (S / "benchmarks").open("a") as f:
+            f.write(name + "\n")
+        left = int(read(f"preempt/{name}", "0"))
+        if left:
+            write(f"preempt/{name}", str(left - 1))
+            write("status/provisa-perf-client", "STOPPED")
+            sys.exit(255)
+        if (S / "fail_runs").exists():
+            sys.exit(1)
+sys.exit(0)
+"""
+
+_FAKE_GSUTIL = r"""
+import glob
+import shutil
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+S = ROOT / "cloud" / "gcs"
+args = [a for a in sys.argv[1:] if a != "-m"]
+with (ROOT / "calls.log").open("a") as f:
+    f.write("gsutil " + " ".join(sys.argv[1:]) + "\n")
+
+
+def local(url: str) -> Path:
+    return S / url.removeprefix("gs://")
+
+
+if args[0] == "ls":
+    hits = sorted(glob.glob(str(local(args[1]))))
+    if not hits:
+        sys.stderr.write("CommandException: One or more URLs matched no objects.\n")
+        sys.exit(1)
+    for hit in hits:
+        print("gs://" + str(Path(hit).relative_to(S)))
+elif args[:2] == ["cp", "-"]:
+    local(args[2]).parent.mkdir(parents=True, exist_ok=True)
+    local(args[2]).write_text(sys.stdin.read())
+elif args[:2] == ["cp", "-r"]:
+    src = Path(args[2])
+    shutil.copytree(src, local(args[3].rstrip("/")) / src.name, dirs_exist_ok=True)
+elif args[:2] == ["rsync", "-r"]:
+    if not local(args[2]).exists():
+        sys.exit(1)
+    shutil.copytree(local(args[2]), args[3], dirs_exist_ok=True)
+else:
+    sys.exit(f"fake gsutil: {args}")
+"""
+
+
+def _fake_cloud(tmp_path: Path, commit: str, *, image: bool = True) -> Path:
+    """terraform, gcloud and gsutil stand-ins on PATH (tmp_path/bin): each logs its arguments to
+    tmp_path/calls.log; the cloud's state is files under tmp_path/cloud (images, instance status,
+    the bucket under gcs/, each device's ready commit). The seed image for the commit is stored
+    unless image is False. Returns the state directory."""
+    bin_dir, state = tmp_path / "bin", tmp_path / "cloud"
     bin_dir.mkdir()
+    (state / "images").mkdir(parents=True)
+    (state / "commit").write_text(commit)
+    if image:
+        (state / "images" / _seed_image(commit)).write_text("")
+    log = tmp_path / "calls.log"
     (bin_dir / "terraform").write_text(
         f"""#!/bin/bash
 echo "terraform $*" >> {log}
@@ -629,47 +763,68 @@ case " $* " in
 esac
 """
     )
-    (bin_dir / "gcloud").write_text(
-        f"""#!/bin/bash
-printf 'gcloud' >> {log}; printf ' [%s]' "$@" >> {log}; echo >> {log}
-case "$*" in
-  *journalctl*) echo "setup log of $3" ;;
-  *provisa-perf-backends*) ;;
-  *) echo abc ;;
-esac
-"""
-    )
-    for tool in ("terraform", "gcloud"):
+    (bin_dir / "gcloud").write_text(f"#!{sys.executable}\n{_FAKE_GCLOUD}")
+    (bin_dir / "gsutil").write_text(f"#!{sys.executable}\n{_FAKE_GSUTIL}")
+    for tool in ("terraform", "gcloud", "gsutil"):
         (bin_dir / tool).chmod(0o755)
+    return state
+
+
+_REPO = BENCH.parents[3]
+
+
+def _head() -> str:
+    import subprocess
+
+    return subprocess.run(
+        ["git", "-C", str(_REPO), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+
+
+def _seed_image(commit: str) -> str:
+    import seed_inputs
+
+    return f"provisa-perf-seed-{seed_inputs.seed_hash(_REPO, commit)[:12]}"
+
+
+def _lifecycle(tmp_path: Path, *args: str, script: Path | None = None) -> Any:
+    import shutil
+    import subprocess
+
+    return subprocess.run(
+        ["bash", str(script or _LIFECYCLE), *args],
+        env={
+            "PATH": f"{tmp_path / 'bin'}:{Path(shutil.which('python3')).parent}:/usr/bin:/bin",
+            "HOME": str(tmp_path),
+            "PROVISA_BENCH_RUNS": str(tmp_path / "runs"),
+        },
+        capture_output=True,
+        text=True,
+    )
+
+
+def _calls(tmp_path: Path) -> list[str]:
+    return (tmp_path / "calls.log").read_text().splitlines()
 
 
 def test_a_waiting_device_is_held_up_and_every_setup_log_is_kept_before_destroy(
     tmp_path: Path,
 ) -> None:
-    import shutil
-    import subprocess
-
-    log = tmp_path / "calls.log"
-    _fake_cloud(tmp_path / "bin", log)
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    (state / "never_ready").write_text("provisa-perf-backends")
     runs = tmp_path / "runs"
-    done = subprocess.run(
-        [
-            "bash",
-            str(_LIFECYCLE),
-            *("--project", "p", "--zone", "us-east1-b", "--commit", "abc"),
-            *("--ssh-cidr", "203.0.113.10/32", "--ready-timeout", "0"),
-        ],
-        env={
-            "PATH": f"{tmp_path / 'bin'}:{Path(shutil.which('python3')).parent}:/usr/bin:/bin",
-            "HOME": str(tmp_path),
-            "PROVISA_BENCH_RUNS": str(runs),
-        },
-        capture_output=True,
-        text=True,
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--ready-timeout", "0"),
     )
     assert done.returncode == 1, done.stdout + done.stderr
-    assert "provisa-perf-backends was not ready at abc" in done.stdout
-    calls = log.read_text().splitlines()
+    assert f"provisa-perf-backends was not ready at {commit}" in done.stdout
+    calls = _calls(tmp_path)
     polls = [c for c in calls if "/var/lib/provisa-perf/ready" in c]
     # server, client, then backends once before the deadline; each poll refreshes the idle hold
     assert len(polls) == 3
@@ -689,31 +844,16 @@ def test_a_waiting_device_is_held_up_and_every_setup_log_is_kept_before_destroy(
 def test_the_backends_device_alone_can_be_given_a_larger_machine(tmp_path: Path) -> None:
     """Its stores are sized for a large box: a cheap stage sizes the backends device apart, after
     --machine-type, and keeps the server and client small."""
-    import shutil
-    import subprocess
-
-    log = tmp_path / "calls.log"
-    _fake_cloud(tmp_path / "bin", log)
-    done = subprocess.run(
-        [
-            "bash",
-            str(_LIFECYCLE),
-            *("--project", "p", "--zone", "us-east1-b", "--commit", "abc"),
-            *("--ssh-cidr", "203.0.113.10/32", "--dry-run"),
-            *("--machine-type", "c4d-standard-4", "--backends-machine-type", "c4d-highmem-8"),
-        ],
-        env={
-            "PATH": f"{tmp_path / 'bin'}:{Path(shutil.which('python3')).parent}:/usr/bin:/bin",
-            "HOME": str(tmp_path),
-            "PROVISA_BENCH_RUNS": str(tmp_path / "runs"),
-        },
-        capture_output=True,
-        text=True,
+    commit = _head()
+    _fake_cloud(tmp_path, commit)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--dry-run"),
+        *("--machine-type", "c4d-standard-4", "--backends-machine-type", "c4d-highmem-8"),
     )
     assert done.returncode == 0, done.stdout + done.stderr
-    (plan,) = [
-        c for c in log.read_text().splitlines() if c.startswith("terraform ") and " plan " in c
-    ]
+    (plan,) = [c for c in _calls(tmp_path) if c.startswith("terraform ") and " plan " in c]
     assert "-var server_machine_type=c4d-standard-4" in plan
     assert "-var client_machine_type=c4d-standard-4" in plan
     # the later value is the one terraform keeps
@@ -759,6 +899,8 @@ def test_no_remote_process_match_finds_the_shell_that_runs_it() -> None:
             "PERF_REPO": "/opt/provisa",
             "PERF_SERVER_IP": "10.90.0.2",
             "PERF_BACKENDS_IP": "10.90.0.4",
+            "PERF_BUCKET": "bkt",
+            "PERF_RUN_ID": "run1",
             "PATH": "/usr/bin:/bin",
         },
         capture_output=True,
@@ -773,3 +915,439 @@ def test_no_remote_process_match_finds_the_shell_that_runs_it() -> None:
             assert re.search(pattern, command) is None, (pattern, command)
             checked += 1
     assert checked > 0
+
+
+# --- the seed job, the seed image, checkpoints and recovery (REQ-2092) ---------------------------
+
+_SEED_LIFECYCLE = BENCH / "seed_lifecycle.sh"
+_TF = BENCH.parents[3] / "terraform" / "perf"
+
+
+def _seed_tree(tmp_path: Path) -> Path:
+    """A copy of every seed input (and only those) under tmp_path/repo."""
+    import shutil
+
+    import seed_inputs
+
+    root = tmp_path / "repo"
+    for rel in [*seed_inputs.FILES, seed_inputs.COMPOSE]:
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy(_REPO / rel, root / rel)
+    return root
+
+
+@pytest.mark.parametrize(
+    "rel",
+    [
+        "demo/named/perf/generate_postgres.py",
+        "demo/named/perf/generate_clickhouse.py",
+        "demo/named/perf/generate_mongo.py",
+        "demo/named/perf/generate_neo4j.py",
+        "demo/named/perf/seed.py",
+        "demo/named/perf/Dockerfile.seeder",
+        "demo/named/perf/Dockerfile.postgres",
+    ],
+)
+def test_a_change_to_any_seed_file_changes_the_seed_hash(tmp_path: Path, rel: str) -> None:
+    import seed_inputs
+
+    root = _seed_tree(tmp_path)
+    before = seed_inputs.seed_hash(root)
+    with (root / rel).open("a") as f:
+        f.write("\n# changed\n")
+    assert seed_inputs.seed_hash(root) != before
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("image: mongo:7", "image: mongo:8"),
+        ("image: clickhouse/clickhouse-server:24.3", "image: clickhouse/clickhouse-server:24.8"),
+        ("image: neo4j:5.19-community", "image: neo4j:5.26-community"),
+        (
+            "image: provisa-perf-postgres:16\n    build:",
+            "image: provisa-perf-postgres:17\n    build:",
+        ),
+        ('"${PROVISA_BENCH_ORDERS:-20000000}"', '"${PROVISA_BENCH_ORDERS:-1000000}"'),
+        ('"${PROVISA_BENCH_NEO4J_ORDERS:-2000000}"', '"${PROVISA_BENCH_NEO4J_ORDERS:-100}"'),
+        ('"${PROVISA_BENCH_ITEMS_PER_ORDER:-4}"', '"${PROVISA_BENCH_ITEMS_PER_ORDER:-8}"'),
+    ],
+)
+def test_an_engine_tag_or_scale_setting_changes_the_seed_hash(
+    tmp_path: Path, old: str, new: str
+) -> None:
+    import seed_inputs
+
+    root = _seed_tree(tmp_path)
+    compose = root / seed_inputs.COMPOSE
+    before = seed_inputs.seed_hash(root)
+    assert compose.read_text().count(old) == 1
+    compose.write_text(compose.read_text().replace(old, new))
+    assert seed_inputs.seed_hash(root) != before
+
+
+def test_the_postgres_engine_tag_in_its_dockerfile_changes_the_seed_hash(tmp_path: Path) -> None:
+    import seed_inputs
+
+    root = _seed_tree(tmp_path)
+    dockerfile = root / "demo/named/perf/Dockerfile.postgres"
+    before = seed_inputs.seed_hash(root)
+    dockerfile.write_text(
+        dockerfile.read_text().replace("ARG PG_IMAGE=postgres:16.15", "ARG PG_IMAGE=postgres:16.16")
+    )
+    assert seed_inputs.seed_hash(root) != before
+
+
+def test_an_unrelated_change_leaves_the_seed_hash(tmp_path: Path) -> None:
+    import seed_inputs
+
+    root = _seed_tree(tmp_path)
+    compose = root / seed_inputs.COMPOSE
+    before = seed_inputs.seed_hash(root)
+    (root / "demo/named/perf/config.yaml").write_text("anything: 1\n")
+    (root / "demo/named/perf/bench").mkdir()
+    (root / "demo/named/perf/bench/run_benchmark.py").write_text("print('changed')\n")
+    # a compose edit outside the engines' tags and the seeder's scale: a non-engine image, a port
+    text = compose.read_text()
+    text = text.replace("image: redis:7.4-alpine", "image: redis:7.6-alpine")
+    text = text.replace(
+        "PROVISA_BENCH_POSTGRESQL_PORT:-25632", "PROVISA_BENCH_POSTGRESQL_PORT:-25640"
+    )
+    compose.write_text(text)
+    assert seed_inputs.seed_hash(root) == before
+
+
+def test_a_missing_seed_input_is_named(tmp_path: Path) -> None:
+    import seed_inputs
+
+    root = _seed_tree(tmp_path)
+    (root / "demo/named/perf/seed.py").unlink()
+    with pytest.raises(seed_inputs.SeedInputError, match="demo/named/perf/seed.py is missing"):
+        seed_inputs.seed_hash(root)
+    root = _seed_tree(tmp_path / "again")
+    compose = root / seed_inputs.COMPOSE
+    compose.write_text(
+        compose.read_text().replace("      PROVISA_BENCH_ITEMS_PER_ORDER:", "      X:")
+    )
+    with pytest.raises(seed_inputs.SeedInputError, match="no PROVISA_BENCH_ITEMS_PER_ORDER"):
+        seed_inputs.seed_hash(root)
+
+
+def test_the_seed_hash_at_a_commit_is_that_of_its_files() -> None:
+    import seed_inputs
+
+    head = _head()
+    assert seed_inputs.seed_hash(_REPO, head) == seed_inputs.seed_hash(_REPO, head)
+    assert len(seed_inputs.seed_hash(_REPO, head)) == 64
+    with pytest.raises(seed_inputs.SeedInputError, match="not readable at 0000000"):
+        seed_inputs.seed_hash(_REPO, "0000000")
+
+
+def test_a_run_without_the_seed_image_stops_before_any_apply(tmp_path: Path) -> None:
+    import seed_inputs
+
+    commit = _head()
+    _fake_cloud(tmp_path, commit, image=False)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32"),
+    )
+    assert done.returncode == 1, done.stdout + done.stderr
+    seed_hash = seed_inputs.seed_hash(_REPO, commit)
+    assert f"the seed inputs changed: there is no seed image {_seed_image(commit)}" in done.stdout
+    assert f"seed hash {seed_hash}" in done.stdout and "seed_lifecycle.sh" in done.stdout
+    assert not [c for c in _calls(tmp_path) if c.startswith("terraform ")]
+
+
+def test_the_seed_image_boots_the_backends_device_alone(tmp_path: Path) -> None:
+    commit = _head()
+    _fake_cloud(tmp_path, commit)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--dry-run"),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    (plan,) = [c for c in _calls(tmp_path) if c.startswith("terraform ") and " plan " in c]
+    assert f"-var backends_image=projects/p/global/images/{_seed_image(commit)}" in plan
+    assert "-var seed_mode=from_image" in plan and "-var image=" not in plan
+    main = (_TF / "main.tf").read_text()
+    assert "image = local.boot_image[each.key]" in main
+    boot = main[main.index("boot_image = {") :]
+    boot = boot[: boot.index("}")]
+    assert "server   = var.image" in boot and "client   = var.image" in boot
+    assert 'backends = var.seed_mode == "from_image" ? var.backends_image : var.image' in boot
+
+
+def test_the_backends_device_can_be_on_demand_beside_spot_devices(tmp_path: Path) -> None:
+    commit = _head()
+    _fake_cloud(tmp_path, commit)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--dry-run"),
+        *("--backends-provisioning-model", "ON_DEMAND"),
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    (plan,) = [c for c in _calls(tmp_path) if c.startswith("terraform ") and " plan " in c]
+    assert "-var provisioning_model=SPOT" in plan
+    assert "-var backends_provisioning_model=ON_DEMAND" in plan
+    main = (_TF / "main.tf").read_text()
+    assert "provisioning_model  = local.provisioning_model[each.key]" in main
+    assert (
+        "backends = var.backends_provisioning_model == null ? var.provisioning_model"
+        " : var.backends_provisioning_model"
+    ) in main
+
+
+def test_the_seed_job_stores_the_image_and_destroys_the_device(tmp_path: Path) -> None:
+    import seed_inputs
+
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit, image=False)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--backends-provisioning-model", "ON_DEMAND"),
+        script=_SEED_LIFECYCLE,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    calls = _calls(tmp_path)
+    seed_hash = seed_inputs.seed_hash(_REPO, commit)
+    image = _seed_image(commit)
+
+    def at(pred: Any) -> int:
+        return next(i for i, c in enumerate(calls) if pred(c))
+
+    apply = at(lambda c: c.startswith("terraform ") and " apply " in c)
+    assert '-var devices=["backends"]' in calls[apply] and "-var seed_mode=seed" in calls[apply]
+    assert "-var backends_provisioning_model=ON_DEMAND" in calls[apply]
+    ready = at(lambda c: "/var/lib/provisa-perf/ready" in c)
+    assert "[provisa-perf-backends]" in calls[ready]
+    compose_stop = at(lambda c: "sudo docker compose --profile three-device stop" in c)
+    assert "[provisa-perf-backends]" in calls[compose_stop]
+    stop = at(lambda c: "[instances] [stop] [provisa-perf-backends]" in c)
+    create = at(lambda c: f"[images] [create] [{image}]" in c)
+    destroy = at(lambda c: c.startswith("terraform ") and " destroy " in c)
+    assert apply < ready < compose_stop < stop < create < destroy
+    assert f"[--labels] [seed_hash={seed_hash[:63]}]" in calls[create]
+    assert "[--source-disk] [provisa-perf-backends]" in calls[create]
+    # only the backends device was ever polled or asked for its log
+    assert not [c for c in calls if "provisa-perf-server" in c or "provisa-perf-client" in c]
+    assert (state / "images" / image).exists()
+
+
+def test_a_failed_compose_stop_fails_the_seed_job_by_name(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit, image=False)
+    (state / "compose_stop_fails").write_text("")
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32"),
+        script=_SEED_LIFECYCLE,
+    )
+    assert done.returncode == 1
+    assert "provisa-perf-backends: docker compose stop failed; no image stored" in done.stdout
+    calls = _calls(tmp_path)
+    assert not [c for c in calls if "[instances] [stop]" in c or "[images] [create]" in c]
+    assert any(c.startswith("terraform ") and " destroy " in c for c in calls)
+    assert not (state / "images" / _seed_image(commit)).exists()
+
+
+def test_the_seed_job_does_nothing_when_the_image_exists(tmp_path: Path) -> None:
+    commit = _head()
+    _fake_cloud(tmp_path, commit)
+    done = _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32"),
+        script=_SEED_LIFECYCLE,
+    )
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert f"seed image {_seed_image(commit)} for seed hash" in done.stdout
+    assert "already exists; nothing to do" in done.stdout
+    assert not [c for c in _calls(tmp_path) if c.startswith("terraform ")]
+
+
+def _seed_step(tmp_path: Path, seed_mode: str, *, seeded: bool) -> Any:
+    """The backends device's data-stack step of the startup script, rendered for seed_mode and
+    run against a stand-in docker, its repository under tmp_path."""
+    import subprocess
+
+    script = _STARTUP.read_text()
+    step = script[script.index('  SEEDED="$REPO_DIR') : script.index("  esac") + len("  esac")]
+    step = step.replace("${seed_mode}", seed_mode)
+    repo = tmp_path / "repo"
+    (repo / "demo/named/perf/data").mkdir(parents=True)
+    if seeded:
+        (repo / "demo/named/perf/data/.seeded").write_text("seeded\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    (bin_dir / "docker").write_text(f'#!/bin/bash\necho "docker $*" >> {tmp_path}/docker.log\n')
+    (bin_dir / "docker").chmod(0o755)
+    return subprocess.run(
+        ["bash", "-c", f"set -euo pipefail\nREPO_DIR={repo}\n{step}\necho step-passed"],
+        env={"PATH": f"{bin_dir}:/usr/bin:/bin"},
+        capture_output=True,
+        text=True,
+    )
+
+
+def test_a_run_device_without_the_seed_is_refused_never_seeded(tmp_path: Path) -> None:
+    done = _seed_step(tmp_path, "from_image", seeded=False)
+    assert done.returncode == 1 and "step-passed" not in done.stdout
+    assert "data/.seeded is absent, so this image carries no seed" in done.stdout
+    assert not (tmp_path / "docker.log").exists()
+    # the ready marker is written only after every step: a refused step never writes it
+    script = _STARTUP.read_text()
+    assert script.index("from_image)") < script.rindex('echo "${commit}" > "$READY"')
+
+
+def test_a_run_device_with_the_seed_brings_the_stack_up_without_the_seeder(
+    tmp_path: Path,
+) -> None:
+    done = _seed_step(tmp_path, "from_image", seeded=True)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert (tmp_path / "docker.log").read_text() == (
+        "docker compose --profile three-device up -d --build --scale seeder=0"
+        " --renew-anon-volumes\n"
+    )
+
+
+def test_the_seed_job_device_seeds(tmp_path: Path) -> None:
+    done = _seed_step(tmp_path, "seed", seeded=False)
+    assert done.returncode == 0, done.stdout + done.stderr
+    assert (tmp_path / "docker.log").read_text().splitlines() == [
+        "docker compose --profile three-device up -d --build",
+        "docker compose up seeder",
+    ]
+
+
+def _run_fixtures(state: Path) -> None:
+    _run(state / "fixture", "1-off", "off", 2000, 1.0)
+    _run(state / "fixture", "1-on", "on", 1800, 1.2)
+
+
+def _full_run(tmp_path: Path, commit: str) -> Any:
+    return _lifecycle(
+        tmp_path,
+        *("--project", "p", "--zone", "us-east1-b", "--commit", commit),
+        *("--ssh-cidr", "203.0.113.10/32", "--reps", "1"),
+    )
+
+
+def test_a_preempted_device_is_restarted_and_only_the_runs_not_done_are_repeated(
+    tmp_path: Path,
+) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    (state / "preempt").mkdir()
+    (state / "preempt" / "1-on").write_text("1")
+    done = _full_run(tmp_path, commit)
+    assert done.returncode == 0, done.stdout + done.stderr
+    # 1-off checkpointed before the preemption, so the rerun skips it
+    assert (state / "benchmarks").read_text().splitlines() == ["1-off", "1-on", "1-on"]
+    assert "already checkpointed in gs://" in done.stdout and " 1-off " in done.stdout
+    assert "=== run 1-off: checkpointed already, skipped ===" in done.stdout
+    calls = _calls(tmp_path)
+    starts = [c for c in calls if "[instances] [start]" in c]
+    assert len(starts) == 1 and "[provisa-perf-client]" in starts[0]
+    assert len([c for c in calls if c.startswith("terraform ") and " apply " in c]) == 1
+    (run,) = (tmp_path / "runs").iterdir()
+    bucket = f"provisa-perf-{run.name.lower()}-p"
+    for name in ("1-off", "1-on"):
+        assert (state / "gcs" / bucket / run.name / name / "DONE").read_text() == name
+        # copied into the run directory before destroy
+        assert (run / "checkpoints" / name / "optimistic" / "graphql.json").exists()
+    assert (run / "results-report" / "published.json").exists()
+    rsync = next(i for i, c in enumerate(calls) if c.startswith("gsutil -m rsync"))
+    destroy = next(
+        i for i, c in enumerate(calls) if c.startswith("terraform ") and " destroy " in c
+    )
+    assert rsync < destroy
+
+
+def test_recovery_is_bounded_at_three(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    (state / "preempt").mkdir()
+    (state / "preempt" / "1-off").write_text("99")
+    done = _full_run(tmp_path, commit)
+    assert done.returncode == 1
+    assert "the run failed again after 3 recoveries" in done.stdout
+    assert (state / "benchmarks").read_text().splitlines() == ["1-off"] * 4
+    calls = _calls(tmp_path)
+    assert len([c for c in calls if "[instances] [start]" in c]) == 3
+    assert any(c.startswith("terraform ") and " destroy " in c for c in calls)
+
+
+def test_a_device_that_does_not_start_is_replaced_from_its_image(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    (state / "preempt").mkdir()
+    (state / "preempt" / "1-on").write_text("1")
+    (state / "start_fails").write_text("")
+    # the replaced device comes up running
+    (tmp_path / "bin" / "terraform").write_text(
+        (tmp_path / "bin" / "terraform").read_text()
+        + f'case " $* " in *" apply "*) mkdir -p {state}/status;'
+        f" echo RUNNING > {state}/status/provisa-perf-client ;; esac\n"
+    )
+    done = _full_run(tmp_path, commit)
+    assert done.returncode == 0, done.stdout + done.stderr
+    tf = [
+        c
+        for c in _calls(tmp_path)
+        if c.startswith("terraform ") and (" apply " in c or " destroy " in c)
+    ]
+    # apply, the devices alone destroyed (the bucket kept), apply again, then the final destroy
+    assert [" destroy " in c for c in tf] == [False, True, False, True]
+    assert "-target=google_compute_instance.device" in tf[1]
+    assert "-target" not in tf[3]
+    assert (state / "benchmarks").read_text().splitlines() == ["1-off", "1-on", "1-on"]
+
+
+def test_a_failure_with_every_device_running_is_not_retried(tmp_path: Path) -> None:
+    commit = _head()
+    state = _fake_cloud(tmp_path, commit)
+    _run_fixtures(state)
+    (state / "fail_runs").write_text("")
+    done = _full_run(tmp_path, commit)
+    assert done.returncode == 1
+    assert "the run failed with every device running: not a preemption" in done.stdout
+    assert (state / "benchmarks").read_text().splitlines() == ["1-off"]
+    assert not [c for c in _calls(tmp_path) if "[instances] [start]" in c]
+
+
+def test_the_dry_run_says_how_each_run_is_checkpointed() -> None:
+    import os
+    import subprocess
+
+    out = subprocess.run(
+        ["bash", str(BENCH / "three_device_run.sh"), "--reps", "1", "--dry-run"],
+        env={
+            **os.environ,
+            "PERF_ZONE": "us-east1-b",
+            "PERF_REPO": "/opt/provisa",
+            "PERF_SERVER_IP": "10.90.0.2",
+            "PERF_BACKENDS_IP": "10.90.0.4",
+            "PERF_BUCKET": "bkt",
+            "PERF_RUN_ID": "run1",
+            "PERF_LOCAL_OUT": "/runs/x/results",
+            "PATH": "/usr/bin:/bin",
+        },
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    for name in ("1-off", "1-on"):
+        assert f"gsutil -m cp -r /runs/x/results/{name} gs://bkt/run1/" in out
+        assert f"gsutil cp - gs://bkt/run1/{name}/DONE" in out
+    # the run never seeds: the seeder is scaled to nothing, an unseeded device refused
+    assert "--scale seeder=0" in out and "docker compose up seeder" not in out
+    assert "test -f data/.seeded" in out

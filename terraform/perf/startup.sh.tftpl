@@ -12,7 +12,8 @@
 # every boot, so a stopped device that is started again is set up the same way. Every step is
 # idempotent: Docker and the compose plugin, the repository at ${commit} in ${repo_dir}, its virtual
 # environment (uv sync), the idle shutdown (vm_idle_shutdown.sh: power off after 30 idle minutes),
-# and on the backends device the data stack and its first seed. The hold file keeps the device up
+# and on the backends device the data stack: seeded by the seed job (seed_mode seed), found seeded
+# on the stored seed image by a run (from_image). The hold file keeps the device up
 # while this runs (a first seed takes a while). When every step has passed it writes the commit to
 # the ready marker, which bench_lifecycle.sh waits for; a boot clears it first.
 set -euo pipefail
@@ -58,9 +59,32 @@ if [ "$DEVICE" = backends ]; then
     http://metadata.google.internal/computeMetadata/v1/instance/network-interfaces/0/ip)"
   cd "$REPO_DIR/demo/named/perf"
   export PROVISA_BENCH_BIND="$PRIVATE_IP"
-  # the data stack and its first seed; the seeder is a no-op once seeded (a marker on the data dir)
-  docker compose --profile three-device up -d --build
-  docker compose up seeder
+  # seed.py's done-marker: /data-marker/.seeded in the seeder, ./data bind-mounted there
+  SEEDED="$REPO_DIR/demo/named/perf/data/.seeded"
+  case "${seed_mode}" in
+    seed)
+      # the seed job: the data stack and its seed; the seeder is a no-op once seeded
+      docker compose --profile three-device up -d --build
+      docker compose up seeder
+      ;;
+    from_image)
+      # a run: the device booted from the stored seed image (seed_lifecycle.sh), its data already
+      # there. The seeder never runs here; an image without the seed is refused, never seeded.
+      if ! [ -f "$SEEDED" ]; then
+        echo "seed_mode from_image: $SEEDED is absent, so this image carries no seed;" \
+          "store one with demo/named/perf/bench/seed_lifecycle.sh"
+        exit 1
+      fi
+      # Fresh control-plane, engine and ops state each run, as before the seed image: their data
+      # is on anonymous volumes, which --renew-anon-volumes replaces. The seeded stores are not:
+      # postgresql, clickhouse and neo4j on bind mounts under ./data, mongodb on its named volume.
+      docker compose --profile three-device up -d --build --scale seeder=0 --renew-anon-volumes
+      ;;
+    *)
+      echo "seed_mode must be seed or from_image, not ${seed_mode}"
+      exit 1
+      ;;
+  esac
 fi
 
 echo "${commit}" > "$READY"
