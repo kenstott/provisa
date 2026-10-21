@@ -102,7 +102,8 @@ async def _edges(conn, product_id: str) -> list[dict]:
 
     # The model build's own step: this model's lineage, written to the edge table.
     await write_lineage_edges(conn, SimpleNamespace(tracked_functions={}))
-    await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS["data_product_edges"]))
+    for name in ("table_inputs", "data_product_edges"):
+        await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
     rows = await conn.execute_core(
         text("SELECT * FROM data_product_edges WHERE product_id = :p ORDER BY kind, id").bindparams(
             p=product_id
@@ -133,11 +134,36 @@ async def test_two_paths_to_another_product_are_one_direct_edge(control_plane):
     assert edge["relationship_ids"] == "a_b, a_c, c_b"
     assert edge["supporting_tables"] == "c"
 
-    # One lineage edge: D, which P1's view reads, upstream of P1.
-    assert [
-        (r["direction"], r["target_relation"], r["target_table_id"], r["hops"], r["vias"])
-        for r in lineage
-    ] == [("upstream", "sales.d", D, 1, "sales.v")]
+    # One lineage edge: D, which P1's view reads, upstream of P1 and one of its nearest inputs.
+    # And A, a member read from a source, has that source as its input.
+    assert sorted(
+        (
+            (
+                r["direction"],
+                r["target_relation"],
+                r["target_table_id"],
+                r["hops"],
+                r["vias"],
+                r["nearest_input"],
+                r["target_source_id"],
+                r["target_source_type"],
+                r["target_address"],
+            )
+            for r in lineage
+        ),
+        key=str,
+    ) == [
+        ("upstream", "sales.d", D, 1, "sales.v", True, "crm", "postgres", "crm/public/d"),
+        ("upstream", None, A, 1, None, True, "crm", "postgres", "crm/public/a"),
+    ]
+
+    # Related: every table one declared relationship from a member, whatever it leads on to.
+    related = sorted(
+        (r["target_table_id"], r["target_product_id"], r["aliases"])
+        for r in rows
+        if r["kind"] == "related"
+    )
+    assert related == [(B, "p2", "toB"), (C, None, None)]
 
 
 @pytest.mark.asyncio
@@ -277,7 +303,8 @@ async def test_the_cost_grows_with_the_model_not_with_the_routes(control_plane):
                     ]
                 )
             )
-            await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS["data_product_edges"]))
+            for name in ("table_inputs", "data_product_edges"):
+                await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
             await conn.execute("SET statement_timeout = '60s'")
             started = time.perf_counter()
             rows = (

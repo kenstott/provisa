@@ -8,54 +8,19 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1443 clause 10: a checker table's product_id is the SCANNED table's, resolved at read time.
+"""REQ-1443 PRODUCT ASSIGNMENT: a checker table's product_id is its own assignment.
 
-The admin GraphQL type answers product_id from the row for every ordinary table and, for a checker
-table, from the table its contract dataset resolves to — never from its own row, which registration
-keeps empty.
+The admin GraphQL type answers product_id from the row for every table, a checker table
+included: the assignment names the product whose owner controls the check, whatever it scans.
 """
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any, cast
 
-import pytest
-
 from provisa.api.admin.types import RegisteredTableType
-from tests.helpers import dq_contexts
-from tests.role_state import RoleState
 
 CONTRACT = "dataset: provisa/sales/orders\nchecks:\n  - row_count:\n"
-
-
-async def _resolve(table: RegisteredTableType) -> str | None:
-    # strawberry types the field as its return value; call the resolver the way the schema does.
-    return await cast(Any, table).product_id()
-
-
-class _Rows:
-    def __init__(self, row):
-        self._row = row
-
-    def fetchone(self):
-        return None if self._row is None else SimpleNamespace(_mapping=self._row)
-
-
-class _Conn:
-    def __init__(self, row):
-        self.row = row
-        self.statements: list = []
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, *a):
-        return False
-
-    async def execute_core(self, stmt):
-        self.statements.append(stmt)
-        return _Rows(self.row)
 
 
 def _table(**overrides: Any) -> RegisteredTableType:
@@ -83,49 +48,21 @@ def _table(**overrides: Any) -> RegisteredTableType:
     return RegisteredTableType(**fields)
 
 
-@pytest.fixture
-def _state(monkeypatch):
-    conn = _Conn({"product_id": "orders-product"})
-    st = RoleState(
-        contexts=dq_contexts(
-            (1, "wh", "sales", "sales", "orders"), (2, "dq", "sales", "quality", "orders_scans")
-        ),
-        source_types={"dq": "soda", "wh": "postgresql"},
-        model_db=(_one_db := SimpleNamespace(acquire=lambda: conn)),
-        tenant_db=_one_db,
-    )
-    monkeypatch.setattr("provisa.api.app.state", st, raising=False)
-    return conn
+def _product(table: RegisteredTableType) -> str | None:
+    # strawberry types the field as its return value; call the resolver the way the schema does.
+    return cast(Any, table).product_id()
 
 
-@pytest.mark.asyncio
-async def test_an_ordinary_table_answers_with_its_own_row(_state):
+def test_an_ordinary_table_answers_with_its_own_row():
     table = _table(
         id=1, source_id="wh", schema_name="sales", table_name="orders", stored_product_id="p1"
     )
-    assert await _resolve(table) == "p1"
-    assert _state.statements == []  # nothing to resolve — the row is the answer
+    assert _product(table) == "p1"
 
 
-@pytest.mark.asyncio
-async def test_a_checker_table_inherits_the_scanned_tables_product(_state):
-    table = _table(dq_contract=CONTRACT, stored_product_id=None)
-    assert await _resolve(table) == "orders-product"
-    assert len(_state.statements) == 1  # one lookup: the target's row
+def test_a_checker_table_answers_with_the_product_it_is_assigned_to():
+    assert _product(_table(dq_contract=CONTRACT, stored_product_id="quality")) == "quality"
 
 
-@pytest.mark.asyncio
-async def test_a_checker_table_never_answers_from_its_own_row(_state):
-    # Registration refuses a stored product_id on a checker table; even if one were present the
-    # derivation wins, so the two surfaces cannot disagree.
-    _state.row = {"product_id": None}
-    table = _table(dq_contract=CONTRACT, stored_product_id="stale")
-    assert await _resolve(table) is None
-
-
-@pytest.mark.asyncio
-async def test_a_target_that_is_not_registered_fails_loud(_state):
-    _state.row = None
-    table = _table(dq_contract=CONTRACT)
-    with pytest.raises(ValueError, match="is not registered"):
-        await _resolve(table)
+def test_a_checker_table_assigned_to_no_product_belongs_to_none():
+    assert _product(_table(dq_contract=CONTRACT, stored_product_id=None)) is None

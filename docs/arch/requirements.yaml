@@ -48801,6 +48801,9 @@
   - provisa-ui/src/pages/DataProductsPage.tsx
   - provisa-ui/src/pages/data-products/DataProductDetailPanel.tsx
   - provisa-ui/src/pages/data-products/DqRulesModal.tsx
+  - provisa/api/_meta_views.py
+  - provisa/api/_meta_seed.py
+  - provisa/api/mcp/table_edit.py
   tests:
   - tests/unit/test_app_wiring.py
   - tests/unit/test_metadata_export_data_quality.py
@@ -48816,6 +48819,7 @@
   - tests/integration/test_dq_registration_path.py
   - tests/helpers.py
   - provisa-ui/src/pages/tables/__tests__/DataQualityPanel.test.tsx
+  - tests/unit/test_product_inputs_and_checks.py
   scenario: 'Given a Soda contract whose checks name a governed table
 
     When the contract is registered as a soda source with a debounce window
@@ -86252,10 +86256,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa/compiler/stage2.py
   - provisa/core/schema_org.py
   - provisa/core/schema.sql
+  - provisa/lineage/inputs.py
   tests:
   - tests/unit/test_data_product_edges.py
   - tests/unit/test_statement_contract.py
   - tests/integration/test_data_product_edges_e2e.py
+  - tests/unit/test_product_inputs_and_checks.py
 - id: REQ-2127
   status: proposed
   since: 2026-10

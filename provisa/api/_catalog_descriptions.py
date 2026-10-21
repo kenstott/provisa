@@ -58,6 +58,9 @@ _META: dict[str, str] = {
     "data_product_edges": "Each data product's links to the rest of the model — the tables and "
     "products it reaches through relationships, and the relations upstream and downstream of "
     "its tables in lineage — one row per product, target and kind",
+    # REQ-1443
+    "product_checks": "How each data product shows each data-quality check that touches it — "
+    "a promise or expectation of its own, partner DQ from another owner, or an orphan",
     # REQ-2129
     "column_lineage_edges": "The model's column lineage — each column a view or command derives "
     "from another registered column, naming the view or command",
@@ -204,6 +207,23 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "relationship_ids": "The relationships on those paths",
         "supporting_tables": "Tables in no product that a path runs through",
         "vias": "For a lineage edge, the views and commands on its paths",
+        "nearest_input": "For an upstream lineage edge, true when its target is one of the "
+        "product's nearest physical inputs: a source table or materialized view reached through "
+        "plain views only, or the source a member is read from",
+        "target_source_id": "For a lineage edge, the source its target is read from",
+        "target_source_type": "The type of that source",
+        "target_address": "The target's address in that source: source/schema/table",
+    },
+    # REQ-1443
+    "product_checks": {
+        "id": "Product and checker table",
+        "product_id": "The data product the check is shown on",
+        "checker_table_id": "The checker table",
+        "checked_table_id": "The table its contract scans",
+        "assigned_product_id": "The product the checker table is assigned to, if any",
+        "state": "promise (assigned here, scans an output port), expectation (assigned here, "
+        "scans an input), partner_dq (scans an output port or input, assigned elsewhere or to "
+        "none) or orphan (assigned here, scans neither)",
     },
     # REQ-2125
     "data_products": {

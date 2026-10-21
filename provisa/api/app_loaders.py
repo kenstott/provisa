@@ -1935,6 +1935,7 @@ _META_TABLES = [
     "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
     "data_product_edges",  # REQ-2126: a product's relationship and lineage links; view-only
     "column_lineage_edges",  # REQ-2129: column lineage between registered columns; view-only
+    "product_checks",  # REQ-1443: each product's promises, expectations, partner DQ, orphans
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped
