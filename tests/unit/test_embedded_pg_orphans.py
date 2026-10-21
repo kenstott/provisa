@@ -186,13 +186,19 @@ def test_a_killed_postmasters_segment_is_released_when_its_directory_is_reaped()
     """A session killed and its postmaster killed too (SIGKILL: no exit runs) leave the
     postmaster's System V segment. Reaped with the directory that recorded it, it held a slot of
     the machine's 32 until restart; a few dozen such stopped every initdb."""
-    from provisa.core.pg_shared_memory import _listed, recorded_segment
+    from provisa.core.pg_shared_memory import (
+        _listed,
+        postmaster_semaphore_sets,
+        recorded_segment,
+    )
 
     starter, orphan_root = _start_elsewhere()
     postmaster = _postmaster(orphan_root)
     assert postmaster is not None
     segment = recorded_segment(orphan_root / "data")
     assert segment is not None and _listed(*segment)
+    semaphores = postmaster_semaphore_sets(postmaster)
+    assert semaphores
     starter.send_signal(signal.SIGTERM)
     starter.wait(timeout=30)
     os.kill(postmaster, signal.SIGKILL)
@@ -200,22 +206,37 @@ def test_a_killed_postmasters_segment_is_released_when_its_directory_is_reaped()
     while _alive(postmaster) and time.monotonic() < deadline:
         time.sleep(0.05)
     assert _listed(*segment)  # what leaked before
+    assert (
+        postmaster_semaphore_sets(postmaster) == semaphores
+    )  # and these, until the machine restarts
 
     start_local_postgres().stop()  # every start reaps
 
     assert not orphan_root.exists()
     assert not _listed(*segment)
+    assert postmaster_semaphore_sets(postmaster) == []
 
 
 def test_a_running_postmasters_segment_is_never_released():
-    from provisa.core.pg_shared_memory import _listed, recorded_segment, release_segment
+    from provisa.core.pg_shared_memory import (
+        _listed,
+        postmaster_semaphore_sets,
+        recorded_segment,
+        release_segment,
+    )
 
     pg = start_local_postgres()
     try:
         segment = recorded_segment(pg.data)
         assert segment is not None
+        postmaster = _postmaster(pg.root)
+        assert postmaster is not None
+        semaphores = postmaster_semaphore_sets(postmaster)
+        assert semaphores
         assert release_segment(pg.data) is False
         assert _listed(*segment)
+        assert postmaster_semaphore_sets(postmaster) == semaphores
     finally:
         pg.stop()
     assert not _listed(*segment)  # its own clean stop removed it
+    assert postmaster_semaphore_sets(postmaster) == []  # and its semaphores
