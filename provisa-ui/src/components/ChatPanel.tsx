@@ -19,7 +19,9 @@ import {
   Button,
   Checkbox,
   CloseButton,
+  Code,
   CopyButton,
+  FileInput,
   Group,
   Loader,
   Modal,
@@ -53,7 +55,13 @@ import { useSpeechToText } from "../hooks/useSpeechToText";
 import { RefreshMv } from "../hooks/admin.graphql";
 import { usePolly } from "../context/pollyState";
 import type { MutationResult } from "../types/admin";
-import type { ChoiceAnswer, ClientToolResult, PresentChoiceRequest } from "../mcp/clientTools";
+import type {
+  ChoiceAnswer,
+  ClientToolResult,
+  ConfirmRequest,
+  PresentChoiceRequest,
+} from "../mcp/clientTools";
+import { gql } from "@apollo/client";
 import { useResizableWidth } from "../hooks/useResizableWidth";
 import { FormField, FormFooter, FormLayout } from "./form/FormLayout";
 import { Tip, TipSurface } from "./Tip";
@@ -95,6 +103,12 @@ const SUGGESTION_KEYS = ["name", "page", "sources", "inflation", "profile", "fak
  * set to the full admin_schema mutation surface, sharing this hook with McpExplorePage, and
  * persisting the panel's conversation are explicit follow-ups.
  */
+/** A code block wraps within the panel instead of running past it (a mutation, a long SQL). */
+const WRAP = { whiteSpace: "pre-wrap", wordBreak: "break-word" } as const;
+const MARKDOWN_COMPONENTS = {
+  pre: (props: React.ComponentPropsWithoutRef<"pre">) => <pre {...props} style={WRAP} />,
+};
+
 export function ChatPanel() {
   const { t } = useTranslation();
   const suggestedQuestions = SUGGESTION_KEYS.map((k) => t(`chatPanel.suggestion.${k}`));
@@ -138,13 +152,24 @@ export function ChatPanel() {
   // A single pending confirmation at a time — refresh_mv (and future confirm-gated tools) await
   // this Promise before the client tool executor returns its result.
   const pendingResolveRef = useRef<((ok: boolean) => void) | null>(null);
-  const [confirmState, setConfirmState] = useState<{ title: string; message: string } | null>(null);
-  const confirm = (opts: { title: string; message: string }): Promise<boolean> =>
+  const [confirmState, setConfirmState] = useState<ConfirmRequest | null>(null);
+  const confirm = (opts: ConfirmRequest): Promise<boolean> =>
     new Promise((resolve) => {
       pendingResolveRef.current = resolve;
+      // REQ-2114: a change Polly makes through the admin API is shown in the conversation, and the
+      // user's answer is recorded there, so the transcript says what was done and who agreed.
+      if (opts.detail !== undefined) {
+        pushMessage({
+          role: "assistant",
+          text: `${opts.message}\n\n\`\`\`\n${opts.detail}\n\`\`\``,
+        });
+      }
       setConfirmState(opts);
     });
   const resolveConfirm = (ok: boolean) => {
+    if (confirmState?.detail !== undefined) {
+      pushMessage({ role: "user", text: ok ? t("chatPanel.confirmed") : t("chatPanel.cancelled") });
+    }
     setConfirmState(null);
     pendingResolveRef.current?.(ok);
     pendingResolveRef.current = null;
@@ -251,10 +276,39 @@ export function ChatPanel() {
   // plain window CustomEvent (not another Apollo/context wiring) lets any REST-backed admin page
   // opt in the same way GlossaryTab does below, without ChatPanel needing to know which page, if
   // any, is currently mounted.
-  const onServerToolResult = (name: string) => {
-    if (name === "create_source_now" || name === "register_table_now") {
+  // REQ-2114: any admin mutation Polly proposes, sent once the user confirmed it, by the user's own
+  // Apollo session -- the UI's own path, so every capability check the UI meets applies. Every
+  // active query is refetched afterwards, so an open admin page shows what the change did.
+  const runAdminMutation = async (
+    mutation: string,
+    variables: Record<string, unknown>,
+  ): Promise<ClientToolResult> => {
+    try {
+      const result = await apolloClient.mutate({ mutation: gql(mutation), variables });
+      return { success: true, message: JSON.stringify(result.data ?? null) };
+    } catch (e) {
+      return { success: false, message: String(e) };
+    } finally {
       void apolloClient.refetchQueries({ include: "active" });
     }
+  };
+  // REQ-2114: the file a route that uploads one is sent, chosen by the user in the chat.
+  const pendingFileResolveRef = useRef<((file: File | null) => void) | null>(null);
+  const [filePrompt, setFilePrompt] = useState<string | null>(null);
+  const [chosenFile, setChosenFile] = useState<File | null>(null);
+  const chooseFile = (prompt: string): Promise<File | null> =>
+    new Promise((resolve) => {
+      pendingFileResolveRef.current = resolve;
+      setChosenFile(null);
+      setFilePrompt(prompt);
+    });
+  const resolveFile = (file: File | null) => {
+    setFilePrompt(null);
+    pendingFileResolveRef.current?.(file);
+    pendingFileResolveRef.current = null;
+  };
+
+  const onServerToolResult = (name: string) => {
     if (GLOSSARY_TOOL_NAMES.has(name)) {
       window.dispatchEvent(new CustomEvent("provisa:glossary-changed"));
     }
@@ -262,7 +316,7 @@ export function ChatPanel() {
 
   const { messages, tools, busy, error, send, cancel, clear, pushMessage } = useMcpChat(
     roleId,
-    { navigate, confirm, runMutation, presentChoice },
+    { navigate, confirm, runMutation, presentChoice, runAdminMutation, chooseFile },
     location.pathname,
     onServerToolResult,
   );
@@ -552,10 +606,12 @@ export function ChatPanel() {
                 fontSize: "var(--mantine-font-size-xs)",
               }}
             >
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
                 {m.text || (busy && i === messages.length - 1 && !m.artifacts ? "…" : "")}
               </ReactMarkdown>
-              {m.artifacts?.map((a, j) => <ChatArtifact key={j} artifact={a} />)}
+              {m.artifacts?.map((a, j) => (
+                <ChatArtifact key={j} artifact={a} />
+              ))}
               {m.text && (
                 <CopyButton value={m.text} timeout={1500}>
                   {({ copied, copy }) => (
@@ -803,9 +859,41 @@ export function ChatPanel() {
           <FormField size="full">
             <Text size="sm">{confirmState?.message}</Text>
           </FormField>
+          {confirmState?.detail !== undefined && (
+            <FormField size="full">
+              <Code block data-testid="chat-confirm-detail" style={WRAP}>
+                {confirmState.detail}
+              </Code>
+            </FormField>
+          )}
           <FormFooter
             onCancel={() => resolveConfirm(false)}
             action={<Button onClick={() => resolveConfirm(true)}>{t("chatPanel.confirm")}</Button>}
+          />
+        </FormLayout>
+      </Modal>
+
+      <Modal opened={filePrompt !== null} onClose={() => resolveFile(null)} title={filePrompt}>
+        <FormLayout>
+          <FormField size="full">
+            <FileInput
+              label={t("chatPanel.chooseFile")}
+              data-testid="chat-choose-file"
+              value={chosenFile}
+              onChange={setChosenFile}
+            />
+          </FormField>
+          <FormFooter
+            onCancel={() => resolveFile(null)}
+            action={
+              <Button
+                data-testid="chat-choose-file-send"
+                disabled={chosenFile === null}
+                onClick={() => resolveFile(chosenFile)}
+              >
+                {t("chatPanel.send")}
+              </Button>
+            }
           />
         </FormLayout>
       </Modal>

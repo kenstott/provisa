@@ -13,8 +13,9 @@ import type { ViewerRequest } from "../components/nativeParams";
 import type { Paging, PagingKind } from "../types/admin";
 import { ORG_HEADER } from "../lib/authFetch";
 import { normalizeRole, type RawRole } from "../lib/roles";
-import { serverMessage, requestFailed } from "../i18n/serverMessage";
+import { serverMessage, requestFailed, type ServerMessageShape } from "../i18n/serverMessage";
 import type { MaskEntry } from "../lib/masks";
+import type { ResultRedirect } from "../types/resultRedirect";
 
 const API_BASE = import.meta.env.VITE_API_BASE || "";
 
@@ -142,6 +143,21 @@ export interface Org {
   created_at: string;
   // REQ-1043/REQ-1067: true when the org runs on a dedicated federation engine.
   isolated_engine: boolean;
+  // REQ-1066: the org's subscription tier, which tier-gated features read; null when none is set.
+  tier: OrgTier | null;
+}
+
+export type OrgTier = "free" | "standard" | "premium";
+export const ORG_TIERS: OrgTier[] = ["free", "standard", "premium"];
+
+/** Set an org's subscription tier (null clears it): a platform administrator's act (REQ-1066). */
+export async function setOrgTier(orgId: string, tier: OrgTier | null): Promise<void> {
+  const res = await fetch(`${API_BASE}/admin/orgs/${encodeURIComponent(orgId)}/tier`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tier }),
+  });
+  if (!res.ok) throw httpError("set org tier", res.status);
 }
 
 export async function fetchOrgs(): Promise<Org[]> {
@@ -1544,15 +1560,6 @@ export interface StatementWarning {
   message: string;
 }
 
-/** Where a result landed in the results store is, as /data/sql's redirect handle names it. */
-export interface ResultRedirect {
-  url: string;
-  rowCount: number;
-  /** Seconds until the stored result expires; null when the store keeps it. */
-  expiresIn: number | null;
-  contentType: string | null;
-}
-
 /** The server's redirect handle (``redirect_url``, ``row_count``, …) as the UI holds it. Every
  *  buffered data surface answers a redirected result with one (REQ-1194, REQ-1224). */
 export function toResultRedirect(handle: {
@@ -1583,6 +1590,21 @@ function timeTravelHeaders(travel: TimeTravel | undefined): Record<string, strin
   if (travel?.asOf) headers["X-Provisa-As-Of"] = travel.asOf;
   if (travel?.asRecorded) headers["X-Provisa-As-Recorded"] = travel.asRecorded;
   return headers;
+}
+
+/** What a refused statement says: in the reader's language by its code and params (serverErrors),
+ * else in the server's own words; never the body it came in. */
+async function refusal(resp: Response, op: string): Promise<string> {
+  const text = await resp.text();
+  let body: unknown = null;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    // Not JSON (a proxy's page, a bare message): its text is all there is to say.
+  }
+  return body !== null && typeof body === "object"
+    ? serverMessage(body as ServerMessageShape, requestFailed(op, resp.status))
+    : text || requestFailed(op, resp.status);
 }
 
 export async function runSql(
@@ -1633,8 +1655,7 @@ export async function runSql(
       ),
     });
     if (!resp.ok) {
-      const text = await resp.text();
-      return { columns: [], column_types: null, rows: [], error: text };
+      return { columns: [], column_types: null, rows: [], error: await refusal(resp, "runSql") };
     }
     const json = await resp.json();
     // A result landed in the results store comes back as a handle to it, not rows.
@@ -1722,7 +1743,7 @@ export async function explainSql(
     },
     body: JSON.stringify({ sql: sqlText, analyze }),
   });
-  if (!resp.ok) throw new Error(await resp.text());
+  if (!resp.ok) throw new Error(await refusal(resp, "explainSql"));
   return resp.json();
 }
 
@@ -1738,8 +1759,7 @@ export async function nlToSql(
       body: JSON.stringify({ question, strict }),
     });
     if (!resp.ok) {
-      const text = await resp.text();
-      return { sql: "", attempts: 0, error: text };
+      return { sql: "", attempts: 0, error: await refusal(resp, "nlToSql") };
     }
     const result = await resp.json();
     if (result.sql) {

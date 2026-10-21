@@ -6,7 +6,7 @@
 
 """E2E: pg_duckdb attaches csv + parquet IN PLACE inside a stock embedded PG, federated natively (REQ-901, REQ-902).
 
-No docker. Runs an embedded PG 16.2 from a private pginstall (tests/embedded_pg.py) with pg_duckdb
+No docker. Runs an embedded PG 16.11 from a private pginstall (tests/embedded_pg.py) with pg_duckdb
 v1.0.0 staged into it from the provisa-pg-ext wheel's bundle for this platform, the way the
 product's embedded tier stages it, then drives the
 REAL connectors — PgDuckdbCsvConnector + PgDuckdbParquetConnector — whose read_csv/read_parquet views

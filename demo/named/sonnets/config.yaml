@@ -112,7 +112,9 @@ tables:
 - source_id: vectors
   domain_id: sonnets
   schema: default
-  table: sonnet_lines
+  # The collection, by its name where it is loaded; queried by the name the demo gives it.
+  table: sonnet_lines${env:SONNETS_QDRANT_NS}
+  alias: sonnet_lines
   description: One point a line, its vector the embedding of the line's words; written by embed_lines
   columns:
   - {name: id, data_type: bigint, path: '@id', is_primary_key: true, description: The line's id, visible_to: [org_admin]}
@@ -128,7 +130,7 @@ tables:
   table: lines_like
   description: The lines nearest a phrase in meaning, nearest first, searched in Qdrant under its
     arguments
-  query_template: '{"collection": "sonnet_lines", "query": "@query", "using": "text", "model": "sentence-transformers/all-MiniLM-L6-v2", "limit": "@k"}'
+  query_template: '{"collection": "sonnet_lines${env:SONNETS_QDRANT_NS}", "query": "@query", "using": "text", "model": "sentence-transformers/all-MiniLM-L6-v2", "limit": "@k"}'
   columns:
   - {name: id, data_type: bigint, path: '@id', description: The line's id, visible_to: [org_admin]}
   - {name: score, data_type: double, path: '@score', description: 'How near the line is to the phrase, by cosine similarity: 1 the same', visible_to: [org_admin]}

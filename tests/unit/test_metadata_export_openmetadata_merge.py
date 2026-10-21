@@ -33,7 +33,7 @@ from provisa.api.metadata_export.openmetadata import (
 from provisa.core.models import (
     Column,
     Domain,
-    MetadataExportConfig,
+    MetadataExportTarget,
     ProvisaConfig,
     RLSRule,
     Role,
@@ -118,9 +118,9 @@ def snapshot():
     return build_snapshot(config, org_id="acme", dialect="postgres", contexts={})
 
 
-def _export_config() -> MetadataExportConfig:
-    return MetadataExportConfig(
-        enabled=True,
+def _export_config() -> MetadataExportTarget:
+    return MetadataExportTarget(
+        id="catalog",
         provider="openmetadata",
         endpoint="https://catalog.example/",
         timeout_seconds=5,
@@ -151,7 +151,7 @@ def _mock_transport(monkeypatch, live_response):
     puts: list[tuple[str, dict]] = []
     gets: list[str] = []
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         puts.append((url, json))
         body = {"id": "9c1d8e70-0000-0000-0000-0000000000aa", "fullyQualifiedName": TABLE_FQN}
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))

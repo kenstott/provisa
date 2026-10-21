@@ -108,7 +108,7 @@ tables:
     poll_interval: 2
     outputs:
     - type: kafka
-      topic: dataset-ready
+      topic: dataset-ready${env:PROVISIONING_KAFKA_NS}
       key_column: consumer
       bootstrap_servers: ${env:PROVISIONING_KAFKA_HOST:-127.0.0.1}:${env:PROVISIONING_KAFKA_PORT:-29192}
       role: org_admin
@@ -147,7 +147,7 @@ tables:
   live:
     strategy: kafka
     kafka:
-      topic: orders
+      topic: orders${env:PROVISIONING_KAFKA_NS}
   push_debounce_quiet: 1
   push_debounce_max_delay: 10
   enable_aggregates: true
@@ -166,7 +166,7 @@ tables:
   live:
     strategy: kafka
     kafka:
-      topic: prices
+      topic: prices${env:PROVISIONING_KAFKA_NS}
   columns:
   - {name: sku, data_type: varchar, is_primary_key: true, description: The product, visible_to: [org_admin, finance, data_science]}
   - {name: list_price, data_type: decimal, description: Its list price in USD, visible_to: [org_admin, finance, data_science]}
@@ -179,7 +179,7 @@ tables:
   live:
     strategy: kafka
     kafka:
-      topic: inventory
+      topic: inventory${env:PROVISIONING_KAFKA_NS}
   columns:
   - {name: sku, data_type: varchar, is_primary_key: true, description: The product, visible_to: [org_admin, finance, data_science]}
   - {name: on_hand, data_type: integer, description: Units on hand, visible_to: [org_admin, finance, data_science]}

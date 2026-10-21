@@ -39,6 +39,7 @@ orders.region ─╯
 | `source` | 绿色 | 基表的一个列 |
 | `derived` | 蓝色 | 由某个 SQL 表达式（函数、运算符、CTE）产出 |
 | `command` | 紫色 | 来自某个已注册命令的输出列 |
+| `native` | 橙色 | 数据源读取的原始字段，位于已注册表的列之下 |
 
 节点上另有的圆环：
 
@@ -52,6 +53,27 @@ orders.region ─╯
 每条边都携带产出目标列的原始 SQL 表达式，外加一份具名操作清单：SQL 函数（`sql_function`）、算术/逻辑运算符（`operator`）、已注册的命令（`command`）、裸列引用（`identity`）以及字面量（`constant`）。
 
 来自命令调用的边在 UI 中渲染为紫色虚线。
+
+### 已注册表之下
+
+拥有数据源注册权限的用户会在每个源列之下再看到一跳：数据源读取时的字段，放在一个代表其读取位置的框中。该框带有数据源的徽标和类型标签（与 Sources 页面显示的一致），以及按数据源类型给出的地址：
+
+| 数据源 | 地址 |
+| --- | --- |
+| OpenAPI | 操作（`GET /v2/customers`）、其固定参数和行的位置 |
+| Remote GraphQL | 根字段、其必需参数和行的位置 |
+| MongoDB、Cosmos DB | 数据库以及集合或容器 |
+| Elasticsearch、Qdrant | 索引或集合 |
+| CSV、Parquet、文件、日志 | 路径，以及读取多个文件的表的文件通配模式 |
+| Kafka | 主题 |
+| 代码数据源 | 函数 |
+| 其他任何数据源 | 原生的模式和表 |
+
+原始字段在列有字段路径时就是该路径，否则就是列自己的名称。从它到已注册列的边会标明重命名方式：`path`、`alias` 或 `naming`（命名约定）。已注册表的框说明它如何提供服务：`virtual`，在每条语句时读取；或 `replica`，附带其 TTL 和上次加载时间。凭据、密钥引用以及 URL 中的用户名、密码和 query 从不显示。没有数据源注册权限的用户只能看到从已注册表向上的血缘。
+
+### 链接
+
+当用户的权限能打开相应页面时，每个元素都会在其定义处打开。单击字段会打开它的表、视图或数据源；双击框会打开它的关系；单击命令的边会打开该命令。内置 SQL 函数没有页面，也没有链接。
 
 ## 联邦级图 {: #federation-wide-graph }
 
@@ -106,6 +128,26 @@ Content-Type: application/json
   "outputs": ["id", "embedding"]
 }
 ```
+
+对于拥有数据源注册权限的调用方，两个端点都会加上原生这一跳：类型为 `native` 的节点，以及一个以每个原生框的关系（`native:<domain>.<table>`）为键的 `natives` 对象：
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+副本的 `served` 为 `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`。对于其他调用方，`natives` 为空。
 
 当 SQL 无法解析时返回 HTTP 422。
 

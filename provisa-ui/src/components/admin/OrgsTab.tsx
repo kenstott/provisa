@@ -37,8 +37,10 @@ import {
   createInvite,
   revokeInvite,
   fetchOrgRoles,
+  ORG_TIERS,
+  setOrgTier,
 } from "../../api/admin";
-import type { Org, OrgMember, OrgInvite } from "../../api/admin";
+import type { Org, OrgMember, OrgInvite, OrgTier } from "../../api/admin";
 import { FilterInput } from "./FilterInput";
 import { inviteUrl } from "../../lib/authHost";
 import { ListRow } from "../list/ListTable";
@@ -116,6 +118,16 @@ export function OrgsTab() {
     const members = await fetchOrgMembers(oid);
     setOrgMembers((prev) => ({ ...prev, [oid]: members }));
     setAddMemberUserId("");
+  };
+
+  // REQ-1066: the tier is stored with the org and read by every tier-gated feature.
+  const handleSetTier = async (orgId: string, tier: OrgTier | null) => {
+    try {
+      await setOrgTier(orgId, tier);
+      setOrgs((prev) => prev.map((o) => (o.id === orgId ? { ...o, tier } : o)));
+    } catch (e) {
+      notifications.show({ color: "red", message: (e as Error).message });
+    }
   };
 
   const handleRemoveOrgMember = async (oid: string, userId: string) => {
@@ -250,9 +262,16 @@ export function OrgsTab() {
         columns={[
           { key: "id", label: t("orgsTab.colId"), sortValue: (o) => o.id },
           { key: "name", label: t("orgsTab.colName"), sortValue: (o) => o.name },
+          { key: "tier", label: t("orgsTab.colTier"), sortValue: (o) => o.tier ?? "" },
         ]}
-        headers={[{ col: "id" }, { col: "name" }, t("orgsTab.colMembers"), t("orgsTab.colActions")]}
-        colSpan={4}
+        headers={[
+          { col: "id" },
+          { col: "name" },
+          { col: "tier" },
+          t("orgsTab.colMembers"),
+          t("orgsTab.colActions"),
+        ]}
+        colSpan={5}
         rowKey={(org) => org.id}
         empty={t("orgsTab.empty")}
         page={{ index: orgSafePage - 1, size: PAGE_SIZE }}
@@ -263,6 +282,22 @@ export function OrgsTab() {
             <ListRow key={org.id}>
               <Table.Td>{org.id}</Table.Td>
               <Table.Td>{org.name}</Table.Td>
+              <Table.Td>
+                <Select
+                  size="xs"
+                  w={140}
+                  aria-label={t("orgsTab.tierFor", { name: org.name })}
+                  data-testid={`org-tier-${org.id}`}
+                  placeholder={t("orgsTab.tierNotSet")}
+                  clearable
+                  data={ORG_TIERS.map((tier) => ({
+                    value: tier,
+                    label: t(`orgsTab.tier_${tier}`),
+                  }))}
+                  value={org.tier}
+                  onChange={(v) => void handleSetTier(org.id, v as OrgTier | null)}
+                />
+              </Table.Td>
               <Table.Td>
                 <Button
                   variant="subtle"

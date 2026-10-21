@@ -80,6 +80,15 @@ def test_a_bare_path_is_local():
     assert str(_local_path("/data/orders.csv")) == "/data/orders.csv"
 
 
+def test_an_uploaded_or_downloaded_file_is_its_place_in_the_orgs_folder(data_dir):
+    """REQ-1997, REQ-2113: a source given its file by upload or download keeps the path
+    ``{files}/<source>/<name>``; a fork copies the file it names, not a path that is nowhere."""
+    from provisa.core.org_files import org_root
+
+    found = _local_path("{files}/supplies/supplies.parquet", "acme")
+    assert found == org_root("acme") / "files" / "supplies" / "supplies.parquet"
+
+
 def test_a_file_url_is_local():
     assert str(_local_path("file:///data/orders.csv")) == "/data/orders.csv"
 

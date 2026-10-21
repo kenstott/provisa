@@ -162,6 +162,12 @@ class RenameOrgBody(BaseModel):
     name: str
 
 
+class OrgTierBody(BaseModel):  # REQ-1066
+    """The org's subscription tier: one of the entitlement tiers, or null to clear it."""
+
+    tier: str | None
+
+
 class OrgPolicyBody(BaseModel):
     # REQ-1268/REQ-1269: join policy an org admin may edit after creation.
     email_rule: str | None = None
@@ -368,6 +374,7 @@ async def list_orgs(request: Request):  # REQ-042, REQ-059
                 orgs.c.created_by,
                 orgs.c.created_at,
                 orgs.c.isolated_engine,
+                orgs.c.tier,  # REQ-1066
             ).order_by(orgs.c.id)
         )
         rows = result.fetchall()
@@ -713,6 +720,24 @@ async def rename_org(org_id: str, body: RenameOrgBody, request: Request):  # REQ
     if row is None:
         raise ApiError(404, "orgs.not_found", "Org not found")
     return dict(row._mapping)
+
+
+@router.put("/{org_id}/tier")
+async def set_org_tier(org_id: str, body: OrgTierBody, request: Request):  # REQ-1066
+    """Set the org's subscription tier, which every tier-gated feature reads. A platform
+    administrator's act: an org does not entitle itself."""
+    _require_platform_admin(request)
+    from provisa.control_plane.entitlements import UnknownTierError, parse_tier
+    from provisa.core.org_tier import write_org_tier
+
+    if body.tier is not None:
+        try:
+            parse_tier(org_id, body.tier)
+        except UnknownTierError as exc:
+            raise ApiError(400, "orgs.unknown_tier", str(exc)) from exc
+    if not await write_org_tier(org_id, body.tier):
+        raise ApiError(404, "orgs.not_found", "Org not found")
+    return {"id": org_id, "tier": body.tier}
 
 
 @router.get("/{org_id}/settings")

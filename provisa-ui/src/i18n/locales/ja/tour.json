@@ -85,6 +85,11 @@
         "title": "73種類のソース、14カテゴリ",
         "description": "ひとつのピッカーに、カテゴリ別にすべての種類が並びます：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。名前や別名で検索するか、カテゴリのチップで絞り込めます。各種類にはロゴと到達方法のアイコンが付きます。⚡ はその場でライブ読み取り、コピーのアイコンは Provisa が更新済みのレプリカを読む場合です。<p>ひとつ選び、接続を入力して保存します。</p>"
       },
+      "stepBuildSource": {
+        "title": "ソースをその場で追加",
+        "description": "ソースはこうして追加します。ピッカーが一覧全体を表示して開き、<strong>Parquet File</strong> が選ばれ、ファイルのアドレス（provisa.dev で公開している <code>supplies.parquet</code>）が入力され、保存で作成されました。新しい <strong>supplies</strong> ソースは、そのファイルをその場で読み取ります。",
+        "acting": "ソースを追加しています"
+      },
       "step4": {
         "title": "すべてがテーブルになる",
         "description": "ソースが何であれ、Mongo のコレクション、Kafka のトピック、REST エンドポイント、グラフのいずれでも、Provisa はそれを2次元の<strong>テーブル</strong>に分解します。あらゆるソースを横断して同じ形でクエリできます。<p>📁 テーブルは<strong>ドメイン</strong>にグループ化され、それぞれをデータスチュワードが担当し、モデルが進化する中で品質を守ります。</p>"
@@ -98,36 +103,44 @@
         "description": "💬 普段お使いの言語やツール（SQL、GraphQL、Cypher、Polly を通じた普通の言葉、あるいは BI ツールやドライバー）で質問します。いずれも同じガバナンス済みモデルを読むため、どれを選んでも答えもルールも同じです。"
       },
       "step6": {
-        "title": "SQL（7つのサーフェスのうち1つ目）",
+        "title": "SQL（9つのサーフェスのうち1つ目）",
         "description": "SQL は SQL エクスプローラーで使えます。標準的な SQL が全ソースにまたがってフェデレーションされ、1つの文の中で Postgres と Mongo と CSV を結合できます。さらに、モデル自体のメタデータやあらゆる活動トレースも、ここではクエリ可能なテーブルなので、監査ログやリネージをライブデータに直接結合できます。<p>🔌 同じガバナンス済み SQL は、このエクスプローラー以外にも複数のワイヤープロトコル経由で動作します。お使いのツールがすでに話せるものを選んでください：</p><ul><li><strong>pgwire</strong>：Postgres 互換のクライアント全般（psql、DBeaver、Tableau、Power BI）がそのまま接続できます。</li><li><strong>JDBC</strong>：あらゆる Java/JVM アプリ、ETL パイプライン、JDBC 対応 BI ツールに組み込めます。</li><li><strong>Arrow Flight SQL</strong>：ADBC クライアント向けの列指向ストリーミングで、行の再エンコードは不要です。大規模な結果セット向けに設計されています。</li><li><strong>DuckDB · airport</strong>：DuckDB から Provisa を ATTACH し、その場でガバナンス済みフェデレーションをクエリできます。</li></ul>"
       },
       "step7": {
-        "title": "GraphQL（7つのサーフェスのうち2つ目）",
+        "title": "GraphQL（9つのサーフェスのうち2つ目）",
         "description": "◈ 同じクエリを GraphQL として表現すると：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>リレーションシップに対するグルーピングと集計：🎯 単一のエンドポイント、📖 自己記述的なスキーマ。</p><p>🔌 Apollo、Relay、urql など<strong>任意の GraphQL クライアント</strong>から呼び出せます。フェデレーションを有効にすれば、Provisa を<strong>Apollo スーパーグラフのサブグラフ</strong>として組み込めます。既存のグラフと並んで、フェデレーテッドモデルを合成できます。</p>"
       },
       "step8": {
-        "title": "Cypher（7つのサーフェスのうち3つ目）",
+        "title": "Cypher（9つのサーフェスのうち3つ目）",
         "description": "🕸️ Cypher でフェデレーテッドモデルをグラフとしてトラバースします：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ このトラバースは<strong>複数のソースをまたいで</strong>実行され、単一のグラフデータベースは不要です。</p><p>🔌 Neo4j Browser や Bloom など、どの<strong>Bolt</strong> クライアントでも、コードを変更せずに同じトラバースをワイヤー経由で実行できます。</p>"
       },
       "step9": {
-        "title": "gRPC（7つのサーフェスのうち4つ目）",
+        "title": "gRPC（9つのサーフェスのうち4つ目）",
         "description": "⚙️ 登録済みのエンティティはすべて gRPC サービスでもあります：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>任意の gRPC クライアントから呼び出せます。📐 強く型付けされ、🚀 高スループットです。</p>"
       },
       "step10": {
-        "title": "JSON:API（7つのサーフェスのうち5つ目）",
+        "title": "JSON:API（9つのサーフェスのうち5つ目）",
         "description": "🧩 仕様準拠の JSON:API サーフェス：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 ページングと 🔍 フィルタリングを標準サポート。</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST（7つのサーフェスのうち6つ目）",
+        "title": "OpenAPI / REST（9つのサーフェスのうち6つ目）",
         "description": "🌐 そして OpenAPI で記述されたシンプルな REST エンドポイント：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 完全に記述されているため、どの REST クライアントやコードジェネレーターからも利用できます。</p>"
       },
       "step12": {
-        "title": "MCP（7つのサーフェスのうち7つ目）",
-        "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群（カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡）を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>残るサーフェスはあと1つ。それが7つすべてをあなたの代わりに書いてくれるものです。→</p>"
+        "title": "MCP（9つのサーフェスのうち7つ目）",
+        "description": "🤖 7つ目のサーフェスは、エージェントが<strong>あなたのデータについて推論する</strong>ことを可能にします。これは同じガバナンス済みツール群（カタログの検索、テーブルの説明、SQL の実行、リレーションシップの追跡）を駆動し、それらを<em>連鎖</em>させることで、単一のクエリでは答えられない質問に答えます。すべての呼び出しは<strong>あなた</strong>のロールのガバナンスに従います。<p>🔌 同じ<strong>MCP サーバー</strong>は Claude Desktop、Claude Code、その他あらゆる MCP クライアントに接続でき、エージェントがガバナンスに沿ってあなたのモデルを探索・推論できます。</p><p>🔑 ご自身の LLM キーを使用します。この例のやり取りはサンプルです。</p><p>あと2つのサーフェスは、同じガバナンス下のデータをPythonから読み取ります。→</p>"
+      },
+      "stepPython": {
+        "title": "Python（9つのサーフェスのうち8つ目）",
+        "description": "🐍 Pythonタブは、あなたとしてサインインした状態でブラウザ内でPythonを実行します：<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>結果はpandasのDataFrameとして返ります。同じガバナンス付きパイプラインを通って読み取られるため、あなたのロールの行ルールとマスクもそのまま適用されます。</p><p>🔌 同じ<strong>provisa-client</strong>パッケージはどのデスクトップPythonにもpipでインストールできるため、ここで書いたスクリプトはご自身の環境でもそのまま動きます。</p>"
+      },
+      "stepNotebook": {
+        "title": "ノートブック（9つのサーフェスのうち9つ目）",
+        "description": "📓 ノートブックタブはJupyterLite、つまりブラウザ内で動くJupyterノートブックです。最初のセルでサインインし、次のセルで同じクエリをDataFrameとして読み取り、グラフにしたり他のデータと結合したりできます。<p>⬇️ ノートブックをダウンロードすれば、どのデスクトップJupyterでも開けます。そこでも同じセルがここと同じようにProvisaから読み取ります。</p><p>残るサーフェスはあと1つ。クエリをあなたの代わりに書いてくれるものです。→</p>"
       },
       "step13": {
-        "title": "質問するだけ：7つすべてを書いてくれるサーフェス",
-        "description": "💬 <em>「種ごとのペット数を表示して」</em><p><strong>7つのどれも学ぶ必要はありません。</strong>普通の英語で質問すれば、Provisa はあなたの質問をすべてのクエリ言語に同時にコンパイルします。以下の各パネルは、その1文を SQL、GraphQL、Cypher、gRPC、JSON:API、REST として表したものです。</p><p>お使いのツールがすでに話せるサーフェスを使うか、それらすべてをスキップして質問するだけでも構いません。</p><p>🔑 ライブの自然言語クエリはご自身の LLM キーを使用します。この例はサンプルです。</p><p>✅ 1つのモデル、<strong>8つのサーフェス</strong>：クエリ用の7つと、それらを書いてくれる1つ。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "質問するだけ：クエリを書いてくれるサーフェス",
+        "description": "💬 <em>「種ごとのペット数を表示して」</em><p><strong>これらのクエリ言語を覚える必要はありません。</strong>普段の言葉で質問すれば、Provisaがその質問を7つの言語すべてに一度にコンパイルします。下の各パネルは、その一文をSQL、GraphQL、Cypher、gRPC、JSON:API、RESTにしたものです。</p><p>ここからPythonやノートブックを直接開くことはできませんが、Pollyに頼めばいつでもクエリをどちらかへ移せます。</p><p>🔑 自然言語によるライブクエリにはご自身のLLMキーを使います。これは用意された例です。</p><p>✅ <strong>9つのサーフェス</strong>すべての背後に1つのモデル。そして普段の言葉がクエリを書いてくれます。</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>ノートブック</span></div>"
       },
       "step14": {
         "title": "これが5分でわかるコアです",
@@ -720,6 +733,26 @@
       "profilingDuplicates": {
         "title": "2回書かれた行",
         "description": "モデルは customer_id をキーとしていますが、エクスポートには制約がありませんでした。150 人の顧客が全項目同じまま2回入っています。プロファイルは重複行と、複数の行が持つキー値を数えます。"
+      },
+      "profilingDrift": {
+        "title": "前回の実行から何が変わったか",
+        "description": "セットアップはプロファイラーを2回実行し、その間に CRM の次の同期が米国の郵便番号をすべて ZIP+4 で書き込みました。ドリフトテーブルは各指標を前回の実行と比べます。postal_code の変更で動いた指標はドリフトとしてフラグが立ち、同期が触れなかった列には立ちません。"
+      },
+      "profilingOriginal": {
+        "title": "実際の顧客",
+        "description": "CRM が保持しているままの顧客10人。次に、プロファイルから生成した環境で同じステートメントを実行します。"
+      },
+      "profilingToSynthetic": {
+        "title": "synthetic に切り替える",
+        "description": "次に、切り替えが <strong>synthetic</strong>（Test (synthetic) 環境）に移ります。"
+      },
+      "profilingSynthetic": {
+        "title": "プロファイルから生成",
+        "description": "synthetic での同じステートメント: すべての行は顧客のプロファイルから生成され、列、値の形、ばらつきは同じで、実在の顧客は一人も含まれません。プロファイルがあればテストデータを生成できます。"
+      },
+      "profilingToProd": {
+        "title": "本番に戻る",
+        "description": "次に、スイッチャーが prod に戻ります。"
       },
       "profilingRest": {
         "title": "REST での同じ答え",
@@ -1425,13 +1458,9 @@
         "title": "関数の型から得た列",
         "description": "churn_risk は、docstring に @table とあるのでテーブルです。列は、返す RiskRow のフィールドです。パラメータは関数の引数で、顧客と、モデルの学習に使った各特徴量です。"
       },
-      "churnprodRefused": {
-        "title": "顧客を指定しない読み取りは拒否",
-        "description": "関数は customer_id に既定値を与えていないため、それを省いた読み取りは、コードが実行される前に拒否されます。拒否メッセージは、足りないパラメータをすべて挙げます。"
-      },
       "churnprodJoin": {
         "title": "モデルにデータを渡す join",
-        "description": "このリレーションシップは顧客の特徴量を churn_risk に結び、渡す特徴量を指定します。これを使った join は、あなたが見てよい特徴量を読み、顧客ごとにモデルを一度呼び出し、スコアを結合して返します。"
+        "description": "このリレーションシップは各顧客をモデルのスコアに結合します。そのため、顧客に対する結合はすべての顧客をスコアリングします。"
       },
       "churnprodAtRisk": {
         "title": "解約リスクの高い顧客の一覧",
@@ -1460,6 +1489,146 @@
       "churnprodRecap": {
         "title": "ここまでの内容",
         "description": "データサイエンティストのモデルが、専用のサービスを動かさずに本番に入りました。パッケージは固定され、一度だけインストールされます。join が関数にデータを渡し、関数はテーブルとして読めます。返す内容は、どのテーブルにもあるマスキングと行ルールが管理します。SQL、GraphQL、そのほかのどの経路からも同じように読めます。"
+      },
+      "worldcupIntro": {
+        "title": "4つの公開ソース、1つのワールドカップ",
+        "description": "ワールドカップを制したのは誰で、どの連盟の国でしょうか。答えは公開データに散らばっています。Wikipediaの決勝の一覧と各連盟の記事、そしてワールドカップの全試合と国際試合の全ゴールを収めたKaggleの2つのデータセットです。ソースごとに国名の書き方が違います。WikipediaはWest Germany、KaggleはGermany FR、連盟の加盟国表はGermanyと書きます。このツアーではデータを取り込み、短いPython関数で国名をそろえ、その結果を1つのガバナンスされたグラフとして問い合わせます。"
+      },
+      "worldcupWikipedia": {
+        "title": "Wikipedia、数分で登録",
+        "description": "これはWikipediaソースです。そのクロールは7ページを読みます。List of FIFA World Cup finalsと6つの連盟の記事です。各ページのデータ表はページ名とキャプションで名付けられたテーブルになり、決勝は<code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>です。公開ソースも、社内のデータベースと同じロール、権限、マスクでガバナンスされます。更新間隔を設定すれば、これらのソースは自動で最新に保たれます。このデモは固定のスナップショットを読むため、どの訪問者にも同じ答えが表示されます。"
+      },
+      "worldcupFinals": {
+        "title": "Wikipediaが挙げる決勝",
+        "description": "1930年から2026年までの全決勝を、優勝国と準優勝国の当時の名前とともに収めています。Wikipediaは1954年、1974年、1990年の優勝をWest Germany、2014年の優勝をGermanyとしています。"
+      },
+      "worldcupKaggle": {
+        "title": "Kaggleのデータセットはテーブルとして届く",
+        "description": "これはKaggleソースです。FIFA World Cupデータセットには、1930年から2014年までの全大会、全試合、全選手の出場記録があります。各ファイルがテーブルとして届きます。2つ目のKaggleソースには1916年以降の国際試合の全ゴールがあります。Wikipediaのテーブルと同じく公開データで、数分で登録でき、社内のデータベースと同じようにガバナンスされます。"
+      },
+      "worldcupMatches": {
+        "title": "当時の名前で記録された試合",
+        "description": "Kaggleは西ドイツをGermany FR、東ドイツをGerman DRと書きます。一部の名前には、<code>rn\"&gt;Republic of Ireland</code>のようにファイル由来のマークアップの残りが付いています。ファイルの空行は、データセットのとおり値のない行として残しています。"
+      },
+      "worldcupDisagree": {
+        "title": "国名がそろわない",
+        "description": "Wikipediaの書く名前で数えると、Germanyは1回、West Germanyは3回優勝しており、まるで2つの国のようです。Kaggleは同じチームをGermany FRと書くため、ソース間で名前で結合してもこれらの優勝は漏れます。"
+      },
+      "worldcupFunction": {
+        "title": "関数がそのままテーブル",
+        "description": "country_aliasはPythonソースで、この関数こそ、ソースをまたぐすべてのリレーションシップが経由するテーブルです。各ソースが書くチーム名を受け取り、組織のボールトにあるキーでLLMに、その名前がどのFIFA加盟国を指すかを尋ね、加盟国の名前とFIFAコードを返します。更新間隔ごとに再実行されるため、新しい名前も現れた時点で照合されます。<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "すべての名前を照合し確認",
+        "description": "これは加盟国の名前と異なる名前の一覧です。Germany FRとWest GermanyはGermany、ZaireはDR Congo、Soviet UnionはRussiaです。このデモで固定する前にすべての照合を確認し、237件のうち27件を修正しました。成績がどの加盟国にも引き継がれなかったチームは自分の名前のままです。East GermanyはEast Germanyのままなので、1974年のWest Germany戦はGermany対Germanyにはなりません。"
+      },
+      "worldcupJunction": {
+        "title": "関数を経由するリレーションシップ",
+        "description": "WONは、連盟の加盟国をcountry_aliasを経由して、その国が優勝した決勝と結びます。加盟国のFIFAコードがその国を指すすべての名前を見つけ、各名前が決勝を見つけます。RUNNER_UP、PLAYED_HOME、PLAYED_AWAY、SCOREDも同じように結びます。"
+      },
+      "worldcupGraph": {
+        "title": "すべての優勝を1つのグラフに",
+        "description": "各加盟国は、どの名前で優勝したかにかかわらず、優勝した決勝と結ばれています。Germanyのノードには1954年、1974年、1990年、2014年が集まります。"
+      },
+      "worldcupByConfederation": {
+        "title": "連盟ごとにグループ化",
+        "description": "連盟ごとにグループ化すると、UEFAの加盟国が13回、CONMEBOLの加盟国が10回優勝しています。ほかの連盟は決勝で勝ったことがありません。"
+      },
+      "worldcupSql": {
+        "title": "SQLでも同じモデル",
+        "description": "SQLでも同じ結合で、country_aliasを経由して各加盟国の優勝回数を数えます。Brazilが5回で首位、GermanyとItalyが4回ずつです。"
+      },
+      "worldcupGraphql": {
+        "title": "GraphQLでも",
+        "description": "GraphQLでは各決勝にcountry_aliasを経由する<code>winner</code>フィールドがあり、1954年、1974年、1990年はWest Germanyの横に、それが指す加盟国Germany(GER)が表示されます。"
+      },
+      "worldcupRecap": {
+        "title": "まとめ",
+        "description": "WikipediaとKaggleの公開データを数分で取り込み、社内のデータベースと同じようにガバナンスし、約10行のPythonで国名をそろえ、1つのグラフとして問い合わせました。関数の照合は確認済みなので、グラフはすべての優勝を一度ずつ、正しい加盟国に数えます。"
+      },
+      "cloudpolicyScenario": {
+        "title": "このデモについて",
+        "description": "あなたのセキュリティポリシーでは、仮想マシンに接続されたすべてのディスクが顧客管理キーを使うことになっています。あなたはセキュリティの責任者として、すでに記録されている内容から Azure、AWS、Google Cloud にわたってこれを確認します。最初のソースはクラウドインベントリです。3 つのクラウドのすべてのマシンとディスクを、各ディスクを暗号化しているキーとともに一覧にします。"
+      },
+      "cloudpolicyIncidents": {
+        "title": "インシデント",
+        "description": "2 つ目のソースはセキュリティチームの ServiceNow インシデントです。各インシデントは対象のディスクを構成アイテムとして示し、登録されたポリシーのセクションを引用します。例外は Policy exception カテゴリのインシデントです。"
+      },
+      "cloudpolicyReader": {
+        "title": "コードが読むポリシー",
+        "description": "ポリシー自体は Web ページです。この Python パッケージはそのページと一緒に配布され、コントロールごとに 1 行として読み取ります。その関数はテーブルなので、ポリシーはモデルのほかの部分とつながります。"
+      },
+      "cloudpolicyPolicy": {
+        "title": "行としてのポリシー",
+        "description": "ポリシーのすべてのコントロールを、見出し、条項、発効日とともに HTML から読み取ったものです。セクション 4.2 がレビュー対象のディスク暗号化コントロールです。"
+      },
+      "cloudpolicySearch": {
+        "title": "意味で検索するポリシー",
+        "description": "各条項はデモの準備時に一度だけ埋め込まれました。意味による検索は、あなたの言葉が条項の言葉と違っていても、ディスク暗号化のコントロールを見つけます。"
+      },
+      "cloudpolicyModel": {
+        "title": "3 つのクラウドにひとつのモデル",
+        "description": "各ディスクは接続先のマシンを示します。このリレーションシップは Azure、AWS、Google Cloud のディスクとマシンを同じ方法で結びます。"
+      },
+      "cloudpolicyCites": {
+        "title": "条項に結びついたインシデント",
+        "description": "各インシデントはポリシーのセクションを引用します。このリレーションシップは引用先の条項とインシデントを結ぶので、誤ったセクションで登録されたインシデントが目に見えます。"
+      },
+      "cloudpolicyViolations": {
+        "title": "ビューとしてのポリシー",
+        "description": "セクション 4.2 はビューとして書かれています。クラウドがキーを管理している接続済みディスクを、ディスクがあるマシンと並べて一覧にします。"
+      },
+      "cloudpolicyReview": {
+        "title": "毎日のレビュー",
+        "description": "毎日のレビューは、ポリシーのルールで接続済みディスクを分類します。顧客管理キーのないディスクでも、有効な例外の対象になることがあります。そうでなければ、そのインシデントは期限内か期限切れか、ディスクが準拠しないまま閉じられたか、あるいは一度も登録されていないかのどれかです。"
+      },
+      "cloudpolicyTrigger": {
+        "title": "毎日のトリガー",
+        "description": "毎朝、スケジュールされたトリガーがレビューを実行し、その日の行をレビュー履歴に書き込みます。どの文とも同じガバナンス付きパイプラインを通り、そのロールの書き込み権限で書き込みます。"
+      },
+      "cloudpolicyTrend": {
+        "title": "14 日間の履歴",
+        "description": "トリガーが残す履歴は、違反を日ごとに示します。インシデントが修正されたディスクは外れ、新しい違反は発生した日に現れます。"
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "コントロールに違反しているものを Polly に尋ねる",
+        "description": "Polly はあなたと同じガバナンス付きモデルを読みます。顧客管理キーのないディスクと、それを求めるセクションを示します。"
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "まだ有効な例外",
+        "description": "セクション 4.3 により、例外の有効期間は 90 日です。Polly はまだ例外の対象になっているディスクを見つけます。"
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "誤ったセクションのインシデント",
+        "description": "一部のインシデントは対象のコントロールとは別のセクションを引用しており、1 件はポリシーが廃止したセクションを引用しています。"
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "何もチェックしていないコントロール",
+        "description": "ポリシーには、どのチェックも適用していないコントロールがあります。Polly はポリシーとチームが実行するチェックを比較し、steward が追加するビューの草案を作れます。"
+      },
+      "cloudpolicyAuditor": {
+        "title": "auditor として",
+        "description": "auditor はすべてのクラウドのすべてのアカウントを読みます。"
+      },
+      "cloudpolicyOpen": {
+        "title": "レビューが指摘するすべて",
+        "description": "レビューが指摘するすべてのディスクを、チームを問わず示します。"
+      },
+      "cloudpolicyAppTeam": {
+        "title": "決済チームとして",
+        "description": "決済チームは自分たちのリソースとインシデントだけを読みます。"
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "自分たちの行だけ",
+        "description": "同じ文が決済チームのディスクだけを返します。行ルールはインベントリとインシデントにあり、その上に作られたすべてのビューがそれを適用します。"
+      },
+      "cloudpolicyDashboard": {
+        "title": "コンプライアンスダッシュボード",
+        "description": "Superset は Provisa の Postgres プロトコルで同じビューを読みます。これがコントロールごとの違反を示すコンプライアンスダッシュボードです。"
+      },
+      "cloudpolicyRecap": {
+        "title": "ここまでの内容",
+        "description": "すでに記録されている内容から、3 つのクラウドにわたるひとつのポリシーをレビューしました。ポリシーはテーブルで、コードがそのページから読み取り、各インシデントは引用する条項と結びつきます。毎日のトリガーが履歴を残し、各ロールは SQL でも Polly でも Superset でも、ルールが許すものだけを読みます。"
       },
       "bankingScenario": {
         "title": "日次締めレポート、元帳はそのまま",
@@ -1644,6 +1813,14 @@
       "churnprod": {
         "title": "本番環境での解約リスク",
         "summary": "解約デモの scikit-learn モデルを本番で運用します。Python パッケージがソースになり、その関数は join の中ですべての顧客をスコアリングするテーブルになります。返す行にはマスキングと行ルールが適用されます。"
+      },
+      "worldcup": {
+        "title": "World Cup、1つのグラフ",
+        "summary": "WikipediaとKaggleのワールドカップのデータは国名が一致しません。短いPython関数がLLMで各名前を照合し、公開ソースが1つのガバナンスされたグラフになります。"
+      },
+      "cloudpolicy": {
+        "title": "クラウドポリシーのレビュー",
+        "summary": "Azure、AWS、Google Cloud にまたがるセキュリティポリシーのレビュー。クラウドインベントリ、ServiceNow のインシデント、そしてコードが Web ページから読み取るポリシー自体がひとつのモデルになり、毎日のトリガーがレビューの履歴を残します。"
       },
       "banking": {
         "title": "元帳をコピーしない日次締めレポート",

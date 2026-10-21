@@ -122,6 +122,7 @@ sources = Table(
     Column("off_peak_tz", Text, nullable=False, server_default="UTC"),  # REQ-1141
     Column("max_live_concurrency", Integer),  # REQ-1909: NULL = no cap
     Column("sentinel_path", Text),  # REQ-1148
+    Column("download_from", Text),  # REQ-2113
     Column("freshness_gate", Boolean, nullable=False, server_default=false()),  # REQ-860
     Column("gql_naming_convention", Text),
     Column("path", Text),
@@ -629,13 +630,15 @@ catalog_bindings = Table(
     "catalog_bindings",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    Column("provider", Text, nullable=False),
+    # REQ-2118: the export target (its id in the org's metadata_export.targets), not the provider:
+    # two targets of one provider keep their bindings apart.
+    Column("target", Text, nullable=False),
     Column("semantic_uri", Text, nullable=False),
     Column("vendor_ref", Text, nullable=False),
     Column("physical_key", Text, nullable=False),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column("tenant_id", Uuid),
-    UniqueConstraint("provider", "semantic_uri"),
+    UniqueConstraint("target", "semantic_uri"),
 )
 
 # REQ-1387: business glossary. Terms are the normalized vocabulary derived from physical
@@ -1783,6 +1786,70 @@ preserved_snapshots = Table(
 # REQ-1303/REQ-1308: the org's administrative trail — grants, revocations, offboardings and role
 # changes performed against THIS org, including a platform_admin's intervention. Distinct from
 # query_audit_log, which records data access. Mirrors the schema.sql DDL of the same name.
+# REQ-2105: what each code source's calls to Provisa's LLM service used and cost, one row a call;
+# a source's monthly cap is read against the sum of its month's rows.
+code_source_llm_usage = Table(
+    "code_source_llm_usage",
+    metadata,
+    Column("id", BigInteger(), primary_key=True, autoincrement=True),
+    Column("source_id", Text, nullable=False),
+    Column("month", Text, nullable=False),  # YYYY-MM, UTC
+    Column("model", Text, nullable=False),
+    Column("input_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("output_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("cache_read_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("cache_write_tokens", BigInteger(), nullable=False, server_default="0"),
+    Column("cost_usd", Float, nullable=True),  # None: the model has no polly.model_prices entry
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+)
+
+
+# REQ-2098: a code source's image builds: each one's state, what it made (a pushed image, or an
+# archive kept on the node that built it), and why it failed.
+code_source_builds = Table(
+    "code_source_builds",
+    metadata,
+    Column("id", Text, primary_key=True),
+    Column("source_id", Text, nullable=False),
+    Column("code_hash", Text, nullable=False),
+    Column("arch", Text, nullable=False),  # amd64 | arm64
+    Column("registry_id", Text, nullable=True),  # pushed there; None: downloaded
+    Column("status", Text, nullable=False),  # building | done | failed
+    Column("image_ref", Text, nullable=True),
+    Column("digest", Text, nullable=True),
+    Column("archive_path", Text, nullable=True),
+    Column("node", Text, nullable=True),  # the node that holds the archive
+    Column("error", Text, nullable=True),
+    Column("started_by", Text, nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+)
+
+
+# REQ-2106: a code source's own cache, shared by every worker of it in every process; a value is
+# JSON, gone at expires_at (None: kept until deleted or replaced).
+code_source_cache = Table(
+    "code_source_cache",
+    metadata,
+    Column("source_id", Text, primary_key=True),
+    Column("key", Text, primary_key=True),
+    Column("value", Text, nullable=False),
+    Column("expires_at", DateTime(timezone=True), nullable=True),
+)
+
+# REQ-2106: a code source's own vector collection, which its code builds and searches; never a
+# governed table's data. ``vector`` is the embedding as a JSON array of floats.
+code_source_vectors = Table(
+    "code_source_vectors",
+    metadata,
+    Column("source_id", Text, primary_key=True),
+    Column("item_id", Text, primary_key=True),
+    Column("vector", Text, nullable=False),
+    Column("text", Text, nullable=True),
+    Column("item_metadata", Text, nullable=False, server_default="{}"),
+)
+
+
 admin_audit_log = Table(
     "admin_audit_log",
     metadata,

@@ -176,7 +176,9 @@ dependencies = [
     # (x86_64 + arm64) and win_amd64 — no linux aarch64. The container tier's arm64 image is built
     # there and does not use the embedded plane (it runs a real PostgreSQL), so it must resolve;
     # `provisa run` on linux/aarch64 aborts with the explanation instead (cli._require_embedded_pg).
-    "pgserver; sys_platform != 'linux' or platform_machine != 'aarch64'",
+    # pixeltable-pgserver: the maintained pgserver fork, PostgreSQL 16.11 (pgserver 0.1.4, last
+    # released 2024, ships 16.2, whose backend lacks a symbol pg_duckdb v1.1 needs; REQ-901).
+    "pixeltable-pgserver==0.5.1; sys_platform != 'linux' or platform_machine != 'aarch64'",
     "anyio>=4.14.2",
     # REQ-2071: the Data Science area's in-browser Python (Pyodide, its packages, the
     # provisa-client wheel), served by ui_server at /pyodide. A package of its own only because
@@ -250,7 +252,7 @@ kms-all = ["hvac", "azure-keyvault-keys", "google-cloud-kms"]
 dev = [
     # REQ-1873: the bundled extension binaries the pg-ext install command stages; its tests
     # install them into real Postgres containers.
-    "provisa-pg-ext==0.1.4",
+    "provisa-pg-ext==0.2.0",
     "pytest",
     "pytest-asyncio",
     "pytest-timeout",  # scripts/ci/run_lane.py bounds every test, so a hang fails by name
@@ -346,7 +348,7 @@ testpaths = ["tests", "tests/steps"]
 # cluster are likewise their own lanes (manual/live-minikube). scripts/test-all
 # runs every lane and combines coverage. These are documented process-isolation
 # lanes, not silent skips.
-addopts = "-m 'not packaging and not cluster and not isolated' --ignore=tests/e2e"
+addopts = "-m 'not packaging and not cluster and not isolated and not demo_walk' --ignore=tests/e2e"
 python_files = ["test_*.py", "*_test.py", "steps_*.py"]
 asyncio_mode = "auto"
 log_level = "DEBUG"
@@ -403,10 +405,12 @@ markers = [
     "requires_marquez: requires the Marquez OpenLineage server (docker compose up marquez)",
     "requires_openmetadata: requires the OpenMetadata server (docker compose up openmetadata)",
     "requires_atlas: requires the Apache Atlas server (docker compose up atlas)",
+    "requires_datahub: requires the DataHub GMS server (docker compose up datahub-gms)",
     "requires_pgbouncer: requires PgBouncer service (docker compose up pgbouncer)",
     "requires_provisa_server: requires running Provisa server at localhost:8000",
     "packaging: installer/packaging flow; validated manually + by unit tests, deselected by default",
     "cluster: helm/minikube deployment test; own run lane (pytest -m cluster) against a live minikube, deselected by default",
+    "demo_walk: walks a published demo's bundle as a sandbox visitor, one demo per run; its own lane (scripts/ci/run_lane.py demo_walk), run by demo-bundles.yml on the bundle it built, deselected by default",
     "isolated: needs its own pytest process (shared module-singleton state or a non-restartable JVM); own lane in scripts/test-all, deselected by default",
     "group_sources: tests/integration split — federated source connectors (auto-assigned, see tests/integration/conftest.py)",
     "group_engines: tests/integration split — federation/native query engines (auto-assigned, see tests/integration/conftest.py)",

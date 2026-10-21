@@ -466,6 +466,8 @@ def _data_product_proposals(snapshot: MetadataSnapshot) -> list[AspectProposal]:
                     "customProperties": {
                         "provisaDomain": product.domain_id,
                         "provisaUri": product.semantic_uri,  # REQ-1385
+                        # REQ-2118: every ODPS field, under its ODPS name.
+                        **{f"odps.{k}": v for k, v in product.odps_fields().items()},
                     },
                     "externalUrl": product.semantic_uri,
                     "assets": [

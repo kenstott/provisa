@@ -68,7 +68,16 @@ class FakeRunner:
 
 
 def _shared(runner: FakeRunner):
-    return ds.Shared(runner, "provisa-demo-stores-t", "/shared.yml", {"DEMO_BUNDLES_DIR": "/b"})
+    return ds.Shared(
+        runner,
+        "provisa-demo-stores-t",
+        "/shared.yml",
+        {
+            "DEMO_BUNDLES_DIR": "/b",
+            "DEMO_STORES_QDRANT_KEY": "k",
+            "DEMO_STORES_KAFKA_PORT": "29092",
+        },
+    )
 
 
 def _pg_store(**labels):
@@ -101,7 +110,7 @@ def test_a_demo_name_that_cannot_be_part_of_a_store_name_is_refused():
         ds.namespace("Web-Logs", "1")
 
 
-def test_postgres_mongo_and_elasticsearch_stores_are_shared_and_the_rest_are_the_demos_own():
+def test_postgres_mongo_elasticsearch_qdrant_and_kafka_stores_are_shared_and_the_rest_are_the_demos_own():
     config = {
         "services": {
             "postgres": {"image": "postgres:16", "labels": _pg_store().labels},
@@ -117,19 +126,24 @@ def test_postgres_mongo_and_elasticsearch_stores_are_shared_and_the_rest_are_the
                 "image": "neo4j:5.19-community",
                 "labels": {"com.provisa.demo.role": "graph"},
             },
+            "qdrant": {
+                "image": "qdrant/qdrant:v1.9.0",
+                "labels": {"com.provisa.demo.role": "vector", "com.provisa.demo.ns_env": "Q_NS"},
+            },
             "kafka": {
                 "image": "confluentinc/cp-kafka:7.6.0",
-                "labels": {"com.provisa.demo.role": "stream"},
+                "labels": {"com.provisa.demo.role": "stream", "com.provisa.demo.ns_env": "K_NS"},
             },
         }
     }
     kinds = {s.service: s.kind for s in ds.stores_of(config)}
     assert kinds == {
         "elasticsearch": "elasticsearch",
-        "kafka": None,
+        "kafka": "kafka",
         "mongodb": "mongo",
         "neo4j": None,
         "postgres": "postgres",
+        "qdrant": "qdrant",
     }
 
 
@@ -337,10 +351,101 @@ def test_dropping_a_version_drops_its_indices_by_their_suffix():
     assert any("DELETE" in line and f"/*{SUFFIX}?" in line for line in runner.lines())
 
 
+# -- Qdrant ----------------------------------------------------------------------------------------
+
+
+def test_a_demo_versions_qdrant_token_reads_its_own_collections_alone_signed_with_the_nodes_key():
+    import base64
+    import hashlib
+    import hmac
+
+    token = ds.qdrant_token("node-key", ["sonnet_lines_sonnets_00000000"])
+    header, body, signature = token.split(".")
+
+    def _decoded(part: str) -> dict:
+        return json.loads(base64.urlsafe_b64decode(part + "=" * (-len(part) % 4)))
+
+    assert _decoded(header) == {"alg": "HS256", "typ": "JWT"}
+    assert _decoded(body) == {
+        "access": [{"collection": "sonnet_lines_sonnets_00000000", "access": "r"}]
+    }
+    expected = hmac.new(b"node-key", f"{header}.{body}".encode(), hashlib.sha256).digest()
+    assert base64.urlsafe_b64decode(signature + "=" * (-len(signature) % 4)) == expected
+
+
+def _qdrant_bundle(tmp_path: Path) -> Path:
+    bundle = tmp_path / "sonnets" / "v1"
+    (bundle / "dump" / "qdrant").mkdir(parents=True)
+    (bundle / "dump" / "qdrant" / "sonnet_lines.snapshot").write_bytes(b"snapshot")
+    return bundle
+
+
+_QDRANT = ds.Store("qdrant", "qdrant", {"com.provisa.demo.ns_env": "SONNETS_QDRANT_NS"}, {})
+
+
+def test_each_snapshot_recovers_as_its_namespaced_collection(tmp_path):
+    bundle = _qdrant_bundle(tmp_path)
+    suffix = ds.namespace("sonnets", "v1")
+    runner = FakeRunner({"port qdrant 6333": "127.0.0.1:46333", "%{http_code}": "404"})
+    assert ds.qdrant_load(_shared(runner), bundle, _QDRANT, suffix, "k") == [
+        f"sonnet_lines{suffix}"
+    ]
+    upload = next(line for line in runner.lines() if "snapshots/upload" in line)
+    assert "-H api-key: k" in upload
+    assert f"snapshot=@{bundle / 'dump' / 'qdrant' / 'sonnet_lines.snapshot'}" in upload
+    assert f"http://127.0.0.1:46333/collections/sonnet_lines{suffix}/snapshots/upload" in upload
+
+
+def test_a_recovered_collection_is_not_recovered_again(tmp_path):
+    runner = FakeRunner({"port qdrant 6333": "127.0.0.1:46333", "%{http_code}": "200"})
+    ds.qdrant_load(_shared(runner), _qdrant_bundle(tmp_path), _QDRANT, SUFFIX, "k")
+    assert not any("upload" in line for line in runner.lines())
+
+
+def test_dropping_a_version_drops_its_collections_and_no_other():
+    other = "sonnet_lines_sonnets_ffffffff"
+    listed = json.dumps(
+        {"result": {"collections": [{"name": f"sonnet_lines{SUFFIX}"}, {"name": other}]}}
+    )
+    runner = FakeRunner(
+        {"port qdrant 6333": "127.0.0.1:46333", "/collections/": "", "/collections": listed}
+    )
+    assert ds.qdrant_drop(_shared(runner), SUFFIX, "k") == [f"sonnet_lines{SUFFIX}"]
+    deletes = [line for line in runner.lines() if "-X DELETE" in line]
+    assert len(deletes) == 1 and deletes[0].endswith(f"/collections/sonnet_lines{SUFFIX}")
+
+
+def test_the_nodes_qdrant_key_is_made_once_and_kept_private(tmp_path):
+    key = ds.qdrant_key(tmp_path)
+    assert len(key) == 64 and ds.qdrant_key(tmp_path) == key
+    assert (tmp_path / ".demo-stores" / "qdrant.key").stat().st_mode & 0o077 == 0
+
+
+# -- Kafka -----------------------------------------------------------------------------------------
+
+
+def test_dropping_a_version_deletes_its_topics_by_their_suffix():
+    runner = FakeRunner()
+    ds.kafka_drop(_shared(runner), SUFFIX)
+    (line,) = runner.lines()
+    assert (
+        "exec -T kafka kafka-topics --bootstrap-server localhost:9092 --delete --if-exists" in line
+    )
+    assert line.endswith(f"--topic .*{SUFFIX}")
+
+
+def test_the_shared_kafka_is_reached_at_its_one_port_by_name_or_on_the_loopback():
+    runner = FakeRunner({"ps -q kafka": "kcid", "{{.Name}}": "/provisa-demo-stores-t-kafka-1"})
+    shared = _shared(runner)
+    assert shared.address("kafka", "") == ("127.0.0.1", "29092")
+    assert shared.address("kafka", "compose_default") == ("provisa-demo-stores-t-kafka-1", "29092")
+
+
 # -- a demo version ---------------------------------------------------------------------------------
 
 
 def _demo(monkeypatch, tmp_path, runner, config):
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
     monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
     monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
     monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
@@ -426,6 +531,7 @@ def test_an_own_store_that_never_turns_healthy_has_its_volumes_recreated_once(
 def test_dropping_a_version_drops_its_data_from_the_shared_stores_running_and_its_own_services(
     monkeypatch, tmp_path
 ):
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
     monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
     monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
     monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
@@ -436,3 +542,293 @@ def test_dropping_a_version_drops_its_data_from_the_shared_stores_running_and_it
     assert any(f'DROP DATABASE IF EXISTS "shop{suffix}"' in line for line in lines)
     assert not any("mongosh" in line or "elasticsearch" in line for line in lines)
     assert lines[-1] == "docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans"
+
+
+def test_dropping_a_version_removes_the_images_its_services_ran_that_no_container_still_uses(
+    monkeypatch, tmp_path
+):
+    """Every version pulled leaves its images on the node's disk (cloud-dev's sandbox VM at 97%,
+    its shared Elasticsearch red): those no other container uses go, and only those."""
+    monkeypatch.setenv("DEMO_STORES_KAFKA_PORT", "29092")
+    monkeypatch.setenv("DEMO_STORES_PROJECT", "provisa-demo-stores-t")
+    monkeypatch.setenv("DEMO_STORES_SHARED", "/shared.yml")
+    monkeypatch.setenv("DEMO_BUNDLES_DIR", str(tmp_path))
+    runner = FakeRunner(
+        {
+            "{{.Image}}": "neo4j:5.19-community\nreviews-api:1\nreviews-api:1\n",
+            "ancestor=neo4j:5.19-community": "newercid\n",
+        }
+    )
+    ds.Demo(runner, "reviews", "v1", None).drop(set())
+    lines = runner.lines()
+    down = lines.index("docker compose -p provisa-demo-reviews-v1 down -v --remove-orphans")
+    listed = next(
+        i
+        for i, x in enumerate(lines)
+        if "label=com.docker.compose.project=provisa-demo-reviews-v1" in x
+    )
+    assert listed < down
+    assert lines[down + 1 :] == [
+        "docker ps -a -q --filter ancestor=neo4j:5.19-community",
+        "docker ps -a -q --filter ancestor=reviews-api:1",
+        "docker image rm reviews-api:1",
+    ]
+    assert not any(" prune" in x for x in lines)
+
+
+_STREAMING = {
+    "services": {
+        "kafka": {
+            "image": "confluentinc/cp-kafka:7.6.0",
+            "labels": {
+                "com.provisa.demo.role": "stream",
+                "com.provisa.demo.host_env": "STREAMING_KAFKA_HOST",
+                "com.provisa.demo.port_env": "STREAMING_KAFKA_PORT",
+                "com.provisa.demo.ns_env": "STREAMING_KAFKA_NS",
+            },
+        },
+        "producer": {
+            "image": "provisa-demo-streaming-producer:2",
+            "labels": {"com.provisa.demo.role": "producer"},
+        },
+    }
+}
+
+
+def test_a_demos_producer_writes_its_versions_topics_to_the_shared_kafka(monkeypatch, tmp_path):
+    """Created, joined to the shared stores' network, then started: a producer started before it
+    joined could not resolve "kafka", exited and was restarted, and connecting a container
+    between restarts failed ("network sandbox ... not found", the streaming and provisioning
+    walks)."""
+    runner = FakeRunner(
+        {
+            "ps -q kafka": "kcid",
+            "ps -a -q producer": "pcid",
+            "ps -q producer": "pcid",
+            " ps -q": "pcid",
+        }
+    )
+    demo = _demo(monkeypatch, tmp_path, runner, _STREAMING)
+    found = demo.up()
+    suffix = ds.namespace("reviews", "v1")
+    assert found == {
+        "STREAMING_KAFKA_HOST": "127.0.0.1",
+        "STREAMING_KAFKA_PORT": "29092",
+        "STREAMING_KAFKA_NS": suffix,
+    }
+    lines = runner.lines()
+    assert not any("up -d --no-deps producer" in line for line in lines)  # never started unjoined
+    started = next(i for i, line in enumerate(lines) if "up --no-start --no-deps producer" in line)
+    joined = next(
+        i
+        for i, line in enumerate(lines)
+        if "network connect provisa-demo-stores-t_default pcid" in line
+    )
+    waited = next(i for i, line in enumerate(lines) if "up -d --wait --no-deps producer" in line)
+    assert started < joined < waited
+    # The producer's topics are named with the suffix (its compose file's TOPIC_SUFFIX).
+    assert f"STREAMING_KAFKA_NS={suffix} " in lines[waited]
+
+
+_SONNETS = {
+    "services": {
+        "qdrant": {
+            "image": "qdrant/qdrant:v1.19.1",
+            "labels": {
+                "com.provisa.demo.role": "vector",
+                "com.provisa.demo.host_env": "SONNETS_QDRANT_HOST",
+                "com.provisa.demo.port_env": "SONNETS_QDRANT_PORT",
+                "com.provisa.demo.ns_env": "SONNETS_QDRANT_NS",
+                "com.provisa.demo.key_env": "SONNETS_QDRANT_KEY",
+            },
+        }
+    }
+}
+
+
+def test_a_demo_version_reads_the_shared_qdrant_with_a_token_of_its_own(monkeypatch, tmp_path):
+    runner = FakeRunner(
+        {"port qdrant 6333": "127.0.0.1:46333", "%{http_code}": "200", "ps -q qdrant": "qcid"}
+    )
+    demo = _demo(monkeypatch, tmp_path, runner, _SONNETS)
+    demo.bundle = _qdrant_bundle(tmp_path)
+    found = demo.up()
+    suffix = ds.namespace("reviews", "v1")
+    key = ds.qdrant_key(tmp_path)
+    assert found["SONNETS_QDRANT_NS"] == suffix
+    assert found["SONNETS_QDRANT_KEY"] == ds.qdrant_token(key, [f"sonnet_lines{suffix}"])
+    assert (found["SONNETS_QDRANT_HOST"], found["SONNETS_QDRANT_PORT"]) == ("127.0.0.1", "46333")
+
+
+_PGVECTOR = {
+    "services": {
+        "postgres": {
+            "image": "pgvector/pgvector:pg16",
+            "labels": {
+                "com.provisa.demo.role": "rdb",
+                "com.provisa.demo.host_env": "CLOUDPOLICY_PG_HOST",
+                "com.provisa.demo.port_env": "CLOUDPOLICY_PG_PORT",
+                "com.provisa.demo.port": "5432",
+                "com.provisa.demo.ns_env": "CLOUDPOLICY_PG_NS",
+                "com.provisa.demo.access": "db/reader.sql",
+            },
+            "environment": {"POSTGRES_DB": "cloudpolicy"},
+        },
+    }
+}
+
+
+def test_a_postgres_with_pgvector_is_the_demos_own_and_names_its_data_unsuffixed(
+    monkeypatch, tmp_path
+):
+    """No shared instance has pgvector: such a store runs as the demo's own, its database under
+    its own name, so the suffix its config names its data with is empty (cloudpolicy)."""
+    runner = FakeRunner(
+        {"ps -q postgres": "pgcid", "port postgres 5432": "127.0.0.1:43000", " ps -q": "pgcid"}
+    )
+    found = _demo(monkeypatch, tmp_path, runner, _PGVECTOR).up()
+    assert found == {
+        "CLOUDPOLICY_PG_HOST": "127.0.0.1",
+        "CLOUDPOLICY_PG_PORT": "43000",
+        "CLOUDPOLICY_PG_NS": "",
+    }
+    assert not any("/shared.yml up" in line for line in runner.lines())
+
+
+# -- every <STEM>_NS is set before any compose command reads it -------------------------------------
+
+
+def _published_run_files() -> list[Path]:
+    import yaml
+
+    return sorted(
+        run
+        for run in (_REPO / "demo" / "named").glob("*/docker-compose.run.yml")
+        if (yaml.safe_load((run.parent / "demo.yaml").read_text()) or {}).get("published") is True
+    )
+
+
+def test_a_version_reads_its_stores_without_interpolating_the_file(monkeypatch, tmp_path):
+    """The run file names its data by the <STEM>_NS this reading sets; reading it must not need
+    them (visitor walk 39480892669: STREAMING_KAFKA_NS required and unset at `compose config`)."""
+    runner = FakeRunner({"ps -q kafka": "kcid", "ps -q producer": "pcid", " ps -q": "pcid"})
+    _demo(monkeypatch, tmp_path, runner, _STREAMING).up()
+    [config] = [line for line in runner.lines() if " config " in line]
+    assert "--no-interpolate" in config
+
+
+def test_a_store_the_demo_runs_itself_has_its_names_set_before_its_first_start(
+    monkeypatch, tmp_path
+):
+    runner = FakeRunner(
+        {"ps -q postgres": "pgcid", "port postgres 5432": "127.0.0.1:43000", " ps -q": "pgcid"}
+    )
+    _demo(monkeypatch, tmp_path, runner, _PGVECTOR).up()
+    first_up = next(line for line in runner.lines() if " up -d" in line)
+    assert "CLOUDPOLICY_PG_NS= " in first_up
+
+
+@pytest.mark.parametrize("run", _published_run_files(), ids=lambda p: p.parent.name)
+def test_every_variable_a_published_demo_requires_is_a_name_its_stores_set(run):
+    """Every ${VAR?...} a published demo's run file requires is the ns_env of one of its stores:
+    set by the sandbox tier's node (Demo.up, shared or own) and by the bundle build and a local
+    start (demo_bundles.store_namespaces)."""
+    import re
+
+    import yaml
+
+    from provisa.core.demo_bundles import store_namespaces
+
+    stores = ds.stores_of(yaml.safe_load(run.read_text()))
+    named = {
+        s.labels["com.provisa.demo.ns_env"] for s in stores if "com.provisa.demo.ns_env" in s.labels
+    }
+    required = set(re.findall(r"\$\{([A-Za-z0-9_]+)\?", run.read_text()))
+    assert required <= named, f"{run.parent.name} requires {sorted(required - named)} unset"
+    assert set(store_namespaces(run.parent)) == named
+
+
+def _compose_files_with_kafka() -> list[Path]:
+    shared = _REPO / "packaging" / "linux" / "demo-stores" / "docker-compose.shared.yml"
+    demos = sorted((_REPO / "demo" / "named").glob("*/docker-compose*.yml"))
+    return [f for f in [shared, *demos] if "CLUSTER_ID" in f.read_text()]
+
+
+@pytest.mark.parametrize(
+    "compose", _compose_files_with_kafka(), ids=lambda p: str(p.relative_to(_REPO))
+)
+def test_every_kafka_cluster_id_is_a_uuid_kraft_can_format(compose):
+    """KRaft formats its storage with CLUSTER_ID, which must be a UUID in base64: 16 bytes. The
+    shared Kafka's was 21 ("provisa-demo-stores-1"), and the broker exited (1) at its first start
+    on the sandbox tier (visitor walk 39485183923); the demos' own brokers' were 16."""
+    import base64
+
+    import yaml
+
+    services = yaml.safe_load(compose.read_text())["services"]
+    ids = {
+        name: str(env["CLUSTER_ID"])
+        for name, svc in services.items()
+        if isinstance(env := svc.get("environment"), dict) and "CLUSTER_ID" in env
+    }
+    assert ids, f"{compose} names CLUSTER_ID outside a service's environment mapping"
+    for name, cluster_id in ids.items():
+        raw = base64.urlsafe_b64decode(cluster_id + "=" * (-len(cluster_id) % 4))
+        assert len(raw) == 16, f"{name}: CLUSTER_ID {cluster_id!r} is {len(raw)} bytes, not 16"
+
+
+def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
+    """A store that exits before it is healthy says why only in its container's log: the error
+    the sync prints carries its end (the walk's Kafka exited (1) with no reason shown)."""
+    runner = FakeRunner(
+        {
+            "ps -a -q kafka": "kcid",
+            "docker logs --tail": "ERROR the cluster id is not a valid UUID",
+        },
+        fail={"up -d --wait kafka"},
+    )
+    with pytest.raises(ds.StoreError) as failed:
+        _shared(runner).start("kafka")
+    assert "--- docker logs kcid ---" in str(failed.value)
+    assert "the cluster id is not a valid UUID" in str(failed.value)
+
+
+def test_a_superseded_versions_own_kafka_on_the_shared_port_is_taken_down_before_it_starts():
+    """A version an earlier release ran with a Kafka of its own keeps the shared Kafka's port
+    after a newer version took over: the shared Kafka could not bind it, and no demo naming Kafka
+    was ready again (cloud-dev's streaming 202610182058)."""
+    old = "provisa-demo-streaming-202610182058-a481c50b2"
+    runner = FakeRunner(
+        {
+            "publish=29092": f"{old} {old}-kafka-1\nprovisa-demo-stores-t provisa-demo-stores-t-kafka-1"
+        }
+    )
+    _shared(runner).start("kafka")
+    lines = runner.lines()
+    down = f"docker compose -p {old} down -v --remove-orphans"
+    assert down in lines
+    assert lines.index(down) < next(i for i, x in enumerate(lines) if "up -d --wait kafka" in x)
+    assert not any("-p provisa-demo-stores-t down" in x for x in lines)
+
+
+def test_the_shared_kafkas_port_held_by_no_demo_version_is_refused_by_name():
+    runner = FakeRunner({"publish=29092": " some-broker"})
+    with pytest.raises(ds.StoreError, match="held by some-broker"):
+        _shared(runner).start("kafka")
+    assert not any("down" in x or "up -d" in x for x in runner.lines())
+
+
+@pytest.mark.parametrize("kind", ["postgres", "mongo"])
+def test_a_shared_store_is_healthy_only_once_its_real_server_answers_on_its_address(kind):
+    """Postgres and MongoDB images first initialize with a server on the socket or loopback
+    alone, then restart it. A check there passed before the real server was up: the wait
+    returned, and storefront's first mongosh load failed on the sandbox tier. On the sandbox
+    node the store sits on two networks, so ``hostname -i`` prints two addresses; the check
+    takes the first, or every probe failed ("172.18.0.45 192.168.96.2:5432 - no response")."""
+    import yaml
+
+    shared = _REPO / "packaging" / "linux" / "demo-stores" / "docker-compose.shared.yml"
+    test = yaml.safe_load(shared.read_text())["services"][kind]["healthcheck"]["test"]
+    assert test[0] == "CMD-SHELL", test
+    address = "\"$$(hostname -i | cut -d' ' -f1)\""
+    assert f"-h {address}" in test[1] or f"--host {address}" in test[1], test

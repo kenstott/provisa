@@ -613,10 +613,11 @@ async def _write_table(
     from provisa.federation.replica_parties import StoreReadingEngine
     from provisa.federation.replica_source import BATCH_ROWS
     from provisa.federation.residency import resolve_landing_args
+    from provisa.federation.source_vault import org_vault
 
     engine_rt = state.federation_engine
     backend = engine_rt.engine.backend
-    source, table, _ = await _model_row(
+    source, table, sources = await _model_row(
         state, (reg["source_id"], reg["schema_name"], reg["table_name"])
     )
     # REQ-1942: a required parameter generated with the table lands as a column of it.
@@ -638,7 +639,6 @@ async def _write_table(
         schema, replica_table_name(source.id, reg["schema_name"], reg["table_name"])
     )
     engine_party = StoreReadingEngine(backend, state)
-    target = backend.replica_target(state, address=address, args=args, engine=engine_party)
     dialect = engine_rt.engine.name
     reader = _GeneratedRows(
         engine_rt,
@@ -653,8 +653,13 @@ async def _write_table(
         nonlocal copied
         copied = rows
 
-    job = data_replicator(reader, target, engine_party, batch_rows=BATCH_ROWS)
-    outcome = await job.run(progress)
+    # REQ-1695: the store's target attaches every registered source, resolving each one's
+    # ${secret:...}, so the vault of the org they are registered in is bound, as a replica build
+    # binds it (testdata's template: Cannot resolve ${secret:SHOP_DB_PASSWORD}).
+    async with org_vault(state, sources):
+        target = backend.replica_target(state, address=address, args=args, engine=engine_party)
+        job = data_replicator(reader, target, engine_party, batch_rows=BATCH_ROWS)
+        outcome = await job.run(progress)
     return outcome.rows_copied
 
 
@@ -742,6 +747,7 @@ async def _land_sample(
     from provisa.federation.replica_parties import StoreReadingEngine
     from provisa.federation.replica_source import BATCH_ROWS
     from provisa.federation.residency import resolve_landing_args
+    from provisa.federation.source_vault import org_vault
     from provisa.profiler.run import _governed
     from provisa.profiler.statement import ColumnSpec
     from provisa.synthetic.generate import SAMPLE_ID, DistanceColumn
@@ -771,7 +777,7 @@ async def _land_sample(
 
     engine_rt = state.federation_engine
     backend = engine_rt.engine.backend
-    source, table, _ = await _model_row(
+    source, table, sources = await _model_row(
         state, (reg["source_id"], reg["schema_name"], reg["table_name"])
     )
     args = replace(
@@ -783,17 +789,19 @@ async def _land_sample(
     )
     engine_party = StoreReadingEngine(backend, state)
     name = sample_name(reg)
-    target = backend.replica_target(
-        state, address=ReplicaAddress(schema, name), args=args, engine=engine_party
-    )
 
     async def progress(rows: int) -> None:
         del rows  # a sample's landing reports nothing
 
-    await data_replicator(_LandedRows(batch), target, engine_party, batch_rows=BATCH_ROWS).run(
-        progress
-    )
-    catalog = await asyncio.to_thread(backend.replica_read_catalog, state)
+    # REQ-1695: the store's target attaches every registered source; their org's vault is bound.
+    async with org_vault(state, sources):
+        target = backend.replica_target(
+            state, address=ReplicaAddress(schema, name), args=args, engine=engine_party
+        )
+        await data_replicator(_LandedRows(batch), target, engine_party, batch_rows=BATCH_ROWS).run(
+            progress
+        )
+        catalog = await asyncio.to_thread(backend.replica_read_catalog, state)
     address = ".".join('"' + x.replace('"', '""') + '"' for x in (catalog, schema, name) if x)
     return address, distance_cols
 

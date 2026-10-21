@@ -1,0 +1,10 @@
+{
+  "profile3d": {
+    "expand": "Expandir visualização",
+    "webglError": "Não foi possível iniciar a visualização 3D: {{error}}",
+    "hint": "Arraste para orbitar · role para ampliar · arraste com o botão direito para mover",
+    "rotate": "Girar",
+    "resetView": "Redefinir visualização",
+    "zoomTo": "Ampliar para esta coluna"
+  }
+}

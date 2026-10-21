@@ -73,6 +73,7 @@
     "sandboxExitCreateOrg": "Создать организацию",
     "sandboxExitLogOut": "Просто выйти",
     "itemPython": "Python",
-    "itemNotebook": "Блокнот"
+    "itemNotebook": "Блокнот",
+    "itemContainerRegistries": "Реестры контейнеров"
   }
 }

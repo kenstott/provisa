@@ -20,6 +20,8 @@ function ctx() {
     confirm: vi.fn(),
     runMutation: vi.fn(),
     presentChoice: vi.fn(),
+    runAdminMutation: vi.fn(),
+    chooseFile: vi.fn(),
   };
   return { c, go };
 }

@@ -66,9 +66,9 @@ class UploadCode:
 
 @dataclass(frozen=True)
 class Lockfile:
-    """A lockfile given beside a package reference on the source's form, kept with the source: a
-    published package rarely carries its own (``npm publish`` leaves out package-lock.json, and
-    a wheel has no place for one), and every install is frozen. It is put into the code before
+    """A lockfile given beside the code on the source's form, kept with the source: Git or uploaded
+    code may carry none, and a package from npm or PyPI never does (``npm publish`` leaves out
+    package-lock.json, and a wheel has no place for one). With it, every install is frozen. It is put into the code before
     the content hash is taken, so it is hashed like the code."""
 
     filename: str
@@ -305,8 +305,10 @@ def fetch_kept(code: GitCode | UploadCode, registries: Sequence[Resolved], dest:
 
 
 def place_lockfile(root: Path, lockfile: Lockfile, allowed: Sequence[str]) -> None:
-    """Put the lockfile given beside the reference into the code. One its language does not read,
-    or one the code already carries a file of that name for, is refused by name."""
+    """Put the lockfile given beside the code into it. ``allowed`` is the lockfiles the language
+    reads, in the order its installer reads them. One it does not read is refused by name, and so
+    is one beside code that carries its own: a lockfile of the same name, or one the installer
+    reads first (an npm package's published npm-shrinkwrap.json)."""
     if lockfile.filename not in allowed:
         raise BundleRefused(
             "lockfile_kind",
@@ -314,14 +316,16 @@ def place_lockfile(root: Path, lockfile: Lockfile, allowed: Sequence[str]) -> No
             f"({', '.join(allowed)})",
             filename=lockfile.filename,
         )
-    target = root / lockfile.filename
-    if target.exists():
+    ahead = allowed[: allowed.index(lockfile.filename) + 1]
+    carried = next((name for name in ahead if (root / name).exists()), None)
+    if carried is not None:
         raise BundleRefused(
             "lockfile_twice",
-            f"the code already carries {lockfile.filename}; the one given beside it would replace it",
-            filename=lockfile.filename,
+            f"the code already carries {carried}; it installs from that, not the "
+            f"{lockfile.filename} given beside it",
+            filename=carried,
         )
-    target.write_bytes(lockfile.data)
+    (root / lockfile.filename).write_bytes(lockfile.data)
 
 
 # -- the cache --------------------------------------------------------------------------------------

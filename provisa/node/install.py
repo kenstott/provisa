@@ -69,7 +69,8 @@ NPM_PUBLIC = "https://registry.npmjs.org/"
 
 #: The lockfiles each runtime installs from in its frozen mode.
 LOCKFILES: dict[str, tuple[str, ...]] = {
-    "node": ("package-lock.json", "npm-shrinkwrap.json"),
+    # npm reads npm-shrinkwrap.json first: with both present, it ignores package-lock.json.
+    "node": ("npm-shrinkwrap.json", "package-lock.json"),
     "bun": ("bun.lock", "bun.lockb"),
     "deno": ("deno.lock",),
 }
@@ -242,8 +243,7 @@ def needs_install(root: Path, runtime: str) -> bool:
         raise BundleRefused(
             "no_lockfile",
             f"the bundle declares dependencies but carries no {' or '.join(LOCKFILES[runtime])} "
-            f"for {runtime}; add one beside the package on the source's form (a published "
-            "package rarely carries its own)",
+            f"for {runtime}; add one beside the code on the source's form",
             runtime=runtime,
         )
     return True
@@ -333,7 +333,7 @@ def ensure_installed(
 ) -> Installed:
     """The source's bundle, installed and cached by content hash
     (:func:`provisa.codesource.install.ensure_installed`), with ``lockfile`` -- given beside the
-    package reference -- put into it first."""
+    code -- put into it first."""
     if runtime not in LOCKFILES:
         raise BundleRefused("unknown_runtime", f"{runtime!r} is not a runtime", runtime=runtime)
 

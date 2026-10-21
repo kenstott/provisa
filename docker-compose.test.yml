@@ -862,7 +862,8 @@ services:
   # a second run against an already-migrated schema is a no-op.
   openmetadata:
     restart: unless-stopped
-    image: openmetadata/server:1.5.11
+    # REQ-2118: 2.0.5 -- ODCS contract import (PUT /v1/dataContracts/odcs) needs 2.0.3 or later.
+    image: docker.getcollate.io/openmetadata/server:2.0.5
     depends_on:
       openmetadata-db:
         condition: service_healthy
@@ -875,7 +876,7 @@ services:
       - -c
       # The start script lives at the image root, not in the /opt/openmetadata workdir the ops
       # script sits under — the image's own CMD is `/openmetadata-start.sh`.
-      - ./bootstrap/openmetadata-ops.sh -d migrate && /openmetadata-start.sh
+      - ./bootstrap/openmetadata-ops.sh migrate && /openmetadata-start.sh
     environment:
       DB_HOST: openmetadata-db
       DB_PORT: 3306
@@ -927,6 +928,115 @@ services:
         - "wget -q -O /dev/null --user=admin --password=admin http://localhost:21000/api/atlas/admin/status || exit 1"
       interval: 15s
       timeout: 10s
+      retries: 40
+      start_period: 120s
+
+  # REQ-2119 — DataHub, the self-hostable target REQ-1069's adapter publishes to over GMS's REST
+  # API (/aspects?action=ingestProposal). The stock quickstart layout, cut to what GMS needs: its own
+  # MySQL (the metadata_aspect_v2 store, laid out by mysql-setup), an Elasticsearch 7 for search and
+  # the graph (DataHub reads no 8.x index), the stack's Kafka for its change log with the schema
+  # registry inside GMS, and the system-update job that builds the indices before GMS starts. No
+  # frontend: the test reads back over the same REST API it publishes through.
+  datahub-mysql:
+    restart: unless-stopped
+    image: mysql:8.2
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_bin --default-authentication-plugin=caching_sha2_password
+    environment:
+      MYSQL_DATABASE: datahub
+      MYSQL_USER: datahub
+      MYSQL_PASSWORD: datahub
+      MYSQL_ROOT_PASSWORD: datahub
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -udatahub -pdatahub || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+
+  datahub-search:
+    restart: unless-stopped
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.10.1
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      ES_JAVA_OPTS: "-Xms256m -Xmx512m"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf 'http://localhost:9200/_cluster/health?wait_for_status=yellow&timeout=5s' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+      start_period: 60s
+
+  datahub-mysql-setup:
+    image: acryldata/datahub-mysql-setup:v0.14.1
+    restart: "no"
+    depends_on:
+      datahub-mysql:
+        condition: service_healthy
+    environment:
+      MYSQL_HOST: datahub-mysql
+      MYSQL_PORT: 3306
+      MYSQL_USERNAME: datahub
+      MYSQL_PASSWORD: datahub
+      DATAHUB_DB_NAME: datahub
+
+  datahub-upgrade:
+    image: acryldata/datahub-upgrade:v0.14.1
+    restart: "no"
+    command: ["-u", "SystemUpdate"]
+    depends_on:
+      datahub-mysql-setup:
+        condition: service_completed_successfully
+      datahub-search:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+    environment: &datahub_env
+      EBEAN_DATASOURCE_USERNAME: datahub
+      EBEAN_DATASOURCE_PASSWORD: datahub
+      EBEAN_DATASOURCE_HOST: datahub-mysql:3306
+      EBEAN_DATASOURCE_URL: "jdbc:mysql://datahub-mysql:3306/datahub?verifyServerCertificate=false&useSSL=false&useUnicode=yes&characterEncoding=UTF-8&allowPublicKeyRetrieval=true"
+      EBEAN_DATASOURCE_DRIVER: com.mysql.jdbc.Driver
+      KAFKA_BOOTSTRAP_SERVER: kafka:29092
+      SCHEMA_REGISTRY_TYPE: INTERNAL
+      KAFKA_SCHEMAREGISTRY_URL: http://datahub-gms:8080/schema-registry/api/
+      ELASTICSEARCH_HOST: datahub-search
+      ELASTICSEARCH_PORT: 9200
+      ELASTICSEARCH_PROTOCOL: http
+      ELASTICSEARCH_USE_SSL: "false"
+      ELASTICSEARCH_INDEX_BUILDER_MAPPINGS_REINDEX: "true"
+      ELASTICSEARCH_INDEX_BUILDER_SETTINGS_REINDEX: "true"
+      GRAPH_SERVICE_IMPL: elasticsearch
+      ENTITY_REGISTRY_CONFIG_PATH: /datahub/datahub-gms/resources/entity-registry.yml
+      DATAHUB_GMS_HOST: datahub-gms
+      DATAHUB_GMS_PORT: 8080
+      BACKFILL_BROWSE_PATHS_V2: "true"
+      REPROCESS_DEFAULT_BROWSE_PATHS_V2: "false"
+
+  datahub-gms:
+    restart: unless-stopped
+    image: acryldata/datahub-gms:v0.14.1
+    depends_on:
+      datahub-upgrade:
+        condition: service_completed_successfully
+    ports:
+      - "${DATAHUB_GMS_PORT:-8080}:8080"
+    environment:
+      <<: *datahub_env
+      DATAHUB_SERVER_TYPE: quickstart
+      DATAHUB_UPGRADE_HISTORY_KAFKA_CONSUMER_GROUP_ID: generic-duhe-consumer-job-client-gms
+      ES_BULK_REFRESH_POLICY: WAIT_UNTIL
+      ENTITY_SERVICE_ENABLE_RETENTION: "true"
+      MAE_CONSUMER_ENABLED: "true"
+      MCE_CONSUMER_ENABLED: "true"
+      PE_CONSUMER_ENABLED: "true"
+      UI_INGESTION_ENABLED: "false"
+      METADATA_SERVICE_AUTH_ENABLED: "false"
+      JAVA_OPTS: "-Xms512m -Xmx1g"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sSf http://localhost:8080/health || exit 1"]
+      interval: 10s
+      timeout: 5s
       retries: 40
       start_period: 120s
 

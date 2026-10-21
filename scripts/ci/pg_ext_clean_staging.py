@@ -35,7 +35,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pgserver
+import pixeltable_pgserver as pgserver
 import psycopg
 from provisa_pg_ext import ext_root  # type: ignore[import-not-found]
 

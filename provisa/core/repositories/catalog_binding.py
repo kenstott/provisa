@@ -10,8 +10,10 @@
 
 """Vendor-side identity bindings for published catalog assets (REQ-1389).
 
-One row per (provider, published asset): ``vendor_ref`` is the catalog's own id for the
-asset (Atlas guid, OpenMetadata entity UUID, Collibra asset UUID, DataHub dataset URN) and
+One row per (export target, published asset): an org may publish to several targets, two of
+one provider among them, so bindings are kept per target (REQ-2118). ``vendor_ref`` is the
+catalog's own id for the asset (Atlas guid, OpenMetadata entity UUID, Collibra asset UUID,
+DataHub dataset URN) and
 ``physical_key`` is the vendor-side name-key it was published under. The exporter captures
 both on every successful publish and reads them back on the next one, so a physical
 re-address rebinds the SAME catalog entity instead of trusting the vendor's name-keyed
@@ -19,7 +21,7 @@ upsert to find it. Portable SQL via SQLAlchemy Core — both the SQLite and Post
 control planes are real.
 """
 
-# Requirements: REQ-1389
+# Requirements: REQ-1389, REQ-2118
 
 from typing import TYPE_CHECKING
 
@@ -32,44 +34,44 @@ if TYPE_CHECKING:
 
 
 async def upsert_bindings(
-    conn: "Connection", provider: str, bindings: dict[str, tuple[str, str]]
+    conn: "Connection", target: str, bindings: dict[str, tuple[str, str]]
 ) -> None:
-    """Record ``{semantic_uri: (vendor_ref, physical_key)}`` for ``provider``."""
+    """Record ``{semantic_uri: (vendor_ref, physical_key)}`` for the export target ``target``."""
     for semantic_uri, (vendor_ref, physical_key) in bindings.items():
         await conn.upsert(
             catalog_bindings,
             {
-                "provider": provider,
+                "target": target,
                 "semantic_uri": semantic_uri,
                 "vendor_ref": vendor_ref,
                 "physical_key": physical_key,
             },
-            index_elements=["provider", "semantic_uri"],
+            index_elements=["target", "semantic_uri"],
             update_columns=["vendor_ref", "physical_key"],
             set_extra={"updated_at": func.now()},
         )
 
 
-async def load_bindings(conn: "Connection", provider: str) -> dict[str, tuple[str, str]]:
-    """``{semantic_uri: (vendor_ref, physical_key)}`` for every binding of ``provider``."""
+async def load_bindings(conn: "Connection", target: str) -> dict[str, tuple[str, str]]:
+    """``{semantic_uri: (vendor_ref, physical_key)}`` for every binding of the export target ``target``."""
     result = await conn.execute_core(
         select(
             catalog_bindings.c.semantic_uri,
             catalog_bindings.c.vendor_ref,
             catalog_bindings.c.physical_key,
-        ).where(catalog_bindings.c.provider == provider)
+        ).where(catalog_bindings.c.target == target)
     )
     return {row.semantic_uri: (row.vendor_ref, row.physical_key) for row in result.fetchall()}
 
 
-async def remove_stale_bindings(conn: "Connection", provider: str, keep_uris: set[str]) -> int:
-    """Drop ``provider`` bindings for assets no longer in the published model.
+async def remove_stale_bindings(conn: "Connection", target: str, keep_uris: set[str]) -> int:
+    """Drop the export target ``target``'s bindings for assets no longer in the published model.
 
     An asset absent from the snapshot will never be republished, so its binding can never
     be used again; keeping it would let a later, unrelated asset reuse the URI and rebind
     a dead catalog entity. Returns how many were removed.
     """
-    stmt = _delete(catalog_bindings).where(catalog_bindings.c.provider == provider)
+    stmt = _delete(catalog_bindings).where(catalog_bindings.c.target == target)
     if keep_uris:
         stmt = stmt.where(catalog_bindings.c.semantic_uri.not_in(keep_uris))
     result = await conn.execute_core(stmt)

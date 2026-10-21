@@ -88,6 +88,7 @@ def _source_assets(
             source_type=source.type.value,
             description=source.description,
             semantic_uri=source_uri(org_id, source.id),
+            database=source.database or "",
         )
         for source in config.sources
         if source.id in published_source_ids
@@ -134,7 +135,9 @@ def _table_assets(
     org_id: str | None,
     technical_columns: frozenset[tuple[tuple[str, ...], str]],
     product_ids: dict[tuple[str, ...], str | None],
+    source_ttls: Mapping[str, int | None] | None = None,
 ) -> list[TableAsset]:
+    source_ttls = source_ttls or {}
     return [
         TableAsset(
             ref=table_ref(table),
@@ -156,6 +159,11 @@ def _table_assets(
             # REQ-1652: every declared key column, technical-tagged or not -- the physical table
             # carries it whether or not the Data Product exposes it.
             primary_key=tuple(c.name for c in table.columns if getattr(c, "is_primary_key", False)),
+            # REQ-2118: a table with no cache_ttl of its own inherits its source's (cache_ttl.py).
+            cache_ttl=(
+                table.cache_ttl if table.cache_ttl is not None else source_ttls.get(table.source_id)
+            ),
+            is_view=table.view_sql is not None,
         )
         for table in tables
     ]
@@ -206,6 +214,7 @@ def _data_product_assets(
     product_ids: dict[tuple[str, ...], str | None],
     documentation_base_url: str | None = None,
     page_org_id: str = "",
+    owner_emails: Mapping[str, tuple[str, ...]] | None = None,
 ) -> list[DataProductAsset]:
     from provisa.core.mail import data_product_page_url
 
@@ -235,6 +244,15 @@ def _data_product_assets(
                 semantic_uri=data_product_uri(org_id, product.domain_id, product.id),
                 support_contact=product.support_contact,
                 publish=product.publish,
+                team_role=product.team_role,
+                limitations=product.limitations,
+                usage=product.usage,
+                version=product.version,
+                status=product.status,
+                sla=product.sla,
+                support=product.support,
+                custom_properties=dict(product.custom_properties),
+                owner_emails=(owner_emails or {}).get(product.owner_role or "", ()),
                 documentation_url=(
                     data_product_page_url(documentation_base_url, page_org_id, product.id)
                     if documentation_base_url
@@ -611,6 +629,7 @@ def build_snapshot(
     contexts: Mapping,
     data_products_only: bool = True,
     documentation_base_url: str | None = None,
+    owner_emails: Mapping[str, tuple[str, ...]] | None = None,
 ) -> MetadataSnapshot:  # REQ-1070
     """Project the governed config into the vendor-neutral snapshot every adapter publishes.
 
@@ -624,6 +643,9 @@ def build_snapshot(
     ``dq_outcomes`` publishes every check as never run, which is what a caller with no results to
     read is entitled to say. ``contexts`` is ``state.contexts``, the compiled tables whose pgwire
     names a contract's dataset addresses (REQ-1443).
+
+    ``owner_emails`` (REQ-2118) is each role's holders' email addresses, by role id, read by the
+    caller: a data product's owners are its owner role's holders.
 
     ``data_products_only`` is the export filter, and stays on for every catalog publish: a catalog
     receives what the admin marked for it and nothing else. REQ-1592's model report turns it off,
@@ -661,7 +683,13 @@ def build_snapshot(
     ]
     keep = {table_ref(table).parts for table in exported}
     published_source_ids = {table.source_id for table in exported}
-    tables = _table_assets(exported, uri_org_id, technical_columns, product_ids)
+    tables = _table_assets(
+        exported,
+        uri_org_id,
+        technical_columns,
+        product_ids,
+        {source.id: source.cache_ttl for source in config.sources},
+    )
     relationships = [
         edge
         for edge in _relationship_edges(config, index, uri_org_id)
@@ -685,6 +713,7 @@ def build_snapshot(
             product_ids,
             documentation_base_url=documentation_base_url,
             page_org_id=org_id,
+            owner_emails=owner_emails or {},
         ),
         relationships=relationships,
         lineage=[

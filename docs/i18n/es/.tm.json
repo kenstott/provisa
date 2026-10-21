@@ -5,7 +5,7 @@
   "api-reference.md": "5713969669b099bba3ac6cf311f467b8f7c041d0910f23da6792b8225011091e",
   "architecture.md": "44ad8bc5217aa098325df055e5ef5f676d869d7235b402f3c2b1ec5b5edc2ebe",
   "security.md": "438965807a0df3b0e3bc1be1caa289083baa8d5f59039288d9a90667027c3fe2",
-  "sources.md": "3c27af3127d84a15927232b7780e67e01d53ac06d4c60325e2551c36b3fa6c4f",
+  "sources.md": "9ee84df8de5c7b93807a1de8d171385909fefc8c98fe1b047d8935b265088a75",
   "subscriptions.md": "5795d80c43de4beae7ed777810511b2d2ba385b5f2aa6acdd622090c945f170c",
   "integrations.md": "1aa64a5a24b943feb6d22213c34f4ff3183ea64506fa9b2fabf9f08a21f9dae6",
   "python-client.md": "72587a15c990d156e03ee427c950f92fde4eec3d59bd4bab690ef294f7955588",
@@ -15,7 +15,7 @@
   "releasing.md": "ce1a860c7ccb962f92bf13e718c261300054cada8312eecdff93f503c5cb396d",
   "commands.md": "e330a2f97802065c10c840ef56d855b63a366a752abb8b2452b0a2502a7d3108",
   "cypher.md": "46c53c7329e6bef77fab84e68da404a6e4ec2c974ebbd565b793a313c153702b",
-  "lineage.md": "2a54fe8cc99d555fa170e9b73e989542bd2110d46c992b81555a8fffd6ef7cb0",
+  "lineage.md": "fec1129c7e227b68b8de301ac52f5250ae0adebb20395dad5969bfb3a24b0959",
   "modeling.md": "baf89e4e1e6ddbc352737e65cda7bc6940edeb51295ee027ee09b0626cc8c191",
   "pgwire.md": "b975b7574c379db350a0d16505120302e23e9118f83b5ad4ee3ea72f3e464e34",
   "remote-schemas.md": "d07b277d22e5c242c7bc21ad7c955e3850c9e02e70376a77a48a529286b4b17f",
@@ -32,6 +32,6 @@
   "sizing.md": "ffa78a24c3a42c020fcc45fd7a7b0884b1fcbf6b3869a9a44f0f705ef6b74732",
   "regions.md": "378978498deaf0a9444bbd5110f0f9717e3535df114599c97e2fa89f6dc4caf3",
   "package-registries.md": "8058761b1bc8ef409345cd90cc7d9d7104b1fa5d674751aa4bc26e47fc7f8cff",
-  "code-sources.md": "a6257cda81c05a73dc45bd57314de1be68262b511e9fc87aad911ed1a2fcab0d",
+  "code-sources.md": "9c06878810e73e58ccbd9ee8e606ca0bff243c348819d1715e4ca64ff3560edc",
   "bitemporal-views.md": "7e9cab7b614ab415ed3d5b2e493c8e506bca73488fc352578c85578ccdf459c2"
 }

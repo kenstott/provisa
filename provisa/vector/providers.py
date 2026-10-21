@@ -40,6 +40,13 @@ class EmbeddingProvider(ABC):  # REQ-420
         del model
         return None
 
+    async def embed_with_usage(
+        self, texts: list[str], model: VectorModel
+    ) -> tuple[list[list[float]], int | None]:  # REQ-2105
+        """The vectors, and the input tokens the provider reports for them: None where it
+        reports none (a local model)."""
+        return await self.embed(texts, model), None
+
 
 async def model_version(model: VectorModel, provider: EmbeddingProvider) -> str | None:  # REQ-2002
     """The version recorded for a use of ``model``: the one its provider reports, else the one
@@ -64,6 +71,11 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
     """Any OpenAI-compatible POST {base_url}/embeddings endpoint."""
 
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]:
+        return (await self.embed_with_usage(texts, model))[0]
+
+    async def embed_with_usage(
+        self, texts: list[str], model: VectorModel
+    ) -> tuple[list[list[float]], int | None]:  # REQ-2105
         import httpx
 
         base = (model.base_url or "https://api.openai.com/v1").rstrip("/")
@@ -78,9 +90,11 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
             resp.raise_for_status()
             data = resp.json()
         try:
-            return [item["embedding"] for item in data["data"]]
+            vectors = [item["embedding"] for item in data["data"]]
         except (KeyError, TypeError) as exc:
             raise EmbeddingError(f"Unexpected embeddings response: {exc}") from exc
+        usage = data.get("usage") or {}
+        return vectors, usage.get("prompt_tokens")
 
 
 class OllamaProvider(EmbeddingProvider):  # REQ-420

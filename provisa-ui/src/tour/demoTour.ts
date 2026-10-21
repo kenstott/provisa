@@ -70,6 +70,8 @@ export interface DemoTourStepDef {
   open?: string;
   /** A relationship, by alias: its row on the Relationships page. */
   relationship?: string;
+  /** A scheduled trigger, by id: its row on the Triggers page. */
+  trigger?: string;
   /** An example query of the demo, by name: opened in a new GraphiQL tab and run. */
   example?: string;
   /** A statement: opened in a new SQL explorer tab and run. */
@@ -136,6 +138,9 @@ const APP_ROLE = '[data-testid="role-selector-trigger"]';
 // The header's environment switcher: what every request after it is served from.
 const ENV_SWITCHER = '[data-testid="env-switcher-trigger"]';
 const SQL_RESULT_ROW = '.sql-results-table tbody tr:not([data-testid="results-grid-empty"])';
+// A statement refused, as the explorer shows it: the provisioning close read outside its view's
+// load window is refused by design, and its step shows the refusal rather than ending the tour.
+const SQL_RESULT_ERROR = '[data-testid="sql-results-error"]';
 
 export function demoTourSteps(
   defs: readonly DemoTourStepDef[],
@@ -198,7 +203,15 @@ function demoTourStep(
     return { ...page, element: `[data-table-row="${def.table}"]` };
   }
   if (def.relationship !== undefined) {
-    return { ...page, element: `[data-tour-relationship="${def.relationship}"]` };
+    const element = `[data-tour-relationship="${def.relationship}"]`;
+    if (def.route === undefined) return { ...page, element };
+    // The step that opens the page searches it by the alias, so the row is on its first page
+    // whatever else the org holds: a relationship listed past the first fifty mounts no anchor.
+    const query = new URLSearchParams({ search: def.relationship });
+    return { ...page, route: `${def.route}?${query.toString()}`, element };
+  }
+  if (def.trigger !== undefined) {
+    return { ...page, element: `[data-testid="scheduled-task-row-${def.trigger}"]` };
   }
   if (def.example !== undefined) {
     const example = examples.find((e) => e.name === def.example);
@@ -218,9 +231,10 @@ function demoTourStep(
     return {
       ...page,
       openQuery: { stateKey: "sql", text: def.sql },
-      // Its rows, not the table: the grid of an unrun tab is a table that says it has none.
-      readySelector: SQL_RESULT_ROW,
-      element: ".sql-results-table",
+      // Its rows, not the table: the grid of an unrun tab is a table that says it has none. Or
+      // its refusal, which is the answer the page shows then.
+      readySelector: `${SQL_RESULT_ROW}, ${SQL_RESULT_ERROR}`,
+      element: `.sql-results-table, ${SQL_RESULT_ERROR}`,
       waitMs: RESULT_WAIT_MS,
     };
   }

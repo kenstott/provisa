@@ -1,0 +1,14 @@
+code	association	national_teams	founded	membership	fifa_affiliation	ofc_affiliation	ioc_member	note
+ASA	American Samoa	(M, W)	1984	Full	1998	1998	true	\N
+COK	Cook Islands	(M, W)	1971	Full	1994	1994	true	\N
+FIJ	Fiji	(M, W)	1938	Full	1964	1966	true	\N
+KIR	Kiribati	(M, W)	1980	Associate	\N	2007	true	\N
+NCL	New Caledonia	(M, W)	1928	Full	2004	1999	false	\N
+NZL	New Zealand	(M, W)	1891	Full	1948	1966	true	\N
+PNG	Papua New Guinea	(M, W)	1962	Full	1966	1966	true	\N
+SAM	Samoa	(M, W)	1968	Full	1986	1986	true	\N
+SOL	Solomon Islands	(M, W)	1979	Full	1988	1988	true	\N
+TAH	Tahiti	(M, W)	1989	Full	1990	1990	false	\N
+TGA	Tonga	(M, W)	1965	Full	1994	1994	true	\N
+TUV	Tuvalu	(M, W)	1979	Associate	\N	2006	true	\N
+VAN	Vanuatu	(M, W)	1934	Full	1988	1988	true	\N

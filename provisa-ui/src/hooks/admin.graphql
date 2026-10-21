@@ -102,6 +102,7 @@ query SourcesQuery {
     offPeakWindow
     offPeakTz
     sentinelPath
+    downloadFrom
     freshnessGate
     maxLiveConcurrency
     gqlNamingConvention

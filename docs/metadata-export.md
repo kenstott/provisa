@@ -21,7 +21,10 @@ matches each one's ingestion API.
 | `datahub` | DataHub | One aspect proposal per asset aspect, posted to `/aspects?action=ingestProposal` |
 | `collibra` | Collibra | Assets, relations and attributes upserted through the synchronous import job at `/rest/2.0/import/json-job` |
 | `snowflake_horizon` | Snowflake Horizon Catalog | Engine-native — no HTTP call. Opens its own connection off the engine's configured DSN and runs `CREATE SHARE` / `CREATE ORGANIZATION LISTING` |
-| `bigquery_dataplex` | BigQuery Analytics Hub (Dataplex) | REST calls to `{endpoint}/v1/dataProducts...` |
+| `purview` | Microsoft Purview: the Data Map, then Unified Catalog data products | The Atlas API at `{endpoint}`, then `https://{entra_tenant_id}-api.purview-service.microsoft.com/datagovernance/catalog` |
+| `unity_catalog` | Databricks Unity Catalog: a schema of views per data product, optionally a Delta Share | Engine-native: SQL on the Databricks engine's own warehouse connection |
+| `datazone` | Amazon DataZone (SageMaker Catalog) data products | The DataZone API of the target's `aws_region`, signed with its AWS keys |
+| `dataplex` | Google Dataplex data products | REST calls to `{endpoint}/v1/projects/{gcp_project}/locations/{gcp_location}/dataProducts...` |
 
 Snowflake Horizon Catalog and BigQuery Analytics Hub only publish **Data Products** — see [Data Products](data-products.md#metadata-export) — not the general
 table/column/lineage snapshot the six adapters above publish. A snapshot with no Data Products
@@ -67,12 +70,59 @@ BigQuery, where a column tag has no counterpart and is reported withheld. `snowf
 publishes no constraints and no model tags of its own; it still appends governance facts to the
 descriptions of the Data Product tables it publishes.
 
-`bigquery_dataplex` still speaks REST like the six vendor-neutral adapters, but, like `snowflake_horizon`, cannot be a pure payload builder: an Analytics Hub listing identifies a table
-by its `project.dataset.table` in the org's real BigQuery project, which `MetadataSnapshot`'s own
-`(source_id, schema_name, table_name)` asset refs don't carry, so the adapter resolves real
-identity from the org's live BigQuery federation runtime. One Data Product becomes one Analytics
-Hub listing backed by a dataset containing the product's member tables. Until the org's BigQuery
-source has a landing terminal attached, `publish` finds no usable runtime and reports nothing published: the documented "otherwise skipped" state, not an error.
+`dataplex` publishes each data product as a Google Dataplex data product in the target's
+`gcp_project` and `gcp_location`. The product's name, purpose, limitations, usage, service level,
+support and documentation link go into its display name and description; its version and status
+become labels. Its owners are the email addresses of the members holding its owner role (a
+grant in force, with an address in the member directory), and the same members approve access
+requests. A product whose owner role has no holder with an address is reported and not sent.
+Access groups are not published yet.
+
+Each member is a data asset, by the BigQuery object it is. A member on a BigQuery source is its
+own table, in the source's project. A member the BigQuery engine serves from a replica is the
+replica's export view in the org's export dataset, which the replica reconcile creates beside the
+replica. Any other member, a view among them, has no BigQuery object and is reported by name. Each
+asset carries its member's freshness as the `provisa-freshness-seconds` label, and an asset whose
+table is no longer a member is removed. Dataplex answers each change with a long-running
+operation; the publish follows each to its end, up to `timeout_seconds`.
+
+`purview` publishes in two steps. The Data Map goes first, through the Atlas adapter it
+extends: the same entities the `atlas` provider sends, at the target's `endpoint`, signed in with
+the Entra client credentials (`auth_mode: entra`). Then each data product becomes a Unified
+Catalog data product, at the tenant's Unified Catalog host, in the governance domain named
+after the product's domain. A product whose domain has no governance domain of that name is
+reported and not sent; Provisa does not create governance domains. Its owners are the members
+holding its owner role, their addresses resolved to Entra users through Microsoft Graph, which
+needs the app's `User.Read.All` permission; an address Graph does not know is reported. Its
+members' Data Map entities become its data assets. Its status follows the product's (active is
+published; deprecated and retired are expired; any other is draft; a product with no status is
+published when the product is published). Its update frequency is the shortest freshness among
+its members. Approvers and access policies are not published yet.
+
+`datazone` publishes each data product as an Amazon DataZone data product in the target's
+DataZone domain, owned by its project, and publishes it so that consumers find it and request it
+by subscription. Each member is an asset of a Provisa table type, which the first publish creates
+in the domain: a `ProvisaTableForm` form (the member's Provisa URI, its address, its columns and
+its freshness) on a `ProvisaTable` asset type. The product's fields go in a
+`ProvisaDataProductForm` form. A member is read through Provisa, where its governance is enforced,
+so DataZone grants nothing itself: the owning project approves each subscription. An asset is
+found again by its external identifier, the member's Provisa URI, and a product by its name in the
+project; each publish adds a revision and publishes it. Members that are Glue tables are not
+published as Glue assets yet.
+
+`unity_catalog` publishes when Databricks is the configured engine, like `snowflake_horizon`
+when Snowflake is. Unity Catalog has no data-product entity, so each data product becomes one
+schema, `<catalog>.<product id>`, in the catalog the engine works in, holding a view over each
+member. Nothing is copied: a view reads its member where the engine keeps it, the member's Delta
+replica, or the external table of a lake table read in place. Each view is named for the member's
+business name and carries its descriptions; each governance fact is a
+`provisa_governance:<signal>` tag naming the rule that governs it, never the rule. The schema's
+comment holds the product's purpose, limitations, usage, service level and support; its owner,
+team, version and status are `provisa_product:<field>` tags. A view that is no longer a member is
+dropped. With `delta_share` set, the product's views are also published as the Delta Share
+`provisa_<product id>`, which a Databricks admin grants to the recipients of other data teams;
+sharing needs the member in Delta, so a member stored in another format is reported and left out.
+Publishing as a listing in a Databricks private exchange is a later phase.
 
 Purview needs no adapter of its own: its ingestion API *is* the Atlas API — the same routes, the
 same entity envelope, the same RDBMS type model — so it is the `atlas` provider pointed at a
@@ -110,45 +160,68 @@ table at three columns and an approved relationship carries far more than that.
 
 ## Configuration
 
-Metadata export is a **per-organization** setting: the catalog an org publishes to, and the
-credentials it publishes with, belong to that org rather than to the deployment. Configure it in
-**Admin → Metadata Export**, or under `metadata_export` in the config YAML.
+Metadata export is a **per-organization** setting: the catalogs an org publishes to, and the
+credentials it publishes with, belong to that org rather than to the deployment. An org may publish
+to several catalogs at once, two of one provider among them; one publish reaches every target.
+Configure it in **Admin → Metadata Export**, or under `metadata_export` in the config YAML.
 
 ```yaml
 metadata_export:
   enabled: true
-  provider: openlineage        # openlineage | openmetadata | atlas | atlan | datahub | collibra | snowflake_horizon | bigquery_dataplex
-  endpoint: http://marquez:5000
-  auth_mode: api_key           # api_key | bearer | basic | entra
-  api_key: ${MARQUEZ_API_KEY}
   reconcile_cron: "0 * * * *"
-  timeout_seconds: 30
+  targets:
+    - id: marquez
+      provider: openlineage    # openlineage | openmetadata | atlas | purview | atlan | datahub | collibra | snowflake_horizon | unity_catalog | dataplex | datazone
+      endpoint: http://marquez:5000
+      auth_mode: api_key       # api_key | bearer | basic | entra | google_service_account
+      api_key: ${MARQUEZ_API_KEY}
+      timeout_seconds: 30
+    - id: openmetadata-prod
+      provider: openmetadata
+      endpoint: https://openmetadata.example.com
+      auth_mode: bearer
+      token: ${OPENMETADATA_TOKEN}
+    - id: dataplex
+      provider: dataplex
+      endpoint: https://dataplex.googleapis.com
+      auth_mode: google_service_account
+      google_service_account_json: ${DATAPLEX_SERVICE_ACCOUNT_JSON}
+      gcp_project: acme-data
+      gcp_location: us
 ```
 
 | Setting | Meaning |
 | --- | --- |
-| `enabled` | Whether this org publishes at all. An enabled target with no `provider` or no `endpoint` is refused when it is saved, not at the next publish. |
+| `enabled` | Whether this org publishes at all. An enabled export with no target is refused when it is saved, not at the next publish. |
+| `targets` | The catalogs the org publishes to. A target left out of the list when the settings are saved is removed. |
+| `id` | The target's name within the org, unique there. What Provisa records of each published asset's id in that catalog is kept under it, so two targets of one provider never share it. |
 | `provider` | Which adapter backs the target. An unrecognized name is refused when the adapter is constructed. |
-| `endpoint` | Base URL of the target catalog. Not required for `snowflake_horizon`, which connects off the engine's own configured DSN instead. |
-| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — and `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`. |
+| `endpoint` | Base URL of the target catalog. A target with no endpoint is refused when it is saved. Not required for `snowflake_horizon`, which connects off the engine's own configured DSN instead. |
+| `auth_mode` | How the adapter authenticates. `api_key` sends the `api_key` field, `bearer` sends the `token` field, `basic` pairs `username` with the `token` field as HTTP basic — which is stock Apache Atlas's own authentication, and it answers a bearer token with 401 — `entra` is the Microsoft Entra client-credentials flow that Purview needs, reading `entra_tenant_id`, `entra_client_id` and `entra_client_secret`, and `google_service_account` signs in to Dataplex with the service account key in `google_service_account_json`. |
 | `username` | The account name for `basic`. Unused by the other modes. |
+| `gcp_project`, `gcp_location` | Where a `dataplex` target keeps the org's data products. A `dataplex` target without both is refused when it is saved. |
+| `aws_region`, `datazone_domain_id`, `datazone_project_id` | The DataZone domain a `datazone` target publishes to and the project that owns its data products. A `datazone` target without all three is refused when it is saved; it has no `endpoint`. |
+| `aws_access_key_id`, `aws_secret_access_key` | The AWS keys a `datazone` target signs its requests with. |
+| `delta_share` | Whether a `unity_catalog` target also publishes each product as a Delta Share. A `unity_catalog` target has no `endpoint`: it publishes through the Databricks engine. |
 | `reconcile_cron` | Cron schedule for this org's full-snapshot reconcile. Re-armed when you save, so a change takes effect without a restart — see [How the target stays current](#how-the-target-stays-current). |
 | `timeout_seconds` | Per-request timeout against the target. |
 
-Credentials are **write-only through the UI**. The admin surface reports each one as set or not
-set and never returns a stored value, so leaving a credential field blank keeps the stored one and
-clearing it removes it.
+Credentials are **write-only through the UI**. The admin surface reports each target's credentials as
+set or not set and never returns a stored value, so leaving a credential field blank keeps the one
+stored for that target and clearing it removes it.
 
 ### Operating it from the Admin tab
 
-- **Test connection** calls the target and reports the text it refused with, which is what
+- **Test connection** calls each target and reports the text it refused with, which is what
   separates a wrong URL from a rejected credential.
-- **Publish now** pushes a full snapshot and shows the outcome, including the per-asset reasons
-  behind a partial publish. A catalog that rejects one table does not cost the publish the rest:
+- **Publish now** pushes a full snapshot to every target and shows each one's outcome, including
+  the per-asset reasons behind a partial publish. A catalog that rejects one table does not cost the publish the rest:
   each rejection is reported against the asset it belongs to.
 
-The tab is available to holders of the `org_settings` right, and only for organizations whose
-plan includes metadata export. Both the tab and every endpoint behind it enforce that.
+The tab is available to holders of the `org_settings` right. On a self-hosted install nothing else
+gates it. On the hosted service the organization's plan must include metadata export: the plan sets
+the org's tier, which a platform administrator can change in **Admin → Orgs**. Both the tab and every
+endpoint behind it enforce that.
 
 ### From the command line
 
@@ -168,8 +241,9 @@ provisa metadata export \
 | `--token` | `$PROVISA_API_TOKEN` | Bearer token for an identity holding `org_settings`. Omit entirely on unauthenticated deployments — no `Authorization` header is sent when the token is empty. |
 | `--timeout` | `300` | Seconds before the HTTP call is abandoned. |
 
-Exit code 0 means every asset published. Exit code 1 means partial publish or a connection
-failure. Per-asset errors print to stderr alongside the summary line, so a cron job records them
+Exit code 0 means every asset published to every target. Exit code 1 means a partial publish to any
+target, or a connection failure. Each target gets its own summary line; per-asset errors print to
+stderr, naming the target, so a cron job records them
 in the mail log without obscuring the exit code.
 
 A daily export at 06:00:
@@ -194,12 +268,49 @@ A daily export at 06:00:
   junction table, its two key columns, and the discriminator that splits it into several edge types
   publish alongside as `via`.
 
-- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `bigquery_dataplex`; glossary terms are silently omitted from their publishes.
+- **Business glossary** — live terms with definitions, typed relationships, and their physical column refs. A term must be in service, defined, and grounded in a published column to export; relationship edges publish only when both endpoint terms do. See [Business Glossary](glossary.md) for the full admission rule and the exclude-from-export control. Supported by `openmetadata`, `atlas` (and Purview), `atlan`, `datahub` and `collibra`; each publishes terms into one Provisa-owned glossary/namespace. Not supported by `openlineage`, `snowflake_horizon` or `dataplex`; glossary terms are silently omitted from their publishes.
 - **Lineage** — column-level edges with the transforms applied along each one.
 
 Lineage is derived from the compiled definitions of governed views and the materialized-view DAG,
 not inferred by scanning a warehouse. A column that a view computes from two upstream columns
 publishes both edges, along with the functions applied.
+
+## Data products as ODPS and ODCS
+
+Each data product is also served in the two open standards a catalog can import without an adapter:
+an [Open Data Product Standard](https://github.com/bitol-io/open-data-product-standard) 1.0
+document for the product, and an
+[Open Data Contract Standard](https://github.com/bitol-io/open-data-contract-standard) 3.1
+contract for each of its member tables.
+
+```http
+GET /data-products/{product id}/odps.yaml
+GET /data-products/{product id}/contracts/{source}.{schema}.{table}.yaml
+```
+
+An OpenMetadata target (2.0.3 or later) is also sent each member's contract through its ODCS
+import, attached to the member table and replacing the contract it had, so the contract shows on
+the table in OpenMetadata.
+
+Both are built from the same snapshot the export publishes. Reading them requires the
+`data_product_read` right, and on the hosted service a plan that includes metadata export.
+
+The ODPS document carries the product's purpose, limitations and usage as its description, plus
+its status, version, domain, team roles and support contact. It lists one output port per member,
+naming that member's contract. The SLA stays prose and rides as a custom property, because a product
+spans several members and a structured SLA could not say which one it describes.
+
+Each contract carries the member's columns with their types, descriptions and primary key, plus:
+
+- the governance tags on each column (`masked`, `visibility_restricted`, `rls_restricted`), never
+  the rule behind them;
+- the member's freshness: its `cache_ttl`, else its source's, as a latency promise; a member that
+  declares neither makes no freshness promise;
+- the quality checks registered against the member, as the checker that runs them wrote them.
+
+A member has no version of its own, so its contract takes the product's. A product with no version
+publishes `unversioned`, since both standards require a version and no release was cut. A product
+with no status is `active` when published and `draft` when not.
 
 ## Governance signals in the target catalog
 

@@ -3,6 +3,149 @@
 All notable changes to Provisa are documented in this file.
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## v0.1.0-alpha.494
+
+Released 2026-10-20.
+
+### Features
+
+#### Source Connectors
+
+- Provisa's services to a code source's code are a module always present where the code runs: provisa_services in Python and @provisa/services in Node, Bun and Deno, with the same calls -- secrets.get, settings.get (the source's declared non-secret settings, mapping settings, edited on its form), cache.get/set/delete with a ttl (scoped to the source and shared by its workers, JSON values of at most 1 MB), vectors.embed/upsert/search/delete (the source's own vector collection, embedded through the org's vector models as routes them; never a governed table's data, which reaches code only as parameters), http.get/post (a fetch Provisa makes for the code, held to the egress allow-list the worker's own egress is, through the deployment's outbound proxy and CA bundle, recorded in the org's trail), llm and log and metric (attached to the request the call serves).
+    - Provisa's services module in every worker, and code-source telemetry
+
+### Changes
+
+#### auth
+
+- A role set's meta-role is built in the environment the request names
+- An environment the request cannot be served by is refused where its meta-role would be built
+
+#### demo-stores
+
+- The sandbox node sets every store's data names before compose reads them
+- The shared Kafka starts: its KRaft cluster id is a UUID; a store that exits says why
+
+#### demos
+
+- A sandbox's tour warm-up no longer revives it once its tab is closing
+- A failed template is refused as not ready; the walk takes a read-window refusal as its step's answer and keeps the tier's log
+- The bundle build dumps a Postgres with pgvector, and the node names its data unsuffixed
+
+#### polly
+
+- Polly operates the screen when asked to show, demo or teach
+
+#### synthetic
+
+- A generated table and a closeness sample land with their org's vault bound
+
+## v0.1.0-alpha.493
+
+Released 2026-10-20.
+
+### Features
+
+#### Demo Provisioning
+
+- A configuration may declare the code its code sources run: code/<name>.tar.gz (or.tgz or.zip) beside its config.yaml, a source naming it as uploaded code by the content hash of the code it unpacks to (code: {kind: upload, upload: <hash>}).
+    - A demo's declared code archives are kept as its org's uploads
+    - The bundle build's answering config is served beside the demo's declared rows and code
+
+#### Performance
+
+- Request deadlines are watched by one shared watchdog thread per process instead of a threading.Timer per request; a request that passes its deadline is cancelled as before, on every transport that registers a cancel.
+
+#### Relationships
+
+- A relationship may feed its target table's parameters from its source table: its parameters map names each fed parameter and the source column whose value it is given (several parameters, each from its own column).
+    - A relationship feeds a code table's parameters from its source rows
+
+#### Source Connectors
+
+- A Node or Python code source declares the names its code may read (secrets in its mapping): a list of names, each the org secret of that name, or a mapping of name to vault reference (${secret:NAME} or ${env:NAME}).
+    - A code source's declared secrets, read at use through Provisa's services
+    - The egress proxy answers Provisa's services through a CONNECT tunnel
+    - A declared secret picked by name stays a name; the product spells no reference
+- Provisa's services to a code source's worker include an OpenAI-compatible LLM service at $PROVISA_SERVICES/llm/v1: POST chat/completions and embeddings, so any SDK works with its base URL there and no key, the worker's scoped token being in the address; the egress proxy answers it for a local worker.
+    - An OpenAI-compatible LLM service for a code source's worker
+
+#### UI
+
+- The named demo churnprod puts the churn demo's model in production.
+    - The churn model as a Python package and its Node twin
+    - churnprod, the churn model in production
+    - churnprod's store names its data per version; check_demo requires it
+- The named demo cloudpolicy reviews a cloud security policy after the fact, read only.
+    - The cloud policy's reader and the cloudpolicy demo's data generator
+    - cloudpolicy, a cloud security policy reviewed across three clouds
+    - cloudpolicy's card, Superset dashboard picture, published
+- A named demo, World Cup: public sources about the World Cup whose country names disagree become one governed graph.
+    - World Cup, public sources made to agree and queried as one graph
+
+### Changes
+
+#### bench
+
+- Each step reports paging beside its CPU per request
+- A masked column is one that is not the primary key; the fake admin answers only what the schema takes
+- An MCP transport, run_sql over Streamable HTTP, in the perf contract
+- The Postgres-only pass leaves out relationships naming a gone table by alias or via table
+- The three-device harness runs a governance pass, its devices sized by one flag
+
+#### cloud
+
+- cloud.provisa.dev's sandboxes run Polly on OpenRouter's Claude Haiku; a tier node without OPENROUTER_API_KEY is refused by name
+
+#### codesource
+
+- Build a code source's image and run it on a remote host
+
+#### cypher
+
+- An inline property map matches as the WHERE it means
+
+#### demo
+
+- The provisioning bundle's setup runs its consumer told its topics' suffix
+
+#### demo-stores
+
+- Shared Qdrant and Kafka, finished: tests to the shared design, no compose default
+
+#### docker
+
+- The image trusts Microsoft's 2025 signing key, which signs its Debian 13 repository
+
+#### environments
+
+- Create with a data mode, not an "Inherit connections" box
+
+#### join guard
+
+- A column a view passes through relates along the view's relationships
+- A union's branches fill its columns by position
+
+#### materialization
+
+- A code table kept for good is read from its replica, never run
+
+#### perf
+
+- Each request stage reports its thread CPU; the bench reads it per step
+
+#### tour
+
+- The core tour registers a source and a table; Skip works while a step waits
+- Query it everywhere covers nine surfaces: Python and the Notebook
+- pollyOpen is an explicit flag on the steps that show Polly's panel; "Just ask" stays shut
+
+#### ui
+
+- The graph renderer type-checks without the app's client: ResultRedirect is its own type
+- No domain picker offers meta or ops as the domain to put something into
+- A source staged from a Kaggle dataset shows as Kaggle in the Sources list
+
 ## v0.1.0-alpha.492
 
 Released 2026-10-19.

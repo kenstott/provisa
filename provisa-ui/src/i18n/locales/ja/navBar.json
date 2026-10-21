@@ -73,6 +73,7 @@
     "sandboxExitCreateOrg": "組織を作成",
     "sandboxExitLogOut": "ログアウトのみ",
     "itemPython": "Python",
-    "itemNotebook": "ノートブック"
+    "itemNotebook": "ノートブック",
+    "itemContainerRegistries": "コンテナレジストリ"
   }
 }

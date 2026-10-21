@@ -59,6 +59,13 @@ function routeCapabilities(): Record<string, string> {
     const cap = /capability=\{?"([a-z_]+)"/.exec(block);
     if (cap) out[path[1]] = cap[1];
   }
+  // Paths sharing one gate are a list mapped onto a single <Route path={path}> (the Python and
+  // Notebook tabs).
+  for (const m of source.matchAll(
+    /\{\[((?:\s*"\/[^"]+",?)+)\s*\]\.map\(\(path\)[\s\S]*?capability=\{?"([a-z_]+)"/g,
+  )) {
+    for (const path of m[1].matchAll(/"([^"]+)"/g)) out[path[1]] = m[2];
+  }
   // The Admin surfaces are a `[path, capability]` table rather than JSX routes.
   for (const m of source.matchAll(/\["(\/admin\/[^"]+)",\s*"([a-z_]+)"\]/g)) out[m[1]] = m[2];
   return out;
@@ -138,7 +145,9 @@ describe("tour itinerary", () => {
     const keys = kept.map((i) => TOUR_STEPS[i].key);
     expect(keys).toContain("step0"); // /sources — source_registration, untouched
     expect(keys).not.toContain("step20"); // /views
-    expect(keys).not.toContain("step22"); // /lineage
+    expect(keys).toContain("step22"); // /lineage — view_governance, untouched
+    const ungoverned = tourItinerary((c) => c !== "view_governance").map((i) => TOUR_STEPS[i].key);
+    expect(ungoverned).not.toContain("step22");
   });
 
   it("refuses a routed step that names no capability", () => {

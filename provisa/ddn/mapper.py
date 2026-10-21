@@ -117,6 +117,7 @@ def _map_connectors(  # REQ-183
             "port": 5432,
             "database": "default",
             "username": "postgres",
+            # reference-convention: REQ-920 -- a placeholder in generated, reviewed config
             "password": "${env:DB_PASSWORD}",
         }
         if sid in overrides:

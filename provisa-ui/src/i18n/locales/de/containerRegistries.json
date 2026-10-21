@@ -1,0 +1,19 @@
+{
+  "containerRegistries": {
+    "help": "Die Registries, in die das gebaute Image einer Code-Quelle gepusht werden kann, um es auf einem Remote-Host auszuführen. Jedes Feld kann einen Wert oder eine Secret-Referenz wie ${secret:registry_token} enthalten. Ohne Registry wird ein gebautes Image stattdessen heruntergeladen.",
+    "add": "Container-Registry hinzufügen",
+    "none": "Keine Container-Registries. Gebaute Images können weiterhin heruntergeladen werden.",
+    "address": "Registry und Namespace",
+    "addressHelp": "Die Registry, mit ihrem Port, falls sie einen hat, und der Repository-Namespace, unter dem Images gepusht werden, zum Beispiel ghcr.io/example oder registry.example.com:5000/data.",
+    "username": "Benutzername",
+    "credential": "Passwort oder Token",
+    "credentialHelp": "Das Passwort oder Zugriffstoken, mit dem sich der Benutzername anmeldet, zum Beispiel ein persönliches GitHub-Zugriffstoken mit write:packages.",
+    "caBundle": "Zertifizierungsstelle (PEM)",
+    "caBundleHelp": "Nur für eine Registry, deren Zertifikat von Ihrer eigenen Zertifizierungsstelle signiert ist: deren PEM-Zertifikat oder eine Secret-Referenz. Sie wird neben den öffentlichen Zertifizierungsstellen vertraut. Andernfalls leer lassen.",
+    "default": "Standard-Registry",
+    "defaultHelp": "Ein Build pusht hierhin, sofern er keine andere Registry nennt. Eine Organisation hat eine Standard-Registry.",
+    "saved": "Gespeichert",
+    "removed": "Entfernt",
+    "remove": "Entfernen"
+  }
+}

@@ -162,6 +162,14 @@ orgs = Table(
     # the token a push needs never enters the control plane.
     Column("repo_remote", Text),
     Column("repo_status_webhook", Text),
+    # REQ-1066 (amended 2026-10-20): the org's subscription tier, which every tier-gated feature
+    # reads (provisa.control_plane.entitlements). Stored with the org so it holds on a single-org
+    # install and across restarts; set by a platform administrator (Admin > Orgs). NULL: no tier
+    # has been set, and no tier-gated feature is entitled.
+    Column("tier", Text),
+    CheckConstraint(
+        "tier IS NULL OR tier IN ('free', 'standard', 'premium')", name="orgs_tier_check"
+    ),
 )
 
 user_profiles = Table(
@@ -919,6 +927,29 @@ org_package_registries = Table(
 )
 
 
+# REQ-2098: the container registries a code source's built image may be pushed to, entered by the
+# organisation's administrator beside its package registries. Each field as entered: the value or a
+# ${secret:...} / ${env:...} reference, resolved at use (core/container_registries.resolved).
+org_container_registries = Table(
+    "org_container_registries",
+    metadata,
+    Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), primary_key=True),
+    Column("id", Text, primary_key=True),
+    # Where images are pushed: a registry host with an optional port and a repository namespace
+    # ("ghcr.io/acme", "registry.acme.com:5000/data").
+    Column("address", Text, nullable=False),
+    Column("username", Text, nullable=False),
+    Column("credential", Text, nullable=False),
+    # Whether a build pushes here unless it names another: at most one per organisation.
+    Column("is_default", Boolean, nullable=False, server_default=false()),
+    # The PEM certificate authority the registry's TLS chains to, as entered; NULL: the publicly
+    # trusted authorities alone.
+    Column("ca_bundle", Text, nullable=True),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_by", Text, nullable=True),
+)
+
+
 # REQ-1984, REQ-1993: the archives uploaded to Provisa as code sources' code, kept per organisation
 # by the content hash of the bundle they unpack to (provisa/codesource/bundle.content_hash) -- the hash a
 # source records. Outside every environment: one store per organisation.
@@ -952,6 +983,7 @@ REGISTRY_TABLES = [
     source_sign_ins,
     org_mail_platforms,
     org_package_registries,
+    org_container_registries,
     org_code_bundles,
     deployment_encryption_key,
     personal_access_tokens,

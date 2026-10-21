@@ -50,7 +50,7 @@ in
     postgresql_16
     # The worker-boot integration tests read a process's listening sockets with it.
     lsof
-    # The embedded PostgreSQL's contrib FDWs are built from the PostgreSQL 16.2 source, which is
+    # The embedded PostgreSQL's contrib FDWs are built from the PostgreSQL 16.11 source, which is
     # C17: the default compiler's C23 does not build it.
     gcc14
     gnumake

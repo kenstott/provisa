@@ -14,6 +14,7 @@ import time
 from pathlib import Path
 from types import SimpleNamespace
 
+from provisa.federation.pgwire_endpoint import sign_in_password
 from provisa.federation.pgwire_replica import (
     PgwireServer,
     PortPair,
@@ -53,7 +54,11 @@ try:
                 f"connector server not serving in {START_SECONDS}s:\n{server.log_tail()}"
             )
         time.sleep(1)
-    rows = asyncio.run(land_via_select(server.ports, schema_name(source), "pets"))
+    rows = asyncio.run(
+        land_via_select(
+            server.ports, schema_name(source), "pets", password=sign_in_password(source)
+        )
+    )
     assert sorted(r["name"] for r in rows) == ["Rex", "Tom"], rows
     print(f"files connector served {len(rows)} rows from {spec.asset_filename}")
 finally:

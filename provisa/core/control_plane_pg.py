@@ -6,8 +6,8 @@
 
 """Boot the embedded control-plane PostgreSQL for the native (no-Docker) desktop tier.
 
-Backed by pgserver (bundled postgres binaries), separate from the dedicated
-telemetry instance (see ``provisa.observability.telemetry_pg``). The instance is
+Backed by pgserver (pixeltable-pgserver's bundled PostgreSQL 16.11 binaries), separate from the
+dedicated telemetry instance (see ``provisa.observability.telemetry_pg``). The instance is
 persistent (``cleanup_mode=None``): it keeps running after this process exits and
 a later call to the same data dir reuses it. Requires a pgserver-capable
 interpreter (cpython <= 3.12 today).
@@ -53,9 +53,9 @@ from pathlib import Path
 
 
 def _server(datadir: str):
-    import pgserver  # lazy — optional dep; ImportError signals "not available"
+    import pixeltable_pgserver  # lazy — optional dep; ImportError signals "not available"
 
-    return pgserver.get_server(Path(datadir), cleanup_mode=None)
+    return pixeltable_pgserver.get_server(Path(datadir), cleanup_mode=None)
 
 
 class EmbeddedPostgresAsRoot(PermissionError):
@@ -137,11 +137,11 @@ def _stage_bundled_extensions() -> None:
         import provisa_pg_ext  # type: ignore[import-not-found]  # noqa: F401 — presence probe for the optional wheel
     except ModuleNotFoundError:
         return  # BYO / non-embedded tier: FDWs come from the system Postgres, not the wheel
-    import pgserver
+    from pixeltable_pgserver.utils import POSTGRES_BIN_PATH
 
     from provisa.pg_extensions.staging import stage_bundled_pg_extensions
 
-    stage_bundled_pg_extensions(Path(pgserver.__file__).parent / "pginstall")
+    stage_bundled_pg_extensions(POSTGRES_BIN_PATH.parent)  # pginstall
 
 
 @contextmanager
@@ -150,9 +150,9 @@ def _postmaster_environment() -> Iterator[None]:
     staged it -- the running interpreter's home and import paths, so the pg engine's fake functions
     import provisa and faker. pgserver passes the caller's environment to pg_ctl, so it is set for
     the start alone and restored after: this process's own environment is not changed."""
-    import pgserver
+    from pixeltable_pgserver.utils import POSTGRES_BIN_PATH
 
-    pkglib = Path(pgserver.__file__).parent / "pginstall" / "lib" / "postgresql"
+    pkglib = POSTGRES_BIN_PATH.parent / "lib" / "postgresql"
     if not any(pkglib.glob("plpython3.*")):
         yield
         return
@@ -185,14 +185,14 @@ def _ensure_connection_capacity(srv, datadir: str) -> None:
     ``max_connections`` is fixed at server start, so a change is written with ALTER SYSTEM and the
     server restarted once (``pg_ctl restart`` reuses the options of the running postmaster,
     including the socket directory pgserver chose). A server already at capacity is not touched."""
-    from pgserver.postgres_server import pg_ctl  # pyright: ignore[reportAttributeAccessIssue]
+    from pixeltable_pgserver.pgexec import pgexec
 
     shown = srv.psql("SHOW max_connections")
     current = next(int(tok) for tok in shown.split() if tok.isdigit())
     if current >= MAX_CONNECTIONS:
         return
     srv.psql(f"ALTER SYSTEM SET max_connections = {MAX_CONNECTIONS}")
-    pg_ctl(["-w", "restart", "-m", "fast"], pgdata=Path(datadir))
+    pgexec("pg_ctl", ["-D", datadir, "-w", "restart", "-m", "fast"])
 
 
 def start(datadir: str, init_sql: str | None = None) -> tuple[str, int, str]:
@@ -254,16 +254,14 @@ def stop(datadir: str) -> None:
     import signal
     import subprocess
 
-    # pgserver ships no py.typed marker, so pyright can't see this symbol statically even though
-    # it resolves fine at runtime (exercised directly in test_control_plane_pg_staging.py).
-    from pgserver.postgres_server import pg_ctl  # pyright: ignore[reportAttributeAccessIssue]
+    from pixeltable_pgserver.pgexec import pgexec
 
     pgdata = Path(datadir)
     pidfile = pgdata / "postmaster.pid"
     if not pidfile.exists():
         return  # nothing running against this data dir
     try:
-        pg_ctl(["-w", "stop", "-m", "immediate"], pgdata=pgdata)
+        pgexec("pg_ctl", ["-D", str(pgdata), "-w", "stop", "-m", "immediate"])
     except subprocess.CalledProcessError:
         pid_line = pidfile.read_text().splitlines()[0].strip()
         try:
@@ -334,7 +332,7 @@ def dump_table(datadir: str, table: str, out: str) -> bool:
     """
     import subprocess
 
-    from pgserver._commands import POSTGRES_BIN_PATH  # the bundled binaries, no PATH lookup
+    from pixeltable_pgserver.utils import POSTGRES_BIN_PATH  # the bundled binaries, no PATH lookup
 
     _refuse_root()
     with _signed_in(_password(datadir)):

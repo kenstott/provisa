@@ -85,6 +85,11 @@
         "title": "73 brontypen, 14 categorieën",
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
+      "stepBuildSource": {
+        "title": "Een bron, live toegevoegd",
+        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>, gepubliceerd op provisa.dev) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
+        "acting": "Bron toevoegen"
+      },
       "step4": {
         "title": "Alles wordt een tabel",
         "description": "Wat de bron ook is, of het nu een Mongo-collectie, een Kafka-topic, een REST-endpoint of een graaf is, Provisa ontleedt het tot een 2D-<strong>tabel</strong>: één uniforme vorm om over elke bron te bevragen.<p>📁 Groepeer tabellen in <strong>domeinen</strong>, elk beheerd door een data steward die de kwaliteit van het model bewaakt terwijl het evolueert.</p>"
@@ -98,36 +103,44 @@
         "description": "💬 Je vraagt in de taal of met de tool die je al gebruikt (SQL, GraphQL, Cypher, gewone taal via Polly, of een BI-tool of driver), en elk daarvan leest hetzelfde beheerde model, dus het antwoord en de regels zijn hetzelfde, welke je ook kiest."
       },
       "step6": {
-        "title": "SQL (1 van 7 oppervlakken)",
+        "title": "SQL (1 van 9 oppervlakken)",
         "description": "SQL leeft in de SQL-verkenner. Standaard-SQL gefedereerd over elke bron: verbind Postgres met Mongo met een CSV in één statement. De eigen metadata van het model en elk activiteitenspoor zijn hier ook bevraagbare tabellen, dus je kunt je auditlog of lineage rechtstreeks aan live data koppelen.<p>🔌 Dezelfde governed SQL draait naast deze verkenner via meerdere wire-protocollen; je tool kiest degene die hij al spreekt:</p><ul><li><strong>pgwire</strong>: elke Postgres-compatibele client (psql, DBeaver, Tableau, Power BI) verbindt out of the box.</li><li><strong>JDBC</strong>: sluit aan op elke Java/JVM-app, ETL-pipeline of JDBC-geschikte BI-tool.</li><li><strong>Arrow Flight SQL</strong>: kolomgeoriënteerde streaming voor ADBC-clients, zonder rij-hercodering, gebouwd voor grote resultaatsets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa vanuit DuckDB en bevraag de governed federatie ter plekke.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 van 7 oppervlakken)",
+        "title": "GraphQL (2 van 9 oppervlakken)",
         "description": "◈ Dezelfde query, getypeerd als GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Groepering en aggregaties over je relaties: 🎯 één endpoint, 📖 een zelfdocumenterend schema.</p><p>🔌 Roep het aan vanuit <strong>elke GraphQL-client</strong>, zoals Apollo, Relay of urql. Met federatie ingeschakeld sluit Provisa aan op een <strong>Apollo supergraph als subgraph</strong>, zodat je gefedereerde model naast je bestaande grafen samenstelt.</p>"
       },
       "step8": {
-        "title": "Cypher (3 van 7 oppervlakken)",
+        "title": "Cypher (3 van 9 oppervlakken)",
         "description": "🕸️ Doorloop het gefedereerde model als een graaf met Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ Die doorloop draait <strong>over bronnen heen</strong>, zonder dat één enkele grafdatabase nodig is.</p><p>🔌 Elke <strong>Bolt</strong>-client, zoals Neo4j Browser of Bloom, voert diezelfde doorloop uit via de wire, zonder codewijziging.</p>"
       },
       "step9": {
-        "title": "gRPC (4 van 7 oppervlakken)",
+        "title": "gRPC (4 van 9 oppervlakken)",
         "description": "⚙️ Elke geregistreerde entiteit is ook een gRPC-service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Roep het aan vanuit elke gRPC-client: 📐 sterk getypeerd, 🚀 hoge doorvoer.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 van 7 oppervlakken)",
+        "title": "JSON:API (5 van 9 oppervlakken)",
         "description": "🧩 Een spec-conform JSON:API-oppervlak:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paginering en 🔍 filtering out of the box.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 van 7 oppervlakken)",
+        "title": "OpenAPI / REST (6 van 9 oppervlakken)",
         "description": "🌐 En een gewoon REST-endpoint, beschreven door OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Volledig beschreven, zodat elke REST-client of codegenerator het kan gebruiken.</p>"
       },
       "step12": {
-        "title": "MCP (7 van 7 oppervlakken)",
-        "description": "🤖 Het zevende oppervlak laat een agent <strong>met je data redeneren</strong>. Het bestuurt dezelfde governed tools (de catalogus doorzoeken, tabellen beschrijven, SQL uitvoeren, relaties volgen) en <em>schakelt</em> ze aaneen om vragen te beantwoorden die geen enkele losse query zou kunnen, waarbij elke aanroep gebonden is aan de governance van <strong>jouw</strong> rol.<p>🔌 Dezelfde <strong>MCP-server</strong> koppelt aan Claude Desktop, Claude Code, of elke MCP-client, zodat agents je model op de governed manier verkennen en erover redeneren.</p><p>🔑 Gebruikt je eigen LLM-sleutel; deze uitwisseling is een kant-en-klaar voorbeeld.</p><p>Nog één oppervlak te gaan: degene die alle zeven voor je schrijft. →</p>"
+        "title": "MCP (7 van 9 oppervlakken)",
+        "description": "🤖 Het zevende oppervlak laat een agent <strong>met je data redeneren</strong>. Het bestuurt dezelfde governed tools (de catalogus doorzoeken, tabellen beschrijven, SQL uitvoeren, relaties volgen) en <em>schakelt</em> ze aaneen om vragen te beantwoorden die geen enkele losse query zou kunnen, waarbij elke aanroep gebonden is aan de governance van <strong>jouw</strong> rol.<p>🔌 Dezelfde <strong>MCP-server</strong> koppelt aan Claude Desktop, Claude Code, of elke MCP-client, zodat agents je model op de governed manier verkennen en erover redeneren.</p><p>🔑 Gebruikt je eigen LLM-sleutel; deze uitwisseling is een kant-en-klaar voorbeeld.</p><p>Nog twee lezen dezelfde beheerde data vanuit Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 van 9 oppervlakken)",
+        "description": "🐍 Het tabblad Python draait Python in je browser, aangemeld als jij:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>Het antwoord komt terug als een pandas-DataFrame, gelezen via dezelfde beheerde pipeline, dus de rijregels en maskers van je rol gelden er ook voor.</p><p>🔌 Hetzelfde pakket <strong>provisa-client</strong> installeer je met pip op elke desktop-Python, dus een script dat je hier schrijft draait ongewijzigd in je eigen omgeving.</p>"
+      },
+      "stepNotebook": {
+        "title": "Notebook (9 van 9 oppervlakken)",
+        "description": "📓 Het tabblad Notebook is JupyterLite: een Jupyter-notebook dat in je browser draait. De eerste cel meldt je aan, de volgende leest dezelfde query als een DataFrame om in een grafiek te zetten of met andere data te combineren.<p>⬇️ Download het notebook en het opent in elke desktop-Jupyter, waar dezelfde cellen net als hier uit Provisa lezen.</p><p>Nog één oppervlak te gaan: degene die je query's voor je schrijft. →</p>"
       },
       "step13": {
-        "title": "Vraag het gewoon: het oppervlak dat alle zeven schrijft",
-        "description": "💬 <em>\"hoeveel huisdieren per diersoort\"</em><p><strong>Je hoeft geen van die zeven te leren.</strong> Vraag het in gewoon Nederlands en Provisa compileert je vraag tegelijk naar elke querytaal: elk paneel hieronder is diezelfde zin als SQL, GraphQL, Cypher, gRPC, JSON:API en REST.</p><p>Gebruik het oppervlak dat je tools al spreken, of sla ze allemaal over en vraag het gewoon.</p><p>🔑 Live natural-language queries gebruiken je eigen LLM-sleutel; dit is een kant-en-klaar voorbeeld.</p><p>✅ Eén model, <strong>acht oppervlakken</strong>: zeven om te bevragen en degene die ze schrijft.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Vraag het gewoon: het oppervlak dat je query's schrijft",
+        "description": "💬 <em>\"hoeveel huisdieren per diersoort\"</em><p><strong>Je hoeft geen van die querytalen te leren.</strong> Vraag het in gewone taal en Provisa zet je vraag in één keer om naar alle zeven: elk paneel hieronder is diezelfde zin als SQL, GraphQL, Cypher, gRPC, JSON:API en REST.</p><p>Het kan Python of het Notebook niet direct openen, maar je kunt Polly altijd vragen een query naar een van beide over te zetten.</p><p>🔑 Live query's in natuurlijke taal gebruiken je eigen LLM-sleutel; dit is een voorbereid voorbeeld.</p><p>✅ Eén model achter alle <strong>negen oppervlakken</strong>, en gewone taal schrijft de query's voor je.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "Dat was de kern van vijf minuten",
@@ -720,6 +733,26 @@
       "profilingDuplicates": {
         "title": "De rijen die twee keer zijn geschreven",
         "description": "Het model verklaart customer_id tot sleutel, maar de export had geen beperking: 150 klanten staan er twee keer in, elk veld gelijk. Het profiel telt de herhaalde rijen en de sleutelwaarden die meer dan één rij hebben."
+      },
+      "profilingDrift": {
+        "title": "Wat er sinds de vorige run veranderde",
+        "description": "De setup draaide de profiler twee keer, en tussen de runs schreef de volgende synchronisatie van het CRM elke Amerikaanse postcode als ZIP+4. De drifttabel vergelijkt elke maat met die van de vorige run: de maten die de wijziging van postal_code verschoof, zijn als driftend gemarkeerd, en de kolommen die de synchronisatie niet aanraakte niet."
+      },
+      "profilingOriginal": {
+        "title": "De echte klanten",
+        "description": "Tien klanten zoals het CRM ze bewaart. Daarna dezelfde instructie in een omgeving die uit het profiel is gegenereerd."
+      },
+      "profilingToSynthetic": {
+        "title": "Naar synthetic",
+        "description": "Daarna schakelt de schakelaar naar <strong>synthetic</strong>, een Test (synthetic)-omgeving."
+      },
+      "profilingSynthetic": {
+        "title": "Gegenereerd uit het profiel",
+        "description": "Dezelfde instructie in synthetic: elke rij is gegenereerd uit het profiel van de klanten, met dezelfde kolommen, waardevormen en spreiding, en geen enkele echte klant. Het profiel is genoeg om testdata uit te genereren."
+      },
+      "profilingToProd": {
+        "title": "Terug naar productie",
+        "description": "Hierna keert de omgevingskiezer terug naar prod."
       },
       "profilingRest": {
         "title": "Hetzelfde antwoord via REST",
@@ -1425,13 +1458,9 @@
         "title": "Kolommen uit de typen van de functie",
         "description": "churn_risk is een tabel omdat de docstring @table zegt. De kolommen zijn de velden van de RiskRow die ze teruggeeft. De parameters zijn de argumenten: de klant en elk kenmerk waarop het model is getraind."
       },
-      "churnprodRefused": {
-        "title": "Een lezing zonder klant, geweigerd",
-        "description": "De functie geeft customer_id geen standaardwaarde, dus een lezing die hem weglaat wordt geweigerd voordat er code draait. De weigering noemt elke ontbrekende parameter."
-      },
       "churnprodJoin": {
         "title": "De join die het model voedt",
-        "description": "Deze relatie koppelt de kenmerken van de klanten aan churn_risk en noemt de kenmerken die ze doorgeeft. Een join erover leest de kenmerken die u mag zien, roept het model één keer per klant aan en voegt de scores weer toe."
+        "description": "Deze relatie koppelt elke klant aan de score van het model, zodat een join over klanten elke klant een score geeft."
       },
       "churnprodAtRisk": {
         "title": "De lijst van klanten met risico",
@@ -1460,6 +1489,146 @@
       "churnprodRecap": {
         "title": "Wat u hebt gezien",
         "description": "Het model van een data scientist ging in productie zonder een eigen dienst om te draaien. Het pakket is vastgelegd en wordt eenmaal geïnstalleerd. Een join voedt de functie, die zich als een tabel laat lezen, en de maskering en rijregels die elke tabel heeft bepalen wat ze teruggeeft. SQL, GraphQL en elke andere toegang lezen haar op dezelfde manier."
+      },
+      "worldcupIntro": {
+        "title": "Vier openbare bronnen, één WK",
+        "description": "Wie heeft het WK gewonnen, en uit welke confederatie? Het antwoord zit verspreid in openbare data: Wikipedia's lijst van finales en zijn artikelen over de confederaties, en twee Kaggle-datasets met elke WK-wedstrijd en elk interlanddoelpunt. Elke bron noemt landen op zijn eigen manier. Wikipedia schrijft West Germany, Kaggle schrijft Germany FR en de ledentabellen van de confederaties schrijven Germany. Deze tour haalt de data binnen, brengt de namen met een korte Python-functie in overeenstemming en bevraagt het resultaat als één beheerde graaf."
+      },
+      "worldcupWikipedia": {
+        "title": "Wikipedia, in minuten geregistreerd",
+        "description": "Dit is een Wikipedia-bron. De crawl leest zeven pagina's: de List of FIFA World Cup finals en de artikelen van de zes confederaties. Elke datatabel op die pagina's wordt een tabel, genoemd naar zijn pagina en zijn bijschrift, dus de finales heten <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>. Een openbare bron wordt beheerd als elke interne database, met dezelfde rollen, rechten en maskers. Stel een verversingsinterval in en deze bronnen blijven vanzelf actueel. Deze demo leest een vaste momentopname, zodat elke bezoeker dezelfde antwoorden ziet."
+      },
+      "worldcupFinals": {
+        "title": "De finales, zoals Wikipedia ze opsomt",
+        "description": "Elke finale van 1930 tot 2026, met winnaars en verliezend finalisten onder de namen van hun tijd. Wikipedia zet de titels van 1954, 1974 en 1990 onder West Germany en die van 2014 onder Germany."
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle-datasets komen binnen als tabellen",
+        "description": "Dit is een Kaggle-bron: de FIFA World Cup-dataset, met elk toernooi, elke wedstrijd en elke spelersopstelling van 1930 tot 2014. Elk van zijn bestanden komt binnen als een tabel. Een tweede Kaggle-bron bevat elk interlanddoelpunt sinds 1916. Net als de Wikipedia-tabellen zijn het openbare data, in minuten geregistreerd en beheerd als elke interne database."
+      },
+      "worldcupMatches": {
+        "title": "Wedstrijden onder de namen van hun tijd",
+        "description": "Kaggle schrijft West-Duitsland als Germany FR en Oost-Duitsland als German DR. Enkele van zijn namen dragen restjes opmaak uit het bestand mee, zoals <code>rn\"&gt;Republic of Ireland</code>. De lege regels van het bestand blijven bewaard als rijen zonder waarden, zoals de dataset ze heeft."
+      },
+      "worldcupDisagree": {
+        "title": "De namen kloppen niet met elkaar",
+        "description": "Geteld op de namen die Wikipedia schrijft, heeft Germany één titel en West Germany drie, alsof het twee landen zijn. Kaggle schrijft hetzelfde team als Germany FR, dus een join op namen tussen de bronnen mist die titels ook."
+      },
+      "worldcupFunction": {
+        "title": "De functie is de tabel",
+        "description": "country_alias is een Python-bron, en deze functie is de tabel waarlangs elke relatie tussen bronnen koppelt. Ze krijgt elke teamnaam die de bronnen schrijven, vraagt een LLM met een sleutel uit de kluis van de organisatie voor welk FIFA-lid de naam staat, en geeft de naam en FIFA-code van het lid terug. Ze draait opnieuw op haar verversingsinterval, dus een nieuwe naam wordt gekoppeld zodra hij verschijnt.<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "Elke naam, gekoppeld en gecontroleerd",
+        "description": "Dit zijn de namen die afwijken van de naam van hun lid. Germany FR en West Germany zijn Germany, Zaire is DR Congo en de Soviet Union is Russia. Elke koppeling is gecontroleerd voordat deze demo haar bevroor, en 27 van de 237 zijn gecorrigeerd. Een team waarvan de resultaten op geen enkel lid zijn overgegaan, houdt zijn eigen naam: East Germany blijft East Germany, dus zijn wedstrijd van 1974 tegen West Germany is niet Germany tegen Germany."
+      },
+      "worldcupJunction": {
+        "title": "Een relatie via de functie",
+        "description": "WON koppelt een lid van een confederatie via country_alias aan de finales die het won. De FIFA-code van het lid vindt elke naam waarvoor het staat, en elke naam vindt zijn finales. RUNNER_UP, PLAYED_HOME, PLAYED_AWAY en SCORED koppelen op dezelfde manier."
+      },
+      "worldcupGraph": {
+        "title": "Elke titel in één graaf",
+        "description": "Elk lid is verbonden met de finales die het won, onder welke naam ook. Het knooppunt van Germany bevat 1954, 1974, 1990 en 2014."
+      },
+      "worldcupByConfederation": {
+        "title": "Gegroepeerd per confederatie",
+        "description": "Gegroepeerd per confederatie hebben de leden van de UEFA 13 titels en die van de CONMEBOL 10. Geen andere confederatie heeft een finale gewonnen."
+      },
+      "worldcupSql": {
+        "title": "Hetzelfde model in SQL",
+        "description": "Dezelfde join in SQL telt de titels van elk lid via country_alias. Brazil gaat aan kop met vijf, en Germany en Italy hebben er elk vier."
+      },
+      "worldcupGraphql": {
+        "title": "En in GraphQL",
+        "description": "In GraphQL heeft elke finale via country_alias een veld <code>winner</code>, dus 1954, 1974 en 1990 tonen West Germany naast het lid waarvoor het staat: Germany, GER."
+      },
+      "worldcupRecap": {
+        "title": "Samenvatting",
+        "description": "Openbare data van Wikipedia en Kaggle, in minuten binnengehaald en beheerd als elke interne database, met zo'n tien regels Python in overeenstemming gebracht en bevraagd als één graaf. De koppelingen van de functie zijn gecontroleerd, dus de graaf telt elke titel één keer, bij het juiste lid."
+      },
+      "cloudpolicyScenario": {
+        "title": "Waar deze demo over gaat",
+        "description": "Uw beveiligingsbeleid zegt dat elke schijf die aan een virtuele machine hangt een door de klant beheerde sleutel gebruikt. U leidt de beveiliging en controleert dat over Azure, AWS en Google Cloud aan de hand van wat al is vastgelegd. De eerste bron is de cloudinventaris. Die toont elke machine en elke schijf in de drie clouds, met de sleutel waarmee elke schijf is versleuteld."
+      },
+      "cloudpolicyIncidents": {
+        "title": "De incidenten",
+        "description": "De tweede bron zijn de ServiceNow-incidenten van het beveiligingsteam. Elk incident noemt de schijf waar het om gaat als configuratie-item en verwijst naar de sectie van het beleid waaronder het is gemeld. Een uitzondering is een incident in de categorie Policy exception."
+      },
+      "cloudpolicyReader": {
+        "title": "Het beleid, door code gelezen",
+        "description": "Het beleid zelf is een webpagina. Dit Python-pakket wordt met de pagina meegeleverd en leest die in tot één rij per maatregel. De functie ervan is een tabel, dus het beleid sluit aan op de rest van het model."
+      },
+      "cloudpolicyPolicy": {
+        "title": "Het beleid als rijen",
+        "description": "Hier staat elke maatregel van het beleid, gelezen uit de HTML, met kop, bepaling en de dag waarop hij inging. Sectie 4.2 is de maatregel voor schijfversleuteling die wordt beoordeeld."
+      },
+      "cloudpolicySearch": {
+        "title": "Het beleid, doorzocht op betekenis",
+        "description": "Elke bepaling is één keer ingebed, toen de demo werd ingericht. Een zoekopdracht op betekenis vindt de maatregel over schijfversleuteling, ook als uw woorden afwijken van die van de bepaling."
+      },
+      "cloudpolicyModel": {
+        "title": "Eén model over drie clouds",
+        "description": "Elke schijf noemt de machine waaraan hij hangt. Deze relatie verbindt schijven en machines op dezelfde manier in Azure, AWS en Google Cloud."
+      },
+      "cloudpolicyCites": {
+        "title": "Incidenten gekoppeld aan bepalingen",
+        "description": "Elk incident verwijst naar een sectie van het beleid. Deze relatie koppelt het aan de bepaling waarnaar het verwijst, zodat een incident onder de verkeerde sectie opvalt."
+      },
+      "cloudpolicyViolations": {
+        "title": "Het beleid als view",
+        "description": "Sectie 4.2 is als view geschreven. Die toont elke aangekoppelde schijf waarvan de cloud de sleutel beheert, naast de machine waaraan de schijf hangt."
+      },
+      "cloudpolicyReview": {
+        "title": "De dagelijkse beoordeling",
+        "description": "De dagelijkse beoordeling deelt elke aangekoppelde schijf in volgens de regels van het beleid. Een schijf zonder door de klant beheerde sleutel kan onder een geldige uitzondering vallen. Is dat niet zo, dan ligt het incident binnen of na de termijn, is het gesloten terwijl de schijf nog niet voldoet, of is het nooit gemeld."
+      },
+      "cloudpolicyTrigger": {
+        "title": "De dagelijkse trigger",
+        "description": "Elke ochtend voert een geplande trigger de beoordeling uit en schrijft de rijen van die dag naar de beoordelingsgeschiedenis. Hij schrijft via dezelfde gegovernde pipeline als elke opdracht, met de schrijfrechten van zijn rol."
+      },
+      "cloudpolicyTrend": {
+        "title": "Veertien dagen geschiedenis",
+        "description": "De geschiedenis die de trigger bijhoudt, toont de overtredingen per dag. Schijven vallen weg zodra hun incidenten zijn opgelost, en een nieuwe overtreding verschijnt op de dag dat die ontstaat."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Vraag Polly wie de maatregel overtreedt",
+        "description": "Polly leest hetzelfde gegovernde model als u. Ze noemt de schijven zonder door de klant beheerde sleutel en de sectie die er een vereist."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Uitzonderingen die nog gelden",
+        "description": "Een uitzondering geldt 90 dagen volgens sectie 4.3. Polly vindt de schijven die er nog onder vallen."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incidenten onder de verkeerde sectie",
+        "description": "Sommige incidenten verwijzen naar een andere sectie dan de maatregel waar ze over gaan, en één verwijst naar een sectie die het beleid heeft ingetrokken."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Maatregelen die niets controleert",
+        "description": "Het beleid heeft maatregelen die geen enkele controle afdwingt. Polly vergelijkt het beleid met de controles van het team en kan een view ontwerpen die een steward toevoegt."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Nu als auditor",
+        "description": "De auditor leest elk account in elke cloud."
+      },
+      "cloudpolicyOpen": {
+        "title": "Alles wat de beoordeling meldt",
+        "description": "Hier staat elke schijf die de beoordeling meldt, voor elk team."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Nu als het betalingsteam",
+        "description": "Het betalingsteam leest alleen zijn eigen resources en incidenten."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Alleen de eigen rijen",
+        "description": "Dezelfde opdracht geeft alleen de schijven van het betalingsteam terug. De rijregels liggen op de inventaris en de incidenten, en elke view die daarop is gebouwd, past ze toe."
+      },
+      "cloudpolicyDashboard": {
+        "title": "Het compliancedashboard",
+        "description": "Superset leest dezelfde views via het Postgres-protocol van Provisa. Hier is het compliancedashboard, met de overtredingen per maatregel."
+      },
+      "cloudpolicyRecap": {
+        "title": "Wat u hebt gezien",
+        "description": "U hebt een beleid over drie clouds beoordeeld aan de hand van wat al was vastgelegd. Het beleid is een tabel, door code uit de eigen pagina gelezen, en elk incident is gekoppeld aan de bepaling waarnaar het verwijst. Een dagelijkse trigger bewaart de geschiedenis, en elke rol leest alleen wat de regels toestaan, in SQL, in Polly en in Superset."
       },
       "bankingScenario": {
         "title": "Dagafsluitingsrapportage, grootboek blijft waar het is",
@@ -1644,6 +1813,14 @@
       "churnprod": {
         "title": "Opzeggingsrisico in productie",
         "summary": "Het scikit-learn-model van de churn-demo in productie. Het Python-pakket is een bron, en de functie is een tabel die in een join elke klant een score geeft, met maskering en rijregels op wat ze teruggeeft."
+      },
+      "worldcup": {
+        "title": "World Cup, één graaf",
+        "summary": "De WK-data van Wikipedia en Kaggle zijn het oneens over landnamen. Een korte Python-functie koppelt elke naam met een LLM, en de openbare bronnen worden één beheerde graaf."
+      },
+      "cloudpolicy": {
+        "title": "Beoordeling van het cloudbeleid",
+        "summary": "Een beveiligingsbeleid beoordeeld over Azure, AWS en Google Cloud. De cloudinventaris, de ServiceNow-incidenten en het beleid zelf, door code uit de webpagina gelezen, vormen één model, en een dagelijkse trigger bewaart de geschiedenis van de beoordeling."
       },
       "banking": {
         "title": "Dagafsluitingsrapportage zonder het grootboek te kopiëren",

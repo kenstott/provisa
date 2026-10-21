@@ -1,0 +1,9 @@
+/* REQ-2115: the element Polly is acting on, outlined while she acts on it. */
+.polly-acting {
+  outline: 3px solid var(--mantine-color-violet-5, #845ef7) !important;
+  outline-offset: 2px;
+  box-shadow: 0 0 0 6px rgba(132, 94, 247, 0.25) !important;
+  transition:
+    outline-color 0.2s ease,
+    box-shadow 0.2s ease;
+}

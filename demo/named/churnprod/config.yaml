@@ -60,24 +60,24 @@ sources:
   type: postgresql
   host: ${env:CHURNPROD_PG_HOST:-localhost}
   port: ${env:CHURNPROD_PG_PORT:-30132}
-  database: churnprod
+  database: churnprod${env:CHURNPROD_PG_NS}
   username: provisa_reader
   password: provisa_reader
   description: The subscription business's customer database
 # The model's code: each archive in code/ is the org's upload under the content hash of the code it
-# unpacks to (model/pack.py prints both), so nothing is fetched to find it.
+# unpacks to (model/pack.py prints both), so nothing is fetched to find it, and the archive's file name.
 - id: churn-model
   type: python
   description: The churn model, a Python package with its fitted scikit-learn model and pinned dependencies
   mapping:
     runtime: python
-    code: {kind: upload, upload: e80be40c584d433f9aa66108a9c9b9015264abfbe3ec43c992ae503ecc79d4ce}
+    code: {kind: upload, upload: e80be40c584d433f9aa66108a9c9b9015264abfbe3ec43c992ae503ecc79d4ce, filename: churn_model.tar.gz}
 - id: churn-model-js
   type: node
   description: The churn model's Node twin, the same fitted coefficients in JavaScript
   mapping:
     runtime: node
-    code: {kind: upload, upload: ced501b634050e5ab0175cd662773e3938b7787c0133559c5b29591d649a6819}
+    code: {kind: upload, upload: ced501b634050e5ab0175cd662773e3938b7787c0133559c5b29591d649a6819, filename: churn-model-js.tar.gz}
 tables:
 - source_id: churn-db
   domain_id: churn

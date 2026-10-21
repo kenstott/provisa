@@ -9,9 +9,10 @@
 // permission from the copyright holder.
 
 // The description behind a lineage field, looked up in the registered tables by the graph's own
-// relation name (domain.table) and the column's physical name.
+// relation name (domain.table) and the column's name: its SQL name, as the graph names a
+// registered column (REQ-2116), or its physical name.
 
-import { relationName } from "../../naming";
+import { relationName, toSnakeCase } from "../../naming";
 import type { RegisteredTable } from "../../types/admin";
 
 export type DescribeColumn = (relation: string, column: string) => string | null;
@@ -21,7 +22,9 @@ export function columnDescriber(tables: readonly RegisteredTable[]): DescribeCol
   for (const tb of tables) {
     const relation = relationName(tb);
     for (const c of tb.columns) {
-      if (c.description) byKey.set(`${relation} ${c.columnName}`, c.description);
+      if (!c.description) continue;
+      byKey.set(`${relation} ${c.columnName}`, c.description);
+      byKey.set(`${relation} ${c.alias ?? toSnakeCase(c.columnName)}`, c.description);
     }
   }
   return (relation, column) => byKey.get(`${relation} ${column}`) ?? null;

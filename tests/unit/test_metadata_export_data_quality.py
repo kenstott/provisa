@@ -353,8 +353,10 @@ def test_openmetadata_publishes_the_last_run_as_a_test_case_result(scanned):
     # The result posts against the case's own FQN, so it lands on the case just published.
     case_names = {e.body["name"] for e in om_entities(scanned) if e.kind == "test_case"}
     for entity in results:
-        assert entity.path.endswith("/testCaseResult")
-        assert entity.path.split("/")[-2].split(".")[-1] in case_names
+        # OpenMetadata 2.0: a new result is POSTed to the results resource under the case's FQN.
+        assert entity.method == "POST"
+        assert "/dataQuality/testCases/testCaseResults/" in entity.path
+        assert entity.path.split("/")[-1].split(".")[-1] in case_names
 
 
 def test_openmetadata_publishes_no_result_for_a_check_that_never_ran(snapshot):

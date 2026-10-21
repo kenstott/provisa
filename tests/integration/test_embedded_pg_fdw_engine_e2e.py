@@ -6,7 +6,7 @@
 
 """E2E: the Postgres FDW connectors work on a STOCK embedded PG once core-contrib FDWs are installed.
 
-No docker. Runs the embedded PG 16.2 from the test platform's private pginstall, with the
+No docker. Runs the embedded PG 16.11 from the test platform's private pginstall, with the
 provisa-pg-ext bundle's FDW set staged (tests/embedded_pg.py), then drives the REAL connectors — FileFdwConnector and
 PostgresFdwConnector — and the REAL compiler pipeline (compile -> apply_governance -> rewrite_semantic_to_physical -> transpile("postgres")) against the
 FDW-attached demo sources, asserting on returned rows:

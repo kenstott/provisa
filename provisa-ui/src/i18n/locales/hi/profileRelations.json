@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "{{table}} में संबंध",
+    "none": "इस रन में कॉलमों के बीच कोई सहसंबंध या निर्भरता नहीं मिली।",
+    "canvasLabel": "तालिका के कॉलमों का 3D मानचित्र, जो उनके सहसंबंधों और निर्भरताओं से जुड़े हैं",
+    "minStrength": "सामर्थ्य",
+    "showCorrelation": "सहसंबंध",
+    "showDependence": "निर्भरताएँ",
+    "legendPositive": "साथ बढ़ते हैं",
+    "legendNegative": "विपरीत दिशा में चलते हैं",
+    "legendRatio": "श्रेणी संख्या को समझाती है",
+    "legendDependence": "पर निर्भर है (तीर निर्भर कॉलम की ओर इशारा करता है)",
+    "tipLinks_one": "संबंध: {{count}}",
+    "tipLinks_other": "संबंध: {{count}}",
+    "columns": "कॉलम",
+    "noLinks": "इस सामर्थ्य पर कोई संबंध नहीं।",
+    "note": "छड़ की मोटाई सामर्थ्य है: सहसंबंधों के लिए |Spearman ρ|, सहसंबंध अनुपात के लिए समझाए गए प्रसरण का अंश, और निर्भरता के लिए कॉलम की अनिश्चितता का वह अंश जो उसके पैरेंट हटा देते हैं। धूसर कॉलम पैरेंट तालिका के हैं।",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "सहसंबंध अनुपात η²",
+    "measure_dependence": "निर्भरता (हटाई गई अनिश्चितता का अंश)",
+    "family_numeric": "संख्यात्मक",
+    "family_temporal": "दिनांक/समय",
+    "family_text": "टेक्स्ट",
+    "family_boolean": "बूलियन",
+    "family_other": "अन्य",
+    "family_foreign": "पैरेंट तालिका का कॉलम"
+  }
+}

@@ -327,14 +327,15 @@ def _cmd_metadata_export(args: argparse.Namespace) -> int:
     except urllib.error.URLError as exc:
         print(f"cannot reach the Provisa API at {api}: {exc.reason}", file=sys.stderr)
         return 1
-    ok = payload["ok"]
-    print(
-        f"{'ok' if ok else 'PARTIAL'}: published {payload['total_published']} assets "
-        f"via {payload['provider']}"
-    )
-    for err in payload["errors"]:
-        print(f"  ! {err['asset']}: {err['message']}", file=sys.stderr)
-    return 0 if ok else 1
+    # REQ-2118: one publish reaches every target the org has, each reported on its own line.
+    for target in payload["targets"]:
+        print(
+            f"{'ok' if target['ok'] else 'PARTIAL'}: {target['id']} ({target['provider']}) "
+            f"published {target['total_published']} assets"
+        )
+        for err in target["errors"]:
+            print(f"  ! {target['id']}: {err['asset']}: {err['message']}", file=sys.stderr)
+    return 0 if payload["ok"] else 1
 
 
 class ApiRefused(SystemExit):
@@ -465,11 +466,11 @@ def _require_supported_interpreter() -> None:
     pgserver, which publishes cp39-cp312 wheels for linux x86_64 / macOS / win_amd64 and no sdist.
     pyproject encodes that matrix (requires-python <3.13 plus a linux-aarch64 marker) so pip refuses
     or omits it, but a source checkout or hand-built venv bypasses the resolver — those must die HERE
-    with the fix, not 60 frames deep in ModuleNotFoundError: pgserver.
+    with the fix, not 60 frames deep in ModuleNotFoundError: pixeltable_pgserver.
     """
     if sys.version_info[:2] != _SUPPORTED_PY:
         _abort_unsupported_interpreter()
-    if importlib.util.find_spec("pgserver") is None:
+    if importlib.util.find_spec("pixeltable_pgserver") is None:
         raise SystemExit(
             "Provisa's embedded PostgreSQL control plane needs pgserver, which is not installed "
             f"for this platform ({sys.platform}/{platform.machine()}).\n"

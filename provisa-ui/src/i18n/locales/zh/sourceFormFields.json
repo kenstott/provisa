@@ -97,6 +97,15 @@
     "uploadNeedsId": "请先输入数据源的 ID：文件保存在它之下。",
     "uploadedFileHint": "此数据源上传的文件，保存在您组织的文件夹中。上传新文件即可替换。",
     "fileLocationsHint": "组织文件中的 {files}/…、服务器上的路径、https:// 地址，或带存储凭据的 s3://、gs://、az://；或上传文件。",
-    "fileDatabaseLocationsHint": "组织文件中的 {files}/…、服务器上的路径、https:// 地址，或带存储凭据的 s3://、gs://、az://（在那里只读）；或上传文件。"
+    "fileDatabaseLocationsHint": "组织文件中的 {files}/…、服务器上的路径、https:// 地址，或带存储凭据的 s3://、gs://、az://（在那里只读）；或上传文件。",
+    "fileInPlace": "就地读取",
+    "fileDownload": "下载副本",
+    "downloadFrom": "下载自",
+    "downloadFromHint": "一个文件：此服务器上运营者允许的目录中的路径、https:// 地址，或带有存储凭据的 s3://。副本保存在您组织的文件夹中，并在源的缓存 TTL 过期时重新获取。",
+    "downloadFromHintRemote": "一个文件：https:// 地址，或带有存储凭据的 s3://。副本保存在您组织的文件夹中，并在源的缓存 TTL 过期时重新获取。",
+    "draftTable": "立即将其表设置为草稿",
+    "draftTableHint": "按 Register Table 根据文件提出的名称和类型命名，在 steward 取消草稿之前不提供服务。",
+    "draftTableDomain": "其表的域",
+    "fileMode": "其文件"
   }
 }

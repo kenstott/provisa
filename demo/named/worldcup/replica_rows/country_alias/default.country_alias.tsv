@@ -1,0 +1,238 @@
+name	canonical_country	fifa_code
+Afghanistan	Afghanistan	AFG
+Albania	Albania	ALB
+Algeria	Algeria	ALG
+American Samoa	American Samoa	ASA
+Andorra	Andorra	AND
+Angola	Angola	ANG
+Anguilla	Anguilla	AIA
+Antigua and Barbuda	Antigua and Barbuda	ATG
+Argentina	Argentina	ARG
+Armenia	Armenia	ARM
+Aruba	Aruba	ARU
+Australia	Australia	AUS
+Austria	Austria	AUT
+Azerbaijan	Azerbaijan	AZE
+Bahamas	Bahamas	BAH
+Bahrain	Bahrain	BHR
+Bangladesh	Bangladesh	BAN
+Barbados	Barbados	BRB
+Belarus	Belarus	BLR
+Belgium	Belgium	BEL
+Belize	Belize	BLZ
+Benin	Benin	BEN
+Bermuda	Bermuda	BER
+Bhutan	Bhutan	BHU
+Bolivia	Bolivia	BOL
+Bosnia and Herzegovina	Bosnia and Herzegovina	BIH
+Botswana	Botswana	BOT
+Brazil	Brazil	BRA
+British Virgin Islands	British Virgin Islands	VGB
+Brunei	Brunei	BRU
+Bulgaria	Bulgaria	BUL
+Burkina Faso	Burkina Faso	BFA
+Burundi	Burundi	BDI
+Cambodia	Cambodia	CAM
+Cameroon	Cameroon	CMR
+Canada	Canada	CAN
+Cape Verde	Cape Verde	CPV
+Cayman Islands	Cayman Islands	CAY
+Central African Republic	Central African Republic	CTA
+Chad	Chad	CHA
+Chile	Chile	CHI
+China	China	CHN
+China PR	China	CHN
+Colombia	Colombia	COL
+Comoros	Comoros	COM
+Congo	Congo	CGO
+Cook Islands	Cook Islands	COK
+Costa Rica	Costa Rica	CRC
+Croatia	Croatia	CRO
+Cuba	Cuba	CUB
+Curaçao	Curaçao	CUW
+Cyprus	Cyprus	CYP
+Czech Republic	Czech Republic	CZE
+Czechoslovakia	Czech Republic	CZE
+C�te d'Ivoire	Ivory Coast	CIV
+DR Congo	DR Congo	COD
+Denmark	Denmark	DEN
+Djibouti	Djibouti	DJI
+Dominica	Dominica	DMA
+Dominican Republic	Dominican Republic	DOM
+Dutch East Indies	Indonesia	IDN
+Ecuador	Ecuador	ECU
+Egypt	Egypt	EGY
+El Salvador	El Salvador	SLV
+England	England	ENG
+Equatorial Guinea	Equatorial Guinea	EQG
+Eritrea	Eritrea	ERI
+Estonia	Estonia	EST
+Eswatini	Eswatini	SWZ
+Ethiopia	Ethiopia	ETH
+Faroe Islands	Faroe Islands	FRO
+Fiji	Fiji	FIJ
+Finland	Finland	FIN
+France	France	FRA
+French Guiana	French Guiana	GUF
+Gabon	Gabon	GAB
+Gambia	Gambia	GAM
+Georgia	Georgia	GEO
+German DR	East Germany	GDR
+Germany	Germany	GER
+Germany FR	Germany	GER
+Ghana	Ghana	GHA
+Gibraltar	Gibraltar	GIB
+Greece	Greece	GRE
+Grenada	Grenada	GRN
+Guadeloupe	Guadeloupe	GLP
+Guam	Guam	GUM
+Guatemala	Guatemala	GUA
+Guinea	Guinea	GUI
+Guinea-Bissau	Guinea-Bissau	GNB
+Guyana	Guyana	GUY
+Haiti	Haiti	HAI
+Honduras	Honduras	HON
+Hong Kong	Hong Kong	HKG
+Hungary	Hungary	HUN
+IR Iran	Iran	IRN
+Iceland	Iceland	ISL
+India	India	IND
+Indonesia	Indonesia	IDN
+Iran	Iran	IRN
+Iraq	Iraq	IRQ
+Israel	Israel	ISR
+Italy	Italy	ITA
+Ivory Coast	Ivory Coast	CIV
+Jamaica	Jamaica	JAM
+Japan	Japan	JPN
+Jordan	Jordan	JOR
+Kazakhstan	Kazakhstan	KAZ
+Kenya	Kenya	KEN
+Korea DPR	North Korea	PRK
+Korea Republic	South Korea	KOR
+Korea/Japan	\N	\N
+Kosovo	Kosovo	KOS
+Kuwait	Kuwait	KUW
+Kyrgyzstan	Kyrgyzstan	KGZ
+Laos	Laos	LAO
+Latvia	Latvia	LVA
+Lebanon	Lebanon	LBN
+Lesotho	Lesotho	LES
+Liberia	Liberia	LBR
+Libya	Libya	LBY
+Liechtenstein	Liechtenstein	LIE
+Lithuania	Lithuania	LTU
+Luxembourg	Luxembourg	LUX
+Macau	Macau	MAC
+Madagascar	Madagascar	MAD
+Malawi	Malawi	MWI
+Malaysia	Malaysia	MAS
+Maldives	Maldives	MDV
+Mali	Mali	MLI
+Malta	Malta	MLT
+Martinique	Martinique	MTQ
+Mauritania	Mauritania	MTN
+Mauritius	Mauritius	MRI
+Mexico	Mexico	MEX
+Moldova	Moldova	MDA
+Mongolia	Mongolia	MNG
+Montenegro	Montenegro	MNE
+Montserrat	Montserrat	MSR
+Morocco	Morocco	MAR
+Mozambique	Mozambique	MOZ
+Myanmar	Myanmar	MYA
+Namibia	Namibia	NAM
+Nepal	Nepal	NEP
+Netherlands	Netherlands	NED
+New Caledonia	New Caledonia	NCL
+New Zealand	New Zealand	NZL
+Nicaragua	Nicaragua	NCA
+Niger	Niger	NIG
+Nigeria	Nigeria	NGA
+North Korea	North Korea	PRK
+North Macedonia	North Macedonia	MKD
+Northern Ireland	Northern Ireland	NIR
+Norway	Norway	NOR
+Oman	Oman	OMA
+Pakistan	Pakistan	PAK
+Palestine	Palestine	PLE
+Panama	Panama	PAN
+Papua New Guinea	Papua New Guinea	PNG
+Paraguay	Paraguay	PAR
+Peru	Peru	PER
+Philippines	Philippines	PHI
+Poland	Poland	POL
+Portugal	Portugal	POR
+Puerto Rico	Puerto Rico	PUR
+Qatar	Qatar	QAT
+Republic of Ireland	Republic of Ireland	IRL
+Romania	Romania	ROU
+Russia	Russia	RUS
+Rwanda	Rwanda	RWA
+Saarland	Saar	SAA
+Saint Kitts and Nevis	Saint Kitts and Nevis	SKN
+Saint Lucia	Saint Lucia	LCA
+Saint Vincent and the Grenadines	Saint Vincent and the Grenadines	VIN
+Samoa	Samoa	SAM
+San Marino	San Marino	SMR
+Saudi Arabia	Saudi Arabia	KSA
+Scotland	Scotland	SCO
+Senegal	Senegal	SEN
+Serbia	Serbia	SRB
+Seychelles	Seychelles	SEY
+Sierra Leone	Sierra Leone	SLE
+Singapore	Singapore	SGP
+Slovakia	Slovakia	SVK
+Slovenia	Slovenia	SVN
+Solomon Islands	Solomon Islands	SOL
+Somalia	Somalia	SOM
+South Africa	South Africa	RSA
+South Korea	South Korea	KOR
+South Sudan	South Sudan	SSD
+Soviet Union	Russia	RUS
+Spain	Spain	ESP
+Sri Lanka	Sri Lanka	SRI
+Sudan	Sudan	SDN
+Suriname	Suriname	SUR
+Sweden	Sweden	SWE
+Switzerland	Switzerland	SUI
+Syria	Syria	SYR
+São Tomé and Príncipe	São Tomé and Príncipe	STP
+Tahiti	Tahiti	TAH
+Taiwan	Chinese Taipei	TPE
+Tajikistan	Tajikistan	TJK
+Tanzania	Tanzania	TAN
+Thailand	Thailand	THA
+Timor-Leste	Timor-Leste	TLS
+Togo	Togo	TOG
+Tonga	Tonga	TGA
+Trinidad and Tobago	Trinidad and Tobago	TRI
+Tunisia	Tunisia	TUN
+Turkey	Turkey	TUR
+Turkmenistan	Turkmenistan	TKM
+Turks and Caicos Islands	Turks and Caicos Islands	TCA
+USA	United States	USA
+Uganda	Uganda	UGA
+Ukraine	Ukraine	UKR
+United Arab Emirates	United Arab Emirates	UAE
+United States	United States	USA
+United States Virgin Islands	U.S. Virgin Islands	VIR
+Uruguay	Uruguay	URU
+Uzbekistan	Uzbekistan	UZB
+Vanuatu	Vanuatu	VAN
+Venezuela	Venezuela	VEN
+Vietnam	Vietnam	VIE
+Vietnam Republic	Vietnam	VIE
+Wales	Wales	WAL
+West Germany	Germany	GER
+Yemen	Yemen	YEM
+Yemen DPR	South Yemen	YMD
+Yugoslavia	Serbia	SRB
+Zaire	DR Congo	COD
+Zambia	Zambia	ZAM
+Zimbabwe	Zimbabwe	ZIM
+rn">Bosnia and Herzegovina	Bosnia and Herzegovina	BIH
+rn">Republic of Ireland	Republic of Ireland	IRL
+rn">Serbia and Montenegro	Serbia	SRB
+rn">Trinidad and Tobago	Trinidad and Tobago	TRI
+rn">United Arab Emirates	United Arab Emirates	UAE

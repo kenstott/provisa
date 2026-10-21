@@ -3141,6 +3141,17 @@ async def _rebuild_schemas_impl(raw_config: dict | None = None, *, announce: boo
         from provisa.api.model_reload import publish_routes_over_declared_rows
 
         await publish_routes_over_declared_rows(_stamped_runtime)
+        # REQ-2098: a code source its configuration declared is pinned as a save pins it, so its
+        # image can be built -- in the background, after its code archives are kept (above).
+        from provisa.api.admin._code_source_registration import pin_in_background
+
+        assert _stamped_runtime.model_db is not None, "an environment's sources are its model"
+        pin_in_background(
+            _stamped_runtime.org_id,
+            _stamped_runtime.env,
+            _stamped_runtime.model_db,
+            _connection_rows,
+        )
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:
@@ -4347,8 +4358,11 @@ def create_app() -> FastAPI:
             await ensure_serving_runtime(env_org, selected_env)
             from provisa.api.sandbox_tier import is_sandbox_tier_org, is_template_org
 
-            if is_sandbox_tier_org(env_org) and not is_template_org(env_org):
-                # REQ-2006, REQ-1600: a request to a demo sandbox restarts its idle expiry.
+            from provisa.api.demo_warmup import WARMING
+
+            if is_sandbox_tier_org(env_org) and not is_template_org(env_org) and not WARMING.get():
+                # REQ-2006, REQ-1600: a request to a demo sandbox restarts its idle expiry -- the
+                # visitor's, not its tour warm-up's (REQ-2065: a closing sandbox stays closing).
                 from provisa.api.demo_sandbox import touch
 
                 await touch(env_org)
@@ -4602,6 +4616,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(metadata_export_router)
+    from provisa.api.admin.data_product_documents_router import (  # REQ-2118
+        router as data_product_documents_router,
+    )
+
+    app.include_router(data_product_documents_router)
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
@@ -4658,6 +4677,14 @@ def create_app() -> FastAPI:
     from provisa.api.admin.package_registries_router import router as package_registries_router
 
     app.include_router(package_registries_router)  # REQ-1984
+    from provisa.api.admin.container_registries_router import (
+        router as container_registries_router,
+    )
+
+    app.include_router(container_registries_router)  # REQ-2098
+    from provisa.api.admin.code_hosts_router import router as code_hosts_router
+
+    app.include_router(code_hosts_router)  # REQ-2098
     from provisa.api.admin.code_uploads_router import router as code_uploads_router
 
     app.include_router(code_uploads_router)  # REQ-1984, REQ-1993

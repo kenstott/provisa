@@ -31,6 +31,7 @@ import type { Extension } from "@codemirror/state";
 import type { ViewColumnConfig } from "./types";
 import type { Domain } from "../../types/admin";
 import { RegionSelect } from "../../components/admin/RegionSelect";
+import { isAssignableDomain } from "../../lib/internalDomains";
 
 interface ViewModalProps {
   viewModal: boolean;
@@ -105,7 +106,7 @@ export function ViewModal({
   };
 
   const domainOptions = Object.values(domainMap)
-    .filter((d) => d.id && d.id !== "meta" && d.id !== "ops")
+    .filter((d) => isAssignableDomain(d.id))
     .map((d) => ({
       value: d.id,
       label: d.description ? `${d.id} — ${d.description}` : d.id,

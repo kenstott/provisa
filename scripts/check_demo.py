@@ -20,14 +20,16 @@ Each check is the one the repo already has, run for this demo alone:
   examples    each queries/*.graphql valid against the demo's tables and views, as
               tests/unit/test_named_demo_example_queries.py builds their schema
   card        demo.yaml as scripts/gen-site-demos.mjs reads it (published, title, description, a
-              screenshot beside it), and the site page in step with it
+              screenshot beside it), and the site page in step with it; and its video's tagline
   images      each image step's picture a PNG beside tour.yaml, as the tour serves it
               (provisa.core.demo.tour_image)
   bundle      requires_provisa a Provisa version (scripts/demo_bundle.py's rule), and the
               directory one this Provisa reads (provisa.core.demo_bundles.check_directory)
   run-compose docker-compose.run.yml, for a demo with stores: each service labelled with the
               demo and its role, each store with where config.yaml reads it, every port on the
-              loopback
+              loopback, and each store of a type the sandbox tier's node shares
+              (scripts/demo_stores.py SHARED_TYPES) with the suffix config.yaml names its data with
+              (ns_env) and, for Postgres and MongoDB, its access script
   locales     the tour's words translated in every locale, not the English left in place
 
 Exits 1 when any check found something missing.
@@ -54,6 +56,9 @@ _TESTS = ("tests/unit/test_named_demo_tour.py", "tests/unit/test_named_demo_colu
 #: The store roles the sandbox tier's node finds by label (scripts/demo_stores_sync.sh).
 STORE_ROLES = ("rdb", "vector", "document", "search", "graph")
 _STORE_LABELS = ("com.provisa.demo.host_env", "com.provisa.demo.port_env", "com.provisa.demo.port")
+#: The shared store types whose data the node loads with the demo's roles and grants: their access
+#: script (com.provisa.demo.access) is required (scripts/demo_stores.py loads it).
+_SHARED_ACCESS = ("postgres", "mongo")
 
 
 def demo_cases(collected: list[str], name: str) -> list[str]:
@@ -110,6 +115,10 @@ def check_card(home: Path) -> list[str]:
     shot = spec.get("screenshot")
     if isinstance(shot, str) and shot.strip() and not (home / shot).is_file():
         problems.append(f"demo.yaml: screenshot {shot} is not beside it")
+    video = spec.get("video")
+    tagline = video.get("tagline") if isinstance(video, dict) else None
+    if not isinstance(tagline, str) or not tagline.strip():
+        problems.append("demo.yaml: no video tagline")
     if not problems:
         site = subprocess.run(
             ["node", "scripts/gen-site-demos.mjs", "--check"],
@@ -159,6 +168,16 @@ def check_bundle(home: Path) -> list[str]:
     return []
 
 
+def _shared_type(role: str | None, image: str) -> str | None:
+    """The shared store type the sandbox tier's node runs a service of this role and image as."""
+    from scripts.demo_stores import SHARED_TYPES
+
+    return next(
+        (t for (r, prefix), t in SHARED_TYPES.items() if r == role and image.startswith(prefix)),
+        None,
+    )
+
+
 def check_run_compose(home: Path, name: str) -> list[str]:
     run = home / "docker-compose.run.yml"
     if not run.is_file():
@@ -182,6 +201,23 @@ def check_run_compose(home: Path, name: str) -> list[str]:
                 variable = labels.get(label)
                 if variable and f"${{env:{variable}" not in config:
                     problems.append(f"{service}: config.yaml does not read {variable}")
+        shared = _shared_type(role, str(spec.get("image", "")))
+        if shared is not None:
+            ns = labels.get("com.provisa.demo.ns_env")
+            if not ns:
+                problems.append(
+                    f"{service}: a shared {shared} store with no com.provisa.demo.ns_env label"
+                )
+            elif f"${{env:{ns}" not in config:
+                problems.append(f"{service}: config.yaml does not name its data with {ns}")
+            if shared in _SHARED_ACCESS:
+                access = labels.get("com.provisa.demo.access")
+                if not access:
+                    problems.append(
+                        f"{service}: a shared {shared} store with no com.provisa.demo.access label"
+                    )
+                elif not (home / access).is_file():
+                    problems.append(f"{service}: its access script {access} is not in the demo")
         for port in spec.get("ports") or []:
             if not str(port).startswith("127.0.0.1:"):
                 problems.append(f"{service}: port {port} is not on the loopback (127.0.0.1:)")

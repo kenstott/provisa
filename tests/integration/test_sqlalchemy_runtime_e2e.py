@@ -22,7 +22,7 @@ import pytest
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
-pgserver = pytest.importorskip("pgserver")
+pgserver = pytest.importorskip("pixeltable_pgserver")
 pytest.importorskip("sqlalchemy")
 pytest.importorskip("psycopg2")
 

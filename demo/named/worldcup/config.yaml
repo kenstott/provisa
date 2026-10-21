@@ -1,0 +1,772 @@
+# Copyright (c) 2026 Kenneth Stott
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+#
+# The WHOLE config of the named demo "worldcup" (start-ui-install.sh --demo worldcup; REQ-2103).
+# Public sources about the World Cup whose country names disagree become one governed graph.
+#
+#   wikipedia        Wikipedia's List of FIFA World Cup finals and the six confederation articles,
+#                    crawled; each data table a table named as the crawl names it
+#   kaggle_worldcup  Kaggle's FIFA World Cup dataset: tournaments, matches, players
+#   kaggle_results   Kaggle's international results dataset: every goal since 1916
+#   country_alias    a Python function (code/country_alias.tar.gz) that matches each team name to the
+#                    FIFA member it stands for with an LLM; the relationships across sources join
+#                    through it
+#
+# Every source is landed once from the rows the demo declares (replica_rows/, cache_ttl -1), so a
+# start fetches no page, downloads no dataset and runs no function. country_alias's rows are its
+# output from a real run, each one reviewed and corrected before they were declared.
+auth:
+  assignments_source: provisa
+  default_assignments:
+  - domain_id: '*'
+    role_id: org_admin
+  provider: none
+cache:
+  default_ttl: 300
+  enabled: true
+domains:
+- id: worldcup
+  description: 'The FIFA World Cup from public sources: Wikipedia''s finals and confederation members, Kaggle''s
+    matches, players and goals, made to agree on country names'
+federation_engine: duckdb
+naming:
+  domain_prefix: true
+  rules: []
+roles:
+- id: fan
+  description: Reads the World Cup domain's tables, views and graph.
+  capabilities:
+  - query_development
+  domain_access:
+  - worldcup
+server:
+  limits:
+    default_row_limit: 1000
+    request_timeout: 60
+    trino_query_timeout: 120
+sources:
+- id: wikipedia
+  type: files
+  cache_ttl: -1
+  replicate: 0
+  federation_hints:
+    brand: wikipedia
+  mapping:
+    crawl:
+      start_urls:
+      - https://en.wikipedia.org/wiki/List_of_FIFA_World_Cup_finals
+      - https://en.wikipedia.org/wiki/Asian_Football_Confederation
+      - https://en.wikipedia.org/wiki/Confederation_of_African_Football
+      - https://en.wikipedia.org/wiki/CONCACAF
+      - https://en.wikipedia.org/wiki/CONMEBOL
+      - https://en.wikipedia.org/wiki/Oceania_Football_Confederation
+      - https://en.wikipedia.org/wiki/UEFA
+      max_depth: 0
+      max_pages: 7
+      request_delay: 1 seconds
+      html_cache_ttl: 1 days
+      user_agent: Provisa/0.1.0 (+https://provisa.dev) file-crawler
+      content_selector: '#mw-content-text .mw-parser-output'
+      remove_selectors:
+      - .navbox
+      - .navbox-styles
+      - .sidebar
+      - .hatnote
+      - .infobox
+      - .reflist
+      - .references
+      - .mw-references-wrap
+      - .refbegin
+      - sup.reference
+      - cite
+      - .citation
+      - .cs1-maint
+      - .cs1-hidden-error
+      - .cs1-visible-error
+      - .mw-editsection
+      - .metadata
+      - .ambox
+      - .noprint
+      - .catlinks
+      - .toc
+      - .thumb
+      - figure
+      - .gallery
+      - .side-box
+      - .sistersitebox
+      - .portalbox
+      - .authority-control
+      - .shortdescription
+      - .sortkey
+      - style
+      - '#coordinates'
+      - section[aria-labelledby='See_also']
+      link_selector: a[rel='mw:WikiLink']:not(.new):not(.mw-selflink):not(.mw-magiclink-isbn)
+      follow_external_links: false
+      table_selector: table.wikitable
+      html_table_min_rows: 2
+      allowed_file_extensions:
+      - csv
+      - tsv
+      - xlsx
+      - xls
+      - json
+      - parquet
+  description: 'Wikipedia: the List of FIFA World Cup finals and the six confederation articles, crawled at depth
+    0; each data table becomes a table named by its page and caption'
+- id: kaggle_worldcup
+  type: files
+  cache_ttl: -1
+  replicate: 0
+  federation_hints:
+    kaggle_owner: abecklas
+    kaggle_ref: fifa-world-cup
+  description: 'Kaggle''s FIFA World Cup dataset (abecklas/fifa-world-cup): WorldCups.csv, WorldCupMatches.csv and
+    WorldCupPlayers.csv, 1930 to 2014'
+- id: kaggle_results
+  type: files
+  cache_ttl: -1
+  replicate: 0
+  federation_hints:
+    kaggle_owner: martj42
+    kaggle_ref: international-football-results-from-1872-to-2017
+  description: 'Kaggle''s international football results dataset (martj42/international-football-results-from-1872-to-2017):
+    goalscorers.csv'
+- id: country_alias
+  type: python
+  cache_ttl: -1
+  replicate: 0
+  mapping:
+    runtime: python
+    code:
+      kind: upload
+      upload: bbca888c502cb34a0c1b9ab5ac9ed50e6797c12bb9125b6559721de650ec3578
+      filename: country_alias.tar.gz
+  description: 'country_alias(name): matches a team''s name to the FIFA member it stands for with an LLM (code/country_alias.tar.gz,
+    its source in country_alias/)'
+tables:
+- source_id: wikipedia
+  domain_id: worldcup
+  schema: wikipedia
+  table: list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals
+  alias: finals
+  description: 'Every FIFA World Cup final from 1930 to 2026, as Wikipedia lists it: the winners and runners-up
+    by the names of their day (West Germany), the score, venue and crowd'
+  columns:
+  - name: year
+    data_type: integer
+    visible_to: &id001
+    - org_admin
+    - fan
+    description: The year of the final
+  - name: winners
+    data_type: varchar
+    visible_to: *id001
+    description: The winning team, by its name that year
+  - name: score
+    data_type: varchar
+    visible_to: *id001
+    description: The score; a dagger marks extra time and an asterisk a penalty shoot-out
+  - name: runners_up
+    data_type: varchar
+    visible_to: *id001
+    description: The losing finalist, by its name that year
+  - name: venue
+    data_type: varchar
+    visible_to: *id001
+    description: The stadium
+  - name: location
+    data_type: varchar
+    visible_to: *id001
+    description: The city and country
+  - name: attendance
+    data_type: varchar
+    visible_to: *id001
+    description: The crowd, as Wikipedia writes it
+  - name: ref
+    data_type: varchar
+    visible_to: *id001
+    description: Wikipedia's citations, left empty by the crawl
+- source_id: wikipedia
+  domain_id: worldcup
+  schema: wikipedia
+  table: asian_football_confederation__members
+  alias: afc_members
+  description: The AFC's member associations, from the Members table of Wikipedia's Asian Football Confederation
+    article
+  columns:
+  - name: code
+    data_type: varchar
+    visible_to: *id001
+    description: The association's three-letter FIFA code
+  - name: association
+    data_type: varchar
+    visible_to: *id001
+    description: The member, by the name Wikipedia gives it
+  - name: national_teams
+    data_type: varchar
+    visible_to: *id001
+  - name: founded
+    data_type: integer
+    visible_to: *id001
+  - name: fifa_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: afc_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: sub__confederation
+    data_type: varchar
+    visible_to: *id001
+  - name: ioc_member
+    data_type: boolean
+    visible_to: *id001
+- source_id: wikipedia
+  domain_id: worldcup
+  schema: wikipedia
+  table: confederation_of_african_football__members
+  alias: caf_members
+  description: CAF's member associations, from the Members table of Wikipedia's Confederation of African Football
+    article. Its columns carry the name of the table's first zone, as the crawl reads the zone headings
+  columns:
+  - name: code_union_of_north_african_football__unaf__5
+    data_type: varchar
+    visible_to: *id001
+    description: The association's three-letter FIFA code
+  - name: association_union_of_north_african_football__unaf__5
+    data_type: varchar
+    visible_to: *id001
+    description: The member, by the name Wikipedia gives it
+  - name: national_teams_union_of_north_african_football__unaf__5
+    data_type: varchar
+    visible_to: *id001
+  - name: founded_union_of_north_african_football__unaf__5
+    data_type: integer
+    visible_to: *id001
+  - name: fifa_affiliation_union_of_north_african_football__unaf__5
+    data_type: integer
+    visible_to: *id001
+  - name: caf_affiliation_union_of_north_african_football__unaf__5
+    data_type: integer
+    visible_to: *id001
+  - name: regional_affiliation_union_of_north_african_football__unaf__5
+    data_type: integer
+    visible_to: *id001
+  - name: ioc_member_union_of_north_african_football__unaf__5
+    data_type: boolean
+    visible_to: *id001
+- source_id: wikipedia
+  domain_id: worldcup
+  schema: wikipedia
+  table: concacaf__members
+  alias: concacaf_members
+  description: CONCACAF's member associations, from the Members table of Wikipedia's CONCACAF article. Its columns
+    carry the name of the table's first zone, as the crawl reads the zone headings
+  columns:
+  - name: code_north_american_zone__nafu__3
+    data_type: varchar
+    visible_to: *id001
+    description: The association's three-letter FIFA code
+  - name: association_north_american_zone__nafu__3
+    data_type: varchar
+    visible_to: *id001
+    description: The member, by the name Wikipedia gives it
+  - name: national_teams_north_american_zone__nafu__3
+    data_type: varchar
+    visible_to: *id001
+  - name: founded_north_american_zone__nafu__3
+    data_type: integer
+    visible_to: *id001
+  - name: fifa_affiliation_north_american_zone__nafu__3
+    data_type: integer
+    visible_to: *id001
+  - name: concacaf_affiliation_north_american_zone__nafu__3
+    data_type: integer
+    visible_to: *id001
+  - name: ioc_member_north_american_zone__nafu__3
+    data_type: boolean
+    visible_to: *id001
+  - name: north_american_zone__nafu__3
+    data_type: varchar
+    visible_to: *id001
+- source_id: wikipedia
+  domain_id: worldcup
+  schema: wikipedia
+  table: conmebol__members
+  alias: conmebol_members
+  description: CONMEBOL's member associations, from the Members table of Wikipedia's CONMEBOL article
+  columns:
+  - name: code
+    data_type: varchar
+    visible_to: *id001
+    description: The association's three-letter FIFA code
+  - name: association
+    data_type: varchar
+    visible_to: *id001
+    description: The member, by the name Wikipedia gives it
+  - name: founded
+    data_type: integer
+    visible_to: *id001
+  - name: fifa_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: conmebol_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: ioc_member
+    data_type: boolean
+    visible_to: *id001
+  - name: national_teams
+    data_type: varchar
+    visible_to: *id001
+- source_id: wikipedia
+  domain_id: worldcup
+  schema: wikipedia
+  table: oceania_football_confederation__current_members
+  alias: ofc_members
+  description: The OFC's member associations, from the Current members table of Wikipedia's Oceania Football Confederation
+    article
+  columns:
+  - name: code
+    data_type: varchar
+    visible_to: *id001
+    description: The association's three-letter FIFA code
+  - name: association
+    data_type: varchar
+    visible_to: *id001
+    description: The member, by the name Wikipedia gives it
+  - name: national_teams
+    data_type: varchar
+    visible_to: *id001
+  - name: founded
+    data_type: integer
+    visible_to: *id001
+  - name: membership
+    data_type: varchar
+    visible_to: *id001
+  - name: fifa_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: ofc_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: ioc_member
+    data_type: boolean
+    visible_to: *id001
+  - name: note
+    data_type: varchar
+    visible_to: *id001
+- source_id: wikipedia
+  domain_id: worldcup
+  schema: wikipedia
+  table: uefa__members
+  alias: uefa_members
+  description: UEFA's member associations, from the Members table of Wikipedia's UEFA article
+  columns:
+  - name: code
+    data_type: varchar
+    visible_to: *id001
+    description: The association's three-letter FIFA code
+  - name: association
+    data_type: varchar
+    visible_to: *id001
+    description: The member, by the name Wikipedia gives it
+  - name: national_teams
+    data_type: varchar
+    visible_to: *id001
+  - name: founded
+    data_type: integer
+    visible_to: *id001
+  - name: fifa_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: uefa_affiliation
+    data_type: integer
+    visible_to: *id001
+  - name: ioc_member
+    data_type: boolean
+    visible_to: *id001
+- source_id: kaggle_worldcup
+  domain_id: worldcup
+  schema: kaggle_worldcup
+  table: world_cups__world_cups
+  alias: world_cups
+  description: 'Each World Cup from 1930 to 2014 from Kaggle''s FIFA World Cup dataset (WorldCups.csv): the host,
+    the top four by the names of their day (Germany FR), goals, teams and matches'
+  columns:
+  - name: year
+    data_type: integer
+    visible_to: *id001
+    description: The year of the tournament
+  - name: country
+    data_type: varchar
+    visible_to: *id001
+    description: The host
+  - name: winner
+    data_type: varchar
+    visible_to: *id001
+    description: The champion
+  - name: runners_up
+    data_type: varchar
+    visible_to: *id001
+    description: The losing finalist
+  - name: third
+    data_type: varchar
+    visible_to: *id001
+    description: Third place
+  - name: fourth
+    data_type: varchar
+    visible_to: *id001
+    description: Fourth place
+  - name: goals_scored
+    data_type: integer
+    visible_to: *id001
+    description: Goals in the tournament
+  - name: qualified_teams
+    data_type: integer
+    visible_to: *id001
+    description: Teams in the finals
+  - name: matches_played
+    data_type: integer
+    visible_to: *id001
+    description: Matches played
+  - name: attendance
+    data_type: varchar
+    visible_to: *id001
+    description: The tournament's total crowd, as the file writes it
+- source_id: kaggle_worldcup
+  domain_id: worldcup
+  schema: kaggle_worldcup
+  table: world_cup_matches__world_cup_matches
+  alias: matches
+  description: Every World Cup match from 1930 to 2014 from Kaggle's FIFA World Cup dataset (WorldCupMatches.csv),
+    its teams by the names of their day; the file's blank lines are rows with no values
+  columns:
+  - name: year
+    data_type: integer
+    visible_to: *id001
+    description: The tournament's year
+  - name: datetime
+    data_type: varchar
+    visible_to: *id001
+  - name: stage
+    data_type: varchar
+    visible_to: *id001
+    description: The round
+  - name: stadium
+    data_type: varchar
+    visible_to: *id001
+  - name: city
+    data_type: varchar
+    visible_to: *id001
+  - name: home_team_name
+    data_type: varchar
+    visible_to: *id001
+    description: The first-named team, by its name that year
+  - name: home_team_goals
+    data_type: integer
+    visible_to: *id001
+    description: Goals of the first-named team
+  - name: away_team_goals
+    data_type: integer
+    visible_to: *id001
+    description: Goals of the second-named team
+  - name: away_team_name
+    data_type: varchar
+    visible_to: *id001
+    description: The second-named team, by its name that year
+  - name: win_conditions
+    data_type: varchar
+    visible_to: *id001
+    description: How a drawn match was decided
+  - name: attendance
+    data_type: integer
+    visible_to: *id001
+  - name: half_time_home_goals
+    data_type: integer
+    visible_to: *id001
+  - name: half_time_away_goals
+    data_type: integer
+    visible_to: *id001
+  - name: referee
+    data_type: varchar
+    visible_to: *id001
+  - name: assistant_1
+    data_type: varchar
+    visible_to: *id001
+  - name: assistant_2
+    data_type: varchar
+    visible_to: *id001
+  - name: round_id
+    data_type: integer
+    visible_to: *id001
+  - name: match_id
+    data_type: integer
+    visible_to: *id001
+    description: The match's id in the dataset
+  - name: home_team_initials
+    data_type: varchar
+    visible_to: *id001
+  - name: away_team_initials
+    data_type: varchar
+    visible_to: *id001
+- source_id: kaggle_worldcup
+  domain_id: worldcup
+  schema: kaggle_worldcup
+  table: world_cup_players__world_cup_players
+  alias: players
+  description: 'Each player''s appearance in a World Cup match from 1930 to 2014 from Kaggle''s FIFA World Cup dataset
+    (WorldCupPlayers.csv), with its events: G a goal, OG an own goal, P a penalty, each with its minute'
+  columns:
+  - name: round_id
+    data_type: integer
+    visible_to: *id001
+  - name: match_id
+    data_type: integer
+    visible_to: *id001
+    description: The match
+  - name: team_initials
+    data_type: varchar
+    visible_to: *id001
+    description: The team's FIFA code that year
+  - name: coach_name
+    data_type: varchar
+    visible_to: *id001
+  - name: line_up
+    data_type: varchar
+    visible_to: *id001
+  - name: shirt_number
+    data_type: integer
+    visible_to: *id001
+  - name: player_name
+    data_type: varchar
+    visible_to: *id001
+    description: The player
+  - name: position
+    data_type: varchar
+    visible_to: *id001
+  - name: event
+    data_type: varchar
+    visible_to: *id001
+    description: 'What the player did: G a goal, OG an own goal, P a penalty, Y and R cards, I and O substitutions,
+      each with its minute'
+- source_id: kaggle_results
+  domain_id: worldcup
+  schema: kaggle_results
+  table: goalscorers__goalscorers
+  alias: goalscorers
+  description: Every goal in men's international football since 1916 from Kaggle's international results dataset
+    (goalscorers.csv), each team by the name of its day
+  columns:
+  - name: date
+    data_type: date
+    visible_to: *id001
+    description: The match's date
+  - name: home_team
+    data_type: varchar
+    visible_to: *id001
+  - name: away_team
+    data_type: varchar
+    visible_to: *id001
+  - name: team
+    data_type: varchar
+    visible_to: *id001
+    description: The scoring team, by its name that day
+  - name: scorer
+    data_type: varchar
+    visible_to: *id001
+    description: The scorer
+  - name: minute
+    data_type: integer
+    visible_to: *id001
+    description: The minute of the goal
+  - name: own_goal
+    data_type: boolean
+    visible_to: *id001
+    description: An own goal
+  - name: penalty
+    data_type: boolean
+    visible_to: *id001
+    description: A penalty
+- source_id: country_alias
+  domain_id: worldcup
+  schema: default
+  table: country_alias
+  description: 'The FIFA member each team name stands for, from the country_alias function: West Germany and Germany
+    FR are Germany (GER). The table every cross-source relationship joins through'
+  columns:
+  - name: name
+    data_type: varchar
+    visible_to: *id001
+    description: A team's name, as one of the sources writes it
+  - name: canonical_country
+    data_type: varchar
+    visible_to: *id001
+    description: The FIFA member it stands for, by the name Wikipedia gives the member; a team whose results passed
+      to no member keeps its own name
+  - name: fifa_code
+    data_type: varchar
+    visible_to: *id001
+    description: That member's three-letter FIFA code
+  - name: _nf_name
+    data_type: varchar
+    visible_to: []
+    native_filter_type: query_arg
+    native_filter_required: true
+    description: The name to match
+views:
+- id: countries
+  domain_id: worldcup
+  enable_aggregates: true
+  enable_group_by: true
+  description: Every member association of the six confederations, by its FIFA code, its name on Wikipedia and its
+    confederation
+  sql: SELECT "code" AS code, "association" AS country, 'AFC' AS confederation FROM "worldcup"."afc_members" UNION
+    ALL SELECT "code_union_of_north_african_football__unaf__5" AS code, "association_union_of_north_african_football__unaf__5"
+    AS country, 'CAF' AS confederation FROM "worldcup"."caf_members" UNION ALL SELECT "code_north_american_zone__nafu__3"
+    AS code, "association_north_american_zone__nafu__3" AS country, 'CONCACAF' AS confederation FROM "worldcup"."concacaf_members"
+    UNION ALL SELECT "code" AS code, "association" AS country, 'CONMEBOL' AS confederation FROM "worldcup"."conmebol_members"
+    UNION ALL SELECT "code" AS code, "association" AS country, 'OFC' AS confederation FROM "worldcup"."ofc_members"
+    UNION ALL SELECT "code" AS code, "association" AS country, 'UEFA' AS confederation FROM "worldcup"."uefa_members"
+  columns:
+  - name: code
+    data_type: varchar
+    visible_to: *id001
+    description: The member's three-letter FIFA code
+  - name: country
+    data_type: varchar
+    visible_to: *id001
+    description: The member, by the name Wikipedia gives it
+  - name: confederation
+    data_type: varchar
+    visible_to: *id001
+    description: 'Its confederation: AFC, CAF, CONCACAF, CONMEBOL, OFC or UEFA'
+- id: team_names
+  domain_id: worldcup
+  description: 'Every team name the two sources write, once each: what country_alias is given to match'
+  sql: SELECT DISTINCT name FROM (SELECT winners AS name FROM "worldcup"."finals" UNION ALL SELECT runners_up FROM
+    "worldcup"."finals" UNION ALL SELECT country FROM "worldcup"."world_cups" UNION ALL SELECT winner FROM "worldcup"."world_cups"
+    UNION ALL SELECT runners_up FROM "worldcup"."world_cups" UNION ALL SELECT third FROM "worldcup"."world_cups"
+    UNION ALL SELECT fourth FROM "worldcup"."world_cups" UNION ALL SELECT home_team_name FROM "worldcup"."matches"
+    UNION ALL SELECT away_team_name FROM "worldcup"."matches" UNION ALL SELECT team FROM "worldcup"."goalscorers")
+    AS n WHERE name IS NOT NULL
+  columns:
+  - name: name
+    data_type: varchar
+    visible_to: *id001
+    description: A team's name, as a source writes it
+- id: goals
+  domain_id: worldcup
+  description: Each player's appearance in which they scored, own goals left out
+  sql: SELECT match_id, player_name, team_initials, event FROM "worldcup"."players" WHERE event LIKE '%G%' AND event
+    NOT LIKE '%OG%'
+  columns:
+  - name: match_id
+    data_type: integer
+    visible_to: *id001
+    description: The match
+  - name: player_name
+    data_type: varchar
+    visible_to: *id001
+    description: The scorer
+  - name: team_initials
+    data_type: varchar
+    visible_to: *id001
+    description: The scorer's team, by its FIFA code that year
+  - name: event
+    data_type: varchar
+    visible_to: *id001
+    description: The goals, each a G with its minute
+relationships:
+- id: name-matched
+  alias: MATCHED_AS
+  graphql_alias: alias
+  cardinality: one-to-many
+  source_table_id: view_team_names
+  source_column: name
+  target_table_id: country_alias
+  target_column: name
+  parameters:
+    name: name
+- id: country-won-final
+  alias: WON
+  graphql_alias: finals_won
+  cardinality: one-to-many
+  source_table_id: view_countries
+  source_column: code
+  target_table_id: finals
+  target_column: winners
+  via_table: country_alias
+  via_source_column: fifa_code
+  via_target_column: name
+  via_label_source: fixed
+- id: country-runner-up
+  alias: RUNNER_UP
+  graphql_alias: finals_lost
+  cardinality: one-to-many
+  source_table_id: view_countries
+  source_column: code
+  target_table_id: finals
+  target_column: runners_up
+  via_table: country_alias
+  via_source_column: fifa_code
+  via_target_column: name
+  via_label_source: fixed
+- id: country-played-home
+  alias: PLAYED_HOME
+  graphql_alias: home_matches
+  cardinality: one-to-many
+  source_table_id: view_countries
+  source_column: code
+  target_table_id: matches
+  target_column: home_team_name
+  via_table: country_alias
+  via_source_column: fifa_code
+  via_target_column: name
+  via_label_source: fixed
+- id: country-played-away
+  alias: PLAYED_AWAY
+  graphql_alias: away_matches
+  cardinality: one-to-many
+  source_table_id: view_countries
+  source_column: code
+  target_table_id: matches
+  target_column: away_team_name
+  via_table: country_alias
+  via_source_column: fifa_code
+  via_target_column: name
+  via_label_source: fixed
+- id: country-scored
+  alias: SCORED
+  graphql_alias: goals
+  cardinality: one-to-many
+  source_table_id: view_countries
+  source_column: code
+  target_table_id: goalscorers
+  target_column: team
+  via_table: country_alias
+  via_source_column: fifa_code
+  via_target_column: name
+  via_label_source: fixed
+- id: final-winner
+  alias: WON_AS
+  graphql_alias: winner
+  cardinality: many-to-one
+  source_table_id: finals
+  source_column: winners
+  target_table_id: country_alias
+  target_column: name
+- id: goal-in-match
+  alias: SCORED_IN
+  graphql_alias: match
+  cardinality: many-to-one
+  source_table_id: view_goals
+  source_column: match_id
+  target_table_id: matches
+  target_column: match_id

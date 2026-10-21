@@ -129,9 +129,41 @@ BANKING = (
     ),
 )
 
+# The cloudpolicy demo's questions: the security lead's review of the disk-encryption policy.
+CLOUDPOLICY = (
+    Question(
+        "Which attached disks break the policy's disk encryption control, and which section "
+        "requires it?",
+        'SELECT resource_name AS a FROM "cloudpolicy"."view_cmek_violations" '
+        "UNION ALL SELECT '4.2'",
+    ),
+    Question(
+        "Which disks without a customer-managed key are covered by an exception that is still "
+        "in date?",
+        'SELECT resource_name AS a FROM "cloudpolicy"."view_daily_review" '
+        "WHERE status = 'covered by an exception'",
+    ),
+    Question(
+        "Which incidents cite a policy section other than the control they are about?",
+        'SELECT number AS a FROM "cloudpolicy"."view_incident_controls" '
+        "WHERE finding <> 'cites its control'",
+    ),
+    Question(
+        "Which controls of the policy does no check enforce?",
+        'SELECT section AS a FROM "cloudpolicy"."view_unchecked_controls"',
+    ),
+    Question(
+        "Which incidents name a disk the cloud inventory does not have?",
+        'SELECT i.number AS a FROM "cloudpolicy"."incident" AS i '
+        'LEFT JOIN "cloudpolicy"."storage_resources" AS d ON d.resource_name = i.cmdb_ci__display '
+        "WHERE d.resource_name IS NULL",
+    ),
+)
+
 # Each named demo's questions, by its name (its directory under demo/named).
 QUESTIONS: dict[str, tuple[Question, ...]] = {
     "weblogs": WEBLOGS,
     "insider": INSIDER,
     "banking": BANKING,
+    "cloudpolicy": CLOUDPOLICY,
 }

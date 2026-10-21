@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "Driftlagen van {{table}}",
+    "none": "Geen van deze runs bevat waarden die de lagen kunnen tekenen.",
+    "canvasLabel": "3D-stapel van de verdeling van één kolom in elke run, de oudste achteraan",
+    "column": "Kolom",
+    "legendShare": "aandeel van de rijen van de run",
+    "legendMedian": "mediaan, van run tot run",
+    "legendDrift": "run met drift",
+    "tipShare": "{{pct}} van de niet-null-rijen van de run",
+    "tipNullShare": "{{pct}} van de rijen van de run",
+    "drifted": "Drift ({{reason}})",
+    "steady": "Geen drift gemarkeerd",
+    "noValues": "Geen waarden in deze run",
+    "runs": "Runs, nieuwste eerst",
+    "columnsNote": "Mediaan en null-aandeel van elke run. De geselecteerde run is de nieuwste van de getoonde.",
+    "binning_sketch": "Dezelfde klassen voor elke run, afgeleid van de kwantielschets van elke run; de hoogtes zijn het aandeel van elke run in zijn niet-null-rijen.",
+    "binning_categories": "De waarden van elke run, geteld tegen dezelfde categorieën.",
+    "binning_none": "Deze runs bevatten voor jouw rol geen waarden voor deze kolom."
+  }
+}

@@ -70,6 +70,7 @@ import { ProfilerResultSelect } from "./ProfilerResultSelect";
 import { SchemaTableSelects } from "./SchemaTableSelects";
 import { DeclaredColumns } from "./DeclaredColumns";
 import { ImportSetField } from "./ImportSetField";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 // REQ-1443: a checker's scans append to a relation in the org's control-plane schema, which the
 // server stamps on registration (as for a profiler's results); the form carries this placeholder.
@@ -216,9 +217,9 @@ export function RegisterTableForm({
   // form, more of it shown.
   const short = !isChecker && !isQueryApi && !isProfiler;
   // The domains the caller may register in. With one, it is the domain and is not asked.
-  const offeredDomains = domainHints
-    .filter((d) => d !== "" && d !== "meta" && d !== "ops")
-    .filter((d) => domainAccess.includes("*") || domainAccess.includes(d));
+  const offeredDomains = assignableDomainIds(domainHints).filter(
+    (d) => domainAccess.includes("*") || domainAccess.includes(d),
+  );
   const domainAsked = domainsEnabled && (!short || offeredDomains.length !== 1);
   const domainId =
     chosenDomain ||

@@ -85,6 +85,11 @@
         "title": "73 種數據來源類型，14 個類別",
         "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
+      "stepBuildSource": {
+        "title": "即場加入一個數據源",
+        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（在 provisa.dev 發佈的 <code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
+        "acting": "正在加入數據源"
+      },
       "step4": {
         "title": "一切都會變成一個表格",
         "description": "無論數據來源是甚麼，是 Mongo 集合、Kafka 主題、REST 端點還是圖數據，Provisa 都會將它分解成一個二維<strong>表格</strong>：以統一的形態，跨所有數據來源進行查詢。<p>📁 將表格分組成<strong>領域</strong>，每個領域由一位數據管家負責，隨著模型演變守護其品質。</p>"
@@ -98,36 +103,44 @@
         "description": "💬 你用已在使用的語言或工具提問（SQL、GraphQL、Cypher、透過 Polly 使用自然語言，或 BI 工具或驅動程式），每一種讀取的都是同一個受治理的模型，因此無論選哪一種，答案和規則都相同。"
       },
       "step6": {
-        "title": "SQL（七種介面之一）",
+        "title": "SQL（九種介面之一）",
         "description": "SQL 位於 SQL 探索器中。標準 SQL 可跨所有數據來源聯邦查詢：在同一句陳述式中將 Postgres 連接到 Mongo 再連接到 CSV。模型自身的中繼數據，以及每一項活動追蹤，在這裡也是可查詢的表格，所以可以直接將稽核記錄或血緣連接到即時數據。<p>🔌 除了這個探索器，同一套受管治的 SQL 還可透過多種線路協定運作；你的工具用哪種協定就用哪種：</p><ul><li><strong>pgwire</strong>：所有 Postgres 相容的客戶端（psql、DBeaver、Tableau、Power BI）開箱即用。</li><li><strong>JDBC</strong>：可直接用於任何 Java/JVM 應用程式、ETL 管線，或支援 JDBC 的 BI 工具。</li><li><strong>Arrow Flight SQL</strong>：為 ADBC 客戶端提供欄式串流，毋須逐列重新編碼，專為大型結果集而設。</li><li><strong>DuckDB · airport</strong>：從 DuckDB 用 ATTACH 連接 Provisa，原地查詢受管治的聯邦數據。</li></ul>"
       },
       "step7": {
-        "title": "GraphQL（七種介面之二）",
+        "title": "GraphQL（九種介面之二）",
         "description": "◈ 同一個查詢，以 GraphQL 表達：<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>對你的關係進行分組與彙總：🎯 單一端點，📖 自我描述的結構描述。</p><p>🔌 可從<strong>任何 GraphQL 客戶端</strong>呼叫，例如 Apollo、Relay 或 urql。啟用聯邦功能後，Provisa 會作為子圖加入 <strong>Apollo 超級圖（supergraph）</strong>，讓你的聯邦模型與現有圖譜一併組合。</p>"
       },
       "step8": {
-        "title": "Cypher（七種介面之三）",
+        "title": "Cypher（九種介面之三）",
         "description": "🕸️ 用 Cypher 將聯邦模型當作圖譜來遍歷：<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ 這個遍歷可<strong>跨數據來源</strong>執行，毋須單一圖數據庫。</p><p>🔌 任何 <strong>Bolt</strong> 客戶端（例如 Neo4j Browser 或 Bloom）都能透過線路執行同樣的遍歷，毋須更改程式碼。</p>"
       },
       "step9": {
-        "title": "gRPC（七種介面之四）",
+        "title": "gRPC（九種介面之四）",
         "description": "⚙️ 每個已登記的實體同時也是一個 gRPC 服務：<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>可從任何 gRPC 客戶端呼叫：📐 強型別，🚀 高吞吐量。</p>"
       },
       "step10": {
-        "title": "JSON:API（七種介面之五）",
+        "title": "JSON:API（九種介面之五）",
         "description": "🧩 一個符合規格的 JSON:API 介面：<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 分頁與 🔍 篩選開箱即用。</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST（七種介面之六）",
+        "title": "OpenAPI / REST（九種介面之六）",
         "description": "🌐 還有一個以 OpenAPI 描述的純 REST 端點：<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 描述完整，任何 REST 客戶端或程式碼產生器都可以使用。</p>"
       },
       "step12": {
-        "title": "MCP（七種介面之七）",
-        "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具（搜尋目錄、描述表格、執行 SQL、追蹤關係），並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還剩最後一種介面：就是那個能替你寫出其餘七種的介面。→</p>"
+        "title": "MCP（九種介面之七）",
+        "description": "🤖 第七種介面讓代理程式（agent）能<strong>對你的數據進行推理</strong>。它驅動的是同一套受管治工具（搜尋目錄、描述表格、執行 SQL、追蹤關係），並將它們<em>串連</em>起來，回答單一查詢無法解答的問題，每次呼叫都受<strong>你</strong>角色的治理規則約束。<p>🔌 同一個 <strong>MCP 伺服器</strong>可接入 Claude Desktop、Claude Code，或任何 MCP 客戶端，讓代理程式以受管治的方式探索並推理你的模型。</p><p>🔑 使用你自己的 LLM 金鑰；此互動範例為預錄示範。</p><p>還有兩種介面從 Python 讀取同樣受管治的數據。→</p>"
+      },
+      "stepPython": {
+        "title": "Python（九種介面之八）",
+        "description": "🐍 Python 分頁在你的瀏覽器中執行 Python，並以你的身份登入：<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>結果以 pandas DataFrame 傳回，經由同一條受管治的管道讀取，所以你角色的行規則和遮罩同樣適用。</p><p>🔌 同一個 <strong>provisa-client</strong> 套件可以用 pip 安裝到任何桌面 Python，所以在這裏寫的腳本毋須修改就能在你自己的環境中執行。</p>"
+      },
+      "stepNotebook": {
+        "title": "筆記本（九種介面之九）",
+        "description": "📓 筆記本分頁就是 JupyterLite：在你瀏覽器中執行的 Jupyter 筆記本。第一個儲存格負責登入，下一個把同一條查詢讀成 DataFrame，可以畫成圖表或與其他數據合併。<p>⬇️ 下載這本筆記本，它可以在任何桌面 Jupyter 中打開，同樣的儲存格會像在這裏一樣從 Provisa 讀取。</p><p>還剩最後一種介面：替你寫出查詢的那種。→</p>"
       },
       "step13": {
-        "title": "直接問：那個替你寫出全部七種的介面",
-        "description": "💬 <em>「顯示每個物種的寵物數目」</em><p><strong>你根本不必學習前面那七種介面。</strong>用日常英語提問，Provisa 會將你的問題同時編譯成每一種查詢語言：下面每個面板，都是同一句話對應的 SQL、GraphQL、Cypher、gRPC、JSON:API 及 REST 版本。</p><p>用你的工具已經懂的介面，或者全部略過，直接發問。</p><p>🔑 即時的自然語言查詢使用你自己的 LLM 金鑰；此範例為預錄示範。</p><p>✅ 一個模型，<strong>八種介面</strong>：七種用來查詢，還有一種能寫出全部七種。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "直接問：替你寫出查詢的介面",
+        "description": "💬 <em>「顯示每個物種的寵物數目」</em><p><strong>這些查詢語言你一種都不用學。</strong>用日常語言發問，Provisa 會一次過把你的問題編譯成全部七種：下面每個面板都是同一句話寫成的 SQL、GraphQL、Cypher、gRPC、JSON:API 和 REST。</p><p>它不能直接打開 Python 或筆記本，但你隨時可以叫 Polly 把查詢搬到其中任何一個。</p><p>🔑 即時的自然語言查詢會使用你自己的 LLM 金鑰；這裏是一個預先準備的例子。</p><p>✅ 一個模型支撐全部<strong>九種介面</strong>，日常語言替你寫出查詢。</p><div class='tour-tags'><span>自然語言</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>筆記本</span></div>"
       },
       "step14": {
         "title": "這就是五分鐘的核心內容",
@@ -720,6 +733,26 @@
       "profilingDuplicates": {
         "title": "寫了兩次的列",
         "description": "模型將 customer_id 宣告為鍵，但匯出中沒有約束：150 位客戶出現了兩次，所有欄位都相同。剖析統計重複的列以及出現在多列中的鍵值。"
+      },
+      "profilingDrift": {
+        "title": "自上次運行以來有甚麼變化",
+        "description": "設定運行了兩次分析器，在兩次運行之間，CRM 的下一次同步把每個美國郵遞區號都寫成了 ZIP+4。漂移表把每個度量與上一次運行的度量比較：postal_code 的變化所改變的度量被標記為漂移，同步沒有觸及的欄則沒有。"
+      },
+      "profilingOriginal": {
+        "title": "真實的客戶",
+        "description": "CRM 中保存的十位客戶。接下來，在從分析結果生成的環境中運行同一條語句。"
+      },
+      "profilingToSynthetic": {
+        "title": "切換到 synthetic",
+        "description": "接下來，切換器切換到 <strong>synthetic</strong>，一個 Test (synthetic) 環境。"
+      },
+      "profilingSynthetic": {
+        "title": "從分析結果生成",
+        "description": "在 synthetic 中運行同一條語句：每一行都從客戶的分析結果生成，欄、取值形態和分佈都相同，卻沒有一位真實客戶。有了分析結果就足以生成測試數據。"
+      },
+      "profilingToProd": {
+        "title": "回到生產",
+        "description": "接下來，切換器回到 prod。"
       },
       "profilingRest": {
         "title": "透過 REST 取得同樣的答案",
@@ -1425,13 +1458,9 @@
         "title": "來自函數類型的欄",
         "description": "churn_risk 是一個表，因為它的 docstring 寫着 @table。它的欄是它回傳的 RiskRow 的欄位。它的參數就是函數的參數：客戶，以及模型訓練時用到的每個特徵。"
       },
-      "churnprodRefused": {
-        "title": "不指定客戶的讀取被拒絕",
-        "description": "函數沒有為 customer_id 提供預設值，所以省略它的讀取會在任何代碼運行之前被拒絕。拒絕訊息會列出每個缺少的參數。"
-      },
       "churnprodJoin": {
         "title": "為模型提供數據的 join",
-        "description": "這個關係把客戶的特徵連接到 churn_risk，並指明它傳入的特徵。基於它的 join 讀取你可以看到的特徵，為每位客戶呼叫一次模型，再把分數連接回來。"
+        "description": "此關係將每位客戶與模型的評分連接，因此對客戶進行連接時會為每一位客戶評分。"
       },
       "churnprodAtRisk": {
         "title": "流失風險客戶清單",
@@ -1460,6 +1489,146 @@
       "churnprodRecap": {
         "title": "你看到了甚麼",
         "description": "數據科學家的模型投入了生產，無需運行自己的服務。它的套件被固定，只安裝一次。一個 join 為它的函數提供數據，函數讀起來就像一個表，而每個表都有的遮罩和行規則約束它回傳的內容。SQL、GraphQL 以及其他任何存取方式都以同樣的方式讀取它。"
+      },
+      "worldcupIntro": {
+        "title": "四個公開來源，一屆世界盃",
+        "description": "誰贏過世界盃，來自哪個聯會？答案分散在公開數據中：維基百科的決賽列表和各聯會條目，以及 Kaggle 上收錄每場世界盃比賽和每個國際賽入球的兩個數據集。每個來源對國家的寫法都不同。維基百科寫 West Germany，Kaggle 寫 Germany FR，聯會的會員表寫 Germany。本導覽接入這些數據，用一個簡短的 Python 函數令名稱一致，再把結果作為一張受管治的圖來查詢。"
+      },
+      "worldcupWikipedia": {
+        "title": "維基百科，幾分鐘即可登記",
+        "description": "這是一個維基百科數據來源。它的爬取讀取七個頁面：List of FIFA World Cup finals 和六個聯會的條目。這些頁面上的每張數據表都成為一張表格，以其頁面和標題命名，因此決賽表格是 <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>。公開數據來源和任何內部資料庫一樣受管治，使用相同的角色、授權和遮罩。設定刷新間隔後，這些數據來源會自動保持最新。本示範讀取固定快照，因此每位訪客看到的答案都相同。"
+      },
+      "worldcupFinals": {
+        "title": "維基百科列出的決賽",
+        "description": "1930 年至 2026 年的每場決賽，冠軍和亞軍都使用當時的名稱。維基百科把 1954、1974 和 1990 年的冠軍記在 West Germany 名下，把 2014 年的冠軍記在 Germany 名下。"
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle 數據集以表格形式到達",
+        "description": "這是一個 Kaggle 數據來源：FIFA World Cup 數據集，收錄 1930 年至 2014 年的每屆賽事、每場比賽和每位球員的出場。它的每個檔案都以一張表格的形式到達。第二個 Kaggle 數據來源收錄 1916 年以來的每個國際賽入球。和維基百科的表格一樣，它們是公開數據，幾分鐘即可登記，並像任何內部資料庫一樣受管治。"
+      },
+      "worldcupMatches": {
+        "title": "以當時名稱記錄的比賽",
+        "description": "Kaggle 把西德寫作 Germany FR，把東德寫作 German DR。它的一些名稱帶有檔案殘留的標記，例如 <code>rn\"&gt;Republic of Ireland</code>。檔案中的空行按數據集原樣保留為沒有值的列。"
+      },
+      "worldcupDisagree": {
+        "title": "名稱對不上",
+        "description": "按維基百科寫的名稱計算，Germany 有一個冠軍，West Germany 有三個，就像是兩個國家。Kaggle 把同一支球隊寫作 Germany FR，所以在來源之間按名稱做連接也會漏掉這些冠軍。"
+      },
+      "worldcupFunction": {
+        "title": "函數就是那張表格",
+        "description": "country_alias 是一個 Python 數據來源，這個函數就是每條跨來源關係所經過的那張表格。它接收各來源寫出的每個球隊名稱，用機構密碼庫中的密鑰詢問 LLM 該名稱代表哪個國際足協會員，並傳回該會員的名稱和國際足協代碼。它會按刷新間隔再次執行，因此新名稱一出現就會被配對。<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "每個名稱都已配對並覆核",
+        "description": "這些是與其會員名稱不同的名稱。Germany FR 和 West Germany 是 Germany，Zaire 是 DR Congo，Soviet Union 是 Russia。每一項配對都在本示範凍結前經過覆核，237 項中有 27 項被更正。成績未由任何會員繼承的球隊保留自己的名稱：East Germany 仍是 East Germany，因此它在 1974 年對 West Germany 的比賽不會變成 Germany 對 Germany。"
+      },
+      "worldcupJunction": {
+        "title": "經過函數的關係",
+        "description": "WON 透過 country_alias 把聯會的會員與它贏得的決賽連接起來。會員的國際足協代碼找到它代表的每個名稱，每個名稱再找到它的決賽。RUNNER_UP、PLAYED_HOME、PLAYED_AWAY 和 SCORED 也以同樣方式連接。"
+      },
+      "worldcupGraph": {
+        "title": "所有冠軍匯於一張圖",
+        "description": "每個會員都與它贏得的決賽相連，無論當時用的是哪個名稱。Germany 的節點匯集了 1954、1974、1990 和 2014 年。"
+      },
+      "worldcupByConfederation": {
+        "title": "按聯會分組",
+        "description": "按聯會分組後，歐洲足協會員擁有 13 個冠軍，南美洲足協會員擁有 10 個。沒有其他聯會贏過決賽。"
+      },
+      "worldcupSql": {
+        "title": "SQL 中的同一模型",
+        "description": "SQL 中的同一個連接透過 country_alias 統計每個會員的冠軍數。Brazil 以五個領先，Germany 和 Italy 各有四個。"
+      },
+      "worldcupGraphql": {
+        "title": "以及 GraphQL",
+        "description": "在 GraphQL 中，每場決賽都有一個經過 country_alias 的 <code>winner</code> 欄位，因此 1954、1974 和 1990 年在 West Germany 旁邊顯示它代表的會員：Germany，GER。"
+      },
+      "worldcupRecap": {
+        "title": "回顧",
+        "description": "來自維基百科和 Kaggle 的公開數據，幾分鐘內接入並像任何內部資料庫一樣受管治，用大約十行 Python 令名稱一致，並作為一張圖來查詢。函數的配對都經過覆核，因此這張圖把每個冠軍只計一次，並記在正確的會員名下。"
+      },
+      "cloudpolicyScenario": {
+        "title": "這個示範講甚麼",
+        "description": "你的安全策略規定，掛載到虛擬機的每塊磁碟都使用客戶管理的密鑰。你負責安全，根據已有的記錄在 Azure、AWS 和 Google Cloud 上審查這一點。第一個數據源是雲端資產清單。它列出三個雲端中的每部機器和每塊磁碟，以及加密每塊磁碟的密鑰。"
+      },
+      "cloudpolicyIncidents": {
+        "title": "事件",
+        "description": "第二個數據源是安全團隊的 ServiceNow 事件。每個事件把所涉及的磁碟作為配置項，並引用它所歸屬的策略章節。例外是 Policy exception 類別的事件。"
+      },
+      "cloudpolicyReader": {
+        "title": "由代碼讀取的策略",
+        "description": "策略本身是一個網頁。這個 Python 套件隨網頁一起發佈，把它讀成每項控制一行。它的函數是一張表，因此策略與模型的其餘部分相連。"
+      },
+      "cloudpolicyPolicy": {
+        "title": "以行呈現的策略",
+        "description": "這裏是從 HTML 讀取的策略的每項控制，包括標題、條款和生效日期。第 4.2 節是正在審查的磁碟加密控制。"
+      },
+      "cloudpolicySearch": {
+        "title": "按語義搜尋策略",
+        "description": "每個條款在示範準備時嵌入一次。按語義搜尋能找到磁碟加密控制，即使你的用詞與條款不同。"
+      },
+      "cloudpolicyModel": {
+        "title": "三個雲端，一個模型",
+        "description": "每塊磁碟都標明它掛載的機器。這個關係以同樣的方式連接 Azure、AWS 和 Google Cloud 中的磁碟和機器。"
+      },
+      "cloudpolicyCites": {
+        "title": "與條款關聯的事件",
+        "description": "每個事件引用策略的一個章節。這個關係把它連接到所引用的條款，因此歸錯章節的事件會顯現出來。"
+      },
+      "cloudpolicyViolations": {
+        "title": "作為視圖的策略",
+        "description": "第 4.2 節寫成了一個視圖。它列出每塊由雲端管理密鑰的已掛載磁碟，以及磁碟所在的機器。"
+      },
+      "cloudpolicyReview": {
+        "title": "每日審查",
+        "description": "每日審查按策略規則為每塊已掛載磁碟分類。沒有客戶管理密鑰的磁碟可能由有效的例外覆蓋。如果沒有，它的事件要麼在期限內，要麼已逾期，要麼在磁碟仍不合規時被關閉，要麼從未登記。"
+      },
+      "cloudpolicyTrigger": {
+        "title": "每日觸發器",
+        "description": "每天早上，一個定時觸發器執行審查，把當天的行寫入審查歷史。它像任何語句一樣經過同一條受治理的管道寫入，使用其角色的寫入授權。"
+      },
+      "cloudpolicyTrend": {
+        "title": "十四天的歷史",
+        "description": "觸發器保留的歷史按天顯示違規。磁碟在其事件修復後退出，新的違規在出現當天顯示。"
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "問 Polly 誰違反了控制",
+        "description": "Polly 讀取與你相同的受治理模型。它列出沒有客戶管理密鑰的磁碟，以及要求使用該密鑰的章節。"
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "仍然有效的例外",
+        "description": "根據第 4.3 節，例外有效期為 90 天。Polly 找出它仍然覆蓋的磁碟。"
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "歸錯章節的事件",
+        "description": "有些事件引用的章節不是它們所涉及的控制，其中一個引用了策略已撤銷的章節。"
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "無人檢查的控制",
+        "description": "策略中有些控制沒有任何檢查來執行。Polly 將策略與團隊執行的檢查比較，並可以起草一個視圖供 steward 加入。"
+      },
+      "cloudpolicyAuditor": {
+        "title": "現在以 auditor 身份",
+        "description": "auditor 讀取每個雲端中的每個帳戶。"
+      },
+      "cloudpolicyOpen": {
+        "title": "審查標記的全部內容",
+        "description": "這裏是審查為每個團隊標記的每塊磁碟。"
+      },
+      "cloudpolicyAppTeam": {
+        "title": "現在以支付團隊身份",
+        "description": "支付團隊只讀取自己的資源和事件。"
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "只有自己的行",
+        "description": "同一條語句只回傳支付團隊的磁碟。行規則設在資產清單和事件上，基於它們建立的每個視圖都會套用這些規則。"
+      },
+      "cloudpolicyDashboard": {
+        "title": "合規儀表板",
+        "description": "Superset 透過 Provisa 的 Postgres 協定讀取相同的視圖。這是它的合規儀表板，按控制顯示違規。"
+      },
+      "cloudpolicyRecap": {
+        "title": "你看到了甚麼",
+        "description": "你根據已有的記錄，在三個雲端上審查了一項策略。策略是一張表，由代碼從它自己的網頁讀取，每個事件都連接到它引用的條款。每日觸發器保留歷史，每個角色只能讀取其規則允許的內容，無論在 SQL、Polly 還是 Superset 中。"
       },
       "bankingScenario": {
         "title": "日終報表，總賬留在原處",
@@ -1644,6 +1813,14 @@
       "churnprod": {
         "title": "生產環境中的流失風險",
         "summary": "流失示範中的 scikit-learn 模型投入生產。它的 Python 套件是一個數據來源，它的函數是一個表，在 join 中為每位客戶評分，回傳的結果同樣受遮罩和行規則約束。"
+      },
+      "worldcup": {
+        "title": "World Cup，一張圖",
+        "summary": "維基百科和 Kaggle 的世界盃數據在國家名稱上對不上。一個簡短的 Python 函數用 LLM 配對每個名稱，公開數據來源成為一張受管治的圖。"
+      },
+      "cloudpolicy": {
+        "title": "雲端策略審查",
+        "summary": "在 Azure、AWS 和 Google Cloud 上審查一項安全策略。雲端資產清單、ServiceNow 事件以及由代碼從網頁讀取的策略本身構成一個模型，每日觸發器保留審查歷史。"
       },
       "banking": {
         "title": "不複製總賬的日終報表",

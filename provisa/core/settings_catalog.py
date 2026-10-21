@@ -289,6 +289,7 @@ DECLARED: list[Setting] = [
         # (maintainer ruling, 2026-10-10: the product resolves what a field holds and makes up
         # no secret names): an operator who already created a secret of this name keeps
         # working, and any other value or reference may be typed over it.
+        # reference-convention: REQ-1798 -- the Kaggle token's fixed secret name
         default="${secret:kaggle_api_token}",
         credential=True,
     ),
@@ -496,6 +497,20 @@ DECLARED: list[Setting] = [
         # through the settings page replaces both — it is the whole list.
         env_adds_to_config=True,
         guard="confirm",  # each entry opens an outbound path for hosted functions
+    ),
+    Setting(
+        key="sources.download_roots",
+        card="security",
+        type="list",
+        effect="live",  # read when a source's file is downloaded
+        # REQ-2113: the directories a CSV or Parquet source's file may be downloaded from by a
+        # file mount path, after following symlinks. None by default: each entry lets the
+        # server's own files under it be copied into an org's folder. Refused whatever it holds
+        # on a server of many organizations.
+        req="REQ-2113",
+        env="PROVISA_SOURCES_DOWNLOAD_ROOTS",
+        default=(),
+        guard="confirm",
     ),
     Setting(
         key="logs.allowed_roots",

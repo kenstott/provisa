@@ -97,6 +97,15 @@
     "uploadNeedsId": "請先輸入資料來源的 ID：檔案存放在其下。",
     "uploadedFileHint": "此資料來源上載的檔案，存放在您機構的資料夾中。上載新檔案即可取代。",
     "fileLocationsHint": "組織檔案中的 {files}/…、伺服器上的路徑、https:// 地址，或附存儲憑證的 s3://、gs://、az://；或上載檔案。",
-    "fileDatabaseLocationsHint": "組織檔案中的 {files}/…、伺服器上的路徑、https:// 地址，或附存儲憑證的 s3://、gs://、az://（在那裡只可讀取）；或上載檔案。"
+    "fileDatabaseLocationsHint": "組織檔案中的 {files}/…、伺服器上的路徑、https:// 地址，或附存儲憑證的 s3://、gs://、az://（在那裡只可讀取）；或上載檔案。",
+    "fileInPlace": "就地讀取",
+    "fileDownload": "下載副本",
+    "downloadFrom": "下載自",
+    "downloadFromHint": "一個檔案：此伺服器上營運者允許的目錄中的路徑、https:// 地址，或帶有儲存憑證的 s3://。副本存放在您機構的資料夾中，並在來源的快取 TTL 到期時重新取得。",
+    "downloadFromHintRemote": "一個檔案：https:// 地址，或帶有儲存憑證的 s3://。副本存放在您機構的資料夾中，並在來源的快取 TTL 到期時重新取得。",
+    "draftTable": "立即將其資料表設定為草稿",
+    "draftTableHint": "按 Register Table 根據檔案提出的名稱和類型命名，在 steward 取消草稿之前不提供服務。",
+    "draftTableDomain": "其資料表的網域",
+    "fileMode": "其檔案"
   }
 }

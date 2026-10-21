@@ -10,8 +10,7 @@
 #
 # The node's side of the sandbox tier's demos (REQ-2049). For each demo the tier offers
 # (PROVISA_DEMO_BUNDLES), on the node that runs the tier:
-#   1. pull the version the tier wants (<bundles>/<name>/wanted), else the latest published, and
-#      mark it offered (<bundles>/<name>/pulled);
+#   1. pull the latest published version and mark it offered (<bundles>/<name>/pulled);
 #   2. once the tier has asked for the demo since the node started (<bundles>/<name>/requested:
 #      a visitor's open, which builds its template too), bring its stores up
 #      (scripts/demo_stores.py): its data loaded into the node's one shared instance of each store
@@ -19,14 +18,15 @@
 #      store, a Qdrant store, a Kafka broker, a producer -- as its version's own compose project;
 #      then write the bundle's stores.env, where each store is and the names of its data;
 #   3. mark the version ready (<bundles>/<name>/ready), which the tier then serves;
-#   4. take down every other version nothing reads (<bundles>/<name>/in-use): its data dropped
-#      from the shared stores, its own services removed.
+#   4. take down every older version nothing reads (<bundles>/<name>/in-use): its data dropped
+#      from the shared stores, its own services removed with the images no other container uses,
+#      its bundle directory deleted.
 # Nothing is started at boot: a demo's stores come up the first time it is asked for, and stay
 # up, the shared instances with them, until the node stops. Run with --boot (its own unit, before
 # docker starts), it clears what the node's last run left: no demo is asked for or ready, since
 # none of its stores is running.
 # Run at boot, on a timer, and whenever the tier touches <bundles>/.wanted (systemd units in
-# packaging/linux/demo-stores/).
+# packaging/linux/demo-stores/), and again at once when the tier touches it during a run.
 #
 # Environment:
 #   PROVISA_DEMO_BUNDLES   the demos, comma-separated (as the tier is told)
@@ -38,6 +38,7 @@
 #   DEMO_STORES            scripts/demo_stores.py, as installed beside this script
 #   DEMO_STORES_SHARED     the shared stores' compose file (docker-compose.shared.yml)
 #   DEMO_STORES_PROJECT    the shared stores' compose project
+#   DEMO_STORES_KAFKA_PORT the port the shared Kafka listens, is published and advertised at
 #   DEMO_STORES_NETWORK    the docker network the tier is on: each store joins it and is named by
 #                          its container and container port. Empty: by 127.0.0.1 and its published
 #                          port (a tier on this host, as the test instance runs it).
@@ -51,7 +52,8 @@ set -euo pipefail
 : "${DEMO_STORES:?scripts/demo_stores.py}"
 : "${DEMO_STORES_SHARED:?the shared stores compose file}"
 : "${DEMO_STORES_PROJECT:?the shared stores compose project}"
-export DEMO_BUNDLES_DIR DEMO_STORES_SHARED DEMO_STORES_PROJECT
+: "${DEMO_STORES_KAFKA_PORT:?the port of the shared Kafka}"
+export DEMO_BUNDLES_DIR DEMO_STORES_SHARED DEMO_STORES_PROJECT DEMO_STORES_KAFKA_PORT
 export DEMO_STORES_NETWORK="${DEMO_STORES_NETWORK:-}"
 
 write_atomically() { # path text
@@ -62,13 +64,9 @@ write_atomically() { # path text
 }
 
 sync_demo() { # name
-  local name="$1" spec="$1" wanted pulled version dir keep old
+  local name="$1" pulled version dir keep old
   mkdir -p "$DEMO_BUNDLES_DIR/$name"
-  if [ -s "$DEMO_BUNDLES_DIR/$name/wanted" ]; then
-    wanted="$(tr -d '[:space:]' < "$DEMO_BUNDLES_DIR/$name/wanted")"
-    spec="$name@$wanted"
-  fi
-  pulled="$($DEMO_PULL pull "$spec" --into "$DEMO_PULL_INTO")"
+  pulled="$($DEMO_PULL pull "$name" --into "$DEMO_PULL_INTO")"
   version="$(basename "$pulled")"
   dir="$DEMO_BUNDLES_DIR/$name/$version"
   [ -d "$dir" ] || { echo "demo $name: $pulled is not $dir on this host" >&2; return 1; }
@@ -87,41 +85,59 @@ sync_demo() { # name
   if [ -f "$DEMO_BUNDLES_DIR/$name/in-use" ]; then
     keep="$keep$(tr '\n' ' ' < "$DEMO_BUNDLES_DIR/$name/in-use") "
   fi
-  # Every other version whose stores this node brought up (its stores.env) and nothing reads: its
-  # data is dropped from the shared stores and its own services taken down.
-  for old in "$DEMO_BUNDLES_DIR/$name"/*/stores.env; do
-    [ -f "$old" ] || continue
-    old="$(basename "$(dirname "$old")")"
+  # Every older version nothing reads: where this node brought its stores up (its stores.env), its
+  # data is dropped from the shared stores and its own services taken down with the images no
+  # other container uses; then its bundle directory is deleted, whether or not it was ever up.
+  for old in "$DEMO_BUNDLES_DIR/$name"/*/; do
+    [ -d "$old" ] || continue
+    old="$(basename "$old")"
     case "$keep" in
-      *" $old "*) ;;
-      *) python3 "$DEMO_STORES" drop "$name" "$old"
-         rm -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env"
-         echo "demo $name: $old taken down" ;;
+      *" $old "*) continue ;;
     esac
+    [[ "$old" < "$version" ]] || continue
+    if [ -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env" ]; then
+      python3 "$DEMO_STORES" drop "$name" "$old"
+      rm -f "$DEMO_BUNDLES_DIR/$name/$old/stores.env"
+      echo "demo $name: $old taken down"
+    fi
+    rm -rf "${DEMO_BUNDLES_DIR:?}/$name/$old"
+    echo "demo $name: $old deleted"
   done
 }
 
 if [ "${1:-}" = "--boot" ]; then
   : "${DEMO_BUNDLES_DIR:?the bundles directory}"
-  rm -f "$DEMO_BUNDLES_DIR"/*/requested "$DEMO_BUNDLES_DIR"/*/ready
+  # A version an earlier release pinned (<name>/wanted, no longer written) goes too: the latest
+  # published is always the one pulled.
+  rm -f "$DEMO_BUNDLES_DIR"/*/requested "$DEMO_BUNDLES_DIR"/*/ready "$DEMO_BUNDLES_DIR"/*/wanted
   echo "demo stores: no demo asked for or ready since the node started"
   exit 0
 fi
 
 failed=0
 IFS=',' read -r -a demos <<< "$PROVISA_DEMO_BUNDLES"
-for name in "${demos[@]}"; do
-  name="$(echo "$name" | tr -d '[:space:]')"
-  [ -n "$name" ] || continue
-  # One demo that cannot be synced does not keep the others from theirs; the run still fails. Not
-  # `( ... ) || ...`: bash ignores errexit inside a command on the left of ||.
-  set +e
-  ( set -e; sync_demo "$name" )
-  status=$?
-  set -e
-  if [ "$status" -ne 0 ]; then
-    echo "demo $name: not synced" >&2
-    failed=1
-  fi
+# The tier touches <bundles>/.wanted after each ask. One made while a run is going starts no
+# other (systemd drops a path unit's trigger while its service runs), so a run takes the signal
+# as it starts and goes again while the tier has touched it since: the ask is served now, not at
+# the timer's next tick.
+signal="$DEMO_BUNDLES_DIR/.wanted"
+while :; do
+  rm -f "$signal"
+  for name in "${demos[@]}"; do
+    name="$(echo "$name" | tr -d '[:space:]')"
+    [ -n "$name" ] || continue
+    # One demo that cannot be synced does not keep the others from theirs; the run still fails.
+    # Not `( ... ) || ...`: bash ignores errexit inside a command on the left of ||.
+    set +e
+    ( set -e; sync_demo "$name" )
+    status=$?
+    set -e
+    if [ "$status" -ne 0 ]; then
+      echo "demo $name: not synced" >&2
+      failed=1
+    fi
+  done
+  [ -e "$signal" ] || break
+  echo "demo stores: asked for again during the run; syncing again"
 done
 exit "$failed"

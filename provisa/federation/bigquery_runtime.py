@@ -205,6 +205,25 @@ class BigQueryFederationRuntime:  # REQ — BigQuery federation engine
             pk_columns=pk_columns,
         )
 
+    async def publish_replica_view(
+        self, *, view_schema: str, view_table: str, schema: str, table: str, replace: bool
+    ) -> None:
+        """Publish the view ``view_schema.view_table`` over the replica ``schema.table``, both in
+        the project: the object the Dataplex export names as the member's asset (REQ-2118).
+        ``view_schema`` is the org's export dataset (REQ-1912); Provisa's own reads address the
+        replica. ``replace``: the replica was recreated."""
+        import asyncio
+
+        from provisa.federation.bigquery_store import expose_view
+
+        await asyncio.to_thread(
+            expose_view,
+            self._client,
+            view=(self.project, view_schema, view_table),
+            replica=(self.project, schema, table),
+            replace=replace,
+        )
+
     async def reconcile_landed_metadata(self, plan: Any) -> int:
         """Apply the replicated model's keys, descriptions and tags (REQ-1658): ``NOT ENFORCED``
         PRIMARY/FOREIGN KEY constraints, table and column descriptions, and ``provisa_governance_*``

@@ -29,6 +29,7 @@ _TARGETS = (
     "source",
     "table",
     "relationship",
+    "trigger",
     "example",
     "sql",
     "api",
@@ -298,6 +299,10 @@ def _check_steps(home: Path, steps: list[dict]) -> None:
             assert picture.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n", f"{picture} is not a PNG"
         if "relationship" in step:
             assert step["relationship"] in aliases, step
+        if "trigger" in step:
+            # A scheduled trigger's row is on the Triggers page, under its id.
+            assert step["trigger"] in {t["id"] for t in config.get("scheduled_triggers", [])}, step
+            assert page == "/admin/scheduled-tasks", step
         if "example" in step:
             assert step["example"] in examples, step
             # An example query opens in a new tab of the GraphQL page: a step on any other page

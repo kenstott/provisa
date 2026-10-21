@@ -140,6 +140,13 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "trigger_runs",
         "preserved_snapshots",
         "admin_audit_log",
+        # REQ-2098: the image builds made in this environment.
+        "code_source_builds",
+        # REQ-2105: what this environment's code sources spent on the LLM service.
+        "code_source_llm_usage",
+        # REQ-2106: what this environment's code sources cached and indexed for themselves.
+        "code_source_cache",
+        "code_source_vectors",
         "catalog_bindings",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's

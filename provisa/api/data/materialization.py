@@ -138,16 +138,46 @@ def is_native_read(table: dict, types: dict[str, str]) -> bool:
     )
 
 
+def _kept_for_good(state, table: dict) -> bool:
+    """REQ-2031: whether ``table`` never expires and its replica has landed in this engine's store
+    (``ReplicaRoutes.kept_for_good``). Such a table is read only from its replica: nothing reads
+    it in place or runs it, whatever its kind."""
+    key = (table["source_id"], table["schema_name"], table["table_name"])
+    return key in state.replica_routes.kept_for_good
+
+
 def _pipeline_tables(state, table_ids: Iterable[int]) -> dict[str, dict]:
     """The tables the statement reads that Provisa reads itself (``is_native_read``), by their
-    sql names."""
+    sql names. A table kept for good is not one of them: its reads go to its replica, so a frozen
+    code table never starts its worker (REQ-2031)."""
     ids = set(table_ids)
     types = getattr(state, "source_types", None) or {}
     return {
         _sql_name(t["table_name"]): t
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids and is_native_read(t, types)
+        if t.get("id") in ids and is_native_read(t, types) and not _kept_for_good(state, t)
     }
+
+
+def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str | None]:
+    """REQ-2031: each parameter of a native-read table the statement reads that is kept for good
+    (``_nf_<name>``), and the landed column its value filters: the table's column of the same
+    name, or None when it has none. Its rows are landed, never fetched under the parameter, so a
+    condition on the parameter filters them instead (``nf_extractor.extract_nf_args``)."""
+    from provisa.core.parameters import NF_PREFIX, is_parameter
+
+    ids = set(table_ids)
+    types = getattr(state, "source_types", None) or {}
+    filters: dict[str, str | None] = {}
+    for t in getattr(state, "tables", None) or []:
+        if t.get("id") not in ids or not is_native_read(t, types) or not _kept_for_good(state, t):
+            continue
+        landed = {c["column_name"] for c in t["columns"] if not is_parameter(c)}
+        for c in t["columns"]:
+            if is_parameter(c):
+                name = c["column_name"].removeprefix(NF_PREFIX)
+                filters[c["column_name"]] = name if name in landed else None
+    return filters
 
 
 #: REQ-1986: the scratch tables landed for the statement being planned -- rows of a table with a
@@ -328,15 +358,18 @@ async def drop_scratch(scratch, state) -> None:  # REQ-1986
 
 
 def _parameter_tables(state, table_ids: Iterable[int]) -> dict[str, list]:
-    """The parameter columns of each registered table the statement reads, by its sql name."""
+    """The parameter columns of each registered table the statement reads, by its sql name. A
+    native-read table kept for good has none to give: its landed rows are read whole, a condition
+    on a parameter filtering them (``frozen_parameter_filters``, REQ-2031)."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.core.parameters import is_parameter
 
     ids = set(table_ids)
+    types = getattr(state, "source_types", None) or {}
     return {
         apply_sql_name(t["table_name"]): [c for c in t["columns"] if is_parameter(c)]
         for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids
+        if t.get("id") in ids and not (is_native_read(t, types) and _kept_for_good(state, t))
     }
 
 

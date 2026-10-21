@@ -37,7 +37,7 @@ from provisa.api.metadata_export.model import (
     GlossaryTermEdge,
     MetadataSnapshot,
 )
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportTarget
 
 COMMUNITY = "Provisa"
 GLOSSARY_DOMAIN = "Provisa Glossary"
@@ -154,7 +154,7 @@ def test_every_identifier_and_relation_endpoint_stays_inside_the_provisa_glossar
 
 def _export() -> CollibraExport:
     return CollibraExport(
-        MetadataExportConfig(enabled=True, provider="collibra", endpoint="https://collibra.example")
+        MetadataExportTarget(id="catalog", provider="collibra", endpoint="https://collibra.example")
     )
 
 

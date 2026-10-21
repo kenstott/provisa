@@ -13,7 +13,7 @@
 // GraphFrame (the component) and GraphPage. See react-graphql SKILL.md
 // (Module Size — Subdivide Past 1000 Lines).
 
-import type { ResultRedirect } from "../../api/admin";
+import type { ResultRedirect } from "../../types/resultRedirect";
 import type { Relationship } from "../../types/admin";
 
 // ── Palette ───────────────────────────────────────────────────────────────────

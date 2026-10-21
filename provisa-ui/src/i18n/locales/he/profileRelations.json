@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "קשרים ב-{{table}}",
+    "none": "בהרצה זו לא נמצאו מתאמים או תלויות בין עמודות.",
+    "canvasLabel": "מפה תלת-ממדית של עמודות הטבלה, מחוברות לפי המתאמים והתלויות ביניהן",
+    "minStrength": "עוצמה",
+    "showCorrelation": "מתאמים",
+    "showDependence": "תלויות",
+    "legendPositive": "עולות יחד",
+    "legendNegative": "נעות בכיוון הפוך",
+    "legendRatio": "הקטגוריה מסבירה את המספר",
+    "legendDependence": "תלויה ב- (החץ מצביע על העמודה התלויה)",
+    "tipLinks_one": "קשרים: {{count}}",
+    "tipLinks_other": "קשרים: {{count}}",
+    "columns": "עמודות",
+    "noLinks": "אין קשרים בעוצמה זו.",
+    "note": "עובי המוט הוא העוצמה: |Spearman ρ| במתאמים, חלק השונות המוסבר ביחס מתאם, וחלק אי-הוודאות של העמודה שההורים שלה מסירים בתלות. עמודות אפורות שייכות לטבלת אב.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "יחס מתאם η²",
+    "measure_dependence": "תלות (חלק אי-הוודאות שהוסר)",
+    "family_numeric": "מספרי",
+    "family_temporal": "תאריך/שעה",
+    "family_text": "טקסט",
+    "family_boolean": "בוליאני",
+    "family_other": "אחר",
+    "family_foreign": "עמודה של טבלת אב"
+  }
+}

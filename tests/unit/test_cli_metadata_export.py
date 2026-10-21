@@ -55,7 +55,12 @@ def _capture(monkeypatch, payload: dict) -> dict:
     return seen
 
 
-_OK = {"ok": True, "provider": "datahub", "total_published": 12, "errors": []}
+_OK = {
+    "ok": True,
+    "targets": [
+        {"id": "dh", "provider": "datahub", "ok": True, "total_published": 12, "errors": []}
+    ],
+}
 
 
 def test_posts_to_the_single_publish_path(monkeypatch, capsys):
@@ -66,7 +71,7 @@ def test_posts_to_the_single_publish_path(monkeypatch, capsys):
     assert seen["method"] == "POST"
     assert seen["auth"] is None
     assert seen["timeout"] == 300
-    assert "published 12 assets via datahub" in capsys.readouterr().out
+    assert "ok: dh (datahub) published 12 assets" in capsys.readouterr().out
 
 
 def test_token_flag_becomes_bearer_header(monkeypatch):
@@ -91,16 +96,25 @@ def test_partial_publish_exits_nonzero_and_names_assets(monkeypatch, capsys):
         monkeypatch,
         {
             "ok": False,
-            "provider": "atlas",
-            "total_published": 3,
-            "errors": [{"asset": "sales.orders", "message": "rejected"}],
+            "targets": [
+                {"id": "dh", "provider": "datahub", "ok": True, "total_published": 5, "errors": []},
+                {
+                    "id": "atlas",
+                    "provider": "atlas",
+                    "ok": False,
+                    "total_published": 3,
+                    "errors": [{"asset": "sales.orders", "message": "rejected"}],
+                },
+            ],
         },
     )
     rc = cli.main(["metadata", "export", "--api", "http://x"])
     captured = capsys.readouterr()
     assert rc == 1
-    assert "PARTIAL" in captured.out
-    assert "sales.orders: rejected" in captured.err
+    # REQ-2118: each target on its own line; the one that rejected assets names them.
+    assert "ok: dh (datahub) published 5 assets" in captured.out
+    assert "PARTIAL: atlas (atlas) published 3 assets" in captured.out
+    assert "atlas: sales.orders: rejected" in captured.err
 
 
 def test_http_error_reports_body_and_exits_nonzero(monkeypatch, capsys):

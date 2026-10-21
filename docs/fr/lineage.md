@@ -49,6 +49,7 @@ source jusqu'à chaque sortie.
 | `source` | Vert | Une colonne de table de base |
 | `derived` | Bleu | Produite par une expression SQL (fonction, opérateur, CTE) |
 | `command` | Violet | Une colonne de sortie d'une commande enregistrée |
+| `native` | Orange | Le champ brut qu'une source lit, sous la colonne d'une table enregistrée |
 
 Anneaux supplémentaires sur un nœud :
 
@@ -66,6 +67,27 @@ littéraux (`constant`).
 
 Une arête issue d'un appel de commande est rendue dans l'interface par une ligne violette en
 pointillés.
+
+### Sous la table enregistrée
+
+Un utilisateur disposant de l'enregistrement des sources voit un saut de plus sous chaque colonne source : le champ tel que la source le lit, dans une boîte pour l'endroit où il est lu. La boîte porte le logo et le libellé de type de la source, comme les montre la page Sources, et l'adresse selon le type de source :
+
+| Source | Adresse |
+| --- | --- |
+| OpenAPI | L'opération (`GET /v2/customers`), ses paramètres fixes et l'emplacement des lignes |
+| Remote GraphQL | Le champ racine, ses arguments obligatoires et l'emplacement des lignes |
+| MongoDB, Cosmos DB | La base de données et la collection ou le conteneur |
+| Elasticsearch, Qdrant | L'index ou la collection |
+| CSV, Parquet, fichiers, journaux | Le chemin, et le motif de fichiers d'une table qui lit plusieurs fichiers |
+| Kafka | Le topic |
+| Source de code | La fonction |
+| Toute autre | Le schéma et la table natifs |
+
+Le champ brut est le chemin de champ de la colonne quand elle en a un, sinon son propre nom. L'arête qui le relie à la colonne enregistrée nomme le renommage : `path`, `alias` ou `naming` (la convention de nommage). La boîte de la table enregistrée indique comment elle est servie : `virtual`, lue à chaque instruction, ou `replica`, avec son TTL et son dernier chargement. Les identifiants, les références de secrets et l'utilisateur, le mot de passe et la query d'une URL ne sont jamais affichés. Un utilisateur sans enregistrement des sources voit le lignage à partir de la table enregistrée.
+
+### Liens
+
+Chaque élément s'ouvre là où il est défini, quand les droits de l'utilisateur ouvrent cette page. Un clic sur un champ ouvre sa table, sa vue ou sa source ; un double clic sur une boîte ouvre sa relation ; un clic sur l'arête d'une commande ouvre la commande. Une fonction SQL intégrée n'a ni page ni lien.
 
 ## Graphe à l'échelle de la fédération {: #federation-wide-graph }
 
@@ -121,6 +143,26 @@ Forme de la réponse :
   "outputs": ["id", "embedding"]
 }
 ```
+
+Pour un appelant disposant de l'enregistrement des sources, les deux endpoints ajoutent le saut natif : des nœuds de type `native`, et un objet `natives` indexé par la relation de chaque boîte native (`native:<domain>.<table>`) :
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+Le `served` d'une réplique est `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`. Pour tout autre appelant, `natives` est vide.
 
 Renvoie un HTTP 422 lorsque le SQL ne peut pas être analysé.
 

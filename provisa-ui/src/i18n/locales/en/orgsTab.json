@@ -14,6 +14,7 @@
     "deleteConfirmPrompt": "Deleting \"{{id}}\" destroys every source, domain, table and role in it, for everyone in it. This cannot be undone. Type {{id}} to confirm.",
     "colId": "ID",
     "colName": "Name",
+    "colTier": "Tier",
     "colMembers": "Members",
     "colActions": "Actions",
     "empty": "No organizations",
@@ -52,6 +53,11 @@
     "revokeInvite": "Revoke invite for {{org}}",
     "invitePagination": "Invite links pagination",
     "orgIdDesc": "2-40 characters, lowercase letters and digits, starting with a letter. It becomes the schema name and the subdomain, and cannot be changed later.",
-    "spentStatus": "Fully redeemed"
+    "spentStatus": "Fully redeemed",
+    "tierFor": "Tier of {{name}}",
+    "tierNotSet": "Not set",
+    "tier_free": "Free",
+    "tier_standard": "Standard",
+    "tier_premium": "Premium"
   }
 }

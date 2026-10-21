@@ -23,10 +23,13 @@ const LEGEND_ROLES: { label: string; role: Role }[] = [
   { label: "result", role: "output" },
 ];
 
-export function LineageLegend({ children }: { children?: ReactNode }) {
+// REQ-2116: a source's raw field, keyed only when the graph draws the native hop.
+const NATIVE_ROLE = { label: "native field", role: "native" as Role };
+
+export function LineageLegend({ children, native = false }: { children?: ReactNode; native?: boolean }) {
   return (
     <Group gap="md" data-testid="lineage-legend">
-      {LEGEND_ROLES.map((l) => (
+      {(native ? [NATIVE_ROLE, ...LEGEND_ROLES] : LEGEND_ROLES).map((l) => (
         <div
           key={l.label}
           style={{

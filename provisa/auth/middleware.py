@@ -1008,6 +1008,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     EnvironmentSelectionError,
                 )
                 from provisa.api.env_routing import resolve_selected_env as _resolve_selected_env
+                from provisa.api.env_routing import env_header_value
                 from provisa.core.request_context import (
                     reset_current_env,
                     reset_current_org,
@@ -1020,13 +1021,10 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # env_create.py/copy_model's seed=True) -- resolve_selected_env is the same
                 # resolution _OrgRoutingMiddleware binds the request to later, so this read and
                 # that binding always land on the same schema.
+                env_caps = await org_env_capabilities(identity, active_org_id)
                 try:
                     active_env = await _resolve_selected_env(
-                        self._admin_pool,
-                        active_org_id,
-                        identity,
-                        None,
-                        await org_env_capabilities(identity, active_org_id),
+                        self._admin_pool, active_org_id, identity, None, env_caps
                     )
                 except (EnvironmentSelectionError, EnvironmentRightError):
                     # Not this middleware's job to answer for -- _OrgRoutingMiddleware resolves
@@ -1036,7 +1034,32 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                     active_env = None
 
                 await ensure_org_runtime(active_org_id, active_env)
-                _org_binding = (active_org_id, active_env)
+                # A role set's meta-role is built in the runtime the request is BOUND to: the
+                # environment it names, as _OrgRoutingMiddleware binds it. Built in the one the
+                # role read above uses, it was missing where the request ran, and a visitor acting
+                # as "Role: All" in pre-prod was refused "unknown role 'meta:analyst+sandbox'".
+                bound_env = active_env
+                requested_env = env_header_value(request.scope.get("headers") or [])
+                if requested_env is not None:
+                    # Refused here as _OrgRoutingMiddleware refuses it, by name: nothing is built
+                    # in an environment the request will not be served by.
+                    try:
+                        bound_env = await _resolve_selected_env(
+                            self._admin_pool, active_org_id, identity, requested_env, env_caps
+                        )
+                    except EnvironmentSelectionError as exc:
+                        return JSONResponse(
+                            {"error": {"code": "env.unknown", "message": str(exc)}},
+                            status_code=404,
+                        )
+                    except EnvironmentRightError as exc:
+                        return JSONResponse(
+                            {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
+                            status_code=403,
+                        )
+                    if bound_env != active_env:
+                        await ensure_org_runtime(active_org_id, bound_env)
+                _org_binding = (active_org_id, bound_env)
                 org_token = set_current_org(active_org_id)
                 env_token = set_current_env(active_env) if active_env is not None else None
                 try:

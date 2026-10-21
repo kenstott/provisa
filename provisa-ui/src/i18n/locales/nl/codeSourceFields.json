@@ -14,7 +14,7 @@
     "version": "Versie",
     "versionHint": "Een exacte versie, zoals 1.2.0.",
     "lockfile": "Lockfile",
-    "lockfileHint": "Een gepubliceerd pakket bevat zelden zijn lockfile. Geef er een ({{names}}) wanneer het pakket afhankelijkheden heeft.",
+    "lockfileHint": "Optioneel. Voor identieke installaties, die belangrijk zijn bij testen, moet de code een lockfile bevatten, of geeft u er hier een ({{names}}).",
     "lockfilePlaceholder": "Geen lockfile",
     "repository": "Repository-URL",
     "commit": "Commit",
@@ -25,6 +25,21 @@
     "archivePlaceholder": "Kies een archief",
     "entry": "Ingangsmodule",
     "entryHint": "De module waarmee de bron wordt geopend. Laat leeg als de code één module of pakket op het hoogste niveau heeft.",
-    "kept": "Bewaard: {{name}}"
+    "kept": "Bewaard: {{name}}",
+    "keptWithHash": "Bewaard: {{name}} ({{hash}})",
+    "exports": "Exports",
+    "exportsLoading": "Code wordt gelezen…",
+    "exportsNone": "De code exporteert geen functies",
+    "exportKind_table": "tabel",
+    "exportKind_command": "opdracht",
+    "exportKind_stream": "stream",
+    "secrets": "Secrets",
+    "secretsHint": "De secrets van de organisatie die deze code mag lezen. Hij haalt elk ervan op tijdens het draaien, via $PROVISA_SERVICES/secrets/<name>; niets anders in de kluis is leesbaar, en elke lezing wordt geaudit.",
+    "secretsPlaceholder": "Geen secrets",
+    "llmCap": "Maandelijks LLM-plafond",
+    "llmCapHint": "Wat de aanroepen van deze code naar $PROVISA_SERVICES/llm per maand (UTC) mogen kosten, in USD. Met een plafond mag hij alleen modellen gebruiken met een prijs in Modelprijzen van Polly, en worden zijn aanroepen geweigerd zodra de maand het plafond bereikt. Leeg: geen plafond.",
+    "llmCapPlaceholder": "Geen plafond",
+    "settings": "Instellingen",
+    "settingsHint": "Waarden die de code leest met settings.get(name), één name = value per regel. Niet voor secrets: die horen onder Secrets. Een steward wijzigt ze hier zonder de code te wijzigen."
   }
 }

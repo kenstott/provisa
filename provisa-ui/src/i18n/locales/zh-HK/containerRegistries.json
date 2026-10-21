@@ -1,0 +1,19 @@
+{
+  "containerRegistries": {
+    "help": "可推送程式碼來源建置映像的登錄庫，用於在遠端主機上執行。每個欄位可填寫值，或 ${secret:registry_token} 這樣的密鑰引用。沒有登錄庫時，建置的映像會改為下載。",
+    "add": "新增容器登錄庫",
+    "none": "沒有容器登錄庫。建置的映像仍可下載。",
+    "address": "登錄庫和命名空間",
+    "addressHelp": "登錄庫（如有連接埠則連同連接埠）以及推送映像所用的儲存庫命名空間，例如 ghcr.io/example 或 registry.example.com:5000/data。",
+    "username": "使用者名稱",
+    "credential": "密碼或權杖",
+    "credentialHelp": "使用者名稱用於登入的密碼或存取權杖，例如具有 write:packages 權限的 GitHub 個人存取權杖。",
+    "caBundle": "憑證授權單位 (PEM)",
+    "caBundleHelp": "僅適用於憑證由您自己的授權單位簽署的登錄庫：其 PEM 憑證，或密鑰引用。它會與公開授權單位一同被信任。否則留空。",
+    "default": "預設登錄庫",
+    "defaultHelp": "除非建置指定其他登錄庫，否則推送到此處。一個組織只有一個預設登錄庫。",
+    "saved": "已儲存",
+    "removed": "已刪除",
+    "remove": "刪除"
+  }
+}

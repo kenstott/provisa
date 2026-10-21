@@ -194,7 +194,7 @@ def _reap_stray_pgserver_processes() -> None:
     reaches this process as a pgserver dependency — if pgserver is installed and psutil is not,
     that is a broken environment and must raise rather than silently skip the reap.
     """
-    if importlib.util.find_spec("pgserver") is None:
+    if importlib.util.find_spec("pixeltable_pgserver") is None:
         return
 
     import psutil

@@ -243,48 +243,45 @@ class TestChatLoop:
         assert tr["is_error"] is True
         assert events[-1]["type"] == "done"
 
-    async def test_propose_source_dispatches_to_mcp_tool(self, monkeypatch):  # REQ-1792/1795
+    async def test_admin_query_dispatches_as_the_user(self, monkeypatch):  # REQ-2114
         resp1 = SimpleNamespace(
             content=[
                 _block(
                     type="tool_use",
-                    name="propose_source",
-                    input={
-                        "source": {"id": "fred_cpi", "type": "postgresql"},
-                        "reason": "found via web search for US inflation data",
-                    },
-                    id="p1",
+                    name="admin_query",
+                    input={"query": "{ sources { id } }", "variables": {}},
+                    id="q1",
                 )
             ],
             stop_reason="tool_use",
         )
         resp2 = SimpleNamespace(
-            content=[_block(type="text", text="Proposed — a rights-holder can approve it.")],
-            stop_reason="end_turn",
+            content=[_block(type="text", text="You have one source.")], stop_reason="end_turn"
         )
         _install_fake_anthropic(monkeypatch, [resp1, resp2])
 
         seen = {}
 
-        async def fake_propose_source(state, role, source, reason, *, request=None):
-            seen.update(role=role, source=source, reason=reason)
-            return {"request_id": 7, "status": "pending", "message": "Queued as #7"}
+        async def fake_run_query(query, variables, *, request):
+            seen.update(query=query, variables=variables, request=request)
+            return {"data": {"sources": [{"id": "pg"}]}, "errors": []}
 
-        monkeypatch.setattr(mcp_tools, "propose_source", fake_propose_source)
+        monkeypatch.setattr(chat_mod.admin_api, "run_query", fake_run_query)
 
+        sentinel_request = object()
         events = [
             ev
             async for ev in chat_mod.run_chat(
-                _state(), "analyst", [{"role": "user", "content": "find a US inflation source"}]
+                _state(),
+                "analyst",
+                [{"role": "user", "content": "what sources do I have"}],
+                request=sentinel_request,
             )
         ]
-        types = [e["type"] for e in events]
-        assert types == ["tool_use", "tool_result", "text", "usage", "done"]
+        assert [e["type"] for e in events] == ["tool_use", "tool_result", "text", "usage", "done"]
         assert events[1]["is_error"] is False
-        # Ran under the pinned role, with the model's proposed source/reason passed through.
-        assert seen["role"] == "analyst"
-        assert seen["source"] == {"id": "fred_cpi", "type": "postgresql"}
-        assert "inflation" in seen["reason"]
+        # Ran as the user: the chat's own request, with the model's query passed through.
+        assert seen == {"query": "{ sources { id } }", "variables": {}, "request": sentinel_request}
 
     async def test_client_tool_pauses_the_loop(self, monkeypatch):  # REQ-1795
         resp1 = SimpleNamespace(
@@ -753,32 +750,31 @@ class TestSubscriptionSources:  # REQ-1798
 
 
 @pytest.mark.asyncio
-class TestDirectCreate:  # REQ-1799
-    async def test_run_chat_passes_the_real_request_to_propose_source(self, monkeypatch):
+class TestAdminApiAsTheUser:  # REQ-2114
+    async def test_discover_relationships_runs_with_the_real_request(self, monkeypatch):
         resp1 = SimpleNamespace(
             content=[
                 _block(
                     type="tool_use",
-                    name="propose_source",
-                    input={"source": {"id": "x", "type": "postgresql"}, "reason": "found it"},
-                    id="p1",
+                    name="discover_relationships",
+                    input={"schema": "sales", "table": "orders"},
+                    id="d1",
                 )
             ],
             stop_reason="tool_use",
         )
         resp2 = SimpleNamespace(
-            content=[_block(type="text", text="You already hold the rights — create it now?")],
-            stop_reason="end_turn",
+            content=[_block(type="text", text="Two candidates.")], stop_reason="end_turn"
         )
         _install_fake_anthropic(monkeypatch, [resp1, resp2])
 
         seen = {}
 
-        async def fake_propose_source(state, role, source, reason, *, request=None):
-            seen["request"] = request
-            return {"status": "confirm_required", "capability": "source_registration"}
+        async def fake_discover(state, schema, table, *, request):
+            seen.update(schema=schema, table=table, request=request)
+            return {"table": "sales.orders", "candidates": []}
 
-        monkeypatch.setattr(mcp_tools, "propose_source", fake_propose_source)
+        monkeypatch.setattr(chat_mod.admin_api, "discover_relationships", fake_discover)
 
         sentinel_request = object()
         events = [
@@ -786,64 +782,48 @@ class TestDirectCreate:  # REQ-1799
             async for ev in chat_mod.run_chat(
                 _state(),
                 "analyst",
-                [{"role": "user", "content": "find a source"}],
+                [{"role": "user", "content": "create any relationships to orders"}],
                 request=sentinel_request,
             )
         ]
         assert [e["type"] for e in events] == ["tool_use", "tool_result", "text", "usage", "done"]
-        assert seen["request"] is sentinel_request
+        assert seen == {"schema": "sales", "table": "orders", "request": sentinel_request}
 
-    async def test_create_source_now_dispatches_with_the_request(self, monkeypatch):
+    async def test_a_change_pauses_for_the_browser_to_confirm_and_send(self, monkeypatch):
+        """admin_mutation is a client tool: the server never sends it; the chat pauses for the
+        user's browser, which shows it and sends it as the user once they confirm."""
         resp1 = SimpleNamespace(
             content=[
                 _block(
                     type="tool_use",
-                    name="create_source_now",
-                    input={"source": {"id": "x", "type": "postgresql"}, "reason": "user said yes"},
-                    id="c1",
+                    name="admin_mutation",
+                    input={
+                        "mutation": 'mutation { createSource(input: {id: "x"}) { success } }',
+                        "summary": "Create the source x.",
+                    },
+                    id="m1",
                 )
             ],
             stop_reason="tool_use",
         )
-        resp2 = SimpleNamespace(
-            content=[_block(type="text", text="Created.")], stop_reason="end_turn"
-        )
-        _install_fake_anthropic(monkeypatch, [resp1, resp2])
+        _install_fake_anthropic(monkeypatch, [resp1])
 
-        seen = {}
-
-        async def fake_create_source_now(state, role, source, reason, *, request):
-            seen.update(role=role, source=source, reason=reason, request=request)
-            return {"success": True, "message": "created", "code": "schema.source_created"}
-
-        monkeypatch.setattr(mcp_tools, "create_source_now", fake_create_source_now)
-
-        sentinel_request = object()
         events = [
             ev
             async for ev in chat_mod.run_chat(
-                _state(),
-                "analyst",
-                [{"role": "user", "content": "yes create it"}],
-                request=sentinel_request,
+                _state(), "analyst", [{"role": "user", "content": "add source x"}]
             )
         ]
-        assert [e["type"] for e in events] == ["tool_use", "tool_result", "text", "usage", "done"]
-        assert events[1]["is_error"] is False
-        assert seen["request"] is sentinel_request
-        assert seen["role"] == "analyst"
+        assert [e["type"] for e in events] == ["tool_use", "awaiting_client_tools", "usage", "done"]
+        assert events[0]["client"] is True
+        assert events[1]["pending"][0]["name"] == "admin_mutation"
 
-    async def test_create_source_now_without_a_request_context_errors(self, monkeypatch):
-        # run_chat called with no `request` (e.g. an older/non-HTTP caller) — create_source_now
-        # must refuse rather than silently proceeding with no verified identity to check.
+    async def test_admin_query_without_a_request_context_errors(self, monkeypatch):
+        # run_chat called with no `request` (e.g. an older/non-HTTP caller) — admin_query must
+        # refuse rather than run with no verified identity.
         resp1 = SimpleNamespace(
             content=[
-                _block(
-                    type="tool_use",
-                    name="create_source_now",
-                    input={"source": {"id": "x", "type": "postgresql"}, "reason": "user said yes"},
-                    id="c1",
-                )
+                _block(type="tool_use", name="admin_query", input={"query": "{ x }"}, id="q1")
             ],
             stop_reason="tool_use",
         )
@@ -853,7 +833,7 @@ class TestDirectCreate:  # REQ-1799
         events = [
             ev
             async for ev in chat_mod.run_chat(
-                _state(), "analyst", [{"role": "user", "content": "yes create it"}]
+                _state(), "analyst", [{"role": "user", "content": "list sources"}]
             )
         ]
         tr = next(e for e in events if e["type"] == "tool_result")

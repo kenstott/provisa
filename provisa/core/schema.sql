@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS sources (
     off_peak_tz   TEXT NOT NULL DEFAULT 'UTC',  -- REQ-1141: IANA zone the off_peak_window is evaluated in
     max_live_concurrency INTEGER,  -- REQ-1909: cap on concurrent LIVE reads of this source; NULL = no cap
     sentinel_path TEXT,  -- REQ-1148: freshness marker URL (file/ftp/sftp/http(s))
+    download_from TEXT,  -- REQ-2113: where a CSV or Parquet source's file is downloaded from (mount path, https, s3)
     freshness_gate BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-860: gate reads on the source's freshness decision
     change_signal TEXT NOT NULL DEFAULT 'ttl',  -- REQ-929/1149: source default change signal (ttl|probe|ttl_probe|native|debezium|kafka|signal)
     gql_naming_convention TEXT,
@@ -661,19 +662,19 @@ EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 
 -- REQ-1385/REQ-1389: vendor-side identity bindings captured at publish time. One row per
--- (provider, published asset): vendor_ref is the catalog's own id for the asset (Atlas guid,
+-- (export target, published asset): vendor_ref is the catalog's own id for the asset (Atlas guid,
 -- OpenMetadata entity UUID, Collibra asset UUID, DataHub dataset URN) and physical_key is
 -- the vendor-side name-key the asset was published under. On a physical re-address the
 -- exporter uses the stored vendor_ref to rebind (or deprecate) the SAME catalog entity
 -- instead of relying on the vendor's name-keyed upsert to find it.
 CREATE TABLE IF NOT EXISTS catalog_bindings (
     id            SERIAL PRIMARY KEY,
-    provider      TEXT NOT NULL,
+    target        TEXT NOT NULL,
     semantic_uri  TEXT NOT NULL,
     vendor_ref    TEXT NOT NULL,
     physical_key  TEXT NOT NULL,
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (provider, semantic_uri)
+    UNIQUE (target, semantic_uri)
 );
 
 DO $$ BEGIN
@@ -1834,6 +1835,66 @@ CREATE TABLE IF NOT EXISTS preserved_snapshots (
     content_hash TEXT NOT NULL,          -- the frozen content digest (immutability proof)
     window_id    TEXT,                   -- optional calendar-addressable period this snapshot froze
     sealed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+
+-- REQ-2105: what each code source's calls to Provisa's LLM service used and cost, one row a call;
+-- a source's monthly cap is read against the sum of its month's rows. Mirrors
+-- schema_org.code_source_llm_usage.
+CREATE TABLE IF NOT EXISTS code_source_llm_usage (
+    id                 BIGSERIAL PRIMARY KEY,
+    source_id          TEXT NOT NULL,
+    month              TEXT NOT NULL,               -- YYYY-MM, UTC
+    model              TEXT NOT NULL,
+    input_tokens       BIGINT NOT NULL DEFAULT 0,
+    output_tokens      BIGINT NOT NULL DEFAULT 0,
+    cache_read_tokens  BIGINT NOT NULL DEFAULT 0,
+    cache_write_tokens BIGINT NOT NULL DEFAULT 0,
+    cost_usd           DOUBLE PRECISION,            -- NULL: the model has no polly.model_prices entry
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+
+-- REQ-2098: a code source's image builds: each one's state, what it made (a pushed image, or an
+-- archive kept on the node that built it), and why it failed. Mirrors schema_org.code_source_builds.
+CREATE TABLE IF NOT EXISTS code_source_builds (
+    id           TEXT PRIMARY KEY,
+    source_id    TEXT NOT NULL,
+    code_hash    TEXT NOT NULL,
+    arch         TEXT NOT NULL,          -- amd64 | arm64
+    registry_id  TEXT,                   -- pushed there; NULL: downloaded
+    status       TEXT NOT NULL,          -- building | done | failed
+    image_ref    TEXT,
+    digest       TEXT,
+    archive_path TEXT,
+    node         TEXT,                   -- the node that holds the archive
+    error        TEXT,
+    started_by   TEXT,
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at  TIMESTAMPTZ
+);
+
+
+-- REQ-2106: a code source's own cache, shared by every worker of it in every process; a value is
+-- JSON, gone at expires_at (NULL: kept until deleted or replaced). Mirrors schema_org.code_source_cache.
+CREATE TABLE IF NOT EXISTS code_source_cache (
+    source_id  TEXT NOT NULL,
+    key        TEXT NOT NULL,
+    value      TEXT NOT NULL,
+    expires_at TIMESTAMPTZ,
+    PRIMARY KEY (source_id, key)
+);
+
+-- REQ-2106: a code source's own vector collection, which its code builds and searches; never a
+-- governed table's data. vector is the embedding as a JSON array of floats.
+-- Mirrors schema_org.code_source_vectors.
+CREATE TABLE IF NOT EXISTS code_source_vectors (
+    source_id     TEXT NOT NULL,
+    item_id       TEXT NOT NULL,
+    vector        TEXT NOT NULL,
+    text          TEXT,
+    item_metadata TEXT NOT NULL DEFAULT '{}',
+    PRIMARY KEY (source_id, item_id)
 );
 
 

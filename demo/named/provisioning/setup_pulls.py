@@ -81,6 +81,9 @@ def main() -> None:
         "FEEDS_BOOTSTRAP": f"{kafka_host}:{kafka_port}",
         "CONSUMERS": "finance,data_science",
         "PULLS_DSN": f"postgresql://consumer:consumer@{pg_host}:{pg_port}/provisioning",
+        # The topics' suffix, as the run compose hands it the consumer: its broker's namespace,
+        # which every runner sets (store_namespaces; empty on the demo's own broker).
+        "TOPIC_SUFFIX": os.environ["PROVISIONING_KAFKA_NS"],
     }
     consumer = Path(__file__).with_name("consumer.py")
     subprocess.run(

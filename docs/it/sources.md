@@ -303,6 +303,14 @@ Un percorso con qualsiasi altro schema (ad esempio `ftp://`) viene rifiutato: "D
 - **Nomi.** L'id dell'origine e il nome del file possono contenere solo lettere, cifre, `.`, `_` e `-`.
 - **Archiviazione.** Un file caricato viene archiviato come qualsiasi file dell'organizzazione: nella cartella dell'organizzazione, cifrato quando lo è quella cartella, e visibile a ogni nodo su un mount condiviso.
 
+**Scaricare un file.** Una sorgente `csv` o `parquet` può invece ricevere il suo file per download. Scegliete **Download a copy** nel modulo della sorgente e indicate un file: un percorso sul server, un indirizzo `https://` o un indirizzo `s3://` letto con le credenziali che il modulo conserva per lo storage. Provisa trasmette il file lungo il percorso di caricamento in `files/<source id>/<file name>` nella cartella dell'organizzazione, con lo stesso limite di dimensione, archiviazione e sostituzione di un caricamento, e la sorgente legge quella copia.
+
+- **Quando viene riscaricato.** Lo decide il TTL di cache della sorgente. Una tabella costruita dalla sorgente riscarica prima il file appena il suo TTL è scaduto da quando è stata fatta la copia. Con un TTL di -1 il file viene scaricato una volta e conservato.
+- **Percorsi sul server.** Un percorso del server deve essere un file sotto una directory elencata nell'impostazione `sources.download_roots` (ambiente `PROVISA_SOURCES_DOWNLOAD_ROOTS`), dopo averne seguito i link simbolici. Per impostazione predefinita non ne è elencata nessuna. Un percorso fuori da esse viene rifiutato per nome e non si copia nulla.
+- **Molte organizzazioni.** Su un server di molte organizzazioni (`multitenancy: true`) un percorso del server viene rifiutato per nome qualunque cosa contenga l'impostazione, e sono offerti solo `https://` e `s3://`. Anche un indirizzo il cui host si risolve dentro la rete propria del server (privata, loopback o link-local) viene rifiutato per nome, a ogni reindirizzamento.
+- **La sua tabella, come bozza.** Quando la sorgente viene creata, il modulo propone di impostare subito la sua tabella, come bozza, nel dominio che scegliete. La tabella prende il nome della sorgente ed è tipizzata dal file come la proporrebbe Register Table, e resta fuori servizio finché uno steward non la toglie dalla bozza. L'opzione è attiva per impostazione predefinita.
+- **Tramite Polly.** Date a Polly un percorso completamente risolto di un singolo file CSV o Parquet e lei propone la sorgente con il suo download e la tabella in bozza, e la crea quando confermate. Una directory, un glob o più file diventano invece una sorgente di file.
+
 **Scritture su un file SQLite o DuckDB locale, e lock.** Una scrittura prende il lock del file e non lo attende mai. Quando un altro processo o nodo detiene il file, la scrittura viene rifiutata, indicando l'origine e che il suo file è bloccato.
 
 - **SQLite.** La scrittura imposta `PRAGMA busy_timeout = 0`, quindi un file bloccato fallisce subito.

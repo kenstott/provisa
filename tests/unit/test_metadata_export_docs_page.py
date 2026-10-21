@@ -19,7 +19,7 @@ import pytest
 import yaml
 
 from provisa.api.metadata_export import registered_providers
-from provisa.core.models import MetadataExportConfig
+from provisa.core.models import MetadataExportConfig, MetadataExportTarget
 
 _ROOT = Path(__file__).resolve().parents[2]
 DOC = _ROOT / "docs" / "metadata-export.md"
@@ -75,7 +75,8 @@ def test_the_page_names_every_registered_provider(text: str) -> None:
 
 
 def test_the_page_documents_every_export_config_setting(text: str) -> None:
-    for name in MetadataExportConfig.model_fields:
+    # REQ-2118: the export's own settings, and each target's.
+    for name in (*MetadataExportConfig.model_fields, *MetadataExportTarget.model_fields):
         assert f"`{name}`" in text, name
 
 

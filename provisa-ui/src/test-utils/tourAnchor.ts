@@ -15,6 +15,7 @@
 
 import { fireEvent, waitFor } from "@testing-library/react";
 import { TOUR_SCOPES, TOUR_STEPS, type TourStep } from "../tour/tourSteps";
+import { runUiActions } from "../mcp/uiActions";
 
 export function tourStep(key: string): TourStep {
   const step = TOUR_STEPS.find((s) => s.key === key);
@@ -51,6 +52,15 @@ export async function walkTourStep(key: string): Promise<HTMLElement> {
     await found(opener.unlessPresent, `${key} ensureOpen opened`);
   }
   if (step.clickBefore) fireEvent.click(await found(step.clickBefore, `${key} clickBefore`));
+  // REQ-2115: a step that acts first does so unless what it builds is on screen already.
+  if (step.actions && !document.querySelector(step.element)) {
+    const acted = await runUiActions(step.actions, {
+      confirm: async () => true,
+      paceMs: 0,
+      waitMs: 3000,
+    });
+    if (!acted.success) throw new Error(`${key} actions: ${acted.steps.join(" ")}`);
+  }
   if (step.readySelector) await found(step.readySelector, `${key} readySelector`);
   return found(step.element, `${key} anchor`);
 }

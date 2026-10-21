@@ -290,8 +290,15 @@ def test_the_demos_connector_bundles_are_fetched_outside_any_request(monkeypatch
 
     monkeypatch.setattr(rd, "download_release_asset", _download)
     # files reads through the file connector, vulnerabilities and agriculture through govdata,
-    # hasuramigration's CRM source through salesforce (its bundle build lands the copy).
-    bundles = ["pgwire-file", "pgwire-govdata", "pgwire-salesforce"]
+    # hasuramigration's CRM source through salesforce (its bundle build lands the copy), and
+    # cloudpolicy's inventory and incidents through cloudops and servicenow.
+    bundles = [
+        "pgwire-cloudops",
+        "pgwire-file",
+        "pgwire-govdata",
+        "pgwire-salesforce",
+        "pgwire-servicenow",
+    ]
     assert [s.artifact_name for s in demo_templates.connector_bundles()] == bundles
     demo_templates.prefetch_connector_bundles()
     assert fetched == [(name, None) for name in bundles]
@@ -319,6 +326,29 @@ def test_the_demos_embedding_models_are_loaded_outside_any_request(monkeypatch):
     ]
     demo_templates.load_embedding_models()
     assert loaded == [("sentence-transformers/all-MiniLM-L6-v2", None)]
+
+
+def test_a_bundled_tier_loads_the_models_before_any_demos_stores_are_up(monkeypatch):
+    """A bundled tier starts no demo's stores at boot, and a model left to the first search took
+    it past its 60s request timeout: the models are read from each demo's configuration whether
+    or not its stores are up."""
+    from pathlib import Path
+
+    from provisa.api import demo_templates
+    from provisa.core import demo_bundles
+
+    root = Path(__file__).resolve().parents[2] / "demo" / "named"
+    pulled = {
+        name: demo_templates.PublishedDemo(name, name, root / name)
+        for name in ("sonnets", "cloudpolicy", "churnprod")
+    }
+    monkeypatch.setenv("PROVISA_DEMO_BUNDLES", ",".join(pulled))
+    monkeypatch.setattr(demo_templates, "published_demos", lambda: pulled)
+    monkeypatch.setattr(demo_bundles, "ready_version", lambda name: None)
+    assert not any(demo.stores_ready for demo in pulled.values())
+    assert [m.id for m in demo_templates.embedding_models()] == [
+        "sentence-transformers/all-MiniLM-L6-v2"
+    ]
 
 
 def test_the_sandbox_tier_finds_the_deployments_demo_data():

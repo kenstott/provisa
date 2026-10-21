@@ -62,7 +62,8 @@ sources:
   mapping:
     cron: 0 2 * * *
     low_cardinality_max: 100
-    drift_window: 7
+    # One previous run is a full window: setup's second run is compared with its first.
+    drift_window: 1
     drift_season: none
     drift_distance: 3.0
     drift_slope: 3.0
@@ -236,6 +237,38 @@ tables:
   - {name: measure, data_type: varchar, visible_to: [org_admin, analyst]}
   - {name: q, data_type: double, visible_to: [org_admin, analyst]}
   - {name: value, data_type: double, visible_to: [org_admin, analyst]}
+- source_id: harbor-profiler
+  domain_id: harbor
+  profile_of: customers
+  kind: drift
+  alias: customer_drift
+  description: 'Each customers measure compared with the previous profile run, and whether it is drifting'
+  columns:
+  - {name: run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: run_time, data_type: timestamp, visible_to: [org_admin, analyst]}
+  - {name: previous_run_id, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: scope, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: column_name, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: involved_columns, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: value_bearing, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: measure, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: subject, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: current, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: previous, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: change, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: ks_previous, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: psi_previous, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: detail, data_type: varchar, visible_to: [org_admin, analyst]}
+  - {name: window_runs, data_type: integer, visible_to: [org_admin, analyst]}
+  - {name: baseline, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: spread, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: distance, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: slope, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: slope_spread, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: ks, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: psi, data_type: double, visible_to: [org_admin, analyst]}
+  - {name: drifting, data_type: boolean, visible_to: [org_admin, analyst]}
+  - {name: drift_reason, data_type: varchar, visible_to: [org_admin, analyst]}
 - source_id: harbor-profiler
   domain_id: harbor
   profile_of: orders

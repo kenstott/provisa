@@ -54,6 +54,7 @@ from provisa.api.sandbox_tier import TEMPLATE_PREFIX, is_template_org, template_
 from provisa.core.replicate import ALWAYS
 from provisa.core.connection_loop import CrossLoopLock
 
+# reference-convention: REQ-1858 -- a demo config's path to its own directory, not a secret
 _DEMO_DIR_REF = "${env:PROVISA_NAMED_DEMO_DIR}"
 
 
@@ -173,25 +174,37 @@ def demo_profilers(directory: Path) -> list[str]:
 
 
 async def profile_template(demo: "PublishedDemo", org_id: str) -> list[str]:
-    """Run the demo's profilers for its template (REQ-2052): a profile run's results are tables
-    of the org's own schema, which a sandbox is cloned with (env_copy.copy_profile_results), and
-    the bundle build's runs are on its throwaway control plane, so the template profiles the
-    demo's sources itself, where the demo is served. Returns the tables whose run failed, by
-    profiler: each is recorded in its own history too."""
+    """Load the demo's profile runs into its template (REQ-2052): a profile run's results are
+    tables of the org's own schema, which a sandbox is cloned with (env_copy.copy_profile_results).
+    They are the bundle build's runs, carried in the bundle (provisa.profiler.carry): the build ran
+    them where the demo's setup ran, between its other steps, so what changed between two runs is
+    measured; the template's sources hold the data as setup left it. Returns what kept them from
+    loading; empty when the demo profiles nothing or they loaded."""
+    import logging
+
     from provisa.api.app import state
     from provisa.core.request_context import reset_current_org, set_current_org
-    from provisa.profiler.source import run_source
+    from provisa.profiler.carry import load_runs, results_path
 
-    failed: list[str] = []
+    log = logging.getLogger(__name__)
+    if not demo_profilers(demo.directory):
+        return []
+    path = results_path(demo.directory)
+    if not path.is_file():
+        return [f"the bundle carries no profile runs ({path.name}): rebuild it"]
     token = set_current_org(org_id)
     try:
-        for profiler in demo_profilers(demo.directory):
-            for outcome in await run_source(state, profiler):
-                if outcome["error"] is not None:
-                    failed.append(f"{profiler}/{outcome['table']}: {outcome['error']}")
+        # The template's runtime is built before it is prepared (ensure_org_runtime).
+        model_db = state.model_db
+        assert model_db is not None
+        async with model_db.acquire() as conn:
+            loaded = await load_runs(conn, path)
+    except ValueError as exc:
+        return [str(exc)]
     finally:
         reset_current_org(token)
-    return failed
+    log.info("demo template %s: %d profile result relations loaded", demo.name, len(loaded))
+    return []
 
 
 def demo_environments(directory: Path) -> list[dict[str, str]]:
@@ -369,14 +382,19 @@ def prefetch_connector_bundles() -> None:
 
 def embedding_models() -> list[Any]:  # list[VectorModelConfig]
     """The local (huggingface) embedding models the published demos declare and enable, once
-    each: the sonnets demo's, which its search tables embed a phrase with."""
+    each: the sonnets and cloudpolicy demos', which their search tables embed a phrase with.
+
+    Read from each demo's own configuration file, whether or not its stores are up: a bundled
+    tier starts no demo's stores at boot, and a model left to the first search that needs it
+    took that search past its 60s request timeout. A model's declaration names no store."""
+    from provisa.core.config_loader import read_config_with_includes
+    from provisa.core.models import VectorModelConfig
+
     seen: dict[str, Any] = {}
     for demo in published_demos().values():
-        if not demo.stores_ready:
-            # Its configuration names its stores' data only once they are up; a model it
-            # declares is then loaded by the request that embeds with it.
-            continue
-        for model in template_seed(demo.template_org).vector_models:
+        raw = read_config_with_includes(demo.directory / "config.yaml")
+        for declared in raw.get("vector_models", []):
+            model = VectorModelConfig(**declared)
             if model.provider == "huggingface" and model.enabled:
                 seen.setdefault(model.id, model)
     return list(seen.values())
@@ -633,7 +651,11 @@ async def _queue_template(pool, demo: PublishedDemo) -> str:
     """Queue ``demo``'s template, or serve it as built; what its template did."""
     if await _served_as_built(pool, demo):
         return "ready (as built)"
-    if bundled_demos() and _templated(demo.name) != demo.directory.name:
+    # A template another demo version or another Provisa release built is replaced, not loaded: its
+    # schema is that release's (no migrations), and a column added since fails every read of it
+    # (sources.download_from on the sandbox tier).
+    stale = await _built_for(pool, demo) != readiness_version(demo)
+    if stale or (bundled_demos() and _templated(demo.name) != demo.directory.name):
         await _retire_template(demo.name)
     build = await _template_row(pool, demo)
     _mark_templated(demo)
@@ -818,6 +840,24 @@ async def warm_ready(pool, demo: PublishedDemo) -> bool:
     return held == {"replicas": dict(record.replicas), "views": dict(record.views)}
 
 
+async def _built_for(pool, demo: PublishedDemo) -> str | None:
+    """The demo version and Provisa release ``demo``'s template was recorded ready for
+    (readiness_version); None when it was never recorded ready."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_admin import demo_template_readiness
+
+    async with pool.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(demo_template_readiness.c.version).where(
+                    demo_template_readiness.c.template_org == demo.template_org
+                )
+            )
+        ).fetchone()
+    return row[0] if row is not None else None
+
+
 def _templated(name: str) -> str | None:
     """The version of bundled demo ``name`` its template was built from."""
     path = bundles_root() / name / "templated"
@@ -849,7 +889,7 @@ async def follow_latest(name: str) -> None:
 
     import httpx
 
-    from provisa.core.demo_bundles import BundleError, pulled_version, ready_version, want
+    from provisa.core.demo_bundles import BundleError, ready_version, request
 
     if name not in bundled_demos():
         return
@@ -864,14 +904,12 @@ async def follow_latest(name: str) -> None:
         )
     else:
         if latest != ready_version(name):
-            await asyncio.to_thread(want, name, latest)
+            # The node's sync pulls the latest published and serves it once its stores are up.
+            await asyncio.to_thread(request, name)
     ready = ready_version(name)
     if ready is None:
-        # Its stores are not up since the node started: asked for, as the version it has pulled
-        # when the registry named none newer (want above asked for that one).
-        pulled = pulled_version(name)
-        if pulled is not None:
-            await asyncio.to_thread(want, name, pulled)
+        # Its stores are not up since the node started: asked for.
+        await asyncio.to_thread(request, name)
         raise ApiError(
             503,
             "sandbox.demo_not_ready",
@@ -1009,11 +1047,12 @@ async def _prepare(demo: PublishedDemo, build: bool) -> bool:
         await export_seed(org_id, demo.directory)
         log.info("demo template %s: seed written to %s", demo.name, demo.directory)
     if not exporting:
-        # REQ-2052: its profile runs, which every sandbox of it is cloned with. A run that fails
-        # leaves the template not ready, as a replica that fails to land does.
+        # REQ-2052: its profile runs, carried in its bundle, which every sandbox of it is cloned
+        # with. Runs that do not load leave the template not ready, as a replica that fails to
+        # land does.
         failed_runs = await profile_template(demo, org_id)
         if failed_runs:
-            log.error("demo template %s: profile runs failed: %s", demo.name, failed_runs)
+            log.error("demo template %s: profile runs not loaded: %s", demo.name, failed_runs)
             return False
     token = set_current_org(org_id)
     try:

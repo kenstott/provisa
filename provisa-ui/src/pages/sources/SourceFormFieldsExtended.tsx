@@ -68,6 +68,7 @@ import {
   FormFolds,
   FormSection,
 } from "../../components/form/FormLayout";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 export function SourceFormFieldsExtended({
   form,
@@ -676,7 +677,12 @@ export function SourceFormFieldsExtended({
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
       {CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
-        <CodeSourceFields type={form.type} fields={authFields} setFields={setAuthFields} />
+        <CodeSourceFields
+          type={form.type}
+          fields={authFields}
+          setFields={setAuthFields}
+          sourceId={editingSourceId ?? undefined}
+        />
       )}
       {form.type === MOTHERDUCK && <MotherDuckFields form={form} setForm={setForm} />}
       {form.type === COSMOSDB && ( // REQ-1982
@@ -924,7 +930,10 @@ export function SourceFormFieldsExtended({
             <FormField size="long" hint={t("sourceFormFieldsExtended.allowedDomainsHint")}>
               <MultiSelect
                 label={t("sourceFormFieldsExtended.allowedDomains")}
-                options={domains.map((d) => ({ id: d.id, label: d.id }))}
+                options={assignableDomainIds(domains.map((d) => d.id)).map((id) => ({
+                  id,
+                  label: id,
+                }))}
                 value={form.allowedDomains
                   .split(",")
                   .map((s) => s.trim())

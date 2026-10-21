@@ -319,6 +319,14 @@ def test_a_deadline_stops_a_call_that_never_answers(worker):
     assert worker.ping()
 
 
+def test_a_tables_argument_sets_are_served_in_one_call_in_order(worker):
+    """REQ-2099: the host runs the function once per argument set of the one call, in order."""
+    calls = [(["ada", w.ABSENT, p], ["name", "greeting", "punctuation"]) for p in ("!", "?")]
+    rows = [r for b in worker.rows_each("greet", calls, schema=_schema("greet")) for r in b]
+    assert rows == [{"text": "hello ada!"}, {"text": "hello ada?"}]
+    assert worker.ping()
+
+
 def test_an_argument_left_out_takes_the_functions_own_default(worker):
     """An optional parameter the read gives no value for is absent, never None: the function's
     default applies, even for one after a later given argument."""

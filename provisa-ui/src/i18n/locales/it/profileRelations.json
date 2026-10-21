@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "Relazioni in {{table}}",
+    "none": "Questa esecuzione non ha trovato correlazioni o dipendenze tra le colonne.",
+    "canvasLabel": "Mappa 3D delle colonne della tabella, collegate dalle loro correlazioni e dipendenze",
+    "minStrength": "Intensità",
+    "showCorrelation": "Correlazioni",
+    "showDependence": "Dipendenze",
+    "legendPositive": "crescono insieme",
+    "legendNegative": "si muovono in senso opposto",
+    "legendRatio": "la categoria spiega il numero",
+    "legendDependence": "dipende da (la freccia punta alla colonna dipendente)",
+    "tipLinks_one": "Relazioni: {{count}}",
+    "tipLinks_other": "Relazioni: {{count}}",
+    "columns": "Colonne",
+    "noLinks": "Nessuna relazione con questa intensità.",
+    "note": "Lo spessore dell'asta indica l'intensità: |Spearman ρ| per le correlazioni, la quota di varianza spiegata per un rapporto di correlazione e la quota di incertezza della colonna eliminata dai suoi genitori per una dipendenza. Le colonne grigie appartengono a una tabella genitore.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "Rapporto di correlazione η²",
+    "measure_dependence": "Dipendenza (quota di incertezza eliminata)",
+    "family_numeric": "numerico",
+    "family_temporal": "data/ora",
+    "family_text": "testo",
+    "family_boolean": "booleano",
+    "family_other": "altro",
+    "family_foreign": "colonna della tabella genitore"
+  }
+}

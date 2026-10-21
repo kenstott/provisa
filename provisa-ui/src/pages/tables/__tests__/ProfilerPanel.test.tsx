@@ -12,7 +12,7 @@
 // its runs viewed — the runs and Run Now act only on the saved membership.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { fireEvent, render, screen, waitFor } from "../../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 
 const api = vi.hoisted(() => ({
   fetchProfilers: vi.fn(),
@@ -208,19 +208,28 @@ describe("ProfilerPanel", () => {
       />,
     );
     fireEvent.click(screen.getByTestId("profiler-view-runs"));
-    expect(await screen.findByTestId("profile-run-r2")).toHaveTextContent("boom");
-    expect(screen.getByTestId("profile-run-method-r1")).toHaveTextContent("Whole table");
-    expect(screen.getByTestId("profile-run-method-r0")).toHaveTextContent(
+    // The runs are a results grid (REQ-2123): each run's row, read by its column's header.
+    const list = await screen.findByTestId("profile-runs-list");
+    const header = [...list.querySelectorAll("thead th")].map((th) =>
+      (th.firstElementChild?.textContent ?? th.textContent ?? "").trim(),
+    );
+    const cellOf = (runTime: string, column: string) => {
+      const row = within(list).getByText(new Date(runTime).toLocaleString()).closest("tr")!;
+      return row.children[header.findIndex((h) => h.startsWith(column))] as HTMLElement;
+    };
+    expect(cellOf("2026-10-05T03:00:00Z", "Error")).toHaveTextContent("boom");
+    expect(cellOf("2026-10-04T03:00:00Z", "Method")).toHaveTextContent("Whole table");
+    expect(cellOf("2026-10-03T03:00:00Z", "Method")).toHaveTextContent(
       "Block sample · 4.9% of rows",
     );
-    expect(screen.getByTestId("profile-run-method-r2")).toBeEmptyDOMElement();
+    expect(cellOf("2026-10-05T03:00:00Z", "Method")).toHaveTextContent("");
     // REQ-1934 DUPLICATE ROWS: each run's duplicate rows beside it.
-    expect(screen.getByTestId("profile-run-duplicates-r0")).toHaveTextContent("49 (0.5%)");
-    expect(screen.getByTestId("profile-run-duplicates-r2")).toBeEmptyDOMElement();
+    expect(cellOf("2026-10-03T03:00:00Z", "Duplicates")).toHaveTextContent("49 (0.5%)");
+    expect(cellOf("2026-10-05T03:00:00Z", "Duplicates")).toHaveTextContent("null");
     await waitFor(() => expect(api.fetchProfileRun).toHaveBeenCalledWith(7, "r1", "analyst"));
     const rows = await screen.findByTestId("profile-rows-columns");
     expect(rows).toHaveTextContent("amount");
-    expect(rows).toHaveTextContent("20.5000");
+    expect(rows).toHaveTextContent("20.5");
     expect(rows).not.toHaveTextContent("run_id");
   });
 });

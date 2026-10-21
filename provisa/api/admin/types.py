@@ -101,6 +101,7 @@ class SourceType:  # REQ-012
     off_peak_tz: str = "UTC"  # REQ-1141: IANA zone for the window
     max_live_concurrency: int | None = None  # REQ-1909: None = no cap on concurrent live reads
     sentinel_path: str | None = None  # REQ-1148: freshness marker URL
+    download_from: str | None = None  # REQ-2113: where its file is downloaded from
     freshness_gate: bool = False  # REQ-860: gate reads on the source's freshness decision
     gql_naming_convention: str | None = None
     path: str | None = None
@@ -970,6 +971,11 @@ class SourceInput:  # REQ-012
     region: str | None = None
     max_live_concurrency: int | None = None  # REQ-1909: None = no cap; else >= 1
     sentinel_path: str | None = None  # REQ-1148
+    download_from: str | None = None  # REQ-2113
+    # REQ-2113: a single-file CSV or Parquet source's table set up with it, as a draft, in this
+    # domain, named and typed from the file as Register Table proposes it. Not stored on the source.
+    register_table_draft: bool = False
+    table_domain_id: str | None = None
     freshness_gate: bool = False  # REQ-860
     cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport
 

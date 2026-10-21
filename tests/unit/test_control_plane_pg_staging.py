@@ -41,9 +41,9 @@ def test_stages_into_pginstall_when_wheel_present(monkeypatch):
 
     # Present a fake provisa_pg_ext and pgserver so the presence probe + path resolution succeed.
     monkeypatch.setitem(sys.modules, "provisa_pg_ext", types.ModuleType("provisa_pg_ext"))
-    fake_pgserver = types.ModuleType("pgserver")
-    fake_pgserver.__file__ = "/fake/pgserver/__init__.py"
-    monkeypatch.setitem(sys.modules, "pgserver", fake_pgserver)
+    fake_utils = types.ModuleType("pixeltable_pgserver.utils")
+    fake_utils.POSTGRES_BIN_PATH = Path("/fake/pixeltable_pgserver/pginstall/bin")
+    monkeypatch.setitem(sys.modules, "pixeltable_pgserver.utils", fake_utils)
 
     called: list[Path] = []
     import provisa.pg_extensions.staging as staging
@@ -52,7 +52,7 @@ def test_stages_into_pginstall_when_wheel_present(monkeypatch):
 
     control_plane_pg._stage_bundled_extensions()
 
-    assert called == [Path("/fake/pgserver/pginstall")]
+    assert called == [Path("/fake/pixeltable_pgserver/pginstall")]
 
 
 class TestStopActuallyStopsTheProcess:
@@ -76,19 +76,17 @@ class TestStopActuallyStopsTheProcess:
 
         (tmp_path / "postmaster.pid").write_text("12345\n")
 
-        calls: list[tuple[list[str], object]] = []
-        fake_pgserver_postgres_server = types.ModuleType("pgserver.postgres_server")
-        fake_pgserver_postgres_server.pg_ctl = lambda args, pgdata=None, **kw: calls.append(
-            (args, pgdata)
-        )
-        monkeypatch.setitem(sys.modules, "pgserver.postgres_server", fake_pgserver_postgres_server)
+        calls: list[tuple[str, list[str]]] = []
+        fake_pgexec = types.ModuleType("pixeltable_pgserver.pgexec")
+        fake_pgexec.pgexec = lambda command, args, **kw: calls.append((command, args))
+        monkeypatch.setitem(sys.modules, "pixeltable_pgserver.pgexec", fake_pgexec)
 
         control_plane_pg.stop(str(tmp_path))
 
         assert len(calls) == 1
-        args, pgdata = calls[0]
-        assert "stop" in args
-        assert pgdata == tmp_path
+        command, args = calls[0]
+        assert command == "pg_ctl" and "stop" in args
+        assert args[args.index("-D") + 1] == str(tmp_path)
 
     def test_pg_ctl_failure_falls_back_to_sigkill_by_pid(self, tmp_path, monkeypatch):
         import os
@@ -101,9 +99,9 @@ class TestStopActuallyStopsTheProcess:
         def _raise(*_a, **_k):
             raise subprocess.CalledProcessError(1, "pg_ctl")
 
-        fake_pgserver_postgres_server = types.ModuleType("pgserver.postgres_server")
-        fake_pgserver_postgres_server.pg_ctl = _raise
-        monkeypatch.setitem(sys.modules, "pgserver.postgres_server", fake_pgserver_postgres_server)
+        fake_pgexec = types.ModuleType("pixeltable_pgserver.pgexec")
+        fake_pgexec.pgexec = _raise
+        monkeypatch.setitem(sys.modules, "pixeltable_pgserver.pgexec", fake_pgexec)
 
         killed: list[tuple[int, int]] = []
 
@@ -175,9 +173,9 @@ class TestConnectionCapacity:
                     return f" max_connections \n-----------------\n {current}\n(1 row)\n"
                 return ""
 
-        fake = types.ModuleType("pgserver.postgres_server")
-        fake.pg_ctl = lambda args, pgdata=None, **kw: calls.append(("pg_ctl", args, pgdata))
-        monkeypatch.setitem(sys.modules, "pgserver.postgres_server", fake)
+        fake = types.ModuleType("pixeltable_pgserver.pgexec")
+        fake.pgexec = lambda command, args, **kw: calls.append((command, args))
+        monkeypatch.setitem(sys.modules, "pixeltable_pgserver.pgexec", fake)
         return _Srv(), calls
 
     def test_a_stock_ceiling_is_raised_and_the_server_restarted(self, tmp_path, monkeypatch):
@@ -186,7 +184,7 @@ class TestConnectionCapacity:
         srv, calls = self._harness(monkeypatch, current=100)
         cpp._ensure_connection_capacity(srv, str(tmp_path))
         assert f"ALTER SYSTEM SET max_connections = {cpp.MAX_CONNECTIONS}" in calls
-        assert ("pg_ctl", ["-w", "restart", "-m", "fast"], tmp_path) in calls
+        assert ("pg_ctl", ["-D", str(tmp_path), "-w", "restart", "-m", "fast"]) in calls
 
     def test_an_adequate_ceiling_is_left_alone(self, tmp_path, monkeypatch):
         from provisa.core import control_plane_pg as cpp

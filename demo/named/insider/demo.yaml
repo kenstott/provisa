@@ -23,3 +23,6 @@ requires_provisa: 0.1.0a490
 # Its matching embeds each message with a local sentence-transformers model: the vector extra.
 extras:
 - vector
+# The demo's video: its tagline names what the demo shows Provisa being.
+video:
+  tagline: "Need to Know"

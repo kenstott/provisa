@@ -26,8 +26,8 @@
 # apt-provided client libs) — build it in an OLD-glibc container so the .so loads broadly.
 set -euo pipefail
 
-PG_VERSION="${PG_VERSION:-16.2}"                 # must match pgserver's bundled PG major
-PGDUCKDB_TAG="${PG_DUCKDB_TAG:-v1.0.0}"
+PG_VERSION="${PG_VERSION:-16.11}"                # pixeltable-pgserver 0.5.1's bundled PG
+PGDUCKDB_TAG="${PG_DUCKDB_TAG:-v1.1.1}"
 CACHE="${PROVISA_FDW_CACHE:-$HOME/.cache/provisa-fdw}"
 PREFIX="$CACHE/pg${PG_VERSION//./}"              # cached PG-from-source install (headers + pg_config)
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
@@ -140,7 +140,7 @@ if [ ! -d "$PGCH_SRC" ]; then
   unzip -q -d "$CACHE" "$CACHE/pg_clickhouse.zip"
 fi
 # pg_clickhouse names PostgreSQL's regex type pg_regex_t, the name later 16.x minors gave regex_t;
-# 16.2's headers (pinned to pgserver's PG above) still call it regex_t. Same type, renamed only.
+# headers from before the rename still call it regex_t. Same type, renamed only.
 PGCH_CPP=""
 grep -q pg_regex_t "$("$PGC" --includedir-server)/regex/regex.h" || PGCH_CPP="-Dpg_regex_t=regex_t"
 PGCH_ENV=()

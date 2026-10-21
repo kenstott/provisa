@@ -14,7 +14,7 @@
     "version": "Versión",
     "versionHint": "Una versión exacta, como 1.2.0.",
     "lockfile": "Archivo de bloqueo",
-    "lockfileHint": "Un paquete publicado rara vez incluye su archivo de bloqueo. Indique uno ({{names}}) cuando el paquete tenga dependencias.",
+    "lockfileHint": "Opcional. Para instalaciones idénticas, que importan en las pruebas, el código debe traer un archivo de bloqueo o usted indica uno aquí ({{names}}).",
     "lockfilePlaceholder": "Sin archivo de bloqueo",
     "repository": "URL del repositorio",
     "commit": "Commit",
@@ -25,6 +25,21 @@
     "archivePlaceholder": "Elija un archivo",
     "entry": "Módulo de entrada",
     "entryHint": "El módulo por el que se entra a la fuente. Déjelo vacío si el código tiene un único módulo o paquete de nivel superior.",
-    "kept": "Guardado: {{name}}"
+    "kept": "Guardado: {{name}}",
+    "keptWithHash": "Guardado: {{name}} ({{hash}})",
+    "exports": "Exportaciones",
+    "exportsLoading": "Leyendo el código…",
+    "exportsNone": "El código no exporta ninguna función",
+    "exportKind_table": "tabla",
+    "exportKind_command": "comando",
+    "exportKind_stream": "flujo",
+    "secrets": "Secretos",
+    "secretsHint": "Los secretos de la organización que este código puede leer. Obtiene cada uno al ejecutarse, desde $PROVISA_SERVICES/secrets/<name>; nada más del almacén es legible y cada lectura se audita.",
+    "secretsPlaceholder": "Sin secretos",
+    "llmCap": "Límite mensual de LLM",
+    "llmCapHint": "Lo que pueden costar al mes (UTC) las llamadas de este código a $PROVISA_SERVICES/llm, en USD. Con un límite, solo puede usar modelos con precio en Precios de modelos de Polly, y sus llamadas se rechazan cuando el mes alcanza el límite. Vacío: sin límite.",
+    "llmCapPlaceholder": "Sin límite",
+    "settings": "Ajustes",
+    "settingsHint": "Valores que el código lee con settings.get(name), uno por línea como nombre = valor. No para secretos: esos van en Secretos. Un responsable los cambia aquí sin cambiar el código."
   }
 }

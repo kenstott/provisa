@@ -111,3 +111,27 @@ async def test_the_endpoint_refuses_anyone_but_the_visitor_of_a_visitors_sandbox
 async def test_the_endpoint_marks_nothing_on_a_named_sandbox(plane, endpoint):
     await endpoint(NAMED_ORG, "alice")
     assert _closing_at(plane, NAMED_ORG) is None
+
+
+async def test_a_release_change_reaps_the_open_visitors_sandboxes_and_keeps_named_ones(
+    plane, monkeypatch, tmp_path
+):
+    """A visitor's sandbox opened under the release before has its schema (no migrations): the
+    tier's start reaps it, once, and records this release; a named sandbox is kept."""
+    reaped: list[str] = []
+
+    async def _reap(org_id: str) -> None:
+        reaped.append(org_id)
+
+    release = {"now": "0.1.0a500"}
+    monkeypatch.setattr(demo_sandbox, "reap", _reap)
+    monkeypatch.setattr("provisa.core.org_files.data_dir", lambda: tmp_path)
+    monkeypatch.setattr("provisa.core.demo_bundles.running_provisa", lambda: release["now"])
+    monkeypatch.setattr("provisa.api.demo_region_seed.regional", lambda: False)
+    (tmp_path / "sandbox-release").write_text("0.1.0a499\n")
+    assert await demo_sandbox.reap_visitors_of_another_release() == [VISITOR_ORG]
+    assert reaped == [VISITOR_ORG]
+    assert (tmp_path / "sandbox-release").read_text().strip() == "0.1.0a500"
+    # The same release starting again reaps nothing.
+    assert await demo_sandbox.reap_visitors_of_another_release() == []
+    assert reaped == [VISITOR_ORG]

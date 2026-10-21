@@ -85,6 +85,11 @@
         "title": "73 source types, 14 categories",
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
+      "stepBuildSource": {
+        "title": "A source, added live",
+        "description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>, published at provisa.dev) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+        "acting": "Adding a source"
+      },
       "step4": {
         "title": "Everything becomes a table",
         "description": "Whatever the source, whether a Mongo collection, a Kafka topic, a REST endpoint or a graph, Provisa decomposes it into a 2D <strong>table</strong>: one uniform shape to query across every source.<p>📁 Group tables into <strong>domains</strong>, each owned by a data steward who guards the model's quality as it evolves.</p>"
@@ -98,36 +103,44 @@
         "description": "💬 You ask in the language or tool you already use (SQL, GraphQL, Cypher, plain language through Polly, or a BI tool or driver), and every one reads the same governed model, so the answer and the rules are the same whichever you pick."
       },
       "step6": {
-        "title": "SQL (1 of 7 surfaces)",
+        "title": "SQL (1 of 9 surfaces)",
         "description": "SQL lives in the SQL explorer. Standard SQL federated across every source: join Postgres to Mongo to a CSV in one statement. The model's own metadata and every activity trace are queryable tables here too, so you can join your audit log or lineage straight to live data.<p>🔌 The same governed SQL runs over several wire protocols besides this explorer; your tool picks the one it already speaks:</p><ul><li><strong>pgwire</strong>: every Postgres-compatible client (psql, DBeaver, Tableau, Power BI) connects out of the box.</li><li><strong>JDBC</strong>: drops into any Java/JVM app, ETL pipeline or JDBC-capable BI tool.</li><li><strong>Arrow Flight SQL</strong>: columnar streaming for ADBC clients, with no row re-encoding, built for large result sets.</li><li><strong>DuckDB · airport</strong>: ATTACH Provisa from DuckDB and query the governed federation in place.</li></ul>"
       },
       "step7": {
-        "title": "GraphQL (2 of 7 surfaces)",
+        "title": "GraphQL (2 of 9 surfaces)",
         "description": "◈ The same query, typed as GraphQL:<p><code>{ inquiries { groupBy { user }, count } }</code></p><p>Grouping and aggregates over your relationships: 🎯 one endpoint, 📖 a self-documenting schema.</p><p>🔌 Call it from <strong>any GraphQL client</strong>, such as Apollo, Relay or urql. With federation enabled, Provisa joins an <strong>Apollo supergraph as a subgraph</strong>, so your federated model composes alongside your existing graphs.</p>"
       },
       "step8": {
-        "title": "Cypher (3 of 7 surfaces)",
+        "title": "Cypher (3 of 9 surfaces)",
         "description": "🕸️ Traverse the federated model as a graph with Cypher:<p><code>MATCH (u:Users)-[:SUBMITTED]->(i:Inquiries)</code></p><p>↔️ That traversal runs <strong>across sources</strong>, with no single graph database required.</p><p>🔌 Any <strong>Bolt</strong> client, such as Neo4j Browser or Bloom, runs the same traversal over the wire, with no code change.</p>"
       },
       "step9": {
-        "title": "gRPC (4 of 7 surfaces)",
+        "title": "gRPC (4 of 9 surfaces)",
         "description": "⚙️ Every registered entity is also a gRPC service:<p><code>rpc QueryInquiries(...) returns (...)</code></p><p>Call it from any gRPC client: 📐 strongly typed, 🚀 high-throughput.</p>"
       },
       "step10": {
-        "title": "JSON:API (5 of 7 surfaces)",
+        "title": "JSON:API (5 of 9 surfaces)",
         "description": "🧩 A spec-compliant JSON:API surface:<p><code>GET /data/jsonapi/pet-store/inquiries?page[size]=20</code></p><p>📄 Paging and 🔍 filtering out of the box.</p>"
       },
       "step11": {
-        "title": "OpenAPI / REST (6 of 7 surfaces)",
+        "title": "OpenAPI / REST (6 of 9 surfaces)",
         "description": "🌐 And a plain REST endpoint, described by OpenAPI:<p><code>GET /data/rest/pet-store/inquiries</code></p><p>📄 Fully described, so any REST client or code generator can consume it.</p>"
       },
       "step12": {
-        "title": "MCP (7 of 7 surfaces)",
-        "description": "🤖 The seventh surface lets an agent <strong>reason with your data</strong>. It drives the same governed tools (search the catalog, describe tables, run SQL, follow relationships) and <em>chains</em> them to answer questions no single query could, every call bound by <strong>your</strong> role's governance.<p>🔌 The same <strong>MCP server</strong> plugs into Claude Desktop, Claude Code or any MCP client, so agents explore and reason over your model the governed way.</p><p>🔑 Uses your own LLM key; this exchange is a canned example.</p><p>One surface left: the one that writes all seven for you. →</p>"
+        "title": "MCP (7 of 9 surfaces)",
+        "description": "🤖 The seventh surface lets an agent <strong>reason with your data</strong>. It drives the same governed tools (search the catalog, describe tables, run SQL, follow relationships) and <em>chains</em> them to answer questions no single query could, every call bound by <strong>your</strong> role's governance.<p>🔌 The same <strong>MCP server</strong> plugs into Claude Desktop, Claude Code or any MCP client, so agents explore and reason over your model the governed way.</p><p>🔑 Uses your own LLM key; this exchange is a canned example.</p><p>Two more read the same governed data from Python. →</p>"
+      },
+      "stepPython": {
+        "title": "Python (8 of 9 surfaces)",
+        "description": "🐍 The Python tab runs Python in your browser, signed in as you:<p><code>provisa_client.query('SELECT species, COUNT(*) …')</code></p><p>The answer comes back as a pandas DataFrame, read through the same governed pipeline, so your role's row rules and masks apply to it too.</p><p>🔌 The same <strong>provisa-client</strong> package installs with pip on any desktop Python, so a script written here runs unchanged in your own environment.</p>"
+      },
+      "stepNotebook": {
+        "title": "Notebook (9 of 9 surfaces)",
+        "description": "📓 The Notebook tab is JupyterLite: a Jupyter notebook running in your browser. Its first cell signs in, and the next reads the same statement as a DataFrame to chart or join with other data.<p>⬇️ Download the notebook and it opens in any desktop Jupyter, where the same cells read from Provisa as they do here.</p><p>One surface left: the one that writes your queries for you. →</p>"
       },
       "step13": {
-        "title": "Just ask: the surface that writes all seven",
-        "description": "💬 <em>\"how many pets per species\"</em><p><strong>You don't have to learn any of those seven.</strong> Ask in plain English and Provisa compiles your question into every query language at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>Use the surface your tools already speak, or skip them all and ask.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model, <strong>eight surfaces</strong>: seven to query, and the one that writes them.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span></div>"
+        "title": "Just ask: the surface that writes your queries",
+        "description": "💬 <em>\"how many pets per species\"</em><p><strong>You don't have to learn any of those query languages.</strong> Ask in plain English and Provisa compiles your question into all seven at once: each panel below is that one sentence as SQL, GraphQL, Cypher, gRPC, JSON:API and REST.</p><p>It can't open Python or the Notebook directly, but you can always ask Polly to move a query into either one.</p><p>🔑 Live natural-language queries use your own LLM key; this one's a canned example.</p><p>✅ One model behind all <strong>nine surfaces</strong>, and plain English writes the queries for you.</p><div class='tour-tags'><span>Natural Language</span><span>SQL</span><span>GraphQL</span><span>Cypher</span><span>gRPC</span><span>JSON:API</span><span>REST</span><span>MCP</span><span>Python</span><span>Notebook</span></div>"
       },
       "step14": {
         "title": "That's the five-minute core",
@@ -720,6 +733,26 @@
       "profilingDuplicates": {
         "title": "The rows written twice",
         "description": "The model declares customer_id the key, but the export held no constraint: 150 customers are in it twice, every field the same. The profile counts the repeated rows and the key values held by more than one row."
+      },
+      "profilingDrift": {
+        "title": "What changed since the last run",
+        "description": "Setup ran the profiler twice, and between the runs the CRM's next sync wrote every US postal code as ZIP+4. The drift table compares each measure with the previous run's: the measures postal_code's change moved are flagged drifting, and the columns the sync left alone are not."
+      },
+      "profilingOriginal": {
+        "title": "The real customers",
+        "description": "Ten customers as the CRM holds them. Next, the same statement in an environment generated from the profile."
+      },
+      "profilingToSynthetic": {
+        "title": "Switch to synthetic",
+        "description": "Next, the switcher moves to <strong>synthetic</strong>, a Test (synthetic) environment."
+      },
+      "profilingSynthetic": {
+        "title": "Generated from the profile",
+        "description": "The same statement in synthetic: every row generated from the customers' profile, with the same columns, value shapes and spread, and none of the real customers. The profile is enough to generate test data from."
+      },
+      "profilingToProd": {
+        "title": "Back to production",
+        "description": "Next, the switcher returns to prod."
       },
       "profilingRest": {
         "title": "The same answer over REST",
@@ -1425,13 +1458,9 @@
         "title": "Columns from the function's types",
         "description": "churn_risk is a table because its docstring says @table. Its columns are the fields of the RiskRow it returns. Its parameters are its arguments, the customer and each feature the model was trained on."
       },
-      "churnprodRefused": {
-        "title": "A read without a customer, refused",
-        "description": "The function gives customer_id no default, so a read that leaves it out is refused before any code runs. The refusal names each missing parameter."
-      },
       "churnprodJoin": {
         "title": "The join that feeds the model",
-        "description": "This relationship joins the customers' features to churn_risk and names the features it feeds. A join over it reads the features you may see, calls the model once for each customer and joins the scores back."
+        "description": "This relationship joins each customer to the model's score, so a join over customers scores every one of them."
       },
       "churnprodAtRisk": {
         "title": "The at-risk list",
@@ -1460,6 +1489,146 @@
       "churnprodRecap": {
         "title": "What you saw",
         "description": "A data scientist's model went to production with no service of its own to run. Its package is pinned and installs once. A join feeds its function, which reads as a table, and the masks and row rules every table has govern what it returns. SQL, GraphQL and every other way in read it the same way."
+      },
+      "worldcupIntro": {
+        "title": "Four public sources, one World Cup",
+        "description": "Who has won the World Cup, and from which confederation? The answer is spread over public data: Wikipedia's list of finals and its confederation articles, and two Kaggle datasets of every World Cup match and every international goal. Each source names countries its own way. Wikipedia writes West Germany, Kaggle writes Germany FR, and the confederations' member tables write Germany. This tour sources the data, makes the names agree with a short Python function, and queries the result as one governed graph."
+      },
+      "worldcupWikipedia": {
+        "title": "Wikipedia, registered in minutes",
+        "description": "This is a Wikipedia source. Its crawl reads seven pages: the List of FIFA World Cup finals and the articles of the six confederations. Each data table on those pages becomes a table named by its page and its caption, so the finals are <code>list_of_fifa_world_cup_finals__list_of_fifa_world_cup_finals</code>. A public source is governed like any internal database, with the same roles, grants and masks. Set a refresh interval and these sources stay current on their own. This demo reads a fixed snapshot, so every visitor sees the same answers."
+      },
+      "worldcupFinals": {
+        "title": "The finals, as Wikipedia lists them",
+        "description": "Every final from 1930 to 2026, with the winners and runners-up by the names of their day. Wikipedia lists the 1954, 1974 and 1990 titles under West Germany and the 2014 title under Germany."
+      },
+      "worldcupKaggle": {
+        "title": "Kaggle datasets arrive as tables",
+        "description": "This is a Kaggle source: the FIFA World Cup dataset, with every tournament, match and player appearance from 1930 to 2014. Each of its files arrives as a table. A second Kaggle source holds every international goal since 1916. Like the Wikipedia tables, they are public data, registered in minutes and governed like any internal database."
+      },
+      "worldcupMatches": {
+        "title": "Matches by the names of their day",
+        "description": "Kaggle writes West Germany as Germany FR and East Germany as German DR. A few of its names carry stray markup from the file, such as <code>rn\"&gt;Republic of Ireland</code>. The file's blank lines are kept as rows with no values, as the dataset has them."
+      },
+      "worldcupDisagree": {
+        "title": "The names disagree",
+        "description": "Counted by the names Wikipedia writes, Germany has one title and West Germany three, as if they were two countries. Kaggle writes the same team as Germany FR, so a join on names between the sources misses those titles too."
+      },
+      "worldcupFunction": {
+        "title": "The function is the table",
+        "description": "country_alias is a Python source, and this function is the table every cross-source relationship joins through. It receives each team name the sources write, asks an LLM which FIFA member the name stands for, with a key from the organization's vault, and returns the member's name and FIFA code. It runs again on its refresh interval, so a new name is matched as it appears.<pre><code>def country_alias(name: str) -&gt; list[Alias]:\n    \"\"\"The FIFA member a team's name stands for: West Germany and Germany FR are Germany.\n\n    @table\n    \"\"\"\n    reply = anthropic.Anthropic().messages.create(\n        model=\"claude-sonnet-5-5\",\n        max_tokens=2000,\n        output_config={\"effort\": \"low\", \"format\": {\"type\": \"json_schema\", \"schema\": ANSWER}},\n        messages=[{\"role\": \"user\", \"content\": ASK + name}],\n    )\n    match = json.loads(next(b.text for b in reply.content if b.type == \"text\"))\n    return [Alias(name, match[\"canonical_country\"], match[\"fifa_code\"])]</code></pre>"
+      },
+      "worldcupAlias": {
+        "title": "Every name, matched and reviewed",
+        "description": "These are the names that differ from their member's name. Germany FR and West Germany are Germany, Zaire is DR Congo and the Soviet Union is Russia. Each match was reviewed before this demo froze it, and 27 of the 237 were corrected. A team whose results passed to no member keeps its own name: East Germany stays East Germany, so its 1974 match against West Germany is not Germany against Germany."
+      },
+      "worldcupJunction": {
+        "title": "A relationship through the function",
+        "description": "WON joins a confederation's member to the finals it won through country_alias. The member's FIFA code finds every name it stands for, and each name finds its finals. RUNNER_UP, PLAYED_HOME, PLAYED_AWAY and SCORED join the same way."
+      },
+      "worldcupGraph": {
+        "title": "Every title in one graph",
+        "description": "Each member links to the finals it won, under whatever name it won them. Germany's node holds 1954, 1974, 1990 and 2014."
+      },
+      "worldcupByConfederation": {
+        "title": "Grouped by confederation",
+        "description": "Grouped by confederation, UEFA's members hold 13 titles and CONMEBOL's hold 10. No other confederation has won a final."
+      },
+      "worldcupSql": {
+        "title": "The same model in SQL",
+        "description": "The same join in SQL counts each member's titles through country_alias. Brazil leads with five, and Germany and Italy have four each."
+      },
+      "worldcupGraphql": {
+        "title": "And in GraphQL",
+        "description": "In GraphQL each final has a <code>winner</code> field through country_alias, so 1954, 1974 and 1990 read West Germany beside the member they stand for: Germany, GER."
+      },
+      "worldcupRecap": {
+        "title": "Recap",
+        "description": "Public data from Wikipedia and Kaggle, sourced in minutes and governed like any internal database, made to agree by about ten lines of Python and queried as one graph. The function's matches were reviewed, so the graph counts every title once, under the right member."
+      },
+      "cloudpolicyScenario": {
+        "title": "What this demo is",
+        "description": "Your security policy says every disk attached to a virtual machine uses a customer-managed key. You lead security, and you review that across Azure, AWS and Google Cloud from what is already recorded. The first source is the cloud inventory. It lists every machine and disk in the three clouds, with the key each disk is encrypted with."
+      },
+      "cloudpolicyIncidents": {
+        "title": "The incidents",
+        "description": "The second source is the security team's ServiceNow incidents. Each one names the disk it is about as its configuration item, and it cites the policy section it is filed under. An exception is an incident in the Policy exception category."
+      },
+      "cloudpolicyReader": {
+        "title": "The policy, read by code",
+        "description": "The policy itself is a web page. This Python package ships with the page and reads it into a row for each control. Its function is a table, so the policy joins the rest of the model."
+      },
+      "cloudpolicyPolicy": {
+        "title": "The policy as rows",
+        "description": "Here is every control of the policy, read from its HTML with its heading, its clause and the day it took effect. Section 4.2 is the disk-encryption control under review."
+      },
+      "cloudpolicySearch": {
+        "title": "The policy, searched by meaning",
+        "description": "Each clause was embedded once, when the demo was set up. A search by meaning finds the control about disk encryption even when your words differ from the clause's."
+      },
+      "cloudpolicyModel": {
+        "title": "One model across three clouds",
+        "description": "Each disk names the machine it is attached to. This relationship joins disks to machines in Azure, AWS and Google Cloud alike."
+      },
+      "cloudpolicyCites": {
+        "title": "Incidents tied to clauses",
+        "description": "Each incident cites a policy section. This relationship joins it to the clause it cites, so an incident filed under the wrong section shows up."
+      },
+      "cloudpolicyViolations": {
+        "title": "The policy as a view",
+        "description": "Section 4.2 is written as a view. It lists every attached disk whose key the cloud manages, beside the machine the disk is on."
+      },
+      "cloudpolicyReview": {
+        "title": "The daily review",
+        "description": "The daily review classifies each attached disk by the policy's rules. A disk without a customer-managed key may be covered by an exception in date. If it is not, its incident is within its deadline or past it, closed with the disk still not compliant, or never filed."
+      },
+      "cloudpolicyTrigger": {
+        "title": "The daily trigger",
+        "description": "Each morning a scheduled trigger runs the review and writes the day's rows to the review history. It writes through the same governed pipeline as any statement, under its role's write grant."
+      },
+      "cloudpolicyTrend": {
+        "title": "Fourteen days of history",
+        "description": "The history the trigger keeps shows the violations day by day. Disks drop out as their incidents are fixed, and a new violation shows up the day it appears."
+      },
+      "cloudpolicyPollyViolators": {
+        "title": "Ask Polly who breaks the control",
+        "description": "Polly reads the same governed model you do. It names the disks without a customer-managed key and the section that requires one."
+      },
+      "cloudpolicyPollyExceptions": {
+        "title": "Exceptions still in date",
+        "description": "An exception lasts 90 days under section 4.3. Polly finds the disks it still covers."
+      },
+      "cloudpolicyPollyWrongControl": {
+        "title": "Incidents under the wrong section",
+        "description": "Some incidents cite a section other than the control they are about, and one cites a section the policy withdrew."
+      },
+      "cloudpolicyPollyUnchecked": {
+        "title": "Controls nothing checks",
+        "description": "The policy has controls that no check enforces. Polly compares the policy with the checks the team runs, and it can draft a view for a steward to add."
+      },
+      "cloudpolicyAuditor": {
+        "title": "Now as the auditor",
+        "description": "The auditor reads every account in every cloud."
+      },
+      "cloudpolicyOpen": {
+        "title": "Everything the review flags",
+        "description": "Here is every disk the review flags, for every team."
+      },
+      "cloudpolicyAppTeam": {
+        "title": "Now as the payments team",
+        "description": "The payments team reads its own resources and incidents only."
+      },
+      "cloudpolicyAppTeamRows": {
+        "title": "Its own rows only",
+        "description": "The same statement returns only the payments team's disks. The row rules sit on the inventory and the incidents, and every view built on them applies them."
+      },
+      "cloudpolicyDashboard": {
+        "title": "The compliance dashboard",
+        "description": "Superset reads the same views through Provisa's Postgres protocol. Here is its compliance dashboard, with the violations by control."
+      },
+      "cloudpolicyRecap": {
+        "title": "What you saw",
+        "description": "You reviewed one policy across three clouds from what was already recorded. The policy is a table, read by code from its own page, and each incident joins the clause it cites. A daily trigger keeps the history, and each role reads only what its rules allow, in SQL, in Polly and in Superset."
       },
       "bankingScenario": {
         "title": "End-of-day reporting, ledger left in place",
@@ -1644,6 +1813,14 @@
       "churnprod": {
         "title": "Churn risk in production",
         "summary": "The churn demo's scikit-learn model in production. Its Python package is a source, and its function is a table that scores every customer in a join, with masks and row rules applied to what it returns."
+      },
+      "worldcup": {
+        "title": "World Cup, one graph",
+        "summary": "Wikipedia's and Kaggle's World Cup data disagree on country names. A short Python function matches every name with an LLM, and the public sources become one governed graph."
+      },
+      "cloudpolicy": {
+        "title": "Cloud policy review",
+        "summary": "A security policy reviewed across Azure, AWS and Google Cloud. The cloud inventory, the ServiceNow incidents and the policy itself, read from its web page by code, are one model, and a daily trigger keeps the review's history."
       },
       "banking": {
         "title": "EOD reporting without copying the ledger",

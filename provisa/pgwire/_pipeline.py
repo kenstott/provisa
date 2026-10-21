@@ -2143,6 +2143,7 @@ async def route_governed(
     # same as the compiled path (_govern_and_route_compiled) — without this, an API table with a
     # required path param never resolves it, materialization skips, and the unmaterialized table
     # reaches the engine unchanged ("no such table").
+    from provisa.api.data.materialization import frozen_parameter_filters
     from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
 
     # REQ-1882: both stages are sqlglot-parse-based regex/AST rewrite work; off-load the combined
@@ -2153,9 +2154,12 @@ async def route_governed(
     )
     # Each read of a table under arguments of its own -- a union of views over one search table
     # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
-    _physical_sql, _read_args = separate_parameter_reads(_physical_sql, context_parameters(ctx))
+    # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
+    _frozen = frozen_parameter_filters(state, _table_ids)
+    _parameters = context_parameters(ctx) - _frozen.keys()
+    _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
     _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
-        _physical_sql, embedded_params or [], context_parameters(ctx)
+        _physical_sql, embedded_params or [], _parameters, _frozen
     )
     exec_params = (
         _nf_clean_params if _nf_clean_params != (embedded_params or []) else embedded_params
@@ -4817,6 +4821,7 @@ async def _route_compiled(
     from provisa.mv.bitemporal_capture import read_logs
 
     _exec_sql = read_logs(_exec_sql, state, ctx, as_of)
+    from provisa.api.data.materialization import frozen_parameter_filters
     from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
     from provisa.vector import similarity as _similarity
 
@@ -4825,9 +4830,12 @@ async def _route_compiled(
         exec_params = await _similarity.bind_query_vectors(
             governed_sql, exec_params, await vector_registry(state)
         )
-    _exec_sql, _read_args = separate_parameter_reads(_exec_sql, context_parameters(ctx))
+    # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
+    _frozen = frozen_parameter_filters(state, _table_ids)
+    _parameters = context_parameters(ctx) - _frozen.keys()
+    _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
     _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
-        _exec_sql, exec_params or [], context_parameters(ctx)
+        _exec_sql, exec_params or [], _parameters, _frozen
     )
     exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
     _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None

@@ -47,6 +47,7 @@ taint closure continuously from the source relation's declared columns to each o
 | `source` | Green | A base table column |
 | `derived` | Blue | Produced by a SQL expression (function, operator, CTE) |
 | `command` | Purple | An output column from a registered command |
+| `native` | Orange | The raw field a source reads, beneath a registered table's column |
 
 Additional rings on a node:
 
@@ -62,6 +63,36 @@ operations: SQL functions (`sql_function`), arithmetic/logical operators (`opera
 commands (`command`), bare column references (`identity`), and literals (`constant`).
 
 An edge from a command call is rendered as a dashed purple line in the UI.
+
+### Beneath the registered table
+
+A user with source registration sees one more hop beneath each source column: the field as the
+source reads it, in a box for the place it is read from. The box carries the source's logo and type
+label, as the Sources page shows them, and the address by kind of source:
+
+| Source | Address |
+| --- | --- |
+| OpenAPI | The operation (`GET /v2/customers`), its fixed parameters and the row location |
+| Remote GraphQL | The root field, its required arguments and the row location |
+| MongoDB, Cosmos DB | The database and the collection or container |
+| Elasticsearch, Qdrant | The index or collection |
+| CSV, Parquet, files, logs | The path, and the file glob of a table that reads many files |
+| Kafka | The topic |
+| Code source | The function |
+| Any other | The native schema and table |
+
+The raw field is the column's field path when it has one, else its own name. The edge from it to
+the registered column names the rename: `path`, `alias` or `naming` (the naming convention). The
+registered table's box says how it is served: `virtual`, read at each statement, or `replica`, with
+its TTL and when it last loaded. Credentials, secret references, and a URL's user, password and
+query are never shown. A user without source registration sees lineage from the registered table
+up.
+
+### Links
+
+Each element opens where it is defined, when the user's rights open that page. A click on a field
+opens its table, view or source; a double click on a box opens its relation; a click on a command's
+edge opens the command. A built-in SQL function has no page and no link.
 
 ## Federation-wide graph
 
@@ -117,6 +148,28 @@ Response shape:
   "outputs": ["id", "embedding"]
 }
 ```
+
+For a caller with source registration, both endpoints add the native hop: nodes of kind `native`,
+and a `natives` object keyed by each native box's relation (`native:<domain>.<table>`):
+
+```json
+"natives": {
+  "native:sales.customers": {
+    "relation": "sales.customers",
+    "source": "crm",
+    "type": "openapi",
+    "hints": {"brand": "stripe"},
+    "address": [
+      {"what": "operation", "value": "GET /v2/customers"},
+      {"what": "rows", "value": "data.items"}
+    ],
+    "served": {"mode": "virtual"}
+  }
+}
+```
+
+A replica's `served` is `{"mode": "replica", "cache_ttl": 3600, "last_load": "...", "next_load": "..."}`.
+For any other caller `natives` is empty.
 
 Returns HTTP 422 when the SQL cannot be parsed.
 

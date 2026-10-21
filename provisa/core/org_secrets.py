@@ -61,6 +61,11 @@ LLM_VENDORS: frozenset[str] = frozenset(
 # credential — so it is kept out of LLM_VENDORS and handled as its own named secret.
 JEV_SECRET_KEY = "jev_api_key"
 
+#: REQ-2098: the certificate and key the organisation presents to its code sources' remote hosts
+#: (provisa/codesource/remote_sources.py), made once and never shown. Not one an administrator
+#: sets (ORG_SECRET_KEYS), and not a vendor's key (read_org_api_keys).
+CODEHOST_IDENTITY_KEY = "codehost_identity"
+
 # The only secrets an org administrator may set through this door.
 ORG_SECRET_KEYS: frozenset[str] = frozenset(
     f"{vendor}_api_key" for vendor in LLM_VENDORS

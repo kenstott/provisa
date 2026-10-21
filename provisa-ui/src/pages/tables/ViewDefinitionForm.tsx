@@ -42,6 +42,7 @@ import {
   FormLayout,
 } from "../../components/form/FormLayout";
 import type { Registration } from "./draftTable";
+import { assignableDomainIds } from "../../lib/internalDomains";
 
 type DefinitionMode = "sql" | "metrics";
 
@@ -228,7 +229,7 @@ export function ViewDefinitionForm({
                   label={t("viewDefinitionForm.fieldDomain")}
                   required
                   searchable
-                  data={domainHints}
+                  data={assignableDomainIds(domainHints)}
                   value={domainId || null}
                   onChange={(v) => setDomainId(v ?? "")}
                   data-testid="view-definition-domain"
