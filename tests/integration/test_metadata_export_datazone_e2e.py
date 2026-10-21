@@ -85,13 +85,22 @@ def _read_back(creds: dict[str, str], name: str) -> tuple[dict | None, list[dict
     (the assets stay: they are the members', revised each run)."""
     client = _client(creds)
     scope = {"domainIdentifier": creds["PROVISA_E2E_DATAZONE_DOMAIN_ID"]}
-    hits = client.search(
-        **scope,
-        owningProjectIdentifier=creds["PROVISA_E2E_DATAZONE_PROJECT_ID"],
-        searchScope="DATA_PRODUCT",
-        searchText=name,
-    )["items"]
-    found = [h["dataProductItem"] for h in hits if h.get("dataProductItem", {}).get("name") == name]
+    # DataZone's search index has a new product some seconds after it is created: waited for,
+    # up to two minutes.
+    deadline = time.monotonic() + 120
+    while True:
+        hits = client.search(
+            **scope,
+            owningProjectIdentifier=creds["PROVISA_E2E_DATAZONE_PROJECT_ID"],
+            searchScope="DATA_PRODUCT",
+            searchText=name,
+        )["items"]
+        found = [
+            h["dataProductItem"] for h in hits if h.get("dataProductItem", {}).get("name") == name
+        ]
+        if found or time.monotonic() > deadline:
+            break
+        time.sleep(5)
     if not found:
         return None, [], None
     product = client.get_data_product(**scope, identifier=found[0]["id"])
