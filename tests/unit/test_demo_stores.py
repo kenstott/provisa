@@ -761,6 +761,31 @@ def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
     assert "the cluster id is not a valid UUID" in str(failed.value)
 
 
+def test_a_superseded_versions_own_kafka_on_the_shared_port_is_taken_down_before_it_starts():
+    """A version an earlier release ran with a Kafka of its own keeps the shared Kafka's port
+    after a newer version took over: the shared Kafka could not bind it, and no demo naming Kafka
+    was ready again (cloud-dev's streaming 202610182058)."""
+    old = "provisa-demo-streaming-202610182058-a481c50b2"
+    runner = FakeRunner(
+        {
+            "publish=29092": f"{old} {old}-kafka-1\nprovisa-demo-stores-t provisa-demo-stores-t-kafka-1"
+        }
+    )
+    _shared(runner).start("kafka")
+    lines = runner.lines()
+    down = f"docker compose -p {old} down -v --remove-orphans"
+    assert down in lines
+    assert lines.index(down) < next(i for i, x in enumerate(lines) if "up -d --wait kafka" in x)
+    assert not any("-p provisa-demo-stores-t down" in x for x in lines)
+
+
+def test_the_shared_kafkas_port_held_by_no_demo_version_is_refused_by_name():
+    runner = FakeRunner({"publish=29092": " some-broker"})
+    with pytest.raises(ds.StoreError, match="held by some-broker"):
+        _shared(runner).start("kafka")
+    assert not any("down" in x or "up -d" in x for x in runner.lines())
+
+
 @pytest.mark.parametrize("kind", ["postgres", "mongo"])
 def test_a_shared_store_is_healthy_only_once_its_real_server_answers_on_its_address(kind):
     """Postgres and MongoDB images first initialize with a server on the socket or loopback
