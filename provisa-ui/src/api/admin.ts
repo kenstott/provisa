@@ -901,6 +901,12 @@ export interface PlatformSettings {
   cache: {
     default_ttl: number;
   };
+  // REQ-259: the org's Apollo Federation subgraph and the role it serves as.
+  federation: {
+    enabled: boolean;
+    subgraph_name: string;
+    role: string | null;
+  };
   naming: {
     // Deployment-wide, so absent for an org administrator; the two below are the org's own.
     domain_prefix?: boolean;

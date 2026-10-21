@@ -51,6 +51,7 @@ import {
   uploadConfig,
 } from "../../api/admin";
 import type { PlatformSettings } from "../../api/admin";
+import { useRoles } from "../../hooks/useAdminQueries";
 import { ConfigDiffView } from "./ConfigDiffView";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { Tip } from "../Tip";
@@ -360,6 +361,57 @@ export function RedirectSettingsCard() {
               label={t("adminPage.enabled")}
               checked={settings.redirect.enabled}
               onChange={(e) => update("enabled", e.currentTarget.checked)}
+            />
+          </FormField>
+        </FormChecks>
+      </FormLayout>
+      <SaveRow save={save} saving={saving} msg={msg} />
+    </Card>
+  );
+}
+
+/**
+ * REQ-259: the org's Apollo Federation subgraph (org-scoped). A supergraph cannot pass its
+ * caller's identity, so the subgraph is served as one declared role, chosen here.
+ */
+export function ApolloSubgraphCard() {
+  const { t } = useTranslation();
+  const { settings, setSettings, save, saving, msg } = useSettingsBlocks(["federation"]);
+  const { roles } = useRoles();
+  if (!settings) return null;
+  const update = (key: keyof PlatformSettings["federation"], value: unknown) =>
+    setSettings({ ...settings, federation: { ...settings.federation, [key]: value } });
+
+  return (
+    <Card withBorder padding="md" data-testid="apollo-subgraph-settings">
+      <Title order={4} mb="sm">
+        {t("adminPage.apolloSubgraph")}
+      </Title>
+      <FormLayout>
+        <FormField help={t("adminPage.apolloSubgraphRoleHint")} size="medium">
+          <Select
+            label={t("adminPage.apolloSubgraphRole")}
+            data={roles.map((r) => r.id)}
+            value={settings.federation.role}
+            onChange={(v) => update("role", v)}
+            searchable
+            data-testid="apollo-subgraph-role"
+          />
+        </FormField>
+        <FormField help={t("adminPage.apolloSubgraphNameHint")} size="medium">
+          <TextInput
+            label={t("adminPage.apolloSubgraphName")}
+            value={settings.federation.subgraph_name}
+            onChange={(e) => update("subgraph_name", e.currentTarget.value)}
+          />
+        </FormField>
+        <FormChecks>
+          <FormField help={t("adminPage.apolloSubgraphEnabledHint")} size="long">
+            <Checkbox
+              label={t("adminPage.apolloSubgraphEnabled")}
+              checked={settings.federation.enabled}
+              onChange={(e) => update("enabled", e.currentTarget.checked)}
+              data-testid="apollo-subgraph-enabled"
             />
           </FormField>
         </FormChecks>

@@ -24,17 +24,12 @@ from graphql import (
 )
 
 from provisa.compiler.federation import (
-    FederationConfig,
     build_federation_schema,
     extract_pk_columns,
     generate_federation_sdl,
 )
 from provisa.compiler.introspect import ColumnMetadata
-from provisa.api.data.federation import (
-    compile_entity_query,
-    group_representations,
-    resolve_entities,
-)
+from provisa.core.models import FederationConfig, ProvisaConfig, Role
 
 
 # --- Helpers ---
@@ -85,13 +80,37 @@ class TestFederationConfig:
     def test_defaults(self):
         cfg = FederationConfig()
         assert cfg.enabled is False
-        assert cfg.version == 2
-        assert cfg.service_name == "provisa"
+        assert cfg.subgraph_name == "provisa"
+        assert cfg.role is None
 
     def test_disabled_by_default(self):
         """Federation features absent when federation.enabled is false."""
         cfg = FederationConfig()
         assert not cfg.enabled
+
+    def test_enabled_names_its_role(self):
+        """A subgraph is an endpoint with a declared role: enabling it without one is refused."""
+        with pytest.raises(ValueError, match="no role"):
+            FederationConfig(enabled=True)
+
+    def test_role_is_one_of_the_config(self):
+        role = Role(id="partner", description="d", capabilities=[], domain_access=["*"])
+        ok = ProvisaConfig(
+            sources=[],
+            domains=[],
+            tables=[],
+            roles=[role],
+            federation=FederationConfig(enabled=True, role="partner"),
+        )
+        assert ok.federation.role == "partner"
+        with pytest.raises(ValueError, match="not a role of this configuration"):
+            ProvisaConfig(
+                sources=[],
+                domains=[],
+                tables=[],
+                roles=[role],
+                federation=FederationConfig(enabled=True, role="nobody"),
+            )
 
 
 # --- extract_pk_columns ---
@@ -255,161 +274,3 @@ class TestGenerateFederationSDL:
         schema = _make_base_schema()
         sdl = generate_federation_sdl(schema, None)
         assert "@key(fields:" not in sdl
-
-
-# --- group_representations ---
-
-
-class TestGroupRepresentations:
-    def test_groups_by_type(self):
-        reps = [
-            {"__typename": "Orders", "id": 1},
-            {"__typename": "Customers", "id": 10},
-            {"__typename": "Orders", "id": 2},
-        ]
-        type_to_table = {"Orders": 1, "Customers": 2}
-        type_to_keys = {"Orders": ["id"], "Customers": ["id"]}
-        plans = group_representations(reps, type_to_table, type_to_keys)
-        assert len(plans) == 2
-        orders_plan = next(p for p in plans if p.type_name == "Orders")
-        assert len(orders_plan.key_values) == 2
-        assert orders_plan.positions == [0, 2]
-
-    def test_missing_typename_raises(self):
-        with pytest.raises(ValueError, match="missing __typename"):
-            group_representations([{"id": 1}], {"Orders": 1}, {"Orders": ["id"]})
-
-    def test_unknown_type_raises(self):
-        with pytest.raises(ValueError, match="Unknown entity type"):
-            group_representations(
-                [{"__typename": "Unknown", "id": 1}],
-                {"Orders": 1},
-                {"Orders": ["id"]},
-            )
-
-    def test_missing_key_field_raises(self):
-        with pytest.raises(ValueError, match="missing key field"):
-            group_representations(
-                [{"__typename": "Orders"}],
-                {"Orders": 1},
-                {"Orders": ["id"]},
-            )
-
-
-# --- compile_entity_query ---
-
-
-class TestCompileEntityQuery:
-    def test_single_pk(self):
-        sql, params = compile_entity_query("pg", "public", "orders", ["id"], [{"id": 1}, {"id": 2}])
-        assert '"id" IN ($1, $2)' in sql
-        assert params == [1, 2]
-        assert '"pg"."public"."orders"' in sql
-
-    def test_composite_pk(self):
-        sql, params = compile_entity_query(
-            "pg",
-            "public",
-            "orders",
-            ["region", "order_id"],
-            [{"region": "us", "order_id": 1}],
-        )
-        assert '("region", "order_id") IN' in sql
-        assert params == ["us", 1]
-
-
-# --- resolve_entities ---
-
-
-class TestResolveEntities:
-    @pytest.mark.asyncio
-    async def test_resolves_by_pk(self):
-        reps = [{"__typename": "Orders", "id": 1}]
-        type_to_table = {"Orders": 1}
-        type_to_keys = {"Orders": ["id"]}
-        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
-
-        async def mock_execute(sql, params, rls_ctx):
-            return [{"id": 1, "amount": 100}]
-
-        results = await resolve_entities(
-            reps, type_to_table, type_to_keys, table_meta, mock_execute
-        )
-        assert len(results) == 1
-        assert results[0]["id"] == 1
-        assert results[0]["__typename"] == "Orders"
-
-    @pytest.mark.asyncio
-    async def test_batch_resolution_groups_by_type(self):
-        """Multiple representations resolved with single query per type."""
-        reps = [
-            {"__typename": "Orders", "id": 1},
-            {"__typename": "Customers", "id": 10},
-            {"__typename": "Orders", "id": 2},
-        ]
-        type_to_table = {"Orders": 1, "Customers": 2}
-        type_to_keys = {"Orders": ["id"], "Customers": ["id"]}
-        table_meta = {
-            1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"},
-            2: {"catalog": "pg", "schema_name": "public", "table_name": "customers"},
-        }
-
-        call_count = {"n": 0}
-
-        async def mock_execute(sql, params, rls_ctx):
-            call_count["n"] += 1
-            if "orders" in sql:
-                return [
-                    {"id": 1, "amount": 100},
-                    {"id": 2, "amount": 200},
-                ]
-            return [{"id": 10, "name": "Alice"}]
-
-        results = await resolve_entities(
-            reps, type_to_table, type_to_keys, table_meta, mock_execute
-        )
-        # Should be 2 queries: one for Orders, one for Customers
-        assert call_count["n"] == 2
-        assert results[0]["id"] == 1
-        assert results[1]["id"] == 10
-        assert results[2]["id"] == 2
-
-    @pytest.mark.asyncio
-    async def test_rls_context_passed_to_executor(self):
-        """RLS context is forwarded to the execution function."""
-        reps = [{"__typename": "Orders", "id": 1}]
-        type_to_table = {"Orders": 1}
-        type_to_keys = {"Orders": ["id"]}
-        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
-
-        captured_rls = {}
-
-        async def mock_execute(sql, params, rls_ctx):
-            captured_rls["ctx"] = rls_ctx
-            return [{"id": 1, "amount": 50}]
-
-        rls_sentinel = {"role": "analyst", "filter": "region = 'us'"}
-        await resolve_entities(
-            reps,
-            type_to_table,
-            type_to_keys,
-            table_meta,
-            mock_execute,
-            rls_context=rls_sentinel,
-        )
-        assert captured_rls["ctx"] is rls_sentinel
-
-    @pytest.mark.asyncio
-    async def test_unresolved_returns_none(self):
-        reps = [{"__typename": "Orders", "id": 999}]
-        type_to_table = {"Orders": 1}
-        type_to_keys = {"Orders": ["id"]}
-        table_meta = {1: {"catalog": "pg", "schema_name": "public", "table_name": "orders"}}
-
-        async def mock_execute(sql, params, rls_ctx):
-            return []  # no rows found
-
-        results = await resolve_entities(
-            reps, type_to_table, type_to_keys, table_meta, mock_execute
-        )
-        assert results == [None]

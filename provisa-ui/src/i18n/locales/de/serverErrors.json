@@ -473,7 +473,10 @@
       "unknown_encryption_provider": "unbekannter Verschlüsselungsanbieter '{{provider}}'",
       "unknown_engine": "unbekannte Engine '{{engine}}'; gültig: {{valid}}",
       "use_domains_invalid": "use_domains muss true, false oder null sein",
-      "claims_with_multitenancy": "Eine mandantenfähige Bereitstellung kann Rollenzuweisungen nicht aus Anmelde-Claims lesen: Sie vergibt Rollen selbst, je Organisation, und Claims würden sie überschreiben. Stellen Sie die Zuweisungsquelle auf Provisa."
+      "claims_with_multitenancy": "Eine mandantenfähige Bereitstellung kann Rollenzuweisungen nicht aus Anmelde-Claims lesen: Sie vergibt Rollen selbst, je Organisation, und Claims würden sie überschreiben. Stellen Sie die Zuweisungsquelle auf Provisa.",
+      "federation_unknown_field": "Keine Federation-Einstellung: {{fields}}",
+      "federation_invalid": "Ungültige Federation-Einstellung: {{error}}",
+      "federation_role_unknown": "Die Federation-Rolle „{{role}}“ ist keine Rolle dieser Organisation"
     },
     "setup": {
       "admin_credentials_required": "admin_username und admin_password erforderlich",

@@ -7539,5 +7539,15 @@
   "fr/profileStrata.json::profileStrata.binning_sketch": "The same bins for every run, cut from each run's quantile sketch; heights are each run's share of its non-null rows.",
   "fr/profileStrata.json::profileStrata.binning_categories": "Every run's values counted against the same categories.",
   "fr/profileStrata.json::profileStrata.binning_none": "These runs hold no values for this column for your role.",
-  "fr/demoOpenPage.json::demoOpenPage.starting": "Starting this demo…"
+  "fr/demoOpenPage.json::demoOpenPage.starting": "Starting this demo…",
+  "fr/adminPage.json::adminPage.apolloSubgraph": "Apollo Federation subgraph",
+  "fr/adminPage.json::adminPage.apolloSubgraphEnabled": "Serve as a subgraph",
+  "fr/adminPage.json::adminPage.apolloSubgraphEnabledHint": "Adds _service and _entities to /data/graphql for the role below, so an Apollo Router can compose this organization into a supergraph.",
+  "fr/adminPage.json::adminPage.apolloSubgraphName": "Subgraph name",
+  "fr/adminPage.json::adminPage.apolloSubgraphNameHint": "The name the supergraph knows this subgraph by.",
+  "fr/adminPage.json::adminPage.apolloSubgraphRole": "Serves as role",
+  "fr/adminPage.json::adminPage.apolloSubgraphRoleHint": "A supergraph cannot pass its caller's identity, so the router signs in as this role and every entity it fetches is governed as this role: its row rules, masks and visibility.",
+  "fr/serverErrors.json::serverErrors.settings.federation_unknown_field": "Not a federation setting: {{fields}}",
+  "fr/serverErrors.json::serverErrors.settings.federation_invalid": "Invalid federation setting: {{error}}",
+  "fr/serverErrors.json::serverErrors.settings.federation_role_unknown": "Federation role '{{role}}' is not a role of this organization"
 }

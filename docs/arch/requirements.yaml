@@ -8554,13 +8554,13 @@
   - admin.md
   - api-reference.md
 - id: REQ-259
-  status: complete
+  status: in-progress
   group: 5. Query Languages, Compilation & Operations
   category: Compiler & Schema
   feature: graphql-schema
   priority: MAY
   type: behavioral
-  description: 'Apollo Federation v2 subgraph support: when enabled, Provisa generates a Federation v2 compliant schema with @key directives on entity types (derived from primary keys), _service and _entities root fields, and batch entity resolution. Provisa can be composed into an Apollo Gateway/Router supergraph. Entity resolution respects RLS, masking, and role-based visibility. Disabled by default.'
+  description: 'Apollo Federation v2 subgraph support: when enabled, Provisa generates a Federation v2 compliant schema with @key directives on entity types (derived from primary keys), _service and _entities root fields, and batch entity resolution. Provisa can be composed into an Apollo Gateway/Router supergraph. Entity resolution respects RLS, masking, and role-based visibility. Disabled by default. (Amended 2026-10-21, DECLARED ROLE:) A subgraph is an endpoint with a declared role: a supergraph cannot pass its caller''s identity, so a steward declares, per organization, the role the subgraph serves as (federation.role, beside federation.enabled and federation.subgraph_name, in config.yaml and on the admin settings page). The router authenticates as an ordinary client acting as that role; _service, _entities and every field the router fetches run through the governed pipeline as the declared role, so its row rules, masks and visibility hold in _entities as in any other read. @key on each entity type names its designated primary-key columns.'
   use_case: Apollo Federation v2 subgraph support lets Provisa participate in a federated supergraph alongside
     other APIs.
   code:

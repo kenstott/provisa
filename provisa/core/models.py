@@ -2646,6 +2646,25 @@ class OtelConfig(BaseModel):  # REQ-545
     subsystem_traces: SubsystemTracesConfig = SubsystemTracesConfig()  # REQ-1432
 
 
+class FederationConfig(BaseModel):  # REQ-259
+    """Provisa as an Apollo Federation v2 subgraph. A supergraph cannot pass its caller's
+    identity, so the subgraph is an endpoint with a declared role: the router authenticates as an
+    ordinary client acting as ``role``, and everything it fetches -- ``_entities`` included -- is
+    governed as that role. Disabled by default."""
+
+    enabled: bool = False
+    subgraph_name: str = "provisa"
+    role: str | None = None
+
+    @model_validator(mode="after")
+    def _enabled_names_its_role(self) -> "FederationConfig":
+        if self.enabled and not self.role:
+            raise ValueError(
+                "federation is enabled with no role: name the role the subgraph serves as"
+            )
+        return self
+
+
 class GraphQLRemoteConfig(BaseModel):
     max_object_depth: int = 5
     max_list_depth: int = 2
@@ -3025,6 +3044,7 @@ class ProvisaConfig(BaseModel):
     mail: MailConfig = Field(default_factory=MailConfig)  # REQ-1310
     metadata_export: MetadataExportConfig = Field(default_factory=MetadataExportConfig)  # REQ-1068
     graphql_remote: GraphQLRemoteConfig = Field(default_factory=GraphQLRemoteConfig)
+    federation: FederationConfig = Field(default_factory=FederationConfig)  # REQ-259
     ai_models: AIModelsConfig = Field(default_factory=AIModelsConfig)
     ai_endpoints: list[AiEndpointConfig] = Field(default_factory=list)  # REQ-1790
     nl: NlConfig = Field(default_factory=NlConfig)
@@ -3156,6 +3176,14 @@ class ProvisaConfig(BaseModel):
             problem = role_domain_problem(role.id, capabilities, domains)
             if problem is not None:
                 raise ValueError(problem)
+        return self
+
+    @model_validator(mode="after")
+    def _federation_serves_as_a_role_of_this_config(self) -> "ProvisaConfig":
+        # REQ-259: the subgraph's declared role is one this config defines.
+        role = self.federation.role
+        if self.federation.enabled and role not in {r.id for r in self.roles}:
+            raise ValueError(f"federation.role {role!r} is not a role of this configuration")
         return self
 
     @model_validator(mode="after")

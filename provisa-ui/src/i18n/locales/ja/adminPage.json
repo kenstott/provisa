@@ -208,6 +208,13 @@
     "colParentDomain": "親ドメイン",
     "parentDomainHint": "親ドメインを付与されたロールはこのドメインにも届きます。",
     "noParentDomain": "親なし",
-    "stewardInherited": "継承"
+    "stewardInherited": "継承",
+    "apolloSubgraph": "Apollo Federation サブグラフ",
+    "apolloSubgraphEnabled": "サブグラフとして提供",
+    "apolloSubgraphEnabledHint": "下記のロール向けに /data/graphql へ _service と _entities を追加し、Apollo Router がこの組織をスーパーグラフに合成できるようにします。",
+    "apolloSubgraphName": "サブグラフ名",
+    "apolloSubgraphNameHint": "スーパーグラフがこのサブグラフを識別する名前です。",
+    "apolloSubgraphRole": "実行ロール",
+    "apolloSubgraphRoleHint": "スーパーグラフは呼び出し元の ID を引き継げないため、ルーターはこのロールでサインインし、取得されるすべてのエンティティはこのロールとして管理されます。行ルール、マスク、可視性もこのロールのものが適用されます。"
   }
 }

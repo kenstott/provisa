@@ -66,7 +66,11 @@ import { SecurityManager } from "../components/admin/SecurityManager";
 import { SecretsTab, MySecretsTab } from "../components/admin/SecretsTab";
 import { EmailTab } from "../components/admin/EmailTab";
 import { SettingsCatalogPanel } from "../components/admin/SettingField";
-import { DomainModeCard, NamingConventionsCard } from "../components/admin/settingsCards";
+import {
+  ApolloSubgraphCard,
+  DomainModeCard,
+  NamingConventionsCard,
+} from "../components/admin/settingsCards";
 import { PageLoading } from "../components/PageLoading";
 import { CollapsibleItem, Collapsibles } from "../components/collapsible/Collapsible";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
@@ -351,6 +355,7 @@ export function AdminPage() {
                 <SimpleGrid cols={{ base: 1, md: 2 }} spacing="lg">
                   <DomainModeCard onApplied={() => refetchDomains()} />
                   <NamingConventionsCard />
+                  <ApolloSubgraphCard />
                 </SimpleGrid>
               </CollapsibleItem>
             </Collapsibles>
