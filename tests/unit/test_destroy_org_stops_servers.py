@@ -75,3 +75,43 @@ def test_destroying_an_org_stops_its_connector_servers_and_no_other(monkeypatch)
 
     assert gone.closed and not kept.closed
     assert list(pgwire_replica._ENDPOINTS) == [("sbxkept", "drop")]
+
+
+def test_an_orgs_jobs_stop_before_anything_of_it_is_dropped(monkeypatch):
+    """REQ-2006: the org's scheduled jobs (its replica build pass, every 2 s) go first. Dropped
+    after its stores, the pass fired for minutes against schemas already gone ("relation
+    replica_state does not exist", cloud-dev's sandbox tier after each close)."""
+    from provisa.api import app
+    from provisa.core import env_store, org_provisioning, region_purge
+    from provisa.scheduler import jobs
+
+    order: list[str] = []
+
+    async def _envs(pool, org_id):
+        return [{"name": "prod"}]
+
+    async def _nothing(*args, **kwargs):
+        return None
+
+    def _step(name):
+        async def _record(*args, **kwargs):
+            order.append(name)
+
+        return _record
+
+    monkeypatch.setattr(orgs_router, "_admin_pool", lambda: _Pool())
+    monkeypatch.setattr(orgs_router, "_pool", lambda: _Pool())
+    monkeypatch.setattr(orgs_router, "_redis_url", lambda: None)
+    monkeypatch.setattr(orgs_router, "_refresh_root_registry_view", _nothing)
+    monkeypatch.setattr(env_store, "list_envs", _envs)
+    monkeypatch.setattr(region_purge, "purge_org_regions", _step("purge regions"))
+    monkeypatch.setattr(org_provisioning, "deprovision_org", _step("deprovision"))
+    monkeypatch.setattr(jobs, "unschedule_org", lambda scheduler, org_id: order.append("jobs"))
+    monkeypatch.setattr(
+        app.state, "org_registry", SimpleNamespace(invalidate_org=lambda org_id: None)
+    )
+    monkeypatch.setattr(pgwire_replica, "_ENDPOINTS", {})
+
+    asyncio.run(orgs_router.destroy_org("sbxgone"))
+
+    assert order[0] == "jobs", order
