@@ -50,6 +50,8 @@ import { Tip } from "../../components/Tip";
 import { rootKey, type MetaReader } from "../../api/metaGraph";
 import { KnowledgeGraphPanel } from "../../components/graph3d/KnowledgeGraphPanel";
 import type { CoreEdge, CoreTable, ProductCore } from "./productCore";
+import { ClaimsCallout, DqIcon, InputsList, PartnersAndOrphans } from "./dataProductDq";
+import { checksIn } from "./dataProductClaims";
 
 // ODPS inputPorts: a derived (not stored) 1-hop input(s) -> transform -> output projection over
 // this product's lineage, computed by the parent page's inputPortsFor() from the raw lineage graph.
@@ -487,6 +489,14 @@ export function DataProductDetailPanel({
                   label={t("dataProductsTab.tablesLabel")}
                   hint={t("dataProductsTab.detail.outputPortsHint")}
                 />
+                {/* REQ-2132: the product's promises, the checks it makes on its output ports. */}
+                {core.checks && (
+                  <ClaimsCallout
+                    kind="promises"
+                    checks={checksIn(core.checks, "promise")}
+                    testId={`data-product-detail-promises-${p.id}`}
+                  />
+                )}
                 {outputTables.length === 0 ? (
                   <Empty text={t("dataProductsTab.tablesEmpty")} />
                 ) : (
@@ -494,6 +504,13 @@ export function DataProductDetailPanel({
                     {outputTables.map((tb) => (
                       <List.Item key={tb.id} ff="monospace">
                         {tb.domain_id}.{tb.table_name}
+                        {core.checks && (
+                          <DqIcon
+                            checks={checksIn(core.checks, "promise")}
+                            tableId={tb.id}
+                            testId={`data-product-detail-port-dq-${tb.id}`}
+                          />
+                        )}
                         {tb.description && <Muted>— {tb.description}</Muted>}
                       </List.Item>
                     ))}
@@ -543,6 +560,17 @@ export function DataProductDetailPanel({
                   const source = sources.find((s) => s.id === tb.source_id);
                   return (
                     <List.Item key={tb.id} ff="monospace">
+                      {/* REQ-2132: the check's claim, why it exists, headlines it. */}
+                      {tb.description && (
+                        <Text
+                          size="sm"
+                          fw={600}
+                          ff="text"
+                          data-testid={`data-product-detail-dq-claim-${tb.id}`}
+                        >
+                          {tb.description}
+                        </Text>
+                      )}
                       <Group gap={4} wrap="nowrap">
                         <Text component="span" size="sm" ff="monospace">
                           {tb.domain_id}.{tb.table_name}
@@ -588,15 +616,13 @@ export function DataProductDetailPanel({
                           })}
                         </Text>
                       )}
-                      {tb.description && (
-                        <Text c="var(--text-muted)" ff="text" size="xs">
-                          {tb.description}
-                        </Text>
-                      )}
                     </List.Item>
                   );
                 })}
               </List>
+            )}
+            {core.checks && (
+              <PartnersAndOrphans checks={core.checks} testId={`data-product-detail-dq-${p.id}`} />
             )}
           </div>
         )}
@@ -786,6 +812,28 @@ export function DataProductDetailPanel({
                 </Table.Tbody>
               </Table>
             )}
+          </div>
+        )}
+        {/* REQ-2126, REQ-2132: the nearest inputs and the product's expectations of them; lineage
+            rows, so view_governance's like the Lineage section. */}
+        {canSeeLineage && core.edges !== undefined && (
+          <div style={panelStyle}>
+            <SectionTitle
+              label={t("dataProductCore.inputs")}
+              hint={t("dataProductCore.inputsHint")}
+            />
+            {core.checks && (
+              <ClaimsCallout
+                kind="expectations"
+                checks={checksIn(core.checks, "expectation")}
+                testId={`data-product-detail-expectations-${p.id}`}
+              />
+            )}
+            <InputsList
+              edges={core.edges}
+              checks={core.checks ?? []}
+              testId={`data-product-detail-inputs-${p.id}`}
+            />
           </div>
         )}
         {/* REQ-1640: data_product_edges answers lineage rows only to view_governance. */}

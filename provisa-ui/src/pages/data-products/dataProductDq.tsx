@@ -22,25 +22,10 @@ import { Alert, Badge, Group, List, Modal, Table, Text, UnstyledButton } from "@
 import { ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
 import { tableSqlRef } from "../../naming";
-import type { CheckState, CoreCheck, CoreEdge } from "./productCore";
-
-export type DqStatus = "passing" | "failing" | "notRun";
-
-/** The summary of ``checks``' latest runs: some failing, else not yet run, else all passing; null
- * when the role's schema does not say how they ran. */
-export function dqStatus(checks: CoreCheck[]): DqStatus | null {
-  if (checks.length === 0) return null;
-  const outcomes = checks.map((c) => c.checker?.latest_outcome);
-  if (outcomes.some((o) => o === undefined)) return null;
-  if (outcomes.includes("fail")) return "failing";
-  if (outcomes.includes(null)) return "notRun";
-  return "passing";
-}
+import type { CoreCheck, CoreEdge } from "./productCore";
+import { checksIn, dqStatus, type DqStatus } from "./dataProductClaims";
 
 const COLOR: Record<DqStatus, string> = { passing: "green", failing: "red", notRun: "gray" };
-
-export const checksIn = (checks: CoreCheck[] | undefined, state: CheckState) =>
-  (checks ?? []).filter((c) => c.state === state);
 
 /** The DQ icon of a dataset: its checks' latest result. Nothing when it has no checks. */
 export function DqIcon({
