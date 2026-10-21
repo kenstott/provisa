@@ -129,8 +129,8 @@ _profiles="--profile three-device"
 on "$BACKENDS" "cd $PERF_REPO/demo/named/perf && export PROVISA_BENCH_BIND=$PERF_BACKENDS_IP \
   && { test -f data/.seeded || { echo 'data/.seeded is absent: this device is not seeded'; exit 1; }; } \
   && sudo -E docker compose $_profiles up -d --build --scale seeder=0 \
-  && (curl -sf http://$PERF_BACKENDS_IP:$AGENT_PORT/host >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
-      --listen $PERF_BACKENDS_IP:$AGENT_PORT --fact device=backends > ~/host-agent.log 2>&1 < /dev/null &)"
+  && ( { curl -sf http://$PERF_BACKENDS_IP:$AGENT_PORT/host >/dev/null || sudo nohup setsid $PY $BENCH/host_agent.py \
+      --listen $PERF_BACKENDS_IP:$AGENT_PORT --fact device=backends > ~/host-agent.log 2>&1; } >/dev/null 2>&1 </dev/null & )"
 
 run_one() {  # run_one <rep> <telemetry> [<variant> <cache>]
   local name="$1-$2" contract_args=""
