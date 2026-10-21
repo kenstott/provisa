@@ -892,6 +892,19 @@ checker_targets = Table(
     Column("checked_table_id", Integer, nullable=False),
 )
 
+# REQ-2132: each checker table's latest scan -- its id, time and outcome (pass, or fail when any
+# check did not pass), written in the scan's own transaction (provisa.dq.scan.record_latest_run).
+# A table with no row has never run. The dry run writes none.
+checker_latest_runs = Table(
+    "checker_latest_runs",
+    metadata,
+    Column("table_id", Integer, primary_key=True),
+    Column("scan_id", Text, nullable=False),
+    Column("scan_time", DateTime(timezone=True), nullable=False),
+    Column("outcome", Text, nullable=False),
+    CheckConstraint("outcome IN ('pass', 'fail')", name="checker_latest_runs_outcome_check"),
+)
+
 relationship_candidates = Table(
     "relationship_candidates",
     metadata,

@@ -174,6 +174,10 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "other table",
         "checked_table_id": "For a checker table, the table its data-quality contract scans; "
         "empty for any other table",
+        # REQ-2132
+        "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
+        "passed, fail otherwise; empty when it has never run",
+        "latest_run_at": "For a checker table, when its latest scan ran",
     },
     # REQ-2129
     "column_lineage_edges": {

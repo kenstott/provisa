@@ -223,3 +223,56 @@ async def test_run_now_fires_the_tables_job_and_appends_a_scan(plane, checker):
     assert len(history) == 2
     assert history[0] == (earlier["scan_id"], "row_count")
     assert history[1][0] != earlier["scan_id"]
+
+
+async def _latest_runs(db: Database) -> list[tuple]:
+    from provisa.core.schema_org import checker_latest_runs
+
+    async with db.acquire() as conn:
+        result = await conn.execute_core(
+            select(
+                checker_latest_runs.c.table_id,
+                checker_latest_runs.c.scan_id,
+                checker_latest_runs.c.outcome,
+            )
+        )
+        return [tuple(r) for r in result.fetchall()]
+
+
+async def test_each_scan_is_recorded_as_the_tables_latest_run(plane, checker):
+    """REQ-2132: the latest scan, with its outcome, is what the meta domain and the dq service
+    read for a checker table; the next scan replaces it."""
+    from provisa.dq.scan import scan_table
+
+    assert await _latest_runs(plane.db) == []  # never run
+    await scan_table(plane.state, 7)
+    second = await scan_table(plane.state, 7)
+    assert await _latest_runs(plane.db) == [(7, second["scan_id"], "pass")]
+
+
+@pytest.mark.parametrize(
+    ("outcomes", "expected"),
+    [
+        (["pass", "pass"], "pass"),
+        (["pass", "fail"], "fail"),
+        (["pass", "warn"], "fail"),
+        (["error"], "fail"),
+        (["skipped", "pass"], "fail"),
+    ],
+)
+async def test_a_scan_passes_only_when_every_check_passed(outcomes, expected):
+    """REQ-2132 knows passing, failing and not yet run: anything but a pass is a failing scan."""
+    from provisa.dq.scan import scan_outcome
+
+    assert scan_outcome([{"outcome": o} for o in outcomes]) == expected
+
+
+async def test_the_dry_run_records_no_run(plane, checker):
+    """The dry run lands nothing, its latest-run record included."""
+    from provisa.api.admin._dq_resolvers import dry_run_contract
+
+    async with plane.db.acquire() as conn:
+        result = await dry_run_contract(conn, source_id="dq", contract_text=CONTRACT)
+    assert result["success"] is True, result
+    assert len(checker) == 1  # the checker did run
+    assert await _latest_runs(plane.db) == []
