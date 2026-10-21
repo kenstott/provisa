@@ -165,8 +165,18 @@ def test_a_replica_says_its_freshness_and_last_load() -> None:
         (
             "graphql_remote",
             {"schema_name": "graphql", "table_name": "issues"},
-            {"graphql": {"field_name": "issues", "required_args": ["owner"], "rows_path": "nodes"}},
-            (("field", "issues"), ("arguments", "owner"), ("rows", "nodes")),
+            {
+                "graphql": {
+                    "field_name": "issues",
+                    # As graphql_remote.mapper writes it: each argument's name and GraphQL type.
+                    "required_args": [
+                        {"name": "owner", "gql_type": "String!"},
+                        {"name": "repo", "gql_type": "String!"},
+                    ],
+                    "rows_path": "nodes",
+                }
+            },
+            (("field", "issues"), ("arguments", "owner, repo"), ("rows", "nodes")),
         ),
         (
             "postgresql",
