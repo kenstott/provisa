@@ -103,6 +103,30 @@ def metadata_files_gone(rows, keys_under, table: str) -> bool:  # REQ-016, REQ-3
     return True
 
 
+def otel_bucket_keys():
+    """A ``keys_under(bucket, prefix)`` for :func:`metadata_files_gone` over the telemetry
+    bucket's object store (``otel_object_store``)."""
+    import boto3
+
+    from provisa.core.trino_system_catalogs import otel_object_store
+
+    store = otel_object_store()
+    s3 = boto3.client(
+        "s3",
+        endpoint_url=store["endpoint"],
+        aws_access_key_id=store["access_key"],
+        aws_secret_access_key=store["secret_key"],
+        region_name=store["region"],
+    )
+
+    def keys_under(bucket: str, prefix: str):
+        for page in s3.get_paginator("list_objects_v2").paginate(Bucket=bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                yield obj["Key"]
+
+    return keys_under
+
+
 def _ops_physical(pg_type: str) -> str:
     if pg_type not in OPS_PG_TO_PHYSICAL:
         raise ValueError(f"unmapped ops pg type: {pg_type}")
