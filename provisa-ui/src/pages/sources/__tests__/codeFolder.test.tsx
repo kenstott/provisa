@@ -1,3 +1,13 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: e497652f-9528-433e-a55c-9f60094225ac
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
 // REQ-2121: a code source's code from a folder on the developer's machine (Choose folder zips it
 // in the browser, without node_modules, .venv, __pycache__ and .git, named after the folder; Save
 // sends a folder the browser keeps again), from a directory on the server on a single-tenant
