@@ -22,7 +22,7 @@ from __future__ import annotations
 # source of truth lives in provisa.security.rights so every query surface shares it; re-exported here
 # for callers near the view definitions.
 from provisa.security.rights import GOVERNANCE_META_COLUMNS, META_DOMAIN_ID  # noqa: E402,F401
-from provisa.core.models import DERIVED_TAGS, SYSTEM_TAGS
+from provisa.core.models import DERIVED_SOURCE_ID, DERIVED_TAGS, SYSTEM_TAGS
 from provisa.dq.contract import CHECKERS
 
 # REQ-1375/REQ-1443: system and derived tags are code-defined intrinsics with no rows in the tags
@@ -423,6 +423,44 @@ def _data_product_edges_sql() -> str:
             FROM member_relations mr
             JOIN ledges e ON e.src = mr.relation
             GROUP BY mr.product_id, e.tgt
+        
+        ),
+        -- Where each registered table is read from: its source, its kind and its address there
+        -- (the three-part form a checker contract names a dataset by).
+        located AS (
+            SELECT t.id AS table_id, t.source_id, s.type AS source_type,
+                   t.source_id || '/' || t.schema_name || '/' || t.table_name AS address,
+                   CASE WHEN t.source_id <> '{derived}' THEN 'source_table'
+                        WHEN t.materialize THEN 'materialized_view'
+                        ELSE 'view' END AS table_kind
+            FROM registered_tables t
+            JOIN sources s ON s.id = t.source_id
+        ),
+        -- A product's nearest physical inputs (table_inputs), from its members that are not
+        -- checkers.
+        product_inputs AS (
+            SELECT DISTINCT m.product_id, ti.input_table_id, ti.input_relation
+            FROM members m
+            JOIN table_inputs ti ON ti.table_id = m.table_id
+            WHERE m.dq_contract IS NULL
+              AND NOT EXISTS (
+                  SELECT 1 FROM members own
+                  WHERE own.table_id = ti.input_table_id AND own.product_id = m.product_id)
+        ),
+        -- Every table one declared relationship from a member that is not one of the product's
+        -- own: the panel's Related.
+        related AS (
+            SELECT m.product_id, l.b AS table_id,
+                   COUNT(DISTINCT l.rel_id) AS path_count,
+                   STRING_AGG(DISTINCT r.alias, ', ' ORDER BY r.alias) AS aliases,
+                   STRING_AGG(DISTINCT r.id, ', ' ORDER BY r.id) AS relationship_ids
+            FROM members m
+            JOIN links l ON l.a = m.table_id
+            JOIN relationships r ON r.id = l.rel_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM members own
+                WHERE own.table_id = l.b AND own.product_id = m.product_id)
+            GROUP BY m.product_id, l.b
         )
         SELECT r.product_id || ':relationship:'
                    || CASE WHEN r.target_product_id IS NOT NULL
@@ -432,7 +470,11 @@ def _data_product_edges_sql() -> str:
                r.target_product_id, r.target_table_id, CAST(NULL AS TEXT) AS target_relation,
                CASE WHEN r.hops = 1 THEN TRUE ELSE FALSE END AS direct,
                r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables,
-               CAST(NULL AS TEXT) AS vias
+               CAST(NULL AS TEXT) AS vias,
+               CAST(NULL AS BOOLEAN) AS nearest_input,
+               CAST(NULL AS TEXT) AS target_source_id,
+               CAST(NULL AS TEXT) AS target_source_type,
+               CAST(NULL AS TEXT) AS target_address
         FROM rel_rows r
         JOIN rel_detail d
           ON d.product_id = r.product_id
@@ -443,18 +485,160 @@ def _data_product_edges_sql() -> str:
          AND s.target_product_id IS NOT DISTINCT FROM r.target_product_id
          AND s.target_table_id IS NOT DISTINCT FROM r.target_table_id
         UNION ALL
-        SELECT l.product_id || ':lineage:' || l.relation,
-               l.product_id, 'lineage', l.direction,
-               (SELECT m.product_id FROM members m JOIN relation_tables rt
-                  ON rt.table_id = m.table_id WHERE rt.relation = l.relation),
-               (SELECT rt.table_id FROM relation_tables rt WHERE rt.relation = l.relation),
-               l.relation,
-               CASE WHEN l.hops = 1 THEN TRUE ELSE FALSE END,
-               l.hops, l.path_count, NULL, NULL, NULL, v.vias
-        FROM lineage_rows l
-        JOIN lineage_vias v
-          ON v.product_id = l.product_id AND v.direction = l.direction
-         AND v.relation = l.relation
+        SELECT x.product_id || ':lineage:' || x.relation,
+               x.product_id, 'lineage', x.direction,
+               (SELECT m.product_id FROM members m WHERE m.table_id = x.table_id),
+               x.table_id, x.relation,
+               CASE WHEN x.hops = 1 THEN TRUE ELSE FALSE END,
+               x.hops, x.path_count, NULL, NULL, NULL, x.vias,
+               CASE WHEN x.direction = 'downstream' THEN NULL
+                    WHEN EXISTS (SELECT 1 FROM product_inputs pi
+                                 WHERE pi.product_id = x.product_id
+                                   AND pi.input_relation = x.relation) THEN TRUE
+                    ELSE FALSE END,
+               lc.source_id, lc.source_type, lc.address
+        FROM (
+            SELECT l.product_id, l.direction, l.relation, l.hops, l.path_count, v.vias,
+                   (SELECT rt.table_id FROM relation_tables rt WHERE rt.relation = l.relation)
+                       AS table_id
+            FROM lineage_rows l
+            JOIN lineage_vias v
+              ON v.product_id = l.product_id AND v.direction = l.direction
+             AND v.relation = l.relation
+        ) x
+        LEFT JOIN located lc ON lc.table_id = x.table_id
+        UNION ALL
+        -- A member read from a source has that source as its input.
+        SELECT m.product_id || ':lineage:source:' || CAST(m.table_id AS TEXT),
+               m.product_id, 'lineage', 'upstream', NULL, m.table_id, NULL,
+               TRUE, 1, 1, NULL, NULL, NULL, NULL,
+               TRUE, lc.source_id, lc.source_type, lc.address
+        FROM members m
+        JOIN located lc ON lc.table_id = m.table_id AND lc.table_kind = 'source_table'
+        WHERE m.dq_contract IS NULL
+        UNION ALL
+        -- A product built from another product's member: built from, not joined to.
+        SELECT pi.product_id || ':derivation:product:' || o.product_id,
+               pi.product_id, 'derivation', 'upstream', o.product_id, NULL, NULL,
+               NULL, NULL, COUNT(DISTINCT pi.input_table_id), NULL, NULL,
+               STRING_AGG(DISTINCT t.table_name, ', ' ORDER BY t.table_name), NULL,
+               TRUE, NULL, NULL, NULL
+        FROM product_inputs pi
+        JOIN members o ON o.table_id = pi.input_table_id AND o.product_id <> pi.product_id
+        JOIN registered_tables t ON t.id = pi.input_table_id
+        GROUP BY pi.product_id, o.product_id
+        UNION ALL
+        SELECT rl.product_id || ':related:' || CAST(rl.table_id AS TEXT),
+               rl.product_id, 'related', NULL, o.product_id, rl.table_id, NULL,
+               TRUE, 1, rl.path_count, rl.aliases, rl.relationship_ids, NULL, NULL,
+               NULL, NULL, NULL, NULL
+        FROM related rl
+        LEFT JOIN members o ON o.table_id = rl.table_id
+    """.replace("{derived}", DERIVED_SOURCE_ID)
+
+
+def _table_inputs_sql() -> str:
+    """REQ-2126: each registered table's nearest physical inputs -- an internal control-plane
+    view, read by data_product_edges, product_checks and provisa.lineage.inputs, so the walk is
+    written once.
+
+    From a table, its lineage (the lineage edge table, REQ-2129) is walked upstream through plain
+    views, which are expanded at query time and so are no input, and stops at the first physical
+    dataset on each path: a source table or a materialized view. A materialized view's inputs are
+    what its refresh reads, found the same way. A relation that is not registered ends a path."""
+    return """
+        CREATE OR REPLACE VIEW table_inputs AS
+        WITH RECURSIVE ledges AS (
+            SELECT DISTINCT source_relation AS src, source_table_id AS src_id,
+                   target_relation AS tgt, target_table_id AS tgt_id
+            FROM lineage_edges
+            WHERE source_relation <> target_relation
+        ),
+        kinds AS (
+            SELECT t.id, t.source_id, t.schema_name, t.table_name,
+                   CASE WHEN t.source_id <> '{derived}' THEN 'source_table'
+                        WHEN t.materialize THEN 'materialized_view'
+                        ELSE 'view' END AS kind
+            FROM registered_tables t
+            WHERE NOT t.draft
+        ),
+        walk (table_id, relation, relation_id) AS (
+            SELECT e.tgt_id, e.src, e.src_id
+            FROM ledges e
+            WHERE e.tgt_id IS NOT NULL
+            UNION
+            SELECT w.table_id, e.src, e.src_id
+            FROM walk w
+            JOIN kinds k ON k.id = w.relation_id AND k.kind = 'view'
+            JOIN ledges e ON e.tgt = w.relation
+        )
+        SELECT DISTINCT w.table_id, w.relation_id AS input_table_id,
+               w.relation AS input_relation, k.kind AS input_kind,
+               k.source_id || '/' || k.schema_name || '/' || k.table_name AS input_address
+        FROM walk w
+        JOIN kinds k ON k.id = w.relation_id AND k.kind IN ('source_table', 'materialized_view')
+    """.replace("{derived}", DERIVED_SOURCE_ID)
+
+
+def _product_checks_sql() -> str:
+    """REQ-1443 PRODUCT ASSIGNMENT: how each product shows each checker table that touches it,
+    derived at read time. A checker assigned to a product is a promise of it when it scans one of
+    its output ports (its members that are not checkers), an expectation when it scans one of its
+    inputs (REQ-2126), and an orphan when it scans neither. A checker that scans a product's output
+    port or input and is not assigned to that product is partner DQ for it. A check that is both a
+    promise and an expectation of one product is a promise."""
+    return """
+        CREATE OR REPLACE VIEW product_checks AS
+        WITH checks AS (
+            SELECT c.id AS checker_table_id, c.product_id AS assigned_product_id,
+                   ct.checked_table_id
+            FROM registered_tables c
+            JOIN checker_targets ct ON ct.table_id = c.id
+            WHERE NOT c.draft
+        ),
+        outputs AS (
+            SELECT product_id, id AS table_id
+            FROM registered_tables
+            WHERE product_id IS NOT NULL AND dq_contract IS NULL AND NOT draft
+        ),
+        inputs AS (
+            SELECT DISTINCT o.product_id, ti.input_table_id AS table_id
+            FROM outputs o
+            JOIN table_inputs ti ON ti.table_id = o.table_id
+        ),
+        touched AS (
+            SELECT product_id, table_id, 'output' AS side FROM outputs
+            UNION ALL
+            SELECT product_id, table_id, 'input' FROM inputs
+        ),
+        assigned AS (
+            SELECT k.assigned_product_id AS product_id, k.checker_table_id, k.checked_table_id,
+                   k.assigned_product_id,
+                   CASE WHEN EXISTS (SELECT 1 FROM touched t
+                                     WHERE t.product_id = k.assigned_product_id
+                                       AND t.table_id = k.checked_table_id
+                                       AND t.side = 'output') THEN 'promise'
+                        WHEN EXISTS (SELECT 1 FROM touched t
+                                     WHERE t.product_id = k.assigned_product_id
+                                       AND t.table_id = k.checked_table_id) THEN 'expectation'
+                        ELSE 'orphan' END AS state
+            FROM checks k
+            WHERE k.assigned_product_id IS NOT NULL
+        ),
+        partner AS (
+            SELECT DISTINCT t.product_id, k.checker_table_id, k.checked_table_id,
+                   k.assigned_product_id, 'partner_dq' AS state
+            FROM checks k
+            JOIN touched t ON t.table_id = k.checked_table_id
+            WHERE k.assigned_product_id IS NULL OR t.product_id <> k.assigned_product_id
+        )
+        SELECT product_id || ':' || CAST(checker_table_id AS TEXT) AS id,
+               product_id, checker_table_id, checked_table_id, assigned_product_id, state
+        FROM assigned
+        UNION ALL
+        SELECT product_id || ':' || CAST(checker_table_id AS TEXT),
+               product_id, checker_table_id, checked_table_id, assigned_product_id, state
+        FROM partner
     """
 
 
@@ -497,7 +681,12 @@ _META_TABLE_VIEWS: dict[str, str] = {
     "sensitive_coverage": _sensitive_coverage_sql(),
     # REQ-2126: a data product's links to the rest of the model, one row per product, target and
     # kind.
+    # REQ-2126: each table's nearest physical inputs; internal, read by the views below and by
+    # provisa.lineage.inputs. Registered in no catalog.
+    "table_inputs": _table_inputs_sql(),
     "data_product_edges": _data_product_edges_sql(),
+    # REQ-1443: how each product shows each checker table that touches it.
+    "product_checks": _product_checks_sql(),
     # REQ-2129: the model's column lineage, one row per edge whose two ends are registered
     # columns, keyed to table_columns by the same column_key the glossary and tags join on.
     "column_lineage_edges": """

@@ -180,8 +180,7 @@ def table_input(t: Any) -> Any:
         mv_business_day_grain=t.mv_business_day_grain,
         modeling_role=t.modeling_role,
         modeling_history=t.modeling_history,
-        # REQ-1443 clause 10: a checker table's product is derived and refused on the row.
-        product_id=None if t.dq_contract else t.stored_product_id,
+        product_id=t.stored_product_id,
         enable_aggregates=t.enable_aggregates,
         enable_group_by=t.enable_group_by,
         live=_live_input(t.live),

@@ -143,7 +143,6 @@
     "dataProductLabel": "डेटा प्रोडक्ट",
     "dataProductNone": "कोई नहीं",
     "dataProductDesc": "कैटलॉग में प्रकाशित और Atlas, Atlan तथा अन्य में निर्यात किया जाता है।",
-    "dataProductInherited": "उस टेबल से विरासत में जिसे यह कॉन्ट्रैक्ट स्कैन करता है",
     "enableAggregatesLabel": "एग्रीगेट सक्षम करें",
     "enableAggregatesDesc": "(GraphQL में _aggregate रूट फ़ील्ड एक्सपोज़ करें)",
     "enableGroupByLabel": "Group By सक्षम करें",
