@@ -43,7 +43,10 @@ vi.mock("../graphScene", () => ({
 // Each observed element, so a test can scroll one into view.
 const observed = vi.hoisted(() => ({ fire: [] as (() => void)[] }));
 class FakeObserver {
-  constructor(private cb: IntersectionObserverCallback) {}
+  private cb: IntersectionObserverCallback;
+  constructor(cb: IntersectionObserverCallback) {
+    this.cb = cb;
+  }
   observe() {
     observed.fire.push(() =>
       this.cb(
