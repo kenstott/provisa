@@ -267,13 +267,16 @@ Provisa kann als Federation-v2-Subgraph fungieren und sein veröffentlichtes Sch
 
 ### Einrichtung {: #setup }
 
-Federation in `config.yaml` aktivieren:
+Federation in `config.yaml` aktivieren, oder pro Organisation unter **Admin → Domains → Einstellungen**:
 
 ```yaml
 federation:
   enabled: true
   subgraph_name: provisa-data
+  role: partner
 ```
+
+Ein Supergraph kann die Identität seines Aufrufers nicht an einen Subgraph weitergeben, daher dient der Subgraph als eine deklarierte Rolle. `role` benennt sie und ist erforderlich, wenn `enabled` auf true steht. Der Router verbindet sich als gewöhnlicher Client, der als diese Rolle handelt, und `_service` und `_entities` werden nur im Schema dieser Rolle angeboten. Jede Entität, die der Router abruft, wird über denselben gesteuerten Pfad gelesen wie jede andere Abfrage der Rolle, sodass ihre Zeilenregeln, Maskierungen und Spaltensichtbarkeit gelten.
 
 Provisa generiert automatisch `@key`-Direktiven auf Primärschlüsselspalten und `@external`/`@provides` auf spaltenübergreifende Subgraph-Relationships.
 
@@ -289,11 +292,23 @@ subgraphs:
       subgraph_url: http://provisa:8001/data/graphql
 ```
 
+Die Anfragen des Routers an Provisa tragen die Anmeldedaten der deklarierten Rolle. Bei deaktivierter Authentifizierung wählt der Header `X-Provisa-Role` sie aus; in der `router.yaml` des Routers:
+
+```yaml
+headers:
+  subgraphs:
+    provisa-data:
+      request:
+        - insert:
+            name: x-provisa-role
+            value: partner
+```
+
 Führen Sie `rover supergraph compose --config supergraph.yaml` aus, um das Supergraph-Schema zu generieren.
 
 ### Entities
 
-Provisa beantwortet `_entities`-Abfragen für subgraphübergreifende Joins. Jede Tabelle mit einem Primärschlüssel ist automatisch als Federation-Entity auflösbar.
+Provisa beantwortet `_entities`-Abfragen für subgraphübergreifende Joins. Jede Tabelle mit einem festgelegten Primärschlüssel, dessen Schlüsselspalten die deklarierte Rolle sehen kann, ist als Federation-Entität auflösbar. Eine Repräsentation, deren Zeile die Rolle nicht lesen kann, wird zu `null` aufgelöst.
 
 ---
 

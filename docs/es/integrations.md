@@ -262,13 +262,16 @@ Provisa puede actuar como un subgrafo de Federation v2, exponiendo su esquema pu
 
 ### Configuración {: #setup }
 
-Active la federación en `config.yaml`:
+Active la federación en `config.yaml`, o por organización en **Admin → Domains → Configuración**:
 
 ```yaml
 federation:
   enabled: true
   subgraph_name: provisa-data
+  role: partner
 ```
+
+Un supergrafo no puede transmitir la identidad de quien lo llama a un subgrafo, por lo que el subgrafo actúa como un único rol declarado. `role` lo nombra y es obligatorio cuando `enabled` es true. El router se conecta como un cliente ordinario que actúa como ese rol, y `_service` y `_entities` se ofrecen únicamente en el esquema de ese rol. Cada entidad que el router obtiene se lee por la misma ruta gobernada que cualquier otra consulta del rol, por lo que se aplican sus reglas de fila, su enmascaramiento y la visibilidad de sus columnas.
 
 Provisa genera directivas `@key` en las columnas de clave primaria y `@external`/`@provides` en las relaciones entre subgrafos automáticamente.
 
@@ -284,11 +287,23 @@ subgraphs:
       subgraph_url: http://provisa:8001/data/graphql
 ```
 
+Las solicitudes del router a Provisa llevan las credenciales del rol declarado. Con la autenticación desactivada, la cabecera `X-Provisa-Role` lo selecciona; en el `router.yaml` del router:
+
+```yaml
+headers:
+  subgraphs:
+    provisa-data:
+      request:
+        - insert:
+            name: x-provisa-role
+            value: partner
+```
+
 Ejecute `rover supergraph compose --config supergraph.yaml` para generar el esquema del supergrafo.
 
 ### Entidades {: #entities }
 
-Provisa responde a las consultas `_entities` para uniones entre subgrafos. Cualquier tabla con una clave primaria es automáticamente resoluble como una entidad de Federation.
+Provisa responde a las consultas `_entities` para uniones entre subgrafos. Cualquier tabla con una clave primaria designada cuyas columnas clave pueda ver el rol declarado es resoluble como una entidad de Federation. Una representación cuya fila el rol no puede leer se resuelve como `null`.
 
 ---
 
