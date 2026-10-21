@@ -78,14 +78,12 @@ function ClaimRows({ checks, testId }: { checks: CoreCheck[]; testId: string }) 
         {checks.map((c) => {
           const outcome = c.checker?.latest_outcome;
           const ran = c.checker?.latest_run_at;
+          const results = c.checker
+            ? tableSqlRef({ domainId: c.checker.domain_id, tableName: c.checker.table_name })
+            : null;
           const open = () =>
-            c.checker &&
-            navigate("/sql", {
-              state: {
-                sql: `select * from ${tableSqlRef({ domainId: c.checker.domain_id, tableName: c.checker.table_name })}`,
-                autoRun: true,
-              },
-            });
+            results &&
+            navigate("/sql", { state: { sql: `select * from ${results}`, autoRun: true } });
           return (
             <Table.Tr
               key={c.id}

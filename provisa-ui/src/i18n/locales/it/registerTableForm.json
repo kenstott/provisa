@@ -136,7 +136,7 @@
     "qdrantVector": "{{name}}: {{size}} dimensioni, punteggio per {{distance}}",
     "qdrantUnnamedVector": "(senza nome)",
     "checkReasonLabel": "Perché esiste questo controllo",
-    "checkReasonHint": "La promessa di qualità, in termini di business. Fa da titolo al controllo in ogni prodotto dati che serve.",
+    "checkReasonHint": "La promessa di qualità in termini di business; fa da titolo al controllo in ogni prodotto.",
     "checkReasonPlaceholder": "Gli ordini sono completi e univoci così che il fatturato giornaliero quadri con la finanza"
   }
 }

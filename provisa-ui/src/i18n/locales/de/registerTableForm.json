@@ -136,7 +136,7 @@
     "qdrantVector": "{{name}}: {{size}} Dimensionen, bewertet nach {{distance}}",
     "qdrantUnnamedVector": "(ohne Namen)",
     "checkReasonLabel": "Warum diese Prüfung existiert",
-    "checkReasonHint": "Die Qualitätszusage in fachlichen Begriffen. Sie steht über der Prüfung in jedem Datenprodukt, dem sie dient.",
+    "checkReasonHint": "Die Qualitätszusage in fachlichen Begriffen; sie steht über der Prüfung in jedem Produkt.",
     "checkReasonPlaceholder": "Bestellungen sind vollständig und eindeutig, damit der Tagesumsatz mit der Finanzabteilung abgestimmt werden kann"
   }
 }

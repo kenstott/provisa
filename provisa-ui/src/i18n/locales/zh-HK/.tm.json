@@ -3569,7 +3569,7 @@
   "zh-HK/registerTableForm.json::registerTableForm.cacheTtlHint": "This table will be a replica, refreshed on this clock. Its source states no Cache TTL, so the table states its own.",
   "zh-HK/registerTableForm.json::registerTableForm.cacheTtlLabel": "Cache TTL (seconds)",
   "zh-HK/registerTableForm.json::registerTableForm.cancelButton": "Cancel",
-  "zh-HK/registerTableForm.json::registerTableForm.checkReasonHint": "The quality claim, in business terms. It headlines the check on every data product it serves.",
+  "zh-HK/registerTableForm.json::registerTableForm.checkReasonHint": "The quality claim in business terms; it headlines the check on each product.",
   "zh-HK/registerTableForm.json::registerTableForm.checkReasonLabel": "Why this check exists",
   "zh-HK/registerTableForm.json::registerTableForm.checkReasonPlaceholder": "Orders are complete and unique so daily revenue reconciles with finance",
   "zh-HK/registerTableForm.json::registerTableForm.colHeaderAlias": "SQL Alias",

@@ -136,7 +136,7 @@
     "qdrantVector": "{{name}}: {{size}} dimensies, gescoord met {{distance}}",
     "qdrantUnnamedVector": "(naamloos)",
     "checkReasonLabel": "Waarom deze controle bestaat",
-    "checkReasonHint": "De kwaliteitsbelofte, in zakelijke termen. Ze staat boven de controle in elk dataproduct dat ze bedient.",
+    "checkReasonHint": "De kwaliteitsbelofte in zakelijke termen; ze staat boven de controle in elk product.",
     "checkReasonPlaceholder": "Bestellingen zijn volledig en uniek zodat de dagomzet aansluit op finance"
   }
 }

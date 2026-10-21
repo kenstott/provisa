@@ -136,7 +136,7 @@
     "qdrantVector": "{{name}}: {{size}} dimensões, pontuado por {{distance}}",
     "qdrantUnnamedVector": "(sem nome)",
     "checkReasonLabel": "Por que esta verificação existe",
-    "checkReasonHint": "A promessa de qualidade, em termos de negócio. Ela encabeça a verificação em cada produto de dados que atende.",
+    "checkReasonHint": "A promessa de qualidade em termos de negócio; encabeça a verificação em cada produto.",
     "checkReasonPlaceholder": "Os pedidos estão completos e são únicos para que a receita diária concilie com o financeiro"
   }
 }

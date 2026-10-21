@@ -136,7 +136,7 @@
     "qdrantVector": "{{name}}：{{size}} 维，按 {{distance}} 评分",
     "qdrantUnnamedVector": "（未命名）",
     "checkReasonLabel": "为什么需要这项检查",
-    "checkReasonHint": "以业务语言表述的质量承诺。它会作为该检查的标题，出现在其服务的每个数据产品中。",
+    "checkReasonHint": "以业务语言表述的质量承诺；它作为该检查在每个产品中的标题。",
     "checkReasonPlaceholder": "订单完整且唯一，以便每日收入与财务对账一致"
   }
 }
