@@ -184,6 +184,10 @@ describe("TableEditForm on a Qdrant collection: a vector's model (REQ-2000)", ()
   it("offers no Replicate choice on a live-only kind's table", async () => {
     useVectorModels.mockReturnValue({});
     const asked = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      // REQ-2122: the editor also reads the table's catalogs; this table's domain has none.
+      if (String(url).includes("/catalog")) {
+        return new Response(JSON.stringify({ catalogs: [] }));
+      }
       const kind = decodeURIComponent(String(url).split("/admin/source-kinds/")[1]);
       return new Response(
         JSON.stringify({

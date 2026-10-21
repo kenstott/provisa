@@ -40,6 +40,7 @@ import {
   TextInput,
 } from "@mantine/core";
 import { ExternalLink, TriangleAlert } from "lucide-react";
+import { FormChecks, FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
 import {
   applyCatalogOffer,
   fetchCatalogCandidates,
@@ -184,93 +185,102 @@ function PickList({
   const list = lists.find((l) => l.catalog === tab);
   const picked = tab ? chosen[tab] : NONE;
   return (
-    <Stack gap="sm">
-      <TextInput
-        placeholder={t("catalogLink.searchPlaceholder")}
-        value={search}
-        onChange={(e) => setSearch(e.currentTarget.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") void load(search);
-        }}
-        data-testid="catalog-pick-search"
-      />
-      <Tabs value={tab} onChange={setTab}>
-        <Tabs.List>
-          {lists.map((l) => (
-            <Tabs.Tab
-              key={l.catalog}
-              value={l.catalog}
-              data-testid={`catalog-pick-tab-${l.catalog}`}
-            >
-              {l.catalog} · {l.provider}
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-      </Tabs>
-      {list?.error ? (
-        <Alert color="red" icon={<TriangleAlert size={16} />} data-testid="catalog-pick-list-error">
-          {list.error}
-        </Alert>
-      ) : (
-        <ScrollArea.Autosize mah={360}>
-          <Radio.Group
-            value={picked}
-            onChange={(v) => tab && setChosen((prev) => ({ ...prev, [tab]: v }))}
+    <FormLayout>
+      <FormField size="long">
+        <TextInput
+          placeholder={t("catalogLink.searchPlaceholder")}
+          value={search}
+          onChange={(e) => setSearch(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void load(search);
+          }}
+          data-testid="catalog-pick-search"
+        />
+      </FormField>
+      <FormField size="full">
+        <Tabs value={tab} onChange={setTab}>
+          <Tabs.List>
+            {lists.map((l) => (
+              <Tabs.Tab
+                key={l.catalog}
+                value={l.catalog}
+                data-testid={`catalog-pick-tab-${l.catalog}`}
+              >
+                {l.catalog} · {l.provider}
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs>
+        {list?.error ? (
+          <Alert
+            color="red"
+            icon={<TriangleAlert size={16} />}
+            data-testid="catalog-pick-list-error"
           >
-            <Stack gap={6} data-testid="catalog-pick-assets">
-              <Radio
-                value={NONE}
-                label={t("catalogLink.pickNone")}
-                data-testid="catalog-pick-asset-none"
-              />
-              {(list?.assets ?? []).map((a) => (
+            {list.error}
+          </Alert>
+        ) : (
+          <ScrollArea.Autosize mah={360}>
+            <Radio.Group
+              value={picked}
+              onChange={(v) => tab && setChosen((prev) => ({ ...prev, [tab]: v }))}
+            >
+              <Stack gap={6} data-testid="catalog-pick-assets">
                 <Radio
-                  key={a.ref}
-                  value={a.ref}
-                  data-testid={`catalog-pick-asset-${a.ref}`}
-                  label={
-                    <Stack gap={0}>
-                      <Group gap="xs">
-                        <Text size="sm" fw={500}>
-                          {a.name}
-                        </Text>
-                        {a.ref === list?.linked && (
-                          <Badge size="xs" variant="light">
-                            {t("catalogLink.linked")}
-                          </Badge>
-                        )}
-                        {a.ref === list?.preselected && a.ref !== list?.linked && (
-                          <Badge size="xs" variant="light" color="green">
-                            {t("catalogLink.samePhysical")}
-                          </Badge>
-                        )}
-                      </Group>
-                      {a.description && (
-                        <Text size="xs" c="dimmed" lineClamp={2}>
-                          {a.description}
-                        </Text>
-                      )}
-                    </Stack>
-                  }
+                  value={NONE}
+                  label={t("catalogLink.pickNone")}
+                  data-testid="catalog-pick-asset-none"
                 />
-              ))}
-            </Stack>
-          </Radio.Group>
-        </ScrollArea.Autosize>
-      )}
-      <Group justify="flex-end">
-        <Button variant="default" onClick={onNone} data-testid="catalog-pick-cancel">
-          {t("catalogLink.cancel")}
-        </Button>
-        <Button
-          disabled={!tab || !picked}
-          onClick={() => tab && picked && onPick({ catalog: tab, ref: picked })}
-          data-testid="catalog-pick-next"
-        >
-          {t("catalogLink.next")}
-        </Button>
-      </Group>
-    </Stack>
+                {(list?.assets ?? []).map((a) => (
+                  <Radio
+                    key={a.ref}
+                    value={a.ref}
+                    data-testid={`catalog-pick-asset-${a.ref}`}
+                    label={
+                      <Stack gap={0}>
+                        <Group gap="xs">
+                          <Text size="sm" fw={500}>
+                            {a.name}
+                          </Text>
+                          {a.ref === list?.linked && (
+                            <Badge size="xs" variant="light">
+                              {t("catalogLink.linked")}
+                            </Badge>
+                          )}
+                          {a.ref === list?.preselected && a.ref !== list?.linked && (
+                            <Badge size="xs" variant="light" color="green">
+                              {t("catalogLink.samePhysical")}
+                            </Badge>
+                          )}
+                        </Group>
+                        {a.description && (
+                          <Text size="xs" c="dimmed" lineClamp={2}>
+                            {a.description}
+                          </Text>
+                        )}
+                      </Stack>
+                    }
+                  />
+                ))}
+              </Stack>
+            </Radio.Group>
+          </ScrollArea.Autosize>
+        )}
+      </FormField>
+      <FormFooter
+        onCancel={onNone}
+        cancelProps={{ "data-testid": "catalog-pick-cancel" }}
+        action={
+          <Button
+            disabled={!tab || !picked}
+            onClick={() => tab && picked && onPick({ catalog: tab, ref: picked })}
+            data-testid="catalog-pick-next"
+          >
+            {t("catalogLink.next")}
+          </Button>
+        }
+      />
+    </FormLayout>
   );
 }
 
@@ -385,29 +395,35 @@ function OfferReview({
 
   const source = `${offer.catalog} · ${offer.provider}`;
   return (
-    <Stack gap="md" data-testid="catalog-offer">
-      <Group justify="space-between" wrap="nowrap">
-        <Text size="sm" fw={600} data-testid="catalog-offer-asset">
-          {offer.asset.name}
-        </Text>
-        {offer.asset.url && (
-          <Anchor href={offer.asset.url} target="_blank" rel="noreferrer" size="sm">
-            <Group gap={4}>
-              {t("catalogLink.openInCatalog", { catalog: offer.catalog })}
-              <ExternalLink size={12} />
-            </Group>
-          </Anchor>
-        )}
-      </Group>
+    <FormLayout data-testid="catalog-offer">
+      <FormField size="full">
+        <Group justify="space-between" wrap="nowrap">
+          <Text size="sm" fw={600} data-testid="catalog-offer-asset">
+            {offer.asset.name}
+          </Text>
+          {offer.asset.url && (
+            <Anchor href={offer.asset.url} target="_blank" rel="noreferrer" size="sm">
+              <Group gap={4}>
+                {t("catalogLink.openInCatalog", { catalog: offer.catalog })}
+                <ExternalLink size={12} />
+              </Group>
+            </Anchor>
+          )}
+        </Group>
+      </FormField>
 
-      <Stack gap={4}>
-        <Checkbox
-          label={t("catalogLink.takeDescription", { catalog: source })}
-          checked={takeDescription}
-          disabled={!offer.description.catalog}
-          onChange={(e) => setTakeDescription(e.currentTarget.checked)}
-          data-testid="catalog-offer-description"
-        />
+      <FormChecks>
+        <FormField size="long">
+          <Checkbox
+            label={t("catalogLink.takeDescription", { catalog: source })}
+            checked={takeDescription}
+            disabled={!offer.description.catalog}
+            onChange={(e) => setTakeDescription(e.currentTarget.checked)}
+            data-testid="catalog-offer-description"
+          />
+        </FormField>
+      </FormChecks>
+      <FormField size="full">
         <Table withTableBorder layout="fixed">
           <Table.Tbody>
             <Table.Tr>
@@ -433,155 +449,170 @@ function OfferReview({
             </Table.Tr>
           </Table.Tbody>
         </Table>
-      </Stack>
+      </FormField>
 
-      <Stack gap={4}>
-        <Text size="sm" fw={600}>
-          {t("catalogLink.columns")}
-        </Text>
-        <Table withTableBorder layout="fixed" data-testid="catalog-offer-columns">
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th w={40} />
-              <Table.Th>{t("catalogLink.column")}</Table.Th>
-              <Table.Th>{t("catalogLink.inProvisa")}</Table.Th>
-              <Table.Th>{t("catalogLink.catalogColumn", { catalog: offer.catalog })}</Table.Th>
-              <Table.Th>{source}</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {offer.columns.map((c) => {
-              const theirs = mapping[c.column]
-                ? byCatalogColumn[mapping[c.column] as string]
-                : undefined;
-              return (
-                <Table.Tr key={c.column} data-testid={`catalog-offer-column-${c.column}`}>
-                  <Table.Td>
-                    <Checkbox
-                      aria-label={c.column}
-                      checked={!!takeColumn[c.column] && !!theirs}
-                      disabled={!theirs}
-                      onChange={(e) => {
-                        const checked = e.currentTarget.checked;
-                        setTakeColumn((prev) => ({ ...prev, [c.column]: checked }));
-                      }}
-                      data-testid={`catalog-offer-take-${c.column}`}
-                    />
-                  </Table.Td>
-                  <Table.Td>{c.column}</Table.Td>
-                  <Table.Td style={{ whiteSpace: "pre-wrap" }}>{c.current}</Table.Td>
-                  <Table.Td>
-                    <Select
-                      size="xs"
-                      data={offer.catalog_columns.map((cc) => ({ value: cc.name, label: cc.name }))}
-                      value={mapping[c.column]}
-                      clearable
-                      placeholder={t("catalogLink.noColumn")}
-                      onChange={(v) => setMapping((prev) => ({ ...prev, [c.column]: v }))}
-                      data-testid={`catalog-offer-map-${c.column}`}
-                    />
-                  </Table.Td>
-                  <Table.Td style={{ whiteSpace: "pre-wrap" }}>
-                    {theirs?.description ?? ""}
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
-      </Stack>
+      <FormField size="full">
+        <Stack gap={4}>
+          <Text size="sm" fw={600}>
+            {t("catalogLink.columns")}
+          </Text>
+          <Table withTableBorder layout="fixed" data-testid="catalog-offer-columns">
+            <Table.Thead>
+              <Table.Tr>
+                <Table.Th w={40} />
+                <Table.Th>{t("catalogLink.column")}</Table.Th>
+                <Table.Th>{t("catalogLink.inProvisa")}</Table.Th>
+                <Table.Th>{t("catalogLink.catalogColumn", { catalog: offer.catalog })}</Table.Th>
+                <Table.Th>{source}</Table.Th>
+              </Table.Tr>
+            </Table.Thead>
+            <Table.Tbody>
+              {offer.columns.map((c) => {
+                const theirs = mapping[c.column]
+                  ? byCatalogColumn[mapping[c.column] as string]
+                  : undefined;
+                return (
+                  <Table.Tr key={c.column} data-testid={`catalog-offer-column-${c.column}`}>
+                    <Table.Td>
+                      <Checkbox
+                        aria-label={c.column}
+                        checked={!!takeColumn[c.column] && !!theirs}
+                        disabled={!theirs}
+                        onChange={(e) => {
+                          const checked = e.currentTarget.checked;
+                          setTakeColumn((prev) => ({ ...prev, [c.column]: checked }));
+                        }}
+                        data-testid={`catalog-offer-take-${c.column}`}
+                      />
+                    </Table.Td>
+                    <Table.Td>{c.column}</Table.Td>
+                    <Table.Td style={{ whiteSpace: "pre-wrap" }}>{c.current}</Table.Td>
+                    <Table.Td>
+                      <Select
+                        size="xs"
+                        data={offer.catalog_columns.map((cc) => ({
+                          value: cc.name,
+                          label: cc.name,
+                        }))}
+                        value={mapping[c.column]}
+                        clearable
+                        placeholder={t("catalogLink.noColumn")}
+                        onChange={(v) => setMapping((prev) => ({ ...prev, [c.column]: v }))}
+                        data-testid={`catalog-offer-map-${c.column}`}
+                      />
+                    </Table.Td>
+                    <Table.Td style={{ whiteSpace: "pre-wrap" }}>
+                      {theirs?.description ?? ""}
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
+        </Stack>
+      </FormField>
 
       {offer.owners.length > 0 && (
-        <Stack gap={2} data-testid="catalog-offer-owners">
-          <Text size="sm" fw={600}>
-            {t("catalogLink.owners", { catalog: source })}
-          </Text>
-          <Text size="sm">{offer.owners.join(", ")}</Text>
-          <Text size="xs" c="dimmed">
-            {t("catalogLink.ownersShownOnly")}
-          </Text>
-        </Stack>
+        <FormField size="full">
+          <Stack gap={2} data-testid="catalog-offer-owners">
+            <Text size="sm" fw={600}>
+              {t("catalogLink.owners", { catalog: source })}
+            </Text>
+            <Text size="sm">{offer.owners.join(", ")}</Text>
+            <Text size="xs" c="dimmed">
+              {t("catalogLink.ownersShownOnly")}
+            </Text>
+          </Stack>
+        </FormField>
       )}
 
       {(offeredTags.length > 0 || offer.terms.length > 0 || offeredTerms.length > 0) && (
-        <Stack gap={4} data-testid="catalog-offer-tags">
-          <Text size="sm" fw={600}>
-            {t("catalogLink.tagsAndTerms", { catalog: source })}
-          </Text>
-          {offeredTags.map((x) => {
-            const k = key(x.column, x.tag ?? x.name);
-            const label = `${x.column ?? t("catalogLink.theTable")}: ${x.name}`;
-            return x.tag ? (
-              <Checkbox
-                key={k}
-                label={label}
-                checked={held.has(k) || !!takeTag[k]}
-                disabled={held.has(k)}
-                onChange={(e) => {
-                  const checked = e.currentTarget.checked;
-                  setTakeTag((prev) => ({ ...prev, [k]: checked }));
-                }}
-                data-testid={`catalog-offer-tag-${x.column ?? ""}-${x.tag}`}
-              />
-            ) : (
-              <Group key={k} gap="xs">
-                <Text size="sm">{label}</Text>
-                <Badge size="xs" color="gray" variant="light">
-                  {t("catalogLink.noSuchTag")}
-                </Badge>
-              </Group>
-            );
-          })}
-          {offeredTerms.map((x) =>
-            x.term ? (
-              <Checkbox
-                key={`${x.column}|${x.name}`}
-                label={`${x.column}: ${x.name}`}
-                checked={takeTerm[x.column] === x.term || offer.current_terms[x.column] === x.term}
-                disabled={offer.current_terms[x.column] === x.term}
-                onChange={(e) => {
-                  const checked = e.currentTarget.checked;
-                  setTakeTerm((prev) => {
-                    const next = { ...prev };
-                    if (checked) next[x.column] = x.term as string;
-                    else delete next[x.column];
-                    return next;
-                  });
-                }}
-                data-testid={`catalog-offer-term-${x.column}-${x.term}`}
-              />
-            ) : (
-              <Group key={`${x.column}|${x.name}`} gap="xs">
-                <Text size="sm">{`${x.column}: ${x.name}`}</Text>
-                <Badge size="xs" color="gray" variant="light">
-                  {t("catalogLink.noSuchTerm")}
-                </Badge>
-              </Group>
-            ),
-          )}
-          {offer.terms.map((x) => (
-            <Group key={`table|${x.name}`} gap="xs">
-              <Text size="sm">{`${t("catalogLink.theTable")}: ${x.name}`}</Text>
-              <Badge size="xs" color="gray" variant="light">
-                {t("catalogLink.termOnTable")}
-              </Badge>
-            </Group>
-          ))}
-        </Stack>
+        <FormField size="full">
+          <Stack gap={4} data-testid="catalog-offer-tags">
+            <Text size="sm" fw={600}>
+              {t("catalogLink.tagsAndTerms", { catalog: source })}
+            </Text>
+            <FormChecks>
+              {offeredTags.map((x) => {
+                const k = key(x.column, x.tag ?? x.name);
+                const label = `${x.column ?? t("catalogLink.theTable")}: ${x.name}`;
+                return x.tag ? (
+                  <FormField key={k} size="long">
+                    <Checkbox
+                      label={label}
+                      checked={held.has(k) || !!takeTag[k]}
+                      disabled={held.has(k)}
+                      onChange={(e) => {
+                        const checked = e.currentTarget.checked;
+                        setTakeTag((prev) => ({ ...prev, [k]: checked }));
+                      }}
+                      data-testid={`catalog-offer-tag-${x.column ?? ""}-${x.tag}`}
+                    />
+                  </FormField>
+                ) : (
+                  <Group key={k} gap="xs">
+                    <Text size="sm">{label}</Text>
+                    <Badge size="xs" color="gray" variant="light">
+                      {t("catalogLink.noSuchTag")}
+                    </Badge>
+                  </Group>
+                );
+              })}
+              {offeredTerms.map((x) =>
+                x.term ? (
+                  <FormField key={`${x.column}|${x.name}`} size="long">
+                    <Checkbox
+                      label={`${x.column}: ${x.name}`}
+                      checked={
+                        takeTerm[x.column] === x.term || offer.current_terms[x.column] === x.term
+                      }
+                      disabled={offer.current_terms[x.column] === x.term}
+                      onChange={(e) => {
+                        const checked = e.currentTarget.checked;
+                        setTakeTerm((prev) => {
+                          const next = { ...prev };
+                          if (checked) next[x.column] = x.term as string;
+                          else delete next[x.column];
+                          return next;
+                        });
+                      }}
+                      data-testid={`catalog-offer-term-${x.column}-${x.term}`}
+                    />
+                  </FormField>
+                ) : (
+                  <Group key={`${x.column}|${x.name}`} gap="xs">
+                    <Text size="sm">{`${x.column}: ${x.name}`}</Text>
+                    <Badge size="xs" color="gray" variant="light">
+                      {t("catalogLink.noSuchTerm")}
+                    </Badge>
+                  </Group>
+                ),
+              )}
+              {offer.terms.map((x) => (
+                <Group key={`table|${x.name}`} gap="xs">
+                  <Text size="sm">{`${t("catalogLink.theTable")}: ${x.name}`}</Text>
+                  <Badge size="xs" color="gray" variant="light">
+                    {t("catalogLink.termOnTable")}
+                  </Badge>
+                </Group>
+              ))}
+            </FormChecks>
+          </Stack>
+        </FormField>
       )}
 
-      <Group justify="space-between">
-        {onBack ? (
-          <Button variant="default" onClick={onBack} data-testid="catalog-offer-back">
-            {t("catalogLink.back")}
-          </Button>
-        ) : (
-          <span />
-        )}
-        <Button onClick={apply} loading={busy} data-testid="catalog-offer-apply">
-          {t("catalogLink.apply")}
-        </Button>
-      </Group>
-    </Stack>
+      <FormFooter
+        onSave={apply}
+        saving={busy}
+        saveProps={{ "data-testid": "catalog-offer-apply" }}
+        action={
+          onBack ? (
+            <Button variant="default" onClick={onBack} data-testid="catalog-offer-back">
+              {t("catalogLink.back")}
+            </Button>
+          ) : undefined
+        }
+      />
+    </FormLayout>
   );
 }

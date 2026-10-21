@@ -757,6 +757,17 @@ def to_entities(snapshot: MetadataSnapshot) -> list[AtlasEntity]:
     return entities
 
 
+@dataclass
+class _Pick:  # REQ-2122
+    """A picked table set aside from the bulk request: its own entity (for what it would have
+    sent), the picked entity's guid, the table's Provisa address and its columns' entities."""
+
+    entity: AtlasEntity
+    ref: str
+    uri: str
+    columns: list[AtlasEntity]
+
+
 class _GuidCounter:
     """Negative placeholder guids, which is how a bulk request refers to its own entities."""
 
@@ -1351,9 +1362,12 @@ class AtlasExport(MetadataExport):  # REQ-1069
             # for what is a model state.
             return result
         defs = classification_defs(snapshot)
+        # REQ-2122: picked tables publish onto the picked entities, after the bulk request.
+        entities, picks = self._set_aside_picked(entities, result)
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
+            await self._keep_locked_descriptions(client, headers, entities)
             await self._canonicalize_identity(client, headers, entities)
             if defs:
                 try:
@@ -1406,11 +1420,208 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.bindings[uri] = (guid, entity.attributes["qualifiedName"])
             if self.classification_merge:
                 # REQ-1389: bulk UPDATE ignores classifications — reconcile the provisa_*
-                # ones by read-merge, leaving steward-attached classifications alone.
-                await self._merge_classifications(client, headers, entities, result)
+                # ones by read-merge, leaving steward-attached classifications alone. A locked
+                # table's classifications are the catalog's (REQ-2122) and are not reconciled.
+                await self._merge_classifications(
+                    client,
+                    headers,
+                    [e for e in entities if e.attributes.get("provisaUri") not in self.locked],
+                    result,
+                )
+            for pick in picks:
+                await self._publish_to_picked(client, headers, pick, result)
         for entity in entities:
             result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
         return result
+
+    def _set_aside_picked(
+        self, entities: list[AtlasEntity], result: PublishResult
+    ) -> tuple[list[AtlasEntity], list[_Pick]]:
+        """Take each picked table, and its columns, out of the bulk request (REQ-2122).
+
+        Its picked entity is the customer's own and is updated in place after the request.
+        Lineage and data-product membership that would point at it are expressed through
+        Provisa's typed relationships, which a customer's table cannot fill, so each such
+        reference is dropped and reported against its asset.
+        """
+        picks: dict[str, _Pick] = {}
+        for entity in entities:
+            uri = entity.attributes.get("provisaUri")
+            if entity.kind == "table" and uri in self.picked:
+                ref, _name = self.picked[uri]
+                picks[entity.guid] = _Pick(entity, ref, uri, [])
+        if not picks:
+            return entities, []
+        kept: list[AtlasEntity] = []
+        for entity in entities:
+            if entity.guid in picks:
+                continue
+            owner = (entity.relationships.get("table") or {}).get("guid")
+            if entity.kind == "column" and owner in picks:
+                picks[owner].columns.append(entity)
+                continue
+            dropped = self._drop_references(entity, picks)
+            for reference in dropped:
+                result.errors.append(
+                    AssetError(
+                        asset=entity.asset,
+                        message=(
+                            f"{entity.kind} {entity.asset.fqn()}: its reference to the picked "
+                            f"asset of {reference} is not published, since Provisa's typed "
+                            "relationships cannot point at a catalog's own table"
+                        ),
+                    )
+                )
+            if entity.kind == "lineage" and not (
+                entity.attributes.get("inputs") and entity.attributes.get("outputs")
+            ):
+                continue
+            kept.append(entity)
+        return kept, list(picks.values())
+
+    @staticmethod
+    def _drop_references(entity: AtlasEntity, picks: dict[str, _Pick]) -> list[str]:
+        """Remove the entity's references to set-aside tables; the picked tables' names."""
+        dropped: list[str] = []
+        for key in ("inputs", "outputs"):
+            refs = entity.attributes.get(key)
+            if isinstance(refs, list):
+                keep = [r for r in refs if r.get("guid") not in picks]
+                dropped += [
+                    picks[r["guid"]].entity.asset.fqn() for r in refs if r.get("guid") in picks
+                ]
+                entity.attributes[key] = keep
+        for key, value in list(entity.relationships.items()):
+            refs = value if isinstance(value, list) else [value]
+            if not any(isinstance(r, dict) and r.get("guid") in picks for r in refs):
+                continue
+            dropped += [
+                picks[r["guid"]].entity.asset.fqn()
+                for r in refs
+                if isinstance(r, dict) and r.get("guid") in picks
+            ]
+            if isinstance(value, list):
+                entity.relationships[key] = [
+                    r for r in value if not (isinstance(r, dict) and r.get("guid") in picks)
+                ]
+            else:
+                del entity.relationships[key]
+        return dropped
+
+    async def _keep_locked_descriptions(
+        self, client: httpx.AsyncClient, headers: dict[str, str], entities: list[AtlasEntity]
+    ) -> None:
+        """A table locked to this catalog keeps the descriptions and classifications the catalog
+        holds (REQ-2122): its own entity and its columns are sent without them."""
+        if not self.locked:
+            return
+        locked_guids = {
+            e.guid
+            for e in entities
+            if e.kind == "table" and e.attributes.get("provisaUri") in self.locked
+        }
+        for entity in entities:
+            owner = (entity.relationships.get("table") or {}).get("guid")
+            if entity.guid in locked_guids or (entity.kind == "column" and owner in locked_guids):
+                entity.attributes.pop("description", None)
+                entity.attributes.pop("userDescription", None)
+                entity.classifications = []
+
+    async def _publish_to_picked(
+        self, client: httpx.AsyncClient, headers: dict[str, str], pick: _Pick, result: PublishResult
+    ) -> None:
+        """Update a picked entity in place (REQ-2122): its user description, the descriptions of
+        the columns it shares with the table and Provisa's classifications (none of them for a
+        locked table), and the table's Provisa address in its custom attributes."""
+        base = self.entity_bulk_path.removesuffix("/bulk")
+        response = await client.get(self._url(f"{base}/guid/{pick.ref}"), headers=headers)
+        if response.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=pick.entity.asset,
+                    message=(
+                        f"table {pick.entity.asset.fqn()}: the picked entity {pick.ref} could not "
+                        f"be read (HTTP {response.status_code}): {response.text[:300]}"
+                    ),
+                )
+            )
+            return
+        body = response.json()
+        live = body["entity"]
+        referred = body.get("referredEntities") or {}
+        locked = pick.uri in self.locked
+        updates: list[tuple[str, str]] = []
+        if not locked:
+            updates.append((pick.ref, pick.entity.attributes.get("description") or ""))
+            ours = {
+                str(c.attributes.get("name", "")).lower(): c.attributes.get("description") or ""
+                for c in pick.columns
+            }
+            relations = live.get("relationshipAttributes") or {}
+            for column_ref in relations.get("columns") or []:
+                column = referred.get(column_ref.get("guid", "")) or {}
+                name = str((column.get("attributes") or {}).get("name", "")).lower()
+                if name in ours:
+                    updates.append((column["guid"], ours[name]))
+        for guid, description in updates:
+            sent = await client.put(
+                self._url(f"{base}/guid/{guid}"),
+                params={"name": "userDescription"},
+                content=json.dumps(description),
+                headers=headers,
+            )
+            if sent.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=pick.entity.asset,
+                        message=(
+                            f"table {pick.entity.asset.fqn()}: the picked entity refused a "
+                            f"description (HTTP {sent.status_code}): {sent.text[:300]}"
+                        ),
+                    )
+                )
+        custom = {**(live.get("customAttributes") or {}), "provisaUri": pick.uri}
+        addressed = await client.post(
+            self._url(base),
+            json={
+                "entity": {
+                    "guid": live["guid"],
+                    "typeName": live["typeName"],
+                    "attributes": {"qualifiedName": live["attributes"]["qualifiedName"]},
+                    "customAttributes": custom,
+                }
+            },
+            headers=headers,
+        )
+        if addressed.status_code >= 400:
+            result.errors.append(
+                AssetError(
+                    asset=pick.entity.asset,
+                    message=(
+                        f"table {pick.entity.asset.fqn()}: the picked entity refused its Provisa "
+                        f"address (HTTP {addressed.status_code}): {addressed.text[:300]}"
+                    ),
+                )
+            )
+        held = {c["typeName"] for c in live.get("classifications") or []}
+        wanted = [c for c in pick.entity.classifications if c["typeName"] not in held]
+        if wanted and not locked:
+            classified = await client.post(
+                self._url(f"{base}/guid/{pick.ref}/classifications"), json=wanted, headers=headers
+            )
+            if classified.status_code >= 400:
+                result.errors.append(
+                    AssetError(
+                        asset=pick.entity.asset,
+                        message=(
+                            f"table {pick.entity.asset.fqn()}: the picked entity refused its "
+                            f"classifications (HTTP {classified.status_code}): "
+                            f"{classified.text[:300]}"
+                        ),
+                    )
+                )
+        result.bindings[pick.uri] = (live["guid"], live["attributes"]["qualifiedName"])
+        result.published["table"] = result.published.get("table", 0) + 1
 
     async def _ensure_type_system(self, client: httpx.AsyncClient, headers: dict[str, str]) -> None:
         """Register the provisa_* entity/relationship typedefs (REQ-1388). Atlan overrides
@@ -1548,11 +1759,7 @@ class AtlasReader(CatalogReader):  # REQ-2122
     api_prefix = "/api/atlas/v2"
 
     def _export(self) -> AtlasExport:
-        from provisa.core.models import CatalogExport
-
-        return type(self).export_class(
-            self._catalog.export_target(CatalogExport(catalog=self._catalog.id))
-        )
+        return type(self).export_class(self._target())
 
     def _url(self, path: str) -> str:
         return f"{self._catalog.endpoint.rstrip('/')}{self.api_prefix}{path}"

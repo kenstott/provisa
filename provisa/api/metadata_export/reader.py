@@ -31,7 +31,7 @@ from difflib import SequenceMatcher
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from provisa.core.models import CatalogConnection
+    from provisa.core.models import CatalogConnection, MetadataExportTarget
 
 
 class CatalogReaderNotAvailable(RuntimeError):  # REQ-2122
@@ -81,8 +81,19 @@ class CatalogReader(ABC):  # REQ-2122
 
     provider_name: str
 
-    def __init__(self, catalog: CatalogConnection) -> None:
+    def __init__(self, catalog: CatalogConnection | MetadataExportTarget) -> None:
+        # An export reads the catalog it publishes to through its own target, which holds the
+        # same connection fields.
         self._catalog = catalog
+
+    def _target(self) -> MetadataExportTarget:
+        """The connection as an export target, for a reader that signs in through its export's
+        adapter: the target itself, or the catalog with no export settings."""
+        from provisa.core.models import CatalogExport, MetadataExportTarget
+
+        if isinstance(self._catalog, MetadataExportTarget):
+            return self._catalog
+        return self._catalog.export_target(CatalogExport(catalog=self._catalog.id))
 
     @abstractmethod
     async def search(self, text: str, limit: int) -> list[CatalogAsset]:

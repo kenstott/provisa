@@ -8,15 +8,16 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1068 is outbound-only, and that is a structural property of the package.
+"""The export port is outbound, and that is a structural property of the package.
 
-Provisa publishes governance metadata to external catalogs and never reads one back as the
-source of truth. A future adapter that added a ``fetch_from_catalog`` helper would violate
-the requirement without breaking any behavioural test, so the constraint is asserted
-against the source tree itself.
+REQ-1068's export publishes governance metadata to external catalogs. Reading a catalog back
+is REQ-2122's, through its own port (``reader.CatalogReader``: ``search`` and ``read``), which a
+steward's pick, refresh, import or lock drives; never through a helper of the export. An adapter
+that added a ``fetch_from_catalog`` beside its publish would blur the two without breaking any
+behavioural test, so the constraint is asserted against the source tree itself.
 """
 
-# Requirements: REQ-1068
+# Requirements: REQ-1068, REQ-2122
 
 from __future__ import annotations
 
@@ -52,7 +53,8 @@ def test_no_inbound_entry_points(path: Path):
         and node.name.lstrip("_").startswith(_INBOUND_PREFIXES)
     ]
     assert not offenders, (
-        f"{path.name} defines inbound entry point(s) {offenders}; REQ-1068 is outbound only"
+        f"{path.name} defines inbound entry point(s) {offenders}; reading a catalog is the "
+        "CatalogReader port's (search, read)"
     )
 
 

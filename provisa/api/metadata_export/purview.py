@@ -36,7 +36,8 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
-from provisa.api.metadata_export.atlas import PURVIEW_SCOPE, AtlasExport
+from provisa.api.metadata_export.atlas import PURVIEW_SCOPE, AtlasExport, AtlasReader, _is_table
+from provisa.api.metadata_export.reader import CatalogAsset, register_reader
 from provisa.api.metadata_export.provider import AssetError, PublishResult
 from provisa.api.metadata_export.registry import register_provider
 
@@ -302,3 +303,47 @@ class PurviewExport(AtlasExport):  # REQ-2118
             created.raise_for_status()
             assets[guid] = created.json()["id"]
         return assets
+
+
+@register_reader
+class PurviewReader(AtlasReader):  # REQ-2122
+    """Reads the Purview Data Map: its discovery query finds tables, and a table's entity is read
+    through the Atlas API the export publishes to, signed in with the tenant's Entra app."""
+
+    provider_name = "purview"
+
+    def asset_url(self, ref: str, name: str) -> str | None:
+        # Purview's portal addresses an asset through the account's own page, which the Data
+        # Map endpoint does not name.
+        del ref, name
+        return None
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        export = self._export()
+        endpoint = self._catalog.endpoint.rstrip("/")
+        # The Data Map's own mount takes the GA version; the classic catalog mount, its preview.
+        version = "2023-09-01" if endpoint.endswith("/datamap") else "2022-03-01-preview"
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            response = await client.post(
+                f"{endpoint}/api/search/query",
+                params={"api-version": version},
+                json={"keywords": text or "*", "limit": limit, "filter": {"objectType": "Tables"}},
+                headers=await export._headers(client),
+            )
+        response.raise_for_status()
+        return [
+            self._asset(
+                hit["id"],
+                hit.get("entityType", ""),
+                {
+                    "qualifiedName": hit.get("qualifiedName"),
+                    "name": hit.get("name"),
+                    "description": hit.get("description") or hit.get("userDescription"),
+                },
+            )
+            for hit in response.json().get("value") or []
+            if _is_table(hit.get("entityType", ""))
+        ]
+
+
+PurviewReader.export_class = PurviewExport

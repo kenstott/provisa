@@ -182,7 +182,7 @@ async def scheduled(
     return counts
 
 
-def import_job_id(org_id: str, catalog_id: str) -> str:
+def scheduled_job_id(org_id: str, catalog_id: str) -> str:
     return f"catalog_import:{org_id}:{catalog_id}"
 
 
@@ -234,8 +234,8 @@ async def register_org_jobs(scheduler: "AsyncIOScheduler", org_id: str) -> None:
         catalogs = catalogs_config(await stored_settings()).catalogs
     finally:
         reset_current_org(token)
-    prefix = import_job_id(org_id, "")
-    wanted = {import_job_id(org_id, c.id): c for c in catalogs if c.import_cron}
+    prefix = scheduled_job_id(org_id, "")
+    wanted = {scheduled_job_id(org_id, c.id): c for c in catalogs if c.import_cron}
     for job in scheduler.get_jobs():
         if job.id.startswith(prefix) and job.id not in wanted:
             scheduler.remove_job(job.id)

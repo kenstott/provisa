@@ -37,6 +37,7 @@ from typing import TYPE_CHECKING
 import httpx
 
 from provisa.api.metadata_export.atlas import (
+    AtlasReader,
     AtlasEntity,
     AtlasExport,
     _GuidCounter,
@@ -44,6 +45,7 @@ from provisa.api.metadata_export.atlas import (
 )
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import CatalogAsset, register_reader
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import GlossaryTermAsset, MetadataSnapshot
@@ -388,3 +390,39 @@ class AtlanExport(AtlasExport):  # REQ-1069
                 if not resolved.startswith("-"):
                     result.bindings[uri] = (resolved, entity.attributes["qualifiedName"])
             result.published[entity.kind] = result.published.get(entity.kind, 0) + 1
+
+
+@register_reader
+class AtlanReader(AtlasReader):  # REQ-2122
+    """Reads an Atlan tenant's tables: its index search finds them, and a table's entity is read
+    through the Atlas-shaped entity API the export publishes to."""
+
+    provider_name = "atlan"
+    api_prefix = "/api/meta"
+
+    def asset_url(self, ref: str, name: str) -> str | None:
+        del name
+        return f"{self._catalog.endpoint.rstrip('/')}/assets/{ref}/overview"
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        export = self._export()
+        query: dict = {"bool": {"filter": [{"term": {"__typeName.keyword": "Table"}}]}}
+        if text:
+            query["bool"]["must"] = [{"match": {"name": text}}]
+        async with httpx.AsyncClient(timeout=self._catalog.timeout_seconds) as client:
+            response = await client.post(
+                self._url("/search/indexsearch"),
+                json={
+                    "dsl": {"from": 0, "size": limit, "query": query},
+                    "attributes": ["qualifiedName", "name", "description", "userDescription"],
+                },
+                headers=await export._headers(client),
+            )
+        response.raise_for_status()
+        return [
+            self._asset(e["guid"], e["typeName"], e.get("attributes") or {})
+            for e in response.json().get("entities") or []
+        ]
+
+
+AtlanReader.export_class = AtlanExport

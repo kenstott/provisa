@@ -294,6 +294,22 @@ The pick is stored as the table's link to that catalog: the same link an export 
 per table per catalog is shared by export and import. The next export updates the picked asset in
 place, writing the table's Provisa address into it, rather than creating another asset.
 
+How the export writes a picked table, by catalog:
+
+| Catalog | What the export writes onto the picked asset |
+| --- | --- |
+| `openmetadata` | The table's description and its shared columns' descriptions, Provisa's tags, and `sourceUrl` set to the table's Provisa address. Lineage and data products address the picked table. |
+| `datahub` | The description and column descriptions in the dataset's editable aspects (`editableDatasetProperties`, `editableSchemaMetadata`), leaving what ingestion wrote; `provisaUri` in its custom properties; Provisa's tags. Its owners stay the customer's. |
+| `atlas`, `purview`, `atlan` | The `userDescription` of the table and of its shared columns, Provisa's classifications, and `provisaUri` in the entity's custom attributes. No Provisa table entity is published for it. Lineage and data-product membership that would point at it cannot be expressed through Provisa's typed relationships, so each is not published and is reported as a per-asset error. |
+| `collibra` | The Description attribute of the asset and of its shared columns, and the `Provisa URI` attribute. Data products group the picked asset. |
+| `unity_catalog` | `COMMENT` on the table and its shared columns, and the table property `provisa.uri`. |
+| `snowflake_horizon` | The table's and its shared columns' comments, and the `PROVISA_URI` tag (in the landing database's `PROVISA_GOVERNANCE` schema). |
+| `dataplex` | The data product lists the picked BigQuery table as the member's asset. |
+| `datazone` | A revision of the picked asset: its own forms kept, Provisa's table form (with the Provisa address) added, and the table's description. The data product lists the picked asset. |
+
+Columns are matched by name, case aside. A table locked to the catalog has none of its
+descriptions, tags or classifications written; its Provisa address still is.
+
 A linked table's editor shows when its descriptions were last imported, from which catalog, and
 offers **Refresh from catalog**. Imported descriptions stay editable.
 

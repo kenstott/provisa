@@ -211,6 +211,8 @@ REFERENCES: tuple[Reference, ...] = (
     _part("fake_adequacy_checks", "table_id", "table"),
     _part("file_source_mtimes", "table_id", "table"),
     _part("glossary_term_refs", "table_id", "table"),
+    # REQ-2122: what was imported into a table from its catalogs, and its lock, go with it.
+    _part("catalog_imports", "table_id", "table"),
     _part("table_meta_links", "source_table_id", "table"),
     _part("table_meta_links", "target_table_id", "table"),
     _part("tag_assignments", "table_id", "table"),

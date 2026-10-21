@@ -18,6 +18,7 @@
 import { useTranslation } from "react-i18next";
 import { Anchor, Button, Group, Paper, Select, Stack, Text } from "@mantine/core";
 import { ExternalLink, Lock, RefreshCw } from "lucide-react";
+import { FormField, FormLayout } from "../../components/form/FormLayout";
 import type { TableCatalog } from "../../api/catalogLinks";
 
 export function TableCatalogPanel({
@@ -79,25 +80,25 @@ export function TableCatalogPanel({
             )}
           </Group>
         ))}
-        <Group gap="sm" align="flex-end">
-          <Select
-            label={t("catalogLink.lockLabel")}
-            description={t("catalogLink.lockHelp")}
-            size="xs"
-            w={320}
-            data={[
-              { value: "", label: t("catalogLink.lockNone") },
-              ...catalogs
-                .filter((c) => c.link)
-                .map((c) => ({ value: c.id, label: `${c.id} · ${c.provider}` })),
-            ]}
-            value={locked?.id ?? ""}
-            disabled={locking}
-            onChange={(v) => onLock(v ? v : null)}
-            allowDeselect={false}
-            data-testid="table-catalog-lock"
-          />
-        </Group>
+        <FormLayout>
+          <FormField size="medium" help={t("catalogLink.lockHelp")}>
+            <Select
+              label={t("catalogLink.lockLabel")}
+              size="xs"
+              data={[
+                { value: "", label: t("catalogLink.lockNone") },
+                ...catalogs
+                  .filter((c) => c.link)
+                  .map((c) => ({ value: c.id, label: `${c.id} · ${c.provider}` })),
+              ]}
+              value={locked?.id ?? ""}
+              disabled={locking}
+              onChange={(v) => onLock(v ? v : null)}
+              allowDeselect={false}
+              data-testid="table-catalog-lock"
+            />
+          </FormField>
+        </FormLayout>
         {locked && (
           <Group gap={6} data-testid="table-catalog-locked">
             <Lock size={14} />

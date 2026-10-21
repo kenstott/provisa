@@ -68,6 +68,12 @@ from provisa.api.metadata_export.provider import (
     PublishResult,
 )
 from provisa.api.metadata_export.registry import register_provider
+from provisa.api.metadata_export.reader import (
+    AssetMetadata,
+    CatalogAsset,
+    CatalogReader,
+    register_reader,
+)
 from provisa.federation.engine import configured_engine_url
 from provisa.federation.snowflake_runtime import SnowflakeFederationRuntime
 from snowflake.connector.errors import ProgrammingError
@@ -571,14 +577,67 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             )
             if published:
                 result.published["data_products"] = published
-            commented = self._publish_descriptions(
-                runtime, tables, governance_tags, result, addresses
-            )
+            # REQ-2122: a table locked to this catalog keeps the descriptions it holds, and a
+            # picked table is described on the table the steward picked.
+            own = [
+                t
+                for t in tables
+                if t.semantic_uri not in self.locked and t.semantic_uri not in self.picked
+            ]
+            commented = self._publish_descriptions(runtime, own, governance_tags, result, addresses)
             if commented:
                 result.published["descriptions"] = commented
+            for table in tables:
+                if table.semantic_uri in self.picked:
+                    self._publish_to_picked(runtime, table, result, addresses)
         finally:
             runtime.close()
         return result
+
+    def _publish_to_picked(
+        self,
+        runtime: SnowflakeFederationRuntime,
+        table: "TableAsset",
+        result: PublishResult,
+        addresses: PublishedAddresses,
+    ) -> None:
+        """Describe the Snowflake table a steward picked for ``table`` (REQ-2122): its comment and
+        its shared columns' comments (none of them for a table locked here), and the table's
+        Provisa address as the ``PROVISA_URI`` tag, in the governance tags' schema."""
+        ref, _name = self.picked[table.semantic_uri]
+        fq = ".".join(f'"{p}"' for p in ref.split("."))
+        tag = f'"{addresses.landing_database}"."{_TAGS_SCHEMA}"."PROVISA_URI"'
+        statements = [
+            f'CREATE SCHEMA IF NOT EXISTS "{addresses.landing_database}"."{_TAGS_SCHEMA}";',
+            f"CREATE TAG IF NOT EXISTS {tag};",
+            f"ALTER TABLE {fq} SET TAG {tag} = {_literal(table.semantic_uri)};",
+        ]
+        cur = runtime.connection.cursor()
+        try:
+            if table.semantic_uri not in self.locked:
+                statements.append(f"ALTER TABLE {fq} SET COMMENT = {_literal(table.description)};")
+                cur.execute(f"SHOW COLUMNS IN TABLE {fq}")
+                names = [d[0] for d in cur.description]
+                theirs = {
+                    str(row[names.index("column_name")]).lower(): row[names.index("column_name")]
+                    for row in cur.fetchall()
+                }
+                for column in table.columns:
+                    name = theirs.get(column.name.lower())
+                    if name is not None:
+                        statements.append(
+                            f'ALTER TABLE {fq} MODIFY COLUMN "{name}" COMMENT '
+                            f"{_literal(column.description)};"
+                        )
+            for stmt in statements:
+                cur.execute(stmt)
+        except ProgrammingError as exc:
+            result.errors.append(AssetError(table.ref, f"the picked table {ref}: {exc}"))
+            return
+        finally:
+            cur.close()
+        result.bindings[table.semantic_uri] = (ref, ref)
+        result.published["table"] = result.published.get("table", 0) + 1
 
     def _publish_descriptions(
         self,
@@ -754,3 +813,79 @@ class SnowflakeHorizonExport(MetadataExport):  # REQ-1635
             runtime.run_arrow("SELECT 1")
         finally:
             runtime.close()
+
+
+@register_reader
+class SnowflakeHorizonReader(CatalogReader):  # REQ-2122
+    """Reads Snowflake's tables through the Snowflake engine Provisa runs on: their comments,
+    column comments, tag references and owning roles. Snowflake keeps no glossary terms."""
+
+    provider_name = "snowflake_horizon"
+
+    def _rows(self, sql: str) -> list[dict[str, Any]]:
+        url = configured_engine_url()
+        if not url or not url.startswith("snowflake://"):
+            raise RuntimeError("Snowflake Horizon is read only when Snowflake is the engine")
+        runtime = SnowflakeFederationRuntime(url=url)
+        try:
+            cur = runtime.connection.cursor()
+            try:
+                cur.execute(sql)
+                names = [d[0].lower() for d in cur.description]
+                return [dict(zip(names, row, strict=True)) for row in cur.fetchall()]
+            finally:
+                cur.close()
+        finally:
+            runtime.close()
+
+    @staticmethod
+    def _asset(row: dict[str, Any]) -> CatalogAsset:
+        physical = (row["database_name"], row["schema_name"], row["name"])
+        ref = ".".join(physical)
+        return CatalogAsset(
+            ref=ref, name=ref, physical=physical, description=row.get("comment") or ""
+        )
+
+    async def search(self, text: str, limit: int) -> list[CatalogAsset]:
+        import asyncio
+
+        pattern = _literal(f"%{text}%")
+        rows = await asyncio.to_thread(
+            self._rows, f"SHOW TABLES LIKE {pattern} IN ACCOUNT LIMIT {int(limit)}"
+        )
+        return [self._asset(r) for r in rows]
+
+    async def read(self, ref: str) -> AssetMetadata:
+        import asyncio
+
+        database, schema, table = ref.split(".")
+        fq = f'"{database}"."{schema}"."{table}"'
+
+        def _read() -> AssetMetadata:
+            (row,) = self._rows(
+                f'SHOW TABLES LIKE {_literal(table)} IN SCHEMA "{database}"."{schema}"'
+            )
+            columns = self._rows(f"SHOW COLUMNS IN TABLE {fq}")
+            info = f'"{database}".INFORMATION_SCHEMA'
+            target = _literal(f"{database}.{schema}.{table}")
+            table_tags = self._rows(
+                f"SELECT tag_name FROM TABLE({info}.TAG_REFERENCES({target}, 'table'))"
+            )
+            column_tags = self._rows(
+                "SELECT column_name, tag_name FROM TABLE("
+                f"{info}.TAG_REFERENCES_ALL_COLUMNS({target}, 'table'))"
+            )
+            tagged: dict[str, tuple[str, ...]] = {}
+            for c in column_tags:
+                tagged[c["column_name"]] = (*tagged.get(c["column_name"], ()), c["tag_name"])
+            described = {c["column_name"]: c.get("comment") or "" for c in columns}
+            return AssetMetadata(
+                asset=self._asset(row),
+                description=row.get("comment") or "",
+                columns=described,
+                owners=(row["owner"],) if row.get("owner") else (),
+                tags=tuple(t["tag_name"] for t in table_tags),
+                column_tags=tagged,
+            )
+
+        return await asyncio.to_thread(_read)

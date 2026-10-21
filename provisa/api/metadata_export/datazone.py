@@ -276,6 +276,19 @@ class DataZoneExport(MetadataExport):  # REQ-2118
                 }
             ]
             name = table.aliases[0] if table.aliases else table.name
+            if table.semantic_uri in self.picked:
+                # REQ-2122: the member is the asset a steward picked for it.
+                asset = self._revise_picked(client, table, forms[0])
+                result.bindings[table.semantic_uri] = self.picked[table.semantic_uri]
+                client.create_listing_change_set(
+                    **self._scope(),
+                    entityIdentifier=asset["id"],
+                    entityType="ASSET",
+                    entityRevision=asset["revision"],
+                    action="PUBLISH",
+                )
+                items.append({"itemType": "ASSET", "identifier": asset["id"]})
+                continue
             asset = self._revise(
                 client,
                 assets.get(table.semantic_uri),
@@ -348,6 +361,31 @@ class DataZoneExport(MetadataExport):  # REQ-2118
         )
         return len(items)
 
+    def _revise_picked(self, client: Any, table: "TableAsset", provisa_form: dict) -> dict:
+        """A revision of the asset a steward picked for ``table`` (REQ-2122): its own forms kept,
+        Provisa's table form added (the table's Provisa address among it), and the table's
+        description, unless the table is locked to this catalog."""
+        ref, _name = self.picked[table.semantic_uri]
+        live = client.get_asset(**self._scope(), identifier=ref)
+        forms = [
+            {
+                "formName": f["formName"],
+                "typeIdentifier": f["typeName"],
+                "typeRevision": f["typeRevision"],
+                "content": f.get("content") or "{}",
+            }
+            for f in live.get("formsOutput") or []
+            if f["formName"] != provisa_form["formName"]
+        ]
+        locked = table.semantic_uri in self.locked
+        return client.create_asset_revision(
+            **self._scope(),
+            identifier=ref,
+            name=live["name"],
+            description=(live.get("description") or "") if locked else table.description,
+            formsInput=[*forms, provisa_form],
+        )
+
     async def health(self) -> None:
         def _check() -> None:
             client = self._client()
@@ -393,11 +431,7 @@ class DataZoneReader(CatalogReader):  # REQ-2122
     provider_name = "datazone"
 
     def _client(self) -> Any:
-        from provisa.core.models import CatalogExport
-
-        export = DataZoneExport(
-            self._catalog.export_target(CatalogExport(catalog=self._catalog.id))
-        )
+        export = DataZoneExport(self._target())
         return export._client()
 
     def _scope(self) -> dict[str, str]:

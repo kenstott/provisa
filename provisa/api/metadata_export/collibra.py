@@ -671,6 +671,9 @@ class CollibraExport(MetadataExport):  # REQ-1069
             # domain — created first, since the import rejects rows naming an absent domain.
             if snapshot.glossary_terms and await self._ensure_glossary_domain(client, result):
                 rows = rows + glossary_rows(snapshot, self.community, self.glossary_domain)
+            # REQ-2122: picked tables publish onto the picked assets; locked ones keep their
+            # catalog's descriptions.
+            rows = await self._retarget(client, snapshot, rows, result)
             # REQ-1389: rebind by stored UUID happens BEFORE the name-keyed import.
             await self._rename_rebound_assets(client, rows, result)
             response = await client.post(
@@ -711,6 +714,119 @@ class CollibraExport(MetadataExport):  # REQ-1069
         async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()
+
+    async def _asset_identifier(self, client: httpx.AsyncClient, asset_id: str) -> dict[str, Any]:
+        """A live asset's import identifier: its name, its domain and the domain's community."""
+        asset = await self._get_json(client, f"/rest/2.0/assets/{asset_id}")
+        domain = await self._get_json(client, f"/rest/2.0/domains/{asset['domain']['id']}")
+        return {
+            "name": asset["name"],
+            "domain": {"name": domain["name"], "community": {"name": domain["community"]["name"]}},
+            "_type": asset["type"]["name"],
+        }
+
+    async def _get_json(self, client: httpx.AsyncClient, path: str, **params: Any) -> Any:
+        response = await client.get(self._url(path), params=params, headers=self._headers())
+        response.raise_for_status()
+        return response.json()
+
+    async def _retarget(
+        self,
+        client: httpx.AsyncClient,
+        snapshot: MetadataSnapshot,
+        rows: list[dict[str, Any]],
+        result: PublishResult,
+    ) -> list[dict[str, Any]]:
+        """Publish picked tables onto the assets stewards picked, and keep a locked table's
+        descriptions as the catalog holds them (REQ-2122).
+
+        A picked table's own row and its columns' rows are not imported. The picked asset takes
+        the table's Provisa address and, unless the table is locked here, its description; the
+        picked asset's columns take the descriptions of the table's columns of the same name; a
+        data product groups the picked asset in place of a table of the export's own. A locked
+        table's own rows are sent without their Description, which the import then leaves as
+        the catalog holds it.
+        """
+        by_fqn = {t.ref.fqn(): t for t in snapshot.tables}
+        picked = {fqn: t for fqn, t in by_fqn.items() if t.semantic_uri in self.picked}
+        locked = {fqn for fqn, t in by_fqn.items() if t.semantic_uri in self.locked}
+        if not picked and not locked:
+            return rows
+        targets: dict[str, dict[str, Any]] = {}
+        added: list[dict[str, Any]] = []
+        for fqn, table in picked.items():
+            ref, _name = self.picked[table.semantic_uri]
+            try:
+                identifier = await self._asset_identifier(client, ref)
+                type_name = identifier.pop("_type")
+                reader = CollibraReader(self._config)
+                meta = await reader.read(ref)
+            except (httpx.HTTPError, KeyError) as exc:
+                result.errors.append(
+                    AssetError(asset=table.ref, message=f"the picked asset {ref}: {exc}")
+                )
+                continue
+            targets[fqn] = identifier
+            result.bindings[table.semantic_uri] = (ref, identifier["name"])
+            attributes: dict[str, Any] = {URI_ATTRIBUTE: [{"value": table.semantic_uri}]}
+            if fqn not in locked:
+                attributes[DESCRIPTION_ATTRIBUTE] = [{"value": table.description}]
+            added.append(
+                {
+                    "resourceType": "Asset",
+                    "identifier": identifier,
+                    "type": {"name": type_name},
+                    "attributes": attributes,
+                }
+            )
+            if fqn in locked:
+                continue
+            ours = {c.name.lower(): c.description for c in table.columns}
+            prefix = identifier["name"]
+            separator = ">" if ">" in prefix else "."
+            for name in meta.columns:
+                if name.lower() not in ours:
+                    continue
+                added.append(
+                    {
+                        "resourceType": "Asset",
+                        "identifier": {**identifier, "name": f"{prefix}{separator}{name}"},
+                        "type": {"name": COLUMN_TYPE},
+                        "attributes": {DESCRIPTION_ATTRIBUTE: [{"value": ours[name.lower()]}]},
+                    }
+                )
+        set_aside = {
+            json.dumps(_identifier(fqn, self.community, self.domain), sort_keys=True)
+            for fqn in picked
+        }
+        kept: list[dict[str, Any]] = []
+        for row in rows:
+            key = json.dumps(row["identifier"], sort_keys=True)
+            parent = (row.get("relations") or {}).get(f"{COLUMN_TO_TABLE_RELATION}:TARGET") or []
+            if key in set_aside or any(json.dumps(p, sort_keys=True) in set_aside for p in parent):
+                continue
+            row_fqn = row["name"]
+            owner_fqn = ".".join(row_fqn.split(".")[:3])
+            if row_fqn in locked or (row["type"]["name"] == COLUMN_TYPE and owner_fqn in locked):
+                row = {
+                    **row,
+                    "attributes": {
+                        k: v for k, v in row["attributes"].items() if k != DESCRIPTION_ATTRIBUTE
+                    },
+                }
+            grouped = (row.get("relations") or {}).get(f"{DATA_PRODUCT_TABLE_RELATION}:TARGET")
+            if grouped:
+                row = {
+                    **row,
+                    "relations": {
+                        **row["relations"],
+                        f"{DATA_PRODUCT_TABLE_RELATION}:TARGET": [
+                            targets.get(m["name"], m) for m in grouped
+                        ],
+                    },
+                }
+            kept.append(row)
+        return kept + added
 
 
 #: The public ids of the operating model's types a reader follows: a table's Description, the

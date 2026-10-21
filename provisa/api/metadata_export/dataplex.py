@@ -154,6 +154,16 @@ def product_body(product: "DataProductAsset") -> dict[str, Any]:
     }
 
 
+def picked_resource(entry_name: str) -> str:
+    """The resource of a picked Dataplex entry, from its name: an entry of a BigQuery table is
+    named ``.../entries/bigquery.googleapis.com/projects/<p>/datasets/<d>/tables/<t>``, the
+    resource's own path (REQ-2122)."""
+    _, _, resource = entry_name.partition("/entries/")
+    if not resource:
+        raise ValueError(f"{entry_name!r} is not the name of a Dataplex entry")
+    return f"//{resource}"
+
+
 @register_provider
 class DataplexExport(MetadataExport):  # REQ-2118
     """Publishes each data product as a Google Dataplex data product with its members as assets."""
@@ -213,13 +223,20 @@ class DataplexExport(MetadataExport):  # REQ-2118
             for product in snapshot.data_products:
                 assets: dict[str, "TableAsset | None"] = {}
                 for member in product.members:
-                    resource = member_resource(
-                        member,
-                        sources=sources,
-                        tables=tables,
-                        engine_project=engine_project,
-                        export_views=self.export_views,
-                    )
+                    table = tables.get(member.fqn())
+                    picked = self.picked.get(table.semantic_uri) if table is not None else None
+                    if picked is not None and table is not None:
+                        # REQ-2122: the member is the BigQuery table a steward picked for it.
+                        resource = picked_resource(picked[0])
+                        result.bindings[table.semantic_uri] = picked
+                    else:
+                        resource = member_resource(
+                            member,
+                            sources=sources,
+                            tables=tables,
+                            engine_project=engine_project,
+                            export_views=self.export_views,
+                        )
                     if resource is None:
                         result.errors.append(
                             AssetError(
@@ -348,9 +365,7 @@ class DataplexReader(CatalogReader):  # REQ-2122
     provider_name = "dataplex"
 
     def _export(self) -> DataplexExport:
-        from provisa.core.models import CatalogExport
-
-        return DataplexExport(self._catalog.export_target(CatalogExport(catalog=self._catalog.id)))
+        return DataplexExport(self._target())
 
     @staticmethod
     def _asset(entry: dict[str, Any]) -> CatalogAsset:
