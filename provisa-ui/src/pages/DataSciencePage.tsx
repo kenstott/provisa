@@ -62,6 +62,7 @@ import { reportRun, summarise, type RunReport } from "../dataScience/runReports"
 import { useNamedDemo } from "../context/NamedDemoContext";
 import { useNavPayload } from "../hooks/useNavPayload";
 import { useCapability } from "../hooks/useCapability";
+import { useScreenEditor } from "../mcp/screenState";
 import { useLocation } from "react-router-dom";
 import type { FromWorker, PyodideManifest, RunValue, ToWorker } from "../dataScience/protocol";
 
@@ -482,6 +483,8 @@ function PythonTab({
   const [outputs, setOutputs] = useState<Record<string, ScriptOutput>>({});
   const activeScript = scripts.tabs.find((s) => s.id === scripts.activeId) ?? scripts.tabs[0];
   const code = activeScript.code;
+  // REQ-2115: Polly's read_screen reads the open script and its tab from here.
+  useScreenEditor("/python", { language: "python", text: code, tab: activeScript.title });
   const output = outputs[activeScript.id] ?? null;
   const setCode = useCallback((next: string) => {
     setScripts((prev) => ({

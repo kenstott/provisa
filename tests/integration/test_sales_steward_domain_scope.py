@@ -159,6 +159,10 @@ async def test_a_sales_steward_governs_sales_and_is_refused_finance(plane):
     async with plane.db.acquire() as conn:
         orders = {c["column_name"]: c for c in await load_columns(conn, plane.ids["orders"])}
         invoices = {c["column_name"]: c for c in await load_columns(conn, plane.ids["invoices"])}
+    # REQ-2094: a mask entry carries its why -- who decided it, when, and the evidence then.
+    [entry] = orders["amount"]["masks"]
+    why = entry.pop("why")
+    assert set(why) == {"decided_by", "decided_at", "evidence"}, why
     assert orders["amount"]["masks"] == [
         {
             "to": ["*"],
