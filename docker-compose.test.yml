@@ -862,7 +862,8 @@ services:
   # a second run against an already-migrated schema is a no-op.
   openmetadata:
     restart: unless-stopped
-    image: openmetadata/server:1.5.11
+    # REQ-2118: 2.0.5 -- ODCS contract import (PUT /v1/dataContracts/odcs) needs 2.0.3 or later.
+    image: docker.getcollate.io/openmetadata/server:2.0.5
     depends_on:
       openmetadata-db:
         condition: service_healthy
@@ -875,7 +876,7 @@ services:
       - -c
       # The start script lives at the image root, not in the /opt/openmetadata workdir the ops
       # script sits under — the image's own CMD is `/openmetadata-start.sh`.
-      - ./bootstrap/openmetadata-ops.sh -d migrate && /openmetadata-start.sh
+      - ./bootstrap/openmetadata-ops.sh migrate && /openmetadata-start.sh
     environment:
       DB_HOST: openmetadata-db
       DB_PORT: 3306

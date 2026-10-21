@@ -28,6 +28,8 @@ from provisa.api.metadata_export.openmetadata import CLASSIFICATION
 from tests.integration.metadata_export_server import (
     MASK_PATTERN,
     ORDERS_AMOUNT_DESCRIPTION,
+    PRODUCT,
+    PRODUCT_FIELDS,
     RLS_FILTER,
     SCHEMA,
     SOURCE,
@@ -172,3 +174,33 @@ async def test_no_rule_body_is_stored_in_the_external_catalog(published, token):
     assert MASK_PATTERN not in stored
     assert RLS_FILTER not in stored
     assert "current_setting" not in stored
+
+
+async def test_the_data_product_holds_its_members(published, token):
+    """REQ-1634, REQ-2118: OpenMetadata's own data product, in its domain, with every member."""
+    product = await _get(token, f"/api/v1/dataProducts/name/{PRODUCT}", fields="assets,domains")
+    assert [d["name"] for d in product["domains"]] == ["sales"]
+    assert {a["fullyQualifiedName"] for a in product["assets"]} == {
+        ORDERS_FQN,
+        f"{SOURCE}.default.{SCHEMA}.customers",
+        TOTALS_FQN,
+    }
+    assert product["description"].startswith(PRODUCT_FIELDS["purpose"])
+    assert f"Limitations: {PRODUCT_FIELDS['limitations']}" in product["description"]
+
+
+async def test_each_member_carries_its_odcs_contract(published, token):
+    """REQ-2118: the member's ODCS 3.1 contract, imported onto its table, read back out of
+    OpenMetadata as ODCS."""
+    orders = await _get(token, f"/api/v1/tables/name/{ORDERS_FQN}")
+    contract = await _get(
+        token, "/api/v1/dataContracts/entity", entityId=orders["id"], entityType="table"
+    )
+    odcs = await _get(token, f"/api/v1/dataContracts/{contract['id']}/odcs")
+    assert odcs["apiVersion"] == "v3.1.0"
+    assert odcs["version"] == PRODUCT_FIELDS["version"]
+    (schema,) = odcs["schema"]
+    columns = {p["name"]: p for p in schema["properties"]}
+    assert set(columns) == {"id", "customer_id", "amount", "region", "ssn", "margin"}
+    assert columns["amount"]["description"] == ORDERS_AMOUNT_DESCRIPTION
+    assert MASK_PATTERN not in httpx.Response(200, json=odcs).text

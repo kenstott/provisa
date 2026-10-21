@@ -227,6 +227,10 @@ GET /data-products/{product id}/odps.yaml
 GET /data-products/{product id}/contracts/{source}.{schema}.{table}.yaml
 ```
 
+An OpenMetadata target (2.0.3 or later) is also sent each member's contract through its ODCS
+import, attached to the member table and replacing the contract it had, so the contract shows on
+the table in OpenMetadata.
+
 Both are built from the same snapshot the export publishes. Reading them requires the
 `data_product_read` right, and on the hosted service a plan that includes metadata export.
 

@@ -94,7 +94,7 @@ def _mock_transport(monkeypatch, live_terms: dict[str, dict] | None = None):
     calls: list[tuple[str, str, object]] = []
     live = live_terms or {}
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         calls.append(("PUT", url, json))
         if url.endswith("/glossaries"):
             body = {"id": "gid-1", "fullyQualifiedName": json["name"]}

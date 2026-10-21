@@ -151,7 +151,7 @@ def _mock_transport(monkeypatch, live_response):
     puts: list[tuple[str, dict]] = []
     gets: list[str] = []
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         puts.append((url, json))
         body = {"id": "9c1d8e70-0000-0000-0000-0000000000aa", "fullyQualifiedName": TABLE_FQN}
         return httpx.Response(200, json=body, request=httpx.Request("PUT", url))

@@ -107,7 +107,7 @@ async def test_bigquery_dataplex_publishes_a_listing_backed_by_the_resolved_memb
     bigquery_dataplex.set_runtime_resolver(lambda org_id: FakeRuntimeWithLandingTerminal())
     requests: list[tuple[str, Any]] = []
 
-    async def _put(self, url, json=None, headers=None):
+    async def _put(self, url, json=None, headers=None, params=None):
         requests.append((url, json))
         return httpx.Response(200, request=httpx.Request("PUT", url))
 
