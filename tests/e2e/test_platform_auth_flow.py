@@ -588,7 +588,16 @@ class TestPlatformAdminHasZeroDataPlane:
 
         for method, path, body in (
             ("GET", "/admin/users/", None),
-            ("POST", "/admin/roles/", {"id": "opsrole", "capabilities": [], "domain_access": []}),
+            (
+                "POST",
+                "/admin/roles/",
+                {
+                    "description": "Test role.",
+                    "id": "opsrole",
+                    "capabilities": [],
+                    "domain_access": [],
+                },
+            ),
             ("GET", "/admin/audit/queries/1/text", None),
         ):
             resp = await client.request(method, path, json=body, headers=ops)
@@ -632,7 +641,12 @@ class TestPlatformAdminHasZeroDataPlane:
         founder = _in_org("founder", _ctx["org1"])
         unknown = await client.post(
             "/admin/roles/",
-            json={"id": "wild", "capabilities": ["admin"], "domain_access": ["*"]},
+            json={
+                "description": "Test role.",
+                "id": "wild",
+                "capabilities": ["admin"],
+                "domain_access": ["*"],
+            },
             headers=founder,
         )
         assert unknown.status_code == 422, unknown.text

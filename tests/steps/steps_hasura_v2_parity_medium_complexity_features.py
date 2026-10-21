@@ -120,7 +120,12 @@ def _build_schema_with_cursor_pagination():
         relationships=[],
         column_types=column_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
+        role={
+            "description": "Test role.",
+            "id": "admin",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        },
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )
@@ -685,7 +690,12 @@ def _build_rest_schema():
         relationships=[],
         column_types=column_types,
         naming_rules=[],
-        role={"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]},
+        role={
+            "description": "Test role.",
+            "id": "admin",
+            "capabilities": ALL_DATA_CAPABILITIES,
+            "domain_access": ["*"],
+        },
         domains=[{"id": "sales", "description": "Sales"}],
         source_types={"sales-pg": "postgresql"},
     )

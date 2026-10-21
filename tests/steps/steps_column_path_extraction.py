@@ -90,7 +90,7 @@ def _make_path_schema_input() -> SchemaInput:
             _col("payload", "json"),
         ]
     }
-    role = {"id": "admin", "capabilities": [], "domain_access": ["*"]}
+    role = {"description": "Test role.", "id": "admin", "capabilities": [], "domain_access": ["*"]}
     domains = [{"id": "sales", "graphql_alias": None}]
     return SchemaInput(
         tables=tables,
@@ -136,7 +136,7 @@ def _make_routed_schema_input(source_id: str, source_type: str, table_name: str)
             _col("payload", "json"),
         ]
     }
-    role = {"id": "admin", "capabilities": [], "domain_access": ["*"]}
+    role = {"description": "Test role.", "id": "admin", "capabilities": [], "domain_access": ["*"]}
     domains = [{"id": "sales", "graphql_alias": None}]
     return SchemaInput(
         tables=tables,

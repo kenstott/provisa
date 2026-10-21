@@ -107,7 +107,12 @@ def _build_schema_and_ctx(*, relay_pagination: bool = False):
             _col("region", "varchar(50)", nullable=True),
         ],
     }
-    role = {"id": "admin", "capabilities": ALL_DATA_CAPABILITIES, "domain_access": ["*"]}
+    role = {
+        "description": "Test role.",
+        "id": "admin",
+        "capabilities": ALL_DATA_CAPABILITIES,
+        "domain_access": ["*"],
+    }
     domains = [{"id": "sales", "description": "Sales"}]
     si = SchemaInput(
         tables=tables,

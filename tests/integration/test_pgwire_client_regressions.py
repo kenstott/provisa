@@ -81,7 +81,9 @@ def _make_mock_state(role: str = "admin", provider: str = "none") -> MagicMock:
     state = with_surfaces(no_replica_routes(MagicMock()))
     state.contexts = {role: ctx}
     state.rls_contexts = {role: RLSContext.empty()}
-    state.roles = {role: {"id": role, "capabilities": [], "domain_access": ["*"]}}
+    state.roles = {
+        role: {"description": "Test role.", "id": role, "capabilities": [], "domain_access": ["*"]}
+    }
     state.schema_build_cache = {"column_types": {}}
     state.auth_config = {"provider": provider, "default_role": role, "role_mapping": []}
     state.auth_middleware_active = provider != "none"

@@ -259,7 +259,7 @@ def _make_request(headers: dict[str, str] | None = None) -> Any:
 
 def _make_graph_schema_state() -> Any:
     state = MagicMock()
-    state.roles = {"admin": {"id": "admin", "domain_access": ["*"]}}
+    state.roles = {"admin": {"description": "Test role.", "id": "admin", "domain_access": ["*"]}}
     state.contexts = {"admin": MagicMock()}
     state.schema_build_cache = {"tables": [], "column_types": {}}
     state.tenant_db = None
