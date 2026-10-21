@@ -86405,7 +86405,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     button. Nodes are glossary terms, and edges are term-to-term edges. Edge type (KIND_OF, PART_OF,
     SYNONYM_OF, REPLACES and the other term edge types) is a filter. The dimensions are as follows.
     Domain: domains are cluster nodes, and a term links to each domain it belongs to, as the glossary
-    derives them (REQ-1591), with enterprise-scope terms (REQ-1592) at the centre; terms are not
+    derives them (REQ-1591), with enterprise-scope terms (REQ-1593) at the centre; terms are not
     coloured by domain, because a term can belong to several. Status: a term is proposed when it is in
     service (neither retired nor deprecated) but not live, meaning it has no definition or is not
     grounded (no chain of edges from it reaches a term bound to a column), by the one admission rule
