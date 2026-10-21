@@ -1433,13 +1433,9 @@
         "title": "Columnas a partir de los tipos de la función",
         "description": "churn_risk es una tabla porque su docstring dice @table. Sus columnas son los campos del RiskRow que devuelve. Sus parámetros son sus argumentos: el cliente y cada característica con la que se entrenó el modelo."
       },
-      "churnprodRefused": {
-        "title": "Una lectura sin cliente, rechazada",
-        "description": "La función no da valor por defecto a customer_id, así que una lectura que lo omite se rechaza antes de ejecutar código alguno. El rechazo nombra cada parámetro que falta."
-      },
       "churnprodJoin": {
         "title": "El join que alimenta el modelo",
-        "description": "Esta relación une las características de los clientes con churn_risk y nombra las características que le pasa. Un join sobre ella lee las características que usted puede ver, llama al modelo una vez por cliente y une de nuevo las puntuaciones."
+        "description": "Esta relación une cada cliente con la puntuación del modelo, de modo que un join sobre los clientes puntúa a cada uno de ellos."
       },
       "churnprodAtRisk": {
         "title": "La lista de clientes en riesgo",

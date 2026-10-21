@@ -200,7 +200,12 @@ function demoTourStep(
     return { ...page, element: `[data-table-row="${def.table}"]` };
   }
   if (def.relationship !== undefined) {
-    return { ...page, element: `[data-tour-relationship="${def.relationship}"]` };
+    const element = `[data-tour-relationship="${def.relationship}"]`;
+    if (def.route === undefined) return { ...page, element };
+    // The step that opens the page searches it by the alias, so the row is on its first page
+    // whatever else the org holds: a relationship listed past the first fifty mounts no anchor.
+    const query = new URLSearchParams({ search: def.relationship });
+    return { ...page, route: `${def.route}?${query.toString()}`, element };
   }
   if (def.trigger !== undefined) {
     return { ...page, element: `[data-testid="scheduled-task-row-${def.trigger}"]` };

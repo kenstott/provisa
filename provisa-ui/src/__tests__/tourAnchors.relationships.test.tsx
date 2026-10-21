@@ -31,7 +31,7 @@ const rel = (id: string, source: string, column: string, target: string) => ({
   refreshInterval: 300,
   targetFunctionName: null,
   functionArg: null,
-  alias: null,
+  alias: null as string | null,
   graphqlAlias: null,
   computedCypherAlias: null,
   autoSuggested: false,
@@ -111,4 +111,20 @@ describe("the Relationships Deep Dive's steps on its page", () => {
       }
     });
   }
+});
+
+describe("a demo tour's relationship step", () => {
+  it("finds its row by alias however many relationships the org holds", async () => {
+    // Sixty relationships, the one the step names last: past the page's first fifty, it would
+    // mount no anchor unless the step's search brings it forward.
+    const many = Array.from({ length: 60 }, (_, i) =>
+      rel(`r${i}`, `table_${String(i).padStart(2, "0")}`, "x_id", "other"),
+    );
+    many[59] = { ...many[59], alias: "SCORED_AS" };
+    RELS = { relationships: many, loading: false, refetch: vi.fn() };
+    render(<RelationshipsPage />, { initialEntries: ["/relationships?search=SCORED_AS"] });
+    await vi.waitFor(() =>
+      expect(document.querySelector('[data-tour-relationship="SCORED_AS"]')).not.toBeNull(),
+    );
+  });
 });

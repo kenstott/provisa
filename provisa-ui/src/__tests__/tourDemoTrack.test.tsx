@@ -121,6 +121,25 @@ describe("a demo's steps, as the runner walks them", () => {
       element: '[data-testid="sources-row-shop_access"]',
     });
     expect(relationship).toEqual({ key: "b", element: '[data-tour-relationship="LOGGED_FOR"]' });
+    // The step that opens the Relationships page searches it by the alias, so the row is on the
+    // page's first page however many relationships the org holds.
+    const [opened] = demoTourSteps(
+      [
+        {
+          key: "j",
+          route: "/relationships",
+          capability: "create_relationship",
+          relationship: "SCORED_AS",
+        },
+      ],
+      EXAMPLES,
+    );
+    expect(opened).toEqual({
+      key: "j",
+      route: "/relationships?search=SCORED_AS",
+      capability: "create_relationship",
+      element: '[data-tour-relationship="SCORED_AS"]',
+    });
     expect(example.openQuery).toEqual({ stateKey: "query", text: EXAMPLES[0].query });
     expect(example.element).toBe(".graphiql-response");
     expect(sql.openQuery).toEqual({ stateKey: "sql", text: "SELECT 1" });

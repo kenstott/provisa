@@ -14,10 +14,9 @@
 # tour.steps.<key> in the UI's tour.json, in every language.
 #
 # The track: the scenario (the churn analysis, linked); the model's package, a source pinned by
-# its content hash; the columns its function's types declare; a read without a customer refused
-# before the code runs; the join that feeds each customer's features to the model, and the at-risk
-# list it answers; the same list as the analyst, emails masked, and as the EU account team, its
-# region's rows only; the Node twin's scores beside the Python ones; and a recap.
+# its content hash; the columns its function's types declare; the join that scores each customer,
+# and the at-risk list it answers; the same list as the analyst, emails masked, and as the EU
+# account team, its region's rows only; the Node twin's scores beside the Python ones; and a recap.
 landing:
   route: /sql
   capability: query_development
@@ -35,8 +34,6 @@ steps:
   table: churn-model.churn_risk
   # Its detail panel: the columns and their types, read from the function's own type hints.
   open: columns.type
-- key: churnprodRefused
-  image: refused.png
 - key: churnprodJoin
   route: /relationships
   capability: create_relationship

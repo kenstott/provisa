@@ -1433,13 +1433,9 @@
         "title": "Columns from the function's types",
         "description": "churn_risk is a table because its docstring says @table. Its columns are the fields of the RiskRow it returns. Its parameters are its arguments, the customer and each feature the model was trained on."
       },
-      "churnprodRefused": {
-        "title": "A read without a customer, refused",
-        "description": "The function gives customer_id no default, so a read that leaves it out is refused before any code runs. The refusal names each missing parameter."
-      },
       "churnprodJoin": {
         "title": "The join that feeds the model",
-        "description": "This relationship joins the customers' features to churn_risk and names the features it feeds. A join over it reads the features you may see, calls the model once for each customer and joins the scores back."
+        "description": "This relationship joins each customer to the model's score, so a join over customers scores every one of them."
       },
       "churnprodAtRisk": {
         "title": "The at-risk list",
