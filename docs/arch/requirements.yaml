@@ -86111,6 +86111,7 @@ When the steward selects the Terrain tab
 
 Then each unrestricted column appears as a ridge with its quantile marks and null block, and three.js is loaded only at that moment"
   target: "2026-Q4"
+  notes: '2026-10-21, the maintainer via the lead: the profiling demo''s tour shows its graphs, each step opening the customers table''s View Profile Runs and picking the graph itself, then explaining it once drawn (a stage carries data-ready): the terrain, and the drift strata on postal_code. Relationships and Joint cloud are left out: this run''s correlations and dependencies are all below the map''s lowest strength (0.1), and customers has no joint counts.'
 - id: REQ-2124
   status: proposed
   since: 2026-10

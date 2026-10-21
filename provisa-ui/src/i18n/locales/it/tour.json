@@ -710,6 +710,11 @@
         "title": "Ogni esecuzione viene conservata",
         "description": "I risultati di un'esecuzione finiscono in tabelle proprie, una per tipo di misura, e ogni esecuzione è conservata accanto alle precedenti. Ecco le esecuzioni della tabella customers, con le righe lette e le righe ripetute trovate."
       },
+      "profilingTerrain": {
+        "title": "L'esecuzione, come terreno",
+        "acting": "Apertura delle esecuzioni di profilo della tabella customers, sul terreno",
+        "description": "L'ultima esecuzione di customers, disegnata come terreno: una cresta per colonna, la sua altezza le righe in ogni intervallo di valori, e davanti a ogni colonna i suoi valori nulli."
+      },
       "profilingTerms": {
         "title": "Il vocabolario",
         "description": "Il glossario definisce profilo dei dati, tipo plausibile, forma del valore, riga duplicata e valore segnaposto, e collega ogni termine alle misure che descrive."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Cosa è cambiato dall'ultima esecuzione",
         "description": "La configurazione ha eseguito il profiler due volte, e tra le due la sincronizzazione successiva del CRM ha scritto ogni CAP statunitense come ZIP+4. La tabella di deriva confronta ogni misura con quella dell'esecuzione precedente: le misure spostate dal cambiamento di postal_code sono segnalate in deriva, le colonne che la sincronizzazione non ha toccato no."
+      },
+      "profilingStrata": {
+        "title": "postal_code, esecuzione per esecuzione",
+        "acting": "Apertura degli strati di deriva",
+        "description": "postal_code in ogni esecuzione, la più vecchia sul fondo: la quota di righe di ciascun valore. L'esecuzione più recente è segnalata in deriva, come mostrava la tabella di deriva, e quella precedente no."
       },
       "profilingOriginal": {
         "title": "I clienti reali",

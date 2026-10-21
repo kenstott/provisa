@@ -710,6 +710,11 @@
         "title": "Each run is kept",
         "description": "A run's results land as tables of their own, one for each kind of measure, and every run is kept beside the ones before it. Here are the customers table's runs, with the rows each read and the repeated rows it found."
       },
+      "profilingTerrain": {
+        "title": "The run, as terrain",
+        "acting": "Opening the customers table's profile runs on the terrain",
+        "description": "The latest run of customers, drawn as terrain: one ridge for each column, its height the rows in each range of values, and each column's nulls in front of it."
+      },
       "profilingTerms": {
         "title": "The vocabulary",
         "description": "The glossary defines data profile, plausible type, value shape, duplicate row and placeholder value, and ties each term to the measures it describes."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "What changed since the last run",
         "description": "Setup ran the profiler twice, and between the runs the CRM's next sync wrote every US postal code as ZIP+4. The drift table compares each measure with the previous run's: the measures postal_code's change moved are flagged drifting, and the columns the sync left alone are not."
+      },
+      "profilingStrata": {
+        "title": "postal_code, run by run",
+        "acting": "Opening the drift strata",
+        "description": "postal_code in each run, the oldest at the back: the share of rows each value holds. The newest run is flagged as drifting, as the drift table showed, and the run before it is not."
       },
       "profilingOriginal": {
         "title": "The real customers",

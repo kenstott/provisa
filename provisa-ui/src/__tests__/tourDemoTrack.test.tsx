@@ -237,6 +237,31 @@ describe("a demo's steps, as the runner walks them", () => {
     document.body.innerHTML = "";
   });
 
+  it("opens a profiled table's runs and picks a graph itself, then explains it once drawn", () => {
+    const [step] = demoTourSteps(
+      [
+        {
+          key: "g",
+          route: "/tables",
+          capability: "table_registration",
+          table: "crm.customers",
+          open: "quality",
+          graph: "driftStrata",
+        },
+      ],
+      EXAMPLES,
+    );
+    expect(step.route).toBe("/tables?open=crm.customers&section=quality");
+    expect(step.actions).toEqual([
+      { do: "press", target: { testId: "table-read-view-profile-runs" } },
+      { do: "press", target: { testId: "profile-tab-driftStrata" } },
+    ]);
+    // The drawn scene, never the loader: three.js loads on first use.
+    expect(step.element).toBe('[data-testid="strata-stage"][data-ready]');
+    expect(step.readySelector).toBe(step.element);
+    expect(step.clickAfterNext).toBe('[data-testid="profile-runs-modal"] .mantine-Modal-close');
+  });
+
   it("hands a set of roles, a derived role among them, to the SQL explorer", () => {
     // REQ-2057: reviewer,region__eu is no single option of the picker; the explorer offers it.
     const [set] = demoTourSteps([{ key: "s", role: "reviewer,region__eu" }], EXAMPLES);

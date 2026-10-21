@@ -14,7 +14,10 @@
 #   source        a source of config.yaml, by id: its row on the Sources page
 #   table         a table of config.yaml, as <source id>.<table>: its row on the Tables page
 #                 with open: <section>[.<tab>], its detail panel on that section (columns.testing:
-#                 each column's fake), for a step about what only the panel shows
+#                 each column's fake), for a step about what only the panel shows; with
+#                 open: quality and graph: <terrain | relationsMap | jointCloud | driftStrata>, one
+#                 graph of the table's latest profile run, the tour opening View Profile Runs and
+#                 picking the graph itself
 #   relationship  a relationship of config.yaml, by alias: its row on the Relationships page
 #   trigger       a scheduled trigger of config.yaml, by id: its row on the Triggers page
 #                 (/admin/scheduled-tasks)

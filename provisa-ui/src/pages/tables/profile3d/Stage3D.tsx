@@ -49,7 +49,8 @@ export function Stage3D({
 }) {
   const { t } = useTranslation();
   return (
-    <div className="p3d-stage" ref={wrapRef} data-testid={testId}>
+    // data-ready: the scene is drawn (three.js loads lazily), what a tour step waits for.
+    <div className="p3d-stage" ref={wrapRef} data-testid={testId} data-ready={ready || undefined}>
       <canvas ref={canvasRef} aria-label={canvasLabel} />
       <div className="p3d-labels" ref={labelsRef} />
       {!ready && !error && (
