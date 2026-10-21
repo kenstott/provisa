@@ -710,6 +710,11 @@
         "title": "Elke run blijft bewaard",
         "description": "De resultaten van een run komen in eigen tabellen terecht, één per soort meting, en elke run blijft naast de eerdere bewaard. Hier de runs van de tabel customers, met de gelezen rijen en de gevonden herhaalde rijen."
       },
+      "profilingTerrain": {
+        "title": "De run als terrein",
+        "acting": "De profielruns van de tabel customers worden geopend op het terrein",
+        "description": "De laatste run van customers, getekend als terrein: één rug per kolom, de hoogte het aantal rijen in elk waardebereik, en vóór elke kolom haar null-waarden."
+      },
       "profilingTerms": {
         "title": "De woordenschat",
         "description": "De woordenlijst definieert dataprofiel, plausibel type, waardevorm, dubbele rij en plaatsvervangende waarde, en koppelt elke term aan de metingen die hij beschrijft."
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "Wat er sinds de vorige run veranderde",
         "description": "De setup draaide de profiler twee keer, en tussen de runs schreef de volgende synchronisatie van het CRM elke Amerikaanse postcode als ZIP+4. De drifttabel vergelijkt elke maat met die van de vorige run: de maten die de wijziging van postal_code verschoof, zijn als driftend gemarkeerd, en de kolommen die de synchronisatie niet aanraakte niet."
+      },
+      "profilingStrata": {
+        "title": "postal_code, run na run",
+        "acting": "De driftlagen worden geopend",
+        "description": "postal_code in elke run, de oudste achteraan: het aandeel rijen dat elke waarde heeft. De nieuwste run is als driftend gemarkeerd, zoals de drifttabel liet zien, en de run ervoor niet."
       },
       "profilingOriginal": {
         "title": "De echte klanten",

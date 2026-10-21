@@ -710,6 +710,11 @@
         "title": "每次執行都會保留",
         "description": "一次執行的結果寫入各自的表，每種量度一張，每次執行都與之前的執行一起保留。這裏是 customers 表的執行記錄，包括每次讀取的列數和發現的重複列。"
       },
+      "profilingTerrain": {
+        "title": "以地形呈現的執行",
+        "acting": "正在地形視圖中開啟 customers 表的剖析執行",
+        "description": "customers 的最新一次執行，以地形繪製：每欄一道山脊，高度是每個取值區間的列數，每欄前方是它的空值。"
+      },
       "profilingTerms": {
         "title": "詞彙",
         "description": "詞彙表定義了數據剖析、合理類型、值的形態、重複資料列及佔位值，並把每個詞彙關聯到它所描述的量度。"
@@ -737,6 +742,11 @@
       "profilingDrift": {
         "title": "自上次運行以來有甚麼變化",
         "description": "設定運行了兩次分析器，在兩次運行之間，CRM 的下一次同步把每個美國郵遞區號都寫成了 ZIP+4。漂移表把每個度量與上一次運行的度量比較：postal_code 的變化所改變的度量被標記為漂移，同步沒有觸及的欄則沒有。"
+      },
+      "profilingStrata": {
+        "title": "postal_code，逐次執行",
+        "acting": "正在開啟漂移層",
+        "description": "每次執行中的 postal_code，最早的在最後方：每個值所佔的列比例。正如漂移表所示，最新一次執行被標記為漂移，之前那次沒有。"
       },
       "profilingOriginal": {
         "title": "真實的客戶",

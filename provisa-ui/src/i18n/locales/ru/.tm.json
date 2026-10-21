@@ -7539,5 +7539,11 @@
   "ru/profileStrata.json::profileStrata.binning_sketch": "The same bins for every run, cut from each run's quantile sketch; heights are each run's share of its non-null rows.",
   "ru/profileStrata.json::profileStrata.binning_categories": "Every run's values counted against the same categories.",
   "ru/profileStrata.json::profileStrata.binning_none": "These runs hold no values for this column for your role.",
-  "ru/demoOpenPage.json::demoOpenPage.starting": "Starting this demo…"
+  "ru/demoOpenPage.json::demoOpenPage.starting": "Starting this demo…",
+  "ru/tour.json::tour.steps.profilingTerrain.title": "The run, as terrain",
+  "ru/tour.json::tour.steps.profilingTerrain.acting": "Opening the customers table's profile runs on the terrain",
+  "ru/tour.json::tour.steps.profilingTerrain.description": "The latest run of customers, drawn as terrain: one ridge for each column, its height the rows in each range of values, and each column's nulls in front of it.",
+  "ru/tour.json::tour.steps.profilingStrata.title": "postal_code, run by run",
+  "ru/tour.json::tour.steps.profilingStrata.acting": "Opening the drift strata",
+  "ru/tour.json::tour.steps.profilingStrata.description": "postal_code in each run, the oldest at the back: the share of rows each value holds. The newest run is flagged as drifting, as the drift table showed, and the run before it is not."
 }
