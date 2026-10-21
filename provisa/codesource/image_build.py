@@ -485,7 +485,7 @@ def _node(
         ]  # fmt: skip
         env = {"DENO_DIR": f"{ROOT}/code/.deno", "NO_COLOR": "1"}
     else:
-        worker = [exe, *host]
+        worker = [*node_install.code_command(runtime, exe), *host]
         env = {"NO_COLOR": "1"}
     layers = [
         _runtime(target, runtime, f"{ROOT}/runtime"),

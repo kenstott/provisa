@@ -327,7 +327,10 @@ def test_each_runtime_runs_the_reader_and_deno_reads_only_what_it_is_given(tmp_p
         str(ts),
         str(entry),
     ]
-    assert reader.reader_command("bun", exe, ts, entry)[1:] == [
+    # Bun installs nothing while it runs code: it would install a package an import misses.
+    assert reader.reader_command("bun", exe, ts, entry) == [
+        str(exe),
+        "--no-install",
         str(reader.READER),
         str(ts),
         str(entry),
@@ -336,6 +339,22 @@ def test_each_runtime_runs_the_reader_and_deno_reads_only_what_it_is_given(tmp_p
     assert deno[:2] == [str(exe), "run"]
     assert deno[2] == f"--allow-read={reader.READER.parent},{tmp_path / 'ts'},{tmp_path / 'b'}"
     assert deno[3:] == ["--allow-env", str(reader.READER), str(ts), str(entry)]
+
+
+@pytest.mark.parametrize("runtime, flags", [("node", []), ("bun", ["--no-install"])])
+def test_the_host_runs_the_bundle_installing_nothing(tmp_path, runtime, flags):
+    # The host looks for the code's optional @opentelemetry/api (host-core.mjs); Bun, unless told
+    # not to, installs a package it does not find, which a sandboxed host has nowhere to write.
+    from provisa.node.worker import HOST, host_command
+
+    (tmp_path / "package.json").write_text(json.dumps({"type": "module", "main": "index.js"}))
+    (tmp_path / "index.js").write_text("export const f = () => 1;\n")
+    exe = tmp_path / "rt" / runtime
+    argv = host_command(
+        runtime=runtime, executable=exe, bundle=tmp_path, egress=[], host_lib=tmp_path / "lib"
+    ).argv("fd:3")
+    run = [str(exe), *flags, str(HOST), "fd:3", str(tmp_path / "index.js")]
+    assert any(argv[i : i + len(run)] == run for i in range(len(argv)))
 
 
 def test_a_bundle_is_read_through_the_reader_into_its_manifest(tmp_path):

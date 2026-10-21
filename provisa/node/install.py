@@ -268,6 +268,14 @@ def install_command(runtime: str, executable: Path) -> list[str]:
     raise BundleRefused("unknown_runtime", f"{runtime!r} is not a runtime", runtime=runtime)
 
 
+def code_command(runtime: str, executable: Path | str) -> list[str]:
+    """Node's or Bun's command for running code, which installs nothing: a source's packages are
+    installed when it is fetched or built (:func:`install_command`). Bun is given --no-install, as
+    it otherwise installs a package an import does not find -- the optional @opentelemetry/api the
+    host looks for (host-core.mjs) included -- and a sandboxed run has nowhere to write it."""
+    return [str(executable), "--no-install"] if runtime == "bun" else [str(executable)]
+
+
 def _npm_cli(node: Path) -> Path:
     """npm as Node's own release lays it out beside the executable."""
     for candidate in (
