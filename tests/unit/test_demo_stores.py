@@ -753,10 +753,13 @@ def test_a_shared_store_that_will_not_start_says_why_from_its_own_log():
 def test_a_shared_store_is_healthy_only_once_its_real_server_answers_on_its_address(kind):
     """Postgres and MongoDB images first initialize with a server on the socket or loopback
     alone, then restart it. A check there passed before the real server was up: the wait
-    returned, and storefront's first mongosh load failed on the sandbox tier."""
+    returned, and storefront's first mongosh load failed on the sandbox tier. On the sandbox
+    node the store sits on two networks, so ``hostname -i`` prints two addresses; the check
+    takes the first, or every probe failed ("172.18.0.45 192.168.96.2:5432 - no response")."""
     import yaml
 
     shared = _REPO / "packaging" / "linux" / "demo-stores" / "docker-compose.shared.yml"
     test = yaml.safe_load(shared.read_text())["services"][kind]["healthcheck"]["test"]
     assert test[0] == "CMD-SHELL", test
-    assert '-h "$$(hostname -i)"' in test[1] or '--host "$$(hostname -i)"' in test[1], test
+    address = "\"$$(hostname -i | cut -d' ' -f1)\""
+    assert f"-h {address}" in test[1] or f"--host {address}" in test[1], test

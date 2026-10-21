@@ -40,7 +40,7 @@ services:
     healthcheck:
       # By the container's own address: the image first initializes with a server on its socket
       # alone, then restarts it; a socket check passes before the real one is up.
-      test: ["CMD-SHELL", "pg_isready -U postgres -h \"$$(hostname -i)\""]
+      test: ["CMD-SHELL", "pg_isready -U postgres -h \"$$(hostname -i | cut -d' ' -f1)\""]
       interval: 2s
       timeout: 5s
       retries: 60
@@ -62,7 +62,7 @@ services:
       # first runs a mongod bound to 127.0.0.1 alone, then stops it and starts the real one. A
       # loopback ping passed against the first, the wait returned, and the first load's mongosh
       # found no server (storefront's sync on the sandbox tier).
-      test: ["CMD-SHELL", "mongosh --quiet --host \"$$(hostname -i)\" --eval \"db.adminCommand('ping').ok\""]
+      test: ["CMD-SHELL", "mongosh --quiet --host \"$$(hostname -i | cut -d' ' -f1)\" --eval \"db.adminCommand('ping').ok\""]
       interval: 2s
       timeout: 5s
       retries: 60
