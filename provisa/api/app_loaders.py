@@ -65,6 +65,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "tracked_functions": "tracked_functions_meta",
     "tags": "tags_meta",  # REQ-1373
     "tag_assignments": "tag_assignments_meta",  # REQ-1377
+    "data_products": "data_products_meta",  # REQ-2125
 }
 
 
@@ -1925,6 +1926,7 @@ _META_TABLES = [
     "glossary_term_refs",  # REQ-1584: term -> column bindings, resolved to their address
     "glossary_term_edges",  # REQ-1584
     "glossary_term_experts",  # REQ-1584
+    "data_products",  # REQ-2125: one row per product; its parts are reached by relationship
 ]
 
 # Only these carry a `tenant_id` column (schema.sql:581-586), so only these can be RLS-scoped

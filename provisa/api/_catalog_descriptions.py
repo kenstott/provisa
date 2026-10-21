@@ -51,6 +51,9 @@ _META: dict[str, str] = {
     "derived at query time — the governance review queue",
     "derived_tags": "Tags computed from a table's own registration rather than assigned — its "
     "star-schema role and whether it holds data-quality scan results",
+    # REQ-2125
+    "data_products": "Every data product — one row per product with its own fields; its domain, "
+    "member tables, commands, tags, glossary terms and profiles are reached by relationship",
     # REQ-2091
     "sensitive_coverage": "Every sensitive column, whether a fake covers it, the fake and synthetic "
     "rule it declares, and the latest adequacy checks on them",
@@ -151,6 +154,29 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "l3_cluster": "Third-level semantic cluster within the L2 cluster",
         "clusters_computed_at": "When the semantic clusters were last recomputed",
         "tenant_id": _TENANT,
+        # REQ-2125
+        "dq_contract": "The data-quality contract a checker table's rows are the scan results "
+        "of; empty for any other table",
+        "profiled_table_id": "For a profile result table, the table it profiles; empty for any "
+        "other table",
+    },
+    # REQ-2125
+    "data_products": {
+        "id": "Data product identifier",
+        "domain_id": "Domain the product is published in",
+        "name": "Name the product is listed under",
+        "owner_role": "Role that owns the product",
+        "team_role": "Role of the team that maintains the product",
+        "purpose": "What the product is for",
+        "limitations": "What the product should not be used for, and its known gaps",
+        "usage": "How to use the product",
+        "version": "The product's version",
+        "status": "The product's lifecycle status",
+        "sla": "The service level the product is held to",
+        "support": "Where to get support for the product",
+        "support_contact": "Who to contact for support",
+        "publish": "True when the product is published; false while it is a draft",
+        "custom_properties": "The product's own named properties",
     },
     "table_columns": {
         "id": "Surrogate key for the column registration",
@@ -276,6 +302,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "description": "What the function does, shown to consumers",
         "created_at": "When the function was registered",
         "updated_at": "When the registration was last changed",
+        "product_id": "The data product the function is a member of, if any",  # REQ-2125
     },
     "tags": {
         "id": "Tag name, e.g. pii or deprecated",
@@ -313,6 +340,7 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         # assignment is on a column.
         "column_key": "Synthesized column identity (table_id:column_name) of the tagged column",
         "tenant_id": _TENANT,
+        "product_id": "Tagged data product, when the object is a data product",  # REQ-2125
     },
     "tag_expiry": {
         "id": "Assignment identifier",
