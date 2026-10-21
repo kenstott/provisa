@@ -25890,7 +25890,7 @@ The meta domain has a view-only data_product_edges view, related to data_product
 
 **Code:** `provisa/api/_meta_views.py`, `provisa/api/_meta_seed.py`, `provisa/api/_catalog_descriptions.py`, `provisa/api/app_loaders.py`, `provisa/api/app.py`, `provisa/api/admin/lineage_router.py`, `provisa/lineage/edges.py`, `provisa/lineage/merge.py`, `provisa/lineage/commands.py`, `provisa/security/rights.py`, `provisa/compiler/stage2.py`, `provisa/core/schema_org.py`, `provisa/core/schema.sql`
 
-**Tests:** `tests/unit/test_data_product_edges.py`, `tests/unit/test_statement_contract.py`
+**Tests:** `tests/unit/test_data_product_edges.py`, `tests/unit/test_statement_contract.py`, `tests/integration/test_data_product_edges_e2e.py`
 
 ## 10. UI & Admin Surfaces
 

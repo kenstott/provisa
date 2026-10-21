@@ -86255,6 +86255,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   tests:
   - tests/unit/test_data_product_edges.py
   - tests/unit/test_statement_contract.py
+  - tests/integration/test_data_product_edges_e2e.py
 - id: REQ-2127
   status: proposed
   since: 2026-10
