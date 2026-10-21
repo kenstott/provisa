@@ -80,6 +80,9 @@ class Prepared:
 
 
 _lock = threading.Lock()
+#: What the schema build wrote, by (engine, source type, organisation): one map, so every instance
+#: of a connector -- the engine's, and the Trino catalog registry's (trino_connectors) -- reads it.
+_PREPARED: dict[tuple[str, str, str], Prepared] = {}
 
 
 def _org() -> str:
@@ -105,22 +108,22 @@ class CodeHost:
     #: for a built source, which asks for it by its mode (FederationEngine.asks_in_place).
     opt_in_reach = True
 
-    def _held(self) -> dict[str, Prepared]:
-        with _lock:
-            return self.__dict__.setdefault("_prepared", {})
+    def _key(self, org_id: str) -> tuple[str, str, str]:
+        return (getattr(self, "engine", ""), getattr(self, "source_type", ""), org_id)
 
     def remember(self, org_id: str, prepared: Prepared) -> None:
-        held = self._held()
         with _lock:
-            held[org_id] = prepared
+            _PREPARED[self._key(org_id)] = prepared
 
     def ready(self) -> bool:
         """Whether the schema build wrote the bound organisation's identity for this engine."""
-        return _org() in self._held()
+        with _lock:
+            return self._key(_org()) in _PREPARED
 
     def prepared(self) -> Prepared:
         org_id = _org()
-        found = self._held().get(org_id)
+        with _lock:
+            found = _PREPARED.get(self._key(org_id))
         if found is None:
             raise RuntimeError(
                 f"organisation {org_id!r}: its remote-host identity is not written for the "

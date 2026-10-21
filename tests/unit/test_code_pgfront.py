@@ -235,6 +235,7 @@ def test_the_duckdb_engines_own_attach_verifies_and_reads_the_host(host, monkeyp
     from provisa.federation.codehost_connectors import DuckDBCodeHostConnector, Prepared
 
     port, cert, key = host
+    monkeypatch.setattr("provisa.federation.codehost_connectors._PREPARED", {})
     monkeypatch.setattr("provisa.core.request_context.require_current_org", lambda: "acme")
     connector = DuckDBCodeHostConnector("python")
     # The host's own certificate, as connect records it: the root the engine verifies it by.

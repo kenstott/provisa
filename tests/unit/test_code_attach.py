@@ -38,6 +38,15 @@ from provisa.federation.replica_address import ReplicaRoutes
 
 pytestmark = pytest.mark.unit
 
+
+@pytest.fixture(autouse=True)
+def nothing_prepared(monkeypatch):
+    """Each test starts with no identity written for any engine."""
+    from provisa.federation import codehost_connectors
+
+    monkeypatch.setattr(codehost_connectors, "_PREPARED", {})
+
+
 _TABLE = {
     "id": 4,
     "source_id": "scores-src",
@@ -342,3 +351,16 @@ def test_a_dev_source_keeps_its_types_reach_and_a_built_one_asks_for_the_hosts()
     assert not isinstance(engine.connectors.get("python"), DuckDBCodeHostConnector)
     assert not isinstance(engine.connector_for_source(dev), DuckDBCodeHostConnector)
     assert isinstance(engine.connector_for_source(built), DuckDBCodeHostConnector)
+
+
+def test_every_instance_of_an_engines_connector_reads_what_the_schema_build_wrote(
+    registered, tmp_path
+):
+    # The engine holds one instance and Trino's catalog registry another (TRINO_CONNECTORS):
+    # the catalog is created from the registry's, after the build wrote through the engine's.
+    from provisa.federation.trino_connectors import TRINO_CONNECTORS
+
+    engines = TrinoCodeHostConnector("python")
+    _files(engines, tmp_path)
+    assert TRINO_CONNECTORS["python"] is not engines
+    assert TRINO_CONNECTORS["python"].details(_source())["connection-user"] == "provisa"
