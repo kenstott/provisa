@@ -29,7 +29,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { uploadCodeArchive, uploadLockfile } from "../../api/codeUploads";
 import { fetchSecrets } from "../../api/secrets";
-import { FieldGroup, FormField } from "../../components/form/FormLayout";
+import { FieldGroup, FormField, FormSection } from "../../components/form/FormLayout";
 import { useFormRead } from "../../components/form/formRead";
 import { CodeExports } from "./CodeExports";
 import { CodeHostPanel } from "./CodeHostPanel";
@@ -330,12 +330,15 @@ export function CodeSourceFields({ type, fields, setFields, sourceId }: Props) {
         )}
       </CodeLocked>
       {saved && (
-        <CodeHostPanel
-          orgId={activeOrgId as string}
-          sourceId={sourceId as string}
-          fields={fields}
-          setFields={setFields}
-        />
+        // A fold carries no section, so the panel is placed in the Connection section itself.
+        <FormSection id="connection">
+          <CodeHostPanel
+            orgId={activeOrgId as string}
+            sourceId={sourceId as string}
+            fields={fields}
+            setFields={setFields}
+          />
+        </FormSection>
       )}
     </>
   );
