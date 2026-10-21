@@ -24,6 +24,7 @@ import { TagControl } from "../../components/TagControl";
 import { ColumnGlossaryHover } from "./ColumnGlossaryHover";
 import { OwnerResolutionIcon } from "../../components/OwnerResolution";
 import { LatestProfilePanel } from "./LatestProfilePanel";
+import { ProfileRunsButton } from "./ProfileRunsButton";
 import { PanelActions } from "../../components/list/SplitPane";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
@@ -335,6 +336,8 @@ export function TableReadView({
         {section === "quality" && (
           <>
             <QualityRead table={table} source={source} />
+            {/* REQ-2123 (amended): a profiler's member opens its runs here as in the editor. */}
+            {table.profilerSourceId && !hidingOnly && <ProfileRunsButton table={table} />}
             {profileColumnsTable && <LatestProfilePanel profileTable={profileColumnsTable} />}
             {(() => {
               const p = tableProfiles[table.id];

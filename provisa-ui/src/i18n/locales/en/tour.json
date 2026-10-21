@@ -85,6 +85,11 @@
         "title": "73 source types, 14 categories",
         "description": "One picker lists every type, grouped by category: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Search by name or alias, or narrow with the category chips. Each type shows its logo and a reach icon: ⚡ read live in place, or a copy icon where Provisa reads a refreshed replica.<p>Pick one, fill the connection, Save.</p>"
       },
+      "stepBuildSource": {
+        "title": "A source, added live",
+        "description": "That is how a source is added: the picker opened with its whole list, <strong>Parquet File</strong> was chosen, the file's address went in (<code>supplies.parquet</code>, published at provisa.dev) and Save created it. The new <strong>supplies</strong> source reads that file in place.",
+        "acting": "Adding a source"
+      },
       "step4": {
         "title": "Everything becomes a table",
         "description": "Whatever the source, whether a Mongo collection, a Kafka topic, a REST endpoint or a graph, Provisa decomposes it into a 2D <strong>table</strong>: one uniform shape to query across every source.<p>📁 Group tables into <strong>domains</strong>, each owned by a data steward who guards the model's quality as it evolves.</p>"
@@ -728,6 +733,26 @@
       "profilingDuplicates": {
         "title": "The rows written twice",
         "description": "The model declares customer_id the key, but the export held no constraint: 150 customers are in it twice, every field the same. The profile counts the repeated rows and the key values held by more than one row."
+      },
+      "profilingDrift": {
+        "title": "What changed since the last run",
+        "description": "Setup ran the profiler twice, and between the runs the CRM's next sync wrote every US postal code as ZIP+4. The drift table compares each measure with the previous run's: the measures postal_code's change moved are flagged drifting, and the columns the sync left alone are not."
+      },
+      "profilingOriginal": {
+        "title": "The real customers",
+        "description": "Ten customers as the CRM holds them. Next, the same statement in an environment generated from the profile."
+      },
+      "profilingToSynthetic": {
+        "title": "Switch to synthetic",
+        "description": "Next, the switcher moves to <strong>synthetic</strong>, a Test (synthetic) environment."
+      },
+      "profilingSynthetic": {
+        "title": "Generated from the profile",
+        "description": "The same statement in synthetic: every row generated from the customers' profile, with the same columns, value shapes and spread, and none of the real customers. The profile is enough to generate test data from."
+      },
+      "profilingToProd": {
+        "title": "Back to production",
+        "description": "Next, the switcher returns to prod."
       },
       "profilingRest": {
         "title": "The same answer over REST",

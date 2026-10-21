@@ -10,8 +10,7 @@
 #
 # The node's side of the sandbox tier's demos (REQ-2049). For each demo the tier offers
 # (PROVISA_DEMO_BUNDLES), on the node that runs the tier:
-#   1. pull the version the tier wants (<bundles>/<name>/wanted), else the latest published, and
-#      mark it offered (<bundles>/<name>/pulled);
+#   1. pull the latest published version and mark it offered (<bundles>/<name>/pulled);
 #   2. once the tier has asked for the demo since the node started (<bundles>/<name>/requested:
 #      a visitor's open, which builds its template too), bring its stores up
 #      (scripts/demo_stores.py): its data loaded into the node's one shared instance of each store
@@ -64,13 +63,9 @@ write_atomically() { # path text
 }
 
 sync_demo() { # name
-  local name="$1" spec="$1" wanted pulled version dir keep old
+  local name="$1" pulled version dir keep old
   mkdir -p "$DEMO_BUNDLES_DIR/$name"
-  if [ -s "$DEMO_BUNDLES_DIR/$name/wanted" ]; then
-    wanted="$(tr -d '[:space:]' < "$DEMO_BUNDLES_DIR/$name/wanted")"
-    spec="$name@$wanted"
-  fi
-  pulled="$($DEMO_PULL pull "$spec" --into "$DEMO_PULL_INTO")"
+  pulled="$($DEMO_PULL pull "$name" --into "$DEMO_PULL_INTO")"
   version="$(basename "$pulled")"
   dir="$DEMO_BUNDLES_DIR/$name/$version"
   [ -d "$dir" ] || { echo "demo $name: $pulled is not $dir on this host" >&2; return 1; }
@@ -105,7 +100,9 @@ sync_demo() { # name
 
 if [ "${1:-}" = "--boot" ]; then
   : "${DEMO_BUNDLES_DIR:?the bundles directory}"
-  rm -f "$DEMO_BUNDLES_DIR"/*/requested "$DEMO_BUNDLES_DIR"/*/ready
+  # A version an earlier release pinned (<name>/wanted, no longer written) goes too: the latest
+  # published is always the one pulled.
+  rm -f "$DEMO_BUNDLES_DIR"/*/requested "$DEMO_BUNDLES_DIR"/*/ready "$DEMO_BUNDLES_DIR"/*/wanted
   echo "demo stores: no demo asked for or ready since the node started"
   exit 0
 fi

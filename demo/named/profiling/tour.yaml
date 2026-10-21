@@ -75,6 +75,29 @@ steps:
     FROM "harbor"."customer_duplicates" AS d
     WHERE d.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_duplicates" AS p)
     LIMIT 10
+- key: profilingDrift
+  sql: >-
+    SELECT d.scope, d.column_name, d.subject, d.measure, d.previous, d.current, d.drift_reason
+    FROM "harbor"."customer_drift" AS d
+    WHERE d.drifting AND d.run_time = (SELECT MAX(p.run_time) FROM "harbor"."customer_drift" AS p)
+    ORDER BY d.scope, d.column_name, d.subject, d.measure
+    LIMIT 20
+- key: profilingOriginal
+  sql: >-
+    SELECT c.customer_id, c.full_name, c.email, c.phone, c.country, c.postal_code, c.status
+    FROM "harbor"."customers" AS c
+    ORDER BY c.customer_id
+    LIMIT 10
+- key: profilingToSynthetic
+  env: synthetic
+- key: profilingSynthetic
+  sql: >-
+    SELECT c.customer_id, c.full_name, c.email, c.phone, c.country, c.postal_code, c.status
+    FROM "harbor"."customers" AS c
+    ORDER BY c.customer_id
+    LIMIT 10
+- key: profilingToProd
+  env: prod
 - key: profilingRest
   route: /openapi
   capability: query_development

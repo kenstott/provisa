@@ -85,6 +85,11 @@
         "title": "73 brontypen, 14 categorieën",
         "description": "Eén kiezer toont elk type, gegroepeerd per categorie: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. Zoek op naam of alias, of beperk met de categoriechips. Elk type toont zijn logo en een bereikpictogram: ⚡ ter plekke live gelezen, of een kopiepictogram waar Provisa een ververst replica leest.<p>Kies er een, vul de verbinding in en sla op.</p>"
       },
+      "stepBuildSource": {
+        "title": "Een bron, live toegevoegd",
+        "description": "Zo voeg je een bron toe: de kiezer opende met de volledige lijst, <strong>Parquet File</strong> werd gekozen, het adres van het bestand werd ingevuld (<code>supplies.parquet</code>, gepubliceerd op provisa.dev) en Opslaan maakte de bron aan. De nieuwe bron <strong>supplies</strong> leest dat bestand op zijn plek.",
+        "acting": "Bron toevoegen"
+      },
       "step4": {
         "title": "Alles wordt een tabel",
         "description": "Wat de bron ook is, of het nu een Mongo-collectie, een Kafka-topic, een REST-endpoint of een graaf is, Provisa ontleedt het tot een 2D-<strong>tabel</strong>: één uniforme vorm om over elke bron te bevragen.<p>📁 Groepeer tabellen in <strong>domeinen</strong>, elk beheerd door een data steward die de kwaliteit van het model bewaakt terwijl het evolueert.</p>"
@@ -728,6 +733,26 @@
       "profilingDuplicates": {
         "title": "De rijen die twee keer zijn geschreven",
         "description": "Het model verklaart customer_id tot sleutel, maar de export had geen beperking: 150 klanten staan er twee keer in, elk veld gelijk. Het profiel telt de herhaalde rijen en de sleutelwaarden die meer dan één rij hebben."
+      },
+      "profilingDrift": {
+        "title": "Wat er sinds de vorige run veranderde",
+        "description": "De setup draaide de profiler twee keer, en tussen de runs schreef de volgende synchronisatie van het CRM elke Amerikaanse postcode als ZIP+4. De drifttabel vergelijkt elke maat met die van de vorige run: de maten die de wijziging van postal_code verschoof, zijn als driftend gemarkeerd, en de kolommen die de synchronisatie niet aanraakte niet."
+      },
+      "profilingOriginal": {
+        "title": "De echte klanten",
+        "description": "Tien klanten zoals het CRM ze bewaart. Daarna dezelfde instructie in een omgeving die uit het profiel is gegenereerd."
+      },
+      "profilingToSynthetic": {
+        "title": "Naar synthetic",
+        "description": "Daarna schakelt de schakelaar naar <strong>synthetic</strong>, een Test (synthetic)-omgeving."
+      },
+      "profilingSynthetic": {
+        "title": "Gegenereerd uit het profiel",
+        "description": "Dezelfde instructie in synthetic: elke rij is gegenereerd uit het profiel van de klanten, met dezelfde kolommen, waardevormen en spreiding, en geen enkele echte klant. Het profiel is genoeg om testdata uit te genereren."
+      },
+      "profilingToProd": {
+        "title": "Terug naar productie",
+        "description": "Hierna keert de omgevingskiezer terug naar prod."
       },
       "profilingRest": {
         "title": "Hetzelfde antwoord via REST",

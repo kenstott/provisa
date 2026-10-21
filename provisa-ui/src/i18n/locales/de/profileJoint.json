@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "Gemeinsame Wolke von {{table}}",
+    "none": "In diesem Lauf wurde kein Abhängigkeitsnetz aufgebaut, daher enthält er keine gemeinsamen Häufigkeiten.",
+    "canvasLabel": "3D-Wolke der Zeilen einer Spalte gegenüber ihren Elternspalten",
+    "column": "Spalte",
+    "colorBy": "Einfärben nach",
+    "colorRows": "Zeilen",
+    "colorLift": "Lift",
+    "legendRows": "Zeilen in der Zelle",
+    "legendLift": "weniger als bei Unabhängigkeit · gleich viele · mehr",
+    "decile": "D{{n}}",
+    "nullSlot": "null",
+    "otherSlot": "+{{count}} weitere",
+    "tipRows": "{{rows}} Zeilen · {{pct}} · Lift ×{{lift}}",
+    "explainOne": "{{column}} (vertikal) gegenüber ihrer Elternspalte {{parent}} (horizontal). Zahlen werden in Dezile des Rangs unterteilt.",
+    "explainTwo": "{{column}} (vertikal) gegenüber ihren Elternspalten {{parent1}} (horizontal) und {{parent2}} (in der Tiefe). Zahlen werden in Dezile des Rangs unterteilt.",
+    "stat_rows": "Zeilen",
+    "stat_cells": "Besetzte Zellen",
+    "stat_mi": "Transinformation (nats)",
+    "stat_uncertainty": "Beseitigte Unsicherheit",
+    "over": "Häufiger als bei Unabhängigkeit",
+    "under": "Seltener als bei Unabhängigkeit",
+    "noneListed": "Keine ab 0,5 % der Zeilen.",
+    "note": "Der Lift ist das Verhältnis der Zeilen einer Zelle zu den Zeilen, die sie bei unabhängigen Spalten enthielte. Die Kugelgröße entspricht der Zeilenzahl."
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "profileStrata": {
+    "expandTitle": "Estratos de desvio de {{table}}",
+    "none": "Nenhuma destas execuções contém valores que os estratos possam desenhar.",
+    "canvasLabel": "Pilha 3D da distribuição de uma coluna em cada execução, a mais antiga ao fundo",
+    "column": "Coluna",
+    "legendShare": "parcela das linhas da execução",
+    "legendMedian": "mediana, de execução em execução",
+    "legendDrift": "execução com desvio",
+    "tipShare": "{{pct}} das linhas não nulas da execução",
+    "tipNullShare": "{{pct}} das linhas da execução",
+    "drifted": "Com desvio ({{reason}})",
+    "steady": "Nenhum desvio sinalizado",
+    "noValues": "Sem valores nesta execução",
+    "runs": "Execuções, mais recentes primeiro",
+    "columnsNote": "Mediana e proporção de nulos de cada execução. A execução selecionada é a mais recente das exibidas.",
+    "binning_sketch": "As mesmas faixas para todas as execuções, obtidas do esboço de quantis de cada uma; as alturas são a parcela de cada execução em suas linhas não nulas.",
+    "binning_categories": "Os valores de cada execução, contados nas mesmas categorias.",
+    "binning_none": "Estas execuções não contêm valores para esta coluna com o seu papel."
+  }
+}

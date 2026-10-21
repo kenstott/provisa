@@ -255,16 +255,49 @@ async def test_the_engine_job_cap_holds_across_nodes_and_a_dead_builder_frees_it
         r.build_state == build_state.IDLE and r.exists for r in (await _records(db_a)).values()
     )
 
-    # A builder that dies: its claim's locks go with it, and the slot is free at once.
+    # A builder that dies: its claim's locks go with its session. PostgreSQL frees a session's
+    # advisory locks once it has ended the backend, which it does after the client's socket
+    # closes, not before close() returns; once that session is gone, the slot is free.
     dead = BuildLocks(url).claim()
     assert dead.try_engine_slot(ENGINE, 1)
+    pid = _backend_pid(dead)
     survivor = BuildLocks(url).claim()
     try:
         assert not survivor.try_engine_slot(ENGINE, 1)
         dead.close()  # what the operating system does to a dead process's open files
+        await _session_ended(url, pid)
         assert survivor.try_engine_slot(ENGINE, 1)
     finally:
         survivor.close()
+
+
+def _backend_pid(claim) -> int:
+    """The server process of the session a claim holds its locks on."""
+    from sqlalchemy import text
+
+    return claim._conn.execute(text("SELECT pg_backend_pid()")).scalar()  # noqa: SLF001
+
+
+async def _session_ended(url: str, pid: int) -> None:
+    """Return once the control plane no longer runs backend ``pid``; fail after 10s."""
+    from sqlalchemy import text
+
+    from provisa.core.database import control_plane_lock_engine
+
+    engine = control_plane_lock_engine(url)
+    try:
+        # Autocommit: a transaction reads pg_stat_activity once and keeps that snapshot.
+        with engine.connect().execution_options(isolation_level="AUTOCOMMIT") as conn:
+            for _ in range(200):
+                alive = conn.execute(
+                    text("SELECT count(*) FROM pg_stat_activity WHERE pid = :pid"), {"pid": pid}
+                ).scalar()
+                if not alive:
+                    return
+                await asyncio.sleep(0.05)
+        raise AssertionError(f"backend {pid} still running 10s after its client closed")
+    finally:
+        engine.dispose()
 
 
 async def test_a_row_left_building_by_a_dead_builder_is_rebuilt(plane, tmp_path):

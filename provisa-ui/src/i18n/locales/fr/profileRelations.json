@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "Relations dans {{table}}",
+    "none": "Cette exécution n'a trouvé aucune corrélation ni dépendance entre colonnes.",
+    "canvasLabel": "Carte 3D des colonnes de la table, reliées par leurs corrélations et dépendances",
+    "minStrength": "Intensité",
+    "showCorrelation": "Corrélations",
+    "showDependence": "Dépendances",
+    "legendPositive": "augmentent ensemble",
+    "legendNegative": "évoluent en sens inverse",
+    "legendRatio": "la catégorie explique le nombre",
+    "legendDependence": "dépend de (la flèche pointe vers la colonne dépendante)",
+    "tipLinks_one": "Relations : {{count}}",
+    "tipLinks_other": "Relations : {{count}}",
+    "columns": "Colonnes",
+    "noLinks": "Aucune relation à cette intensité.",
+    "note": "L'épaisseur du bâton correspond à l'intensité : |Spearman ρ| pour les corrélations, la part de variance expliquée pour un rapport de corrélation, et la part de l'incertitude de la colonne que ses parents éliminent pour une dépendance. Les colonnes grises appartiennent à une table parente.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "Rapport de corrélation η²",
+    "measure_dependence": "Dépendance (part d'incertitude éliminée)",
+    "family_numeric": "numérique",
+    "family_temporal": "date/heure",
+    "family_text": "texte",
+    "family_boolean": "booléen",
+    "family_other": "autre",
+    "family_foreign": "colonne de la table parente"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "Gezamenlijke wolk van {{table}}",
+    "none": "Deze run bouwde geen afhankelijkheidsnetwerk en bevat dus geen gezamenlijke aantallen.",
+    "canvasLabel": "3D-wolk van de rijen van een kolom tegenover de bovenliggende kolommen",
+    "column": "Kolom",
+    "colorBy": "Kleur op basis van",
+    "colorRows": "Rijen",
+    "colorLift": "Lift",
+    "legendRows": "rijen in de cel",
+    "legendLift": "minder dan bij onafhankelijkheid · evenveel · meer",
+    "decile": "D{{n}}",
+    "nullSlot": "null",
+    "otherSlot": "+{{count}} meer",
+    "tipRows": "{{rows}} rijen · {{pct}} · lift ×{{lift}}",
+    "explainOne": "{{column}} (omhoog) tegenover de ouder {{parent}} (dwars). Getallen worden verdeeld in deciel-rangen.",
+    "explainTwo": "{{column}} (omhoog) tegenover de ouders {{parent1}} (dwars) en {{parent2}} (diep). Getallen worden verdeeld in deciel-rangen.",
+    "stat_rows": "Rijen",
+    "stat_cells": "Bezette cellen",
+    "stat_mi": "Wederzijdse informatie (nats)",
+    "stat_uncertainty": "Weggenomen onzekerheid",
+    "over": "Vaker dan bij onafhankelijkheid",
+    "under": "Minder vaak dan bij onafhankelijkheid",
+    "noneListed": "Geen vanaf 0,5% van de rijen.",
+    "note": "Lift is het aantal rijen van een cel gedeeld door het aantal rijen dat de cel zou bevatten als de kolommen onafhankelijk waren. De bolgrootte is het aantal rijen."
+  }
+}

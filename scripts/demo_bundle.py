@@ -23,7 +23,8 @@ where the demo runs:
        views (REQ-1162) then has their append logs -- the history its setup's steps gave them --
        written out as ``seeded/views.duckdb`` and ``seeded/views.json``, with the records of the
        refreshes that built it (``seeded/refresh_lineage.parquet``, REQ-862), which its template
-       and each sandbox start from;
+       and each sandbox start from; and a demo whose setup profiles has its profile runs written
+       out as ``seeded/profile_results.json`` (REQ-2052), which its template loads;
     2. a sandbox tier runs on a throwaway embedded control plane in seeding mode
        (``PROVISA_DEMO_SEED_EXPORT=true``): it lands the demo's template from those stores and
        writes the seed -- ``seeded/replicas.duckdb`` and ``seeded/replicas.json``
@@ -661,6 +662,7 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
         if asked:
             answers = answer_tour(base, demo, asked)
             Path(demo_module.tour_answers_path(str(demo))).write_text(json.dumps(answers, indent=2))
+        _export_profile_runs(url, demo)
     finally:
         server.terminate()
         server.wait(timeout=60)
@@ -668,6 +670,22 @@ def _set_up(work: Path, demo: Path, stores: Stores, timeout: float) -> None:
             [sys.executable, "-m", "provisa.core.control_plane_pg", "stop", str(work / "setup-cp")],
             check=True,
         )
+
+
+def _export_profile_runs(url: str, demo: Path) -> None:
+    """REQ-2052: the profile runs the setup's ``profile`` steps made, written out beside the seed
+    (provisa.profiler.carry) for the demo's template to load: they measured the data as each step
+    of the setup left it, which the template's sources no longer hold."""
+    from provisa.api.demo_templates import demo_profilers
+    from provisa.core.environments import org_schema
+    from provisa.profiler.carry import export_runs, results_path
+
+    if not demo_profilers(demo):
+        return
+    written = export_runs(url, org_schema(_SETUP_ORG), results_path(demo))
+    if not written:
+        raise SystemExit(f"{demo.name}: its setup profiled, and the setup server holds no run")
+    print(f"{demo.name}: {written} profile result relations carried")
 
 
 def _seed(work: Path, demo: Path, stores: Stores, timeout: float) -> None:

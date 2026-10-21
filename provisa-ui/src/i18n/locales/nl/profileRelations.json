@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "Verbanden in {{table}}",
+    "none": "Deze run vond geen correlaties of afhankelijkheden tussen kolommen.",
+    "canvasLabel": "3D-kaart van de kolommen van de tabel, verbonden door hun correlaties en afhankelijkheden",
+    "minStrength": "Sterkte",
+    "showCorrelation": "Correlaties",
+    "showDependence": "Afhankelijkheden",
+    "legendPositive": "stijgen samen",
+    "legendNegative": "bewegen tegengesteld",
+    "legendRatio": "categorie verklaart getal",
+    "legendDependence": "hangt af van (de pijl wijst naar de afhankelijke kolom)",
+    "tipLinks_one": "Verbanden: {{count}}",
+    "tipLinks_other": "Verbanden: {{count}}",
+    "columns": "Kolommen",
+    "noLinks": "Geen verbanden bij deze sterkte.",
+    "note": "De staafdikte is de sterkte: |Spearman ρ| voor correlaties, het verklaarde aandeel van de variantie voor een correlatieratio en het aandeel van de onzekerheid van de kolom dat de ouders wegnemen voor een afhankelijkheid. Grijze kolommen horen bij een bovenliggende tabel.",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "Correlatieratio η²",
+    "measure_dependence": "Afhankelijkheid (aandeel weggenomen onzekerheid)",
+    "family_numeric": "numeriek",
+    "family_temporal": "datum/tijd",
+    "family_text": "tekst",
+    "family_boolean": "boolean",
+    "family_other": "overig",
+    "family_foreign": "kolom van bovenliggende tabel"
+  }
+}

@@ -85,6 +85,11 @@
         "title": "73 סוגי מקורות, 14 קטגוריות",
         "description": "בורר אחד מפרט כל סוג, מקובץ לפי קטגוריה: <strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>. חפשו לפי שם או כינוי, או צמצמו בעזרת תוויות הקטגוריה. כל סוג מציג את הלוגו שלו וסמל טווח: ⚡ קריאה חיה במקום, או סמל העתק במקום ש-Provisa קורא רפליקה מרועננת.<p>בחרו סוג, מלאו את החיבור ושמרו.</p>"
       },
+      "stepBuildSource": {
+        "title": "מקור, שנוסף בשידור חי",
+        "description": "כך מוסיפים מקור: הבורר נפתח עם הרשימה המלאה שלו, נבחר <strong>Parquet File</strong>, הוזנה כתובת הקובץ (<code>supplies.parquet</code>, שמפורסם ב-provisa.dev) ושמירה יצרה אותו. המקור החדש <strong>supplies</strong> קורא את הקובץ הזה במקומו.",
+        "acting": "מוסיפים מקור"
+      },
       "step4": {
         "title": "הכל הופך לטבלה",
         "description": "יהיה המקור אשר יהיה, אם אוסף Mongo, נושא Kafka, נקודת קצה REST או גרף, Provisa מפרק אותו ל<strong>טבלה</strong> דו-ממדית: צורה אחידה אחת לשאילתה על פני כל מקור.<p>📁 מקבצים טבלאות ל<strong>דומיינים</strong>, כל אחד בבעלות Data Steward ששומר על איכות המודל תוך כדי התפתחותו.</p>"
@@ -728,6 +733,26 @@
       "profilingDuplicates": {
         "title": "השורות שנכתבו פעמיים",
         "description": "המודל מגדיר את customer_id כמפתח, אבל בייצוא לא היה אילוץ: 150 לקוחות מופיעים בו פעמיים, כל השדות זהים. הפרופיל סופר את השורות החוזרות ואת ערכי המפתח שמופיעים ביותר משורה אחת."
+      },
+      "profilingDrift": {
+        "title": "מה השתנה מאז הריצה הקודמת",
+        "description": "ההגדרה הריצה את הפרופיילר פעמיים, ובין הריצות הסנכרון הבא של ה-CRM כתב כל מיקוד אמריקאי כ-ZIP+4. טבלת הסחיפה משווה כל מדד למדד של הריצה הקודמת: המדדים שהשינוי ב-postal_code הזיז מסומנים כסוחפים, והעמודות שהסנכרון לא נגע בהן לא."
+      },
+      "profilingOriginal": {
+        "title": "הלקוחות האמיתיים",
+        "description": "עשרה לקוחות כפי שה-CRM מחזיק אותם. בהמשך, אותה שאילתה בסביבה שנוצרה מהפרופיל."
+      },
+      "profilingToSynthetic": {
+        "title": "מעבר ל-synthetic",
+        "description": "כעת המתג עובר ל-<strong>synthetic</strong>, סביבת Test (synthetic)."
+      },
+      "profilingSynthetic": {
+        "title": "נוצר מהפרופיל",
+        "description": "אותה שאילתה ב-synthetic: כל שורה נוצרה מהפרופיל של הלקוחות, עם אותן עמודות, צורות ערכים ופיזור, ואף לא לקוח אמיתי אחד. הפרופיל מספיק כדי ליצור ממנו נתוני בדיקה."
+      },
+      "profilingToProd": {
+        "title": "חזרה לייצור",
+        "description": "בהמשך, המתג חוזר ל-prod."
       },
       "profilingRest": {
         "title": "אותה תשובה דרך REST",

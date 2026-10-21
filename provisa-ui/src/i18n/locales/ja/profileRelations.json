@@ -1,0 +1,28 @@
+{
+  "profileRelations": {
+    "expandTitle": "{{table}} の関係",
+    "none": "この実行では、列間の相関や依存関係は見つかりませんでした。",
+    "canvasLabel": "相関と依存関係で結ばれた、テーブルの列の 3D マップ",
+    "minStrength": "強さ",
+    "showCorrelation": "相関",
+    "showDependence": "依存関係",
+    "legendPositive": "ともに増加",
+    "legendNegative": "逆方向に変動",
+    "legendRatio": "カテゴリが数値を説明",
+    "legendDependence": "依存先(矢印は従属する列を指します)",
+    "tipLinks_one": "関係: {{count}}",
+    "tipLinks_other": "関係: {{count}}",
+    "columns": "列",
+    "noLinks": "この強さの関係はありません。",
+    "note": "棒の太さは強さを表します。相関では |Spearman ρ|、相関比では説明される分散の割合、依存関係では親列によって取り除かれるその列の不確実性の割合です。灰色の列は親テーブルの列です。",
+    "measure_spearman": "Spearman ρ",
+    "measure_correlation_ratio": "相関比 η²",
+    "measure_dependence": "依存度(取り除かれた不確実性の割合)",
+    "family_numeric": "数値",
+    "family_temporal": "日付/時刻",
+    "family_text": "テキスト",
+    "family_boolean": "ブール",
+    "family_other": "その他",
+    "family_foreign": "親テーブルの列"
+  }
+}

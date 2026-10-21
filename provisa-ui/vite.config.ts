@@ -257,6 +257,8 @@ export default defineConfig((config) => ({
           if (id.includes("node_modules/@mui") || id.includes("node_modules/@emotion"))
             return "vendor-mui";
           if (id.includes("node_modules/cytoscape")) return "vendor-cytoscape";
+          // REQ-2123: only the profile terrain's lazily imported scene uses three.js.
+          if (id.includes("node_modules/three")) return "vendor-three";
           if (
             id.includes("node_modules/monaco-editor") ||
             id.includes("node_modules/monaco-graphql") ||

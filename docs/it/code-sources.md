@@ -51,6 +51,137 @@ Un'installazione viene messa in cache per hash del contenuto del codice, così l
 
 Il vostro codice gira in un proprio processo worker, in una sandbox. Può leggere il proprio codice installato e nient'altro sul disco. Raggiunge solo gli host della allow-list di uscita del deployment, tramite un proxy gestito da Provisa, e mai le porte di Provisa stesso. Un host che non può fornire la sandbox si rifiuta di avviare il worker e indica cosa manca, invece di eseguire il codice senza restrizioni. Su Windows le sorgenti di codice vengono rifiutate.
 
+## Secret {: #secrets }
+
+Il codice che chiama un'API a pagamento ha bisogno della sua chiave, e la chiave sta nel vault della vostra organizzazione, non nel codice. In **Secrets**, nel modulo della sorgente, scegliete i secret dell'organizzazione che il codice può leggere. In un file di configurazione, elencateli nel mapping della sorgente:
+
+```yaml
+mapping:
+  secrets: [openrouter]
+```
+
+Un nome da solo è il secret dell'organizzazione con quel nome. Per leggere invece una variabile d'ambiente del deployment, indicate il riferimento: `secrets: {openrouter: "${env:OPENROUTER_API_KEY}"}`. L'elenco è un riferimento al vault, mai una copia di un valore, quindi una configurazione che nomina un secret non ancora salvato da nessuno si carica comunque.
+
+Il vostro codice riceve una variabile d'ambiente, `PROVISA_SERVICES`, e legge un secret da `$PROVISA_SERVICES/secrets/<name>` quando gli serve. In Python:
+
+```python
+import os, urllib.request
+key = urllib.request.urlopen(f"{os.environ['PROVISA_SERVICES']}/secrets/openrouter").read().decode()
+```
+
+In TypeScript:
+
+```typescript
+const key = await (await fetch(`${process.env.PROVISA_SERVICES}/secrets/openrouter`)).text();
+```
+
+La richiesta passa per lo stesso proxy di uscita del resto del traffico del vostro codice, e il proxy risponde direttamente. Nient'altro di Provisa è raggiungibile per quella via. L'indirizzo porta un token che solo il worker di questa sorgente possiede; legge solo i nomi che la sorgente elenca, e smette di funzionare quando il worker si ferma. Ogni lettura risolve il secret nel vault in quel momento, quindi un secret ruotato vale dalla lettura successiva.
+
+Un nome che la sorgente non elenca viene rifiutato, così come un secret che non si riesce a risolvere. Il rifiuto nomina il secret, mai il suo valore. Ogni lettura è registrata nell'audit trail dell'organizzazione con la sorgente, il nome e l'ora, e nessun valore viene mai scritto in un log. L'host dell'API deve comunque essere nella lista di uscita consentita.
+
+## Chiamare un modello {: #calling-a-model }
+
+Il vostro codice può chiamare un modello linguistico tramite Provisa invece di tenere una chiave del fornitore. `$PROVISA_SERVICES/llm/v1` è un endpoint compatibile con OpenAI, quindi qualsiasi SDK OpenAI funziona se puntate lì il suo URL di base. L'indirizzo è la credenziale, quindi la chiave che l'SDK chiede può essere un testo qualsiasi. In Python:
+
+```python
+import os
+from openai import OpenAI
+
+client = OpenAI(base_url=f"{os.environ['PROVISA_SERVICES']}/llm/v1", api_key="unused")
+reply = client.chat.completions.create(
+    model="provisa:sql_generation",
+    messages=[{"role": "user", "content": "Summarise this account's last quarter."}],
+)
+```
+
+In TypeScript:
+
+```typescript
+import OpenAI from "openai";
+
+const client = new OpenAI({ baseURL: `${process.env.PROVISA_SERVICES}/llm/v1`, apiKey: "unused" });
+const reply = await client.chat.completions.create({
+  model: "provisa:sql_generation",
+  messages: [{ role: "user", content: "Summarise this account's last quarter." }],
+});
+```
+
+Nominate un modello per ruolo, come `provisa:<role>`: ottenete il modello che la vostra organizzazione assegna a quel ruolo in **Admin → AI Models**, e segue quella scelta quando un amministratore la cambia. Potete anche nominare un modello direttamente quando è assegnato a un ruolo. Per gli embedding, `$PROVISA_SERVICES/llm/v1/embeddings` accetta uno qualsiasi dei modelli vettoriali della vostra organizzazione. Qualsiasi altro modello viene rifiutato per nome. La chiamata esce attraverso i fornitori, gli endpoint e le chiavi della vostra organizzazione, e ciò che invia passa prima per le regole di oscuramento di Provisa. Lo streaming non è offerto: inviate `stream: false`, che è il valore predefinito.
+
+Ogni chiamata è registrata per la sorgente, con il modello, i suoi token e il suo costo secondo la voce del modello in **Polly model prices**, e scritta nell'audit trail dell'organizzazione. Per limitare la spesa di una sorgente, impostate **LLM monthly cap** nel suo modulo, in USD. In un file di configurazione va nel mapping:
+
+```yaml
+mapping:
+  llm: {cap_usd: 20}
+```
+
+Una sorgente con un tetto può chiamare solo modelli che lì hanno un prezzo. Quando la sua spesa del mese (UTC) raggiunge il tetto, le sue chiamate sono rifiutate finché il mese non cambia. Le chiamate già in corso quando il tetto viene raggiunto terminano comunque, quindi il mese può chiudersi leggermente sopra il tetto.
+
+## I servizi di Provisa {: #provisas-services }
+
+Il vostro codice può importare un modulo che Provisa fornisce sempre, ovunque venga eseguito: `provisa_services` in Python e `@provisa/services` in Node.js, Bun e Deno. Non c'è niente da installare, e non si trova in nessun registro di pacchetti. Fuori da Provisa il modulo non esiste, quindi i test delle vostre funzioni lo simulano.
+
+```python
+import provisa_services as ps
+
+region = ps.settings.get("region")
+rates = ps.cache.get("rates") or fetch_rates()
+ps.cache.set("rates", rates, ttl=3600)
+```
+
+```typescript
+import { settings, cache } from "@provisa/services";
+
+const region = await settings.get("region");
+const rates = (await cache.get("rates")) ?? (await fetchRates());
+await cache.set("rates", rates, 3600);
+```
+
+| Chiamata | Cosa fa |
+|---|---|
+| `secrets.get(name)` | Uno dei secret dichiarati della sorgente, letto ora dal vault. Vedere [Secret](#secrets). |
+| `settings.get(name, default)` | Una delle impostazioni della sorgente, da **Settings** nel suo modulo, che uno steward può cambiare senza cambiare il codice. Se manca e non c'è un valore predefinito, solleva un errore. |
+| `cache.get(key, default)`, `cache.set(key, value, ttl)`, `cache.delete(key)` | La cache propria della sorgente, condivisa da tutti i suoi worker. Un valore è qualunque cosa JSON possa contenere, fino a 1 MB, conservato per `ttl` secondi o finché non viene sostituito. |
+| `vectors.upsert(items, model)`, `vectors.search(query, k, model)`, `vectors.embed(texts, model)`, `vectors.delete(ids)` | La collezione vettoriale propria della sorgente, per i suoi dati di riferimento. Un elemento ha un `id` e un `text` o un `vector`; un testo viene vettorizzato da uno dei modelli vettoriali della vostra organizzazione. Non può cercare nelle vostre tabelle governate: i loro dati arrivano al codice solo come parametri. |
+| `http.get(url)`, `http.post(url, ...)` | Una richiesta che Provisa fa per il codice, attraverso il proxy in uscita e le autorità di certificazione del deployment. L'host deve essere nella lista di uscita consentita, e ogni richiesta è registrata nell'audit trail. |
+| `llm.chat(model, messages)`, `llm.embeddings(model, input)`, `llm.base_url()` (`llm.baseUrl()` in JavaScript) | Il servizio LLM di Provisa. Vedere [Chiamare un modello](#calling-a-model). |
+| `log(message, level, fields)`, `metric(name, value, kind, attributes)` | Una riga di log e un punto di metrica chiamato `code_source.<name>`, legati alla richiesta che il vostro codice sta servendo. |
+
+Una chiamata che il servizio rifiuta solleva un `ServiceError` che nomina il servizio e ne spiega il motivo.
+
+I servizi rispondono al codice eseguito sul server Provisa. Su un host remoto non sono ancora raggiungibili, e ogni chiamata solleva un errore.
+
+Ogni chiamata al vostro codice è tracciata come parte della richiesta che l'ha avviata, con la funzione, il suo tipo, quanti argomenti ha ricevuto (mai i loro valori), le righe e i lotti restituiti, la sua durata e la CPU del worker. Ogni chiamata a un servizio è tracciata allo stesso modo. Al livello di dettaglio normale queste informazioni sono sullo span della richiesta; al livello debug ogni chiamata è uno span a sé. Se il vostro codice usa OpenTelemetry, i suoi span si uniscono alla stessa traccia.
+
+## Eseguire su un host remoto {: #running-on-a-remote-host }
+
+Una sorgente gira per impostazione predefinita sul server Provisa; questa è la modalità dev. Quando il suo codice ha bisogno di una macchina che il server non è, come una macchina con GPU o un host dentro un'altra rete, costruite la sua immagine ed eseguitela lì. La sorgente passa allora alla modalità built, e le sue tabelle, i permessi e i lettori restano gli stessi.
+
+**Costruire l'immagine.** Salvate prima la sorgente in modalità dev, così il suo codice viene letto e fissato. In **Remote host** nel suo modulo, scegliete l'architettura (Linux x86-64 o ARM64) e dove va l'immagine: uno dei registri di container della vostra organizzazione, inseriti in **Admin → Container registries**, oppure un download. Provisa assembla l'immagine da sé. Contiene il codice al suo hash fissato, le sue dipendenze installate per quella piattaforma dal lockfile del codice attraverso i vostri registri di pacchetti, il runtime fissato e il programma dell'host remoto, su un'immagine di base minima. Nulla nell'immagine viene eseguito mentre è costruita, e non interviene alcun daemon Docker. Il tag dell'immagine porta l'hash del codice e la versione di Provisa, e le sue label nominano il runtime, l'hash del codice e gli export.
+
+**Eseguirla.** Il modulo mostra un servizio compose per l'immagine. Un'immagine scaricata si carica prima con `docker load -i <file>`. Il container ascolta internamente sulla porta 7443 e conserva la sua identità sul volume. La porta dell'host la scegliete con `PROVISA_HOST_PORT`; senza, il servizio non parte:
+
+```yaml
+services:
+  provisa-code-rates:
+    image: ghcr.io/example/provisa-code-rates:3f9a1c2e7b40-0.1.0
+    restart: unless-stopped
+    ports:
+      - "${PROVISA_HOST_PORT:?set PROVISA_HOST_PORT to a free port on this host}:7443"
+    volumes:
+      - provisa-code-rates-state:/var/lib/provisa
+volumes:
+  provisa-code-rates-state: {}
+```
+
+Al primo avvio il container scrive nel suo log una riga che inizia con `pairing code:`.
+
+**Collegarla.** Tornati nel modulo, inserite l'host a cui Provisa raggiunge il container, la porta che avete pubblicato e il codice di abbinamento. Su una rete Docker condivisa o in Kubernetes, inserite il nome del container o del Service e 7443, senza pubblicare nulla. Provisa si abbina al container con TLS reciproco. Il codice si usa una volta, e da allora ciascun lato accetta solo l'altro. Provisa verifica poi che il container esegua il codice della sorgente e ne offra gli export, e porta la sorgente in modalità built. Ogni processo Provisa mantiene la propria connessione con l'host e si ricollega se l'host smette di rispondere. Finché l'host non risponde, le letture delle tabelle della sorgente falliscono nominando l'host.
+
+**Se il codice cambia.** Un container che torna con un altro codice viene rifiutato, nominando l'hash a cui è fissata la sorgente e quello che l'host riporta, finché uno steward non esamina il codice e lo rifissa dal modulo. Per cambiare il codice stesso, riportate la sorgente in dev, salvate il nuovo codice e ricostruite.
+
+Nel container, la sua policy di rete è il confine di uscita del codice; la lista di uscita consentita del server vale per la modalità dev.
+
 ## Leggere una tabella {: #reading-a-table }
 
 La tabella di una sorgente di codice viene materializzata localmente, mai letta sul posto. Provisa chiama la funzione con gli argomenti della lettura, controlla ogni riga rispetto alle colonne e conserva le righe sotto quegli argomenti per il TTL di cache della tabella. Visibilità, maschere e regole di riga si applicano poi alle righe materializzate, come per qualsiasi tabella.

@@ -1,0 +1,27 @@
+{
+  "profileJoint": {
+    "expandTitle": "Nube conjunta de {{table}}",
+    "none": "Esta ejecución no construyó ninguna red de dependencias, por lo que no contiene recuentos conjuntos.",
+    "canvasLabel": "Nube 3D de las filas de una columna frente a sus columnas padre",
+    "column": "Columna",
+    "colorBy": "Colorear por",
+    "colorRows": "Filas",
+    "colorLift": "Lift",
+    "legendRows": "filas en la celda",
+    "legendLift": "menos que con independencia · tantas · más",
+    "decile": "D{{n}}",
+    "nullSlot": "nulo",
+    "otherSlot": "+{{count}} más",
+    "tipRows": "{{rows}} filas · {{pct}} · lift ×{{lift}}",
+    "explainOne": "{{column}} (vertical) frente a su padre {{parent}} (horizontal). Los números se dividen en deciles de rango.",
+    "explainTwo": "{{column}} (vertical) frente a sus padres {{parent1}} (horizontal) y {{parent2}} (profundidad). Los números se dividen en deciles de rango.",
+    "stat_rows": "Filas",
+    "stat_cells": "Celdas ocupadas",
+    "stat_mi": "Información mutua (nats)",
+    "stat_uncertainty": "Incertidumbre eliminada",
+    "over": "Más a menudo que con independencia",
+    "under": "Menos a menudo que con independencia",
+    "noneListed": "Ninguna con el 0,5 % de las filas o más.",
+    "note": "El lift es el cociente entre las filas de una celda y las filas que contendría si las columnas fueran independientes. El tamaño de la esfera es el número de filas."
+  }
+}

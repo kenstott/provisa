@@ -108,7 +108,7 @@ async function adminRequest(
     input.body && typeof input.body === "object"
       ? (input.body as Record<string, unknown>)
       : undefined;
-  const fileField = typeof input.file_field === "string" ? input.file_field : undefined;
+  const upload = input.upload === true;
   const init: RequestInit = { method };
   if (method !== "GET") {
     const ok = await ctx.confirm({
@@ -119,18 +119,25 @@ async function adminRequest(
         .join("\n"),
     });
     if (!ok) return { success: false, message: "Cancelled by the user." };
-    if (fileField) {
+    if (upload) {
+      // The app's upload routes take the file's own bytes as the body, as the UI's uploads send
+      // them; a route that names the file takes it in the path, where {filename} stands for it.
       const file = await ctx.chooseFile(summary);
       if (!file) return { success: false, message: "Cancelled by the user: no file was chosen." };
-      const form = new FormData();
-      form.append(fileField, file);
-      for (const [k, v] of Object.entries(body ?? {})) form.append(k, String(v));
-      init.body = form;
+      // Typed as the file is, as a page's own upload sends it (an image route reads its kind
+      // from Content-Type); a file the browser cannot type goes as plain bytes.
+      init.headers = { "Content-Type": file.type || "application/octet-stream" };
+      init.body = file;
+      return send(path.replaceAll("{filename}", encodeURIComponent(file.name)), init);
     } else if (body) {
       init.headers = { "Content-Type": "application/json" };
       init.body = JSON.stringify(body);
     }
   }
+  return send(path, init);
+}
+
+async function send(path: string, init: RequestInit): Promise<ClientToolResult> {
   const res = await fetch(path, init);
   const text = await res.text();
   return {

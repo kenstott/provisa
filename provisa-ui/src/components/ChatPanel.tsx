@@ -886,7 +886,11 @@ export function ChatPanel() {
           <FormFooter
             onCancel={() => resolveFile(null)}
             action={
-              <Button disabled={chosenFile === null} onClick={() => resolveFile(chosenFile)}>
+              <Button
+                data-testid="chat-choose-file-send"
+                disabled={chosenFile === null}
+                onClick={() => resolveFile(chosenFile)}
+              >
                 {t("chatPanel.send")}
               </Button>
             }

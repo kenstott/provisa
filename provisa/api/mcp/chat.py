@@ -705,9 +705,10 @@ _CLIENT_TOOLS: list[Any] = [
         "description": (
             "Call one of the UI's admin REST routes (see admin_rest_routes) as the user, from "
             "their own browser session. A GET runs at once; any other method is shown to the "
-            "user with `summary` and sent only when they confirm in the chat. A route that "
-            "uploads a file names its form field in `file_field`, and the user chooses the file "
-            "in the chat before it is sent."
+            "user with `summary` and sent only when they confirm in the chat. For a route that "
+            "uploads a file, set `upload` true: the user chooses the file in the chat and its "
+            "bytes are the body, and {filename} in the path stands for its name (e.g. "
+            "/admin/orgs/<org>/code-uploads/archive?filename={filename})."
         ),
         "input_schema": {
             "type": "object",
@@ -721,7 +722,7 @@ _CLIENT_TOOLS: list[Any] = [
                     "type": "object",
                     "description": "The JSON body, or a form's other fields.",
                 },
-                "file_field": {"type": "string"},
+                "upload": {"type": "boolean"},
                 "summary": {"type": "string"},
             },
             "required": ["method", "path", "summary"],

@@ -85,6 +85,11 @@
         "title": "73 種數據來源類型，14 個類別",
         "description": "一個選擇器按類別列出所有類型：<strong>Subscriptions, RDBMS, Cloud DW, Analytics, Data Lake, NoSQL, Code, Graph, File, API, Streaming, Enterprise, Data Quality, Other</strong>。可以按名稱或別名搜尋，也可以用類別標籤收窄範圍。每種類型都有標誌和可達性圖示：⚡ 表示就地即時讀取，複製圖示表示 Provisa 讀取已更新的副本。<p>揀選一個，填寫連線，儲存。</p>"
       },
+      "stepBuildSource": {
+        "title": "即場加入一個數據源",
+        "description": "數據源就是這樣加入的：選擇器打開並顯示完整清單，選了 <strong>Parquet File</strong>，填入檔案地址（在 provisa.dev 發佈的 <code>supplies.parquet</code>），然後按儲存建立。新的 <strong>supplies</strong> 數據源直接在原處讀取該檔案。",
+        "acting": "正在加入數據源"
+      },
       "step4": {
         "title": "一切都會變成一個表格",
         "description": "無論數據來源是甚麼，是 Mongo 集合、Kafka 主題、REST 端點還是圖數據，Provisa 都會將它分解成一個二維<strong>表格</strong>：以統一的形態，跨所有數據來源進行查詢。<p>📁 將表格分組成<strong>領域</strong>，每個領域由一位數據管家負責，隨著模型演變守護其品質。</p>"
@@ -728,6 +733,26 @@
       "profilingDuplicates": {
         "title": "寫了兩次的列",
         "description": "模型將 customer_id 宣告為鍵，但匯出中沒有約束：150 位客戶出現了兩次，所有欄位都相同。剖析統計重複的列以及出現在多列中的鍵值。"
+      },
+      "profilingDrift": {
+        "title": "自上次運行以來有甚麼變化",
+        "description": "設定運行了兩次分析器，在兩次運行之間，CRM 的下一次同步把每個美國郵遞區號都寫成了 ZIP+4。漂移表把每個度量與上一次運行的度量比較：postal_code 的變化所改變的度量被標記為漂移，同步沒有觸及的欄則沒有。"
+      },
+      "profilingOriginal": {
+        "title": "真實的客戶",
+        "description": "CRM 中保存的十位客戶。接下來，在從分析結果生成的環境中運行同一條語句。"
+      },
+      "profilingToSynthetic": {
+        "title": "切換到 synthetic",
+        "description": "接下來，切換器切換到 <strong>synthetic</strong>，一個 Test (synthetic) 環境。"
+      },
+      "profilingSynthetic": {
+        "title": "從分析結果生成",
+        "description": "在 synthetic 中運行同一條語句：每一行都從客戶的分析結果生成，欄、取值形態和分佈都相同，卻沒有一位真實客戶。有了分析結果就足以生成測試數據。"
+      },
+      "profilingToProd": {
+        "title": "回到生產",
+        "description": "接下來，切換器回到 prod。"
       },
       "profilingRest": {
         "title": "透過 REST 取得同樣的答案",
