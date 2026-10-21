@@ -148,6 +148,316 @@ def _sensitive_coverage_sql() -> str:
     """
 
 
+def _data_product_edges_sql() -> str:
+    """REQ-2126: a data product's links to the rest of the model.
+
+    A relationship edge follows the registered relationships, either way along each, from the
+    product's member tables through tables that belong to no product. It stops at another
+    product's member, and the row targets that product; a table that belongs to no product is a
+    target only where nothing reachable through it is another product's member (otherwise it
+    supports that product's row). A lineage edge is a relation the product's members derive from,
+    all the way up, or one that derives from them, one hop down, read from the lineage edge table
+    the model build writes (REQ-2129); a checker member's results are about a member, not part of
+    its data flow, so they start no lineage.
+
+    Everything is computed from reachability, never by enumerating routes: the path count is the
+    number of distinct relationships (or derivations) leaving the members that lead on to the
+    target, the hops are the shortest distance, and the aliases and supporting tables are those on
+    any walk from a member to the target. Each recursion's rows are bounded by the model's tables
+    (or relations), so the cost grows with the model, not with the routes through it."""
+    return """
+        CREATE OR REPLACE VIEW data_product_edges AS
+        WITH RECURSIVE members AS (
+            SELECT id AS table_id, product_id, dq_contract
+            FROM registered_tables
+            WHERE product_id IS NOT NULL AND NOT draft
+        ),
+        free AS (
+            SELECT id AS table_id FROM registered_tables WHERE product_id IS NULL AND NOT draft
+        ),
+        links AS (
+            SELECT r.id AS rel_id, r.alias, r.source_table_id AS a, r.target_table_id AS b
+            FROM relationships r
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft
+            WHERE r.source_table_id <> r.target_table_id
+            UNION ALL
+            SELECT r.id, r.alias, r.target_table_id, r.source_table_id
+            FROM relationships r
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft
+            WHERE r.source_table_id <> r.target_table_id
+        ),
+        -- (product, the relationship leaving its member, a table reached): walking on only
+        -- through tables in no product, never into the product's own members.
+        reach (product_id, first_rel, node) AS (
+            SELECT m.product_id, l.rel_id, l.b
+            FROM members m
+            JOIN links l ON l.a = m.table_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM members own
+                WHERE own.table_id = l.b AND own.product_id = m.product_id)
+            UNION
+            SELECT r.product_id, r.first_rel, l.b
+            FROM reach r
+            JOIN free f ON f.table_id = r.node
+            JOIN links l ON l.a = r.node
+            WHERE NOT EXISTS (
+                SELECT 1 FROM members own
+                WHERE own.table_id = l.b AND own.product_id = r.product_id)
+        ),
+        -- (product, table reached, hops): every distance the walk reaches a table at, up to the
+        -- number of tables; the least is the shortest.
+        dist (product_id, node, hops) AS (
+            SELECT m.product_id, l.b, 1
+            FROM members m
+            JOIN links l ON l.a = m.table_id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM members own
+                WHERE own.table_id = l.b AND own.product_id = m.product_id)
+            UNION
+            SELECT d.product_id, l.b, d.hops + 1
+            FROM dist d
+            JOIN free f ON f.table_id = d.node
+            JOIN links l ON l.a = d.node
+            WHERE d.hops < (SELECT COUNT(*) FROM registered_tables)
+              AND NOT EXISTS (
+                  SELECT 1 FROM members own
+                  WHERE own.table_id = l.b AND own.product_id = d.product_id)
+        ),
+        -- (end table, a table in no product it can be reached from through tables in no product).
+        back (end_table, node) AS (
+            SELECT l.b, l.a
+            FROM links l
+            JOIN free f ON f.table_id = l.a
+            UNION
+            SELECT k.end_table, l.a
+            FROM back k
+            JOIN links l ON l.b = k.node
+            JOIN free f ON f.table_id = l.a
+            WHERE l.a <> k.end_table
+        ),
+        -- Each target and the tables it ends at: another product (its members reached), or a
+        -- table in no product from which no other product's member can be reached.
+        targets AS (
+            SELECT DISTINCT r.product_id, m.product_id AS target_product_id,
+                   CAST(NULL AS INTEGER) AS target_table_id, r.node AS end_table
+            FROM reach r
+            JOIN members m ON m.table_id = r.node
+            UNION
+            SELECT DISTINCT r.product_id, CAST(NULL AS TEXT), r.node, r.node
+            FROM reach r
+            JOIN free f ON f.table_id = r.node
+            WHERE NOT EXISTS (
+                SELECT 1 FROM back k
+                JOIN members other ON other.table_id = k.end_table
+                WHERE k.node = r.node AND other.product_id <> r.product_id)
+        ),
+        rel_rows AS (
+            SELECT t.product_id, t.target_product_id, t.target_table_id,
+                   COUNT(DISTINCT r.first_rel) AS path_count,
+                   (SELECT MIN(d.hops) FROM dist d
+                    JOIN targets e ON e.product_id = d.product_id AND e.end_table = d.node
+                    WHERE e.product_id = t.product_id
+                      AND e.target_product_id IS NOT DISTINCT FROM t.target_product_id
+                      AND e.target_table_id IS NOT DISTINCT FROM t.target_table_id) AS hops
+            FROM targets t
+            JOIN reach r ON r.product_id = t.product_id AND r.node = t.end_table
+            GROUP BY t.product_id, t.target_product_id, t.target_table_id
+        ),
+        -- The tables in no product on a walk from a product's member to a target.
+        supporting AS (
+            SELECT DISTINCT t.product_id, t.target_product_id, t.target_table_id, k.node
+            FROM targets t
+            JOIN back k ON k.end_table = t.end_table
+            JOIN reach r ON r.product_id = t.product_id AND r.node = k.node
+            WHERE t.target_table_id IS NULL OR k.node <> t.target_table_id
+        ),
+        -- The relationships on such a walk: from a member or a supporting table, to a supporting
+        -- table or the target's end.
+        on_walk AS (
+            SELECT t.product_id, t.target_product_id, t.target_table_id, l.rel_id
+            FROM targets t
+            JOIN links l ON l.b = t.end_table
+            JOIN members m ON m.table_id = l.a AND m.product_id = t.product_id
+            UNION
+            SELECT s.product_id, s.target_product_id, s.target_table_id, l.rel_id
+            FROM supporting s
+            JOIN links l ON l.b = s.node
+            JOIN members m ON m.table_id = l.a AND m.product_id = s.product_id
+            UNION
+            SELECT s.product_id, s.target_product_id, s.target_table_id, l.rel_id
+            FROM supporting s
+            JOIN links l ON l.a = s.node
+            JOIN supporting s2
+              ON s2.product_id = s.product_id
+             AND s2.target_product_id IS NOT DISTINCT FROM s.target_product_id
+             AND s2.target_table_id IS NOT DISTINCT FROM s.target_table_id
+             AND s2.node = l.b
+            UNION
+            SELECT s.product_id, s.target_product_id, s.target_table_id, l.rel_id
+            FROM supporting s
+            JOIN links l ON l.a = s.node
+            JOIN targets t
+              ON t.product_id = s.product_id
+             AND t.target_product_id IS NOT DISTINCT FROM s.target_product_id
+             AND t.target_table_id IS NOT DISTINCT FROM s.target_table_id
+             AND t.end_table = l.b
+        ),
+        rel_detail AS (
+            SELECT w.product_id, w.target_product_id, w.target_table_id,
+                   STRING_AGG(DISTINCT r.alias, ', ' ORDER BY r.alias) AS aliases,
+                   STRING_AGG(DISTINCT r.id, ', ' ORDER BY r.id) AS relationship_ids
+            FROM on_walk w
+            JOIN relationships r ON r.id = w.rel_id
+            GROUP BY w.product_id, w.target_product_id, w.target_table_id
+        ),
+        rel_support AS (
+            SELECT s.product_id, s.target_product_id, s.target_table_id,
+                   STRING_AGG(DISTINCT t.table_name, ', ' ORDER BY t.table_name)
+                       AS supporting_tables
+            FROM supporting s
+            JOIN registered_tables t ON t.id = s.node
+            GROUP BY s.product_id, s.target_product_id, s.target_table_id
+        ),
+        ledges AS (
+            SELECT DISTINCT source_relation AS src, target_relation AS tgt, via
+            FROM lineage_edges
+            WHERE source_relation <> target_relation
+        ),
+        relation_tables AS (
+            SELECT DISTINCT source_relation AS relation, source_table_id AS table_id
+            FROM lineage_edges WHERE source_table_id IS NOT NULL
+            UNION
+            SELECT DISTINCT target_relation, target_table_id
+            FROM lineage_edges WHERE target_table_id IS NOT NULL
+        ),
+        member_relations AS (
+            SELECT DISTINCT m.product_id, rt.relation
+            FROM members m
+            JOIN relation_tables rt ON rt.table_id = m.table_id
+            WHERE m.dq_contract IS NULL
+        ),
+        -- (product, the derivation into its member, a relation reached upstream).
+        upstream (product_id, first_edge, relation) AS (
+            SELECT mr.product_id, e.src || ' > ' || e.via || ' > ' || e.tgt, e.src
+            FROM member_relations mr
+            JOIN ledges e ON e.tgt = mr.relation
+            UNION
+            SELECT u.product_id, u.first_edge, e.src
+            FROM upstream u
+            JOIN ledges e ON e.tgt = u.relation
+        ),
+        up_dist (product_id, relation, hops) AS (
+            SELECT mr.product_id, e.src, 1
+            FROM member_relations mr
+            JOIN ledges e ON e.tgt = mr.relation
+            UNION
+            SELECT u.product_id, e.src, u.hops + 1
+            FROM up_dist u
+            JOIN ledges e ON e.tgt = u.relation
+            WHERE u.hops < (SELECT COUNT(*) FROM relation_tables)
+        ),
+        -- (product, an upstream relation, a relation its derivations reach on the way down to a
+        -- member): the chain each upstream row stands for.
+        chain (product_id, origin, relation) AS (
+            SELECT DISTINCT u.product_id, u.relation, u.relation
+            FROM upstream u
+            UNION
+            SELECT c.product_id, c.origin, e.tgt
+            FROM chain c
+            JOIN ledges e ON e.src = c.relation
+            JOIN upstream u ON u.product_id = c.product_id AND u.relation = e.tgt
+        ),
+        -- The views and commands on that chain: each derivation out of a relation on it, into a
+        -- relation on it or into a member.
+        up_vias AS (
+            SELECT DISTINCT c.product_id, c.origin AS relation, e.via
+            FROM chain c
+            JOIN ledges e ON e.src = c.relation
+            WHERE EXISTS (SELECT 1 FROM member_relations mr
+                          WHERE mr.product_id = c.product_id AND mr.relation = e.tgt)
+               OR EXISTS (SELECT 1 FROM upstream u
+                          WHERE u.product_id = c.product_id AND u.relation = e.tgt)
+        ),
+        lineage_paths AS (
+            SELECT u.product_id, 'upstream' AS direction, u.relation, u.first_edge
+            FROM upstream u
+            WHERE NOT EXISTS (
+                SELECT 1 FROM member_relations mr
+                WHERE mr.product_id = u.product_id AND mr.relation = u.relation)
+            UNION ALL
+            SELECT mr.product_id, 'downstream', e.tgt,
+                   e.src || ' > ' || e.via || ' > ' || e.tgt
+            FROM member_relations mr
+            JOIN ledges e ON e.src = mr.relation
+            WHERE NOT EXISTS (
+                  SELECT 1 FROM member_relations own
+                  WHERE own.product_id = mr.product_id AND own.relation = e.tgt)
+              AND NOT EXISTS (
+                  SELECT 1 FROM upstream up
+                  WHERE up.product_id = mr.product_id AND up.relation = e.tgt)
+              AND NOT EXISTS (
+                  SELECT 1 FROM relation_tables rt
+                  JOIN members chk ON chk.table_id = rt.table_id AND chk.dq_contract IS NOT NULL
+                  WHERE rt.relation = e.tgt)
+        ),
+        lineage_rows AS (
+            SELECT l.product_id, l.direction, l.relation,
+                   COUNT(DISTINCT l.first_edge) AS path_count,
+                   CASE WHEN l.direction = 'downstream' THEN 1
+                        ELSE (SELECT MIN(d.hops) FROM up_dist d
+                              WHERE d.product_id = l.product_id AND d.relation = l.relation)
+                   END AS hops
+            FROM lineage_paths l
+            GROUP BY l.product_id, l.direction, l.relation
+        ),
+        lineage_vias AS (
+            SELECT product_id, 'upstream' AS direction, relation,
+                   STRING_AGG(DISTINCT via, ', ' ORDER BY via) AS vias
+            FROM up_vias
+            GROUP BY product_id, relation
+            UNION ALL
+            SELECT mr.product_id, 'downstream', e.tgt,
+                   STRING_AGG(DISTINCT e.via, ', ' ORDER BY e.via)
+            FROM member_relations mr
+            JOIN ledges e ON e.src = mr.relation
+            GROUP BY mr.product_id, e.tgt
+        )
+        SELECT r.product_id || ':relationship:'
+                   || CASE WHEN r.target_product_id IS NOT NULL
+                           THEN 'product:' || r.target_product_id
+                           ELSE 'table:' || CAST(r.target_table_id AS TEXT) END AS id,
+               r.product_id, 'relationship' AS kind, CAST(NULL AS TEXT) AS direction,
+               r.target_product_id, r.target_table_id, CAST(NULL AS TEXT) AS target_relation,
+               CASE WHEN r.hops = 1 THEN TRUE ELSE FALSE END AS direct,
+               r.hops, r.path_count, d.aliases, d.relationship_ids, s.supporting_tables,
+               CAST(NULL AS TEXT) AS vias
+        FROM rel_rows r
+        JOIN rel_detail d
+          ON d.product_id = r.product_id
+         AND d.target_product_id IS NOT DISTINCT FROM r.target_product_id
+         AND d.target_table_id IS NOT DISTINCT FROM r.target_table_id
+        LEFT JOIN rel_support s
+          ON s.product_id = r.product_id
+         AND s.target_product_id IS NOT DISTINCT FROM r.target_product_id
+         AND s.target_table_id IS NOT DISTINCT FROM r.target_table_id
+        UNION ALL
+        SELECT l.product_id || ':lineage:' || l.relation,
+               l.product_id, 'lineage', l.direction,
+               (SELECT m.product_id FROM members m JOIN relation_tables rt
+                  ON rt.table_id = m.table_id WHERE rt.relation = l.relation),
+               (SELECT rt.table_id FROM relation_tables rt WHERE rt.relation = l.relation),
+               l.relation,
+               CASE WHEN l.hops = 1 THEN TRUE ELSE FALSE END,
+               l.hops, l.path_count, NULL, NULL, NULL, v.vias
+        FROM lineage_rows l
+        JOIN lineage_vias v
+          ON v.product_id = l.product_id AND v.direction = l.direction
+         AND v.relation = l.relation
+    """
+
+
 _META_TABLE_VIEWS: dict[str, str] = {
     # REQ-1373/1377: the tag registry and its assignments as queryable metadata, so
     # governance reporting (e.g. expiring deprecations) runs through the governed pipeline.
@@ -185,6 +495,24 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
+    # REQ-2126: a data product's links to the rest of the model, one row per product, target and
+    # kind.
+    "data_product_edges": _data_product_edges_sql(),
+    # REQ-2129: the model's column lineage, one row per edge whose two ends are registered
+    # columns, keyed to table_columns by the same column_key the glossary and tags join on.
+    "column_lineage_edges": """
+        CREATE OR REPLACE VIEW column_lineage_edges AS
+        SELECT e.id, e.source_relation, e.source_column, e.target_relation, e.target_column,
+               e.via, e.via_kind, e.source_table_id, e.source_column_name,
+               e.target_table_id, e.target_column_name,
+               CAST(e.source_table_id AS TEXT) || ':' || e.source_column_name
+                   AS source_column_key,
+               CAST(e.target_table_id AS TEXT) || ':' || e.target_column_name
+                   AS target_column_key
+        FROM lineage_edges e
+        JOIN registered_tables s ON s.id = e.source_table_id AND NOT s.draft
+        JOIN registered_tables t ON t.id = e.target_table_id AND NOT t.draft
+    """,
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
         CREATE OR REPLACE VIEW tag_assignments_meta AS
@@ -291,7 +619,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
         JOIN glossary_terms t ON t.id = x.term_id
     """,
     # REQ-2125: dq_contract tells a product's checker members from its output tables, and
-    # profiled_table_id names, for a profile result table, the member table it profiles: the
+    # checked_table_id names the table a checker's contract scans, as the model build resolved
+    # it (checker_targets). profiled_table_id names, for a profile result table, the member table
+    # it profiles: the
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
     # replaced in place.
@@ -309,7 +639,9 @@ _META_TABLE_VIEWS: dict[str, str] = {
                   AND SUBSTR(rt.table_name, 1,
                              LENGTH(m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_'))
                       = m.table_name || '_' || CAST(m.id AS TEXT) || '_profile_')
-                   AS profiled_table_id
+                   AS profiled_table_id,
+               (SELECT c.checked_table_id FROM checker_targets c WHERE c.table_id = rt.id)
+                   AS checked_table_id
         FROM registered_tables rt
         WHERE NOT rt.draft  -- a draft table is in no catalog
     """,
